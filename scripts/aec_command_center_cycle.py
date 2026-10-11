@@ -437,7 +437,7 @@ def run_cycle(
     }
 
 
-def main() -> int:
+def _execute() -> int:
     # G2: after imports settle — refuse a dual lib.X / scripts.lib.X identity.
     # This is a live systemd entrypoint running --apply hourly, and the twin's
     # FORBIDDEN_PORTS is a mutable module-level set, so the production-port
@@ -446,7 +446,7 @@ def main() -> int:
 
     assert_single_import_identity()
 
-    ap = argparse.ArgumentParser()
+    ap = argparse.ArgumentParser(allow_abbrev=False)
     # Mutually exclusive: --dry-run was previously declared but never read, so
     # `--dry-run --apply` silently applied. argparse now rejects that pairing
     # instead of letting the more dangerous flag win by accident.
@@ -461,6 +461,45 @@ def main() -> int:
     if not apply:
         print("DRY_RUN no durable write", file=sys.stderr)
     return 0
+
+
+def main(argv=None) -> int:
+    """Strict offline inspection before the legacy business execution path."""
+    argv = list(sys.argv[1:] if argv is None else argv)
+    ap = argparse.ArgumentParser(allow_abbrev=False)
+    # Mutually exclusive: --dry-run was previously declared but never read, so
+    # `--dry-run --apply` silently applied. argparse now rejects that pairing
+    # instead of letting the more dangerous flag win by accident.
+    mode = ap.add_mutually_exclusive_group()
+    mode.add_argument("--dry-run", action="store_true", help="default; no durable write")
+    mode.add_argument("--apply", action="store_true", help="append bus + memory (still advisory)")
+    ap.add_argument("--subject-key", default=None)
+    args = ap.parse_args(argv)
+    lane = "tradeai-aec-command-center-cycle"
+    if args.dry_run:
+        print(f"DRY-RUN {lane}: would project selected advisory subject into AEC bus and memory; no memory read, narrator or writes; options={vars(args)}; inputs NOT_MEASURED")
+        return 0
+    try:
+        from scripts.lib.lane_last_receipt import now_iso, write_lane_receipt
+    except ImportError:
+        from lib.lane_last_receipt import now_iso, write_lane_receipt
+    started = now_iso()
+    previous = sys.argv
+    sys.argv = [previous[0], *argv]
+    try:
+        result = _execute()
+        rc = int(result) if isinstance(result, int) else 0
+    except SystemExit as exc:
+        rc = exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
+        write_lane_receipt(lane, ok=rc == 0, exit_code=rc, started_at=started, script="aec_command_center_cycle.py", summary={"completed": rc == 0})
+        raise
+    except Exception as exc:
+        write_lane_receipt(lane, ok=False, exit_code=1, started_at=started, script="aec_command_center_cycle.py", error=type(exc).__name__)
+        raise
+    finally:
+        sys.argv = previous
+    write_lane_receipt(lane, ok=rc == 0, exit_code=rc, started_at=started, script="aec_command_center_cycle.py", summary={"completed": rc == 0})
+    return rc
 
 
 if __name__ == "__main__":

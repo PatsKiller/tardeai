@@ -9,6 +9,7 @@ Safety:
     - File output only to docs/hermes/backlog_health/
 """
 
+import argparse
 import json
 import os
 import sys
@@ -18,21 +19,26 @@ from collections import Counter
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 OUT = PROJECT_ROOT / "docs" / "hermes" / "backlog_health"
-OUT.mkdir(parents=True, exist_ok=True)
 
 STALE_DAYS = 7
 
 
 def get_db():
     import psycopg2
-    db_pass = None
-    for line in (PROJECT_ROOT / ".env").read_text().splitlines():
-        if line.startswith("DB_PASSWORD="):
-            db_pass = line.split("=", 1)[1]
-    return psycopg2.connect(host="localhost", dbname="trade_ai", user="trade_ai", password=db_pass)
+    try:
+        from scripts.lib.env_bootstrap import load_env
+    except ImportError:
+        from lib.env_bootstrap import load_env
+    load_env(names=("DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD"))
+    return psycopg2.connect(host=os.getenv("DB_HOST", "localhost"),
+                           port=os.getenv("DB_PORT", "5432"),
+                           dbname=os.getenv("DB_NAME", "trade_ai"),
+                           user=os.getenv("DB_USER", "trade_ai"),
+                           password=os.getenv("DB_PASSWORD", ""))
 
 
-def main():
+def _execute():
+    OUT.mkdir(parents=True, exist_ok=True)
     now = datetime.now(timezone.utc)
     date_str = now.strftime("%Y-%m-%d")
     conn = get_db()
@@ -206,5 +212,36 @@ def main():
     print("DB writes: 0 | Status changes: 0 | Alerts: 0")
 
 
+def main(argv=None) -> int:
+    """Inspect the report plan without reading backlog or creating output."""
+    argv = list(sys.argv[1:] if argv is None else argv)
+    parser = argparse.ArgumentParser(allow_abbrev=False)
+    parser.add_argument("--dry-run", action="store_true", help="offline source plan")
+    args = parser.parse_args(argv)
+    lane = "hermes-backlog-health-check"
+    if args.dry_run:
+        print(f"DRY-RUN {lane}: would read backlog and write the existing health report; no DB, secrets or files; inputs NOT_MEASURED")
+        return 0
+    try:
+        from scripts.lib.lane_last_receipt import now_iso, write_lane_receipt
+    except ImportError:
+        from lib.lane_last_receipt import now_iso, write_lane_receipt
+    started = now_iso()
+    previous = sys.argv
+    sys.argv = [previous[0], *argv]
+    try:
+        result = _execute()
+        rc = int(result) if isinstance(result, int) else 0
+    except Exception as exc:
+        write_lane_receipt(lane, ok=False, exit_code=1, started_at=started,
+                           script="hermes_backlog_health_check.py", error=type(exc).__name__)
+        raise
+    finally:
+        sys.argv = previous
+    write_lane_receipt(lane, ok=rc == 0, exit_code=rc, started_at=started,
+                       script="hermes_backlog_health_check.py", summary={"completed": rc == 0})
+    return rc
+
+
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

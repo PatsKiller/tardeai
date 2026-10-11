@@ -143,7 +143,7 @@ def enqueue(*, agents: list[str], dry_run: bool = True, max_per_agent: int = 40)
     return report
 
 
-def main() -> int:
+def _execute() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--apply", action="store_true", help="Write jobs (default is dry-run)")
     ap.add_argument("--dry-run", action="store_true", help="Explicit dry-run (default)")
@@ -169,6 +169,47 @@ def main() -> int:
         )
         print(f"  report: {report.get('report_path')}")
     return 0 if report.get("ok") and not report.get("errors") else 1
+
+
+def main(argv=None) -> int:
+    """Strict offline inspection before the legacy business execution path."""
+    argv = list(sys.argv[1:] if argv is None else argv)
+    ap = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
+    ap.add_argument("--apply", action="store_true", help="Write jobs (default is dry-run)")
+    ap.add_argument("--dry-run", action="store_true", help="Explicit dry-run (default)")
+    ap.add_argument(
+        "--agents",
+        default=",".join(DEFAULT_AGENTS),
+        help="Comma-separated agents (default: risk_agent,tax_agent)",
+    )
+    ap.add_argument("--max-per-agent", type=int, default=40)
+    ap.add_argument("--json", action="store_true")
+    args = ap.parse_args(argv)
+    lane = "holdings-agent-enqueue"
+    if args.dry_run:
+        print(f"DRY-RUN {lane}: would enqueue capped risk/tax advisory jobs; no holdings read, claims, DB or report writes; options={vars(args)}; inputs NOT_MEASURED")
+        return 0
+    try:
+        from scripts.lib.lane_last_receipt import now_iso, write_lane_receipt
+    except ImportError:
+        from lib.lane_last_receipt import now_iso, write_lane_receipt
+    started = now_iso()
+    previous = sys.argv
+    sys.argv = [previous[0], *argv]
+    try:
+        result = _execute()
+        rc = int(result) if isinstance(result, int) else 0
+    except SystemExit as exc:
+        rc = exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
+        write_lane_receipt(lane, ok=rc == 0, exit_code=rc, started_at=started, script="enqueue_holdings_agent_opinions.py", summary={"completed": rc == 0})
+        raise
+    except Exception as exc:
+        write_lane_receipt(lane, ok=False, exit_code=1, started_at=started, script="enqueue_holdings_agent_opinions.py", error=type(exc).__name__)
+        raise
+    finally:
+        sys.argv = previous
+    write_lane_receipt(lane, ok=rc == 0, exit_code=rc, started_at=started, script="enqueue_holdings_agent_opinions.py", summary={"completed": rc == 0})
+    return rc
 
 
 if __name__ == "__main__":

@@ -43,8 +43,9 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
-from dotenv import load_dotenv
-load_dotenv(PROJECT_ROOT / ".env")
+def _load_env():
+    from lib.env_bootstrap import load_env
+    load_env(names=("DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD"))
 
 from llm_content_quality import is_valid_prose, extract_prose  # noqa: E402
 
@@ -389,7 +390,7 @@ def ensure_cache_table(conn):
 
 
 def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(description="LLM Intelligence Enrichment")
+    parser = argparse.ArgumentParser(description="LLM Intelligence Enrichment", allow_abbrev=False)
     parser.add_argument("--dry-run", action="store_true",
                         help="build prompts and report; no LLM call, no cache write, no receipt")
     parser.add_argument("--section", help="Run only one section")
@@ -408,6 +409,11 @@ def main(argv=None) -> int:
     selected = {args.section: sections[args.section]} if args.section else sections
     lane = LANE_ID_SECTION if args.section else LANE_ID
 
+    if args.dry_run:
+        print(f"DRY-RUN {lane}: would enrich sections={list(selected)} and upsert validated prose "
+              "plus lane receipt; no state/prompt read, credentials, DB, model or writes; inputs NOT_MEASURED")
+        return 0
+    _load_env()
     _RUN.update(saved=[], rejected=[], dry_plan={})
     started = datetime.now().astimezone().isoformat()
     print(f"[llm_enrichment] Starting — {datetime.now().isoformat()}")

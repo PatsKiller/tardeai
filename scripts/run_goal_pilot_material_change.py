@@ -5,6 +5,7 @@ Writes an append-only receipt. No broker path. Tier-2 remains env-gated.
 """
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import sys
@@ -23,7 +24,7 @@ SCHEDULED_ENTRYPOINT = (
 )
 
 
-def main() -> int:
+def _execute() -> int:
     from scripts.lib.canonical_store_registry import production_state_root
 
     root = Path(production_state_root())
@@ -67,18 +68,52 @@ def main() -> int:
     except Exception as exc:  # noqa: BLE001
         payload = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
 
+    completed = payload.get("ok") is not False and payload.get("status") not in {"unavailable", "library_loaded"}
     row = {
         "schema": "GoalPilotMaterialChangeRun@v1",
         "authority": AUTHORITY,
         "ran_at": datetime.now(timezone.utc).isoformat(),
-        "ok": True,
+        "ok": completed,
         "scheduled_entrypoint": SCHEDULED_ENTRYPOINT,
         "result": payload,
     }
     with receipt_path.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(row, default=str) + "\n")
     print(json.dumps(row, indent=2, default=str)[:2000])
-    return 0
+    return 0 if completed else 1
+
+
+def main(argv=None) -> int:
+    """Strict offline inspection before the legacy business execution path."""
+    argv = list(sys.argv[1:] if argv is None else argv)
+    parser = argparse.ArgumentParser(allow_abbrev=False)
+    parser.add_argument("--dry-run", action="store_true", help="offline source plan")
+    args = parser.parse_args(argv)
+    lane = "goal-pilot-material-change"
+    if args.dry_run:
+        print(f"DRY-RUN {lane}: would evaluate shadow material-change pilot under existing tier gates; no paid/model, state or writes; options={vars(args)}; inputs NOT_MEASURED")
+        return 0
+    try:
+        from scripts.lib.lane_last_receipt import now_iso, write_lane_receipt
+    except ImportError:
+        from lib.lane_last_receipt import now_iso, write_lane_receipt
+    started = now_iso()
+    previous = sys.argv
+    sys.argv = [previous[0], *argv]
+    try:
+        result = _execute()
+        rc = int(result) if isinstance(result, int) else 0
+    except SystemExit as exc:
+        rc = exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
+        write_lane_receipt(lane, ok=rc == 0, exit_code=rc, started_at=started, script="run_goal_pilot_material_change.py", summary={"completed": rc == 0})
+        raise
+    except Exception as exc:
+        write_lane_receipt(lane, ok=False, exit_code=1, started_at=started, script="run_goal_pilot_material_change.py", error=type(exc).__name__)
+        raise
+    finally:
+        sys.argv = previous
+    write_lane_receipt(lane, ok=rc == 0, exit_code=rc, started_at=started, script="run_goal_pilot_material_change.py", summary={"completed": rc == 0})
+    return rc
 
 
 if __name__ == "__main__":
