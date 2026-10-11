@@ -1,5 +1,9 @@
 # Completion train for the 119 outstanding source/integration lanes
 
+Status: SOURCE_ONLY — local source corrections; admission held
+Owner: Codex integration
+As of: 2026-10-11
+
 Evidence: SOURCE_ONLY and TEST_ONLY. Production, exact CURRENT, installed scheduler state and natural-fire acceptance are NOT_MEASURED. This is a local source train, with no push, PR, deployment, workflow import, scheduler cutover, operational config change or contract review.
 
 ## Result and scope
@@ -25,12 +29,14 @@ The [shared prerequisites](SHARED_PREREQUISITES.md), group reports and candidate
 All new tests are registered in the native CI runner. The combined targeted integration suite passed under the unchanged isolated launcher after correcting two legacy preview expectations and retaining their fake DB-failure/component coverage. The accepted full PR-profile command is:
 
 ```sh
-python3 run-isolated-completion.py final-pr-profile .venv/bin/python scripts/run_cio_hardening_ci.py --profile pr --base origin/main
+python3 run-isolated-completion.py final-pr-profile-corrected .venv/bin/python scripts/run_cio_hardening_ci.py --profile pr --base origin/main
 ```
 
-The launcher sets TRADE_AI_CI=1, M2_SKIP_DOCKER=1, the `.nodeps` PYTHONPATH, empty dotenv inputs and fixture state roots before imports. The final exact-head result is written to `reassess-gates/final-pr-profile.{json,log}` in the integration worktree. It must exit 0 with zero capability refusals and all owned children reaped before a source-green claim. Static gate, Ruff, line-ending and configuration-preservation results are in the same local evidence directory and summarized in untracked `PR_BODY.md`. These local files are review artifacts and do not imply CI on GitHub.
+The launcher sets TRADE_AI_CI=1, M2_SKIP_DOCKER=1, the `.nodeps` PYTHONPATH, empty dotenv inputs and fixture state roots before imports. Each attempt has a distinct tag and retained `reassess-gates/<tag>.{json,log}` artifact in the integration worktree. A final exact-head run must exit 0 with zero capability refusals and all owned children reaped before a source-green claim. Static gate, Ruff, line-ending and configuration-preservation results are in the same local evidence directory and summarized with the exact accepted tag in untracked `PR_BODY.md`. These local files are review artifacts and do not imply CI on GitHub.
 
 Earlier attempts that hit `/run/user/1000/tradeai/env` or a production state-root argv were stopped and are retained as nonaccepted evidence. Source fixture handling was corrected before new-head validation; guards were not widened. Server caller-map extraction was refused because of inherited mixed line endings; that server file remains untouched and the client map is tested against it. Successful terminal stream-fd warnings are recorded once and are not action refusals.
+
+The first native profile at21a7a3afc stopped on a host-crontab call and exposed a legacy migration test copying canonical checkout state. That run remains rejected. The migration rehearsal now uses synthetic stores and ledgers, retaining every conflict/hash/quarantine/rollback assertion; the unknown-lane-count CLI test now injects a discovery fixture. Guards, exemptions and native test selection are unchanged. The corrected migration suite passed62 tests and the corrected registry case passed; final profile acceptance remains required.
 
 No frontend or live browser acceptance is claimed: this train changes lane source and test integration, not Command Center or runtime. Deployment and natural-fire evidence remain separate prerequisites.
 

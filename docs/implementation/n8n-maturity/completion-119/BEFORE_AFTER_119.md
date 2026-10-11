@@ -1,5 +1,9 @@
 # 119-lane source completion: before and after
 
+Status: SOURCE_ONLY — every admission held
+Owner: Codex integration
+As of: 2026-10-11
+
 Evidence: SOURCE_ONLY; isolated checks: TEST_ONLY; deployed/runtime/scheduler acceptance: NOT_MEASURED. No push, deployment, cutover, workflow import, model call, operational config or reviewer change.
 
 Scope is 119 of 297 eight-shard lanes: 98 prior blockers, 17 local proposals and four held source rows. The 25 reviewed-shadow rows, 123 excluded rows and 30 retired rows are outside this train.
