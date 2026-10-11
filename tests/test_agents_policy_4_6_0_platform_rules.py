@@ -11,7 +11,7 @@ What this pins:
     digests the 4.4.0 test pins (measured at origin/main 7df77950a, AGENTS 4.4.0 ACTIVE);
   * §24 has subsections 24.1–24.9, each bullet citing its cause, and the numbers and names the rules rely on exist.
 
-Numbering: 4.4.1 / 4.5.0 are in open PR #1666. If this renumbers to 4.5.0, rename TOKEN and this file.
+Numbering: 4.4.1 / 4.5.0 merged in PR #1666 (dd8f4cff1); 4.5.0 ratified (316700266), so Supersedes is 4.5.0.
 """
 
 from __future__ import annotations
@@ -114,6 +114,8 @@ def test_banner_states_the_numbering_dependency_and_the_class_reasoning():
     f = _flat(AGENTS[start : AGENTS.index("**4.3.0 is ACTIVE", start)])
     # #1666 (4.4.1 + 4.5.0) merged as dd8f4cff1; the banner now names that merge instead of "renumbers to 4.5.0".
     assert "PR #1666" in f and "dd8f4cff1" in f and "settled at ratification" in f and "becomes 5.0.0" in f
+    assert "316700266" in f
+    assert _control("Supersedes") == "4.5.0"
     assert f"{TOKEN} <pr_number> <head_sha>" in f
 
 
