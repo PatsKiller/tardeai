@@ -252,7 +252,8 @@ def _rv_rows(sql, params):
 @pytest.fixture
 def rv(monkeypatch):
     cwd = os.getcwd()
-    mod = _load("multi_tier_trade_reviewer")  # chdirs to the repo root at import
+    mod = _load("multi_tier_trade_reviewer")
+    monkeypatch.setattr(mod, "_load_env", lambda: None)
     os.chdir(cwd)
     conn = FakeConn(_rv_rows)
     monkeypatch.setattr(mod, "_get_conn", lambda: conn)
@@ -265,7 +266,7 @@ def test_reviewer_dry_run_never_calls_a_model_or_writes(rv, state):
     with mock.patch.object(mod, "_generate", gen), mock.patch.object(mod, "_save_review", gen):
         assert mod.main(["--tier", "overnight", "--dry-run"]) == 0
     assert not gen.called and conn.writes() == []
-    assert ("set_session", {"readonly": True}) in conn.calls
+    assert conn.calls == []  # the CLI preview is offline, before opening even a read-only DB
     assert _receipt(state, "multi-tier-trade-reviewer-overnight") is None
 
 

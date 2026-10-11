@@ -287,7 +287,10 @@ def test_own_allowlist_source_shape_and_no_broker_names():
 def test_actual_cli_preview_from_neutral_cwd_is_offline(state, lane, name, argv):
     env = dict(os.environ, TRADEAI_STATE_ROOT=str(state), PYTHONDONTWRITEBYTECODE="1")
     before = snapshot(state)
-    result = subprocess.run([sys.executable, str(ROOT / "scripts" / name), *argv, "--dry-run"],
+    fixture_argv = list(argv)
+    if "--state-root" in fixture_argv:
+        fixture_argv[fixture_argv.index("--state-root") + 1] = str(state)
+    result = subprocess.run([sys.executable, str(ROOT / "scripts" / name), *fixture_argv, "--dry-run"],
                             cwd=state, env=env, capture_output=True, text=True, timeout=30)
     assert result.returncode == 0, result.stdout + result.stderr
     assert f"DRY-RUN {lane}: would" in result.stdout and snapshot(state) == before

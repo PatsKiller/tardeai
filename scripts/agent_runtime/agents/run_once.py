@@ -37,15 +37,19 @@ AGENT_ALIASES = {
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Bounded, single-agent SHADOW queue runner (prepare-only).")
+    parser = argparse.ArgumentParser(description="Bounded, single-agent SHADOW queue runner (prepare-only).", allow_abbrev=False)
     parser.add_argument("--agent", required=True, help="agent id (e.g. sentinel)")
     parser.add_argument("--once", action="store_true", help="process at most one bounded batch and exit")
     parser.add_argument("--max-batch", type=int, default=8, help="maximum jobs admitted this invocation")
+    parser.add_argument("--dry-run", action="store_true", help="describe the bounded invocation without importing a backend")
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.dry_run:
+        print(f"DRY-RUN agent-runtime:{args.agent}: would prepare at most {args.max_batch} jobs; operator authorization and backend remain required")
+        return EX_OK
     print(BANNER)
     requested = str(args.agent or "").strip()
     resolved = AGENT_ALIASES.get(requested, requested)

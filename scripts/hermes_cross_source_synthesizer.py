@@ -30,11 +30,9 @@ MAX_BRIEFS = 5
 
 
 def get_db():
-    env_path = PROJECT_ROOT / ".env"
-    db_pass = None
-    for line in env_path.read_text().splitlines():
-        if line.startswith("DB_PASSWORD="):
-            db_pass = line.split("=", 1)[1]
+    from lib.env_bootstrap import load_env
+    load_env(names=("DB_PASSWORD",))
+    db_pass = os.getenv("DB_PASSWORD")
     if not db_pass:
         raise RuntimeError("DB_PASSWORD not found")
     import psycopg2
@@ -250,14 +248,18 @@ def persist_briefs(conn, briefs: list[dict], *, apply: bool = False) -> dict:
             "results": results}
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Hermes Cross-Source Synthesis (Phase 4)")
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Hermes Cross-Source Synthesis (Phase 4)", allow_abbrev=False)
     parser.add_argument("--apply", action="store_true", help="Apply to DB (default: dry-run)")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--json", action="store_true", help="Output JSON")
-    args = parser.parse_args()
-
-    apply = args.apply and not args.dry_run
+    args = parser.parse_args(argv)
+    if args.dry_run:
+        print(f"DRY-RUN hermes-cross-source-synthesizer: would collect a {BUNDLE_HOURS}h bundle, synthesize at most {MAX_BRIEFS} briefs and {'persist' if args.apply else 'validate'} them; no DB, model, network or writes")
+        return 0
+    from lib.lane_last_receipt import now_iso, write_lane_receipt
+    started = now_iso()
+    apply = args.apply
 
     if KILL_HERMES.exists():
         print("ABORT: HERMES_DISABLED")
@@ -269,8 +271,9 @@ def main():
     print(f"[{'APPLY' if apply else 'DRY-RUN'}] Cross-Source Synthesis")
     print(f"  Model: governed-cloud, window: {BUNDLE_HOURS}h, timeout: {SYNTH_TIMEOUT}s")
 
-    conn = get_db()
+    conn = None
     try:
+        conn = get_db()
         bundle = collect_signal_bundle(conn)
         signal_count = sum(len(v) for v in bundle.get("sources", {}).values()
                           if isinstance(v, list))
@@ -282,7 +285,10 @@ def main():
         briefs = synthesize(bundle)
         if not briefs:
             print("  No briefs generated")
-            return
+            if apply:
+                write_lane_receipt("hermes-cross-source-synthesizer", ok=False, exit_code=1,
+                                   started_at=started, error="NO_BRIEFS")
+            return 1
 
         print(f"  Generated {len(briefs)} briefs:")
         for b in briefs[:3]:
@@ -299,10 +305,21 @@ def main():
         else:
             print(f"  Result: {result['applied']} briefs {'applied' if apply else 'validated'}")
 
+        ok = result["applied"] == len(briefs) and bool(briefs)
+        if apply:
+            write_lane_receipt("hermes-cross-source-synthesizer", ok=ok, exit_code=0 if ok else 1,
+                               started_at=started, summary={"briefs": len(briefs), "applied": result["applied"]})
+        return 0 if ok else 1
+    except Exception as exc:
+        if apply:
+            write_lane_receipt("hermes-cross-source-synthesizer", ok=False, exit_code=1,
+                               started_at=started, error=type(exc).__name__)
+        raise
     finally:
-        try: conn.close()
-        except Exception: pass
+        if conn is not None:
+            try: conn.close()
+            except Exception: pass
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

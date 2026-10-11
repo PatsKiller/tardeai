@@ -104,7 +104,7 @@ def m2_opted_in(env=None) -> bool:
 
 
 def _norm(p: str) -> str:
-    return os.path.normpath(os.path.abspath(p))
+    return os.path.realpath(os.path.abspath(p))
 
 
 def _under(path: str, root: str) -> bool:
@@ -299,6 +299,8 @@ def install_dotenv_guard() -> str:
         stub.find_dotenv = lambda *a, **k: ""
         stub.dotenv_values = lambda *a, **k: {}
         sys.modules["dotenv"] = stub
+        return "stub"
+    if getattr(dotenv, "_tradeai_empty_fixture", False):
         return "stub"
     if getattr(dotenv, "_hermetic_guard", False):
         return "already"

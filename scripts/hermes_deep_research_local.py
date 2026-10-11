@@ -194,8 +194,11 @@ def run_one(conn, sym, model, apply):
     return "applied"
 
 
-def main():
-    ap = argparse.ArgumentParser()
+_LAST_RUN = {}
+
+
+def _execute():
+    ap = argparse.ArgumentParser(allow_abbrev=False)
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--max-rows", type=int, default=3)
     ap.add_argument("--model", default="deepseek-flash")
@@ -243,6 +246,7 @@ def main():
             args.model = "chatgpt"
         elif lane == LANE_NONE:
             print("US_OVERNIGHT: skipping judgmental LLM (US_OVERNIGHT_LLM=off)")
+            _LAST_RUN.update(completed=False, status="EXPECTED_SILENT", reason="overnight_policy_off")
             return
     # The DeepSeek peak guard must key on the EFFECTIVE model, not on the
     # configured provider. `flash` is computed above from primary_provider()
@@ -274,6 +278,7 @@ def main():
                 "bulk Flash/Pro is 10:00-21:00 America/New_York; outside that is as-needed only. "
                 "Pass --allow-peak to override."
             )
+            _LAST_RUN.update(completed=False, status="EXPECTED_SILENT", reason="deepseek_cost_window")
             return
     elif not (hour >= 22 or hour < 6) and not args.allow_daytime:
         print(f"NOTE: outside overnight window (hour={hour}); pass --allow-daytime to run manually. Proceeding dry-run only.")
@@ -282,7 +287,8 @@ def main():
     try:
         if not (str(args.model).startswith("chatgpt") or args.model == "deepseek-flash"):
             print(f"REFUSED_LOCAL_GENERATIVE_MODEL: {args.model}")
-            return
+            _LAST_RUN.update(completed=False, status="RUN_FAILED", reason="unapproved_local_model")
+            return 1
         conn = db()
         targets = pick_targets(conn, args.max_rows)
         print(f"Hermes Deep Research — model={args.model} apply={args.apply} targets={targets}")
@@ -309,9 +315,57 @@ def main():
         except Exception:
             pass
         print("RESULT:", json.dumps(counts))
+        failed = sum(v for k, v in counts.items() if k.startswith("failed"))
+        _LAST_RUN.update(completed=not failed, counts=counts, apply=args.apply,
+                         status="RUN_FAILED" if failed else "completed")
+        return 1 if failed else 0
     finally:
         LOCK.unlink(missing_ok=True)
 
 
+def main(argv=None) -> int:
+    """Strict offline inspection before the legacy business execution path."""
+    argv = list(sys.argv[1:] if argv is None else argv)
+    ap = argparse.ArgumentParser(allow_abbrev=False)
+    ap.add_argument("--apply", action="store_true")
+    ap.add_argument("--max-rows", type=int, default=3)
+    ap.add_argument("--model", default="deepseek-flash")
+    ap.add_argument("--allow-daytime", action="store_true", help="run outside the overnight window (manual)")
+    ap.add_argument(
+        "--allow-peak",
+        action="store_true",
+        help="allow DeepSeek Flash apply during official peak (01-04 and 06-10 UTC)",
+    )
+    ap.add_argument("--dry-run", action="store_true", help="offline source plan")
+    args = ap.parse_args(argv)
+    lane = "hermes-deep-research-local"
+    if args.dry_run:
+        print(f"DRY-RUN {lane}: would stage capped deep research using existing approved model/window; no lock, DB, model or state; options={vars(args)}; inputs NOT_MEASURED")
+        return 0
+    try:
+        from scripts.lib.lane_last_receipt import now_iso, write_lane_receipt
+    except ImportError:
+        from lib.lane_last_receipt import now_iso, write_lane_receipt
+    started = now_iso()
+    _LAST_RUN.clear()
+    previous = sys.argv
+    sys.argv = [previous[0], *argv]
+    try:
+        result = _execute()
+        rc = int(result) if isinstance(result, int) else 0
+    except SystemExit as exc:
+        rc = exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
+        write_lane_receipt(lane, ok=rc == 0, exit_code=rc, started_at=started, script="hermes_deep_research_local.py", summary={"completed": rc == 0})
+        raise
+    except Exception as exc:
+        write_lane_receipt(lane, ok=False, exit_code=1, started_at=started, script="hermes_deep_research_local.py", error=type(exc).__name__)
+        raise
+    finally:
+        sys.argv = previous
+    summary = dict(_LAST_RUN) if _LAST_RUN else {"completed": rc == 0}
+    write_lane_receipt(lane, ok=rc == 0 and bool(summary.get("completed")), exit_code=rc, started_at=started, script="hermes_deep_research_local.py", summary=summary)
+    return rc
+
+
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

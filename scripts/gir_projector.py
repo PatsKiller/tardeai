@@ -505,8 +505,8 @@ def apply(pj: Projection) -> dict:
     return {"entities": len(pj.entities), "envelopes": len(pj.envelopes), "edges": len(pj.edges)}
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser()
+def _execute() -> int:
+    ap = argparse.ArgumentParser(allow_abbrev=False)
     ap.add_argument("--root", help="state root (default: production persistent-state)")
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--out", help="dry-run JSON (default data/runtime/gir_projection_dryrun.json under --root or cwd)")
@@ -553,6 +553,46 @@ def main() -> int:
         out.write_text(json.dumps({**summary, "sample_entities": list(pj.entities.values())[:5], "sample_edges": list(pj.edges.values())[:5]}, indent=1, default=str) + "\n")
         print(f"dry run: wrote {out}")
     return 0
+
+
+def main(argv=None) -> int:
+    """Strict offline inspection before the legacy business execution path."""
+    argv = list(sys.argv[1:] if argv is None else argv)
+    ap = argparse.ArgumentParser(allow_abbrev=False)
+    ap.add_argument("--root", help="state root (default: production persistent-state)")
+    ap.add_argument("--apply", action="store_true")
+    ap.add_argument("--out", help="dry-run JSON (default data/runtime/gir_projection_dryrun.json under --root or cwd)")
+    ap.add_argument("--contra-max-lines", type=int, default=200_000)
+    ap.add_argument("--incremental", action="store_true", help="skip the run when no source changed since the last recorded run")
+    ap.add_argument("--state", help="run-state file (default data/runtime/gir_projector_state.json under cwd)")
+    ap.add_argument("--dry-run", action="store_true", help="offline source plan")
+    a = ap.parse_args(argv)
+    args = a
+    lane = "gir-projector"
+    if args.dry_run:
+        print(f"DRY-RUN {lane}: would project existing canonical records into GIR under incremental/apply options; no source read or writes; options={vars(args)}; inputs NOT_MEASURED")
+        return 0
+    try:
+        from scripts.lib.lane_last_receipt import now_iso, write_lane_receipt
+    except ImportError:
+        from lib.lane_last_receipt import now_iso, write_lane_receipt
+    started = now_iso()
+    previous = sys.argv
+    sys.argv = [previous[0], *argv]
+    try:
+        result = _execute()
+        rc = int(result) if isinstance(result, int) else 0
+    except SystemExit as exc:
+        rc = exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
+        write_lane_receipt(lane, ok=rc == 0, exit_code=rc, started_at=started, script="gir_projector.py", summary={"completed": rc == 0})
+        raise
+    except Exception as exc:
+        write_lane_receipt(lane, ok=False, exit_code=1, started_at=started, script="gir_projector.py", error=type(exc).__name__)
+        raise
+    finally:
+        sys.argv = previous
+    write_lane_receipt(lane, ok=rc == 0, exit_code=rc, started_at=started, script="gir_projector.py", summary={"completed": rc == 0})
+    return rc
 
 
 if __name__ == "__main__":

@@ -11,8 +11,8 @@ Honest approximation: yfinance gives each fund's TOP ~10 holdings, so mega-caps 
 but the long tail is understated — theme %s are lower bounds. Cached to fund_holdings_cache.json.
 
 State resolves through scripts/lib/persistent_state_root (served copy first, §9.4), not the checkout.
---dry-run computes the deterministic report from the served holdings and prints it; it writes neither cache
-nor lookthrough_themes.json, calls no LLM, and writes no receipt. A real run writes
+--dry-run is an offline CLI plan; it does not resolve served holdings, fetch fund data, call models
+or write a cache, report or receipt. The run(persist=False) API still supports deterministic previews. A real run writes
 <state_root>/data/runtime/portfolio-lookthrough-themes_last.json (ok_at only on success) and exits 1 when
 holdings are missing/empty or the served report could not be written. A run without --grok keeps the previous
 grok_narrative / agent_advisories (with their grok_generated_at) instead of blanking them, so the
@@ -65,9 +65,18 @@ def _dry_report(lane_id, summary, *, would_write, json_stdout=False):
         return _receipt_lib().dry_run_report(lane_id, summary, would_write=would_write)
 
 
-STATE = _state_dir()
+# Import and argument validation must not inspect CURRENT or production state.
+STATE = ROOT / _STATE_REL
 HOLD_CACHE = STATE / "fund_holdings_cache.json"
 CONSTITUENTS = STATE / "index_constituents.json"
+
+
+def _initialize_state_paths():
+    global STATE, HOLD_CACHE, CONSTITUENTS
+    if STATE == ROOT / _STATE_REL:
+        STATE = _state_dir()
+        HOLD_CACHE = STATE / "fund_holdings_cache.json"
+        CONSTITUENTS = STATE / "index_constituents.json"
 
 # ETFs/funds we can pull holdings for directly (others map via proxy)
 _KNOWN_ETFS = {"SPY", "QQQ", "SCHG", "SCHD", "DIV", "JEPI", "BND", "XLI", "XLB", "XLF", "XLK", "ARKG",
@@ -258,6 +267,7 @@ def _theme_gaps(themes, total):
 
 
 def run(account: str | None = None, *, persist: bool = True) -> dict:
+    _initialize_state_paths()
     holdings = _load(STATE / "holdings.json", {}).get("holdings", [])
     if account:
         holdings = [h for h in holdings if (h.get("account") or "") == account]
@@ -332,22 +342,15 @@ def grok_narrative(data: dict) -> str:
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser()
+    ap = argparse.ArgumentParser(allow_abbrev=False)
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--account")
     ap.add_argument("--grok", action="store_true")
     ap.add_argument("--dry-run", action="store_true",
-                    help="deterministic report only; no cache/report write, no LLM, no receipt")
+                    help="offline plan; no holdings reads, DB, network, model, writes or receipt")
     a = ap.parse_args(argv)
     if a.dry_run:
-        r = run(account=a.account, persist=False)
-        summary = {"portfolio_total": r["portfolio_total"], "coverage_pct": r["coverage_pct"],
-                   "accounts": len(r.get("accounts", [])), "advisories": len(r["advisories"]),
-                   "theme_gaps": len(r["theme_gaps"]), "llm": "skipped (dry run)" if a.grok else "not requested"}
-        would = [] if a.account else [str(t / "lookthrough_themes.json") for t in _state_write_targets()]
-        would += [str(t / HOLD_CACHE.name) for t in _state_write_targets()]
-        _dry_report(LANE_ID, summary, would_write=would,
-            json_stdout=a.json)
+        print(f"DRY-RUN {LANE_ID}: would resolve holdings and persist the look-through report; account={a.account!r} grok={a.grok}; no holdings reads, provider/model calls, network or writes")
         return 0
     from datetime import datetime, timezone
     started = datetime.now(timezone.utc).isoformat()

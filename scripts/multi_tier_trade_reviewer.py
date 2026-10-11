@@ -25,10 +25,17 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
-os.chdir(str(PROJECT_ROOT))
+_ENV_KEYS = ("DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD", "CLOUD_REVIEW",
+             "LLM_FALLBACK_OPENAI", "LLM_FALLBACK_ANTHROPIC", "ANTHROPIC_API_KEY")
 
-from dotenv import load_dotenv
-load_dotenv(PROJECT_ROOT / ".env")
+
+def _load_env():
+    from lib.env_bootstrap import load_env
+    load_env(names=_ENV_KEYS)
+    global CLOUD_REVIEW_ENABLED
+    CLOUD_REVIEW_ENABLED = os.getenv("CLOUD_REVIEW", "0") == "1"
+    TIER_CONFIG["weekly"]["model"] = os.getenv("LLM_FALLBACK_OPENAI", "gpt-4o-mini")
+    TIER_CONFIG["monthly"]["model"] = os.getenv("LLM_FALLBACK_ANTHROPIC", "claude-sonnet-4-6")
 
 PROCESS_ID = "multi_tier_trade_reviewer"
 
@@ -577,14 +584,18 @@ def run_outcome(result):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Multi-tier trade reviewer")
+    parser = argparse.ArgumentParser(description="Multi-tier trade reviewer", allow_abbrev=False)
     parser.add_argument("--tier", required=True, choices=["realtime", "overnight", "weekly", "monthly"])
     parser.add_argument("--trade-id", type=int, help="Specific trade ID (required for realtime)")
     parser.add_argument("--dry-run", action="store_true",
-                        help="build prompts and report; no model call, no DB write (READ ONLY), no receipt")
+                        help="offline plan; no DB, model, network, writes or receipt")
     args = parser.parse_args(argv)
+    if args.dry_run:
+        print(f"DRY-RUN multi-tier-trade-reviewer-{args.tier}: would review closed-trade evidence; trade_id={args.trade_id}; approved tier routing unchanged; no DB, model, network or writes")
+        return 0
     started_at = datetime.now(timezone.utc).isoformat()
     try:
+        _load_env()
         result = run_tier(args.tier, args.trade_id, args.dry_run)
     except Exception as exc:
         if not args.dry_run:

@@ -116,15 +116,17 @@ def lt_state(tmp_path, monkeypatch):
 
 
 def test_lookthrough_dry_run_writes_nothing_and_calls_no_llm(lt_state, monkeypatch, capsys):
+    monkeypatch.setattr(plt_, "run", _boom)
+    monkeypatch.setattr(plt_, "_initialize_state_paths", _boom)
     monkeypatch.setattr(plt_, "grok_narrative", _boom)
     monkeypatch.setattr(plt_, "agent_advisories", _boom)
     monkeypatch.setattr(plt_, "_write_state_json", _boom)
     monkeypatch.setattr(llr, "write_lane_receipt", _boom)
     assert plt_.main(["--dry-run", "--grok"]) == 0
     assert sorted(p.name for p in lt_state.iterdir()) == ["holdings.json"]
-    rep = _dry_line(capsys.readouterr().out)
-    assert rep["summary"]["portfolio_total"] == 100_000 and rep["summary"]["llm"] == "skipped (dry run)"
-    assert any(w.endswith("lookthrough_themes.json") for w in rep["would_write"])
+    output = capsys.readouterr().out
+    assert "DRY-RUN portfolio-lookthrough-themes:" in output
+    assert "grok=True" in output and "no holdings reads" in output
 
 
 def test_lookthrough_real_run_without_grok_keeps_previous_narrative(lt_state, monkeypatch, _state):

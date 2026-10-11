@@ -292,12 +292,16 @@ def render(report: dict[str, Any]) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="Error-budget burn rate for the configured SLOs (read-only)")
+    ap = argparse.ArgumentParser(description="Error-budget burn rate for the configured SLOs (read-only)", allow_abbrev=False)
+    ap.add_argument("--dry-run", action="store_true", help="offline plan; do not read DB/config or write receipt")
     ap.add_argument("--json", action="store_true", help="emit the receipt to stdout instead of the text render")
     ap.add_argument("--slo", help="evaluate only this SLO by name")
     ap.add_argument("--receipt-dir", default=str(PROJECT_ROOT / "artifacts" / "slo"))
     ap.add_argument("--no-receipt", action="store_true", help="do not write the receipt file")
     args = ap.parse_args(argv)
+    if args.dry_run:
+        print(f"DRY-RUN slo-burn-rate: would evaluate existing SLOs slo={args.slo}; no DB/config read, alert or receipt write")
+        return 0
 
     document = load_document()
     conn = connect()

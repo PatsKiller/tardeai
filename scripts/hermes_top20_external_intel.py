@@ -279,10 +279,7 @@ def _child_python() -> str:
 
 
 def main(argv=None) -> int:
-    # G2: after imports settle — refuse dual lib.X / scripts.lib.X identity
-    from lib import assert_single_import_identity
-    assert_single_import_identity()
-    ap = argparse.ArgumentParser()
+    ap = argparse.ArgumentParser(allow_abbrev=False)
     ap.add_argument("--top", type=int, default=20)
     ap.add_argument("--lanes", default="chatgpt,grok")
     ap.add_argument("--apply", action="store_true")
@@ -290,6 +287,12 @@ def main(argv=None) -> int:
     ap.add_argument("--dry-run", action="store_true",
                     help="read-only preview of the budget decisions; wins over --apply; writes nothing")
     a = ap.parse_args(argv)
+    if a.dry_run:
+        print(f"DRY-RUN hermes-top20-external-intel: would review top={a.top} symbols={a.symbols}; no DB, researcher, accounting or writes")
+        return 0
+    # G2: after imports settle — refuse dual lib.X / scripts.lib.X identity.
+    from lib import assert_single_import_identity
+    assert_single_import_identity()
     kw = dict(top=a.top, lanes=tuple(x.strip() for x in a.lanes.split(",") if x.strip()),
               symbols=a.symbols.split(",") if a.symbols else None)
     if a.dry_run or not a.apply:

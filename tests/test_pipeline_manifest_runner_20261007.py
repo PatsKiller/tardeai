@@ -97,14 +97,28 @@ def test_dry_run_default_executes_nothing(tmp_path):
     man = _hermetic_manifest(tmp_path, "hermetic_dry", [
         {"id": "touch", "cron_line": 1, "command": f"touch {marker}", "timeout": "10s"},
     ])
+    before = {p.relative_to(tmp_path) for p in tmp_path.rglob("*")}
     r = _run(tmp_path, man, "--stage", "test")
     assert r.returncode == 0, r.stdout + r.stderr
-    assert "[DRY_RUN] would run" in r.stdout
+    assert "DRY-RUN pipeline=hermetic_dry stage=test" in r.stdout
     assert not marker.exists(), "dry-run must not execute a step"
-    s = _summary(tmp_path, "hermetic_dry", "test")
-    assert s["schema"] == pm.RUN_SCHEMA
-    assert s["dry_run"] is True and s["overall_status"] == "dry_run" and s["executed_any"] is False
-    assert [st["status"] for st in s["steps"]] == ["dry_run"]
+    assert {p.relative_to(tmp_path) for p in tmp_path.rglob("*")} == before
+    assert not (tmp_path / "data/runtime").exists()
+
+
+@pytest.mark.parametrize("flags", [("--apply", "--dry-run"), ("--dry-run", "--apply")])
+def test_explicit_preview_wins_over_apply_in_both_orders(tmp_path, flags):
+    marker = tmp_path / "child-was-run"
+    man = _hermetic_manifest(tmp_path, "explicit_preview", [
+        {"id": "write", "cron_line": 1, "command": f"touch {marker}", "timeout": "10s"},
+    ])
+    before = {p.relative_to(tmp_path): p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
+    r = _run(tmp_path, man, "--stage", "test", *flags)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "DRY-RUN pipeline=explicit_preview" in r.stdout
+    assert {p.relative_to(tmp_path): p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()} == before
+    assert not (tmp_path / "logs").exists()
+    assert not (tmp_path / "data").exists()
 
 
 def test_apply_with_empty_stage_executes_nothing(tmp_path):
@@ -119,6 +133,38 @@ def test_apply_with_empty_stage_executes_nothing(tmp_path):
 
 # --------------------------------------------------------------------------- apply semantics
 
+@pytest.mark.parametrize("concurrency", [1, 2])
+def test_receipt_append_failure_has_durable_degraded_summary(tmp_path, concurrency):
+    receipt_path = tmp_path / "logs/pipelines/receipt_failure/test_steps.jsonl"
+    man = _hermetic_manifest(tmp_path, "receipt_failure", [
+        {"id": "sabotage", "cron_line": 1, "command": f"mkdir -p {receipt_path}", "timeout": "10s",
+         "group": "one"},
+    ])
+    if concurrency > 1:
+        data = json.loads(man.read_text())
+        data["stages"]["test"]["parallel"] = {"max_concurrency": concurrency}
+        man.write_text(json.dumps(data))
+    r = _run(tmp_path, man, "--stage", "test", "--apply")
+    assert r.returncode == 1, r.stdout + r.stderr
+    summary = _summary(tmp_path, "receipt_failure", "test")
+    assert summary["steps"][0]["status"] == "ok"
+    assert summary["worker_failures"] == 1
+    assert summary["receipt_complete"] is False
+    assert summary["overall_status"] == "degraded"
+
+
+def test_inherited_zero_does_not_authorize_apply(tmp_path):
+    marker = tmp_path / "child-was-run"
+    man = _hermetic_manifest(tmp_path, "inherited_zero", [
+        {"id": "write", "cron_line": 1, "command": f"touch {marker}", "timeout": "10s"},
+    ])
+    before = {p.relative_to(tmp_path) for p in tmp_path.rglob("*")}
+    r = _run(tmp_path, man, "--stage", "test", env_extra={"DRY_RUN": "0"})
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "DRY-RUN pipeline=inherited_zero" in r.stdout
+    assert {p.relative_to(tmp_path) for p in tmp_path.rglob("*")} == before
+
+
 def test_apply_runs_in_order_times_out_and_continues_on_error(tmp_path):
     order = tmp_path / "order.txt"
     man = _hermetic_manifest(tmp_path, "hermetic_apply", [
@@ -130,7 +176,7 @@ def test_apply_runs_in_order_times_out_and_continues_on_error(tmp_path):
         {"id": "weekend_only", "cron_line": 14, "command": f"echo weekend >> {order}", "timeout": "10s", "dow": [0, 6]},
     ])
     r = _run(tmp_path, man, "--stage", "test", "--apply")
-    assert r.returncode == 0, r.stdout + r.stderr
+    assert r.returncode == 1, r.stdout + r.stderr
     assert order.read_text().split() == ["ok1", "bad", "slow", "ok2"], "steps run in manifest order; failure does not cascade"
     s = _summary(tmp_path, "hermetic_apply", "test")
     by_id = {st["id"]: st for st in s["steps"]}
@@ -154,10 +200,10 @@ def test_held_stage_lock_is_a_clean_skip(tmp_path):
     man = _hermetic_manifest(tmp_path, "hermetic_lock", [
         {"id": "touch", "cron_line": 1, "command": f"touch {marker}", "timeout": "10s"},
     ])
-    lockfile = "/tmp/pipeline_hermetic_lock-test.lock"
+    lockfile = str(tmp_path / "pipeline_hermetic_lock-test.lock")
     with open(lockfile, "w") as fh:
         fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        r = _run(tmp_path, man, "--stage", "test", "--apply")
+        r = _run(tmp_path, man, "--stage", "test", "--apply", env_extra={"PIPELINE_LOCK_DIR": str(tmp_path)})
     assert r.returncode == 0
     assert "already running" in r.stdout + r.stderr
     assert not marker.exists()
@@ -252,5 +298,28 @@ def test_committed_runners_dry_run_print_plan_only(tmp_path):
         r = subprocess.run(["bash", str(runner), "--project-root", str(tmp_path), *extra],
                            cwd=str(ROOT), env=env, capture_output=True, text=True, timeout=120)
         assert r.returncode == 0, r.stdout + r.stderr
-        assert "[DRY_RUN] would run" in r.stdout
+        assert "DRY-RUN pipeline=" in r.stdout
         assert "status=ok" not in r.stdout and "status=failed" not in r.stdout
+        assert not (tmp_path / "data/runtime").exists()
+
+
+def test_unknown_preview_flag_returns_two_without_artifacts(tmp_path):
+    manifest = _hermetic_manifest(tmp_path, "strict_preview", [])
+    before = {p.relative_to(tmp_path) for p in tmp_path.rglob("*")}
+    result = _run(tmp_path, manifest, "--unexpected")
+    assert result.returncode == 2
+    assert {p.relative_to(tmp_path) for p in tmp_path.rglob("*")} == before
+
+
+def test_missing_step_receipt_cannot_be_reported_healthy(tmp_path):
+    manifest = _hermetic_manifest(tmp_path, "receipt_failure", [
+        {"id": "first", "cron_line": 1, "command": "true", "timeout": "1s"},
+        {"id": "second", "cron_line": 2, "command": "true", "timeout": "1s"},
+    ])
+    results = tmp_path / "results.jsonl"
+    results.write_text(json.dumps({"id": "first", "status": "ok"}) + "\n")
+    summary = pm.write_summary(str(manifest), "test", str(results), str(tmp_path / "summary.json"),
+                               dry_run=False, started_at="fixture", log_path="fixture", apply_requested=True)
+    assert summary["overall_status"] == "degraded"
+    assert summary["receipt_complete"] is False
+    assert summary["expected_step_count"] == 2

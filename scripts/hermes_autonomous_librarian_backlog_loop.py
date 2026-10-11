@@ -20,7 +20,6 @@ from collections import Counter
 
 PR = Path(__file__).resolve().parent.parent
 OUT_DR = PR / "docs" / "hermes" / "librarian_loop_dryruns"
-OUT_DR.mkdir(parents=True, exist_ok=True)
 
 MAX_ROWS = 5
 MAX_RUNTIME = 600
@@ -68,7 +67,7 @@ def get_db():
         try:
             sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
             from env_bootstrap import load_env  # noqa: PLC0415
-            load_env()
+            load_env(names=("DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD"))
             db_pass = os.environ.get("DB_PASSWORD")
         except Exception as exc:
             print(f"WARN: env_bootstrap unavailable ({type(exc).__name__})", file=sys.stderr)
@@ -100,9 +99,10 @@ def check_kill_switch():
 BACKLOG_DEDUP_TTL_DAYS = int(os.environ.get("LIBRARIAN_BACKLOG_DEDUP_TTL_DAYS", "30"))
 
 
-def main():
+def _execute():
+    OUT_DR.mkdir(parents=True, exist_ok=True)
     start = time.time()
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(allow_abbrev=False)
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--max-rows", type=int, default=MAX_ROWS)
     args = parser.parse_args()
@@ -266,5 +266,40 @@ def main():
     cur.close(); conn.close()
     print(f"APPLY: {inserted} rows staged, {inserted} events enqueued in {round(time.time()-start,1)}s")
 
+
+def main(argv=None) -> int:
+    """Strict offline inspection before the legacy business execution path."""
+    argv = list(sys.argv[1:] if argv is None else argv)
+    parser = argparse.ArgumentParser(allow_abbrev=False)
+    parser.add_argument("--apply", action="store_true")
+    parser.add_argument("--max-rows", type=int, default=MAX_ROWS)
+    parser.add_argument("--dry-run", action="store_true", help="offline source plan")
+    args = parser.parse_args(argv)
+    lane = "hermes-librarian-backlog-loop"
+    if args.dry_run:
+        print(f"DRY-RUN {lane}: would detect capped research backlog findings and stage advisory rows/events; no report writes or DB; options={vars(args)}; inputs NOT_MEASURED")
+        return 0
+    try:
+        from scripts.lib.lane_last_receipt import now_iso, write_lane_receipt
+    except ImportError:
+        from lib.lane_last_receipt import now_iso, write_lane_receipt
+    started = now_iso()
+    previous = sys.argv
+    sys.argv = [previous[0], *argv]
+    try:
+        result = _execute()
+        rc = int(result) if isinstance(result, int) else 0
+    except SystemExit as exc:
+        rc = exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
+        write_lane_receipt(lane, ok=rc == 0, exit_code=rc, started_at=started, script="hermes_autonomous_librarian_backlog_loop.py", summary={"completed": rc == 0})
+        raise
+    except Exception as exc:
+        write_lane_receipt(lane, ok=False, exit_code=1, started_at=started, script="hermes_autonomous_librarian_backlog_loop.py", error=type(exc).__name__)
+        raise
+    finally:
+        sys.argv = previous
+    write_lane_receipt(lane, ok=rc == 0, exit_code=rc, started_at=started, script="hermes_autonomous_librarian_backlog_loop.py", summary={"completed": rc == 0})
+    return rc
+
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

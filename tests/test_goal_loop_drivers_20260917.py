@@ -438,6 +438,15 @@ def test_zero_laps_is_work_not_invocation_only(tmp_path, monkeypatch):
     assert d["pilot"]["invocation_only"] == 2
 
 
+def _assert_gate_bridge_schedule_keeps_catalog_read_only(cron_lines):
+    offenders = [line for line in cron_lines
+                 if line.strip() and not line.lstrip().startswith("#")
+                 and "cio_gate_measurement_bridge" in line and "--update-catalog" in line]
+    assert not offenders, (
+        "a scheduled --update-catalog writes a git-tracked file hourly and will "
+        f"block every deploy: {offenders}")
+
+
 def test_the_gate_bridge_must_not_write_a_git_tracked_file_on_a_schedule():
     """Regression guard for a landmine I armed and then defused, 2026-09-17.
 
@@ -450,17 +459,34 @@ def test_the_gate_bridge_must_not_write_a_git_tracked_file_on_a_schedule():
     The flag is fine by hand; it must not be on a schedule until the bridge
     writes to the production state root like every other hourly receipt.
     """
-    import shutil
-    import subprocess
-    if shutil.which("crontab") is None:
-        pytest.skip("host crontab unavailable; installed schedule needs a served-host check")
-    out = subprocess.run(["crontab", "-l"], capture_output=True, text=True).stdout
-    offenders = [ln for ln in out.splitlines()
-                 if ln.strip() and not ln.lstrip().startswith("#")
-                 and "cio_gate_measurement_bridge" in ln and "--update-catalog" in ln]
-    assert not offenders, (
-        "a scheduled --update-catalog writes a git-tracked file hourly and will "
-        f"block every deploy: {offenders}")
+    # SOURCE_ONLY regression against committed evidence; this does not measure
+    # the installed scheduler or claim the historical snapshot is current.
+    snapshot = json.loads((ROOT / "docs/implementation/n8n-maturity/data/"
+                           "scheduler_snapshot_20261009.json").read_text())
+    assert snapshot["schema"] == "SchedulerSnapshot@v1"
+    cron_lines = [row["line"] for row in snapshot["cron_lines"]]
+    assert any("cio_gate_measurement_bridge" in line for line in cron_lines), \
+        "the committed snapshot must contain the bridge; an absent lane is not proof"
+    _assert_gate_bridge_schedule_keeps_catalog_read_only(cron_lines)
+
+
+@pytest.mark.parametrize("line", [
+    "35 * * * * python3 scripts/cio_gate_measurement_bridge.py --update-catalog",
+    "@reboot python3 scripts/cio_gate_measurement_bridge.py --update-catalog",
+])
+def test_gate_bridge_source_schedule_control_rejects_catalog_writers(line):
+    with pytest.raises(AssertionError, match="a scheduled --update-catalog"):
+        _assert_gate_bridge_schedule_keeps_catalog_read_only([line])
+
+
+def test_gate_bridge_source_schedule_control_accepts_read_only_and_ignores_comments():
+    _assert_gate_bridge_schedule_keeps_catalog_read_only([
+        "35 * * * * python3 scripts/cio_gate_measurement_bridge.py",
+        "35 * * * * python3 scripts/unrelated.py --update-catalog",
+        "# 35 * * * * python3 scripts/cio_gate_measurement_bridge.py --update-catalog",
+        "  # @reboot python3 scripts/cio_gate_measurement_bridge.py --update-catalog",
+        "",
+    ])
 
 
 def test_gate_bridge_declared_schedule_never_updates_the_tracked_catalog():

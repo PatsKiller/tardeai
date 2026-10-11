@@ -13,6 +13,7 @@ Cron: right after paper_trade_advisory (every 6h).
 """
 from __future__ import annotations
 
+import argparse
 import hashlib
 import re
 import subprocess
@@ -59,7 +60,7 @@ def _trade_source(r) -> str:
     return "watchlist" if "watch" in o else "automated"
 
 
-def main():
+def _execute():
     rows = _db(
         """SELECT h.id AS adv_id, h.lane, h.symbol, h.recommendation, h.trigger_reason,
                   pt.id AS trade_id, pt.strategy_id, pt.exit_reason, pt.exit_time::date AS close_date,
@@ -109,13 +110,50 @@ def main():
     print(f"[wire_advisory_lessons] wired {wired} external lesson(s), {skipped} skipped")
 
     # Refresh the per-strategy rollup so the external lessons reach the learning digest/recommendations.
+    rollup_exit = 0
     try:
         rb = subprocess.run([sys.executable, str(ROOT / "scripts" / "build_strategy_lesson_rollup.py"), "--apply"],
                             cwd=str(ROOT), capture_output=True, text=True, timeout=180)
+        rollup_exit = rb.returncode
         print(f"[wire_advisory_lessons] strategy_lesson_rollup refresh rc={rb.returncode} {(rb.stdout or '')[-120:].strip()}")
     except Exception as e:
-        print(f"[wire_advisory_lessons] rollup refresh error: {str(e)[:120]}")
+        rollup_exit = 1
+        print(f"[wire_advisory_lessons] rollup refresh error: {type(e).__name__}")
+    return rollup_exit or (1 if skipped else 0)
+
+
+def main(argv=None) -> int:
+    """Strict offline inspection before the legacy business execution path."""
+    argv = list(sys.argv[1:] if argv is None else argv)
+    parser = argparse.ArgumentParser(allow_abbrev=False)
+    parser.add_argument("--dry-run", action="store_true", help="offline source plan")
+    args = parser.parse_args(argv)
+    lane = "wire-advisory-lessons"
+    if args.dry_run:
+        print(f"DRY-RUN {lane}: would stage human-review lessons and refresh strategy lesson rollup; no DB or child execution; options={vars(args)}; inputs NOT_MEASURED")
+        return 0
+    try:
+        from scripts.lib.lane_last_receipt import now_iso, write_lane_receipt
+    except ImportError:
+        from lib.lane_last_receipt import now_iso, write_lane_receipt
+    started = now_iso()
+    previous = sys.argv
+    sys.argv = [previous[0], *argv]
+    try:
+        result = _execute()
+        rc = int(result) if isinstance(result, int) else 0
+    except SystemExit as exc:
+        rc = exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
+        write_lane_receipt(lane, ok=rc == 0, exit_code=rc, started_at=started, script="wire_advisory_lessons.py", summary={"completed": rc == 0})
+        raise
+    except Exception as exc:
+        write_lane_receipt(lane, ok=False, exit_code=1, started_at=started, script="wire_advisory_lessons.py", error=type(exc).__name__)
+        raise
+    finally:
+        sys.argv = previous
+    write_lane_receipt(lane, ok=rc == 0, exit_code=rc, started_at=started, script="wire_advisory_lessons.py", summary={"completed": rc == 0})
+    return rc
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

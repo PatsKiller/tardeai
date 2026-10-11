@@ -15,19 +15,29 @@
 #   bash scripts/run_research_intelligence_overnight.sh --phase archive
 #   bash scripts/run_research_intelligence_overnight.sh --phase full
 set -euo pipefail
+PHASE="full"
+DRY_RUN=0
+while (( $# )); do
+  case "$1" in
+    --dry-run) DRY_RUN=1; shift ;;
+    --phase)
+      if (( $# < 2 )); then echo "--phase requires a value" >&2; exit 2; fi
+      PHASE="$2"; shift 2 ;;
+    --phase=*) PHASE="${1#--phase=}"; shift ;;
+    *) echo "unknown argument: $1" >&2; exit 2 ;;
+  esac
+done
+case "$PHASE" in full|archive|bridge|synth|reground|narrative|ingest) ;; *) echo "unknown phase: $PHASE" >&2; exit 2 ;; esac
+if (( DRY_RUN )); then
+  echo "DRY-RUN run-research-intelligence-overnight-$PHASE: would run selected locked phases under the existing market/priority gates; no gate, child, model, lock, log or writes; inputs NOT_MEASURED"
+  exit 0
+fi
 cd "$(dirname "$0")/.."
 PROJ="$(pwd)"
 . "$PROJ/scripts/lib/venv_python.sh"; PY="$(tradeai_venv_python "$PROJ")"  # release dirs ship no .venv
 LOG_DIR="${PROJ}/logs"
 mkdir -p "$LOG_DIR"
 LOG="${LOG_DIR}/ri_overnight.log"
-PHASE="full"
-for a in "$@"; do
-  case "$a" in
-    --phase) shift; PHASE="${1:-full}" ;;
-    --phase=*) PHASE="${a#--phase=}" ;;
-  esac
-done
 
 ts() { date +%F\ %T; }
 log() { echo "[ri_overnight] $(ts) $*" | tee -a "$LOG"; }
@@ -48,26 +58,30 @@ esac
 
 log "START phase=$PHASE session=$session"
 
+STATUS=0
+LANE="run-research-intelligence-overnight"
+if [[ "$PHASE" == "archive" ]]; then LANE="run-research-intelligence-overnight-archive"; fi
 run_step() {
   local name="$1"; shift
   log ">>> $name"
-  if flock -n "/tmp/ri_overnight_${name}.lock" "$@"; then
-    log "OK $name"
-  else
-    log "SKIP/FAIL $name (lock busy or exit non-zero)"
-  fi
+  local rc=0
+  flock -n -E 75 "/tmp/ri_overnight_${name}.lock" "$@" || rc=$?
+  if (( rc == 0 )); then log "OK $name";
+  elif (( rc == 75 )); then log "SKIP_LOCK $name"; STATUS=75;
+  else log "FAIL $name exit=$rc"; STATUS=1; fi
+  "$PY" scripts/completion_compound_receipt.py --lane "$LANE" --step "$name" --exit "$rc" || true
 }
 
 # 1) Soft-archive stale non-retirement Hermes rows (never deletes)
 if [[ "$PHASE" == "full" || "$PHASE" == "archive" ]]; then
   run_step archive \
-    $PY scripts/research_intelligence_refresh.py --archive >>"$LOG" 2>&1 || true
+    $PY scripts/research_intelligence_refresh.py --archive >>"$LOG" 2>&1
 fi
 
 # 2) Enqueue Hermes/shared topic_monitor → hermes_research_intelligence
 if [[ "$PHASE" == "full" || "$PHASE" == "bridge" ]]; then
   run_step topic_bridge \
-    $PY scripts/hermes_topic_monitor_bridge.py --apply --max-rows 60 >>"$LOG" 2>&1 || true
+    $PY scripts/hermes_topic_monitor_bridge.py --apply --max-rows 60 >>"$LOG" 2>&1
 fi
 
 # 3) LLM topic research synthesis (fills staged topic_research used by RI desk)
@@ -75,7 +89,7 @@ if [[ "$PHASE" == "full" || "$PHASE" == "synth" ]]; then
   if bash scripts/llm_priority_guard.sh; then
     run_step topic_synth \
       flock -n /tmp/topic_synth.lock \
-      $PY scripts/topic_research_synthesizer.py --max 40 --apply >>"$LOG" 2>&1 || true
+      $PY scripts/topic_research_synthesizer.py --max 40 --apply >>"$LOG" 2>&1
   else
     log "SKIP topic_synth — llm_priority_guard deferred"
   fi
@@ -84,20 +98,21 @@ fi
 # 4) Optional reground of weak citations once crawler has material
 if [[ "$PHASE" == "full" || "$PHASE" == "reground" ]]; then
   run_step reground \
-    $PY scripts/topic_research_synthesizer.py --reground --max 25 --apply >>"$LOG" 2>&1 || true
+    $PY scripts/topic_research_synthesizer.py --reground --max 25 --apply >>"$LOG" 2>&1
 fi
 
 # 5) LLM narrative polish for desk cards (local → OAuth fallbacks)
 if [[ "$PHASE" == "full" || "$PHASE" == "narrative" ]]; then
   run_step narrative \
-    $PY scripts/research_intelligence_narrative_enrich.py --apply --limit 25 >>"$LOG" 2>&1 || true
+    $PY scripts/research_intelligence_narrative_enrich.py --apply --limit 25 >>"$LOG" 2>&1
 fi
 
 # 6) Topic crawl for never-searched / aging monitors (off-hours only)
 if [[ "$PHASE" == "full" || "$PHASE" == "ingest" ]]; then
   run_step ingest \
-    timeout 30m $PY scripts/topic_ingestion.py --use-llm-queries --max-topics 20 >>"$LOG" 2>&1 || true
+    timeout 30m $PY scripts/topic_ingestion.py --use-llm-queries --max-topics 20 >>"$LOG" 2>&1
 fi
 
-log "DONE phase=$PHASE"
-exit 0
+log "DONE phase=$PHASE status=$STATUS"
+"$PY" scripts/completion_compound_receipt.py --lane "$LANE" --exit "$STATUS" || true
+exit "$STATUS"

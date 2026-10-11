@@ -7,11 +7,12 @@ WEEKLY schedule only (not enabled unless the operator approves).
 
   python3 scripts/check_hermes_update_available.py            # check + update runtime status quietly
 """
-import json, re, subprocess, sys
+import argparse, json, re, subprocess, sys
 from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "scripts"))
 VENV_PY = Path.home() / ".local" / "share" / "hermes-agent-venv" / "bin" / "python"
 OUT = ROOT / "data" / "runtime" / "hermes_update_status.json"
 CAP = ROOT / "data" / "runtime" / "hermes_llm_capabilities.json"
@@ -41,14 +42,42 @@ def available_versions():
         return []
 
 
-def main():
+def _check():
+    """Return failure when version evidence cannot be measured."""
+    return _run_check()
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
+    ap.add_argument("--dry-run", action="store_true")
+    args = ap.parse_args(argv)
+    if args.dry_run:
+        print("DRY-RUN hermes-update-check: would inspect installed/published Hermes versions and update status; no subprocess, network or writes")
+        return 0
+    from lib.lane_last_receipt import now_iso, write_lane_receipt
+    started = now_iso()
+    try:
+        rc = _check()
+    except Exception as exc:
+        write_lane_receipt("hermes-update-check", ok=False, exit_code=1, started_at=started,
+                           script="check_hermes_update_available.py", error=type(exc).__name__)
+        raise
+    write_lane_receipt("hermes-update-check", ok=rc == 0, exit_code=rc, started_at=started,
+                       script="check_hermes_update_available.py", summary={"versions_measured": rc == 0})
+    return rc
+
+
+def _run_check():
     inst = installed_version()
     avail = available_versions()
+    measured = bool(inst and avail)
     newer = [v for v in avail if inst and _ver_tuple(v) > _ver_tuple(inst)]
     status = {"checked_at": datetime.now().isoformat(), "installed": inst, "available": avail,
               "newer_available": bool(newer), "newer_versions": newer,
               "codex_headless_retest_recommended": bool(newer),
-              "note": ("Newer Hermes published — re-run PHASE212E to re-test Codex headless; do NOT auto-upgrade."
+              "status": "ok" if measured else "not_measured",
+              "note": ("Version evidence unavailable; update readiness is NOT_MEASURED." if not measured else
+                       "Newer Hermes published — re-run PHASE212E to re-test Codex headless; do NOT auto-upgrade."
                        if newer else "Hermes is up to date (no newer build); no action.")}
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(status, indent=2))
@@ -62,7 +91,7 @@ def main():
         except Exception:
             pass
     print(json.dumps(status, indent=2))
-    return 0
+    return 0 if measured else 1
 
 
 if __name__ == "__main__":

@@ -113,18 +113,33 @@ def backfill(apply: bool = False, force: bool = False) -> list:
     return results
 
 
-def main():
+def main(argv=None):
     import argparse
-    ap = argparse.ArgumentParser()
+    ap = argparse.ArgumentParser(allow_abbrev=False)
     ap.add_argument("--backfill", action="store_true")
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--label"); ap.add_argument("--kind", default="trend")
-    a = ap.parse_args()
+    ap.add_argument("--dry-run", action="store_true", help="offline plan; no DB, model or writes")
+    a = ap.parse_args(argv)
+    if a.dry_run:
+        action = f"enhance label={a.label!r} kind={a.kind}" if a.label else "backfill active trend/sector directives"
+        print(f"DRY-RUN directive-keyword-enhancer: would {action}; apply={a.apply} force={a.force}; no DB, model, network or writes")
+        return 0
+    from lib.lane_last_receipt import now_iso, write_lane_receipt
+    started = now_iso()
     if a.label:
         print(json.dumps(enhance(a.label, a.kind), indent=2))
     elif a.backfill:
-        res = backfill(apply=a.apply, force=a.force)
+        try:
+            res = backfill(apply=a.apply, force=a.force)
+        except Exception as exc:
+            write_lane_receipt("directive-keyword-enhancer", ok=False, exit_code=1,
+                               started_at=started, error=type(exc).__name__)
+            raise
+        if a.apply:
+            write_lane_receipt("directive-keyword-enhancer", ok=True, exit_code=0,
+                               started_at=started, summary={"enhanced": len(res), "force": a.force})
         print(json.dumps({"mode": "APPLIED" if a.apply else "DRY-RUN", "enhanced": res}, indent=2))
     else:
         ap.print_help()

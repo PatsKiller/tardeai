@@ -170,40 +170,48 @@ def _lie_setup(monkeypatch, tmp_path, prospects=0, conn=None):
 
     c = conn or FakeConn(responder)
     monkeypatch.setattr(lie, "_get_conn", lambda: c)
+    monkeypatch.setattr(lie, "_load_env", lambda: None, raising=False)
     return c
 
 
-def test_lie_dry_run_reaches_no_llm_no_write_no_receipt(monkeypatch, tmp_path, capsys, _state):
+def test_lie_cli_dry_run_is_offline(monkeypatch, tmp_path, capsys, _state):
     conn = _lie_setup(monkeypatch, tmp_path, prospects=2)
-    monkeypatch.setattr(lie, "_llm_generate", _boom)
-    monkeypatch.setattr(lie, "_save_cache", _boom)
-    monkeypatch.setattr(lie, "ensure_cache_table", _boom)
+    for name in ("_get_conn", "_load_env", "_llm_generate", "_save_cache", "ensure_cache_table"):
+        monkeypatch.setattr(lie, name, _boom, raising=False)
     assert lie.main(["--dry-run"]) == 0
-    rep = _dry_line(capsys.readouterr().out)
-    assert rep["lane_id"] == "llm-intelligence-enrichment"
-    s = rep["summary"]
-    assert set(s["would_call_llm"]) == {
-        "portfolio_risk",
-        "rebalance_suggestions",
-        "morning_synthesis",
-        "prospect_narratives",
-    }
-    assert s["no_input"] == ["recovery_analysis"] and s["errors"] == {}
-    assert s["plan"]["prospect_narratives"]["prospects"] == 2
-    assert conn.readonly is True and conn.writes() == [] and conn.commits == 0
+    report = capsys.readouterr().out
+    assert "DRY-RUN llm-intelligence-enrichment:" in report
+    assert "inputs NOT_MEASURED" in report
+    assert all(name in report for name in ("portfolio_risk", "rebalance_suggestions", "recovery_analysis", "morning_synthesis", "prospect_narratives"))
+    assert conn.sql == [] and conn.commits == 0
     assert not _receipt_file(_state, "llm-intelligence-enrichment").exists()
 
 
-def test_lie_dry_run_report_varies_with_state(monkeypatch, tmp_path, capsys):
-    _lie_setup(monkeypatch, tmp_path, prospects=0)
+def test_lie_injected_component_preview_retains_prompt_and_count_coverage(monkeypatch, tmp_path):
+    conn = _lie_setup(monkeypatch, tmp_path, prospects=2)
+    for name in ("_llm_generate", "_save_cache", "ensure_cache_table"):
+        monkeypatch.setattr(lie, name, _boom)
+    lie._RUN.update(saved=[], rejected=[], dry_plan={})
+    lie._receipt_lib().enforce_readonly(conn)
+    for fn in (lie.generate_portfolio_risk, lie.generate_rebalance_suggestions,
+               lie.generate_recovery_analysis, lie.generate_morning_synthesis, lie.generate_prospect_narratives):
+        fn(conn, dry_run=True)
+    plan = lie._RUN["dry_plan"]
+    assert set(plan) == {"portfolio_risk", "rebalance_suggestions", "morning_synthesis", "prospect_narratives"}
+    assert plan["prospect_narratives"]["prospects"] == 2
+    assert conn.readonly is True and conn.writes() == [] and conn.commits == 0
+
+
+def test_lie_component_dry_run_report_varies_with_state(monkeypatch, tmp_path):
     monkeypatch.setattr(lie, "_llm_generate", _boom)
-    lie.main(["--dry-run"])
-    s0 = _dry_line(capsys.readouterr().out)["summary"]
-    _lie_setup(monkeypatch, tmp_path, prospects=3)
-    lie.main(["--dry-run"])
-    s3 = _dry_line(capsys.readouterr().out)["summary"]
-    assert "prospect_narratives" in s0["no_input"] and "prospect_narratives" not in s0["would_call_llm"]
-    assert s3["plan"]["prospect_narratives"]["prospects"] == 3
+    for count in (0, 3):
+        conn = _lie_setup(monkeypatch, tmp_path, prospects=count)
+        lie._RUN.update(saved=[], rejected=[], dry_plan={})
+        lie.generate_prospect_narratives(conn, dry_run=True)
+        if count:
+            assert lie._RUN["dry_plan"]["prospect_narratives"]["prospects"] == count
+        else:
+            assert "prospect_narratives" not in lie._RUN["dry_plan"]
 
 
 def test_lie_real_run_writes_receipt(monkeypatch, tmp_path, _state):
@@ -248,17 +256,39 @@ def test_lie_one_section_failing_is_not_a_run_failure(monkeypatch, tmp_path, _st
     assert r["status"] == "ok" and r["summary"]["errors"] == {"portfolio_risk": "RuntimeError"}
 
 
-def test_lie_db_down_exits_1_with_failed_receipt_and_unknown_section_is_usage(monkeypatch, _state):
+def test_lie_db_down_exits_1_with_failed_receipt_and_unknown_section_is_usage(monkeypatch, capsys, _state):
+    connects = []
+
     def no_db():
+        connects.append("attempted")
         raise RuntimeError("connection refused")
 
     monkeypatch.setattr(lie, "_get_conn", no_db)
+    monkeypatch.setattr(lie, "_load_env", lambda: None, raising=False)
+    monkeypatch.setattr(lie, "_llm_generate", _boom)
+    monkeypatch.setattr(lie, "_save_cache", _boom)
     assert lie.main(["--section", "nope"]) == 2
+    assert connects == []
     assert not _receipt_file(_state, "llm-intelligence-enrichment").exists()
-    assert lie.main(["--dry-run"]) == 1
-    assert not _receipt_file(_state, "llm-intelligence-enrichment").exists()
+
+    with monkeypatch.context() as preview:
+        for name in ("_get_conn", "_load_env", "_receipt_lib"):
+            preview.setattr(lie, name, _boom, raising=False)
+        for argv in (["--dry-run"], ["--section", "portfolio_risk", "--dry-run"],
+                     ["--dry-run", "--section", "portfolio_risk"]):
+            assert lie.main(argv) == 0
+            assert "inputs NOT_MEASURED" in capsys.readouterr().out
+        assert not _receipt_file(_state, "llm-intelligence-enrichment").exists()
+        assert not _receipt_file(_state, "llm-intelligence-enrichment-section").exists()
+    assert connects == []
+
+    previous = _seed_ok(_state, "llm-intelligence-enrichment")
     assert lie.main([]) == 1
-    assert _receipt(_state, "llm-intelligence-enrichment")["status"] == "failed"
+    assert connects == ["attempted"]
+    receipt = _receipt(_state, "llm-intelligence-enrichment")
+    assert receipt["status"] == "failed" and receipt["exit"] == 1
+    assert receipt["ok_at"] == previous
+    assert receipt["error"] == "RuntimeError"  # durable errors retain type, never connection text
 
 
 def test_lie_section_run_uses_its_own_lane_id(monkeypatch, tmp_path, _state):
@@ -382,17 +412,18 @@ def _rag_conn(n_news=2, fail_on=None):
     return FakeConn(responder, fail_on=fail_on)
 
 
-def test_rag_dry_run_no_embed_no_write_report_varies(monkeypatch, capsys, _state):
+def test_rag_dry_run_is_offline_and_retains_source_preview_helper(monkeypatch, capsys, _state):
     monkeypatch.setattr(rag, "embed_text", _boom)
+    monkeypatch.setattr(rag, "_get_conn", _boom)
+    assert rag.main(["--source", "news,youtube", "--dry-run"]) == 0
+    assert "DRY-RUN rag-indexer:" in capsys.readouterr().out
+    # The lower-level explicit preview still counts injected rows without embedding or writing.
     for n in (2, 4):
         c = _rag_conn(n)
-        monkeypatch.setattr(rag, "_get_conn", lambda c=c: c)
-        assert rag.main(["--source", "news,youtube", "--dry-run"]) == 0
-        out = capsys.readouterr().out
-        assert '"dry_run": true' in out.split("RAG_INDEXER_SUMMARY ", 1)[1].splitlines()[0]
-        s = _dry_line(out)["summary"]
-        assert s["would_index"] == n and s["sources"]["news"]["selected"] == n
-        assert c.readonly is True and c.writes() == []
+        stats = {}
+        indexed, _ = rag.index_source("news", conn=c, dry_run=True, stats=stats)
+        assert indexed == n and stats["selected"] == n
+        assert c.writes() == [] and c.commits == 0
     assert not _receipt_file(_state, "rag-indexer").exists()
 
 
@@ -623,15 +654,25 @@ def _drain_wire(monkeypatch, *, write_fn, match_fn=None, n=2):
     return c
 
 
-def test_drain_dry_run_wins_over_apply(monkeypatch, capsys, _state):
-    c = _drain_wire(monkeypatch, write_fn=_boom, n=2)
-    assert drain.main(["--apply", "--dry-run"]) == 0
+@pytest.mark.parametrize("argv", [["--apply", "--dry-run"], ["--dry-run", "--apply"]])
+def test_drain_dry_run_wins_over_apply(monkeypatch, capsys, _state, argv):
+    for name in ("run", "_connect", "_read_jsonl", "_receipt_lib", "write_classification", "evaluate_rules"):
+        monkeypatch.setattr(drain, name, _boom)
+    assert drain.main(argv) == 0
     out = capsys.readouterr().out
-    assert "DRY-RUN cio-stance-classification-drain: would classify pending symbols" in out
-    assert "inputs NOT_MEASURED" in out and c.readonly is None
-    _drain_wire(monkeypatch, write_fn=_boom, n=3)
-    drain.main([])  # legacy implicit data preview remains mutation-tested
-    assert _dry_line(capsys.readouterr().out)["summary"]["pending"] == 3
+    assert "DRY-RUN cio-stance-classification-drain:" in out
+    assert "inputs NOT_MEASURED" in out
+    assert not _receipt_file(_state, "cio-stance-classification-drain").exists()
+
+
+@pytest.mark.parametrize("count", [2, 3])
+def test_drain_injected_component_preview_retains_count_coverage(monkeypatch, _state, count):
+    conn = _drain_wire(monkeypatch, write_fn=_boom, n=count)
+    report = drain.run(apply=False, only=None)
+    assert report["pending"] == count
+    assert [row["symbol"] for row in report["results"]] == [f"S{i}" for i in range(count)]
+    assert all(row["status"] == "would_apply" for row in report["results"])
+    assert conn.readonly is True and conn.writes() == [] and conn.commits == 0
     assert not _receipt_file(_state, "cio-stance-classification-drain").exists()
 
 

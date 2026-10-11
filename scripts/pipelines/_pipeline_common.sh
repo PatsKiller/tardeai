@@ -6,16 +6,17 @@ set -euo pipefail
 
 PROJ="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 LOG_DIR="$PROJ/logs/pipelines"
-mkdir -p "$LOG_DIR"
 
 # --- arg parse: default DRY_RUN=1 unless --apply ---
 DRY_RUN="${DRY_RUN:-1}"
+_PIPELINE_EXPLICIT_DRY_RUN=0
 for a in "$@"; do
   case "$a" in
     --apply) DRY_RUN=0 ;;
-    --dry-run) DRY_RUN=1 ;;
+    --dry-run) DRY_RUN=1; _PIPELINE_EXPLICIT_DRY_RUN=1 ;;
   esac
 done
+[ "$_PIPELINE_EXPLICIT_DRY_RUN" = 0 ] || DRY_RUN=1
 
 # --- safe env load (no eval of arbitrary lines) ---
 load_env() {
@@ -79,6 +80,7 @@ acquire_lock() {
 PIPELINE_NAME=""
 pipeline_start() {
   PIPELINE_NAME="$1"
+  mkdir -p "$LOG_DIR"
   local logf="$LOG_DIR/${PIPELINE_NAME}.log"
   exec > >(tee -a "$logf") 2>&1
   echo "=================================================================="
