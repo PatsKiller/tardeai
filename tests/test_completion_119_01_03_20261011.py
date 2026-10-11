@@ -25,7 +25,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # Exact legacy arguments remain accepted; --dry-run is an added offline boundary.
 CASES = [
     ("scripts/health_agent_llm_review.py", [], ["run_review", "_get_conn"]),
-    ("scripts/proposal_llm_review_worker.py", ["--limit", "2"], ["get_db", "process_one", "_load_env"]),
+    ("scripts/proposal_llm_review_worker.py", ["--run", "--limit", "2"], ["get_db", "process_one", "_load_env"]),
     ("scripts/directive_keyword_enhancer.py", ["--backfill", "--apply"], ["backfill", "enhance"]),
     ("scripts/hermes_cross_source_synthesizer.py", ["--apply"], ["get_db", "synthesize", "persist_briefs"]),
     ("scripts/multi_tier_trade_reviewer.py", ["--tier", "overnight"], ["run_tier", "_load_env"]),
@@ -378,3 +378,13 @@ def test_health_preserves_legacy_and_canonical_receipt_without_fresh_error(monke
         assert result["status"] == "failed" and result["exit"] == 1
         assert result["ok_at"]
     assert receipt(scratch, "health-agent-llm-review")["ok_at"] == old["ok_at"]
+
+
+def test_proposal_still_requires_an_explicit_mode(monkeypatch, scratch):
+    mod = load("scripts/proposal_llm_review_worker.py")
+    monkeypatch.setattr(mod, "get_db", forbid)
+    monkeypatch.setattr(mod, "_load_env", forbid)
+    with pytest.raises(SystemExit) as exc:
+        mod.main([])
+    assert exc.value.code == 2
+    assert contents(scratch) == {}

@@ -138,14 +138,15 @@ def process_one(conn, queue_row, dry_run=False):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Proposal LLM review worker", allow_abbrev=False)
-    mode = parser.add_mutually_exclusive_group(required=True)
-    mode.add_argument("--dry-run", action="store_true")
-    mode.add_argument("--run", action="store_true")
+    parser.add_argument("--dry-run", action="store_true", help="offline plan; overrides --run")
+    parser.add_argument("--run", action="store_true")
     parser.add_argument("--limit", type=int, default=2)
     parser.add_argument("--proposal-id", type=int)
     parser.add_argument("--throttle", type=int, default=10,
                         help="Seconds to wait between reviews (default 10)")
     args = parser.parse_args(argv)
+    if not (args.run or args.dry_run):
+        parser.error("one of --dry-run or --run is required")
     if args.dry_run:
         print(f"DRY-RUN proposal-llm-review-worker: would review pending proposals; limit={args.limit} proposal_id={args.proposal_id}; no queue claims, DB, model, network or writes")
         return 0
