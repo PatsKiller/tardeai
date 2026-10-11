@@ -1,7 +1,7 @@
 {
  "schema": "SchedulerSnapshot@v1",
  "captured_on": "2026-10-09",
- "note": "crontab -l and systemctl --user (read-only); /home/<user> replaced by ~; 2026-10-09 registry-ops-crons: cron_lines carry the approved install (packet ops-crons-install.md: 4 edited lines L792/L823/L824/L832 + 3 appended L1051-L1053) so the committed registry is the reconciler's fixed point on the post-install host; 2026-10-10 registry-drift: L608 compute_intraday_vwap carries the live hours */20 9-16 (crontab hygiene 2026-10-10 ~03:54Z, backup n8n_cutover/crontab-before-hygiene-now-20261010T035420Z.txt; read-only crontab -l 2026-10-10 L608) so the generated compute-intraday-vwap row stays the reconciler's fixed point; 2026-10-11 w4-provider-owners-shadow: L638 finviz_enrichment.py --scalp-hot (the Finviz enrichment owner's scalp hot tier, live since the 2026-10-10 hot-tier install; read-only crontab -l 2026-10-11 L638) so the finviz-enrichment row can match its own line L142 only and the new finviz-enrichment-scalp-hot row stays the reconciler's fixed point; 2026-10-11 b-families-top5 (n8n-maturity B3/B7/B8/B2/B1): cron_lines carry the approved-pending install (packets ~/n8n-maturity-verification/packets/b-families-top5/<family>): the 13 retired lines (L379 L380 L581 L582 L583 L585 L729 L731 L732 L733 L844 L845 L846 in this snapshot's numbering) are replaced, on the same line numbers, by the 13 `scripts/run_family_slot.py --family <lane>` lines, so the committed registry is the reconciler's fixed point on the post-install host",
+ "note": "crontab -l and systemctl --user (read-only); /home/<user> replaced by ~; 2026-10-09 registry-ops-crons: cron_lines carry the approved install (packet ops-crons-install.md: 4 edited lines L792/L823/L824/L832 + 3 appended L1051-L1053) so the committed registry is the reconciler's fixed point on the post-install host; 2026-10-10 registry-drift: L608 compute_intraday_vwap carries the live hours */20 9-16 (crontab hygiene 2026-10-10 ~03:54Z, backup n8n_cutover/crontab-before-hygiene-now-20261010T035420Z.txt; read-only crontab -l 2026-10-10 L608) so the generated compute-intraday-vwap row stays the reconciler's fixed point; 2026-10-11 w4-provider-owners-shadow: L638 finviz_enrichment.py --scalp-hot (the Finviz enrichment owner's scalp hot tier, live since the 2026-10-10 hot-tier install; read-only crontab -l 2026-10-11 L638) so the finviz-enrichment row can match its own line L142 only and the new finviz-enrichment-scalp-hot row stays the reconciler's fixed point; 2026-10-11 b-families-top5 (n8n-maturity B3/B7/B8/B2/B1): cron_lines carry the approved-pending install (packets ~/n8n-maturity-verification/packets/b-families-top5/<family>): the 13 retired lines (L379 L380 L581 L582 L583 L585 L729 L731 L732 L733 L844 L845 L846 in this snapshot's numbering) are replaced, on the same line numbers, by the 13 `scripts/run_family_slot.py --family <lane>` lines, so the committed registry is the reconciler's fixed point on the post-install host; 2026-10-11 siem-active-flip: L1060 n8n-siem-bridge + L1063 n8n-failure-diagnosis (byte-identical to scheduler.install_line, TRADEAI_LANE markers; diagnoser installed under packet diagnoser-only-20261011) appended so the ACTIVE rows map on the committed snapshot",
  "cron_lines": [
   {
    "n": 92,
@@ -1770,6 +1770,14 @@
   {
    "n": 1053,
    "line": "7 * * * * cd $PROJ && TRADEAI_STATE_ROOT=$HOME/trade-ai-releases/persistent-state bash $PROJ/scripts/safe_flock.sh /tmp/tradeai_n8n_workflow_drift.lock timeout 300 $PY scripts/check_n8n_workflow_drift.py --write >> logs/n8n_workflow_drift.log 2>&1  # TRADEAI_LANE n8n-workflow-drift-check"
+  },
+  {
+   "n": 1060,
+   "line": "1-59/5 * * * * cd $PROJ && TRADEAI_STATE_ROOT=$HOME/trade-ai-releases/persistent-state bash $PROJ/scripts/safe_flock.sh /tmp/tradeai_n8n_siem_bridge.lock timeout -k 30 120 $PY scripts/n8n_siem_bridge.py --apply >> logs/n8n_siem_bridge.log 2>&1  # TRADEAI_LANE n8n-siem-bridge"
+  },
+  {
+   "n": 1063,
+   "line": "3-59/15 * * * * cd $PROJ && TRADEAI_STATE_ROOT=$HOME/trade-ai-releases/persistent-state bash $PROJ/scripts/run_with_deepseek_offpeak.sh --scheduled --defer-in-process -- bash $PROJ/scripts/safe_flock.sh /tmp/tradeai_n8n_failure_diagnosis.lock timeout -k 30 600 $PY scripts/n8n_failure_diagnosis.py --apply --max-incidents 3 >> logs/n8n_failure_diagnosis.log 2>&1  # TRADEAI_LANE n8n-failure-diagnosis"
   }
  ],
  "units": {
