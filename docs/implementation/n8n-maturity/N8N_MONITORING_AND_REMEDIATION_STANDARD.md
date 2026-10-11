@@ -360,7 +360,7 @@ lock; exceed a cap; send portfolio data to a provider (§2A); act on a lane in `
 | Diagnoser row `n8n-failure-diagnosis` (`3-59/15`) | merged **PAUSED** (#1657), not installed; needs #1652 promoted | same |
 | Install order (operator ruling) | bridge first, diagnoser ~2 h later; each under a `cron` grant; then a registry PR flips PAUSED → ACTIVE | packet README steps 3–6 |
 | Incident notifier | ACTIVE (L1052) | registry #1654 |
-| Catalogue | 80 lanes (33 auto dry-run) after the #1681 rebuild; scalp-live excluded | `config/n8n_remediation_catalogue.json` |
+| Catalogue | 98 lanes (43 auto dry-run) after the 2026-10-11 on-host inventory rebuild; was 80 / 33 after #1681; scalp-live excluded | `config/n8n_remediation_catalogue.json` |
 | Severity | 2 of 619 registry rows set → RUN_* lands WARN (L6 open) | §4.1 |
 | Diagnoser DB row | synced 16:27 ET | `packets/llm-seed-sync/apply-20261010.txt` |
 | Health contracts | 68 DRAFT, not read at runtime yet | §3 |

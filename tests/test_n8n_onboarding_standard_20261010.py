@@ -142,7 +142,8 @@ def test_diagnoser_caps_and_exclusion_quoted_equal_the_code():
     assert (D.PER_CALL_CAP_USD, D.DAILY_CAP_USD, D.CONFIDENCE_MIN) == (0.05, 0.10, 0.7)
     assert CAT.DIAGNOSIS_EXCLUDED_LANES == frozenset({"trade-ai-scalp-live"})
     cat = json.loads((ROOT / "config" / "n8n_remediation_catalogue.json").read_text(encoding="utf-8"))
-    assert cat["summary"]["lanes"] == 80 and cat["summary"]["lanes_with_auto_rerun"] == 33
+    # 2026-10-11: rebuilt from the on-host inventory (build_remediation_catalogue.py --check).
+    assert cat["summary"]["lanes"] == 98 and cat["summary"]["lanes_with_auto_rerun"] == 43
 
 
 def test_class_caps_quoted_equal_the_retry_policies():
