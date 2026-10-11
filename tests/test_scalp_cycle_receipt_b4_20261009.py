@@ -349,8 +349,15 @@ def test_runner_passes_a_state_saver_and_skips_a_done_slot(tmp_path, monkeypatch
 
 
 def test_live_cycle_saves_state_before_the_send():
+    import re
+
     src = (ROOT / "scripts/continuous_runner.py").read_text(encoding="utf-8")
-    assert src.index("state_saver(state)") < src.index("send_telegram(msg)")
+    # SND2 (2026-10-11): the send declares its intent -- send_telegram(msg, priority="P1", producer=...). The call
+    # must still exist, still be P1 (a live-cycle alert pages), and still come after the state save.
+    send = re.search(r"send_telegram\(msg(?:,\s*([^)]*))?\)", src)
+    assert send is not None, "continuous_runner.py no longer calls send_telegram(msg, ...)"
+    assert re.search(r"""priority\s*=\s*["']P1["']""", send.group(1) or ""), send.group(0)
+    assert src.index("state_saver(state)") < send.start()
 
 
 def test_in_rth_follows_the_market_calendar(monkeypatch):

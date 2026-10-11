@@ -332,6 +332,7 @@ GATES = [
             "tests/test_alarm_fires_options_intent_20261005.py",
             "tests/test_alarm_fires_disk_and_handler_20260919.py",
             "tests/test_alarm_fires_disk_pressure_20260921.py",
+            "tests/test_alarm_fires_senders_wave3_20261011.py",
             "tests/test_alarm_coverage.py",
         ],
     ),

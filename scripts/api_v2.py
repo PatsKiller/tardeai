@@ -18858,7 +18858,8 @@ def _journal_reminder():
             send_telegram(
                 f"*Trade Journal Reminder*\n\n*{unannotated} trades* need annotation ({total} total).\n"
                 f"Coverage: {pct}%\n\nhttps://ms01-openclaw.tail163d14.ts.net/v3/trade-in-view",
-                priority="P2", producer="api_v2",
+                priority="P2",
+                producer="api_v2",
             )
         except Exception:
             pass
@@ -28367,7 +28368,8 @@ def _research_intelligence_stage_promote(body=None):
                 f"📌 RI staged idea promoted: {sym} → {new_status}"
                 + (f" (proposal #{extra.get('proposal_id')})" if extra.get("proposal_id") else "")
                 + " — advisory/paper only; normal review chain applies.",
-                priority="P3", producer="api_v2",
+                priority="P3",
+                producer="api_v2",
             )
         except Exception:
             pass
@@ -51885,7 +51887,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
                     send_telegram(
                         f"\u2b50 *{sym}* escalated to Alex from watchlist\nReason: {b.get('note', 'User flagged as interesting')}",
-                        priority="P3", producer="api_v2",
+                        priority="P3",
+                        producer="api_v2",
                     )
                 except Exception:
                     pass

@@ -40,10 +40,10 @@ def _env(key: str) -> str:
 def _send_tg(msg: str, *, priority: str = "P3"):
     try:
         from telegram_alert import send_telegram
-        if priority == "P1":
-            send_telegram(msg, priority="P1", dedupe_minutes=0, producer="credential_monitor")
-        else:
-            send_telegram(msg, priority=priority, producer="credential_monitor")
+        # One transport site (tests/test_alarm_fires_batch6_20260922.py covers this file whole): a P1 failure
+        # notice is operator action, so its dedupe is off; any other priority keeps the router default (None).
+        send_telegram(msg, priority=priority, producer="credential_monitor",
+                      dedupe_minutes=0 if priority == "P1" else None)
     except Exception:
         pass
 
