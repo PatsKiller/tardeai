@@ -1,15 +1,15 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      4.5.0
+Policy-Version:      4.6.0
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
-Status:              ACTIVE
-Effective-Date:      2026-10-10
-Last-Reviewed:       2026-10-10T17:50:00-04:00
+Status:              PROPOSED
+Effective-Date:      PENDING
+Last-Reviewed:       2026-10-10T22:10:00-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
-Supersedes:          4.4.1
+Supersedes:          4.5.0
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
 
@@ -35,6 +35,30 @@ same day "n8n drives a governed lane (Recommended)". The 5-minute Trade-AI scalp
 ingest through the data broker, a `trade_ai_scans` writer and a `send_telegram` caller — may run in
 `live` mode from n8n under the conditions in §23.3; it is the only such lane, and the never-list
 is otherwise unchanged. MAJOR because it widens what the n8n actor may cause (version policy).
+
+**4.6.0 is PROPOSED (MINOR) — platform rules from the 2026-10-10 consolidation (§24).** Until the operator
+ratifies it, the 4.5.0 text governs. §24
+records nine operator rulings and findings of 2026-10-10: notifications — n8n orchestrates, the host communications
+gateway is the only sender, the P1 path does not depend on n8n, senders emit notification intents (§24.1); search
+source routing — free lane first, paid Brave only on measured insufficiency, inside a dollar budget of $20/month
+account cap, $18 local ceiling, $15 target, $12 non-priority stop, with scalps about to fire first (§24.2); the data
+broker — owner lanes write, consumers read projections, lane-script direct reads become a checked violation (§24.3);
+other applications on this host (NYC DOF) are not Trade AI lanes and never use Trade AI resources (§24.4); no push,
+PR or remote write from a scheduled job (§24.5); tests never touch production state (§24.6); agents never read, copy
+or symlink `.env` or credential files (§24.7); a release grant names the SHA or PR it releases (§24.8); designs stay
+Supabase- and n8n-Cloud-portable (§24.9). It also corrects the §12 `braveapi` engine row in place. **Why MINOR:**
+every item adds an obligation or a restriction; nothing widens n8n, broker, egress, §17 or role authority, and §0,
+§2, §2A, §7A, §17 and §23.14 are byte-identical (version policy; precedent: the §12 spend-cap change was recorded
+MINOR inside 1.2.0). Two items could be read higher, and are written so they are not: in §24.1 "n8n orchestrates"
+means it fires the host routing, digest, escalation and callback lanes through §23.3 and §23.11 exactly as today and
+decides nothing; §24.4 is a scope boundary that only restricts — Trade AI resources never serve another application,
+and §0 and the §17 host crontab, systemd and compose decisions still bind every agent for every application. If the
+operator reads either as MAJOR, the number becomes 5.0.0 and nothing else changes. **Numbering dependency:**
+numbered 4.6.0 because 4.4.1 (PATCH) and 4.5.0 (MINOR, §23.19) merged in PR #1666 (`dd8f4cff1`), and 4.5.0 is
+ACTIVE: ratified `APPROVE_AGENTS_POLICY_4_5_0 1666 987bf94da`, ratification edit `316700266`, merged into this
+branch. `Supersedes` is 4.5.0. If the number has to change, it is settled at ratification (§20): §24 keeps its
+number and every `4.6.0` / `4_6_0` token in this file and its test is renamed. Operator approval phrase (§20):
+`APPROVE_AGENTS_POLICY_4_6_0 <pr_number> <head_sha>`.
 
 **4.5.0 is ACTIVE (MINOR) — every n8n addition follows the onboarding standard and carries a workflow health
 contract (§23.19).** Ratified by the operator 2026-10-10 (`APPROVE_AGENTS_POLICY_4_5_0 1666 987bf94da`, §20; PR #1666
@@ -2321,12 +2345,17 @@ The evidence package must retain redacted guard grant, use, revocation, push, PR
 deployment, acceptance, and rollback receipts, including timestamps, scopes, reasons, exact SHAs,
 release IDs, and exit codes. Never include secrets.
 
+A `release-write` grant names the SHA or PR it releases; a generic grant is refused (`ReleaseGrantBinding@v1`):
+§24.8 (4.6.0, PROPOSED).
+
 If `<repo_root>/bin/guard` is absent or non-executable, stop and report the exact resolved path
 and failure. Do not guess another guard path or bypass governance.
 
 ---
 
 # 8A · Testing standards
+
+Tests never touch production state: §24.6 (4.6.0, PROPOSED).
 
 Scattered rules, consolidated. Each states the failure that produced it.
 
@@ -2367,6 +2396,9 @@ These are the recurring operations. Every agent performs them the same way, or t
 accumulates the divergence this document exists to remove.
 
 ## 9.1 Operator notifications
+
+The notification model — n8n orchestrates, the host communications gateway is the only sender, the P1 path does
+not depend on n8n — is §24.1 (4.6.0, PROPOSED).
 
 - **Every send carries a dedupe key including content, with a declared window.** Unbounded dedupe
   suppresses a legitimate repeat forever; no dedupe floods. Three identical briefs shipped once
@@ -2530,6 +2562,8 @@ accumulates the divergence this document exists to remove.
   published prices to $5.42.*
 
 ## 9.3 Scheduled jobs
+
+A scheduled job never pushes, opens a PR or writes to a remote: §24.5 (4.6.0, PROPOSED).
 
 - **A job has a `config/lane_registry.json` row with an `output_signal` before it is installed** —
   the durable artifact that proves it ran. Not an exit code, not a log file existing.
@@ -2931,7 +2965,7 @@ anti-bot walls and one did not exist in the image at all.
 | `google` | disabled | **0 results, no error** — a consent page that parses empty |
 | `yahoo news` | disabled | measured 0 results with an HTTP error |
 | `yahoo_finance` | removed | no such engine module; failed at every container start |
-| `braveapi` | ENABLED, keyed | api.search.brave.com — the product this project pays for |
+| `braveapi` | ENABLED, keyed — disable approved 2026-10-10, apply pending | api.search.brave.com, the paid API. `[VERIFIED]` 2026-10-10: in SearXNG's `general` category it made **2,357 calls 10-01..10-10 that `lib/search_budget` never counted, every one HTTP 422** (billing UNKNOWN). The operator approved disabling it ~18:40 ET; packet `searxng-braveapi-off` dry run done, apply pending a `config-write` grant. See §24.2 |
 | `seznam` / `yep` / `yandex` | enabled | verified by query, then ranked on a finance query |
 
 - **`brave` and `braveapi` are different engines.** The first scrapes and is rate-limited to
@@ -2959,6 +2993,8 @@ what made me report Brave as unused while the real ledger showed September traff
 counter was removed rather than reconciled**: two numbers for one quantity is a defect, and picking
 whichever looks right is not a fix. Provider ceilings come from **response headers**, never from a
 constant in code.
+
+**Search routing and the Brave dollar budget (4.6.0, PROPOSED):** see §24.2.
 
 
 ---
@@ -4707,10 +4743,188 @@ obligations. It grants nothing: no grant tier, §17 item or allowlist `never` en
 
 ---
 
+# 24 · Platform rules from the 2026-10-10 consolidation (4.6.0, PROPOSED)
+
+**Status: PROPOSED (MINOR), awaiting `APPROVE_AGENTS_POLICY_4_6_0 <pr_number> <head_sha>` (§20).** Until it is
+ratified, nothing in this section binds and the previously ACTIVE text governs. §24 is **not** part of the §23 n8n
+carve-out: §23.1 limits §23 to the `m8m-n8n` compose project, and these rules reach every agent, lane and job. Each
+subsection extends the section it names without editing it. §0, §2, §2A, §7A, §17 and §23.14 are byte-identical, and
+nothing here grants n8n, a lane or an agent anything. The rulings come from the operator's session of 2026-10-10
+(times ET) and the evidence in the verification workspace (`~/n8n-maturity-verification/`: `REMEDIATION_PLAN.md` §8,
+`CONSOLIDATION_PLAN.md`, `JOB_REDUCTION_DEEP_PASS.md`, the `packets/` READMEs).
+
+## 24.1 Notifications: n8n orchestrates, the communications gateway sends (extends §9.1, §23.3, §23.11)
+
+- **The host communications gateway is the only sender.** It is `send_telegram` and the delivery ledger behind it
+  (§9.1), plus the approved adapters of `docs/architecture/gateway-enforcement.md`, held by
+  `scripts/check_comms_gateway_enforcement.py` and its ratchet baselines (`config/telegram_chokepoint_baseline.json`,
+  `config/provider_chokepoint_baseline.json`). No ratchet baseline may grow. n8n holds no messaging credential and
+  sends nothing; §23.3 "No sends from n8n" is unchanged. *Cause (§20): operator ruling 2026-10-10 ~18:40 ET ("I
+  approved everything you have submitted"), on the recommendation of ~18:28 ET — n8n orchestrates, the custom
+  communications gateway stays the only sender.*
+- **"n8n orchestrates" means it fires host lanes and decides nothing.** n8n fires the host lanes that route, batch
+  digests, escalate and handle Telegram button callbacks, through §23.3 and §23.11 exactly as today. The routing
+  rules — category, severity, quiet hours, caps, dedupe windows — live on the host (`config/comms_categories.yaml`,
+  `scripts/incident_notifier.py` defaults) and are changed by reviewed PR, never by a workflow edit. *Cause (§20):
+  §23.11 "the other five send nothing and decide nothing"; a routing rule held inside a workflow would be read by no
+  registry check and reviewed by no PR.*
+- **The P1 path does not depend on n8n.** The incident notifier (cron L1052) and the SIEM bridge run from host cron,
+  and an n8n outage must still deliver a P1. A change that routes a P1 through n8n is refused at review. *Cause
+  (§20): operator ruling 7, 2026-10-10 ~13:00 ET — the SIEM bridge runs from host cron, "monitor independent of
+  n8n"; W0 (15:53–15:58 ET) showed all six generic workflows can fail within four minutes.*
+- **Senders emit notification intents.** A new or changed sender hands the gateway an intent (category, severity,
+  dedupe key, `as_of`, body) and never calls a provider. The ~66 existing direct sender jobs are migration work,
+  tracked row by row in the cron inventory; one of them is not a finding by itself until its row is scheduled.
+  *Cause (§20): operator ruling ~18:40 ET ("66 senders → notification intents"); 66 places that each format, dedupe
+  and send is the shape §9.1's delivery-ledger rules were written against.*
+
+## 24.2 Search source routing and the Brave dollar budget (extends §12 "Search providers")
+
+- **Free lane first; paid Brave only on measured insufficiency.** A routed question goes cache → free sources
+  (internal news projection, self-hosted SearXNG, the Alpha Vantage news store, broker stores) → paid Brave only when
+  its class allows paid search and the free answer fails the policy's measurable quality rule (count, trusted
+  domains, relevance, freshness) → a declared `no_coverage` answer, never a fill from the wrong source. *Cause (§20):
+  operator 2026-10-10 ~18:03 ET, verbatim: "I have $20 maximum a month on Brave already, trying not to use it all,
+  and we need to prioritize the search for scalps that are about to fire and make sense"; measured: all 250 October
+  Brave requests to 10-10 came from one caller that asked Brave first.*
+- **The policy file is authoritative, and there is one engine.** `config/search_routing_policy.json`
+  (`SearchRoutingPolicy@v1`, declared on `domains[web_search].routing_policy` in `config/data_source_authority.json`)
+  decides which source answers which class, through `scripts/lib/search_router.py`; a caller not in the policy's map
+  is refused `UNKNOWN_CALLER`. Measured 2026-10-10: both are in the open PR #1676, and the engine is OFF by default
+  (`SEARCH_ROUTING_ENGINE=1`, or `SCALP_HOT_TIER=1` for the hot tier's `route_search` only). Until #1676 is merged
+  and a flag is set, this bullet describes the target, not live behaviour. *Cause (§20): operator ~18:03 ET — "a
+  mature engine and rules about which source to use for what".*
+- **Dollar lines, gross before the monthly credit:** account cap **$20/month** (Brave dashboard); local hard ceiling
+  **$18**, for everyone; working target **$15**, which only the scalp-priority pool may run to; non-priority stop
+  **$12**; P2 alert at 80% of $15 through the incident fan-in. Pools: scalp 50% (first claim), operator 20%
+  (reserve), catalyst 20%, other 10%. The spend decision runs inside the ledger lock. *Cause (§20): operator ~18:03 ET
+  ($20 cap, "trying not to use it all", scalps first); `lib/search_budget` counted requests, never dollars.*
+- **The request breaker sits above the dollar lines.** The operator approved raising it to at least 3,000 a month so
+  the dollar lines bind (target 300/day, 3,600/month = $18 at $0.005). Measured on the #1676 branch the registry
+  still says 120/day and 1,500/month with 200 reserved; the raise is its own registry PR carrying that approval
+  (§7A, §17). *Cause (§20): operator ~18:40 ET "Yes, from one to six" (item 3); at 1,500/month the routed pools stop
+  near $6.50, below the target.*
+- **SearXNG never names a Brave engine.** The free lane sends an explicit engine list and never bare
+  `categories=general`. *Cause (§20): `[VERIFIED]` 2026-10-10 — SearXNG's `braveapi` engine made 2,357 calls
+  10-01..10-10 that `lib/search_budget` never counted, every one HTTP 422 (billing UNKNOWN); disabling it was
+  approved ~18:40 ET (item 1), packet `packets/searxng-braveapi-off/`, dry run done, apply pending a `config-write`
+  grant.*
+- **Alpha Vantage has one owner.** `scripts/lib/alpha_vantage_owner.py` is the only file that names
+  `alphavantage.co` (test-enforced); it spends at most **23 requests a day** of the free 25, counted on both the UTC
+  and the ET day, and every other caller reads its stores. Scope A1–A3 (the `earnings_calendar` and `news_sentiment`
+  domains), B1 (`earnings_date` backup) and B2 (`catalyst_news` backup) were approved ~18:40 ET (item 4); they enter
+  the registry with that approval recorded (PR #1675, open). NewsAPI.org stays retired (developer plan, ~24 h late).
+  *Cause (§20): operator 2026-10-10 "use Alpha Vantage for the gaps"; `scalp_float_lookup` made up to two unbudgeted
+  Alpha Vantage calls every 5 minutes, and ~4,650 refused calls a week were counted as spend (#1668).*
+
+## 24.3 Data broker: owners write, consumers read projections (extends §7A)
+
+- **One owner lane per provider and universe is the single declared writer** of a broker-backed domain in
+  `config/data_source_authority.json`, and stamps `as_of` and `source` on every row. Adding or changing an owner or a
+  domain is still a §7A registry row with the operator's grant (§17). *Cause (§20): `CONSOLIDATION_PLAN.md` §E,
+  approved 2026-10-10 ~17:45 ET with decisions 1–14 — measured ~45 lanes fetching providers themselves, ~36 of them
+  consumers.*
+- **Every consumer reads a projection.** A cron lane, n8n-fired lane, API route, scalp path or LLM job reads a
+  `scripts/lib/data_broker/` projection that returns `BrokerReadEnvelope@v1` (`as_of`, age, `source`, `stale`, and the
+  domain's declared gap behaviour). On a miss or a stale value it applies the domain's `no_coverage` behaviour or a
+  budgeted `on_gap` request through the owner — never a silent provider call from the consumer. *Cause (§20):
+  measured 2026-10-10 — only 3 lanes read through `data_broker`, ~27 read stores by direct SQL or the raw cache; the
+  finviz enrichment cache shrank 4,501 → 38 entries in torn writes, and the directive servicer fetched 8,490 Finviz
+  requests per run where the owner-and-projection shape of step 1 (#1669, `finviz_enrichment_snapshot`) needs 426.*
+- **A lane script's direct read or fetch is a checked violation.** A new or changed lane script adds no direct
+  provider fetch and no direct store read where a projection exists. `scripts/check_data_source_authority.py` counts
+  direct reads by hub files only, so lane scripts are invisible to `DIRECT_READ_ROSE`; extending it to lane scripts,
+  with the measured count as the ceiling and a ratchet that only goes down, is required work. Until it lands, the PR
+  states the count by grep. *Cause (§20): `CONSOLIDATION_PLAN.md` §E.2 — the checker reported no findings while ~27
+  lane scripts read stores directly.*
+- **Approved domains (2026-10-10 ~17:45 ET):** `finviz_enrichment` (store of record `data/state/…`, the other copy
+  archived and merged, never deleted), `scalp_list`, `social_posts`, `latest_quote` (then `market_quote_snapshots`
+  retired), `yfinance_info_snapshot`, and declared StockTwits rate limits. Each lands as its own registry row with
+  that approval recorded. *Cause (§20): `CONSOLIDATION_PLAN.md` §D decisions 2, 3, 5, 7, 13, 14.*
+
+## 24.4 Other applications on this host are not Trade AI lanes (extends §23.1)
+
+- **Trade AI resources never serve another application.** The lane registry, run allowlist, relay, gateway,
+  dispatcher, governed bridge, health contracts, SIEM rows and the `m8m-n8n` instance are Trade AI's alone. Another
+  application never holds a Trade AI credential, the relay bearer or the `trade_ai` database role; NYC DOF gets its
+  own n8n instance, its own runner and its own database role `dof_app`. §23.3's never-list entry "DOF SQL" is
+  unchanged. *Cause (§20): operator 2026-10-10 ~18:28 and ~18:35 ET ("those DOF apps should also be moved to N8N,
+  but it's its own application"), ~18:40 ET (`dof_app`, item 6) and later that evening ("Yes": separate instance
+  and DOF-only runner, fix its DB login first; session record `project_consolidation_deliverables.md`, logged as
+  ~19:45, a stamp ahead of the host clock); measured: all 22 `dof_*` tables are owned by `trade_ai` and every DOF
+  stage connects as `trade_ai`.*
+- **The boundary only restricts.** §0 binds every agent on this host whatever application it works on. Moving,
+  changing or retiring another application's job is still a host crontab, systemd or compose change: an operator
+  decision (§17) under a grant, dry run first, the line commented and never deleted. Those jobs leave Trade AI's
+  counts as "other application" rows in the cron inventory, not as deletions. *Cause (§20): the cron freeze
+  (operator 2026-10-09 ~21:50 ET) covers every line in the shared crontab; the DOF pipeline (L152) has failed all six
+  stages since 2026-08-29 on a password failure while exiting 0, so a move cannot be the moment it disappears from
+  view. Design: `packets/nyc-dof-n8n/DESIGN.md` (PROPOSED).*
+
+## 24.5 No push, PR or remote write from a scheduled job (extends §0 rule 4, §9.3)
+
+- **A cron line, timer, n8n-fired lane or daemon never pushes, opens a PR or writes to a remote.** It commits
+  locally or writes an artifact; the push is operator-driven under `AI_WORK_POLICY.md`. *Cause (§20):
+  `JOB_REDUCTION_DEEP_PASS.md` §11 — L556 `coder_dispatch` in PR mode would push and run `gh pr create` from cron,
+  and L541 `backup_generated_docs.sh` pushed from cron. Interim stop: `CODER_DISPATCH_MODE=advisory` on L556 (cron
+  grant 4b3623125f6b6d7e); fix #1672 (merged `dbadb9c1b`): push needs `--allow-push`/`--push` and
+  `TRADEAI_REMOTE_PUSH_AUTHORIZED=1`, and never from `--from-queue`. The same PR found the backup branch's latest
+  commit held 0 files (`git add --ignore-errors` aborting on an unmatched glob) — a job that exited 0 for an empty
+  backup (§0 rule 8).*
+
+## 24.6 Tests never touch production state (extends §8A)
+
+- **Every test run sets `TRADE_AI_CI=1`, and every store, ledger and state path in a test is a `tmp_path` or
+  scratch root.** A test that can reach a live database, ledger, state root, Telegram, n8n, the relay or the
+  gateway refuses instead of running. *Cause (§20): RC7, 2026-10-10 — a sub-agent's `@needs_db` test run without
+  `TRADE_AI_CI=1` wrote `hdi2test` rows to five live tables.*
+- **Production rows found from a test are reported, archived — never deleted — and the test is fixed in the same
+  wave.** *Cause (§20): RC1 follow-up, 2026-10-10 ~17:10 ET — `tests/test_research_heartbeat_20260914.py` wrote the
+  production `search_budget.json`, including 33 future-dated keys (2026-10-11 → 12-25) that would pre-count later
+  days; fixture fixed on #1676 with a regression test; archive packet `packets/search-budget-archive/` dry run 33
+  keys, apply pending `release-write`.*
+
+## 24.7 Agents never read, copy or symlink `.env` or credential files (extends §0 rule 2, §2A, §23.5)
+
+- **No agent reads, copies, links or prints `.env`, a rendered env file or any credential file**, in any worktree,
+  test, dry run or packet. Name a variable, never its value. A worktree gets no `.env` link or copy
+  (`scripts/new-worktree.sh` makes none by default); a test or dry run that needs credentials uses stubs or a masked
+  environment (the `bwrap` pattern in `packets/consolidation-registry/`). An agent that finds a link or copy reports
+  it and stops; the operator decides how it is removed. *Cause (§20): 2026-10-10 — a quick-wins agent symlinked
+  `.env` into its worktree; several lanes load the whole `.env` (REMEDIATION_PLAN §8), and the C1 stage runner
+  sources it into every step (packet `c1-manifest-flips` finding 3).*
+
+## 24.8 A release grant names the SHA or PR it releases (extends "Operator approval for remote push and live deployment")
+
+- **Request `release-write` with the exact merged SHA and the PR number(s) in the reason, one grant per release.**
+  `scripts/lib/release_grant_binding.py` (`ReleaseGrantBinding@v1`, `enforce` by default;
+  `TRADEAI_RELEASE_GRANT_BINDING=warn` only in transition) matches a grant only when its reason names the PR
+  (`#NNNN`), the target SHA (at least 9 hex characters) or the campaign id; a generic grant is not a match.
+  *Cause (§20): 2026-10-10 ~17:07 ET, release of `e8a4a6815`: "Previous 6h release grant 7792ff3948d8d2d9 refused by
+  SHA binding (no SHA named)"; the grant that named the SHA passed (`matched_by: sha:e8a4a6815524`,
+  `status-20261010/release-e8a4a6815-promote.log`). The binding exists because on 2026-09-25 #1229 and #1230 were
+  promoted under another campaign's grant.*
+
+## 24.9 Portability: designs stay Supabase- and n8n-Cloud-portable (reinforces §23.6)
+
+- **A new design must not block a later move to managed Postgres (Supabase) and hosted n8n.** A new authoritative
+  store is a Postgres table, not a new persistent-state JSON file; retention and TTL use Postgres-native means
+  (`pg_cron`, partitioning / `pg_partman`, standard extensions only); the relay and gateway contract stays HTTP plus
+  auth; a workflow carries no host path, no host address beyond its single `Relay` Set node, and no credential; and
+  the database stays lean, because size drives the managed cost. A design that would block the move says so in its
+  PR. *Cause (§20): operator, 2026-10-10 evening (session record `project_future_supabase_n8n_cloud.md`, logged as ~19:05, a stamp ahead
+  of the host clock), verbatim: "One day I may move this to Supabase and the hosted
+  version of N8N, so we want to consolidate as much as we can."; measured 18:37 ET: `trade_ai` is 24.95 GB against
+  a 16 GB budget, growing ~0.18 GB/day (`DB_RETENTION_AND_IRIS_STUDY.md`). Retention and the Iris librarian are an
+  OPEN item: the Iris runtime was disabled in retire batch 1.*
+
+---
+
 # Version history
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 4.6.0 | 2026-10-10 | PROPOSED | MINOR | §24 "Platform rules from the 2026-10-10 consolidation" added, outside the §23 carve-out: §24.1 notifications — n8n orchestrates (fires host routing, digest, escalation and callback lanes; decides nothing), the host communications gateway (`send_telegram` + delivery ledger + `check_comms_gateway_enforcement.py` ratchets) is the only sender, the P1 path does not depend on n8n, new or changed senders emit notification intents (~66 direct senders are inventory migration work) (backlog A3); §24.2 search source routing — free lane first, paid Brave only on measured insufficiency, `config/search_routing_policy.json` authoritative once merged (#1676, engine OFF by default), dollar lines $20 account / $18 local ceiling / $15 target / $12 non-priority stop, pools scalp 50% / operator 20% / catalyst 20% / other 10%, request breaker raise approved (≥3,000/month; registry still 120/day 1,500/month), SearXNG never names a Brave engine, one Alpha Vantage owner at ≤23/day with scope A1–A3 + B1 + B2 (#1675), NewsAPI retired (A4); §24.3 data broker — owner lanes are single writers, consumers read `BrokerReadEnvelope@v1` projections, lane-script direct reads become a checked violation (checker extension required), approved domains listed (A5); §24.4 other applications (NYC DOF) are not Trade AI lanes and never use Trade AI resources or the `trade_ai` role (`dof_app`); §0 and §17 still bind (A6); §24.5 no push, PR or remote write from a scheduled job (#1672) (A7); §24.6 tests never touch production state, `TRADE_AI_CI=1` (RC7, RC1 link) (A8); §24.7 agents never read, copy or symlink `.env` or credential files (A9); §24.8 a release grant names the SHA or PR (`ReleaseGrantBinding@v1`) (A10); §24.9 Supabase / n8n Cloud portability (A11). In-place correction (PATCH-level, §12): the `braveapi` engine row records the 2,357 uncounted HTTP 422 calls and the approved, pending disable. One-line pointers to §24 added in §8A, §9.1, §9.3, §12 and the operator-approval section. §0, §2, §2A, §7A, §17 and §23.14 byte-identical; no allowlist `never`, `CLAUDE.md` or `AI_WORK_POLICY.md` change. Numbered after 4.4.1 / 4.5.0 in open PR #1666; renumbers to 4.5.0 if #1666 is withdrawn or this is ratified first. Tests: `tests/test_agents_policy_4_6_0_platform_rules.py`. Causes: operator rulings 2026-10-10 ~13:00, ~17:45, ~18:03, ~18:28, ~18:35, ~18:40 ET and two later the same evening (session record; logged as ~19:05 and ~19:45, stamps ahead of the host clock); REMEDIATION_PLAN §8 RC1/RC7; JOB_REDUCTION_DEEP_PASS §11; CONSOLIDATION_PLAN §E; the 2026-10-10 ~17:07 ET release-grant refusal; the `.env` symlink incident. MINOR: every item adds an obligation or a restriction; nothing widens n8n, broker, egress, §17 or role authority (read as MAJOR, it becomes 5.0.0 unchanged otherwise). | **PENDING** operator ratification `APPROVE_AGENTS_POLICY_4_6_0 <pr_number> <head_sha>` (§20); per-PR word, excluded from the §23.13 standing merge approval because it changes `AGENTS.md`. Until then the 4.5.0 text governs. |
 | 4.5.0 | 2026-10-10 | ACTIVE | MINOR | §23.19 added: `docs/implementation/n8n-maturity/N8N_ONBOARDING_STANDARD.md` is the mandatory procedure for adding or changing anything n8n fires, watches or calls (lane at any stage, dispatch / `r1_pending` row, generic workflow, relay route, gateway lane, executor setting), with the checklist evidence and per-lane template in the PR; no lane enters shadow, canary or cutover without a workflow health contract in `config/n8n_health_contracts.json` (gate `scripts/check_n8n_health_contracts.py`; new lanes REVIEWED before the registry PR; canary/cutover REVIEWED with no UNKNOWN; 2026-10-10 DRAFTs grandfathered at their stage of that day); `scripts/check_n8n_relay_contract.py` passes before any n8n import and import verification never reads an n8n execution status. Adds obligations and grants nothing; §0, §2, §2A, §7A, §17 and §23.14 byte-identical. Tests: `tests/test_n8n_onboarding_standard_20261010.py`, `tests/test_n8n_health_contracts_20261010.py`. Causes: W0 rollback 2026-10-10 15:58 ET (RC8/RC9); operator 2026-10-10 ~16:35, ~16:40, ~16:45 ET. MINOR: a new mandatory operating and evidence rule, weakening nothing. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_4_5_0 1666 987bf94da` (operator, PR #1666 comment by PatsKiller 2026-10-11T01:46:33Z, verbatim: "APPROVE_AGENTS_POLICY_4_5_0 1666 987bf94da — and yes to the 4.4.1 PATCH"); merged #1666 as `dd8f4cff1f37be5e27d344acdfa7cfbe8a386285`; ratification edit on the operator's in-session word 2026-10-10 ~21:55 ET ("Yes, I ratify 4.50"); per-PR word, excluded from the §23.13 standing merge approval because it changes `AGENTS.md`. |
 | 4.4.1 | 2026-10-10 | ACTIVE on merge | PATCH | §12 off-peak arming restated as measured 2026-10-10: the crontab header sets `LLM_DEFER_OFFPEAK=1` for every cron line (operator, 2026-09-20), systemd units set it per unit (portfolio-server, cio-reactive, nightly-reflection drop-ins and the executor and health-tick units `=1`; hermes-cio-worker `=0`); the 2026-09-20 "exactly one place" sentence is replaced, and "never arm it in passing" now reads arm, widen or disarm. The process-boundary wrapper count is re-measured (19 active lines: 2 `--scheduled`, 8 `--official`, 9 default; 17 on the older `~/.config/tradeai/bin` copy) and `--defer-in-process` (#1652) is named. §23 gains an informational pointer to `docs/implementation/n8n-maturity/N8N_CONFIGURATION.md`, `N8N_ONBOARDING_STANDARD.md` and `N8N_MONITORING_AND_REMEDIATION_STANDARD.md` (restate §23, add no rule). No required behaviour changes; §0, §2, §2A, §7A, §17 and §23.14 byte-identical. Cause: REMEDIATION_PLAN §8 "crontab header sets LLM_DEFER_OFFPEAK=1 for all lines (AGENTS §12 drift)"; the W0 rollback. | **Operator-directed** 2026-10-10 ~16:35 ET ("Make sure you totally update the documentation on this and the agents.md or any other files that need to know these baseline configurations"). PATCH outside §0/§2/§17: rides `APPROVE_AGENTS_POLICY_1_2_0`, ACTIVE on merge; merge needs the operator's per-PR word (§23.13 excludes `AGENTS.md`). |
 | 4.4.0 | 2026-10-10 | ACTIVE | MAJOR | R1 shadow and canary row shape (§23.11, §23.18 (c)). A §23.11 dispatcher row (`kind: n8n`, `expression: "dispatcher"`) fails `CRON_PRESENT_WHILE_SCHEDULER_N8N` and the inactive-n8n-row check while its cron line is live, which is true through shadow and canary. The shadow wave is therefore built as cron rows, and 4.3.0 §23.18 (c) refused every R1 lane in that shape. Now an `ingest`, `llm` or `learn` lane may use the cron row at `shadow` (`dispatch.mode: dry_run`, allowlist `live_arg` null) and at `canary` (`dispatch.mode: live`, `live_arg` set, `lock_kind: flock`, allowlist lock equal to every `flock` lock in `scheduler.command_text`, so the lock proves no double run, §23.12). Cutover keeps the dispatcher row. Gate in code: `lane_dispatch.r1_shadow_on_cron_shape`, `r1_canary_lock_matches` and `r1_class_admission`, inert until `R1_SHADOW_SHAPE_STATUS = "ACTIVE"`. Every other R1 condition is unchanged: R1 ACTIVE, `dispatch_eligible`, no daemon, `dry_run_arg`, LaneRunReceipt@v1, no broker credential, and for `llm` the governed bridge. Naming: `dispatcher` is the row expression; `tradeai-dispatcher` (the workflow id; design 02 §12.2 wrote it as the expression) is refused by the gate and the registry check, clamped to `dry_run` by the stage clamp, and refused as `_cutover.py --workflow-id`. `--workflow-id dispatcher` leaves the row at stage `cutover`. The allowlist `never` sentence for the three classes names both cron rows; every never-under-any-class entry is word for word. No sentence of §0, §2, §2A, §7A, §17 or §23.14 changes. Tests: `tests/test_agents_policy_4_4_0_r1_shadow_shape.py`, `tests/test_r1_shadow_shape_20261010.py`. Causes: Agent A finding 2026-10-10 (no R1 lane could shadow); operator ruling 2026-10-10 ~14:00 ET ("All yes": extend 4.4.0 to canary). MAJOR: the R1 admission widens by two row shapes, one of them a live fire. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_4_4_0 1660 463535dfe` (operator, PR #1660 comment by PatsKiller 2026-10-10T20:04:37Z, verbatim: "APPROVE_AGENTS_POLICY_4_4_0 1660 463535dfe"); merged #1660 as `40e445d790c4b8294c3f2e3fb64cbb9f1658e9d9`; approved in principle 2026-10-10 ~14:00 ET ("All yes"); per-PR word, excluded from the §23.13 standing merge approval because it changes `AGENTS.md` and the allowlist `never` list. The ratifying edit sets `R1_SHADOW_SHAPE_STATUS = "ACTIVE"`. |
