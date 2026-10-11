@@ -12728,6 +12728,104 @@
       "retire_batch": "b-families-top5"
     },
     {
+      "lane_id": "finviz-sector-research",
+      "owner": "scalp",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "15 10,16 * * 1-5",
+        "match": "scripts/finviz_sector_research.py",
+        "stage": "shadow",
+        "wave": "R2-05",
+        "command_text": "15 10,16 * * 1-5 cd $PROJ && flock -n /tmp/finviz_sector.lock $PY scripts/finviz_sector_research.py >> logs/finviz_sector.log 2>&1"
+      },
+      "expected_cadence_hours": 66.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/finviz-sector-research_last.json",
+        "key": "ok_at"
+      },
+      "value_class": "Operationally Important",
+      "recommendation": "PIPELINE:P02",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L524",
+        "pipeline": "P02",
+        "value_class": "Operationally Important",
+        "recommendation": "PIPELINE:P02",
+        "f_recommendation": "CONSOLIDATE-into P02",
+        "event_driven_candidate": false,
+        "f_evidence": "Unverified use: no consumer check run for this line"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-10-11",
+      "adopted_reason": "Shard05 source-only shadow proposal: preserve stable lane_id and dispatcher block across registry reconciliation. Approved selected cron snapshot 2026-10-11T17:05:28.513179+00:00. No scheduler or runtime mutation; contracts remain DRAFT.",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "15 10,16 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "ingest",
+        "priority": 5,
+        "retry_policy": "none"
+      },
+      "output_signal_note": "Source proposal only: the revised producer writes this receipt on real work. Cron has not been deployed; freshness of this proposed artifact is NOT_MEASURED."
+    },
+    {
+      "lane_id": "drain-discovery-backlog",
+      "owner": "research",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 6 * * 1-5",
+        "match": "scripts/drain_discovery_backlog.py",
+        "stage": "shadow",
+        "wave": "R2-05",
+        "command_text": "0 6 * * 1-5 cd $PROJ && $PY scripts/drain_discovery_backlog.py --apply >> logs/drain_discovery_backlog.log 2>&1"
+      },
+      "expected_cadence_hours": 72.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/drain-discovery-backlog_last.json",
+        "key": "ok_at"
+      },
+      "value_class": "Nice to Have",
+      "recommendation": "PIPELINE:P10",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L862",
+        "pipeline": "P10",
+        "value_class": "Nice to Have",
+        "recommendation": "PIPELINE:P10",
+        "f_recommendation": "CONSOLIDATE-into P10",
+        "event_driven_candidate": false,
+        "f_evidence": "Unverified use: no consumer check run for this line"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-10-11",
+      "adopted_reason": "Shard05 source-only shadow proposal: preserve stable lane_id and dispatcher block across registry reconciliation. Approved selected cron snapshot 2026-10-11T17:05:28.513179+00:00. No scheduler or runtime mutation; contracts remain DRAFT.",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "0 6 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "learn",
+        "priority": 5,
+        "retry_policy": "none"
+      },
+      "output_signal_note": "Source proposal only: the revised producer writes this receipt on real work. Cron has not been deployed; freshness of this proposed artifact is NOT_MEASURED."
+    },
+    {
       "lane_id": "run-scheduled-quote-refresh-incubator",
       "owner": "portfolio",
       "scheduler": {
@@ -16686,55 +16784,6 @@
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
     },
     {
-      "lane_id": "finviz-sector-research",
-      "owner": "scalp",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "15 10,16 * * 1-5",
-        "match": "scripts/finviz_sector_research.py",
-        "stage": "shadow",
-        "wave": "R2-05",
-        "command_text": "15 10,16 * * 1-5 cd $PROJ && flock -n /tmp/finviz_sector.lock $PY scripts/finviz_sector_research.py >> logs/finviz_sector.log 2>&1"
-      },
-      "expected_cadence_hours": 66.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "json_key",
-        "path": "data/runtime/finviz-sector-research_last.json",
-        "key": "ok_at"
-      },
-      "value_class": "Operationally Important",
-      "recommendation": "PIPELINE:P02",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L524",
-        "pipeline": "P02",
-        "value_class": "Operationally Important",
-        "recommendation": "PIPELINE:P02",
-        "f_recommendation": "CONSOLIDATE-into P02",
-        "event_driven_candidate": false,
-        "f_evidence": "Unverified use: no consumer check run for this line"
-      },
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
-      "adopted_from_generator": "reconcile_lane_registry@v1",
-      "adopted_on": "2026-10-11",
-      "adopted_reason": "Shard05 source-only shadow proposal: preserve stable lane_id and dispatcher block across registry reconciliation. Approved selected cron snapshot 2026-10-11T17:05:28.513179+00:00. No scheduler or runtime mutation; contracts remain DRAFT.",
-      "dispatch": {
-        "mode": "dry_run",
-        "cron": [
-          "15 10,16 * * 1-5"
-        ],
-        "tz": "America/New_York",
-        "wave": "W4",
-        "class": "ingest",
-        "priority": 5,
-        "retry_policy": "none"
-      },
-      "output_signal_note": "Source proposal only: the revised producer writes this receipt on real work. Cron has not been deployed; freshness of this proposed artifact is NOT_MEASURED."
-    },
-    {
       "lane_id": "run-inference-cycle-preopen",
       "owner": "research",
       "scheduler": {
@@ -19788,55 +19837,6 @@
       "reconciled_on": "2026-10-09",
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "drain-discovery-backlog",
-      "owner": "research",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "0 6 * * 1-5",
-        "match": "scripts/drain_discovery_backlog.py",
-        "stage": "shadow",
-        "wave": "R2-05",
-        "command_text": "0 6 * * 1-5 cd $PROJ && $PY scripts/drain_discovery_backlog.py --apply >> logs/drain_discovery_backlog.log 2>&1"
-      },
-      "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "json_key",
-        "path": "data/runtime/drain-discovery-backlog_last.json",
-        "key": "ok_at"
-      },
-      "value_class": "Nice to Have",
-      "recommendation": "PIPELINE:P10",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L862",
-        "pipeline": "P10",
-        "value_class": "Nice to Have",
-        "recommendation": "PIPELINE:P10",
-        "f_recommendation": "CONSOLIDATE-into P10",
-        "event_driven_candidate": false,
-        "f_evidence": "Unverified use: no consumer check run for this line"
-      },
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
-      "adopted_from_generator": "reconcile_lane_registry@v1",
-      "adopted_on": "2026-10-11",
-      "adopted_reason": "Shard05 source-only shadow proposal: preserve stable lane_id and dispatcher block across registry reconciliation. Approved selected cron snapshot 2026-10-11T17:05:28.513179+00:00. No scheduler or runtime mutation; contracts remain DRAFT.",
-      "dispatch": {
-        "mode": "dry_run",
-        "cron": [
-          "0 6 * * 1-5"
-        ],
-        "tz": "America/New_York",
-        "wave": "W4",
-        "class": "learn",
-        "priority": 5,
-        "retry_policy": "none"
-      },
-      "output_signal_note": "Source proposal only: the revised producer writes this receipt on real work. Cron has not been deployed; freshness of this proposed artifact is NOT_MEASURED."
     },
     {
       "lane_id": "run-governed-symbol-thesis-acquisition",
