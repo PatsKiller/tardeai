@@ -61,7 +61,7 @@ def _iso_age_hours(ts: str | None) -> float | None:
 
 
 def _served_root() -> Path:
-    current = Path("/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT")
+    current = Path(os.environ.get("TRADEAI_LIVE_PROJECT_ROOT") or "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT")
     try:
         return Path(os.path.realpath(current))
     except OSError:
@@ -94,6 +94,9 @@ def _flag_sources() -> dict[str, str]:
         _served_root() / ".env",
         Path("/run/user/1000/tradeai/env"),
     ]
+    explicit = os.environ.get("TRADEAI_ENV_BOOTSTRAP_FILES")  # env_bootstrap's explicit list replaces the defaults
+    if explicit is not None:
+        paths = [Path(p) for p in explicit.split(os.pathsep) if p.strip()]
     dropin = Path.home() / ".config/systemd/user/portfolio-server.service.d"
     if dropin.exists():
         paths.extend(sorted(dropin.glob("*.conf")))

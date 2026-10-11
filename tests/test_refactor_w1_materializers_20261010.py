@@ -293,4 +293,5 @@ def test_income_holdings_resolve_to_served_persistent_copy(monkeypatch, tmp_path
     served = tmp_path / "persistent" / "data" / "portfolios" / "state"
     served.mkdir(parents=True)
     monkeypatch.setenv("TRADEAI_PERSISTENT_STATE_ROOT", str(tmp_path / "persistent"))
+    monkeypatch.delenv("TRADEAI_STATE_ROOT", raising=False)  # outranks the persistent root (hermetic bootstrap sets it)
     assert M._resolve_state_dir() == served

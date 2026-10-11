@@ -13,7 +13,7 @@ from pathlib import Path
 import psycopg2
 
 log = logging.getLogger(__name__)
-PROJECT_ROOT = '/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild'
+PROJECT_ROOT = os.environ.get('TRADEAI_DEV_ROOT') or '/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild'
 MAX_RETRIES = 3
 # Enrichment attempts per entity per week before backing off to weekly.
 MAX_ENRICH_ATTEMPTS = int(os.getenv('WATCHDOG_MAX_ENRICH_ATTEMPTS', '6'))

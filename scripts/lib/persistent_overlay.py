@@ -46,7 +46,7 @@ def overlay_data_source(*, canonical_source: Path | str | None = None) -> Path:
         return preferred
     if canonical_source:
         return Path(canonical_source)
-    return Path("/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild")
+    return Path(os.environ.get("TRADEAI_DEV_ROOT") or "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild")
 
 # Files that mean "this persistent store is not empty".
 # Empty tuple → any directory entry counts as a sentinel.

@@ -25,6 +25,7 @@ def state(tmp_path, monkeypatch):
     root = tmp_path / "persistent"
     (root / "data" / "runtime").mkdir(parents=True)
     monkeypatch.setenv("TRADEAI_PERSISTENT_STATE_ROOT", str(root))
+    monkeypatch.delenv("TRADEAI_STATE_ROOT", raising=False)  # outranks the persistent root (hermetic bootstrap sets it)
     return root
 
 

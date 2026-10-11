@@ -328,6 +328,15 @@ Full procedure, per lane, in the companion `N8N_MONITORING_AND_REMEDIATION_STAND
    `scripts/check_test_coverage.py --fail-on-new` fails.
 6. **No real identifiers in tests.** The pre-push hardcoded-values scan blocked a push on the operator's real
    Telegram chat id that came from another session's commit (RC6, #1658).
+7. **The hermetic bootstrap is on for every pytest run** (`tests/conftest.py` → `scripts/lib/hermetic_test_guard.py`,
+   2026-10-11). Env loaders, `dotenv`, the live project root, the state root, `HOME` and `XDG_RUNTIME_DIR` resolve to
+   empty fixtures; any open/listdir/sqlite connect under `~/trade-ai-releases/**`, `/run/user/*/tradeai/**` or a
+   present `.env` outside the temp dir is refused and fails the test (ERROR naming path and caller); live-DSN connects
+   (`trade_ai`, the live M2 shadow, port 55432) raise before libpq. The M2 test-database bootstrap runs only with
+   `M2_TEST_DB=1`. A test that genuinely needs host state says so: `@pytest.mark.host_state("reason")`; an
+   operator-run session can set `TRADEAI_TEST_HOST_STATE=1`. A hard-coded live path in production code is fixed by
+   honouring the fixture variable (`TRADEAI_LIVE_PROJECT_ROOT`, `TRADEAI_STATE_ROOT`, `TRADEAI_DEV_ROOT`), not by
+   opting the test in.
 7. **A test may not reach a mutation** — dry-run tests assert the write path is not called, not only that the exit
    code is 0.
 

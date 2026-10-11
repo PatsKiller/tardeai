@@ -17,7 +17,7 @@ from typing import Any, Optional
 
 AUTHORITY = "READ_ONLY_ADVISORY"
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-LIVE_CURRENT = Path("/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT")
+LIVE_CURRENT = Path(os.environ.get("TRADEAI_LIVE_PROJECT_ROOT") or "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT")
 DEFAULT_API = "http://127.0.0.1:7777"
 SNAPSHOT_PATH = PROJECT_ROOT / "data" / "cio" / "holdings_snapshot_latest.json"
 OFFICE_STATE_PATH = PROJECT_ROOT / "data" / "cio" / "office_state_latest.json"

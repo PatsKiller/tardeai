@@ -114,6 +114,7 @@ def test_crontab_lines_sets_blind_on_unreadable_crontab(monkeypatch):
 
 def test_log_bases_include_the_persistent_logs_root(monkeypatch, tmp_path):
     monkeypatch.setenv("TRADEAI_PERSISTENT_STATE_ROOT", str(tmp_path))
+    monkeypatch.delenv("TRADEAI_STATE_ROOT", raising=False)  # outranks the persistent root (hermetic bootstrap sets it)
     (tmp_path / "logs").mkdir()
     bases = [str(b) for b in jcm._log_bases()]
     assert str(tmp_path / "logs") in bases and len(bases) == len(set(bases))
