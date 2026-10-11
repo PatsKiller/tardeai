@@ -1436,7 +1436,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-maturity/N8N_CONFIGURATION.md` | N8N configuration — ms01-openclaw (the entry point) | review_required | OK | `6084f82ac5b5` |
 | `docs/implementation/n8n-maturity/N8N_MONITORING_AND_REMEDIATION_STANDARD.md` | N8N monitoring, SIEM, Telegram and LLM auto-remediation standard — per lane | review_required | OK | `39f879c0e74f` |
 | `docs/implementation/n8n-maturity/N8N_ONBOARDING_STANDARD.md` | N8N onboarding standard — the mandatory procedure for adding anything to n8n | review_required | OK | `d68078918c5d` |
-| `docs/implementation/n8n-maturity/REFACTOR_SHARDS_05_08_SOURCE_INTEGRATION_20261011.md` | Refactor shards 05–08 local source integration | review_required | OK | `f9afd6eec08d` |
+| `docs/implementation/n8n-maturity/REFACTOR_SHARDS_05_08_SOURCE_INTEGRATION_20261011.md` | Refactor shards 05–08 local source integration | review_required | OK | `78924f61c48d` |
 | `docs/implementation/n8n-maturity/REFACTOR_SHARD_05_20261011.md` | Refactor shard 05 — 2026-10-11 source packet | review_required | MISSING HEADER | `2721ae4011cb` |
 | `docs/implementation/n8n-maturity/REFACTOR_SHARD_06_20261011.md` | Shard06 cron writer preview and receipt proposal (2026-10-11) | review_required | MISSING HEADER | `77a266619a2c` |
 | `docs/implementation/n8n-maturity/REFACTOR_SHARD_07_20261011.md` | Shard 07 source refactor | review_required | OK | `55d2a65a72a7` |

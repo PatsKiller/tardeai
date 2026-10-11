@@ -24,6 +24,10 @@ row objects. Static tests now pin 76 declared shadow blocks and 232 generated ro
 writing previews to have the proven offline shadow shape, and use the new stance/commitment canonical receipts.
 The health review and authority gates are unchanged.
 
+Nine new shard 06/08 allowlists listed `TRADEAI_STATE_ROOT` and/or `TRADEAI_ENV_BOUND_NAMES`, already implicit
+executor base names. Only this redundant metadata is removed; fake child-environment comparison proves the
+effective report-mode child environment identical. Named-variable evidence and report-mode closure holds remain.
+
 The approved selected cron snapshot is dated `2026-10-11T17:05:28.513179+00:00`; the full cron census and timer
 runtime are NOT_MEASURED. The nine original missing-lock proposals remain operator packets. Three belong to
 already retired lanes and require ownership reconciliation before any installation. No cron line or lock is installed.

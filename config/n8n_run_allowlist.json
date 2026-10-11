@@ -2496,10 +2496,8 @@
         "FINVIZ_MAX_COOLDOWN_S",
         "FINVIZ_MIN_INTERVAL",
         "PGAPPNAME",
-        "TRADEAI_ENV_BOUND_NAMES",
         "TRADEAI_PERSISTENT_STATE_ROOT",
-        "TRADEAI_ROOT",
-        "TRADEAI_STATE_ROOT"
+        "TRADEAI_ROOT"
       ],
       "env_allowlist_mode": "report",
       "env_evidence": "Selected source names only; own CLI preview returns before DB, auth, provider, model or mutation",
@@ -2531,10 +2529,8 @@
         "DB_PORT",
         "DB_USER",
         "PGAPPNAME",
-        "TRADEAI_ENV_BOUND_NAMES",
         "TRADEAI_PERSISTENT_STATE_ROOT",
-        "TRADEAI_ROOT",
-        "TRADEAI_STATE_ROOT"
+        "TRADEAI_ROOT"
       ],
       "env_allowlist_mode": "report",
       "env_evidence": "Selected source names only; own CLI preview returns before DB, auth, provider, model or mutation",
@@ -2566,10 +2562,8 @@
         "DB_USER",
         "PGAPPNAME",
         "SEC_USER_AGENT",
-        "TRADEAI_ENV_BOUND_NAMES",
         "TRADEAI_PERSISTENT_STATE_ROOT",
-        "TRADEAI_ROOT",
-        "TRADEAI_STATE_ROOT"
+        "TRADEAI_ROOT"
       ],
       "env_allowlist_mode": "report",
       "env_evidence": "Selected source names only; own CLI preview returns before DB, auth, provider, model or mutation",
@@ -2602,10 +2596,8 @@
         "DB_PORT",
         "DB_USER",
         "PGAPPNAME",
-        "TRADEAI_ENV_BOUND_NAMES",
         "TRADEAI_PERSISTENT_STATE_ROOT",
-        "TRADEAI_ROOT",
-        "TRADEAI_STATE_ROOT"
+        "TRADEAI_ROOT"
       ],
       "env_allowlist_mode": "report",
       "env_evidence": "Selected source names only; own CLI preview returns before DB, auth, provider, model or mutation",
@@ -2636,11 +2628,9 @@
         "DB_PORT",
         "DB_USER",
         "PGAPPNAME",
-        "TRADEAI_ENV_BOUND_NAMES",
         "TRADEAI_OPTIONS_OUTCOME_LOADER",
         "TRADEAI_PERSISTENT_STATE_ROOT",
         "TRADEAI_ROOT",
-        "TRADEAI_STATE_ROOT",
         "TRADEAI_WAKE_STATE_ROOT"
       ],
       "env_allowlist_mode": "report",
@@ -2673,10 +2663,8 @@
         "DB_USER",
         "PGAPPNAME",
         "SEC_USER_AGENT",
-        "TRADEAI_ENV_BOUND_NAMES",
         "TRADEAI_PERSISTENT_STATE_ROOT",
-        "TRADEAI_ROOT",
-        "TRADEAI_STATE_ROOT"
+        "TRADEAI_ROOT"
       ],
       "env_allowlist_mode": "report",
       "env_evidence": "Selected source names only; own CLI preview returns before DB, auth, provider, model or mutation",
@@ -2708,10 +2696,8 @@
         "DB_PORT",
         "DB_USER",
         "PGAPPNAME",
-        "TRADEAI_ENV_BOUND_NAMES",
         "TRADEAI_PERSISTENT_STATE_ROOT",
-        "TRADEAI_ROOT",
-        "TRADEAI_STATE_ROOT"
+        "TRADEAI_ROOT"
       ],
       "env_allowlist_mode": "report",
       "env_evidence": "Selected source names only; own CLI preview returns before DB, auth, provider, model or mutation",
@@ -2983,8 +2969,7 @@
         "PROJECT_ROOT",
         "SAFE_FLOCK_LOG_DIR",
         "TRADEAI_PERSISTENT_STATE_ROOT",
-        "TRADEAI_ROOT",
-        "TRADEAI_STATE_ROOT"
+        "TRADEAI_ROOT"
       ],
       "env_allowlist_mode": "report",
       "env_report_reason": "session13_db imports dotenv.load_dotenv without a name bound; shared narrowing belongs to integrator. Own loader uses DB names only.",
@@ -3017,8 +3002,7 @@
         "PROJECT_ROOT",
         "SAFE_FLOCK_LOG_DIR",
         "TRADEAI_PERSISTENT_STATE_ROOT",
-        "TRADEAI_ROOT",
-        "TRADEAI_STATE_ROOT"
+        "TRADEAI_ROOT"
       ],
       "env_allowlist_mode": "report",
       "env_report_reason": "db_adapter legacy unbound cron loader and governor outcome-bus closure need integrator review. No model or broker credentials are named.",
