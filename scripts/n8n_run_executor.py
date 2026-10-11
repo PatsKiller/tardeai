@@ -133,10 +133,13 @@ ENV_ALLOWLIST_MODES = ("off", "report", "enforce")
 ENV_ALLOWLIST_DEFAULT_MODE = "report"
 LANE_ENV_ALLOWLIST_MODES = ("report", "enforce")
 #: Non-secret process plumbing every lane keeps under enforce (the unit's crontab-parity globals included).
+# Set by build_child_env on an enforced child (never inherited): the lane's env_names, read by
+# scripts/lib/env_bootstrap.bound_names. Literal here so the executor imports nothing from lib/.
+ENV_BOUND_NAMES_ENV = "TRADEAI_ENV_BOUND_NAMES"
 CHILD_ENV_BASE_NAMES = frozenset({
     "PATH", "HOME", "LANG", "LC_ALL", "TZ", "USER", "LOGNAME", "XDG_RUNTIME_DIR", "PYTHONPATH",
     "PROJ", "PY", "TRADEAI_ENV", "TRADEAI_STATE_ROOT", "TRADEAI_VENV_PYTHON", "LLM_DEFER_OFFPEAK",
-    "BLIND_REVIEW_LANES",
+    "BLIND_REVIEW_LANES", ENV_BOUND_NAMES_ENV,
 })
 ENV_NAME_RE = re.compile(r"^[A-Z_][A-Z0-9_]*$")
 
@@ -210,6 +213,9 @@ def build_child_env(
             block["reason"] = "env_names_missing"
             return None, block
         block["effective_mode"] = "enforce"
+        # Bound the child's in-process loaders to the same list (lib/env_bootstrap bound mode): without it any
+        # env_bootstrap.load_env call re-reads the whole rendered env file and undoes this allowlist.
+        enforced[ENV_BOUND_NAMES_ENV] = ",".join(sorted(names))
         return enforced, block
     block["effective_mode"] = "report"
     if requested == "enforce":

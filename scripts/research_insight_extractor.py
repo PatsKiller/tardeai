@@ -31,9 +31,11 @@ _HORIZON_LONG = {"long-term", "retirement", "compound", "decade", "5-year", "10-
 
 def _get_conn(dry_run: bool = False):
     import psycopg2
-    pw = ""
-    for line in (PROJECT_ROOT / ".env").read_text().splitlines():
-        if line.startswith("DB_PASSWORD="): pw = line.split("=", 1)[1].strip()
+    # Env first (the executor passes the allowlisted DB_PASSWORD), then the checkout .env line (cron sources none).
+    pw = os.environ.get("DB_PASSWORD", "")
+    if not pw:
+        for line in (PROJECT_ROOT / ".env").read_text().splitlines():
+            if line.startswith("DB_PASSWORD="): pw = line.split("=", 1)[1].strip()
     conn = psycopg2.connect(host="localhost", dbname="trade_ai", user="trade_ai", password=pw)
     if dry_run:
         sys.path.insert(0, str(PROJECT_ROOT / "scripts"))

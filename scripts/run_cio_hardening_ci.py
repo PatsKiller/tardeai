@@ -3856,7 +3856,15 @@ GATES = [
         # fail-closed on a missing env_names list or unknown mode, names-only receipts, enforced-lane drift guard.
         # Hermetic: tmp_path ledgers/state, synthetic values, fake runners + one tiny real child.
         "n8n_executor_env_allowlist_20261009",
-        ["tests/test_n8n_executor_env_allowlist_20261009.py"],
+        [
+            "tests/test_n8n_executor_env_allowlist_20261009.py",
+            # Env-file loader narrowing (canary blocker, 2026-10-11): env_bootstrap.load_env(names=...) and the
+            # executor-set TRADEAI_ENV_BOUND_NAMES bound (only bound names, never a broker name; db_adapter asks for
+            # DB_* only and its connection params still resolve), unbound legacy default pinned unchanged, the
+            # per-script .env loops of the enforced lanes copy only _ENV_KEYS and _ENV_KEYS covers every name their
+            # closure reads. Hermetic: fake render/.env in tmp_path, psycopg2 stubbed, synthetic values only.
+            "tests/test_env_bootstrap_narrow_20261011.py",
+        ],
     ),
     (
         # ANCHOR: N8N_SCALP_LANE — 2026-10-09 operator "n8n drives a governed lane": trade-ai-scalp-live

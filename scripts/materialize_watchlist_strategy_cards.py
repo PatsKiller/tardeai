@@ -82,9 +82,11 @@ def _load(f, default=None):
 
 def _get_conn():
     import psycopg2
-    pw = ""
-    for line in (PROJECT_ROOT / ".env").read_text().splitlines():
-        if line.startswith("DB_PASSWORD="): pw = line.split("=", 1)[1].strip()
+    # Env first (the executor passes the allowlisted DB_PASSWORD), then the checkout .env line (cron sources none).
+    pw = os.environ.get("DB_PASSWORD", "")
+    if not pw:
+        for line in (PROJECT_ROOT / ".env").read_text().splitlines():
+            if line.startswith("DB_PASSWORD="): pw = line.split("=", 1)[1].strip()
     return psycopg2.connect(host="localhost", dbname="trade_ai", user="trade_ai", password=pw)
 
 
