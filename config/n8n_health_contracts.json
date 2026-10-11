@@ -10951,6 +10951,582 @@
     "never": "status 'running' with a deletedAt value is a soft-deleted success, not a hang"
    },
    "review_by": "2026-10-24"
+  },
+  {
+   "schema": "N8nHealthContract@v1",
+   "id": "finviz-enrichment",
+   "kind": "lane",
+   "workflow_id": "tradeai-dispatcher",
+   "status": "REVIEWED",
+   "target_reason": "stage:shadow",
+   "stage": "shadow",
+   "purpose": {
+    "text": "Owner of the finviz_enrichment domain: on weekdays at 13:00 ET, refresh the six Finviz Elite export views (111/121/131/141/171/161: price, RSI, float, RVOL, ATR, valuation, performance, sector) for the stale names of the watchlist universe into the shared enrichment cache, the store every consumer reads through the finviz_enrichment_snapshot projection.",
+    "business_function": "research",
+    "source": "scripts/finviz_enrichment.py module docstring (:1-66, LANE note :46-50); config/data_source_authority.json domain finviz_enrichment (writer scripts/finviz_enrichment.py); inventory cron:L142"
+   },
+   "owner": "scalp",
+   "connects_to": [
+    {
+     "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+     "kind": "service",
+     "direction": "calls",
+     "source": "AGENTS.md §23.3"
+    },
+    {
+     "name": "$PY scripts/finviz_enrichment.py",
+     "kind": "runner",
+     "direction": "calls",
+     "source": "config/n8n_run_allowlist.json command"
+    },
+    {
+     "name": "/tmp/finviz_enrichment.lock",
+     "kind": "lock",
+     "direction": "read_write",
+     "source": "config/n8n_run_allowlist.json lock (flock); PROPOSED: cron L142 has no flock today, a cron-granted packet adds flock -n /tmp/finviz_enrichment.lock before canary"
+    },
+    {
+     "name": "data/runtime/finviz-enrichment_last.json",
+     "kind": "receipt",
+     "direction": "write",
+     "source": "LaneRunReceipt / allowlist output_signal"
+    },
+    {
+     "name": "Postgres trade_ai watchlist_items (default universe, SELECT symbol; READ ONLY session in a dry run)",
+     "kind": "store",
+     "direction": "read",
+     "source": "scripts/finviz_enrichment.py :1004, enforce_readonly :1002"
+    },
+    {
+     "name": "Finviz Elite export https://elite.finviz.com/export (FINVIZ_API_TOKEN / FINVIZ_COOKIE via resolve_secret), metered through scripts/finviz_throttle.py acquire/cooldown; never called by the dry run",
+     "kind": "provider",
+     "direction": "calls",
+     "source": "scripts/finviz_enrichment.py :90, :511-544"
+    },
+    {
+     "name": "$STATE_ROOT data/state/ticker_enrichment_cache.json (domain finviz_enrichment store of record; save_cache fcntl-locked merge + atomic replace)",
+     "kind": "store",
+     "direction": "write",
+     "source": "scripts/finviz_enrichment.py :86, :360, :434; config/data_source_authority.json finviz_enrichment"
+    },
+    {
+     "name": "intelligence entity 'market' upsert per refreshed ticker (intelligence_entity_manager.upsert_entity, non-fatal)",
+     "kind": "store",
+     "direction": "write",
+     "source": "scripts/finviz_enrichment.py :750-770"
+    },
+    {
+     "name": "pipeline_runs row (pipeline_registry.run_start / run_complete)",
+     "kind": "store",
+     "direction": "write",
+     "source": "scripts/finviz_enrichment.py :1073"
+    },
+    {
+     "name": "readers of the cache: scripts/lib/data_broker/finviz_enrichment_snapshot.py projection (directive servicer prefetch L442, finviz-strip-map), plus direct-file readers listed by grep ticker_enrichment_cache",
+     "kind": "consumer",
+     "direction": "read",
+     "source": "CONSOLIDATION_PLAN §F; scripts/lib/data_broker/finviz_enrichment_snapshot.py"
+    },
+    {
+     "name": "cron L142 on served CURRENT ($PROJ), $PY = the dev-tree venv interpreter (crontab line 4) keeps doing the real work while this row is at shadow",
+     "kind": "cron_twin",
+     "direction": "calls",
+     "source": "crontab -l 2026-10-11 line 142"
+    }
+   ],
+   "healthy": [
+    {
+     "check": "shadow_dry_run_done",
+     "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+    },
+    {
+     "check": "dry_run_writes_nothing",
+     "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before, and the DRY-RUN line names the receipt it would write (a dry run writes nothing, AGENTS.md §6)"
+    },
+    {
+     "check": "cron_twin_output_fresh",
+     "text": "the live cron line L142 advances ok_at in data/runtime/finviz-enrichment_last.json once per weekday: on a market day it is younger than 26 h, over a weekend younger than 74 h"
+    },
+    {
+     "check": "duration_within_baseline",
+     "text": "duration <= 720.0 s (80% of timeout_s 900); measured: cron log logs/finviz_enrichment.log: runs start 13:00 and the last 'enriched' stamp lands 13:01-13:05 on 2026-09-30..10-09 (1-5 min; 17-62 tickers refreshed per run)"
+    }
+   ],
+   "degraded": [
+    {
+     "check": "late",
+     "text": "data/runtime/finviz-enrichment_last.json ok_at older than 26 h on a market day (one weekday slot missed) or older than 74 h across a weekend"
+    },
+    {
+     "check": "slow",
+     "text": "duration above 720.0 s"
+    },
+    {
+     "check": "retried",
+     "text": "a run needed attempt > 1 (retry_policy none, so only a manual re-request) or ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
+    },
+    {
+     "check": "upstream_stale",
+     "text": "an upstream input is stale or refused: watchlist_items readable; Finviz auth valid (finviz_health_check L706 row); finviz_throttle state not in cooldown (not machine-checked yet)"
+    },
+    {
+     "check": "failed_receipt_carried",
+     "text": "data/runtime/finviz-enrichment_last.json shows ok=false with the previous ok_at carried forward (the cron twin ran and failed honestly: exit 1 when nothing could be fetched)"
+    }
+   ],
+   "failed": [
+    {
+     "check": "run_failed",
+     "text": "a dispatcher fire ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+    },
+    {
+     "check": "no_receipt",
+     "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+    },
+    {
+     "check": "stale",
+     "text": "data/runtime/finviz-enrichment_last.json ok_at older than 50 h on a market day (two weekday slots missed) or older than 98 h across a weekend"
+    },
+    {
+     "check": "breaker_or_dlq",
+     "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+    },
+    {
+     "check": "dry_run_wrote",
+     "text": "a dry_run changed its output_signal, the store it owns, or any other durable state"
+    }
+   ],
+   "baseline": {
+    "freshness_degraded_after_h": 26.0,
+    "freshness_failed_after_h": 50.0,
+    "freshness_rule": "reviewed 2026-10-11: one fire per weekday (dispatch.cron 0 13 * * 1-5 America/New_York), so freshness is one missed weekday slot + 2 h (degraded) and two missed slots + 2 h (failed); over a weekend the gap is 72 h, hence 74 h / 98 h. The generator default (2x/3x expected_cadence_hours 72 = 144 h / 216 h) would hide a missed Monday until Thursday.",
+    "timeout_s": 900,
+    "class": "ingest",
+    "computed_on": "2026-10-11",
+    "basis": "CLASS_DEFAULT_PROVISIONAL",
+    "source": "fewer than 14 finished live runs in the coordination ledger (0); class defaults: duration degraded above 80% of timeout_s, freshness 2x/3x cadence, any RUN_FAILED/RUN_TIMEOUT/RUN_REFUSED failed",
+    "runs_considered": 0,
+    "duration_degraded_above_s": 720.0,
+    "freshness_closed_degraded_after_h": 74.0,
+    "freshness_closed_failed_after_h": 98.0,
+    "measured": "cron log logs/finviz_enrichment.log: runs start 13:00 and the last 'enriched' stamp lands 13:01-13:05 on 2026-09-30..10-09 (1-5 min; 17-62 tickers refreshed per run)"
+   },
+   "alerting": {
+    "lane_severity": "Medium",
+    "severity_basis": "inventory cron:L142 business_function=research (catalogue rule)",
+    "failed": {
+     "siem_severity": "WARN",
+     "notifier_priority": "P2"
+    },
+    "degraded": {
+     "siem_severity": "INFO",
+     "notifier_priority": "P3"
+    },
+    "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+    "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row `severity`, else the fan-in priority (RUN_* = P2 -> WARN). Wiring the bridge, notifier and diagnoser to this contract is the next build item (N8N_MONITORING_AND_REMEDIATION_STANDARD.md §7)."
+   },
+   "remediation": {
+    "catalogue_entry": false,
+    "diagnosis_excluded": false,
+    "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
+   },
+   "evidence": {
+    "receipt": "data/runtime/finviz-enrichment_last.json",
+    "verify": [
+     "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='finviz-enrichment' ORDER BY requested_at DESC LIMIT 10\"",
+     "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:finviz-enrichment' ORDER BY created_at DESC LIMIT 10",
+     "stat / jq the receipt: data/runtime/finviz-enrichment_last.json"
+    ],
+    "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger"
+   },
+   "review_by": "2026-10-25",
+   "review": {
+    "status": "REVIEWED",
+    "reviewed_on": "2026-10-11",
+    "reviewed_by": "agent KK (W4 provider owners), session https://claude.ai/code/session_018QBWwttnCspwJYNhNdqd14, for the registry owner scalp",
+    "method": "every field checked against the script source at origin/main e24ccd6c5, the live crontab (crontab -l, read-only, 2026-10-11), config/data_source_authority.json and the cron logs; the inventory free-text edges were replaced by source-cited edges",
+    "basis_note": "baseline stays CLASS_DEFAULT_PROVISIONAL: the ledger holds 0 live dispatcher runs of this lane, and dry-run fires never set a baseline; re-learn after 14 live runs (canary)"
+   }
+  },
+  {
+   "schema": "N8nHealthContract@v1",
+   "id": "sec-data-ingest",
+   "kind": "lane",
+   "workflow_id": "tradeai-dispatcher",
+   "status": "REVIEWED",
+   "target_reason": "stage:shadow",
+   "stage": "shadow",
+   "purpose": {
+    "text": "SEC Form 4 owner: on weekdays at 20:00 ET, pull recent Form 4 insider filings from the free SEC EDGAR APIs for every actively classified symbol and insert new ones into sec_form4.",
+    "business_function": "research",
+    "source": "scripts/sec_data_ingest.py module docstring (:1-24); inventory cron:L150"
+   },
+   "owner": "research",
+   "connects_to": [
+    {
+     "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+     "kind": "service",
+     "direction": "calls",
+     "source": "AGENTS.md §23.3"
+    },
+    {
+     "name": "$PY scripts/sec_data_ingest.py --all",
+     "kind": "runner",
+     "direction": "calls",
+     "source": "config/n8n_run_allowlist.json command"
+    },
+    {
+     "name": "/tmp/sec_data_ingest.lock",
+     "kind": "lock",
+     "direction": "read_write",
+     "source": "config/n8n_run_allowlist.json lock (flock); PROPOSED: cron L150 has no flock today, a cron-granted packet adds flock -n /tmp/sec_data_ingest.lock before canary"
+    },
+    {
+     "name": "data/runtime/sec-data-ingest_last.json",
+     "kind": "receipt",
+     "direction": "write",
+     "source": "LaneRunReceipt / allowlist output_signal"
+    },
+    {
+     "name": "Postgres trade_ai ticker_strategy_classifications (active symbols) and sec_form4 (existing filings; READ ONLY in a dry run)",
+     "kind": "store",
+     "direction": "read",
+     "source": "scripts/sec_data_ingest.py :140-159, enforce_readonly :154"
+    },
+    {
+     "name": "SEC EDGAR data.sec.gov / www.sec.gov (free, no key; 0.15 s sleep per request, fair-access User-Agent); never called by the dry run",
+     "kind": "provider",
+     "direction": "calls",
+     "source": "scripts/sec_data_ingest.py :42-43, :69-90"
+    },
+    {
+     "name": "Postgres sec_form4 INSERT (new filings, deduped)",
+     "kind": "store",
+     "direction": "write",
+     "source": "scripts/sec_data_ingest.py :174"
+    },
+    {
+     "name": "pipeline_runs row (pipeline_registry.PipelineRun)",
+     "kind": "store",
+     "direction": "write",
+     "source": "scripts/sec_data_ingest.py :31, :366-370"
+    },
+    {
+     "name": "readers of sec_form4: run_sec_form4_momentum_context.py (cron L643), event_detector.py, research_circle, symbol_thesis_evidence, api_v2",
+     "kind": "consumer",
+     "direction": "read",
+     "source": "grep 'FROM sec_form4' scripts/ 2026-10-11"
+    },
+    {
+     "name": "cron L150 on served CURRENT ($PROJ), $PY = the dev-tree venv interpreter (crontab line 4) keeps doing the real work while this row is at shadow",
+     "kind": "cron_twin",
+     "direction": "calls",
+     "source": "crontab -l 2026-10-11 line 150"
+    }
+   ],
+   "healthy": [
+    {
+     "check": "shadow_dry_run_done",
+     "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+    },
+    {
+     "check": "dry_run_writes_nothing",
+     "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before, and the DRY-RUN line names the receipt it would write (a dry run writes nothing, AGENTS.md §6)"
+    },
+    {
+     "check": "cron_twin_output_fresh",
+     "text": "the live cron line L150 advances ok_at in data/runtime/sec-data-ingest_last.json once per weekday: on a market day it is younger than 26 h, over a weekend younger than 74 h"
+    },
+    {
+     "check": "duration_within_baseline",
+     "text": "duration <= 240.0 s (80% of timeout_s 300); measured: cron log logs/sec_ingest.log 2026-10-09: 15 symbols scanned, 30 new filings, log mtime 20:00 (under 1 min)"
+    }
+   ],
+   "degraded": [
+    {
+     "check": "late",
+     "text": "data/runtime/sec-data-ingest_last.json ok_at older than 26 h on a market day (one weekday slot missed) or older than 74 h across a weekend"
+    },
+    {
+     "check": "slow",
+     "text": "duration above 240.0 s"
+    },
+    {
+     "check": "retried",
+     "text": "a run needed attempt > 1 (retry_policy none, so only a manual re-request) or ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
+    },
+    {
+     "check": "upstream_stale",
+     "text": "an upstream input is stale or refused: ticker_strategy_classifications has active rows; data.sec.gov reachable (not machine-checked yet)"
+    },
+    {
+     "check": "failed_receipt_carried",
+     "text": "data/runtime/sec-data-ingest_last.json shows ok=false with the previous ok_at carried forward (the cron twin ran and failed honestly: exit 1 when nothing could be fetched)"
+    }
+   ],
+   "failed": [
+    {
+     "check": "run_failed",
+     "text": "a dispatcher fire ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+    },
+    {
+     "check": "no_receipt",
+     "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+    },
+    {
+     "check": "stale",
+     "text": "data/runtime/sec-data-ingest_last.json ok_at older than 50 h on a market day (two weekday slots missed) or older than 98 h across a weekend"
+    },
+    {
+     "check": "breaker_or_dlq",
+     "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+    },
+    {
+     "check": "dry_run_wrote",
+     "text": "a dry_run changed its output_signal, the store it owns, or any other durable state"
+    }
+   ],
+   "baseline": {
+    "freshness_degraded_after_h": 26.0,
+    "freshness_failed_after_h": 50.0,
+    "freshness_rule": "reviewed 2026-10-11: one fire per weekday (dispatch.cron 0 20 * * 1-5 America/New_York), so freshness is one missed weekday slot + 2 h (degraded) and two missed slots + 2 h (failed); over a weekend the gap is 72 h, hence 74 h / 98 h. The generator default (2x/3x expected_cadence_hours 72 = 144 h / 216 h) would hide a missed Monday until Thursday.",
+    "timeout_s": 300,
+    "class": "ingest",
+    "computed_on": "2026-10-11",
+    "basis": "CLASS_DEFAULT_PROVISIONAL",
+    "source": "fewer than 14 finished live runs in the coordination ledger (0); class defaults: duration degraded above 80% of timeout_s, freshness 2x/3x cadence, any RUN_FAILED/RUN_TIMEOUT/RUN_REFUSED failed",
+    "runs_considered": 0,
+    "duration_degraded_above_s": 240.0,
+    "freshness_closed_degraded_after_h": 74.0,
+    "freshness_closed_failed_after_h": 98.0,
+    "measured": "cron log logs/sec_ingest.log 2026-10-09: 15 symbols scanned, 30 new filings, log mtime 20:00 (under 1 min)"
+   },
+   "alerting": {
+    "lane_severity": "Medium",
+    "severity_basis": "inventory cron:L150 business_function=research (catalogue rule)",
+    "failed": {
+     "siem_severity": "WARN",
+     "notifier_priority": "P2"
+    },
+    "degraded": {
+     "siem_severity": "INFO",
+     "notifier_priority": "P3"
+    },
+    "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+    "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row `severity`, else the fan-in priority (RUN_* = P2 -> WARN). Wiring the bridge, notifier and diagnoser to this contract is the next build item (N8N_MONITORING_AND_REMEDIATION_STANDARD.md §7)."
+   },
+   "remediation": {
+    "catalogue_entry": false,
+    "diagnosis_excluded": false,
+    "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
+   },
+   "evidence": {
+    "receipt": "data/runtime/sec-data-ingest_last.json",
+    "verify": [
+     "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='sec-data-ingest' ORDER BY requested_at DESC LIMIT 10\"",
+     "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:sec-data-ingest' ORDER BY created_at DESC LIMIT 10",
+     "stat / jq the receipt: data/runtime/sec-data-ingest_last.json"
+    ],
+    "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger"
+   },
+   "review_by": "2026-10-25",
+   "review": {
+    "status": "REVIEWED",
+    "reviewed_on": "2026-10-11",
+    "reviewed_by": "agent KK (W4 provider owners), session https://claude.ai/code/session_018QBWwttnCspwJYNhNdqd14, for the registry owner research",
+    "method": "every field checked against the script source at origin/main e24ccd6c5, the live crontab (crontab -l, read-only, 2026-10-11), config/data_source_authority.json and the cron logs; the inventory free-text edges were replaced by source-cited edges",
+    "basis_note": "baseline stays CLASS_DEFAULT_PROVISIONAL: the ledger holds 0 live dispatcher runs of this lane, and dry-run fires never set a baseline; re-learn after 14 live runs (canary)"
+   }
+  },
+  {
+   "schema": "N8nHealthContract@v1",
+   "id": "social-ingest-all",
+   "kind": "lane",
+   "workflow_id": "tradeai-dispatcher",
+   "status": "REVIEWED",
+   "target_reason": "stage:shadow",
+   "stage": "shadow",
+   "purpose": {
+    "text": "Social owner (target writer of the social_posts domain): on weekdays at 06:00 ET, ingest StockTwits trending and strategy-symbol streams plus Reddit (official OAuth API, 12 subreddits) into social_posts.",
+    "business_function": "research",
+    "source": "scripts/social_ingest.py module docstring (:1-30), lane_id_for :541; config/data_source_authority.json domain social_posts (writer_target scripts/social_ingest.py, writer_status UNCONSOLIDATED); inventory cron:L243"
+   },
+   "owner": "research",
+   "connects_to": [
+    {
+     "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+     "kind": "service",
+     "direction": "calls",
+     "source": "AGENTS.md §23.3"
+    },
+    {
+     "name": "$PY scripts/social_ingest.py --source all",
+     "kind": "runner",
+     "direction": "calls",
+     "source": "config/n8n_run_allowlist.json command"
+    },
+    {
+     "name": "/tmp/social_ingest_all.lock",
+     "kind": "lock",
+     "direction": "read_write",
+     "source": "config/n8n_run_allowlist.json lock (flock); PROPOSED: cron L243 has no flock today, a cron-granted packet adds flock -n /tmp/social_ingest_all.lock before canary"
+    },
+    {
+     "name": "data/runtime/social-ingest-all_last.json",
+     "kind": "receipt",
+     "direction": "write",
+     "source": "LaneRunReceipt / allowlist output_signal"
+    },
+    {
+     "name": "holdings.json symbols and the strategy symbol sets (plan :557); Postgres social_posts for dedupe",
+     "kind": "store",
+     "direction": "read",
+     "source": "scripts/social_ingest.py :47-53, :91, :254"
+    },
+    {
+     "name": "StockTwits public API api.stocktwits.com (streams + trending, no key) and Reddit oauth.reddit.com (REDDIT_CLIENT_ID/SECRET via resolve_secret); never called by the dry run",
+     "kind": "provider",
+     "direction": "calls",
+     "source": "scripts/social_ingest.py :70, :152-186, :348"
+    },
+    {
+     "name": "Postgres social_posts INSERT (platform stocktwits / reddit, deduped on post_id)",
+     "kind": "store",
+     "direction": "write",
+     "source": "scripts/social_ingest.py :118, :269, :463"
+    },
+    {
+     "name": "data_source health row 'reddit' (lib.data_source_report.report_source) and pipeline_runs row",
+     "kind": "store",
+     "direction": "write",
+     "source": "scripts/social_ingest.py :209, run_start"
+    },
+    {
+     "name": "readers of social_posts: scripts/lib/data_broker/social_feed.py projection, social_scalp_scanner.py (cron L246), aegis/hermes sentiment, api_v2",
+     "kind": "consumer",
+     "direction": "read",
+     "source": "grep 'FROM social_posts' scripts/ 2026-10-11"
+    },
+    {
+     "name": "cron L243 on served CURRENT ($PROJ), $PY = the dev-tree venv interpreter (crontab line 4) keeps doing the real work while this row is at shadow; L243 is DEFERRED_CONSOLIDATION_PLAN in config/pipelines/premarket.json, not a C1 stage step",
+     "kind": "cron_twin",
+     "direction": "calls",
+     "source": "crontab -l 2026-10-11 line 243; config/pipelines/premarket.json inv cron:L243"
+    }
+   ],
+   "healthy": [
+    {
+     "check": "shadow_dry_run_done",
+     "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+    },
+    {
+     "check": "dry_run_writes_nothing",
+     "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before, and the DRY-RUN line names the receipt it would write (a dry run writes nothing, AGENTS.md §6)"
+    },
+    {
+     "check": "cron_twin_output_fresh",
+     "text": "the live cron line L243 advances ok_at in data/runtime/social-ingest-all_last.json once per weekday: on a market day it is younger than 26 h, over a weekend younger than 74 h"
+    },
+    {
+     "check": "duration_within_baseline",
+     "text": "duration <= 240.0 s (80% of timeout_s 300); measured: pipeline_runs median 52.4 s over 5 runs (config/pipelines/premarket.json measured block for cron:L243)"
+    }
+   ],
+   "degraded": [
+    {
+     "check": "late",
+     "text": "data/runtime/social-ingest-all_last.json ok_at older than 26 h on a market day (one weekday slot missed) or older than 74 h across a weekend"
+    },
+    {
+     "check": "slow",
+     "text": "duration above 240.0 s"
+    },
+    {
+     "check": "retried",
+     "text": "a run needed attempt > 1 (retry_policy none, so only a manual re-request) or ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
+    },
+    {
+     "check": "upstream_stale",
+     "text": "an upstream input is stale or refused: StockTwits reachable (HTTP 429 is recorded as an error); Reddit OAuth configured (REDDIT_NOT_CONFIGURED otherwise) (not machine-checked yet)"
+    },
+    {
+     "check": "failed_receipt_carried",
+     "text": "data/runtime/social-ingest-all_last.json shows ok=false with the previous ok_at carried forward (the cron twin ran and failed honestly: exit 1 when nothing could be fetched)"
+    }
+   ],
+   "failed": [
+    {
+     "check": "run_failed",
+     "text": "a dispatcher fire ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+    },
+    {
+     "check": "no_receipt",
+     "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+    },
+    {
+     "check": "stale",
+     "text": "data/runtime/social-ingest-all_last.json ok_at older than 50 h on a market day (two weekday slots missed) or older than 98 h across a weekend"
+    },
+    {
+     "check": "breaker_or_dlq",
+     "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+    },
+    {
+     "check": "dry_run_wrote",
+     "text": "a dry_run changed its output_signal, the store it owns, or any other durable state"
+    }
+   ],
+   "baseline": {
+    "freshness_degraded_after_h": 26.0,
+    "freshness_failed_after_h": 50.0,
+    "freshness_rule": "reviewed 2026-10-11: one fire per weekday (dispatch.cron 0 6 * * 1-5 America/New_York), so freshness is one missed weekday slot + 2 h (degraded) and two missed slots + 2 h (failed); over a weekend the gap is 72 h, hence 74 h / 98 h. The generator default (2x/3x expected_cadence_hours 72 = 144 h / 216 h) would hide a missed Monday until Thursday.",
+    "timeout_s": 300,
+    "class": "ingest",
+    "computed_on": "2026-10-11",
+    "basis": "CLASS_DEFAULT_PROVISIONAL",
+    "source": "fewer than 14 finished live runs in the coordination ledger (0); class defaults: duration degraded above 80% of timeout_s, freshness 2x/3x cadence, any RUN_FAILED/RUN_TIMEOUT/RUN_REFUSED failed",
+    "runs_considered": 0,
+    "duration_degraded_above_s": 240.0,
+    "freshness_closed_degraded_after_h": 74.0,
+    "freshness_closed_failed_after_h": 98.0,
+    "measured": "pipeline_runs median 52.4 s over 5 runs (config/pipelines/premarket.json measured block for cron:L243)"
+   },
+   "alerting": {
+    "lane_severity": "Medium",
+    "severity_basis": "inventory cron:L243 business_function=research (catalogue rule)",
+    "failed": {
+     "siem_severity": "WARN",
+     "notifier_priority": "P2"
+    },
+    "degraded": {
+     "siem_severity": "INFO",
+     "notifier_priority": "P3"
+    },
+    "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+    "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row `severity`, else the fan-in priority (RUN_* = P2 -> WARN). Wiring the bridge, notifier and diagnoser to this contract is the next build item (N8N_MONITORING_AND_REMEDIATION_STANDARD.md §7)."
+   },
+   "remediation": {
+    "catalogue_entry": false,
+    "diagnosis_excluded": false,
+    "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
+   },
+   "evidence": {
+    "receipt": "data/runtime/social-ingest-all_last.json",
+    "verify": [
+     "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='social-ingest-all' ORDER BY requested_at DESC LIMIT 10\"",
+     "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:social-ingest-all' ORDER BY created_at DESC LIMIT 10",
+     "stat / jq the receipt: data/runtime/social-ingest-all_last.json"
+    ],
+    "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger"
+   },
+   "review_by": "2026-10-25",
+   "review": {
+    "status": "REVIEWED",
+    "reviewed_on": "2026-10-11",
+    "reviewed_by": "agent KK (W4 provider owners), session https://claude.ai/code/session_018QBWwttnCspwJYNhNdqd14, for the registry owner research",
+    "method": "every field checked against the script source at origin/main e24ccd6c5, the live crontab (crontab -l, read-only, 2026-10-11), config/data_source_authority.json and the cron logs; the inventory free-text edges were replaced by source-cited edges",
+    "basis_note": "baseline stays CLASS_DEFAULT_PROVISIONAL: the ledger holds 0 live dispatcher runs of this lane, and dry-run fires never set a baseline; re-learn after 14 live runs (canary)"
+   }
   }
  ]
 }

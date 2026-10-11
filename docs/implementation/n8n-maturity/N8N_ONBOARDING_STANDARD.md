@@ -363,12 +363,12 @@ Full procedure, per lane, in the companion `N8N_MONITORING_AND_REMEDIATION_STAND
 | Gateway `/due` | matcher built once (#1667, RC11), served since `8ddf2ad59` 18:40 ET: 510 → 10 ms per call | `tests/test_gateway_due_latency_20261010.py` |
 | Generic workflows | **live:** dispatcher (since 17:14), event router (18:40), incident router (18:44), digest scheduler (18:47 ET); **held:** heartbeat watcher, approval router | `workflow_entity.active`, `packets/w0-import-six/republish-20261010.txt` |
 | Live per-lane n8n workflows | 4: `n8n-incident-fanin` (722fac0e043ea5c4), `n8n-pilot-dispatch` (078e8fcbea0c5020), `n8n-research-intake-consumer` (21fd15d5f8a4c4da), `crontab-snapshot-for-health-agent` (c0d4c7845e5c4fcc) | registry `kind: n8n` ACTIVE rows |
-| Shadow rows | 55 served (wave 1: 22, #1656; wave 2: 14, #1661; wave 3: 19 R1, #1665); 54 on main after #1674 moved `hermes-config-governor` into the `hermes_learning` stage | registry `stage: shadow` |
+| Shadow rows | 55 served (wave 1: 22, #1656; wave 2: 14, #1661; wave 3: 19 R1, #1665); 54 on main after #1674 moved `hermes-config-governor` into the `hermes_learning` stage; +3 W4 provider owners (R1 `ingest`: `finviz-enrichment` L142, `sec-data-ingest` L150, `social-ingest-all` L243) on branch `n8nmat/w4-provider-owners-shadow` (2026-10-11), the first rows with REVIEWED contracts | registry `stage: shadow` |
 | Flock for R1 learn lanes | L318, L314, L427 `flock -n` installed 16:20 ET (cron grant 08c0bb77ec898136; backup `~/.local/state/tradeai/backups/crontab-20261010T202023Z-pre-wave23-flock.txt`) | `packets/wave23-flock/` |
 | Incident notifier | cron L1052, ACTIVE since 2026-10-09 23:34 ET | registry `incident-notifier` (#1654) |
 | SIEM bridge, diagnoser | registry rows PAUSED (#1657), not installed | `packets/siem-diagnoser-schedule/` |
 | Retry policies / caps | `config/n8n_retry_policies.json` | §3, §6 |
-| Health contracts | 68 DRAFT (59 lanes, 6 generic, 3 host monitors) | `config/n8n_health_contracts.json` |
+| Health contracts | 68 DRAFT (59 lanes, 6 generic, 3 host monitors); +3 REVIEWED with the W4 rows (2026-10-11) | `config/n8n_health_contracts.json` |
 
 ---
 
