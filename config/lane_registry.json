@@ -11139,6 +11139,168 @@
       "adopted_reason": "W4 provider-owner shadow: adopted unchanged to keep its lane_id stable. Once the same script's social-ingest-all row is hand-maintained, the generator would re-derive this row as `social-ingest` (a rename with no change on the host); the receipt name social-ingest-stocktwits is fixed by scripts/social_ingest.py lane_id_for (:541)."
     },
     {
+      "lane_id": "news-ingestion",
+      "owner": "research",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "30 12 * * 1-5",
+        "match": "$PROJ && $PY scripts/news_ingestion.py --priority",
+        "stage": "shadow",
+        "wave": "W4",
+        "command_text": "cd $PROJ && $PY scripts/news_ingestion.py --priority >> logs/news_ingestion.log 2>&1"
+      },
+      "expected_cadence_hours": 72.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/news-ingestion_last.json",
+        "key": "ok_at"
+      },
+      "value_class": "Business Critical",
+      "recommendation": "PIPELINE:P03",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L193",
+        "pipeline": "P03",
+        "value_class": "Business Critical",
+        "recommendation": "PIPELINE:P03",
+        "f_recommendation": "KEEP (inside its pipeline)",
+        "event_driven_candidate": false,
+        "f_evidence": "core advisory/protection/data path; healthy logs today"
+      },
+      "operator_ruling": {
+        "recommendation": "PIPELINE:P03",
+        "ruled_on": "2026-10-11",
+        "by": "operator",
+        "text": "operator ruling 2026-10-11: news ingest joins W4 — drop its KEEP_ON_CRON tag (the F-review text 'KEEP (inside its pipeline)' was normalised to KEEP_ON_CRON; no broker/order/secret token forced it)"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-10-11",
+      "adopted_reason": "consolidation W4 news-ingest owner (scripts/news_ingestion.py, writer_target of catalyst_news / news_articles) in dispatcher SHADOW (R1 ingest, AGENTS §23.18, 4.4.0 cron-row shape): a row carrying a reviewed dispatch block is hand-maintained (AGENTS §23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop the block. Cron line L193 (crontab -l, 2026-10-11; inventory cron:L193) keeps doing the real work; the dispatcher fires the --dry-run only. Split from the generated multi-schedule row (30 12 * * 1-5 + 30 0 * * *): a cron shadow row needs a 5-field expression (lane_dispatch.r1_shadow_on_cron_shape) and a multi-line match list is not read by check_lane_registry yet (N8N_ONBOARDING_STANDARD §3), so the weekday line keeps this lane_id and the nightly line L649 is its own row news-ingestion-overnight. Both lines run the same argv, so both rows read the one --priority LaneRunReceipt@v1 (scripts/news_ingestion.py LANE_IDS).",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "30 12 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "ingest",
+        "priority": 5,
+        "retry_policy": "none"
+      }
+    },
+    {
+      "lane_id": "news-ingestion-overnight",
+      "owner": "research",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "30 0 * * *",
+        "match": "/tmp/news_priority_overnight.lock timeout 45m $PY scripts/news_ingestion.py --priority",
+        "stage": "shadow",
+        "wave": "W4",
+        "command_text": "cd $PROJ && flock -n /tmp/news_priority_overnight.lock timeout 45m $PY scripts/news_ingestion.py --priority >> logs/news_ingestion.log 2>&1"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/news-ingestion_last.json",
+        "key": "ok_at"
+      },
+      "value_class": "Business Critical",
+      "recommendation": "PIPELINE:P03",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L646",
+        "pipeline": "P03",
+        "value_class": "Business Critical",
+        "recommendation": "PIPELINE:P03",
+        "f_recommendation": "KEEP (inside its pipeline)",
+        "event_driven_candidate": false,
+        "f_evidence": "core advisory/protection/data path; healthy logs today"
+      },
+      "operator_ruling": {
+        "recommendation": "PIPELINE:P03",
+        "ruled_on": "2026-10-11",
+        "by": "operator",
+        "text": "operator ruling 2026-10-11: news ingest joins W4 — drop its KEEP_ON_CRON tag (the F-review text 'KEEP (inside its pipeline)' was normalised to KEEP_ON_CRON; no broker/order/secret token forced it)"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-10-11",
+      "adopted_reason": "consolidation W4 news-ingest owner (scripts/news_ingestion.py, writer_target of catalyst_news / news_articles) in dispatcher SHADOW (R1 ingest, AGENTS §23.18, 4.4.0 cron-row shape): a row carrying a reviewed dispatch block is hand-maintained (AGENTS §23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop the block. Cron line L649 (crontab -l, 2026-10-11; inventory cron:L646) keeps doing the real work; the dispatcher fires the --dry-run only. Split out of news-ingestion (see its adopted_reason); same argv as L193, same receipt. The line already holds flock -n /tmp/news_priority_overnight.lock, which the allowlist names.",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "30 0 * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "ingest",
+        "priority": 5,
+        "retry_policy": "none"
+      }
+    },
+    {
+      "lane_id": "news-ingestion-tail",
+      "owner": "research",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 10,14,18 * * 0,6",
+        "match": "scripts/news_ingestion.py --tail-rotate",
+        "stage": "shadow",
+        "wave": "W4",
+        "command_text": "cd $PROJ && flock -n /tmp/news_tail_rotate.lock timeout 90m $PY scripts/news_ingestion.py --tail-rotate >> logs/news_ingestion.log 2>&1"
+      },
+      "expected_cadence_hours": 136.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/news-ingestion-tail_last.json",
+        "key": "ok_at"
+      },
+      "value_class": "Business Critical",
+      "recommendation": "PIPELINE:P03",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L647",
+        "pipeline": "P03",
+        "value_class": "Business Critical",
+        "recommendation": "PIPELINE:P03",
+        "f_recommendation": "KEEP (inside its pipeline)",
+        "event_driven_candidate": false,
+        "f_evidence": "core advisory/protection/data path; healthy logs today"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "operator_ruling": {
+        "recommendation": "PIPELINE:P03",
+        "ruled_on": "2026-10-11",
+        "by": "operator",
+        "text": "operator ruling 2026-10-11: news ingest joins W4 — drop its KEEP_ON_CRON tag (the F-review text 'KEEP (inside its pipeline)' was normalised to KEEP_ON_CRON; no broker/order/secret token forced it)"
+      },
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-10-11",
+      "adopted_reason": "consolidation W4 news-ingest owner (scripts/news_ingestion.py, writer_target of catalyst_news / news_articles) in dispatcher SHADOW (R1 ingest, AGENTS §23.18, 4.4.0 cron-row shape): a row carrying a reviewed dispatch block is hand-maintained (AGENTS §23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop the block. Cron line L650 (crontab -l, 2026-10-11; inventory cron:L647) keeps doing the real work; the dispatcher fires the --dry-run only. output_signal moved from the rotation-state mtime (data/runtime/news_ingest_rotation.json, checkout-relative) to the LaneRunReceipt@v1 the refactored script writes on every real --tail-rotate run.",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "0 10,14,18 * * 0,6"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "ingest",
+        "priority": 5,
+        "retry_policy": "none"
+      }
+    },
+    {
       "lane_id": "run-scheduled-quote-refresh-incubator",
       "owner": "portfolio",
       "scheduler": {
@@ -12056,50 +12218,6 @@
       "flags": [
         "UNVERIFIED_OUTPUT"
       ]
-    },
-    {
-      "lane_id": "news-ingestion",
-      "owner": "research",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "30 12 * * 1-5 + 30 0 * * *",
-        "match": "scripts/news_ingestion.py --priority",
-        "schedules": [
-          "30 12 * * 1-5",
-          "30 0 * * *"
-        ]
-      },
-      "expected_cadence_hours": 24.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/news_ingestion.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Business Critical",
-      "recommendation": "KEEP_ON_CRON",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L193",
-        "pipeline": "P03",
-        "value_class": "Business Critical",
-        "recommendation": "KEEP_ON_CRON",
-        "f_recommendation": "KEEP (inside its pipeline)",
-        "event_driven_candidate": false,
-        "f_evidence": "core advisory/protection/data path; healthy logs today",
-        "f_ids": [
-          "L193",
-          "L646"
-        ],
-        "f_recommendations": [
-          "KEEP_ON_CRON",
-          "KEEP_ON_CRON"
-        ]
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
     },
     {
       "lane_id": "run-scheduled-watchpool-alerts-maturity",
@@ -16671,39 +16789,6 @@
         "token": "stop_drift_alert",
         "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
       }
-    },
-    {
-      "lane_id": "news-ingestion-tail",
-      "owner": "research",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "0 10,14,18 * * 0,6",
-        "match": "scripts/news_ingestion.py --tail-rotate"
-      },
-      "expected_cadence_hours": 136.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "data/runtime/news_ingest_rotation.json",
-        "evidence": "SCRIPT_RECEIPT",
-        "evidence_ref": "scripts/news_ingestion.py:42 ROTATION_FILE saved in tail_rotate mode (:553); host mtime 2026-10-04T18:05:21 (Sun 18:00 run)"
-      },
-      "value_class": "Business Critical",
-      "recommendation": "KEEP_ON_CRON",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L647",
-        "pipeline": "P03",
-        "value_class": "Business Critical",
-        "recommendation": "KEEP_ON_CRON",
-        "f_recommendation": "KEEP (inside its pipeline)",
-        "event_driven_candidate": false,
-        "f_evidence": "core advisory/protection/data path; healthy logs today"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
     },
     {
       "lane_id": "hermes-scope-governor",

@@ -11527,6 +11527,612 @@
     "method": "every field checked against the script source at origin/main e24ccd6c5, the live crontab (crontab -l, read-only, 2026-10-11), config/data_source_authority.json and the cron logs; the inventory free-text edges were replaced by source-cited edges",
     "basis_note": "baseline stays CLASS_DEFAULT_PROVISIONAL: the ledger holds 0 live dispatcher runs of this lane, and dry-run fires never set a baseline; re-learn after 14 live runs (canary)"
    }
+  },
+  {
+   "schema": "N8nHealthContract@v1",
+   "id": "news-ingestion",
+   "kind": "lane",
+   "workflow_id": "tradeai-dispatcher",
+   "status": "REVIEWED",
+   "target_reason": "stage:shadow",
+   "stage": "shadow",
+   "purpose": {
+    "text": "News-ingest owner (writer_target of catalyst_news): the --priority run fetches Yahoo RSS, Google News RSS and (with a key) Benzinga for the proposal queue, holdings, actionable names and the classified universe up to NEWS_INGEST_MAX (60) plus the CIO opportunity lane, and writes new articles to news_articles with catalyst_events and sentiment_observations rows. This row is the weekday 12:30 ET line.",
+    "business_function": "research",
+    "source": "scripts/news_ingestion.py module docstring (:1-40), LANE_IDS / lane_id_for (:589, :631); config/data_source_authority.json domain catalyst_news; inventory cron:L193"
+   },
+   "owner": "research",
+   "connects_to": [
+    {
+     "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+     "kind": "service",
+     "direction": "calls",
+     "source": "AGENTS.md §23.3"
+    },
+    {
+     "name": "$PY scripts/news_ingestion.py --priority",
+     "kind": "runner",
+     "direction": "calls",
+     "source": "config/n8n_run_allowlist.json command"
+    },
+    {
+     "name": "/tmp/news_priority_overnight.lock",
+     "kind": "lock",
+     "direction": "read_write",
+     "source": "config/n8n_run_allowlist.json lock (flock); PROPOSED: cron L193 has no flock today, a cron-granted packet adds flock -n /tmp/news_priority_overnight.lock before canary"
+    },
+    {
+     "name": "data/runtime/news-ingestion_last.json",
+     "kind": "receipt",
+     "direction": "write",
+     "source": "LaneRunReceipt / allowlist output_signal; shared by news-ingestion (L193) and news-ingestion-overnight (L649): same argv --priority"
+    },
+    {
+     "name": "Postgres reads for the symbol list: paper_trade_proposals, paper_trades, trade_ai_scans, watchlist_items, ticker_strategy_classifications, incubator_universe; holdings.json (held lane); the CIO opportunity projection (lib.cio_opportunity_store) beyond the cap",
+     "kind": "store",
+     "direction": "read",
+     "source": "scripts/news_ingestion.py _get_actionable_pairs :101, _get_full_universe_pairs :155, _proposal_queue_pairs :209, _opportunity_lane_pairs :224"
+    },
+    {
+     "name": "symbol_profiles description and the 52-week reference (news_symbol_guard) per symbol; research_sources (hermes_source_policy.should_ingest)",
+     "kind": "store",
+     "direction": "read",
+     "source": "scripts/news_ingestion.py _scan_symbols :424-461"
+    },
+    {
+     "name": "Yahoo Finance RSS feeds.finance.yahoo.com and Google News RSS news.google.com (no key); Benzinga API api.benzinga.com when BENZINGA_API_KEY is set; never called by the dry run",
+     "kind": "provider",
+     "direction": "calls",
+     "source": "scripts/news_ingestion.py _fetch_yahoo_rss :277, _fetch_google_news_rss :297, _fetch_benzinga_api :335"
+    },
+    {
+     "name": "Postgres news_articles INSERT through lib/writers/news_articles_writer.py (the one write path, deduped on symbol + source_url/title); catalyst_events and sentiment_observations rows per new article",
+     "kind": "store",
+     "direction": "write",
+     "source": "scripts/news_ingestion.py :475 write_news_articles, _feed_downstream :362-409; config/data_source_authority.json domain catalyst_news (writer news_articles_writer.py, writer_facade news_ingestion.py)"
+    },
+    {
+     "name": "pipeline_runs row (pipeline_registry.run_start 'news_ingestion')",
+     "kind": "store",
+     "direction": "write",
+     "source": "scripts/news_ingestion.py main run_start"
+    },
+    {
+     "name": "watchlist mismatch purge (news_symbol_guard.purge_mismatched_watchlist, apply=True) before the scan",
+     "kind": "store",
+     "direction": "write",
+     "source": "scripts/news_ingestion.py ingest :520-525"
+    },
+    {
+     "name": "readers of news_articles: the catalyst_record projection (scripts/lib/data_broker/catalyst_record.py), news_to_catalyst.py, sentiment_processor, the Major News grid and opportunity modal in api_v2, and 86 scripts with a direct SELECT (§24.3 count, grep 'FROM news_articles' scripts/ 2026-10-11)",
+     "kind": "consumer",
+     "direction": "read",
+     "source": "grep -rl 'FROM news_articles' scripts --include=*.py | wc -l = 86 (2026-10-11)"
+    },
+    {
+     "name": "cron L193 on served CURRENT ($PROJ), $PY = the dev-tree venv interpreter (crontab line 4) keeps doing the real work while this row is at shadow; not a step of any config/pipelines manifest",
+     "kind": "cron_twin",
+     "direction": "calls",
+     "source": "crontab -l 2026-10-11 line 193 (inventory cron:L193); grep news_ingestion config/pipelines/ = none"
+    }
+   ],
+   "healthy": [
+    {
+     "check": "shadow_dry_run_done",
+     "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+    },
+    {
+     "check": "dry_run_writes_nothing",
+     "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before, and the DRY-RUN line names the receipt it would write (a dry run writes nothing, AGENTS.md §6)"
+    },
+    {
+     "check": "cron_twin_output_fresh",
+     "text": "the live cron lines advance ok_at in data/runtime/news-ingestion_last.json twice per market day (00:30 and 12:30 ET) and once per weekend day (00:30): younger than 14 h on a market day, 26 h otherwise"
+    },
+    {
+     "check": "duration_within_baseline",
+     "text": "duration <= 720.0 s (80% of timeout_s 900); measured: heartbeat 16:32:58-16:34:07Z for the 12:30 ET fire, 2026-10-05..10-09: 2.5-4.1 min, 60-85 symbols (logs/news_ingestion.log)"
+    }
+   ],
+   "degraded": [
+    {
+     "check": "late",
+     "text": "data/runtime/news-ingestion_last.json ok_at older than 14 h on a market day or older than 26 h across a closed-market window"
+    },
+    {
+     "check": "slow",
+     "text": "duration above 720.0 s"
+    },
+    {
+     "check": "retried",
+     "text": "a run needed attempt > 1 (retry_policy none, so only a manual re-request) or ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
+    },
+    {
+     "check": "upstream_stale",
+     "text": "an upstream input is stale or refused: Yahoo / Google News RSS reachable, Benzinga key valid; the fetchers swallow errors (return []), so a dead provider shows only as new_articles = 0 in the receipt summary (not machine-checked yet)"
+    },
+    {
+     "check": "failed_receipt_carried",
+     "text": "data/runtime/news-ingestion_last.json shows status failed with the previous ok_at carried forward (the cron twin ran and raised: DB connect or query error, exit 1)"
+    }
+   ],
+   "failed": [
+    {
+     "check": "run_failed",
+     "text": "a dispatcher fire ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+    },
+    {
+     "check": "no_receipt",
+     "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+    },
+    {
+     "check": "stale",
+     "text": "data/runtime/news-ingestion_last.json ok_at older than 26 h on a market day or older than 50 h across a closed-market window"
+    },
+    {
+     "check": "breaker_or_dlq",
+     "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+    },
+    {
+     "check": "dry_run_wrote",
+     "text": "a dry_run changed its output_signal, the store it owns, or any other durable state"
+    }
+   ],
+   "baseline": {
+    "freshness_degraded_after_h": 14.0,
+    "freshness_failed_after_h": 26.0,
+    "freshness_rule": "reviewed 2026-10-11: the --priority receipt is written by two cron lines (L193 30 12 * * 1-5 and L649 30 0 * * *), so on a market day it advances every 12 h: one missed slot + 2 h = 14 h (degraded), two missed slots + 2 h = 26 h (failed). Saturday, Sunday and Monday morning have only the 00:30 fire (24 h gap), hence 26 h / 50 h. The generator default (2x/3x expected_cadence_hours) would be 144/216 h for the weekday row. The receipt cannot say which line wrote it; started_at (12:30 vs 00:30 ET) does. catalyst_news declares stale_after_hours 18 (config/data_source_authority.json), inside the failed bound.",
+    "timeout_s": 900,
+    "class": "ingest",
+    "computed_on": "2026-10-11",
+    "basis": "CLASS_DEFAULT_PROVISIONAL",
+    "source": "fewer than 14 finished live runs in the coordination ledger (0); class defaults: duration degraded above 80% of timeout_s, freshness 2x/3x cadence, any RUN_FAILED/RUN_TIMEOUT/RUN_REFUSED failed",
+    "runs_considered": 0,
+    "duration_degraded_above_s": 720.0,
+    "freshness_closed_degraded_after_h": 26.0,
+    "freshness_closed_failed_after_h": 50.0,
+    "measured": "heartbeat 16:32:58-16:34:07Z for the 12:30 ET fire, 2026-10-05..10-09: 2.5-4.1 min, 60-85 symbols (logs/news_ingestion.log)"
+   },
+   "alerting": {
+    "lane_severity": "Medium",
+    "severity_basis": "inventory cron:L193 business_function=research (catalogue rule)",
+    "failed": {
+     "siem_severity": "WARN",
+     "notifier_priority": "P2"
+    },
+    "degraded": {
+     "siem_severity": "INFO",
+     "notifier_priority": "P3"
+    },
+    "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+    "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row `severity`, else the fan-in priority (RUN_* = P2 -> WARN). Wiring the bridge, notifier and diagnoser to this contract is the next build item (N8N_MONITORING_AND_REMEDIATION_STANDARD.md §7)."
+   },
+   "remediation": {
+    "catalogue_entry": false,
+    "diagnosis_excluded": false,
+    "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
+   },
+   "evidence": {
+    "receipt": "data/runtime/news-ingestion_last.json",
+    "verify": [
+     "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='news-ingestion' ORDER BY requested_at DESC LIMIT 10\"",
+     "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:news-ingestion' ORDER BY created_at DESC LIMIT 10",
+     "stat / jq the receipt: data/runtime/news-ingestion_last.json"
+    ],
+    "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger"
+   },
+   "review_by": "2026-10-25",
+   "review": {
+    "status": "REVIEWED",
+    "reviewed_on": "2026-10-11",
+    "reviewed_by": "agent VV (news-ingest joins W4), session https://claude.ai/code/session_018QBWwttnCspwJYNhNdqd14, for the registry owner research",
+    "method": "every field checked against scripts/news_ingestion.py on branch n8nmat/news-ingest-w4, the live crontab (crontab -l, read-only, 2026-10-11), config/data_source_authority.json and the heartbeat lines in logs/news_ingestion.log (served CURRENT); the inventory free-text edges were replaced by source-cited edges",
+    "basis_note": "baseline stays CLASS_DEFAULT_PROVISIONAL: the ledger holds 0 live dispatcher runs of this lane, and dry-run fires never set a baseline; re-learn after 14 live runs (canary)"
+   }
+  },
+  {
+   "schema": "N8nHealthContract@v1",
+   "id": "news-ingestion-overnight",
+   "kind": "lane",
+   "workflow_id": "tradeai-dispatcher",
+   "status": "REVIEWED",
+   "target_reason": "stage:shadow",
+   "stage": "shadow",
+   "purpose": {
+    "text": "News-ingest owner (writer_target of catalyst_news): the --priority run fetches Yahoo RSS, Google News RSS and (with a key) Benzinga for the proposal queue, holdings, actionable names and the classified universe up to NEWS_INGEST_MAX (60) plus the CIO opportunity lane, and writes new articles to news_articles with catalyst_events and sentiment_observations rows. This row is the nightly 00:30 ET line (every day, flock + timeout 45m).",
+    "business_function": "research",
+    "source": "scripts/news_ingestion.py module docstring (:1-40), LANE_IDS / lane_id_for (:589, :631); config/data_source_authority.json domain catalyst_news; inventory cron:L646"
+   },
+   "owner": "research",
+   "connects_to": [
+    {
+     "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+     "kind": "service",
+     "direction": "calls",
+     "source": "AGENTS.md §23.3"
+    },
+    {
+     "name": "$PY scripts/news_ingestion.py --priority",
+     "kind": "runner",
+     "direction": "calls",
+     "source": "config/n8n_run_allowlist.json command"
+    },
+    {
+     "name": "/tmp/news_priority_overnight.lock",
+     "kind": "lock",
+     "direction": "read_write",
+     "source": "config/n8n_run_allowlist.json lock (flock) = the live cron line's own flock -n /tmp/news_priority_overnight.lock"
+    },
+    {
+     "name": "data/runtime/news-ingestion_last.json",
+     "kind": "receipt",
+     "direction": "write",
+     "source": "LaneRunReceipt / allowlist output_signal; shared by news-ingestion (L193) and news-ingestion-overnight (L649): same argv --priority"
+    },
+    {
+     "name": "Postgres reads for the symbol list: paper_trade_proposals, paper_trades, trade_ai_scans, watchlist_items, ticker_strategy_classifications, incubator_universe; holdings.json (held lane); the CIO opportunity projection (lib.cio_opportunity_store) beyond the cap",
+     "kind": "store",
+     "direction": "read",
+     "source": "scripts/news_ingestion.py _get_actionable_pairs :101, _get_full_universe_pairs :155, _proposal_queue_pairs :209, _opportunity_lane_pairs :224"
+    },
+    {
+     "name": "symbol_profiles description and the 52-week reference (news_symbol_guard) per symbol; research_sources (hermes_source_policy.should_ingest)",
+     "kind": "store",
+     "direction": "read",
+     "source": "scripts/news_ingestion.py _scan_symbols :424-461"
+    },
+    {
+     "name": "Yahoo Finance RSS feeds.finance.yahoo.com and Google News RSS news.google.com (no key); Benzinga API api.benzinga.com when BENZINGA_API_KEY is set; never called by the dry run",
+     "kind": "provider",
+     "direction": "calls",
+     "source": "scripts/news_ingestion.py _fetch_yahoo_rss :277, _fetch_google_news_rss :297, _fetch_benzinga_api :335"
+    },
+    {
+     "name": "Postgres news_articles INSERT through lib/writers/news_articles_writer.py (the one write path, deduped on symbol + source_url/title); catalyst_events and sentiment_observations rows per new article",
+     "kind": "store",
+     "direction": "write",
+     "source": "scripts/news_ingestion.py :475 write_news_articles, _feed_downstream :362-409; config/data_source_authority.json domain catalyst_news (writer news_articles_writer.py, writer_facade news_ingestion.py)"
+    },
+    {
+     "name": "pipeline_runs row (pipeline_registry.run_start 'news_ingestion')",
+     "kind": "store",
+     "direction": "write",
+     "source": "scripts/news_ingestion.py main run_start"
+    },
+    {
+     "name": "watchlist mismatch purge (news_symbol_guard.purge_mismatched_watchlist, apply=True) before the scan",
+     "kind": "store",
+     "direction": "write",
+     "source": "scripts/news_ingestion.py ingest :520-525"
+    },
+    {
+     "name": "readers of news_articles: the catalyst_record projection (scripts/lib/data_broker/catalyst_record.py), news_to_catalyst.py, sentiment_processor, the Major News grid and opportunity modal in api_v2, and 86 scripts with a direct SELECT (§24.3 count, grep 'FROM news_articles' scripts/ 2026-10-11)",
+     "kind": "consumer",
+     "direction": "read",
+     "source": "grep -rl 'FROM news_articles' scripts --include=*.py | wc -l = 86 (2026-10-11)"
+    },
+    {
+     "name": "cron L649 on served CURRENT ($PROJ), $PY = the dev-tree venv interpreter (crontab line 4) keeps doing the real work while this row is at shadow; not a step of any config/pipelines manifest",
+     "kind": "cron_twin",
+     "direction": "calls",
+     "source": "crontab -l 2026-10-11 line 649 (inventory cron:L646); grep news_ingestion config/pipelines/ = none"
+    }
+   ],
+   "healthy": [
+    {
+     "check": "shadow_dry_run_done",
+     "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+    },
+    {
+     "check": "dry_run_writes_nothing",
+     "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before, and the DRY-RUN line names the receipt it would write (a dry run writes nothing, AGENTS.md §6)"
+    },
+    {
+     "check": "cron_twin_output_fresh",
+     "text": "the live cron lines advance ok_at in data/runtime/news-ingestion_last.json twice per market day (00:30 and 12:30 ET) and once per weekend day (00:30): younger than 14 h on a market day, 26 h otherwise"
+    },
+    {
+     "check": "duration_within_baseline",
+     "text": "duration <= 2160.0 s (80% of timeout_s 2700); measured: heartbeat 04:32:19-04:33:24Z for the 00:30 ET fire, 2026-10-02..10-11: 2.3-3.4 min (logs/news_ingestion.log)"
+    }
+   ],
+   "degraded": [
+    {
+     "check": "late",
+     "text": "data/runtime/news-ingestion_last.json ok_at older than 14 h on a market day or older than 26 h across a closed-market window"
+    },
+    {
+     "check": "slow",
+     "text": "duration above 2160.0 s"
+    },
+    {
+     "check": "retried",
+     "text": "a run needed attempt > 1 (retry_policy none, so only a manual re-request) or ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
+    },
+    {
+     "check": "upstream_stale",
+     "text": "an upstream input is stale or refused: Yahoo / Google News RSS reachable, Benzinga key valid; the fetchers swallow errors (return []), so a dead provider shows only as new_articles = 0 in the receipt summary (not machine-checked yet)"
+    },
+    {
+     "check": "failed_receipt_carried",
+     "text": "data/runtime/news-ingestion_last.json shows status failed with the previous ok_at carried forward (the cron twin ran and raised: DB connect or query error, exit 1)"
+    }
+   ],
+   "failed": [
+    {
+     "check": "run_failed",
+     "text": "a dispatcher fire ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+    },
+    {
+     "check": "no_receipt",
+     "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+    },
+    {
+     "check": "stale",
+     "text": "data/runtime/news-ingestion_last.json ok_at older than 26 h on a market day or older than 50 h across a closed-market window"
+    },
+    {
+     "check": "breaker_or_dlq",
+     "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+    },
+    {
+     "check": "dry_run_wrote",
+     "text": "a dry_run changed its output_signal, the store it owns, or any other durable state"
+    }
+   ],
+   "baseline": {
+    "freshness_degraded_after_h": 14.0,
+    "freshness_failed_after_h": 26.0,
+    "freshness_rule": "reviewed 2026-10-11: the --priority receipt is written by two cron lines (L193 30 12 * * 1-5 and L649 30 0 * * *), so on a market day it advances every 12 h: one missed slot + 2 h = 14 h (degraded), two missed slots + 2 h = 26 h (failed). Saturday, Sunday and Monday morning have only the 00:30 fire (24 h gap), hence 26 h / 50 h. The generator default (2x/3x expected_cadence_hours) would be 144/216 h for the weekday row. The receipt cannot say which line wrote it; started_at (12:30 vs 00:30 ET) does. catalyst_news declares stale_after_hours 18 (config/data_source_authority.json), inside the failed bound.",
+    "timeout_s": 2700,
+    "class": "ingest",
+    "computed_on": "2026-10-11",
+    "basis": "CLASS_DEFAULT_PROVISIONAL",
+    "source": "fewer than 14 finished live runs in the coordination ledger (0); class defaults: duration degraded above 80% of timeout_s, freshness 2x/3x cadence, any RUN_FAILED/RUN_TIMEOUT/RUN_REFUSED failed",
+    "runs_considered": 0,
+    "duration_degraded_above_s": 2160.0,
+    "freshness_closed_degraded_after_h": 26.0,
+    "freshness_closed_failed_after_h": 50.0,
+    "measured": "heartbeat 04:32:19-04:33:24Z for the 00:30 ET fire, 2026-10-02..10-11: 2.3-3.4 min (logs/news_ingestion.log)"
+   },
+   "alerting": {
+    "lane_severity": "Medium",
+    "severity_basis": "inventory cron:L646 business_function=research (catalogue rule)",
+    "failed": {
+     "siem_severity": "WARN",
+     "notifier_priority": "P2"
+    },
+    "degraded": {
+     "siem_severity": "INFO",
+     "notifier_priority": "P3"
+    },
+    "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+    "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row `severity`, else the fan-in priority (RUN_* = P2 -> WARN). Wiring the bridge, notifier and diagnoser to this contract is the next build item (N8N_MONITORING_AND_REMEDIATION_STANDARD.md §7)."
+   },
+   "remediation": {
+    "catalogue_entry": false,
+    "diagnosis_excluded": false,
+    "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
+   },
+   "evidence": {
+    "receipt": "data/runtime/news-ingestion_last.json",
+    "verify": [
+     "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='news-ingestion-overnight' ORDER BY requested_at DESC LIMIT 10\"",
+     "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:news-ingestion-overnight' ORDER BY created_at DESC LIMIT 10",
+     "stat / jq the receipt: data/runtime/news-ingestion_last.json"
+    ],
+    "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger"
+   },
+   "review_by": "2026-10-25",
+   "review": {
+    "status": "REVIEWED",
+    "reviewed_on": "2026-10-11",
+    "reviewed_by": "agent VV (news-ingest joins W4), session https://claude.ai/code/session_018QBWwttnCspwJYNhNdqd14, for the registry owner research",
+    "method": "every field checked against scripts/news_ingestion.py on branch n8nmat/news-ingest-w4, the live crontab (crontab -l, read-only, 2026-10-11), config/data_source_authority.json and the heartbeat lines in logs/news_ingestion.log (served CURRENT); the inventory free-text edges were replaced by source-cited edges",
+    "basis_note": "baseline stays CLASS_DEFAULT_PROVISIONAL: the ledger holds 0 live dispatcher runs of this lane, and dry-run fires never set a baseline; re-learn after 14 live runs (canary)"
+   }
+  },
+  {
+   "schema": "N8nHealthContract@v1",
+   "id": "news-ingestion-tail",
+   "kind": "lane",
+   "workflow_id": "tradeai-dispatcher",
+   "status": "REVIEWED",
+   "target_reason": "stage:shadow",
+   "stage": "shadow",
+   "purpose": {
+    "text": "News-ingest owner, weekend tail: three times on Saturday and Sunday (10:00, 14:00, 18:00 ET) the --tail-rotate run fetches news for the next NEWS_TAIL_BATCH (500) classified names outside the actionable set, rotating through the tail, and writes them to news_articles like the --priority run.",
+    "business_function": "research",
+    "source": "scripts/news_ingestion.py module docstring (:1-40), LANE_IDS / lane_id_for (:589, :631); config/data_source_authority.json domain catalyst_news; inventory cron:L647"
+   },
+   "owner": "research",
+   "connects_to": [
+    {
+     "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+     "kind": "service",
+     "direction": "calls",
+     "source": "AGENTS.md §23.3"
+    },
+    {
+     "name": "$PY scripts/news_ingestion.py --tail-rotate",
+     "kind": "runner",
+     "direction": "calls",
+     "source": "config/n8n_run_allowlist.json command"
+    },
+    {
+     "name": "/tmp/news_tail_rotate.lock",
+     "kind": "lock",
+     "direction": "read_write",
+     "source": "config/n8n_run_allowlist.json lock (flock) = the live cron line's own flock -n /tmp/news_tail_rotate.lock"
+    },
+    {
+     "name": "data/runtime/news-ingestion-tail_last.json",
+     "kind": "receipt",
+     "direction": "write",
+     "source": "LaneRunReceipt / allowlist output_signal"
+    },
+    {
+     "name": "Postgres reads for the symbol list: paper_trade_proposals, paper_trades, trade_ai_scans, watchlist_items, ticker_strategy_classifications, incubator_universe; holdings.json (held lane); the CIO opportunity projection (lib.cio_opportunity_store) beyond the cap",
+     "kind": "store",
+     "direction": "read",
+     "source": "scripts/news_ingestion.py _get_actionable_pairs :101, _get_full_universe_pairs :155, _proposal_queue_pairs :209, _opportunity_lane_pairs :224"
+    },
+    {
+     "name": "symbol_profiles description and the 52-week reference (news_symbol_guard) per symbol; research_sources (hermes_source_policy.should_ingest)",
+     "kind": "store",
+     "direction": "read",
+     "source": "scripts/news_ingestion.py _scan_symbols :424-461"
+    },
+    {
+     "name": "Yahoo Finance RSS feeds.finance.yahoo.com and Google News RSS news.google.com (no key); Benzinga API api.benzinga.com when BENZINGA_API_KEY is set; never called by the dry run",
+     "kind": "provider",
+     "direction": "calls",
+     "source": "scripts/news_ingestion.py _fetch_yahoo_rss :277, _fetch_google_news_rss :297, _fetch_benzinga_api :335"
+    },
+    {
+     "name": "Postgres news_articles INSERT through lib/writers/news_articles_writer.py (the one write path, deduped on symbol + source_url/title); catalyst_events and sentiment_observations rows per new article",
+     "kind": "store",
+     "direction": "write",
+     "source": "scripts/news_ingestion.py :475 write_news_articles, _feed_downstream :362-409; config/data_source_authority.json domain catalyst_news (writer news_articles_writer.py, writer_facade news_ingestion.py)"
+    },
+    {
+     "name": "pipeline_runs row (pipeline_registry.run_start 'news_ingestion')",
+     "kind": "store",
+     "direction": "write",
+     "source": "scripts/news_ingestion.py main run_start"
+    },
+    {
+     "name": "data/runtime/news_ingest_rotation.json under the checkout (ROTATION_FILE; offset / tail_size for the next weekend batch)",
+     "kind": "store",
+     "direction": "read_write",
+     "source": "scripts/news_ingestion.py :42, _load_rotation :180, _save_rotation :187, ingest :565-573"
+    },
+    {
+     "name": "readers of news_articles: the catalyst_record projection (scripts/lib/data_broker/catalyst_record.py), news_to_catalyst.py, sentiment_processor, the Major News grid and opportunity modal in api_v2, and 86 scripts with a direct SELECT (§24.3 count, grep 'FROM news_articles' scripts/ 2026-10-11)",
+     "kind": "consumer",
+     "direction": "read",
+     "source": "grep -rl 'FROM news_articles' scripts --include=*.py | wc -l = 86 (2026-10-11)"
+    },
+    {
+     "name": "cron L650 on served CURRENT ($PROJ), $PY = the dev-tree venv interpreter (crontab line 4) keeps doing the real work while this row is at shadow; not a step of any config/pipelines manifest",
+     "kind": "cron_twin",
+     "direction": "calls",
+     "source": "crontab -l 2026-10-11 line 650 (inventory cron:L647); grep news_ingestion config/pipelines/ = none"
+    }
+   ],
+   "healthy": [
+    {
+     "check": "shadow_dry_run_done",
+     "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+    },
+    {
+     "check": "dry_run_writes_nothing",
+     "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before, and the DRY-RUN line names the receipt it would write (a dry run writes nothing, AGENTS.md §6)"
+    },
+    {
+     "check": "cron_twin_output_fresh",
+     "text": "the live cron line L650 advances ok_at in data/runtime/news-ingestion-tail_last.json three times on Saturday and Sunday; summary.next_offset moves by batch_size modulo tail_size each run"
+    },
+    {
+     "check": "duration_within_baseline",
+     "text": "duration <= 4320.0 s (80% of timeout_s 5400); measured: heartbeat :05:09-:06:05 after each weekend fire (2026-10-03, 10-04, 10-10): 5-6 min for 500 symbols (logs/news_ingestion.log)"
+    }
+   ],
+   "degraded": [
+    {
+     "check": "late",
+     "text": "data/runtime/news-ingestion-tail_last.json ok_at older than 138 h on a market day or older than 138 h across a closed-market window"
+    },
+    {
+     "check": "slow",
+     "text": "duration above 4320.0 s"
+    },
+    {
+     "check": "retried",
+     "text": "a run needed attempt > 1 (retry_policy none, so only a manual re-request) or ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
+    },
+    {
+     "check": "upstream_stale",
+     "text": "an upstream input is stale or refused: Yahoo / Google News RSS reachable, Benzinga key valid; the fetchers swallow errors (return []), so a dead provider shows only as new_articles = 0 in the receipt summary (not machine-checked yet)"
+    },
+    {
+     "check": "failed_receipt_carried",
+     "text": "data/runtime/news-ingestion-tail_last.json shows status failed with the previous ok_at carried forward (the cron twin ran and raised: DB connect or query error, exit 1)"
+    }
+   ],
+   "failed": [
+    {
+     "check": "run_failed",
+     "text": "a dispatcher fire ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+    },
+    {
+     "check": "no_receipt",
+     "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+    },
+    {
+     "check": "stale",
+     "text": "data/runtime/news-ingestion-tail_last.json ok_at older than 142 h on a market day or older than 142 h across a closed-market window"
+    },
+    {
+     "check": "breaker_or_dlq",
+     "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+    },
+    {
+     "check": "dry_run_wrote",
+     "text": "a dry_run changed its output_signal, the store it owns, or any other durable state"
+    }
+   ],
+   "baseline": {
+    "freshness_degraded_after_h": 138.0,
+    "freshness_failed_after_h": 142.0,
+    "freshness_rule": "reviewed 2026-10-11: weekend only (0 10,14,18 * * 0,6). The longest gap is Sunday 18:00 -> Saturday 10:00 = 136 h, so one missed slot + 2 h = 138 h (degraded) and two missed slots + 2 h = 142 h (failed) are measured from the last weekend fire; a missed slot in the middle of a weekend (4 h gaps) is visible only through the receipt's offset not advancing and the RUN_* ledger. Market days carry no fire, so the market and closed bounds are the same. Generator default 2x/3x 136 h = 272/408 h would hide a whole missed weekend.",
+    "timeout_s": 5400,
+    "class": "ingest",
+    "computed_on": "2026-10-11",
+    "basis": "CLASS_DEFAULT_PROVISIONAL",
+    "source": "fewer than 14 finished live runs in the coordination ledger (0); class defaults: duration degraded above 80% of timeout_s, freshness 2x/3x cadence, any RUN_FAILED/RUN_TIMEOUT/RUN_REFUSED failed",
+    "runs_considered": 0,
+    "duration_degraded_above_s": 4320.0,
+    "freshness_closed_degraded_after_h": 138.0,
+    "freshness_closed_failed_after_h": 142.0,
+    "measured": "heartbeat :05:09-:06:05 after each weekend fire (2026-10-03, 10-04, 10-10): 5-6 min for 500 symbols (logs/news_ingestion.log)"
+   },
+   "alerting": {
+    "lane_severity": "Medium",
+    "severity_basis": "inventory cron:L647 business_function=research (catalogue rule)",
+    "failed": {
+     "siem_severity": "WARN",
+     "notifier_priority": "P2"
+    },
+    "degraded": {
+     "siem_severity": "INFO",
+     "notifier_priority": "P3"
+    },
+    "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+    "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row `severity`, else the fan-in priority (RUN_* = P2 -> WARN). Wiring the bridge, notifier and diagnoser to this contract is the next build item (N8N_MONITORING_AND_REMEDIATION_STANDARD.md §7)."
+   },
+   "remediation": {
+    "catalogue_entry": false,
+    "diagnosis_excluded": false,
+    "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
+   },
+   "evidence": {
+    "receipt": "data/runtime/news-ingestion-tail_last.json",
+    "verify": [
+     "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='news-ingestion-tail' ORDER BY requested_at DESC LIMIT 10\"",
+     "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:news-ingestion-tail' ORDER BY created_at DESC LIMIT 10",
+     "stat / jq the receipt: data/runtime/news-ingestion-tail_last.json"
+    ],
+    "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger"
+   },
+   "review_by": "2026-10-25",
+   "review": {
+    "status": "REVIEWED",
+    "reviewed_on": "2026-10-11",
+    "reviewed_by": "agent VV (news-ingest joins W4), session https://claude.ai/code/session_018QBWwttnCspwJYNhNdqd14, for the registry owner research",
+    "method": "every field checked against scripts/news_ingestion.py on branch n8nmat/news-ingest-w4, the live crontab (crontab -l, read-only, 2026-10-11), config/data_source_authority.json and the heartbeat lines in logs/news_ingestion.log (served CURRENT); the inventory free-text edges were replaced by source-cited edges",
+    "basis_note": "baseline stays CLASS_DEFAULT_PROVISIONAL: the ledger holds 0 live dispatcher runs of this lane, and dry-run fires never set a baseline; re-learn after 14 live runs (canary)"
+   }
   }
  ]
 }

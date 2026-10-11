@@ -25,6 +25,19 @@ Usage:
     python3 scripts/news_ingestion.py --priority [--json]
     python3 scripts/news_ingestion.py --tail-rotate [--json]
     python3 scripts/news_ingestion.py --full [--json]   # alias: one-shot full universe head (legacy)
+    python3 scripts/news_ingestion.py --symbol SYM [--json]
+    python3 scripts/news_ingestion.py <any of the above> --dry-run   # print the plan only
+
+Lane contract (n8n W4, operator ruling 2026-10-11; tests/test_news_ingest_w4_20261011.py):
+  * an unknown flag is an argparse error (exit 2) before anything runs. It used to fall through to the live
+    --priority run, so a dispatcher "--dry-run" would have ingested for real;
+  * --dry-run returns before pipeline_registry.run_start, before the DB connection, before any provider request
+    and before the checkout .env is read; it prints the plan and a DRY-RUN line and writes nothing;
+  * a real --priority run writes <state_root>/data/runtime/news-ingestion_last.json and a real --tail-rotate run
+    news-ingestion-tail_last.json (LaneRunReceipt@v1, scripts/lib/lane_last_receipt.py); a failed run writes
+    status failed with the previous ok_at carried forward and re-raises (exit 1, as before). --symbol and --full
+    are manual runs and write no receipt;
+  * hermes_source_policy loads only the DB_* names from the checkout .env in this process (no broker pair).
 """
 from __future__ import annotations
 
@@ -567,7 +580,133 @@ def ingest(mode: str = "priority", *, single_symbol: str | None = None) -> dict:
     return {**stats, "mode": mode, **{k: meta[k] for k in ("offset", "next_offset", "tail_size") if k in meta}}
 
 
-if __name__ == "__main__":
+# ── Entry point: lane ids, dry run, receipt (n8n W4, operator ruling 2026-10-11) ──────────────────────────
+
+SCRIPT = "news_ingestion.py"
+#: run mode -> lane id (config/lane_registry.json). --priority is fired by two cron lines with the same argv
+#: (L193 weekday 12:30, row news-ingestion; L649 nightly 00:30, row news-ingestion-overnight), so both rows
+#: read this one receipt. --full and --symbol are manual runs: no lane, no receipt.
+LANE_IDS = {"priority": "news-ingestion", "tail_rotate": "news-ingestion-tail"}
+PRIORITY_DEFAULT_CAP = 60
+TAIL_DEFAULT_BATCH = 500
+
+
+def _receipt_lib():
+    try:
+        from lib import lane_last_receipt as lr
+    except ImportError:  # imported as scripts.news_ingestion
+        from scripts.lib import lane_last_receipt as lr
+    return lr
+
+
+def build_parser():
+    import argparse
+
+    p = argparse.ArgumentParser(
+        prog=SCRIPT, allow_abbrev=False,
+        description="Ingest news for portfolio/watchlist symbols (writer_target of news_articles).")
+    p.add_argument("--priority", action="store_true",
+                   help="weekday cadence: proposals, holdings, actionable, then universe (the default mode)")
+    p.add_argument("--tail-rotate", action="store_true", help="weekend stagger through the classified tail")
+    p.add_argument("--full", action="store_true", help="legacy one-shot: full universe head")
+    p.add_argument("--symbol", metavar="SYM", help="one symbol (manual / refresh callers); wins over the modes")
+    p.add_argument("--json", action="store_true", help="also print the result as JSON")
+    p.add_argument("--dry-run", action="store_true",
+                   help="print the plan only: no network, no DB connection, no secret read, no file write")
+    return p
+
+
+def resolve_run(args) -> tuple[str, str | None]:
+    """(mode, single_symbol) with the pre-W4 precedence: --symbol, then --tail-rotate, then --full, else priority."""
+    single = (args.symbol or "").strip().upper() or None
+    if single:
+        return "priority", single
+    if args.tail_rotate:
+        return "tail_rotate", None
+    if args.full:
+        return "full", None
+    return "priority", None
+
+
+def lane_id_for(mode: str, single_symbol: str | None) -> str | None:
+    """The registry lane a run belongs to; None = a manual run (--symbol, --full): it writes no receipt."""
+    if single_symbol:
+        return None
+    return LANE_IDS.get(mode)
+
+
+def plan(mode: str, single_symbol: str | None) -> dict:
+    """What a real run would do. Reads the environment and the rotation file only: no DB, no network, no .env."""
+    benzinga = bool(os.environ.get("BENZINGA_API_KEY"))
+    out: dict = {
+        "mode": "single_symbol" if single_symbol else mode,
+        "providers_per_symbol": ["yahoo_rss (feeds.finance.yahoo.com)", "google_news_rss (news.google.com)"]
+        + ["benzinga_api (api.benzinga.com)"] * benzinga,
+        "benzinga_api": ("BENZINGA_API_KEY in the environment" if benzinga
+                         else "only if BENZINGA_API_KEY is set in the environment or the checkout .env "
+                              "(not read by the dry run)"),
+    }
+    if single_symbol:
+        out.update(symbols=[single_symbol], purge="news_symbol_guard.purge_mismatched_for_symbol(apply=True)")
+    elif mode == "priority":
+        out.update(cap=int(os.environ.get("NEWS_INGEST_MAX", str(PRIORITY_DEFAULT_CAP))),
+                   symbols="resolved at run time from Postgres: proposal queue, holdings.json, actionable "
+                           "(paper_trades/proposals/scans/watchlist/daily priority), then the classified universe; "
+                           "plus the CIO opportunity lane beyond the cap",
+                   purge="news_symbol_guard.purge_mismatched_watchlist(apply=True)")
+    elif mode == "tail_rotate":
+        state = _load_rotation()
+        out.update(batch_size=int(os.environ.get("NEWS_TAIL_BATCH", str(TAIL_DEFAULT_BATCH))),
+                   offset=int(state.get("offset") or 0), rotation_file=str(ROTATION_FILE),
+                   symbols="the next batch of the classified tail (universe minus actionable), from Postgres")
+    else:
+        out.update(cap=int(os.environ.get("NEWS_INGEST_MAX", str(PRIORITY_DEFAULT_CAP))),
+                   symbols="the full-universe head, from Postgres")
+    return out
+
+
+def _would_write(mode: str, single_symbol: str | None, lane_id: str | None) -> list[str]:
+    w = ["news_articles INSERT through lib.writers.news_articles_writer (deduped on symbol + source_url/title)",
+         "catalyst_events INSERT (relevance > 0.3, ON CONFLICT DO NOTHING)",
+         "sentiment_observations INSERT (one per new article)",
+         "pipeline_runs row (pipeline_registry.run_start 'news_ingestion')"]
+    if single_symbol or mode == "priority":
+        w.append("watchlist mismatch purge (news_symbol_guard, apply=True)")
+    if mode == "tail_rotate" and not single_symbol:
+        w.append(f"rotation state {ROTATION_FILE}")
+    if lane_id:
+        w.append(f"LaneRunReceipt@v1 for lane {lane_id}")
+    return w
+
+
+def _limit_env_loading() -> None:
+    """This lane needs DB_* and BENZINGA_API_KEY only. hermes_source_policy (should_ingest, per article) would
+    otherwise copy every name in the checkout .env into os.environ, broker pairs included (AGENTS §23.18)."""
+    try:
+        import hermes_source_policy as _hsp
+        _hsp.limit_env_loading(_hsp.DB_ENV_KEYS)
+    except Exception as e:  # noqa: BLE001 -- the policy module is optional here, as in _scan_symbols
+        print(f"  [news] env narrowing skipped: {type(e).__name__}", file=sys.stderr)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(sys.argv[1:] if argv is None else argv)  # unknown flag: exit 2, nothing run
+    mode, single = resolve_run(args)
+    lane_id = lane_id_for(mode, single)
+    lr = _receipt_lib()
+
+    if args.dry_run:
+        # Structural (AGENTS.md §6): returns before run_start, before _get_conn, before any fetch or secret read.
+        p = plan(mode, single)
+        print(json.dumps(p, indent=2, default=str))
+        lr.dry_run_report(lane_id or f"news-ingestion-manual-{p['mode']}",
+                          {"mode": p["mode"], "lane_run": lane_id is not None,
+                           "providers_per_symbol": len(p["providers_per_symbol"])},
+                          would_write=_would_write(mode, single, lane_id))
+        return 0
+
+    _limit_env_loading()
+    started = lr.now_iso()
     _run_id = None
     try:
         from pipeline_registry import run_start, run_complete, run_fail
@@ -576,23 +715,11 @@ if __name__ == "__main__":
         pass
 
     try:
-        single = None
-        for i, arg in enumerate(sys.argv):
-            if arg == "--symbol" and i + 1 < len(sys.argv):
-                single = sys.argv[i + 1].strip().upper()
-                break
         if single:
             result = ingest(mode="priority", single_symbol=single)
-        elif "--tail-rotate" in sys.argv:
-            run_mode = "tail_rotate"
-            result = ingest(mode=run_mode)
-        elif "--full" in sys.argv:
-            run_mode = "full"
-            result = ingest(mode=run_mode)
         else:
-            run_mode = "priority"
-            result = ingest(mode=run_mode)
-        if "--json" in sys.argv:
+            result = ingest(mode=mode)
+        if args.json:
             print(json.dumps(result, indent=2, default=str))
         if _run_id:
             try:
@@ -607,4 +734,18 @@ if __name__ == "__main__":
                 run_fail(_run_id, str(_e))
             except Exception:
                 pass
+        if lane_id:
+            lr.write_lane_receipt(lane_id, ok=False, exit_code=1, started_at=started, script=SCRIPT,
+                                  error=f"{type(_e).__name__}: {_e}")
         raise
+
+    if lane_id:
+        lr.write_lane_receipt(lane_id, ok=True, exit_code=0, started_at=started, script=SCRIPT,
+                              summary={k: result.get(k) for k in
+                                       ("mode", "scanned", "new_articles", "skipped_symbol_mismatch",
+                                        "by_source", "offset", "next_offset", "tail_size") if k in result})
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

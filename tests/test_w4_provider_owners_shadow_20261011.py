@@ -11,8 +11,9 @@ dispatcher fires their write-free dry run on the natural schedule while the cron
 * social-ingest-all  cron L243  social owner (social_posts writer_target).
 
 Excluded, and pinned so a later PR cannot slip them in unreviewed:
-* news-ingestion / news-ingestion-tail (L193, L649, L650): scripts/news_ingestion.py has no --dry-run (an unknown
-  flag falls through to the live --priority branch) and writes no LaneRunReceipt; the rows are KEEP_ON_CRON.
+* news-ingestion / news-ingestion-tail (L193, L649, L650) were excluded here (no --dry-run, unknown flags fell
+  through to the live --priority branch, no LaneRunReceipt, KEEP_ON_CRON). After the refactor and the operator
+  ruling of 2026-10-11 they joined W4 in their own PR; tests/test_news_ingest_w4_20261011.py pins them.
 * sec-filings-feed (L1002): no LaneRunReceipt, its dry run is the argv default (no dry_run_arg), and its cron line
   sources the whole tmpfs secret render (which carries ALPACA_* per config/secret_registry.yaml).
 
@@ -54,7 +55,7 @@ W4 = {
     "social-ingest-all": ("L243", "0 6 * * 1-5", "social_ingest.py",
                           ["scripts/social_ingest.py", "--source", "all"]),
 }
-EXCLUDED = ("news-ingestion", "news-ingestion-tail", "sec-filings-feed")
+EXCLUDED = ("sec-filings-feed",)
 
 #: The crontab lines (2026-10-11, crontab -l) that share a script with a W4 row; each W4 match must hit exactly one.
 SIBLING_LINES = [
@@ -168,8 +169,6 @@ def test_excluded_lanes_stay_off_the_dispatcher():
         assert "dispatch" not in row and "r1_pending" not in row, lane
         assert (row.get("scheduler") or {}).get("stage") is None, lane
         assert lane not in ALLOW, lane
-    src = (ROOT / "scripts" / "news_ingestion.py").read_text(encoding="utf-8")
-    assert "--dry-run" not in src and "write_lane_receipt" not in src  # refactor first, then a W4 row
 
 
 START = datetime(2026, 10, 12, 4, 0, tzinfo=timezone.utc)  # Monday 00:00 America/New_York

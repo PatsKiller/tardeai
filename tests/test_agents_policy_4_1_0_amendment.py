@@ -429,9 +429,14 @@ def test_every_dispatcher_row_is_allowlisted_eligible_and_staged():
 # `_ingest`: this 4.1.0 model refuses them by name, and they are dispatched only as AGENTS 4.3.0 §23.18 R1 class
 # `ingest` cron-shadow rows (dry_run, live_arg null) through lane_dispatch.r1_class_admission, pinned by
 # tests/test_w4_provider_owners_shadow_20261011.py. Their cutover PR must reconcile this model with R1.
+# The three news-ingest rows (W4, operator ruling 2026-10-11; tests/test_news_ingest_w4_20261011.py) are the same
+# case: scripts/news_ingestion.py carries `_ingest` in its name.
 EXPECTED_INELIGIBLE: dict[str, str] = {
     "sec-data-ingest": "sender or ingest writer _ingest",
     "social-ingest-all": "sender or ingest writer _ingest",
+    "news-ingestion": "sender or ingest writer _ingest",
+    "news-ingestion-overnight": "sender or ingest writer _ingest",
+    "news-ingestion-tail": "sender or ingest writer _ingest",
 }
 
 
