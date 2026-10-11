@@ -78,3 +78,10 @@ Procedure for any n8n change that this log records: `../N8N_ONBOARDING_STANDARD.
 ### 2026-10-11 refactor shard 08 (source only)
 
 37 lanes assessed; 2 DRAFT offline shadow proposals, 14 broker skips, 3 sender skips, 1 class skip, 17 blocked/retained. No runtime inventory numbers changed. [Source report](../REFACTOR_SHARD_08_20261011.md). One outer cron lock proposed; contracts remain unreviewed.
+
+### 2026-10-11 shards 05–08 local source integration
+
+Four ordered local merges preserve 22 DRAFT proposals and all reviewed main records. Fresh main already retired
+five proposed lanes, so only 17 remain ACTIVE source proposals; no runtime acceptance or inventory stage is inferred.
+Nine original lock proposals require operator reconciliation. [Integration source report](../REFACTOR_SHARDS_05_08_SOURCE_INTEGRATION_20261011.md).
+No cron, systemd, n8n or runtime change; release remains blocked by operator review and stopped safety-gated profiles.

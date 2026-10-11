@@ -259,7 +259,11 @@ def test_generated_rows_have_evidence_or_are_flagged_unverified(committed):
     # retire-wave1 (2026-10-11) made 3 more hand-curated: shadow-batch-generator-at-15-9 and
     # hermes-embedding-promotion-review (RETIRED), and shadow-batch-generator-at-15-10 (id pinned). Merged in
     # train-migration-2: 244 - 3 = 241 generated rows left.
-    assert len(gen) >= 241
+    # Source-only shards 05–08 adopt nine more previously generated rows: normalizer,
+    # sector research, proposal backtests, score feeder, thesis review, movers, discovery drain,
+    # scope governor and evening packet. The last two are adopted by the integrator to preserve their blocks.
+    # Pin the committed-source count exactly; no row, evidence or authority check is relaxed.
+    assert len(gen) == 232
     adopted = [r for r in committed["lanes"] if r.get("adopted_from_generator") == R.GENERATOR_VERSION]
     # D3 rows carry an r1_pending block (inert until AGENTS 4.4.0 is ACTIVE) instead of a dispatch block;
     # build-symbol-profiles-at-0-19, social-ingest-stocktwits and overnight-batch-tax are adopted unchanged only to keep

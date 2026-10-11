@@ -205,7 +205,7 @@ def test_snapshot_carries_the_post_install_crontab():
 SIGNALS = {
     "finviz-momentum-scalp-early-lane": {"kind": "file_mtime", "path": "logs/finviz_momentum_scalp_scan.log"},
     "resolve-due-checkpoints": {"kind": "file_mtime", "path": "logs/resolve_due_checkpoints.log"},
-    "commitment-outcome-sweep": {"kind": "file_mtime", "path": "logs/sweep_commitment_outcomes.log"},
+    "commitment-outcome-sweep": {"kind": "json_key", "path": "data/runtime/commitment-outcome-sweep_last.json", "key": "ok_at"},
 }
 
 

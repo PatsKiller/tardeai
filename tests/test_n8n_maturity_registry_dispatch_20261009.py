@@ -468,7 +468,12 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
     # - 1: canary wave 1 (2026-10-11) moves research-insight-extractor to canary.
     # - 17: C1 premarket flip (2026-10-11) absorbs 17 shadow rows into premarket-data-pipeline (D1b 7, D2 4, D3 6);
     # each leaves its wave (dispatch_retired) and its allowlist entry is removed. Both merged in train-migration-2.
-    assert len(shadow) == 54 + 3 + 15 - len(CANARY_ROWS) - 17, shadow
+    # Source-only shards 05–08 add 6 + 7 + 7 + 2 proposals. Five retain main's RETIRED
+    # state; this count pins declared blocks, not runtime readiness or operator review.
+    refactor = {r["lane_id"] for r in rows if (r.get("scheduler") or {}).get("wave") in
+                {"R2-05", "R2-06", "R2-07", "R2-08"}}
+    assert len(refactor) == 22 and refactor <= set(shadow), refactor
+    assert len(shadow) == 54 + 3 + 15 - len(CANARY_ROWS) - 17 + 22, shadow
     assert sorted(r["lane_id"] for r in rows if LD.dispatch_mode(r) == "live") == sorted(CANARY_ROWS)
 
 
@@ -482,18 +487,20 @@ PREEXISTING_LIVE_ARG = frozenset({"job-coverage-monitor", "source-attribution-mo
 #: wave D2: apply-gated scripts (no --apply = dry run that writes nothing; proven by a before/after snapshot under a
 #: read-only Postgres session, n8n-maturity dispatch-shadow-wave2 evidence).
 APPLY_GATED_DRY_DEFAULT = frozenset({"catalyst-symbol-impact", "catalyst-graph", "cio-draft-plan-hygiene"})
-#: wave D2 finding: these Ready-for-Migration lanes write a file on their dry run (a heartbeat / health record /
-#: lifecycle projection), so a dispatcher dry run would refresh the very output_signal that proves the cron line ran.
-#: They stay mode off until the dry-run path writes nothing.
-DRY_RUN_WRITES = ("hermes-scope-governor", "hermes-score-event-feeder", "material-change-detector-stage1")
+#: The D2 file-writing previews were replaced by strict offline plans in shards 05, 07 and 08.
+#: Their own fake tests prove unchanged state; these assertions pin only the source shadow shape.
+OFFLINE_REFACTORED_DRY_RUNS = ("hermes-scope-governor", "hermes-score-event-feeder", "material-change-detector-stage1")
 
 
-def test_wave_d2_lanes_whose_dry_run_writes_are_not_dispatch_rows():
+def test_refactored_wave_d2_writers_have_offline_shadow_proposals():
     rows = {r["lane_id"]: r for r in _live_rows()}
-    for lane in DRY_RUN_WRITES:
+    allow = {e["lane_id"]: e for e in json.loads((ROOT / "config" / "n8n_run_allowlist.json").read_text())["lanes"]}
+    for lane in OFFLINE_REFACTORED_DRY_RUNS:
         assert lane in rows, lane
-        assert LD.dispatch_mode(rows[lane]) == "off", lane
-        assert "stage" not in rows[lane]["scheduler"], lane
+        assert LD.dispatch_mode(rows[lane]) == "dry_run", lane
+        assert rows[lane]["scheduler"]["stage"] == "shadow", lane
+        assert rows[lane]["scheduler"]["wave"] in {"R2-05", "R2-07", "R2-08"}, lane
+        assert allow[lane]["dry_run_arg"] == ["--dry-run"] and allow[lane]["live_arg"] is None, lane
 
 
 def test_wave_d2_dispatch_cron_equals_the_row_schedule_and_locks_match_cron():
