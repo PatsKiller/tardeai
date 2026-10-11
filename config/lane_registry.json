@@ -20916,5 +20916,450 @@
         "UNVERIFIED_OUTPUT"
       ]
     }
+  ],
+  "freshness_contracts": [
+    {
+      "key": "jcm.holdings_llm_refresh",
+      "lane_id": "holdings-llm-refresh",
+      "signal": {
+        "kind": "db_max",
+        "table": "watchlist_items",
+        "column": "holdings_llm_at",
+        "where": "source='portfolio'"
+      },
+      "max_age_hours": 30,
+      "basis": "lane_due",
+      "severity": "P2",
+      "source": "scripts/job_coverage_monitor.py:47-48 holdings_llm_refresh",
+      "replaces": [
+        "job-coverage-monitor"
+      ]
+    },
+    {
+      "key": "jcm.catalyst_momentum_engine",
+      "lane_id": "catalyst-momentum-engine-overnight",
+      "signal": {
+        "kind": "db_max",
+        "table": "hermes_research_intelligence",
+        "column": "created_at",
+        "where": "research_type='momentum_catalyst'"
+      },
+      "max_age_hours": 30,
+      "basis": "lane_due",
+      "severity": "P2",
+      "source": "scripts/job_coverage_monitor.py:49-50 catalyst_momentum_engine",
+      "replaces": [
+        "job-coverage-monitor"
+      ],
+      "note": "job_coverage matches three cron lanes (overnight 18,22 daily; premarket; market); the daily overnight lane bounds the due time"
+    },
+    {
+      "key": "jcm.process_watchlist_agent_jobs",
+      "lane_id": "run-watchlist-agent-jobs-offpeak",
+      "signal": {
+        "kind": "db_max",
+        "table": "watchlist_agent_jobs",
+        "column": "created_at",
+        "where": "status='completed'"
+      },
+      "max_age_hours": 3,
+      "basis": "lane_due",
+      "severity": "P2",
+      "source": "scripts/job_coverage_monitor.py:60-61 process_watchlist_agent_jobs",
+      "replaces": [
+        "job-coverage-monitor"
+      ]
+    },
+    {
+      "key": "jcm.aegis_overnight",
+      "lane_id": "aegis-overnight",
+      "signal": {
+        "kind": "db_max",
+        "table": "aegis_portfolio_briefs",
+        "column": "observed_at"
+      },
+      "max_age_hours": 30,
+      "basis": "lane_due",
+      "severity": "P2",
+      "source": "scripts/job_coverage_monitor.py:62-64 aegis_overnight (systemd_timer aegis-overnight.timer)",
+      "replaces": [
+        "job-coverage-monitor"
+      ],
+      "note": "aegis-overnight is a systemd lane: lane_due falls back to max_age (job_coverage: idle 0 for a timer job). aegis_overnight.py phase 2 calls aegis_synthesis.main (:187), which writes aegis_portfolio_briefs"
+    },
+    {
+      "key": "jcm.news_ingestion",
+      "lane_id": "news-ingestion",
+      "signal": {
+        "kind": "db_max",
+        "table": "news_articles",
+        "column": "created_at"
+      },
+      "max_age_hours": 12,
+      "basis": "lane_due",
+      "severity": "P2",
+      "source": "scripts/job_coverage_monitor.py:70-71 news_ingestion",
+      "replaces": [
+        "job-coverage-monitor"
+      ]
+    },
+    {
+      "key": "jcm.rag_embeddings",
+      "lane_id": "rag-indexer",
+      "signal": {
+        "kind": "db_max",
+        "table": "content_embeddings",
+        "column": "created_at"
+      },
+      "max_age_hours": 72,
+      "basis": "lane_due",
+      "severity": "P2",
+      "source": "scripts/job_coverage_monitor.py:72-73 rag_embeddings",
+      "replaces": [
+        "job-coverage-monitor"
+      ]
+    },
+    {
+      "key": "jcm.transcript_discovery",
+      "lane_id": "aegis-transcript-discovery",
+      "signal": {
+        "kind": "db_max",
+        "table": "youtube_transcripts",
+        "column": "ingested_at"
+      },
+      "max_age_hours": 240,
+      "basis": "lane_due",
+      "severity": "P2",
+      "source": "scripts/job_coverage_monitor.py:74-75 transcript_discovery",
+      "replaces": [
+        "job-coverage-monitor"
+      ]
+    },
+    {
+      "key": "jcm.options_iv_snapshot",
+      "lane_id": "options-iv-snapshot",
+      "signal": {
+        "kind": "db_max",
+        "table": "options_iv_history",
+        "column": "captured_at"
+      },
+      "max_age_hours": 30,
+      "basis": "lane_due",
+      "severity": "P2",
+      "source": "scripts/job_coverage_monitor.py:86-87 options_iv_snapshot",
+      "replaces": [
+        "job-coverage-monitor"
+      ]
+    },
+    {
+      "key": "jcm.research_watchlist_discovery",
+      "lane_id": "research-watchlist-discovery",
+      "signal": {
+        "kind": "db_max",
+        "table": "data_source_health",
+        "column": "last_success_at",
+        "where": "source_key='research_discovery'"
+      },
+      "max_age_hours": 80,
+      "basis": "lane_due",
+      "severity": "P2",
+      "source": "scripts/job_coverage_monitor.py:126-127 research_watchlist_discovery",
+      "replaces": [
+        "job-coverage-monitor"
+      ]
+    },
+    {
+      "key": "jcm.sync_social_to_intelligence",
+      "lane_id": "sync-social-to-intelligence",
+      "signal": {
+        "kind": "db_max",
+        "table": "data_source_health",
+        "column": "last_success_at",
+        "where": "source_key='social'"
+      },
+      "max_age_hours": 80,
+      "basis": "lane_due",
+      "severity": "P2",
+      "source": "scripts/job_coverage_monitor.py:130-131 sync_social_to_intelligence",
+      "replaces": [
+        "job-coverage-monitor"
+      ]
+    },
+    {
+      "key": "jcm.hermes_social_sentiment",
+      "lane_id": "hermes-social-sentiment",
+      "signal": {
+        "kind": "db_max",
+        "table": "data_source_health",
+        "column": "last_success_at",
+        "where": "source_key='hermes_social'"
+      },
+      "max_age_hours": 80,
+      "basis": "lane_due",
+      "severity": "P2",
+      "source": "scripts/job_coverage_monitor.py:134-135 hermes_social_sentiment",
+      "replaces": [
+        "job-coverage-monitor"
+      ]
+    },
+    {
+      "key": "jcm.candidate_discovery_orchestrator",
+      "lane_id": "candidate-discovery-orchestrator",
+      "signal": {
+        "kind": "db_max",
+        "table": "data_source_health",
+        "column": "last_success_at",
+        "where": "source_key='news_catalyst' OR source_key='incubator' OR source_key='social_scalp' OR source_key='yahoo_movers'"
+      },
+      "max_age_hours": 80,
+      "basis": "lane_due",
+      "severity": "P2",
+      "source": "scripts/job_coverage_monitor.py:138-139 candidate_discovery_orchestrator",
+      "replaces": [
+        "job-coverage-monitor"
+      ],
+      "note": "job_coverage's IN (...) list written as OR: lane_registry._SAFE_WHERE admits no comma"
+    },
+    {
+      "key": "pfm.ticker_snapshot_daily",
+      "signal": {
+        "kind": "db_max",
+        "table": "ticker_snapshot_daily",
+        "column": "snapshot_date"
+      },
+      "max_age_hours": 48,
+      "basis": "trading_days",
+      "severity": "P2",
+      "source": "scripts/pipeline_freshness_monitor.py:31 ticker_snapshot_daily (2 d)",
+      "replaces": [
+        "tick:pipeline-freshness-monitor"
+      ]
+    },
+    {
+      "key": "pfm.setup_advisory",
+      "signal": {
+        "kind": "db_max",
+        "table": "candidate_setup_advisory",
+        "column": "snapshot_date"
+      },
+      "max_age_hours": 72,
+      "basis": "trading_days",
+      "severity": "P2",
+      "source": "scripts/pipeline_freshness_monitor.py:32 setup_advisory (3 d)",
+      "replaces": [
+        "tick:pipeline-freshness-monitor"
+      ]
+    },
+    {
+      "key": "pfm.paper_trade_stats",
+      "signal": {
+        "kind": "file_mtime",
+        "path": "data/paper_trading/paper_trade_statistics_latest.json"
+      },
+      "max_age_hours": 24,
+      "basis": "trading_days",
+      "severity": "P2",
+      "source": "scripts/pipeline_freshness_monitor.py:36 paper_trade_stats (1 d)",
+      "replaces": [
+        "tick:pipeline-freshness-monitor"
+      ]
+    },
+    {
+      "key": "pfm.morning_synthesis",
+      "signal": {
+        "kind": "db_max",
+        "table": "llm_intelligence_cache",
+        "column": "generated_at",
+        "where": "section='morning_synthesis'"
+      },
+      "max_age_hours": 48,
+      "basis": "trading_days",
+      "severity": "P2",
+      "source": "scripts/pipeline_freshness_monitor.py:40 morning_synthesis (2 d)",
+      "replaces": [
+        "tick:pipeline-freshness-monitor"
+      ]
+    },
+    {
+      "key": "pfm.strategy_backtest_results",
+      "signal": {
+        "kind": "db_max",
+        "table": "strategy_backtest_results",
+        "column": "created_at"
+      },
+      "max_age_hours": 72,
+      "basis": "trading_days",
+      "severity": "P2",
+      "source": "scripts/pipeline_freshness_monitor.py:45 strategy_backtest_results (3 d)",
+      "replaces": [
+        "tick:pipeline-freshness-monitor"
+      ]
+    },
+    {
+      "key": "pfm.proposal_backtest_snapshots",
+      "signal": {
+        "kind": "db_max",
+        "table": "proposal_backtest_snapshots",
+        "column": "created_at"
+      },
+      "max_age_hours": 72,
+      "basis": "trading_days",
+      "severity": "P2",
+      "source": "scripts/pipeline_freshness_monitor.py:46 proposal_backtest_snapshots (3 d)",
+      "replaces": [
+        "tick:pipeline-freshness-monitor"
+      ]
+    },
+    {
+      "key": "pfm.trade_closed",
+      "signal": {
+        "kind": "db_max",
+        "table": "trade_closed",
+        "column": "close_date"
+      },
+      "max_age_hours": 168,
+      "basis": "trading_days",
+      "severity": "P2",
+      "source": "scripts/pipeline_freshness_monitor.py:47 trade_closed (7 d)",
+      "replaces": [
+        "tick:pipeline-freshness-monitor"
+      ],
+      "note": "read-only max(close_date) of the journal table; no broker call"
+    },
+    {
+      "key": "pfm.journal_trade_reviews",
+      "signal": {
+        "kind": "db_max",
+        "table": "journal_trade_reviews",
+        "column": "updated_at"
+      },
+      "max_age_hours": 336,
+      "basis": "trading_days",
+      "severity": "P2",
+      "source": "scripts/pipeline_freshness_monitor.py:48 journal_trade_reviews (14 d)",
+      "replaces": [
+        "tick:pipeline-freshness-monitor"
+      ]
+    },
+    {
+      "key": "sfm.news_articles",
+      "signal": {
+        "kind": "db_max",
+        "table": "news_articles",
+        "column": "created_at"
+      },
+      "max_age_hours": 24,
+      "basis": "wall_clock",
+      "severity": "P1",
+      "source": "scripts/system_freshness_monitor.py:52 news_articles",
+      "replaces": [
+        "tick:system-freshness-monitor"
+      ]
+    },
+    {
+      "key": "sfm.catalyst_events",
+      "signal": {
+        "kind": "db_max",
+        "table": "catalyst_events",
+        "column": "created_at"
+      },
+      "max_age_hours": 24,
+      "basis": "wall_clock",
+      "severity": "P1",
+      "source": "scripts/system_freshness_monitor.py:53 catalyst_events",
+      "replaces": [
+        "tick:system-freshness-monitor"
+      ]
+    },
+    {
+      "key": "sfm.sentiment_observations",
+      "signal": {
+        "kind": "db_max",
+        "table": "sentiment_observations",
+        "column": "created_at"
+      },
+      "max_age_hours": 24,
+      "basis": "wall_clock",
+      "severity": "P2",
+      "source": "scripts/system_freshness_monitor.py:55 sentiment_observations",
+      "replaces": [
+        "tick:system-freshness-monitor"
+      ]
+    },
+    {
+      "key": "sfm.fused_signals",
+      "signal": {
+        "kind": "db_max",
+        "table": "fused_signals",
+        "column": "created_at"
+      },
+      "max_age_hours": 30,
+      "basis": "trading_days",
+      "severity": "P1",
+      "source": "scripts/system_freshness_monitor.py:56 fused_signals (weekday_only)",
+      "replaces": [
+        "tick:system-freshness-monitor"
+      ]
+    },
+    {
+      "key": "sfm.research_insights",
+      "signal": {
+        "kind": "db_max",
+        "table": "research_insights",
+        "column": "created_at"
+      },
+      "max_age_hours": 26,
+      "basis": "wall_clock",
+      "severity": "P2",
+      "source": "scripts/system_freshness_monitor.py:58 research_insights",
+      "replaces": [
+        "tick:system-freshness-monitor"
+      ]
+    },
+    {
+      "key": "sfm.hermes_research_intel",
+      "signal": {
+        "kind": "db_max",
+        "table": "hermes_research_intelligence",
+        "column": "created_at"
+      },
+      "max_age_hours": 12,
+      "basis": "wall_clock",
+      "severity": "P2",
+      "source": "scripts/system_freshness_monitor.py:60 hermes_research_intel",
+      "replaces": [
+        "tick:system-freshness-monitor"
+      ]
+    },
+    {
+      "key": "sfm.ticker_prices",
+      "signal": {
+        "kind": "db_max",
+        "table": "ticker_prices",
+        "column": "created_at"
+      },
+      "max_age_hours": 26,
+      "basis": "trading_days",
+      "severity": "P1",
+      "source": "scripts/system_freshness_monitor.py:61 ticker_prices (weekday_only)",
+      "replaces": [
+        "tick:system-freshness-monitor"
+      ]
+    },
+    {
+      "key": "sfm.cio_decisions",
+      "signal": {
+        "kind": "db_max",
+        "table": "cio_decisions",
+        "column": "created_at"
+      },
+      "max_age_hours": 30,
+      "basis": "trading_days",
+      "severity": "P2",
+      "source": "scripts/system_freshness_monitor.py:62 cio_decisions (weekday_only)",
+      "replaces": [
+        "tick:system-freshness-monitor"
+      ]
+    }
   ]
 }
