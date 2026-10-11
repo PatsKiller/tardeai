@@ -21,7 +21,7 @@ def _arguments(argv=None):
     parser = argparse.ArgumentParser(description='Backtest closed trades into trade_backtest_results.',
                                      allow_abbrev=False)
     parser.add_argument("--dry-run", action='store_true')
-    parser.add_argument('--limit', type=int, default=None)
+    parser.add_argument("--limit", type=int, default=None)
     return parser.parse_args(argv)
 
 
