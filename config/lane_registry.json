@@ -14170,6 +14170,356 @@
       }
     },
     {
+      "lane_id": "finviz-screener-runner",
+      "owner": "scalp",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 10 * * 1-5",
+        "match": "scripts/finviz_screener_runner.py",
+        "stage": "shadow",
+        "wave": "R2-01",
+        "command_text": "0 10 * * 1-5 cd $PROJ && flock -n /tmp/finviz_screener.lock $PY scripts/finviz_screener_runner.py --run >> logs/finviz_screener.log 2>&1"
+      },
+      "expected_cadence_hours": 72.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/finviz-screener-runner_last.json",
+        "key": "ok_at"
+      },
+      "value_class": "Operationally Important",
+      "recommendation": "PIPELINE:P02",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L133",
+        "pipeline": "P02",
+        "value_class": "Operationally Important",
+        "recommendation": "PIPELINE:P02",
+        "f_recommendation": "CONSOLIDATE-into P02",
+        "event_driven_candidate": false,
+        "f_evidence": "Unverified use: no consumer check run for this line"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one. | Refactor shard 01: SOURCE_ONLY shadow proposal; native-approved cron snapshot 2026-10-11T14:57:08.697196+00:00. Scheduler wave R2-01 is shard provenance; dispatch W4 is the existing allowed wave. Health contract remains DRAFT; no host changes.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "0 10 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "ingest",
+        "priority": 4,
+        "retry_policy": "none"
+      },
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-10-11",
+      "adopted_reason": "R2-01 source shadow candidate (refactor train 3): a row carrying a dispatch block is hand-maintained, so the generator must not re-derive it. Health contract remains DRAFT; operator review is required before activation."
+    },
+    {
+      "lane_id": "daily-incubator-refresh",
+      "owner": "proposals",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "15 8 * * 1-5",
+        "match": "scripts/daily_incubator_refresh.py",
+        "stage": "shadow",
+        "wave": "R2-01",
+        "command_text": "15 8 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/daily_incubator_refresh.py --apply >> logs/incubator_refresh.log 2>&1"
+      },
+      "expected_cadence_hours": 72.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/daily-incubator-refresh_last.json",
+        "key": "ok_at"
+      },
+      "value_class": "Operationally Important",
+      "recommendation": "PIPELINE:P07",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L224",
+        "pipeline": "P07",
+        "value_class": "Operationally Important",
+        "recommendation": "PIPELINE:P07",
+        "f_recommendation": "CONSOLIDATE-into P07",
+        "event_driven_candidate": false,
+        "f_evidence": "Unverified use: no consumer check run for this line"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one. | Refactor shard 01: SOURCE_ONLY shadow proposal; native-approved cron snapshot 2026-10-11T14:57:08.697196+00:00. Scheduler wave R2-01 is shard provenance; dispatch W4 is the existing allowed wave. Health contract remains DRAFT; no host changes.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "15 8 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "ingest",
+        "priority": 4,
+        "retry_policy": "none"
+      },
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-10-11",
+      "adopted_reason": "R2-01 source shadow candidate (refactor train 3): a row carrying a dispatch block is hand-maintained, so the generator must not re-derive it. Health contract remains DRAFT; operator review is required before activation."
+    },
+    {
+      "lane_id": "weekly-incubator-builder",
+      "owner": "proposals",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 19 * * 0",
+        "match": "scripts/weekly_incubator_builder.py",
+        "command_text": "0 19 * * 0 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/weekly_incubator_builder.py --run-label 1900 --apply >> logs/incubator_builder.log 2>&1",
+        "stage": "shadow",
+        "wave": "R2-02"
+      },
+      "expected_cadence_hours": 168.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/weekly-incubator-builder_last.json",
+        "key": "ok_at"
+      },
+      "value_class": "Operationally Important",
+      "recommendation": "PIPELINE:P07",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L225",
+        "pipeline": "P07",
+        "value_class": "Operationally Important",
+        "recommendation": "PIPELINE:P07",
+        "f_recommendation": "CONSOLIDATE-into P07",
+        "event_driven_candidate": false,
+        "f_evidence": "Unverified use: no consumer check run for this line"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one. R2-02: source-only structural shadow candidate; cron remains authoritative. scheduler.wave is shard provenance R2-02; dispatch.wave W4 is the existing valid enum. Natural runtime proof NOT_MEASURED.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "0 19 * * 0"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "ingest",
+        "priority": 5,
+        "retry_policy": "none"
+      },
+      "previous_output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/incubator_builder.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-10-11",
+      "adopted_reason": "R2-02 source shadow candidate; preserve the reviewed dispatch intent when reconciling generated cron rows. Health contract remains DRAFT; operator review is required before activation.",
+      "refactor_evidence": {
+        "class": "SOURCE_ONLY",
+        "cron_snapshot_as_of": "2026-10-11T14:57:08.697196+00:00",
+        "native_approval": true,
+        "worktree": "refactor-shard-02",
+        "runtime_activation": "NOT_PERFORMED",
+        "contract_status": "DRAFT"
+      }
+    },
+    {
+      "lane_id": "finviz-proactive-research",
+      "owner": "scalp",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "30 9,11,13,15 * * 1-5",
+        "match": "scripts/finviz_proactive_research.py",
+        "stage": "shadow",
+        "wave": "R2-04",
+        "command_text": "30 9,11,13,15 * * 1-5 cd $PROJ && flock -n /tmp/finviz_proactive.lock $PY scripts/finviz_proactive_research.py --max 400 --lookback-hours 12 >> logs/finviz_proactive.log 2>&1"
+      },
+      "expected_cadence_hours": 66.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/finviz-proactive-research_last.json",
+        "key": "ok_at"
+      },
+      "value_class": "Operationally Important",
+      "recommendation": "PIPELINE:P02",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L522",
+        "pipeline": "P02",
+        "value_class": "Operationally Important",
+        "recommendation": "PIPELINE:P02",
+        "f_recommendation": "CONSOLIDATE-into P02",
+        "event_driven_candidate": false,
+        "f_evidence": "Unverified use: no consumer check run for this line"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "30 9,11,13,15 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "ingest",
+        "priority": 4,
+        "retry_policy": "none"
+      },
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-10-11",
+      "adopted_reason": "R2-04 source shadow candidate (refactor train 3): a row carrying a dispatch block is hand-maintained, so the generator must not re-derive it. Health contract remains DRAFT; operator review is required before activation."
+    },
+    {
+      "lane_id": "hermes-research-worker-pool",
+      "owner": "research",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "5 * * * *",
+        "match": "scripts/hermes_research_worker_pool.py",
+        "stage": "shadow",
+        "wave": "R2-04",
+        "command_text": "5 * * * * cd $PROJ && flock -n /tmp/hermes_worker_pool.lock $PY scripts/hermes_research_worker_pool.py --run --json >> logs/hermes_worker_pool.log 2>&1  # white-space/strategy/proxy/legal lanes, self-gated by lane cadence + do-no-harm (2026-07-05)"
+      },
+      "expected_cadence_hours": 1.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/hermes-research-worker-pool_last.json",
+        "key": "ok_at"
+      },
+      "value_class": "Nice to Have",
+      "recommendation": "PIPELINE:P10",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L688",
+        "pipeline": "P10",
+        "value_class": "Nice to Have",
+        "recommendation": "PIPELINE:P10",
+        "f_recommendation": "CONSOLIDATE-into P10",
+        "event_driven_candidate": false,
+        "f_evidence": "Unverified use: no consumer check run for this line"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "5 * * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "ingest",
+        "priority": 4,
+        "retry_policy": "none"
+      },
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-10-11",
+      "adopted_reason": "R2-04 source shadow candidate (refactor train 3): a row carrying a dispatch block is hand-maintained, so the generator must not re-derive it. Health contract remains DRAFT; operator review is required before activation."
+    },
+    {
+      "lane_id": "investment-costs",
+      "owner": "portfolio",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "5 17 * * 1-5",
+        "match": "scripts/investment_costs.py\"",
+        "stage": "shadow",
+        "wave": "R2-03",
+        "command_text": "5 17 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/inv_costs.lock bash -c \"set -a; . ./.env; set +a; $PY scripts/investment_costs.py\" >> logs/investment_costs.log 2>&1"
+      },
+      "expected_cadence_hours": 72.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/investment-costs_last.json",
+        "key": "ok_at"
+      },
+      "value_class": "Duplicated",
+      "recommendation": "MERGE_INTO:P01",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L770",
+        "pipeline": "P01",
+        "value_class": "Duplicated",
+        "recommendation": "MERGE_INTO:P01",
+        "f_recommendation": "CONSOLIDATE into P01 (already a pipeline step or quiet prewarm)",
+        "event_driven_candidate": false,
+        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "5 17 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "ingest",
+        "priority": 3,
+        "retry_policy": "none"
+      },
+      "refactor_source_note": "R2-03 source preparation only; live cron ownership unchanged. Dry CLI is an offline plan, not runtime output/consumer proof; contract remains DRAFT.",
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-10-11",
+      "adopted_reason": "R2-03 source shadow candidate (refactor train 3): a row carrying a dispatch block is hand-maintained, so the generator must not re-derive it. Health contract remains DRAFT; operator review is required before activation."
+    },
+    {
+      "lane_id": "hermes-discovery-scorecard",
+      "owner": "learning",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "30 5 * * *",
+        "match": "scripts/hermes_discovery_scorecard.py",
+        "stage": "shadow",
+        "wave": "R2-04",
+        "command_text": "30 5 * * * cd $PROJ && $PY scripts/hermes_discovery_scorecard.py >> logs/hermes_discovery_scorecard.log 2>&1"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/hermes-discovery-scorecard_last.json",
+        "key": "ok_at"
+      },
+      "value_class": "Duplicated",
+      "recommendation": "MERGE_INTO:P13",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L832",
+        "pipeline": "P13",
+        "value_class": "Duplicated",
+        "recommendation": "MERGE_INTO:P13",
+        "f_recommendation": "CONSOLIDATE into P13 (already a pipeline step or quiet prewarm)",
+        "event_driven_candidate": false,
+        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "30 5 * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "learn",
+        "priority": 4,
+        "retry_policy": "none"
+      },
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-10-11",
+      "adopted_reason": "R2-04 source shadow candidate (refactor train 3): a row carrying a dispatch block is hand-maintained, so the generator must not re-derive it. Health contract remains DRAFT; operator review is required before activation."
+    },
+    {
       "lane_id": "run-scheduled-quote-refresh-incubator",
       "owner": "portfolio",
       "scheduler": {
@@ -14366,52 +14716,6 @@
       "reconciled_on": "2026-10-09",
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "finviz-screener-runner",
-      "owner": "scalp",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "0 10 * * 1-5",
-        "match": "scripts/finviz_screener_runner.py",
-        "stage": "shadow",
-        "wave": "R2-01",
-        "command_text": "0 10 * * 1-5 cd $PROJ && flock -n /tmp/finviz_screener.lock $PY scripts/finviz_screener_runner.py --run >> logs/finviz_screener.log 2>&1"
-      },
-      "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "json_key",
-        "path": "data/runtime/finviz-screener-runner_last.json",
-        "key": "ok_at"
-      },
-      "value_class": "Operationally Important",
-      "recommendation": "PIPELINE:P02",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L133",
-        "pipeline": "P02",
-        "value_class": "Operationally Important",
-        "recommendation": "PIPELINE:P02",
-        "f_recommendation": "CONSOLIDATE-into P02",
-        "event_driven_candidate": false,
-        "f_evidence": "Unverified use: no consumer check run for this line"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one. | Refactor shard 01: SOURCE_ONLY shadow proposal; native-approved cron snapshot 2026-10-11T14:57:08.697196+00:00. Scheduler wave R2-01 is shard provenance; dispatch W4 is the existing allowed wave. Health contract remains DRAFT; no host changes.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
-      "dispatch": {
-        "mode": "dry_run",
-        "cron": [
-          "0 10 * * 1-5"
-        ],
-        "tz": "America/New_York",
-        "wave": "W4",
-        "class": "ingest",
-        "priority": 4,
-        "retry_policy": "none"
-      }
     },
     {
       "lane_id": "youtube-channel-discovery",
@@ -15343,113 +15647,6 @@
       "reconciled_on": "2026-10-09",
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "daily-incubator-refresh",
-      "owner": "proposals",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "15 8 * * 1-5",
-        "match": "scripts/daily_incubator_refresh.py",
-        "stage": "shadow",
-        "wave": "R2-01",
-        "command_text": "15 8 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/daily_incubator_refresh.py --apply >> logs/incubator_refresh.log 2>&1"
-      },
-      "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "json_key",
-        "path": "data/runtime/daily-incubator-refresh_last.json",
-        "key": "ok_at"
-      },
-      "value_class": "Operationally Important",
-      "recommendation": "PIPELINE:P07",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L224",
-        "pipeline": "P07",
-        "value_class": "Operationally Important",
-        "recommendation": "PIPELINE:P07",
-        "f_recommendation": "CONSOLIDATE-into P07",
-        "event_driven_candidate": false,
-        "f_evidence": "Unverified use: no consumer check run for this line"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one. | Refactor shard 01: SOURCE_ONLY shadow proposal; native-approved cron snapshot 2026-10-11T14:57:08.697196+00:00. Scheduler wave R2-01 is shard provenance; dispatch W4 is the existing allowed wave. Health contract remains DRAFT; no host changes.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
-      "dispatch": {
-        "mode": "dry_run",
-        "cron": [
-          "15 8 * * 1-5"
-        ],
-        "tz": "America/New_York",
-        "wave": "W4",
-        "class": "ingest",
-        "priority": 4,
-        "retry_policy": "none"
-      }
-    },
-    {
-      "lane_id": "weekly-incubator-builder",
-      "owner": "proposals",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "0 19 * * 0",
-        "match": "scripts/weekly_incubator_builder.py",
-        "command_text": "0 19 * * 0 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/weekly_incubator_builder.py --run-label 1900 --apply >> logs/incubator_builder.log 2>&1",
-        "stage": "shadow",
-        "wave": "R2-02"
-      },
-      "expected_cadence_hours": 168.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "json_key",
-        "path": "data/runtime/weekly-incubator-builder_last.json",
-        "key": "ok_at"
-      },
-      "value_class": "Operationally Important",
-      "recommendation": "PIPELINE:P07",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L225",
-        "pipeline": "P07",
-        "value_class": "Operationally Important",
-        "recommendation": "PIPELINE:P07",
-        "f_recommendation": "CONSOLIDATE-into P07",
-        "event_driven_candidate": false,
-        "f_evidence": "Unverified use: no consumer check run for this line"
-      },
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one. R2-02: source-only structural shadow candidate; cron remains authoritative. scheduler.wave is shard provenance R2-02; dispatch.wave W4 is the existing valid enum. Natural runtime proof NOT_MEASURED.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
-      "dispatch": {
-        "mode": "dry_run",
-        "cron": [
-          "0 19 * * 0"
-        ],
-        "tz": "America/New_York",
-        "wave": "W4",
-        "class": "ingest",
-        "priority": 5,
-        "retry_policy": "none"
-      },
-      "previous_output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/incubator_builder.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "adopted_from_generator": "reconcile_lane_registry@v1",
-      "adopted_on": "2026-10-11",
-      "adopted_reason": "R2-02 source shadow candidate; preserve the reviewed dispatch intent when reconciling generated cron rows. Health contract remains DRAFT; operator review is required before activation.",
-      "refactor_evidence": {
-        "class": "SOURCE_ONLY",
-        "cron_snapshot_as_of": "2026-10-11T14:57:08.697196+00:00",
-        "native_approval": true,
-        "worktree": "refactor-shard-02",
-        "runtime_activation": "NOT_PERFORMED",
-        "contract_status": "DRAFT"
-      }
     },
     {
       "lane_id": "send-telegram-proposal-alert",
@@ -17850,52 +18047,6 @@
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
     },
     {
-      "lane_id": "finviz-proactive-research",
-      "owner": "scalp",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "30 9,11,13,15 * * 1-5",
-        "match": "scripts/finviz_proactive_research.py",
-        "stage": "shadow",
-        "wave": "R2-04",
-        "command_text": "30 9,11,13,15 * * 1-5 cd $PROJ && flock -n /tmp/finviz_proactive.lock $PY scripts/finviz_proactive_research.py --max 400 --lookback-hours 12 >> logs/finviz_proactive.log 2>&1"
-      },
-      "expected_cadence_hours": 66.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "json_key",
-        "path": "data/runtime/finviz-proactive-research_last.json",
-        "key": "ok_at"
-      },
-      "value_class": "Operationally Important",
-      "recommendation": "PIPELINE:P02",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L522",
-        "pipeline": "P02",
-        "value_class": "Operationally Important",
-        "recommendation": "PIPELINE:P02",
-        "f_recommendation": "CONSOLIDATE-into P02",
-        "event_driven_candidate": false,
-        "f_evidence": "Unverified use: no consumer check run for this line"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
-      "dispatch": {
-        "mode": "dry_run",
-        "cron": [
-          "30 9,11,13,15 * * 1-5"
-        ],
-        "tz": "America/New_York",
-        "wave": "W4",
-        "class": "ingest",
-        "priority": 4,
-        "retry_policy": "none"
-      }
-    },
-    {
       "lane_id": "finviz-sector-research",
       "owner": "scalp",
       "scheduler": {
@@ -19119,52 +19270,6 @@
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
     },
     {
-      "lane_id": "hermes-research-worker-pool",
-      "owner": "research",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "5 * * * *",
-        "match": "scripts/hermes_research_worker_pool.py",
-        "stage": "shadow",
-        "wave": "R2-04",
-        "command_text": "5 * * * * cd $PROJ && flock -n /tmp/hermes_worker_pool.lock $PY scripts/hermes_research_worker_pool.py --run --json >> logs/hermes_worker_pool.log 2>&1  # white-space/strategy/proxy/legal lanes, self-gated by lane cadence + do-no-harm (2026-07-05)"
-      },
-      "expected_cadence_hours": 1.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "json_key",
-        "path": "data/runtime/hermes-research-worker-pool_last.json",
-        "key": "ok_at"
-      },
-      "value_class": "Nice to Have",
-      "recommendation": "PIPELINE:P10",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L688",
-        "pipeline": "P10",
-        "value_class": "Nice to Have",
-        "recommendation": "PIPELINE:P10",
-        "f_recommendation": "CONSOLIDATE-into P10",
-        "event_driven_candidate": false,
-        "f_evidence": "Unverified use: no consumer check run for this line"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
-      "dispatch": {
-        "mode": "dry_run",
-        "cron": [
-          "5 * * * *"
-        ],
-        "tz": "America/New_York",
-        "wave": "W4",
-        "class": "ingest",
-        "priority": 4,
-        "retry_policy": "none"
-      }
-    },
-    {
       "lane_id": "run-options-monitor",
       "owner": "execution",
       "scheduler": {
@@ -20024,53 +20129,6 @@
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
     },
     {
-      "lane_id": "investment-costs",
-      "owner": "portfolio",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "5 17 * * 1-5",
-        "match": "scripts/investment_costs.py\"",
-        "stage": "shadow",
-        "wave": "R2-03",
-        "command_text": "5 17 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/inv_costs.lock bash -c \"set -a; . ./.env; set +a; $PY scripts/investment_costs.py\" >> logs/investment_costs.log 2>&1"
-      },
-      "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "json_key",
-        "path": "data/runtime/investment-costs_last.json",
-        "key": "ok_at"
-      },
-      "value_class": "Duplicated",
-      "recommendation": "MERGE_INTO:P01",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L770",
-        "pipeline": "P01",
-        "value_class": "Duplicated",
-        "recommendation": "MERGE_INTO:P01",
-        "f_recommendation": "CONSOLIDATE into P01 (already a pipeline step or quiet prewarm)",
-        "event_driven_candidate": false,
-        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
-      "dispatch": {
-        "mode": "dry_run",
-        "cron": [
-          "5 17 * * 1-5"
-        ],
-        "tz": "America/New_York",
-        "wave": "W4",
-        "class": "ingest",
-        "priority": 3,
-        "retry_policy": "none"
-      },
-      "refactor_source_note": "R2-03 source preparation only; live cron ownership unchanged. Dry CLI is an offline plan, not runtime output/consumer proof; contract remains DRAFT."
-    },
-    {
       "lane_id": "schwab-econfirm-reconcile",
       "owner": "execution",
       "scheduler": {
@@ -20515,52 +20573,6 @@
       "reconciled_on": "2026-10-09",
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "hermes-discovery-scorecard",
-      "owner": "learning",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "30 5 * * *",
-        "match": "scripts/hermes_discovery_scorecard.py",
-        "stage": "shadow",
-        "wave": "R2-04",
-        "command_text": "30 5 * * * cd $PROJ && $PY scripts/hermes_discovery_scorecard.py >> logs/hermes_discovery_scorecard.log 2>&1"
-      },
-      "expected_cadence_hours": 24.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "json_key",
-        "path": "data/runtime/hermes-discovery-scorecard_last.json",
-        "key": "ok_at"
-      },
-      "value_class": "Duplicated",
-      "recommendation": "MERGE_INTO:P13",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L832",
-        "pipeline": "P13",
-        "value_class": "Duplicated",
-        "recommendation": "MERGE_INTO:P13",
-        "f_recommendation": "CONSOLIDATE into P13 (already a pipeline step or quiet prewarm)",
-        "event_driven_candidate": false,
-        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
-      "dispatch": {
-        "mode": "dry_run",
-        "cron": [
-          "30 5 * * *"
-        ],
-        "tz": "America/New_York",
-        "wave": "W4",
-        "class": "learn",
-        "priority": 4,
-        "retry_policy": "none"
-      }
     },
     {
       "lane_id": "siem-to-hermes-backlog",
