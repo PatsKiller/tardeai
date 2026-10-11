@@ -15,6 +15,8 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import pytest
+
 from scripts.lib.lane_registry import (
     EXPECTED_SILENT,
     LIVE,
@@ -118,14 +120,58 @@ def test_a_retired_lane_keeps_its_row_and_its_reason():
 
 # ── acceptance 3 — CI gate: undeclared job fails, declaring it passes ──────
 
-def _gate(registry=None, extra=(), discovery=None):
+def _gate(registry=None, extra=(), *, discovery):
+    if discovery is None:
+        raise ValueError("an explicit source discovery fixture is required")
     cmd = [sys.executable, str(GATE), "--fail-on-new", *extra]
+    cmd += ["--discovery-json", str(discovery)]
     if registry:
         cmd += ["--registry", str(registry)]
-    if discovery:
-        cmd += ["--discovery-json", str(discovery)]
     return subprocess.run(cmd, cwd=str(ROOT), capture_output=True,
                           text=True, timeout=300).returncode
+
+
+@pytest.fixture
+def empty_discovery(tmp_path):
+    path = tmp_path / "empty-source-discovery.json"
+    path.write_text(json.dumps({"cron": [], "cron_commented": [], "systemd": []}),
+                    encoding="utf-8")
+    return path
+
+
+@pytest.mark.parametrize("use_registry", [False, True])
+def test_gate_helper_requires_and_forwards_explicit_source_discovery(tmp_path, monkeypatch, use_registry):
+    """Missing input or removing CLI forwarding must fail before a process."""
+    import ast
+    from types import SimpleNamespace
+    args = [tmp_path / "registry.json"] if use_registry else []
+    discovery = tmp_path / "discovery.json"
+    calls = []
+
+    def fixture_process(cmd, **kwargs):
+        calls.append(cmd)
+        assert "--discovery-json" in cmd, "CLI lost its explicit discovery fixture"
+        assert cmd[cmd.index("--discovery-json") + 1] == str(discovery)
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(subprocess, "run", fixture_process)
+    with pytest.raises(TypeError):
+        _gate(*args)
+    with pytest.raises(ValueError, match="explicit source discovery fixture"):
+        _gate(*args, discovery=None)
+    assert calls == []
+    assert _gate(*args, discovery=discovery) == 0
+
+    tree = ast.parse(Path(__file__).read_text())
+    helper = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "_gate")
+    helper.body = [n for n in helper.body if not (
+        isinstance(n, ast.AugAssign) and isinstance(n.value, ast.List)
+        and any(isinstance(v, ast.Constant) and v.value == "--discovery-json" for v in n.value.elts))]
+    namespace = dict(globals())
+    mutated = ast.fix_missing_locations(ast.Module(body=[helper], type_ignores=[]))
+    exec(compile(mutated, "fixture-remove-discovery-forwarding", "exec"), namespace)
+    with pytest.raises(AssertionError, match="CLI lost its explicit discovery fixture"):
+        namespace["_gate"](*args, discovery=discovery)
 
 
 def test_the_gate_is_green_on_this_tree(tmp_path):
@@ -186,16 +232,16 @@ def test_unreadable_discovery_is_cannot_run_not_a_pass(tmp_path):
     assert _gate(reg, discovery=tmp_path / "absent.json") == 2
 
 
-def test_a_row_without_an_output_signal_fails(tmp_path):
+def test_a_row_without_an_output_signal_fails(tmp_path, empty_discovery):
     """A lane is verified by a durable artifact, never an exit code."""
     reg = json.loads((ROOT / "config" / "lane_registry.json").read_text())
     del reg["lanes"][0]["output_signal"]
     p = tmp_path / "m.json"
     p.write_text(json.dumps(reg), encoding="utf-8")
-    assert _gate(p) == 1
+    assert _gate(p, discovery=empty_discovery) == 1
 
 
-def test_a_non_active_row_without_reason_or_since_fails(tmp_path):
+def test_a_non_active_row_without_reason_or_since_fails(tmp_path, empty_discovery):
     reg = json.loads((ROOT / "config" / "lane_registry.json").read_text())
     for r in reg["lanes"]:
         if r["state"] == "RETIRED":
@@ -203,13 +249,13 @@ def test_a_non_active_row_without_reason_or_since_fails(tmp_path):
             break
     p = tmp_path / "m.json"
     p.write_text(json.dumps(reg), encoding="utf-8")
-    assert _gate(p) == 1
+    assert _gate(p, discovery=empty_discovery) == 1
 
 
 def test_cannot_run_is_exit_2_and_never_reads_as_a_pass(tmp_path):
     """Exit 2 for a missing file reads identically to a pass unless the caller
     checks for the specific value. That has happened in this repository."""
-    rc = _gate(tmp_path / "absent.json")
+    rc = _gate(tmp_path / "absent.json", discovery=tmp_path / "absent-discovery.json")
     assert rc == 2
     assert rc != 0
 
