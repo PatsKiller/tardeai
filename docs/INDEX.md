@@ -103,7 +103,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/RESEARCH_TOPIC_REGISTRY_2026_06_04.md` | Research Topic Registry — 2026-06-04 | review_required | OK | `f51d95275ab4` |
 | `docs/RESTORE_GUIDE.md` | Trade AI v12 — Restore Guide | active_keep | OK | `e75090b6bb16` |
 | `docs/SCHWAB_AUTO_REAUTH.md` | Schwab OAuth Reauth (manual-first) | review_required | OK | `039c557e4214` |
-| `docs/SOURCE_OF_TRUTH.md` | Source of Truth — one declaration per domain | review_required | MISSING HEADER | `c273d154b1ec` |
+| `docs/SOURCE_OF_TRUTH.md` | Source of Truth — one declaration per domain | review_required | MISSING HEADER | `2eda5e703f8c` |
 | `docs/STAGING_VS_V2_BITEMPORAL_STATUS_REPORT.md` | Staging vs V2 bitemporal database — status report | review_required | OK | `809ec60535eb` |
 | `docs/STOP_METHODOLOGY.md` | Stop & Trailing-Stop Methodology (canonical) | review_required | OK | `5b9791931edc` |
 | `docs/STOP_SYSTEM_GAP_REPORT.md` | Trade AI v12 — Stop System Alignment / Gap Report | review_required | OK | `12d1dfe39ffb` |
@@ -717,6 +717,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/audit/sender-inventory.md` | Communications Gateway — Sender Inventory | review_required | MISSING HEADER | `af5b68183139` |
 | `docs/audit/telegram-bypass-zero-closeout.md` | Telegram chokepoint — zero bypass closeout | review_required | OK | `73423300bcac` |
 | `docs/audit/wave-c-inbound-implementation.md` | Wave C — Communications Gateway, inbound half (implementation) | review_required | OK | `ca9edc237fc0` |
+| `docs/audits/ALPHA_VANTAGE_GAPS_AND_NEWSAPI_2026-10-10.md` | Alpha Vantage for the gaps, and the NewsAPI test | review_required | OK | `bf3eb1c68b48` |
 | `docs/audits/ATM_APPROVE_FAILED_2026-05-22.md` | ATM approve_proposal_failed Investigation — 2026-05-22 | review_required | OK | `9f1bdc8d2d08` |
 | `docs/audits/CENSUS_PART1_BACKEND_2026-08-30.md` | CENSUS — PART 1: BACKEND | review_required | OK | `18392c652fe2` |
 | `docs/audits/CENSUS_PART2_COMMAND_CENTER_2026-08-30.md` | CENSUS PART 2 — The Command Center / operator surface | review_required | OK | `a01d2b2b3eee` |

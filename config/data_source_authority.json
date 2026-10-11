@@ -184,13 +184,42 @@
       "status": "active",
       "approval": {
         "approved_by": "operator",
-        "approved_on": "2026-09-13",
-        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
-        "scope": "may supply: fundamentals"
+        "approved_on": "2026-10-10",
+        "reference": "Operator 2026-10-10 ~18:40 ET, verbatim \"Yes, from one to six\" (item 4: apply registry proposal rows A1, A2, A3, B1, B2; not N1) — config/policy_proposals/data_source_authority_alpha_vantage_scope_20261010.json; branch n8nmat/av-newsapi (PR #1675); direction 2026-10-10: \"let's use Alpha Vantage for the gaps and prioritize which gaps that really make sense\"",
+        "scope": "may supply: fundamentals, earnings_calendar, news_sentiment; same-question backup for earnings_date and catalyst_news (supply tags earnings, news_feed). All calls through scripts/lib/alpha_vantage_owner.py; <= 23 requests/day"
       },
       "supplies": [
-        "fundamentals"
-      ]
+        "fundamentals",
+        "earnings_calendar",
+        "news_sentiment",
+        "news_feed",
+        "earnings"
+      ],
+      "owner": "scripts/lib/alpha_vantage_owner.py",
+      "budget": {
+        "daily": 23,
+        "provider_daily": 25,
+        "per_minute": 5,
+        "min_spacing_s": 12,
+        "count_days": [
+          "UTC",
+          "America/New_York"
+        ],
+        "allotments": {
+          "earnings_calendar": 1,
+          "news_sentiment_window": 14,
+          "fundamentals_overview": 5,
+          "scalp_float": 2,
+          "key_check": 1,
+          "top_movers": 0
+        },
+        "ledger": "data/runtime/alpha_vantage/budget_ledger.json",
+        "receipts": "data/runtime/alpha_vantage/receipts_YYYYMM.jsonl",
+        "config": "config/alpha_vantage_owner.json"
+      },
+      "_supplies_note": "news_feed and earnings are the supply tags catalyst_news (answers news/news_feed/web_search) and earnings_date match a same-question backup against (AGENTS.md §7A rule 5) — B1/B2, operator 2026-10-10 \"Yes, from one to six\".",
+      "health_window_hours": 192,
+      "_health_window_note": "Provider liveness window for data_source_health. 192h = the weekly fundamentals lane (cron L162), the only scheduled AV caller until the owner's news/earnings jobs are scheduled; lower to 13 (the overnight gap between news pulls, 20:00->06:00 ET, with margin) when that cron/n8n grant lands. Domain freshness (news_sentiment 3h/13h, earnings_calendar 26h) is the read envelope's, not this row's."
     },
     "brave": {
       "class": "live_external",
@@ -212,8 +241,14 @@
         "monthly": 3600,
         "monthly_reserve_for_on_demand": 200,
         "_amended": {
-          "from": {"daily": 120, "monthly": 1500},
-          "to": {"daily": 300, "monthly": 3600},
+          "from": {
+            "daily": 120,
+            "monthly": 1500
+          },
+          "to": {
+            "daily": 300,
+            "monthly": 3600
+          },
           "approved_by": "operator",
           "approved_on": "2026-10-10",
           "reference": "operator to coordinator, 2026-10-10 ~18:40 ET, approving the search-routing-engine follow-ups: \"Yes, from one to six\" (item 3: raise the Brave request breaker to monthly >= 3,000, daily >= 140, keep the on-demand reserve, so the dollar caps bind); branch n8nmat/search-routing-engine",
@@ -724,7 +759,8 @@
       "backup": [
         "yahoo",
         "brave",
-        "searxng"
+        "searxng",
+        "alpha_vantage"
       ],
       "retired": [
         "finnhub",
@@ -781,7 +817,8 @@
         }
       ],
       "_stale_note": "Runs 00:30 and 12:30 (12h gap). A window equal to the gap decays on any delay; 18h = 1.5x the gap. Phase 8, 2026-09-13.",
-      "writer_facade": "scripts/news_ingestion.py"
+      "writer_facade": "scripts/news_ingestion.py",
+      "_backup_note": "B2, operator 2026-10-10 \"Yes, from one to six\": alpha_vantage articles (owner's NEWS_SENTIMENT windows, projection news_sentiment) answer the same question (headlines per symbol); fills the slot NewsAPI held. NewsAPI stays retired (N1 not approved)."
     },
     {
       "domain": "technicals",
@@ -997,7 +1034,9 @@
         "UNKNOWN"
       ],
       "primary_provider": "yfinance",
-      "backup": [],
+      "backup": [
+        "alpha_vantage"
+      ],
       "retired": [
         "fmp"
       ],
@@ -1027,7 +1066,8 @@
           "max_per_day": 1,
           "expected_seconds": 7200
         }
-      ]
+      ],
+      "_backup_note": "B1, operator 2026-10-10 \"Yes, from one to six\": alpha_vantage (owner's EARNINGS_CALENDAR, projection earnings_calendar) answers the same question (next report date). Reader change in scripts/earnings_enrich.py not built yet; earnings_enrich stays the single writer of symbol_profiles."
     },
     {
       "domain": "holdings_accounts",
@@ -3046,6 +3086,97 @@
       "_writer_note": "Upsert one row per symbol, never regressing fetched_at; rails on the receipt (naive time, empty ok payload rejected). tests/test_broker_domains_q1_20261010.py enforces the single writer.",
       "provider_health_window": false,
       "_provider_health_window_why": "Store freshness, not provider liveness: lib/data_source_health_view.window_minutes_for skips this row so registering the domain does not change the provider's health window (measured: without it finviz would drop 18h->15min, yfinance 168h->48h)."
+    },
+    {
+      "domain": "earnings_calendar",
+      "class": "ingested",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-10-10",
+        "reference": "Operator 2026-10-10 ~18:40 ET, verbatim \"Yes, from one to six\" (item 4: apply registry proposal rows A1, A2, A3, B1, B2; not N1) — config/policy_proposals/data_source_authority_alpha_vantage_scope_20261010.json; branch n8nmat/av-newsapi (PR #1675); direction 2026-10-10: \"let's use Alpha Vantage for the gaps and prioritize which gaps that really make sense\"",
+        "scope": "authoritative answer for earnings_calendar (report date, pre/post-market timing, consensus estimate, whole US market, 3-month horizon): store runtime/alpha_vantage/earnings_calendar_latest.json via projection earnings_calendar; primary provider alpha_vantage"
+      },
+      "store": {
+        "file": "runtime/alpha_vantage/earnings_calendar_latest.json"
+      },
+      "writer": "scripts/alpha_vantage_owner.py",
+      "cadence": "06:05 ET daily (1 EARNINGS_CALENDAR call) — once a cron/n8n grant schedules it",
+      "stale_after_hours": 26,
+      "projection": "earnings_calendar",
+      "required_fields": [
+        "symbol",
+        "report_date",
+        "time_of_day"
+      ],
+      "primary_provider": "alpha_vantage",
+      "backup": [],
+      "retired": [
+        "fmp"
+      ],
+      "no_coverage": "say_so",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "metered",
+          "max_per_day": 1,
+          "expected_seconds": 30
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ],
+      "_why": "symbol_profiles has next_earnings_date for 1,260 of 3,337 profiles (1,037 in the future) and no report timing at all (read-only query 2026-10-10). One call covers the market with timing and estimate. Not a backup of earnings_date (yfinance): it answers a wider question (time of day, estimate); see B1 for the same-question backup."
+    },
+    {
+      "domain": "news_sentiment",
+      "class": "ingested",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-10-10",
+        "reference": "Operator 2026-10-10 ~18:40 ET, verbatim \"Yes, from one to six\" (item 4: apply registry proposal rows A1, A2, A3, B1, B2; not N1) — config/policy_proposals/data_source_authority_alpha_vantage_scope_20261010.json; branch n8nmat/av-newsapi (PR #1675); direction 2026-10-10: \"let's use Alpha Vantage for the gaps and prioritize which gaps that really make sense\"",
+        "scope": "authoritative answer for news_sentiment (per-ticker relevance-weighted sentiment over 72 h): store runtime/alpha_vantage/news_sentiment_latest.json via projection news_sentiment; primary provider alpha_vantage"
+      },
+      "store": {
+        "file": "runtime/alpha_vantage/news_sentiment_latest.json"
+      },
+      "writer": "scripts/alpha_vantage_owner.py",
+      "cadence": "14 windowed NEWS_SENTIMENT pulls 06:00-20:00 ET — once a cron/n8n grant schedules them",
+      "stale_after_hours": 3,
+      "stale_after_hours_closed": 13,
+      "projection": "news_sentiment",
+      "required_fields": [
+        "ticker",
+        "weighted_score",
+        "articles",
+        "as_of"
+      ],
+      "primary_provider": "alpha_vantage",
+      "backup": [],
+      "retired": [
+        "newsapi",
+        "finnhub",
+        "polygon",
+        "fmp"
+      ],
+      "no_coverage": "say_so",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "metered",
+          "max_per_day": 2,
+          "expected_seconds": 30
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ],
+      "_why": "0 of 7,492 news_articles rows from the last 3 days carry a sentiment_score (read-only query 2026-10-10). No other provider in the registry answers per-ticker sentiment, so there is no same-question backup; when the budget is spent the answer is say_so."
     }
   ]
 }

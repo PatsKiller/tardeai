@@ -22,13 +22,15 @@
     }
   },
   "broker_projections_observed": {
-    "_source": "scripts/lib/data_broker/catalog.py PROJECTIONS ids (28)",
+    "_source": "scripts/lib/data_broker/catalog.py PROJECTIONS ids (35)",
     "ids": [
       "market_quote", "quote_batch", "symbol_profile", "analyst_rollup", "analyst_detail", "catalyst_record",
       "indicator_snapshot", "portfolio_snapshot", "entry_plan", "reentry_decision_desk", "watch_intelligence",
       "watch_decision_desk", "sector_momentum", "risk_snapshot", "research_card", "desk_feeds", "cio_portfolio",
       "market_regime", "daily_bars", "subject_research", "agent_opinion", "option_chain", "watch_discovery",
-      "active_trader_microstructure", "price_stats", "ohlc_bars", "positions_context", "opportunity"
+      "active_trader_microstructure", "price_stats", "ohlc_bars", "positions_context", "opportunity",
+      "earnings_calendar", "news_sentiment",
+      "finviz_enrichment_snapshot", "scalp_list", "latest_quote", "social_feed", "yfinance_info"
     ]
   },
   "fact_spec_format": {
@@ -177,6 +179,8 @@
       "positions_context": "Investment Command Center (2026-10-08): per-symbol position context for the opportunity modal, read through lib/portfolio_positions; the desk's portfolio intent already reads the same store via portfolio_snapshot, so claiming it twice would double-count.",
       "option_chain": "LIVE Schwab chain pulls stay on the Options Hub (2FA-gated Path B). CIO Telegram options_strategy intent reads options_desk_latest house facts only — never this projection at reply time.",
       "active_trader_microstructure": "Live ~5 s book / prints / 1-min bars for the Active Trader alert engine (2026-10-05). Operator-desk intents never quote it: scalp questions read the alert journal / Active Trader feed, which already carry the evidence that decided each alert.",
+      "earnings_calendar": "Alpha Vantage owner (2026-10-10, PROPOSED): the market-wide earnings calendar is inert until the operator grants the registry scope; no desk intent reads it yet. Claim it under the analyst/attention intents once the grant lands and a desk answer quotes report timing.",
+      "news_sentiment": "Alpha Vantage owner (2026-10-10, PROPOSED): per-ticker news sentiment is inert until the operator grants the registry scope; catalyst_enrichment reads it, no desk intent does yet. Claim it under research/attention when a desk answer quotes sentiment.",
       "watch_discovery": "registry class dead_feed (declared_gap_no_producer); reading it would render a dead desk as today's activity."
     }
   }

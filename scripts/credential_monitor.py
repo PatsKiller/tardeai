@@ -204,21 +204,25 @@ def check_brave() -> dict:
 
 
 def check_alpha_vantage() -> dict:
-    """Check Alpha Vantage API key."""
-    key = _env("ALPHA_VANTAGE_API_KEY")
-    if not key:
-        return {"name": "Alpha Vantage", "status": "missing", "error": "ALPHA_VANTAGE_API_KEY not set"}
+    """Alpha Vantage key health WITHOUT spending one of the 25 daily requests (2026-10-10).
+
+    This sent a GLOBAL_QUOTE on every credential check. It now asks the Alpha Vantage owner
+    (scripts/lib/alpha_vantage_owner.py): the owner's last real call answers first; only when the
+    owner has no success inside key_check_fresh_hours does it spend one call from its 1/day
+    key_check reserve. The key never appears in the result.
+    """
     try:
-        url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=AAPL&apikey={key}"
-        with urllib.request.urlopen(url, timeout=10) as resp:
-            data = json.loads(resp.read())
-            if data.get("Global Quote", {}).get("05. price"):
-                return {"name": "Alpha Vantage", "status": "ok"}
-            if "Note" in data or "Information" in data:
-                return {"name": "Alpha Vantage", "status": "quota", "error": "Rate limited — 5 calls/min"}
-        return {"name": "Alpha Vantage", "status": "error", "error": "No quote data"}
-    except Exception as e:
-        return {"name": "Alpha Vantage", "status": "error", "error": str(e)}
+        from lib.alpha_vantage_owner import validate_key_via_owner
+        ok, detail = validate_key_via_owner()
+    except Exception as e:  # noqa: BLE001
+        return {"name": "Alpha Vantage", "status": "error", "error": f"owner unavailable: {type(e).__name__}"}
+    if ok is True:
+        return {"name": "Alpha Vantage", "status": "ok", "detail": detail}
+    if ok is None:
+        return {"name": "Alpha Vantage", "status": "warning", "detail": detail}
+    if "not set" in detail:
+        return {"name": "Alpha Vantage", "status": "missing", "error": detail}
+    return {"name": "Alpha Vantage", "status": "error", "error": detail}
 
 
 def check_db() -> dict:

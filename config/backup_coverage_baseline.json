@@ -49,6 +49,8 @@
   "store:active_trader_microstructure": "NONE: stores_active_trader (seeded 2026-10-09)",
   "store:approval_packages": "NONE: stores_intelligence_schema (seeded 2026-10-09)",
   "store:conformance_gate_receipts": "NONE: stores_governance_files (seeded 2026-10-09)",
+  "store:earnings_calendar": "NONE: stores_runtime_files (2026-10-10, AV owner #1675; rebuildable from Alpha Vantage within a day: earnings 1 call, news rolling 72h; runtime/ backup tracked as B16)",
+  "store:news_sentiment": "NONE: stores_runtime_files (2026-10-10, AV owner #1675; rebuildable from Alpha Vantage within a day: earnings 1 call, news rolling 72h; runtime/ backup tracked as B16)",
   "store:industry_momentum": "NONE: stores_runtime_files (seeded 2026-10-09)",
   "store:intelligence_gir_projection": "NONE: stores_intelligence_schema (seeded 2026-10-09)",
   "store:intelligence_research_index": "NONE: stores_intelligence_schema (seeded 2026-10-09)",

@@ -1,7 +1,7 @@
 """catalyst_enrichment.py — Multi-source catalyst enrichment for each ticker.
 
 Sources (in priority order for dedup):
-  1. Alpha Vantage news sentiment
+  1. Alpha Vantage news sentiment (read from the AV owner store via lib.data_broker.news_sentiment — no live call)
   2. Finviz News API  (news_export.ashx — token auth)
   3. Yahoo Finance    (RSS + JSON fallback, no key)
 Finnhub, NewsAPI, Polygon and FMP retired 2026-09-13 (config/data_source_authority.json).
@@ -162,72 +162,37 @@ def _recency_multiplier(tier: str) -> float:
 
 # ── Per-API fetchers ─────────────────────────────────────────────────────────
 
-def _report_alpha_vantage(ok: bool, rows=None, error=None) -> None:
-    """Liveness for the 'alpha_vantage' health row (2026-09-13). Only reached after a
-    real HTTP call -- the budget/flag/key early-returns above say nothing about the
-    provider. This fetcher is flag-gated (ENABLE_ALPHA_VANTAGE_CATALYST) and on-demand,
-    not scheduled. Never raises."""
-    try:
-        from lib.data_source_report import report_source
-        report_source("alpha_vantage", ok, rows=rows, error=error)
-    except Exception:
-        pass
-
-
 def _fetch_alpha_vantage(symbol: str) -> List[Dict]:
-    # Alpha Vantage free tier = 5 calls/min, 100/day — disabled for bulk catalyst runs
-    # Enable only for single-ticker deep dives: ENABLE_ALPHA_VANTAGE_CATALYST=true in .env
-    # Flag and key are checked BEFORE the budget ledger (2026-10-10): spend() used to run first, so a
-    # disabled fetcher recorded ~4,650 "calls"/week in api_budget_ledger with 0 real requests.
+    """Alpha Vantage news for ``symbol`` from the owner's store — never a live request (2026-10-10).
+
+    This slot used to send its own NEWS_SENTIMENT per symbol (1 of the 25 daily requests each).
+    The Alpha Vantage owner (scripts/lib/alpha_vantage_owner.py) now pulls market-wide windows and
+    publishes per-ticker articles; this reads them through the news_sentiment broker projection.
+    ENABLE_ALPHA_VANTAGE_CATALYST still decides whether the slot contributes (default off). An empty
+    or stale store answers [] — the next slot (Finviz, Yahoo) carries on, as before.
+    """
     if _env("ENABLE_ALPHA_VANTAGE_CATALYST", "false").lower() != "true":
         return []
-    key = _env("ALPHA_VANTAGE_API_KEY")
-    if not key:
-        return []
     try:
-        from api_budget import spend as _ab_spend
-        if not _ab_spend("alphavantage"):
-            return []
-    except Exception:
-        pass
-    try:
-        url = "https://www.alphavantage.co/query"
-        params = {
-            "function": "NEWS_SENTIMENT",
-            "tickers": symbol,
-            "sort": "LATEST",
-            "limit": 20,
-            "apikey": key,
-        }
-        resp = requests.get(url, params=params, timeout=(5, 8))
-        try:
-            resp.raise_for_status()
-        except Exception as http_exc:
-            _report_alpha_vantage(False, error=f"HTTP {resp.status_code}: {str(http_exc)[:120]}")
-            raise
-        items = resp.json().get("feed", [])
-        _report_alpha_vantage(True, rows=len(items))
-        results = []
-        for item in items:
-            raw_time = item.get("time_published", "")
-            try:
-                dt = datetime.strptime(raw_time, "%Y%m%dT%H%M%S").replace(tzinfo=timezone.utc)
-                published_at = dt.isoformat()
-            except ValueError:
-                published_at = ""
-            results.append({
-                "title": item.get("title", ""),
-                "summary": item.get("summary", ""),
-                "url": item.get("url", ""),
-                "source": item.get("source", "Alpha Vantage"),
-                "published_at": published_at,
-                "provider": "alpha_vantage",
-                "sentiment_score": item.get("overall_sentiment_score", 0),
-                "sentiment_label": item.get("overall_sentiment_label", "Neutral"),
-            })
-        return results
-    except Exception:
+        from lib.data_broker.news_sentiment import get_articles
+        got = get_articles(symbol, lookback_hours=72)
+    except Exception:  # noqa: BLE001 — a store read failure is "no AV articles", never a crash
         return []
+    if got.get("gap"):
+        return []
+    results = []
+    for a in got.get("articles") or []:
+        results.append({
+            "title": a.get("title") or "",
+            "summary": "",
+            "url": a.get("url") or "",
+            "source": a.get("source") or "Alpha Vantage",
+            "published_at": a.get("published_at") or "",
+            "provider": "alpha_vantage",
+            "sentiment_score": a.get("ticker_score") if a.get("ticker_score") is not None else 0,
+            "sentiment_label": a.get("ticker_label") or a.get("overall_label") or "Neutral",
+        })
+    return results
 
 
 # ── Source 6: Finviz News API (token-based, replaces old regex scraper) ──────
