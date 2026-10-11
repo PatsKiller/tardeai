@@ -429,11 +429,14 @@ def test_correlated_reasons_refuse_to_claim_coverage():
                     "inferred", "do not treat as covered")), r["lane_id"]
 
 
-def test_the_unknown_count_is_read_from_the_field_not_the_prose():
+def test_the_unknown_count_is_read_from_the_field_not_the_prose(tmp_path):
     """The gate grepped state_reason for the word UNKNOWN and reported 2 the
     moment the reasons were rewritten, while 8 lanes were still UNKNOWN."""
     import subprocess, sys as _s
-    out = subprocess.run([_s.executable, str(GATE), "--json"], cwd=str(ROOT),
+    discovery = tmp_path / "discovery.json"
+    discovery.write_text(json.dumps({"cron": [], "cron_commented": [], "systemd": []}),
+                         encoding="utf-8")
+    out = subprocess.run([_s.executable, str(GATE), "--json", "--discovery-json", str(discovery)], cwd=str(ROOT),
                          capture_output=True, text=True, timeout=300).stdout
     got = json.loads(out)
     expected = [r["lane_id"] for r in load_registry()["lanes"]
