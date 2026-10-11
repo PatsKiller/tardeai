@@ -678,7 +678,7 @@ def test_etf_performance_dry_run_respects_symbols(monkeypatch, capsys):
 def test_etf_performance_ddl_is_not_reachable_from_dry_run():
     src = inspect.getsource(epe.main)
     assert (
-        src.index('"--dry-run" in sys.argv or "--no-fetch" in sys.argv')
+        src.index("if args.dry_run or args.no_fetch:")
         < src.index("return 0")
         < src.index("res = enrich()")
     )

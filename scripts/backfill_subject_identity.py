@@ -115,10 +115,12 @@ NO_CONSUMER_REASON = (
 def _db():
     import psycopg2
 
+    # DB_* only (AGENTS.md §23.18): never copy the whole env file, which also carries broker credentials.
     for line in (ROOT / ".env").read_text().splitlines():
         if "=" in line and not line.strip().startswith("#"):
             k, _, v = line.partition("=")
-            os.environ.setdefault(k.strip(), v.strip())
+            if k.strip().startswith("DB_"):
+                os.environ.setdefault(k.strip(), v.strip())
     return psycopg2.connect(
         host=os.getenv("DB_HOST"), port=os.getenv("DB_PORT"), dbname=os.getenv("DB_NAME"),
         user=os.getenv("DB_USER"), password=os.getenv("DB_PASSWORD"),

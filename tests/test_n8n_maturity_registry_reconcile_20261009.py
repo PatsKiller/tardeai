@@ -249,7 +249,9 @@ def test_generated_rows_have_evidence_or_are_flagged_unverified(committed):
     # hand-curated (the retire-batch-1 pattern) so the generator keeps RETIRED (288 generated rows left).
     # W4 provider-owner shadow (2026-10-11) adopted 4 more: finviz-enrichment, sec-data-ingest, social-ingest-all
     # (dispatch blocks) plus social-ingest-stocktwits unchanged so its lane_id stays stable (284 generated rows left).
-    assert len(gen) >= 284
+    # SW4 (2026-10-11) adopted 14 more generated rows with dispatch blocks (identity-sweep-stage0 was hand-curated
+    # already): 270 generated rows left.
+    assert len(gen) >= 270
     adopted = [r for r in committed["lanes"] if r.get("adopted_from_generator") == R.GENERATOR_VERSION]
     # D3 rows carry an r1_pending block (inert until AGENTS 4.4.0 is ACTIVE) instead of a dispatch block;
     # build-symbol-profiles-at-0-19 and social-ingest-stocktwits are adopted unchanged only to keep their lane_ids

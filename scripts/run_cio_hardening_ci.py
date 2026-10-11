@@ -3784,6 +3784,14 @@ GATES = [
             # it), REVIEWED health contracts, scheduler.match = exactly the one cron line, news-ingest and
             # sec-filings-feed excluded; compute_due week sweep. Hermetic: repo config read only.
             "tests/test_w4_provider_owners_shadow_20261011.py",
+            # Shadow wave 4 (SW4, 2026-10-11): 15 R1 lanes (10 ingest, 5 learn) admitted by r1_class_admission in the
+            # 4.4.0 cron-row shape; dry_run only, live_arg null, cron lock or PROPOSED lock, REVIEWED contracts,
+            # excluded lanes pinned (premarket C1 steps, P0, llm in-process, shared receipt, non-R1 class); compute_due
+            # week / half-hour / monthly sweeps. Hermetic: repo config read only.
+            "tests/test_sw4_shadow_wave4_20261011.py",
+            # SW4 env narrowing: nine lane scripts copy only named keys from <checkout>/.env (no broker credential
+            # reaches os.environ); etf_performance_enrich strict argparse. Hermetic: scratch .env, monkeypatched env.
+            "tests/test_sw4_env_narrowing_20261011.py",
             # W4 canary blocker (2026-10-11): finviz_enrichment._load_env copies only the six FINVIZ_* names (= the
             # lane's allowlist FINVIZ_* env_names) from the tmpfs render / .env into os.environ, never ALPACA_* /
             # SCHWAB_* / any other render name, on both the resolve_secret and the fallback path; it is the module's
