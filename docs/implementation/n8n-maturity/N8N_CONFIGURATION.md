@@ -210,7 +210,7 @@ One-line summaries; the procedure is in [`N8N_MONITORING_AND_REMEDIATION_STANDAR
 - **Telegram:** `scripts/incident_notifier.py` (cron L1052, live) on the SYSTEM ops family — P1 at once, uncapped;
   P2 batched, held 22:00–07:00 ET; 24/day cap; P3 never.
 - **LLM remediation:** `scripts/n8n_failure_diagnosis.py`, process `n8n_lane_failure_diagnosis` (grok → chatgpt →
-  deepseek; $0.05/call, $0.10/day), catalogue `config/n8n_remediation_catalogue.json` (53 lanes, 8 auto dry-run
+  deepseek; $0.05/call, $0.10/day), catalogue `config/n8n_remediation_catalogue.json` (80 lanes, 33 auto dry-run, #1681
   reruns), scalp excluded; row merged PAUSED (#1657), install ~2 h after the bridge.
 - **Workflow errors:** Error Trigger → relay `POST /event` → gateway lane `n8n-workflow-error` — **served since 17:13 ET**
   (5 events `ACCEPTED` in the 17:14 re-run, `rerun-verify-20261010.txt`). **The fan-in has no reader for these events

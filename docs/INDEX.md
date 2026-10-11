@@ -103,7 +103,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/RESEARCH_TOPIC_REGISTRY_2026_06_04.md` | Research Topic Registry — 2026-06-04 | review_required | OK | `f51d95275ab4` |
 | `docs/RESTORE_GUIDE.md` | Trade AI v12 — Restore Guide | active_keep | OK | `e75090b6bb16` |
 | `docs/SCHWAB_AUTO_REAUTH.md` | Schwab OAuth Reauth (manual-first) | review_required | OK | `039c557e4214` |
-| `docs/SOURCE_OF_TRUTH.md` | Source of Truth — one declaration per domain | review_required | MISSING HEADER | `294da182ba99` |
+| `docs/SOURCE_OF_TRUTH.md` | Source of Truth — one declaration per domain | review_required | MISSING HEADER | `2eda5e703f8c` |
 | `docs/STAGING_VS_V2_BITEMPORAL_STATUS_REPORT.md` | Staging vs V2 bitemporal database — status report | review_required | OK | `809ec60535eb` |
 | `docs/STOP_METHODOLOGY.md` | Stop & Trailing-Stop Methodology (canonical) | review_required | OK | `5b9791931edc` |
 | `docs/STOP_SYSTEM_GAP_REPORT.md` | Trade AI v12 — Stop System Alignment / Gap Report | review_required | OK | `12d1dfe39ffb` |
@@ -717,6 +717,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/audit/sender-inventory.md` | Communications Gateway — Sender Inventory | review_required | MISSING HEADER | `af5b68183139` |
 | `docs/audit/telegram-bypass-zero-closeout.md` | Telegram chokepoint — zero bypass closeout | review_required | OK | `73423300bcac` |
 | `docs/audit/wave-c-inbound-implementation.md` | Wave C — Communications Gateway, inbound half (implementation) | review_required | OK | `ca9edc237fc0` |
+| `docs/audits/ALPHA_VANTAGE_GAPS_AND_NEWSAPI_2026-10-10.md` | Alpha Vantage for the gaps, and the NewsAPI test | review_required | OK | `bf3eb1c68b48` |
 | `docs/audits/ATM_APPROVE_FAILED_2026-05-22.md` | ATM approve_proposal_failed Investigation — 2026-05-22 | review_required | OK | `9f1bdc8d2d08` |
 | `docs/audits/CENSUS_PART1_BACKEND_2026-08-30.md` | CENSUS — PART 1: BACKEND | review_required | OK | `18392c652fe2` |
 | `docs/audits/CENSUS_PART2_COMMAND_CENTER_2026-08-30.md` | CENSUS PART 2 — The Command Center / operator surface | review_required | OK | `a01d2b2b3eee` |
@@ -1429,9 +1430,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-maturity/01-registry-reconciliation.md` | 01 — Lane registry reconciliation (B1) | review_required | OK | `7ef9d42aa3c9` |
 | `docs/implementation/n8n-maturity/02-six-workflow-architecture.md` | N8N Maturity — 02: six-workflow architecture (registry-driven dispatch) | review_required | OK | `ded275de4568` |
 | `docs/implementation/n8n-maturity/03-momentum-scalp-lanes.md` | 03 — Momentum-scalp lanes under n8n: inventory, root cause, dispatch design, monitoring | review_required | OK | `3ea31aa32eee` |
-| `docs/implementation/n8n-maturity/N8N_CONFIGURATION.md` | N8N configuration — ms01-openclaw (the entry point) | review_required | OK | `243f98145925` |
-| `docs/implementation/n8n-maturity/N8N_MONITORING_AND_REMEDIATION_STANDARD.md` | N8N monitoring, SIEM, Telegram and LLM auto-remediation standard — per lane | review_required | OK | `f7e451a5bfcc` |
+| `docs/implementation/n8n-maturity/N8N_CONFIGURATION.md` | N8N configuration — ms01-openclaw (the entry point) | review_required | OK | `d6a1c8730cc0` |
+| `docs/implementation/n8n-maturity/N8N_MONITORING_AND_REMEDIATION_STANDARD.md` | N8N monitoring, SIEM, Telegram and LLM auto-remediation standard — per lane | review_required | OK | `d690ff834154` |
 | `docs/implementation/n8n-maturity/N8N_ONBOARDING_STANDARD.md` | N8N onboarding standard — the mandatory procedure for adding anything to n8n | review_required | OK | `0346adae4715` |
+| `docs/implementation/n8n-maturity/SEARCH_SOURCE_ROUTING.md` | Search source routing — which source answers what, and what it may spend | review_required | OK | `633c3aab392f` |
 | `docs/implementation/n8n-maturity/cron-inventory/CRON_INVENTORY.md` | Cron Inventory & Migration Assessment — 2026-10-10 | review_required | OK | `5a9e9ad6c050` |
 | `docs/implementation/n8n-maturity/cron-inventory/DEPENDENCY_MAP.md` | Dependency map — Trade AI scheduled work (cron · systemd · health-tick · n8n) | review_required | OK | `a6874bcd3c32` |
 | `docs/implementation/n8n-maturity/cron-inventory/GOVERNANCE_ANALYSIS.md` | Schedule and dependency governance — overlaps, duplicates, consolidation | review_required | OK | `529bca63c840` |
@@ -1879,6 +1881,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/PROPOSED_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE_2026-09-19.md` | APPROVED RETIRE — operator settle (AGENTS.md §17 / §9.3) | review_required | OK | `211e36d63272` |
 | `docs/ops/PROPOSED_VERIFY_SCREENER_GO_ALERTS_CRON_2026-09-20.md` | CONFIRMED — live crontab verified (AGENTS.md §9.3) | review_required | OK | `daa12f930371` |
 | `docs/ops/PROPOSED_WAKE_L3_CRON_FLAGS_2026-09-19.md` | PROPOSED — enable WAKE_L3 flags on the **L3 consumer** cron | review_required | OK | `a4a573fe18a8` |
+| `docs/ops/QUOTE_SNAPSHOTS_RETIREMENT_PLAN_2026-10-10.md` | Retiring the `market_quote_snapshots` writes (cron L92 / L128) — plan, not executed | review_required | OK | `5be80145a2fd` |
 | `docs/ops/R11_AUTONOMOUS_INVESTMENT_OFFICE_OPERATOR_VALUE_CLOSEOUT_2026-08-25.md` | R11 — Autonomous Investment Office Operator-Value Closeout | review_required | OK | `0539b80504f0` |
 | `docs/ops/R12_OPERATOR_INTELLIGENCE_NATURAL_NOTIFICATION_CLOSEOUT_2026-08-25.md` | R12 — Operator-intelligence natural notification closeout | review_required | OK | `dbcce083dfc0` |
 | `docs/ops/R13_INSTITUTIONAL_MATURITY_CLOSEOUT_2026-08-25.md` | R13 Institutional maturity closeout | review_required | OK | `58eb48120061` |

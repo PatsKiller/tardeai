@@ -230,7 +230,7 @@ python3 scripts/check_n8n_health_contracts.py
   before activation, decision 4). **Generator / validator:** `scripts/lib/n8n_remediation_catalogue.py`;
   **builder:** `python3 scripts/build_remediation_catalogue.py --dry-run | --write | --check` from the verified
   inventory, the registry and the allowlist.
-- **2026-10-10:** 53 lanes (54 before the scalp exclusion, #1655); severity Critical 15, High 9, Medium 13, Low 16;
+- **2026-10-10:** 80 lanes after the #1681 rebuild (was 53 (54 before the scalp exclusion, #1655); severity Critical 15, High 9, Medium 13, Low 16;
   45 suggest-only; 18 lanes carry actions; **8 lanes have an automatic dry-run rerun**:
   crontab-snapshot-for-health-agent, finviz-view-contracts, maturity-remeasure, n8n-pilot-dispatch,
   n8n-research-intake-consumer, n8n-selftest-fail, n8n-workflow-drift-check, source-attribution-monitor.
@@ -353,7 +353,7 @@ lock; exceed a cap; send portfolio data to a provider (§2A); act on a lane in `
 | Diagnoser row `n8n-failure-diagnosis` (`3-59/15`) | merged **PAUSED** (#1657), not installed; needs #1652 promoted | same |
 | Install order (operator ruling) | bridge first, diagnoser ~2 h later; each under a `cron` grant; then a registry PR flips PAUSED → ACTIVE | packet README steps 3–6 |
 | Incident notifier | ACTIVE (L1052) | registry #1654 |
-| Catalogue | 53 lanes after the scalp exclusion; PROPOSED; stale vs host inventory | `config/n8n_remediation_catalogue.json` |
+| Catalogue | 80 lanes (33 auto dry-run) after the #1681 rebuild; scalp-live excluded | `config/n8n_remediation_catalogue.json` |
 | Severity | 2 of 619 registry rows set → RUN_* lands WARN (L6 open) | §4.1 |
 | Diagnoser DB row | synced 16:27 ET | `packets/llm-seed-sync/apply-20261010.txt` |
 | Health contracts | 68 DRAFT, not read at runtime yet | §3 |
