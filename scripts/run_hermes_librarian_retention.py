@@ -49,7 +49,29 @@ def main() -> int:
         **result,
     }
     print(json.dumps(out, indent=2, default=str))
+    if not dry:
+        # 2026-10-11 (retention-all-managed): a receipt per applied run (the study found this deleter
+        # unreceipted; lane output_signal was `none`). Read by docs/runbooks/DB_RETENTION.md checks.
+        write_receipt(out)
     return 0
+
+
+def receipt_path() -> Path:
+    import os
+    base = os.getenv("TRADEAI_STATE_ROOT")
+    root = Path(base) if base else Path.home() / "trade-ai-releases" / "persistent-state"
+    return root / "data" / "runtime" / "hermes_librarian_retention_last.json"
+
+
+def write_receipt(out: dict) -> Path:
+    import os
+    p = receipt_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    doc = {"schema": "HermesLibrarianRetentionReceipt@v1", **out}
+    tmp = p.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(doc, indent=1, default=str) + "\n", encoding="utf-8")
+    os.replace(tmp, p)
+    return p
 
 
 if __name__ == "__main__":
