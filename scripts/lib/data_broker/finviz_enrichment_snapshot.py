@@ -11,10 +11,11 @@ they ask for a batch of symbols with a ``max_age_hours`` and get, per symbol, th
 missing symbol is reported as such (``stale_or_missing``); this module never fetches. Whether to
 ask the owner to refresh is the caller's decision, through the owner (``finviz_enrichment``).
 
-Registry status: the domain is NOT yet a row in ``config/data_source_authority.json``. Adding it is
-an operator decision (AGENTS.md §17, §7A "Adding or changing a source"); the proposed row is in the
-consolidation-step1 packet. Until then the freshness window is passed explicitly and the envelope's
-``source.registry_status`` says ``PROPOSED_UNREGISTERED``.
+Registry status: REGISTERED. The operator approved the ``finviz_enrichment`` domain on 2026-10-10
+(~17:45 ET, CONSOLIDATION_PLAN.md §D.2) and named ``data/state/ticker_enrichment_cache.json`` the
+store of record (§D.3); the row is in ``config/data_source_authority.json``. The caller's
+``max_age_hours`` is still the verdict window (the writer's 6 h TTL by default), and the envelope's
+``source.registry_status`` says ``REGISTERED``.
 
 Zero provider calls. Read-only: it never creates a directory or writes a file.
 """
@@ -131,7 +132,7 @@ def get_enrichment_batch(
             "writer": WRITER,
             "projection": PROJECTION,
             "provider": "finviz",
-            "registry_status": "PROPOSED_UNREGISTERED",
+            "registry_status": "REGISTERED",
         },
     )
     out: dict[str, Any] = {

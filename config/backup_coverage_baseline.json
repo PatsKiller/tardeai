@@ -56,6 +56,7 @@
   "store:maturity_scores": "NONE: stores_governance_files (seeded 2026-10-09)",
   "store:model_chooser_receipts": "NONE: stores_runtime_files (seeded 2026-10-09)",
   "store:platform_conformance": "NONE: stores_governance_files (seeded 2026-10-09)",
+  "store:scalp_list": "NONE: stores_trade_ai_files (added 2026-10-10 with the operator-granted scalp_list domain; rebuilt by the writer every 5 min in RTH)",
   "store:sector_momentum": "PARTIAL: stores_pg_public_runtime_projection (seeded 2026-10-09)",
   "store:supervisor_breaches": "NONE: stores_intelligence_schema (seeded 2026-10-09)",
   "store:supervisor_heartbeats": "NONE: stores_intelligence_schema (seeded 2026-10-09)",

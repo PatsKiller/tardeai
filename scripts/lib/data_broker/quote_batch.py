@@ -23,9 +23,10 @@ def _ensure_scripts_path() -> None:
 def quote_row_from_broker(symbol: str) -> dict[str, Any] | None:
     """Return a finviz_quote_cache-compatible row from get_best_quote, or None."""
     _ensure_scripts_path()
-    from market_quote_provider import get_best_quote
+    from market_quote_provider import QUOTE_ONLY_MAX_AGE_SECONDS, get_best_quote
 
-    q = get_best_quote(symbol) or {}
+    # Quote-only (CONSOLIDATION_PLAN §D.6): stored quote first, a provider only when stale.
+    q = get_best_quote(symbol, max_age_seconds=QUOTE_ONLY_MAX_AGE_SECONDS) or {}
     price = q.get("last_price")
     if price is None:
         return None

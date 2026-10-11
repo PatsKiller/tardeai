@@ -672,6 +672,13 @@ def _v_governed_search(gap: DataGap, entry: dict[str, Any], ctx: Context) -> Vec
 
     if is_retired(brave_router.PROVIDER):
         return VectorResult("retired_skipped", provider=brave_router.PROVIDER, detail="search provider retired")
+    try:
+        from scripts.lib import search_router
+        routed = search_router.engine_enabled(ctx.env)
+    except Exception:  # noqa: BLE001 — no engine, legacy path
+        routed = False
+    if routed:
+        return _v_routed_search(gap, ctx)
     # Prefer env-aware probe; tolerate zero-arg hermetic mocks (test_free_search_fallback).
     try:
         router_on = brave_router.router_enabled(ctx.env)
@@ -701,6 +708,36 @@ def _v_governed_search(gap: DataGap, entry: dict[str, Any], ctx: Context) -> Vec
     return VectorResult("partial", provider=provider, as_of=_iso(ctx.now()),
                         detail=f"{len(hits)} results{' (cache)' if resp.cache_hit else ''}",
                         evidence={"search_results": hits[:5], "search_provider": provider})
+
+
+def _v_routed_search(gap: DataGap, ctx: Context) -> VectorResult:
+    """Search routing engine (2026-10-10): class ``gap_fill`` — cache then SearXNG with named engines.
+    Free only by policy (a gap is a background question); an empty answer is the class's declared gap."""
+    from scripts.lib import search_router
+
+    kind = "news" if canonical_domain(gap.domain) == "catalyst_news" else "web"
+    if not ctx.is_live():
+        return VectorResult("no_answer", provider="search_router",
+                            detail=f"dry_run: would route {gap.question!r} (class gap_fill, {FLAG_LIVE} unset)")
+    try:
+        resp = search_router.route(
+            search_router.SearchRequest(query=gap.question, caller="gap_resolver",
+                                        symbol=(gap.subject if gap.subject and gap.subject != "BOOK" else None),
+                                        kind=kind, count=5,
+                                        idempotency_key=f"gap:{gap.gap_id}:{ctx.now().date().isoformat()}"),
+            env=ctx.env, enabled=True, clock=ctx.now,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return VectorResult("error", provider="search_router", detail=f"{type(exc).__name__}:{exc}")
+    hits = list(resp.results or []) if resp.ok else []
+    if not hits:
+        outcome = "budget_denied" if "BUDGET" in str(resp.reason) else "no_answer"
+        return VectorResult(outcome, provider="search_router", detail=f"router: {resp.reason}")
+    provider = str(resp.provider or "search_router")
+    return VectorResult("partial", provider=provider, as_of=_iso(ctx.now()),
+                        detail=f"{len(hits)} results (tier {resp.tier}{', cache' if resp.cache_hit else ''})",
+                        evidence={"search_results": hits[:5], "search_provider": provider,
+                                  "route_class": resp.question_class, "route_tier": resp.tier})
 
 
 def _v_governed_free_search(gap: DataGap, ctx: Context, *, reason: str) -> VectorResult:
