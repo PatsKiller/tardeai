@@ -4824,9 +4824,9 @@ obligations. It grants nothing: no grant tier, §17 item or allowlist `never` en
 
 # 24 · Platform rules from the 2026-10-10 consolidation (4.6.0 and 5.0.0, ACTIVE)
 
-**Status: PROPOSED (MINOR), awaiting `APPROVE_AGENTS_POLICY_4_6_0 <pr_number> <head_sha>` (§20); §24.10 is PROPOSED
-(MAJOR) separately, awaiting `APPROVE_AGENTS_POLICY_5_0_0 <pr_number> <head_sha>`.** Until each is
-ratified, nothing in this section binds and the previously ACTIVE text governs. §24 is **not** part of the §23 n8n
+**Status: ACTIVE. §24.1–§24.9 are 4.6.0 (MINOR), ratified `APPROVE_AGENTS_POLICY_4_6_0 1682 9dd9e7d6b` (§20; PR
+#1687); §24.10 is 5.0.0 (MAJOR), ratified `APPROVE_AGENTS_POLICY_5_0_0 1686 d51b6c50e` (PR #1688).** (Status line
+corrected in 5.1.0; it still read PROPOSED after both ratifications.) §24 is **not** part of the §23 n8n
 carve-out: §23.1 limits §23 to the `m8m-n8n` compose project, and these rules reach every agent, lane and job. Each of
 §24.1–§24.9 extends the section it names without editing it; for them §0, §2, §2A, §7A, §17 and §23.14 are byte-identical, and
 nothing here grants n8n, a lane or an agent anything. §24.10 is the one exception: it adds one sentence to §0 rule 2

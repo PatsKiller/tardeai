@@ -13,6 +13,11 @@ turns into open incidents until they are fixed:
   STALE_WINDOW         rows older than window_days + 2 remain for a DELETE/ARCHIVE row (retention not enforcing)
   DEAD_QUEUE           known queue tables with rows older than 30 d in terminal states
   RETENTION_SCHEDULERS a second scheduler for db_retention is installed (cron + timer)
+  ARCHIVE_TRIPWIRE     (P1) a live consumer (repo scripts/config, crontab, user systemd unit) names an
+                       archived path under archive/db_retention or archive/db_trim (AGENTS.md §0 rule 6)
+  ARCHIVE_MISSING      a TRIPWIRE.jsonl record names an archive file that is gone
+  TRIPWIRE_UNREADABLE  a TRIPWIRE.jsonl line does not parse
+                       (the last three: scripts/lib/retention_tripwire.py; files only, no DB)
 
     python3 scripts/report_db_hygiene.py [--write] [--min-table-mb 20]
 
@@ -58,6 +63,17 @@ def q(sql: str) -> list[list[str]]:
 
 def state_root() -> Path:
     return Path(os.environ.get("TRADEAI_STATE_ROOT") or Path.home() / "trade-ai-releases" / "persistent-state")
+
+
+def tripwire_findings() -> list[dict]:
+    """Reader half of the row-archive tripwire (2026-10-11). Never fails the report: a reader that
+    cannot run is itself a finding."""
+    try:
+        from scripts.lib.retention_tripwire import findings
+        return findings(state_root(), ROOT)
+    except Exception as e:  # noqa: BLE001
+        return [{"code": "TRIPWIRE_UNREADABLE", "item": "retention_tripwire", "severity": "P2",
+                 "detail": f"tripwire reader failed: {type(e).__name__}: {e}"[:160]}]
 
 
 def collect(reg: dict, min_table_mb: int) -> dict:
@@ -106,6 +122,7 @@ def collect(reg: dict, min_table_mb: int) -> dict:
                            capture_output=True, text=True).stdout.split()
     if len(sched) == 2 and sched[0] != "0" and sched[1] != "0":
         findings.append({"code": "RETENTION_SCHEDULERS", "item": "db_retention", "severity": "P2", "detail": f"cron lines {sched[0]} AND timers {sched[1]}: one scheduler only"})
+    findings.extend(tripwire_findings())
     by = {}
     for f in findings:
         by[f["code"]] = by.get(f["code"], 0) + 1

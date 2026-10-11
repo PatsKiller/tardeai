@@ -15,7 +15,12 @@ hermes_discovery_candidates:
 
 content_embeddings:
   orphan_purge_days: 30    # purge embeddings whose source row is gone
-  max_age_days: 90         # also purge any embedding older than 90d (disk rail; regenerable)
+  max_age_days: 90         # the 90d disk rail (regenerable vectors)
+  # 2026-10-11: ONE owner for the 90d rail. db_retention (config/data_retention_policy.json row
+  # content_embeddings, platform-maintenance-nightly 01:15) enforces it, archive-first when its
+  # archive_first flag is on; the librarian's purge_by_age step defers and logs a pointer.
+  # Set to `librarian` to restore the librarian's hard DELETE (rollback lever).
+  max_age_owner: db_retention
 
 hermes_embedding_queue:
   failed_purge_days: 14    # purge failed queue entries after 14d

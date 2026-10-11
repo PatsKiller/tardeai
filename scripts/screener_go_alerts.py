@@ -130,10 +130,11 @@ def _cio_go_gate(symbol: str, text: str,
 
 def _send_go(send_telegram: Callable[..., Any], item: dict,
              db_query: Optional[Callable[..., list[dict]]] = None) -> tuple[bool, Optional[str]]:
-    # bypass_router: the legacy router classified "momentum scalp setup" as
-    # job_telemetry -> DIGEST and send_telegram returned True for the digested
-    # message, so ARMP (A+) and ELMT were recorded as sent at 12:15 on
-    # 2026-09-14 and never reached the operator.
+    # P1 intent (was bypass_router=True): the legacy text router classified
+    # "momentum scalp setup" as job_telemetry -> DIGEST and send_telegram returned
+    # True for the digested message, so ARMP (A+) and ELMT were recorded as sent at
+    # 12:15 on 2026-09-14 and never reached the operator. A declared P1 is never
+    # text-classified, capped or held; it is deduped on exact content and receipted.
     rich = rich_alert(item)
     text = rich["text"] if rich else format_alert(item)
     sym = str(item["row"].get("symbol") or "").upper()
@@ -148,7 +149,7 @@ def _send_go(send_telegram: Callable[..., Any], item: dict,
         text = apply_stance_rewrite(text, sym, StanceGateVerdict(**gate))
     extra = ({"reply_markup": rich["reply_markup"], "link_preview_options": rich["link_preview_options"]}
              if rich else {})
-    ok = bool(send_telegram(text, bypass_router=True, message_class="operator_alert", **extra))
+    ok = bool(send_telegram(text, message_class="operator_alert", priority="P1", producer="screener_go_alerts", **extra))
     return ok, None
 
 
@@ -180,7 +181,7 @@ def _send_go_receipt(item: dict, db_query: Optional[Callable[..., list[dict]]] =
             # transport without an id-returning entry point (older module / test fake): accepted but no id
             _plain = _ta.send_telegram
             sender_with_id = lambda msg, **kw: {"accepted": bool(_plain(msg, **kw)), "message_id": None}  # noqa: E731
-    res = sender_with_id(text, bypass_router=True, message_class="operator_alert", **extra) or {}
+    res = sender_with_id(text, message_class="operator_alert", priority="P1", producer="screener_go_alerts", **extra) or {}
     accepted = bool(res.get("accepted"))
     mid = res.get("message_id")
     delivery = "sent" if (accepted and mid) else ("accepted_no_id" if accepted else "failed")
@@ -251,7 +252,7 @@ def main() -> int:
     if args.send:
         for item in plan["alert"]:
             sym = str(item["row"]["symbol"]).upper()
-            # bypass_router: the legacy router classified "momentum scalp setup" as
+            # P1 intent (was bypass_router): the legacy router classified "momentum scalp setup" as
             # job_telemetry -> DIGEST and send_telegram returned True for the digested
             # message, so ARMP (A+) and ELMT were recorded as sent at 12:15 on
             # 2026-09-14 and never reached the operator -- the same silence that hid

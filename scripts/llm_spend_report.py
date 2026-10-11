@@ -226,7 +226,7 @@ def send(period: str, report: dict, text: str, key: str) -> int:
         return 0
     from telegram_alert import send_telegram  # noqa: PLC0415
 
-    ok = bool(send_telegram(text, bypass_router=True, message_class="operator_alert"))
+    ok = bool(send_telegram(text, message_class="operator_alert", priority="P2", producer="llm_spend_report"))
     if ok:
         ledger[key] = datetime.now(timezone.utc).isoformat()
         LEDGER.parent.mkdir(parents=True, exist_ok=True)

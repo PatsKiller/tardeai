@@ -4035,6 +4035,14 @@ GATES = [
         ],
     ),
     (
+        # DB retention hardening 2026-10-11 (overnight report findings 1, 4, 6): row-archive tripwire record +
+        # nightly reader via report_db_hygiene -> incident fan-in; junk-purge --apply needs a verified db-write
+        # grant id (TRADEAI_DB_WRITE_GRANT) recorded in the receipt; db_retention sole owner of the
+        # content_embeddings 90 d rail (librarian defers), archive_first registry flag default OFF.
+        "db_retention_hardening_20261011",
+        ["tests/test_retention_hardening_20261011.py"],
+    ),
+    (
         # Cron crash fixes (operator 2026-10-09: "fix the broken cron jobs"): failed --user units detected,
         # econfirm finds gog outside cron PATH, disarmed retries not counted as retried, bridge refusal code kept
         # in 503 errors, alert-quality registry row matches the host.
@@ -4413,6 +4421,14 @@ GATES = [
         # production search ledger. Hermetic.
         "search_routing_engine_20261010",
         ["tests/test_search_routing_engine_20261010.py"],
+    ),
+    (
+        # Notification intents (operator 2026-10-10, "moving the 30 bypass senders"): 20 sender modules
+        # declare P1/P2 instead of bypass_router=True; P1 never capped or quiet-held, P2 held in quiet hours
+        # and archived for the digest, both deduped and receipted. Shrink-only gate on bypass_router sites.
+        # Transport captured, never sent.
+        "notification_intents_20261010",
+        ["tests/test_notification_intents_20261010.py"],
     ),
     (
         # Release-pinned daemons (packets/unit-code-roots, 2026-10-10): one-off exact-SHA drop-ins left 4 user

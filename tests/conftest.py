@@ -313,6 +313,27 @@ def _block_data_broker_snapshot_production_writes(monkeypatch, tmp_path_factory)
     )
 
 
+@pytest.fixture(autouse=True)
+def _isolate_notification_intent_state(monkeypatch, tmp_path_factory):
+    """Notification intents (2026-10-10) keep durable state; no test may share or leak it.
+
+    telegram_alert_router.route_intent dedupes through cio_telegram_transport's durable store
+    (CIO_OUTBOUND_DEDUPE_PATH, default data/cio/ in the checkout) and appends route receipts
+    (TRADEAI_INTENT_RECEIPTS_PATH, default data/runtime/). Found the hard way: the second run of the
+    alarm suite failed because the first run's sends, recorded in the checkout, deduped them -- a test
+    outcome decided by an earlier run. Both are env-resolved per call, so the environment redirects them
+    whichever module spelling loaded the writer (same reasoning as the data-broker fixture above). A test
+    that sets either variable itself still wins.
+    """
+    iso = tmp_path_factory.mktemp("notification_intent_state")
+    monkeypatch.setenv("TRADEAI_INTENT_RECEIPTS_PATH", str(iso / "intent_receipts.jsonl"))
+    monkeypatch.setenv("CIO_OUTBOUND_DEDUPE_PATH", str(iso / "cio_outbound_dedupe.jsonl"))
+    for name in ("telegram_alert_router", "scripts.telegram_alert_router"):
+        mod = sys.modules.get(name)
+        if mod is not None and hasattr(mod, "_intent_sent"):
+            monkeypatch.setattr(mod, "_intent_sent", {})
+
+
 # ── C1 alarm-firing capture ──────────────────────────────────────────────────
 # An alarm that has never been observed firing is indistinguishable from no alarm.
 # Capture happens at the REAL transport boundary, telegram_transport.send_message,

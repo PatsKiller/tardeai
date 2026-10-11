@@ -220,7 +220,7 @@ def test_wiring_and_schedule():
     ui = (ROOT / "apps/command-center-v3/src/pages/CommunicationsHub.tsx").read_text()
     assert "sp.get('event')" in ui and "sp.get('q')" in ui
     send = (ROOT / "scripts/send_advice_digest.py").read_text()
-    assert "bypass_router=True" in send and "mark_held_delivered" in send
+    assert 'priority="P2"' in send and "bypass_router=True" not in send and "mark_held_delivered" in send
 
 
 def test_the_digest_reaches_the_transport(alarm_capture):
