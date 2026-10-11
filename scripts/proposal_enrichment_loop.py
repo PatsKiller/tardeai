@@ -70,8 +70,9 @@ def get_db():
 def get_live_price(symbol):
     """Return (price, source) using market_quote_provider or yfinance fallback."""
     try:
-        from market_quote_provider import get_best_quote
-        q = get_best_quote(symbol)
+        # Quote-only (CONSOLIDATION_PLAN §D.6): stored quote first, a provider only when stale.
+        from market_quote_provider import QUOTE_ONLY_MAX_AGE_SECONDS, get_best_quote
+        q = get_best_quote(symbol, max_age_seconds=QUOTE_ONLY_MAX_AGE_SECONDS)
         price = q.get("last_price")
         if price and price > 0:
             return float(price), q.get("provider", "unknown")

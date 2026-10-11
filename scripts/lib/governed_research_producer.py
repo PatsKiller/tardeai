@@ -338,8 +338,10 @@ def produce_research(
         return result
 
     from scripts.lib import brave_router as router
-    from scripts.lib import free_search, search_budget
+    from scripts.lib import free_search, search_budget, search_router
     from scripts.lib.research_object import build_research_object
+
+    routed = search_router.engine_enabled(env_map)
 
     feed_id_set = _feed_ids(fp) if fp else set()
     new_rows: list[dict] = []
@@ -359,19 +361,36 @@ def produce_research(
         sym, sg, query = t["symbol"], t["subject_guid"], t["query"]
         pending_spill: tuple[dict, str] | None = None
         idem = f"grp|{sym}|{query}|{sha}"
-        resp = router.search(
-            query,
-            kind="web",
-            count=3,
-            caller="governed_research_producer",
-            purpose="wake_research",
-            idempotency_key=idem,
-            clock=clock,
-            root=root,
-            transport=transport,
-            api_key=api_key,
-            enabled=True,
-        )
+        if routed:
+            # Search routing engine (2026-10-10): cache -> SearXNG (named engines) -> Brave only when the
+            # free answer fails the policy's quality rule and the dollar budget's "other" pool has room.
+            # The engine replaces this caller's hardcoded per-caller cap with the policy's pools.
+            resp = search_router.route(
+                search_router.SearchRequest(query=query, caller="governed_research_producer", symbol=sym,
+                                            kind="web", count=3, idempotency_key=idem),
+                env=env_map, clock=clock, root=root, enabled=True,
+                paid_transport=transport, free_transport=free_transport, api_key=api_key,
+            )
+            if not resp.ok:
+                failed += 1
+                if "BUDGET" in str(resp.reason):
+                    budget_denied += 1
+                errors.append(f"{sym}:{resp.reason}")
+                continue
+        else:
+            resp = router.search(
+                query,
+                kind="web",
+                count=3,
+                caller="governed_research_producer",
+                purpose="wake_research",
+                idempotency_key=idem,
+                clock=clock,
+                root=root,
+                transport=transport,
+                api_key=api_key,
+                enabled=True,
+            )
         if not resp.ok:
             reason = resp.reason or "PROVIDER_ERROR"
             rescued = None
@@ -441,7 +460,10 @@ def produce_research(
                 published_at="",
                 producer="governed_research_producer",
                 policy_decisions=(
-                    ["governed_free_search", "budget_governed"]
+                    ["governed_search_router", f"route_tier:{getattr(resp, 'tier', None)}",
+                     f"route_source:{str(r.get('provider') or getattr(resp, 'provider', ''))}", "budget_governed"]
+                    if routed
+                    else ["governed_free_search", "budget_governed"]
                     if getattr(resp, "provider", "") == free_search.PROVIDER
                     else ["governed_brave_router", "budget_governed"]
                 ),

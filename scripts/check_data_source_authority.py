@@ -426,6 +426,31 @@ def compare_baseline(kind: str, current: dict[str, int], baseline: dict[str, int
     return findings
 
 
+def check_routing_policy(auth: dict) -> list[dict]:
+    """ROUTING_POLICY_INVALID (2026-10-10): a domain that names a ``routing_policy`` must point at a policy
+    file that validates (scripts/lib/search_routing_policy.py) against this very registry."""
+    findings: list[dict] = []
+    for d in auth.get("domains") or []:
+        rel = (d or {}).get("routing_policy")
+        if not rel:
+            continue
+        path = PROJECT_ROOT / rel
+        if not path.exists():
+            findings.append({"check": "ROUTING_POLICY_INVALID", "domain": d.get("domain"), "policy": rel,
+                             "errors": ["policy file missing"]})
+            continue
+        try:
+            sys.path.insert(0, str(PROJECT_ROOT))
+            from scripts.lib.search_routing_policy import validate_policy
+            errors = validate_policy(json.loads(path.read_text(encoding="utf-8")), registry=auth)
+        except Exception as exc:  # noqa: BLE001
+            errors = [f"{type(exc).__name__}: {exc}"]
+        if errors:
+            findings.append({"check": "ROUTING_POLICY_INVALID", "domain": d.get("domain"), "policy": rel,
+                             "errors": errors[:20]})
+    return findings
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--json", action="store_true")
@@ -477,6 +502,7 @@ def main() -> int:
     findings += [u for u in undeclared if u["host"] not in undeclared_baseline]
     findings += check_approvals(auth)
     findings += check_domains(auth)
+    findings += check_routing_policy(auth)
     findings += compare_baseline("WRITER_COUNT_ROSE", writers, baseline.get("writers", {}))
     findings += compare_baseline("DIRECT_READ_ROSE", reads, baseline.get("direct_reads", {}))
     findings += compare_lane_baseline("LANE_DIRECT_READ_ROSE", lanes["direct_reads"],
