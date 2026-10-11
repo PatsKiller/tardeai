@@ -4033,6 +4033,14 @@ GATES = [
         ],
     ),
     (
+        # DB retention hardening 2026-10-11 (overnight report findings 1, 4, 6): row-archive tripwire record +
+        # nightly reader via report_db_hygiene -> incident fan-in; junk-purge --apply needs a verified db-write
+        # grant id (TRADEAI_DB_WRITE_GRANT) recorded in the receipt; db_retention sole owner of the
+        # content_embeddings 90 d rail (librarian defers), archive_first registry flag default OFF.
+        "db_retention_hardening_20261011",
+        ["tests/test_retention_hardening_20261011.py"],
+    ),
+    (
         # Cron crash fixes (operator 2026-10-09: "fix the broken cron jobs"): failed --user units detected,
         # econfirm finds gog outside cron PATH, disarmed retries not counted as retried, bridge refusal code kept
         # in 503 errors, alert-quality registry row matches the host.

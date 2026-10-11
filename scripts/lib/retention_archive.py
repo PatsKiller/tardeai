@@ -7,7 +7,8 @@ count and the sha256 of the .jsonl.gz bytes (RetentionArchiveManifest@v1).
 A batch is one transaction:
   1. lock the next <= batch_rows keys matching the predicate (ORDER BY key, FOR UPDATE);
   2. stream those rows to <stamp>-<label>-b<NNNN>.jsonl.gz (server-side cursor), fsync;
-  3. write the manifest (rows, sha256, bytes, key range);
+  3. write the manifest (rows, sha256, bytes, key range) and append a tripwire record to
+     <archive_dir>/TRIPWIRE.jsonl (RetentionArchiveTripwire@v1; reader: lib/retention_tripwire.py);
   4. VERIFY by re-reading the file from disk: sha256 equals the manifest, line count equals
      the locked key count, and the set of archived keys equals the locked key set;
   5. DELETE exactly those keys; the rowcount must equal the archived count;
@@ -69,11 +70,47 @@ def manifest_path(path: Path) -> Path:
 
 
 def write_manifest(path: Path, **fields: Any) -> dict:
+    """Write the sidecar manifest, then the tripwire record (both BEFORE the caller's DELETE).
+
+    Every caller (db_retention.archive_rows, archive_then_delete_batches) goes through here, so this
+    is the one place the tripwire half of AGENTS.md §0 rule 6 is written. A tripwire write that
+    fails raises: the caller rolls back and the rows are not deleted.
+    """
     doc = {"schema": MANIFEST_SCHEMA, "file": path.name,
            "created_at": datetime.now(timezone.utc).isoformat(), **fields}
     mp = manifest_path(path)
     mp.write_text(json.dumps(doc, default=str, sort_keys=True, indent=1) + "\n", encoding="utf-8")
+    write_tripwire_record(path, manifest=mp, table=fields.get("table"), rows=fields.get("rows"),
+                          sha256=fields.get("sha256"), label=fields.get("label"))
     return doc
+
+
+# ── Tripwire (2026-10-11) ────────────────────────────────────────────────────
+# One RetentionArchiveTripwire@v1 line per archive file, appended to <archive_dir>/TRIPWIRE.jsonl
+# (i.e. <state>/archive/db_retention/<table>/TRIPWIRE.jsonl). The reader is
+# scripts/lib/retention_tripwire.py, run nightly by scripts/report_db_hygiene.py: any live reference
+# to the archive becomes an ARCHIVE_TRIPWIRE P1 incident through the existing fan-in.
+TRIPWIRE_SCHEMA = "RetentionArchiveTripwire@v1"
+TRIPWIRE_NAME = "TRIPWIRE.jsonl"
+
+
+def tripwire_path(archive_file: Path) -> Path:
+    return Path(archive_file).parent / TRIPWIRE_NAME
+
+
+def write_tripwire_record(archive_file: Path, *, manifest: Path | None = None, table: Any = None, rows: Any = None,
+                          sha256: Any = None, label: Any = None, writer: str = "db_retention") -> dict:
+    rec = {"schema": TRIPWIRE_SCHEMA, "kind": "rows", "writer": writer, "table": table, "label": label,
+           "archive": str(archive_file), "manifest": str(manifest) if manifest else None, "rows": rows,
+           "sha256": sha256, "archived_at": datetime.now(timezone.utc).isoformat(),
+           "fires_on": "any live reference to archive/db_retention (scripts/lib/retention_tripwire.py, "
+                       "read nightly by report_db_hygiene.py -> incident fan-in)"}
+    tp = tripwire_path(archive_file)
+    with open(tp, "a", encoding="utf-8") as fh:
+        fh.write(json.dumps(rec, default=str, sort_keys=True) + "\n")
+        fh.flush()
+        os.fsync(fh.fileno())
+    return rec
 
 
 def verify_archive(path: Path, *, expected_rows: int, expected_sha256: str,
