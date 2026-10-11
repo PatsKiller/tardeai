@@ -1443,12 +1443,13 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-maturity/SEARCH_SOURCE_ROUTING.md` | Search source routing — which source answers what, and what it may spend | review_required | OK | `633c3aab392f` |
 | `docs/implementation/n8n-maturity/WAVE_B_CC_ORCHESTRATE_2026-10-11.md` | Wave B — CC orchestrate (research-intake + watch-refresh) | review_required | OK | `82db6193e3cb` |
 | `docs/implementation/n8n-maturity/completion-119/BEFORE_AFTER_119.md` | 119-lane source completion: before and after | review_required | OK | `b9366b8315fa` |
-| `docs/implementation/n8n-maturity/completion-119/README.md` | Completion train for the 119 outstanding source/integration lanes | review_required | OK | `e0b893b9507c` |
+| `docs/implementation/n8n-maturity/completion-119/README.md` | Completion train for the 119 outstanding source/integration lanes | review_required | OK | `0471a212357c` |
 | `docs/implementation/n8n-maturity/completion-119/REMEDIATION_04_06_20261011.md` | Completion119 source remediation, shards04–06 | review_required | OK | `2c45118d93c5` |
 | `docs/implementation/n8n-maturity/completion-119/SHARDS_01_03_SOURCE_PREPARATION.md` | Completion 119: source preparation for shards 01–03 | review_required | OK | `cfd637021087` |
 | `docs/implementation/n8n-maturity/completion-119/SHARDS_07_08_SOURCE_REMEDIATION_20261011.md` | Completion tranche: original shards 07–08 | review_required | OK | `f7013a1ae95d` |
 | `docs/implementation/n8n-maturity/completion-119/SHARED_PREREQUISITES.md` | Shared prerequisites for the 119-lane source completion train | review_required | MISSING HEADER | `6bc2c0fa0047` |
 | `docs/implementation/n8n-maturity/completion-119/TIMER_ADMISSION_DESIGN.md` | Timer-native admission proposal for the 119-lane train | review_required | OK | `b5bcad291dea` |
+| `docs/implementation/n8n-maturity/completion-119/VALIDATION_BOUNDARY.md` | Completion119 validation boundary | review_required | OK | `9828d4ec5d91` |
 | `docs/implementation/n8n-maturity/cron-inventory/CRON_INVENTORY.md` | Cron Inventory & Migration Assessment — 2026-10-10 | review_required | OK | `5a9e9ad6c050` |
 | `docs/implementation/n8n-maturity/cron-inventory/DEPENDENCY_MAP.md` | Dependency map — Trade AI scheduled work (cron · systemd · health-tick · n8n) | review_required | OK | `a6874bcd3c32` |
 | `docs/implementation/n8n-maturity/cron-inventory/GOVERNANCE_ANALYSIS.md` | Schedule and dependency governance — overlaps, duplicates, consolidation | review_required | OK | `529bca63c840` |
