@@ -141,12 +141,14 @@ def dry_run(lanes):
 
 
 def _nyse_session(now: int) -> bool:
-    """Weekday 09:30–16:00 America/New_York. Holidays are not modeled."""
+    """09:30–16:00 America/New_York on a trading day (weekends and NYSE holidays are not)."""
     from datetime import datetime
     from zoneinfo import ZoneInfo
 
+    from market_session import is_trading_day
+
     dt = datetime.fromtimestamp(now, ZoneInfo("America/New_York"))
-    if dt.weekday() >= 5:
+    if not is_trading_day(dt):
         return False
     minutes = dt.hour * 60 + dt.minute
     return (9 * 60 + 30) <= minutes < 16 * 60
