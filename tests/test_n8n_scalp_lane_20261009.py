@@ -40,7 +40,9 @@ def test_allowlist_entry_runs_the_cron_argv_and_shares_the_cron_lock():
     assert live[-2:] == ["/py", "scripts/run_trade_ai_scalp_live.py"]
     assert ["timeout", "-k", str(X.KILL_AFTER_S), "295", "bash", "scripts/market_day_gate.sh"] == live[5:11]
     argv = X.build_argv(ENTRY, "dry_run", env=env, state_root=Path("/s"), code_root=Path("/c"))
-    assert argv[:5] == ["flock", "-n", "-E", str(X.FLOCK_CONFLICT_EXIT), "/tmp/tradeai_scalp_live.lock"]
+    assert live[:5] == ["flock", "-n", "-E", str(X.FLOCK_CONFLICT_EXIT), "/tmp/tradeai_scalp_live.lock"]
+    # 2026-10-11 LOCK_STEAL: a dry_run never takes the shared cron lock (it would make the real cron run skip)
+    assert argv[:5] == ["flock", "-n", "-E", str(X.FLOCK_CONFLICT_EXIT), "/tmp/tradeai_scalp_live.lock.dryrun"]
     assert argv[-3:] == ["/py", "scripts/run_trade_ai_scalp_live.py", "--dry-run"]
     crontab_line = next(l for l in json.loads((ROOT / "config/lane_registry.json").read_text())["lanes"]
                         if l["lane_id"] == LANE)["scheduler"]

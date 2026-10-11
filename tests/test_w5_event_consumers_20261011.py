@@ -5,9 +5,10 @@ emit (scripts/lib/data_broker/as_of_signal.py, scripts/news_ingestion.py), the `
 schema (scripts/lib/lane_dispatch.py), and the three registry rows that carry triggers.
 
 Paths covered: producer as_of -> due item (dry_run, reason event, e: key) -> gateway `run` accepts the key -> the
-executor runs it under the stage clamp (dry_run) with the cron line's flock lock; and no double fire when the cron
-line and the event are both due — at due level (a schedule slot due/in flight absorbs the event; the cron line's
-receipt watermark covers it) and at run level (the shared flock lock: RUN_SKIPPED_LOCK, then the key is DONE).
+executor runs it under the stage clamp (dry_run) on ``<cron lock>.dryrun`` (2026-10-11 LOCK_STEAL: a dry run never
+takes the cron line's own lock); and no double fire when the cron line and the event are both due — at due level (a
+schedule slot due/in flight absorbs the event; the cron line's receipt watermark covers it) and, for a LIVE fire, at
+run level (the shared flock lock: RUN_SKIPPED_LOCK, then the key is DONE).
 
 Hermetic: tmp_path state root and ledger (TRADEAI_STATE_ROOT is monkeypatched), frozen clocks, the repo's retry
 policies read as data, a real `flock` binary on a tmp lock with `/bin/true` as the command. No socket, no live
@@ -321,7 +322,11 @@ def test_event_to_due_to_gateway_run_to_dry_run_fire(state, store, tmp_path):
         stage_rows=rows,
     )
     assert receipt["state"] == "RUN_DONE" and receipt["mode"] == "dry_run" and receipt["argv"][-1] == "--dry-run"
-    assert receipt["argv"][:5] == ["flock", "-n", "-E", str(X.FLOCK_CONFLICT_EXIT), str(tmp_path / f"{LANE}.lock")]
+    # 2026-10-11 LOCK_STEAL: a dry_run fire takes <lock>.dryrun, never the cron line's own lock
+    assert receipt["argv"][:5] == [
+        "flock", "-n", "-E", str(X.FLOCK_CONFLICT_EXIT), str(tmp_path / f"{LANE}.lock{X.DRY_RUN_LOCK_SUFFIX}")
+    ]
+    assert receipt["lock"] == {"path": str(tmp_path / f"{LANE}.lock.dryrun"), "scope": "dryrun", "kind": "flock"}
     store.finish(key, state=receipt["state"], receipt=receipt, now=(NOW + timedelta(seconds=30)).timestamp())
     later = _event(rows, allow, store, now=NOW + timedelta(minutes=1))
     assert later["items"] == []  # the fire is the new watermark
@@ -465,7 +470,10 @@ def test_in_flight_schedule_run_holds_the_event_until_it_finishes(state, store):
     assert _keys(_event(rows, _allow(LANE), store)) == [f"e:{LANE}:dry_run:20261014T1007"]
 
 
-def test_cron_line_holding_the_lock_makes_the_event_fire_a_lock_skip_and_no_refire(state, store, tmp_path):
+def test_cron_line_holding_the_lock_does_not_block_the_dry_run_event_fire_and_no_refire(state, store, tmp_path):
+    """2026-10-11 LOCK_STEAL: the shadow dry_run and the cron line no longer share a lock (a dry run writes nothing),
+    so the cron line holding its lock neither skips the dry_run nor is skipped by it; one fire per as_of still holds.
+    The LIVE fire keeps contending on the shared lock (next test)."""
     _refresh(state, NOW - timedelta(minutes=3))
     rows = [_row()]
     allow = _allow(LANE, lock_dir=tmp_path)
@@ -485,10 +493,31 @@ def test_cron_line_holding_the_lock_makes_the_event_fire_a_lock_skip_and_no_refi
             code_root=ROOT,
             stage_rows=rows,
         )
-    assert receipt["state"] == "RUN_SKIPPED_LOCK" and receipt["lock_skipped"] is True
+        # the dry_run never touched the live lock: the cron line still holds it
+        probe = open(lock, "w")
+        try:
+            with pytest.raises(BlockingIOError):
+                fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        finally:
+            probe.close()
+    assert receipt["state"] == "RUN_DONE" and receipt["lock_skipped"] is False
+    assert receipt["lock"]["path"] == f"{lock}.dryrun" and receipt["lock"]["scope"] == "dryrun"
     store.finish(key, state=receipt["state"], receipt=receipt, now=NOW.timestamp())
     resp = _event(rows, allow, store, now=NOW + timedelta(minutes=1))
-    assert resp["items"] == [] and resp["counts"]["DONE"] == 1  # one run per as_of: no refire storm
+    assert resp["items"] == []  # one run per as_of: the RUN_DONE fire is the new watermark, no refire storm
+
+
+def test_cron_line_holding_the_lock_still_makes_a_live_fire_a_lock_skip(state, tmp_path):
+    allow = _allow(LANE, lock_dir=tmp_path)
+    entry = dict(allow[LANE], live_arg=[])
+    lock = tmp_path / f"{LANE}.lock"
+    row = {"run_id": f"e:{LANE}:live:20261014T1007", "lane_id": LANE, "mode": "live"}
+    with open(lock, "w") as held:  # the live cron line's `flock -n` holds it
+        fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        receipt = X.execute(row, entry, env={"PATH": os.environ.get("PATH", "/usr/bin:/bin")}, state_root=state,
+                            code_root=ROOT)
+    assert receipt["state"] == "RUN_SKIPPED_LOCK" and receipt["lock_skipped"] is True
+    assert receipt["argv"][4] == str(lock) and receipt["lock"] == {"path": str(lock), "scope": "live", "kind": "flock"}
 
 
 def test_event_due_is_read_only(state, store):
