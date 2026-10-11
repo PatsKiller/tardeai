@@ -23,6 +23,8 @@ REPO = Path(__file__).resolve().parents[1]
 
 # Ordered, explicit suite list (Phase 10.2)
 GATES = [
+    # ANCHOR: REFACTOR_SHARD_05_20261011 — offline previews and exact cron argv, fake-only work.
+    ("refactor_shard_05_20261011", ["tests/test_refactor_shard_05_20261011.py"]),
     (
         "options_workflow",
         [

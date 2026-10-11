@@ -14118,6 +14118,1014 @@
     "prepared_by": "operator PatsKiller 2026-10-11",
     "status": "REVIEWED"
    }
+  },
+  {
+   "schema": "N8nHealthContract@v1",
+   "id": "build-symbol-profiles-at-0-19",
+   "kind": "lane",
+   "workflow_id": "tradeai-dispatcher",
+   "status": "DRAFT",
+   "target_reason": "stage:shadow",
+   "stage": "shadow",
+   "purpose": {
+    "text": "Refresh weekly company-profile sector, industry and description fields for the default research/watchlist universe.",
+    "business_function": "research",
+    "source": "scripts/build_symbol_profiles.py source; approved selected cron snapshot 2026-10-11T17:05:28.513179+00:00"
+   },
+   "owner": "portfolio",
+   "connects_to": [
+    {
+     "name": "coordination/run -> host executor",
+     "kind": "service",
+     "direction": "calls",
+     "source": "AGENTS.md §23.3"
+    },
+    {
+     "name": "$PY scripts/build_symbol_profiles.py",
+     "kind": "runner",
+     "direction": "calls",
+     "source": "allowlist command; exact observed business argv"
+    },
+    {
+     "name": "/tmp/symbol_profiles.lock",
+     "kind": "lock",
+     "direction": "read_write",
+     "source": "Observed outer flock"
+    },
+    {
+     "name": "data/runtime/build-symbol-profiles-at-0-19_last.json",
+     "kind": "receipt",
+     "direction": "write",
+     "source": "scripts/build_symbol_profiles.py source; approved selected cron snapshot 2026-10-11T17:05:28.513179+00:00"
+    },
+    {
+     "name": "watchlist and research universe",
+     "kind": "store",
+     "direction": "read",
+     "source": "scripts/build_symbol_profiles.py source; approved selected cron snapshot 2026-10-11T17:05:28.513179+00:00"
+    },
+    {
+     "name": "yfinance company profiles and Finviz enrichment fallback",
+     "kind": "external_provider",
+     "direction": "calls",
+     "source": "scripts/build_symbol_profiles.py source; approved selected cron snapshot 2026-10-11T17:05:28.513179+00:00"
+    },
+    {
+     "name": "symbol_profiles through the domain writer",
+     "kind": "store",
+     "direction": "write",
+     "source": "scripts/build_symbol_profiles.py source; approved selected cron snapshot 2026-10-11T17:05:28.513179+00:00"
+    },
+    {
+     "name": "0 19 * * 0 cd $PROJ && flock -n /tmp/symbol_profiles.lock $PY scripts/build_symbol_profiles.py >> logs/symbol_profiles.log 2>&1  # weekly company-profile refresh (operator 2026-06-12)",
+     "kind": "cron_twin",
+     "direction": "calls",
+     "source": "Approved selected cron snapshot; deployment not performed by this packet"
+    }
+   ],
+   "healthy": [
+    {
+     "check": "shadow_dry_run_done",
+     "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+    },
+    {
+     "check": "dry_run_writes_nothing",
+     "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md §6)"
+    },
+    {
+     "check": "cron_twin_output_fresh",
+     "text": "After deployment, require the proposed real-run receipt ok_at within 170 h. SOURCE_ONLY: receipt freshness and cron output are NOT_MEASURED here."
+    },
+    {
+     "check": "duration_within_baseline",
+     "text": "duration <= 720.0 s (80% of timeout_s 900)"
+    }
+   ],
+   "degraded": [
+    {
+     "check": "late",
+     "text": "After deployment, receipt ok_at older than 170 h and younger than 338 h. Sunday 19:00 ET weekly slot: one missed week plus 2 h degraded, two missed weeks plus 2 h failed."
+    },
+    {
+     "check": "slow",
+     "text": "duration above 720.0 s"
+    },
+    {
+     "check": "retried",
+     "text": "a run needed attempt > 1 (retry_policy) or ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
+    },
+    {
+     "check": "upstream_stale",
+     "text": "an upstream input is stale: yfinance, Finviz fallback, Postgres symbol_profiles_writer, flock (not machine-checked yet)"
+    },
+    {
+     "check": "failed_receipt_carried",
+     "text": "A failed real-run receipt retains previous ok_at; no success freshness is advanced by a failed attempt. Partial Finviz export failure is failed even when the legacy CLI returns 0."
+    }
+   ],
+   "failed": [
+    {
+     "check": "run_failed",
+     "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+    },
+    {
+     "check": "no_receipt",
+     "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+    },
+    {
+     "check": "stale",
+     "text": "After deployment, receipt ok_at older than 338 h. Sunday 19:00 ET weekly slot: one missed week plus 2 h degraded, two missed weeks plus 2 h failed."
+    },
+    {
+     "check": "breaker_or_dlq",
+     "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+    },
+    {
+     "check": "dry_run_wrote",
+     "text": "a dry_run changed its output_signal or any durable state"
+    }
+   ],
+   "baseline": {
+    "freshness_degraded_after_h": 170,
+    "freshness_failed_after_h": 338,
+    "freshness_rule": "Sunday 19:00 ET weekly slot: one missed week plus 2 h degraded, two missed weeks plus 2 h failed.",
+    "timeout_s": 900,
+    "class": "ingest",
+    "computed_on": "2026-10-11",
+    "basis": "CLASS_DEFAULT_PROVISIONAL",
+    "source": "SOURCE_ONLY source-derived proposal. Coordination ledger NOT_MEASURED; no finished live-run count or measured duration is asserted. Class defaults use 80% of timeout; cadence thresholds require operator review.",
+    "runs_considered": null,
+    "duration_degraded_above_s": 720.0,
+    "source_status": "SOURCE_ONLY",
+    "ledger_status": "NOT_MEASURED"
+   },
+   "alerting": {
+    "lane_severity": "Medium",
+    "severity_basis": "Source proposal: research/learning lane; medium catalogue class default, operator review required.",
+    "failed": {
+     "siem_severity": "URGENT",
+     "notifier_priority": "P1"
+    },
+    "degraded": {
+     "siem_severity": "WARN",
+     "notifier_priority": "P3"
+    },
+    "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+    "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row `severity`, else the fan-in priority (RUN_* = P2 -> WARN). Wiring the bridge, notifier and diagnoser to this contract is the next build item (N8N_MONITORING_AND_REMEDIATION_STANDARD.md §7)."
+   },
+   "remediation": {
+    "catalogue_entry": false,
+    "diagnosis_excluded": false,
+    "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
+   },
+   "evidence": {
+    "receipt": "data/runtime/build-symbol-profiles-at-0-19_last.json",
+    "verify": [
+     "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='build-symbol-profiles-at-0-19' ORDER BY requested_at DESC LIMIT 10\"",
+     "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:build-symbol-profiles-at-0-19' ORDER BY created_at DESC LIMIT 10",
+     "stat / jq the receipt: data/runtime/build-symbol-profiles-at-0-19_last.json"
+    ],
+    "never": "Do not infer business success from n8n execution status. Filter deletedAt IS NULL when inventorying retained workflows; use coordination-run and lane receipts for work evidence. No live workflow/status/ledger measurement was performed by this packet.",
+    "source_status": "SOURCE_ONLY",
+    "ledger_status": "NOT_MEASURED"
+   },
+   "review_by": "2026-10-25"
+  },
+  {
+   "schema": "N8nHealthContract@v1",
+   "id": "cio-stance-classification-drain",
+   "kind": "lane",
+   "workflow_id": "tradeai-dispatcher",
+   "status": "DRAFT",
+   "target_reason": "stage:shadow",
+   "stage": "shadow",
+   "purpose": {
+    "text": "Deterministically classify missing-CIO-stance hold requests and record classification outcomes without calling a model.",
+    "business_function": "research",
+    "source": "scripts/drain_cio_stance_classification.py source; approved selected cron snapshot 2026-10-11T17:05:28.513179+00:00"
+   },
+   "owner": "cio",
+   "connects_to": [
+    {
+     "name": "coordination/run -> host executor",
+     "kind": "service",
+     "direction": "calls",
+     "source": "AGENTS.md §23.3"
+    },
+    {
+     "name": "$PY scripts/drain_cio_stance_classification.py --apply",
+     "kind": "runner",
+     "direction": "calls",
+     "source": "allowlist command; exact observed business argv"
+    },
+    {
+     "name": "/tmp/cio_stance_classify.lock",
+     "kind": "lock",
+     "direction": "read_write",
+     "source": "Observed outer flock"
+    },
+    {
+     "name": "data/runtime/cio-stance-classification-drain_last.json",
+     "kind": "receipt",
+     "direction": "write",
+     "source": "scripts/drain_cio_stance_classification.py source; approved selected cron snapshot 2026-10-11T17:05:28.513179+00:00"
+    },
+    {
+     "name": "CIO stance-review request feed",
+     "kind": "store",
+     "direction": "read",
+     "source": "scripts/drain_cio_stance_classification.py source; approved selected cron snapshot 2026-10-11T17:05:28.513179+00:00"
+    },
+    {
+     "name": "strategy classification and CIO stance-review results",
+     "kind": "store",
+     "direction": "write",
+     "source": "scripts/drain_cio_stance_classification.py source; approved selected cron snapshot 2026-10-11T17:05:28.513179+00:00"
+    },
+    {
+     "name": "20 7,19 * * 1-5 cd $PROJ && bash -c 'set -a; . \"/run/user/$(id -u)/tradeai/env\" 2>/dev/null; set +a; exec flock -n /tmp/cio_stance_classify.lock \"$PY\" scripts/drain_cio_stance_classification.py --apply' >> logs/cio_stance_classification_drain.log 2>&1  # lane cio-stance-classification-drain (M5, deterministic classification for missing-CIO-stance holds; no LLM)",
+     "kind": "cron_twin",
+     "direction": "calls",
+     "source": "Approved selected cron snapshot; deployment not performed by this packet"
+    }
+   ],
+   "healthy": [
+    {
+     "check": "shadow_dry_run_done",
+     "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+    },
+    {
+     "check": "dry_run_writes_nothing",
+     "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md §6)"
+    },
+    {
+     "check": "cron_twin_output_fresh",
+     "text": "After deployment, require the proposed real-run receipt ok_at within 14 h; across weekends use 62 h degraded / 74 h failed. SOURCE_ONLY: receipt freshness and cron output are NOT_MEASURED here."
+    },
+    {
+     "check": "duration_within_baseline",
+     "text": "duration <= 240.0 s (80% of timeout_s 300)"
+    }
+   ],
+   "degraded": [
+    {
+     "check": "late",
+     "text": "After deployment, receipt ok_at older than 14 h and younger than 26 h; across weekends use 62 h degraded / 74 h failed. 07:20/19:20 ET weekdays: 12 h regular slots, 60 h Friday-to-Monday closed gap. Thresholds add 2 h grace; use closed thresholds across weekends. No holiday calendar measured."
+    },
+    {
+     "check": "slow",
+     "text": "duration above 240.0 s"
+    },
+    {
+     "check": "retried",
+     "text": "a run needed attempt > 1 (retry_policy) or ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
+    },
+    {
+     "check": "upstream_stale",
+     "text": "an upstream input is stale: cio_stance_review_requests.jsonl, multi_strategy_classifier, Postgres agent_classification_suggestions, ticker_strategy_classifications, ticker_classification_history (not machine-checked yet)"
+    },
+    {
+     "check": "failed_receipt_carried",
+     "text": "A failed real-run receipt retains previous ok_at; no success freshness is advanced by a failed attempt. Partial Finviz export failure is failed even when the legacy CLI returns 0."
+    }
+   ],
+   "failed": [
+    {
+     "check": "run_failed",
+     "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+    },
+    {
+     "check": "no_receipt",
+     "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+    },
+    {
+     "check": "stale",
+     "text": "After deployment, receipt ok_at older than 26 h; across weekends use 62 h degraded / 74 h failed. 07:20/19:20 ET weekdays: 12 h regular slots, 60 h Friday-to-Monday closed gap. Thresholds add 2 h grace; use closed thresholds across weekends. No holiday calendar measured."
+    },
+    {
+     "check": "breaker_or_dlq",
+     "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+    },
+    {
+     "check": "dry_run_wrote",
+     "text": "a dry_run changed its output_signal or any durable state"
+    }
+   ],
+   "baseline": {
+    "freshness_degraded_after_h": 14,
+    "freshness_failed_after_h": 26,
+    "freshness_rule": "07:20/19:20 ET weekdays: 12 h regular slots, 60 h Friday-to-Monday closed gap. Thresholds add 2 h grace; use closed thresholds across weekends. No holiday calendar measured.",
+    "timeout_s": 300,
+    "class": "ingest",
+    "computed_on": "2026-10-11",
+    "basis": "CLASS_DEFAULT_PROVISIONAL",
+    "source": "SOURCE_ONLY source-derived proposal. Coordination ledger NOT_MEASURED; no finished live-run count or measured duration is asserted. Class defaults use 80% of timeout; cadence thresholds require operator review.",
+    "runs_considered": null,
+    "duration_degraded_above_s": 240.0,
+    "source_status": "SOURCE_ONLY",
+    "ledger_status": "NOT_MEASURED",
+    "freshness_closed_degraded_after_h": 62,
+    "freshness_closed_failed_after_h": 74
+   },
+   "alerting": {
+    "lane_severity": "Medium",
+    "severity_basis": "Source proposal: research/learning lane; medium catalogue class default, operator review required.",
+    "failed": {
+     "siem_severity": "URGENT",
+     "notifier_priority": "P1"
+    },
+    "degraded": {
+     "siem_severity": "WARN",
+     "notifier_priority": "P3"
+    },
+    "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+    "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row `severity`, else the fan-in priority (RUN_* = P2 -> WARN). Wiring the bridge, notifier and diagnoser to this contract is the next build item (N8N_MONITORING_AND_REMEDIATION_STANDARD.md §7)."
+   },
+   "remediation": {
+    "catalogue_entry": false,
+    "diagnosis_excluded": false,
+    "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
+   },
+   "evidence": {
+    "receipt": "data/runtime/cio-stance-classification-drain_last.json",
+    "verify": [
+     "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='cio-stance-classification-drain' ORDER BY requested_at DESC LIMIT 10\"",
+     "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:cio-stance-classification-drain' ORDER BY created_at DESC LIMIT 10",
+     "stat / jq the receipt: data/runtime/cio-stance-classification-drain_last.json"
+    ],
+    "never": "Do not infer business success from n8n execution status. Filter deletedAt IS NULL when inventorying retained workflows; use coordination-run and lane receipts for work evidence. No live workflow/status/ledger measurement was performed by this packet.",
+    "source_status": "SOURCE_ONLY",
+    "ledger_status": "NOT_MEASURED"
+   },
+   "review_by": "2026-10-25"
+  },
+  {
+   "schema": "N8nHealthContract@v1",
+   "id": "commitment-outcome-sweep",
+   "kind": "lane",
+   "workflow_id": "tradeai-dispatcher",
+   "status": "DRAFT",
+   "target_reason": "stage:shadow",
+   "stage": "shadow",
+   "purpose": {
+    "text": "Resolve due research commitments from stored evidence and append evaluated outcomes and lesson candidates to the explicitly configured persistent commitment store.",
+    "business_function": "research",
+    "source": "scripts/sweep_commitment_outcomes.py source; approved selected cron snapshot 2026-10-11T17:05:28.513179+00:00"
+   },
+   "owner": "cio",
+   "connects_to": [
+    {
+     "name": "coordination/run -> host executor",
+     "kind": "service",
+     "direction": "calls",
+     "source": "AGENTS.md §23.3"
+    },
+    {
+     "name": "$PY scripts/sweep_commitment_outcomes.py --apply --state-root /home/johnclaw/trade-ai-state/persistent_wake/state",
+     "kind": "runner",
+     "direction": "calls",
+     "source": "allowlist command; exact observed business argv"
+    },
+    {
+     "name": "/tmp/commitment-outcome-sweep.lock",
+     "kind": "lock",
+     "direction": "read_write",
+     "source": "PROPOSED ONLY; no outer flock in approved cron; operator packet required before canary"
+    },
+    {
+     "name": "data/runtime/commitment-outcome-sweep_last.json",
+     "kind": "receipt",
+     "direction": "write",
+     "source": "scripts/sweep_commitment_outcomes.py source; approved selected cron snapshot 2026-10-11T17:05:28.513179+00:00"
+    },
+    {
+     "name": "commitments.jsonl and existing commitment outcomes",
+     "kind": "store",
+     "direction": "read",
+     "source": "scripts/sweep_commitment_outcomes.py source; approved selected cron snapshot 2026-10-11T17:05:28.513179+00:00"
+    },
+    {
+     "name": "commitment evidence/price observation provider",
+     "kind": "provider",
+     "direction": "calls",
+     "source": "scripts/sweep_commitment_outcomes.py source; approved selected cron snapshot 2026-10-11T17:05:28.513179+00:00"
+    },
+    {
+     "name": "commitment_outcomes.jsonl and commitment lesson candidates",
+     "kind": "store",
+     "direction": "write",
+     "source": "scripts/sweep_commitment_outcomes.py source; approved selected cron snapshot 2026-10-11T17:05:28.513179+00:00"
+    },
+    {
+     "name": "20 18 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/sweep_commitment_outcomes.py --apply --state-root /home/johnclaw/trade-ai-state/persistent_wake/state >> logs/sweep_commitment_outcomes.log 2>&1",
+     "kind": "cron_twin",
+     "direction": "calls",
+     "source": "Approved selected cron snapshot; deployment not performed by this packet"
+    }
+   ],
+   "healthy": [
+    {
+     "check": "shadow_dry_run_done",
+     "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+    },
+    {
+     "check": "dry_run_writes_nothing",
+     "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md §6)"
+    },
+    {
+     "check": "cron_twin_output_fresh",
+     "text": "After deployment, require the proposed real-run receipt ok_at within 26 h. SOURCE_ONLY: receipt freshness and cron output are NOT_MEASURED here."
+    },
+    {
+     "check": "duration_within_baseline",
+     "text": "duration <= 240.0 s (80% of timeout_s 300)"
+    }
+   ],
+   "degraded": [
+    {
+     "check": "late",
+     "text": "After deployment, receipt ok_at older than 26 h and younger than 50 h. 18:20 ET every calendar day: one/two missed daily slots plus 2 h grace."
+    },
+    {
+     "check": "slow",
+     "text": "duration above 240.0 s"
+    },
+    {
+     "check": "retried",
+     "text": "a run needed attempt > 1 (retry_policy) or ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
+    },
+    {
+     "check": "upstream_stale",
+     "text": "an upstream input is stale: ~/trade-ai-state/persistent_wake/state/commitments.jsonl, price data (not machine-checked yet)"
+    },
+    {
+     "check": "failed_receipt_carried",
+     "text": "A failed real-run receipt retains previous ok_at; no success freshness is advanced by a failed attempt. Partial Finviz export failure is failed even when the legacy CLI returns 0."
+    }
+   ],
+   "failed": [
+    {
+     "check": "run_failed",
+     "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+    },
+    {
+     "check": "no_receipt",
+     "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+    },
+    {
+     "check": "stale",
+     "text": "After deployment, receipt ok_at older than 50 h. 18:20 ET every calendar day: one/two missed daily slots plus 2 h grace."
+    },
+    {
+     "check": "breaker_or_dlq",
+     "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+    },
+    {
+     "check": "dry_run_wrote",
+     "text": "a dry_run changed its output_signal or any durable state"
+    }
+   ],
+   "baseline": {
+    "freshness_degraded_after_h": 26,
+    "freshness_failed_after_h": 50,
+    "freshness_rule": "18:20 ET every calendar day: one/two missed daily slots plus 2 h grace.",
+    "timeout_s": 300,
+    "class": "learn",
+    "computed_on": "2026-10-11",
+    "basis": "CLASS_DEFAULT_PROVISIONAL",
+    "source": "SOURCE_ONLY source-derived proposal. Coordination ledger NOT_MEASURED; no finished live-run count or measured duration is asserted. Class defaults use 80% of timeout; cadence thresholds require operator review.",
+    "runs_considered": null,
+    "duration_degraded_above_s": 240.0,
+    "source_status": "SOURCE_ONLY",
+    "ledger_status": "NOT_MEASURED"
+   },
+   "alerting": {
+    "lane_severity": "Medium",
+    "severity_basis": "Source proposal: research/learning lane; medium catalogue class default, operator review required.",
+    "failed": {
+     "siem_severity": "WARN",
+     "notifier_priority": "P2"
+    },
+    "degraded": {
+     "siem_severity": "INFO",
+     "notifier_priority": "P3"
+    },
+    "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+    "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row `severity`, else the fan-in priority (RUN_* = P2 -> WARN). Wiring the bridge, notifier and diagnoser to this contract is the next build item (N8N_MONITORING_AND_REMEDIATION_STANDARD.md §7)."
+   },
+   "remediation": {
+    "catalogue_entry": false,
+    "diagnosis_excluded": false,
+    "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
+   },
+   "evidence": {
+    "receipt": "data/runtime/commitment-outcome-sweep_last.json",
+    "verify": [
+     "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='commitment-outcome-sweep' ORDER BY requested_at DESC LIMIT 10\"",
+     "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:commitment-outcome-sweep' ORDER BY created_at DESC LIMIT 10",
+     "stat / jq the receipt: data/runtime/commitment-outcome-sweep_last.json"
+    ],
+    "never": "Do not infer business success from n8n execution status. Filter deletedAt IS NULL when inventorying retained workflows; use coordination-run and lane receipts for work evidence. No live workflow/status/ledger measurement was performed by this packet.",
+    "source_status": "SOURCE_ONLY",
+    "ledger_status": "NOT_MEASURED"
+   },
+   "review_by": "2026-10-25"
+  },
+  {
+   "schema": "N8nHealthContract@v1",
+   "id": "drain-discovery-backlog",
+   "kind": "lane",
+   "workflow_id": "tradeai-dispatcher",
+   "status": "DRAFT",
+   "target_reason": "stage:shadow",
+   "stage": "shadow",
+   "purpose": {
+    "text": "Advance deterministically selected discovery backlog rows into the next lifecycle stage or archive expired discoveries.",
+    "business_function": "research",
+    "source": "scripts/drain_discovery_backlog.py source; approved selected cron snapshot 2026-10-11T17:05:28.513179+00:00"
+   },
+   "owner": "research",
+   "connects_to": [
+    {
+     "name": "coordination/run -> host executor",
+     "kind": "service",
+     "direction": "calls",
+     "source": "AGENTS.md §23.3"
+    },
+    {
+     "name": "$PY scripts/drain_discovery_backlog.py --apply",
+     "kind": "runner",
+     "direction": "calls",
+     "source": "allowlist command; exact observed business argv"
+    },
+    {
+     "name": "/tmp/drain-discovery-backlog.lock",
+     "kind": "lock",
+     "direction": "read_write",
+     "source": "PROPOSED ONLY; no outer flock in approved cron; operator packet required before canary"
+    },
+    {
+     "name": "data/runtime/drain-discovery-backlog_last.json",
+     "kind": "receipt",
+     "direction": "write",
+     "source": "scripts/drain_discovery_backlog.py source; approved selected cron snapshot 2026-10-11T17:05:28.513179+00:00"
+    },
+    {
+     "name": "discovery_backlog and critique/lifecycle state",
+     "kind": "store",
+     "direction": "read_write",
+     "source": "scripts/drain_discovery_backlog.py source; approved selected cron snapshot 2026-10-11T17:05:28.513179+00:00"
+    },
+    {
+     "name": "0 6 * * 1-5 cd $PROJ && $PY scripts/drain_discovery_backlog.py --apply >> logs/drain_discovery_backlog.log 2>&1",
+     "kind": "cron_twin",
+     "direction": "calls",
+     "source": "Approved selected cron snapshot; deployment not performed by this packet"
+    }
+   ],
+   "healthy": [
+    {
+     "check": "shadow_dry_run_done",
+     "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+    },
+    {
+     "check": "dry_run_writes_nothing",
+     "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md §6)"
+    },
+    {
+     "check": "cron_twin_output_fresh",
+     "text": "After deployment, require the proposed real-run receipt ok_at within 26 h; across weekends use 74 h degraded / 98 h failed. SOURCE_ONLY: receipt freshness and cron output are NOT_MEASURED here."
+    },
+    {
+     "check": "duration_within_baseline",
+     "text": "duration <= 240.0 s (80% of timeout_s 300)"
+    }
+   ],
+   "degraded": [
+    {
+     "check": "late",
+     "text": "After deployment, receipt ok_at older than 26 h and younger than 50 h; across weekends use 74 h degraded / 98 h failed. 06:00 ET weekdays: 24 h regular slots, 72 h Friday-to-Monday closed gap. Thresholds add 2 h grace; use closed thresholds across weekends. No holiday calendar measured."
+    },
+    {
+     "check": "slow",
+     "text": "duration above 240.0 s"
+    },
+    {
+     "check": "retried",
+     "text": "a run needed attempt > 1 (retry_policy) or ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
+    },
+    {
+     "check": "upstream_stale",
+     "text": "an upstream input is stale: Postgres (not machine-checked yet)"
+    },
+    {
+     "check": "failed_receipt_carried",
+     "text": "A failed real-run receipt retains previous ok_at; no success freshness is advanced by a failed attempt. Partial Finviz export failure is failed even when the legacy CLI returns 0."
+    }
+   ],
+   "failed": [
+    {
+     "check": "run_failed",
+     "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+    },
+    {
+     "check": "no_receipt",
+     "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+    },
+    {
+     "check": "stale",
+     "text": "After deployment, receipt ok_at older than 50 h; across weekends use 74 h degraded / 98 h failed. 06:00 ET weekdays: 24 h regular slots, 72 h Friday-to-Monday closed gap. Thresholds add 2 h grace; use closed thresholds across weekends. No holiday calendar measured."
+    },
+    {
+     "check": "breaker_or_dlq",
+     "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+    },
+    {
+     "check": "dry_run_wrote",
+     "text": "a dry_run changed its output_signal or any durable state"
+    }
+   ],
+   "baseline": {
+    "freshness_degraded_after_h": 26,
+    "freshness_failed_after_h": 50,
+    "freshness_rule": "06:00 ET weekdays: 24 h regular slots, 72 h Friday-to-Monday closed gap. Thresholds add 2 h grace; use closed thresholds across weekends. No holiday calendar measured.",
+    "timeout_s": 300,
+    "class": "learn",
+    "computed_on": "2026-10-11",
+    "basis": "CLASS_DEFAULT_PROVISIONAL",
+    "source": "SOURCE_ONLY source-derived proposal. Coordination ledger NOT_MEASURED; no finished live-run count or measured duration is asserted. Class defaults use 80% of timeout; cadence thresholds require operator review.",
+    "runs_considered": null,
+    "duration_degraded_above_s": 240.0,
+    "source_status": "SOURCE_ONLY",
+    "ledger_status": "NOT_MEASURED",
+    "freshness_closed_degraded_after_h": 74,
+    "freshness_closed_failed_after_h": 98
+   },
+   "alerting": {
+    "lane_severity": "Medium",
+    "severity_basis": "Source proposal: research/learning lane; medium catalogue class default, operator review required.",
+    "failed": {
+     "siem_severity": "INFO",
+     "notifier_priority": "P2"
+    },
+    "degraded": {
+     "siem_severity": "INFO",
+     "notifier_priority": "P3"
+    },
+    "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+    "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row `severity`, else the fan-in priority (RUN_* = P2 -> WARN). Wiring the bridge, notifier and diagnoser to this contract is the next build item (N8N_MONITORING_AND_REMEDIATION_STANDARD.md §7)."
+   },
+   "remediation": {
+    "catalogue_entry": false,
+    "diagnosis_excluded": false,
+    "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
+   },
+   "evidence": {
+    "receipt": "data/runtime/drain-discovery-backlog_last.json",
+    "verify": [
+     "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='drain-discovery-backlog' ORDER BY requested_at DESC LIMIT 10\"",
+     "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:drain-discovery-backlog' ORDER BY created_at DESC LIMIT 10",
+     "stat / jq the receipt: data/runtime/drain-discovery-backlog_last.json"
+    ],
+    "never": "Do not infer business success from n8n execution status. Filter deletedAt IS NULL when inventorying retained workflows; use coordination-run and lane receipts for work evidence. No live workflow/status/ledger measurement was performed by this packet.",
+    "source_status": "SOURCE_ONLY",
+    "ledger_status": "NOT_MEASURED"
+   },
+   "review_by": "2026-10-25"
+  },
+  {
+   "schema": "N8nHealthContract@v1",
+   "id": "finviz-sector-research",
+   "kind": "lane",
+   "workflow_id": "tradeai-dispatcher",
+   "status": "DRAFT",
+   "target_reason": "stage:shadow",
+   "stage": "shadow",
+   "purpose": {
+    "text": "Fetch Finviz sector and industry group exports and persist group performance observations for research consumers.",
+    "business_function": "research",
+    "source": "scripts/finviz_sector_research.py source; approved selected cron snapshot 2026-10-11T17:05:28.513179+00:00"
+   },
+   "owner": "scalp",
+   "connects_to": [
+    {
+     "name": "coordination/run -> host executor",
+     "kind": "service",
+     "direction": "calls",
+     "source": "AGENTS.md §23.3"
+    },
+    {
+     "name": "$PY scripts/finviz_sector_research.py",
+     "kind": "runner",
+     "direction": "calls",
+     "source": "allowlist command; exact observed business argv"
+    },
+    {
+     "name": "/tmp/finviz_sector.lock",
+     "kind": "lock",
+     "direction": "read_write",
+     "source": "Observed outer flock"
+    },
+    {
+     "name": "data/runtime/finviz-sector-research_last.json",
+     "kind": "receipt",
+     "direction": "write",
+     "source": "scripts/finviz_sector_research.py source; approved selected cron snapshot 2026-10-11T17:05:28.513179+00:00"
+    },
+    {
+     "name": "Finviz Elite sector/industry exports and throttle state",
+     "kind": "external_provider",
+     "direction": "calls",
+     "source": "scripts/finviz_sector_research.py source; approved selected cron snapshot 2026-10-11T17:05:28.513179+00:00"
+    },
+    {
+     "name": "finviz_group_performance observations",
+     "kind": "store",
+     "direction": "write",
+     "source": "scripts/finviz_sector_research.py source; approved selected cron snapshot 2026-10-11T17:05:28.513179+00:00"
+    },
+    {
+     "name": "15 10,16 * * 1-5 cd $PROJ && flock -n /tmp/finviz_sector.lock $PY scripts/finviz_sector_research.py >> logs/finviz_sector.log 2>&1",
+     "kind": "cron_twin",
+     "direction": "calls",
+     "source": "Approved selected cron snapshot; deployment not performed by this packet"
+    }
+   ],
+   "healthy": [
+    {
+     "check": "shadow_dry_run_done",
+     "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+    },
+    {
+     "check": "dry_run_writes_nothing",
+     "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md §6)"
+    },
+    {
+     "check": "cron_twin_output_fresh",
+     "text": "After deployment, require the proposed real-run receipt ok_at within 20 h; across weekends use 68 h degraded / 86 h failed. SOURCE_ONLY: receipt freshness and cron output are NOT_MEASURED here."
+    },
+    {
+     "check": "duration_within_baseline",
+     "text": "duration <= 240.0 s (80% of timeout_s 300)"
+    }
+   ],
+   "degraded": [
+    {
+     "check": "late",
+     "text": "After deployment, receipt ok_at older than 20 h and younger than 38 h; across weekends use 68 h degraded / 86 h failed. 10:15/16:15 ET weekdays: maximum regular gap 18 h, Friday-to-Monday gap 66 h. Thresholds add 2 h grace; use closed thresholds across weekends. No holiday calendar measured."
+    },
+    {
+     "check": "slow",
+     "text": "duration above 240.0 s"
+    },
+    {
+     "check": "retried",
+     "text": "a run needed attempt > 1 (retry_policy) or ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
+    },
+    {
+     "check": "upstream_stale",
+     "text": "an upstream input is stale: Finviz Elite (FINVIZ_API_TOKEN); Postgres finviz_group_performance (not machine-checked yet)"
+    },
+    {
+     "check": "failed_receipt_carried",
+     "text": "A failed real-run receipt retains previous ok_at; no success freshness is advanced by a failed attempt. Partial Finviz export failure is failed even when the legacy CLI returns 0."
+    }
+   ],
+   "failed": [
+    {
+     "check": "run_failed",
+     "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+    },
+    {
+     "check": "no_receipt",
+     "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+    },
+    {
+     "check": "stale",
+     "text": "After deployment, receipt ok_at older than 38 h; across weekends use 68 h degraded / 86 h failed. 10:15/16:15 ET weekdays: maximum regular gap 18 h, Friday-to-Monday gap 66 h. Thresholds add 2 h grace; use closed thresholds across weekends. No holiday calendar measured."
+    },
+    {
+     "check": "breaker_or_dlq",
+     "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+    },
+    {
+     "check": "dry_run_wrote",
+     "text": "a dry_run changed its output_signal or any durable state"
+    }
+   ],
+   "baseline": {
+    "freshness_degraded_after_h": 20,
+    "freshness_failed_after_h": 38,
+    "freshness_rule": "10:15/16:15 ET weekdays: maximum regular gap 18 h, Friday-to-Monday gap 66 h. Thresholds add 2 h grace; use closed thresholds across weekends. No holiday calendar measured.",
+    "timeout_s": 300,
+    "class": "ingest",
+    "computed_on": "2026-10-11",
+    "basis": "CLASS_DEFAULT_PROVISIONAL",
+    "source": "SOURCE_ONLY source-derived proposal. Coordination ledger NOT_MEASURED; no finished live-run count or measured duration is asserted. Class defaults use 80% of timeout; cadence thresholds require operator review.",
+    "runs_considered": null,
+    "duration_degraded_above_s": 240.0,
+    "source_status": "SOURCE_ONLY",
+    "ledger_status": "NOT_MEASURED",
+    "freshness_closed_degraded_after_h": 68,
+    "freshness_closed_failed_after_h": 86
+   },
+   "alerting": {
+    "lane_severity": "Medium",
+    "severity_basis": "Source proposal: research/learning lane; medium catalogue class default, operator review required.",
+    "failed": {
+     "siem_severity": "WARN",
+     "notifier_priority": "P2"
+    },
+    "degraded": {
+     "siem_severity": "INFO",
+     "notifier_priority": "P3"
+    },
+    "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+    "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row `severity`, else the fan-in priority (RUN_* = P2 -> WARN). Wiring the bridge, notifier and diagnoser to this contract is the next build item (N8N_MONITORING_AND_REMEDIATION_STANDARD.md §7)."
+   },
+   "remediation": {
+    "catalogue_entry": false,
+    "diagnosis_excluded": false,
+    "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
+   },
+   "evidence": {
+    "receipt": "data/runtime/finviz-sector-research_last.json",
+    "verify": [
+     "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='finviz-sector-research' ORDER BY requested_at DESC LIMIT 10\"",
+     "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:finviz-sector-research' ORDER BY created_at DESC LIMIT 10",
+     "stat / jq the receipt: data/runtime/finviz-sector-research_last.json"
+    ],
+    "never": "Do not infer business success from n8n execution status. Filter deletedAt IS NULL when inventorying retained workflows; use coordination-run and lane receipts for work evidence. No live workflow/status/ledger measurement was performed by this packet.",
+    "source_status": "SOURCE_ONLY",
+    "ledger_status": "NOT_MEASURED"
+   },
+   "review_by": "2026-10-25"
+  },
+  {
+   "schema": "N8nHealthContract@v1",
+   "id": "material-change-detector-stage1",
+   "kind": "lane",
+   "workflow_id": "tradeai-dispatcher",
+   "status": "DRAFT",
+   "target_reason": "stage:shadow",
+   "stage": "shadow",
+   "purpose": {
+    "text": "Detect material price, news, catalyst and filing changes in the research universe and persist deduplicated stage-one discoveries for subsequent research.",
+    "business_function": "research",
+    "source": "scripts/material_change_detector.py source; approved selected cron snapshot 2026-10-11T17:05:28.513179+00:00"
+   },
+   "owner": "cio",
+   "connects_to": [
+    {
+     "name": "coordination/run -> host executor",
+     "kind": "service",
+     "direction": "calls",
+     "source": "AGENTS.md §23.3"
+    },
+    {
+     "name": "$PY scripts/material_change_detector.py --apply",
+     "kind": "runner",
+     "direction": "calls",
+     "source": "allowlist command; exact observed business argv"
+    },
+    {
+     "name": "/tmp/material_change_detect.lock",
+     "kind": "lock",
+     "direction": "read_write",
+     "source": "Observed outer flock"
+    },
+    {
+     "name": "data/runtime/material-change-detector-stage1_last.json",
+     "kind": "receipt",
+     "direction": "write",
+     "source": "scripts/material_change_detector.py source; approved selected cron snapshot 2026-10-11T17:05:28.513179+00:00"
+    },
+    {
+     "name": "symbol_profiles, watchlist_items, price/news/catalyst history",
+     "kind": "store",
+     "direction": "read",
+     "source": "scripts/material_change_detector.py source; approved selected cron snapshot 2026-10-11T17:05:28.513179+00:00"
+    },
+    {
+     "name": "material_changes and material-change health/feed records",
+     "kind": "store",
+     "direction": "write",
+     "source": "scripts/material_change_detector.py source; approved selected cron snapshot 2026-10-11T17:05:28.513179+00:00"
+    },
+    {
+     "name": "*/30 * * * * cd $PROJ && flock -n /tmp/material_change_detect.lock $PY scripts/material_change_detector.py --apply >> logs/material_change_detect.log 2>&1  # stage-1 detector",
+     "kind": "cron_twin",
+     "direction": "calls",
+     "source": "Approved selected cron snapshot; deployment not performed by this packet"
+    }
+   ],
+   "healthy": [
+    {
+     "check": "shadow_dry_run_done",
+     "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+    },
+    {
+     "check": "dry_run_writes_nothing",
+     "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md §6)"
+    },
+    {
+     "check": "cron_twin_output_fresh",
+     "text": "After deployment, require the proposed real-run receipt ok_at within 1 h. SOURCE_ONLY: receipt freshness and cron output are NOT_MEASURED here."
+    },
+    {
+     "check": "duration_within_baseline",
+     "text": "duration <= 240.0 s (80% of timeout_s 300)"
+    }
+   ],
+   "degraded": [
+    {
+     "check": "late",
+     "text": "After deployment, receipt ok_at older than 1 h and younger than 1.5 h. Every 30 minutes throughout the calendar; provisional 2x/3x cadence."
+    },
+    {
+     "check": "slow",
+     "text": "duration above 240.0 s"
+    },
+    {
+     "check": "retried",
+     "text": "a run needed attempt > 1 (retry_policy) or ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
+    },
+    {
+     "check": "upstream_stale",
+     "text": "an upstream input is stale: Postgres prices/news/catalysts, material_changes, narrative_subjects; watchlist universe (not machine-checked yet)"
+    },
+    {
+     "check": "failed_receipt_carried",
+     "text": "A failed real-run receipt retains previous ok_at; no success freshness is advanced by a failed attempt. Partial Finviz export failure is failed even when the legacy CLI returns 0."
+    }
+   ],
+   "failed": [
+    {
+     "check": "run_failed",
+     "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+    },
+    {
+     "check": "no_receipt",
+     "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+    },
+    {
+     "check": "stale",
+     "text": "After deployment, receipt ok_at older than 1.5 h. Every 30 minutes throughout the calendar; provisional 2x/3x cadence."
+    },
+    {
+     "check": "breaker_or_dlq",
+     "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+    },
+    {
+     "check": "dry_run_wrote",
+     "text": "a dry_run changed its output_signal or any durable state"
+    }
+   ],
+   "baseline": {
+    "freshness_degraded_after_h": 1,
+    "freshness_failed_after_h": 1.5,
+    "freshness_rule": "Every 30 minutes throughout the calendar; provisional 2x/3x cadence.",
+    "timeout_s": 300,
+    "class": "ingest",
+    "computed_on": "2026-10-11",
+    "basis": "CLASS_DEFAULT_PROVISIONAL",
+    "source": "SOURCE_ONLY source-derived proposal. Coordination ledger NOT_MEASURED; no finished live-run count or measured duration is asserted. Class defaults use 80% of timeout; cadence thresholds require operator review.",
+    "runs_considered": null,
+    "duration_degraded_above_s": 240.0,
+    "source_status": "SOURCE_ONLY",
+    "ledger_status": "NOT_MEASURED"
+   },
+   "alerting": {
+    "lane_severity": "Medium",
+    "severity_basis": "Source proposal: research/learning lane; medium catalogue class default, operator review required.",
+    "failed": {
+     "siem_severity": "WARN",
+     "notifier_priority": "P2"
+    },
+    "degraded": {
+     "siem_severity": "INFO",
+     "notifier_priority": "P3"
+    },
+    "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+    "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row `severity`, else the fan-in priority (RUN_* = P2 -> WARN). Wiring the bridge, notifier and diagnoser to this contract is the next build item (N8N_MONITORING_AND_REMEDIATION_STANDARD.md §7)."
+   },
+   "remediation": {
+    "catalogue_entry": false,
+    "diagnosis_excluded": false,
+    "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
+   },
+   "evidence": {
+    "receipt": "data/runtime/material-change-detector-stage1_last.json",
+    "verify": [
+     "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='material-change-detector-stage1' ORDER BY requested_at DESC LIMIT 10\"",
+     "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:material-change-detector-stage1' ORDER BY created_at DESC LIMIT 10",
+     "stat / jq the receipt: data/runtime/material-change-detector-stage1_last.json"
+    ],
+    "never": "Do not infer business success from n8n execution status. Filter deletedAt IS NULL when inventorying retained workflows; use coordination-run and lane receipts for work evidence. No live workflow/status/ledger measurement was performed by this packet.",
+    "source_status": "SOURCE_ONLY",
+    "ledger_status": "NOT_MEASURED"
+   },
+   "review_by": "2026-10-25"
   }
  ]
 }

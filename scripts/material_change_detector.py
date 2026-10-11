@@ -164,10 +164,8 @@ CREATE INDEX IF NOT EXISTS material_changes_precedence_idx
 def _db():
     import psycopg2
 
-    for line in (ROOT / ".env").read_text().splitlines():
-        if "=" in line and not line.strip().startswith("#"):
-            k, _, v = line.partition("=")
-            os.environ.setdefault(k.strip(), v.strip())
+    from lib.env_bootstrap import load_env
+    load_env(names=("DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD"))
     return psycopg2.connect(
         host=os.getenv("DB_HOST"), port=os.getenv("DB_PORT"), dbname=os.getenv("DB_NAME"),
         user=os.getenv("DB_USER"), password=os.getenv("DB_PASSWORD"))
@@ -958,13 +956,7 @@ def _state_root_for_feed() -> Path:
 SEVERITY_WEIGHT = {"earnings": 3.0, "merger_acquisition": 3.0, "restatement": 3.0, "bankruptcy": 3.5, "material_agreement": 2.5}
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--apply", action="store_true")
-    ap.add_argument("--kind", choices=["price_excursion", "catalyst_new",
-                                       "news_burst", "sector_move", "sec_filing"])
-    args = ap.parse_args()
-
+def _run(args) -> int:
     conn = _db()
     cur = conn.cursor()
     if args.apply:
@@ -1006,9 +998,11 @@ def main() -> int:
 
     write_health_record(build_health_record(
         universe=len(syms), changes_found=len(changes), write=write,
-        source_sha=_source_sha() if "_source_sha" in globals() else "",
+        source_sha=globals().get("_source_sha", lambda: "")(),
         now=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")))
 
+    global LAST_SUMMARY
+    LAST_SUMMARY = {"universe": len(syms), "changes_found": len(changes), **write}
     print("RESULT: " + json.dumps({
         "schema": SCHEMA, "authority": AUTHORITY, "model_calls": 0,
         "universe": len(syms), "K": K,
@@ -1024,6 +1018,33 @@ def main() -> int:
         "not_evaluable": stats.get("price_excursion", {}).get("not_evaluable", 0),
     }, default=str))
     return 0
+
+
+LAST_SUMMARY = {}
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(allow_abbrev=False)
+    ap.add_argument("--apply", action="store_true")
+    ap.add_argument("--kind", choices=["price_excursion", "catalyst_new", "news_burst", "sector_move", "sec_filing"])
+    ap.add_argument("--dry-run", action="store_true", help="offline plan; wins over --apply")
+    args = ap.parse_args(argv)
+    if args.dry_run:
+        print(f"DRY-RUN material-change-detector-stage1: would detect {args.kind or 'all change kinds'} "
+              "and persist material_changes plus health and lane receipts; inputs NOT_MEASURED")
+        return 0
+    from lib.lane_last_receipt import now_iso, write_lane_receipt
+    started = now_iso()
+    try:
+        rc = _run(args)
+    except Exception as exc:
+        write_lane_receipt("material-change-detector-stage1", ok=False, exit_code=1, started_at=started,
+                           script="material_change_detector.py", error=type(exc).__name__)
+        raise
+    ok = LAST_SUMMARY.get("disposition") != "WROTE_NOTHING_UNEXPLAINED"
+    write_lane_receipt("material-change-detector-stage1", ok=ok, exit_code=rc, started_at=started,
+                       script="material_change_detector.py", summary=LAST_SUMMARY)
+    return rc
 
 
 if __name__ == "__main__":

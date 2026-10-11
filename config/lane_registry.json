@@ -1610,16 +1610,19 @@
       "scheduler": {
         "kind": "cron",
         "expression": "20 7,19 * * 1-5",
-        "command_text": "drain_cio_stance_classification.py --apply",
-        "match": "drain_cio_stance_classification.py"
+        "command_text": "20 7,19 * * 1-5 cd $PROJ && bash -c 'set -a; . \"/run/user/$(id -u)/tradeai/env\" 2>/dev/null; set +a; exec flock -n /tmp/cio_stance_classify.lock \"$PY\" scripts/drain_cio_stance_classification.py --apply' >> logs/cio_stance_classification_drain.log 2>&1  # lane cio-stance-classification-drain (M5, deterministic classification for missing-CIO-stance holds; no LLM)",
+        "match": "drain_cio_stance_classification.py",
+        "stage": "shadow",
+        "wave": "R2-05"
       },
       "expected_cadence_hours": 24.0,
       "state": "ACTIVE",
       "state_since": "2026-09-24",
       "state_reason": "Installed 2026-09-24 at the M5 tranche-2 deploy (operator: 'do the post-merge steps'): weekday cron 07:20 and 19:20 from the dev tree, flock /tmp/cio_stance_classify.lock, logs/cio_stance_classification_drain.log. Deterministic Phase-1 classification only; no LLM.",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/cio_stance_classification_drain.log"
+        "kind": "json_key",
+        "path": "data/runtime/cio-stance-classification-drain_last.json",
+        "key": "ok_at"
       },
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "scripts/drain_cio_stance_classification.py docstring; the CIO engine inner-joins an active ticker_strategy_classifications row with strategy_rule_evaluations, and strategy_rule_engine.py has been unscheduled since 2026-09-06.",
@@ -1635,8 +1638,21 @@
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
       },
-      "output_signal_note": "2026-10-09 (registry-signals-r1): was file_mtime ~/.local/state/tradeai/cio_stance_classification_receipts.jsonl, which the drain appends only when a request is pending, so an idle drain (pending=0) read as a false NO_OUTPUT breach (supervisor_breaches.jsonl 2026-10-01..05). The cron line appends to logs/cio_stance_classification_drain.log (state-root logs) and main() prints one '[APPLY] pending=N counts=...' line on every run.",
-      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
+      "output_signal_note": "Source proposal only: the revised producer writes this receipt on real work. Cron has not been deployed; freshness of this proposed artifact is NOT_MEASURED.",
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible).",
+      "adopted_on": "2026-10-11",
+      "adopted_reason": "Shard05 source-only shadow proposal: preserve stable lane_id and dispatcher block across registry reconciliation. Approved selected cron snapshot 2026-10-11T17:05:28.513179+00:00. No scheduler or runtime mutation; contracts remain DRAFT.",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "20 7,19 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "ingest",
+        "priority": 5,
+        "retry_policy": "none"
+      }
     },
     {
       "lane_id": "cio-decision-engine",
@@ -2889,15 +2905,17 @@
       "scheduler": {
         "kind": "cron",
         "expression": "*/30 * * * *",
-        "command_text": ".../material_change_detector.py --apply",
-        "match": "scripts/material_change_detector.py --apply"
+        "command_text": "*/30 * * * * cd $PROJ && flock -n /tmp/material_change_detect.lock $PY scripts/material_change_detector.py --apply >> logs/material_change_detect.log 2>&1  # stage-1 detector",
+        "match": "scripts/material_change_detector.py --apply",
+        "stage": "shadow",
+        "wave": "R2-05"
       },
       "expected_cadence_hours": 0.5,
       "state": "ACTIVE",
       "output_signal": {
         "kind": "json_key",
-        "path": "/home/johnclaw/trade-ai-state/material_change_detector_health.json",
-        "key": "as_of"
+        "path": "data/runtime/material-change-detector-stage1_last.json",
+        "key": "ok_at"
       },
       "note": "Stage 1 detector. CORRECTED 2026-09-12: this lane was declared with db_max(material_changes.created_at) earlier the same night, on the reasoning that keying on the table it exists to write would have caught it sitting at 178 rows while cron ran it 30 more times. That was right about the failure it was chosen to catch and wrong about one it creates: persist() dedupes on ON CONFLICT DO NOTHING, so a run that correctly finds only already-recorded changes never advances that column. Measured at 02:45Z the newest row was 00:30Z with four correct runs in between, and the lane read SLOW on its way to SILENT while running perfectly. The heartbeat advances on every successful run and carries write_disposition, so ALL_ALREADY_PRESENT stays distinguishable from a lane that stopped. It proves the lane RAN rather than that it PRODUCED - the weaker claim, deliberately, because the disposition field carries the stronger one and a max() over rows the producer declined to write carries neither.",
       "value_class": "Operationally Important",
@@ -2912,7 +2930,21 @@
         "event_driven_candidate": true,
         "f_evidence": "polls */30 * * * *"
       },
-      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible).",
+      "adopted_on": "2026-10-11",
+      "adopted_reason": "Shard05 source-only shadow proposal: preserve stable lane_id and dispatcher block across registry reconciliation. Approved selected cron snapshot 2026-10-11T17:05:28.513179+00:00. No scheduler or runtime mutation; contracts remain DRAFT.",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "*/30 * * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "ingest",
+        "priority": 5,
+        "retry_policy": "none"
+      },
+      "output_signal_note": "Source proposal only: the revised producer writes this receipt on real work. Cron has not been deployed; freshness of this proposed artifact is NOT_MEASURED."
     },
     {
       "lane_id": "material-change-notifier-stage2",
@@ -4813,16 +4845,19 @@
       "scheduler": {
         "kind": "cron",
         "expression": "20 18 * * *",
-        "command_text": "cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/sweep_commitment_outcomes.py --apply --state-root /home/johnclaw/trade-ai-state/persistent_wake/state >> logs/sweep_commitment_outcomes.log 2>&1",
-        "match": "scripts/sweep_commitment_outcomes.py --apply"
+        "command_text": "20 18 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/sweep_commitment_outcomes.py --apply --state-root /home/johnclaw/trade-ai-state/persistent_wake/state >> logs/sweep_commitment_outcomes.log 2>&1",
+        "match": "scripts/sweep_commitment_outcomes.py --apply",
+        "stage": "shadow",
+        "wave": "R2-05"
       },
       "expected_cadence_hours": 24.0,
       "state": "ACTIVE",
       "state_since": "2026-09-24",
       "state_reason": "Installed 2026-09-24 20:54 ET under an operator cron grant (Telegram /approve), after PR #1226 went live as 7a9dcec26. Previously NEVER_SCHEDULED: Built 2026-09-12 (P10), unscheduled: 1,877 commitments, 426 past due, 0 outcomes measured 2026-09-24. Tranche 1 gives it a price-based observation_provider (commitment_price_observation) so CONFIRMED/REFUTED are possible. Install as '20 18 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/sweep_commitment_outcomes.py --apply --state-root /home/johnclaw/trade-ai-state/persistent_wake/state >> logs/sweep_commitment_outcomes.log 2>&1' (after resolve-due-checkpoints :20, before advisory-outcome-scorer 18:30; deterministic, no LLM), then flip this row to kind=cron, state=ACTIVE. A new cron entry is operator-only (AGENTS.md §17).",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/sweep_commitment_outcomes.log"
+        "kind": "json_key",
+        "path": "data/runtime/commitment-outcome-sweep_last.json",
+        "key": "ok_at"
       },
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "scripts/sweep_commitment_outcomes.py SCHEDULED_ENTRYPOINT (PROPOSAL ONLY); commitment_outcome_sweep.py:11-24; plan mutable-riding-origami.md Slice 3d.",
@@ -4840,7 +4875,20 @@
         "f_evidence": "Unverified use: no consumer check run for this line"
       },
       "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible).",
-      "output_signal_note": "2026-10-09 registry-ops-crons (breach triage SIGNAL_WRONG): was file_mtime commitment_outcomes.jsonl, which grows only when an outcome is scored (none since 10-02: 883 due, all INSUFFICIENT_EVIDENCE / claim_not_falsifiable); the daily run logs every run. Zero scored outcomes is a design finding (producers need falsifiable claims with a horizon), not a scheduler fault."
+      "output_signal_note": "Source proposal only: the revised producer writes this receipt on real work. Cron has not been deployed; freshness of this proposed artifact is NOT_MEASURED.",
+      "adopted_on": "2026-10-11",
+      "adopted_reason": "Shard05 source-only shadow proposal: preserve stable lane_id and dispatcher block across registry reconciliation. Approved selected cron snapshot 2026-10-11T17:05:28.513179+00:00. No scheduler or runtime mutation; contracts remain DRAFT.",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "20 18 * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "learn",
+        "priority": 5,
+        "retry_policy": "none"
+      }
     },
     {
       "lane_id": "instrument-belief-writer",
@@ -10721,14 +10769,17 @@
       "scheduler": {
         "kind": "cron",
         "expression": "0 19 * * 0",
-        "match": "scripts/build_symbol_profiles.py >>"
+        "match": "scripts/build_symbol_profiles.py >>",
+        "stage": "shadow",
+        "wave": "R2-05",
+        "command_text": "0 19 * * 0 cd $PROJ && flock -n /tmp/symbol_profiles.lock $PY scripts/build_symbol_profiles.py >> logs/symbol_profiles.log 2>&1  # weekly company-profile refresh (operator 2026-06-12)"
       },
       "expected_cadence_hours": 168.0,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/symbol_profiles.log",
-        "evidence": "CRON_LOG_REDIRECT"
+        "kind": "json_key",
+        "path": "data/runtime/build-symbol-profiles-at-0-19_last.json",
+        "key": "ok_at"
       },
       "value_class": "Operationally Important",
       "recommendation": "PIPELINE:P01",
@@ -10746,8 +10797,20 @@
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
       "adopted_from_generator": "reconcile_lane_registry@v1",
-      "adopted_on": "2026-10-10",
-      "adopted_reason": "dispatcher shadow wave D3: adopted unchanged to keep its lane_id stable. Once the same script's build-symbol-profiles-watchlist row is hand-maintained, the generator would re-derive this row as `build-symbol-profiles` (a rename with no change on the host)."
+      "adopted_on": "2026-10-11",
+      "adopted_reason": "Shard05 source-only shadow proposal: preserve stable lane_id and dispatcher block across registry reconciliation. Approved selected cron snapshot 2026-10-11T17:05:28.513179+00:00. No scheduler or runtime mutation; contracts remain DRAFT.",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "0 19 * * 0"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "ingest",
+        "priority": 5,
+        "retry_policy": "none"
+      },
+      "output_signal_note": "Source proposal only: the revised producer writes this receipt on real work. Cron has not been deployed; freshness of this proposed artifact is NOT_MEASURED."
     },
     {
       "lane_id": "classify-instruments",
@@ -13902,6 +13965,104 @@
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
       }
+    },
+    {
+      "lane_id": "finviz-sector-research",
+      "owner": "scalp",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "15 10,16 * * 1-5",
+        "match": "scripts/finviz_sector_research.py",
+        "stage": "shadow",
+        "wave": "R2-05",
+        "command_text": "15 10,16 * * 1-5 cd $PROJ && flock -n /tmp/finviz_sector.lock $PY scripts/finviz_sector_research.py >> logs/finviz_sector.log 2>&1"
+      },
+      "expected_cadence_hours": 66.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/finviz-sector-research_last.json",
+        "key": "ok_at"
+      },
+      "value_class": "Operationally Important",
+      "recommendation": "PIPELINE:P02",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L524",
+        "pipeline": "P02",
+        "value_class": "Operationally Important",
+        "recommendation": "PIPELINE:P02",
+        "f_recommendation": "CONSOLIDATE-into P02",
+        "event_driven_candidate": false,
+        "f_evidence": "Unverified use: no consumer check run for this line"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-10-11",
+      "adopted_reason": "Shard05 source-only shadow proposal: preserve stable lane_id and dispatcher block across registry reconciliation. Approved selected cron snapshot 2026-10-11T17:05:28.513179+00:00. No scheduler or runtime mutation; contracts remain DRAFT.",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "15 10,16 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "ingest",
+        "priority": 5,
+        "retry_policy": "none"
+      },
+      "output_signal_note": "Source proposal only: the revised producer writes this receipt on real work. Cron has not been deployed; freshness of this proposed artifact is NOT_MEASURED."
+    },
+    {
+      "lane_id": "drain-discovery-backlog",
+      "owner": "research",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 6 * * 1-5",
+        "match": "scripts/drain_discovery_backlog.py",
+        "stage": "shadow",
+        "wave": "R2-05",
+        "command_text": "0 6 * * 1-5 cd $PROJ && $PY scripts/drain_discovery_backlog.py --apply >> logs/drain_discovery_backlog.log 2>&1"
+      },
+      "expected_cadence_hours": 72.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/drain-discovery-backlog_last.json",
+        "key": "ok_at"
+      },
+      "value_class": "Nice to Have",
+      "recommendation": "PIPELINE:P10",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L862",
+        "pipeline": "P10",
+        "value_class": "Nice to Have",
+        "recommendation": "PIPELINE:P10",
+        "f_recommendation": "CONSOLIDATE-into P10",
+        "event_driven_candidate": false,
+        "f_evidence": "Unverified use: no consumer check run for this line"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-10-11",
+      "adopted_reason": "Shard05 source-only shadow proposal: preserve stable lane_id and dispatcher block across registry reconciliation. Approved selected cron snapshot 2026-10-11T17:05:28.513179+00:00. No scheduler or runtime mutation; contracts remain DRAFT.",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "0 6 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "learn",
+        "priority": 5,
+        "retry_policy": "none"
+      },
+      "output_signal_note": "Source proposal only: the revised producer writes this receipt on real work. Cron has not been deployed; freshness of this proposed artifact is NOT_MEASURED."
     },
     {
       "lane_id": "run-scheduled-quote-refresh-incubator",
@@ -17559,38 +17720,6 @@
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
     },
     {
-      "lane_id": "finviz-sector-research",
-      "owner": "scalp",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "15 10,16 * * 1-5",
-        "match": "scripts/finviz_sector_research.py"
-      },
-      "expected_cadence_hours": 66.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/finviz_sector.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Operationally Important",
-      "recommendation": "PIPELINE:P02",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L524",
-        "pipeline": "P02",
-        "value_class": "Operationally Important",
-        "recommendation": "PIPELINE:P02",
-        "f_recommendation": "CONSOLIDATE-into P02",
-        "event_driven_candidate": false,
-        "f_evidence": "Unverified use: no consumer check run for this line"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
       "lane_id": "run-inference-cycle-preopen",
       "owner": "research",
       "scheduler": {
@@ -20273,38 +20402,6 @@
         "value_class": "Operationally Important",
         "recommendation": "PIPELINE:P14",
         "f_recommendation": "CONSOLIDATE-into P14",
-        "event_driven_candidate": false,
-        "f_evidence": "Unverified use: no consumer check run for this line"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "drain-discovery-backlog",
-      "owner": "research",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "0 6 * * 1-5",
-        "match": "scripts/drain_discovery_backlog.py"
-      },
-      "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/drain_discovery_backlog.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Nice to Have",
-      "recommendation": "PIPELINE:P10",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L862",
-        "pipeline": "P10",
-        "value_class": "Nice to Have",
-        "recommendation": "PIPELINE:P10",
-        "f_recommendation": "CONSOLIDATE-into P10",
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
       },

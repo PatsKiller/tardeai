@@ -117,13 +117,17 @@ def _dry_run(args) -> int:
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser()
+    ap = argparse.ArgumentParser(allow_abbrev=False)
     ap.add_argument("--dry-run", action="store_true", help="read + report only; wins over --apply")
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--promote-max", type=int, default=200)
     args = ap.parse_args(argv)
 
-    if args.dry_run or not args.apply:
+    if args.dry_run:
+        print(f"DRY-RUN drain-discovery-backlog: would promote up to {args.promote_max} candidates, "
+              "archive expired non-operator candidates and write audit/receipt rows; inputs NOT_MEASURED")
+        return 0
+    if not args.apply:
         return _dry_run(args)
 
     lr = _receipt_lib()
