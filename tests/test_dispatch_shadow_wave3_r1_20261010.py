@@ -220,7 +220,8 @@ def test_activated_registry_has_no_dispatch_issue_once_active(monkeypatch):
     r1_cron_shadow = [r for r in doc["lanes"] if (r.get("dispatch") or {}).get("class") in LD.R1_ADMITTED_CLASSES
                       and (r.get("scheduler") or {}).get("kind") == "cron"]
     # + 15 SW4 rows (shadow wave 4, 2026-10-11; tests/test_sw4_shadow_wave4_20261011.py).
-    assert len(r1_cron_shadow) == len(WAVE3_LIVE) + 3 + 15
+    # + 13 refactor train 3 rows (shards 01-04, 2026-10-11; tests/test_refactor_shard_0[1-4]_20261011.py).
+    assert len(r1_cron_shadow) == len(WAVE3_LIVE) + 3 + 15 + 13
     assert len(errs) == len(r1_cron_shadow) and all("shadow_on_cron_not_ratified" in x for x in errs), errs[:3]
     monkeypatch.setattr(LD, "R1_SHADOW_SHAPE_STATUS", "ACTIVE")
     assert LD.registry_dispatch_errors(doc) == []

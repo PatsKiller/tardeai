@@ -1886,15 +1886,14 @@
       ],
       "live_arg": null,
       "env_names": [
-        "DB_HOST",
-        "DB_PORT",
-        "DB_NAME",
-        "DB_USER",
-        "DB_PASSWORD",
         "DB_CONN_TRACE",
-        "TRADEAI_STATE_ROOT",
-        "TRADEAI_ROOT",
-        "TRADEAI_PERSISTENT_STATE_ROOT"
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
       ],
       "env_allowlist_mode": "report",
       "env_report_reason": "Shared db_adapter/env_bootstrap closure can reload the whole rendered environment; source-only shadow must return before that closure. Canary blocked until n8nmat/env-bootstrap-narrow is integrated and measured.",
@@ -1918,17 +1917,16 @@
       ],
       "live_arg": null,
       "env_names": [
-        "DB_HOST",
-        "DB_PORT",
-        "DB_NAME",
-        "DB_USER",
-        "DB_PASSWORD",
         "DB_CONN_TRACE",
-        "FINVIZ_COOKIE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
         "FINVIZ_API_TOKEN",
-        "TRADEAI_STATE_ROOT",
-        "TRADEAI_ROOT",
-        "TRADEAI_PERSISTENT_STATE_ROOT"
+        "FINVIZ_COOKIE",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
       ],
       "env_allowlist_mode": "report",
       "env_report_reason": "Shared db_adapter/env_bootstrap closure can reload the whole rendered environment; source-only shadow must return before that closure. Canary blocked until n8nmat/env-bootstrap-narrow is integrated and measured.",
@@ -1953,11 +1951,10 @@
       "live_arg": null,
       "env_names": [
         "DB_HOST",
-        "DB_PORT",
         "DB_NAME",
-        "DB_USER",
         "DB_PASSWORD",
-        "TRADEAI_STATE_ROOT"
+        "DB_PORT",
+        "DB_USER"
       ],
       "env_allowlist_mode": "report",
       "env_report_reason": "Shared db_adapter/env_bootstrap closure can reload the whole rendered environment; source-only shadow must return before that closure. Canary blocked until n8nmat/env-bootstrap-narrow is integrated and measured.",
@@ -1982,16 +1979,15 @@
       ],
       "live_arg": null,
       "env_names": [
-        "DB_HOST",
-        "DB_PORT",
-        "DB_NAME",
-        "DB_USER",
-        "DB_PASSWORD",
         "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
         "TRADEAI_PENDING_DATA_APPLY",
-        "TRADEAI_STATE_ROOT",
-        "TRADEAI_ROOT",
-        "TRADEAI_PERSISTENT_STATE_ROOT"
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
       ],
       "env_allowlist_mode": "report",
       "env_report_reason": "Shared db_adapter/env_bootstrap closure can reload the whole rendered environment; source-only shadow must return before that closure. Canary blocked until n8nmat/env-bootstrap-narrow is integrated and measured.",
@@ -2039,10 +2035,11 @@
         "DB_NAME",
         "DB_PASSWORD",
         "DB_PORT",
-        "DB_USER"
+        "DB_USER",
+        "TRADEAI_PERSISTENT_STATE_ROOT"
       ],
       "env_allowlist_mode": "enforce",
-      "env_evidence": "scripts/source_outcome_attribution.py named settings and import-closure source inspection; no broker or model credential names admitted.",
+      "env_evidence": "scripts/source_outcome_attribution.py named settings and import-closure source inspection; no broker or model credential names admitted. Train 3: TRADEAI_PERSISTENT_STATE_ROOT added — the lane receipt library in the import closure reads it (test_n8n_executor_env_allowlist closure guard).",
       "source": "R2-02 source shadow candidate, approved read-only crontab snapshot 2026-10-11T14:57:08.697196+00:00. Exact cron argv retained; --dry-run wins over mutation flags. Cron remains the real scheduler; health contract DRAFT, no runtime activation or natural acceptance. Legacy cron flock path reused; no scheduler change.",
       "command": [
         "$PY",
@@ -2089,35 +2086,6 @@
       "output_signal": "data/runtime/weekly-incubator-builder_last.json"
     },
     {
-      "lane_id": "sec-fundamentals-ingest",
-      "env_names": [
-        "DB_HOST",
-        "DB_NAME",
-        "DB_PASSWORD",
-        "DB_PORT",
-        "DB_USER",
-        "SEC_USER_AGENT"
-      ],
-      "env_allowlist_mode": "report",
-      "env_evidence": "scripts/sec_fundamentals_ingest.py named settings and import-closure source inspection; no broker or model credential names admitted.",
-      "env_report_reason": "The priority-universe acquisition helper still reads DB_PASSWORD from a checkout-relative environment file; named local loading is fixed, but this shared/other-owner path remains to audit before enforce/canary.",
-      "source": "R2-02 source shadow candidate, approved read-only crontab snapshot 2026-10-11T14:57:08.697196+00:00. Exact cron argv retained; --dry-run wins over mutation flags. Cron remains the real scheduler; health contract DRAFT, no runtime activation or natural acceptance. Legacy cron flock path reused; no scheduler change.",
-      "command": [
-        "$PY",
-        "scripts/sec_fundamentals_ingest.py",
-        "--apply"
-      ],
-      "lock": "/tmp/sec_fundamentals_ingest.lock",
-      "lock_kind": "flock",
-      "timeout_s": 1200,
-      "dry_run_arg": [
-        "--dry-run"
-      ],
-      "live_arg": null,
-      "market_gate": false,
-      "output_signal": "data/runtime/sec-fundamentals-ingest_last.json"
-    },
-    {
       "lane_id": "investment-costs",
       "command": [
         "$PY",
@@ -2129,10 +2097,10 @@
       "live_arg": null,
       "env_names": [
         "DB_HOST",
-        "DB_PORT",
         "DB_NAME",
-        "DB_USER",
-        "DB_PASSWORD"
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER"
       ],
       "env_allowlist_mode": "report",
       "env_evidence": "Own literal env reads and source import closure reviewed; dry CLI opens no credential file or database.",
@@ -2143,53 +2111,6 @@
       "output_signal": "data/runtime/investment-costs_last.json",
       "source": "5 17 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/inv_costs.lock bash -c \"set -a; . ./.env; set +a; $PY scripts/investment_costs.py\" >> logs/investment_costs.log 2>&1",
       "env_report_reason": "Shared db_adapter/env_bootstrap and imported research/provider libraries are not fully bounded on this base; shared closure fix belongs to integrator. Own direct loaders copy only declared names. Dry-run exits before those imports/calls."
-    },
-    {
-      "lane_id": "opening-intelligence",
-      "command": [
-        "$PY",
-        "scripts/opening_intelligence.py",
-        "--persist"
-      ],
-      "dry_run_arg": [
-        "--dry-run"
-      ],
-      "live_arg": null,
-      "env_names": [
-        "OPENING_MAX_QUOTE_AGE_SEC"
-      ],
-      "env_allowlist_mode": "enforce",
-      "env_evidence": "Own literal env reads and source import closure reviewed; dry CLI opens no credential file or database.",
-      "lock": "/tmp/opening_intel.lock",
-      "lock_kind": "flock",
-      "timeout_s": 300,
-      "market_gate": false,
-      "output_signal": "data/runtime/opening-intelligence_last.json",
-      "source": "0 7 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/opening_intel.lock $PY scripts/opening_intelligence.py --persist >> logs/opening_intelligence.log 2>&1"
-    },
-    {
-      "lane_id": "opening-intelligence-render",
-      "command": [
-        "$PY",
-        "scripts/opening_intelligence.py",
-        "--persist",
-        "--render"
-      ],
-      "dry_run_arg": [
-        "--dry-run"
-      ],
-      "live_arg": null,
-      "env_names": [
-        "OPENING_MAX_QUOTE_AGE_SEC"
-      ],
-      "env_allowlist_mode": "enforce",
-      "env_evidence": "Own literal env reads and source import closure reviewed; dry CLI opens no credential file or database.",
-      "lock": "/tmp/opening_intel.lock",
-      "lock_kind": "flock",
-      "timeout_s": 300,
-      "market_gate": false,
-      "output_signal": "data/runtime/opening-intelligence-render_last.json",
-      "source": "15 9 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/opening_intel.lock $PY scripts/opening_intelligence.py --persist --render >> logs/opening_intelligence.log 2>&1"
     },
     {
       "lane_id": "register-analyst-sources",
@@ -2204,10 +2125,10 @@
       "live_arg": null,
       "env_names": [
         "DB_HOST",
-        "DB_PORT",
         "DB_NAME",
-        "DB_USER",
-        "DB_PASSWORD"
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER"
       ],
       "env_allowlist_mode": "report",
       "env_evidence": "Own literal env reads and source import closure reviewed; dry CLI opens no credential file or database.",
@@ -2245,8 +2166,7 @@
         "SCALP_HOT_TIER",
         "SEARCH_ROUTING_ENGINE",
         "SEARXNG_URL",
-        "TRADEAI_PERSISTENT_STATE_ROOT",
-        "TRADEAI_STATE_ROOT"
+        "TRADEAI_PERSISTENT_STATE_ROOT"
       ],
       "env_allowlist_mode": "report",
       "env_report_reason": "Real work imports shared DB/search or research helpers whose secret-render closure is owned by the integrator. This script loads only declared names, and explicit preview returns before those dependencies.",
@@ -2279,8 +2199,7 @@
         "DB_PORT",
         "DB_USER",
         "FINVIZ_API_TOKEN",
-        "TRADEAI_PERSISTENT_STATE_ROOT",
-        "TRADEAI_STATE_ROOT"
+        "TRADEAI_PERSISTENT_STATE_ROOT"
       ],
       "env_allowlist_mode": "report",
       "env_report_reason": "Real work imports shared DB/search or research helpers whose secret-render closure is owned by the integrator. This script loads only declared names, and explicit preview returns before those dependencies.",
@@ -2305,8 +2224,7 @@
       "output_signal": "data/runtime/hermes-research-agenda-at-45-7_last.json",
       "env_names": [
         "DB_PASSWORD",
-        "TRADEAI_PERSISTENT_STATE_ROOT",
-        "TRADEAI_STATE_ROOT"
+        "TRADEAI_PERSISTENT_STATE_ROOT"
       ],
       "env_allowlist_mode": "report",
       "env_report_reason": "Real work imports shared DB/search or research helpers whose secret-render closure is owned by the integrator. This script loads only declared names, and explicit preview returns before those dependencies.",
@@ -2336,8 +2254,7 @@
         "DB_PASSWORD",
         "DB_PORT",
         "DB_USER",
-        "TRADEAI_PERSISTENT_STATE_ROOT",
-        "TRADEAI_STATE_ROOT"
+        "TRADEAI_PERSISTENT_STATE_ROOT"
       ],
       "env_allowlist_mode": "report",
       "env_report_reason": "Real work imports shared DB/search or research helpers whose secret-render closure is owned by the integrator. This script loads only declared names, and explicit preview returns before those dependencies.",

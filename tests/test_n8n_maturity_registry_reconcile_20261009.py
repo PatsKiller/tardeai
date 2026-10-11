@@ -259,7 +259,10 @@ def test_generated_rows_have_evidence_or_are_flagged_unverified(committed):
     # retire-wave1 (2026-10-11) made 3 more hand-curated: shadow-batch-generator-at-15-9 and
     # hermes-embedding-promotion-review (RETIRED), and shadow-batch-generator-at-15-10 (id pinned). Merged in
     # train-migration-2: 244 - 3 = 241 generated rows left.
-    assert len(gen) >= 241
+    # Refactor train 3 (2026-10-11) adopted 6 more generated rows with dispatch blocks (shard 01
+    # daily-incubator-refresh, finviz-screener-runner; shard 02 weekly-incubator-builder; shard 03 investment-costs;
+    # shard 04 finviz-proactive-research, hermes-research-worker-pool): 241 - 6 = 235 generated rows left.
+    assert len(gen) >= 235
     adopted = [r for r in committed["lanes"] if r.get("adopted_from_generator") == R.GENERATOR_VERSION]
     # D3 rows carry an r1_pending block (inert until AGENTS 4.4.0 is ACTIVE) instead of a dispatch block;
     # build-symbol-profiles-at-0-19, social-ingest-stocktwits and overnight-batch-tax are adopted unchanged only to keep

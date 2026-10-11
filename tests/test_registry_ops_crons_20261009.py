@@ -204,7 +204,10 @@ def test_snapshot_carries_the_post_install_crontab():
 
 SIGNALS = {
     "finviz-momentum-scalp-early-lane": {"kind": "file_mtime", "path": "logs/finviz_momentum_scalp_scan.log"},
-    "resolve-due-checkpoints": {"kind": "file_mtime", "path": "logs/resolve_due_checkpoints.log"},
+    # Refactor shard 01 (train 3, 2026-10-11): the script now writes a LaneRunReceipt on every run (ok_at only on
+    # success), so the row reads that receipt instead of the log mtime (tests/test_refactor_shard_01_20261011.py).
+    "resolve-due-checkpoints": {"kind": "json_key", "path": "data/runtime/resolve-due-checkpoints_last.json",
+                                "key": "ok_at"},
     "commitment-outcome-sweep": {"kind": "file_mtime", "path": "logs/sweep_commitment_outcomes.log"},
 }
 

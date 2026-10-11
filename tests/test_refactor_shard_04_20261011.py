@@ -613,7 +613,10 @@ def test_shard04_dispatch_rows_obey_current_policy_and_lock_proof():
     reg = json.loads((ROOT / "config/lane_registry.json").read_text())
     allow = {r["lane_id"]: r for r in json.loads((ROOT / "config/n8n_run_allowlist.json").read_text())["lanes"]}
     own = [r for r in reg["lanes"] if r.get("scheduler", {}).get("wave") == "R2-04"]
-    assert len(own) == 8
+    # Train 3: 8 R2-04 proposals - 2 already onboarded by SW4 (identity-sweep-stage0, aegis-transcript-discovery;
+    # train 2's rows kept) - 2 held off the dispatcher (candidate-discovery-orchestrator, hermes-discovery-scorecard;
+    # pinned EXCLUDED by tests/test_sw4_shadow_wave4_20261011.py) = 4.
+    assert len(own) == 4
     for row in own:
         assert validate_dispatch_block(row) == []
         assert row["dispatch"]["retry_policy"] == "none"
@@ -704,7 +707,7 @@ def test_allowlist_preserves_exact_observed_cron_script_arguments():
     allow = {r["lane_id"]: r for r in
              json.loads((ROOT / "config/n8n_run_allowlist.json").read_text())["lanes"]}
     own = [r for r in registry if r.get("scheduler", {}).get("wave") == "R2-04"]
-    assert len(own) == 8
+    assert len(own) == 4  # train 3 recount: see test_shard04_dispatch_rows_obey_current_policy_and_lock_proof
     for row in own:
         command = allow[row["lane_id"]]["command"]
         tokens = shlex.split(row["scheduler"]["command_text"])
