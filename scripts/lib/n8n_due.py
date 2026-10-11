@@ -62,8 +62,32 @@ row and the edge can only time out) and after_mode_unsatisfiable (a live lane af
 predecessor). Any other malformed dispatch block is mode off (lane_dispatch fails closed) and is reported by
 check_lane_registry, not here.
 
-`source` "event" and "digest" (design §6, §9) are NOT computed yet: they return the schema shape with no items
-(follow-up: event cursors / digest windows).
+`source` "event" (design §6; W5, CONSOLIDATION_PLAN §E.4, 2026-10-11) is computed for rows whose dispatch block has
+`triggers` of a computed source (lane_dispatch.COMPUTED_TRIGGER_SOURCES); see "Event source" below. `source`
+"digest" (§9) is NOT computed yet: it returns the schema shape with no items.
+
+Event source (`_event_evals`). One lane, one item at most — every trigger coalesces into ONE key:
+  * as_of      max over the lane's triggers of: `broker_as_of` — the Data Broker domain's as_of from files only
+               (scripts/lib/data_broker/as_of_signal.py, via EventInputs.domain_as_of); `run_done` — the newest
+               finished_at of the upstream lane's RUN_DONE rows in the ledger (a dry_run lane counts dry_run or live,
+               a live lane live only, as `after` does). Other sources -> errors[] trigger_source_unreadable.
+  * watermark  the consumer's last start that saw its input: the LaneRunReceipt started_at of its registry
+               output_signal (status ok; the live cron line writes it) and the started_at of its own RUN_DONE rows.
+               watermark >= as_of -> nothing (the consumer already ran on this input).
+  * window     an as_of older than the lane's catch-up window is not an event now (the cron line / sweep owns it);
+               an as_of more than EVENT_FUTURE_SKEW_S ahead of now is refused (errors[]).
+  * coalesce   a schedule slot of the same lane that is DUE / RETRY_DUE / IN_FLIGHT, or an older `e:` run still
+               in flight, absorbs the event: no item (the schedule run starts after the as_of, so its RUN_DONE
+               becomes the watermark; an in-flight run that started before it leaves the event pending).
+  * debounce   `dispatch.min_interval_s`: no new attempt-1 event key while the lane's newest `e:` row was
+               requested less than that many seconds ago (DEBOUNCED, not emitted, not counted).
+  * key        `e:<lane>:<mode>:<as_of local minute YYYYMMDDTHHMM>` (+ `:a<n>`); the slot state machine is the
+               schedule one (`_evaluate_slot`: DUE, IN_FLIGHT, DONE, RETRY_*, DEAD_LETTER, BREAKER_OPEN,
+               WAITING_AFTER), reason `event`. Two as_of advances inside one local minute share one key.
+  * mode       EVENT_MODES = ("dry_run",): shadow first. A live (canary/cutover) block's triggers fire nothing here
+               (its schedule slots are unchanged) until the operator rules an event canary.
+No cursor table is written: the cursor IS the ledger (the key's minute) plus the receipt watermark, so the
+executor needs no change and a lost run re-emits on the next tick inside the window.
 
 Shas. `registry_sha`, `allowlist_sha`, `policies_sha` should be the sha256 of the FILE BYTES (the gateway passes
 them from its loaders, see `file_sources`). When a caller omits one, the sha256 of the canonical JSON
@@ -202,14 +226,16 @@ class SlotEval:
     #: attempt 1) and, for WAITING_AFTER, until when an out-of-window slot stays in view.
     release_at: Optional[datetime] = None
     view_until: Optional[datetime] = None
+    #: key prefix: "d" schedule, "e" event (W5)
+    prefix: str = "d"
 
     @property
     def base_key(self) -> str:
-        return slot_key(self.lane_id, self.mode, self.slot_local)
+        return slot_key(self.lane_id, self.mode, self.slot_local, prefix=self.prefix)
 
     @property
     def key(self) -> str:
-        return slot_key(self.lane_id, self.mode, self.slot_local, self.attempt)
+        return slot_key(self.lane_id, self.mode, self.slot_local, self.attempt, prefix=self.prefix)
 
 
 class SlotCheck(tuple):
@@ -583,10 +609,10 @@ def _after_wait(lane: _Lane, fire: Any, now: datetime, tz: str, led: _Ledger, su
 
 
 def _evaluate_slot(lane: _Lane, fire: Any, newest: bool, rows: list[dict], now: datetime, tz: str,
-                   led: _Ledger, breaker_open: bool, sub: bool = False) -> SlotEval:
+                   led: _Ledger, breaker_open: bool, sub: bool = False, prefix: str = "d") -> SlotEval:
     b = lane.block
     ev = SlotEval(lane_id=lane.row["lane_id"], mode=lane.mode, slot_local=fire.slot_local, at=fire.at, state="DUE",
-                  priority=b.priority, klass=b.klass, reason="schedule" if newest else "catchup")
+                  priority=b.priority, klass=b.klass, reason="schedule" if newest else "catchup", prefix=prefix)
     latest = max(rows, key=_row_attempt) if rows else None
     latest_attempt = _row_attempt(latest) if latest else 0
     dl = led.dead_letter(ev.base_key)
@@ -710,14 +736,155 @@ def _lane_evals(lane: _Lane, now: datetime, tz: str, led: _Ledger) -> list[SlotE
     return out
 
 
+# ── source "event" (W5, CONSOLIDATION_PLAN §E.4; design 02 §6) ─────────────────────────────────────────────────
+
+#: Event fires are shadow (dry_run) only until the operator rules an event canary (AGENTS §23.12: shadow first).
+EVENT_MODES = ("dry_run",)
+#: An as_of this far ahead of the gateway clock is a clock or writer fault, not an event (errors[]).
+EVENT_FUTURE_SKEW_S = 300
+#: Internal event states, never counted or serialized: the event is absorbed by a schedule run of the same lane
+#: (COALESCED) or held by dispatch.min_interval_s (DEBOUNCED). check_slot_key reports them as the slot state.
+EVENT_INTERNAL_STATES = ("COALESCED", "DEBOUNCED")
+_RECEIPT_SIGNAL_RE = re.compile(r"^data/runtime/[A-Za-z0-9._-]+_last\.json$")
+
+
+class FileEventInputs:
+    """What `_event_evals` reads besides the ledger — files only, under the persistent state root:
+    ``domain_as_of(domain)`` (scripts/lib/data_broker/as_of_signal.read_as_of) and ``lane_watermark(row)`` (the
+    LaneRunReceipt@v1 of the row's output_signal: ``started_at`` when ``status == ok``). Tests inject fakes."""
+
+    def __init__(self, state_root: Path | str | None = None, env: Optional[Mapping[str, str]] = None) -> None:
+        self.state_root = state_root
+        self.env = env
+
+    def domain_as_of(self, domain: str) -> tuple[Optional[datetime], Optional[str]]:
+        try:
+            got = _ld.as_of_signal_module().read_as_of(domain, root=self.state_root, env=self.env)
+        except Exception as exc:  # noqa: BLE001 — a reader fault is an errors[] entry, never a failed due
+            return None, f"reader:{type(exc).__name__}"
+        return got.as_of, got.error
+
+    def lane_watermark(self, row: Mapping[str, Any]) -> Optional[datetime]:
+        sig = row.get("output_signal") if isinstance(row.get("output_signal"), Mapping) else {}
+        rel = str(sig.get("path") or "")
+        if sig.get("kind") != "json_key" or not _RECEIPT_SIGNAL_RE.match(rel):
+            return None
+        try:
+            mod = _ld.as_of_signal_module()
+            doc = json.loads((mod.state_root(self.state_root, self.env) / rel).read_text(encoding="utf-8"))
+        except (OSError, ValueError, ImportError):
+            return None
+        if not isinstance(doc, dict) or doc.get("status") != "ok":
+            return None
+        return mod.parse_ts(doc.get("started_at"))
+
+
+@dataclass(frozen=True)
+class _EventFire:
+    at: datetime
+    slot_local: str
+
+
+def _event_as_of(lane: _Lane, now: datetime, led: _Ledger, inputs: Any) -> tuple[Optional[datetime], list[dict]]:
+    lane_id = lane.row["lane_id"]
+    modes = frozenset({"live"}) if lane.mode == "live" else frozenset({"live", "dry_run"})
+    stamps: list[datetime] = []
+    errors: list[dict] = []
+    for i, trig in enumerate(lane.block.triggers):
+        if trig.source == "broker_as_of":
+            at, why = inputs.domain_as_of(trig.domain)
+            if at is None:
+                errors.append(_err(lane_id, "trigger_source_unreadable",
+                                   f"triggers[{i}] broker_as_of {trig.domain}: {why or 'no as_of'}"[:160]))
+                continue
+            stamps.append(at)
+        elif trig.source == "run_done":
+            done = [_parse_ts(r.get("finished_at")) for r in led.done(str(trig.lane_id), modes)]
+            done = [t for t in done if t is not None and t <= now]
+            if done:
+                stamps.append(max(done))
+        else:
+            errors.append(_err(lane_id, "trigger_source_unreadable",
+                               f"triggers[{i}] source {trig.source} is not computed by due yet (design 02 §6)"))
+    if not stamps:
+        return None, errors
+    as_of = max(s.astimezone(timezone.utc) for s in stamps)
+    if as_of > now + timedelta(seconds=EVENT_FUTURE_SKEW_S):
+        errors.append(_err(lane_id, "trigger_source_unreadable", f"as_of {_iso_z(as_of)} is in the future"))
+        return None, errors
+    return min(as_of, now), errors
+
+
+def _event_evals(lane: _Lane, now: datetime, tz: str, led: _Ledger, inputs: Any) -> tuple[list[SlotEval], list[dict]]:
+    """At most one event slot for one lane (module docstring, "Event source"). Pure apart from ledger and file
+    reads. ValueError on a bad cron (from the schedule coalescing check)."""
+    if not lane.block.triggers or lane.mode not in EVENT_MODES:
+        return [], []
+    lane_id = lane.row["lane_id"]
+    as_of, errors = _event_as_of(lane, now, led, inputs)
+    if as_of is None:
+        return [], errors
+    catchup = timedelta(minutes=_catchup(lane))
+    if as_of < now - catchup:
+        return [], errors                                   # not an event any more: the cron line / sweep owns it
+    modes = frozenset({"live"}) if lane.mode == "live" else frozenset({"live", "dry_run"})
+    marks = [inputs.lane_watermark(lane.row)]
+    marks += [_parse_ts(r.get("started_at")) for r in led.done(lane_id, modes)]
+    marks = [m for m in marks if m is not None]
+    if marks and max(marks) >= as_of:
+        return [], errors                                   # the consumer already started after this input
+    fire = _EventFire(at=as_of, slot_local=_cron.slot_local(as_of, tz))
+    lo = slot_key(lane_id, lane.mode, _cron.slot_local(now - catchup - timedelta(days=1), tz), prefix="e")
+    hi = slot_key(lane_id, lane.mode, _cron.slot_local(now, tz), prefix="e") + ":a9"
+    e_rows: list[dict] = []
+    for r in led.slot_rows(lo, hi):
+        parsed = parse_key(str(r.get("run_id") or ""))
+        if parsed and parsed[0] == "e" and parsed[1] == lane_id and parsed[2] == lane.mode:
+            e_rows.append(r)
+    mine = [r for r in e_rows if parse_key(str(r["run_id"]))[3] == fire.slot_local]
+    ev = _evaluate_slot(lane, fire, True, mine, now, tz, led, led.breaker_open(lane_id), prefix="e")
+    if ev.reason in ("schedule", "catchup"):
+        ev.reason = "event"
+    if ev.state not in EMITTED:
+        return [ev], errors
+    # coalesce: a schedule run of this lane that is due or running now, or an older event run still in flight
+    sched = [e for e in _lane_evals(lane, now, tz, led) if e.state in EMITTED or e.state == "IN_FLIGHT"]
+    older_in_flight = [r for r in e_rows if r not in mine and str(r.get("state") or "") in _IN_FLIGHT]
+    if sched or older_in_flight:
+        ev.state = "COALESCED"
+        return [ev], errors
+    if ev.attempt == 1 and not mine and lane.block.min_interval_s:
+        last = [_parse_ts(r.get("requested_at")) for r in e_rows]
+        last = [t for t in last if t is not None]
+        if last and (now - max(last)).total_seconds() < lane.block.min_interval_s:
+            ev.state = "DEBOUNCED"
+    return [ev], errors
+
+
 def evaluate(registry_rows: Any, allowlist: Any, policies: Any, run_store: Any, now: datetime | float, *,
              lane_filter: Optional[Iterable[str]] = None, tz: str = DEFAULT_TZ,
-             source: str = "schedule") -> tuple[list[SlotEval], list[dict]]:
-    """Every evaluated slot plus per-lane errors. Pure apart from ledger reads."""
+             source: str = "schedule", event_inputs: Any = None) -> tuple[list[SlotEval], list[dict]]:
+    """Every evaluated slot plus per-lane errors. Pure apart from ledger reads (and, for source event, the
+    file-only reads of ``event_inputs``; None = FileEventInputs())."""
     now_utc = _as_utc(now)
     lanes, errors = _eligible_lanes(_rows(registry_rows), allowlist_entries(allowlist), policies, lane_filter)
+    if source == "event":
+        inputs = event_inputs if event_inputs is not None else FileEventInputs()
+        led = _Ledger(run_store)
+        evals: list[SlotEval] = []
+        for lane in lanes:
+            if not lane.block.triggers:
+                continue
+            try:
+                ev, errs = _event_evals(lane, now_utc, tz, led, inputs)
+            except ValueError as exc:
+                errors.append(_err(lane.row["lane_id"], "bad_cron", str(exc)))
+                continue
+            evals.extend(e for e in ev if e.state in STATES)
+            errors.extend(errs)
+        return evals, errors
     if source != "schedule":
-        return [], errors                                  # event / digest: follow-up (design §6, §9)
+        return [], errors                                  # digest: follow-up (design §9)
     led = _Ledger(run_store)
     evals: list[SlotEval] = []
     for lane in lanes:
@@ -731,14 +898,14 @@ def evaluate(registry_rows: Any, allowlist: Any, policies: Any, run_store: Any, 
 def compute_due(registry_rows: Any, allowlist: Any, policies: Any, run_store: Any, now: datetime | float,
                 source: str = "schedule", lane_filter: Optional[Sequence[str]] = None, limit: int = DEFAULT_LIMIT,
                 tz: str = DEFAULT_TZ, *, registry_sha: Optional[str] = None, allowlist_sha: Optional[str] = None,
-                policies_sha: Optional[str] = None) -> dict[str, Any]:
+                policies_sha: Optional[str] = None, event_inputs: Any = None) -> dict[str, Any]:
     """DueResponse@v1 for `now`. Read-only. See the module docstring for the state table and sha rules."""
     if source not in SOURCES:
         raise ValueError(f"source must be one of {SOURCES}")
     limit = max(1, min(int(limit), MAX_LIMIT))
     now_utc = _as_utc(now)
     evals, errors = evaluate(registry_rows, allowlist, policies, run_store, now_utc, lane_filter=lane_filter, tz=tz,
-                             source=source)
+                             source=source, event_inputs=event_inputs)
     counts = {s: 0 for s in STATES}
     for ev in evals:
         counts[ev.state] += 1
@@ -770,28 +937,35 @@ def compute_due(registry_rows: Any, allowlist: Any, policies: Any, run_store: An
 
 
 def check_slot_key(key: str, lane_id: str, mode: str, *, registry_rows: Any, allowlist: Any, policies: Any,
-                   run_store: Any, now: datetime | float, tz: str = DEFAULT_TZ) -> SlotCheck:
+                   run_store: Any, now: datetime | float, tz: str = DEFAULT_TZ, event_inputs: Any = None) -> SlotCheck:
     """Recompute due for ONE lane and say whether `key` is currently DUE / RETRY_DUE in `mode`.
 
-    Not-ok states: MALFORMED_KEY, KEY_MISMATCH (lane/mode differ from the request), UNSUPPORTED_SOURCE (e:/g:
-    until §6/§9 land), LANE_NOT_DISPATCHED (mode off, ineligible, or an errors[] lane), MODE_MISMATCH (the
-    registry dispatches the lane in the other mode), NOT_A_SLOT (no fire in the catch-up window: forged,
-    future or too old), ATTEMPT_MISMATCH, or the slot's own state (IN_FLIGHT, DONE, RETRY_WAIT, ...)."""
+    Not-ok states: MALFORMED_KEY, KEY_MISMATCH (lane/mode differ from the request), UNSUPPORTED_SOURCE (g: until
+    §9 lands; e: on a lane with no dispatch.triggers), LANE_NOT_DISPATCHED (mode off, ineligible, or an errors[]
+    lane), MODE_MISMATCH (the registry dispatches the lane in the other mode), NOT_A_SLOT (no fire in the catch-up
+    window: forged, future or too old; for e: no pending event at that as_of minute — covered, coalesced, debounced
+    or another minute), ATTEMPT_MISMATCH, or the slot's own state (IN_FLIGHT, DONE, RETRY_WAIT, ...)."""
     parsed = parse_key(key)
     if parsed is None:
         return SlotCheck(False, "MALFORMED_KEY")
     prefix, k_lane, k_mode, k_slot, k_attempt = parsed
     if k_lane != lane_id or k_mode != mode:
         return SlotCheck(False, "KEY_MISMATCH")
-    if prefix != "d":
+    if prefix not in ("d", "e"):
         return SlotCheck(False, "UNSUPPORTED_SOURCE")
     lanes, _errors = _eligible_lanes(_rows(registry_rows), allowlist_entries(allowlist), policies, [lane_id])
+    if prefix == "e" and (not lanes or not lanes[0].block.triggers):
+        return SlotCheck(False, "UNSUPPORTED_SOURCE")
     if not lanes:
         return SlotCheck(False, "LANE_NOT_DISPATCHED")
     if lanes[0].mode != mode:
         return SlotCheck(False, "MODE_MISMATCH")
     try:
-        evals = _lane_evals(lanes[0], _as_utc(now), tz, _Ledger(run_store))
+        if prefix == "e":
+            inputs = event_inputs if event_inputs is not None else FileEventInputs()
+            evals, _errs = _event_evals(lanes[0], _as_utc(now), tz, _Ledger(run_store), inputs)
+        else:
+            evals = _lane_evals(lanes[0], _as_utc(now), tz, _Ledger(run_store))
     except ValueError:
         return SlotCheck(False, "LANE_NOT_DISPATCHED")
     match = [e for e in evals if e.slot_local == k_slot and e.state != "MISSED"]

@@ -4482,6 +4482,16 @@ GATES = [
          "tests/test_n8n_incident_fanin_monitor_fold_20261011.py",
          "tests/test_monitor_fold_parity_20261011.py"],
     ),
+    (
+        # W5 event-triggered consumers (CONSOLIDATION_PLAN §B.3 W5, §E.4, 2026-10-11): coordination/due source
+        # "event" fires a registry row with dispatch.triggers when its Data Broker domain as_of (file-only readers,
+        # lib/data_broker/as_of_signal.py; news_ingestion emits catalyst_news) or an upstream RUN_DONE advances past
+        # the consumer's receipt watermark. dry_run only (shadow), one coalesced e: key per as_of minute, debounce,
+        # a due/in-flight schedule slot absorbs the event, the cron line's flock lock skips a concurrent fire.
+        # Hermetic: tmp state root and ledger, real flock on a tmp lock running /bin/true.
+        "w5_event_consumers_20261011",
+        ["tests/test_w5_event_consumers_20261011.py"],
+    ),
 ]
 
 

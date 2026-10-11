@@ -499,6 +499,25 @@ def _emit_heartbeat(mode: str, scanned: int, new: int, meta: dict) -> None:
     print(" ".join(parts), flush=True)
 
 
+#: Registry lane per mode for the as_of emit (config/lane_registry.json rows news-ingestion / news-ingestion-tail).
+_AS_OF_LANE = {"tail_rotate": "news-ingestion-tail"}
+
+
+def _emit_catalyst_news_as_of(mode: str, new_articles: int) -> None:
+    """W5 (CONSOLIDATION_PLAN §E.4): this owner announces the catalyst_news as_of advance for the event router.
+
+    Writes data/runtime/broker_as_of/catalyst_news.json (BrokerAsOf@v1) through the Data Broker helper; as_of moves
+    only when this run wrote rows. DATA_BROKER_AS_OF_EMIT=0 turns it off. It never raises and never changes this
+    run's result or exit code: the only behaviour change is the event file."""
+    try:
+        from lib.data_broker.as_of_signal import emit_as_of
+
+        emit_as_of("catalyst_news", rows_written=int(new_articles or 0),
+                   lane_id=_AS_OF_LANE.get(mode, "news-ingestion"), source=f"scripts/news_ingestion.py mode={mode}")
+    except Exception as exc:  # noqa: BLE001 — bookkeeping only
+        print(f"  [news] as_of emit skipped: {type(exc).__name__}", file=sys.stderr)
+
+
 def ingest(mode: str = "priority", *, single_symbol: str | None = None) -> dict:
     conn = _get_conn()
     import psycopg2.extras
@@ -563,6 +582,7 @@ def ingest(mode: str = "priority", *, single_symbol: str | None = None) -> dict:
     print(f"[news] Scanned {stats['scanned']} symbols, {stats['new_articles']} new articles"
           + (f" — sources: {src_summary}" if src_summary else ""))
     _emit_heartbeat(mode, stats["scanned"], stats["new_articles"], meta)
+    _emit_catalyst_news_as_of(mode, stats["new_articles"])
 
     return {**stats, "mode": mode, **{k: meta[k] for k in ("offset", "next_offset", "tail_size") if k in meta}}
 
