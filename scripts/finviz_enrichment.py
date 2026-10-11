@@ -310,8 +310,22 @@ def _env(key: str, default: str = "") -> str:
     return os.getenv(key, default).strip()
 
 
+# The only names the live fetch path reads from the process environment: the auth trio through _env (above) and
+# finviz_throttle's three tunables, read when it is imported at the first fetch (finviz_throttle.py :90-92). These are
+# the FINVIZ_* names in this lane's config/n8n_run_allowlist.json env_names. _load_env copies nothing else.
+_ENV_KEYS = frozenset({
+    "FINVIZ_API_TOKEN", "FINVIZ_COOKIE", "FINVIZ_USER_AGENT",
+    "FINVIZ_MIN_INTERVAL", "FINVIZ_COOLDOWN_DEFAULT", "FINVIZ_MAX_COOLDOWN_S",
+})
+
+
 def _load_env(root: Path) -> None:
-    """Load tmpfs SM render first, then disk .env (setdefault — first wins)."""
+    """Load the _ENV_KEYS names only: tmpfs SM render first, then disk .env (setdefault, so an exported value or the
+    first file wins).
+
+    Every other name in those files is left out of os.environ. The render carries broker credentials (ALPACA_*,
+    SCHWAB_*: config/secret_registry.yaml), and an ingest lane's process must hold none (AGENTS §23.18).
+    """
     try:
         import sys as _sys
         _sec = Path(__file__).resolve().parent / "secrets"
@@ -321,7 +335,7 @@ def _load_env(root: Path) -> None:
         for path in (render_env_path(), root / ".env"):
             if path.is_file():
                 for k, v in parse_env_file(path).items():
-                    if k:
+                    if k in _ENV_KEYS:
                         os.environ.setdefault(k, v)
         return
     except Exception:
@@ -332,7 +346,8 @@ def _load_env(root: Path) -> None:
             line = line.strip()
             if "=" in line and not line.startswith("#"):
                 k, v = line.split("=", 1)
-                os.environ.setdefault(k.strip(), v.strip().strip("'\""))
+                if k.strip() in _ENV_KEYS:
+                    os.environ.setdefault(k.strip(), v.strip().strip("'\""))
 
 
 def _parse_float(val: str) -> Optional[float]:
