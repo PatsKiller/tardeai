@@ -9,7 +9,9 @@ Policy:      AGENTS.md 4.4.1 §9.3, §17, §23 (this file restates; where it dif
              §23.19 (PROPOSED, awaiting APPROVE_AGENTS_POLICY_4_5_0) makes this procedure mandatory. AGENTS.md
              4.6.0 §24 (PROPOSED, branch n8nmat/agents-4-6-0) adds the platform rules restated in rules 9–13 of §2.
              AGENTS.md 5.2.0 §8.1 (PROPOSED, branch n8nmat/agents-5-2-0-validation) — validation before "working" —
-             is restated in the proof note of §1 and in steps 8, 9, 10 and 12.
+             is restated in the proof note of §1 and in steps 8, 9, 10 and 12. AGENTS.md 6.0.0 §8.1 (PROPOSED,
+             branch n8nmat/agents-6-0-0-step8, stacked on 5.2.0) lets step 8's shadow fire be a forced `dry_run`
+             fire; restated in the proof note and step 8.
 Companion:   docs/implementation/n8n-maturity/N8N_MONITORING_AND_REMEDIATION_STANDARD.md (monitoring, SIEM,
              Telegram, LLM remediation, workflow health contracts)
 Entry point: docs/implementation/n8n-maturity/N8N_CONFIGURATION.md (how n8n is configured on this host)
@@ -42,8 +44,9 @@ regression tests for what it touched under `TRADE_AI_CI=1`, (2) a quoted dry run
 workflow or relay path triggered on demand exactly as its schedule would (through `coordination/run`, in the mode
 its stage allows, with the same argv, env, wrappers and lock), proven by a receipt, ledger row or log line dated
 after the trigger. Natural fires are then monitored, not awaited: nobody waits for one to call a step working. Where
-this checklist conditions a step on natural-schedule evidence (step 8, step 12, a `PAUSED` monitor's flip to
-`ACTIVE`), that condition stays. A forced `live` fire needs the grant the step needed; an overlapping natural fire
+this checklist conditions a step on natural-schedule evidence (step 12, a `PAUSED` monitor's flip to `ACTIVE`), that
+condition stays. Step 8 is the exception (AGENTS.md 6.0.0 §8.1, PROPOSED): its shadow fire may be a forced `dry_run`
+fire, on the terms in step 8. A forced `live` fire needs the grant the step needed; an overlapping natural fire
 must show `RUN_SKIPPED_LOCK` or a harmless run; the forced fire is recorded in the PR or the change-log row. No
 forced fire for a broker, order, stop, session or 2FA path, an operator-only surface, or a send that would reach the
 operator twice; a clock-gated lane's forced fire goes through its wrapper, and a deferral receipt is its proof.
@@ -57,7 +60,7 @@ operator twice; a clock-gated lane's forced fire goes through its wrapper, and a
 | 5 | **Allowlist entry** in `config/n8n_run_allowlist.json`: exact cron argv, `lock` + `lock_kind`, `timeout_s`, non-empty `dry_run_arg`, `live_arg` (null at shadow), `output_signal` = the LaneRunReceipt path, `env_names`, `llm_route` for an `llm` lane. | `r1_class_admission` (d)/(e); gateway `FORBIDDEN_ROUTE_TOKENS`; `tests/test_n8n_run_allowlist_20261008.py` | same PR as step 6 |
 | 6 | **Registry row for the stage** (§3 below), with `dispatch.retry_policy` for the class and `adopted_from_generator` if the row was generated. One registry PR at a time. | `scripts/check_lane_registry.py --fail-on-new --state-drift --no-exemptions` (and `--n8n-live` on the host); `validate_dispatch_block` (:880); `scripts/reconcile_lane_registry.py --snapshot-in --write` must be a no-op | merged reviewed PR = operator decision (§23.11) |
 | 7 | **Remediation catalogue**: regenerate `config/n8n_remediation_catalogue.json` after the allowlist PR so the diagnoser knows the lane (or record why it is excluded). | `python3 scripts/build_remediation_catalogue.py --check`; companion standard §5 | agent PR; operator reviews the catalogue (decision 4) |
-| 8 | **Prove the shadow fire** on the natural schedule: `RUN_DONE` in mode `dry_run` in the coordination ledger, receipt and output_signal unchanged. A forced `dry_run` fire proves the lane works first (AGENTS.md §8.1); this natural fire is the schedule proof and stays the gate. | ledger `runs` rows + `RunReceipt@v2` `output_signal_mtime_before == after`; `scripts/lib/n8n_due.py` `compute_due` week sweep emits the lane `dry_run` only | none |
+| 8 | **Prove the shadow fire** — natural or forced (AGENTS.md 6.0.0 §8.1, PROPOSED): `RUN_DONE` in mode `dry_run` in the coordination ledger, receipt and output_signal unchanged. A forced fire counts when it is the same merged shadow row and unchanged allowlist entry (`live_arg` null) requested through `coordination/run` (relay → gateway → executor) in mode `dry_run` with a non-slot key `f:<lane_id>:dry_run:<UTC YYYYMMDDTHHMMSS>`; the executor's stage clamp keeps it `dry_run`, so it cannot double-run the job. `RUN_SKIPPED_LOCK`, `RUN_FAILED`, `RUN_REFUSED` or `RUN_TIMEOUT` is not the evidence; an n8n execution status never is. An agent never issues it through the relay (the bearer is a credential, AGENTS.md §24.7): the operator does (procedure in §1.1 below). The `compute_due` week sweep still proves the schedule; the first natural fire is monitored, and a failing one returns the lane to cron. | relay log line + ledger `runs` row + `RunReceipt@v2` `output_signal_mtime_before == after`, all dated after the trigger; `scripts/lib/n8n_due.py` `compute_due` week sweep emits the lane `dry_run` only; trigger recorded in the registry PR or change-log row | none for a natural fire; a forced fire is the operator's (relay bearer) |
 | 9 | **Canary** (4.4.0): `dispatch.mode live`, `live_arg` set, allowlist lock equal to every `flock` lock in `scheduler.command_text`. One live fire with the cron line still present; the lock proves no double run. The canary fire is the forced `live` run of AGENTS.md §8.1. | `r1_canary_lock_matches` (:825); §23.12 | registry PR |
 | 10 | **Cutover** per wave: `_cutover.py --lane <id>` comments the exact line `# RETIRED <date> n8n-cutover <lane_id>`, flips the row to `kind: n8n`, `expression: "dispatcher"`, `stage: cutover`, writes `CutoverReceipt@v1`. The cut-over lane is proven working by a forced dispatcher fire under the same grant (AGENTS.md §8.1). | `scripts/pipelines/cutover/_cutover.py`; `CRON_PRESENT_WHILE_SCHEDULER_N8N` in `check_lane_registry` | one `cron` grant per wave naming every lane id |
 | 11 | **Monitoring proof**: SIEM row on a controlled failure, diagnosis within cap or a recorded exclusion, notifier would send. | companion standard §6 (R6 per lane) | dry run first; live injection needs the selftest lane |
@@ -65,6 +68,37 @@ operator twice; a clock-gated lane's forced fire goes through its wrapper, and a
 | 13 | **Inventory change-log row** for any retire / consolidate / cutover / install. | `cron-inventory/README.md` change log | in the same PR train |
 
 Rollback for every step is in §9. Nothing is ever deleted (§0 rail 6).
+
+### 1.1 Forced shadow fire for step 8 (AGENTS.md 6.0.0 §8.1, PROPOSED)
+
+Binding only once 6.0.0 is ACTIVE; until then step 8 waits for the natural slot. Who: **the operator**, because the
+relay's bearer is a credential an agent never reads (AGENTS.md §24.7). An agent prepares steps 1 and 2 and reads the
+evidence (step 5); it never sources or opens the file that holds the bearer. No grant: a `dry_run` request at shadow
+is what the dispatcher sends every tick, the executor clamps a shadow lane to `dry_run`, and nothing in n8n is
+touched.
+
+1. **Preconditions (agent, read-only).** The lane's row in the served release (`portfolio-server/CURRENT`, resolved
+   to a directory) has `scheduler.stage = "shadow"` and `dispatch.mode = "dry_run"`; its allowlist entry has
+   `live_arg: null`; the lane is not a broker, order, stop, session, 2FA, sender or clock-gated lane (AGENTS.md
+   §8.1); the ledger has no `REQUESTED`/`RUNNING` row for the lane; the next natural slot is not within the lane's
+   `timeout_s` (an overlap would only skip on the lock, but a clean window gives a clean proof).
+2. **Dry run of the trigger (agent).** Print the request body without sending it:
+   `{"lane_id": "<lane_id>", "mode": "dry_run", "idempotency_key": "f:<lane_id>:dry_run:<UTC YYYYMMDDTHHMMSS>"}`.
+   Leave `workflow_id` out, so the relay records `requested_by: "n8n:relay"` — distinct from the dispatcher's
+   `n8n:workflow:tradeai-dispatcher`. The key matches `^[A-Za-z0-9._:-]{16,128}$` and is not a `d:`/`e:`/`g:` slot
+   key (the gateway refuses an invented one, `run_slot_not_due`).
+3. **Fire (operator, own shell, `TRADEAI_N8N_RELAY_BEARER` exported from wherever the operator keeps it).**
+   `curl -sS -X POST http://172.19.0.1:18092/run -H "Authorization: Bearer $TRADEAI_N8N_RELAY_BEARER" -H 'Content-Type: application/json' -d '<body from step 2>'`
+   — expect HTTP 200 with `state: "REQUESTED"`. A 403 `relay_live_not_enabled` means the body said `live`: stop.
+4. **Record** the trigger time (UTC) and the run id in the registry PR or the change-log row.
+5. **Evidence (agent, read-only), all dated after the trigger.** (a) the relay log line
+   (`$TRADEAI_STATE_ROOT/data/runtime/n8n_relay/relay_log.jsonl`) with that `run_id`, `state: "REQUESTED"`,
+   `mode: "dry_run"`, `requested_by: "n8n:relay"`; (b) the ledger row
+   (`$TRADEAI_STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite`, opened `mode=ro`) with that `run_id`,
+   `state = 'RUN_DONE'`, `mode = 'dry_run'`, `caller_id = 'n8n-relay'`; (c) its `receipt_json`: `state` `RUN_DONE`,
+   `mode` `dry_run`, `stage_clamp.effective_mode` `dry_run`, `output_signal_mtime_before == output_signal_mtime_after`, the
+   allowlist argv with its `dry_run_arg`. Never an n8n execution status. Anything but `RUN_DONE` is not step 8's
+   evidence: read the receipt's tails and fix the lane before trying again.
 
 ---
 

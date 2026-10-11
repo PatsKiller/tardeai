@@ -1,15 +1,15 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      5.2.0
+Policy-Version:      6.0.0
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
 Status:              PROPOSED
 Effective-Date:      PENDING
-Last-Reviewed:       2026-10-11T09:45:00-04:00
+Last-Reviewed:       2026-10-11T09:50:00-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
-Supersedes:          5.1.0
+Supersedes:          5.2.0
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
 
@@ -110,6 +110,36 @@ asks the operator to decide needs `dedupe_minutes=0`; #1685 sets it only for `ap
 `stop_decision_brief.py` (a stop decision brief) is P1 with the default 60-minute exact-content dedupe — the
 operator classifies it before #1685 merges. **Numbering:** follows 5.0.0 (ACTIVE, PR #1686, merged `0ec320486`);
 `Supersedes` is 5.0.0. Operator approval phrase (§20): `APPROVE_AGENTS_POLICY_5_1_0 <pr_number> <head_sha>`.
+
+**6.0.0 is PROPOSED (MAJOR) — onboarding step 8 accepts a forced shadow fire (§8.1, §23.19).** Awaiting the
+operator's `APPROVE_AGENTS_POLICY_6_0_0 <pr_number> <head_sha>` (§20); until it is ratified and merged, nothing here
+binds and the text of the last ACTIVE version governs. Operator request 2026-10-11, verbatim: "Onboarding step 8, can
+we do it now and dry test it?" Step 8 of `N8N_ONBOARDING_STANDARD.md` — the shadow fire that admits a lane to canary
+— no longer waits for the lane's natural dispatcher slot: a forced `dry_run` fire of the same row through the same
+path (`coordination/run`: relay → gateway → executor, §23.3) that finishes `RUN_DONE` in mode `dry_run` with the
+output_signal unchanged is step 8's evidence. Canary still needs every other condition: the health contract
+`REVIEWED` (step 3), the allowlist entry (step 5), the reviewed registry PR (step 6, §23.11), the lock equal to the
+cron line's (step 9, `r1_canary_lock_matches`), the grants each step names, and the `compute_due` week sweep that
+shows the dispatcher emits the lane `dry_run` only on its schedule. The forced fire cannot double-run the job: at
+shadow the executor clamps every request to `dry_run` (`scripts/lib/lane_stage_clamp.py`), the allowlist has no
+`live_arg`, and the dry run is write-free (standard §2 rule 1); an overlap with the cron line meets the same lock and
+shows `RUN_SKIPPED_LOCK`, which is not step 8's evidence. The first natural shadow fire is still checked when it comes,
+and a failing one sends the lane back to cron (§8.1, §23.12 second bullet). Nothing else moves: natural-schedule
+evidence after a cutover (§23.12 last bullet), a registry `PAUSED` → `ACTIVE` flip, `trade-ai-scalp-live`'s three
+clean market days (§23.3) and the maturity proofs (§15) stay natural. No code enforced a natural count at step 8
+(`lane_dispatch.py`, `_cutover.py`, `check_lane_registry.py`, `n8n_cutover_checklist.py` measured 2026-10-11), so
+no code changes. **Why MAJOR:** 5.2.0 §8.1 named step 8 among the gates that keep their natural-evidence condition,
+and this removes that condition. The version policy has no MINOR or PATCH class for removing a required validation
+gate (MINOR adds a rule "without weakening authority"; PATCH changes no required behaviour; "adding a rule is not a
+MINOR if it removes a restriction elsewhere"), and the gate decided when a lane may take its first n8n-initiated
+`live` fire, so the weakest guarantee after the change is weaker; an ambiguous change takes the higher class. The case
+for 5.3.0 — the gate guarded a schedule claim, not an authority, and the canary stays bounded by the lock and the
+cron line — is real but not decisive; if the operator rules it MINOR, the number becomes 5.3.0 and nothing else
+changes; if 5.2.0 is itself renumbered 6.0.0 at its ratification, this becomes 7.0.0. §0, §2, §2A, §7A, §17 and
+§23.14 are byte-identical; no adapter changes. **Numbering dependency:** stacked on 5.2.0 (PROPOSED, PR #1693,
+head `b5693d3d0`), which adds §8.1; `Supersedes` is 5.2.0. Merge #1693 first; if the operator rules both together,
+one ratification records both tokens and 5.2.0's row becomes ACTIVE in the same edit.
+Operator approval phrase (§20): `APPROVE_AGENTS_POLICY_6_0_0 <pr_number> <head_sha>`.
 
 **5.2.0 is PROPOSED (MINOR) — "working" means validated now: tests, a dry run and a forced run; natural
 schedules are monitored, never awaited (§8.1).** Awaiting the operator's
@@ -1914,10 +1944,42 @@ and nobody waits for one to declare success: a dependent step may start on the f
 natural fire is still checked when it comes — it settles the separate claim that the job runs *on its schedule*
 (§8 "What counts as verified", §9.3) — and a natural fire that fails makes the change not working again: report
 it, and re-check any step that started on it. **This lifts no gate this file or a standard already conditions on
-natural-schedule evidence**, which keeps its condition: the lane-specific shadow fire on the natural schedule
-(`N8N_ONBOARDING_STANDARD.md` step 8), natural-schedule evidence after a cutover (§23.12, last bullet), a
-registry `PAUSED` row's flip to `ACTIVE` after its natural-slot verification, `trade-ai-scalp-live`'s three
-clean market days with cron as fallback (§23.3), and the maturity proofs (§15).
+natural-schedule evidence, except onboarding step 8 (6.0.0, below)**, and each of these keeps its condition:
+natural-schedule evidence after a cutover (§23.12, last bullet), a registry `PAUSED` row's flip to `ACTIVE` after
+its natural-slot verification, `trade-ai-scalp-live`'s three clean market days with cron as fallback (§23.3), and
+the maturity proofs (§15).
+
+**Onboarding step 8 accepts a forced shadow fire (6.0.0).** The shadow fire that admits a dispatcher lane to canary
+(`N8N_ONBOARDING_STANDARD.md` step 8) may be a forced `dry_run` fire instead of the lane's natural slot. It counts
+only when all of these hold:
+
+- **Same row, same path.** The lane's merged shadow row (`scheduler.stage = "shadow"`, `dispatch.mode = "dry_run"`)
+  and its unchanged allowlist entry (`live_arg` null), requested through `coordination/run` — relay → gateway →
+  executor (§23.3) — in mode `dry_run` with a non-slot idempotency key (`f:<lane_id>:dry_run:<UTC
+  YYYYMMDDTHHMMSS>`). A `d:`, `e:` or `g:` slot key is the dispatcher's, and the gateway refuses an invented one
+  (`run_slot_not_due`).
+- **It cannot double-run the job.** At shadow the executor clamps every request to `dry_run`
+  (`scripts/lib/lane_stage_clamp.py`) and the receipt records the clamp; the dry run is write-free (standard §2
+  rule 1). An overlap with the cron line meets the same lock and shows `RUN_SKIPPED_LOCK`.
+- **The evidence is `RUN_DONE` in mode `dry_run`, dated after the trigger:** the relay log line, the coordination
+  ledger row and its `RunReceipt` with `output_signal_mtime_before == after`. `RUN_SKIPPED_LOCK`, `RUN_FAILED`,
+  `RUN_REFUSED`, `RUN_TIMEOUT` or a moved output_signal is not the evidence, and an n8n execution status never is.
+- **The schedule is still proven, statically.** The `scripts/lib/n8n_due.py` `compute_due` week sweep shows the
+  dispatcher emits the lane in `dry_run` only, on its cron (step 8's existing check).
+- **Recorded** in the registry PR or the cron-inventory change-log row as above (trigger, time, run id, artifacts,
+  overlap).
+- **Who triggers it.** The relay takes a bearer that is a credential, and an agent never reads one (§24.7), so an
+  agent never issues the forced fire through the relay itself. The operator issues it, or a workflow change brings
+  it under the `cron` grant that change needs (§23.2).
+
+Canary still needs every other condition — the health contract `REVIEWED` (step 3), the allowlist (step 5), the
+reviewed registry PR (step 6, §23.11), the lock equal to the cron line's (step 9), the R1 admission and the grants
+each step names. The lane's first natural shadow or canary fire is still checked when it comes; a failing one makes
+the lane not working (above), and it leaves the wave and stays on cron (§23.12). The exception is step 8's alone: it
+does not reach §23.12's post-cutover evidence, a `PAUSED` → `ACTIVE` flip, §23.3's three clean market days or §15.
+*Cause (§20): operator 2026-10-11, "Onboarding step 8, can we do it now and dry test it?" — 5.2.0 kept step 8
+natural, so a lane already proven by a forced fire still waited for its slot (up to a week for a weekly lane)
+before canary.*
 
 **The forced run has the same bounds as the thing it runs.**
 
@@ -4888,7 +4950,8 @@ holds.
 Numbered §23.19 because §23.15–§23.17 are reserved for 4.2.0 (PR #1634, PROPOSED). This subsection adds
 obligations. It grants nothing: no grant tier, §17 item or allowlist `never` entry changes. The standard's proof steps
 restate §8.1 (5.2.0): a lane, workflow or relay change is proven working by a forced fire, and its natural fires are
-monitored, not awaited; the gates the standard conditions on natural evidence keep their condition.
+monitored, not awaited; the gates the standard conditions on natural evidence keep their condition, except step 8,
+whose shadow fire may be a forced `dry_run` fire on the terms of §8.1 (6.0.0).
 
 - **The procedure is `docs/implementation/n8n-maturity/N8N_ONBOARDING_STANDARD.md`, and it is mandatory** for adding
   or changing anything n8n fires, watches or calls: a lane at any stage, a registry row with a `dispatch` or
@@ -5192,6 +5255,7 @@ needs `execution-engineering` (§22), and A4/A5 stay the operator's and the dete
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 6.0.0 | 2026-10-11 | PROPOSED | MAJOR | §8.1 gains "Onboarding step 8 accepts a forced shadow fire (6.0.0)": the shadow fire that admits a dispatcher lane to canary (`docs/implementation/n8n-maturity/N8N_ONBOARDING_STANDARD.md` step 8) may be a forced `dry_run` fire of the same merged shadow row and unchanged allowlist entry through `coordination/run` (relay → gateway → executor, §23.3) with a non-slot idempotency key `f:<lane_id>:dry_run:<UTC YYYYMMDDTHHMMSS>` (an invented `d:`/`e:`/`g:` key is refused `run_slot_not_due`); evidence is `RUN_DONE` in mode `dry_run` dated after the trigger — relay log line, ledger row, `RunReceipt` with `output_signal_mtime_before == after` — never `RUN_SKIPPED_LOCK`/`RUN_FAILED`/`RUN_REFUSED`/`RUN_TIMEOUT` and never an n8n execution status; the `compute_due` week sweep still proves the schedule statically; recorded per §8.1. It cannot double-run the job: the executor's stage clamp (`scripts/lib/lane_stage_clamp.py`) runs a shadow lane `dry_run` whatever is requested, the dry run is write-free, and an overlap meets the cron lock. An agent never issues it through the relay (the bearer is a credential, §24.7): the operator does, or a workflow change under its `cron` grant. Canary still needs every other condition (steps 3, 5, 6, 9, the R1 admission, the grants); the first natural fire is still checked and a failing one returns the lane to cron (§23.12). Step 8 only: §23.12 post-cutover evidence, `PAUSED` → `ACTIVE`, §23.3 three clean market days and §15 stay natural. 5.2.0's §8.1 "lifts no gate" sentence now names step 8 as the exception; §23.19 pointer; the onboarding standard's proof note and step 8 restate it. No code enforced a natural count (`lane_dispatch.py`, `_cutover.py`, `check_lane_registry.py`, `n8n_cutover_checklist.py`), so no code changes. §0, §2, §2A, §7A, §17 and §23.14 byte-identical; no adapter changes. Tests: `tests/test_agents_policy_6_0_0_step8.py`; `tests/test_agents_policy_5_2_0_validation.py` made version-aware for step 8's text. Cause: operator 2026-10-11, "Onboarding step 8, can we do it now and dry test it?" MAJOR: it removes a required validation gate before a lane's first n8n-initiated `live` fire (version policy: no MINOR/PATCH class removes a restriction; classify by the weakest guarantee; ambiguous takes the higher class). Ruled MINOR it becomes 5.3.0; if 5.2.0 is itself renumbered 6.0.0 at ratification, this becomes 7.0.0; nothing else changes. Supersedes 5.2.0 (PR #1693, merge first). | **PENDING** operator ratification `APPROVE_AGENTS_POLICY_6_0_0 <pr_number> <head_sha>` (§20); per-PR word, excluded from the §23.13 standing merge approval because it changes `AGENTS.md`. Until then the text of the last ACTIVE version governs. |
 | 5.2.0 | 2026-10-11 | PROPOSED | MINOR | §8.1 "Working means validated now — tests, dry run, forced run; natural schedules are monitored, never awaited" added: before an agent calls a build, change or install working it quotes (1) the unit/regression tests for what it touched under `TRADE_AI_CI=1`, (2) a dry run (§0 rule 7, §6), and (3) a forced run — the installed job, stage or workflow triggered on demand exactly as its schedule would (same command, environment, cwd rule, wrappers and locks; an n8n lane through `coordination/run` in the mode its stage allows), proven by a durable artifact dated after the trigger (§0 rule 8). Natural fires are then monitored, never the first proof and never awaited; the first natural fire still settles the separate on-schedule claim, and a failing one reopens the change. Gates already conditioned on natural evidence keep their condition (onboarding step 8, §23.12 last bullet, registry `PAUSED` → `ACTIVE` after natural-slot verification, §23.3 three clean market days, §15). No forced run for broker/order/stop/session/2FA paths (§0 rule 2, §2, §22, §24.10), operator-only surfaces (§17) or a double send to the operator (senders go through the router with dedupe on or use their dry run); clock-gated jobs pass through their wrapper with no override, and a deferral receipt is the proof. A forced run of an `--apply` job needs the grant the install needed; an overlapping natural fire must skip on its lock or run harmlessly; the forced run is recorded in the change record. One-line pointers in §6, §8, §9.3, §16, §23.12 and §23.19; `docs/implementation/n8n-maturity/N8N_ONBOARDING_STANDARD.md` proof steps restate it. §0, §2, §2A, §7A, §17 and §23.14 byte-identical; no adapter changes (a §0 rule 7/8 pointer is proposed in the PR body only). Tests: `tests/test_agents_policy_5_2_0_validation.py`. Cause: 2026-10-10/11 C1 stage-runner manifest flips — flip 1's proof deferred to its 10:50 ET natural fire, flip 2 waited, the grant expired first; operator request 2026-10-11 ~09:22 ET. MINOR: a new proof obligation that widens no authority — forced runs are bounded by existing grants and gates (read as MAJOR, it becomes 6.0.0 unchanged otherwise). | **PENDING** operator ratification `APPROVE_AGENTS_POLICY_5_2_0 <pr_number> <head_sha>` (§20); per-PR word, excluded from the §23.13 standing merge approval because it changes `AGENTS.md`. Until then the 5.1.0 text governs. |
 | 5.1.0 | 2026-10-11 | ACTIVE | MINOR | §9.1 "Anything the operator must act on bypasses the router" replaced: an operator-action message (asks the operator to approve, deny or decide, or carries a button that does) is sent as a P1 notification intent with dedupe off (`send_telegram(..., priority="P1", dedupe_minutes=0)`, `telegram_alert_router.route_intent`) — never text-classified, capped, quiet-held, archived or suppressed, with a `NotificationIntentRoute@v1` receipt per decision, and still reported *accepted for interrupt delivery*, never *sent*. Two bullets added: `bypass_router=True` is legacy, allowlisted and shrink-only (`BYPASS_ALLOWLIST`, `tests/test_notification_intents_20261010.py`), with the four broker-execution sender units (`alpaca_stop_manager.py` ×2, `defense_execution.py`, `moomoo/opend_health.py`) and `active_trader/momentum_alerts.py` keeping their bypass until an `execution-engineering` grant names them, and `guard_request_approval.py` allowlisted; a P2 intent is held 22:00–07:00 ET (the incident notifier's window) to the Reports archive (`notification_intent_p2`) and folded into the advice digest, delivered if the hold cannot be archived, and anything that must reach the operator in the quiet window is P1. One sentence each added to the §8 remote-approval paragraph and the §24.1 "Senders emit notification intents" bullet, pointing to §9.1. Cause: PR #1685 (`n8nmat/bypass-senders-to-intents`, head `1d9eba216`, held for this amendment) moves 25 of the 30 measured `bypass_router=True` senders to intents (operator 2026-10-10). Merge order: #1685 first. Open item for #1685: `stop_decision_brief.py` is P1 with the default 60-minute dedupe; the operator classifies it before #1685 merges. MINOR: it replaces a mechanism with an equal guarantee for operator-action messages plus a receipt, and adds a declared dedupe window and a never-dropped hold for the rest; no authority rail, operator-only boundary, role, broker reach or egress changes. §0, §2, §2A, §7A, §17 and §23.14 byte-identical; no adapter, `CLAUDE.md` or `AI_WORK_POLICY.md` change. Read as MAJOR, it becomes 6.0.0 unchanged otherwise. Tests: `tests/test_agents_policy_5_1_0_notification_intents.py`. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_5_1_0 1689 b0f0c6eeb` (operator, PR #1689 comment by PatsKiller 2026-10-11T13:12:31Z, verbatim: "APPROVE_AGENTS_POLICY_5_1_0 1689 b0f0c6eeb"); merged #1689 as `26cf80f606e5bb797d5a5b714b23acb3ff95a9c6` (auto-merged 2026-10-11T13:15:17Z); ratification edit on the operator's in-session word 2026-10-11 ("yes - ratify 5.1.0"); per-PR word, excluded from the §23.13 standing merge approval because it changes `AGENTS.md`. |
 | 5.0.0 | 2026-10-10 | ACTIVE | MAJOR | §24.10 "Broker-adjacent daemon operations — the `execution-ops` grant" added, and one sentence added to §0 rule 2 pointing to it (binding only once 5.0.0 is ACTIVE). Under a per-incident `execution-ops` guard grant (≤ 6 h, remotely grantable by Telegram `/approve`, reason naming the unit, the actions and the incident), an agent may operate a broker-execution unit — a user unit whose `ExecStart` runs `scripts/active_trader/**` or `scripts/brokers/**`; measured: `tradeai-active-trader-motion.service` only. It may inspect status, journal, cwd and drop-ins (never `Environment` or env files). It may re-point the code root by `95-code-root-current.conf` to `portfolio-server/CURRENT`, archiving the superseded drop-in by rename. It may run `daemon-reload` with the restart, and `restart`. It may create or archive the unit's enable flag only under the operator's home (`/etc` flags stay operator-only). Every mutation runs only while `cio_market_session` says `CLOSED`, failing closed. A quoted preflight comes first: grant, market state, the unit's tests at CURRENT under `TRADE_AI_CI=1`, no store or `output_signal` move (unit-code-roots checks; `STORE_RISK` goes to the operator, §0 rule 5), `systemd-analyze verify`, and a dry run. Proof is by cwd readback and a receipt; rollback restores the archived drop-in. Never code edits, credentials, live/paper flags or modes, a restart into live mode (A4), order, stop, session-grant or 2FA paths, or broker calls. OpenD (`scripts/moomoo/**`), `--mode live` units, system units and root actions are out of reach. Guard scope installed by the operator-run `packets/agents-4-7-0/install_execution_ops_scope.py` (`bin/guard` `ALL_TIERS` plus a 6 h cap, `guard-lib.sh` scope text and classifier, hook rule `broker.execution_ops`); open gaps stated (unit binding is by reason text; other verbs still classify `service`; Claude hook not installed; the remote grant needs the scope in the poller's release). The §0 change is exactly that one sentence: the 4.1.0, 4.3.0, 4.4.0 and 4.6.0 tests strip it before hashing, and their §0 digest is unchanged. §2, §2A, §7A, §17 and §23.14 are byte-identical; the four adapters must carry the same sentence byte for byte (`tests/test_agents_section_zero_parity.py`); the operator applies it with the packet's `apply_adapters.py` before push, because `CLAUDE.md` is the operator's file. Tests: `tests/test_agents_policy_5_0_0_execution_ops.py`. Causes: the 2026-10-10 ~21:30–21:49 ET motion-unit incident (exact-SHA drop-in archived by hand, start skipped on the missing `/etc` flag, unit inactive on the dev-tree root); operator requests of 2026-10-10 ~21:50 and ~21:52 ET. MAJOR: it narrows §0 rule 2 for one operational purpose (version policy: authority rails and broker access, classified by the weakest guarantee); requested as 4.7.0 (MINOR) and renumbered. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_5_0_0 1686 d51b6c50e` (operator, PR #1686 comment by PatsKiller 2026-10-11T12:33:56Z, verbatim: "APPROVE_AGENTS_POLICY_5_0_0 1686 d51b6c50e"); merged #1686 as `0ec32048669b6a8329b6ab60818cbf527e01f30b` (operator-merged 2026-10-11T12:33:58Z); ratification edit on the operator's in-session word 2026-10-11 ~08:40 ET ("ratify 5.0.0"); per-PR word, excluded from the §23.13 standing merge approval because it changes `AGENTS.md` §0. Effective 2026-10-11. |
