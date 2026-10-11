@@ -1,6 +1,8 @@
 # Monitor fold coverage (W1-9): freshness contracts, input starvation and design notes for the rest
 
 Status:      BUILT (gaps 1, 3, 6 below) + DESIGN NOTES (the rest). Detect and record only. Nothing has been retired.
+             Rulings R1 and R11 DECIDED 2026-10-11 (operator: "R1 yes, R11 yes"); the fan-in severity (R11) and the
+             parallel-run compare are built (branch `n8nmat/monitor-fold-rulings`); the retirement waits for the run.
 as_of:       2026-10-11
 Measured at: branch `n8nmat/monitor-coverage-gaps` on top of `26cf80f60`. Live state was read read-only on ms01-openclaw
              (a `--dry-run` of the detector, plus the monitors' own logs and receipts).
@@ -21,8 +23,9 @@ Both kinds are in `RECORD_ONLY_KINDS`. They are written to `supervisor_breaches.
 
 - They never reach L1/L2 self-heal or L3 escalation.
 - They never reach the L4/L5 ladder, not even its shadow receipts.
-- The fan-in reads them like any other ledger row. Its `SEV` map has no entry for either kind, so it files them at
-  its default, **P3**. The fan-in was not changed here; mapping a severity for these kinds is a ruling (below).
+- The fan-in reads them like any other ledger row. Until ruling R11 it filed both at its default, **P3**. Since
+  R11 (2026-10-11, `n8n_incident_fanin.breach_severity`): STALE_OUTPUT takes the contract's own `severity` and
+  INPUT_STARVATION is P2 for STARVED, P3 otherwise. See "Rulings R1 and R11" below.
 
 Both are "slow checks". `SLOW_CHECK_EVERY_S` limits each to one run every 30 min, which matches how often today's
 monitors run. The time of the last run is kept in `data/runtime/supervisor_slow_checks_last.json`, written only
@@ -262,13 +265,13 @@ columns checked on 2026-10-11 return aware values (for example, `holdings_llm_at
 
 ## Rulings needed
 
-| # | Question |
-|---|---|
-| R1 | Accept STALE_OUTPUT in place of job-coverage-monitor's PRODUCING? check (the 12 contracts) and NO_OUTPUT + registry drift in place of SCHEDULED?. This is D-6, retiring cron L389, which the operator approves under §17. |
-| R2 | `topic_monitor` oldest-item check (agg = min, 72 h): add `agg: min` to `db_max`, or drop it. It has been firing P2 continuously (1,518 h on 2026-10-11) and nobody acts on it. |
-| R3 | `drive-sync.log` "sync done" needle check: accept `file_mtime` of the log (weaker), or move to the `drive-syncs-hourly` lane's own signal. |
-| R4–R10 | As in design notes 4–8 above. |
-| R11 | Fan-in severity for STALE_OUTPUT (the contract's `severity`) and INPUT_STARVATION (STARVED = P2?). Today both are filed at the P3 default. |
+| # | Question | Status |
+|---|---|---|
+| R1 | Accept STALE_OUTPUT in place of job-coverage-monitor's PRODUCING? check (the 12 contracts) and NO_OUTPUT + registry drift in place of SCHEDULED?. This is D-6, retiring cron L389, which the operator approves under §17. | **DECIDED 2026-10-11** — operator: "R1 yes, R11 yes". Yes, after a one-trading-week parallel run with matching results (procedure below). The cron change itself still needs a cron grant. |
+| R2 | `topic_monitor` oldest-item check (agg = min, 72 h): add `agg: min` to `db_max`, or drop it. It has been firing P2 continuously (1,518 h on 2026-10-11) and nobody acts on it. | open |
+| R3 | `drive-sync.log` "sync done" needle check: accept `file_mtime` of the log (weaker), or move to the `drive-syncs-hourly` lane's own signal. | open |
+| R4–R10 | As in design notes 4–8 above. | open |
+| R11 | Fan-in severity for STALE_OUTPUT (the contract's `severity`) and INPUT_STARVATION (STARVED = P2?). | **DECIDED 2026-10-11** — operator: "R1 yes, R11 yes". STALE_OUTPUT = the contract's `severity`; INPUT_STARVATION STARVED = P2, NO_ELIGIBLE_INPUT and UNKNOWN = P3. Built (below). |
 
 ## What can fold after this merges and is released
 
@@ -277,15 +280,105 @@ columns checked on 2026-10-11 return aware values (for example, `holdings_llm_at
   - Its 26 log checks were already covered by the lanes' NO_OUTPUT.
   - Its only aegis fire is a false NOT_SCHEDULED.
   - Before retiring it, run the detector with `--write` for at least one trading week and compare the ledger
-    against the monitor's log.
+    against the monitor's log (the parallel run, below).
 - **pipeline-freshness-monitor (D1-1): the coverage gap is closed (10/10).** It still sends a `system_health`
-  alert_event and Telegram, and the plane files STALE_OUTPUT at P3. It folds after R11 (severity) and the same
-  one-week parallel run.
-- **pipeline-liveness-report (D1-3): the coverage gap is closed.** It folds after R11 and the parallel run. Its
-  `--fail-on-finding` health-tick step can then go.
+  alert_event and Telegram; the plane now files STALE_OUTPUT at the contract's severity (R11). It folds after the
+  same parallel run.
+- **pipeline-liveness-report (D1-3): the coverage gap is closed.** R11 is decided; it folds after the parallel run.
+  Its `--fail-on-finding` health-tick step can then go.
 - **system-freshness-monitor (D1-2): not yet.** Three things still block it:
   - empty_vs_input (note 4)
   - auto-fix (note 5, R6)
   - topic_monitor and drive-sync (R2, R3)
 - **freshness-watchdog-heartbeat (D1-4): not yet.** It is tied to D1-2 and to the plane's missing dead-man.
 - **D2, D3, D4: unchanged.** They wait on D-7 (note 6), R9 and R10.
+
+## Rulings R1 and R11 (decided 2026-10-11) — what was built and the parallel run
+
+Operator, 2026-10-11: **"R1 yes, R11 yes"**. R1: the plane's STALE_OUTPUT (the 12 `jcm.*` contracts) plus NO_OUTPUT and
+registry drift replace job-coverage-monitor (cron L389) after a one-trading-week parallel run with matching results.
+R11: the fan-in severity of STALE_OUTPUT is the freshness contract's own `severity`; INPUT_STARVATION is P2 for STARVED.
+
+### R11 — fan-in severity (built)
+
+`scripts/n8n_incident_fanin.py` `breach_severity()`:
+
+| Kind | Fan-in severity | Basis on the finding (`severity_basis`) |
+|---|---|---|
+| STALE_OUTPUT | the contract `severity` (`evidence.severity`, which the detector already records): P1 → P1, P2 → P2, P3 → P3, P0 → P1 | `contract:<sev>` |
+| STALE_OUTPUT without a readable severity | P2 (the level both monitors alert at today; never muted to the P3 default) | `contract:missing->P2` |
+| INPUT_STARVATION STARVED | P2 | `liveness:STARVED` |
+| INPUT_STARVATION NO_ELIGIBLE_INPUT, UNKNOWN | P3 | `liveness:<status>` |
+| every other kind | unchanged (`SEV`) | `kind:<KIND>` |
+
+- **Why NO_ELIGIBLE_INPUT and UNKNOWN stay P3** (the ruling allowed arguing otherwise; this doc does not): neither
+  shows a lane that is down. NO_ELIGIBLE_INPUT is work that could not produce this output. UNKNOWN is a source the
+  probe could not read. pipeline-liveness-report treats them as findings, but not as outages.
+- **One finding per contract, one per status.** Before, the fan-in kept one open finding per `lane:kind`. The items
+  are now `<lane>/<contract>:STALE_OUTPUT` for a lane-tied contract (separate from the producer lane's own NO_OUTPUT),
+  `freshness:<contract>:STALE_OUTPUT` for a lane-less one, and `liveness:<lane>/<status>:INPUT_STARVATION`. They still
+  split on the last colon into (lane, kind), so `n8n_siem_bridge.lane_kind` reads them unchanged. Other kinds keep
+  their items and idempotency keys.
+- **Consequence to watch (finding):** once this is released, the `sfm.*` contracts (P1 for news_articles,
+  catalyst_events, fused_signals, ticker_prices) reach the incident notifier at P1 while system-freshness-monitor,
+  which is not folding, still sends its own alert. The same holds for `pfm.*` versus pipeline-freshness-monitor during
+  the parallel run. The notifier dedupes per `source|item`, so the two are separate notifications. This is what R11
+  says; it is listed so the operator is not surprised by it.
+- Tests: `tests/test_n8n_incident_fanin_monitor_fold_20261011.py` (real detector rows from
+  `detect_freshness` / `detect_input_starvation`; fixture ledgers under `tmp_path`).
+
+### The parallel run (R1) — procedure
+
+**Start:** the first trading day that runs, from its 00:00 ET, on a release that contains #1694 (W1-9) and this
+change. The detector timer already runs with `--write`, so nothing new is scheduled. The live release on 2026-10-11 is
+`464524b1b`, which has neither.
+
+**Daily, for at least 5 trading days:** after job-coverage-monitor's 20:30 ET run (for example at 21:00 ET), run the
+read-only compare once:
+
+```bash
+~/n8n-maturity-verification/packets/fold-job-coverage-monitor/run_parity.sh
+# = $PY $CURRENT/scripts/monitor_fold_parity.py --root $CURRENT --out <packet>/parity
+```
+
+`scripts/monitor_fold_parity.py` reads the ledger rows of the last 24 h, the monitors' last ~24 h of runs (job
+coverage: 2 runs; pipeline-freshness: 6; pipeline-liveness: 48), the release's registry and job_coverage_monitor's
+REGISTRY. It writes nothing but `parity/parity-<UTC date>.json` (MonitorFoldParity@v1), and refuses an `--out` under
+the release. Per monitor:
+
+| Monitor | MATCH means |
+|---|---|
+| job-coverage-monitor | its STALE DB jobs == the `jcm.*` STALE_OUTPUT contracts (both ways); each STALE log job has a NO_OUTPUT row on the ACTIVE lane that runs it; no STALE job is uncovered. NOT_SCHEDULED is listed, not compared (the plane covers it with NO_OUTPUT after 3× cadence and `check_lane_registry --state-drift`; the aegis one is false). |
+| pipeline-freshness-monitor | its STALE / MISSING targets == the `pfm.*` STALE_OUTPUT contracts (both ways); hermes_canonical and rotation_summary are listed, not compared (a lane output_signal covers them) |
+| pipeline-liveness-report | its (lane, STARVED / NO-INPUT / UNKNOWN) set == the INPUT_STARVATION (lane, status) set (both ways) |
+
+Exit 0 = all MATCH, 3 = a MISMATCH, 2 = an input could not be read. A MISMATCH is not automatically a defect:
+`trading_days` can report up to about half a Monday later than the monitors, never earlier, and the log windows count
+runs rather than clock time. Each MISMATCH needs a written explanation in `parity/parity-<date>.explained.txt` (what
+differed and why) or a fix, before the run can conclude. Tests: `tests/test_monitor_fold_parity_20261011.py`.
+
+**Conclusion:** `parity_gate.py --monitor <monitor>` passes when at least 5 distinct trading days (ET) are MATCH or
+explained and no day is an unexplained MISMATCH or UNREADABLE. If the release lands before Monday 2026-10-12 08:30 ET,
+the run covers Mon 10-12 to Fri 10-16 and can conclude after the Friday 21:00 ET compare. If it lands later, add one
+trading day per day missed (a release during Monday makes the earliest conclusion Mon 10-19).
+
+### Retirement, once the gate passes (prepared, not installed)
+
+All three retirements are operator-only (§17) and wait for the gate. Nothing below has been run beyond its dry run.
+
+1. **job-coverage-monitor (cron L389)** — packet `~/n8n-maturity-verification/packets/fold-job-coverage-monitor/`:
+   - `build_candidate.py --crontab <(crontab -l) --date <install date>` matches L389 by its exact text (not by line
+     number) and comments it with the convention marker `# RETIRED <date> lane=job-coverage-monitor
+     reason=folded-into-health-plane-W1-9-R1 owner=operator review_by=<date+30d> <original>`. Nothing is deleted.
+   - `install.sh` is a dry run by default. `--apply` needs the parity gate to pass, `CRON_GRANT_ID` set, and the live
+     table byte-identical to the snapshot. It backs up the table, and restores it if the re-read differs.
+   - `rollback.sh` (dry run by default) uncomments exactly the tagged line and refuses a double schedule.
+   - Companion in the same window: a registry PR setting lane `job-coverage-monitor` to `state: RETIRED`. Otherwise
+     the detector raises NO_OUTPUT on it. `scripts/job_coverage_monitor.py` stays, because `cron_self_heal.py:70`
+     imports its REGISTRY.
+2. **pipeline-freshness-monitor and pipeline-liveness-report** — these are health-tick steps
+   (`config/health_tick_steps.json`, release config, §9.3), not cron lines. The vehicle is a repo PR plus a release.
+   `build_health_tick_candidate.py` in the same packet matches each step by exact `step_id` and `command`, and moves
+   it (it does not delete it) from `steps` to a top-level `retired_steps` list with a `retired` block (date, reason,
+   replaced_by, owner, review_by). `health_tick.load_table` reads `steps` only. Each step folds when its own
+   `parity_gate.py --monitor` passes (`--only <step_id>`). Rollback is the PR's revert.

@@ -4465,8 +4465,13 @@ GATES = [
         # system_freshness targets (each pinned to its source line); supervisor_breach_detector raises STALE_OUTPUT
         # and INPUT_STARVATION (pipeline_liveness) as detect + record only, throttled to 30 min, never laddered.
         # Hermetic: tmp registry/state root, no DB, fake liveness.
+        # Rulings R1/R11 (2026-10-11, "R1 yes, R11 yes"): fan-in severity for STALE_OUTPUT = the contract's own
+        # severity, INPUT_STARVATION STARVED = P2 (else P3); the read-only parallel-run parity compare. Hermetic:
+        # tmp_path ledgers, logs and registry; no DB, no live state root.
         "monitor_fold_coverage_20261011",
-        ["tests/test_monitor_fold_coverage_20261011.py"],
+        ["tests/test_monitor_fold_coverage_20261011.py",
+         "tests/test_n8n_incident_fanin_monitor_fold_20261011.py",
+         "tests/test_monitor_fold_parity_20261011.py"],
     ),
 ]
 
