@@ -4888,18 +4888,18 @@
         "reviewed_on": "2026-10-11"
       }
     },
-    {
+        {
       "schema": "N8nHealthContract@v1",
       "id": "heartbeat-watch",
       "kind": "lane",
       "workflow_id": "dispatcher",
       "status": "REVIEWED",
-      "target_reason": "stage:shadow",
-      "stage": "shadow",
+      "target_reason": "stage:canary",
+      "stage": "canary",
       "purpose": {
-        "text": "UNKNOWN \u2014 needs owner",
-        "business_function": "UNKNOWN \u2014 needs owner",
-        "source": "none"
+        "text": "Every 5 minutes, dead-man the six health-plane output signals (supervisor-breach-detector, n8n-incident-fanin, incident-notifier, n8n-siem-bridge, health-tick, n8n-lab-watchdog) at 2x cadence; append Breach@v1 STALE_2X / CLEARED to supervisor_breaches.jsonl; write LaneRunReceipt@v1; send nothing.",
+        "business_function": "alerts-ops",
+        "source": "design 02 \u00a77 / scripts/heartbeat_watch.py"
       },
       "owner": "platform",
       "connects_to": [
@@ -4930,20 +4930,24 @@
       ],
       "healthy": [
         {
-          "check": "shadow_dry_run_done",
-          "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+          "check": "last_live_run_done",
+          "text": "every dispatcher (or watcher) fire of this lane ends RUN_DONE in mode live (coordination ledger runs)"
         },
         {
-          "check": "dry_run_writes_nothing",
-          "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md \u00a76)"
+          "check": "output_advanced",
+          "text": "LaneRunReceipt@v1 data/runtime/heartbeat-watch_last.json ok_at advances on each successful live run"
         },
         {
-          "check": "cron_twin_output_fresh",
-          "text": "the live cron line keeps the registry output_signal data/runtime/heartbeat-watch_last.json fresh within 0.167 h (2x cadence)"
+          "check": "fresh",
+          "text": "receipt ok_at is within 0.167 h (2x of expected_cadence_hours 0.0833)"
         },
         {
           "check": "duration_within_baseline",
           "text": "duration <= 48.0 s (80% of timeout_s 60)"
+        },
+        {
+          "check": "dry_run_writes_nothing",
+          "text": "when dispatched dry_run (stage clamp / rollback), output_signal_mtime_after == output_signal_mtime_before"
         }
       ],
       "degraded": [
@@ -4961,7 +4965,7 @@
         },
         {
           "check": "upstream_stale",
-          "text": "an upstream input is stale: UNKNOWN \u2014 needs owner (not machine-checked yet)"
+          "text": "an upstream health-plane signal is LATE (past 1x, not past 2x) for one or more of the six watch-set lanes; recorded in the lane summary, no breach yet"
         }
       ],
       "failed": [
@@ -5027,7 +5031,7 @@
         "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger"
       },
       "review_by": "2026-10-25",
-      "state_note": "Owner REVIEWED 2026-10-11 for shadow host-lane merge (#1700): contract covers scripts/heartbeat_watch.py observe/dead-man at stage shadow (dispatch dry_run). Canary/live of tradeai-heartbeat-watcher remains a separate activate packet. "
+      "state_note": "Owner REVIEWED 2026-10-11 for shadow (#1700); re-REVIEWED same day for canary: purpose and upstream_stale filled, stage canary, live healthy checks. Requires TRADEAI_N8N_RELAY_LIVE_LANES to include heartbeat-watch after promote (set_live_lane.sh). Sends nothing (\u00a724.1)."
     },
     {
       "schema": "N8nHealthContract@v1",

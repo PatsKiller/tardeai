@@ -415,8 +415,9 @@ def test_registry_dispatch_errors_hook():
 
 # ── live registry (read-only) ────────────────────────────────────────────────────────────────────
 
-#: n8n-native lanes (no host line): shadow rows in the dispatcher shape (2026-10-11, heartbeat-watch).
-N8N_NATIVE_SHADOW = frozenset({"heartbeat-watch"})
+#: n8n-native lanes (no host line): dispatcher shape without a cron twin.
+N8N_NATIVE_SHADOW = frozenset()
+N8N_NATIVE_CANARY = frozenset({"heartbeat-watch"})
 
 
 def _live_rows():
@@ -445,6 +446,14 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
         lane = row["lane_id"]
         assert LD.validate_dispatch_block(row, known_lane_ids=known) == [], lane
         mode = LD.dispatch_mode(row)
+        if lane in N8N_NATIVE_CANARY:
+            # n8n-native canary — no cron twin; dispatcher row at stage canary + dispatch.mode live;
+            # allowlist live_arg [] (script default writes the receipt). Not an R1 ingest canary.
+            assert mode == "live" and row["scheduler"].get("stage") == "canary", lane
+            assert (row["scheduler"]["kind"], row["scheduler"]["expression"]) == ("n8n", "dispatcher"), lane
+            assert allow[lane]["live_arg"] == [] and allow[lane]["dry_run_arg"] == ["--dry-run"], lane
+            assert LD.r1_class_admission(row, allow[lane])[0] is True, lane
+            continue
         if lane in CANARY_ROWS:  # canary wave 1 (2026-10-11): the §23.18 (c) canary shape, tests/test_canary_wave1_20261011.py
             assert mode == "live" and row["scheduler"].get("stage") == "canary", lane
             assert LD.r1_class_admission(row, allow[lane]) == (True, "r1_admitted:ingest"), lane
@@ -455,7 +464,7 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
         shadow.append(lane)
         sched = row["scheduler"]
         if lane in N8N_NATIVE_SHADOW:
-            # 2026-10-11: an n8n-native lane has no cron line to stay on; its shadow row is the dispatcher shape at
+            # an n8n-native lane has no cron line to stay on; its shadow row is the dispatcher shape at
             # stage shadow (the clamp still runs it dry), and its allowlist entry has no live mode.
             assert (sched["kind"], sched["expression"], sched.get("stage")) == ("n8n", "dispatcher", "shadow"), lane
         else:
@@ -479,9 +488,9 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
     # each leaves its wave (dispatch_retired) and its allowlist entry is removed. Both merged in train-migration-2.
     # + 10: refactor train 3 (shards 01-04, 2026-10-11) source shadow rows (R1 ingest/learn, dry_run, live_arg null);
     # 3 of the 13 proposals stay RETIRED into the premarket C1 stage (train 2).
-    # + 1 (2026-10-11): heartbeat-watch, the n8n-native shadow row (N8N_NATIVE_SHADOW).
-    assert len(shadow) == 54 + 3 + 15 - len(CANARY_ROWS) - 17 + 10 + 1, shadow
-    assert sorted(r["lane_id"] for r in rows if LD.dispatch_mode(r) == "live") == sorted(CANARY_ROWS)
+    # heartbeat-watch moved shadow → canary (N8N_NATIVE_CANARY) 2026-10-11.
+    assert len(shadow) == 54 + 3 + 15 - len(CANARY_ROWS) - 17 + 10, shadow
+    assert sorted(r["lane_id"] for r in rows if LD.dispatch_mode(r) == "live") == sorted(CANARY_ROWS | N8N_NATIVE_CANARY)
 
 
 #: canary wave 1 (2026-10-11): the only rows at dispatch.mode live (stage canary, the cron line's flock lock).

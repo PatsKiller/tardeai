@@ -237,12 +237,12 @@ def test_registry_row_and_allowlist_entry_agree():
     al = json.loads((ROOT / "config" / "n8n_run_allowlist.json").read_text())
     entry = next(e for e in al["lanes"] if e["lane_id"] == "heartbeat-watch")
     s, d = row["scheduler"], row["dispatch"]
-    assert (s["kind"], s["expression"], s["stage"]) == ("n8n", "dispatcher", "shadow")
-    assert (d["mode"], d["class"], d["priority"], d["retry_policy"]) == ("dry_run", "monitor", 0, "transient-2")
+    assert (s["kind"], s["expression"], s["stage"]) == ("n8n", "dispatcher", "canary")
+    assert (d["mode"], d["class"], d["priority"], d["retry_policy"]) == ("live", "monitor", 0, "transient-2")
     assert row["output_signal"] == {"kind": "json_key", "path": "data/runtime/heartbeat-watch_last.json", "key": "ok_at"}
     assert entry["output_signal"] == row["output_signal"]["path"]
     assert entry["command"] == ["$PY", "scripts/heartbeat_watch.py"] and (ROOT / entry["command"][1]).exists()
-    assert entry["dry_run_arg"] == ["--dry-run"] and entry["live_arg"] is None and entry["lock_kind"] == "flock"
+    assert entry["dry_run_arg"] == ["--dry-run"] and entry["live_arg"] == [] and entry["lock_kind"] == "flock"
     assert entry["env_allowlist_mode"] == "report" and entry["env_report_reason"]
     assert not any(b in n for n in entry["env_names"] for b in ("SCHWAB", "ALPACA", "SNAPTRADE", "MOOMOO", "IBKR",
                                                                  "TELEGRAM", "PASSWORD", "TOKEN", "KEY"))
