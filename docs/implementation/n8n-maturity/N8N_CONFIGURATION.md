@@ -157,6 +157,18 @@ observe mode: while the lane is at stage `shadow` the assert returns `skipped: d
 the P1 path (§24.1): its alerts reach the operator only through the fan-in and the notifier it would watch. Packet:
 `~/n8n-maturity-verification/packets/heartbeat-watcher-activate/`.
 
+**Heartbeat-watch lane built (2026-10-11, same branch, unblock step 1):** `scripts/heartbeat_watch.py` (phase 1:
+the six health-plane output signals at 2×, Breach@v1 `STALE_2X` OPEN/CLEARED rows, no sender, write-free
+`--dry-run`, receipt `data/runtime/heartbeat-watch_last.json`); allowlist entry (`--dry-run`, `live_arg` null,
+`flock /tmp/tradeai_heartbeat_watch.lock`, timeout 60 s, env report mode); registry row `heartbeat-watch` (kind
+`n8n`, expression `dispatcher`, stage `shadow`, dispatch `dry_run` `*/5`, class `monitor`, priority 0, severity
+Critical); lane health contract DRAFT. The fan-in maps `STALE_2X` to P1 and lets a later `CLEARED` row close it.
+It is the first n8n dispatcher row, which exposed two tooling bugs, fixed here: `dispatcher` as an expression was
+treated as a crontab substring (it declared `cio_wake_dispatch` and `alert_dispatcher_unified` lines) and as an n8n
+workflow id (always "inactive"). The committed n8n active-workflow snapshot was refreshed (12 → 14 active,
+read-only). **Not active until** the owner flips the two contracts to REVIEWED, the PR merges, a promote, the shadow
+fire is proven and a `cron` grant activates the watcher.
+
 | When (ET) | Step | Grant / evidence (`packets/w0-import-six/`) |
 |---|---|---|
 | 15:53 | all six imported inactive and published | f9c459a230d3bc58; `apply-20261010.txt`, `publish-20261010.txt` |
@@ -472,7 +484,7 @@ Set node; the DB stays lean (size drives Supabase cost). A design that would blo
 | # | Item | Owner / authority |
 |---|---|---|
 | 1 | ~~W0 re-run with 4 ids~~ **done** 18:40–18:47 ET (four live); keep the publish-one-at-a-time rule until item 19 | — |
-| 2 | Registry rows for `heartbeat-watch` and `approval-escalate` (heartbeat watcher / approval router out of W0 until then). `heartbeat-watch` also needs its host script, allowlist entry, inventory row and an owner-REVIEWED lane contract first (packet `heartbeat-watcher-activate`, 2026-10-11) | agent PR (lane) + owner review + registry PR |
+| 2 | Registry rows for `heartbeat-watch` and `approval-escalate` (heartbeat watcher / approval router out of W0 until then). `heartbeat-watch`: lane, allowlist entry and shadow row built 2026-10-11 (branch `n8nmat/heartbeat-watcher-activation`); needs the owner's REVIEWED flip of its contract and of `tradeai-heartbeat-watcher`, an inventory row, merge, promote (packet `heartbeat-watcher-activate`) | owner review + merge + promote |
 | 3 | Fan-in reader for `n8n-workflow-error` events (served since 17:13 ET; they reach neither SIEM nor Telegram yet) | agent PR |
 | 4 | Install SIEM bridge, then diagnoser ~2 h later; flip rows PAUSED → ACTIVE | `cron` grants + registry PR |
 | 5 | L6: registry `severity` per lane (RUN_* all WARN today) | registry PR |

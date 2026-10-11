@@ -1055,6 +1055,11 @@ def declarations(row: dict[str, Any]) -> list[str]:
     sched = row.get("scheduler") or {}
     out = []
     expr = str(sched.get("expression") or "")
+    # 2026-10-11 (heartbeat-watch, the first n8n dispatcher row): `dispatcher` names the generic workflow, not a
+    # host command; as a substring it matched every crontab line containing "dispatcher" (cio_wake_dispatch,
+    # alert_dispatcher_unified). A dispatcher row is declared by its `match` only.
+    if sched.get("kind") == "n8n" and expr in ("dispatcher", "tradeai-dispatcher"):  # lane_registry.DISPATCHER_ROW_EXPRESSIONS
+        expr = ""
     if expr and not _BARE_SCHEDULE.match(expr):
         out.append(expr)
     if sched.get("match"):

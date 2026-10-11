@@ -154,9 +154,38 @@ evaluates `degraded` / `failed` checks with the contract baseline; (3) the diagn
   diagnoser (R5, `_diagnosis_findings` :617) `diagnoser:receipt_missing`, `diagnoser:receipt_stale`,
   `diagnoser:cycle_not_ok` and `diagnoser:blind` (≥ 2 cycles with eligible incidents and no call, not deferred),
   each **P1**. Liveness starts only when the row is ACTIVE and not shadow.
-- The heartbeat watcher's host lane (`heartbeat-watch`, not yet a registry row) will check every registry row's
-  output_signal at 2× cadence, including stay-behind cron lanes (L4, L5); until it exists the supervisor breach
-  detector timer and the lab watchdog (`tradeai-n8n-lab-watchdog.timer`, n8n `/healthz` every 5 min) cover it.
+- The heartbeat watcher's host lane **`heartbeat-watch`** (`scripts/heartbeat_watch.py`, registry row at stage
+  shadow since 2026-10-11, branch `n8nmat/heartbeat-watcher-activation`) is phase 1 of design 02 §7: a dead-man for
+  the health plane. It checks the output_signal of supervisor-breach-detector, n8n-incident-fanin,
+  incident-notifier, n8n-siem-bridge, health-tick and n8n-lab-watchdog at 2× cadence (cron rows against their latest
+  scheduled fire, `active_days` in New York) and appends Breach@v1 `STALE_2X` rows (`OPEN`, re-emitted after 24 h;
+  `CLEARED` when fresh again) to `supervisor_breaches.jsonl`; the fan-in reads `STALE_2X` as **P1** and a later
+  `CLEARED` row closes it. It sends nothing. Phase 2 (every registry row, L4/L5 stay-behind lanes) is not built;
+  until then the supervisor breach detector timer (3×) and the lab watchdog (`tradeai-n8n-lab-watchdog.timer`, n8n
+  `/healthz` every 5 min) cover them.
+
+#### 4.2.1 Design note (not built): a host-side dead-man that does not go through the notifier
+
+Gap (2026-10-11, Agent PP): every alert in this chain — the detector's breaches, `heartbeat-watch`'s `STALE_2X`, the
+watcher's workflow errors, the alert-path watch — reaches the operator only through `incident_notifier.py` on host
+cron, and its input, the fan-in, runs on n8n. The notifier checks the fan-in's age (30 min) and pages for that, but
+nothing pages when **the notifier itself, or host crond, stops**. A STALE_2X row about the notifier reaches no one.
+
+Proposed shape (design only; it would be a sender, so it needs its own inventory row, registry row and review):
+
+- **Scheduler independent of crond and n8n:** a systemd user timer (`tradeai-notifier-deadman.timer`, every 5 min),
+  `Restart`-free oneshot, `OnFailure=` left empty (a failure is visible as a stale receipt only).
+- **Reads only receipts:** `incident_notifier_last.json` (ok_at and as_of), `n8n_incident_fanin_last.json`,
+  `heartbeat-watch_last.json`; no DB, no n8n, no network except the send.
+- **Rule:** notifier receipt older than 20 min (4 missed `*/5` runs), or notifier status not OK for 20 min → one P1.
+  Fan-in stale is already the notifier's own P1 and is not duplicated here.
+- **Send:** through the communications gateway, never a provider call (§24.1): one notification intent, category
+  `ops`, severity P1, dedupe key `deadman:incident-notifier`, window 6 h, with a "resolved" line on recovery; its own
+  receipt `notifier_deadman_last.json` (LaneRunReceipt@v1) and ledger line per decision.
+- **Why not n8n:** the P1 path must not depend on n8n (§24.1), and n8n being down is one of the cases it must
+  survive. **Why not the notifier:** it is the component being watched.
+- **Residual risk:** the host itself, or systemd --user, down — out of scope (single host, recorded risk, design 02
+  §7 "off-host liveness").
 - **Breach detector kinds and their fan-in severity** (`scripts/n8n_incident_fanin.py` `SEV`, `breach_severity`):
   HUNG, FAILING, MEMORY_UNREACHABLE → P1; NO_OUTPUT, SILENT, BACKLOG, SLO_MISS → P2; UNGOVERNED and anything
   unmapped → P3. The two W1-9 kinds (2026-10-11, operator ruling R11 "R11 yes"; `MONITOR_FOLD_COVERAGE_W1-9.md`):

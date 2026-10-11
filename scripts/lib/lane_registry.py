@@ -229,6 +229,10 @@ def validate_row(row: dict[str, Any]) -> list[str]:
 #: row for the lane within expected_cadence_hours, see `n8n_last_run`.
 SCHEDULER_N8N = "n8n"
 SCHEDULER_KINDS = ("cron", "systemd", "event", "none", SCHEDULER_N8N)
+#: Expressions of a §23.11 dispatcher row (kind n8n): the generic workflow fires it, so the expression is neither a
+#: host command (never a crontab substring) nor its own n8n workflow id (live when tradeai-dispatcher is active).
+#: Same set as lane_stage_clamp.DISPATCHER_EXPRESSIONS.
+DISPATCHER_ROW_EXPRESSIONS = frozenset({"dispatcher", "tradeai-dispatcher"})
 OUTPUT_SIGNAL_KINDS = ("file_mtime", "json_key", "db_max", "systemd_result", "none")
 
 
@@ -979,6 +983,10 @@ def find_undeclared(reg: dict[str, Any], found: dict[str, Any], *,
         sched = row.get("scheduler") or {}
         is_unit_row = sched.get("kind") == "systemd"
         expr = str(sched.get("expression") or "")
+        # 2026-10-11: a dispatcher row's expression (`dispatcher`) names the generic n8n workflow, not a host
+        # command; as a substring it would declare every crontab line containing "dispatcher" and hide it.
+        if sched.get("kind") == SCHEDULER_N8N and expr in DISPATCHER_ROW_EXPRESSIONS:
+            expr = ""
         # Live-proof 2026-09-28 (LP-DEF-19): a bare cron schedule ("5 * * * *") is not a pattern — as a
         # substring it declared every line that happened to share the minute field and hid five
         # unregistered crons. A lane whose expression is only a schedule must name its script in `match`.
@@ -1052,7 +1060,10 @@ def find_inactive_n8n_rows(reg: dict[str, Any], found: dict[str, Any]) -> list[d
         if row.get("state") != STATE_ACTIVE or sched.get("kind") != SCHEDULER_N8N:
             continue
         wid = str(sched.get("expression") or "")
-        if wid not in active_ids:
+        # 2026-10-11: a dispatcher row (§23.11, expression `dispatcher`) is fired by the generic workflow
+        # tradeai-dispatcher, so it is live exactly when that workflow is active.
+        probe = "tradeai-dispatcher" if wid in DISPATCHER_ROW_EXPRESSIONS else wid
+        if probe not in active_ids:
             out.append({"lane_id": row.get("lane_id"), "expression": wid, "code": INACTIVE_N8N_WORKFLOW})
     return out
 

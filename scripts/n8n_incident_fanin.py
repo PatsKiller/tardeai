@@ -53,6 +53,9 @@ LANE_REGISTRY_RECEIPT_REL = "data/runtime/n8n_lane_registry_drift_last.json"
 AUTHORITY = "READ_ONLY_ADVISORY"
 SEV = {"NO_OUTPUT": "P2", "SILENT": "P2", "HUNG": "P1", "FAILING": "P1", "BACKLOG": "P2", "MEMORY_UNREACHABLE": "P1",
        "SLO_MISS": "P2", "UNGOVERNED": "P3"}
+# 2026-10-11 (heartbeat-watch lane, scripts/heartbeat_watch.py): STALE_2X rows come only from the health-plane dead-man
+# (detector, fan-in, notifier, SIEM bridge, health tick, lab watchdog past 2x cadence) — the alert path itself, so P1.
+SEV["STALE_2X"] = "P1"
 # Operator ruling R11, 2026-10-11 ("R11 yes"; docs/implementation/n8n-maturity/MONITOR_FOLD_COVERAGE_W1-9.md):
 # STALE_OUTPUT takes the severity of its freshness contract (config/lane_registry.json freshness_contracts[].severity,
 # carried on the breach row as evidence.severity). A row without a readable one (an older row, a hand-edited ledger)
@@ -94,13 +97,15 @@ def _breach_key(row: dict[str, Any]) -> str:
 
 
 def _breach_findings(rt: Path, now: datetime) -> list[dict[str, Any]]:
-    """Breach detector per-lane rows (OPEN, detected in the last 48 h).
+    """Breach detector / heartbeat-watch rows (OPEN, detected in the last 48 h).
 
-    The breach ledger is append-only and rows never flip to CLOSED, so "open" means: detected in the last 48 h (the
-    detector re-emits a breach_id per lane+kind+day while it persists). Severity: breach_severity()."""
+    The breach ledger is append-only. Detector rows never flip to CLOSED, so "open" means: detected in the last 48 h
+    (the detector re-emits a breach_id per lane+kind+day while it persists). 2026-10-11: the latest row per key
+    decides, so a later CLEARED row (heartbeat-watch writes one when a STALE_2X lane is fresh again) closes the
+    incident; the detector writes only OPEN rows, so its rows are unchanged. Severity: breach_severity()."""
     latest: dict[str, dict] = {}
     for r in _tail_jsonl(rt / "supervisor_breaches.jsonl"):
-        if r.get("state") != "OPEN":
+        if r.get("state") not in ("OPEN", "CLEARED"):
             continue
         try:
             age_h = (now - datetime.fromisoformat(str(r.get("detected_at")))).total_seconds() / 3600
@@ -111,6 +116,8 @@ def _breach_findings(rt: Path, now: datetime) -> list[dict[str, Any]]:
         latest[_breach_key(r)] = r
     out: list[dict[str, Any]] = []
     for key, r in latest.items():
+        if r.get("state") != "OPEN":
+            continue
         sev, basis = breach_severity(r)
         out.append({"source": "breach_detector", "item": key, "severity": sev, "severity_basis": basis,
                     "detail": str(r.get("evidence") or "")[:160], "artifact_rel": "data/runtime/supervisor_breaches.jsonl",

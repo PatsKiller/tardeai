@@ -507,10 +507,11 @@ GENERIC_STATE = {
     "event-router": "published 2026-10-10 18:40 ET (grant 4b3623125f6b6d7e; packets/w0-import-six)",
     "incident-router": "published 2026-10-10 18:44 ET (grant 4b3623125f6b6d7e; packets/w0-import-six)",
     "digest-scheduler": "published 2026-10-10 18:47 ET (grant 4b3623125f6b6d7e; packets/w0-import-six)",
-    "heartbeat-watcher": "HELD, imported inactive and unpublished since 2026-10-10 15:58 ET (W0 rollback, grant "
+    "heartbeat-watcher": "imported inactive and unpublished since 2026-10-10 15:58 ET (W0 rollback, grant "
     "f9c459a230d3bc58); the stored row predates F4 (saveManualExecutions true), so activation re-imports the file. "
-    "Held because its GET /due filter names lane heartbeat-watch, which has no registry row, no allowlist entry and no "
-    "host script: the gateway answers 403 bad_lane_filter and check_n8n_relay_contract refuses lane_filter_unknown. "
+    "Its lane heartbeat-watch (scripts/heartbeat_watch.py, registry stage shadow) lands by registry PR on branch "
+    "n8nmat/heartbeat-watcher-activation; activation then waits for the owner's REVIEWED flip of this contract and the "
+    "lane's, a promote, the shadow-fire proof and a cron grant. "
     "Activation packet: ~/n8n-maturity-verification/packets/heartbeat-watcher-activate",
     "approval-router": "HELD, imported inactive and unpublished since 2026-10-10 15:58 ET (W0 rollback, grant "
     "f9c459a230d3bc58): its GET /due filter names lane approval-escalate, which has no registry row",
@@ -521,7 +522,7 @@ GENERIC_STATE_DEFAULT = "state not recorded in build_n8n_health_contracts.GENERI
 GENERIC_EXTRA: dict[str, dict[str, Any]] = {
     "heartbeat-watcher": {
         "connects_to": [
-            ("host lane heartbeat-watch (fired through POST /run; no registry row yet)", "lane", "calls",
+            ("host lane heartbeat-watch (scripts/heartbeat_watch.py; registry stage shadow)", "lane", "calls",
              "design 02 §7"),
             ("relay POST /event lane n8n-workflow-error (as this workflow's errorWorkflow posts it)", "relay_route",
              "calls", "scripts/n8n_run_relay.py EVENT_LANE"),
@@ -544,8 +545,9 @@ GENERIC_EXTRA: dict[str, dict[str, Any]] = {
         "failed": [
             {
                 "check": "lane_unregistered",
-                "text": "GET /due answers 403 bad_lane_filter because heartbeat-watch is no registry row (the W0 "
-                "cause; true today, so check_n8n_relay_contract refuses lane_filter_unknown and the packet stops)",
+                "text": "GET /due answers 403 bad_lane_filter when heartbeat-watch is not a registry row of the "
+                "served release (the W0 cause; true until the lane's registry row is promoted, and "
+                "check_n8n_relay_contract refuses lane_filter_unknown until then)",
             },
             {
                 "check": "no_live_run",

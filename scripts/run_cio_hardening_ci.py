@@ -3770,6 +3770,12 @@ GATES = [
             # incident router errors or stops, or n8n's schedule stops; the notifier (host cron) sends it even with a
             # stale fan-in, without declaring fan-in recoveries; the relay logs the /due lane filter for attribution.
             "tests/test_n8n_alert_path_watch_20261010.py",
+            # 2026-10-11 heartbeat-watch lane (scripts/heartbeat_watch.py): health-plane dead-man at 2x cadence (cron rows
+            # by their last scheduled fire, active_days in New York), STALE_2X OPEN/CLEARED rows the fan-in reads as P1,
+            # --dry-run writes nothing; and the tradeai-heartbeat-watcher contract pinned to its builder and the
+            # registry. Hermetic: tmp_path state roots, pinned clock.
+            "tests/test_heartbeat_watch_lane_20261011.py",
+            "tests/test_heartbeat_watcher_contract_20261011.py",
         ],
     ),
     (
