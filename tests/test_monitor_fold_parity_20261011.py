@@ -198,6 +198,18 @@ def test_job_log_lanes_maps_active_lanes_by_schedule_match():
     assert mfp.job_log_lanes(JOBS, LANES) == LOG_LANES  # db jobs skipped, RETIRED lanes ignored
 
 
+def test_job_log_lanes_follows_a_retired_row_to_its_active_successor():
+    """C1 manifest flips (2026-10-11): a job's row RETIRED into a pipeline stage lane maps to that stage lane."""
+    lanes = [{"lane_id": "iris-proposal-curator", "state": "RETIRED", "superseded_by": "premarket-data-pipeline",
+              "exec_start": "$PY scripts/iris_proposal_curator.py --apply"},
+             {"lane_id": "premarket-data-pipeline", "state": "ACTIVE", "exec_start": "run_premarket_data_pipeline.sh"},
+             {"lane_id": "gone", "state": "RETIRED", "superseded_by": "also-retired", "exec_start": "x_job.py"},
+             {"lane_id": "also-retired", "state": "RETIRED", "exec_start": "y.sh"}]
+    jobs = [{"name": "iris_proposal_curator", "schedule_match": "iris_proposal_curator.py", "signal": ("log", "i.log")},
+            {"name": "x", "schedule_match": "x_job.py", "signal": ("log", "x.log")}]
+    assert mfp.job_log_lanes(jobs, lanes) == {"iris_proposal_curator": {"premarket-data-pipeline"}, "x": set()}
+
+
 def test_every_live_log_job_maps_to_an_active_lane_in_this_checkout():
     reg = json.loads((ROOT / mfp.REGISTRY).read_text())
     lanes = mfp.job_log_lanes(mfp._jcm_jobs(), reg["lanes"])
