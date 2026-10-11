@@ -10,6 +10,19 @@ writes `data/runtime/health_tick_last.json` (`HealthTickReceipt@v1`) plus one li
 `data/runtime/health_tick_history.jsonl`. ~~Exit 1 when a due step failed or timed out.~~ Superseded
 2026-10-09 — see "Exit codes" below.
 
+## Step removed: portfolio-live-monitor (2026-10-11, consolidation retire-wave1 W1-7)
+
+The operator approved removing the `portfolio-live-monitor` step on 2026-10-11 ("i agree", W1-7, AGENTS.md
+§9.3). In the 7 days before the decision (`data/runtime/health_tick_history.jsonl`) it ran 32 times: 30 ended
+rc −15 (timeout kill) and 2 ended rc 0. `price_cache.json` is also written by the portfolio-price-cache timer,
+and lane `portfolio-live-monitor` was already `RETIRED` (superseded by this tick), so nothing schedules
+`portfolio_live_monitor.py` now. The table keeps 16 steps (7,282 firings/week, down from 7,402). The removed
+row is kept verbatim under `retired_steps` in `config/health_tick_steps.json` (`health_tick.py` never reads that
+key). To restore it, move the row back into `steps` and restore the test counts. The change reaches the host on
+the next promote, because the timer runs the table from `CURRENT`. Evidence:
+`~/n8n-maturity-verification/packets/consolidation-retire-wave1/` (`OPERATOR_DECISION.md`,
+`evidence/A_candidates_evidence.txt`).
+
 ## Exit codes (2026-10-09, n8n maturity B3.1)
 The unit's exit code reports the health of the **tick**, not of the system the monitors watch.
 

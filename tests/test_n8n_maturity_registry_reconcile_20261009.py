@@ -256,7 +256,10 @@ def test_generated_rows_have_evidence_or_are_flagged_unverified(committed):
     # C1 premarket flip (2026-10-11) retired 16 more generated rows the same way, made market-regime-collector
     # hand-curated (schedules reduced to its 16:05 line, which stays on cron) and adopted overnight-batch-tax
     # unchanged to keep its lane_id stable. Merged in train-migration-2: 262 - 16 - 1 - 1 = 244 generated rows left.
-    assert len(gen) >= 244
+    # retire-wave1 (2026-10-11) made 3 more hand-curated: shadow-batch-generator-at-15-9 and
+    # hermes-embedding-promotion-review (RETIRED), and shadow-batch-generator-at-15-10 (id pinned). Merged in
+    # train-migration-2: 244 - 3 = 241 generated rows left.
+    assert len(gen) >= 241
     adopted = [r for r in committed["lanes"] if r.get("adopted_from_generator") == R.GENERATOR_VERSION]
     # D3 rows carry an r1_pending block (inert until AGENTS 4.4.0 is ACTIVE) instead of a dispatch block;
     # build-symbol-profiles-at-0-19, social-ingest-stocktwits and overnight-batch-tax are adopted unchanged only to keep
