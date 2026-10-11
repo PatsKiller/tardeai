@@ -329,17 +329,43 @@ def test_stance_organic_observe_lanes_use_weekday_int_lists():
         assert validate_row(lane) == []
 
 
-def test_a_clean_report_says_quiet():
-    rep = collect_lane_registry_report(cron_text="", include_systemd=False,
-                                       registry_path=ROOT / "config" / "lane_registry.json")
-    # With no schedulers discovered, ACTIVE lanes orphan — so assert the wording
-    # rule directly on a registry with nothing to say.
+def test_a_clean_report_says_quiet(tmp_path, monkeypatch):
+    """Quiet presentation and its orphan negative control use source fixtures."""
+    registry = tmp_path / "registry.json"
+    registry.write_text(json.dumps({"schema": "LaneRegistry@v1", "lanes": []}),
+                        encoding="utf-8")
+    monkeypatch.delenv("TRADEAI_LANE_REGISTRY_N8N", raising=False)
+    process_calls = []
+
+    def refuse_process(cmd, *args, **kwargs):
+        process_calls.append(cmd)
+        raise AssertionError("synthetic registry report must use fixture discovery")
+
+    monkeypatch.setattr(subprocess, "run", refuse_process)
+    monkeypatch.setattr(subprocess, "Popen", refuse_process)
     empty = collect_lane_registry_report(
-        now=NOW, cron_text="", include_systemd=False,
-        registry_path=Path("/nonexistent/registry.json"))
+        now=NOW, root=tmp_path, cron_text="", include_systemd=False,
+        registry_path=registry)
     assert empty["summary"] == "QUIET"
     assert empty["ok"] is True
+    assert empty["declared"] == 0 and empty["lanes"] == []
+
+    # A real row must make the quiet assertion fail when its scheduler is absent.
+    row = _row(output_signal=_sig(tmp_path, 1))
+    registry.write_text(json.dumps({"schema": "LaneRegistry@v1", "lanes": [row]}),
+                        encoding="utf-8")
+    rep = collect_lane_registry_report(
+        now=NOW, root=tmp_path, cron_text="", include_systemd=False,
+        registry_path=registry)
     assert isinstance(rep["verdict_counts"], dict)
+    assert rep["schema"] == empty["schema"] == "LaneRegistry@v1"
+    assert rep["declared"] == 1 and len(rep["lanes"]) == 1
+    assert rep["verdict_counts"] == {ORPHANED: 1}
+    assert rep["lanes"][0]["lane_id"] == row["lane_id"]
+    assert rep["lanes"][0]["last_output_at"] is not None
+    assert rep["findings"][0]["verdict"] == ORPHANED
+    assert rep["summary"] != "QUIET" and rep["ok"] is False
+    assert process_calls == []
 
 
 # ── suppression — escalate on change, not on continuation ─────────────────
