@@ -110,6 +110,9 @@ REVIEWED_NOW_ALLOWED: dict[str, tuple[frozenset[str], str]] = {
     "topic-ingestion": (frozenset({"stop"}), "scripts/topic -> scriptstopic"),
     "topic-research-synthesizer-at-20-x": (frozenset({"stop", "size"}), "topic + synthesizer"),
     "topic-research-synthesizer-reground": (frozenset({"stop", "size"}), "topic + synthesizer"),
+    # B families top 5 (2026-10-11): the consolidated lane and the split-off retired topic-ingestion lines row.
+    "topic-research-synthesizer": (frozenset({"stop", "size"}), "topic + synthesizer"),
+    "topic-ingestion-cron-lines": (frozenset({"stop"}), "scripts/topic -> scriptstopic"),
     "hermes-cross-source-synthesizer": (frozenset({"size"}), "synthesizer"),
     "defense-inverse-stoplights": (frozenset({"stop"}), "stoplights is a defense indicator, not a stop"),
     "active-trader-micro-recorder": (frozenset({"order"}), "recorder; script states 'no order path'"),
