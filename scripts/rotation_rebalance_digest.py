@@ -71,7 +71,7 @@ def main() -> int:
     try:
         sys.path.insert(0, str(ROOT / "scripts"))
         from telegram_alert import send_telegram
-        send_telegram(msg)
+        send_telegram(msg, priority="P2", producer="rotation_rebalance_digest")
     except Exception:
         print(msg)
     print(json.dumps({"overweights": len(over), "underweights": len(under),

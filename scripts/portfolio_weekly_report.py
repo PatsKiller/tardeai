@@ -110,7 +110,7 @@ def _get_env(key: str) -> str:
 
 def _send_telegram(message: str) -> None:
     from telegram_alert import send_telegram
-    ok = send_telegram(message, bypass_router=True)
+    ok = send_telegram(message, priority="P2", producer="portfolio_weekly_report")
     if ok:
         print("  [weekly-report] Telegram sent")
         try:
@@ -158,7 +158,7 @@ def _send_telegram_doc(docx_path, caption: str = "") -> bool:
         ok = bool(send_telegram_document(
             str(p),
             caption=caption or p.name,
-            bypass_router=True,
+            priority="P2", producer="portfolio_weekly_report",
         ))
         print("  [weekly-report] Telegram DOCX sent" if ok else "  [weekly-report] Telegram DOCX not sent")
         return ok

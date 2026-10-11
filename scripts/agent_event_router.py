@@ -68,10 +68,11 @@ def _log(msg: str):
     print(f"[{ts}] {msg}", flush=True)
 
 
-def _send_telegram(msg: str):
+def _send_telegram(msg: str, priority: str = "P3"):
+    """Notification intent: urgent agent events P1, everything else (gap filled, correlations) P3 FYI."""
     try:
         from telegram_alert import send_telegram
-        ok = send_telegram(msg)
+        ok = send_telegram(msg, priority=priority, producer="agent_event_router")
         if ok:
             _log("  Telegram sent via alert router")
         else:
@@ -486,7 +487,7 @@ def drain_queue(dry_run: bool = False) -> int:
                 f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n"
                 f"{session_ctx}"
             )
-            _send_telegram(tg_msg)
+            _send_telegram(tg_msg, priority="P1")
 
         # Create agent jobs
         job_ids = create_agent_jobs(conn, event, dry_run)

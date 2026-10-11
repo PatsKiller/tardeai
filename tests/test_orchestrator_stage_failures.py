@@ -62,7 +62,7 @@ def test_traceback_is_captured():
 def test_clean_run_reports_zero_and_writes_no_alert(tmp_path, monkeypatch):
     sent = []
     monkeypatch.setitem(sys.modules, "telegram_alert",
-                        type("M", (), {"send_telegram": staticmethod(lambda m: sent.append(m))}))
+                        type("M", (), {"send_telegram": staticmethod(lambda m, **kw: sent.append(m))}))
     assert po._report_stage_failures(tmp_path) == 0
     assert sent == [], "a clean run must not alert"
     assert not (tmp_path / "orchestrator_stage_failures.json").exists()
@@ -70,7 +70,7 @@ def test_clean_run_reports_zero_and_writes_no_alert(tmp_path, monkeypatch):
 
 def test_failures_persist_a_durable_artifact(tmp_path, monkeypatch):
     monkeypatch.setitem(sys.modules, "telegram_alert",
-                        type("M", (), {"send_telegram": staticmethod(lambda m: None)}))
+                        type("M", (), {"send_telegram": staticmethod(lambda m, **kw: None)}))
     try:
         raise ValueError("boom")
     except Exception as e:
@@ -87,7 +87,7 @@ def test_failures_alert(tmp_path, monkeypatch):
     """A silently-dying stage is the exact defect this must prevent."""
     sent = []
     monkeypatch.setitem(sys.modules, "telegram_alert",
-                        type("M", (), {"send_telegram": staticmethod(lambda m: sent.append(m))}))
+                        type("M", (), {"send_telegram": staticmethod(lambda m, **kw: sent.append(m))}))
     try:
         raise ValueError("boom")
     except Exception as e:
@@ -99,7 +99,7 @@ def test_failures_alert(tmp_path, monkeypatch):
 
 def test_alert_failure_does_not_mask_the_report(tmp_path, monkeypatch):
     """If Telegram is down we still return the count and persist the artifact."""
-    def _boom(_m):
+    def _boom(_m, **_kw):
         raise RuntimeError("telegram down")
     monkeypatch.setitem(sys.modules, "telegram_alert",
                         type("M", (), {"send_telegram": staticmethod(_boom)}))

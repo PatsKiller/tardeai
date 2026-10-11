@@ -67,6 +67,14 @@ APPROVED_INBOUND = {
     # replies go through scripts.lib.cio_telegram_converse / cio_telegram_transport.
     "scripts/cio_telegram_bot.py",
 }
+# Operator decision, not an approved boundary. scripts/lib/cio_poller_reply.py reaches
+# telegram_transport.send_message through `from scripts import telegram_transport`. The
+# widened detector sees that import. It is NOT in APPROVED_INBOUND: admitting an inbound
+# reply path is the operator's call (backlog E-B2). The ratchet stays green only because
+# this set is printed and skipped, and a test pins the set to this one file.
+PROPOSED_INBOUND = {
+    "scripts/lib/cio_poller_reply.py",
+}
 # Tooling that inspects senders rather than sending, plus the tests that DESCRIBE the
 # forbidden patterns in prose. A test documenting "do not write api.telegram.org/..."
 # necessarily contains that string; scanning it as a producer is a false positive.
@@ -98,6 +106,17 @@ APPROVED_TOOLING = {
     # 2026-10-09: proves the family-scoped interdict (CIO stays blocked, SYSTEM_OPS
     # only via the watchdog sender, spoofing refused); every HTTP layer is stubbed.
     "tests/test_system_telegram_interdict_scope_20261009.py",
+    # 2026-10-11: package-style imports (`from scripts import telegram_transport`,
+    # `import scripts.telegram_transport`) are now a transport_import hit. These tests
+    # import the transport only to stub the poster or to call a helper with a fake
+    # HTTP layer. Named one by one. They are not producers.
+    "tests/test_cio_answer_quality.py",
+    "tests/test_cio_poller_reply.py",
+    "tests/test_cio_telegram_plain_ids.py",
+    "tests/test_comms_editor_transport_20260914.py",
+    "tests/test_desk_reply_delivery_20260914.py",
+    "tests/test_m5_gate_coverage_20260923.py",
+    "tests/test_telegram_operator_presentation.py",
 }
 APPROVED = APPROVED_OUTBOUND | APPROVED_DELIVERY | APPROVED_INBOUND | APPROVED_TOOLING
 
@@ -117,7 +136,7 @@ BOT_METHODS = ("sendMessage", "sendDocument", "sendPhoto", "getUpdates", "getMe"
 # Sending capability is what matters: send_message, deliver_text, _http_post and
 # the endpoint constants stay flagged.
 TRANSPORT_NON_SENDING = {
-    "escape_markdown", "smart_split", "MAX_MSG_LEN",
+    "escape_markdown", "smart_split", "MAX_MSG_LEN", "unescape_markdown",
     # parse_mode_for only inspects a string and returns "HTML" or "Markdown"; tests
     # that pin the chosen parse mode import it and nothing that can send.
     "parse_mode_for",
@@ -136,21 +155,28 @@ def _transport_import_is_sending(text: str) -> bool:
     except SyntaxError:
         return True          # unparseable: fail closed, keep the old verdict
     for node in _ast.walk(tree):
-        if isinstance(node, _ast.ImportFrom) and node.module == "telegram_transport":
+        mod = getattr(node, "module", None)
+        if isinstance(node, _ast.ImportFrom) and mod and mod.split(".")[-1] == "telegram_transport":
             for alias in node.names:
                 if alias.name == "*" or alias.name not in TRANSPORT_NON_SENDING:
                     return True
-        elif isinstance(node, _ast.Import):
+        elif isinstance(node, _ast.ImportFrom) and mod == "scripts":
             for alias in node.names:
                 if alias.name == "telegram_transport":
-                    return True   # whole-module import exposes the senders
+                    return True   # from scripts import telegram_transport
+        elif isinstance(node, _ast.Import):
+            for alias in node.names:
+                if alias.name.split(".")[-1] == "telegram_transport":
+                    return True   # import telegram_transport / import scripts.telegram_transport
     return False
 
 
 PATTERNS: dict[str, re.Pattern] = {
     "transport_import": re.compile(
-        r"""(?:^\s*(?:from\s+telegram_transport\s+import|import\s+telegram_transport)\b)"""
-        r"""|__import__\(\s*["']telegram_transport["']\s*\)""", re.M),
+        r"""(?:^\s*(?:from\s+(?:[\w.]+\.)?telegram_transport\s+import"""
+        r"""|import\s+(?:[\w.]+\.)?telegram_transport)\b)"""
+        r"""|^\s*from\s+scripts\s+import\s+telegram_transport\b"""
+        r"""|__import__\(\s*["'](?:[\w.]+\.)?telegram_transport["']\s*\)""", re.M),
     "endpoint_constant": re.compile(r"\bTELEGRAM_SEND_MESSAGE_API\b"),
     "raw_endpoint": re.compile(r"api\.telegram\.org/bot"),
     "http_to_telegram": re.compile(
@@ -197,7 +223,7 @@ def scan() -> dict[str, dict]:
             rel = p.relative_to(ROOT).as_posix()
             if "/node_modules/" in rel or "/dist/" in rel or "/dist.old-" in rel:
                 continue
-            if rel in APPROVED:
+            if rel in APPROVED or rel in PROPOSED_INBOUND:
                 continue
             hits = scan_file(p)
             if hits:
@@ -224,6 +250,16 @@ def main() -> int:
                 totals[k] = totals.get(k, 0) + v
 
     if a.update_baseline:
+        # Shrink-only (SND2, AGENTS.md §24.1): an update may lower or drop entries, never add or raise one.
+        # A new chokepoint bypass is fixed at the producer, not recorded as debt.
+        old_files = json.loads(BASELINE.read_text()).get("files", {}) if BASELINE.is_file() else None
+        if old_files is not None:
+            grow = {k: _violation_count(v) for k, v in found.items()
+                    if _violation_count(v) > int(old_files.get(k, 0))}
+            if grow:
+                print(f"[telegram-chokepoint] REFUSED: the baseline only shrinks; these would add or grow: "
+                      f"{grow}", file=sys.stderr)
+                return 1
         BASELINE.parent.mkdir(parents=True, exist_ok=True)
         BASELINE.write_text(json.dumps(
             {"_note": "Known Telegram chokepoint bypasses. Ratchet only — may shrink, never grow.",
@@ -264,6 +300,11 @@ def main() -> int:
             failures.append(f"NEW bypass in {rel} ({n}) — route via publish_event()/send_telegram()")
         elif n > allowed:
             failures.append(f"{rel} grew {allowed} -> {n}")
+    # Shrink-only: an entry above the measured count must be lowered, so a fix is recorded.
+    for rel, allowed in sorted(base.items()):
+        n = _violation_count(found.get(rel, {}))
+        if n < int(allowed):
+            failures.append(f"{rel} shrank {allowed} -> {n}: lower the baseline (--update-baseline)")
     if failures:
         print("\n[telegram-chokepoint] FAIL", file=sys.stderr)
         for f in failures:
@@ -276,6 +317,9 @@ def main() -> int:
               f"{remaining} violations — NOT zero, tracked as a release blocker")
     else:
         print("[telegram-chokepoint] pass: zero bypasses")
+    if PROPOSED_INBOUND:
+        print("[telegram-chokepoint] PROPOSED for APPROVED_INBOUND "
+              "(operator decision, not approved): " + ", ".join(sorted(PROPOSED_INBOUND)))
     return 0
 
 

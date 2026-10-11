@@ -815,7 +815,7 @@ def send_scalp_alert(symbol: str, score: int, grade: str, decision: str,
     except Exception as exc:  # noqa: BLE001 — fail closed on gate errors
         logger.warning("%s — GO alert held: CIO stance gate error (%s)", symbol, type(exc).__name__)
         return
-    send_telegram(msg)
+    send_telegram(msg, priority="P1", producer="social_scalp_scanner")  # GO scalp setup: time-critical
     try:
         from lib.comms import CommunicationEvent, publish_communication
         publish_communication(CommunicationEvent(
@@ -851,7 +851,7 @@ def _send_wait_alert(symbol: str, score: int, finviz_data: dict, mention_count: 
         f"Mentions: {mention_count}x \u2014 watching, not acting\n"
         f"Needs: higher RVOL or catalyst to reach GO"
     )
-    send_telegram(msg)
+    send_telegram(msg, priority="P2", producer="social_scalp_scanner")  # WAIT: watched, not time-critical
 
 
 def run_scan():

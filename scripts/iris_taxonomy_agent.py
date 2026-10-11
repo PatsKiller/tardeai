@@ -1016,7 +1016,7 @@ def _send_telegram_msg(message):
     """Send via telegram_alert chokepoint (no raw Bot API / token selection)."""
     try:
         from telegram_alert import send_telegram
-        ok = bool(send_telegram(message))
+        ok = bool(send_telegram(message, priority="P3", producer="iris_taxonomy_agent"))  # library FYI
         try:
             from lib.comms import CommunicationEvent, publish_communication
             publish_communication(CommunicationEvent(
@@ -1992,7 +1992,8 @@ def run_discovery_mode(send_telegram=False):
                 themes = c.get("themes") or []
                 msg += f"\u2022 {c['symbol']} \u2014 {total} mentions ({', '.join(str(t) for t in themes[:2])})\n"
             msg += "\nApprove via: `iris approve <id>`"
-            _tg(msg)
+            # Asks the operator to approve: P1 intent, dedupe off (AGENTS.md §9.1, 5.1.0).
+            _tg(msg, priority="P1", dedupe_minutes=0, producer="iris_taxonomy_agent")
         except Exception as e:
             print(f"[iris-discovery] Telegram failed: {e}")
 

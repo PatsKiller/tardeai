@@ -250,7 +250,7 @@ def plm(monkeypatch, tmp_path):
         raise AssertionError("--once must never sleep")
 
     monkeypatch.setattr(mod.time, "sleep", _no_sleep)
-    monkeypatch.setattr(mod, "_send_telegram", lambda msg, root: sent.append(msg) or None)
+    monkeypatch.setattr(mod, "_send_telegram", lambda msg, root, **kw: sent.append(msg) or None)
     monkeypatch.setattr(mod, "_fetch_holdings_data", lambda symbols, root: {})
     monkeypatch.setattr(mod, "_morning_brief", lambda p, m, r: "BRIEF")
     monkeypatch.setattr(mod, "_eod_summary", lambda p, m, a, r: "EOD:" + "|".join(a))

@@ -1120,7 +1120,8 @@ if __name__ == "__main__":
                     f"Error: {str(e)[:200]}\n\n"
                     f"Reply to retry:\n"
                     f"  add video <url> — ingest specific video\n"
-                    f"  status — system health check"
+                    f"  status — system health check",
+                    priority="P1", dedupe_minutes=0, producer="youtube_transcript_ingest",
                 )
             except Exception:
                 pass

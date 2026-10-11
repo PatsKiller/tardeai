@@ -146,14 +146,14 @@ def get_agent_reliability():
         return [{"agent": "system", "error": str(exc)}]
 
 
-def send_telegram(text):
+def send_telegram(text, *, priority: str = "P2"):
     """Send via the centralized telegram_alert router (outbox, dedup, report capture)."""
     try:
         scripts_dir = str(Path(__file__).resolve().parent)
         if scripts_dir not in sys.path:
             sys.path.insert(0, scripts_dir)
         from telegram_alert import send_telegram as router_send
-        ok = router_send(text)
+        ok = router_send(text, priority=priority, producer="system_health_alerts")
         try:
             root = str(Path(__file__).resolve().parents[1])
             if root not in sys.path:
@@ -258,7 +258,12 @@ def main():
     should_send = alert["severity"] != "OK" or os.environ.get("HEALTH_ALERT_SEND_OK", "").lower() in {"1", "true", "yes"}
     telegram_result = {"sent": False, "reason": "severity OK; not sending"}
     if should_send:
-        telegram_result = send_telegram(alert["telegram_text"])
+        if alert["severity"] == "CRITICAL":
+            telegram_result = send_telegram(alert["telegram_text"], priority="P1")
+        elif alert["severity"] == "OK":
+            telegram_result = send_telegram(alert["telegram_text"], priority="P3")
+        else:
+            telegram_result = send_telegram(alert["telegram_text"], priority="P2")
 
     alert["telegram_result"] = telegram_result
     out_file.write_text(json.dumps(alert, indent=2))

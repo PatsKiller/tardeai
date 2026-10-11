@@ -169,7 +169,7 @@ def send_verdict_change_telegram(changes: list):
     msg = '\n'.join(lines)
     try:
         from telegram_alert import send_telegram
-        send_telegram(msg)
+        send_telegram(msg, priority="P2", producer="trade_ai_news_monitor")  # verdict changes: attention
         try:
             from lib.comms import CommunicationEvent, publish_communication
             publish_communication(CommunicationEvent(

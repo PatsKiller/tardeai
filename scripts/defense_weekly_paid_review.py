@@ -60,7 +60,7 @@ def _telegram(send_telegram, text: str) -> None:
     try:
         send_telegram(text, priority="P2", producer="defense_weekly_paid_review")
     except TypeError:
-        send_telegram(text)
+        send_telegram(text, priority="P2", producer="defense_weekly_paid_review")
     except Exception as e:
         print(f"[weekly-oversight] telegram failed: {e}")
 

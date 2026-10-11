@@ -154,7 +154,7 @@ def normalize_finviz_columns(df: pd.DataFrame) -> pd.DataFrame:
                 if (_now - _DQ_TELEGRAM_LAST["ts"] >= _DQ_TELEGRAM_COOLDOWN_SEC
                         or _DQ_TELEGRAM_LAST["key"] != _dq_key):
                     from telegram_alert import send_telegram
-                    if send_telegram(_msg):
+                    if send_telegram(_msg, priority="P2", producer="finviz_ingestion"):
                         _DQ_TELEGRAM_LAST.update({"ts": _now, "key": _dq_key})
             except Exception:
                 pass
@@ -375,7 +375,7 @@ def download_screener_csvs(
                 print(f"  [finviz] ❌ Cookie expired! Login page returned for {name}")
                 try:
                     from telegram_alert import send_telegram
-                    send_telegram(_msg)
+                    send_telegram(_msg, priority="P1", dedupe_minutes=0, producer="finviz_ingestion")
                 except Exception:
                     pass
                 raise RuntimeError(f"Finviz cookie expired — login page returned for screener: {name}")

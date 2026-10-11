@@ -391,7 +391,7 @@ def send_telegram(message):
         if scripts_dir not in sys.path:
             sys.path.insert(0, scripts_dir)
         from telegram_alert import send_telegram as _central_send
-        _central_send(message)
+        _central_send(message, priority="P2", producer="premarket_watcher")
         try:
             from lib.comms import CommunicationEvent, publish_communication
             publish_communication(CommunicationEvent(

@@ -4431,9 +4431,12 @@ def alert(policy: dict, snapshot: dict):
     if unverified:
         lines.append(f"❓ Could not re-check (no success claimed): "
                      f"{', '.join(r.get('type', '?') for r in unverified)}")
+    # Intent: P1 when the operator must act (unhealthy, a remediation that worsened or stopped working),
+    # otherwise P3 -- a degraded score with nothing for the operator to do is FYI for the digest.
+    needs_operator = snapshot.get("status") == "unhealthy" or bool(worsened) or bool(ineffective)
     try:
         from telegram_alert import send_telegram
-        send_telegram("\n".join(lines))
+        send_telegram("\n".join(lines), priority=("P1" if needs_operator else "P3"), producer="health_agent")
     except Exception:
         pass
 

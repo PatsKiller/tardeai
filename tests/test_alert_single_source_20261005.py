@@ -179,7 +179,7 @@ def test_digest_sends_with_no_per_symbol_link_footer(monkeypatch):
     from lib import comms_editor as ce
     seen = []
 
-    def fake_deliver(message, *, subject_key, rich=None):
+    def fake_deliver(message, *, subject_key, rich=None, priority="P1"):
         seen.append(ce._resolve_primary_symbols(None))
         return True, {}
 

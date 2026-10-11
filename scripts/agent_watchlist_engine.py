@@ -44,10 +44,10 @@ def _get_conn():
     return psycopg2.connect(host="localhost", dbname="trade_ai", user="trade_ai", password=pw)
 
 
-def _send_tg(msg):
+def _send_tg(msg, *, priority: str = "P3"):
     try:
         from telegram_alert import send_telegram
-        send_telegram(msg)
+        send_telegram(msg, priority=priority, producer="agent_watchlist_engine")
     except Exception:
         pass
 
@@ -1014,7 +1014,7 @@ Be specific with numbers. Address disability implications. Reference macro data 
 
         if send_telegram:
             divider = "\u2501" * 24
-            _send_tg(f"\U0001F3E5 *Alex Weekly Health Check*\n{divider}\n\n{review[:1800]}\n\n{divider}\n_via {result.get('provider','?')}_")
+            _send_tg(f"\U0001F3E5 *Alex Weekly Health Check*\n{divider}\n\n{review[:1800]}\n\n{divider}\n_via {result.get('provider','?')}_", priority="P2")
 
         print(f"[health] Weekly check complete via {result.get('provider', '?')}")
         return {"status": "completed", "provider": result.get("provider")}
@@ -1070,7 +1070,7 @@ def weekly_autonomy_summary(send_telegram: bool = False) -> dict:
            f"{divider}")
 
     if send_telegram:
-        _send_tg(msg)
+        _send_tg(msg, priority="P2")
 
     print(msg.replace('*', '').replace('\U0001F4CA ', ''))
     return {"analyses": analyses, "intel": intel, "proposals": props["cnt"], "debates": debates}

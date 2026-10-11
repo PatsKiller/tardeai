@@ -44,7 +44,8 @@ def send_telegram(message, urgent=False):
         from telegram_alert import send_telegram as _tg
         prefix = '🚨' if urgent else '⚠️'
         text = f"{prefix} WATCHDOG: {message}"
-        _tg(text)
+        # Intent: urgent (a script failed N times, manual check needed) is P1; the rest is FYI (P3).
+        _tg(text, priority=("P1" if urgent else "P3"), producer="pipeline_watchdog")
         try:
             root = str(Path(__file__).resolve().parents[1])
             if root not in sys.path:

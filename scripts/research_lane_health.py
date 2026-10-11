@@ -437,7 +437,8 @@ def _deliver_telegram(msg: str):
     non-interrupt; it changes no classification.
     """
     import telegram_alert as _ta
-    _ta.send_telegram(msg, bypass_router=False)
+    # SND2: declared, not inferred -- P3 (FYI) lands in the same Reports archive / digest.
+    _ta.send_telegram(msg, priority="P3", producer="research_lane_health")
     return getattr(_ta, "last_message_id", lambda: None)()
 
 

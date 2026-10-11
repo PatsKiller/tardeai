@@ -66,7 +66,7 @@ def _load_env_file(root: Path) -> None:
                 k, v = line.split("=", 1)
                 os.environ.setdefault(k.strip(), v.strip().strip("\"'"))
 
-def _send_telegram(message: str, root: Path):
+def _send_telegram(message: str, root: Path, priority: str = "P2"):
     """Send via the central chokepoint. Returns the provider message id, or None.
 
     None whenever no message reached Telegram — suppressed by the router,
@@ -79,7 +79,7 @@ def _send_telegram(message: str, root: Path):
         _load_env_file(root)
         sys.path.insert(0, str(root / "scripts"))
         from telegram_alert import send_telegram_with_id
-        return send_telegram_with_id(message).get("message_id")
+        return send_telegram_with_id(message, priority=priority, producer="portfolio_live_monitor").get("message_id")
     except Exception as e:
         print(f"  [monitor] Telegram error: {e}")
         return None
@@ -527,7 +527,9 @@ def _run_cycle(root: Path, now: datetime, trigger_state: "TriggerState", *,
         except Exception as e:
             print(f"  [monitor] Alert DB write failed (non-fatal): {e}")
 
-        telegram_message_id = _send_telegram(msg, root)
+        # Intent: a drawdown / >3% drop on a holding is time-critical (P1); other triggers are P2.
+        telegram_message_id = _send_telegram(msg, root,
+                                             priority=("P1" if trig in ("DOWN_3PCT", "DRAWDOWN") else "P2"))
         # Telegram second, per this module's contract — the id exists only
         # now, so it is stamped onto the row already written rather than
         # reordering the write (a DB outage must never block the send).

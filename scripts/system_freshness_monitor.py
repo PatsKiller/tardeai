@@ -247,7 +247,7 @@ def telegram(msg):
         if scripts_dir not in sys.path:
             sys.path.insert(0, scripts_dir)
         from telegram_alert import send_telegram
-        ok = bool(send_telegram(msg))
+        ok = bool(send_telegram(msg, priority="P1", producer="system_freshness_monitor"))  # P0/P1 pages only
         try:
             if ROOT not in sys.path:
                 sys.path.insert(0, ROOT)

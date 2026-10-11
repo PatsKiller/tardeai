@@ -288,11 +288,15 @@ def main():
                     keyboard = None
                 chat_ids = [str(dest["chat_id"])] if dest.get("chat_id") else None
                 thread_id = str(dest["thread_id"]) if dest.get("thread_id") else None
+                # Operator-action (Approve/Reject buttons): P1 intent, dedupe off (AGENTS.md §9.1, 5.1.0).
                 ok = bool(send_telegram(
                     message,
                     reply_markup=keyboard,
                     chat_ids=chat_ids,
                     thread_id=thread_id,
+                    priority="P1",
+                    dedupe_minutes=0,
+                    producer="send_telegram_proposal_alert",
                 ))
                 try:
                     root = str(PROJ)

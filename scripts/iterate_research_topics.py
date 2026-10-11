@@ -150,7 +150,7 @@ Keep it concise (3-4 paragraphs) and actionable."""
                     msg = f"*Research Update: {topic}*\n(Iteration #{count + 1})\n\n{response[:1200]}\n\n_via {result.get('provider')} (${result.get('cost_estimate', 0):.4f})_"
                     try:
                         from telegram_alert import send_telegram as _send
-                        _send(msg)
+                        _send(msg, priority="P3", producer="iterate_research_topics")
                     except Exception:
                         pass
 

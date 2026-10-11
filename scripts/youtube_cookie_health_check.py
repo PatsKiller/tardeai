@@ -81,11 +81,11 @@ def _transcript_age_h():
         return None
 
 
-def _send_telegram(msg):
+def _send_telegram(msg, *, priority: str = "P2"):
     try:
         from telegram_alert import send_telegram
 
-        ok = bool(send_telegram(msg))
+        ok = bool(send_telegram(msg, priority=priority, producer="youtube_cookie_health_check"))
         try:
             from lib.comms import CommunicationEvent, publish_communication
 
@@ -156,7 +156,9 @@ def main():
         }
     )
     if would_send and not no_send:
-        _LAST["sent"] = bool(_send_telegram(f"[{status.upper()}] YouTube cookies: {detail}\n\n{REFRESH_STEPS}"))
+        _LAST["sent"] = bool(_send_telegram(
+            f"[{status.upper()}] YouTube cookies: {detail}\n\n{REFRESH_STEPS}",
+            priority="P1" if status == "red" else "P2"))
     elif would_send:
         print(f"[cookie-health] send suppressed ({'--dry-run' if dry_run else '--no-send'})")
     # Red/amber are findings, not a failed run (2026-10-10; was `0 if green else 1`).
