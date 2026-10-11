@@ -2291,6 +2291,240 @@
       "live_arg": null,
       "market_gate": false,
       "output_signal": "data/runtime/etf-performance-enrich_last.json"
+    },
+    {
+      "lane_id": "document-mentions-backfill",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "POSTGRES_PASSWORD",
+        "PROJECT_ROOT",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "SOURCE_ONLY: source-local DB loaders use explicit names; full real-run import closure NOT_MEASURED.",
+      "env_report_reason": "Shared runtime DB/identity/store loaders have not been proven bounded for this whole import closure. Keep report mode until reviewed closure proof; no broker env name is admitted.",
+      "source": "Shard07 source proposal; exact native-approved cron snapshot 2026-10-11T17:05:28.513179+00:00: 25 * * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/document_mentions_backfill.lock timeout 25m $PY scripts/backfill_document_mentions.py --all --limit 4000 --apply >> /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/logs/document_mentions.log 2>&1; no scheduler mutation.",
+      "command": [
+        "$PY",
+        "scripts/backfill_document_mentions.py",
+        "--all",
+        "--limit",
+        "4000",
+        "--apply"
+      ],
+      "lock": "/tmp/document_mentions_backfill.lock",
+      "lock_kind": "flock",
+      "timeout_s": 1500,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/document-mentions-backfill_last.json"
+    },
+    {
+      "lane_id": "aegis-evening-packet",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "POSTGRES_PASSWORD",
+        "PROJECT_ROOT",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "SOURCE_ONLY: source-local DB loaders use explicit names; full real-run import closure NOT_MEASURED.",
+      "env_report_reason": "Shared runtime DB/identity/store loaders have not been proven bounded for this whole import closure. Keep report mode until reviewed closure proof; no broker env name is admitted.",
+      "source": "Shard07 source proposal; exact native-approved cron snapshot 2026-10-11T17:05:28.513179+00:00: 45 19 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && PYTHONPATH=/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT flock -n /tmp/aegis_evening_packet.lock $PY scripts/aegis_evening_packet.py >> logs/aegis_evening_packet.log 2>&1; no scheduler mutation.",
+      "command": [
+        "$PY",
+        "scripts/aegis_evening_packet.py"
+      ],
+      "lock": "/tmp/aegis_evening_packet.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/aegis-evening-packet_last.json"
+    },
+    {
+      "lane_id": "hermes-scope-governor",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "POSTGRES_PASSWORD",
+        "PROJECT_ROOT",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "SOURCE_ONLY: source-local DB loaders use explicit names; full real-run import closure NOT_MEASURED.",
+      "env_report_reason": "Shared runtime DB/identity/store loaders have not been proven bounded for this whole import closure. Keep report mode until reviewed closure proof; no broker env name is admitted.",
+      "source": "Shard07 source proposal; exact native-approved cron snapshot 2026-10-11T17:05:28.513179+00:00: 7,37 * * * * cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/hermes_scope_governor.lock $PY scripts/hermes_scope_governor.py --apply >> logs/hermes_scope_governor.log 2>&1; no scheduler mutation.",
+      "command": [
+        "$PY",
+        "scripts/hermes_scope_governor.py",
+        "--apply"
+      ],
+      "lock": "/tmp/hermes-scope-governor.lock",
+      "lock_kind": "flock",
+      "timeout_s": 900,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/hermes-scope-governor_last.json"
+    },
+    {
+      "lane_id": "iris-proposal-curator",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "POSTGRES_PASSWORD",
+        "PROJECT_ROOT",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "SOURCE_ONLY: source-local DB loaders use explicit names; full real-run import closure NOT_MEASURED.",
+      "env_report_reason": "Shared runtime DB/identity/store loaders have not been proven bounded for this whole import closure. Keep report mode until reviewed closure proof; no broker env name is admitted.",
+      "source": "Shard07 source proposal; exact native-approved cron snapshot 2026-10-11T17:05:28.513179+00:00: 20 7 * * * cd $PROJ && $PY scripts/iris_proposal_curator.py --apply >> logs/iris_proposal_curator.log 2>&1; no scheduler mutation.",
+      "command": [
+        "$PY",
+        "scripts/iris_proposal_curator.py",
+        "--apply"
+      ],
+      "lock": "/tmp/iris-proposal-curator.lock",
+      "lock_kind": "flock",
+      "timeout_s": 900,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/iris-proposal-curator_last.json"
+    },
+    {
+      "lane_id": "price-db-sync",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "POSTGRES_PASSWORD",
+        "PROJECT_ROOT",
+        "TICKER_PRICE_OUTLIER_MAX_RATIO",
+        "TICKER_PRICE_OUTLIER_MIN_RATIO",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "SOURCE_ONLY: source-local DB loaders use explicit names; full real-run import closure NOT_MEASURED.",
+      "env_report_reason": "Shared runtime DB/identity/store loaders have not been proven bounded for this whole import closure. Keep report mode until reviewed closure proof; no broker env name is admitted.",
+      "source": "Shard07 source proposal; exact native-approved cron snapshot 2026-10-11T17:05:28.513179+00:00: 20 7 * * 1-5 cd $PROJ && $PY scripts/price_db_sync.py >> logs/price_db_sync.log 2>&1; no scheduler mutation.",
+      "command": [
+        "$PY",
+        "scripts/price_db_sync.py"
+      ],
+      "lock": "/tmp/price-db-sync.lock",
+      "lock_kind": "flock",
+      "timeout_s": 900,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/price-db-sync_last.json"
+    },
+    {
+      "lane_id": "sync-dividend-data",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "POSTGRES_PASSWORD",
+        "PROJECT_ROOT",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "SOURCE_ONLY: source-local DB loaders use explicit names; full real-run import closure NOT_MEASURED.",
+      "env_report_reason": "Shared runtime DB/identity/store loaders have not been proven bounded for this whole import closure. Keep report mode until reviewed closure proof; no broker env name is admitted.",
+      "source": "Shard07 source proposal; exact native-approved cron snapshot 2026-10-11T17:05:28.513179+00:00: 5 7 * * 1-5 cd $PROJ && $PY scripts/sync_dividend_data.py >> logs/dividend_sync.log 2>&1; no scheduler mutation.",
+      "command": [
+        "$PY",
+        "scripts/sync_dividend_data.py"
+      ],
+      "lock": "/tmp/sync-dividend-data.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/sync-dividend-data_last.json"
+    },
+    {
+      "lane_id": "watch-valuation-backfill",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "POSTGRES_PASSWORD",
+        "PROJECT_ROOT",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "SOURCE_ONLY: source-local DB loaders use explicit names; full real-run import closure NOT_MEASURED.",
+      "env_report_reason": "Shared runtime DB/identity/store loaders have not been proven bounded for this whole import closure. Keep report mode until reviewed closure proof; no broker env name is admitted.",
+      "source": "Shard07 source proposal; exact native-approved cron snapshot 2026-10-11T17:05:28.513179+00:00: 47 6 * * * cd $PROJ && flock -n /tmp/watch_valuation_backfill.lock $PY scripts/watch_valuation_backfill.py --limit 400 >> logs/watch_valuation_backfill.log 2>&1  # yfinance valuation supplement for Watch names Finviz misses (resumable, capped); feeds finviz-strip-map fallback (2026-07-25); no scheduler mutation.",
+      "command": [
+        "$PY",
+        "scripts/watch_valuation_backfill.py",
+        "--limit",
+        "400"
+      ],
+      "lock": "/tmp/watch_valuation_backfill.lock",
+      "lock_kind": "flock",
+      "timeout_s": 1800,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/watch-valuation-backfill_last.json"
     }
   ],
   "blocked_reasons": {

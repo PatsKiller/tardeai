@@ -12,6 +12,11 @@ import aegis_evening_packet as pkt  # noqa: E402
 
 
 def test_packet_bounded_and_canonical(tmp_path, monkeypatch):
+    # All producer paths point at scratch data. Host condition discovery is a
+    # fixture boundary; this test checks packet shape/bounds/canonical naming.
+    monkeypatch.setattr(pkt, "ROOT", tmp_path)
+    monkeypatch.setattr(pkt, "evening_packet_targets", lambda: [tmp_path / "packet.json"])
+    monkeypatch.setattr(pkt, "_health", lambda: {"unresolved_critical": [], "stale": []})
     # Intentionally huge "alert history" must not land in the packet.
     huge = tmp_path / "alerts.json"
     huge.write_text(json.dumps([{"n": i, "txt": "x" * 200} for i in range(5000)]))

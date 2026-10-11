@@ -3008,17 +3008,21 @@
       "scheduler": {
         "kind": "cron",
         "expression": "25 * * * *",
-        "command_text": ".../backfill_document_mentions.py --all --limit 4000 --apply",
-        "match": "scripts/backfill_document_mentions.py --all"
+        "command_text": "25 * * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/document_mentions_backfill.lock timeout 25m $PY scripts/backfill_document_mentions.py --all --limit 4000 --apply >> /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/logs/document_mentions.log 2>&1",
+        "match": "scripts/backfill_document_mentions.py --all",
+        "stage": "shadow",
+        "wave": "R2-07"
       },
       "expected_cadence_hours": 1.0,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "db_max",
-        "table": "document_mentions",
-        "column": "observed_at"
+        "kind": "json_key",
+        "path": "data/runtime/document-mentions-backfill_last.json",
+        "key": "ok_at",
+        "evidence": "SOURCE_ONLY",
+        "evidence_ref": "scripts/backfill_document_mentions.py real-run entrypoint, fake-tested; runtime NOT_MEASURED"
       },
-      "note": "Links documents to subjects; feeds the identity spine.",
+      "note": "Links documents to subjects; feeds the identity spine. Shard07 SOURCE_ONLY shadow proposal; offline plan only; no runtime acceptance.",
       "value_class": "Technical Debt",
       "recommendation": "PIPELINE:P03",
       "rationalization": {
@@ -3031,7 +3035,18 @@
         "event_driven_candidate": false,
         "f_evidence": "hourly backfill; log stale since 09-30"
       },
-      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible).",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "25 * * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "ingest",
+        "priority": 4,
+        "retry_policy": "none"
+      }
     },
     {
       "lane_id": "document-mentions-prune",
@@ -13408,14 +13423,19 @@
       "scheduler": {
         "kind": "cron",
         "expression": "20 7 * * 1-5",
-        "match": "scripts/price_db_sync.py"
+        "match": "scripts/price_db_sync.py",
+        "stage": "shadow",
+        "wave": "R2-07",
+        "command_text": "20 7 * * 1-5 cd $PROJ && $PY scripts/price_db_sync.py >> logs/price_db_sync.log 2>&1"
       },
       "expected_cadence_hours": 72.0,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/price_db_sync.log",
-        "evidence": "CRON_LOG_REDIRECT"
+        "kind": "json_key",
+        "path": "data/runtime/price-db-sync_last.json",
+        "key": "ok_at",
+        "evidence": "SOURCE_ONLY",
+        "evidence_ref": "scripts/price_db_sync.py real-run entrypoint, fake-tested; runtime NOT_MEASURED"
       },
       "value_class": "Duplicated",
       "recommendation": "MERGE_INTO:P01",
@@ -13431,8 +13451,19 @@
       },
       "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one. Shard07 SOURCE_ONLY shadow proposal; offline plan only; no runtime acceptance.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "20 7 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "ingest",
+        "priority": 4,
+        "retry_policy": "none"
+      }
     },
     {
       "lane_id": "llm-intelligence-enrichment",
@@ -13940,14 +13971,19 @@
       "scheduler": {
         "kind": "cron",
         "expression": "5 7 * * 1-5",
-        "match": "scripts/sync_dividend_data.py"
+        "match": "scripts/sync_dividend_data.py",
+        "stage": "shadow",
+        "wave": "R2-07",
+        "command_text": "5 7 * * 1-5 cd $PROJ && $PY scripts/sync_dividend_data.py >> logs/dividend_sync.log 2>&1"
       },
       "expected_cadence_hours": 72.0,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/dividend_sync.log",
-        "evidence": "CRON_LOG_REDIRECT"
+        "kind": "json_key",
+        "path": "data/runtime/sync-dividend-data_last.json",
+        "key": "ok_at",
+        "evidence": "SOURCE_ONLY",
+        "evidence_ref": "scripts/sync_dividend_data.py real-run entrypoint, fake-tested; runtime NOT_MEASURED"
       },
       "value_class": "Duplicated",
       "recommendation": "MERGE_INTO:P01",
@@ -13963,8 +13999,19 @@
       },
       "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one. Shard07 SOURCE_ONLY shadow proposal; offline plan only; no runtime acceptance.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "5 7 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "ingest",
+        "priority": 4,
+        "retry_policy": "none"
+      }
     },
     {
       "lane_id": "daily-incubator-refresh",
@@ -15302,14 +15349,19 @@
       "scheduler": {
         "kind": "cron",
         "expression": "20 7 * * *",
-        "match": "scripts/iris_proposal_curator.py"
+        "match": "scripts/iris_proposal_curator.py",
+        "stage": "shadow",
+        "wave": "R2-07",
+        "command_text": "20 7 * * * cd $PROJ && $PY scripts/iris_proposal_curator.py --apply >> logs/iris_proposal_curator.log 2>&1"
       },
       "expected_cadence_hours": 24.0,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/iris_proposal_curator.log",
-        "evidence": "CRON_LOG_REDIRECT"
+        "kind": "json_key",
+        "path": "data/runtime/iris-proposal-curator_last.json",
+        "key": "ok_at",
+        "evidence": "SOURCE_ONLY",
+        "evidence_ref": "scripts/iris_proposal_curator.py real-run entrypoint, fake-tested; runtime NOT_MEASURED"
       },
       "value_class": "Duplicated",
       "recommendation": "MERGE_INTO:P07",
@@ -15325,8 +15377,19 @@
       },
       "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one. Shard07 SOURCE_ONLY shadow proposal; offline plan only; no runtime acceptance.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "20 7 * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "learn",
+        "priority": 4,
+        "retry_policy": "none"
+      }
     },
     {
       "lane_id": "hermes-youtube-discovery",
@@ -17819,15 +17882,19 @@
       "scheduler": {
         "kind": "cron",
         "expression": "7,37 * * * *",
-        "match": "scripts/hermes_scope_governor.py"
+        "match": "scripts/hermes_scope_governor.py",
+        "stage": "shadow",
+        "wave": "R2-07",
+        "command_text": "7,37 * * * * cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/hermes_scope_governor.lock $PY scripts/hermes_scope_governor.py --apply >> logs/hermes_scope_governor.log 2>&1"
       },
       "expected_cadence_hours": 0.5,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "data/runtime/hermes_scope_governor_heartbeat.json",
-        "evidence": "SCRIPT_RECEIPT",
-        "evidence_ref": "scripts/lib/hermes_scope_governor/heartbeat.py:11 GOVERNOR_HEARTBEAT written by scripts/hermes_scope_governor.py:64 each run; host mtime 2026-10-09T16:07:17"
+        "kind": "json_key",
+        "path": "data/runtime/hermes-scope-governor_last.json",
+        "key": "ok_at",
+        "evidence": "SOURCE_ONLY",
+        "evidence_ref": "scripts/hermes_scope_governor.py real-run entrypoint, fake-tested; runtime NOT_MEASURED"
       },
       "value_class": "Nice to Have",
       "recommendation": "PIPELINE:P10",
@@ -17843,8 +17910,19 @@
       },
       "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one. Shard07 SOURCE_ONLY shadow proposal; offline plan only; no runtime acceptance.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "7,37 * * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "learn",
+        "priority": 4,
+        "retry_policy": "none"
+      }
     },
     {
       "lane_id": "hermes-score-event-feeder",
@@ -19313,15 +19391,19 @@
       "scheduler": {
         "kind": "cron",
         "expression": "47 6 * * *",
-        "match": "scripts/watch_valuation_backfill.py"
+        "match": "scripts/watch_valuation_backfill.py",
+        "stage": "shadow",
+        "wave": "R2-07",
+        "command_text": "47 6 * * * cd $PROJ && flock -n /tmp/watch_valuation_backfill.lock $PY scripts/watch_valuation_backfill.py --limit 400 >> logs/watch_valuation_backfill.log 2>&1  # yfinance valuation supplement for Watch names Finviz misses (resumable, capped); feeds finviz-strip-map fallback (2026-07-25)"
       },
       "expected_cadence_hours": 24.0,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "data/state/valuation_supplement_cache.json",
-        "evidence": "SCRIPT_RECEIPT",
-        "evidence_ref": "scripts/watch_valuation_backfill.py:45 SUPPLEMENT written at :184; host mtime 2026-10-09T06:53:15"
+        "kind": "json_key",
+        "path": "data/runtime/watch-valuation-backfill_last.json",
+        "key": "ok_at",
+        "evidence": "SOURCE_ONLY",
+        "evidence_ref": "scripts/watch_valuation_backfill.py real-run entrypoint, fake-tested; runtime NOT_MEASURED"
       },
       "value_class": "Duplicated",
       "recommendation": "MERGE_INTO:P01",
@@ -19337,8 +19419,19 @@
       },
       "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one. Shard07 SOURCE_ONLY shadow proposal; offline plan only; no runtime acceptance.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "47 6 * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "ingest",
+        "priority": 4,
+        "retry_policy": "none"
+      }
     },
     {
       "lane_id": "run-scalp-volume-profile-refresh",
@@ -19850,14 +19943,19 @@
       "scheduler": {
         "kind": "cron",
         "expression": "45 19 * * *",
-        "match": "scripts/aegis_evening_packet.py"
+        "match": "scripts/aegis_evening_packet.py",
+        "stage": "shadow",
+        "wave": "R2-07",
+        "command_text": "45 19 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && PYTHONPATH=/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT flock -n /tmp/aegis_evening_packet.lock $PY scripts/aegis_evening_packet.py >> logs/aegis_evening_packet.log 2>&1"
       },
       "expected_cadence_hours": 24.0,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/aegis_evening_packet.log",
-        "evidence": "CRON_LOG_REDIRECT"
+        "kind": "json_key",
+        "path": "data/runtime/aegis-evening-packet_last.json",
+        "key": "ok_at",
+        "evidence": "SOURCE_ONLY",
+        "evidence_ref": "scripts/aegis_evening_packet.py real-run entrypoint, fake-tested; runtime NOT_MEASURED"
       },
       "value_class": "Nice to Have",
       "recommendation": "PIPELINE:P15",
@@ -19873,8 +19971,19 @@
       },
       "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one. Shard07 SOURCE_ONLY shadow proposal; offline plan only; no runtime acceptance.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "45 19 * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "learn",
+        "priority": 4,
+        "retry_policy": "none"
+      }
     },
     {
       "lane_id": "refresh-operator-product",

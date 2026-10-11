@@ -35,6 +35,17 @@ sys.path.insert(0, str(ROOT / "scripts" / "lib"))
 # evening_packet_write_targets() so the served/persistent copy is updated even
 # when this script lives in (or is invoked from) the hub tree (WAVE G1).
 PACKET_PATH = ROOT / "data" / "runtime" / "aegis_evening_packet.json"
+
+LANE_ID = "aegis-evening-packet"
+
+
+def _receipt_lib():
+    try:
+        from scripts.lib import lane_last_receipt as lr
+    except ImportError:
+        from lib import lane_last_receipt as lr
+    return lr
+
 MAX_FINDINGS = 8
 MAX_CHARS = 12_000
 
@@ -226,22 +237,47 @@ def isolated_prompt(packet_path: Path | None = None) -> str:
     )
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser()
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(allow_abbrev=False)
     ap.add_argument("--prompt", action="store_true")
     ap.add_argument("--json", action="store_true")
-    args = ap.parse_args()
+    ap.add_argument("--dry-run", action="store_true", help="offline packet plan; no reads or writes")
+    args = ap.parse_args(argv)
+    if args.dry_run:
+        print(f"DRY-RUN {LANE_ID}: would build bounded CIO/advisory/health packet "
+              f"max_findings={MAX_FINDINGS} max_chars={MAX_CHARS} prompt={args.prompt} json={args.json}")
+        return 0
+    lr = _receipt_lib()
+    started = lr.now_iso()
+    stats = {"targets_written": 0}
+    try:
+        rc = _run(args, stats)
+    except BaseException as exc:
+        lr.write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
+                              script="aegis_evening_packet.py", summary=stats, error=type(exc).__name__)
+        raise
+    lr.write_lane_receipt(LANE_ID, ok=rc == 0, exit_code=rc, started_at=started,
+                          script="aegis_evening_packet.py", summary=stats)
+    return rc
+
+
+def _run(args, stats) -> int:
     packet = build_packet()
     payload = json.dumps(packet, indent=2, default=str)
     targets = evening_packet_targets()
     primary = targets[0]
+    primary_written = False
     for path in targets:
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(payload)
+            stats["targets_written"] += 1
+            primary_written = primary_written or path == primary
         except OSError as e:
             # Never let a second destination break the first.
             print(f"[aegis-evening] write failed for {path}: {type(e).__name__}: {e}")
+    if not primary_written:
+        return 1
     if args.prompt:
         print(isolated_prompt(primary))
         return 0
