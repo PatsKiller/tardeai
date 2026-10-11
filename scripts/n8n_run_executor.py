@@ -139,6 +139,8 @@ LANE_ENV_ALLOWLIST_MODES = ("report", "enforce")
 # Set by build_child_env on an enforced child (never inherited): the lane's env_names, read by
 # scripts/lib/env_bootstrap.bound_names. Literal here so the executor imports nothing from lib/.
 ENV_BOUND_NAMES_ENV = "TRADEAI_ENV_BOUND_NAMES"
+LLM_BRIDGE_ENV = "TRADEAI_LLM_VIA_BRIDGE"
+LLM_PROCESS_ENV = "TRADEAI_LLM_PROCESS_ID"
 CHILD_ENV_BASE_NAMES = frozenset({
     "PATH", "HOME", "LANG", "LC_ALL", "TZ", "USER", "LOGNAME", "XDG_RUNTIME_DIR", "PYTHONPATH",
     "PROJ", "PY", "TRADEAI_ENV", "TRADEAI_STATE_ROOT", "TRADEAI_VENV_PYTHON", "LLM_DEFER_OFFPEAK",
@@ -170,7 +172,26 @@ def env_policy_problem(entry: Mapping[str, Any]) -> str | None:
             return "forbidden_env_name"
     if entry.get("env_allowlist_mode", "enforce") not in LANE_ENV_ALLOWLIST_MODES:
         return "bad_lane_env_allowlist_mode"
+    route = entry.get("llm_route")
+    if route is not None:
+        if not isinstance(route, Mapping) or route.get("via") != "cio-governed-bridge":
+            return "bad_llm_route"
+        try:
+            from scripts.lib.governed_process_routes import route_for_process
+        except ImportError:
+            from lib.governed_process_routes import route_for_process
+        if not isinstance(route.get("process_id"), str) or route_for_process(route["process_id"]) is None:
+            return "llm_process_route_not_registered"
     return None
+
+
+def _bind_llm_route(env: dict[str, str], entry: Mapping[str, Any]) -> dict[str, str]:
+    """Bind only validated host allowlist metadata; no request chooses a model."""
+    route = entry.get("llm_route")
+    if route is not None:
+        env[LLM_BRIDGE_ENV] = "1"
+        env[LLM_PROCESS_ENV] = route["process_id"]
+    return env
 
 
 def env_allowlist_mode(env: Mapping[str, str]) -> str | None:
@@ -207,7 +228,7 @@ def build_child_env(
     legacy = child_env(env, lane_id)
     if requested == "off":
         block["effective_mode"] = "off"
-        return legacy, block
+        return _bind_llm_route(legacy, entry), block
     keep = CHILD_ENV_BASE_NAMES | frozenset(names or ())
     enforced = {k: v for k, v in legacy.items() if k in keep}
     block["dropped_names"] = sorted(set(legacy) - set(enforced))
@@ -219,13 +240,13 @@ def build_child_env(
         # Bound the child's in-process loaders to the same list (lib/env_bootstrap bound mode): without it any
         # env_bootstrap.load_env call re-reads the whole rendered env file and undoes this allowlist.
         enforced[ENV_BOUND_NAMES_ENV] = ",".join(sorted(names))
-        return enforced, block
+        return _bind_llm_route(enforced, entry), block
     block["effective_mode"] = "report"
     if requested == "enforce":
         block["reason"] = "lane_report_only"
     elif names is None:
         block["reason"] = "env_names_missing"
-    return legacy, block
+    return _bind_llm_route(legacy, entry), block
 
 
 def load_allowlist(path: Path) -> dict[str, dict[str, Any]]:
