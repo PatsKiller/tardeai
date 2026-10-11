@@ -113,7 +113,7 @@ _mr_step() {
     echo "  ---- step $id END status=$status rc=$rc log=$steplog ----"
   fi
   end=${EPOCHREALTIME/./}; ms=$(( (end - start) / 1000 ))
-  "$PY3" - "$RESULTS" "$STEPS_JSONL" "$PIPELINE" "$STAGE" "$id" "$cron_line" "$status" "$rc" "$ms" "$tmo" "$DRY_RUN" <<'PY'
+  "$PY3" - "$RESULTS" "$STEPS_JSONL" "$PIPELINE" "$STAGE" "$id" "$cron_line" "$status" "$rc" "$ms" "$tmo" "$DRY_RUN" <<'PY' || return $?
 import json, sys, datetime
 res, jsonl, pipeline, stage, sid, cron_line, status, rc, ms, tmo, dry = sys.argv[1:]
 rec = {"schema": "PipelineStepReceipt@v1", "ts": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -128,7 +128,7 @@ PY
 
 manifest_pipeline_main() {
   local default_manifest="$1"; shift
-  local STAGE="" MANIFEST="" APPLY_REQUESTED=0 LIST=0
+  local STAGE="" MANIFEST="" APPLY_REQUESTED=0 LIST=0 EXPLICIT_DRY_RUN=0
   while [ $# -gt 0 ]; do
     case "$1" in
       --stage) STAGE="${2:-}"; shift 2 ;;
@@ -137,12 +137,13 @@ manifest_pipeline_main() {
       --manifest=*) MANIFEST="${1#--manifest=}"; shift ;;
       --project-root) PROJ="$(cd "${2:?--project-root needs a directory}" && pwd)"; shift 2 ;;
       --apply) APPLY_REQUESTED=1; DRY_RUN=0; shift ;;
-      --dry-run) DRY_RUN=1; shift ;;
+      --dry-run) DRY_RUN=1; EXPLICIT_DRY_RUN=1; shift ;;
       --list-stages) LIST=1; shift ;;
       -h|--help) sed -n '2,30p' "${BASH_SOURCE[0]}"; return 0 ;;
       *) echo "[ERROR] unknown argument: $1" >&2; return 2 ;;
     esac
   done
+  if [ "$EXPLICIT_DRY_RUN" = 1 ] || [ "$APPLY_REQUESTED" = 0 ]; then DRY_RUN=1; fi
   [ -n "$MANIFEST" ] || MANIFEST="$PROJ/$default_manifest"
   [ -f "$MANIFEST" ] || { echo "[ERROR] manifest not found: $MANIFEST" >&2; return 66; }
 
@@ -216,17 +217,17 @@ manifest_pipeline_main() {
 
   local line id cron_line tmo dow logrel grp envnames cmd prev_grp="" _first=1
   local -a _pids=() _group_pids=()
-  local worker_error=0 _wait_pid
+  local worker_failures=0 _wait_pid
   while IFS= read -r line; do
     [ -n "$line" ] || continue
     IFS=$'\x1f' read -r id cron_line tmo dow logrel grp envnames cmd <<<"$line"
     if [ "$MAXC" -le 1 ]; then
-      _mr_step
+      _mr_step || worker_failures=$((worker_failures + 1))
       continue
     fi
     if [ "$_first" = 0 ] && [ "$grp" != "$prev_grp" ]; then
       for _wait_pid in "${_group_pids[@]}"; do
-        wait "$_wait_pid" || worker_error=1
+        wait "$_wait_pid" || worker_failures=$((worker_failures + 1))
       done
       _group_pids=()
       _pids=()
@@ -245,18 +246,18 @@ manifest_pipeline_main() {
     _group_pids+=("$!")
   done <<<"$plan"
   for _wait_pid in "${_group_pids[@]}"; do
-    wait "$_wait_pid" || worker_error=1
+    wait "$_wait_pid" || worker_failures=$((worker_failures + 1))
   done
 
   local -a sumflags=()
   [ "$DRY_RUN" = 1 ] && sumflags+=(--dry-run)
   [ "$APPLY_REQUESTED" = 1 ] && sumflags+=(--apply-requested)
   "$PY3" "$MANIFEST_PY" "$MANIFEST" --summary "$STAGE" --results "$RESULTS" --out "$SUMMARY" \
-      --started-at "$STARTED_AT" --log "$RUN_LOG" "${sumflags[@]}"
+      --started-at "$STARTED_AT" --log "$RUN_LOG" --worker-failures "$worker_failures" "${sumflags[@]}"
   rm -f "$RESULTS"
   echo "[summary] wrote $SUMMARY"
   echo "[$(_ts)] END pipeline=$PIPELINE stage=$STAGE DRY_RUN=$DRY_RUN steps=$n_steps"
-  if [ "$worker_error" = 1 ]; then
+  if [ "$worker_failures" -gt 0 ]; then
     echo "[ERROR] a step worker failed before completing its receipt" >&2
     return 1
   fi

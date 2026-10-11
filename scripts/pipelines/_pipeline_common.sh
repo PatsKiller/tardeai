@@ -9,12 +9,14 @@ LOG_DIR="$PROJ/logs/pipelines"
 
 # --- arg parse: default DRY_RUN=1 unless --apply ---
 DRY_RUN="${DRY_RUN:-1}"
+_PIPELINE_EXPLICIT_DRY_RUN=0
 for a in "$@"; do
   case "$a" in
     --apply) DRY_RUN=0 ;;
-    --dry-run) DRY_RUN=1 ;;
+    --dry-run) DRY_RUN=1; _PIPELINE_EXPLICIT_DRY_RUN=1 ;;
   esac
 done
+[ "$_PIPELINE_EXPLICIT_DRY_RUN" = 0 ] || DRY_RUN=1
 
 # --- safe env load (no eval of arbitrary lines) ---
 load_env() {

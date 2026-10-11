@@ -323,7 +323,8 @@ def sha256_of(path: str | Path) -> str:
 
 
 def write_summary(manifest_path: str, stage: str, results_path: str, out_path: str, *,
-                  dry_run: bool, started_at: str, log_path: str, apply_requested: bool) -> dict:
+                  dry_run: bool, started_at: str, log_path: str, apply_requested: bool,
+                  worker_failures: int = 0) -> dict:
     manifest = load(manifest_path)
     steps = []
     if Path(results_path).exists():
@@ -333,7 +334,8 @@ def write_summary(manifest_path: str, stage: str, results_path: str, out_path: s
     statuses = {s.get("status") for s in steps}
     expected_ids = [step["id"] for step in stage_steps(manifest, stage)]
     actual_ids = [step.get("id") for step in steps]
-    complete = len(actual_ids) == len(expected_ids) and set(actual_ids) == set(expected_ids)
+    complete = (len(actual_ids) == len(expected_ids) and set(actual_ids) == set(expected_ids)
+                and worker_failures == 0)
     if not dry_run and not complete:
         overall = "degraded"
     elif not steps:
@@ -359,6 +361,7 @@ def write_summary(manifest_path: str, stage: str, results_path: str, out_path: s
         "step_count": len(steps),
         "expected_step_count": len(expected_ids),
         "receipt_complete": complete,
+        "worker_failures": worker_failures,
         "steps": steps,
         "log": log_path,
     }
@@ -385,6 +388,7 @@ def main(argv=None) -> int:
     ap.add_argument("--apply-requested", action="store_true")
     ap.add_argument("--started-at", default="")
     ap.add_argument("--log", default="")
+    ap.add_argument("--worker-failures", type=int, default=0)
     args = ap.parse_args(argv)
 
     try:
@@ -428,7 +432,8 @@ def main(argv=None) -> int:
             print("[manifest] --summary needs --results and --out", file=sys.stderr)
             return 2
         write_summary(args.manifest, args.summary, args.results, args.out, dry_run=args.dry_run,
-                      started_at=args.started_at, log_path=args.log, apply_requested=args.apply_requested)
+                      started_at=args.started_at, log_path=args.log, apply_requested=args.apply_requested,
+                      worker_failures=args.worker_failures)
         return 0
     return 2
 

@@ -12,6 +12,7 @@ The train starts from main `65337da5366b469c8478b198187201bd37671bc2`. It keeps 
 - Resolve named model requests to existing server-approved caller/task pairs, validate returned process identity/governance/cost proof, and bind the executor's validated route metadata into the child environment. No new process registrations, model choices, provider calls or credentials are added.
 - Agent-runtime `--dry-run` describes an invocation before backend import and authorization-consuming work; actual authorization and default-disabled behavior stay intact.
 - Manifest stage previews validate the stage and print its ordered waves before creating directories, locks, temporary files or invoking children. Real runs wait for every child and report failure for failed workers, failed/timeout steps or incomplete receipts. Each child's existing lock, timeout and failure isolation remain in place. Child interpreter resolution no longer falls back to the development checkout's virtualenv.
+- Explicit `--dry-run` wins over `--apply` in either order. An inherited `DRY_RUN=0` cannot authorize execution without explicit `--apply`. Failed step-receipt workers, including serial failures, are counted in the durable stage summary and prevent healthy status even when every child command itself succeeded.
 - CIO state-root lookup keeps its existing precedence while using explicit literal environment names.
 
 ## Preserved authority and refusal
@@ -27,3 +28,5 @@ The isolated shared regression command covers bootstrap, route identity, executo
 The pipeline/shared follow-up passed 47 tests, including artifact-free previews, strict flags, failure propagation, incomplete receipt refusal, parallel-stage ordering and environment precedence. Command: `python3 run-isolated-completion.py manifest-final .venv/bin/python -m pytest -q tests/test_pipeline_manifest_runner_20261007.py tests/test_premarket_stage_parallel_20261010.py tests/test_completion_119_shared_20261011.py`. Evidence is `reassess-gates/manifest-final.{json,log}` in the integration worktree; zero capability refusals and all owned descendants reaped. This measured a worktree correction and is not final-head acceptance.
 
 Source-only work never authorizes push, REVIEWED contract state, runtime execution, model egress, activation, release or scheduler cutover.
+
+Independent integration review identified the flag-order, inherited-mode and durable worker-summary defects. The corrected runner passed the pipeline/parallel regression command under unchanged pre-import guards (`reassess-gates/manifest-receipt-proof.{json,log}`), including both serial and parallel receipt-append failures. Earlier worktree runs are retained as development evidence; the final native profile remains the acceptance gate.

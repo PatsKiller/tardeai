@@ -106,6 +106,21 @@ def test_dry_run_default_executes_nothing(tmp_path):
     assert not (tmp_path / "data/runtime").exists()
 
 
+@pytest.mark.parametrize("flags", [("--apply", "--dry-run"), ("--dry-run", "--apply")])
+def test_explicit_preview_wins_over_apply_in_both_orders(tmp_path, flags):
+    marker = tmp_path / "child-was-run"
+    man = _hermetic_manifest(tmp_path, "explicit_preview", [
+        {"id": "write", "cron_line": 1, "command": f"touch {marker}", "timeout": "10s"},
+    ])
+    before = {p.relative_to(tmp_path): p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
+    r = _run(tmp_path, man, "--stage", "test", *flags)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "DRY-RUN pipeline=explicit_preview" in r.stdout
+    assert {p.relative_to(tmp_path): p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()} == before
+    assert not (tmp_path / "logs").exists()
+    assert not (tmp_path / "data").exists()
+
+
 def test_apply_with_empty_stage_executes_nothing(tmp_path):
     man = _hermetic_manifest(tmp_path, "hermetic_empty", [])
     r = _run(tmp_path, man, "--stage", "test", "--apply")
@@ -117,6 +132,38 @@ def test_apply_with_empty_stage_executes_nothing(tmp_path):
 
 
 # --------------------------------------------------------------------------- apply semantics
+
+@pytest.mark.parametrize("concurrency", [1, 2])
+def test_receipt_append_failure_has_durable_degraded_summary(tmp_path, concurrency):
+    receipt_path = tmp_path / "logs/pipelines/receipt_failure/test_steps.jsonl"
+    man = _hermetic_manifest(tmp_path, "receipt_failure", [
+        {"id": "sabotage", "cron_line": 1, "command": f"mkdir -p {receipt_path}", "timeout": "10s",
+         "group": "one"},
+    ])
+    if concurrency > 1:
+        data = json.loads(man.read_text())
+        data["stages"]["test"]["parallel"] = {"max_concurrency": concurrency}
+        man.write_text(json.dumps(data))
+    r = _run(tmp_path, man, "--stage", "test", "--apply")
+    assert r.returncode == 1, r.stdout + r.stderr
+    summary = _summary(tmp_path, "receipt_failure", "test")
+    assert summary["steps"][0]["status"] == "ok"
+    assert summary["worker_failures"] == 1
+    assert summary["receipt_complete"] is False
+    assert summary["overall_status"] == "degraded"
+
+
+def test_inherited_zero_does_not_authorize_apply(tmp_path):
+    marker = tmp_path / "child-was-run"
+    man = _hermetic_manifest(tmp_path, "inherited_zero", [
+        {"id": "write", "cron_line": 1, "command": f"touch {marker}", "timeout": "10s"},
+    ])
+    before = {p.relative_to(tmp_path) for p in tmp_path.rglob("*")}
+    r = _run(tmp_path, man, "--stage", "test", env_extra={"DRY_RUN": "0"})
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "DRY-RUN pipeline=inherited_zero" in r.stdout
+    assert {p.relative_to(tmp_path) for p in tmp_path.rglob("*")} == before
+
 
 def test_apply_runs_in_order_times_out_and_continues_on_error(tmp_path):
     order = tmp_path / "order.txt"
