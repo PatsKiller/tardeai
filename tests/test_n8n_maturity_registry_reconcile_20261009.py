@@ -111,7 +111,9 @@ def test_dry_run_is_the_default_and_writes_nothing(tmp_path):
 def test_every_live_crontab_line_maps_to_exactly_one_row(inputs, committed):
     lines = _lines(inputs)
     # 438 captured + the 3 lines of the approved registry-ops-crons install (packet ops-crons-install.md)
-    assert len(lines) == 441
+    # + L638 finviz_enrichment.py --scalp-hot (live since the 2026-10-10 hot-tier install; added 2026-10-11 so the
+    # finviz-enrichment W4 shadow row can match its own line L142 only)
+    assert len(lines) == 442
     mapping = R.line_mapping(committed, lines)
     bad = {R.sanitize(ln)[:120]: ids for ln, ids in mapping.items() if len(ids) != 1}
     assert not bad, bad
@@ -245,12 +247,16 @@ def test_generated_rows_have_evidence_or_are_flagged_unverified(committed):
     # build-symbol-profiles-at-0-19 unchanged so its lane_id stays stable (294 generated rows left).
     # C1 hermes_learning flip (2026-10-10) retired 6 generated rows into the stage lanes and made them
     # hand-curated (the retire-batch-1 pattern) so the generator keeps RETIRED (288 generated rows left).
-    assert len(gen) >= 288
+    # W4 provider-owner shadow (2026-10-11) adopted 4 more: finviz-enrichment, sec-data-ingest, social-ingest-all
+    # (dispatch blocks) plus social-ingest-stocktwits unchanged so its lane_id stays stable (284 generated rows left).
+    assert len(gen) >= 284
     adopted = [r for r in committed["lanes"] if r.get("adopted_from_generator") == R.GENERATOR_VERSION]
     # D3 rows carry an r1_pending block (inert until AGENTS 4.4.0 is ACTIVE) instead of a dispatch block;
-    # build-symbol-profiles-at-0-19 is adopted unchanged only to keep its lane_id stable.
+    # build-symbol-profiles-at-0-19 and social-ingest-stocktwits are adopted unchanged only to keep their lane_ids
+    # stable (the generator would re-derive them as build-symbol-profiles / social-ingest).
     assert adopted and all(
-        ("dispatch" in r or "r1_pending" in r or r["lane_id"] == "build-symbol-profiles-at-0-19")
+        ("dispatch" in r or "r1_pending" in r
+         or r["lane_id"] in ("build-symbol-profiles-at-0-19", "social-ingest-stocktwits"))
         and "generated_by" not in r
         for r in adopted
     )

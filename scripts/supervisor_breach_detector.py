@@ -10,6 +10,13 @@ registered output signal (lane_registry.observe_signal), and raises:
   SILENT             last beat older than max_silence_s (only when the lane has ever beaten)
   NO_OUTPUT          output signal older than 3 × cadence (or unreadable) for an ACTIVE lane
   MEMORY_UNREACHABLE last beat says memory_context_ok = false on a fail-closed lane
+  STALE_OUTPUT       (W1-9, 2026-10-11) a registry ``freshness_contracts`` entry — a store table/file the
+                     freshness monitors and job_coverage_monitor watch — is older than its max_age_hours
+  INPUT_STARVATION   (W1-9) a pipeline_liveness lane is STARVED / NO_ELIGIBLE_INPUT / UNKNOWN
+                     (the checks of pipeline_liveness_report.py)
+
+STALE_OUTPUT and INPUT_STARVATION are RECORD_ONLY_KINDS: recorded on the ledger, never handed to L1–L5 (not
+even as shadow receipts) or L3. Both are "slow checks", evaluated at most every 30 min (--slow-checks).
 
 It writes an append-only data/runtime/supervisor_breaches.jsonl (one row per NEW breach id; a breach
 id is stable per lane × kind × day, so a repeat is a re-observation, not a new row) and
@@ -48,7 +55,16 @@ sys.path.insert(0, str(PROJ / "scripts" / "lib"))
 sys.path.insert(0, str(PROJ / "scripts"))
 
 SCHEMA = "Breach@v1"
-KINDS = ("SILENT", "HUNG", "BACKLOG", "FAILING", "NO_OUTPUT", "MEMORY_UNREACHABLE", "SLO_MISS", "UNGOVERNED")
+KINDS = ("SILENT", "HUNG", "BACKLOG", "FAILING", "NO_OUTPUT", "MEMORY_UNREACHABLE", "SLO_MISS", "UNGOVERNED",
+         "STALE_OUTPUT", "INPUT_STARVATION")
+#: W1-9 monitor fold (2026-10-11): kinds that are DETECT + RECORD only. They never reach the L1/L2 self-heal or
+#: the L4/L5 ladder (not even its shadow receipts); the fan-in reads them from the ledger like any other row.
+RECORD_ONLY_KINDS = ("STALE_OUTPUT", "INPUT_STARVATION")
+#: The slow checks (freshness contracts run ~30 SELECT max() queries; input starvation folds ~210 MB of CIO
+#: JSONL) are evaluated at most once per this many seconds — today's monitors run every 30-40 min — not on
+#: every 2-minute tick. The last evaluation time is kept in SLOW_CHECKS_STATE (written only under --write).
+SLOW_CHECK_EVERY_S = {"freshness_contracts": 1800, "input_starvation": 1800}
+SLOW_CHECKS_STATE = "supervisor_slow_checks_last.json"
 SCHEDULE_TZ = ZoneInfo("America/New_York")
 #: cron_schedule.last_fire_at_or_before lookback; parity with cron_last_fire.last_fire(max_days=400) for monthly lanes.
 CRON_LOOKBACK_DAYS = 400
@@ -190,6 +206,158 @@ def detect(*, lanes: list[dict], sla_by_lane: dict[str, dict], heartbeats: dict[
         elif lo < deadline:
             add(lane, "NO_OUTPUT", {"signal": sig, "last_output_at": obs.get("last_output_at"), "expected_by": deadline.isoformat(), "basis": basis})
     return out
+
+
+# ── W1-9 monitor fold (2026-10-11): store freshness and input starvation ─────────────────────────────────
+
+def _is_trading_day(day: _dt.date) -> bool:
+    """market_session's calendar (weekends + NYSE holidays); weekday-only when it cannot be imported."""
+    try:
+        from market_session import is_trading_day  # type: ignore
+        return bool(is_trading_day(_dt.datetime(day.year, day.month, day.day, 12, 0, tzinfo=SCHEDULE_TZ)))
+    except Exception:  # noqa: BLE001
+        return day.weekday() < 5
+
+
+def _trading_day_limit_h(max_age_h: float, now: _dt.datetime, *, cap_days: int = 14) -> float:
+    """max_age_h extended by 24 h for every non-trading day the window reaches into (America/New_York days).
+
+    The window grows until it stops reaching a new non-trading day: Monday 06:00 with 26 h reaches Sunday, then
+    Saturday, then stops at Friday (74 h). That is at least as lenient as pipeline_freshness_monitor's
+    "consecutive closed days ending today" grace and system_freshness_monitor's weekday_only skip, so the fold
+    can only report later than today's monitors, never earlier.
+    """
+    limit = float(max_age_h)
+    local_now = now.astimezone(SCHEDULE_TZ)
+    counted: set[_dt.date] = set()
+    for _ in range(cap_days + 1):
+        start = (local_now - _dt.timedelta(hours=limit)).date()
+        d, extra = local_now.date(), 0
+        while d >= start:
+            if d not in counted and not _is_trading_day(d):
+                counted.add(d)
+                extra += 1
+            d -= _dt.timedelta(days=1)
+        if not extra or len(counted) >= cap_days:
+            break
+        limit += 24.0 * extra
+    return limit
+
+
+def _freshness_deadline(contract: dict, lane: dict | None, sla: dict | None, now: _dt.datetime) -> tuple[_dt.datetime, str]:
+    """(oldest acceptable output time, basis label) for one freshness contract."""
+    max_age = float(contract["max_age_hours"])
+    basis = contract.get("basis")
+    if basis == "trading_days":
+        lim = _trading_day_limit_h(max_age, now)
+        return now - _dt.timedelta(hours=lim), f"trading_days:{max_age:g}h→{lim:g}h"
+    if basis == "lane_due" and lane is not None and (lane.get("scheduler") or {}).get("kind") == "cron":
+        # job_coverage_monitor: allowed = max(cadence, idle + min(cadence, 1 h)) where idle = hours since the
+        # last due fire, i.e. the output must postdate min(now - cadence, last fire - min(cadence, 1 h)).
+        fire, fbasis = _expected_since(lane, now, float((sla or {}).get("max_run_s") or 900))
+        if fire is not None and fbasis.startswith("cron"):
+            by_fire = fire - _dt.timedelta(hours=min(max_age, 1.0))
+            return min(now - _dt.timedelta(hours=max_age), by_fire), f"lane_due:{fbasis}|{max_age:g}h"
+    return now - _dt.timedelta(hours=max_age), f"wall_clock:{max_age:g}h"
+
+
+def detect_freshness(*, contracts: list[dict], lanes: list[dict], sla_by_lane: dict[str, dict], observe,
+                     now: _dt.datetime) -> list[dict]:
+    """Pure: STALE_OUTPUT Breach@v1 rows from the registry's freshness_contracts.
+
+    A contract tied to a lane is only judged while that lane is ACTIVE (a retired producer stops raising).
+    An unreadable signal is reported (UNVERIFIABLE, as for NO_OUTPUT); an absent row/file is "never produced".
+    Detect + record only: the rows carry the contract's severity and never enter the ladder.
+    """
+    day = now.strftime("%Y-%m-%d")
+    by_id = {l.get("lane_id"): l for l in lanes}
+    out: list[dict] = []
+    for c in contracts or []:
+        lid = c.get("lane_id")
+        lane = by_id.get(lid) if lid else None
+        if lid and (lane is None or lane.get("state") != "ACTIVE"):
+            continue
+        fd = _parse((lane or {}).get("first_due"))
+        if fd and now < fd:
+            continue
+        deadline, basis = _freshness_deadline(c, lane, sla_by_lane.get(lid) if lid else None, now)
+        obs = {k: (v.isoformat() if hasattr(v, "isoformat") else v) for k, v in (observe(c["signal"]) or {}).items()}
+        lo = _parse(obs.get("last_output_at"))
+        if obs.get("readable") is False:
+            note = "signal unreadable (UNVERIFIABLE, reported as STALE_OUTPUT)"
+        elif lo is None:
+            note = "never produced"
+        elif lo < deadline:
+            note = "stale"
+        else:
+            continue
+        owner = str(lid or f"freshness:{c['key']}")
+        out.append({"schema": SCHEMA, "breach_id": breach_id(owner, f"STALE_OUTPUT:{c['key']}", day), "lane_id": owner,
+                    "silo_id": None, "kind": "STALE_OUTPUT", "detected_at": now.isoformat(),
+                    "evidence": {"contract": c["key"], "signal": c["signal"], "observed": obs, "expected_by": deadline.isoformat(),
+                                 "basis": basis, "severity": c.get("severity"), "source": c.get("source"),
+                                 "replaces": c.get("replaces"), "note": note},
+                    "level": 1, "state": "OPEN", "recovery": [], "authority": "READ_ONLY_ADVISORY"})
+    return out
+
+
+#: PipelineLiveness@v1 statuses that are findings (scripts/lib/pipeline_liveness.py LivenessReport.findings).
+STARVATION_STATUSES = ("STARVED", "NO_ELIGIBLE_INPUT", "UNKNOWN")
+
+
+def detect_input_starvation(*, liveness: dict, now: _dt.datetime) -> list[dict]:
+    """Pure: INPUT_STARVATION Breach@v1 rows from a PipelineLiveness@v1 document (pipeline_liveness_report's checks).
+
+    STARVED = work entered the lane and nothing came out; NO_ELIGIBLE_INPUT = work arrived but none of it could
+    produce this output; UNKNOWN = the source could not be read (not evidence of a live lane). One row per
+    liveness lane × status × day. Detect + record only.
+    """
+    day = now.strftime("%Y-%m-%d")
+    out: list[dict] = []
+    for ln in (liveness or {}).get("lanes") or []:
+        status = str(ln.get("status") or "")
+        if status not in STARVATION_STATUSES:
+            continue
+        owner = f"liveness:{ln.get('lane')}"
+        ev = {k: ln.get(k) for k in ("status", "produced", "attempted", "eligible", "min_expected", "window_hours", "source",
+                                     "describe", "detail") if ln.get(k) is not None}
+        ev["origin"] = "scripts/lib/pipeline_liveness.py (pipeline-liveness-report)"
+        out.append({"schema": SCHEMA, "breach_id": breach_id(owner, f"INPUT_STARVATION:{status}", day), "lane_id": owner,
+                    "silo_id": None, "kind": "INPUT_STARVATION", "detected_at": now.isoformat(), "evidence": ev,
+                    "level": 2 if status == "STARVED" else 1, "state": "OPEN", "recovery": [], "authority": "READ_ONLY_ADVISORY"})
+    return out
+
+
+def _evaluate_liveness(state_root: Path | None) -> dict:
+    """Run pipeline_liveness's default probes (read-only) against ``state_root`` (default: production state root)."""
+    if str(PROJ) not in sys.path:
+        sys.path.insert(0, str(PROJ))
+    from scripts.lib import pipeline_liveness as pl  # type: ignore
+
+    orig = pl._state_root
+    try:
+        if state_root is not None:
+            pl._state_root = lambda: Path(state_root)
+        return pl.evaluate(pl.default_lanes()).to_dict()
+    finally:
+        pl._state_root = orig
+
+
+def _slow_checks_due(runtime_dir: Path, now: _dt.datetime, mode: str) -> tuple[dict[str, bool], dict]:
+    """Which slow checks run this tick: mode always/never, or auto = last evaluation older than its interval."""
+    try:
+        state = json.loads((runtime_dir / SLOW_CHECKS_STATE).read_text(encoding="utf-8"))
+        state = state if isinstance(state, dict) else {}
+    except (OSError, ValueError):
+        state = {}
+    due: dict[str, bool] = {}
+    for name, every in SLOW_CHECK_EVERY_S.items():
+        if mode in ("always", "never"):
+            due[name] = mode == "always"
+            continue
+        last = _parse(state.get(name))
+        due[name] = last is None or (now - last).total_seconds() >= every
+    return due, state
 
 
 def _read_only_db_query():
@@ -373,6 +541,9 @@ def main() -> int:
     ap.add_argument("--enqueue-escalations", action="store_true", help="L3: append to the health agent's escalation queue (off by default)")
     ap.add_argument("--ladder", action="store_true", help="L4/L5 live: page the operator / write the orchestration proposal (default: shadow receipts only)")
     ap.add_argument("--heal", action="store_true", help="L1/L2 live: restart the lane's --user unit / start its alternate (default: shadow Recovery rows)")
+    ap.add_argument("--slow-checks", choices=("auto", "always", "never"), default="auto",
+                    help="freshness contracts (STALE_OUTPUT) and input starvation (INPUT_STARVATION): auto = at most "
+                         "every 30 min (SLOW_CHECK_EVERY_S), always = this tick, never = skip")
     a = ap.parse_args()
     if a.dry_run and (a.write or a.heal or a.ladder or a.enqueue_escalations):
         print("--dry-run given: ignoring --write/--heal/--ladder/--enqueue-escalations", file=sys.stderr)
@@ -393,12 +564,36 @@ def main() -> int:
     db_query = _read_only_db_query()
     observe = (lambda sig: lane_registry.observe_signal(sig, root=state_root, db_query=db_query)) if state_root else (lambda sig: lane_registry.observe_signal(sig, db_query=db_query))
     rows = detect(lanes=reg.get("lanes", []), sla_by_lane=sla_by_lane, heartbeats=heartbeats, observe=observe, now=now)
+    # W1-9 monitor fold: the slow checks, throttled (see SLOW_CHECK_EVERY_S). A failed slow check is reported on
+    # the summary and never stops the lane checks above.
+    due, slow_state = _slow_checks_due(runtime_dir, now, a.slow_checks)
+    slow: dict[str, dict] = {}
+    if due["freshness_contracts"]:
+        try:
+            fr = detect_freshness(contracts=reg.get("freshness_contracts") or [], lanes=reg.get("lanes", []),
+                                  sla_by_lane=sla_by_lane, observe=observe, now=now)
+            rows.extend(fr)
+            slow["freshness_contracts"] = {"evaluated": True, "contracts": len(reg.get("freshness_contracts") or []), "breaches": len(fr)}
+        except Exception as exc:  # noqa: BLE001
+            slow["freshness_contracts"] = {"evaluated": False, "error": f"{type(exc).__name__}: {str(exc)[:120]}"}
+    else:
+        slow["freshness_contracts"] = {"evaluated": False, "last_evaluated_at": slow_state.get("freshness_contracts")}
+    if due["input_starvation"]:
+        try:
+            st = detect_input_starvation(liveness=_evaluate_liveness(state_root), now=now)
+            rows.extend(st)
+            slow["input_starvation"] = {"evaluated": True, "breaches": len(st)}
+        except Exception as exc:  # noqa: BLE001
+            slow["input_starvation"] = {"evaluated": False, "error": f"{type(exc).__name__}: {str(exc)[:120]}"}
+    else:
+        slow["input_starvation"] = {"evaluated": False, "last_evaluated_at": slow_state.get("input_starvation")}
     by_kind: dict[str, int] = {}
     for r in rows:
         by_kind[r["kind"]] = by_kind.get(r["kind"], 0) + 1
     summary = {"schema": "BreachDetectorRun@v1", "as_of": now.isoformat(), "active_lanes": sum(1 for l in reg.get("lanes", []) if l.get("state") == "ACTIVE"),
                "sla_rows": len(sla_by_lane), "heartbeats": len(heartbeats), "breaches": len(rows), "by_kind": by_kind,
-               "ladder": "detect+record only (L1–L5 not executed in Wave 1)", "authority": "READ_ONLY_ADVISORY"}
+               "ladder": "detect+record only (L1–L5 not executed in Wave 1)", "slow_checks": slow,
+               "authority": "READ_ONLY_ADVISORY"}
     print(json.dumps(summary, indent=1))
     for r in rows[:15]:
         print(f"  {r['kind']:<18} {r['lane_id']}")
@@ -418,6 +613,14 @@ def main() -> int:
         with led.open("a", encoding="utf-8") as fh:
             for r in new:
                 fh.write(json.dumps(r, sort_keys=True, default=str) + "\n")
+        evaluated = [k for k, v in slow.items() if v.get("evaluated")]
+        if evaluated:
+            st_p = runtime_dir / SLOW_CHECKS_STATE
+            st_tmp = st_p.with_suffix(".json.tmp")
+            st_tmp.write_text(json.dumps({**slow_state, **{k: now.isoformat() for k in evaluated}}, indent=1) + "\n")
+            os.replace(st_tmp, st_p)
+        # RECORD_ONLY_KINDS (W1-9) never reach L1/L2 or the L4/L5 ladder, not even as shadow receipts.
+        ladder_input = [r for r in rows if r.get("kind") not in RECORD_ONLY_KINDS]
         latest = runtime_dir / "supervisor_breach_detector_latest.json"
         steps_failed: list[str] = []
         # item 10 (pkg-20260928-wave-2-enforcement-35c4): upsert the beat into intelligence.heartbeat when reachable
@@ -445,7 +648,8 @@ def main() -> int:
                     pol = {}
                 findings = [{"source": "supervisor-breach-detector", "breach_id": r["breach_id"], "lane_id": r["lane_id"], "kind": r["kind"],
                              "component": f"lane:{r['lane_id']}", "type": f"breach_{str(r['kind']).lower()}", "severity": "high" if r.get("level", 1) >= 2 else "medium",
-                             "message": f"{r['kind']} on lane {r['lane_id']}", "evidence": r.get("evidence")} for r in new]
+                             "message": f"{r['kind']} on lane {r['lane_id']}", "evidence": r.get("evidence")} for r in new
+                            if r.get("kind") not in RECORD_ONLY_KINDS]
                 health_agent.enqueue_escalations(pol, findings)
                 print(f"L3: {len(findings)} escalation(s) enqueued")
             except Exception as exc:  # noqa: BLE001
@@ -454,7 +658,7 @@ def main() -> int:
         # Wave 5 O-W5-3: self-healing L1 (systemctl --user restart of the lane's own unit) and L2 (start the SLA row's
         # alternate). SHADOW unless --heal: what WOULD be restarted is a Recovery@v1 row with executed=false.
         try:
-            heal = _self_heal_l1_l2(rows, reg.get("lanes", []), sla_by_lane, now, runtime_dir, live=bool(getattr(a, "heal", False)))
+            heal = _self_heal_l1_l2(ladder_input, reg.get("lanes", []), sla_by_lane, now, runtime_dir, live=bool(getattr(a, "heal", False)))
             print(f"self-heal L1/L2: {heal}")
         except Exception as exc:  # noqa: BLE001
             print(f"self-heal skipped: {type(exc).__name__}: {exc}", file=sys.stderr)
@@ -462,7 +666,7 @@ def main() -> int:
         # Wave 4 O-W4-5: ladder L4 (operator page) and L5 (orchestration-change proposal). SHADOW unless --ladder:
         # what WOULD be paged / proposed is recorded on data/runtime/supervisor_ladder_receipts.jsonl.
         try:
-            ladder_rows = _ladder_l4_l5(rows, sla_by_lane, now, runtime_dir, live=bool(getattr(a, "ladder", False)))
+            ladder_rows = _ladder_l4_l5(ladder_input, sla_by_lane, now, runtime_dir, live=bool(getattr(a, "ladder", False)))
             print(f"ladder L4/L5: {ladder_rows}")
         except Exception as exc:  # noqa: BLE001
             print(f"ladder skipped: {type(exc).__name__}: {exc}", file=sys.stderr)

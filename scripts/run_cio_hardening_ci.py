@@ -3778,6 +3778,18 @@ GATES = [
             # AGENTS 4.4.0 is ACTIVE; refused while PROPOSED, admitted with the status flipped in-test; compute_due
             # week sweep; allowlist live_arg null, lock = cron lock, no broker credential. Hermetic: repo config.
             "tests/test_dispatch_shadow_wave3_r1_20261010.py",
+            # Consolidation W4 provider owners on the dispatcher in SHADOW (R1 ingest, 2026-10-11): finviz-enrichment
+            # (L142), sec-data-ingest (L150), social-ingest-all (L243) admitted by r1_class_admission; dry_run only,
+            # live_arg null, proposed flock lock absent from the cron line (canary blocked until a cron packet adds
+            # it), REVIEWED health contracts, scheduler.match = exactly the one cron line, news-ingest and
+            # sec-filings-feed excluded; compute_due week sweep. Hermetic: repo config read only.
+            "tests/test_w4_provider_owners_shadow_20261011.py",
+            # W4 canary blocker (2026-10-11): finviz_enrichment._load_env copies only the six FINVIZ_* names (= the
+            # lane's allowlist FINVIZ_* env_names) from the tmpfs render / .env into os.environ, never ALPACA_* /
+            # SCHWAB_* / any other render name, on both the resolve_secret and the fallback path; it is the module's
+            # only os.environ writer; social_ingest / sec_data_ingest write os.environ nowhere. Hermetic: fake
+            # render + fake .env in tmp_path.
+            "tests/test_finviz_load_env_narrowing_20261011.py",
             # Gateway /due latency (W0 re-run 2026-10-10 ~17:14 ET, relay_gateway_unreachable under 3-4 concurrent
             # /due at CPUQuota=20%): the precomputed / split-lookup / memoized forbidden-token matcher equals a
             # verbatim copy of the old one on every served-registry text and a compound corpus; DueResponse@v1
@@ -4043,6 +4055,14 @@ GATES = [
         # content_embeddings 90 d rail (librarian defers), archive_first registry flag default OFF.
         "db_retention_hardening_20261011",
         ["tests/test_retention_hardening_20261011.py"],
+    ),
+    (
+        # Retention all managed 2026-10-11 (operator: "Add, enable, and manage all deletes and purges"):
+        # archive_first on 93/96 DELETE rows, managed_purge for every converted owner (librarian, siem,
+        # protection prune, research critique, self-tune), file_prune archive-then-unlink, archive projection
+        # + ARCHIVE_GROWTH, purge_paths registry + unregistered-deleter gate.
+        "retention_all_managed_20261011",
+        ["tests/test_retention_all_managed_20261011.py"],
     ),
     (
         # Cron crash fixes (operator 2026-10-09: "fix the broken cron jobs"): failed --user units detected,
@@ -4439,6 +4459,20 @@ GATES = [
         # broker-adjacent unit, and rollback restores the archived drop-ins. Fake systemd tree + fake systemctl.
         "release_pin_daemons_20261010",
         ["tests/test_release_pin_daemons_20261010.py"],
+    ),
+    (
+        # W1-9 monitor fold coverage (2026-10-11, MONITOR_FOLD_COVERAGE.md gaps 1/3/6): the registry's
+        # freshness_contracts carry job_coverage_monitor's 12 DB checks, 8 pipeline_freshness and 8
+        # system_freshness targets (each pinned to its source line); supervisor_breach_detector raises STALE_OUTPUT
+        # and INPUT_STARVATION (pipeline_liveness) as detect + record only, throttled to 30 min, never laddered.
+        # Hermetic: tmp registry/state root, no DB, fake liveness.
+        # Rulings R1/R11 (2026-10-11, "R1 yes, R11 yes"): fan-in severity for STALE_OUTPUT = the contract's own
+        # severity, INPUT_STARVATION STARVED = P2 (else P3); the read-only parallel-run parity compare. Hermetic:
+        # tmp_path ledgers, logs and registry; no DB, no live state root.
+        "monitor_fold_coverage_20261011",
+        ["tests/test_monitor_fold_coverage_20261011.py",
+         "tests/test_n8n_incident_fanin_monitor_fold_20261011.py",
+         "tests/test_monitor_fold_parity_20261011.py"],
     ),
 ]
 

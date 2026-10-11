@@ -50,7 +50,7 @@ def _stamp(path: Path) -> tuple[str, str] | None:
 
 
 def run(days: int = DEFAULT_DAYS, trend_days: int = DEFAULT_TREND_DAYS,
-        min_keep: int = DEFAULT_MIN_KEEP, apply: bool = False) -> dict:
+        min_keep: int = DEFAULT_MIN_KEEP, apply: bool = False, archive: bool = True) -> dict:
     hist = _history_dir()
     now = datetime.now(timezone.utc)
     keep_all_after = (now - timedelta(days=days)).strftime("%Y-%m-%d")
@@ -98,7 +98,22 @@ def run(days: int = DEFAULT_DAYS, trend_days: int = DEFAULT_TREND_DAYS,
 
     freed = 0
     errors: list[str] = []
-    if apply:
+    archived: dict = {}
+    if apply and delete and archive:
+        # 2026-10-11 (retention-all-managed): archive-then-unlink. The thinned snapshots are tarred with a
+        # per-member sha256 manifest + tripwire under the file-prune archive root (retention_archive.file_archive_root),
+        # the tar is re-read and re-hashed, and only then are the sources unlinked (~25x gzip: ~43 MB/day of
+        # snapshots -> ~2 MB/day archived). A failed archive unlinks nothing.
+        try:
+            sys.path.insert(0, str(Path(__file__).resolve().parent))
+            from lib.retention_archive import archive_files_then_unlink, file_archive_root
+            archived = archive_files_then_unlink([p for p, _sz in delete], base_dir=hist,
+                                                 archive_dir=file_archive_root() / "hermes_governed_universe_history",
+                                                 label="universe_history", writer="hermes_universe_history_retention")
+            freed = sum(sz for _p, sz in delete)
+        except Exception as e:  # noqa: BLE001 -- recorded; nothing was unlinked
+            errors.append(f"archive: {type(e).__name__}: {e}")
+    elif apply:
         for p, sz in delete:
             try:
                 p.unlink()
@@ -116,10 +131,13 @@ def run(days: int = DEFAULT_DAYS, trend_days: int = DEFAULT_TREND_DAYS,
         "min_keep_floor_applied": floored,
         "files_before": len(files),
         "files_kept": len(keep),
-        "files_deleted": len(delete) if apply else 0,
+        "files_deleted": (archived.get("unlinked", 0) if archive else len(delete)) if apply else 0,
         "files_deletable": len(delete),
         "bytes_deletable": sum(sz for _p, sz in delete),
         "bytes_freed": freed,
+        "archive_first": bool(archive),
+        "archive": archived.get("archive"),
+        "archive_bytes": archived.get("bytes"),
         "days_covered": len(latest_of_day),
         "unparsed_skipped": len(unparsed),
         "errors": errors,
@@ -147,9 +165,10 @@ def main():
     ap.add_argument("--min-keep", type=int, default=DEFAULT_MIN_KEEP)
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--no-archive", action="store_true", help="rollback lever: unlink without archiving")
     args = ap.parse_args()
     res = run(days=args.days, trend_days=args.trend_days, min_keep=args.min_keep,
-              apply=args.apply and not args.dry_run)
+              apply=args.apply and not args.dry_run, archive=not args.no_archive)
     sys.exit(0 if res["ok"] else 1)
 
 

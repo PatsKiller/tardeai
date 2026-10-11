@@ -2,6 +2,13 @@
 # Single source of truth for retention windows across all Hermes tables.
 # Never delete live rows — lifecycle: live → hidden/flagged → archived → purge
 
+# 2026-10-11 (retention-all-managed, operator "Add, enable, and manage all deletes and purges"): every
+# librarian purge (archived research, failed queue rows, orphan embeddings) is archived first through
+# scripts/lib/retention_archive.managed_purge: .jsonl.gz + sha256 manifest + tripwire under
+# the row-archive root (retention_archive.archive_root), re-read and verified before the DELETE. `false` restores the
+# inherited hard DELETEs (rollback lever).
+archive_first: true
+
 hermes_research_intelligence:
   staged_max_days: 90      # archive staged rows after 90d
   promoted_max_days: 365   # keep promoted research for 1yr

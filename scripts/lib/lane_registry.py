@@ -241,6 +241,86 @@ def validate_registry(reg: dict[str, Any]) -> list[str]:
         if lid in seen:
             errs.append(f"{lid}: duplicate lane_id")
         seen.add(lid)
+    errs.extend(validate_freshness_contracts(reg.get("freshness_contracts"), seen))
+    return errs
+
+
+# ── freshness contracts (W1-9 monitor fold, 2026-10-11) ─────────────────────
+#
+# A lane has ONE output_signal, and for 495 of 619 rows it is a log mtime: "the job ran", not "the job wrote
+# rows". The freshness monitors (pipeline_freshness_monitor, system_freshness_monitor) and the 12 DB checks of
+# job_coverage_monitor watch the STORE instead. A freshness contract carries one of those checks into the
+# registry so supervisor_breach_detector can raise STALE_OUTPUT from it (detect + record only), and the monitor
+# that holds the check today can fold once the operator accepts the move.
+#
+#   {"key": "<unique id>", "lane_id": "<producer lane, optional>",
+#    "signal": {<an output_signal: db_max | file_mtime | json_key>},
+#    "max_age_hours": <float > 0>, "basis": "lane_due" | "trading_days" | "wall_clock",
+#    "severity": "P1" | "P2" | "P3", "source": "<file:line of the check it carries>",
+#    "replaces": ["<monitor lane id>", ...]}
+#
+# basis: lane_due     — the producer lane's last cron fire also bounds the age (job_coverage_monitor semantics:
+#                       allowed = max(max_age, hours since last due fire + min(max_age, 1 h))); needs lane_id.
+#        trading_days — max_age is extended by 24 h for each non-trading day inside the window
+#                       (pipeline_freshness_monitor market-closure grace / system_freshness weekday_only).
+#        wall_clock   — max_age only.
+FRESHNESS_BASES = ("lane_due", "trading_days", "wall_clock")
+FRESHNESS_SIGNAL_KINDS = ("db_max", "file_mtime", "json_key")
+FRESHNESS_SEVERITIES = ("P1", "P2", "P3")
+_SAFE_KEY = re.compile(r"^[a-z0-9][a-z0-9_.:-]*$")
+
+
+def validate_freshness_contracts(contracts: Any, lane_ids: Iterable[str] = ()) -> list[str]:
+    """Structural problems with the registry's ``freshness_contracts`` list. Absent is valid (empty)."""
+    if contracts is None:
+        return []
+    if not isinstance(contracts, list):
+        return ["freshness_contracts must be a list"]
+    known = set(lane_ids)
+    errs: list[str] = []
+    seen: set[str] = set()
+    for i, c in enumerate(contracts):
+        if not isinstance(c, dict):
+            errs.append(f"freshness_contracts[{i}]: must be an object")
+            continue
+        key = str(c.get("key") or "")
+        tag = f"freshness_contracts[{key or i}]"
+        if not _SAFE_KEY.match(key):
+            errs.append(f"{tag}: key must match {_SAFE_KEY.pattern}")
+        elif key in seen:
+            errs.append(f"{tag}: duplicate key")
+        seen.add(key)
+        sig = c.get("signal")
+        if not isinstance(sig, dict) or sig.get("kind") not in FRESHNESS_SIGNAL_KINDS:
+            errs.append(f"{tag}: signal.kind must be one of {FRESHNESS_SIGNAL_KINDS}")
+        elif sig["kind"] == "db_max":
+            if not _SAFE_IDENT.match(str(sig.get("table") or "")) or not _SAFE_IDENT.match(str(sig.get("column") or "")):
+                errs.append(f"{tag}: db_max needs a safe table and column")
+            if sig.get("where") and not _SAFE_WHERE.match(str(sig["where"])):
+                errs.append(f"{tag}: unsafe where clause")
+        elif not sig.get("path"):
+            errs.append(f"{tag}: {sig['kind']} needs a path")
+        try:
+            ok_age = float(c.get("max_age_hours")) > 0
+        except (TypeError, ValueError):
+            ok_age = False
+        if not ok_age:
+            errs.append(f"{tag}: max_age_hours must be a number > 0")
+        basis = c.get("basis")
+        if basis not in FRESHNESS_BASES:
+            errs.append(f"{tag}: basis must be one of {FRESHNESS_BASES}")
+        lid = c.get("lane_id")
+        if lid is not None and str(lid) not in known:
+            errs.append(f"{tag}: lane_id {lid!r} is not a registry lane")
+        if basis == "lane_due" and not lid:
+            errs.append(f"{tag}: basis lane_due needs lane_id")
+        if c.get("severity") not in FRESHNESS_SEVERITIES:
+            errs.append(f"{tag}: severity must be one of {FRESHNESS_SEVERITIES}")
+        if not str(c.get("source") or "").strip():
+            errs.append(f"{tag}: source is required (the file:line of the check this contract carries)")
+        rep = c.get("replaces")
+        if not isinstance(rep, list) or not rep or not all(isinstance(x, str) and x for x in rep):
+            errs.append(f"{tag}: replaces must name the monitor(s) whose check this is")
     return errs
 
 

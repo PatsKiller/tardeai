@@ -1,7 +1,7 @@
 {
  "schema": "SchedulerSnapshot@v1",
  "captured_on": "2026-10-09",
- "note": "crontab -l and systemctl --user (read-only); /home/<user> replaced by ~; 2026-10-09 registry-ops-crons: cron_lines carry the approved install (packet ops-crons-install.md: 4 edited lines L792/L823/L824/L832 + 3 appended L1051-L1053) so the committed registry is the reconciler's fixed point on the post-install host; 2026-10-10 registry-drift: L608 compute_intraday_vwap carries the live hours */20 9-16 (crontab hygiene 2026-10-10 ~03:54Z, backup n8n_cutover/crontab-before-hygiene-now-20261010T035420Z.txt; read-only crontab -l 2026-10-10 L608) so the generated compute-intraday-vwap row stays the reconciler's fixed point",
+ "note": "crontab -l and systemctl --user (read-only); /home/<user> replaced by ~; 2026-10-09 registry-ops-crons: cron_lines carry the approved install (packet ops-crons-install.md: 4 edited lines L792/L823/L824/L832 + 3 appended L1051-L1053) so the committed registry is the reconciler's fixed point on the post-install host; 2026-10-10 registry-drift: L608 compute_intraday_vwap carries the live hours */20 9-16 (crontab hygiene 2026-10-10 ~03:54Z, backup n8n_cutover/crontab-before-hygiene-now-20261010T035420Z.txt; read-only crontab -l 2026-10-10 L608) so the generated compute-intraday-vwap row stays the reconciler's fixed point; 2026-10-11 w4-provider-owners-shadow: L638 finviz_enrichment.py --scalp-hot (the Finviz enrichment owner's scalp hot tier, live since the 2026-10-10 hot-tier install; read-only crontab -l 2026-10-11 L638) so the finviz-enrichment row can match its own line L142 only and the new finviz-enrichment-scalp-hot row stays the reconciler's fixed point",
  "cron_lines": [
   {
    "n": 92,
@@ -1026,6 +1026,10 @@
   {
    "n": 636,
    "line": "*/5 6-11 * * 1-5 cd $PROJ && flock -n /tmp/tradeai_finviz_momentum_scalp.lock timeout 280 env MOMENTUM_SCALP_OUTER_DEADLINE_S=260 $PY scripts/run_finviz_momentum_scalp_scan.py --window early --apply --refresh-if-older-min 15 --sync-signals --generate-proposals --run-validation-fast-path >> logs/finviz_momentum_scalp_scan.log 2>&1"
+  },
+  {
+   "n": 638,
+   "line": "*/5 6-15 * * 1-5 cd $PROJ && SCALP_HOT_TIER=1 flock -n /tmp/finviz_enrichment_scalp_hot.lock timeout 240 bash scripts/market_day_gate.sh $PY scripts/finviz_enrichment.py --scalp-hot >> logs/finviz_enrichment_scalp_hot.log 2>&1  # TRADEAI_LANE finviz-enrichment-scalp-hot"
   },
   {
    "n": 640,

@@ -1694,6 +1694,113 @@
       "live_arg": null,
       "market_gate": false,
       "output_signal": "data/runtime/update_agent_performance_last.json"
+    },
+    {
+      "lane_id": "finviz-enrichment",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "FINVIZ_API_TOKEN",
+        "FINVIZ_COOKIE",
+        "FINVIZ_COOLDOWN_DEFAULT",
+        "FINVIZ_MAX_COOLDOWN_S",
+        "FINVIZ_MIN_INTERVAL",
+        "FINVIZ_USER_AGENT",
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "scripts/finviz_enrichment.py _env(:298, FINVIZ_* via scripts/secrets/resolve_secret per key), scripts/finviz_throttle.py :90-92 (FINVIZ_MIN_INTERVAL/COOLDOWN), lib/lane_last_receipt.py :57 (TRADEAI_STATE_ROOT) and resolve_secret.render_env_path (XDG_RUNTIME_DIR), both implicit executor base names (CHILD_ENV_BASE_NAMES); DB_PASSWORD read from the checkout .env line by line (:995, :759) and by pipeline_registry.py :15. No broker credential name (AGENTS §23.18 ruling 3).",
+      "env_report_reason": "finviz_enrichment._load_env (:313, called only from _fetch_view :511 on the live fetch path) copies the WHOLE rendered env (tmpfs SM render, then disk .env) into os.environ by setdefault, so the live process can hold names outside this list (config/secret_registry.yaml renders ALPACA_* there). The dry run never reaches _fetch_view (tests/test_refactor_w3_ingest_lanes_20261010.py test_finviz_dry_run_reaches_no_fetch_or_write), so a shadow fire holds none. Canary blocker: narrow _load_env to the FINVIZ_* keys first.",
+      "source": "consolidation W4 provider owner (CONSOLIDATION_PLAN §B.3 W4, R1 class ingest), cron:L142 (crontab -l 2026-10-11: `0 13 * * 1-5 cd $PROJ && $PY scripts/finviz_enrichment.py >> logs/finviz_enrichment.log 2>&1`). SHADOW ONLY: live_arg null, registry dispatch.mode dry_run, scheduler.stage shadow (4.4.0 cron-row shape); the cron line keeps doing the real work. The live cron line has NO flock: lock is the PROPOSED `flock -n /tmp/finviz_enrichment.lock` that a cron-granted packet must add to L142 before canary (r1_canary_lock_matches; same path as the wave23-flock packet). The cron line's live argument is (none). Dry run 2026-10-11 from the worktree under TRADE_AI_CI=1: exit 0, DRY-RUN lane finviz-enrichment, 191 symbols, 60 planned Finviz export requests (none made), would_write_receipt under the scratch state root; 0 tracked or state files changed (only gitignored __pycache__).",
+      "command": [
+        "$PY",
+        "scripts/finviz_enrichment.py"
+      ],
+      "lock": "/tmp/finviz_enrichment.lock",
+      "lock_kind": "flock",
+      "timeout_s": 900,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/finviz-enrichment_last.json"
+    },
+    {
+      "lane_id": "sec-data-ingest",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "scripts/sec_data_ingest.py reads only DB_PASSWORD, from the checkout .env line by line (_get_conn :59-64) and through pipeline_registry.py :15; lib/lane_last_receipt.py :57 (TRADEAI_STATE_ROOT, an implicit executor base name). SEC EDGAR needs no key (SEC_HEADERS User-Agent). No broker credential name (AGENTS §23.18 ruling 3).",
+      "env_report_reason": "DB_PASSWORD comes from the checkout-relative .env (_get_conn :62), not from the environment, so the inventory cannot be enforced until the script resolves it through the env (N8N_ONBOARDING_STANDARD §2 rules 5-6, open finding); report until then.",
+      "source": "consolidation W4 provider owner (CONSOLIDATION_PLAN §B.3 W4, R1 class ingest), cron:L150 (crontab -l 2026-10-11: `0 20 * * 1-5 cd $PROJ && $PY scripts/sec_data_ingest.py --all >> logs/sec_ingest.log 2>&1`). SHADOW ONLY: live_arg null, registry dispatch.mode dry_run, scheduler.stage shadow (4.4.0 cron-row shape); the cron line keeps doing the real work. The live cron line has NO flock: lock is the PROPOSED `flock -n /tmp/sec_data_ingest.lock` that a cron-granted packet must add to L150 before canary (r1_canary_lock_matches; same path as the wave23-flock packet). The cron line's live argument is (none). Dry run 2026-10-11 from the worktree under TRADE_AI_CI=1: exit 1 before any write: _get_conn reads <checkout>/.env and the worktree has none (agents never link .env, AGENTS §24.7); the --dry-run branch is proved statically (:366-368 dry run before PipelineRun; dry_run :305 -> preview_form4 under enforce_readonly :154) and by tests test_sec_dry_run_reaches_no_write / test_sec_dry_run_is_checked_before_pipeline_run.",
+      "command": [
+        "$PY",
+        "scripts/sec_data_ingest.py",
+        "--all"
+      ],
+      "lock": "/tmp/sec_data_ingest.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/sec-data-ingest_last.json"
+    },
+    {
+      "lane_id": "social-ingest-all",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PROJECT_ROOT",
+        "REDDIT_CLIENT_ID",
+        "REDDIT_CLIENT_SECRET",
+        "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "scripts/social_ingest.py _reddit_secret (:163, REDDIT_CLIENT_ID/SECRET via resolve_secret per key, :184); DB_PASSWORD from the checkout .env line by line (_get_conn :39-44) and pipeline_registry.py :15; TRADEAI_STATE_ROOT and XDG_RUNTIME_DIR are implicit executor base names (CHILD_ENV_BASE_NAMES). StockTwits public API needs no key. No broker credential name (AGENTS §23.18 ruling 3).",
+      "env_report_reason": "DB_PASSWORD comes from the checkout-relative .env (_get_conn :42), not from the environment, so the inventory cannot be enforced until the script resolves it through the env (N8N_ONBOARDING_STANDARD §2 rules 5-6, open finding); report until then.",
+      "source": "consolidation W4 provider owner (CONSOLIDATION_PLAN §B.3 W4, R1 class ingest), cron:L243 (crontab -l 2026-10-11: `0 6 * * 1-5 cd $PROJ && $PY scripts/social_ingest.py --source all >> logs/social_ingest.log 2>&1`). SHADOW ONLY: live_arg null, registry dispatch.mode dry_run, scheduler.stage shadow (4.4.0 cron-row shape); the cron line keeps doing the real work. The live cron line has NO flock: lock is the PROPOSED `flock -n /tmp/social_ingest_all.lock` that a cron-granted packet must add to L243 before canary (r1_canary_lock_matches; same path as the wave23-flock packet). The cron line's live argument is (none). Dry run 2026-10-11 from the worktree under TRADE_AI_CI=1: exit 0, DRY-RUN lane social-ingest-all, 15 StockTwits symbol requests + trending + 12 subreddits planned (none made), no DB connection; 0 tracked or state files changed (only gitignored __pycache__). L243 is DEFERRED_CONSOLIDATION_PLAN in config/pipelines/premarket.json (not a C1 stage step).",
+      "command": [
+        "$PY",
+        "scripts/social_ingest.py",
+        "--source",
+        "all"
+      ],
+      "lock": "/tmp/social_ingest_all.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/social-ingest-all_last.json"
     }
   ],
   "blocked_reasons": {

@@ -13,12 +13,20 @@ Rules (exit 1 on violation, 2 if the gate cannot run):
   6. archive_first (optional) is a bool and only on DELETE rows (2026-10-11).
   7. Every table db_retention.py would delete from must be in the registry (db_retention reads
      the registry, so this is a self-consistency check on the fallback list if one remains).
+  8. (2026-10-11, retention-all-managed) archive_growth_cap_gb_month > 0; a DELETE row with
+     archive_first false names why (archive_first_hold); file_prune rows have id/dir/pattern/int days ≥ 1/
+     bool archive/owner/reason; purge_paths entries have id/scripts/kind/state/scheduler/archive and every
+     named script exists.
+  9. Every script under scripts/ or linux_launchers/ with a DELETE FROM / TRUNCATE statement, or a call to
+     managed_purge / archive_then_delete_batches / archive_files_then_unlink, is named by a purge_paths
+     entry -- a new deleter cannot land unregistered.
 Same shape as check_lane_registry.py: declare, gate, let it only shrink.
 """
 from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -95,7 +103,88 @@ def validate(doc: dict) -> list[str]:
     for t in TAX:
         if t not in seen:
             errs.append(f"{t}: tax/brokerage table must be declared KEEP_FOREVER")
+    errs.extend(validate_managed(doc))
     return errs
+
+
+PURGE_STATES = {"MANAGED", "MANAGED_OWN_ARCHIVE", "DEFERS_IN_PRACTICE", "UNARCHIVED_BY_RULE", "UNARCHIVED_DECISION",
+                "UNSCHEDULED", "NOT_RETENTION", "NOT_DATA", "BROKER_OUT_OF_SCOPE"}
+PURGE_KINDS = {"DB_PURGE", "FILE_PRUNE", "LIBRARY", "OPERATOR_ACTION", "REBUILD", "TEST", "BROKER", "HOUSEKEEPING"}
+DELETER_RE = re.compile(r'\bDELETE\s+FROM\s+[\w{"]|\bTRUNCATE\s+(?:TABLE\s+)?[\w{"]'
+                        r"|\b(?:managed_purge|archive_then_delete_batches|archive_files_then_unlink)\(")
+SCAN_ROOTS = ("scripts", "linux_launchers")
+SELF_REL = "scripts/check_retention_policy.py"  # names the patterns; deletes nothing
+
+
+def validate_managed(doc: dict, root: Path = ROOT) -> list[str]:
+    """Rules 8 (archive cap, holds, file_prune, purge_paths shape). Registry-only; no file scan."""
+    errs: list[str] = []
+    cap = doc.get("archive_growth_cap_gb_month")
+    if cap is not None and (not isinstance(cap, (int, float)) or isinstance(cap, bool) or cap <= 0):
+        errs.append("archive_growth_cap_gb_month must be a number > 0")
+    for r in doc.get("policies") or []:
+        if r.get("class") == "DELETE" and r.get("archive_first") is False and len(str(r.get("archive_first_hold") or "")) < 20:
+            errs.append(f"{r.get('table')}: archive_first false needs archive_first_hold (why, >= 20 chars)")
+    ids = set()
+    for r in doc.get("file_prune") or []:
+        rid = r.get("id")
+        if not rid or rid in ids:
+            errs.append(f"file_prune: missing or duplicate id {rid!r}")
+        ids.add(rid)
+        for k in ("dir", "pattern", "owner", "reason"):
+            if not r.get(k):
+                errs.append(f"file_prune {rid}: missing {k}")
+        if not isinstance(r.get("days"), int) or isinstance(r.get("days"), bool) or r["days"] < 1:
+            errs.append(f"file_prune {rid}: days must be an int >= 1")
+        if not isinstance(r.get("archive"), bool):
+            errs.append(f"file_prune {rid}: archive must be true or false")
+    pids = set()
+    for e in doc.get("purge_paths") or []:
+        pid = e.get("id")
+        if not pid or pid in pids:
+            errs.append(f"purge_paths: missing or duplicate id {pid!r}")
+        pids.add(pid)
+        for k in ("kind", "state", "scheduler", "archive", "targets"):
+            if not e.get(k):
+                errs.append(f"purge_paths {pid}: missing {k}")
+        if e.get("state") not in PURGE_STATES:
+            errs.append(f"purge_paths {pid}: state {e.get('state')!r} not in {sorted(PURGE_STATES)}")
+        if e.get("kind") not in PURGE_KINDS:
+            errs.append(f"purge_paths {pid}: kind {e.get('kind')!r} not in {sorted(PURGE_KINDS)}")
+        if not isinstance(e.get("scripts"), list) or not e["scripts"]:
+            errs.append(f"purge_paths {pid}: scripts must be a non-empty list")
+            continue
+        for sp in e["scripts"]:
+            if not (root / sp).is_file():
+                errs.append(f"purge_paths {pid}: script {sp} does not exist")
+    return errs
+
+
+def scan_deleters(root: Path = ROOT) -> list[str]:
+    """Repo-relative scripts that delete rows (or call the archive-first purge helpers). Tests excluded."""
+    out = []
+    for sub in SCAN_ROOTS:
+        base = root / sub
+        if not base.is_dir():
+            continue
+        for p in sorted(base.rglob("*")):
+            if p.suffix not in {".py", ".sh"} or not p.is_file() or "__pycache__" in p.parts:
+                continue
+            rel = p.relative_to(root).as_posix()
+            if rel.startswith(("scripts/tests/", "scripts/test/")) or p.name.startswith("test_") or rel == SELF_REL:
+                continue
+            try:
+                if DELETER_RE.search(p.read_text(encoding="utf-8", errors="replace")):
+                    out.append(rel)
+            except OSError:
+                continue
+    return out
+
+
+def unregistered_deleters(doc: dict, root: Path = ROOT) -> list[str]:
+    named = {sp for e in doc.get("purge_paths") or [] for sp in (e.get("scripts") or [])}
+    return [f"{rel}: deletes/purges data but no purge_paths entry names it (register owner + class)"
+            for rel in scan_deleters(root) if rel not in named]
 
 
 def main() -> int:
@@ -110,6 +199,8 @@ def main() -> int:
         print(f"retention-policy gate CANNOT RUN: {e}", file=sys.stderr)
         return 2
     errs = validate(doc)
+    if doc.get("purge_paths") is not None:
+        errs.extend(unregistered_deleters(doc))
     rows = doc.get("policies") or []
     summary = {"rows": len(rows), "keep_forever": sum(1 for r in rows if r.get("class") == "KEEP_FOREVER"),
                "archive_then_delete": sum(1 for r in rows if r.get("class") == "ARCHIVE_THEN_DELETE"),

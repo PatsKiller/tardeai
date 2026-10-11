@@ -17,7 +17,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "advisor_observations",
@@ -27,7 +28,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "aegis_covered_call_candidates",
@@ -37,7 +39,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "aegis_discovery_index",
@@ -47,7 +50,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "aegis_evidence_ledger",
@@ -57,7 +61,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "aegis_portfolio_briefs",
@@ -67,7 +72,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "aegis_rotation_candidates",
@@ -77,7 +83,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "aegis_steph_escalations",
@@ -87,7 +94,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "aegis_symbol_snapshot_nightly",
@@ -97,7 +105,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "afterhours_candidate_snapshot",
@@ -107,7 +116,8 @@
    "archive": false,
    "owner": "scalp",
    "reason": "after-hours candidates",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "agent_calibration_events",
@@ -127,7 +137,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "agent_context_refreshes",
@@ -137,7 +148,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "agent_event_queue",
@@ -147,7 +159,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "agent_handoffs",
@@ -157,7 +170,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "agent_recommendation_outcome_links",
@@ -187,7 +201,8 @@
    "archive": false,
    "owner": "notifications",
    "reason": "never consumed; expires_at",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "alert_events",
@@ -197,7 +212,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "alert_occurrences",
@@ -207,7 +223,8 @@
    "archive": false,
    "owner": "notifications",
    "reason": "alert occurrence rows",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "analyst_consensus_history",
@@ -217,7 +234,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "analyst_consensus_history_quarantine_20260913",
@@ -227,7 +245,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "analyst_data_history",
@@ -237,7 +256,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "approval_log",
@@ -247,7 +267,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "article_index",
@@ -257,7 +278,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "asset_intelligence_history",
@@ -267,7 +289,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "atm_decision_log",
@@ -287,7 +310,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "cio_decisions",
@@ -297,7 +321,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "claude_interventions",
@@ -345,9 +370,9 @@
    "class": "DELETE",
    "window_days": 90,
    "archive": false,
-   "archive_first": false,
+   "archive_first": true,
    "owner": "platform",
-   "reason": "db_retention is the SOLE owner of the 90 d age rail (2026-10-11: the hermes librarian's duplicate 90 d purge defers to it, config/hermes_librarian_policy.yaml content_embeddings.max_age_owner); archive_first=false keeps the inherited hard DELETE, set true to archive + tripwire before the delete (takes effect at the next release); source_windows (fused_signal/social_post 30 d) declared but OFF (source_windows_enabled=false, 2026-10-09 audit F: windows on embedding created_at loop; social_post deletion not approved); the one-time junk fused_signal purge stays manual under a db-write grant (TRADEAI_DB_WRITE_GRANT)",
+   "reason": "db_retention is the SOLE owner of the 90 d age rail (2026-10-11: the hermes librarian's duplicate 90 d purge defers to it, config/hermes_librarian_policy.yaml content_embeddings.max_age_owner); archive_first=true (operator 2026-10-11: archive the 90 d rows, then delete): every 90 d delete is archived + manifested + tripwired first; false restores the inherited hard DELETE (takes effect at the next release); source_windows (fused_signal/social_post 30 d) declared but OFF (source_windows_enabled=false, 2026-10-09 audit F: windows on embedding created_at loop; social_post deletion not approved); the one-time junk fused_signal purge stays manual under a db-write grant (TRADEAI_DB_WRITE_GRANT)",
    "since": "2026-10-07",
    "source_windows": {
     "fused_signal": 30,
@@ -368,7 +393,8 @@
    "archive": false,
    "owner": "intel",
    "reason": "links follow content windows",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "curation_loop_audit",
@@ -378,7 +404,8 @@
    "archive": false,
    "owner": "hermes",
    "reason": "curation audit",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "daily_close_cache",
@@ -398,7 +425,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "daily_system_metrics",
@@ -408,7 +436,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "decision_blueprints",
@@ -428,7 +457,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "decision_outcomes",
@@ -438,7 +468,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "decision_packets",
@@ -509,7 +540,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "fused_signals",
@@ -519,7 +551,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "health_agent_snapshots",
@@ -529,7 +562,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "126 MB of toast snapshots",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "hermes_directive_hits_staging",
@@ -539,7 +573,8 @@
    "archive": false,
    "owner": "hermes",
    "reason": "staging rows",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "hermes_discovery_audit",
@@ -549,7 +584,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "hermes_embedding_queue",
@@ -559,7 +595,8 @@
    "archive": false,
    "owner": "hermes",
    "reason": "completed rows kept forever today",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "hermes_external_research",
@@ -609,7 +646,8 @@
    "archive": false,
    "owner": "hermes",
    "reason": "processed queue rows",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "hermes_score_history",
@@ -619,7 +657,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "hermes_validation_findings",
@@ -629,7 +668,8 @@
    "archive": false,
    "owner": "hermes",
    "reason": "validation findings",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "incubator_events",
@@ -649,7 +689,8 @@
    "archive": false,
    "owner": "signals",
    "reason": "cache; 86% older than 90 d",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "inference_ensemble_jobs",
@@ -659,7 +700,8 @@
    "archive": false,
    "owner": "agents",
    "reason": "73% expired",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "intelligence_entities",
@@ -679,7 +721,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "iris_hygiene_log",
@@ -689,7 +732,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "iris_hygiene_pending",
@@ -699,7 +743,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "iris_run_log",
@@ -709,7 +754,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "john_decision_history",
@@ -719,7 +765,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "john_decision_queue",
@@ -729,7 +776,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "llm_consumption_log",
@@ -749,7 +797,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "settled reservations",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "market_ohlcv_bars",
@@ -769,7 +818,8 @@
    "archive": false,
    "owner": "prices",
    "reason": "quote snapshots",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "market_quotes",
@@ -779,7 +829,9 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": false,
+   "archive_first_hold": "OVER_CAP: projected 0.19 GB/month archived (~94k rows/day of quote churn, 66 B/row gz) — the largest non-embedding row; operator decision (packets/retention-all-managed/OPERATOR_DECISION.md D1)"
   },
   {
    "table": "narrative_subjects",
@@ -799,7 +851,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "notification_log",
@@ -809,7 +862,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "options_chain_snapshots",
@@ -839,7 +893,8 @@
    "archive": false,
    "owner": "paper",
    "reason": "paper training rows",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "paper_trade_proposals",
@@ -859,7 +914,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "portfolio_intelligence_events",
@@ -869,7 +925,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "portfolio_snapshots",
@@ -890,7 +947,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "proposal_event_log",
@@ -910,7 +968,8 @@
    "archive": false,
    "owner": "watch",
    "reason": "readiness snapshots",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "proposal_llm_review_queue",
@@ -920,7 +979,8 @@
    "archive": false,
    "owner": "watch",
    "reason": "stuck/expired reviews",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "proposal_technical_snapshots",
@@ -930,7 +990,8 @@
    "archive": false,
    "owner": "watch",
    "reason": "technical snapshots at proposal time",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "rec_ticker_attribution",
@@ -940,7 +1001,8 @@
    "archive": false,
    "owner": "agents",
    "reason": "attribution rows",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "research_insights",
@@ -950,7 +1012,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "run_summary",
@@ -960,7 +1023,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "scalp_ignition_events",
@@ -980,7 +1044,9 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": false,
+   "archive_first_hold": "BROKER-ADJACENT: Schwab stream table, out of scope without an execution grant (AGENTS §0 rule 2); hard DELETE 7 d unchanged; operator decision D2"
   },
   {
    "table": "schwab_stream_quotes",
@@ -990,7 +1056,9 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": false,
+   "archive_first_hold": "BROKER-ADJACENT: Schwab stream table, out of scope without an execution grant (AGENTS §0 rule 2); hard DELETE 7 d unchanged; operator decision D2"
   },
   {
    "table": "scope_governor_audit",
@@ -1000,7 +1068,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "sec_form4",
@@ -1010,7 +1079,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "sentiment_observations",
@@ -1020,7 +1090,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "signal_history",
@@ -1030,7 +1101,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "social_posts",
@@ -1040,7 +1112,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "social_sentiment_history",
@@ -1050,7 +1123,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "state_freshness_history",
@@ -1060,7 +1134,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "strategy_backtest_trades",
@@ -1080,7 +1155,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "strategy_rule_history",
@@ -1090,7 +1166,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "system_health_checks",
@@ -1100,7 +1177,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "system_rollup_daily",
@@ -1110,7 +1188,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "0 rows but 78 MB orphaned TOAST: needs VACUUM FULL once (operator window)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "telegram_outbox",
@@ -1130,7 +1209,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "ticker_snapshot_daily",
@@ -1140,7 +1220,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "trade_ai_scans",
@@ -1150,7 +1231,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "trade_ai_state",
@@ -1160,7 +1242,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "trade_backtest_results",
@@ -1170,7 +1253,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "trade_closed",
@@ -1212,7 +1296,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "watch_decision_refresh_jobs",
@@ -1222,7 +1307,8 @@
    "archive": false,
    "owner": "watch",
    "reason": "job rows; 79% were older than 30 d",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "watch_directive_hits",
@@ -1242,7 +1328,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "watchlist_agent_results",
@@ -1252,7 +1339,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "watchlist_analysis_maturity",
@@ -1262,7 +1350,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "watchlist_entry_plans",
@@ -1282,7 +1371,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "watchlist_final_synthesis",
@@ -1292,7 +1382,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "watchlist_items",
@@ -1312,7 +1403,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "watchlist_strategy_cards",
@@ -1322,7 +1414,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "watchlist_synthesis_safety_history",
@@ -1332,7 +1425,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "yahoo_analyst_targets_history",
@@ -1342,7 +1436,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
+   "since": "2026-10-07",
+   "archive_first": true
   },
   {
    "table": "youtube_transcripts",
@@ -1362,7 +1457,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "enrichment run log (125,666 rows, 31 MB, oldest 2026-05-22 on 2026-10-08); no reader needs more than two quarters; hygiene UNCOVERED_TABLE first nightly run",
-   "since": "2026-10-08"
+   "since": "2026-10-08",
+   "archive_first": true
   },
   {
    "table": "pipeline_runs",
@@ -1372,7 +1468,8 @@
    "archive": false,
    "owner": "platform",
    "reason": "pipeline_run_telemetry rows (92,613 rows, 34 MB, oldest 2026-05-09); freshness monitors read the last days only; hygiene UNCOVERED_TABLE",
-   "since": "2026-10-08"
+   "since": "2026-10-08",
+   "archive_first": true
   },
   {
    "table": "communication_thread_membership",
@@ -1412,7 +1509,505 @@
    "archive": false,
    "owner": "cio",
    "reason": "staging rows drained into cio_directive_hits (37,233 rows, 27 MB, oldest 2026-08-13); drained rows have no reader after a quarter; hygiene UNCOVERED_TABLE",
-   "since": "2026-10-08"
+   "since": "2026-10-08",
+   "archive_first": true
   }
- ]
+ ],
+ "archive_growth_cap_gb_month": 2.0,
+ "archive_total_budget_gb": 25.0,
+ "archive_policy_note": "2026-10-11 retention-all-managed (operator: 'Add, enable, and manage all deletes and purges'): every DELETE row archives first (archive_first true) except the rows carrying archive_first_hold. Projection at 2026-10-11 09:51 ET (db_retention.py --archive-projection, read-only): archive-first rows total ~1.96 GB/month against archive_growth_cap_gb_month 2.0 (content_embeddings alone ~1.57). report_db_hygiene raises ARCHIVE_GROWTH when the last-30-day archive rate exceeds the cap or the archive exceeds archive_total_budget_gb. Archives are never deleted by any job; an off-box copy is an operator decision (AGENTS §17).",
+ "file_prune": [
+  {
+   "id": "raw_snapshots",
+   "dir": "data/portfolios/state/raw_snapshots",
+   "pattern": "*.json",
+   "days": 14,
+   "archive": true,
+   "class": "DERIVED",
+   "owner": "db_retention",
+   "reason": "inherited FILE_PRUNE glob (db_retention.py); raw broker-snapshot JSON copies, regenerable; archive-then-unlink since 2026-10-11",
+   "since": "2026-10-11"
+  },
+  {
+   "id": "ticker_snapshot_history",
+   "dir": "data/portfolios/state/ticker_snapshot_history",
+   "pattern": "*.json",
+   "days": 14,
+   "archive": true,
+   "class": "DERIVED",
+   "owner": "db_retention",
+   "reason": "inherited FILE_PRUNE glob (db_retention.py); per-day ticker snapshot JSON; archive-then-unlink since 2026-10-11",
+   "since": "2026-10-11"
+  },
+  {
+   "id": "ingestion_summaries",
+   "dir": "data/logs",
+   "pattern": "ingestion_summary_*.json",
+   "days": 7,
+   "archive": true,
+   "class": "LOG",
+   "owner": "db_retention",
+   "reason": "inherited FILE_PRUNE glob (db_retention.py); ingestion run summaries; archive-then-unlink since 2026-10-11",
+   "since": "2026-10-11"
+  },
+  {
+   "id": "catalyst_cache",
+   "dir": "data",
+   "pattern": "catalyst_cache_*.json",
+   "days": 3,
+   "archive": true,
+   "class": "DERIVED",
+   "owner": "db_retention",
+   "reason": "inherited FILE_PRUNE glob (db_retention.py); catalyst cache files; archive-then-unlink since 2026-10-11",
+   "since": "2026-10-11"
+  }
+ ],
+ "purge_paths": [
+  {
+   "id": "db_retention",
+   "scripts": [
+    "scripts/db_retention.py",
+    "scripts/pipelines/run_platform_maintenance_pipeline.sh"
+   ],
+   "kind": "DB_PURGE",
+   "targets": "every DELETE / ARCHIVE_THEN_DELETE row of policies[] + file_prune[]",
+   "scheduler": "systemd tradeai-platform-maintenance-nightly.timer 01:15 (CURRENT); ALSO Sun 06:30 tradeai-weekly-disk-cleanup.timer runs it from the DEV tree (second scheduler, OPERATOR_DECISION D6)",
+   "archive": "archive_first per row (93 of 96 DELETE rows + all 29 ARCHIVE_THEN_DELETE); file_prune archive-then-unlink",
+   "state": "MANAGED",
+   "note": "the one owner of table age rails"
+  },
+  {
+   "id": "retention_archive_lib",
+   "scripts": [
+    "scripts/lib/retention_archive.py"
+   ],
+   "kind": "LIBRARY",
+   "targets": "archive_then_delete_batches / managed_purge / archive_files_then_unlink",
+   "scheduler": "n/a (called by the owners)",
+   "archive": "is the archive path",
+   "state": "MANAGED",
+   "note": "the archive-first mechanism itself"
+  },
+  {
+   "id": "hermes_librarian_retention",
+   "scripts": [
+    "scripts/lib/hermes_librarian/retention.py",
+    "scripts/run_hermes_librarian_retention.py"
+   ],
+   "kind": "DB_PURGE",
+   "targets": "hermes_research_intelligence archived >180 d; hermes_embedding_queue failed >14 d; content_embeddings news + hermes_research orphans; (90 d age rail DEFERS to db_retention)",
+   "scheduler": "systemd hermes-librarian-retention.timer 05:10",
+   "archive": "archive_first (config/hermes_librarian_policy.yaml archive_first: true); receipt data/runtime/hermes_librarian_retention_last.json",
+   "state": "MANAGED",
+   "note": "EXTERNAL_POLICY owner of hermes_research_intelligence"
+  },
+  {
+   "id": "siem_retention_purge",
+   "scripts": [
+    "scripts/siem_retention_purge.py"
+   ],
+   "kind": "DB_PURGE",
+   "targets": "system_health_events, alert_events created_at >14 d",
+   "scheduler": "systemd tradeai-platform-maintenance-nightly.timer 01:15 (CURRENT)",
+   "archive": "archive_first (managed_purge; --no-archive lever)",
+   "state": "MANAGED",
+   "note": "alert_events window 14 d here vs 30 d in policies[] -- effective 14 d; OPERATOR_DECISION D5"
+  },
+  {
+   "id": "prune_protection_proposals_retention",
+   "scripts": [
+    "scripts/prune_protection_proposals_retention.py"
+   ],
+   "kind": "DB_PURGE",
+   "targets": "paper_protection_adjustment_proposals SUPERSEDED >30 d",
+   "scheduler": "run_protection_pipeline.sh (cron, every 30 min 09-16 + 20:30)",
+   "archive": "archive_first (managed_purge; --no-archive lever)",
+   "state": "MANAGED",
+   "note": "paper proposals only; touches no stop/order"
+  },
+  {
+   "id": "research_critique_retention",
+   "scripts": [
+    "scripts/research_critique_pipeline.py"
+   ],
+   "kind": "DB_PURGE",
+   "targets": "watch_directives curator-archived >60 d; hermes_research_intelligence archived (updated_at) >45 d; hermes_directive_hits_staging drained >14 d",
+   "scheduler": "cron */15 hermes_coordinator -> hermes_research_curator.py --apply",
+   "archive": "archive_first (managed_purge); dry run now counts only",
+   "state": "MANAGED",
+   "note": "45 d research window conflicts with the librarian's 180 d; OPERATOR_DECISION D5"
+  },
+  {
+   "id": "hermes_self_tune_purge",
+   "scripts": [
+    "scripts/hermes_autonomous_self_tune.py"
+   ],
+   "kind": "DB_PURGE",
+   "targets": "hermes_embedding_queue failed >7 d; hermes_score_history >30 d; hermes_research_intelligence rejected/superseded/expired >180 d; hermes_external_research >180 d; dead tables (archived DELETE replaces TRUNCATE)",
+   "scheduler": "stage manifest config/pipelines/hermes_learning.json (tune) + after_close.json",
+   "archive": "archive_first (managed_purge)",
+   "state": "MANAGED",
+   "note": "score_history and external_research windows are looser than db_retention's (21 d / ATD 90 d), so in practice db_retention deletes first"
+  },
+  {
+   "id": "comms_lifecycle",
+   "scripts": [
+    "scripts/comms_lifecycle.py"
+   ],
+   "kind": "DB_PURGE",
+   "targets": "communication_events + children past TTL, not legal_hold",
+   "scheduler": "cron 17 * * * * --apply",
+   "archive": "own archive (jsonl.gz, count-checked) under archive/comms_lifecycle",
+   "state": "MANAGED_OWN_ARCHIVE",
+   "note": "deletes communication_thread_membership which policies[] marks KEEP_FOREVER -- OPERATOR_DECISION D5"
+  },
+  {
+   "id": "hermes_universe_history_retention",
+   "scripts": [
+    "scripts/hermes_universe_history_retention.py"
+   ],
+   "kind": "FILE_PRUNE",
+   "targets": "data/runtime/hermes_governed_universe_history thinned (>21 d latest-per-day, >90 d all)",
+   "scheduler": "systemd tradeai-platform-maintenance-nightly.timer 01:15 (CURRENT)",
+   "archive": "archive-then-unlink to archive/file_prune/hermes_governed_universe_history (~25x gzip)",
+   "state": "MANAGED",
+   "note": ""
+  },
+  {
+   "id": "db_trim",
+   "scripts": [
+    "scripts/db_trim.py"
+   ],
+   "kind": "DB_PURGE",
+   "targets": "backup-named tables/schemas, duplicate indexes, row trims",
+   "scheduler": "operator-run only",
+   "archive": "own archive (pg_dump / jsonl.gz) + archive/db_trim/TRIPWIRE.jsonl",
+   "state": "MANAGED_OWN_ARCHIVE",
+   "note": "one-off; should require a db-write grant like --junk-fused-signal-embeddings (OPERATOR_DECISION D7)"
+  },
+  {
+   "id": "options_chain_snapshot_prune",
+   "scripts": [
+    "scripts/options_desk_enterprise.py"
+   ],
+   "kind": "DB_PURGE",
+   "targets": "options_chain_snapshots captured_at >45 d (inline per persist + options_iv_snapshot.py cron 15:45)",
+   "scheduler": "cron 45 15 * * 1-5 + API persist",
+   "archive": "none",
+   "state": "UNARCHIVED_DECISION",
+   "note": "policies[] says ARCHIVE_THEN_DELETE 365 d; this 45 d delete runs first so the archive never sees a row. D3"
+  },
+  {
+   "id": "health_agent_snapshot_prune",
+   "scripts": [
+    "scripts/health_agent.py"
+   ],
+   "kind": "DB_PURGE",
+   "targets": "health_agent_snapshots captured_at >90 d",
+   "scheduler": "systemd tradeai-health-agent.timer",
+   "archive": "none",
+   "state": "DEFERS_IN_PRACTICE",
+   "note": "db_retention archives+deletes at 30 d first; this 90 d delete matches nothing. D4 (remove it)"
+  },
+  {
+   "id": "finviz_market_movers_prune",
+   "scripts": [
+    "scripts/finviz_market_movers.py"
+   ],
+   "kind": "DB_PURGE",
+   "targets": "market_movers captured_at >7 d",
+   "scheduler": "cron */15 06-16 M-F",
+   "archive": "none",
+   "state": "UNARCHIVED_DECISION",
+   "note": "table has no policies[] row. D4 (register + defer to db_retention)"
+  },
+  {
+   "id": "hermes_score_history_retention",
+   "scripts": [
+    "scripts/hermes_score_history_retention.py"
+   ],
+   "kind": "DB_PURGE",
+   "targets": "hermes_score_history >21 d thinned to hourly",
+   "scheduler": "stage manifest config/pipelines/hermes_learning.json",
+   "archive": "none",
+   "state": "DEFERS_IN_PRACTICE",
+   "note": "db_retention archives+deletes everything >21 d; third owner of the table. D4"
+  },
+  {
+   "id": "prune_document_mentions",
+   "scripts": [
+    "scripts/prune_document_mentions.py"
+   ],
+   "kind": "DB_PURGE",
+   "targets": "document_mentions orphaned or past the source table's window",
+   "scheduler": "systemd tradeai-platform-maintenance-nightly.timer 01:15 (CURRENT)",
+   "archive": "none",
+   "state": "UNARCHIVED_BY_RULE",
+   "note": "AGENTS 'Mentions: retention' -- a mention is a projection, not evidence; EXTERNAL_POLICY row. Archiving optional (D4)"
+  },
+  {
+   "id": "purge_youtube_transcripts",
+   "scripts": [
+    "scripts/purge_youtube_transcripts.py",
+    "scripts/transcript_processor.py"
+   ],
+   "kind": "DB_PURGE",
+   "targets": "youtube_transcripts purge_after < today",
+   "scheduler": "monthly pipeline tradeai-platform-maintenance-monthly.timer AND live crontab line 28 (inline python, reads .env) -- two schedulers",
+   "archive": "none",
+   "state": "UNARCHIVED_DECISION",
+   "note": "D3: archive-first + retire the inline cron line (cron freeze: operator)"
+  },
+  {
+   "id": "news_symbol_guard",
+   "scripts": [
+    "scripts/news_symbol_guard.py"
+   ],
+   "kind": "DB_PURGE",
+   "targets": "news_articles / catalyst_events / catalyst_symbol_impact rows whose headline does not match the symbol",
+   "scheduler": "API + health_agent remediation",
+   "archive": "none",
+   "state": "UNARCHIVED_DECISION",
+   "note": "condition purge of mis-tagged rows; D3"
+  },
+  {
+   "id": "hermes_source_registry_cleanup",
+   "scripts": [
+    "scripts/hermes_source_registry.py"
+   ],
+   "kind": "DB_PURGE",
+   "targets": "research_sources RSS stub rows",
+   "scheduler": "cron 23:30 hermes_source_curation",
+   "archive": "none",
+   "state": "UNARCHIVED_DECISION",
+   "note": "a few rows; D3"
+  },
+  {
+   "id": "librarian_graph_edges",
+   "scripts": [
+    "scripts/lib/hermes_librarian/graph.py"
+   ],
+   "kind": "DB_PURGE",
+   "targets": "hermes_entity_cooccurrence last_seen >90 d",
+   "scheduler": "no scheduler found",
+   "archive": "none",
+   "state": "UNSCHEDULED",
+   "note": "derived co-occurrence edges"
+  },
+  {
+   "id": "reports_portal_purge",
+   "scripts": [
+    "scripts/reports_portal.py"
+   ],
+   "kind": "OPERATOR_ACTION",
+   "targets": "notification_log / alert_events / telegram_outbox / ai_reports older than N days",
+   "scheduler": "API POST /api/v2/reports/purge (operator)",
+   "archive": "none",
+   "state": "UNARCHIVED_DECISION",
+   "note": "deletes telegram_outbox (ATD 90 in policies[]) without archive; D3"
+  },
+  {
+   "id": "market_quotes_downsample",
+   "scripts": [
+    "scripts/market_quotes_downsample.py"
+   ],
+   "kind": "DB_PURGE",
+   "targets": "market_quotes non-close rows >7 d",
+   "scheduler": "manual",
+   "archive": "none",
+   "state": "UNSCHEDULED",
+   "note": "one-off tool"
+  },
+  {
+   "id": "n8n_ledger_nonces",
+   "scripts": [
+    "scripts/lib/n8n_coordination_ledger.py"
+   ],
+   "kind": "HOUSEKEEPING",
+   "targets": "sqlite nonces exp < now-1h",
+   "scheduler": "inline",
+   "archive": "none",
+   "state": "NOT_DATA",
+   "note": "replay-nonce expiry"
+  },
+  {
+   "id": "one_off_quarantine_tools",
+   "scripts": [
+    "scripts/quarantine_price_spikes.py",
+    "scripts/scrub_ticker_price_outliers.py",
+    "scripts/quarantine_template_identity_links.py",
+    "scripts/purge_error_synthesis.py",
+    "scripts/archive_trade_closed_probe_rows.py"
+   ],
+   "kind": "DB_PURGE",
+   "targets": "condition rows (price spikes, outliers, template links, error syntheses, probe trades)",
+   "scheduler": "manual",
+   "archive": "own archive (quarantine table / json)",
+   "state": "MANAGED_OWN_ARCHIVE",
+   "note": "operator-run one-offs"
+  },
+  {
+   "id": "rebuild_in_place",
+   "scripts": [
+    "scripts/db_adapter.py",
+    "scripts/link_trade_instance_news.py",
+    "scripts/setup_quality_prior.py",
+    "scripts/backtest_profit_protection_rules.py",
+    "scripts/profit_protection_shadow_thresholds.py",
+    "scripts/ingest_trade_intrabar_bars.py",
+    "scripts/proxy_options_scanner.py",
+    "scripts/hermes_private_proxy_research.py",
+    "scripts/journal_agent_coach.py",
+    "scripts/pullback_macd_screener.py",
+    "scripts/remediate_proposal_trade_plans.py",
+    "scripts/watch_directive_dedup.py"
+   ],
+   "kind": "REBUILD",
+   "targets": "delete-then-insert of a derived table/run (same key re-written)",
+   "scheduler": "various",
+   "archive": "n/a",
+   "state": "NOT_RETENTION",
+   "note": "replace-in-place, not age/condition retention"
+  },
+  {
+   "id": "operator_api_deletes",
+   "scripts": [
+    "scripts/api_v2.py",
+    "scripts/api_v3_watch_commands.py",
+    "scripts/journal_trade_in_view.py"
+   ],
+   "kind": "OPERATOR_ACTION",
+   "targets": "an operator removes one row they own (star, filter, topic, block, core registry)",
+   "scheduler": "API",
+   "archive": "n/a",
+   "state": "NOT_RETENTION",
+   "note": "api_v2.py also holds a broker_order_intents delete (BROKER_OUT_OF_SCOPE)"
+  },
+  {
+   "id": "tests_and_probes",
+   "scripts": [
+    "scripts/m2_substrate_check.py",
+    "scripts/validate_classification_rule_engine.py",
+    "scripts/canary_reconcile_test.py"
+   ],
+   "kind": "TEST",
+   "targets": "fixture rows / privilege-denial probes",
+   "scheduler": "manual",
+   "archive": "n/a",
+   "state": "NOT_RETENTION",
+   "note": ""
+  },
+  {
+   "id": "broker_adjacent",
+   "scripts": [
+    "scripts/alpaca_paper_reconciler.py",
+    "scripts/snaptrade_activity_ingest.py",
+    "scripts/schwab_transaction_ingest.py",
+    "scripts/schwab_journal_builder.py",
+    "scripts/positions_sync.py",
+    "scripts/schwab_transport.py",
+    "scripts/stop_lifecycle_monitor.py"
+   ],
+   "kind": "BROKER",
+   "targets": "broker reconciliation / transactions / positions / stops",
+   "scheduler": "cron",
+   "archive": "not investigated",
+   "state": "BROKER_OUT_OF_SCOPE",
+   "note": "AGENTS §0 rule 2: listed only, not modified"
+  },
+  {
+   "id": "rotate_runtime_logs",
+   "scripts": [
+    "scripts/rotate_runtime_logs.sh"
+   ],
+   "kind": "FILE_PRUNE",
+   "targets": "logs/*.log >=100 MB: tail 25 MB gzipped, head discarded, keep 2 .gz",
+   "scheduler": "systemd tradeai-platform-maintenance-nightly.timer 01:15 (CURRENT)",
+   "archive": "partial (tail only)",
+   "state": "UNARCHIVED_DECISION",
+   "note": "LOG; D8"
+  },
+  {
+   "id": "disk_hygiene_enforcer",
+   "scripts": [
+    "scripts/disk_hygiene_enforcer.py",
+    "scripts/weekly_disk_cleanup_notify.py"
+   ],
+   "kind": "FILE_PRUNE",
+   "targets": "old release dirs (keep 2), ~/backups >45/60 d, preclean dirs >7 d",
+   "scheduler": "systemd tradeai-disk-hygiene-enforcer.timer 04:15 + tradeai-weekly-disk-cleanup.timer Sun 06:30",
+   "archive": "none",
+   "state": "UNARCHIVED_DECISION",
+   "note": "DEPLOY/BACKUP; release-local data dirs die with a release; D8"
+  },
+  {
+   "id": "backup_rotation",
+   "scripts": [
+    "scripts/backup_enforcer.py",
+    "linux_launchers/run_pg_backup.sh",
+    "scripts/n8n_lab_backup.sh",
+    "scripts/backup_secrets_state.sh"
+   ],
+   "kind": "FILE_PRUNE",
+   "targets": "pg_dump keep 1 (+ partials <1.5 GB at any age), n8n dumps keep 14, Drive families",
+   "scheduler": "hourly enforcer + 02:30 backup cadence + PMN",
+   "archive": "n/a (rotation of backups)",
+   "state": "UNARCHIVED_DECISION",
+   "note": "backup_enforcer can unlink a dump still being written; only one pg_dump kept; D8"
+  },
+  {
+   "id": "docs_and_artifacts_retention",
+   "scripts": [
+    "scripts/docs_retention.sh",
+    "scripts/artifacts_retention.sh",
+    "scripts/docs_hygiene.py"
+   ],
+   "kind": "FILE_PRUNE",
+   "targets": "dry-run docs keep N, artifacts >7 d",
+   "scheduler": "PMW weekly (docs_retention) / manual",
+   "archive": "none",
+   "state": "UNARCHIVED_DECISION",
+   "note": "DERIVED; D8"
+  },
+  {
+   "id": "portfolio_report_rotation",
+   "scripts": [
+    "scripts/portfolio_news.py",
+    "scripts/portfolio_weekly_report.py",
+    "scripts/portfolio_monthly_report.py",
+    "scripts/portfolio_monthly_synthesis.py"
+   ],
+   "kind": "FILE_PRUNE",
+   "targets": "news history >90 d; weekly keep 8; monthly keep 6",
+   "scheduler": "portfolio orchestrator / weekly / monthly cadences",
+   "archive": "none",
+   "state": "UNARCHIVED_DECISION",
+   "note": "LLM output that cannot be regenerated; D8"
+  },
+  {
+   "id": "scalp_cycle_receipts",
+   "scripts": [
+    "scripts/lib/scalp_cycle_receipt.py"
+   ],
+   "kind": "FILE_PRUNE",
+   "targets": "scalp_cycle_receipts/<day>.jsonl >30 d",
+   "scheduler": "scalp-live cron */5",
+   "archive": "none",
+   "state": "UNARCHIVED_DECISION",
+   "note": "evidence ledger (dir absent today); D8"
+  },
+  {
+   "id": "agent_worktree_retention",
+   "scripts": [
+    "scripts/agent_worktree_retention.py"
+   ],
+   "kind": "FILE_PRUNE",
+   "targets": "merged clean agent worktrees >=3 d",
+   "scheduler": "systemd tradeai-agent-worktree-retention.timer 04:40",
+   "archive": "git history",
+   "state": "NOT_DATA",
+   "note": "DEPLOY"
+  }
+ ],
+ "purge_paths_note": "2026-10-11 retention-all-managed: every script that deletes or purges data is declared here (one entry per owner). check_retention_policy.py --fail-on-new fails on a script with a DELETE FROM / TRUNCATE / managed_purge / archive_then_delete_batches / archive_files_then_unlink call that no entry names. state: MANAGED (archive-first, this registry's mechanism), MANAGED_OWN_ARCHIVE, DEFERS_IN_PRACTICE, UNARCHIVED_BY_RULE, UNARCHIVED_DECISION (listed in the operator decision packet; unchanged), UNSCHEDULED, NOT_RETENTION, NOT_DATA, BROKER_OUT_OF_SCOPE (AGENTS §0 rule 2, listed only)."
 }

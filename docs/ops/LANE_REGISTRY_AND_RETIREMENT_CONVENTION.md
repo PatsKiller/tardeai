@@ -56,6 +56,25 @@ not run. Exit code 0 has been wrong about this system three times.
 Kinds: `file_mtime` (a path), `json_key` (a JSON file plus a dotted key holding
 a timestamp), `db_max` (table plus timestamp column, optional `where`).
 
+### `freshness_contracts`: store freshness beside the lanes (2026-10-11)
+
+A lane has one `output_signal`, and most of them are a log mtime ("the job ran"). The top-level
+`freshness_contracts` list holds the store checks the freshness monitors and `job_coverage_monitor` run ("the
+job wrote rows"). Each contract has these fields:
+
+- `key`
+- an optional producer `lane_id`
+- a `signal` (`db_max` / `file_mtime` / `json_key`)
+- `max_age_hours`
+- `basis` (`lane_due` / `trading_days` / `wall_clock`)
+- `severity`
+- `source`, the file:line of the check it carries
+- `replaces`, the monitor(s) it was taken from
+
+`validate_registry` checks every field, so `check_lane_registry` fails a bad contract. `supervisor_breach_detector`
+raises `STALE_OUTPUT` from these contracts, detect and record only, at most every 30 min. See
+`docs/implementation/n8n-maturity/MONITOR_FOLD_COVERAGE_W1-9.md`.
+
 ### `RETIRED` and `PAUSED` are declared states, not absences
 
 A retired lane keeps its row. Its silence is expected and is reported as
