@@ -218,10 +218,12 @@ def test_existing_n3_n4_contracts_keep_explicit_cron_side_lock_provenance():
     entries = {row["lane_id"]: row for row in json.loads(ALLOWLIST_PATH.read_text())["lanes"]}
     shared_locks = {
         "generate-analyst-daily-digest": "/tmp/analyst_daily_digest.lock",
-        "catalyst-calibration-monitor": "/tmp/catalyst_calibration_monitor.lock",
         "source-attribution-monitor": "/tmp/source_attribution_monitor.lock",
-        "watch-directives-monitor": "/tmp/watch_directives_monitor.lock",
     }
+    # C1 premarket flip (2026-10-11): catalyst-calibration-monitor and watch-directives-monitor became
+    # premarket-data-pipeline steps (cron line verbatim, same lock); their n8n entries were removed.
+    for lane in ("catalyst-calibration-monitor", "watch-directives-monitor"):
+        assert lane not in entries, lane
     for lane, lock in shared_locks.items():
         assert entries[lane]["lock"] == lock
         assert "flock -n " + lock in entries[lane]["source"]

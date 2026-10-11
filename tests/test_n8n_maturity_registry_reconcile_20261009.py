@@ -253,14 +253,18 @@ def test_generated_rows_have_evidence_or_are_flagged_unverified(committed):
     # already). B families top 5 (2026-10-11) made 8 more hand-curated (the retire-batch-1 pattern): 7 RETIRED into
     # the family lanes (superseded_by) plus topic-ingestion re-pointed at scripts/run_family_slot.py. Both merged in
     # train-migration-20261011: 284 - 14 - 8 = 262 generated rows left.
-    assert len(gen) >= 262
+    # C1 premarket flip (2026-10-11) retired 16 more generated rows the same way, made market-regime-collector
+    # hand-curated (schedules reduced to its 16:05 line, which stays on cron) and adopted overnight-batch-tax
+    # unchanged to keep its lane_id stable. Merged in train-migration-2: 262 - 16 - 1 - 1 = 244 generated rows left.
+    assert len(gen) >= 244
     adopted = [r for r in committed["lanes"] if r.get("adopted_from_generator") == R.GENERATOR_VERSION]
     # D3 rows carry an r1_pending block (inert until AGENTS 4.4.0 is ACTIVE) instead of a dispatch block;
-    # build-symbol-profiles-at-0-19 and social-ingest-stocktwits are adopted unchanged only to keep their lane_ids
-    # stable (the generator would re-derive them as build-symbol-profiles / social-ingest).
+    # build-symbol-profiles-at-0-19, social-ingest-stocktwits and overnight-batch-tax are adopted unchanged only to keep
+    # their lane_ids stable (the generator would re-derive them as build-symbol-profiles / social-ingest /
+    # overnight-batch-2).
     assert adopted and all(
         ("dispatch" in r or "r1_pending" in r
-         or r["lane_id"] in ("build-symbol-profiles-at-0-19", "social-ingest-stocktwits"))
+         or r["lane_id"] in ("build-symbol-profiles-at-0-19", "social-ingest-stocktwits", "overnight-batch-tax"))
         and "generated_by" not in r
         for r in adopted
     )

@@ -154,16 +154,16 @@ def test_n3_sender_free_report_and_suggestions_have_receipts():
 
 
 def test_n4_monitors_reuse_cron_locks_and_do_not_allow_destructive_retry_trim():
-    for lane in ("catalyst-calibration-monitor", "source-attribution-monitor", "watch-directives-monitor"):
+    for lane in ("source-attribution-monitor",):
         assert LANES[lane]["lock"] == "/tmp/" + lane.replace("-", "_") + ".lock"
         assert LANES[lane]["lock_kind"] == "flock"
         assert LANES[lane]["dry_run_arg"] == ["--dry-run"]
-    # 2026-10-10 dispatcher shadow wave D1b: refactor W3 split llm_retry_monitor into --no-trim / --trim-only.
-    # The lane is runnable only as the non-destructive half: --no-trim always in the command, never --trim-only,
-    # and no live mode (the trim stays on cron until an operator decides it at cutover).
-    retry = LANES["llm-retry-monitor"]
-    assert retry["command"] == ["$PY", "scripts/llm_retry_monitor.py", "--no-trim"]
-    assert "--trim-only" not in json.dumps(retry) and retry["live_arg"] is None
+    # C1 premarket flip (2026-10-11): catalyst-calibration-monitor, watch-directives-monitor and llm-retry-monitor
+    # became premarket-data-pipeline steps (their cron lines run verbatim in the stage, the trim stays with the
+    # cron command), so their dispatcher entries are gone. A stage step cannot also be an n8n run.
+    # (2026-10-10 D1b: llm-retry-monitor was runnable only as --no-trim, never --trim-only, no live mode.)
+    for lane in ("catalyst-calibration-monitor", "watch-directives-monitor", "llm-retry-monitor"):
+        assert lane not in LANES, lane
     assert "youtube-cookie-health-check" not in LANES
 
 

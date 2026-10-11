@@ -144,9 +144,13 @@ def _stale_contracts(rows: list[dict], prefix: str) -> set[str]:
 
 
 def job_log_lanes(jobs: list[dict], lanes: list[dict]) -> dict[str, set[str]]:
-    """job -> ACTIVE lane_ids running it, for job_coverage_monitor's ("log", file) jobs. Pure."""
-    out: dict[str, set[str]] = {}
+    """job -> ACTIVE lane_ids running it, for job_coverage_monitor's ("log", file) jobs. Pure.
+
+    A matching RETIRED row whose ``superseded_by`` names an ACTIVE lane maps to that successor: the C1 manifest flips
+    (2026-10-11) retire a job's own row into the pipeline stage lane that now runs its cron line verbatim, so the
+    stage lane is the one whose NO_OUTPUT covers the job. A RETIRED row with no live successor maps to nothing."""
     active = {str(ln.get("lane_id")) for ln in lanes if ln.get("state") == "ACTIVE"}
+    out: dict[str, set[str]] = {}
     for j in jobs:
         if (j.get("signal") or ("",))[0] != "log":
             continue

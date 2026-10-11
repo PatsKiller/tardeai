@@ -514,18 +514,16 @@
       "scheduler": {
         "kind": "cron",
         "expression": "0 7 * * *",
-        "match": "scripts/llm_retry_monitor.py",
-        "stage": "shadow",
-        "wave": "D1b"
+        "match": "scripts/llm_retry_monitor.py"
       },
       "expected_cadence_hours": 24,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "file_mtime",
         "path": "data/runtime/llm_retry_health.json"
       },
       "note": "Observed crontab -l 2026-10-08 10:53 EDT. scripts/llm_retry_monitor.py:59 writes health JSON; :62 truncates its event ledger (destructive retention), so not allowlisted.",
-      "state_since": "2026-10-08",
+      "state_since": "2026-10-11",
       "value_class": "Duplicated",
       "recommendation": "MERGE_INTO:P12",
       "rationalization": {
@@ -538,16 +536,34 @@
         "event_driven_candidate": false,
         "f_evidence": "~73 health/monitor mechanisms across cron (23), timers (23), health-tick steps (17), services (4), n8n (6); ≥18 independently check \"is X fresh\""
       },
-      "dispatch": {
-        "mode": "dry_run",
-        "cron": [
-          "0 7 * * *"
-        ],
-        "tz": "America/New_York",
-        "wave": "W3",
-        "class": "monitor",
-        "priority": 4,
-        "retry_policy": "transient-2"
+      "superseded_by": "premarket-data-pipeline",
+      "state_reason": "Superseded by premarket-data-pipeline on 2026-10-11 (C1 manifest flip, operator approval 2026-10-10 ~18:28 ET): cron line cron:L440 commented (`# RETIRED 2026-10-11 c1-manifest premarket `), the command runs verbatim as step llm_retry_monitor with its own lock, timeout and log. Nothing stopped; the owner of the schedule moved.",
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "packets/c1-manifest-flips/premarket/EQUIVALENCE.txt: the live line's command, log, cd root and day-of-week equal step llm_retry_monitor of config/pipelines/premarket.json, and the real runner's --dry-run planned exactly that command. Output equivalence not verified until the stage's first natural --apply summary shows step llm_retry_monitor rc=0 (CORRELATED until then; ESTABLISHED after).",
+      "inventory_id": "cron:L440",
+      "c1_flip": {
+        "manifest": "premarket",
+        "stage": "premarket",
+        "step_id": "llm_retry_monitor",
+        "on": "2026-10-11"
+      },
+      "dispatch_retired": {
+        "on": "2026-10-11",
+        "reason": "absorbed by C1 stage premarket-data-pipeline; a pipeline stage step cannot also be a dispatcher row (its cron line is commented)",
+        "stage": "shadow",
+        "wave": "D1b",
+        "dispatch": {
+          "mode": "dry_run",
+          "cron": [
+            "0 7 * * *"
+          ],
+          "tz": "America/New_York",
+          "wave": "W3",
+          "class": "monitor",
+          "priority": 4,
+          "retry_policy": "transient-2"
+        },
+        "adopted_from_generator": null
       }
     },
     {
@@ -556,18 +572,16 @@
       "scheduler": {
         "kind": "cron",
         "expression": "40 5 * * *",
-        "match": "scripts/catalyst_calibration_monitor.py",
-        "stage": "shadow",
-        "wave": "D2"
+        "match": "scripts/catalyst_calibration_monitor.py"
       },
       "expected_cadence_hours": 24,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "file_mtime",
         "path": "data/runtime/catalyst_calibration_history.json"
       },
       "note": "Observed crontab -l 2026-10-08 10:53 EDT. scripts/catalyst_calibration_monitor.py:75 writes its own monitoring history; --dry-run prints and does not append. This is NOT the catalyst calibration writer.",
-      "state_since": "2026-10-08",
+      "state_since": "2026-10-11",
       "value_class": "Duplicated",
       "recommendation": "MERGE_INTO:P13",
       "rationalization": {
@@ -580,16 +594,34 @@
         "event_driven_candidate": false,
         "f_evidence": "~73 health/monitor mechanisms across cron (23), timers (23), health-tick steps (17), services (4), n8n (6); ≥18 independently check \"is X fresh\""
       },
-      "dispatch": {
-        "mode": "dry_run",
-        "cron": [
-          "40 5 * * *"
-        ],
-        "tz": "America/New_York",
-        "wave": "W3",
-        "class": "monitor",
-        "priority": 4,
-        "retry_policy": "transient-2"
+      "superseded_by": "premarket-data-pipeline",
+      "state_reason": "Superseded by premarket-data-pipeline on 2026-10-11 (C1 manifest flip, operator approval 2026-10-10 ~18:28 ET): cron line cron:L435 commented (`# RETIRED 2026-10-11 c1-manifest premarket `), the command runs verbatim as step catalyst_calibration_monitor with its own lock, timeout and log. Nothing stopped; the owner of the schedule moved.",
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "packets/c1-manifest-flips/premarket/EQUIVALENCE.txt: the live line's command, log, cd root and day-of-week equal step catalyst_calibration_monitor of config/pipelines/premarket.json, and the real runner's --dry-run planned exactly that command. Output equivalence not verified until the stage's first natural --apply summary shows step catalyst_calibration_monitor rc=0 (CORRELATED until then; ESTABLISHED after).",
+      "inventory_id": "cron:L435",
+      "c1_flip": {
+        "manifest": "premarket",
+        "stage": "premarket",
+        "step_id": "catalyst_calibration_monitor",
+        "on": "2026-10-11"
+      },
+      "dispatch_retired": {
+        "on": "2026-10-11",
+        "reason": "absorbed by C1 stage premarket-data-pipeline; a pipeline stage step cannot also be a dispatcher row (its cron line is commented)",
+        "stage": "shadow",
+        "wave": "D2",
+        "dispatch": {
+          "mode": "dry_run",
+          "cron": [
+            "40 5 * * *"
+          ],
+          "tz": "America/New_York",
+          "wave": "W3",
+          "class": "monitor",
+          "priority": 4,
+          "retry_policy": "transient-2"
+        },
+        "adopted_from_generator": null
       }
     },
     {
@@ -641,18 +673,16 @@
       "scheduler": {
         "kind": "cron",
         "expression": "20 6 * * *",
-        "match": "scripts/watch_directives_monitor.py",
-        "stage": "shadow",
-        "wave": "D2"
+        "match": "scripts/watch_directives_monitor.py"
       },
       "expected_cadence_hours": 24,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "file_mtime",
         "path": "data/runtime/watch_directives_history.json"
       },
       "note": "Observed crontab -l 2026-10-08 10:53 EDT. scripts/watch_directives_monitor.py:149 writes its own history; --dry-run does not append; never promotes a directive.",
-      "state_since": "2026-10-08",
+      "state_since": "2026-10-11",
       "value_class": "Duplicated",
       "recommendation": "MERGE_INTO:P10",
       "rationalization": {
@@ -665,16 +695,34 @@
         "event_driven_candidate": false,
         "f_evidence": "~73 health/monitor mechanisms across cron (23), timers (23), health-tick steps (17), services (4), n8n (6); ≥18 independently check \"is X fresh\""
       },
-      "dispatch": {
-        "mode": "dry_run",
-        "cron": [
-          "20 6 * * *"
-        ],
-        "tz": "America/New_York",
-        "wave": "W3",
-        "class": "monitor",
-        "priority": 4,
-        "retry_policy": "transient-2"
+      "superseded_by": "premarket-data-pipeline",
+      "state_reason": "Superseded by premarket-data-pipeline on 2026-10-11 (C1 manifest flip, operator approval 2026-10-10 ~18:28 ET): cron line cron:L444 commented (`# RETIRED 2026-10-11 c1-manifest premarket `), the command runs verbatim as step watch_directives_monitor with its own lock, timeout and log. Nothing stopped; the owner of the schedule moved.",
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "packets/c1-manifest-flips/premarket/EQUIVALENCE.txt: the live line's command, log, cd root and day-of-week equal step watch_directives_monitor of config/pipelines/premarket.json, and the real runner's --dry-run planned exactly that command. Output equivalence not verified until the stage's first natural --apply summary shows step watch_directives_monitor rc=0 (CORRELATED until then; ESTABLISHED after).",
+      "inventory_id": "cron:L444",
+      "c1_flip": {
+        "manifest": "premarket",
+        "stage": "premarket",
+        "step_id": "watch_directives_monitor",
+        "on": "2026-10-11"
+      },
+      "dispatch_retired": {
+        "on": "2026-10-11",
+        "reason": "absorbed by C1 stage premarket-data-pipeline; a pipeline stage step cannot also be a dispatcher row (its cron line is commented)",
+        "stage": "shadow",
+        "wave": "D2",
+        "dispatch": {
+          "mode": "dry_run",
+          "cron": [
+            "20 6 * * *"
+          ],
+          "tz": "America/New_York",
+          "wave": "W3",
+          "class": "monitor",
+          "priority": 4,
+          "retry_policy": "transient-2"
+        },
+        "adopted_from_generator": null
       }
     },
     {
@@ -2667,7 +2715,7 @@
         "match": "scripts/indicator_cache_refresh.py"
       },
       "expected_cadence_hours": 24,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "db_max",
         "table": "indicator_confluence_cache",
@@ -2686,7 +2734,19 @@
         "event_driven_candidate": false,
         "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
       },
-      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible).",
+      "state_since": "2026-10-11",
+      "superseded_by": "premarket-data-pipeline",
+      "state_reason": "Superseded by premarket-data-pipeline on 2026-10-11 (C1 manifest flip, operator approval 2026-10-10 ~18:28 ET): cron line cron:L255 commented (`# RETIRED 2026-10-11 c1-manifest premarket `), the command runs verbatim as step indicator_cache_refresh with its own lock, timeout and log. Nothing stopped; the owner of the schedule moved.",
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "packets/c1-manifest-flips/premarket/EQUIVALENCE.txt: the live line's command, log, cd root and day-of-week equal step indicator_cache_refresh of config/pipelines/premarket.json, and the real runner's --dry-run planned exactly that command. Output equivalence not verified until the stage's first natural --apply summary shows step indicator_cache_refresh rc=0 (CORRELATED until then; ESTABLISHED after).",
+      "inventory_id": "cron:L255",
+      "c1_flip": {
+        "manifest": "premarket",
+        "stage": "premarket",
+        "step_id": "indicator_cache_refresh",
+        "on": "2026-10-11"
+      }
     },
     {
       "lane_id": "persistent-wake-hourly",
@@ -4661,7 +4721,7 @@
         "match": "scripts/build_lesson_candidates.py --apply"
       },
       "expected_cadence_hours": 24.0,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "file_mtime",
         "path": "data/cio/lesson_candidates.jsonl"
@@ -4679,7 +4739,19 @@
         "event_driven_candidate": false,
         "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
       },
-      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible).",
+      "state_since": "2026-10-11",
+      "superseded_by": "premarket-data-pipeline",
+      "state_reason": "Superseded by premarket-data-pipeline on 2026-10-11 (C1 manifest flip, operator approval 2026-10-10 ~18:28 ET): cron line cron:L879 commented (`# RETIRED 2026-10-11 c1-manifest premarket `), the command runs verbatim as step build_lesson_candidates with its own lock, timeout and log. Nothing stopped; the owner of the schedule moved.",
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "packets/c1-manifest-flips/premarket/EQUIVALENCE.txt: the live line's command, log, cd root and day-of-week equal step build_lesson_candidates of config/pipelines/premarket.json, and the real runner's --dry-run planned exactly that command. Output equivalence not verified until the stage's first natural --apply summary shows step build_lesson_candidates rc=0 (CORRELATED until then; ESTABLISHED after).",
+      "inventory_id": "cron:L879",
+      "c1_flip": {
+        "manifest": "premarket",
+        "stage": "premarket",
+        "step_id": "build_lesson_candidates",
+        "on": "2026-10-11"
+      }
     },
     {
       "lane_id": "advisory-outcome-scorer",
@@ -6619,19 +6691,19 @@
       "scheduler": {
         "kind": "cron",
         "expression": "45 5 * * *",
-        "command_text": "run_premarket_data_pipeline.sh --stage premarket --dry-run",
+        "command_text": "run_premarket_data_pipeline.sh --stage premarket --apply",
         "match": "run_premarket_data_pipeline.sh --stage premarket"
       },
       "expected_cadence_hours": 24.0,
       "state": "ACTIVE",
-      "state_since": "2026-10-07",
-      "state_reason": "Tranche B day 0 (2026-10-07 22:40Z, cron grant 69093b20b90691d1, backup ~/.local/state/tradeai/backups/crontab-20261007T224010Z-pre-tranche-b-day0.txt): the stage line is installed in --dry-run for the parallel-run observation — the runner executes nothing in that mode and writes only its PipelineRun@v1 summary; every absorbed line keeps running. Cutover (--apply + absorbed lines commented + their lanes RETIRED) follows per stage once the dry-run summaries match the old lines' receipts (docs/implementation/n8n-parallel/14-execution-week-20261008.md).",
+      "state_since": "2026-10-11",
+      "state_reason": "C1 manifest flip 2026-10-11 (operator approval 2026-10-10 ~18:28 ET, JOB_REDUCTION_DEEP_PASS.md D-1; cron grant <grant id>, backup ~/.local/state/tradeai/backups/crontab-<ts>-pre-c1-premarket.txt): stage line flipped --dry-run -> --apply and the 37 absorbed crontab line(s) commented `# RETIRED 2026-10-11 c1-manifest premarket ` (never deleted). Each step runs its live cron command verbatim with its own lock, timeout and log (equivalence: packets/c1-manifest-flips/premarket/EQUIVALENCE.txt).",
       "output_signal": {
         "kind": "file_mtime",
         "path": "data/runtime/pipeline_premarket_premarket_last.json"
       },
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "Serial sum of medians 2989 s (ends 06:35) and p95 5615 s (ends 07:19) both finish before the 07:30 morning brief (budget to 07:25 = 6000 s); 32/40 steps are PAM-group upper bounds, so the p95 figure is conservative. portfolio_orchestrator (970 s median / 2289 s p95, VERIFIED) and holdings_llm_refresh (356 s, LLM lane) stay parallel; broker_stop_reconcile and snaptrade_activity_ingest are excluded. Dry-run from the served tree 2026-10-07 21:09Z: END ... DRY_RUN=1 with the manifest step count for every stage; crontab non-comment lines 441 -> 449.",
+      "reason_evidence": "Pending: the first natural --apply run's data/runtime/pipeline_premarket_premarket_last.json (overall_status, per-step rc) — the natural-run proof required before the next manifest flips. Dry-run 2026-10-10 against the C1-synced manifest: 37 step(s) planned, ids and commands identical to the live lines.",
       "value_class": "Technical Debt",
       "recommendation": "PIPELINE:P04",
       "rationalization": {
@@ -7975,7 +8047,7 @@
         ]
       },
       "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "file_mtime",
         "path": "data/runtime/opening_intelligence/latest.json",
@@ -8007,6 +8079,18 @@
         "inventory_id": "cron:L789",
         "removed_schedule": "30 3 * * 1-5",
         "reason": "operator-approved retire batch 1 2026-10-09 (inventory: no consumer / never runs / idle; evidence ~/n8n-maturity-verification/cron-inventory/retire_check_R*.csv): the 03:30 line (L789) PEAK_SKIPs every weekday under run_with_deepseek_offpeak.sh; the 07:00 line (L790, this row) and opening-intelligence-render (L791, 09:15) keep latest.json fresh. Row stays ACTIVE because it also declares L790; expected_cadence_hours 68.5 -> 72.0 (Fri 07:00 -> Mon 07:00)."
+      },
+      "state_since": "2026-10-11",
+      "superseded_by": "premarket-data-pipeline",
+      "state_reason": "Superseded by premarket-data-pipeline on 2026-10-11 (C1 manifest flip, operator approval 2026-10-10 ~18:28 ET): cron line cron:L793 commented (`# RETIRED 2026-10-11 c1-manifest premarket `), the command runs verbatim as step opening_intelligence with its own lock, timeout and log. Nothing stopped; the owner of the schedule moved.",
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "packets/c1-manifest-flips/premarket/EQUIVALENCE.txt: the live line's command, log, cd root and day-of-week equal step opening_intelligence of config/pipelines/premarket.json, and the real runner's --dry-run planned exactly that command. Output equivalence not verified until the stage's first natural --apply summary shows step opening_intelligence rc=0 (CORRELATED until then; ESTABLISHED after).",
+      "inventory_id": "cron:L793",
+      "c1_flip": {
+        "manifest": "premarket",
+        "stage": "premarket",
+        "step_id": "opening_intelligence",
+        "on": "2026-10-11"
       }
     },
     {
@@ -8822,12 +8906,10 @@
       "scheduler": {
         "kind": "cron",
         "expression": "35 6 * * 1-5",
-        "match": "scripts/classify_candidates.py",
-        "stage": "shadow",
-        "wave": "D1b"
+        "match": "scripts/classify_candidates.py"
       },
       "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "json_key",
         "path": "data/portfolios/state/classification_review_queue.json",
@@ -8847,22 +8929,40 @@
         "event_driven_candidate": false,
         "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
       },
-      "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-10-10",
       "adopted_reason": "dispatcher shadow wave D1b: a row carrying a reviewed dispatch block is hand-maintained (AGENTS §23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop the block.",
       "reconciled_on": "2026-10-09",
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
-      "dispatch": {
-        "mode": "dry_run",
-        "cron": [
-          "35 6 * * 1-5"
-        ],
-        "tz": "America/New_York",
-        "wave": "W3",
-        "class": "report",
-        "priority": 5,
-        "retry_policy": "transient-2"
+      "state_since": "2026-10-11",
+      "superseded_by": "premarket-data-pipeline",
+      "state_reason": "Superseded by premarket-data-pipeline on 2026-10-11 (C1 manifest flip, operator approval 2026-10-10 ~18:28 ET): cron line cron:L204 commented (`# RETIRED 2026-10-11 c1-manifest premarket `), the command runs verbatim as step classify_candidates with its own lock, timeout and log. Nothing stopped; the owner of the schedule moved.",
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "packets/c1-manifest-flips/premarket/EQUIVALENCE.txt: the live line's command, log, cd root and day-of-week equal step classify_candidates of config/pipelines/premarket.json, and the real runner's --dry-run planned exactly that command. Output equivalence not verified until the stage's first natural --apply summary shows step classify_candidates rc=0 (CORRELATED until then; ESTABLISHED after).",
+      "inventory_id": "cron:L204",
+      "c1_flip": {
+        "manifest": "premarket",
+        "stage": "premarket",
+        "step_id": "classify_candidates",
+        "on": "2026-10-11"
+      },
+      "dispatch_retired": {
+        "on": "2026-10-11",
+        "reason": "absorbed by C1 stage premarket-data-pipeline; a pipeline stage step cannot also be a dispatcher row (its cron line is commented)",
+        "stage": "shadow",
+        "wave": "D1b",
+        "dispatch": {
+          "mode": "dry_run",
+          "cron": [
+            "35 6 * * 1-5"
+          ],
+          "tz": "America/New_York",
+          "wave": "W3",
+          "class": "report",
+          "priority": 5,
+          "retry_policy": "transient-2"
+        },
+        "adopted_from_generator": "reconcile_lane_registry@v1"
       }
     },
     {
@@ -8871,12 +8971,10 @@
       "scheduler": {
         "kind": "cron",
         "expression": "45 6 * * 1-5",
-        "match": "scripts/sync_watchlist_items_to_db.py",
-        "stage": "shadow",
-        "wave": "D1b"
+        "match": "scripts/sync_watchlist_items_to_db.py"
       },
       "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/watchlist_sync.log",
@@ -8894,22 +8992,40 @@
         "event_driven_candidate": false,
         "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
       },
-      "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-10-10",
       "adopted_reason": "dispatcher shadow wave D1b: a row carrying a reviewed dispatch block is hand-maintained (AGENTS §23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop the block.",
       "reconciled_on": "2026-10-09",
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
-      "dispatch": {
-        "mode": "dry_run",
-        "cron": [
-          "45 6 * * 1-5"
-        ],
-        "tz": "America/New_York",
-        "wave": "W3",
-        "class": "pipeline",
-        "priority": 5,
-        "retry_policy": "transient-2"
+      "state_since": "2026-10-11",
+      "superseded_by": "premarket-data-pipeline",
+      "state_reason": "Superseded by premarket-data-pipeline on 2026-10-11 (C1 manifest flip, operator approval 2026-10-10 ~18:28 ET): cron line cron:L210 commented (`# RETIRED 2026-10-11 c1-manifest premarket `), the command runs verbatim as step sync_watchlist_items_to_db with its own lock, timeout and log. Nothing stopped; the owner of the schedule moved.",
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "packets/c1-manifest-flips/premarket/EQUIVALENCE.txt: the live line's command, log, cd root and day-of-week equal step sync_watchlist_items_to_db of config/pipelines/premarket.json, and the real runner's --dry-run planned exactly that command. Output equivalence not verified until the stage's first natural --apply summary shows step sync_watchlist_items_to_db rc=0 (CORRELATED until then; ESTABLISHED after).",
+      "inventory_id": "cron:L210",
+      "c1_flip": {
+        "manifest": "premarket",
+        "stage": "premarket",
+        "step_id": "sync_watchlist_items_to_db",
+        "on": "2026-10-11"
+      },
+      "dispatch_retired": {
+        "on": "2026-10-11",
+        "reason": "absorbed by C1 stage premarket-data-pipeline; a pipeline stage step cannot also be a dispatcher row (its cron line is commented)",
+        "stage": "shadow",
+        "wave": "D1b",
+        "dispatch": {
+          "mode": "dry_run",
+          "cron": [
+            "45 6 * * 1-5"
+          ],
+          "tz": "America/New_York",
+          "wave": "W3",
+          "class": "pipeline",
+          "priority": 5,
+          "retry_policy": "transient-2"
+        },
+        "adopted_from_generator": "reconcile_lane_registry@v1"
       }
     },
     {
@@ -8966,12 +9082,10 @@
       "scheduler": {
         "kind": "cron",
         "expression": "55 6 * * 1-5",
-        "match": "scripts/materialize_income_engine.py",
-        "stage": "shadow",
-        "wave": "D1b"
+        "match": "scripts/materialize_income_engine.py"
       },
       "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/income_engine.log",
@@ -8989,22 +9103,40 @@
         "event_driven_candidate": false,
         "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
       },
-      "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-10-10",
       "adopted_reason": "dispatcher shadow wave D1b: a row carrying a reviewed dispatch block is hand-maintained (AGENTS §23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop the block.",
       "reconciled_on": "2026-10-09",
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
-      "dispatch": {
-        "mode": "dry_run",
-        "cron": [
-          "55 6 * * 1-5"
-        ],
-        "tz": "America/New_York",
-        "wave": "W3",
-        "class": "pipeline",
-        "priority": 5,
-        "retry_policy": "transient-2"
+      "state_since": "2026-10-11",
+      "superseded_by": "premarket-data-pipeline",
+      "state_reason": "Superseded by premarket-data-pipeline on 2026-10-11 (C1 manifest flip, operator approval 2026-10-10 ~18:28 ET): cron line cron:L220 commented (`# RETIRED 2026-10-11 c1-manifest premarket `), the command runs verbatim as step materialize_income_engine with its own lock, timeout and log. Nothing stopped; the owner of the schedule moved.",
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "packets/c1-manifest-flips/premarket/EQUIVALENCE.txt: the live line's command, log, cd root and day-of-week equal step materialize_income_engine of config/pipelines/premarket.json, and the real runner's --dry-run planned exactly that command. Output equivalence not verified until the stage's first natural --apply summary shows step materialize_income_engine rc=0 (CORRELATED until then; ESTABLISHED after).",
+      "inventory_id": "cron:L220",
+      "c1_flip": {
+        "manifest": "premarket",
+        "stage": "premarket",
+        "step_id": "materialize_income_engine",
+        "on": "2026-10-11"
+      },
+      "dispatch_retired": {
+        "on": "2026-10-11",
+        "reason": "absorbed by C1 stage premarket-data-pipeline; a pipeline stage step cannot also be a dispatcher row (its cron line is commented)",
+        "stage": "shadow",
+        "wave": "D1b",
+        "dispatch": {
+          "mode": "dry_run",
+          "cron": [
+            "55 6 * * 1-5"
+          ],
+          "tz": "America/New_York",
+          "wave": "W3",
+          "class": "pipeline",
+          "priority": 5,
+          "retry_policy": "transient-2"
+        },
+        "adopted_from_generator": "reconcile_lane_registry@v1"
       }
     },
     {
@@ -9110,12 +9242,10 @@
       "scheduler": {
         "kind": "cron",
         "expression": "0 6 * * 1-5",
-        "match": "scripts/strategy_backtester.py",
-        "stage": "shadow",
-        "wave": "D1b"
+        "match": "scripts/strategy_backtester.py"
       },
       "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/strategy_backtester.log",
@@ -9133,22 +9263,40 @@
         "event_driven_candidate": false,
         "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
       },
-      "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-10-10",
       "adopted_reason": "dispatcher shadow wave D1b: a row carrying a reviewed dispatch block is hand-maintained (AGENTS §23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop the block.",
       "reconciled_on": "2026-10-09",
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
-      "dispatch": {
-        "mode": "dry_run",
-        "cron": [
-          "0 6 * * 1-5"
-        ],
-        "tz": "America/New_York",
-        "wave": "W3",
-        "class": "heavy",
-        "priority": 7,
-        "retry_policy": "transient-1-slow"
+      "state_since": "2026-10-11",
+      "superseded_by": "premarket-data-pipeline",
+      "state_reason": "Superseded by premarket-data-pipeline on 2026-10-11 (C1 manifest flip, operator approval 2026-10-10 ~18:28 ET): cron line cron:L352 commented (`# RETIRED 2026-10-11 c1-manifest premarket `), the command runs verbatim as step strategy_backtester with its own lock, timeout and log. Nothing stopped; the owner of the schedule moved.",
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "packets/c1-manifest-flips/premarket/EQUIVALENCE.txt: the live line's command, log, cd root and day-of-week equal step strategy_backtester of config/pipelines/premarket.json, and the real runner's --dry-run planned exactly that command. Output equivalence not verified until the stage's first natural --apply summary shows step strategy_backtester rc=0 (CORRELATED until then; ESTABLISHED after).",
+      "inventory_id": "cron:L352",
+      "c1_flip": {
+        "manifest": "premarket",
+        "stage": "premarket",
+        "step_id": "strategy_backtester",
+        "on": "2026-10-11"
+      },
+      "dispatch_retired": {
+        "on": "2026-10-11",
+        "reason": "absorbed by C1 stage premarket-data-pipeline; a pipeline stage step cannot also be a dispatcher row (its cron line is commented)",
+        "stage": "shadow",
+        "wave": "D1b",
+        "dispatch": {
+          "mode": "dry_run",
+          "cron": [
+            "0 6 * * 1-5"
+          ],
+          "tz": "America/New_York",
+          "wave": "W3",
+          "class": "heavy",
+          "priority": 7,
+          "retry_policy": "transient-1-slow"
+        },
+        "adopted_from_generator": "reconcile_lane_registry@v1"
       }
     },
     {
@@ -9157,12 +9305,10 @@
       "scheduler": {
         "kind": "cron",
         "expression": "10 6 * * 1-5",
-        "match": "scripts/backtest_history_snapshot.py",
-        "stage": "shadow",
-        "wave": "D1b"
+        "match": "scripts/backtest_history_snapshot.py"
       },
       "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/backtest_history_snapshot.log",
@@ -9180,22 +9326,40 @@
         "event_driven_candidate": false,
         "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
       },
-      "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-10-10",
       "adopted_reason": "dispatcher shadow wave D1b: a row carrying a reviewed dispatch block is hand-maintained (AGENTS §23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop the block.",
       "reconciled_on": "2026-10-09",
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
-      "dispatch": {
-        "mode": "dry_run",
-        "cron": [
-          "10 6 * * 1-5"
-        ],
-        "tz": "America/New_York",
-        "wave": "W3",
-        "class": "pipeline",
-        "priority": 5,
-        "retry_policy": "transient-2"
+      "state_since": "2026-10-11",
+      "superseded_by": "premarket-data-pipeline",
+      "state_reason": "Superseded by premarket-data-pipeline on 2026-10-11 (C1 manifest flip, operator approval 2026-10-10 ~18:28 ET): cron line cron:L363 commented (`# RETIRED 2026-10-11 c1-manifest premarket `), the command runs verbatim as step backtest_history_snapshot with its own lock, timeout and log. Nothing stopped; the owner of the schedule moved.",
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "packets/c1-manifest-flips/premarket/EQUIVALENCE.txt: the live line's command, log, cd root and day-of-week equal step backtest_history_snapshot of config/pipelines/premarket.json, and the real runner's --dry-run planned exactly that command. Output equivalence not verified until the stage's first natural --apply summary shows step backtest_history_snapshot rc=0 (CORRELATED until then; ESTABLISHED after).",
+      "inventory_id": "cron:L363",
+      "c1_flip": {
+        "manifest": "premarket",
+        "stage": "premarket",
+        "step_id": "backtest_history_snapshot",
+        "on": "2026-10-11"
+      },
+      "dispatch_retired": {
+        "on": "2026-10-11",
+        "reason": "absorbed by C1 stage premarket-data-pipeline; a pipeline stage step cannot also be a dispatcher row (its cron line is commented)",
+        "stage": "shadow",
+        "wave": "D1b",
+        "dispatch": {
+          "mode": "dry_run",
+          "cron": [
+            "10 6 * * 1-5"
+          ],
+          "tz": "America/New_York",
+          "wave": "W3",
+          "class": "pipeline",
+          "priority": 5,
+          "retry_policy": "transient-2"
+        },
+        "adopted_from_generator": "reconcile_lane_registry@v1"
       }
     },
     {
@@ -9298,12 +9462,10 @@
       "scheduler": {
         "kind": "cron",
         "expression": "40 6 * * 1-5",
-        "match": "scripts/refresh_symbol_cards.py",
-        "stage": "shadow",
-        "wave": "D1b"
+        "match": "scripts/refresh_symbol_cards.py"
       },
       "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "file_mtime",
         "path": "data/runtime/symbol_cards_latest.json",
@@ -9322,22 +9484,40 @@
         "event_driven_candidate": false,
         "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
       },
-      "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-10-10",
       "adopted_reason": "dispatcher shadow wave D1b: a row carrying a reviewed dispatch block is hand-maintained (AGENTS §23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop the block.",
       "reconciled_on": "2026-10-09",
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
-      "dispatch": {
-        "mode": "dry_run",
-        "cron": [
-          "40 6 * * 1-5"
-        ],
-        "tz": "America/New_York",
-        "wave": "W3",
-        "class": "pipeline",
-        "priority": 5,
-        "retry_policy": "transient-2"
+      "state_since": "2026-10-11",
+      "superseded_by": "premarket-data-pipeline",
+      "state_reason": "Superseded by premarket-data-pipeline on 2026-10-11 (C1 manifest flip, operator approval 2026-10-10 ~18:28 ET): cron line cron:L502 commented (`# RETIRED 2026-10-11 c1-manifest premarket `), the command runs verbatim as step refresh_symbol_cards with its own lock, timeout and log. Nothing stopped; the owner of the schedule moved.",
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "packets/c1-manifest-flips/premarket/EQUIVALENCE.txt: the live line's command, log, cd root and day-of-week equal step refresh_symbol_cards of config/pipelines/premarket.json, and the real runner's --dry-run planned exactly that command. Output equivalence not verified until the stage's first natural --apply summary shows step refresh_symbol_cards rc=0 (CORRELATED until then; ESTABLISHED after).",
+      "inventory_id": "cron:L502",
+      "c1_flip": {
+        "manifest": "premarket",
+        "stage": "premarket",
+        "step_id": "refresh_symbol_cards",
+        "on": "2026-10-11"
+      },
+      "dispatch_retired": {
+        "on": "2026-10-11",
+        "reason": "absorbed by C1 stage premarket-data-pipeline; a pipeline stage step cannot also be a dispatcher row (its cron line is commented)",
+        "stage": "shadow",
+        "wave": "D1b",
+        "dispatch": {
+          "mode": "dry_run",
+          "cron": [
+            "40 6 * * 1-5"
+          ],
+          "tz": "America/New_York",
+          "wave": "W3",
+          "class": "pipeline",
+          "priority": 5,
+          "retry_policy": "transient-2"
+        },
+        "adopted_from_generator": "reconcile_lane_registry@v1"
       }
     },
     {
@@ -9744,12 +9924,10 @@
       "scheduler": {
         "kind": "cron",
         "expression": "20 6 * * 1-5",
-        "match": "scripts/backtest_results_aggregator.py",
-        "stage": "shadow",
-        "wave": "D2"
+        "match": "scripts/backtest_results_aggregator.py"
       },
       "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/backtest_results_aggregator.log",
@@ -9767,22 +9945,40 @@
         "event_driven_candidate": false,
         "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
       },
-      "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-10-10",
       "adopted_reason": "dispatcher shadow wave D2: a row carrying a reviewed dispatch block is hand-maintained (AGENTS §23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop the block.",
       "reconciled_on": "2026-10-09",
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
-      "dispatch": {
-        "mode": "dry_run",
-        "cron": [
-          "20 6 * * 1-5"
-        ],
-        "tz": "America/New_York",
-        "wave": "W3",
-        "class": "pipeline",
-        "priority": 5,
-        "retry_policy": "transient-2"
+      "state_since": "2026-10-11",
+      "superseded_by": "premarket-data-pipeline",
+      "state_reason": "Superseded by premarket-data-pipeline on 2026-10-11 (C1 manifest flip, operator approval 2026-10-10 ~18:28 ET): cron line cron:L605 commented (`# RETIRED 2026-10-11 c1-manifest premarket `), the command runs verbatim as step backtest_results_aggregator with its own lock, timeout and log. Nothing stopped; the owner of the schedule moved.",
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "packets/c1-manifest-flips/premarket/EQUIVALENCE.txt: the live line's command, log, cd root and day-of-week equal step backtest_results_aggregator of config/pipelines/premarket.json, and the real runner's --dry-run planned exactly that command. Output equivalence not verified until the stage's first natural --apply summary shows step backtest_results_aggregator rc=0 (CORRELATED until then; ESTABLISHED after).",
+      "inventory_id": "cron:L605",
+      "c1_flip": {
+        "manifest": "premarket",
+        "stage": "premarket",
+        "step_id": "backtest_results_aggregator",
+        "on": "2026-10-11"
+      },
+      "dispatch_retired": {
+        "on": "2026-10-11",
+        "reason": "absorbed by C1 stage premarket-data-pipeline; a pipeline stage step cannot also be a dispatcher row (its cron line is commented)",
+        "stage": "shadow",
+        "wave": "D2",
+        "dispatch": {
+          "mode": "dry_run",
+          "cron": [
+            "20 6 * * 1-5"
+          ],
+          "tz": "America/New_York",
+          "wave": "W3",
+          "class": "pipeline",
+          "priority": 5,
+          "retry_policy": "transient-2"
+        },
+        "adopted_from_generator": "reconcile_lane_registry@v1"
       }
     },
     {
@@ -9887,12 +10083,10 @@
       "scheduler": {
         "kind": "cron",
         "expression": "52 6 * * *",
-        "match": "scripts/cio_draft_plan_hygiene.py",
-        "stage": "shadow",
-        "wave": "D2"
+        "match": "scripts/cio_draft_plan_hygiene.py"
       },
       "expected_cadence_hours": 24.0,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "file_mtime",
         "path": "~/logs/cio_draft_hygiene.log",
@@ -9910,22 +10104,40 @@
         "event_driven_candidate": false,
         "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
       },
-      "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-10-10",
       "adopted_reason": "dispatcher shadow wave D2: a row carrying a reviewed dispatch block is hand-maintained (AGENTS §23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop the block.",
       "reconciled_on": "2026-10-09",
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
-      "dispatch": {
-        "mode": "dry_run",
-        "cron": [
-          "52 6 * * *"
-        ],
-        "tz": "America/New_York",
-        "wave": "W3",
-        "class": "hygiene",
-        "priority": 5,
-        "retry_policy": "transient-2"
+      "state_since": "2026-10-11",
+      "superseded_by": "premarket-data-pipeline",
+      "state_reason": "Superseded by premarket-data-pipeline on 2026-10-11 (C1 manifest flip, operator approval 2026-10-10 ~18:28 ET): cron line cron:L911 commented (`# RETIRED 2026-10-11 c1-manifest premarket `), the command runs verbatim as step cio_draft_plan_hygiene with its own lock, timeout and log. Nothing stopped; the owner of the schedule moved.",
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "packets/c1-manifest-flips/premarket/EQUIVALENCE.txt: the live line's command, log, cd root and day-of-week equal step cio_draft_plan_hygiene of config/pipelines/premarket.json, and the real runner's --dry-run planned exactly that command. Output equivalence not verified until the stage's first natural --apply summary shows step cio_draft_plan_hygiene rc=0 (CORRELATED until then; ESTABLISHED after).",
+      "inventory_id": "cron:L911",
+      "c1_flip": {
+        "manifest": "premarket",
+        "stage": "premarket",
+        "step_id": "cio_draft_plan_hygiene",
+        "on": "2026-10-11"
+      },
+      "dispatch_retired": {
+        "on": "2026-10-11",
+        "reason": "absorbed by C1 stage premarket-data-pipeline; a pipeline stage step cannot also be a dispatcher row (its cron line is commented)",
+        "stage": "shadow",
+        "wave": "D2",
+        "dispatch": {
+          "mode": "dry_run",
+          "cron": [
+            "52 6 * * *"
+          ],
+          "tz": "America/New_York",
+          "wave": "W3",
+          "class": "hygiene",
+          "priority": 5,
+          "retry_policy": "transient-2"
+        },
+        "adopted_from_generator": "reconcile_lane_registry@v1"
       }
     },
     {
@@ -10138,12 +10350,10 @@
         "kind": "cron",
         "expression": "30 5 * * *",
         "match": "scripts/catalyst_calibration.py",
-        "stage": "shadow",
-        "wave": "D3",
         "command_text": "cd $PROJ && flock -n /tmp/catalyst_calibration.lock $PY scripts/catalyst_calibration.py >> logs/catalyst_calibration.log 2>&1"
       },
       "expected_cadence_hours": 24.0,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "json_key",
         "path": "data/runtime/catalyst_calibration_last.json",
@@ -10164,19 +10374,37 @@
       "reconciled_on": "2026-10-09",
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
-      "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-10-10",
       "adopted_reason": "dispatcher shadow wave D3 (R1): a row carrying a reviewed r1_pending / dispatch block is hand-maintained (AGENTS §23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop the block.",
-      "dispatch": {
-        "mode": "dry_run",
-        "cron": [
-          "30 5 * * *"
-        ],
-        "tz": "America/New_York",
-        "wave": "W3",
-        "class": "learn",
-        "priority": 5,
-        "retry_policy": "none"
+      "state_since": "2026-10-11",
+      "superseded_by": "premarket-data-pipeline",
+      "state_reason": "Superseded by premarket-data-pipeline on 2026-10-11 (C1 manifest flip, operator approval 2026-10-10 ~18:28 ET): cron line cron:L408 commented (`# RETIRED 2026-10-11 c1-manifest premarket `), the command runs verbatim as step catalyst_calibration with its own lock, timeout and log. Nothing stopped; the owner of the schedule moved.",
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "packets/c1-manifest-flips/premarket/EQUIVALENCE.txt: the live line's command, log, cd root and day-of-week equal step catalyst_calibration of config/pipelines/premarket.json, and the real runner's --dry-run planned exactly that command. Output equivalence not verified until the stage's first natural --apply summary shows step catalyst_calibration rc=0 (CORRELATED until then; ESTABLISHED after).",
+      "inventory_id": "cron:L408",
+      "c1_flip": {
+        "manifest": "premarket",
+        "stage": "premarket",
+        "step_id": "catalyst_calibration",
+        "on": "2026-10-11"
+      },
+      "dispatch_retired": {
+        "on": "2026-10-11",
+        "reason": "absorbed by C1 stage premarket-data-pipeline; a pipeline stage step cannot also be a dispatcher row (its cron line is commented)",
+        "stage": "shadow",
+        "wave": "D3",
+        "dispatch": {
+          "mode": "dry_run",
+          "cron": [
+            "30 5 * * *"
+          ],
+          "tz": "America/New_York",
+          "wave": "W3",
+          "class": "learn",
+          "priority": 5,
+          "retry_policy": "none"
+        },
+        "adopted_from_generator": "reconcile_lane_registry@v1"
       }
     },
     {
@@ -10577,12 +10805,10 @@
         "kind": "cron",
         "expression": "45 6 * * 1-5",
         "match": "scripts/build_symbol_profiles.py --watchlist-top",
-        "stage": "shadow",
-        "wave": "D3",
         "command_text": "cd $PROJ && flock -n /tmp/symprofiles_wl.lock $PY scripts/build_symbol_profiles.py --watchlist-top 300 >> logs/symbol_profiles_watchlist.log 2>&1  # watchlist card sector/description coverage (operator 2026-06-18)"
       },
       "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "json_key",
         "path": "data/runtime/build_symbol_profiles_watchlist_last.json",
@@ -10603,19 +10829,37 @@
       "reconciled_on": "2026-10-09",
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
-      "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-10-10",
       "adopted_reason": "dispatcher shadow wave D3 (R1): a row carrying a reviewed r1_pending / dispatch block is hand-maintained (AGENTS §23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop the block.",
-      "dispatch": {
-        "mode": "dry_run",
-        "cron": [
-          "45 6 * * 1-5"
-        ],
-        "tz": "America/New_York",
-        "wave": "W3",
-        "class": "ingest",
-        "priority": 5,
-        "retry_policy": "none"
+      "state_since": "2026-10-11",
+      "superseded_by": "premarket-data-pipeline",
+      "state_reason": "Superseded by premarket-data-pipeline on 2026-10-11 (C1 manifest flip, operator approval 2026-10-10 ~18:28 ET): cron line cron:L508 commented (`# RETIRED 2026-10-11 c1-manifest premarket `), the command runs verbatim as step build_symbol_profiles with its own lock, timeout and log. Nothing stopped; the owner of the schedule moved.",
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "packets/c1-manifest-flips/premarket/EQUIVALENCE.txt: the live line's command, log, cd root and day-of-week equal step build_symbol_profiles of config/pipelines/premarket.json, and the real runner's --dry-run planned exactly that command. Output equivalence not verified until the stage's first natural --apply summary shows step build_symbol_profiles rc=0 (CORRELATED until then; ESTABLISHED after).",
+      "inventory_id": "cron:L508",
+      "c1_flip": {
+        "manifest": "premarket",
+        "stage": "premarket",
+        "step_id": "build_symbol_profiles",
+        "on": "2026-10-11"
+      },
+      "dispatch_retired": {
+        "on": "2026-10-11",
+        "reason": "absorbed by C1 stage premarket-data-pipeline; a pipeline stage step cannot also be a dispatcher row (its cron line is commented)",
+        "stage": "shadow",
+        "wave": "D3",
+        "dispatch": {
+          "mode": "dry_run",
+          "cron": [
+            "45 6 * * 1-5"
+          ],
+          "tz": "America/New_York",
+          "wave": "W3",
+          "class": "ingest",
+          "priority": 5,
+          "retry_policy": "none"
+        },
+        "adopted_from_generator": "reconcile_lane_registry@v1"
       }
     },
     {
@@ -10625,12 +10869,10 @@
         "kind": "cron",
         "expression": "35 6 * * 1-5",
         "match": "scripts/earnings_enrich.py\"",
-        "stage": "shadow",
-        "wave": "D3",
         "command_text": "cd $PROJ && flock -n /tmp/earnings_enrich.lock bash -c \"set -a; . ./.env; set +a; $PY scripts/earnings_enrich.py\" >> logs/earnings_enrich.log 2>&1  # daily: next earnings date + last beat/miss for held stocks (card layer)"
       },
       "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "json_key",
         "path": "data/runtime/earnings_enrich_last.json",
@@ -10651,19 +10893,37 @@
       "reconciled_on": "2026-10-09",
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
-      "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-10-10",
       "adopted_reason": "dispatcher shadow wave D3 (R1): a row carrying a reviewed r1_pending / dispatch block is hand-maintained (AGENTS §23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop the block.",
-      "dispatch": {
-        "mode": "dry_run",
-        "cron": [
-          "35 6 * * 1-5"
-        ],
-        "tz": "America/New_York",
-        "wave": "W3",
-        "class": "ingest",
-        "priority": 5,
-        "retry_policy": "none"
+      "state_since": "2026-10-11",
+      "superseded_by": "premarket-data-pipeline",
+      "state_reason": "Superseded by premarket-data-pipeline on 2026-10-11 (C1 manifest flip, operator approval 2026-10-10 ~18:28 ET): cron line cron:L551 commented (`# RETIRED 2026-10-11 c1-manifest premarket `), the command runs verbatim as step earnings_enrich with its own lock, timeout and log. Nothing stopped; the owner of the schedule moved.",
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "packets/c1-manifest-flips/premarket/EQUIVALENCE.txt: the live line's command, log, cd root and day-of-week equal step earnings_enrich of config/pipelines/premarket.json, and the real runner's --dry-run planned exactly that command. Output equivalence not verified until the stage's first natural --apply summary shows step earnings_enrich rc=0 (CORRELATED until then; ESTABLISHED after).",
+      "inventory_id": "cron:L551",
+      "c1_flip": {
+        "manifest": "premarket",
+        "stage": "premarket",
+        "step_id": "earnings_enrich",
+        "on": "2026-10-11"
+      },
+      "dispatch_retired": {
+        "on": "2026-10-11",
+        "reason": "absorbed by C1 stage premarket-data-pipeline; a pipeline stage step cannot also be a dispatcher row (its cron line is commented)",
+        "stage": "shadow",
+        "wave": "D3",
+        "dispatch": {
+          "mode": "dry_run",
+          "cron": [
+            "35 6 * * 1-5"
+          ],
+          "tz": "America/New_York",
+          "wave": "W3",
+          "class": "ingest",
+          "priority": 5,
+          "retry_policy": "none"
+        },
+        "adopted_from_generator": "reconcile_lane_registry@v1"
       }
     },
     {
@@ -10673,12 +10933,10 @@
         "kind": "cron",
         "expression": "38 6 * * 1-5",
         "match": "scripts/fund_technicals_enrich.py\"",
-        "stage": "shadow",
-        "wave": "D3",
         "command_text": "cd $PROJ && flock -n /tmp/fund_technicals.lock bash -c \"set -a; . ./.env; set +a; $PY scripts/fund_technicals_enrich.py\" >> logs/fund_technicals.log 2>&1  # daily: RSI/W/M/YTD for mutual funds (Finviz does not cover funds)"
       },
       "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "json_key",
         "path": "data/runtime/fund_technicals_enrich_last.json",
@@ -10699,19 +10957,37 @@
       "reconciled_on": "2026-10-09",
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
-      "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-10-10",
       "adopted_reason": "dispatcher shadow wave D3 (R1): a row carrying a reviewed r1_pending / dispatch block is hand-maintained (AGENTS §23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop the block.",
-      "dispatch": {
-        "mode": "dry_run",
-        "cron": [
-          "38 6 * * 1-5"
-        ],
-        "tz": "America/New_York",
-        "wave": "W3",
-        "class": "ingest",
-        "priority": 5,
-        "retry_policy": "none"
+      "state_since": "2026-10-11",
+      "superseded_by": "premarket-data-pipeline",
+      "state_reason": "Superseded by premarket-data-pipeline on 2026-10-11 (C1 manifest flip, operator approval 2026-10-10 ~18:28 ET): cron line cron:L552 commented (`# RETIRED 2026-10-11 c1-manifest premarket `), the command runs verbatim as step fund_technicals_enrich with its own lock, timeout and log. Nothing stopped; the owner of the schedule moved.",
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "packets/c1-manifest-flips/premarket/EQUIVALENCE.txt: the live line's command, log, cd root and day-of-week equal step fund_technicals_enrich of config/pipelines/premarket.json, and the real runner's --dry-run planned exactly that command. Output equivalence not verified until the stage's first natural --apply summary shows step fund_technicals_enrich rc=0 (CORRELATED until then; ESTABLISHED after).",
+      "inventory_id": "cron:L552",
+      "c1_flip": {
+        "manifest": "premarket",
+        "stage": "premarket",
+        "step_id": "fund_technicals_enrich",
+        "on": "2026-10-11"
+      },
+      "dispatch_retired": {
+        "on": "2026-10-11",
+        "reason": "absorbed by C1 stage premarket-data-pipeline; a pipeline stage step cannot also be a dispatcher row (its cron line is commented)",
+        "stage": "shadow",
+        "wave": "D3",
+        "dispatch": {
+          "mode": "dry_run",
+          "cron": [
+            "38 6 * * 1-5"
+          ],
+          "tz": "America/New_York",
+          "wave": "W3",
+          "class": "ingest",
+          "priority": 5,
+          "retry_policy": "none"
+        },
+        "adopted_from_generator": "reconcile_lane_registry@v1"
       }
     },
     {
@@ -10721,12 +10997,10 @@
         "kind": "cron",
         "expression": "42 6 * * 1-5",
         "match": "scripts/distributions_enrich.py\"",
-        "stage": "shadow",
-        "wave": "D3",
         "command_text": "cd $PROJ && flock -n /tmp/distributions_enrich.lock bash -c \"set -a; . ./.env; set +a; $PY scripts/distributions_enrich.py\" >> logs/distributions_enrich.log 2>&1  # daily: fund/ETF distribution schedule (next/last/cadence/ttm)"
       },
       "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "json_key",
         "path": "data/runtime/distributions_enrich_last.json",
@@ -10747,19 +11021,37 @@
       "reconciled_on": "2026-10-09",
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
-      "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-10-10",
       "adopted_reason": "dispatcher shadow wave D3 (R1): a row carrying a reviewed r1_pending / dispatch block is hand-maintained (AGENTS §23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop the block.",
-      "dispatch": {
-        "mode": "dry_run",
-        "cron": [
-          "42 6 * * 1-5"
-        ],
-        "tz": "America/New_York",
-        "wave": "W3",
-        "class": "ingest",
-        "priority": 5,
-        "retry_policy": "none"
+      "state_since": "2026-10-11",
+      "superseded_by": "premarket-data-pipeline",
+      "state_reason": "Superseded by premarket-data-pipeline on 2026-10-11 (C1 manifest flip, operator approval 2026-10-10 ~18:28 ET): cron line cron:L553 commented (`# RETIRED 2026-10-11 c1-manifest premarket `), the command runs verbatim as step distributions_enrich with its own lock, timeout and log. Nothing stopped; the owner of the schedule moved.",
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "packets/c1-manifest-flips/premarket/EQUIVALENCE.txt: the live line's command, log, cd root and day-of-week equal step distributions_enrich of config/pipelines/premarket.json, and the real runner's --dry-run planned exactly that command. Output equivalence not verified until the stage's first natural --apply summary shows step distributions_enrich rc=0 (CORRELATED until then; ESTABLISHED after).",
+      "inventory_id": "cron:L553",
+      "c1_flip": {
+        "manifest": "premarket",
+        "stage": "premarket",
+        "step_id": "distributions_enrich",
+        "on": "2026-10-11"
+      },
+      "dispatch_retired": {
+        "on": "2026-10-11",
+        "reason": "absorbed by C1 stage premarket-data-pipeline; a pipeline stage step cannot also be a dispatcher row (its cron line is commented)",
+        "stage": "shadow",
+        "wave": "D3",
+        "dispatch": {
+          "mode": "dry_run",
+          "cron": [
+            "42 6 * * 1-5"
+          ],
+          "tz": "America/New_York",
+          "wave": "W3",
+          "class": "ingest",
+          "priority": 5,
+          "retry_policy": "none"
+        },
+        "adopted_from_generator": "reconcile_lane_registry@v1"
       }
     },
     {
@@ -10817,12 +11109,10 @@
         "kind": "cron",
         "expression": "50 5 * * 1-5",
         "match": "scripts/mint_identity_registry.py",
-        "stage": "shadow",
-        "wave": "D3",
         "command_text": "cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/tradeai_mint_identity_registry.lock $PY scripts/mint_identity_registry.py --apply >> logs/mint_identity_registry.log 2>&1"
       },
       "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "json_key",
         "path": "data/runtime/mint-identity-registry_last.json",
@@ -10843,19 +11133,37 @@
       "reconciled_on": "2026-10-09",
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
-      "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-10-10",
       "adopted_reason": "dispatcher shadow wave D3 (R1): a row carrying a reviewed r1_pending / dispatch block is hand-maintained (AGENTS §23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop the block.",
-      "dispatch": {
-        "mode": "dry_run",
-        "cron": [
-          "50 5 * * 1-5"
-        ],
-        "tz": "America/New_York",
-        "wave": "W3",
-        "class": "ingest",
-        "priority": 5,
-        "retry_policy": "none"
+      "state_since": "2026-10-11",
+      "superseded_by": "premarket-data-pipeline",
+      "state_reason": "Superseded by premarket-data-pipeline on 2026-10-11 (C1 manifest flip, operator approval 2026-10-10 ~18:28 ET): cron line cron:L880 commented (`# RETIRED 2026-10-11 c1-manifest premarket `), the command runs verbatim as step mint_identity_registry with its own lock, timeout and log. Nothing stopped; the owner of the schedule moved.",
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "packets/c1-manifest-flips/premarket/EQUIVALENCE.txt: the live line's command, log, cd root and day-of-week equal step mint_identity_registry of config/pipelines/premarket.json, and the real runner's --dry-run planned exactly that command. Output equivalence not verified until the stage's first natural --apply summary shows step mint_identity_registry rc=0 (CORRELATED until then; ESTABLISHED after).",
+      "inventory_id": "cron:L880",
+      "c1_flip": {
+        "manifest": "premarket",
+        "stage": "premarket",
+        "step_id": "mint_identity_registry",
+        "on": "2026-10-11"
+      },
+      "dispatch_retired": {
+        "on": "2026-10-11",
+        "reason": "absorbed by C1 stage premarket-data-pipeline; a pipeline stage step cannot also be a dispatcher row (its cron line is commented)",
+        "stage": "shadow",
+        "wave": "D3",
+        "dispatch": {
+          "mode": "dry_run",
+          "cron": [
+            "50 5 * * 1-5"
+          ],
+          "tz": "America/New_York",
+          "wave": "W3",
+          "class": "ingest",
+          "priority": 5,
+          "retry_policy": "none"
+        },
+        "adopted_from_generator": "reconcile_lane_registry@v1"
       }
     },
     {
@@ -12665,6 +12973,776 @@
       "retire_batch": "b-families-top5"
     },
     {
+      "lane_id": "price-db-sync",
+      "owner": "portfolio",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "20 7 * * 1-5",
+        "match": "scripts/price_db_sync.py"
+      },
+      "expected_cadence_hours": 72.0,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/price_db_sync.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Duplicated",
+      "recommendation": "MERGE_INTO:P01",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L183",
+        "pipeline": "P01",
+        "value_class": "Duplicated",
+        "recommendation": "MERGE_INTO:P01",
+        "f_recommendation": "CONSOLIDATE → P01 quote service",
+        "event_driven_candidate": false,
+        "f_evidence": "same quote-writer overlap as above; ticker_prices 22.1M writes since 09-20"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "state_since": "2026-10-11",
+      "superseded_by": "premarket-data-pipeline",
+      "state_reason": "Superseded by premarket-data-pipeline on 2026-10-11 (C1 manifest flip, operator approval 2026-10-10 ~18:28 ET): cron line cron:L183 commented (`# RETIRED 2026-10-11 c1-manifest premarket `), the command runs verbatim as step price_db_sync with its own lock, timeout and log. Nothing stopped; the owner of the schedule moved.",
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "packets/c1-manifest-flips/premarket/EQUIVALENCE.txt: the live line's command, log, cd root and day-of-week equal step price_db_sync of config/pipelines/premarket.json, and the real runner's --dry-run planned exactly that command. Output equivalence not verified until the stage's first natural --apply summary shows step price_db_sync rc=0 (CORRELATED until then; ESTABLISHED after).",
+      "inventory_id": "cron:L183",
+      "c1_flip": {
+        "manifest": "premarket",
+        "stage": "premarket",
+        "step_id": "price_db_sync",
+        "on": "2026-10-11"
+      }
+    },
+    {
+      "lane_id": "market-regime-collector",
+      "owner": "portfolio",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "5 16 * * 1-5",
+        "match": "scripts/market_regime_collector.py",
+        "schedules": [
+          "5 16 * * 1-5"
+        ]
+      },
+      "expected_cadence_hours": 72.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/regime_collector.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Duplicated",
+      "recommendation": "MERGE_INTO:P01",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L199",
+        "pipeline": "P01",
+        "value_class": "Duplicated",
+        "recommendation": "MERGE_INTO:P01",
+        "f_recommendation": "CONSOLIDATE into P01 (already a pipeline step or quiet prewarm)",
+        "event_driven_candidate": false,
+        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base): Fri 16:05 -> Mon 16:05 once the 06:30 line is absorbed",
+      "c1_note": "C1 2026-10-11: cron:L199 (step premarket/premarket/market_regime_collector_am) absorbed by premarket-data-pipeline; the row stays ACTIVE for its other live line(s) and retires when the last one is absorbed. Schedules reduced to the 16:05 slot (L213, `5 16 * * 1-5 ... market_regime_collector.py --apply && ... market_regime_classifier.py --apply`), which stays on cron: after_close is not admissible (operator ruling 2026-10-11), so this row is NOT retired. Hand-curated from 2026-10-11 so the reconciler keeps the reduced schedule."
+    },
+    {
+      "lane_id": "market-regime-classifier",
+      "owner": "portfolio",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "35 6 * * 1-5",
+        "match": "$PROJ && $PY scripts/market_regime_classifier.py",
+        "match_basis": "SHORTEST_UNIQUE_WINDOW"
+      },
+      "expected_cadence_hours": 72.0,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/regime_classifier.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Duplicated",
+      "recommendation": "MERGE_INTO:P01",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L205",
+        "pipeline": "P01",
+        "value_class": "Duplicated",
+        "recommendation": "MERGE_INTO:P01",
+        "f_recommendation": "CONSOLIDATE into P01 (already a pipeline step or quiet prewarm)",
+        "event_driven_candidate": false,
+        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "state_since": "2026-10-11",
+      "superseded_by": "premarket-data-pipeline",
+      "state_reason": "Superseded by premarket-data-pipeline on 2026-10-11 (C1 manifest flip, operator approval 2026-10-10 ~18:28 ET): cron line cron:L205 commented (`# RETIRED 2026-10-11 c1-manifest premarket `), the command runs verbatim as step market_regime_classifier with its own lock, timeout and log. Nothing stopped; the owner of the schedule moved.",
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "packets/c1-manifest-flips/premarket/EQUIVALENCE.txt: the live line's command, log, cd root and day-of-week equal step market_regime_classifier of config/pipelines/premarket.json, and the real runner's --dry-run planned exactly that command. Output equivalence not verified until the stage's first natural --apply summary shows step market_regime_classifier rc=0 (CORRELATED until then; ESTABLISHED after).",
+      "inventory_id": "cron:L205",
+      "c1_flip": {
+        "manifest": "premarket",
+        "stage": "premarket",
+        "step_id": "market_regime_classifier",
+        "on": "2026-10-11"
+      }
+    },
+    {
+      "lane_id": "sync-dividend-data",
+      "owner": "portfolio",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "5 7 * * 1-5",
+        "match": "scripts/sync_dividend_data.py"
+      },
+      "expected_cadence_hours": 72.0,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/dividend_sync.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Duplicated",
+      "recommendation": "MERGE_INTO:P01",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L216",
+        "pipeline": "P01",
+        "value_class": "Duplicated",
+        "recommendation": "MERGE_INTO:P01",
+        "f_recommendation": "CONSOLIDATE into P01 (already a pipeline step or quiet prewarm)",
+        "event_driven_candidate": false,
+        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "state_since": "2026-10-11",
+      "superseded_by": "premarket-data-pipeline",
+      "state_reason": "Superseded by premarket-data-pipeline on 2026-10-11 (C1 manifest flip, operator approval 2026-10-10 ~18:28 ET): cron line cron:L216 commented (`# RETIRED 2026-10-11 c1-manifest premarket `), the command runs verbatim as step sync_dividend_data with its own lock, timeout and log. Nothing stopped; the owner of the schedule moved.",
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "packets/c1-manifest-flips/premarket/EQUIVALENCE.txt: the live line's command, log, cd root and day-of-week equal step sync_dividend_data of config/pipelines/premarket.json, and the real runner's --dry-run planned exactly that command. Output equivalence not verified until the stage's first natural --apply summary shows step sync_dividend_data rc=0 (CORRELATED until then; ESTABLISHED after).",
+      "inventory_id": "cron:L216",
+      "c1_flip": {
+        "manifest": "premarket",
+        "stage": "premarket",
+        "step_id": "sync_dividend_data",
+        "on": "2026-10-11"
+      }
+    },
+    {
+      "lane_id": "fred-data-ingest",
+      "owner": "portfolio",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "15 6 * * *",
+        "match": "scripts/fred_data_ingest.py"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/fred_data_ingest.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Duplicated",
+      "recommendation": "MERGE_INTO:P01",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L248",
+        "pipeline": "P01",
+        "value_class": "Duplicated",
+        "recommendation": "MERGE_INTO:P01",
+        "f_recommendation": "CONSOLIDATE into P01 (already a pipeline step or quiet prewarm)",
+        "event_driven_candidate": false,
+        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "state_since": "2026-10-11",
+      "superseded_by": "premarket-data-pipeline",
+      "state_reason": "Superseded by premarket-data-pipeline on 2026-10-11 (C1 manifest flip, operator approval 2026-10-10 ~18:28 ET): cron line cron:L248 commented (`# RETIRED 2026-10-11 c1-manifest premarket `), the command runs verbatim as step fred_data_ingest with its own lock, timeout and log. Nothing stopped; the owner of the schedule moved.",
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "packets/c1-manifest-flips/premarket/EQUIVALENCE.txt: the live line's command, log, cd root and day-of-week equal step fred_data_ingest of config/pipelines/premarket.json, and the real runner's --dry-run planned exactly that command. Output equivalence not verified until the stage's first natural --apply summary shows step fred_data_ingest rc=0 (CORRELATED until then; ESTABLISHED after).",
+      "inventory_id": "cron:L248",
+      "c1_flip": {
+        "manifest": "premarket",
+        "stage": "premarket",
+        "step_id": "fred_data_ingest",
+        "on": "2026-10-11"
+      }
+    },
+    {
+      "lane_id": "overnight-batch-tax",
+      "owner": "portfolio",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "35 6 * * 1",
+        "match": "scripts/overnight_batch.py --tax-sweep"
+      },
+      "expected_cadence_hours": 168.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/tax_sweep.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Operationally Important",
+      "recommendation": "PIPELINE:P14",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L342",
+        "pipeline": "P14",
+        "value_class": "Operationally Important",
+        "recommendation": "PIPELINE:P14",
+        "f_recommendation": "CONSOLIDATE-into P14",
+        "event_driven_candidate": false,
+        "f_evidence": "Unverified use: no consumer check run for this line"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-10-11",
+      "adopted_reason": "C1 premarket flip: adopted unchanged to keep its lane_id stable. Once the same script's overnight-batch-outcomes row is hand-curated (RETIRED into premarket-data-pipeline), the generator would re-derive this row as `overnight-batch-2` (a rename with no change on the host)."
+    },
+    {
+      "lane_id": "iris-proposal-curator",
+      "owner": "proposals",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "20 7 * * *",
+        "match": "scripts/iris_proposal_curator.py"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/iris_proposal_curator.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Duplicated",
+      "recommendation": "MERGE_INTO:P07",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L391",
+        "pipeline": "P07",
+        "value_class": "Duplicated",
+        "recommendation": "MERGE_INTO:P07",
+        "f_recommendation": "CONSOLIDATE into P07 (already a pipeline step or quiet prewarm)",
+        "event_driven_candidate": false,
+        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "state_since": "2026-10-11",
+      "superseded_by": "premarket-data-pipeline",
+      "state_reason": "Superseded by premarket-data-pipeline on 2026-10-11 (C1 manifest flip, operator approval 2026-10-10 ~18:28 ET): cron line cron:L391 commented (`# RETIRED 2026-10-11 c1-manifest premarket `), the command runs verbatim as step iris_proposal_curator with its own lock, timeout and log. Nothing stopped; the owner of the schedule moved.",
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "packets/c1-manifest-flips/premarket/EQUIVALENCE.txt: the live line's command, log, cd root and day-of-week equal step iris_proposal_curator of config/pipelines/premarket.json, and the real runner's --dry-run planned exactly that command. Output equivalence not verified until the stage's first natural --apply summary shows step iris_proposal_curator rc=0 (CORRELATED until then; ESTABLISHED after).",
+      "inventory_id": "cron:L391",
+      "c1_flip": {
+        "manifest": "premarket",
+        "stage": "premarket",
+        "step_id": "iris_proposal_curator",
+        "on": "2026-10-11"
+      }
+    },
+    {
+      "lane_id": "source-outcome-attribution",
+      "owner": "learning",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "45 5 * * *",
+        "match": "scripts/source_outcome_attribution.py"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/source_vetting_actions_latest.json",
+        "evidence": "SCRIPT_RECEIPT",
+        "evidence_ref": "scripts/source_vetting_ladder.py:18,63 ACTIONS.write_text(updated_at, actions) - last step of the attribution->maturity->vetting chain (source_maturity.py:21,126 also writes source_maturity_latest.json); host mtime 2026-10-09T05:45:02"
+      },
+      "value_class": "Duplicated",
+      "recommendation": "MERGE_INTO:P13",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L431",
+        "pipeline": "P13",
+        "value_class": "Duplicated",
+        "recommendation": "MERGE_INTO:P13",
+        "f_recommendation": "CONSOLIDATE into P13 (already a pipeline step or quiet prewarm)",
+        "event_driven_candidate": false,
+        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "state_since": "2026-10-11",
+      "superseded_by": "premarket-data-pipeline",
+      "state_reason": "Superseded by premarket-data-pipeline on 2026-10-11 (C1 manifest flip, operator approval 2026-10-10 ~18:28 ET): cron line cron:L431 commented (`# RETIRED 2026-10-11 c1-manifest premarket `), the command runs verbatim as step source_outcome_attribution with its own lock, timeout and log. Nothing stopped; the owner of the schedule moved.",
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "packets/c1-manifest-flips/premarket/EQUIVALENCE.txt: the live line's command, log, cd root and day-of-week equal step source_outcome_attribution of config/pipelines/premarket.json, and the real runner's --dry-run planned exactly that command. Output equivalence not verified until the stage's first natural --apply summary shows step source_outcome_attribution rc=0 (CORRELATED until then; ESTABLISHED after).",
+      "inventory_id": "cron:L431",
+      "c1_flip": {
+        "manifest": "premarket",
+        "stage": "premarket",
+        "step_id": "source_outcome_attribution",
+        "on": "2026-10-11"
+      }
+    },
+    {
+      "lane_id": "recommendation-intelligence-engine",
+      "owner": "learning",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "10 7 * * *",
+        "match": "scripts/recommendation_intelligence_engine.py"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/rec_source_quality_latest.json",
+        "evidence": "SCRIPT_RECEIPT",
+        "evidence_ref": "scripts/recommendation_intelligence_engine.py:527 compute_source_quality() writes latest multipliers every run (called :831); host mtime 2026-10-09T07:10:07"
+      },
+      "value_class": "Duplicated",
+      "recommendation": "MERGE_INTO:P13",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L503",
+        "pipeline": "P13",
+        "value_class": "Duplicated",
+        "recommendation": "MERGE_INTO:P13",
+        "f_recommendation": "CONSOLIDATE into P13 (already a pipeline step or quiet prewarm)",
+        "event_driven_candidate": false,
+        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "state_since": "2026-10-11",
+      "superseded_by": "premarket-data-pipeline",
+      "state_reason": "Superseded by premarket-data-pipeline on 2026-10-11 (C1 manifest flip, operator approval 2026-10-10 ~18:28 ET): cron line cron:L503 commented (`# RETIRED 2026-10-11 c1-manifest premarket `), the command runs verbatim as step recommendation_intelligence_engine with its own lock, timeout and log. Nothing stopped; the owner of the schedule moved.",
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "packets/c1-manifest-flips/premarket/EQUIVALENCE.txt: the live line's command, log, cd root and day-of-week equal step recommendation_intelligence_engine of config/pipelines/premarket.json, and the real runner's --dry-run planned exactly that command. Output equivalence not verified until the stage's first natural --apply summary shows step recommendation_intelligence_engine rc=0 (CORRELATED until then; ESTABLISHED after).",
+      "inventory_id": "cron:L503",
+      "c1_flip": {
+        "manifest": "premarket",
+        "stage": "premarket",
+        "step_id": "recommendation_intelligence_engine",
+        "on": "2026-10-11"
+      }
+    },
+    {
+      "lane_id": "register-analyst-sources",
+      "owner": "research",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "40 5 * * *",
+        "match": "scripts/register_analyst_sources.py"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/analyst_sources.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Duplicated",
+      "recommendation": "MERGE_INTO:P03",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L589",
+        "pipeline": "P03",
+        "value_class": "Duplicated",
+        "recommendation": "MERGE_INTO:P03",
+        "f_recommendation": "CONSOLIDATE into P03 (already a pipeline step or quiet prewarm)",
+        "event_driven_candidate": false,
+        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "state_since": "2026-10-11",
+      "superseded_by": "premarket-data-pipeline",
+      "state_reason": "Superseded by premarket-data-pipeline on 2026-10-11 (C1 manifest flip, operator approval 2026-10-10 ~18:28 ET): cron line cron:L589 commented (`# RETIRED 2026-10-11 c1-manifest premarket `), the command runs verbatim as step register_analyst_sources with its own lock, timeout and log. Nothing stopped; the owner of the schedule moved.",
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "packets/c1-manifest-flips/premarket/EQUIVALENCE.txt: the live line's command, log, cd root and day-of-week equal step register_analyst_sources of config/pipelines/premarket.json, and the real runner's --dry-run planned exactly that command. Output equivalence not verified until the stage's first natural --apply summary shows step register_analyst_sources rc=0 (CORRELATED until then; ESTABLISHED after).",
+      "inventory_id": "cron:L589",
+      "c1_flip": {
+        "manifest": "premarket",
+        "stage": "premarket",
+        "step_id": "register_analyst_sources",
+        "on": "2026-10-11"
+      }
+    },
+    {
+      "lane_id": "overnight-batch-outcomes",
+      "owner": "portfolio",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "40 5 * * *",
+        "match": "scripts/overnight_batch.py --outcomes"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/overnight_outcomes.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Duplicated",
+      "recommendation": "MERGE_INTO:P14",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L597",
+        "pipeline": "P14",
+        "value_class": "Duplicated",
+        "recommendation": "MERGE_INTO:P14",
+        "f_recommendation": "CONSOLIDATE into P14 (already a pipeline step or quiet prewarm)",
+        "event_driven_candidate": false,
+        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "state_since": "2026-10-11",
+      "superseded_by": "premarket-data-pipeline",
+      "state_reason": "Superseded by premarket-data-pipeline on 2026-10-11 (C1 manifest flip, operator approval 2026-10-10 ~18:28 ET): cron line cron:L597 commented (`# RETIRED 2026-10-11 c1-manifest premarket `), the command runs verbatim as step overnight_batch_outcomes with its own lock, timeout and log. Nothing stopped; the owner of the schedule moved.",
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "packets/c1-manifest-flips/premarket/EQUIVALENCE.txt: the live line's command, log, cd root and day-of-week equal step overnight_batch_outcomes of config/pipelines/premarket.json, and the real runner's --dry-run planned exactly that command. Output equivalence not verified until the stage's first natural --apply summary shows step overnight_batch_outcomes rc=0 (CORRELATED until then; ESTABLISHED after).",
+      "inventory_id": "cron:L597",
+      "c1_flip": {
+        "manifest": "premarket",
+        "stage": "premarket",
+        "step_id": "overnight_batch_outcomes",
+        "on": "2026-10-11"
+      }
+    },
+    {
+      "lane_id": "run-sec-form4-momentum-context",
+      "owner": "research",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "45 5 * * 1-5",
+        "match": "scripts/run_sec_form4_momentum_context.py"
+      },
+      "expected_cadence_hours": 72.0,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/sec_form4_momentum_context_latest.json",
+        "key": "generated_at",
+        "evidence": "SCRIPT_RECEIPT",
+        "evidence_ref": "scripts/run_sec_form4_momentum_context.py:27 CONTEXT_ARTIFACT written with --apply (:127; skipped only if DB unavailable); host mtime 2026-10-09T09:49:03 (05:45 start, long run; log ends 09:49:03)"
+      },
+      "value_class": "Duplicated",
+      "recommendation": "MERGE_INTO:P03",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L640",
+        "pipeline": "P03",
+        "value_class": "Duplicated",
+        "recommendation": "MERGE_INTO:P03",
+        "f_recommendation": "CONSOLIDATE into P03 (already a pipeline step or quiet prewarm)",
+        "event_driven_candidate": false,
+        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "state_since": "2026-10-11",
+      "superseded_by": "premarket-data-pipeline",
+      "state_reason": "Superseded by premarket-data-pipeline on 2026-10-11 (C1 manifest flip, operator approval 2026-10-10 ~18:28 ET): cron line cron:L643 commented (`# RETIRED 2026-10-11 c1-manifest premarket `), the command runs verbatim as step sec_form4_momentum_context with its own lock, timeout and log. Nothing stopped; the owner of the schedule moved.",
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "packets/c1-manifest-flips/premarket/EQUIVALENCE.txt: the live line's command, log, cd root and day-of-week equal step sec_form4_momentum_context of config/pipelines/premarket.json, and the real runner's --dry-run planned exactly that command. Output equivalence not verified until the stage's first natural --apply summary shows step sec_form4_momentum_context rc=0 (CORRELATED until then; ESTABLISHED after).",
+      "inventory_id": "cron:L643",
+      "c1_flip": {
+        "manifest": "premarket",
+        "stage": "premarket",
+        "step_id": "sec_form4_momentum_context",
+        "on": "2026-10-11"
+      }
+    },
+    {
+      "lane_id": "volatility-tier-refresh",
+      "owner": "portfolio",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "45 6 * * 1-5",
+        "match": "scripts/volatility_tier_refresh.py"
+      },
+      "expected_cadence_hours": 72.0,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/state/volatility_tiers_latest.json",
+        "evidence": "SCRIPT_RECEIPT",
+        "evidence_ref": "scripts/volatility_tier_refresh.py:27 STATE_OUT; host mtime 2026-10-09T06:45:02"
+      },
+      "value_class": "Technical Debt",
+      "recommendation": "KEEP_ON_CRON",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L719",
+        "pipeline": "P01",
+        "value_class": "Technical Debt",
+        "recommendation": "MIGRATE_N8N",
+        "f_recommendation": "INVESTIGATE then REDESIGN",
+        "event_driven_candidate": false,
+        "f_evidence": "log stale (cron audit)"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "stay_on_cron": {
+        "class": "broker_order",
+        "token": "stop",
+        "source": "config/lane_stay_on_cron_tokens.json"
+      },
+      "state_since": "2026-10-11",
+      "superseded_by": "premarket-data-pipeline",
+      "state_reason": "Superseded by premarket-data-pipeline on 2026-10-11 (C1 manifest flip, operator approval 2026-10-10 ~18:28 ET): cron line cron:L722 commented (`# RETIRED 2026-10-11 c1-manifest premarket `), the command runs verbatim as step volatility_tier_refresh with its own lock, timeout and log. Nothing stopped; the owner of the schedule moved.",
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "packets/c1-manifest-flips/premarket/EQUIVALENCE.txt: the live line's command, log, cd root and day-of-week equal step volatility_tier_refresh of config/pipelines/premarket.json, and the real runner's --dry-run planned exactly that command. Output equivalence not verified until the stage's first natural --apply summary shows step volatility_tier_refresh rc=0 (CORRELATED until then; ESTABLISHED after).",
+      "inventory_id": "cron:L722",
+      "c1_flip": {
+        "manifest": "premarket",
+        "stage": "premarket",
+        "step_id": "volatility_tier_refresh",
+        "on": "2026-10-11"
+      }
+    },
+    {
+      "lane_id": "research-intelligence-materialize",
+      "owner": "research",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "35 6 * * *",
+        "match": "scripts/research_intelligence_materialize.py"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/ri_snapshots/top.json",
+        "evidence": "SCRIPT_RECEIPT",
+        "evidence_ref": "scripts/research_intelligence_materialize.py:36 SNAP_DIR, per-lane {lane}.json written at :96-98 (top.json); host mtime 2026-10-09T06:35:02"
+      },
+      "value_class": "Duplicated",
+      "recommendation": "MERGE_INTO:P10",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L741",
+        "pipeline": "P10",
+        "value_class": "Duplicated",
+        "recommendation": "MERGE_INTO:P10",
+        "f_recommendation": "CONSOLIDATE into P10 (already a pipeline step or quiet prewarm)",
+        "event_driven_candidate": false,
+        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "state_since": "2026-10-11",
+      "superseded_by": "premarket-data-pipeline",
+      "state_reason": "Superseded by premarket-data-pipeline on 2026-10-11 (C1 manifest flip, operator approval 2026-10-10 ~18:28 ET): cron line cron:L744 commented (`# RETIRED 2026-10-11 c1-manifest premarket `), the command runs verbatim as step research_intelligence_materialize with its own lock, timeout and log. Nothing stopped; the owner of the schedule moved.",
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "packets/c1-manifest-flips/premarket/EQUIVALENCE.txt: the live line's command, log, cd root and day-of-week equal step research_intelligence_materialize of config/pipelines/premarket.json, and the real runner's --dry-run planned exactly that command. Output equivalence not verified until the stage's first natural --apply summary shows step research_intelligence_materialize rc=0 (CORRELATED until then; ESTABLISHED after).",
+      "inventory_id": "cron:L744",
+      "c1_flip": {
+        "manifest": "premarket",
+        "stage": "premarket",
+        "step_id": "research_intelligence_materialize",
+        "on": "2026-10-11"
+      }
+    },
+    {
+      "lane_id": "iris-taxonomy-agent-gaps",
+      "owner": "agents",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 7 * * *",
+        "match": "scripts/iris_taxonomy_agent.py --gaps"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/iris_taxonomy.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Duplicated",
+      "recommendation": "MERGE_INTO:P15",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L778",
+        "pipeline": "P15",
+        "value_class": "Duplicated",
+        "recommendation": "MERGE_INTO:P15",
+        "f_recommendation": "CONSOLIDATE into P15 (already a pipeline step or quiet prewarm)",
+        "event_driven_candidate": false,
+        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "state_since": "2026-10-11",
+      "superseded_by": "premarket-data-pipeline",
+      "state_reason": "Superseded by premarket-data-pipeline on 2026-10-11 (C1 manifest flip, operator approval 2026-10-10 ~18:28 ET): cron line cron:L781 commented (`# RETIRED 2026-10-11 c1-manifest premarket `), the command runs verbatim as step iris_taxonomy_agent with its own lock, timeout and log. Nothing stopped; the owner of the schedule moved.",
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "packets/c1-manifest-flips/premarket/EQUIVALENCE.txt: the live line's command, log, cd root and day-of-week equal step iris_taxonomy_agent of config/pipelines/premarket.json, and the real runner's --dry-run planned exactly that command. Output equivalence not verified until the stage's first natural --apply summary shows step iris_taxonomy_agent rc=0 (CORRELATED until then; ESTABLISHED after).",
+      "inventory_id": "cron:L781",
+      "c1_flip": {
+        "manifest": "premarket",
+        "stage": "premarket",
+        "step_id": "iris_taxonomy_agent",
+        "on": "2026-10-11"
+      }
+    },
+    {
+      "lane_id": "watch-valuation-backfill",
+      "owner": "portfolio",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "47 6 * * *",
+        "match": "scripts/watch_valuation_backfill.py"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/state/valuation_supplement_cache.json",
+        "evidence": "SCRIPT_RECEIPT",
+        "evidence_ref": "scripts/watch_valuation_backfill.py:45 SUPPLEMENT written at :184; host mtime 2026-10-09T06:53:15"
+      },
+      "value_class": "Duplicated",
+      "recommendation": "MERGE_INTO:P01",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L800",
+        "pipeline": "P01",
+        "value_class": "Duplicated",
+        "recommendation": "MERGE_INTO:P01",
+        "f_recommendation": "CONSOLIDATE into P01 (already a pipeline step or quiet prewarm)",
+        "event_driven_candidate": false,
+        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "state_since": "2026-10-11",
+      "superseded_by": "premarket-data-pipeline",
+      "state_reason": "Superseded by premarket-data-pipeline on 2026-10-11 (C1 manifest flip, operator approval 2026-10-10 ~18:28 ET): cron line cron:L803 commented (`# RETIRED 2026-10-11 c1-manifest premarket `), the command runs verbatim as step watch_valuation_backfill with its own lock, timeout and log. Nothing stopped; the owner of the schedule moved.",
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "packets/c1-manifest-flips/premarket/EQUIVALENCE.txt: the live line's command, log, cd root and day-of-week equal step watch_valuation_backfill of config/pipelines/premarket.json, and the real runner's --dry-run planned exactly that command. Output equivalence not verified until the stage's first natural --apply summary shows step watch_valuation_backfill rc=0 (CORRELATED until then; ESTABLISHED after).",
+      "inventory_id": "cron:L803",
+      "c1_flip": {
+        "manifest": "premarket",
+        "stage": "premarket",
+        "step_id": "watch_valuation_backfill",
+        "on": "2026-10-11"
+      }
+    },
+    {
+      "lane_id": "research-watchlist-discovery",
+      "owner": "research",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 7 * * 1-5",
+        "match": "scripts/research_watchlist_discovery.py"
+      },
+      "expected_cadence_hours": 72.0,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/research_watchlist_discovery.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Duplicated",
+      "recommendation": "MERGE_INTO:P10",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L858",
+        "pipeline": "P10",
+        "value_class": "Duplicated",
+        "recommendation": "MERGE_INTO:P10",
+        "f_recommendation": "CONSOLIDATE into P10 (already a pipeline step or quiet prewarm)",
+        "event_driven_candidate": false,
+        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "state_since": "2026-10-11",
+      "superseded_by": "premarket-data-pipeline",
+      "state_reason": "Superseded by premarket-data-pipeline on 2026-10-11 (C1 manifest flip, operator approval 2026-10-10 ~18:28 ET): cron line cron:L861 commented (`# RETIRED 2026-10-11 c1-manifest premarket `), the command runs verbatim as step research_watchlist_discovery with its own lock, timeout and log. Nothing stopped; the owner of the schedule moved.",
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "packets/c1-manifest-flips/premarket/EQUIVALENCE.txt: the live line's command, log, cd root and day-of-week equal step research_watchlist_discovery of config/pipelines/premarket.json, and the real runner's --dry-run planned exactly that command. Output equivalence not verified until the stage's first natural --apply summary shows step research_watchlist_discovery rc=0 (CORRELATED until then; ESTABLISHED after).",
+      "inventory_id": "cron:L861",
+      "c1_flip": {
+        "manifest": "premarket",
+        "stage": "premarket",
+        "step_id": "research_watchlist_discovery",
+        "on": "2026-10-11"
+      }
+    },
+    {
+      "lane_id": "candidate-discovery-orchestrator",
+      "owner": "proposals",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "15 6 * * 1-5",
+        "match": "scripts/candidate_discovery_orchestrator.py"
+      },
+      "expected_cadence_hours": 72.0,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/candidate_discovery.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Duplicated",
+      "recommendation": "MERGE_INTO:P07",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L861",
+        "pipeline": "P07",
+        "value_class": "Duplicated",
+        "recommendation": "MERGE_INTO:P07",
+        "f_recommendation": "CONSOLIDATE into P07 (already a pipeline step or quiet prewarm)",
+        "event_driven_candidate": false,
+        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "state_since": "2026-10-11",
+      "superseded_by": "premarket-data-pipeline",
+      "state_reason": "Superseded by premarket-data-pipeline on 2026-10-11 (C1 manifest flip, operator approval 2026-10-10 ~18:28 ET): cron line cron:L864 commented (`# RETIRED 2026-10-11 c1-manifest premarket `), the command runs verbatim as step candidate_discovery_orchestrator with its own lock, timeout and log. Nothing stopped; the owner of the schedule moved.",
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "packets/c1-manifest-flips/premarket/EQUIVALENCE.txt: the live line's command, log, cd root and day-of-week equal step candidate_discovery_orchestrator of config/pipelines/premarket.json, and the real runner's --dry-run planned exactly that command. Output equivalence not verified until the stage's first natural --apply summary shows step candidate_discovery_orchestrator rc=0 (CORRELATED until then; ESTABLISHED after).",
+      "inventory_id": "cron:L864",
+      "c1_flip": {
+        "manifest": "premarket",
+        "stage": "premarket",
+        "step_id": "candidate_discovery_orchestrator",
+        "on": "2026-10-11"
+      }
+    },
+    {
       "lane_id": "run-scheduled-quote-refresh-incubator",
       "owner": "portfolio",
       "scheduler": {
@@ -13403,38 +14481,6 @@
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
     },
     {
-      "lane_id": "price-db-sync",
-      "owner": "portfolio",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "20 7 * * 1-5",
-        "match": "scripts/price_db_sync.py"
-      },
-      "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/price_db_sync.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Duplicated",
-      "recommendation": "MERGE_INTO:P01",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L183",
-        "pipeline": "P01",
-        "value_class": "Duplicated",
-        "recommendation": "MERGE_INTO:P01",
-        "f_recommendation": "CONSOLIDATE → P01 quote service",
-        "event_driven_candidate": false,
-        "f_evidence": "same quote-writer overlap as above; ticker_prices 22.1M writes since 09-20"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
       "lane_id": "llm-intelligence-enrichment",
       "owner": "portfolio",
       "scheduler": {
@@ -13692,50 +14738,6 @@
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
     },
     {
-      "lane_id": "market-regime-collector",
-      "owner": "portfolio",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "30 6 * * 1-5 + 5 16 * * 1-5",
-        "match": "scripts/market_regime_collector.py",
-        "schedules": [
-          "30 6 * * 1-5",
-          "5 16 * * 1-5"
-        ]
-      },
-      "expected_cadence_hours": 62.42,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/regime_collector.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Duplicated",
-      "recommendation": "MERGE_INTO:P01",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L199",
-        "pipeline": "P01",
-        "value_class": "Duplicated",
-        "recommendation": "MERGE_INTO:P01",
-        "f_recommendation": "CONSOLIDATE into P01 (already a pipeline step or quiet prewarm)",
-        "event_driven_candidate": false,
-        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json",
-        "f_ids": [
-          "L199",
-          "L213"
-        ],
-        "f_recommendations": [
-          "MERGE_INTO:P01",
-          "MERGE_INTO:P01"
-        ]
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
       "lane_id": "agent-router-cron-deep",
       "owner": "agents",
       "scheduler": {
@@ -13794,39 +14796,6 @@
         "f_recommendation": "CONSOLIDATE-into P14",
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "market-regime-classifier",
-      "owner": "portfolio",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "35 6 * * 1-5",
-        "match": "$PROJ && $PY scripts/market_regime_classifier.py",
-        "match_basis": "SHORTEST_UNIQUE_WINDOW"
-      },
-      "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/regime_classifier.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Duplicated",
-      "recommendation": "MERGE_INTO:P01",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L205",
-        "pipeline": "P01",
-        "value_class": "Duplicated",
-        "recommendation": "MERGE_INTO:P01",
-        "f_recommendation": "CONSOLIDATE into P01 (already a pipeline step or quiet prewarm)",
-        "event_driven_candidate": false,
-        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
       },
       "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",
@@ -13928,38 +14897,6 @@
         "f_recommendation": "CONSOLIDATE → P12 health plane (one check registry, one receipt, one incident router)",
         "event_driven_candidate": false,
         "f_evidence": "~73 health/monitor mechanisms across cron (23), timers (23), health-tick steps (17), services (4), n8n (6); ≥18 independently check \"is X fresh\""
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "sync-dividend-data",
-      "owner": "portfolio",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "5 7 * * 1-5",
-        "match": "scripts/sync_dividend_data.py"
-      },
-      "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/dividend_sync.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Duplicated",
-      "recommendation": "MERGE_INTO:P01",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L216",
-        "pipeline": "P01",
-        "value_class": "Duplicated",
-        "recommendation": "MERGE_INTO:P01",
-        "f_recommendation": "CONSOLIDATE into P01 (already a pipeline step or quiet prewarm)",
-        "event_driven_candidate": false,
-        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
       },
       "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",
@@ -14271,38 +15208,6 @@
         "f_recommendation": "CONSOLIDATE-into P02",
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "fred-data-ingest",
-      "owner": "portfolio",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "15 6 * * *",
-        "match": "scripts/fred_data_ingest.py"
-      },
-      "expected_cadence_hours": 24.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/fred_data_ingest.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Duplicated",
-      "recommendation": "MERGE_INTO:P01",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L248",
-        "pipeline": "P01",
-        "value_class": "Duplicated",
-        "recommendation": "MERGE_INTO:P01",
-        "f_recommendation": "CONSOLIDATE into P01 (already a pipeline step or quiet prewarm)",
-        "event_driven_candidate": false,
-        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
       },
       "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",
@@ -14991,38 +15896,6 @@
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
     },
     {
-      "lane_id": "overnight-batch-tax",
-      "owner": "portfolio",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "35 6 * * 1",
-        "match": "scripts/overnight_batch.py --tax-sweep"
-      },
-      "expected_cadence_hours": 168.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/tax_sweep.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Operationally Important",
-      "recommendation": "PIPELINE:P14",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L342",
-        "pipeline": "P14",
-        "value_class": "Operationally Important",
-        "recommendation": "PIPELINE:P14",
-        "f_recommendation": "CONSOLIDATE-into P14",
-        "event_driven_candidate": false,
-        "f_evidence": "Unverified use: no consumer check run for this line"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
       "lane_id": "trade-close-llm-analyzer-source",
       "owner": "learning",
       "scheduler": {
@@ -15297,38 +16170,6 @@
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
     },
     {
-      "lane_id": "iris-proposal-curator",
-      "owner": "proposals",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "20 7 * * *",
-        "match": "scripts/iris_proposal_curator.py"
-      },
-      "expected_cadence_hours": 24.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/iris_proposal_curator.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Duplicated",
-      "recommendation": "MERGE_INTO:P07",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L391",
-        "pipeline": "P07",
-        "value_class": "Duplicated",
-        "recommendation": "MERGE_INTO:P07",
-        "f_recommendation": "CONSOLIDATE into P07 (already a pipeline step or quiet prewarm)",
-        "event_driven_candidate": false,
-        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
       "lane_id": "hermes-youtube-discovery",
       "owner": "research",
       "scheduler": {
@@ -15450,39 +16291,6 @@
         "f_recommendation": "CONSOLIDATE-into P13",
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "source-outcome-attribution",
-      "owner": "learning",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "45 5 * * *",
-        "match": "scripts/source_outcome_attribution.py"
-      },
-      "expected_cadence_hours": 24.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "data/runtime/source_vetting_actions_latest.json",
-        "evidence": "SCRIPT_RECEIPT",
-        "evidence_ref": "scripts/source_vetting_ladder.py:18,63 ACTIONS.write_text(updated_at, actions) - last step of the attribution->maturity->vetting chain (source_maturity.py:21,126 also writes source_maturity_latest.json); host mtime 2026-10-09T05:45:02"
-      },
-      "value_class": "Duplicated",
-      "recommendation": "MERGE_INTO:P13",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L431",
-        "pipeline": "P13",
-        "value_class": "Duplicated",
-        "recommendation": "MERGE_INTO:P13",
-        "f_recommendation": "CONSOLIDATE into P13 (already a pipeline step or quiet prewarm)",
-        "event_driven_candidate": false,
-        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
       },
       "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",
@@ -16493,39 +17301,6 @@
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
     },
     {
-      "lane_id": "recommendation-intelligence-engine",
-      "owner": "learning",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "10 7 * * *",
-        "match": "scripts/recommendation_intelligence_engine.py"
-      },
-      "expected_cadence_hours": 24.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "data/runtime/rec_source_quality_latest.json",
-        "evidence": "SCRIPT_RECEIPT",
-        "evidence_ref": "scripts/recommendation_intelligence_engine.py:527 compute_source_quality() writes latest multipliers every run (called :831); host mtime 2026-10-09T07:10:07"
-      },
-      "value_class": "Duplicated",
-      "recommendation": "MERGE_INTO:P13",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L503",
-        "pipeline": "P13",
-        "value_class": "Duplicated",
-        "recommendation": "MERGE_INTO:P13",
-        "f_recommendation": "CONSOLIDATE into P13 (already a pipeline step or quiet prewarm)",
-        "event_driven_candidate": false,
-        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
       "lane_id": "strategy-tilt",
       "owner": "learning",
       "scheduler": {
@@ -17121,38 +17896,6 @@
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
     },
     {
-      "lane_id": "register-analyst-sources",
-      "owner": "research",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "40 5 * * *",
-        "match": "scripts/register_analyst_sources.py"
-      },
-      "expected_cadence_hours": 24.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/analyst_sources.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Duplicated",
-      "recommendation": "MERGE_INTO:P03",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L589",
-        "pipeline": "P03",
-        "value_class": "Duplicated",
-        "recommendation": "MERGE_INTO:P03",
-        "f_recommendation": "CONSOLIDATE into P03 (already a pipeline step or quiet prewarm)",
-        "event_driven_candidate": false,
-        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
       "lane_id": "build-hermes-canonical-status",
       "owner": "research",
       "scheduler": {
@@ -17179,38 +17922,6 @@
         "f_recommendation": "CONSOLIDATE-into P10",
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "overnight-batch-outcomes",
-      "owner": "portfolio",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "40 5 * * *",
-        "match": "scripts/overnight_batch.py --outcomes"
-      },
-      "expected_cadence_hours": 24.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/overnight_outcomes.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Duplicated",
-      "recommendation": "MERGE_INTO:P14",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L597",
-        "pipeline": "P14",
-        "value_class": "Duplicated",
-        "recommendation": "MERGE_INTO:P14",
-        "f_recommendation": "CONSOLIDATE into P14 (already a pipeline step or quiet prewarm)",
-        "event_driven_candidate": false,
-        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
       },
       "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",
@@ -17703,40 +18414,6 @@
         "f_recommendation": "KEEP on cron/systemd; n8n watches heartbeat",
         "event_driven_candidate": false,
         "f_evidence": "broker/stop/order/daemon class (E-plan bucket C)"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "run-sec-form4-momentum-context",
-      "owner": "research",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "45 5 * * 1-5",
-        "match": "scripts/run_sec_form4_momentum_context.py"
-      },
-      "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "json_key",
-        "path": "data/runtime/sec_form4_momentum_context_latest.json",
-        "key": "generated_at",
-        "evidence": "SCRIPT_RECEIPT",
-        "evidence_ref": "scripts/run_sec_form4_momentum_context.py:27 CONTEXT_ARTIFACT written with --apply (:127; skipped only if DB unavailable); host mtime 2026-10-09T09:49:03 (05:45 start, long run; log ends 09:49:03)"
-      },
-      "value_class": "Duplicated",
-      "recommendation": "MERGE_INTO:P03",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L640",
-        "pipeline": "P03",
-        "value_class": "Duplicated",
-        "recommendation": "MERGE_INTO:P03",
-        "f_recommendation": "CONSOLIDATE into P03 (already a pipeline step or quiet prewarm)",
-        "event_driven_candidate": false,
-        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
       },
       "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",
@@ -18285,44 +18962,6 @@
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
     },
     {
-      "lane_id": "volatility-tier-refresh",
-      "owner": "portfolio",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "45 6 * * 1-5",
-        "match": "scripts/volatility_tier_refresh.py"
-      },
-      "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "data/state/volatility_tiers_latest.json",
-        "evidence": "SCRIPT_RECEIPT",
-        "evidence_ref": "scripts/volatility_tier_refresh.py:27 STATE_OUT; host mtime 2026-10-09T06:45:02"
-      },
-      "value_class": "Technical Debt",
-      "recommendation": "KEEP_ON_CRON",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L719",
-        "pipeline": "P01",
-        "value_class": "Technical Debt",
-        "recommendation": "MIGRATE_N8N",
-        "f_recommendation": "INVESTIGATE then REDESIGN",
-        "event_driven_candidate": false,
-        "f_evidence": "log stale (cron audit)"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
-      "stay_on_cron": {
-        "class": "broker_order",
-        "token": "stop",
-        "source": "config/lane_stay_on_cron_tokens.json"
-      }
-    },
-    {
       "lane_id": "run-research-intelligence-overnight",
       "owner": "research",
       "scheduler": {
@@ -18478,39 +19117,6 @@
         "token": "holdings_gain_guardian.py",
         "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
       }
-    },
-    {
-      "lane_id": "research-intelligence-materialize",
-      "owner": "research",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "35 6 * * *",
-        "match": "scripts/research_intelligence_materialize.py"
-      },
-      "expected_cadence_hours": 24.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "data/runtime/ri_snapshots/top.json",
-        "evidence": "SCRIPT_RECEIPT",
-        "evidence_ref": "scripts/research_intelligence_materialize.py:36 SNAP_DIR, per-lane {lane}.json written at :96-98 (top.json); host mtime 2026-10-09T06:35:02"
-      },
-      "value_class": "Duplicated",
-      "recommendation": "MERGE_INTO:P10",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L741",
-        "pipeline": "P10",
-        "value_class": "Duplicated",
-        "recommendation": "MERGE_INTO:P10",
-        "f_recommendation": "CONSOLIDATE into P10 (already a pipeline step or quiet prewarm)",
-        "event_driven_candidate": false,
-        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
     },
     {
       "lane_id": "watch-directive-hygiene",
@@ -19040,38 +19646,6 @@
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
     },
     {
-      "lane_id": "iris-taxonomy-agent-gaps",
-      "owner": "agents",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "0 7 * * *",
-        "match": "scripts/iris_taxonomy_agent.py --gaps"
-      },
-      "expected_cadence_hours": 24.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/iris_taxonomy.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Duplicated",
-      "recommendation": "MERGE_INTO:P15",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L778",
-        "pipeline": "P15",
-        "value_class": "Duplicated",
-        "recommendation": "MERGE_INTO:P15",
-        "f_recommendation": "CONSOLIDATE into P15 (already a pipeline step or quiet prewarm)",
-        "event_driven_candidate": false,
-        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
       "lane_id": "iris-taxonomy-agent-freshness",
       "owner": "agents",
       "scheduler": {
@@ -19306,39 +19880,6 @@
         "token": "alpaca_live_read_sync",
         "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
       }
-    },
-    {
-      "lane_id": "watch-valuation-backfill",
-      "owner": "portfolio",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "47 6 * * *",
-        "match": "scripts/watch_valuation_backfill.py"
-      },
-      "expected_cadence_hours": 24.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "data/state/valuation_supplement_cache.json",
-        "evidence": "SCRIPT_RECEIPT",
-        "evidence_ref": "scripts/watch_valuation_backfill.py:45 SUPPLEMENT written at :184; host mtime 2026-10-09T06:53:15"
-      },
-      "value_class": "Duplicated",
-      "recommendation": "MERGE_INTO:P01",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L800",
-        "pipeline": "P01",
-        "value_class": "Duplicated",
-        "recommendation": "MERGE_INTO:P01",
-        "f_recommendation": "CONSOLIDATE into P01 (already a pipeline step or quiet prewarm)",
-        "event_driven_candidate": false,
-        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
     },
     {
       "lane_id": "run-scalp-volume-profile-refresh",
@@ -19639,70 +20180,6 @@
         "f_recommendation": "CONSOLIDATE-into P14",
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "research-watchlist-discovery",
-      "owner": "research",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "0 7 * * 1-5",
-        "match": "scripts/research_watchlist_discovery.py"
-      },
-      "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/research_watchlist_discovery.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Duplicated",
-      "recommendation": "MERGE_INTO:P10",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L858",
-        "pipeline": "P10",
-        "value_class": "Duplicated",
-        "recommendation": "MERGE_INTO:P10",
-        "f_recommendation": "CONSOLIDATE into P10 (already a pipeline step or quiet prewarm)",
-        "event_driven_candidate": false,
-        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "candidate-discovery-orchestrator",
-      "owner": "proposals",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "15 6 * * 1-5",
-        "match": "scripts/candidate_discovery_orchestrator.py"
-      },
-      "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/candidate_discovery.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Duplicated",
-      "recommendation": "MERGE_INTO:P07",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L861",
-        "pipeline": "P07",
-        "value_class": "Duplicated",
-        "recommendation": "MERGE_INTO:P07",
-        "f_recommendation": "CONSOLIDATE into P07 (already a pipeline step or quiet prewarm)",
-        "event_driven_candidate": false,
-        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
       },
       "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",
@@ -21860,7 +22337,7 @@
     },
     {
       "key": "jcm.research_watchlist_discovery",
-      "lane_id": "research-watchlist-discovery",
+      "lane_id": "premarket-data-pipeline",
       "signal": {
         "kind": "db_max",
         "table": "data_source_health",
@@ -21873,7 +22350,9 @@
       "source": "scripts/job_coverage_monitor.py:126-127 research_watchlist_discovery",
       "replaces": [
         "job-coverage-monitor"
-      ]
+      ],
+      "producer_before_c1": "research-watchlist-discovery",
+      "producer_note": "C1 premarket flip 2026-10-11: the producer row is RETIRED into premarket-data-pipeline (its cron line runs verbatim as a stage step), so lane_due follows the stage lane; a RETIRED lane_id would make supervisor_breach_detector skip this contract."
     },
     {
       "key": "jcm.sync_social_to_intelligence",
@@ -21911,7 +22390,7 @@
     },
     {
       "key": "jcm.candidate_discovery_orchestrator",
-      "lane_id": "candidate-discovery-orchestrator",
+      "lane_id": "premarket-data-pipeline",
       "signal": {
         "kind": "db_max",
         "table": "data_source_health",
@@ -21925,7 +22404,9 @@
       "replaces": [
         "job-coverage-monitor"
       ],
-      "note": "job_coverage's IN (...) list written as OR: lane_registry._SAFE_WHERE admits no comma"
+      "note": "job_coverage's IN (...) list written as OR: lane_registry._SAFE_WHERE admits no comma",
+      "producer_before_c1": "candidate-discovery-orchestrator",
+      "producer_note": "C1 premarket flip 2026-10-11: the producer row is RETIRED into premarket-data-pipeline (its cron line runs verbatim as a stage step), so lane_due follows the stage lane; a RETIRED lane_id would make supervisor_breach_detector skip this contract."
     },
     {
       "key": "pfm.ticker_snapshot_daily",

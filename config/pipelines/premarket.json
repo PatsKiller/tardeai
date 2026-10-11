@@ -57,7 +57,8 @@
             "sources": [],
             "wrappers": [],
             "derived_from": "crontab line 408 (names only; values are the runner's cron environment)"
-          }
+          },
+          "group": "05:30"
         },
         {
           "id": "catalyst_calibration_monitor",
@@ -104,7 +105,8 @@
             "sources": [],
             "wrappers": [],
             "derived_from": "crontab line 435 (names only; values are the runner's cron environment)"
-          }
+          },
+          "group": "05:40"
         },
         {
           "id": "register_analyst_sources",
@@ -152,7 +154,8 @@
             "sources": [],
             "wrappers": [],
             "derived_from": "crontab line 589 (names only; values are the runner's cron environment)"
-          }
+          },
+          "group": "05:40"
         },
         {
           "id": "overnight_batch_outcomes",
@@ -196,7 +199,8 @@
             "sources": [],
             "wrappers": [],
             "derived_from": "crontab line 597 (names only; values are the runner's cron environment)"
-          }
+          },
+          "group": "05:40"
         },
         {
           "id": "source_outcome_attribution",
@@ -243,7 +247,8 @@
             "sources": [],
             "wrappers": [],
             "derived_from": "crontab line 431 (names only; values are the runner's cron environment)"
-          }
+          },
+          "group": "05:45"
         },
         {
           "id": "indicator_cache_refresh",
@@ -295,7 +300,8 @@
             "sources": [],
             "wrappers": [],
             "derived_from": "crontab line 255 (names only; values are the runner's cron environment)"
-          }
+          },
+          "group": "05:45"
         },
         {
           "id": "sec_form4_momentum_context",
@@ -350,7 +356,8 @@
             "sources": [],
             "wrappers": [],
             "derived_from": "crontab line 640 (names only; values are the runner's cron environment)"
-          }
+          },
+          "group": "05:45"
         },
         {
           "id": "mint_identity_registry",
@@ -405,7 +412,8 @@
             "sources": [],
             "wrappers": [],
             "derived_from": "crontab line 877 (names only; values are the runner's cron environment)"
-          }
+          },
+          "group": "05:50"
         },
         {
           "id": "strategy_backtester",
@@ -460,7 +468,8 @@
               "$PROJ/scripts/safe_flock.sh"
             ],
             "derived_from": "crontab line 352 (names only; values are the runner's cron environment)"
-          }
+          },
+          "group": "06:00"
         },
         {
           "id": "backtest_history_snapshot",
@@ -520,7 +529,8 @@
               "$PROJ/scripts/safe_flock.sh"
             ],
             "derived_from": "crontab line 363 (names only; values are the runner's cron environment)"
-          }
+          },
+          "group": "06:10"
         },
         {
           "id": "fred_data_ingest",
@@ -563,7 +573,8 @@
             "sources": [],
             "wrappers": [],
             "derived_from": "crontab line 248 (names only; values are the runner's cron environment)"
-          }
+          },
+          "group": "06:15"
         },
         {
           "id": "candidate_discovery_orchestrator",
@@ -618,7 +629,8 @@
             "sources": [],
             "wrappers": [],
             "derived_from": "crontab line 861 (names only; values are the runner's cron environment)"
-          }
+          },
+          "group": "06:15"
         },
         {
           "id": "backtest_results_aggregator",
@@ -675,7 +687,8 @@
             "sources": [],
             "wrappers": [],
             "derived_from": "crontab line 605 (names only; values are the runner's cron environment)"
-          }
+          },
+          "group": "06:20"
         },
         {
           "id": "watch_directives_monitor",
@@ -722,7 +735,8 @@
             "sources": [],
             "wrappers": [],
             "derived_from": "crontab line 444 (names only; values are the runner's cron environment)"
-          }
+          },
+          "group": "06:20"
         },
         {
           "id": "market_regime_collector_am",
@@ -776,7 +790,8 @@
             "sources": [],
             "wrappers": [],
             "derived_from": "crontab line 199 (names only; values are the runner's cron environment)"
-          }
+          },
+          "group": "06:30"
         },
         {
           "id": "classify_candidates",
@@ -830,7 +845,8 @@
             "sources": [],
             "wrappers": [],
             "derived_from": "crontab line 204 (names only; values are the runner's cron environment)"
-          }
+          },
+          "group": "06:35"
         },
         {
           "id": "market_regime_classifier",
@@ -884,7 +900,8 @@
             "sources": [],
             "wrappers": [],
             "derived_from": "crontab line 205 (names only; values are the runner's cron environment)"
-          }
+          },
+          "group": "06:35"
         },
         {
           "id": "earnings_enrich",
@@ -942,7 +959,8 @@
             ],
             "wrappers": [],
             "derived_from": "crontab line 551 (names only; values are the runner's cron environment)"
-          }
+          },
+          "group": "06:35"
         },
         {
           "id": "research_intelligence_materialize",
@@ -991,7 +1009,8 @@
             "sources": [],
             "wrappers": [],
             "derived_from": "crontab line 741 (names only; values are the runner's cron environment)"
-          }
+          },
+          "group": "06:35"
         },
         {
           "id": "fund_technicals_enrich",
@@ -1049,7 +1068,8 @@
             ],
             "wrappers": [],
             "derived_from": "crontab line 552 (names only; values are the runner's cron environment)"
-          }
+          },
+          "group": "06:38"
         },
         {
           "id": "refresh_symbol_cards",
@@ -1104,7 +1124,8 @@
             "sources": [],
             "wrappers": [],
             "derived_from": "crontab line 502 (names only; values are the runner's cron environment)"
-          }
+          },
+          "group": "06:40"
         },
         {
           "id": "build_lesson_candidates",
@@ -1152,7 +1173,8 @@
             "sources": [],
             "wrappers": [],
             "derived_from": "crontab line 876 (names only; values are the runner's cron environment)"
-          }
+          },
+          "group": "06:40"
         },
         {
           "id": "distributions_enrich",
@@ -1210,7 +1232,8 @@
             ],
             "wrappers": [],
             "derived_from": "crontab line 553 (names only; values are the runner's cron environment)"
-          }
+          },
+          "group": "06:42"
         },
         {
           "id": "sync_watchlist_items_to_db",
@@ -1264,7 +1287,64 @@
             "sources": [],
             "wrappers": [],
             "derived_from": "crontab line 210 (names only; values are the runner's cron environment)"
-          }
+          },
+          "group": "06:45a"
+        },
+        {
+          "id": "volatility_tier_refresh",
+          "cron_line": 754,
+          "cron_schedule": "45 6 * * 1-5",
+          "cron_time": "06:45",
+          "command": "$PY scripts/volatility_tier_refresh.py --quiet >> logs/volatility_tier_refresh.log 2>&1 && $PY scripts/stop_policy_migration_report.py --json > /dev/null 2>> logs/volatility_tier_refresh.log",
+          "log": null,
+          "timeout": "5m",
+          "continue_on_error": true,
+          "dow": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "cron_line_verbatim": "45 6 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/volatility_tier_refresh.py --quiet >> logs/volatility_tier_refresh.log 2>&1 && $PY scripts/stop_policy_migration_report.py --json > /dev/null 2>> logs/volatility_tier_refresh.log",
+          "measured": {
+            "verified": false,
+            "source": "pam_group_max(upper)",
+            "runs": 0,
+            "firings": 5,
+            "median_s": null,
+            "p95_s": null,
+            "max_s": null,
+            "lower_bound_median_s": null,
+            "upper_bound_median_s": 60.5,
+            "upper_bound_p95_s": 70.4,
+            "bound_source": "pam_group_max(upper)"
+          },
+          "inv_id": "cron:L719",
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES",
+              "CIO_DUAL_CHATGPT_CAP"
+            ],
+            "inline": [],
+            "sources": [],
+            "wrappers": [],
+            "derived_from": "crontab line 719 (names only; values are the runner's cron environment)"
+          },
+          "group": "06:45a"
         },
         {
           "id": "build_symbol_profiles",
@@ -1320,62 +1400,8 @@
             "sources": [],
             "wrappers": [],
             "derived_from": "crontab line 508 (names only; values are the runner's cron environment)"
-          }
-        },
-        {
-          "id": "volatility_tier_refresh",
-          "cron_line": 754,
-          "cron_schedule": "45 6 * * 1-5",
-          "cron_time": "06:45",
-          "command": "$PY scripts/volatility_tier_refresh.py --quiet >> logs/volatility_tier_refresh.log 2>&1 && $PY scripts/stop_policy_migration_report.py --json > /dev/null 2>> logs/volatility_tier_refresh.log",
-          "log": null,
-          "timeout": "5m",
-          "continue_on_error": true,
-          "dow": [
-            1,
-            2,
-            3,
-            4,
-            5
-          ],
-          "cron_line_verbatim": "45 6 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/volatility_tier_refresh.py --quiet >> logs/volatility_tier_refresh.log 2>&1 && $PY scripts/stop_policy_migration_report.py --json > /dev/null 2>> logs/volatility_tier_refresh.log",
-          "measured": {
-            "verified": false,
-            "source": "pam_group_max(upper)",
-            "runs": 0,
-            "firings": 5,
-            "median_s": null,
-            "p95_s": null,
-            "max_s": null,
-            "lower_bound_median_s": null,
-            "upper_bound_median_s": 60.5,
-            "upper_bound_p95_s": 70.4,
-            "bound_source": "pam_group_max(upper)"
           },
-          "inv_id": "cron:L719",
-          "env": {
-            "inherit": "cron",
-            "cron_base": [
-              "HOME",
-              "LANG",
-              "LOGNAME",
-              "PATH",
-              "SHELL"
-            ],
-            "crontab_vars": [
-              "SHELL",
-              "PROJ",
-              "PY",
-              "LLM_DEFER_OFFPEAK",
-              "TRADEAI_ENV",
-              "BLIND_REVIEW_LANES",
-              "CIO_DUAL_CHATGPT_CAP"
-            ],
-            "inline": [],
-            "sources": [],
-            "wrappers": [],
-            "derived_from": "crontab line 719 (names only; values are the runner's cron environment)"
-          }
+          "group": "06:45b"
         },
         {
           "id": "watch_valuation_backfill",
@@ -1421,7 +1447,8 @@
             "sources": [],
             "wrappers": [],
             "derived_from": "crontab line 800 (names only; values are the runner's cron environment)"
-          }
+          },
+          "group": "06:47"
         },
         {
           "id": "cio_draft_plan_hygiene",
@@ -1471,7 +1498,8 @@
             "sources": [],
             "wrappers": [],
             "derived_from": "crontab line 908 (names only; values are the runner's cron environment)"
-          }
+          },
+          "group": "06:52"
         },
         {
           "id": "materialize_income_engine",
@@ -1525,157 +1553,8 @@
             "sources": [],
             "wrappers": [],
             "derived_from": "crontab line 220 (names only; values are the runner's cron environment)"
-          }
-        },
-        {
-          "id": "llm_retry_monitor",
-          "cron_line": 463,
-          "cron_schedule": "0 7 * * *",
-          "cron_time": "07:00",
-          "command": "flock -n /tmp/llm_retry_monitor.lock $PY scripts/llm_retry_monitor.py",
-          "log": "logs/llm_retry_monitor.log",
-          "timeout": "10m",
-          "continue_on_error": true,
-          "cron_line_verbatim": "0 7 * * * cd $PROJ && flock -n /tmp/llm_retry_monitor.lock $PY scripts/llm_retry_monitor.py >> logs/llm_retry_monitor.log 2>&1",
-          "measured": {
-            "verified": false,
-            "source": "pam_group_max(upper)",
-            "runs": 0,
-            "firings": 7,
-            "median_s": null,
-            "p95_s": null,
-            "max_s": null,
-            "lower_bound_median_s": null,
-            "upper_bound_median_s": 66.5,
-            "upper_bound_p95_s": 138.5,
-            "bound_source": "pam_group_max(upper)"
           },
-          "inv_id": "cron:L440",
-          "env": {
-            "inherit": "cron",
-            "cron_base": [
-              "HOME",
-              "LANG",
-              "LOGNAME",
-              "PATH",
-              "SHELL"
-            ],
-            "crontab_vars": [
-              "SHELL",
-              "PROJ",
-              "PY",
-              "LLM_DEFER_OFFPEAK",
-              "TRADEAI_ENV",
-              "BLIND_REVIEW_LANES"
-            ],
-            "inline": [],
-            "sources": [],
-            "wrappers": [],
-            "derived_from": "crontab line 440 (names only; values are the runner's cron environment)"
-          }
-        },
-        {
-          "id": "iris_taxonomy_agent",
-          "cron_line": 813,
-          "cron_schedule": "0 7 * * *",
-          "cron_time": "07:00",
-          "command": "$PY scripts/iris_taxonomy_agent.py --gaps",
-          "log": "logs/iris_taxonomy.log",
-          "timeout": "10m",
-          "continue_on_error": true,
-          "cron_line_verbatim": "0 7 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/iris_taxonomy_agent.py --gaps >> logs/iris_taxonomy.log 2>&1",
-          "measured": {
-            "verified": false,
-            "source": "pam_group_max(upper)",
-            "runs": 0,
-            "firings": 7,
-            "median_s": null,
-            "p95_s": null,
-            "max_s": null,
-            "lower_bound_median_s": null,
-            "upper_bound_median_s": 66.5,
-            "upper_bound_p95_s": 138.5,
-            "bound_source": "pam_group_max(upper)"
-          },
-          "inv_id": "cron:L778",
-          "env": {
-            "inherit": "cron",
-            "cron_base": [
-              "HOME",
-              "LANG",
-              "LOGNAME",
-              "PATH",
-              "SHELL"
-            ],
-            "crontab_vars": [
-              "SHELL",
-              "PROJ",
-              "PY",
-              "LLM_DEFER_OFFPEAK",
-              "TRADEAI_ENV",
-              "BLIND_REVIEW_LANES",
-              "CIO_DUAL_CHATGPT_CAP"
-            ],
-            "inline": [],
-            "sources": [],
-            "wrappers": [],
-            "derived_from": "crontab line 778 (names only; values are the runner's cron environment)"
-          }
-        },
-        {
-          "id": "opening_intelligence",
-          "cron_line": 825,
-          "cron_schedule": "0 7 * * 1-5",
-          "cron_time": "07:00",
-          "command": "flock -n /tmp/opening_intel.lock $PY scripts/opening_intelligence.py --persist",
-          "log": "logs/opening_intelligence.log",
-          "timeout": "5m",
-          "continue_on_error": true,
-          "dow": [
-            1,
-            2,
-            3,
-            4,
-            5
-          ],
-          "cron_line_verbatim": "0 7 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/opening_intel.lock $PY scripts/opening_intelligence.py --persist >> logs/opening_intelligence.log 2>&1",
-          "measured": {
-            "verified": false,
-            "source": "pam_group_max(upper)",
-            "runs": 0,
-            "firings": 5,
-            "median_s": null,
-            "p95_s": null,
-            "max_s": null,
-            "lower_bound_median_s": null,
-            "upper_bound_median_s": 66.5,
-            "upper_bound_p95_s": 79.0,
-            "bound_source": "pam_group_max(upper)"
-          },
-          "inv_id": "cron:L790",
-          "env": {
-            "inherit": "cron",
-            "cron_base": [
-              "HOME",
-              "LANG",
-              "LOGNAME",
-              "PATH",
-              "SHELL"
-            ],
-            "crontab_vars": [
-              "SHELL",
-              "PROJ",
-              "PY",
-              "LLM_DEFER_OFFPEAK",
-              "TRADEAI_ENV",
-              "BLIND_REVIEW_LANES",
-              "CIO_DUAL_CHATGPT_CAP"
-            ],
-            "inline": [],
-            "sources": [],
-            "wrappers": [],
-            "derived_from": "crontab line 790 (names only; values are the runner's cron environment)"
-          }
+          "group": "06:55"
         },
         {
           "id": "research_watchlist_discovery",
@@ -1730,7 +1609,161 @@
             "sources": [],
             "wrappers": [],
             "derived_from": "crontab line 858 (names only; values are the runner's cron environment)"
-          }
+          },
+          "group": "07:00a"
+        },
+        {
+          "id": "opening_intelligence",
+          "cron_line": 825,
+          "cron_schedule": "0 7 * * 1-5",
+          "cron_time": "07:00",
+          "command": "flock -n /tmp/opening_intel.lock $PY scripts/opening_intelligence.py --persist",
+          "log": "logs/opening_intelligence.log",
+          "timeout": "5m",
+          "continue_on_error": true,
+          "dow": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "cron_line_verbatim": "0 7 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/opening_intel.lock $PY scripts/opening_intelligence.py --persist >> logs/opening_intelligence.log 2>&1",
+          "measured": {
+            "verified": false,
+            "source": "pam_group_max(upper)",
+            "runs": 0,
+            "firings": 5,
+            "median_s": null,
+            "p95_s": null,
+            "max_s": null,
+            "lower_bound_median_s": null,
+            "upper_bound_median_s": 66.5,
+            "upper_bound_p95_s": 79.0,
+            "bound_source": "pam_group_max(upper)"
+          },
+          "inv_id": "cron:L790",
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES",
+              "CIO_DUAL_CHATGPT_CAP"
+            ],
+            "inline": [],
+            "sources": [],
+            "wrappers": [],
+            "derived_from": "crontab line 790 (names only; values are the runner's cron environment)"
+          },
+          "group": "07:00a"
+        },
+        {
+          "id": "llm_retry_monitor",
+          "cron_line": 463,
+          "cron_schedule": "0 7 * * *",
+          "cron_time": "07:00",
+          "command": "flock -n /tmp/llm_retry_monitor.lock $PY scripts/llm_retry_monitor.py",
+          "log": "logs/llm_retry_monitor.log",
+          "timeout": "10m",
+          "continue_on_error": true,
+          "cron_line_verbatim": "0 7 * * * cd $PROJ && flock -n /tmp/llm_retry_monitor.lock $PY scripts/llm_retry_monitor.py >> logs/llm_retry_monitor.log 2>&1",
+          "measured": {
+            "verified": false,
+            "source": "pam_group_max(upper)",
+            "runs": 0,
+            "firings": 7,
+            "median_s": null,
+            "p95_s": null,
+            "max_s": null,
+            "lower_bound_median_s": null,
+            "upper_bound_median_s": 66.5,
+            "upper_bound_p95_s": 138.5,
+            "bound_source": "pam_group_max(upper)"
+          },
+          "inv_id": "cron:L440",
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES"
+            ],
+            "inline": [],
+            "sources": [],
+            "wrappers": [],
+            "derived_from": "crontab line 440 (names only; values are the runner's cron environment)"
+          },
+          "group": "07:00b"
+        },
+        {
+          "id": "iris_taxonomy_agent",
+          "cron_line": 813,
+          "cron_schedule": "0 7 * * *",
+          "cron_time": "07:00",
+          "command": "$PY scripts/iris_taxonomy_agent.py --gaps",
+          "log": "logs/iris_taxonomy.log",
+          "timeout": "10m",
+          "continue_on_error": true,
+          "cron_line_verbatim": "0 7 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/iris_taxonomy_agent.py --gaps >> logs/iris_taxonomy.log 2>&1",
+          "measured": {
+            "verified": false,
+            "source": "pam_group_max(upper)",
+            "runs": 0,
+            "firings": 7,
+            "median_s": null,
+            "p95_s": null,
+            "max_s": null,
+            "lower_bound_median_s": null,
+            "upper_bound_median_s": 66.5,
+            "upper_bound_p95_s": 138.5,
+            "bound_source": "pam_group_max(upper)"
+          },
+          "inv_id": "cron:L778",
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES",
+              "CIO_DUAL_CHATGPT_CAP"
+            ],
+            "inline": [],
+            "sources": [],
+            "wrappers": [],
+            "derived_from": "crontab line 778 (names only; values are the runner's cron environment)"
+          },
+          "group": "07:00b"
         },
         {
           "id": "sync_dividend_data",
@@ -1784,7 +1817,8 @@
             "sources": [],
             "wrappers": [],
             "derived_from": "crontab line 216 (names only; values are the runner's cron environment)"
-          }
+          },
+          "group": "07:05"
         },
         {
           "id": "recommendation_intelligence_engine",
@@ -1832,7 +1866,8 @@
             "sources": [],
             "wrappers": [],
             "derived_from": "crontab line 503 (names only; values are the runner's cron environment)"
-          }
+          },
+          "group": "07:10"
         },
         {
           "id": "price_db_sync",
@@ -1886,7 +1921,8 @@
             "sources": [],
             "wrappers": [],
             "derived_from": "crontab line 183 (names only; values are the runner's cron environment)"
-          }
+          },
+          "group": "07:20"
         },
         {
           "id": "iris_proposal_curator",
@@ -1933,9 +1969,14 @@
             "sources": [],
             "wrappers": [],
             "derived_from": "crontab line 391 (names only; values are the runner's cron environment)"
-          }
+          },
+          "group": "07:20"
         }
-      ]
+      ],
+      "parallel": {
+        "max_concurrency": 4,
+        "basis": "2026-10-10 (operator: parallelise premarket before C1 flip 4). Groups = the steps' own cron minutes, run in time order with a barrier between groups; inside a group the steps ran concurrently on cron every day, so concurrency 4 (the largest same-minute group, 06:35 and 07:00) adds no overlap cron did not already have, and the barriers remove the cross-minute overlaps cron had (e.g. 06:30 market_regime_collector_am p95 124 s still running when the 06:35 classifier read its table). Two same-minute read-after-write pairs found by grep are split into a/b sub-groups: sync_watchlist_items_to_db -> build_symbol_profiles (watchlist_items, 06:45) and research_watchlist_discovery -> iris_taxonomy_agent (watchlist_items, 07:00). No group holds two steps with the same lock (validated). Plan: ~/n8n-maturity-verification/packets/c1-manifest-flips/premarket/PARALLEL_PLAN.md."
+      }
     }
   },
   "deferred": [

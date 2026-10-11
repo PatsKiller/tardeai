@@ -3957,6 +3957,15 @@ GATES = [
         ],
     ),
     (
+        # Premarket stage bounded concurrency (2026-10-10, before C1 flip 4): groups = cron minutes with a
+        # barrier between them, <= max_concurrency per group, same-lock steps never share a group; a stage
+        # without `parallel` stays serial. Hermetic sleep/echo manifests + the real premarket --dry-run.
+        "premarket_stage_parallel_20261010",
+        [
+            "tests/test_premarket_stage_parallel_20261010.py",
+        ],
+    ),
+    (
         # ANCHOR: CADENCE_TIMER_UNITS — 2026-10-08: the five timer-driven pipeline services (governance,
         # portfolio daily/weekly/monthly/lookthrough) executed the DEV tree from host-only unit copies with no
         # repo text; tradeai-operator-answer-quality.service was the sixth --alert monitor still dev-tree.

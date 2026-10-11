@@ -78,6 +78,54 @@ _mr_load_safety_env() {
   return 0
 }
 
+# One step (reads id cron_line tmo dow logrel grp envnames cmd and the stage vars from the caller's scope).
+# Serial stages call it inline; parallel stages call it in a background subshell. Never fails the stage.
+_mr_step() {
+  local status rc ms start end
+  start=${EPOCHREALTIME/./}
+  if [ "$dow" != "*" ] && ! grep -qw -- "$TODAY_DOW" <<<"${dow//,/ }"; then
+    status="skipped_dow"; rc=0
+    echo "  ---- step $id (L$cron_line) SKIP dow=$TODAY_DOW not in [$dow]"
+  elif [ "$DRY_RUN" = "1" ]; then
+    status="dry_run"; rc=0
+    echo "  ---- step $id (L$cron_line, timeout ${tmo}s, dow=$dow) [DRY_RUN] would run: $cmd"
+    echo "       env (env -i, names only): ${envnames}"
+  else
+    echo "  ---- step $id (L$cron_line, timeout ${tmo}s, group=$grp) START $(_ts) ----"
+    local steplog="$RUN_LOG"
+    if [ -n "$logrel" ]; then
+      case "$logrel" in /*) steplog="$logrel" ;; *) steplog="$PROJ/$logrel" ;; esac
+      steplog="${steplog//\$HOME/$HOME}"; steplog="${steplog//\$PROJ/$PROJ}"
+      mkdir -p "$(dirname "$steplog")" 2>/dev/null || steplog="$RUN_LOG"
+    fi
+    set +e
+    local -a stepenv=()
+    _mr_step_env "$envnames"
+    env -i "${stepenv[@]}" flock -n "/tmp/pipeline_step_${PIPELINE}_${id}.lock" \
+      timeout -k 30 "${tmo}s" bash -c "cd \"\$PROJ\" && $cmd" < /dev/null >> "$steplog" 2>&1
+    rc=$?
+    set -e
+    case "$rc" in
+      0) status="ok" ;;
+      124|137) status="timeout" ;;
+      *) status="failed" ;;
+    esac
+    echo "  ---- step $id END status=$status rc=$rc log=$steplog ----"
+  fi
+  end=${EPOCHREALTIME/./}; ms=$(( (end - start) / 1000 ))
+  "$PY3" - "$RESULTS" "$STEPS_JSONL" "$PIPELINE" "$STAGE" "$id" "$cron_line" "$status" "$rc" "$ms" "$tmo" "$DRY_RUN" <<'PY'
+import json, sys, datetime
+res, jsonl, pipeline, stage, sid, cron_line, status, rc, ms, tmo, dry = sys.argv[1:]
+rec = {"schema": "PipelineStepReceipt@v1", "ts": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+       "pipeline": pipeline, "stage": stage, "id": sid, "cron_line": int(cron_line), "status": status,
+       "rc": int(rc), "ms": int(ms), "timeout_s": int(tmo), "dry_run": dry == "1"}
+line = json.dumps(rec) + "\n"
+open(res, "a").write(line)
+open(jsonl, "a").write(line)
+PY
+  return 0
+}
+
 manifest_pipeline_main() {
   local default_manifest="$1"; shift
   local STAGE="" MANIFEST="" APPLY_REQUESTED=0 LIST=0
@@ -152,53 +200,38 @@ manifest_pipeline_main() {
     echo "[plan] manifest has no steps for stage=$STAGE — nothing to execute (apply_requested=$APPLY_REQUESTED)"
   fi
 
-  local line id cron_line tmo dow logrel envnames cmd
+  # Bounded concurrency (2026-10-10): a stage with `parallel.max_concurrency` N > 1 runs its steps in
+  # their `group`s, in manifest order, with a barrier between groups and at most N steps of a group at
+  # once. N = 1 (no `parallel` block) is the serial runner, unchanged: every step runs inline.
+  local MAXC; MAXC="$("$PY3" "$MANIFEST_PY" "$MANIFEST" --concurrency "$STAGE")"
+  "$PY3" "$MANIFEST_PY" "$MANIFEST" --waves "$STAGE" --dow "$TODAY_DOW" || true
+
+  local line id cron_line tmo dow logrel grp envnames cmd prev_grp="" _first=1
+  local -a _pids=()
   while IFS= read -r line; do
     [ -n "$line" ] || continue
-    IFS=$'\x1f' read -r id cron_line tmo dow logrel envnames cmd <<<"$line"
-    local status rc ms start end
-    start=${EPOCHREALTIME/./}
-    if [ "$dow" != "*" ] && ! grep -qw -- "$TODAY_DOW" <<<"${dow//,/ }"; then
-      status="skipped_dow"; rc=0
-      echo "  ---- step $id (L$cron_line) SKIP dow=$TODAY_DOW not in [$dow]"
-    elif [ "$DRY_RUN" = "1" ]; then
-      status="dry_run"; rc=0
-      echo "  ---- step $id (L$cron_line, timeout ${tmo}s, dow=$dow) [DRY_RUN] would run: $cmd"
-      echo "       env (env -i, names only): ${envnames}"
-    else
-      echo "  ---- step $id (L$cron_line, timeout ${tmo}s) START $(_ts) ----"
-      local steplog="$RUN_LOG"
-      if [ -n "$logrel" ]; then
-        case "$logrel" in /*) steplog="$logrel" ;; *) steplog="$PROJ/$logrel" ;; esac
-        steplog="${steplog//\$HOME/$HOME}"; steplog="${steplog//\$PROJ/$PROJ}"
-        mkdir -p "$(dirname "$steplog")" 2>/dev/null || steplog="$RUN_LOG"
-      fi
-      set +e
-      local -a stepenv=()
-      _mr_step_env "$envnames"
-      env -i "${stepenv[@]}" flock -n "/tmp/pipeline_step_${PIPELINE}_${id}.lock" \
-        timeout -k 30 "${tmo}s" bash -c "cd \"\$PROJ\" && $cmd" < /dev/null >> "$steplog" 2>&1
-      rc=$?
-      set -e
-      case "$rc" in
-        0) status="ok" ;;
-        124|137) status="timeout" ;;
-        *) status="failed" ;;
-      esac
-      echo "  ---- step $id END status=$status rc=$rc log=$steplog ----"
+    IFS=$'\x1f' read -r id cron_line tmo dow logrel grp envnames cmd <<<"$line"
+    if [ "$MAXC" -le 1 ]; then
+      _mr_step
+      continue
     fi
-    end=${EPOCHREALTIME/./}; ms=$(( (end - start) / 1000 ))
-    "$PY3" - "$RESULTS" "$STEPS_JSONL" "$PIPELINE" "$STAGE" "$id" "$cron_line" "$status" "$rc" "$ms" "$tmo" "$DRY_RUN" <<'PY'
-import json, sys, datetime
-res, jsonl, pipeline, stage, sid, cron_line, status, rc, ms, tmo, dry = sys.argv[1:]
-rec = {"schema": "PipelineStepReceipt@v1", "ts": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-       "pipeline": pipeline, "stage": stage, "id": sid, "cron_line": int(cron_line), "status": status,
-       "rc": int(rc), "ms": int(ms), "timeout_s": int(tmo), "dry_run": dry == "1"}
-line = json.dumps(rec) + "\n"
-open(res, "a").write(line)
-open(jsonl, "a").write(line)
-PY
+    if [ "$_first" = 0 ] && [ "$grp" != "$prev_grp" ]; then
+      [ "${#_pids[@]}" -gt 0 ] && wait "${_pids[@]}" || true
+      _pids=()
+      echo "  ==== group $prev_grp done; next group $grp ===="
+    fi
+    _first=0; prev_grp="$grp"
+    while :; do
+      local _alive=() _p
+      for _p in "${_pids[@]}"; do kill -0 "$_p" 2>/dev/null && _alive+=("$_p"); done
+      _pids=("${_alive[@]}")
+      [ "${#_pids[@]}" -lt "$MAXC" ] && break
+      sleep 0.2
+    done
+    _mr_step &
+    _pids+=("$!")
   done <<<"$plan"
+  [ "${#_pids[@]}" -gt 0 ] && wait "${_pids[@]}" || true
 
   local -a sumflags=()
   [ "$DRY_RUN" = 1 ] && sumflags+=(--dry-run)

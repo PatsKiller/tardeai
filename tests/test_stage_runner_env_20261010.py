@@ -169,3 +169,42 @@ def test_corrupted_env_still_fails_loudly(tmp_path):
                                "stages": {"s": {"steps": [{"id": "t", "cron_line": 1, "timeout": "5s", "command": "true"}]}}}))
     r = _run(root, man, "s", "--dry-run")
     assert r.returncode == 78 and "FATAL" in r.stderr + r.stdout
+
+
+def test_parallel_premarket_groups_keep_each_steps_cron_env(tmp_path):
+    """Both features together (rebase of n8nmat/premarket-stage-parallel onto this branch): the real premarket
+    groups and max_concurrency, steps run in background subshells, and each one still sees exactly its own
+    cron env names — nothing from .env, nothing from the runner."""
+    root = _project(tmp_path, FAKE_ENV)
+    pre = _m("premarket")["stages"]["premarket"]
+    assert pre["parallel"]["max_concurrency"] > 1
+    steps = []
+    for st in pre["steps"]:
+        steps.append({"id": st["id"], "cron_line": st["cron_line"], "timeout": "30s", "env": st["env"],
+                      "group": st["group"],
+                      "command": f'env | cut -d= -f1 | sort > "$PROJ/out_{st["id"]}.txt"'})
+    man = tmp_path / "parenvprobe.json"
+    man.write_text(json.dumps({"schema": pm.MANIFEST_SCHEMA, "pipeline": "parenvprobe",
+                               "stages": {"premarket": {"parallel": {"max_concurrency": pre["parallel"]["max_concurrency"]},
+                                                        "steps": steps}}}))
+    r = _run(root, man, "premarket", "--apply")
+    assert r.returncode == 0, r.stdout[-2000:] + r.stderr[-2000:]
+    assert "group" in r.stdout
+    for st in pre["steps"]:
+        got = set((root / f"out_{st['id']}.txt").read_text().split()) - set(pm.SHELL_ADDED_ENV)
+        want = set(dse.cron_env_names(_line(st), SNAPSHOT_ASSIGNMENTS))
+        assert got == want, (st["id"], sorted(got ^ want))
+        assert not any(n.startswith(("CANARY", "NOISE")) or n.upper().startswith(pm.BROKER_ENV_PREFIXES) for n in got)
+
+
+def test_dry_run_prints_each_steps_env_names_serial_and_parallel(tmp_path):
+    """The --dry-run plan is the review artifact for env equivalence: every step line is followed by its names,
+    in the serial path and in the parallel (background subshell) path alike."""
+    root = _project(tmp_path, FAKE_ENV)
+    for name, stage in (("hermes_learning", "learn"), ("premarket", "premarket")):
+        man = ROOT / "config" / "pipelines" / f"{name}.json"
+        r = _run(root, man, stage, "--dry-run")
+        assert r.returncode == 0, r.stdout[-2000:] + r.stderr[-2000:]
+        steps = _m(name)["stages"][stage]["steps"]
+        assert r.stdout.count("[DRY_RUN] would run:") == r.stdout.count("env (env -i, names only):") == len(steps), name
+        assert "CANARY_SHOULD_NOT_LEAK" not in r.stdout
