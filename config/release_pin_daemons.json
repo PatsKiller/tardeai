@@ -1,0 +1,27 @@
+{
+  "schema": "ReleasePinDaemonsConfig@v1",
+  "as_of": "2026-10-10",
+  "authority": "READ_ONLY_ADVISORY",
+  "description": "Policy for scripts/release_pin_daemons.py, called by scripts/cio_phase2_exact_main_deploy.sh on promote and rollback. A user unit whose drop-ins pin WorkingDirectory/ExecStart/Environment to a portfolio-server/<release> directory other than the one being activated gets its pins rewritten into one managed drop-in; pin-only one-off drop-ins (e.g. 20-exact-sha-release.conf, 10-user-exact-sha.conf) are archived, never deleted. Cause: 2026-10-06 one-off drop-ins left 4 daemons on a032116e7 for 4 days (packets/unit-code-roots).",
+  "managed_dropin_name": "90-release-pin.conf",
+  "archive_dirname": ".release-pin-archive",
+  "exclude_units": [
+    "portfolio-server.service"
+  ],
+  "exclude_units_note": "portfolio-server's own 20-exact-sha-release.conf is written by write_systemd() in the deploy script.",
+  "restart_allowlist": [],
+  "restart_allowlist_note": "Units the pin step itself restarts after rewriting. Default empty: a rewritten unit outside the deploy's bound-unit set (TRADEAI_CURRENT_BOUND_UNITS) is reported 'restart pending'. Adding a unit here is an operator decision (a restart drops in-flight work, e.g. the credential-holding oauth proxies).",
+  "broker_rules_path": "config/agents_guard_hook_rules.json",
+  "broker_rule_id": "broker.execution_code_edit",
+  "broker_adjacent_units": [
+    "tradeai-active-trader-motion.service"
+  ],
+  "broker_adjacent_name_markers": [
+    "active-trader",
+    "active_trader",
+    "broker",
+    "moomoo",
+    "schwab"
+  ],
+  "broker_note": "AGENTS.md section 0 rule 2: a unit whose code path matches the broker execution file set (broker_rule_id path_globs), or that is named here, is never modified. It is listed in the receipt as 'pinned-broker-adjacent: operator action'. Name markers are deliberately conservative: a false exclusion costs an operator action, a false inclusion edits a broker-adjacent unit."
+}

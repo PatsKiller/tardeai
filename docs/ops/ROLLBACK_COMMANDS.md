@@ -1,7 +1,7 @@
 # CURRENT rollback (exact-main phase2)
 
 Status:      ACTIVE
-as_of:       2026-10-10T18:55-04:00 (n8n executor/gateway drop-ins, W0 partial rollback, RC11 caveat, flag kill switches); 2026-10-09 otherwise
+as_of:       2026-10-10T18:55-04:00 (n8n executor/gateway drop-ins, W0 partial rollback, RC11 caveat, flag kill switches; release-pinned user daemons re-pointed by promote/rollback via 90-release-pin.conf); 2026-10-09 otherwise
 Authority:   READ_ONLY_ADVISORY
 
 Do not run unless operator-authorized. Rollback moves CURRENT, restarts portfolio-server,
@@ -10,7 +10,12 @@ restarts the running bound units (the `TRADEAI_CURRENT_BOUND_UNITS` default in
 tradeai-cio-telegram.service, tradeai-telegram-callback-poller.service,
 tradeai-n8n-coordination-gateway.service, tradeai-n8n-run-relay.service,
 tradeai-n8n-run-executor.service, tradeai-phone-status.service; a unit not installed or not running is
-skipped), and rewrites the expected-release pin and ACTIVE_RELEASE. It does not fast-forward the dev tree. A grant
+skipped), and rewrites the expected-release pin and ACTIVE_RELEASE. It also undoes the release-pin step
+(`scripts/release_pin_daemons.py`): when the promote being rolled back is the one recorded in
+`~/.local/state/cio-phase2-exact-main/release_pins/last_apply.json`, the drop-ins it archived are moved
+back (sha256-checked) and its `90-release-pin.conf` files are archived. With no matching receipt, the pins
+are rewritten to the rollback target instead. Broker-adjacent units are never touched. It does not
+fast-forward the dev tree. A grant
 whose reason only says "promote" does not authorize rollback; rollback does not consume
 that grant.
 
@@ -28,6 +33,25 @@ curl -fsS http://localhost:7777/api/v2/health
 pid=$(systemctl --user show -p MainPID --value tradeai-cio-telegram.service)
 readlink -f /proc/$pid/cwd
 ```
+
+## Release-pinned daemons (drop-ins) rollback
+
+```bash
+# DRY RUN: which user units are pinned to a release other than CURRENT (writes nothing)
+bash scripts/cio_phase2_exact_main_deploy.sh pins
+
+# Undo one pin apply by its receipt (moves archived drop-ins back, archives the managed file, daemon-reload).
+# Refuses a unit whose 90-release-pin.conf changed since the apply ("drift") or whose original path is occupied.
+python3 scripts/release_pin_daemons.py restore \
+  --receipt ~/.local/state/cio-phase2-exact-main/release_pins/apply-<ts>.json
+
+# Units reported "restart pending" keep their old code until restarted (operator decision for each):
+systemctl --user restart <unit>
+pid=$(systemctl --user show -p MainPID --value <unit>); readlink /proc/$pid/cwd
+```
+
+Archived drop-ins live under `~/.config/systemd/user/.release-pin-archive/<ts>/` with a `TRIPWIRE.README`;
+`python3 scripts/release_pin_daemons.py tripwire` exits 3 if a live unit references that path.
 
 ## Executor v2 (opt-in) rollback
 
