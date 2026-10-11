@@ -69,6 +69,13 @@ WAVE3 = {
     "agent-calibration-engine": ("L314", "learn"),
     "update-agent-performance": ("L427", "learn"),
 }
+#: C1 premarket flip (2026-10-11): these six D3 lanes' cron lines became steps of premarket-data-pipeline. Their rows
+#: are RETIRED (superseded_by the stage lane) and left the wave (dispatch_retired keeps stage/wave/dispatch); their
+#: allowlist entries are removed. A stage step cannot also be a dispatcher row.
+C1_PREMARKET_ABSORBED = frozenset({"catalyst-calibration", "mint-identity-registry", "earnings-enrich",
+                                   "fund-technicals-enrich", "distributions-enrich", "build-symbol-profiles-watchlist"})
+#: The D3 lanes still in the wave.
+WAVE3_LIVE = {k: v for k, v in WAVE3.items() if k not in C1_PREMARKET_ABSORBED}
 #: The three lanes whose cron line gains `flock -n <lock>` (packet n8n-maturity/packets/wave23-flock).
 FLOCK_ADDED = {"agent-outcome-linker", "agent-calibration-engine", "update-agent-performance"}
 
@@ -97,10 +104,19 @@ def test_wave3_is_19_lanes_and_only_r1_classes():
     assert {k for _l, k in WAVE3.values()} == {"ingest", "learn"}
     assert [r["lane_id"] for r in REGISTRY["lanes"] if "r1_pending" in r] == []  # activated 2026-10-10
     d3 = sorted(r["lane_id"] for r in REGISTRY["lanes"] if (r.get("scheduler") or {}).get("wave") == "D3")
-    assert d3 == sorted(WAVE3)
+    assert d3 == sorted(WAVE3_LIVE) and len(WAVE3_LIVE) == 13
 
 
-@pytest.mark.parametrize("lane", sorted(WAVE3))
+@pytest.mark.parametrize("lane", sorted(C1_PREMARKET_ABSORBED))
+def test_c1_absorbed_lane_left_the_wave(lane):
+    row = ROWS[lane]
+    assert row["state"] == "RETIRED" and row["superseded_by"] == "premarket-data-pipeline"
+    assert "dispatch" not in row and "stage" not in row["scheduler"] and "wave" not in row["scheduler"]
+    assert row["dispatch_retired"]["wave"] == "D3" and row["dispatch_retired"]["dispatch"]["class"] == WAVE3[lane][1]
+    assert lane not in ALLOW
+
+
+@pytest.mark.parametrize("lane", sorted(WAVE3_LIVE))
 def test_row_is_a_shadow_cron_row_admitted_by_the_r1_gate(lane):
     row = ROWS[lane]
     assert LD.R1_SHADOW_SHAPE_STATUS == "ACTIVE"
@@ -111,7 +127,7 @@ def test_row_is_a_shadow_cron_row_admitted_by_the_r1_gate(lane):
     assert LD.r1_class_admission(row) == (True, f"r1_admitted:{WAVE3[lane][1]}")
 
 
-@pytest.mark.parametrize("lane", sorted(WAVE3))
+@pytest.mark.parametrize("lane", sorted(WAVE3_LIVE))
 def test_dispatch_block_shape(lane):
     lno, klass = WAVE3[lane]
     row = ROWS[lane]
@@ -126,7 +142,7 @@ def test_dispatch_block_shape(lane):
     assert LD.receipt_signal_path({"output_signal": sig}) == sig["path"]
 
 
-@pytest.mark.parametrize("lane", sorted(WAVE3))
+@pytest.mark.parametrize("lane", sorted(WAVE3_LIVE))
 def test_allowlist_entry_is_shadow_only_and_carries_no_broker_credential(lane):
     e = ALLOW[lane]
     assert e["live_arg"] is None
@@ -138,7 +154,7 @@ def test_allowlist_entry_is_shadow_only_and_carries_no_broker_credential(lane):
     assert LD.forbidden_text_hits(" ".join(e["command"] + e["dry_run_arg"])) == []
 
 
-@pytest.mark.parametrize("lane", sorted(WAVE3))
+@pytest.mark.parametrize("lane", sorted(WAVE3_LIVE))
 def test_allowlist_lock_is_the_cron_line_lock(lane):
     """The staged command_text is the live cron command (plus the packet's flock for the three FLOCK_ADDED lanes);
     its flock lock is the allowlist lock, as the canary step will require (r1_canary_lock_matches)."""
@@ -161,7 +177,7 @@ BUILT_RECEIPT_NAMES = {
 
 
 def test_the_script_writes_the_receipt_the_row_names():
-    for lane in WAVE3:
+    for lane in WAVE3_LIVE:
         e = ALLOW[lane]
         script = (ROOT / e["command"][1]).read_text(encoding="utf-8")
         stem = Path(e["output_signal"]).name[: -len("_last.json")]
@@ -171,7 +187,7 @@ def test_the_script_writes_the_receipt_the_row_names():
 # ------------------------------------------------------------------------------ refused now, admitted later
 
 
-@pytest.mark.parametrize("lane", sorted(WAVE3))
+@pytest.mark.parametrize("lane", sorted(WAVE3_LIVE))
 def test_activated_row_is_refused_while_4_4_0_is_proposed(lane):
     row = _activate(ROWS[lane])
     ok, why = _admit(row, "PROPOSED")
@@ -181,7 +197,7 @@ def test_activated_row_is_refused_while_4_4_0_is_proposed(lane):
         assert not ok and "shadow_on_cron_not_ratified" in why, (lane, why)
 
 
-@pytest.mark.parametrize("lane", sorted(WAVE3))
+@pytest.mark.parametrize("lane", sorted(WAVE3_LIVE))
 def test_activated_row_is_admitted_once_4_4_0_is_active(lane, monkeypatch):
     row = _activate(ROWS[lane])
     assert _admit(row, "ACTIVE") == (True, f"r1_admitted:{WAVE3[lane][1]}")
@@ -194,11 +210,12 @@ def test_activated_registry_has_no_dispatch_issue_once_active(monkeypatch):
     doc = dict(REGISTRY, lanes=[_activate(r) if "r1_pending" in r else r for r in REGISTRY["lanes"]])
     monkeypatch.setattr(LD, "R1_SHADOW_SHAPE_STATUS", "PROPOSED")
     errs = LD.registry_dispatch_errors(doc)
-    # 19 wave-3 rows + the 3 W4 provider-owner rows (tests/test_w4_provider_owners_shadow_20261011.py): every R1
-    # cron-shadow row on the registry is refused while 4.4.0 is PROPOSED.
+    # 19 wave-3 rows + the 3 W4 provider-owner rows (tests/test_w4_provider_owners_shadow_20261011.py) - the 6 D3 rows
+    # the C1 premarket flip (2026-10-11) absorbed: every R1 cron-shadow row on the registry is refused while 4.4.0 is
+    # PROPOSED.
     r1_cron_shadow = [r for r in doc["lanes"] if (r.get("dispatch") or {}).get("class") in LD.R1_ADMITTED_CLASSES
                       and (r.get("scheduler") or {}).get("kind") == "cron"]
-    assert len(r1_cron_shadow) == 19 + 3
+    assert len(r1_cron_shadow) == len(WAVE3_LIVE) + 3
     assert len(errs) == len(r1_cron_shadow) and all("shadow_on_cron_not_ratified" in x for x in errs), errs[:3]
     monkeypatch.setattr(LD, "R1_SHADOW_SHAPE_STATUS", "ACTIVE")
     assert LD.registry_dispatch_errors(doc) == []
@@ -224,7 +241,7 @@ def _sweep(rows, allow, days=7):
 
 
 def test_compute_due_week_sweep_proposed_vs_active(monkeypatch):
-    activated = [_activate(ROWS[x]) for x in WAVE3]
+    activated = [_activate(ROWS[x]) for x in WAVE3_LIVE]
     monkeypatch.setattr(LD, "R1_SHADOW_SHAPE_STATUS", "PROPOSED")
     emitted, errors = _sweep(activated, ALLOW, days=1)
     assert emitted == {} and {c for _l, c in errors} == {"class_not_permitted"}
@@ -232,5 +249,5 @@ def test_compute_due_week_sweep_proposed_vs_active(monkeypatch):
     monkeypatch.setattr(LD, "R1_SHADOW_SHAPE_STATUS", "ACTIVE")
     emitted, errors = _sweep(activated, ALLOW)
     assert errors == set(), sorted(errors)[:5]
-    assert set(emitted) == set(WAVE3), sorted(set(WAVE3) - set(emitted))
+    assert set(emitted) == set(WAVE3_LIVE), sorted(set(WAVE3_LIVE) - set(emitted))
     assert all(modes == {"dry_run"} for modes in emitted.values())

@@ -399,4 +399,6 @@ def test_enforced_inventories_cover_every_literal_read_in_the_import_closure(lan
 
 def test_lane_mode_counts_match_the_pr():
     modes = [e["env_allowlist_mode"] for e in LANES.values()]
-    assert modes.count("enforce") == 7 and modes.count("report") == len(LANES) - 7
+    # 7 enforce at the PR; C1 premarket flip (2026-10-11) removed the entries of catalyst-calibration-monitor and
+    # watch-directives-monitor (both enforce): their cron lines became premarket-data-pipeline steps.
+    assert modes.count("enforce") == 5 and modes.count("report") == len(LANES) - 5

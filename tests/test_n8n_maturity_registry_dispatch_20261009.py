@@ -460,7 +460,9 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
     # 22 D1b + 14 D2 + 19 D3 (R1, activated 2026-10-10 under AGENTS 4.4.0) - 1: C1 hermes_learning flip (2026-10-10) absorbs
     # hermes-config-governor (L671) into stage hermes-learning-pipeline-learn; its row leaves D1b (dispatch_retired).
     # + 3 W4 provider owners (R1 ingest, 2026-10-11): finviz-enrichment, sec-data-ingest, social-ingest-all.
-    assert len(shadow) == 54 + 3, shadow
+    # - 17: C1 premarket flip (2026-10-11) absorbs 17 shadow rows into premarket-data-pipeline (D1b 7, D2 4, D3 6);
+    # each leaves its wave (dispatch_retired) and its allowlist entry is removed.
+    assert len(shadow) == 54 + 3 - 17, shadow
 
 
 #: wave D2: allowlist entries that existed (with a live_arg) before the dispatcher row was added.
@@ -487,7 +489,9 @@ def test_wave_d2_dispatch_cron_equals_the_row_schedule_and_locks_match_cron():
     """Each D2 row's dispatch.cron is its scheduler.expression (the live crontab schedule); the three
     data-gap-resolver cadences share the one cron lock, so they can never run concurrently from either scheduler."""
     rows = [r for r in _live_rows() if (r.get("scheduler") or {}).get("wave") == "D2"]
-    assert len(rows) == 14
+    # 14 at D2; C1 premarket flip (2026-10-11) moved 4 out (catalyst-calibration-monitor, backtest-results-aggregator,
+    # watch-directives-monitor, cio-draft-plan-hygiene -> dispatch_retired).
+    assert len(rows) == 10
     allow = {e["lane_id"]: e for e in json.loads((ROOT / "config" / "n8n_run_allowlist.json").read_text())["lanes"]}
     for r in rows:
         assert r["dispatch"]["cron"] == [r["scheduler"]["expression"]], r["lane_id"]
