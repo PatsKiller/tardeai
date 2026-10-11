@@ -13,6 +13,7 @@ are enqueued (the scorer can't score anything else). Advisory-only; honors HERME
 
   python3 scripts/hermes_score_event_feeder.py            # dry-run
   python3 scripts/hermes_score_event_feeder.py --apply
+  python3 scripts/hermes_score_event_feeder.py --apply --dry-run  # offline plan, no DB/config/heartbeat
 """
 from __future__ import annotations
 
@@ -28,6 +29,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 KILL_SWITCH = PROJECT_ROOT / "data" / "runtime" / "HERMES_DISABLED"
 CFG_FILE = PROJECT_ROOT / "config" / "hermes_scope_governor.yaml"
+LANE_ID = "hermes-score-event-feeder"
 
 # source name -> (SQL yielding (symbol, ref) fresh within %s minutes)
 SOURCE_SQL = {
@@ -248,12 +250,34 @@ def run(apply: bool = False) -> dict:
     return out
 
 
-def main():
-    ap = argparse.ArgumentParser()
+def main(argv=None):
+    ap = argparse.ArgumentParser(allow_abbrev=False)
     ap.add_argument("--apply", action="store_true")
-    args = ap.parse_args()
-    run(apply=args.apply)
+    ap.add_argument("--dry-run", action="store_true")
+    args = ap.parse_args(argv)
+    if args.dry_run:
+        print(f"DRY-RUN {LANE_ID}: would collect research events, enqueue scoring work and write a run receipt")
+        return 0
+    # Preserve the old implicit database preview; the explicit flag is fully offline.
+    if not args.apply:
+        run(apply=False)
+        return 0
+    from lib.lane_last_receipt import now_iso, write_lane_receipt
+
+    started_at = now_iso()
+    try:
+        out = run(apply=True)
+    except Exception as exc:
+        write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started_at,
+                           error=f"{type(exc).__name__}: {exc}")
+        raise
+    # A kill-switch soft result historically exits 0, but must not advance ok_at.
+    write_lane_receipt(LANE_ID, ok=out.get("ok") is True, exit_code=0, started_at=started_at,
+                       summary={key: out[key] for key in ("events_found", "enqueued", "reactivated_s3_to_s1",
+                                                        "skipped_s3_reactivation") if key in out},
+                       error=out.get("reason") if out.get("ok") is not True else None)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

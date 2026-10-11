@@ -18,13 +18,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 KILL = ROOT / "data" / "runtime" / "HERMES_DISABLED"
 sys.path.insert(0, str(ROOT / "scripts"))
-for ln in (ROOT / ".env").read_text().splitlines():
-    if "=" in ln and not ln.strip().startswith("#"):
-        k, _, v = ln.partition("="); os.environ.setdefault(k.strip(), v.strip())
-import psycopg2
+_ENV_KEYS = ("DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD")
+
+
+def _load_env():
+    from lib.env_bootstrap import load_env
+    return load_env(names=_ENV_KEYS)
 
 
 def _db():
+    import psycopg2
     return psycopg2.connect(host=os.getenv("DB_HOST"), port=os.getenv("DB_PORT"), dbname=os.getenv("DB_NAME"),
                             user=os.getenv("DB_USER"), password=os.getenv("DB_PASSWORD"))
 
@@ -84,12 +87,37 @@ def _is_terminal(message: str) -> bool:
     return any(m.upper() in upper for m in TERMINAL_MARKERS)
 
 
-def main():
-    ap = argparse.ArgumentParser()
+def main(argv=None):
+    ap = argparse.ArgumentParser(allow_abbrev=False)
+    ap.add_argument("--dry-run", action="store_true", help="offline plan; takes precedence over --apply")
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--model", default="deepseek-flash")
     ap.add_argument("--max-rows", type=int, default=25)
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
+    if args.dry_run:
+        print(f"DRY-RUN hermes-usefulness-backfill: would score up to {args.max_rows} research rows through the existing governed process; no env load, DB, model or writes")
+        return 0
+    _load_env()
+    if not args.apply:
+        # Preserve the historical implicit model preview. Explicit --dry-run is offline.
+        _run_feedback(args)
+        return 0
+    from lib.lane_last_receipt import now_iso, write_lane_receipt
+    started = now_iso()
+    try:
+        result = _run_feedback(args)
+    except BaseException as exc:
+        rc = int(exc.code) if isinstance(exc, SystemExit) and isinstance(exc.code, int) else 1
+        write_lane_receipt("hermes-usefulness-backfill", ok=False, exit_code=rc,
+                           started_at=started, script="hermes_external_feedback_loop.py", error=type(exc).__name__)
+        raise
+    rc = 1 if result["failed"] or result["aborted"] else 0
+    write_lane_receipt("hermes-usefulness-backfill", ok=rc == 0, exit_code=rc,
+                       started_at=started, script="hermes_external_feedback_loop.py", summary=result)
+    return rc
+
+
+def _run_feedback(args):
     if KILL.exists():
         print("ABORT: kill-switch present"); sys.exit(2)
     c = _db(); cur = c.cursor()
@@ -100,6 +128,7 @@ def main():
     rows = cur.fetchall()
     print(f"Hermes External Feedback Loop — eligible={len(rows)} apply={args.apply} model={args.model}")
     scored = 0
+    failed = 0
     consecutive_failures = 0
     aborted = None
     for rid, lane, symbol, question, rec, dissent, created in rows:
@@ -107,6 +136,7 @@ def main():
         try:
             u, rationale, pack = _rate(question, rec, dissent, outcome)
         except Exception as exc:
+            failed += 1
             message = str(exc)
             print(f"  id={rid} FAILED_PROVIDER {type(exc).__name__}: {message[:100]}")
             # Stop, rather than spending the rest of the queue on a refusal that
@@ -144,7 +174,8 @@ def main():
               f"(still eligible — they were never written)")
     c.close()
     print("RESULT:", json.dumps({"scored_now": scored, "per_lane_usefulness": agg}))
+    return {"selected": len(rows), "scored": scored, "failed": failed, "aborted": bool(aborted)}
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

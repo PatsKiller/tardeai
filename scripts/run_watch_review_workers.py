@@ -29,7 +29,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 # Shared daily cap for scheduled process (ledger also enforces run caps)
-os.environ.setdefault("LLM_GLOBAL_DAILY_USD_CAP", "0.25")
+
 
 
 def _now() -> str:
@@ -320,8 +320,8 @@ def _execute_jobs(*, role: str, dry_run: bool = False) -> dict:
     return base
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser()
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(allow_abbrev=False)
     ap.add_argument(
         "--mode",
         choices=("plan", "event-scan", "execute", "enable-workers", "disable-workers"),
@@ -340,7 +340,11 @@ def main() -> int:
     )
     ap.add_argument("--dry-run", action="store_true", help="With execute: plan queue only, zero provider calls")
     ap.add_argument("--operator-id", default="johnclaw")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
+    if args.dry_run:
+        print(f"DRY-RUN watch-review-workers: would process mode={args.mode} role={args.role}; no policy, queue, DB, model or writes")
+        return 0
+    os.environ.setdefault("LLM_GLOBAL_DAILY_USD_CAP", "0.25")
 
     from lib.watch_review_policy_ledger import (
         load_policy,

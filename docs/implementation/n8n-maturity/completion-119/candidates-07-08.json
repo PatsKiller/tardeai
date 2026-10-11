@@ -1,0 +1,1879 @@
+{
+  "schema": "RefactorCompletionCandidates@v1",
+  "as_of": "2026-10-11T21:43:17.340147+00:00",
+  "base_sha": "c15b7b98caa3909665ac5abb878f02eb558d6ff6",
+  "branch": "n8nmat/completion-119-07-08-20261011",
+  "evidence_class": "SOURCE_ONLY",
+  "runtime": "NOT_MEASURED",
+  "rows": [
+    {
+      "lane_id": "document-mentions-backfill",
+      "shard": "07",
+      "before_disposition": "LOCAL_SOURCE_PROPOSAL_NEEDS_INTEGRATION_REVIEW_CI",
+      "before_blocker": "LOCAL_SOURCE_PROPOSAL_NEEDS_INTEGRATION_REVIEW_CI",
+      "source_status": "LOCAL_PROPOSAL_SOURCE_INTEGRATED_PENDING_VALIDATION",
+      "source_entrypoint": "scripts/backfill_document_mentions.py",
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_acceptance": "NOT_MEASURED",
+      "admission_status": "NOT_APPLIED",
+      "scheduler_retained": {
+        "kind": "cron",
+        "expression": "25 * * * *",
+        "command_text": ".../backfill_document_mentions.py --all --limit 4000 --apply",
+        "match": "scripts/backfill_document_mentions.py --all"
+      },
+      "after_blocker": "DRAFT contract review, final train CI and import-closure proof; no operational config applied",
+      "implemented": [
+        "Strict explicit offline --dry-run before runtime work; unknown flags exit2",
+        "Real-run success/failure receipts retain prior ok_at on failure",
+        "Owned env loader uses explicit names where applicable"
+      ],
+      "tests": [
+        "tests/test_completion_119_shards_07_08_20261011.py"
+      ],
+      "registry_candidate": {
+        "lane_id": "document-mentions-backfill",
+        "owner": "platform",
+        "scheduler": {
+          "kind": "cron",
+          "expression": "25 * * * *",
+          "command_text": "25 * * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/document_mentions_backfill.lock timeout 25m $PY scripts/backfill_document_mentions.py --all --limit 4000 --apply >> /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/logs/document_mentions.log 2>&1",
+          "match": "scripts/backfill_document_mentions.py --all",
+          "stage": "shadow",
+          "wave": "R2-07"
+        },
+        "expected_cadence_hours": 1.0,
+        "state": "ACTIVE",
+        "output_signal": {
+          "kind": "json_key",
+          "path": "data/runtime/document-mentions-backfill_last.json",
+          "key": "ok_at",
+          "evidence": "SOURCE_ONLY",
+          "evidence_ref": "scripts/backfill_document_mentions.py real-run entrypoint, fake-tested; runtime NOT_MEASURED"
+        },
+        "note": "Links documents to subjects; feeds the identity spine. Shard07 SOURCE_ONLY shadow proposal; offline plan only; no runtime acceptance.",
+        "value_class": "Technical Debt",
+        "recommendation": "PIPELINE:P03",
+        "rationalization": {
+          "source": "F_rationalization.json",
+          "f_id": "L917",
+          "pipeline": "P03",
+          "value_class": "Technical Debt",
+          "recommendation": "PIPELINE:P03",
+          "f_recommendation": "REDESIGN (one-shot backfill, not hourly)",
+          "event_driven_candidate": false,
+          "f_evidence": "hourly backfill; log stale since 09-30"
+        },
+        "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible).",
+        "dispatch": {
+          "mode": "dry_run",
+          "cron": [
+            "25 * * * *"
+          ],
+          "tz": "America/New_York",
+          "wave": "W4",
+          "class": "ingest",
+          "priority": 4,
+          "retry_policy": "none"
+        }
+      },
+      "allowlist_candidate": {
+        "lane_id": "document-mentions-backfill",
+        "env_names": [
+          "DB_CONN_TRACE",
+          "DB_HOST",
+          "DB_NAME",
+          "DB_PASSWORD",
+          "DB_PORT",
+          "DB_USER",
+          "POSTGRES_PASSWORD",
+          "PROJECT_ROOT",
+          "TRADEAI_PERSISTENT_STATE_ROOT",
+          "TRADEAI_ROOT"
+        ],
+        "env_allowlist_mode": "report",
+        "env_evidence": "SOURCE_ONLY: source-local DB loaders use explicit names; full real-run import closure NOT_MEASURED.",
+        "env_report_reason": "Shared runtime DB/identity/store loaders have not been proven bounded for this whole import closure. Keep report mode until reviewed closure proof; no broker env name is admitted.",
+        "source": "Shard07 source proposal; exact native-approved cron snapshot 2026-10-11T17:05:28.513179+00:00: 25 * * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/document_mentions_backfill.lock timeout 25m $PY scripts/backfill_document_mentions.py --all --limit 4000 --apply >> /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/logs/document_mentions.log 2>&1; no scheduler mutation.",
+        "command": [
+          "$PY",
+          "scripts/backfill_document_mentions.py",
+          "--all",
+          "--limit",
+          "4000",
+          "--apply"
+        ],
+        "lock": "/tmp/document_mentions_backfill.lock",
+        "lock_kind": "flock",
+        "timeout_s": 1500,
+        "dry_run_arg": [
+          "--dry-run"
+        ],
+        "live_arg": null,
+        "market_gate": false,
+        "output_signal": "data/runtime/document-mentions-backfill_last.json"
+      },
+      "health_contract_candidate": {
+        "schema": "N8nHealthContract@v1",
+        "id": "document-mentions-backfill",
+        "kind": "lane",
+        "workflow_id": "tradeai-dispatcher",
+        "status": "DRAFT",
+        "target_reason": "stage:shadow",
+        "stage": "shadow",
+        "owner": "platform",
+        "purpose": {
+          "text": "Strict offline preview overrides --apply; real argv retains --all --limit and --apply; real-run mentions/watermark counts in lane receipt.",
+          "business_function": "platform",
+          "source": "SOURCE_ONLY scripts/backfill_document_mentions.py; no runtime or operator review claim"
+        },
+        "connects_to": [
+          {
+            "name": "n8n dispatcher -> relay -> coordination/run -> host executor",
+            "kind": "service",
+            "direction": "calls",
+            "source": "AGENTS.md \u00a723.3, \u00a723.11; source-only topology"
+          },
+          {
+            "name": "$PY scripts/backfill_document_mentions.py --all --limit 4000 --apply",
+            "kind": "runner",
+            "direction": "calls",
+            "source": "config/n8n_run_allowlist.json"
+          },
+          {
+            "name": "/tmp/document_mentions_backfill.lock",
+            "kind": "lock",
+            "direction": "read_write",
+            "source": "native-approved exact cron snapshot"
+          },
+          {
+            "name": "data/runtime/document-mentions-backfill_last.json",
+            "kind": "receipt",
+            "direction": "write",
+            "source": "scripts/backfill_document_mentions.py -> existing lane_last_receipt helper"
+          },
+          {
+            "name": "25 * * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/document_mentions_backfill.lock timeout 25m $PY scripts/backfill_document_mentions.py --all --limit 4000 --apply >> /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/logs/document_mentions.log 2>&1",
+            "kind": "cron_twin",
+            "direction": "calls",
+            "source": "OBSERVED_HOST scoped snapshot 2026-10-11T17:05:28.513179+00:00; full census NOT_MEASURED"
+          },
+          {
+            "name": "news_articles / catalyst_events / hermes_external_research / research_insights / sec_form4",
+            "kind": "store",
+            "direction": "read",
+            "source": "lib.document_mentions.SOURCES"
+          },
+          {
+            "name": "document_mentions and per-table watermarks on --apply",
+            "kind": "store",
+            "direction": "write",
+            "source": "backfill_document_mentions.run/_run"
+          }
+        ],
+        "healthy": [
+          {
+            "check": "shadow_done",
+            "text": "RunReceipt is RUN_DONE in dry_run and all durable output mtimes remain unchanged."
+          },
+          {
+            "check": "cron_receipt_fresh",
+            "text": "Natural cron receipt ok_at within 3 h; source cadence 25 * * * *, America/New_York. No natural fire measured here."
+          }
+        ],
+        "degraded": [
+          {
+            "check": "late",
+            "text": "Cron ok_at older than 3 h but younger than 4 h."
+          },
+          {
+            "check": "slow",
+            "text": "Duration exceeds 1200 s (provisional 80% of timeout)."
+          }
+        ],
+        "failed": [
+          {
+            "check": "failed_run",
+            "text": "RUN_FAILED, RUN_TIMEOUT, RUN_REFUSED, missing receipt or any dry-run durable write."
+          },
+          {
+            "check": "stale",
+            "text": "Cron receipt ok_at older than 4 h. Failed real runs preserve prior ok_at."
+          }
+        ],
+        "baseline": {
+          "basis": "CLASS_DEFAULT_PROVISIONAL",
+          "class": "ingest",
+          "evidence_class": "SOURCE_ONLY",
+          "ledger": "NOT_MEASURED",
+          "runs_considered": null,
+          "computed_on": "2026-10-11",
+          "timeout_s": 1500,
+          "duration_degraded_above_s": 1200.0,
+          "freshness_degraded_after_h": 3.0,
+          "freshness_failed_after_h": 4.0,
+          "freshness_rule": "SOURCE_ONLY: declared maximum inter-fire gap plus 2 h; failed at twice that gap plus 2 h. Weekday/weekend gaps remain provisional, not an observed SLO.",
+          "source": "Declared cron cadence plus class defaults. No coordination-ledger sample, duration distribution or runtime acceptance measured."
+        },
+        "alerting": {
+          "lane_severity": "Medium",
+          "severity_basis": "SOURCE_ONLY R1 data/learning defaults; operator review pending",
+          "failed": {
+            "siem_severity": "WARN",
+            "notifier_priority": "P2"
+          },
+          "degraded": {
+            "siem_severity": "INFO",
+            "notifier_priority": "P3"
+          },
+          "routing": "Existing SIEM and host notifier chokepoints; this lane sends nothing.",
+          "enforced": "SOURCE_ONLY contract; runtime contract consumption NOT_MEASURED."
+        },
+        "remediation": {
+          "catalogue_entry": false,
+          "diagnosis_excluded": false,
+          "note": "No auto action enabled. Catalogue/diagnosis wiring requires separate owner review."
+        },
+        "evidence": {
+          "receipt": "data/runtime/document-mentions-backfill_last.json",
+          "class": "SOURCE_ONLY",
+          "runtime": "NOT_MEASURED",
+          "verify": [
+            "Read data/runtime/document-mentions-backfill_last.json ok_at/status/counts after a separately authorized natural run.",
+            "Join lane document-mentions-backfill coordination RunReceipt after operator shadow fire."
+          ],
+          "never": "Source plans or n8n execution status are not runtime work proof. Live inventory must filter deletedAt IS NULL; no live inventory measured here."
+        },
+        "review_by": "2026-10-25"
+      }
+    },
+    {
+      "lane_id": "hermes-update-check",
+      "shard": "07",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "before_blocker": "SYSTEMD_SHADOW_SHAPE_UNSUPPORTED; monitor class outside the ingest/llm/learn recipe. The source script is now identifiable, so 'source unresolved' is narrowed rather than repeated.",
+      "source_status": "PARTIAL_SOURCE_FIX_ADMISSION_BLOCKED",
+      "source_entrypoint": "scripts/check_hermes_update_available.py",
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_acceptance": "NOT_MEASURED",
+      "admission_status": "NOT_APPLIED",
+      "scheduler_retained": {
+        "kind": "systemd",
+        "expression": "hermes-update-check.timer"
+      },
+      "after_blocker": "Timer-native admission design and monitor-class owner decision; capability destination ownership remains pending",
+      "implemented": [
+        "Strict explicit offline --dry-run before runtime work; unknown flags exit2",
+        "Missing version evidence yields not_measured and exit1",
+        "Failure-preserving LaneRunReceipt@v1"
+      ],
+      "tests": [
+        "tests/test_completion_119_shards_07_08_20261011.py"
+      ]
+    },
+    {
+      "lane_id": "contradiction-adjudicator",
+      "shard": "07",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "before_blocker": "SYSTEMD_SHADOW_SHAPE_UNSUPPORTED plus direct in-process paid judge; bridge helper does not replace gate_and_generate.",
+      "source_status": "PARTIAL_SOURCE_FIX_ADMISSION_BLOCKED",
+      "source_entrypoint": "scripts/contradiction_adjudicator.py",
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_acceptance": "NOT_MEASURED",
+      "admission_status": "NOT_APPLIED",
+      "scheduler_retained": {
+        "kind": "systemd",
+        "expression": "tradeai-contradiction-adjudicator.timer"
+      },
+      "after_blocker": "SYSTEMD_SHADOW_SHAPE_UNSUPPORTED plus direct in-process paid judge; bridge helper does not replace gate_and_generate.",
+      "implemented": [
+        "Strict explicit offline --dry-run before runtime work; unknown flags exit2"
+      ],
+      "tests": [
+        "tests/test_completion_119_shards_07_08_20261011.py"
+      ]
+    },
+    {
+      "lane_id": "hermes-overnight-pipeline-close",
+      "shard": "07",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "before_blocker": "COMPOUND_MODEL_WRAPPER_CLOSURE_UNCHANGED; actual close stage is a pipeline planner, outside \u00a73 R1-only class recipe.",
+      "source_status": "RETAINED_OWNER_OR_AUTHORITY_BLOCKED",
+      "source_entrypoint": null,
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_acceptance": "NOT_MEASURED",
+      "admission_status": "NOT_APPLIED",
+      "scheduler_retained": {
+        "kind": "cron",
+        "expression": "13 23 * * *",
+        "command_text": "hermes_overnight.json --stage close --dry-run",
+        "match": "hermes_overnight.json --stage close"
+      },
+      "after_blocker": "COMPOUND_MODEL_WRAPPER_CLOSURE_UNCHANGED; actual close stage is a pipeline planner, outside \u00a73 R1-only class recipe.",
+      "implemented": [],
+      "tests": []
+    },
+    {
+      "lane_id": "tradeai-agent-runtime-morgan",
+      "shard": "07",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "before_blocker": "SYSTEMD_SHADOW_SHAPE_UNSUPPORTED; prepare-only authorization/backend closure remains unresolved. The runner itself has no direct model transport, so prior generic model-route claim is narrowed.",
+      "source_status": "RETAINED_OWNER_OR_AUTHORITY_BLOCKED",
+      "source_entrypoint": null,
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_acceptance": "NOT_MEASURED",
+      "admission_status": "NOT_APPLIED",
+      "scheduler_retained": {
+        "kind": "systemd",
+        "expression": "tradeai-agent-runtime@morgan.timer"
+      },
+      "after_blocker": "SYSTEMD_SHADOW_SHAPE_UNSUPPORTED; prepare-only authorization/backend closure remains unresolved. The runner itself has no direct model transport, so prior generic model-route claim is narrowed.",
+      "implemented": [],
+      "tests": []
+    },
+    {
+      "lane_id": "watch-review-workers",
+      "shard": "07",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "before_blocker": "DIRECT_PROVIDER_EXECUTOR_CLOSURE_UNCHANGED; model helper is not integrated into run_agent_call and auth/provider policy remains shared.",
+      "source_status": "PARTIAL_SOURCE_FIX_ADMISSION_BLOCKED",
+      "source_entrypoint": "scripts/run_watch_review_workers.py",
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_acceptance": "NOT_MEASURED",
+      "admission_status": "NOT_APPLIED",
+      "scheduler_retained": {
+        "kind": "cron",
+        "expression": "5 16 * * 1,3,5",
+        "command_text": "run_watch_review_workers.py --mode execute --allow-execute --role maria",
+        "match": "run_watch_review_workers.py --mode execute --allow-execute --role maria"
+      },
+      "after_blocker": "DIRECT_PROVIDER_EXECUTOR_CLOSURE_UNCHANGED; model helper is not integrated into run_agent_call and auth/provider policy remains shared.",
+      "implemented": [
+        "Strict explicit offline --dry-run before runtime work; unknown flags exit2"
+      ],
+      "tests": [
+        "tests/test_completion_119_shards_07_08_20261011.py"
+      ]
+    },
+    {
+      "lane_id": "watch-review-workers-cio",
+      "shard": "07",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "before_blocker": "DIRECT_PROVIDER_EXECUTOR_CLOSURE_UNCHANGED; model helper is not integrated into run_agent_call and auth/provider policy remains shared.",
+      "source_status": "PARTIAL_SOURCE_FIX_ADMISSION_BLOCKED",
+      "source_entrypoint": "scripts/run_watch_review_workers.py",
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_acceptance": "NOT_MEASURED",
+      "admission_status": "NOT_APPLIED",
+      "scheduler_retained": {
+        "kind": "cron",
+        "expression": "20 16 * * 1,3,5",
+        "command_text": "run_watch_review_workers.py --mode execute --allow-execute --role cio",
+        "match": "run_watch_review_workers.py --mode execute --allow-execute --role cio"
+      },
+      "after_blocker": "DIRECT_PROVIDER_EXECUTOR_CLOSURE_UNCHANGED; model helper is not integrated into run_agent_call and auth/provider policy remains shared.",
+      "implemented": [
+        "Strict explicit offline --dry-run before runtime work; unknown flags exit2"
+      ],
+      "tests": [
+        "tests/test_completion_119_shards_07_08_20261011.py"
+      ]
+    },
+    {
+      "lane_id": "aegis-evening-packet",
+      "shard": "07",
+      "before_disposition": "LOCAL_SOURCE_PROPOSAL_NEEDS_INTEGRATION_REVIEW_CI",
+      "before_blocker": "LOCAL_SOURCE_PROPOSAL_NEEDS_INTEGRATION_REVIEW_CI",
+      "source_status": "LOCAL_PROPOSAL_SOURCE_INTEGRATED_PENDING_VALIDATION",
+      "source_entrypoint": "scripts/aegis_evening_packet.py",
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_acceptance": "NOT_MEASURED",
+      "admission_status": "NOT_APPLIED",
+      "scheduler_retained": {
+        "kind": "cron",
+        "expression": "45 19 * * *",
+        "match": "scripts/aegis_evening_packet.py"
+      },
+      "after_blocker": "DRAFT contract review, final train CI and import-closure proof; no operational config applied",
+      "implemented": [
+        "Strict explicit offline --dry-run before runtime work; unknown flags exit2",
+        "Real-run success/failure receipts retain prior ok_at on failure",
+        "Owned env loader uses explicit names where applicable"
+      ],
+      "tests": [
+        "tests/test_completion_119_shards_07_08_20261011.py"
+      ],
+      "registry_candidate": {
+        "lane_id": "aegis-evening-packet",
+        "owner": "agents",
+        "scheduler": {
+          "kind": "cron",
+          "expression": "45 19 * * *",
+          "match": "scripts/aegis_evening_packet.py",
+          "stage": "shadow",
+          "wave": "R2-07",
+          "command_text": "45 19 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && PYTHONPATH=/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT flock -n /tmp/aegis_evening_packet.lock $PY scripts/aegis_evening_packet.py >> logs/aegis_evening_packet.log 2>&1"
+        },
+        "expected_cadence_hours": 24.0,
+        "state": "ACTIVE",
+        "output_signal": {
+          "kind": "json_key",
+          "path": "data/runtime/aegis-evening-packet_last.json",
+          "key": "ok_at",
+          "evidence": "SOURCE_ONLY",
+          "evidence_ref": "scripts/aegis_evening_packet.py real-run entrypoint, fake-tested; runtime NOT_MEASURED"
+        },
+        "value_class": "Nice to Have",
+        "recommendation": "PIPELINE:P15",
+        "rationalization": {
+          "source": "F_rationalization.json",
+          "f_id": "L888",
+          "pipeline": "P15",
+          "value_class": "Nice to Have",
+          "recommendation": "PIPELINE:P15",
+          "f_recommendation": "CONSOLIDATE-into P15",
+          "event_driven_candidate": false,
+          "f_evidence": "Unverified use: no consumer check run for this line"
+        },
+        "reconciled_on": "2026-10-09",
+        "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one. Shard07 SOURCE_ONLY shadow proposal; offline plan only; no runtime acceptance.",
+        "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+        "dispatch": {
+          "mode": "dry_run",
+          "cron": [
+            "45 19 * * *"
+          ],
+          "tz": "America/New_York",
+          "wave": "W4",
+          "class": "learn",
+          "priority": 4,
+          "retry_policy": "none"
+        },
+        "adopted_from_generator": "reconcile_lane_registry@v1",
+        "adopted_on": "2026-10-11",
+        "adopted_reason": "Source-only 05\u201308 integration: retain the shard07 offline shadow proposal across committed-snapshot reconciliation. No scheduler mutation or runtime claim; contract DRAFT."
+      },
+      "allowlist_candidate": {
+        "lane_id": "aegis-evening-packet",
+        "env_names": [
+          "DB_CONN_TRACE",
+          "DB_HOST",
+          "DB_NAME",
+          "DB_PASSWORD",
+          "DB_PORT",
+          "DB_USER",
+          "POSTGRES_PASSWORD",
+          "PROJECT_ROOT",
+          "TRADEAI_PERSISTENT_STATE_ROOT",
+          "TRADEAI_ROOT"
+        ],
+        "env_allowlist_mode": "report",
+        "env_evidence": "SOURCE_ONLY: source-local DB loaders use explicit names; full real-run import closure NOT_MEASURED.",
+        "env_report_reason": "Shared runtime DB/identity/store loaders have not been proven bounded for this whole import closure. Keep report mode until reviewed closure proof; no broker env name is admitted.",
+        "source": "Shard07 source proposal; exact native-approved cron snapshot 2026-10-11T17:05:28.513179+00:00: 45 19 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && PYTHONPATH=/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT flock -n /tmp/aegis_evening_packet.lock $PY scripts/aegis_evening_packet.py >> logs/aegis_evening_packet.log 2>&1; no scheduler mutation.",
+        "command": [
+          "$PY",
+          "scripts/aegis_evening_packet.py"
+        ],
+        "lock": "/tmp/aegis_evening_packet.lock",
+        "lock_kind": "flock",
+        "timeout_s": 300,
+        "dry_run_arg": [
+          "--dry-run"
+        ],
+        "live_arg": null,
+        "market_gate": false,
+        "output_signal": "data/runtime/aegis-evening-packet_last.json"
+      },
+      "health_contract_candidate": {
+        "schema": "N8nHealthContract@v1",
+        "id": "aegis-evening-packet",
+        "kind": "lane",
+        "workflow_id": "tradeai-dispatcher",
+        "status": "DRAFT",
+        "target_reason": "stage:shadow",
+        "stage": "shadow",
+        "owner": "agents",
+        "purpose": {
+          "text": "Offline bounded packet plan; real run writes source packet and lane receipt. Primary destination failure exits 1 and preserves receipt ok_at.",
+          "business_function": "agents",
+          "source": "SOURCE_ONLY scripts/aegis_evening_packet.py; no runtime or operator review claim"
+        },
+        "connects_to": [
+          {
+            "name": "n8n dispatcher -> relay -> coordination/run -> host executor",
+            "kind": "service",
+            "direction": "calls",
+            "source": "AGENTS.md \u00a723.3, \u00a723.11; source-only topology"
+          },
+          {
+            "name": "$PY scripts/aegis_evening_packet.py",
+            "kind": "runner",
+            "direction": "calls",
+            "source": "config/n8n_run_allowlist.json"
+          },
+          {
+            "name": "/tmp/aegis_evening_packet.lock",
+            "kind": "lock",
+            "direction": "read_write",
+            "source": "native-approved exact cron snapshot"
+          },
+          {
+            "name": "data/runtime/aegis-evening-packet_last.json",
+            "kind": "receipt",
+            "direction": "write",
+            "source": "scripts/aegis_evening_packet.py -> existing lane_last_receipt helper"
+          },
+          {
+            "name": "45 19 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && PYTHONPATH=/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT flock -n /tmp/aegis_evening_packet.lock $PY scripts/aegis_evening_packet.py >> logs/aegis_evening_packet.log 2>&1",
+            "kind": "cron_twin",
+            "direction": "calls",
+            "source": "OBSERVED_HOST scoped snapshot 2026-10-11T17:05:28.513179+00:00; full census NOT_MEASURED"
+          },
+          {
+            "name": "Canonical CIO/advisory/health/holdings snapshots -> bounded evening packet",
+            "kind": "store",
+            "direction": "read_write",
+            "source": "aegis_evening_packet.build_packet/_run; no model/send"
+          }
+        ],
+        "healthy": [
+          {
+            "check": "shadow_done",
+            "text": "RunReceipt is RUN_DONE in dry_run and all durable output mtimes remain unchanged."
+          },
+          {
+            "check": "cron_receipt_fresh",
+            "text": "Natural cron receipt ok_at within 26 h; source cadence 45 19 * * *, America/New_York. No natural fire measured here."
+          }
+        ],
+        "degraded": [
+          {
+            "check": "late",
+            "text": "Cron ok_at older than 26 h but younger than 50 h."
+          },
+          {
+            "check": "slow",
+            "text": "Duration exceeds 240 s (provisional 80% of timeout)."
+          }
+        ],
+        "failed": [
+          {
+            "check": "failed_run",
+            "text": "RUN_FAILED, RUN_TIMEOUT, RUN_REFUSED, missing receipt or any dry-run durable write."
+          },
+          {
+            "check": "stale",
+            "text": "Cron receipt ok_at older than 50 h. Failed real runs preserve prior ok_at."
+          }
+        ],
+        "baseline": {
+          "basis": "CLASS_DEFAULT_PROVISIONAL",
+          "class": "learn",
+          "evidence_class": "SOURCE_ONLY",
+          "ledger": "NOT_MEASURED",
+          "runs_considered": null,
+          "computed_on": "2026-10-11",
+          "timeout_s": 300,
+          "duration_degraded_above_s": 240.0,
+          "freshness_degraded_after_h": 26.0,
+          "freshness_failed_after_h": 50.0,
+          "freshness_rule": "SOURCE_ONLY: declared maximum inter-fire gap plus 2 h; failed at twice that gap plus 2 h. Weekday/weekend gaps remain provisional, not an observed SLO.",
+          "source": "Declared cron cadence plus class defaults. No coordination-ledger sample, duration distribution or runtime acceptance measured."
+        },
+        "alerting": {
+          "lane_severity": "Medium",
+          "severity_basis": "SOURCE_ONLY R1 data/learning defaults; operator review pending",
+          "failed": {
+            "siem_severity": "WARN",
+            "notifier_priority": "P2"
+          },
+          "degraded": {
+            "siem_severity": "INFO",
+            "notifier_priority": "P3"
+          },
+          "routing": "Existing SIEM and host notifier chokepoints; this lane sends nothing.",
+          "enforced": "SOURCE_ONLY contract; runtime contract consumption NOT_MEASURED."
+        },
+        "remediation": {
+          "catalogue_entry": false,
+          "diagnosis_excluded": false,
+          "note": "No auto action enabled. Catalogue/diagnosis wiring requires separate owner review."
+        },
+        "evidence": {
+          "receipt": "data/runtime/aegis-evening-packet_last.json",
+          "class": "SOURCE_ONLY",
+          "runtime": "NOT_MEASURED",
+          "verify": [
+            "Read data/runtime/aegis-evening-packet_last.json ok_at/status/counts after a separately authorized natural run.",
+            "Join lane aegis-evening-packet coordination RunReceipt after operator shadow fire."
+          ],
+          "never": "Source plans or n8n execution status are not runtime work proof. Live inventory must filter deletedAt IS NULL; no live inventory measured here."
+        },
+        "review_by": "2026-10-25"
+      }
+    },
+    {
+      "lane_id": "llm-deferred-drain",
+      "shard": "07",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "before_blocker": "DIRECT_DYNAMIC_PROCESS_PROVIDER_ROUTE plus mutating reclaim/expiry BEFORE current dry-run branch; no fixed per-lane governed route parity.",
+      "source_status": "PARTIAL_SOURCE_FIX_ADMISSION_BLOCKED",
+      "source_entrypoint": "scripts/drain_llm_deferred.py",
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_acceptance": "NOT_MEASURED",
+      "admission_status": "NOT_APPLIED",
+      "scheduler_retained": {
+        "kind": "cron",
+        "expression": "10 10,13,16,19 * * *",
+        "command_text": "cd $PROJ && $PY scripts/drain_llm_deferred.py",
+        "match": "scripts/drain_llm_deferred.py"
+      },
+      "after_blocker": "Dynamic queued process/server route, shared consumption/deferral closure and supervised receipt semantics for clock deferral remain pending; scheduler unchanged",
+      "implemented": [
+        "Strict explicit offline --dry-run before runtime work; unknown flags exit2",
+        "Preview no longer reclaims/expires queues",
+        "Failed batch exits1 and retains prior successful receipt",
+        "Legacy heartbeat resolved lazily against durable runtime root"
+      ],
+      "tests": [
+        "tests/test_completion_119_shards_07_08_20261011.py"
+      ]
+    },
+    {
+      "lane_id": "hermes-scope-governor",
+      "shard": "07",
+      "before_disposition": "LOCAL_SOURCE_PROPOSAL_NEEDS_INTEGRATION_REVIEW_CI",
+      "before_blocker": "LOCAL_SOURCE_PROPOSAL_NEEDS_INTEGRATION_REVIEW_CI",
+      "source_status": "LOCAL_PROPOSAL_SOURCE_INTEGRATED_PENDING_VALIDATION",
+      "source_entrypoint": "scripts/hermes_scope_governor.py",
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_acceptance": "NOT_MEASURED",
+      "admission_status": "NOT_APPLIED",
+      "scheduler_retained": {
+        "kind": "cron",
+        "expression": "7,37 * * * *",
+        "match": "scripts/hermes_scope_governor.py"
+      },
+      "after_blocker": "DRAFT contract review, final train CI and import-closure proof; no operational config applied",
+      "implemented": [
+        "Strict explicit offline --dry-run before runtime work; unknown flags exit2",
+        "Real-run success/failure receipts retain prior ok_at on failure",
+        "Owned env loader uses explicit names where applicable"
+      ],
+      "tests": [
+        "tests/test_completion_119_shards_07_08_20261011.py"
+      ],
+      "registry_candidate": {
+        "lane_id": "hermes-scope-governor",
+        "owner": "research",
+        "scheduler": {
+          "kind": "cron",
+          "expression": "7,37 * * * *",
+          "match": "scripts/hermes_scope_governor.py",
+          "stage": "shadow",
+          "wave": "R2-07",
+          "command_text": "7,37 * * * * cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/hermes_scope_governor.lock $PY scripts/hermes_scope_governor.py --apply >> logs/hermes_scope_governor.log 2>&1"
+        },
+        "expected_cadence_hours": 0.5,
+        "state": "ACTIVE",
+        "output_signal": {
+          "kind": "json_key",
+          "path": "data/runtime/hermes-scope-governor_last.json",
+          "key": "ok_at",
+          "evidence": "SOURCE_ONLY",
+          "evidence_ref": "scripts/hermes_scope_governor.py real-run entrypoint, fake-tested; runtime NOT_MEASURED"
+        },
+        "value_class": "Nice to Have",
+        "recommendation": "PIPELINE:P10",
+        "rationalization": {
+          "source": "F_rationalization.json",
+          "f_id": "L653",
+          "pipeline": "P10",
+          "value_class": "Nice to Have",
+          "recommendation": "PIPELINE:P10",
+          "f_recommendation": "CONSOLIDATE-into P10",
+          "event_driven_candidate": false,
+          "f_evidence": "Unverified use: no consumer check run for this line"
+        },
+        "reconciled_on": "2026-10-09",
+        "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one. Shard07 SOURCE_ONLY shadow proposal; offline plan only; no runtime acceptance.",
+        "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+        "dispatch": {
+          "mode": "dry_run",
+          "cron": [
+            "7,37 * * * *"
+          ],
+          "tz": "America/New_York",
+          "wave": "W4",
+          "class": "learn",
+          "priority": 4,
+          "retry_policy": "none"
+        },
+        "adopted_from_generator": "reconcile_lane_registry@v1",
+        "adopted_on": "2026-10-11",
+        "adopted_reason": "Source-only 05\u201308 integration: retain the shard07 offline shadow proposal across committed-snapshot reconciliation. No scheduler mutation or runtime claim; contract DRAFT."
+      },
+      "allowlist_candidate": {
+        "lane_id": "hermes-scope-governor",
+        "env_names": [
+          "DB_CONN_TRACE",
+          "DB_HOST",
+          "DB_NAME",
+          "DB_PASSWORD",
+          "DB_PORT",
+          "DB_USER",
+          "POSTGRES_PASSWORD",
+          "PROJECT_ROOT",
+          "TRADEAI_PERSISTENT_STATE_ROOT",
+          "TRADEAI_ROOT"
+        ],
+        "env_allowlist_mode": "report",
+        "env_evidence": "SOURCE_ONLY: source-local DB loaders use explicit names; full real-run import closure NOT_MEASURED.",
+        "env_report_reason": "Shared runtime DB/identity/store loaders have not been proven bounded for this whole import closure. Keep report mode until reviewed closure proof; no broker env name is admitted.",
+        "source": "Shard07 source proposal; exact native-approved cron snapshot 2026-10-11T17:05:28.513179+00:00: 7,37 * * * * cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/hermes_scope_governor.lock $PY scripts/hermes_scope_governor.py --apply >> logs/hermes_scope_governor.log 2>&1; no scheduler mutation.",
+        "command": [
+          "$PY",
+          "scripts/hermes_scope_governor.py",
+          "--apply"
+        ],
+        "lock": "/tmp/hermes_scope_governor.lock",
+        "lock_kind": "safe_flock",
+        "timeout_s": 900,
+        "dry_run_arg": [
+          "--dry-run"
+        ],
+        "live_arg": null,
+        "market_gate": false,
+        "output_signal": "data/runtime/hermes-scope-governor_last.json"
+      },
+      "health_contract_candidate": {
+        "schema": "N8nHealthContract@v1",
+        "id": "hermes-scope-governor",
+        "kind": "lane",
+        "workflow_id": "tradeai-dispatcher",
+        "status": "DRAFT",
+        "target_reason": "stage:shadow",
+        "stage": "shadow",
+        "owner": "research",
+        "purpose": {
+          "text": "Explicit --dry-run returns before DB/engine import. Normal argv remains unchanged; result ok:false exits 1, receipt carries numeric counts only.",
+          "business_function": "research",
+          "source": "SOURCE_ONLY scripts/hermes_scope_governor.py; no runtime or operator review claim"
+        },
+        "connects_to": [
+          {
+            "name": "n8n dispatcher -> relay -> coordination/run -> host executor",
+            "kind": "service",
+            "direction": "calls",
+            "source": "AGENTS.md \u00a723.3, \u00a723.11; source-only topology"
+          },
+          {
+            "name": "$PY scripts/hermes_scope_governor.py --apply",
+            "kind": "runner",
+            "direction": "calls",
+            "source": "config/n8n_run_allowlist.json"
+          },
+          {
+            "name": "/tmp/hermes_scope_governor.lock",
+            "kind": "lock",
+            "direction": "read_write",
+            "source": "Existing safe_flock.sh PID guard reused; exact approved cron snapshot 2026-10-11T17:05:28.513179+00:00"
+          },
+          {
+            "name": "data/runtime/hermes-scope-governor_last.json",
+            "kind": "receipt",
+            "direction": "write",
+            "source": "scripts/hermes_scope_governor.py -> existing lane_last_receipt helper"
+          },
+          {
+            "name": "7,37 * * * * cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/hermes_scope_governor.lock $PY scripts/hermes_scope_governor.py --apply >> logs/hermes_scope_governor.log 2>&1",
+            "kind": "cron_twin",
+            "direction": "calls",
+            "source": "OBSERVED_HOST scoped snapshot 2026-10-11T17:05:28.513179+00:00; full census NOT_MEASURED"
+          },
+          {
+            "name": "Watchlist signals/outcome bus -> scope tiers, audit, governed universe and heartbeat",
+            "kind": "store",
+            "direction": "read_write",
+            "source": "lib.hermes_scope_governor.engine.ScopeGovernorEngine.run; --apply required for tier writes"
+          }
+        ],
+        "healthy": [
+          {
+            "check": "shadow_done",
+            "text": "RunReceipt is RUN_DONE in dry_run and all durable output mtimes remain unchanged."
+          },
+          {
+            "check": "cron_receipt_fresh",
+            "text": "Natural cron receipt ok_at within 2.5 h; source cadence 7,37 * * * *, America/New_York. No natural fire measured here."
+          }
+        ],
+        "degraded": [
+          {
+            "check": "late",
+            "text": "Cron ok_at older than 2.5 h but younger than 3 h."
+          },
+          {
+            "check": "slow",
+            "text": "Duration exceeds 720 s (provisional 80% of timeout)."
+          }
+        ],
+        "failed": [
+          {
+            "check": "failed_run",
+            "text": "RUN_FAILED, RUN_TIMEOUT, RUN_REFUSED, missing receipt or any dry-run durable write."
+          },
+          {
+            "check": "stale",
+            "text": "Cron receipt ok_at older than 3 h. Failed real runs preserve prior ok_at."
+          }
+        ],
+        "baseline": {
+          "basis": "CLASS_DEFAULT_PROVISIONAL",
+          "class": "learn",
+          "evidence_class": "SOURCE_ONLY",
+          "ledger": "NOT_MEASURED",
+          "runs_considered": null,
+          "computed_on": "2026-10-11",
+          "timeout_s": 900,
+          "duration_degraded_above_s": 720.0,
+          "freshness_degraded_after_h": 2.5,
+          "freshness_failed_after_h": 3.0,
+          "freshness_rule": "SOURCE_ONLY: declared maximum inter-fire gap plus 2 h; failed at twice that gap plus 2 h. Weekday/weekend gaps remain provisional, not an observed SLO.",
+          "source": "Declared cron cadence plus class defaults. No coordination-ledger sample, duration distribution or runtime acceptance measured."
+        },
+        "alerting": {
+          "lane_severity": "Medium",
+          "severity_basis": "SOURCE_ONLY R1 data/learning defaults; operator review pending",
+          "failed": {
+            "siem_severity": "WARN",
+            "notifier_priority": "P2"
+          },
+          "degraded": {
+            "siem_severity": "INFO",
+            "notifier_priority": "P3"
+          },
+          "routing": "Existing SIEM and host notifier chokepoints; this lane sends nothing.",
+          "enforced": "SOURCE_ONLY contract; runtime contract consumption NOT_MEASURED."
+        },
+        "remediation": {
+          "catalogue_entry": false,
+          "diagnosis_excluded": false,
+          "note": "No auto action enabled. Catalogue/diagnosis wiring requires separate owner review."
+        },
+        "evidence": {
+          "receipt": "data/runtime/hermes-scope-governor_last.json",
+          "class": "SOURCE_ONLY",
+          "runtime": "NOT_MEASURED",
+          "verify": [
+            "Read data/runtime/hermes-scope-governor_last.json ok_at/status/counts after a separately authorized natural run.",
+            "Join lane hermes-scope-governor coordination RunReceipt after operator shadow fire."
+          ],
+          "never": "Source plans or n8n execution status are not runtime work proof. Live inventory must filter deletedAt IS NULL; no live inventory measured here."
+        },
+        "review_by": "2026-10-25"
+      }
+    },
+    {
+      "lane_id": "journal-review-builder",
+      "shard": "07",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "before_blocker": "MISSING_REGISTERED_CALL_PROCESS and in-process/local fallback; prompt contains account/shares/P&L requiring egress review.",
+      "source_status": "RETAINED_OWNER_OR_AUTHORITY_BLOCKED",
+      "source_entrypoint": null,
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_acceptance": "NOT_MEASURED",
+      "admission_status": "NOT_APPLIED",
+      "scheduler_retained": {
+        "kind": "cron",
+        "expression": "30 18 * * 1-5",
+        "match": "scripts/journal_review_builder.py"
+      },
+      "after_blocker": "MISSING_REGISTERED_CALL_PROCESS and in-process/local fallback; prompt contains account/shares/P&L requiring egress review.",
+      "implemented": [],
+      "tests": []
+    },
+    {
+      "lane_id": "reconcile-exit-advisory-outcomes",
+      "shard": "07",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "before_blocker": "UNOWNED_FINANCIAL_PRICE_CLOSURE_UNCHANGED; holdings_gain_guardian boundary still imported. Broker-adjacent closure not investigated.",
+      "source_status": "RETAINED_OWNER_OR_AUTHORITY_BLOCKED",
+      "source_entrypoint": null,
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_acceptance": "NOT_MEASURED",
+      "admission_status": "NOT_APPLIED",
+      "scheduler_retained": {
+        "kind": "cron",
+        "expression": "0 9 * * 0",
+        "command_text": "cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/exit_outcomes.lock $PY scripts/reconcile_exit_advisory_outcomes.py >> logs/exit_outcomes.log 2>&1",
+        "match": "scripts/reconcile_exit_advisory_outcomes.py"
+      },
+      "after_blocker": "UNOWNED_FINANCIAL_PRICE_CLOSURE_UNCHANGED; holdings_gain_guardian boundary still imported. Broker-adjacent closure not investigated.",
+      "implemented": [],
+      "tests": []
+    },
+    {
+      "lane_id": "run-scheduled-two-way-curation-options",
+      "shard": "07",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "before_blocker": "SHARED_CHILD_ASSIGNMENT_PENDING; current wrapper/child still load whole env, write logs before parsing and lack safe explicit dry-run/receipt. Pure DB writer is a conditional source candidate, not a blocker already gone.",
+      "source_status": "PARTIAL_SOURCE_FIX_ADMISSION_BLOCKED",
+      "source_entrypoint": "scripts/run_scheduled_two_way_curation.sh",
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_acceptance": "NOT_MEASURED",
+      "admission_status": "NOT_APPLIED",
+      "scheduler_retained": {
+        "kind": "cron",
+        "expression": "50 15 * * 1-5",
+        "match": "scripts/run_scheduled_two_way_curation.sh options-edge"
+      },
+      "after_blocker": "Wrapper offline preview fixed; shared child/environment/typed outcome/receipt ownership still pending; no financial child changed",
+      "implemented": [
+        "Strict explicit offline --dry-run before runtime work; unknown flags exit2"
+      ],
+      "tests": [
+        "tests/test_completion_119_shards_07_08_20261011.py"
+      ]
+    },
+    {
+      "lane_id": "run-scheduled-two-way-curation-desk",
+      "shard": "07",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "before_blocker": "SHARED_CHILD_ASSIGNMENT_PENDING; current wrapper and curation child remain unbounded env/checkout readers; stage-only actual argv is not a proven sender or broker call.",
+      "source_status": "PARTIAL_SOURCE_FIX_ADMISSION_BLOCKED",
+      "source_entrypoint": "scripts/run_scheduled_two_way_curation.sh",
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_acceptance": "NOT_MEASURED",
+      "admission_status": "NOT_APPLIED",
+      "scheduler_retained": {
+        "kind": "cron",
+        "expression": "20 10 * * 1-5",
+        "match": "scripts/run_scheduled_two_way_curation.sh desk-emit"
+      },
+      "after_blocker": "Wrapper offline preview fixed; shared child/environment/typed outcome/receipt ownership still pending; no financial child changed",
+      "implemented": [
+        "Strict explicit offline --dry-run before runtime work; unknown flags exit2"
+      ],
+      "tests": [
+        "tests/test_completion_119_shards_07_08_20261011.py"
+      ]
+    },
+    {
+      "lane_id": "run-watchlist-agent-jobs-offpeak",
+      "shard": "07",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "before_blocker": "COMPOUND_PAID_WORKER_CLOSURE_UNCHANGED; wrapper's existing env dry-run loads secret files, writes logs and probes the production lock.",
+      "source_status": "PARTIAL_SOURCE_FIX_ADMISSION_BLOCKED",
+      "source_entrypoint": "scripts/run_watchlist_agent_jobs_offpeak.sh",
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_acceptance": "NOT_MEASURED",
+      "admission_status": "NOT_APPLIED",
+      "scheduler_retained": {
+        "kind": "cron",
+        "expression": "*/15 10-20 * * *",
+        "match": "scripts/run_watchlist_agent_jobs_offpeak.sh"
+      },
+      "after_blocker": "Explicit preview/unknown flags fixed; live secret-source, child model/cap/containment and receipt closure remain shared owner-blocked",
+      "implemented": [
+        "Strict explicit offline --dry-run before runtime work; unknown flags exit2"
+      ],
+      "tests": [
+        "tests/test_completion_119_shards_07_08_20261011.py"
+      ]
+    },
+    {
+      "lane_id": "symbol-enrichment",
+      "shard": "07",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "before_blocker": "WHOLE_ENV_AND_UNTYPED_OWNER_PROVIDER_FAILURES_UNCHANGED; G8/G9 patch is absent and does not target this module.",
+      "source_status": "PARTIAL_SOURCE_FIX_ADMISSION_BLOCKED",
+      "source_entrypoint": "scripts/symbol_enrichment.py",
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_acceptance": "NOT_MEASURED",
+      "admission_status": "NOT_APPLIED",
+      "scheduler_retained": {
+        "kind": "cron",
+        "expression": "30 7 * * 1-5",
+        "match": "scripts/symbol_enrichment.py"
+      },
+      "after_blocker": "Shared provider/telemetry closure plus typed per-provider outcomes and truthful real-run receipt; do not invent health from hidden exceptions",
+      "implemented": [
+        "Strict explicit offline --dry-run before runtime work; unknown flags exit2",
+        "Strict CLI before provider/pipeline imports; removed import-time env autoload and literal .env reads"
+      ],
+      "tests": [
+        "tests/test_completion_119_shards_07_08_20261011.py"
+      ]
+    },
+    {
+      "lane_id": "topic-curator-at-30-9-13",
+      "shard": "07",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "before_blocker": "IN_PROCESS_CLOUD_AND_LOCAL_EMBEDDING_CLOSURE_UNCHANGED; bridge opt-in cannot preserve topic_curator server process identity.",
+      "source_status": "PARTIAL_SOURCE_FIX_ADMISSION_BLOCKED",
+      "source_entrypoint": "scripts/topic_curator.py",
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_acceptance": "NOT_MEASURED",
+      "admission_status": "NOT_APPLIED",
+      "scheduler_retained": {
+        "kind": "cron",
+        "expression": "30 9,13 * * *",
+        "match": "scripts/topic_curator.py >>"
+      },
+      "after_blocker": "Governed process identity mapping, retired local/embedding closure and per-schedule receipt identity remain pending",
+      "implemented": [
+        "Strict explicit offline --dry-run before runtime work; unknown flags exit2",
+        "DB loader bounded to requested name",
+        "Injected counted preview helper retained independently of offline CLI"
+      ],
+      "tests": [
+        "tests/test_completion_119_shards_07_08_20261011.py"
+      ]
+    },
+    {
+      "lane_id": "topic-curator-ensemble",
+      "shard": "07",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "before_blocker": "IN_PROCESS_CLOUD_AND_LOCAL_EMBEDDING_CLOSURE_UNCHANGED; bridge opt-in cannot preserve topic_curator server process identity.",
+      "source_status": "PARTIAL_SOURCE_FIX_ADMISSION_BLOCKED",
+      "source_entrypoint": "scripts/topic_curator.py",
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_acceptance": "NOT_MEASURED",
+      "admission_status": "NOT_APPLIED",
+      "scheduler_retained": {
+        "kind": "cron",
+        "expression": "30 18 * * *",
+        "match": "scripts/topic_curator.py --ensemble"
+      },
+      "after_blocker": "Governed process identity mapping, retired local/embedding closure and per-schedule receipt identity remain pending",
+      "implemented": [
+        "Strict explicit offline --dry-run before runtime work; unknown flags exit2",
+        "DB loader bounded to requested name",
+        "Injected counted preview helper retained independently of offline CLI"
+      ],
+      "tests": [
+        "tests/test_completion_119_shards_07_08_20261011.py"
+      ]
+    },
+    {
+      "lane_id": "hermes-top20-external-intel",
+      "shard": "08",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "before_blocker": "PROVIDER_SELECTING_ARGV_AND_CHILD_ROUTE_UNCHANGED; --lanes grok,chatgpt still selects provider and child external researcher owns its own transports.",
+      "source_status": "PARTIAL_SOURCE_FIX_ADMISSION_BLOCKED",
+      "source_entrypoint": "scripts/hermes_top20_external_intel.py",
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_acceptance": "NOT_MEASURED",
+      "admission_status": "NOT_APPLIED",
+      "scheduler_retained": {
+        "kind": "cron",
+        "expression": "5 */2 * * *",
+        "command_text": ".../hermes_top20_external_intel.py --top 20 --lanes grok,chatgpt --apply",
+        "match": "scripts/hermes_top20_external_intel.py --top 20"
+      },
+      "after_blocker": "PROVIDER_SELECTING_ARGV_AND_CHILD_ROUTE_UNCHANGED; --lanes grok,chatgpt still selects provider and child external researcher owns its own transports.",
+      "implemented": [
+        "Strict explicit offline --dry-run before runtime work; unknown flags exit2"
+      ],
+      "tests": [
+        "tests/test_completion_119_shards_07_08_20261011.py"
+      ]
+    },
+    {
+      "lane_id": "autonomy-watchdog",
+      "shard": "08",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "before_blocker": "SYSTEMD_SHADOW_SHAPE_UNSUPPORTED plus monitor class and possible sender path; no R1 recipe admission.",
+      "source_status": "RETAINED_OWNER_OR_AUTHORITY_BLOCKED",
+      "source_entrypoint": null,
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_acceptance": "NOT_MEASURED",
+      "admission_status": "NOT_APPLIED",
+      "scheduler_retained": {
+        "kind": "systemd",
+        "expression": "tradeai-autonomy-watchdog.timer"
+      },
+      "after_blocker": "SYSTEMD_SHADOW_SHAPE_UNSUPPORTED plus monitor class and possible sender path; no R1 recipe admission.",
+      "implemented": [],
+      "tests": []
+    },
+    {
+      "lane_id": "portfolio-price-cache",
+      "shard": "08",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "before_blocker": "SYSTEMD_SHADOW_SHAPE_UNSUPPORTED; separate portfolio price-store ownership and live-fetch closure remain.",
+      "source_status": "RETAINED_OWNER_OR_AUTHORITY_BLOCKED",
+      "source_entrypoint": null,
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_acceptance": "NOT_MEASURED",
+      "admission_status": "NOT_APPLIED",
+      "scheduler_retained": {
+        "kind": "systemd",
+        "expression": "portfolio-price-cache.timer"
+      },
+      "after_blocker": "SYSTEMD_SHADOW_SHAPE_UNSUPPORTED; separate portfolio price-store ownership and live-fetch closure remain.",
+      "implemented": [],
+      "tests": []
+    },
+    {
+      "lane_id": "operator-answer-quality-audit",
+      "shard": "08",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "before_blocker": "SYSTEMD_SHADOW_SHAPE_UNSUPPORTED plus monitor/sender boundary; R1-only recipe excluded.",
+      "source_status": "RETAINED_OWNER_OR_AUTHORITY_BLOCKED",
+      "source_entrypoint": null,
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_acceptance": "NOT_MEASURED",
+      "admission_status": "NOT_APPLIED",
+      "scheduler_retained": {
+        "kind": "systemd",
+        "expression": "tradeai-operator-answer-quality.timer"
+      },
+      "after_blocker": "SYSTEMD_SHADOW_SHAPE_UNSUPPORTED plus monitor/sender boundary; R1-only recipe excluded.",
+      "implemented": [],
+      "tests": []
+    },
+    {
+      "lane_id": "slo-burn-rate",
+      "shard": "08",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "before_blocker": "SYSTEMD_SHADOW_SHAPE_UNSUPPORTED; monitor/report class outside \u00a73 R1-only recipe.",
+      "source_status": "PARTIAL_SOURCE_FIX_ADMISSION_BLOCKED",
+      "source_entrypoint": "scripts/report_slo_burn_rate.py",
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_acceptance": "NOT_MEASURED",
+      "admission_status": "NOT_APPLIED",
+      "scheduler_retained": {
+        "kind": "systemd",
+        "expression": "tradeai-slo-burn-rate.timer"
+      },
+      "after_blocker": "SYSTEMD_SHADOW_SHAPE_UNSUPPORTED; monitor/report class outside \u00a73 R1-only recipe.",
+      "implemented": [
+        "Strict explicit offline --dry-run before runtime work; unknown flags exit2"
+      ],
+      "tests": [
+        "tests/test_completion_119_shards_07_08_20261011.py"
+      ]
+    },
+    {
+      "lane_id": "tradeai-agent-runtime-pulse",
+      "shard": "08",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "before_blocker": "DISABLED_UNRULED_UNKNOWN_PERSONA_TIMER; no supported R1 shadow shape, no operator retirement ruling.",
+      "source_status": "RETAINED_OWNER_OR_AUTHORITY_BLOCKED",
+      "source_entrypoint": null,
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_acceptance": "NOT_MEASURED",
+      "admission_status": "NOT_APPLIED",
+      "scheduler_retained": {
+        "kind": "systemd",
+        "expression": "tradeai-agent-runtime@pulse.timer"
+      },
+      "after_blocker": "DISABLED_UNRULED_UNKNOWN_PERSONA_TIMER; no supported R1 shadow shape, no operator retirement ruling.",
+      "implemented": [],
+      "tests": []
+    },
+    {
+      "lane_id": "due-diligence-questions",
+      "shard": "08",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "before_blocker": "SHARED_OFFPEAK_AND_PROVIDER_RESEARCH_CHILD_UNCHANGED; model/job/helper is not a replacement for named research dispatch.",
+      "source_status": "PARTIAL_SOURCE_FIX_ADMISSION_BLOCKED",
+      "source_entrypoint": "scripts/due_diligence_questions.py",
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_acceptance": "NOT_MEASURED",
+      "admission_status": "NOT_APPLIED",
+      "scheduler_retained": {
+        "kind": "cron",
+        "expression": "*/20 * * * *",
+        "command_text": "run_with_deepseek_offpeak.sh --scheduled -- .../due_diligence_questions.py --apply --route",
+        "match": "scripts/due_diligence_questions.py --apply --route"
+      },
+      "after_blocker": "SHARED_OFFPEAK_AND_PROVIDER_RESEARCH_CHILD_UNCHANGED; model/job/helper is not a replacement for named research dispatch.",
+      "implemented": [
+        "Strict explicit offline --dry-run before runtime work; unknown flags exit2"
+      ],
+      "tests": [
+        "tests/test_completion_119_shards_07_08_20261011.py"
+      ]
+    },
+    {
+      "lane_id": "hermes-usefulness-backfill",
+      "shard": "08",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "before_blocker": "ACTUAL_BRIDGE_ROUTE_PRESENT but original shared launcher/env closure blocker remains; no source admission yet. Unlike llm_bridge_route helper, this call uses mapped usefulness_score task.",
+      "source_status": "PARTIAL_SOURCE_FIX_ADMISSION_BLOCKED",
+      "source_entrypoint": "scripts/hermes_external_feedback_loop.py",
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_acceptance": "NOT_MEASURED",
+      "admission_status": "NOT_APPLIED",
+      "scheduler_retained": {
+        "kind": "cron",
+        "expression": "15 * * * *",
+        "command_text": "run_with_deepseek_offpeak.sh --scheduled -- .../hermes_external_feedback_loop.py --apply --max-rows 2000",
+        "match": "scripts/hermes_external_feedback_loop.py --apply"
+      },
+      "after_blocker": "Shared offpeak wrapper and bridge envelope/process-identity proof; realized-outcome model egress decision remains pending",
+      "implemented": [
+        "Strict explicit offline --dry-run before runtime work; unknown flags exit2",
+        "Removed whole dotenv import-time copy; explicit DB env names on real runs",
+        "Apply partial/provider failures exit1 with failure-preserving receipt"
+      ],
+      "tests": [
+        "tests/test_completion_119_shards_07_08_20261011.py"
+      ]
+    },
+    {
+      "lane_id": "agent-recommendation-normalizer",
+      "shard": "08",
+      "before_disposition": "LOCAL_SOURCE_PROPOSAL_NEEDS_INTEGRATION_REVIEW_CI",
+      "before_blocker": "LOCAL_SOURCE_PROPOSAL_NEEDS_INTEGRATION_REVIEW_CI",
+      "source_status": "LOCAL_PROPOSAL_SOURCE_INTEGRATED_PENDING_VALIDATION",
+      "source_entrypoint": "scripts/agent_recommendation_normalizer.py",
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_acceptance": "NOT_MEASURED",
+      "admission_status": "NOT_APPLIED",
+      "scheduler_retained": {
+        "kind": "cron",
+        "expression": "30 8 * * 1-5",
+        "match": "scripts/agent_recommendation_normalizer.py"
+      },
+      "after_blocker": "DRAFT contract review, final train CI and import-closure proof; no operational config applied",
+      "implemented": [
+        "Strict explicit offline --dry-run before runtime work; unknown flags exit2",
+        "Real-run success/failure receipts retain prior ok_at on failure",
+        "Owned env loader uses explicit names where applicable"
+      ],
+      "tests": [
+        "tests/test_completion_119_shards_07_08_20261011.py"
+      ],
+      "registry_candidate": {
+        "lane_id": "agent-recommendation-normalizer",
+        "owner": "portfolio",
+        "scheduler": {
+          "kind": "cron",
+          "expression": "30 8 * * 1-5",
+          "match": "scripts/agent_recommendation_normalizer.py",
+          "stage": "shadow",
+          "wave": "R2-08",
+          "command_text": "cd $PROJ && $PY scripts/agent_recommendation_normalizer.py --apply >> logs/agent_rec_normalizer.log 2>&1"
+        },
+        "expected_cadence_hours": 72.0,
+        "state": "ACTIVE",
+        "output_signal": {
+          "kind": "json_key",
+          "path": "data/runtime/agent-recommendation-normalizer_last.json",
+          "key": "ok_at"
+        },
+        "value_class": "Operationally Important",
+        "recommendation": "PIPELINE:P14",
+        "rationalization": {
+          "source": "F_rationalization.json",
+          "f_id": "L320",
+          "pipeline": "P14",
+          "value_class": "Operationally Important",
+          "recommendation": "PIPELINE:P14",
+          "f_recommendation": "CONSOLIDATE-into P14",
+          "event_driven_candidate": false,
+          "f_evidence": "Unverified use: no consumer check run for this line"
+        },
+        "reconciled_on": "2026-10-09",
+        "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+        "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+        "dispatch": {
+          "mode": "dry_run",
+          "cron": [
+            "30 8 * * 1-5"
+          ],
+          "tz": "America/New_York",
+          "wave": "W4",
+          "class": "learn",
+          "priority": 4,
+          "retry_policy": "none"
+        },
+        "adopted_from_generator": "reconcile_lane_registry@v1",
+        "adopted_on": "2026-10-11",
+        "adopted_reason": "Source-only shard08 DRAFT shadow proposal; retain reviewed dispatch intent during reconciliation."
+      },
+      "allowlist_candidate": {
+        "lane_id": "agent-recommendation-normalizer",
+        "command": [
+          "$PY",
+          "scripts/agent_recommendation_normalizer.py",
+          "--apply"
+        ],
+        "dry_run_arg": [
+          "--dry-run"
+        ],
+        "live_arg": null,
+        "lock": "/tmp/agent-recommendation-normalizer.lock",
+        "lock_kind": "flock",
+        "timeout_s": 300,
+        "market_gate": false,
+        "output_signal": "data/runtime/agent-recommendation-normalizer_last.json",
+        "env_names": [
+          "DB_CONN_TRACE",
+          "DB_HOST",
+          "DB_NAME",
+          "DB_PASSWORD",
+          "DB_PORT",
+          "DB_USER",
+          "PROJECT_ROOT",
+          "SAFE_FLOCK_LOG_DIR",
+          "TRADEAI_PERSISTENT_STATE_ROOT",
+          "TRADEAI_ROOT"
+        ],
+        "env_allowlist_mode": "report",
+        "env_report_reason": "session13_db imports dotenv.load_dotenv without a name bound; shared narrowing belongs to integrator. Own loader uses DB names only.",
+        "env_evidence": "SOURCE_ONLY import-closure audit; explicit preview has no env loader reach; TEST_ONLY fakes.",
+        "source": "OBSERVED_HOST scoped approved crontab snapshot 2026-10-11T17:05:28.513179+00:00; SOURCE_ONLY DRAFT proposal; no runtime deployment or scheduling change."
+      },
+      "health_contract_candidate": {
+        "schema": "N8nHealthContract@v1",
+        "id": "agent-recommendation-normalizer",
+        "kind": "lane",
+        "workflow_id": "tradeai-dispatcher",
+        "status": "DRAFT",
+        "target_reason": "refactor_shard_08_source_proposal",
+        "stage": "shadow",
+        "purpose": {
+          "text": "Normalize advisory agent recommendations into an attributable research registry.",
+          "business_function": "research",
+          "source": "inventory refactor-shard08:agent-recommendation-normalizer"
+        },
+        "owner": "portfolio",
+        "connects_to": [
+          {
+            "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+            "kind": "service",
+            "direction": "calls",
+            "source": "AGENTS.md \u00a723.3"
+          },
+          {
+            "name": "$PY scripts/agent_recommendation_normalizer.py --apply",
+            "kind": "runner",
+            "direction": "calls",
+            "source": "config/n8n_run_allowlist.json command"
+          },
+          {
+            "name": "/tmp/agent-recommendation-normalizer.lock",
+            "kind": "lock",
+            "direction": "read_write",
+            "source": "config/n8n_run_allowlist.json lock (flock)"
+          },
+          {
+            "name": "data/runtime/agent-recommendation-normalizer_last.json",
+            "kind": "receipt",
+            "direction": "write",
+            "source": "LaneRunReceipt / allowlist output_signal"
+          },
+          {
+            "name": "watchlist_agent_results, cio_decisions, agent_debate_log",
+            "kind": "inventory_text",
+            "direction": "read",
+            "source": "inventory refactor-shard08:agent-recommendation-normalizer dependencies (DRAFT: free text)"
+          },
+          {
+            "name": "watchlist_agent_results, cio_decisions, agent_debate_log",
+            "kind": "inventory_text",
+            "direction": "read",
+            "source": "inventory refactor-shard08:agent-recommendation-normalizer triggers_inputs (DRAFT: free text)"
+          },
+          {
+            "name": "agent_recommendation_registry and narrative subject tags consumed by learning/research readers",
+            "kind": "inventory_text",
+            "direction": "write",
+            "source": "inventory refactor-shard08:agent-recommendation-normalizer outputs_downstream (DRAFT: free text)"
+          }
+        ],
+        "healthy": [
+          {
+            "check": "shadow_dry_run_done",
+            "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+          },
+          {
+            "check": "dry_run_writes_nothing",
+            "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md \u00a76)"
+          },
+          {
+            "check": "cron_twin_output_fresh",
+            "text": "the live cron line keeps the registry output_signal data/runtime/agent-recommendation-normalizer_last.json fresh within 144.0 h (2x cadence)"
+          },
+          {
+            "check": "duration_within_baseline",
+            "text": "duration <= 240.0 s (80% of timeout_s 300)"
+          }
+        ],
+        "degraded": [
+          {
+            "check": "late",
+            "text": "output_signal older than 144.0 h but younger than 216.0 h (2x-3x cadence)"
+          },
+          {
+            "check": "slow",
+            "text": "duration above 240.0 s"
+          },
+          {
+            "check": "retried",
+            "text": "a run needed attempt > 1 (retry_policy) or ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
+          },
+          {
+            "check": "upstream_stale",
+            "text": "an upstream input is stale: watchlist_agent_results, cio_decisions, agent_debate_log (not machine-checked yet)"
+          }
+        ],
+        "failed": [
+          {
+            "check": "run_failed",
+            "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+          },
+          {
+            "check": "no_receipt",
+            "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+          },
+          {
+            "check": "stale",
+            "text": "output_signal older than 216.0 h (3x cadence)"
+          },
+          {
+            "check": "breaker_or_dlq",
+            "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+          },
+          {
+            "check": "dry_run_wrote",
+            "text": "a dry_run changed its output_signal or any durable state"
+          }
+        ],
+        "baseline": {
+          "freshness_degraded_after_h": 144.0,
+          "freshness_failed_after_h": 216.0,
+          "freshness_rule": "degraded beyond 2x cadence (lane_registry.evaluate_lane SLOW), failed beyond 3x (incident fan-in stale threshold)",
+          "timeout_s": 300,
+          "class": "learn",
+          "computed_on": "2026-10-11",
+          "basis": "CLASS_DEFAULT_PROVISIONAL",
+          "source": "NOT_MEASURED: live ledger excluded from refactor task; source class defaults only.",
+          "runs_considered": null,
+          "duration_degraded_above_s": 240.0
+        },
+        "alerting": {
+          "lane_severity": "Medium",
+          "severity_basis": "inventory refactor-shard08:agent-recommendation-normalizer business_function=research (catalogue rule)",
+          "failed": {
+            "siem_severity": "WARN",
+            "notifier_priority": "P2"
+          },
+          "degraded": {
+            "siem_severity": "INFO",
+            "notifier_priority": "P3"
+          },
+          "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+          "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row `severity`, else the fan-in priority (RUN_* = P2 -> WARN). Wiring the bridge, notifier and diagnoser to this contract is the next build item (N8N_MONITORING_AND_REMEDIATION_STANDARD.md \u00a77)."
+        },
+        "remediation": {
+          "catalogue_entry": false,
+          "diagnosis_excluded": false,
+          "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
+        },
+        "evidence": {
+          "receipt": "data/runtime/agent-recommendation-normalizer_last.json",
+          "verify": [
+            "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='agent-recommendation-normalizer' ORDER BY requested_at DESC LIMIT 10\"",
+            "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:agent-recommendation-normalizer' ORDER BY created_at DESC LIMIT 10",
+            "stat / jq the receipt: data/runtime/agent-recommendation-normalizer_last.json"
+          ],
+          "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        "review_by": "2026-10-25"
+      }
+    },
+    {
+      "lane_id": "hermes-score-event-feeder",
+      "shard": "08",
+      "before_disposition": "LOCAL_SOURCE_PROPOSAL_NEEDS_INTEGRATION_REVIEW_CI",
+      "before_blocker": "LOCAL_SOURCE_PROPOSAL_NEEDS_INTEGRATION_REVIEW_CI",
+      "source_status": "LOCAL_PROPOSAL_SOURCE_INTEGRATED_PENDING_VALIDATION",
+      "source_entrypoint": "scripts/hermes_score_event_feeder.py",
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_acceptance": "NOT_MEASURED",
+      "admission_status": "NOT_APPLIED",
+      "scheduler_retained": {
+        "kind": "cron",
+        "expression": "*/5 * * * *",
+        "match": "scripts/hermes_score_event_feeder.py"
+      },
+      "after_blocker": "DRAFT contract review, final train CI and import-closure proof; no operational config applied",
+      "implemented": [
+        "Strict explicit offline --dry-run before runtime work; unknown flags exit2",
+        "Real-run success/failure receipts retain prior ok_at on failure",
+        "Owned env loader uses explicit names where applicable"
+      ],
+      "tests": [
+        "tests/test_completion_119_shards_07_08_20261011.py"
+      ],
+      "registry_candidate": {
+        "lane_id": "hermes-score-event-feeder",
+        "owner": "research",
+        "scheduler": {
+          "kind": "cron",
+          "expression": "*/5 * * * *",
+          "match": "scripts/hermes_score_event_feeder.py",
+          "stage": "shadow",
+          "wave": "R2-08",
+          "command_text": "cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/hermes_event_feeder.lock $PY scripts/hermes_score_event_feeder.py --apply >> logs/hermes_event_feeder.log 2>&1"
+        },
+        "expected_cadence_hours": 0.08,
+        "state": "ACTIVE",
+        "output_signal": {
+          "kind": "json_key",
+          "path": "data/runtime/hermes-score-event-feeder_last.json",
+          "key": "ok_at"
+        },
+        "value_class": "Operationally Important",
+        "recommendation": "EVENT_DRIVEN_CANDIDATE",
+        "rationalization": {
+          "source": "F_rationalization.json",
+          "f_id": "L655",
+          "pipeline": "P10",
+          "value_class": "Operationally Important",
+          "recommendation": "EVENT_DRIVEN_CANDIDATE",
+          "f_recommendation": "EVENT-DRIVEN (queue drain/poller) inside P10",
+          "event_driven_candidate": true,
+          "f_evidence": "polls */5 * * * *"
+        },
+        "reconciled_on": "2026-10-09",
+        "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+        "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+        "dispatch": {
+          "mode": "dry_run",
+          "cron": [
+            "*/5 * * * *"
+          ],
+          "tz": "America/New_York",
+          "wave": "W4",
+          "class": "ingest",
+          "priority": 4,
+          "retry_policy": "none"
+        },
+        "adopted_from_generator": "reconcile_lane_registry@v1",
+        "adopted_on": "2026-10-11",
+        "adopted_reason": "Source-only shard08 DRAFT shadow proposal; retain reviewed dispatch intent during reconciliation."
+      },
+      "allowlist_candidate": {
+        "lane_id": "hermes-score-event-feeder",
+        "command": [
+          "$PY",
+          "scripts/hermes_score_event_feeder.py",
+          "--apply"
+        ],
+        "dry_run_arg": [
+          "--dry-run"
+        ],
+        "live_arg": null,
+        "lock": "/tmp/hermes_event_feeder.lock",
+        "lock_kind": "safe_flock",
+        "timeout_s": 300,
+        "market_gate": false,
+        "output_signal": "data/runtime/hermes-score-event-feeder_last.json",
+        "env_names": [
+          "DB_CONN_TRACE",
+          "DB_HOST",
+          "DB_NAME",
+          "DB_PASSWORD",
+          "DB_PORT",
+          "DB_USER",
+          "PROJECT_ROOT",
+          "SAFE_FLOCK_LOG_DIR",
+          "TRADEAI_PERSISTENT_STATE_ROOT",
+          "TRADEAI_ROOT"
+        ],
+        "env_allowlist_mode": "report",
+        "env_report_reason": "db_adapter legacy unbound cron loader and governor outcome-bus closure need integrator review. No model or broker credentials are named.",
+        "env_evidence": "SOURCE_ONLY import-closure audit; explicit preview has no env loader reach; TEST_ONLY fakes.",
+        "source": "OBSERVED_HOST scoped approved crontab snapshot 2026-10-11T17:05:28.513179+00:00; SOURCE_ONLY DRAFT proposal; no runtime deployment or scheduling change."
+      },
+      "health_contract_candidate": {
+        "schema": "N8nHealthContract@v1",
+        "id": "hermes-score-event-feeder",
+        "kind": "lane",
+        "workflow_id": "tradeai-dispatcher",
+        "status": "DRAFT",
+        "target_reason": "refactor_shard_08_source_proposal",
+        "stage": "shadow",
+        "purpose": {
+          "text": "Collect research events into unique pending Hermes scoring work under existing scope policy.",
+          "business_function": "research",
+          "source": "inventory refactor-shard08:hermes-score-event-feeder"
+        },
+        "owner": "research",
+        "connects_to": [
+          {
+            "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+            "kind": "service",
+            "direction": "calls",
+            "source": "AGENTS.md \u00a723.3"
+          },
+          {
+            "name": "$PY scripts/hermes_score_event_feeder.py --apply",
+            "kind": "runner",
+            "direction": "calls",
+            "source": "config/n8n_run_allowlist.json command"
+          },
+          {
+            "name": "/tmp/hermes_event_feeder.lock",
+            "kind": "lock",
+            "direction": "read_write",
+            "source": "Existing safe_flock.sh PID guard reused; exact approved cron snapshot 2026-10-11T17:05:28.513179+00:00"
+          },
+          {
+            "name": "data/runtime/hermes-score-event-feeder_last.json",
+            "kind": "receipt",
+            "direction": "write",
+            "source": "LaneRunReceipt / allowlist output_signal"
+          },
+          {
+            "name": "catalyst_events, news_articles, research_reports, paper_trade_proposals (read only), Hermes scope governance",
+            "kind": "inventory_text",
+            "direction": "read",
+            "source": "inventory refactor-shard08:hermes-score-event-feeder dependencies (DRAFT: free text)"
+          },
+          {
+            "name": "catalyst_events, news_articles, research_reports, paper_trade_proposals (read only), Hermes scope governance",
+            "kind": "inventory_text",
+            "direction": "read",
+            "source": "inventory refactor-shard08:hermes-score-event-feeder triggers_inputs (DRAFT: free text)"
+          },
+          {
+            "name": "hermes_score_event_queue, watchlist scope labels, scope_governor_audit and existing feeder heartbeat",
+            "kind": "inventory_text",
+            "direction": "write",
+            "source": "inventory refactor-shard08:hermes-score-event-feeder outputs_downstream (DRAFT: free text)"
+          }
+        ],
+        "healthy": [
+          {
+            "check": "shadow_dry_run_done",
+            "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+          },
+          {
+            "check": "dry_run_writes_nothing",
+            "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md \u00a76)"
+          },
+          {
+            "check": "cron_twin_output_fresh",
+            "text": "the live cron line keeps the registry output_signal data/runtime/hermes-score-event-feeder_last.json fresh within 0.16 h (2x cadence)"
+          },
+          {
+            "check": "duration_within_baseline",
+            "text": "duration <= 240.0 s (80% of timeout_s 300)"
+          }
+        ],
+        "degraded": [
+          {
+            "check": "late",
+            "text": "output_signal older than 0.16 h but younger than 0.24 h (2x-3x cadence)"
+          },
+          {
+            "check": "slow",
+            "text": "duration above 240.0 s"
+          },
+          {
+            "check": "retried",
+            "text": "a run needed attempt > 1 (retry_policy) or ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
+          },
+          {
+            "check": "upstream_stale",
+            "text": "an upstream input is stale: catalyst_events, news_articles, research_reports, paper_trade_proposals (read only), Hermes scope governance (not machine-checked yet)"
+          }
+        ],
+        "failed": [
+          {
+            "check": "run_failed",
+            "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+          },
+          {
+            "check": "no_receipt",
+            "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+          },
+          {
+            "check": "stale",
+            "text": "output_signal older than 0.24 h (3x cadence)"
+          },
+          {
+            "check": "breaker_or_dlq",
+            "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+          },
+          {
+            "check": "dry_run_wrote",
+            "text": "a dry_run changed its output_signal or any durable state"
+          }
+        ],
+        "baseline": {
+          "freshness_degraded_after_h": 0.16,
+          "freshness_failed_after_h": 0.24,
+          "freshness_rule": "degraded beyond 2x cadence (lane_registry.evaluate_lane SLOW), failed beyond 3x (incident fan-in stale threshold)",
+          "timeout_s": 300,
+          "class": "ingest",
+          "computed_on": "2026-10-11",
+          "basis": "CLASS_DEFAULT_PROVISIONAL",
+          "source": "NOT_MEASURED: live ledger excluded from refactor task; source class defaults only.",
+          "runs_considered": null,
+          "duration_degraded_above_s": 240.0
+        },
+        "alerting": {
+          "lane_severity": "Medium",
+          "severity_basis": "inventory refactor-shard08:hermes-score-event-feeder business_function=research (catalogue rule)",
+          "failed": {
+            "siem_severity": "WARN",
+            "notifier_priority": "P2"
+          },
+          "degraded": {
+            "siem_severity": "INFO",
+            "notifier_priority": "P3"
+          },
+          "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+          "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row `severity`, else the fan-in priority (RUN_* = P2 -> WARN). Wiring the bridge, notifier and diagnoser to this contract is the next build item (N8N_MONITORING_AND_REMEDIATION_STANDARD.md \u00a77)."
+        },
+        "remediation": {
+          "catalogue_entry": false,
+          "diagnosis_excluded": false,
+          "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
+        },
+        "evidence": {
+          "receipt": "data/runtime/hermes-score-event-feeder_last.json",
+          "verify": [
+            "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='hermes-score-event-feeder' ORDER BY requested_at DESC LIMIT 10\"",
+            "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:hermes-score-event-feeder' ORDER BY created_at DESC LIMIT 10",
+            "stat / jq the receipt: data/runtime/hermes-score-event-feeder_last.json"
+          ],
+          "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        "review_by": "2026-10-25"
+      }
+    },
+    {
+      "lane_id": "rag-indexer",
+      "shard": "08",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "before_blocker": "RETIRED_LOCAL_EMBEDDING_DEPENDENCY_UNCHANGED; bounded helper exists but does not authorize restoring Ollama runtime.",
+      "source_status": "PARTIAL_SOURCE_FIX_ADMISSION_BLOCKED",
+      "source_entrypoint": "scripts/rag_indexer.py",
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_acceptance": "NOT_MEASURED",
+      "admission_status": "NOT_APPLIED",
+      "scheduler_retained": {
+        "kind": "cron",
+        "expression": "0 */4 * * *",
+        "match": "scripts/rag_indexer.py"
+      },
+      "after_blocker": "Operator selection of supported embedding runtime and shared retrieval owner; retired Ollama is not restored",
+      "implemented": [
+        "Strict explicit offline --dry-run before runtime work; unknown flags exit2",
+        "Retired embedding module loaded only at actual embedding call, never preview/import",
+        "DB loader bounded to DB_PASSWORD",
+        "Injected preview no longer commits its read transaction"
+      ],
+      "tests": [
+        "tests/test_completion_119_shards_07_08_20261011.py"
+      ]
+    },
+    {
+      "lane_id": "reconcile-pullback-outcomes",
+      "shard": "08",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "before_blocker": "UNOWNED_FINANCIAL_PRICE_CLOSURE_UNCHANGED; guardian helper remains outside broker-investigation scope.",
+      "source_status": "RETAINED_OWNER_OR_AUTHORITY_BLOCKED",
+      "source_entrypoint": null,
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_acceptance": "NOT_MEASURED",
+      "admission_status": "NOT_APPLIED",
+      "scheduler_retained": {
+        "kind": "cron",
+        "expression": "45 9 * * 0",
+        "command_text": "cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/pullback_outcomes.lock $PY scripts/reconcile_pullback_outcomes.py >> logs/pullback_outcomes.log 2>&1",
+        "match": "scripts/reconcile_pullback_outcomes.py"
+      },
+      "after_blocker": "UNOWNED_FINANCIAL_PRICE_CLOSURE_UNCHANGED; guardian helper remains outside broker-investigation scope.",
+      "implemented": [],
+      "tests": []
+    },
+    {
+      "lane_id": "reporting-engine",
+      "shard": "08",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "before_blocker": "INLINE_SHARED_ENTRYPOINT_UNCHANGED; eligible cache writer exists, but cron still calls Python -c and CLI does not represent that exact inline prewarm.",
+      "source_status": "RETAINED_OWNER_OR_AUTHORITY_BLOCKED",
+      "source_entrypoint": null,
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_acceptance": "NOT_MEASURED",
+      "admission_status": "NOT_APPLIED",
+      "scheduler_retained": {
+        "kind": "cron",
+        "expression": "*/15 6-17 * * 1-5",
+        "match": "import reporting_engine as r;r.eligible_report_payload(use_cache=False)\""
+      },
+      "after_blocker": "INLINE_SHARED_ENTRYPOINT_UNCHANGED; eligible cache writer exists, but cron still calls Python -c and CLI does not represent that exact inline prewarm.",
+      "implemented": [],
+      "tests": []
+    },
+    {
+      "lane_id": "hermes-shadow-scorer",
+      "shard": "08",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "before_blocker": "SYSTEMD_SHADOW_SHAPE_UNSUPPORTED; unit evidence points at checkout JSON destination, distinct from the pinned-release/state contract.",
+      "source_status": "RETAINED_OWNER_OR_AUTHORITY_BLOCKED",
+      "source_entrypoint": null,
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_acceptance": "NOT_MEASURED",
+      "admission_status": "NOT_APPLIED",
+      "scheduler_retained": {
+        "kind": "systemd",
+        "expression": "hermes-shadow-scorer.timer"
+      },
+      "after_blocker": "SYSTEMD_SHADOW_SHAPE_UNSUPPORTED; unit evidence points at checkout JSON destination, distinct from the pinned-release/state contract.",
+      "implemented": [],
+      "tests": []
+    },
+    {
+      "lane_id": "topic-ingestion",
+      "shard": "08",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "before_blocker": "FAMILY_OWNER_AND_CHILD_MODEL_COOKIE_CLOSURE_UNCHANGED; historical child is not current scheduled entry point.",
+      "source_status": "RETAINED_OWNER_OR_AUTHORITY_BLOCKED",
+      "source_entrypoint": null,
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_acceptance": "NOT_MEASURED",
+      "admission_status": "NOT_APPLIED",
+      "scheduler_retained": {
+        "kind": "cron",
+        "expression": "45 20 * * 1-5 + 45 2 * * 0,6",
+        "command_text": "cd $PROJ && $PY scripts/run_family_slot.py --family topic-ingestion >> logs/run_family_slot.log 2>&1",
+        "match": "scripts/run_family_slot.py --family topic-ingestion",
+        "schedules": [
+          "45 20 * * 1-5",
+          "45 2 * * 0,6"
+        ]
+      },
+      "after_blocker": "FAMILY_OWNER_AND_CHILD_MODEL_COOKIE_CLOSURE_UNCHANGED; historical child is not current scheduled entry point.",
+      "implemented": [],
+      "tests": []
+    }
+  ],
+  "operational_configs_changed": false,
+  "new_reviewed_contracts": 0,
+  "validation": {
+    "targeted": "STOPPED_ON_REFUSAL",
+    "refused_path": "/run/user/1000/tradeai/env",
+    "attribution": "NOT_MEASURED",
+    "artifact": "reassess-gates/targeted.json",
+    "descendants_reaped_to_empty": true,
+    "ruff": "PASS",
+    "ast": "PASS",
+    "crlf": "PASS",
+    "full_ci_profile": "INTEGRATOR_PENDING"
+  }
+}
