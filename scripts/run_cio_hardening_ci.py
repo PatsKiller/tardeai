@@ -1178,6 +1178,14 @@ GATES = [
         "n8n_import_guard_20261010",
         ["tests/test_n8n_import_guard_20261010.py"],
     ),
+    # B families top 5 (n8n-maturity, 2026-10-11): topic-research-synthesizer / research-scheduler / catalyst-momentum-
+    # engine / topic-ingestion / cio-event-detector each one parameterised job (scripts/run_family_slot.py, slot table
+    # scripts/lib/family_slot_jobs.py). Equivalence proof: verbatim retired commands, minute-by-minute EDT/EST week
+    # simulation, gate model, registry rows. Hermetic: tmp roots and state root; no crontab, no host path.
+    (
+        "family_slot_jobs_20261011",
+        ["tests/test_family_slot_jobs_20261011.py"],
+    ),
     # Iris (operator 2026-10-09 "fix"): --freshness remediation runs an allowlisted argv via venv_python (was a
     # shell string, exit 127 in every release) and exits non-zero on failure; proposals de-duplicated (4,058
     # pending retire_channel rows were 32 channels); weekly scan --dry-run (no LLM, no writes) for the n8n shadow.

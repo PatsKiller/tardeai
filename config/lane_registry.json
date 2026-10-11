@@ -3681,7 +3681,7 @@
         "match": "research_scheduler.py --mode holdings"
       },
       "expected_cadence_hours": 24,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "file_mtime",
         "path": "data/cio/research_trigger_ledger.jsonl"
@@ -3699,7 +3699,120 @@
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
       },
-      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible).",
+      "state_since": "2026-10-11",
+      "superseded_by": "research-scheduler",
+      "state_reason": "Superseded by lane research-scheduler (B7, b-families-top5 2026-10-11): this crontab line becomes mode of scripts/run_family_slot.py --family research-scheduler with the same command, lock and log; the line is commented '# RETIRED <date> b-family B7/research-scheduler <line>' by packet ~/n8n-maturity-verification/packets/b-families-top5/research-scheduler under an operator cron grant. Until that install the line is still live (declared RETIRED ahead of the host by one install; RETIRED+present is not a state-drift conflict code).",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_family_slot_jobs_20261011.py: the mode's rendered command equals this line's verbatim command (live crontab 2026-10-11 sha 7eb97ad6); minute-by-minute EDT+EST week simulation: every effective run of this line is a run of the mode (deltas in docs/implementation/n8n-maturity/B_FAMILIES_TOP5.md).",
+      "retire_batch": "b-families-top5"
+    },
+    {
+      "lane_id": "research-scheduler",
+      "owner": "research",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "5 9 * * 1-5 + 0 12-16 * * 1-5 + 30 20 * * 1-5 + 0 19 * * 0",
+        "command_text": "cd $PROJ && $PY scripts/run_family_slot.py --family research-scheduler >> logs/run_family_slot.log 2>&1",
+        "match": "scripts/run_family_slot.py --family research-scheduler",
+        "schedules": [
+          "5 9 * * 1-5",
+          "0 12-16 * * 1-5",
+          "30 20 * * 1-5",
+          "0 19 * * 0"
+        ]
+      },
+      "expected_cadence_hours": 46.5,
+      "state": "ACTIVE",
+      "state_since": "2026-10-11",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/cio/research_trigger_ledger.jsonl"
+      },
+      "note": "n8n-maturity B7 (b-families-top5, 2026-10-11): one parameterised job — scripts/run_family_slot.py --family research-scheduler derives the mode from the clock (slot table scripts/lib/family_slot_jobs.py) and runs EXACTLY the retired line's command (argv, env, lock, log); gate wrappers stay inside as safety nets, the slots only fire where they allow. Crontab lines: packet ~/n8n-maturity-verification/packets/b-families-top5/research-scheduler (operator cron grant; NOT installed by the PR). Until that install the retired lines still run and this row reads ORPHANED. Proof: tests/test_family_slot_jobs_20261011.py; docs/implementation/n8n-maturity/B_FAMILIES_TOP5.md.",
+      "family_slots": [
+        {
+          "cron": "5 9 * * 1-5",
+          "modes": [
+            "holdings"
+          ]
+        },
+        {
+          "cron": "0 12-16 * * 1-5",
+          "modes": [
+            "priority"
+          ]
+        },
+        {
+          "cron": "30 20 * * 1-5",
+          "modes": [
+            "watchlist"
+          ]
+        },
+        {
+          "cron": "0 19 * * 0",
+          "modes": [
+            "incubator"
+          ]
+        }
+      ],
+      "family_modes": [
+        {
+          "mode": "holdings",
+          "replaces": "research-scheduler-holdings",
+          "old_schedule": "5 9 * * 1-5",
+          "log": "logs/research_scheduler.log",
+          "gates": []
+        },
+        {
+          "mode": "priority",
+          "replaces": "research-scheduler-priority-hourly",
+          "old_schedule": "0 10-16 * * 1-5",
+          "log": "logs/research_scheduler.log",
+          "gates": [
+            "llm_priority_guard"
+          ]
+        },
+        {
+          "mode": "watchlist",
+          "replaces": "research-scheduler-watchlist-2030",
+          "old_schedule": "30 20 * * 1-5",
+          "log": "logs/research_scheduler.log",
+          "gates": []
+        },
+        {
+          "mode": "incubator",
+          "replaces": "research-scheduler-incubator-sun-1900",
+          "old_schedule": "0 19 * * 0",
+          "log": "logs/research_scheduler.log",
+          "gates": []
+        }
+      ],
+      "command": [
+        "env LLM_GLOBAL_DAILY_USD_CAP=2.00 flock -n /tmp/research_sched.lock env RESEARCH_SKIP_GATE=1 $PY $PROJ/scripts/research_scheduler.py --mode holdings --apply --budget 70",
+        "bash $PROJ/scripts/llm_priority_guard.sh && env LLM_GLOBAL_DAILY_USD_CAP=2.00 flock -n /tmp/research_sched.lock env RESEARCH_SKIP_GATE=1 $PY $PROJ/scripts/research_scheduler.py --mode priority --apply --budget 40",
+        "env LLM_GLOBAL_DAILY_USD_CAP=2.00 flock -n /tmp/research_sched.lock env RESEARCH_SKIP_GATE=1 $PY $PROJ/scripts/research_scheduler.py --mode watchlist --apply --budget 50",
+        "env LLM_GLOBAL_DAILY_USD_CAP=2.00 flock -n /tmp/research_sched.lock env RESEARCH_SKIP_GATE=1 $PY $PROJ/scripts/research_scheduler.py --mode incubator --apply --budget 30"
+      ],
+      "value_class": "Nice to Have",
+      "recommendation": "PIPELINE:P10",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L581",
+        "pipeline": "P10",
+        "value_class": "Nice to Have",
+        "recommendation": "PIPELINE:P10",
+        "f_recommendation": "CONSOLIDATE-into P10",
+        "event_driven_candidate": false,
+        "f_evidence": "Unverified use: no consumer check run for this line"
+      },
+      "supersedes": [
+        "research-scheduler-holdings",
+        "research-scheduler-priority-hourly",
+        "research-scheduler-watchlist-2030",
+        "research-scheduler-incubator-sun-1900"
+      ],
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
     },
     {
       "lane_id": "research-scheduler-priority-hourly",
@@ -3711,7 +3824,7 @@
         "match": "research_scheduler.py --mode priority"
       },
       "expected_cadence_hours": 1,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "file_mtime",
         "path": "data/cio/research_trigger_ledger.jsonl"
@@ -3729,7 +3842,13 @@
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
       },
-      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible).",
+      "state_since": "2026-10-11",
+      "superseded_by": "research-scheduler",
+      "state_reason": "Superseded by lane research-scheduler (B7, b-families-top5 2026-10-11): this crontab line becomes mode of scripts/run_family_slot.py --family research-scheduler with the same command, lock and log; the line is commented '# RETIRED <date> b-family B7/research-scheduler <line>' by packet ~/n8n-maturity-verification/packets/b-families-top5/research-scheduler under an operator cron grant. Until that install the line is still live (declared RETIRED ahead of the host by one install; RETIRED+present is not a state-drift conflict code).",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_family_slot_jobs_20261011.py: the mode's rendered command equals this line's verbatim command (live crontab 2026-10-11 sha 7eb97ad6); minute-by-minute EDT+EST week simulation: every effective run of this line is a run of the mode (deltas in docs/implementation/n8n-maturity/B_FAMILIES_TOP5.md).",
+      "retire_batch": "b-families-top5"
     },
     {
       "lane_id": "research-scheduler-watchlist-2030",
@@ -3741,7 +3860,7 @@
         "match": "research_scheduler.py --mode watchlist"
       },
       "expected_cadence_hours": 24,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "file_mtime",
         "path": "data/cio/research_trigger_ledger.jsonl"
@@ -3759,7 +3878,13 @@
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
       },
-      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible).",
+      "state_since": "2026-10-11",
+      "superseded_by": "research-scheduler",
+      "state_reason": "Superseded by lane research-scheduler (B7, b-families-top5 2026-10-11): this crontab line becomes mode of scripts/run_family_slot.py --family research-scheduler with the same command, lock and log; the line is commented '# RETIRED <date> b-family B7/research-scheduler <line>' by packet ~/n8n-maturity-verification/packets/b-families-top5/research-scheduler under an operator cron grant. Until that install the line is still live (declared RETIRED ahead of the host by one install; RETIRED+present is not a state-drift conflict code).",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_family_slot_jobs_20261011.py: the mode's rendered command equals this line's verbatim command (live crontab 2026-10-11 sha 7eb97ad6); minute-by-minute EDT+EST week simulation: every effective run of this line is a run of the mode (deltas in docs/implementation/n8n-maturity/B_FAMILIES_TOP5.md).",
+      "retire_batch": "b-families-top5"
     },
     {
       "lane_id": "research-scheduler-incubator-sun-1900",
@@ -3771,7 +3896,7 @@
         "match": "research_scheduler.py --mode incubator"
       },
       "expected_cadence_hours": 168,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "file_mtime",
         "path": "data/cio/research_trigger_ledger.jsonl"
@@ -3789,7 +3914,13 @@
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
       },
-      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible).",
+      "state_since": "2026-10-11",
+      "superseded_by": "research-scheduler",
+      "state_reason": "Superseded by lane research-scheduler (B7, b-families-top5 2026-10-11): this crontab line becomes mode of scripts/run_family_slot.py --family research-scheduler with the same command, lock and log; the line is commented '# RETIRED <date> b-family B7/research-scheduler <line>' by packet ~/n8n-maturity-verification/packets/b-families-top5/research-scheduler under an operator cron grant. Until that install the line is still live (declared RETIRED ahead of the host by one install; RETIRED+present is not a state-drift conflict code).",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_family_slot_jobs_20261011.py: the mode's rendered command equals this line's verbatim command (live crontab 2026-10-11 sha 7eb97ad6); minute-by-minute EDT+EST week simulation: every effective run of this line is a run of the mode (deltas in docs/implementation/n8n-maturity/B_FAMILIES_TOP5.md).",
+      "retire_batch": "b-families-top5"
     },
     {
       "lane_id": "cio-bridge-watchdog",
@@ -11850,6 +11981,669 @@
       }
     },
     {
+      "lane_id": "catalyst-momentum-engine-premarket",
+      "owner": "proposals",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/30 4-9 * * 1-5",
+        "match": "scripts/catalyst_momentum_engine.py --band premarket_scalp"
+      },
+      "expected_cadence_hours": 66.5,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/cio/catalyst_momentum_last_run.json",
+        "evidence": "SCRIPT_RECEIPT",
+        "evidence_ref": "scripts/catalyst_momentum_engine.py:65,183 _write_last_run() atomically writes served-state-root data/cio/catalyst_momentum_last_run.json every run (payload has 'band' + generated_at; shared by all 3 bands); host mtime 2026-10-09T15:30:06"
+      },
+      "value_class": "Operationally Important",
+      "recommendation": "PIPELINE:P07",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L379",
+        "pipeline": "P07",
+        "value_class": "Operationally Important",
+        "recommendation": "PIPELINE:P07",
+        "f_recommendation": "CONSOLIDATE-into P07",
+        "event_driven_candidate": false,
+        "f_evidence": "Unverified use: no consumer check run for this line"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "state_since": "2026-10-11",
+      "superseded_by": "catalyst-momentum-engine",
+      "state_reason": "Superseded by lane catalyst-momentum-engine (B8, b-families-top5 2026-10-11): this crontab line becomes mode of scripts/run_family_slot.py --family catalyst-momentum-engine with the same command, lock and log; the line is commented '# RETIRED <date> b-family B8/catalyst-momentum-engine <line>' by packet ~/n8n-maturity-verification/packets/b-families-top5/catalyst-momentum-engine under an operator cron grant. Until that install the line is still live (declared RETIRED ahead of the host by one install; RETIRED+present is not a state-drift conflict code).",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_family_slot_jobs_20261011.py: the mode's rendered command equals this line's verbatim command (live crontab 2026-10-11 sha 7eb97ad6); minute-by-minute EDT+EST week simulation: every effective run of this line is a run of the mode (deltas in docs/implementation/n8n-maturity/B_FAMILIES_TOP5.md).",
+      "retire_batch": "b-families-top5"
+    },
+    {
+      "lane_id": "catalyst-momentum-engine",
+      "owner": "proposals",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 4-9 * * 1-5 + 30 4-15 * * 1-5",
+        "command_text": "cd $PROJ && $PY scripts/run_family_slot.py --family catalyst-momentum-engine >> logs/run_family_slot.log 2>&1",
+        "match": "scripts/run_family_slot.py --family catalyst-momentum-engine",
+        "schedules": [
+          "0 4-9 * * 1-5",
+          "30 4-15 * * 1-5"
+        ]
+      },
+      "expected_cadence_hours": 60.5,
+      "state": "ACTIVE",
+      "state_since": "2026-10-11",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/cio/catalyst_momentum_last_run.json",
+        "evidence": "SCRIPT_RECEIPT",
+        "evidence_ref": "scripts/catalyst_momentum_engine.py _write_last_run() every real run (payload has 'band'); unchanged from the two retired rows"
+      },
+      "note": "n8n-maturity B8 (b-families-top5, 2026-10-11): one parameterised job — scripts/run_family_slot.py --family catalyst-momentum-engine derives the mode from the clock (slot table scripts/lib/family_slot_jobs.py) and runs EXACTLY the retired line's command (argv, env, lock, log); gate wrappers stay inside as safety nets, the slots only fire where they allow. Crontab lines: packet ~/n8n-maturity-verification/packets/b-families-top5/catalyst-momentum-engine (operator cron grant; NOT installed by the PR). Until that install the retired lines still run and this row reads ORPHANED. Proof: tests/test_family_slot_jobs_20261011.py; docs/implementation/n8n-maturity/B_FAMILIES_TOP5.md.",
+      "family_slots": [
+        {
+          "cron": "*/30 4-8 * * 1-5",
+          "modes": [
+            "premarket_scalp"
+          ]
+        },
+        {
+          "cron": "0 9 * * 1-5",
+          "modes": [
+            "premarket_scalp"
+          ]
+        },
+        {
+          "cron": "30 9-15 * * 1-5",
+          "modes": [
+            "market_swing"
+          ]
+        }
+      ],
+      "family_modes": [
+        {
+          "mode": "premarket_scalp",
+          "replaces": "catalyst-momentum-engine-premarket",
+          "old_schedule": "*/30 4-9 * * 1-5",
+          "log": "logs/catalyst_momentum_engine.log",
+          "gates": []
+        },
+        {
+          "mode": "market_swing",
+          "replaces": "catalyst-momentum-engine-market",
+          "old_schedule": "30 9-15 * * 1-5",
+          "log": "logs/catalyst_momentum_engine.log",
+          "gates": []
+        },
+        {
+          "mode": "overnight",
+          "replaces": "catalyst-momentum-engine-overnight",
+          "old_schedule": "0 18,22 * * *",
+          "log": "logs/catalyst_momentum_engine.log",
+          "gates": [],
+          "scheduled": false
+        }
+      ],
+      "command": [
+        "bash $PROJ/scripts/safe_flock.sh /tmp/catalyst_premarket.lock $PY scripts/catalyst_momentum_engine.py --band premarket_scalp --apply --generate-proposals",
+        "bash $PROJ/scripts/safe_flock.sh /tmp/catalyst_swing.lock $PY scripts/catalyst_momentum_engine.py --band market_swing --apply --generate-proposals",
+        "bash $PROJ/scripts/safe_flock.sh /tmp/catalyst_overnight.lock $PY scripts/catalyst_momentum_engine.py --band overnight --apply"
+      ],
+      "value_class": "Operationally Important",
+      "recommendation": "PIPELINE:P07",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L379",
+        "pipeline": "P07",
+        "value_class": "Operationally Important",
+        "recommendation": "PIPELINE:P07",
+        "f_recommendation": "CONSOLIDATE-into P07",
+        "event_driven_candidate": false,
+        "f_evidence": "Unverified use: no consumer check run for this line"
+      },
+      "supersedes": [
+        "catalyst-momentum-engine-premarket",
+        "catalyst-momentum-engine-market"
+      ],
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
+    },
+    {
+      "lane_id": "catalyst-momentum-engine-market",
+      "owner": "proposals",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "30 9-15 * * 1-5",
+        "match": "scripts/catalyst_momentum_engine.py --band market_swing"
+      },
+      "expected_cadence_hours": 66.0,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/cio/catalyst_momentum_last_run.json",
+        "evidence": "SCRIPT_RECEIPT",
+        "evidence_ref": "scripts/catalyst_momentum_engine.py:65,183 _write_last_run() atomically writes served-state-root data/cio/catalyst_momentum_last_run.json every run (payload has 'band' + generated_at; shared by all 3 bands); host mtime 2026-10-09T15:30:06"
+      },
+      "value_class": "Operationally Important",
+      "recommendation": "PIPELINE:P07",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L380",
+        "pipeline": "P07",
+        "value_class": "Operationally Important",
+        "recommendation": "PIPELINE:P07",
+        "f_recommendation": "CONSOLIDATE-into P07",
+        "event_driven_candidate": false,
+        "f_evidence": "Unverified use: no consumer check run for this line"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "state_since": "2026-10-11",
+      "superseded_by": "catalyst-momentum-engine",
+      "state_reason": "Superseded by lane catalyst-momentum-engine (B8, b-families-top5 2026-10-11): this crontab line becomes mode of scripts/run_family_slot.py --family catalyst-momentum-engine with the same command, lock and log; the line is commented '# RETIRED <date> b-family B8/catalyst-momentum-engine <line>' by packet ~/n8n-maturity-verification/packets/b-families-top5/catalyst-momentum-engine under an operator cron grant. Until that install the line is still live (declared RETIRED ahead of the host by one install; RETIRED+present is not a state-drift conflict code).",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_family_slot_jobs_20261011.py: the mode's rendered command equals this line's verbatim command (live crontab 2026-10-11 sha 7eb97ad6); minute-by-minute EDT+EST week simulation: every effective run of this line is a run of the mode (deltas in docs/implementation/n8n-maturity/B_FAMILIES_TOP5.md).",
+      "retire_batch": "b-families-top5"
+    },
+    {
+      "lane_id": "topic-research-synthesizer-at-20-x",
+      "owner": "research",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "20 * * * *",
+        "match": "scripts/topic_research_synthesizer.py --max"
+      },
+      "expected_cadence_hours": 1.0,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/topic_research_synth.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Nice to Have",
+      "recommendation": "PIPELINE:P10",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L729",
+        "pipeline": "P10",
+        "value_class": "Nice to Have",
+        "recommendation": "PIPELINE:P10",
+        "f_recommendation": "CONSOLIDATE-into P10",
+        "event_driven_candidate": false,
+        "f_evidence": "Unverified use: no consumer check run for this line"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "state_since": "2026-10-11",
+      "superseded_by": "topic-research-synthesizer",
+      "state_reason": "Superseded by lane topic-research-synthesizer (B3, b-families-top5 2026-10-11): this crontab line becomes mode of scripts/run_family_slot.py --family topic-research-synthesizer with the same command, lock and log; the line is commented '# RETIRED <date> b-family B3/topic-research-synthesizer <line>' by packet ~/n8n-maturity-verification/packets/b-families-top5/topic-research-synthesizer under an operator cron grant. Until that install the line is still live (declared RETIRED ahead of the host by one install; RETIRED+present is not a state-drift conflict code).",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_family_slot_jobs_20261011.py: the mode's rendered command equals this line's verbatim command (live crontab 2026-10-11 sha 7eb97ad6); minute-by-minute EDT+EST week simulation: every effective run of this line is a run of the mode (deltas in docs/implementation/n8n-maturity/B_FAMILIES_TOP5.md).",
+      "retire_batch": "b-families-top5"
+    },
+    {
+      "lane_id": "topic-research-synthesizer",
+      "owner": "research",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "20 0-3,16-23 * * 1-5 + 20 * * * 0,6",
+        "command_text": "cd $PROJ && $PY scripts/run_family_slot.py --family topic-research-synthesizer >> logs/run_family_slot.log 2>&1",
+        "match": "scripts/run_family_slot.py --family topic-research-synthesizer",
+        "schedules": [
+          "20 0-3,16-23 * * 1-5",
+          "20 * * * 0,6"
+        ]
+      },
+      "expected_cadence_hours": 13.0,
+      "state": "ACTIVE",
+      "state_since": "2026-10-11",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/topic-research-synthesizer_last.json",
+        "key": "ok_at",
+        "evidence": "SCRIPT_RECEIPT",
+        "evidence_ref": "scripts/run_family_slot.py write_lane_receipt (LaneRunReceipt@v1, ok_at only when every mode exited 0); was the shared log mtime"
+      },
+      "note": "n8n-maturity B3 (b-families-top5, 2026-10-11): one parameterised job — scripts/run_family_slot.py --family topic-research-synthesizer derives the mode from the clock (slot table scripts/lib/family_slot_jobs.py) and runs EXACTLY the retired line's command (argv, env, lock, log); gate wrappers stay inside as safety nets, the slots only fire where they allow. Crontab lines: packet ~/n8n-maturity-verification/packets/b-families-top5/topic-research-synthesizer (operator cron grant; NOT installed by the PR). Until that install the retired lines still run and this row reads ORPHANED. Proof: tests/test_family_slot_jobs_20261011.py; docs/implementation/n8n-maturity/B_FAMILIES_TOP5.md.",
+      "family_slots": [
+        {
+          "cron": "20 0-3,16-23 * * 1-5",
+          "modes": [
+            "synth"
+          ]
+        },
+        {
+          "cron": "20 * * * 0,6",
+          "modes": [
+            "synth"
+          ]
+        },
+        {
+          "cron": "20 21 * * 5,6",
+          "modes": [
+            "reground"
+          ]
+        }
+      ],
+      "family_modes": [
+        {
+          "mode": "synth",
+          "replaces": "topic-research-synthesizer-at-20-x",
+          "old_schedule": "20 * * * *",
+          "log": "logs/topic_research_synth.log",
+          "gates": [
+            "non_trading_hours_gate",
+            "llm_priority_guard"
+          ]
+        },
+        {
+          "mode": "reground",
+          "replaces": "topic-research-synthesizer-reground",
+          "old_schedule": "50 21 * * *",
+          "log": "logs/topic_research_synth.log",
+          "gates": [
+            "deepseek_offpeak_official",
+            "non_trading_hours_gate"
+          ]
+        }
+      ],
+      "command": [
+        "bash $PROJ/scripts/non_trading_hours_gate.sh bash -c 'bash $PROJ/scripts/llm_priority_guard.sh && flock -n /tmp/topic_synth.lock $PY scripts/topic_research_synthesizer.py --max 15 --apply'",
+        "bash \"$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh\" --official -- bash $PROJ/scripts/non_trading_hours_gate.sh flock -n /tmp/topic_reground.lock $PY scripts/topic_research_synthesizer.py --reground --max 20 --apply"
+      ],
+      "value_class": "Nice to Have",
+      "recommendation": "PIPELINE:P10",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L729",
+        "pipeline": "P10",
+        "value_class": "Nice to Have",
+        "recommendation": "PIPELINE:P10",
+        "f_recommendation": "CONSOLIDATE-into P10",
+        "event_driven_candidate": false,
+        "f_evidence": "Unverified use: no consumer check run for this line"
+      },
+      "supersedes": [
+        "topic-research-synthesizer-at-20-x",
+        "topic-research-synthesizer-reground"
+      ],
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
+    },
+    {
+      "lane_id": "topic-ingestion",
+      "owner": "research",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "45 20 * * 1-5 + 45 2 * * 0,6",
+        "command_text": "cd $PROJ && $PY scripts/run_family_slot.py --family topic-ingestion >> logs/run_family_slot.log 2>&1",
+        "match": "scripts/run_family_slot.py --family topic-ingestion",
+        "schedules": [
+          "45 20 * * 1-5",
+          "45 2 * * 0,6"
+        ]
+      },
+      "expected_cadence_hours": 42.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/topic_ingestion_latest.json",
+        "evidence": "SCRIPT_RECEIPT",
+        "evidence_ref": "scripts/topic_ingestion.py:72 _write_desk_projection; host mtime 2026-10-08T16:56:43 (02:45 run PEAK_SKIPped per log)"
+      },
+      "value_class": "Nice to Have",
+      "recommendation": "PIPELINE:P10",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L731",
+        "pipeline": "P10",
+        "value_class": "Nice to Have",
+        "recommendation": "PIPELINE:P10",
+        "f_recommendation": "CONSOLIDATE-into P10",
+        "event_driven_candidate": false,
+        "f_evidence": "Unverified use: no consumer check run for this line",
+        "f_ids": [
+          "L731",
+          "L732"
+        ],
+        "f_recommendations": [
+          "PIPELINE:P10",
+          "PIPELINE:P10"
+        ]
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one. | n8n-maturity B2 (b-families-top5, 2026-10-11): one parameterised job — scripts/run_family_slot.py --family topic-ingestion derives the mode from the clock (slot table scripts/lib/family_slot_jobs.py) and runs EXACTLY the retired line's command (argv, env, lock, log); gate wrappers stay inside as safety nets, the slots only fire where they allow. Crontab lines: packet ~/n8n-maturity-verification/packets/b-families-top5/topic-ingestion (operator cron grant; NOT installed by the PR). Until that install the retired lines still run and this row reads ORPHANED. Proof: tests/test_family_slot_jobs_20261011.py; docs/implementation/n8n-maturity/B_FAMILIES_TOP5.md.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "family_slots": [
+        {
+          "cron": "45 20 * * 1-5",
+          "modes": [
+            "after_close"
+          ]
+        },
+        {
+          "cron": "45 2 * * 0,6",
+          "modes": [
+            "weekend_overnight"
+          ]
+        }
+      ],
+      "family_modes": [
+        {
+          "mode": "after_close",
+          "replaces": "topic-ingestion-cron-lines",
+          "old_schedule": "45 20 * * 1-5",
+          "log": "logs/topic_ingestion.log",
+          "gates": [
+            "non_trading_hours_gate"
+          ]
+        },
+        {
+          "mode": "weekend_overnight",
+          "replaces": "topic-ingestion-cron-lines",
+          "old_schedule": "45 2 * * *",
+          "log": "logs/topic_ingestion.log",
+          "gates": [
+            "deepseek_offpeak_official",
+            "non_trading_hours_gate"
+          ]
+        }
+      ],
+      "command": [
+        "bash $PROJ/scripts/non_trading_hours_gate.sh timeout 30m $PY scripts/topic_ingestion.py --use-llm-queries --max-topics 14",
+        "bash \"$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh\" --official -- bash $PROJ/scripts/non_trading_hours_gate.sh timeout 30m $PY scripts/topic_ingestion.py --use-llm-queries --max-topics 14"
+      ]
+    },
+    {
+      "lane_id": "topic-ingestion-cron-lines",
+      "owner": "research",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "45 20 * * 1-5 + 45 2 * * *",
+        "match": "scripts/topic_ingestion.py",
+        "schedules": [
+          "45 20 * * 1-5",
+          "45 2 * * *"
+        ]
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "RETIRED",
+      "state_since": "2026-10-11",
+      "superseded_by": "topic-ingestion",
+      "state_reason": "The two pre-B2 crontab lines of lane topic-ingestion (L734 `45 20 * * 1-5`, L735 `45 2 * * *`, both `scripts/topic_ingestion.py --use-llm-queries --max-topics 14`), kept as their own RETIRED row so they stay declared until the b-families-top5 packet comments them ('# RETIRED <date> b-family B2/topic-ingestion <line>', operator cron grant). Lane topic-ingestion now runs them as modes after_close / weekend_overnight of scripts/run_family_slot.py with the same command and log; the weekday 02:45 PEAK_SKIP fires are no longer scheduled.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_family_slot_jobs_20261011.py: modes render the verbatim L734/L735 commands (live crontab 2026-10-11 sha 7eb97ad6); week simulation: every effective run is a mode run; topic_ingestion.log PEAK_SKIP 06:45Z 10-05..10-09 (RANKING.md).",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/topic_ingestion_latest.json",
+        "evidence": "SCRIPT_RECEIPT",
+        "evidence_ref": "scripts/topic_ingestion.py:72 _write_desk_projection; host mtime 2026-10-08T16:56:43 (02:45 run PEAK_SKIPped per log)"
+      },
+      "note": "Split from lane topic-ingestion on 2026-10-11 (B2) so the retired lines keep a declaration; scheduler is the row's pre-B2 scheduler block verbatim.",
+      "value_class": "Nice to Have",
+      "recommendation": "PIPELINE:P10",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L731",
+        "pipeline": "P10",
+        "value_class": "Nice to Have",
+        "recommendation": "PIPELINE:P10",
+        "f_recommendation": "CONSOLIDATE-into P10",
+        "event_driven_candidate": false,
+        "f_evidence": "Unverified use: no consumer check run for this line",
+        "f_ids": [
+          "L731",
+          "L732"
+        ],
+        "f_recommendations": [
+          "PIPELINE:P10",
+          "PIPELINE:P10"
+        ]
+      },
+      "retire_batch": "b-families-top5"
+    },
+    {
+      "lane_id": "topic-research-synthesizer-reground",
+      "owner": "research",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "50 21 * * *",
+        "match": "scripts/topic_research_synthesizer.py --reground"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/topic_research_synth.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Nice to Have",
+      "recommendation": "PIPELINE:P10",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L733",
+        "pipeline": "P10",
+        "value_class": "Nice to Have",
+        "recommendation": "PIPELINE:P10",
+        "f_recommendation": "CONSOLIDATE-into P10",
+        "event_driven_candidate": false,
+        "f_evidence": "Unverified use: no consumer check run for this line"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "state_since": "2026-10-11",
+      "superseded_by": "topic-research-synthesizer",
+      "state_reason": "Superseded by lane topic-research-synthesizer (B3, b-families-top5 2026-10-11): this crontab line becomes mode of scripts/run_family_slot.py --family topic-research-synthesizer with the same command, lock and log; the line is commented '# RETIRED <date> b-family B3/topic-research-synthesizer <line>' by packet ~/n8n-maturity-verification/packets/b-families-top5/topic-research-synthesizer under an operator cron grant. Until that install the line is still live (declared RETIRED ahead of the host by one install; RETIRED+present is not a state-drift conflict code).",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_family_slot_jobs_20261011.py: the mode's rendered command equals this line's verbatim command (live crontab 2026-10-11 sha 7eb97ad6); minute-by-minute EDT+EST week simulation: every effective run of this line is a run of the mode (deltas in docs/implementation/n8n-maturity/B_FAMILIES_TOP5.md).",
+      "retire_batch": "b-families-top5"
+    },
+    {
+      "lane_id": "run-cio-event-detector-once-at-0-5",
+      "owner": "portfolio",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 5 * * 1-5",
+        "match": "from scripts.lib.cio_event_detector import run_cio_event_detector_once; r=run_cio_event_detector_once(); print(\"Wakes:\", r.get(\"wakes_created\", 0))' >> logs/cio_detector.log"
+      },
+      "expected_cadence_hours": 72.0,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/cio_detector.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Technical Debt",
+      "recommendation": "PIPELINE:P14",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L844",
+        "pipeline": "P14",
+        "value_class": "Technical Debt",
+        "recommendation": "PIPELINE:P14",
+        "f_recommendation": "REDESIGN → P14 event detector (fix NameError)",
+        "event_driven_candidate": false,
+        "f_evidence": "cio_detector.log: NameError wakes_created x41"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "state_since": "2026-10-11",
+      "superseded_by": "cio-event-detector",
+      "state_reason": "Superseded by lane cio-event-detector (B1, b-families-top5 2026-10-11): this crontab line becomes mode of scripts/run_family_slot.py --family cio-event-detector with the same command, lock and log; the line is commented '# RETIRED <date> b-family B1/cio-event-detector <line>' by packet ~/n8n-maturity-verification/packets/b-families-top5/cio-event-detector under an operator cron grant. Until that install the line is still live (declared RETIRED ahead of the host by one install; RETIRED+present is not a state-drift conflict code).",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_family_slot_jobs_20261011.py: the mode's rendered command equals this line's verbatim command (live crontab 2026-10-11 sha 7eb97ad6); minute-by-minute EDT+EST week simulation: every effective run of this line is a run of the mode (deltas in docs/implementation/n8n-maturity/B_FAMILIES_TOP5.md).",
+      "retire_batch": "b-families-top5"
+    },
+    {
+      "lane_id": "cio-event-detector",
+      "owner": "portfolio",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 5 * * 1-5 + 0 8 * * 0 + 0 9 1 * *",
+        "command_text": "cd $PROJ && $PY scripts/run_family_slot.py --family cio-event-detector >> logs/run_family_slot.log 2>&1",
+        "match": "scripts/run_family_slot.py --family cio-event-detector",
+        "schedules": [
+          "0 5 * * 1-5",
+          "0 8 * * 0",
+          "0 9 1 * *"
+        ]
+      },
+      "expected_cadence_hours": 51.0,
+      "state": "ACTIVE",
+      "state_since": "2026-10-11",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/cio-event-detector_last.json",
+        "key": "ok_at",
+        "evidence": "SCRIPT_RECEIPT",
+        "evidence_ref": "scripts/run_family_slot.py write_lane_receipt (LaneRunReceipt@v1); was three log mtimes"
+      },
+      "note": "n8n-maturity B1 (b-families-top5, 2026-10-11): one parameterised job — scripts/run_family_slot.py --family cio-event-detector derives the mode from the clock (slot table scripts/lib/family_slot_jobs.py) and runs EXACTLY the retired line's command (argv, env, lock, log); gate wrappers stay inside as safety nets, the slots only fire where they allow. Crontab lines: packet ~/n8n-maturity-verification/packets/b-families-top5/cio-event-detector (operator cron grant; NOT installed by the PR). Until that install the retired lines still run and this row reads ORPHANED. Proof: tests/test_family_slot_jobs_20261011.py; docs/implementation/n8n-maturity/B_FAMILIES_TOP5.md.",
+      "family_slots": [
+        {
+          "cron": "0 5 * * 1-5",
+          "modes": [
+            "daily"
+          ]
+        },
+        {
+          "cron": "0 8 * * 0",
+          "modes": [
+            "weekly"
+          ]
+        },
+        {
+          "cron": "0 9 1 * *",
+          "modes": [
+            "monthly"
+          ]
+        }
+      ],
+      "family_modes": [
+        {
+          "mode": "daily",
+          "replaces": "run-cio-event-detector-once-at-0-5",
+          "old_schedule": "0 5 * * 1-5",
+          "log": "logs/cio_detector.log",
+          "gates": []
+        },
+        {
+          "mode": "weekly",
+          "replaces": "run-cio-event-detector-once-at-0-8",
+          "old_schedule": "0 8 * * 0",
+          "log": "logs/cio_detector_weekly.log",
+          "gates": []
+        },
+        {
+          "mode": "monthly",
+          "replaces": "run-cio-event-detector-once-at-0-9",
+          "old_schedule": "0 9 1 * *",
+          "log": "logs/cio_detector_monthly.log",
+          "gates": []
+        }
+      ],
+      "command": [
+        "flock -n /tmp/cio_event_detector.lock python3 -c 'from scripts.lib.cio_event_detector import run_cio_event_detector_once; r=run_cio_event_detector_once(); print(\"Wakes:\", r.get(\"wakes_created\", 0))'",
+        "flock -n /tmp/cio_event_detector.lock python3 -c 'from scripts.lib.cio_event_detector import run_cio_event_detector_once; r=run_cio_event_detector_once(); print(\"Wakes:\", r.get(\"wakes_created\", 0))'",
+        "flock -n /tmp/cio_event_detector.lock python3 -c 'from scripts.lib.cio_event_detector import run_cio_event_detector_once; r=run_cio_event_detector_once(); print(\"Wakes:\", r.get(\"wakes_created\", 0))'"
+      ],
+      "value_class": "Technical Debt",
+      "recommendation": "PIPELINE:P14",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L844",
+        "pipeline": "P14",
+        "value_class": "Technical Debt",
+        "recommendation": "PIPELINE:P14",
+        "f_recommendation": "REDESIGN → P14 event detector (fix NameError)",
+        "event_driven_candidate": false,
+        "f_evidence": "cio_detector.log: NameError wakes_created x41"
+      },
+      "supersedes": [
+        "run-cio-event-detector-once-at-0-5",
+        "run-cio-event-detector-once-at-0-8",
+        "run-cio-event-detector-once-at-0-9"
+      ],
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
+    },
+    {
+      "lane_id": "run-cio-event-detector-once-at-0-8",
+      "owner": "portfolio",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 8 * * 0",
+        "match": "from scripts.lib.cio_event_detector import run_cio_event_detector_once; r=run_cio_event_detector_once(); print(\"Wakes:\", r.get(\"wakes_created\", 0))' >> logs/cio_detector_weekly.log"
+      },
+      "expected_cadence_hours": 168.0,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/cio_detector_weekly.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Technical Debt",
+      "recommendation": "PIPELINE:P14",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L845",
+        "pipeline": "P14",
+        "value_class": "Technical Debt",
+        "recommendation": "PIPELINE:P14",
+        "f_recommendation": "REDESIGN → P14 event detector (fix NameError)",
+        "event_driven_candidate": false,
+        "f_evidence": "cio_detector.log: NameError wakes_created x41"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "state_since": "2026-10-11",
+      "superseded_by": "cio-event-detector",
+      "state_reason": "Superseded by lane cio-event-detector (B1, b-families-top5 2026-10-11): this crontab line becomes mode of scripts/run_family_slot.py --family cio-event-detector with the same command, lock and log; the line is commented '# RETIRED <date> b-family B1/cio-event-detector <line>' by packet ~/n8n-maturity-verification/packets/b-families-top5/cio-event-detector under an operator cron grant. Until that install the line is still live (declared RETIRED ahead of the host by one install; RETIRED+present is not a state-drift conflict code).",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_family_slot_jobs_20261011.py: the mode's rendered command equals this line's verbatim command (live crontab 2026-10-11 sha 7eb97ad6); minute-by-minute EDT+EST week simulation: every effective run of this line is a run of the mode (deltas in docs/implementation/n8n-maturity/B_FAMILIES_TOP5.md).",
+      "retire_batch": "b-families-top5"
+    },
+    {
+      "lane_id": "run-cio-event-detector-once-at-0-9",
+      "owner": "portfolio",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 9 1 * *",
+        "match": "from scripts.lib.cio_event_detector import run_cio_event_detector_once; r=run_cio_event_detector_once(); print(\"Wakes:\", r.get(\"wakes_created\", 0))' >> logs/cio_detector_monthly.log"
+      },
+      "expected_cadence_hours": 744.0,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/cio_detector_monthly.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Technical Debt",
+      "recommendation": "PIPELINE:P14",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L846",
+        "pipeline": "P14",
+        "value_class": "Technical Debt",
+        "recommendation": "PIPELINE:P14",
+        "f_recommendation": "REDESIGN → P14 event detector (fix NameError)",
+        "event_driven_candidate": false,
+        "f_evidence": "cio_detector.log: NameError wakes_created x41"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "state_since": "2026-10-11",
+      "superseded_by": "cio-event-detector",
+      "state_reason": "Superseded by lane cio-event-detector (B1, b-families-top5 2026-10-11): this crontab line becomes mode of scripts/run_family_slot.py --family cio-event-detector with the same command, lock and log; the line is commented '# RETIRED <date> b-family B1/cio-event-detector <line>' by packet ~/n8n-maturity-verification/packets/b-families-top5/cio-event-detector under an operator cron grant. Until that install the line is still live (declared RETIRED ahead of the host by one install; RETIRED+present is not a state-drift conflict code).",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_family_slot_jobs_20261011.py: the mode's rendered command equals this line's verbatim command (live crontab 2026-10-11 sha 7eb97ad6); minute-by-minute EDT+EST week simulation: every effective run of this line is a run of the mode (deltas in docs/implementation/n8n-maturity/B_FAMILIES_TOP5.md).",
+      "retire_batch": "b-families-top5"
+    },
+    {
       "lane_id": "run-scheduled-quote-refresh-incubator",
       "owner": "portfolio",
       "scheduler": {
@@ -14443,72 +15237,6 @@
         "f_recommendation": "KEEP (fix false escalations) → P12",
         "event_driven_candidate": false,
         "f_evidence": "198 false \"still not responding after restart\" (probes 1 s after kill)"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "catalyst-momentum-engine-premarket",
-      "owner": "proposals",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "*/30 4-9 * * 1-5",
-        "match": "scripts/catalyst_momentum_engine.py --band premarket_scalp"
-      },
-      "expected_cadence_hours": 66.5,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "data/cio/catalyst_momentum_last_run.json",
-        "evidence": "SCRIPT_RECEIPT",
-        "evidence_ref": "scripts/catalyst_momentum_engine.py:65,183 _write_last_run() atomically writes served-state-root data/cio/catalyst_momentum_last_run.json every run (payload has 'band' + generated_at; shared by all 3 bands); host mtime 2026-10-09T15:30:06"
-      },
-      "value_class": "Operationally Important",
-      "recommendation": "PIPELINE:P07",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L379",
-        "pipeline": "P07",
-        "value_class": "Operationally Important",
-        "recommendation": "PIPELINE:P07",
-        "f_recommendation": "CONSOLIDATE-into P07",
-        "event_driven_candidate": false,
-        "f_evidence": "Unverified use: no consumer check run for this line"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "catalyst-momentum-engine-market",
-      "owner": "proposals",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "30 9-15 * * 1-5",
-        "match": "scripts/catalyst_momentum_engine.py --band market_swing"
-      },
-      "expected_cadence_hours": 66.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "data/cio/catalyst_momentum_last_run.json",
-        "evidence": "SCRIPT_RECEIPT",
-        "evidence_ref": "scripts/catalyst_momentum_engine.py:65,183 _write_last_run() atomically writes served-state-root data/cio/catalyst_momentum_last_run.json every run (payload has 'band' + generated_at; shared by all 3 bands); host mtime 2026-10-09T15:30:06"
-      },
-      "value_class": "Operationally Important",
-      "recommendation": "PIPELINE:P07",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L380",
-        "pipeline": "P07",
-        "value_class": "Operationally Important",
-        "recommendation": "PIPELINE:P07",
-        "f_recommendation": "CONSOLIDATE-into P07",
-        "event_driven_candidate": false,
-        "f_evidence": "Unverified use: no consumer check run for this line"
       },
       "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",
@@ -17650,115 +18378,6 @@
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
     },
     {
-      "lane_id": "topic-research-synthesizer-at-20-x",
-      "owner": "research",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "20 * * * *",
-        "match": "scripts/topic_research_synthesizer.py --max"
-      },
-      "expected_cadence_hours": 1.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/topic_research_synth.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Nice to Have",
-      "recommendation": "PIPELINE:P10",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L729",
-        "pipeline": "P10",
-        "value_class": "Nice to Have",
-        "recommendation": "PIPELINE:P10",
-        "f_recommendation": "CONSOLIDATE-into P10",
-        "event_driven_candidate": false,
-        "f_evidence": "Unverified use: no consumer check run for this line"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "topic-ingestion",
-      "owner": "research",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "45 20 * * 1-5 + 45 2 * * *",
-        "match": "scripts/topic_ingestion.py",
-        "schedules": [
-          "45 20 * * 1-5",
-          "45 2 * * *"
-        ]
-      },
-      "expected_cadence_hours": 24.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "data/runtime/topic_ingestion_latest.json",
-        "evidence": "SCRIPT_RECEIPT",
-        "evidence_ref": "scripts/topic_ingestion.py:72 _write_desk_projection; host mtime 2026-10-08T16:56:43 (02:45 run PEAK_SKIPped per log)"
-      },
-      "value_class": "Nice to Have",
-      "recommendation": "PIPELINE:P10",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L731",
-        "pipeline": "P10",
-        "value_class": "Nice to Have",
-        "recommendation": "PIPELINE:P10",
-        "f_recommendation": "CONSOLIDATE-into P10",
-        "event_driven_candidate": false,
-        "f_evidence": "Unverified use: no consumer check run for this line",
-        "f_ids": [
-          "L731",
-          "L732"
-        ],
-        "f_recommendations": [
-          "PIPELINE:P10",
-          "PIPELINE:P10"
-        ]
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "topic-research-synthesizer-reground",
-      "owner": "research",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "50 21 * * *",
-        "match": "scripts/topic_research_synthesizer.py --reground"
-      },
-      "expected_cadence_hours": 24.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/topic_research_synth.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Nice to Have",
-      "recommendation": "PIPELINE:P10",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L733",
-        "pipeline": "P10",
-        "value_class": "Nice to Have",
-        "recommendation": "PIPELINE:P10",
-        "f_recommendation": "CONSOLIDATE-into P10",
-        "event_driven_candidate": false,
-        "f_evidence": "Unverified use: no consumer check run for this line"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
       "lane_id": "research-intelligence-queue",
       "owner": "research",
       "scheduler": {
@@ -18933,102 +19552,6 @@
         "f_recommendation": "CONSOLIDATE into P10 (already a pipeline step or quiet prewarm)",
         "event_driven_candidate": false,
         "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "run-cio-event-detector-once-at-0-5",
-      "owner": "portfolio",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "0 5 * * 1-5",
-        "match": "from scripts.lib.cio_event_detector import run_cio_event_detector_once; r=run_cio_event_detector_once(); print(\"Wakes:\", r.get(\"wakes_created\", 0))' >> logs/cio_detector.log"
-      },
-      "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/cio_detector.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Technical Debt",
-      "recommendation": "PIPELINE:P14",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L844",
-        "pipeline": "P14",
-        "value_class": "Technical Debt",
-        "recommendation": "PIPELINE:P14",
-        "f_recommendation": "REDESIGN → P14 event detector (fix NameError)",
-        "event_driven_candidate": false,
-        "f_evidence": "cio_detector.log: NameError wakes_created x41"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "run-cio-event-detector-once-at-0-8",
-      "owner": "portfolio",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "0 8 * * 0",
-        "match": "from scripts.lib.cio_event_detector import run_cio_event_detector_once; r=run_cio_event_detector_once(); print(\"Wakes:\", r.get(\"wakes_created\", 0))' >> logs/cio_detector_weekly.log"
-      },
-      "expected_cadence_hours": 168.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/cio_detector_weekly.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Technical Debt",
-      "recommendation": "PIPELINE:P14",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L845",
-        "pipeline": "P14",
-        "value_class": "Technical Debt",
-        "recommendation": "PIPELINE:P14",
-        "f_recommendation": "REDESIGN → P14 event detector (fix NameError)",
-        "event_driven_candidate": false,
-        "f_evidence": "cio_detector.log: NameError wakes_created x41"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "run-cio-event-detector-once-at-0-9",
-      "owner": "portfolio",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "0 9 1 * *",
-        "match": "from scripts.lib.cio_event_detector import run_cio_event_detector_once; r=run_cio_event_detector_once(); print(\"Wakes:\", r.get(\"wakes_created\", 0))' >> logs/cio_detector_monthly.log"
-      },
-      "expected_cadence_hours": 744.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/cio_detector_monthly.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Technical Debt",
-      "recommendation": "PIPELINE:P14",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L846",
-        "pipeline": "P14",
-        "value_class": "Technical Debt",
-        "recommendation": "PIPELINE:P14",
-        "f_recommendation": "REDESIGN → P14 event detector (fix NameError)",
-        "event_driven_candidate": false,
-        "f_evidence": "cio_detector.log: NameError wakes_created x41"
       },
       "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",
