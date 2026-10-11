@@ -1,7 +1,7 @@
 {
  "schema": "SchedulerSnapshot@v1",
  "captured_on": "2026-10-09",
- "note": "crontab -l and systemctl --user (read-only); /home/<user> replaced by ~; 2026-10-09 registry-ops-crons: cron_lines carry the approved install (packet ops-crons-install.md: 4 edited lines L792/L823/L824/L832 + 3 appended L1051-L1053) so the committed registry is the reconciler's fixed point on the post-install host; 2026-10-10 registry-drift: L608 compute_intraday_vwap carries the live hours */20 9-16 (crontab hygiene 2026-10-10 ~03:54Z, backup n8n_cutover/crontab-before-hygiene-now-20261010T035420Z.txt; read-only crontab -l 2026-10-10 L608) so the generated compute-intraday-vwap row stays the reconciler's fixed point; 2026-10-11 w4-provider-owners-shadow: L638 finviz_enrichment.py --scalp-hot (the Finviz enrichment owner's scalp hot tier, live since the 2026-10-10 hot-tier install; read-only crontab -l 2026-10-11 L638) so the finviz-enrichment row can match its own line L142 only and the new finviz-enrichment-scalp-hot row stays the reconciler's fixed point",
+ "note": "crontab -l and systemctl --user (read-only); /home/<user> replaced by ~; 2026-10-09 registry-ops-crons: cron_lines carry the approved install (packet ops-crons-install.md: 4 edited lines L792/L823/L824/L832 + 3 appended L1051-L1053) so the committed registry is the reconciler's fixed point on the post-install host; 2026-10-10 registry-drift: L608 compute_intraday_vwap carries the live hours */20 9-16 (crontab hygiene 2026-10-10 ~03:54Z, backup n8n_cutover/crontab-before-hygiene-now-20261010T035420Z.txt; read-only crontab -l 2026-10-10 L608) so the generated compute-intraday-vwap row stays the reconciler's fixed point; 2026-10-11 w4-provider-owners-shadow: L638 finviz_enrichment.py --scalp-hot (the Finviz enrichment owner's scalp hot tier, live since the 2026-10-10 hot-tier install; read-only crontab -l 2026-10-11 L638) so the finviz-enrichment row can match its own line L142 only and the new finviz-enrichment-scalp-hot row stays the reconciler's fixed point; 2026-10-11 b-families-top5 (n8n-maturity B3/B7/B8/B2/B1): cron_lines carry the approved-pending install (packets ~/n8n-maturity-verification/packets/b-families-top5/<family>): the 13 retired lines (L379 L380 L581 L582 L583 L585 L729 L731 L732 L733 L844 L845 L846 in this snapshot's numbering) are replaced, on the same line numbers, by the 13 `scripts/run_family_slot.py --family <lane>` lines, so the committed registry is the reconciler's fixed point on the post-install host",
  "cron_lines": [
   {
    "n": 92,
@@ -505,11 +505,11 @@
   },
   {
    "n": 379,
-   "line": "*/30 4-9 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/catalyst_premarket.lock $PY scripts/catalyst_momentum_engine.py --band premarket_scalp --apply --generate-proposals >> logs/catalyst_momentum_engine.log 2>&1"
+   "line": "0 4-9 * * 1-5 cd $PROJ && $PY scripts/run_family_slot.py --family catalyst-momentum-engine >> logs/run_family_slot.log 2>&1"
   },
   {
    "n": 380,
-   "line": "30 9-15 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/catalyst_swing.lock $PY scripts/catalyst_momentum_engine.py --band market_swing --apply --generate-proposals >> logs/catalyst_momentum_engine.log 2>&1"
+   "line": "30 4-15 * * 1-5 cd $PROJ && $PY scripts/run_family_slot.py --family catalyst-momentum-engine >> logs/run_family_slot.log 2>&1"
   },
   {
    "n": 381,
@@ -917,19 +917,19 @@
   },
   {
    "n": 581,
-   "line": "5 9 * * 1-5 cd ~/trade-ai-releases/portfolio-server/CURRENT && env LLM_GLOBAL_DAILY_USD_CAP=2.00 flock -n /tmp/research_sched.lock env RESEARCH_SKIP_GATE=1 $PY ~/trade-ai-releases/portfolio-server/CURRENT/scripts/research_scheduler.py --mode holdings --apply --budget 70 >> ~/trade-ai-releases/portfolio-server/CURRENT/logs/research_scheduler.log 2>&1"
+   "line": "5 9 * * 1-5 cd $PROJ && $PY scripts/run_family_slot.py --family research-scheduler >> logs/run_family_slot.log 2>&1"
   },
   {
    "n": 582,
-   "line": "0 10-16 * * 1-5 cd ~/trade-ai-releases/portfolio-server/CURRENT && bash ~/trade-ai-releases/portfolio-server/CURRENT/scripts/llm_priority_guard.sh && env LLM_GLOBAL_DAILY_USD_CAP=2.00 flock -n /tmp/research_sched.lock env RESEARCH_SKIP_GATE=1 $PY ~/trade-ai-releases/portfolio-server/CURRENT/scripts/research_scheduler.py --mode priority --apply --budget 40 >> ~/trade-ai-releases/portfolio-server/CURRENT/logs/research_scheduler.log 2>&1"
+   "line": "0 12-16 * * 1-5 cd $PROJ && $PY scripts/run_family_slot.py --family research-scheduler >> logs/run_family_slot.log 2>&1"
   },
   {
    "n": 583,
-   "line": "30 20 * * 1-5 cd ~/trade-ai-releases/portfolio-server/CURRENT && env LLM_GLOBAL_DAILY_USD_CAP=2.00 flock -n /tmp/research_sched.lock env RESEARCH_SKIP_GATE=1 $PY ~/trade-ai-releases/portfolio-server/CURRENT/scripts/research_scheduler.py --mode watchlist --apply --budget 50 >> ~/trade-ai-releases/portfolio-server/CURRENT/logs/research_scheduler.log 2>&1"
+   "line": "30 20 * * 1-5 cd $PROJ && $PY scripts/run_family_slot.py --family research-scheduler >> logs/run_family_slot.log 2>&1"
   },
   {
    "n": 585,
-   "line": "0 19 * * 0 cd ~/trade-ai-releases/portfolio-server/CURRENT && env LLM_GLOBAL_DAILY_USD_CAP=2.00 flock -n /tmp/research_sched.lock env RESEARCH_SKIP_GATE=1 $PY ~/trade-ai-releases/portfolio-server/CURRENT/scripts/research_scheduler.py --mode incubator --apply --budget 30 >> ~/trade-ai-releases/portfolio-server/CURRENT/logs/research_scheduler.log 2>&1"
+   "line": "0 19 * * 0 cd $PROJ && $PY scripts/run_family_slot.py --family research-scheduler >> logs/run_family_slot.log 2>&1"
   },
   {
    "n": 588,
@@ -1193,19 +1193,19 @@
   },
   {
    "n": 729,
-   "line": "20 * * * * cd ~/trade-ai-releases/portfolio-server/CURRENT && bash ~/trade-ai-releases/portfolio-server/CURRENT/scripts/non_trading_hours_gate.sh bash -c 'bash ~/trade-ai-releases/portfolio-server/CURRENT/scripts/llm_priority_guard.sh && flock -n /tmp/topic_synth.lock $PY scripts/topic_research_synthesizer.py --max 15 --apply' >> ~/trade-ai-releases/portfolio-server/CURRENT/logs/topic_research_synth.log 2>&1"
+   "line": "20 0-3,16-23 * * 1-5 cd $PROJ && $PY scripts/run_family_slot.py --family topic-research-synthesizer >> logs/run_family_slot.log 2>&1"
   },
   {
    "n": 731,
-   "line": "45 20 * * 1-5 cd ~/trade-ai-releases/portfolio-server/CURRENT && bash ~/trade-ai-releases/portfolio-server/CURRENT/scripts/non_trading_hours_gate.sh timeout 30m $PY scripts/topic_ingestion.py --use-llm-queries --max-topics 14 >> ~/trade-ai-releases/portfolio-server/CURRENT/logs/topic_ingestion.log 2>&1"
+   "line": "45 20 * * 1-5 cd $PROJ && $PY scripts/run_family_slot.py --family topic-ingestion >> logs/run_family_slot.log 2>&1"
   },
   {
    "n": 732,
-   "line": "45 2 * * * cd ~/trade-ai-releases/portfolio-server/CURRENT && bash \"$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh\" --official -- bash ~/trade-ai-releases/portfolio-server/CURRENT/scripts/non_trading_hours_gate.sh timeout 30m $PY scripts/topic_ingestion.py --use-llm-queries --max-topics 14 >> ~/trade-ai-releases/portfolio-server/CURRENT/logs/topic_ingestion.log 2>&1"
+   "line": "45 2 * * 0,6 cd $PROJ && $PY scripts/run_family_slot.py --family topic-ingestion >> logs/run_family_slot.log 2>&1"
   },
   {
    "n": 733,
-   "line": "50 21 * * * cd ~/trade-ai-releases/portfolio-server/CURRENT && bash \"$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh\" --official -- bash ~/trade-ai-releases/portfolio-server/CURRENT/scripts/non_trading_hours_gate.sh flock -n /tmp/topic_reground.lock $PY scripts/topic_research_synthesizer.py --reground --max 20 --apply >> ~/trade-ai-releases/portfolio-server/CURRENT/logs/topic_research_synth.log 2>&1"
+   "line": "20 * * * 0,6 cd $PROJ && $PY scripts/run_family_slot.py --family topic-research-synthesizer >> logs/run_family_slot.log 2>&1"
   },
   {
    "n": 736,
@@ -1437,15 +1437,15 @@
   },
   {
    "n": 844,
-   "line": "0 5 * * 1-5 cd ~/trade-ai-releases/portfolio-server/CURRENT && python3 -c 'from scripts.lib.cio_event_detector import run_cio_event_detector_once; r=run_cio_event_detector_once(); print(\"Wakes:\", r.get(\"wakes_created\", 0))' >> logs/cio_detector.log 2>&1"
+   "line": "0 5 * * 1-5 cd $PROJ && $PY scripts/run_family_slot.py --family cio-event-detector >> logs/run_family_slot.log 2>&1"
   },
   {
    "n": 845,
-   "line": "0 8 * * 0 cd ~/trade-ai-releases/portfolio-server/CURRENT && python3 -c 'from scripts.lib.cio_event_detector import run_cio_event_detector_once; r=run_cio_event_detector_once(); print(\"Wakes:\", r.get(\"wakes_created\", 0))' >> logs/cio_detector_weekly.log 2>&1"
+   "line": "0 8 * * 0 cd $PROJ && $PY scripts/run_family_slot.py --family cio-event-detector >> logs/run_family_slot.log 2>&1"
   },
   {
    "n": 846,
-   "line": "0 9 1 * * cd ~/trade-ai-releases/portfolio-server/CURRENT && python3 -c 'from scripts.lib.cio_event_detector import run_cio_event_detector_once; r=run_cio_event_detector_once(); print(\"Wakes:\", r.get(\"wakes_created\", 0))' >> logs/cio_detector_monthly.log 2>&1"
+   "line": "0 9 1 * * cd $PROJ && $PY scripts/run_family_slot.py --family cio-event-detector >> logs/run_family_slot.log 2>&1"
   },
   {
    "n": 850,

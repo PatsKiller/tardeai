@@ -47,7 +47,9 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 SEARXNG_URL = os.getenv("SEARXNG_URL", "http://127.0.0.1:18888/search")
 
-# Load .env
+# Load only the named keys from .env (AGENTS.md §23.18: a lane never copies the whole env file, which also carries
+# broker credentials, into os.environ). DB_* for db_adapter (set first, so db_adapter never falls back to env_bootstrap's whole-render load).
+_ENV_NAMES = ('DB_HOST', 'DB_PORT', 'DB_NAME', 'DB_USER', 'DB_PASSWORD', 'SEARXNG_URL')
 _env_path = PROJECT_ROOT / ".env"
 if _env_path.exists():
     for line in _env_path.read_text().splitlines():
@@ -55,7 +57,7 @@ if _env_path.exists():
         if line and not line.startswith("#") and "=" in line:
             k, _, v = line.partition("=")
             k, v = k.strip(), v.strip()
-            if k and v and k not in os.environ:
+            if k in _ENV_NAMES and v and k not in os.environ:
                 os.environ[k] = v
 
 RUN_ID = f"hermes-social-{datetime.now().strftime('%Y%m%d-%H%M%S')}"

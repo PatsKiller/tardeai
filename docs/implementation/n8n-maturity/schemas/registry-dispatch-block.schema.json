@@ -48,10 +48,11 @@
             "additionalProperties": false,
             "required": ["source"],
             "properties": {
-              "source": {"enum": ["run_done", "receipt", "cio_bus", "ledger_event", "outbox"]},
-              "lane_id": {"type": "string", "description": "run_done: upstream lane (live RUN_DONE only)."},
+              "source": {"enum": ["run_done", "receipt", "cio_bus", "ledger_event", "outbox", "broker_as_of"]},
+              "lane_id": {"type": "string", "description": "run_done (required): upstream lane. A live lane counts the upstream's live RUN_DONE only; a dry_run (shadow) lane counts dry_run or live, as an `after` edge does (W5, 2026-10-11)."},
               "receipt_rel": {"type": "string", "pattern": "^data/[A-Za-z0-9._/-]+$", "description": "receipt: path relative to $STATE_ROOT."},
-              "event_type": {"type": "string", "maxLength": 80, "description": "cio_bus / ledger_event / outbox type."}
+              "event_type": {"type": "string", "maxLength": 80, "description": "cio_bus / ledger_event / outbox type."},
+              "domain": {"type": "string", "pattern": "^[a-z][a-z0-9_]{1,63}$", "description": "broker_as_of (required, and only there): the Data Broker domain whose as_of advance fires the lane; one of scripts/lib/data_broker/as_of_signal.py DOMAINS (W5, CONSOLIDATION_PLAN §E.4)."}
             }
           }
         },

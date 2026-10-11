@@ -13,9 +13,15 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 HIST = ROOT / "data" / "runtime" / "watch_directives_history.json"
+# Copy only _ENV_KEYS: every env name this process reads (its local import closure; tests/
+# test_env_bootstrap_narrow_20261011.py pins it). The file also carries broker credentials (ALPACA_*, SCHWAB_*:
+# config/secret_registry.yaml), which this process must never hold (AGENTS §23.18, N8N_ONBOARDING_STANDARD §2.6).
+_ENV_KEYS = frozenset({"DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD"})
 for ln in (ROOT / ".env").read_text().splitlines():
     if "=" in ln and not ln.strip().startswith("#"):
-        k, _, v = ln.partition("="); os.environ.setdefault(k.strip(), v.strip().strip("'\""))
+        k, _, v = ln.partition("=")
+        if k.strip() in _ENV_KEYS:
+            os.environ.setdefault(k.strip(), v.strip().strip("'\""))
 import psycopg2
 import psycopg2.extras
 

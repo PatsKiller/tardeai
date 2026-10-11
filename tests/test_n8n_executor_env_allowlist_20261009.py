@@ -345,6 +345,19 @@ def test_every_lane_runs_under_global_enforce_with_least_privilege():
             assert {k for k in child if SECRET_RE.search(k)} <= set(entry["env_names"]), lane
 
 
+def _module_env_keys(tree: ast.Module) -> set:
+    """The literal names of a module-level ``_ENV_KEYS = frozenset({...})`` (or set/tuple), else empty."""
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "_ENV_KEYS" for t in node.targets):
+            val = node.value
+            if isinstance(val, ast.Call) and val.args:
+                val = val.args[0]
+            if isinstance(val, (ast.Set, ast.Tuple, ast.List)) and all(
+                    isinstance(e, ast.Constant) and isinstance(e.value, str) for e in val.elts):
+                return {e.value for e in val.elts}
+    return set()
+
+
 def _env_reads(path: Path, visited: set) -> set:
     """Static drift guard for the enforced lanes: literal env reads across the recursive local import closure;
     a non-literal read fails (the lane must go back to report)."""
@@ -355,9 +368,21 @@ def _env_reads(path: Path, visited: set) -> set:
     consts = {t.id: n.value.value for n in ast.walk(tree) if isinstance(n, ast.Assign)
               and isinstance(n.value, ast.Constant) and isinstance(n.value.value, str)
               for t in n.targets if isinstance(t, ast.Name)}
+    env_keys = _module_env_keys(tree)
     reads: set = set()
     for node in ast.walk(tree):
         key = None
+        # 2026-10-11: an env-FILE loader in the closure is a read of every name it can copy. A whole-file copy
+        # (load_dotenv, os.environ.update, a non-literal setdefault with no module _ENV_KEYS) fails; a loader
+        # narrowed to a literal _ENV_KEYS set reads exactly that set (tests/test_env_bootstrap_narrow_20261011.py).
+        if isinstance(node, ast.Call):
+            func = ast.unparse(node.func)
+            assert not (func.split(".")[-1] == "load_dotenv" or func == "os.environ.update"), \
+                f"whole-file env loader {path.relative_to(ROOT)}:{node.lineno}"
+            if func == "os.environ.setdefault" and node.args and not isinstance(node.args[0], ast.Constant):
+                assert env_keys, f"whole-file env loader {path.relative_to(ROOT)}:{node.lineno}"
+                reads |= env_keys
+                continue
         if isinstance(node, ast.Call) and ast.unparse(node.func) in {
                 "os.getenv", "os.environ.get", "env.get", "env.setdefault"}:
             assert node.args, (path, node.lineno)
@@ -399,4 +424,5 @@ def test_enforced_inventories_cover_every_literal_read_in_the_import_closure(lan
 
 def test_lane_mode_counts_match_the_pr():
     modes = [e["env_allowlist_mode"] for e in LANES.values()]
-    assert modes.count("enforce") == 7 and modes.count("report") == len(LANES) - 7
+    # 7 (P7) + 10 flipped 2026-10-11 once their env-file loaders were narrowed (test_env_bootstrap_narrow_20261011).
+    assert modes.count("enforce") == 17 and modes.count("report") == len(LANES) - 17

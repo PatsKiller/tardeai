@@ -1428,17 +1428,18 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/maturity-program/sop-1.2.0-20260902/VERIFIER_RUNBOOK.md` | SOP 1.2.0 · Independent verifier runbook | review_required | OK | `db4ba680bfb7` |
 | `docs/implementation/n8n-maturity/00-MASTER-PROGRAM.md` | 00 — N8N Maturity Acceleration: program index | review_required | OK | `9c43aea80082` |
 | `docs/implementation/n8n-maturity/01-registry-reconciliation.md` | 01 — Lane registry reconciliation (B1) | review_required | OK | `7ef9d42aa3c9` |
-| `docs/implementation/n8n-maturity/02-six-workflow-architecture.md` | N8N Maturity — 02: six-workflow architecture (registry-driven dispatch) | review_required | OK | `ded275de4568` |
+| `docs/implementation/n8n-maturity/02-six-workflow-architecture.md` | N8N Maturity — 02: six-workflow architecture (registry-driven dispatch) | review_required | OK | `eca20f41c990` |
 | `docs/implementation/n8n-maturity/03-momentum-scalp-lanes.md` | 03 — Momentum-scalp lanes under n8n: inventory, root cause, dispatch design, monitoring | review_required | OK | `3ea31aa32eee` |
+| `docs/implementation/n8n-maturity/B_FAMILIES_TOP5.md` | B families top 5 — one parameterised job per same-script cron family | review_required | OK | `e1f607cfa001` |
 | `docs/implementation/n8n-maturity/MONITOR_FOLD_COVERAGE_W1-9.md` | Monitor fold coverage (W1-9): freshness contracts, input starvation and design notes for the rest | review_required | OK | `527bdf9c7d0f` |
 | `docs/implementation/n8n-maturity/N8N_CONFIGURATION.md` | N8N configuration — ms01-openclaw (the entry point) | review_required | OK | `d6a1c8730cc0` |
 | `docs/implementation/n8n-maturity/N8N_MONITORING_AND_REMEDIATION_STANDARD.md` | N8N monitoring, SIEM, Telegram and LLM auto-remediation standard — per lane | review_required | OK | `4e7bed965eb8` |
-| `docs/implementation/n8n-maturity/N8N_ONBOARDING_STANDARD.md` | N8N onboarding standard — the mandatory procedure for adding anything to n8n | review_required | OK | `d37bba40383e` |
+| `docs/implementation/n8n-maturity/N8N_ONBOARDING_STANDARD.md` | N8N onboarding standard — the mandatory procedure for adding anything to n8n | review_required | OK | `d68078918c5d` |
 | `docs/implementation/n8n-maturity/SEARCH_SOURCE_ROUTING.md` | Search source routing — which source answers what, and what it may spend | review_required | OK | `633c3aab392f` |
 | `docs/implementation/n8n-maturity/cron-inventory/CRON_INVENTORY.md` | Cron Inventory & Migration Assessment — 2026-10-10 | review_required | OK | `5a9e9ad6c050` |
 | `docs/implementation/n8n-maturity/cron-inventory/DEPENDENCY_MAP.md` | Dependency map — Trade AI scheduled work (cron · systemd · health-tick · n8n) | review_required | OK | `a6874bcd3c32` |
 | `docs/implementation/n8n-maturity/cron-inventory/GOVERNANCE_ANALYSIS.md` | Schedule and dependency governance — overlaps, duplicates, consolidation | review_required | OK | `529bca63c840` |
-| `docs/implementation/n8n-maturity/cron-inventory/README.md` | Cron inventory — system of record | review_required | OK | `772dc546b001` |
+| `docs/implementation/n8n-maturity/cron-inventory/README.md` | Cron inventory — system of record | review_required | OK | `25f333c09a70` |
 | `docs/implementation/n8n-maturity/cron-inventory/REMEDIATION_PLAN.md` | Cron / n8n Remediation Plan — from the verified inventory | review_required | OK | `bbcf489b4a63` |
 | `docs/implementation/n8n-maturity/cron-inventory/SCHEMA.md` | Cron inventory — system of record: column specification (v1, 2026-10-09 21:55 ET) | review_required | OK | `993baebfd7cf` |
 | `docs/implementation/n8n-parallel/00-baseline.md` | n8n parallel program — phase 0 baseline | review_required | OK | `743d99a3ee49` |

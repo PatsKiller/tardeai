@@ -33,10 +33,19 @@ from typing import Dict, Optional, Any
 
 # ── Platform detection ────────────────────────────────────────────────────────
 
+# The names this module reads (DB_CONN_TRACE gates connection tracing). The disk fallback below copies only DB_*.
+DB_ENV_NAMES = ("DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD", "DB_CONN_TRACE")
+
+
 def _load_dotenv_if_needed():
     """Load env if DB_PASSWORD not already set (cron-safe).
 
     S4: prefer tmpfs SM render via env_bootstrap, then legacy disk .env.
+
+    2026-10-11: in a process the n8n executor bounds (``TRADEAI_ENV_BOUND_NAMES``, set under enforce) this loads
+    DB_ENV_NAMES only, never a broker name. Unbound (cron, the dashboard) it keeps the legacy whole-file load:
+    crontab lines that source no env file rely on it for names outside DB_* (env_bootstrap module docstring), and
+    narrowing that is an operator decision.
     """
     if os.getenv("DB_PASSWORD"):
         return  # already set
@@ -45,8 +54,8 @@ def _load_dotenv_if_needed():
         _lib = str(Path(__file__).resolve().parent / "lib")
         if _lib not in _sys.path:
             _sys.path.insert(0, _lib)
-        from env_bootstrap import load_env
-        load_env()
+        from env_bootstrap import bound_names, load_env
+        load_env(names=DB_ENV_NAMES if bound_names() is not None else None)
         if os.getenv("DB_PASSWORD"):
             return
     except Exception:

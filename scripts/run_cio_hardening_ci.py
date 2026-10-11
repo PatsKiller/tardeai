@@ -1178,6 +1178,14 @@ GATES = [
         "n8n_import_guard_20261010",
         ["tests/test_n8n_import_guard_20261010.py"],
     ),
+    # B families top 5 (n8n-maturity, 2026-10-11): topic-research-synthesizer / research-scheduler / catalyst-momentum-
+    # engine / topic-ingestion / cio-event-detector each one parameterised job (scripts/run_family_slot.py, slot table
+    # scripts/lib/family_slot_jobs.py). Equivalence proof: verbatim retired commands, minute-by-minute EDT/EST week
+    # simulation, gate model, registry rows. Hermetic: tmp roots and state root; no crontab, no host path.
+    (
+        "family_slot_jobs_20261011",
+        ["tests/test_family_slot_jobs_20261011.py"],
+    ),
     # Iris (operator 2026-10-09 "fix"): --freshness remediation runs an allowlisted argv via venv_python (was a
     # shell string, exit 127 in every release) and exits non-zero on failure; proposals de-duplicated (4,058
     # pending retire_channel rows were 32 channels); weekly scan --dry-run (no LLM, no writes) for the n8n shadow.
@@ -3784,6 +3792,19 @@ GATES = [
             # it), REVIEWED health contracts, scheduler.match = exactly the one cron line, news-ingest and
             # sec-filings-feed excluded; compute_due week sweep. Hermetic: repo config read only.
             "tests/test_w4_provider_owners_shadow_20261011.py",
+            # Shadow wave 4 (SW4, 2026-10-11): 15 R1 lanes (10 ingest, 5 learn) admitted by r1_class_admission in the
+            # 4.4.0 cron-row shape; dry_run only, live_arg null, cron lock or PROPOSED lock, REVIEWED contracts,
+            # excluded lanes pinned (premarket C1 steps, P0, llm in-process, shared receipt, non-R1 class); compute_due
+            # week / half-hour / monthly sweeps. Hermetic: repo config read only.
+            "tests/test_sw4_shadow_wave4_20261011.py",
+            # SW4 env narrowing: nine lane scripts copy only named keys from <checkout>/.env (no broker credential
+            # reaches os.environ); etf_performance_enrich strict argparse. Hermetic: scratch .env, monkeypatched env.
+            "tests/test_sw4_env_narrowing_20261011.py",
+            # Canary wave 1 (2026-10-11): research-insight-extractor (L418) at the §23.18 (c) canary-on-cron shape
+            # (stage canary, dispatch.mode live, live_arg [] == the cron argv, flock lock == the cron line's lock),
+            # canary health contract present, gate refusals for lock mismatch / safe_flock / no cron lock / null
+            # live_arg; no other R1 shadow row gains a live argv. Hermetic: repo config read only.
+            "tests/test_canary_wave1_20261011.py",
             # W4 canary blocker (2026-10-11): finviz_enrichment._load_env copies only the six FINVIZ_* names (= the
             # lane's allowlist FINVIZ_* env_names) from the tmpfs render / .env into os.environ, never ALPACA_* /
             # SCHWAB_* / any other render name, on both the resolve_secret and the fallback path; it is the module's
@@ -3835,7 +3856,15 @@ GATES = [
         # fail-closed on a missing env_names list or unknown mode, names-only receipts, enforced-lane drift guard.
         # Hermetic: tmp_path ledgers/state, synthetic values, fake runners + one tiny real child.
         "n8n_executor_env_allowlist_20261009",
-        ["tests/test_n8n_executor_env_allowlist_20261009.py"],
+        [
+            "tests/test_n8n_executor_env_allowlist_20261009.py",
+            # Env-file loader narrowing (canary blocker, 2026-10-11): env_bootstrap.load_env(names=...) and the
+            # executor-set TRADEAI_ENV_BOUND_NAMES bound (only bound names, never a broker name; db_adapter asks for
+            # DB_* only and its connection params still resolve), unbound legacy default pinned unchanged, the
+            # per-script .env loops of the enforced lanes copy only _ENV_KEYS and _ENV_KEYS covers every name their
+            # closure reads. Hermetic: fake render/.env in tmp_path, psycopg2 stubbed, synthetic values only.
+            "tests/test_env_bootstrap_narrow_20261011.py",
+        ],
     ),
     (
         # ANCHOR: N8N_SCALP_LANE — 2026-10-09 operator "n8n drives a governed lane": trade-ai-scalp-live
@@ -4473,6 +4502,16 @@ GATES = [
         ["tests/test_monitor_fold_coverage_20261011.py",
          "tests/test_n8n_incident_fanin_monitor_fold_20261011.py",
          "tests/test_monitor_fold_parity_20261011.py"],
+    ),
+    (
+        # W5 event-triggered consumers (CONSOLIDATION_PLAN §B.3 W5, §E.4, 2026-10-11): coordination/due source
+        # "event" fires a registry row with dispatch.triggers when its Data Broker domain as_of (file-only readers,
+        # lib/data_broker/as_of_signal.py; news_ingestion emits catalyst_news) or an upstream RUN_DONE advances past
+        # the consumer's receipt watermark. dry_run only (shadow), one coalesced e: key per as_of minute, debounce,
+        # a due/in-flight schedule slot absorbs the event, the cron line's flock lock skips a concurrent fire.
+        # Hermetic: tmp state root and ledger, real flock on a tmp lock running /bin/true.
+        "w5_event_consumers_20261011",
+        ["tests/test_w5_event_consumers_20261011.py"],
     ),
 ]
 

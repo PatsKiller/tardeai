@@ -59,7 +59,9 @@ def _corrected_sector(symbol: str, finviz_sector: str, industry: str) -> str:
         return ""  # unknown ETF — blank is honest, beats a wrong "Financial"
     return finviz_sector or ""
 
-# Load .env
+# Load only the named keys from .env (AGENTS.md §23.18: a lane never copies the whole env file, which also carries
+# broker credentials, into os.environ). DB_* for db_adapter (set first, so db_adapter never falls back to env_bootstrap's whole-render load). Imported by hermes_social_sentiment, sync_social_to_intelligence and aegis_synthesis, so the narrowing reaches them too.
+_ENV_NAMES = ('DB_HOST', 'DB_PORT', 'DB_NAME', 'DB_USER', 'DB_PASSWORD')
 _env_path = PROJECT_ROOT / ".env"
 if _env_path.exists():
     for line in _env_path.read_text().splitlines():
@@ -67,7 +69,7 @@ if _env_path.exists():
         if line and not line.startswith("#") and "=" in line:
             k, _, v = line.partition("=")
             k, v = k.strip(), v.strip()
-            if k and v and k not in os.environ:
+            if k in _ENV_NAMES and v and k not in os.environ:
                 os.environ[k] = v
 
 AGENT = "aegis"

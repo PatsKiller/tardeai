@@ -93,10 +93,18 @@ Source: refactor waves 1–3 (#1641, #1646, #1658) and AGENTS.md §23.18 (e).
    2026-10-10: L227 called `.venv/bin/python` relative to the release (alerts dead since 10-06); several lanes
    still use checkout-relative paths (REMEDIATION_PLAN §8, open finding).
 6. **No whole-`.env` loading.** Declare `env_names` in the allowlist. `env_allowlist_mode: report` is allowed only
-   with a written `env_report_reason` (today: `db_adapter` → `env_bootstrap.load_env` re-reads the whole rendered
-   env). An admitted R1 lane may not name a broker credential (`SCHWAB`, `ALPACA`, `SNAPTRADE`, `MOOMOO`, `IBKR`).
-   Open finding: several lanes still load the whole `.env` (ALPACA_* names; the incident-notifier line L1052 sources
-   `./.env`).
+   with a written `env_report_reason`. An admitted R1 lane may not name a broker credential (`SCHWAB`, `ALPACA`,
+   `SNAPTRADE`, `MOOMOO`, `IBKR`). A script that reads its own `.env` copies only a literal module-level
+   `_ENV_KEYS` set (the names its closure reads — pattern `finviz_enrichment._load_env`, #1695, and
+   n8nmat/env-bootstrap-narrow); the P7 closure guard (`tests/test_n8n_executor_env_allowlist_20261009.py`) fails an
+   enforced lane whose closure holds `load_dotenv`, `os.environ.update` or a non-literal `os.environ.setdefault`
+   without `_ENV_KEYS`. `env_bootstrap.load_env(names=...)` copies only those names; under enforce the executor sets
+   `TRADEAI_ENV_BOUND_NAMES` (the lane's `env_names`) and every `load_env` in that child — `db_adapter` included,
+   which then asks for DB_* only — copies only bound names and never a broker name (`env_bootstrap.is_broker_name`).
+   The unbound default (cron, the dashboard) is still the whole-file copy: ~460 crontab lines source no env file and
+   rely on it, so narrowing it is an operator decision (§17), not a loader refactor. Open finding: lanes importing
+   `db_adapter` / `lane_registry` still exceed the P7 guard's 10-module closure bar, and many scripts still load the
+   whole `.env` (ALPACA_* names; the incident-notifier line L1052 sources `./.env`).
 7. **No direct Telegram, email or Slack.** A lane writes `alert_events` or a receipt; the host chokepoints
    (`send_telegram`, the incident notifier on the SYSTEM family) send. A lane that sends is class `send` and is not
    eligible (L205/L213 were dropped from wave 3 for this).
@@ -376,12 +384,12 @@ Full procedure, per lane, in the companion `N8N_MONITORING_AND_REMEDIATION_STAND
 | Gateway `/due` | matcher built once (#1667, RC11), served since `8ddf2ad59` 18:40 ET: 510 → 10 ms per call | `tests/test_gateway_due_latency_20261010.py` |
 | Generic workflows | **live:** dispatcher (since 17:14), event router (18:40), incident router (18:44), digest scheduler (18:47 ET); **held:** heartbeat watcher, approval router | `workflow_entity.active`, `packets/w0-import-six/republish-20261010.txt` |
 | Live per-lane n8n workflows | 4: `n8n-incident-fanin` (722fac0e043ea5c4), `n8n-pilot-dispatch` (078e8fcbea0c5020), `n8n-research-intake-consumer` (21fd15d5f8a4c4da), `crontab-snapshot-for-health-agent` (c0d4c7845e5c4fcc) | registry `kind: n8n` ACTIVE rows |
-| Shadow rows | 55 served (wave 1: 22, #1656; wave 2: 14, #1661; wave 3: 19 R1, #1665); 54 on main after #1674 moved `hermes-config-governor` into the `hermes_learning` stage; +3 W4 provider owners (R1 `ingest`: `finviz-enrichment` L142, `sec-data-ingest` L150, `social-ingest-all` L243) on branch `n8nmat/w4-provider-owners-shadow` (2026-10-11), the first rows with REVIEWED contracts | registry `stage: shadow` |
+| Shadow rows | 55 served (wave 1: 22, #1656; wave 2: 14, #1661; wave 3: 19 R1, #1665); 54 on main after #1674 moved `hermes-config-governor` into the `hermes_learning` stage; +3 W4 provider owners (R1 `ingest`: `finviz-enrichment` L142, `sec-data-ingest` L150, `social-ingest-all` L243) on branch `n8nmat/w4-provider-owners-shadow` (2026-10-11), the first rows with REVIEWED contracts; +15 SW4 R1 rows (10 `ingest`, 5 `learn`; branch `n8nmat/shadow-wave4`, 2026-10-11), 9 of them after a whole-`.env` narrowing in the same branch | registry `stage: shadow` |
 | Flock for R1 learn lanes | L318, L314, L427 `flock -n` installed 16:20 ET (cron grant 08c0bb77ec898136; backup `~/.local/state/tradeai/backups/crontab-20261010T202023Z-pre-wave23-flock.txt`) | `packets/wave23-flock/` |
 | Incident notifier | cron L1052, ACTIVE since 2026-10-09 23:34 ET | registry `incident-notifier` (#1654) |
 | SIEM bridge, diagnoser | registry rows PAUSED (#1657), not installed | `packets/siem-diagnoser-schedule/` |
 | Retry policies / caps | `config/n8n_retry_policies.json` | §3, §6 |
-| Health contracts | 68 DRAFT (59 lanes, 6 generic, 3 host monitors); +3 REVIEWED with the W4 rows (2026-10-11) | `config/n8n_health_contracts.json` |
+| Health contracts | 68 DRAFT (59 lanes, 6 generic, 3 host monitors); +3 REVIEWED with the W4 rows (2026-10-11); +15 REVIEWED with SW4 (agent-reviewed, awaiting the operator's bulk REVIEW pass) | `config/n8n_health_contracts.json` |
 
 ---
 

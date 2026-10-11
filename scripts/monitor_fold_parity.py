@@ -146,11 +146,21 @@ def _stale_contracts(rows: list[dict], prefix: str) -> set[str]:
 def job_log_lanes(jobs: list[dict], lanes: list[dict]) -> dict[str, set[str]]:
     """job -> ACTIVE lane_ids running it, for job_coverage_monitor's ("log", file) jobs. Pure."""
     out: dict[str, set[str]] = {}
+    active = {str(ln.get("lane_id")) for ln in lanes if ln.get("state") == "ACTIVE"}
     for j in jobs:
         if (j.get("signal") or ("",))[0] != "log":
             continue
-        out[j["name"]] = {str(ln.get("lane_id")) for ln in lanes if ln.get("state") == "ACTIVE" and j.get("schedule_match")
-                          and j["schedule_match"] in json.dumps(ln.get("scheduler")) + json.dumps(ln.get("exec_start") or "")}
+        hits: set[str] = set()
+        for ln in lanes:
+            if not (j.get("schedule_match")
+                    and j["schedule_match"] in json.dumps(ln.get("scheduler")) + json.dumps(ln.get("exec_start") or "")):
+                continue
+            if ln.get("state") == "ACTIVE":
+                hits.add(str(ln.get("lane_id")))
+            elif ln.get("state") == "RETIRED" and str(ln.get("superseded_by") or "") in active:
+                # a consolidated job (e.g. a B-family slot job) runs the retired line's command verbatim
+                hits.add(str(ln.get("superseded_by")))
+        out[j["name"]] = hits
     return out
 
 

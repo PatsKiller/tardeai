@@ -536,9 +536,8 @@ DEPENDENCY_LANES: dict[str, tuple[str, ...]] = {
     "reentry": (),
     "analyst_data": (),
     "research": (
-        "research-scheduler-holdings",
-        "research-scheduler-priority-hourly",
-        "research-scheduler-watchlist-2030",
+        # B7 (2026-10-11): the holdings/priority/watchlist/incubator lines are one lane, research-scheduler.
+        "research-scheduler",
         "governed-research-producer",
     ),
     "hermes_research": (),

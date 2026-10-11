@@ -71,6 +71,10 @@ WAVE3 = {
 }
 #: The three lanes whose cron line gains `flock -n <lock>` (packet n8n-maturity/packets/wave23-flock).
 FLOCK_ADDED = {"agent-outcome-linker", "agent-calibration-engine", "update-agent-performance"}
+#: Wave-3 lanes moved on to canary (live fire under the cron line's flock lock; tests/test_canary_wave1_20261011.py).
+CANARY = {"research-insight-extractor"}
+#: lane -> the stage / dispatch.mode its row carries now.
+STAGE = {lane: ("canary", "live") if lane in CANARY else ("shadow", "dry_run") for lane in WAVE3}
 
 
 def _activate(row: dict) -> dict:
@@ -104,9 +108,9 @@ def test_wave3_is_19_lanes_and_only_r1_classes():
 def test_row_is_a_shadow_cron_row_admitted_by_the_r1_gate(lane):
     row = ROWS[lane]
     assert LD.R1_SHADOW_SHAPE_STATUS == "ACTIVE"
-    assert row["scheduler"]["kind"] == "cron" and row["scheduler"]["stage"] == "shadow"
+    assert row["scheduler"]["kind"] == "cron" and row["scheduler"]["stage"] == STAGE[lane][0]
     assert row["state"] == "ACTIVE"
-    assert LD.dispatch_mode(row) == "dry_run"
+    assert LD.dispatch_mode(row) == STAGE[lane][1]
     assert LD.validate_dispatch_block(row) == []
     assert LD.r1_class_admission(row) == (True, f"r1_admitted:{WAVE3[lane][1]}")
 
@@ -118,9 +122,9 @@ def test_dispatch_block_shape(lane):
     pend = row
     assert lno.startswith("L")
     d = pend["dispatch"]
-    assert d["mode"] == "dry_run" and d["class"] == klass and d["retry_policy"] == "none"
+    assert d["mode"] == STAGE[lane][1] and d["class"] == klass and d["retry_policy"] == "none"
     assert d["cron"] == [row["scheduler"]["expression"]]
-    assert pend["scheduler"]["stage"] == "shadow" and pend["scheduler"]["wave"] == "D3"
+    assert pend["scheduler"]["stage"] == STAGE[lane][0] and pend["scheduler"]["wave"] == "D3"
     sig = pend["output_signal"]
     assert sig["kind"] == "json_key" and sig["key"] == "ok_at"
     assert LD.receipt_signal_path({"output_signal": sig}) == sig["path"]
@@ -129,7 +133,7 @@ def test_dispatch_block_shape(lane):
 @pytest.mark.parametrize("lane", sorted(WAVE3))
 def test_allowlist_entry_is_shadow_only_and_carries_no_broker_credential(lane):
     e = ALLOW[lane]
-    assert e["live_arg"] is None
+    assert e["live_arg"] is None if lane not in CANARY else e["live_arg"] == []
     assert e["dry_run_arg"] == ["--dry-run"]
     assert not any(t.startswith("--apply") for t in e["command"])
     assert e["output_signal"] == ROWS[lane]["output_signal"]["path"]
@@ -198,7 +202,8 @@ def test_activated_registry_has_no_dispatch_issue_once_active(monkeypatch):
     # cron-shadow row on the registry is refused while 4.4.0 is PROPOSED.
     r1_cron_shadow = [r for r in doc["lanes"] if (r.get("dispatch") or {}).get("class") in LD.R1_ADMITTED_CLASSES
                       and (r.get("scheduler") or {}).get("kind") == "cron"]
-    assert len(r1_cron_shadow) == 19 + 3
+    # + 15 SW4 rows (shadow wave 4, 2026-10-11; tests/test_sw4_shadow_wave4_20261011.py).
+    assert len(r1_cron_shadow) == 19 + 3 + 15
     assert len(errs) == len(r1_cron_shadow) and all("shadow_on_cron_not_ratified" in x for x in errs), errs[:3]
     monkeypatch.setattr(LD, "R1_SHADOW_SHAPE_STATUS", "ACTIVE")
     assert LD.registry_dispatch_errors(doc) == []
@@ -233,4 +238,4 @@ def test_compute_due_week_sweep_proposed_vs_active(monkeypatch):
     emitted, errors = _sweep(activated, ALLOW)
     assert errors == set(), sorted(errors)[:5]
     assert set(emitted) == set(WAVE3), sorted(set(WAVE3) - set(emitted))
-    assert all(modes == {"dry_run"} for modes in emitted.values())
+    assert all(modes == {STAGE[lane][1]} for lane, modes in emitted.items())

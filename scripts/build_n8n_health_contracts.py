@@ -230,6 +230,49 @@ def _edge(name: str, kind: str, direction: str, source: str) -> dict[str, str]:
     return {"name": name, "kind": kind, "direction": direction, "source": source}
 
 
+def _event_edge(t: Mapping[str, Any]) -> dict[str, str]:
+    """W5: what an event trigger connects the lane to (design 02 §6, CONSOLIDATION_PLAN §E.4)."""
+    if t.get("source") == "broker_as_of":
+        return _edge(
+            f"Data Broker domain {t.get('domain')} as_of (scripts/lib/data_broker/as_of_signal.py read_as_of) "
+            "-> coordination/due source event -> tradeai-event-router",
+            "event_trigger",
+            "read",
+            "config/lane_registry.json dispatch.triggers (broker_as_of)",
+        )
+    if t.get("source") == "run_done":
+        return _edge(
+            f"RUN_DONE of lane {t.get('lane_id')} in the coordination ledger -> coordination/due source event "
+            "-> tradeai-event-router",
+            "event_trigger",
+            "read",
+            "config/lane_registry.json dispatch.triggers (run_done)",
+        )
+    return _edge(f"trigger source {t.get('source')} (not computed by due yet)", "event_trigger", "read",
+                 "config/lane_registry.json dispatch.triggers")
+
+
+def _event_checks(healthy: list, degraded: list, failed: list, disp: Mapping[str, Any]) -> None:
+    """W5 event-trigger checks, appended to a lane contract whose dispatch block has triggers."""
+    mi = int(disp.get("min_interval_s") or 0)
+    healthy.append({
+        "check": "event_fire_dry_run_done",
+        "text": "each input as_of advance past the lane's receipt watermark yields at most one e:<lane>:dry_run:<as_of "
+        "minute> run, which ends RUN_DONE or RUN_SKIPPED_LOCK (cron line held the lock) in the coordination ledger",
+    })
+    degraded.append({
+        "check": "event_debounced_or_coalesced",
+        "text": f"advances arrive faster than min_interval_s {mi} s or while a schedule run of the lane is due or in "
+        "flight, so they coalesce into one later fire (expected under bursts; investigate if no e: run lands in a "
+        "trading day with input advances)",
+    })
+    failed.append({
+        "check": "trigger_source_unreadable",
+        "text": "coordination/due reports errors[] trigger_source_unreadable for this lane (the domain as_of file is "
+        "missing or malformed, or the as_of is in the future) for more than one input cadence",
+    })
+
+
 def lane_contract(
     lane: str,
     why: str,
@@ -287,6 +330,9 @@ def lane_contract(
         v = ((inv or {}).get(col) or "").strip()
         if v and not v.startswith("n/a"):
             edges.append(_edge(v, "inventory_text", direction, f"inventory {inv_id} {col} (DRAFT: free text)"))
+    triggers = [t for t in (disp.get("triggers") or []) if isinstance(t, Mapping)]
+    for t in triggers:
+        edges.append(_event_edge(t))
     if len(edges) == 1 and not entry:
         edges.append(_edge(UNKNOWN, "unknown", "read", "no allowlist entry and no inventory row"))
     base = baseline(runs, cadence_h=cadence_h, timeout_s=timeout_s, cls=cls, as_of=as_of)
@@ -349,6 +395,10 @@ def lane_contract(
             + (((inv or {}).get("dependencies") or UNKNOWN)[:200] + " (not machine-checked yet)"),
         },
     ]
+    if triggers:
+        _event_checks(healthy, degraded, failed_extra := [], disp)
+    else:
+        failed_extra = []
     if cls == "llm":
         degraded.append(
             {
@@ -363,6 +413,7 @@ def lane_contract(
         {"check": "stale", "text": f"output_signal older than {base.get('freshness_failed_after_h')} h (3x cadence)"},
         {"check": "breaker_or_dlq", "text": "a dead letter was written or the lane's breaker opened (3 failures)"},
     ]
+    failed.extend(failed_extra)
     if shadow:
         failed.append({"check": "dry_run_wrote", "text": "a dry_run changed its output_signal or any durable state"})
     else:
