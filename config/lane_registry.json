@@ -473,7 +473,8 @@
         "expression": "30 8,20 * * *",
         "match": "scripts/job_coverage_monitor.py",
         "stage": "shadow",
-        "wave": "D1b"
+        "wave": "D1b",
+        "command_text": "cd $PROJ && flock -n /tmp/tradeai_job_coverage_monitor.lock $PY scripts/job_coverage_monitor.py >> logs/job_coverage_monitor.log 2>&1"
       },
       "expected_cadence_hours": 12,
       "state": "ACTIVE",
@@ -599,7 +600,8 @@
         "expression": "0 6 * * *",
         "match": "scripts/source_attribution_monitor.py",
         "stage": "shadow",
-        "wave": "D2"
+        "wave": "D2",
+        "command_text": "cd $PROJ && flock -n /tmp/source_attribution_monitor.lock $PY scripts/source_attribution_monitor.py >> logs/source_attribution_monitor.log 2>&1"
       },
       "expected_cadence_hours": 24,
       "state": "ACTIVE",
@@ -756,7 +758,8 @@
         "expression": "25 6-18/3 * * 1-5",
         "match": "scripts/finviz_health_check.py",
         "stage": "shadow",
-        "wave": "D1b"
+        "wave": "D1b",
+        "command_text": "cd $PROJ && flock -n /tmp/tradeai_finviz_health_check.lock timeout 2m $PY scripts/finviz_health_check.py >> logs/finviz_health_check.log 2>&1  # Finviz data-source health probe — its only reporter (candidate_discovery_orchestrator) was orphaned, row went zombie-stale (2026-07-06 audit)"
       },
       "expected_cadence_hours": 12,
       "state": "ACTIVE",
@@ -3862,7 +3865,7 @@
       "scheduler": {
         "kind": "cron",
         "expression": "20 7,12,17 * * 1-5",
-        "command_text": "catalyst_symbol_impact_writer.py --apply",
+        "command_text": "cd $PROJ && flock -n /tmp/catalyst_symbol_impact.lock $PY scripts/catalyst_symbol_impact_writer.py --apply >> logs/catalyst_symbol_impact.log 2>&1  # lane catalyst-symbol-impact",
         "match": "catalyst_symbol_impact_writer.py",
         "stage": "shadow",
         "wave": "D2"
@@ -3980,7 +3983,7 @@
       "scheduler": {
         "kind": "cron",
         "expression": "10 6 * * 1-5",
-        "command_text": "build_catalyst_graph.py --apply",
+        "command_text": "cd $PROJ && flock -n /tmp/build_catalyst_graph.lock $PY scripts/build_catalyst_graph.py --apply >> logs/build_catalyst_graph.log 2>&1  # lane catalyst-graph",
         "match": "build_catalyst_graph.py --apply",
         "stage": "shadow",
         "wave": "D2"
@@ -5253,7 +5256,7 @@
       "scheduler": {
         "kind": "cron",
         "expression": "40 6 * * 1",
-        "command_text": "maturity_remeasure.py --write",
+        "command_text": "CUR=$(readlink -f /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT) && cd \"$CUR\" && flock -n /tmp/tradeai_maturity_remeasure.lock $PY scripts/maturity_remeasure.py --write >> /home/johnclaw/trade-ai-releases/persistent-state/logs/maturity_remeasure.log 2>&1",
         "match": "maturity_remeasure.py",
         "stage": "shadow",
         "wave": "D2"
@@ -5332,7 +5335,7 @@
       "scheduler": {
         "kind": "cron",
         "expression": "40 18 * * *",
-        "command_text": "cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/report_agent_number_grounding.py --days 7 --check-slo --out data/runtime/agent_number_grounding_slo_last_run.json >> logs/agent_number_grounding_slo.log 2>&1",
+        "command_text": "cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/tradeai_agent_number_grounding_slo.lock $PY scripts/report_agent_number_grounding.py --days 7 --check-slo --out data/runtime/agent_number_grounding_slo_last_run.json >> logs/agent_number_grounding_slo.log 2>&1",
         "match": "scripts/report_agent_number_grounding.py --days 7 --check-slo",
         "stage": "shadow",
         "wave": "D2"
@@ -8628,7 +8631,8 @@
         "expression": "15 7 * * 1-5",
         "match": "scripts/write_state_freshness_history.py",
         "stage": "shadow",
-        "wave": "D1b"
+        "wave": "D1b",
+        "command_text": "cd $PROJ && flock -n /tmp/tradeai_state_freshness_history.lock $PY scripts/write_state_freshness_history.py >> logs/state_freshness_db_cron.log 2>&1"
       },
       "expected_cadence_hours": 72.0,
       "state": "ACTIVE",
@@ -8771,7 +8775,8 @@
         "expression": "*/30 6-16 * * 1-5",
         "match": "scripts/materialize_watchlist_strategy_cards.py",
         "stage": "shadow",
-        "wave": "D1b"
+        "wave": "D1b",
+        "command_text": "cd $PROJ && flock -n /tmp/materialize_cards.lock $PY scripts/materialize_watchlist_strategy_cards.py >> logs/watchlist_strategy_cards.log 2>&1"
       },
       "expected_cadence_hours": 61.5,
       "state": "ACTIVE",
@@ -8865,7 +8870,8 @@
         "expression": "55 7 * * 1-5",
         "match": "scripts/monitoring/classifier_health_check.py",
         "stage": "shadow",
-        "wave": "D1b"
+        "wave": "D1b",
+        "command_text": "cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/classifier_health_check.lock $PY scripts/monitoring/classifier_health_check.py >> logs/classifier_health.log 2>&1"
       },
       "expected_cadence_hours": 72.0,
       "state": "ACTIVE",
@@ -9197,7 +9203,8 @@
         "expression": "25 7 * * 1",
         "match": "scripts/fee_efficiency_analyzer.py",
         "stage": "shadow",
-        "wave": "D1b"
+        "wave": "D1b",
+        "command_text": "cd $PROJ && flock -n /tmp/fee_efficiency.lock bash -c \"set -a; . ./.env; set +a; $PY scripts/fee_efficiency_analyzer.py --emit\" >> logs/fee_efficiency.log 2>&1  # weekly portfolio fee/cost-efficiency findings -> Reports"
       },
       "expected_cadence_hours": 168.0,
       "state": "ACTIVE",
@@ -9291,7 +9298,8 @@
         "expression": "*/10 6-20 * * 1-5",
         "match": "scripts/hermes_governance_api.py",
         "stage": "shadow",
-        "wave": "D1b"
+        "wave": "D1b",
+        "command_text": "cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/tradeai_hermes_gov_warm.lock $PY scripts/hermes_governance_api.py --warm >> logs/hermes_governance_warm.log 2>&1  # pre-warm Hermes governance panel cache"
       },
       "expected_cadence_hours": 57.17,
       "state": "ACTIVE",
@@ -9401,7 +9409,8 @@
         "expression": "15 */3 * * *",
         "match": "scripts/hermes_entity_spike_discovery.py",
         "stage": "shadow",
-        "wave": "D1b"
+        "wave": "D1b",
+        "command_text": "cd $PROJ && flock -n /tmp/hermes_entity_spike.lock $PY scripts/hermes_entity_spike_discovery.py --run --json >> logs/hermes_entity_spike.log 2>&1  # URDL entity-spike discovery (enabled 2026-07-05)"
       },
       "expected_cadence_hours": 3.0,
       "state": "ACTIVE",
@@ -9448,7 +9457,8 @@
         "expression": "0 10-16 * * 1-5",
         "match": "scripts/data_gap_resolver.py >>",
         "stage": "shadow",
-        "wave": "D2"
+        "wave": "D2",
+        "command_text": "cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/data_gap_resolver.lock $PY scripts/data_gap_resolver.py >> logs/data_gap_resolver.log 2>&1"
       },
       "expected_cadence_hours": 66.0,
       "state": "ACTIVE",
@@ -9495,7 +9505,8 @@
         "expression": "0 18 * * 1-5",
         "match": "scripts/data_gap_resolver.py --pre-overnight",
         "stage": "shadow",
-        "wave": "D2"
+        "wave": "D2",
+        "command_text": "cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/data_gap_resolver.lock $PY scripts/data_gap_resolver.py --pre-overnight >> logs/data_gap_resolver_pre_overnight.log 2>&1"
       },
       "expected_cadence_hours": 72.0,
       "state": "ACTIVE",
@@ -9542,7 +9553,8 @@
         "expression": "0 8 * * 0",
         "match": "scripts/data_gap_resolver.py --weekly-audit",
         "stage": "shadow",
-        "wave": "D2"
+        "wave": "D2",
+        "command_text": "cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/data_gap_resolver.lock $PY scripts/data_gap_resolver.py --weekly-audit >> logs/data_gap_resolver_weekly.log 2>&1"
       },
       "expected_cadence_hours": 168.0,
       "state": "ACTIVE",
@@ -9636,7 +9648,8 @@
         "expression": "20 */3 * * *",
         "match": "scripts/hermes_analyst_signal_discovery.py",
         "stage": "shadow",
-        "wave": "D2"
+        "wave": "D2",
+        "command_text": "cd $PROJ && flock -n /tmp/hermes_analyst_signal.lock $PY scripts/hermes_analyst_signal_discovery.py --run --json >> logs/hermes_analyst_signal.log 2>&1  # analyst-signal discovery feeder — LIVE (analyst_signal_enabled=true since 2026-07-30)"
       },
       "expected_cadence_hours": 3.0,
       "state": "ACTIVE",
@@ -9683,7 +9696,8 @@
         "expression": "25 4 * * *",
         "match": "scripts/hermes_industry_novelty_discovery.py",
         "stage": "shadow",
-        "wave": "D2"
+        "wave": "D2",
+        "command_text": "cd $PROJ && bash \"$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh\" --official -- flock -n /tmp/hermes_industry_novelty.lock $PY scripts/hermes_industry_novelty_discovery.py --run --json >> logs/hermes_industry_novelty.log 2>&1  # industry/sector novelty discovery — LIVE (industry_novelty_enabled=true since 2026-08-04)"
       },
       "expected_cadence_hours": 24.0,
       "state": "ACTIVE",

@@ -116,3 +116,24 @@ def test_no_other_shadow_row_gained_a_live_argv():
             assert ALLOW[lane].get("live_arg") is None, lane
     canary = sorted(r for r, row in ROWS.items() if (row.get("scheduler") or {}).get("stage") == "canary")
     assert canary == sorted(CANARY_WAVE1)
+
+
+def test_every_shadow_command_text_flock_lock_is_the_allowlist_lock():
+    """canary-wave1 synced scheduler.command_text to the live crontab line (crontab -l 2026-10-11) for the shadow rows
+    whose line carries a flock and no send (20 rows, incl. 4 drifted: catalyst-symbol-impact, catalyst-graph, maturity-remeasure,
+    agent-number-grounding-slo; + the 3 W4 rows). Where command_text names a flock lock it must be the allowlist lock,
+    so the lock half of the canary gate is already true for those rows. hermes-pipeline-health (--send) and
+    crawl-v3-dashboard (--telegram) and audit-enrichment-coverage (--alert -> send_telegram) are senders on their live line
+    (§23.18 ruling 4 / §24.1: never dispatcher-live) and are left without command_text."""
+    synced = 0
+    for lane, row in ROWS.items():
+        s = row.get("scheduler") or {}
+        if s.get("stage") not in ("shadow", "canary") or not s.get("command_text"):
+            continue
+        locks = LD.cron_flock_locks(s["command_text"])
+        if locks:
+            synced += 1
+            assert ALLOW[lane]["lock_kind"] == "flock" and set(locks) == {ALLOW[lane]["lock"]}, (lane, locks)
+    assert synced >= 20 + 3 + 1
+    for sender in ("hermes-pipeline-health", "crawl-v3-dashboard", "audit-enrichment-coverage"):
+        assert "command_text" not in ROWS[sender]["scheduler"], sender
