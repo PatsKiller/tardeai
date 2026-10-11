@@ -3782,6 +3782,12 @@ GATES = [
             # it), REVIEWED health contracts, scheduler.match = exactly the one cron line, news-ingest and
             # sec-filings-feed excluded; compute_due week sweep. Hermetic: repo config read only.
             "tests/test_w4_provider_owners_shadow_20261011.py",
+            # W4 canary blocker (2026-10-11): finviz_enrichment._load_env copies only the six FINVIZ_* names (= the
+            # lane's allowlist FINVIZ_* env_names) from the tmpfs render / .env into os.environ, never ALPACA_* /
+            # SCHWAB_* / any other render name, on both the resolve_secret and the fallback path; it is the module's
+            # only os.environ writer; social_ingest / sec_data_ingest write os.environ nowhere. Hermetic: fake
+            # render + fake .env in tmp_path.
+            "tests/test_finviz_load_env_narrowing_20261011.py",
             # Gateway /due latency (W0 re-run 2026-10-10 ~17:14 ET, relay_gateway_unreachable under 3-4 concurrent
             # /due at CPUQuota=20%): the precomputed / split-lookup / memoized forbidden-token matcher equals a
             # verbatim copy of the old one on every served-registry text and a compound corpus; DueResponse@v1
