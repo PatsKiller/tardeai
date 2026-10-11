@@ -1,0 +1,28 @@
+{
+  "schema": "ReassessmentGateRun@v1",
+  "tag": "targeted-04-06-regressions",
+  "command": [
+    "/home/johnclaw/worktrees/refactor-completion-119/.venv/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "tests/test_refactor_shard_04_20261011.py",
+    "tests/test_goal_pilot_material_change_20260916.py",
+    "tests/test_dormant_lane_wiring_p10.py",
+    "tests/test_overnight_deep_peak_guard.py",
+    "tests/test_cron_venv_resolver_20261009.py"
+  ],
+  "head_sha": "9356f8a62ec7e320e5556e1401b6123322c6d737",
+  "origin_main_at_start": "c15b7b98caa3909665ac5abb878f02eb558d6ff6",
+  "started": "2026-10-11T21:52:45.411741+00:00",
+  "duration_seconds": 2.51,
+  "exit_code": 0,
+  "status": "PASS",
+  "refusals": [],
+  "scratch": "/tmp/tradeai-reassess-qkz74mlv",
+  "log": "/home/johnclaw/worktrees/completion-119-04-06/reassess-gates/targeted-04-06-regressions.log",
+  "isolation": "Minimal environment, empty dotenv fixture, pre-import production-file/DB/network/host-command barriers; nodeps import shim",
+  "native_test_selection_changed": false,
+  "guard_ready_processes": 9,
+  "reaped_to_empty": true
+}

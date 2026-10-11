@@ -217,8 +217,8 @@ def build_plan(conn) -> dict:
     return plan
 
 
-def main():
-    parser = argparse.ArgumentParser()
+def _execute():
+    parser = argparse.ArgumentParser(allow_abbrev=False)
     parser.add_argument("--run", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
@@ -270,6 +270,40 @@ def main():
             "queued": result.get("queued"),
         })
     print(json.dumps(out, indent=2, default=str))
+
+
+def main(argv=None) -> int:
+    """Strict offline inspection before the legacy business execution path."""
+    argv = list(sys.argv[1:] if argv is None else argv)
+    parser = argparse.ArgumentParser(allow_abbrev=False)
+    parser.add_argument("--run", action="store_true")
+    parser.add_argument("--dry-run", action="store_true")
+    args = parser.parse_args(argv)
+    lane = "tradeai-watch-decision-scheduler"
+    if args.dry_run:
+        print(f"DRY-RUN {lane}: would plan quality-aware Watch refresh queues; no claims, models, DB or writes; options={vars(args)}; inputs NOT_MEASURED")
+        return 0
+    try:
+        from scripts.lib.lane_last_receipt import now_iso, write_lane_receipt
+    except ImportError:
+        from lib.lane_last_receipt import now_iso, write_lane_receipt
+    started = now_iso()
+    previous = sys.argv
+    sys.argv = [previous[0], *argv]
+    try:
+        result = _execute()
+        rc = int(result) if isinstance(result, int) else 0
+    except SystemExit as exc:
+        rc = exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
+        write_lane_receipt(lane, ok=rc == 0, exit_code=rc, started_at=started, script="watch_decision_scheduler.py", summary={"completed": rc == 0})
+        raise
+    except Exception as exc:
+        write_lane_receipt(lane, ok=False, exit_code=1, started_at=started, script="watch_decision_scheduler.py", error=type(exc).__name__)
+        raise
+    finally:
+        sys.argv = previous
+    write_lane_receipt(lane, ok=rc == 0, exit_code=rc, started_at=started, script="watch_decision_scheduler.py", summary={"completed": rc == 0})
+    return rc
 
 
 def _force_exit(rc: int) -> None:

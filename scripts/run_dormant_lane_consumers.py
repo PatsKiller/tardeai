@@ -544,7 +544,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
-def main(argv: list[str] | None = None) -> int:
+def _execute(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--lane", choices=sorted(LANES), default=None,
                     help="run one lane (default: all)")
@@ -581,6 +581,50 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  FAILED: {report['lanes_failed']}")
 
     return 1 if report["lanes_failed"] else 0
+
+
+def main(argv=None) -> int:
+    """Strict offline inspection before the legacy business execution path."""
+    argv = list(sys.argv[1:] if argv is None else argv)
+    ap = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
+    ap.add_argument("--lane", choices=sorted(LANES), default=None,
+                    help="run one lane (default: all)")
+    ap.add_argument("--root", default=None, help="repo root holding data/cio")
+    ap.add_argument("--state-root", default=None,
+                    help="persistent-wake state root for the commitment sweep")
+    ap.add_argument("--resume-run-id", default=None,
+                    help="run id for the MvlRuntime.resume lane")
+    ap.add_argument("--apply", action="store_true",
+                    help="perform the writes the lanes propose (refused for "
+                         "escalate-never-resolve lanes)")
+    ap.add_argument("--json", action="store_true", help="JSON output")
+    ap.add_argument("--dry-run", action="store_true", help="offline source plan")
+    args = ap.parse_args(argv)
+    lane = "dormant-lane-consumers"
+    if args.dry_run:
+        print(f"DRY-RUN {lane}: would run selected advisory consumers under their existing apply boundaries; options={vars(args)}; inputs NOT_MEASURED")
+        return 0
+    try:
+        from scripts.lib.lane_last_receipt import now_iso, write_lane_receipt
+    except ImportError:
+        from lib.lane_last_receipt import now_iso, write_lane_receipt
+    started = now_iso()
+    previous = sys.argv
+    sys.argv = [previous[0], *argv]
+    try:
+        result = _execute(argv)
+        rc = int(result) if isinstance(result, int) else 0
+    except SystemExit as exc:
+        rc = exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
+        write_lane_receipt(lane, ok=rc == 0, exit_code=rc, started_at=started, script="run_dormant_lane_consumers.py", summary={"completed": rc == 0})
+        raise
+    except Exception as exc:
+        write_lane_receipt(lane, ok=False, exit_code=1, started_at=started, script="run_dormant_lane_consumers.py", error=type(exc).__name__)
+        raise
+    finally:
+        sys.argv = previous
+    write_lane_receipt(lane, ok=rc == 0, exit_code=rc, started_at=started, script="run_dormant_lane_consumers.py", summary={"completed": rc == 0})
+    return rc
 
 
 if __name__ == "__main__":

@@ -34,10 +34,11 @@ from scripts.lib.cio_belief_writer import update_beliefs_from_settled  # noqa: E
 SCHEDULED_ENTRYPOINT = "cron: 50 18 * * * -- daily, --apply (lane instrument-belief-writer; installed 2026-09-24 under an operator cron grant)"
 
 DEFAULT_WAKE_ROOT = Path.home() / "trade-ai-state" / "persistent_wake" / "state"
+_LAST_COUNTS = {}
 
 
-def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+def _execute(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter, allow_abbrev=False)
     ap.add_argument("--apply", action="store_true", help="write beliefs (default: dry run)")
     ap.add_argument("--root", default=None, help="state root (default: canonical production_state_root)")
     ap.add_argument("--wake-root", default=os.environ.get("TRADEAI_WAKE_STATE_ROOT") or str(DEFAULT_WAKE_ROOT))
@@ -57,7 +58,39 @@ def main(argv: list[str] | None = None) -> int:
               f"written={out['written_beliefs']} would_write={out['would_write_beliefs']} "
               f"noop={out['noop']} refused={out['refused']} subjects={out['subjects_written']} "
               f"skipped={out['skipped']} store={out['store']}")
-    return 0
+    _LAST_COUNTS.update({k: out[k] for k in ("settled_rows", "groups", "written_beliefs", "noop", "refused", "skipped")})
+    return 1 if args.apply and out["refused"] else 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter,
+                                 allow_abbrev=False)
+    ap.add_argument("--apply", action="store_true", help="write beliefs (default: dry run)")
+    ap.add_argument("--root", default=None, help="state root (default: canonical production_state_root)")
+    ap.add_argument("--wake-root", default=os.environ.get("TRADEAI_WAKE_STATE_ROOT") or str(DEFAULT_WAKE_ROOT))
+    ap.add_argument("--json", action="store_true")
+    ap.add_argument("--dry-run", action="store_true", help="offline plan; wins over --apply")
+    args = ap.parse_args(argv)
+    if args.dry_run:
+        print("DRY-RUN instrument-belief-writer: would read settled outcomes and ratified lessons, "
+              "group cognition-only beliefs, apply the existing behavior rail and write InstrumentRecord beliefs "
+              "and the latest summary; no state read, DB or writes")
+        return 0
+    from scripts.lib.lane_last_receipt import now_iso, write_lane_receipt
+    started = now_iso()
+    _LAST_COUNTS.clear()
+    try:
+        rc = _execute(argv)
+    except Exception as exc:
+        if args.apply:
+            write_lane_receipt("instrument-belief-writer", ok=False, exit_code=1, started_at=started,
+                               script="write_instrument_beliefs.py", error=type(exc).__name__)
+        raise
+    if args.apply:
+        write_lane_receipt("instrument-belief-writer", ok=rc == 0, exit_code=rc, started_at=started,
+                           script="write_instrument_beliefs.py", summary=_LAST_COUNTS)
+    return rc
 
 
 if __name__ == "__main__":

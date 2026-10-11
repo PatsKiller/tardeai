@@ -46,17 +46,7 @@ OUTCOME_LEDGER = "commitment_outcomes.jsonl"
 LESSON_LEDGER = "lesson_candidates.jsonl"
 
 
-def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--state-root", default=str(DEFAULT_STATE_ROOT))
-    ap.add_argument(
-        "--apply",
-        action="store_true",
-        help="append outcomes and lesson candidates to the durable ledgers",
-    )
-    ap.add_argument("--json", action="store_true")
-    args = ap.parse_args(argv)
-
+def _run(args) -> int:
     root = Path(args.state_root)
     commitments = read_jsonl(root / COMMITMENTS)
     ledger = read_jsonl(root / OUTCOME_LEDGER)
@@ -94,8 +84,40 @@ def main(argv: list[str] | None = None) -> int:
     if args.apply and res.lessons:
         report["lessons_appended"] = append_jsonl(root / LESSON_LEDGER, res.lessons)
 
+    global LAST_SUMMARY
+    LAST_SUMMARY = {"outcomes": len(res.outcomes), "lessons": len(res.lessons)}
     print(json.dumps(report, indent=2, default=str))
     return 0
+
+
+LAST_SUMMARY = {}
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
+    ap.add_argument("--state-root", default=str(DEFAULT_STATE_ROOT))
+    ap.add_argument("--apply", action="store_true", help="append outcomes and lesson candidates")
+    ap.add_argument("--json", action="store_true")
+    ap.add_argument("--dry-run", action="store_true", help="offline plan; wins over --apply")
+    args = ap.parse_args(argv)
+    if args.dry_run:
+        print(f"DRY-RUN commitment-outcome-sweep: would score due commitments under {args.state_root} "
+              "and append outcomes/PROPOSED lessons plus a lane receipt; inputs NOT_MEASURED")
+        return 0
+    from scripts.lib.lane_last_receipt import now_iso, write_lane_receipt
+    started = now_iso()
+    LAST_SUMMARY.clear()
+    try:
+        rc = _run(args)
+    except Exception as exc:
+        if args.apply:
+            write_lane_receipt("commitment-outcome-sweep", ok=False, exit_code=1, started_at=started,
+                               script="sweep_commitment_outcomes.py", error=type(exc).__name__)
+        raise
+    if args.apply:
+        write_lane_receipt("commitment-outcome-sweep", ok=rc == 0, exit_code=rc, started_at=started,
+                           script="sweep_commitment_outcomes.py", summary=LAST_SUMMARY)
+    return rc
 
 
 if __name__ == "__main__":

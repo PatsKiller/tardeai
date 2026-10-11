@@ -142,11 +142,11 @@ def run(limit=8, thin=3, symbols=None, apply=False):
               f"{f' · mean target {tgt}' if tgt else ''} · {len(p.get('ratings') or [])} firms · lane {lane}")
     print(json.dumps({"lane": lane, "candidates": len(rows), "stored": done, "failed": failed,
                       "dry_run_skipped": skipped, "note": "ADVISORY — research storage only"}))
-    return 0
+    return 1 if failed else 0
 
 
-def main():
-    ap = argparse.ArgumentParser()
+def _execute():
+    ap = argparse.ArgumentParser(allow_abbrev=False)
     ap.add_argument("--limit", type=int, default=8)
     ap.add_argument("--thin", type=int, default=3)
     ap.add_argument("--symbols", default=None)
@@ -156,5 +156,43 @@ def main():
                  symbols=a.symbols.split(",") if a.symbols else None, apply=a.apply))
 
 
+def main(argv=None) -> int:
+    """Strict offline inspection before the legacy business execution path."""
+    argv = list(sys.argv[1:] if argv is None else argv)
+    ap = argparse.ArgumentParser(allow_abbrev=False)
+    ap.add_argument("--limit", type=int, default=8)
+    ap.add_argument("--thin", type=int, default=3)
+    ap.add_argument("--symbols", default=None)
+    ap.add_argument("--apply", action="store_true")
+    ap.add_argument("--dry-run", action="store_true", help="offline source plan")
+    a = ap.parse_args(argv)
+    args = a
+    lane = "hermes-analyst-coverage"
+    if args.dry_run:
+        print(f"DRY-RUN {lane}: would research analyst consensus for selected symbols and store advisory consensus rows; options={vars(args)}; inputs NOT_MEASURED")
+        return 0
+    try:
+        from scripts.lib.lane_last_receipt import now_iso, write_lane_receipt
+    except ImportError:
+        from lib.lane_last_receipt import now_iso, write_lane_receipt
+    started = now_iso()
+    previous = sys.argv
+    sys.argv = [previous[0], *argv]
+    try:
+        result = _execute()
+        rc = int(result) if isinstance(result, int) else 0
+    except SystemExit as exc:
+        rc = exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
+        write_lane_receipt(lane, ok=rc == 0, exit_code=rc, started_at=started, script="hermes_analyst_coverage.py", summary={"completed": rc == 0})
+        raise
+    except Exception as exc:
+        write_lane_receipt(lane, ok=False, exit_code=1, started_at=started, script="hermes_analyst_coverage.py", error=type(exc).__name__)
+        raise
+    finally:
+        sys.argv = previous
+    write_lane_receipt(lane, ok=rc == 0, exit_code=rc, started_at=started, script="hermes_analyst_coverage.py", summary={"completed": rc == 0})
+    return rc
+
+
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
