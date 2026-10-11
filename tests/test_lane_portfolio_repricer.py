@@ -17,12 +17,18 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 REG = ROOT / "config" / "lane_registry.json"
 GATE = ROOT / "scripts" / "check_lane_registry.py"
+SOURCE_REPRICER_CRON = (
+    "*/15 9-16 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild "
+    "&& bash …/safe_flock.sh /tmp/portfolio_repricer.lock "
+    "…/python scripts/portfolio_repricer.py >> …/portfolio_repricer_intraday.log 2>&1"
+)
 
 
-def _gate(registry: Path, *, discovery: Path | None = None) -> int:
+def _gate(registry: Path, *, discovery: Path) -> int:
+    if discovery is None:
+        raise ValueError("an explicit source discovery fixture is required")
     cmd = [sys.executable, str(GATE), "--fail-on-new", "--registry", str(registry)]
-    if discovery is not None:
-        cmd += ["--discovery-json", str(discovery)]
+    cmd += ["--discovery-json", str(discovery)]
     return subprocess.run(cmd, cwd=ROOT, capture_output=True).returncode
 
 
@@ -67,14 +73,9 @@ def test_drop_row_while_cron_discovered_goes_red(tmp_path: Path):
     reg["lanes"] = [r for r in reg["lanes"] if r.get("lane_id") != "portfolio-repricer"]
     assert not any(r.get("lane_id") == "portfolio-repricer" for r in reg["lanes"])
 
-    cron_line = (
-        "*/15 9-16 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild "
-        "&& bash …/safe_flock.sh /tmp/portfolio_repricer.lock "
-        "…/python scripts/portfolio_repricer.py >> …/portfolio_repricer_intraday.log 2>&1"
-    )
     disco = tmp_path / "discovery.json"
     disco.write_text(json.dumps({
-        "cron": [{"expression": cron_line}],
+        "cron": [{"expression": SOURCE_REPRICER_CRON}],
         "cron_commented": [],
         "systemd": [],
     }), encoding="utf-8")
@@ -91,10 +92,16 @@ def test_drop_row_while_cron_discovered_goes_red(tmp_path: Path):
     assert _gate(mutated, discovery=disco) == 0
 
 
-def test_gate_reports_zero_undeclared_new_on_live_host():
-    """check_lane_registry.py 0 undeclared NEW (structure + live discovery)."""
+def test_source_fixture_reports_repricer_declared_and_unknown_scheduler_fails(tmp_path):
+    """SOURCE_ONLY: independent cron fixture; no scheduler is observed live."""
+    discovery = tmp_path / "discovery.json"
+    found = {"cron": [{"expression": SOURCE_REPRICER_CRON}],
+             "cron_commented": [], "systemd": []}
+    discovery.write_text(json.dumps(found), encoding="utf-8")
+    cmd = [sys.executable, str(GATE), "--json", "--fail-on-new",
+           "--discovery-json", str(discovery)]
     proc = subprocess.run(
-        [sys.executable, str(GATE), "--json"],
+        cmd,
         cwd=ROOT, capture_output=True, text=True, check=True,
     )
     payload = json.loads(proc.stdout)
@@ -102,3 +109,14 @@ def test_gate_reports_zero_undeclared_new_on_live_host():
     # None of the findings may be the portfolio_repricer cron.
     repricer_new = [u for u in undeclared if "portfolio_repricer.py" in str(u.get("expression", ""))]
     assert repricer_new == [], repricer_new
+    assert payload["declared"] == len(json.loads(REG.read_text())["lanes"])
+
+    # Prove the fixture is not an empty census that makes any declaration pass.
+    unknown = "5 * * * * python scripts/unowned_source_fixture_probe.py"
+    found["cron"].append({"expression": unknown})
+    discovery.write_text(json.dumps(found), encoding="utf-8")
+    negative = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, check=False)
+    assert negative.returncode == 1, negative.stdout + negative.stderr
+    findings = json.loads(negative.stdout)["undeclared"]
+    assert any(u.get("expression") == unknown for u in findings), findings
+    assert not any("portfolio_repricer.py" in str(u.get("expression", "")) for u in findings)
