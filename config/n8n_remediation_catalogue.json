@@ -51,15 +51,15 @@
   }
  },
  "summary": {
-  "lanes": 113,
-  "actions": 165,
-  "lanes_with_auto_rerun": 50,
+  "lanes": 114,
+  "actions": 167,
+  "lanes_with_auto_rerun": 51,
   "lanes_suggest_only": 63,
   "by_severity": {
    "Critical": 19,
    "High": 21,
    "Medium": 55,
-   "Low": 18
+   "Low": 19
   }
  },
  "lanes": [
@@ -3094,6 +3094,78 @@
    ],
    "default_action": "suggest_only",
    "suggest_only_reason": "severity High: human approval (V9 §6.4)"
+  },
+  {
+   "schema": "N8nLaneRemediation@v1",
+   "lane_id": "heartbeat-watch",
+   "severity": "Low",
+   "severity_basis": "default Low (no inventory row)",
+   "inv_ids": [],
+   "classification": [
+    "UNKNOWN"
+   ],
+   "migration_risk": [
+    "UNKNOWN"
+   ],
+   "known_issues": [],
+   "registry": {
+    "present": true,
+    "state": "ACTIVE",
+    "scheduler_kind": "n8n",
+    "stage": "canary"
+   },
+   "allowlisted": true,
+   "allowlist_source": "config/n8n_run_allowlist.json",
+   "actions": [
+    {
+     "action_id": "rerun_dry_run",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "dry_run"
+     ],
+     "argv": {
+      "dry_run": [
+       "$PY",
+       "scripts/heartbeat_watch.py",
+       "--dry-run"
+      ]
+     },
+     "auto": true,
+     "approval_reason": null,
+     "via": "coordination/run (host_run_request, mode=dry_run) -> tradeai-n8n-run-executor runs the allowlist argv under the lane lock, stage-clamped",
+     "preconditions": [
+      "lane in config/n8n_run_allowlist.json with dry_run_arg",
+      "no REQUESTED/RUNNING row for the lane",
+      "per-incident and per-lane-day caps not reached"
+     ],
+     "lock": "/tmp/tradeai_heartbeat_watch.lock",
+     "timeout_s": 60,
+     "output_signal": "data/runtime/heartbeat-watch_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "reap_orphan_run",
+     "handler": "ledger_reap_orphan",
+     "mode_sequence": [],
+     "argv": {},
+     "auto": true,
+     "approval_reason": null,
+     "via": "LedgerRunStore.finish(run_id, state=RUN_TIMEOUT, receipt.reason=executor_lost) — the executor v2 reaper's receipt",
+     "preconditions": [
+      "row RUNNING and started_at + 2 x timeout_s < now",
+      "heartbeat_at older than timeout_s (or absent)",
+      "row pid not alive on this host"
+     ],
+     "lock": "/tmp/tradeai_heartbeat_watch.lock",
+     "timeout_s": 60,
+     "output_signal": "data/runtime/heartbeat-watch_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    }
+   ],
+   "default_action": "suggest_only",
+   "suggest_only_reason": null
   },
   {
    "schema": "N8nLaneRemediation@v1",

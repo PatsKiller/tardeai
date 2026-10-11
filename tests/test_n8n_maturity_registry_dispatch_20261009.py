@@ -415,6 +415,11 @@ def test_registry_dispatch_errors_hook():
 
 # ── live registry (read-only) ────────────────────────────────────────────────────────────────────
 
+#: n8n-native lanes (no host line): dispatcher shape without a cron twin.
+N8N_NATIVE_SHADOW = frozenset()
+N8N_NATIVE_CANARY = frozenset({"heartbeat-watch"})
+
+
 def _live_rows():
     return json.loads((ROOT / "config" / "lane_registry.json").read_text(encoding="utf-8"))["lanes"]
 
@@ -441,6 +446,14 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
         lane = row["lane_id"]
         assert LD.validate_dispatch_block(row, known_lane_ids=known) == [], lane
         mode = LD.dispatch_mode(row)
+        if lane in N8N_NATIVE_CANARY:
+            # n8n-native canary — no cron twin; dispatcher row at stage canary + dispatch.mode live;
+            # allowlist live_arg [] (script default writes the receipt). Not an R1 ingest canary.
+            assert mode == "live" and row["scheduler"].get("stage") == "canary", lane
+            assert (row["scheduler"]["kind"], row["scheduler"]["expression"]) == ("n8n", "dispatcher"), lane
+            assert allow[lane]["live_arg"] == [] and allow[lane]["dry_run_arg"] == ["--dry-run"], lane
+            assert LD.r1_class_admission(row, allow[lane])[0] is True, lane
+            continue
         if lane in CANARY_ROWS:  # canary wave 1 (2026-10-11): the §23.18 (c) canary shape, tests/test_canary_wave1_20261011.py
             assert mode == "live" and row["scheduler"].get("stage") == "canary", lane
             assert LD.r1_class_admission(row, allow[lane]) == (True, "r1_admitted:ingest"), lane
@@ -450,7 +463,12 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
             continue
         shadow.append(lane)
         sched = row["scheduler"]
-        assert sched["kind"] == "cron" and sched.get("stage") == "shadow", lane
+        if lane in N8N_NATIVE_SHADOW:
+            # an n8n-native lane has no cron line to stay on; its shadow row is the dispatcher shape at
+            # stage shadow (the clamp still runs it dry), and its allowlist entry has no live mode.
+            assert (sched["kind"], sched["expression"], sched.get("stage")) == ("n8n", "dispatcher", "shadow"), lane
+        else:
+            assert sched["kind"] == "cron" and sched.get("stage") == "shadow", lane
         assert LD.dispatchable(row), lane
         assert clamp_mode(lane, "live", rows)["effective_mode"] == "dry_run", lane
         entry = allow[lane]
@@ -470,7 +488,7 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
     # each leaves its wave (dispatch_retired) and its allowlist entry is removed. Both merged in train-migration-2.
     # + 10: refactor train 3 (shards 01-04, 2026-10-11) source shadow rows (R1 ingest/learn, dry_run, live_arg null);
     # 3 of the 13 proposals stay RETIRED into the premarket C1 stage (train 2).
-    # + 12: train 4 (shards 05-08, 2026-10-11). The shards proposed 6 + 7 + 7 + 2 = 22; five stay RETIRED into the
+    # + 11: train 4 (shards 05-08, 2026-10-11). The shards proposed 6 + 7 + 7 + 2 = 22; five stay RETIRED into the
     # premarket C1 stage (train 2 rows win), five are pinned off the dispatcher by SW4 EXCLUDED
     # (tests/test_sw4_shadow_wave4_20261011.py) and sec-filings-feed by the W4 provider-owner EXCLUDED list
     # (tests/test_w4_provider_owners_shadow_20261011.py): 22 - 5 - 5 - 1 = 11 shadow rows.
@@ -478,7 +496,8 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
                 {"R2-05", "R2-06", "R2-07", "R2-08"}}
     assert len(refactor) == 11 and refactor <= set(shadow), refactor
     assert len(shadow) == 54 + 3 + 15 - len(CANARY_ROWS) - 17 + 10 + 11, shadow
-    assert sorted(r["lane_id"] for r in rows if LD.dispatch_mode(r) == "live") == sorted(CANARY_ROWS)
+    # heartbeat-watch moved shadow → canary (N8N_NATIVE_CANARY) 2026-10-11.
+    assert sorted(r["lane_id"] for r in rows if LD.dispatch_mode(r) == "live") == sorted(CANARY_ROWS | N8N_NATIVE_CANARY)
 
 
 #: canary wave 1 (2026-10-11): the only rows at dispatch.mode live (stage canary, the cron line's flock lock).

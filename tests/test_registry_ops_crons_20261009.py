@@ -191,7 +191,12 @@ def test_stripped_hand_rows_keep_their_live_schedules():
 
 
 def test_snapshot_carries_the_post_install_crontab():
-    assert SNAP_LINES[-3:] == LINES
+    # ops-crons L1051-L1053 stay contiguous; siem-active-flip 2026-10-11 appends L1060+L1063 after them
+    assert SNAP_LINES[-5:-2] == LINES
+    assert SNAP_LINES[-2:] == [
+        ROWS["n8n-siem-bridge"]["scheduler"]["install_line"],
+        ROWS["n8n-failure-diagnosis"]["scheduler"]["install_line"],
+    ]
     joined = "\n".join(SNAP_LINES)
     assert "flock -n -E 99 /tmp/shadow_batch_cron.lock timeout 60m $PY scripts/shadow_batch_generator.py" in joined
     assert "flock -n -E 99 /tmp/shadow_batch.lock " not in joined

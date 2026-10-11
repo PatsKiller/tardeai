@@ -52,8 +52,29 @@ function getter(row: CoordinationRow, key: string): unknown {
 
 export default function CoordinationPage() {
   const { data, loading, error, transport, stale } = useApi<CoordinationPayload>('/api/v2/coordination/events?limit=200', 30_000)
-  const model = useMemo(() => projectCoordination(loading && !data ? null : data, { transport, stale }), [data, loading, transport, stale])
+  const runsApi = useApi<{ status?: string; as_of?: string; items?: Array<Record<string, unknown>>; note?: string }>(
+    '/api/v2/coordination/events?source=runs&limit=40',
+    60_000,
+  )
+  const [laneFilter, setLaneFilter] = useState<string | null>(null)
+  const model = useMemo(
+    () => projectCoordination(loading && !data ? null : data, { transport, stale, laneFilter }),
+    [data, loading, transport, stale, laneFilter],
+  )
+  const runRows = useMemo(() => {
+    const items = Array.isArray(runsApi.data?.items) ? runsApi.data!.items! : []
+    const prefer = new Set(['n8n-research-intake-consumer', 'n8n-incident-fanin'])
+    return [...items].sort((a, b) => {
+      const ap = prefer.has(String(a.lane_id || '')) ? 0 : 1
+      const bp = prefer.has(String(b.lane_id || '')) ? 0 : 1
+      return ap - bp
+    })
+  }, [runsApi.data])
   const { rows, sort, toggle } = useSort(model.rows, { key: 'recordedAt', dir: 'desc' }, getter)
+  const waveBChips = useMemo(() => {
+    const lanes = model.waveBLanes.length ? model.waveBLanes : ['research-intake', 'watch-refresh', 'incident-fanin']
+    return lanes.map(lane => ({ lane, n: model.laneCounts[lane] || 0 }))
+  }, [model.waveBLanes, model.laneCounts])
   const outboxApi = useApi<OutboxPayload>('/api/v2/coordination/outbox?hours=24', 60_000)
   const outbox = useMemo(() => projectOutbox(outboxApi.loading && !outboxApi.data ? null : outboxApi.data), [outboxApi.data, outboxApi.loading])
   const approvalsApi = useApi<ApprovalBoardPayload>('/api/v2/coordination/approvals', 60_000)
@@ -152,9 +173,56 @@ export default function CoordinationPage() {
             </Chip>
           ))}
         </ChipRow>
+        <ChipRow style={{ marginTop: 8 }} data-testid="coordination-wave-b-lanes">
+          <Chip
+            tone={laneFilter == null ? 'info' : 'neutral'}
+            title="show all lanes"
+            onClick={() => setLaneFilter(null)}
+          >all lanes</Chip>
+          {waveBChips.map(({ lane, n }) => (
+            <Chip
+              key={lane}
+              tone={laneFilter === lane ? 'info' : (n > 0 ? 'success' : 'neutral')}
+              title={`filter ${lane} (${n} in page)`}
+              onClick={() => setLaneFilter(laneFilter === lane ? null : lane)}
+            >{lane} {n}</Chip>
+          ))}
+        </ChipRow>
         {model.note ? <div style={{ marginTop: 8, fontSize: TYPE.sm, color: TOKENS.text[2] }}>{model.note}</div> : null}
         {error ? <div style={{ marginTop: 8, fontSize: TYPE.sm, color: TOKENS.text[2] }}>read failed: {String(error)}</div> : null}
       </div>
+      {model.spotlights.length > 0 ? (
+        <div style={panel} data-testid="coordination-spotlights">
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: TYPE.lg, fontWeight: 800, color: TOKENS.text[0] }}>Wave B receipts</div>
+            <div style={label}>research-intake · watch-refresh · host consumer last.json · never invent success from n8n UI status</div>
+          </div>
+          <div style={{ overflowX: 'auto', marginTop: 8 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  <th style={{ ...label, textAlign: 'left', padding: '5px 6px' }}>lane</th>
+                  <th style={{ ...label, textAlign: 'left', padding: '5px 6px' }}>source</th>
+                  <th style={{ ...label, textAlign: 'left', padding: '5px 6px' }}>summary</th>
+                  <th style={{ ...label, textAlign: 'left', padding: '5px 6px' }}>as of</th>
+                  <th style={{ ...label, textAlign: 'right', padding: '5px 6px' }}>age (min)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {model.spotlights.map((s, i) => (
+                  <tr key={`${s.lane}-${s.source}-${i}`} style={{ borderTop: `1px solid ${TOKENS.borderSubtle}` }}>
+                    <td style={cell}><Chip tone={s.tone}>{s.lane}</Chip></td>
+                    <td style={mono}>{s.source}</td>
+                    <td style={cell}>{s.summary}</td>
+                    <td style={mono}>{s.asOf ?? 'UNDATED'}</td>
+                    <td style={{ ...mono, textAlign: 'right' }}>{s.ageMinutes ?? ''}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : null}
       <div style={{ ...panel, overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
@@ -172,7 +240,7 @@ export default function CoordinationPage() {
           </thead>
           <tbody>
             {rows.map(r => (
-              <tr key={r.key} style={{ borderTop: `1px solid ${TOKENS.borderSubtle}` }}>
+              <tr key={r.key} style={{ borderTop: `1px solid ${TOKENS.borderSubtle}`, background: waveBChips.some(w => w.lane === r.lane) ? TOKENS.bg[2] : undefined }}>
                 <td style={cell}><Chip tone={r.tone} title={r.durable ? 'durable (ledger commit returned)' : 'not durable'}>{r.state}</Chip></td>
                 <td style={cell}>{r.lane}</td>
                 <td style={mono}>{r.eventId}</td>
@@ -186,11 +254,53 @@ export default function CoordinationPage() {
             ))}
             {rows.length === 0 ? (
               <tr><td colSpan={9} style={{ ...cell, color: TOKENS.text[3] }}>
-                {model.status === 'NO_LEDGER' ? 'no ledger yet: the coordination gateway has not written anything here' : model.status === 'UNAVAILABLE' ? 'projection unavailable' : 'nothing is waiting'}
+                {model.status === 'NO_LEDGER' ? 'no ledger yet: the coordination gateway has not written anything here' : model.status === 'UNAVAILABLE' ? 'projection unavailable' : laneFilter ? `no ${laneFilter} events in the page` : 'nothing is waiting'}
               </td></tr>
             ) : null}
           </tbody>
         </table>
+      </div>
+      <div style={panel} data-testid="coordination-runs">
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+          <div style={{ fontSize: TYPE.lg, fontWeight: 800, color: TOKENS.text[0] }}>Lane runs</div>
+          <div style={label}>executor RunReceipt rows · research-intake-consumer · incident-fanin · prove from ledger not n8n status</div>
+        </div>
+        <ChipRow style={{ marginTop: 8 }}>
+          <Chip tone={runsApi.data?.status === 'OK' ? 'success' : runsApi.data?.status === 'NO_LEDGER' ? 'warning' : 'neutral'}>
+            {String(runsApi.data?.status || (runsApi.loading ? '…' : 'UNAVAILABLE'))}
+          </Chip>
+          <Chip tone="neutral">{runsApi.data?.as_of ? `projected ${runsApi.data.as_of}` : 'UNDATED'}</Chip>
+          <Chip tone="neutral">rows {runRows.length}</Chip>
+        </ChipRow>
+        <div style={{ overflowX: 'auto', marginTop: 8 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>
+                <th style={{ ...label, textAlign: 'left', padding: '5px 6px' }}>state</th>
+                <th style={{ ...label, textAlign: 'left', padding: '5px 6px' }}>lane</th>
+                <th style={{ ...label, textAlign: 'left', padding: '5px 6px' }}>mode</th>
+                <th style={{ ...label, textAlign: 'left', padding: '5px 6px' }}>run</th>
+                <th style={{ ...label, textAlign: 'left', padding: '5px 6px' }}>finished</th>
+              </tr>
+            </thead>
+            <tbody>
+              {runRows.slice(0, 40).map(r => (
+                <tr key={`run-${String(r.run_id)}`} style={{ borderTop: `1px solid ${TOKENS.borderSubtle}` }}>
+                  <td style={cell}><Chip tone={String(r.state).startsWith('RUN_DONE') ? 'success' : String(r.state).includes('FAIL') ? 'danger' : 'neutral'}>{String(r.state || '')}</Chip></td>
+                  <td style={cell}>{String(r.lane_id || '')}</td>
+                  <td style={mono}>{String(r.mode || '')}</td>
+                  <td style={mono}>{String(r.run_id || '')}</td>
+                  <td style={mono}>{String(r.finished_at || r.started_at || r.requested_at || 'UNDATED')}</td>
+                </tr>
+              ))}
+              {runRows.length === 0 ? (
+                <tr><td colSpan={5} style={{ ...cell, color: TOKENS.text[3] }}>
+                  {runsApi.data?.status === 'NO_LEDGER' ? 'no runs ledger yet' : (runsApi.data?.note || 'no recent lane runs')}
+                </td></tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
       </div>
       <div style={panel} data-testid="coordination-outbox">
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>

@@ -113,7 +113,8 @@ def test_every_live_crontab_line_maps_to_exactly_one_row(inputs, committed):
     # 438 captured + the 3 lines of the approved registry-ops-crons install (packet ops-crons-install.md)
     # + L638 finviz_enrichment.py --scalp-hot (live since the 2026-10-10 hot-tier install; added 2026-10-11 so the
     # finviz-enrichment W4 shadow row can match its own line L142 only)
-    assert len(lines) == 442
+    # + L1060 n8n-siem-bridge + L1063 n8n-failure-diagnosis (siem-active-flip 2026-10-11; ACTIVE with install_line)
+    assert len(lines) == 444
     mapping = R.line_mapping(committed, lines)
     bad = {R.sanitize(ln)[:120]: ids for ln, ids in mapping.items() if len(ids) != 1}
     assert not bad, bad

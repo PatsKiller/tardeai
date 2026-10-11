@@ -475,12 +475,26 @@ def _reconcile_run(conn, run_id: int):
         cur.execute("""UPDATE watch_decision_refresh_runs
                        SET state='RUNNING', started_at=coalesce(started_at, now())
                        WHERE run_id=%s AND state='QUEUED'""", (run_id,))
-    else:
-        state = "COMPLETE" if bad == 0 else ("FAILED" if done == 0 else "PARTIAL")
-        cur.execute("""UPDATE watch_decision_refresh_runs
-                       SET state=%s, completed_at=now(), actual_lane_calls=%s
-                       WHERE run_id=%s""", (state, lanes, run_id))
+        conn.commit()
+        return
+    state = "COMPLETE" if bad == 0 else ("FAILED" if done == 0 else "PARTIAL")
+    cur.execute("""UPDATE watch_decision_refresh_runs
+                   SET state=%s, completed_at=now(), actual_lane_calls=%s
+                   WHERE run_id=%s""", (state, lanes, run_id))
     conn.commit()
+    # Wave B: terminal coordination event (events-only; workers unchanged). Fail-soft.
+    try:
+        from scripts.lib.n8n_cc_wave_b_emit import safe_emit_watch_refresh
+    except ImportError:
+        try:
+            from lib.n8n_cc_wave_b_emit import safe_emit_watch_refresh  # type: ignore
+        except ImportError:
+            return
+    try:
+        safe_emit_watch_refresh(run_id=run_id, phase="terminal", terminal_state=state,
+                                reason=f"watch_decision_refresh reconcile → {state}")
+    except Exception:
+        pass
 
 
 def run_worker_loop():

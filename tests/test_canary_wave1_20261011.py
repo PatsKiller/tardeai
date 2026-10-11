@@ -115,7 +115,8 @@ def test_no_other_shadow_row_gained_a_live_argv():
                 and (row.get("dispatch") or {}).get("class") in LD.R1_ADMITTED_CLASSES):
             assert ALLOW[lane].get("live_arg") is None, lane
     canary = sorted(r for r, row in ROWS.items() if (row.get("scheduler") or {}).get("stage") == "canary")
-    assert canary == sorted(CANARY_WAVE1)
+    # research-insight-extractor is the R1 cron canary; heartbeat-watch is n8n-native canary.
+    assert canary == sorted(set(CANARY_WAVE1) | {"heartbeat-watch"})
 
 
 def test_every_shadow_command_text_flock_lock_is_the_allowlist_lock():

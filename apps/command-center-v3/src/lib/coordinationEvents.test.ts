@@ -19,24 +19,40 @@ check('no payload renders no rows', absent.rows.length === 0)
 check('transport ERROR is surfaced', absent.transportLabel === 'ERROR')
 
 const ok = projectCoordination({
-  status: 'OK', as_of: '2026-10-07T14:59:00+00:00', count: 4, items: [
+  status: 'OK', as_of: '2026-10-07T14:59:00+00:00', count: 4,
+  wave_b_lanes: ['research-intake', 'watch-refresh', 'incident-fanin'],
+  spotlights: [
+    { lane_id: 'research-intake', source: 'wave_b_spotlight', summary: 'topic TOPIC-A · DRY_RUN', as_of: '2026-10-07T14:55:00+00:00', gateway_state: 'DRY_RUN', age_s: 300 },
+  ],
+  items: [
     { state: 'CONSUMED', lane_id: 'approval-package-reminder', event_id: 'evt-a', idempotency_key: 'apr-1', recorded_at: NOW / 1000 - 600, consumer: 'approval-reminder-reconcile', consumer_receipt_id: 'run-1', origin_sha: '60863d207f4639819f04209f816f71e3056768a7', durable: true, artifact_ref: { store: 'data/runtime', ref: 'approval_package_reminder_last.json' } },
     { state: 'ARTIFACT_WRITTEN', lane_id: 'llm-spend-report-daily', event_id: 'evt-b', idempotency_key: 'llm-1', recorded_at: '2026-10-07T14:50:00+00:00', durable: true },
     { state: 'REFUSED', reason: 'typed_refusal:live_notifier_stays_in_code', lane_id: 'material-change-digest', event_id: 'evt-c', idempotency_key: 'mcd-1', recorded_at: null },
     { state: 'ACCEPTED', lane_id: 'incident-fanin', event_id: 'evt-d', idempotency_key: 'inc-1', recorded_at: NOW / 1000 - 60 },
+    { state: 'ACCEPTED', lane_id: 'research-intake', event_id: 'evt-e', idempotency_key: 'rq-1', recorded_at: NOW / 1000 - 30, artifact: { store: 'data/runtime', ref: 'n8n_research_intake/requests/rq-1.json' } },
   ],
 }, { nowMs: NOW, transport: 'RETAINED', stale: true })
 check('OK status', ok.status === 'OK' && ok.statusTone === 'success')
-check('rows are projected', ok.rows.length === 4)
-check('counts partition by phase', ok.counts.consumed === 1 && ok.counts.artifact === 1 && ok.counts.refused === 1 && ok.counts.waiting === 1)
+check('rows are projected', ok.rows.length === 5)
+check('counts partition by phase', ok.counts.consumed === 1 && ok.counts.artifact === 1 && ok.counts.refused === 1 && ok.counts.waiting === 2)
 check('epoch recorded_at becomes ISO and an age', ok.rows[0].recordedAt === '2026-10-07T14:50:00.000Z' && ok.rows[0].ageMinutes === 10)
 check('ISO recorded_at parses', ok.rows[1].recordedAt === '2026-10-07T14:50:00.000Z')
 check('missing recorded_at is null, never 0', ok.rows[2].recordedAt === null && ok.rows[2].ageMinutes === null)
 check('consumer and receipt id are joined', ok.rows[0].consumer === 'approval-reminder-reconcile · run-1')
 check('artifact ref renders store:ref', ok.rows[0].artifact === 'data/runtime:approval_package_reminder_last.json')
+check('artifact alias (projection field) renders', ok.rows[4].artifact === 'data/runtime:n8n_research_intake/requests/rq-1.json')
 check('origin sha is shortened', ok.rows[0].originSha === '60863d207')
 check('refusal reason is kept verbatim', ok.rows[2].reason === 'typed_refusal:live_notifier_stays_in_code')
 check('stale retained transport is labelled', ok.transportLabel === 'STALE · RETAINED')
+check('wave B spotlights project', ok.spotlights.length === 1 && ok.spotlights[0].lane === 'research-intake')
+const filtered = projectCoordination({
+  status: 'OK', items: [
+    { state: 'ACCEPTED', lane_id: 'research-intake', event_id: 'e1', idempotency_key: 'k1' },
+    { state: 'ACCEPTED', lane_id: 'incident-fanin', event_id: 'e2', idempotency_key: 'k2' },
+  ],
+}, { nowMs: NOW, laneFilter: 'research-intake' })
+check('lane filter keeps research-intake only', filtered.rows.length === 1 && filtered.rows[0].lane === 'research-intake')
+check('laneCounts include incident-fanin', (ok.laneCounts['incident-fanin'] || 0) === 1)
 
 check('tone: CONSUMED success', toneForState('CONSUMED') === 'success')
 check('tone: ARTIFACT_WRITTEN info', toneForState('ARTIFACT_WRITTEN') === 'info')

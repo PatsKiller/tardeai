@@ -347,7 +347,11 @@ def test_native_monitor_rows_do_not_flip_a_host_scheduler():
         "n8n-research-intake-consumer",
         "crontab-snapshot-for-health-agent",
     }
-    assert set(native) == monitors | cutover
+    # 2026-10-11: heartbeat-watch is n8n-native (no host line ever existed): a dispatcher row (shadow then canary),
+    # fired by tradeai-heartbeat-watcher and tradeai-dispatcher; it flips no host scheduler (match names its script only).
+    n8n_native_lanes = {"heartbeat-watch"}
+    assert all(native[lane]["scheduler"]["expression"] == "dispatcher" for lane in n8n_native_lanes)
+    assert set(native) == monitors | cutover | n8n_native_lanes
     assert not reminders & set(native)
     assert all(native[lane]["state"] == "ACTIVE" for lane in cutover)
     assert all((native[lane]["scheduler"].get("match") or "").strip() for lane in cutover)
