@@ -121,12 +121,13 @@ def test_version_row_waits_for_the_operator_with_the_exact_phrase():
 
 
 def test_banner_states_the_numbering_dependency_and_the_class_reasoning():
-    start = AGENTS.index("**4.6.0 is PROPOSED (MINOR)")
+    start = AGENTS.index("**4.6.0 is ")  # PROPOSED until ratified; ACTIVE after (#1682, 694350602)
     f = _flat(AGENTS[start : AGENTS.index("**4.3.0 is ACTIVE", start)])
     # #1666 (4.4.1 + 4.5.0) merged as dd8f4cff1; the banner now names that merge instead of "renumbers to 4.5.0".
     assert "PR #1666" in f and "dd8f4cff1" in f and "settled at ratification" in f and "becomes 5.0.0" in f
     assert "316700266" in f
-    assert _control("Supersedes") == "4.5.0"
+    # 4.6.0 supersedes 4.5.0; a later version (5.0.0, #1686) supersedes 4.6.0.
+    assert _control("Supersedes") == ("4.5.0" if _version() == (4, 6, 0) else "4.6.0")
     assert f"{TOKEN} <pr_number> <head_sha>" in f
 
 

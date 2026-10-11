@@ -198,6 +198,42 @@ pid=$(systemctl --user show -p MainPID --value tradeai-cio-telegram.service)
 readlink /proc/$pid/cwd        # must equal: readlink -f ~/trade-ai-releases/portfolio-server/CURRENT
 ```
 
+**Release-pinned daemons (since 2026-10-10).** A user unit can be pinned to one concrete release by a
+one-off drop-in (`<unit>.service.d/20-exact-sha-release.conf` or `10-user-exact-sha.conf` with
+`WorkingDirectory=<release dir>`). Promote used to rewrite only portfolio-server's, so
+`chatgpt-oauth-proxy`, `grok-oauth-proxy`, `heartbeat-receiver` and `tradeai-active-trader-motion` ran
+`a032116e7` (2026-10-06) for four days (packet `unit-code-roots`). Promote now runs
+`scripts/release_pin_daemons.py` through `release_pin_step`:
+
+- **before activation**, a dry-run plan (`pins:` lines in the promote log);
+- **after the health check, before the bound-unit restart**, `apply`: every user unit whose *effective*
+  `WorkingDirectory` / `ExecStart*` / `Environment` names a `portfolio-server/<release>` other than the new
+  one gets those pins rewritten into one managed drop-in, `90-release-pin.conf`. Pin-only one-offs are
+  archived under `~/.config/systemd/user/.release-pin-archive/<ts>/` next to a `TRIPWIRE.README`
+  (never deleted). A one-off that also carries other directives is kept, and the managed file overrides
+  it. Then one `daemon-reload`.
+- **Broker-adjacent units are never touched.** A unit whose code path matches the broker execution file
+  set (`broker.execution_code_edit` path globs in `config/agents_guard_hook_rules.json`, e.g.
+  `scripts/active_trader/**`, `scripts/brokers/**`) or is listed in `config/release_pin_daemons.json` is
+  reported `pinned-broker-adjacent: operator action`.
+- **Restarts.** Bound units (above) are restarted by the deploy as before. A unit on `restart_allowlist`
+  in `config/release_pin_daemons.json` (default empty) is restarted by the pin step. Every other rewritten
+  unit is reported `restart pending`: the new pin lands on its next restart.
+- `portfolio-server.service` is excluded (the deploy writes its drop-in itself). A pin a later drop-in
+  already overrides (e.g. `95-code-root-current.conf`) is reported `SHADOWED` and left alone. A stale pin
+  in a mixed drop-in that sorts after `90-release-pin.conf` is `BLOCKED: operator action`.
+
+The receipt (`ReleasePinReceipt@v1`) is `~/.local/state/cio-phase2-exact-main/release_pins/apply-<ts>.json`
+(each archived file with its sha256). The deploy receipt names it in `release_pin_receipt`.
+`TRADEAI_RELEASE_PIN_MODE=warn` lists stale pins without rewriting them; `off` skips the step and says so.
+`apply`/`restore` refuse the real systemd user dir under `TRADE_AI_CI=1`.
+
+```bash
+bash scripts/cio_phase2_exact_main_deploy.sh pins            # DRY RUN vs CURRENT; writes nothing
+bash scripts/cio_phase2_exact_main_deploy.sh pins <release>  # DRY RUN vs a prepared release
+python3 scripts/release_pin_daemons.py tripwire              # a live unit must not reference the archive
+```
+
 Two things it does not do (`AGENTS.md` §9.3, §10):
 
 1. **Install a new user unit.** A `config/systemd/user/*.timer` added by the PR is copied into the release
@@ -257,8 +293,10 @@ A `prepare` refused with `CURRENT pin check tree_diff:N` means the release overl
 files (`tree_diff:4`). #1620 includes `docs/**/data/` before the excludes. Root `data/` (runtime) stays
 excluded. Find the differing paths before retrying. Do not retry blind.
 
-`promote` already auto-rolls back to `PREV_RELEASE` on a failed health check. Manual rollback
-restarts the bound units and rewrites the expected-release pin. See `docs/ops/ROLLBACK_COMMANDS.md`.
+`promote` already auto-rolls back to `PREV_RELEASE` on a failed health check (the pin step has not run
+yet at that point, so no drop-in changed). Manual rollback restarts the bound units, rewrites the
+expected-release pin and restores the drop-ins the undone promote archived. See
+`docs/ops/ROLLBACK_COMMANDS.md`.
 
 ```bash
 bash scripts/cio_phase2_exact_main_deploy.sh rollback
