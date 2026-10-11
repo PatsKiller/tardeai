@@ -42,7 +42,8 @@ The four shard fake suites and main normalizer deduplication test pass under a s
 empty dotenv, nodeps and pre-import DB/socket/production-file guards inherited by subprocesses. Source registry,
 authority, coverage, host-path, dark-contract and docs gates are checked separately. These checks confer no live
 acceptance: health fails on 22 DRAFT contracts. Prior mandatory shard profiles failed or stopped on safety refusals;
-their broad actions are not retried here. Integration full-profile status is STOPPED_ON_REFUSAL / not rerun.
+their broad actions are not retried here. The integration full profile was never invoked: NOT_RUN_PRIOR_REFUSAL,
+with completion NOT_MEASURED. The stopped/failed executions belong to the historical shard profiles.
 Runtime acceptance, natural receipts, canary, lock installation, model routing and live firing remain NOT_MEASURED.
 
 The untracked `OPERATOR_REVIEW_LIST.tsv`, `INTEGRATION_REPORT.json`, `SHARED_CHANGES_PACKET.md`,
