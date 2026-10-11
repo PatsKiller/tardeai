@@ -8269,7 +8269,7 @@
    "id": "research-insight-extractor",
    "kind": "lane",
    "workflow_id": "tradeai-dispatcher",
-   "status": "DRAFT",
+   "status": "REVIEWED",
    "target_reason": "stage:canary",
    "stage": "canary",
    "purpose": {
@@ -8449,7 +8449,13 @@
     ],
     "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger"
    },
-   "review_by": "2026-10-25"
+   "review_by": "2026-10-25",
+   "review": {
+    "prepared_by": "agent draft",
+    "status": "REVIEWED",
+    "reviewed_by": "operator PatsKiller 2026-10-11",
+    "reviewed_on": "2026-10-11"
+   }
   },
   {
    "schema": "N8nHealthContract@v1",
@@ -11218,9 +11224,10 @@
    "review": {
     "status": "REVIEWED",
     "reviewed_on": "2026-10-11",
-    "reviewed_by": "agent KK (W4 provider owners), session https://claude.ai/code/session_018QBWwttnCspwJYNhNdqd14, for the registry owner scalp",
+    "reviewed_by": "operator PatsKiller 2026-10-11",
     "method": "every field checked against the script source at origin/main e24ccd6c5, the live crontab (crontab -l, read-only, 2026-10-11), config/data_source_authority.json and the cron logs; the inventory free-text edges were replaced by source-cited edges",
-    "basis_note": "baseline stays CLASS_DEFAULT_PROVISIONAL: the ledger holds 0 live dispatcher runs of this lane, and dry-run fires never set a baseline; re-learn after 14 live runs (canary)"
+    "basis_note": "baseline stays CLASS_DEFAULT_PROVISIONAL: the ledger holds 0 live dispatcher runs of this lane, and dry-run fires never set a baseline; re-learn after 14 live runs (canary)",
+    "prepared_by": "agent KK (W4 provider owners), session https://claude.ai/code/session_018QBWwttnCspwJYNhNdqd14, for the registry owner scalp"
    }
   },
   {
@@ -11408,9 +11415,10 @@
    "review": {
     "status": "REVIEWED",
     "reviewed_on": "2026-10-11",
-    "reviewed_by": "agent KK (W4 provider owners), session https://claude.ai/code/session_018QBWwttnCspwJYNhNdqd14, for the registry owner research",
+    "reviewed_by": "operator PatsKiller 2026-10-11",
     "method": "every field checked against the script source at origin/main e24ccd6c5, the live crontab (crontab -l, read-only, 2026-10-11), config/data_source_authority.json and the cron logs; the inventory free-text edges were replaced by source-cited edges",
-    "basis_note": "baseline stays CLASS_DEFAULT_PROVISIONAL: the ledger holds 0 live dispatcher runs of this lane, and dry-run fires never set a baseline; re-learn after 14 live runs (canary)"
+    "basis_note": "baseline stays CLASS_DEFAULT_PROVISIONAL: the ledger holds 0 live dispatcher runs of this lane, and dry-run fires never set a baseline; re-learn after 14 live runs (canary)",
+    "prepared_by": "agent KK (W4 provider owners), session https://claude.ai/code/session_018QBWwttnCspwJYNhNdqd14, for the registry owner research"
    }
   },
   {
@@ -11598,9 +11606,10 @@
    "review": {
     "status": "REVIEWED",
     "reviewed_on": "2026-10-11",
-    "reviewed_by": "agent KK (W4 provider owners), session https://claude.ai/code/session_018QBWwttnCspwJYNhNdqd14, for the registry owner research",
+    "reviewed_by": "operator PatsKiller 2026-10-11",
     "method": "every field checked against the script source at origin/main e24ccd6c5, the live crontab (crontab -l, read-only, 2026-10-11), config/data_source_authority.json and the cron logs; the inventory free-text edges were replaced by source-cited edges",
-    "basis_note": "baseline stays CLASS_DEFAULT_PROVISIONAL: the ledger holds 0 live dispatcher runs of this lane, and dry-run fires never set a baseline; re-learn after 14 live runs (canary)"
+    "basis_note": "baseline stays CLASS_DEFAULT_PROVISIONAL: the ledger holds 0 live dispatcher runs of this lane, and dry-run fires never set a baseline; re-learn after 14 live runs (canary)",
+    "prepared_by": "agent KK (W4 provider owners), session https://claude.ai/code/session_018QBWwttnCspwJYNhNdqd14, for the registry owner research"
    }
   },
   {
@@ -11766,8 +11775,10 @@
    "review_by": "2026-10-25",
    "review": {
     "reviewed_on": "2026-10-11",
-    "reviewed_by": "SW4 (agent; owner sign-off is the operator's single bulk REVIEW pass)",
-    "consolidation": "PIPELINE:P13 (learning) member; no duplicate line"
+    "reviewed_by": "operator PatsKiller 2026-10-11",
+    "consolidation": "PIPELINE:P13 (learning) member; no duplicate line",
+    "prepared_by": "SW4 (agent; owner sign-off is the operator's single bulk REVIEW pass)",
+    "status": "REVIEWED"
    }
   },
   {
@@ -11943,8 +11954,10 @@
    "review_by": "2026-10-25",
    "review": {
     "reviewed_on": "2026-10-11",
-    "reviewed_by": "SW4 (agent; owner sign-off is the operator's single bulk REVIEW pass)",
-    "consolidation": "lockup family: ipo-lockup-alert (L488, a sender) stays on cron; this is its data step"
+    "reviewed_by": "operator PatsKiller 2026-10-11",
+    "consolidation": "lockup family: ipo-lockup-alert (L488, a sender) stays on cron; this is its data step",
+    "prepared_by": "SW4 (agent; owner sign-off is the operator's single bulk REVIEW pass)",
+    "status": "REVIEWED"
    }
   },
   {
@@ -12108,8 +12121,10 @@
    "review_by": "2026-10-25",
    "review": {
     "reviewed_on": "2026-10-11",
-    "reviewed_by": "SW4 (agent; owner sign-off is the operator's single bulk REVIEW pass)",
-    "consolidation": "yf-reference consumer (CONSOLIDATION_PLAN §B.2 'keep, but stop fetching')"
+    "reviewed_by": "operator PatsKiller 2026-10-11",
+    "consolidation": "yf-reference consumer (CONSOLIDATION_PLAN §B.2 'keep, but stop fetching')",
+    "prepared_by": "SW4 (agent; owner sign-off is the operator's single bulk REVIEW pass)",
+    "status": "REVIEWED"
    }
   },
   {
@@ -12273,8 +12288,10 @@
    "review_by": "2026-10-25",
    "review": {
     "reviewed_on": "2026-10-11",
-    "reviewed_by": "SW4 (agent; owner sign-off is the operator's single bulk REVIEW pass)",
-    "consolidation": "the cron line's run_with_deepseek_offpeak.sh --official wrapper PEAK_SKIPs every weekday at 03:50 ET (07:50/08:50 UTC is inside the official (6,10) UTC window), so the lane really runs Sat/Sun only; it makes no model call, so the dispatcher argv drops the wrapper"
+    "reviewed_by": "operator PatsKiller 2026-10-11",
+    "consolidation": "the cron line's run_with_deepseek_offpeak.sh --official wrapper PEAK_SKIPs every weekday at 03:50 ET (07:50/08:50 UTC is inside the official (6,10) UTC window), so the lane really runs Sat/Sun only; it makes no model call, so the dispatcher argv drops the wrapper",
+    "prepared_by": "SW4 (agent; owner sign-off is the operator's single bulk REVIEW pass)",
+    "status": "REVIEWED"
    }
   },
   {
@@ -12432,8 +12449,10 @@
    "review_by": "2026-10-25",
    "review": {
     "reviewed_on": "2026-10-11",
-    "reviewed_by": "SW4 (agent; owner sign-off is the operator's single bulk REVIEW pass)",
-    "consolidation": "PIPELINE:P13 member. Finding: save_outcomes/write_calibration_to_rules catch per-row errors on one transaction, so a mid-batch failure can roll back everything and still exit 0 (fix before canary)"
+    "reviewed_by": "operator PatsKiller 2026-10-11",
+    "consolidation": "PIPELINE:P13 member. Finding: save_outcomes/write_calibration_to_rules catch per-row errors on one transaction, so a mid-batch failure can roll back everything and still exit 0 (fix before canary)",
+    "prepared_by": "SW4 (agent; owner sign-off is the operator's single bulk REVIEW pass)",
+    "status": "REVIEWED"
    }
   },
   {
@@ -12597,8 +12616,10 @@
    "review_by": "2026-10-25",
    "review": {
     "reviewed_on": "2026-10-11",
-    "reviewed_by": "SW4 (agent; owner sign-off is the operator's single bulk REVIEW pass)",
-    "consolidation": "expense_ratio column co-owned with classify-instruments (L504; wave-3 open question)"
+    "reviewed_by": "operator PatsKiller 2026-10-11",
+    "consolidation": "expense_ratio column co-owned with classify-instruments (L504; wave-3 open question)",
+    "prepared_by": "SW4 (agent; owner sign-off is the operator's single bulk REVIEW pass)",
+    "status": "REVIEWED"
    }
   },
   {
@@ -12756,8 +12777,10 @@
    "review_by": "2026-10-25",
    "review": {
     "reviewed_on": "2026-10-11",
-    "reviewed_by": "SW4 (agent; owner sign-off is the operator's single bulk REVIEW pass)",
-    "consolidation": "EVENT_DRIVEN_CANDIDATE: 48 fires/day with resolved 0 in the dry run; candidate for a lower cadence or an event trigger (W5)"
+    "reviewed_by": "operator PatsKiller 2026-10-11",
+    "consolidation": "EVENT_DRIVEN_CANDIDATE: 48 fires/day with resolved 0 in the dry run; candidate for a lower cadence or an event trigger (W5)",
+    "prepared_by": "SW4 (agent; owner sign-off is the operator's single bulk REVIEW pass)",
+    "status": "REVIEWED"
    }
   },
   {
@@ -12917,8 +12940,10 @@
    "review_by": "2026-10-25",
    "review": {
     "reviewed_on": "2026-10-11",
-    "reviewed_by": "SW4 (agent; owner sign-off is the operator's single bulk REVIEW pass)",
-    "consolidation": "PIPELINE:P13 (learning) member; no duplicate line"
+    "reviewed_by": "operator PatsKiller 2026-10-11",
+    "consolidation": "PIPELINE:P13 (learning) member; no duplicate line",
+    "prepared_by": "SW4 (agent; owner sign-off is the operator's single bulk REVIEW pass)",
+    "status": "REVIEWED"
    }
   },
   {
@@ -13084,8 +13109,10 @@
    "review_by": "2026-10-25",
    "review": {
     "reviewed_on": "2026-10-11",
-    "reviewed_by": "SW4 (agent; owner sign-off is the operator's single bulk REVIEW pass)",
-    "consolidation": "social family: consumer of the social owner (CONSOLIDATION_PLAN §B.2 L289 'keep, but stop fetching')"
+    "reviewed_by": "operator PatsKiller 2026-10-11",
+    "consolidation": "social family: consumer of the social owner (CONSOLIDATION_PLAN §B.2 L289 'keep, but stop fetching')",
+    "prepared_by": "SW4 (agent; owner sign-off is the operator's single bulk REVIEW pass)",
+    "status": "REVIEWED"
    }
   },
   {
@@ -13251,8 +13278,10 @@
    "review_by": "2026-10-25",
    "review": {
     "reviewed_on": "2026-10-11",
-    "reviewed_by": "SW4 (agent; owner sign-off is the operator's single bulk REVIEW pass)",
-    "consolidation": "keep as is (CONSOLIDATION_PLAN §B.2)"
+    "reviewed_by": "operator PatsKiller 2026-10-11",
+    "consolidation": "keep as is (CONSOLIDATION_PLAN §B.2)",
+    "prepared_by": "SW4 (agent; owner sign-off is the operator's single bulk REVIEW pass)",
+    "status": "REVIEWED"
    }
   },
   {
@@ -13416,8 +13445,10 @@
    "review_by": "2026-10-25",
    "review": {
     "reviewed_on": "2026-10-11",
-    "reviewed_by": "SW4 (agent; owner sign-off is the operator's single bulk REVIEW pass)",
-    "consolidation": "keep as is (CONSOLIDATION_PLAN §B.2)"
+    "reviewed_by": "operator PatsKiller 2026-10-11",
+    "consolidation": "keep as is (CONSOLIDATION_PLAN §B.2)",
+    "prepared_by": "SW4 (agent; owner sign-off is the operator's single bulk REVIEW pass)",
+    "status": "REVIEWED"
    }
   },
   {
@@ -13583,8 +13614,10 @@
    "review_by": "2026-10-25",
    "review": {
     "reviewed_on": "2026-10-11",
-    "reviewed_by": "SW4 (agent; owner sign-off is the operator's single bulk REVIEW pass)",
-    "consolidation": "social family: L860 consumer of the social owner (CONSOLIDATION_PLAN §B.2); feeds sync-social-to-intelligence (L859 event-after L860, W5)"
+    "reviewed_by": "operator PatsKiller 2026-10-11",
+    "consolidation": "social family: L860 consumer of the social owner (CONSOLIDATION_PLAN §B.2); feeds sync-social-to-intelligence (L859 event-after L860, W5)",
+    "prepared_by": "SW4 (agent; owner sign-off is the operator's single bulk REVIEW pass)",
+    "status": "REVIEWED"
    }
   },
   {
@@ -13744,8 +13777,10 @@
    "review_by": "2026-10-25",
    "review": {
     "reviewed_on": "2026-10-11",
-    "reviewed_by": "SW4 (agent; owner sign-off is the operator's single bulk REVIEW pass)",
-    "consolidation": "CONSOLIDATION_PLAN §E5: event-after hermes-social-sentiment (W5 event trigger); one cron line"
+    "reviewed_by": "operator PatsKiller 2026-10-11",
+    "consolidation": "CONSOLIDATION_PLAN §E5: event-after hermes-social-sentiment (W5 event trigger); one cron line",
+    "prepared_by": "SW4 (agent; owner sign-off is the operator's single bulk REVIEW pass)",
+    "status": "REVIEWED"
    }
   },
   {
@@ -13911,8 +13946,10 @@
    "review_by": "2026-10-25",
    "review": {
     "reviewed_on": "2026-10-11",
-    "reviewed_by": "SW4 (agent; owner sign-off is the operator's single bulk REVIEW pass)",
-    "consolidation": "MERGE_INTO:P13. Finding: a full yfinance outage grades every trade 'error' and still exits 0 with an ok receipt (weakly honest; fix before canary). Wave 3 listed L365 as 'P0 defect or second writer (INFERRED)'; the 2026-10-11 code read found neither"
+    "reviewed_by": "operator PatsKiller 2026-10-11",
+    "consolidation": "MERGE_INTO:P13. Finding: a full yfinance outage grades every trade 'error' and still exits 0 with an ok receipt (weakly honest; fix before canary). Wave 3 listed L365 as 'P0 defect or second writer (INFERRED)'; the 2026-10-11 code read found neither",
+    "prepared_by": "SW4 (agent; owner sign-off is the operator's single bulk REVIEW pass)",
+    "status": "REVIEWED"
    }
   },
   {
@@ -14076,8 +14113,10 @@
    "review_by": "2026-10-25",
    "review": {
     "reviewed_on": "2026-10-11",
-    "reviewed_by": "SW4 (agent; owner sign-off is the operator's single bulk REVIEW pass)",
-    "consolidation": "yf-reference consumer (CONSOLIDATION_PLAN §B.2 'keep, but stop fetching'); ytd_return_pct co-owned with fund-technicals-enrich"
+    "reviewed_by": "operator PatsKiller 2026-10-11",
+    "consolidation": "yf-reference consumer (CONSOLIDATION_PLAN §B.2 'keep, but stop fetching'); ytd_return_pct co-owned with fund-technicals-enrich",
+    "prepared_by": "SW4 (agent; owner sign-off is the operator's single bulk REVIEW pass)",
+    "status": "REVIEWED"
    }
   }
  ]
