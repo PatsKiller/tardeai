@@ -2448,7 +2448,7 @@
       "note": "DECLARED BY THE INTEGRATOR to unblock a red required gate, not by this lane's owner. The cron line existed undeclared and failed check_lane_registry on clean main, blocking every PR. Facts used: the cron expression itself, and price_cache.json as the durable artifact (monitor_trigger_state.json only moves when a trigger fires, so it is not a liveness signal -- its mtime is 2026-04-13). Cadence is set to 24h DELIBERATELY CONSERVATIVE: the cron runs every 20 minutes in market hours, but the evaluator has no notion of active hours, so a 0.33h cadence would report SILENT every evening and weekend. 24h still catches a truly dead lane. The owner should tighten it.",
       "state_since": "2026-10-07",
       "superseded_by": "health-tick",
-      "state_reason": "Superseded by lane health-tick on 2026-10-07: its crontab line was deleted at 19:56Z (backup ~/.local/state/tradeai/backups/crontab-20261007T195625Z-pre-ranks34.txt) and the same script now runs as a step inside health-tick with its original lock, argv and log (cron consolidation ranks 3-4, PRs #1486/#1487). Nothing stopped; the owner of the schedule moved.",
+      "state_reason": "2026-10-11 retire-wave1 W1-7 (operator): the step is REMOVED from health-tick (config/health_tick_steps.json; the row is kept verbatim under retired_steps) after 30 of 32 runs in 7 days ended rc -15 (timeout); nothing schedules portfolio_live_monitor.py now and superseded_by is historical. price_cache.json is also written by the portfolio-price-cache timer. | Superseded by lane health-tick on 2026-10-07: its crontab line was deleted at 19:56Z (backup ~/.local/state/tradeai/backups/crontab-20261007T195625Z-pre-ranks34.txt) and the same script now runs as a step inside health-tick with its original lock, argv and log (cron consolidation ranks 3-4, PRs #1486/#1487). Nothing stopped; the owner of the schedule moved.",
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "crontab diff ~/.local/state/tradeai/backups/crontab-20261007T195625Z-pre-ranks34.txt vs crontab -l 2026-10-07 19:57Z removed exactly this line; health-tick step table (config/health_tick_steps.json / scripts/pipelines/run_platform_maintenance_pipeline.sh) carries the same command; first health-tick receipt persistent-state/data/runtime/health_tick_last.json as_of 2026-10-07T19:56:05+00:00 (HealthTickReceipt@v1, served_sha 16506e19e, due 3 ran 3)."
     },
@@ -6669,11 +6669,10 @@
       "owner": "platform",
       "scheduler": {
         "kind": "cron",
-        "expression": "0 12,14,16 * * 1-5 + 30 17 * * 1-5",
+        "expression": "30 17 * * 1-5",
         "command_text": "run_orchestrator_slot.sh",
-        "match": "scripts/run_orchestrator_slot.sh",
+        "match": "30 17 * * 1-5 cd $PROJ && bash $PROJ/scripts/run_orchestrator_slot.sh",
         "schedules": [
-          "0 12,14,16 * * 1-5",
           "30 17 * * 1-5"
         ]
       },
@@ -6687,7 +6686,7 @@
       ],
       "state": "ACTIVE",
       "state_since": "2026-10-07",
-      "state_reason": "2026-10-09: the 09:00 and 10:00 slots are dropped. The continuous runner's FULL runs fire at the same anchors (09:03/09:53), process_reaper allows one trade_ai_orchestrator at a time, so the cron slot was killed (10:00 'Terminated') and both writers stamped run_label 0900 (the PARTIAL 55/40 header). RTH scalp coverage is the new trade-ai-scalp-live lane (every 5 min). | Installed 2026-10-07 19:58Z under cron grant 20d1d2c9dec32d5a (backup ~/.local/state/tradeai/backups/crontab-20261007T195826Z-pre-tranche-c.txt) alongside the six trade_ai_orchestrator --run-label 0900/1000/1200/1400/1600/1730 lines, which stay until two receipts are observed; overlap is lock-safe (each step keeps its original /tmp lock, flock -n -E 75 -> LOCK_HELD). The old lines are deleted and their lanes flipped RETIRED, naming this lane as their successor, in the follow-up PR (docs/implementation/n8n-parallel/proposals/cron-tranche-c-lowrisk.md step 3). Step 3 done 2026-10-07 22:40Z: the old lines were deleted (backup ~/.local/state/tradeai/backups/crontab-20261007T224010Z-pre-tranche-c-step3.txt); this lane is the only scheduler of its steps.",
+      "state_reason": "2026-10-11 retire-wave1b (operator W1-6): the 12:00/14:00/16:00 slots are retired (their line is commented in place; lane orchestrator-slot-midday, RETIRED); this lane now schedules only the 17:30 slot. | 2026-10-09: the 09:00 and 10:00 slots are dropped. The continuous runner's FULL runs fire at the same anchors (09:03/09:53), process_reaper allows one trade_ai_orchestrator at a time, so the cron slot was killed (10:00 'Terminated') and both writers stamped run_label 0900 (the PARTIAL 55/40 header). RTH scalp coverage is the new trade-ai-scalp-live lane (every 5 min). | Installed 2026-10-07 19:58Z under cron grant 20d1d2c9dec32d5a (backup ~/.local/state/tradeai/backups/crontab-20261007T195826Z-pre-tranche-c.txt) alongside the six trade_ai_orchestrator --run-label 0900/1000/1200/1400/1600/1730 lines, which stay until two receipts are observed; overlap is lock-safe (each step keeps its original /tmp lock, flock -n -E 75 -> LOCK_HELD). The old lines are deleted and their lanes flipped RETIRED, naming this lane as their successor, in the follow-up PR (docs/implementation/n8n-parallel/proposals/cron-tranche-c-lowrisk.md step 3). Step 3 done 2026-10-07 22:40Z: the old lines were deleted (backup ~/.local/state/tradeai/backups/crontab-20261007T224010Z-pre-tranche-c-step3.txt); this lane is the only scheduler of its steps.",
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "crontab -l 2026-10-07 lines 142/144/145/147/148/205 (verbatim in the proposal); scripts/run_orchestrator_slot.sh; docs/implementation/n8n-parallel/proposals/cron-tranche-c-lowrisk.md Installed 2026-10-07: plan-only dry runs from the served tree (options_tick.py --tick-minute 7|52, hermes_subject_enhance_dispatch.py --stats/--now, run_orchestrator_slot.sh --now 0900|1730 --dry-run, run_drive_syncs.sh --dry-run) all rc=0; crontab job lines 454 -> 459.",
       "output_signal": {
@@ -6699,7 +6698,7 @@
       "recommendation": "PIPELINE:P02",
       "rationalization": {
         "source": "F_rationalization.json",
-        "f_id": "L1030",
+        "f_id": "L1031",
         "pipeline": "P02",
         "value_class": "Operationally Important",
         "recommendation": "PIPELINE:P02",
@@ -6708,6 +6707,46 @@
         "f_evidence": "Unverified use: no consumer check run for this line"
       },
       "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
+    },
+    {
+      "lane_id": "orchestrator-slot-midday",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 12,14,16 * * 1-5",
+        "command_text": "run_orchestrator_slot.sh --no-llm --no-alerts --allow-underfilled",
+        "match": "0 12,14,16 * * 1-5 cd $PROJ && bash $PROJ/scripts/run_orchestrator_slot.sh"
+      },
+      "expected_cadence_hours": 24.0,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "state": "RETIRED",
+      "state_since": "2026-10-11",
+      "state_reason": "retire-wave1b W1-6 (operator 2026-10-11 \"i agree\": retire, not fix). The 12/14/16 weekday slots of lane orchestrator-slot produced nothing: reports/<date>/1200, 1400 and 1600 held 0 files on every weekday 2026-10-05..10-09 (1730 held 6 each day), logs/screener_pm.log carries 41 'Terminated' lines and the last auto-proposal summaries created 0. The crontab line is commented in place as `# RETIRED <date> retire-wave1b orchestrator-midday-timeouts <original>` (never deleted); the 17:30 slot (lane orchestrator-slot) is unchanged. Split out of orchestrator-slot so the retired slots carry their own state. Rollback: packets/consolidation-retire-wave1b/rollback.sh.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "~/n8n-maturity-verification/packets/consolidation-retire-wave1b/evidence/W1-6_orchestrator_midday_evidence.txt (report-dir counts, screener_pm.log, journalctl -u cron fires 10-07..10-09); ~/n8n-maturity-verification/packets/consolidation-retire-wave1/evidence/A_candidates_evidence.txt; OPERATOR_DECISION.md W1-6.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/screener_pm.log"
+      },
+      "note": "Same log as orchestrator-slot; the signal is shared, so this RETIRED row is judged by state only.",
+      "value_class": "Operationally Important",
+      "recommendation": "PIPELINE:P02",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L1030",
+        "pipeline": "P02",
+        "value_class": "Operationally Important",
+        "recommendation": "PIPELINE:P02",
+        "f_recommendation": "CONSOLIDATE-into P02",
+        "event_driven_candidate": false,
+        "f_evidence": "Unverified use: no consumer check run for this line"
+      }
     },
     {
       "lane_id": "drive-syncs-hourly",
@@ -10926,6 +10965,128 @@
         "step_id": "tag_engine",
         "on": "2026-10-11"
       }
+    },
+    {
+      "lane_id": "shadow-batch-generator-at-15-9",
+      "owner": "proposals",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "15 9 * * 1-5",
+        "match": "scripts/shadow_batch_generator.py --run >> logs/shadow_batch.log"
+      },
+      "expected_cadence_hours": 72.0,
+      "state": "RETIRED",
+      "state_since": "2026-10-11",
+      "state_reason": "retire-wave1 W1-1 (operator 2026-10-11): crontab line `15 9 * * 1-5 ... shadow_batch_generator.py --run >> logs/shadow_batch.log` commented in place as `# RETIRED <date> retire-wave1 shadow-batch-weekday-10of10-skipped_locked-no-output <original>` (never deleted). 10/10 weekday runs in two weeks were skipped_locked with 0 complete; the status file was last written by the Sunday run. The weekly line (lane shadow-batch-generator-at-15-10) and the API button remain. Rollback: packets/consolidation-retire-wave1/rollback.sh.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "~/n8n-maturity-verification/packets/consolidation-retire-wave1/evidence/A_candidates_evidence.txt (logs/shadow_batch.log: skipped_locked 10, state=complete 0; status file mtime 2026-10-04 10:17 by the Sunday run; journalctl -u cron 5 fires/wk); OPERATOR_DECISION.md W1-1.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/shadow_batch_status.json",
+        "evidence": "SCRIPT_RECEIPT",
+        "evidence_ref": "scripts/shadow_batch_generator.py:54 STATUS_FILE written at :316 on generating runs (NOT on skipped_locked early return :403); host mtime 2026-10-04T10:17:01 (weekday runs currently skipped_locked per logs/shadow_batch.log)"
+      },
+      "value_class": "Experimental",
+      "recommendation": "R0_ELIMINATE",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L792",
+        "pipeline": "P07",
+        "value_class": "Experimental",
+        "recommendation": "R0_ELIMINATE",
+        "f_recommendation": "ELIMINATE unless a consumer is named",
+        "event_driven_candidate": false,
+        "f_evidence": "2 lines; \"shadow\" batches — no reader found (Unverified)"
+      },
+      "retire_batch": "retire-wave1",
+      "hand_curated": {
+        "from": "reconcile_lane_registry@v1",
+        "on": "2026-10-11",
+        "why": "retire-wave1: a generated row is re-derived ACTIVE from the scheduler snapshot on every reconcile run (and R0 generated rows must stay ACTIVE), so the operator-approved retirement is carried as a hand-written row the generator keeps (retire-batch-1 pattern)"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
+    },
+    {
+      "lane_id": "shadow-batch-generator-at-15-10",
+      "owner": "proposals",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "15 10 * * 0",
+        "match": "scripts/shadow_batch_generator.py --run >> logs/shadow_batch_weekly.log"
+      },
+      "expected_cadence_hours": 168.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/shadow_batch_status.json",
+        "evidence": "SCRIPT_RECEIPT",
+        "evidence_ref": "scripts/shadow_batch_generator.py:54 STATUS_FILE written at :316 on generating runs (NOT on skipped_locked early return :403); host mtime 2026-10-04T10:17:01 (weekday runs currently skipped_locked per logs/shadow_batch.log)"
+      },
+      "value_class": "Experimental",
+      "recommendation": "R0_ELIMINATE",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L793",
+        "pipeline": "P07",
+        "value_class": "Experimental",
+        "recommendation": "R0_ELIMINATE",
+        "f_recommendation": "ELIMINATE unless a consumer is named",
+        "event_driven_candidate": false,
+        "f_evidence": "2 lines; \"shadow\" batches — no reader found (Unverified)"
+      },
+      "hand_curated": {
+        "from": "reconcile_lane_registry@v1",
+        "on": "2026-10-11",
+        "why": "retire-wave1: id pinned. Its sibling row shadow-batch-generator-at-15-9 became hand-written (retired), and the generator disambiguates generated ids against hand-written ones, so left generated this row would be renamed shadow-batch-generator on the next reconcile run (lane_id is the key for SLA rows, breaches and superseded_by)"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
+    },
+    {
+      "lane_id": "hermes-embedding-promotion-review",
+      "owner": "hermes",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "hermes-embedding-promotion-review.timer"
+      },
+      "expected_cadence_hours": 20.0,
+      "state": "RETIRED",
+      "state_since": "2026-10-11",
+      "state_reason": "retire-wave1 W1-8 (operator 2026-10-11 \"i agree\"): user timer hermes-embedding-promotion-review.timer is disabled with `systemctl --user disable --now` (unit files untouched). The reviewer now prints `Embeddings: 0 | Promotions: 0 | Recommendations only` (dry-run recommendations; no consumer found). hermes-shadow-scorer and tradeai-advisory-notif-broker are kept. Rollback: `systemctl --user enable --now hermes-embedding-promotion-review.timer`.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "~/n8n-maturity-verification/packets/consolidation-retire-wave1/evidence/A_candidates_evidence.txt (7 runs/7 d, Finished; output 0/0); OPERATOR_DECISION.md W1-8; disable record in ~/n8n-maturity-verification/packets/consolidation-retire-wave1b/W1-8_timer_disable.txt.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/docs/hermes/embedding_promotion_reviews/latest_review.json",
+        "evidence": "SCRIPT_RECEIPT",
+        "evidence_ref": "scripts/hermes_embedding_promotion_reviewer.py:74 write_text OUT/latest_review.json (OUT :14 docs/hermes/embedding_promotion_reviews); host mtime 2026-10-09T04:15:06 (timer 08:15 UTC)"
+      },
+      "value_class": "Nice to Have",
+      "recommendation": "PIPELINE:P14",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "hermes-embedding-promotion-review.timer",
+        "pipeline": "P14",
+        "value_class": "Nice to Have",
+        "recommendation": "PIPELINE:P14",
+        "f_recommendation": "CONSOLIDATE → P14/P10 loop",
+        "event_driven_candidate": false,
+        "f_evidence": "CIO/persona/LLM loop; Unverified consumer"
+      },
+      "retire_batch": "retire-wave1",
+      "hand_curated": {
+        "from": "reconcile_lane_registry@v1",
+        "on": "2026-10-11",
+        "why": "retire-wave1: a generated row is re-derived ACTIVE from the scheduler snapshot on every reconcile run (and R0 generated rows must stay ACTIVE), so the operator-approved retirement is carried as a hand-written row the generator keeps (retire-batch-1 pattern)"
+      },
+      "reconciled_on": "2026-10-09",
+      "unit_enabled_state": "enabled",
+      "service": "hermes-embedding-promotion-review.service",
+      "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
+      "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/hermes_embedding_promotion_reviewer.py"
     },
     {
       "lane_id": "run-scheduled-quote-refresh-incubator",
@@ -18155,72 +18316,6 @@
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
     },
     {
-      "lane_id": "shadow-batch-generator-at-15-9",
-      "owner": "proposals",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "15 9 * * 1-5",
-        "match": "scripts/shadow_batch_generator.py --run >> logs/shadow_batch.log"
-      },
-      "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "data/runtime/shadow_batch_status.json",
-        "evidence": "SCRIPT_RECEIPT",
-        "evidence_ref": "scripts/shadow_batch_generator.py:54 STATUS_FILE written at :316 on generating runs (NOT on skipped_locked early return :403); host mtime 2026-10-04T10:17:01 (weekday runs currently skipped_locked per logs/shadow_batch.log)"
-      },
-      "value_class": "Experimental",
-      "recommendation": "R0_ELIMINATE",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L792",
-        "pipeline": "P07",
-        "value_class": "Experimental",
-        "recommendation": "R0_ELIMINATE",
-        "f_recommendation": "ELIMINATE unless a consumer is named",
-        "event_driven_candidate": false,
-        "f_evidence": "2 lines; \"shadow\" batches — no reader found (Unverified)"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "shadow-batch-generator-at-15-10",
-      "owner": "proposals",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "15 10 * * 0",
-        "match": "scripts/shadow_batch_generator.py --run >> logs/shadow_batch_weekly.log"
-      },
-      "expected_cadence_hours": 168.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "data/runtime/shadow_batch_status.json",
-        "evidence": "SCRIPT_RECEIPT",
-        "evidence_ref": "scripts/shadow_batch_generator.py:54 STATUS_FILE written at :316 on generating runs (NOT on skipped_locked early return :403); host mtime 2026-10-04T10:17:01 (weekday runs currently skipped_locked per logs/shadow_batch.log)"
-      },
-      "value_class": "Experimental",
-      "recommendation": "R0_ELIMINATE",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L793",
-        "pipeline": "P07",
-        "value_class": "Experimental",
-        "recommendation": "R0_ELIMINATE",
-        "f_recommendation": "ELIMINATE unless a consumer is named",
-        "event_driven_candidate": false,
-        "f_evidence": "2 lines; \"shadow\" batches — no reader found (Unverified)"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
       "lane_id": "alpaca-live-read-sync",
       "owner": "execution",
       "scheduler": {
@@ -19195,40 +19290,6 @@
       "flags": [
         "UNVERIFIED_OUTPUT"
       ]
-    },
-    {
-      "lane_id": "hermes-embedding-promotion-review",
-      "owner": "hermes",
-      "scheduler": {
-        "kind": "systemd",
-        "expression": "hermes-embedding-promotion-review.timer"
-      },
-      "expected_cadence_hours": 20.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/docs/hermes/embedding_promotion_reviews/latest_review.json",
-        "evidence": "SCRIPT_RECEIPT",
-        "evidence_ref": "scripts/hermes_embedding_promotion_reviewer.py:74 write_text OUT/latest_review.json (OUT :14 docs/hermes/embedding_promotion_reviews); host mtime 2026-10-09T04:15:06 (timer 08:15 UTC)"
-      },
-      "value_class": "Nice to Have",
-      "recommendation": "PIPELINE:P14",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "hermes-embedding-promotion-review.timer",
-        "pipeline": "P14",
-        "value_class": "Nice to Have",
-        "recommendation": "PIPELINE:P14",
-        "f_recommendation": "CONSOLIDATE → P14/P10 loop",
-        "event_driven_candidate": false,
-        "f_evidence": "CIO/persona/LLM loop; Unverified consumer"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "unit_enabled_state": "enabled",
-      "service": "hermes-embedding-promotion-review.service",
-      "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
-      "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/hermes_embedding_promotion_reviewer.py"
     },
     {
       "lane_id": "hermes-librarian-backlog-loop",

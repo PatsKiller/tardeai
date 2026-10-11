@@ -9,6 +9,28 @@
   "max_parallel": 1,
   "default_timeout_s": 240,
   "note": "Cron consolidation RANK 3 (health tick). One row per absorbed crontab line, read verbatim from `crontab -l` on 2026-10-07 (line numbers in `note`). Schedule fields are cron-equivalent: a step is due at a tick when the tick minute satisfies (minute - minute_offset) % cadence_minutes == 0 for sub-hour cadences, or minute == minute_offset snapped to the tick grid and the hour satisfies `hours` (explicit list) or hour % (cadence_minutes/60) == 0 (null) for hour-and-up cadences. `weekdays` are ISO numbers 1=Mon..7=Sun, identical to cron 1-5 for Mon-Fri. `lock` is the /tmp flock path the cron line used; a lock the cron line did NOT have is named /tmp/health_tick_<step>.lock and marked in the note. `needs_env` is false everywhere because no absorbed line sourced anything: each script loads CURRENT/.env itself (CURRENT/.env is a symlink to the dev-tree .env). `log` is the `>> logs/...` target the cron line appended to; health_tick appends the step's stdout+stderr there so log-freshness monitors (system_health_agent) keep seeing the same files. The three safety nets (portfolio_server_watchdog.sh, process_reaper.py, cleanup_stale_locks.sh), resolve_due_checkpoints.py and the @reboot moomoo line stay in cron on purpose.",
+  "retired_steps_note": "Tombstones of steps removed from `steps` (health_tick.py never reads this key). Each keeps the removed row verbatim plus why. Restore = move the row back into `steps` (and back out tests/test_health_tick_20261007.py counts).",
+  "retired_steps": [
+    {
+      "retired_on": "2026-10-11",
+      "retired_by": "consolidation retire-wave1 W1-7 (operator decision 2026-10-11, \"i agree\"); AGENTS.md 9.3",
+      "reason": "7 days to 2026-10-11 08:52 ET (data/runtime/health_tick_history.jsonl): 32 runs, 30 rc -15 (timeout kill), 2 rc 0. price_cache.json is also written by the portfolio-price-cache timer; lane portfolio-live-monitor was already RETIRED (superseded_by health-tick) and is now unscheduled everywhere. Evidence: ~/n8n-maturity-verification/packets/consolidation-retire-wave1/evidence/A_candidates_evidence.txt",
+      "step": {
+        "step_id": "portfolio-live-monitor",
+        "command": ["$PY", "scripts/portfolio_live_monitor.py", "--once"],
+        "cadence_minutes": 20,
+        "minute_offset": 0,
+        "hours": [9, 10, 11, 12, 13, 14, 15, 16],
+        "weekdays": [1, 2, 3, 4, 5],
+        "lock": "/tmp/portfolio_live_monitor.lock",
+        "timeout_s": 120,
+        "needs_env": false,
+        "market_day_gate": false,
+        "log": "logs/portfolio_live_monitor.log",
+        "note": "crontab line 403: */20 9-16 * * 1-5 cd $PROJ && flock -n /tmp/portfolio_live_monitor.lock $PY scripts/portfolio_live_monitor.py >> logs/portfolio_live_monitor.log 2>&1 | declared lane portfolio-live-monitor | 2026-10-09: --once. The script is a market-hours DAEMON (loops with 15-min sleeps until 16:31); cron's flock -n kept the first launch alive all day, but inside the tick it ran into its 300 s timeout on every firing (32 timeouts in 2 days) and pushed every hourly tick past the unit's TimeoutStartSec=330 so the receipt was never written. --once runs one trigger cycle and exits; the morning brief / EOD summary de-duplicate per day on disk"
+      }
+    }
+  ],
   "steps": [
     {
       "step_id": "system-health-agent",
@@ -139,20 +161,6 @@
       "market_day_gate": false,
       "log": "logs/system_freshness_monitor.log",
       "note": "crontab line 437: */20 * * * * cd $PROJ && flock -n /tmp/system_freshness_monitor.lock $PY scripts/system_freshness_monitor.py --send --auto-fix >> logs/system_freshness_monitor.log 2>&1 | --auto-fix may run an allowlisted idempotent classifier, hence the longer timeout; it writes logs/.freshness_monitor.heartbeat which freshness-watchdog-heartbeat reads"
-    },
-    {
-      "step_id": "portfolio-live-monitor",
-      "command": ["$PY", "scripts/portfolio_live_monitor.py", "--once"],
-      "cadence_minutes": 20,
-      "minute_offset": 0,
-      "hours": [9, 10, 11, 12, 13, 14, 15, 16],
-      "weekdays": [1, 2, 3, 4, 5],
-      "lock": "/tmp/portfolio_live_monitor.lock",
-      "timeout_s": 120,
-      "needs_env": false,
-      "market_day_gate": false,
-      "log": "logs/portfolio_live_monitor.log",
-      "note": "crontab line 403: */20 9-16 * * 1-5 cd $PROJ && flock -n /tmp/portfolio_live_monitor.lock $PY scripts/portfolio_live_monitor.py >> logs/portfolio_live_monitor.log 2>&1 | declared lane portfolio-live-monitor | 2026-10-09: --once. The script is a market-hours DAEMON (loops with 15-min sleeps until 16:31); cron's flock -n kept the first launch alive all day, but inside the tick it ran into its 300 s timeout on every firing (32 timeouts in 2 days) and pushed every hourly tick past the unit's TimeoutStartSec=330 so the receipt was never written. --once runs one trigger cycle and exits; the morning brief / EOD summary de-duplicate per day on disk"
     },
     {
       "step_id": "freshness-watchdog-heartbeat",

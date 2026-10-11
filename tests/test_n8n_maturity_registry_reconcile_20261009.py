@@ -245,7 +245,9 @@ def test_generated_rows_have_evidence_or_are_flagged_unverified(committed):
     # build-symbol-profiles-at-0-19 unchanged so its lane_id stays stable (294 generated rows left).
     # C1 hermes_learning flip (2026-10-10) retired 6 generated rows into the stage lanes and made them
     # hand-curated (the retire-batch-1 pattern) so the generator keeps RETIRED (288 generated rows left).
-    assert len(gen) >= 288
+    # retire-wave1 (2026-10-11) made 3 more hand-curated: shadow-batch-generator-at-15-9 and
+    # hermes-embedding-promotion-review (RETIRED), and shadow-batch-generator-at-15-10 (id pinned) (285 left).
+    assert len(gen) >= 285
     adopted = [r for r in committed["lanes"] if r.get("adopted_from_generator") == R.GENERATOR_VERSION]
     # D3 rows carry an r1_pending block (inert until AGENTS 4.4.0 is ACTIVE) instead of a dispatch block;
     # build-symbol-profiles-at-0-19 is adopted unchanged only to keep its lane_id stable.
