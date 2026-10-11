@@ -78,5 +78,11 @@ def main():
     return 1 if FAIL else 0
 
 
+def test_momentum_scalp_source_health():
+    # pytest entry (train 4, 2026-10-11): the script-style checks above collected no test, so the
+    # momentum_scalp_refresh_alarm_20260928 gate failed "no tests ran" whenever selection ran this file alone.
+    assert main() == 0, FAIL
+
+
 if __name__ == "__main__":
     raise SystemExit(main())
