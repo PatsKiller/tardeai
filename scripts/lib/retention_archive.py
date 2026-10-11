@@ -76,12 +76,14 @@ def write_manifest(path: Path, **fields: Any) -> dict:
     is the one place the tripwire half of AGENTS.md §0 rule 6 is written. A tripwire write that
     fails raises: the caller rolls back and the rows are not deleted.
     """
-    doc = {"schema": MANIFEST_SCHEMA, "file": path.name,
+    writer = str(fields.pop("writer", None) or "db_retention")
+    doc = {"schema": MANIFEST_SCHEMA, "file": path.name, "writer": writer,
            "created_at": datetime.now(timezone.utc).isoformat(), **fields}
     mp = manifest_path(path)
     mp.write_text(json.dumps(doc, default=str, sort_keys=True, indent=1) + "\n", encoding="utf-8")
     write_tripwire_record(path, manifest=mp, table=fields.get("table"), rows=fields.get("rows"),
-                          sha256=fields.get("sha256"), label=fields.get("label"))
+                          sha256=fields.get("sha256"), label=fields.get("label"), writer=writer,
+                          kind=str(fields.get("kind") or "rows"))
     return doc
 
 
@@ -99,11 +101,12 @@ def tripwire_path(archive_file: Path) -> Path:
 
 
 def write_tripwire_record(archive_file: Path, *, manifest: Path | None = None, table: Any = None, rows: Any = None,
-                          sha256: Any = None, label: Any = None, writer: str = "db_retention") -> dict:
-    rec = {"schema": TRIPWIRE_SCHEMA, "kind": "rows", "writer": writer, "table": table, "label": label,
+                          sha256: Any = None, label: Any = None, writer: str = "db_retention",
+                          kind: str = "rows") -> dict:
+    rec = {"schema": TRIPWIRE_SCHEMA, "kind": kind, "writer": writer, "table": table, "label": label,
            "archive": str(archive_file), "manifest": str(manifest) if manifest else None, "rows": rows,
            "sha256": sha256, "archived_at": datetime.now(timezone.utc).isoformat(),
-           "fires_on": "any live reference to archive/db_retention (scripts/lib/retention_tripwire.py, "
+           "fires_on": "any live reference to archive/db_retention or archive/file_prune (scripts/lib/retention_tripwire.py, "
                        "read nightly by report_db_hygiene.py -> incident fan-in)"}
     tp = tripwire_path(archive_file)
     with open(tp, "a", encoding="utf-8") as fh:
@@ -171,7 +174,7 @@ def estimate(conn, *, table: str, where_sql: str, params: Sequence[Any] = (),
 
 def archive_then_delete_batches(conn, *, table: str, where_sql: str, params: Sequence[Any] = (),
                                 label: str, archive_dir: Path, batch_rows: int, max_rows: int,
-                                key: str = "id", stamp: str | None = None) -> dict:
+                                key: str = "id", stamp: str | None = None, writer: str = "db_retention") -> dict:
     """Apply mode. Returns a result dict; raises ArchiveVerifyError after rolling back a bad batch."""
     if batch_rows <= 0 or max_rows <= 0:
         raise ValueError("batch_rows and max_rows must be positive")
@@ -198,7 +201,7 @@ def archive_then_delete_batches(conn, *, table: str, where_sql: str, params: Seq
         named.close()
         write_manifest(path, table=table, label=label, batch=idx, rows=n, sha256=sha, bytes=nbytes,
                        key=key, key_min=min(keys), key_max=max(keys), predicate=where_sql,
-                       params=[str(p) for p in params])
+                       params=[str(p) for p in params], writer=writer)
         ok, why = (False, f"archived {n} != locked {len(keys)}") if n != len(keys) else verify_archive(
             path, expected_rows=n, expected_sha256=sha, key=key, expected_keys=keys)
         if not ok:
@@ -221,4 +224,214 @@ def archive_then_delete_batches(conn, *, table: str, where_sql: str, params: Seq
             break
     out["status"] = "ok"
     out["cap_reached"] = done >= max_rows
+    return out
+
+
+# ── Archive roots (2026-10-11, retention-all-managed) ────────────────────────
+# One place that knows where archives live, so every writer (db_retention, the hermes librarian, file
+# prunes) lands under the tripwire reader's roots (lib/retention_tripwire.py) without naming the path.
+def state_root() -> Path:
+    base = os.getenv("TRADEAI_STATE_ROOT")
+    return Path(base) if base else Path.home() / "trade-ai-releases" / "persistent-state"
+
+
+def archive_root() -> Path:
+    """<state>/archive/db_retention — row archives, one sub-directory per table."""
+    return state_root() / "archive" / "db_retention"
+
+
+def file_archive_root() -> Path:
+    """<state>/archive/file_prune — file-prune archives, one sub-directory per prune label."""
+    return state_root() / "archive" / "file_prune"
+
+
+# ── File prunes: archive-then-unlink (2026-10-11) ────────────────────────────
+# A FILE_PRUNE target is tarred (gzip) with a per-member sha256 manifest and a tripwire record, the tar
+# is re-read and every member re-hashed against the source file, and only then is the source unlinked.
+# A mismatch unlinks nothing (ArchiveVerifyError). Same rule-6 shape as the row archives.
+FILE_MANIFEST_SCHEMA = "FilePruneArchiveManifest@v1"
+
+
+def _sha256_bytes_of(path: Path) -> tuple[str, int]:
+    h = hashlib.sha256()
+    n = 0
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+            n += len(chunk)
+    return h.hexdigest(), n
+
+
+def archive_files_then_unlink(files: Sequence[Path], *, base_dir: Path, archive_dir: Path, label: str,
+                              stamp: str | None = None, writer: str = "db_retention") -> dict:
+    """Tar + verify + unlink. Returns {archive, files, bytes, sha256, unlinked}. Raises ArchiveVerifyError."""
+    import tarfile
+
+    files = [Path(f) for f in files]
+    out: dict = {"label": label, "files": 0, "unlinked": 0, "archive": None}
+    if not files:
+        return out
+    stamp = stamp or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    archive_dir = Path(archive_dir)
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    path = archive_dir / f"{stamp}-{label}.tar.gz"
+    members = []
+    base_dir = Path(base_dir)
+    with open(path, "wb") as raw:
+        with tarfile.open(fileobj=raw, mode="w:gz", compresslevel=COMPRESSLEVEL) as tar:
+            for f in files:
+                arc = f.relative_to(base_dir).as_posix() if f.is_relative_to(base_dir) else f.name
+                sha, size = _sha256_bytes_of(f)
+                st = f.stat()
+                tar.add(str(f), arcname=arc, recursive=False)
+                members.append({"name": arc, "source": str(f), "sha256": sha, "bytes": size,
+                                "mtime": datetime.fromtimestamp(st.st_mtime, timezone.utc).isoformat()})
+        raw.flush()
+        os.fsync(raw.fileno())
+    sha = _sha256_file(path)
+    nbytes = path.stat().st_size
+    write_manifest(path, table=None, label=label, kind="files", rows=len(members), sha256=sha, bytes=nbytes,
+                   base_dir=str(base_dir), members=members, schema_files=FILE_MANIFEST_SCHEMA, writer=writer)
+    ok, why = verify_file_archive(path, expected_sha256=sha, members=members)
+    if not ok:
+        raise ArchiveVerifyError(f"{label}: {why} (archive {path}); unlink refused")
+    for m in members:
+        Path(m["source"]).unlink()
+    out.update(archive=str(path), files=len(members), bytes=nbytes, sha256=sha, unlinked=len(members),
+               source_bytes=sum(m["bytes"] for m in members))
+    return out
+
+
+def verify_file_archive(path: Path, *, expected_sha256: str, members: Sequence[dict]) -> tuple[bool, str]:
+    """Re-read the tar from disk: archive sha256, member set, and every member's sha256."""
+    import tarfile
+
+    if not Path(path).exists():
+        return False, "archive file missing"
+    if _sha256_file(path) != expected_sha256:
+        return False, "archive sha256 mismatch"
+    want = {m["name"]: m["sha256"] for m in members}
+    seen: dict = {}
+    try:
+        with tarfile.open(path, mode="r:gz") as tar:
+            for ti in tar:
+                fh = tar.extractfile(ti)
+                if fh is None:
+                    continue
+                seen[ti.name] = hashlib.sha256(fh.read()).hexdigest()
+    except (OSError, tarfile.TarError, EOFError) as exc:
+        return False, f"archive unreadable: {exc}"
+    if set(seen) != set(want):
+        return False, "archived member set differs from the selected files"
+    bad = [n for n in want if seen[n] != want[n]]
+    if bad:
+        return False, f"member sha256 mismatch: {bad[:3]}"
+    return True, "ok"
+
+
+# ── Projection and growth (2026-10-11) ───────────────────────────────────────
+def gz_bytes_per_row(rows: Sequence[Any]) -> float | None:
+    """Compressed archive bytes per row for a sample of row_to_json values (same codec/level as the archive)."""
+    rows = list(rows)
+    if not rows:
+        return None
+    buf = io.BytesIO()
+    with gzip.GzipFile(fileobj=buf, mode="wb", compresslevel=COMPRESSLEVEL) as gz:
+        for r in rows:
+            obj = r[0] if isinstance(r, (tuple, list)) else r
+            gz.write((json.dumps(obj, default=str) + "\n").encode("utf-8"))
+    return len(buf.getvalue()) / len(rows)
+
+
+ARCHIVE_USAGE_SCHEMA = "RetentionArchiveUsage@v1"
+
+
+def archive_usage(root: Path | None = None, *, now: datetime | None = None, window_days: int = 30) -> dict:
+    """Read-only size/age report of <state>/archive/{db_retention,file_prune,db_trim,comms_lifecycle}: per store bytes, files,
+    oldest/newest mtime, and bytes written in the last ``window_days``. Never deletes anything."""
+    root = Path(root) if root is not None else state_root() / "archive"
+    now_ts = (now or datetime.now(timezone.utc)).timestamp()
+    cutoff = now_ts - window_days * 86400
+    stores: dict = {}
+    for top in ("db_retention", "file_prune", "db_trim", "comms_lifecycle"):
+        base = root / top
+        if not base.is_dir():
+            continue
+        for sub in sorted(p for p in base.iterdir() if p.is_dir()) or [base]:
+            key = f"{top}/{sub.name}" if sub != base else top
+            s = {"bytes": 0, "files": 0, "bytes_recent": 0, "oldest": None, "newest": None}
+            for f in sub.rglob("*"):
+                if not f.is_file():
+                    continue
+                st = f.stat()
+                s["bytes"] += st.st_size
+                s["files"] += 1
+                if st.st_mtime >= cutoff:
+                    s["bytes_recent"] += st.st_size
+                s["oldest"] = st.st_mtime if s["oldest"] is None else min(s["oldest"], st.st_mtime)
+                s["newest"] = st.st_mtime if s["newest"] is None else max(s["newest"], st.st_mtime)
+            for k in ("oldest", "newest"):
+                if s[k] is not None:
+                    s[k] = datetime.fromtimestamp(s[k], timezone.utc).isoformat()
+            stores[key] = s
+    total = sum(s["bytes"] for s in stores.values())
+    recent = sum(s["bytes_recent"] for s in stores.values())
+    return {"schema": ARCHIVE_USAGE_SCHEMA, "root": str(root), "window_days": window_days, "stores": stores,
+            "total_bytes": total, "recent_bytes": recent,
+            "recent_gb_per_month": round(recent / 1e9 * 30.0 / window_days, 3)}
+
+
+def archive_growth_findings(usage: dict, *, cap_gb_month: float | None, total_budget_gb: float | None = None,
+                            disk_free_bytes: int | None = None, disk_floor_gb: float = 20.0) -> list[dict]:
+    """DbHygieneReport@v1 findings for the archive store. Report only: archives are never deleted here
+    (AGENTS.md §0 rule 6); moving them off-box is an operator decision (§17, §18)."""
+    out: list[dict] = []
+    win = float(usage.get("window_days") or 30)
+    rate = float(usage.get("recent_bytes") or 0) / 1e9 * 30.0 / win
+    total_gb = float(usage.get("total_bytes") or 0) / 1e9
+    if cap_gb_month and rate > float(cap_gb_month):
+        top = sorted(usage.get("stores", {}).items(), key=lambda kv: -kv[1]["bytes_recent"])[:3]
+        out.append({"code": "ARCHIVE_GROWTH", "item": "archive", "severity": "P2",
+                    "detail": f"{rate:.2f} GB/month over the last {usage.get('window_days')} d > cap {cap_gb_month} GB/month; "
+                              "top: " + ", ".join(f"{k} {v['bytes_recent']/1e9:.2f} GB" for k, v in top)})
+    if total_budget_gb and total_gb > float(total_budget_gb):
+        out.append({"code": "ARCHIVE_GROWTH", "item": "archive_total", "severity": "P2",
+                    "detail": f"archive holds {total_gb:.2f} GB > budget {total_budget_gb} GB on the DB disk; "
+                              "off-box copy is an operator decision (AGENTS.md §17)"})
+    if disk_free_bytes is not None and disk_free_bytes < disk_floor_gb * 1e9:
+        out.append({"code": "ARCHIVE_GROWTH", "item": "disk_free", "severity": "P2",
+                    "detail": f"{disk_free_bytes/1e9:.1f} GB free < {disk_floor_gb} GB floor; archives share the DB disk"})
+    return out
+
+
+# ── One call for every registered purge (2026-10-11, retention-all-managed) ──
+# Any job that deletes rows by age or condition calls this instead of a bare DELETE: a dry run only
+# counts (SELECT), an apply archives + verifies + deletes in batches (archive_then_delete_batches), and
+# ``archive=False`` keeps the inherited hard DELETE as an explicit, logged rollback lever. The owner and
+# class of every caller is declared in config/data_retention_policy.json ``purge_paths``.
+DEFAULT_MANAGED_MAX_ROWS = 500000
+
+
+def managed_purge(conn, *, table: str, where_sql: str, params: Sequence[Any] = (), label: str, writer: str,
+                  apply: bool, archive: bool = True, key: str = "id", batch_rows: int = 20000,
+                  max_rows: int = DEFAULT_MANAGED_MAX_ROWS, archive_dir: Path | None = None) -> dict:
+    """``where_sql`` uses the alias ``t``. Returns {table, label, eligible, deleted, archived, mode, ...}."""
+    cur = conn.cursor()
+    cur.execute(f"SELECT count(*) FROM {table} t WHERE {where_sql}", tuple(params))
+    eligible = int(cur.fetchone()[0] or 0)
+    out = {"table": table, "label": label, "writer": writer, "eligible": eligible, "deleted": 0, "archived": 0,
+           "archive": bool(archive), "mode": "apply" if apply else "dry_run"}
+    if not apply or eligible == 0:
+        return out
+    if archive:
+        res = archive_then_delete_batches(conn, table=table, where_sql=where_sql, params=params, label=label,
+                                          archive_dir=Path(archive_dir) if archive_dir else archive_root() / table,
+                                          batch_rows=batch_rows, max_rows=max_rows, key=key, writer=writer)
+        out.update(deleted=res["rows_deleted"], archived=res["rows_archived"], batches=len(res["batches"]),
+                   cap_reached=res.get("cap_reached", False),
+                   archives=[b["path"] for b in res["batches"]])
+        return out
+    cur.execute(f"DELETE FROM {table} t WHERE {where_sql}", tuple(params))
+    out["deleted"] = int(cur.rowcount)
+    conn.commit()
     return out

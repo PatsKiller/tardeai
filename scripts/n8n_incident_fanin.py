@@ -53,6 +53,69 @@ LANE_REGISTRY_RECEIPT_REL = "data/runtime/n8n_lane_registry_drift_last.json"
 AUTHORITY = "READ_ONLY_ADVISORY"
 SEV = {"NO_OUTPUT": "P2", "SILENT": "P2", "HUNG": "P1", "FAILING": "P1", "BACKLOG": "P2", "MEMORY_UNREACHABLE": "P1",
        "SLO_MISS": "P2", "UNGOVERNED": "P3"}
+# Operator ruling R11, 2026-10-11 ("R11 yes"; docs/implementation/n8n-maturity/MONITOR_FOLD_COVERAGE_W1-9.md):
+# STALE_OUTPUT takes the severity of its freshness contract (config/lane_registry.json freshness_contracts[].severity,
+# carried on the breach row as evidence.severity). A row without a readable one (an older row, a hand-edited ledger)
+# is P2, the level job-coverage-monitor and pipeline-freshness-monitor alert at today: never muted to the P3 default.
+STALE_OUTPUT_SEV = {"P0": "P1", "P1": "P1", "P2": "P2", "P3": "P3"}
+STALE_OUTPUT_SEV_DEFAULT = "P2"
+# INPUT_STARVATION: STARVED (work entered, nothing came out) is P2. NO_ELIGIBLE_INPUT (work arrived but none could
+# produce this output) and UNKNOWN (the source could not be read) are P3: neither shows a lane that is down.
+INPUT_STARVATION_SEV = {"STARVED": "P2", "NO_ELIGIBLE_INPUT": "P3", "UNKNOWN": "P3"}
+
+
+def breach_severity(row: dict[str, Any]) -> tuple[str, str]:
+    """(fan-in severity, basis) for one breach-detector ledger row. Pure."""
+    kind = str(row.get("kind") or "")
+    ev = row.get("evidence") if isinstance(row.get("evidence"), dict) else {}
+    if kind == "STALE_OUTPUT":
+        sev = STALE_OUTPUT_SEV.get(str(ev.get("severity") or "").upper())
+        return (sev, f"contract:{ev.get('severity')}") if sev else (STALE_OUTPUT_SEV_DEFAULT, "contract:missing->P2")
+    if kind == "INPUT_STARVATION":
+        status = str(ev.get("status") or "")
+        return INPUT_STARVATION_SEV.get(status, "P3"), f"liveness:{status or 'missing'}"
+    return SEV.get(kind, "P3"), f"kind:{kind}"
+
+
+def _breach_key(row: dict[str, Any]) -> str:
+    """The finding's item, ``<lane>:<KIND>`` (n8n_siem_bridge.lane_kind splits it on the last colon). One open
+    finding per lane+kind, except: STALE_OUTPUT is per contract (a lane-tied contract's item is
+    ``<lane>/<contract>:STALE_OUTPUT``, apart from the producer lane's own NO_OUTPUT; a lane-less one already owns
+    ``freshness:<contract>``) and INPUT_STARVATION is per status (``liveness:<lane>/<status>:INPUT_STARVATION``: a
+    NO_ELIGIBLE_INPUT P3 that turns STARVED P2 the same day gets its own incident)."""
+    kind = str(row.get("kind") or "")
+    lane = str(row.get("lane_id"))
+    ev = row.get("evidence") if isinstance(row.get("evidence"), dict) else {}
+    if kind == "STALE_OUTPUT" and ev.get("contract") and lane != f"freshness:{ev.get('contract')}":
+        return f"{lane}/{ev.get('contract')}:{kind}"
+    if kind == "INPUT_STARVATION" and ev.get("status"):
+        return f"{lane}/{ev.get('status')}:{kind}"
+    return f"{lane}:{kind}"
+
+
+def _breach_findings(rt: Path, now: datetime) -> list[dict[str, Any]]:
+    """Breach detector per-lane rows (OPEN, detected in the last 48 h).
+
+    The breach ledger is append-only and rows never flip to CLOSED, so "open" means: detected in the last 48 h (the
+    detector re-emits a breach_id per lane+kind+day while it persists). Severity: breach_severity()."""
+    latest: dict[str, dict] = {}
+    for r in _tail_jsonl(rt / "supervisor_breaches.jsonl"):
+        if r.get("state") != "OPEN":
+            continue
+        try:
+            age_h = (now - datetime.fromisoformat(str(r.get("detected_at")))).total_seconds() / 3600
+        except Exception:
+            continue
+        if age_h > 48:
+            continue
+        latest[_breach_key(r)] = r
+    out: list[dict[str, Any]] = []
+    for key, r in latest.items():
+        sev, basis = breach_severity(r)
+        out.append({"source": "breach_detector", "item": key, "severity": sev, "severity_basis": basis,
+                    "detail": str(r.get("evidence") or "")[:160], "artifact_rel": "data/runtime/supervisor_breaches.jsonl",
+                    "store": "data/runtime", "detected_at": r.get("detected_at")})
+    return out
 
 
 def _load(path: Path) -> dict | None:
@@ -164,25 +227,8 @@ def collect(root: Path, now: datetime, prev: dict[str, Any] | None = None) -> li
         prev = PREV_RECEIPT
     rt = root / "data" / "runtime"
     out: list[dict[str, Any]] = []
-    # 1. breach detector per-lane rows (OPEN, today or yesterday by breach_id day)
-    # The breach ledger is append-only and rows never flip to CLOSED, so "open" means: detected in
-    # the last 48 h (the detector re-emits a breach_id per lane+kind+day while it persists).
-    latest: dict[str, dict] = {}
-    for r in _tail_jsonl(rt / "supervisor_breaches.jsonl"):
-        if r.get("state") != "OPEN":
-            continue
-        try:
-            age_h = (now - datetime.fromisoformat(str(r.get("detected_at")))).total_seconds() / 3600
-        except Exception:
-            continue
-        if age_h > 48:
-            continue
-        latest[f"{r.get('lane_id')}:{r.get('kind')}"] = r
-    for r in latest.values():
-        kind = str(r.get("kind") or "")
-        out.append({"source": "breach_detector", "item": f"{r.get('lane_id')}:{kind}", "severity": SEV.get(kind, "P3"),
-                    "detail": str(r.get("evidence") or "")[:160], "artifact_rel": "data/runtime/supervisor_breaches.jsonl",
-                    "store": "data/runtime", "detected_at": r.get("detected_at")})
+    # 1. breach detector per-lane rows (OPEN, detected in the last 48 h); severity per kind, R11 for the W1-9 kinds
+    out.extend(_breach_findings(rt, now))
     # 2. --alert timer receipts
     specs = [
         ("expected_services", "expected_services_last_run.json", "off_items", "P1"),
