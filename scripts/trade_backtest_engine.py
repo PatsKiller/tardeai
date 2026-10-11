@@ -7,7 +7,7 @@ Grades entry quality (A-D) and exit quality (A-D) using historical OHLCV from yf
 
 --dry-run CLI (shard03, 2026-10-11) prints an offline limit/action plan before heavy imports,
 credential files, DB or yfinance. The older preview() remains available to explicit library
-callers; it is not the dispatcher CLI. A real run writes data/runtime/trade-backtest-engine_last.json
+callers; it is not the dispatcher CLI. A real run writes data/runtime/trade_backtest_engine_last.json
 (LaneRunReceipt@v1; ok_at only on success) under the persistent state root and exits 1 on failure.
 Per-trade data gaps ('insufficient'/'error') are
 findings in the counts, not a failed run."""
@@ -41,7 +41,7 @@ ROOT = Path(__file__).resolve().parent.parent
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
 log = logging.getLogger(__name__)
 
-RECEIPT_NAME = 'trade-backtest-engine'
+RECEIPT_NAME = 'trade_backtest_engine'  # the receipt train 2's REVIEWED contract, registry row and allowlist name
 
 if (ROOT / '.env').exists():  # absent in a bare checkout/test tree; the served release symlinks it
     # DB_* only (AGENTS.md §23.18): never copy the whole env file, which also carries broker credentials.
