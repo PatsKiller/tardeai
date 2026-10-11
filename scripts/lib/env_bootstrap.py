@@ -24,6 +24,10 @@ Narrowing (2026-10-11, canary blocker — AGENTS §23.18, N8N_ONBOARDING_STANDAR
   lines source no env file and rely on this in-process load for names their closure reads (e.g.
   ``market_quote_provider.fetch_alpaca_quote`` reads ALPACA_API_KEY with no loader of its own); dropping broker
   names from it is an operator decision (AGENTS §17), not a loader refactor.
+
+Broker-name read audit (step 1 of 3, operator 2026-10-11): with ``TRADEAI_BROKER_ENV_AUDIT=1`` this module installs
+``broker_env_audit`` at import and after every ``load_env``. It LOGS which process/module reads each broker name
+(names only, never values) and blocks nothing; unset, it is a no-op. docs/implementation/n8n-maturity/BROKER_ENV_AUDIT.md.
 """
 from __future__ import annotations
 
@@ -56,6 +60,21 @@ def bound_names(env=None) -> frozenset[str] | None:
     if ENV_BOUND_NAMES_ENV not in env:
         return None
     return frozenset(n.strip() for n in str(env.get(ENV_BOUND_NAMES_ENV) or "").split(",") if n.strip())
+
+
+def _audit_hook() -> None:
+    """Install the broker-name read audit when its flag is set (log only, zero behaviour change). Never raises."""
+    try:
+        try:
+            import broker_env_audit as _bea
+        except ImportError:
+            try:
+                from lib import broker_env_audit as _bea
+            except ImportError:
+                from . import broker_env_audit as _bea  # type: ignore[no-redef]
+        _bea.maybe_install(is_broker_name)
+    except Exception:  # noqa: BLE001 — the audit must never break a loader
+        pass
 
 
 def _candidates() -> list[Path]:
@@ -140,13 +159,18 @@ def load_env(names: Iterable[str] | None = None, *, override: bool = False,
         if missing:
             meta["ok"] = False
             meta["missing"] = missing
+            _audit_hook()
             raise RuntimeError(f"env_bootstrap missing required keys: {missing}")
+    _audit_hook()  # after the copy: a flag set in the env file takes effect too
     return meta
 
 
 def ensure_loaded() -> None:
     if not _LOADED:
         load_env()
+
+
+_audit_hook()
 
 
 if __name__ == "__main__":
