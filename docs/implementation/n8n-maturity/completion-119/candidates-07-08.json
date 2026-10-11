@@ -1884,7 +1884,7 @@
     "ruff": "PASS",
     "ast": "PASS",
     "crlf": "PASS",
-    "lie_expectations": "PENDING_AGENT04_SOURCE_INTEGRATION",
+    "lie_expectations": "INTEGRATED_601998031_AND_TESTED_ROOT_421_TEST_SUITE",
     "full_ci_profile": "INTEGRATOR_PENDING"
   },
   "main_observed_at_validation": "c15b7b98caa3909665ac5abb878f02eb558d6ff6",

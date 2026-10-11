@@ -1928,7 +1928,7 @@
       "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
       "evidence_class": "SOURCE_ONLY",
       "runtime_status": "NOT_MEASURED",
-      "status": "SHARED_MANIFEST_REPAIR_PENDING_ROOT",
+      "status": "SHARED_MANIFEST_SOURCE_REPAIRED",
       "current_declared_state": "ACTIVE",
       "current_scheduler": {
         "kind": "cron",
@@ -1937,10 +1937,10 @@
         "match": "run_premarket_data_pipeline.sh --stage premarket"
       },
       "source_script": "scripts/pipelines/run_premarket_data_pipeline.sh",
-      "implemented_source": false,
-      "validation": "PENDING_HARDENED_LAUNCHER",
+      "implemented_source": true,
+      "validation": "ROOT_MANIFEST_TARGETED_PASS_FULL_PROFILE_PENDING",
       "remaining": [
-        "Root-owned common manifest preview/failure/receipt closure; exact per-step child ownership and admission proof."
+        "Shared preview/failure/receipt corrections integrated at 93225bb49 and 63fea0b6b; exact per-step child ownership and admission proof remain."
       ],
       "evidence": [
         "scripts/pipelines/run_premarket_data_pipeline.sh (source only)",
@@ -3495,7 +3495,7 @@
       "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
       "evidence_class": "SOURCE_ONLY",
       "runtime_status": "NOT_MEASURED",
-      "status": "SHARED_MANIFEST_REPAIR_PENDING_ROOT",
+      "status": "SHARED_MANIFEST_SOURCE_REPAIRED",
       "current_declared_state": "ACTIVE",
       "current_scheduler": {
         "kind": "cron",
@@ -3504,10 +3504,10 @@
         "match": "hermes_overnight.json --stage night"
       },
       "source_script": "scripts/pipelines/_manifest_runner.sh",
-      "implemented_source": false,
-      "validation": "PENDING_HARDENED_LAUNCHER",
+      "implemented_source": true,
+      "validation": "ROOT_MANIFEST_TARGETED_PASS_FULL_PROFILE_PENDING",
       "remaining": [
-        "Root-owned common manifest preview/failure/receipt closure; exact per-step child ownership and admission proof."
+        "Shared preview/failure/receipt corrections integrated at 93225bb49 and 63fea0b6b; exact per-step child ownership and admission proof remain."
       ],
       "evidence": [
         "scripts/pipelines/_manifest_runner.sh (source only)",
@@ -5318,9 +5318,9 @@
     "BLOCKED_OPERATOR_OR_AUTHORITY": 9,
     "REVALIDATED_HELD_MAIN_SOURCE": 1,
     "IMPLEMENTED_SOURCE_CANDIDATE_PENDING_VALIDATION": 12,
-    "SHARED_MANIFEST_REPAIR_PENDING_ROOT": 2
+    "SHARED_MANIFEST_SOURCE_REPAIRED": 2
   },
-  "last_validation": "Two guarded runs STOPPED_ON_REFUSAL; second reached100%testdots but no acceptedpytestsummary. FulltrainPR profile root-owned, NOT_RUN here.",
+  "last_validation": "Corrected source f1e266ba5 passed 334 targeted/regression tests, exit 0, no refusals and owned children reaped. Two prior refused attempts remain rejected. Full-train PR profile is root-owned and pending acceptance.",
   "refusals": [
     {
       "artifact": "reassess-gates/targeted-04-06.json",
@@ -5330,7 +5330,7 @@
     {
       "artifact": "reassess-gates/targeted-04-06-fixture-fixed.json",
       "detail": "production path /run/user/1000/tradeai/env",
-      "resolution": "Stopped; root hermetic bootstrap prerequisite remains."
+      "resolution": "Stopped attempt retained; shared bootstrap 910fbe0ab integrated before corrected-head validation. Guard unchanged."
     }
   ],
   "worktree_base_sha": "65337da5366b469c8478b198187201bd37671bc2",
