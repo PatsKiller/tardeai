@@ -38,7 +38,21 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from db_adapter import _execute as ex  # noqa: E402
+def ex(*args, **kwargs):
+    # The CLI offline preview returns before importing the runtime DB adapter.
+    from db_adapter import _execute
+    return _execute(*args, **kwargs)
+
+LANE_ID = "watch-valuation-backfill"
+
+
+def _receipt_lib():
+    try:
+        from scripts.lib import lane_last_receipt as lr
+    except ImportError:
+        from lib import lane_last_receipt as lr
+    return lr
+
 
 STATE = ROOT / "data" / "state"
 FINVIZ_CACHE = STATE / "ticker_enrichment_cache.json"
@@ -103,15 +117,34 @@ def priority_order(syms: list[str]) -> list[str]:
     return sorted(syms, key=lambda s: rank.get(s, (2, 0)))
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser()
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(allow_abbrev=False)
     ap.add_argument("--limit", type=int, default=250,
                     help="max fresh yfinance fetches this run (resumable across runs)")
     ap.add_argument("--max-age-days", type=int, default=FRESH_DEFAULT_DAYS)
     ap.add_argument("--sleep", type=float, default=0.7, help="seconds between yfinance calls")
     ap.add_argument("--dry-run", action="store_true")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
+    if args.dry_run:
+        print(f"DRY-RUN {LANE_ID}: would supplement uncovered Watch valuations from yfinance "
+              f"limit={args.limit} max_age_days={args.max_age_days} sleep_s={args.sleep}; "
+              "preserve cached rows on failed fetches; no DB/cache read, fetch or write")
+        return 0
+    lr = _receipt_lib()
+    started = lr.now_iso()
+    stats = {}
+    try:
+        rc = _run(args, stats)
+    except BaseException as exc:
+        lr.write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
+                              script="watch_valuation_backfill.py", summary=stats, error=type(exc).__name__)
+        raise
+    lr.write_lane_receipt(LANE_ID, ok=rc == 0, exit_code=rc, started_at=started,
+                          script="watch_valuation_backfill.py", summary=stats)
+    return rc
 
+
+def _run(args, stats) -> int:
     finviz = _load(FINVIZ_CACHE)
     supplement = _load(SUPPLEMENT)
     now = dt.datetime.now(dt.timezone.utc)
@@ -189,7 +222,9 @@ def main() -> int:
     print(f"fetched={fetched} equities={equities} non_equity={non_equity} errors={errors}")
     print(f"supplement now holds {len(supplement)} symbols; {with_val} with a trailing P/E")
     print(f"remaining uncovered to backfill on later runs: {max(0, len(todo) - args.limit)}")
-    return 0
+    stats.update(fetched=fetched, equities=equities, non_equity=non_equity, errors=errors,
+                 remaining=max(0, len(todo) - args.limit))
+    return 1 if errors and not fetched else 0
 
 
 if __name__ == "__main__":

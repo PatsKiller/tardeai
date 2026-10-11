@@ -35,13 +35,24 @@ sys.path.insert(0, str(ROOT / "scripts"))
 def _conn():
     import psycopg2
     from lib.env_bootstrap import load_env
-    load_env()
+    load_env(names=("DB_HOST", "DB_NAME", "DB_USER", "DB_PASSWORD", "POSTGRES_PASSWORD"))
     return psycopg2.connect(
         host=os.environ.get("DB_HOST", "localhost"),
         dbname=os.environ.get("DB_NAME", "trade_ai"),
         user=os.environ.get("DB_USER", "trade_ai"),
         password=os.environ.get("DB_PASSWORD") or os.environ.get("POSTGRES_PASSWORD"))
 
+
+
+LANE_ID = "document-mentions-backfill"
+
+
+def _receipt_lib():
+    try:
+        from scripts.lib import lane_last_receipt as lr
+    except ImportError:
+        from lib import lane_last_receipt as lr
+    return lr
 
 WATERMARK_MARGIN = 200   # re-read a little below the mark: ids can commit slightly out of order
 
@@ -139,8 +150,8 @@ def run(table: str, limit: int, apply: bool, mark=None, deadline: float | None =
     return stat
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser()
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(allow_abbrev=False)
     ap.add_argument("--table", choices=sorted(__import__(
         "lib.document_mentions", fromlist=["SOURCES"]).SOURCES))
     ap.add_argument("--all", action="store_true")
@@ -150,13 +161,33 @@ def main() -> int:
                     help="ignore the watermarks: newest-first over every unwritten document")
     ap.add_argument("--budget-s", type=float, default=1200.0,
                     help="stop scanning after this many seconds (the hourly cron is killed at 25 min)")
-    a = ap.parse_args()
+    ap.add_argument("--dry-run", action="store_true", help="offline plan; overrides --apply")
+    a = ap.parse_args(argv)
 
     from lib.document_mentions import SOURCES
     targets = sorted(SOURCES) if a.all else ([a.table] if a.table else [])
     if not targets:
         ap.error("--table or --all required")
 
+    if a.dry_run:
+        print(f"DRY-RUN {LANE_ID}: would scan {','.join(targets)} limit={a.limit} "
+              f"budget_s={a.budget_s} rescan={a.rescan}; --apply would persist mentions and watermarks")
+        return 0
+    lr = _receipt_lib()
+    started = lr.now_iso()
+    stats = {"tables": len(targets), "scanned": 0, "written": 0}
+    try:
+        rc = _run(a, targets, stats)
+    except BaseException as exc:
+        lr.write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
+                              script="backfill_document_mentions.py", summary=stats, error=type(exc).__name__)
+        raise
+    lr.write_lane_receipt(LANE_ID, ok=rc == 0, exit_code=rc, started_at=started,
+                          script="backfill_document_mentions.py", summary=stats)
+    return rc
+
+
+def _run(a, targets, stats) -> int:
     t0 = time.monotonic()
     deadline = t0 + a.budget_s if a.budget_s and a.budget_s > 0 else None
     marks = {} if a.rescan else load_watermarks()
@@ -167,6 +198,8 @@ def main() -> int:
             print(f"  {t}: skipped (budget spent)", flush=True)
             continue
         s = run(t, a.limit, a.apply, mark=marks.get(t), deadline=deadline, seed=not a.rescan)
+        stats["scanned"] += s["scanned"]
+        stats["written"] += s["written"]
         # The mark only moves on --apply runs that scanned forward, so a dry run never hides documents.
         if a.apply and s["max_id"] is not None:
             marks[t] = max(int(s["max_id"]), int(marks.get(t) or 0))

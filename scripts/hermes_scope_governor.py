@@ -22,6 +22,17 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
 
+
+LANE_ID = "hermes-scope-governor"
+
+
+def _receipt_lib():
+    try:
+        from scripts.lib import lane_last_receipt as lr
+    except ImportError:
+        from lib import lane_last_receipt as lr
+    return lr
+
 KILL_SWITCH = PROJECT_ROOT / "data" / "runtime" / "HERMES_DISABLED"
 
 
@@ -77,8 +88,8 @@ def run(apply: bool = False, reaction_review: bool = False) -> dict:
     return out
 
 
-def main():
-    ap = argparse.ArgumentParser(description="Hermes Scope Governor Agent")
+def main(argv=None):
+    ap = argparse.ArgumentParser(description="Hermes Scope Governor Agent", allow_abbrev=False)
     ap.add_argument("--apply", action="store_true", help="Apply tier changes to DB")
     ap.add_argument("--dry-run", action="store_true", help="Compute decisions without writes (default)")
     ap.add_argument("--inspect", action="store_true", help="Show governed universe feed + recent audit")
@@ -86,14 +97,35 @@ def main():
     ap.add_argument("--reaction-review", action="store_true",
                     help="Log bus reactions without applying edge/cap/runtime overrides")
     ap.add_argument("--json", action="store_true", help="JSON output (default; scripting parity)")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
+    if args.dry_run:
+        print(f"DRY-RUN {LANE_ID}: would {'inspect universe/audit' if args.inspect else 'evaluate scope tiers'} "
+              f"symbol={args.symbol} apply={args.apply} reaction_review={args.reaction_review}; "
+              "no DB, runtime heartbeat, tier or reaction write")
+        return 0
+    lr = _receipt_lib()
+    started = lr.now_iso()
+    try:
+        out = _run(args)
+    except BaseException as exc:
+        lr.write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
+                              script="hermes_scope_governor.py", error=type(exc).__name__)
+        raise
+    rc = 1 if isinstance(out, dict) and out.get("ok") is False else 0
+    counts = {k: v for k, v in (out or {}).items() if isinstance(v, (int, float)) and not isinstance(v, bool)}
+    lr.write_lane_receipt(LANE_ID, ok=rc == 0, exit_code=rc, started_at=started,
+                          script="hermes_scope_governor.py", summary=counts)
+    return rc
 
+
+def _run(args):
     if args.inspect:
-        print(json.dumps(_inspect(args.symbol), indent=2, default=str))
-        return
+        out = _inspect(args.symbol)
+        print(json.dumps(out, indent=2, default=str))
+        return out
 
-    run(apply=args.apply and not args.dry_run, reaction_review=args.reaction_review)
+    return run(apply=args.apply, reaction_review=args.reaction_review)
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

@@ -16183,6 +16183,901 @@
         "runtime": "NOT_MEASURED"
       },
       "review_by": "2026-10-25"
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "document-mentions-backfill",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "DRAFT",
+      "target_reason": "stage:shadow",
+      "stage": "shadow",
+      "owner": "platform",
+      "purpose": {
+        "text": "Strict offline preview overrides --apply; real argv retains --all --limit and --apply; real-run mentions/watermark counts in lane receipt.",
+        "business_function": "platform",
+        "source": "SOURCE_ONLY scripts/backfill_document_mentions.py; no runtime or operator review claim"
+      },
+      "connects_to": [
+        {
+          "name": "n8n dispatcher -> relay -> coordination/run -> host executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md §23.3, §23.11; source-only topology"
+        },
+        {
+          "name": "$PY scripts/backfill_document_mentions.py --all --limit 4000 --apply",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json"
+        },
+        {
+          "name": "/tmp/document_mentions_backfill.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "native-approved exact cron snapshot"
+        },
+        {
+          "name": "data/runtime/document-mentions-backfill_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "scripts/backfill_document_mentions.py -> existing lane_last_receipt helper"
+        },
+        {
+          "name": "25 * * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/document_mentions_backfill.lock timeout 25m $PY scripts/backfill_document_mentions.py --all --limit 4000 --apply >> /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/logs/document_mentions.log 2>&1",
+          "kind": "cron_twin",
+          "direction": "calls",
+          "source": "OBSERVED_HOST scoped snapshot 2026-10-11T17:05:28.513179+00:00; full census NOT_MEASURED"
+        },
+        {
+          "name": "news_articles / catalyst_events / hermes_external_research / research_insights / sec_form4",
+          "kind": "store",
+          "direction": "read",
+          "source": "lib.document_mentions.SOURCES"
+        },
+        {
+          "name": "document_mentions and per-table watermarks on --apply",
+          "kind": "store",
+          "direction": "write",
+          "source": "backfill_document_mentions.run/_run"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "shadow_done",
+          "text": "RunReceipt is RUN_DONE in dry_run and all durable output mtimes remain unchanged."
+        },
+        {
+          "check": "cron_receipt_fresh",
+          "text": "Natural cron receipt ok_at within 3 h; source cadence 25 * * * *, America/New_York. No natural fire measured here."
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "Cron ok_at older than 3 h but younger than 4 h."
+        },
+        {
+          "check": "slow",
+          "text": "Duration exceeds 1200 s (provisional 80% of timeout)."
+        }
+      ],
+      "failed": [
+        {
+          "check": "failed_run",
+          "text": "RUN_FAILED, RUN_TIMEOUT, RUN_REFUSED, missing receipt or any dry-run durable write."
+        },
+        {
+          "check": "stale",
+          "text": "Cron receipt ok_at older than 4 h. Failed real runs preserve prior ok_at."
+        }
+      ],
+      "baseline": {
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "class": "ingest",
+        "evidence_class": "SOURCE_ONLY",
+        "ledger": "NOT_MEASURED",
+        "runs_considered": null,
+        "computed_on": "2026-10-11",
+        "timeout_s": 1500,
+        "duration_degraded_above_s": 1200.0,
+        "freshness_degraded_after_h": 3.0,
+        "freshness_failed_after_h": 4.0,
+        "freshness_rule": "SOURCE_ONLY: declared maximum inter-fire gap plus 2 h; failed at twice that gap plus 2 h. Weekday/weekend gaps remain provisional, not an observed SLO.",
+        "source": "Declared cron cadence plus class defaults. No coordination-ledger sample, duration distribution or runtime acceptance measured."
+      },
+      "alerting": {
+        "lane_severity": "Medium",
+        "severity_basis": "SOURCE_ONLY R1 data/learning defaults; operator review pending",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "Existing SIEM and host notifier chokepoints; this lane sends nothing.",
+        "enforced": "SOURCE_ONLY contract; runtime contract consumption NOT_MEASURED."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "No auto action enabled. Catalogue/diagnosis wiring requires separate owner review."
+      },
+      "evidence": {
+        "receipt": "data/runtime/document-mentions-backfill_last.json",
+        "class": "SOURCE_ONLY",
+        "runtime": "NOT_MEASURED",
+        "verify": [
+          "Read data/runtime/document-mentions-backfill_last.json ok_at/status/counts after a separately authorized natural run.",
+          "Join lane document-mentions-backfill coordination RunReceipt after operator shadow fire."
+        ],
+        "never": "Source plans or n8n execution status are not runtime work proof. Live inventory must filter deletedAt IS NULL; no live inventory measured here."
+      },
+      "review_by": "2026-10-25"
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "aegis-evening-packet",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "DRAFT",
+      "target_reason": "stage:shadow",
+      "stage": "shadow",
+      "owner": "agents",
+      "purpose": {
+        "text": "Offline bounded packet plan; real run writes source packet and lane receipt. Primary destination failure exits 1 and preserves receipt ok_at.",
+        "business_function": "agents",
+        "source": "SOURCE_ONLY scripts/aegis_evening_packet.py; no runtime or operator review claim"
+      },
+      "connects_to": [
+        {
+          "name": "n8n dispatcher -> relay -> coordination/run -> host executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md §23.3, §23.11; source-only topology"
+        },
+        {
+          "name": "$PY scripts/aegis_evening_packet.py",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json"
+        },
+        {
+          "name": "/tmp/aegis_evening_packet.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "native-approved exact cron snapshot"
+        },
+        {
+          "name": "data/runtime/aegis-evening-packet_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "scripts/aegis_evening_packet.py -> existing lane_last_receipt helper"
+        },
+        {
+          "name": "45 19 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && PYTHONPATH=/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT flock -n /tmp/aegis_evening_packet.lock $PY scripts/aegis_evening_packet.py >> logs/aegis_evening_packet.log 2>&1",
+          "kind": "cron_twin",
+          "direction": "calls",
+          "source": "OBSERVED_HOST scoped snapshot 2026-10-11T17:05:28.513179+00:00; full census NOT_MEASURED"
+        },
+        {
+          "name": "Canonical CIO/advisory/health/holdings snapshots -> bounded evening packet",
+          "kind": "store",
+          "direction": "read_write",
+          "source": "aegis_evening_packet.build_packet/_run; no model/send"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "shadow_done",
+          "text": "RunReceipt is RUN_DONE in dry_run and all durable output mtimes remain unchanged."
+        },
+        {
+          "check": "cron_receipt_fresh",
+          "text": "Natural cron receipt ok_at within 26 h; source cadence 45 19 * * *, America/New_York. No natural fire measured here."
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "Cron ok_at older than 26 h but younger than 50 h."
+        },
+        {
+          "check": "slow",
+          "text": "Duration exceeds 240 s (provisional 80% of timeout)."
+        }
+      ],
+      "failed": [
+        {
+          "check": "failed_run",
+          "text": "RUN_FAILED, RUN_TIMEOUT, RUN_REFUSED, missing receipt or any dry-run durable write."
+        },
+        {
+          "check": "stale",
+          "text": "Cron receipt ok_at older than 50 h. Failed real runs preserve prior ok_at."
+        }
+      ],
+      "baseline": {
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "class": "learn",
+        "evidence_class": "SOURCE_ONLY",
+        "ledger": "NOT_MEASURED",
+        "runs_considered": null,
+        "computed_on": "2026-10-11",
+        "timeout_s": 300,
+        "duration_degraded_above_s": 240.0,
+        "freshness_degraded_after_h": 26.0,
+        "freshness_failed_after_h": 50.0,
+        "freshness_rule": "SOURCE_ONLY: declared maximum inter-fire gap plus 2 h; failed at twice that gap plus 2 h. Weekday/weekend gaps remain provisional, not an observed SLO.",
+        "source": "Declared cron cadence plus class defaults. No coordination-ledger sample, duration distribution or runtime acceptance measured."
+      },
+      "alerting": {
+        "lane_severity": "Medium",
+        "severity_basis": "SOURCE_ONLY R1 data/learning defaults; operator review pending",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "Existing SIEM and host notifier chokepoints; this lane sends nothing.",
+        "enforced": "SOURCE_ONLY contract; runtime contract consumption NOT_MEASURED."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "No auto action enabled. Catalogue/diagnosis wiring requires separate owner review."
+      },
+      "evidence": {
+        "receipt": "data/runtime/aegis-evening-packet_last.json",
+        "class": "SOURCE_ONLY",
+        "runtime": "NOT_MEASURED",
+        "verify": [
+          "Read data/runtime/aegis-evening-packet_last.json ok_at/status/counts after a separately authorized natural run.",
+          "Join lane aegis-evening-packet coordination RunReceipt after operator shadow fire."
+        ],
+        "never": "Source plans or n8n execution status are not runtime work proof. Live inventory must filter deletedAt IS NULL; no live inventory measured here."
+      },
+      "review_by": "2026-10-25"
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "hermes-scope-governor",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "DRAFT",
+      "target_reason": "stage:shadow",
+      "stage": "shadow",
+      "owner": "research",
+      "purpose": {
+        "text": "Explicit --dry-run returns before DB/engine import. Normal argv remains unchanged; result ok:false exits 1, receipt carries numeric counts only.",
+        "business_function": "research",
+        "source": "SOURCE_ONLY scripts/hermes_scope_governor.py; no runtime or operator review claim"
+      },
+      "connects_to": [
+        {
+          "name": "n8n dispatcher -> relay -> coordination/run -> host executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md §23.3, §23.11; source-only topology"
+        },
+        {
+          "name": "$PY scripts/hermes_scope_governor.py --apply",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json"
+        },
+        {
+          "name": "/tmp/hermes-scope-governor.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "proposed outer flock; cron packet required"
+        },
+        {
+          "name": "data/runtime/hermes-scope-governor_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "scripts/hermes_scope_governor.py -> existing lane_last_receipt helper"
+        },
+        {
+          "name": "7,37 * * * * cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/hermes_scope_governor.lock $PY scripts/hermes_scope_governor.py --apply >> logs/hermes_scope_governor.log 2>&1",
+          "kind": "cron_twin",
+          "direction": "calls",
+          "source": "OBSERVED_HOST scoped snapshot 2026-10-11T17:05:28.513179+00:00; full census NOT_MEASURED"
+        },
+        {
+          "name": "Watchlist signals/outcome bus -> scope tiers, audit, governed universe and heartbeat",
+          "kind": "store",
+          "direction": "read_write",
+          "source": "lib.hermes_scope_governor.engine.ScopeGovernorEngine.run; --apply required for tier writes"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "shadow_done",
+          "text": "RunReceipt is RUN_DONE in dry_run and all durable output mtimes remain unchanged."
+        },
+        {
+          "check": "cron_receipt_fresh",
+          "text": "Natural cron receipt ok_at within 2.5 h; source cadence 7,37 * * * *, America/New_York. No natural fire measured here."
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "Cron ok_at older than 2.5 h but younger than 3 h."
+        },
+        {
+          "check": "slow",
+          "text": "Duration exceeds 720 s (provisional 80% of timeout)."
+        }
+      ],
+      "failed": [
+        {
+          "check": "failed_run",
+          "text": "RUN_FAILED, RUN_TIMEOUT, RUN_REFUSED, missing receipt or any dry-run durable write."
+        },
+        {
+          "check": "stale",
+          "text": "Cron receipt ok_at older than 3 h. Failed real runs preserve prior ok_at."
+        }
+      ],
+      "baseline": {
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "class": "learn",
+        "evidence_class": "SOURCE_ONLY",
+        "ledger": "NOT_MEASURED",
+        "runs_considered": null,
+        "computed_on": "2026-10-11",
+        "timeout_s": 900,
+        "duration_degraded_above_s": 720.0,
+        "freshness_degraded_after_h": 2.5,
+        "freshness_failed_after_h": 3.0,
+        "freshness_rule": "SOURCE_ONLY: declared maximum inter-fire gap plus 2 h; failed at twice that gap plus 2 h. Weekday/weekend gaps remain provisional, not an observed SLO.",
+        "source": "Declared cron cadence plus class defaults. No coordination-ledger sample, duration distribution or runtime acceptance measured."
+      },
+      "alerting": {
+        "lane_severity": "Medium",
+        "severity_basis": "SOURCE_ONLY R1 data/learning defaults; operator review pending",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "Existing SIEM and host notifier chokepoints; this lane sends nothing.",
+        "enforced": "SOURCE_ONLY contract; runtime contract consumption NOT_MEASURED."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "No auto action enabled. Catalogue/diagnosis wiring requires separate owner review."
+      },
+      "evidence": {
+        "receipt": "data/runtime/hermes-scope-governor_last.json",
+        "class": "SOURCE_ONLY",
+        "runtime": "NOT_MEASURED",
+        "verify": [
+          "Read data/runtime/hermes-scope-governor_last.json ok_at/status/counts after a separately authorized natural run.",
+          "Join lane hermes-scope-governor coordination RunReceipt after operator shadow fire."
+        ],
+        "never": "Source plans or n8n execution status are not runtime work proof. Live inventory must filter deletedAt IS NULL; no live inventory measured here."
+      },
+      "review_by": "2026-10-25"
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "iris-proposal-curator",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "DRAFT",
+      "target_reason": "stage:shadow",
+      "stage": "shadow",
+      "owner": "proposals",
+      "purpose": {
+        "text": "Offline duplicate/taxonomy plan, strict flags and lane receipt; --apply behavior remains, failed apply result exits 1.",
+        "business_function": "proposals",
+        "source": "SOURCE_ONLY scripts/iris_proposal_curator.py; no runtime or operator review claim"
+      },
+      "connects_to": [
+        {
+          "name": "n8n dispatcher -> relay -> coordination/run -> host executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md §23.3, §23.11; source-only topology"
+        },
+        {
+          "name": "$PY scripts/iris_proposal_curator.py --apply",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json"
+        },
+        {
+          "name": "/tmp/iris-proposal-curator.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "proposed outer flock; cron packet required"
+        },
+        {
+          "name": "data/runtime/iris-proposal-curator_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "scripts/iris_proposal_curator.py -> existing lane_last_receipt helper"
+        },
+        {
+          "name": "20 7 * * * cd $PROJ && $PY scripts/iris_proposal_curator.py --apply >> logs/iris_proposal_curator.log 2>&1",
+          "kind": "cron_twin",
+          "direction": "calls",
+          "source": "OBSERVED_HOST scoped snapshot 2026-10-11T17:05:28.513179+00:00; full census NOT_MEASURED"
+        },
+        {
+          "name": "iris_taxonomy_proposals duplicate/reclassify/discovery status and reviewed channel taxonomy",
+          "kind": "store",
+          "direction": "read_write",
+          "source": "iris_proposal_curator._run; add/retire channels remain human review"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "shadow_done",
+          "text": "RunReceipt is RUN_DONE in dry_run and all durable output mtimes remain unchanged."
+        },
+        {
+          "check": "cron_receipt_fresh",
+          "text": "Natural cron receipt ok_at within 26 h; source cadence 20 7 * * *, America/New_York. No natural fire measured here."
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "Cron ok_at older than 26 h but younger than 50 h."
+        },
+        {
+          "check": "slow",
+          "text": "Duration exceeds 720 s (provisional 80% of timeout)."
+        }
+      ],
+      "failed": [
+        {
+          "check": "failed_run",
+          "text": "RUN_FAILED, RUN_TIMEOUT, RUN_REFUSED, missing receipt or any dry-run durable write."
+        },
+        {
+          "check": "stale",
+          "text": "Cron receipt ok_at older than 50 h. Failed real runs preserve prior ok_at."
+        }
+      ],
+      "baseline": {
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "class": "learn",
+        "evidence_class": "SOURCE_ONLY",
+        "ledger": "NOT_MEASURED",
+        "runs_considered": null,
+        "computed_on": "2026-10-11",
+        "timeout_s": 900,
+        "duration_degraded_above_s": 720.0,
+        "freshness_degraded_after_h": 26.0,
+        "freshness_failed_after_h": 50.0,
+        "freshness_rule": "SOURCE_ONLY: declared maximum inter-fire gap plus 2 h; failed at twice that gap plus 2 h. Weekday/weekend gaps remain provisional, not an observed SLO.",
+        "source": "Declared cron cadence plus class defaults. No coordination-ledger sample, duration distribution or runtime acceptance measured."
+      },
+      "alerting": {
+        "lane_severity": "Medium",
+        "severity_basis": "SOURCE_ONLY R1 data/learning defaults; operator review pending",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "Existing SIEM and host notifier chokepoints; this lane sends nothing.",
+        "enforced": "SOURCE_ONLY contract; runtime contract consumption NOT_MEASURED."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "No auto action enabled. Catalogue/diagnosis wiring requires separate owner review."
+      },
+      "evidence": {
+        "receipt": "data/runtime/iris-proposal-curator_last.json",
+        "class": "SOURCE_ONLY",
+        "runtime": "NOT_MEASURED",
+        "verify": [
+          "Read data/runtime/iris-proposal-curator_last.json ok_at/status/counts after a separately authorized natural run.",
+          "Join lane iris-proposal-curator coordination RunReceipt after operator shadow fire."
+        ],
+        "never": "Source plans or n8n execution status are not runtime work proof. Live inventory must filter deletedAt IS NULL; no live inventory measured here."
+      },
+      "review_by": "2026-10-25"
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "price-db-sync",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "DRAFT",
+      "target_reason": "stage:shadow",
+      "stage": "shadow",
+      "owner": "portfolio",
+      "purpose": {
+        "text": "Offline daily-price plan; existing ticker_prices writer retained, DB_PASSWORD-only named loader, real-run receipt preserves exceptions and initial write count.",
+        "business_function": "portfolio",
+        "source": "SOURCE_ONLY scripts/price_db_sync.py; no runtime or operator review claim"
+      },
+      "connects_to": [
+        {
+          "name": "n8n dispatcher -> relay -> coordination/run -> host executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md §23.3, §23.11; source-only topology"
+        },
+        {
+          "name": "$PY scripts/price_db_sync.py",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json"
+        },
+        {
+          "name": "/tmp/price-db-sync.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "proposed outer flock; cron packet required"
+        },
+        {
+          "name": "data/runtime/price-db-sync_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "scripts/price_db_sync.py -> existing lane_last_receipt helper"
+        },
+        {
+          "name": "20 7 * * 1-5 cd $PROJ && $PY scripts/price_db_sync.py >> logs/price_db_sync.log 2>&1",
+          "kind": "cron_twin",
+          "direction": "calls",
+          "source": "OBSERVED_HOST scoped snapshot 2026-10-11T17:05:28.513179+00:00; full census NOT_MEASURED"
+        },
+        {
+          "name": "Price caches, market_quotes and yfinance -> ticker_prices / outlier quarantine",
+          "kind": "store",
+          "direction": "read_write",
+          "source": "price_db_sync.sync_daily_prices and existing lib.writers.ticker_prices_writer"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "shadow_done",
+          "text": "RunReceipt is RUN_DONE in dry_run and all durable output mtimes remain unchanged."
+        },
+        {
+          "check": "cron_receipt_fresh",
+          "text": "Natural cron receipt ok_at within 74 h; source cadence 20 7 * * 1-5, America/New_York. No natural fire measured here."
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "Cron ok_at older than 74 h but younger than 146 h."
+        },
+        {
+          "check": "slow",
+          "text": "Duration exceeds 720 s (provisional 80% of timeout)."
+        }
+      ],
+      "failed": [
+        {
+          "check": "failed_run",
+          "text": "RUN_FAILED, RUN_TIMEOUT, RUN_REFUSED, missing receipt or any dry-run durable write."
+        },
+        {
+          "check": "stale",
+          "text": "Cron receipt ok_at older than 146 h. Failed real runs preserve prior ok_at."
+        }
+      ],
+      "baseline": {
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "class": "ingest",
+        "evidence_class": "SOURCE_ONLY",
+        "ledger": "NOT_MEASURED",
+        "runs_considered": null,
+        "computed_on": "2026-10-11",
+        "timeout_s": 900,
+        "duration_degraded_above_s": 720.0,
+        "freshness_degraded_after_h": 74.0,
+        "freshness_failed_after_h": 146.0,
+        "freshness_rule": "SOURCE_ONLY: declared maximum inter-fire gap plus 2 h; failed at twice that gap plus 2 h. Weekday/weekend gaps remain provisional, not an observed SLO.",
+        "source": "Declared cron cadence plus class defaults. No coordination-ledger sample, duration distribution or runtime acceptance measured."
+      },
+      "alerting": {
+        "lane_severity": "Medium",
+        "severity_basis": "SOURCE_ONLY R1 data/learning defaults; operator review pending",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "Existing SIEM and host notifier chokepoints; this lane sends nothing.",
+        "enforced": "SOURCE_ONLY contract; runtime contract consumption NOT_MEASURED."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "No auto action enabled. Catalogue/diagnosis wiring requires separate owner review."
+      },
+      "evidence": {
+        "receipt": "data/runtime/price-db-sync_last.json",
+        "class": "SOURCE_ONLY",
+        "runtime": "NOT_MEASURED",
+        "verify": [
+          "Read data/runtime/price-db-sync_last.json ok_at/status/counts after a separately authorized natural run.",
+          "Join lane price-db-sync coordination RunReceipt after operator shadow fire."
+        ],
+        "never": "Source plans or n8n execution status are not runtime work proof. Live inventory must filter deletedAt IS NULL; no live inventory measured here."
+      },
+      "review_by": "2026-10-25"
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "sync-dividend-data",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "DRAFT",
+      "target_reason": "stage:shadow",
+      "stage": "shadow",
+      "owner": "portfolio",
+      "purpose": {
+        "text": "Strict offline capped dividend plan; existing READ ONLY preview helper retained/tested. DB_PASSWORD-only loader; existing counts/failure receipt preserved.",
+        "business_function": "portfolio",
+        "source": "SOURCE_ONLY scripts/sync_dividend_data.py; no runtime or operator review claim"
+      },
+      "connects_to": [
+        {
+          "name": "n8n dispatcher -> relay -> coordination/run -> host executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md §23.3, §23.11; source-only topology"
+        },
+        {
+          "name": "$PY scripts/sync_dividend_data.py",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json"
+        },
+        {
+          "name": "/tmp/sync-dividend-data.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "proposed outer flock; cron packet required"
+        },
+        {
+          "name": "data/runtime/sync-dividend-data_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "scripts/sync_dividend_data.py -> existing lane_last_receipt helper"
+        },
+        {
+          "name": "5 7 * * 1-5 cd $PROJ && $PY scripts/sync_dividend_data.py >> logs/dividend_sync.log 2>&1",
+          "kind": "cron_twin",
+          "direction": "calls",
+          "source": "OBSERVED_HOST scoped snapshot 2026-10-11T17:05:28.513179+00:00; full census NOT_MEASURED"
+        },
+        {
+          "name": "Active strategy universe + yfinance dividend facts -> ticker_dividend_data",
+          "kind": "store",
+          "direction": "read_write",
+          "source": "sync_dividend_data.sync; capped 30 symbols"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "shadow_done",
+          "text": "RunReceipt is RUN_DONE in dry_run and all durable output mtimes remain unchanged."
+        },
+        {
+          "check": "cron_receipt_fresh",
+          "text": "Natural cron receipt ok_at within 74 h; source cadence 5 7 * * 1-5, America/New_York. No natural fire measured here."
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "Cron ok_at older than 74 h but younger than 146 h."
+        },
+        {
+          "check": "slow",
+          "text": "Duration exceeds 240 s (provisional 80% of timeout)."
+        }
+      ],
+      "failed": [
+        {
+          "check": "failed_run",
+          "text": "RUN_FAILED, RUN_TIMEOUT, RUN_REFUSED, missing receipt or any dry-run durable write."
+        },
+        {
+          "check": "stale",
+          "text": "Cron receipt ok_at older than 146 h. Failed real runs preserve prior ok_at."
+        }
+      ],
+      "baseline": {
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "class": "ingest",
+        "evidence_class": "SOURCE_ONLY",
+        "ledger": "NOT_MEASURED",
+        "runs_considered": null,
+        "computed_on": "2026-10-11",
+        "timeout_s": 300,
+        "duration_degraded_above_s": 240.0,
+        "freshness_degraded_after_h": 74.0,
+        "freshness_failed_after_h": 146.0,
+        "freshness_rule": "SOURCE_ONLY: declared maximum inter-fire gap plus 2 h; failed at twice that gap plus 2 h. Weekday/weekend gaps remain provisional, not an observed SLO.",
+        "source": "Declared cron cadence plus class defaults. No coordination-ledger sample, duration distribution or runtime acceptance measured."
+      },
+      "alerting": {
+        "lane_severity": "Medium",
+        "severity_basis": "SOURCE_ONLY R1 data/learning defaults; operator review pending",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "Existing SIEM and host notifier chokepoints; this lane sends nothing.",
+        "enforced": "SOURCE_ONLY contract; runtime contract consumption NOT_MEASURED."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "No auto action enabled. Catalogue/diagnosis wiring requires separate owner review."
+      },
+      "evidence": {
+        "receipt": "data/runtime/sync-dividend-data_last.json",
+        "class": "SOURCE_ONLY",
+        "runtime": "NOT_MEASURED",
+        "verify": [
+          "Read data/runtime/sync-dividend-data_last.json ok_at/status/counts after a separately authorized natural run.",
+          "Join lane sync-dividend-data coordination RunReceipt after operator shadow fire."
+        ],
+        "never": "Source plans or n8n execution status are not runtime work proof. Live inventory must filter deletedAt IS NULL; no live inventory measured here."
+      },
+      "review_by": "2026-10-25"
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "watch-valuation-backfill",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "DRAFT",
+      "target_reason": "stage:shadow",
+      "stage": "shadow",
+      "owner": "portfolio",
+      "purpose": {
+        "text": "Offline configurable valuation plan; DB adapter lazy on real path, durable receipt and all-fetch-failed exit1; existing cached rows preserved.",
+        "business_function": "portfolio",
+        "source": "SOURCE_ONLY scripts/watch_valuation_backfill.py; no runtime or operator review claim"
+      },
+      "connects_to": [
+        {
+          "name": "n8n dispatcher -> relay -> coordination/run -> host executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md §23.3, §23.11; source-only topology"
+        },
+        {
+          "name": "$PY scripts/watch_valuation_backfill.py --limit 400",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json"
+        },
+        {
+          "name": "/tmp/watch_valuation_backfill.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "native-approved exact cron snapshot"
+        },
+        {
+          "name": "data/runtime/watch-valuation-backfill_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "scripts/watch_valuation_backfill.py -> existing lane_last_receipt helper"
+        },
+        {
+          "name": "47 6 * * * cd $PROJ && flock -n /tmp/watch_valuation_backfill.lock $PY scripts/watch_valuation_backfill.py --limit 400 >> logs/watch_valuation_backfill.log 2>&1  # yfinance valuation supplement for Watch names Finviz misses (resumable, capped); feeds finviz-strip-map fallback (2026-07-25)",
+          "kind": "cron_twin",
+          "direction": "calls",
+          "source": "OBSERVED_HOST scoped snapshot 2026-10-11T17:05:28.513179+00:00; full census NOT_MEASURED"
+        },
+        {
+          "name": "Watch/proposal/held-symbol universe + Finviz coverage + yfinance -> valuation supplement cache",
+          "kind": "store",
+          "direction": "read_write",
+          "source": "watch_valuation_backfill._run; --limit cap and cache preservation"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "shadow_done",
+          "text": "RunReceipt is RUN_DONE in dry_run and all durable output mtimes remain unchanged."
+        },
+        {
+          "check": "cron_receipt_fresh",
+          "text": "Natural cron receipt ok_at within 26 h; source cadence 47 6 * * *, America/New_York. No natural fire measured here."
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "Cron ok_at older than 26 h but younger than 50 h."
+        },
+        {
+          "check": "slow",
+          "text": "Duration exceeds 1440 s (provisional 80% of timeout)."
+        }
+      ],
+      "failed": [
+        {
+          "check": "failed_run",
+          "text": "RUN_FAILED, RUN_TIMEOUT, RUN_REFUSED, missing receipt or any dry-run durable write."
+        },
+        {
+          "check": "stale",
+          "text": "Cron receipt ok_at older than 50 h. Failed real runs preserve prior ok_at."
+        }
+      ],
+      "baseline": {
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "class": "ingest",
+        "evidence_class": "SOURCE_ONLY",
+        "ledger": "NOT_MEASURED",
+        "runs_considered": null,
+        "computed_on": "2026-10-11",
+        "timeout_s": 1800,
+        "duration_degraded_above_s": 1440.0,
+        "freshness_degraded_after_h": 26.0,
+        "freshness_failed_after_h": 50.0,
+        "freshness_rule": "SOURCE_ONLY: declared maximum inter-fire gap plus 2 h; failed at twice that gap plus 2 h. Weekday/weekend gaps remain provisional, not an observed SLO.",
+        "source": "Declared cron cadence plus class defaults. No coordination-ledger sample, duration distribution or runtime acceptance measured."
+      },
+      "alerting": {
+        "lane_severity": "Medium",
+        "severity_basis": "SOURCE_ONLY R1 data/learning defaults; operator review pending",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "Existing SIEM and host notifier chokepoints; this lane sends nothing.",
+        "enforced": "SOURCE_ONLY contract; runtime contract consumption NOT_MEASURED."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "No auto action enabled. Catalogue/diagnosis wiring requires separate owner review."
+      },
+      "evidence": {
+        "receipt": "data/runtime/watch-valuation-backfill_last.json",
+        "class": "SOURCE_ONLY",
+        "runtime": "NOT_MEASURED",
+        "verify": [
+          "Read data/runtime/watch-valuation-backfill_last.json ok_at/status/counts after a separately authorized natural run.",
+          "Join lane watch-valuation-backfill coordination RunReceipt after operator shadow fire."
+        ],
+        "never": "Source plans or n8n execution status are not runtime work proof. Live inventory must filter deletedAt IS NULL; no live inventory measured here."
+      },
+      "review_by": "2026-10-25"
     }
   ]
 }

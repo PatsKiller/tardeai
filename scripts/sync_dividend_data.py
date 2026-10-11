@@ -6,9 +6,9 @@ Replaces seed-only ticker_dividend_data with real API data.
 Usage:
     python3 scripts/sync_dividend_data.py [--json] [--dry-run]
 
-Lane ``sync-dividend-data`` (cron L216). ``--dry-run`` opens a READ ONLY session, reads the symbol
-universe (ticker_strategy_classifications, the same query as a real run), prints what a real run would
-fetch and upsert, and returns before any yfinance call or INSERT is reachable; it writes no receipt.
+Lane ``sync-dividend-data`` (cron L216). ``--dry-run`` prints an offline capped universe/fetch plan
+and returns before opening a DB, reading environment files or calling yfinance; counts are unmeasured
+and no receipt is written. The separate preview() helper still reads the universe under READ ONLY.
 A real run writes ``<state_root>/data/runtime/sync-dividend-data_last.json`` (LaneRunReceipt@v1;
 ``ok_at`` only on success).
 
@@ -38,9 +38,11 @@ def _receipt_lib():
 
 def _get_conn():
     import psycopg2
-    pw = ""
-    for line in (PROJECT_ROOT / ".env").read_text().splitlines():
-        if line.startswith("DB_PASSWORD="): pw = line.split("=", 1)[1].strip()
+    if str(PROJECT_ROOT / "scripts") not in sys.path:
+        sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    from lib.env_bootstrap import load_env
+    load_env(names=("DB_PASSWORD",))
+    pw = os.environ.get("DB_PASSWORD", "")
     return psycopg2.connect(host="localhost", dbname="trade_ai", user="trade_ai", password=pw)
 
 
@@ -136,20 +138,19 @@ def sync(symbols: list = None) -> dict:
 
 def main(argv=None) -> int:
     import argparse
-    ap = argparse.ArgumentParser(description="Sync yfinance dividend data into ticker_dividend_data.")
+    ap = argparse.ArgumentParser(description="Sync yfinance dividend data into ticker_dividend_data.", allow_abbrev=False)
     ap.add_argument("--json", action="store_true", help="also print the result as JSON")
     ap.add_argument("--dry-run", action="store_true",
-                    help="read the symbol universe (READ ONLY) and report; no fetch, no write, no receipt")
+                    help="offline universe/fetch plan; no DB, fetch, write or receipt")
     a = ap.parse_args(argv)
     if a.dry_run:
         # Structural (AGENTS.md §6): sync() -- yfinance + INSERT -- is not reachable from this branch.
-        plan = preview()
+        plan = {"symbol_cap": SYMBOL_CAP, "universe": "active ticker_strategy_classifications",
+                "would_check": None, "measured": False, "provider": "yfinance dividendRate"}
         if a.json:
-            print(json.dumps(plan, indent=2, default=str))
-        _receipt_lib().dry_run_report(
-            LANE_ID, {"symbols_total": plan["symbols_total"], "would_check": plan["would_check"],
-                      "first_symbols": plan["symbols"][:10]},
-            would_write=[f"ticker_dividend_data upsert (<= {plan['would_check']} rows, yfinance dividendRate)"])
+            print(json.dumps(plan, sort_keys=True))
+        print(f"DRY-RUN {LANE_ID}: would read active strategy symbols, skip proprietary codes, "
+              f"fetch at most {SYMBOL_CAP} yfinance dividends and upsert ticker_dividend_data; counts unmeasured")
         return 0
     started = _receipt_lib().now_iso()
     try:
