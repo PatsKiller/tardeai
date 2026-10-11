@@ -1,7 +1,7 @@
 """Registry signals r1 (2026-10-09): three lanes whose output signal read as false NO_OUTPUT.
 
-* cio-stance-classification-drain: the receipts file is appended only when a request is pending; the
-  run log (one "[APPLY] pending=N" line every run) is the signal.
+* cio-stance-classification-drain: shard 05 adds a success-only canonical run receipt, including
+  zero-row real runs; the run log still prints one "[APPLY] pending=N" line every run.
 * watch-review-workers: two crontab lines (maria 16:05, cio 16:20) were one row with the maria log
   only; now one row per line, each with its own log.
 * due-diligence-questions: max(created_at) does not move on a 0-row run; the */20 run log is the signal.
@@ -17,9 +17,9 @@ REG = json.loads((ROOT / "config" / "lane_registry.json").read_text(encoding="ut
 ROWS = {r["lane_id"]: r for r in REG["lanes"]}
 
 
-def test_cio_stance_drain_signal_is_run_log_and_script_prints_every_run():
+def test_cio_stance_drain_signal_is_canonical_receipt_and_script_prints_every_run():
     sig = ROWS["cio-stance-classification-drain"]["output_signal"]
-    assert sig == {"kind": "file_mtime", "path": "logs/cio_stance_classification_drain.log"}
+    assert sig == {"kind": "json_key", "path": "data/runtime/cio-stance-classification-drain_last.json", "key": "ok_at"}
     src = (ROOT / "scripts" / "drain_cio_stance_classification.py").read_text(encoding="utf-8")
     assert "pending={report['pending']}" in src
 

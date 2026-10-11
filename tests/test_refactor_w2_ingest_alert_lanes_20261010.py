@@ -222,17 +222,22 @@ def hdd_conn(monkeypatch, state):
 def test_hdd_dry_run_reaches_no_write(hdd_conn, monkeypatch, capsys, state, argv):
     _forbid(monkeypatch, llr, "write_receipt")
     assert hdd.main(argv) == 0
-    out = json.loads(capsys.readouterr().out)
+    raw = capsys.readouterr().out
+    if "--dry-run" in argv:
+        assert "DRY-RUN hermes-directive-discovery: would" in raw and "inputs NOT_MEASURED" in raw
+        assert hdd_conn.log == [] and not state.exists()
+        return
+    out = json.loads(raw)
     assert out["mode"] == "dry_run" and out["would_write"] == {"table": "hermes_directive_hits_staging", "rows": 2}
     assert hdd_conn.mutations() == [] and ("commit",) not in hdd_conn.log and _readonly(hdd_conn)
     assert not state.exists()
 
 
 def test_hdd_dry_run_report_tracks_state(hdd_conn, capsys):
-    hdd.main(["--dry-run"])
+    hdd.main([])  # implicit data preview
     before = json.loads(capsys.readouterr().out)["staged"]
     hdd_conn.answers.insert(0, ("SELECT 1 FROM hermes_directive_hits_staging", [(1,)]))  # all already pending
-    hdd.main(["--dry-run"])
+    hdd.main([])  # implicit data preview
     after = json.loads(capsys.readouterr().out)["staged"]
     assert (before, after) == (2, 0)
 

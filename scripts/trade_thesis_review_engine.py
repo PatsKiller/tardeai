@@ -16,13 +16,15 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
-from dotenv import load_dotenv
-load_dotenv(PROJECT_ROOT / ".env")
+_ENV_KEYS = ("DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD")
+_LAST_COUNTS = {}
 
 def _f(v): return float(v) if isinstance(v, Decimal) else v
 def _uid(p="TTR_"): return f"{p}{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex[:8]}"
 
 def _get_conn():
+    from lib.env_bootstrap import load_env
+    load_env(names=_ENV_KEYS)
     from session13_db import get_conn
     return get_conn()
 
@@ -162,8 +164,8 @@ def save(conn, reviews, dry_run=True):
     conn.commit()
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Post-Trade Thesis Review Engine")
+def _execute():
+    parser = argparse.ArgumentParser(description="Post-Trade Thesis Review Engine", allow_abbrev=False)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--trade-id", type=int)
@@ -185,6 +187,7 @@ def main():
                "by_validity": {}, "low_sample_size": True}
         for r in reviews:
             out["by_validity"][r["thesis_validity"]] = out["by_validity"].get(r["thesis_validity"], 0) + 1
+        _LAST_COUNTS.update(trades_reviewed=len(reviews), by_validity=dict(out["by_validity"]))
         if args.json:
             out["reviews"] = [{k: v for k, v in r.items() if k != "original_agent_views"} for r in reviews]
             print(json.dumps(out, indent=2, default=str))
@@ -193,5 +196,40 @@ def main():
     finally:
         conn.close()
 
+def main(argv=None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    parser = argparse.ArgumentParser(description="Post-Trade Thesis Review Engine", allow_abbrev=False)
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--apply", action="store_true")
+    parser.add_argument("--trade-id", type=int)
+    parser.add_argument("--symbol")
+    parser.add_argument("--open-checkpoints", action="store_true")
+    parser.add_argument("--json", action="store_true")
+    args = parser.parse_args(argv)
+    if args.dry_run:
+        print(f"DRY-RUN trade-thesis-review-engine: would read closed/cancelled historical trades "
+              f"trade_id={args.trade_id} symbol={args.symbol}, score thesis learning evidence and "
+              "insert trade_thesis_reviews; no DB, execution, model or writes")
+        return 0
+    from lib.lane_last_receipt import now_iso, write_lane_receipt
+    started = now_iso()
+    _LAST_COUNTS.clear()
+    previous = sys.argv
+    sys.argv = ["trade_thesis_review_engine.py", *argv]
+    try:
+        _execute()
+    except Exception as exc:
+        if args.apply:
+            write_lane_receipt("trade-thesis-review-engine", ok=False, exit_code=1, started_at=started,
+                               script="trade_thesis_review_engine.py", error=type(exc).__name__)
+        raise
+    finally:
+        sys.argv = previous
+    if args.apply:
+        write_lane_receipt("trade-thesis-review-engine", ok=True, exit_code=0, started_at=started,
+                           script="trade_thesis_review_engine.py", summary=_LAST_COUNTS)
+    return 0
+
+
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

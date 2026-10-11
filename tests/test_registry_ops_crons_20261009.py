@@ -208,7 +208,8 @@ SIGNALS = {
     # success), so the row reads that receipt instead of the log mtime (tests/test_refactor_shard_01_20261011.py).
     "resolve-due-checkpoints": {"kind": "json_key", "path": "data/runtime/resolve-due-checkpoints_last.json",
                                 "key": "ok_at"},
-    "commitment-outcome-sweep": {"kind": "file_mtime", "path": "logs/sweep_commitment_outcomes.log"},
+    # Refactor shard 05 (train 4, 2026-10-11): same LaneRunReceipt pattern for the commitment sweep.
+    "commitment-outcome-sweep": {"kind": "json_key", "path": "data/runtime/commitment-outcome-sweep_last.json", "key": "ok_at"},
 }
 
 

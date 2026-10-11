@@ -176,7 +176,10 @@ def test_sync_dividend_dry_run_reaches_no_write(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(sdd, "sync", _boom)
     assert sdd.main(["--dry-run"]) == 0
     out = capsys.readouterr().out
-    assert "DRY-RUN" in out and '"would_check": 2' in out and "FID-X" not in out
+    assert "DRY-RUN sync-dividend-data" in out and "counts unmeasured" in out
+    assert conn.sql == [] and conn.writes() == [] and conn.commits == 0
+    # The explicit DB preview helper still filters the real universe under READ ONLY.
+    assert sdd.preview()["symbols"] == ["KO", "PEP"]
     assert conn.readonly and conn.writes() == [] and conn.commits == 0
     assert _no_receipts(tmp_path)
 

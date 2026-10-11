@@ -128,6 +128,7 @@ def _receipt(name):
 # ── agent_recommendation_normalizer ─────────────────────────────────────────────────────────────
 @pytest.fixture
 def arn_conn(monkeypatch, state):
+    monkeypatch.setattr(arn, "_load_env", lambda: None)
     now = datetime(2026, 10, 9, 12, 0)
     conn = FakeConn(
         [
@@ -145,10 +146,19 @@ def arn_conn(monkeypatch, state):
     return conn
 
 
-@pytest.mark.parametrize("argv", [["--dry-run", "--json"], ["--dry-run", "--apply", "--json"], ["--json"]])
-def test_arn_dry_run_reaches_no_write(arn_conn, monkeypatch, capsys, state, argv):
+@pytest.mark.parametrize("argv", [["--dry-run", "--json"], ["--dry-run", "--apply", "--json"]])
+def test_arn_explicit_dry_run_is_offline(arn_conn, monkeypatch, capsys, state, argv):
+    _forbid(monkeypatch, arn, "_get_conn")
+    _forbid(monkeypatch, arn, "_load_env")
     _forbid(monkeypatch, llr, "write_receipt")
     assert arn.main(argv) == 0
+    assert capsys.readouterr().out.startswith("DRY-RUN agent-recommendation-normalizer:")
+    assert arn_conn.log == [] and not state.exists()
+
+
+def test_arn_implicit_dry_run_reaches_no_write(arn_conn, monkeypatch, capsys, state):
+    _forbid(monkeypatch, llr, "write_receipt")
+    assert arn.main(["--json"]) == 0
     out = json.loads(capsys.readouterr().out)
     assert out["mode"] == "dry_run" and out["inserted"] == 0
     assert out["would_write"] == {"table": "agent_recommendation_registry", "rows": 3}
@@ -157,10 +167,10 @@ def test_arn_dry_run_reaches_no_write(arn_conn, monkeypatch, capsys, state, argv
 
 
 def test_arn_dry_run_report_tracks_state(arn_conn, capsys):
-    arn.main(["--dry-run", "--json"])
+    arn.main(["--json"])
     before = json.loads(capsys.readouterr().out)["would_write"]["rows"]
     arn_conn.answers[0] = ("FROM watchlist_agent_results", [])
-    arn.main(["--dry-run", "--json"])
+    arn.main(["--json"])
     after = json.loads(capsys.readouterr().out)["would_write"]["rows"]
     assert (before, after) == (3, 1)
 

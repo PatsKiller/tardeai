@@ -24,6 +24,11 @@ REPO = Path(__file__).resolve().parents[1]
 # Ordered, explicit suite list (Phase 10.2)
 GATES = [
     ("refactor_shard_03_20261011", ["tests/test_refactor_shard_03_20261011.py"]),
+    # ANCHOR: REFACTOR_SHARDS_05_08_LOCKS_20261011 — exact cron PID/OS lock identity, source only.
+    ("refactor_shards_05_08_locks_20261011", ["tests/test_refactor_shards_05_08_locks_20261011.py"]),
+    # ANCHOR: REFACTOR_SHARD_05_20261011 — offline previews and exact cron argv, fake-only work.
+    ("refactor_shard_05_20261011", ["tests/test_refactor_shard_05_20261011.py"]),
+    ("refactor_shard_07_20261011", ["tests/test_refactor_shard_07_20261011.py"]),
     (
         "options_workflow",
         [
@@ -4284,6 +4289,7 @@ GATES = [
         # hermes_directive_discovery, earnings_enrich, ipo_lockup_alert. Hermetic: fake DB, tmp state root.
         "refactor_w2_bucket_v1_20261010",
         [
+            "tests/test_refactor_shard_08_20261011.py",
             "tests/test_refactor_w2_signal_fusion_20261010.py",
             "tests/test_refactor_w2_learning_lanes_20261010.py",
             "tests/test_refactor_w2_ingest_alert_lanes_20261010.py",
@@ -4604,6 +4610,13 @@ GATES = [
         ["tests/test_agent_recommendation_normalizer_dedupe_20261011.py",
          "tests/test_approval_escalate_20261011.py",
          "tests/test_llm_bridge_route_20261011.py"],
+    ),
+    (
+        # Shard06 source-only previews: exact approved cron argv against frozen old entrypoints;
+        # no auth/DB/provider work or state writes in previews; fake real receipts retain prior ok_at
+        # on failure. Seven DRAFT admissions, no broker env, existing reviewed rows preserved.
+        "refactor_shard_06_20261011",
+        ["tests/test_refactor_shard_06_20261011.py"],
     ),
 ]
 

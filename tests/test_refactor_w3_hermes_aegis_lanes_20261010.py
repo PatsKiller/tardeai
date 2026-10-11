@@ -644,7 +644,13 @@ def test_siem_dry_run_wins_over_apply(monkeypatch, capsys, _state, argv):
     _writer(monkeypatch, _boom)
     monkeypatch.setattr(llr, "write_lane_receipt", _boom)
     assert s2h.main(argv) == 0
-    rep = _dry_line(capsys.readouterr().out)
+    raw = capsys.readouterr().out
+    if "--dry-run" in argv:
+        assert "DRY-RUN siem-to-hermes-backlog: would stage up to 5" in raw
+        assert "inputs NOT_MEASURED" in raw and conn.commits == 0 and not conn.writes()
+        assert not _receipt_file(_state, "siem-to-hermes-backlog").exists()
+        return
+    rep = _dry_line(raw)
     assert rep["summary"] == {"candidates": 2, "would_insert": 1, "would_skip_duplicate": 1, "max": 5}
     assert conn.readonly is True and conn.commits == 0 and not conn.writes()
     assert not _receipt_file(_state, "siem-to-hermes-backlog").exists()
@@ -653,9 +659,9 @@ def test_siem_dry_run_wins_over_apply(monkeypatch, capsys, _state, argv):
 def test_siem_dry_run_varies_with_max(monkeypatch, capsys):
     _siem_env(monkeypatch, n_groups=3)
     monkeypatch.setattr(s2h, "_connect", lambda: FakeConn())
-    s2h.main(["--dry-run", "--max", "1"])
+    s2h.main(["--max", "1"])  # implicit data preview
     assert _dry_line(capsys.readouterr().out)["summary"]["would_insert"] == 1
-    s2h.main(["--dry-run", "--max", "5"])
+    s2h.main(["--max", "5"])  # implicit data preview
     assert _dry_line(capsys.readouterr().out)["summary"]["would_insert"] == 3
 
 

@@ -35,6 +35,17 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [iris-curator] %(mes
 log = logging.getLogger()
 
 
+
+LANE_ID = "iris-proposal-curator"
+
+
+def _receipt_lib():
+    try:
+        from scripts.lib import lane_last_receipt as lr
+    except ImportError:
+        from lib import lane_last_receipt as lr
+    return lr
+
 _DUPLICATES_CTE = """WITH ranked AS (
         SELECT id,
                first_value(id) OVER w AS keep_id,
@@ -60,13 +71,33 @@ def supersede_duplicates(cur, apply):
     return n
 
 
-def main():
-    ap = argparse.ArgumentParser()
+def main(argv=None):
+    ap = argparse.ArgumentParser(allow_abbrev=False)
     ap.add_argument("--apply", action="store_true", help="write changes (default: dry-run)")
     ap.add_argument("--reclassify-conf", type=float, default=0.85, help="auto-apply reclassify >= this confidence")
     ap.add_argument("--discovery-age-days", type=int, default=14, help="expire new_channel_discovery older than this")
-    args = ap.parse_args()
+    ap.add_argument("--dry-run", action="store_true", help="offline plan; overrides --apply")
+    args = ap.parse_args(argv)
+    if args.dry_run:
+        print(f"DRY-RUN {LANE_ID}: would supersede duplicates, reclassify at "
+              f"confidence>={args.reclassify_conf}, expire discovery after {args.discovery_age_days}d; "
+              "add/retire channels remain pending human review")
+        return 0
+    lr = _receipt_lib()
+    started = lr.now_iso()
+    stats = {}
+    try:
+        rc = _run(args, stats)
+    except BaseException as exc:
+        lr.write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
+                              script="iris_proposal_curator.py", summary=stats, error=type(exc).__name__)
+        raise
+    lr.write_lane_receipt(LANE_ID, ok=rc == 0, exit_code=rc, started_at=started,
+                          script="iris_proposal_curator.py", summary=stats)
+    return rc
 
+
+def _run(args, stats):
     from db_adapter import get_connection
     conn = get_connection(); cur = conn.cursor()
 
@@ -123,7 +154,10 @@ def main():
     log.info("[%s] pending after curation: %s", mode, still_pending if args.apply else "(unchanged in dry-run)")
     if not args.apply:
         log.info("Dry-run — re-run with --apply to write.")
+    stats.update(superseded=superseded, eligible=len(reclass_ids), applied=applied,
+                 stale_discovery=expire_n, pending=still_pending)
+    return 1 if args.apply and applied < len(reclass_ids) else 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

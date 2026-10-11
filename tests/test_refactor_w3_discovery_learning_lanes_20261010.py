@@ -508,9 +508,10 @@ def test_ddb_dry_run_wins_over_apply(monkeypatch, capsys, _state):
     monkeypatch.setattr(ddb, "_get_conn", lambda: conn)
     monkeypatch.setattr(ddb, "_transition", _boom)
     assert ddb.main(["--apply", "--dry-run"]) == 0  # before wave 3 this combination APPLIED
-    rep = _dry_line(capsys.readouterr().out)
-    assert rep["summary"]["would_promote"] == 2 and rep["summary"]["would_archive"] == 3
-    assert conn.writes() == [] and conn.commits == 0 and conn.readonly is True and _no_runtime_files(_state)
+    out = capsys.readouterr().out
+    assert "DRY-RUN drain-discovery-backlog: would promote up to 200" in out
+    assert "inputs NOT_MEASURED" in out
+    assert conn.sql == [] and conn.commits == 0 and _no_runtime_files(_state)
 
 
 def test_ddb_dry_run_varies_with_promote_max(monkeypatch, capsys):

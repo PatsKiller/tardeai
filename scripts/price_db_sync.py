@@ -13,9 +13,21 @@ Dedupes via UPSERT (ON CONFLICT DO UPDATE).
 Consumers: watchlist strategy cards, agent synthesis, paper/broker proposals
 (support/resistance, backtest, broker curator), portfolio backfill scripts.
 """
+import argparse
 import json, os, sys
 from datetime import date, timedelta
 from pathlib import Path
+
+
+LANE_ID = "price-db-sync"
+
+
+def _receipt_lib():
+    try:
+        from scripts.lib import lane_last_receipt as lr
+    except ImportError:
+        from lib import lane_last_receipt as lr
+    return lr
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
@@ -119,13 +131,9 @@ def quarantine_outlier(
 
 def _get_conn():
     import psycopg2
+    from lib.env_bootstrap import load_env
+    load_env(names=("DB_PASSWORD",))
     pw = os.environ.get("DB_PASSWORD", "")
-    if not pw:
-        env_path = PROJECT_ROOT / ".env"
-        if env_path.exists():
-            for line in env_path.read_text().splitlines():
-                if line.startswith("DB_PASSWORD="):
-                    pw = line.split("=", 1)[1].strip()
     return psycopg2.connect(host="localhost", dbname="trade_ai", user="trade_ai", password=pw,
                             application_name="price_db_sync", connect_timeout=10)
 
@@ -543,5 +551,26 @@ def sync_watchlist_prices(symbols: list[str] | None = None, *, min_rows: int = 6
     return {"quotes_synced": n_quotes, "yfinance": yf_result}
 
 
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(allow_abbrev=False)
+    ap.add_argument("--dry-run", action="store_true", help="offline price-sync plan")
+    args = ap.parse_args(argv)
+    if args.dry_run:
+        print(f"DRY-RUN {LANE_ID}: would persist daily cache/holdings prices, sync market_quotes "
+              "and fill short watchlist history via yfinance; reject outliers before ticker_prices writes")
+        return 0
+    lr = _receipt_lib()
+    started = lr.now_iso()
+    try:
+        written = sync_daily_prices()
+    except BaseException as exc:
+        lr.write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
+                              script="price_db_sync.py", error=type(exc).__name__)
+        raise
+    lr.write_lane_receipt(LANE_ID, ok=True, exit_code=0, started_at=started,
+                          script="price_db_sync.py", summary={"prices_written": written})
+    return 0
+
+
 if __name__ == "__main__":
-    sync_daily_prices()
+    raise SystemExit(main())

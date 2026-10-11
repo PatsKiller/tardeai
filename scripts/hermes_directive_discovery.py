@@ -151,11 +151,15 @@ def run(apply=False, cap=PER_DIRECTIVE_CAP):
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser()
+    ap = argparse.ArgumentParser(allow_abbrev=False)
     ap.add_argument("--apply", action="store_true", help="write to staging (default: dry-run)")
     ap.add_argument("--dry-run", action="store_true", help="read-only preview; wins over --apply")
     ap.add_argument("--limit-per-directive", type=int, default=PER_DIRECTIVE_CAP)
     a = ap.parse_args(argv)
+    if a.dry_run:
+        print(f"DRY-RUN hermes-directive-discovery: would stage up to {a.limit_per_directive} hits per directive "
+              "in hermes_directive_hits_staging plus a lane receipt; inputs NOT_MEASURED")
+        return 0
     apply = a.apply and not a.dry_run
     if not apply:
         run(apply=False, cap=a.limit_per_directive)
@@ -168,7 +172,11 @@ def main(argv=None) -> int:
     except Exception as exc:
         write_receipt("hermes_directive_discovery", ok=False, started_at=started_at,
                       error=f"{type(exc).__name__}: {exc}")
+        write_receipt("hermes-directive-discovery", ok=False, exit_code=1, started_at=started_at,
+                      error=f"{type(exc).__name__}: {exc}")
         raise
+    write_receipt("hermes-directive-discovery", ok=True, exit_code=0, started_at=started_at,
+                  summary={k: report[k] for k in ("trend_directives", "staged", "skipped_stale")})
     write_receipt("hermes_directive_discovery", ok=True, started_at=started_at,
                   summary={k: report[k] for k in ("trend_directives", "staged", "skipped_stale")})
     return 0
