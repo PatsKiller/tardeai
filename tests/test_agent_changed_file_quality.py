@@ -2,12 +2,29 @@
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
 
 from scripts import agent_changed_file_quality as q
+
+
+@pytest.fixture
+def pinned_ruff(monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Use the declared test toolchain; discovery is tested independently."""
+    binary = shutil.which("ruff")
+    if binary is None:
+        pytest.skip("ruff unavailable in this environment")
+    ruff = Path(binary)
+    assert q.ruff_version(ruff) == f"ruff {q.PINNED_RUFF_VERSION}"
+
+    def refuse_discovery():
+        pytest.fail("quality fixtures must use their explicit pinned Ruff")
+
+    monkeypatch.setattr(q, "resolve_ruff_bin", refuse_discovery)
+    return ruff
 
 
 @pytest.fixture
@@ -34,10 +51,8 @@ def test_missing_ruff_with_python_changes_blocked(tmp_path: Path, monkeypatch: p
     assert rc == 2
 
 
-def test_format_drift_fails(tmp_path: Path, isolate_git_secrets):
-    ruff = q.resolve_ruff_bin()
-    if ruff is None:
-        pytest.skip("ruff unavailable in this environment")
+def test_format_drift_fails(tmp_path: Path, isolate_git_secrets, pinned_ruff: Path):
+    ruff = pinned_ruff
     py = tmp_path / "ugly.py"
     py.write_text(
         "def f(a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r,s,t): return a+b+c+d+e+f+g+h+i+j+k+l+m+n+o+p+q+r+s+t\n",
@@ -47,10 +62,8 @@ def test_format_drift_fails(tmp_path: Path, isolate_git_secrets):
     assert rc == 1
 
 
-def test_clean_python_passes_ruff_gates(tmp_path: Path, isolate_git_secrets):
-    ruff = q.resolve_ruff_bin()
-    if ruff is None:
-        pytest.skip("ruff unavailable in this environment")
+def test_clean_python_passes_ruff_gates(tmp_path: Path, isolate_git_secrets, pinned_ruff: Path):
+    ruff = pinned_ruff
     py = tmp_path / "clean.py"
     py.write_text('"""doc."""\n\nx = 1\n', encoding="utf-8")
     subprocess.check_call([str(ruff), "format", str(py)])
