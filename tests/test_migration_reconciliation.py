@@ -146,6 +146,39 @@ def test_exact_registry_id_is_coverage_not_accepted_business_crosswalk():
     assert requirements["mapping"]["status"] == "NOT_MEASURED"
 
 
+def test_specific_source_proposals_do_not_accept_owner_mapping_or_completion():
+    result = reconcile([row(registry_row="NONE", owner_stakeholder="UNKNOWN", classification=None)])
+    packet = {
+        "rows": [
+            {
+                "inv_id": "cron:1",
+                "source_mapping_status": "EXACT_SOURCE_CANDIDATE",
+                "source_backed_candidates": ["lane"],
+                "source_declared_owner": "platform",
+                "remaining_action": "Confirm parent and owner",
+            }
+        ],
+        "classification_proposals": [
+            {
+                "inv_id": "cron:1",
+                "proposed_classification": "Retain as Existing Cron Job",
+                "classification_proposal_status": "OWNER_ACCEPTANCE_NOT_MEASURED",
+                "source_declared_owner": "platform",
+                "rationale": "source retains cron",
+            }
+        ],
+        "counts": {"proposals": 1},
+    }
+    R.apply_coverage_proposals(result, packet, "fixture-coverage.json#hash")
+    item = result["items"][0]
+    assert item["primary_work_status"] == "Blocked"
+    assert item["ownership_confirmation"] == "NOT_MEASURED"
+    assert item["canonical_process_id"] == "UNMAPPED:cron:1"
+    assert item["next_action"] == "Confirm parent and owner"
+    assert item["classification_proposal"] == "Retain as Existing Cron Job"
+    assert result["summary"]["primary_status_partition"]["Completed"] == 0
+
+
 def test_retained_scheduler_still_requires_production_proof():
     result = reconcile([row(classification="Retain as Existing Cron Job")])
     requirements = {r["requirement"]: r for r in result["requirements"]}

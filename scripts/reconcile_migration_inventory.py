@@ -47,6 +47,7 @@ DERIVED_SHEETS = {
     "OpenClaw Crosswalk",
     "Runtime Observations",
     "Classification Review",
+    "Coverage Resolution",
 }
 CUTOVER_FIELDS = ("reconciled_acceptance", "acceptance_basis", "acceptance_as_of")
 _LOCKS = threading.local()
@@ -130,6 +131,10 @@ BASE_FIELDS = [
     "decision_due_date",
     "natural_observation_date",
     "scoped_consolidation_deferral",
+    "classification_proposal",
+    "classification_review_status",
+    "source_mapping_proposal",
+    "source_declared_owner_candidate",
 ]
 
 
@@ -306,6 +311,12 @@ def reconcile(
         proven = sum(r["status"] == "PROVEN" for r in requirement_rows)
         matrix.extend(requirement_rows)
         actions = [r["collection_action"] for r in requirement_rows if r["status"] == UNKNOWN]
+        if modification and meaningful(row.get("custom_work_required")):
+            actions.insert(
+                0,
+                "Reassess historical custom work against current integrated source: "
+                + str(row["custom_work_required"]),
+            )
         if comp:
             actions = list(comp["remaining"]) + actions
         canonical = lane["lane_id"] if lane else "UNMAPPED:" + inv_id
@@ -347,7 +358,7 @@ def reconcile(
             "applicable_requirements_passed": proven,
             "applicable_requirements_required": required,
             "requirement_coverage_pct": round(100 * proven / required, 2),
-            "closure_priority": row.get("migration_priority") or "UNASSIGNED",
+            "closure_priority": "P1" if modification else row.get("migration_priority") or "UNASSIGNED",
             "effort_class": row.get("migration_complexity") or "NOT_ESTIMATED",
             "closure_risk": row.get("migration_risk") or "NOT_ASSESSED",
             "closure_dependencies": row.get("dependencies") or UNKNOWN,
@@ -367,6 +378,10 @@ def reconcile(
             "decision_due_date": "2026-10-12 (proposed owner review; not agreed)",
             "natural_observation_date": "NOT_SCHEDULED: requires reviewed contract and authorized exact deployment",
             "scoped_consolidation_deferral": scoped_deferral,
+            "classification_proposal": "NONE",
+            "classification_review_status": "NO_NEW_PROPOSAL",
+            "source_mapping_proposal": "NONE",
+            "source_declared_owner_candidate": "NONE",
         }
         derived.append(d)
         crosswalk.append(
@@ -441,6 +456,29 @@ def reconcile(
         "crosswalk": crosswalk,
         "drift": drifts,
     }
+
+
+def apply_coverage_proposals(result, packet, reference):
+    """Attach exact source proposals without accepting mappings or owner decisions."""
+    by_id = {r["inv_id"]: r for r in result["items"]}
+    for proposal in packet["rows"]:
+        item = by_id[proposal["inv_id"]]
+        item["source_mapping_proposal"] = (
+            proposal["source_mapping_status"] + ": " + json.dumps(proposal["source_backed_candidates"], sort_keys=True)
+        )
+        item["source_declared_owner_candidate"] = proposal["source_declared_owner"]
+        item["next_action"] = proposal["remaining_action"]
+        item["remaining_actions"] = proposal["remaining_action"] + "; " + item["remaining_actions"]
+        item["evidence_paths"] += "; " + reference
+    for proposal in packet["classification_proposals"]:
+        item = by_id[proposal["inv_id"]]
+        item["classification_proposal"] = proposal["proposed_classification"]
+        item["classification_review_status"] = proposal["classification_proposal_status"]
+        item["source_declared_owner_candidate"] = proposal["source_declared_owner"]
+        item["remaining_actions"] = (
+            "Review source-backed classification: " + proposal["rationale"] + "; " + item["remaining_actions"]
+        )
+    result["summary"]["coverage_reconciliation"] = packet["counts"]
 
 
 def write_artifacts(result, output):
@@ -700,9 +738,26 @@ def build(args):
             + " #sha256="
             + sha256((args.supplement / "runtime_observations.json").read_bytes())
         )
+        coverage_path = args.supplement / "inventory_coverage_resolution.json"
+        coverage = load(coverage_path) if coverage_path.exists() else None
+        if coverage:
+            provenance["coverage_packet"] = str(coverage_path) + " #sha256=" + sha256(coverage_path.read_bytes())
+            apply_coverage_proposals(result, coverage, provenance["coverage_packet"])
     write_artifacts(result, args.output)
     workbook_candidate(wb, result, args.output)
     if args.supplement:
+        if coverage:
+            for key, title in (("rows", "Coverage Resolution"), ("classification_proposals", "Classification Review")):
+                headers = sorted({k for r in coverage[key] for k in r})
+                sheet_table(
+                    wb,
+                    title,
+                    headers,
+                    [
+                        [json.dumps(r.get(k)) if isinstance(r.get(k), (list, dict)) else r.get(k) for k in headers]
+                        for r in coverage[key]
+                    ],
+                )
         for filename, title in (
             ("monitoring_coverage.tsv", "Monitoring Coverage"),
             ("owner_decisions.tsv", "Owner Decisions"),
