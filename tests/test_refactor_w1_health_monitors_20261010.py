@@ -317,6 +317,16 @@ def fake_playwright(monkeypatch):
     monkeypatch.setitem(sys.modules, "playwright.sync_api", sub)
 
 
+@pytest.fixture
+def crawl_source_fixture(monkeypatch, tmp_path):
+    """The Telegram crawl reads its source-root dotenv; supply an actual empty fixture before that read."""
+    root = tmp_path / "crawl_source"
+    (root / "scripts").mkdir(parents=True)
+    (root / ".env").write_text("", encoding="utf-8")
+    monkeypatch.setattr(W, "__file__", str(root / "scripts/crawl_v3_dashboard.py"))
+    return root
+
+
 def test_crawl_dry_run_with_telegram_sends_nothing_and_writes_nothing(
     monkeypatch, state_root, fake_playwright, tmp_path, capsys
 ):
@@ -329,11 +339,12 @@ def test_crawl_dry_run_with_telegram_sends_nothing_and_writes_nothing(
     assert not shots.exists() and not state_root.exists()
 
 
-def test_crawl_findings_exit_zero_with_receipt(monkeypatch, state_root, fake_playwright):
+def test_crawl_findings_exit_zero_with_receipt(monkeypatch, state_root, fake_playwright, crawl_source_fixture):
     monkeypatch.setattr(W, "_crawl", lambda sp, base, shots: (dict(CONFIRMED), dict(CONFIRMED)))
     sent = []
     monkeypatch.setattr(W, "_send_telegram", lambda m: sent.append(m))
     assert W.main(["--telegram"]) == 0
+    assert (crawl_source_fixture / ".env").read_text(encoding="utf-8") == ""
     assert len(sent) == 1  # sender behaviour unchanged on a real --telegram run
     doc = json.loads((state_root / "data/runtime/crawl-v3-dashboard_last.json").read_text())
     assert doc["status"] == "ok" and doc["summary"]["routes"] == len(W.ROUTES)
