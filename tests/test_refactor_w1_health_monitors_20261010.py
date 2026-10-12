@@ -13,6 +13,7 @@ failed check exits non-zero.
 from __future__ import annotations
 
 import inspect
+import io
 import json
 import runpy
 import sys
@@ -95,6 +96,20 @@ def _fake_dispatcher(monkeypatch, fn):
     monkeypatch.setitem(sys.modules, "alert_dispatcher_unified", types.SimpleNamespace(dispatch=fn))
 
 
+@pytest.fixture
+def hermes_dedup_hour(monkeypatch):
+    """The producer formats its hourly dedup key with date; tests must never spawn that shell."""
+    calls = []
+
+    def fixture_clock(command):
+        assert command == "date +%Y%m%d%H", "unexpected shell formatter in Hermes test"
+        calls.append(command)
+        return io.StringIO("2026101012\n")
+
+    monkeypatch.setattr(H.os, "popen", fixture_clock)
+    return calls
+
+
 def test_hermes_dry_run_with_send_writes_and_sends_nothing(monkeypatch, state_root, capsys):
     monkeypatch.setattr(H, "check", lambda: list(ISSUES))
     monkeypatch.setitem(sys.modules, "db_adapter", types.SimpleNamespace(_execute=_boom))
@@ -112,29 +127,32 @@ def test_hermes_dry_run_returns_before_first_insert_in_source():
     assert src.index("if a.dry_run:\n        # Returns before") < src.index("ad.dispatch(")
 
 
-def test_hermes_findings_are_recorded_and_exit_zero(monkeypatch, state_root):
+def test_hermes_findings_are_recorded_and_exit_zero(monkeypatch, state_root, hermes_dedup_hour):
     monkeypatch.setattr(H, "check", lambda: list(ISSUES))
     calls = _fake_db(monkeypatch)
     _fake_dispatcher(monkeypatch, _boom)  # no --send: never dispatched
     assert H.main([]) == 0
+    assert hermes_dedup_hour == ["date +%Y%m%d%H"]
     assert [c.split(" (")[0] for c in calls] == ["INSERT INTO alert_events", "INSERT INTO escalation_queue"]
     doc = json.loads((state_root / "data/runtime/hermes-pipeline-health_last.json").read_text())
     assert doc["status"] == "ok" and doc["ok_at"] and doc["summary"]["issues"] == 1
 
 
-def test_hermes_send_flag_still_dispatches_on_real_run(monkeypatch, state_root):
+def test_hermes_send_flag_still_dispatches_on_real_run(monkeypatch, state_root, hermes_dedup_hour):
     monkeypatch.setattr(H, "check", lambda: list(ISSUES))
     _fake_db(monkeypatch)
     sent = []
     _fake_dispatcher(monkeypatch, lambda **kw: sent.append(kw))
     assert H.main(["--send"]) == 0
+    assert hermes_dedup_hour == ["date +%Y%m%d%H"]
     assert sent and sent[0]["source"] == "hermes_pipeline_health"
 
 
-def test_hermes_unrecorded_findings_and_check_failure_exit_one(monkeypatch, state_root):
+def test_hermes_unrecorded_findings_and_check_failure_exit_one(monkeypatch, state_root, hermes_dedup_hour):
     monkeypatch.setattr(H, "check", lambda: list(ISSUES))
     _fake_db(monkeypatch, result=None)  # db_adapter._execute returns None on SQL error
     assert H.main([]) == 1
+    assert hermes_dedup_hour == ["date +%Y%m%d%H"]
     path = state_root / "data/runtime/hermes-pipeline-health_last.json"
     doc = json.loads(path.read_text())
     assert doc["status"] == "failed" and doc["ok_at"] is None and doc["summary"]["record_errors"]
@@ -144,6 +162,7 @@ def test_hermes_unrecorded_findings_and_check_failure_exit_one(monkeypatch, stat
 
     monkeypatch.setattr(H, "check", broken)
     assert H.main([]) == 1
+    assert hermes_dedup_hour == ["date +%Y%m%d%H"]  # failed check reaches no formatter
     assert json.loads(path.read_text())["status"] == "failed"
 
 
