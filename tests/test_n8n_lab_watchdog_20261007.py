@@ -1,4 +1,5 @@
 """The watchdog reports from outside n8n with isolated transport fixtures."""
+
 from __future__ import annotations
 
 import json
@@ -103,6 +104,7 @@ def test_unexpected_body_dns_shape_stale_and_failed_write(tmp_path):
     path = tmp_path / "kept.json"
     path.write_text('{"schema":"keep"}\n', encoding="utf-8")
     try:
+
         def _fail() -> None:
             raise OSError("disk")
 
