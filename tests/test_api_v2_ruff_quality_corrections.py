@@ -173,9 +173,38 @@ def test_broker_connectors_as_of_does_not_call_undefined_now_iso():
 
 def test_broker_connectors_as_of_is_iso_string(monkeypatch):
     import api_v2
+    from types import ModuleType
 
+    calls = []
+    provider = ModuleType("validate_broker_connectors")
+
+    def fixture_report():
+        calls.append("fixture_report")
+        return [{"broker": "fixture-connector", "valid": True, "configured": False}]
+
+    provider.validate_all = fixture_report
+    real_import = importlib.import_module
+    real_reload = importlib.reload
+
+    def import_report(name, *args, **kwargs):
+        if name == provider.__name__:
+            calls.append("fixture_import")
+            return provider
+        return real_import(name, *args, **kwargs)
+
+    def reload_report(module):
+        if module is provider:
+            calls.append("fixture_reload")
+            return provider
+        return real_reload(module)
+
+    # This assertion concerns API metadata, so the provider report is inert.
+    # Intercept reload as well: reloading a fake import could enter real source.
+    monkeypatch.setattr(importlib, "import_module", import_report)
+    monkeypatch.setattr(importlib, "reload", reload_report)
     monkeypatch.setattr(api_v2, "_db_query", lambda *a, **k: [])
     out = api_v2._system_broker_connectors()
+    assert calls == ["fixture_import", "fixture_reload", "fixture_report"]
     assert isinstance(out, dict)
     assert out.get("as_of"), "as_of must be populated (fail-closed previously returned None)"
     # ISO-8601 shape
