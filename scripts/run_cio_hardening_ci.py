@@ -3748,6 +3748,8 @@ GATES = [
         "n8n_health_contracts_20261010",
         [
             "tests/test_n8n_health_contracts_20261010.py",
+            # 2026-10-12: the 66 grandfathered DRAFT contracts are tested in place. Status stays DRAFT.
+            "tests/test_draft_health_contracts_20261012.py",
         ],
     ),
     (
