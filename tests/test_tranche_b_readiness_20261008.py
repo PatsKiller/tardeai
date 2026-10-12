@@ -12,6 +12,10 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import pytest
+
+from tests.pipeline_runner_fixtures import runner_env
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
@@ -118,17 +122,46 @@ def test_dry_run_writes_nothing_and_write_produces_the_receipt(tmp_path, capsys)
 
 def _fake_crontab(tmp_path: Path) -> tuple[Path, Path]:
     store = tmp_path / "crontab.store"
-    fake = tmp_path / "crontab"
+    fake = tmp_path / "fixture-cron-store"
     fake.write_text('#!/usr/bin/env bash\nset -e\nif [ "$1" = "-l" ]; then cat "%s"; elif [ "$1" = "-" ]; then cat > "%s"; else exit 64; fi\n' % (store, store))
     fake.chmod(fake.stat().st_mode | stat.S_IEXEC)
     return fake, store
 
 
 def _env(tmp_path: Path, fake: Path, root: Path) -> dict:
-    env = dict(os.environ)
+    # §24.6: a scheduler simulator has an explicit scratch identity; host crontab remains forbidden.
+    if (fake.name != "fixture-cron-store" or fake.is_symlink() or not fake.is_file()
+            or fake.parent.resolve() != tmp_path.resolve() or not root.resolve().is_relative_to(tmp_path.resolve())):
+        raise ValueError("explicit scratch fixture cron command required")
+    env = runner_env(tmp_path)
     env.update({"CRONTAB_CMD": str(fake), "BACKUP_DIR": str(tmp_path / "backups"), "CUTOVER_DATE": "2026-10-08",
-                "CUTOVER_CODE_ROOT": str(root)})
+                "CUTOVER_CODE_ROOT": str(root), "TRADEAI_STATE_ROOT": str(tmp_path / "state"),
+                "N8N_CUTOVER_LOCK": str(tmp_path / "cutover.lock")})
     return env
+
+
+def test_cutover_fixture_requires_scratch_command_and_discards_inherited_environment(tmp_path, monkeypatch):
+    root = _code_root(tmp_path, [])
+    fake, store = _fake_crontab(tmp_path)
+    store.write_text(OTHER + "\n")
+    monkeypatch.setenv("CRONTAB_CMD", "/usr/bin/crontab")
+    monkeypatch.setenv("NOISE_FROM_OPERATOR_SHELL", "fixture-marker")
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path / "inherited-state"))
+    env = _env(tmp_path, fake, root)
+    assert env["CRONTAB_CMD"] == str(fake)
+    assert env["TRADEAI_STATE_ROOT"] == str(tmp_path / "state")
+    assert env["N8N_CUTOVER_LOCK"] == str(tmp_path / "cutover.lock")
+    assert "NOISE_FROM_OPERATOR_SHELL" not in env
+    outside = tmp_path / "different-owner" / "fixture-cron-store"
+    outside.parent.mkdir()
+    outside.write_text("#!/bin/sh\nexit 0\n")
+    alias = tmp_path / "alias" / "fixture-cron-store"
+    alias.parent.mkdir()
+    alias.symlink_to(fake)
+    for invalid in (Path("/usr/bin/crontab"), tmp_path / "missing" / "fixture-cron-store", outside, alias):
+        with pytest.raises(ValueError, match="explicit scratch fixture"):
+            _env(tmp_path, invalid, root)
+    assert store.read_text() == OTHER + "\n"
 
 
 def test_cutover_dry_run_counts_match_the_manifest_and_writes_nothing(tmp_path):
