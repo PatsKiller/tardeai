@@ -113,9 +113,31 @@ def test_hermes_learning_registry_edit():
     assert gov["dispatch_retired"]["wave"] == "D1b"
     allow = (ROOT / "config" / "n8n_run_allowlist.json").read_text(encoding="utf-8")
     assert '"lane_id": "hermes-config-governor"' not in allow
-    # hermes_overnight and after_close are NOT flipped (after_close is not admissible: operator ruling 2026-10-11)
-    for lane in ("hermes-overnight-pipeline-night", "after-close-pipeline-planning"):
-        assert reg[lane]["scheduler"]["command_text"].endswith("--dry-run"), lane
+    # after_close is NOT flipped (not admissible: operator ruling 2026-10-11). hermes_overnight was flipped on cron
+    # 2026-10-11 10:55 ET (grant 1ce02c1b) and its registry edit landed in train 6: test_hermes_overnight_registry_edit.
+    assert reg["after-close-pipeline-planning"]["scheduler"]["command_text"].endswith("--dry-run")
+
+
+def test_hermes_overnight_registry_edit():
+    """C1 flip 2 (hermes_overnight, cron installed 2026-10-11 10:55 ET, grant 1ce02c1b): stage lanes --apply and the
+    5 absorbed rows RETIRED into them; the two dispatcher shadow rows leave their waves and the allowlist."""
+    reg = {r["lane_id"]: r for r in json.loads((ROOT / "config" / "lane_registry.json").read_text(encoding="utf-8"))["lanes"]}
+    for lane in ("hermes-overnight-pipeline-night", "hermes-overnight-pipeline-close"):
+        assert reg[lane]["state"] == "ACTIVE"
+        assert reg[lane]["scheduler"]["command_text"].endswith("--apply"), lane
+    absorbed = {"hermes-discovery-yield-builder": "night", "hermes-tag-lift-discovery": "night",
+                "hermes-industry-novelty-discovery": "night", "siem-to-hermes-backlog": "night",
+                "hermes-source-curation": "close"}
+    for lane, stage in absorbed.items():
+        r = reg[lane]
+        assert r["state"] == "RETIRED" and r["superseded_by"] == f"hermes-overnight-pipeline-{stage}", lane
+        assert r["reason_confidence"] in ("CORRELATED", "ESTABLISHED")
+    for lane, wave in (("hermes-tag-lift-discovery", "W4"), ("hermes-industry-novelty-discovery", "D2")):
+        assert "dispatch" not in reg[lane] and "stage" not in reg[lane]["scheduler"], lane
+        assert reg[lane]["dispatch_retired"]["wave"] == wave, lane
+    allow = (ROOT / "config" / "n8n_run_allowlist.json").read_text(encoding="utf-8")
+    assert '"lane_id": "hermes-tag-lift-discovery"' not in allow
+    assert '"lane_id": "hermes-industry-novelty-discovery"' not in allow
 
 
 #: C1 premarket flip (2026-10-11): the 36 rows whose every cron line is a premarket step.

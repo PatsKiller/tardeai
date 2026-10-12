@@ -495,7 +495,9 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
     refactor = {r["lane_id"] for r in rows if (r.get("scheduler") or {}).get("wave") in
                 {"R2-05", "R2-06", "R2-07", "R2-08"}}
     assert len(refactor) == 11 and refactor <= set(shadow), refactor
-    assert len(shadow) == 54 + 3 + 15 - len(CANARY_ROWS) - 17 + 10 + 11, shadow
+    # - 2: C1 hermes_overnight registry edit (train 6, 2026-10-12) absorbs hermes-tag-lift-discovery (SW4/W4) and
+    # hermes-industry-novelty-discovery (D2) into hermes-overnight-pipeline-night (dispatch_retired, allowlist removed).
+    assert len(shadow) == 54 + 3 + 15 - len(CANARY_ROWS) - 17 + 10 + 11 - 2, shadow
     # heartbeat-watch moved shadow → canary (N8N_NATIVE_CANARY) 2026-10-11.
     assert sorted(r["lane_id"] for r in rows if LD.dispatch_mode(r) == "live") == sorted(CANARY_ROWS | N8N_NATIVE_CANARY)
 
@@ -531,8 +533,9 @@ def test_wave_d2_dispatch_cron_equals_the_row_schedule_and_locks_match_cron():
     data-gap-resolver cadences share the one cron lock, so they can never run concurrently from either scheduler."""
     rows = [r for r in _live_rows() if (r.get("scheduler") or {}).get("wave") == "D2"]
     # 14 at D2; C1 premarket flip (2026-10-11) moved 4 out (catalyst-calibration-monitor, backtest-results-aggregator,
-    # watch-directives-monitor, cio-draft-plan-hygiene -> dispatch_retired).
-    assert len(rows) == 10
+    # watch-directives-monitor, cio-draft-plan-hygiene -> dispatch_retired). C1 hermes_overnight (train 6, 2026-10-12)
+    # moved hermes-industry-novelty-discovery out the same way: 9.
+    assert len(rows) == 9
     allow = {e["lane_id"]: e for e in json.loads((ROOT / "config" / "n8n_run_allowlist.json").read_text())["lanes"]}
     for r in rows:
         assert r["dispatch"]["cron"] == [r["scheduler"]["expression"]], r["lane_id"]
