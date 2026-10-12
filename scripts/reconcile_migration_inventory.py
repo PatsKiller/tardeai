@@ -603,7 +603,9 @@ def workbook_candidate(wb, result, output):
         wb,
         "Reconciliation Evidence",
         ["path", "sha256"],
-        [[str(p), sha256(p.read_bytes())] for p in sorted(output.glob("*.json"))],
+        # Only artifacts just generated for this review. The later publication
+        # receipt hashes this workbook; embedding it would form a hash cycle.
+        [[str(output / name), sha256((output / name).read_bytes())] for name in ("reconciliation.json", "summary.json")],
     )
     # Original tracker rows remain a historical audit trail. New acceptance is explicit.
     tracker = wb["Tracker"]
