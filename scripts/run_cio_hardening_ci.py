@@ -4071,6 +4071,7 @@ GATES = [
             "tests/test_momentum_cache_reconcile_20261012.py",
             "tests/test_n8n_momentum_lifecycle_cli_20261012.py",
             "tests/test_momentum_setup_evidence_20261012.py",
+            "tests/test_momentum_notification_evidence_20261012.py",
         ],
     ),
     (
