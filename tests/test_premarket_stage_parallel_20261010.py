@@ -13,11 +13,12 @@ Proven here, hermetically (scratch project root, sleep/echo steps, no host state
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 import sys
 import uuid
 from pathlib import Path
+
+from tests.pipeline_runner_fixtures import runner_env, sandbox_runner
 
 ROOT = Path(__file__).resolve().parents[1]
 PIPELINES = ROOT / "scripts" / "pipelines"
@@ -31,7 +32,7 @@ WINDOW_S = 90 * 60  # 06:00 -> 07:30 brief
 
 
 def _manifest(tmp: Path, steps: list[dict], parallel: dict | None) -> tuple[Path, str]:
-    name = f"par_{uuid.uuid4().hex[:8]}"  # unique: the stage lock is a /tmp path shared by every checkout
+    name = f"par_{uuid.uuid4().hex[:8]}"
     stage: dict = {"steps": steps}
     if parallel is not None:
         stage["parallel"] = parallel
@@ -41,12 +42,10 @@ def _manifest(tmp: Path, steps: list[dict], parallel: dict | None) -> tuple[Path
 
 
 def _run(tmp: Path, manifest: Path, *args: str) -> subprocess.CompletedProcess:
-    env = dict(os.environ)
-    env.pop("ALPACA_MODE", None)
-    env.pop("LIVE_TRADING_ENABLED", None)
-    env["PIPELINE_TODAY_DOW"] = "3"
-    return subprocess.run(["bash", str(RUNNER), "--manifest", str(manifest), "--project-root", str(tmp), "--stage", "s", *args],
-                          cwd=str(ROOT), env=env, capture_output=True, text=True, timeout=120)
+    env = runner_env(tmp)
+    runner = sandbox_runner(tmp, RUNNER)
+    return subprocess.run(["bash", str(runner), "--manifest", str(manifest), "--project-root", str(tmp), "--stage", "s", *args],
+                          cwd=str(tmp), env=env, capture_output=True, text=True, timeout=120)
 
 
 def _step(sid: str, group: str, cmd: str, line: int = 1) -> dict:
@@ -162,11 +161,11 @@ def test_wave_plan_p95_matches_readiness_rule():
 def test_real_premarket_runner_dry_run_prints_waves_executes_nothing(tmp_path):
     # PIPELINE_LOCK_DIR: a private stage lock, so a parallel CI gate (or the live host's cron) dry-running or
     # running the same real manifest cannot make this run a clean "[lock] ... already running" skip.
-    env = {"HOME": os.environ.get("HOME", "/tmp"), "PATH": "/usr/bin:/bin", "PY": "/usr/bin/python3", "PIPELINE_TODAY_DOW": "3",
-           "PIPELINE_LOCK_DIR": str(tmp_path)}
-    r = subprocess.run(["bash", str(PREMARKET_RUNNER), "--manifest", str(PREMARKET), "--project-root", str(tmp_path),
+    env = runner_env(tmp_path)
+    runner = sandbox_runner(tmp_path, PREMARKET_RUNNER)
+    r = subprocess.run(["bash", str(runner), "--manifest", str(PREMARKET), "--project-root", str(tmp_path),
                         "--dry-run"],
-                       cwd=str(ROOT), env=env, capture_output=True, text=True, timeout=120)
+                       cwd=str(tmp_path), env=env, capture_output=True, text=True, timeout=120)
     assert r.returncode == 0, r.stdout + r.stderr
     assert "[waves] stage=premarket max_concurrency=4 groups=23" in r.stdout
     assert r.stdout.count("[DRY_RUN] would run") == 37

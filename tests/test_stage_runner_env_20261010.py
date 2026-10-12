@@ -14,12 +14,11 @@ Hermetic: a scratch project root, a FAKE .env written by the test, `env | cut -d
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 import sys
 from pathlib import Path
 
-import pytest
+from tests.pipeline_runner_fixtures import runner_env, sandbox_runner
 
 ROOT = Path(__file__).resolve().parents[1]
 PIPELINES = ROOT / "scripts" / "pipelines"
@@ -32,7 +31,7 @@ import pipeline_manifest as pm  # noqa: E402
 #: the crontab's NAME=value lines by position in the C1 snapshot (sha 1e3ccb09… / 9bbaeb74…, same numbering)
 SNAPSHOT_ASSIGNMENTS = [(2, "SHELL"), (3, "PROJ"), (4, "PY"), (9, "LLM_DEFER_OFFPEAK"), (11, "TRADEAI_ENV"),
                         (13, "BLIND_REVIEW_LANES"), (506, "CIO_DUAL_CHATGPT_CAP")]
-SNAPSHOT = Path.home() / "n8n-maturity-verification" / "packets" / "c1-manifest-flips" / "hermes_learning" / "crontab.before.txt"
+SNAPSHOT = ROOT / "tests" / "fixtures" / "c1_crontab_assignments_20261010.txt"
 
 
 def _m(name: str) -> dict:
@@ -60,8 +59,7 @@ def test_every_c1_step_has_an_env_spec_equal_to_its_cron_line():
     assert n == 75
 
 
-@pytest.mark.skipif(not SNAPSHOT.exists(), reason="host-only: the C1 packet snapshot")
-def test_fixture_matches_the_packet_snapshot():
+def test_fixture_preserves_snapshot_assignment_positions():
     assert dse.crontab_assignments(SNAPSHOT.read_text(encoding="utf-8")) == SNAPSHOT_ASSIGNMENTS
 
 
@@ -100,17 +98,18 @@ def _project(tmp_path: Path, env_text: str) -> Path:
 
 
 def _runner_env(root: Path) -> dict:
-    env = {"HOME": os.environ.get("HOME", "/tmp"), "LANG": "C.UTF-8", "LOGNAME": "tester", "PATH": "/usr/bin:/bin",
-           "SHELL": "/bin/bash", "PROJ": str(root), "PY": sys.executable, "LLM_DEFER_OFFPEAK": "1",
+    env = runner_env(root)
+    env.update({"PROJ": str(root), "LLM_DEFER_OFFPEAK": "1",
            "TRADEAI_ENV": "/nonexistent/env", "BLIND_REVIEW_LANES": "x", "CIO_DUAL_CHATGPT_CAP": "1",
            # present in the runner's own environment, must never reach a step
-           "NOISE_FROM_RUNNER": "1", "ALPACA_API_KEY_ID": "fake-runner-side", "PIPELINE_TODAY_DOW": "3"}
+           "NOISE_FROM_RUNNER": "1", "ALPACA_API_KEY_ID": "fake-runner-side"})
     return env
 
 
 def _run(root: Path, manifest: Path, stage: str, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(["bash", str(RUNNER), "--manifest", str(manifest), "--project-root", str(root),
-                           "--stage", stage, *args], cwd=str(ROOT), env=_runner_env(root),
+    runner = sandbox_runner(root, RUNNER)
+    return subprocess.run(["bash", str(runner), "--manifest", str(manifest), "--project-root", str(root),
+                           "--stage", stage, *args], cwd=str(root), env=_runner_env(root),
                           capture_output=True, text=True, timeout=300)
 
 
@@ -208,3 +207,7 @@ def test_dry_run_prints_each_steps_env_names_serial_and_parallel(tmp_path):
         steps = _m(name)["stages"][stage]["steps"]
         assert r.stdout.count("[DRY_RUN] would run:") == r.stdout.count("env (env -i, names only):") == len(steps), name
         assert "CANARY_SHOULD_NOT_LEAK" not in r.stdout
+        summary = json.loads((root / "data" / "runtime" / f"pipeline_{name}_{stage}_last.json").read_text())
+        assert summary["dry_run"] is True and summary["overall_status"] == "dry_run"
+        assert summary["step_count"] == summary["expected_step_count"] == len(steps)
+        assert summary["receipt_complete"] is True and summary["worker_failures"] == 0

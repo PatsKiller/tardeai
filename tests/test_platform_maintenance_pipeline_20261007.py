@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import fcntl
 import json
-import os
 import re
 import shutil
 import subprocess
@@ -17,6 +16,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from tests.pipeline_runner_fixtures import runner_env
 
 ROOT = Path(__file__).resolve().parent.parent
 RUNNER = ROOT / "scripts" / "pipelines" / "run_platform_maintenance_pipeline.sh"
@@ -35,14 +35,13 @@ def _sandbox(tmp_path: Path) -> Path:
 
 
 def _env(tmp_path: Path) -> dict:
-    return {
-        "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
-        "HOME": str(tmp_path / "home"),
-        "LANG": "C.UTF-8",
+    env = runner_env(tmp_path)
+    env.update({
         "PLATFORM_MAINT_LOCK_DIR": str(tmp_path / "locks"),
         "ALPACA_MODE": "paper",
         "LIVE_TRADING_ENABLED": "false",
-    }
+    })
+    return env
 
 
 def _run(proj: Path, env: dict, *args: str, manifest: Path | None = None) -> subprocess.CompletedProcess:
@@ -184,14 +183,12 @@ def test_manifest_env_var_is_honoured(tmp_path):
 
 # --- built-in tables = the absorbed crontab lines, in clock order ----------------------------------
 
-def _plan(cadence: str) -> list[dict]:
-    env = dict(os.environ, PLATFORM_MAINT_LOCK_DIR="/nonexistent-never-used")
-    env.pop("PLATFORM_MAINT_MANIFEST", None)
-    # The plan's DEFAULT state root ($HOME/trade-ai-releases/persistent-state, as cron renders it), not the hermetic
-    # bootstrap's TRADEAI_STATE_ROOT fixture; HOME is the bootstrap's empty fixture home, and this is a dry run.
-    env.pop("TRADEAI_STATE_ROOT", None)
-    r = subprocess.run(["bash", str(RUNNER), "--cadence", cadence, "--dry-run"], cwd=str(ROOT), env=env,
-                       capture_output=True, text=True, timeout=60)
+def _plan(tmp_path: Path, cadence: str) -> list[dict]:
+    proj = _sandbox(tmp_path / cadence)
+    env = _env(tmp_path / cadence)
+    # Preserve the cron-rendered state-root shape under the fixture HOME.
+    env["TRADEAI_STATE_ROOT"] = str(Path(env["HOME"]) / "trade-ai-releases" / "persistent-state")
+    r = _run(proj, env, "--cadence", cadence, "--dry-run")
     assert r.returncode == 0, r.stdout + r.stderr
     assert "nothing executed, nothing written" in r.stdout
     steps = []
@@ -204,8 +201,8 @@ def _plan(cadence: str) -> list[dict]:
     return steps
 
 
-def test_builtin_nightly_plan_is_the_absorbed_cron_lines_in_clock_order():
-    steps = _plan("nightly")
+def test_builtin_nightly_plan_is_the_absorbed_cron_lines_in_clock_order(tmp_path):
+    steps = _plan(tmp_path, "nightly")
     assert [s["step"] for s in steps] == [
         "rotate_runtime_logs", "populate_performance_context", "report_platform_conformance",
         "nightly_integrity_sweep", "strategy_config_sync", "siem_retention_purge",
@@ -241,12 +238,12 @@ def test_builtin_nightly_plan_is_the_absorbed_cron_lines_in_clock_order():
         assert "sync-docs-to-drive" not in s["cmd"] and "sync_code_mirror" not in s["cmd"]
 
 
-def test_builtin_weekly_and_monthly_plans():
-    weekly = _plan("weekly")
+def test_builtin_weekly_and_monthly_plans(tmp_path):
+    weekly = _plan(tmp_path, "weekly")
     assert [s["step"] for s in weekly] == ["docs_retention", "n8n_lab_restore_drill", "check_system_versions"]
     assert weekly[1]["cmd"].endswith("bash scripts/n8n_lab_restore_drill.sh --apply")
     assert weekly[2]["log"].endswith("/logs/version_check.log")
-    monthly = _plan("monthly")
+    monthly = _plan(tmp_path, "monthly")
     assert [s["step"] for s in monthly] == ["backup_verify", "youtube_transcript_purge"]
     assert monthly[0]["lock"] == "/tmp/backup_verify.lock"
     assert monthly[1]["cmd"].endswith("scripts/purge_youtube_transcripts.py --apply")

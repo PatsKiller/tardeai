@@ -114,6 +114,12 @@ The five unscheduled skeletons (`run_tradeai_market_pipeline.sh`, `run_tradeai_a
 
 Timeout rule used in the manifests: a step's own `timeout N` → N + 60 s (N + 300 s when N ≥ 300); otherwise 3 × p95 (or upper-bound p95) rounded up to 5 min, clamped to [5 min, 30 min]. `dow` is copied from the cron line so daily lines keep weekend runs inside a daily stage.
 
+**2026-10-11 source accounting correction:** `PipelineRun@v1` additionally records `expected_step_count`, `receipt_complete` and `worker_failures` (the summary CLI accepts `--worker-failures`). A real run is `degraded` when planned step IDs are missing, duplicated or replaced, or a receipt worker fails. Serial execution continues after a receipt-writer failure; parallel execution retains every group PID for exit accounting even after it leaves the active concurrency window. A failed durable JSONL append counts as a worker failure even if the temporary result append succeeded. Worker failures return exit 1 after publishing the stage summary. Ordinary failed/timed-out business steps retain the existing continue-on-error exit behavior and their explicit degraded summary.
+
+Dry-run behavior remains the main runner's contract: validate the safety environment, print every eligible step's environment names, execute no business command, and write the dry-run step receipts and summary. `_pipeline_common.sh`, flag handling, interpreter resolution and environment loading are unchanged by this accounting correction. This is source behavior, not installation or runtime acceptance.
+
+**2026-10-12 source test isolation:** the runner suites copy their source into scratch projects and use a minimal CI environment with scratch homes, interpreters, logs, temporary files, state roots and stage locks. The C1 assignment parser uses a committed synthetic fixture preserving the recorded assignment positions; it no longer reads or skips on a host packet. These fixtures prove source behavior and do not verify the installed crontab or deployed runtime.
+
 ## 5. Manifest mapping tables (cron line → step)
 
 ### 5a. `after_close.json`
