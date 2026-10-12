@@ -12,6 +12,7 @@
 Hermetic: tmp_path state roots and guard ledgers, fake cursors. No live DB, no host ledger,
 no crontab, no systemd (§24.6).
 """
+
 from __future__ import annotations
 
 import copy
@@ -34,6 +35,59 @@ from lib import retention_archive as ra  # noqa: E402
 from lib import db_write_grant as dwg  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def isolated_retention_sources(tmp_path, monkeypatch):
+    import os
+    import scripts.n8n_incident_fanin as fanin
+
+    source = tmp_path / "empty-retention-source-fixture"
+    (source / "scripts").mkdir(parents=True)
+    dotenv = source / ".env"
+    dotenv.write_text("")
+    assert "DB_PASSWORD" not in os.environ
+    reads = []
+    read_text = Path.read_text
+
+    def fixture_read(path, *args, **kwargs):
+        if path.name == ".env":
+            assert path == dotenv
+            reads.append(path)
+        return read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", fixture_read)
+    spec = importlib.util.spec_from_file_location("isolated_retention_hardening", ROOT / "scripts/db_retention.py")
+    module = importlib.util.module_from_spec(spec)
+    module.__file__ = str(source / "scripts/db_retention.py")
+    spec.loader.exec_module(module)
+    assert reads == [dotenv] and "DB_PASSWORD" not in os.environ
+    monkeypatch.setitem(sys.modules, "db_retention", module)
+    monkeypatch.setitem(sys.modules, "scripts.db_retention", module)
+
+    def no_connection():
+        raise AssertionError("retention fixtures must inject a cursor, never connect to a database")
+
+    monkeypatch.setattr(module, "_connect", no_connection)
+    # Hygiene/tripwire fixtures own their receipt only. Leave its real projection
+    # in collect(); isolate unrelated scheduler, database and market collectors.
+    monkeypatch.setenv("TRADEAI_FANIN_LANE_REGISTRY", "0")
+    for collector in (
+        "_outbox_findings",
+        "_runs_findings",
+        "_relay_findings",
+        "_scalp_lane_findings",
+        "_scalp_cycle_findings",
+        "_momentum_lifecycle_findings",
+        "_dlq_findings",
+        "_governance_findings",
+        "_diagnosis_findings",
+        "_workflow_error_findings",
+        "_alert_path_findings",
+    ):
+        monkeypatch.setattr(fanin, collector, lambda *args, **kwargs: [])
+    yield
+    assert reads == [dotenv] and read_text(dotenv) == "" and "DB_PASSWORD" not in os.environ
+
+
 def _registry() -> dict:
     return json.loads((ROOT / "config" / "data_retention_policy.json").read_text(encoding="utf-8"))
 
@@ -52,6 +106,7 @@ class _RowsCur:
 # ── 1. tripwire: writer ─────────────────────────────────────────────────────
 def test_archive_rows_writes_a_tripwire_record_next_to_the_archive(tmp_path, monkeypatch):
     import db_retention as dr
+
     monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
     n, path = dr.archive_rows(_RowsCur([{"id": 1}, {"id": 2}, {"id": 3}]), "content_embeddings", "created_at", 90, "")
     tw = tmp_path / "archive" / "db_retention" / "content_embeddings" / "TRIPWIRE.jsonl"
@@ -66,6 +121,7 @@ def test_archive_rows_writes_a_tripwire_record_next_to_the_archive(tmp_path, mon
 
 def test_empty_archive_writes_no_tripwire(tmp_path, monkeypatch):
     import db_retention as dr
+
     monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
     assert dr.archive_rows(_RowsCur([]), "scope_governor_audit", "created_at", 30, "")[0] == 0
     assert not (tmp_path / "archive" / "db_retention" / "scope_governor_audit" / "TRIPWIRE.jsonl").exists()
@@ -74,6 +130,7 @@ def test_empty_archive_writes_no_tripwire(tmp_path, monkeypatch):
 def test_tripwire_write_failure_refuses_the_delete(tmp_path, monkeypatch):
     """The record is written before the DELETE; if it cannot be written, nothing is deleted."""
     from tests.test_retention_source_windows_junk_20261009 import JUNK_RE, _Conn, _Table, _embeddings, _junk_match
+
     t = _Table(_embeddings(), _junk_match)
 
     def boom(*a, **k):
@@ -81,18 +138,34 @@ def test_tripwire_write_failure_refuses_the_delete(tmp_path, monkeypatch):
 
     monkeypatch.setattr(ra, "write_tripwire_record", boom)
     with pytest.raises(OSError):
-        ra.archive_then_delete_batches(_Conn(t), table="content_embeddings", where_sql="x", params=(JUNK_RE,),
-                                       label="junk", archive_dir=tmp_path / "content_embeddings", batch_rows=20,
-                                       max_rows=40)
+        ra.archive_then_delete_batches(
+            _Conn(t),
+            table="content_embeddings",
+            where_sql="x",
+            params=(JUNK_RE,),
+            label="junk",
+            archive_dir=tmp_path / "content_embeddings",
+            batch_rows=20,
+            max_rows=40,
+        )
     assert t.deletes_executed == 0 and len(t.rows) == 53
 
 
 def test_verified_batches_record_one_tripwire_line_per_batch(tmp_path):
     from tests.test_retention_source_windows_junk_20261009 import JUNK_RE, _Conn, _Table, _embeddings, _junk_match
+
     t = _Table(_embeddings(), _junk_match)
     adir = tmp_path / "content_embeddings"
-    res = ra.archive_then_delete_batches(_Conn(t), table="content_embeddings", where_sql="x", params=(JUNK_RE,),
-                                         label="junk_fused_signal", archive_dir=adir, batch_rows=20, max_rows=1000)
+    res = ra.archive_then_delete_batches(
+        _Conn(t),
+        table="content_embeddings",
+        where_sql="x",
+        params=(JUNK_RE,),
+        label="junk_fused_signal",
+        archive_dir=adir,
+        batch_rows=20,
+        max_rows=1000,
+    )
     recs = [json.loads(line) for line in (adir / "TRIPWIRE.jsonl").read_text().splitlines()]
     assert [r["archive"] for r in recs] == [b["path"] for b in res["batches"]]
     assert [r["rows"] for r in recs] == [20, 20, 5] and all(r["label"] == "junk_fused_signal" for r in recs)
@@ -110,7 +183,8 @@ def _repo(tmp_path) -> Path:
 
 
 def test_reader_is_quiet_when_only_the_writers_name_the_archive(tmp_path):
-    units = tmp_path / "units"; units.mkdir()
+    units = tmp_path / "units"
+    units.mkdir()
     (units / "x.service").write_text("ExecStart=/bin/true\n")
     cron = "# 0 1 * * * cat ~/state/archive/db_retention/content_embeddings/x.jsonl.gz  (comment, not a reader)\n"
     assert rt.scan_references(_repo(tmp_path), crontab_text=cron, unit_dir=units) == []
@@ -118,16 +192,20 @@ def test_reader_is_quiet_when_only_the_writers_name_the_archive(tmp_path):
 
 def test_reader_trips_on_repo_crontab_and_systemd_references(tmp_path):
     repo = _repo(tmp_path)
-    (repo / "scripts" / "restore_embeddings.py").write_text(
-        "SRC = STATE / 'archive/db_retention/content_embeddings'\n")
+    (repo / "scripts" / "restore_embeddings.py").write_text("SRC = STATE / 'archive/db_retention/content_embeddings'\n")
     (repo / "config" / "loader.yaml").write_text("path: persistent-state/archive/db_trim/20261007T170000Z\n")
-    units = tmp_path / "units"; units.mkdir()
+    units = tmp_path / "units"
+    units.mkdir()
     (units / "replay.service").write_text("ExecStart=zcat /s/archive/db_retention/x/a.jsonl.gz\n")
     cron = "15 2 * * * zcat ~/s/archive/db_retention/content_embeddings/*.gz | wc -l\n"
     hits = rt.scan_references(repo, crontab_text=cron, unit_dir=units)
     got = {(h["where"], h["ref"]) for h in hits}
-    assert got == {("repo", "scripts/restore_embeddings.py"), ("repo", "config/loader.yaml"),
-                   ("crontab", "line 1"), ("systemd", "replay.service")}
+    assert got == {
+        ("repo", "scripts/restore_embeddings.py"),
+        ("repo", "config/loader.yaml"),
+        ("crontab", "line 1"),
+        ("systemd", "replay.service"),
+    }
 
 
 def test_findings_shape_missing_archive_and_unreadable_line(tmp_path):
@@ -141,17 +219,20 @@ def test_findings_shape_missing_archive_and_unreadable_line(tmp_path):
     ra.write_tripwire_record(gone, table="content_embeddings", rows=7, sha256="y")
     with open(tdir / "TRIPWIRE.jsonl", "a") as fh:
         fh.write("{not json\n")
-    trim = state / "archive" / "db_trim"; trim.mkdir(parents=True)
-    (trim / "TRIPWIRE.jsonl").write_text(json.dumps({"kind": "table", "name": "bak_x", "dump": str(trim / "nope.sql.gz")})
-                                         + "\n")
+    trim = state / "archive" / "db_trim"
+    trim.mkdir(parents=True)
+    (trim / "TRIPWIRE.jsonl").write_text(
+        json.dumps({"kind": "table", "name": "bak_x", "dump": str(trim / "nope.sql.gz")}) + "\n"
+    )
     repo = _repo(tmp_path)
     (repo / "scripts" / "reader.py").write_text("open('archive/db_retention/content_embeddings/a.jsonl.gz')\n")
-    units = tmp_path / "units"; units.mkdir()
+    units = tmp_path / "units"
+    units.mkdir()
     fs = rt.findings(state, repo, crontab_text="", unit_dir=units)
     by = {(f["code"], f["item"]): f for f in fs}
     assert by[("ARCHIVE_TRIPWIRE", "repo:scripts/reader.py")]["severity"] == "P1"
     assert by[("ARCHIVE_MISSING", str(gone))]["severity"] == "P2"
-    assert ("ARCHIVE_MISSING", str(trim / "nope.sql.gz")) in by           # db_trim's TRIPWIRE.jsonl is read too
+    assert ("ARCHIVE_MISSING", str(trim / "nope.sql.gz")) in by  # db_trim's TRIPWIRE.jsonl is read too
     assert ("ARCHIVE_MISSING", str(kept)) not in by
     assert any(c == "TRIPWIRE_UNREADABLE" for c, _ in by)
     assert all(set(f) == {"code", "item", "severity", "detail"} for f in fs)
@@ -159,7 +240,8 @@ def test_findings_shape_missing_archive_and_unreadable_line(tmp_path):
 
 def test_committed_tree_has_no_live_reader_of_an_archive(tmp_path):
     """The repo's own scripts/config must not name an archive outside the writer allowlist."""
-    units = tmp_path / "units"; units.mkdir()
+    units = tmp_path / "units"
+    units.mkdir()
     assert rt.scan_references(ROOT, crontab_text="", unit_dir=units) == []
     for rel in rt.ALLOWLIST_REL:
         assert (ROOT / rel).is_file(), f"stale allowlist entry {rel}"
@@ -167,8 +249,19 @@ def test_committed_tree_has_no_live_reader_of_an_archive(tmp_path):
 
 def test_hygiene_report_appends_tripwire_findings_and_never_crashes(monkeypatch):
     import scripts.report_db_hygiene as h
-    monkeypatch.setattr(rt, "findings", lambda *a, **k: [
-        {"code": "ARCHIVE_TRIPWIRE", "item": "crontab:line 9", "severity": "P1", "detail": "names archive/db_retention"}])
+
+    monkeypatch.setattr(
+        rt,
+        "findings",
+        lambda *a, **k: [
+            {
+                "code": "ARCHIVE_TRIPWIRE",
+                "item": "crontab:line 9",
+                "severity": "P1",
+                "detail": "names archive/db_retention",
+            }
+        ],
+    )
     assert h.tripwire_findings()[0]["code"] == "ARCHIVE_TRIPWIRE"
 
     def broken(*a, **k):
@@ -181,12 +274,27 @@ def test_hygiene_report_appends_tripwire_findings_and_never_crashes(monkeypatch)
 
 def test_tripwire_finding_becomes_a_p1_incident(tmp_path):
     from scripts.n8n_incident_fanin import collect
-    root = tmp_path / "state"; (root / "data" / "runtime").mkdir(parents=True); (root / "backups" / "n8n").mkdir(parents=True)
+
+    root = tmp_path / "state"
+    (root / "data" / "runtime").mkdir(parents=True)
+    (root / "backups" / "n8n").mkdir(parents=True)
     now = datetime.now(timezone.utc)
-    (root / "data" / "runtime" / "db_hygiene_last.json").write_text(json.dumps({
-        "schema": "DbHygieneReport@v1", "as_of": now.isoformat(), "findings": [
-            {"code": "ARCHIVE_TRIPWIRE", "item": "repo:scripts/reader.py", "severity": "P1",
-             "detail": "names archive/db_retention"}]}))
+    (root / "data" / "runtime" / "db_hygiene_last.json").write_text(
+        json.dumps(
+            {
+                "schema": "DbHygieneReport@v1",
+                "as_of": now.isoformat(),
+                "findings": [
+                    {
+                        "code": "ARCHIVE_TRIPWIRE",
+                        "item": "repo:scripts/reader.py",
+                        "severity": "P1",
+                        "detail": "names archive/db_retention",
+                    }
+                ],
+            }
+        )
+    )
     items = {(f["source"], f["item"], f["severity"]) for f in collect(root, now)}
     assert ("db_hygiene", "ARCHIVE_TRIPWIRE:repo:scripts/reader.py", "P1") in items
 
@@ -204,14 +312,19 @@ def test_grant_verified_against_the_active_ledger_record(tmp_path):
     adir, gid = _ledger(tmp_path)
     assert len(gid) == 32
     full = dwg.verify(gid, adir=adir)
-    short = dwg.verify(gid[:16].upper(), adir=adir)          # operators quote 16 chars
+    short = dwg.verify(gid[:16].upper(), adir=adir)  # operators quote 16 chars
     assert full["ok"] and short["ok"] and short["grant_id"] == gid and short["grant_reason"] == "junk purge c45f"
 
 
-@pytest.mark.parametrize("supplied,why", [
-    ("", "is not set"), ("not-a-grant", "is not a grant id"), ("abc123", "is not a grant id"),
-    ("0123456789abcdef", "does not match"),
-])
+@pytest.mark.parametrize(
+    "supplied,why",
+    [
+        ("", "is not set"),
+        ("not-a-grant", "is not a grant id"),
+        ("abc123", "is not a grant id"),
+        ("0123456789abcdef", "does not match"),
+    ],
+)
 def test_grant_refusals(tmp_path, supplied, why):
     adir, _ = _ledger(tmp_path)
     v = dwg.verify(supplied, adir=adir)
@@ -229,6 +342,7 @@ def test_grant_refused_when_expired_wrong_tier_or_no_ledger(tmp_path):
 
 def test_db_retention_reads_the_grant_from_env(tmp_path, monkeypatch):
     import db_retention as dr
+
     adir, gid = _ledger(tmp_path)
     monkeypatch.setenv("GUARD_APPROVALS_DIR", str(adir))
     monkeypatch.setenv("TRADEAI_DB_WRITE_GRANT", gid[:16])
@@ -240,6 +354,7 @@ def test_db_retention_reads_the_grant_from_env(tmp_path, monkeypatch):
 def _dr_no_grant(monkeypatch, tmp_path, grant):
     import db_retention as dr
     from tests.test_retention_source_windows_junk_20261009 import _Conn, _Table, _embeddings, _junk_match
+
     t = _Table(_embeddings(), _junk_match)
     connects = []
     monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
@@ -264,8 +379,12 @@ def test_dry_run_needs_no_grant(monkeypatch, tmp_path, capsys):
 
 
 def test_apply_receipt_records_the_grant(monkeypatch, tmp_path):
-    grant = {"schema": "DbWriteGrantCheck@v1", "ok": True, "grant_id": "c45f5cc126cd1d7c" + "0" * 16,
-             "grant_id_supplied": "c45f5cc126cd1d7c"}
+    grant = {
+        "schema": "DbWriteGrantCheck@v1",
+        "ok": True,
+        "grant_id": "c45f5cc126cd1d7c" + "0" * 16,
+        "grant_id_supplied": "c45f5cc126cd1d7c",
+    }
     dr, t, _ = _dr_no_grant(monkeypatch, tmp_path, grant)
     assert dr.purge_junk_fused_embeddings(apply=True, batch_rows=20, max_rows=1000) == 0
     (rec_path,) = (tmp_path / "archive" / "db_retention" / "content_embeddings" / "receipts").glob("*.json")
@@ -278,6 +397,7 @@ def test_apply_receipt_records_the_grant(monkeypatch, tmp_path):
 def test_registry_names_db_retention_owner_and_archive_first_is_on():
     # Operator 2026-10-11: archive the 90 d content_embeddings rows, then delete them (archive_first true).
     import db_retention as dr
+
     doc = _registry()
     assert validate(doc) == []
     row = next(r for r in doc["policies"] if r["table"] == "content_embeddings")
@@ -289,10 +409,13 @@ def test_registry_names_db_retention_owner_and_archive_first_is_on():
     assert {t: a for t, _c, _d, a in dr.enforced_policies(doc)}["content_embeddings"] is False
 
 
-@pytest.mark.parametrize("table,value,needle", [
-    ("content_embeddings", "yes", "must be true or false"),
-    ("hermes_external_research", False, "DELETE rows only"),
-])
+@pytest.mark.parametrize(
+    "table,value,needle",
+    [
+        ("content_embeddings", "yes", "must be true or false"),
+        ("hermes_external_research", False, "DELETE rows only"),
+    ],
+)
 def test_registry_gate_checks_archive_first(table, value, needle):
     doc = _registry()
     next(r for r in doc["policies"] if r["table"] == table)["archive_first"] = value
@@ -343,8 +466,16 @@ def test_librarian_defers_the_age_rail_to_db_retention(capsys):
     conn = _LibConn()
     res = mod.apply_retention(conn, dry_run=False)
     age = [a for a in res["actions"] if a["action"] == "purge_by_age"]
-    assert age == [{"table": "content_embeddings", "action": "purge_by_age", "count": 0, "threshold_days": 90,
-                    "deferred_to": "db_retention", "pointer": mod.AGE_RAIL_POINTER}]
+    assert age == [
+        {
+            "table": "content_embeddings",
+            "action": "purge_by_age",
+            "count": 0,
+            "threshold_days": 90,
+            "deferred_to": "db_retention",
+            "pointer": mod.AGE_RAIL_POINTER,
+        }
+    ]
     assert not any("FROM content_embeddings WHERE created_at" in s for s in conn.log)
     assert "DEFERRED to db_retention" in capsys.readouterr().err
     # the orphan purges (not the 90 d rail) stay with the librarian
