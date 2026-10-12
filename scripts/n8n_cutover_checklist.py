@@ -52,12 +52,13 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from n8n_workflow_templates import LANES, TRANCHES  # noqa: E402
 from lib.cron_schedule import cron_schedules, last_fire_at_or_before, parse as parse_cron  # noqa: E402
 from lib.n8n_due import parse_key  # noqa: E402
-from lib.n8n_health_contracts import unknown_fields, validate_contract  # noqa: E402
+from scripts.lib.n8n_momentum_lifecycle import contract_review_proven  # noqa: E402
 
 SCHEMA = "N8nCutoverChecklist@v1"
 NO_CONSUMER_REASON = (
@@ -192,16 +193,11 @@ def acceptance_context(repo_root: Path, lane_id: str, packet, expected_sha, now:
     contracts = contracts if isinstance(contracts, list) else []
     contract = next((c for c in contracts if isinstance(c, dict) and c.get("id") == lane_id), {})
     try:
-        reviewed = (
-            bool(contract)
-            and contract.get("status") == "REVIEWED"
-            and not validate_contract(contract)
-            and not unknown_fields(contract)
-        )
+        reviewed = bool(contract) and contract_review_proven(contract)
     except (AttributeError, TypeError, ValueError):
         reviewed = False
     if not reviewed:
-        errors.append("NOT_MEASURED: reviewed contract with no UNKNOWN fields required")
+        errors.append("NOT_MEASURED: owner-confirmed body-bound reviewed contract with no UNKNOWN fields required")
     baseline = contract.get("baseline") or {}
     baseline = baseline if isinstance(baseline, dict) else {}
     freshness = baseline.get("freshness_degraded_after_h")
