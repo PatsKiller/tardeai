@@ -110,9 +110,24 @@ def test_bridge_caller_maps_to_the_small_cap_process_server_side():
 
 
 def test_bridge_transport_failures_become_provider_outage(monkeypatch):
+    import urllib.error
+    import urllib.request
+
+    captured = {}
+
+    def connection_refused(req, timeout=None):
+        captured["req"], captured["timeout"] = req, timeout
+        raise urllib.error.URLError(ConnectionRefusedError("synthetic fixture connection refusal"))
+
+    # Inject the unavailable-transport condition before any socket. Port 1 is
+    # neither a fixture-owned endpoint nor evidence of a bridge outage.
+    monkeypatch.setattr(urllib.request, "urlopen", connection_refused)
     monkeypatch.setenv(M.BRIDGE_URL_ENV, "http://127.0.0.1:1/v1/chat/completions")
     r = M.bridge_governed_call([{"role": "user", "content": "x"}], process_id="n8n_material_digest_draft", request_id="r", timeout_s=2)
     assert r["error"]["code"] == "PROVIDER_TIMEOUT" and r["governance_pass"] is False
+    assert captured["req"].full_url == "http://127.0.0.1:1/v1/chat/completions"
+    assert captured["req"].get_method() == "POST" and captured["timeout"] == 2
+    assert json.loads(captured["req"].data)["request_id"] == "r"
 
 
 def test_template_id_and_routing_policy_are_named_not_raw_and_reach_the_governed_call(tmp_path, monkeypatch):
