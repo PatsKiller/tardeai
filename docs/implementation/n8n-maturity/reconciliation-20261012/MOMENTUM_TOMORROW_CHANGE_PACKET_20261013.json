@@ -13,7 +13,7 @@
     "momentum-cache-reconcile",
     "trade-ai-scalp-live"
   ],
-  "review_state": "Four operative bodies REVIEWED/OWNER_ACCEPTED with actual root+independent reviewer and exact operator decision reference; no runtime/canary/cutover acceptance inferred",
+  "review_state": "Four corrected operative bodies REVIEWED/OWNER_ACCEPTED with actual root + independent review and preserved operator decision; numeric limits are source-declared provisional, not measured production acceptance",
   "request_authority": {
     "sole_requester": "tradeai-dispatcher",
     "observer": "tradeai-momentum-lifecycle-candidate",
@@ -297,10 +297,11 @@
     "No autonomous date flip; root executes reviewed stage transitions under actual grants"
   ],
   "reviewed_operative_body_sha256": {
-    "momentum-lifecycle-monitor": "fa4c4227887da80ba5dacd6b5a295e3aa33140655228df4542d02bf6984310d9",
-    "tradeai-momentum-lifecycle-candidate": "c1694054741468c2a4642b7dc2f2f633a02e4e9b7cd2489f289b8d0accb2d8ab",
-    "momentum-cache-reconcile": "28713e20dbd31c8b66b68394f44fc8036ef96f9b0f10d97f7ed23c0e3256768c",
-    "trade-ai-scalp-live": "c2ab0d7f6c81c6aa76e697b356aac4762d0d50fde84460a192f411c4a17a4c2d"
+    "momentum-lifecycle-monitor": "2f6db22a4b1a012760dd7eaa913c3040effbfeb7289c433409564d43d067ab32",
+    "tradeai-momentum-lifecycle-candidate": "f654528faee455c5817eb9cb844546bcde7e9936956e2143a4cdafcd364d856e",
+    "momentum-cache-reconcile": "ce53b699246fb1296551327e9abc914125335c1c7fdb6bc6a4cdf6d813d37939",
+    "trade-ai-scalp-live": "4e9bff63f522132a1bec7f2c22a6a871f09e252d00c45b5d15f4d2ce5de63afe"
   },
-  "scalp_shadow_window": "Relevant RTH natural shadows09:30/09:35America/New_York; outside-RTH09:00/09:05 exits do not prove the business cycle."
+  "scalp_shadow_window": "Relevant RTH natural shadows09:30/09:35America/New_York; outside-RTH09:00/09:05 exits do not prove the business cycle.",
+  "corrected_contract_review_evidence": "MOMENTUM_CONTRACT_REVIEW_BINDINGS_20261012.json"
 }

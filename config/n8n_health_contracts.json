@@ -19111,7 +19111,7 @@
       "id": "momentum-lifecycle-monitor",
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
-      "status": "DRAFT",
+      "status": "REVIEWED",
       "stage": "shadow",
       "target_reason": "Operative staged admission; operator requested tomorrow test, actual independent body review pending",
       "purpose": {
@@ -19258,10 +19258,10 @@
       },
       "review_by": "2026-10-13",
       "review": {
-        "status": "PENDING_BODY_REVIEW",
-        "reviewed_by": null,
-        "decision_ref": null,
-        "contract_body_sha256": null,
+        "status": "REVIEWED",
+        "reviewed_by": "Codex integrator /root; Codex independent reviewer /root/runner_isolation",
+        "decision_ref": "operator:PR1715:2026-10-12T21:17:10.578Z",
+        "contract_body_sha256": "2f6db22a4b1a012760dd7eaa913c3040effbfeb7289c433409564d43d067ab32",
         "previous_review": {
           "status": "REVIEWED",
           "body_sha256": "fa4c4227887da80ba5dacd6b5a295e3aa33140655228df4542d02bf6984310d9",
@@ -19277,13 +19277,17 @@
             "reviewed_on": "2026-10-12"
           }
         },
-        "baseline_correction_requires_review": true,
+        "baseline_correction_requires_review": false,
         "baseline_correction_changed_fields": [
           "timeout_s",
           "freshness_degraded_after_h",
           "freshness_failed_after_h"
         ],
-        "proposed_contract_body_sha256": "2f6db22a4b1a012760dd7eaa913c3040effbfeb7289c433409564d43d067ab32"
+        "proposed_contract_body_sha256": "2f6db22a4b1a012760dd7eaa913c3040effbfeb7289c433409564d43d067ab32",
+        "decision_evidence": "MOMENTUM_CONTRACT_REVIEW_BINDINGS_20261012.json; N8N_CONTRACT_BASELINES_FINAL_INDEPENDENT_REVIEW_RUNNER_99E95E33_20261012.json; OPERATOR_MOMENTUM_LIVE_INSTRUCTION_20261012T2309Z.json",
+        "reviewed_on": "2026-10-12",
+        "digest_status": "ACTUAL_CORRECTED_BODY_REVIEW; source-declared provisional limits; runtime acceptance NOT_MEASURED",
+        "independent_review_sha256": "5923711efa6443cb487898c31b904dfa4a8df1f31d8736feeffa73e2a98df7da"
       }
     },
     {
@@ -19291,7 +19295,7 @@
       "id": "tradeai-momentum-lifecycle-candidate",
       "kind": "generic_workflow",
       "workflow_id": "tradeai-momentum-lifecycle-candidate",
-      "status": "DRAFT",
+      "status": "REVIEWED",
       "stage": "shadow",
       "target_reason": "Operative staged admission; operator requested tomorrow test, actual independent body review pending",
       "purpose": {
@@ -19414,10 +19418,10 @@
       },
       "review_by": "2026-10-13",
       "review": {
-        "status": "PENDING_BODY_REVIEW",
-        "reviewed_by": null,
-        "decision_ref": null,
-        "contract_body_sha256": null,
+        "status": "REVIEWED",
+        "reviewed_by": "Codex integrator /root; Codex independent reviewer /root/runner_isolation",
+        "decision_ref": "operator:PR1715:2026-10-12T21:17:10.578Z",
+        "contract_body_sha256": "f654528faee455c5817eb9cb844546bcde7e9936956e2143a4cdafcd364d856e",
         "previous_review": {
           "status": "REVIEWED",
           "body_sha256": "c1694054741468c2a4642b7dc2f2f633a02e4e9b7cd2489f289b8d0accb2d8ab",
@@ -19433,13 +19437,17 @@
             "reviewed_on": "2026-10-12"
           }
         },
-        "baseline_correction_requires_review": true,
+        "baseline_correction_requires_review": false,
         "baseline_correction_changed_fields": [
           "timeout_s",
           "freshness_degraded_after_h",
           "freshness_failed_after_h"
         ],
-        "proposed_contract_body_sha256": "f654528faee455c5817eb9cb844546bcde7e9936956e2143a4cdafcd364d856e"
+        "proposed_contract_body_sha256": "f654528faee455c5817eb9cb844546bcde7e9936956e2143a4cdafcd364d856e",
+        "decision_evidence": "MOMENTUM_CONTRACT_REVIEW_BINDINGS_20261012.json; N8N_CONTRACT_BASELINES_FINAL_INDEPENDENT_REVIEW_RUNNER_99E95E33_20261012.json; OPERATOR_MOMENTUM_LIVE_INSTRUCTION_20261012T2309Z.json",
+        "reviewed_on": "2026-10-12",
+        "digest_status": "ACTUAL_CORRECTED_BODY_REVIEW; source-declared provisional limits; runtime acceptance NOT_MEASURED",
+        "independent_review_sha256": "5923711efa6443cb487898c31b904dfa4a8df1f31d8736feeffa73e2a98df7da"
       },
       "workflow_source": {
         "file": "tradeai-momentum-lifecycle-candidate.json",
@@ -19456,7 +19464,7 @@
       "id": "momentum-cache-reconcile",
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
-      "status": "DRAFT",
+      "status": "REVIEWED",
       "stage": "shadow",
       "target_reason": "Operative staged admission; operator requested tomorrow test, actual independent body review pending",
       "purpose": {
@@ -19588,10 +19596,10 @@
       },
       "review_by": "2026-10-13",
       "review": {
-        "status": "PENDING_BODY_REVIEW",
-        "reviewed_by": null,
-        "decision_ref": null,
-        "contract_body_sha256": null,
+        "status": "REVIEWED",
+        "reviewed_by": "Codex integrator /root; Codex independent reviewer /root/runner_isolation",
+        "decision_ref": "operator:PR1715:2026-10-12T21:17:10.578Z",
+        "contract_body_sha256": "ce53b699246fb1296551327e9abc914125335c1c7fdb6bc6a4cdf6d813d37939",
         "previous_review": {
           "status": "REVIEWED",
           "body_sha256": "28713e20dbd31c8b66b68394f44fc8036ef96f9b0f10d97f7ed23c0e3256768c",
@@ -19607,13 +19615,17 @@
             "reviewed_on": "2026-10-12"
           }
         },
-        "baseline_correction_requires_review": true,
+        "baseline_correction_requires_review": false,
         "baseline_correction_changed_fields": [
           "timeout_s",
           "freshness_degraded_after_h",
           "freshness_failed_after_h"
         ],
-        "proposed_contract_body_sha256": "ce53b699246fb1296551327e9abc914125335c1c7fdb6bc6a4cdf6d813d37939"
+        "proposed_contract_body_sha256": "ce53b699246fb1296551327e9abc914125335c1c7fdb6bc6a4cdf6d813d37939",
+        "decision_evidence": "MOMENTUM_CONTRACT_REVIEW_BINDINGS_20261012.json; N8N_CONTRACT_BASELINES_FINAL_INDEPENDENT_REVIEW_RUNNER_99E95E33_20261012.json; OPERATOR_MOMENTUM_LIVE_INSTRUCTION_20261012T2309Z.json",
+        "reviewed_on": "2026-10-12",
+        "digest_status": "ACTUAL_CORRECTED_BODY_REVIEW; source-declared provisional limits; runtime acceptance NOT_MEASURED",
+        "independent_review_sha256": "5923711efa6443cb487898c31b904dfa4a8df1f31d8736feeffa73e2a98df7da"
       }
     },
     {
@@ -19621,7 +19633,7 @@
       "id": "trade-ai-scalp-live",
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
-      "status": "DRAFT",
+      "status": "REVIEWED",
       "stage": "shadow",
       "target_reason": "Named4.0.0 live exception; initial shadow admission before tomorrow canary/cutover",
       "purpose": {
@@ -19774,10 +19786,10 @@
       },
       "review_by": "2026-10-13",
       "review": {
-        "status": "PENDING_BODY_REVIEW",
-        "reviewed_by": null,
-        "decision_ref": null,
-        "contract_body_sha256": null,
+        "status": "REVIEWED",
+        "reviewed_by": "Codex integrator /root; Codex independent reviewer /root/runner_isolation",
+        "decision_ref": "operator:PR1715:2026-10-12T21:17:10.578Z",
+        "contract_body_sha256": "4e9bff63f522132a1bec7f2c22a6a871f09e252d00c45b5d15f4d2ce5de63afe",
         "previous_review": {
           "status": "REVIEWED",
           "body_sha256": "c2ab0d7f6c81c6aa76e697b356aac4762d0d50fde84460a192f411c4a17a4c2d",
@@ -19793,13 +19805,17 @@
             "reviewed_on": "2026-10-12"
           }
         },
-        "baseline_correction_requires_review": true,
+        "baseline_correction_requires_review": false,
         "baseline_correction_changed_fields": [
           "timeout_s",
           "freshness_degraded_after_h",
           "freshness_failed_after_h"
         ],
-        "proposed_contract_body_sha256": "4e9bff63f522132a1bec7f2c22a6a871f09e252d00c45b5d15f4d2ce5de63afe"
+        "proposed_contract_body_sha256": "4e9bff63f522132a1bec7f2c22a6a871f09e252d00c45b5d15f4d2ce5de63afe",
+        "decision_evidence": "MOMENTUM_CONTRACT_REVIEW_BINDINGS_20261012.json; N8N_CONTRACT_BASELINES_FINAL_INDEPENDENT_REVIEW_RUNNER_99E95E33_20261012.json; OPERATOR_MOMENTUM_LIVE_INSTRUCTION_20261012T2309Z.json",
+        "reviewed_on": "2026-10-12",
+        "digest_status": "ACTUAL_CORRECTED_BODY_REVIEW; source-declared provisional limits; runtime acceptance NOT_MEASURED",
+        "independent_review_sha256": "5923711efa6443cb487898c31b904dfa4a8df1f31d8736feeffa73e2a98df7da"
       }
     }
   ]

@@ -74,12 +74,13 @@ def test_source_correction_covers_exact_population_and_preserves_105_bodies():
 def test_exact_declared_sources_not_empirical_business_baselines(cid, timeout, degraded, failed):
     contract = source_contract(cid)
     assert tuple(contract["baseline"][field] for field in A.FIELDS) == (timeout, degraded, failed)
-    assert contract["review"]["baseline_correction_requires_review"] is True
     assert contract["review"]["proposed_contract_body_sha256"] == contract_body_digest(contract)
     if contract["status"] == "DRAFT":
+        assert contract["review"]["baseline_correction_requires_review"] is True
         assert not contract_review_proven(contract)
     else:
         # A later real review must bind the corrected body; the audit is not authority.
+        assert contract["review"]["baseline_correction_requires_review"] is False
         assert contract_review_proven(contract)
 
 
