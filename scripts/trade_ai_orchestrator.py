@@ -169,6 +169,50 @@ def write_failure_run_summary(output_dir: Path, payload: dict) -> Path:
     return path
 
 
+def _market_context_detail(snapshot):
+    """Render missing observations explicitly without manufacturing numeric zero."""
+    import math
+
+    if not isinstance(snapshot, dict):
+        raise ValueError("invalid market context snapshot")
+
+    def number(node, key, spec):
+        if node is None:
+            return "unavailable"
+        if not isinstance(node, dict):
+            raise ValueError("invalid market context numeric container")
+        value = node.get(key)
+        if value is None:
+            return "unavailable"
+        if type(value) not in (int, float) or not math.isfinite(value):
+            raise ValueError("invalid market context numeric observation")
+        return format(value, spec)
+
+    def label(node):
+        if node is None:
+            return "unavailable"
+        if not isinstance(node, dict):
+            raise ValueError("invalid market context sector container")
+        value = node.get("symbol")
+        if value is None or value == "":
+            return "unavailable"
+        if not isinstance(value, str):
+            raise ValueError("invalid market context sector observation")
+        return value
+
+    indices = snapshot.get("indices")
+    if indices is not None and not isinstance(indices, dict):
+        raise ValueError("invalid market context indices")
+    spy = number((indices or {}).get("SPY"), "change_percent", "+.2f")
+    vix = number(snapshot.get("vix"), "price", ".1f")
+    breadth = snapshot.get("breadth_label")
+    if breadth is not None and not isinstance(breadth, str):
+        raise ValueError("invalid market context breadth")
+    suffix = "%" if spy != "unavailable" else ""
+    return (f"SPY {spy}{suffix}  VIX {vix}  {breadth or 'unavailable'}  "
+            f"▲{label(snapshot.get('sector_leader'))}  ▼{label(snapshot.get('sector_laggard'))}")
+
+
 def _inject_sector_scores(tickers, sectors):
     if not sectors:
         return
@@ -294,12 +338,7 @@ def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip
     try:
         from market_context import get_market_snapshot
         market_snapshot = get_market_snapshot()
-        spy_pct = market_snapshot.get("indices",{}).get("SPY",{}).get("change_percent",0)
-        vix     = market_snapshot.get("vix",{}).get("price",0)
-        breadth = market_snapshot.get("breadth_label","?")
-        leader  = market_snapshot.get("sector_leader",{}).get("symbol","?")
-        laggard = market_snapshot.get("sector_laggard",{}).get("symbol","?")
-        _ok("market_context", f"SPY {spy_pct:+.2f}%  VIX {vix:.1f}  {breadth}  ▲{leader}  ▼{laggard}")
+        _ok("market_context", _market_context_detail(market_snapshot))
     except Exception as exc:
         _err("market_context", f"{exc}  — continuing without market data")
 

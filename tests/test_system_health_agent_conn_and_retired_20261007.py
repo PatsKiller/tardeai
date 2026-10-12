@@ -80,6 +80,6 @@ def test_logs_resolve_against_the_state_root_when_absent_from_the_code_tree(tmp_
     (state / "logs" / "unit.log").write_text("x")
     monkeypatch.setenv("TRADEAI_STATE_ROOT", str(state))
     assert agent._resolve_log("unit.log") == state / "logs" / "unit.log"
-    # a log that exists in neither place still reports under the code tree (MISSING, not an exception)
-    assert agent._resolve_log("never.log") == agent.PROJECT_ROOT / "logs" / "never.log"
+    # A missing governed log remains identified under that root; no code-store guess.
+    assert agent._resolve_log("never.log") == state / "logs" / "never.log"
     assert SRC.count("_resolve_log(log_file)") == 3, "all three freshness/validity readers share the resolver"

@@ -17,17 +17,19 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 def _resolve_log(log_file: str) -> Path:
-    """Where the job writes. Jobs that run as systemd units with StandardOutput=append: write under the
-    persistent state root (TRADEAI_STATE_ROOT, or <releases>/persistent-state next to the served tree),
-    not under the code tree's logs/. 2026-10-07: the telegram handler became tradeai-telegram-callback-
-    poller.service and its log moved there; the agent kept looking in logs/telegram_commands.log, reported
-    MISSING forever and 'retried' it twice a day (exit 127: .venv/bin/python is not in the served tree)."""
+    """Prefer the governed state log, never a frozen code log merely because it exists.
+
+    Legacy code-log compatibility is reported as drift by the freshness reader;
+    it supplies activity only, never accepted business-output proof.
+    """
     code = PROJECT_ROOT / "logs" / log_file
-    if code.exists() or not log_file:
+    if not log_file:
         return code
     root = os.getenv("TRADEAI_STATE_ROOT") or str(PROJECT_ROOT.parent.parent / "persistent-state")
     state = Path(root) / "logs" / log_file
-    return state if state.exists() else code
+    if state.exists():
+        return state
+    return code if code.exists() else state
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 from dotenv import load_dotenv
@@ -48,12 +50,14 @@ MONITORED_COMPONENTS = [
     # ── Pipeline Core ──
     {"component": "trade_ai_orchestrator", "display": "Trade AI Orchestrator",
      "schedule": "0 9,10,12,14,16 * * 1-5", "log_file": "screener_pm.log",
+     "monitor_lane_ids": ["orchestrator-slot", "orchestrator-slot-midday"],
      "max_age_min": 180, "max_runtime_sec": 600, "critical": True,
      "retry_cmd": ".venv/bin/python scripts/trade_ai_orchestrator.py --run-label 0900 --no-llm --no-alerts --allow-underfilled",
      "downstream": "strategy_signals, proposals, ATM execution",
      "lock_file": "/tmp/screener_pm.lock"},
     {"component": "auto_proposal_generator", "display": "Auto Proposal Generator",
      "schedule": "*/30 9-16 * * 1-5", "log_file": "auto_proposal.log",
+     "monitor_lane_ids": ["auto-proposal-general"],
      "max_age_min": 60, "max_runtime_sec": 300, "critical": True,
      "retry_cmd": ".venv/bin/python scripts/auto_proposal_generator.py --today --apply",
      "downstream": "proposals, ATM execution"},
@@ -65,12 +69,15 @@ MONITORED_COMPONENTS = [
      "lock_file": "/tmp/tradeai_rotation_autopilot.lock"},
     {"component": "incubator_proposal_promoter", "display": "Incubator Promoter",
      "schedule": "0 7-17 * * 1-5", "log_file": "incubator_promoter.log",
+     "monitor_lane_ids": ["incubator-proposal-promoter"],
      "max_age_min": 180, "max_runtime_sec": 300, "critical": True,
      "retry_cmd": ".venv/bin/python scripts/incubator_proposal_promoter.py --run",
      "downstream": "proposals from incubator",
      "lock_file": "/tmp/incubator_promoter.lock"},
     {"component": "finviz_screener_runner", "display": "Finviz Screener",
      "schedule": "0 8 * * 1-5", "log_file": "finviz_screener.log",
+     "monitor_lane_ids": ["finviz-screener-runner"],
+     "receipt_lane_id": "finviz-screener-runner", "receipt_script": "finviz_screener_runner.py",
      "max_age_min": 1500, "max_runtime_sec": 600, "critical": True,
      "retry_cmd": ".venv/bin/python scripts/finviz_screener_runner.py --apply",
      "downstream": "scanner input data"},
@@ -648,11 +655,17 @@ def _check_log_freshness(log_file, max_age_min, prev_fire=None, now=None, grace_
     Falls back to the fixed `max_age_min` threshold when no schedule context is given.
     """
     log_path = _resolve_log(log_file)
+    from lib.system_health_freshness import freshness_at
+    state_root = Path(os.getenv("TRADEAI_STATE_ROOT") or str(PROJECT_ROOT.parent.parent / "persistent-state"))
+    state_log = state_root / "logs" / log_file
+    metadata = {"signal_kind": "LOG_ACTIVITY", "signal_path": str(log_path),
+                "business_output_acceptance": "NOT_MEASURED",
+                "signal_source": "governed_state" if log_path == state_log else "legacy_code_fallback",
+                "source_drift": None if log_path == state_log else "governed_log_absent_legacy_fallback"}
     if not log_path.exists():
-        return {"status": "MISSING", "age_min": None, "last_line": None}
+        return dict(metadata, status="MISSING", age_min=None, last_line=None, reason="log_missing")
     try:
         mtime = datetime.fromtimestamp(log_path.stat().st_mtime, tz=timezone.utc)
-        age_min = (datetime.now(timezone.utc) - mtime).total_seconds() / 60
         last_line = ""
         with open(log_path, 'rb') as f:
             f.seek(0, 2)
@@ -660,22 +673,49 @@ def _check_log_freshness(log_file, max_age_min, prev_fire=None, now=None, grace_
             f.seek(max(0, size - 500))
             last_line = f.read().decode('utf-8', errors='replace').strip().split('\n')[-1][:200]
 
-        if prev_fire is not None and now is not None:
-            # The most recent scheduled run hasn't had time to complete yet.
-            if now < prev_fire + timedelta(minutes=grace_min):
-                return {"status": "OK", "age_min": round(age_min, 1),
-                        "last_line": last_line, "note": "within_run_grace"}
-            # Stale only if last output is older than the most recent scheduled run.
-            if mtime < prev_fire - timedelta(minutes=grace_min):
-                return {"status": "STALE", "age_min": round(age_min, 1), "last_line": last_line}
-            return {"status": "OK", "age_min": round(age_min, 1), "last_line": last_line}
-
-        # Fallback: fixed-age threshold (event-driven / unparseable schedules).
-        if age_min > max_age_min:
-            return {"status": "STALE", "age_min": round(age_min, 1), "last_line": last_line}
-        return {"status": "OK", "age_min": round(age_min, 1), "last_line": last_line}
+        # Capture the default observation after the read, so a concurrent append
+        # cannot acquire a timestamp a few milliseconds beyond our own clock.
+        observed = now or datetime.now(timezone.utc)
+        result = freshness_at(mtime, now=observed, max_age_min=max_age_min,
+                              prev_fire=prev_fire, grace_min=grace_min)
+        if "success_at" in result:
+            result["activity_at"] = result.pop("success_at")
+        return dict(metadata, **result, last_line=last_line)
     except Exception as e:
-        return {"status": "ERROR", "age_min": None, "last_line": str(e)[:100]}
+        return dict(metadata, status="ERROR", age_min=None, last_line=type(e).__name__, reason="log_unreadable")
+
+
+def _check_component_freshness(comp, *, now=None, prev_fire=None, grace_min=15):
+    """Prefer a declared successful-run receipt; failures never fall back to logs."""
+    lane_id = comp.get("receipt_lane_id")
+    if not lane_id:
+        return _check_log_freshness(comp.get("log_file", ""), comp.get("max_age_min", 60),
+                                    prev_fire=prev_fire, now=now, grace_min=grace_min)
+    from lib.lane_last_receipt import receipt_path
+    from lib.system_health_freshness import lane_receipt_freshness
+    path = receipt_path(lane_id)
+    metadata = {"signal_kind": "LaneRunReceipt@v1", "signal_source": "governed_state",
+                "signal_path": str(path), "business_output_acceptance": "NOT_MEASURED", "last_line": None}
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return dict(metadata, status="MISSING", age_min=None, reason="lane_receipt_missing")
+    except (OSError, ValueError):
+        return dict(metadata, status="ERROR", age_min=None, reason="lane_receipt_unreadable")
+    observed = now or datetime.now(timezone.utc)
+    result = lane_receipt_freshness(doc, lane_id=lane_id, script=comp["receipt_script"], now=observed,
+                                   max_age_min=comp.get("max_age_min", 60), prev_fire=prev_fire, grace_min=grace_min)
+    return dict(metadata, **result)
+
+
+def _component_schedule_intent(comp):
+    """Source intent is drift context, never proof of host scheduler installation."""
+    from lib.system_health_freshness import schedule_intent
+    try:
+        registry = json.loads((PROJECT_ROOT / "config" / "lane_registry.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        registry = None
+    return schedule_intent(comp, registry)
 
 
 def check_youtube_transcript_freshness(conn=None, *, now=None, max_db_age_hours: float = 36.0,
@@ -1210,17 +1250,16 @@ def run_health_check(dry_run=True, verbose=False):
         _grace_min = max(comp.get("max_runtime_sec", 600) / 60.0, 5) + 10
 
         # 1. Check log freshness (schedule-aware when a scheduled fire time is known)
-        freshness = _check_log_freshness(
-            log_file, comp.get("max_age_min", 60),
-            prev_fire=_prev_fire, now=_now_et, grace_min=_grace_min,
-        )
+        freshness = _check_component_freshness(comp, prev_fire=_prev_fire, grace_min=_grace_min)
 
         # 2. Check lock contention
         lock_info = _check_lock_contention(comp.get("lock_file"))
 
         # 3. Check output validity
-        output_check = _check_output_validity(component, log_file, comp.get("error_signatures"),
-                                              comp.get("success_signatures"))
+        output_check = ({"valid": freshness["status"] == "OK", "reason": freshness.get("reason", "")}
+                        if comp.get("receipt_lane_id") else
+                        _check_output_validity(component, log_file, comp.get("error_signatures"),
+                                              comp.get("success_signatures")))
 
         # Build check result
         check = {
@@ -1239,6 +1278,9 @@ def run_health_check(dry_run=True, verbose=False):
             "downstream": comp.get("downstream", ""),
             "action_taken": None,
             "last_error": None,
+            "freshness_evidence": freshness,
+            "recovery_reason": None,
+            "schedule_evidence": _component_schedule_intent(comp),
         }
 
         # 4. Determine action
@@ -1250,6 +1292,10 @@ def run_health_check(dry_run=True, verbose=False):
             needs_action = True
             check["status"] = "OUTPUT_INVALID"
             check["last_error"] = output_check.get("reason", "unknown")
+            report["summary"]["failed"] += 1
+        elif freshness["status"] == "ERROR":
+            needs_action = True
+            check["last_error"] = freshness.get("reason", "freshness_error")
             report["summary"]["failed"] += 1
         elif lock_info["status"] == "STALE_LOCK":
             needs_action = True
@@ -1270,6 +1316,7 @@ def run_health_check(dry_run=True, verbose=False):
                 # 2026-10-09: a disarmed retry is not a retry. The summary said "5 retried" on every run
                 # while _attempt_retry returned at RETRY_DISARMED without running anything.
                 check["action_taken"] = "retry_disarmed"
+                check["recovery_reason"] = "operator_retry_not_armed: TRADEAI_HEALTH_AGENT_RETRY requires explicit 1"
                 report["summary"]["retry_disarmed"] += 1
                 if comp.get("critical"):
                     _escalate(comp, check, conn)

@@ -23,7 +23,7 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-COVERS = ["scripts/system_health_agent.py:505"]  # line moved 2026-10-11 (SND2 intent docstring); 2026-10-07: _resolve_log() added above _send_alert
+COVERS = ["scripts/system_health_agent.py:512"]  # line moved 2026-10-11 (SND2 intent docstring); 2026-10-07: _resolve_log() added above _send_alert
 
 # The exact body shapes the nine sites emit.
 BODIES = {
