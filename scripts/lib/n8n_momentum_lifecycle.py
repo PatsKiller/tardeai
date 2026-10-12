@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any, Mapping
 from zoneinfo import ZoneInfo
 
-from scripts.lib.cron_schedule import cron_schedules, fires_between
+from scripts.lib.cron_schedule import cron_schedules, fires_between, parse
 from scripts.lib.n8n_retry_policy import class_verdict, load_policies, next_attempt_at
 
 SCHEMA = "N8nMomentumLifecycle@v1"
@@ -780,6 +780,86 @@ def _run_proof(run: Mapping, lane: str, slot: str, sha: str, now: datetime) -> s
     return "receipt_chain_proven"
 
 
+def _lane_schedule(row: Mapping) -> tuple[list[str], str, str | None]:
+    """Reconcile source schedule forms; neither a workflow ID nor a newer source is installed proof."""
+    from scripts.lib.lane_dispatch import DispatchBlockError, parse_dispatch_block
+
+    scheduler = row.get("scheduler") or {}
+    if not isinstance(scheduler, Mapping):
+        return [], "America/New_York", "schedule_not_measured"
+    try:
+        block = parse_dispatch_block(row)
+    except (DispatchBlockError, TypeError):
+        return [], "America/New_York", "schedule_dispatch_drift"
+    declared_tz = scheduler.get("timezone")
+    dispatch_tz = block.tz if block else None
+    if "timezone" in scheduler and (not isinstance(declared_tz, str) or not declared_tz.strip()):
+        return [], "America/New_York", "schedule_timezone_not_measured"
+    tz = declared_tz or dispatch_tz or "America/New_York"
+    try:
+        ZoneInfo(tz)
+    except (ValueError, TypeError, KeyError):
+        return [], "America/New_York", "schedule_timezone_not_measured"
+    if declared_tz and dispatch_tz and declared_tz != dispatch_tz:
+        return [], tz, "schedule_timezone_drift"
+
+    def schedules(value, *, multiple=False):
+        values = value if multiple else [value]
+        if not isinstance(values, list) or not values or any(not isinstance(v, str) or not v.strip() for v in values):
+            raise ValueError("missing source cadence")
+        result = []
+        for value in values:
+            extracted = cron_schedules(value)
+            if not extracted or len(extracted) != len(value.split(" + ")):
+                raise ValueError("unreadable source cadence")
+            for expression in extracted:
+                parse(expression)
+                if expression not in result:
+                    result.append(expression)
+        return result
+
+    try:
+        if scheduler.get("kind") == "n8n":
+            slots = schedules(scheduler["cadence_slots"], multiple=True) if "cadence_slots" in scheduler else None
+            cadence = schedules(scheduler["cadence"]) if "cadence" in scheduler else None
+            if slots and cadence and not set(cadence) <= set(slots):
+                return [], tz, "schedule_cadence_drift"
+            expressions = slots or cadence or (list(block.cron) if block else [])
+        else:
+            expressions = schedules(scheduler.get("expression"))
+        if block and expressions and set(expressions) != set(block.cron):
+            return [], tz, "schedule_cadence_drift"
+        if not expressions:
+            return [], tz, "schedule_not_measured"
+        return expressions, tz, None
+    except (ValueError, TypeError):
+        return [], tz, "schedule_not_measured"
+
+
+def _scheduler_authority(row: Mapping, admission: Admission) -> str:
+    """Source intent only. Legacy business fires need no n8n request; installed authority stays unmeasured."""
+    from scripts.lib.lane_dispatch import DispatchBlockError, parse_dispatch_block
+
+    scheduler = row.get("scheduler") or {}
+    if not isinstance(scheduler, Mapping):
+        return "NOT_MEASURED"
+    if scheduler.get("kind") == "n8n":
+        return "N8N_PRIMARY" if scheduler.get("stage") == "cutover" else "N8N_SOURCE_INTENT"
+    if scheduler.get("kind") != "cron":
+        return "NOT_MEASURED"
+    try:
+        block = parse_dispatch_block(row)
+    except (DispatchBlockError, TypeError):
+        return "NOT_MEASURED"
+    if block and block.mode in {"dry_run", "live"}:
+        allow = admission.allowlist.get(row.get("lane_id"), {})
+        if allow.get(f"{block.mode}_arg") is not None and scheduler.get("stage") in {"shadow", "canary"}:
+            return f"N8N_{scheduler['stage'].upper()}_WITH_LEGACY_FALLBACK"
+        # A dispatch intent with an unavailable mode or stage is drift, not proof of legacy-only operation.
+        return "NOT_MEASURED"
+    return "LEGACY_ONLY"
+
+
 def evaluate(
     candidate: Mapping, snapshot: Mapping, admission: Admission, *, now: datetime, trading_day_fn, session_fn
 ) -> dict:
@@ -798,14 +878,16 @@ def evaluate(
     for spec in candidate.get("watch", []):
         lid = spec["lane_id"]
         reg = admission.registry.get(lid)
-        expressions = cron_schedules((reg or {}).get("scheduler", {}).get("expression", ""))
+        expressions, schedule_tz, schedule_error = _lane_schedule(reg or {})
+        authority = _scheduler_authority(reg or {}, admission)
+        lane_start = now.astimezone(ZoneInfo(schedule_tz)).replace(hour=0, minute=0, second=0, microsecond=0)
         slots = []
         if (trading or spec.get("window") == "all_days") and reg and reg.get("state") == "ACTIVE":
             for expression in expressions:
                 slots.extend(
                     f
-                    for f in fires_between(expression, start - timedelta(microseconds=1), now, "America/New_York")
-                    if spec.get("window") != "regular" or session_fn(f.at) == "regular"
+                    for f in fires_between(expression, lane_start - timedelta(microseconds=1), now, schedule_tz)
+                    if spec.get("window") != "regular" or session_fn(f.at.astimezone(ET)) == "regular"
                 )
         due = {
             f.slot_local: f for f in slots if f.at + timedelta(seconds=spec.get("completion_allowance_s", 300)) <= now
@@ -829,9 +911,17 @@ def evaluate(
             if len(proven_ids) > 1:
                 states[slot] = "duplicate_completed_run_effects_not_proven"
         failures = sorted({v for v in states.values() if v != "receipt_chain_proven"})
-        if not reg or not expressions:
-            failures.append("schedule_not_measured")
-        for reason in failures:
+        if schedule_error:
+            failures.append(schedule_error)
+        # A legacy trigger never owed a coordination/run request. Keep its migration proof gap visible,
+        # without claiming that a business fire failed; malformed receipts and output failures still alert.
+        migration_gaps = [
+            reason
+            for reason in failures
+            if authority == "LEGACY_ONLY" and reason in {"expected_fire_without_request", "not_measured"}
+        ]
+        scheduler_failures = [reason for reason in failures if reason not in migration_gaps]
+        for reason in scheduler_failures:
             findings.append(_finding(lid, reason, day))
         measured_schedule = bool(reg and expressions)
         lanes.append(
@@ -844,6 +934,13 @@ def evaluate(
                 else sum(r.get("lane_id") == lid and r.get("slot_local") in due for r in run_rows),
                 "slot_states": states,
                 "requirements_missing": failures,
+                "migration_requirements_missing": migration_gaps,
+                "scheduler_requirements_missing": scheduler_failures,
+                "scheduler_authority": authority,
+                "scheduler_authority_basis": "SOURCE_REGISTRY_INTENT",
+                "installed_scheduler_authority": "NOT_MEASURED",
+                "schedule_timezone": schedule_tz,
+                "business_fire_status": "NOT_MEASURED",
                 "business_acceptance": "NOT_MEASURED",
             }
         )
