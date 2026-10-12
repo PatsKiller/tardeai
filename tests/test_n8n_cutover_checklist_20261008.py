@@ -156,7 +156,12 @@ def _acceptance(tmp_path):
                     "healthy": [{"check": "fresh", "text": "fresh fixture output"}],
                     "degraded": [{"check": "late", "text": "late fixture output"}],
                     "failed": [{"check": "missing", "text": "missing fixture output"}],
-                    "baseline": {"basis": "OPERATOR_SLO", "freshness_degraded_after_h": 24, "timeout_s": 60},
+                    "baseline": {
+                        "basis": "OPERATOR_SLO",
+                        "freshness_degraded_after_h": 24,
+                        "freshness_failed_after_h": 48,
+                        "timeout_s": 60,
+                    },
                     "alerting": {"degraded": {"notifier_priority": "P2"}, "failed": {"notifier_priority": "P1"}},
                     "remediation": {},
                     "evidence": {"verify": ["inspect fixture"]},
