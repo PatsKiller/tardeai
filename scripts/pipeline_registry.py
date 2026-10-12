@@ -10,14 +10,6 @@ Usage:
 """
 import logging, os
 
-# --- .env autoload (no hardcoded secrets) ---
-import os as _os
-if not _os.getenv("DB_PASSWORD"):
-    try:
-        from pathlib import Path as _P
-        for _l in (_P(__file__).resolve().parent.parent / ".env").read_text().splitlines():
-            if _l.startswith("DB_PASSWORD="): _os.environ["DB_PASSWORD"] = _l.split("=",1)[1].strip()
-    except Exception: pass
 from contextlib import contextmanager
 from typing import Optional
 
@@ -29,8 +21,16 @@ _DB_CONFIG = dict(host='127.0.0.1', port=5432, dbname='trade_ai', user='trade_ai
 
 def _get_conn():
     try:
+        # Delay credential loading until real heartbeat work, not module import.
+        try:
+            from scripts.lib.env_bootstrap import load_env
+        except ImportError:
+            from lib.env_bootstrap import load_env
+        load_env(names=("DB_PASSWORD",))
         import psycopg2
-        return psycopg2.connect(**_DB_CONFIG)
+        config = dict(_DB_CONFIG)
+        config["password"] = os.getenv("DB_PASSWORD", config.get("password", ""))
+        return psycopg2.connect(**config)
     except Exception:
         return None
 

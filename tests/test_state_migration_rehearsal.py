@@ -2,8 +2,7 @@
 """Isolated migration rehearsal — every failure path, and the bytes that come back.
 
 The whole point of a guarded migration is what it does when something is wrong.
-So this suite builds an isolated replica (byte-copies of the real stores into a
-temp producer/served pair), drives the real tool against it, and for every
+So this suite builds synthetic sample stores in a temp producer/served pair, drives the real tool against it, and for every
 failure asserts two things: the named rail fired, and the target's bytes are
 exactly what they were before.
 
@@ -55,8 +54,6 @@ from scripts.migrate_state_stores import (  # noqa: E402
 )
 
 TOOL = ROOT / "scripts" / "migrate_state_stores.py"
-PROD_ROOT = Path("/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/data/portfolios/state")
-SERVED_ROOT = Path("/home/johnclaw/trade-ai-releases/persistent-state/data/portfolios/state")
 
 #: A small, fast, representative slice: one clean snapshot-select, one union
 #: candidate, one derived cache, one financial conflict.
@@ -90,41 +87,61 @@ def _sha(p: Path) -> str:
     return hashlib.sha256(p.read_bytes()).hexdigest()
 
 
-def _sources_present() -> bool:
-    return PROD_ROOT.is_dir() and SERVED_ROOT.is_dir()
-
-
-needs_sources = pytest.mark.skipif(not _sources_present(), reason="state roots not present on this host")
-
-#: The migration manifest is generated evidence and lives under evidence/whole_site/,
-#: which is gitignored. It therefore exists only on the machine that generated it: a
-#: fresh worktree or a hosted runner has no such file.
-#:
-#: Two tests read it directly with no guard, so they passed only where the artifact
-#: happened to be lying around and raised FileNotFoundError anywhere else. That is the
-#: same defect these very tests were rewritten to remove -- asserting on ambient state
-#: rather than a controlled input -- and it is the fourth instance found in this work.
-MANIFEST_PATH = ROOT / "evidence" / "whole_site" / "MIGRATION_MANIFEST.json"
-needs_manifest = pytest.mark.skipif(
-    not MANIFEST_PATH.is_file(),
-    reason=f"{MANIFEST_PATH} is generated evidence, gitignored, and absent on this host",
-)
-
-
 @pytest.fixture
-def replica(tmp_path):
-    """A byte-identical isolated copy of both roots. Never the real ones."""
-    if not _sources_present():
-        pytest.skip("state roots not present")
+def replica(tmp_path, monkeypatch):
+    """Controlled producer/served samples; metadata never probes a host or product tree."""
     p, s = tmp_path / "producer", tmp_path / "served"
     p.mkdir()
     s.mkdir()
-    for name in REHEARSAL_STORES:
-        for src_root, dst_root in ((PROD_ROOT, p), (SERVED_ROOT, s)):
-            src = src_root / name
-            if src.is_file():
-                shutil.copy2(src, dst_root / name)
+    for name in ALL_STORES:
+        producer_doc = {"fixture_record": {"value": "producer", "count": 2}}
+        served_doc = {"fixture_record": {"value": "served", "count": 1}}
+        if name == "_freshness.json":
+            producer_doc = {"schema": "Freshness@v1", "completed_at": "2026-09-04T12:00:00Z", "rows": {"a": 1}}
+            served_doc = {"schema": "Freshness@v1", "completed_at": "2026-08-01T12:00:00Z", "rows": {"a": 1}}
+        elif name == "stops.json":
+            producer_doc = {"TEST:fixture_account": {"broker_order_id": "fixture-1", "stop": 10.0, "qty": 1.0}}
+            served_doc = {"TEST:fixture_account": {"broker_order_id": "fixture-1", "stop": 11.0, "qty": 1.0}}
+        elif name == "tax_lots.json":
+            producer_doc = {"TEST:fixture_account": [{"account": "fixture_account", "shares_remaining": 2.0}]}
+            served_doc = {"TEST:fixture_account": [{"account": "fixture_account", "shares_remaining": 1.0}]}
+        for root, sample in ((p, producer_doc), (s, served_doc)):
+            (root / name).write_text(json.dumps(sample, indent=1), encoding="utf-8")
+
+    # Test the real content/hash/conflict planner against known metadata, not source,
+    # scheduler or CURRENT discovery. Classifier tests below keep their real helpers.
+    monkeypatch.setattr(state_migration, "_grep_files", lambda *a, **kw: [])
+    monkeypatch.setattr(state_migration, "_producer_schedule", lambda *a, **kw: {
+        "authority": "ADVISORY_HEURISTIC", "requires_operator_confirmation": True,
+        "cron": [], "systemd": [], "note": "synthetic rehearsal; no scheduled writer",
+    })
+    monkeypatch.setattr(state_migration, "_deployed_sha_hint", lambda *a, **kw: FAKE_SHA)
+    monkeypatch.setenv("DEPLOYED_RELEASE_SHA", FAKE_SHA)
     return p, s
+
+
+@pytest.fixture
+def full_manifest(replica):
+    return build_manifest(ALL_STORES, *replica)
+
+
+@pytest.fixture
+def conflict_ledger():
+    """Explicit synthetic adjudication evidence: disputed and verified records coexist."""
+    return {
+        "schema": "FinancialConflictLedger@v1",
+        "records": [
+            {"store": "tax_lots.json", "record_key": "UNSETTLED:fixture_account",
+             "disposition": "UNRESOLVED_OPERATOR_REVIEW", "canonical_value": None,
+             "canonical_side": None, "auto_migratable": False,
+             "reason": "fixture evidence does not establish authority", "authorities_queried": []},
+            {"store": "stops.json", "record_key": "VERIFIED:fixture_account",
+             "disposition": "BROKER_VERIFIED", "canonical_value": {"stop": 10.0},
+             "canonical_side": "producer", "auto_migratable": True,
+             "reason": "fixture authority confirms the record identity and quantity",
+             "authorities_queried": ["synthetic_fixture_authority"]},
+        ],
+    }
 
 
 @pytest.fixture
@@ -175,7 +192,6 @@ def _row(doc, store):
 # ── 1. dry run ───────────────────────────────────────────────────────────────
 
 
-@needs_sources
 def test_dry_run_writes_nothing(manifest, replica, tmp_path):
     doc, path = manifest
     _, served = replica
@@ -191,7 +207,6 @@ def test_dry_run_writes_nothing(manifest, replica, tmp_path):
 # ── 2/3. successful migration, then idempotent repeat ────────────────────────
 
 
-@needs_sources
 def test_successful_migration_then_idempotent_repeat(manifest, replica, tmp_path):
     # Planted rather than observed: the live copies may legitimately agree after a
     # production migration, and a test that needs them to disagree would then fail for
@@ -246,7 +261,6 @@ def test_successful_migration_then_idempotent_repeat(manifest, replica, tmp_path
 # ── 4/5. changed source / target hash ────────────────────────────────────────
 
 
-@needs_sources
 def test_changed_source_hash_is_refused(manifest, replica):
     doc, _ = manifest
     producer, _ = replica
@@ -257,7 +271,6 @@ def test_changed_source_hash_is_refused(manifest, replica):
     assert exc.value.rail == "changed_source_hash"
 
 
-@needs_sources
 def test_changed_target_hash_is_refused(manifest, replica):
     doc, _ = manifest
     _, served = replica
@@ -271,7 +284,6 @@ def test_changed_target_hash_is_refused(manifest, replica):
 # ── 6/7. missing and corrupted backup ────────────────────────────────────────
 
 
-@needs_sources
 def test_missing_backup_is_refused(manifest, tmp_path):
     doc, _ = manifest
     row = dict(_row(doc, "_freshness.json"))
@@ -282,7 +294,6 @@ def test_missing_backup_is_refused(manifest, tmp_path):
     assert exc.value.rail == "unverified_backup"
 
 
-@needs_sources
 def test_corrupted_backup_is_detected(manifest, tmp_path, monkeypatch):
     doc, _ = manifest
     row = _row(doc, "_freshness.json")
@@ -302,7 +313,6 @@ def test_corrupted_backup_is_detected(manifest, tmp_path, monkeypatch):
 # ── 8. insufficient disk ─────────────────────────────────────────────────────
 
 
-@needs_sources
 def test_insufficient_disk_is_refused(manifest, replica):
     doc, _ = manifest
     _, served = replica
@@ -314,7 +324,6 @@ def test_insufficient_disk_is_refused(manifest, replica):
 # ── 9. active writer ─────────────────────────────────────────────────────────
 
 
-@needs_sources
 def test_active_writer_is_refused(manifest, monkeypatch):
     from scripts import migrate_state_stores as mod
 
@@ -345,7 +354,6 @@ def test_wrong_deployed_sha_is_refused():
     assert exc.value.rail == "missing_expected_deployed_sha"
 
 
-@needs_sources
 def test_wrong_manifest_hash_is_refused(manifest):
     doc, _ = manifest
     with pytest.raises(Refusal) as exc:
@@ -354,7 +362,6 @@ def test_wrong_manifest_hash_is_refused(manifest):
     assert rail_manifest_hash(doc, manifest_hash(doc)) == manifest_hash(doc)
 
 
-@needs_sources
 def test_a_tampered_manifest_fails_its_own_recorded_hash(manifest):
     doc, _ = manifest
     tampered = json.loads(json.dumps(doc, default=str))
@@ -367,7 +374,6 @@ def test_a_tampered_manifest_fails_its_own_recorded_hash(manifest):
 # ── 12. invalid schema / failed post-write validation ────────────────────────
 
 
-@needs_sources
 def test_invalid_schema_after_write_is_caught(manifest, replica):
     doc, _ = manifest
     _, served = replica
@@ -379,7 +385,6 @@ def test_invalid_schema_after_write_is_caught(manifest, replica):
     assert exc.value.rail == "failed_post_write_validation"
 
 
-@needs_sources
 def test_hash_mismatch_after_write_is_caught(manifest, replica):
     doc, _ = manifest
     _, served = replica
@@ -392,7 +397,6 @@ def test_hash_mismatch_after_write_is_caught(manifest, replica):
 # ── 13/14. partial write and interruption ────────────────────────────────────
 
 
-@needs_sources
 def test_an_interrupted_write_leaves_the_target_untouched(replica, monkeypatch):
     _, served = replica
     target = served / "_freshness.json"
@@ -417,7 +421,6 @@ def test_an_interrupted_write_leaves_the_target_untouched(replica, monkeypatch):
 # ── 15. conflicting authoritative records ────────────────────────────────────
 
 
-@needs_sources
 def test_financial_conflict_is_never_applied(manifest, replica, tmp_path):
     # A financial store whose two copies assert different values for the same record,
     # with no conflict ledger supplied. Planted so the case is tested even after the
@@ -467,7 +470,6 @@ def test_financial_conflict_is_never_applied(manifest, replica, tmp_path):
 # ── 16. automatic rollback restores the exact bytes ──────────────────────────
 
 
-@needs_sources
 def test_rollback_restores_byte_identical_content(manifest, replica, tmp_path):
     doc, _ = manifest
     _, served = replica
@@ -516,9 +518,9 @@ def test_apply_without_operator_approval_is_refused():
         ("/etc/state-of-the-nation.json", "forbidden_target"),
     ],
 )
-def test_forbidden_targets_are_refused(target, rail):
+def test_forbidden_targets_are_refused(target, rail, tmp_path):
     with pytest.raises(Refusal) as exc:
-        rail_target_path(Path(target), governed_root="/home/johnclaw/trade-ai-releases/persistent-state")
+        rail_target_path(Path(target), governed_root=tmp_path / "served")
     assert exc.value.rail == rail
 
 
@@ -541,7 +543,6 @@ def test_a_missing_governed_root_is_refused(tmp_path):
     assert exc.value.rail == "unresolved_path"
 
 
-@needs_sources
 def test_a_directory_target_is_refused(tmp_path):
     d = tmp_path / "state"
     d.mkdir()
@@ -553,7 +554,6 @@ def test_a_directory_target_is_refused(tmp_path):
 # ── the tool refuses apply without any of its rails ──────────────────────────
 
 
-@needs_sources
 @pytest.mark.parametrize(
     "drop,rail",
     [
@@ -587,10 +587,8 @@ def test_apply_refuses_when_a_rail_is_missing(manifest, tmp_path, drop, rail):
 # ── the manifest covers every named store ────────────────────────────────────
 
 
-@needs_sources
-@needs_manifest
-def test_every_named_store_has_a_manifest_row():
-    doc = json.loads((ROOT / "evidence" / "whole_site" / "MIGRATION_MANIFEST.json").read_text())
+def test_every_named_store_has_a_manifest_row(full_manifest):
+    doc = full_manifest
     assert {r["store"] for r in doc["stores"]} == set(ALL_STORES)
     assert doc["store_count"] == 18
     for r in doc["stores"]:
@@ -620,9 +618,7 @@ def test_every_named_store_has_a_manifest_row():
         )
 
 
-@needs_sources
-@needs_manifest
-def test_every_financial_store_fails_closed():
+def test_every_financial_store_fails_closed(full_manifest):
     """Fail-closed now holds per record, which is strictly stronger than per store.
 
     The earlier form asserted every financial store was MANUAL_CONFLICT. That was the
@@ -632,7 +628,7 @@ def test_every_financial_store_fails_closed():
     authority, the invariant is that no record whose disposition is UNRESOLVED may ever
     acquire a canonical value, whatever the store around it does.
     """
-    doc = json.loads((ROOT / "evidence" / "whole_site" / "MIGRATION_MANIFEST.json").read_text())
+    doc = full_manifest
     fin = [r for r in doc["stores"] if r["financial_truth_store"]]
     assert len(fin) == 5
 
@@ -655,12 +651,9 @@ def test_every_financial_store_fails_closed():
             )
 
 
-def test_no_unresolved_record_is_ever_given_a_canonical_value():
+def test_no_unresolved_record_is_ever_given_a_canonical_value(conflict_ledger):
     """The one guarantee the whole record-level path rests on."""
-    ledger_path = ROOT / "evidence" / "whole_site" / "CONFLICT_LEDGER.json"
-    if not ledger_path.exists():
-        pytest.skip("no conflict ledger present")
-    ledger = json.loads(ledger_path.read_text())
+    ledger = conflict_ledger
     for rec in ledger["records"]:
         if rec["disposition"] == "UNRESOLVED_OPERATOR_REVIEW":
             assert rec["canonical_value"] is None, f"{rec['record_key']} was handed a value"
@@ -668,12 +661,9 @@ def test_no_unresolved_record_is_ever_given_a_canonical_value():
             assert rec["auto_migratable"] is False
 
 
-def test_no_disposition_was_decided_by_recency():
+def test_no_disposition_was_decided_by_recency(conflict_ledger):
     """No verdict may cite timestamps as its reason for choosing a side."""
-    ledger_path = ROOT / "evidence" / "whole_site" / "CONFLICT_LEDGER.json"
-    if not ledger_path.exists():
-        pytest.skip("no conflict ledger present")
-    ledger = json.loads(ledger_path.read_text())
+    ledger = conflict_ledger
     banned = ("newer", "more recent", "later timestamp", "freshest", "most recent")
     for rec in ledger["records"]:
         if rec["canonical_side"] in (None, "rebuild", "both"):
@@ -736,7 +726,10 @@ class TestProducerScheduleDiscovery:
         assert mentions == ["m.py"]
         assert sorted(writers + mentions) == ["m.py", "w.py"]
 
-    def test_schedule_is_a_structured_advisory_record_not_a_bare_list(self):
+    def test_schedule_is_a_structured_advisory_record_not_a_bare_list(self, monkeypatch):
+        # Exercise the actual helper, with its command boundary explicitly synthetic.
+        monkeypatch.setattr(state_migration.subprocess, "run", lambda *a, **kw:
+                            subprocess.CompletedProcess(a[0], 0, stdout="", stderr=""))
         rec = state_migration._producer_schedule([])
         assert isinstance(rec, dict)
         assert rec["authority"] == "ADVISORY_HEURISTIC"
@@ -750,7 +743,6 @@ class TestProducerScheduleDiscovery:
 from scripts import migrate_state_stores as mss  # noqa: E402
 
 
-@needs_sources
 class TestQuiescenceGate:
     """Discovery misses producers. Watching the bytes does not.
 
@@ -792,7 +784,6 @@ class TestQuiescenceGate:
             assert p.read_bytes() == b, f"{p} was modified by a read-only gate"
 
 
-@needs_sources
 class TestEmitManifest:
     def test_regeneration_refuses_a_root_that_is_not_a_directory(self, manifest, tmp_path):
         _doc, manifest_path = manifest
@@ -854,7 +845,6 @@ def _ledger_for(store, verdicts):
     }
 
 
-@needs_sources
 class TestRecordLevelMerge:
     def test_each_record_follows_its_own_authority(self, replica):
         producer, served = replica
@@ -928,8 +918,7 @@ class TestRecordLevelMerge:
         """A record-level merge with no per-record verdicts has nothing to apply."""
         doc, manifest_path = manifest
         row = dict(_row(doc, "stops.json")) if any(r["store"] == "stops.json" for r in doc["stores"]) else None
-        if row is None:
-            pytest.skip("stops.json not in the rehearsal set")
+        assert row is not None, "the synthetic rehearsal must include the financial conflict store"
         row["strategy"] = state_migration.RECORD_LEVEL_MERGE
         row.pop("planned_content", None)
         row["planned_content_sha256"] = "0" * 64  # so the refusal we assert is the ledger one
@@ -951,7 +940,6 @@ class TestRecordLevelMerge:
         assert exc.value.rail in ("missing_conflict_ledger", "running_affected_writer", "missing_operator_approval")
 
 
-@needs_sources
 class TestInterruptionAndRollback:
     def _writing_row(self, replica, tmp_path):
         """A store the migration will actually write, whatever the live copies look like."""
@@ -1022,7 +1010,6 @@ class TestInterruptionAndRollback:
         assert receipt and receipt.get("rollback"), "rollback evidence must survive the exception"
 
 
-@needs_sources
 class TestQuarantineCoexistsWithPromotion:
     """A record can be broker-verified for quantity and quarantined for basis.
 
@@ -1095,3 +1082,12 @@ class TestQuarantineCoexistsWithPromotion:
         assert row["producer_value"] == p["SCHD:acct"]
         assert row["served_value"] == s["SCHD:acct"]
         assert row["producer_sha256"] and row["served_sha256"]
+
+
+def test_replica_contains_every_sample_and_no_ambient_paths(replica, tmp_path):
+    producer, served = replica
+    for root in (producer, served):
+        assert root.is_relative_to(tmp_path)
+        assert {p.name for p in root.iterdir()} == set(ALL_STORES)
+    for name in ("_freshness.json", "stops.json", "tax_lots.json"):
+        assert _sha(producer / name) != _sha(served / name), "required conflict cases must be non-vacuous"

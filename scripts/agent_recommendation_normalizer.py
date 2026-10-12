@@ -45,8 +45,7 @@ def _f(v):
     return float(v) if isinstance(v, Decimal) else v
 
 def _get_conn():
-    from dotenv import load_dotenv
-    load_dotenv(PROJECT_ROOT / ".env")
+    _load_env()
     from session13_db import get_conn
     return get_conn()
 

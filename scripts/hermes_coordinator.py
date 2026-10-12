@@ -13,6 +13,7 @@ Scheduled 24/7 via cron (every 15 min), flock-guarded. Runs the research curator
 tick for conscious signal mining + curation; per-tick caps keep it bounded; kill switch
 halts the next tick.
 """
+import argparse
 import os
 import sys
 import json
@@ -22,13 +23,6 @@ from pathlib import Path
 from datetime import datetime, timezone
 
 ROOT = Path(__file__).resolve().parent.parent
-for line in (ROOT / ".env").read_text().splitlines():
-    if "=" in line and not line.startswith("#"):
-        k, v = line.split("=", 1)
-        os.environ.setdefault(k.strip(), v.strip())
-
-import psycopg2
-
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [hermes-coordinator] %(message)s")
 log = logging.getLogger("hermes_coordinator")
 
@@ -36,7 +30,7 @@ try:
     from lib.live_project_root import venv_python  # noqa: E402  (release dirs ship no .venv)
 except ImportError:  # imported with scripts/lib, not scripts/, on sys.path
     from live_project_root import venv_python  # noqa: E402
-PY = venv_python(ROOT)
+PY = None
 sys.path.insert(0, str(ROOT / "scripts"))
 # Canonical kill-switch via the shared helper (Phase 214) — never the retired sidecar path.
 # COORDINATOR_DISABLED is a coordinator-only extra stop file.
@@ -146,7 +140,15 @@ def log_plan(conn, summary):
     conn.commit()
 
 
-def main():
+def _execute():
+    import psycopg2
+    from lib.env_bootstrap import load_env
+    load_env(names=("DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD"))
+    DB.update(host=os.getenv("DB_HOST", "127.0.0.1"), port=int(os.getenv("DB_PORT", "5432")),
+              dbname=os.getenv("DB_NAME", "trade_ai"), user=os.getenv("DB_USER", "trade_ai"),
+              password=os.getenv("DB_PASSWORD", ""))
+    global PY
+    PY = venv_python(ROOT)
     ks = kill_switch_active()
     if ks:
         log.warning("KILL SWITCH ACTIVE (%s) — coordinator halted, no agents run.", ks)
@@ -171,9 +173,11 @@ def main():
     conn = psycopg2.connect(**DB)
     promoted = 0
     backfilled = 0
+    failed_steps = 0
     try:
         promoted = auto_promote(conn)
     except Exception as e:
+        failed_steps += 1
         conn.rollback(); log.warning("auto-promote failed (rolled back): %s", e)
     try:
         from hermes_embedding_enqueue import backfill_promoted
@@ -181,6 +185,7 @@ def main():
         if backfilled:
             log.info("  embed-backfill: enqueued %d promoted rows missing from RAG queue", backfilled)
     except Exception as e:
+        failed_steps += 1
         conn.rollback(); log.warning("embed-backfill failed: %s", e)
     agents.append(run_script(
         "embedding_worker",
@@ -192,10 +197,44 @@ def main():
     try:
         log_plan(conn, summary)
     except Exception as e:
+        failed_steps += 1
         conn.rollback(); log.warning("plan log failed: %s", e)
     conn.close()
     log.info("Coordinator tick DONE: %d promoted, %d agents run", promoted, len(agents))
-    return 0
+    return 1 if failed_steps or any(not a.get("ok") for a in agents) else 0
+
+
+def main(argv=None) -> int:
+    """Strict offline inspection before the legacy business execution path."""
+    argv = list(sys.argv[1:] if argv is None else argv)
+    parser = argparse.ArgumentParser(allow_abbrev=False)
+    parser.add_argument("--dry-run", action="store_true", help="offline source plan")
+    args = parser.parse_args(argv)
+    lane = "hermes-coordinator"
+    if args.dry_run:
+        print(f"DRY-RUN {lane}: would run capped research children, promotion and embedding steps; no child, DB, model or state read; options={vars(args)}; inputs NOT_MEASURED")
+        return 0
+    try:
+        from scripts.lib.lane_last_receipt import now_iso, write_lane_receipt
+    except ImportError:
+        from lib.lane_last_receipt import now_iso, write_lane_receipt
+    started = now_iso()
+    previous = sys.argv
+    sys.argv = [previous[0], *argv]
+    try:
+        result = _execute()
+        rc = int(result) if isinstance(result, int) else 0
+    except SystemExit as exc:
+        rc = exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
+        write_lane_receipt(lane, ok=rc == 0, exit_code=rc, started_at=started, script="hermes_coordinator.py", summary={"completed": rc == 0})
+        raise
+    except Exception as exc:
+        write_lane_receipt(lane, ok=False, exit_code=1, started_at=started, script="hermes_coordinator.py", error=type(exc).__name__)
+        raise
+    finally:
+        sys.argv = previous
+    write_lane_receipt(lane, ok=rc == 0, exit_code=rc, started_at=started, script="hermes_coordinator.py", summary={"completed": rc == 0})
+    return rc
 
 
 if __name__ == "__main__":

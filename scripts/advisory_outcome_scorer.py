@@ -16,16 +16,40 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
-from lib.advisory.advisory_memory import score_pending_outcomes  # noqa: E402
-from lib.advisory_outcome_record import run_outcome_cycle  # noqa: E402
+def score_pending_outcomes(**kwargs):
+    from lib.advisory.advisory_memory import score_pending_outcomes as score
+    return score(**kwargs)
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__)
+def run_outcome_cycle(**kwargs):
+    from lib.advisory_outcome_record import run_outcome_cycle as run
+    return run(**kwargs)
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     ap.add_argument("--once", action="store_true", help="Run one sweep (default)")
     ap.add_argument("--max", type=int, default=200, help="Max new outcome rows")
     ap.add_argument("--json", action="store_true")
-    args = ap.parse_args()
+    ap.add_argument("--dry-run", action="store_true", help="offline plan; no reads, scoring or writes")
+    args = ap.parse_args(argv)
+    if args.dry_run:
+        print(f"DRY-RUN advisory-outcome-scorer: would score at most {args.max} pending advisory outcomes and refresh lineage/reconciliation; no portfolio reads, DB, network or writes")
+        return 0
+    from lib.lane_last_receipt import now_iso, write_lane_receipt
+    started = now_iso()
+    try:
+        code, summary = _run(args)
+    except Exception as exc:
+        write_lane_receipt("advisory-outcome-scorer", ok=False, exit_code=1,
+                           started_at=started, error=type(exc).__name__)
+        raise
+    write_lane_receipt("advisory-outcome-scorer", ok=code == 0, exit_code=code,
+                       started_at=started, summary=summary)
+    return code
+
+
+def _run(args):
     result = score_pending_outcomes(max_new=args.max)
     root = Path(os.environ.get("TRADEAI_ROOT") or PROJECT_ROOT)
     result["outcome_record_v1"] = run_outcome_cycle(root=root)
@@ -60,7 +84,11 @@ def main() -> int:
             f"scored={obs.get('scored')} lineages={(closed_loop.get('lineage') or {}).get('count')} "
             f"ok={closed_loop.get('ok')}"
         )
-    return 0 if result.get("ok") else 1
+    ok = bool(result.get("ok")) and bool(closed_loop.get("ok"))
+    code = 0 if ok else 1
+    return code, {"written": result.get("written"), "scoring_ok": bool(result.get("ok")),
+                  "closed_loop_ok": bool(closed_loop.get("ok")),
+                  "closed_loop_error": closed_loop.get("error")}
 
 
 if __name__ == "__main__":

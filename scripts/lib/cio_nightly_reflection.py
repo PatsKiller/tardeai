@@ -16,7 +16,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
-from scripts.lib.cio_production_case import materialize_cases
 
 AUTHORITY = "READ_ONLY_ADVISORY"
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -88,6 +87,12 @@ def persist_reflection(rec: dict[str, Any], *, snapshot_path: Path, history_path
         fh.write(line)
         fh.flush()
         os.fsync(fh.fileno())
+
+
+def materialize_cases(*, path=None):
+    """Import case storage only when a real reflection needs it."""
+    from scripts.lib.cio_production_case import materialize_cases as load_cases
+    return load_cases(path=path)
 
 
 def reflect(*, cases_path: Optional[Path] = None, out_path: Optional[Path] = None) -> dict[str, Any]:
@@ -176,14 +181,28 @@ def reflect(*, cases_path: Optional[Path] = None, out_path: Optional[Path] = Non
 def main(argv: Optional[list[str]] = None) -> int:
     """CLI: read-only reflection. Never auto-promotes."""
     import argparse
-    p = argparse.ArgumentParser(description="CIO nightly reflection (READ_ONLY_ADVISORY)")
+    p = argparse.ArgumentParser(description="CIO nightly reflection (READ_ONLY_ADVISORY)", allow_abbrev=False)
     p.add_argument("--cases-path", default=None)
     p.add_argument("--out-path", default=None)
+    p.add_argument("--dry-run", action="store_true", help="offline plan; no case reads, reflection or writes")
     args = p.parse_args(argv)
-    rec = reflect(
-        cases_path=Path(args.cases_path) if args.cases_path else None,
-        out_path=Path(args.out_path) if args.out_path else None,
-    )
+    if args.dry_run:
+        print(f"DRY-RUN cio-nightly-reflection: would read cases={args.cases_path or 'governed case journal'} and persist candidate reflection={args.out_path or 'data/cio/cio_reflection_candidates.jsonl'}; no promotions, DB, network or writes")
+        return 0
+    from scripts.lib.lane_last_receipt import now_iso, write_lane_receipt
+    started = now_iso()
+    try:
+        rec = reflect(
+            cases_path=Path(args.cases_path) if args.cases_path else None,
+            out_path=Path(args.out_path) if args.out_path else None,
+        )
+    except Exception as exc:
+        write_lane_receipt("cio-nightly-reflection", ok=False, exit_code=1,
+                           started_at=started, error=type(exc).__name__)
+        raise
+    write_lane_receipt("cio-nightly-reflection", ok=True, exit_code=0,
+                       started_at=started, summary={"cases_seen": rec.get("cases_seen"),
+                                                  "proposals": len(rec.get("proposals") or [])})
     summary = {
         "at": rec.get("at"),
         "cases_seen": rec.get("cases_seen"),

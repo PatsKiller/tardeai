@@ -23,13 +23,17 @@ some sources failing while others ran is 0, the failures are in the receipt); 1 
 DB connection could not be opened, EVERY source errored, or rows needed embedding and not one could be
 embedded (embedder down); 2 = usage error (unknown --source).
 """
-import argparse, logging, sys, json
+import argparse, logging, sys, json, os
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
-from rag_retrieval import embed_text
+def embed_text(text):
+    # The embedding runtime is retired; do not load it for CLI validation.
+    # Existing real-run dependency remains pending an operator-selected replacement.
+    from rag_retrieval import embed_text as _embed_text
+    return _embed_text(text)
 
 logger = logging.getLogger(__name__)
 
@@ -252,9 +256,9 @@ SOURCE_CONFIGS = {
 
 def _get_conn():
     import psycopg2
-    pw = ""
-    for line in (PROJECT_ROOT / ".env").read_text().splitlines():
-        if line.startswith("DB_PASSWORD="): pw = line.split("=", 1)[1].strip()
+    from lib.env_bootstrap import load_env
+    load_env(names=("DB_PASSWORD",))
+    pw = os.getenv("DB_PASSWORD", "")
     return psycopg2.connect(host="localhost", dbname="trade_ai", user="trade_ai", password=pw)
 
 
@@ -335,7 +339,8 @@ def index_source(source_type, hours_back=None, backfill=False, conn=None, dry_ru
                 conn.commit()
                 logger.info(f"  {source_type}: {indexed}/{len(rows)} indexed...")
 
-        conn.commit()
+        if not dry_run:
+            conn.commit()
         st["indexed"] = indexed
         st["skipped_empty"] += st["skipped_empty_prefilter"]
         logger.info(f"  {source_type}: {indexed} {'would index' if dry_run else 'new'}, {len(rows)-indexed} skipped"
@@ -392,7 +397,7 @@ def run_failed(summary: dict) -> bool:
 def main(argv=None) -> int:
     from datetime import datetime, timezone
 
-    parser = argparse.ArgumentParser(description="RAG Indexer — embed all intelligence sources")
+    parser = argparse.ArgumentParser(description="RAG Indexer — embed all intelligence sources", allow_abbrev=False)
     parser.add_argument("--source", default="all", help="Comma-separated source types or 'all'")
     parser.add_argument("--hours", type=int, default=None, help="Only index items from last N hours")
     parser.add_argument("--backfill", action="store_true", help="Index ALL rows regardless of age")
@@ -405,6 +410,9 @@ def main(argv=None) -> int:
     if unknown:
         print(f"unknown --source {unknown}; known: {sorted(SOURCE_CONFIGS)}", file=sys.stderr)
         return 2
+    if args.dry_run:
+        print(f"DRY-RUN {LANE_ID}: would index sources={','.join(sources)} hours={args.hours} backfill={args.backfill}; no DB, embedding runtime, telemetry or writes")
+        return 0
     started = datetime.now(timezone.utc).isoformat()
     try:
         conn = _get_conn()

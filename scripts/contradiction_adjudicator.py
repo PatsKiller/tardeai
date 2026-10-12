@@ -203,12 +203,16 @@ def judge(request: dict, *, call_fn=None) -> tuple[str, dict]:
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description="adjudicate research contradiction candidates (paid judge, capped)")
+    ap = argparse.ArgumentParser(description="adjudicate research contradiction candidates (paid judge, capped)", allow_abbrev=False)
+    ap.add_argument("--dry-run", action="store_true", help="offline plan; takes precedence over --apply")
     ap.add_argument("--apply", action="store_true", help="call the judge and append verdicts (default: dry run)")
     ap.add_argument("--max-pairs", type=int, default=20)
     ap.add_argument("--root")
     ap.add_argument("--scan-max-lines", type=int, default=400_000)
     a = ap.parse_args(argv)
+    if a.dry_run:
+        print(f"DRY-RUN {LANE}: would adjudicate up to {a.max_pairs} pairs; no state reads, judge, heartbeat or writes")
+        return 0
     env = dict(os.environ)
     root = Path(a.root) if a.root else state_root(env)
     now = _now()

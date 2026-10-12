@@ -1,0 +1,1615 @@
+{
+  "schema": "TimerAdmissionSourceMetadata@v1",
+  "status": "DESIGN_ONLY_UNRATIFIED",
+  "runtime": "NOT_MEASURED",
+  "evidence_class": "SOURCE_ONLY",
+  "rows": [
+    {
+      "lane_id": "cio-nightly-reflection",
+      "timer_identity": "tradeai-cio-nightly-reflection.timer",
+      "status": "DESIGN_ONLY_UNRATIFIED",
+      "installed_state": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "source_timer": [
+        {
+          "path": "config/systemd/user/tradeai-cio-nightly-reflection.timer",
+          "properties": {
+            "OnCalendar": [
+              "*-*-* 21:50:00"
+            ],
+            "OnBootSec": [],
+            "OnUnitActiveSec": [],
+            "OnUnitInactiveSec": [],
+            "OnStartupSec": [],
+            "Persistent": [
+              "true"
+            ],
+            "RandomizedDelaySec": [],
+            "AccuracySec": [],
+            "Unit": [
+              "tradeai-cio-nightly-reflection.service"
+            ]
+          }
+        }
+      ],
+      "source_service": [
+        {
+          "path": "config/systemd/user/tradeai-cio-nightly-reflection.service",
+          "properties": {
+            "ExecStart": [
+              "%h/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python %h/trade-ai-releases/portfolio-server/CURRENT/scripts/lib/cio_nightly_reflection.py"
+            ],
+            "WorkingDirectory": [
+              "%h/trade-ai-releases/portfolio-server/CURRENT"
+            ],
+            "TimeoutStartSec": [],
+            "Restart": [],
+            "ConditionPathExists": [],
+            "EnvironmentFile": []
+          }
+        }
+      ],
+      "unresolved": [
+        "Exact installed fragment/drop-in/instance enablement, lock, env closure, code-root chain, semantic comparison and owner decision remain required."
+      ]
+    },
+    {
+      "lane_id": "tradeai-agent-runtime-steph",
+      "timer_identity": "tradeai-agent-runtime@steph.timer",
+      "status": "DESIGN_ONLY_UNRATIFIED",
+      "installed_state": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "source_result": "OWNER_OR_AUTHORITY_BLOCKED",
+      "source_timer": [
+        {
+          "path": "config/systemd/agent_runtime/tradeai-agent-runtime@.timer",
+          "properties": {
+            "OnCalendar": [
+              "*:0/15"
+            ],
+            "OnBootSec": [],
+            "OnUnitActiveSec": [],
+            "OnUnitInactiveSec": [],
+            "OnStartupSec": [],
+            "Persistent": [
+              "false"
+            ],
+            "RandomizedDelaySec": [
+              "120"
+            ],
+            "AccuracySec": [
+              "30s"
+            ],
+            "Unit": [
+              "tradeai-agent-runtime@%i.service"
+            ]
+          }
+        }
+      ],
+      "source_service": [
+        {
+          "path": "config/systemd/agent_runtime/tradeai-agent-runtime@.service",
+          "properties": {
+            "ExecStart": [
+              "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.agents.run_once --agent %i --once --max-batch 8"
+            ],
+            "WorkingDirectory": [
+              "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
+            ],
+            "TimeoutStartSec": [
+              "900"
+            ],
+            "Restart": [],
+            "ConditionPathExists": [
+              "/etc/tradeai/agent_runtime_enabled"
+            ],
+            "EnvironmentFile": []
+          }
+        }
+      ],
+      "unresolved": [
+        "Exact installed fragment/drop-in/instance enablement, lock, env closure, code-root chain, semantic comparison and owner decision remain required."
+      ]
+    },
+    {
+      "lane_id": "aegis-surveillance",
+      "timer_identity": "aegis-surveillance.timer",
+      "status": "DESIGN_ONLY_UNRATIFIED",
+      "installed_state": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "source_result": "OWNER_OR_AUTHORITY_BLOCKED",
+      "source_timer": [],
+      "source_service": [],
+      "unresolved": [
+        "Exact installed fragment/drop-in/instance enablement, lock, env closure, code-root chain, semantic comparison and owner decision remain required.",
+        "SOURCE_FRAGMENT_PAIR_MISSING"
+      ]
+    },
+    {
+      "lane_id": "cio-memory-shadow-measure",
+      "timer_identity": "tradeai-cio-memory-shadow-measure.timer",
+      "status": "DESIGN_ONLY_UNRATIFIED",
+      "installed_state": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "source_timer": [
+        {
+          "path": "config/systemd/user/tradeai-cio-memory-shadow-measure.timer",
+          "properties": {
+            "OnCalendar": [
+              "*-*-* 06:20:00"
+            ],
+            "OnBootSec": [],
+            "OnUnitActiveSec": [],
+            "OnUnitInactiveSec": [],
+            "OnStartupSec": [],
+            "Persistent": [
+              "true"
+            ],
+            "RandomizedDelaySec": [],
+            "AccuracySec": [
+              "1min"
+            ],
+            "Unit": [
+              "tradeai-cio-memory-shadow-measure.service"
+            ]
+          }
+        }
+      ],
+      "source_service": [
+        {
+          "path": "config/systemd/user/tradeai-cio-memory-shadow-measure.service",
+          "properties": {
+            "ExecStart": [
+              "%h/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/run_memory_shadow_measure.py"
+            ],
+            "WorkingDirectory": [
+              "%h/trade-ai-releases/portfolio-server/CURRENT"
+            ],
+            "TimeoutStartSec": [],
+            "Restart": [],
+            "ConditionPathExists": [],
+            "EnvironmentFile": [
+              "-/run/user/%U/tradeai/env",
+              "-%h/.config/tradeai/cio-operator-live.env"
+            ]
+          }
+        }
+      ],
+      "unresolved": [
+        "Exact installed fragment/drop-in/instance enablement, lock, env closure, code-root chain, semantic comparison and owner decision remain required."
+      ]
+    },
+    {
+      "lane_id": "advisory-outcome-scorer",
+      "timer_identity": "tradeai-advisory-outcome-scorer.timer",
+      "status": "DESIGN_ONLY_UNRATIFIED",
+      "installed_state": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "source_timer": [
+        {
+          "path": "config/systemd/user/tradeai-advisory-outcome-scorer.timer",
+          "properties": {
+            "OnCalendar": [
+              "*-*-* 18:30:00"
+            ],
+            "OnBootSec": [],
+            "OnUnitActiveSec": [],
+            "OnUnitInactiveSec": [],
+            "OnStartupSec": [],
+            "Persistent": [
+              "true"
+            ],
+            "RandomizedDelaySec": [],
+            "AccuracySec": [],
+            "Unit": [
+              "tradeai-advisory-outcome-scorer.service"
+            ]
+          }
+        }
+      ],
+      "source_service": [
+        {
+          "path": "config/systemd/user/tradeai-advisory-outcome-scorer.service",
+          "properties": {
+            "ExecStart": [
+              "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/advisory_outcome_scorer.py --once"
+            ],
+            "WorkingDirectory": [
+              "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
+            ],
+            "TimeoutStartSec": [],
+            "Restart": [],
+            "ConditionPathExists": [],
+            "EnvironmentFile": []
+          }
+        }
+      ],
+      "unresolved": [
+        "Exact installed fragment/drop-in/instance enablement, lock, env closure, code-root chain, semantic comparison and owner decision remain required."
+      ]
+    },
+    {
+      "lane_id": "cio-desk-memo-regen",
+      "timer_identity": "tradeai-cio-desk-memo-regen.timer",
+      "status": "DESIGN_ONLY_UNRATIFIED",
+      "installed_state": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "source_timer": [
+        {
+          "path": "config/systemd/user/tradeai-cio-desk-memo-regen.timer",
+          "properties": {
+            "OnCalendar": [
+              "*-*-* 17:45:00 America/New_York"
+            ],
+            "OnBootSec": [],
+            "OnUnitActiveSec": [],
+            "OnUnitInactiveSec": [],
+            "OnStartupSec": [],
+            "Persistent": [
+              "true"
+            ],
+            "RandomizedDelaySec": [],
+            "AccuracySec": [],
+            "Unit": [
+              "tradeai-cio-desk-memo-regen.service"
+            ]
+          }
+        }
+      ],
+      "source_service": [
+        {
+          "path": "config/systemd/user/tradeai-cio-desk-memo-regen.service",
+          "properties": {
+            "ExecStart": [
+              "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/lib/cio_desk_synthesis.py"
+            ],
+            "WorkingDirectory": [
+              "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
+            ],
+            "TimeoutStartSec": [],
+            "Restart": [],
+            "ConditionPathExists": [],
+            "EnvironmentFile": [
+              "-%t/tradeai/env"
+            ]
+          }
+        }
+      ],
+      "unresolved": [
+        "Exact installed fragment/drop-in/instance enablement, lock, env closure, code-root chain, semantic comparison and owner decision remain required."
+      ]
+    },
+    {
+      "lane_id": "cio-reactive-cycle",
+      "timer_identity": "tradeai-cio-reactive.timer",
+      "status": "DESIGN_ONLY_UNRATIFIED",
+      "installed_state": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "source_timer": [
+        {
+          "path": "config/systemd/user/tradeai-cio-reactive.timer",
+          "properties": {
+            "OnCalendar": [],
+            "OnBootSec": [
+              "2min"
+            ],
+            "OnUnitActiveSec": [
+              "2min"
+            ],
+            "OnUnitInactiveSec": [],
+            "OnStartupSec": [],
+            "Persistent": [
+              "true"
+            ],
+            "RandomizedDelaySec": [],
+            "AccuracySec": [
+              "30s"
+            ],
+            "Unit": []
+          }
+        }
+      ],
+      "source_service": [
+        {
+          "path": "config/systemd/user/tradeai-cio-reactive.service",
+          "properties": {
+            "ExecStart": [
+              "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/cio_reactive_cycle.py --once"
+            ],
+            "WorkingDirectory": [
+              "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
+            ],
+            "TimeoutStartSec": [],
+            "Restart": [],
+            "ConditionPathExists": [],
+            "EnvironmentFile": [
+              "-/home/johnclaw/.config/tradeai/agent-operator.env"
+            ]
+          }
+        }
+      ],
+      "unresolved": [
+        "Exact installed fragment/drop-in/instance enablement, lock, env closure, code-root chain, semantic comparison and owner decision remain required."
+      ]
+    },
+    {
+      "lane_id": "db-retention-timer",
+      "timer_identity": "db-retention.timer",
+      "status": "DESIGN_ONLY_UNRATIFIED",
+      "installed_state": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "source_result": "OWNER_OR_AUTHORITY_BLOCKED",
+      "source_timer": [],
+      "source_service": [],
+      "unresolved": [
+        "Exact installed fragment/drop-in/instance enablement, lock, env closure, code-root chain, semantic comparison and owner decision remain required.",
+        "SOURCE_FRAGMENT_PAIR_MISSING"
+      ]
+    },
+    {
+      "lane_id": "source-litmus-vs-yahoo",
+      "timer_identity": "tradeai-source-litmus.timer",
+      "status": "DESIGN_ONLY_UNRATIFIED",
+      "installed_state": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "source_timer": [
+        {
+          "path": "config/systemd/user/tradeai-source-litmus.timer",
+          "properties": {
+            "OnCalendar": [
+              "Tue..Sat *-*-* 07:45:00"
+            ],
+            "OnBootSec": [],
+            "OnUnitActiveSec": [],
+            "OnUnitInactiveSec": [],
+            "OnStartupSec": [],
+            "Persistent": [
+              "true"
+            ],
+            "RandomizedDelaySec": [
+              "120"
+            ],
+            "AccuracySec": [
+              "1min"
+            ],
+            "Unit": []
+          }
+        }
+      ],
+      "source_service": [
+        {
+          "path": "config/systemd/user/tradeai-source-litmus.service",
+          "properties": {
+            "ExecStart": [
+              "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/source_litmus_vs_yahoo.py"
+            ],
+            "WorkingDirectory": [
+              "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
+            ],
+            "TimeoutStartSec": [
+              "900"
+            ],
+            "Restart": [],
+            "ConditionPathExists": [],
+            "EnvironmentFile": []
+          }
+        }
+      ],
+      "unresolved": [
+        "Exact installed fragment/drop-in/instance enablement, lock, env closure, code-root chain, semantic comparison and owner decision remain required."
+      ]
+    },
+    {
+      "lane_id": "supervisor-breach-detector",
+      "timer_identity": "tradeai-supervisor-breach-detector.timer",
+      "status": "DESIGN_ONLY_UNRATIFIED",
+      "installed_state": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "source_timer": [
+        {
+          "path": "config/systemd/user/tradeai-supervisor-breach-detector.timer",
+          "properties": {
+            "OnCalendar": [],
+            "OnBootSec": [
+              "3min"
+            ],
+            "OnUnitActiveSec": [
+              "2min"
+            ],
+            "OnUnitInactiveSec": [],
+            "OnStartupSec": [],
+            "Persistent": [],
+            "RandomizedDelaySec": [],
+            "AccuracySec": [
+              "15s"
+            ],
+            "Unit": [
+              "tradeai-supervisor-breach-detector.service"
+            ]
+          }
+        }
+      ],
+      "source_service": [
+        {
+          "path": "config/systemd/user/tradeai-supervisor-breach-detector.service",
+          "properties": {
+            "ExecStart": [
+              "%h/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/supervisor_breach_detector.py --write"
+            ],
+            "WorkingDirectory": [
+              "%h/trade-ai-releases/portfolio-server/CURRENT"
+            ],
+            "TimeoutStartSec": [],
+            "Restart": [],
+            "ConditionPathExists": [],
+            "EnvironmentFile": [
+              "-/run/user/%U/tradeai/env",
+              "-%h/.config/tradeai/cio-operator-live.env"
+            ]
+          }
+        }
+      ],
+      "unresolved": [
+        "Exact installed fragment/drop-in/instance enablement, lock, env closure, code-root chain, semantic comparison and owner decision remain required."
+      ]
+    },
+    {
+      "lane_id": "tradeai-agent-runtime-alex",
+      "timer_identity": "tradeai-agent-runtime@alex.timer",
+      "status": "DESIGN_ONLY_UNRATIFIED",
+      "installed_state": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "source_result": "OWNER_OR_AUTHORITY_BLOCKED",
+      "source_timer": [
+        {
+          "path": "config/systemd/agent_runtime/tradeai-agent-runtime@.timer",
+          "properties": {
+            "OnCalendar": [
+              "*:0/15"
+            ],
+            "OnBootSec": [],
+            "OnUnitActiveSec": [],
+            "OnUnitInactiveSec": [],
+            "OnStartupSec": [],
+            "Persistent": [
+              "false"
+            ],
+            "RandomizedDelaySec": [
+              "120"
+            ],
+            "AccuracySec": [
+              "30s"
+            ],
+            "Unit": [
+              "tradeai-agent-runtime@%i.service"
+            ]
+          }
+        }
+      ],
+      "source_service": [
+        {
+          "path": "config/systemd/agent_runtime/tradeai-agent-runtime@.service",
+          "properties": {
+            "ExecStart": [
+              "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.agents.run_once --agent %i --once --max-batch 8"
+            ],
+            "WorkingDirectory": [
+              "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
+            ],
+            "TimeoutStartSec": [
+              "900"
+            ],
+            "Restart": [],
+            "ConditionPathExists": [
+              "/etc/tradeai/agent_runtime_enabled"
+            ],
+            "EnvironmentFile": []
+          }
+        }
+      ],
+      "unresolved": [
+        "Exact installed fragment/drop-in/instance enablement, lock, env closure, code-root chain, semantic comparison and owner decision remain required."
+      ]
+    },
+    {
+      "lane_id": "tradeai-maturity-feeds",
+      "timer_identity": "tradeai-maturity-feeds.timer",
+      "status": "DESIGN_ONLY_UNRATIFIED",
+      "installed_state": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "source_timer": [],
+      "source_service": [],
+      "unresolved": [
+        "Exact installed fragment/drop-in/instance enablement, lock, env closure, code-root chain, semantic comparison and owner decision remain required.",
+        "SOURCE_FRAGMENT_PAIR_MISSING"
+      ]
+    },
+    {
+      "lane_id": "advisory-lessons-reflect",
+      "timer_identity": "tradeai-advisory-lessons-reflect.timer",
+      "status": "DESIGN_ONLY_UNRATIFIED",
+      "installed_state": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "source_result": "OWNER_OR_AUTHORITY_BLOCKED",
+      "source_timer": [
+        {
+          "path": "config/systemd/user/tradeai-advisory-lessons-reflect.timer",
+          "properties": {
+            "OnCalendar": [
+              "*-*-* 19:40:00"
+            ],
+            "OnBootSec": [],
+            "OnUnitActiveSec": [],
+            "OnUnitInactiveSec": [],
+            "OnStartupSec": [],
+            "Persistent": [
+              "true"
+            ],
+            "RandomizedDelaySec": [],
+            "AccuracySec": [],
+            "Unit": [
+              "tradeai-advisory-lessons-reflect.service"
+            ]
+          }
+        }
+      ],
+      "source_service": [
+        {
+          "path": "config/systemd/user/tradeai-advisory-lessons-reflect.service",
+          "properties": {
+            "ExecStart": [
+              "/bin/bash -c '/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/advisory_lessons.py reflect && /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/advisory_lessons.py ratify-safe && /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/advisory_lessons.py auto-retire'"
+            ],
+            "WorkingDirectory": [
+              "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
+            ],
+            "TimeoutStartSec": [],
+            "Restart": [],
+            "ConditionPathExists": [],
+            "EnvironmentFile": []
+          }
+        }
+      ],
+      "unresolved": [
+        "Exact installed fragment/drop-in/instance enablement, lock, env closure, code-root chain, semantic comparison and owner decision remain required."
+      ]
+    },
+    {
+      "lane_id": "cio-wake-turn-effects",
+      "timer_identity": "tradeai-cio-reactive.timer",
+      "status": "DESIGN_ONLY_UNRATIFIED",
+      "installed_state": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "source_timer": [
+        {
+          "path": "config/systemd/user/tradeai-cio-reactive.timer",
+          "properties": {
+            "OnCalendar": [],
+            "OnBootSec": [
+              "2min"
+            ],
+            "OnUnitActiveSec": [
+              "2min"
+            ],
+            "OnUnitInactiveSec": [],
+            "OnStartupSec": [],
+            "Persistent": [
+              "true"
+            ],
+            "RandomizedDelaySec": [],
+            "AccuracySec": [
+              "30s"
+            ],
+            "Unit": []
+          }
+        }
+      ],
+      "source_service": [
+        {
+          "path": "config/systemd/user/tradeai-cio-reactive.service",
+          "properties": {
+            "ExecStart": [
+              "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/cio_reactive_cycle.py --once"
+            ],
+            "WorkingDirectory": [
+              "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
+            ],
+            "TimeoutStartSec": [],
+            "Restart": [],
+            "ConditionPathExists": [],
+            "EnvironmentFile": [
+              "-/home/johnclaw/.config/tradeai/agent-operator.env"
+            ]
+          }
+        }
+      ],
+      "unresolved": [
+        "Exact installed fragment/drop-in/instance enablement, lock, env closure, code-root chain, semantic comparison and owner decision remain required."
+      ]
+    },
+    {
+      "lane_id": "eod-consolidated-close-sync",
+      "timer_identity": "tradeai-eod-consolidated-close.timer",
+      "status": "DESIGN_ONLY_UNRATIFIED",
+      "installed_state": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "source_timer": [
+        {
+          "path": "config/systemd/user/tradeai-eod-consolidated-close.timer",
+          "properties": {
+            "OnCalendar": [
+              "Mon..Fri *-*-* 17:15:00"
+            ],
+            "OnBootSec": [],
+            "OnUnitActiveSec": [],
+            "OnUnitInactiveSec": [],
+            "OnStartupSec": [],
+            "Persistent": [
+              "true"
+            ],
+            "RandomizedDelaySec": [
+              "120"
+            ],
+            "AccuracySec": [
+              "1min"
+            ],
+            "Unit": []
+          }
+        }
+      ],
+      "source_service": [
+        {
+          "path": "config/systemd/user/tradeai-eod-consolidated-close.service",
+          "properties": {
+            "ExecStart": [
+              "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/eod_consolidated_close_sync.py --apply"
+            ],
+            "WorkingDirectory": [
+              "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
+            ],
+            "TimeoutStartSec": [
+              "1200"
+            ],
+            "Restart": [],
+            "ConditionPathExists": [],
+            "EnvironmentFile": []
+          }
+        }
+      ],
+      "unresolved": [
+        "Exact installed fragment/drop-in/instance enablement, lock, env closure, code-root chain, semantic comparison and owner decision remain required."
+      ]
+    },
+    {
+      "lane_id": "gir-projector",
+      "timer_identity": "tradeai-gir-projector.timer",
+      "status": "DESIGN_ONLY_UNRATIFIED",
+      "installed_state": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "source_timer": [
+        {
+          "path": "config/systemd/user/tradeai-gir-projector.timer",
+          "properties": {
+            "OnCalendar": [],
+            "OnBootSec": [
+              "10min"
+            ],
+            "OnUnitActiveSec": [
+              "1h"
+            ],
+            "OnUnitInactiveSec": [],
+            "OnStartupSec": [],
+            "Persistent": [
+              "true"
+            ],
+            "RandomizedDelaySec": [],
+            "AccuracySec": [
+              "2min"
+            ],
+            "Unit": [
+              "tradeai-gir-projector.service"
+            ]
+          }
+        }
+      ],
+      "source_service": [
+        {
+          "path": "config/systemd/user/tradeai-gir-projector.service",
+          "properties": {
+            "ExecStart": [
+              "%h/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/gir_projector.py --incremental --apply --state %h/trade-ai-releases/persistent-state/data/runtime/gir_projector_state.json"
+            ],
+            "WorkingDirectory": [
+              "%h/trade-ai-releases/portfolio-server/CURRENT"
+            ],
+            "TimeoutStartSec": [
+              "20min"
+            ],
+            "Restart": [],
+            "ConditionPathExists": [],
+            "EnvironmentFile": [
+              "-/run/user/%U/tradeai/env",
+              "-%h/.config/tradeai/cio-operator-live.env"
+            ]
+          }
+        }
+      ],
+      "unresolved": [
+        "Exact installed fragment/drop-in/instance enablement, lock, env closure, code-root chain, semantic comparison and owner decision remain required."
+      ]
+    },
+    {
+      "lane_id": "hermes-backlog-health-check",
+      "timer_identity": "hermes-backlog-health-check.timer",
+      "status": "DESIGN_ONLY_UNRATIFIED",
+      "installed_state": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "source_timer": [],
+      "source_service": [],
+      "unresolved": [
+        "Exact installed fragment/drop-in/instance enablement, lock, env closure, code-root chain, semantic comparison and owner decision remain required.",
+        "SOURCE_FRAGMENT_PAIR_MISSING"
+      ]
+    },
+    {
+      "lane_id": "provider-cost-reconcile",
+      "timer_identity": "tradeai-provider-cost-reconcile.timer",
+      "status": "DESIGN_ONLY_UNRATIFIED",
+      "installed_state": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "source_timer": [
+        {
+          "path": "config/systemd/user/tradeai-provider-cost-reconcile.timer",
+          "properties": {
+            "OnCalendar": [
+              "*-*-* 06:40:00"
+            ],
+            "OnBootSec": [],
+            "OnUnitActiveSec": [],
+            "OnUnitInactiveSec": [],
+            "OnStartupSec": [],
+            "Persistent": [
+              "true"
+            ],
+            "RandomizedDelaySec": [],
+            "AccuracySec": [],
+            "Unit": [
+              "tradeai-provider-cost-reconcile.service"
+            ]
+          }
+        }
+      ],
+      "source_service": [
+        {
+          "path": "config/systemd/user/tradeai-provider-cost-reconcile.service",
+          "properties": {
+            "ExecStart": [
+              "%h/trade-ai-releases/portfolio-server/CURRENT/linux_launchers/run_provider_cost_daily.sh"
+            ],
+            "WorkingDirectory": [],
+            "TimeoutStartSec": [],
+            "Restart": [],
+            "ConditionPathExists": [],
+            "EnvironmentFile": []
+          }
+        }
+      ],
+      "unresolved": [
+        "Exact installed fragment/drop-in/instance enablement, lock, env closure, code-root chain, semantic comparison and owner decision remain required."
+      ]
+    },
+    {
+      "lane_id": "tradeai-agent-runtime-atlas",
+      "timer_identity": "tradeai-agent-runtime@atlas.timer",
+      "status": "DESIGN_ONLY_UNRATIFIED",
+      "installed_state": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "source_result": "OWNER_OR_AUTHORITY_BLOCKED",
+      "source_timer": [
+        {
+          "path": "config/systemd/agent_runtime/tradeai-agent-runtime@.timer",
+          "properties": {
+            "OnCalendar": [
+              "*:0/15"
+            ],
+            "OnBootSec": [],
+            "OnUnitActiveSec": [],
+            "OnUnitInactiveSec": [],
+            "OnStartupSec": [],
+            "Persistent": [
+              "false"
+            ],
+            "RandomizedDelaySec": [
+              "120"
+            ],
+            "AccuracySec": [
+              "30s"
+            ],
+            "Unit": [
+              "tradeai-agent-runtime@%i.service"
+            ]
+          }
+        }
+      ],
+      "source_service": [
+        {
+          "path": "config/systemd/agent_runtime/tradeai-agent-runtime@.service",
+          "properties": {
+            "ExecStart": [
+              "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.agents.run_once --agent %i --once --max-batch 8"
+            ],
+            "WorkingDirectory": [
+              "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
+            ],
+            "TimeoutStartSec": [
+              "900"
+            ],
+            "Restart": [],
+            "ConditionPathExists": [
+              "/etc/tradeai/agent_runtime_enabled"
+            ],
+            "EnvironmentFile": []
+          }
+        }
+      ],
+      "unresolved": [
+        "Exact installed fragment/drop-in/instance enablement, lock, env closure, code-root chain, semantic comparison and owner decision remain required."
+      ]
+    },
+    {
+      "lane_id": "tradeai-watch-decision-scheduler",
+      "timer_identity": "tradeai-watch-decision-scheduler.timer",
+      "status": "DESIGN_ONLY_UNRATIFIED",
+      "installed_state": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "source_timer": [
+        {
+          "path": "config/systemd/user/tradeai-watch-decision-scheduler.timer",
+          "properties": {
+            "OnCalendar": [
+              "Mon..Fri *-*-* 09:35:00",
+              "Mon..Fri *-*-* 11:00:00",
+              "Mon..Fri *-*-* 13:30:00",
+              "Mon..Fri *-*-* 15:45:00",
+              "Sat,Sun *-*-* 09:00:00",
+              "Sat,Sun *-*-* 14:00:00"
+            ],
+            "OnBootSec": [],
+            "OnUnitActiveSec": [],
+            "OnUnitInactiveSec": [],
+            "OnStartupSec": [],
+            "Persistent": [
+              "true"
+            ],
+            "RandomizedDelaySec": [],
+            "AccuracySec": [],
+            "Unit": [
+              "tradeai-watch-decision-scheduler.service"
+            ]
+          }
+        }
+      ],
+      "source_service": [
+        {
+          "path": "config/systemd/user/tradeai-watch-decision-scheduler.service",
+          "properties": {
+            "ExecStart": [
+              "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/watch_decision_scheduler.py --run"
+            ],
+            "WorkingDirectory": [
+              "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
+            ],
+            "TimeoutStartSec": [
+              "180"
+            ],
+            "Restart": [],
+            "ConditionPathExists": [],
+            "EnvironmentFile": []
+          }
+        }
+      ],
+      "unresolved": [
+        "Exact installed fragment/drop-in/instance enablement, lock, env closure, code-root chain, semantic comparison and owner decision remain required."
+      ]
+    },
+    {
+      "lane_id": "free-first-circulation",
+      "timer_identity": "tradeai-free-first-circulation.timer",
+      "status": "DESIGN_ONLY_UNRATIFIED",
+      "installed_state": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "source_timer": [
+        {
+          "path": "config/systemd/user/tradeai-free-first-circulation.timer",
+          "properties": {
+            "OnCalendar": [
+              "*-*-* *:23:00 America/New_York"
+            ],
+            "OnBootSec": [],
+            "OnUnitActiveSec": [],
+            "OnUnitInactiveSec": [],
+            "OnStartupSec": [],
+            "Persistent": [
+              "true"
+            ],
+            "RandomizedDelaySec": [
+              "90"
+            ],
+            "AccuracySec": [
+              "1min"
+            ],
+            "Unit": [
+              "tradeai-free-first-circulation.service"
+            ]
+          }
+        }
+      ],
+      "source_service": [
+        {
+          "path": "config/systemd/user/tradeai-free-first-circulation.service",
+          "properties": {
+            "ExecStart": [
+              "/usr/bin/bash /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/run_free_first_circulation.sh"
+            ],
+            "WorkingDirectory": [
+              "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT"
+            ],
+            "TimeoutStartSec": [
+              "900"
+            ],
+            "Restart": [],
+            "ConditionPathExists": [],
+            "EnvironmentFile": []
+          }
+        }
+      ],
+      "unresolved": [
+        "Exact installed fragment/drop-in/instance enablement, lock, env closure, code-root chain, semantic comparison and owner decision remain required."
+      ]
+    },
+    {
+      "lane_id": "hermes-deep-research-local",
+      "timer_identity": "hermes-deep-research-local.timer",
+      "status": "DESIGN_ONLY_UNRATIFIED",
+      "installed_state": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "source_timer": [
+        {
+          "path": "config/systemd/user/hermes-deep-research-local.timer",
+          "properties": {
+            "OnCalendar": [
+              "*-*-* 22,23,00,01,02,03,04,05:35:00 America/New_York"
+            ],
+            "OnBootSec": [],
+            "OnUnitActiveSec": [],
+            "OnUnitInactiveSec": [],
+            "OnStartupSec": [],
+            "Persistent": [
+              "true"
+            ],
+            "RandomizedDelaySec": [
+              "60"
+            ],
+            "AccuracySec": [
+              "1min"
+            ],
+            "Unit": []
+          }
+        }
+      ],
+      "source_service": [
+        {
+          "path": "config/systemd/user/hermes-deep-research-local.service",
+          "properties": {
+            "ExecStart": [
+              "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/hermes_deep_research_local.py --apply --max-rows 3 --model chatgpt"
+            ],
+            "WorkingDirectory": [
+              "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
+            ],
+            "TimeoutStartSec": [
+              "3600"
+            ],
+            "Restart": [],
+            "ConditionPathExists": [],
+            "EnvironmentFile": []
+          }
+        }
+      ],
+      "unresolved": [
+        "Exact installed fragment/drop-in/instance enablement, lock, env closure, code-root chain, semantic comparison and owner decision remain required."
+      ]
+    },
+    {
+      "lane_id": "tradeai-agent-runtime-concierge",
+      "timer_identity": "tradeai-agent-runtime@concierge.timer",
+      "status": "DESIGN_ONLY_UNRATIFIED",
+      "installed_state": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "source_result": "OWNER_OR_AUTHORITY_BLOCKED",
+      "source_timer": [
+        {
+          "path": "config/systemd/agent_runtime/tradeai-agent-runtime@.timer",
+          "properties": {
+            "OnCalendar": [
+              "*:0/15"
+            ],
+            "OnBootSec": [],
+            "OnUnitActiveSec": [],
+            "OnUnitInactiveSec": [],
+            "OnStartupSec": [],
+            "Persistent": [
+              "false"
+            ],
+            "RandomizedDelaySec": [
+              "120"
+            ],
+            "AccuracySec": [
+              "30s"
+            ],
+            "Unit": [
+              "tradeai-agent-runtime@%i.service"
+            ]
+          }
+        }
+      ],
+      "source_service": [
+        {
+          "path": "config/systemd/agent_runtime/tradeai-agent-runtime@.service",
+          "properties": {
+            "ExecStart": [
+              "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.agents.run_once --agent %i --once --max-batch 8"
+            ],
+            "WorkingDirectory": [
+              "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
+            ],
+            "TimeoutStartSec": [
+              "900"
+            ],
+            "Restart": [],
+            "ConditionPathExists": [
+              "/etc/tradeai/agent_runtime_enabled"
+            ],
+            "EnvironmentFile": []
+          }
+        }
+      ],
+      "unresolved": [
+        "Exact installed fragment/drop-in/instance enablement, lock, env closure, code-root chain, semantic comparison and owner decision remain required."
+      ]
+    },
+    {
+      "lane_id": "hermes-librarian-backlog-loop",
+      "timer_identity": "hermes-librarian-backlog-loop.timer",
+      "status": "DESIGN_ONLY_UNRATIFIED",
+      "installed_state": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "source_timer": [],
+      "source_service": [],
+      "unresolved": [
+        "Exact installed fragment/drop-in/instance enablement, lock, env closure, code-root chain, semantic comparison and owner decision remain required.",
+        "SOURCE_FRAGMENT_PAIR_MISSING"
+      ]
+    },
+    {
+      "lane_id": "holdings-agent-enqueue",
+      "timer_identity": "tradeai-holdings-agent-enqueue.timer",
+      "status": "DESIGN_ONLY_UNRATIFIED",
+      "installed_state": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "source_timer": [
+        {
+          "path": "config/systemd/user/tradeai-holdings-agent-enqueue.timer",
+          "properties": {
+            "OnCalendar": [
+              "Mon..Fri *-*-* 08:30:00",
+              "Mon..Fri *-*-* 13:30:00"
+            ],
+            "OnBootSec": [],
+            "OnUnitActiveSec": [],
+            "OnUnitInactiveSec": [],
+            "OnStartupSec": [],
+            "Persistent": [
+              "true"
+            ],
+            "RandomizedDelaySec": [],
+            "AccuracySec": [],
+            "Unit": [
+              "tradeai-holdings-agent-enqueue.service"
+            ]
+          }
+        }
+      ],
+      "source_service": [
+        {
+          "path": "config/systemd/user/tradeai-holdings-agent-enqueue.service",
+          "properties": {
+            "ExecStart": [
+              "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/enqueue_holdings_agent_opinions.py --apply"
+            ],
+            "WorkingDirectory": [
+              "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
+            ],
+            "TimeoutStartSec": [],
+            "Restart": [],
+            "ConditionPathExists": [],
+            "EnvironmentFile": [
+              "-%t/tradeai/env"
+            ]
+          }
+        }
+      ],
+      "unresolved": [
+        "Exact installed fragment/drop-in/instance enablement, lock, env closure, code-root chain, semantic comparison and owner decision remain required."
+      ]
+    },
+    {
+      "lane_id": "tradeai-aec-command-center-cycle",
+      "timer_identity": "tradeai-aec-command-center-cycle.timer",
+      "status": "DESIGN_ONLY_UNRATIFIED",
+      "installed_state": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "source_timer": [
+        {
+          "path": "config/systemd/user/tradeai-aec-command-center-cycle.timer",
+          "properties": {
+            "OnCalendar": [
+              "hourly"
+            ],
+            "OnBootSec": [],
+            "OnUnitActiveSec": [],
+            "OnUnitInactiveSec": [],
+            "OnStartupSec": [],
+            "Persistent": [
+              "true"
+            ],
+            "RandomizedDelaySec": [],
+            "AccuracySec": [],
+            "Unit": [
+              "tradeai-aec-command-center-cycle.service"
+            ]
+          }
+        }
+      ],
+      "source_service": [
+        {
+          "path": "config/systemd/user/tradeai-aec-command-center-cycle.service",
+          "properties": {
+            "ExecStart": [
+              "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/aec_command_center_cycle.py --apply"
+            ],
+            "WorkingDirectory": [
+              "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT"
+            ],
+            "TimeoutStartSec": [],
+            "Restart": [],
+            "ConditionPathExists": [],
+            "EnvironmentFile": [
+              "-/run/user/%U/tradeai/env"
+            ]
+          }
+        }
+      ],
+      "unresolved": [
+        "Exact installed fragment/drop-in/instance enablement, lock, env closure, code-root chain, semantic comparison and owner decision remain required."
+      ]
+    },
+    {
+      "lane_id": "tradeai-agent-runtime-hermes",
+      "timer_identity": "tradeai-agent-runtime@hermes.timer",
+      "status": "DESIGN_ONLY_UNRATIFIED",
+      "installed_state": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "source_result": "OWNER_OR_AUTHORITY_BLOCKED",
+      "source_timer": [
+        {
+          "path": "config/systemd/agent_runtime/tradeai-agent-runtime@.timer",
+          "properties": {
+            "OnCalendar": [
+              "*:0/15"
+            ],
+            "OnBootSec": [],
+            "OnUnitActiveSec": [],
+            "OnUnitInactiveSec": [],
+            "OnStartupSec": [],
+            "Persistent": [
+              "false"
+            ],
+            "RandomizedDelaySec": [
+              "120"
+            ],
+            "AccuracySec": [
+              "30s"
+            ],
+            "Unit": [
+              "tradeai-agent-runtime@%i.service"
+            ]
+          }
+        }
+      ],
+      "source_service": [
+        {
+          "path": "config/systemd/agent_runtime/tradeai-agent-runtime@.service",
+          "properties": {
+            "ExecStart": [
+              "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.agents.run_once --agent %i --once --max-batch 8"
+            ],
+            "WorkingDirectory": [
+              "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
+            ],
+            "TimeoutStartSec": [
+              "900"
+            ],
+            "Restart": [],
+            "ConditionPathExists": [
+              "/etc/tradeai/agent_runtime_enabled"
+            ],
+            "EnvironmentFile": []
+          }
+        }
+      ],
+      "unresolved": [
+        "Exact installed fragment/drop-in/instance enablement, lock, env closure, code-root chain, semantic comparison and owner decision remain required."
+      ]
+    },
+    {
+      "lane_id": "contradiction-adjudicator",
+      "timer_identity": "tradeai-contradiction-adjudicator.timer",
+      "status": "DESIGN_ONLY_UNRATIFIED",
+      "installed_state": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "source_timer": [
+        {
+          "path": "config/systemd/user/tradeai-contradiction-adjudicator.timer",
+          "properties": {
+            "OnCalendar": [
+              "*-*-* 19:30:00"
+            ],
+            "OnBootSec": [],
+            "OnUnitActiveSec": [],
+            "OnUnitInactiveSec": [],
+            "OnStartupSec": [],
+            "Persistent": [
+              "false"
+            ],
+            "RandomizedDelaySec": [],
+            "AccuracySec": [
+              "5min"
+            ],
+            "Unit": [
+              "tradeai-contradiction-adjudicator.service"
+            ]
+          }
+        }
+      ],
+      "source_service": [
+        {
+          "path": "config/systemd/user/tradeai-contradiction-adjudicator.service",
+          "properties": {
+            "ExecStart": [
+              "%h/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/contradiction_adjudicator.py --apply --max-pairs 20"
+            ],
+            "WorkingDirectory": [
+              "%h/trade-ai-releases/portfolio-server/CURRENT"
+            ],
+            "TimeoutStartSec": [
+              "20min"
+            ],
+            "Restart": [],
+            "ConditionPathExists": [],
+            "EnvironmentFile": [
+              "-/run/user/%U/tradeai/env",
+              "-%h/.config/tradeai/cio-operator-live.env",
+              "-%h/.config/tradeai/agent_runtime_overrides.env"
+            ]
+          }
+        }
+      ],
+      "unresolved": [
+        "Exact installed fragment/drop-in/instance enablement, lock, env closure, code-root chain, semantic comparison and owner decision remain required."
+      ]
+    },
+    {
+      "lane_id": "hermes-update-check",
+      "timer_identity": "hermes-update-check.timer",
+      "status": "DESIGN_ONLY_UNRATIFIED",
+      "installed_state": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "source_timer": [],
+      "source_service": [],
+      "unresolved": [
+        "Exact installed fragment/drop-in/instance enablement, lock, env closure, code-root chain, semantic comparison and owner decision remain required.",
+        "SOURCE_FRAGMENT_PAIR_MISSING"
+      ]
+    },
+    {
+      "lane_id": "tradeai-agent-runtime-morgan",
+      "timer_identity": "tradeai-agent-runtime@morgan.timer",
+      "status": "DESIGN_ONLY_UNRATIFIED",
+      "installed_state": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "source_result": "OWNER_OR_AUTHORITY_BLOCKED",
+      "source_timer": [
+        {
+          "path": "config/systemd/agent_runtime/tradeai-agent-runtime@.timer",
+          "properties": {
+            "OnCalendar": [
+              "*:0/15"
+            ],
+            "OnBootSec": [],
+            "OnUnitActiveSec": [],
+            "OnUnitInactiveSec": [],
+            "OnStartupSec": [],
+            "Persistent": [
+              "false"
+            ],
+            "RandomizedDelaySec": [
+              "120"
+            ],
+            "AccuracySec": [
+              "30s"
+            ],
+            "Unit": [
+              "tradeai-agent-runtime@%i.service"
+            ]
+          }
+        }
+      ],
+      "source_service": [
+        {
+          "path": "config/systemd/agent_runtime/tradeai-agent-runtime@.service",
+          "properties": {
+            "ExecStart": [
+              "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.agents.run_once --agent %i --once --max-batch 8"
+            ],
+            "WorkingDirectory": [
+              "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
+            ],
+            "TimeoutStartSec": [
+              "900"
+            ],
+            "Restart": [],
+            "ConditionPathExists": [
+              "/etc/tradeai/agent_runtime_enabled"
+            ],
+            "EnvironmentFile": []
+          }
+        }
+      ],
+      "unresolved": [
+        "Exact installed fragment/drop-in/instance enablement, lock, env closure, code-root chain, semantic comparison and owner decision remain required."
+      ]
+    },
+    {
+      "lane_id": "autonomy-watchdog",
+      "timer_identity": "tradeai-autonomy-watchdog.timer",
+      "status": "DESIGN_ONLY_UNRATIFIED",
+      "installed_state": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "source_result": "OWNER_OR_AUTHORITY_BLOCKED",
+      "source_timer": [
+        {
+          "path": "config/systemd/user/tradeai-autonomy-watchdog.timer",
+          "properties": {
+            "OnCalendar": [],
+            "OnBootSec": [
+              "2min"
+            ],
+            "OnUnitActiveSec": [
+              "5min"
+            ],
+            "OnUnitInactiveSec": [],
+            "OnStartupSec": [],
+            "Persistent": [
+              "true"
+            ],
+            "RandomizedDelaySec": [],
+            "AccuracySec": [
+              "30s"
+            ],
+            "Unit": [
+              "tradeai-autonomy-watchdog.service"
+            ]
+          }
+        }
+      ],
+      "source_service": [
+        {
+          "path": "config/systemd/user/tradeai-autonomy-watchdog.service",
+          "properties": {
+            "ExecStart": [
+              "/usr/bin/flock -n /tmp/tradeai-autonomy-watchdog.lock /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python %h/trade-ai-releases/portfolio-server/CURRENT/scripts/autonomy_watchdog.py --once"
+            ],
+            "WorkingDirectory": [
+              "%h/trade-ai-releases/portfolio-server/CURRENT"
+            ],
+            "TimeoutStartSec": [
+              "90"
+            ],
+            "Restart": [],
+            "ConditionPathExists": [],
+            "EnvironmentFile": []
+          }
+        }
+      ],
+      "unresolved": [
+        "Exact installed fragment/drop-in/instance enablement, lock, env closure, code-root chain, semantic comparison and owner decision remain required."
+      ]
+    },
+    {
+      "lane_id": "hermes-shadow-scorer",
+      "timer_identity": "hermes-shadow-scorer.timer",
+      "status": "DESIGN_ONLY_UNRATIFIED",
+      "installed_state": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "source_result": "OWNER_OR_AUTHORITY_BLOCKED",
+      "source_timer": [],
+      "source_service": [],
+      "unresolved": [
+        "Exact installed fragment/drop-in/instance enablement, lock, env closure, code-root chain, semantic comparison and owner decision remain required.",
+        "SOURCE_FRAGMENT_PAIR_MISSING"
+      ]
+    },
+    {
+      "lane_id": "operator-answer-quality-audit",
+      "timer_identity": "tradeai-operator-answer-quality.timer",
+      "status": "DESIGN_ONLY_UNRATIFIED",
+      "installed_state": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "source_result": "OWNER_OR_AUTHORITY_BLOCKED",
+      "source_timer": [
+        {
+          "path": "config/systemd/user/tradeai-operator-answer-quality.timer",
+          "properties": {
+            "OnCalendar": [
+              "*-*-* *:22,52:00"
+            ],
+            "OnBootSec": [],
+            "OnUnitActiveSec": [],
+            "OnUnitInactiveSec": [],
+            "OnStartupSec": [],
+            "Persistent": [
+              "true"
+            ],
+            "RandomizedDelaySec": [
+              "60"
+            ],
+            "AccuracySec": [
+              "1min"
+            ],
+            "Unit": []
+          }
+        }
+      ],
+      "source_service": [
+        {
+          "path": "config/systemd/user/tradeai-operator-answer-quality.service",
+          "properties": {
+            "ExecStart": [
+              "%h/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python \\"
+            ],
+            "WorkingDirectory": [
+              "%h/trade-ai-releases/portfolio-server/CURRENT"
+            ],
+            "TimeoutStartSec": [
+              "300"
+            ],
+            "Restart": [],
+            "ConditionPathExists": [],
+            "EnvironmentFile": []
+          }
+        }
+      ],
+      "unresolved": [
+        "Exact installed fragment/drop-in/instance enablement, lock, env closure, code-root chain, semantic comparison and owner decision remain required."
+      ]
+    },
+    {
+      "lane_id": "portfolio-price-cache",
+      "timer_identity": "portfolio-price-cache.timer",
+      "status": "DESIGN_ONLY_UNRATIFIED",
+      "installed_state": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "source_result": "OWNER_OR_AUTHORITY_BLOCKED",
+      "source_timer": [],
+      "source_service": [],
+      "unresolved": [
+        "Exact installed fragment/drop-in/instance enablement, lock, env closure, code-root chain, semantic comparison and owner decision remain required.",
+        "SOURCE_FRAGMENT_PAIR_MISSING"
+      ]
+    },
+    {
+      "lane_id": "slo-burn-rate",
+      "timer_identity": "tradeai-slo-burn-rate.timer",
+      "status": "DESIGN_ONLY_UNRATIFIED",
+      "installed_state": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "source_timer": [],
+      "source_service": [],
+      "unresolved": [
+        "Exact installed fragment/drop-in/instance enablement, lock, env closure, code-root chain, semantic comparison and owner decision remain required.",
+        "SOURCE_FRAGMENT_PAIR_MISSING"
+      ]
+    },
+    {
+      "lane_id": "tradeai-agent-runtime-pulse",
+      "timer_identity": "tradeai-agent-runtime@pulse.timer",
+      "status": "DESIGN_ONLY_UNRATIFIED",
+      "installed_state": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "source_result": "OWNER_OR_AUTHORITY_BLOCKED",
+      "source_timer": [
+        {
+          "path": "config/systemd/agent_runtime/tradeai-agent-runtime@.timer",
+          "properties": {
+            "OnCalendar": [
+              "*:0/15"
+            ],
+            "OnBootSec": [],
+            "OnUnitActiveSec": [],
+            "OnUnitInactiveSec": [],
+            "OnStartupSec": [],
+            "Persistent": [
+              "false"
+            ],
+            "RandomizedDelaySec": [
+              "120"
+            ],
+            "AccuracySec": [
+              "30s"
+            ],
+            "Unit": [
+              "tradeai-agent-runtime@%i.service"
+            ]
+          }
+        }
+      ],
+      "source_service": [
+        {
+          "path": "config/systemd/agent_runtime/tradeai-agent-runtime@.service",
+          "properties": {
+            "ExecStart": [
+              "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.agents.run_once --agent %i --once --max-batch 8"
+            ],
+            "WorkingDirectory": [
+              "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
+            ],
+            "TimeoutStartSec": [
+              "900"
+            ],
+            "Restart": [],
+            "ConditionPathExists": [
+              "/etc/tradeai/agent_runtime_enabled"
+            ],
+            "EnvironmentFile": []
+          }
+        }
+      ],
+      "unresolved": [
+        "Exact installed fragment/drop-in/instance enablement, lock, env closure, code-root chain, semantic comparison and owner decision remain required."
+      ]
+    }
+  ]
+}

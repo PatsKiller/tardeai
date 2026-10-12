@@ -211,13 +211,14 @@ def test_dry_run_previews_without_claiming(fake_db):
     assert "FOR UPDATE" not in sql
 
 
-def test_the_drain_script_dry_run_path_never_calls_claim():
-    """Pinned against the source: the ordering is the whole bug."""
-    src = (ROOT / "scripts" / "drain_llm_deferred.py").read_text(encoding="utf-8")
-    dry = src.index("if args.dry_run:")
-    claim = src.index("batch = llm_deferral.claim_due")
-    assert dry < claim, "the dry-run branch must return before claim_due is reached"
-    assert "llm_deferral.preview_due(limit=args.limit)" in src
+def test_the_drain_script_dry_run_never_reclaims_expires_or_claims(monkeypatch, capsys):
+    import drain_llm_deferred
+    def forbidden(*args, **kwargs):
+        raise AssertionError("offline preview reached mutable queue")
+    for name in ("reclaim_stale", "expire_stale", "queue_summary", "claim_due"):
+        monkeypatch.setattr(D, name, forbidden)
+    assert drain_llm_deferred.main(["--dry-run"]) == 0
+    assert "DRY-RUN llm-deferred-drain:" in capsys.readouterr().out
 
 
 def test_a_stranded_claim_comes_back_to_the_queue(fake_db):

@@ -288,13 +288,12 @@ def test_top20_dry_run_wins_over_apply_and_writes_nothing(monkeypatch):
     assert not llr.receipt_path("hermes_top20_external_intel").exists()
 
 
-def test_top20_main_dry_run_flag_never_receipts(monkeypatch):
+def test_top20_main_dry_run_is_offline_and_never_receipts(monkeypatch, capsys):
     fake = _top20_setup(monkeypatch, ROWS)
-    monkeypatch.setattr(sys, "argv", ["x"])
-    lib_mod = sys.modules["lib"]
-    monkeypatch.setattr(lib_mod, "assert_single_import_identity", lambda: None, raising=False)
+    _forbid(monkeypatch, top20, "run")
     assert top20.main(["--apply", "--dry-run"]) == 0
-    assert fake.side_effects == []
+    assert "DRY-RUN hermes-top20-external-intel:" in capsys.readouterr().out
+    assert fake.log == [] and fake.side_effects == []
     assert not llr.receipt_path("hermes_top20_external_intel").exists()
 
 

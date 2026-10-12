@@ -27,12 +27,31 @@ from scripts.lib.current_pin_integrity import _ignored_by_git, evaluate_pin
 def repo(tmp_path: Path) -> Path:
     r = tmp_path / "repo"
     (r / "docs" / "governance").mkdir(parents=True)
-    subprocess.run(["git", "init", "-q", str(r)], check=True)
+    subprocess.run(["git", "init", "-q", str(r)], cwd=r, check=True)
     (r / ".gitignore").write_text(
         "docs/governance/*_latest.json\ndocs/project/STATE_OF_REPO_LATEST.md\n",
         encoding="utf-8",
     )
     return r
+
+
+def test_repo_initialization_never_inherits_the_source_working_directory(tmp_path, monkeypatch):
+    expected = tmp_path / "repo"
+    calls = []
+
+    def scratch_only_init(command, **kwargs):
+        assert kwargs.get("cwd") == expected, "git init must explicitly run inside its scratch repo"
+        assert command[:2] == ["git", "init"] and kwargs.get("check") is True
+        calls.append((command, kwargs))
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(subprocess, "run", scratch_only_init)
+    created = repo.__wrapped__(tmp_path)
+    assert created == expected and (created / ".gitignore").is_file()
+    assert len(calls) == 1
+    # Prove the spy rejects the former implicit-cwd launch without executing Git.
+    with pytest.raises(AssertionError, match="explicitly run inside its scratch repo"):
+        scratch_only_init(["git", "init", "-q", str(expected)], check=True)
 
 
 # --- the exemption ------------------------------------------------------------

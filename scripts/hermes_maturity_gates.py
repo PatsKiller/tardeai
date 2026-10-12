@@ -278,10 +278,26 @@ def run(snapshot=False):
     return board
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser()
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(allow_abbrev=False)
     ap.add_argument("--snapshot", action="store_true")
-    board = run(snapshot=ap.parse_args().snapshot)
+    ap.add_argument("--dry-run", action="store_true", help="offline plan; no DB, writes or receipt")
+    args = ap.parse_args(argv)
+    if args.dry_run:
+        print(f"DRY-RUN tradeai-maturity-feeds: would compute maturity gates; snapshot={args.snapshot}; no DB, network or writes")
+        return 0
+    from lib.lane_last_receipt import now_iso, write_lane_receipt
+    started = now_iso()
+    try:
+        board = run(snapshot=args.snapshot)
+    except Exception as exc:
+        write_lane_receipt("tradeai-maturity-feeds", ok=False, exit_code=1,
+                           started_at=started, error=type(exc).__name__)
+        raise
+    ok = not bool(board.get("error"))
+    write_lane_receipt("tradeai-maturity-feeds", ok=ok, exit_code=0,
+                       started_at=started, error=None if ok else board.get("error"),
+                       summary={"snapshot": args.snapshot, "computed_at": board.get("computed_at")})
     # Exit 0 on soft DB skip so oneshot+timer does not stick failed.
     if isinstance(board, dict) and board.get("error") == "DB_UNAVAILABLE":
         return 0

@@ -12,6 +12,8 @@ Connectors that need keys (AI APIs, Seeking Alpha) are registered dormant with s
 
 Read-only to research; only writes the research_sources registry. Idempotent (UPSERT). Cron daily 23:30.
 """
+import argparse
+import sys
 import os
 import json
 import logging
@@ -20,13 +22,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parent.parent
-for line in (ROOT / ".env").read_text().splitlines():
-    if "=" in line and not line.startswith("#"):
-        k, v = line.split("=", 1)
-        os.environ.setdefault(k.strip(), v.strip())
-
-import psycopg2
-
+sys.path.insert(0, str(ROOT / "scripts"))
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [source-curation] %(message)s")
 log = logging.getLogger("source_curation")
 DB = dict(host=os.getenv("DB_HOST", "127.0.0.1"), port=int(os.getenv("DB_PORT", "5432")),
@@ -80,7 +76,7 @@ def _llm_validate_source(domain):
         'analysis site), or low-value (spam, content farm, pure forum noise, unrelated, paywalled-stub)?\n'
         'Reply ONLY JSON: {"approve": true|false, "reason": "<=8 words"}'
     )
-    for lane in ("grok", "chatgpt", "local"):
+    for lane in ("grok", "chatgpt"):
         try:
             if not llm_lane.available(lane):
                 continue
@@ -108,7 +104,13 @@ def upsert_source(cur, stype, name, cred, active, specialty, note, url=None):
     return True
 
 
-def main():
+def _execute():
+    import psycopg2
+    from lib.env_bootstrap import load_env
+    load_env(names=("DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD"))
+    DB.update(host=os.getenv("DB_HOST", "127.0.0.1"), port=int(os.getenv("DB_PORT", "5432")),
+              dbname=os.getenv("DB_NAME", "trade_ai"), user=os.getenv("DB_USER", "trade_ai"),
+              password=os.getenv("DB_PASSWORD", ""))
     conn = psycopg2.connect(**DB)
     conn.autocommit = True
     cur = conn.cursor()
@@ -212,5 +214,38 @@ def main():
     conn.close()
 
 
+def main(argv=None) -> int:
+    """Strict offline inspection before the legacy business execution path."""
+    argv = list(sys.argv[1:] if argv is None else argv)
+    parser = argparse.ArgumentParser(allow_abbrev=False)
+    parser.add_argument("--dry-run", action="store_true", help="offline source plan")
+    args = parser.parse_args(argv)
+    lane = "hermes-source-curation"
+    if args.dry_run:
+        print(f"DRY-RUN {lane}: would score source yields and propose registry updates with existing OAuth validation; no source activation, DB or model; options={vars(args)}; inputs NOT_MEASURED")
+        return 0
+    try:
+        from scripts.lib.lane_last_receipt import now_iso, write_lane_receipt
+    except ImportError:
+        from lib.lane_last_receipt import now_iso, write_lane_receipt
+    started = now_iso()
+    previous = sys.argv
+    sys.argv = [previous[0], *argv]
+    try:
+        result = _execute()
+        rc = int(result) if isinstance(result, int) else 0
+    except SystemExit as exc:
+        rc = exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
+        write_lane_receipt(lane, ok=rc == 0, exit_code=rc, started_at=started, script="hermes_source_curation.py", summary={"completed": rc == 0})
+        raise
+    except Exception as exc:
+        write_lane_receipt(lane, ok=False, exit_code=1, started_at=started, script="hermes_source_curation.py", error=type(exc).__name__)
+        raise
+    finally:
+        sys.argv = previous
+    write_lane_receipt(lane, ok=rc == 0, exit_code=rc, started_at=started, script="hermes_source_curation.py", summary={"completed": rc == 0})
+    return rc
+
+
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

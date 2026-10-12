@@ -38,11 +38,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 def _env(key, default=""):
-    env_path = PROJECT_ROOT / ".env"
-    if env_path.exists():
-        for line in env_path.read_text().splitlines():
-            if line.strip().startswith(key + "="):
-                return line.split("=", 1)[1].strip().strip('"')
+    from lib.env_bootstrap import load_env
+    load_env(names=(key,))
     return os.getenv(key, default)
 
 def _get_conn():
@@ -753,7 +750,7 @@ def _dry_run(args) -> int:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Post-ingestion topic curation")
+    parser = argparse.ArgumentParser(description="Post-ingestion topic curation", allow_abbrev=False)
     parser.add_argument("--topic", help="Single topic_id")
     parser.add_argument("--reindex", action="store_true", help="Force RAG re-index")
     parser.add_argument("--improve-queries", action="store_true", help="LLM improves queries for next run")
@@ -764,7 +761,9 @@ def main():
                         help="read-only preview (READ ONLY session, SELECT counts); no LLM, write, subprocess or file")
     args = parser.parse_args()
     if args.dry_run:
-        return _dry_run(args)
+        lane = "topic-curator-ensemble" if args.ensemble else "topic-curator-at-30-9-13"
+        print(f"DRY-RUN {lane}: would curate topic={args.topic} ensemble={args.ensemble}; no DB, model, embedding, subprocess or writes")
+        return 0
 
     from datetime import datetime, timezone
     started = datetime.now(timezone.utc).isoformat()

@@ -133,8 +133,8 @@ def _yahoo_closes(symbols: list[str], session: date) -> dict[str, Optional[float
     return out
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser()
+def _execute() -> int:
+    ap = argparse.ArgumentParser(allow_abbrev=False)
     ap.add_argument("--apply", action="store_true", help="write the replacements (default: dry run)")
     ap.add_argument("--session", help="YYYY-MM-DD (default: today after 16:30 ET, else previous weekday)")
     ap.add_argument("--json", action="store_true")
@@ -197,6 +197,44 @@ def main() -> int:
         RECEIPT.parent.mkdir(parents=True, exist_ok=True)
         RECEIPT.write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
     return 0
+
+
+def main(argv=None) -> int:
+    """Strict offline inspection before the legacy business execution path."""
+    argv = list(sys.argv[1:] if argv is None else argv)
+    ap = argparse.ArgumentParser(allow_abbrev=False)
+    ap.add_argument("--apply", action="store_true", help="write the replacements (default: dry run)")
+    ap.add_argument("--session", help="YYYY-MM-DD (default: today after 16:30 ET, else previous weekday)")
+    ap.add_argument("--json", action="store_true")
+    ap.add_argument("--allow-backfill", action="store_true",
+                    help="permit --apply for a session other than the default one")
+    ap.add_argument("--dry-run", action="store_true", help="offline source plan")
+    args = ap.parse_args(argv)
+    lane = "eod-consolidated-close-sync"
+    if args.dry_run:
+        print(f"DRY-RUN {lane}: would compare session closes and propose approved consolidated replacements; no prices, provider or writes; options={vars(args)}; inputs NOT_MEASURED")
+        return 0
+    try:
+        from scripts.lib.lane_last_receipt import now_iso, write_lane_receipt
+    except ImportError:
+        from lib.lane_last_receipt import now_iso, write_lane_receipt
+    started = now_iso()
+    previous = sys.argv
+    sys.argv = [previous[0], *argv]
+    try:
+        result = _execute()
+        rc = int(result) if isinstance(result, int) else 0
+    except SystemExit as exc:
+        rc = exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
+        write_lane_receipt(lane, ok=rc == 0, exit_code=rc, started_at=started, script="eod_consolidated_close_sync.py", summary={"completed": rc == 0})
+        raise
+    except Exception as exc:
+        write_lane_receipt(lane, ok=False, exit_code=1, started_at=started, script="eod_consolidated_close_sync.py", error=type(exc).__name__)
+        raise
+    finally:
+        sys.argv = previous
+    write_lane_receipt(lane, ok=rc == 0, exit_code=rc, started_at=started, script="eod_consolidated_close_sync.py", summary={"completed": rc == 0})
+    return rc
 
 
 if __name__ == "__main__":

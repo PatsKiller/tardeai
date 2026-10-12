@@ -300,6 +300,8 @@ def install_dotenv_guard() -> str:
         stub.dotenv_values = lambda *a, **k: {}
         sys.modules["dotenv"] = stub
         return "stub"
+    if getattr(dotenv, "_tradeai_empty_fixture", False):
+        return "stub"
     if getattr(dotenv, "_hermetic_guard", False):
         return "already"
     real_load, real_values = dotenv.load_dotenv, dotenv.dotenv_values

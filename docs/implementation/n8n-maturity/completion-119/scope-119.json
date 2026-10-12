@@ -1,0 +1,844 @@
+{
+  "schema": "Completion119Scope@v1",
+  "evidence_class": "SOURCE_ONLY",
+  "scope_source": "ALL_SHARDS_READINESS_20261011.json",
+  "historical_source_sha": "99027ac720fdfc000c6423ecc68fea91aa159ce7",
+  "audited_source_base_sha": "65337da5366b469c8478b198187201bd37671bc2",
+  "runtime": "NOT_MEASURED",
+  "note": "Frozen scope, not current runtime or new admission. Scope rows were rechecked against source base; exclusions remain outside this train.",
+  "rows": [
+    {
+      "lane_id": "cio-nightly-reflection",
+      "shard": "01",
+      "legacy_result": "BLOCKED(SYSTEMD_RECIPE_HAS_NO_EXACT_CRON)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "prewarm-finviz-strip-map",
+      "shard": "01",
+      "legacy_result": "BLOCKED(NO_SHARD_SCRIPT_FOR_HTTP_CACHE_ENDPOINT)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "tradeai-agent-runtime-steph",
+      "shard": "01",
+      "legacy_result": "BLOCKED(SYSTEMD_RECIPE_HAS_NO_EXACT_CRON)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "hermes-subject-enhance-dispatch",
+      "shard": "01",
+      "legacy_result": "BLOCKED(LLM_BRIDGE_ROUTE_MISSING)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "health-agent-llm-review",
+      "shard": "01",
+      "legacy_result": "BLOCKED(RETIRED_OLLAMA_AND_MISSING_GOVERNED_ROUTE)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "proposal-llm-review-worker",
+      "shard": "01",
+      "legacy_result": "BLOCKED(RETIRED_OLLAMA_AND_MISSING_GOVERNED_ROUTE)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "reconcile-watch-outcomes",
+      "shard": "01",
+      "legacy_result": "BLOCKED(PRICE_IMPORT_BOUNDARY_UNVERIFIED)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "run-scalp-shadow-logger",
+      "shard": "01",
+      "legacy_result": "BLOCKED(OUT_OF_SHARD_CHILD_DRY_RUN_UNPROVEN)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "shadow-batch-generator-at-15-10",
+      "shard": "01",
+      "legacy_result": "BLOCKED(LLM_BRIDGE_ROUTE_MISSING)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "cio-memory-shadow-measure",
+      "shard": "02",
+      "legacy_result": "BLOCKED",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "aegis-surveillance",
+      "shard": "02",
+      "legacy_result": "BLOCKED",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "directive-keyword-enhancer",
+      "shard": "02",
+      "legacy_result": "BLOCKED",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "hermes-cross-source-synthesizer",
+      "shard": "02",
+      "legacy_result": "BLOCKED",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "market-regime-collector",
+      "shard": "02",
+      "legacy_result": "SHADOW_READY",
+      "disposition": "PREPARED_SOURCE_HELD_ON_MAIN",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "multi-tier-trade-reviewer-weekly",
+      "shard": "02",
+      "legacy_result": "BLOCKED",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "multi-tier-trade-reviewer-monthly",
+      "shard": "02",
+      "legacy_result": "BLOCKED",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "multi-tier-trade-reviewer-overnight",
+      "shard": "02",
+      "legacy_result": "BLOCKED",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "portfolio-lookthrough-themes",
+      "shard": "02",
+      "legacy_result": "BLOCKED",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "sec-fundamentals-ingest",
+      "shard": "02",
+      "legacy_result": "SHADOW_READY",
+      "disposition": "PREPARED_SOURCE_HELD_ON_MAIN",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "wake-selection-feed",
+      "shard": "03",
+      "legacy_result": "BLOCKED",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "cio-reactive-cycle",
+      "shard": "03",
+      "legacy_result": "BLOCKED",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "cio-desk-memo-regen",
+      "shard": "03",
+      "legacy_result": "BLOCKED",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "source-litmus-vs-yahoo",
+      "shard": "03",
+      "legacy_result": "BLOCKED",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "advisory-outcome-scorer",
+      "shard": "03",
+      "legacy_result": "BLOCKED",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "supervisor-breach-detector",
+      "shard": "03",
+      "legacy_result": "BLOCKED",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "db-retention-timer",
+      "shard": "03",
+      "legacy_result": "BLOCKED",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "tradeai-agent-runtime-alex",
+      "shard": "03",
+      "legacy_result": "BLOCKED",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "tradeai-maturity-feeds",
+      "shard": "03",
+      "legacy_result": "BLOCKED",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "ask-alerts",
+      "shard": "03",
+      "legacy_result": "BLOCKED",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "hermes-discovery-yield-builder",
+      "shard": "03",
+      "legacy_result": "BLOCKED",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "opening-intelligence-render",
+      "shard": "03",
+      "legacy_result": "SHADOW_READY",
+      "disposition": "PREPARED_SOURCE_HELD_ON_MAIN",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "cio-wake-turn-effects",
+      "shard": "04",
+      "legacy_result": "BLOCKED(systemd lane has no cron shadow shape under current R1 gate)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "provider-cost-reconcile",
+      "shard": "04",
+      "legacy_result": "BLOCKED(systemd lane has no cron shadow shape under current R1 gate)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "eod-consolidated-close-sync",
+      "shard": "04",
+      "legacy_result": "BLOCKED(systemd lane has no cron shadow shape under current R1 gate)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "advisory-lessons-reflect",
+      "shard": "04",
+      "legacy_result": "BLOCKED(systemd lane has no cron shadow shape under current R1 gate)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "gir-projector",
+      "shard": "04",
+      "legacy_result": "BLOCKED(systemd lane has no cron shadow shape under current R1 gate)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "tradeai-agent-runtime-atlas",
+      "shard": "04",
+      "legacy_result": "BLOCKED(disabled unknown-agent timer requires operator ruling; no cron shadow shape)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "tradeai-watch-decision-scheduler",
+      "shard": "04",
+      "legacy_result": "BLOCKED(systemd lane has no cron shadow shape under current R1 gate)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "goal-pilot-material-change",
+      "shard": "04",
+      "legacy_result": "BLOCKED(host-side paid pilot routing and truthful failure contract require separate review)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "agent-intelligence-cron-deep",
+      "shard": "04",
+      "legacy_result": "BLOCKED(cross-shard child launcher masks child failures and has no step receipts)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "agent-intelligence-cron-daily",
+      "shard": "04",
+      "legacy_result": "BLOCKED(cross-shard child launcher masks child failures and has no step receipts)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "agent-intelligence-cron-intraday",
+      "shard": "04",
+      "legacy_result": "BLOCKED(cross-shard child launcher masks child failures and has no step receipts)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "generate-analyst-reports-autonomous-weekly",
+      "shard": "04",
+      "legacy_result": "BLOCKED(shared reporting engine calls provider-named llm_lane rather than a reviewed process route)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "generate-analyst-reports-autonomous-full",
+      "shard": "04",
+      "legacy_result": "BLOCKED(shared reporting engine calls provider-named llm_lane rather than a reviewed process route)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "hermes-backlog-health-check",
+      "shard": "04",
+      "legacy_result": "BLOCKED(systemd monitor has no cron shadow shape and class is outside allowed set)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "hermes-coordinator",
+      "shard": "04",
+      "legacy_result": "BLOCKED(cross-shard child executor and embedding/promotion closure require separate governed runner review)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "hermes-discovery-scorecard",
+      "shard": "04",
+      "legacy_result": "SHADOW_READY",
+      "disposition": "PREPARED_SOURCE_HELD_ON_MAIN",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "material-change-detector-stage1",
+      "shard": "05",
+      "legacy_result": "SHADOW_READY",
+      "disposition": "LOCAL_SOURCE_PROPOSAL_NEEDS_INTEGRATION_REVIEW_CI",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "free-first-circulation",
+      "shard": "05",
+      "legacy_result": "BLOCKED(systemd timer has no cron R1 shadow admission shape; shared circulation/model closure requires its owner)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "set-purge-dates",
+      "shard": "05",
+      "legacy_result": "BLOCKED(inline secret-bearing retention command has no owned script; no secret read or scheduler edit)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "hermes-deep-research-local",
+      "shard": "05",
+      "legacy_result": "BLOCKED(systemd timer shape and direct local model-route ownership require governed admission)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "tradeai-agent-runtime-concierge",
+      "shard": "05",
+      "legacy_result": "BLOCKED(disabled agent runtime timer requires operator class/state ruling and a supported timer admission shape)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "cio-stance-classification-drain",
+      "shard": "05",
+      "legacy_result": "SHADOW_READY",
+      "disposition": "LOCAL_SOURCE_PROPOSAL_NEEDS_INTEGRATION_REVIEW_CI",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "dormant-lane-consumers",
+      "shard": "05",
+      "legacy_result": "BLOCKED(orchestrates child scripts owned by other shards; child argv/env/receipt proof needed)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "run-inference-cycle-preopen",
+      "shard": "05",
+      "legacy_result": "BLOCKED(shared inference shell launches cross-shard model children; governed bridge/child proof needed)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "run-inference-cycle-midday",
+      "shard": "05",
+      "legacy_result": "BLOCKED(same shared inference shell; repeated schedule retained unchanged)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "run-inference-cycle-postclose",
+      "shard": "05",
+      "legacy_result": "BLOCKED(same shared inference shell; repeated schedule retained unchanged)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "premarket-data-pipeline",
+      "shard": "05",
+      "legacy_result": "BLOCKED(cross-shard premarket stage children and C1 ownership must be reconciled by integration owner)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "aegis-synthesis",
+      "shard": "05",
+      "legacy_result": "BLOCKED(direct provider/model routing requires named governed bridge; shard does not invoke a model)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "build-symbol-profiles-at-0-19",
+      "shard": "05",
+      "legacy_result": "SHADOW_READY",
+      "disposition": "LOCAL_SOURCE_PROPOSAL_NEEDS_INTEGRATION_REVIEW_CI",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "drain-discovery-backlog",
+      "shard": "05",
+      "legacy_result": "SHADOW_READY",
+      "disposition": "LOCAL_SOURCE_PROPOSAL_NEEDS_INTEGRATION_REVIEW_CI",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "finviz-sector-research",
+      "shard": "05",
+      "legacy_result": "SHADOW_READY",
+      "disposition": "LOCAL_SOURCE_PROPOSAL_NEEDS_INTEGRATION_REVIEW_CI",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "generate-analyst-daily-digest",
+      "shard": "05",
+      "legacy_result": "BLOCKED(shared report-builder provider closure requires named governed model engine)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "hermes-analyst-coverage",
+      "shard": "05",
+      "legacy_result": "BLOCKED(direct llm_lane selection and chained cron child need governed bridge and child evidence)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "hermes-directive-discovery",
+      "shard": "05",
+      "legacy_result": "BLOCKED(REFUSED: exact cron llm_priority_guard.sh is forbidden_token:guard@scheduler.command_text; no exception or token stripping)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "hermes-source-curation",
+      "shard": "05",
+      "legacy_result": "BLOCKED(direct llm_lane source-validation model route needs governed bridge)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "run-research-intelligence-overnight",
+      "shard": "05",
+      "legacy_result": "BLOCKED(cross-shard model child orchestration with masked failures; all repeated cron schedules retained)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "run-research-intelligence-overnight-archive",
+      "shard": "05",
+      "legacy_result": "BLOCKED(same shared shell and masked child failures; receipt closure not established)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "siem-to-hermes-backlog",
+      "shard": "05",
+      "legacy_result": "BLOCKED(NO_APPROVED_CRON_MATCH: safe offline preview, strict argv, narrow loader and fake receipt tests added; no registry/allowlist/contract admission)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "commitment-outcome-sweep",
+      "shard": "05",
+      "legacy_result": "SHADOW_READY",
+      "disposition": "LOCAL_SOURCE_PROPOSAL_NEEDS_INTEGRATION_REVIEW_CI",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "wire-advisory-lessons",
+      "shard": "05",
+      "legacy_result": "BLOCKED(cross-shard rollup/learning child argv, env and output proof required)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "holdings-agent-enqueue",
+      "shard": "06",
+      "legacy_result": "BLOCKED(SYSTEMD_SHAPE)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "tradeai-aec-command-center-cycle",
+      "shard": "06",
+      "legacy_result": "BLOCKED(SYSTEMD_CHILD_CLOSURE)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "hermes-overnight-pipeline-night",
+      "shard": "06",
+      "legacy_result": "BLOCKED(SHARED_CHILD_CHAIN)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "tradeai-agent-runtime-hermes",
+      "shard": "06",
+      "legacy_result": "BLOCKED(DISABLED_UNRULED)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "finviz-market-movers",
+      "shard": "06",
+      "legacy_result": "SHADOW_READY",
+      "disposition": "LOCAL_SOURCE_PROPOSAL_NEEDS_INTEGRATION_REVIEW_CI",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "hermes-librarian-backlog-loop",
+      "shard": "06",
+      "legacy_result": "BLOCKED(SYSTEMD_SHAPE)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "holdings-llm-refresh",
+      "shard": "06",
+      "legacy_result": "BLOCKED(GOVERNED_ROUTE_EGRESS)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "llm-intelligence-enrichment",
+      "shard": "06",
+      "legacy_result": "BLOCKED(GOVERNED_ROUTE)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "llm-intelligence-enrichment-section",
+      "shard": "06",
+      "legacy_result": "BLOCKED(GOVERNED_ROUTE)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "pattern-extractor",
+      "shard": "06",
+      "legacy_result": "BLOCKED(BEHAVIOR_WRITE_SEMANTICS)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "proposal-backtest-engine",
+      "shard": "06",
+      "legacy_result": "SHADOW_READY",
+      "disposition": "LOCAL_SOURCE_PROPOSAL_NEEDS_INTEGRATION_REVIEW_CI",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "social-ingest-stocktwits",
+      "shard": "06",
+      "legacy_result": "SHADOW_READY",
+      "disposition": "LOCAL_SOURCE_PROPOSAL_NEEDS_INTEGRATION_REVIEW_CI",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "trade-thesis-review-engine",
+      "shard": "06",
+      "legacy_result": "SHADOW_READY",
+      "disposition": "LOCAL_SOURCE_PROPOSAL_NEEDS_INTEGRATION_REVIEW_CI",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "instrument-belief-writer",
+      "shard": "06",
+      "legacy_result": "SHADOW_READY",
+      "disposition": "LOCAL_SOURCE_PROPOSAL_NEEDS_INTEGRATION_REVIEW_CI",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "sec-filings-feed",
+      "shard": "06",
+      "legacy_result": "SHADOW_READY",
+      "disposition": "LOCAL_SOURCE_PROPOSAL_NEEDS_INTEGRATION_REVIEW_CI",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "document-mentions-backfill",
+      "shard": "07",
+      "legacy_result": "SHADOW_READY",
+      "disposition": "LOCAL_SOURCE_PROPOSAL_NEEDS_INTEGRATION_REVIEW_CI",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "hermes-update-check",
+      "shard": "07",
+      "legacy_result": "BLOCKED(systemd_source_unresolved)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "contradiction-adjudicator",
+      "shard": "07",
+      "legacy_result": "BLOCKED(systemd_and_model_route)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "hermes-overnight-pipeline-close",
+      "shard": "07",
+      "legacy_result": "BLOCKED(compound_child_ownership)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "tradeai-agent-runtime-morgan",
+      "shard": "07",
+      "legacy_result": "BLOCKED(systemd_and_model_route)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "watch-review-workers",
+      "shard": "07",
+      "legacy_result": "BLOCKED(model_route)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "watch-review-workers-cio",
+      "shard": "07",
+      "legacy_result": "BLOCKED(model_route)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "aegis-evening-packet",
+      "shard": "07",
+      "legacy_result": "SHADOW_READY",
+      "disposition": "LOCAL_SOURCE_PROPOSAL_NEEDS_INTEGRATION_REVIEW_CI",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "llm-deferred-drain",
+      "shard": "07",
+      "legacy_result": "BLOCKED(model_route)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "hermes-scope-governor",
+      "shard": "07",
+      "legacy_result": "SHADOW_READY",
+      "disposition": "LOCAL_SOURCE_PROPOSAL_NEEDS_INTEGRATION_REVIEW_CI",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "journal-review-builder",
+      "shard": "07",
+      "legacy_result": "BLOCKED(model_route)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "reconcile-exit-advisory-outcomes",
+      "shard": "07",
+      "legacy_result": "BLOCKED(unowned_price_closure)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "run-scheduled-two-way-curation-options",
+      "shard": "07",
+      "legacy_result": "BLOCKED(unowned_options_child)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "run-scheduled-two-way-curation-desk",
+      "shard": "07",
+      "legacy_result": "BLOCKED(unowned_curation_child)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "run-watchlist-agent-jobs-offpeak",
+      "shard": "07",
+      "legacy_result": "BLOCKED(compound_model_route)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "symbol-enrichment",
+      "shard": "07",
+      "legacy_result": "BLOCKED(env_and_untyped_provider_failures)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "topic-curator-at-30-9-13",
+      "shard": "07",
+      "legacy_result": "BLOCKED(model_route)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "topic-curator-ensemble",
+      "shard": "07",
+      "legacy_result": "BLOCKED(model_route)",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "hermes-top20-external-intel",
+      "shard": "08",
+      "legacy_result": "BLOCKED",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "autonomy-watchdog",
+      "shard": "08",
+      "legacy_result": "BLOCKED",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "portfolio-price-cache",
+      "shard": "08",
+      "legacy_result": "BLOCKED",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "operator-answer-quality-audit",
+      "shard": "08",
+      "legacy_result": "BLOCKED",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "slo-burn-rate",
+      "shard": "08",
+      "legacy_result": "BLOCKED",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "tradeai-agent-runtime-pulse",
+      "shard": "08",
+      "legacy_result": "BLOCKED",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "due-diligence-questions",
+      "shard": "08",
+      "legacy_result": "BLOCKED",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "hermes-usefulness-backfill",
+      "shard": "08",
+      "legacy_result": "BLOCKED",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "agent-recommendation-normalizer",
+      "shard": "08",
+      "legacy_result": "SHADOW_READY",
+      "disposition": "LOCAL_SOURCE_PROPOSAL_NEEDS_INTEGRATION_REVIEW_CI",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "hermes-score-event-feeder",
+      "shard": "08",
+      "legacy_result": "SHADOW_READY",
+      "disposition": "LOCAL_SOURCE_PROPOSAL_NEEDS_INTEGRATION_REVIEW_CI",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "rag-indexer",
+      "shard": "08",
+      "legacy_result": "BLOCKED",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "reconcile-pullback-outcomes",
+      "shard": "08",
+      "legacy_result": "BLOCKED",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "reporting-engine",
+      "shard": "08",
+      "legacy_result": "BLOCKED",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "hermes-shadow-scorer",
+      "shard": "08",
+      "legacy_result": "BLOCKED",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    },
+    {
+      "lane_id": "topic-ingestion",
+      "shard": "08",
+      "legacy_result": "BLOCKED",
+      "disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "main_declared_state": "ACTIVE"
+    }
+  ]
+}

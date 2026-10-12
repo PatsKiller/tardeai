@@ -26,18 +26,24 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
-from lib.deepseek_offpeak import is_scheduled_deepseek_window  # noqa: E402
-from lib import llm_deferral  # noqa: E402
 
 # Durable proof this ran, healthy or empty — a lane is verified by an artifact, never by
 # an exit code (config/lane_registry.json, lane `llm-deferred-drain`).
-HEARTBEAT_PATH = PROJECT_ROOT / "data/runtime/llm_deferred_drain.json"
+HEARTBEAT_PATH = None  # resolved lazily against STATE_ROOT on a real run only
+
+
+def _receipt(ok: bool, exit_code: int, summary: dict) -> None:
+    from lib.lane_last_receipt import write_lane_receipt
+    write_lane_receipt("llm-deferred-drain", ok=ok, exit_code=exit_code,
+                       script="drain_llm_deferred.py", summary=summary)
 
 
 def _write_heartbeat(payload: dict) -> None:
     try:
-        HEARTBEAT_PATH.parent.mkdir(parents=True, exist_ok=True)
-        HEARTBEAT_PATH.write_text(json.dumps(payload, indent=2))
+        from lib.lane_last_receipt import runtime_dir
+        path = HEARTBEAT_PATH or runtime_dir() / "llm_deferred_drain.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(payload, indent=2))
     except OSError as e:
         print(f"[deferred-drain] could not write heartbeat: {e}", file=sys.stderr)
 
@@ -72,14 +78,19 @@ def _run_one(row: dict) -> tuple[bool, str | None]:
     return True, None
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__)
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     ap.add_argument("--limit", type=int, default=25)
     ap.add_argument("--dry-run", action="store_true", help="show the batch, call nothing")
     ap.add_argument("--force", action="store_true",
                     help="drain outside the off-peak window (operator, deliberate)")
     ap.add_argument("--json", action="store_true")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
+    if args.dry_run:
+        print(f"DRY-RUN llm-deferred-drain: would drain up to {args.limit} queued requests within existing offpeak policy; no DB, reclaim, expiry, claim or model call")
+        return 0
+    from lib.deepseek_offpeak import is_scheduled_deepseek_window
+    from lib import llm_deferral
 
     in_window = is_scheduled_deepseek_window()
     try:
@@ -90,37 +101,24 @@ def main() -> int:
         summary = llm_deferral.queue_summary()
     except Exception as e:
         print(f"[deferred-drain] queue unreachable: {e}", file=sys.stderr)
+        _receipt(False, 2, {"queue_error": type(e).__name__})
         return 2
 
     if not in_window and not args.force:
         # Not an error. The queue exists precisely so this work waits.
         result = {"skipped": "OUTSIDE_OFFPEAK_WINDOW", "expired": expired,
                   "reclaimed": reclaimed, **summary}
-        if not args.dry_run:
-            _write_heartbeat({"checked_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"), **result})
+        _write_heartbeat({"checked_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"), **result})
         print(json.dumps(result, indent=2) if args.json
               else f"[deferred-drain] outside off-peak window; "
                    f"{summary['pending']} pending, {expired} expired")
-        return 0
-
-    if args.dry_run:
-        # READ-ONLY. This must never call claim_due(): a preview that claims consumes the
-        # work it is previewing and strands it. Measured 2026-09-20, on the first live use.
-        try:
-            preview = llm_deferral.preview_due(limit=args.limit)
-        except Exception as e:
-            print(f"[deferred-drain] could not preview: {e}", file=sys.stderr)
-            return 2
-        print(json.dumps({"would_run": [
-            {"id": str(r["id"]), "process_id": r["process_id"], "lane": r["lane"],
-             "task_summary": r.get("task_summary")} for r in preview],
-            "expired": expired, "reclaimed": reclaimed, **summary}, indent=2))
         return 0
 
     try:
         batch = llm_deferral.claim_due(limit=args.limit)
     except Exception as e:
         print(f"[deferred-drain] could not claim: {e}", file=sys.stderr)
+        _receipt(False, 2, {"claim_error": type(e).__name__})
         return 2
 
     ok_n = fail_n = 0
@@ -137,10 +135,13 @@ def main() -> int:
               "expired": expired, "reclaimed": reclaimed,
               "forced": bool(args.force), **after}
     _write_heartbeat(result)
+    rc = 1 if fail_n else 0
+    _receipt(fail_n == 0, rc, {"claimed": len(batch), "completed": ok_n, "failed": fail_n,
+                            "expired": expired, "reclaimed": reclaimed})
     print(json.dumps(result, indent=2) if args.json
           else f"[deferred-drain] {len(batch)} claimed, {ok_n} ok, {fail_n} failed, "
                f"{expired} expired, {after['pending']} still pending")
-    return 0
+    return rc
 
 
 if __name__ == "__main__":

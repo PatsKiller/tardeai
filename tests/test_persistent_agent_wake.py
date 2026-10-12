@@ -357,39 +357,79 @@ def test_changed_prior_memory_changes_subsequent_output(state, tmp_path):
     assert c1 != c2
 
 
-def _crontab_snapshot() -> str:
-    """The user's crontab, or "" where there is none.
+@pytest.fixture
+def scheduler_scratch(tmp_path, monkeypatch):
+    """Source-only scheduler bytes; every process API here is a refusal spy."""
+    cron = tmp_path / "crontab.fixture"
+    cron.write_bytes(b"# synthetic scheduler fixture\n*/15 * * * * fixture-job\n")
+    unit_dir = tmp_path / "systemd"
+    unit_dir.mkdir()
+    (unit_dir / "existing.fixture.service").write_bytes(b"[Service]\nType=oneshot\n")
+    calls = []
 
-    `crontab -l` exits 1 when the user has no crontab and the binary may be
-    absent entirely, so check_output() raised on CI and this test failed on
-    commits that passed locally. tests/test_dark_contract_guard.py records the
-    same defect from the same cause: "shelling out makes the gate
-    machine-dependent ... in CI, where no crontab exists."
+    def refuse_process_call(command, *args, **kwargs):
+        calls.append(command)
+        raise AssertionError("scheduler fixture refused process call")
 
-    The assertion is unchanged and undiminished: the snapshot is taken the same
-    way before and after, so "the contract did not install a cron entry" is still
-    proven. On a machine with no crontab the comparison is "" == "", which is the
-    correct answer there — defining a contract must not CREATE one either.
-    """
-    try:
-        r = subprocess.run(["crontab", "-l"], capture_output=True, text=True)
-    except (FileNotFoundError, OSError):
-        return ""
-    return r.stdout if r.returncode == 0 else ""
+    for api in ("run", "Popen", "call", "check_call", "check_output"):
+        monkeypatch.setattr(subprocess, api, refuse_process_call)
+    monkeypatch.setattr(os, "system", refuse_process_call)
+    return cron, unit_dir, calls
 
 
-def test_production_schedule_remains_unchanged():
-    """Defining the contract must not install cron/systemd."""
-    before = _crontab_snapshot()
+def _scheduler_fixture_snapshot(cron, unit_dir):
+    return {"cron": cron.read_bytes(),
+            "units": {str(p.relative_to(unit_dir)): p.read_bytes()
+                      for p in unit_dir.rglob("*") if p.is_file()}}
+
+
+def test_production_schedule_remains_unchanged(scheduler_scratch):
+    """Contract evaluation preserves fixture bytes and calls no scheduler."""
+    cron, unit_dir, calls = scheduler_scratch
+    before = _scheduler_fixture_snapshot(cron, unit_dir)
     assert_schedule_states_complete()
     contract = ScheduleContract(agent_id="cio", wake_reason="scheduled_persistent_review")
     _ = contract.slot_for(NOW)
     h = evaluate_health(contract, now=NOW, completed_slots=[], never_scheduled=True)
     assert h.state == "never_scheduled"
-    after = _crontab_snapshot()
+    after = _scheduler_fixture_snapshot(cron, unit_dir)
     assert before == after
-    # No timer files created by this suite under /etc or user systemd
-    assert not Path("/etc/systemd/system/persistent-agent-wake.timer").exists()
+    assert calls == []
+    assert not (unit_dir / "persistent-agent-wake.timer").exists()
+
+
+@pytest.mark.parametrize("command", [["crontab", "-"],
+                                     ["systemctl", "--user", "start", "fixture.timer"]])
+def test_scheduler_contract_rejects_introduced_process_mutation(scheduler_scratch, monkeypatch, command):
+    """An accidental scheduler call makes the original contract test fail."""
+    before = _scheduler_fixture_snapshot(*scheduler_scratch[:2])
+
+    def mutation(*args, **kwargs):
+        subprocess.run(command)
+
+    monkeypatch.setitem(globals(), "evaluate_health", mutation)
+    with pytest.raises(AssertionError, match="scheduler fixture refused process call"):
+        test_production_schedule_remains_unchanged(scheduler_scratch)
+    assert scheduler_scratch[2] == [command]
+    assert _scheduler_fixture_snapshot(*scheduler_scratch[:2]) == before
+
+
+@pytest.mark.parametrize("destination", ["cron", "timer"])
+def test_scheduler_contract_detects_introduced_fixture_write(scheduler_scratch, monkeypatch, destination):
+    """Byte comparisons catch file-based changes even without a subprocess."""
+    original = evaluate_health
+    cron, unit_dir, _ = scheduler_scratch
+
+    def mutation(*args, **kwargs):
+        if destination == "cron":
+            cron.write_bytes(cron.read_bytes() + b"* * * * * injected-job\n")
+        else:
+            (unit_dir / "persistent-agent-wake.timer").write_bytes(b"[Timer]\nOnBootSec=1s\n")
+        return original(*args, **kwargs)
+
+    monkeypatch.setitem(globals(), "evaluate_health", mutation)
+    with pytest.raises(AssertionError):
+        test_production_schedule_remains_unchanged(scheduler_scratch)
 
 
 def test_fixture_not_organic_negative_control(state, tmp_path):

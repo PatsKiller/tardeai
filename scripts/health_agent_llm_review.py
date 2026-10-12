@@ -3,7 +3,9 @@
 
 Uses local qwen3:14b to analyze the day's health events, errors, and
 patterns. Produces an intelligence summary with recommendations.
-Stores in llm_intelligence_cache for Command Center display.
+Stores in llm_intelligence_cache for Command Center display. The legacy local-model route
+is retired and remains blocked pending an operator-selected host process; this source
+preparation does not choose a replacement model or grant a live run.
 
 This gives the health agent a "brain" — pattern recognition across
 errors, trend detection, and proactive recommendations that pure
@@ -13,8 +15,8 @@ Usage:
     .venv/bin/python scripts/health_agent_llm_review.py
     .venv/bin/python scripts/health_agent_llm_review.py --dry-run
 
---dry-run runs the same SELECTs on a READ ONLY session, builds the prompt and returns BEFORE the
-local-LLM call and both INSERTs are reachable (AGENTS.md §6). A real run writes
+--dry-run is an offline CLI plan that returns before DB collection, model calls or writes.
+The legacy run_review(dry_run=True) API remains a read-only data preview. A real run writes
 data/runtime/health_agent_llm_review_last.json (LaneRunReceipt@v1; ok_at only when the review was
 stored) under the persistent state root and exits 1 when no review was stored.
 """
@@ -235,25 +237,31 @@ RISK FORECAST:
 
 def main(argv=None) -> int:
     import argparse
-    ap = argparse.ArgumentParser()
+    ap = argparse.ArgumentParser(allow_abbrev=False)
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args(argv)
     if args.dry_run:
-        res = run_review(dry_run=True)
-        return 0 if res.get("status") == "dry_run" else 1
-    from lib.lane_last_receipt import now_iso, write_receipt
+        print("DRY-RUN health-agent-llm-review: would collect health events, request the approved host review and persist health_review; no DB, model, network or writes")
+        return 0
+    from lib.lane_last_receipt import now_iso
 
     started = now_iso()
     try:
         res = run_review(dry_run=False)
     except Exception as exc:  # noqa: BLE001 -- recorded in the receipt, then a non-zero exit
-        write_receipt(RECEIPT_NAME, ok=False, error=f"{type(exc).__name__}: {exc}", started_at=started)
+        _write_receipts(ok=False, exit_code=1, error=type(exc).__name__, started_at=started)
         log.error(f"health review FAILED: {type(exc).__name__}: {exc}")
         return 1
     ok = res.get("status") == "stored"
-    write_receipt(RECEIPT_NAME, ok=ok, summary=res, started_at=started,
-                  error=None if ok else res.get("status"))
+    _write_receipts(ok=ok, exit_code=0 if ok else 1, summary=res, started_at=started,
+                    error=None if ok else res.get("status"))
     return 0 if ok else 1
+
+
+def _write_receipts(**kwargs):
+    from lib.lane_last_receipt import write_receipt
+    for lane in (RECEIPT_NAME, "health-agent-llm-review"):
+        write_receipt(lane, **kwargs)
 
 
 if __name__ == "__main__":

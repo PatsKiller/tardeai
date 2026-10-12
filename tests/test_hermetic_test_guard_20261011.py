@@ -27,6 +27,17 @@ RELEASES_PROBE = Path(G.STATE.real_home or Path.home()) / "trade-ai-releases" / 
 RUNTIME_PROBE = Path(f"/run/user/{os.getuid()}/tradeai/env")
 
 
+@pytest.fixture(autouse=True)
+def _synthetic_protected_roots(tmp_path, monkeypatch):
+    """Exercise refusal against synthetic roots; never attempt a real host read."""
+    releases = tmp_path / "synthetic-home" / "trade-ai-releases"
+    runtime = tmp_path / "synthetic-runtime" / "tradeai"
+    monkeypatch.setattr(G.STATE, "releases_root", str(releases))
+    monkeypatch.setattr(G.STATE, "runtime_roots", (str(runtime),))
+    monkeypatch.setattr(sys.modules[__name__], "RELEASES_PROBE", releases / "probe" / "absent.json")
+    monkeypatch.setattr(sys.modules[__name__], "RUNTIME_PROBE", runtime / "env")
+
+
 def _refused(fn) -> list[dict]:
     """Run fn, expect HostStateAccessError, and take the record so this test does not fail on it."""
     with pytest.raises(G.HostStateAccessError) as ei:
@@ -222,6 +233,7 @@ def _run_inner(tmp_path: Path, body: str) -> subprocess.CompletedProcess:
     (tmp_path / "test_inner_probe.py").write_text(body)
     env = {k: v for k, v in os.environ.items() if not k.startswith("PYTEST_")}
     env.pop(G.SESSION_OPT_IN_ENV, None)
+    env[G.REAL_HOME_ENV] = str(tmp_path / "synthetic-home")
     env["PYTHONPATH"] = os.pathsep.join([str(ROOT / "tests"), str(ROOT), env.get("PYTHONPATH", "")])
     return subprocess.run(
         [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-p", "conftest", "--rootdir",
