@@ -15840,12 +15840,7 @@ def warrior_audit_latest():
 
 
 def _normalize_trade_ai_session_date(data: dict) -> dict:
-    """Keep CC SETUPS header current on weekends / between scheduled scans.
-
-    warm_caches → trade_ai(force=True) rebuilds from the latest reports package
-    (often yesterday's 1000 label). Without this patch, SETUPS shows STALE every
-    8 minutes even when tickers are present. Preserves tickers + GO/WAIT counts.
-    """
+    """Attach calendar context without changing the scanner's business evidence."""
     if not isinstance(data, dict):
         return data
     try:
@@ -15856,53 +15851,26 @@ def _normalize_trade_ai_session_date(data: dict) -> dict:
         from datetime import date as _date
 
         today = _date.today().isoformat()
-    rd = str(data.get("run_date") or data.get("date") or "")[:10]
-    if not rd or rd >= today:
-        return data
-    tickers = data.get("tickers") or []
-    if not isinstance(tickers, list):
-        tickers = []
-
-    def _dec(t):
-        return str((t or {}).get("decision") or "").upper()
-
-    real_label = str(data.get("latest_run_label") or data.get("run_label") or "")
-    if real_label in ("", "HEALTH_AUTOHEAL"):
-        labels = [str(t.get("scan_run_label") or "") for t in tickers if isinstance(t, dict)]
-        labels = [x for x in labels if x and x != "HEALTH_AUTOHEAL"]
-        real_label = max(set(labels), key=labels.count) if labels else "1000"
-    cur = [t for t in tickers if str((t or {}).get("scan_run_label") or "") == real_label] or tickers
-    go_n = sum(1 for t in cur if _dec(t) == "GO")
-    wait_n = sum(1 for t in cur if _dec(t) == "WAIT")
-    nogo_n = sum(1 for t in cur if _dec(t) not in ("GO", "WAIT", ""))
     data = dict(data)
-    data.update(
+    rd = data.get("run_date") or data.get("date")
+    contract = data.get("setup_run_summary") if isinstance(data.get("setup_run_summary"), dict) else {}
+    business_date = contract.get("run_date") or rd
+    context = dict(data.get("session_context") or {}) if isinstance(data.get("session_context"), dict) else {}
+    context.update(
         {
-            "run_date": today,
-            "date": today,
-            "run_label": real_label,
-            "latest_run_label": real_label,
-            "go_count": go_n,
-            "wait_count": wait_n,
-            "avoid_count": nogo_n,
-            "latest_run_go_count": go_n,
-            "latest_run_wait_count": wait_n,
-            "latest_run_no_go_count": nogo_n,
-            "current_run_go": go_n,
-            "current_run_wait": wait_n,
-            "current_run_nogo": nogo_n,
-            "current_run_scanned": len(cur),
-            "session_date_normalized": {
-                "from": rd,
-                "to": today,
-                "label": real_label,
-                "go": go_n,
-                "wait": wait_n,
-                "nogo": nogo_n,
-            },
-            "stale": False,
+            "calendar_date": today,
+            "timezone": "America/New_York",
+            "business_run_id": data.get("run_id"),
+            "business_run_date": business_date,
+            "business_date_mismatch": bool(rd and business_date and str(rd)[:10] != str(business_date)[:10]),
         }
     )
+    # Old payloads retain their normalization record as drift evidence. Removing
+    # its write marker prevents an ordinary cache read from re-persisting it.
+    legacy = data.pop("session_date_normalized", None)
+    if legacy is not None:
+        context["legacy_date_normalization"] = legacy
+    data.update({"session_date": today, "session_context": context})
     return data
 
 
