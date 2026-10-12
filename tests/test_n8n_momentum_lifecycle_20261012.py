@@ -817,7 +817,8 @@ def test_integration_patch_fanin_stale_deadman_is_independent_host_p1(setup):
     exec(compile(ast.Module(body=[fn], type_ignores=[]), "candidate-fanin", "exec"), namespace)
     findings = namespace[fn.name](root, NOW)
     assert findings[0]["severity"] == "P1"
-    assert findings[0]["notification_dedupe_minutes"] == 0
+    assert findings[0]["operator_action"] is False
+    assert findings[0]["notification_dedupe_minutes"] is None
     report = {
         "schema": M.SCHEMA,
         "as_of": NOW.isoformat(),
@@ -907,7 +908,7 @@ def test_host_notifier_candidate_operator_action_is_not_suppressed_or_double_cou
     ]
     namespace = dict(notifier.__dict__)
     exec(compile(ast.Module(body=functions, type_ignores=[]), "candidate-notifier", "exec"), namespace)
-    f = M._finding("served_scan_cache", "wrong_business_day", "2026-10-12")
+    f = M._finding("finviz-credential", "credential_owner_action_required", "2026-10-12", operator_action=True)
     host = {**f, "momentum_host_watch": True}
     opened, _ = namespace["open_incidents"]({"incidents": [f, host]}, set())
     assert len(opened) == 1
@@ -917,3 +918,17 @@ def test_host_notifier_candidate_operator_action_is_not_suppressed_or_double_cou
     assert namespace["_due"](key, row, state, NOW, 24) is True
     namespace["apply_result"](state, {"kind": "p1", "incidents": [row], "identity": "fixture-alert"}, NOW)
     assert state["notified"][key]["momentum_host_watch"] is True
+
+
+def test_lifecycle_p1_failure_preserves_priority_without_claiming_operator_decision():
+    from scripts import incident_notifier as notifier
+
+    finding = M._finding("served_scan_cache", "wrong_business_day", "2026-10-12")
+    assert finding["severity"] == "P1"
+    assert finding["operator_action"] is False
+    assert finding["notification_dedupe_minutes"] is None
+    opened, _ = notifier.open_incidents({"incidents": [finding]}, set())
+    key, row = next(iter(opened.items()))
+    assert notifier._due(key, row, {"notified": {}}, NOW, 24) is True
+    state = {"notified": {key: {"open": True, "severity": "P1", "last_notified_at": NOW.isoformat()}}}
+    assert notifier._due(key, row, state, NOW, 24) is False

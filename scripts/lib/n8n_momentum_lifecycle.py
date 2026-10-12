@@ -77,7 +77,7 @@ def load_admission(code_root: Path) -> Admission:
     )
 
 
-def _finding(lane: str, reason: str, day: str, severity: str = "P1") -> dict:
+def _finding(lane: str, reason: str, day: str, severity: str = "P1", *, operator_action: bool = False) -> dict:
     # No caller text, symbols, account fields or logs are copied into incidents.
     return {
         "source": "scalp_lane",
@@ -87,8 +87,8 @@ def _finding(lane: str, reason: str, day: str, severity: str = "P1") -> dict:
         "detected_at": f"{day}T00:00:00+00:00",
         "store": "data/runtime",
         "artifact_rel": MONITOR_REL,
-        "operator_action": severity == "P1",
-        "notification_dedupe_minutes": 0 if severity == "P1" else None,
+        "operator_action": operator_action is True,
+        "notification_dedupe_minutes": 0 if operator_action is True else None,
     }
 
 
@@ -585,7 +585,7 @@ def evaluate(
     credential_tasks = []
     auth = snapshot.get("credential_health") or {}
     if auth.get("secret_name") == "FINVIZ_COOKIE" and auth.get("status") in {"expired", "invalid", "missing"}:
-        findings.append(_finding("finviz-credential", "credential_owner_action_required", day))
+        findings.append(_finding("finviz-credential", "credential_owner_action_required", day, operator_action=True))
         credential_tasks.append(
             {
                 "type": "OPERATOR_TASK",
@@ -600,7 +600,8 @@ def evaluate(
     findings = list({(f["source"], f["item"]): f for f in findings}.values())
     storage = snapshot.get("storage_health") or {}
     if storage.get("status") == "FAILED":
-        findings.append(_finding("momentum-storage", "storage_capacity_exhausted", day))
+        # Reclamation is an operator decision; the monitor has no deletion authority.
+        findings.append(_finding("momentum-storage", "storage_capacity_exhausted", day, operator_action=True))
     return {
         "schema": SCHEMA,
         "as_of": now.isoformat(),
