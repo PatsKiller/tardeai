@@ -512,6 +512,10 @@ def sheet_table(wb, name, headers, rows):
     for cells in ws:
         for cell in cells:
             cell.alignment = Alignment(wrap_text=True, vertical="top")
+            if cell.row > 1:
+                cell.font = Font(name="Arial", size=10)
+        if cells[0].row > 1:
+            ws.row_dimensions[cells[0].row].height = 45
     for cell in ws[1]:
         ws.column_dimensions[cell.column_letter].width = min(65, max(20, len(str(cell.value)) + 4))
     return ws
@@ -589,6 +593,12 @@ def workbook_candidate(wb, result, output):
             for k, v in summary.items()
         ],
     )
+    dashboard = wb["Closure Dashboard"]
+    dashboard.column_dimensions["A"].width = 45
+    dashboard.column_dimensions["B"].width = 95
+    dashboard.column_dimensions["C"].width = 45
+    for status, count in summary["primary_status_partition"].items():
+        dashboard.append(["Primary work status: " + status, count, "Current closure contract; historical labels retained"])
     sheet_table(
         wb,
         "Reconciliation Evidence",
