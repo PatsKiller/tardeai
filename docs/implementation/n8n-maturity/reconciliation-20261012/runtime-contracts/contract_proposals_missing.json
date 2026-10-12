@@ -1,0 +1,2069 @@
+{
+  "as_of": "2026-10-12T02:57:49.071956+00:00",
+  "authority_note": "External proposals only. Operative file, reviewers, admission, grandfathering, source scheduler and live_arg remain unchanged. Source refs retain original provenance; owner must review current main before adoption.",
+  "contracts": [
+    {
+      "admission_holds": [
+        "Current named DB-key loading in session13_db supersedes the stale candidate explanation about an unbounded dotenv import; recursive closure still needs review.",
+        "Complete narrative-link and capped-input coverage are not proven by current receipt counts.",
+        "Owner contract review, Claude train 5 exact-head CI and current source/runtime/argv/lock/consumer evidence remain separate prerequisites; this packet grants none."
+      ],
+      "alerting": {
+        "degraded": {
+          "notifier_priority": "P3",
+          "siem_severity": "INFO"
+        },
+        "enforced": "This external DRAFT packet is not installed; runtime enforcement NOT_MEASURED.",
+        "failed": {
+          "notifier_priority": "P2",
+          "siem_severity": "WARN"
+        },
+        "lane_severity": "Medium",
+        "routing": "Proposed host SIEM/incident intent through existing communications gateway only; n8n holds no notification/send authority.",
+        "severity_basis": "SOURCE_ONLY candidate class proposal; operator review required"
+      },
+      "baseline": {
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "class": "learn",
+        "computed_on": "2026-10-11",
+        "duration_degraded_above_s": 240.0,
+        "duration_p50_s": null,
+        "duration_p95_s": null,
+        "failure_rate": null,
+        "freshness_calendar": {
+          "calculation_window": [
+            "2026-10-01T00:00:00Z",
+            "2027-11-08T00:00:00Z"
+          ],
+          "computed_max_utc_gap_hours": 73.0,
+          "cron": [
+            "30 8 * * 1-5"
+          ],
+          "dst": "native gap coalescing/fold0 once; reconcile installed scheduler semantics before admission",
+          "parser": "scripts/lib/cron_schedule.py:fires_between",
+          "slot_proof_required": true,
+          "source_candidate_cadence_hours": 72.0,
+          "tz": "America/New_York"
+        },
+        "freshness_degraded_after_h": 146.0,
+        "freshness_failed_after_h": 219.0,
+        "freshness_rule": "2x/3x computed maximum UTC inter-fire gap is a provisional fallback; latest eligible slot proof is independently required. Neither these proposals nor a source-only calendar establish observed SLOs.",
+        "lock_skip_rate": null,
+        "runs_considered": null,
+        "runtime_evidence": "NOT_MEASURED",
+        "source": "SOURCE_ONLY proposed runner timeout and source calendar; native DST-safe cron parser. No live ledger or output was measured.",
+        "timeout_s": 300
+      },
+      "connects_to": [
+        {
+          "direction": "calls",
+          "kind": "service",
+          "name": "n8n shadow coordinator -> scoped host relay -> gateway durable request -> host executor",
+          "source": "AGENTS.md \u00a723.3; proposed shadow route only"
+        },
+        {
+          "direction": "calls",
+          "kind": "runner",
+          "name": "$PY scripts/agent_recommendation_normalizer.py --apply --dry-run",
+          "source": "scripts/agent_recommendation_normalizer.py; SOURCE_ONLY proposed allowlist argv"
+        },
+        {
+          "direction": "read_write",
+          "kind": "lock",
+          "name": "/tmp/agent-recommendation-normalizer.lock",
+          "source": "Candidate flock lock; current host parity NOT_MEASURED"
+        },
+        {
+          "direction": "write",
+          "kind": "receipt",
+          "name": "<STATE_ROOT>/data/runtime/agent-recommendation-normalizer_last.json",
+          "source": "scripts/lib/lane_last_receipt.py:122; real run only; dry-run must not write it"
+        },
+        {
+          "direction": "read",
+          "kind": "store",
+          "name": "watchlist_agent_results (up to 5000 rows)",
+          "source": "scripts/agent_recommendation_normalizer.py:97; scripts/agent_recommendation_normalizer.py:165"
+        },
+        {
+          "direction": "read",
+          "kind": "store",
+          "name": "cio_decisions (up to 1000 rows)",
+          "source": "scripts/agent_recommendation_normalizer.py:97; scripts/agent_recommendation_normalizer.py:165"
+        },
+        {
+          "direction": "read",
+          "kind": "store",
+          "name": "agent_debate_log (up to 500 rows)",
+          "source": "scripts/agent_recommendation_normalizer.py:97; scripts/agent_recommendation_normalizer.py:165"
+        },
+        {
+          "direction": "read",
+          "kind": "store",
+          "name": "symbol_profiles for narrative tagging",
+          "source": "scripts/agent_recommendation_normalizer.py:97; scripts/agent_recommendation_normalizer.py:165"
+        },
+        {
+          "direction": "write",
+          "kind": "store",
+          "name": "agent_recommendation_registry (idempotent inserts)",
+          "source": "scripts/agent_recommendation_normalizer.py:97; scripts/agent_recommendation_normalizer.py:165; scripts/agent_recommendation_normalizer.py:227; scripts/agent_recommendation_normalizer.py:331; scripts/lib/cio_narrative_write.py:200; scripts/session13_db.py:13"
+        },
+        {
+          "direction": "write",
+          "kind": "store",
+          "name": "narrative_subjects (attempted links)",
+          "source": "scripts/agent_recommendation_normalizer.py:97; scripts/agent_recommendation_normalizer.py:165; scripts/agent_recommendation_normalizer.py:227; scripts/agent_recommendation_normalizer.py:331; scripts/lib/cio_narrative_write.py:200; scripts/session13_db.py:13"
+        },
+        {
+          "direction": "write",
+          "kind": "store",
+          "name": "canonical lane receipt and legacy underscore receipt",
+          "source": "scripts/agent_recommendation_normalizer.py:97; scripts/agent_recommendation_normalizer.py:165; scripts/agent_recommendation_normalizer.py:227; scripts/agent_recommendation_normalizer.py:331; scripts/lib/cio_narrative_write.py:200; scripts/session13_db.py:13"
+        },
+        {
+          "direction": "read",
+          "kind": "consumer",
+          "name": "Recommendation disagreement reader",
+          "source": "scripts/agent_disagreement_scorer.py:30; SOURCE_ONLY consumer edge; runtime activity NOT_MEASURED"
+        },
+        {
+          "direction": "read",
+          "kind": "consumer",
+          "name": "Self-improvement summary reader",
+          "source": "scripts/self_improvement_summary.py:84; SOURCE_ONLY consumer edge; runtime activity NOT_MEASURED"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "business_partial_or_unproven",
+          "text": "Narrative-tagging exceptions, missing subject links or source-cap truncation make attribution/coverage incomplete; those conditions are not recorded by the current summary and must be reported as non-proven when no separate evidence exists."
+        },
+        {
+          "check": "late_or_slow",
+          "text": "Fallback freshness age beyond 146h through 219h, or duration above 240s but below hard timeout; use eligible-slot/DST proof to identify missed regular work."
+        },
+        {
+          "check": "retry_or_lock_skip",
+          "text": "Any retry or RUN_SKIPPED_LOCK is visible and not completed business work; repeated skips require owner triage. A lock never justifies two business scheduler authorities."
+        },
+        {
+          "check": "upstream_or_consumer_proof",
+          "text": "Unavailable required input or consumer freshness/coverage evidence is non-proven health; record NOT_MEASURED/NO_SIGNAL reason rather than a fake0 or healthy green."
+        }
+      ],
+      "evidence": {
+        "evidence_class": "SOURCE_ONLY",
+        "never": "No runtime claim from n8n execution color, telemetry success, recent file mtime, computed count, old ok_at or this DRAFT document.",
+        "receipt": "data/runtime/agent-recommendation-normalizer_last.json",
+        "runtime": "NOT_MEASURED",
+        "source_head": "e3078ccfab51ed8118f6bdab36ce416fe5fd9cd5",
+        "source_refs": [
+          "scripts/agent_recommendation_normalizer.py",
+          "scripts/agent_recommendation_normalizer.py:97",
+          "scripts/agent_recommendation_normalizer.py:165",
+          "scripts/agent_recommendation_normalizer.py:227",
+          "scripts/agent_recommendation_normalizer.py:331",
+          "scripts/lib/cio_narrative_write.py:200",
+          "scripts/session13_db.py:13",
+          "scripts/agent_disagreement_scorer.py:30",
+          "scripts/self_improvement_summary.py:84"
+        ],
+        "verify": [
+          "On an authorized host, open coordination ledger in read-only mode and query: SELECT run_id, lane_id, mode, state, requested_at, started_at, finished_at, exit_code, duration_s, receipt_json FROM runs WHERE lane_id='agent-recommendation-normalizer' ORDER BY requested_at DESC LIMIT 10;",
+          "Read the canonical lane receipt; validate schema/identity/current status/exit/summary and attribute timestamps to the business run. Missing receipt is failed proof.",
+          "Queries and registry persistence succeed; an available empty source set or already-existing recommendations can legitimately insert 0. Full attribution requires independently verified narrative links, not just the registry receipt.",
+          "Read required business stores and source-qualified consumer outputs independently; reconcile committed effect, no-work/disposition and any partial/errors. No query or host command was executed to draft this packet.",
+          "Inspect current installed scheduler/code-root/lock with separate authorization; compare this proposed calendar and lock metadata before admission."
+        ]
+      },
+      "evidence_class": "SOURCE_ONLY",
+      "execution": {
+        "admission_enabled": false,
+        "automatic_promotion": false,
+        "code_root": "CURRENT required on future admission; installed code root NOT_MEASURED",
+        "current_lock_parity": "NOT_MEASURED; absent from captured command means new proposal, not existing-lock reuse",
+        "env_allowlist_mode": "report",
+        "env_closure": "Recursive safe import/env/child review required; names are not proof of enforce-mode closure.",
+        "env_names_metadata": [
+          "DB_CONN_TRACE",
+          "DB_HOST",
+          "DB_NAME",
+          "DB_PASSWORD",
+          "DB_PORT",
+          "DB_USER",
+          "PROJECT_ROOT",
+          "SAFE_FLOCK_LOG_DIR",
+          "TRADEAI_PERSISTENT_STATE_ROOT",
+          "TRADEAI_ROOT"
+        ],
+        "legacy_business_command": [
+          "$PY",
+          "scripts/agent_recommendation_normalizer.py",
+          "--apply"
+        ],
+        "live_arg": null,
+        "lock": "/tmp/agent-recommendation-normalizer.lock",
+        "lock_kind": "flock",
+        "lock_path_in_captured_command": false,
+        "market_day_gate": false,
+        "proposed_mode": "dry_run",
+        "shadow_command": [
+          "$PY",
+          "scripts/agent_recommendation_normalizer.py",
+          "--apply",
+          "--dry-run"
+        ]
+      },
+      "failed": [
+        {
+          "check": "business_failure",
+          "text": "Uncaught query/write/close errors produce a failed receipt; missing receipt or inability to verify committed registry rows fails completion proof."
+        },
+        {
+          "check": "host_run_failure",
+          "text": "RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED, nonzero job exit, status=failed, malformed/missing durable RunReceipt or lane receipt fails the applicable run proof. Old preserved ok_at does not override current failure."
+        },
+        {
+          "check": "stale_output",
+          "text": "Fallback output proof older than 219h is failed; assess the calendar and explicit dispositions rather than treating a lock skip as a new completion."
+        },
+        {
+          "check": "authority_or_dry_run_mutation",
+          "text": "Any dry-run business mutation, unapproved extra writer/scheduler, model/provider authority change, secret exposure, direct send, broker/order/stop/risk mutation or automatic ratification violates this contract."
+        }
+      ],
+      "healthy": [
+        {
+          "check": "shadow_run_chain",
+          "text": "For an authorized shadow slot, unique run_id has durable REQUESTED -> claimed/started -> RUN_DONE, mode=dry_run, exit_code=0 and a durable host RunReceipt. n8n execution status is not proof."
+        },
+        {
+          "check": "offline_nonmutation",
+          "text": "Dry-run preserves business outputs, queues, database state and real-run lane receipt; no model, provider or send call. Before/after output measurement alone does not establish all nonmutation."
+        },
+        {
+          "check": "current_host_receipt",
+          "text": "Legacy-host business run has a readable LaneRunReceipt@v1 for this lane, mode=live, status=ok, exit=0 and attributable finished_at/ok_at; verify actual publication rather than assume the best-effort helper wrote it."
+        },
+        {
+          "check": "business_result",
+          "text": "Queries and registry persistence succeed; an available empty source set or already-existing recommendations can legitimately insert 0. Full attribution requires independently verified narrative links, not just the registry receipt."
+        },
+        {
+          "check": "schedule_and_freshness",
+          "text": "Proof covers the latest eligible calendar slot after its completion allowance; input/output availability and receipt status are valid. Apply the proposed calendar-aware 2x fallback only alongside due-slot coverage, never to conceal missed normal fires."
+        },
+        {
+          "check": "duration_reference",
+          "text": "Runtime is no greater than the proposed 240s degraded reference (80% of 300s timeout), unless later owner-reviewed live evidence replaces it."
+        }
+      ],
+      "id": "agent-recommendation-normalizer",
+      "kind": "lane",
+      "owner": "portfolio",
+      "purpose": {
+        "business_function": "research",
+        "source": "scripts/agent_recommendation_normalizer.py; source refs in evidence",
+        "text": "Deterministically normalize advisory agent/CIO/debate recommendations into an attributable research recommendation registry, with attempted narrative links."
+      },
+      "receipt_semantics": {
+        "fields": [
+          "lane_id",
+          "mode",
+          "status",
+          "exit",
+          "started_at",
+          "finished_at",
+          "ok_at",
+          "summary"
+        ],
+        "lock_or_deferred_dispositions": "Obtain separate executor/wrapper RunReceipt; these lane summaries do not prove scheduler skips or deferrals.",
+        "on_failure": "Previous ok_at preserved; current failed status remains authoritative. Receipt publication is best-effort and must be checked.",
+        "path": "data/runtime/agent-recommendation-normalizer_last.json",
+        "schema": "LaneRunReceipt@v1",
+        "summary_fields": [
+          "extracted",
+          "inserted",
+          "sources.watchlist",
+          "sources.cio",
+          "sources.debate"
+        ]
+      },
+      "remediation": {
+        "automatic_actions": [],
+        "catalogue_entry": false,
+        "diagnosis_excluded": true,
+        "note": "No candidate is present in the inspected source catalogue. Manual read-only triage and owner review only; this packet adds no diagnosis, rerun, retry, live-send or policy authority.",
+        "runbook": "docs/implementation/n8n-maturity/N8N_MONITORING_AND_REMEDIATION_STANDARD.md; lane-specific proof holds in this contract"
+      },
+      "review_by": "2026-10-25",
+      "schema": "N8nHealthContract@v1",
+      "stage": "shadow",
+      "status": "DRAFT",
+      "target_reason": "completion119 candidate; disabled and outside operative configuration",
+      "workflow_id": "tradeai-dispatcher"
+    },
+    {
+      "admission_holds": [
+        "Verify universe availability and owned provider/data-broker import closure without broker credential exposure.",
+        "Proposed provider edges describe host routing, not n8n credentials or a provider authority change.",
+        "Owner contract review, Claude train 5 exact-head CI and current source/runtime/argv/lock/consumer evidence remain separate prerequisites; this packet grants none."
+      ],
+      "alerting": {
+        "degraded": {
+          "notifier_priority": "P3",
+          "siem_severity": "WARN"
+        },
+        "enforced": "This external DRAFT packet is not installed; runtime enforcement NOT_MEASURED.",
+        "failed": {
+          "notifier_priority": "P1",
+          "siem_severity": "URGENT"
+        },
+        "lane_severity": "Medium",
+        "routing": "Proposed host SIEM/incident intent through existing communications gateway only; n8n holds no notification/send authority.",
+        "severity_basis": "SOURCE_ONLY candidate class proposal; operator review required"
+      },
+      "baseline": {
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "class": "ingest",
+        "computed_on": "2026-10-11",
+        "duration_degraded_above_s": 720.0,
+        "duration_p50_s": null,
+        "duration_p95_s": null,
+        "failure_rate": null,
+        "freshness_calendar": {
+          "calculation_window": [
+            "2026-10-01T00:00:00Z",
+            "2027-11-08T00:00:00Z"
+          ],
+          "computed_max_utc_gap_hours": 169.0,
+          "cron": [
+            "0 19 * * 0"
+          ],
+          "dst": "native gap coalescing/fold0 once; reconcile installed scheduler semantics before admission",
+          "parser": "scripts/lib/cron_schedule.py:fires_between",
+          "slot_proof_required": true,
+          "source_candidate_cadence_hours": 168.0,
+          "tz": "America/New_York"
+        },
+        "freshness_degraded_after_h": 338.0,
+        "freshness_failed_after_h": 507.0,
+        "freshness_rule": "2x/3x computed maximum UTC inter-fire gap is a provisional fallback; latest eligible slot proof is independently required. Neither these proposals nor a source-only calendar establish observed SLOs.",
+        "lock_skip_rate": null,
+        "runs_considered": null,
+        "runtime_evidence": "NOT_MEASURED",
+        "source": "SOURCE_ONLY proposed runner timeout and source calendar; native DST-safe cron parser. No live ledger or output was measured.",
+        "timeout_s": 900
+      },
+      "connects_to": [
+        {
+          "direction": "calls",
+          "kind": "service",
+          "name": "n8n shadow coordinator -> scoped host relay -> gateway durable request -> host executor",
+          "source": "AGENTS.md \u00a723.3; proposed shadow route only"
+        },
+        {
+          "direction": "calls",
+          "kind": "runner",
+          "name": "$PY scripts/build_symbol_profiles.py --dry-run",
+          "source": "scripts/build_symbol_profiles.py; SOURCE_ONLY proposed allowlist argv"
+        },
+        {
+          "direction": "read_write",
+          "kind": "lock",
+          "name": "/tmp/symbol_profiles.lock",
+          "source": "Candidate flock lock; current host parity NOT_MEASURED"
+        },
+        {
+          "direction": "write",
+          "kind": "receipt",
+          "name": "<STATE_ROOT>/data/runtime/build-symbol-profiles-at-0-19_last.json",
+          "source": "scripts/lib/lane_last_receipt.py:122; real run only; dry-run must not write it"
+        },
+        {
+          "direction": "read",
+          "kind": "store",
+          "name": "watch-grade universe: paper_trades, paper_trade_proposals, trade_ai_scans, watchlist_items (read-only inputs)",
+          "source": "scripts/build_symbol_profiles.py:144; scripts/build_symbol_profiles.py:275"
+        },
+        {
+          "direction": "read",
+          "kind": "store",
+          "name": "holding-proxy metadata and existing symbol_profiles",
+          "source": "scripts/build_symbol_profiles.py:144; scripts/build_symbol_profiles.py:275"
+        },
+        {
+          "direction": "read",
+          "kind": "store",
+          "name": "optional CIO opportunity projection/config",
+          "source": "scripts/build_symbol_profiles.py:144; scripts/build_symbol_profiles.py:275"
+        },
+        {
+          "direction": "write",
+          "kind": "store",
+          "name": "symbol_profiles through its domain writer",
+          "source": "scripts/build_symbol_profiles.py:144; scripts/build_symbol_profiles.py:275; scripts/build_symbol_profiles.py:309; scripts/build_symbol_profiles.py:321; scripts/watch_universe.py:21; scripts/lib/writers/symbol_profiles_writer.py:337"
+        },
+        {
+          "direction": "write",
+          "kind": "store",
+          "name": "canonical lane receipt and legacy receipt",
+          "source": "scripts/build_symbol_profiles.py:144; scripts/build_symbol_profiles.py:275; scripts/build_symbol_profiles.py:309; scripts/build_symbol_profiles.py:321; scripts/watch_universe.py:21; scripts/lib/writers/symbol_profiles_writer.py:337"
+        },
+        {
+          "direction": "calls",
+          "kind": "host_call_boundary",
+          "name": "Host-governed yfinance company profiles and existing Finviz enrichment fallback",
+          "source": "scripts/build_symbol_profiles.py:220"
+        },
+        {
+          "direction": "read",
+          "kind": "consumer",
+          "name": "Data-broker company-profile read model",
+          "source": "scripts/lib/data_broker/symbol_profile.py:21; SOURCE_ONLY consumer edge; runtime activity NOT_MEASURED"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "business_partial_or_unproven",
+          "text": "Missing/empty universe evidence, provider/fallback availability gaps or unverifiable full selection coverage are non-proven; do not interpret updated 0 as universal freshness."
+        },
+        {
+          "check": "late_or_slow",
+          "text": "Fallback freshness age beyond 338h through 507h, or duration above 720s but below hard timeout; use eligible-slot/DST proof to identify missed regular work."
+        },
+        {
+          "check": "retry_or_lock_skip",
+          "text": "Any retry or RUN_SKIPPED_LOCK is visible and not completed business work; repeated skips require owner triage. A lock never justifies two business scheduler authorities."
+        },
+        {
+          "check": "upstream_or_consumer_proof",
+          "text": "Unavailable required input or consumer freshness/coverage evidence is non-proven health; record NOT_MEASURED/NO_SIGNAL reason rather than a fake0 or healthy green."
+        }
+      ],
+      "evidence": {
+        "evidence_class": "SOURCE_ONLY",
+        "never": "No runtime claim from n8n execution color, telemetry success, recent file mtime, computed count, old ok_at or this DRAFT document.",
+        "receipt": "data/runtime/build-symbol-profiles-at-0-19_last.json",
+        "runtime": "NOT_MEASURED",
+        "source_head": "e3078ccfab51ed8118f6bdab36ce416fe5fd9cd5",
+        "source_refs": [
+          "scripts/build_symbol_profiles.py",
+          "scripts/build_symbol_profiles.py:144",
+          "scripts/build_symbol_profiles.py:275",
+          "scripts/build_symbol_profiles.py:309",
+          "scripts/build_symbol_profiles.py:321",
+          "scripts/watch_universe.py:21",
+          "scripts/lib/writers/symbol_profiles_writer.py:337",
+          "scripts/lib/data_broker/symbol_profile.py:21"
+        ],
+        "verify": [
+          "On an authorized host, open coordination ledger in read-only mode and query: SELECT run_id, lane_id, mode, state, requested_at, started_at, finished_at, exit_code, duration_s, receipt_json FROM runs WHERE lane_id='build-symbol-profiles-at-0-19' ORDER BY requested_at DESC LIMIT 10;",
+          "Read the canonical lane receipt; validate schema/identity/current status/exit/summary and attribute timestamps to the business run. Missing receipt is failed proof.",
+          "Every selected stale target is successfully refreshed, with no_profile=0 and rejected=0 on the work path. A fresh/updated 0 fast path is healthy only after independently establishing the configured universe exists and its profiles are fresh.",
+          "Read required business stores and source-qualified consumer outputs independently; reconcile committed effect, no-work/disposition and any partial/errors. No query or host command was executed to draft this packet.",
+          "Inspect current installed scheduler/code-root/lock with separate authorization; compare this proposed calendar and lock metadata before admission."
+        ]
+      },
+      "evidence_class": "SOURCE_ONLY",
+      "execution": {
+        "admission_enabled": false,
+        "automatic_promotion": false,
+        "code_root": "CURRENT required on future admission; installed code root NOT_MEASURED",
+        "current_lock_parity": "NOT_MEASURED; absent from captured command means new proposal, not existing-lock reuse",
+        "env_allowlist_mode": "report",
+        "env_closure": "Recursive safe import/env/child review required; names are not proof of enforce-mode closure.",
+        "env_names_metadata": [
+          "DB_CONN_TRACE",
+          "DB_HOST",
+          "DB_NAME",
+          "DB_PASSWORD",
+          "DB_PORT",
+          "DB_USER",
+          "FINVIZ_API_TOKEN",
+          "FINVIZ_COOKIE",
+          "PROJECT_ROOT",
+          "SAFE_FLOCK_LOG_DIR",
+          "TRADEAI_PERSISTENT_STATE_ROOT",
+          "TRADEAI_ROOT"
+        ],
+        "legacy_business_command": [
+          "$PY",
+          "scripts/build_symbol_profiles.py"
+        ],
+        "live_arg": null,
+        "lock": "/tmp/symbol_profiles.lock",
+        "lock_kind": "flock",
+        "lock_path_in_captured_command": true,
+        "market_day_gate": false,
+        "proposed_mode": "dry_run",
+        "shadow_command": [
+          "$PY",
+          "scripts/build_symbol_profiles.py",
+          "--dry-run"
+        ]
+      },
+      "failed": [
+        {
+          "check": "business_failure",
+          "text": "Any no_profile or rejected result fails this weekly lane with exit 1, including after partial successful writes; query/write exceptions and missing receipt also fail proof."
+        },
+        {
+          "check": "host_run_failure",
+          "text": "RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED, nonzero job exit, status=failed, malformed/missing durable RunReceipt or lane receipt fails the applicable run proof. Old preserved ok_at does not override current failure."
+        },
+        {
+          "check": "stale_output",
+          "text": "Fallback output proof older than 507h is failed; assess the calendar and explicit dispositions rather than treating a lock skip as a new completion."
+        },
+        {
+          "check": "authority_or_dry_run_mutation",
+          "text": "Any dry-run business mutation, unapproved extra writer/scheduler, model/provider authority change, secret exposure, direct send, broker/order/stop/risk mutation or automatic ratification violates this contract."
+        }
+      ],
+      "healthy": [
+        {
+          "check": "shadow_run_chain",
+          "text": "For an authorized shadow slot, unique run_id has durable REQUESTED -> claimed/started -> RUN_DONE, mode=dry_run, exit_code=0 and a durable host RunReceipt. n8n execution status is not proof."
+        },
+        {
+          "check": "offline_nonmutation",
+          "text": "Dry-run preserves business outputs, queues, database state and real-run lane receipt; no model, provider or send call. Before/after output measurement alone does not establish all nonmutation."
+        },
+        {
+          "check": "current_host_receipt",
+          "text": "Legacy-host business run has a readable LaneRunReceipt@v1 for this lane, mode=live, status=ok, exit=0 and attributable finished_at/ok_at; verify actual publication rather than assume the best-effort helper wrote it."
+        },
+        {
+          "check": "business_result",
+          "text": "Every selected stale target is successfully refreshed, with no_profile=0 and rejected=0 on the work path. A fresh/updated 0 fast path is healthy only after independently establishing the configured universe exists and its profiles are fresh."
+        },
+        {
+          "check": "schedule_and_freshness",
+          "text": "Proof covers the latest eligible calendar slot after its completion allowance; input/output availability and receipt status are valid. Apply the proposed calendar-aware 2x fallback only alongside due-slot coverage, never to conceal missed normal fires."
+        },
+        {
+          "check": "duration_reference",
+          "text": "Runtime is no greater than the proposed 720s degraded reference (80% of 900s timeout), unless later owner-reviewed live evidence replaces it."
+        }
+      ],
+      "id": "build-symbol-profiles-at-0-19",
+      "kind": "lane",
+      "owner": "portfolio",
+      "purpose": {
+        "business_function": "research",
+        "source": "scripts/build_symbol_profiles.py; source refs in evidence",
+        "text": "Refresh weekly company descriptions, sectors and industries for the existing watch-grade research universe through the symbol-profile domain writer."
+      },
+      "receipt_semantics": {
+        "fields": [
+          "lane_id",
+          "mode",
+          "status",
+          "exit",
+          "started_at",
+          "finished_at",
+          "ok_at",
+          "summary"
+        ],
+        "lock_or_deferred_dispositions": "Obtain separate executor/wrapper RunReceipt; these lane summaries do not prove scheduler skips or deferrals.",
+        "on_failure": "Previous ok_at preserved; current failed status remains authoritative. Receipt publication is best-effort and must be checked.",
+        "path": "data/runtime/build-symbol-profiles-at-0-19_last.json",
+        "schema": "LaneRunReceipt@v1",
+        "summary_fields": [
+          "status (fresh fast path)",
+          "updated",
+          "checked (work path)",
+          "finviz_fallback (work path)",
+          "no_profile (work path)",
+          "rejected (work path)"
+        ]
+      },
+      "remediation": {
+        "automatic_actions": [],
+        "catalogue_entry": false,
+        "diagnosis_excluded": true,
+        "note": "No candidate is present in the inspected source catalogue. Manual read-only triage and owner review only; this packet adds no diagnosis, rerun, retry, live-send or policy authority.",
+        "runbook": "docs/implementation/n8n-maturity/N8N_MONITORING_AND_REMEDIATION_STANDARD.md; lane-specific proof holds in this contract"
+      },
+      "review_by": "2026-10-25",
+      "schema": "N8nHealthContract@v1",
+      "stage": "shadow",
+      "status": "DRAFT",
+      "target_reason": "completion119 candidate; disabled and outside operative configuration",
+      "workflow_id": "tradeai-dispatcher"
+    },
+    {
+      "admission_holds": [
+        "Prove actual request-feed availability and consumer invocation; this source review does not investigate the financial decision engine.",
+        "Correct the candidate 24h cadence: Friday19:20 to Monday07:20 is 60h wall time and 61h across fall DST.",
+        "Owner contract review, Claude train 5 exact-head CI and current source/runtime/argv/lock/consumer evidence remain separate prerequisites; this packet grants none."
+      ],
+      "alerting": {
+        "degraded": {
+          "notifier_priority": "P3",
+          "siem_severity": "WARN"
+        },
+        "enforced": "This external DRAFT packet is not installed; runtime enforcement NOT_MEASURED.",
+        "failed": {
+          "notifier_priority": "P1",
+          "siem_severity": "URGENT"
+        },
+        "lane_severity": "Medium",
+        "routing": "Proposed host SIEM/incident intent through existing communications gateway only; n8n holds no notification/send authority.",
+        "severity_basis": "SOURCE_ONLY candidate class proposal; operator review required"
+      },
+      "baseline": {
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "class": "ingest",
+        "computed_on": "2026-10-11",
+        "duration_degraded_above_s": 240.0,
+        "duration_p50_s": null,
+        "duration_p95_s": null,
+        "failure_rate": null,
+        "freshness_calendar": {
+          "calculation_window": [
+            "2026-10-01T00:00:00Z",
+            "2027-11-08T00:00:00Z"
+          ],
+          "computed_max_utc_gap_hours": 61.0,
+          "cron": [
+            "20 7,19 * * 1-5"
+          ],
+          "dst": "native gap coalescing/fold0 once; reconcile installed scheduler semantics before admission",
+          "parser": "scripts/lib/cron_schedule.py:fires_between",
+          "slot_proof_required": true,
+          "source_candidate_cadence_hours": 24.0,
+          "tz": "America/New_York"
+        },
+        "freshness_degraded_after_h": 122.0,
+        "freshness_failed_after_h": 183.0,
+        "freshness_rule": "2x/3x computed maximum UTC inter-fire gap is a provisional fallback; latest eligible slot proof is independently required. Neither these proposals nor a source-only calendar establish observed SLOs.",
+        "lock_skip_rate": null,
+        "runs_considered": null,
+        "runtime_evidence": "NOT_MEASURED",
+        "source": "SOURCE_ONLY proposed runner timeout and source calendar; native DST-safe cron parser. No live ledger or output was measured.",
+        "timeout_s": 300
+      },
+      "connects_to": [
+        {
+          "direction": "calls",
+          "kind": "service",
+          "name": "n8n shadow coordinator -> scoped host relay -> gateway durable request -> host executor",
+          "source": "AGENTS.md \u00a723.3; proposed shadow route only"
+        },
+        {
+          "direction": "calls",
+          "kind": "runner",
+          "name": "$PY scripts/drain_cio_stance_classification.py --apply --dry-run",
+          "source": "scripts/drain_cio_stance_classification.py; SOURCE_ONLY proposed allowlist argv"
+        },
+        {
+          "direction": "read_write",
+          "kind": "lock",
+          "name": "/tmp/cio_stance_classify.lock",
+          "source": "Candidate flock lock; current host parity NOT_MEASURED"
+        },
+        {
+          "direction": "write",
+          "kind": "receipt",
+          "name": "<STATE_ROOT>/data/runtime/cio-stance-classification-drain_last.json",
+          "source": "scripts/lib/lane_last_receipt.py:122; real run only; dry-run must not write it"
+        },
+        {
+          "direction": "read",
+          "kind": "store",
+          "name": "cio_stance_review_requests.jsonl and prior per-request receipts",
+          "source": "scripts/drain_cio_stance_classification.py:118; scripts/drain_cio_stance_classification.py:198"
+        },
+        {
+          "direction": "read",
+          "kind": "store",
+          "name": "ticker_strategy_classifications, strategy_rule_evaluations, trade_ai_scans, strategy_registry",
+          "source": "scripts/drain_cio_stance_classification.py:118; scripts/drain_cio_stance_classification.py:198"
+        },
+        {
+          "direction": "read",
+          "kind": "store",
+          "name": "deterministic classifier cache/config",
+          "source": "scripts/drain_cio_stance_classification.py:118; scripts/drain_cio_stance_classification.py:198"
+        },
+        {
+          "direction": "write",
+          "kind": "store",
+          "name": "agent_classification_suggestions, active strategy classifications and classification history",
+          "source": "scripts/drain_cio_stance_classification.py:118; scripts/drain_cio_stance_classification.py:198; scripts/drain_cio_stance_classification.py:324; scripts/drain_cio_stance_classification.py:444"
+        },
+        {
+          "direction": "write",
+          "kind": "store",
+          "name": "delegated deterministic rule evaluations",
+          "source": "scripts/drain_cio_stance_classification.py:118; scripts/drain_cio_stance_classification.py:198; scripts/drain_cio_stance_classification.py:324; scripts/drain_cio_stance_classification.py:444"
+        },
+        {
+          "direction": "write",
+          "kind": "store",
+          "name": "per-request result JSONL and lane receipt",
+          "source": "scripts/drain_cio_stance_classification.py:118; scripts/drain_cio_stance_classification.py:198; scripts/drain_cio_stance_classification.py:324; scripts/drain_cio_stance_classification.py:444"
+        },
+        {
+          "direction": "read",
+          "kind": "consumer",
+          "name": "CIO decision-engine consumption is declared by the producer; actual invocation remains NOT_MEASURED",
+          "source": "scripts/drain_cio_stance_classification.py:8; SOURCE_ONLY consumer edge; runtime activity NOT_MEASURED"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "business_partial_or_unproven",
+          "text": "Any nonzero errors count with a mixed successful run is DEGRADED even though exit 0/statusok advances ok_at. Missing/malformed request input can masquerade as pending 0 and requires separate availability evidence."
+        },
+        {
+          "check": "late_or_slow",
+          "text": "Fallback freshness age beyond 122h through 183h, or duration above 240s but below hard timeout; use eligible-slot/DST proof to identify missed regular work."
+        },
+        {
+          "check": "retry_or_lock_skip",
+          "text": "Any retry or RUN_SKIPPED_LOCK is visible and not completed business work; repeated skips require owner triage. A lock never justifies two business scheduler authorities."
+        },
+        {
+          "check": "upstream_or_consumer_proof",
+          "text": "Unavailable required input or consumer freshness/coverage evidence is non-proven health; record NOT_MEASURED/NO_SIGNAL reason rather than a fake0 or healthy green."
+        }
+      ],
+      "evidence": {
+        "evidence_class": "SOURCE_ONLY",
+        "never": "No runtime claim from n8n execution color, telemetry success, recent file mtime, computed count, old ok_at or this DRAFT document.",
+        "receipt": "data/runtime/cio-stance-classification-drain_last.json",
+        "runtime": "NOT_MEASURED",
+        "source_head": "e3078ccfab51ed8118f6bdab36ce416fe5fd9cd5",
+        "source_refs": [
+          "scripts/drain_cio_stance_classification.py",
+          "scripts/drain_cio_stance_classification.py:118",
+          "scripts/drain_cio_stance_classification.py:198",
+          "scripts/drain_cio_stance_classification.py:324",
+          "scripts/drain_cio_stance_classification.py:444",
+          "scripts/drain_cio_stance_classification.py:8"
+        ],
+        "verify": [
+          "On an authorized host, open coordination ledger in read-only mode and query: SELECT run_id, lane_id, mode, state, requested_at, started_at, finished_at, exit_code, duration_s, receipt_json FROM runs WHERE lane_id='cio-stance-classification-drain' ORDER BY requested_at DESC LIMIT 10;",
+          "Read the canonical lane receipt; validate schema/identity/current status/exit/summary and attribute timestamps to the business run. Missing receipt is failed proof.",
+          "Request input is available, pending selection completes and errors=0. No pending requests, already-classified requests, no deterministic match or invalid strategy type may be explicit completed dispositions; they are not lock skips.",
+          "Read required business stores and source-qualified consumer outputs independently; reconcile committed effect, no-work/disposition and any partial/errors. No query or host command was executed to draft this packet.",
+          "Inspect current installed scheduler/code-root/lock with separate authorization; compare this proposed calendar and lock metadata before admission."
+        ]
+      },
+      "evidence_class": "SOURCE_ONLY",
+      "execution": {
+        "admission_enabled": false,
+        "automatic_promotion": false,
+        "code_root": "CURRENT required on future admission; installed code root NOT_MEASURED",
+        "current_lock_parity": "NOT_MEASURED; absent from captured command means new proposal, not existing-lock reuse",
+        "env_allowlist_mode": "report",
+        "env_closure": "Recursive safe import/env/child review required; names are not proof of enforce-mode closure.",
+        "env_names_metadata": [
+          "DB_CONN_TRACE",
+          "DB_HOST",
+          "DB_NAME",
+          "DB_PASSWORD",
+          "DB_PORT",
+          "DB_USER",
+          "PROJECT_ROOT",
+          "SAFE_FLOCK_LOG_DIR",
+          "TRADEAI_PERSISTENT_STATE_ROOT",
+          "TRADEAI_ROOT"
+        ],
+        "legacy_business_command": [
+          "$PY",
+          "scripts/drain_cio_stance_classification.py",
+          "--apply"
+        ],
+        "live_arg": null,
+        "lock": "/tmp/cio_stance_classify.lock",
+        "lock_kind": "flock",
+        "lock_path_in_captured_command": true,
+        "market_day_gate": false,
+        "proposed_mode": "dry_run",
+        "shadow_command": [
+          "$PY",
+          "scripts/drain_cio_stance_classification.py",
+          "--apply",
+          "--dry-run"
+        ]
+      },
+      "failed": [
+        {
+          "check": "business_failure",
+          "text": "All pending requests erroring returns 1 and a failed receipt; unavailable/unverifiable request/result evidence cannot establish successful drainage."
+        },
+        {
+          "check": "host_run_failure",
+          "text": "RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED, nonzero job exit, status=failed, malformed/missing durable RunReceipt or lane receipt fails the applicable run proof. Old preserved ok_at does not override current failure."
+        },
+        {
+          "check": "stale_output",
+          "text": "Fallback output proof older than 183h is failed; assess the calendar and explicit dispositions rather than treating a lock skip as a new completion."
+        },
+        {
+          "check": "authority_or_dry_run_mutation",
+          "text": "Any dry-run business mutation, unapproved extra writer/scheduler, model/provider authority change, secret exposure, direct send, broker/order/stop/risk mutation or automatic ratification violates this contract."
+        }
+      ],
+      "healthy": [
+        {
+          "check": "shadow_run_chain",
+          "text": "For an authorized shadow slot, unique run_id has durable REQUESTED -> claimed/started -> RUN_DONE, mode=dry_run, exit_code=0 and a durable host RunReceipt. n8n execution status is not proof."
+        },
+        {
+          "check": "offline_nonmutation",
+          "text": "Dry-run preserves business outputs, queues, database state and real-run lane receipt; no model, provider or send call. Before/after output measurement alone does not establish all nonmutation."
+        },
+        {
+          "check": "current_host_receipt",
+          "text": "Legacy-host business run has a readable LaneRunReceipt@v1 for this lane, mode=live, status=ok, exit=0 and attributable finished_at/ok_at; verify actual publication rather than assume the best-effort helper wrote it."
+        },
+        {
+          "check": "business_result",
+          "text": "Request input is available, pending selection completes and errors=0. No pending requests, already-classified requests, no deterministic match or invalid strategy type may be explicit completed dispositions; they are not lock skips."
+        },
+        {
+          "check": "schedule_and_freshness",
+          "text": "Proof covers the latest eligible calendar slot after its completion allowance; input/output availability and receipt status are valid. Apply the proposed calendar-aware 2x fallback only alongside due-slot coverage, never to conceal missed normal fires."
+        },
+        {
+          "check": "duration_reference",
+          "text": "Runtime is no greater than the proposed 240s degraded reference (80% of 300s timeout), unless later owner-reviewed live evidence replaces it."
+        }
+      ],
+      "id": "cio-stance-classification-drain",
+      "kind": "lane",
+      "owner": "cio",
+      "purpose": {
+        "business_function": "research",
+        "source": "scripts/drain_cio_stance_classification.py; source refs in evidence",
+        "text": "Drain recent CIO stance-review classification requests through the existing deterministic strategy classifier and record each request disposition without a model call."
+      },
+      "receipt_semantics": {
+        "fields": [
+          "lane_id",
+          "mode",
+          "status",
+          "exit",
+          "started_at",
+          "finished_at",
+          "ok_at",
+          "summary"
+        ],
+        "lock_or_deferred_dispositions": "Obtain separate executor/wrapper RunReceipt; these lane summaries do not prove scheduler skips or deferrals.",
+        "on_failure": "Previous ok_at preserved; current failed status remains authoritative. Receipt publication is best-effort and must be checked.",
+        "path": "data/runtime/cio-stance-classification-drain_last.json",
+        "schema": "LaneRunReceipt@v1",
+        "summary_fields": [
+          "pending",
+          "applied",
+          "counts",
+          "errors"
+        ]
+      },
+      "remediation": {
+        "automatic_actions": [],
+        "catalogue_entry": false,
+        "diagnosis_excluded": true,
+        "note": "No candidate is present in the inspected source catalogue. Manual read-only triage and owner review only; this packet adds no diagnosis, rerun, retry, live-send or policy authority.",
+        "runbook": "docs/implementation/n8n-maturity/N8N_MONITORING_AND_REMEDIATION_STANDARD.md; lane-specific proof holds in this contract"
+      },
+      "review_by": "2026-10-25",
+      "schema": "N8nHealthContract@v1",
+      "stage": "shadow",
+      "status": "DRAFT",
+      "target_reason": "completion119 candidate; disabled and outside operative configuration",
+      "workflow_id": "tradeai-dispatcher"
+    },
+    {
+      "admission_holds": [
+        "Confirm current ownership/lock/env closure and transition consumer attribution before admission.",
+        "Owner contract review, Claude train 5 exact-head CI and current source/runtime/argv/lock/consumer evidence remain separate prerequisites; this packet grants none."
+      ],
+      "alerting": {
+        "degraded": {
+          "notifier_priority": "P3",
+          "siem_severity": "INFO"
+        },
+        "enforced": "This external DRAFT packet is not installed; runtime enforcement NOT_MEASURED.",
+        "failed": {
+          "notifier_priority": "P2",
+          "siem_severity": "INFO"
+        },
+        "lane_severity": "Medium",
+        "routing": "Proposed host SIEM/incident intent through existing communications gateway only; n8n holds no notification/send authority.",
+        "severity_basis": "SOURCE_ONLY candidate class proposal; operator review required"
+      },
+      "baseline": {
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "class": "learn",
+        "computed_on": "2026-10-11",
+        "duration_degraded_above_s": 240.0,
+        "duration_p50_s": null,
+        "duration_p95_s": null,
+        "failure_rate": null,
+        "freshness_calendar": {
+          "calculation_window": [
+            "2026-10-01T00:00:00Z",
+            "2027-11-08T00:00:00Z"
+          ],
+          "computed_max_utc_gap_hours": 73.0,
+          "cron": [
+            "0 6 * * 1-5"
+          ],
+          "dst": "native gap coalescing/fold0 once; reconcile installed scheduler semantics before admission",
+          "parser": "scripts/lib/cron_schedule.py:fires_between",
+          "slot_proof_required": true,
+          "source_candidate_cadence_hours": 72.0,
+          "tz": "America/New_York"
+        },
+        "freshness_degraded_after_h": 146.0,
+        "freshness_failed_after_h": 219.0,
+        "freshness_rule": "2x/3x computed maximum UTC inter-fire gap is a provisional fallback; latest eligible slot proof is independently required. Neither these proposals nor a source-only calendar establish observed SLOs.",
+        "lock_skip_rate": null,
+        "runs_considered": null,
+        "runtime_evidence": "NOT_MEASURED",
+        "source": "SOURCE_ONLY proposed runner timeout and source calendar; native DST-safe cron parser. No live ledger or output was measured.",
+        "timeout_s": 300
+      },
+      "connects_to": [
+        {
+          "direction": "calls",
+          "kind": "service",
+          "name": "n8n shadow coordinator -> scoped host relay -> gateway durable request -> host executor",
+          "source": "AGENTS.md \u00a723.3; proposed shadow route only"
+        },
+        {
+          "direction": "calls",
+          "kind": "runner",
+          "name": "$PY scripts/drain_discovery_backlog.py --apply --dry-run",
+          "source": "scripts/drain_discovery_backlog.py; SOURCE_ONLY proposed allowlist argv"
+        },
+        {
+          "direction": "read_write",
+          "kind": "lock",
+          "name": "/tmp/drain-discovery-backlog.lock",
+          "source": "Candidate flock lock; current host parity NOT_MEASURED"
+        },
+        {
+          "direction": "write",
+          "kind": "receipt",
+          "name": "<STATE_ROOT>/data/runtime/drain-discovery-backlog_last.json",
+          "source": "scripts/lib/lane_last_receipt.py:122; real run only; dry-run must not write it"
+        },
+        {
+          "direction": "read",
+          "kind": "store",
+          "name": "hermes_discovery_candidates (eligible CLUSTERED/DISCOVERED rows and their age/operator provenance)",
+          "source": "scripts/drain_discovery_backlog.py:64; scripts/drain_discovery_backlog.py:126"
+        },
+        {
+          "direction": "write",
+          "kind": "store",
+          "name": "hermes_discovery_candidates status and timestamps",
+          "source": "scripts/drain_discovery_backlog.py:64; scripts/drain_discovery_backlog.py:126; scripts/drain_discovery_backlog.py:139; scripts/drain_discovery_backlog.py:158"
+        },
+        {
+          "direction": "write",
+          "kind": "store",
+          "name": "hermes_discovery_audit TRANSITION rows",
+          "source": "scripts/drain_discovery_backlog.py:64; scripts/drain_discovery_backlog.py:126; scripts/drain_discovery_backlog.py:139; scripts/drain_discovery_backlog.py:158"
+        },
+        {
+          "direction": "write",
+          "kind": "store",
+          "name": "canonical lane receipt",
+          "source": "scripts/drain_discovery_backlog.py:64; scripts/drain_discovery_backlog.py:126; scripts/drain_discovery_backlog.py:139; scripts/drain_discovery_backlog.py:158"
+        },
+        {
+          "direction": "read",
+          "kind": "consumer",
+          "name": "Discovery inbox CLI/API",
+          "source": "scripts/lib/hermes_discovery/inbox.py:503; SOURCE_ONLY consumer edge; runtime activity NOT_MEASURED"
+        },
+        {
+          "direction": "read",
+          "kind": "consumer",
+          "name": "READY_FOR_REVIEW governance reader",
+          "source": "scripts/lib/hermes_discovery/autonomous_governance.py:142; SOURCE_ONLY consumer edge; runtime activity NOT_MEASURED"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "business_partial_or_unproven",
+          "text": "Unavailable selection/transition attribution or unresolved backlog age leaves drainage efficacy non-proven despite a recent receipt; a queue/backlog trend requires runtime measurement."
+        },
+        {
+          "check": "late_or_slow",
+          "text": "Fallback freshness age beyond 146h through 219h, or duration above 240s but below hard timeout; use eligible-slot/DST proof to identify missed regular work."
+        },
+        {
+          "check": "retry_or_lock_skip",
+          "text": "Any retry or RUN_SKIPPED_LOCK is visible and not completed business work; repeated skips require owner triage. A lock never justifies two business scheduler authorities."
+        },
+        {
+          "check": "upstream_or_consumer_proof",
+          "text": "Unavailable required input or consumer freshness/coverage evidence is non-proven health; record NOT_MEASURED/NO_SIGNAL reason rather than a fake0 or healthy green."
+        }
+      ],
+      "evidence": {
+        "evidence_class": "SOURCE_ONLY",
+        "never": "No runtime claim from n8n execution color, telemetry success, recent file mtime, computed count, old ok_at or this DRAFT document.",
+        "receipt": "data/runtime/drain-discovery-backlog_last.json",
+        "runtime": "NOT_MEASURED",
+        "source_head": "e3078ccfab51ed8118f6bdab36ce416fe5fd9cd5",
+        "source_refs": [
+          "scripts/drain_discovery_backlog.py",
+          "scripts/drain_discovery_backlog.py:64",
+          "scripts/drain_discovery_backlog.py:126",
+          "scripts/drain_discovery_backlog.py:139",
+          "scripts/drain_discovery_backlog.py:158",
+          "scripts/lib/hermes_discovery/inbox.py:503",
+          "scripts/lib/hermes_discovery/autonomous_governance.py:142"
+        ],
+        "verify": [
+          "On an authorized host, open coordination ledger in read-only mode and query: SELECT run_id, lane_id, mode, state, requested_at, started_at, finished_at, exit_code, duration_s, receipt_json FROM runs WHERE lane_id='drain-discovery-backlog' ORDER BY requested_at DESC LIMIT 10;",
+          "Read the canonical lane receipt; validate schema/identity/current status/exit/summary and attribute timestamps to the business run. Missing receipt is failed proof.",
+          "Selection queries and intended transitions/audit writes commit; successful empty selection can produce promoted0/archived0. This drains actual discovery candidates, not a table named discovery_backlog.",
+          "Read required business stores and source-qualified consumer outputs independently; reconcile committed effect, no-work/disposition and any partial/errors. No query or host command was executed to draft this packet.",
+          "Inspect current installed scheduler/code-root/lock with separate authorization; compare this proposed calendar and lock metadata before admission."
+        ]
+      },
+      "evidence_class": "SOURCE_ONLY",
+      "execution": {
+        "admission_enabled": false,
+        "automatic_promotion": false,
+        "code_root": "CURRENT required on future admission; installed code root NOT_MEASURED",
+        "current_lock_parity": "NOT_MEASURED; absent from captured command means new proposal, not existing-lock reuse",
+        "env_allowlist_mode": "report",
+        "env_closure": "Recursive safe import/env/child review required; names are not proof of enforce-mode closure.",
+        "env_names_metadata": [
+          "DB_CONN_TRACE",
+          "DB_HOST",
+          "DB_NAME",
+          "DB_PASSWORD",
+          "DB_PORT",
+          "DB_USER",
+          "PROJECT_ROOT",
+          "SAFE_FLOCK_LOG_DIR",
+          "TRADEAI_PERSISTENT_STATE_ROOT",
+          "TRADEAI_ROOT"
+        ],
+        "legacy_business_command": [
+          "$PY",
+          "scripts/drain_discovery_backlog.py",
+          "--apply"
+        ],
+        "live_arg": null,
+        "lock": "/tmp/drain-discovery-backlog.lock",
+        "lock_kind": "flock",
+        "lock_path_in_captured_command": false,
+        "market_day_gate": false,
+        "proposed_mode": "dry_run",
+        "shadow_command": [
+          "$PY",
+          "scripts/drain_discovery_backlog.py",
+          "--apply",
+          "--dry-run"
+        ]
+      },
+      "failed": [
+        {
+          "check": "business_failure",
+          "text": "DB/statement exception writes failed/exit 1 and re-raises; missing durable receipt or inconsistent transition/audit evidence fails proof."
+        },
+        {
+          "check": "host_run_failure",
+          "text": "RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED, nonzero job exit, status=failed, malformed/missing durable RunReceipt or lane receipt fails the applicable run proof. Old preserved ok_at does not override current failure."
+        },
+        {
+          "check": "stale_output",
+          "text": "Fallback output proof older than 219h is failed; assess the calendar and explicit dispositions rather than treating a lock skip as a new completion."
+        },
+        {
+          "check": "authority_or_dry_run_mutation",
+          "text": "Any dry-run business mutation, unapproved extra writer/scheduler, model/provider authority change, secret exposure, direct send, broker/order/stop/risk mutation or automatic ratification violates this contract."
+        }
+      ],
+      "healthy": [
+        {
+          "check": "shadow_run_chain",
+          "text": "For an authorized shadow slot, unique run_id has durable REQUESTED -> claimed/started -> RUN_DONE, mode=dry_run, exit_code=0 and a durable host RunReceipt. n8n execution status is not proof."
+        },
+        {
+          "check": "offline_nonmutation",
+          "text": "Dry-run preserves business outputs, queues, database state and real-run lane receipt; no model, provider or send call. Before/after output measurement alone does not establish all nonmutation."
+        },
+        {
+          "check": "current_host_receipt",
+          "text": "Legacy-host business run has a readable LaneRunReceipt@v1 for this lane, mode=live, status=ok, exit=0 and attributable finished_at/ok_at; verify actual publication rather than assume the best-effort helper wrote it."
+        },
+        {
+          "check": "business_result",
+          "text": "Selection queries and intended transitions/audit writes commit; successful empty selection can produce promoted0/archived0. This drains actual discovery candidates, not a table named discovery_backlog."
+        },
+        {
+          "check": "schedule_and_freshness",
+          "text": "Proof covers the latest eligible calendar slot after its completion allowance; input/output availability and receipt status are valid. Apply the proposed calendar-aware 2x fallback only alongside due-slot coverage, never to conceal missed normal fires."
+        },
+        {
+          "check": "duration_reference",
+          "text": "Runtime is no greater than the proposed 240s degraded reference (80% of 300s timeout), unless later owner-reviewed live evidence replaces it."
+        }
+      ],
+      "id": "drain-discovery-backlog",
+      "kind": "lane",
+      "owner": "research",
+      "purpose": {
+        "business_function": "research",
+        "source": "scripts/drain_discovery_backlog.py; source refs in evidence",
+        "text": "Advance recent non-operator discovery candidates to READY_FOR_REVIEW and archive expired candidates while recording lifecycle transitions."
+      },
+      "receipt_semantics": {
+        "fields": [
+          "lane_id",
+          "mode",
+          "status",
+          "exit",
+          "started_at",
+          "finished_at",
+          "ok_at",
+          "summary"
+        ],
+        "lock_or_deferred_dispositions": "Obtain separate executor/wrapper RunReceipt; these lane summaries do not prove scheduler skips or deferrals.",
+        "on_failure": "Previous ok_at preserved; current failed status remains authoritative. Receipt publication is best-effort and must be checked.",
+        "path": "data/runtime/drain-discovery-backlog_last.json",
+        "schema": "LaneRunReceipt@v1",
+        "summary_fields": [
+          "promoted",
+          "archived"
+        ]
+      },
+      "remediation": {
+        "automatic_actions": [],
+        "catalogue_entry": false,
+        "diagnosis_excluded": true,
+        "note": "No candidate is present in the inspected source catalogue. Manual read-only triage and owner review only; this packet adds no diagnosis, rerun, retry, live-send or policy authority.",
+        "runbook": "docs/implementation/n8n-maturity/N8N_MONITORING_AND_REMEDIATION_STANDARD.md; lane-specific proof holds in this contract"
+      },
+      "review_by": "2026-10-25",
+      "schema": "N8nHealthContract@v1",
+      "stage": "shadow",
+      "status": "DRAFT",
+      "target_reason": "completion119 candidate; disabled and outside operative configuration",
+      "workflow_id": "tradeai-dispatcher"
+    },
+    {
+      "admission_holds": [
+        "Both business artifacts are code-relative; establish durable STATE_ROOT/read-consumer path convergence before admission.",
+        "Metric completeness is not proven by the three receipt counts or initial DB ping.",
+        "Candidate proposes a new outer lock; captured cron lock parity is absent and must not be claimed.",
+        "Owner contract review, Claude train 5 exact-head CI and current source/runtime/argv/lock/consumer evidence remain separate prerequisites; this packet grants none."
+      ],
+      "alerting": {
+        "degraded": {
+          "notifier_priority": "P3",
+          "siem_severity": "INFO"
+        },
+        "enforced": "This external DRAFT packet is not installed; runtime enforcement NOT_MEASURED.",
+        "failed": {
+          "notifier_priority": "P2",
+          "siem_severity": "WARN"
+        },
+        "lane_severity": "Medium",
+        "routing": "Proposed host SIEM/incident intent through existing communications gateway only; n8n holds no notification/send authority.",
+        "severity_basis": "SOURCE_ONLY candidate class proposal; operator review required"
+      },
+      "baseline": {
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "class": "learn",
+        "computed_on": "2026-10-11",
+        "duration_degraded_above_s": 240.0,
+        "duration_p50_s": null,
+        "duration_p95_s": null,
+        "failure_rate": null,
+        "freshness_calendar": {
+          "calculation_window": [
+            "2026-10-01T00:00:00Z",
+            "2027-11-08T00:00:00Z"
+          ],
+          "computed_max_utc_gap_hours": 25.0,
+          "cron": [
+            "30 5 * * *"
+          ],
+          "dst": "native gap coalescing/fold0 once; reconcile installed scheduler semantics before admission",
+          "parser": "scripts/lib/cron_schedule.py:fires_between",
+          "slot_proof_required": true,
+          "source_candidate_cadence_hours": 24.0,
+          "tz": "America/New_York"
+        },
+        "freshness_degraded_after_h": 50.0,
+        "freshness_failed_after_h": 75.0,
+        "freshness_rule": "2x/3x computed maximum UTC inter-fire gap is a provisional fallback; latest eligible slot proof is independently required. Neither these proposals nor a source-only calendar establish observed SLOs.",
+        "lock_skip_rate": null,
+        "runs_considered": null,
+        "runtime_evidence": "NOT_MEASURED",
+        "source": "SOURCE_ONLY proposed runner timeout and source calendar; native DST-safe cron parser. No live ledger or output was measured.",
+        "timeout_s": 300
+      },
+      "connects_to": [
+        {
+          "direction": "calls",
+          "kind": "service",
+          "name": "n8n shadow coordinator -> scoped host relay -> gateway durable request -> host executor",
+          "source": "AGENTS.md \u00a723.3; proposed shadow route only"
+        },
+        {
+          "direction": "calls",
+          "kind": "runner",
+          "name": "$PY scripts/hermes_discovery_scorecard.py --dry-run",
+          "source": "scripts/hermes_discovery_scorecard.py; SOURCE_ONLY proposed allowlist argv"
+        },
+        {
+          "direction": "read_write",
+          "kind": "lock",
+          "name": "/tmp/hermes-discovery-scorecard.lock",
+          "source": "Candidate flock lock; current host parity NOT_MEASURED"
+        },
+        {
+          "direction": "write",
+          "kind": "receipt",
+          "name": "<STATE_ROOT>/data/runtime/hermes-discovery-scorecard_last.json",
+          "source": "scripts/lib/lane_last_receipt.py:122; real run only; dry-run must not write it"
+        },
+        {
+          "direction": "read",
+          "kind": "store",
+          "name": "hermes_discovery_candidates, discovery audit and discovery feedback tables",
+          "source": "scripts/hermes_discovery_scorecard.py:47; scripts/hermes_discovery_scorecard.py:228"
+        },
+        {
+          "direction": "write",
+          "kind": "store",
+          "name": "code-relative data/runtime/hermes_discovery_scorecard.json",
+          "source": "scripts/hermes_discovery_scorecard.py:47; scripts/hermes_discovery_scorecard.py:228; scripts/hermes_discovery_scorecard.py:351; scripts/hermes_discovery_scorecard.py:358; scripts/hermes_discovery_scorecard.py:406; scripts/hermes_discovery_scorecard.py:432"
+        },
+        {
+          "direction": "write",
+          "kind": "store",
+          "name": "code-relative data/runtime/hermes_discovery_outcome_feed.json (rolling history)",
+          "source": "scripts/hermes_discovery_scorecard.py:47; scripts/hermes_discovery_scorecard.py:228; scripts/hermes_discovery_scorecard.py:351; scripts/hermes_discovery_scorecard.py:358; scripts/hermes_discovery_scorecard.py:406; scripts/hermes_discovery_scorecard.py:432"
+        },
+        {
+          "direction": "write",
+          "kind": "store",
+          "name": "durable canonical lane receipt",
+          "source": "scripts/hermes_discovery_scorecard.py:47; scripts/hermes_discovery_scorecard.py:228; scripts/hermes_discovery_scorecard.py:351; scripts/hermes_discovery_scorecard.py:358; scripts/hermes_discovery_scorecard.py:406; scripts/hermes_discovery_scorecard.py:432"
+        },
+        {
+          "direction": "read",
+          "kind": "consumer",
+          "name": "Discovery scorecard API",
+          "source": "scripts/api_v2.py:47055; SOURCE_ONLY consumer edge; runtime activity NOT_MEASURED"
+        },
+        {
+          "direction": "read",
+          "kind": "consumer",
+          "name": "Outcome-bus feed reader",
+          "source": "scripts/lib/hermes_outcome_bus/bus.py:100; SOURCE_ONLY consumer edge; runtime activity NOT_MEASURED"
+        },
+        {
+          "direction": "read",
+          "kind": "consumer",
+          "name": "Outcome-feedback consumer calls the bus",
+          "source": "scripts/hermes_outcome_feedback_agent.py:595; SOURCE_ONLY consumer edge; runtime activity NOT_MEASURED"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "business_partial_or_unproven",
+          "text": "Later query failures can turn into default/zero metrics; do-no-harm recommendation warnings and unverified metric/artifact/root coverage stay degraded or non-proven. Cron-drift check failure is nonfatal in the producer."
+        },
+        {
+          "check": "late_or_slow",
+          "text": "Fallback freshness age beyond 50h through 75h, or duration above 240s but below hard timeout; use eligible-slot/DST proof to identify missed regular work."
+        },
+        {
+          "check": "retry_or_lock_skip",
+          "text": "Any retry or RUN_SKIPPED_LOCK is visible and not completed business work; repeated skips require owner triage. A lock never justifies two business scheduler authorities."
+        },
+        {
+          "check": "upstream_or_consumer_proof",
+          "text": "Unavailable required input or consumer freshness/coverage evidence is non-proven health; record NOT_MEASURED/NO_SIGNAL reason rather than a fake0 or healthy green."
+        }
+      ],
+      "evidence": {
+        "evidence_class": "SOURCE_ONLY",
+        "never": "No runtime claim from n8n execution color, telemetry success, recent file mtime, computed count, old ok_at or this DRAFT document.",
+        "receipt": "data/runtime/hermes-discovery-scorecard_last.json",
+        "runtime": "NOT_MEASURED",
+        "source_head": "e3078ccfab51ed8118f6bdab36ce416fe5fd9cd5",
+        "source_refs": [
+          "scripts/hermes_discovery_scorecard.py",
+          "scripts/hermes_discovery_scorecard.py:47",
+          "scripts/hermes_discovery_scorecard.py:228",
+          "scripts/hermes_discovery_scorecard.py:351",
+          "scripts/hermes_discovery_scorecard.py:358",
+          "scripts/hermes_discovery_scorecard.py:406",
+          "scripts/hermes_discovery_scorecard.py:432",
+          "scripts/api_v2.py:47055",
+          "scripts/lib/hermes_outcome_bus/bus.py:100",
+          "scripts/hermes_outcome_feedback_agent.py:595"
+        ],
+        "verify": [
+          "On an authorized host, open coordination ledger in read-only mode and query: SELECT run_id, lane_id, mode, state, requested_at, started_at, finished_at, exit_code, duration_s, receipt_json FROM runs WHERE lane_id='hermes-discovery-scorecard' ORDER BY requested_at DESC LIMIT 10;",
+          "Read the canonical lane receipt; validate schema/identity/current status/exit/summary and attribute timestamps to the business run. Missing receipt is failed proof.",
+          "All required metric queries are independently known to have succeeded and both artifacts parse with consistent latest metric values and their actual producer timestamp fields. An actually empty queried dataset can be healthy; SELECT1 and zero defaults are insufficient proof.",
+          "Read required business stores and source-qualified consumer outputs independently; reconcile committed effect, no-work/disposition and any partial/errors. No query or host command was executed to draft this packet.",
+          "Inspect current installed scheduler/code-root/lock with separate authorization; compare this proposed calendar and lock metadata before admission."
+        ]
+      },
+      "evidence_class": "SOURCE_ONLY",
+      "execution": {
+        "admission_enabled": false,
+        "automatic_promotion": false,
+        "code_root": "CURRENT required on future admission; installed code root NOT_MEASURED",
+        "current_lock_parity": "NOT_MEASURED; absent from captured command means new proposal, not existing-lock reuse",
+        "env_allowlist_mode": "report",
+        "env_closure": "Recursive safe import/env/child review required; names are not proof of enforce-mode closure.",
+        "env_names_metadata": [
+          "DB_HOST",
+          "DB_NAME",
+          "DB_PASSWORD",
+          "DB_PORT",
+          "DB_USER",
+          "TRADEAI_PERSISTENT_STATE_ROOT",
+          "TRADEAI_STATE_ROOT"
+        ],
+        "legacy_business_command": [
+          "$PY",
+          "scripts/hermes_discovery_scorecard.py"
+        ],
+        "live_arg": null,
+        "lock": "/tmp/hermes-discovery-scorecard.lock",
+        "lock_kind": "flock",
+        "lock_path_in_captured_command": false,
+        "market_day_gate": false,
+        "proposed_mode": "dry_run",
+        "shadow_command": [
+          "$PY",
+          "scripts/hermes_discovery_scorecard.py",
+          "--dry-run"
+        ]
+      },
+      "failed": [
+        {
+          "check": "business_failure",
+          "text": "Initial DB probe or uncaught computation/publication exception returns 1. Missing/invalid scorecard, outcome feed or lane receipt fails proof even if a prior artifact remains."
+        },
+        {
+          "check": "host_run_failure",
+          "text": "RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED, nonzero job exit, status=failed, malformed/missing durable RunReceipt or lane receipt fails the applicable run proof. Old preserved ok_at does not override current failure."
+        },
+        {
+          "check": "stale_output",
+          "text": "Fallback output proof older than 75h is failed; assess the calendar and explicit dispositions rather than treating a lock skip as a new completion."
+        },
+        {
+          "check": "authority_or_dry_run_mutation",
+          "text": "Any dry-run business mutation, unapproved extra writer/scheduler, model/provider authority change, secret exposure, direct send, broker/order/stop/risk mutation or automatic ratification violates this contract."
+        }
+      ],
+      "healthy": [
+        {
+          "check": "shadow_run_chain",
+          "text": "For an authorized shadow slot, unique run_id has durable REQUESTED -> claimed/started -> RUN_DONE, mode=dry_run, exit_code=0 and a durable host RunReceipt. n8n execution status is not proof."
+        },
+        {
+          "check": "offline_nonmutation",
+          "text": "Dry-run preserves business outputs, queues, database state and real-run lane receipt; no model, provider or send call. Before/after output measurement alone does not establish all nonmutation."
+        },
+        {
+          "check": "current_host_receipt",
+          "text": "Legacy-host business run has a readable LaneRunReceipt@v1 for this lane, mode=live, status=ok, exit=0 and attributable finished_at/ok_at; verify actual publication rather than assume the best-effort helper wrote it."
+        },
+        {
+          "check": "business_result",
+          "text": "All required metric queries are independently known to have succeeded and both artifacts parse with consistent latest metric values and their actual producer timestamp fields. An actually empty queried dataset can be healthy; SELECT1 and zero defaults are insufficient proof."
+        },
+        {
+          "check": "schedule_and_freshness",
+          "text": "Proof covers the latest eligible calendar slot after its completion allowance; input/output availability and receipt status are valid. Apply the proposed calendar-aware 2x fallback only alongside due-slot coverage, never to conceal missed normal fires."
+        },
+        {
+          "check": "duration_reference",
+          "text": "Runtime is no greater than the proposed 240s degraded reference (80% of 300s timeout), unless later owner-reviewed live evidence replaces it."
+        }
+      ],
+      "id": "hermes-discovery-scorecard",
+      "kind": "lane",
+      "owner": "learning",
+      "purpose": {
+        "business_function": "research",
+        "source": "scripts/hermes_discovery_scorecard.py; source refs in evidence",
+        "text": "Publish advisory discovery intake, decisions, duplicates, recurrence, promotion and seven-day comparison metrics plus a rolling outcome feed for learning consumers."
+      },
+      "receipt_semantics": {
+        "fields": [
+          "lane_id",
+          "mode",
+          "status",
+          "exit",
+          "started_at",
+          "finished_at",
+          "ok_at",
+          "summary"
+        ],
+        "lock_or_deferred_dispositions": "Obtain separate executor/wrapper RunReceipt; these lane summaries do not prove scheduler skips or deferrals.",
+        "on_failure": "Previous ok_at preserved; current failed status remains authoritative. Receipt publication is best-effort and must be checked.",
+        "path": "data/runtime/hermes-discovery-scorecard_last.json",
+        "schema": "LaneRunReceipt@v1",
+        "summary_fields": [
+          "candidates_total",
+          "new_7d",
+          "recommendation"
+        ]
+      },
+      "remediation": {
+        "automatic_actions": [],
+        "catalogue_entry": false,
+        "diagnosis_excluded": true,
+        "note": "No candidate is present in the inspected source catalogue. Manual read-only triage and owner review only; this packet adds no diagnosis, rerun, retry, live-send or policy authority.",
+        "runbook": "docs/implementation/n8n-maturity/N8N_MONITORING_AND_REMEDIATION_STANDARD.md; lane-specific proof holds in this contract"
+      },
+      "review_by": "2026-10-25",
+      "schema": "N8nHealthContract@v1",
+      "stage": "shadow",
+      "status": "DRAFT",
+      "target_reason": "completion119 candidate; disabled and outside operative configuration",
+      "workflow_id": "tradeai-dispatcher"
+    },
+    {
+      "admission_holds": [
+        "Correct candidate 6h cadence: Friday21:20 to Monday08:20 is 59h wall time, 60h across fall DST.",
+        "Source supervisor heartbeat reports success before final failure classification; reconcile telemetry with authoritative receipt.",
+        "Provider/universe/identity closure remains host-owned; no credential migration.",
+        "Owner contract review, Claude train 5 exact-head CI and current source/runtime/argv/lock/consumer evidence remain separate prerequisites; this packet grants none."
+      ],
+      "alerting": {
+        "degraded": {
+          "notifier_priority": "P3",
+          "siem_severity": "INFO"
+        },
+        "enforced": "This external DRAFT packet is not installed; runtime enforcement NOT_MEASURED.",
+        "failed": {
+          "notifier_priority": "P2",
+          "siem_severity": "WARN"
+        },
+        "lane_severity": "Medium",
+        "routing": "Proposed host SIEM/incident intent through existing communications gateway only; n8n holds no notification/send authority.",
+        "severity_basis": "SOURCE_ONLY candidate class proposal; operator review required"
+      },
+      "baseline": {
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "class": "ingest",
+        "computed_on": "2026-10-11",
+        "duration_degraded_above_s": 480.0,
+        "duration_p50_s": null,
+        "duration_p95_s": null,
+        "failure_rate": null,
+        "freshness_calendar": {
+          "calculation_window": [
+            "2026-10-01T00:00:00Z",
+            "2027-11-08T00:00:00Z"
+          ],
+          "computed_max_utc_gap_hours": 60.0,
+          "cron": [
+            "20 8,12,17,21 * * 1-5"
+          ],
+          "dst": "native gap coalescing/fold0 once; reconcile installed scheduler semantics before admission",
+          "parser": "scripts/lib/cron_schedule.py:fires_between",
+          "slot_proof_required": true,
+          "source_candidate_cadence_hours": 6.0,
+          "tz": "America/New_York"
+        },
+        "freshness_degraded_after_h": 120.0,
+        "freshness_failed_after_h": 180.0,
+        "freshness_rule": "2x/3x computed maximum UTC inter-fire gap is a provisional fallback; latest eligible slot proof is independently required. Neither these proposals nor a source-only calendar establish observed SLOs.",
+        "lock_skip_rate": null,
+        "runs_considered": null,
+        "runtime_evidence": "NOT_MEASURED",
+        "source": "SOURCE_ONLY proposed runner timeout and source calendar; native DST-safe cron parser. No live ledger or output was measured.",
+        "timeout_s": 600
+      },
+      "connects_to": [
+        {
+          "direction": "calls",
+          "kind": "service",
+          "name": "n8n shadow coordinator -> scoped host relay -> gateway durable request -> host executor",
+          "source": "AGENTS.md \u00a723.3; proposed shadow route only"
+        },
+        {
+          "direction": "calls",
+          "kind": "runner",
+          "name": "$PY scripts/sec_filings_feed.py --apply --dry-run",
+          "source": "scripts/sec_filings_feed.py; SOURCE_ONLY proposed allowlist argv"
+        },
+        {
+          "direction": "read_write",
+          "kind": "lock",
+          "name": "/tmp/tradeai_sec_filings_feed.lock",
+          "source": "Candidate flock lock; current host parity NOT_MEASURED"
+        },
+        {
+          "direction": "write",
+          "kind": "receipt",
+          "name": "<STATE_ROOT>/data/runtime/sec-filings-feed_last.json",
+          "source": "scripts/lib/lane_last_receipt.py:122; real run only; dry-run must not write it"
+        },
+        {
+          "direction": "read",
+          "kind": "store",
+          "name": "public EDGAR ticker map and per-CIK submissions",
+          "source": "scripts/sec_filings_feed.py:120; scripts/sec_filings_feed.py:160"
+        },
+        {
+          "direction": "read",
+          "kind": "store",
+          "name": "stored holdings snapshot, fundamentals-universe/identity-loader boundary",
+          "source": "scripts/sec_filings_feed.py:120; scripts/sec_filings_feed.py:160"
+        },
+        {
+          "direction": "read",
+          "kind": "store",
+          "name": "existing filing event GUIDs for dedup",
+          "source": "scripts/sec_filings_feed.py:120; scripts/sec_filings_feed.py:160"
+        },
+        {
+          "direction": "write",
+          "kind": "store",
+          "name": "EDGAR ticker cache",
+          "source": "scripts/sec_filings_feed.py:120; scripts/sec_filings_feed.py:160; scripts/sec_filings_feed.py:206; scripts/sec_filings_feed.py:254; scripts/sec_filings_feed.py:270; scripts/sec_filings_feed.py:303"
+        },
+        {
+          "direction": "write",
+          "kind": "store",
+          "name": "data/cio/sec_filing_events.jsonl append-only events",
+          "source": "scripts/sec_filings_feed.py:120; scripts/sec_filings_feed.py:160; scripts/sec_filings_feed.py:206; scripts/sec_filings_feed.py:254; scripts/sec_filings_feed.py:270; scripts/sec_filings_feed.py:303"
+        },
+        {
+          "direction": "write",
+          "kind": "store",
+          "name": "data/runtime/sec_filings_feed_latest.json",
+          "source": "scripts/sec_filings_feed.py:120; scripts/sec_filings_feed.py:160; scripts/sec_filings_feed.py:206; scripts/sec_filings_feed.py:254; scripts/sec_filings_feed.py:270; scripts/sec_filings_feed.py:303"
+        },
+        {
+          "direction": "write",
+          "kind": "store",
+          "name": "canonical lane receipt and existing supervisor telemetry",
+          "source": "scripts/sec_filings_feed.py:120; scripts/sec_filings_feed.py:160; scripts/sec_filings_feed.py:206; scripts/sec_filings_feed.py:254; scripts/sec_filings_feed.py:270; scripts/sec_filings_feed.py:303"
+        },
+        {
+          "direction": "calls",
+          "kind": "host_call_boundary",
+          "name": "Public SEC EDGAR ticker-map/submission requests through existing host process",
+          "source": "scripts/sec_filings_feed.py:140"
+        },
+        {
+          "direction": "read",
+          "kind": "consumer",
+          "name": "GIR filing-event projection",
+          "source": "scripts/gir_projector.py:219; SOURCE_ONLY consumer edge; runtime activity NOT_MEASURED"
+        },
+        {
+          "direction": "read",
+          "kind": "consumer",
+          "name": "Material-change detector filing input",
+          "source": "scripts/material_change_detector.py:904; SOURCE_ONLY consumer edge; runtime activity NOT_MEASURED"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "business_partial_or_unproven",
+          "text": "Partial unavailable submissions retain exit 0 and must be DEGRADED. Identity/universe misses and no_cik require explicit coverage interpretation; they cannot establish a fully observed universe."
+        },
+        {
+          "check": "late_or_slow",
+          "text": "Fallback freshness age beyond 120h through 180h, or duration above 480s but below hard timeout; use eligible-slot/DST proof to identify missed regular work."
+        },
+        {
+          "check": "retry_or_lock_skip",
+          "text": "Any retry or RUN_SKIPPED_LOCK is visible and not completed business work; repeated skips require owner triage. A lock never justifies two business scheduler authorities."
+        },
+        {
+          "check": "upstream_or_consumer_proof",
+          "text": "Unavailable required input or consumer freshness/coverage evidence is non-proven health; record NOT_MEASURED/NO_SIGNAL reason rather than a fake0 or healthy green."
+        }
+      ],
+      "evidence": {
+        "evidence_class": "SOURCE_ONLY",
+        "never": "No runtime claim from n8n execution color, telemetry success, recent file mtime, computed count, old ok_at or this DRAFT document.",
+        "receipt": "data/runtime/sec-filings-feed_last.json",
+        "runtime": "NOT_MEASURED",
+        "source_head": "e3078ccfab51ed8118f6bdab36ce416fe5fd9cd5",
+        "source_refs": [
+          "scripts/sec_filings_feed.py",
+          "scripts/sec_filings_feed.py:120",
+          "scripts/sec_filings_feed.py:160",
+          "scripts/sec_filings_feed.py:206",
+          "scripts/sec_filings_feed.py:254",
+          "scripts/sec_filings_feed.py:270",
+          "scripts/sec_filings_feed.py:303",
+          "scripts/gir_projector.py:219",
+          "scripts/material_change_detector.py:904"
+        ],
+        "verify": [
+          "On an authorized host, open coordination ledger in read-only mode and query: SELECT run_id, lane_id, mode, state, requested_at, started_at, finished_at, exit_code, duration_s, receipt_json FROM runs WHERE lane_id='sec-filings-feed' ORDER BY requested_at DESC LIMIT 10;",
+          "Read the canonical lane receipt; validate schema/identity/current status/exit/summary and attribute timestamps to the business run. Missing receipt is failed proof.",
+          "Input universe/identity coverage is available, submission availability is established and appended event GUIDs/latest summary agree. A successful fetch with no new events or complete dedup is valid new 0.",
+          "Read required business stores and source-qualified consumer outputs independently; reconcile committed effect, no-work/disposition and any partial/errors. No query or host command was executed to draft this packet.",
+          "Inspect current installed scheduler/code-root/lock with separate authorization; compare this proposed calendar and lock metadata before admission."
+        ]
+      },
+      "evidence_class": "SOURCE_ONLY",
+      "execution": {
+        "admission_enabled": false,
+        "automatic_promotion": false,
+        "code_root": "CURRENT required on future admission; installed code root NOT_MEASURED",
+        "current_lock_parity": "NOT_MEASURED; absent from captured command means new proposal, not existing-lock reuse",
+        "env_allowlist_mode": "report",
+        "env_closure": "Recursive safe import/env/child review required; names are not proof of enforce-mode closure.",
+        "env_names_metadata": [
+          "DB_CONN_TRACE",
+          "DB_HOST",
+          "DB_NAME",
+          "DB_PASSWORD",
+          "DB_PORT",
+          "DB_USER",
+          "PGAPPNAME",
+          "SEC_USER_AGENT",
+          "TRADEAI_PERSISTENT_STATE_ROOT",
+          "TRADEAI_ROOT"
+        ],
+        "legacy_business_command": [
+          "$PY",
+          "scripts/sec_filings_feed.py",
+          "--apply"
+        ],
+        "live_arg": null,
+        "lock": "/tmp/tradeai_sec_filings_feed.lock",
+        "lock_kind": "flock",
+        "lock_path_in_captured_command": true,
+        "market_day_gate": false,
+        "proposed_mode": "dry_run",
+        "shadow_command": [
+          "$PY",
+          "scripts/sec_filings_feed.py",
+          "--apply",
+          "--dry-run"
+        ]
+      },
+      "failed": [
+        {
+          "check": "business_failure",
+          "text": "Ticker-map failure returns 2; all attempted submission fetches failing returns 1. Missing receipt/feed/latest-summary proof fails completion. Existing success=True supervisor telemetry cannot override failed lane receipt."
+        },
+        {
+          "check": "host_run_failure",
+          "text": "RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED, nonzero job exit, status=failed, malformed/missing durable RunReceipt or lane receipt fails the applicable run proof. Old preserved ok_at does not override current failure."
+        },
+        {
+          "check": "stale_output",
+          "text": "Fallback output proof older than 180h is failed; assess the calendar and explicit dispositions rather than treating a lock skip as a new completion."
+        },
+        {
+          "check": "authority_or_dry_run_mutation",
+          "text": "Any dry-run business mutation, unapproved extra writer/scheduler, model/provider authority change, secret exposure, direct send, broker/order/stop/risk mutation or automatic ratification violates this contract."
+        }
+      ],
+      "healthy": [
+        {
+          "check": "shadow_run_chain",
+          "text": "For an authorized shadow slot, unique run_id has durable REQUESTED -> claimed/started -> RUN_DONE, mode=dry_run, exit_code=0 and a durable host RunReceipt. n8n execution status is not proof."
+        },
+        {
+          "check": "offline_nonmutation",
+          "text": "Dry-run preserves business outputs, queues, database state and real-run lane receipt; no model, provider or send call. Before/after output measurement alone does not establish all nonmutation."
+        },
+        {
+          "check": "current_host_receipt",
+          "text": "Legacy-host business run has a readable LaneRunReceipt@v1 for this lane, mode=live, status=ok, exit=0 and attributable finished_at/ok_at; verify actual publication rather than assume the best-effort helper wrote it."
+        },
+        {
+          "check": "business_result",
+          "text": "Input universe/identity coverage is available, submission availability is established and appended event GUIDs/latest summary agree. A successful fetch with no new events or complete dedup is valid new 0."
+        },
+        {
+          "check": "schedule_and_freshness",
+          "text": "Proof covers the latest eligible calendar slot after its completion allowance; input/output availability and receipt status are valid. Apply the proposed calendar-aware 2x fallback only alongside due-slot coverage, never to conceal missed normal fires."
+        },
+        {
+          "check": "duration_reference",
+          "text": "Runtime is no greater than the proposed 480s degraded reference (80% of 600s timeout), unless later owner-reviewed live evidence replaces it."
+        }
+      ],
+      "id": "sec-filings-feed",
+      "kind": "lane",
+      "owner": "cio",
+      "purpose": {
+        "business_function": "research",
+        "source": "scripts/sec_filings_feed.py; source refs in evidence",
+        "text": "Ingest public SEC EDGAR filing events into an append-only host feed and latest summary for GIR and material-change consumers."
+      },
+      "receipt_semantics": {
+        "fields": [
+          "lane_id",
+          "mode",
+          "status",
+          "exit",
+          "started_at",
+          "finished_at",
+          "ok_at",
+          "summary"
+        ],
+        "lock_or_deferred_dispositions": "Obtain separate executor/wrapper RunReceipt; these lane summaries do not prove scheduler skips or deferrals.",
+        "on_failure": "Previous ok_at preserved; current failed status remains authoritative. Receipt publication is best-effort and must be checked.",
+        "path": "data/runtime/sec-filings-feed_last.json",
+        "schema": "LaneRunReceipt@v1",
+        "summary_fields": [
+          "symbols",
+          "unresolved_identity",
+          "no_cik",
+          "unavailable",
+          "fetched",
+          "seen",
+          "new"
+        ]
+      },
+      "remediation": {
+        "automatic_actions": [],
+        "catalogue_entry": false,
+        "diagnosis_excluded": true,
+        "note": "No candidate is present in the inspected source catalogue. Manual read-only triage and owner review only; this packet adds no diagnosis, rerun, retry, live-send or policy authority.",
+        "runbook": "docs/implementation/n8n-maturity/N8N_MONITORING_AND_REMEDIATION_STANDARD.md; lane-specific proof holds in this contract"
+      },
+      "review_by": "2026-10-25",
+      "schema": "N8nHealthContract@v1",
+      "stage": "shadow",
+      "status": "DRAFT",
+      "target_reason": "completion119 candidate; disabled and outside operative configuration",
+      "workflow_id": "tradeai-dispatcher"
+    },
+    {
+      "admission_holds": [
+        "Candidate outer lock is newly proposed, absent from captured cron; no legacy/canary serialization claim is supported.",
+        "Confirm per-symbol commit durability and input availability separately from current receipt counters.",
+        "Scheduled offline boundary is cli(); real-run provider work remains host-owned.",
+        "Owner contract review, Claude train 5 exact-head CI and current source/runtime/argv/lock/consumer evidence remain separate prerequisites; this packet grants none."
+      ],
+      "alerting": {
+        "degraded": {
+          "notifier_priority": "P3",
+          "siem_severity": "INFO"
+        },
+        "enforced": "This external DRAFT packet is not installed; runtime enforcement NOT_MEASURED.",
+        "failed": {
+          "notifier_priority": "P2",
+          "siem_severity": "WARN"
+        },
+        "lane_severity": "Medium",
+        "routing": "Proposed host SIEM/incident intent through existing communications gateway only; n8n holds no notification/send authority.",
+        "severity_basis": "SOURCE_ONLY candidate class proposal; operator review required"
+      },
+      "baseline": {
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "class": "ingest",
+        "computed_on": "2026-10-11",
+        "duration_degraded_above_s": 480.0,
+        "duration_p50_s": null,
+        "duration_p95_s": null,
+        "failure_rate": null,
+        "freshness_calendar": {
+          "calculation_window": [
+            "2026-10-01T00:00:00Z",
+            "2027-11-08T00:00:00Z"
+          ],
+          "computed_max_utc_gap_hours": 68.0,
+          "cron": [
+            "30 8,10,13 * * 1-5"
+          ],
+          "dst": "native gap coalescing/fold0 once; reconcile installed scheduler semantics before admission",
+          "parser": "scripts/lib/cron_schedule.py:fires_between",
+          "slot_proof_required": true,
+          "source_candidate_cadence_hours": 67.0,
+          "tz": "America/New_York"
+        },
+        "freshness_degraded_after_h": 136.0,
+        "freshness_failed_after_h": 204.0,
+        "freshness_rule": "2x/3x computed maximum UTC inter-fire gap is a provisional fallback; latest eligible slot proof is independently required. Neither these proposals nor a source-only calendar establish observed SLOs.",
+        "lock_skip_rate": null,
+        "runs_considered": null,
+        "runtime_evidence": "NOT_MEASURED",
+        "source": "SOURCE_ONLY proposed runner timeout and source calendar; native DST-safe cron parser. No live ledger or output was measured.",
+        "timeout_s": 600
+      },
+      "connects_to": [
+        {
+          "direction": "calls",
+          "kind": "service",
+          "name": "n8n shadow coordinator -> scoped host relay -> gateway durable request -> host executor",
+          "source": "AGENTS.md \u00a723.3; proposed shadow route only"
+        },
+        {
+          "direction": "calls",
+          "kind": "runner",
+          "name": "$PY scripts/social_ingest.py --source stocktwits --discover --dry-run",
+          "source": "scripts/social_ingest.py; SOURCE_ONLY proposed allowlist argv"
+        },
+        {
+          "direction": "read_write",
+          "kind": "lock",
+          "name": "/tmp/social-ingest-stocktwits.lock",
+          "source": "Candidate flock lock; current host parity NOT_MEASURED"
+        },
+        {
+          "direction": "write",
+          "kind": "receipt",
+          "name": "<STATE_ROOT>/data/runtime/social-ingest-stocktwits_last.json",
+          "source": "scripts/lib/lane_last_receipt.py:122; real run only; dry-run must not write it"
+        },
+        {
+          "direction": "read",
+          "kind": "store",
+          "name": "StockTwits trending/discovery responses and configured strategy exploration symbols",
+          "source": "scripts/social_ingest.py:98; scripts/social_ingest.py:125"
+        },
+        {
+          "direction": "read",
+          "kind": "store",
+          "name": "stored holdings-symbol exclusion snapshot",
+          "source": "scripts/social_ingest.py:98; scripts/social_ingest.py:125"
+        },
+        {
+          "direction": "read",
+          "kind": "store",
+          "name": "existing social_posts dedup keys",
+          "source": "scripts/social_ingest.py:98; scripts/social_ingest.py:125"
+        },
+        {
+          "direction": "write",
+          "kind": "store",
+          "name": "social_posts StockTwits inserts",
+          "source": "scripts/social_ingest.py:98; scripts/social_ingest.py:125; scripts/social_ingest.py:139; scripts/social_ingest.py:141; scripts/social_ingest.py:343; scripts/social_ingest.py:580; scripts/social_ingest.py:588; scripts/social_ingest.py:758; scripts/social_ingest.py:793"
+        },
+        {
+          "direction": "write",
+          "kind": "store",
+          "name": "existing pipeline telemetry",
+          "source": "scripts/social_ingest.py:98; scripts/social_ingest.py:125; scripts/social_ingest.py:139; scripts/social_ingest.py:141; scripts/social_ingest.py:343; scripts/social_ingest.py:580; scripts/social_ingest.py:588; scripts/social_ingest.py:758; scripts/social_ingest.py:793"
+        },
+        {
+          "direction": "write",
+          "kind": "store",
+          "name": "canonical lane receipt",
+          "source": "scripts/social_ingest.py:98; scripts/social_ingest.py:125; scripts/social_ingest.py:139; scripts/social_ingest.py:141; scripts/social_ingest.py:343; scripts/social_ingest.py:580; scripts/social_ingest.py:588; scripts/social_ingest.py:758; scripts/social_ingest.py:793"
+        },
+        {
+          "direction": "calls",
+          "kind": "host_call_boundary",
+          "name": "Host StockTwits discovery/stream requests",
+          "source": "scripts/social_ingest.py:98"
+        },
+        {
+          "direction": "read",
+          "kind": "consumer",
+          "name": "RAG social-post indexing",
+          "source": "scripts/rag_indexer.py:193; SOURCE_ONLY consumer edge; runtime activity NOT_MEASURED"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "business_partial_or_unproven",
+          "text": "Any partial fetch/DB/commit error is DEGRADED even if inserted+skipped>0 permits exit 0. inserted increments before commit, so counts can overstate durable writes. Input/provider configuration gaps require non-proven coverage."
+        },
+        {
+          "check": "late_or_slow",
+          "text": "Fallback freshness age beyond 136h through 204h, or duration above 480s but below hard timeout; use eligible-slot/DST proof to identify missed regular work."
+        },
+        {
+          "check": "retry_or_lock_skip",
+          "text": "Any retry or RUN_SKIPPED_LOCK is visible and not completed business work; repeated skips require owner triage. A lock never justifies two business scheduler authorities."
+        },
+        {
+          "check": "upstream_or_consumer_proof",
+          "text": "Unavailable required input or consumer freshness/coverage evidence is non-proven health; record NOT_MEASURED/NO_SIGNAL reason rather than a fake0 or healthy green."
+        }
+      ],
+      "evidence": {
+        "evidence_class": "SOURCE_ONLY",
+        "never": "No runtime claim from n8n execution color, telemetry success, recent file mtime, computed count, old ok_at or this DRAFT document.",
+        "receipt": "data/runtime/social-ingest-stocktwits_last.json",
+        "runtime": "NOT_MEASURED",
+        "source_head": "e3078ccfab51ed8118f6bdab36ce416fe5fd9cd5",
+        "source_refs": [
+          "scripts/social_ingest.py",
+          "scripts/social_ingest.py:98",
+          "scripts/social_ingest.py:125",
+          "scripts/social_ingest.py:139",
+          "scripts/social_ingest.py:141",
+          "scripts/social_ingest.py:343",
+          "scripts/social_ingest.py:580",
+          "scripts/social_ingest.py:588",
+          "scripts/social_ingest.py:758",
+          "scripts/social_ingest.py:793",
+          "scripts/rag_indexer.py:193"
+        ],
+        "verify": [
+          "On an authorized host, open coordination ledger in read-only mode and query: SELECT run_id, lane_id, mode, state, requested_at, started_at, finished_at, exit_code, duration_s, receipt_json FROM runs WHERE lane_id='social-ingest-stocktwits' ORDER BY requested_at DESC LIMIT 10;",
+          "Read the canonical lane receipt; validate schema/identity/current status/exit/summary and attribute timestamps to the business run. Missing receipt is failed proof.",
+          "Discovery input and committed social rows are verified, per-source errors=0, and dedup/available empty responses are explicitly distinguished. rows_produced/inserted alone are not committed-row proof.",
+          "Read required business stores and source-qualified consumer outputs independently; reconcile committed effect, no-work/disposition and any partial/errors. No query or host command was executed to draft this packet.",
+          "Inspect current installed scheduler/code-root/lock with separate authorization; compare this proposed calendar and lock metadata before admission."
+        ]
+      },
+      "evidence_class": "SOURCE_ONLY",
+      "execution": {
+        "admission_enabled": false,
+        "automatic_promotion": false,
+        "code_root": "CURRENT required on future admission; installed code root NOT_MEASURED",
+        "current_lock_parity": "NOT_MEASURED; absent from captured command means new proposal, not existing-lock reuse",
+        "env_allowlist_mode": "report",
+        "env_closure": "Recursive safe import/env/child review required; names are not proof of enforce-mode closure.",
+        "env_names_metadata": [
+          "DB_CONN_TRACE",
+          "DB_HOST",
+          "DB_NAME",
+          "DB_PASSWORD",
+          "DB_PORT",
+          "DB_USER",
+          "PGAPPNAME",
+          "TRADEAI_PERSISTENT_STATE_ROOT",
+          "TRADEAI_ROOT"
+        ],
+        "legacy_business_command": [
+          "$PY",
+          "scripts/social_ingest.py",
+          "--source",
+          "stocktwits",
+          "--discover"
+        ],
+        "live_arg": null,
+        "lock": "/tmp/social-ingest-stocktwits.lock",
+        "lock_kind": "flock",
+        "lock_path_in_captured_command": false,
+        "market_day_gate": false,
+        "proposed_mode": "dry_run",
+        "shadow_command": [
+          "$PY",
+          "scripts/social_ingest.py",
+          "--source",
+          "stocktwits",
+          "--discover",
+          "--dry-run"
+        ]
+      },
+      "failed": [
+        {
+          "check": "business_failure",
+          "text": "All-error with inserted+skipped=0 returns 1; missing receipt or unverified durable rows fails business proof. Pipeline completion emitted before final failure classification cannot override the lane receipt."
+        },
+        {
+          "check": "host_run_failure",
+          "text": "RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED, nonzero job exit, status=failed, malformed/missing durable RunReceipt or lane receipt fails the applicable run proof. Old preserved ok_at does not override current failure."
+        },
+        {
+          "check": "stale_output",
+          "text": "Fallback output proof older than 204h is failed; assess the calendar and explicit dispositions rather than treating a lock skip as a new completion."
+        },
+        {
+          "check": "authority_or_dry_run_mutation",
+          "text": "Any dry-run business mutation, unapproved extra writer/scheduler, model/provider authority change, secret exposure, direct send, broker/order/stop/risk mutation or automatic ratification violates this contract."
+        }
+      ],
+      "healthy": [
+        {
+          "check": "shadow_run_chain",
+          "text": "For an authorized shadow slot, unique run_id has durable REQUESTED -> claimed/started -> RUN_DONE, mode=dry_run, exit_code=0 and a durable host RunReceipt. n8n execution status is not proof."
+        },
+        {
+          "check": "offline_nonmutation",
+          "text": "Dry-run preserves business outputs, queues, database state and real-run lane receipt; no model, provider or send call. Before/after output measurement alone does not establish all nonmutation."
+        },
+        {
+          "check": "current_host_receipt",
+          "text": "Legacy-host business run has a readable LaneRunReceipt@v1 for this lane, mode=live, status=ok, exit=0 and attributable finished_at/ok_at; verify actual publication rather than assume the best-effort helper wrote it."
+        },
+        {
+          "check": "business_result",
+          "text": "Discovery input and committed social rows are verified, per-source errors=0, and dedup/available empty responses are explicitly distinguished. rows_produced/inserted alone are not committed-row proof."
+        },
+        {
+          "check": "schedule_and_freshness",
+          "text": "Proof covers the latest eligible calendar slot after its completion allowance; input/output availability and receipt status are valid. Apply the proposed calendar-aware 2x fallback only alongside due-slot coverage, never to conceal missed normal fires."
+        },
+        {
+          "check": "duration_reference",
+          "text": "Runtime is no greater than the proposed 480s degraded reference (80% of 600s timeout), unless later owner-reviewed live evidence replaces it."
+        }
+      ],
+      "id": "social-ingest-stocktwits",
+      "kind": "lane",
+      "owner": "research",
+      "purpose": {
+        "business_function": "research",
+        "source": "scripts/social_ingest.py; source refs in evidence",
+        "text": "Discover StockTwits research symbols and store deduplicated posts for downstream social/RAG readers using the existing host-side discovery process."
+      },
+      "receipt_semantics": {
+        "fields": [
+          "lane_id",
+          "mode",
+          "status",
+          "exit",
+          "started_at",
+          "finished_at",
+          "ok_at",
+          "summary"
+        ],
+        "lock_or_deferred_dispositions": "Obtain separate executor/wrapper RunReceipt; these lane summaries do not prove scheduler skips or deferrals.",
+        "on_failure": "Previous ok_at preserved; current failed status remains authoritative. Receipt publication is best-effort and must be checked.",
+        "path": "data/runtime/social-ingest-stocktwits_last.json",
+        "schema": "LaneRunReceipt@v1",
+        "summary_fields": [
+          "source",
+          "discover",
+          "rows_produced",
+          "per_source.stocktwits_discovery.inserted",
+          "per_source.stocktwits_discovery.skipped",
+          "per_source.stocktwits_discovery.errors"
+        ]
+      },
+      "remediation": {
+        "automatic_actions": [],
+        "catalogue_entry": false,
+        "diagnosis_excluded": true,
+        "note": "No candidate is present in the inspected source catalogue. Manual read-only triage and owner review only; this packet adds no diagnosis, rerun, retry, live-send or policy authority.",
+        "runbook": "docs/implementation/n8n-maturity/N8N_MONITORING_AND_REMEDIATION_STANDARD.md; lane-specific proof holds in this contract"
+      },
+      "review_by": "2026-10-25",
+      "schema": "N8nHealthContract@v1",
+      "stage": "shadow",
+      "status": "DRAFT",
+      "target_reason": "completion119 candidate; disabled and outside operative configuration",
+      "workflow_id": "tradeai-dispatcher"
+    }
+  ],
+  "evidence_class": "SOURCE_ONLY",
+  "original_packet": "/home/johnclaw/n8n-maturity-verification/refactor/COMPLETION119_CONTRACTS_AND_OWNER_DECISIONS_20261011.md",
+  "original_packet_sha256": "91e374431e009ded2cf13c65fc3b8c8ed772445fd3793a4d5cd545f477a9f93a",
+  "original_source_head": "e3078ccfab51ed8118f6bdab36ce416fe5fd9cd5",
+  "reassessed_main_sha": "40208881dd34495b840bcbd4e373f593d06a659f",
+  "runtime": "NOT_MEASURED",
+  "schema": "N8nHealthContracts@v1",
+  "status": "DRAFT_PROPOSAL_ONLY"
+}

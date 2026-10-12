@@ -1,0 +1,113 @@
+{
+  "artifact_manifest": [
+    {
+      "bytes": 4922,
+      "path": "docs/implementation/n8n-maturity/reconciliation-20261012/runtime-contracts/README.md",
+      "sha256": "5bb387e251b749425acab3c2432342efadc27b7a442319e9e74b7b2aeef39da5"
+    },
+    {
+      "bytes": 2604,
+      "path": "docs/implementation/n8n-maturity/reconciliation-20261012/runtime-contracts/absorbed_intents.json",
+      "sha256": "f91a38800386020b5b8108adaced4f843de41da68fee0f2b345d2fa347c5013a"
+    },
+    {
+      "bytes": 106734,
+      "path": "docs/implementation/n8n-maturity/reconciliation-20261012/runtime-contracts/contract_proposals_missing.json",
+      "sha256": "7a4c5a166cbf21655ddf298aceff68b417349ef156703cb22df1e48400256908"
+    },
+    {
+      "bytes": 68511,
+      "path": "docs/implementation/n8n-maturity/reconciliation-20261012/runtime-contracts/contract_reconciliation.json",
+      "sha256": "ee6048ae72fd2599295b6daa7450ae94d0fde5d0412de1a911247e0f3ff0bee9"
+    },
+    {
+      "bytes": 660293,
+      "path": "docs/implementation/n8n-maturity/reconciliation-20261012/runtime-contracts/monitoring_coverage.tsv",
+      "sha256": "b08a5253e47337673fa75f44725f08c1b13be024c4ebeb3854fe31b894521cce"
+    },
+    {
+      "bytes": 7899,
+      "path": "docs/implementation/n8n-maturity/reconciliation-20261012/runtime-contracts/openclaw_crosswalk.tsv",
+      "sha256": "2674b17e1bb0d1f50de5d7396588d23e6e2f2c55a474a6b964aa30d85e44583b"
+    },
+    {
+      "bytes": 11905,
+      "path": "docs/implementation/n8n-maturity/reconciliation-20261012/runtime-contracts/operational_change_packets.md",
+      "sha256": "45215840f656bc93b648827c7b3014452b1d4b874cb1b059d3731205d67775c0"
+    },
+    {
+      "bytes": 22646,
+      "path": "docs/implementation/n8n-maturity/reconciliation-20261012/runtime-contracts/owner_decisions.tsv",
+      "sha256": "1698ee8e9f8e0e54fff3b3d7537948e204eb24fdb8292529b30aabccb8d690aa"
+    },
+    {
+      "bytes": 20798,
+      "path": "docs/implementation/n8n-maturity/reconciliation-20261012/runtime-contracts/runtime_observations.json",
+      "sha256": "8e9371dccf0ccd2a076f92187ca4268c7d0eed7b007808c1c2d998638b186c26"
+    },
+    {
+      "bytes": 4123,
+      "path": "docs/implementation/n8n-maturity/reconciliation-20261012/runtime-contracts/timer_source_gaps.tsv",
+      "sha256": "06c58e81b73288a7905b4c6c948091d51e5e9807fc07f10d8daf630ccf2a146d"
+    }
+  ],
+  "as_of": "2026-10-12T03:06:53.352282+00:00",
+  "checks": {
+    "config/lane_registry.json_byte_identical": true,
+    "config/n8n_remediation_catalogue.json_byte_identical": true,
+    "config/n8n_run_allowlist.json_byte_identical": true,
+    "missing_contracts_seven": true,
+    "monitoring_coverage.tsv_exact_population": true,
+    "monitoring_no_unearned_runtime_promotion": true,
+    "named_workflow_error_test_exists": true,
+    "obsolete_contract_never_consumed_removed": true,
+    "openclaw_crosswalk.tsv_exact_population": true,
+    "openclaw_no_denominator_expansion": true,
+    "openclaw_no_payload_or_delivery_fields": true,
+    "operative_contracts_byte_identical": true,
+    "operative_denominators_exact": true,
+    "owner_decisions.tsv_exact_population": true,
+    "proposal_source_files_exist": true,
+    "required_document_headers": true,
+    "seven_draft_no_reviewer_no_admission_no_live_arg": true,
+    "seven_no_unknown": true,
+    "seven_structurally_valid": true,
+    "timer_source_gaps.tsv_exact_population": true
+  },
+  "drive_sync": "NOT_PERFORMED_BY_WORKER; integrator owns workbook/report publication",
+  "evidence_class": "ISOLATED_SOURCE_VALIDATION",
+  "github_ci_cycles_this_tranche": 0,
+  "missing_source_refs": [],
+  "model_calls": 0,
+  "production_writes": 0,
+  "release_equivalent": "NOT_RUN_BY_WORKER; documentation/artifact tranche; integrator owns final integrated-head PR profile",
+  "remote_pushes_this_tranche": 0,
+  "secret_or_credential_file_reads": 0,
+  "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f",
+  "status": "LOCAL_TARGETED_GREEN",
+  "tests": [
+    {
+      "command": "python3 scripts/check_n8n_health_contracts.py",
+      "exit_code": 0,
+      "result": "clean:114 contracts/93 targets/66 DRAFT/48 REVIEWED/four UNKNOWN"
+    },
+    {
+      "command": "TRADE_AI_CI=1 PYTHONDONTWRITEBYTECODE=1 python3 -m pytest -q tests/test_n8n_health_contracts_20261010.py",
+      "duration_s": 0.61,
+      "exit_code": 0,
+      "passed": 21
+    },
+    {
+      "command": "TRADE_AI_CI=1 PYTHONDONTWRITEBYTECODE=1 python3 -m pytest -q tests/test_n8n_incident_fanin_workflow_error_20261010.py",
+      "duration_s": 0.55,
+      "exit_code": 0,
+      "passed": 19,
+      "skip_reason": "health contracts present: the contract test governs",
+      "skipped": 1
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0
+    }
+  ]
+}

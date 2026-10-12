@@ -1,0 +1,767 @@
+{
+  "as_of": "2026-10-12T02:57:49.071956+00:00",
+  "current_pin": "/home/johnclaw/trade-ai-releases/portfolio-server/37752b193-main-exact-phase2-20261011-201624",
+  "deployment": "Plan source SHA is not served CURRENT; no deployment performed",
+  "evidence_class": "SANITIZED_READ_ONLY",
+  "hermes": {
+    "business_recovery": "NOT_MEASURED; latest run can be healthy empty-work, not reprocessing of 776 historical failed rows",
+    "exec_main_status": 0,
+    "last_exit": "2026-10-11T22:45:27-04:00",
+    "last_start": "2026-10-11T22:45:26-04:00",
+    "last_timer_fire": "2026-10-11T22:45:26-04:00",
+    "previous_failure": {
+      "cause_attribution": "INFERRED_FROM_SANITIZED_LOG; no item-to-unit-run correlation accepted",
+      "journal_failure_epoch_us": "1791769705074521",
+      "journal_scope": "2026-10-11T18:00:00-04:00 onward",
+      "sanitized_category": "language-related refusal; exact protected research contents withheld",
+      "sanitized_log_error_type": "HermesWorkerError"
+    },
+    "queue_by_status": {
+      "cancelled": 1,
+      "completed": 1161,
+      "failed": 776
+    },
+    "queue_path": "/home/johnclaw/trade-ai-releases/persistent-state/data/cio/hermes_research_projection.json",
+    "queue_updated_ts": "2026-10-12T02:30:24.290005+00:00",
+    "restart_recommendation": "NO_CURRENT_RESTART; preserve guard refusal and existing timer; investigate only newly recurring failure under scoped authority",
+    "result": "success",
+    "service_state": "inactive/dead",
+    "timer_enabled": true,
+    "timer_state": "active/waiting"
+  },
+  "ledger": {
+    "acceptance": "No run/output/notification/n8n retained-execution correlation performed; zero dead letters is not recovery proof",
+    "by_lane_state": [
+      {
+        "count": 1,
+        "lane_id": "advisory-desk-run-now",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 2,
+        "lane_id": "aegis-brief-regenerate",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 1,
+        "lane_id": "aegis-brief-regenerate",
+        "mode": "live",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 1,
+        "lane_id": "aegis-nightly-ingestion",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 2,
+        "lane_id": "agent-calibration-engine",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 3,
+        "lane_id": "agent-number-grounding-slo",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 1,
+        "lane_id": "agent-outcome-linker",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 2,
+        "lane_id": "analyst-prospectus-generate",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 1,
+        "lane_id": "analyst-prospectus-generate",
+        "mode": "live",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 1,
+        "lane_id": "audit-enrichment-coverage",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 1,
+        "lane_id": "backtest-history-snapshot",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 1,
+        "lane_id": "backtest-results-aggregator",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 1,
+        "lane_id": "build-symbol-profiles-watchlist",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 2,
+        "lane_id": "catalyst-calibration",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 4,
+        "lane_id": "catalyst-calibration-monitor",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 1,
+        "lane_id": "catalyst-graph",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 3,
+        "lane_id": "catalyst-momentum-engine-overnight",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 2,
+        "lane_id": "catalyst-momentum-engine-overnight",
+        "mode": "dry_run",
+        "state": "RUN_SKIPPED_LOCK"
+      },
+      {
+        "count": 1,
+        "lane_id": "catalyst-symbol-impact",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 2,
+        "lane_id": "cio-draft-plan-hygiene",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 1,
+        "lane_id": "classifier-health-check",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 1,
+        "lane_id": "classify-candidates",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 1,
+        "lane_id": "classify-instruments",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 2,
+        "lane_id": "crawl-v3-dashboard",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 27,
+        "lane_id": "crontab-snapshot-for-health-agent",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 237,
+        "lane_id": "crontab-snapshot-for-health-agent",
+        "mode": "live",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 1,
+        "lane_id": "data-gap-resolver-at-0-10-16",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 1,
+        "lane_id": "data-gap-resolver-pre",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 1,
+        "lane_id": "data-gap-resolver-weekly",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 1,
+        "lane_id": "data-gap-resolver-weekly",
+        "mode": "dry_run",
+        "state": "RUN_SKIPPED_LOCK"
+      },
+      {
+        "count": 1,
+        "lane_id": "distributions-enrich",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 3,
+        "lane_id": "document-mentions-backfill",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 1,
+        "lane_id": "earnings-enrich",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 2,
+        "lane_id": "enterprise-backtester",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 1,
+        "lane_id": "fee-efficiency-analyzer",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 1,
+        "lane_id": "finviz-health-check",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 2,
+        "lane_id": "finviz-view-contracts",
+        "mode": "dry_run",
+        "state": "RUN_TIMEOUT"
+      },
+      {
+        "count": 1,
+        "lane_id": "fund-technicals-enrich",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 33,
+        "lane_id": "heartbeat-watch",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 56,
+        "lane_id": "heartbeat-watch",
+        "mode": "live",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 8,
+        "lane_id": "hermes-analyst-signal-discovery",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 3,
+        "lane_id": "hermes-analyst-signal-discovery",
+        "mode": "dry_run",
+        "state": "RUN_SKIPPED_LOCK"
+      },
+      {
+        "count": 8,
+        "lane_id": "hermes-entity-spike-discovery",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 4,
+        "lane_id": "hermes-entity-spike-discovery",
+        "mode": "dry_run",
+        "state": "RUN_SKIPPED_LOCK"
+      },
+      {
+        "count": 1,
+        "lane_id": "hermes-governance-api",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 1,
+        "lane_id": "hermes-industry-novelty-discovery",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 1,
+        "lane_id": "hermes-industry-novelty-discovery",
+        "mode": "dry_run",
+        "state": "RUN_SKIPPED_LOCK"
+      },
+      {
+        "count": 5,
+        "lane_id": "hermes-news-bridge",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 4,
+        "lane_id": "hermes-pipeline-health",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 7,
+        "lane_id": "hermes-research-worker-pool",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 6,
+        "lane_id": "hermes-scope-governor",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 33,
+        "lane_id": "hermes-score-event-feeder",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 3,
+        "lane_id": "hermes-topic-monitor-bridge",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 16,
+        "lane_id": "identity-sweep-stage0",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 3,
+        "lane_id": "identity-sweep-stage0",
+        "mode": "dry_run",
+        "state": "RUN_SKIPPED_LOCK"
+      },
+      {
+        "count": 3,
+        "lane_id": "job-coverage-monitor",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 1,
+        "lane_id": "job-coverage-monitor",
+        "mode": "dry_run",
+        "state": "RUN_SKIPPED_LOCK"
+      },
+      {
+        "count": 1,
+        "lane_id": "journal-tilt-morning-hook",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 2,
+        "lane_id": "llm-retry-monitor",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 6,
+        "lane_id": "material-change-detector-stage1",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 1,
+        "lane_id": "materialize-income-engine",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 1,
+        "lane_id": "materialize-watchlist-strategy-cards",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 1,
+        "lane_id": "maturity-remeasure",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 1,
+        "lane_id": "mint-identity-registry",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 104,
+        "lane_id": "n8n-incident-fanin",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 1,
+        "lane_id": "n8n-incident-fanin",
+        "mode": "dry_run",
+        "state": "RUN_SKIPPED_LOCK"
+      },
+      {
+        "count": 874,
+        "lane_id": "n8n-incident-fanin",
+        "mode": "live",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 1,
+        "lane_id": "n8n-incident-fanin",
+        "mode": "live",
+        "state": "RUN_SKIPPED_LOCK"
+      },
+      {
+        "count": 1,
+        "lane_id": "n8n-incident-fanin",
+        "mode": "live",
+        "state": "RUN_TIMEOUT"
+      },
+      {
+        "count": 343,
+        "lane_id": "n8n-lab-watchdog",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 1,
+        "lane_id": "n8n-lab-watchdog",
+        "mode": "dry_run",
+        "state": "RUN_FAILED"
+      },
+      {
+        "count": 2,
+        "lane_id": "n8n-lab-watchdog",
+        "mode": "dry_run",
+        "state": "RUN_SKIPPED_LOCK"
+      },
+      {
+        "count": 36,
+        "lane_id": "n8n-pilot-dispatch",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 292,
+        "lane_id": "n8n-pilot-dispatch",
+        "mode": "live",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 35,
+        "lane_id": "n8n-research-intake-consumer",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 292,
+        "lane_id": "n8n-research-intake-consumer",
+        "mode": "live",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 9,
+        "lane_id": "news-to-catalyst",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 1,
+        "lane_id": "news-to-catalyst",
+        "mode": "dry_run",
+        "state": "RUN_SKIPPED_LOCK"
+      },
+      {
+        "count": 1,
+        "lane_id": "refresh-symbol-cards",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 3,
+        "lane_id": "research-insight-extractor",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 1,
+        "lane_id": "research-insight-extractor",
+        "mode": "dry_run",
+        "state": "RUN_SKIPPED_LOCK"
+      },
+      {
+        "count": 2,
+        "lane_id": "research-insight-extractor",
+        "mode": "live",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 8,
+        "lane_id": "resolve-due-checkpoints",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 1,
+        "lane_id": "sector-rs-daily",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 2,
+        "lane_id": "setup-quality-prior",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 1,
+        "lane_id": "setup-quality-prior",
+        "mode": "dry_run",
+        "state": "RUN_SKIPPED_LOCK"
+      },
+      {
+        "count": 1,
+        "lane_id": "signal-fusion-active",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 1,
+        "lane_id": "signal-fusion-full",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 3,
+        "lane_id": "source-attribution-monitor",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 1,
+        "lane_id": "source-attribution-monitor",
+        "mode": "dry_run",
+        "state": "RUN_SKIPPED_LOCK"
+      },
+      {
+        "count": 1,
+        "lane_id": "strategy-backtester",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 1,
+        "lane_id": "sync-watchlist-items-to-db",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 1,
+        "lane_id": "update-agent-performance",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 4,
+        "lane_id": "watch-directives-monitor",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 1,
+        "lane_id": "watchlist-enrichment-sweep",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 1,
+        "lane_id": "weekly-incubator-builder",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      },
+      {
+        "count": 1,
+        "lane_id": "write-state-freshness-history",
+        "mode": "dry_run",
+        "state": "RUN_DONE"
+      }
+    ],
+    "mode": "ro",
+    "overview": {
+      "dead_letters": 0,
+      "distinct_lanes": 73,
+      "request_count": 2554
+    },
+    "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/governance/n8n_coordination_ledger.sqlite"
+  },
+  "metrics": {
+    "dead_letters": 0,
+    "distinct_lanes": 73,
+    "hermes_current_queued": 0,
+    "hermes_current_running": 0,
+    "hermes_history_total": 1938,
+    "live_cron_jobs": 413,
+    "n8n_workflows": 43,
+    "n8n_workflows_active": 15,
+    "openclaw_disabled": 4,
+    "openclaw_enabled": 9,
+    "openclaw_total": 13,
+    "request_count": 2554
+  },
+  "n8n_database_preflight": {
+    "backup": {
+      "as_of": "2026-10-11T05:15:05.944015+00:00",
+      "bytes": 867376,
+      "dump": "/home/johnclaw/trade-ai-releases/persistent-state/backups/n8n/n8n-lab-20261011T051505Z.dump",
+      "dumps_kept": 7,
+      "live_public_tables": 157,
+      "note": "encryption key not in dump; escrow in Bitwarden SM",
+      "ok": true,
+      "schema": "N8nLabBackupReceipt@v1",
+      "sha256": "0a88ea0e8b7e7f223cce54fab1e894ab39c0ea696bc9db40cb34a4e6fc5b290f",
+      "toc_table_data_entries": 157
+    },
+    "backup_file_sha256_verified": "0a88ea0e8b7e7f223cce54fab1e894ab39c0ea696bc9db40cb34a4e6fc5b290f",
+    "command": "docker exec m8m-n8n-db psql -U n8n -d n8n -X -v ON_ERROR_STOP=1; BEGIN READ ONLY; catalog SELECTs; COMMIT",
+    "current_user": "n8n",
+    "database_owner": "n8n",
+    "database_version": "16.15",
+    "extensions": [
+      {
+        "name": "plpgsql",
+        "owner": "n8n"
+      },
+      {
+        "name": "uuid-ossp",
+        "owner": "n8n"
+      }
+    ],
+    "fresh_prechange_backup": "REQUIRED_AT_CHANGE_WINDOW",
+    "key_recovery": "Operator verifies escrow without sharing key; this agent read no credential/key",
+    "public_object_owner": "n8n",
+    "public_objects": {
+      "indexes": 374,
+      "sequences": 25,
+      "tables": 157
+    },
+    "public_schema_owner": "pg_database_owner",
+    "restore_as_n8n_app": "NOT_MEASURED",
+    "restore_drill": {
+      "counts_equal": true,
+      "dropped_drill_db": true,
+      "dump": "/home/johnclaw/trade-ai-releases/persistent-state/backups/n8n/n8n-lab-20261011T051505Z.dump",
+      "finished": "2026-10-11T07:00:12.351787+00:00",
+      "live_tables": 157,
+      "ok": true,
+      "pg_restore_rc": 0,
+      "production_postgres_touched": false,
+      "restored_tables": 157,
+      "schema": "N8nLabRestoreDrill@v1",
+      "started": "2026-10-11T07:00:02Z",
+      "workflows_in_restore": 43
+    },
+    "result": "executed successfully",
+    "role_flags": {
+      "n8n": {
+        "canlogin": true,
+        "createdb": true,
+        "createrole": true,
+        "superuser": true
+      },
+      "n8n_app": "ABSENT"
+    },
+    "role_memberships": []
+  },
+  "n8n_execution_retention": {
+    "as_of": "2026-10-12T03:03:57.290438+00:00",
+    "command": "docker exec m8m-n8n-db psql ... BEGIN READ ONLY; aggregate execution_entity metadata SELECTs; COMMIT (approved exact escalation)",
+    "errors_by_workflow": {
+      "tradeai-dispatcher": 10,
+      "tradeai-heartbeat-watcher": 1
+    },
+    "hangs": "NOT_MEASURED; all running-status retained rows are soft-deleted and cannot be diagnosed as hangs",
+    "host_run_business_correlation": "NOT_MEASURED; match individual workflow/execution/run IDs and business effects independently",
+    "preceding_hours": 24,
+    "rate": "NOT_MEASURED; selective retention has no unbiased expected-fire denominator",
+    "retained_rows_by_status": {
+      "error": 11,
+      "running": 24
+    },
+    "soft_deleted_running": 24
+  },
+  "ollama": {
+    "caller_closure": "NOT_MEASURED; instantaneous reverse-unit/socket metadata does not close periodic/future source callers",
+    "dependent_process_acceptance": "NOT_MEASURED; static metadata is not proof of live calls",
+    "enabled": true,
+    "established_tcp_connections_11434": 0,
+    "main_pid": 5135,
+    "passive_census_as_of": "2026-10-12T03:03:57.290438+00:00",
+    "retirement_status": "DRIFT; no stop/disable performed",
+    "reverse_dependencies": [
+      "graphical.target"
+    ],
+    "reverse_dependency_command": "systemctl list-dependencies --reverse ollama.service --plain --no-pager (approved read-only escalation)",
+    "socket_census_command": "ss -tnH state established '( sport = :11434 or dport = :11434 )' (approved read-only escalation)",
+    "state": "active/running",
+    "unit": "/etc/systemd/system/ollama.service",
+    "unit_declared_wanted_by": "graphical.target"
+  },
+  "optional_observation_gaps": [],
+  "sandbox_escalation_receipt": {
+    "initial_default_sandbox_denials": [
+      "Docker socket access",
+      "system bus dependency census",
+      "netlink socket census",
+      "user crontab access"
+    ],
+    "resolution": "Read-only actions rerun through explicit approval/escalation boundary; no alternate tool/path, no true guard refusal repeated, no production mutation."
+  },
+  "scheduler_census": {
+    "active_jobs": 413,
+    "as_of": "2026-10-12T03:03:57.290438+00:00",
+    "authority_note": "Installed cron grant covers census only; no scheduler mutation occurred.",
+    "command": "crontab -l (approved read-only escalation; raw text withheld)",
+    "output_was_untruncated": true,
+    "selected_original_triggers": [
+      {
+        "commented": true,
+        "lane_id": "hermes-tag-lift-discovery"
+      },
+      {
+        "commented": true,
+        "lane_id": "hermes-industry-novelty-discovery"
+      }
+    ]
+  },
+  "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f",
+  "status": "READ_ONLY_OBSERVATIONS"
+}
