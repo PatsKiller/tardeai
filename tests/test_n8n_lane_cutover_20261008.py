@@ -106,8 +106,13 @@ def _fake_crontab(tmp_path: Path) -> tuple[Path, Path]:
 
 def _env(tmp_path: Path, fake: Path, root: Path) -> dict:
     # §24.6: a scheduler simulator has an explicit scratch identity; host crontab remains forbidden.
-    if (fake.name != "fixture-cron-store" or fake.is_symlink() or not fake.is_file()
-            or fake.parent.resolve() != tmp_path.resolve() or not root.resolve().is_relative_to(tmp_path.resolve())):
+    if (
+        fake.name != "fixture-cron-store"
+        or fake.is_symlink()
+        or not fake.is_file()
+        or fake.parent.resolve() != tmp_path.resolve()
+        or not root.resolve().is_relative_to(tmp_path.resolve())
+    ):
         raise ValueError("explicit scratch fixture cron command required")
     env = runner_env(tmp_path)
     env.update(

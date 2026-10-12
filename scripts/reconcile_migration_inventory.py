@@ -598,14 +598,19 @@ def workbook_candidate(wb, result, output):
     dashboard.column_dimensions["B"].width = 95
     dashboard.column_dimensions["C"].width = 45
     for status, count in summary["primary_status_partition"].items():
-        dashboard.append(["Primary work status: " + status, count, "Current closure contract; historical labels retained"])
+        dashboard.append(
+            ["Primary work status: " + status, count, "Current closure contract; historical labels retained"]
+        )
     sheet_table(
         wb,
         "Reconciliation Evidence",
         ["path", "sha256"],
         # Only artifacts just generated for this review. The later publication
         # receipt hashes this workbook; embedding it would form a hash cycle.
-        [[str(output / name), sha256((output / name).read_bytes())] for name in ("reconciliation.json", "summary.json")],
+        [
+            [str(output / name), sha256((output / name).read_bytes())]
+            for name in ("reconciliation.json", "summary.json")
+        ],
     )
     # Original tracker rows remain a historical audit trail. New acceptance is explicit.
     tracker = wb["Tracker"]

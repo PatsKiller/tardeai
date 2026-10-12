@@ -166,9 +166,12 @@ def main():
         }
     )
     if would_send and not no_send:
-        _LAST["sent"] = bool(_send_telegram(
-            f"[{status.upper()}] YouTube cookies: {detail}\n\n{REFRESH_STEPS}",
-            priority="P1" if status == "red" else "P2"))
+        _LAST["sent"] = bool(
+            _send_telegram(
+                f"[{status.upper()}] YouTube cookies: {detail}\n\n{REFRESH_STEPS}",
+                priority="P1" if status == "red" else "P2",
+            )
+        )
     elif would_send:
         print(f"[cookie-health] send suppressed ({'--dry-run' if dry_run else '--no-send'})")
     # Red/amber are findings, not a failed run (2026-10-10; was `0 if green else 1`).

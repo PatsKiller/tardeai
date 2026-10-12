@@ -16,6 +16,7 @@ What is proven here, without touching the host, a broker, an LLM wrapper or the 
 
 Nothing here reads the token store, the live .env or the network (feedback 2026-09-28).
 """
+
 from __future__ import annotations
 
 import fcntl
@@ -78,6 +79,7 @@ def _summary(tmp_root: Path, pipeline: str, stage: str) -> dict:
 
 # --------------------------------------------------------------------------- bash -n
 
+
 @pytest.mark.parametrize("script", [RUNNER_LIB, *RUNNERS])
 def test_bash_syntax(script):
     r = subprocess.run(["bash", "-n", str(script)], capture_output=True, text=True)
@@ -93,11 +95,16 @@ def test_runner_never_names_an_llm_wrapper():
 
 # --------------------------------------------------------------------------- dry-run default
 
+
 def test_dry_run_default_executes_nothing(tmp_path):
     marker = tmp_path / "touched"
-    man = _hermetic_manifest(tmp_path, "hermetic_dry", [
-        {"id": "touch", "cron_line": 1, "command": f"touch {marker}", "timeout": "10s"},
-    ])
+    man = _hermetic_manifest(
+        tmp_path,
+        "hermetic_dry",
+        [
+            {"id": "touch", "cron_line": 1, "command": f"touch {marker}", "timeout": "10s"},
+        ],
+    )
     r = _run(tmp_path, man, "--stage", "test")
     assert r.returncode == 0, r.stdout + r.stderr
     assert "[DRY_RUN] would run" in r.stdout
@@ -124,9 +131,13 @@ def test_default_dry_run_fixture_ignores_inherited_apply_mode(tmp_path, monkeypa
     # §24.6: an operator shell's DRY_RUN=0 must not turn a test into an apply run.
     monkeypatch.setenv("DRY_RUN", "0")
     marker = tmp_path / "unexpected-business-effect"
-    man = _hermetic_manifest(tmp_path, "isolated_default", [
-        {"id": "touch", "cron_line": 1, "timeout": "5s", "command": f"touch {marker}"},
-    ])
+    man = _hermetic_manifest(
+        tmp_path,
+        "isolated_default",
+        [
+            {"id": "touch", "cron_line": 1, "timeout": "5s", "command": f"touch {marker}"},
+        ],
+    )
     r = _run(tmp_path, man, "--stage", "test")
     assert r.returncode == 0, r.stdout + r.stderr
     assert not marker.exists()
@@ -135,19 +146,37 @@ def test_default_dry_run_fixture_ignores_inherited_apply_mode(tmp_path, monkeypa
 
 # --------------------------------------------------------------------------- apply semantics
 
+
 def test_apply_runs_in_order_times_out_and_continues_on_error(tmp_path):
     order = tmp_path / "order.txt"
-    man = _hermetic_manifest(tmp_path, "hermetic_apply", [
-        {"id": "ok1", "cron_line": 10, "command": f"echo ok1 >> {order}; true", "timeout": "10s"},
-        {"id": "bad", "cron_line": 11, "command": f"echo bad >> {order}; false", "timeout": "10s"},
-        {"id": "slow", "cron_line": 12, "command": f"echo slow >> {order}; sleep 5", "timeout": "1s"},
-        {"id": "ok2", "cron_line": 13, "command": f"echo ok2 >> {order}; true", "timeout": "10s",
-         "log": "logs/hermetic_ok2.log"},
-        {"id": "weekend_only", "cron_line": 14, "command": f"echo weekend >> {order}", "timeout": "10s", "dow": [0, 6]},
-    ])
+    man = _hermetic_manifest(
+        tmp_path,
+        "hermetic_apply",
+        [
+            {"id": "ok1", "cron_line": 10, "command": f"echo ok1 >> {order}; true", "timeout": "10s"},
+            {"id": "bad", "cron_line": 11, "command": f"echo bad >> {order}; false", "timeout": "10s"},
+            {"id": "slow", "cron_line": 12, "command": f"echo slow >> {order}; sleep 5", "timeout": "1s"},
+            {
+                "id": "ok2",
+                "cron_line": 13,
+                "command": f"echo ok2 >> {order}; true",
+                "timeout": "10s",
+                "log": "logs/hermetic_ok2.log",
+            },
+            {
+                "id": "weekend_only",
+                "cron_line": 14,
+                "command": f"echo weekend >> {order}",
+                "timeout": "10s",
+                "dow": [0, 6],
+            },
+        ],
+    )
     r = _run(tmp_path, man, "--stage", "test", "--apply")
     assert r.returncode == 0, r.stdout + r.stderr
-    assert order.read_text().split() == ["ok1", "bad", "slow", "ok2"], "steps run in manifest order; failure does not cascade"
+    assert order.read_text().split() == ["ok1", "bad", "slow", "ok2"], (
+        "steps run in manifest order; failure does not cascade"
+    )
     s = _summary(tmp_path, "hermetic_apply", "test")
     by_id = {st["id"]: st for st in s["steps"]}
     assert by_id["ok1"]["status"] == "ok" and by_id["ok1"]["rc"] == 0
@@ -169,9 +198,13 @@ def test_apply_runs_in_order_times_out_and_continues_on_error(tmp_path):
 
 def test_held_stage_lock_is_a_clean_skip(tmp_path):
     marker = tmp_path / "ran"
-    man = _hermetic_manifest(tmp_path, "hermetic_lock", [
-        {"id": "touch", "cron_line": 1, "command": f"touch {marker}", "timeout": "10s"},
-    ])
+    man = _hermetic_manifest(
+        tmp_path,
+        "hermetic_lock",
+        [
+            {"id": "touch", "cron_line": 1, "command": f"touch {marker}", "timeout": "10s"},
+        ],
+    )
     lockfile = Path(runner_env(tmp_path)["PIPELINE_LOCK_DIR"]) / "pipeline_hermetic_lock-test.lock"
     with open(lockfile, "w") as fh:
         fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -182,19 +215,37 @@ def test_held_stage_lock_is_a_clean_skip(tmp_path):
 
 
 def test_unknown_stage_and_invalid_manifest_refuse(tmp_path):
-    man = _hermetic_manifest(tmp_path, "hermetic_stage", [
-        {"id": "x", "cron_line": 1, "command": "true", "timeout": "5s"},
-    ])
+    man = _hermetic_manifest(
+        tmp_path,
+        "hermetic_stage",
+        [
+            {"id": "x", "cron_line": 1, "command": "true", "timeout": "5s"},
+        ],
+    )
     r = _run(tmp_path, man, "--stage", "nope")
     assert r.returncode == 64 and "unknown stage" in r.stderr
     bad = tmp_path / "bad.json"
-    bad.write_text(json.dumps({"schema": pm.MANIFEST_SCHEMA, "pipeline": "bad", "stages": {
-        "s": {"steps": [{"id": "b", "cron_line": 1, "command": "bash scripts/market_day_gate.sh x", "timeout": "5s"}]}}}))
+    bad.write_text(
+        json.dumps(
+            {
+                "schema": pm.MANIFEST_SCHEMA,
+                "pipeline": "bad",
+                "stages": {
+                    "s": {
+                        "steps": [
+                            {"id": "b", "cron_line": 1, "command": "bash scripts/market_day_gate.sh x", "timeout": "5s"}
+                        ]
+                    }
+                },
+            }
+        )
+    )
     r = _run(tmp_path, bad, "--stage", "s", "--apply")
     assert r.returncode == 65 and "excluded token" in r.stderr
 
 
 # --------------------------------------------------------------------------- committed manifests
+
 
 @pytest.mark.parametrize("name", sorted(MANIFESTS))
 def test_committed_manifest_is_valid_and_verbatim(name):
@@ -209,7 +260,9 @@ def test_committed_manifest_is_valid_and_verbatim(name):
             assert st.get("continue_on_error") is True
             for tok in pm.FORBIDDEN_COMMAND_TOKENS:
                 assert tok not in st["command"]
-    assert isinstance(manifest.get("excluded"), list) and manifest["excluded"], f"{name}: excluded list must be explicit"
+    assert isinstance(manifest.get("excluded"), list) and manifest["excluded"], (
+        f"{name}: excluded list must be explicit"
+    )
     for e in manifest["excluded"]:
         assert e.get("reason") and e.get("category") and isinstance(e.get("cron_line"), int)
 
@@ -217,8 +270,14 @@ def test_committed_manifest_is_valid_and_verbatim(name):
 def test_after_close_exclusions_name_the_broker_lines():
     manifest = pm.load(MANIFESTS["after_close"])
     excluded = {e["basename"] for e in manifest["excluded"]}
-    for must in ("schwab_position_sync.py", "positions_sync.py", "schwab_transaction_ingest.py",
-                 "snaptrade_sync.py", "sync_basis_from_broker.py", "stop_drift_alert.py"):
+    for must in (
+        "schwab_position_sync.py",
+        "positions_sync.py",
+        "schwab_transaction_ingest.py",
+        "snaptrade_sync.py",
+        "sync_basis_from_broker.py",
+        "stop_drift_alert.py",
+    ):
         assert must in excluded, f"{must} must be listed as excluded with a reason"
     cats = {e["category"] for e in manifest["excluded"]}
     assert {"MARKET_DAY_GATE", "BROKER_SYNC", "STOP_ADVISORY"} <= cats
@@ -243,8 +302,11 @@ def test_hermes_steps_keep_their_wrappers_verbatim():
 
 def test_plan_cli_matches_module(tmp_path):
     manifest = pm.load(MANIFESTS["premarket"])
-    r = subprocess.run([sys.executable, str(MANIFEST_PY), str(MANIFESTS["premarket"]), "--plan", "premarket"],
-                       capture_output=True, text=True)
+    r = subprocess.run(
+        [sys.executable, str(MANIFEST_PY), str(MANIFESTS["premarket"]), "--plan", "premarket"],
+        capture_output=True,
+        text=True,
+    )
     assert r.returncode == 0, r.stderr
     lines = [l for l in r.stdout.splitlines() if l]
     assert len(lines) == len(manifest["stages"]["premarket"]["steps"])
@@ -261,18 +323,27 @@ def test_committed_runners_dry_run_print_plan_only(tmp_path):
     # dow=1-5 step is skipped_dow (no "[DRY_RUN] would run"); main went red at 00:09Z 2026-10-10.
     env["PIPELINE_TODAY_DOW"] = "3"
     # Private stage locks: a parallel gate dry-running the same real manifest must not turn this into a skip.
-    for runner, extra in ((RUNNERS[0], ["--manifest", str(MANIFESTS["after_close"]), "--stage", "close-capture"]),
-                          (RUNNERS[1], ["--manifest", str(MANIFESTS["premarket"])]),
-                          (RUNNERS[2], ["--manifest", str(MANIFESTS["hermes_overnight"]), "--stage", "night"])):
+    for runner, extra in (
+        (RUNNERS[0], ["--manifest", str(MANIFESTS["after_close"]), "--stage", "close-capture"]),
+        (RUNNERS[1], ["--manifest", str(MANIFESTS["premarket"])]),
+        (RUNNERS[2], ["--manifest", str(MANIFESTS["hermes_overnight"]), "--stage", "night"]),
+    ):
         fixture_runner = sandbox_runner(tmp_path, runner)
-        r = subprocess.run(["bash", str(fixture_runner), "--project-root", str(tmp_path), *extra],
-                           cwd=str(tmp_path), env=env, capture_output=True, text=True, timeout=120)
+        r = subprocess.run(
+            ["bash", str(fixture_runner), "--project-root", str(tmp_path), *extra],
+            cwd=str(tmp_path),
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
         assert r.returncode == 0, r.stdout + r.stderr
         assert "[DRY_RUN] would run" in r.stdout
         assert "status=ok" not in r.stdout and "status=failed" not in r.stdout
 
 
 # --------------------------------------------------------------------------- worker/receipt accounting
+
 
 @pytest.mark.parametrize("concurrency", [1, 2])
 def test_receipt_worker_failure_is_counted_and_later_steps_still_run(tmp_path, concurrency):
@@ -281,14 +352,10 @@ def test_receipt_worker_failure_is_counted_and_later_steps_still_run(tmp_path, c
     pipeline = f"worker_{uuid.uuid4().hex[:8]}"
     order = tmp_path / "order.txt"
     steps = [
-        {"id": "lost", "cron_line": 1, "timeout": "5s", "group": "g1",
-         "command": f"echo lost >> {order}"},
-        {"id": "slow", "cron_line": 2, "timeout": "5s", "group": "g1",
-         "command": f"sleep 0.4; echo slow >> {order}"},
-        {"id": "later", "cron_line": 3, "timeout": "5s", "group": "g1",
-         "command": f"echo later >> {order}"},
-        {"id": "next", "cron_line": 4, "timeout": "5s", "group": "g2",
-         "command": f"echo next >> {order}"},
+        {"id": "lost", "cron_line": 1, "timeout": "5s", "group": "g1", "command": f"echo lost >> {order}"},
+        {"id": "slow", "cron_line": 2, "timeout": "5s", "group": "g1", "command": f"sleep 0.4; echo slow >> {order}"},
+        {"id": "later", "cron_line": 3, "timeout": "5s", "group": "g1", "command": f"echo later >> {order}"},
+        {"id": "next", "cron_line": 4, "timeout": "5s", "group": "g2", "command": f"echo next >> {order}"},
     ]
     man = _hermetic_manifest(tmp_path, pipeline, steps)
     if concurrency > 1:
@@ -299,15 +366,23 @@ def test_receipt_worker_failure_is_counted_and_later_steps_still_run(tmp_path, c
     bindir.mkdir()
     py = bindir / "python3"
     py.write_text(
-        '#!/bin/bash\n'
+        "#!/bin/bash\n"
         'if [ "${1:-}" = - ] && [ "${6:-}" = lost ]; then exit 9; fi\n'
         f'exec {shlex.quote(sys.executable)} "$@"\n'
     )
     py.chmod(0o755)
-    r = _run(tmp_path, man, "--stage", "test", "--apply", env_extra={
-        "PATH": str(bindir) + os.pathsep + os.environ["PATH"],
-        "PIPELINE_LOCK_DIR": str(tmp_path), "PY": sys.executable,
-    })
+    r = _run(
+        tmp_path,
+        man,
+        "--stage",
+        "test",
+        "--apply",
+        env_extra={
+            "PATH": str(bindir) + os.pathsep + os.environ["PATH"],
+            "PIPELINE_LOCK_DIR": str(tmp_path),
+            "PY": sys.executable,
+        },
+    )
     assert r.returncode == 1, r.stdout + r.stderr
     assert set(order.read_text().split()) == {"lost", "slow", "later", "next"}
     s = _summary(tmp_path, pipeline, "test")
@@ -323,16 +398,17 @@ def test_durable_receipt_append_failure_is_not_hidden_by_complete_results(tmp_pa
     Both business commands still execute; complete result IDs do not prove receipt publication."""
     pipeline = f"receipt_{uuid.uuid4().hex[:8]}"
     out = tmp_path / "ran.txt"
-    steps = [{"id": sid, "cron_line": i, "timeout": "5s", "group": "g",
-              "command": f"echo {sid} >> {out}"} for i, sid in enumerate(("a", "b"), 1)]
+    steps = [
+        {"id": sid, "cron_line": i, "timeout": "5s", "group": "g", "command": f"echo {sid} >> {out}"}
+        for i, sid in enumerate(("a", "b"), 1)
+    ]
     man = _hermetic_manifest(tmp_path, pipeline, steps)
     if concurrency > 1:
         doc = json.loads(man.read_text())
         doc["stages"]["test"]["parallel"] = {"max_concurrency": concurrency}
         man.write_text(json.dumps(doc))
     (tmp_path / "logs" / "pipelines" / pipeline / "test_steps.jsonl").mkdir(parents=True)
-    r = _run(tmp_path, man, "--stage", "test", "--apply",
-             env_extra={"PIPELINE_LOCK_DIR": str(tmp_path)})
+    r = _run(tmp_path, man, "--stage", "test", "--apply", env_extra={"PIPELINE_LOCK_DIR": str(tmp_path)})
     assert r.returncode == 1, r.stdout + r.stderr
     assert set(out.read_text().split()) == {"a", "b"}
     s = _summary(tmp_path, pipeline, "test")
@@ -342,22 +418,40 @@ def test_durable_receipt_append_failure_is_not_hidden_by_complete_results(tmp_pa
     assert s["receipt_complete"] is False and s["overall_status"] == "degraded"
 
 
-@pytest.mark.parametrize(("actual_ids", "worker_failures"), [
-    ([], 0), (["a"], 0), (["a", "a"], 0), (["a", "foreign"], 0), (["a", "b"], 1),
-])
+@pytest.mark.parametrize(
+    ("actual_ids", "worker_failures"),
+    [
+        ([], 0),
+        (["a"], 0),
+        (["a", "a"], 0),
+        (["a", "foreign"], 0),
+        (["a", "b"], 1),
+    ],
+)
 def test_summary_missing_duplicate_foreign_or_failed_worker_receipts_are_degraded(
-    tmp_path, actual_ids, worker_failures,
+    tmp_path,
+    actual_ids,
+    worker_failures,
 ):
-    man = _hermetic_manifest(tmp_path, "summary_proof", [
-        {"id": sid, "cron_line": i, "timeout": "5s", "command": "true"}
-        for i, sid in enumerate(("a", "b"), 1)
-    ])
+    man = _hermetic_manifest(
+        tmp_path,
+        "summary_proof",
+        [{"id": sid, "cron_line": i, "timeout": "5s", "command": "true"} for i, sid in enumerate(("a", "b"), 1)],
+    )
     results = tmp_path / "results.jsonl"
     results.write_text("".join(json.dumps({"id": sid, "status": "ok"}) + "\n" for sid in actual_ids))
     kwargs = {"worker_failures": worker_failures} if worker_failures else {}
-    s = pm.write_summary(str(man), "test", str(results), str(tmp_path / "summary.json"),
-                         dry_run=False, started_at="fixture", log_path="fixture", apply_requested=True,
-                         **kwargs)
+    s = pm.write_summary(
+        str(man),
+        "test",
+        str(results),
+        str(tmp_path / "summary.json"),
+        dry_run=False,
+        started_at="fixture",
+        log_path="fixture",
+        apply_requested=True,
+        **kwargs,
+    )
     assert s["receipt_complete"] is False
     assert s["overall_status"] == "degraded" and s["expected_step_count"] == 2
     assert s["worker_failures"] == worker_failures

@@ -10,6 +10,7 @@ Proven here, hermetically (scratch project root, sleep/echo steps, no host state
     a/b), concurrency 4, and the p95 critical path is <= 60% of the 06:00-07:30 window;
   * the real premarket runner in --dry-run (env -i) prints the waves and executes nothing.
 """
+
 from __future__ import annotations
 
 import json
@@ -44,8 +45,14 @@ def _manifest(tmp: Path, steps: list[dict], parallel: dict | None) -> tuple[Path
 def _run(tmp: Path, manifest: Path, *args: str) -> subprocess.CompletedProcess:
     env = runner_env(tmp)
     runner = sandbox_runner(tmp, RUNNER)
-    return subprocess.run(["bash", str(runner), "--manifest", str(manifest), "--project-root", str(tmp), "--stage", "s", *args],
-                          cwd=str(tmp), env=env, capture_output=True, text=True, timeout=120)
+    return subprocess.run(
+        ["bash", str(runner), "--manifest", str(manifest), "--project-root", str(tmp), "--stage", "s", *args],
+        cwd=str(tmp),
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
 
 
 def _step(sid: str, group: str, cmd: str, line: int = 1) -> dict:
@@ -89,8 +96,10 @@ def test_groups_barrier_and_concurrency_bound(tmp_path):
 def test_same_lock_across_groups_runs_both_in_order(tmp_path):
     out = tmp_path / "o.txt"
     lk = tmp_path / "shared.lock"
-    steps = [_step("x", "g1", f"flock -n {lk} bash -c 'sleep 1; echo x >> {out}'"),
-             _step("y", "g2", f"flock -n {lk} bash -c 'echo y >> {out}'", 2)]
+    steps = [
+        _step("x", "g1", f"flock -n {lk} bash -c 'sleep 1; echo x >> {out}'"),
+        _step("y", "g2", f"flock -n {lk} bash -c 'echo y >> {out}'", 2),
+    ]
     man, _ = _manifest(tmp_path, steps, {"max_concurrency": 4})
     r = _run(tmp_path, man, "--apply")
     assert r.returncode == 0, r.stdout + r.stderr
@@ -99,29 +108,56 @@ def test_same_lock_across_groups_runs_both_in_order(tmp_path):
 
 def test_validator_refuses_unsafe_parallel_stages():
     def errs(steps, par):
-        return pm.validate({"schema": pm.MANIFEST_SCHEMA, "pipeline": "v", "stages": {"s": {"steps": steps, "parallel": par}}})
+        return pm.validate(
+            {"schema": pm.MANIFEST_SCHEMA, "pipeline": "v", "stages": {"s": {"steps": steps, "parallel": par}}}
+        )
+
     base = lambda sid, g, cmd="true": {"id": sid, "cron_line": 1, "command": cmd, "timeout": "1m", "group": g}  # noqa: E731
     assert errs([base("a", "g1"), base("b", "g1")], {"max_concurrency": 2}) == []
-    assert any("share lock" in e for e in errs([base("a", "g1", "flock -n /tmp/l.lock true"),
-                                                base("b", "g1", "bash scripts/safe_flock.sh /tmp/l.lock true")],
-                                               {"max_concurrency": 2}))
-    assert any("not contiguous" in e for e in errs([base("a", "g1"), base("b", "g2"), base("c", "g1")], {"max_concurrency": 2}))
-    assert any("has no group" in e for e in errs([{"id": "a", "cron_line": 1, "command": "true", "timeout": "1m"}],
-                                                 {"max_concurrency": 2}))
+    assert any(
+        "share lock" in e
+        for e in errs(
+            [
+                base("a", "g1", "flock -n /tmp/l.lock true"),
+                base("b", "g1", "bash scripts/safe_flock.sh /tmp/l.lock true"),
+            ],
+            {"max_concurrency": 2},
+        )
+    )
+    assert any(
+        "not contiguous" in e for e in errs([base("a", "g1"), base("b", "g2"), base("c", "g1")], {"max_concurrency": 2})
+    )
+    assert any(
+        "has no group" in e
+        for e in errs([{"id": "a", "cron_line": 1, "command": "true", "timeout": "1m"}], {"max_concurrency": 2})
+    )
     assert any("max_concurrency" in e for e in errs([base("a", "g1")], {"max_concurrency": 99}))
 
 
 def test_dry_run_executes_nothing_and_no_parallel_block_is_serial(tmp_path):
     out = tmp_path / "o.txt"
-    man, _ = _manifest(tmp_path, [_step("a", "g1", f"echo a >> {out}"), _step("b", "g1", f"echo b >> {out}", 2)],
-                       {"max_concurrency": 2})
+    man, _ = _manifest(
+        tmp_path,
+        [_step("a", "g1", f"echo a >> {out}"), _step("b", "g1", f"echo b >> {out}", 2)],
+        {"max_concurrency": 2},
+    )
     r = _run(tmp_path, man)
     assert r.returncode == 0 and not out.exists()
     assert r.stdout.count("[DRY_RUN] would run") == 2 and "[waves]" in r.stdout
-    serial = {"stages": {"s": {"steps": [{"id": "a", "cron_line": 1, "command": "true", "timeout": "1m", "group": "g"},
-                                          {"id": "b", "cron_line": 2, "command": "true", "timeout": "1m", "group": "g"}]}}}
+    serial = {
+        "stages": {
+            "s": {
+                "steps": [
+                    {"id": "a", "cron_line": 1, "command": "true", "timeout": "1m", "group": "g"},
+                    {"id": "b", "cron_line": 2, "command": "true", "timeout": "1m", "group": "g"},
+                ]
+            }
+        }
+    }
     assert pm.stage_concurrency(serial["stages"]["s"]) == 1
-    assert [g["group"] for g in pm.wave_plan(serial, "s")["groups"]] == ["a", "b"], "no parallel block: every step its own group"
+    assert [g["group"] for g in pm.wave_plan(serial, "s")["groups"]] == ["a", "b"], (
+        "no parallel block: every step its own group"
+    )
     for name in ("after_close", "hermes_learning", "hermes_overnight"):
         m = pm.load(ROOT / "config" / "pipelines" / f"{name}.json")
         assert all("parallel" not in st for st in m["stages"].values()), name
@@ -149,6 +185,7 @@ def test_wave_plan_p95_matches_readiness_rule():
     unverified partial p95_s never undercuts the design's upper bound."""
     sys.path.insert(0, str(ROOT / "scripts"))
     import report_tranche_b_readiness as rtb  # noqa: E402
+
     m = pm.load(PREMARKET)
     steps = m["stages"]["premarket"]["steps"]
     want = round(sum(rtb.step_duration(s.get("measured") or {})["p95_s"] for s in steps), 1)
@@ -163,9 +200,14 @@ def test_real_premarket_runner_dry_run_prints_waves_executes_nothing(tmp_path):
     # running the same real manifest cannot make this run a clean "[lock] ... already running" skip.
     env = runner_env(tmp_path)
     runner = sandbox_runner(tmp_path, PREMARKET_RUNNER)
-    r = subprocess.run(["bash", str(runner), "--manifest", str(PREMARKET), "--project-root", str(tmp_path),
-                        "--dry-run"],
-                       cwd=str(tmp_path), env=env, capture_output=True, text=True, timeout=120)
+    r = subprocess.run(
+        ["bash", str(runner), "--manifest", str(PREMARKET), "--project-root", str(tmp_path), "--dry-run"],
+        cwd=str(tmp_path),
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
     assert r.returncode == 0, r.stdout + r.stderr
     assert "[waves] stage=premarket max_concurrency=4 groups=23" in r.stdout
     assert r.stdout.count("[DRY_RUN] would run") == 37

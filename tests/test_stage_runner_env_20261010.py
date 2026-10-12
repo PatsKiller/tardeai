@@ -11,6 +11,7 @@ names included. Now:
 
 Hermetic: a scratch project root, a FAKE .env written by the test, `env | cut -d= -f1` commands. Names only.
 """
+
 from __future__ import annotations
 
 import json
@@ -29,8 +30,15 @@ import derive_step_env as dse  # noqa: E402
 import pipeline_manifest as pm  # noqa: E402
 
 #: the crontab's NAME=value lines by position in the C1 snapshot (sha 1e3ccb09… / 9bbaeb74…, same numbering)
-SNAPSHOT_ASSIGNMENTS = [(2, "SHELL"), (3, "PROJ"), (4, "PY"), (9, "LLM_DEFER_OFFPEAK"), (11, "TRADEAI_ENV"),
-                        (13, "BLIND_REVIEW_LANES"), (506, "CIO_DUAL_CHATGPT_CAP")]
+SNAPSHOT_ASSIGNMENTS = [
+    (2, "SHELL"),
+    (3, "PROJ"),
+    (4, "PY"),
+    (9, "LLM_DEFER_OFFPEAK"),
+    (11, "TRADEAI_ENV"),
+    (13, "BLIND_REVIEW_LANES"),
+    (506, "CIO_DUAL_CHATGPT_CAP"),
+]
 SNAPSHOT = ROOT / "tests" / "fixtures" / "c1_crontab_assignments_20261010.txt"
 
 
@@ -69,8 +77,8 @@ def test_sources_and_inline_are_recorded_from_the_command_text():
     assert by_id["cio_draft_plan_hygiene"]["inline"] == ["TRADEAI_ROOT"]
     assert by_id["price_db_sync"]["sources"] == [] and by_id["price_db_sync"]["inline"] == []
     # CIO_DUAL_CHATGPT_CAP is set at crontab L506: lines above it never had it
-    assert "CIO_DUAL_CHATGPT_CAP" not in by_id["price_db_sync"]["crontab_vars"]          # L183
-    assert "CIO_DUAL_CHATGPT_CAP" in by_id["earnings_enrich"]["crontab_vars"]            # L551
+    assert "CIO_DUAL_CHATGPT_CAP" not in by_id["price_db_sync"]["crontab_vars"]  # L183
+    assert "CIO_DUAL_CHATGPT_CAP" in by_id["earnings_enrich"]["crontab_vars"]  # L551
 
 
 def test_runner_never_hands_a_broker_name_to_a_step():
@@ -90,6 +98,7 @@ def test_runner_source_no_longer_calls_load_env():
 
 # ── runtime: the real runner, a fake .env, 75 env-printing steps ───────────────────────────────────────────────
 
+
 def _project(tmp_path: Path, env_text: str) -> Path:
     root = tmp_path / "proj"
     (root / "logs").mkdir(parents=True)
@@ -99,18 +108,31 @@ def _project(tmp_path: Path, env_text: str) -> Path:
 
 def _runner_env(root: Path) -> dict:
     env = runner_env(root)
-    env.update({"PROJ": str(root), "LLM_DEFER_OFFPEAK": "1",
-           "TRADEAI_ENV": "/nonexistent/env", "BLIND_REVIEW_LANES": "x", "CIO_DUAL_CHATGPT_CAP": "1",
-           # present in the runner's own environment, must never reach a step
-           "NOISE_FROM_RUNNER": "1", "ALPACA_API_KEY_ID": "fake-runner-side"})
+    env.update(
+        {
+            "PROJ": str(root),
+            "LLM_DEFER_OFFPEAK": "1",
+            "TRADEAI_ENV": "/nonexistent/env",
+            "BLIND_REVIEW_LANES": "x",
+            "CIO_DUAL_CHATGPT_CAP": "1",
+            # present in the runner's own environment, must never reach a step
+            "NOISE_FROM_RUNNER": "1",
+            "ALPACA_API_KEY_ID": "fake-runner-side",
+        }
+    )
     return env
 
 
 def _run(root: Path, manifest: Path, stage: str, *args: str) -> subprocess.CompletedProcess:
     runner = sandbox_runner(root, RUNNER)
-    return subprocess.run(["bash", str(runner), "--manifest", str(manifest), "--project-root", str(root),
-                           "--stage", stage, *args], cwd=str(root), env=_runner_env(root),
-                          capture_output=True, text=True, timeout=300)
+    return subprocess.run(
+        ["bash", str(runner), "--manifest", str(manifest), "--project-root", str(root), "--stage", stage, *args],
+        cwd=str(root),
+        env=_runner_env(root),
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
 
 
 FAKE_ENV = "CANARY_SHOULD_NOT_LEAK=1\nALPACA_KEY_ID=fake\nSCHWAB_APP_KEY=fake\nALPACA_MODE=paper\n"
@@ -121,10 +143,19 @@ def test_each_c1_step_gets_exactly_its_cron_env_names(tmp_path):
     steps = []
     for name, stage, st in _steps():
         sid = f"{name}__{stage}__{st['id']}".replace("-", "_")
-        steps.append({"id": sid, "cron_line": st["cron_line"], "timeout": "30s", "env": st["env"],
-                      "command": f'env | cut -d= -f1 | sort > "$PROJ/out_{sid}.txt"'})
+        steps.append(
+            {
+                "id": sid,
+                "cron_line": st["cron_line"],
+                "timeout": "30s",
+                "env": st["env"],
+                "command": f'env | cut -d= -f1 | sort > "$PROJ/out_{sid}.txt"',
+            }
+        )
     man = tmp_path / "c1envprobe.json"
-    man.write_text(json.dumps({"schema": pm.MANIFEST_SCHEMA, "pipeline": "c1envprobe", "stages": {"all": {"steps": steps}}}))
+    man.write_text(
+        json.dumps({"schema": pm.MANIFEST_SCHEMA, "pipeline": "c1envprobe", "stages": {"all": {"steps": steps}}})
+    )
     r = _run(root, man, "all", "--apply")
     assert r.returncode == 0, r.stdout[-2000:] + r.stderr[-2000:]
     by_sid = {f"{n}__{s}__{st['id']}".replace("-", "_"): st for n, s, st in _steps()}
@@ -132,31 +163,52 @@ def test_each_c1_step_gets_exactly_its_cron_env_names(tmp_path):
         got = set((root / f"out_{sid}.txt").read_text().split()) - set(pm.SHELL_ADDED_ENV)
         want = set(dse.cron_env_names(_line(st), SNAPSHOT_ASSIGNMENTS))
         assert got == want, (sid, sorted(got ^ want))
-        assert not any(n.startswith(("CANARY", "NOISE")) or n.upper().startswith(pm.BROKER_ENV_PREFIXES) for n in got), sid
+        assert not any(
+            n.startswith(("CANARY", "NOISE")) or n.upper().startswith(pm.BROKER_ENV_PREFIXES) for n in got
+        ), sid
 
 
 def test_a_step_that_sources_env_itself_still_does(tmp_path):
     root = _project(tmp_path, FAKE_ENV)
     st = next(s for _, _, s in _steps() if s["id"] == "earnings_enrich")
-    steps = [{"id": "own_source", "cron_line": 1, "timeout": "30s", "env": st["env"],
-              "command": 'bash -c "set -a; . ./.env; set +a; env | cut -d= -f1 | sort > out_own.txt"'},
-             {"id": "no_source", "cron_line": 2, "timeout": "30s", "env": st["env"],
-              "command": "env | cut -d= -f1 | sort > out_none.txt"}]
+    steps = [
+        {
+            "id": "own_source",
+            "cron_line": 1,
+            "timeout": "30s",
+            "env": st["env"],
+            "command": 'bash -c "set -a; . ./.env; set +a; env | cut -d= -f1 | sort > out_own.txt"',
+        },
+        {
+            "id": "no_source",
+            "cron_line": 2,
+            "timeout": "30s",
+            "env": st["env"],
+            "command": "env | cut -d= -f1 | sort > out_none.txt",
+        },
+    ]
     man = tmp_path / "own.json"
     man.write_text(json.dumps({"schema": pm.MANIFEST_SCHEMA, "pipeline": "ownsrc", "stages": {"s": {"steps": steps}}}))
     r = _run(root, man, "s", "--apply")
     assert r.returncode == 0, r.stdout + r.stderr
     own = set((root / "out_own.txt").read_text().split())
     none = set((root / "out_none.txt").read_text().split())
-    assert {"CANARY_SHOULD_NOT_LEAK", "ALPACA_KEY_ID"} <= own      # as cron: the line sources it itself
+    assert {"CANARY_SHOULD_NOT_LEAK", "ALPACA_KEY_ID"} <= own  # as cron: the line sources it itself
     assert not none & {"CANARY_SHOULD_NOT_LEAK", "ALPACA_KEY_ID", "SCHWAB_APP_KEY"}
 
 
 def test_safety_flags_still_read_from_env_file(tmp_path):
     root = _project(tmp_path, "ALPACA_MODE=live\n")
     man = tmp_path / "s.json"
-    man.write_text(json.dumps({"schema": pm.MANIFEST_SCHEMA, "pipeline": "safety",
-                               "stages": {"s": {"steps": [{"id": "t", "cron_line": 1, "timeout": "5s", "command": "true"}]}}}))
+    man.write_text(
+        json.dumps(
+            {
+                "schema": pm.MANIFEST_SCHEMA,
+                "pipeline": "safety",
+                "stages": {"s": {"steps": [{"id": "t", "cron_line": 1, "timeout": "5s", "command": "true"}]}},
+            }
+        )
+    )
     r = _run(root, man, "s", "--dry-run")
     assert r.returncode == 2 and "SAFETY-FAIL" in r.stderr + r.stdout
 
@@ -164,8 +216,15 @@ def test_safety_flags_still_read_from_env_file(tmp_path):
 def test_corrupted_env_still_fails_loudly(tmp_path):
     root = _project(tmp_path, "BROKEN='unterminated\n")
     man = tmp_path / "s.json"
-    man.write_text(json.dumps({"schema": pm.MANIFEST_SCHEMA, "pipeline": "corrupt",
-                               "stages": {"s": {"steps": [{"id": "t", "cron_line": 1, "timeout": "5s", "command": "true"}]}}}))
+    man.write_text(
+        json.dumps(
+            {
+                "schema": pm.MANIFEST_SCHEMA,
+                "pipeline": "corrupt",
+                "stages": {"s": {"steps": [{"id": "t", "cron_line": 1, "timeout": "5s", "command": "true"}]}},
+            }
+        )
+    )
     r = _run(root, man, "s", "--dry-run")
     assert r.returncode == 78 and "FATAL" in r.stderr + r.stdout
 
@@ -179,13 +238,28 @@ def test_parallel_premarket_groups_keep_each_steps_cron_env(tmp_path):
     assert pre["parallel"]["max_concurrency"] > 1
     steps = []
     for st in pre["steps"]:
-        steps.append({"id": st["id"], "cron_line": st["cron_line"], "timeout": "30s", "env": st["env"],
-                      "group": st["group"],
-                      "command": f'env | cut -d= -f1 | sort > "$PROJ/out_{st["id"]}.txt"'})
+        steps.append(
+            {
+                "id": st["id"],
+                "cron_line": st["cron_line"],
+                "timeout": "30s",
+                "env": st["env"],
+                "group": st["group"],
+                "command": f'env | cut -d= -f1 | sort > "$PROJ/out_{st["id"]}.txt"',
+            }
+        )
     man = tmp_path / "parenvprobe.json"
-    man.write_text(json.dumps({"schema": pm.MANIFEST_SCHEMA, "pipeline": "parenvprobe",
-                               "stages": {"premarket": {"parallel": {"max_concurrency": pre["parallel"]["max_concurrency"]},
-                                                        "steps": steps}}}))
+    man.write_text(
+        json.dumps(
+            {
+                "schema": pm.MANIFEST_SCHEMA,
+                "pipeline": "parenvprobe",
+                "stages": {
+                    "premarket": {"parallel": {"max_concurrency": pre["parallel"]["max_concurrency"]}, "steps": steps}
+                },
+            }
+        )
+    )
     r = _run(root, man, "premarket", "--apply")
     assert r.returncode == 0, r.stdout[-2000:] + r.stderr[-2000:]
     assert "group" in r.stdout

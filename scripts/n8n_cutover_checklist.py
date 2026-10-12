@@ -76,6 +76,7 @@ ALLOWLIST_FILE = Path("config/n8n_run_allowlist.json")
 CONTRACTS_FILE = Path("config/n8n_health_contracts.json")
 OUT_DIR = Path("data/runtime")
 
+
 # ---------------------------------------------------------------------------
 # tolerant readers
 # ---------------------------------------------------------------------------
@@ -102,9 +103,14 @@ def _iter_json_files(directory: Path):
 def _run_ok(receipt: dict) -> bool:
     state = str(receipt.get("state") or receipt.get("status") or "").upper()
     exit_code = receipt.get("exit_code", receipt.get("exit"))
-    return (state == "RUN_DONE" and type(exit_code) is int and exit_code == 0
-            and receipt.get("lock_skipped") is False and receipt.get("timed_out") is False
-            and receipt.get("verdict") == "ok")
+    return (
+        state == "RUN_DONE"
+        and type(exit_code) is int
+        and exit_code == 0
+        and receipt.get("lock_skipped") is False
+        and receipt.get("timed_out") is False
+        and receipt.get("verdict") == "ok"
+    )
 
 
 def run_receipts(state_root: Path, lane_id: str) -> dict[str, list[dict]]:
@@ -186,8 +192,12 @@ def acceptance_context(repo_root: Path, lane_id: str, packet, expected_sha, now:
     contracts = contracts if isinstance(contracts, list) else []
     contract = next((c for c in contracts if isinstance(c, dict) and c.get("id") == lane_id), {})
     try:
-        reviewed = (bool(contract) and contract.get("status") == "REVIEWED"
-                    and not validate_contract(contract) and not unknown_fields(contract))
+        reviewed = (
+            bool(contract)
+            and contract.get("status") == "REVIEWED"
+            and not validate_contract(contract)
+            and not unknown_fields(contract)
+        )
     except (AttributeError, TypeError, ValueError):
         reviewed = False
     if not reviewed:
@@ -208,15 +218,24 @@ def acceptance_context(repo_root: Path, lane_id: str, packet, expected_sha, now:
         errors.append("NOT_MEASURED: ordered, timezone-aware fixes_deployed_at/observed_at required")
     elif _positive_number(freshness) and (now - observed).total_seconds() > freshness * 3600:
         errors.append("STALE: acceptance observation exceeds reviewed freshness")
-    return {"sha": expected_sha, "fixed": fixed, "observed": observed, "freshness": freshness,
-            "timeout": timeout, "contract": contract}, errors
+    return {
+        "sha": expected_sha,
+        "fixed": fixed,
+        "observed": observed,
+        "freshness": freshness,
+        "timeout": timeout,
+        "contract": contract,
+    }, errors
 
 
 def _current_receipt(row: dict, ctx: dict, now: datetime, time_key="finished_at") -> bool:
     finished = _timestamp(row.get(time_key))
-    return (row.get("code_sha") == ctx["sha"] and finished is not None
-            and ctx["fixed"] <= finished <= ctx["observed"] <= now
-            and (now - finished).total_seconds() <= ctx["freshness"] * 3600)
+    return (
+        row.get("code_sha") == ctx["sha"]
+        and finished is not None
+        and ctx["fixed"] <= finished <= ctx["observed"] <= now
+        and (now - finished).total_seconds() <= ctx["freshness"] * 3600
+    )
 
 
 def _correlate(state_root: Path, lane: dict, receipt: dict, observation: dict, ctx: dict, now: datetime) -> str | None:
@@ -227,27 +246,51 @@ def _correlate(state_root: Path, lane: dict, receipt: dict, observation: dict, c
         return "NOT_MEASURED: run identity required"
     started, finished = _timestamp(receipt.get("started_at")), _timestamp(receipt.get("finished_at"))
     duration = receipt.get("duration_s")
-    if (started is None or finished is None or not ctx["fixed"] <= started <= finished
-            or (finished - started).total_seconds() > ctx["timeout"]
-            or type(duration) not in (int, float) or not math.isfinite(duration) or not 0 <= duration <= ctx["timeout"]):
+    if (
+        started is None
+        or finished is None
+        or not ctx["fixed"] <= started <= finished
+        or (finished - started).total_seconds() > ctx["timeout"]
+        or type(duration) not in (int, float)
+        or not math.isfinite(duration)
+        or not 0 <= duration <= ctx["timeout"]
+    ):
         return "receipt timing/timeout not proven"
     ledger = observation.get("ledger_run") or {}
     execution = observation.get("n8n_execution") or {}
     if not isinstance(ledger, dict) or not isinstance(execution, dict):
         return "NOT_MEASURED: ledger/n8n correlation required"
-    for key in ("run_id", "lane_id", "mode", "state", "exit_code", "code_sha", "verdict", "lock", "lock_skipped", "timed_out"):
+    for key in (
+        "run_id",
+        "lane_id",
+        "mode",
+        "state",
+        "exit_code",
+        "code_sha",
+        "verdict",
+        "lock",
+        "lock_skipped",
+        "timed_out",
+    ):
         if type(ledger.get(key)) is not type(receipt.get(key)) or ledger.get(key) != receipt.get(key):
             return f"DRIFT: ledger/receipt {key} mismatch"
     requested = _timestamp(ledger.get("requested_at"))
     ledger_started, ledger_finished = _timestamp(ledger.get("started_at")), _timestamp(ledger.get("finished_at"))
-    if (requested is None or ledger_started is None or ledger_finished is None
-            or not ctx["fixed"] <= requested <= ledger_started <= started <= finished <= ledger_finished <= ctx["observed"]
-            or ledger.get("caller_id") != "n8n-relay"):
+    if (
+        requested is None
+        or ledger_started is None
+        or ledger_finished is None
+        or not ctx["fixed"] <= requested <= ledger_started <= started <= finished <= ledger_finished <= ctx["observed"]
+        or ledger.get("caller_id") != "n8n-relay"
+    ):
         return "NOT_MEASURED: n8n-relay request timing required"
-    if (execution.get("run_id") != receipt.get("run_id")
-            or not isinstance(execution.get("execution_id"), str) or not execution["execution_id"]
-            or not ctx["contract"].get("workflow_id")
-            or execution.get("workflow_id") != ctx["contract"].get("workflow_id")):
+    if (
+        execution.get("run_id") != receipt.get("run_id")
+        or not isinstance(execution.get("execution_id"), str)
+        or not execution["execution_id"]
+        or not ctx["contract"].get("workflow_id")
+        or execution.get("workflow_id") != ctx["contract"].get("workflow_id")
+    ):
         return "NOT_MEASURED: matching n8n execution/workflow/run required"
     status = execution.get("status")
     if not isinstance(status, str):
@@ -260,7 +303,11 @@ def _correlate(state_root: Path, lane: dict, receipt: dict, observation: dict, c
         return "NOT_MEASURED: explicit n8n completion observation and retention reason required"
     n_started, n_finished = _timestamp(execution.get("started_at")), _timestamp(execution.get("finished_at"))
     # A request workflow can finish before the host worker; do not infer business completion from its status.
-    if n_started is None or n_finished is None or not ctx["fixed"] <= n_started <= requested <= n_finished <= ctx["observed"]:
+    if (
+        n_started is None
+        or n_finished is None
+        or not ctx["fixed"] <= n_started <= requested <= n_finished <= ctx["observed"]
+    ):
         return "NOT_MEASURED: n8n trigger/request correlation required"
     klass = observation.get("evidence_class")
     natural = klass in {"NATURAL_SHADOW", "NATURAL_CANARY", "NATURAL_POST_CUTOVER"}
@@ -269,8 +316,13 @@ def _correlate(state_root: Path, lane: dict, receipt: dict, observation: dict, c
     if natural:
         slot_key = ledger.get("slot_key")
         key = parse_key(slot_key) if isinstance(slot_key, str) else None
-        if (key is None or key[0] != "d" or key[1:3] != (lane["lane_id"], receipt["mode"])
-                or key[4] != 1 or ledger.get("slot_key") != receipt.get("slot_key")):
+        if (
+            key is None
+            or key[0] != "d"
+            or key[1:3] != (lane["lane_id"], receipt["mode"])
+            or key[4] != 1
+            or ledger.get("slot_key") != receipt.get("slot_key")
+        ):
             return "NOT_MEASURED: distinct first-attempt natural schedule slot required"
         row = registry_row(ctx.get("registry_root", state_root), lane["lane_id"])
         if not row:
@@ -296,26 +348,42 @@ def _correlate(state_root: Path, lane: dict, receipt: dict, observation: dict, c
     if not isinstance(lock, dict) or not isinstance(legacy_lock, str) or not legacy_lock:
         return "NOT_MEASURED: legacy lock identity required"
     if receipt["mode"] == "dry_run":
-        if (observation.get("legacy_authoritative") is not True or lock.get("scope") != "dryrun"
-                or lock.get("path") != legacy_lock + ".dryrun"):
+        if (
+            observation.get("legacy_authoritative") is not True
+            or lock.get("scope") != "dryrun"
+            or lock.get("path") != legacy_lock + ".dryrun"
+        ):
             return "DRIFT: shadow must preserve legacy authority and use a disjoint dryrun lock"
-        if ("output_signal_mtime_before" not in receipt or "output_signal_mtime_after" not in receipt
-                or receipt["output_signal_mtime_before"] != receipt["output_signal_mtime_after"]):
+        if (
+            "output_signal_mtime_before" not in receipt
+            or "output_signal_mtime_after" not in receipt
+            or receipt["output_signal_mtime_before"] != receipt["output_signal_mtime_after"]
+        ):
             return "DRIFT: shadow output signal changed or was not observed"
     elif lock.get("scope") != "live" or lock.get("path") != legacy_lock:
         return "DRIFT: live canary must use the legacy lock"
     elif klass in {"NATURAL_CANARY", "MANUAL_CANARY"} and observation.get("legacy_authoritative") is not True:
         return "NOT_MEASURED: legacy authority during canary required"
     proof = _proof_file(state_root, observation.get("effect_proof_ref"))
-    if (not proof or proof.get("run_id") != receipt["run_id"] or proof.get("lane_id") != lane["lane_id"]
-            or not _current_receipt(proof, ctx, now, "observed_at")
-            or _timestamp(proof.get("observed_at")) < finished):
+    if (
+        not proof
+        or proof.get("run_id") != receipt["run_id"]
+        or proof.get("lane_id") != lane["lane_id"]
+        or not _current_receipt(proof, ctx, now, "observed_at")
+        or _timestamp(proof.get("observed_at")) < finished
+    ):
         return "NOT_MEASURED: current per-run business-effect inspection required; a lock is insufficient"
     count = proof.get("business_effect_count")
     duplicates = proof.get("duplicate_effect_count")
-    if (type(count) is not int or count < 0 or type(duplicates) is not int or duplicates != 0
-            or (receipt["mode"] == "dry_run" and count != 0)
-            or proof.get("output_matches_contract") is not True or proof.get("consumer_correct") is not True):
+    if (
+        type(count) is not int
+        or count < 0
+        or type(duplicates) is not int
+        or duplicates != 0
+        or (receipt["mode"] == "dry_run" and count != 0)
+        or proof.get("output_matches_contract") is not True
+        or proof.get("consumer_correct") is not True
+    ):
         return "DRIFT: business effects, duplicate effects, output or consumer check failed"
     return None
 
@@ -350,8 +418,11 @@ def accepted_runs(state_root: Path, lane: dict, runs: dict, packet, ctx: dict, e
     executions: dict[str, str] = {}
     accepted_ids: dict[str, str] = {}
     for observation in observations if isinstance(observations, list) else []:
-        if (not isinstance(observation, dict) or not isinstance(observation.get("evidence_class"), str)
-                or observation["evidence_class"] not in accepted):
+        if (
+            not isinstance(observation, dict)
+            or not isinstance(observation.get("evidence_class"), str)
+            or observation["evidence_class"] not in accepted
+        ):
             continue
         klass = observation["evidence_class"]
         if not isinstance(observation.get("run_id"), str) or not observation["run_id"]:
@@ -367,8 +438,11 @@ def accepted_runs(state_root: Path, lane: dict, runs: dict, packet, ctx: dict, e
         if receipts and all(row == canonical[0] for row in canonical):
             row = receipts[0]
             expected_mode = "dry_run" if klass == "NATURAL_SHADOW" else "live"
-            reason = "DRIFT: evidence class/mode mismatch" if row.get("mode") != expected_mode else _correlate(
-                state_root, lane, row, observation, ctx, now)
+            reason = (
+                "DRIFT: evidence class/mode mismatch"
+                if row.get("mode") != expected_mode
+                else _correlate(state_root, lane, row, observation, ctx, now)
+            )
             if reason is None:
                 execution_id = observation["n8n_execution"]["execution_id"]
                 previous = executions.setdefault(execution_id, row["run_id"])
@@ -451,9 +525,13 @@ def registry_lane_metadata(root: Path, lane_id: str) -> dict | None:
         raise ValueError("NOT_MEASURED: registry schedule missing or malformed")
     for expression in schedules:
         parse_cron(expression)
-    return {"lane_id": lane_id, "tranche": scheduler.get("wave") or "REGISTRY",
-            "cron": schedules, "fidelity": "STAGED_DECLARATION" if staged else "REGISTRY_DECLARED",
-            "source": f"{root / REGISTRY_FILE} lane_id={lane_id}"}
+    return {
+        "lane_id": lane_id,
+        "tranche": scheduler.get("wave") or "REGISTRY",
+        "cron": schedules,
+        "fidelity": "STAGED_DECLARATION" if staged else "REGISTRY_DECLARED",
+        "source": f"{root / REGISTRY_FILE} lane_id={lane_id}",
+    }
 
 
 def _lane_row(obj, lane_id: str) -> dict | None:
@@ -484,8 +562,9 @@ def board_row(state_root: Path, lane_id: str) -> dict | None:
     return _lane_row(_load_json(state_root / BOARD_FILE), lane_id)
 
 
-def workflow_files_present(repo_root: Path, lane_id: str, *, registry: dict | None = None,
-                           contract: dict | None = None) -> tuple[bool, str]:
+def workflow_files_present(
+    repo_root: Path, lane_id: str, *, registry: dict | None = None, contract: dict | None = None
+) -> tuple[bool, str]:
     scheduler = (registry or {}).get("scheduler") or {}
     dispatcher = bool((registry or {}).get("dispatch") or (registry or {}).get("r1_pending"))
     dispatcher = dispatcher or isinstance(scheduler, dict) and scheduler.get("expression") == "dispatcher"
@@ -500,8 +579,12 @@ def workflow_files_present(repo_root: Path, lane_id: str, *, registry: dict | No
                 continue
             base = (repo_root / GENERIC_INDEX).parent
             path = base / row["file"]
-            if (Path(row["file"]).is_absolute() or ".." in Path(row["file"]).parts
-                    or not path.resolve().is_relative_to(base.resolve()) or path.suffix != ".json"):
+            if (
+                Path(row["file"]).is_absolute()
+                or ".." in Path(row["file"]).parts
+                or not path.resolve().is_relative_to(base.resolve())
+                or path.suffix != ".json"
+            ):
                 return False, "DRIFT: generic workflow path outside declared directory"
             workflow = _load_json(path)
             present = isinstance(workflow, dict) and workflow.get("id") == workflow_id
@@ -517,7 +600,10 @@ def workflow_files_present(repo_root: Path, lane_id: str, *, registry: dict | No
             if not all(isinstance(row.get(k), str) for k in ("shadow_file", "live_file")):
                 return False, "NOT_MEASURED: workflow file declaration malformed"
             files = [Path(row[k]) for k in ("shadow_file", "live_file")]
-            if any(p.is_absolute() or ".." in p.parts or not (base / p).resolve().is_relative_to(base.resolve()) for p in files):
+            if any(
+                p.is_absolute() or ".." in p.parts or not (base / p).resolve().is_relative_to(base.resolve())
+                for p in files
+            ):
                 return False, "DRIFT: per-lane workflow path outside declared directory"
             both = all((base / p).is_file() for p in files)
             return both, f"{row['shadow_file']} + {row['live_file']}"
@@ -527,8 +613,15 @@ def workflow_files_present(repo_root: Path, lane_id: str, *, registry: dict | No
 # ---------------------------------------------------------------------------
 # checklist
 # ---------------------------------------------------------------------------
-def lane_items(state_root: Path, repo_root: Path, lane: dict, *, acceptance=None,
-               expected_sha: str | None = None, now: datetime | None = None) -> list[dict]:
+def lane_items(
+    state_root: Path,
+    repo_root: Path,
+    lane: dict,
+    *,
+    acceptance=None,
+    expected_sha: str | None = None,
+    now: datetime | None = None,
+) -> list[dict]:
     now = now or datetime.now(timezone.utc)
     lane_id = lane["lane_id"]
     runs = run_receipts(state_root, lane_id)
@@ -543,8 +636,11 @@ def lane_items(state_root: Path, repo_root: Path, lane: dict, *, acceptance=None
     # A failed current live run cannot be concealed by selecting one successful canary.
     failed_live = [r for r in runs.get("live", []) if not errors and _current_receipt(r, ctx, now) and not _run_ok(r)]
     failed_dry = [r for r in runs.get("dry_run", []) if not errors and _current_receipt(r, ctx, now) and not _run_ok(r)]
-    cuts = [r for r in cutover_receipts(state_root, lane_id) if not errors
-            and _current_receipt(r, ctx, now, "at") and r.get("problems") == []]
+    cuts = [
+        r
+        for r in cutover_receipts(state_root, lane_id)
+        if not errors and _current_receipt(r, ctx, now, "at") and r.get("problems") == []
+    ]
     cut_dry = [r for r in cuts if _action(r) == "cutover" and _is_dry(r) and r.get("applied") is False]
     cut_apply = [r for r in cuts if _action(r) == "cutover" and not _is_dry(r) and r.get("applied") is True]
     rb_dry = [r for r in cuts if _action(r) == "rollback" and _is_dry(r) and r.get("applied") is False]
@@ -552,8 +648,9 @@ def lane_items(state_root: Path, repo_root: Path, lane: dict, *, acceptance=None
     kind = registry_kind(registry_root, lane_id)
     verdict = readiness_verdict(state_root, lane_id)
     board = board_row(state_root, lane_id)
-    wf_ok, wf_detail = workflow_files_present(repo_root, lane_id, registry=registry_row(registry_root, lane_id),
-                                             contract=ctx["contract"])
+    wf_ok, wf_detail = workflow_files_present(
+        repo_root, lane_id, registry=registry_row(registry_root, lane_id), contract=ctx["contract"]
+    )
     phase = str((board or {}).get("phase") or "").upper()
     rollback_ready = bool((board or {}).get("rollback_ready")) if board else False
 
@@ -563,8 +660,11 @@ def lane_items(state_root: Path, repo_root: Path, lane: dict, *, acceptance=None
     def detail(classes: tuple[str, ...], rows: list[dict]) -> str:
         reasons = errors + [s for klass in classes for s in rejected[klass]]
         count = len({r["run_id"] for r in rows})
-        return (f"{count} correlated run(s): {ev(rows)}; " + "; ".join(sorted(set(reasons)))) if reasons else (
-            f"{count} correlated run(s): {ev(rows)}" if rows else "NOT_MEASURED: correlated observations absent")
+        return (
+            (f"{count} correlated run(s): {ev(rows)}; " + "; ".join(sorted(set(reasons))))
+            if reasons
+            else (f"{count} correlated run(s): {ev(rows)}" if rows else "NOT_MEASURED: correlated observations absent")
+        )
 
     return [
         {
@@ -583,16 +683,20 @@ def lane_items(state_root: Path, repo_root: Path, lane: dict, *, acceptance=None
             "step": "shadow",
             "label": "Shadow: two natural fires after fixes, exact SHA, correlated n8n/ledger/host proof, zero business effects",
             "done": len(slots) >= 2 and not rejected["NATURAL_SHADOW"] and not errors and not failed_dry,
-            "evidence": f"{len(slots)} distinct natural slot(s); " + detail(("NATURAL_SHADOW",), dry)
-                        + f"; failed current shadow={len(failed_dry)}",
+            "evidence": f"{len(slots)} distinct natural slot(s); "
+            + detail(("NATURAL_SHADOW",), dry)
+            + f"; failed current shadow={len(failed_dry)}",
         },
         {
             "step": "canary",
             "label": "Canary: correlated live fire, legacy lock, outputs/consumers checked and no duplicate business effects",
-            "done": bool(canary) and not failed_live and not errors
-                    and not rejected["NATURAL_CANARY"] and not rejected["MANUAL_CANARY"],
+            "done": bool(canary)
+            and not failed_live
+            and not errors
+            and not rejected["NATURAL_CANARY"]
+            and not rejected["MANUAL_CANARY"],
             "evidence": detail(("NATURAL_CANARY", "MANUAL_CANARY"), canary)
-                        + f"; MANUAL_CANARY={len(accepted['MANUAL_CANARY'])}; failed current live={len(failed_live)}",
+            + f"; MANUAL_CANARY={len(accepted['MANUAL_CANARY'])}; failed current live={len(failed_live)}",
         },
         {
             "step": "readiness",
@@ -641,16 +745,27 @@ def lane_items(state_root: Path, repo_root: Path, lane: dict, *, acceptance=None
         {
             "step": "natural_fire",
             "label": "Post-cutover natural fire: correlated schedule, current SHA, fresh output/consumer and duplicate checks",
-            "done": bool(natural) and registry_at_cutover(registry_root, lane_id) and not errors
-                    and not rejected["NATURAL_POST_CUTOVER"] and not failed_live
-                    and all(any(_timestamp(c["at"]) <= _timestamp(r["started_at"]) for c in cut_apply) for r in natural),
+            "done": bool(natural)
+            and registry_at_cutover(registry_root, lane_id)
+            and not errors
+            and not rejected["NATURAL_POST_CUTOVER"]
+            and not failed_live
+            and all(any(_timestamp(c["at"]) <= _timestamp(r["started_at"]) for c in cut_apply) for r in natural),
             "evidence": detail(("NATURAL_POST_CUTOVER",), natural),
         },
     ]
 
 
-def render(state_root: Path, repo_root: Path, lanes: list[dict], title: str, *, acceptance=None,
-           expected_sha: str | None = None, now: datetime | None = None) -> str:
+def render(
+    state_root: Path,
+    repo_root: Path,
+    lanes: list[dict],
+    title: str,
+    *,
+    acceptance=None,
+    expected_sha: str | None = None,
+    now: datetime | None = None,
+) -> str:
     now = now or datetime.now(timezone.utc)
     lines = [
         f"# n8n cutover checklist — {title}",
@@ -715,8 +830,9 @@ def main(argv: list[str] | None = None) -> int:
         lanes = [lane for lane in LANES if lane["tranche"] == a.tranche]
         title, slug = f"tranche {a.tranche}", a.tranche
     acceptance = acceptance_packet(Path(a.state_root), a.acceptance_evidence)
-    text = render(Path(a.state_root), Path(a.repo_root), lanes, title,
-                  acceptance=acceptance, expected_sha=a.expected_sha)
+    text = render(
+        Path(a.state_root), Path(a.repo_root), lanes, title, acceptance=acceptance, expected_sha=a.expected_sha
+    )
     if a.write:
         out = Path(a.state_root) / OUT_DIR / f"n8n_cutover_checklist_{slug}.md"
         out.parent.mkdir(parents=True, exist_ok=True)
