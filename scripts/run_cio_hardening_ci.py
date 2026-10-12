@@ -4053,6 +4053,7 @@ GATES = [
             "tests/test_n8n_coordination_runs_projection_20261008.py",
             "tests/test_n8n_incident_fanin_runs_20261008.py",
             "tests/test_n8n_migration_board_20261008.py",
+            "tests/test_migration_reconciliation.py",
         ],
     ),
     (
