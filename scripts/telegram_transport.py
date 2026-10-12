@@ -9,6 +9,7 @@ T2 (2026-08-22): markdown parse failure must EDIT the original message, never
 send a second copy. Idempotency key (surface, symbol, decision_id) converts a
 retry into editMessageText.
 """
+
 from __future__ import annotations
 
 import enum
@@ -146,10 +147,12 @@ class SendFamily(enum.Enum):
 
 #: The only modules whose SYSTEM_OPS claim is honoured. Decided here, from the
 #: caller's own frame, so no producer can declare itself SYSTEM by argument alone.
-SYSTEM_FAMILY_CALLERS = frozenset({
-    "scripts.lib.autonomy_watchdog.telegram_system",
-    "lib.autonomy_watchdog.telegram_system",
-})
+SYSTEM_FAMILY_CALLERS = frozenset(
+    {
+        "scripts.lib.autonomy_watchdog.telegram_system",
+        "lib.autonomy_watchdog.telegram_system",
+    }
+)
 
 #: Private capability minted only by ``_resolve_system_grant``. It never leaves
 #: this module (a ratchet test scans the tree for the name).
@@ -158,6 +161,7 @@ _SYSTEM_GRANT = object()
 
 def _csv_env(name: str) -> set[str]:
     import os
+
     return {p.strip() for p in str(os.environ.get(name) or "").split(",") if p.strip()}
 
 
@@ -170,6 +174,7 @@ def _resolve_system_grant(family: Any, *, token: str, chat_id: Any, caller: str 
     and not a CIO bot, and the chat is the ops chat and not a CIO chat.
     """
     import os
+
     if family is SendFamily.OPERATOR:
         return None, "operator_family"
     if family is not SendFamily.SYSTEM_OPS:
@@ -183,7 +188,8 @@ def _resolve_system_grant(family: Any, *, token: str, chat_id: Any, caller: str 
     if not tok or tok != ops_tok:
         return None, "token_not_ops_bot"
     cio_tokens = {
-        str(v).strip() for k, v in os.environ.items()
+        str(v).strip()
+        for k, v in os.environ.items()
         if k.startswith("TELEGRAM_CIO") and "TOKEN" in k and str(v or "").strip()
     }
     if tok in cio_tokens:
@@ -217,19 +223,15 @@ def _interdicted() -> bool:
     ``_system_interdicted`` instead (see ``_blocked``).
     """
     import os
-    return bool(
-        os.environ.get("PYTEST_CURRENT_TEST")
-        or _truthy(os.environ.get("CIO_TELEGRAM_INTERDICT"))
-    )
+
+    return bool(os.environ.get("PYTEST_CURRENT_TEST") or _truthy(os.environ.get("CIO_TELEGRAM_INTERDICT")))
 
 
 def _system_interdicted() -> bool:
     """The SYSTEM_OPS family's own switch. PYTEST_CURRENT_TEST still interdicts."""
     import os
-    return bool(
-        os.environ.get("PYTEST_CURRENT_TEST")
-        or _truthy(os.environ.get("SYSTEM_TELEGRAM_INTERDICT"))
-    )
+
+    return bool(os.environ.get("PYTEST_CURRENT_TEST") or _truthy(os.environ.get("SYSTEM_TELEGRAM_INTERDICT")))
 
 
 def _blocked(grant: Any = None) -> bool:
@@ -246,6 +248,7 @@ def system_send_gate(*, token: str, chat_id: Any) -> dict:
     real send would not get.
     """
     import sys
+
     caller = sys._getframe(1).f_globals.get("__name__")
     grant, why = _resolve_system_grant(SendFamily.SYSTEM_OPS, token=token, chat_id=chat_id, caller=caller)
     return {
@@ -288,13 +291,7 @@ def escape_markdown(text: str) -> str:
     rather than adding a 127th convention. Migrating the producers is a separate
     wave; this is the thing they migrate TO.
     """
-    return (
-        str(text)
-        .replace("_", "\\_")
-        .replace("*", "\\*")
-        .replace("[", "\\[")
-        .replace("`", "\\`")
-    )
+    return str(text).replace("_", "\\_").replace("*", "\\*").replace("[", "\\[").replace("`", "\\`")
 
 
 def unescape_markdown(text: str) -> str:
@@ -303,13 +300,7 @@ def unescape_markdown(text: str) -> str:
     Only the four sequences the escaper produces, so a literal backslash the
     author actually wrote survives untouched.
     """
-    return (
-        str(text)
-        .replace("\\_", "_")
-        .replace("\\*", "*")
-        .replace("\\[", "[")
-        .replace("\\`", "`")
-    )
+    return str(text).replace("\\_", "_").replace("\\*", "*").replace("\\[", "[").replace("\\`", "`")
 
 
 _HTML_TAG = _re_html.compile(r"</?(?:b|i|u|s|code|pre|a)\b[^>]*>")
@@ -347,8 +338,12 @@ def html_to_plain(text: str) -> str:
     """
     import html as _html  # noqa: PLC0415
 
-    t = _re_html.sub(r'<a\s+href="([^"]*)"[^>]*>(.*?)</a>', lambda m: f"{m.group(2)} ({_html.unescape(m.group(1))})",
-                     text or "", flags=_re_html.S)
+    t = _re_html.sub(
+        r'<a\s+href="([^"]*)"[^>]*>(.*?)</a>',
+        lambda m: f"{m.group(2)} ({_html.unescape(m.group(1))})",
+        text or "",
+        flags=_re_html.S,
+    )
     t = _re_html.sub(r"</?(?:b|strong|i|em|u|ins|s|strike|del|code|pre|tg-spoiler|span|blockquote)(?:\s[^>]*)?>", "", t)
     return _html.unescape(t)
 
@@ -413,8 +408,9 @@ def _editor_failed_hold(text: str, exc: BaseException) -> bool:
         _log.warning("comms editor failed, sending original: %s", exc)
         return False
     if _is_bullish_investment_text(text):
-        _log.warning("comms editor failed; bullish investment text HELD (fail mode %s): %s",
-                     FAIL_MODE_CLOSED_FOR_INVESTMENT, exc)
+        _log.warning(
+            "comms editor failed; bullish investment text HELD (fail mode %s): %s", FAIL_MODE_CLOSED_FOR_INVESTMENT, exc
+        )
         return True
     _log.warning("comms editor failed, sending original (not bullish investment text): %s", exc)
     return False
@@ -454,13 +450,16 @@ def deliver_text(
     claim is logged and the send is treated as OPERATOR.
     """
     import sys
+
     grant = None
     if family is not SendFamily.OPERATOR:
         caller = sys._getframe(1).f_globals.get("__name__")
         grant, why = _resolve_system_grant(family, token=token, chat_id=chat_id, caller=caller)
         if grant is None:
-            _log.warning("telegram_system_family_refused", extra={
-                "event": "telegram_system_family_refused", "reason": why, "caller": str(caller)})
+            _log.warning(
+                "telegram_system_family_refused",
+                extra={"event": "telegram_system_family_refused", "reason": why, "caller": str(caller)},
+            )
     if _blocked(grant):
         return _interdicted_result()
     ce = _comms_editor()
@@ -468,33 +467,64 @@ def deliver_text(
     if ce is not None and ce.mode() != "off":
         try:
             decision = ce.edit(
-                text, chat_id=chat_id, parse_mode=parse_mode, db_query=ce.default_db_query,
+                text,
+                chat_id=chat_id,
+                parse_mode=parse_mode,
+                db_query=ce.default_db_query,
                 primary_symbols=primary_symbols,
             )
         except Exception as exc:  # noqa: BLE001
             if _editor_failed_hold(text, exc):
-                return {"ok": True, "status_code": 200, "response": {}, "edited": False, "message_id": None,
-                        "suppressed": EDITOR_UNAVAILABLE_HELD}
+                return {
+                    "ok": True,
+                    "status_code": 200,
+                    "response": {},
+                    "edited": False,
+                    "message_id": None,
+                    "suppressed": EDITOR_UNAVAILABLE_HELD,
+                }
             decision = None
     if decision is not None and decision.mode == "live":
         if not decision.send:
             ce.commit(decision, chat_id=chat_id)
-            return {"ok": True, "status_code": 200, "response": {}, "edited": False, "message_id": None,
-                    "suppressed": "duplicate" if decision.duplicate_of else decision.held_reason,
-                    "comms_editor": decision.receipt()}
+            return {
+                "ok": True,
+                "status_code": 200,
+                "response": {},
+                "edited": False,
+                "message_id": None,
+                "suppressed": "duplicate" if decision.duplicate_of else decision.held_reason,
+                "comms_editor": decision.receipt(),
+            }
         result = _deliver_text_raw(
-            token=token, chat_id=chat_id, text=decision.text, thread_id=thread_id, reply_markup=reply_markup,
-            parse_mode="HTML", idempotency_key=idempotency_key, reply_to_message_id=reply_to_message_id, post=post,
-            link_preview_options=link_preview_options, _grant=grant,
+            token=token,
+            chat_id=chat_id,
+            text=decision.text,
+            thread_id=thread_id,
+            reply_markup=reply_markup,
+            parse_mode="HTML",
+            idempotency_key=idempotency_key,
+            reply_to_message_id=reply_to_message_id,
+            post=post,
+            link_preview_options=link_preview_options,
+            _grant=grant,
         )
         if result.get("ok"):
             ce.commit(decision, chat_id=chat_id)
         result["comms_editor"] = decision.receipt()
         return result
     result = _deliver_text_raw(
-        token=token, chat_id=chat_id, text=text, thread_id=thread_id, reply_markup=reply_markup,
-        parse_mode=parse_mode, idempotency_key=idempotency_key, reply_to_message_id=reply_to_message_id, post=post,
-            link_preview_options=link_preview_options, _grant=grant,
+        token=token,
+        chat_id=chat_id,
+        text=text,
+        thread_id=thread_id,
+        reply_markup=reply_markup,
+        parse_mode=parse_mode,
+        idempotency_key=idempotency_key,
+        reply_to_message_id=reply_to_message_id,
+        post=post,
+        link_preview_options=link_preview_options,
+        _grant=grant,
     )
     if decision is not None:  # shadow: record what the editor would have done
         try:
@@ -577,8 +607,13 @@ def _deliver_text_raw(
 
     if edit_id is not None:
         payload = _base_payload(
-            chat_id, text, thread_id=thread_id, reply_markup=reply_markup,
-            parse_mode=parse_mode, message_id=edit_id, link_preview_options=link_preview_options,
+            chat_id,
+            text,
+            thread_id=thread_id,
+            reply_markup=reply_markup,
+            parse_mode=parse_mode,
+            message_id=edit_id,
+            link_preview_options=link_preview_options,
         )
         ok, code, body = _call(edit_url, payload)
         if not ok and parse_mode:
@@ -595,8 +630,12 @@ def _deliver_text_raw(
         }
 
     payload = _base_payload(
-        chat_id, text, thread_id=thread_id, reply_markup=reply_markup,
-        parse_mode=parse_mode, reply_to_message_id=reply_to_message_id,
+        chat_id,
+        text,
+        thread_id=thread_id,
+        reply_markup=reply_markup,
+        parse_mode=parse_mode,
+        reply_to_message_id=reply_to_message_id,
         link_preview_options=link_preview_options,
     )
     ok, code, body = _call(send_url, payload)
@@ -618,7 +657,9 @@ def _deliver_text_raw(
     payload_plain = _base_payload(
         chat_id,
         unescape_markdown(text) if parse_mode == "Markdown" else html_to_plain(text) if parse_mode == "HTML" else text,
-        thread_id=thread_id, reply_markup=reply_markup, parse_mode=None,
+        thread_id=thread_id,
+        reply_markup=reply_markup,
+        parse_mode=None,
         reply_to_message_id=reply_to_message_id,
         link_preview_options=link_preview_options,
     )
@@ -641,7 +682,10 @@ def _deliver_text_raw(
         "telegram parse_mode fallback: first send failed (code=%s), resent as "
         "plain text. Original parse_mode=%r. Identifiers with underscores may "
         "render differently between attempts. chat=%s ok=%s",
-        code, parse_mode, chat_id, bool(ok2),
+        code,
+        parse_mode,
+        chat_id,
+        bool(ok2),
     )
     return {
         "ok": bool(ok2),
@@ -681,9 +725,13 @@ def send_message(
         results: list[dict] = []
         for i, part in enumerate(parts):
             res = deliver_text(
-                token=token, chat_id=chat_id, text=part, thread_id=thread_id,
+                token=token,
+                chat_id=chat_id,
+                text=part,
+                thread_id=thread_id,
                 reply_markup=reply_markup if i == len(parts) - 1 else None,
-                parse_mode=parse_mode, idempotency_key=None,
+                parse_mode=parse_mode,
+                idempotency_key=None,
                 reply_to_message_id=reply_to_message_id if i == 0 else None,
                 link_preview_options=link_preview_options if i == 0 else None,
                 primary_symbols=primary_symbols,
@@ -692,13 +740,15 @@ def send_message(
             if not res.get("ok"):
                 break
         out = dict(results[-1])
-        out.update({
-            "ok": len(results) == len(parts) and all(r.get("ok") for r in results),
-            "message_id": results[0].get("message_id"),
-            "message_ids": [r.get("message_id") for r in results],
-            "parts": len(parts),
-            "parts_sent": sum(1 for r in results if r.get("ok")),
-        })
+        out.update(
+            {
+                "ok": len(results) == len(parts) and all(r.get("ok") for r in results),
+                "message_id": results[0].get("message_id"),
+                "message_ids": [r.get("message_id") for r in results],
+                "parts": len(parts),
+                "parts_sent": sum(1 for r in results if r.get("ok")),
+            }
+        )
         return out
     return deliver_text(
         token=token,
@@ -743,8 +793,12 @@ def _edit_caption(caption: str | None, *, chat_id: str) -> tuple[str | None, str
         decision = ce.edit(caption, chat_id=chat_id, parse_mode=None, db_query=ce.default_db_query)
     except Exception as exc:  # noqa: BLE001
         if _editor_failed_hold(caption, exc):
-            return CAPTION_HELD_TEXT.format(reason=EDITOR_UNAVAILABLE_HELD), None, {
-                "held_reason": EDITOR_UNAVAILABLE_HELD}, None
+            return (
+                CAPTION_HELD_TEXT.format(reason=EDITOR_UNAVAILABLE_HELD),
+                None,
+                {"held_reason": EDITOR_UNAVAILABLE_HELD},
+                None,
+            )
         return caption, None, None, None
     receipt = decision.receipt()
     if decision.mode != "live":
