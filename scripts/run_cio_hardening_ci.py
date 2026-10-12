@@ -2322,6 +2322,8 @@ GATES = [
             "tests/test_watchlist_bridge_recreate_cooldown_20260915.py",
             "tests/test_system_health_retired_component_20260915.py",
             "tests/test_system_health_agent_conn_and_retired_20261007.py",
+            "tests/test_system_health_freshness_identity_20261012.py",
+            "tests/test_orchestrator_market_context_rendering_20261012.py",
             "tests/test_persistent_state_root_import_20261008.py",
             "tests/test_scheduled_wrappers_resolve_own_tree_20261007.py",
             "tests/test_units_execute_served_tree_20261008.py",

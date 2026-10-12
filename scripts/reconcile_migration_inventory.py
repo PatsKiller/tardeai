@@ -48,6 +48,7 @@ DERIVED_SHEETS = {
     "Runtime Observations",
     "Classification Review",
     "Coverage Resolution",
+    "Delivery Progress",
 }
 CUTOVER_FIELDS = ("reconciled_acceptance", "acceptance_basis", "acceptance_as_of")
 _LOCKS = threading.local()
@@ -755,6 +756,13 @@ def build(args):
             + " #sha256="
             + sha256((args.supplement / "runtime_observations.json").read_bytes())
         )
+        delivery_path = args.supplement / "delivery_progress.tsv"
+        if delivery_path.exists():
+            provenance["delivery_progress"] = str(delivery_path) + " #sha256=" + sha256(delivery_path.read_bytes())
+            result["summary"]["implementation_progress"] = (
+                "See Delivery Progress for source, tested-head and deployment evidence. "
+                "Delivery packages are separate from accepted inventory closure."
+            )
         coverage_path = args.supplement / "inventory_coverage_resolution.json"
         coverage = load(coverage_path) if coverage_path.exists() else None
         if coverage:
@@ -780,7 +788,10 @@ def build(args):
             ("owner_decisions.tsv", "Owner Decisions"),
             ("timer_source_gaps.tsv", "Timer Source Gaps"),
             ("openclaw_crosswalk.tsv", "OpenClaw Crosswalk"),
+            ("delivery_progress.tsv", "Delivery Progress"),
         ):
+            if filename == "delivery_progress.tsv" and not (args.supplement / filename).exists():
+                continue
             with (args.supplement / filename).open() as stream:
                 values = list(csv.reader(stream, delimiter="\t"))
             sheet_table(wb, title, values[0], values[1:])
