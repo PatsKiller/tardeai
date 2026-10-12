@@ -198,6 +198,14 @@ REFUSAL_REASONS = frozenset(
         # Read-only lifecycle status keeps missing/unavailable sources as typed refusals.
         "momentum_lifecycle_not_configured",
         "momentum_lifecycle_source_unavailable",
+        # Server-owned providers return these protocol refusals as dictionaries.
+        "momentum_lifecycle_no_durable_store",
+        "momentum_lifecycle_disabled",
+        "momentum_monitor_admission_unproven",
+        "momentum_monitor_not_measured",
+        "momentum_monitor_stale",
+        "momentum_monitor_deployed_sha_drift",
+        "momentum_monitor_policy_or_collection_drift",
     }
 )
 REFUSAL_PREFIXES = ("illegal_transition:", "typed_refusal:", "forbidden_route:")
