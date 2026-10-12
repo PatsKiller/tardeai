@@ -2,7 +2,7 @@
 
 import copy
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -758,7 +758,7 @@ def test_diagnosis_projection_uses_actual_producer_counts_and_excludes_raw_actio
         "schema": "N8nFailureDiagnosis@v1",
         "mode": "apply",
         "ok": True,
-        "as_of": NOW.isoformat(),
+        "as_of": NOW.astimezone(timezone.utc).isoformat(),
         "eligible": 2,
         "diagnosed": 1,
         "model_called": 1,
