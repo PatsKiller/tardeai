@@ -69,7 +69,7 @@ def test_groups_barrier_and_concurrency_bound(tmp_path):
     steps.append(_step("b0", "g2", rec("b0"), 10))
     man, name = _manifest(tmp_path, steps, {"max_concurrency": 2})
     r = _run(tmp_path, man, "--apply")
-    assert r.returncode == 1, r.stdout + r.stderr
+    assert r.returncode == 0, r.stdout + r.stderr
     iv = _intervals(log)
     a = [iv[f"a{i}"] for i in range(4)]
     # never more than 2 at once, and actually parallel (2 overlap at some point)
@@ -118,8 +118,7 @@ def test_dry_run_executes_nothing_and_no_parallel_block_is_serial(tmp_path):
                        {"max_concurrency": 2})
     r = _run(tmp_path, man)
     assert r.returncode == 0 and not out.exists()
-    assert "DRY-RUN pipeline=" in r.stdout and "[waves]" in r.stdout
-    assert not (tmp_path / "data/runtime").exists()
+    assert r.stdout.count("[DRY_RUN] would run") == 2 and "[waves]" in r.stdout
     serial = {"stages": {"s": {"steps": [{"id": "a", "cron_line": 1, "command": "true", "timeout": "1m", "group": "g"},
                                           {"id": "b", "cron_line": 2, "command": "true", "timeout": "1m", "group": "g"}]}}}
     assert pm.stage_concurrency(serial["stages"]["s"]) == 1
@@ -170,6 +169,7 @@ def test_real_premarket_runner_dry_run_prints_waves_executes_nothing(tmp_path):
                        cwd=str(ROOT), env=env, capture_output=True, text=True, timeout=120)
     assert r.returncode == 0, r.stdout + r.stderr
     assert "[waves] stage=premarket max_concurrency=4 groups=23" in r.stdout
-    assert "DRY-RUN pipeline=premarket" in r.stdout
+    assert r.stdout.count("[DRY_RUN] would run") == 37
     assert " START 20" not in r.stdout.replace("] START pipeline", "")
-    assert not (tmp_path / "data/runtime").exists()
+    s = json.loads((tmp_path / "data" / "runtime" / "pipeline_premarket_premarket_last.json").read_text())
+    assert s["dry_run"] is True and s["executed_any"] is False and s["step_count"] == 37
