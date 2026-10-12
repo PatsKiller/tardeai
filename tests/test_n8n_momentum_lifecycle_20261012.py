@@ -20,6 +20,8 @@ def reviewed_fixture_contract(lane):
         next(c for c in json.loads(path.read_text())["contracts"] if c["id"] == "momentum-lifecycle-monitor")
     )
     contract.update(id=lane, status="REVIEWED", owner="fixture-owner", ownership_confirmation="OWNER_ACCEPTED")
+    # This synthetic reviewed owner contract declares bounded fixture work, not host measurements.
+    contract["baseline"].update(timeout_s=60, freshness_degraded_after_h=0.167, freshness_failed_after_h=0.25)
     contract["review"] = {"reviewed_by": "fixture-owner", "decision_ref": "fixture://operator-decision"}
     contract["review"]["contract_body_sha256"] = M.contract_body_digest(contract)
     return contract

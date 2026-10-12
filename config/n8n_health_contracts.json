@@ -7360,13 +7360,20 @@
         "freshness_degraded_after_h": 0.2,
         "freshness_failed_after_h": 0.3,
         "freshness_rule": "degraded beyond 2x cadence (lane_registry.evaluate_lane SLOW), failed beyond 3x (incident fan-in stale threshold)",
-        "timeout_s": null,
+        "timeout_s": 120,
         "class": "monitor (host cron)",
         "computed_on": "2026-10-11",
         "basis": "CLASS_DEFAULT_PROVISIONAL",
         "source": "fewer than 14 finished live runs in the coordination ledger (0); class defaults: duration degraded above 80% of timeout_s, freshness 2x/3x cadence, any RUN_FAILED/RUN_TIMEOUT/RUN_REFUSED failed",
         "runs_considered": 0,
-        "duration_degraded_above_s": null
+        "duration_degraded_above_s": null,
+        "source_derived_correction": {
+          "as_of": "2026-10-12",
+          "evidence": "docs/implementation/n8n-maturity/reconciliation-20261012/N8N_CONTRACT_BASELINE_CORRECTION_20261012.json",
+          "basis": "SOURCE_DECLARATION_ONLY; existing builder 2x/3x cadence policy, round(., 3)",
+          "calendar": "Cadence thresholds apply within the existing source calendar; off-session and market-day requirements remain unchanged.",
+          "runtime_and_business_baseline": "NOT_MEASURED; no ledger, expected-fire or output observations collected by this audit"
+        }
       },
       "alerting": {
         "lane_severity": "High",
@@ -7397,7 +7404,14 @@
         "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger"
       },
       "review_by": "2026-10-25",
-      "state_note": "registry state ACTIVE"
+      "state_note": "registry state ACTIVE",
+      "review": {
+        "baseline_correction_requires_review": true,
+        "baseline_correction_changed_fields": [
+          "timeout_s"
+        ],
+        "proposed_contract_body_sha256": "17250aa3f734651571017d04c6ed63be24b7350772d02d99bc1eafa5ef082265"
+      }
     },
     {
       "schema": "N8nHealthContract@v1",
@@ -8355,13 +8369,20 @@
         "freshness_degraded_after_h": 0.5,
         "freshness_failed_after_h": 0.75,
         "freshness_rule": "degraded beyond 2x cadence (lane_registry.evaluate_lane SLOW), failed beyond 3x (incident fan-in stale threshold)",
-        "timeout_s": null,
+        "timeout_s": 600,
         "class": "monitor (host cron)",
         "computed_on": "2026-10-11",
         "basis": "CLASS_DEFAULT_PROVISIONAL",
         "source": "fewer than 14 finished live runs in the coordination ledger (0); class defaults: duration degraded above 80% of timeout_s, freshness 2x/3x cadence, any RUN_FAILED/RUN_TIMEOUT/RUN_REFUSED failed",
         "runs_considered": 0,
-        "duration_degraded_above_s": null
+        "duration_degraded_above_s": null,
+        "source_derived_correction": {
+          "as_of": "2026-10-12",
+          "evidence": "docs/implementation/n8n-maturity/reconciliation-20261012/N8N_CONTRACT_BASELINE_CORRECTION_20261012.json",
+          "basis": "SOURCE_DECLARATION_ONLY; existing builder 2x/3x cadence policy, round(., 3)",
+          "calendar": "Cadence thresholds apply within the existing source calendar; off-session and market-day requirements remain unchanged.",
+          "runtime_and_business_baseline": "NOT_MEASURED; no ledger, expected-fire or output observations collected by this audit"
+        }
       },
       "alerting": {
         "lane_severity": "High",
@@ -8392,7 +8413,14 @@
         "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger"
       },
       "review_by": "2026-10-25",
-      "state_note": "registry state PAUSED"
+      "state_note": "registry state PAUSED",
+      "review": {
+        "baseline_correction_requires_review": true,
+        "baseline_correction_changed_fields": [
+          "timeout_s"
+        ],
+        "proposed_contract_body_sha256": "7a839556bbdc860c1c9472873d666aa70d4e64fb5a29d63ac0274ee42047391b"
+      }
     },
     {
       "schema": "N8nHealthContract@v1",
@@ -8999,13 +9027,20 @@
         "freshness_degraded_after_h": 0.2,
         "freshness_failed_after_h": 0.3,
         "freshness_rule": "degraded beyond 2x cadence (lane_registry.evaluate_lane SLOW), failed beyond 3x (incident fan-in stale threshold)",
-        "timeout_s": null,
+        "timeout_s": 120,
         "class": "monitor (host cron)",
         "computed_on": "2026-10-11",
         "basis": "CLASS_DEFAULT_PROVISIONAL",
         "source": "fewer than 14 finished live runs in the coordination ledger (0); class defaults: duration degraded above 80% of timeout_s, freshness 2x/3x cadence, any RUN_FAILED/RUN_TIMEOUT/RUN_REFUSED failed",
         "runs_considered": 0,
-        "duration_degraded_above_s": null
+        "duration_degraded_above_s": null,
+        "source_derived_correction": {
+          "as_of": "2026-10-12",
+          "evidence": "docs/implementation/n8n-maturity/reconciliation-20261012/N8N_CONTRACT_BASELINE_CORRECTION_20261012.json",
+          "basis": "SOURCE_DECLARATION_ONLY; existing builder 2x/3x cadence policy, round(., 3)",
+          "calendar": "Cadence thresholds apply within the existing source calendar; off-session and market-day requirements remain unchanged.",
+          "runtime_and_business_baseline": "NOT_MEASURED; no ledger, expected-fire or output observations collected by this audit"
+        }
       },
       "alerting": {
         "lane_severity": "High",
@@ -9036,7 +9071,14 @@
         "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger"
       },
       "review_by": "2026-10-25",
-      "state_note": "registry state PAUSED"
+      "state_note": "registry state PAUSED",
+      "review": {
+        "baseline_correction_requires_review": true,
+        "baseline_correction_changed_fields": [
+          "timeout_s"
+        ],
+        "proposed_contract_body_sha256": "24ec4a8ea977e95b1b58289242b138842ddbad200c32fe7b10ab812d58c1bdff"
+      }
     },
     {
       "schema": "N8nHealthContract@v1",
@@ -12633,10 +12675,18 @@
       "baseline": {
         "basis": "CLASS_DEFAULT_PROVISIONAL",
         "source": "no live history: the six ran 5 minutes on 2026-10-10 before the rollback",
-        "freshness_degraded_after_h": null,
-        "freshness_failed_after_h": 0.083,
+        "freshness_degraded_after_h": 0.167,
+        "freshness_failed_after_h": 0.25,
         "class": "generic_workflow",
-        "computed_on": "2026-10-11"
+        "computed_on": "2026-10-11",
+        "timeout_s": 50,
+        "source_derived_correction": {
+          "as_of": "2026-10-12",
+          "evidence": "docs/implementation/n8n-maturity/reconciliation-20261012/N8N_CONTRACT_BASELINE_CORRECTION_20261012.json",
+          "basis": "SOURCE_DECLARATION_ONLY; existing builder 2x/3x cadence policy, round(., 3)",
+          "calendar": "Cadence thresholds apply within the existing source calendar; off-session and market-day requirements remain unchanged.",
+          "runtime_and_business_baseline": "NOT_MEASURED; no ledger, expected-fire or output observations collected by this audit"
+        }
       },
       "alerting": {
         "lane_severity": "High",
@@ -12666,7 +12716,16 @@
         ],
         "never": "status 'running' with a deletedAt value is a soft-deleted success, not a hang"
       },
-      "review_by": "2026-10-25"
+      "review_by": "2026-10-25",
+      "review": {
+        "baseline_correction_requires_review": true,
+        "baseline_correction_changed_fields": [
+          "timeout_s",
+          "freshness_degraded_after_h",
+          "freshness_failed_after_h"
+        ],
+        "proposed_contract_body_sha256": "7864311cabf1b98774d5f343aa8da4ae263f09d5a455df6f574ce7e86d041ae7"
+      }
     },
     {
       "schema": "N8nHealthContract@v1",
@@ -12754,10 +12813,18 @@
       "baseline": {
         "basis": "CLASS_DEFAULT_PROVISIONAL",
         "source": "no live history: the six ran 5 minutes on 2026-10-10 before the rollback",
-        "freshness_degraded_after_h": null,
-        "freshness_failed_after_h": 0.083,
+        "freshness_degraded_after_h": 0.167,
+        "freshness_failed_after_h": 0.25,
         "class": "generic_workflow",
-        "computed_on": "2026-10-11"
+        "computed_on": "2026-10-11",
+        "timeout_s": 50,
+        "source_derived_correction": {
+          "as_of": "2026-10-12",
+          "evidence": "docs/implementation/n8n-maturity/reconciliation-20261012/N8N_CONTRACT_BASELINE_CORRECTION_20261012.json",
+          "basis": "SOURCE_DECLARATION_ONLY; existing builder 2x/3x cadence policy, round(., 3)",
+          "calendar": "Cadence thresholds apply within the existing source calendar; off-session and market-day requirements remain unchanged.",
+          "runtime_and_business_baseline": "NOT_MEASURED; no ledger, expected-fire or output observations collected by this audit"
+        }
       },
       "alerting": {
         "lane_severity": "High",
@@ -12787,7 +12854,16 @@
         ],
         "never": "status 'running' with a deletedAt value is a soft-deleted success, not a hang"
       },
-      "review_by": "2026-10-25"
+      "review_by": "2026-10-25",
+      "review": {
+        "baseline_correction_requires_review": true,
+        "baseline_correction_changed_fields": [
+          "timeout_s",
+          "freshness_degraded_after_h",
+          "freshness_failed_after_h"
+        ],
+        "proposed_contract_body_sha256": "dd47cd7cdf5ed42cba6a95e1e98714d929e7992e327b7431fd0cb2e62ee9bb66"
+      }
     },
     {
       "schema": "N8nHealthContract@v1",
@@ -12875,10 +12951,18 @@
       "baseline": {
         "basis": "CLASS_DEFAULT_PROVISIONAL",
         "source": "no live history: the six ran 5 minutes on 2026-10-10 before the rollback",
-        "freshness_degraded_after_h": null,
-        "freshness_failed_after_h": 0.083,
+        "freshness_degraded_after_h": 0.033,
+        "freshness_failed_after_h": 0.05,
         "class": "generic_workflow",
-        "computed_on": "2026-10-11"
+        "computed_on": "2026-10-11",
+        "timeout_s": 50,
+        "source_derived_correction": {
+          "as_of": "2026-10-12",
+          "evidence": "docs/implementation/n8n-maturity/reconciliation-20261012/N8N_CONTRACT_BASELINE_CORRECTION_20261012.json",
+          "basis": "SOURCE_DECLARATION_ONLY; existing builder 2x/3x cadence policy, round(., 3)",
+          "calendar": "Cadence thresholds apply within the existing source calendar; off-session and market-day requirements remain unchanged.",
+          "runtime_and_business_baseline": "NOT_MEASURED; no ledger, expected-fire or output observations collected by this audit"
+        }
       },
       "alerting": {
         "lane_severity": "Critical",
@@ -12908,7 +12992,16 @@
         ],
         "never": "status 'running' with a deletedAt value is a soft-deleted success, not a hang"
       },
-      "review_by": "2026-10-25"
+      "review_by": "2026-10-25",
+      "review": {
+        "baseline_correction_requires_review": true,
+        "baseline_correction_changed_fields": [
+          "timeout_s",
+          "freshness_degraded_after_h",
+          "freshness_failed_after_h"
+        ],
+        "proposed_contract_body_sha256": "67a17a8090e7e64a08554bf3c2bb55e3251070e7b3e04e0e355d364eaa630176"
+      }
     },
     {
       "schema": "N8nHealthContract@v1",
@@ -12996,10 +13089,18 @@
       "baseline": {
         "basis": "CLASS_DEFAULT_PROVISIONAL",
         "source": "no live history: the six ran 5 minutes on 2026-10-10 before the rollback",
-        "freshness_degraded_after_h": null,
-        "freshness_failed_after_h": 0.083,
+        "freshness_degraded_after_h": 0.033,
+        "freshness_failed_after_h": 0.05,
         "class": "generic_workflow",
-        "computed_on": "2026-10-11"
+        "computed_on": "2026-10-11",
+        "timeout_s": 50,
+        "source_derived_correction": {
+          "as_of": "2026-10-12",
+          "evidence": "docs/implementation/n8n-maturity/reconciliation-20261012/N8N_CONTRACT_BASELINE_CORRECTION_20261012.json",
+          "basis": "SOURCE_DECLARATION_ONLY; existing builder 2x/3x cadence policy, round(., 3)",
+          "calendar": "Cadence thresholds apply within the existing source calendar; off-session and market-day requirements remain unchanged.",
+          "runtime_and_business_baseline": "NOT_MEASURED; no ledger, expected-fire or output observations collected by this audit"
+        }
       },
       "alerting": {
         "lane_severity": "High",
@@ -13029,14 +13130,23 @@
         ],
         "never": "status 'running' with a deletedAt value is a soft-deleted success, not a hang"
       },
-      "review_by": "2026-10-25"
+      "review_by": "2026-10-25",
+      "review": {
+        "baseline_correction_requires_review": true,
+        "baseline_correction_changed_fields": [
+          "timeout_s",
+          "freshness_degraded_after_h",
+          "freshness_failed_after_h"
+        ],
+        "proposed_contract_body_sha256": "3ea88b6f02602c6c986b7204450ba851c347a2b5d1134db871061c0ce4ba7822"
+      }
     },
     {
       "schema": "N8nHealthContract@v1",
       "id": "tradeai-heartbeat-watcher",
       "kind": "generic_workflow",
       "workflow_id": "tradeai-heartbeat-watcher",
-      "status": "REVIEWED",
+      "status": "DRAFT",
       "target_reason": "generic workflow (AGENTS.md \u00a723.11)",
       "stage": null,
       "state_note": "Owner REVIEWED 2026-10-11 for tradeai-heartbeat-watcher activation in observe mode (lane heartbeat-watch stage shadow, dispatch dry_run). Packet ~/n8n-maturity-verification/packets/heartbeat-watcher-activate. Re-import on activate because the stored n8n row predates F4 (saveManualExecutions true). Canary/live of the host lane (receipt + live-freshness assert) remains a separate registry PR.",
@@ -13157,10 +13267,18 @@
       "baseline": {
         "basis": "CLASS_DEFAULT_PROVISIONAL",
         "source": "no live history: the six ran 5 minutes on 2026-10-10 before the rollback",
-        "freshness_degraded_after_h": null,
-        "freshness_failed_after_h": 0.083,
+        "freshness_degraded_after_h": 0.167,
+        "freshness_failed_after_h": 0.25,
         "class": "generic_workflow",
-        "computed_on": "2026-10-11"
+        "computed_on": "2026-10-11",
+        "timeout_s": 150,
+        "source_derived_correction": {
+          "as_of": "2026-10-12",
+          "evidence": "docs/implementation/n8n-maturity/reconciliation-20261012/N8N_CONTRACT_BASELINE_CORRECTION_20261012.json",
+          "basis": "SOURCE_DECLARATION_ONLY; existing builder 2x/3x cadence policy, round(., 3)",
+          "calendar": "Cadence thresholds apply within the existing source calendar; off-session and market-day requirements remain unchanged.",
+          "runtime_and_business_baseline": "NOT_MEASURED; no ledger, expected-fire or output observations collected by this audit"
+        }
       },
       "alerting": {
         "lane_severity": "Critical",
@@ -13190,7 +13308,25 @@
         ],
         "never": "status 'running' with a deletedAt value is a soft-deleted success, not a hang"
       },
-      "review_by": "2026-10-25"
+      "review_by": "2026-10-25",
+      "review": {
+        "status": "PENDING_BODY_REVIEW",
+        "reviewed_by": null,
+        "decision_ref": null,
+        "contract_body_sha256": null,
+        "previous_review": {
+          "status": "REVIEWED",
+          "body_sha256": "8b3812ff80931c464acb5eada0849463be911adec39781d99e0a50b18293573e",
+          "metadata": null
+        },
+        "baseline_correction_requires_review": true,
+        "baseline_correction_changed_fields": [
+          "timeout_s",
+          "freshness_degraded_after_h",
+          "freshness_failed_after_h"
+        ],
+        "proposed_contract_body_sha256": "2dd70477069c381410a29e5f90a5669cbb859d7c8f32d1015bad0b143152b4f8"
+      }
     },
     {
       "schema": "N8nHealthContract@v1",
@@ -13278,10 +13414,18 @@
       "baseline": {
         "basis": "CLASS_DEFAULT_PROVISIONAL",
         "source": "no live history: the six ran 5 minutes on 2026-10-10 before the rollback",
-        "freshness_degraded_after_h": null,
-        "freshness_failed_after_h": 0.083,
+        "freshness_degraded_after_h": 0.033,
+        "freshness_failed_after_h": 0.05,
         "class": "generic_workflow",
-        "computed_on": "2026-10-11"
+        "computed_on": "2026-10-11",
+        "timeout_s": 50,
+        "source_derived_correction": {
+          "as_of": "2026-10-12",
+          "evidence": "docs/implementation/n8n-maturity/reconciliation-20261012/N8N_CONTRACT_BASELINE_CORRECTION_20261012.json",
+          "basis": "SOURCE_DECLARATION_ONLY; existing builder 2x/3x cadence policy, round(., 3)",
+          "calendar": "Cadence thresholds apply within the existing source calendar; off-session and market-day requirements remain unchanged.",
+          "runtime_and_business_baseline": "NOT_MEASURED; no ledger, expected-fire or output observations collected by this audit"
+        }
       },
       "alerting": {
         "lane_severity": "Critical",
@@ -13311,7 +13455,16 @@
         ],
         "never": "status 'running' with a deletedAt value is a soft-deleted success, not a hang"
       },
-      "review_by": "2026-10-25"
+      "review_by": "2026-10-25",
+      "review": {
+        "baseline_correction_requires_review": true,
+        "baseline_correction_changed_fields": [
+          "timeout_s",
+          "freshness_degraded_after_h",
+          "freshness_failed_after_h"
+        ],
+        "proposed_contract_body_sha256": "c55df8b800fb15d6be0b27d0015d7f324b66487b903fe37e0106fa8e0dc1f842"
+      }
     },
     {
       "schema": "N8nHealthContract@v1",
@@ -18529,8 +18682,7 @@
         "reviewed_by": "operator PatsKiller 2026-10-11",
         "reviewed_on": "2026-10-11"
       }
-    }
-  ,
+    },
     {
       "schema": "N8nHealthContract@v1",
       "id": "advisory-desk-run-now",
@@ -18959,7 +19111,7 @@
       "id": "momentum-lifecycle-monitor",
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
-      "status": "REVIEWED",
+      "status": "DRAFT",
       "stage": "shadow",
       "target_reason": "Operative staged admission; operator requested tomorrow test, actual independent body review pending",
       "purpose": {
@@ -19058,7 +19210,17 @@
         "completion_allowance_s": 60,
         "business_volume_baseline": "NOT_MEASURED",
         "zero_go_or_proposals_valid": true,
-        "population_rule": "scanned = classified + manual only under declared scan_partition; overlays have separate populations; never force all UI counters equal"
+        "population_rule": "scanned = classified + manual only under declared scan_partition; overlays have separate populations; never force all UI counters equal",
+        "timeout_s": 60,
+        "freshness_degraded_after_h": 0.167,
+        "freshness_failed_after_h": 0.25,
+        "source_derived_correction": {
+          "as_of": "2026-10-12",
+          "evidence": "docs/implementation/n8n-maturity/reconciliation-20261012/N8N_CONTRACT_BASELINE_CORRECTION_20261012.json",
+          "basis": "SOURCE_DECLARATION_ONLY; existing builder 2x/3x cadence policy, round(., 3)",
+          "calendar": "Cadence thresholds apply within the existing source calendar; off-session and market-day requirements remain unchanged.",
+          "runtime_and_business_baseline": "NOT_MEASURED; no ledger, expected-fire or output observations collected by this audit"
+        }
       },
       "alerting": {
         "lane_severity": "High",
@@ -19096,15 +19258,32 @@
       },
       "review_by": "2026-10-13",
       "review": {
-        "status": "REVIEWED",
-        "prepared_on": "2026-10-12",
-        "prepared_by": "Codex delegated admission worker",
-        "reviewed_by": "Codex independent worker /root/runner_isolation; Codex integrator /root",
-        "decision_ref": "operator:PR1715:2026-10-12T21:17:10.578Z",
-        "decision_evidence": "OPERATOR_RELEASE_AND_TOMORROW_N8N_20261012.json; MOMENTUM_OPERATIVE_ADMISSION_ROOT_REVIEW_20261012.json; MOMENTUM_OPERATIVE_ADMISSION_FINAL_REVISION4_REVIEW_RUNNER_20261012.json",
-        "contract_body_sha256": "fa4c4227887da80ba5dacd6b5a295e3aa33140655228df4542d02bf6984310d9",
-        "digest_status": "ACTUAL_REVIEWED_OPERATIVE_BODY; source/body review and scoped operator acceptance; runtime acceptance NOT_MEASURED",
-        "reviewed_on": "2026-10-12"
+        "status": "PENDING_BODY_REVIEW",
+        "reviewed_by": null,
+        "decision_ref": null,
+        "contract_body_sha256": null,
+        "previous_review": {
+          "status": "REVIEWED",
+          "body_sha256": "fa4c4227887da80ba5dacd6b5a295e3aa33140655228df4542d02bf6984310d9",
+          "metadata": {
+            "status": "REVIEWED",
+            "prepared_on": "2026-10-12",
+            "prepared_by": "Codex delegated admission worker",
+            "reviewed_by": "Codex independent worker /root/runner_isolation; Codex integrator /root",
+            "decision_ref": "operator:PR1715:2026-10-12T21:17:10.578Z",
+            "decision_evidence": "OPERATOR_RELEASE_AND_TOMORROW_N8N_20261012.json; MOMENTUM_OPERATIVE_ADMISSION_ROOT_REVIEW_20261012.json; MOMENTUM_OPERATIVE_ADMISSION_FINAL_REVISION4_REVIEW_RUNNER_20261012.json",
+            "contract_body_sha256": "fa4c4227887da80ba5dacd6b5a295e3aa33140655228df4542d02bf6984310d9",
+            "digest_status": "ACTUAL_REVIEWED_OPERATIVE_BODY; source/body review and scoped operator acceptance; runtime acceptance NOT_MEASURED",
+            "reviewed_on": "2026-10-12"
+          }
+        },
+        "baseline_correction_requires_review": true,
+        "baseline_correction_changed_fields": [
+          "timeout_s",
+          "freshness_degraded_after_h",
+          "freshness_failed_after_h"
+        ],
+        "proposed_contract_body_sha256": "2f6db22a4b1a012760dd7eaa913c3040effbfeb7289c433409564d43d067ab32"
       }
     },
     {
@@ -19112,7 +19291,7 @@
       "id": "tradeai-momentum-lifecycle-candidate",
       "kind": "generic_workflow",
       "workflow_id": "tradeai-momentum-lifecycle-candidate",
-      "status": "REVIEWED",
+      "status": "DRAFT",
       "stage": "shadow",
       "target_reason": "Operative staged admission; operator requested tomorrow test, actual independent body review pending",
       "purpose": {
@@ -19187,7 +19366,17 @@
         "completion_allowance_s": 60,
         "business_volume_baseline": "NOT_MEASURED",
         "zero_go_or_proposals_valid": true,
-        "population_rule": "scanned = classified + manual only under declared scan_partition; overlays have separate populations; never force all UI counters equal"
+        "population_rule": "scanned = classified + manual only under declared scan_partition; overlays have separate populations; never force all UI counters equal",
+        "timeout_s": 50,
+        "freshness_degraded_after_h": 0.167,
+        "freshness_failed_after_h": 0.25,
+        "source_derived_correction": {
+          "as_of": "2026-10-12",
+          "evidence": "docs/implementation/n8n-maturity/reconciliation-20261012/N8N_CONTRACT_BASELINE_CORRECTION_20261012.json",
+          "basis": "SOURCE_DECLARATION_ONLY; existing builder 2x/3x cadence policy, round(., 3)",
+          "calendar": "Cadence thresholds apply within the existing source calendar; off-session and market-day requirements remain unchanged.",
+          "runtime_and_business_baseline": "NOT_MEASURED; no ledger, expected-fire or output observations collected by this audit"
+        }
       },
       "alerting": {
         "lane_severity": "High",
@@ -19225,15 +19414,32 @@
       },
       "review_by": "2026-10-13",
       "review": {
-        "status": "REVIEWED",
-        "prepared_on": "2026-10-12",
-        "prepared_by": "Codex delegated admission worker",
-        "reviewed_by": "Codex independent worker /root/runner_isolation; Codex integrator /root",
-        "decision_ref": "operator:PR1715:2026-10-12T21:17:10.578Z",
-        "decision_evidence": "OPERATOR_RELEASE_AND_TOMORROW_N8N_20261012.json; MOMENTUM_OPERATIVE_ADMISSION_ROOT_REVIEW_20261012.json; MOMENTUM_OPERATIVE_ADMISSION_FINAL_REVISION4_REVIEW_RUNNER_20261012.json",
-        "contract_body_sha256": "c1694054741468c2a4642b7dc2f2f633a02e4e9b7cd2489f289b8d0accb2d8ab",
-        "digest_status": "ACTUAL_REVIEWED_OPERATIVE_BODY; source/body review and scoped operator acceptance; runtime acceptance NOT_MEASURED",
-        "reviewed_on": "2026-10-12"
+        "status": "PENDING_BODY_REVIEW",
+        "reviewed_by": null,
+        "decision_ref": null,
+        "contract_body_sha256": null,
+        "previous_review": {
+          "status": "REVIEWED",
+          "body_sha256": "c1694054741468c2a4642b7dc2f2f633a02e4e9b7cd2489f289b8d0accb2d8ab",
+          "metadata": {
+            "status": "REVIEWED",
+            "prepared_on": "2026-10-12",
+            "prepared_by": "Codex delegated admission worker",
+            "reviewed_by": "Codex independent worker /root/runner_isolation; Codex integrator /root",
+            "decision_ref": "operator:PR1715:2026-10-12T21:17:10.578Z",
+            "decision_evidence": "OPERATOR_RELEASE_AND_TOMORROW_N8N_20261012.json; MOMENTUM_OPERATIVE_ADMISSION_ROOT_REVIEW_20261012.json; MOMENTUM_OPERATIVE_ADMISSION_FINAL_REVISION4_REVIEW_RUNNER_20261012.json",
+            "contract_body_sha256": "c1694054741468c2a4642b7dc2f2f633a02e4e9b7cd2489f289b8d0accb2d8ab",
+            "digest_status": "ACTUAL_REVIEWED_OPERATIVE_BODY; source/body review and scoped operator acceptance; runtime acceptance NOT_MEASURED",
+            "reviewed_on": "2026-10-12"
+          }
+        },
+        "baseline_correction_requires_review": true,
+        "baseline_correction_changed_fields": [
+          "timeout_s",
+          "freshness_degraded_after_h",
+          "freshness_failed_after_h"
+        ],
+        "proposed_contract_body_sha256": "f654528faee455c5817eb9cb844546bcde7e9936956e2143a4cdafcd364d856e"
       },
       "workflow_source": {
         "file": "tradeai-momentum-lifecycle-candidate.json",
@@ -19250,7 +19456,7 @@
       "id": "momentum-cache-reconcile",
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
-      "status": "REVIEWED",
+      "status": "DRAFT",
       "stage": "shadow",
       "target_reason": "Operative staged admission; operator requested tomorrow test, actual independent body review pending",
       "purpose": {
@@ -19334,7 +19540,17 @@
         "business_volume_baseline": "NOT_MEASURED",
         "zero_go_or_proposals_valid": true,
         "population_rule": "scanned = classified + manual only under declared scan_partition; overlays have separate populations; never force all UI counters equal",
-        "class": "report"
+        "class": "report",
+        "timeout_s": 60,
+        "freshness_degraded_after_h": 0.167,
+        "freshness_failed_after_h": 0.25,
+        "source_derived_correction": {
+          "as_of": "2026-10-12",
+          "evidence": "docs/implementation/n8n-maturity/reconciliation-20261012/N8N_CONTRACT_BASELINE_CORRECTION_20261012.json",
+          "basis": "SOURCE_DECLARATION_ONLY; existing builder 2x/3x cadence policy, round(., 3)",
+          "calendar": "Cadence thresholds apply within the existing source calendar; off-session and market-day requirements remain unchanged.",
+          "runtime_and_business_baseline": "NOT_MEASURED; no ledger, expected-fire or output observations collected by this audit"
+        }
       },
       "alerting": {
         "lane_severity": "High",
@@ -19372,15 +19588,32 @@
       },
       "review_by": "2026-10-13",
       "review": {
-        "status": "REVIEWED",
-        "prepared_on": "2026-10-12",
-        "prepared_by": "Codex delegated admission worker",
-        "reviewed_by": "Codex independent worker /root/runner_isolation; Codex integrator /root",
-        "decision_ref": "operator:PR1715:2026-10-12T21:17:10.578Z",
-        "decision_evidence": "OPERATOR_RELEASE_AND_TOMORROW_N8N_20261012.json; MOMENTUM_OPERATIVE_ADMISSION_ROOT_REVIEW_20261012.json; MOMENTUM_OPERATIVE_ADMISSION_FINAL_REVISION4_REVIEW_RUNNER_20261012.json",
-        "contract_body_sha256": "28713e20dbd31c8b66b68394f44fc8036ef96f9b0f10d97f7ed23c0e3256768c",
-        "digest_status": "ACTUAL_REVIEWED_OPERATIVE_BODY; source/body review and scoped operator acceptance; runtime acceptance NOT_MEASURED",
-        "reviewed_on": "2026-10-12"
+        "status": "PENDING_BODY_REVIEW",
+        "reviewed_by": null,
+        "decision_ref": null,
+        "contract_body_sha256": null,
+        "previous_review": {
+          "status": "REVIEWED",
+          "body_sha256": "28713e20dbd31c8b66b68394f44fc8036ef96f9b0f10d97f7ed23c0e3256768c",
+          "metadata": {
+            "status": "REVIEWED",
+            "prepared_on": "2026-10-12",
+            "prepared_by": "Codex delegated admission worker",
+            "reviewed_by": "Codex independent worker /root/runner_isolation; Codex integrator /root",
+            "decision_ref": "operator:PR1715:2026-10-12T21:17:10.578Z",
+            "decision_evidence": "OPERATOR_RELEASE_AND_TOMORROW_N8N_20261012.json; MOMENTUM_OPERATIVE_ADMISSION_ROOT_REVIEW_20261012.json; MOMENTUM_OPERATIVE_ADMISSION_FINAL_REVISION4_REVIEW_RUNNER_20261012.json",
+            "contract_body_sha256": "28713e20dbd31c8b66b68394f44fc8036ef96f9b0f10d97f7ed23c0e3256768c",
+            "digest_status": "ACTUAL_REVIEWED_OPERATIVE_BODY; source/body review and scoped operator acceptance; runtime acceptance NOT_MEASURED",
+            "reviewed_on": "2026-10-12"
+          }
+        },
+        "baseline_correction_requires_review": true,
+        "baseline_correction_changed_fields": [
+          "timeout_s",
+          "freshness_degraded_after_h",
+          "freshness_failed_after_h"
+        ],
+        "proposed_contract_body_sha256": "ce53b699246fb1296551327e9abc914125335c1c7fdb6bc6a4cdf6d813d37939"
       }
     },
     {
@@ -19388,7 +19621,7 @@
       "id": "trade-ai-scalp-live",
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
-      "status": "REVIEWED",
+      "status": "DRAFT",
       "stage": "shadow",
       "target_reason": "Named4.0.0 live exception; initial shadow admission before tomorrow canary/cutover",
       "purpose": {
@@ -19493,7 +19726,17 @@
         "completion_allowance_s": 295,
         "business_volume_baseline": "NOT_MEASURED",
         "zero_go_or_proposals_valid": true,
-        "population_rule": "scanned = classified + manual only under declared scan_partition; overlays have separate populations; never force all UI counters equal"
+        "population_rule": "scanned = classified + manual only under declared scan_partition; overlays have separate populations; never force all UI counters equal",
+        "timeout_s": 295,
+        "freshness_degraded_after_h": 0.167,
+        "freshness_failed_after_h": 0.25,
+        "source_derived_correction": {
+          "as_of": "2026-10-12",
+          "evidence": "docs/implementation/n8n-maturity/reconciliation-20261012/N8N_CONTRACT_BASELINE_CORRECTION_20261012.json",
+          "basis": "SOURCE_DECLARATION_ONLY; existing builder 2x/3x cadence policy, round(., 3)",
+          "calendar": "Cadence thresholds apply within the existing source calendar; off-session and market-day requirements remain unchanged.",
+          "runtime_and_business_baseline": "NOT_MEASURED; no ledger, expected-fire or output observations collected by this audit"
+        }
       },
       "alerting": {
         "lane_severity": "High",
@@ -19531,16 +19774,33 @@
       },
       "review_by": "2026-10-13",
       "review": {
-        "status": "REVIEWED",
-        "prepared_on": "2026-10-12",
-        "prepared_by": "Codex delegated admission worker",
-        "reviewed_by": "Codex independent worker /root/runner_isolation; Codex integrator /root",
-        "decision_ref": "operator:PR1715:2026-10-12T21:17:10.578Z",
-        "decision_evidence": "OPERATOR_RELEASE_AND_TOMORROW_N8N_20261012.json; MOMENTUM_OPERATIVE_ADMISSION_ROOT_REVIEW_20261012.json; MOMENTUM_OPERATIVE_ADMISSION_FINAL_REVISION4_REVIEW_RUNNER_20261012.json",
-        "contract_body_sha256": "c2ab0d7f6c81c6aa76e697b356aac4762d0d50fde84460a192f411c4a17a4c2d",
-        "digest_status": "ACTUAL_REVIEWED_OPERATIVE_BODY; source/body review and scoped operator acceptance; runtime acceptance NOT_MEASURED",
-        "reviewed_on": "2026-10-12"
+        "status": "PENDING_BODY_REVIEW",
+        "reviewed_by": null,
+        "decision_ref": null,
+        "contract_body_sha256": null,
+        "previous_review": {
+          "status": "REVIEWED",
+          "body_sha256": "c2ab0d7f6c81c6aa76e697b356aac4762d0d50fde84460a192f411c4a17a4c2d",
+          "metadata": {
+            "status": "REVIEWED",
+            "prepared_on": "2026-10-12",
+            "prepared_by": "Codex delegated admission worker",
+            "reviewed_by": "Codex independent worker /root/runner_isolation; Codex integrator /root",
+            "decision_ref": "operator:PR1715:2026-10-12T21:17:10.578Z",
+            "decision_evidence": "OPERATOR_RELEASE_AND_TOMORROW_N8N_20261012.json; MOMENTUM_OPERATIVE_ADMISSION_ROOT_REVIEW_20261012.json; MOMENTUM_OPERATIVE_ADMISSION_FINAL_REVISION4_REVIEW_RUNNER_20261012.json",
+            "contract_body_sha256": "c2ab0d7f6c81c6aa76e697b356aac4762d0d50fde84460a192f411c4a17a4c2d",
+            "digest_status": "ACTUAL_REVIEWED_OPERATIVE_BODY; source/body review and scoped operator acceptance; runtime acceptance NOT_MEASURED",
+            "reviewed_on": "2026-10-12"
+          }
+        },
+        "baseline_correction_requires_review": true,
+        "baseline_correction_changed_fields": [
+          "timeout_s",
+          "freshness_degraded_after_h",
+          "freshness_failed_after_h"
+        ],
+        "proposed_contract_body_sha256": "4e9bff63f522132a1bec7f2c22a6a871f09e252d00c45b5d15f4d2ce5de63afe"
       }
     }
-]
+  ]
 }
