@@ -58,6 +58,7 @@ missing CIO decisions on bullish investment-shaped text.
 AUTHORITY: READ_ONLY_ADVISORY. Formatting, reads and one local ledger file.
 Never places, sizes or cancels anything. MBI_BEHAVIOR = 0.
 """
+
 from __future__ import annotations
 
 import contextvars
@@ -87,7 +88,8 @@ MSG_NAMESPACE = uuid.uuid5(uuid.NAMESPACE_URL, "tradeai:operator-message")
 #: Active-turn primary symbols for footer links. Set by the desk before send so
 #: residual names in the body (prior-turn memory) do not bleed into chrome tags.
 _PRIMARY_SYMBOLS_CV: contextvars.ContextVar[Optional[tuple[str, ...]]] = contextvars.ContextVar(
-    "comms_editor_primary_symbols", default=None,
+    "comms_editor_primary_symbols",
+    default=None,
 )
 
 #: Process-global primary-symbol store. Cron puts ``scripts/`` on ``sys.path``, so
@@ -113,6 +115,7 @@ class _PrimarySymbolsToken:
     def __init__(self, cv_token: Optional[contextvars.Token] = None) -> None:
         self.cv_token = cv_token
 
+
 PILL_HOUSE = "🟢 Trade-AI"
 PILL_OUTSIDE = "🔵 Outside"
 PILL_MODEL = "🟣 DeepSeek"
@@ -128,19 +131,49 @@ _STANCE_BEAR = re.compile(r"\b(AVOID|SELL|EXIT|TRIM|REDUCE|DO NOT BUY|BEARISH|HO
 # BUY_READY / ENTRY_NEAR are bullish-lean CIO actions (2026-09-18 audit: omitting
 # them labeled 202 GO alerts as "neutral" and flooded false disagreements).
 _CIO_BULL = {
-    "BUY", "ADD", "ADD_ON_PULLBACK", "ACCUMULATE", "INITIATE", "REENTER", "RE_ENTER",
-    "BUY_READY", "ENTRY_NEAR",
+    "BUY",
+    "ADD",
+    "ADD_ON_PULLBACK",
+    "ACCUMULATE",
+    "INITIATE",
+    "REENTER",
+    "RE_ENTER",
+    "BUY_READY",
+    "ENTRY_NEAR",
 }
 _CIO_BEAR = {"AVOID", "SELL", "EXIT", "TRIM", "REDUCE", "HOLD_REDUCE"}
 # Soft non-bull CIO actions: allow GO/BUY → WATCH rewrite then re-check (C2).
-_CIO_SOFT_BLOCK = frozenset({
-    "RESEARCH_MORE", "HUMAN_REVIEW", "ADD_REVIEW", "HOLD", "WAIT", "NEUTRAL",
-    "UNSTATED", "NO_GO", "NOGO", "WATCH",
-})
+_CIO_SOFT_BLOCK = frozenset(
+    {
+        "RESEARCH_MORE",
+        "HUMAN_REVIEW",
+        "ADD_REVIEW",
+        "HOLD",
+        "WAIT",
+        "NEUTRAL",
+        "UNSTATED",
+        "NO_GO",
+        "NOGO",
+        "WATCH",
+    }
+)
 # Broad market / macro symbols: regime words near these are not investment recs.
-_STANCE_EXCLUDE_SYMBOLS = frozenset({
-    "SPY", "QQQ", "IWM", "DIA", "VIX", "TLT", "IEF", "HYG", "LQD", "USO", "GLD", "SLV",
-})
+_STANCE_EXCLUDE_SYMBOLS = frozenset(
+    {
+        "SPY",
+        "QQQ",
+        "IWM",
+        "DIA",
+        "VIX",
+        "TLT",
+        "IEF",
+        "HYG",
+        "LQD",
+        "USO",
+        "GLD",
+        "SLV",
+    }
+)
 _CIO_DECISION_HEADER = re.compile(r"^\[CIO DECISION\]", re.M)
 _REC_SHAPED = re.compile(
     r"\bNEW\s+GO\b|\b\[GO\]\b|\b\[WATCH\]\b|\bSTRONG\s+BUY\b|"
@@ -219,8 +252,11 @@ def markdown_to_html(text: str) -> str:
         return f"\x00{len(stash) - 1}\x00"
 
     t = re.sub(r"`([^`\n]+)`", lambda m: keep(f"<code>{html.escape(m.group(1))}</code>"), text)
-    t = re.sub(r"\[([^\]\n]+)\]\((https?://[^)\s]+)\)",
-               lambda m: keep(f'<a href="{html.escape(m.group(2), quote=True)}">{html.escape(m.group(1))}</a>'), t)
+    t = re.sub(
+        r"\[([^\]\n]+)\]\((https?://[^)\s]+)\)",
+        lambda m: keep(f'<a href="{html.escape(m.group(2), quote=True)}">{html.escape(m.group(1))}</a>'),
+        t,
+    )
     t = html.escape(t, quote=False)
     t = re.sub(r"\*\*([^*\n]+)\*\*", r"<b>\1</b>", t)
     t = re.sub(r"(?<![\w*])\*([^*\n]+?)\*(?![\w*])", r"<b>\1</b>", t)
@@ -270,7 +306,9 @@ class DuplicateLedger:
         except Exception:  # noqa: BLE001
             return {"schema": "CommsEditorLedger@v1", "chats": {}}
 
-    def check(self, chat_id: Any, fp: str, now: datetime, window_hours: float = DUPLICATE_WINDOW_HOURS) -> Optional[dict]:
+    def check(
+        self, chat_id: Any, fp: str, now: datetime, window_hours: float = DUPLICATE_WINDOW_HOURS
+    ) -> Optional[dict]:
         rec = (self._load().get("chats") or {}).get(_chat_key(chat_id), {}).get(fp)
         if not rec:
             return None
@@ -290,8 +328,7 @@ class DuplicateLedger:
         chat[fp] = rec
         cutoff = now - timedelta(hours=48)
         for key in list(chats):
-            chats[key] = {k: v for k, v in chats[key].items()
-                          if str(v.get("last_seen") or "") >= cutoff.isoformat()}
+            chats[key] = {k: v for k, v in chats[key].items() if str(v.get("last_seen") or "") >= cutoff.isoformat()}
         self.path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.path.with_suffix(".tmp")
         tmp.write_text(json.dumps(doc, indent=1), encoding="utf-8")
@@ -310,6 +347,7 @@ def subjects(text: str, *, resolve: Optional[Callable[[str], list[dict]]] = None
 
             def resolve(t: str) -> list[dict]:
                 return resolve_subjects(t, book=[])
+
         rows = resolve(plain) or []
     except Exception:  # noqa: BLE001
         rows = []
@@ -386,17 +424,67 @@ def _resolve_primary_symbols(explicit: Optional[Iterable[str]]) -> Optional[list
 # 14 days to 2026-10-03 the top "disagreeing tickers" were B (51), D (50) and
 # "ONE" (which held an operator approval request). They count as a subject only
 # when the text marks them: $ONE, "ticker ONE", or the security's own GUID.
-_AMBIGUOUS_WORDS = frozenset({
-    "A", "AI", "ALL", "AM", "AN", "ANY", "ARE", "AT", "BE", "BEST", "BIG", "BY", "CAN", "CASH", "DAY",
-    "DO", "EVER", "FOR", "FUN", "GO", "GOOD", "HAS", "HE", "HOLD", "HOPE", "IT", "KEY", "LIFE", "LOVE",
-    "LOW", "MAIN", "MORE", "NEW", "NICE", "NOW", "ON", "ONE", "OPEN", "OUT", "PLAY", "PR", "REAL", "RUN",
-    "SAFE", "SEE", "SO", "TOP", "TRUE", "TWO", "UP", "WELL",
-    # System chrome, not companies (2026-10-04 data-source alert linked "08:00 ET" and "free API
-    # requests" as Energy Transfer / Agora): a real mention needs $ET / "ticker: ET".
-    "API", "ET",
-    # 2026-10-05 digest linked "OFF in Command Center" from the stance word "HOLD-OFF".
-    "OFF",
-})
+_AMBIGUOUS_WORDS = frozenset(
+    {
+        "A",
+        "AI",
+        "ALL",
+        "AM",
+        "AN",
+        "ANY",
+        "ARE",
+        "AT",
+        "BE",
+        "BEST",
+        "BIG",
+        "BY",
+        "CAN",
+        "CASH",
+        "DAY",
+        "DO",
+        "EVER",
+        "FOR",
+        "FUN",
+        "GO",
+        "GOOD",
+        "HAS",
+        "HE",
+        "HOLD",
+        "HOPE",
+        "IT",
+        "KEY",
+        "LIFE",
+        "LOVE",
+        "LOW",
+        "MAIN",
+        "MORE",
+        "NEW",
+        "NICE",
+        "NOW",
+        "ON",
+        "ONE",
+        "OPEN",
+        "OUT",
+        "PLAY",
+        "PR",
+        "REAL",
+        "RUN",
+        "SAFE",
+        "SEE",
+        "SO",
+        "TOP",
+        "TRUE",
+        "TWO",
+        "UP",
+        "WELL",
+        # System chrome, not companies (2026-10-04 data-source alert linked "08:00 ET" and "free API
+        # requests" as Energy Transfer / Agora): a real mention needs $ET / "ticker: ET".
+        "API",
+        "ET",
+        # 2026-10-05 digest linked "OFF in Command Center" from the stance word "HOLD-OFF".
+        "OFF",
+    }
+)
 _GUARD_APPROVAL = re.compile(r"Approval requested", re.I)
 _GUARD_CODE = re.compile(r"/(?:approve|deny)\s+\S+", re.I)
 
@@ -449,10 +537,15 @@ def cio_views(symbols: list[str], db_query: Optional[Callable[..., list[dict]]])
     if not symbols or db_query is None:
         return {}
     try:
-        rows = db_query(
-            "SELECT DISTINCT ON (symbol) symbol, action, status, created_at FROM cio_decisions"
-            " WHERE symbol = ANY(%s) AND created_at > now() - interval '3 days'"
-            " ORDER BY symbol, created_at DESC", (list(symbols),)) or []
+        rows = (
+            db_query(
+                "SELECT DISTINCT ON (symbol) symbol, action, status, created_at FROM cio_decisions"
+                " WHERE symbol = ANY(%s) AND created_at > now() - interval '3 days'"
+                " ORDER BY symbol, created_at DESC",
+                (list(symbols),),
+            )
+            or []
+        )
     except Exception:  # noqa: BLE001
         return {}
     return {str(r["symbol"]).upper(): r for r in rows if r.get("symbol")}
@@ -464,7 +557,7 @@ def _stance_near(text: str, symbol: str) -> Optional[str]:
         return None
     plain = re.sub(r"<[^>]+>", " ", text or "")
     for m in re.finditer(rf"(?<![A-Z]){re.escape(sym)}(?![A-Z])", plain):
-        window = plain[max(0, m.start() - 60): m.end() + 60].upper()
+        window = plain[max(0, m.start() - 60) : m.end() + 60].upper()
         bull, bear = _STANCE_BULL.search(window), _STANCE_BEAR.search(window)
         if bull and not bear:
             return "bullish"
@@ -480,8 +573,9 @@ def cio_disagreements(text: str, views: dict[str, dict[str, Any]]) -> list[dict[
         cio = "bullish" if action in _CIO_BULL else ("bearish" if action in _CIO_BEAR else "neutral")
         said = _stance_near(text, sym)
         if said and said != cio:
-            out.append({"symbol": sym, "message": said, "cio_action": action,
-                        "cio_as_of": str(v.get("created_at") or "")[:16]})
+            out.append(
+                {"symbol": sym, "message": said, "cio_action": action, "cio_as_of": str(v.get("created_at") or "")[:16]}
+            )
     return out
 
 
@@ -649,29 +743,35 @@ def symbol_links(symbol: str) -> str:
     # Canonical dossier deep-link (same as telegram_rich.cc_symbol_url) — not portfolio.
     try:
         from scripts.lib.telegram_rich import symbol_links as _rich_links  # noqa: PLC0415
+
         return _rich_links(symbol, surface="intelligence")
     except ImportError:  # pragma: no cover
         s = quote(symbol.upper())
-        return (f'<a href="{cc_base()}/v3/watch/intelligence/{s}">{html.escape(symbol.upper())} in Command Center</a>'
-                f' · <a href="https://finviz.com/quote.ashx?t={s}">Finviz</a>'
-                f' · <a href="https://finance.yahoo.com/quote/{s}">Yahoo</a>')
+        return (
+            f'<a href="{cc_base()}/v3/watch/intelligence/{s}">{html.escape(symbol.upper())} in Command Center</a>'
+            f' · <a href="https://finviz.com/quote.ashx?t={s}">Finviz</a>'
+            f' · <a href="https://finance.yahoo.com/quote/{s}">Yahoo</a>'
+        )
 
 
 def build_outbound_links(symbols: Optional[Iterable[str]]) -> str:
     """Footer chrome for the active turn's primary symbols only."""
     try:
         from scripts.lib.telegram_rich import build_outbound_links as _build  # noqa: PLC0415
+
         return _build(symbols, surface="intelligence")
     except ImportError:  # pragma: no cover
         from scripts.lib.telegram_rich import scope_primary_symbols  # noqa: PLC0415
+
         return " · ".join(symbol_links(s) for s in scope_primary_symbols(symbols)[:3])
 
 
 def pills_for(text: str) -> list[str]:
     t = text or ""
     out = [PILL_HOUSE]
-    if re.search(r"(?i)went outside|governed[_ ]search|brave|searxng|web search|looked up outside", t) and \
-            not re.search(r"(?i)nothing (was )?looked up outside", t):
+    if re.search(
+        r"(?i)went outside|governed[_ ]search|brave|searxng|web search|looked up outside", t
+    ) and not re.search(r"(?i)nothing (was )?looked up outside", t):
         out.append(PILL_OUTSIDE)
     if re.search(r"(?i)deepseek|model knowledge|flash|grok|chatgpt|llm", t):
         out.append(PILL_MODEL)
@@ -684,10 +784,12 @@ def default_db_query(sql: str, params: Any = None, fetch: str = "all") -> list[d
     import psycopg2.extras  # noqa: PLC0415
 
     conn = psycopg2.connect(
-        host=os.environ.get("DB_HOST", "localhost"), dbname=os.environ.get("DB_NAME", "trade_ai"),
+        host=os.environ.get("DB_HOST", "localhost"),
+        dbname=os.environ.get("DB_NAME", "trade_ai"),
         user=os.environ.get("DB_USER", "trade_ai"),
         password=os.environ.get("DB_PASSWORD") or os.environ.get("POSTGRES_PASSWORD"),
-        connect_timeout=2, options="-c statement_timeout=2000",
+        connect_timeout=2,
+        options="-c statement_timeout=2000",
     )
     try:
         conn.set_session(readonly=True, autocommit=True)
@@ -728,10 +830,18 @@ class EditorDecision:
         return d
 
 
-def edit(text: str, *, chat_id: Any, parse_mode: Optional[str] = None, now: Optional[datetime] = None,
-         ledger: Optional[DuplicateLedger] = None, db_query: Optional[Callable[..., list[dict]]] = None,
-         resolve: Optional[Callable[[str], list[dict]]] = None, editor_mode: Optional[str] = None,
-         primary_symbols: Optional[Iterable[str]] = None) -> EditorDecision:
+def edit(
+    text: str,
+    *,
+    chat_id: Any,
+    parse_mode: Optional[str] = None,
+    now: Optional[datetime] = None,
+    ledger: Optional[DuplicateLedger] = None,
+    db_query: Optional[Callable[..., list[dict]]] = None,
+    resolve: Optional[Callable[[str], list[dict]]] = None,
+    editor_mode: Optional[str] = None,
+    primary_symbols: Optional[Iterable[str]] = None,
+) -> EditorDecision:
     """Decide what one message becomes. Pure apart from reads; ``commit`` records it.
 
     ``primary_symbols`` scopes footer links to the active turn only. When set
@@ -777,9 +887,7 @@ def edit(text: str, *, chat_id: Any, parse_mode: Optional[str] = None, now: Opti
                 if f"rewrote:go_to_watch:{sym}" not in rw_changes:
                     continue
                 action = str((views.get(sym) or {}).get("action") or "UNSTATED").upper()
-                stance_notes.append(
-                    f"[CIO Stance: {action} — Action rewritten to WATCH]"
-                )
+                stance_notes.append(f"[CIO Stance: {action} — Action rewritten to WATCH]")
                 changes.append(f"cio_stance_annotation:{sym}")
             # Subjects may still resolve; refresh disagreements on demoted text.
             disagree = cio_disagreements(body, views)
@@ -812,15 +920,19 @@ def edit(text: str, *, chat_id: Any, parse_mode: Optional[str] = None, now: Opti
     for note in stance_notes:
         footer.append(html.escape(note))
     for d in disagree:
-        footer.append(f"⚠️ <b>CIO disagrees on {html.escape(d['symbol'])}</b>: message reads {d['message']}, "
-                      f"CIO decision is {html.escape(d['cio_action'] or 'UNKNOWN')} ({html.escape(d['cio_as_of'])})"
-                      f" — <b>held</b>")
+        footer.append(
+            f"⚠️ <b>CIO disagrees on {html.escape(d['symbol'])}</b>: message reads {d['message']}, "
+            f"CIO decision is {html.escape(d['cio_action'] or 'UNKNOWN')} ({html.escape(d['cio_as_of'])})"
+            f" — <b>held</b>"
+        )
         changes.append(f"cio_disagreement:{d['symbol']}")
     if at_scalp_exempt:
         footer.append("<i>Intraday scalp alert · no CIO decision on this ticker (exempt by operator, 2026-10-04)</i>")
     for d in missing:
-        footer.append(f"⚠️ <b>CIO decision missing for {html.escape(d['symbol'])}</b>: message reads "
-                      f"{d['message']} — <b>held</b> (fail closed)")
+        footer.append(
+            f"⚠️ <b>CIO decision missing for {html.escape(d['symbol'])}</b>: message reads "
+            f"{d['message']} — <b>held</b> (fail closed)"
+        )
         changes.append(f"cio_decision_missing:{d['symbol']}")
     if held == "cio_disagreement":
         changes.append("held:cio_disagreement")
@@ -838,13 +950,29 @@ def edit(text: str, *, chat_id: Any, parse_mode: Optional[str] = None, now: Opti
         footer.append(f"<i>{' · '.join(pills_for(body))} · 🆔 {guid[:8]}{(' · ' + ids) if ids else ''}</i>")
         changes.append("guid_footer")
     final = html_body.rstrip() + ("\n\n" + "\n".join(footer) if footer else "")
-    return EditorDecision(mode=m, chat=str(_chat_key(chat_id)), guid=guid, fingerprint=fp, text=final,
-                          parse_mode="HTML", duplicate_of=(prior or {}).get("guid"), held_reason=held,
-                          subjects=[s for s in subs if s.get("guid")], cio_disagreements=disagree, changes=changes)
+    return EditorDecision(
+        mode=m,
+        chat=str(_chat_key(chat_id)),
+        guid=guid,
+        fingerprint=fp,
+        text=final,
+        parse_mode="HTML",
+        duplicate_of=(prior or {}).get("guid"),
+        held_reason=held,
+        subjects=[s for s in subs if s.get("guid")],
+        cio_disagreements=disagree,
+        changes=changes,
+    )
 
 
-def commit(decision: EditorDecision, *, chat_id: Any, now: Optional[datetime] = None,
-           ledger: Optional[DuplicateLedger] = None, receipts: Optional[Path] = None) -> None:
+def commit(
+    decision: EditorDecision,
+    *,
+    chat_id: Any,
+    now: Optional[datetime] = None,
+    ledger: Optional[DuplicateLedger] = None,
+    receipts: Optional[Path] = None,
+) -> None:
     """Record a sent message in the ledger and append the receipt."""
     now = now or datetime.now(timezone.utc)
     if decision.send and decision.mode == "live":
@@ -858,8 +986,29 @@ def commit(decision: EditorDecision, *, chat_id: Any, now: Optional[datetime] = 
         pass
 
 
-__all__ = ["DuplicateLedger", "EditorDecision", "PILL_HOUSE", "PILL_MODEL", "PILL_OUTSIDE", "build_outbound_links",
-           "cc_base", "cio_disagreements", "is_operator_approval_request", "unambiguous_subjects", "cio_missing_decisions", "commit", "default_db_query", "edit",
-           "fingerprint", "markdown_to_html", "message_guid", "mode", "reset_primary_symbols",
-           "rewrite_bullish_to_watch", "set_primary_symbols", "soft_block_rewrite_symbols", "subjects",
-           "symbol_links"]
+__all__ = [
+    "DuplicateLedger",
+    "EditorDecision",
+    "PILL_HOUSE",
+    "PILL_MODEL",
+    "PILL_OUTSIDE",
+    "build_outbound_links",
+    "cc_base",
+    "cio_disagreements",
+    "is_operator_approval_request",
+    "unambiguous_subjects",
+    "cio_missing_decisions",
+    "commit",
+    "default_db_query",
+    "edit",
+    "fingerprint",
+    "markdown_to_html",
+    "message_guid",
+    "mode",
+    "reset_primary_symbols",
+    "rewrite_bullish_to_watch",
+    "set_primary_symbols",
+    "soft_block_rewrite_symbols",
+    "subjects",
+    "symbol_links",
+]
