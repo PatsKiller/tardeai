@@ -1463,7 +1463,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-maturity/cron-inventory/README.md` | Cron inventory — system of record | review_required | OK | `74edf16d290d` |
 | `docs/implementation/n8n-maturity/cron-inventory/REMEDIATION_PLAN.md` | Cron / n8n Remediation Plan — from the verified inventory | review_required | OK | `bbcf489b4a63` |
 | `docs/implementation/n8n-maturity/cron-inventory/SCHEMA.md` | Cron inventory — system of record: column specification (v1, 2026-10-09 21:55 ET) | review_required | OK | `993baebfd7cf` |
-| `docs/implementation/n8n-maturity/reconciliation-20261012/MOMENTUM_LIFECYCLE_CANDIDATE.md` | Momentum lifecycle implementation and activation packet | review_required | MISSING HEADER | `001cd7e8ce8e` |
+| `docs/implementation/n8n-maturity/reconciliation-20261012/MOMENTUM_LIFECYCLE_CANDIDATE.md` | Momentum lifecycle implementation and activation packet | review_required | OK | `0abd4d2f7cb1` |
 | `docs/implementation/n8n-maturity/reconciliation-20261012/runtime-contracts/README.md` | Runtime and contract reconciliation receipt | review_required | OK | `5bb387e251b7` |
 | `docs/implementation/n8n-maturity/reconciliation-20261012/runtime-contracts/operational_change_packets.md` | Runtime reconciliation: operator change packets | review_required | OK | `45215840f656` |
 | `docs/implementation/n8n-parallel/00-baseline.md` | n8n parallel program — phase 0 baseline | review_required | OK | `743d99a3ee49` |

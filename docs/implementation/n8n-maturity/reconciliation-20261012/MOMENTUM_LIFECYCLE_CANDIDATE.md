@@ -1,5 +1,10 @@
 # Momentum lifecycle implementation and activation packet
 
+Status: DRAFT_FOR_OPERATOR_REVIEW
+as_of: 2026-10-12
+Evidence: SOURCE_ONLY; operative admission and runtime acceptance remain unproven
+Consumer: migration integrator and operator review
+
 This package integrates a host momentum lifecycle monitor and gateway/relay/alerting adapters, with an inactive n8n observer candidate. It is source preparation. The package does not activate scheduling, pause legacy triggers, review a contract, arm remediation, read a credential or call a model.
 
 The user requested six-AM ET scanning, complete momentum lifecycle monitoring, governed LLM diagnosis and bounded self-healing, and shared Active Trader/Trade-AI advisory data. The six-AM requirement is a trading-day output expectation. The existing five-minute scalp live schedule retains its RTH market gate. A completed run with zero GO or proposals can be healthy.
