@@ -3,7 +3,7 @@
 Cause: the shared db_adapter connection was closed mid-run, `_attempt_retry`'s count SELECT raised, and the
 retry log line then read an unbound `retries_today` (1,082 tracebacks in logs/system_health_agent.log).
 Two components also pointed at jobs that no longer exist in that shape: the retired 08:05 aegis sender and
-the telegram handler that became a systemd unit. Hermetic: no DB, no subprocess beyond `true`."""
+the telegram handler that became a systemd unit. Hermetic: no DB or actual subprocess."""
 
 from __future__ import annotations
 
@@ -43,14 +43,53 @@ class _DeadConn:
         raise RuntimeError("connection already closed")
 
 
-def test_a_dead_connection_does_not_crash_the_retry_path(monkeypatch):
+def test_a_dead_connection_does_not_crash_the_retry_path(monkeypatch, tmp_path):
     import system_health_agent as agent
 
     monkeypatch.setenv("TRADEAI_HEALTH_AGENT_RETRY", "1")  # 2026-10-08: retries are disarmed by default
+    code_root = tmp_path / "source"
+    code_root.mkdir()
+    monkeypatch.setattr(agent, "PROJECT_ROOT", code_root)
+    calls, events, unexpected = [], [], []
+
+    def refuse(*args, **kwargs):
+        unexpected.append("unexpected retry command")
+        raise AssertionError("dead-connection fixture forbids external commands")
+
+    class CompletedChild:
+        returncode = 0
+
+        def communicate(self, *, timeout):
+            assert timeout == 300
+            return "fixture true result", ""
+
+    def popen(command, **kwargs):
+        expected_kwargs = {
+            "shell": True,
+            "stdout": agent.subprocess.PIPE,
+            "stderr": agent.subprocess.PIPE,
+            "text": True,
+            "cwd": str(code_root),
+            "start_new_session": True,
+        }
+        if command != "true" or kwargs != expected_kwargs:
+            return refuse()
+        calls.append(command)
+        return CompletedChild()
+
+    def event(conn, component, event_type, severity, message, *, action=None, success=None):
+        events.append((component, event_type, severity, action, success))
+
+    monkeypatch.setattr(agent.subprocess, "Popen", popen)
+    monkeypatch.setattr(agent.subprocess, "run", refuse)
+    monkeypatch.setattr(agent.os, "system", refuse)
+    monkeypatch.setattr(agent, "_log_event", event)
     comp = {"component": "unit-test", "retry_cmd": "true"}
     assert (
         agent._attempt_retry(comp, _DeadConn()) is True
-    )  # `true` exits 0; the count query failing is logged, not fatal
+    )  # The controlled child exits 0; the dead count query is not fatal.
+    assert calls == ["true"] and not unexpected
+    assert events == [("unit-test", "RETRY", "INFO", "true", True)]
 
 
 def test_retries_today_is_bound_before_the_query_can_fail():
