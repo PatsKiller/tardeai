@@ -21,6 +21,9 @@ from pathlib import Path
 
 import pytest
 
+from tests import relay_probe_fixtures as F
+from tests.relay_probe_fixtures import install_probe_fixtures
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
@@ -31,6 +34,72 @@ REGISTRY = ROOT / "config" / "lane_registry.json"
 FOUR = ["tradeai-dispatcher", "tradeai-event-router", "tradeai-incident-router", "tradeai-digest-scheduler"]
 
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="SIGSTOP/SIGCONT duty cycle is POSIX only")
+
+
+@pytest.fixture(autouse=True)
+def owned_probe_listeners(monkeypatch, tmp_path):
+    session = install_probe_fixtures(monkeypatch, C, tmp_path)
+    yield session
+    session.close()
+
+
+def test_socket_manifest_refuses_outside_fixture_fd_before_read_or_adoption(tmp_path, monkeypatch):
+    scope = tmp_path / "owner"
+    scope.mkdir()
+    outside = tmp_path / ".fixture-socket-outside.json"
+    outside.write_text("not acceptance data")
+    outside.chmod(0o600)
+
+    def refuse_read(*_args):
+        raise AssertionError("outside fixture descriptor must not be read")
+
+    monkeypatch.setattr(F.os, "pread", refuse_read)
+    with outside.open("rb") as stream:
+        fd = stream.fileno()
+        with pytest.raises(F.FixtureCapabilityRefused, match="readonly scratch fixture"):
+            F.validate_manifest(fd, allowed_scope=scope, expected_parent=os.getpid(), passed_fds={fd})
+    with pytest.raises(F.FixtureCapabilityRefused, match="explicit non-stdio"):
+        F.socket_record(0)
+
+
+def test_socket_manifest_refuses_unowned_or_unpassed_fd_before_connection(tmp_path, monkeypatch):
+    endpoint = F.Endpoint(tmp_path)
+    fd = None
+    try:
+        fd, passed = F.write_manifest(tmp_path, endpoint)
+        approved = F.validate_manifest(fd, allowed_scope=tmp_path, expected_parent=os.getpid(),
+                                       passed_fds=passed, owned=F.OWNED)
+        assert approved["endpoints"][0]["port"] == endpoint.port
+        with pytest.raises(F.FixtureCapabilityRefused, match="not allocated"):
+            F.validate_manifest(fd, allowed_scope=tmp_path, expected_parent=os.getpid(), passed_fds=passed, owned={})
+        with pytest.raises(F.FixtureCapabilityRefused, match="not explicitly passed"):
+            F.validate_manifest(fd, allowed_scope=tmp_path, expected_parent=os.getpid(), passed_fds={fd}, owned=F.OWNED)
+        # The exporter itself must refuse unowned endpoints before a Popen/adoption can happen.
+        monkeypatch.setattr(F, "OWNED", {})
+        with pytest.raises(F.FixtureCapabilityRefused, match="not allocated"):
+            F.write_manifest(tmp_path, endpoint)
+    finally:
+        if fd is not None:
+            os.close(fd)
+        endpoint.close()
+
+
+def test_fixture_bootstrap_preserves_production_bind_floor():
+    from scripts import n8n_run_relay as relay
+
+    with pytest.raises(ValueError, match="relay_bad_bind"):
+        relay.guard_bind("127.0.0.1", 0)
+
+
+@pytest.mark.parametrize("document", ["not json", "[]", "null", '{"scope": null}', '{"scope": ""}'])
+def test_socket_manifest_refuses_malformed_document_before_adoption(tmp_path, document):
+    path = tmp_path / ".fixture-socket-malformed.json"
+    path.write_text(document)
+    path.chmod(0o600)
+    with path.open("rb") as stream:
+        fd = stream.fileno()
+        with pytest.raises(F.FixtureCapabilityRefused, match="malformed|explicit scratch scope"):
+            F.validate_manifest(fd, allowed_scope=tmp_path, expected_parent=os.getpid(), passed_fds={fd})
 
 
 # ── inputs: quota, relay timeout, query shapes ──────────────────────────────────────────────────────
@@ -137,7 +206,9 @@ class H(BaseHTTPRequestHandler):
         except BrokenPipeError:                    # the relay gave up first: the RC11 journal line
             pass
 
-ThreadingHTTPServer((a.host, a.port), H).serve_forever()
+server = ThreadingHTTPServer((a.host, a.port), H)
+print("FIXTURE_STUB_READY", flush=True)
+server.serve_forever()
 '''
 
 
