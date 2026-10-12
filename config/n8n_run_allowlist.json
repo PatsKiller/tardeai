@@ -3069,6 +3069,57 @@
       "live_arg": [],
       "market_gate": false,
       "output_signal": "data/runtime/aegis-brief-regenerate_last.json"
+    },
+    {
+      "command": [
+        "$PY",
+        "$CODE_ROOT/scripts/n8n_momentum_lifecycle.py",
+        "--host-snapshot",
+        "--code-root",
+        "$CODE_ROOT",
+        "--state-root",
+        "$STATE_ROOT"
+      ],
+      "live_arg": null,
+      "lock_kind": "flock",
+      "lock": "/tmp/tradeai_momentum_lifecycle.lock",
+      "output_signal": "data/runtime/momentum_lifecycle_last.json",
+      "cwd": "$CODE_ROOT",
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "timeout_s": 60,
+      "lane_id": "momentum-lifecycle-monitor",
+      "env_names": [],
+      "env_allowlist_mode": "enforce",
+      "market_gate": false,
+      "env_evidence": "CLI receives explicit server code/state roots; stdlib metadata readers and existing pure market calendar/projection only. No dotenv, provider, model, broker or secret input is required.",
+      "source": "Operator PR1715 instruction2026-10-12; stage-shaped source admission only, actual review and runtime proof pending."
+    },
+    {
+      "command": [
+        "$PY",
+        "$CODE_ROOT/scripts/momentum_cache_reconcile.py",
+        "--code-root",
+        "$CODE_ROOT",
+        "--state-root",
+        "$STATE_ROOT"
+      ],
+      "live_arg": null,
+      "lock_kind": "flock",
+      "lock": "/tmp/tradeai_momentum_cache_reconcile.lock",
+      "output_signal": "data/runtime/momentum-cache-reconcile_last.json",
+      "cwd": "$CODE_ROOT",
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "timeout_s": 60,
+      "lane_id": "momentum-cache-reconcile",
+      "env_names": [],
+      "env_allowlist_mode": "enforce",
+      "market_gate": false,
+      "env_evidence": "CLI receives explicit server code/state roots; stdlib metadata readers and existing pure market calendar/projection only. No dotenv, provider, model, broker or secret input is required.",
+      "source": "Operator PR1715 instruction2026-10-12; stage-shaped source admission only, actual review and runtime proof pending."
     }
   ],
   "blocked_reasons": {

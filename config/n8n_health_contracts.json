@@ -18953,6 +18953,594 @@
       },
       "review_by": "2026-10-25",
       "state_note": "Owner REVIEWED 2026-10-11 for Wave C shadow: ad-hoc prospectus lane (not daily digest). Stage shadow. Sends nothing (\u00a724.1)."
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "momentum-lifecycle-monitor",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "REVIEWED",
+      "stage": "shadow",
+      "target_reason": "Operative staged admission; operator requested tomorrow test, actual independent body review pending",
+      "purpose": {
+        "text": "Evaluate expected fires and host-owned output/consumer metadata; write only its own N8nMomentumLifecycle@v1 health receipt. No business data, commands, credentials, network or model calls.",
+        "business_function": "monitoring",
+        "source": "config/lane_registry.json; user six-AM ET momentum lifecycle direction 2026-10-12"
+      },
+      "owner": "platform",
+      "ownership_confirmation": "OWNER_ACCEPTED",
+      "connects_to": [
+        {
+          "name": "data/governance/n8n_coordination_ledger.sqlite",
+          "kind": "store",
+          "direction": "read",
+          "source": "collect_server_snapshot: bounded watched-lane SELECT through SQLite mode=ro"
+        },
+        {
+          "name": "data/runtime/trade_ai_cache.json and data/active_trader/momentum_alerts.jsonl",
+          "kind": "store",
+          "direction": "read",
+          "source": "Existing bounded read_candidate_snapshot plus canonical public-cache metadata; no canonical writes"
+        },
+        {
+          "name": "reports/<ET-business-date>/*/run_summary.json",
+          "kind": "store",
+          "direction": "read",
+          "source": "At most24 bounded public run summaries; HEALTH_AUTOHEAL excluded; missing zoned producer identity stays NOT_MEASURED"
+        },
+        {
+          "name": "Registry-declared data/runtime/*_last.json public receipts",
+          "kind": "receipt",
+          "direction": "read",
+          "source": "Fixed public runtime path shape and64KB metadata whitelist in collect_server_snapshot; no log-tail or secret input"
+        },
+        {
+          "name": "data/runtime/scalp_cycle_monitor_last.json and data/runtime/n8n_failure_diagnosis_last.json",
+          "kind": "receipt",
+          "direction": "read",
+          "source": "128KB bounds; existing cycle metadata and typed diagnoser counters/liveness only; no raw actions/model text"
+        },
+        {
+          "name": "data/runtime/momentum_lifecycle_inputs.json",
+          "kind": "store",
+          "direction": "read",
+          "source": "Unaccepted declarations only; no accepted producer binding or credential-health authority"
+        },
+        {
+          "name": "data/runtime/momentum_lifecycle_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "Only an admitted host-snapshot write publishes this own health receipt; fan-in and independent host notifier read it; dry run writes nothing"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "expected_fire_and_chain",
+          "text": "Each admitted n8n schedule slot has requested <= started <= finished receipts with exact natural provenance, deployed SHA and lane/slot/run identity. Legacy-only absence of an n8n request is unmeasured migration proof, not proof of missed business work. Shadow/canary scheduler failure is separate from canonical business-output health; cadence/cadence_slots/dispatch schedules and declared timezone must agree."
+        },
+        {
+          "check": "business_and_consumers",
+          "text": "Real same-day output has canonical producer run identity and freshness; classified+manual partitions reconcile only for explicitly shared populations. Both shared signal consumers read identical projection run/hash while preserving source verdicts and pending review."
+        },
+        {
+          "check": "credential_and_dependency_metadata",
+          "text": "Completed authorized host checks prove required dependency and credential functionality without exposing credentials; missing measurements stay NOT_MEASURED."
+        }
+      ],
+      "degraded": [
+        {
+          "check": "completion_allowance",
+          "text": "Natural fire not yet finished inside proposed 60 second completion allowance; threshold requires owner review."
+        },
+        {
+          "check": "recovery_held",
+          "text": "Transient failure may be diagnosed using the existing governed host process but a proposed catalogue or unreviewed target remains held."
+        }
+      ],
+      "failed": [
+        {
+          "check": "unproven_or_wrong_identity",
+          "text": "Missing/stale/failed output, wrong business day, wrong SHA, incomplete durable receipt or consumer lineage conflict after its applicable window."
+        },
+        {
+          "check": "unsafe_effect_or_storage",
+          "text": "Duplicate completed runs with unproven effects; dry run effect; exhausted inode/byte capacity; lockfile-creation ENOSPC distinct from lock-held skip."
+        },
+        {
+          "check": "notification_lineage",
+          "text": "Alert body/link/footer context disagrees or delivery lineage is not proven; do not auto-change source verdict or re-send."
+        }
+      ],
+      "baseline": {
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "Proposed */5 * * * * America/New_York monitor schedule; owner review pending",
+        "calendar": "Existing market_session trading-day/session controls; all_days health lanes preserve their own schedules. Six-AM scan-output expectation is distinct from five-minute RTH execution.",
+        "completion_allowance_s": 60,
+        "business_volume_baseline": "NOT_MEASURED",
+        "zero_go_or_proposals_valid": true,
+        "population_rule": "scanned = classified + manual only under declared scan_partition; overlays have separate populations; never force all UI counters equal"
+      },
+      "alerting": {
+        "lane_severity": "High",
+        "severity_basis": "Proposed operator-facing freshness/lineage failures require action; actual owner review pending",
+        "failed": {
+          "siem_severity": "ERROR",
+          "notifier_priority": "P1"
+        },
+        "degraded": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "routing": "Existing host fan-in/SIEM/incident-notifier path. P1 independent of n8n; operator-action notification intents dedupe_minutes=0; durable incident identity does not suppress notifications.",
+        "enforced": "Candidate checks + integration patch only; runtime exact-head deployment and per-lane coverage NOT_MEASURED"
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": true,
+        "runtime_catalogue_status": "PROPOSED \u2014 operator review before activation (decision 4)",
+        "note": "Bounded monitor/manual derivative helper only; no autonomous recovery or LLM diagnosis is armed by this admission.",
+        "mode": "MONITOR_ONLY_NO_REPAIR_SUBMISSION",
+        "credential_recovery": "FINVIZ_COOKIE/YouTube credential recovery is the existing authorized Command Center/Bitwarden host operator flow; n8n reads nonsecret status only."
+      },
+      "evidence": {
+        "receipt": "data/runtime/momentum_lifecycle_last.json",
+        "monitor": "data/runtime/momentum_lifecycle_last.json",
+        "input_schema": "MOMENTUM_LIFECYCLE_CANDIDATE.md",
+        "verify": [
+          "Exact-SHA CI + isolated negative fixtures",
+          "Reviewed operative admission + exact CURRENT identity",
+          "Required natural shadow receipts correlated with n8n execution and actual business output",
+          "Failure -> incident -> host notification/escalation -> bounded recovery output -> incident resolution"
+        ],
+        "acceptance": "NOT_MEASURED"
+      },
+      "review_by": "2026-10-13",
+      "review": {
+        "status": "REVIEWED",
+        "prepared_on": "2026-10-12",
+        "prepared_by": "Codex delegated admission worker",
+        "reviewed_by": "Codex independent worker /root/runner_isolation; Codex integrator /root",
+        "decision_ref": "operator:PR1715:2026-10-12T21:17:10.578Z",
+        "decision_evidence": "OPERATOR_RELEASE_AND_TOMORROW_N8N_20261012.json; MOMENTUM_OPERATIVE_ADMISSION_ROOT_REVIEW_20261012.json; MOMENTUM_OPERATIVE_ADMISSION_FINAL_REVISION4_REVIEW_RUNNER_20261012.json",
+        "contract_body_sha256": "fa4c4227887da80ba5dacd6b5a295e3aa33140655228df4542d02bf6984310d9",
+        "digest_status": "ACTUAL_REVIEWED_OPERATIVE_BODY; source/body review and scoped operator acceptance; runtime acceptance NOT_MEASURED",
+        "reviewed_on": "2026-10-12"
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "tradeai-momentum-lifecycle-candidate",
+      "kind": "generic_workflow",
+      "workflow_id": "tradeai-momentum-lifecycle-candidate",
+      "status": "REVIEWED",
+      "stage": "shadow",
+      "target_reason": "Operative staged admission; operator requested tomorrow test, actual independent body review pending",
+      "purpose": {
+        "text": "Read authenticated host lifecycle or shadow-run metadata; expose admission/refusal/freshness and proof boundaries. Request no run and send no external message. Existing generic dispatcher owns scheduling, host monitor owns health, host notifier independently owns P1 delivery.",
+        "business_function": "monitoring",
+        "source": "config/lane_registry.json; user six-AM ET momentum lifecycle direction 2026-10-12"
+      },
+      "owner": "platform",
+      "ownership_confirmation": "OWNER_ACCEPTED",
+      "connects_to": [
+        {
+          "name": "Authenticated relay GET /momentum-lifecycle -> gateway coordination/status momentum_lifecycle",
+          "kind": "service",
+          "direction": "calls",
+          "source": "GET-only workflow readback of server-owned admitted lifecycle receipt; existing relay credential/read-scope HMAC only"
+        },
+        {
+          "name": "Authenticated relay GET /runs/momentum-lifecycle-monitor/last?mode=dry_run",
+          "kind": "service",
+          "direction": "calls",
+          "source": "Only typed HTTP403 plus actual server shadow stage enters dry-run fallback; missing SHA/effects/natural provenance remains NOT_MEASURED"
+        },
+        {
+          "name": "tradeai-incident-router",
+          "kind": "service",
+          "direction": "calls",
+          "source": "Existing errorWorkflow handles observer errors; workflow performs no external send, command, model or /run request"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "authenticated_server_readback",
+          "text": "Read-only existing relay credential and HMAC read scope; no request can supply arming/review/snapshot paths. Admitted live readback has fresh exact-source receipt and no P1 evidence failure."
+        },
+        {
+          "check": "honest_shadow_observation",
+          "text": "Before live monitor admission, observe actual RUN_DONE exit0 dry_run last-run chain. Missing receipt SHA, output effects and natural trigger evidence remain NOT_MEASURED and prevent acceptance; no fabricated live monitor receipt."
+        },
+        {
+          "check": "single_request_authority",
+          "text": "Workflow contains only GET host operations. Existing tradeai-dispatcher remains sole run requester for declared monitor/cache rows."
+        }
+      ],
+      "degraded": [
+        {
+          "check": "completion_allowance",
+          "text": "Natural fire not yet finished inside proposed 60 second completion allowance; threshold requires owner review."
+        },
+        {
+          "check": "recovery_held",
+          "text": "Transient failure may be diagnosed using the existing governed host process but a proposed catalogue or unreviewed target remains held."
+        }
+      ],
+      "failed": [
+        {
+          "check": "unproven_or_wrong_identity",
+          "text": "Missing/stale/failed output, wrong business day, wrong SHA, incomplete durable receipt or consumer lineage conflict after its applicable window."
+        },
+        {
+          "check": "unsafe_effect_or_storage",
+          "text": "Duplicate completed runs with unproven effects; dry run effect; exhausted inode/byte capacity; lockfile-creation ENOSPC distinct from lock-held skip."
+        },
+        {
+          "check": "notification_lineage",
+          "text": "Alert body/link/footer context disagrees or delivery lineage is not proven; do not auto-change source verdict or re-send."
+        }
+      ],
+      "baseline": {
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "Proposed */5 * * * * America/New_York monitor schedule; owner review pending",
+        "calendar": "Existing market_session trading-day/session controls; all_days health lanes preserve their own schedules. Six-AM scan-output expectation is distinct from five-minute RTH execution.",
+        "completion_allowance_s": 60,
+        "business_volume_baseline": "NOT_MEASURED",
+        "zero_go_or_proposals_valid": true,
+        "population_rule": "scanned = classified + manual only under declared scan_partition; overlays have separate populations; never force all UI counters equal"
+      },
+      "alerting": {
+        "lane_severity": "High",
+        "severity_basis": "Proposed operator-facing freshness/lineage failures require action; actual owner review pending",
+        "failed": {
+          "siem_severity": "ERROR",
+          "notifier_priority": "P1"
+        },
+        "degraded": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "routing": "Existing host fan-in/SIEM/incident-notifier path. P1 independent of n8n; operator-action notification intents dedupe_minutes=0; durable incident identity does not suppress notifications.",
+        "enforced": "Candidate checks + integration patch only; runtime exact-head deployment and per-lane coverage NOT_MEASURED"
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": true,
+        "runtime_catalogue_status": "PROPOSED \u2014 operator review before activation (decision 4)",
+        "note": "GET-only observer; no host run lane, repair, extra retry, model or direct send.",
+        "mode": "READ_ONLY_STAGE_AWARE_OBSERVER",
+        "credential_recovery": "FINVIZ_COOKIE/YouTube credential recovery is the existing authorized Command Center/Bitwarden host operator flow; n8n reads nonsecret status only."
+      },
+      "evidence": {
+        "receipt": "Actual host run/monitor receipt; n8n retained successes never substitute",
+        "monitor": "data/runtime/momentum_lifecycle_last.json",
+        "input_schema": "MOMENTUM_LIFECYCLE_CANDIDATE.md",
+        "verify": [
+          "Exact-SHA CI + isolated negative fixtures",
+          "Reviewed operative admission + exact CURRENT identity",
+          "Required natural shadow receipts correlated with n8n execution and actual business output",
+          "Failure -> incident -> host notification/escalation -> bounded recovery output -> incident resolution"
+        ],
+        "acceptance": "NOT_MEASURED"
+      },
+      "review_by": "2026-10-13",
+      "review": {
+        "status": "REVIEWED",
+        "prepared_on": "2026-10-12",
+        "prepared_by": "Codex delegated admission worker",
+        "reviewed_by": "Codex independent worker /root/runner_isolation; Codex integrator /root",
+        "decision_ref": "operator:PR1715:2026-10-12T21:17:10.578Z",
+        "decision_evidence": "OPERATOR_RELEASE_AND_TOMORROW_N8N_20261012.json; MOMENTUM_OPERATIVE_ADMISSION_ROOT_REVIEW_20261012.json; MOMENTUM_OPERATIVE_ADMISSION_FINAL_REVISION4_REVIEW_RUNNER_20261012.json",
+        "contract_body_sha256": "c1694054741468c2a4642b7dc2f2f633a02e4e9b7cd2489f289b8d0accb2d8ab",
+        "digest_status": "ACTUAL_REVIEWED_OPERATIVE_BODY; source/body review and scoped operator acceptance; runtime acceptance NOT_MEASURED",
+        "reviewed_on": "2026-10-12"
+      },
+      "workflow_source": {
+        "file": "tradeai-momentum-lifecycle-candidate.json",
+        "sha256": "fd64f5848dff85bf27e0f42657e5094f5f8d6fc67f84d2708483069674437fc0",
+        "catalogue": "docs/implementation/n8n-maturity/observers/INDEX.json",
+        "read_routes": [
+          "/momentum-lifecycle",
+          "/runs/momentum-lifecycle-monitor/last?mode=dry_run"
+        ]
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "momentum-cache-reconcile",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "REVIEWED",
+      "stage": "shadow",
+      "target_reason": "Operative staged admission; operator requested tomorrow test, actual independent body review pending",
+      "purpose": {
+        "text": "Rebuild SharedMomentumCandidates@v1 in its own resettable derivative cache by bounded read-only canonical Trade-AI cache and Active Trader advisory journal snapshots. Preserve unmeasured producer identity, STALE/PENDING verdicts, conflicts and timestamps. No provider/model/broker/credential call or canonical write.",
+        "business_function": "monitoring",
+        "source": "config/lane_registry.json; user six-AM ET momentum lifecycle direction 2026-10-12"
+      },
+      "owner": "platform",
+      "ownership_confirmation": "OWNER_ACCEPTED",
+      "connects_to": [
+        {
+          "name": "data/runtime/trade_ai_cache.json",
+          "kind": "store",
+          "direction": "read",
+          "source": "Existing canonical owner cache; no writes"
+        },
+        {
+          "name": "data/active_trader/momentum_alerts.jsonl",
+          "kind": "store",
+          "direction": "read",
+          "source": "Existing bounded advisory journal; no writes"
+        },
+        {
+          "name": "data/runtime/shared_momentum_candidates_projection.json",
+          "kind": "store",
+          "direction": "write",
+          "source": "Proposed resettable derivative cache owned only by momentum-cache-reconcile"
+        },
+        {
+          "name": "data/runtime/momentum-cache-reconcile_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "MomentumCacheReconcile@v1 own health receipt"
+        },
+        {
+          "name": "scripts/lib/scanner_candidate_projection.py",
+          "kind": "service",
+          "direction": "calls",
+          "source": "Existing bounded read-only shared candidate projection"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "derived_projection_consistent",
+          "text": "Derived projection uses existing read-only source snapshot union; source run/date/SHA/verdict/freshness/conflict metadata preserved; repeated unchanged input does not rewrite the projection."
+        },
+        {
+          "check": "effects_bounded",
+          "text": "Only its declared resettable derivative cache and health receipt written. Zero canonical business writes and zero provider/model/broker/send/credential calls. Runtime business acceptance remains separately unmeasured."
+        }
+      ],
+      "degraded": [
+        {
+          "check": "completion_allowance",
+          "text": "Natural fire not yet finished inside proposed 60 second completion allowance; threshold requires owner review."
+        },
+        {
+          "check": "recovery_held",
+          "text": "Transient failure may be diagnosed using the existing governed host process but a proposed catalogue or unreviewed target remains held."
+        }
+      ],
+      "failed": [
+        {
+          "check": "missing_owner_inputs",
+          "text": "No usable owner snapshot; never emit an empty successful business projection."
+        },
+        {
+          "check": "admission_refused",
+          "text": "Disabled/disarmed candidate, protected class, missing allowlist or unreviewed/content-drifted operative contract prevents write."
+        },
+        {
+          "check": "storage_write_failed",
+          "text": "Filesystem/atomic write error escalated; no automatic deletion or lock clearing."
+        }
+      ],
+      "baseline": {
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "Proposed resettable projection only; owner accepts schedule and resource reserve before operative admission",
+        "calendar": "Existing market_session trading-day/session controls; all_days health lanes preserve their own schedules. Six-AM scan-output expectation is distinct from five-minute RTH execution.",
+        "completion_allowance_s": 60,
+        "business_volume_baseline": "NOT_MEASURED",
+        "zero_go_or_proposals_valid": true,
+        "population_rule": "scanned = classified + manual only under declared scan_partition; overlays have separate populations; never force all UI counters equal",
+        "class": "report"
+      },
+      "alerting": {
+        "lane_severity": "High",
+        "severity_basis": "Proposed operator-facing freshness/lineage failures require action; actual owner review pending",
+        "failed": {
+          "siem_severity": "ERROR",
+          "notifier_priority": "P1"
+        },
+        "degraded": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "routing": "Existing host fan-in/SIEM/incident-notifier path. P1 independent of n8n; operator-action notification intents dedupe_minutes=0; durable incident identity does not suppress notifications.",
+        "enforced": "Candidate checks + integration patch only; runtime exact-head deployment and per-lane coverage NOT_MEASURED"
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": true,
+        "runtime_catalogue_status": "PROPOSED \u2014 operator review before activation (decision 4)",
+        "note": "Bounded monitor/manual derivative helper only; no autonomous recovery or LLM diagnosis is armed by this admission.",
+        "mode": "RESETTABLE_DERIVED_ADVISORY_PROJECTION",
+        "credential_recovery": "FINVIZ_COOKIE/YouTube credential recovery is the existing authorized Command Center/Bitwarden host operator flow; n8n reads nonsecret status only."
+      },
+      "evidence": {
+        "receipt": "data/runtime/momentum-cache-reconcile_last.json",
+        "monitor": "data/runtime/momentum_lifecycle_last.json",
+        "input_schema": "MOMENTUM_LIFECYCLE_CANDIDATE.md",
+        "verify": [
+          "Exact-SHA CI + isolated negative fixtures",
+          "Reviewed operative admission + exact CURRENT identity",
+          "Required natural shadow receipts correlated with n8n execution and actual business output",
+          "Failure -> incident -> host notification/escalation -> bounded recovery output -> incident resolution"
+        ],
+        "acceptance": "NOT_MEASURED"
+      },
+      "review_by": "2026-10-13",
+      "review": {
+        "status": "REVIEWED",
+        "prepared_on": "2026-10-12",
+        "prepared_by": "Codex delegated admission worker",
+        "reviewed_by": "Codex independent worker /root/runner_isolation; Codex integrator /root",
+        "decision_ref": "operator:PR1715:2026-10-12T21:17:10.578Z",
+        "decision_evidence": "OPERATOR_RELEASE_AND_TOMORROW_N8N_20261012.json; MOMENTUM_OPERATIVE_ADMISSION_ROOT_REVIEW_20261012.json; MOMENTUM_OPERATIVE_ADMISSION_FINAL_REVISION4_REVIEW_RUNNER_20261012.json",
+        "contract_body_sha256": "28713e20dbd31c8b66b68394f44fc8036ef96f9b0f10d97f7ed23c0e3256768c",
+        "digest_status": "ACTUAL_REVIEWED_OPERATIVE_BODY; source/body review and scoped operator acceptance; runtime acceptance NOT_MEASURED",
+        "reviewed_on": "2026-10-12"
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "trade-ai-scalp-live",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "REVIEWED",
+      "stage": "shadow",
+      "target_reason": "Named4.0.0 live exception; initial shadow admission before tomorrow canary/cutover",
+      "purpose": {
+        "text": "Run the existing named Trade-AI scalp cycle on its original five-minute RTH schedule through the governed host executor. The live exception reads Finviz through the host data broker, writes trade_ai_scans, its persisted advisory alert state and shared scalp universe, and submits new GO advisory notifications through the host communications chokepoint. Dry run performs no scan, writes or sends. This grants no order, stop, broker-execution, session or2FA authority.",
+        "business_function": "scalp_advisory",
+        "source": "AGENTS23.3 ACTIVE4.0.0; config/n8n_run_allowlist.json exact existing exception; docs/ops/TRADE_AI_SCALP_5MIN_2026-10-09.md"
+      },
+      "owner": "scalp",
+      "ownership_confirmation": "OWNER_ACCEPTED",
+      "connects_to": [
+        {
+          "name": "tradeai-dispatcher -> relay -> gateway coordination/run -> host n8n_run_executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS23.3/23.11; one request authority"
+        },
+        {
+          "name": "$PY scripts/run_trade_ai_scalp_live.py;295s;market_day_gate.sh;/tmp/tradeai_scalp_live.lock",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "Existing allowlist and exact legacy declaration; unchanged"
+        },
+        {
+          "name": "Host data-broker Finviz scalp screener",
+          "kind": "service",
+          "direction": "read",
+          "source": "AGENTS23.3 named exception; provider credentials stay on host"
+        },
+        {
+          "name": "trade_ai_scans",
+          "kind": "store",
+          "direction": "write",
+          "source": "AGENTS23.3 named live exception"
+        },
+        {
+          "name": "state/trade_ai_scalp_live_state.json",
+          "kind": "store",
+          "direction": "read_write",
+          "source": "AGENTS23.3 persisted GO advisory deduplication"
+        },
+        {
+          "name": "data/trade_ai/scalp_universe_latest.json",
+          "kind": "store",
+          "direction": "write",
+          "source": "docs/ops/TRADE_AI_SCALP_5MIN_2026-10-09.md one shared feed for TradeAI/ActiveTrader"
+        },
+        {
+          "name": "data/runtime/trade_ai_scalp_live_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "Existing allowlist output signal; canonical output identity remains independent acceptance"
+        },
+        {
+          "name": "Host send_telegram communications gateway and delivery ledger",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS23.3/24.1; new GO advisory notification only, no direct n8n send"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "expected_fire_and_chain",
+          "text": "Each applicable schedule slot has requested <= started <= finished receipts; natural trigger provenance, exact deployed SHA and lane/slot/run identity agree."
+        },
+        {
+          "check": "business_and_consumers",
+          "text": "Real same-day output has canonical producer run identity and freshness; classified+manual partitions reconcile only for explicitly shared populations. Both shared signal consumers read identical projection run/hash while preserving source verdicts and pending review."
+        },
+        {
+          "check": "credential_and_dependency_metadata",
+          "text": "Completed authorized host checks prove required dependency and credential functionality without exposing credentials; missing measurements stay NOT_MEASURED."
+        }
+      ],
+      "degraded": [
+        {
+          "check": "completion_allowance",
+          "text": "Natural fire not yet finished inside proposed 295 second completion allowance; threshold requires owner review."
+        },
+        {
+          "check": "recovery_held",
+          "text": "Transient failure may be diagnosed using the existing governed host process but a proposed catalogue or unreviewed target remains held."
+        }
+      ],
+      "failed": [
+        {
+          "check": "unproven_or_wrong_identity",
+          "text": "Missing/stale/failed output, wrong business day, wrong SHA, incomplete durable receipt or consumer lineage conflict after its applicable window."
+        },
+        {
+          "check": "unsafe_effect_or_storage",
+          "text": "Duplicate completed runs with unproven effects; dry run effect; exhausted inode/byte capacity; lockfile-creation ENOSPC distinct from lock-held skip."
+        },
+        {
+          "check": "notification_lineage",
+          "text": "Alert body/link/footer context disagrees or delivery lineage is not proven; do not auto-change source verdict or re-send."
+        }
+      ],
+      "baseline": {
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "Exact existing295s timeout and */5 9-15 * * 1-5 America/New_York cadence; host wrapper self-gates RTH09:30\u201316:00. Six-AM producer expectation is separate. Actual business volume baseline NOT_MEASURED.",
+        "calendar": "Existing market_session trading-day/session controls; all_days health lanes preserve their own schedules. Six-AM scan-output expectation is distinct from five-minute RTH execution.",
+        "completion_allowance_s": 295,
+        "business_volume_baseline": "NOT_MEASURED",
+        "zero_go_or_proposals_valid": true,
+        "population_rule": "scanned = classified + manual only under declared scan_partition; overlays have separate populations; never force all UI counters equal"
+      },
+      "alerting": {
+        "lane_severity": "High",
+        "severity_basis": "Proposed operator-facing freshness/lineage failures require action; actual owner review pending",
+        "failed": {
+          "siem_severity": "ERROR",
+          "notifier_priority": "P1"
+        },
+        "degraded": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "routing": "Existing host fan-in/SIEM/incident-notifier path. P1 independent of n8n; operator-action notification intents dedupe_minutes=0; durable incident identity does not suppress notifications.",
+        "enforced": "Candidate checks + integration patch only; runtime exact-head deployment and per-lane coverage NOT_MEASURED"
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": true,
+        "runtime_catalogue_status": "PROPOSED \u2014 operator review before activation (decision 4)",
+        "note": "Named4.0.0 exception only; no extra retry or governed diagnosis; exact295s/market gate/flock unchanged. Timed tomorrow legacy instruction is recorded separately; actual receipt/contract/grant gates remain.",
+        "mode": "NAMED_LIVE_EXCEPTION_NO_EXTRA_RETRY",
+        "credential_recovery": "FINVIZ_COOKIE/YouTube credential recovery is the existing authorized Command Center/Bitwarden host operator flow; n8n reads nonsecret status only."
+      },
+      "evidence": {
+        "receipt": "data/runtime/trade_ai_scalp_live_last.json",
+        "monitor": "data/runtime/momentum_lifecycle_last.json",
+        "input_schema": "MOMENTUM_LIFECYCLE_CANDIDATE.md",
+        "verify": [
+          "Exact-SHA CI + isolated negative fixtures",
+          "Reviewed operative admission + exact CURRENT identity",
+          "Required natural shadow receipts correlated with n8n execution and actual business output",
+          "Failure -> incident -> host notification/escalation -> bounded recovery output -> incident resolution"
+        ],
+        "acceptance": "NOT_MEASURED"
+      },
+      "review_by": "2026-10-13",
+      "review": {
+        "status": "REVIEWED",
+        "prepared_on": "2026-10-12",
+        "prepared_by": "Codex delegated admission worker",
+        "reviewed_by": "Codex independent worker /root/runner_isolation; Codex integrator /root",
+        "decision_ref": "operator:PR1715:2026-10-12T21:17:10.578Z",
+        "decision_evidence": "OPERATOR_RELEASE_AND_TOMORROW_N8N_20261012.json; MOMENTUM_OPERATIVE_ADMISSION_ROOT_REVIEW_20261012.json; MOMENTUM_OPERATIVE_ADMISSION_FINAL_REVISION4_REVIEW_RUNNER_20261012.json",
+        "contract_body_sha256": "c2ab0d7f6c81c6aa76e697b356aac4762d0d50fde84460a192f411c4a17a4c2d",
+        "digest_status": "ACTUAL_REVIEWED_OPERATIVE_BODY; source/body review and scoped operator acceptance; runtime acceptance NOT_MEASURED",
+        "reviewed_on": "2026-10-12"
+      }
     }
 ]
 }

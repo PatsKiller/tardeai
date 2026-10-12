@@ -7388,7 +7388,9 @@
         "kind": "cron",
         "expression": "*/5 9-15 * * 1-5",
         "command_text": "cd $PROJ && flock -n /tmp/tradeai_scalp_live.lock timeout 295 bash scripts/market_day_gate.sh $PY scripts/run_trade_ai_scalp_live.py >> logs/trade_ai_scalp_live.log 2>&1 # TRADEAI_LANE trade-ai-scalp-live",
-        "match": "scripts/run_trade_ai_scalp_live.py"
+        "match": "scripts/run_trade_ai_scalp_live.py",
+        "stage": "shadow",
+        "wave": "W0"
       },
       "expected_cadence_hours": 0.084,
       "active_days": [
@@ -7425,7 +7427,21 @@
         "token": "market_day_gate.sh",
         "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
       },
-      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible).",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "*/5 9-15 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "class": "pipeline",
+        "retry_policy": "none",
+        "priority": 1,
+        "wave": "W0",
+        "after": []
+      },
+      "admission_decision_ref": "operator:PR1715:2026-10-12T21:17:10.578Z",
+      "admission_note": "Staged off for actual review/shadow proof; tomorrow canary/cutover uses the named4.0.0 exception, exact original argv/flock/295s/market gate. Existing per-scalp workflows stay inactive; generic dispatcher is sole requester."
     },
     {
       "lane_id": "storage-watch",
@@ -22698,6 +22714,102 @@
       "flags": [
         "UNVERIFIED_OUTPUT"
       ]
+    },
+    {
+      "lane_id": "momentum-lifecycle-monitor",
+      "owner": "platform",
+      "state": "ACTIVE",
+      "state_since": "2026-10-12",
+      "state_reason": "Operator authorized initial shadow admission; exact bodies independently reviewed2026-10-12. Runtime deployment/natural zero-effect proof remains separate.",
+      "reason_confidence": "ESTABLISHED",
+      "review_by": "2026-10-13",
+      "expected_cadence_hours": 0.08333333333333333,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "timezone": "America/New_York",
+        "stage": "shadow",
+        "match": "scripts/n8n_momentum_lifecycle.py"
+      },
+      "dispatch": {
+        "class": "monitor",
+        "retry_policy": "none",
+        "mode": "dry_run",
+        "cron": [
+          "*/5 * * * *"
+        ],
+        "after": [],
+        "priority": 1,
+        "wave": "W0",
+        "tz": "America/New_York"
+      },
+      "output_signal": {
+        "path": "data/runtime/momentum_lifecycle_last.json",
+        "expected_cadence_hours": 0.08333333333333333,
+        "kind": "file_mtime"
+      },
+      "executor": {
+        "kind": "python",
+        "root": "CURRENT",
+        "command_text": "$PY $CODE_ROOT/scripts/n8n_momentum_lifecycle.py --host-snapshot --code-root $CODE_ROOT --state-root $STATE_ROOT"
+      }
+    },
+    {
+      "lane_id": "momentum-cache-reconcile",
+      "owner": "platform",
+      "state": "ACTIVE",
+      "state_since": "2026-10-12",
+      "state_reason": "Operator authorized initial shadow admission; exact bodies independently reviewed2026-10-12. Runtime deployment/natural zero-effect proof remains separate.",
+      "reason_confidence": "ESTABLISHED",
+      "review_by": "2026-10-13",
+      "expected_cadence_hours": 0.08333333333333333,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "timezone": "America/New_York",
+        "stage": "shadow",
+        "match": "scripts/momentum_cache_reconcile.py"
+      },
+      "dispatch": {
+        "class": "report",
+        "retry_policy": "none",
+        "mode": "dry_run",
+        "cron": [
+          "*/5 * * * *"
+        ],
+        "after": [],
+        "priority": 5,
+        "wave": "W0",
+        "tz": "America/New_York"
+      },
+      "output_signal": {
+        "path": "data/runtime/momentum-cache-reconcile_last.json",
+        "expected_cadence_hours": 0.08333333333333333,
+        "kind": "file_mtime"
+      },
+      "executor": {
+        "kind": "python",
+        "root": "CURRENT",
+        "command_text": "$PY $CODE_ROOT/scripts/momentum_cache_reconcile.py --code-root $CODE_ROOT --state-root $STATE_ROOT"
+      }
     }
   ],
   "freshness_contracts": [

@@ -28,6 +28,7 @@ this module reads schedulers and never writes them.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -637,6 +638,124 @@ def discover_n8n_snapshot(path: Optional[Path] = None) -> list[dict[str, Any]]:
 #: import packet dry run): without this, activating them under their `cron` grant turned the host gate
 #: `check_lane_registry --n8n-live --fail-on-new` red with six UNDECLARED_N8N_WORKFLOW.
 GENERIC_WORKFLOW_INDEX = ROOT / "docs" / "implementation" / "n8n-maturity" / "workflows" / "INDEX.json"
+READ_ONLY_WORKFLOW_INDEX = ROOT / "docs" / "implementation" / "n8n-maturity" / "observers" / "INDEX.json"
+
+
+def n8n_read_only_workflow_ids(
+    path: Optional[Path] = None, contracts_path: Optional[Path] = None, workflow_directory: Optional[Path] = None
+) -> dict[str, str]:
+    """Declare GET-only observers without inventing host-run lanes or changing the six generic workflows.
+
+    Source declarations confer no run or activation authority. The inactive workflow bytes,
+    fixed read routes and operative contract binding must agree; malformed input raises so
+    discovery reports CANNOT RUN. Reviewed contracts also retain their existing body-review gate.
+    """
+    index = Path(path or READ_ONLY_WORKFLOW_INDEX)
+    workflow_root = Path(workflow_directory or GENERIC_WORKFLOW_INDEX.parent)
+    doc = json.loads(index.read_text(encoding="utf-8"))
+    if doc.get("schema") != "N8nReadOnlyWorkflowSet@v1" or not isinstance(doc.get("workflows"), list):
+        raise ValueError("read-only workflow catalogue schema")
+    contracts_doc = json.loads(Path(contracts_path or ROOT / "config/n8n_health_contracts.json").read_text())
+    contracts = {c["id"]: c for c in contracts_doc.get("contracts", [])}
+    allowed_types = {"scheduleTrigger", "set", "httpRequest", "code", "if"}
+    prefix = "={{ $('Relay').first().json.TRADEAI_N8N_RUN_URL }}"
+    out: dict[str, str] = {}
+    for entry in doc["workflows"]:
+        if not isinstance(entry, dict):
+            raise ValueError("read-only workflow entry must be an object")
+        wid, name = entry.get("id"), entry.get("file")
+        if not isinstance(wid, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", wid) or wid in out:
+            raise ValueError("read-only workflow duplicate or missing id")
+        if not isinstance(name, str) or Path(name).name != name or not name.endswith(".json"):
+            raise ValueError("read-only workflow file must be a local JSON basename")
+        source = workflow_root / name
+        if source.is_symlink() or source.resolve().parent != workflow_root.resolve():
+            raise ValueError("read-only workflow source escapes catalogue")
+        raw = source.read_bytes()
+        digest = hashlib.sha256(raw).hexdigest()
+        if entry.get("sha256") != digest:
+            raise ValueError("read-only workflow source digest mismatch")
+        workflow = json.loads(raw)
+        if workflow.get("id") != wid or workflow.get("active") is not False:
+            raise ValueError("read-only workflow id mismatch or source active")
+        if workflow.get("settings", {}).get("timezone") != "America/New_York":
+            raise ValueError("read-only workflow timezone mismatch")
+        contract = contracts.get(entry.get("contract_id"), {})
+        binding = contract.get("workflow_source", {})
+        if contract.get("id") != wid or binding.get("file") != name or binding.get("sha256") != digest:
+            raise ValueError("read-only workflow operative contract binding mismatch")
+        from scripts.lib.n8n_health_contracts import validate_contract
+
+        if validate_contract(contract):
+            raise ValueError("read-only workflow contract schema mismatch")
+        if contract.get("status") == "REVIEWED":
+            from scripts.lib.n8n_momentum_lifecycle import contract_review_proven
+
+            if not contract_review_proven(contract):
+                raise ValueError("read-only workflow contract review mismatch")
+        routes = entry.get("read_routes")
+        if (
+            not isinstance(routes, list)
+            or not routes
+            or set(routes) != {"/momentum-lifecycle", "/runs/momentum-lifecycle-monitor/last?mode=dry_run"}
+        ):
+            raise ValueError("read-only workflow routes outside lifecycle observer scope")
+        nodes = workflow.get("nodes")
+        if not isinstance(nodes, list) or not nodes:
+            raise ValueError("read-only workflow nodes missing")
+        seen_routes: set[str] = set()
+        relays = []
+        for node in nodes:
+            kind = str(node.get("type", "")).removeprefix("n8n-nodes-base.")
+            if node.get("type") != "n8n-nodes-base." + kind or kind not in allowed_types:
+                raise ValueError("read-only workflow contains an execution/provider node")
+            params = node.get("parameters", {})
+            if not isinstance(params, dict) or "$env" in json.dumps(params):
+                raise ValueError("read-only workflow environment access or malformed parameters")
+            if kind == "httpRequest":
+                if params.get("method", "GET") != "GET" or set(params) - {
+                    "authentication",
+                    "genericAuthType",
+                    "method",
+                    "options",
+                    "url",
+                }:
+                    raise ValueError("read-only workflow contains a write request")
+                url = params.get("url", "")
+                route = url[len(prefix) :] if isinstance(url, str) and url.startswith(prefix) else None
+                if route not in routes:
+                    raise ValueError("read-only workflow request is not a declared fixed read route")
+                seen_routes.add(route)
+                credentials = node.get("credentials", {})
+                if set(credentials) != {"httpHeaderAuth"} or credentials["httpHeaderAuth"] != {
+                    "id": "tradeai-run-relay",
+                    "name": "tradeai-run-relay",
+                }:
+                    raise ValueError("read-only workflow credential reference mismatch")
+            elif kind == "set" and node.get("name") == "Relay":
+                relays.extend(params.get("assignments", {}).get("assignments", []))
+            elif kind == "code":
+                code = params.get("jsCode", "")
+                if (
+                    params.get("language") != "javaScript"
+                    or set(params) - {"language", "mode", "jsCode"}
+                    or not isinstance(code, str)
+                    or not code.strip()
+                    or re.search(
+                        r"\$env|\$http|\b(?:fetch|require|eval|Function)\s*\(|helpers\s*[.\[]|process\s*[.\[]|child_process",
+                        code,
+                    )
+                ):
+                    raise ValueError("read-only workflow code contains external execution or environment access")
+        if (
+            seen_routes != set(routes)
+            or len(relays) != 1
+            or relays[0].get("name") != "TRADEAI_N8N_RUN_URL"
+            or relays[0].get("value") != "http://172.19.0.1:18092"
+        ):
+            raise ValueError("read-only workflow relay/read routes mismatch")
+        out[wid] = "observer:read-only"
+    return out
 
 
 def n8n_generic_workflow_ids(path: Optional[Path] = None) -> dict[str, str]:
@@ -648,16 +767,26 @@ def n8n_generic_workflow_ids(path: Optional[Path] = None) -> dict[str, str]:
     return {str(w["id"]): f"generic:{w.get('kind') or '?'}" for w in doc.get("workflows") or [] if w.get("id")}
 
 
-def n8n_known_workflow_ids(index_path: Optional[Path] = None,
-                           generic_index_path: Optional[Path] = None) -> dict[str, str]:
-    """Per-lane generated INDEX ids (live + shadow) plus the six generic workflow ids."""
+def n8n_known_workflow_ids(
+    index_path: Optional[Path] = None,
+    generic_index_path: Optional[Path] = None,
+    observer_index_path: Optional[Path] = None,
+    observer_contracts_path: Optional[Path] = None,
+    observer_workflow_directory: Optional[Path] = None,
+) -> dict[str, str]:
+    """Generated lane ids, six generic ids and independently declared GET-only observers."""
     try:
         from scripts.lib import n8n_live_inventory as inv
     except ImportError:
         from lib import n8n_live_inventory as inv  # type: ignore
     out = inv.known_workflow_ids(path=index_path)
     out.update(n8n_generic_workflow_ids(generic_index_path))
+    observers = n8n_read_only_workflow_ids(observer_index_path, observer_contracts_path, observer_workflow_directory)
+    if set(observers) & set(out):
+        raise ValueError("read-only workflow id collides with a requester workflow")
+    out.update(observers)
     return out
+
 
 
 # ── evaluating one lane ────────────────────────────────────────────────────
