@@ -4,14 +4,15 @@
 Behavioural pins for FeatureFlagTruth@v1, SchedulerTruth@v1 and
 FinvizStoreHealth@v1.
 
-The store tests run entirely on temporary files. The scheduler test only reads
-systemd's own state. Nothing here enables, disables, starts, stops or edits a
-unit, a cron entry, a flag or a cache.
+The store tests run entirely on temporary files. Scheduler tests parse strict
+synthetic command snapshots. Nothing here calls host scheduling tools or enables,
+disables, starts, stops or edits a unit, a cron entry, a flag or a cache.
 """
 
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -68,18 +69,56 @@ def test_a_config_that_tries_to_enable_the_locked_flag_shows_a_delta(tmp_path, m
 # ── schedulers ───────────────────────────────────────────────────────────────
 
 
-def test_scheduler_truth_distinguishes_the_failure_modes(monkeypatch):
-    # The source contract is tested with a deterministic systemd snapshot.
-    # A CI worker may have no user bus or installed timers at all.
-    monkeypatch.setattr(et, "_systemctl", lambda *args: "live.timer enabled\noff.timer disabled\n")
-    def fake_show(names, properties):
-        if "NextElapseUSecRealtime" in properties:
-            return {
-                "live.timer": {"Unit": "live.service", "ActiveState": "active", "NextElapseUSecMonotonic": "42", "LastTriggerUSec": "n/a"},
-                "off.timer": {"Unit": "off.service", "ActiveState": "inactive", "LastTriggerUSec": "n/a"},
-            }
-        return {"live.service": {"Result": "exit-code", "ExecMainStatus": "1"}, "off.service": {"Result": "success"}}
-    monkeypatch.setattr(et, "_show", fake_show)
+@pytest.fixture
+def scheduler_snapshot(monkeypatch):
+    """Run the real collectors/parsers against a closed synthetic command set."""
+    prefix = ("systemctl", "--user", "--no-pager")
+    responses = {
+        (*prefix, "list-unit-files", "--type=timer", "--plain"): "live.timer enabled\noff.timer disabled\n",
+        (
+            *prefix,
+            "show",
+            "--property=Id,ActiveState,UnitFileState,NextElapseUSecRealtime,NextElapseUSecMonotonic,LastTriggerUSec,Unit",
+            "live.timer",
+            "off.timer",
+        ): (
+            "Id=live.timer\nUnit=live.service\nActiveState=active\nUnitFileState=enabled\n"
+            "NextElapseUSecRealtime=\nNextElapseUSecMonotonic=42\nLastTriggerUSec=n/a\n\n"
+            "Id=off.timer\nUnit=off.service\nActiveState=inactive\nUnitFileState=disabled\n"
+            "NextElapseUSecRealtime=\nNextElapseUSecMonotonic=0\nLastTriggerUSec=n/a\n"
+        ),
+        (
+            *prefix,
+            "show",
+            "--property=Id,ActiveState,Result,ExecMainStatus,ExecMainExitTimestamp",
+            "live.service",
+            "off.service",
+        ): (
+            "Id=live.service\nActiveState=failed\nResult=exit-code\nExecMainStatus=1\nExecMainExitTimestamp=\n\n"
+            "Id=off.service\nActiveState=inactive\nResult=success\nExecMainStatus=0\nExecMainExitTimestamp=\n"
+        ),
+        ("crontab", "-l"): "# synthetic fixture\n*/5 * * * * /bin/true\n# 10 2 * * * /bin/false\n",
+    }
+    calls, unexpected = [], []
+
+    def run(command, **kwargs):
+        argv = tuple(command)
+        expected_kwargs = {"capture_output": True, "text": True, "timeout": 60 if argv == ("crontab", "-l") else 120}
+        if not isinstance(command, list) or argv not in responses or kwargs != expected_kwargs:
+            unexpected.append((argv, kwargs))
+            raise AssertionError("unexpected scheduler fixture command")
+        calls.append(argv)
+        return subprocess.CompletedProcess(command, 0, stdout=responses[argv], stderr="")
+
+    monkeypatch.setattr(et.subprocess, "run", run)
+    yield calls
+    # Collectors catch command errors in production. A swallowed fixture refusal
+    # must still fail its test rather than produce a vacuous empty snapshot.
+    assert not unexpected, unexpected
+    assert calls == list(responses), calls
+
+
+def test_scheduler_truth_distinguishes_the_failure_modes(scheduler_snapshot):
     rep = et.scheduler_truth()
     assert rep["schema"] == "SchedulerTruth@v1"
     assert rep["timer_unit_files"] == 2
@@ -87,6 +126,7 @@ def test_scheduler_truth_distinguishes_the_failure_modes(monkeypatch):
     assert rep["disabled_timers"] == ["off.timer"]
     assert rep["timers_with_failed_last_run"] == ["live.timer"]
     assert "live.timer" not in rep["enabled_timers_with_no_next_elapse"]
+    assert rep["cron_active_entries"] == 1 and rep["cron_commented_out_jobs"] == 1
     for key in (
         "disabled_timers",
         "enabled_timers_with_no_next_elapse",
@@ -96,17 +136,19 @@ def test_scheduler_truth_distinguishes_the_failure_modes(monkeypatch):
         assert isinstance(rep[key], list)
 
 
-def test_a_disabled_timer_is_not_counted_as_running():
+def test_a_disabled_timer_is_not_counted_as_running(scheduler_snapshot):
     rep = et.scheduler_truth()
     disabled = set(rep["disabled_timers"])
+    assert disabled == {"off.timer"}
     for row in rep["timers"]:
         if row["timer"] in disabled:
             assert row["enabled"] is False
 
 
-def test_a_monotonic_timer_is_not_reported_as_having_no_next_elapse():
+def test_a_monotonic_timer_is_not_reported_as_having_no_next_elapse(scheduler_snapshot):
     """The trap: reading only NextElapseUSecRealtime flags every OnUnitActiveSec timer."""
     rep = et.scheduler_truth()
+    assert any(row["next_elapse_monotonic"] == "42" for row in rep["timers"])
     for row in rep["timers"]:
         if row["next_elapse_monotonic"] not in (None, "", "0"):
             assert row["next_is_absent"] is False
