@@ -39,6 +39,8 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
     if args.snapshot and (args.snapshot.name.startswith(".env") or "cookie" in args.snapshot.name.lower()):
         parser.error("credential/cookie inputs are refused")
+    if args.write_monitor and not args.host_snapshot:
+        parser.error("--write-monitor requires --host-snapshot; explicit fixture input cannot become runtime proof")
     if (args.host_snapshot or args.write_monitor) and args.state_root is None:
         parser.error("--state-root required")
     candidate = json.loads(args.candidate.read_text())
@@ -47,7 +49,7 @@ def main(argv=None) -> int:
 
     now = datetime.fromisoformat(args.now.replace("Z", "+00:00")) if args.now else datetime.now(timezone.utc)
     snapshot = (
-        collect_server_snapshot(args.state_root, candidate, now=now)
+        collect_server_snapshot(args.state_root, candidate, now=now, admission=admission, code_root=args.code_root)
         if args.host_snapshot
         else json.loads(args.snapshot.read_text())
     )
