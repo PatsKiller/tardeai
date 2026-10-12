@@ -11,7 +11,9 @@ AUTHORITY: READ_ONLY_ADVISORY — no broker, order, or financial mutation.
 from __future__ import annotations
 
 import ast
+import hashlib
 import importlib
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -22,15 +24,36 @@ ROOT = Path(__file__).resolve().parents[1]
 API = ROOT / "scripts" / "api_v2.py"
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from lib.sop_toolchain import resolve_ruff_bin  # noqa: E402
+from lib.sop_toolchain import PINNED_RUFF_VERSION, resolve_ruff_bin  # noqa: E402
 
 
 # ── Gate floor: the exact 16 findings must stay green ─────────────────────────
 
 
-def test_ruff_check_clean_on_api_v2():
+@pytest.fixture
+def owned_ruff_root(tmp_path: Path) -> Path:
+    # The 2026-10-12 isolated native run refused the resolver's host checkout
+    # fallback. Stage the actual pinned dependency in an owned tool root first.
+    source = Path(sys.executable).parent / "ruff"
+    if not source.is_file():
+        available = shutil.which("ruff")
+        assert available is not None, "pinned Ruff must be installed in the current test toolchain"
+        source = Path(available)
+    ruff = tmp_path / ".venv" / "bin" / "ruff"
+    ruff.parent.mkdir(parents=True)
+    shutil.copy2(source, ruff)
+    assert not ruff.is_symlink()
+    assert hashlib.sha256(ruff.read_bytes()).digest() == hashlib.sha256(source.read_bytes()).digest()
+    assert resolve_ruff_bin(root=tmp_path) == ruff
+    version = subprocess.run([str(ruff), "--version"], cwd=str(tmp_path), capture_output=True, text=True, timeout=120)
+    assert version.returncode == 0, version.stdout + version.stderr
+    assert version.stdout.strip() == f"ruff {PINNED_RUFF_VERSION}"
+    return tmp_path
+
+
+def test_ruff_check_clean_on_api_v2(owned_ruff_root: Path):
     """The changed-file quality floor runs `ruff check` on every changed .py."""
-    ruff = resolve_ruff_bin(root=ROOT)
+    ruff = resolve_ruff_bin(root=owned_ruff_root)
     assert ruff is not None, "pinned Ruff is required for the changed-file quality floor"
     r = subprocess.run(
         [str(ruff), "check", str(API)],
@@ -42,8 +65,8 @@ def test_ruff_check_clean_on_api_v2():
     assert r.returncode == 0, r.stdout + r.stderr
 
 
-def test_ruff_format_check_clean_on_api_v2():
-    ruff = resolve_ruff_bin(root=ROOT)
+def test_ruff_format_check_clean_on_api_v2(owned_ruff_root: Path):
+    ruff = resolve_ruff_bin(root=owned_ruff_root)
     assert ruff is not None, "pinned Ruff is required for the changed-file quality floor"
     r = subprocess.run(
         [str(ruff), "format", "--check", str(API)],
