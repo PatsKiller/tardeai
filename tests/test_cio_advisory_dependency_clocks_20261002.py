@@ -137,7 +137,10 @@ def test_run_now_audit_matches_execute_run_code_path():
     """If run-now starts refreshing a producer, RUN_NOW_REFRESHES must change."""
     from lib import advisory_desk_schedule as sched
 
-    src = inspect.getsource(sched._execute_run)
+    # Wave C: desk rebuild lives in execute_run_now; _execute_run is the lock wrapper.
+    src = inspect.getsource(sched.execute_run_now)
+    wrap = inspect.getsource(sched._execute_run)
+    assert "execute_run_now(live_llm=live_llm)" in wrap
     assert "build_advisory_desk(force=True" in src
     assert "enrich_advisory_with_opinions(" in src
     for producer in ("indicator", "reprice", "quote_refresh", "reentry", "hermes", "analyst", "memory", "watch"):

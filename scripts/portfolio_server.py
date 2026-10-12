@@ -9,9 +9,9 @@ Endpoints:
   GET  /scripts/*                   → serve Python scripts (for MCP inspection)
   POST /api/import                  → import parsed positions data → holdings.json
   POST /api/import-transactions     → append new transactions → trade_journal.json
-  POST /api/run-portfolio           → trigger linux_launchers/run_portfolio.sh
-  POST /api/run-trade-ai            → trigger linux_launchers/run_continuous.sh
-  POST /api/run-pipeline            → whitelisted pipeline trigger (daily/weekly/monthly_lite/price_cache)
+  POST /api/run-portfolio           → Wave C: refuse (409) until allowlisted host_run lane
+  POST /api/run-trade-ai            → Wave C: refuse (410) until allowlisted host_run lane
+  POST /api/run-pipeline            → Wave C: refuse (410) until allowlisted host_run lane
   POST /api/yaml-apply              → apply YAML advisor suggestions
   GET  /api/health                  → server health check
 
@@ -2516,102 +2516,27 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
             status, result = handle_clear_pending(body)
             json_response(self, status, result)
 
-        elif path == "/api/run-portfolio":
-            sh = PROJECT_ROOT / "linux_launchers" / "run_portfolio.sh"
-            if not sh.exists():
-                json_response(self, 404, {"error": "run_portfolio.sh not found"})
-                return
-            def _run_daily(script=sh):
-                import datetime
-                log_dir = PROJECT_ROOT / "logs" / "ui_runs"
-                log_dir.mkdir(parents=True, exist_ok=True)
-                stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-                log_file = log_dir / f"run_portfolio-{stamp}.log"
-                with open(log_file, "ab") as fh:
-                    subprocess.run(["bash", str(script)], cwd=str(PROJECT_ROOT), stdout=fh, stderr=subprocess.STDOUT)
-            threading.Thread(target=_run_daily, daemon=True).start()
-            json_response(self, 202, {"ok": True, "message": "run_portfolio.sh triggered"})
-
-        elif path == "/api/run-trade-ai":
-            sh = PROJECT_ROOT / "linux_launchers" / "run_continuous.sh"
-            if not sh.exists():
-                json_response(self, 404, {"error": "run_continuous.sh not found"})
-                return
-            def _run_trade_ai(script=sh):
-                import datetime
-                log_dir = PROJECT_ROOT / "logs" / "ui_runs"
-                log_dir.mkdir(parents=True, exist_ok=True)
-                stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-                log_file = log_dir / f"run_continuous-{stamp}.log"
-                with open(log_file, "ab") as fh:
-                    subprocess.run(["bash", str(script)], cwd=str(PROJECT_ROOT), stdout=fh, stderr=subprocess.STDOUT)
-            threading.Thread(target=_run_trade_ai, daemon=True).start()
-            json_response(self, 202, {"ok": True, "message": "Trade AI continuous scan triggered"})
-
-
-        elif path == "/api/run-recovery-review":
-            def _run_recovery():
-                try:
-                    from recovery_watch_daily import main as recovery_main
-                    result = recovery_main()
-                    print(f"  [recovery] Review complete: {result}")
-                except Exception as e:
-                    print(f"  [recovery] Review failed: {e}")
-            threading.Thread(target=_run_recovery, daemon=True).start()
-            json_response(self, 202, {"ok": True, "message": "Recovery watch daily review triggered"})
-
-        elif path == "/api/run-aegis":
-            def _run_aegis():
-                try:
-                    from aegis_overnight import main as overnight_main
-                    result = overnight_main()
-                    print(f"  [aegis] Overnight orchestrator complete: {result}")
-                except Exception as e:
-                    print(f"  [aegis] Overnight orchestrator failed: {e}")
-            threading.Thread(target=_run_aegis, daemon=True).start()
-            json_response(self, 202, {"ok": True, "message": "Aegis overnight orchestrator triggered (collection → synthesis → refinement)"})
-
-        elif path == "/api/run-reprice":
-            sh = PROJECT_ROOT / "linux_launchers" / "run_reprice_only.sh"
-            if not sh.exists():
-                json_response(self, 404, {"error": "run_reprice_only.sh not found"})
-                return
-            def _run_reprice(script=sh):
-                import datetime
-                log_dir = PROJECT_ROOT / "logs" / "ui_runs"
-                log_dir.mkdir(parents=True, exist_ok=True)
-                stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-                log_file = log_dir / f"reprice-{stamp}.log"
-                with open(log_file, "ab") as fh:
-                    subprocess.run(["bash", str(script)], cwd=str(PROJECT_ROOT), stdout=fh, stderr=subprocess.STDOUT)
-            threading.Thread(target=_run_reprice, daemon=True).start()
-            json_response(self, 202, {"ok": True, "message": "repricing refresh started"})
-
-        elif path == "/api/run-pipeline":
-            ALLOWED_PIPELINES = {
-                "daily": "linux_launchers/run_portfolio.sh",
-                "weekly": "linux_launchers/run_portfolio_weekly.sh",
-                "monthly": "linux_launchers/run_portfolio_monthly_lite.sh",
-                "price_cache": "linux_launchers/run_price_cache.sh",
-            }
-            pipeline_id = body.get("pipeline", "")
-            if pipeline_id not in ALLOWED_PIPELINES:
-                json_response(self, 400, {"error": f"Unknown pipeline: {pipeline_id}"})
-                return
-            sh = PROJECT_ROOT / ALLOWED_PIPELINES[pipeline_id]
-            if not sh.exists():
-                json_response(self, 404, {"error": f"{sh.name} not found"})
-                return
-            def _run_sh(script=sh, pipeline_name=pipeline_id):
-                import datetime
-                log_dir = PROJECT_ROOT / "logs" / "ui_runs"
-                log_dir.mkdir(parents=True, exist_ok=True)
-                stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-                log_file = log_dir / f"{pipeline_name}-{stamp}.log"
-                with open(log_file, "ab") as fh:
-                    subprocess.run(["bash", str(script)], cwd=str(PROJECT_ROOT), stdout=fh, stderr=subprocess.STDOUT)
-            threading.Thread(target=_run_sh, daemon=True).start()
-            json_response(self, 202, {"ok": True, "message": f"{sh.name} started", "pipeline": pipeline_id})
+        elif path in (
+            "/api/run-portfolio",
+            "/api/run-trade-ai",
+            "/api/run-recovery-review",
+            "/api/run-aegis",
+            "/api/run-reprice",
+            "/api/run-pipeline",
+        ):
+            # Wave C: stop Thread/subprocess spawn from Ops Run buttons. Prefer refuse
+            # until an allowlisted host_run lane exists (portfolio-daily-cadence is still
+            # pending_tranches.N2). See docs/implementation/n8n-maturity/WAVE_C_HEAVY_JOBS_2026-10-11.md
+            try:
+                from lib.n8n_cc_wave_c import legacy_run_refuse
+            except ImportError:
+                sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+                from lib.n8n_cc_wave_c import legacy_run_refuse  # type: ignore
+            status, result = legacy_run_refuse(path)
+            if path == "/api/run-pipeline" and status >= 400:
+                result = dict(result)
+                result["pipeline"] = (body or {}).get("pipeline")
+            json_response(self, status, result)
 
         elif path == "/api/env/read":
             import json as _ej
