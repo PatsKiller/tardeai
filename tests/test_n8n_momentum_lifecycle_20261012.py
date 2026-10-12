@@ -714,6 +714,59 @@ def test_metadata_adapter_rejects_malformed_and_oversized_documents(tmp_path):
     assert document is None and evidence["status"] == "OVERSIZED" and evidence["sha256"] is None
 
 
+@pytest.mark.parametrize(
+    "filename,field",
+    [
+        ("scalp_cycle_monitor_last.json", "scalp_cycle_monitor"),
+        ("n8n_failure_diagnosis_last.json", "diagnosis"),
+    ],
+)
+def test_host_health_metadata_has_bounded_reads_and_preserves_missing_proof(setup, filename, field):
+    candidate, admission, root = setup
+    path = root / "data/runtime" / filename
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"schema": "fixture", "payload": "x" * 131073}))
+    snapshot = M.collect_server_snapshot(root, candidate, now=NOW, admission=admission)
+    assert snapshot["collection"][field]["status"] == "OVERSIZED"
+    if field == "scalp_cycle_monitor":
+        assert snapshot["scalp_cycle_monitor"] is None
+    else:
+        assert snapshot["diagnosis_status"] == {}
+
+
+def test_diagnosis_projection_uses_actual_producer_counts_and_excludes_raw_actions(setup):
+    candidate, admission, root = setup
+    path = root / "data/runtime/n8n_failure_diagnosis_last.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "schema": "N8nFailureDiagnosis@v1",
+                "mode": "apply",
+                "ok": True,
+                "as_of": NOW.isoformat(),
+                "counts": {"eligible": 2, "diagnosed": 1, "model_called": 1, "execute": False, "no_diagnosis": -1},
+                "consecutive_blind": 0,
+                "actions": [{"text": "RAW_ACTION_NEVER_FORWARD"}],
+                "results": [{"model_answer": "RAW_MODEL_NEVER_FORWARD"}],
+                "status": "RAW_STATUS_NEVER_FORWARD",
+            }
+        )
+    )
+    snapshot = M.collect_server_snapshot(root, candidate, now=NOW, admission=admission)
+    assert snapshot["diagnosis_status"] == {
+        "schema": "N8nFailureDiagnosis@v1",
+        "mode": "apply",
+        "ok": True,
+        "as_of": NOW.isoformat(),
+        "eligible": 2,
+        "diagnosed": 1,
+        "model_called": 1,
+        "consecutive_blind": 0,
+    }
+    assert "NEVER_FORWARD" not in json.dumps(snapshot)
+
+
 def test_shared_projection_consumer_generation_and_verdicts_are_preserved():
     p = product(
         population_contract="shared_signal_union",

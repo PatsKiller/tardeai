@@ -282,6 +282,11 @@ def collect_server_snapshot(
     except (ImportError, OSError, ValueError):
         pass
     auth = doc.get("credential_health") if isinstance(doc.get("credential_health"), Mapping) else {}
+    cycle, cycle_provenance = _metadata_document(
+        state_root / "data/runtime/scalp_cycle_monitor_last.json",
+        "data/runtime/scalp_cycle_monitor_last.json",
+        limit=131072,
+    )
     snapshot = {
         "products": products,
         "credential_health": {k: auth[k] for k in ("secret_name", "checked_at") if k in auth}
@@ -290,11 +295,12 @@ def collect_server_snapshot(
             "declared_status": auth.get("status"),
             "accepted_health_check_producer": "NOT_MEASURED",
         },
-        "scalp_cycle_monitor": _document(state_root / "data/runtime/scalp_cycle_monitor_last.json"),
+        "scalp_cycle_monitor": cycle,
         "diagnosis_status": {},
         "collection": {
             "inputs": "UNACCEPTED_DECLARATION" if doc else "NOT_MEASURED",
             "accepted_input_producer": "NOT_MEASURED",
+            "scalp_cycle_monitor": cycle_provenance,
         },
     }
     watch_ids = {spec["lane_id"] for spec in candidate.get("watch", [])}
@@ -393,12 +399,41 @@ def collect_server_snapshot(
                     },
                 },
             }
-    diagnosis = _document(state_root / "data/runtime/n8n_failure_diagnosis_last.json") or {}
-    snapshot["diagnosis_status"] = {
-        k: diagnosis[k]
-        for k in ("schema", "as_of", "status", "eligible", "diagnosed", "no_diagnosis", "actions", "consecutive_blind")
-        if k in diagnosis
-    }
+    diagnosis, diagnosis_provenance = _metadata_document(
+        state_root / "data/runtime/n8n_failure_diagnosis_last.json",
+        "data/runtime/n8n_failure_diagnosis_last.json",
+        limit=131072,
+    )
+    diagnosis = diagnosis or {}
+    snapshot["collection"]["diagnosis"] = diagnosis_provenance
+    # The existing producer keeps counters under counts. No result, action,
+    # model response, evidence pack or free-form status enters this projection.
+    status = snapshot["diagnosis_status"]
+    if isinstance(diagnosis.get("schema"), str) and len(diagnosis["schema"]) <= 80:
+        status["schema"] = diagnosis["schema"]
+    if stamp(diagnosis.get("as_of")) is not None:
+        status["as_of"] = stamp(diagnosis["as_of"]).isoformat()
+    if diagnosis.get("mode") in {"apply", "dry-run"}:
+        status["mode"] = diagnosis["mode"]
+    if isinstance(diagnosis.get("ok"), bool):
+        status["ok"] = diagnosis["ok"]
+    counts = diagnosis.get("counts") if isinstance(diagnosis.get("counts"), Mapping) else {}
+    for key in (
+        "eligible",
+        "model_called",
+        "diagnosed",
+        "no_diagnosis",
+        "deferred",
+        "execute",
+        "escalate_p1",
+        "escalate_p2",
+    ):
+        value = counts.get(key)
+        if isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= 10000000:
+            status[key] = value
+    blind = diagnosis.get("consecutive_blind")
+    if isinstance(blind, int) and not isinstance(blind, bool) and 0 <= blind <= 10000000:
+        status["consecutive_blind"] = blind
     snapshot["storage_health"] = {"status": "NOT_MEASURED", "observed_at": now.isoformat(), "volumes": []}
     for path in (Path("/tmp"), state_root):
         try:
