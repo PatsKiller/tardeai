@@ -805,6 +805,39 @@ def test_owner_confirmation_cannot_be_promoted_by_digest_alone():
     assert not M.contract_review_proven(contract)
 
 
+@pytest.mark.parametrize("confirmation", [None, "", False, "CONFIRMED_BY_AGENT", "NOT_MEASURED", "UNRESOLVED"])
+def test_owner_acceptance_requires_the_explicit_accepted_value(confirmation):
+    contract = reviewed_fixture_contract("momentum-lifecycle-monitor")
+    contract["ownership_confirmation"] = confirmation
+    contract["review"]["contract_body_sha256"] = M.contract_body_digest(contract)
+    assert not M.contract_review_proven(contract)
+    contract.pop("ownership_confirmation")
+    contract["review"]["contract_body_sha256"] = M.contract_body_digest(contract)
+    assert not M.contract_review_proven(contract)
+
+
+def test_durable_monitor_refuses_alternate_policy_and_fixture_provenance(setup, monkeypatch):
+    _, admission, root = setup
+    admitted_monitor(admission)
+    monkeypatch.setattr(M, "load_admission", lambda code_root: admission)
+    policy = {"enabled": True, "watch": [{"lane_id": "early-source"}]}
+    (root / "config/n8n_momentum_lifecycle_candidate.json").write_text(json.dumps(policy))
+    report = {
+        "schema": M.SCHEMA,
+        "as_of": NOW.isoformat(),
+        "source_sha": admission.deployed_sha,
+        "collection_source": "HOST_SNAPSHOT",
+        "candidate_sha256": M.contract_body_digest(policy),
+    }
+    path = root / M.MONITOR_REL
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(report))
+    assert M.durable_view(root, root, now=NOW)["schema"] == M.SCHEMA
+    for change in ({"collection_source": "EXPLICIT_FIXTURE"}, {"candidate_sha256": "0" * 64}):
+        path.write_text(json.dumps({**report, **change}))
+        assert M.durable_view(root, root, now=NOW)["reason"] == "momentum_monitor_policy_or_collection_drift"
+
+
 def test_deployed_sha_gate_is_independent_of_content_review(setup):
     from dataclasses import replace
 

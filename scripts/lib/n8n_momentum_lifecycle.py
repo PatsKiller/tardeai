@@ -528,7 +528,7 @@ def contract_review_proven(contract: Mapping) -> bool:
         contract.get("status") == "REVIEWED"
         and not validate_contract(contract)
         and not unknown_fields(contract)
-        and contract.get("ownership_confirmation") not in {"NOT_MEASURED", "UNRESOLVED"}
+        and contract.get("ownership_confirmation") == "OWNER_ACCEPTED"
         and isinstance(review.get("reviewed_by"), str)
         and bool(review["reviewed_by"].strip())
         and isinstance(review.get("decision_ref"), str)
@@ -591,6 +591,10 @@ def durable_view(code_root: Path, state_root: Path, *, now: datetime) -> dict:
     sha = (code_root / "SOURCE_COMMIT").read_text().strip()
     if report.get("source_sha") != sha:
         return {"state": "REFUSED", "reason": "momentum_monitor_deployed_sha_drift"}
+    if report.get("collection_source") != "HOST_SNAPSHOT" or report.get("candidate_sha256") != contract_body_digest(
+        candidate
+    ):
+        return {"state": "REFUSED", "reason": "momentum_monitor_policy_or_collection_drift"}
     return dict(report)
 
 

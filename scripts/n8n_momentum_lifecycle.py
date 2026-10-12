@@ -15,6 +15,7 @@ if str(ROOT) not in sys.path:
 
 from scripts.lib.n8n_momentum_lifecycle import (  # noqa: E402
     collect_server_snapshot,
+    contract_body_digest,
     evaluate,
     load_admission,
     monitor_admitted,
@@ -34,13 +35,20 @@ def main(argv=None) -> int:
     parser.add_argument("--write-monitor", action="store_true", help="write only momentum_lifecycle_last.json")
     parser.add_argument("--dry-run", action="store_true", help="no health write or recovery submission")
     parser.add_argument("--exit-code", action="store_true", help="operator check: exit 2 for P1 evidence findings")
-    parser.add_argument("--candidate", type=Path, default=ROOT / "config/n8n_momentum_lifecycle_candidate.json")
+    parser.add_argument("--candidate", type=Path, help="explicit policy for read-only fixture evaluation")
     parser.add_argument("--now", help="aware ISO timestamp; omitted uses current UTC clock")
     args = parser.parse_args(argv)
     if args.snapshot and (args.snapshot.name.startswith(".env") or "cookie" in args.snapshot.name.lower()):
         parser.error("credential/cookie inputs are refused")
     if args.write_monitor and not args.host_snapshot:
         parser.error("--write-monitor requires --host-snapshot; explicit fixture input cannot become runtime proof")
+    operative_candidate = args.code_root / "config/n8n_momentum_lifecycle_candidate.json"
+    if args.write_monitor and not args.dry_run:
+        if args.now is not None:
+            parser.error("monitor writes require the real clock")
+        if args.candidate is not None and args.candidate.resolve() != operative_candidate.resolve():
+            parser.error("monitor writes require the operative code-root candidate policy")
+    args.candidate = args.candidate or operative_candidate
     if (args.host_snapshot or args.write_monitor) and args.state_root is None:
         parser.error("--state-root required")
     candidate = json.loads(args.candidate.read_text())
@@ -57,6 +65,8 @@ def main(argv=None) -> int:
         candidate, snapshot, admission, now=now, trading_day_fn=is_trading_day, session_fn=current_market_session
     )
     report["recovery"] = plan_recovery(candidate, report, admission, snapshot=snapshot, now=now)
+    report["candidate_sha256"] = contract_body_digest(candidate)
+    report["collection_source"] = "HOST_SNAPSHOT" if args.host_snapshot else "EXPLICIT_FIXTURE"
     if args.write_monitor and not args.dry_run:
         if candidate.get("enabled") is not True or not monitor_admitted(admission):
             parser.error("monitor write requires reviewed operative activation at deployed SHA")
