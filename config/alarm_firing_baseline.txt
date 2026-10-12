@@ -134,7 +134,7 @@ scripts/send_screener_schedule_health_alert.py 1
 scripts/send_telegram_proposal_alert.py 1
 scripts/send_watchpool_maturity_alerts.py 1
 scripts/siem_critical_notify.py 1
-scripts/social_scalp_scanner.py 2
+scripts/social_scalp_scanner.py 1
 scripts/stop_decision_brief.py 1
 scripts/stop_drift_alert.py 1
 scripts/stop_over_consensus_monitor.py 1
