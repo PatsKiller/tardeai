@@ -1,0 +1,453 @@
+{
+  "schema": "MomentumActivationPacket@v1",
+  "as_of": "2026-10-12",
+  "source_base_sha": "27a75a14b88e8ac0d3befbe21bebea3686ca45ff",
+  "status": "DRAFT_FOR_OPERATOR_REVIEW",
+  "source_release_sha": null,
+  "reviewed_by": null,
+  "reviewed_sha": null,
+  "workflow_id": "tradeai-momentum-lifecycle-candidate",
+  "workflow_active": false,
+  "config_enabled": false,
+  "recovery_armed": false,
+  "lanes": [
+    {
+      "lane_id": "finviz-momentum-scalp-early-lane",
+      "role": "WATCH_ONLY_PROTECTED",
+      "source_state": "ACTIVE",
+      "source_schedule": {
+        "kind": "cron",
+        "expression": "*/5 6-11 * * 1-5",
+        "command_text": "cd $PROJ && flock -n /tmp/tradeai_finviz_momentum_scalp.lock timeout 280 env MOMENTUM_SCALP_OUTER_DEADLINE_S=260 $PY scripts/run_finviz_momentum_scalp_scan.py --window early --apply --refresh-if-older-min 15 --sync-signals --generate-proposals --run-validation-fast-path --submit-validation >> logs/finviz_momentum_scalp_scan.log 2>&1",
+        "match": "scripts/run_finviz_momentum_scalp_scan.py"
+      },
+      "declared_owner": "scalp",
+      "owner_confirmation": "NOT_MEASURED",
+      "legacy_trigger": "scripts/run_finviz_momentum_scalp_scan.py",
+      "legacy_trigger_source": "config/lane_registry.json; fresh sanctioned host fingerprint match required before changing a line",
+      "lock": null,
+      "operative_contract_status": "ABSENT",
+      "allowlist_present": false,
+      "allowlist_live_arg_present": false,
+      "catalogue_status": "PROPOSED \u2014 operator review before activation (decision 4)",
+      "go": "NO_GO",
+      "remaining_actions": [
+        "Owner review the fully authored draft without altering existing review provenance",
+        "Exact integrated head CI and authorized CURRENT deployment",
+        "Reconcile registry schedule to live trigger and approved six-AM requirement; no reset of retired midday slots",
+        "Collect required natural shadow and canary receipts plus output/consumer/alert/recovery evidence",
+        "Exact one-lane cutover packet and cron grant; comment only the matching legacy trigger",
+        "Protected role remains watch/escalation until its existing policy and mechanical grant are met"
+      ]
+    },
+    {
+      "lane_id": "finviz-market-movers",
+      "role": "DATA_PRODUCER_OBSERVE",
+      "source_state": "ACTIVE",
+      "source_schedule": {
+        "kind": "cron",
+        "expression": "*/15 6-16 * * 1-5",
+        "match": "scripts/finviz_market_movers.py\"",
+        "stage": "shadow",
+        "wave": "R2-06",
+        "command_text": "*/15 6-16 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/finviz_market_movers.lock bash -c \"set -a; . ./.env; set +a; $PY scripts/finviz_market_movers.py\" >> logs/finviz_market_movers.log 2>&1  # Home v2 WS-A: Finviz signal board (throttled). 06:00-close every 15min \u2014 premarket coverage added 2026-07-28 so the TradeAI top-gainer injection is fresh during the 6am-noon scalp window"
+      },
+      "declared_owner": "scalp",
+      "owner_confirmation": "NOT_MEASURED",
+      "legacy_trigger": "scripts/finviz_market_movers.py\"",
+      "legacy_trigger_source": "config/lane_registry.json; fresh sanctioned host fingerprint match required before changing a line",
+      "lock": "/tmp/finviz_market_movers.lock",
+      "operative_contract_status": "REVIEWED",
+      "allowlist_present": true,
+      "allowlist_live_arg_present": false,
+      "catalogue_status": "PROPOSED \u2014 operator review before activation (decision 4)",
+      "go": "NO_GO",
+      "remaining_actions": [
+        "Owner review the fully authored draft without altering existing review provenance",
+        "Exact integrated head CI and authorized CURRENT deployment",
+        "Reconcile registry schedule to live trigger and approved six-AM requirement; no reset of retired midday slots",
+        "Collect required natural shadow and canary receipts plus output/consumer/alert/recovery evidence",
+        "Exact one-lane cutover packet and cron grant; comment only the matching legacy trigger",
+        "Protected role remains watch/escalation until its existing policy and mechanical grant are met"
+      ]
+    },
+    {
+      "lane_id": "finviz-screener-runner",
+      "role": "DATA_PRODUCER_OBSERVE",
+      "source_state": "ACTIVE",
+      "source_schedule": {
+        "kind": "cron",
+        "expression": "0 10 * * 1-5",
+        "match": "scripts/finviz_screener_runner.py",
+        "stage": "shadow",
+        "wave": "R2-01",
+        "command_text": "0 10 * * 1-5 cd $PROJ && flock -n /tmp/finviz_screener.lock $PY scripts/finviz_screener_runner.py --run >> logs/finviz_screener.log 2>&1"
+      },
+      "declared_owner": "scalp",
+      "owner_confirmation": "NOT_MEASURED",
+      "legacy_trigger": "scripts/finviz_screener_runner.py",
+      "legacy_trigger_source": "config/lane_registry.json; fresh sanctioned host fingerprint match required before changing a line",
+      "lock": "/tmp/finviz_screener.lock",
+      "operative_contract_status": "REVIEWED",
+      "allowlist_present": true,
+      "allowlist_live_arg_present": false,
+      "catalogue_status": "PROPOSED \u2014 operator review before activation (decision 4)",
+      "go": "NO_GO",
+      "remaining_actions": [
+        "Owner review the fully authored draft without altering existing review provenance",
+        "Exact integrated head CI and authorized CURRENT deployment",
+        "Reconcile registry schedule to live trigger and approved six-AM requirement; no reset of retired midday slots",
+        "Collect required natural shadow and canary receipts plus output/consumer/alert/recovery evidence",
+        "Exact one-lane cutover packet and cron grant; comment only the matching legacy trigger",
+        "Protected role remains watch/escalation until its existing policy and mechanical grant are met"
+      ]
+    },
+    {
+      "lane_id": "trade-ai-scalp-live",
+      "role": "NAMED_EXCEPTION_WATCH_ONLY_NO_RETRY",
+      "source_state": "ACTIVE",
+      "source_schedule": {
+        "kind": "cron",
+        "expression": "*/5 9-15 * * 1-5",
+        "command_text": "cd $PROJ && flock -n /tmp/tradeai_scalp_live.lock timeout 295 bash scripts/market_day_gate.sh $PY scripts/run_trade_ai_scalp_live.py >> logs/trade_ai_scalp_live.log 2>&1 # TRADEAI_LANE trade-ai-scalp-live",
+        "match": "scripts/run_trade_ai_scalp_live.py"
+      },
+      "declared_owner": "scalp",
+      "owner_confirmation": "NOT_MEASURED",
+      "legacy_trigger": "scripts/run_trade_ai_scalp_live.py",
+      "legacy_trigger_source": "config/lane_registry.json; fresh sanctioned host fingerprint match required before changing a line",
+      "lock": "/tmp/tradeai_scalp_live.lock",
+      "operative_contract_status": "ABSENT",
+      "allowlist_present": true,
+      "allowlist_live_arg_present": true,
+      "catalogue_status": "PROPOSED \u2014 operator review before activation (decision 4)",
+      "go": "NO_GO",
+      "remaining_actions": [
+        "Owner review the fully authored draft without altering existing review provenance",
+        "Exact integrated head CI and authorized CURRENT deployment",
+        "Reconcile registry schedule to live trigger and approved six-AM requirement; no reset of retired midday slots",
+        "Collect required natural shadow and canary receipts plus output/consumer/alert/recovery evidence",
+        "Exact one-lane cutover packet and cron grant; comment only the matching legacy trigger",
+        "Protected role remains watch/escalation until its existing policy and mechanical grant are met"
+      ]
+    },
+    {
+      "lane_id": "auto-proposal-general",
+      "role": "WATCH_ONLY_PROTECTED",
+      "source_state": "ACTIVE",
+      "source_schedule": {
+        "kind": "cron",
+        "expression": "*/30 9-16 * * 1-5",
+        "command_text": "cd $PROJ && AUTO_PROPOSAL_EXCLUDE_STRATEGIES=momentum_scalp MOMENTUM_SCALP_VALIDATION_FAST_PATH=1 MOMENTUM_SCALP_VALIDATION_SUBMIT=1 flock -n /tmp/auto_proposal_general.lock timeout 5m $PY scripts/auto_proposal_generator.py --today --apply >> logs/auto_proposal.log 2>&1",
+        "match": "AUTO_PROPOSAL_EXCLUDE_STRATEGIES=momentum_scalp"
+      },
+      "declared_owner": "watch",
+      "owner_confirmation": "NOT_MEASURED",
+      "legacy_trigger": "AUTO_PROPOSAL_EXCLUDE_STRATEGIES=momentum_scalp",
+      "legacy_trigger_source": "config/lane_registry.json; fresh sanctioned host fingerprint match required before changing a line",
+      "lock": null,
+      "operative_contract_status": "ABSENT",
+      "allowlist_present": false,
+      "allowlist_live_arg_present": false,
+      "catalogue_status": "PROPOSED \u2014 operator review before activation (decision 4)",
+      "go": "NO_GO",
+      "remaining_actions": [
+        "Owner review the fully authored draft without altering existing review provenance",
+        "Exact integrated head CI and authorized CURRENT deployment",
+        "Reconcile registry schedule to live trigger and approved six-AM requirement; no reset of retired midday slots",
+        "Collect required natural shadow and canary receipts plus output/consumer/alert/recovery evidence",
+        "Exact one-lane cutover packet and cron grant; comment only the matching legacy trigger",
+        "Protected role remains watch/escalation until its existing policy and mechanical grant are met"
+      ]
+    },
+    {
+      "lane_id": "momentum-scalp-advisory-alerts",
+      "role": "WATCH_ONLY_PROTECTED",
+      "source_state": "ACTIVE",
+      "source_schedule": {
+        "kind": "cron",
+        "expression": "*/10 6-11 * * 1-5",
+        "command_text": "cd $PROJ && AUTO_PROPOSAL_STRATEGIES=momentum_scalp flock -n /tmp/auto_proposal_momentum_scalp.lock timeout 5m $PY scripts/auto_proposal_generator.py --today --apply >> logs/auto_proposal_momentum_scalp.log 2>&1",
+        "match": "AUTO_PROPOSAL_STRATEGIES=momentum_scalp"
+      },
+      "declared_owner": "scalp",
+      "owner_confirmation": "NOT_MEASURED",
+      "legacy_trigger": "AUTO_PROPOSAL_STRATEGIES=momentum_scalp",
+      "legacy_trigger_source": "config/lane_registry.json; fresh sanctioned host fingerprint match required before changing a line",
+      "lock": null,
+      "operative_contract_status": "ABSENT",
+      "allowlist_present": false,
+      "allowlist_live_arg_present": false,
+      "catalogue_status": "PROPOSED \u2014 operator review before activation (decision 4)",
+      "go": "NO_GO",
+      "remaining_actions": [
+        "Owner review the fully authored draft without altering existing review provenance",
+        "Exact integrated head CI and authorized CURRENT deployment",
+        "Reconcile registry schedule to live trigger and approved six-AM requirement; no reset of retired midday slots",
+        "Collect required natural shadow and canary receipts plus output/consumer/alert/recovery evidence",
+        "Exact one-lane cutover packet and cron grant; comment only the matching legacy trigger",
+        "Protected role remains watch/escalation until its existing policy and mechanical grant are met"
+      ]
+    },
+    {
+      "lane_id": "daily-incubator-refresh",
+      "role": "WATCH_ONLY_PROTECTED",
+      "source_state": "ACTIVE",
+      "source_schedule": {
+        "kind": "cron",
+        "expression": "15 8 * * 1-5",
+        "match": "scripts/daily_incubator_refresh.py",
+        "stage": "shadow",
+        "wave": "R2-01",
+        "command_text": "15 8 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/daily_incubator_refresh.py --apply >> logs/incubator_refresh.log 2>&1"
+      },
+      "declared_owner": "proposals",
+      "owner_confirmation": "NOT_MEASURED",
+      "legacy_trigger": "scripts/daily_incubator_refresh.py",
+      "legacy_trigger_source": "config/lane_registry.json; fresh sanctioned host fingerprint match required before changing a line",
+      "lock": "/tmp/daily-incubator-refresh.lock",
+      "operative_contract_status": "REVIEWED",
+      "allowlist_present": true,
+      "allowlist_live_arg_present": false,
+      "catalogue_status": "PROPOSED \u2014 operator review before activation (decision 4)",
+      "go": "NO_GO",
+      "remaining_actions": [
+        "Owner review the fully authored draft without altering existing review provenance",
+        "Exact integrated head CI and authorized CURRENT deployment",
+        "Reconcile registry schedule to live trigger and approved six-AM requirement; no reset of retired midday slots",
+        "Collect required natural shadow and canary receipts plus output/consumer/alert/recovery evidence",
+        "Exact one-lane cutover packet and cron grant; comment only the matching legacy trigger",
+        "Protected role remains watch/escalation until its existing policy and mechanical grant are met"
+      ]
+    },
+    {
+      "lane_id": "warm-caches",
+      "role": "DATA_CACHE_OWNER_OBSERVE",
+      "source_state": "ACTIVE",
+      "source_schedule": {
+        "kind": "cron",
+        "expression": "*/8 * * * *",
+        "command_text": "warm_caches.py",
+        "match": "warm_caches.py"
+      },
+      "declared_owner": "platform",
+      "owner_confirmation": "NOT_MEASURED",
+      "legacy_trigger": "warm_caches.py",
+      "legacy_trigger_source": "config/lane_registry.json; fresh sanctioned host fingerprint match required before changing a line",
+      "lock": null,
+      "operative_contract_status": "ABSENT",
+      "allowlist_present": false,
+      "allowlist_live_arg_present": false,
+      "catalogue_status": "PROPOSED \u2014 operator review before activation (decision 4)",
+      "go": "NO_GO",
+      "remaining_actions": [
+        "Owner review the fully authored draft without altering existing review provenance",
+        "Exact integrated head CI and authorized CURRENT deployment",
+        "Reconcile registry schedule to live trigger and approved six-AM requirement; no reset of retired midday slots",
+        "Collect required natural shadow and canary receipts plus output/consumer/alert/recovery evidence",
+        "Exact one-lane cutover packet and cron grant; comment only the matching legacy trigger",
+        "Protected role remains watch/escalation until its existing policy and mechanical grant are met"
+      ]
+    },
+    {
+      "lane_id": "orchestrator-slot",
+      "role": "WATCH_ONLY_PROTECTED",
+      "source_state": "ACTIVE",
+      "source_schedule": {
+        "kind": "cron",
+        "expression": "30 17 * * 1-5",
+        "command_text": "run_orchestrator_slot.sh",
+        "match": "30 17 * * 1-5 cd $PROJ && bash $PROJ/scripts/run_orchestrator_slot.sh",
+        "schedules": [
+          "30 17 * * 1-5"
+        ]
+      },
+      "declared_owner": "platform",
+      "owner_confirmation": "NOT_MEASURED",
+      "legacy_trigger": "30 17 * * 1-5 cd $PROJ && bash $PROJ/scripts/run_orchestrator_slot.sh",
+      "legacy_trigger_source": "config/lane_registry.json; fresh sanctioned host fingerprint match required before changing a line",
+      "lock": null,
+      "operative_contract_status": "ABSENT",
+      "allowlist_present": false,
+      "allowlist_live_arg_present": false,
+      "catalogue_status": "PROPOSED \u2014 operator review before activation (decision 4)",
+      "go": "NO_GO",
+      "remaining_actions": [
+        "Owner review the fully authored draft without altering existing review provenance",
+        "Exact integrated head CI and authorized CURRENT deployment",
+        "Reconcile registry schedule to live trigger and approved six-AM requirement; no reset of retired midday slots",
+        "Collect required natural shadow and canary receipts plus output/consumer/alert/recovery evidence",
+        "Exact one-lane cutover packet and cron grant; comment only the matching legacy trigger",
+        "Protected role remains watch/escalation until its existing policy and mechanical grant are met"
+      ]
+    },
+    {
+      "lane_id": "youtube-cookie-health-check",
+      "role": "CREDENTIAL_METADATA_OBSERVE_NO_PROBE",
+      "source_state": "ACTIVE",
+      "source_schedule": {
+        "kind": "cron",
+        "expression": "45 19 * * *",
+        "match": "scripts/youtube_cookie_health_check.py"
+      },
+      "declared_owner": "platform",
+      "owner_confirmation": "NOT_MEASURED",
+      "legacy_trigger": "scripts/youtube_cookie_health_check.py",
+      "legacy_trigger_source": "config/lane_registry.json; fresh sanctioned host fingerprint match required before changing a line",
+      "lock": null,
+      "operative_contract_status": "ABSENT",
+      "allowlist_present": false,
+      "allowlist_live_arg_present": false,
+      "catalogue_status": "PROPOSED \u2014 operator review before activation (decision 4)",
+      "go": "NO_GO",
+      "remaining_actions": [
+        "Owner review the fully authored draft without altering existing review provenance",
+        "Exact integrated head CI and authorized CURRENT deployment",
+        "Reconcile registry schedule to live trigger and approved six-AM requirement; no reset of retired midday slots",
+        "Collect required natural shadow and canary receipts plus output/consumer/alert/recovery evidence",
+        "Exact one-lane cutover packet and cron grant; comment only the matching legacy trigger",
+        "Protected role remains watch/escalation until its existing policy and mechanical grant are met"
+      ]
+    },
+    {
+      "lane_id": "youtube-transcript-ingest",
+      "role": "WATCH_ONLY_EGRESS",
+      "source_state": "ACTIVE",
+      "source_schedule": {
+        "kind": "cron",
+        "expression": "0 19 * * 1-5",
+        "match": "scripts/youtube_transcript_ingest.py"
+      },
+      "declared_owner": "research",
+      "owner_confirmation": "NOT_MEASURED",
+      "legacy_trigger": "scripts/youtube_transcript_ingest.py",
+      "legacy_trigger_source": "config/lane_registry.json; fresh sanctioned host fingerprint match required before changing a line",
+      "lock": null,
+      "operative_contract_status": "ABSENT",
+      "allowlist_present": false,
+      "allowlist_live_arg_present": false,
+      "catalogue_status": "PROPOSED \u2014 operator review before activation (decision 4)",
+      "go": "NO_GO",
+      "remaining_actions": [
+        "Owner review the fully authored draft without altering existing review provenance",
+        "Exact integrated head CI and authorized CURRENT deployment",
+        "Reconcile registry schedule to live trigger and approved six-AM requirement; no reset of retired midday slots",
+        "Collect required natural shadow and canary receipts plus output/consumer/alert/recovery evidence",
+        "Exact one-lane cutover packet and cron grant; comment only the matching legacy trigger",
+        "Protected role remains watch/escalation until its existing policy and mechanical grant are met"
+      ]
+    },
+    {
+      "lane_id": "incubator-proposal-promoter",
+      "role": "WATCH_ONLY_PROTECTED",
+      "source_state": "ACTIVE",
+      "source_schedule": {
+        "kind": "cron",
+        "expression": "0 7,8,9,10,11,12,13,14,15,16,17 * * 1-5",
+        "match": "scripts/incubator_proposal_promoter.py"
+      },
+      "declared_owner": "proposals",
+      "owner_confirmation": "NOT_MEASURED",
+      "legacy_trigger": "scripts/incubator_proposal_promoter.py",
+      "legacy_trigger_source": "config/lane_registry.json; fresh sanctioned host fingerprint match required before changing a line",
+      "lock": null,
+      "operative_contract_status": "ABSENT",
+      "allowlist_present": false,
+      "allowlist_live_arg_present": false,
+      "catalogue_status": "PROPOSED \u2014 operator review before activation (decision 4)",
+      "go": "NO_GO",
+      "remaining_actions": [
+        "Owner review the fully authored draft without altering existing review provenance",
+        "Exact integrated head CI and authorized CURRENT deployment",
+        "Reconcile registry schedule to live trigger and approved six-AM requirement; no reset of retired midday slots",
+        "Collect required natural shadow and canary receipts plus output/consumer/alert/recovery evidence",
+        "Exact one-lane cutover packet and cron grant; comment only the matching legacy trigger",
+        "Protected role remains watch/escalation until its existing policy and mechanical grant are met"
+      ]
+    }
+  ],
+  "new_monitor_proposal": {
+    "lane_id": "momentum-lifecycle-monitor",
+    "registry_state": "PAUSED proposed until admission",
+    "scheduler": {
+      "kind": "n8n",
+      "expression": "*/5 * * * *",
+      "timezone": "America/New_York",
+      "stage": "shadow"
+    },
+    "dispatch": {
+      "class": "monitor",
+      "retry_policy": "none",
+      "timeout_s": 60
+    },
+    "allowlist": {
+      "command": [
+        "{PY}",
+        "{CODE_ROOT}/scripts/n8n_momentum_lifecycle.py",
+        "--host-snapshot",
+        "--code-root",
+        "{CODE_ROOT}",
+        "--state-root",
+        "{STATE_ROOT}"
+      ],
+      "dry_arg": [
+        "--dry-run"
+      ],
+      "live_arg": [
+        "--write-monitor"
+      ],
+      "lock_kind": "flock",
+      "lock": "/tmp/tradeai_momentum_lifecycle.lock",
+      "output_signal": "data/runtime/momentum_lifecycle_last.json",
+      "cwd": "{CODE_ROOT}"
+    },
+    "review_status": "DRAFT; apply operative rows only after review and exact source/runtime gates"
+  },
+  "llm_path": {
+    "process": "n8n_lane_failure_diagnosis",
+    "template": "lane_failure_diagnosis.v1",
+    "host_lane": "n8n-failure-diagnosis",
+    "registry_schedule": {
+      "kind": "cron",
+      "expression": "3-59/15 * * * *",
+      "match": "scripts/n8n_failure_diagnosis.py --apply",
+      "install_line": "3-59/15 * * * * cd $PROJ && TRADEAI_STATE_ROOT=$HOME/trade-ai-releases/persistent-state bash $PROJ/scripts/run_with_deepseek_offpeak.sh --scheduled --defer-in-process -- bash $PROJ/scripts/safe_flock.sh /tmp/tradeai_n8n_failure_diagnosis.lock timeout -k 30 600 $PY scripts/n8n_failure_diagnosis.py --apply --max-incidents 3 >> logs/n8n_failure_diagnosis.log 2>&1  # TRADEAI_LANE n8n-failure-diagnosis"
+    },
+    "current_catalogue_status": "PROPOSED \u2014 operator review before activation (decision 4)",
+    "approval": "NOT_MEASURED",
+    "action": "Review specific catalogue entries and process health contract; preserve existing routing/cost/deferral/egress controls; no model selection by n8n"
+  },
+  "unresolved_parents": [
+    {
+      "observed_process": "continuous orchestrator",
+      "canonical_lane_id": "NOT_MEASURED",
+      "next_action": "Root/cutover worker reconcile exact host wrapper/process/receipts to a business parent; do not invent a second orchestrator scheduler."
+    },
+    {
+      "observed_process": "pipeline SLO/supervisor metrics",
+      "canonical_lane_id": "NOT_MEASURED",
+      "next_action": "Publish agreed calendar/population baseline plus nonsecret producer/consumer projection; missing measurements remain null rather than zero."
+    }
+  ],
+  "grants_required": [
+    {
+      "scope": "release",
+      "object": "Exact final integrated source SHA; assign after root source/CI integration"
+    },
+    {
+      "scope": "cron",
+      "object": "Named candidate workflow activation and exact approved legacy trigger comments only, after lane gates"
+    },
+    {
+      "scope": "config-write",
+      "object": "Reviewed operative monitor lane/allowlist/contracts and enabled flag at exact reviewed source"
+    }
+  ],
+  "rollback": [
+    "Stop only candidate workflow scheduling first",
+    "Restore only that lane archived matching legacy trigger; never wholesale crontab restore",
+    "Verify one authority and original lock; preserve independent host notifier/broker/safety/recovery scheduling",
+    "Prove output recovery and record actual restored SHA/receipt; preserve monitor/incident historical evidence"
+  ],
+  "current_observed_boundary": "Current n8n scalp workflow IDs absent; no n8n production receipts for scalp/cache/orchestrator lanes; three Finviz market-mover dry-run failures before child due to lockfile ENOSPC. Source preparation is not runtime activation."
+}
