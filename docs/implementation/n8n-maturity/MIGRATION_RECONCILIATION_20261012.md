@@ -2,7 +2,7 @@
 
 Status: DRAFT — local source and evidence package; additional cutover BLOCKED
 Owner: platform integrator; per-process owners remain declared, unconfirmed
-as_of: 2026-10-12T03:07:00+00:00
+as_of: 2026-10-12T04:10:00+00:00
 Measured at: source base 40208881dd34495b840bcbd4e373f593d06a659f; observed CURRENT 37752b193-main-exact-phase2-20261011-201624
 
 The authoritative workbook retains 679 inventory rows, including 262 rows classified for refactoring or custom development. Historical migration labels, implementation annotations and planning records remain evidence with their original scope. They do not establish production acceptance. Additional cutover remains blocked until the applicable source, deployment, natural schedule, output, monitoring and recovery requirements pass.
@@ -41,6 +41,8 @@ The runner integration preserves the current main safety, environment and dry-ru
 
 Runner regression fixtures copy the required Bash/Python source into scratch projects with minimal environments, isolated homes, state, locks and interpreters. Synthetic assignment-position fixtures replace the host-only C1 snapshot dependency and skipped test. Production access barriers remain enabled.
 
+Scheduler tests use an explicitly contained scratch command rather than a host-command alias. Health tests inject a deterministic clock and an empty scratch dotenv file. Relay probes transfer parent-owned ephemeral loopback descriptors to child servers; the isolation harness validates scratch scope, descriptor identity, ownership and peer roles before launch. Invalid or unrelated descriptors are refused. These fixture capabilities do not authorize production listeners, databases, credentials or host commands.
+
 The cutover checklist requires an exact integrated SHA and a correlated acceptance packet before it ticks natural shadow/canary/output proof. Two distinct natural shadow slots must follow the fixes and match the host receipt, ledger request, n8n schedule trigger, legacy authority, disjoint shadow lock, zero business effects and independently inspected outputs. Manual canaries remain labelled MANUAL_CANARY and cannot substitute for natural fires. Locks alone cannot establish absence of duplicate business effects. Wrong SHA, stale observations, incomplete receipt accounting and conflicting evidence fail acceptance.
 
 The packet interface is documented in `scripts/n8n_cutover_checklist.py`; it is a read-only observation input, never a producer of natural evidence or an operational grant. Per-run effect observations live below `data/runtime` and name the lane/run/SHA. Their contents must come from output and consumer inspection. Synthetic test packets establish gate behavior only.
@@ -50,6 +52,8 @@ YouTube cookie classification recognizes Netscape `#HttpOnly_` domain prefixes t
 ## Operational boundaries and remaining work
 
 The runtime/contract packet under `reconciliation-20261012/runtime-contracts/` records sanitized observations, external DRAFT contract proposals, owner decisions, nine incomplete source pairs, monitoring requirements and OpenClaw mappings. It prepares exact operator change packets for n8n privilege hardening and Ollama retirement. Four UNKNOWN contract fields have source-backed proposed replacements; no reviewer is invented or advanced.
+
+`inventory_coverage_resolution.json` gives all 61 registry gaps a source mapping proposal or an explicit collection action, with three classification proposals and the shared CIO timer parent relationship. The workbook keeps proposals separate from accepted business mappings and owner confirmation. Current source corrections do not silently alter historical classifications or retirement decisions.
 
 Hermes is currently inactive with a successful exit; its earlier failed snapshot remains historical. An empty current queue does not prove recovery of historical failed work, and a restart has no current justification. Ollama still running is retirement drift; an instantaneous socket census cannot close periodic caller dependencies. The n8n database role remains overprivileged; historical backup/restore receipts do not replace a fresh prechange backup or an application-role migration test.
 
