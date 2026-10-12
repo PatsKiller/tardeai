@@ -15,6 +15,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from .momentum_setup_evidence import build_setup_evidence
+
 SCHEMA = "SharedMomentumCandidates@v1"
 AT_CONTRACT = "active-trader-momentum-alert-v1"
 ET = ZoneInfo("America/New_York")
@@ -73,7 +75,9 @@ def _source_view(observations, status, day):
     }
 
 
-def build_candidate_projection(cache, journal, *, now=None, source_status=None, source_details=None):
+def build_candidate_projection(
+    cache, journal, *, now=None, source_status=None, source_details=None, criteria=None, criteria_source=None
+):
     """Union both populations without changing either authoritative input."""
     now = now or datetime.now(timezone.utc)
     if now.tzinfo is None:
@@ -129,6 +133,15 @@ def build_candidate_projection(cache, journal, *, now=None, source_status=None, 
                     "run_type": row.get("run_type") if isinstance(row.get("run_type"), str) else None,
                     "cache_run_id": cache_run,
                     "source": "TRADE_AI",
+                    "setup_evidence": build_setup_evidence(
+                        row,
+                        now=now,
+                        observed_at=stamp.isoformat() if stamp else None,
+                        source_name="TRADE_AI",
+                        source_stale=bool(cache.get("stale") or cache.get("cache_error")),
+                        criteria=criteria,
+                        criteria_source=criteria_source,
+                    ),
                     "freshness": "STALE" if cache.get("stale") or cache.get("cache_error") else "NOT_MEASURED",
                 },
             )
@@ -159,6 +172,14 @@ def build_candidate_projection(cache, journal, *, now=None, source_status=None, 
                     "kind": row.get("kind") if isinstance(row.get("kind"), str) else "UNKNOWN",
                     "sent": row.get("sent") if isinstance(row.get("sent"), bool) else None,
                     "source": "ACTIVE_TRADER",
+                    "setup_evidence": build_setup_evidence(
+                        c,
+                        now=now,
+                        observed_at=stamp.isoformat() if stamp else None,
+                        source_name="ACTIVE_TRADER",
+                        criteria=criteria,
+                        criteria_source=criteria_source,
+                    ),
                     "freshness": "NOT_MEASURED",
                 },
             )
@@ -343,4 +364,14 @@ def read_candidate_snapshot(
         statuses["ACTIVE_TRADER"] = "MISSING"
     except OSError:
         statuses["ACTIVE_TRADER"] = "MALFORMED"
-    return build_candidate_projection(cache, journal, now=now, source_status=statuses, source_details=details)
+    from .scalp_go_criteria import load_criteria
+
+    return build_candidate_projection(
+        cache,
+        journal,
+        now=now,
+        source_status=statuses,
+        source_details=details,
+        criteria=load_criteria(),
+        criteria_source="scripts/lib/scalp_go_criteria.py:load_criteria (config or documented fallback)",
+    )

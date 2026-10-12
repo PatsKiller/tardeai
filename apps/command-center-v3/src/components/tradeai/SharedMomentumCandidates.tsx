@@ -2,7 +2,15 @@ import { useApi } from '../../hooks/useApi'
 import { RADIUS, TOKENS } from '../../lib/designTokens'
 import { SymbolLink } from '../opportunity/OpportunityContext'
 
-type Observation = { verdict: string; observed_at: string | null; run_id?: string | null; kind?: string; sent?: boolean | null }
+type SetupEvidence = {
+  source_name: string; passed_count: number; required_count: number; source_observation_state: string;
+  criteria_source: string; policy_path: string;
+  catalyst: { text: string | null; source: string | null; url: string | null; reported_verified: boolean | null; verification_status: string; published_at: string | null; observed_at: string | null; publication_state: string };
+  pillars: { id: string; label: string; value: number | boolean | null; status: string; threshold: Record<string, unknown> }[];
+  social_scout: { reported_count: number | null; reported_met: string[] | null; reported_missing: string[] | null };
+}
+
+type Observation = { verdict: string; observed_at: string | null; run_id?: string | null; kind?: string; sent?: boolean | null; setup_evidence?: SetupEvidence }
 type Source = { status: string; session_state: string; verdicts: string[]; observations: Observation[] }
 type Candidate = { candidate_id: string; symbol: string; sources: string[]; classification: string; conflicts: string[]; trade_ai: Source; active_trader: Source }
 type Snapshot = {
@@ -28,6 +36,27 @@ export default function SharedMomentumCandidates() {
       {source.session_state !== 'CURRENT_SESSION' && <div style={{ color: TOKENS.warning, fontSize: 10 }}>{source.session_state.replace(/_/g, ' ')}</div>}
     </>
   }
+  const setupCell = (source: Source, label: string) => {
+    const facts = observed(source)?.setup_evidence
+    if (!facts) return <div style={{ color: 'var(--text3)' }}>{label} setup facts unknown</div>
+    const catalyst = facts.catalyst
+    const sourceVerified = catalyst.reported_verified === true ? 'source says verified' : catalyst.reported_verified === false ? 'source says unverified' : 'verification unknown'
+    return <div style={{ marginBottom: 8 }}>
+      <strong>{label} · {facts.passed_count}/5 source facts</strong>
+      <div>{catalyst.text ?? 'Catalyst unknown'}</div>
+      <div style={{ fontSize: 10, color: 'var(--text3)' }}>{catalyst.source ?? 'source unknown'} · {sourceVerified} · {catalyst.verification_status.replace(/_/g, ' ')}</div>
+      <div style={{ fontSize: 10, color: 'var(--text3)' }}>Published {clock(catalyst.published_at)} · observed {clock(catalyst.observed_at)} · {catalyst.publication_state.replace(/_/g, ' ')}</div>
+      {catalyst.url && <a href={catalyst.url} target="_blank" rel="noopener noreferrer" style={{ color: TOKENS.info }}>Catalyst source</a>}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+        {facts.pillars.map(pillar => <span key={pillar.id} title={`${pillar.label}: ${JSON.stringify(pillar.threshold)} · policy ${facts.policy_path}`}
+          style={{ color: pillar.status === 'PASSED' ? TOKENS.success : TOKENS.warning, fontSize: 10 }}>
+          {pillar.label} {pillar.value == null ? 'unknown' : String(pillar.value)} · {pillar.status}
+        </span>)}
+      </div>
+      <div style={{ fontSize: 10, color: 'var(--text3)' }}>{facts.source_observation_state.replace(/_/g, ' ')} · recency not measured · metadata only</div>
+      {facts.social_scout.reported_count != null && <div style={{ fontSize: 10, color: 'var(--text3)' }} title={`Met: ${facts.social_scout.reported_met?.join(', ') ?? 'unknown'}; missing: ${facts.social_scout.reported_missing?.join(', ') ?? 'unknown'}`}>SocialScout {facts.social_scout.reported_count}/5 reported upstream · different pillars</div>}
+    </div>
+  }
   return (
     <section data-testid="shared-momentum-candidates" data-snapshot-id={valid ? data.snapshot_id : ''}
       style={{ border: '1px solid var(--border)', borderRadius: RADIUS.md, padding: 12, background: 'var(--bg1)', marginBottom: 12 }}>
@@ -46,11 +75,12 @@ export default function SharedMomentumCandidates() {
       {valid && data.candidate_count === 0 && <div style={{ fontSize: 11, color: 'var(--text3)' }}>No candidates in the observed sources.</div>}
       {rows.length > 0 && <div style={{ overflowX: 'auto', maxHeight: 360, overflowY: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }} aria-label="Shared momentum candidate observations">
-          <thead><tr style={{ textAlign: 'left', color: 'var(--text3)' }}>{['Symbol', 'TradeAI', 'ActiveTrader', 'Reconciliation'].map(label => <th key={label} style={{ padding: '6px 8px' }}>{label}</th>)}</tr></thead>
+          <thead><tr style={{ textAlign: 'left', color: 'var(--text3)' }}>{['Symbol', 'TradeAI', 'ActiveTrader', 'Catalyst / five facts', 'Reconciliation'].map(label => <th key={label} style={{ padding: '6px 8px' }}>{label}</th>)}</tr></thead>
           <tbody>{rows.map(row => <tr key={row.candidate_id} data-symbol={row.symbol} style={{ borderTop: '1px solid var(--border)' }}>
             <td style={{ padding: '6px 8px', fontWeight: 700 }}><SymbolLink symbol={row.symbol} /></td>
             <td style={{ padding: '6px 8px' }}>{sourceCell(row.trade_ai, 'TradeAI')}</td>
             <td style={{ padding: '6px 8px' }}>{sourceCell(row.active_trader, 'ActiveTrader')}</td>
+            <td style={{ padding: '6px 8px', minWidth: 300 }}>{setupCell(row.trade_ai, 'TradeAI')}{row.active_trader.observations.length > 0 && setupCell(row.active_trader, 'ActiveTrader')}</td>
             <td style={{ padding: '6px 8px', color: row.conflicts.length ? TOKENS.warning : 'var(--text2)' }}>
               <div>{row.classification === 'PENDING' ? 'Awaiting TradeAI classification' : row.classification.replace(/_/g, ' ')}</div>
               {row.conflicts.length > 0 && <div style={{ fontSize: 10 }} title={row.conflicts.join(', ')}>Conflicting source verdicts · originals retained</div>}
