@@ -14,7 +14,10 @@ No broker, no network. Telegram classify/format are exercised in-process only
 from __future__ import annotations
 
 import sys
+import tempfile
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -30,6 +33,48 @@ from scripts.lib.cio_decision_quality import (  # noqa: E402
     evaluate_profile,
 )
 from scripts.lib import cio_capital_plan as cp  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def isolated_topology_inputs(monkeypatch):
+    """Known host names are virtual fixture identities, never actual checkouts."""
+    from scripts.lib import cio_topology_audit as topo
+
+    approved = "/home/johnclaw/trade-ai-releases/portfolio-server"
+    deprecated = "/home/johnclaw/trade-ai-v12-rebuild"
+    fixture_sha = "6f7009794e5178a7926f5b1c84ae16d0ee7b2bc6"
+    temporary_root = Path(tempfile.gettempdir())
+
+    def virtual_root(path):
+        return next((root for root in (approved, deprecated) if path == root or path.startswith(root + "/")), None)
+
+    class FixturePath(type(Path())):
+        def exists(self):
+            if virtual_root(str(self)):
+                return True
+            if str(self) == "/nonexistent/path/does/not/exist":
+                return False
+            assert self.is_relative_to(temporary_root), f"Unexpected topology path: {self}"
+            return super().exists()
+
+        def is_file(self):
+            return super().is_file() if self.is_relative_to(temporary_root) else False
+
+    def fixture_run(args, timeout=15):
+        assert len(args) == 5 and args[:2] == ["git", "-C"] and args[3] == "rev-parse", args
+        assert args[4] in {"--show-toplevel", "HEAD"}, args
+        root = virtual_root(args[2])
+        if root:
+            return root if args[4] == "--show-toplevel" else fixture_sha
+        assert Path(args[2]).is_relative_to(temporary_root), f"Unexpected topology command: {args}"
+        return ""  # copied-release fixture: exercise the real BUILD_SHA fallback
+
+    def unexpected_status(args, timeout=15):
+        raise AssertionError(f"Unexpected topology status probe: {args}")
+
+    monkeypatch.setattr(topo, "Path", FixturePath)
+    monkeypatch.setattr(topo, "_run", fixture_run)
+    monkeypatch.setattr(topo, "_run_status", unexpected_status)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
