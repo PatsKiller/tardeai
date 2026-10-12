@@ -92,28 +92,30 @@ _PRIMARY_SYMBOLS_CV: contextvars.ContextVar[Optional[tuple[str, ...]]] = context
     default=None,
 )
 
-#: Process-global primary-symbol store. Cron puts ``scripts/`` on ``sys.path``, so
-#: ``lib.comms_editor`` and ``scripts.lib.comms_editor`` load as *two* module
-#: objects with *two* ContextVars. Live 2026-09-22: converse set primary on
-#: ``scripts.lib`` while ``deliver_text`` read ``lib`` — S ask footer still had
-#: ``S:… TROW:… HODO:…``. One ``sys.modules`` bucket is shared by every import.
+#: One ContextVar object across both cron import aliases. Values stay local to
+#: each thread/task; a process-global value/stack could bind WFF text to TROW.
 _PRIMARY_BUCKET_KEY = "_tradeai_comms_editor_primary_symbols"
 
 
 def _primary_bucket() -> dict[str, Any]:
-    return sys.modules.setdefault(  # type: ignore[return-value]
+    bucket = sys.modules.setdefault(  # type: ignore[assignment]
         _PRIMARY_BUCKET_KEY,
-        {"stack": [], "value": None},
+        {},
     )
+    bucket.setdefault("context", contextvars.ContextVar("comms_editor_shared_primary_symbols", default=None))
+    return bucket  # type: ignore[return-value]
 
 
 class _PrimarySymbolsToken:
-    """Opaque token that resets the shared bucket (and same-module ContextVar)."""
+    """Opaque compatible token for local and shared ContextVar restoration."""
 
-    __slots__ = ("cv_token",)
+    __slots__ = ("cv_token", "shared_token")
 
-    def __init__(self, cv_token: Optional[contextvars.Token] = None) -> None:
+    def __init__(
+        self, cv_token: Optional[contextvars.Token] = None, shared_token: Optional[contextvars.Token] = None
+    ) -> None:
         self.cv_token = cv_token
+        self.shared_token = shared_token
 
 
 PILL_HOUSE = "🟢 Trade-AI"
@@ -361,8 +363,8 @@ def subjects(text: str, *, resolve: Optional[Callable[[str], list[dict]]] = None
 def set_primary_symbols(symbols: Optional[Iterable[str]]) -> _PrimarySymbolsToken:
     """Bind turn-scoped primary tickers for the next ``edit`` / deliver_text call.
 
-    Writes the shared process bucket *and* this module's ContextVar so dual
-    imports of the file (``lib`` vs ``scripts.lib``) still agree.
+    Shared ContextVar values isolate threads/tasks while dual imports of the
+    file (``lib`` vs ``scripts.lib``) still agree in the same context.
     """
     try:
         from scripts.lib.telegram_rich import scope_primary_symbols  # noqa: PLC0415
@@ -373,33 +375,24 @@ def set_primary_symbols(symbols: Optional[Iterable[str]]) -> _PrimarySymbolsToke
         scoped = None
     else:
         scoped = tuple(scope_primary_symbols(symbols))
-    bucket = _primary_bucket()
-    stack = bucket.setdefault("stack", [])
-    stack.append(bucket.get("value"))
-    bucket["value"] = scoped
+    shared_token = _primary_bucket()["context"].set(scoped)
     cv_token = _PRIMARY_SYMBOLS_CV.set(scoped)
-    return _PrimarySymbolsToken(cv_token)
+    return _PrimarySymbolsToken(cv_token, shared_token)
 
 
 def reset_primary_symbols(token: Any) -> None:
-    """Reset primary symbols after send. Accepts shared or legacy ContextVar tokens."""
-    bucket = _primary_bucket()
-    stack = bucket.get("stack") or []
-    if stack:
-        bucket["value"] = stack.pop()
-    else:
-        bucket["value"] = None
+    """Restore this context; accept current, cross-alias and legacy tokens."""
+    shared_token = getattr(token, "shared_token", None)
     cv_token = getattr(token, "cv_token", None)
-    if cv_token is not None:
-        try:
-            _PRIMARY_SYMBOLS_CV.reset(cv_token)
-        except Exception:  # noqa: BLE001
-            pass
-    elif isinstance(token, contextvars.Token):
-        try:
-            _PRIMARY_SYMBOLS_CV.reset(token)
-        except Exception:  # noqa: BLE001
-            pass
+    if isinstance(token, contextvars.Token):
+        cv_token = token
+    for item in (shared_token, cv_token):
+        if item is not None:
+            try:
+                item.var.reset(item)
+            except (AttributeError, TypeError, ValueError, RuntimeError):
+                # A foreign/already-reset token must never change another context.
+                pass
 
 
 def _resolve_primary_symbols(explicit: Optional[Iterable[str]]) -> Optional[list[str]]:
@@ -410,8 +403,7 @@ def _resolve_primary_symbols(explicit: Optional[Iterable[str]]) -> Optional[list
     if explicit is not None:
         return scope_primary_symbols(explicit)
     # Shared bucket first — survives dual import of this module under cron.
-    bucket = _primary_bucket()
-    shared = bucket.get("value")
+    shared = _primary_bucket()["context"].get()
     if shared is not None:
         return scope_primary_symbols(shared)
     cv = _PRIMARY_SYMBOLS_CV.get()

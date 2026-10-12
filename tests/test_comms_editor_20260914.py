@@ -357,3 +357,273 @@ def test_receipt_never_carries_the_message_text(tmp_path):
         editor_mode="shadow",
     )
     assert "text" not in d.receipt() and d.receipt()["chat"] != "1"
+
+
+# 2026-10-12: known social symbols must bind notification chrome/packet identity.
+def _social_functions():
+    import ast
+    import logging
+    from pathlib import Path
+
+    source = Path(__file__).resolve().parents[1] / "scripts/social_scalp_scanner.py"
+    tree = ast.parse(source.read_text())
+    names = {"_send_symbol_alert", "_send_wait_alert", "send_scalp_alert"}
+    selected = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in names]
+    ns = {"logger": logging.getLogger("social-notification-fixture")}
+    exec(compile(ast.fix_missing_locations(ast.Module(body=selected, type_ignores=[])), str(source), "exec"), ns)
+    return ns
+
+
+def _social_context_fixture(monkeypatch):
+    import sys
+    import types
+
+    # Bind both import aliases to the real pure editor; no social initializer/.env import.
+    monkeypatch.setitem(sys.modules, "lib.comms_editor", ce)
+    meta = types.ModuleType("lib.scalp_alert_format")
+    meta.format_scalp_meta_line = lambda **kwargs: "Social · Malaysia"
+    monkeypatch.setitem(sys.modules, "lib.scalp_alert_format", meta)
+    return _social_functions()
+
+
+def test_unbound_social_text_reproduces_wrong_publish_subject(tmp_path):
+    text = "WAIT *WFF* — Social Mention\nSocial · Malaysia\nPrice: $12.00\nNeeds: catalyst to reach GO"
+    out = ce.edit(
+        text,
+        chat_id="fixture",
+        now=NOW,
+        ledger=ce.DuplicateLedger(tmp_path / "ledger.json"),
+        db_query=_cio([{"symbol": "TROW", "action": "BUY_READY"}]),
+        resolve=lambda text: [{"symbol": "TROW", "guid": "trow-fixture-guid"}],
+        editor_mode="live",
+    )
+    assert "WFF" in out.text and out.subjects == [{"symbol": "TROW", "guid": "trow-fixture-guid"}]
+    assert "intelligence/TROW" in out.text
+
+
+def test_social_wait_binds_wff_even_if_resolver_and_prior_context_say_trow(tmp_path, monkeypatch):
+    ns = _social_context_fixture(monkeypatch)
+    sent = []
+    outer = ce.set_primary_symbols(["TROW"])
+
+    def sender(text, **kwargs):
+        out = ce.edit(
+            text,
+            chat_id="fixture",
+            now=NOW,
+            ledger=ce.DuplicateLedger(tmp_path / "ledger.json"),
+            db_query=_cio([{"symbol": "WFF", "action": "BUY_READY"}]),
+            resolve=lambda text: [{"symbol": "TROW", "guid": "trow-fixture-guid"}],
+            editor_mode="live",
+        )
+        sent.append((text, kwargs, out))
+        return True
+
+    ns["send_telegram"] = sender
+    try:
+        ns["_send_wait_alert"]("WFF", 24, {"price": 12.0, "rvol": 1.2, "country": "Malaysia"}, 3)
+        assert ce._resolve_primary_symbols(None) == ["TROW"]
+    finally:
+        ce.reset_primary_symbols(outer)
+    assert len(sent) == 1
+    body, kwargs, out = sent[0]
+    assert kwargs == {"priority": "P2", "producer": "social_scalp_scanner"}
+    assert "WAIT *WFF*" in body
+    assert "intelligence/WFF" in out.text and "CIO WFF" in out.text
+    assert "TROW" not in out.text
+    assert out.subjects == []  # Unknown WFF GUID remains unknown, never copied from TROW.
+    assert "Publish packet" in out.text
+
+
+def test_primary_symbol_context_is_isolated_between_simultaneous_alias_threads(monkeypatch):
+    import importlib
+    import sys
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    root = str(__import__("pathlib").Path(__file__).resolve().parents[1] / "scripts")
+    monkeypatch.syspath_prepend(root)
+    alias = importlib.import_module("lib.comms_editor")
+    first_ready, second_ready, first_read = threading.Event(), threading.Event(), threading.Event()
+
+    def first():
+        token = ce.set_primary_symbols(["WFF"])
+        try:
+            first_ready.set()
+            assert second_ready.wait(5)
+            result = alias._resolve_primary_symbols(None)
+            first_read.set()
+            return result
+        finally:
+            ce.reset_primary_symbols(token)
+
+    def second():
+        assert first_ready.wait(5)
+        token = alias.set_primary_symbols(["TROW"])
+        try:
+            second_ready.set()
+            assert first_read.wait(5)
+            return ce._resolve_primary_symbols(None)
+        finally:
+            alias.reset_primary_symbols(token)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        a, b = pool.submit(first), pool.submit(second)
+        assert a.result(timeout=10) == ["WFF"]
+        assert b.result(timeout=10) == ["TROW"]
+
+
+def test_social_symbol_binding_restores_context_on_sender_failure(monkeypatch):
+    import pytest
+
+    ns = _social_context_fixture(monkeypatch)
+    calls = []
+    outer = ce.set_primary_symbols(["TROW"])
+
+    def broken(text, **kwargs):
+        calls.append((text, kwargs, ce._resolve_primary_symbols(None)))
+        raise RuntimeError("synthetic sender refusal")
+
+    ns["send_telegram"] = broken
+    try:
+        with pytest.raises(RuntimeError, match="synthetic sender refusal"):
+            ns["_send_wait_alert"]("WFF", 24, {"price": 12.0}, 3)
+        assert ce._resolve_primary_symbols(None) == ["TROW"]
+    finally:
+        ce.reset_primary_symbols(outer)
+    assert len(calls) == 1 and calls[0][2] == ["WFF"]
+
+
+def test_social_binding_preserves_duplicate_effects_and_sequential_symbols(tmp_path, monkeypatch):
+    ns = _social_context_fixture(monkeypatch)
+    ledger = ce.DuplicateLedger(tmp_path / "ledger.json")
+    attempts, delivered = [], []
+
+    def sender(text, **kwargs):
+        out = ce.edit(
+            text,
+            chat_id="fixture",
+            now=NOW,
+            ledger=ledger,
+            editor_mode="live",
+            resolve=lambda text: [],
+            db_query=_cio([{"symbol": "WFF", "action": "BUY_READY"}, {"symbol": "ABCD", "action": "BUY_READY"}]),
+        )
+        attempts.append((kwargs, out))
+        if out.send:
+            delivered.append(out.text)
+            ce.commit(out, chat_id="fixture", now=NOW, ledger=ledger, receipts=tmp_path / "receipts.jsonl")
+        return out.send
+
+    ns["send_telegram"] = sender
+    for symbol in ["WFF", "WFF", "ABCD"]:
+        ns["_send_wait_alert"](symbol, 24, {"price": 12.0}, 3)
+    assert len(attempts) == 3 and len(delivered) == 2
+    assert attempts[1][1].duplicate_of == attempts[0][1].guid
+    assert "intelligence/WFF" in delivered[0] and "intelligence/ABCD" in delivered[1]
+    assert "WFF" not in delivered[1]
+    assert ce._resolve_primary_symbols(None) is None
+
+
+def _social_gate_fixture(monkeypatch, allow=True, error=False):
+    import sys
+    import types
+
+    gate_calls, ledger_calls = [], []
+    gate = types.ModuleType("lib.cio_telegram_stance_gate")
+
+    def check(**kwargs):
+        gate_calls.append(kwargs)
+        if error:
+            raise RuntimeError("synthetic stance gate refusal")
+        return types.SimpleNamespace(allow=allow, held_reason="fixture_hold", cio_action="BUY_READY")
+
+    gate.check_investment_send = check
+    gate.apply_stance_rewrite = lambda message, symbol, decision: message
+    monkeypatch.setitem(sys.modules, "lib.cio_telegram_stance_gate", gate)
+    comms = types.ModuleType("lib.comms")
+    comms.CommunicationEvent = lambda **kwargs: kwargs
+    comms.publish_communication = lambda event: ledger_calls.append(event)
+    monkeypatch.setitem(sys.modules, "lib.comms", comms)
+    return gate_calls, ledger_calls
+
+
+def test_social_go_packet_and_p1_are_bound_to_same_wff_symbol(tmp_path, monkeypatch):
+    ns = _social_context_fixture(monkeypatch)
+    gate_calls, ledger_calls = _social_gate_fixture(monkeypatch)
+    sent = []
+
+    def sender(text, **kwargs):
+        out = ce.edit(
+            text,
+            chat_id="fixture",
+            now=NOW,
+            ledger=ce.DuplicateLedger(tmp_path / "ledger.json"),
+            db_query=_cio([{"symbol": "WFF", "action": "BUY_READY"}]),
+            resolve=lambda text: [{"symbol": "TROW", "guid": "trow-fixture-guid"}],
+            editor_mode="live",
+        )
+        sent.append((text, kwargs, out))
+        return True
+
+    ns["send_telegram"] = sender
+    ns["send_scalp_alert"]("WFF", 44, "A", "GO", {"price": 12.0, "country": "Malaysia"}, 3, ["fixture"], 1, 0)
+    assert len(gate_calls) == len(sent) == len(ledger_calls) == 1
+    assert gate_calls[0]["symbol"] == "WFF" and gate_calls[0]["asserted_stance"] == "bullish"
+    _, kwargs, out = sent[0]
+    assert kwargs == {"priority": "P1", "producer": "social_scalp_scanner"}
+    assert "intelligence/WFF" in out.text and "TROW" not in out.text
+    assert out.send and out.held_reason is None
+    assert ce._resolve_primary_symbols(None) is None
+
+
+def test_social_go_existing_gate_hold_and_failure_never_send(monkeypatch):
+    for allow, error in [(False, False), (True, True)]:
+        ns = _social_context_fixture(monkeypatch)
+        gate_calls, ledger_calls = _social_gate_fixture(monkeypatch, allow=allow, error=error)
+        sent = []
+        ns["send_telegram"] = lambda *args, **kwargs: sent.append((args, kwargs))
+        ns["send_scalp_alert"]("WFF", 44, "A", "GO", {"price": 12.0}, 3, ["fixture"], 1, 0)
+        assert len(gate_calls) == 1 and sent == ledger_calls == []
+        assert ce._resolve_primary_symbols(None) is None
+
+
+def test_primary_symbols_nested_empty_and_legacy_tokens_are_compatible():
+    import contextvars
+
+    outer = ce.set_primary_symbols(["TROW"])
+    inner = ce.set_primary_symbols([])
+    assert ce._resolve_primary_symbols(None) == []
+    ce.reset_primary_symbols(inner)
+    assert ce._resolve_primary_symbols(None) == ["TROW"]
+    ce.reset_primary_symbols(outer)
+    assert ce._resolve_primary_symbols(None) is None
+    legacy = ce._PRIMARY_SYMBOLS_CV.set(("WFF",))
+    assert ce._resolve_primary_symbols(None) == ["WFF"]
+    ce.reset_primary_symbols(legacy)
+    assert ce._resolve_primary_symbols(None) is None
+
+
+def test_social_scoped_helper_keeps_recommendation_packet_bound_to_body(tmp_path, monkeypatch):
+    ns = _social_context_fixture(monkeypatch)
+    sent = []
+
+    def sender(text, **kwargs):
+        out = ce.edit(
+            text,
+            chat_id="fixture",
+            now=NOW,
+            ledger=ce.DuplicateLedger(tmp_path / "ledger.json"),
+            db_query=_cio([{"symbol": "WFF", "action": "BUY_READY"}]),
+            resolve=lambda text: [{"symbol": "TROW", "guid": "trow-fixture-guid"}],
+            editor_mode="live",
+        )
+        sent.append((kwargs, out))
+        return True
+
+    ns["send_telegram"] = sender
+    result = ns["_send_symbol_alert"]("WFF", "🎯 *NEW GO* — *WFF* score=44 RVOL165x", priority="P1")
+    assert result is True and len(sent) == 1
+    assert sent[0][0] == {"priority": "P1", "producer": "social_scalp_scanner"}
+    assert "Publish packet" in sent[0][1].text and "CIO WFF" in sent[0][1].text
+    assert "TROW" not in sent[0][1].text

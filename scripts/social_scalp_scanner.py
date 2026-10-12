@@ -858,6 +858,17 @@ def _upsert_trade_ai_scans(
         logger.warning(f"trade_ai_scans upsert failed for {symbol}: {e}")
 
 
+def _send_symbol_alert(symbol: str, message: str, *, priority: str):
+    """Bind the producer's symbol to links/packet metadata for this send only."""
+    from lib.comms_editor import set_primary_symbols, reset_primary_symbols
+
+    token = set_primary_symbols([symbol])
+    try:
+        return send_telegram(message, priority=priority, producer="social_scalp_scanner")
+    finally:
+        reset_primary_symbols(token)
+
+
 def send_scalp_alert(
     symbol: str,
     score: int,
@@ -926,7 +937,7 @@ def send_scalp_alert(
     except Exception as exc:  # noqa: BLE001 — fail closed on gate errors
         logger.warning("%s — GO alert held: CIO stance gate error (%s)", symbol, type(exc).__name__)
         return
-    send_telegram(msg, priority="P1", producer="social_scalp_scanner")  # GO scalp setup: time-critical
+    _send_symbol_alert(symbol, msg, priority="P1")  # GO scalp setup: time-critical
     try:
         from lib.comms import CommunicationEvent, publish_communication
 
@@ -971,7 +982,7 @@ def _send_wait_alert(symbol: str, score: int, finviz_data: dict, mention_count: 
         f"Mentions: {mention_count}x \u2014 watching, not acting\n"
         f"Needs: higher RVOL or catalyst to reach GO"
     )
-    send_telegram(msg, priority="P2", producer="social_scalp_scanner")  # WAIT: watched, not time-critical
+    _send_symbol_alert(symbol, msg, priority="P2")  # WAIT: watched, not time-critical
 
 
 def run_scan():
