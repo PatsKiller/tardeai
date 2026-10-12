@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+import types
 from pathlib import Path
 
 import pytest
@@ -154,6 +155,19 @@ def test_live_components_fails_closed_when_a_probe_raises(reaper, monkeypatch) -
     """Prove the sentinel is actually injected, not just honoured."""
     import builtins
 
+    # The independent aggregate is synthetic: this family-failure test must
+    # never enter real health collectors (scheduler, database, or host probes).
+    policy = {"fixture_policy": True}
+    aggregate_calls = []
+    health = types.ModuleType("health_agent")
+    health.load_policy = lambda: policy
+
+    def compute(got_policy):
+        aggregate_calls.append(got_policy)
+        return None, None, None, {"data_quality": [{"category": "data_quality", "type": "fixture_live"}]}
+
+    health.compute = compute
+    monkeypatch.setitem(sys.modules, "health_agent", health)
     real_import = builtins.__import__
 
     def _boom(name, *a, **k):
@@ -165,6 +179,9 @@ def test_live_components_fails_closed_when_a_probe_raises(reaper, monkeypatch) -
     live, notes = reaper.live_components()
     assert any("__HOLD__health:pipeline_freshness:" == c for c in live), live
     assert any("PROBE FAILED" in n for n in notes), notes
+    assert aggregate_calls == [policy]
+    assert "health:data_quality:fixture_live" in live and "__HOLD__ALL" not in live
+    assert reaper.is_reapable(_item("health:data_quality:fixture_live"), live) is False
 
 
 def test_dry_run_is_the_default_and_writes_nothing(reaper) -> None:
