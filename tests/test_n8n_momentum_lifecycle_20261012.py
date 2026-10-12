@@ -518,6 +518,153 @@ def test_positive_capacity_is_not_an_invented_reviewed_reserve(setup):
     assert report["lanes"][0]["observed_requested"] is None
 
 
+def _v2_slot_fixture(attempt=1):
+    slot_key = "d:early-source:dry_run:20261012T0600"
+    run_id = slot_key if attempt == 1 else f"{slot_key}:a{attempt}"
+    row = {
+        "run_id": run_id,
+        "lane_id": "early-source",
+        "mode": "dry_run",
+        "slot_key": slot_key,
+        "attempt": attempt,
+        "state": "RUN_DONE",
+        "exit_code": 0,
+        "requested_at": "2026-10-12T06:00:01-04:00",
+        "started_at": "2026-10-12T06:00:02-04:00",
+        "finished_at": "2026-10-12T06:00:30-04:00",
+    }
+    receipt = {
+        "schema": "RunReceipt@v2",
+        "run_id": run_id,
+        "lane_id": "early-source",
+        "mode": "dry_run",
+        "slot_key": slot_key,
+        "attempt": attempt,
+        "code_sha": SHA,
+        "exit_code": 0,
+    }
+    return row, receipt
+
+
+def _collect_v2_slot(setup, row, receipt):
+    import sqlite3
+
+    candidate, admission, root = setup
+    path = root / M.LEDGER_REL
+    path.parent.mkdir(parents=True)
+    conn = sqlite3.connect(path)
+    columns = {
+        "run_id": "TEXT",
+        "lane_id": "TEXT",
+        "mode": "TEXT",
+        "slot_key": "TEXT",
+        "attempt": "INTEGER",
+        "state": "TEXT",
+        "exit_code": "INTEGER",
+        "requested_at": "TEXT",
+        "started_at": "TEXT",
+        "finished_at": "TEXT",
+        "receipt_json": "TEXT",
+    }
+    conn.execute("CREATE TABLE runs (" + ",".join(f"{name} {kind}" for name, kind in columns.items()) + ")")
+    values = {**row, "receipt_json": json.dumps(receipt)}
+    conn.execute(
+        "INSERT INTO runs VALUES (" + ",".join("?" for _ in columns) + ")", tuple(values.get(name) for name in columns)
+    )
+    conn.commit()
+    conn.close()
+    return M.collect_server_snapshot(root, candidate, now=NOW, admission=admission)["runs"][0]
+
+
+@pytest.mark.parametrize("attempt", [1, 2, 9])
+def test_actual_v2_receipt_slot_key_is_corroborated_without_inventing_natural_trigger(setup, attempt):
+    row, receipt = _v2_slot_fixture(attempt)
+    observed = _collect_v2_slot(setup, row, receipt)
+    assert observed["mode"] == "dry_run" and observed["receipt"]["slot_local"] == "20261012T0600"
+    assert observed["trigger_kind"] == "NOT_MEASURED"
+    assert M._run_proof(observed, "early-source", "20261012T0600", SHA, NOW) == "manual_or_unknown_trigger"
+    # Independent explicit fixture provenance is separate from the slot adapter.
+    observed["trigger_kind"] = "NATURAL_SCHEDULE"
+    assert M._run_proof(observed, "early-source", "20261012T0600", SHA, NOW) == "receipt_chain_proven"
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        "wrong_slot",
+        "wrong_lane",
+        "wrong_run",
+        "wrong_mode",
+        "missing_slot",
+        "missing_run",
+        "missing_lane",
+        "missing_mode",
+        "missing_row_mode",
+        "both_modes_missing",
+        "missing_row_attempt",
+        "missing_attempt",
+        "wrong_attempt",
+        "bool_attempt",
+        "out_of_range_attempt",
+        "malformed_key",
+        "invalid_date",
+        "attempt_in_budget_slot",
+        "inconsistent_run_attempt",
+        "conflicting_slot_local",
+    ],
+)
+def test_v2_slot_adapter_refuses_conflicts_and_missing_identity_fields(setup, change):
+    row, receipt = _v2_slot_fixture(2)
+    if change == "wrong_slot":
+        receipt["slot_key"] = "d:early-source:dry_run:20261012T0605"
+    elif change == "wrong_lane":
+        receipt["lane_id"] = "other-lane"
+    elif change == "wrong_run":
+        receipt["run_id"] = row["slot_key"]
+    elif change == "wrong_mode":
+        receipt["mode"] = "live"
+    elif change == "missing_row_mode":
+        row.pop("mode")
+    elif change == "both_modes_missing":
+        row.pop("mode")
+        receipt.pop("mode")
+    elif change == "missing_row_attempt":
+        row.pop("attempt")
+    elif change.startswith("missing_"):
+        receipt.pop(
+            {
+                "missing_slot": "slot_key",
+                "missing_run": "run_id",
+                "missing_lane": "lane_id",
+                "missing_mode": "mode",
+                "missing_attempt": "attempt",
+            }[change]
+        )
+    elif change == "wrong_attempt":
+        receipt["attempt"] = 3
+    elif change == "bool_attempt":
+        receipt["attempt"] = True
+    elif change == "out_of_range_attempt":
+        row["attempt"] = receipt["attempt"] = 10
+        row["run_id"] = receipt["run_id"] = row["slot_key"] + ":a10"
+    elif change == "conflicting_slot_local":
+        receipt["slot_local"] = "20261012T0605"
+    elif change == "inconsistent_run_attempt":
+        row["attempt"] = receipt["attempt"] = 1
+    else:
+        key = {
+            "malformed_key": "manual:early-source:dry_run:20261012T0600",
+            "invalid_date": "d:early-source:dry_run:20260230T0600",
+            "attempt_in_budget_slot": row["slot_key"] + ":a2",
+        }[change]
+        row["slot_key"] = receipt["slot_key"] = key
+        row["run_id"] = receipt["run_id"] = key + ":a2"
+    observed = _collect_v2_slot(setup, row, receipt)
+    assert observed["receipt"]["slot_local"] is None
+    observed["trigger_kind"] = "NATURAL_SCHEDULE"  # even independent fixture provenance cannot repair identity
+    assert M._run_proof(observed, "early-source", "20261012T0600", SHA, NOW) != "receipt_chain_proven"
+
+
 def test_empty_storage_is_independent_p1_and_no_automatic_deletion(setup):
     report = evaluate(setup, {"storage_health": {"status": "FAILED"}})
     f = next(f for f in report["incidents"] if f["item"] == "momentum-storage:STORAGE_CAPACITY_EXHAUSTED")

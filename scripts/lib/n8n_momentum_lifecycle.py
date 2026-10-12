@@ -189,6 +189,46 @@ def _runtime_receipt_metadata(state_root: Path, admission: Admission | None, lan
     return result
 
 
+def _corroborated_v2_slot(row: Mapping, receipt: Mapping) -> str | None:
+    """Match actual durable row/receipt identities; a slot is never natural-trigger evidence."""
+    if receipt.get("schema") != "RunReceipt@v2":
+        return None
+    key = row.get("slot_key")
+    if not isinstance(key, str) or receipt.get("slot_key") != key:
+        return None
+    # Scheduled server budget slots omit an attempt suffix; only retry run IDs
+    # carry :a2..:a9 (n8n_due.slot_key). Validate the date rather than digits alone.
+    matched = re.fullmatch(r"d:([a-z0-9][a-z0-9._-]{1,63}):(live|dry_run):([0-9]{8}T[0-9]{4})", key)
+    if matched is None:
+        return None
+    try:
+        datetime.strptime(matched[3], "%Y%m%dT%H%M")
+    except ValueError:
+        return None
+    lane, mode = row.get("lane_id"), row.get("mode")
+    if not lane or lane != matched[1] or receipt.get("lane_id") != lane:
+        return None
+    if mode not in ("live", "dry_run") or mode != matched[2] or receipt.get("mode") != mode:
+        return None
+    attempt = row.get("attempt")
+    receipt_attempt = receipt.get("attempt")
+    if (
+        not isinstance(attempt, int)
+        or isinstance(attempt, bool)
+        or not 1 <= attempt <= 9
+        or not isinstance(receipt_attempt, int)
+        or isinstance(receipt_attempt, bool)
+        or receipt_attempt != attempt
+    ):
+        return None
+    expected_run_id = key if attempt == 1 else f"{key}:a{attempt}"
+    if row.get("run_id") != expected_run_id or receipt.get("run_id") != expected_run_id:
+        return None
+    if receipt.get("slot_local") not in (None, matched[3]):
+        return None
+    return matched[3]
+
+
 def collect_server_snapshot(
     state_root: Path,
     candidate: Mapping,
@@ -516,7 +556,9 @@ def collect_server_snapshot(
             row["receipt"] = {
                 "run_id": receipt.get("run_id"),
                 "lane_id": receipt.get("lane_id"),
-                "slot_local": receipt.get("slot_local"),
+                "slot_local": _corroborated_v2_slot(row, receipt)
+                if receipt.get("schema") == "RunReceipt@v2"
+                else receipt.get("slot_local"),
                 "source_sha": receipt.get("code_sha"),
                 "exit_code": receipt.get("exit_code"),
             }

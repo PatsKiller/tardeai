@@ -1688,28 +1688,46 @@
       "ownership_confirmation": "NOT_MEASURED",
       "connects_to": [
         {
-          "name": "n8n -> existing run relay -> authenticated coordination gateway -> existing host executor",
-          "kind": "service",
-          "direction": "calls",
-          "source": "AGENTS.md \u00a723; MOMENTUM_GATEWAY_INTEGRATION.patch"
+          "name": "data/governance/n8n_coordination_ledger.sqlite",
+          "kind": "store",
+          "direction": "read",
+          "source": "collect_server_snapshot: bounded watched-lane SELECT through SQLite mode=ro"
         },
         {
-          "name": "logs/finviz_momentum_scalp_scan.log",
+          "name": "data/runtime/trade_ai_cache.json and data/active_trader/momentum_alerts.jsonl",
+          "kind": "store",
+          "direction": "read",
+          "source": "Existing bounded read_candidate_snapshot plus canonical public-cache metadata; no canonical writes"
+        },
+        {
+          "name": "reports/<ET-business-date>/*/run_summary.json",
+          "kind": "store",
+          "direction": "read",
+          "source": "At most24 bounded public run summaries; HEALTH_AUTOHEAL excluded; missing zoned producer identity stays NOT_MEASURED"
+        },
+        {
+          "name": "Registry-declared data/runtime/*_last.json public receipts",
           "kind": "receipt",
           "direction": "read",
-          "source": "config/lane_registry.json output_signal"
+          "source": "Fixed public runtime path shape and64KB metadata whitelist in collect_server_snapshot; no log-tail or secret input"
+        },
+        {
+          "name": "data/runtime/scalp_cycle_monitor_last.json and data/runtime/n8n_failure_diagnosis_last.json",
+          "kind": "receipt",
+          "direction": "read",
+          "source": "128KB bounds; existing cycle metadata and typed diagnoser counters/liveness only; no raw actions/model text"
         },
         {
           "name": "data/runtime/momentum_lifecycle_inputs.json",
           "kind": "store",
           "direction": "read",
-          "source": "Host-owned sanitized product/credential-check metadata; never live credential probe"
+          "source": "Unaccepted declarations only; no accepted producer binding or credential-health authority"
         },
         {
-          "name": "data/runtime/momentum_lifecycle_last.json -> fan-in -> SIEM bridge -> independent host incident notifier",
-          "kind": "service",
-          "direction": "read",
-          "source": "scripts/lib/n8n_momentum_lifecycle.py and integration patch"
+          "name": "data/runtime/momentum_lifecycle_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "Only an admitted host-snapshot write publishes this own health receipt; fan-in and independent host notifier read it; dry run writes nothing"
         }
       ],
       "healthy": [
@@ -1729,7 +1747,7 @@
       "degraded": [
         {
           "check": "completion_allowance",
-          "text": "Natural fire not yet finished inside proposed 900 second completion allowance; threshold requires owner review."
+          "text": "Natural fire not yet finished inside proposed 60 second completion allowance; threshold requires owner review."
         },
         {
           "check": "recovery_held",
@@ -1801,7 +1819,7 @@
         "reviewed_by": null,
         "decision_evidence": null,
         "decision_ref": null,
-        "contract_body_sha256": "1649d5b4872d98e9abee89ce25388070af1bd43de9facb590d2473554dbfe3ed",
+        "contract_body_sha256": "6f53f6e7de731cf90bda9966d19ab56aadbbc679844a0d4e3663e44ec94d13ab",
         "digest_status": "PROPOSED_BODY_DIGEST_ONLY; refresh after actual ownership/contract edits; no review decision implied"
       },
       "existing_operative_contract": {
@@ -1870,7 +1888,7 @@
       "degraded": [
         {
           "check": "completion_allowance",
-          "text": "Natural fire not yet finished inside proposed 900 second completion allowance; threshold requires owner review."
+          "text": "Natural fire not yet finished inside proposed 60 second completion allowance; threshold requires owner review."
         },
         {
           "check": "recovery_held",
@@ -1943,7 +1961,7 @@
         "reviewed_by": null,
         "decision_evidence": null,
         "decision_ref": null,
-        "contract_body_sha256": "8fac739d2f7e7b6fb43159c7850427ede5db59cde65b534f8aa4d1efaa783f9e",
+        "contract_body_sha256": "7cc2bf8b8de249abccdb044c13023161d380d54fb4deda033e2eb24c24909ec6",
         "digest_status": "PROPOSED_BODY_DIGEST_ONLY; refresh after actual ownership/contract edits; no review decision implied"
       },
       "existing_operative_contract": {
@@ -1969,28 +1987,22 @@
       "ownership_confirmation": "NOT_MEASURED",
       "connects_to": [
         {
-          "name": "n8n -> existing run relay -> authenticated coordination gateway -> existing host executor",
+          "name": "Authenticated relay GET /momentum-lifecycle -> gateway coordination/status momentum_lifecycle",
           "kind": "service",
           "direction": "calls",
-          "source": "AGENTS.md \u00a723; MOMENTUM_GATEWAY_INTEGRATION.patch"
+          "source": "GET-only workflow readback of server-owned admitted lifecycle receipt; existing relay credential/read-scope HMAC only"
         },
         {
-          "name": "logs/finviz_momentum_scalp_scan.log",
-          "kind": "receipt",
-          "direction": "read",
-          "source": "config/lane_registry.json output_signal"
-        },
-        {
-          "name": "data/runtime/momentum_lifecycle_inputs.json",
-          "kind": "store",
-          "direction": "read",
-          "source": "Host-owned sanitized product/credential-check metadata; never live credential probe"
-        },
-        {
-          "name": "data/runtime/momentum_lifecycle_last.json -> fan-in -> SIEM bridge -> independent host incident notifier",
+          "name": "Authenticated relay GET /runs/momentum-lifecycle-monitor/last?mode=dry_run",
           "kind": "service",
-          "direction": "read",
-          "source": "scripts/lib/n8n_momentum_lifecycle.py and integration patch"
+          "direction": "calls",
+          "source": "Only typed HTTP403 plus actual server shadow stage enters dry-run fallback; missing SHA/effects/natural provenance remains NOT_MEASURED"
+        },
+        {
+          "name": "tradeai-incident-router",
+          "kind": "service",
+          "direction": "calls",
+          "source": "Existing errorWorkflow handles observer errors; workflow performs no external send, command, model or /run request"
         }
       ],
       "healthy": [
@@ -2010,7 +2022,7 @@
       "degraded": [
         {
           "check": "completion_allowance",
-          "text": "Natural fire not yet finished inside proposed 900 second completion allowance; threshold requires owner review."
+          "text": "Natural fire not yet finished inside proposed 60 second completion allowance; threshold requires owner review."
         },
         {
           "check": "recovery_held",
@@ -2082,7 +2094,7 @@
         "reviewed_by": null,
         "decision_evidence": null,
         "decision_ref": null,
-        "contract_body_sha256": "617b7509c7df69f3b19a94270f032fdb7d82949330e61faae6440d9624939996",
+        "contract_body_sha256": "3de1107d680bbdaf2df6d0c17c661d195ac18f107c2d548b2c8eda93b80b74bd",
         "digest_status": "PROPOSED_BODY_DIGEST_ONLY; refresh after actual ownership/contract edits; no review decision implied"
       },
       "existing_operative_contract": {
