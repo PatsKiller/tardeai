@@ -637,6 +637,26 @@ def test_activation_packet_registry_dispatch_and_executor_templates_are_machine_
     assert any(g["scope"] == "release-write" for g in packet["grants_required"])
 
 
+def test_staged_paused_proposals_cannot_emit_due_requests_even_when_allowlisted():
+    from scripts.lib.n8n_due import compute_due
+    from scripts.lib.n8n_retry_policy import load_policies
+    p = ROOT / "docs/implementation/n8n-maturity/reconciliation-20261012/MOMENTUM_ACTIVATION_PACKET.json"
+    packet = json.loads(p.read_text())
+    specs = [packet[key] for key in ("new_monitor_proposal", "cache_reconcile_proposal")]
+    rows = [spec["registry_row"] for spec in specs]
+    allowlist = {spec["lane_id"]: spec["allowlist"] for spec in specs}
+    policies = load_policies(ROOT / "config/n8n_retry_policies.json")
+    assert all(row["state"] == "PAUSED" and row["dispatch"]["mode"] == "off" for row in rows)
+    held = compute_due(rows, allowlist, policies, None, NOW)
+    assert held["items"] == [] and held["errors"] == []
+    # Demonstrate why the hold must be dispatch off rather than PAUSED alone.
+    accidental_dry_run = copy.deepcopy(rows)
+    for row in accidental_dry_run:
+        row["dispatch"]["mode"] = "dry_run"
+    unsafe = compute_due(accidental_dry_run, allowlist, policies, None, NOW)
+    assert {item["lane_id"] for item in unsafe["items"]} == {row["lane_id"] for row in rows}
+
+
 def test_host_notifier_candidate_operator_action_is_not_suppressed_or_double_counted():
     import ast
     from scripts import incident_notifier as notifier

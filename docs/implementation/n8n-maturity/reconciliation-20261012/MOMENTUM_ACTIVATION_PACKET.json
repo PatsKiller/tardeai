@@ -464,7 +464,7 @@
     "dispatch": {
       "class": "monitor",
       "retry_policy": "none",
-      "mode": "dry_run",
+      "mode": "off",
       "cron": [
         "*/5 * * * *"
       ],
@@ -555,7 +555,7 @@
       "dispatch": {
         "class": "monitor",
         "retry_policy": "none",
-        "mode": "dry_run",
+        "mode": "off",
         "cron": [
           "*/5 * * * *"
         ],
@@ -574,6 +574,21 @@
         "root": "CURRENT",
         "command_text": "$PY $CODE_ROOT/scripts/n8n_momentum_lifecycle.py --host-snapshot --code-root $CODE_ROOT --state-root $STATE_ROOT"
       }
+    },
+    "shadow_activation_proposal": {
+      "authority": "Explicit actual operator/owner decision at the final integrated SHA plus applicable guard grants; never apply during staging",
+      "registry_patch": {
+        "state": "ACTIVE",
+        "scheduler.stage": "shadow",
+        "dispatch.mode": "dry_run"
+      },
+      "required_before_apply": [
+        "Reviewed operative health contract with current body digest, reviewer and decision reference",
+        "Resolved ownership",
+        "Exact CURRENT deployment and source/relay/allowlist/env/lock checks",
+        "Scope-specific cron/config authorization"
+      ],
+      "proof_after_apply": "Required actual natural shadow RunReceipts, exact source SHA, zero output/business effects and n8n execution correlation; no live health receipt fabricated"
     }
   },
   "llm_path": {
@@ -651,7 +666,7 @@
     "dispatch": {
       "class": "report",
       "retry_policy": "none",
-      "mode": "dry_run",
+      "mode": "off",
       "cron": [
         "*/5 * * * *"
       ],
@@ -753,7 +768,7 @@
       "dispatch": {
         "class": "report",
         "retry_policy": "none",
-        "mode": "dry_run",
+        "mode": "off",
         "cron": [
           "*/5 * * * *"
         ],
@@ -772,6 +787,21 @@
         "root": "CURRENT",
         "command_text": "$PY $CODE_ROOT/scripts/momentum_cache_reconcile.py --code-root $CODE_ROOT --state-root $STATE_ROOT"
       }
+    },
+    "shadow_activation_proposal": {
+      "authority": "Explicit actual operator/owner decision at the final integrated SHA plus applicable guard grants; never apply during staging",
+      "registry_patch": {
+        "state": "ACTIVE",
+        "scheduler.stage": "shadow",
+        "dispatch.mode": "dry_run"
+      },
+      "required_before_apply": [
+        "Reviewed operative health contract with current body digest, reviewer and decision reference",
+        "Resolved ownership",
+        "Exact CURRENT deployment and source/relay/allowlist/env/lock checks",
+        "Scope-specific cron/config authorization"
+      ],
+      "proof_after_apply": "Required actual natural shadow RunReceipts, exact source SHA, zero output/business effects and n8n execution correlation; no live health receipt fabricated"
     }
   },
   "retry_authority": {
@@ -792,5 +822,10 @@
     "runtime_status": "NOT_MEASURED",
     "responsible_declared_owner": "platform; confirmation NOT_MEASURED",
     "next_action": "Integrator indexes parity artifact; exact final native CI, actual review/grants and authorized per-capability runtime parity proof before advancement"
+  },
+  "staging_hold": {
+    "mechanical_predicate": "dispatch.mode=off in both source proposal and full registry_row",
+    "warning": "Current compute_due ignores row.state; PAUSED alone and disabled candidate configuration do not stop due requests. Do not install a dry_run dispatch mode as a staging hold.",
+    "activation": "Separate explicitly reviewed ACTIVE + dry_run transition after applicable gates; existing generic dispatcher remains sole requester"
   }
 }
