@@ -1,4 +1,5 @@
 """Derived-cache repair boundary: isolated source/state only, no provider or canonical writes."""
+
 import copy
 import json
 from datetime import datetime
@@ -28,19 +29,34 @@ def setup(tmp_path):
     contract["review"] = {"reviewed_by": "fixture-owner", "decision_ref": "fixture://actual-test-decision"}
     contract["review"]["contract_body_sha256"] = lifecycle.contract_body_digest(contract)
     config = {
-        "lane_registry": {"lanes": [{"lane_id": repair.LANE, "state": "ACTIVE", "scheduler": {"stage": "cutover"},
-            "dispatch": {"class": "report", "retry_policy": "none"}}]},
+        "lane_registry": {
+            "lanes": [
+                {
+                    "lane_id": repair.LANE,
+                    "state": "ACTIVE",
+                    "scheduler": {"stage": "cutover"},
+                    "dispatch": {"class": "report", "retry_policy": "none"},
+                }
+            ]
+        },
         "n8n_health_contracts": {"contracts": [contract]},
-        "n8n_run_allowlist": {"lanes": {repair.LANE: {"live_arg": ["--apply"], "lock_kind": "flock",
-            "lock": "/fixture/shared-projection.lock"}}},
+        "n8n_run_allowlist": {
+            "lanes": {
+                repair.LANE: {"live_arg": ["--apply"], "lock_kind": "flock", "lock": "/fixture/shared-projection.lock"}
+            }
+        },
         "n8n_momentum_lifecycle_candidate": {"enabled": True, "recovery": {"armed": True}},
     }
     for name, doc in config.items():
         (code / f"config/{name}.json").write_text(json.dumps(doc))
     (code / "config/n8n_retry_policies.json").write_bytes((ROOT / "config/n8n_retry_policies.json").read_bytes())
-    cache = {"run_id": "2026-10-09::1730", "run_date": "2026-10-09", "stale": True,
-             "setup_run_summary": {"run_id": "2026-10-09::1730", "run_date": "2026-10-09", "scanned_count": 44},
-             "tickers": [{"symbol": "ABC", "decision": "GO", "run_id": "2026-10-09::1730"}]}
+    cache = {
+        "run_id": "2026-10-09::1730",
+        "run_date": "2026-10-09",
+        "stale": True,
+        "setup_run_summary": {"run_id": "2026-10-09::1730", "run_date": "2026-10-09", "scanned_count": 44},
+        "tickers": [{"symbol": "ABC", "decision": "GO", "run_id": "2026-10-09::1730"}],
+    }
     (state / "data/runtime/trade_ai_cache.json").write_text(json.dumps(cache))
     (state / "data/active_trader/momentum_alerts.jsonl").write_text("")
     return code, state
@@ -82,16 +98,22 @@ def test_apply_refuses_unreviewed_or_protected_operation_without_writes(setup, c
     code, state = setup
     if change == "disarmed":
         p = code / "config/n8n_momentum_lifecycle_candidate.json"
-        doc = json.loads(p.read_text()); doc["recovery"]["armed"] = False
+        doc = json.loads(p.read_text())
+        doc["recovery"]["armed"] = False
     elif change == "protected_class":
         p = code / "config/lane_registry.json"
-        doc = json.loads(p.read_text()); doc["lanes"][0]["dispatch"]["class"] = "send"
+        doc = json.loads(p.read_text())
+        doc["lanes"][0]["dispatch"]["class"] = "send"
     else:
         p = code / "config/n8n_health_contracts.json"
-        doc = json.loads(p.read_text()); contract = doc["contracts"][0]
-        if change == "draft": contract["status"] = "DRAFT"
-        elif change == "wrong_digest": contract["purpose"]["text"] += " unreviewed change"
-        else: contract["review"]["decision_ref"] = None
+        doc = json.loads(p.read_text())
+        contract = doc["contracts"][0]
+        if change == "draft":
+            contract["status"] = "DRAFT"
+        elif change == "wrong_digest":
+            contract["purpose"]["text"] += " unreviewed change"
+        else:
+            contract["review"]["decision_ref"] = None
     p.write_text(json.dumps(doc))
     result = repair.reconcile(code_root=code, state_root=state, now=NOW, apply=True)
     assert result["reason"] == "operative_recovery_admission_unproven"

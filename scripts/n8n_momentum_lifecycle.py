@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Momentum lifecycle health monitor. Reads metadata; optional write is its own health receipt only."""
+
 from __future__ import annotations
 
 import argparse
@@ -13,7 +14,12 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from scripts.lib.n8n_momentum_lifecycle import (  # noqa: E402
-    collect_server_snapshot, evaluate, load_admission, monitor_admitted, plan_recovery, write_monitor,
+    collect_server_snapshot,
+    evaluate,
+    load_admission,
+    monitor_admitted,
+    plan_recovery,
+    write_monitor,
 )
 from scripts.market_session import current_market_session, is_trading_day  # noqa: E402
 
@@ -38,11 +44,16 @@ def main(argv=None) -> int:
     candidate = json.loads(args.candidate.read_text())
     admission = load_admission(args.code_root)
     from datetime import timezone
+
     now = datetime.fromisoformat(args.now.replace("Z", "+00:00")) if args.now else datetime.now(timezone.utc)
-    snapshot = (collect_server_snapshot(args.state_root, candidate, now=now) if args.host_snapshot
-                else json.loads(args.snapshot.read_text()))
-    report = evaluate(candidate, snapshot, admission, now=now,
-                      trading_day_fn=is_trading_day, session_fn=current_market_session)
+    snapshot = (
+        collect_server_snapshot(args.state_root, candidate, now=now)
+        if args.host_snapshot
+        else json.loads(args.snapshot.read_text())
+    )
+    report = evaluate(
+        candidate, snapshot, admission, now=now, trading_day_fn=is_trading_day, session_fn=current_market_session
+    )
     report["recovery"] = plan_recovery(candidate, report, admission, snapshot=snapshot, now=now)
     if args.write_monitor and not args.dry_run:
         if candidate.get("enabled") is not True or not monitor_admitted(admission):

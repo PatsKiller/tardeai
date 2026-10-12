@@ -295,8 +295,14 @@ class Relay:
         self.clock = clock
         self.transport = transport or self._transport
         self.started_at = datetime.now(timezone.utc).isoformat()
-        self.counts = {"requested": 0, "refused": 0, "auth_failures": 0, "gateway_unreachable": 0, "due": 0,
-                       "events": 0}
+        self.counts = {
+            "requested": 0,
+            "refused": 0,
+            "auth_failures": 0,
+            "gateway_unreachable": 0,
+            "due": 0,
+            "events": 0,
+        }
         self.last: dict[str, Any] | None = None
         root = Path(self.environ.get("TRADEAI_STATE_ROOT") or (Path.home() / "trade-ai-releases" / "persistent-state"))
         self.log_dir = root / "data" / "runtime" / "n8n_relay"
@@ -450,13 +456,19 @@ class Relay:
             return self._refuse("relay_bad_event", 400, op="event")
         if data.get("lane_id") != EVENT_LANE:
             lane = data.get("lane_id")
-            return self._refuse("relay_event_lane_refused", 403, op="event",
-                                lane_id=lane[:64] if isinstance(lane, str) else None)
+            return self._refuse(
+                "relay_event_lane_refused", 403, op="event", lane_id=lane[:64] if isinstance(lane, str) else None
+            )
         workflow_id, execution_id = data.get("workflow_id"), data.get("execution_id")
         node, message = data.get("node"), data.get("message")
-        if not (isinstance(workflow_id, str) and _WORKFLOW_ID_RE.fullmatch(workflow_id)
-                and isinstance(execution_id, str) and _EXECUTION_ID_RE.fullmatch(execution_id)
-                and isinstance(node, str) and isinstance(message, str)):
+        if not (
+            isinstance(workflow_id, str)
+            and _WORKFLOW_ID_RE.fullmatch(workflow_id)
+            and isinstance(execution_id, str)
+            and _EXECUTION_ID_RE.fullmatch(execution_id)
+            and isinstance(node, str)
+            and isinstance(message, str)
+        ):
             return self._refuse("relay_bad_event", 400, op="event")
         if self.origin_sha is None:
             return self._refuse("relay_no_origin_sha", 503, op="event")
@@ -508,20 +520,22 @@ class Relay:
             self.counts["gateway_unreachable"] += 1
             return self._refuse("relay_gateway_unreachable", 502, op="event", idempotency_key=idem)
         ok = reply.get("state") == "ACCEPTED"
-        self._log({
-            "at": datetime.now(timezone.utc).isoformat(),
-            "op": "event",
-            "state": reply.get("state"),
-            "reason": None if ok else str(reply.get("reason") or "")[:64],
-            "lane_id": EVENT_LANE,
-            "workflow_id": workflow_id,
-            "execution_id": execution_id,
-            "node": node,
-            "message": message,
-            "idempotency_key": idem,
-            "duplicate": bool(reply.get("duplicate")),
-            "gateway_http_status": gateway_status,
-        })
+        self._log(
+            {
+                "at": datetime.now(timezone.utc).isoformat(),
+                "op": "event",
+                "state": reply.get("state"),
+                "reason": None if ok else str(reply.get("reason") or "")[:64],
+                "lane_id": EVENT_LANE,
+                "workflow_id": workflow_id,
+                "execution_id": execution_id,
+                "node": node,
+                "message": message,
+                "idempotency_key": idem,
+                "duplicate": bool(reply.get("duplicate")),
+                "gateway_http_status": gateway_status,
+            }
+        )
         reply = dict(reply)
         reply["gateway_http_status"] = gateway_status
         if ok:
@@ -542,17 +556,19 @@ class Relay:
         if set(params) - DUE_QUERY_KEYS or any(len(params.get(k, [])) > 1 for k in ("source", "limit")):
             return self._refuse("relay_bad_query", 400, op="due")
         source = params.get("source", ["schedule"])[0]
-        if source not in DUE_SOURCES:                      # validated before anything logs it
+        if source not in DUE_SOURCES:  # validated before anything logs it
             return self._refuse("relay_bad_query", 400, op="due")
         lane_values = params.get("lane", [])
-        if sum(len(v) for v in lane_values) > DUE_MAX_LANES * 65:   # bound before splitting (64-char ids + commas)
+        if sum(len(v) for v in lane_values) > DUE_MAX_LANES * 65:  # bound before splitting (64-char ids + commas)
             return self._refuse("relay_bad_query", 400, op="due")
         lanes = [x for v in lane_values for x in v.split(",") if x]
         if any(not _LANE_ID_RE.fullmatch(x) for x in lanes) or len(lanes) > DUE_MAX_LANES:
             return self._refuse("relay_bad_query", 400, op="due")
         raw_limit = params.get("limit", [str(DUE_DEFAULT_LIMIT)])[0]
-        if not (raw_limit.isascii() and raw_limit.isdigit() and len(raw_limit) <= DUE_LIMIT_DIGITS) \
-                or int(raw_limit) < 1:
+        if (
+            not (raw_limit.isascii() and raw_limit.isdigit() and len(raw_limit) <= DUE_LIMIT_DIGITS)
+            or int(raw_limit) < 1
+        ):
             return self._refuse("relay_bad_query", 400, op="due")
         limit = min(int(raw_limit), DUE_MAX_LIMIT)
         now = self.clock()
@@ -584,21 +600,62 @@ class Relay:
             return self._refuse("relay_gateway_unreachable", 502, op="due", source=source, lanes=lanes)
         ok = reply.get("schema") == "DueResponse@v1" and reply.get("ok") is True
         items = reply.get("items") if ok and isinstance(reply.get("items"), list) else []
-        self._log({
-            "at": datetime.now(timezone.utc).isoformat(),
-            "op": "due",
-            "state": "OK" if ok else "REFUSED",
-            "reason": None if ok else str(reply.get("reason") or "")[:64],
-            "source": source,
-            "lanes": lanes,
-            "limit": limit,
-            "items": len(items),
-            "truncated": reply.get("truncated", 0) if ok else 0,
-            "gateway_http_status": gateway_status,
-        })
+        self._log(
+            {
+                "at": datetime.now(timezone.utc).isoformat(),
+                "op": "due",
+                "state": "OK" if ok else "REFUSED",
+                "reason": None if ok else str(reply.get("reason") or "")[:64],
+                "source": source,
+                "lanes": lanes,
+                "limit": limit,
+                "items": len(items),
+                "truncated": reply.get("truncated", 0) if ok else 0,
+                "gateway_http_status": gateway_status,
+            }
+        )
         if ok:
             return 200, reply
         return (gateway_status if isinstance(gateway_status, int) and gateway_status >= 400 else 403), reply
+
+    def momentum_lifecycle(self, authorization: str | None, query: str = "") -> tuple[int, dict[str, Any]]:
+        """Authenticated fixed read projection. No caller paths, booleans, commands or repair submission."""
+        if not self._auth(authorization):
+            self.counts["auth_failures"] += 1
+            return self._refuse("relay_bad_bearer", 401, op="momentum_lifecycle")
+        if query:
+            return self._refuse("relay_bad_query", 400, op="momentum_lifecycle")
+        now = self.clock()
+        claim = {
+            "v": 1,
+            "caller_id": RELAY_CALLER,
+            "project": "trade-ai",
+            "iat": now,
+            "exp": now + 120,
+            "nonce": secrets.token_urlsafe(12),
+            "scope": SCOPE_READ,
+        }
+        payload = {
+            "route": "coordination/status",
+            "operation": "momentum_lifecycle",
+            "claim": claim,
+            "signature": sign_claim(claim, self.key),
+        }
+        try:
+            status, reply = self.transport(self.gateway_url + "/v1/coordination", payload)
+        except (OSError, urllib.error.URLError, TimeoutError):
+            return self._refuse("relay_gateway_unreachable", 502, op="momentum_lifecycle")
+        ok = reply.get("schema") == "N8nMomentumLifecycle@v1"
+        self._log(
+            {
+                "at": datetime.now(timezone.utc).isoformat(),
+                "op": "momentum_lifecycle",
+                "state": "OK" if ok else "REFUSED",
+                "gateway_http_status": status,
+                "reason": None if ok else str(reply.get("reason") or "")[:64],
+            }
+        )
+        return (200 if ok else status if isinstance(status, int) and status >= 400 else 403), reply
 
     def last_run(self, authorization: str | None, lane_id: str, query: str = "") -> tuple[int, dict[str, Any]]:
         """Read-only newest runs row for one lane. Never calls the gateway and never runs a command.
@@ -646,6 +703,8 @@ def handler_for(relay: Relay) -> type[BaseHTTPRequestHandler]:
             lane_id = parse_last_path(path)
             if self.path == "/status":
                 status, payload = relay.status(self.headers.get("Authorization"))
+            elif path == "/momentum-lifecycle":
+                status, payload = relay.momentum_lifecycle(self.headers.get("Authorization"), query)
             elif path == "/due":
                 status, payload = relay.due(self.headers.get("Authorization"), query)
             elif lane_id is not None:

@@ -18,6 +18,7 @@ The gateway must run with `--allow-lane incident-fanin`; otherwise every event i
 
 AUTHORITY: READ_ONLY_ADVISORY. No send, no restart, no remediation.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -48,11 +49,19 @@ NO_CONSUMER_REASON = (
 LANE = "incident-fanin"
 # This script's own receipt, relative to the state root. scripts/incident_notifier.py reads it from here.
 RECEIPT_REL = "data/runtime/n8n_incident_fanin_last.json"
-NOTES: dict[str, str] = {}   # per-source availability notes, copied onto the receipt (2026-10-08)
+NOTES: dict[str, str] = {}  # per-source availability notes, copied onto the receipt (2026-10-08)
 LANE_REGISTRY_RECEIPT_REL = "data/runtime/n8n_lane_registry_drift_last.json"
 AUTHORITY = "READ_ONLY_ADVISORY"
-SEV = {"NO_OUTPUT": "P2", "SILENT": "P2", "HUNG": "P1", "FAILING": "P1", "BACKLOG": "P2", "MEMORY_UNREACHABLE": "P1",
-       "SLO_MISS": "P2", "UNGOVERNED": "P3"}
+SEV = {
+    "NO_OUTPUT": "P2",
+    "SILENT": "P2",
+    "HUNG": "P1",
+    "FAILING": "P1",
+    "BACKLOG": "P2",
+    "MEMORY_UNREACHABLE": "P1",
+    "SLO_MISS": "P2",
+    "UNGOVERNED": "P3",
+}
 # 2026-10-11 (heartbeat-watch lane, scripts/heartbeat_watch.py): STALE_2X rows come only from the health-plane dead-man
 # (detector, fan-in, notifier, SIEM bridge, health tick, lab watchdog past 2x cadence) — the alert path itself, so P1.
 SEV["STALE_2X"] = "P1"
@@ -119,9 +128,18 @@ def _breach_findings(rt: Path, now: datetime) -> list[dict[str, Any]]:
         if r.get("state") != "OPEN":
             continue
         sev, basis = breach_severity(r)
-        out.append({"source": "breach_detector", "item": key, "severity": sev, "severity_basis": basis,
-                    "detail": str(r.get("evidence") or "")[:160], "artifact_rel": "data/runtime/supervisor_breaches.jsonl",
-                    "store": "data/runtime", "detected_at": r.get("detected_at")})
+        out.append(
+            {
+                "source": "breach_detector",
+                "item": key,
+                "severity": sev,
+                "severity_basis": basis,
+                "detail": str(r.get("evidence") or "")[:160],
+                "artifact_rel": "data/runtime/supervisor_breaches.jsonl",
+                "store": "data/runtime",
+                "detected_at": r.get("detected_at"),
+            }
+        )
     return out
 
 
@@ -142,7 +160,7 @@ def _tail_jsonl(path: Path, max_bytes: int = 2_000_000) -> list[dict]:
     except OSError:
         return []
     rows = []
-    for ln in chunk.splitlines()[1 if size > max_bytes else 0:]:
+    for ln in chunk.splitlines()[1 if size > max_bytes else 0 :]:
         try:
             rows.append(json.loads(ln))
         except json.JSONDecodeError:
@@ -150,9 +168,9 @@ def _tail_jsonl(path: Path, max_bytes: int = 2_000_000) -> list[dict]:
     return rows
 
 
-SCALP_RECEIPT_REL = "data/runtime/trade_ai_scalp_live_last.json"   # scripts/run_trade_ai_scalp_live.py receipt_path()
-SCALP_STALL_MIN = 12          # > two 5-min cycles plus the 295 s run budget
-SCALP_RTH_MIN = (9 * 60 + 30 + SCALP_STALL_MIN, 16 * 60)   # ET minutes; the first cycle needs time to land
+SCALP_RECEIPT_REL = "data/runtime/trade_ai_scalp_live_last.json"  # scripts/run_trade_ai_scalp_live.py receipt_path()
+SCALP_STALL_MIN = 12  # > two 5-min cycles plus the 295 s run budget
+SCALP_RTH_MIN = (9 * 60 + 30 + SCALP_STALL_MIN, 16 * 60)  # ET minutes; the first cycle needs time to land
 
 
 def _scalp_lane_findings(root: Path, now: datetime) -> list[dict[str, Any]]:
@@ -166,6 +184,7 @@ def _scalp_lane_findings(root: Path, now: datetime) -> list[dict[str, Any]]:
     try:
         sys.path.insert(0, str(ROOT / "scripts"))
         from market_session import is_trading_day
+
         if not is_trading_day():
             return []
     except Exception:  # noqa: BLE001 — a broken calendar check fails open to the weekday rule
@@ -182,10 +201,18 @@ def _scalp_lane_findings(root: Path, now: datetime) -> list[dict[str, Any]]:
     if age_min is not None and age_min <= SCALP_STALL_MIN:
         return []
     day = now.astimezone(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
-    return [{"source": "scalp_lane", "item": "trade-ai-scalp-live:STALLED", "severity": "P2",
-             "detail": f"no completed scalp cycle for {'?' if age_min is None else round(age_min)} min "
-                       f"(last_ok_at {doc.get('last_ok_at')}, status {doc.get('status')})",
-             "artifact_rel": SCALP_RECEIPT_REL, "store": "data/runtime", "detected_at": day}]
+    return [
+        {
+            "source": "scalp_lane",
+            "item": "trade-ai-scalp-live:STALLED",
+            "severity": "P2",
+            "detail": f"no completed scalp cycle for {'?' if age_min is None else round(age_min)} min "
+            f"(last_ok_at {doc.get('last_ok_at')}, status {doc.get('status')})",
+            "artifact_rel": SCALP_RECEIPT_REL,
+            "store": "data/runtime",
+            "detected_at": day,
+        }
+    ]
 
 
 def _scalp_cycle_findings(root: Path, now: datetime) -> list[dict[str, Any]]:
@@ -222,7 +249,7 @@ def _scalp_cycle_findings(root: Path, now: datetime) -> list[dict[str, Any]]:
     return [i for i in doc["incidents"] if i["severity"] == "P1"]
 
 
-PREV_RECEIPT: dict[str, Any] | None = None   # main() parks the previous fan-in receipt here before collect()
+PREV_RECEIPT: dict[str, Any] | None = None  # main() parks the previous fan-in receipt here before collect()
 
 
 def collect(root: Path, now: datetime, prev: dict[str, Any] | None = None) -> list[dict[str, Any]]:
@@ -248,16 +275,33 @@ def collect(root: Path, now: datetime, prev: dict[str, Any] | None = None) -> li
         if not doc:
             continue
         for item in doc.get(key) or []:
-            out.append({"source": src, "item": str(item), "severity": sev, "detail": f"{src} ran_at {doc.get('ran_at')}",
-                        "artifact_rel": f"data/runtime/{fn}", "store": "data/runtime", "detected_at": doc.get("ran_at")})
+            out.append(
+                {
+                    "source": src,
+                    "item": str(item),
+                    "severity": sev,
+                    "detail": f"{src} ran_at {doc.get('ran_at')}",
+                    "artifact_rel": f"data/runtime/{fn}",
+                    "store": "data/runtime",
+                    "detected_at": doc.get("ran_at"),
+                }
+            )
     doc = _load(rt / "gap_resolution_last_run.json")
     if doc:
         for cat, items in (doc.get("findings") or {}).items():
             n = len(items) if isinstance(items, list) else (items if isinstance(items, int) else 0)
             if n:
-                out.append({"source": "gap_resolution", "item": f"{cat}:{n}", "severity": "P3",
-                            "detail": f"{n} findings ran_at {doc.get('ran_at')}", "artifact_rel": "data/runtime/gap_resolution_last_run.json",
-                            "store": "data/runtime", "detected_at": doc.get("ran_at")})
+                out.append(
+                    {
+                        "source": "gap_resolution",
+                        "item": f"{cat}:{n}",
+                        "severity": "P3",
+                        "detail": f"{n} findings ran_at {doc.get('ran_at')}",
+                        "artifact_rel": "data/runtime/gap_resolution_last_run.json",
+                        "store": "data/runtime",
+                        "detected_at": doc.get("ran_at"),
+                    }
+                )
     # 2b. Brave dollar spend (search routing engine, 2026-10-10): scripts/search_spend_report.py --write.
     # warning = gross month spend >= 80% of the $15 working target; critical = the $18 local ceiling or an
     # unreadable ledger. Both are P2 (operator: "alert at 80% of target via the incident notifier (P2)");
@@ -265,27 +309,62 @@ def collect(root: Path, now: datetime, prev: dict[str, Any] | None = None) -> li
     doc = _load(rt / "search_spend_last.json")
     if doc and str(doc.get("alert") or "ok") in {"warning", "critical"}:
         sp = doc.get("spend") or {}
-        out.append({"source": "search_spend", "item": f"{sp.get('month') or 'unknown'}:{doc.get('alert')}", "severity": "P2",
-                    "detail": (f"Brave gross ${sp.get('gross_usd')} = {sp.get('pct_of_target')}% of ${(sp.get('lines') or {}).get('working_target_usd')}"
-                               f" target (net billed ${sp.get('net_billed_usd')}); {doc.get('error') or ''}")[:160],
-                    "artifact_rel": "data/runtime/search_spend_last.json", "store": "data/runtime", "detected_at": doc.get("as_of")})
+        out.append(
+            {
+                "source": "search_spend",
+                "item": f"{sp.get('month') or 'unknown'}:{doc.get('alert')}",
+                "severity": "P2",
+                "detail": (
+                    f"Brave gross ${sp.get('gross_usd')} = {sp.get('pct_of_target')}% of ${(sp.get('lines') or {}).get('working_target_usd')}"
+                    f" target (net billed ${sp.get('net_billed_usd')}); {doc.get('error') or ''}"
+                )[:160],
+                "artifact_rel": "data/runtime/search_spend_last.json",
+                "store": "data/runtime",
+                "detected_at": doc.get("as_of"),
+            }
+        )
     # 3. watchdogs
     doc = _load(rt / "cio_bridge_watchdog.json")
     if doc and (doc.get("alert_needed") or str(doc.get("status") or "").lower() not in {"ok", "healthy", ""}):
-        out.append({"source": "cio_bridge_watchdog", "item": str(doc.get("status")), "severity": "P1",
-                    "detail": f"consecutive_wedged={doc.get('consecutive_wedged')}", "artifact_rel": "data/runtime/cio_bridge_watchdog.json",
-                    "store": "data/runtime", "detected_at": doc.get("checked_at")})
+        out.append(
+            {
+                "source": "cio_bridge_watchdog",
+                "item": str(doc.get("status")),
+                "severity": "P1",
+                "detail": f"consecutive_wedged={doc.get('consecutive_wedged')}",
+                "artifact_rel": "data/runtime/cio_bridge_watchdog.json",
+                "store": "data/runtime",
+                "detected_at": doc.get("checked_at"),
+            }
+        )
     doc = _load(rt / "n8n_lab_watchdog_last.json")
     if doc and doc.get("ok") is False:
-        out.append({"source": "n8n_lab_watchdog", "item": "healthz", "severity": "P2", "detail": str(doc.get("reason") or doc.get("status")),
-                    "artifact_rel": "data/runtime/n8n_lab_watchdog_last.json", "store": "data/runtime", "detected_at": doc.get("as_of")})
+        out.append(
+            {
+                "source": "n8n_lab_watchdog",
+                "item": "healthz",
+                "severity": "P2",
+                "detail": str(doc.get("reason") or doc.get("status")),
+                "artifact_rel": "data/runtime/n8n_lab_watchdog_last.json",
+                "store": "data/runtime",
+                "detected_at": doc.get("as_of"),
+            }
+        )
     # 3b. database hygiene (report_db_hygiene.py, nightly): every finding stays open until fixed
     doc = _load(rt / "db_hygiene_last.json")
     if doc:
         for f in doc.get("findings") or []:
-            out.append({"source": "db_hygiene", "item": f"{f.get('code')}:{f.get('item')}", "severity": str(f.get("severity") or "P3"),
-                        "detail": str(f.get("detail") or "")[:160], "artifact_rel": "data/runtime/db_hygiene_last.json",
-                        "store": "data/runtime", "detected_at": doc.get("as_of")})
+            out.append(
+                {
+                    "source": "db_hygiene",
+                    "item": f"{f.get('code')}:{f.get('item')}",
+                    "severity": str(f.get("severity") or "P3"),
+                    "detail": str(f.get("detail") or "")[:160],
+                    "artifact_rel": "data/runtime/db_hygiene_last.json",
+                    "store": "data/runtime",
+                    "detected_at": doc.get("as_of"),
+                }
+            )
     # 3c. lane-registry drift (Phase 2 PR-B, 2026-10-08): the gate's findings between CI runs. Pure
     # library calls over the live registry + crontab + timer names; fail-soft, never a crash of the fan-in.
     NOTES.pop("lane_registry_source", None)
@@ -293,23 +372,33 @@ def collect(root: Path, now: datetime, prev: dict[str, Any] | None = None) -> li
         import subprocess as _sp
         from scripts.lib.lane_registry import discover_systemd, load_registry
         from scripts.lib.lane_registry_drift import findings as _drift_findings
+
         if os.environ.get("TRADEAI_FANIN_LANE_REGISTRY", "1") == "0":
-            raise RuntimeError("disabled_by_env")        # hermetic callers (tests) opt out of probing the host
+            raise RuntimeError("disabled_by_env")  # hermetic callers (tests) opt out of probing the host
         reg = load_registry(ROOT / "config" / "lane_registry.json")
         _cron = _sp.run(["crontab", "-l"], capture_output=True, text=True, timeout=30)
         if _cron.returncode != 0:
-            raise RuntimeError("no_crontab")             # CI runners and fresh hosts: nothing to compare against
+            raise RuntimeError("no_crontab")  # CI runners and fresh hosts: nothing to compare against
         cron_text = _cron.stdout
         units = [str(u.get("expression") or "") for u in discover_systemd()]
         drift = _drift_findings(reg, cron_text, units)
         NOTES["lane_registry_source"] = f"ok:{len(drift)}"
-    except Exception as exc:   # noqa: BLE001 — a broken source is a note on the receipt, not a crash
+    except Exception as exc:  # noqa: BLE001 — a broken source is a note on the receipt, not a crash
         drift = []
         NOTES["lane_registry_source"] = f"unavailable:{type(exc).__name__}:{str(exc)[:80]}"
     for f in drift:
-        out.append({"source": "lane_registry", "code": f["code"], "item": f["item"], "severity": f["severity"], "detail": f["detail"][:160],
-                    "artifact_rel": LANE_REGISTRY_RECEIPT_REL, "store": "data/runtime",
-                    "detected_at": now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()})   # stable per UTC day = stable payload
+        out.append(
+            {
+                "source": "lane_registry",
+                "code": f["code"],
+                "item": f["item"],
+                "severity": f["severity"],
+                "detail": f["detail"][:160],
+                "artifact_rel": LANE_REGISTRY_RECEIPT_REL,
+                "store": "data/runtime",
+                "detected_at": now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat(),
+            }
+        )  # stable per UTC day = stable payload
     # 3d. notification outbox (Phase 2 PR-A, 2026-10-08): withdrawn sends, sends stuck pending > 30 min, suppression
     # spike. Read through the projection with a 3 s statement timeout; no DB -> no findings, receipt says so.
     out.extend(_outbox_findings(now))
@@ -329,6 +418,7 @@ def collect(root: Path, now: datetime, prev: dict[str, Any] | None = None) -> li
     out.extend(_scalp_lane_findings(root, now))
     # 3h. Scalp cycle ledger (n8n maturity B4, 2026-10-09): per-slot ScalpCycleReceipt@v1 rules, market-hours aware.
     out.extend(_scalp_cycle_findings(root, now))
+    out.extend(_momentum_lifecycle_findings(root, now))
     # 3i. Dead-letter queue + breakers (n8n maturity B5 follow-up, 2026-10-09): one P2 per unreleased dead letter,
     # one P2 per open breaker. Ledger tables first (read-only), ExecutorStatus@v1 as the cross-check / fallback.
     out.extend(_dlq_findings(root, now))
@@ -355,9 +445,17 @@ def collect(root: Path, now: datetime, prev: dict[str, Any] | None = None) -> li
         except Exception:
             age_h = None
         if doc.get("ok") is False or (age_h is not None and age_h > 48):
-            out.append({"source": "n8n_lab_backup", "item": "stale_or_failed", "severity": "P2",
-                        "detail": f"ok={doc.get('ok')} age_h={None if age_h is None else round(age_h, 1)}",
-                        "artifact_rel": "backups/n8n/n8n_lab_backup_last.json", "store": "persistent-state", "detected_at": doc.get("as_of")})
+            out.append(
+                {
+                    "source": "n8n_lab_backup",
+                    "item": "stale_or_failed",
+                    "severity": "P2",
+                    "detail": f"ok={doc.get('ok')} age_h={None if age_h is None else round(age_h, 1)}",
+                    "artifact_rel": "backups/n8n/n8n_lab_backup_last.json",
+                    "store": "persistent-state",
+                    "detected_at": doc.get("as_of"),
+                }
+            )
     return out
 
 
@@ -379,9 +477,13 @@ def _runs_findings(root: Path, now: datetime) -> list[dict[str, Any]]:
             raise RuntimeError("disabled_by_env")
         from scripts.lib.lane_registry import load_registry
         from scripts.lib.n8n_coordination_projection import RUNS_RECEIPT_DIR, project_runs
+
         reg = load_registry(ROOT / "config" / "lane_registry.json")
-        n8n_lanes = {str(r.get("lane_id")): r for r in reg.get("lanes") or []
-                     if (r.get("scheduler") or {}).get("kind") == "n8n" and r.get("state") == "ACTIVE"}
+        n8n_lanes = {
+            str(r.get("lane_id")): r
+            for r in reg.get("lanes") or []
+            if (r.get("scheduler") or {}).get("kind") == "n8n" and r.get("state") == "ACTIVE"
+        }
         if not n8n_lanes:
             NOTES["runs_source"] = "ok:no_n8n_lanes"
             return []
@@ -389,7 +491,7 @@ def _runs_findings(root: Path, now: datetime) -> list[dict[str, Any]]:
         if proj.get("status") != "OK":
             raise RuntimeError(str(proj.get("status")))
         latest: dict[str, dict[str, Any]] = {}
-        for it in proj.get("items") or []:          # newest first
+        for it in proj.get("items") or []:  # newest first
             lane = str(it.get("lane_id") or "")
             if lane in n8n_lanes and lane not in latest:
                 latest[lane] = it
@@ -397,10 +499,19 @@ def _runs_findings(root: Path, now: datetime) -> list[dict[str, Any]]:
         for lane, it in sorted(latest.items()):
             st = str(it.get("state") or "")
             if st in RUNS_FAILURE_STATES:
-                found.append({"source": "runs", "item": f"{lane}:{st}", "severity": "P2",
-                              "detail": f"run {it.get('run_id')} {it.get('mode')} exit={it.get('exit_code')} duration_s={it.get('duration_s')}"[:160],
-                              "artifact_rel": str(it.get("receipt_ref") or f"{RUNS_RECEIPT_DIR}/{it.get('run_id')}.json"),
-                              "store": "data/runtime", "detected_at": it.get("finished_at") or it.get("requested_at")})
+                found.append(
+                    {
+                        "source": "runs",
+                        "item": f"{lane}:{st}",
+                        "severity": "P2",
+                        "detail": f"run {it.get('run_id')} {it.get('mode')} exit={it.get('exit_code')} duration_s={it.get('duration_s')}"[
+                            :160
+                        ],
+                        "artifact_rel": str(it.get("receipt_ref") or f"{RUNS_RECEIPT_DIR}/{it.get('run_id')}.json"),
+                        "store": "data/runtime",
+                        "detected_at": it.get("finished_at") or it.get("requested_at"),
+                    }
+                )
         exec_rel = EXECUTOR_LAST_REL
         exec_doc = _load(root / exec_rel)
         cadences = [float(r["expected_cadence_hours"]) for r in n8n_lanes.values() if r.get("expected_cadence_hours")]
@@ -411,19 +522,28 @@ def _runs_findings(root: Path, now: datetime) -> list[dict[str, Any]]:
             except Exception:  # noqa: BLE001
                 age_h = None
             if age_h is not None and age_h > RUNS_STALE_FACTOR * min(cadences):
-                found.append({"source": "runs", "item": "executor:stalled", "severity": "P1",
-                              "detail": f"executor_last age_h={age_h:.1f} > {RUNS_STALE_FACTOR}x shortest n8n cadence {min(cadences)}h",
-                              "artifact_rel": exec_rel, "store": "data/runtime",
-                              "detected_at": now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()})
-        NOTES["runs_source"] = f"ok:{len(found)}:n8n_lanes={len(n8n_lanes)}:executor_receipt={'yes' if exec_doc else 'no'}"
+                found.append(
+                    {
+                        "source": "runs",
+                        "item": "executor:stalled",
+                        "severity": "P1",
+                        "detail": f"executor_last age_h={age_h:.1f} > {RUNS_STALE_FACTOR}x shortest n8n cadence {min(cadences)}h",
+                        "artifact_rel": exec_rel,
+                        "store": "data/runtime",
+                        "detected_at": now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat(),
+                    }
+                )
+        NOTES["runs_source"] = (
+            f"ok:{len(found)}:n8n_lanes={len(n8n_lanes)}:executor_receipt={'yes' if exec_doc else 'no'}"
+        )
         return found
     except Exception as exc:  # noqa: BLE001 — a broken source is a note on the receipt, not a crash
         NOTES["runs_source"] = f"unavailable:{type(exc).__name__}:{str(exc)[:80]}"
         return []
 
 
-LEDGER_REL = "data/governance/n8n_coordination_ledger.sqlite"   # n8n_coordination_projection.ledger_path()
-EXECUTOR_STATUS_SCHEMA = "ExecutorStatus@v1"                      # n8n_run_executor STATUS_SCHEMA (executor v2)
+LEDGER_REL = "data/governance/n8n_coordination_ledger.sqlite"  # n8n_coordination_projection.ledger_path()
+EXECUTOR_STATUS_SCHEMA = "ExecutorStatus@v1"  # n8n_run_executor STATUS_SCHEMA (executor v2)
 
 
 def _dlq_ledger_rows(path: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]]] | None:
@@ -441,11 +561,17 @@ def _dlq_ledger_rows(path: Path) -> tuple[list[dict[str, Any]], list[dict[str, A
         tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         if not {"dead_letters", "breakers"} <= tables:
             return None
-        dead = [dict(r) for r in conn.execute(
-            "SELECT slot_key, lane_id, mode, attempts, last_state, last_reason, dead_at FROM dead_letters"
-            " WHERE released_at IS NULL ORDER BY dead_at, slot_key")]
-        brk = [dict(r) for r in conn.execute(
-            "SELECT lane_id, opened_at, consecutive, released_at FROM breakers ORDER BY lane_id")]
+        dead = [
+            dict(r)
+            for r in conn.execute(
+                "SELECT slot_key, lane_id, mode, attempts, last_state, last_reason, dead_at FROM dead_letters"
+                " WHERE released_at IS NULL ORDER BY dead_at, slot_key"
+            )
+        ]
+        brk = [
+            dict(r)
+            for r in conn.execute("SELECT lane_id, opened_at, consecutive, released_at FROM breakers ORDER BY lane_id")
+        ]
         return dead, [b for b in brk if breaker_is_open(b)]
     finally:
         conn.close()
@@ -477,35 +603,58 @@ def _dlq_findings(root: Path, now: datetime) -> list[dict[str, Any]]:
     found: list[dict[str, Any]] = []
     dead, breakers = rows if rows is not None else ([], [])
     for d in dead:
-        found.append({"source": "dlq", "item": f"dlq:{d.get('slot_key')}", "severity": "P2",
-                      "detail": f"{d.get('lane_id')} {d.get('mode') or ''} {d.get('last_state') or ''} "
-                                f"{d.get('last_reason') or ''} attempts {d.get('attempts')}"[:160],
-                      "artifact_rel": LEDGER_REL, "store": "persistent-state",
-                      "detected_at": d.get("dead_at") or day})
+        found.append(
+            {
+                "source": "dlq",
+                "item": f"dlq:{d.get('slot_key')}",
+                "severity": "P2",
+                "detail": f"{d.get('lane_id')} {d.get('mode') or ''} {d.get('last_state') or ''} "
+                f"{d.get('last_reason') or ''} attempts {d.get('attempts')}"[:160],
+                "artifact_rel": LEDGER_REL,
+                "store": "persistent-state",
+                "detected_at": d.get("dead_at") or day,
+            }
+        )
     open_lanes = {str(b.get("lane_id")): b for b in breakers}
     ledger_lanes = set(open_lanes)
     for lane in (status or {}).get("breakers_open") or []:
         open_lanes.setdefault(str(lane), {"lane_id": str(lane), "opened_at": None, "consecutive": None})
     for lane, b in sorted(open_lanes.items()):
-        found.append({"source": "dlq", "item": f"breaker:{lane}", "severity": "P2",
-                      "detail": f"breaker open: {b.get('consecutive')} consecutive dead slots; lane paused"[:160],
-                      "artifact_rel": LEDGER_REL if lane in ledger_lanes else EXECUTOR_LAST_REL,
-                      "store": "persistent-state" if lane in ledger_lanes else "data/runtime",
-                      "detected_at": b.get("opened_at") or day})
+        found.append(
+            {
+                "source": "dlq",
+                "item": f"breaker:{lane}",
+                "severity": "P2",
+                "detail": f"breaker open: {b.get('consecutive')} consecutive dead slots; lane paused"[:160],
+                "artifact_rel": LEDGER_REL if lane in ledger_lanes else EXECUTOR_LAST_REL,
+                "store": "persistent-state" if lane in ledger_lanes else "data/runtime",
+                "detected_at": b.get("opened_at") or day,
+            }
+        )
     status_dlq = (status or {}).get("dlq_24h")
     if rows is None and isinstance(status_dlq, int) and status_dlq > 0:
-        found.append({"source": "dlq", "item": "dlq:status_count", "severity": "P2",
-                      "detail": f"executor reports {status_dlq} dead letter(s) in 24 h; ledger {ledger_note}",
-                      "artifact_rel": EXECUTOR_LAST_REL, "store": "data/runtime", "detected_at": day})
-    NOTES["dlq_source"] = (f"ledger:{ledger_note}:dead={len(dead)}:breakers={len(breakers)}:"
-                           f"status={'yes' if status else 'no'}:status_dlq_24h={status_dlq}")
+        found.append(
+            {
+                "source": "dlq",
+                "item": "dlq:status_count",
+                "severity": "P2",
+                "detail": f"executor reports {status_dlq} dead letter(s) in 24 h; ledger {ledger_note}",
+                "artifact_rel": EXECUTOR_LAST_REL,
+                "store": "data/runtime",
+                "detected_at": day,
+            }
+        )
+    NOTES["dlq_source"] = (
+        f"ledger:{ledger_note}:dead={len(dead)}:breakers={len(breakers)}:"
+        f"status={'yes' if status else 'no'}:status_dlq_24h={status_dlq}"
+    )
     return found
 
 
 RELAY_LAST_REL = "data/runtime/n8n_relay/n8n_run_relay_last.json"
 RELAY_UNIT = "tradeai-n8n-run-relay.service"
-RELAY_AUTH_FAILURE_STEP = 3        # auth_failures must rise by at least this much between two fan-in receipts
-RELAY_STALE_FACTOR = 2.0           # relay last file older than this x the shortest n8n cadence = down
+RELAY_AUTH_FAILURE_STEP = 3  # auth_failures must rise by at least this much between two fan-in receipts
+RELAY_STALE_FACTOR = 2.0  # relay last file older than this x the shortest n8n cadence = down
 EXPECTED_SERVICES_PATH = ROOT / "config" / "expected_services.json"
 RELAY_COUNTS: dict[str, Any] = {}  # copied onto the receipt so the next fan-in can diff auth_failures
 
@@ -525,44 +674,78 @@ def _relay_findings(root: Path, now: datetime, prev: dict[str, Any] | None) -> l
             raise RuntimeError("disabled_by_env")
         doc = _load(root / RELAY_LAST_REL)
         if not doc:
-            NOTES["relay_source"] = "ok:no_relay_last"       # never started here: expected_services reports the unit
+            NOTES["relay_source"] = "ok:no_relay_last"  # never started here: expected_services reports the unit
             return []
         last = doc.get("last") or {}
         counts = doc.get("counts") or {}
         auth = int(counts.get("auth_failures") or 0)
-        RELAY_COUNTS = {"auth_failures": auth, "requested": int(counts.get("requested") or 0),
-                        "refused": int(counts.get("refused") or 0), "last_at": last.get("at"), "as_of": now.isoformat()}
+        RELAY_COUNTS = {
+            "auth_failures": auth,
+            "requested": int(counts.get("requested") or 0),
+            "refused": int(counts.get("refused") or 0),
+            "last_at": last.get("at"),
+            "as_of": now.isoformat(),
+        }
         found: list[dict[str, Any]] = []
         prev_counts = (prev or {}).get("relay_counts") or {}
         prev_auth = prev_counts.get("auth_failures")
         if prev_auth is not None:
-            delta = auth - int(prev_auth)                       # negative after a relay restart (counters reset)
+            delta = auth - int(prev_auth)  # negative after a relay restart (counters reset)
             if delta >= RELAY_AUTH_FAILURE_STEP:
-                found.append({"source": "relay", "item": "relay:auth_failures", "severity": "P2",
-                              "detail": (f"auth_failures {int(prev_auth)}->{auth} (+{delta}) since fan-in {prev_counts.get('as_of')}; "
-                                         f"last {last.get('state')}/{last.get('reason')} at {last.get('at')}")[:160],
-                              "artifact_rel": RELAY_LAST_REL, "store": "data/runtime",
-                              "detected_at": last.get("at") or now.isoformat()})
+                found.append(
+                    {
+                        "source": "relay",
+                        "item": "relay:auth_failures",
+                        "severity": "P2",
+                        "detail": (
+                            f"auth_failures {int(prev_auth)}->{auth} (+{delta}) since fan-in {prev_counts.get('as_of')}; "
+                            f"last {last.get('state')}/{last.get('reason')} at {last.get('at')}"
+                        )[:160],
+                        "artifact_rel": RELAY_LAST_REL,
+                        "store": "data/runtime",
+                        "detected_at": last.get("at") or now.isoformat(),
+                    }
+                )
         from scripts.lib.lane_registry import load_registry
+
         reg = load_registry(ROOT / "config" / "lane_registry.json")
-        cadences = [float(r["expected_cadence_hours"]) for r in reg.get("lanes") or []
-                    if (r.get("scheduler") or {}).get("kind") == "n8n" and r.get("state") == "ACTIVE"
-                    and r.get("expected_cadence_hours")]
+        cadences = [
+            float(r["expected_cadence_hours"])
+            for r in reg.get("lanes") or []
+            if (r.get("scheduler") or {}).get("kind") == "n8n"
+            and r.get("state") == "ACTIVE"
+            and r.get("expected_cadence_hours")
+        ]
         exec_doc = _load(root / EXECUTOR_LAST_REL)
         executor_running = False
         if exec_doc and cadences:
             ets = exec_doc.get("finished_at") or exec_doc.get("as_of") or exec_doc.get("at")
             executor_running = (now - _stable(ets, now)).total_seconds() / 3600 <= RUNS_STALE_FACTOR * min(cadences)
         relay_age_h = (now - _stable(last.get("at"), now)).total_seconds() / 3600 if last.get("at") else None
-        if (executor_running and relay_age_h is not None and relay_age_h > RELAY_STALE_FACTOR * min(cadences)
-                and _relay_unit_expected()):
-            found.append({"source": "relay", "item": "relay:down", "severity": "P1",
-                          "detail": (f"relay last file age_h={relay_age_h:.1f} > {RELAY_STALE_FACTOR}x shortest n8n cadence "
-                                     f"{min(cadences)}h while the executor runs {len(cadences)} n8n lane(s); unit {RELAY_UNIT} expected")[:160],
-                          "artifact_rel": RELAY_LAST_REL, "store": "data/runtime",
-                          "detected_at": now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()})
-        NOTES["relay_source"] = (f"ok:{len(found)}:auth_failures={auth}:prev={prev_auth}:"
-                                 f"executor_running={'yes' if executor_running else 'no'}")
+        if (
+            executor_running
+            and relay_age_h is not None
+            and relay_age_h > RELAY_STALE_FACTOR * min(cadences)
+            and _relay_unit_expected()
+        ):
+            found.append(
+                {
+                    "source": "relay",
+                    "item": "relay:down",
+                    "severity": "P1",
+                    "detail": (
+                        f"relay last file age_h={relay_age_h:.1f} > {RELAY_STALE_FACTOR}x shortest n8n cadence "
+                        f"{min(cadences)}h while the executor runs {len(cadences)} n8n lane(s); unit {RELAY_UNIT} expected"
+                    )[:160],
+                    "artifact_rel": RELAY_LAST_REL,
+                    "store": "data/runtime",
+                    "detected_at": now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat(),
+                }
+            )
+        NOTES["relay_source"] = (
+            f"ok:{len(found)}:auth_failures={auth}:prev={prev_auth}:"
+            f"executor_running={'yes' if executor_running else 'no'}"
+        )
         return found
     except Exception as exc:  # noqa: BLE001 — a broken source is a note on the receipt, not a crash
         NOTES["relay_source"] = f"unavailable:{type(exc).__name__}:{str(exc)[:80]}"
@@ -574,12 +757,13 @@ GOVERNANCE_SOURCES = (
     ("n8n_activation_grants", "data/runtime/n8n_activation_grants_last.json", "n8n-activation-grants", 0.5),
     ("n8n_workflow_drift", "data/runtime/n8n_workflow_drift_last.json", "n8n-workflow-drift-check", 1.0),
 )
-GOVERNANCE_STALE_FACTOR = 3.0      # receipt older than 3x the lane cadence = the check has stopped
+GOVERNANCE_STALE_FACTOR = 3.0  # receipt older than 3x the lane cadence = the check has stopped
 
 
 def _governance_lane(lane_id: str) -> dict[str, Any] | None:
     """The lane_registry row, or None. Separate so tests can stub it without a registry file."""
     from scripts.lib.lane_registry import load_registry
+
     reg = load_registry(ROOT / "config" / "lane_registry.json")
     return next((r for r in reg.get("lanes") or [] if r.get("lane_id") == lane_id), None)
 
@@ -591,8 +775,12 @@ def _governance_rows(source: str, doc: dict[str, Any]) -> list[tuple[str, str, s
     if source == "n8n_activation_grants":
         for r in doc.get("activations") or []:
             st = str(r.get("status") or "")
-            if st not in {"UNGRANTED_ACTIVATION", "UNGRANTED_ACTIVATION_REGULARISED", "NAMED_IN_OTHER_TIER",
-                          "NAME_ONLY_GRANT"}:
+            if st not in {
+                "UNGRANTED_ACTIVATION",
+                "UNGRANTED_ACTIVATION_REGULARISED",
+                "NAMED_IN_OTHER_TIER",
+                "NAME_ONLY_GRANT",
+            }:
                 continue
             # P1 only while the LATEST activation is ungranted and the workflow is live; a regularised window
             # (earlier ungranted, latest granted) stays reported as P3 with its start/end.
@@ -609,8 +797,14 @@ def _governance_rows(source: str, doc: dict[str, Any]) -> list[tuple[str, str, s
             if st in {"DRIFT", "MISSING_IN_GIT"}:
                 out.append((f"{r.get('id')}:{st}:P2", "P2", f"{r.get('name')} {','.join(r.get('diffs') or [])}", None))
             if r.get("placeholder_unsubstituted"):
-                out.append((f"{r.get('id')}:placeholder_unsubstituted:P2", "P2",
-                            f"{r.get('name')} still carries the relay URL placeholder", None))
+                out.append(
+                    (
+                        f"{r.get('id')}:placeholder_unsubstituted:P2",
+                        "P2",
+                        f"{r.get('name')} still carries the relay URL placeholder",
+                        None,
+                    )
+                )
     return out
 
 
@@ -642,15 +836,27 @@ def _governance_findings(root: Path, now: datetime, prev: dict[str, Any] | None 
             continue
         try:
             row = _governance_lane(lane_id) or {}
-            scheduled = row.get("state") == "ACTIVE" and (row.get("scheduler") or {}).get("kind") not in (None, "", "none")
+            scheduled = row.get("state") == "ACTIVE" and (row.get("scheduler") or {}).get("kind") not in (
+                None,
+                "",
+                "none",
+            )
             cadence = float(row.get("expected_cadence_hours") or default_cadence) if scheduled else default_cadence
             stale_h = GOVERNANCE_STALE_FACTOR * cadence
             doc = _load(root / rel)
             if not doc:
                 if scheduled:
-                    found.append({"source": source, "item": "receipt:missing", "severity": "P2",
-                                  "detail": f"lane {lane_id} is scheduled but {rel} is missing or unreadable",
-                                  "artifact_rel": rel, "store": "data/runtime", "detected_at": day0})
+                    found.append(
+                        {
+                            "source": source,
+                            "item": "receipt:missing",
+                            "severity": "P2",
+                            "detail": f"lane {lane_id} is scheduled but {rel} is missing or unreadable",
+                            "artifact_rel": rel,
+                            "store": "data/runtime",
+                            "detected_at": day0,
+                        }
+                    )
                 NOTES[key] = f"ok:no_receipt:scheduled={'yes' if scheduled else 'no'}"
                 continue
             age_h = (now - _stable(doc.get("as_of"), now)).total_seconds() / 3600 if doc.get("as_of") else None
@@ -659,25 +865,93 @@ def _governance_findings(root: Path, now: datetime, prev: dict[str, Any] | None 
                 NOTES[key] = f"ok:stale_unscheduled:age_h={None if age_h is None else round(age_h, 1)}"
                 continue
             if stale:
-                found.append({"source": source, "item": "receipt:stale", "severity": "P2",
-                              "detail": (f"{rel} age_h={None if age_h is None else round(age_h, 1)} > "
-                                         f"{GOVERNANCE_STALE_FACTOR}x cadence {cadence}h (lane {lane_id})"),
-                              "artifact_rel": rel, "store": "data/runtime", "detected_at": day0})
+                found.append(
+                    {
+                        "source": source,
+                        "item": "receipt:stale",
+                        "severity": "P2",
+                        "detail": (
+                            f"{rel} age_h={None if age_h is None else round(age_h, 1)} > "
+                            f"{GOVERNANCE_STALE_FACTOR}x cadence {cadence}h (lane {lane_id})"
+                        ),
+                        "artifact_rel": rel,
+                        "store": "data/runtime",
+                        "detected_at": day0,
+                    }
+                )
             rows = _governance_rows(source, doc)
             for item, sev, detail, detected in rows:
-                found.append({"source": source, "item": item, "severity": sev, "detail": detail[:160],
-                              "artifact_rel": rel, "store": "data/runtime", "detected_at": detected or day0})
-            NOTES[key] = (f"ok:{len(rows)}:verdict={doc.get('verdict')}:age_h={None if age_h is None else round(age_h, 2)}:"
-                          f"scheduled={'yes' if scheduled else 'no'}{':stale' if stale else ''}")
+                found.append(
+                    {
+                        "source": source,
+                        "item": item,
+                        "severity": sev,
+                        "detail": detail[:160],
+                        "artifact_rel": rel,
+                        "store": "data/runtime",
+                        "detected_at": detected or day0,
+                    }
+                )
+            NOTES[key] = (
+                f"ok:{len(rows)}:verdict={doc.get('verdict')}:age_h={None if age_h is None else round(age_h, 2)}:"
+                f"scheduled={'yes' if scheduled else 'no'}{':stale' if stale else ''}"
+            )
         except Exception as exc:  # noqa: BLE001 — a broken source is a note on the receipt, not a crash
             NOTES[key] = f"unavailable:{type(exc).__name__}:{str(exc)[:80]}"
-            repeated = str(prev_notes.get(key) or "").startswith("unavailable:") and "disabled_by_env" not in str(prev_notes.get(key))
+            repeated = str(prev_notes.get(key) or "").startswith("unavailable:") and "disabled_by_env" not in str(
+                prev_notes.get(key)
+            )
             if scheduled or repeated:
-                found.append({"source": source, "item": "governance:source_unavailable", "severity": "P2",
-                              "detail": (f"{NOTES[key]} (lane {lane_id} scheduled={'yes' if scheduled else 'unknown/no'}, "
-                                         f"previous run unavailable={'yes' if repeated else 'no'})")[:160],
-                              "artifact_rel": rel, "store": "data/runtime", "detected_at": day0})
+                found.append(
+                    {
+                        "source": source,
+                        "item": "governance:source_unavailable",
+                        "severity": "P2",
+                        "detail": (
+                            f"{NOTES[key]} (lane {lane_id} scheduled={'yes' if scheduled else 'unknown/no'}, "
+                            f"previous run unavailable={'yes' if repeated else 'no'})"
+                        )[:160],
+                        "artifact_rel": rel,
+                        "store": "data/runtime",
+                        "detected_at": day0,
+                    }
+                )
     return found
+
+
+def _momentum_lifecycle_findings(root: Path, now: datetime) -> list[dict[str, Any]]:
+    """Read host monitor health receipt; host notifier remains independent of n8n."""
+    from datetime import timedelta
+    from zoneinfo import ZoneInfo
+    from scripts.lib.n8n_momentum_lifecycle import SCHEMA, MONITOR_REL, _finding, stamp
+
+    config = _load(ROOT / "config/n8n_momentum_lifecycle_candidate.json") or {}
+    if config.get("enabled") is not True:
+        return []
+    doc = _load(root / MONITOR_REL) or {}
+    observed = stamp(doc.get("as_of"))
+    day = now.astimezone(ZoneInfo("America/New_York")).date().isoformat()
+    if doc.get("schema") != SCHEMA or observed is None or not timedelta(0) <= now - observed <= timedelta(minutes=10):
+        return [_finding("momentum-lifecycle-monitor", "monitor_missing_or_stale", day)]
+    expected_sha = (ROOT / "SOURCE_COMMIT").read_text().strip()
+    if doc.get("source_sha") != expected_sha:
+        return [_finding("momentum-lifecycle-monitor", "monitor_deployed_sha_drift", day)]
+    allowed = {
+        "source",
+        "item",
+        "severity",
+        "detail",
+        "artifact_rel",
+        "store",
+        "detected_at",
+        "operator_action",
+        "notification_dedupe_minutes",
+    }
+    return [
+        {k: v for k, v in f.items() if k in allowed}
+        for f in doc.get("incidents", [])
+        if isinstance(f, dict) and f.get("source") == "scalp_lane"
+    ]
 
 
 DIAGNOSIS_SOURCE = "n8n_failure_diagnosis"
@@ -709,51 +983,86 @@ def _diagnosis_findings(root: Path, now: datetime) -> list[dict[str, Any]]:
     sched = row.get("scheduler") or {}
     # A shadow-stage dispatcher row runs the diagnoser with --dry-run, which writes no receipt: liveness starts at
     # canary/cutover (or a cron/systemd line), never while it is only shadowed.
-    scheduled = (row.get("state") == "ACTIVE" and sched.get("kind") not in (None, "", "none")
-                 and sched.get("stage") != "shadow")
+    scheduled = (
+        row.get("state") == "ACTIVE" and sched.get("kind") not in (None, "", "none") and sched.get("stage") != "shadow"
+    )
     cadence = float(row.get("expected_cadence_hours") or DIAGNOSIS_DEFAULT_CADENCE_H)
     doc = _load(root / DIAGNOSIS_RECEIPT_REL)
     base = {"source": DIAGNOSIS_SOURCE, "artifact_rel": DIAGNOSIS_RECEIPT_REL, "store": "data/runtime"}
     if not doc:
         if scheduled:
-            found.append({**base, "item": "diagnoser:receipt_missing", "severity": "P1",
-                          "detail": f"lane {DIAGNOSIS_LANE} is scheduled but its receipt is missing", "detected_at": day0})
+            found.append(
+                {
+                    **base,
+                    "item": "diagnoser:receipt_missing",
+                    "severity": "P1",
+                    "detail": f"lane {DIAGNOSIS_LANE} is scheduled but its receipt is missing",
+                    "detected_at": day0,
+                }
+            )
         NOTES.setdefault(key, f"ok:no_receipt:scheduled={'yes' if scheduled else 'no'}")
         return found
     age_h = (now - _stable(doc.get("as_of"), now)).total_seconds() / 3600 if doc.get("as_of") else None
     if scheduled:
         if age_h is None or age_h > DIAGNOSIS_STALE_FACTOR * cadence:
-            found.append({**base, "item": "diagnoser:receipt_stale", "severity": "P1",
-                          "detail": f"age_h={None if age_h is None else round(age_h, 2)} > {DIAGNOSIS_STALE_FACTOR}x "
-                                    f"cadence {round(cadence, 3)}h", "detected_at": day0})
+            found.append(
+                {
+                    **base,
+                    "item": "diagnoser:receipt_stale",
+                    "severity": "P1",
+                    "detail": f"age_h={None if age_h is None else round(age_h, 2)} > {DIAGNOSIS_STALE_FACTOR}x "
+                    f"cadence {round(cadence, 3)}h",
+                    "detected_at": day0,
+                }
+            )
         if doc.get("ok") is False:
-            found.append({**base, "item": "diagnoser:cycle_not_ok", "severity": "P1",
-                          "detail": f"source_notes={json.dumps(doc.get('source_notes') or {})[:120]}",
-                          "detected_at": day0})
+            found.append(
+                {
+                    **base,
+                    "item": "diagnoser:cycle_not_ok",
+                    "severity": "P1",
+                    "detail": f"source_notes={json.dumps(doc.get('source_notes') or {})[:120]}",
+                    "detected_at": day0,
+                }
+            )
         if int(doc.get("consecutive_blind") or 0) >= DIAGNOSIS_BLIND_CYCLES:
-            found.append({**base, "item": "diagnoser:blind", "severity": "P1",
-                          "detail": f"{doc.get('consecutive_blind')} cycles with eligible incidents and no diagnosis",
-                          "detected_at": day0})
+            found.append(
+                {
+                    **base,
+                    "item": "diagnoser:blind",
+                    "severity": "P1",
+                    "detail": f"{doc.get('consecutive_blind')} cycles with eligible incidents and no diagnosis",
+                    "detected_at": day0,
+                }
+            )
     passed = 0
     if age_h is not None and age_h <= 24:
         for e in doc.get("escalations") or []:
             sev = str(e.get("priority") or "P2")
             if sev not in ("P1", "P2"):
                 continue
-            found.append({**base, "item": f"escalate:{e.get('lane')}/{e.get('key')}", "severity": sev,
-                          "detail": str(e.get("detail") or e.get("reason") or "")[:160],
-                          "detected_at": e.get("at") or doc.get("as_of")})
+            found.append(
+                {
+                    **base,
+                    "item": f"escalate:{e.get('lane')}/{e.get('key')}",
+                    "severity": sev,
+                    "detail": str(e.get("detail") or e.get("reason") or "")[:160],
+                    "detected_at": e.get("at") or doc.get("as_of"),
+                }
+            )
             passed += 1
-    NOTES[key] = (f"ok:escalations={passed}:age_h={None if age_h is None else round(age_h, 2)}:"
-                  f"scheduled={'yes' if scheduled else 'no'}")
+    NOTES[key] = (
+        f"ok:escalations={passed}:age_h={None if age_h is None else round(age_h, 2)}:"
+        f"scheduled={'yes' if scheduled else 'no'}"
+    )
     return found
 
 
 WFERR_SOURCE = "n8n_workflow_error"
-WFERR_LANE = "n8n-workflow-error"                   # scripts/n8n_run_relay.py EVENT_LANE
-WFERR_PREFIX = "wferr-"                             # relay idempotency key: wferr-<workflow_id>-<execution_id>
+WFERR_LANE = "n8n-workflow-error"  # scripts/n8n_run_relay.py EVENT_LANE
+WFERR_PREFIX = "wferr-"  # relay idempotency key: wferr-<workflow_id>-<execution_id>
 WFERR_RELAY_LOG_REL = "data/runtime/n8n_relay/relay_log.jsonl"
-WFERR_DEFAULT_WINDOW_MIN = 60                       # an incident stays open while an error is this recent
+WFERR_DEFAULT_WINDOW_MIN = 60  # an incident stays open while an error is this recent
 # Operator 2026-10-10 ("Yes to everything"): the dispatcher and the alerting path itself are P1.
 WFERR_P1_WORKFLOWS = frozenset({"tradeai-dispatcher", "tradeai-incident-router", "tradeai-heartbeat-watcher"})
 HEALTH_CONTRACTS_PATH = ROOT / "config" / "n8n_health_contracts.json"
@@ -764,7 +1073,7 @@ def _wferr_split(key: str) -> tuple[str, str] | None:
     may carry hyphens, so the execution id is the last segment."""
     if not key.startswith(WFERR_PREFIX):
         return None
-    wf, sep, ex = key[len(WFERR_PREFIX):].rpartition("-")
+    wf, sep, ex = key[len(WFERR_PREFIX) :].rpartition("-")
     return (wf, ex) if sep and wf and ex else None
 
 
@@ -777,8 +1086,9 @@ def _wferr_ledger_rows(path: Path) -> list[dict[str, Any]] | None:
         return None
     conn = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True, timeout=3)
     try:
-        rows = conn.execute("SELECT store_key, state, receipt_json, updated_at FROM receipts WHERE lane_id = ?",
-                            (WFERR_LANE,)).fetchall()
+        rows = conn.execute(
+            "SELECT store_key, state, receipt_json, updated_at FROM receipts WHERE lane_id = ?", (WFERR_LANE,)
+        ).fetchall()
     finally:
         conn.close()
     out = []
@@ -851,7 +1161,7 @@ def _workflow_error_findings(root: Path, now: datetime) -> list[dict[str, Any]]:
         ev = events.get(k)
         if ev is None:
             if rows is not None:
-                continue                            # the ledger is the record; a relay-only line is not an event
+                continue  # the ledger is the record; a relay-only line is not an event
             ev = events[k] = {"key": k, "at": r.get("at"), "node": None, "message": None}
         ev["node"], ev["message"] = r.get("node"), r.get("message")
         if r.get("workflow_id") and r.get("execution_id"):
@@ -865,7 +1175,7 @@ def _workflow_error_findings(root: Path, now: datetime) -> list[dict[str, Any]]:
             ev["wf"], ev["exec"] = split
         at = _stable(ev.get("at"), datetime.min.replace(tzinfo=timezone.utc))
         age_min = (now - at).total_seconds() / 60
-        if -5 <= age_min <= window_min:             # a few minutes of clock skew ahead of `now` is tolerated
+        if -5 <= age_min <= window_min:  # a few minutes of clock skew ahead of `now` is tolerated
             ev["at_dt"] = at
             by_wf.setdefault(ev["wf"], []).append(ev)
     found: list[dict[str, Any]] = []
@@ -875,20 +1185,32 @@ def _workflow_error_findings(root: Path, now: datetime) -> list[dict[str, Any]]:
         sev, basis = _wferr_severity(wf)
         execs = ",".join(e["exec"] for e in evs[-6:]) + (f",+{len(evs) - 6}" if len(evs) > 6 else "")
         where = f"{last.get('node')}: {last.get('message')}" if last.get("node") or last.get("message") else "no detail"
-        detail = (f"{len(evs)} error(s) {evs[0]['at_dt']:%H:%M}-{last['at_dt']:%H:%MZ} exec {execs} · {where} "
-                  f"[{basis}]")
-        found.append({"source": WFERR_SOURCE, "item": f"wferr:{wf}", "severity": sev, "detail": detail[:160],
-                      "artifact_rel": LEDGER_REL, "store": "persistent-state",
-                      "detected_at": evs[0]["at_dt"].isoformat(), "workflow_id": wf, "count": len(evs),
-                      "event_keys": [e["key"] for e in evs]})
-    NOTES[key] = (f"ledger:{ledger_note}:relay_log_rows={relay_rows}:events={len(events)}:"
-                  f"in_window={sum(len(v) for v in by_wf.values())}:workflows={len(by_wf)}:window_min={window_min:g}")
+        detail = f"{len(evs)} error(s) {evs[0]['at_dt']:%H:%M}-{last['at_dt']:%H:%MZ} exec {execs} · {where} [{basis}]"
+        found.append(
+            {
+                "source": WFERR_SOURCE,
+                "item": f"wferr:{wf}",
+                "severity": sev,
+                "detail": detail[:160],
+                "artifact_rel": LEDGER_REL,
+                "store": "persistent-state",
+                "detected_at": evs[0]["at_dt"].isoformat(),
+                "workflow_id": wf,
+                "count": len(evs),
+                "event_keys": [e["key"] for e in evs],
+            }
+        )
+    NOTES[key] = (
+        f"ledger:{ledger_note}:relay_log_rows={relay_rows}:events={len(events)}:"
+        f"in_window={sum(len(v) for v in by_wf.values())}:workflows={len(by_wf)}:window_min={window_min:g}"
+    )
     return found
 
 
 def _alert_path_findings(root: Path, now: datetime) -> list[dict[str, Any]]:
     try:
         from scripts.lib.n8n_alert_path_watch import findings
+
         found, note = findings(root, now)
     except Exception as exc:  # noqa: BLE001 — a broken source is a note on the receipt, not a crash
         found, note = [], f"unavailable:{type(exc).__name__}"
@@ -901,6 +1223,7 @@ def _outbox_findings(now: datetime) -> list[dict[str, Any]]:
     global OUTBOX_SOURCE_STATUS
     try:
         from scripts.lib.notification_outbox_projection import anomalies, load_outbox
+
         model = load_outbox(hours=24, timeout_s=3.0, now=now)
         OUTBOX_SOURCE_STATUS = {"status": model.get("status"), "note": model.get("note"), "total": model.get("total")}
         if model.get("status") != "OK":
@@ -928,20 +1251,35 @@ def _stable(ts: Any, fallback: datetime) -> datetime:
 
 def build_event(f: dict[str, Any], *, day: str, now: datetime, sha: str) -> dict[str, Any]:
     key = idem_key(f, day)
-    now = _stable(f.get("detected_at"), now)   # payload must not drift between runs
-    return {"event_id": f"evt-{LANE}-{key}", "source_project": "trade-ai", "lane_id": LANE, "schema_version": "event-reference/v0",
-            "origin_sha": sha, "subject_key": f"sev={f['severity']};src={f['source']};item={f['item']}"[:200],
-            "source_timestamp": now.isoformat(), "deadline": now.replace(hour=23, minute=59, second=0, microsecond=0).isoformat(),
-            "artifact_ref": f"{f['store']}:{f['artifact_rel']}", "authority_class": "coordination_read",
-            "correlation_id": f"corr-{key}", "idempotency_key": key}
+    now = _stable(f.get("detected_at"), now)  # payload must not drift between runs
+    return {
+        "event_id": f"evt-{LANE}-{key}",
+        "source_project": "trade-ai",
+        "lane_id": LANE,
+        "schema_version": "event-reference/v0",
+        "origin_sha": sha,
+        "subject_key": f"sev={f['severity']};src={f['source']};item={f['item']}"[:200],
+        "source_timestamp": now.isoformat(),
+        "deadline": now.replace(hour=23, minute=59, second=0, microsecond=0).isoformat(),
+        "artifact_ref": f"{f['store']}:{f['artifact_rel']}",
+        "authority_class": "coordination_read",
+        "correlation_id": f"corr-{key}",
+        "idempotency_key": key,
+    }
 
 
 def write_lane_registry_receipt(root: Path, drift: list[dict[str, Any]], now: datetime, sha: str) -> Path:
     """The durable artifact a lane_registry incident references (apply mode only)."""
     p = root / LANE_REGISTRY_RECEIPT_REL
     p.parent.mkdir(parents=True, exist_ok=True)
-    doc = {"schema": "N8nLaneRegistryDrift@v1", "authority": AUTHORITY, "as_of": now.isoformat(), "served_sha": sha or None,
-           "source_note": NOTES.get("lane_registry_source"), "findings": drift}
+    doc = {
+        "schema": "N8nLaneRegistryDrift@v1",
+        "authority": AUTHORITY,
+        "as_of": now.isoformat(),
+        "served_sha": sha or None,
+        "source_note": NOTES.get("lane_registry_source"),
+        "findings": drift,
+    }
     tmp = p.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(doc, indent=1, default=str) + "\n", encoding="utf-8")
     os.replace(tmp, p)
@@ -970,7 +1308,11 @@ def main(argv: list[str] | None = None) -> int:
     rows: list[dict[str, Any]] = []
     gateway: dict[str, Any] = {}
     prev_open: set[str] = set()
-    prev_open = {r["idempotency_key"] for r in prev.get("incidents", []) if r.get("idempotency_key") and r.get("state") == "ARTIFACT_WRITTEN"}
+    prev_open = {
+        r["idempotency_key"]
+        for r in prev.get("incidents", [])
+        if r.get("idempotency_key") and r.get("state") == "ARTIFACT_WRITTEN"
+    }
     client = None
     if args.apply:
         client = GatewayClient(caller_id="tradeai-incident-fanin")
@@ -981,9 +1323,13 @@ def main(argv: list[str] | None = None) -> int:
     for f in findings:
         ev = build_event(f, day=day, now=now, sha=sha)
         current_keys.add(ev["idempotency_key"])
-        row = {**{k: f[k] for k in ("source", "item", "severity", "detail", "detected_at")}, "idempotency_key": ev["idempotency_key"],
-               "event_id": ev["event_id"], "ops": []}
-        for extra in ("workflow_id", "count", "event_keys"):   # workflow-error grouping evidence (gap 11)
+        row = {
+            **{k: f[k] for k in ("source", "item", "severity", "detail", "detected_at")},
+            "idempotency_key": ev["idempotency_key"],
+            "event_id": ev["event_id"],
+            "ops": [],
+        }
+        for extra in ("workflow_id", "count", "event_keys"):  # workflow-error grouping evidence (gap 11)
             if extra in f:
                 row[extra] = f[extra]
         if client is None:
@@ -996,8 +1342,17 @@ def main(argv: list[str] | None = None) -> int:
                 acc = client.accept_event(ev)
             else:
                 acc = {"state": st.get("state"), "reason": st.get("reason"), "duplicate": True}
-            row["ops"].append({"op": "accept_event", "state": acc.get("state"), "reason": acc.get("reason"), "duplicate": acc.get("duplicate")})
-            if acc.get("state") == "ACCEPTED" or (acc.get("duplicate") and acc.get("state") not in {"REFUSED", "CONSUMED"}):
+            row["ops"].append(
+                {
+                    "op": "accept_event",
+                    "state": acc.get("state"),
+                    "reason": acc.get("reason"),
+                    "duplicate": acc.get("duplicate"),
+                }
+            )
+            if acc.get("state") == "ACCEPTED" or (
+                acc.get("duplicate") and acc.get("state") not in {"REFUSED", "CONSUMED"}
+            ):
                 ref = {"store": f["store"], "ref": f["artifact_rel"], "as_of": now.isoformat()}
                 p = root / f["artifact_rel"]
                 try:
@@ -1007,31 +1362,56 @@ def main(argv: list[str] | None = None) -> int:
                 row["ops"].extend(walk_to_artifact(client, ev["idempotency_key"], ref))
             row["state"] = row["ops"][-1].get("state") if row["ops"] else "UNKNOWN"
             if acc.get("state") == "CONSUMED":
-                row["state"] = "CONSUMED"   # already acknowledged earlier today; still open at the source
+                row["state"] = "CONSUMED"  # already acknowledged earlier today; still open at the source
         rows.append(row)
     recovered: list[dict[str, Any]] = []
     for key in sorted(prev_open - current_keys):
         rec = {"idempotency_key": key, "ops": []}
         if client is not None:
-            r = client.transition("consumer_ack", key, consumer_receipt={"consumer": "recovery-observer", "receipt_id": now.isoformat()})
+            r = client.transition(
+                "consumer_ack", key, consumer_receipt={"consumer": "recovery-observer", "receipt_id": now.isoformat()}
+            )
             rec["ops"].append({"op": "consumer_ack", "state": r.get("state"), "reason": r.get("reason")})
             rec["state"] = r.get("state")
         else:
             rec["state"] = "DRY_RUN"
         recovered.append(rec)
-    receipt = {"schema": SCHEMA, "authority": AUTHORITY, "as_of": now.isoformat(), "mode": "apply" if args.apply else "dry-run",
-               "served_sha": sha or None, "state_root": str(root), "gateway": gateway, "open": len(findings), "by_severity": by_sev,
-               "incidents": rows, "recovered": recovered, "outbox_source": OUTBOX_SOURCE_STATUS, "source_notes": dict(NOTES),
-               # the relay baseline survives a run where the relay source was off or broken (no false +delta later)
-               "relay_counts": dict(RELAY_COUNTS) or prev.get("relay_counts") or None,
-               "ok": (not args.apply) or all(r.get("state") not in {"UNREACHABLE", "REFUSED", "UNKNOWN"} for r in rows)}
+    receipt = {
+        "schema": SCHEMA,
+        "authority": AUTHORITY,
+        "as_of": now.isoformat(),
+        "mode": "apply" if args.apply else "dry-run",
+        "served_sha": sha or None,
+        "state_root": str(root),
+        "gateway": gateway,
+        "open": len(findings),
+        "by_severity": by_sev,
+        "incidents": rows,
+        "recovered": recovered,
+        "outbox_source": OUTBOX_SOURCE_STATUS,
+        "source_notes": dict(NOTES),
+        # the relay baseline survives a run where the relay source was off or broken (no false +delta later)
+        "relay_counts": dict(RELAY_COUNTS) or prev.get("relay_counts") or None,
+        "ok": (not args.apply) or all(r.get("state") not in {"UNREACHABLE", "REFUSED", "UNKNOWN"} for r in rows),
+    }
     if args.apply:
         out.parent.mkdir(parents=True, exist_ok=True)
         tmp = out.with_suffix(".json.tmp")
         tmp.write_text(json.dumps(receipt, indent=1, default=str) + "\n", encoding="utf-8")
         os.replace(tmp, out)
-    print(json.dumps({"mode": receipt["mode"], "open": len(findings), "by_severity": by_sev, "recovered": len(recovered), "ok": receipt["ok"],
-                      "sample": [(r["severity"], r["source"], r["item"][:60]) for r in rows[:8]]}, default=str))
+    print(
+        json.dumps(
+            {
+                "mode": receipt["mode"],
+                "open": len(findings),
+                "by_severity": by_sev,
+                "recovered": len(recovered),
+                "ok": receipt["ok"],
+                "sample": [(r["severity"], r["source"], r["item"][:60]) for r in rows[:8]],
+            },
+            default=str,
+        )
+    )
     return 0 if receipt["ok"] else 1
 
 

@@ -38,6 +38,7 @@ Dedupe state: incident_notifier_state.json (live only; atomic writes).
 
 AUTHORITY: OPERATOR_NOTIFY_SYSTEM_OPS. Reads receipts and the ledger read-only; no restart, no remediation.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -76,16 +77,16 @@ STATE_REL = "data/runtime/incident_notifier_state.json"
 LOCK_REL = "data/runtime/incident_notifier.lock"
 
 # Defaults; each is overridable by the env var named beside it (see config_from_env).
-DEFAULT_DAILY_CAP = 24           # messages per operator (America/New_York) day; P1 is never capped
+DEFAULT_DAILY_CAP = 24  # messages per operator (America/New_York) day; P1 is never capped
 DEFAULT_P2_BATCH_MIN = 30
 DEFAULT_DEDUPE_HOURS = 24
-DEFAULT_MAX_FANIN_AGE_MIN = 30   # fan-in runs */5; six missed runs and the input is stale
-DEFAULT_MAX_LINES = 15           # incident lines per message; the rest is "+N more"
-DEFAULT_FLAP_COOLDOWN_MIN = 60   # a re-open this soon after a recovery is a flap: counted, noted, not re-sent
-DEFAULT_QUIET_START = "22:00"    # operator decision 2026-10-09: P2 held 22:00-07:00 ET; P1 always goes out
+DEFAULT_MAX_FANIN_AGE_MIN = 30  # fan-in runs */5; six missed runs and the input is stale
+DEFAULT_MAX_LINES = 15  # incident lines per message; the rest is "+N more"
+DEFAULT_FLAP_COOLDOWN_MIN = 60  # a re-open this soon after a recovery is a flap: counted, noted, not re-sent
+DEFAULT_QUIET_START = "22:00"  # operator decision 2026-10-09: P2 held 22:00-07:00 ET; P1 always goes out
 DEFAULT_QUIET_END = "07:00"
 DEFAULT_TZ = "America/New_York"
-RECORD_TTL_DAYS = 7              # recovered records older than this are dropped from the state file
+RECORD_TTL_DAYS = 7  # recovered records older than this are dropped from the state file
 ENV = {
     "daily_cap": ("TRADEAI_INCIDENT_NOTIFIER_DAILY_CAP", DEFAULT_DAILY_CAP),
     "p2_batch_min": ("TRADEAI_INCIDENT_NOTIFIER_P2_BATCH_MIN", DEFAULT_P2_BATCH_MIN),
@@ -101,11 +102,11 @@ ENV_CLOCK = {
 ENV_TZ = ("TRADEAI_INCIDENT_NOTIFIER_TZ", DEFAULT_TZ)
 NOTIFY_SEVERITIES = ("P1", "P2")
 SEV_RANK = {"P1": 1, "P2": 2, "P3": 3}
-RECOVERY_CONSUMER = "recovery-observer"   # the fan-in's own consumer_ack for a finding that disappeared
+RECOVERY_CONSUMER = "recovery-observer"  # the fan-in's own consumer_ack for a finding that disappeared
 IDENTITY_PREFIX = "incident-notifier:"
 
-Sender = Callable[..., dict]      # send_system(text, *, identity, kind) -> record
-Previewer = Callable[..., dict]   # preview_send(text, *, identity, kind) -> plan
+Sender = Callable[..., dict]  # send_system(text, *, identity, kind) -> record
+Previewer = Callable[..., dict]  # preview_send(text, *, identity, kind) -> plan
 
 
 def _hhmm(text: str) -> Optional[int]:
@@ -168,8 +169,16 @@ def read_fanin(root: Path, now: datetime, cfg: dict[str, Any]) -> dict[str, Any]
         return out
     as_of = _parse_ts(doc.get("as_of"))
     age_min = None if as_of is None else round((now - as_of).total_seconds() / 60, 1)
-    out.update({"as_of": doc.get("as_of"), "age_min": age_min, "mode": doc.get("mode"), "open": doc.get("open"),
-                "by_severity": doc.get("by_severity") or {}, "schema": doc.get("schema")})
+    out.update(
+        {
+            "as_of": doc.get("as_of"),
+            "age_min": age_min,
+            "mode": doc.get("mode"),
+            "open": doc.get("open"),
+            "by_severity": doc.get("by_severity") or {},
+            "schema": doc.get("schema"),
+        }
+    )
     if doc.get("schema") != "N8nIncidentFanin@v1" or doc.get("mode") != "apply":
         out["status"] = "NOT_APPLY_RECEIPT"
         return out
@@ -187,11 +196,17 @@ def read_ledger_acks(path: Optional[Path] = None, *, now: Optional[datetime] = N
     Read-only, through the Command Center projection; no ledger means no acks, and the receipt says so."""
     try:
         from scripts.lib.n8n_coordination_projection import project
+
         proj = project(path, lane_id=FANIN_LANE, state="CONSUMED", limit=500, now=now)
     except Exception as exc:  # noqa: BLE001 — a broken ledger read is a note, never a crash of the notifier
         return {"status": f"unavailable:{type(exc).__name__}", "acked_event_ids": []}
-    acked = sorted({str(it.get("event_id")) for it in proj.get("items") or []
-                    if it.get("event_id") and str(it.get("consumer") or "") not in {"", RECOVERY_CONSUMER}})
+    acked = sorted(
+        {
+            str(it.get("event_id"))
+            for it in proj.get("items") or []
+            if it.get("event_id") and str(it.get("consumer") or "") not in {"", RECOVERY_CONSUMER}
+        }
+    )
     return {"status": str(proj.get("status")), "acked_event_ids": acked}
 
 
@@ -208,10 +223,18 @@ def open_incidents(fanin: dict[str, Any], acked_event_ids: set[str]) -> tuple[di
             acked.append(key)
             continue
         prev = out.get(key)
-        if prev is None or SEV_RANK[sev] < SEV_RANK[prev["severity"]]:
-            out[key] = {"key": key, "source": str(r.get("source")), "item": str(r.get("item")), "severity": sev,
-                        "detail": str(r.get("detail") or "")[:160], "detected_at": r.get("detected_at"),
-                        "event_id": r.get("event_id")}
+        if prev is None or SEV_RANK[sev] < SEV_RANK[prev["severity"]] or r.get("momentum_host_watch"):
+            out[key] = {
+                "key": key,
+                "source": str(r.get("source")),
+                "item": str(r.get("item")),
+                "severity": sev,
+                "detail": str(r.get("detail") or "")[:160],
+                "detected_at": r.get("detected_at"),
+                "event_id": r.get("event_id"),
+                "operator_action": r.get("operator_action") is True,
+                "momentum_host_watch": r.get("momentum_host_watch") is True,
+            }
     return out, sorted(set(acked))
 
 
@@ -219,8 +242,12 @@ def load_state(path: Path) -> dict[str, Any]:
     doc = _load(path) or {}
     if doc.get("schema") != STATE_SCHEMA:
         doc = {}
-    return {"schema": STATE_SCHEMA, "notified": dict(doc.get("notified") or {}),
-            "last_p2_batch_at": doc.get("last_p2_batch_at"), "sends_by_day": dict(doc.get("sends_by_day") or {})}
+    return {
+        "schema": STATE_SCHEMA,
+        "notified": dict(doc.get("notified") or {}),
+        "last_p2_batch_at": doc.get("last_p2_batch_at"),
+        "sends_by_day": dict(doc.get("sends_by_day") or {}),
+    }
 
 
 def _local(now: datetime, cfg: dict[str, Any]) -> datetime:
@@ -246,12 +273,15 @@ def quiet_ends_at(now: datetime, cfg: dict[str, Any]) -> datetime:
     t = _local(now, cfg)
     end = t.replace(hour=cfg["quiet_end"] // 60, minute=cfg["quiet_end"] % 60, second=0, microsecond=0)
     if end <= t:
-        end = (t + timedelta(days=1)).replace(hour=cfg["quiet_end"] // 60, minute=cfg["quiet_end"] % 60,
-                                              second=0, microsecond=0)
+        end = (t + timedelta(days=1)).replace(
+            hour=cfg["quiet_end"] // 60, minute=cfg["quiet_end"] % 60, second=0, microsecond=0
+        )
     return end.astimezone(timezone.utc)
 
 
-def reconcile(open_now: dict[str, dict], acked: set[str], state: dict, now: datetime, cfg: dict[str, Any]) -> dict[str, list[str]]:
+def reconcile(
+    open_now: dict[str, dict], acked: set[str], state: dict, now: datetime, cfg: dict[str, Any]
+) -> dict[str, list[str]]:
     """Fold this run's observations into the dedupe records BEFORE planning. Records are never deleted on
     recovery (a deleted record made open → clear → re-open send P1, RECOVERED, P1 every 5 min).
 
@@ -267,13 +297,20 @@ def reconcile(open_now: dict[str, dict], acked: set[str], state: dict, now: date
     for key, rec in list(state["notified"].items()):
         last_flap = _parse_ts(rec.get("last_flap_at"))
         if rec.get("flapping") and (last_flap is None or now - last_flap >= cooldown):
-            rec["flapping"] = False                  # settled: the next clear is a real recovery again
+            rec["flapping"] = False  # settled: the next clear is a real recovery again
         is_open = key in open_now
         if is_open and not rec.get("open", True):
             rec_at = _parse_ts(rec.get("recovered_at"))
             if rec_at is not None and now - rec_at < cooldown:
-                rec.update({"open": True, "flapping": True, "flap_count": int(rec.get("flap_count") or 0) + 1,
-                            "last_flap_at": iso, "flap_note_pending": True})
+                rec.update(
+                    {
+                        "open": True,
+                        "flapping": True,
+                        "flap_count": int(rec.get("flap_count") or 0) + 1,
+                        "last_flap_at": iso,
+                        "flap_note_pending": True,
+                    }
+                )
                 flapped.append(key)
             # else: a genuine re-open after the cooldown; _due() treats the closed record as new
         elif not is_open and key not in acked and rec.get("open", True) and rec.get("flapping"):
@@ -287,13 +324,15 @@ def reconcile(open_now: dict[str, dict], acked: set[str], state: dict, now: date
 
 
 def _due(key: str, inc: dict, state: dict, now: datetime, dedupe_h: int) -> bool:
+    if inc.get("severity") == "P1" and inc.get("operator_action") is True:
+        return True  # AGENTS 5.1.0: explicit operator action; stable incident key is not notification suppression
     prior = state["notified"].get(key)
     if not prior:
         return True
     if not prior.get("open", True):
-        return True   # closed record re-opened after the flap cooldown: a new incident
+        return True  # closed record re-opened after the flap cooldown: a new incident
     if SEV_RANK.get(inc["severity"], 9) < SEV_RANK.get(str(prior.get("severity")), 9):
-        return True   # escalated (P2 -> P1): tell the operator now
+        return True  # escalated (P2 -> P1): tell the operator now
     last = _parse_ts(prior.get("last_notified_at"))
     return last is None or (now - last) >= timedelta(hours=dedupe_h)
 
@@ -330,45 +369,92 @@ def _flap_note(state: dict, cfg: dict[str, Any]) -> tuple[list[str], str]:
     keys = sorted(k for k, r in state["notified"].items() if r.get("flap_note_pending"))
     if not keys:
         return [], ""
-    parts = [f"{state['notified'][k].get('source')} {state['notified'][k].get('item')} ×{state['notified'][k].get('flap_count')}"
-             for k in keys[:cfg["max_lines"]]]
+    parts = [
+        f"{state['notified'][k].get('source')} {state['notified'][k].get('item')} ×{state['notified'][k].get('flap_count')}"
+        for k in keys[: cfg["max_lines"]]
+    ]
     more = f" (+{len(keys) - cfg['max_lines']} more)" if len(keys) > cfg["max_lines"] else ""
-    return keys, (f"Flapping (re-opened within {cfg['flap_cooldown_min']} min of recovery, not re-sent): "
-                  + "; ".join(parts) + more)
+    return keys, (
+        f"Flapping (re-opened within {cfg['flap_cooldown_min']} min of recovery, not re-sent): "
+        + "; ".join(parts)
+        + more
+    )
 
 
-def plan_messages(open_now: dict[str, dict], state: dict, now: datetime, cfg: dict[str, Any],
-                  fanin: dict[str, Any], acked: Optional[set[str]] = None) -> tuple[list[dict], dict[str, Any]]:
+def plan_messages(
+    open_now: dict[str, dict],
+    state: dict,
+    now: datetime,
+    cfg: dict[str, Any],
+    fanin: dict[str, Any],
+    acked: Optional[set[str]] = None,
+) -> tuple[list[dict], dict[str, Any]]:
     """Pure: which messages this run sends, in priority order (P1, recovery, P2 batch). No I/O.
 
     Quiet hours (22:00-07:00 America/New_York by default) hold the P2 batch and P2-only recoveries; P1 and
     any recovery that includes a P1 always go out. Held P2s leave as one batch at the end of the window."""
     by_sev = fanin.get("by_severity") or {}
-    footer = (f"Fan-in as of {str(fanin.get('as_of') or '')[:16]}Z · open P1 {by_sev.get('P1', 0)} · "
-              f"P2 {by_sev.get('P2', 0)} · P3 {by_sev.get('P3', 0)} (P3 never sends)")
+    footer = (
+        f"Fan-in as of {str(fanin.get('as_of') or '')[:16]}Z · open P1 {by_sev.get('P1', 0)} · "
+        f"P2 {by_sev.get('P2', 0)} · P3 {by_sev.get('P3', 0)} (P3 never sends)"
+    )
     quiet = in_quiet_hours(now, cfg)
     msgs: list[dict] = []
-    p1 = sorted((i for k, i in open_now.items() if i["severity"] == "P1" and _due(k, i, state, now, cfg["dedupe_hours"])),
-                key=lambda i: (i["source"], i["item"]))
+    p1 = sorted(
+        (i for k, i in open_now.items() if i["severity"] == "P1" and _due(k, i, state, now, cfg["dedupe_hours"])),
+        key=lambda i: (i["source"], i["item"]),
+    )
     if p1:
-        msgs.append({"kind": "p1", "severity": "P1", "incident_keys": [i["key"] for i in p1], "incidents": p1,
-                     "header": f"TRADE AI SYSTEM INCIDENT — P1 ({len(p1)})"})
+        msgs.append(
+            {
+                "kind": "p1",
+                "severity": "P1",
+                "incident_keys": [i["key"] for i in p1],
+                "incidents": p1,
+                "header": f"TRADE AI SYSTEM INCIDENT — P1 ({len(p1)})",
+            }
+        )
     acked = acked or set()
-    cleared = sorted(k for k, r in state["notified"].items()
-                     if r.get("open", True) and not r.get("flapping") and k not in open_now and k not in acked)
+    cleared = sorted(
+        k
+        for k, r in state["notified"].items()
+        if r.get("open", True) and not r.get("flapping") and k not in open_now and k not in acked
+    )
     recovery: dict[str, Any] = {"pending": len(cleared), "held": None}
     if cleared:
-        rec = [{"key": k, "source": state["notified"][k].get("source"), "item": state["notified"][k].get("item"),
-                "severity": state["notified"][k].get("severity"), "detail": ""} for k in cleared]
+        rec = [
+            {
+                "key": k,
+                "source": state["notified"][k].get("source"),
+                "item": state["notified"][k].get("item"),
+                "severity": state["notified"][k].get("severity"),
+                "detail": "",
+            }
+            for k in cleared
+        ]
         if quiet and not any(r["severity"] == "P1" for r in rec):
             recovery["held"] = "quiet_hours"
         else:
-            msgs.append({"kind": "recovery", "severity": "RECOVERY", "incident_keys": cleared, "incidents": rec,
-                         "header": f"TRADE AI SYSTEM RECOVERED — {len(rec)} incident(s) no longer open at P1/P2"})
-    p2 = sorted((i for k, i in open_now.items() if i["severity"] == "P2" and _due(k, i, state, now, cfg["dedupe_hours"])),
-                key=lambda i: (i["source"], i["item"]))
-    batch: dict[str, Any] = {"pending": len(p2), "window_min": cfg["p2_batch_min"], "next_batch_at": None,
-                             "quiet_hours": quiet, "recovery": recovery}
+            msgs.append(
+                {
+                    "kind": "recovery",
+                    "severity": "RECOVERY",
+                    "incident_keys": cleared,
+                    "incidents": rec,
+                    "header": f"TRADE AI SYSTEM RECOVERED — {len(rec)} incident(s) no longer open at P1/P2",
+                }
+            )
+    p2 = sorted(
+        (i for k, i in open_now.items() if i["severity"] == "P2" and _due(k, i, state, now, cfg["dedupe_hours"])),
+        key=lambda i: (i["source"], i["item"]),
+    )
+    batch: dict[str, Any] = {
+        "pending": len(p2),
+        "window_min": cfg["p2_batch_min"],
+        "next_batch_at": None,
+        "quiet_hours": quiet,
+        "recovery": recovery,
+    }
     if p2:
         last = _parse_ts(state.get("last_p2_batch_at"))
         if quiet:
@@ -378,14 +464,21 @@ def plan_messages(open_now: dict[str, dict], state: dict, now: datetime, cfg: di
             batch["next_batch_at"] = (last + timedelta(minutes=cfg["p2_batch_min"])).isoformat()
             batch["deferred"] = True
         else:
-            msgs.append({"kind": "p2_batch", "severity": "P2", "incident_keys": [i["key"] for i in p2], "incidents": p2,
-                         "header": f"TRADE AI SYSTEM INCIDENTS — P2 batch ({len(p2)})"})
+            msgs.append(
+                {
+                    "kind": "p2_batch",
+                    "severity": "P2",
+                    "incident_keys": [i["key"] for i in p2],
+                    "incidents": p2,
+                    "header": f"TRADE AI SYSTEM INCIDENTS — P2 batch ({len(p2)})",
+                }
+            )
     flap_keys, flap_line = _flap_note(state, cfg)
     for m in msgs:
         tail = footer
         m["flap_keys"] = []
         if flap_line and not any(x.get("flap_keys") for x in msgs if x is not m):
-            tail = flap_line + "\n" + footer          # the flap note rides on the first message only
+            tail = flap_line + "\n" + footer  # the flap note rides on the first message only
             m["flap_keys"] = flap_keys
         m["text"] = _body(m["header"], m["incidents"], tail, cfg["max_lines"])
         gens = []
@@ -399,11 +492,13 @@ def plan_messages(open_now: dict[str, dict], state: dict, now: datetime, cfg: di
 
 def _default_sender() -> Sender:
     from scripts.lib.autonomy_watchdog.telegram_system import send_system
+
     return send_system
 
 
 def _default_previewer() -> Previewer:
     from scripts.lib.autonomy_watchdog.telegram_system import preview_send
+
     return preview_send
 
 
@@ -422,44 +517,79 @@ def apply_result(state: dict, msg: dict, now: datetime) -> None:
     for inc in msg["incidents"]:
         prior = state["notified"].get(inc["key"]) or {}
         state["notified"][inc["key"]] = {
-            **prior, "source": inc["source"], "item": inc["item"], "severity": inc["severity"], "open": True,
+            **prior,
+            "source": inc["source"],
+            "item": inc["item"],
+            "severity": inc["severity"],
+            "open": True,
+            "momentum_host_watch": inc.get("momentum_host_watch") is True,
             "flapping": bool(prior.get("flapping")) if prior.get("open", True) else False,
-            "first_notified_at": prior.get("first_notified_at") or iso, "last_notified_at": iso,
-            "notify_count": int(prior.get("notify_count") or 0) + 1, "identity": msg["identity"]}
+            "first_notified_at": prior.get("first_notified_at") or iso,
+            "last_notified_at": iso,
+            "notify_count": int(prior.get("notify_count") or 0) + 1,
+            "identity": msg["identity"],
+        }
     if msg["kind"] == "p2_batch":
         state["last_p2_batch_at"] = iso
 
 
-def run(*, live: bool, root: Optional[Path] = None, now: Optional[datetime] = None, env: Optional[dict] = None,
-        sender: Optional[Sender] = None, previewer: Optional[Previewer] = None,
-        ledger_path: Optional[Path] = None) -> dict[str, Any]:
+def run(
+    *,
+    live: bool,
+    root: Optional[Path] = None,
+    now: Optional[datetime] = None,
+    env: Optional[dict] = None,
+    sender: Optional[Sender] = None,
+    previewer: Optional[Previewer] = None,
+    ledger_path: Optional[Path] = None,
+) -> dict[str, Any]:
     root = root or state_root(env)
     now = now or datetime.now(timezone.utc)
     cfg = config_from_env(env)
     fanin = read_fanin(root, now, cfg)
-    ledger = read_ledger_acks(ledger_path, now=now) if fanin["status"] == "OK" else {"status": "not_read", "acked_event_ids": []}
+    ledger = (
+        read_ledger_acks(ledger_path, now=now)
+        if fanin["status"] == "OK"
+        else {"status": "not_read", "acked_event_ids": []}
+    )
     state = load_state(root / STATE_REL)
     day = local_day(now, cfg)
     keep_from = local_day(now - timedelta(days=7), cfg)
     state["sends_by_day"] = {d: n for d, n in state["sends_by_day"].items() if d >= keep_from}
     used = int(state["sends_by_day"].get(day, 0))
     receipt: dict[str, Any] = {
-        "schema": SCHEMA, "authority": AUTHORITY, "as_of": now.isoformat(), "mode": "live" if live else "dry-run",
-        "served_sha": served_sha(env), "family": "TRADE_AI_SYSTEM", "config": cfg,
-        "fanin": {k: v for k, v in fanin.items() if k != "incidents"}, "ledger_source": {"status": ledger["status"],
-                                                                                        "acked": len(ledger["acked_event_ids"])},
-        "messages": [], "p2_batch": None, "acked_keys": [], "open_notifiable": 0, "flaps": None, "ok": True,
+        "schema": SCHEMA,
+        "authority": AUTHORITY,
+        "as_of": now.isoformat(),
+        "mode": "live" if live else "dry-run",
+        "served_sha": served_sha(env),
+        "family": "TRADE_AI_SYSTEM",
+        "config": cfg,
+        "fanin": {k: v for k, v in fanin.items() if k != "incidents"},
+        "ledger_source": {"status": ledger["status"], "acked": len(ledger["acked_event_ids"])},
+        "messages": [],
+        "p2_batch": None,
+        "acked_keys": [],
+        "open_notifiable": 0,
+        "flaps": None,
+        "ok": True,
     }
     # The alerting path itself (operator 2026-10-10): read here, on host cron, so a P1 for an erroring or stopped
     # incident router or n8n schedule never depends on the n8n-dispatched fan-in (AGENTS.md §24.1 proposed).
     host_rows, host_note = alert_path_rows(root, now, env)
     receipt["alert_path"] = {"note": host_note, "open": [r["item"] for r in host_rows]}
-    work = state                                   # the state the planner reads and apply_result writes
+    work = state  # the state the planner reads and apply_result writes
     host_only = False
     if fanin["status"] != "OK":
-        host_records = {k: v for k, v in state["notified"].items() if v.get("source") == ALERT_PATH_SOURCE}
+        host_records = {
+            k: v
+            for k, v in state["notified"].items()
+            if v.get("source") == ALERT_PATH_SOURCE or v.get("momentum_host_watch")
+        }
         if not host_rows and not any(v.get("open", True) for v in host_records.values()):
-            receipt["status"] = f"NO_INPUT:{fanin['status']}"   # never declare recovery or alert from a stale/missing input
+            receipt["status"] = (
+                f"NO_INPUT:{fanin['status']}"  # never declare recovery or alert from a stale/missing input
+            )
             receipt["cap"] = {"day": day, "used": used, "limit": cfg["daily_cap"]}
             return receipt
         # Host-only run: plan the alert-path incidents alone, against their own records, so no fan-in incident is
@@ -485,7 +615,7 @@ def run(*, live: bool, root: Optional[Path] = None, now: Optional[datetime] = No
         row["text"] = m["text"]
         p1_bearing = m["kind"] == "p1" or any(i.get("severity") == "P1" for i in m["incidents"])
         if used >= cfg["daily_cap"] and not p1_bearing:
-            row["status"] = "CAPPED"          # incidents stay un-notified; tomorrow's budget sends them. P1 (and a
+            row["status"] = "CAPPED"  # incidents stay un-notified; tomorrow's budget sends them. P1 (and a
             #                                   recovery that includes a P1) never caps.
         elif not live:
             try:
@@ -494,18 +624,21 @@ def run(*, live: bool, root: Optional[Path] = None, now: Optional[datetime] = No
                 plan = {"would_send": False, "reason": f"preview_failed:{type(exc).__name__}"}
             row["status"] = "DRY_RUN"
             row["preview"] = {k: plan.get(k) for k in ("would_send", "reason", "transport_gate") if k in plan}
-            used += 1                         # the plan counts against the cap exactly as a live run would
+            used += 1  # the plan counts against the cap exactly as a live run would
         else:
             try:
                 res = send(m["text"], identity=m["identity"], kind=f"incident_{m['kind']}")  # type: ignore[misc]
             except Exception as exc:  # noqa: BLE001 — recorded on the receipt, exit 1
                 res = {"ok": False, "reason": f"exception:{type(exc).__name__}"}
-            row["send"] = {k: res.get(k) for k in ("ok", "message_id", "reason", "suppressed", "deduped", "status_code")
-                           if k in res}
+            row["send"] = {
+                k: res.get(k)
+                for k in ("ok", "message_id", "reason", "suppressed", "deduped", "status_code")
+                if k in res
+            }
             if res.get("ok") and res.get("suppressed"):
-                row["status"] = "HELD"        # the comms editor held or dropped it: not delivered, not counted, retried
+                row["status"] = "HELD"  # the comms editor held or dropped it: not delivered, not counted, retried
             elif res.get("ok") and res.get("deduped") and res.get("message_id") is not None:
-                row["status"] = "ALREADY_DELIVERED"   # this exact identity was delivered before; record, do not count
+                row["status"] = "ALREADY_DELIVERED"  # this exact identity was delivered before; record, do not count
                 apply_result(work, m, now)
             elif res.get("ok") and res.get("deduped"):
                 # A dedupe with no message_id proves no delivery: never mark notified on it. Not counted, retried
@@ -520,15 +653,24 @@ def run(*, live: bool, root: Optional[Path] = None, now: Optional[datetime] = No
                 row["status"] = "FAILED"
                 failed = True
         receipt["messages"].append(row)
-    if host_only:                                  # fold the alert-path records back; fan-in records untouched
-        for k in [k for k, v in state["notified"].items() if v.get("source") == ALERT_PATH_SOURCE]:
+    if host_only:  # fold the alert-path records back; fan-in records untouched
+        for k in [
+            k
+            for k, v in state["notified"].items()
+            if v.get("source") == ALERT_PATH_SOURCE or v.get("momentum_host_watch")
+        ]:
             if k not in work["notified"]:
-                state["notified"].pop(k)           # dropped by the record TTL in reconcile
+                state["notified"].pop(k)  # dropped by the record TTL in reconcile
         state["notified"].update(work["notified"])
     if live:
         state["sends_by_day"][day] = used
-    receipt["cap"] = {"day": day, "tz": cfg["tz"], "used": used, "limit": cfg["daily_cap"],
-                      "capped": sum(1 for r in receipt["messages"] if r["status"] == "CAPPED")}
+    receipt["cap"] = {
+        "day": day,
+        "tz": cfg["tz"],
+        "used": used,
+        "limit": cfg["daily_cap"],
+        "capped": sum(1 for r in receipt["messages"] if r["status"] == "CAPPED"),
+    }
     receipt["status"] = "FAILED" if failed else (f"HOST_ONLY:{fanin['status']}" if host_only else "OK")
     receipt["ok"] = not failed
     if live:
@@ -536,26 +678,44 @@ def run(*, live: bool, root: Optional[Path] = None, now: Optional[datetime] = No
     return receipt
 
 
-ALERT_PATH_SOURCE = "n8n_alert_path"   # scripts/lib/n8n_alert_path_watch.SOURCE (pinned by a test)
+ALERT_PATH_SOURCE = "n8n_alert_path"  # scripts/lib/n8n_alert_path_watch.SOURCE (pinned by a test)
 
 
 def alert_path_rows(root: Path, now: datetime, env: Optional[dict] = None) -> tuple[list[dict], str]:
     """Fan-in-shaped P1 rows from the host-side alert-path watch (relay log only); fail-soft to a note."""
     try:
         from scripts.lib.n8n_alert_path_watch import findings
+
         found, note = findings(root, now, env=None if env is None else {**os.environ, **env})
     except Exception as exc:  # noqa: BLE001 — a broken watch is a note on the receipt, never a crash of the notifier
-        return [], f"unavailable:{type(exc).__name__}"
-    rows = [{k: f[k] for k in ("source", "item", "severity", "detail", "detected_at")} | {"state": "HOST_WATCH"}
-            for f in found]
+        found, note = [], f"unavailable:{type(exc).__name__}"
+    rows = [
+        {k: f[k] for k in ("source", "item", "severity", "detail", "detected_at")} | {"state": "HOST_WATCH"}
+        for f in found
+    ]
+    # Read the same bounded host health projection directly, independent of n8n/fan-in availability.
+    # Canonical source/item keys match fan-in, so the two observations cannot double an incident.
+    try:
+        from scripts.n8n_incident_fanin import _momentum_lifecycle_findings
+
+        rows.extend(
+            {**f, "state": "HOST_WATCH", "momentum_host_watch": True}
+            for f in _momentum_lifecycle_findings(root, now)
+            if f.get("severity") == "P1"
+        )
+    except Exception as exc:  # fail-soft availability is retained in the host receipt
+        note += f";momentum_unavailable:{type(exc).__name__}"
     return rows, note
 
 
 def write_receipt(root: Path, receipt: dict[str, Any]) -> Path:
     if receipt["mode"] == "live":
         p = atomic_write_json(root / RECEIPT_REL, receipt, indent=1)
-        append_jsonl(root / HISTORY_REL, {k: v for k, v in receipt.items() if k != "messages"}
-                     | {"messages": [{k: v for k, v in m.items() if k != "text"} for m in receipt["messages"]]})
+        append_jsonl(
+            root / HISTORY_REL,
+            {k: v for k, v in receipt.items() if k != "messages"}
+            | {"messages": [{k: v for k, v in m.items() if k != "text"} for m in receipt["messages"]]},
+        )
         return p
     return atomic_write_json(root / DRY_RUN_RECEIPT_REL, receipt, indent=1)
 
@@ -573,14 +733,31 @@ def main(argv: Optional[list[str]] = None) -> int:
         try:
             fcntl.flock(lock_fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError:
-            print(json.dumps({"schema": SCHEMA, "status": "LOCKED", "note": "another incident_notifier run holds the lock"}))
+            print(
+                json.dumps(
+                    {"schema": SCHEMA, "status": "LOCKED", "note": "another incident_notifier run holds the lock"}
+                )
+            )
             return 75
         receipt = run(live=bool(args.live), root=root)
         write_receipt(root, receipt)
-    summary = {"mode": receipt["mode"], "status": receipt["status"], "fanin": receipt["fanin"].get("status"),
-               "open_notifiable": receipt["open_notifiable"], "cap": receipt["cap"], "p2_batch": receipt["p2_batch"],
-               "messages": [{"kind": m["kind"], "status": m["status"], "incidents": len(m["incident_keys"]),
-                             **({"preview": m["preview"]} if "preview" in m else {})} for m in receipt["messages"]]}
+    summary = {
+        "mode": receipt["mode"],
+        "status": receipt["status"],
+        "fanin": receipt["fanin"].get("status"),
+        "open_notifiable": receipt["open_notifiable"],
+        "cap": receipt["cap"],
+        "p2_batch": receipt["p2_batch"],
+        "messages": [
+            {
+                "kind": m["kind"],
+                "status": m["status"],
+                "incidents": len(m["incident_keys"]),
+                **({"preview": m["preview"]} if "preview" in m else {}),
+            }
+            for m in receipt["messages"]
+        ],
+    }
     print(json.dumps(summary, default=str))
     if not args.live:
         for m in receipt["messages"]:

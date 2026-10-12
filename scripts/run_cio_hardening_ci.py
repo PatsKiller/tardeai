@@ -4063,6 +4063,15 @@ GATES = [
         ],
     ),
     (
+        # Read-only momentum lifecycle and derivative cache reconciliation: fixture-only expected
+        # fires, durable request/product provenance, admission drift and zero-effect dry runs.
+        "n8n_momentum_lifecycle_20261012",
+        [
+            "tests/test_n8n_momentum_lifecycle_20261012.py",
+            "tests/test_momentum_cache_reconcile_20261012.py",
+        ],
+    ),
+    (
         # ANCHOR: N8N_OBS_GAPS — n8n scheduler-of-record program, observability gaps (2026-10-08):
         # the lane monitor renders scheduler_label and, for kind n8n, the last run with the
         # FRESH/ORPHANED evaluate_lane decided (research_lane_health --lanes / alert body, governance

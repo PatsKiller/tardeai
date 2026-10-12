@@ -5,6 +5,7 @@ No canonical business/cache writes, providers, broker, models, sends or credenti
 The host executor owns the approved flock. Dry run never writes. Apply requires the
 operative reviewed safe lane and candidate arming; no n8n caller-supplied authority.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -24,7 +25,9 @@ LANE = "momentum-cache-reconcile"
 SCHEMA = "MomentumCacheReconcile@v1"
 PROJECTION_REL = "data/runtime/shared_momentum_candidates_projection.json"
 RECEIPT_REL = "data/runtime/momentum-cache-reconcile_last.json"
-NO_CONSUMER_REASON = "Proposed safe host lane; resettable derived projection only. Candidate consumer/runtime admission remains pending."
+NO_CONSUMER_REASON = (
+    "Proposed safe host lane; resettable derived projection only. Candidate consumer/runtime admission remains pending."
+)
 
 
 def _write(path: Path, doc: dict) -> None:
@@ -37,18 +40,44 @@ def _write(path: Path, doc: dict) -> None:
 def reconcile(*, code_root: Path, state_root: Path, now: datetime, apply: bool = False) -> dict:
     admission = load_admission(code_root)
     candidate = json.loads((code_root / "config/n8n_momentum_lifecycle_candidate.json").read_text())
-    result = {"schema": SCHEMA, "lane_id": LANE, "as_of": now.isoformat(),
-              "source_sha": admission.deployed_sha, "mode": "live" if apply else "dry_run",
-              "canonical_business_writes": 0, "provider_calls": 0, "business_acceptance": "NOT_MEASURED",
-              "scope": "RESETTABLE_DERIVED_ADVISORY_PROJECTION", "status": "REFUSED", "reason": None}
-    if apply and (candidate.get("enabled") is not True or candidate.get("recovery", {}).get("armed") is not True
-                  or not recovery_admitted(admission, LANE)):
+    result = {
+        "schema": SCHEMA,
+        "lane_id": LANE,
+        "as_of": now.isoformat(),
+        "source_sha": admission.deployed_sha,
+        "mode": "live" if apply else "dry_run",
+        "canonical_business_writes": 0,
+        "provider_calls": 0,
+        "business_acceptance": "NOT_MEASURED",
+        "scope": "RESETTABLE_DERIVED_ADVISORY_PROJECTION",
+        "status": "REFUSED",
+        "reason": None,
+    }
+    if apply and (
+        candidate.get("enabled") is not True
+        or candidate.get("recovery", {}).get("armed") is not True
+        or not recovery_admitted(admission, LANE)
+    ):
         result["reason"] = "operative_recovery_admission_unproven"
         return result
-    projection = read_candidate_snapshot(state_root / "data/runtime/trade_ai_cache.json",
-                                         state_root / "data/active_trader/momentum_alerts.jsonl", now=now)
-    result["projection"] = {k: projection.get(k) for k in (
-        "schema", "projection_hash", "run_id", "run_date", "source_sha", "finished_at", "status", "candidate_count")}
+    projection = read_candidate_snapshot(
+        state_root / "data/runtime/trade_ai_cache.json",
+        state_root / "data/active_trader/momentum_alerts.jsonl",
+        now=now,
+    )
+    result["projection"] = {
+        k: projection.get(k)
+        for k in (
+            "schema",
+            "projection_hash",
+            "run_id",
+            "run_date",
+            "source_sha",
+            "finished_at",
+            "status",
+            "candidate_count",
+        )
+    }
     if not any(meta.get("status") == "AVAILABLE" for meta in projection["source_metadata"].values()):
         result["reason"] = "owner_inputs_not_measured"
         return result
@@ -62,8 +91,10 @@ def reconcile(*, code_root: Path, state_root: Path, now: datetime, apply: bool =
             previous = json.loads((state_root / PROJECTION_REL).read_text())
         except (OSError, ValueError):
             previous = None
+
         def stable(row):
             return {k: v for k, v in row.items() if k != "generated_at"}
+
         if isinstance(previous, dict) and stable(previous) == stable(projection):
             result["reason"] = "derived_projection_already_consistent"
         else:
