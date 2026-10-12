@@ -219,6 +219,22 @@ def test_classifier_no_cwd_relative_write_left():
 YT = ROOT / "scripts" / "youtube_cookie_health_check.py"
 
 
+@pytest.mark.parametrize("prefix", ["", "#HttpOnly_"])
+def test_youtube_netscape_auth_cookie_classification_uses_synthetic_lines(prefix):
+    mod = _load("scripts/youtube_cookie_health_check.py", "_tested_refactor_w1_youtube_cookie")
+    lines = ["# Netscape HTTP Cookie File", "# ordinary comment with\ttabs\tSID",
+             f"{prefix}.youtube.com\tTRUE\t/\tTRUE\t9999999999\tSID\tsynthetic-fixture",
+             f"{prefix}.youtube.com\tTRUE\t/\tTRUE\t9999999999\tSID\tsynthetic-duplicate",
+             f"{prefix}.youtube.com\tTRUE\t/\tTRUE\t9999999999\tLOGIN_INFO\tsynthetic-fixture"]
+    assert mod._auth_cookie_names(lines) == {"SID", "LOGIN_INFO"}
+
+
+def test_youtube_synthetic_comment_rows_are_not_auth_cookies():
+    mod = _load("scripts/youtube_cookie_health_check.py", "_tested_refactor_w1_youtube_cookie")
+    assert mod._auth_cookie_names(["# ordinary comment\tTRUE\t/\tTRUE\t0\tSID\tfixture",
+                                  "#HttpOnly_not-a-row", "malformed", "no\tfull\trow"]) == set()
+
+
 def _run_yt(monkeypatch, argv, *, sent, sent_kw=None):
     """Run the script as __main__ with fake db_adapter / telegram_alert modules."""
 

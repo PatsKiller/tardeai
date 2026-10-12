@@ -55,17 +55,27 @@ REFRESH_STEPS = (
 )
 
 
-def _auth_cookie_count():
-    if not COOKIE.exists():
-        return None
+def _auth_cookie_names(lines):
+    """Classify Netscape rows, including the standard HttpOnly domain prefix.
+
+    Cookie values are never returned; this pure helper is testable without opening a cookie file.
+    """
     names = set()
-    for ln in COOKIE.read_text().splitlines():
+    for ln in lines:
+        if ln.startswith("#HttpOnly_"):
+            ln = ln[len("#HttpOnly_") :]
         if ln.startswith("#") or "\t" not in ln:
             continue
         p = ln.split("\t")
         if len(p) >= 6:
             names.add(p[5])
-    return len(names & AUTH)
+    return names & AUTH
+
+
+def _auth_cookie_count():
+    if not COOKIE.exists():
+        return None
+    return len(_auth_cookie_names(COOKIE.read_text().splitlines()))
 
 
 def _transcript_age_h():
