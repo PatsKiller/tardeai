@@ -262,6 +262,7 @@ def test_unreadable_cache_is_preserved_and_cli_reports_failure(tmp_path, session
     assert not (tmp_path / "reports").exists()
     monkeypatch.setitem(session_functions, "get_live_project_root", lambda: tmp_path)
     monkeypatch.setitem(session_functions, "DEV_ROOT", tmp_path)
+    monkeypatch.setitem(session_functions, "PROJECT_ROOT", tmp_path)
     monkeypatch.setitem(session_functions, "_today_et", lambda: "2026-10-12")
     monkeypatch.setattr(sys, "argv", ["heal_trade_ai_session_cache.py"])
     assert session_functions["main"]() == 1
