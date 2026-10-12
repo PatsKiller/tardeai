@@ -1,4 +1,5 @@
 import { useEffect, useState, type CSSProperties } from 'react'
+import SharedMomentumCandidates from '../components/tradeai/SharedMomentumCandidates'
 import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import {
@@ -347,6 +348,7 @@ export default function TradingHub({ onDrill }: Props) {
         </div>
       )}
 
+      {tab === 'Trade AI' && <SharedMomentumCandidates />}
       {tab === 'Trade AI' && (() => {
         // Phase 203: do NOT render the KPI grid as 0/0/0/no-run when the API fetch is loading or
         // errored — that silently masks a transient backend issue (e.g. DB contention) as an empty

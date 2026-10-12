@@ -18211,6 +18211,20 @@ def trade_ai_scanner():
     return out
 
 
+def trade_ai_candidates():
+    """Read-only shared candidates; never invokes scanner, alerts engine or fills."""
+    from lib.scanner_candidate_projection import build_candidate_projection, read_candidate_snapshot
+
+    state = Path.home() / "trade-ai-releases" / "persistent-state"
+    if not (state / "PERSISTENT_STATE_ROOT.json").is_file():
+        return build_candidate_projection(
+            None, None, source_status={"TRADE_AI": "UNAVAILABLE", "ACTIVE_TRADER": "UNAVAILABLE"}
+        )
+    return read_candidate_snapshot(
+        state / "data/runtime/trade_ai_cache.json", state / "data/active_trader/momentum_alerts.jsonl"
+    )
+
+
 # ── Journal Review Layer ──────────────────────────────────────────────────
 
 
@@ -47684,6 +47698,7 @@ ROUTES = {
     "/api/v2/design-features": design_features,
     "/api/v2/trade-ai/summary": trade_ai_summary,
     "/api/v2/trade-ai/scanner": trade_ai_scanner,
+    "/api/v2/trade-ai/candidates": trade_ai_candidates,
     "/api/v2/warrior-audit/latest": warrior_audit_latest,
     "/api/v2/trade-ai/critique": _tradeai_critique_status,
     "/api/v2/trade-ai/history": _tradeai_history,
