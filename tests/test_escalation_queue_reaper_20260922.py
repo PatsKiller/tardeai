@@ -109,10 +109,12 @@ def test_a_failed_aggregate_probe_holds_EVERYTHING(reaper) -> None:
     families, not merely the one that failed.
     """
     live = {"__HOLD__ALL"}
-    for comp in ("health:pipeline_freshness:missing_x",
-                 "health:intelligence_quality:research_lane_firing:chatgpt",
-                 "health:data_quality:news_stale",
-                 "health:execution_health:pipeline_failures"):
+    for comp in (
+        "health:pipeline_freshness:missing_x",
+        "health:intelligence_quality:research_lane_firing:chatgpt",
+        "health:data_quality:news_stale",
+        "health:execution_health:pipeline_failures",
+    ):
         assert reaper.is_reapable(_item(comp), live) is False, comp
 
 
@@ -132,8 +134,7 @@ def test_the_probe_is_the_producer_aggregate_not_hand_picked_collectors(reaper) 
     src = TARGET.read_text(encoding="utf-8")
     assert "HA.compute(" in src, "the probe no longer calls the producer aggregate"
     assert "__HOLD__ALL" in src, "no global fail-closed sentinel"
-    for narrow in ("HA.collect_data_quality()", "HA.collect_intelligence_quality()",
-                   "HA.collect_execution_health()"):
+    for narrow in ("HA.collect_data_quality()", "HA.collect_intelligence_quality()", "HA.collect_execution_health()"):
         assert narrow not in src, (
             f"probe narrowed back to a hand-picked collector ({narrow}); "
             "a category is emitted by several collectors -- use compute()"
