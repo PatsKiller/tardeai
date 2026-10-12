@@ -588,6 +588,25 @@ def recovery_admitted(admission: Admission, lane: str) -> bool:
     )
 
 
+def cache_helper_admitted(admission: Admission, lane: str) -> bool:
+    """Named derivative helper canary/cutover gate; autonomous recovery keeps its own cutover gate."""
+    row = admission.registry.get(lane, {})
+    allow = admission.allowlist.get(lane, {})
+    stage = row.get("scheduler", {}).get("stage")
+    return (
+        lane == "momentum-cache-reconcile"
+        and lane in RECOVERY_LANES
+        and row.get("state") == "ACTIVE"
+        and isinstance(stage, str)
+        and stage in {"canary", "cutover"}
+        and row.get("dispatch", {}).get("class") in SAFE_CLASSES
+        and contract_review_proven(admission.contracts.get(lane, {}))
+        and allow.get("live_arg") is not None
+        and allow.get("lock_kind") == "flock"
+        and bool(allow.get("lock"))
+    )
+
+
 def monitor_admitted(admission: Admission) -> bool:
     """Operative admission, never a caller supplied enabled/review boolean."""
     lane = "momentum-lifecycle-monitor"

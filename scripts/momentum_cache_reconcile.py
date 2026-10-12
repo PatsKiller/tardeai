@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from scripts.lib.n8n_momentum_lifecycle import load_admission, recovery_admitted  # noqa: E402
+from scripts.lib.n8n_momentum_lifecycle import cache_helper_admitted, load_admission  # noqa: E402
 from scripts.lib.scanner_candidate_projection import read_candidate_snapshot  # noqa: E402
 
 LANE = "momentum-cache-reconcile"
@@ -40,12 +40,16 @@ def _write(path: Path, doc: dict) -> None:
 def reconcile(*, code_root: Path, state_root: Path, now: datetime, apply: bool = False) -> dict:
     admission = load_admission(code_root)
     candidate = json.loads((code_root / "config/n8n_momentum_lifecycle_candidate.json").read_text())
+    stage = admission.registry.get(LANE, {}).get("scheduler", {}).get("stage")
     result = {
         "schema": SCHEMA,
         "lane_id": LANE,
         "as_of": now.isoformat(),
         "source_sha": admission.deployed_sha,
         "mode": "live" if apply else "dry_run",
+        "execution_stage": stage
+        if isinstance(stage, str) and stage in {"shadow", "canary", "cutover"}
+        else "NOT_MEASURED",
         "canonical_business_writes": 0,
         "provider_calls": 0,
         "business_acceptance": "NOT_MEASURED",
@@ -56,7 +60,7 @@ def reconcile(*, code_root: Path, state_root: Path, now: datetime, apply: bool =
     if apply and (
         candidate.get("enabled") is not True
         or candidate.get("recovery", {}).get("armed") is not True
-        or not recovery_admitted(admission, LANE)
+        or not cache_helper_admitted(admission, LANE)
     ):
         result["reason"] = "operative_recovery_admission_unproven"
         return result

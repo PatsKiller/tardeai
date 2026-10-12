@@ -275,6 +275,18 @@ def test_disabled_candidate_never_arms_recovery(setup):
     }
 
 
+def test_named_helper_canary_does_not_admit_autonomous_recovery(setup):
+    c, admission, _ = setup
+    lane = "momentum-cache-reconcile"
+    admission.registry[lane]["scheduler"]["stage"] = "canary"
+    assert M.cache_helper_admitted(admission, lane)
+    assert not M.cache_helper_admitted(admission, "other-cache-lane")
+    assert not M.recovery_admitted(admission, lane)
+    result = M.plan_recovery(armed(c), repair_report(), admission, snapshot=repair_snapshot(), now=NOW)
+    assert result["intents"] == []
+    assert result["held"] == [{"lane_id": lane, "reason": "operative_admission_not_proven"}]
+
+
 def test_recovery_uses_actual_policy_and_stable_budget_slot_attempt(setup):
     c, a, _ = setup
     one = M.plan_recovery(armed(c), repair_report(), a, snapshot=repair_snapshot(), now=NOW)

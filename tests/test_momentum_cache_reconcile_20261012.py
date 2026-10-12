@@ -74,14 +74,20 @@ def test_dry_run_never_writes_or_refreshes_canonical_business_identity(setup):
     assert not (state / repair.RECEIPT_REL).exists() and source.read_bytes() == before
 
 
-def test_approved_apply_updates_only_resettable_derivative_and_own_receipt(setup):
+@pytest.mark.parametrize("stage", ["canary", "cutover"])
+def test_approved_apply_updates_only_resettable_derivative_and_own_receipt(setup, stage):
     code, state = setup
+    registry_path = code / "config/lane_registry.json"
+    registry = json.loads(registry_path.read_text())
+    registry["lanes"][0]["scheduler"]["stage"] = stage
+    registry_path.write_text(json.dumps(registry))
     cache = state / "data/runtime/trade_ai_cache.json"
     journal = state / "data/active_trader/momentum_alerts.jsonl"
     originals = cache.read_bytes(), journal.read_bytes()
     result = repair.reconcile(code_root=code, state_root=state, now=NOW, apply=True)
     projected = json.loads((state / repair.PROJECTION_REL).read_text())
     assert result["status"] == "ok" and result["canonical_business_writes"] == 0
+    assert result["execution_stage"] == stage
     assert result["provider_calls"] == 0 and result["business_acceptance"] == "NOT_MEASURED"
     assert projected["run_date"] == "2026-10-09" and projected["source_sha"] == "UNKNOWN"
     assert projected["candidates"][0]["classification"] == "STALE"
@@ -93,17 +99,60 @@ def test_approved_apply_updates_only_resettable_derivative_and_own_receipt(setup
     assert (state / repair.PROJECTION_REL).read_bytes() == before
 
 
-@pytest.mark.parametrize("change", ["disarmed", "draft", "wrong_digest", "no_decision", "protected_class"])
-def test_apply_refuses_unreviewed_or_protected_operation_without_writes(setup, change):
+@pytest.mark.parametrize(
+    "change",
+    [
+        "disarmed",
+        "disabled",
+        "draft",
+        "wrong_digest",
+        "no_decision",
+        "missing_owner",
+        "protected_class",
+        "shadow",
+        "paused",
+        "wrong_lane",
+        "missing_live_arg",
+        "missing_lock",
+        "wrong_lock_kind",
+    ],
+)
+@pytest.mark.parametrize("stage", ["canary", "cutover"])
+def test_apply_refuses_unreviewed_or_protected_operation_without_writes(setup, change, stage):
     code, state = setup
-    if change == "disarmed":
+    registry_path = code / "config/lane_registry.json"
+    registry = json.loads(registry_path.read_text())
+    registry["lanes"][0]["scheduler"]["stage"] = stage
+    registry_path.write_text(json.dumps(registry))
+    if change in {"disarmed", "disabled"}:
         p = code / "config/n8n_momentum_lifecycle_candidate.json"
         doc = json.loads(p.read_text())
-        doc["recovery"]["armed"] = False
-    elif change == "protected_class":
+        if change == "disarmed":
+            doc["recovery"]["armed"] = False
+        else:
+            doc["enabled"] = False
+    elif change in {"protected_class", "shadow", "paused", "wrong_lane"}:
         p = code / "config/lane_registry.json"
         doc = json.loads(p.read_text())
-        doc["lanes"][0]["dispatch"]["class"] = "send"
+        row = doc["lanes"][0]
+        if change == "protected_class":
+            row["dispatch"]["class"] = "send"
+        elif change == "shadow":
+            row["scheduler"]["stage"] = "shadow"
+        elif change == "paused":
+            row["state"] = "PAUSED"
+        else:
+            row["lane_id"] = "other-cache-lane"
+    elif change in {"missing_live_arg", "missing_lock", "wrong_lock_kind"}:
+        p = code / "config/n8n_run_allowlist.json"
+        doc = json.loads(p.read_text())
+        row = doc["lanes"][repair.LANE]
+        if change == "missing_live_arg":
+            row["live_arg"] = None
+        elif change == "missing_lock":
+            row["lock"] = None
+        else:
+            row["lock_kind"] = "none"
     else:
         p = code / "config/n8n_health_contracts.json"
         doc = json.loads(p.read_text())
@@ -112,6 +161,10 @@ def test_apply_refuses_unreviewed_or_protected_operation_without_writes(setup, c
             contract["status"] = "DRAFT"
         elif change == "wrong_digest":
             contract["purpose"]["text"] += " unreviewed change"
+        elif change == "missing_owner":
+            contract.pop("ownership_confirmation")
+            # A matching digest cannot manufacture owner confirmation.
+            contract["review"]["contract_body_sha256"] = lifecycle.contract_body_digest(contract)
         else:
             contract["review"]["decision_ref"] = None
     p.write_text(json.dumps(doc))
