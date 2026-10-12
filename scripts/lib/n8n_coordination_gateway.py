@@ -195,6 +195,9 @@ REFUSAL_REASONS = frozenset(
         "registry_unreadable",
         "allowlist_unreadable",
         "policies_unreadable",
+        # Read-only lifecycle status keeps missing/unavailable sources as typed refusals.
+        "momentum_lifecycle_not_configured",
+        "momentum_lifecycle_source_unavailable",
     }
 )
 REFUSAL_PREFIXES = ("illegal_transition:", "typed_refusal:", "forbidden_route:")
