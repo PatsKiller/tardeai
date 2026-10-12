@@ -4,6 +4,7 @@ Cause: the shared db_adapter connection was closed mid-run, `_attempt_retry`'s c
 retry log line then read an unbound `retries_today` (1,082 tracebacks in logs/system_health_agent.log).
 Two components also pointed at jobs that no longer exist in that shape: the retired 08:05 aegis sender and
 the telegram handler that became a systemd unit. Hermetic: no DB, no subprocess beyond `true`."""
+
 from __future__ import annotations
 
 import ast
@@ -29,6 +30,7 @@ def _components():
 
 class _DeadConn:
     """A connection whose every operation raises, like psycopg2 after `connection already closed`."""
+
     closed = 1
 
     def cursor(self):
@@ -43,20 +45,23 @@ class _DeadConn:
 
 def test_a_dead_connection_does_not_crash_the_retry_path(monkeypatch):
     import system_health_agent as agent
-    monkeypatch.setenv("TRADEAI_HEALTH_AGENT_RETRY", "1")   # 2026-10-08: retries are disarmed by default
+
+    monkeypatch.setenv("TRADEAI_HEALTH_AGENT_RETRY", "1")  # 2026-10-08: retries are disarmed by default
     comp = {"component": "unit-test", "retry_cmd": "true"}
-    assert agent._attempt_retry(comp, _DeadConn()) is True   # `true` exits 0; the count query failing is logged, not fatal
+    assert (
+        agent._attempt_retry(comp, _DeadConn()) is True
+    )  # `true` exits 0; the count query failing is logged, not fatal
 
 
 def test_retries_today_is_bound_before_the_query_can_fail():
     i = SRC.index("def _attempt_retry(")
-    body = SRC[i:SRC.index("def _is_portfolio_market_hours")]
+    body = SRC[i : SRC.index("def _is_portfolio_market_hours")]
     assert body.index("retries_today = 0") < body.index("cur.execute(")
 
 
 def test_the_loop_refetches_a_closed_connection_before_each_component():
     i = SRC.index("for comp in MONITORED_COMPONENTS:")
-    head = SRC[i:i + 900]
+    head = SRC[i : i + 900]
     assert 'getattr(conn, "closed", 0)' in head and "conn = _get_conn()" in head
 
 
@@ -75,6 +80,7 @@ def test_the_telegram_poller_is_monitored_but_never_relaunched():
 
 def test_logs_resolve_against_the_state_root_when_absent_from_the_code_tree(tmp_path, monkeypatch):
     import system_health_agent as agent
+
     state = tmp_path / "state"
     (state / "logs").mkdir(parents=True)
     (state / "logs" / "unit.log").write_text("x")
