@@ -535,6 +535,185 @@ def test_actual_cache_mapping_preserves_unmeasured_sha_and_business_proof(setup)
     assert "business_output_not_proven" in reasons
 
 
+def test_unaccepted_input_declarations_cannot_promote_business_or_credential_proof(setup):
+    c, a, root = setup
+    runtime = root / "data/runtime"
+    runtime.mkdir(parents=True)
+    declared = {
+        "products": {spec["id"]: product(accepted_producer="PROVEN") for spec in c["products"]},
+        "credential_health": {"secret_name": "FINVIZ_COOKIE", "status": "expired", "cookie": "NEVER_COPY"},
+    }
+    path = root / M.INPUT_REL
+    path.write_text(json.dumps(declared))
+    before = path.read_bytes()
+    snapshot = M.collect_server_snapshot(root, c, now=NOW, admission=a)
+    report = evaluate(setup, snapshot)
+    assert snapshot["collection"]["accepted_input_producer"] == "NOT_MEASURED"
+    assert snapshot["products"]["latest_scan_package"]["source_sha"] == SHA
+    assert snapshot["products"]["latest_scan_package"]["populations"]["scanned_total"] == 67
+    for spec in c["products"]:
+        row = report["products"][spec["id"]]
+        assert row["status"] == "UNPROVEN" and row["accepted_producer"] == "NOT_MEASURED"
+        assert set(row["requirements_missing"]) & {"business_output_not_proven", "output_not_measured"}
+    assert snapshot["credential_health"]["declared_status"] == "expired"
+    assert snapshot["credential_health"]["status"] == "NOT_MEASURED" and report["credential_tasks"] == []
+    assert "NEVER_COPY" not in json.dumps(snapshot) and path.read_bytes() == before
+    # Explicit isolated evaluator fixtures remain useful; no runtime declaration flag arms them.
+    assert (
+        evaluate(setup, {"products": {"latest_scan_package": product()}})["products"]["latest_scan_package"]["status"]
+        == "PROVEN"
+    )
+
+
+def test_cache_metadata_retains_nested_identity_without_borrowing_newer_timestamp(setup):
+    import hashlib
+
+    c, a, root = setup
+    runtime = root / "data/runtime"
+    runtime.mkdir(parents=True)
+    cache = {
+        "run_id": "new-cache-wrapper",
+        "run_date": "2026-10-12",
+        "latest_run_timestamp": NOW.isoformat(),
+        "code_sha": SHA,
+        "tickers": [],
+        "stale": False,
+        "setup_run_summary": {
+            "contract_version": "SetupRunSummary@v1",
+            "run_id": "2026-10-09::1730",
+            "run_date": "2026-10-09",
+            "scanned_count": 44,
+        },
+    }
+    path = runtime / "trade_ai_cache.json"
+    path.write_text(json.dumps(cache))
+    raw = path.read_bytes()
+    snapshot = M.collect_server_snapshot(root, c, now=NOW, admission=a)
+    observed = snapshot["products"]["served_scan_cache"]
+    assert observed["run_id"] == "2026-10-09::1730" and observed["finished_at"] is None
+    assert observed["source_sha"] == SHA and observed["basis"] == "NOT_MEASURED"
+    evidence = observed["source_evidence"]
+    assert evidence["provenance"]["sha256"] == hashlib.sha256(raw).hexdigest()
+    assert evidence["provenance"]["schema"] == "SetupRunSummary@v1"
+    assert evidence["field_provenance"]["run_id"]["field"] == "setup_run_summary.run_id"
+    assert evidence["field_provenance"]["finished_at"]["field"] == "NOT_MEASURED"
+    assert evidence["independent_output_corroboration"] == "NOT_MEASURED"
+    assert path.read_bytes() == raw
+
+
+def test_readonly_cache_observation_overrides_declaration_counts_without_inheriting_acceptance(setup):
+    c, a, root = setup
+    runtime = root / "data/runtime"
+    runtime.mkdir(parents=True)
+    (root / M.INPUT_REL).write_text(json.dumps({"products": {"served_scan_cache": product()}}))
+    (runtime / "trade_ai_cache.json").write_text(
+        json.dumps(
+            {
+                "run_id": "actual",
+                "run_date": "2026-10-12",
+                "tickers": [],
+                "stale": False,
+                "setup_run_summary": {"run_id": "actual", "run_date": "2026-10-12", "scanned_count": 44},
+            }
+        )
+    )
+    snapshot = M.collect_server_snapshot(root, c, now=NOW, admission=a)
+    observed = snapshot["products"]["served_scan_cache"]
+    assert observed["run_id"] == "actual" and observed["source_sha"] == "UNKNOWN"
+    assert observed["populations"] == {"candidate_union_total": 0, "summary_scanned_total": 44}
+    assert observed["declared_metadata"]["populations"]["scanned_total"] == 67
+    assert observed["accepted_producer"] == "NOT_MEASURED"
+
+
+def test_existing_registry_receipt_metadata_is_sanitized_and_not_output_acceptance(setup):
+    import hashlib
+
+    c, a, root = setup
+    relative = "data/runtime/early-source_last.json"
+    a.registry["early-source"]["output_signal"] = {"path": relative, "kind": "json_key", "key": "ok_at"}
+    runtime = root / "data/runtime"
+    runtime.mkdir(parents=True)
+    path = root / relative
+    path.write_text(
+        json.dumps(
+            {
+                "schema": "LaneRunReceipt@v1",
+                "lane_id": "early-source",
+                "mode": "live",
+                "status": "ok",
+                "exit": 0,
+                "finished_at": NOW.isoformat(),
+                "source_sha": SHA,
+                "summary": {"run_id": "scan-0900", "cookie": "NEVER_COPY"},
+                "prompt": "NEVER_COPY",
+                "account": "NEVER_COPY",
+            }
+        )
+    )
+    before = path.read_bytes()
+    snapshot = M.collect_server_snapshot(root, c, now=NOW, admission=a)
+    observed = snapshot["host_receipts"]["early-source"]
+    assert observed["fields"]["business_run_id"] == "scan-0900"
+    assert observed["field_provenance"]["business_run_id"]["field"] == "summary.run_id"
+    assert observed["provenance"]["sha256"] == hashlib.sha256(before).hexdigest()
+    assert observed["accepted_output_proof"] == observed["producer_binding"] == "NOT_MEASURED"
+    assert "NEVER_COPY" not in json.dumps(snapshot) and path.read_bytes() == before
+    assert evaluate(setup, snapshot)["host_receipt_metadata"] == snapshot["host_receipts"]
+
+
+@pytest.mark.parametrize(
+    "relative",
+    [
+        "logs/early-source.log",
+        "data/runtime/raw_cookie.json",
+        "data/runtime/../../cookie_last.json",
+        "data/secrets/early-source_last.json",
+    ],
+)
+def test_host_receipt_adapter_never_reads_nonreceipt_paths(setup, relative):
+    c, a, root = setup
+    a.registry["early-source"]["output_signal"] = {"path": relative}
+    assert M.collect_server_snapshot(root, c, now=NOW, admission=a)["host_receipts"] == {}
+
+
+def test_bounded_public_run_summary_skips_healer_and_never_inherits_deployed_sha(setup):
+    c, a, root = setup
+    reports = root / "reports/2026-10-12"
+    real = reports / "0400/run_summary.json"
+    real.parent.mkdir(parents=True)
+    real.write_text(
+        json.dumps(
+            {
+                "schema": "ScannerRunSummary@v1",
+                "date": "2026-10-12",
+                "run_label": "0400",
+                "generated_at": "2026-10-12T06:09:00-04:00",
+                "ticker_count": 21,
+            }
+        )
+    )
+    heal = reports / "HEALTH_AUTOHEAL/run_summary.json"
+    heal.parent.mkdir()
+    heal.write_text(json.dumps({"run_label": "HEALTH_AUTOHEAL", "generated_at": NOW.isoformat(), "ticker_count": 999}))
+    snapshot = M.collect_server_snapshot(root, c, now=NOW, admission=a, code_root=root)
+    observed = snapshot["products"]["latest_scan_package"]
+    assert observed["run_id"] == "2026-10-12::0400" and observed["source_sha"] == "UNKNOWN"
+    assert observed["populations"] == {"published_ticker_count": 21}
+    assert observed["source_evidence"]["provenance"]["path"] == "reports/2026-10-12/0400/run_summary.json"
+    report = evaluate(setup, snapshot)
+    assert report["products"]["latest_scan_package"]["status"] == "UNPROVEN"
+    assert report["products"]["latest_scan_package"]["source_evidence"] == observed["source_evidence"]
+
+
+def test_metadata_adapter_rejects_malformed_and_oversized_documents(tmp_path):
+    path = tmp_path / "metadata.json"
+    path.write_text("{")
+    assert M._metadata_document(path, "public/metadata.json")[1]["status"] == "MALFORMED"
+    path.write_text(json.dumps({"payload": "x" * 100}))
+    document, evidence = M._metadata_document(path, "public/metadata.json", limit=20)
+    assert document is None and evidence["status"] == "OVERSIZED" and evidence["sha256"] is None
+
+
 def test_shared_projection_consumer_generation_and_verdicts_are_preserved():
     p = product(
         population_contract="shared_signal_union",

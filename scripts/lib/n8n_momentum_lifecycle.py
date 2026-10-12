@@ -100,14 +100,113 @@ def _document(path: Path) -> dict | None:
         return None
 
 
-def collect_server_snapshot(state_root: Path, candidate: Mapping, *, now: datetime, statvfs_fn=os.statvfs) -> dict:
+def _metadata_document(path: Path, relative: str, *, limit: int = 1048576) -> tuple[dict | None, dict]:
+    """Bounded metadata read and content provenance; never promote it to writer authority."""
+    evidence = {"path": relative, "schema": "NOT_MEASURED", "sha256": None, "status": "NOT_MEASURED"}
+    try:
+        with path.open("rb") as stream:
+            raw = stream.read(limit + 1)
+        if len(raw) > limit:
+            evidence["status"] = "OVERSIZED"
+            return None, evidence
+        value = json.loads(raw)
+        if not isinstance(value, dict):
+            evidence["status"] = "MALFORMED"
+            return None, evidence
+        evidence.update(
+            sha256=hashlib.sha256(raw).hexdigest(),
+            schema=value.get("schema") or value.get("contract_version") or "NOT_MEASURED",
+            status="READ_ONLY_OBSERVED",
+        )
+        return value, evidence
+    except ValueError:
+        evidence["status"] = "MALFORMED"
+        return None, evidence
+    except OSError:
+        return None, evidence
+
+
+def _runtime_receipt_metadata(state_root: Path, admission: Admission | None, lane_ids: set[str]) -> dict:
+    """Only server registry-declared public runtime JSON signals; no logs, secret or broker stores."""
+    if admission is None:
+        return {}
+    result = {}
+    for lane, row in admission.registry.items():
+        if lane not in lane_ids:
+            continue
+        signal = row.get("output_signal") or {}
+        relative = signal.get("path")
+        if not isinstance(relative, str):
+            continue
+        parts = Path(relative).parts
+        if (
+            len(parts) != 3
+            or parts[:2] != ("data", "runtime")
+            or not relative.endswith(".json")
+            or ".." in parts
+            or parts[-1].startswith(".")
+            or not parts[-1].endswith("_last.json")
+        ):
+            continue
+        # A health JSON signal is not a raw cookie file; do not read credential/cookie inputs.
+        document, provenance = _metadata_document(state_root / relative, relative, limit=65536)
+        if not document:
+            result[lane] = {"provenance": provenance, "accepted_output_proof": "NOT_MEASURED"}
+            continue
+        fields = (
+            "schema",
+            "lane_id",
+            "status",
+            "mode",
+            "exit",
+            "exit_code",
+            "run_id",
+            "code_sha",
+            "source_sha",
+            "started_at",
+            "finished_at",
+            "ok_at",
+            "last_ok_at",
+        )
+        values = {
+            field: document[field]
+            for field in fields
+            if field in document and isinstance(document[field], (str, int, float, bool, type(None)))
+        }
+        summary = document.get("summary") or {}
+        if isinstance(summary, Mapping) and isinstance(summary.get("run_id"), str):
+            values["business_run_id"] = summary.get("run_id")
+        result[lane] = {
+            "fields": values,
+            "provenance": provenance,
+            "field_provenance": {
+                field: {**provenance, "field": "summary.run_id" if field == "business_run_id" else field}
+                for field in values
+            },
+            "accepted_output_proof": "NOT_MEASURED",
+            "producer_binding": "NOT_MEASURED",
+        }
+    return result
+
+
+def collect_server_snapshot(
+    state_root: Path,
+    candidate: Mapping,
+    *,
+    now: datetime,
+    statvfs_fn=os.statvfs,
+    admission: Admission | None = None,
+    code_root: Path | None = None,
+) -> dict:
     """Fixed host-owned projections, read-only SQLite and capacity metadata; no probes or secret reads.
 
-    The business writer must publish explicit run/SHA/population metadata at INPUT_REL.
+    INPUT_REL has no accepted producer and supplies declarations only. Existing public
+    owner snapshots and registry signals supply observed metadata, not output acceptance.
     A cache timestamp or health-healer timestamp is never inferred to be business evidence.
     No log tail, prompt, bearer, cookie, broker payload or account field enters the projection.
     """
-    doc = _document(state_root / INPUT_REL) or {}
+    doc, input_provenance = _metadata_document(state_root / INPUT_REL, INPUT_REL, limit=65536)
+    doc = doc or {}
     products = {}
     allowed_product_keys = {
         "available",
@@ -125,10 +224,17 @@ def collect_server_snapshot(state_root: Path, candidate: Mapping, *, now: dateti
         "projection_hash",
         "source_verdicts_preserved",
     }
+    declaration_products = doc.get("products") if isinstance(doc.get("products"), Mapping) else {}
     for spec in candidate.get("products", []):
-        product = (doc.get("products") or {}).get(spec["id"])
+        product = declaration_products.get(spec["id"])
         if isinstance(product, dict):
             products[spec["id"]] = {k: v for k, v in product.items() if k in allowed_product_keys}
+            products[spec["id"]].update(
+                basis="NOT_MEASURED",
+                business_status="NOT_MEASURED",
+                accepted_producer="NOT_MEASURED",
+                source_evidence={"origin": "UNACCEPTED_DECLARATION", "provenance": input_provenance},
+            )
     # Project actual existing owner snapshots when the host input adapter has not supplied
     # stronger evidence. Producer SHA, business basis and consumer acks remain unknown;
     # this read-only mapping must never turn cache availability into accepted business work.
@@ -166,20 +272,127 @@ def collect_server_snapshot(state_root: Path, candidate: Mapping, *, now: dateti
             basis="NOT_MEASURED",
             business_status="NOT_MEASURED",
             populations=counts or None,
+            accepted_producer="NOT_MEASURED",
         )
-        products.setdefault("shared_signal_projection", view)
+        declared = products.get("shared_signal_projection")
+        products["shared_signal_projection"] = {**view, "declared_metadata": declared} if declared else view
         cache = {**view, "population_contract": "separate_populations", "derived_from_run_id": shared.get("run_id")}
-        products.setdefault("served_scan_cache", cache)
+        declared = products.get("served_scan_cache")
+        products["served_scan_cache"] = {**cache, "declared_metadata": declared} if declared else cache
     except (ImportError, OSError, ValueError):
         pass
-    auth = doc.get("credential_health") or {}
+    auth = doc.get("credential_health") if isinstance(doc.get("credential_health"), Mapping) else {}
     snapshot = {
         "products": products,
-        "credential_health": {k: auth[k] for k in ("secret_name", "status", "checked_at") if k in auth},
+        "credential_health": {k: auth[k] for k in ("secret_name", "checked_at") if k in auth}
+        | {
+            "status": "NOT_MEASURED",
+            "declared_status": auth.get("status"),
+            "accepted_health_check_producer": "NOT_MEASURED",
+        },
         "scalp_cycle_monitor": _document(state_root / "data/runtime/scalp_cycle_monitor_last.json"),
         "diagnosis_status": {},
-        "collection": {"inputs": "PRESENT" if doc else "NOT_MEASURED"},
+        "collection": {
+            "inputs": "UNACCEPTED_DECLARATION" if doc else "NOT_MEASURED",
+            "accepted_input_producer": "NOT_MEASURED",
+        },
     }
+    watch_ids = {spec["lane_id"] for spec in candidate.get("watch", [])}
+    snapshot["host_receipts"] = _runtime_receipt_metadata(state_root, admission, watch_ids)
+    cache_doc, cache_provenance = _metadata_document(
+        state_root / "data/runtime/trade_ai_cache.json", "data/runtime/trade_ai_cache.json", limit=16000000
+    )
+    if cache_doc:
+        contract = cache_doc.get("setup_run_summary") if isinstance(cache_doc.get("setup_run_summary"), Mapping) else {}
+        if cache_provenance["schema"] == "NOT_MEASURED":
+            cache_provenance["schema"] = contract.get("contract_version") or "NOT_MEASURED"
+        run_id = contract.get("run_id") or cache_doc.get("run_id")
+        timestamp = contract.get("run_timestamp") or (
+            cache_doc.get("latest_run_timestamp") if cache_doc.get("run_id") == run_id else None
+        )
+        observed_sha = cache_doc.get("source_sha") or cache_doc.get("code_sha")
+        identity_paths = {
+            "run_id": "setup_run_summary.run_id" if contract.get("run_id") else "run_id",
+            "run_date": "setup_run_summary.run_date" if contract.get("run_date") else "run_date",
+            "finished_at": "setup_run_summary.run_timestamp"
+            if contract.get("run_timestamp")
+            else ("latest_run_timestamp" if timestamp else "NOT_MEASURED"),
+            "source_sha": "source_sha" if cache_doc.get("source_sha") else "code_sha",
+        }
+        actual_identity = {
+            "run_id": run_id,
+            "run_date": contract.get("run_date") or cache_doc.get("run_date"),
+            "finished_at": timestamp,
+            "source_sha": observed_sha if isinstance(observed_sha, str) and SHA.fullmatch(observed_sha) else "UNKNOWN",
+        }
+        product = products.get("served_scan_cache") or {}
+        product.update(actual_identity)
+        product.update(basis="NOT_MEASURED", business_status="NOT_MEASURED", accepted_producer="NOT_MEASURED")
+        product["source_evidence"] = {
+            "origin": "CANONICAL_PUBLIC_CACHE_METADATA",
+            "provenance": cache_provenance,
+            "field_provenance": {key: {**cache_provenance, "field": identity_paths[key]} for key in actual_identity},
+            "independent_output_corroboration": "NOT_MEASURED",
+            "remaining_action": "Bind an accepted producer's business run, output digest and source SHA to the durable host run receipt.",
+        }
+        products["served_scan_cache"] = product
+    if code_root is not None:
+        day = now.astimezone(ET).date().isoformat()
+        observed = []
+        for path in sorted((code_root / "reports" / day).glob("*/run_summary.json"))[-24:]:
+            relative = str(path.relative_to(code_root))
+            package, provenance = _metadata_document(path, relative)
+            if not package or package.get("session_heal") or package.get("run_label") == "HEALTH_AUTOHEAL":
+                continue
+            observed.append((package, provenance))
+        if observed:
+            package, provenance = max(
+                observed,
+                key=lambda pair: (
+                    stamp(pair[0].get("generated_at")) or datetime.min.replace(tzinfo=timezone.utc),
+                    pair[1]["path"],
+                ),
+            )
+            label = package.get("run_label")
+            date = package.get("run_date") or package.get("date")
+            products["latest_scan_package"] = {
+                "available": True,
+                "run_id": package.get("run_id") or (f"{date}::{label}" if date and label else None),
+                "run_date": date,
+                "finished_at": package.get("generated_at"),
+                "source_sha": (package.get("source_sha") or package.get("code_sha"))
+                if SHA.fullmatch(str(package.get("source_sha") or package.get("code_sha") or ""))
+                else "UNKNOWN",
+                "basis": "NOT_MEASURED",
+                "business_status": "NOT_MEASURED",
+                "accepted_producer": "NOT_MEASURED",
+                "population_contract": "published_scan_package",
+                "populations": {"published_ticker_count": package["ticker_count"]}
+                if isinstance(package.get("ticker_count"), int)
+                else None,
+                "source_evidence": {
+                    "origin": "CANONICAL_PUBLIC_RUN_SUMMARY",
+                    "provenance": provenance,
+                    "independent_output_corroboration": "NOT_MEASURED",
+                    "timestamp_comparability": "ZONED_TIMESTAMPS"
+                    if all(stamp(item[0].get("generated_at")) for item in observed)
+                    else "NOT_MEASURED",
+                    "field_provenance": {
+                        field: {**provenance, "field": field}
+                        for field in (
+                            "run_id",
+                            "run_label",
+                            "date",
+                            "run_date",
+                            "generated_at",
+                            "source_sha",
+                            "code_sha",
+                            "ticker_count",
+                        )
+                        if field in package
+                    },
+                },
+            }
     diagnosis = _document(state_root / "data/runtime/n8n_failure_diagnosis_last.json") or {}
     snapshot["diagnosis_status"] = {
         k: diagnosis[k]
@@ -559,6 +772,25 @@ def evaluate(
             "requirements_missing": reasons,
             "status": "NOT_APPLICABLE" if not applicable else "UNPROVEN" if reasons else "PROVEN",
             "populations": (product_rows.get(spec["id"]) or {}).get("populations"),
+            "accepted_producer": (product_rows.get(spec["id"]) or {}).get("accepted_producer", "NOT_MEASURED"),
+            "source_evidence": (product_rows.get(spec["id"]) or {}).get("source_evidence") or {},
+            "observed_metadata": {
+                key: value
+                for key, value in (product_rows.get(spec["id"]) or {}).items()
+                if key
+                in {
+                    "available",
+                    "run_id",
+                    "run_date",
+                    "source_sha",
+                    "finished_at",
+                    "basis",
+                    "business_status",
+                    "derived_from_run_id",
+                    "population_contract",
+                }
+            },
+            "declared_metadata": (product_rows.get(spec["id"]) or {}).get("declared_metadata") or {},
         }
         for reason in reasons:
             findings.append(_finding(spec["id"], reason, day))
@@ -616,6 +848,8 @@ def evaluate(
         "recovery_intents": [],
         "credential_tasks": credential_tasks,
         "storage_health": storage,
+        "source_collection": snapshot.get("collection") or {},
+        "host_receipt_metadata": snapshot.get("host_receipts") or {},
         "diagnosis_status": snapshot.get("diagnosis_status") or {},
         "diagnosis_coverage": diagnosis_coverage(candidate, admission),
         "authority": "READ_ONLY_ADVISORY",
