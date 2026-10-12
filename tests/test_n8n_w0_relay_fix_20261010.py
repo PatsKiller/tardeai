@@ -16,6 +16,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.relay_probe_fixtures import install_probe_fixtures
+
 from scripts import check_n8n_relay_contract as C
 from scripts import n8n_run_relay as R
 from scripts import n8n_workflow_templates as gen
@@ -28,6 +30,13 @@ BEARER = "b" * 48
 SHA = "a" * 40
 AUTH = f"Bearer {BEARER}"
 FOUR = ["tradeai-dispatcher", "tradeai-event-router", "tradeai-incident-router", "tradeai-digest-scheduler"]
+
+
+@pytest.fixture(autouse=True)
+def owned_probe_listeners(monkeypatch, tmp_path):
+    session = install_probe_fixtures(monkeypatch, C, tmp_path)
+    yield session
+    session.close()
 
 
 def _env(tmp_path, **extra):
