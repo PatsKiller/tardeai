@@ -169,7 +169,37 @@ def test_validator_detects_placeholder_and_self_head(tmp_path: Path):
     assert any(e.startswith("SELF_REF_HEAD_CLAIM:") for e in errs)
 
 
-def test_runtime_attestation_schema_roundtrip():
+def test_runtime_attestation_schema_roundtrip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    from scripts.lib import sop_toolchain as tc
+
+    # The 2026-10-12 isolated native run reached the canonical Ruff checkout.
+    # This schema test uses owned tool identities and controlled version input;
+    # the real collection, parsing and attestation validation remain exercised.
+    ruff = tmp_path / "ruff"
+    shellcheck = tmp_path / "shellcheck"
+    ruff.touch()
+    shellcheck.touch()
+    resolved_roots = []
+    version_calls = []
+
+    def resolve_fixture_ruff(*, root):
+        assert root == ROOT
+        resolved_roots.append(root)
+        return ruff
+
+    def fixture_version_output(args, **kwargs):
+        version_calls.append((args, kwargs))
+        if args == [str(ruff), "--version"]:
+            assert kwargs == {"cwd": str(ROOT), "text": True}
+            return "ruff 0.16.2\n"
+        assert args == [str(shellcheck), "--version"]
+        assert kwargs == {"text": True}
+        return "ShellCheck - shell script analysis tool\nversion: 0.11.0\n"
+
+    monkeypatch.setattr(tc, "resolve_ruff_bin", resolve_fixture_ruff)
+    monkeypatch.setattr(tc, "resolve_shellcheck_bin", lambda: shellcheck)
+    monkeypatch.setattr(tc.subprocess, "check_output", fixture_version_output)
+
     digest = control_surface_digest(ROOT)["digest"]
     wf = workflow_facts(ROOT)
     att = {
@@ -197,6 +227,15 @@ def test_runtime_attestation_schema_roundtrip():
     assert validate_runtime_attestation(att, root=ROOT) == []
     att["control_surface_digest"] = "0" * 64
     assert "ATTESTATION_DIGEST_MISMATCH" in validate_runtime_attestation(att, root=ROOT)
+    assert resolved_roots == [ROOT] * 5
+    assert (
+        version_calls
+        == [
+            ([str(ruff), "--version"], {"cwd": str(ROOT), "text": True}),
+            ([str(shellcheck), "--version"], {"text": True}),
+        ]
+        * 3
+    )
 
 
 def test_committed_evidence_must_not_embed_a_volatile_digest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -216,11 +255,15 @@ def test_committed_evidence_must_not_embed_a_volatile_digest(tmp_path: Path, mon
     real = sei._evidence_path("FULL_TEST_MATRIX.txt", ROOT)
     fake = tmp_path / "FULL_TEST_MATRIX.txt"
     fake.write_text(
-        _re.sub(r"(?m)^control_surface_digest=.*$", "control_surface_digest=" + "a" * 64, real.read_text(encoding="utf-8")),
+        _re.sub(
+            r"(?m)^control_surface_digest=.*$", "control_surface_digest=" + "a" * 64, real.read_text(encoding="utf-8")
+        ),
         encoding="utf-8",
     )
     orig = sei._evidence_path
-    monkeypatch.setattr(sei, "_evidence_path", lambda name, root: fake if name == "FULL_TEST_MATRIX.txt" else orig(name, root))
+    monkeypatch.setattr(
+        sei, "_evidence_path", lambda name, root: fake if name == "FULL_TEST_MATRIX.txt" else orig(name, root)
+    )
     errs = sei.validate_in_repo_evidence(ROOT)
     assert "EVIDENCE_EMBEDS_VOLATILE_DIGEST:FULL_TEST_MATRIX.txt" in errs, errs
     monkeypatch.setattr(sei, "_evidence_path", orig)
