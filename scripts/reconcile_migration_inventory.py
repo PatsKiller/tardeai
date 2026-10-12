@@ -12,18 +12,72 @@ from __future__ import annotations
 
 import argparse
 import csv
+import fcntl
 import hashlib
 import json
 import os
+import subprocess
+import threading
 from collections import Counter, defaultdict
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
 STATUSES = ("Completed", "In Progress", "Blocked", "Deferred", "Not Started")
 MODIFICATIONS = {"Requires Refactoring Before Migration", "Requires Custom Development"}
+CLASSIFICATIONS = MODIFICATIONS | {
+    "Ready for Migration",
+    "Candidate for Retirement",
+    "Retain as Existing Cron Job",
+    "Not Recommended for Migration",
+}
 UNKNOWN = "NOT_MEASURED"
+DERIVED_SHEETS = {
+    "Closure Dashboard",
+    "Closure Items",
+    "Modification Targets",
+    "Closure Requirements",
+    "Process Crosswalk",
+    "Reconciliation Drift",
+    "Reconciliation Evidence",
+    "Contract Review",
+    "Monitoring Coverage",
+    "Owner Decisions",
+    "Timer Source Gaps",
+    "OpenClaw Crosswalk",
+    "Runtime Observations",
+    "Classification Review",
+}
+CUTOVER_FIELDS = ("reconciled_acceptance", "acceptance_basis", "acceptance_as_of")
+_LOCKS = threading.local()
+
+
+@contextmanager
+def writer_lock(path):
+    """Shared advisory lock with the two existing workbook generators.
+
+    Cooperating writers fail before reading/writing. Raw filesystem writers that
+    ignore this lock are outside the guarantee and must be serialized by the operator.
+    """
+    lock_path = Path(path).resolve().with_name(".CRON_INVENTORY_WRITER.lock")
+    held = getattr(_LOCKS, "held", {})
+    if str(lock_path) in held:
+        yield
+        return
+    with lock_path.open("a+") as stream:
+        fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        held[str(lock_path)] = True
+        _LOCKS.held = held
+        try:
+            yield
+        finally:
+            del held[str(lock_path)]
+            fcntl.flock(stream, fcntl.LOCK_UN)
+
+
 REQUIREMENTS = {
     "classification": "Resolve inventory classification from current source and owner intent",
+    "registry_declaration": "Confirm exact declared inventory registry ID exists in the source registry",
     "mapping": "Confirm business process, scheduler aliases, parent and exclusions",
     "disposition": "Record explicit owner/operator approved target disposition",
     "owner": "Obtain responsible owner's acceptance and dependency ownership",
@@ -75,6 +129,7 @@ BASE_FIELDS = [
     "lane_verdict",
     "decision_due_date",
     "natural_observation_date",
+    "scoped_consolidation_deferral",
 ]
 
 
@@ -93,6 +148,23 @@ def contains_unknown(value):
     if isinstance(value, list):
         return any(contains_unknown(v) for v in value)
     return isinstance(value, str) and "UNKNOWN" in value.upper()
+
+
+def full_deferral(row):
+    decision = row.get("work_deferral_decision")
+    if not isinstance(decision, dict):
+        return False
+    try:
+        at = datetime.fromisoformat(str(decision.get("decided_at")))
+    except ValueError:
+        return False
+    return (
+        decision.get("scope") == "INVENTORY_CLOSURE"
+        and decision.get("accepted") is True
+        and at.tzinfo is not None
+        and meaningful(decision.get("owner"))
+        and meaningful(decision.get("evidence"))
+    )
 
 
 def reconcile(
@@ -139,7 +211,7 @@ def reconcile(
             boundaries.append("Canonical registry/parent mapping requires reconciliation")
         if owner_unresolved:
             boundaries.append("Responsible owner unresolved; inherited parent owner is unconfirmed")
-        if not meaningful(row.get("classification")):
+        if row.get("classification") not in CLASSIFICATIONS:
             boundaries.append("Classification and applicable closure scope require owner review")
         if declared_lane in blocked_reasons:
             boundaries.append("Current allowlist boundary: " + blocked_reasons[declared_lane])
@@ -173,10 +245,13 @@ def reconcile(
             modification and (has_work_metadata or inv_id in planning_ids)
         )
         deferral = str(row.get("consolidation_approval") or "")
-        deferred = deferral.startswith("Deferred — Deferred ")
+        deferred = full_deferral(row)
+        scoped_deferral = deferral if deferral.startswith("Deferred") else "NONE"
+        if scoped_deferral != "NONE" and not deferred:
+            findings.append("Consolidation deferral does not defer full inventory closure; preserve its decision scope")
         if deferred:
             # The existing dated decision is explicit. It never proves other requirements.
-            status, basis = "Deferred", deferral
+            status, basis = "Deferred", json.dumps(row["work_deferral_decision"], sort_keys=True)
         elif boundaries:
             status, basis = "Blocked", "; ".join(boundaries)
         elif work or row.get("migration_status") in {"Shadow", "Retired", "Cut over", "Validated"}:
@@ -187,9 +262,12 @@ def reconcile(
         else:
             status, basis = "Not Started", "No implementation evidence under the closure contract"
         # Only declaration/mapping coverage can be measured from these inputs.
-        passed = {"classification": meaningful(row.get("classification")), "mapping": lane is not None}
+        passed = {
+            "classification": row.get("classification") in CLASSIFICATIONS,
+            "registry_declaration": lane is not None,
+        }
         not_applicable = {}
-        if row.get("classification") and not modification:
+        if row.get("classification") in CLASSIFICATIONS and not modification:
             not_applicable["refactor"] = (
                 "Classification does not require source modification; recheck if disposition changes"
             )
@@ -208,7 +286,7 @@ def reconcile(
             evidence = (
                 inputs["workbook"]
                 if name == "classification" and state == "PROVEN"
-                else (inputs["registry"] if name == "mapping" and state == "PROVEN" else "")
+                else (inputs["registry"] if name == "registry_declaration" and state == "PROVEN" else "")
             )
             requirement_rows.append(
                 {
@@ -252,7 +330,11 @@ def reconcile(
             else (
                 "PLANNING_ONLY; ACCEPTANCE_NOT_MEASURED"
                 if modification and inv_id in planning_ids
-                else (UNKNOWN if modification or not row.get("classification") else "NOT_APPLICABLE_WITH_REASON")
+                else (
+                    UNKNOWN
+                    if modification or row.get("classification") not in CLASSIFICATIONS
+                    else "NOT_APPLICABLE_WITH_REASON"
+                )
             ),
             "testing_acceptance": UNKNOWN,
             "deployment_acceptance": UNKNOWN,
@@ -284,6 +366,7 @@ def reconcile(
             "lane_verdict": "NO_GO" if not outside else "NOT_APPLICABLE_WITH_REASON: retained scheduler",
             "decision_due_date": "2026-10-12 (proposed owner review; not agreed)",
             "natural_observation_date": "NOT_SCHEDULED: requires reviewed contract and authorized exact deployment",
+            "scoped_consolidation_deferral": scoped_deferral,
         }
         derived.append(d)
         crosswalk.append(
@@ -323,7 +406,7 @@ def reconcile(
         "source_sha": source_sha,
         "deployed_sha": deployed_sha,
         "inventory_rows": len(rows),
-        "classified_rows": sum(meaningful(r.get("classification")) for r in rows),
+        "classified_rows": sum(r.get("classification") in CLASSIFICATIONS for r in rows),
         "modification_targets": len(targets),
         "primary_status_partition": partition,
         "partition_basis": "Derived current boundaries and work evidence; preserves original lifecycle labels",
@@ -334,7 +417,7 @@ def reconcile(
         "canonical_business_process_denominator": UNKNOWN,
         "exact_registry_ids_represented": len({d["registry_lane_id"] for d in crosswalk if d["registry_lane_id"]}),
         "classification_coverage_pct": round(
-            100 * sum(meaningful(r.get("classification")) for r in rows) / len(rows), 2
+            100 * sum(r.get("classification") in CLASSIFICATIONS for r in rows) / len(rows), 2
         ),
         "inventory_closure_pct": UNKNOWN,
         "accepted_refactor_pct": UNKNOWN,
@@ -409,10 +492,15 @@ def original_cells(wb):
                     list(c._style) if c.has_style else None,
                 )
                 for c in row
+                if not (
+                    (s.title == "Inventory" and s.cell(1, c.column).value in BASE_FIELDS)
+                    or (s.title == "Cutover_Tracker" and s.cell(1, c.column).value in CUTOVER_FIELDS)
+                )
             ]
             for row in s
         ]
         for s in wb
+        if s.title not in DERIVED_SHEETS
     }
 
 
@@ -487,21 +575,28 @@ def workbook_candidate(wb, result, output):
     )
     if "Cutover_Tracker" in wb:
         ws = wb["Cutover_Tracker"]
-        col = ws.max_column + 1
-        for i, name in enumerate(("reconciled_acceptance", "acceptance_basis", "acceptance_as_of"), col):
-            ws.cell(1, i, name)
+        columns = {c.value: c.column for c in ws[1]}
+        for name in CUTOVER_FIELDS:
+            if name not in columns:
+                columns[name] = ws.max_column + 1
+                ws.cell(1, columns[name], name)
         for r in range(2, ws.max_row + 1):
-            ws.cell(r, col, "NO_GO")
+            ws.cell(r, columns[CUTOVER_FIELDS[0]], "NO_GO")
             ws.cell(
                 r,
-                col + 1,
+                columns[CUTOVER_FIELDS[1]],
                 "Current exact-head source/deployment/natural/output/monitoring acceptance is NOT_MEASURED; legacy stage retained",
             )
-            ws.cell(r, col + 2, summary["as_of"])
+            ws.cell(r, columns[CUTOVER_FIELDS[2]], summary["as_of"])
 
 
 def publish_candidate(path, candidate, *, expected_sha, original_bytes):
-    """Compare-and-swap with exclusive exact-byte backup; never overwrite peers."""
+    """Hash-checked publication serialized with cooperating workbook writers."""
+    with writer_lock(path):
+        return _publish_locked(path, candidate, expected_sha=expected_sha, original_bytes=original_bytes)
+
+
+def _publish_locked(path, candidate, *, expected_sha, original_bytes):
     if sha256(path.read_bytes()) != expected_sha or sha256(original_bytes) != expected_sha:
         raise ValueError("Workbook changed after inspection; candidate retained, publication refused")
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
@@ -523,6 +618,7 @@ def publish_candidate(path, candidate, *, expected_sha, original_bytes):
         "before_sha256": expected_sha,
         "after_sha256": sha256(path.read_bytes()),
         "original_cells_preserved": True,
+        "writer_lock": "shared advisory .CRON_INVENTORY_WRITER.lock; all registered writers serialized",
     }
 
 
@@ -536,10 +632,20 @@ def main(argv=None):
     ap.add_argument("--output", required=True, type=Path)
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--expected-sha")
+    ap.add_argument("--supplement", type=Path, help="sanitized runtime-contracts packet directory")
     args = ap.parse_args(argv)
     if args.apply and not args.expected_sha:
         ap.error("--apply requires --expected-sha from workbook inspection")
+    with writer_lock(args.workbook):
+        return build(args)
+
+
+def build(args):
     from openpyxl import load_workbook
+
+    actual_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=args.source_root, text=True).strip()
+    if actual_sha != args.source_sha:
+        raise ValueError("Declared source SHA differs from source-root HEAD")
 
     original_bytes = args.workbook.read_bytes()
     if args.expected_sha and sha256(original_bytes) != args.expected_sha:
@@ -584,8 +690,48 @@ def main(argv=None):
         deployed_sha=args.deployed_sha,
         inputs=provenance,
     )
+    if args.supplement:
+        runtime = load(args.supplement / "runtime_observations.json")
+        contracts = load(args.supplement / "contract_reconciliation.json")
+        result["summary"]["runtime_observations"] = {"as_of": runtime["as_of"], **runtime["metrics"]}
+        result["summary"]["contract_reconciliation_counts"] = contracts["counts"]
+        provenance["runtime_packet"] = (
+            str(args.supplement / "runtime_observations.json")
+            + " #sha256="
+            + sha256((args.supplement / "runtime_observations.json").read_bytes())
+        )
     write_artifacts(result, args.output)
     workbook_candidate(wb, result, args.output)
+    if args.supplement:
+        for filename, title in (
+            ("monitoring_coverage.tsv", "Monitoring Coverage"),
+            ("owner_decisions.tsv", "Owner Decisions"),
+            ("timer_source_gaps.tsv", "Timer Source Gaps"),
+            ("openclaw_crosswalk.tsv", "OpenClaw Crosswalk"),
+        ):
+            with (args.supplement / filename).open() as stream:
+                values = list(csv.reader(stream, delimiter="\t"))
+            sheet_table(wb, title, values[0], values[1:])
+        h = list(contracts["rows"][0])
+        sheet_table(
+            wb,
+            "Contract Review",
+            h,
+            [
+                [json.dumps(r.get(k)) if isinstance(r.get(k), (list, dict)) else r.get(k) for k in h]
+                for r in contracts["rows"]
+            ],
+        )
+        sheet_table(
+            wb,
+            "Runtime Observations",
+            ["section", "evidence"],
+            [[k, json.dumps(v)] for k, v in runtime.items() if k != "ledger"],
+        )
+    # Place the authoritative progress view first without altering original cells.
+    dashboard = wb["Closure Dashboard"]
+    wb._sheets.remove(dashboard)
+    wb._sheets.insert(0, dashboard)
     candidate = args.output / "CRON_INVENTORY_RECONCILED.xlsx"
     wb.save(candidate)
     wb.close()

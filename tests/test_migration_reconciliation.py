@@ -1,6 +1,7 @@
 """Closure accounting and peer-write preservation using synthetic declarations."""
 
 import pytest
+import threading
 
 from scripts import reconcile_migration_inventory as R
 
@@ -45,7 +46,16 @@ def test_historical_validation_cannot_complete_or_measure_readiness():
 def test_partition_precedence_and_no_fake_zero_for_named_boundary():
     result = reconcile(
         [
-            row("1", consolidation_approval="Deferred — Deferred 2026-10-10 operator decision"),
+            row(
+                "1",
+                work_deferral_decision={
+                    "scope": "INVENTORY_CLOSURE",
+                    "accepted": True,
+                    "owner": "operator",
+                    "decided_at": "2026-10-10T20:00:00-04:00",
+                    "evidence": "fixture-decision.json",
+                },
+            ),
             row("2", owner_stakeholder="UNKNOWN"),
             row("3", migration_status="Shadow"),
             row("4"),
@@ -112,10 +122,28 @@ def test_unmapped_parent_and_inherited_owner_cannot_be_manufactured():
 
 
 def test_unknown_classification_keeps_refactor_requirement_applicable():
-    result = reconcile([row(classification=None)])
-    req = next(r for r in result["requirements"] if r["requirement"] == "refactor")
-    assert req["status"] == "NOT_MEASURED"
-    assert result["items"][0]["primary_work_status"] == "Blocked"
+    for value in (None, "UNKNOWN", "Not yet adjudicated"):
+        result = reconcile([row(classification=value)])
+        req = next(r for r in result["requirements"] if r["requirement"] == "refactor")
+        assert req["status"] == "NOT_MEASURED"
+        assert result["items"][0]["primary_work_status"] == "Blocked"
+
+
+def test_scoped_or_undated_consolidation_deferral_is_not_full_work_deferral():
+    for value in (
+        "Deferred — Deferred proposal; no owner/date/decision",
+        "Deferred — Deferred 2026-10-10 operator: out of C1",
+    ):
+        result = reconcile([row(consolidation_approval=value)])
+        assert result["items"][0]["primary_work_status"] == "Not Started"
+        assert result["items"][0]["scoped_consolidation_deferral"] == value
+
+
+def test_exact_registry_id_is_coverage_not_accepted_business_crosswalk():
+    result = reconcile([row()])
+    requirements = {r["requirement"]: r for r in result["requirements"]}
+    assert requirements["registry_declaration"]["status"] == "PROVEN"
+    assert requirements["mapping"]["status"] == "NOT_MEASURED"
 
 
 def test_retained_scheduler_still_requires_production_proof():
@@ -143,3 +171,31 @@ def test_publication_refuses_peer_write_and_preserves_old_bytes(tmp_path):
     assert workbook.read_bytes() == b"candidate"
     assert list(tmp_path.glob("*.pre-reconciliation-*"))[0].read_bytes() == b"original"
     assert receipt["after_sha256"] == R.sha256(b"candidate")
+
+
+def test_competing_writer_cannot_enter_final_replace_window(tmp_path, monkeypatch):
+    workbook, candidate = tmp_path / "inventory.xlsx", tmp_path / "candidate.xlsx"
+    workbook.write_bytes(b"original")
+    candidate.write_bytes(b"candidate")
+    outcomes = []
+    replace = R.os.replace
+
+    def competitor():
+        try:
+            with R.writer_lock(workbook):
+                workbook.write_bytes(b"peer-write")
+                outcomes.append("overwritten")
+        except BlockingIOError:
+            outcomes.append("serialized")
+
+    def racing_replace(src, dst):
+        thread = threading.Thread(target=competitor)
+        thread.start()
+        thread.join(timeout=2)
+        assert not thread.is_alive()
+        return replace(src, dst)
+
+    monkeypatch.setattr(R.os, "replace", racing_replace)
+    R.publish_candidate(workbook, candidate, expected_sha=R.sha256(b"original"), original_bytes=b"original")
+    assert outcomes == ["serialized"]
+    assert workbook.read_bytes() == b"candidate"
