@@ -1447,6 +1447,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-maturity/REFACTOR_SHARD_08_20261011.md` | Refactor shard 08 | review_required | OK | `5d785957a2fd` |
 | `docs/implementation/n8n-maturity/SEARCH_SOURCE_ROUTING.md` | Search source routing — which source answers what, and what it may spend | review_required | OK | `633c3aab392f` |
 | `docs/implementation/n8n-maturity/WAVE_B_CC_ORCHESTRATE_2026-10-11.md` | Wave B — CC orchestrate (research-intake + watch-refresh) | review_required | OK | `82db6193e3cb` |
+| `docs/implementation/n8n-maturity/WAVE_C_HEAVY_JOBS_2026-10-11.md` | Wave C — heavy CC jobs (advisory / analyst / brief / legacy Run) | review_required | OK | `d34284b77ce0` |
 | `docs/implementation/n8n-maturity/completion-119/BEFORE_AFTER_119.md` | 119-lane source completion: before and after | review_required | OK | `b9366b8315fa` |
 | `docs/implementation/n8n-maturity/completion-119/README.md` | Completion train for the 119 outstanding source/integration lanes | review_required | OK | `0471a212357c` |
 | `docs/implementation/n8n-maturity/completion-119/REMEDIATION_04_06_20261011.md` | Completion119 source remediation, shards04–06 | review_required | OK | `2c45118d93c5` |
