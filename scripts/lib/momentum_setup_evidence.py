@@ -293,7 +293,7 @@ def _structured_subject(message):
         if multi:
             found.extend(s.strip().strip("$*").upper() for s in multi.group(1).split(","))
         trigger = re.match(
-            r"^[^A-Za-z]*(?:TRIGGERED|ARMED|APPROACHING|PULLBACK_ZONE|EXTENDED|TRIGGER_CANCELLED|STAND_DOWN)\s*[:—·]\s*\*?\$?([A-Z][A-Z0-9.]{0,19})\*?(?=\s|$)",
+            r"^[^A-Za-z]*(?:TRIGGERED|ARMED|APPROACHING|PULLBACK_ZONE|EXTENDED|TRIGGER_CANCELLED|STAND_DOWN|BACK IN BUY ZONE|TRIGGER FAILED|STAND DOWN)\s*[:—·]\s*\*?\$?([A-Z][A-Z0-9.]{0,19})\*?(?=\s|$)",
             line,
         )
         if trigger:

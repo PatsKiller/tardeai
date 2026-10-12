@@ -259,3 +259,63 @@ def test_malformed_cached_policy_sections_and_scout_items_remain_unknown(evidenc
     assert all(p["status"] == "UNKNOWN" for p in out["pillars"] if p["id"] != "catalyst")
     assert out["social_scout"]["reported_met"] == ["social_velocity"]
     assert out["social_scout"]["reported_missing"] == ["catalyst_evidence"]
+
+
+FRIENDLY_LABELS = ["BACK IN BUY ZONE", "TRIGGER FAILED", "STAND DOWN"]
+
+
+@pytest.mark.parametrize("label", FRIENDLY_LABELS)
+@pytest.mark.parametrize("delimiter", ["·", "—", ":"])
+def test_friendly_public_trigger_binds_current_single_subject(evidence, monkeypatch, label, delimiter):
+    from lib import comms_editor
+
+    monkeypatch.setattr(comms_editor, "_resolve_primary_symbols", lambda explicit: None)
+    message = f"ACTIVE TRADER · SCALP ALERT\n↩️ {label} {delimiter} *ABCD*\nEarlier unrelated WXYZ considered"
+    assert evidence._structured_subject(message) == ["ABCD"]
+    out = evidence.enrich_active_trader_notification(message, snapshot_loader=lambda: _snapshot(evidence), now=NOW)
+    assert out.startswith(message) and _row()["catalyst"] in out and "5/5" in out
+    assert "Metadata only; trigger and approval unchanged." in out
+
+
+@pytest.mark.parametrize("label", FRIENDLY_LABELS)
+@pytest.mark.parametrize("context", [["WXYZ"], ["ABCD", "WXYZ"]])
+def test_friendly_trigger_cannot_override_stale_or_ambiguous_context(evidence, label, context):
+    message = f"ACTIVE TRADER · SCALP ALERT\n{label} · ABCD"
+    out = evidence.enrich_active_trader_notification(
+        message, primary_symbols=context, snapshot_loader=lambda: _snapshot(evidence), now=NOW
+    )
+    assert "Momentum evidence (advisory): UNKNOWN" in out
+    assert _row()["catalyst"] not in out and "5/5" not in out
+
+
+@pytest.mark.parametrize("label", FRIENDLY_LABELS)
+def test_friendly_trigger_multiple_explicit_header_symbols_remain_unknown(evidence, monkeypatch, label):
+    from lib import comms_editor
+
+    monkeypatch.setattr(comms_editor, "_resolve_primary_symbols", lambda explicit: None)
+    message = f"ACTIVE TRADER · SCALP ALERT\n{label} · ABCD\nSymbols: ABCD, WXYZ"
+    assert evidence._structured_subject(message) == ["ABCD", "WXYZ"]
+    out = evidence.enrich_active_trader_notification(message, snapshot_loader=lambda: _snapshot(evidence), now=NOW)
+    assert "UNKNOWN" in out and _row()["catalyst"] not in out and "5/5" not in out
+
+
+@pytest.mark.parametrize("label", FRIENDLY_LABELS)
+def test_friendly_trigger_does_not_promote_stale_same_symbol_cache(evidence, label):
+    row = _row(run_id="2026-10-09::1730", observed_at="2026-10-09T14:30:00+00:00")
+    message = f"ACTIVE TRADER · SCALP ALERT\n{label} · ABCD"
+    out = evidence.enrich_active_trader_notification(
+        message, primary_symbols=["ABCD"], snapshot_loader=lambda: _snapshot(evidence, row), now=NOW
+    )
+    assert "UNKNOWN" in out and _row()["catalyst"] not in out and "5/5" not in out
+
+
+@pytest.mark.parametrize(
+    "label", ["TRIGGERED", "ARMED", "APPROACHING", "PULLBACK_ZONE", "EXTENDED", "TRIGGER_CANCELLED", "STAND_DOWN"]
+)
+def test_existing_public_trigger_tokens_still_bind_subject(evidence, label):
+    message = f"ACTIVE TRADER · SCALP ALERT\n{label} · ABCD"
+    assert evidence._structured_subject(message) == ["ABCD"]
+    out = evidence.enrich_active_trader_notification(
+        message, primary_symbols=["ABCD"], snapshot_loader=lambda: _snapshot(evidence), now=NOW
+    )
+    assert _row()["catalyst"] in out and "5/5" in out
