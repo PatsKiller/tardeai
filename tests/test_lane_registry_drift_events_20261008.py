@@ -21,6 +21,15 @@ from scripts.lib.lane_registry_drift import (  # noqa: E402
 import scripts.n8n_incident_fanin as fanin  # noqa: E402
 
 NOW = datetime(2026, 10, 8, 3, 15, tzinfo=timezone.utc)
+
+
+def _scalp_lane_healthy(root: Path) -> None:
+    """The scalp-cycle and scalp-stall sources are market-hours aware and read the wall clock inside main(); in RTH
+    a fixture with no scalp receipt is a real P1 (NO_CYCLES_30M). Mark the lane healthy right now so these tests,
+    which are not about scalp, give the same result in and out of market hours."""
+    p = root / fanin.SCALP_RECEIPT_REL
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps({"status": "ok", "last_ok_at": datetime.now(timezone.utc).isoformat()}))
 DECLARED = "5 * * * * cd $PROJ && $PY scripts/declared_job.py --apply >> logs/declared.log 2>&1"
 UNDECLARED = "7 * * * * cd $PROJ && $PY scripts/nobody_declared_me.py --apply >> logs/x.log 2>&1"
 NEVER = "9 * * * * cd $PROJ && $PY scripts/never_scheduled_job.py --apply >> logs/never.log 2>&1"
@@ -135,6 +144,7 @@ def test_an_unavailable_source_is_a_note_on_the_receipt_not_a_crash(monkeypatch,
 def test_apply_writes_the_drift_receipt_the_incident_references(monkeypatch, tmp_path):
     reg = _registry(_lane("never-lane", "NEVER_SCHEDULED", "scripts/never_scheduled_job.py"))
     _wire(monkeypatch, reg, NEVER + "\n", [])
+    _scalp_lane_healthy(tmp_path)
     monkeypatch.setattr(fanin, "state_root", lambda: tmp_path)
     monkeypatch.setattr(fanin, "served_sha", lambda: "c" * 40)
 

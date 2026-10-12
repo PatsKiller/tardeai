@@ -290,7 +290,14 @@ def test_stream_run_outside_session_exits_with_receipt(monkeypatch, tmp_path):
 
     monkeypatch.setenv("STREAM_RECEIPT_DIR", str(tmp_path))
     monkeypatch.setattr(d, "KILL_FILE", tmp_path / "nope")
-    monkeypatch.setattr(d, "_market_open", lambda now=None: False)
+    # run() gates on _session_status(), not _market_open: pin the session closed so the result does not depend
+    # on the wall clock (in market hours the real session read "open" and the run fell through to no_symbols)
+    monkeypatch.setattr(d, "_session_status", lambda now=None, sessions=None: "closed")
+
+    def _no_schwab():
+        raise AssertionError("session closed: Schwab must not be asked")
+
+    monkeypatch.setattr(d, "_schwab_is_open", _no_schwab)
     assert asyncio.run(d.run()) == 0
     assert _json.loads((tmp_path / "schwab_stream_receipt.json").read_text(encoding="utf-8"))["stop_reason"] == "outside_session"
 
