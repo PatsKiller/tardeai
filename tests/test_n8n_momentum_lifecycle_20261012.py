@@ -13,6 +13,15 @@ SHA = "a" * 40
 NOW = datetime.fromisoformat("2026-10-12T06:20:00-04:00")
 
 
+def reviewed_fixture_contract(lane):
+    path = ROOT / "docs/implementation/n8n-maturity/reconciliation-20261012/MOMENTUM_HEALTH_CONTRACT_PROPOSALS.json"
+    contract = copy.deepcopy(next(c for c in json.loads(path.read_text())["contracts"] if c["id"] == "momentum-lifecycle-monitor"))
+    contract.update(id=lane, status="REVIEWED", owner="fixture-owner", ownership_confirmation="OWNER_ACCEPTED")
+    contract["review"] = {"reviewed_by": "fixture-owner", "decision_ref": "fixture://operator-decision"}
+    contract["review"]["contract_body_sha256"] = M.contract_body_digest(contract)
+    return contract
+
+
 @pytest.fixture
 def setup(tmp_path):
     cfg = tmp_path / "config"
@@ -33,8 +42,7 @@ def setup(tmp_path):
         {"lane_id": "momentum-cache-reconcile", "state": "ACTIVE", "scheduler": {"stage": "cutover"},
          "dispatch": {"class": "report", "retry_policy": "transient-2"}},
     ]}
-    contract = {"id": "momentum-cache-reconcile", "status": "REVIEWED",
-                "review": {"reviewed_by": "fixture-owner", "reviewed_sha": SHA}}
+    contract = reviewed_fixture_contract("momentum-cache-reconcile")
     allow = {"lanes": {"momentum-cache-reconcile": {"live_arg": [], "lock_kind": "flock", "lock": "/fixture/cache.lock"}}}
     for name, doc in [("lane_registry", registry), ("n8n_health_contracts", {"contracts": [contract]}),
                       ("n8n_run_allowlist", allow)]:
@@ -215,6 +223,14 @@ def test_retry_window_is_original_slot_not_later_attempt_timestamp(setup):
     assert result["held"][0]["reason"] == "retry_backoff_or_window"
 
 
+def test_missing_durable_attempt_is_held_instead_of_zero_or_manual_retry(setup):
+    c, a, _ = setup
+    s = repair_snapshot()
+    s["recovery_runs"][0]["attempt"] = None
+    result = M.plan_recovery(armed(c), repair_report(), a, snapshot=s, now=NOW)
+    assert result["intents"] == [] and result["held"][0]["reason"] == "budget_slot_or_receipt_not_proven"
+
+
 def test_storage_failure_holds_recovery_without_deletion(setup):
     c, a, _ = setup
     s = repair_snapshot()
@@ -266,10 +282,24 @@ def test_snapshot_cli_is_readonly_and_fixture_root_is_explicit(setup, tmp_path, 
     candidate.write_text(json.dumps(c))
     original = snapshot.read_bytes()
     assert main(["--snapshot", str(snapshot), "--code-root", str(code_root), "--candidate", str(candidate),
-                 "--now", NOW.isoformat()]) == 2
+                 "--now", NOW.isoformat(), "--exit-code"]) == 2
     result = json.loads(capsys.readouterr().out)
     assert result["authority"] == "READ_ONLY_ADVISORY"
     assert result["recovery"]["intents"] == [] and snapshot.read_bytes() == original
+
+
+def test_monitor_evaluation_completion_does_not_stop_scheduling_on_watched_p1(setup, tmp_path, capsys):
+    from scripts.n8n_momentum_lifecycle import main
+    c, _, root = setup
+    snapshot = tmp_path / "snapshot.json"
+    candidate = tmp_path / "candidate.json"
+    snapshot.write_text('{"runs":[]}')
+    candidate.write_text(json.dumps(c))
+    assert main(["--snapshot", str(snapshot), "--code-root", str(root), "--candidate", str(candidate),
+                 "--now", NOW.isoformat(), "--dry-run"]) == 0
+    report = json.loads(capsys.readouterr().out)
+    assert any(f["severity"] == "P1" for f in report["incidents"])
+    assert report["acceptance"] == "NOT_MEASURED"
 
 
 def test_candidate_config_is_disabled_and_not_an_operative_review():
@@ -315,7 +345,8 @@ def test_positive_capacity_is_not_an_invented_reviewed_reserve(setup):
     snapshot = M.collect_server_snapshot(root, c, now=NOW,
         statvfs_fn=lambda _: SimpleNamespace(f_bavail=1000, f_frsize=4096, f_favail=1000))
     assert snapshot["storage_health"]["status"] == "NOT_MEASURED"
-    assert snapshot["runs"] is None and snapshot["products"] == {}
+    assert snapshot["runs"] is None and "latest_scan_package" not in snapshot["products"]
+    assert snapshot["products"]["shared_signal_projection"]["basis"] == "NOT_MEASURED"
     report = evaluate(setup, snapshot)
     assert report["lanes"][0]["observed_requested"] is None
 
@@ -325,6 +356,23 @@ def test_empty_storage_is_independent_p1_and_no_automatic_deletion(setup):
     f = next(f for f in report["incidents"] if f["item"] == "momentum-storage:STORAGE_CAPACITY_EXHAUSTED")
     assert f["severity"] == "P1" and f["notification_dedupe_minutes"] == 0
     assert report["recovery_intents"] == []
+
+
+def test_actual_cache_mapping_preserves_unmeasured_sha_and_business_proof(setup):
+    c, a, root = setup
+    runtime = root / "data/runtime"
+    runtime.mkdir(parents=True)
+    cache = {"run_id": "2026-10-09::1730", "run_date": "2026-10-12", "tickers": [], "stale": False,
+             "setup_run_summary": {"run_id": "2026-10-09::1730", "run_date": "2026-10-09", "scanned_count": 44}}
+    (runtime / "trade_ai_cache.json").write_text(json.dumps(cache))
+    snapshot = M.collect_server_snapshot(root, c, now=NOW)
+    served = snapshot["products"]["served_scan_cache"]
+    assert served["run_date"] == "2026-10-09" and served["source_sha"] == "UNKNOWN"
+    assert served["basis"] == "NOT_MEASURED" and served["business_status"] == "NOT_MEASURED"
+    assert served["populations"]["summary_scanned_total"] == 44
+    reasons = M.product_proof(served, day="2026-10-12", now=NOW, sha=a.deployed_sha, max_age_s=14400)
+    assert "wrong_business_day" in reasons and "output_source_sha_mismatch" in reasons
+    assert "business_output_not_proven" in reasons
 
 
 def test_shared_projection_consumer_generation_and_verdicts_are_preserved():
@@ -352,18 +400,83 @@ def test_llm_diagnosis_coverage_uses_existing_exclusion_and_no_model_selection(s
 def admitted_monitor(admission):
     lid = "momentum-lifecycle-monitor"
     admission.registry[lid] = {"state": "ACTIVE", "scheduler": {"stage": "canary"}, "dispatch": {"class": "monitor"}}
-    admission.contracts[lid] = {"status": "REVIEWED", "review": {"reviewed_by": "fixture-owner", "reviewed_sha": SHA}}
+    admission.contracts[lid] = reviewed_fixture_contract(lid)
     admission.allowlist[lid] = {"live_arg": ["--write-monitor"], "lock_kind": "flock",
                                "lock": "/tmp/tradeai_momentum_lifecycle.lock"}
 
 
-def test_monitor_admission_is_operative_and_exact_sha(setup):
+def test_monitor_admission_is_operative_and_content_bound(setup):
     _, a, _ = setup
     assert M.monitor_admitted(a) is False
     admitted_monitor(a)
     assert M.monitor_admitted(a) is True
-    a.contracts["momentum-lifecycle-monitor"]["review"]["reviewed_sha"] = "b" * 40
+    a.contracts["momentum-lifecycle-monitor"]["baseline"]["completion_allowance_s"] = 999
     assert M.monitor_admitted(a) is False
+
+
+def test_unadmitted_canary_never_becomes_a_shadow_readback(setup):
+    _, _, root = setup
+    (root / "config/n8n_momentum_lifecycle_candidate.json").write_text('{"enabled":true}')
+    path = root / "config/lane_registry.json"
+    rows = json.loads(path.read_text())
+    row = {"lane_id": "momentum-lifecycle-monitor", "state": "ACTIVE", "scheduler": {"stage": "shadow"}}
+    rows["lanes"].append(row)
+    path.write_text(json.dumps(rows))
+    shadow = M.durable_view(root, root, now=NOW)
+    assert shadow["state"] == "REFUSED" and shadow["monitor_stage"] == "shadow"
+    row["scheduler"]["stage"] = "canary"
+    path.write_text(json.dumps(rows))
+    drift = M.durable_view(root, root, now=NOW)
+    assert drift["state"] == "REFUSED" and drift["monitor_stage"] == "canary"
+
+
+def test_contract_digest_has_no_release_sha_or_review_self_reference():
+    contract = reviewed_fixture_contract("momentum-lifecycle-monitor")
+    digest = M.contract_body_digest(contract)
+    contract["review"]["reviewed_sha"] = "b" * 40
+    contract["review"]["contract_body_sha256"] = digest
+    assert M.contract_body_digest(contract) == digest and M.contract_review_proven(contract)
+    contract["purpose"]["text"] += " changed body"
+    assert not M.contract_review_proven(contract)
+
+
+def test_review_requires_real_decision_reference_not_digest_proposal():
+    contract = reviewed_fixture_contract("momentum-lifecycle-monitor")
+    contract["review"]["decision_ref"] = None
+    assert not M.contract_review_proven(contract)
+    contract["review"]["decision_ref"] = "fixture://operator-decision"
+    contract["status"] = "DRAFT"
+    assert not M.contract_review_proven(contract)
+
+
+def test_owner_confirmation_cannot_be_promoted_by_digest_alone():
+    contract = reviewed_fixture_contract("momentum-lifecycle-monitor")
+    contract["ownership_confirmation"] = "NOT_MEASURED"
+    contract["review"]["contract_body_sha256"] = M.contract_body_digest(contract)
+    assert not M.contract_review_proven(contract)
+
+
+def test_deployed_sha_gate_is_independent_of_content_review(setup):
+    from dataclasses import replace
+    c, a, _ = setup
+    admitted_monitor(a)
+    different_release = replace(a, deployed_sha="b" * 40)
+    assert M.monitor_admitted(different_release)
+    result = M.plan_recovery(armed(c), repair_report(), different_release,
+                            snapshot=repair_snapshot(), now=NOW)
+    assert result["held"][0]["reason"] == "deployed_sha_drift"
+
+
+def test_retry_proposal_uses_existing_due_slot_and_never_host_manual_budget(setup):
+    from scripts.lib.n8n_coordination_gateway import host_run_request
+    c, a, _ = setup
+    intent = M.plan_recovery(armed(c), repair_report(), a, snapshot=repair_snapshot(), now=NOW)["intents"][0]
+    assert intent["run_id"] == "d:momentum-cache-reconcile:live:20261012T0600:a2"
+    assert "due" in intent["submission_owner"]
+    refusal = host_run_request(lane_id=intent["lane_id"], mode="live", run_id=intent["run_id"],
+                               requested_by="fixture", caller_id="fixture", run_store=None,
+                               run_allowlist=frozenset({intent["lane_id"]}), now=NOW.timestamp())
+    assert refusal["reason"] == "run_slot_not_due"
 
 
 def test_enabled_config_cannot_authorize_health_writer(setup, tmp_path):
@@ -491,13 +604,37 @@ def test_real_candidate_workflow_and_draft_contracts_are_safe_and_concrete():
     assert workflow["settings"]["errorWorkflow"] == "tradeai-incident-router"
     http = [n for n in workflow["nodes"] if n["type"] == "n8n-nodes-base.httpRequest"]
     assert all(n["credentials"] == {"httpHeaderAuth": {"id": "tradeai-run-relay", "name": "tradeai-run-relay"}} for n in http)
-    assert any("lane=momentum-lifecycle-monitor" in n["parameters"]["url"] for n in http)
+    assert all(n["parameters"]["method"] == "GET" for n in http)
+    assert any("/runs/momentum-lifecycle-monitor/last?mode=dry_run" in n["parameters"]["url"] for n in http)
     assert any("/momentum-lifecycle" in n["parameters"]["url"] for n in http)
     contractdoc = json.loads((base / "reconciliation-20261012/MOMENTUM_HEALTH_CONTRACT_PROPOSALS.json").read_text())
-    assert len(contractdoc["contracts"]) == 13 and contractdoc["operative_changes"] is False
+    assert len(contractdoc["contracts"]) == 15 and contractdoc["operative_changes"] is False
     for contract in contractdoc["contracts"]:
         assert contract["status"] == "DRAFT" and contract["review"]["reviewed_by"] is None
         assert validate_contract(contract) == []
+        assert contract["review"]["contract_body_sha256"] == M.contract_body_digest(contract)
+        assert contract["review"]["decision_ref"] is None
+
+
+def test_activation_packet_registry_dispatch_and_executor_templates_are_machine_valid(tmp_path):
+    from scripts.lib.lane_registry import validate_row
+    from scripts.lib.lane_dispatch import parse_dispatch_block, validate_dispatch_block
+    from scripts.n8n_run_executor import build_argv, build_child_env, validate_entry
+    p = ROOT / "docs/implementation/n8n-maturity/reconciliation-20261012/MOMENTUM_ACTIVATION_PACKET.json"
+    packet = json.loads(p.read_text())
+    for key in ("new_monitor_proposal", "cache_reconcile_proposal"):
+        spec = packet[key]
+        assert validate_row(spec["registry_row"]) == []
+        assert parse_dispatch_block(spec["registry_row"]) is not None
+        assert validate_dispatch_block(spec["registry_row"], retry_policy_names=["none"]) == []
+        entry = spec["allowlist"]
+        assert validate_entry(entry) is None
+        env, receipt = build_child_env({"TRADEAI_EXECUTOR_ENV_ALLOWLIST": "enforce"}, spec["lane_id"], entry)
+        assert env is not None and receipt["reason"] is None
+        argv = build_argv(entry, "dry_run", env={}, state_root=tmp_path / "state", code_root=tmp_path / "code")
+        assert "--dry-run" in argv and not any("{" in arg or "$" in arg for arg in argv)
+        assert entry["lock"] + ".dryrun" in argv
+    assert any(g["scope"] == "release-write" for g in packet["grants_required"])
 
 
 def test_host_notifier_candidate_operator_action_is_not_suppressed_or_double_counted():

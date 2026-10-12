@@ -107,6 +107,27 @@ def collect_server_snapshot(state_root: Path, candidate: Mapping, *, now: dateti
         product = (doc.get("products") or {}).get(spec["id"])
         if isinstance(product, dict):
             products[spec["id"]] = {k: v for k, v in product.items() if k in allowed_product_keys}
+    # Project actual existing owner snapshots when the host input adapter has not supplied
+    # stronger evidence. Producer SHA, business basis and consumer acks remain unknown;
+    # this read-only mapping must never turn cache availability into accepted business work.
+    try:
+        from scripts.lib.scanner_candidate_projection import read_candidate_snapshot
+        shared = read_candidate_snapshot(state_root / "data/runtime/trade_ai_cache.json",
+                                         state_root / "data/active_trader/momentum_alerts.jsonl", now=now)
+        owner = shared.get("source_metadata", {}).get("TRADE_AI", {})
+        summary = owner.get("summary") or {}
+        counts = {"candidate_union_total": shared["candidate_count"]} if isinstance(shared.get("candidate_count"), int) else {}
+        if isinstance(summary.get("scanned_count"), int):
+            counts["summary_scanned_total"] = summary["scanned_count"]
+        view = {k: shared.get(k) for k in ("run_id", "run_date", "source_sha", "finished_at",
+            "projection_hash", "source_verdicts_preserved", "population_contract")}
+        view.update(available=owner.get("status") == "AVAILABLE", basis="NOT_MEASURED",
+                    business_status="NOT_MEASURED", populations=counts or None)
+        products.setdefault("shared_signal_projection", view)
+        cache = {**view, "population_contract": "separate_populations", "derived_from_run_id": shared.get("run_id")}
+        products.setdefault("served_scan_cache", cache)
+    except (ImportError, OSError, ValueError):
+        pass
     auth = doc.get("credential_health") or {}
     snapshot = {"products": products, "credential_health": {
         k: auth[k] for k in ("secret_name", "status", "checked_at") if k in auth},
@@ -193,16 +214,50 @@ def write_monitor(report: Mapping, state_root: Path) -> Path:
     return destination
 
 
+def contract_body_digest(contract: Mapping) -> str:
+    """Digest substantive operative content, excluding decision metadata and lifecycle status.
+
+    Embedding the release SHA in a committed contract is self-referential. Review instead
+    binds the exact contract body, while SOURCE_COMMIT and execution/output receipts
+    independently bind the running release. This uses existing operative configuration;
+    it introduces no new review authority or persistent review store.
+    """
+    body = {k: v for k, v in contract.items() if k not in {"review", "status"}}
+    raw = json.dumps(body, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
+    return hashlib.sha256(raw).hexdigest()
+
+
+def contract_review_proven(contract: Mapping) -> bool:
+    """Server-loaded operative contract only. A digest proposal is not a review decision."""
+    from scripts.lib.n8n_health_contracts import unknown_fields, validate_contract
+    review = contract.get("review") or {}
+    return (contract.get("status") == "REVIEWED" and not validate_contract(contract)
+            and not unknown_fields(contract)
+            and contract.get("ownership_confirmation") not in {"NOT_MEASURED", "UNRESOLVED"}
+            and isinstance(review.get("reviewed_by"), str) and bool(review["reviewed_by"].strip())
+            and isinstance(review.get("decision_ref"), str) and bool(review["decision_ref"].strip())
+            and review.get("contract_body_sha256") == contract_body_digest(contract))
+
+
+def recovery_admitted(admission: Admission, lane: str) -> bool:
+    """Safe fixed catalogue target, operative content-bound review and existing runtime gates."""
+    row = admission.registry.get(lane, {})
+    allow = admission.allowlist.get(lane, {})
+    return (lane in RECOVERY_LANES and row.get("state") == "ACTIVE"
+            and row.get("scheduler", {}).get("stage") == "cutover"
+            and row.get("dispatch", {}).get("class") in SAFE_CLASSES
+            and contract_review_proven(admission.contracts.get(lane, {}))
+            and allow.get("live_arg") is not None and allow.get("lock_kind") == "flock" and bool(allow.get("lock")))
+
+
 def monitor_admitted(admission: Admission) -> bool:
     """Operative admission, never a caller supplied enabled/review boolean."""
     lane = "momentum-lifecycle-monitor"
     row, contract, allow = (admission.registry.get(lane, {}), admission.contracts.get(lane, {}),
                             admission.allowlist.get(lane, {}))
-    review = contract.get("review") or {}
     return (row.get("state") == "ACTIVE" and row.get("scheduler", {}).get("stage") in {"canary", "cutover"}
             and row.get("dispatch", {}).get("class") == "monitor"
-            and contract.get("status") == "REVIEWED" and bool(review.get("reviewed_by"))
-            and review.get("reviewed_sha") == admission.deployed_sha
+            and contract_review_proven(contract)
             and allow.get("live_arg") is not None and allow.get("lock_kind") == "flock"
             and allow.get("lock") == "/tmp/tradeai_momentum_lifecycle.lock")
 
@@ -210,10 +265,13 @@ def monitor_admitted(admission: Admission) -> bool:
 def durable_view(code_root: Path, state_root: Path, *, now: datetime) -> dict:
     """Server-owned authenticated read projection; never caller-controlled paths or arming."""
     candidate = _document(code_root / "config/n8n_momentum_lifecycle_candidate.json") or {}
+    admission = load_admission(code_root)
+    stage = admission.registry.get("momentum-lifecycle-monitor", {}).get("scheduler", {}).get("stage")
+    stage = stage if stage in {"shadow", "canary", "cutover"} else "NOT_MEASURED"
     if candidate.get("enabled") is not True:
-        return {"state": "REFUSED", "reason": "momentum_lifecycle_disabled"}
-    if not monitor_admitted(load_admission(code_root)):
-        return {"state": "REFUSED", "reason": "momentum_monitor_admission_unproven"}
+        return {"state": "REFUSED", "reason": "momentum_lifecycle_disabled", "monitor_stage": stage}
+    if not monitor_admitted(admission):
+        return {"state": "REFUSED", "reason": "momentum_monitor_admission_unproven", "monitor_stage": stage}
     report = _document(state_root / MONITOR_REL)
     if report is None or report.get("schema") != SCHEMA:
         return {"state": "REFUSED", "reason": "momentum_monitor_not_measured"}
@@ -409,7 +467,8 @@ def diagnosis_coverage(candidate: Mapping, admission: Admission) -> dict:
     entries = {e.get("lane_id"): e for e in catalogue.get("lanes", []) if isinstance(e, Mapping)}
     review = catalogue.get("review") or {}
     ready = (catalogue.get("status") == "REVIEWED" and bool(review.get("reviewed_by"))
-             and review.get("reviewed_sha") == admission.deployed_sha)
+             and bool(review.get("decision_ref"))
+             and review.get("contract_body_sha256") == contract_body_digest(catalogue))
     return {"process_id": "n8n_lane_failure_diagnosis", "template_id": "lane_failure_diagnosis.v1",
             "catalogue_review": "PROVEN" if ready else "NOT_MEASURED", "model_selection_by_n8n": False,
             "lanes": [{"lane_id": spec["lane_id"],
@@ -437,15 +496,9 @@ def plan_recovery(candidate: Mapping, report: Mapping, admission: Admission, *, 
         if lid not in RECOVERY_LANES:
             hold("protected_or_unknown_recovery_lane")
             continue
-        row, contract, allow = (admission.registry.get(lid, {}), admission.contracts.get(lid, {}),
-                                admission.allowlist.get(lid, {}))
-        review = contract.get("review") or {}
+        row = admission.registry.get(lid, {})
         dispatch = row.get("dispatch") or {}
-        if (row.get("state") != "ACTIVE" or row.get("scheduler", {}).get("stage") != "cutover"
-                or contract.get("status") != "REVIEWED" or not review.get("reviewed_by")
-                or review.get("reviewed_sha") != admission.deployed_sha or not allow
-                or allow.get("live_arg") is None or allow.get("lock_kind") != "flock" or not allow.get("lock")
-                or dispatch.get("class") not in SAFE_CLASSES):
+        if not recovery_admitted(admission, lid):
             hold("operative_admission_not_proven")
             continue
         if report.get("source_sha") != admission.deployed_sha:
@@ -464,6 +517,10 @@ def plan_recovery(candidate: Mapping, report: Mapping, admission: Admission, *, 
             continue
         latest = max(history, key=lambda r: str(r.get("requested_at", "")))
         history = [r for r in history if r.get("slot_key") == latest.get("slot_key")]
+        if any(not isinstance(r.get("attempt"), int) or isinstance(r.get("attempt"), bool)
+               or not 1 <= r["attempt"] <= 9 for r in history):
+            hold("budget_slot_or_receipt_not_proven")
+            continue
         last = max(history, key=lambda r: int(r.get("attempt", 0)))
         key = str(last.get("slot_key") or "")
         finished = stamp(last.get("finished_at"))
@@ -494,11 +551,12 @@ def plan_recovery(candidate: Mapping, report: Mapping, admission: Admission, *, 
             continue
         # Stable per budget slot/attempt, independent of wall clock or polling count.
         attempt = int(last["attempt"]) + 1
-        run_id = "rem-momentum-" + hashlib.sha256(f"{key}:{attempt}".encode()).hexdigest()[:24]
+        run_id = f"{key}:a{attempt}"
         intents.append({"lane_id": lid, "mode": "live", "run_id": run_id,
                         "requested_by": "host-momentum-lifecycle", "caller_id": "trade-ai-dispatch",
                         "attempt": attempt, "budget_slot_key": key, "operation": "coordination/run",
-                        "execution": "host_run_request only; executor retains allowlist/stage/lock gates"})
+                        "execution": "existing dispatcher due key only; gateway validates due and persists original slot/attempt",
+                        "submission_owner": "existing coordination/due dispatcher; host_run_request refuses server slot keys"})
     return {"intents": intents, "held": held}
 
 

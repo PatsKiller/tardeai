@@ -23,9 +23,9 @@
       },
       "declared_owner": "scalp",
       "owner_confirmation": "NOT_MEASURED",
-      "legacy_trigger": "scripts/run_finviz_momentum_scalp_scan.py",
-      "legacy_trigger_source": "config/lane_registry.json; fresh sanctioned host fingerprint match required before changing a line",
-      "lock": null,
+      "legacy_trigger": "cd $PROJ && flock -n /tmp/tradeai_finviz_momentum_scalp.lock timeout 280 env MOMENTUM_SCALP_OUTER_DEADLINE_S=260 $PY scripts/run_finviz_momentum_scalp_scan.py --window early --apply --refresh-if-older-min 15 --sync-signals --generate-proposals --run-validation-fast-path --submit-validation >> logs/finviz_momentum_scalp_scan.log 2>&1",
+      "legacy_trigger_source": "Source declaration only; exact full installed line, archive and fresh census fingerprint required before commenting. A match fragment is not a ready change packet.",
+      "lock": "/tmp/tradeai_finviz_momentum_scalp.lock",
       "operative_contract_status": "ABSENT",
       "allowlist_present": false,
       "allowlist_live_arg_present": false,
@@ -38,7 +38,15 @@
         "Collect required natural shadow and canary receipts plus output/consumer/alert/recovery evidence",
         "Exact one-lane cutover packet and cron grant; comment only the matching legacy trigger",
         "Protected role remains watch/escalation until its existing policy and mechanical grant are met"
-      ]
+      ],
+      "legacy_trigger_kind": "SOURCE_DECLARED_COMMAND_TEXT",
+      "source_command_text_sha256": "7126d26f964a4a097baa591ecc85123c1ad4ee93d99671fde1e89182b557bca5",
+      "installed_archived_full_line_sha256": "NOT_MEASURED",
+      "source_declared_locks": [
+        "/tmp/tradeai_finviz_momentum_scalp.lock"
+      ],
+      "allowlist_lock": null,
+      "lock_parity": "SOURCE_AND_ALLOWLIST_NOT_RECONCILED"
     },
     {
       "lane_id": "finviz-market-movers",
@@ -54,8 +62,8 @@
       },
       "declared_owner": "scalp",
       "owner_confirmation": "NOT_MEASURED",
-      "legacy_trigger": "scripts/finviz_market_movers.py\"",
-      "legacy_trigger_source": "config/lane_registry.json; fresh sanctioned host fingerprint match required before changing a line",
+      "legacy_trigger": "*/15 6-16 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/finviz_market_movers.lock bash -c \"set -a; . ./.env; set +a; $PY scripts/finviz_market_movers.py\" >> logs/finviz_market_movers.log 2>&1  # Home v2 WS-A: Finviz signal board (throttled). 06:00-close every 15min \u2014 premarket coverage added 2026-07-28 so the TradeAI top-gainer injection is fresh during the 6am-noon scalp window",
+      "legacy_trigger_source": "Source declaration only; exact full installed line, archive and fresh census fingerprint required before commenting. A match fragment is not a ready change packet.",
       "lock": "/tmp/finviz_market_movers.lock",
       "operative_contract_status": "REVIEWED",
       "allowlist_present": true,
@@ -69,7 +77,15 @@
         "Collect required natural shadow and canary receipts plus output/consumer/alert/recovery evidence",
         "Exact one-lane cutover packet and cron grant; comment only the matching legacy trigger",
         "Protected role remains watch/escalation until its existing policy and mechanical grant are met"
-      ]
+      ],
+      "legacy_trigger_kind": "SOURCE_DECLARED_COMMAND_TEXT",
+      "source_command_text_sha256": "a5eb9bd31a5fa2f522dd148fb639737e3cda1762cc4f1a2860e5577290527edb",
+      "installed_archived_full_line_sha256": "NOT_MEASURED",
+      "source_declared_locks": [
+        "/tmp/finviz_market_movers.lock"
+      ],
+      "allowlist_lock": "/tmp/finviz_market_movers.lock",
+      "lock_parity": "SOURCE_MATCH_ONLY_INSTALLED_PARITY_NOT_MEASURED"
     },
     {
       "lane_id": "finviz-screener-runner",
@@ -85,8 +101,8 @@
       },
       "declared_owner": "scalp",
       "owner_confirmation": "NOT_MEASURED",
-      "legacy_trigger": "scripts/finviz_screener_runner.py",
-      "legacy_trigger_source": "config/lane_registry.json; fresh sanctioned host fingerprint match required before changing a line",
+      "legacy_trigger": "0 10 * * 1-5 cd $PROJ && flock -n /tmp/finviz_screener.lock $PY scripts/finviz_screener_runner.py --run >> logs/finviz_screener.log 2>&1",
+      "legacy_trigger_source": "Source declaration only; exact full installed line, archive and fresh census fingerprint required before commenting. A match fragment is not a ready change packet.",
       "lock": "/tmp/finviz_screener.lock",
       "operative_contract_status": "REVIEWED",
       "allowlist_present": true,
@@ -100,7 +116,15 @@
         "Collect required natural shadow and canary receipts plus output/consumer/alert/recovery evidence",
         "Exact one-lane cutover packet and cron grant; comment only the matching legacy trigger",
         "Protected role remains watch/escalation until its existing policy and mechanical grant are met"
-      ]
+      ],
+      "legacy_trigger_kind": "SOURCE_DECLARED_COMMAND_TEXT",
+      "source_command_text_sha256": "f174842bb2816fea5d4834c17d7511f6cfac584e1a046d781b9a0585752dfa86",
+      "installed_archived_full_line_sha256": "NOT_MEASURED",
+      "source_declared_locks": [
+        "/tmp/finviz_screener.lock"
+      ],
+      "allowlist_lock": "/tmp/finviz_screener.lock",
+      "lock_parity": "SOURCE_MATCH_ONLY_INSTALLED_PARITY_NOT_MEASURED"
     },
     {
       "lane_id": "trade-ai-scalp-live",
@@ -114,8 +138,8 @@
       },
       "declared_owner": "scalp",
       "owner_confirmation": "NOT_MEASURED",
-      "legacy_trigger": "scripts/run_trade_ai_scalp_live.py",
-      "legacy_trigger_source": "config/lane_registry.json; fresh sanctioned host fingerprint match required before changing a line",
+      "legacy_trigger": "cd $PROJ && flock -n /tmp/tradeai_scalp_live.lock timeout 295 bash scripts/market_day_gate.sh $PY scripts/run_trade_ai_scalp_live.py >> logs/trade_ai_scalp_live.log 2>&1 # TRADEAI_LANE trade-ai-scalp-live",
+      "legacy_trigger_source": "Source declaration only; exact full installed line, archive and fresh census fingerprint required before commenting. A match fragment is not a ready change packet.",
       "lock": "/tmp/tradeai_scalp_live.lock",
       "operative_contract_status": "ABSENT",
       "allowlist_present": true,
@@ -129,7 +153,15 @@
         "Collect required natural shadow and canary receipts plus output/consumer/alert/recovery evidence",
         "Exact one-lane cutover packet and cron grant; comment only the matching legacy trigger",
         "Protected role remains watch/escalation until its existing policy and mechanical grant are met"
-      ]
+      ],
+      "legacy_trigger_kind": "SOURCE_DECLARED_COMMAND_TEXT",
+      "source_command_text_sha256": "cc8a44cb99236cd2ca39eb45dd67c42226e4341dd720180db54c8b07878be5ae",
+      "installed_archived_full_line_sha256": "NOT_MEASURED",
+      "source_declared_locks": [
+        "/tmp/tradeai_scalp_live.lock"
+      ],
+      "allowlist_lock": "/tmp/tradeai_scalp_live.lock",
+      "lock_parity": "SOURCE_MATCH_ONLY_INSTALLED_PARITY_NOT_MEASURED"
     },
     {
       "lane_id": "auto-proposal-general",
@@ -143,9 +175,9 @@
       },
       "declared_owner": "watch",
       "owner_confirmation": "NOT_MEASURED",
-      "legacy_trigger": "AUTO_PROPOSAL_EXCLUDE_STRATEGIES=momentum_scalp",
-      "legacy_trigger_source": "config/lane_registry.json; fresh sanctioned host fingerprint match required before changing a line",
-      "lock": null,
+      "legacy_trigger": "cd $PROJ && AUTO_PROPOSAL_EXCLUDE_STRATEGIES=momentum_scalp MOMENTUM_SCALP_VALIDATION_FAST_PATH=1 MOMENTUM_SCALP_VALIDATION_SUBMIT=1 flock -n /tmp/auto_proposal_general.lock timeout 5m $PY scripts/auto_proposal_generator.py --today --apply >> logs/auto_proposal.log 2>&1",
+      "legacy_trigger_source": "Source declaration only; exact full installed line, archive and fresh census fingerprint required before commenting. A match fragment is not a ready change packet.",
+      "lock": "/tmp/auto_proposal_general.lock",
       "operative_contract_status": "ABSENT",
       "allowlist_present": false,
       "allowlist_live_arg_present": false,
@@ -158,7 +190,15 @@
         "Collect required natural shadow and canary receipts plus output/consumer/alert/recovery evidence",
         "Exact one-lane cutover packet and cron grant; comment only the matching legacy trigger",
         "Protected role remains watch/escalation until its existing policy and mechanical grant are met"
-      ]
+      ],
+      "legacy_trigger_kind": "SOURCE_DECLARED_COMMAND_TEXT",
+      "source_command_text_sha256": "1a2cd40c5bf8001f9f3ce1c6eb0fa808f353803361a144e9c34fa27453db8e0f",
+      "installed_archived_full_line_sha256": "NOT_MEASURED",
+      "source_declared_locks": [
+        "/tmp/auto_proposal_general.lock"
+      ],
+      "allowlist_lock": null,
+      "lock_parity": "SOURCE_AND_ALLOWLIST_NOT_RECONCILED"
     },
     {
       "lane_id": "momentum-scalp-advisory-alerts",
@@ -172,9 +212,9 @@
       },
       "declared_owner": "scalp",
       "owner_confirmation": "NOT_MEASURED",
-      "legacy_trigger": "AUTO_PROPOSAL_STRATEGIES=momentum_scalp",
-      "legacy_trigger_source": "config/lane_registry.json; fresh sanctioned host fingerprint match required before changing a line",
-      "lock": null,
+      "legacy_trigger": "cd $PROJ && AUTO_PROPOSAL_STRATEGIES=momentum_scalp flock -n /tmp/auto_proposal_momentum_scalp.lock timeout 5m $PY scripts/auto_proposal_generator.py --today --apply >> logs/auto_proposal_momentum_scalp.log 2>&1",
+      "legacy_trigger_source": "Source declaration only; exact full installed line, archive and fresh census fingerprint required before commenting. A match fragment is not a ready change packet.",
+      "lock": "/tmp/auto_proposal_momentum_scalp.lock",
       "operative_contract_status": "ABSENT",
       "allowlist_present": false,
       "allowlist_live_arg_present": false,
@@ -187,7 +227,15 @@
         "Collect required natural shadow and canary receipts plus output/consumer/alert/recovery evidence",
         "Exact one-lane cutover packet and cron grant; comment only the matching legacy trigger",
         "Protected role remains watch/escalation until its existing policy and mechanical grant are met"
-      ]
+      ],
+      "legacy_trigger_kind": "SOURCE_DECLARED_COMMAND_TEXT",
+      "source_command_text_sha256": "620619aa149c3881229f1c12337432a0bcd8aea0647a11bc2cb9ba5c5dc5dd2e",
+      "installed_archived_full_line_sha256": "NOT_MEASURED",
+      "source_declared_locks": [
+        "/tmp/auto_proposal_momentum_scalp.lock"
+      ],
+      "allowlist_lock": null,
+      "lock_parity": "SOURCE_AND_ALLOWLIST_NOT_RECONCILED"
     },
     {
       "lane_id": "daily-incubator-refresh",
@@ -203,8 +251,8 @@
       },
       "declared_owner": "proposals",
       "owner_confirmation": "NOT_MEASURED",
-      "legacy_trigger": "scripts/daily_incubator_refresh.py",
-      "legacy_trigger_source": "config/lane_registry.json; fresh sanctioned host fingerprint match required before changing a line",
+      "legacy_trigger": "15 8 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/daily_incubator_refresh.py --apply >> logs/incubator_refresh.log 2>&1",
+      "legacy_trigger_source": "Source declaration only; exact full installed line, archive and fresh census fingerprint required before commenting. A match fragment is not a ready change packet.",
       "lock": "/tmp/daily-incubator-refresh.lock",
       "operative_contract_status": "REVIEWED",
       "allowlist_present": true,
@@ -212,13 +260,20 @@
       "catalogue_status": "PROPOSED \u2014 operator review before activation (decision 4)",
       "go": "NO_GO",
       "remaining_actions": [
+        "Source legacy command has no flock; independently reviewed scoped cron change must add the approved allowlist lock before canary. No current lock parity proof.",
         "Owner review the fully authored draft without altering existing review provenance",
         "Exact integrated head CI and authorized CURRENT deployment",
         "Reconcile registry schedule to live trigger and approved six-AM requirement; no reset of retired midday slots",
         "Collect required natural shadow and canary receipts plus output/consumer/alert/recovery evidence",
         "Exact one-lane cutover packet and cron grant; comment only the matching legacy trigger",
         "Protected role remains watch/escalation until its existing policy and mechanical grant are met"
-      ]
+      ],
+      "legacy_trigger_kind": "SOURCE_DECLARED_COMMAND_TEXT",
+      "source_command_text_sha256": "c61c486134dc39e66c9c0c6086eb2d3558024795944159dc712f9fcbf9698c6d",
+      "installed_archived_full_line_sha256": "NOT_MEASURED",
+      "source_declared_locks": [],
+      "allowlist_lock": "/tmp/daily-incubator-refresh.lock",
+      "lock_parity": "NOT_MEASURED"
     },
     {
       "lane_id": "warm-caches",
@@ -233,7 +288,7 @@
       "declared_owner": "platform",
       "owner_confirmation": "NOT_MEASURED",
       "legacy_trigger": "warm_caches.py",
-      "legacy_trigger_source": "config/lane_registry.json; fresh sanctioned host fingerprint match required before changing a line",
+      "legacy_trigger_source": "Source declaration only; exact full installed line, archive and fresh census fingerprint required before commenting. A match fragment is not a ready change packet.",
       "lock": null,
       "operative_contract_status": "ABSENT",
       "allowlist_present": false,
@@ -247,7 +302,13 @@
         "Collect required natural shadow and canary receipts plus output/consumer/alert/recovery evidence",
         "Exact one-lane cutover packet and cron grant; comment only the matching legacy trigger",
         "Protected role remains watch/escalation until its existing policy and mechanical grant are met"
-      ]
+      ],
+      "legacy_trigger_kind": "SOURCE_DECLARED_COMMAND_TEXT",
+      "source_command_text_sha256": "54da4d0878c069383251db41011935ade41e050aab09e85a285b605cf11abafe",
+      "installed_archived_full_line_sha256": "NOT_MEASURED",
+      "source_declared_locks": [],
+      "allowlist_lock": null,
+      "lock_parity": "NOT_MEASURED"
     },
     {
       "lane_id": "orchestrator-slot",
@@ -264,8 +325,8 @@
       },
       "declared_owner": "platform",
       "owner_confirmation": "NOT_MEASURED",
-      "legacy_trigger": "30 17 * * 1-5 cd $PROJ && bash $PROJ/scripts/run_orchestrator_slot.sh",
-      "legacy_trigger_source": "config/lane_registry.json; fresh sanctioned host fingerprint match required before changing a line",
+      "legacy_trigger": "run_orchestrator_slot.sh",
+      "legacy_trigger_source": "Source declaration only; exact full installed line, archive and fresh census fingerprint required before commenting. A match fragment is not a ready change packet.",
       "lock": null,
       "operative_contract_status": "ABSENT",
       "allowlist_present": false,
@@ -279,7 +340,13 @@
         "Collect required natural shadow and canary receipts plus output/consumer/alert/recovery evidence",
         "Exact one-lane cutover packet and cron grant; comment only the matching legacy trigger",
         "Protected role remains watch/escalation until its existing policy and mechanical grant are met"
-      ]
+      ],
+      "legacy_trigger_kind": "SOURCE_DECLARED_COMMAND_TEXT",
+      "source_command_text_sha256": "18fd13fa89f0b18aad723716aafd1fc6f7c487b96649ba02a6809886d73f56d1",
+      "installed_archived_full_line_sha256": "NOT_MEASURED",
+      "source_declared_locks": [],
+      "allowlist_lock": null,
+      "lock_parity": "NOT_MEASURED"
     },
     {
       "lane_id": "youtube-cookie-health-check",
@@ -293,7 +360,7 @@
       "declared_owner": "platform",
       "owner_confirmation": "NOT_MEASURED",
       "legacy_trigger": "scripts/youtube_cookie_health_check.py",
-      "legacy_trigger_source": "config/lane_registry.json; fresh sanctioned host fingerprint match required before changing a line",
+      "legacy_trigger_source": "Source declaration only; exact full installed line, archive and fresh census fingerprint required before commenting. A match fragment is not a ready change packet.",
       "lock": null,
       "operative_contract_status": "ABSENT",
       "allowlist_present": false,
@@ -307,7 +374,13 @@
         "Collect required natural shadow and canary receipts plus output/consumer/alert/recovery evidence",
         "Exact one-lane cutover packet and cron grant; comment only the matching legacy trigger",
         "Protected role remains watch/escalation until its existing policy and mechanical grant are met"
-      ]
+      ],
+      "legacy_trigger_kind": "MATCH_FRAGMENT_ONLY",
+      "source_command_text_sha256": null,
+      "installed_archived_full_line_sha256": "NOT_MEASURED",
+      "source_declared_locks": [],
+      "allowlist_lock": null,
+      "lock_parity": "NOT_MEASURED"
     },
     {
       "lane_id": "youtube-transcript-ingest",
@@ -321,7 +394,7 @@
       "declared_owner": "research",
       "owner_confirmation": "NOT_MEASURED",
       "legacy_trigger": "scripts/youtube_transcript_ingest.py",
-      "legacy_trigger_source": "config/lane_registry.json; fresh sanctioned host fingerprint match required before changing a line",
+      "legacy_trigger_source": "Source declaration only; exact full installed line, archive and fresh census fingerprint required before commenting. A match fragment is not a ready change packet.",
       "lock": null,
       "operative_contract_status": "ABSENT",
       "allowlist_present": false,
@@ -335,7 +408,13 @@
         "Collect required natural shadow and canary receipts plus output/consumer/alert/recovery evidence",
         "Exact one-lane cutover packet and cron grant; comment only the matching legacy trigger",
         "Protected role remains watch/escalation until its existing policy and mechanical grant are met"
-      ]
+      ],
+      "legacy_trigger_kind": "MATCH_FRAGMENT_ONLY",
+      "source_command_text_sha256": null,
+      "installed_archived_full_line_sha256": "NOT_MEASURED",
+      "source_declared_locks": [],
+      "allowlist_lock": null,
+      "lock_parity": "NOT_MEASURED"
     },
     {
       "lane_id": "incubator-proposal-promoter",
@@ -349,7 +428,7 @@
       "declared_owner": "proposals",
       "owner_confirmation": "NOT_MEASURED",
       "legacy_trigger": "scripts/incubator_proposal_promoter.py",
-      "legacy_trigger_source": "config/lane_registry.json; fresh sanctioned host fingerprint match required before changing a line",
+      "legacy_trigger_source": "Source declaration only; exact full installed line, archive and fresh census fingerprint required before commenting. A match fragment is not a ready change packet.",
       "lock": null,
       "operative_contract_status": "ABSENT",
       "allowlist_present": false,
@@ -363,7 +442,13 @@
         "Collect required natural shadow and canary receipts plus output/consumer/alert/recovery evidence",
         "Exact one-lane cutover packet and cron grant; comment only the matching legacy trigger",
         "Protected role remains watch/escalation until its existing policy and mechanical grant are met"
-      ]
+      ],
+      "legacy_trigger_kind": "MATCH_FRAGMENT_ONLY",
+      "source_command_text_sha256": null,
+      "installed_archived_full_line_sha256": "NOT_MEASURED",
+      "source_declared_locks": [],
+      "allowlist_lock": null,
+      "lock_parity": "NOT_MEASURED"
     }
   ],
   "new_monitor_proposal": {
@@ -371,27 +456,32 @@
     "registry_state": "PAUSED proposed until admission",
     "scheduler": {
       "kind": "n8n",
-      "expression": "*/5 * * * *",
+      "expression": "dispatcher",
       "timezone": "America/New_York",
-      "stage": "shadow"
+      "stage": "shadow",
+      "match": "scripts/n8n_momentum_lifecycle.py"
     },
     "dispatch": {
       "class": "monitor",
       "retry_policy": "none",
-      "timeout_s": 60
+      "mode": "dry_run",
+      "cron": [
+        "*/5 * * * *"
+      ],
+      "after": [],
+      "priority": 1,
+      "wave": "W0",
+      "tz": "America/New_York"
     },
     "allowlist": {
       "command": [
-        "{PY}",
-        "{CODE_ROOT}/scripts/n8n_momentum_lifecycle.py",
+        "$PY",
+        "$CODE_ROOT/scripts/n8n_momentum_lifecycle.py",
         "--host-snapshot",
         "--code-root",
-        "{CODE_ROOT}",
+        "$CODE_ROOT",
         "--state-root",
-        "{STATE_ROOT}"
-      ],
-      "dry_arg": [
-        "--dry-run"
+        "$STATE_ROOT"
       ],
       "live_arg": [
         "--write-monitor"
@@ -399,9 +489,92 @@
       "lock_kind": "flock",
       "lock": "/tmp/tradeai_momentum_lifecycle.lock",
       "output_signal": "data/runtime/momentum_lifecycle_last.json",
-      "cwd": "{CODE_ROOT}"
+      "cwd": "$CODE_ROOT",
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "timeout_s": 60,
+      "lane_id": "momentum-lifecycle-monitor",
+      "env_names": [],
+      "env_allowlist_mode": "enforce",
+      "market_gate": false,
+      "env_evidence": "CLI receives explicit server code/state roots; stdlib metadata readers and existing pure market calendar/projection only. No dotenv, provider, model, broker or secret input is required."
     },
-    "review_status": "DRAFT; apply operative rows only after review and exact source/runtime gates"
+    "review_status": "DRAFT; apply operative rows only after review and exact source/runtime gates",
+    "owner": "platform declared; owner confirmation NOT_MEASURED",
+    "output_signal": {
+      "path": "data/runtime/momentum_lifecycle_last.json",
+      "expected_cadence_hours": 0.08333333333333333,
+      "kind": "file_mtime"
+    },
+    "executor": {
+      "kind": "python",
+      "root": "CURRENT",
+      "command_text": "$PY $CODE_ROOT/scripts/n8n_momentum_lifecycle.py --host-snapshot --code-root $CODE_ROOT --state-root $STATE_ROOT"
+    },
+    "state": "PAUSED",
+    "state_since": "2026-10-12",
+    "state_reason": "Source candidate awaits explicit owner review and authorized admission; not installed.",
+    "reason_confidence": "ESTABLISHED",
+    "review_by": "2026-10-13",
+    "expected_cadence_hours": 0.08333333333333333,
+    "active_days": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "registry_row": {
+      "lane_id": "momentum-lifecycle-monitor",
+      "owner": "platform declared; owner confirmation NOT_MEASURED",
+      "state": "PAUSED",
+      "state_since": "2026-10-12",
+      "state_reason": "Source candidate awaits explicit owner review and authorized admission; not installed.",
+      "reason_confidence": "ESTABLISHED",
+      "review_by": "2026-10-13",
+      "expected_cadence_hours": 0.08333333333333333,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "timezone": "America/New_York",
+        "stage": "shadow",
+        "match": "scripts/n8n_momentum_lifecycle.py"
+      },
+      "dispatch": {
+        "class": "monitor",
+        "retry_policy": "none",
+        "mode": "dry_run",
+        "cron": [
+          "*/5 * * * *"
+        ],
+        "after": [],
+        "priority": 1,
+        "wave": "W0",
+        "tz": "America/New_York"
+      },
+      "output_signal": {
+        "path": "data/runtime/momentum_lifecycle_last.json",
+        "expected_cadence_hours": 0.08333333333333333,
+        "kind": "file_mtime"
+      },
+      "executor": {
+        "kind": "python",
+        "root": "CURRENT",
+        "command_text": "$PY $CODE_ROOT/scripts/n8n_momentum_lifecycle.py --host-snapshot --code-root $CODE_ROOT --state-root $STATE_ROOT"
+      }
+    }
   },
   "llm_path": {
     "process": "n8n_lane_failure_diagnosis",
@@ -431,7 +604,7 @@
   ],
   "grants_required": [
     {
-      "scope": "release",
+      "scope": "release-write",
       "object": "Exact final integrated source SHA; assign after root source/CI integration"
     },
     {
@@ -449,5 +622,175 @@
     "Verify one authority and original lock; preserve independent host notifier/broker/safety/recovery scheduling",
     "Prove output recovery and record actual restored SHA/receipt; preserve monitor/incident historical evidence"
   ],
-  "current_observed_boundary": "Current n8n scalp workflow IDs absent; no n8n production receipts for scalp/cache/orchestrator lanes; three Finviz market-mover dry-run failures before child due to lockfile ENOSPC. Source preparation is not runtime activation."
+  "current_observed_boundary": "Current n8n scalp workflow IDs absent; no n8n production receipts for scalp/cache/orchestrator lanes; three Finviz market-mover dry-run failures before child due to lockfile ENOSPC. Source preparation is not runtime activation.",
+  "review_binding": {
+    "store": "existing operative config/n8n_health_contracts.json review metadata only; no new review authority",
+    "body_digest": "sha256 canonical JSON excluding review and status",
+    "required": [
+      "status REVIEWED",
+      "actual reviewed_by",
+      "actual decision_ref",
+      "contract_body_sha256 matches current body",
+      "explicit ownership confirmation resolved when field declared"
+    ],
+    "runtime_identity": "Actual SOURCE_COMMIT + monitor/run/output receipt SHA checked independently; never embed final release SHA in committed contract"
+  },
+  "cache_reconcile_proposal": {
+    "lane_id": "momentum-cache-reconcile",
+    "implementation": "scripts/momentum_cache_reconcile.py",
+    "status": "DRAFT_UNADMITTED",
+    "owner": "platform declared; owner confirmation NOT_MEASURED",
+    "state": "PAUSED",
+    "scheduler": {
+      "kind": "n8n",
+      "expression": "dispatcher",
+      "timezone": "America/New_York",
+      "stage": "shadow",
+      "match": "scripts/momentum_cache_reconcile.py"
+    },
+    "dispatch": {
+      "class": "report",
+      "retry_policy": "none",
+      "mode": "dry_run",
+      "cron": [
+        "*/5 * * * *"
+      ],
+      "after": [],
+      "priority": 5,
+      "wave": "W0",
+      "tz": "America/New_York"
+    },
+    "allowlist": {
+      "command": [
+        "$PY",
+        "$CODE_ROOT/scripts/momentum_cache_reconcile.py",
+        "--code-root",
+        "$CODE_ROOT",
+        "--state-root",
+        "$STATE_ROOT"
+      ],
+      "live_arg": [
+        "--apply"
+      ],
+      "lock_kind": "flock",
+      "lock": "/tmp/tradeai_momentum_cache_reconcile.lock",
+      "output_signal": "data/runtime/momentum-cache-reconcile_last.json",
+      "cwd": "$CODE_ROOT",
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "timeout_s": 60,
+      "lane_id": "momentum-cache-reconcile",
+      "env_names": [],
+      "env_allowlist_mode": "enforce",
+      "market_gate": false,
+      "env_evidence": "CLI receives explicit server code/state roots; stdlib metadata readers and existing pure market calendar/projection only. No dotenv, provider, model, broker or secret input is required."
+    },
+    "stores": [
+      {
+        "path": "data/runtime/shared_momentum_candidates_projection.json",
+        "owner": "momentum-cache-reconcile",
+        "schema": "SharedMomentumCandidates@v1",
+        "role": "resettable derivative; not authoritative business data"
+      },
+      {
+        "path": "data/runtime/momentum-cache-reconcile_last.json",
+        "owner": "momentum-cache-reconcile",
+        "schema": "MomentumCacheReconcile@v1",
+        "role": "health receipt"
+      }
+    ],
+    "effects": "No canonical business/cache writes, models, providers, broker, sends or credentials. Real consumer adoption and canonical cache repair remain separate evidence/actions.",
+    "output_signal": {
+      "path": "data/runtime/momentum-cache-reconcile_last.json",
+      "expected_cadence_hours": 0.08333333333333333,
+      "kind": "file_mtime"
+    },
+    "executor": {
+      "kind": "python",
+      "root": "CURRENT",
+      "command_text": "$PY $CODE_ROOT/scripts/momentum_cache_reconcile.py --code-root $CODE_ROOT --state-root $STATE_ROOT"
+    },
+    "state_since": "2026-10-12",
+    "state_reason": "Source candidate awaits explicit owner review and authorized admission; not installed.",
+    "reason_confidence": "ESTABLISHED",
+    "review_by": "2026-10-13",
+    "expected_cadence_hours": 0.08333333333333333,
+    "active_days": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "registry_row": {
+      "lane_id": "momentum-cache-reconcile",
+      "owner": "platform declared; owner confirmation NOT_MEASURED",
+      "state": "PAUSED",
+      "state_since": "2026-10-12",
+      "state_reason": "Source candidate awaits explicit owner review and authorized admission; not installed.",
+      "reason_confidence": "ESTABLISHED",
+      "review_by": "2026-10-13",
+      "expected_cadence_hours": 0.08333333333333333,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "timezone": "America/New_York",
+        "stage": "shadow",
+        "match": "scripts/momentum_cache_reconcile.py"
+      },
+      "dispatch": {
+        "class": "report",
+        "retry_policy": "none",
+        "mode": "dry_run",
+        "cron": [
+          "*/5 * * * *"
+        ],
+        "after": [],
+        "priority": 5,
+        "wave": "W0",
+        "tz": "America/New_York"
+      },
+      "output_signal": {
+        "path": "data/runtime/momentum-cache-reconcile_last.json",
+        "expected_cadence_hours": 0.08333333333333333,
+        "kind": "file_mtime"
+      },
+      "executor": {
+        "kind": "python",
+        "root": "CURRENT",
+        "command_text": "$PY $CODE_ROOT/scripts/momentum_cache_reconcile.py --code-root $CODE_ROOT --state-root $STATE_ROOT"
+      }
+    }
+  },
+  "retry_authority": {
+    "implementation": "scripts/lib/n8n_due.py + authenticated gateway coordination/run + existing dispatcher/executor",
+    "identity": "d:<lane>:<mode>:<original slot>:aN with durable slot_key/attempt/parent",
+    "no_second_adapter": "host_run_request explicitly refuses server keys; manual rem-* IDs omit slot accounting and are not emitted by this monitor"
+  },
+  "machine_validation": "Isolated existing registry/dispatch/allowlist/env/token gates; final native profile and genuine review still required.",
+  "scheduling_authority": {
+    "sole_run_requester": "existing tradeai-dispatcher",
+    "observer_workflow": "tradeai-momentum-lifecycle-candidate read-only; no /due or /run branch",
+    "shadow": "Read actual dry_run last-run metadata; absent full receipt/SHA/zero-effect proof remains NOT_MEASURED; do not prewrite a live monitor receipt",
+    "live": "Authenticated durable lifecycle receipt requires actual operative live admission; unexpected refusal/error remains visible"
+  },
+  "guardrail_parity": {
+    "path": "docs/implementation/n8n-parallel/parity/momentum-lifecycle-candidate-20261012.md",
+    "source_status": "AUTHORED; isolated validation only",
+    "runtime_status": "NOT_MEASURED",
+    "responsible_declared_owner": "platform; confirmation NOT_MEASURED",
+    "next_action": "Integrator indexes parity artifact; exact final native CI, actual review/grants and authorized per-capability runtime parity proof before advancement"
+  }
 }

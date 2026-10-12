@@ -27,6 +27,7 @@ def main(argv=None) -> int:
     parser.add_argument("--state-root", type=Path, help="host-owned state root; required for host snapshot/receipt")
     parser.add_argument("--write-monitor", action="store_true", help="write only momentum_lifecycle_last.json")
     parser.add_argument("--dry-run", action="store_true", help="no health write or recovery submission")
+    parser.add_argument("--exit-code", action="store_true", help="operator check: exit 2 for P1 evidence findings")
     parser.add_argument("--candidate", type=Path, default=ROOT / "config/n8n_momentum_lifecycle_candidate.json")
     parser.add_argument("--now", help="aware ISO timestamp; omitted uses current UTC clock")
     args = parser.parse_args(argv)
@@ -48,7 +49,7 @@ def main(argv=None) -> int:
             parser.error("monitor write requires reviewed operative activation at deployed SHA")
         write_monitor(report, args.state_root)
     print(json.dumps(report, indent=2, sort_keys=True))
-    return 2 if any(x["severity"] == "P1" for x in report["incidents"]) else 0
+    return 2 if args.exit_code and any(x["severity"] == "P1" for x in report["incidents"]) else 0
 
 
 if __name__ == "__main__":

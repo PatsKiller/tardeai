@@ -5,7 +5,7 @@
   "review": null,
   "timezone": "America/New_York",
   "business_expectation": "First genuine momentum scan available from six AM ET on a trading day; distinct from RTH scalp execution.",
-  "runtime_admission": "Operative registry/contract/allowlist/deployed SHA; this proposal grants none.",
+  "runtime_admission": "Operative content-bound owner review + exact deployed SOURCE_COMMIT/receipts checked independently; proposal grants none.",
   "watch": [
     {
       "lane_id": "finviz-momentum-scalp-early-lane",
@@ -119,13 +119,14 @@
     "actions": [
       {
         "lane_id": "momentum-cache-reconcile",
-        "product": "served_scan_cache",
+        "product": "shared_signal_projection",
         "dependencies": [
           "latest_scan_package"
-        ]
+        ],
+        "scope": "RESETTABLE_DERIVED_ADVISORY_PROJECTION_ONLY"
       }
     ],
-    "admission_note": "Candidate repair lane is not admitted. No requests until genuine owner review, exact-head deployment and operative cutover/allowlist/lock/policy evidence exist.",
+    "admission_note": "Concrete safe helper exists, unadmitted. Existing due/dispatcher owns retries. Canonical business/cache drift and consumer acceptance cannot be healed by a derivative rebuild.",
     "retry_policy_source": "config/n8n_retry_policies.json and operative registry dispatch.retry_policy",
     "never": [
       "order",
