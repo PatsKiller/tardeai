@@ -653,6 +653,8 @@
   "cache_reconcile_proposal": {
     "lane_id": "momentum-cache-reconcile",
     "implementation": "scripts/momentum_cache_reconcile.py",
+    "helper_stage_admission": "Explicitly admitted canary or cutover; all existing enabled/armed/ACTIVE/OWNER_ACCEPTED/content-bound review/allowlist/flock checks remain mandatory. Actual stage is recorded without implying natural or manual trigger proof.",
+    "autonomous_recovery_admission": "Cutover only; original durable budget-slot, dependency, storage and retry-policy proofs remain required.",
     "status": "DRAFT_UNADMITTED",
     "owner": "platform declared; owner confirmation NOT_MEASURED",
     "state": "PAUSED",
