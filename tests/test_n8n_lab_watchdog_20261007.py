@@ -1,14 +1,25 @@
-"""The watchdog reports from outside n8n. The down path uses a closed port."""
+"""The watchdog reports from outside n8n with isolated transport fixtures."""
 from __future__ import annotations
 
 import json
 import threading
+import urllib.error
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+from scripts import n8n_lab_watchdog as watchdog
 from scripts.n8n_lab_watchdog import check, main, write_receipt
 
 
-def test_closed_port_is_a_failure(tmp_path):
+def test_closed_port_is_a_failure(tmp_path, monkeypatch):
+    calls = []
+
+    def refused(request, *, timeout):
+        assert request.get_method() == "GET"
+        calls.append((request.full_url, timeout))
+        raise urllib.error.URLError(ConnectionRefusedError(111, "synthetic connection refused"))
+
+    # Exercise the refused-connection handling without contacting a host port.
+    monkeypatch.setattr(watchdog.urllib.request, "urlopen", refused)
     receipt = check("http://127.0.0.1:9/healthz", timeout_s=0.5)
     assert receipt["ok"] is False
     assert receipt["sends"] is False
@@ -18,6 +29,8 @@ def test_closed_port_is_a_failure(tmp_path):
     assert json.loads(path.read_text(encoding="utf-8"))["ok"] is False
     code = main(["--url", "http://127.0.0.1:9/healthz", "--receipt", str(tmp_path / "cli.json"), "--timeout", "0.5"])
     assert code == 2
+    assert calls == [("http://127.0.0.1:9/healthz", 0.5)] * 2
+    assert json.loads((tmp_path / "cli.json").read_text(encoding="utf-8"))["error"] == "connection_refused"
 
 
 def test_local_200_is_up_and_does_not_send(tmp_path):
