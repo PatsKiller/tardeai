@@ -30,8 +30,13 @@ from scripts import trade_ai_restore_drill as rd  # noqa: E402
 from scripts import n8n_workflow_templates as gen  # noqa: E402
 
 CFG = ol.load_config()
-ALLOW = {e["lane_id"]: e for e in json.loads((ROOT / "config" / "n8n_run_allowlist.json").read_text(encoding="utf-8"))["lanes"]}
-REG = {r["lane_id"]: r for r in json.loads((ROOT / "config" / "lane_registry.json").read_text(encoding="utf-8"))["lanes"]}
+ALLOW = {
+    e["lane_id"]: e
+    for e in json.loads((ROOT / "config" / "n8n_run_allowlist.json").read_text(encoding="utf-8"))["lanes"]
+}
+REG = {
+    r["lane_id"]: r for r in json.loads((ROOT / "config" / "lane_registry.json").read_text(encoding="utf-8"))["lanes"]
+}
 NEW_LANES = {
     "storage-watch": "data/runtime/storage_watch_last.json",
     "backup-verify": "data/runtime/backup_verify_last.json",
@@ -74,6 +79,59 @@ def fake_connect_factory(responder):
         return FakeConn(log, responder, dbname or params["dbname"])
 
     return connect, log
+
+
+@pytest.fixture(autouse=True)
+def _empty_db_source(tmp_path, monkeypatch):
+    """Keep the real parameter loader while its fallback dotenv is an empty fixture."""
+    assert sw.ol is ol and bv.ol is ol and rd.ol is ol
+    source = tmp_path / "empty-db-source-fixture"
+    source.mkdir()
+    env_file = source / ".env"
+    env_file.write_text("", encoding="utf-8")
+    monkeypatch.setattr(ol, "ROOT", source)
+    for name in (
+        "DB_HOST",
+        "DB_PORT",
+        "DB_NAME",
+        "DB_USER",
+        "DB_PASSWORD",
+        CFG["restore_drill"]["role_user_env"],
+        CFG["restore_drill"]["role_password_env"],
+    ):
+        monkeypatch.delenv(name, raising=False)
+    return env_file
+
+
+def test_db_parameter_fallback_reads_only_the_empty_source_fixture(_empty_db_source, monkeypatch):
+    original_reader = ol._env_file_value
+    reads = []
+
+    def fixture_reader(key, env_file):
+        assert env_file == _empty_db_source
+        reads.append((key, env_file))
+        return original_reader(key, env_file)
+
+    monkeypatch.setattr(ol, "_env_file_value", fixture_reader)
+    live = ol.db_params()
+    drill = ol.db_params(
+        user_env=CFG["restore_drill"]["role_user_env"],
+        password_env=CFG["restore_drill"]["role_password_env"],
+    )
+    assert (
+        live
+        == drill
+        == {
+            "host": "localhost",
+            "port": 5432,
+            "dbname": "trade_ai",
+            "user": "trade_ai",
+            "password": "",
+        }
+    )
+    assert len(reads) == 10 and {path for _key, path in reads} == {_empty_db_source}
+    assert {key for key, _path in reads} == {"DB_USER", "DB_PASSWORD", "DB_HOST", "DB_PORT", "DB_NAME"}
+    assert _empty_db_source.read_text(encoding="utf-8") == ""
 
 
 @pytest.fixture(autouse=True)
@@ -166,8 +224,17 @@ def test_no_lane_script_sends():
 
 # ============================================================================ storage-watch
 def _fs(pct, path="/"):
-    return {"path": path, "total_bytes": 100 << 30, "used_bytes": int(pct) << 30, "avail_bytes": (100 - int(pct)) << 30,
-            "used_pct": float(pct), "free_pct": 100.0 - pct, "inodes_total": 100, "inodes_used": 10, "inodes_used_pct": 10.0}
+    return {
+        "path": path,
+        "total_bytes": 100 << 30,
+        "used_bytes": int(pct) << 30,
+        "avail_bytes": (100 - int(pct)) << 30,
+        "used_pct": float(pct),
+        "free_pct": 100.0 - pct,
+        "inodes_total": 100,
+        "inodes_used": 10,
+        "inodes_used_pct": 10.0,
+    }
 
 
 @pytest.mark.parametrize("pct, expect", [(79.9, None), (80, "P2"), (87, "P2"), (90, "P1"), (95.5, "P1")])
@@ -202,7 +269,7 @@ def test_du_is_niced_depth_limited_and_parses(tmp_path):
     out = sw.du_bytes(tmp_path, timeout=5, nice=19, runner=runner)
     assert out == {"bytes": 12345}
     argv = calls[0]
-    assert "nice" in argv and argv[argv.index("du"):argv.index("du") + 4] == ["du", "-x", "-s", "-B1"]
+    assert "nice" in argv and argv[argv.index("du") : argv.index("du") + 4] == ["du", "-x", "-s", "-B1"]
     assert sw.du_bytes(tmp_path / "missing", timeout=5, nice=19, runner=runner) == {"error": "missing"}
 
 
@@ -222,9 +289,16 @@ def test_m2_count_is_one_read_only_catalog_select():
 
 def test_storage_main_dry_run_writes_nothing_and_write_writes_receipt(tmp_path, monkeypatch):
     receipt = tmp_path / "storage_watch_last.json"
-    fake = {"as_of": "2026-10-09T10:10:00+00:00", "filesystems": [_fs(91)], "du_snapshot": {"~/x": {"bytes": 1}}, "growers": [],
-            "database": {"database": "trade_ai", "size_bytes": 1 << 30, "top_relations": []},
-            "m2_test_databases": {"count": 3}, "pg_log_dir": {"bytes": 1}, "worktrees": {"excluding_main": 2}}
+    fake = {
+        "as_of": "2026-10-09T10:10:00+00:00",
+        "filesystems": [_fs(91)],
+        "du_snapshot": {"~/x": {"bytes": 1}},
+        "growers": [],
+        "database": {"database": "trade_ai", "size_bytes": 1 << 30, "top_relations": []},
+        "m2_test_databases": {"count": 3},
+        "pg_log_dir": {"bytes": 1},
+        "worktrees": {"excluding_main": 2},
+    }
     monkeypatch.setattr(sw, "measure", lambda cfg, previous: dict(fake))
     assert sw.main(["--dry-run", "--receipt", str(receipt)]) == 0
     assert not receipt.exists()
@@ -270,13 +344,17 @@ def test_size_history_is_parsed_from_the_backup_log(tmp_path):
     hist = bv.size_history_from_log(log)
     assert [h["date"] for h in hist] == ["2026-10-07", "2026-10-08", "2026-10-09"]
     assert hist[-1]["bytes"] == 2914763010
-    base = bv.size_baseline(hist, exclude="trade_ai_20261009_023000.sql.gz", now=datetime(2026, 10, 9), days=7, min_samples=2)
+    base = bv.size_baseline(
+        hist, exclude="trade_ai_20261009_023000.sql.gz", now=datetime(2026, 10, 9), days=7, min_samples=2
+    )
     assert base == {"median_bytes": (2900000000 + 2904602468) // 2, "samples": 2}
     assert bv.size_baseline(hist, exclude="x", now=datetime(2026, 10, 9), days=7, min_samples=5)["median_bytes"] is None
 
 
 def _write_plain_dump(path: Path, tables: int, trailer: bool = True):
-    body = "".join(f"CREATE TABLE public.t{i} (id int);\nCOPY public.t{i} (id) FROM stdin;\n1\n\\.\n" for i in range(tables))
+    body = "".join(
+        f"CREATE TABLE public.t{i} (id int);\nCOPY public.t{i} (id) FROM stdin;\n1\n\\.\n" for i in range(tables)
+    )
     if trailer:
         body += "--\n-- PostgreSQL database dump complete\n--\n"
     with gzip.open(path, "wt", encoding="utf-8") as fh:
@@ -346,13 +424,26 @@ def test_trade_ai_failures_are_typed_findings(tmp_path, case):
     now = mtime + timedelta(hours=30 if case == "stale" else 1)
     prev = None
     if case == "size":
-        prev = {"trade_ai": {"size_history": [
-            {"date": (mtime - timedelta(days=k)).strftime("%Y-%m-%d"), "bytes": dump.stat().st_size * 3, "name": f"trade_ai_2026100{k}_023000.sql.gz"}
-            for k in (1, 2, 3)]}}
+        prev = {
+            "trade_ai": {
+                "size_history": [
+                    {
+                        "date": (mtime - timedelta(days=k)).strftime("%Y-%m-%d"),
+                        "bytes": dump.stat().st_size * 3,
+                        "name": f"trade_ai_2026100{k}_023000.sql.gz",
+                    }
+                    for k in (1, 2, 3)
+                ]
+            }
+        }
     _, f = bv.check_trade_ai(cfg, now=now, previous=prev)
     items = {x["item"]: x["severity"] for x in f}
-    expected = {"stale": ("trade_ai:stale", "P1"), "floor": ("trade_ai:table_floor", "P1"),
-                "unreadable": ("trade_ai:unreadable", "P1"), "size": ("trade_ai:size_out_of_band", "P2")}[case]
+    expected = {
+        "stale": ("trade_ai:stale", "P1"),
+        "floor": ("trade_ai:table_floor", "P1"),
+        "unreadable": ("trade_ai:unreadable", "P1"),
+        "size": ("trade_ai:size_out_of_band", "P2"),
+    }[case]
     assert items.get(expected[0]) == expected[1], items
 
 
@@ -363,7 +454,13 @@ def test_n8n_and_drive_family_checks(tmp_path):
     dump = root / "backups" / "n8n" / "n8n-lab-x.dump"
     dump.write_bytes(b"d" * 100)
     now = datetime.now(timezone.utc)
-    receipt = {"as_of": (now - timedelta(hours=2)).isoformat(), "dump": str(dump), "bytes": 100, "live_public_tables": 3, "ok": True}
+    receipt = {
+        "as_of": (now - timedelta(hours=2)).isoformat(),
+        "dump": str(dump),
+        "bytes": 100,
+        "live_public_tables": 3,
+        "ok": True,
+    }
     (root / "backups" / "n8n" / "n8n_lab_backup_last.json").write_text(json.dumps(receipt), encoding="utf-8")
     toc = "\n".join(f"{i}; 0 0 TABLE DATA public t{i} n8n" for i in range(3))
 
@@ -392,8 +489,20 @@ def test_backup_verify_lane_modes_never_send_and_write_only_with_write(tmp_path,
     sent = []
     monkeypatch.setitem(sys.modules, "alert_dispatcher", type(sys)("alert_dispatcher"))
     sys.modules["alert_dispatcher"].dispatch_alert = lambda **kw: sent.append(kw)
-    monkeypatch.setattr(bv, "build_receipt", lambda cfg, **kw: {"schema": bv.SCHEMA, "verdict": "OK", "mode": kw["mode"], "as_of": "t",
-                                                                 "trade_ai": {}, "n8n_lab": {}, "drive_family": {"stamps": []}, "fanin_findings": []})
+    monkeypatch.setattr(
+        bv,
+        "build_receipt",
+        lambda cfg, **kw: {
+            "schema": bv.SCHEMA,
+            "verdict": "OK",
+            "mode": kw["mode"],
+            "as_of": "t",
+            "trade_ai": {},
+            "n8n_lab": {},
+            "drive_family": {"stamps": []},
+            "fanin_findings": [],
+        },
+    )
     assert bv.main(["--dry-run", "--receipt", str(receipt)]) == 0 and not receipt.exists()
     assert bv.main(["--write", "--receipt", str(receipt)]) == 0
     assert json.loads(receipt.read_text(encoding="utf-8"))["mode"] == "write"
@@ -417,7 +526,11 @@ def test_drill_name_is_dated_and_regex_guarded():
         ("postgres", "postgres", "tradeai-restore-drill run r1"),
         ("restore_drill_2026110", "restore_drill_2026110", "tradeai-restore-drill run r1"),
         ("restore_drill_20261101x", "restore_drill_20261101x", "tradeai-restore-drill run r1"),
-        ("restore_drill_20261101; DROP DATABASE trade_ai", "restore_drill_20261101; DROP DATABASE trade_ai", "tradeai-restore-drill run r1"),
+        (
+            "restore_drill_20261101; DROP DATABASE trade_ai",
+            "restore_drill_20261101; DROP DATABASE trade_ai",
+            "tradeai-restore-drill run r1",
+        ),
         ("restore_drill_20261101", None, "tradeai-restore-drill run r1"),
         ("restore_drill_20261101", "restore_drill_20261102", "tradeai-restore-drill run r1"),
         ("restore_drill_20261101", "restore_drill_20261101", None),
@@ -430,7 +543,13 @@ def test_drop_guard_refuses_everything_but_this_runs_throwaway(name, created, co
 
 
 def test_drop_guard_accepts_this_runs_throwaway():
-    rd.assert_droppable("restore_drill_20261101", created_name="restore_drill_20261101", comment=rd.COMMENT_PREFIX + "r1", run_id="r1", regex=REGEX)
+    rd.assert_droppable(
+        "restore_drill_20261101",
+        created_name="restore_drill_20261101",
+        comment=rd.COMMENT_PREFIX + "r1",
+        run_id="r1",
+        regex=REGEX,
+    )
 
 
 def test_disk_floor_guard_is_two_times_estimate_plus_headroom():
@@ -443,19 +562,26 @@ def test_disk_floor_guard_is_two_times_estimate_plus_headroom():
 def test_row_comparison_tolerance():
     cfg = CFG["restore_drill"]
     rows = rd.compare_counts(
-        [{"schema": "s", "table": "a", "live_estimate": 100000, "restored_rows": 90000},
-         {"schema": "s", "table": "b", "live_estimate": 100000, "restored_rows": 50000},
-         {"schema": "s", "table": "c", "live_estimate": 10, "restored_rows": 900},
-         {"schema": "s", "table": "d", "live_estimate": 10, "restored_rows": None}],
+        [
+            {"schema": "s", "table": "a", "live_estimate": 100000, "restored_rows": 90000},
+            {"schema": "s", "table": "b", "live_estimate": 100000, "restored_rows": 50000},
+            {"schema": "s", "table": "c", "live_estimate": 10, "restored_rows": 900},
+            {"schema": "s", "table": "d", "live_estimate": 10, "restored_rows": None},
+        ],
         cfg,
     )
     assert [r["ok"] for r in rows] == [True, False, True, False]
 
 
 def _plan(name="restore_drill_20261101"):
-    return {"db_name": name, "dump_dir": "/nonexistent", "dump": "trade_ai_20261101_023000.sql.gz",
-            "tables_to_compare": [{"schema": "public", "table": "a", "bytes": 1, "live_estimate": 5}],
-            "would_run": True, "preconditions": {"dump_present": True}}
+    return {
+        "db_name": name,
+        "dump_dir": "/nonexistent",
+        "dump": "trade_ai_20261101_023000.sql.gz",
+        "tables_to_compare": [{"schema": "public", "table": "a", "bytes": 1, "live_estimate": 5}],
+        "would_run": True,
+        "preconditions": {"dump_present": True},
+    }
 
 
 def _drill_responder(comment_holder):
@@ -466,6 +592,7 @@ def _drill_responder(comment_holder):
         if "shobj_description" in text:
             return [(comment_holder.get("c"),)]
         return []
+
     return responder
 
 
@@ -475,8 +602,14 @@ def test_run_drill_creates_restores_compares_then_drops_only_its_database():
     connect, log = fake_connect_factory(_drill_responder(holder))
     restored = []
     result = rd.run_drill(
-        CFG["restore_drill"], _plan(), {"user": "drill", "dbname": "trade_ai"}, run_id="r1", connect=connect,
-        restore_fn=lambda dump, name, params, timeout: restored.append(name) or {"rc": 0, "timed_out": False, "error_lines": 0, "first_errors": []},
+        CFG["restore_drill"],
+        _plan(),
+        {"user": "drill", "dbname": "trade_ai"},
+        run_id="r1",
+        connect=connect,
+        restore_fn=lambda dump, name, params, timeout: (
+            restored.append(name) or {"rc": 0, "timed_out": False, "error_lines": 0, "first_errors": []}
+        ),
         count_fn=lambda params, name, tables: [{**t, "restored_rows": 5} for t in tables],
     )
     ddl = [t for _db, t, _p in log if t.startswith(("CREATE", "DROP"))]
@@ -495,7 +628,14 @@ def test_run_drill_drops_even_when_the_restore_blows_up():
         raise RuntimeError("disk full")
 
     with pytest.raises(RuntimeError):
-        rd.run_drill(CFG["restore_drill"], _plan(), {"user": "drill", "dbname": "trade_ai"}, run_id="r1", connect=connect, restore_fn=boom)
+        rd.run_drill(
+            CFG["restore_drill"],
+            _plan(),
+            {"user": "drill", "dbname": "trade_ai"},
+            run_id="r1",
+            connect=connect,
+            restore_fn=boom,
+        )
     assert [t for _db, t, _p in log if t.startswith("DROP")] == ['DROP DATABASE "restore_drill_20261101"']
 
 
@@ -503,7 +643,11 @@ def test_run_drill_never_drops_when_the_marker_is_not_its_own():
     pytest.importorskip("psycopg2")
     connect, log = fake_connect_factory(lambda text, params: [("someone else",)] if "shobj_description" in text else [])
     result = rd.run_drill(
-        CFG["restore_drill"], _plan(), {"user": "drill", "dbname": "trade_ai"}, run_id="r1", connect=connect,
+        CFG["restore_drill"],
+        _plan(),
+        {"user": "drill", "dbname": "trade_ai"},
+        run_id="r1",
+        connect=connect,
         restore_fn=lambda *a, **k: {"rc": 0, "timed_out": False, "error_lines": 0, "first_errors": []},
         count_fn=lambda params, name, tables: [{**t, "restored_rows": 5} for t in tables],
     )
@@ -513,7 +657,9 @@ def test_run_drill_never_drops_when_the_marker_is_not_its_own():
 
 
 def test_refused_preconditions_are_findings_and_create_nothing():
-    p = dict(_plan(), would_run=False, preconditions={"dump_present": True, "disk_guard": False, "role_createdb": False})
+    p = dict(
+        _plan(), would_run=False, preconditions={"dump_present": True, "disk_guard": False, "role_createdb": False}
+    )
     f = rd.findings_for(p, None)
     assert f[0]["item"] == "refused:disk_guard,role_createdb" and f[0]["severity"] == "P2"
 
@@ -521,8 +667,15 @@ def test_refused_preconditions_are_findings_and_create_nothing():
 def test_dry_run_prints_the_plan_and_never_creates(tmp_path, monkeypatch, capsys):
     called = []
     monkeypatch.setattr(rd, "run_drill", lambda *a, **k: called.append(1))
-    plan = dict(_plan(), dump_bytes=1, live_size_bytes=1 << 30, excluded_schemas_bytes=0, existing_drill_databases=[],
-                disk_guard=rd.disk_guard(1 << 30, 100 << 30, CFG["restore_drill"]), drill_role={"user": "x", "createdb": False})
+    plan = dict(
+        _plan(),
+        dump_bytes=1,
+        live_size_bytes=1 << 30,
+        excluded_schemas_bytes=0,
+        existing_drill_databases=[],
+        disk_guard=rd.disk_guard(1 << 30, 100 << 30, CFG["restore_drill"]),
+        drill_role={"user": "x", "createdb": False},
+    )
     monkeypatch.setattr(rd, "plan", lambda *a, **k: plan)
     receipt = tmp_path / "r.json"
     assert rd.main(["--dry-run", "--receipt", str(receipt)]) == 0

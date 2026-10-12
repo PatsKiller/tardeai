@@ -14,6 +14,7 @@ this directory call this module for three things only:
 Nothing here executes a step. The runner executes nothing without `--apply` AND a non-empty
 stage plan; `--dry-run` is its default.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -104,6 +105,8 @@ def stage_concurrency(stage: dict) -> int:
 
 def step_group(stage: dict, st: dict) -> str:
     return str(st.get("group") or st["id"]) if stage.get("parallel") else str(st["id"])
+
+
 TIMEOUT_UNITS = {"": 1, "s": 1, "m": 60, "h": 3600}
 
 
@@ -173,7 +176,9 @@ def validate(manifest: dict) -> list[str]:
                 errs.append(f"{where}: {e}")
             errs.extend(f"{where}: {e}" for e in validate_env_spec(st.get("env")))
             dow = st.get("dow")
-            if dow is not None and (not isinstance(dow, list) or not all(isinstance(d, int) and 0 <= d <= 6 for d in dow)):
+            if dow is not None and (
+                not isinstance(dow, list) or not all(isinstance(d, int) and 0 <= d <= 6 for d in dow)
+            ):
                 errs.append(f"{where}: dow must be a list of ints 0-6 (cron Sunday=0)")
         errs.extend(_validate_parallel(stage_name, stage, steps))
     return errs
@@ -214,6 +219,7 @@ def _validate_parallel(stage_name: str, stage: dict, steps: list) -> list[str]:
 def validate_env_spec(spec) -> list[str]:
     """Problems with a step's `env` block (None == absent, which the runner treats as the cron base only)."""
     import re
+
     if spec is None:
         return []
     if not isinstance(spec, dict) or spec.get("inherit") != "cron":
@@ -257,11 +263,20 @@ def plan_records(manifest: dict, stage: str) -> list[str]:
     out = []
     for st in stage_steps(manifest, stage):
         dow = ",".join(str(d) for d in st["dow"]) if st.get("dow") else "*"
-        out.append(SEP.join([
-            str(st["id"]), str(st["cron_line"]), str(timeout_seconds(st["timeout"])), dow,
-            str(st.get("log") or ""), step_group(spec, st), ",".join(step_env_names(st)),
-            str(st["command"]).replace("\n", " "),
-        ]))
+        out.append(
+            SEP.join(
+                [
+                    str(st["id"]),
+                    str(st["cron_line"]),
+                    str(timeout_seconds(st["timeout"])),
+                    dow,
+                    str(st.get("log") or ""),
+                    step_group(spec, st),
+                    ",".join(step_env_names(st)),
+                    str(st["command"]).replace("\n", " "),
+                ]
+            )
+        )
     return out
 
 
@@ -305,13 +320,20 @@ def wave_plan(manifest: dict, stage: str, today_dow: int | None = None) -> dict:
             lanes[i] += s["p95_s"]
         g["makespan_p95_s"] = round(max(lanes), 1)
     cp = round(sum(g["makespan_p95_s"] for g in groups), 1)
-    return {"stage": stage, "max_concurrency": n, "groups": groups, "critical_path_p95_s": cp,
-            "serial_p95_s": round(serial, 1)}
+    return {
+        "stage": stage,
+        "max_concurrency": n,
+        "groups": groups,
+        "critical_path_p95_s": cp,
+        "serial_p95_s": round(serial, 1),
+    }
 
 
 def format_wave_plan(plan: dict) -> list[str]:
-    out = [f"[waves] stage={plan['stage']} max_concurrency={plan['max_concurrency']} groups={len(plan['groups'])} "
-           f"critical_path_p95={plan['critical_path_p95_s']}s serial_p95={plan['serial_p95_s']}s"]
+    out = [
+        f"[waves] stage={plan['stage']} max_concurrency={plan['max_concurrency']} groups={len(plan['groups'])} "
+        f"critical_path_p95={plan['critical_path_p95_s']}s serial_p95={plan['serial_p95_s']}s"
+    ]
     for k, g in enumerate(plan["groups"], 1):
         ids = ", ".join(f"{s['id']}({s['p95_s']:g}{'' if s['verified'] else '≤'})" for s in g["steps"])
         out.append(f"[waves]  {k:2d}. {g['group']:<8} {g['makespan_p95_s']:>7}s  {ids}")
@@ -322,8 +344,18 @@ def sha256_of(path: str | Path) -> str:
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
-def write_summary(manifest_path: str, stage: str, results_path: str, out_path: str, *,
-                  dry_run: bool, started_at: str, log_path: str, apply_requested: bool) -> dict:
+def write_summary(
+    manifest_path: str,
+    stage: str,
+    results_path: str,
+    out_path: str,
+    *,
+    dry_run: bool,
+    started_at: str,
+    log_path: str,
+    apply_requested: bool,
+    worker_failures: int = 0,
+) -> dict:
     manifest = load(manifest_path)
     steps = []
     if Path(results_path).exists():
@@ -331,7 +363,12 @@ def write_summary(manifest_path: str, stage: str, results_path: str, out_path: s
             if line.strip():
                 steps.append(json.loads(line))
     statuses = {s.get("status") for s in steps}
-    if not steps:
+    expected_ids = [step["id"] for step in stage_steps(manifest, stage)]
+    actual_ids = [step.get("id") for step in steps]
+    complete = len(actual_ids) == len(expected_ids) and set(actual_ids) == set(expected_ids) and worker_failures == 0
+    if not dry_run and not complete:
+        overall = "degraded"
+    elif not steps:
         overall = "empty"
     elif dry_run:
         overall = "dry_run"
@@ -352,6 +389,9 @@ def write_summary(manifest_path: str, stage: str, results_path: str, out_path: s
         "executed_any": any(s.get("status") in ("ok", "failed", "timeout") for s in steps),
         "overall_status": overall,
         "step_count": len(steps),
+        "expected_step_count": len(expected_ids),
+        "receipt_complete": complete,
+        "worker_failures": worker_failures,
         "steps": steps,
         "log": log_path,
     }
@@ -378,6 +418,7 @@ def main(argv=None) -> int:
     ap.add_argument("--apply-requested", action="store_true")
     ap.add_argument("--started-at", default="")
     ap.add_argument("--log", default="")
+    ap.add_argument("--worker-failures", type=int, default=0, help="--summary: workers whose receipt writer failed")
     args = ap.parse_args(argv)
 
     try:
@@ -420,8 +461,17 @@ def main(argv=None) -> int:
         if not args.results or not args.out:
             print("[manifest] --summary needs --results and --out", file=sys.stderr)
             return 2
-        write_summary(args.manifest, args.summary, args.results, args.out, dry_run=args.dry_run,
-                      started_at=args.started_at, log_path=args.log, apply_requested=args.apply_requested)
+        write_summary(
+            args.manifest,
+            args.summary,
+            args.results,
+            args.out,
+            dry_run=args.dry_run,
+            started_at=args.started_at,
+            log_path=args.log,
+            apply_requested=args.apply_requested,
+            worker_failures=args.worker_failures,
+        )
         return 0
     return 2
 

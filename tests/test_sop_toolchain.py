@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 from pathlib import Path
 
 import pytest
@@ -20,22 +21,28 @@ from scripts.lib.sop_evidence_integrity import (
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_ruff_found_via_repo_venv_fallback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    """When PATH has no ruff, hub/repo .venv fallback still resolves."""
+@pytest.fixture(autouse=True)
+def sanctioned_version_toolchain(monkeypatch: pytest.MonkeyPatch):
+    """Version/attestation tests use the real pinned binary from the test PATH."""
+    binary = shutil.which("ruff")
+    assert binary is not None, "the SOP suite requires its declared pinned Ruff toolchain"
+    ruff = Path(binary)
+    assert tc.ruff_version_string(ruff, cwd=ROOT) == f"ruff {tc.PINNED_RUFF_VERSION}"
+    monkeypatch.setattr(tc, "_HUB_RUFF", ruff)
+
+
+@pytest.mark.parametrize("layout", ["hub", "repo"])
+def test_ruff_found_via_repo_venv_fallback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, layout):
+    """Each declared environment fallback resolves without host-layout state."""
+    root = tmp_path / "repo"
+    fake = (root if layout == "repo" else tmp_path / "hub") / ".venv" / "bin" / "ruff"
+    fake.parent.mkdir(parents=True)
+    fake.write_text("#!/bin/sh\necho ruff 0.16.2\n", encoding="utf-8")
+    fake.chmod(0o755)
     monkeypatch.setattr(tc.shutil, "which", lambda _name: None)
-    # Point hub constant at a real binary if present, else synthesize under tmp
-    real = Path("/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/ruff")
-    if real.is_file():
-        monkeypatch.setattr(tc, "_HUB_RUFF", real)
-        got = tc.resolve_ruff_bin(root=tmp_path)  # no local .venv
-        assert got == real
-    else:
-        fake = tmp_path / ".venv" / "bin" / "ruff"
-        fake.parent.mkdir(parents=True)
-        fake.write_text("#!/bin/sh\necho ruff 0.16.2\n", encoding="utf-8")
-        fake.chmod(0o755)
-        got = tc.resolve_ruff_bin(root=tmp_path)
-        assert got == fake
+    monkeypatch.setattr(tc.sys, "executable", str(tmp_path / "missing-python"))
+    monkeypatch.setattr(tc, "_HUB_RUFF", fake if layout == "hub" else tmp_path / "missing-hub")
+    assert tc.resolve_ruff_bin(root=root) == fake
 
 
 def test_ruff_found_directly_on_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -60,7 +67,7 @@ def test_ruff_missing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
 
 def test_collect_tool_versions_records_pinned_ruff(monkeypatch: pytest.MonkeyPatch):
-    # Use live resolver; environment has hub ruff even if PATH empty
+    # Resolver executes the fixture's sanctioned binary; versions remain real.
     vers = tc.collect_tool_versions(root=ROOT)
     assert vers["pinned_ruff"] == "0.16.2"
     assert vers["ruff"] != "MISSING"

@@ -13,6 +13,7 @@ ROUTING is pinned and their coverage is not claimed. Pinning a routing verdict i
 weaker than observing an alarm fire, and calling it coverage would be the
 overstatement this gate exists to prevent.
 """
+
 from __future__ import annotations
 
 import sys
@@ -23,7 +24,9 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-COVERS = ["scripts/system_health_agent.py:505"]  # line moved 2026-10-11 (SND2 intent docstring); 2026-10-07: _resolve_log() added above _send_alert
+COVERS = [
+    "scripts/system_health_agent.py:794"
+]  # line moved 2026-10-12 (freshness identity / formatter); 2026-10-07: _resolve_log() added above _send_alert
 
 # The exact body shapes the nine sites emit.
 BODIES = {
@@ -47,6 +50,7 @@ def test_every_tail_alarm_has_a_known_delivery_path(name, body):
     established either way.
     """
     from telegram_alert_router import classify_alert
+
     verdict = classify_alert(body)
     assert verdict in ("P0_INTERRUPT", "P1_DIGEST"), (
         f"{name} classifies {verdict}: neither paged nor digested, so it reaches "
@@ -64,9 +68,9 @@ def test_a_suppressed_alarm_is_archived_for_the_digest(monkeypatch):
     import report_capture as RC
 
     calls = []
-    monkeypatch.setattr(RC, "archive_message",
-                        lambda msg, suppressed=False, reason="": calls.append((suppressed, reason)),
-                        raising=True)
+    monkeypatch.setattr(
+        RC, "archive_message", lambda msg, suppressed=False, reason="": calls.append((suppressed, reason)), raising=True
+    )
     monkeypatch.setattr(TA, "_token", lambda: "t", raising=False)
     monkeypatch.setattr(TA, "_chat_ids", lambda: ["c"], raising=False)
     monkeypatch.setattr(TA, "_enabled", lambda: True, raising=False)
@@ -90,13 +94,13 @@ def test_health_send_alert_is_archived_end_to_end(alarm_capture, monkeypatch):
     import system_health_agent as SHA
 
     calls = []
-    monkeypatch.setattr(RC, "archive_message",
-                        lambda msg, suppressed=False, reason="", report_type=None:
-                        calls.append((suppressed, reason)) or report_type,
-                        raising=True)
+    monkeypatch.setattr(
+        RC,
+        "archive_message",
+        lambda msg, suppressed=False, reason="", report_type=None: calls.append((suppressed, reason)) or report_type,
+        raising=True,
+    )
 
     SHA._send_alert(BODIES["health:pipeline_health"])
     assert not alarm_capture.fired, "unexpectedly paged; update the contract and COVERS"
-    assert calls == [(True, "intent_p3_digest")], (
-        f"not archived, so the digest can never deliver it: {calls}"
-    )
+    assert calls == [(True, "intent_p3_digest")], f"not archived, so the digest can never deliver it: {calls}"

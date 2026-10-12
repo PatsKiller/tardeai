@@ -16,6 +16,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from tests.pipeline_runner_fixtures import runner_env
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
@@ -29,25 +31,43 @@ SIGNERS = set(X.CHILD_ENV_LANE_PASSTHROUGH)
 SECRET_RE = re.compile(r"KEY|TOKEN|SECRET|PASSWORD|BEARER", re.I)
 FIXTURE = "fixture-value-"
 SECRETS = {
-    "UNLISTED_API_KEY", "UNLISTED_TOKEN", "UNLISTED_SECRET", "DB_PASSWORD",
-    "TRADEAI_N8N_GATEWAY_HMAC_KEY", "TRADEAI_N8N_GATEWAY_HMAC_KEY_PREVIOUS", "TRADEAI_N8N_GATEWAY_HMAC_KEY_N8N",
-    "TRADEAI_N8N_RELAY_BEARER", "N8N_ENCRYPTION_KEY_ESCROW",
+    "UNLISTED_API_KEY",
+    "UNLISTED_TOKEN",
+    "UNLISTED_SECRET",
+    "DB_PASSWORD",
+    "TRADEAI_N8N_GATEWAY_HMAC_KEY",
+    "TRADEAI_N8N_GATEWAY_HMAC_KEY_PREVIOUS",
+    "TRADEAI_N8N_GATEWAY_HMAC_KEY_N8N",
+    "TRADEAI_N8N_RELAY_BEARER",
+    "N8N_ENCRYPTION_KEY_ESCROW",
 }
 
 
 def environment(mode: str | None = "enforce") -> dict[str, str]:
     env = {name: FIXTURE + name for name in SECRETS | X.CHILD_ENV_BASE_NAMES}
-    env.update({"UNLISTED_NON_SECRET": FIXTURE + "plain", "TRADEAI_N8N_GATEWAY_URL": "http://127.0.0.1:18091",
-                "TRADEAI_VENV_PYTHON": sys.executable})  # $PY resolves into the receipt argv by design
+    env.update(
+        {
+            "UNLISTED_NON_SECRET": FIXTURE + "plain",
+            "TRADEAI_N8N_GATEWAY_URL": "http://127.0.0.1:18091",
+            "TRADEAI_VENV_PYTHON": sys.executable,
+        }
+    )  # $PY resolves into the receipt argv by design
     if mode is not None:
         env[X.ENV_ALLOWLIST_MODE_ENV] = mode
     return env
 
 
 def _entry(tmp_path: Path, **fields) -> dict:
-    base = {"lane_id": "fixture-lane", "command": ["$PY", "scripts/fake.py", "--lane", "fixture-lane"],
-            "lock": str(tmp_path / "fixture.lock"), "timeout_s": 5, "dry_run_arg": [], "live_arg": [],
-            "env_names": ["DB_PASSWORD"], "env_allowlist_mode": "enforce"}
+    base = {
+        "lane_id": "fixture-lane",
+        "command": ["$PY", "scripts/fake.py", "--lane", "fixture-lane"],
+        "lock": str(tmp_path / "fixture.lock"),
+        "timeout_s": 5,
+        "dry_run_arg": [],
+        "live_arg": [],
+        "env_names": ["DB_PASSWORD"],
+        "env_allowlist_mode": "enforce",
+    }
     base.update(fields)
     return {k: v for k, v in base.items() if v is not ...}
 
@@ -60,8 +80,9 @@ def _run(tmp_path: Path, env: dict, **fields):
         return subprocess.CompletedProcess(argv, 0, "", "")
 
     row = {"run_id": "run-env-fixture-00000001", "lane_id": "fixture-lane", "mode": "dry_run"}
-    receipt = X.execute(row, _entry(tmp_path, **fields), env=env, state_root=tmp_path, code_root=tmp_path,
-                        runner=runner)
+    receipt = X.execute(
+        row, _entry(tmp_path, **fields), env=env, state_root=tmp_path, code_root=tmp_path, runner=runner
+    )
     return receipt, seen
 
 
@@ -72,6 +93,7 @@ def _no_values(receipt) -> None:
 
 
 # ── the scorer contract ───────────────────────────────────────────────────────────────────────────────────────
+
 
 def test_mode_env_literal_is_in_the_executor_source():
     # scripts/lib/n8n_maturity/dims_governance.py::_p7 greps the served executor for this exact string
@@ -89,6 +111,7 @@ def test_installed_unit_is_unchanged_and_carries_no_mode():
 
 
 # ── builder: off / report / enforce ───────────────────────────────────────────────────────────────────────────
+
 
 @pytest.mark.parametrize("mode", [None, "", "  ", "report", "REPORT"])
 def test_unset_empty_and_report_keep_the_pre_p7_env_and_record_names(mode):
@@ -164,15 +187,18 @@ def test_unknown_global_mode_fails_closed_and_never_records_the_value(bad):
     assert json.dumps(bad) not in json.dumps(block)
 
 
-@pytest.mark.parametrize("fields,reason", [
-    ({"env_names": "DB_PASSWORD"}, "bad_env_names"),
-    ({"env_names": ["DB_PASSWORD", "DB_PASSWORD"]}, "bad_env_names"),
-    ({"env_names": ["bad-name"]}, "bad_env_names"),
-    ({"env_names": [1]}, "bad_env_names"),
-    ({"env_allowlist_mode": "off"}, "bad_lane_env_allowlist_mode"),
-    ({"env_names": ["TRADEAI_N8N_RELAY_BEARER"]}, "forbidden_env_name"),
-    ({"env_names": [X.GATEWAY_DISPATCH_KEY_ENV]}, "forbidden_env_name"),
-])
+@pytest.mark.parametrize(
+    "fields,reason",
+    [
+        ({"env_names": "DB_PASSWORD"}, "bad_env_names"),
+        ({"env_names": ["DB_PASSWORD", "DB_PASSWORD"]}, "bad_env_names"),
+        ({"env_names": ["bad-name"]}, "bad_env_names"),
+        ({"env_names": [1]}, "bad_env_names"),
+        ({"env_allowlist_mode": "off"}, "bad_lane_env_allowlist_mode"),
+        ({"env_names": ["TRADEAI_N8N_RELAY_BEARER"]}, "forbidden_env_name"),
+        ({"env_names": [X.GATEWAY_DISPATCH_KEY_ENV]}, "forbidden_env_name"),
+    ],
+)
 def test_malformed_lane_policy_is_invalid_and_refused(tmp_path, fields, reason):
     entry = _entry(tmp_path, **fields)
     assert X.validate_entry(entry) == reason
@@ -182,14 +208,17 @@ def test_malformed_lane_policy_is_invalid_and_refused(tmp_path, fields, reason):
 
 
 def test_malformed_lane_is_dropped_by_load_allowlist(tmp_path):
-    doc = {"schema": X.ALLOWLIST_SCHEMA, "lanes": [_entry(tmp_path, lane_id="good"),
-                                                     _entry(tmp_path, lane_id="bad", env_names="X")]}
+    doc = {
+        "schema": X.ALLOWLIST_SCHEMA,
+        "lanes": [_entry(tmp_path, lane_id="good"), _entry(tmp_path, lane_id="bad", env_names="X")],
+    }
     path = tmp_path / "allow.json"
     path.write_text(json.dumps(doc), encoding="utf-8")
     assert set(X.load_allowlist(path)) == {"good"}
 
 
 # ── execute(): receipts, no values, no spawn on refusal ──────────────────────────────────────────────────────
+
 
 def test_execute_report_runs_inherited_env_and_receipt_carries_names_only(tmp_path):
     env = environment(None)
@@ -227,6 +256,12 @@ def test_real_child_under_enforce_sees_no_unlisted_secret(tmp_path):
     script.write_text("import os, json, sys\nopen(sys.argv[1], 'w').write(json.dumps(dict(os.environ)))\n")
     env = environment("enforce")
     env["PATH"] = "/usr/bin:/bin"
+    # Synthetic secret values still exercise the production allowlist; filesystem
+    # roots must be valid isolated paths when this one test launches a real child.
+    scratch_env = runner_env(tmp_path / "child-environment")
+    for name in X.CHILD_ENV_BASE_NAMES:
+        if name in scratch_env:
+            env[name] = scratch_env[name]
     entry = _entry(tmp_path, command=[sys.executable, str(script), str(out)], lock_kind="flock")
     row = {"run_id": "run-env-realchild-0001", "lane_id": "fixture-lane", "mode": "dry_run"}
     receipt = X.execute(row, entry, env=env, state_root=tmp_path, code_root=tmp_path)
@@ -238,6 +273,7 @@ def test_real_child_under_enforce_sees_no_unlisted_secret(tmp_path):
 
 # ── both executor paths share the builder ─────────────────────────────────────────────────────────────────────
 
+
 @pytest.fixture
 def ledger(tmp_path):
     led = CoordinationLedger(tmp_path / "ledger.sqlite")
@@ -246,8 +282,9 @@ def ledger(tmp_path):
     state.mkdir()
 
     def request(run_id: str, lane: str):
-        return store.request(run_id=run_id, lane_id=lane, mode="dry_run", requested_by="t", caller_id="n8n-relay",
-                             now=1_791_500_000.0)
+        return store.request(
+            run_id=run_id, lane_id=lane, mode="dry_run", requested_by="t", caller_id="n8n-relay", now=1_791_500_000.0
+        )
 
     yield SimpleNamespace(store=store, state=state, request=request, tmp=tmp_path)
     led.close()
@@ -256,10 +293,12 @@ def ledger(tmp_path):
 def _allowlist(tmp_path: Path) -> dict:
     return {
         "enf": _entry(tmp_path, lane_id="enf", command=["$PY", "scripts/fake.py", "--lane", "enf"]),
-        "rep": _entry(tmp_path, lane_id="rep", command=["$PY", "scripts/fake.py", "--lane", "rep"],
-                      env_allowlist_mode="report"),
-        "nolist": _entry(tmp_path, lane_id="nolist", command=["$PY", "scripts/fake.py", "--lane", "nolist"],
-                         env_names=...),
+        "rep": _entry(
+            tmp_path, lane_id="rep", command=["$PY", "scripts/fake.py", "--lane", "rep"], env_allowlist_mode="report"
+        ),
+        "nolist": _entry(
+            tmp_path, lane_id="nolist", command=["$PY", "scripts/fake.py", "--lane", "nolist"], env_names=...
+        ),
     }
 
 
@@ -284,8 +323,9 @@ def test_v1_drain_path_uses_the_builder(ledger):
 
     for i, lane in enumerate(("enf", "rep", "nolist")):
         ledger.request(f"run-v1-{lane}-{i:010d}", lane)
-    out = X.drain(ledger.store, _allowlist(ledger.tmp), env=env, state_root=ledger.state, code_root=ledger.tmp,
-                  runner=runner)
+    out = X.drain(
+        ledger.store, _allowlist(ledger.tmp), env=env, state_root=ledger.state, code_root=ledger.tmp, runner=runner
+    )
     receipts = {r["lane_id"]: r for r in out}
     assert {r["schema"] for r in out} == {X.RECEIPT_SCHEMA}
     _check_path_results(receipts, seen, env)
@@ -301,15 +341,26 @@ def test_v2_worker_path_uses_the_builder(ledger):
         def run(argv, *, timeout, env, cwd):
             seen[argv[argv.index("--lane") + 1]] = dict(env)
             return SimpleNamespace(returncode=0, stdout="", stderr="")
+
         return run
 
     allow = _allowlist(ledger.tmp)
     for i, lane in enumerate(allow):
         ledger.request(f"run-v2-{lane}-{i:010d}", lane)
-    ex = X.ExecutorV2(ledger.store, allow, env=env, state_root=ledger.state, code_root=ledger.tmp, workers=2,
-                      policies=load_policies(), runner_factory=factory, worker_prefix="test", quiet=True,
-                      registry_rows=[{"lane_id": lane, "dispatch": {"retry_policy": "transient-2"}} for lane in allow],
-                      sleeper=lambda s: None)
+    ex = X.ExecutorV2(
+        ledger.store,
+        allow,
+        env=env,
+        state_root=ledger.state,
+        code_root=ledger.tmp,
+        workers=2,
+        policies=load_policies(),
+        runner_factory=factory,
+        worker_prefix="test",
+        quiet=True,
+        registry_rows=[{"lane_id": lane, "dispatch": {"retry_policy": "transient-2"}} for lane in allow],
+        sleeper=lambda s: None,
+    )
     ex.drain_until_idle(deadline_s=20)
     receipts = {r["lane_id"]: r for r in ex.receipts}
     assert set(receipts) == set(allow)
@@ -318,6 +369,7 @@ def test_v2_worker_path_uses_the_builder(ledger):
 
 
 # ── the committed allowlist ───────────────────────────────────────────────────────────────────────────────────
+
 
 @pytest.mark.parametrize("lane_id", sorted(LANES))
 def test_every_lane_declares_a_valid_policy_with_evidence(lane_id):
@@ -353,7 +405,8 @@ def _module_env_keys(tree: ast.Module) -> set:
             if isinstance(val, ast.Call) and val.args:
                 val = val.args[0]
             if isinstance(val, (ast.Set, ast.Tuple, ast.List)) and all(
-                    isinstance(e, ast.Constant) and isinstance(e.value, str) for e in val.elts):
+                isinstance(e, ast.Constant) and isinstance(e.value, str) for e in val.elts
+            ):
                 return {e.value for e in val.elts}
     return set()
 
@@ -365,9 +418,13 @@ def _env_reads(path: Path, visited: set) -> set:
         return set()
     visited.add(path)
     tree = ast.parse(path.read_text(encoding="utf-8"))
-    consts = {t.id: n.value.value for n in ast.walk(tree) if isinstance(n, ast.Assign)
-              and isinstance(n.value, ast.Constant) and isinstance(n.value.value, str)
-              for t in n.targets if isinstance(t, ast.Name)}
+    consts = {
+        t.id: n.value.value
+        for n in ast.walk(tree)
+        if isinstance(n, ast.Assign) and isinstance(n.value, ast.Constant) and isinstance(n.value.value, str)
+        for t in n.targets
+        if isinstance(t, ast.Name)
+    }
     env_keys = _module_env_keys(tree)
     reads: set = set()
     for node in ast.walk(tree):
@@ -377,21 +434,31 @@ def _env_reads(path: Path, visited: set) -> set:
         # narrowed to a literal _ENV_KEYS set reads exactly that set (tests/test_env_bootstrap_narrow_20261011.py).
         if isinstance(node, ast.Call):
             func = ast.unparse(node.func)
-            assert not (func.split(".")[-1] == "load_dotenv" or func == "os.environ.update"), \
+            assert not (func.split(".")[-1] == "load_dotenv" or func == "os.environ.update"), (
                 f"whole-file env loader {path.relative_to(ROOT)}:{node.lineno}"
+            )
             if func == "os.environ.setdefault" and node.args and not isinstance(node.args[0], ast.Constant):
                 assert env_keys, f"whole-file env loader {path.relative_to(ROOT)}:{node.lineno}"
                 reads |= env_keys
                 continue
         if isinstance(node, ast.Call) and ast.unparse(node.func) in {
-                "os.getenv", "os.environ.get", "env.get", "env.setdefault"}:
+            "os.getenv",
+            "os.environ.get",
+            "env.get",
+            "env.setdefault",
+        }:
             assert node.args, (path, node.lineno)
             key = node.args[0]
         elif isinstance(node, ast.Subscript) and ast.unparse(node.value) in {"os.environ", "env"}:
             key = node.slice
         if key is not None:
-            name = key.value if isinstance(key, ast.Constant) else consts.get(key.id) if isinstance(key, ast.Name) \
+            name = (
+                key.value
+                if isinstance(key, ast.Constant)
+                else consts.get(key.id)
+                if isinstance(key, ast.Name)
                 else None
+            )
             assert isinstance(name, str), f"unresolved env read {path.relative_to(ROOT)}:{node.lineno}"
             reads.add(name)
         mods: list[str] = []
@@ -418,8 +485,9 @@ def test_enforced_inventories_cover_every_literal_read_in_the_import_closure(lan
     assert len(visited) <= 10, f"{lane_id}: closure grew to {len(visited)} modules; re-inventory before enforcing"
     if entry.get("lock_kind", "safe_flock") == "safe_flock":
         reads |= {"PROJECT_ROOT", "SAFE_FLOCK_LOG_DIR"}
-    assert reads <= X.CHILD_ENV_BASE_NAMES | set(entry["env_names"]), sorted(reads - X.CHILD_ENV_BASE_NAMES
-                                                                              - set(entry["env_names"]))
+    assert reads <= X.CHILD_ENV_BASE_NAMES | set(entry["env_names"]), sorted(
+        reads - X.CHILD_ENV_BASE_NAMES - set(entry["env_names"])
+    )
 
 
 def test_lane_mode_counts_match_the_pr():

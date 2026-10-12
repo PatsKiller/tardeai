@@ -455,7 +455,7 @@ def trade_ai_line(t: Optional[Mapping[str, Any]]) -> str:
     """Today's Trade-AI verdict for the symbol, stated plainly (the 🟢 Trade-AI pill on every house message
     is the sender, not a verdict)."""
     if not t:
-        return "Trade-AI: no scan today"
+        return "Trade-AI: verdict not attached · scan status unverified"
     at = str(t.get("scanned_at") or "")
     hhmm = at[11:16] if len(at) >= 16 else ""
     return (f"Trade-AI today: {str(t.get('decision') or '?').upper()}" + (f" {hhmm}" if hhmm else "")

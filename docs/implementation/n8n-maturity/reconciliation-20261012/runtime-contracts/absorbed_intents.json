@@ -1,0 +1,40 @@
+{
+  "as_of": "2026-10-12T02:57:49.071956+00:00",
+  "evidence_class": "SOURCE_ONLY",
+  "registry_changes_applied": false,
+  "rows": [
+    {
+      "business_coverage": "Stage retains script command and original flock; source existence is not scheduled-output proof.",
+      "current_host_authority": "SANITIZED_READ_ONLY_OBSERVATION: exact standalone legacy script cron line is commented; source manifest retains parent step; current parent output acceptance NOT_MEASURED",
+      "declared_owner": "learning",
+      "dispatch_mode": "dry_run",
+      "finding": "C1-absorbed source intent coexists with standalone shadow dispatch. Verify stage business outputs and retire only redundant dry-run dispatch through reviewed registry change.",
+      "lane_id": "hermes-tag-lift-discovery",
+      "next_action": "Integrator prepares reviewed registry change removing only redundant dispatch after owner accepts parent coverage; keep original business stage/legacy lock and preserve history.",
+      "observation_as_of": "2026-10-12T03:03:57.290438+00:00",
+      "parent_process": "hermes_overnight",
+      "parent_source": "config/pipelines/hermes_overnight.json",
+      "proposed_target_disposition": "STAGE_OWNED_STANDALONE_SHADOW_HELD",
+      "registry_state": "ACTIVE",
+      "stage": "shadow"
+    },
+    {
+      "business_coverage": "Stage retains script command and original flock; source existence is not scheduled-output proof.",
+      "current_host_authority": "SANITIZED_READ_ONLY_OBSERVATION: exact standalone legacy script cron line is commented; source manifest retains parent step; current parent output acceptance NOT_MEASURED",
+      "declared_owner": "research",
+      "dispatch_mode": "dry_run",
+      "finding": "C1-absorbed source intent coexists with standalone shadow dispatch. Verify stage business outputs and retire only redundant dry-run dispatch through reviewed registry change.",
+      "lane_id": "hermes-industry-novelty-discovery",
+      "next_action": "Integrator prepares reviewed registry change removing only redundant dispatch after owner accepts parent coverage; keep original business stage/legacy lock and preserve history.",
+      "observation_as_of": "2026-10-12T03:03:57.290438+00:00",
+      "parent_process": "hermes_overnight",
+      "parent_source": "config/pipelines/hermes_overnight.json",
+      "proposed_target_disposition": "STAGE_OWNED_STANDALONE_SHADOW_HELD",
+      "registry_state": "ACTIVE",
+      "stage": "shadow"
+    }
+  ],
+  "runtime": "NOT_MEASURED",
+  "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f",
+  "status": "DRAFT_FOR_OPERATOR_REVIEW"
+}

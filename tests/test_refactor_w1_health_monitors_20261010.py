@@ -13,6 +13,7 @@ failed check exits non-zero.
 from __future__ import annotations
 
 import inspect
+import io
 import json
 import runpy
 import sys
@@ -95,6 +96,20 @@ def _fake_dispatcher(monkeypatch, fn):
     monkeypatch.setitem(sys.modules, "alert_dispatcher_unified", types.SimpleNamespace(dispatch=fn))
 
 
+@pytest.fixture
+def hermes_dedup_hour(monkeypatch):
+    """The producer formats its hourly dedup key with date; tests must never spawn that shell."""
+    calls = []
+
+    def fixture_clock(command):
+        assert command == "date +%Y%m%d%H", "unexpected shell formatter in Hermes test"
+        calls.append(command)
+        return io.StringIO("2026101012\n")
+
+    monkeypatch.setattr(H.os, "popen", fixture_clock)
+    return calls
+
+
 def test_hermes_dry_run_with_send_writes_and_sends_nothing(monkeypatch, state_root, capsys):
     monkeypatch.setattr(H, "check", lambda: list(ISSUES))
     monkeypatch.setitem(sys.modules, "db_adapter", types.SimpleNamespace(_execute=_boom))
@@ -112,29 +127,32 @@ def test_hermes_dry_run_returns_before_first_insert_in_source():
     assert src.index("if a.dry_run:\n        # Returns before") < src.index("ad.dispatch(")
 
 
-def test_hermes_findings_are_recorded_and_exit_zero(monkeypatch, state_root):
+def test_hermes_findings_are_recorded_and_exit_zero(monkeypatch, state_root, hermes_dedup_hour):
     monkeypatch.setattr(H, "check", lambda: list(ISSUES))
     calls = _fake_db(monkeypatch)
     _fake_dispatcher(monkeypatch, _boom)  # no --send: never dispatched
     assert H.main([]) == 0
+    assert hermes_dedup_hour == ["date +%Y%m%d%H"]
     assert [c.split(" (")[0] for c in calls] == ["INSERT INTO alert_events", "INSERT INTO escalation_queue"]
     doc = json.loads((state_root / "data/runtime/hermes-pipeline-health_last.json").read_text())
     assert doc["status"] == "ok" and doc["ok_at"] and doc["summary"]["issues"] == 1
 
 
-def test_hermes_send_flag_still_dispatches_on_real_run(monkeypatch, state_root):
+def test_hermes_send_flag_still_dispatches_on_real_run(monkeypatch, state_root, hermes_dedup_hour):
     monkeypatch.setattr(H, "check", lambda: list(ISSUES))
     _fake_db(monkeypatch)
     sent = []
     _fake_dispatcher(monkeypatch, lambda **kw: sent.append(kw))
     assert H.main(["--send"]) == 0
+    assert hermes_dedup_hour == ["date +%Y%m%d%H"]
     assert sent and sent[0]["source"] == "hermes_pipeline_health"
 
 
-def test_hermes_unrecorded_findings_and_check_failure_exit_one(monkeypatch, state_root):
+def test_hermes_unrecorded_findings_and_check_failure_exit_one(monkeypatch, state_root, hermes_dedup_hour):
     monkeypatch.setattr(H, "check", lambda: list(ISSUES))
     _fake_db(monkeypatch, result=None)  # db_adapter._execute returns None on SQL error
     assert H.main([]) == 1
+    assert hermes_dedup_hour == ["date +%Y%m%d%H"]
     path = state_root / "data/runtime/hermes-pipeline-health_last.json"
     doc = json.loads(path.read_text())
     assert doc["status"] == "failed" and doc["ok_at"] is None and doc["summary"]["record_errors"]
@@ -144,6 +162,7 @@ def test_hermes_unrecorded_findings_and_check_failure_exit_one(monkeypatch, stat
 
     monkeypatch.setattr(H, "check", broken)
     assert H.main([]) == 1
+    assert hermes_dedup_hour == ["date +%Y%m%d%H"]  # failed check reaches no formatter
     assert json.loads(path.read_text())["status"] == "failed"
 
 
@@ -217,6 +236,29 @@ def test_classifier_no_cwd_relative_write_left():
 # ── youtube_cookie_health_check ──────────────────────────────────────────────
 
 YT = ROOT / "scripts" / "youtube_cookie_health_check.py"
+
+
+@pytest.mark.parametrize("prefix", ["", "#HttpOnly_"])
+def test_youtube_netscape_auth_cookie_classification_uses_synthetic_lines(prefix):
+    mod = _load("scripts/youtube_cookie_health_check.py", "_tested_refactor_w1_youtube_cookie")
+    lines = [
+        "# Netscape HTTP Cookie File",
+        "# ordinary comment with\ttabs\tSID",
+        f"{prefix}.youtube.com\tTRUE\t/\tTRUE\t9999999999\tSID\tsynthetic-fixture",
+        f"{prefix}.youtube.com\tTRUE\t/\tTRUE\t9999999999\tSID\tsynthetic-duplicate",
+        f"{prefix}.youtube.com\tTRUE\t/\tTRUE\t9999999999\tLOGIN_INFO\tsynthetic-fixture",
+    ]
+    assert mod._auth_cookie_names(lines) == {"SID", "LOGIN_INFO"}
+
+
+def test_youtube_synthetic_comment_rows_are_not_auth_cookies():
+    mod = _load("scripts/youtube_cookie_health_check.py", "_tested_refactor_w1_youtube_cookie")
+    assert (
+        mod._auth_cookie_names(
+            ["# ordinary comment\tTRUE\t/\tTRUE\t0\tSID\tfixture", "#HttpOnly_not-a-row", "malformed", "no\tfull\trow"]
+        )
+        == set()
+    )
 
 
 def _run_yt(monkeypatch, argv, *, sent, sent_kw=None):
@@ -298,6 +340,16 @@ def fake_playwright(monkeypatch):
     monkeypatch.setitem(sys.modules, "playwright.sync_api", sub)
 
 
+@pytest.fixture
+def crawl_source_fixture(monkeypatch, tmp_path):
+    """The Telegram crawl reads its source-root dotenv; supply an actual empty fixture before that read."""
+    root = tmp_path / "crawl_source"
+    (root / "scripts").mkdir(parents=True)
+    (root / ".env").write_text("", encoding="utf-8")
+    monkeypatch.setattr(W, "__file__", str(root / "scripts/crawl_v3_dashboard.py"))
+    return root
+
+
 def test_crawl_dry_run_with_telegram_sends_nothing_and_writes_nothing(
     monkeypatch, state_root, fake_playwright, tmp_path, capsys
 ):
@@ -310,11 +362,12 @@ def test_crawl_dry_run_with_telegram_sends_nothing_and_writes_nothing(
     assert not shots.exists() and not state_root.exists()
 
 
-def test_crawl_findings_exit_zero_with_receipt(monkeypatch, state_root, fake_playwright):
+def test_crawl_findings_exit_zero_with_receipt(monkeypatch, state_root, fake_playwright, crawl_source_fixture):
     monkeypatch.setattr(W, "_crawl", lambda sp, base, shots: (dict(CONFIRMED), dict(CONFIRMED)))
     sent = []
     monkeypatch.setattr(W, "_send_telegram", lambda m: sent.append(m))
     assert W.main(["--telegram"]) == 0
+    assert (crawl_source_fixture / ".env").read_text(encoding="utf-8") == ""
     assert len(sent) == 1  # sender behaviour unchanged on a real --telegram run
     doc = json.loads((state_root / "data/runtime/crawl-v3-dashboard_last.json").read_text())
     assert doc["status"] == "ok" and doc["summary"]["routes"] == len(W.ROUTES)

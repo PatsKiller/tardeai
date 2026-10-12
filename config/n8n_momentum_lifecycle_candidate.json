@@ -1,0 +1,166 @@
+{
+  "status": "DRAFT_FOR_OWNER_REVIEW",
+  "enabled": false,
+  "owner_declaration": "platform + scalp; confirmation required",
+  "review": null,
+  "timezone": "America/New_York",
+  "business_expectation": "First genuine momentum scan available from six AM ET on a trading day; distinct from RTH scalp execution.",
+  "runtime_admission": "Operative content-bound owner review + exact deployed SOURCE_COMMIT/receipts checked independently; proposal grants none.",
+  "watch": [
+    {
+      "lane_id": "finviz-momentum-scalp-early-lane",
+      "role": "WATCH_ONLY_PROTECTED",
+      "window": "trading_day",
+      "completion_allowance_s": 900
+    },
+    {
+      "lane_id": "finviz-market-movers",
+      "role": "DATA_PRODUCER_OBSERVE",
+      "window": "trading_day",
+      "completion_allowance_s": 600
+    },
+    {
+      "lane_id": "finviz-screener-runner",
+      "role": "DATA_PRODUCER_OBSERVE",
+      "window": "trading_day",
+      "completion_allowance_s": 600
+    },
+    {
+      "lane_id": "trade-ai-scalp-live",
+      "role": "NAMED_EXCEPTION_WATCH_ONLY_NO_RETRY",
+      "window": "regular",
+      "completion_allowance_s": 295
+    },
+    {
+      "lane_id": "auto-proposal-general",
+      "role": "WATCH_ONLY_PROTECTED",
+      "window": "trading_day",
+      "completion_allowance_s": 600
+    },
+    {
+      "lane_id": "momentum-scalp-advisory-alerts",
+      "role": "WATCH_ONLY_PROTECTED",
+      "window": "trading_day",
+      "completion_allowance_s": 600
+    },
+    {
+      "lane_id": "daily-incubator-refresh",
+      "role": "WATCH_ONLY_PROTECTED",
+      "window": "trading_day",
+      "completion_allowance_s": 600
+    },
+    {
+      "lane_id": "warm-caches",
+      "role": "DATA_CACHE_OWNER_OBSERVE",
+      "window": "trading_day",
+      "completion_allowance_s": 600
+    },
+    {
+      "lane_id": "orchestrator-slot",
+      "role": "WATCH_ONLY_PROTECTED",
+      "window": "trading_day",
+      "completion_allowance_s": 600
+    },
+    {
+      "lane_id": "youtube-cookie-health-check",
+      "role": "CREDENTIAL_METADATA_OBSERVE_NO_PROBE",
+      "window": "all_days",
+      "completion_allowance_s": 600
+    },
+    {
+      "lane_id": "youtube-transcript-ingest",
+      "role": "WATCH_ONLY_EGRESS",
+      "window": "all_days",
+      "completion_allowance_s": 600
+    },
+    {
+      "lane_id": "incubator-proposal-promoter",
+      "role": "WATCH_ONLY_PROTECTED",
+      "window": "trading_day",
+      "completion_allowance_s": 600
+    }
+  ],
+  "products": [
+    {
+      "id": "latest_scan_package",
+      "required_after_hour": 6,
+      "grace_s": 900,
+      "max_age_s": 14400
+    },
+    {
+      "id": "served_scan_cache",
+      "required_after_hour": 6,
+      "grace_s": 900,
+      "max_age_s": 14400,
+      "upstream": "latest_scan_package"
+    },
+    {
+      "id": "momentum_projection",
+      "required_after_hour": 6,
+      "grace_s": 900,
+      "max_age_s": 1800
+    },
+    {
+      "id": "notification_lineage",
+      "required_after_hour": 6,
+      "grace_s": 900,
+      "max_age_s": 1800
+    },
+    {
+      "id": "shared_signal_projection",
+      "required_after_hour": 6,
+      "grace_s": 900,
+      "max_age_s": 1800,
+      "purpose": "Bidirectional advisory signal union with separate source verdicts and identical consumer generation/hash; no order or subscription effects."
+    }
+  ],
+  "recovery": {
+    "armed": false,
+    "actions": [
+      {
+        "lane_id": "momentum-cache-reconcile",
+        "product": "shared_signal_projection",
+        "dependencies": [
+          "latest_scan_package"
+        ],
+        "scope": "RESETTABLE_DERIVED_ADVISORY_PROJECTION_ONLY"
+      }
+    ],
+    "admission_note": "Concrete safe helper exists, unadmitted. Existing due/dispatcher owns retries. Canonical business/cache drift and consumer acceptance cannot be healed by a derivative rebuild.",
+    "retry_policy_source": "config/n8n_retry_policies.json and operative registry dispatch.retry_policy",
+    "never": [
+      "order",
+      "broker",
+      "proposal",
+      "promoter",
+      "sender",
+      "credential",
+      "cookie",
+      "sm-render",
+      "disk deletion",
+      "policy changes"
+    ]
+  },
+  "credential_recovery": {
+    "automatic": false,
+    "secret_name": "FINVIZ_COOKIE",
+    "source_of_truth": "Bitwarden Secrets Manager",
+    "operator_surface": "Command Center System > secrets",
+    "source_refs": [
+      "config/secret_registry.yaml:88",
+      "scripts/secrets/render_env.py:14",
+      "scripts/api_v2.py:43547",
+      "config/n8n_run_allowlist.json#never"
+    ],
+    "constraint": "Existing credential-health endpoint performs a live probe; n8n reads only completed authorized host check metadata. Secret render is never dispatcher-eligible. No item value, ID, cookie file or Bitwarden request is supplied here."
+  },
+  "llm_diagnosis": {
+    "implementation": "scripts/n8n_failure_diagnosis.py",
+    "process_id": "n8n_lane_failure_diagnosis",
+    "template_id": "lane_failure_diagnosis.v1",
+    "catalogue": "config/n8n_remediation_catalogue.json",
+    "mode": "EXISTING_GOVERNED_HOST_PATH",
+    "runtime_review": "NOT_MEASURED",
+    "never": "No n8n model/provider choice, arbitrary commands, source edits, protected financial or secret actions. Excluded lanes escalate only."
+  }
+}

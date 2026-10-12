@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+import types
 from pathlib import Path
 
 import pytest
@@ -108,10 +109,12 @@ def test_a_failed_aggregate_probe_holds_EVERYTHING(reaper) -> None:
     families, not merely the one that failed.
     """
     live = {"__HOLD__ALL"}
-    for comp in ("health:pipeline_freshness:missing_x",
-                 "health:intelligence_quality:research_lane_firing:chatgpt",
-                 "health:data_quality:news_stale",
-                 "health:execution_health:pipeline_failures"):
+    for comp in (
+        "health:pipeline_freshness:missing_x",
+        "health:intelligence_quality:research_lane_firing:chatgpt",
+        "health:data_quality:news_stale",
+        "health:execution_health:pipeline_failures",
+    ):
         assert reaper.is_reapable(_item(comp), live) is False, comp
 
 
@@ -131,8 +134,7 @@ def test_the_probe_is_the_producer_aggregate_not_hand_picked_collectors(reaper) 
     src = TARGET.read_text(encoding="utf-8")
     assert "HA.compute(" in src, "the probe no longer calls the producer aggregate"
     assert "__HOLD__ALL" in src, "no global fail-closed sentinel"
-    for narrow in ("HA.collect_data_quality()", "HA.collect_intelligence_quality()",
-                   "HA.collect_execution_health()"):
+    for narrow in ("HA.collect_data_quality()", "HA.collect_intelligence_quality()", "HA.collect_execution_health()"):
         assert narrow not in src, (
             f"probe narrowed back to a hand-picked collector ({narrow}); "
             "a category is emitted by several collectors -- use compute()"
@@ -154,6 +156,19 @@ def test_live_components_fails_closed_when_a_probe_raises(reaper, monkeypatch) -
     """Prove the sentinel is actually injected, not just honoured."""
     import builtins
 
+    # The independent aggregate is synthetic: this family-failure test must
+    # never enter real health collectors (scheduler, database, or host probes).
+    policy = {"fixture_policy": True}
+    aggregate_calls = []
+    health = types.ModuleType("health_agent")
+    health.load_policy = lambda: policy
+
+    def compute(got_policy):
+        aggregate_calls.append(got_policy)
+        return None, None, None, {"data_quality": [{"category": "data_quality", "type": "fixture_live"}]}
+
+    health.compute = compute
+    monkeypatch.setitem(sys.modules, "health_agent", health)
     real_import = builtins.__import__
 
     def _boom(name, *a, **k):
@@ -165,6 +180,9 @@ def test_live_components_fails_closed_when_a_probe_raises(reaper, monkeypatch) -
     live, notes = reaper.live_components()
     assert any("__HOLD__health:pipeline_freshness:" == c for c in live), live
     assert any("PROBE FAILED" in n for n in notes), notes
+    assert aggregate_calls == [policy]
+    assert "health:data_quality:fixture_live" in live and "__HOLD__ALL" not in live
+    assert reaper.is_reapable(_item("health:data_quality:fixture_live"), live) is False
 
 
 def test_dry_run_is_the_default_and_writes_nothing(reaper) -> None:

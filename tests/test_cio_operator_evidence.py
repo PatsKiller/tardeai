@@ -130,14 +130,28 @@ def test_capability_state_is_backend_runtime_census_not_frontend_field_absence(t
     assert result["mutation"] is False
 
 
-def test_cio_operator_evidence_api_route_is_read_only():
+def test_cio_operator_evidence_api_route_is_read_only(tmp_path, monkeypatch):
     import scripts.api_v2 as api_v2
+    import api_v3_cio as cio_api
+
+    cio_root = tmp_path / "data" / "cio"
+    runtime_root = tmp_path / "data" / "runtime"
+    cio_root.mkdir(parents=True)
+    runtime_root.mkdir(parents=True)
+    monkeypatch.setenv("TRADEAI_CIO_DIR", str(cio_root))
+    monkeypatch.setenv("TRADEAI_RUNTIME_DIR", str(runtime_root))
+    monkeypatch.setattr(api_v2, "PROJECT_ROOT", tmp_path)
+    # The route imports this exact module alias. Own a fresh cache, so a sibling
+    # test's composition cannot hide a real default-store fallback.
+    monkeypatch.setattr(cio_api, "_OPERATOR_EVIDENCE_CACHE", {"at": 0.0, "payload": None})
+    _write(cio_root / "hermes_research_results.jsonl", [{"result_id": "route-fixture-research"}])
 
     status, payload = api_v2.handle("/api/v3/cio/operator-evidence")
     assert status == 200
     assert payload["schema"] == "CIOOperatorEvidence@v1"
     assert payload["authority"] == "READ_ONLY_ADVISORY"
     assert payload["financial_action"] is False
+    assert payload["blocks"]["research"]["artifacts"][0]["artifact_id"] == "route-fixture-research"
 
 
 def test_research_provenance_api_route_is_read_only(tmp_path, monkeypatch):

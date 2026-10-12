@@ -181,7 +181,12 @@ def test_lane_exclusions_cover_the_broker_execution_file_set():
 def _throttle_path(cwd: Path, home: Path, **env) -> str:
     """Import finviz_throttle in a fresh interpreter (module-level _STATE) and print where it resolved."""
     e = {k: v for k, v in os.environ.items() if not k.startswith("TRADEAI_")}
-    e.update(HOME=str(home), TRADE_AI_CI="1", **env)
+    # Declare absent selectors explicitly: the child safety launcher retains its
+    # state-root defaults when keys are missing. The real resolver treats empty
+    # values as absent, so these tests exercise this scratch HOME's marker or
+    # checkout fallback; an explicit per-case selector still takes precedence.
+    e.update(HOME=str(home), TRADE_AI_CI="1", TRADEAI_STATE_ROOT="", TRADEAI_PERSISTENT_STATE_ROOT="")
+    e.update(env)
     code = (f"import sys; sys.path.insert(0, {str(ROOT / 'scripts')!r}); import finviz_throttle as f; "
             "print(f._STATE); print(f._LOCK)")
     r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, cwd=str(cwd), env=e, timeout=60)

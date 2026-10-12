@@ -9,6 +9,7 @@ Schedule: */5 * * * 1-5 (every 5 min weekdays), */15 * * * 0,6 (every 15 min wee
 
 NO bypass_router. NO direct Telegram. ALL alerts through central router.
 """
+
 import argparse, json, logging, os, subprocess, sys, time, uuid
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -17,20 +18,25 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 def _resolve_log(log_file: str) -> Path:
-    """Where the job writes. Jobs that run as systemd units with StandardOutput=append: write under the
-    persistent state root (TRADEAI_STATE_ROOT, or <releases>/persistent-state next to the served tree),
-    not under the code tree's logs/. 2026-10-07: the telegram handler became tradeai-telegram-callback-
-    poller.service and its log moved there; the agent kept looking in logs/telegram_commands.log, reported
-    MISSING forever and 'retried' it twice a day (exit 127: .venv/bin/python is not in the served tree)."""
+    """Prefer the governed state log, never a frozen code log merely because it exists.
+
+    Legacy code-log compatibility is reported as drift by the freshness reader;
+    it supplies activity only, never accepted business-output proof.
+    """
     code = PROJECT_ROOT / "logs" / log_file
-    if code.exists() or not log_file:
+    if not log_file:
         return code
     root = os.getenv("TRADEAI_STATE_ROOT") or str(PROJECT_ROOT.parent.parent / "persistent-state")
     state = Path(root) / "logs" / log_file
-    return state if state.exists() else code
+    if state.exists():
+        return state
+    return code if code.exists() else state
+
+
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 from dotenv import load_dotenv
+
 load_dotenv(PROJECT_ROOT / ".env")
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [health-agent] %(message)s")
@@ -46,283 +52,533 @@ log = logging.getLogger("system_health_agent")
 # downstream: what breaks if this fails
 MONITORED_COMPONENTS = [
     # ── Pipeline Core ──
-    {"component": "trade_ai_orchestrator", "display": "Trade AI Orchestrator",
-     "schedule": "0 9,10,12,14,16 * * 1-5", "log_file": "screener_pm.log",
-     "max_age_min": 180, "max_runtime_sec": 600, "critical": True,
-     "retry_cmd": ".venv/bin/python scripts/trade_ai_orchestrator.py --run-label 0900 --no-llm --no-alerts --allow-underfilled",
-     "downstream": "strategy_signals, proposals, ATM execution",
-     "lock_file": "/tmp/screener_pm.lock"},
-    {"component": "auto_proposal_generator", "display": "Auto Proposal Generator",
-     "schedule": "*/30 9-16 * * 1-5", "log_file": "auto_proposal.log",
-     "max_age_min": 60, "max_runtime_sec": 300, "critical": True,
-     "retry_cmd": ".venv/bin/python scripts/auto_proposal_generator.py --today --apply",
-     "downstream": "proposals, ATM execution"},
-    {"component": "rotation_autopilot", "display": "Rotation Autopilot (IWM/SPY trend switch)",
-     "schedule": "*/15 4-16 * * 1-5", "log_file": "rotation_autopilot.log",
-     "max_age_min": 45, "max_runtime_sec": 180, "critical": False,
-     "retry_cmd": ".venv/bin/python scripts/rotation_autopilot.py --tick --trigger health_retry",
-     "downstream": "watchlist, qualified_intelligence, strategy_signals, proposals",
-     "lock_file": "/tmp/tradeai_rotation_autopilot.lock"},
-    {"component": "incubator_proposal_promoter", "display": "Incubator Promoter",
-     "schedule": "0 7-17 * * 1-5", "log_file": "incubator_promoter.log",
-     "max_age_min": 180, "max_runtime_sec": 300, "critical": True,
-     "retry_cmd": ".venv/bin/python scripts/incubator_proposal_promoter.py --run",
-     "downstream": "proposals from incubator",
-     "lock_file": "/tmp/incubator_promoter.lock"},
-    {"component": "finviz_screener_runner", "display": "Finviz Screener",
-     "schedule": "0 8 * * 1-5", "log_file": "finviz_screener.log",
-     "max_age_min": 1500, "max_runtime_sec": 600, "critical": True,
-     "retry_cmd": ".venv/bin/python scripts/finviz_screener_runner.py --apply",
-     "downstream": "scanner input data"},
-    {"component": "news_ingestion", "display": "News Ingestion",
-     "schedule": ["30 12 * * 1-5", "30 0 * * *"], "log_file": "news_ingestion.log",
-     "max_age_min": 780, "max_runtime_sec": 600, "critical": True,
-     "retry_cmd": ".venv/bin/python scripts/news_ingestion.py --priority",
-     "downstream": "catalyst detection, news alerts"},
-
+    {
+        "component": "trade_ai_orchestrator",
+        "display": "Trade AI Orchestrator",
+        "schedule": "0 9,10,12,14,16 * * 1-5",
+        "log_file": "screener_pm.log",
+        "monitor_lane_ids": ["orchestrator-slot", "orchestrator-slot-midday"],
+        "max_age_min": 180,
+        "max_runtime_sec": 600,
+        "critical": True,
+        "retry_cmd": ".venv/bin/python scripts/trade_ai_orchestrator.py --run-label 0900 --no-llm --no-alerts --allow-underfilled",
+        "downstream": "strategy_signals, proposals, ATM execution",
+        "lock_file": "/tmp/screener_pm.lock",
+    },
+    {
+        "component": "auto_proposal_generator",
+        "display": "Auto Proposal Generator",
+        "schedule": "*/30 9-16 * * 1-5",
+        "log_file": "auto_proposal.log",
+        "monitor_lane_ids": ["auto-proposal-general"],
+        "max_age_min": 60,
+        "max_runtime_sec": 300,
+        "critical": True,
+        "retry_cmd": ".venv/bin/python scripts/auto_proposal_generator.py --today --apply",
+        "downstream": "proposals, ATM execution",
+    },
+    {
+        "component": "rotation_autopilot",
+        "display": "Rotation Autopilot (IWM/SPY trend switch)",
+        "schedule": "*/15 4-16 * * 1-5",
+        "log_file": "rotation_autopilot.log",
+        "max_age_min": 45,
+        "max_runtime_sec": 180,
+        "critical": False,
+        "retry_cmd": ".venv/bin/python scripts/rotation_autopilot.py --tick --trigger health_retry",
+        "downstream": "watchlist, qualified_intelligence, strategy_signals, proposals",
+        "lock_file": "/tmp/tradeai_rotation_autopilot.lock",
+    },
+    {
+        "component": "incubator_proposal_promoter",
+        "display": "Incubator Promoter",
+        "schedule": "0 7-17 * * 1-5",
+        "log_file": "incubator_promoter.log",
+        "monitor_lane_ids": ["incubator-proposal-promoter"],
+        "max_age_min": 180,
+        "max_runtime_sec": 300,
+        "critical": True,
+        "retry_cmd": ".venv/bin/python scripts/incubator_proposal_promoter.py --run",
+        "downstream": "proposals from incubator",
+        "lock_file": "/tmp/incubator_promoter.lock",
+    },
+    {
+        "component": "finviz_screener_runner",
+        "display": "Finviz Screener",
+        "schedule": "0 8 * * 1-5",
+        "log_file": "finviz_screener.log",
+        "monitor_lane_ids": ["finviz-screener-runner"],
+        "receipt_lane_id": "finviz-screener-runner",
+        "receipt_script": "finviz_screener_runner.py",
+        "max_age_min": 1500,
+        "max_runtime_sec": 600,
+        "critical": True,
+        "retry_cmd": ".venv/bin/python scripts/finviz_screener_runner.py --apply",
+        "downstream": "scanner input data",
+    },
+    {
+        "component": "news_ingestion",
+        "display": "News Ingestion",
+        "schedule": ["30 12 * * 1-5", "30 0 * * *"],
+        "log_file": "news_ingestion.log",
+        "max_age_min": 780,
+        "max_runtime_sec": 600,
+        "critical": True,
+        "retry_cmd": ".venv/bin/python scripts/news_ingestion.py --priority",
+        "downstream": "catalyst detection, news alerts",
+    },
     # ── Trade Monitoring ──
-    {"component": "unified_stop_supervisor", "display": "Stop Supervisor",
-     "schedule": "*/3 9-16 * * 1-5", "log_file": "unified_stop_supervisor.log",
-     "max_age_min": 10, "max_runtime_sec": 120, "critical": True,
-     "retry_cmd": ".venv/bin/python scripts/unified_stop_supervisor.py --apply",
-     "downstream": "trailing stops, target exits, stop monitoring"},
-    {"component": "holding_protection_advisor", "display": "Stop/Trail Protection Advisor",
-     "schedule": "5 17 * * 1-5", "log_file": "protection_advisor.log",
-     "max_age_min": 1500, "max_runtime_sec": 900, "critical": False,
-     "retry_cmd": ".venv/bin/python scripts/holding_protection_advisor.py",
-     "downstream": "stop/trail advisories, Stop Management tab",
-     "lock_file": "/tmp/protection_advisor.lock"},
-    {"component": "stop_drift_alert", "display": "Stop Drift + Lock-in Alerts",
-     "schedule": "35 17 * * 1-5", "log_file": "stop_drift_alert.log",
-     "max_age_min": 1500, "max_runtime_sec": 120, "critical": False,
-     "retry_cmd": ".venv/bin/python scripts/stop_drift_alert.py --send",
-     "downstream": "raise-stop + lock-in Telegram nudges",
-     "lock_file": "/tmp/stop_drift_alert.lock"},
+    {
+        "component": "unified_stop_supervisor",
+        "display": "Stop Supervisor",
+        "schedule": "*/3 9-16 * * 1-5",
+        "log_file": "unified_stop_supervisor.log",
+        "max_age_min": 10,
+        "max_runtime_sec": 120,
+        "critical": True,
+        "retry_cmd": ".venv/bin/python scripts/unified_stop_supervisor.py --apply",
+        "downstream": "trailing stops, target exits, stop monitoring",
+    },
+    {
+        "component": "holding_protection_advisor",
+        "display": "Stop/Trail Protection Advisor",
+        "schedule": "5 17 * * 1-5",
+        "log_file": "protection_advisor.log",
+        "max_age_min": 1500,
+        "max_runtime_sec": 900,
+        "critical": False,
+        "retry_cmd": ".venv/bin/python scripts/holding_protection_advisor.py",
+        "downstream": "stop/trail advisories, Stop Management tab",
+        "lock_file": "/tmp/protection_advisor.lock",
+    },
+    {
+        "component": "stop_drift_alert",
+        "display": "Stop Drift + Lock-in Alerts",
+        "schedule": "35 17 * * 1-5",
+        "log_file": "stop_drift_alert.log",
+        "max_age_min": 1500,
+        "max_runtime_sec": 120,
+        "critical": False,
+        "retry_cmd": ".venv/bin/python scripts/stop_drift_alert.py --send",
+        "downstream": "raise-stop + lock-in Telegram nudges",
+        "lock_file": "/tmp/stop_drift_alert.lock",
+    },
     # paper_trade_monitor replaced by unified_stop_supervisor (STOP-V2.2)
-    {"component": "alpaca_reconciler", "display": "Alpaca Reconciler",
-     "schedule": "5 16 * * 1-5", "log_file": "alpaca_reconciler.log",
-     "max_age_min": 1500, "max_runtime_sec": 60, "critical": False,
-     "retry_cmd": ".venv/bin/python scripts/alpaca_paper_reconciler.py",
-     "downstream": "DB-broker sync"},
-
+    {
+        "component": "alpaca_reconciler",
+        "display": "Alpaca Reconciler",
+        "schedule": "5 16 * * 1-5",
+        "log_file": "alpaca_reconciler.log",
+        "max_age_min": 1500,
+        "max_runtime_sec": 60,
+        "critical": False,
+        "retry_cmd": ".venv/bin/python scripts/alpaca_paper_reconciler.py",
+        "downstream": "DB-broker sync",
+    },
     # ── Data Pipeline ──
-    {"component": "finviz_enrichment", "display": "Finviz Enrichment",
-     "schedule": "10 7 * * 1-5", "log_file": "finviz_enrichment.log",
-     "max_age_min": 1500, "max_runtime_sec": 600, "critical": False,
-     "retry_cmd": ".venv/bin/python scripts/finviz_enrichment.py",
-     "downstream": "enriched scanner data"},
-    {"component": "price_db_sync", "display": "Price DB Sync",
-     "schedule": "20 7 * * 1-5", "log_file": "price_db_sync.log",
-     "max_age_min": 1500, "max_runtime_sec": 600, "critical": False,
-     "retry_cmd": ".venv/bin/python scripts/price_db_sync.py",
-     "downstream": "price data freshness"},
-    {"component": "rag_indexer", "display": "RAG Indexer",
-     "schedule": "0 */4 * * *", "log_file": "rag_indexer.log",
-     "max_age_min": 300, "max_runtime_sec": 600, "critical": False,
-     "retry_cmd": ".venv/bin/python scripts/rag_indexer.py",
-     "downstream": "agent context, RAG search"},
-    {"component": "indicator_engine", "display": "Indicator Engine",
-     "schedule": "0 8 * * 1-5", "log_file": "indicator_engine.log",
-     "max_age_min": 1500, "max_runtime_sec": 900, "critical": False,
-     "retry_cmd": ".venv/bin/python scripts/indicator_engine.py",
-     "downstream": "technical indicators"},
-
+    {
+        "component": "finviz_enrichment",
+        "display": "Finviz Enrichment",
+        "schedule": "10 7 * * 1-5",
+        "log_file": "finviz_enrichment.log",
+        "max_age_min": 1500,
+        "max_runtime_sec": 600,
+        "critical": False,
+        "retry_cmd": ".venv/bin/python scripts/finviz_enrichment.py",
+        "downstream": "enriched scanner data",
+    },
+    {
+        "component": "price_db_sync",
+        "display": "Price DB Sync",
+        "schedule": "20 7 * * 1-5",
+        "log_file": "price_db_sync.log",
+        "max_age_min": 1500,
+        "max_runtime_sec": 600,
+        "critical": False,
+        "retry_cmd": ".venv/bin/python scripts/price_db_sync.py",
+        "downstream": "price data freshness",
+    },
+    {
+        "component": "rag_indexer",
+        "display": "RAG Indexer",
+        "schedule": "0 */4 * * *",
+        "log_file": "rag_indexer.log",
+        "max_age_min": 300,
+        "max_runtime_sec": 600,
+        "critical": False,
+        "retry_cmd": ".venv/bin/python scripts/rag_indexer.py",
+        "downstream": "agent context, RAG search",
+    },
+    {
+        "component": "indicator_engine",
+        "display": "Indicator Engine",
+        "schedule": "0 8 * * 1-5",
+        "log_file": "indicator_engine.log",
+        "max_age_min": 1500,
+        "max_runtime_sec": 900,
+        "critical": False,
+        "retry_cmd": ".venv/bin/python scripts/indicator_engine.py",
+        "downstream": "technical indicators",
+    },
     # ── Agents ──
-    {"component": "aegis_morning_brief", "display": "Aegis Morning Brief",
-     "schedule": "5 8 * * 1-5", "log_file": "aegis_brief.log",
-     "max_age_min": 1500, "max_runtime_sec": 300, "critical": False,
-     "retired": "2026-09-14 operator decision: one 07:30 ET brief (lane morning-brief-0730); the 08:05 "
-                "aegis_morning_brief_delivery lane is RETIRED in config/lane_registry.json. The agent kept "
-                "it MISSING and retried the retired sender twice a day until 2026-10-07 (exit 127 only "
-                "because .venv/bin/python is absent from the served tree).",
-     "downstream": "daily brief delivery"},
-    {"component": "telegram_command_handler", "display": "Telegram callback poller (systemd)",
-     # 2026-10-07: the handler is tradeai-telegram-callback-poller.service (lane telegram-callback-poller,
-     # Restart=always, RestartSec=5) logging every ~25 s to <state root>/logs/telegram_callback_poller.log.
-     # No retry_cmd: launching a second --poll process would duplicate getUpdates polling; systemd restarts it.
-     "schedule": "*/2 * * * *", "log_file": "telegram_callback_poller.log",
-     "max_age_min": 5, "max_runtime_sec": 60, "critical": True,
-     "downstream": "operator commands, approval buttons"},
-
+    {
+        "component": "aegis_morning_brief",
+        "display": "Aegis Morning Brief",
+        "schedule": "5 8 * * 1-5",
+        "log_file": "aegis_brief.log",
+        "max_age_min": 1500,
+        "max_runtime_sec": 300,
+        "critical": False,
+        "retired": "2026-09-14 operator decision: one 07:30 ET brief (lane morning-brief-0730); the 08:05 "
+        "aegis_morning_brief_delivery lane is RETIRED in config/lane_registry.json. The agent kept "
+        "it MISSING and retried the retired sender twice a day until 2026-10-07 (exit 127 only "
+        "because .venv/bin/python is absent from the served tree).",
+        "downstream": "daily brief delivery",
+    },
+    {
+        "component": "telegram_command_handler",
+        "display": "Telegram callback poller (systemd)",
+        # 2026-10-07: the handler is tradeai-telegram-callback-poller.service (lane telegram-callback-poller,
+        # Restart=always, RestartSec=5) logging every ~25 s to <state root>/logs/telegram_callback_poller.log.
+        # No retry_cmd: launching a second --poll process would duplicate getUpdates polling; systemd restarts it.
+        "schedule": "*/2 * * * *",
+        "log_file": "telegram_callback_poller.log",
+        "max_age_min": 5,
+        "max_runtime_sec": 60,
+        "critical": True,
+        "downstream": "operator commands, approval buttons",
+    },
     # ── Cleanup & Governance ──
-    {"component": "cleanup_stale_proposals", "display": "Stale Proposal Cleanup",
-     "schedule": "0 10,15 * * 1-5", "log_file": "cleanup_stale_proposals.log",
-     "max_age_min": 1500, "max_runtime_sec": 60, "critical": False,
-     "retry_cmd": ".venv/bin/python scripts/cleanup_stale_proposals.py --apply",
-     "downstream": "proposal hygiene"},
-    {"component": "pipeline_watchdog", "display": "Pipeline Watchdog",
-     "schedule": "0 */2 * * *", "log_file": "pipeline_watchdog.log",
-     "max_age_min": 150, "max_runtime_sec": 300, "critical": True,
-     "retry_cmd": ".venv/bin/python scripts/pipeline_watchdog.py",
-     "downstream": "pipeline self-healing"},
-
+    {
+        "component": "cleanup_stale_proposals",
+        "display": "Stale Proposal Cleanup",
+        "schedule": "0 10,15 * * 1-5",
+        "log_file": "cleanup_stale_proposals.log",
+        "max_age_min": 1500,
+        "max_runtime_sec": 60,
+        "critical": False,
+        "retry_cmd": ".venv/bin/python scripts/cleanup_stale_proposals.py --apply",
+        "downstream": "proposal hygiene",
+    },
+    {
+        "component": "pipeline_watchdog",
+        "display": "Pipeline Watchdog",
+        "schedule": "0 */2 * * *",
+        "log_file": "pipeline_watchdog.log",
+        "max_age_min": 150,
+        "max_runtime_sec": 300,
+        "critical": True,
+        "retry_cmd": ".venv/bin/python scripts/pipeline_watchdog.py",
+        "downstream": "pipeline self-healing",
+    },
     # ── TCA ──
-    {"component": "tca_analyzer", "display": "TCA Execution Quality",
-     "schedule": "30 16 * * 1-5", "log_file": "tca_analyzer.log",
-     "max_age_min": 1500, "max_runtime_sec": 60, "critical": False,
-     "retry_cmd": ".venv/bin/python scripts/paper_execution_quality_analyzer.py --recent --apply",
-     "downstream": "execution quality page"},
-
+    {
+        "component": "tca_analyzer",
+        "display": "TCA Execution Quality",
+        "schedule": "30 16 * * 1-5",
+        "log_file": "tca_analyzer.log",
+        "max_age_min": 1500,
+        "max_runtime_sec": 60,
+        "critical": False,
+        "retry_cmd": ".venv/bin/python scripts/paper_execution_quality_analyzer.py --recent --apply",
+        "downstream": "execution quality page",
+    },
     # ── LLM Backtesting (v3.8) ──
-    {"component": "trade_close_llm_analyzer", "display": "LLM Close-of-Trade Analysis",
-     # script runs weekday 21:00 (structured_eval.log); Sunday 23:00 run is monitored
-     # separately by llm_backtest_reviewer. Was pointed at a log path that never existed.
-     "schedule": "0 21 * * 1-5", "log_file": "structured_eval.log",
-     "max_age_min": 1500, "max_runtime_sec": 300, "critical": False,
-     "downstream": "trade_llm_reviews close_analysis, journal learning quality"},
+    {
+        "component": "trade_close_llm_analyzer",
+        "display": "LLM Close-of-Trade Analysis",
+        # script runs weekday 21:00 (structured_eval.log); Sunday 23:00 run is monitored
+        # separately by llm_backtest_reviewer. Was pointed at a log path that never existed.
+        "schedule": "0 21 * * 1-5",
+        "log_file": "structured_eval.log",
+        "max_age_min": 1500,
+        "max_runtime_sec": 300,
+        "critical": False,
+        "downstream": "trade_llm_reviews close_analysis, journal learning quality",
+    },
     # NOTE: delayed_trade_llm_reviewer + monthly_grok_meta_review removed 2026-06-06 —
     # no backing script and no cron entry exists (never implemented / aspirational).
     # They produced permanent MISSING false positives. Re-add when the jobs actually exist.
-
     # ── ATM Position Reconciler ──
-    {"component": "atm_position_reconciler", "display": "ATM Position Reconciler",
-     "schedule": "*/15 9-16 * * 1-5", "log_file": "atm_position_reconciliation/cron.log",
-     "max_age_min": 30, "max_runtime_sec": 120, "critical": False,
-     "downstream": "reconciliation health, ghost position detection"},
-
+    {
+        "component": "atm_position_reconciler",
+        "display": "ATM Position Reconciler",
+        "schedule": "*/15 9-16 * * 1-5",
+        "log_file": "atm_position_reconciliation/cron.log",
+        "max_age_min": 30,
+        "max_runtime_sec": 120,
+        "critical": False,
+        "downstream": "reconciliation health, ghost position detection",
+    },
     # ── Quote Refresh ──
     # ── ATM & Proposals ──
-    {"component": "atm_auto_approver", "display": "ATM Auto Approver",
-     "schedule": "*/15 7-15 * * 1-5", "log_file": "atm.log",
-     "max_age_min": 30, "max_runtime_sec": 60, "critical": True,
-     "retry_cmd": ".venv/bin/python scripts/atm_auto_approver.py",
-     "downstream": "automated trade approval"},
-    {"component": "proposal_enrichment", "display": "Proposal Enrichment",
-     "schedule": "*/10 4-19 * * 1-5", "log_file": "proposal_enrichment.log",
-     "max_age_min": 30, "max_runtime_sec": 600, "critical": False,
-     "retry_cmd": ".venv/bin/python scripts/proposal_enrichment_loop.py --run --limit 5",
-     "downstream": "proposal readiness, agent reviews"},
-    {"component": "agent_event_router", "display": "Agent Event Router",
-     "schedule": "*/30 * * * *", "log_file": "agent_event_router.log",
-     "max_age_min": 60, "max_runtime_sec": 300, "critical": False,
-     "retry_cmd": ".venv/bin/python scripts/agent_event_router.py",
-     "downstream": "event-driven agent triggers"},
-    {"component": "paper_execution_sweep", "display": "Paper Execution Sweep",
-     "schedule": "*/15 9-16 * * 1-5", "log_file": "paper_execution.log",
-     "max_age_min": 30, "max_runtime_sec": 120, "critical": True,
-     "retry_cmd": ".venv/bin/python scripts/paper_execution_sweep.py",
-     "downstream": "order submission, fill detection"},
-
+    {
+        "component": "atm_auto_approver",
+        "display": "ATM Auto Approver",
+        "schedule": "*/15 7-15 * * 1-5",
+        "log_file": "atm.log",
+        "max_age_min": 30,
+        "max_runtime_sec": 60,
+        "critical": True,
+        "retry_cmd": ".venv/bin/python scripts/atm_auto_approver.py",
+        "downstream": "automated trade approval",
+    },
+    {
+        "component": "proposal_enrichment",
+        "display": "Proposal Enrichment",
+        "schedule": "*/10 4-19 * * 1-5",
+        "log_file": "proposal_enrichment.log",
+        "max_age_min": 30,
+        "max_runtime_sec": 600,
+        "critical": False,
+        "retry_cmd": ".venv/bin/python scripts/proposal_enrichment_loop.py --run --limit 5",
+        "downstream": "proposal readiness, agent reviews",
+    },
+    {
+        "component": "agent_event_router",
+        "display": "Agent Event Router",
+        "schedule": "*/30 * * * *",
+        "log_file": "agent_event_router.log",
+        "max_age_min": 60,
+        "max_runtime_sec": 300,
+        "critical": False,
+        "retry_cmd": ".venv/bin/python scripts/agent_event_router.py",
+        "downstream": "event-driven agent triggers",
+    },
+    {
+        "component": "paper_execution_sweep",
+        "display": "Paper Execution Sweep",
+        "schedule": "*/15 9-16 * * 1-5",
+        "log_file": "paper_execution.log",
+        "max_age_min": 30,
+        "max_runtime_sec": 120,
+        "critical": True,
+        "retry_cmd": ".venv/bin/python scripts/paper_execution_sweep.py",
+        "downstream": "order submission, fill detection",
+    },
     # ── Intelligence ──
-    {"component": "alex_daily", "display": "Alex Daily Scan",
-     "schedule": "0 5 * * 1-5", "log_file": "alex_daily.log",
-     "max_age_min": 1500, "max_runtime_sec": 600, "critical": False,
-     "retry_cmd": ".venv/bin/python scripts/run_alex_daily.py --daily",
-     "downstream": "CIO intelligence, daily alerts"},
+    {
+        "component": "alex_daily",
+        "display": "Alex Daily Scan",
+        "schedule": "0 5 * * 1-5",
+        "log_file": "alex_daily.log",
+        "max_age_min": 1500,
+        "max_runtime_sec": 600,
+        "critical": False,
+        "retry_cmd": ".venv/bin/python scripts/run_alex_daily.py --daily",
+        "downstream": "CIO intelligence, daily alerts",
+    },
     # RETIRED: its cron line has been commented out since 2026-08-08, but this entry kept a retry_cmd, so
     # the self-heal re-ran it every afternoon. Each run wrote 335-381 priority-high HUMAN_REVIEW
     # cio_decisions (3,594 proposed rows on 2026-09-15). A disabled lane is not stale and must not be
     # retried. Re-enabling it is a crontab + lane registry decision, not a self-heal.
-    {"component": "cio_decision_engine", "display": "CIO Decision Engine",
-     "schedule": "0 7 * * 1-5", "log_file": "cio_decisions.log",
-     "max_age_min": 1500, "max_runtime_sec": 300, "critical": False,
-     "retired": "cron disabled 2026-08-08",
-     "downstream": "CIO decisions, portfolio allocation"},
-    {"component": "data_gap_resolver", "display": "Data Gap Resolver",
-     "schedule": "0 10-16 * * 1-5", "log_file": "data_gap_resolver.log",
-     "max_age_min": 1500, "max_runtime_sec": 600, "critical": False,
-     "retry_cmd": ".venv/bin/python scripts/data_gap_resolver.py",
-     "downstream": "data completeness, enrichment gaps"},
+    {
+        "component": "cio_decision_engine",
+        "display": "CIO Decision Engine",
+        "schedule": "0 7 * * 1-5",
+        "log_file": "cio_decisions.log",
+        "max_age_min": 1500,
+        "max_runtime_sec": 300,
+        "critical": False,
+        "retired": "cron disabled 2026-08-08",
+        "downstream": "CIO decisions, portfolio allocation",
+    },
+    {
+        "component": "data_gap_resolver",
+        "display": "Data Gap Resolver",
+        "schedule": "0 10-16 * * 1-5",
+        "log_file": "data_gap_resolver.log",
+        "max_age_min": 1500,
+        "max_runtime_sec": 600,
+        "critical": False,
+        "retry_cmd": ".venv/bin/python scripts/data_gap_resolver.py",
+        "downstream": "data completeness, enrichment gaps",
+    },
     # NOTE: overnight_batch removed 2026-06-06 — the job was intentionally retired
     # (cron tagged PHASE102-RETIRED; last clean run 2026-05-29). Monitoring a retired
     # job produced a permanent STALE false positive. Its agent_performance scorer was
     # rehomed to update_agent_performance.py (below), re-scheduled weekday 20:00.
-    {"component": "update_agent_performance", "display": "Agent Performance Scorer",
-     "schedule": "0 20 * * 1-5", "log_file": "update_agent_performance.log",
-     "max_age_min": 1500, "max_runtime_sec": 600, "critical": False,
-     "retry_cmd": ".venv/bin/python scripts/update_agent_performance.py",
-     "downstream": "agent_performance_history, weekly portfolio review"},
-    {"component": "auto_enrichment", "display": "Auto Enrichment Runner",
-     "schedule": "*/10 4-19 * * 1-5", "log_file": "auto_enrichment.log",
-     "max_age_min": 15, "max_runtime_sec": 120, "critical": False,
-     "retry_cmd": ".venv/bin/python scripts/auto_enrichment_runner.py",
-     "downstream": "symbol enrichment, data quality"},
-
+    {
+        "component": "update_agent_performance",
+        "display": "Agent Performance Scorer",
+        "schedule": "0 20 * * 1-5",
+        "log_file": "update_agent_performance.log",
+        "max_age_min": 1500,
+        "max_runtime_sec": 600,
+        "critical": False,
+        "retry_cmd": ".venv/bin/python scripts/update_agent_performance.py",
+        "downstream": "agent_performance_history, weekly portfolio review",
+    },
+    {
+        "component": "auto_enrichment",
+        "display": "Auto Enrichment Runner",
+        "schedule": "*/10 4-19 * * 1-5",
+        "log_file": "auto_enrichment.log",
+        "max_age_min": 15,
+        "max_runtime_sec": 120,
+        "critical": False,
+        "retry_cmd": ".venv/bin/python scripts/auto_enrichment_runner.py",
+        "downstream": "symbol enrichment, data quality",
+    },
     # ── Quote Refresh ──
-    {"component": "proactive_quote_refresh", "display": "Quote Refresh",
-     "schedule": "*/5 9-15 * * 1-5", "log_file": "proactive_quote_refresh_cron.log",
-     "max_age_min": 15, "max_runtime_sec": 120, "critical": False,
-     "retry_cmd": "bash scripts/run_scheduled_quote_refresh.sh --mode pending --limit 50",
-     "downstream": "proposal price freshness"},
-
+    {
+        "component": "proactive_quote_refresh",
+        "display": "Quote Refresh",
+        "schedule": "*/5 9-15 * * 1-5",
+        "log_file": "proactive_quote_refresh_cron.log",
+        "max_age_min": 15,
+        "max_runtime_sec": 120,
+        "critical": False,
+        "retry_cmd": "bash scripts/run_scheduled_quote_refresh.sh --mode pending --limit 50",
+        "downstream": "proposal price freshness",
+    },
     # ── Portfolio live prices (Finviz authoritative — NOT SnapTrade) ──
-    {"component": "portfolio_repricer_intraday", "display": "Portfolio Repricer (Finviz intraday)",
-     "schedule": ["5 9 * * 1-5", "*/15 9-16 * * 1-5"], "log_file": "portfolio_repricer_intraday.log",
-     "max_age_min": 25, "max_runtime_sec": 180, "critical": True,
-     "retry_cmd": ".venv/bin/python scripts/portfolio_repricer.py",
-     "downstream": "holdings.json prices, finviz_quote_cache, Command Center P/L",
-     "lock_file": "/tmp/portfolio_repricer.lock"},
-    {"component": "portfolio_repricer_postclose", "display": "Portfolio Repricer (EOD close)",
-     "schedule": "10 16 * * 1-5", "log_file": "portfolio_repricer_postclose.log",
-     "max_age_min": 1500, "max_runtime_sec": 300, "critical": False,
-     "retry_cmd": ".venv/bin/python scripts/portfolio_repricer.py",
-     "downstream": "official close capture, holdings reconcile"},
-    {"component": "market_quotes_intraday", "display": "Alpaca Market Quotes (intraday backup)",
-     "schedule": "*/15 9-16 * * 1-5", "log_file": "market_data.log",
-     "max_age_min": 25, "max_runtime_sec": 120, "critical": False,
-     "retry_cmd": ".venv/bin/python scripts/external_market_data_ingest.py --quotes",
-     "downstream": "market_quotes DB — Fidelity price fallback behind Finviz",
-     "lock_file": "/tmp/mkt_quotes_intraday.lock"},
-    {"component": "snaptrade_sync", "display": "SnapTrade Holdings Sync (positions/basis only)",
-     "schedule": ["50 9 * * 1-5", "0 13 * * 1-5", "35 17 * * 1-5"], "log_file": "snaptrade_sync.log",
-     "max_age_min": 480, "max_runtime_sec": 120, "critical": False,
-     "retry_cmd": ".venv/bin/python scripts/snaptrade_sync.py --apply",
-     "downstream": "Fidelity shares/cost_basis — never authoritative for live quotes"},
-
+    {
+        "component": "portfolio_repricer_intraday",
+        "display": "Portfolio Repricer (Finviz intraday)",
+        "schedule": ["5 9 * * 1-5", "*/15 9-16 * * 1-5"],
+        "log_file": "portfolio_repricer_intraday.log",
+        "max_age_min": 25,
+        "max_runtime_sec": 180,
+        "critical": True,
+        "retry_cmd": ".venv/bin/python scripts/portfolio_repricer.py",
+        "downstream": "holdings.json prices, finviz_quote_cache, Command Center P/L",
+        "lock_file": "/tmp/portfolio_repricer.lock",
+    },
+    {
+        "component": "portfolio_repricer_postclose",
+        "display": "Portfolio Repricer (EOD close)",
+        "schedule": "10 16 * * 1-5",
+        "log_file": "portfolio_repricer_postclose.log",
+        "max_age_min": 1500,
+        "max_runtime_sec": 300,
+        "critical": False,
+        "retry_cmd": ".venv/bin/python scripts/portfolio_repricer.py",
+        "downstream": "official close capture, holdings reconcile",
+    },
+    {
+        "component": "market_quotes_intraday",
+        "display": "Alpaca Market Quotes (intraday backup)",
+        "schedule": "*/15 9-16 * * 1-5",
+        "log_file": "market_data.log",
+        "max_age_min": 25,
+        "max_runtime_sec": 120,
+        "critical": False,
+        "retry_cmd": ".venv/bin/python scripts/external_market_data_ingest.py --quotes",
+        "downstream": "market_quotes DB — Fidelity price fallback behind Finviz",
+        "lock_file": "/tmp/mkt_quotes_intraday.lock",
+    },
+    {
+        "component": "snaptrade_sync",
+        "display": "SnapTrade Holdings Sync (positions/basis only)",
+        "schedule": ["50 9 * * 1-5", "0 13 * * 1-5", "35 17 * * 1-5"],
+        "log_file": "snaptrade_sync.log",
+        "max_age_min": 480,
+        "max_runtime_sec": 120,
+        "critical": False,
+        "retry_cmd": ".venv/bin/python scripts/snaptrade_sync.py --apply",
+        "downstream": "Fidelity shares/cost_basis — never authoritative for live quotes",
+    },
     # ── TradeInView / Journal ──
-    {"component": "schwab_journal_ingest", "display": "Schwab Journal Ingest",
-     "schedule": ["15 18 * * 1-5", "*/15 9-16 * * 1-5"], "log_file": "schwab_ingest.log",
-     "max_age_min": 30, "max_runtime_sec": 300, "critical": False,
-     # Semantic-failure signatures: the ingest can exit 0 with structurally-valid JSON while actually
-     # failing (revoked/absent Schwab token → "no Schwab login token", rows_total:0), which the generic
-     # Traceback/ERROR heuristics miss. Flag those so a run-and-fail is not recorded as OK on mtime alone.
-     # Operator-action alerting for the token itself is handled by health_agent.collect_broker_token_health.
-     "error_signatures": ["invalid_grant", "no Schwab login token", "Refresh token is invalid", "OAuthError"],
-     # success markers so a stale error earlier in the log window doesn't flag a since-recovered run
-     "success_signatures": ["\"mode\": \"APPLIED\"", "\"inserted\":"],
-     "retry_cmd": "flock -n /tmp/schwab_ingest.lock bash -c '.venv/bin/python scripts/schwab_transaction_ingest.py --apply && .venv/bin/python scripts/schwab_journal_builder.py --apply'",
-     "downstream": "trade_closed, TradeInView trade log, Schwab round-trips",
-     "lock_file": "/tmp/schwab_ingest.lock"},
-    {"component": "journal_review_builder", "display": "Journal Review Builder (LLM grades)",
-     "schedule": "30 18 * * 1-5", "log_file": "journal_review.log",
-     "max_age_min": 1500, "max_runtime_sec": 600, "critical": False,
-     "retry_cmd": "flock -n /tmp/journal_review.lock .venv/bin/python scripts/journal_review_builder.py",
-     "downstream": "journal_trade_reviews, TradeInView annotations",
-     "lock_file": "/tmp/journal_review.lock"},
-    {"component": "journal_annotation_reminder", "display": "TradeInView Annotation Reminder",
-     "schedule": "30 23 * * 1-5", "log_file": "journal_annotation_reminder.log",
-     "max_age_min": 1500, "max_runtime_sec": 120, "critical": False,
-     "retry_cmd": ".venv/bin/python scripts/journal_annotation_reminder.py",
-     "downstream": "operator annotation coverage nudge"},
-    {"component": "journal_tilt_morning_hook", "display": "TradeInView Tilt Morning Hook",
-     "schedule": "0 12 * * 1-5", "log_file": "journal_tilt_hook.log",
-     "max_age_min": 1500, "max_runtime_sec": 60, "critical": False,
-     "retry_cmd": ".venv/bin/python scripts/journal_tilt_morning_hook.py",
-     "downstream": "operator_review_queue tilt review item"},
-
+    {
+        "component": "schwab_journal_ingest",
+        "display": "Schwab Journal Ingest",
+        "schedule": ["15 18 * * 1-5", "*/15 9-16 * * 1-5"],
+        "log_file": "schwab_ingest.log",
+        "max_age_min": 30,
+        "max_runtime_sec": 300,
+        "critical": False,
+        # Semantic-failure signatures: the ingest can exit 0 with structurally-valid JSON while actually
+        # failing (revoked/absent Schwab token → "no Schwab login token", rows_total:0), which the generic
+        # Traceback/ERROR heuristics miss. Flag those so a run-and-fail is not recorded as OK on mtime alone.
+        # Operator-action alerting for the token itself is handled by health_agent.collect_broker_token_health.
+        "error_signatures": ["invalid_grant", "no Schwab login token", "Refresh token is invalid", "OAuthError"],
+        # success markers so a stale error earlier in the log window doesn't flag a since-recovered run
+        "success_signatures": ['"mode": "APPLIED"', '"inserted":'],
+        "retry_cmd": "flock -n /tmp/schwab_ingest.lock bash -c '.venv/bin/python scripts/schwab_transaction_ingest.py --apply && .venv/bin/python scripts/schwab_journal_builder.py --apply'",
+        "downstream": "trade_closed, TradeInView trade log, Schwab round-trips",
+        "lock_file": "/tmp/schwab_ingest.lock",
+    },
+    {
+        "component": "journal_review_builder",
+        "display": "Journal Review Builder (LLM grades)",
+        "schedule": "30 18 * * 1-5",
+        "log_file": "journal_review.log",
+        "max_age_min": 1500,
+        "max_runtime_sec": 600,
+        "critical": False,
+        "retry_cmd": "flock -n /tmp/journal_review.lock .venv/bin/python scripts/journal_review_builder.py",
+        "downstream": "journal_trade_reviews, TradeInView annotations",
+        "lock_file": "/tmp/journal_review.lock",
+    },
+    {
+        "component": "journal_annotation_reminder",
+        "display": "TradeInView Annotation Reminder",
+        "schedule": "30 23 * * 1-5",
+        "log_file": "journal_annotation_reminder.log",
+        "max_age_min": 1500,
+        "max_runtime_sec": 120,
+        "critical": False,
+        "retry_cmd": ".venv/bin/python scripts/journal_annotation_reminder.py",
+        "downstream": "operator annotation coverage nudge",
+    },
+    {
+        "component": "journal_tilt_morning_hook",
+        "display": "TradeInView Tilt Morning Hook",
+        "schedule": "0 12 * * 1-5",
+        "log_file": "journal_tilt_hook.log",
+        "max_age_min": 1500,
+        "max_runtime_sec": 60,
+        "critical": False,
+        "retry_cmd": ".venv/bin/python scripts/journal_tilt_morning_hook.py",
+        "downstream": "operator_review_queue tilt review item",
+    },
     # ── Recurring Backtesting (v4.0) ──
-    {"component": "enterprise_backtester", "display": "Enterprise Backtester",
-     "schedule": "0 22 * * 0", "log_file": "enterprise_backtester.log",
-     "max_age_min": 10080, "max_runtime_sec": 3600, "critical": False,
-     "retry_cmd": ".venv/bin/python scripts/enterprise_backtester.py --replay-trades --apply",
-     "downstream": "strategy_backtest_trades, backtest comparison"},
-    {"component": "strategy_backtester", "display": "Strategy Backtester (Daily)",
-     "schedule": "0 6 * * 1-5", "log_file": "strategy_backtester.log",
-     "max_age_min": 1500, "max_runtime_sec": 1800, "critical": False,
-     "retry_cmd": ".venv/bin/python scripts/strategy_backtester.py --all-strategies --apply",
-     "downstream": "strategy_backtest_trades, active strategy validation"},
-    {"component": "llm_backtest_reviewer", "display": "LLM Backtest Trade Reviewer",
-     "schedule": "0 23 * * 0", "log_file": "llm_backtest_review.log",
-     "max_age_min": 10080, "max_runtime_sec": 7200, "critical": False,
-     "retry_cmd": ".venv/bin/python scripts/trade_close_llm_analyzer.py --source backtest --limit 50 --apply --confirm-llm-review-write --allow-local-llm",
-     "downstream": "trade_llm_reviews, backtest learning"},
-
+    {
+        "component": "enterprise_backtester",
+        "display": "Enterprise Backtester",
+        "schedule": "0 22 * * 0",
+        "log_file": "enterprise_backtester.log",
+        "max_age_min": 10080,
+        "max_runtime_sec": 3600,
+        "critical": False,
+        "retry_cmd": ".venv/bin/python scripts/enterprise_backtester.py --replay-trades --apply",
+        "downstream": "strategy_backtest_trades, backtest comparison",
+    },
+    {
+        "component": "strategy_backtester",
+        "display": "Strategy Backtester (Daily)",
+        "schedule": "0 6 * * 1-5",
+        "log_file": "strategy_backtester.log",
+        "max_age_min": 1500,
+        "max_runtime_sec": 1800,
+        "critical": False,
+        "retry_cmd": ".venv/bin/python scripts/strategy_backtester.py --all-strategies --apply",
+        "downstream": "strategy_backtest_trades, active strategy validation",
+    },
+    {
+        "component": "llm_backtest_reviewer",
+        "display": "LLM Backtest Trade Reviewer",
+        "schedule": "0 23 * * 0",
+        "log_file": "llm_backtest_review.log",
+        "max_age_min": 10080,
+        "max_runtime_sec": 7200,
+        "critical": False,
+        "retry_cmd": ".venv/bin/python scripts/trade_close_llm_analyzer.py --source backtest --limit 50 --apply --confirm-llm-review-write --allow-local-llm",
+        "downstream": "trade_llm_reviews, backtest learning",
+    },
     # ── YouTube transcript ingest (weekday 19:00) ──
-    {"component": "youtube_transcript_ingest", "display": "YouTube Transcript Ingest",
-     "schedule": "0 19 * * 1-5", "log_file": "youtube_ingest.log",
-     "max_age_min": 1500, "max_runtime_sec": 1800, "critical": False,
-     "retry_cmd": ".venv/bin/python scripts/youtube_transcript_ingest.py --all-channels",
-     "downstream": "youtube_transcripts, intelligence_whiteboard, CIO research queue"},
+    {
+        "component": "youtube_transcript_ingest",
+        "display": "YouTube Transcript Ingest",
+        "schedule": "0 19 * * 1-5",
+        "log_file": "youtube_ingest.log",
+        "max_age_min": 1500,
+        "max_runtime_sec": 1800,
+        "critical": False,
+        "retry_cmd": ".venv/bin/python scripts/youtube_transcript_ingest.py --all-channels",
+        "downstream": "youtube_transcripts, intelligence_whiteboard, CIO research queue",
+    },
 ]
 
 MAX_RETRIES = 2
@@ -370,7 +626,6 @@ def _ingest_safe_flock_events(lookback_min=SAFE_FLOCK_LOOKBACK_MIN):
     return events, parse_errors
 
 
-
 def _last_scheduled_sync_fire(now=None):
     """Most recent time `alpaca_paper_adapter --sync-only` should have run.
 
@@ -380,14 +635,16 @@ def _last_scheduled_sync_fire(now=None):
     """
     from datetime import timedelta as _td
     from zoneinfo import ZoneInfo as _ZI
+
     _et = _ZI("America/New_York")
     cur_t = (now or datetime.now(_et)).astimezone(_et)
     probe = cur_t.replace(minute=0, second=0, microsecond=0)
-    for _ in range(24 * 10):           # bounded scan back ~10 days
+    for _ in range(24 * 10):  # bounded scan back ~10 days
         if probe.weekday() < 5 and 10 <= probe.hour <= 16 and probe <= cur_t:
-            return probe - _td(hours=1)    # grace
+            return probe - _td(hours=1)  # grace
         probe -= _td(hours=1)
     return cur_t - _td(days=10)
+
 
 def _analyze_safe_flock(conn, dry_run=True, verbose=False):
     """Analyze safe_flock events and write health events for anomalies.
@@ -418,47 +675,66 @@ def _analyze_safe_flock(conn, dry_run=True, verbose=False):
         elif et == "stale_lock_cleared":
             summary["stale_locks_cleared"] += 1
             if conn and not dry_run:
-                _log_event(conn, comp, "SAFE_FLOCK_STALE_CLEARED", "WARN",
-                           ev.get("message", "Stale lock cleared")[:500])
+                _log_event(
+                    conn, comp, "SAFE_FLOCK_STALE_CLEARED", "WARN", ev.get("message", "Stale lock cleared")[:500]
+                )
 
         elif et == "completed":
             exit_code = ev.get("exit_code")
             if exit_code is not None and exit_code != 0:
                 summary["command_failures"] += 1
                 if conn and not dry_run:
-                    _log_event(conn, comp, "SAFE_FLOCK_CMD_FAILED", "WARN",
-                               f"Command exited {exit_code}: {ev.get('command', '')[:200]}")
+                    _log_event(
+                        conn,
+                        comp,
+                        "SAFE_FLOCK_CMD_FAILED",
+                        "WARN",
+                        f"Command exited {exit_code}: {ev.get('command', '')[:200]}",
+                    )
 
     # Detect repeated lock skips (2+ in window)
     for comp, skip_list in skips_by_component.items():
         if len(skip_list) >= 2:
             severity = "CRITICAL" if comp in CRITICAL_COMPONENTS else "WARN"
-            summary["repeated_lock_skips"].append({
-                "component": comp,
-                "count": len(skip_list),
-                "severity": severity,
-            })
+            summary["repeated_lock_skips"].append(
+                {
+                    "component": comp,
+                    "count": len(skip_list),
+                    "severity": severity,
+                }
+            )
             if conn and not dry_run:
-                _log_event(conn, comp, "SAFE_FLOCK_REPEATED_SKIP", severity,
-                           f"{len(skip_list)} lock skips in {SAFE_FLOCK_LOOKBACK_MIN}min window")
+                _log_event(
+                    conn,
+                    comp,
+                    "SAFE_FLOCK_REPEATED_SKIP",
+                    severity,
+                    f"{len(skip_list)} lock skips in {SAFE_FLOCK_LOOKBACK_MIN}min window",
+                )
 
     # Single lock skips (log as INFO)
     for comp, skip_list in skips_by_component.items():
         if len(skip_list) == 1 and conn and not dry_run:
-            _log_event(conn, comp, "SAFE_FLOCK_LOCK_SKIP", "INFO",
-                       skip_list[0].get("message", "Lock skip")[:500])
+            _log_event(conn, comp, "SAFE_FLOCK_LOCK_SKIP", "INFO", skip_list[0].get("message", "Lock skip")[:500])
 
     # Repeated parse errors
     if parse_errors >= 5 and conn and not dry_run:
-        _log_event(conn, "safe_flock_parser", "SAFE_FLOCK_PARSE_ERRORS", "WARN",
-                   f"{parse_errors} malformed JSONL lines in safe_flock log")
+        _log_event(
+            conn,
+            "safe_flock_parser",
+            "SAFE_FLOCK_PARSE_ERRORS",
+            "WARN",
+            f"{parse_errors} malformed JSONL lines in safe_flock log",
+        )
 
     if verbose:
-        log.info(f"  safe_flock: {summary['events_seen']} events, "
-                 f"{summary['lock_skips']} skips, "
-                 f"{len(summary['repeated_lock_skips'])} repeated, "
-                 f"{summary['stale_locks_cleared']} stale cleared, "
-                 f"{summary['command_failures']} cmd failures")
+        log.info(
+            f"  safe_flock: {summary['events_seen']} events, "
+            f"{summary['lock_skips']} skips, "
+            f"{len(summary['repeated_lock_skips'])} repeated, "
+            f"{summary['stale_locks_cleared']} stale cleared, "
+            f"{summary['command_failures']} cmd failures"
+        )
 
     return summary
 
@@ -466,6 +742,7 @@ def _analyze_safe_flock(conn, dry_run=True, verbose=False):
 def _get_conn():
     try:
         from db_adapter import _get_conn as _gc
+
         return _gc()
     except Exception:
         return None
@@ -477,18 +754,29 @@ def _log_event(conn, component, event_type, severity, message, action=None, succ
         # Source-side dedup: the */5 agent re-emits the same per-component event ~288x/day,
         # which is the SIEM firehose. Log only state CHANGES (and first occurrences) — if the
         # same (event_type, severity) for this component was logged in the last 25 min, skip.
-        cur.execute("""SELECT event_type, severity FROM system_health_events
+        cur.execute(
+            """SELECT event_type, severity FROM system_health_events
                        WHERE component = %s AND created_at > NOW() - INTERVAL '25 minutes'
-                       ORDER BY created_at DESC LIMIT 1""", [component])
+                       ORDER BY created_at DESC LIMIT 1""",
+            [component],
+        )
         last = cur.fetchone()
         if last and last[0] == event_type and last[1] == severity:
             conn.commit()  # release the dedup-SELECT txn — leaving it open through a later
-            return         # subprocess wait gets the conn idle-in-txn killed at 120s
-        cur.execute("""INSERT INTO system_health_events
+            return  # subprocess wait gets the conn idle-in-txn killed at 120s
+        cur.execute(
+            """INSERT INTO system_health_events
             (component, event_type, severity, message, action_taken, success)
             VALUES (%s, %s, %s, %s, %s, %s)""",
-            [component, event_type, severity, message[:500] if message else None,
-             action[:200] if action else None, success])
+            [
+                component,
+                event_type,
+                severity,
+                message[:500] if message else None,
+                action[:200] if action else None,
+                success,
+            ],
+        )
         conn.commit()
     except Exception as e:
         log.warning(f"Failed to log event: {e}")
@@ -502,6 +790,7 @@ def _send_alert(message, urgent=False):
     """
     try:
         from telegram_alert import send_telegram
+
         send_telegram(message, priority=("P1" if urgent else "P3"), producer="system_health_agent")
     except Exception as e:
         log.error(f"Alert send failed: {e}")
@@ -554,8 +843,7 @@ def _cron_fires_at(schedule, dt):
         return False
     # Python weekday(): Mon=0..Sun=6  ->  cron: Sun=0..Sat=6 (with 7 also = Sun)
     cron_dow = (dt.weekday() + 1) % 7
-    dow_ok = (_cron_field_matches(dow_f, cron_dow, 0, 6)
-              or (cron_dow == 0 and _cron_field_matches(dow_f, 7, 0, 7)))
+    dow_ok = _cron_field_matches(dow_f, cron_dow, 0, 6) or (cron_dow == 0 and _cron_field_matches(dow_f, 7, 0, 7))
     dom_ok = _cron_field_matches(dom_f, dt.day, 1, 31)
     # Standard cron rule: when both day-of-month and day-of-week are restricted, either matches.
     if dom_f.strip() != "*" and dow_f.strip() != "*":
@@ -574,9 +862,11 @@ def _weekday_only_schedule(schedule):
     if len(parts) != 5:
         return False
     dow_f = parts[4]
-    return not (_cron_field_matches(dow_f, 0, 0, 6)      # Sunday (0)
-                or _cron_field_matches(dow_f, 7, 0, 7)    # Sunday (7)
-                or _cron_field_matches(dow_f, 6, 0, 6))   # Saturday
+    return not (
+        _cron_field_matches(dow_f, 0, 0, 6)  # Sunday (0)
+        or _cron_field_matches(dow_f, 7, 0, 7)  # Sunday (7)
+        or _cron_field_matches(dow_f, 6, 0, 6)
+    )  # Saturday
 
 
 def _is_trading_day_cached(dt, _cache={}):
@@ -589,6 +879,7 @@ def _is_trading_day_cached(dt, _cache={}):
     if d not in _cache:
         try:
             from market_session import is_trading_day
+
             _cache[d] = bool(is_trading_day(dt))
         except Exception:
             _cache[d] = True
@@ -648,38 +939,90 @@ def _check_log_freshness(log_file, max_age_min, prev_fire=None, now=None, grace_
     Falls back to the fixed `max_age_min` threshold when no schedule context is given.
     """
     log_path = _resolve_log(log_file)
+    from lib.system_health_freshness import freshness_at
+
+    state_root = Path(os.getenv("TRADEAI_STATE_ROOT") or str(PROJECT_ROOT.parent.parent / "persistent-state"))
+    state_log = state_root / "logs" / log_file
+    metadata = {
+        "signal_kind": "LOG_ACTIVITY",
+        "signal_path": str(log_path),
+        "business_output_acceptance": "NOT_MEASURED",
+        "signal_source": "governed_state" if log_path == state_log else "legacy_code_fallback",
+        "source_drift": None if log_path == state_log else "governed_log_absent_legacy_fallback",
+    }
     if not log_path.exists():
-        return {"status": "MISSING", "age_min": None, "last_line": None}
+        return dict(metadata, status="MISSING", age_min=None, last_line=None, reason="log_missing")
     try:
         mtime = datetime.fromtimestamp(log_path.stat().st_mtime, tz=timezone.utc)
-        age_min = (datetime.now(timezone.utc) - mtime).total_seconds() / 60
         last_line = ""
-        with open(log_path, 'rb') as f:
+        with open(log_path, "rb") as f:
             f.seek(0, 2)
             size = f.tell()
             f.seek(max(0, size - 500))
-            last_line = f.read().decode('utf-8', errors='replace').strip().split('\n')[-1][:200]
+            last_line = f.read().decode("utf-8", errors="replace").strip().split("\n")[-1][:200]
 
-        if prev_fire is not None and now is not None:
-            # The most recent scheduled run hasn't had time to complete yet.
-            if now < prev_fire + timedelta(minutes=grace_min):
-                return {"status": "OK", "age_min": round(age_min, 1),
-                        "last_line": last_line, "note": "within_run_grace"}
-            # Stale only if last output is older than the most recent scheduled run.
-            if mtime < prev_fire - timedelta(minutes=grace_min):
-                return {"status": "STALE", "age_min": round(age_min, 1), "last_line": last_line}
-            return {"status": "OK", "age_min": round(age_min, 1), "last_line": last_line}
-
-        # Fallback: fixed-age threshold (event-driven / unparseable schedules).
-        if age_min > max_age_min:
-            return {"status": "STALE", "age_min": round(age_min, 1), "last_line": last_line}
-        return {"status": "OK", "age_min": round(age_min, 1), "last_line": last_line}
+        # Capture the default observation after the read, so a concurrent append
+        # cannot acquire a timestamp a few milliseconds beyond our own clock.
+        observed = now or datetime.now(timezone.utc)
+        result = freshness_at(mtime, now=observed, max_age_min=max_age_min, prev_fire=prev_fire, grace_min=grace_min)
+        if "success_at" in result:
+            result["activity_at"] = result.pop("success_at")
+        return dict(metadata, **result, last_line=last_line)
     except Exception as e:
-        return {"status": "ERROR", "age_min": None, "last_line": str(e)[:100]}
+        return dict(metadata, status="ERROR", age_min=None, last_line=type(e).__name__, reason="log_unreadable")
 
 
-def check_youtube_transcript_freshness(conn=None, *, now=None, max_db_age_hours: float = 36.0,
-                                       log_file: str = "youtube_ingest.log"):
+def _check_component_freshness(comp, *, now=None, prev_fire=None, grace_min=15):
+    """Prefer a declared successful-run receipt; failures never fall back to logs."""
+    lane_id = comp.get("receipt_lane_id")
+    if not lane_id:
+        return _check_log_freshness(
+            comp.get("log_file", ""), comp.get("max_age_min", 60), prev_fire=prev_fire, now=now, grace_min=grace_min
+        )
+    from lib.lane_last_receipt import receipt_path
+    from lib.system_health_freshness import lane_receipt_freshness
+
+    path = receipt_path(lane_id)
+    metadata = {
+        "signal_kind": "LaneRunReceipt@v1",
+        "signal_source": "governed_state",
+        "signal_path": str(path),
+        "business_output_acceptance": "NOT_MEASURED",
+        "last_line": None,
+    }
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return dict(metadata, status="MISSING", age_min=None, reason="lane_receipt_missing")
+    except (OSError, ValueError):
+        return dict(metadata, status="ERROR", age_min=None, reason="lane_receipt_unreadable")
+    observed = now or datetime.now(timezone.utc)
+    result = lane_receipt_freshness(
+        doc,
+        lane_id=lane_id,
+        script=comp["receipt_script"],
+        now=observed,
+        max_age_min=comp.get("max_age_min", 60),
+        prev_fire=prev_fire,
+        grace_min=grace_min,
+    )
+    return dict(metadata, **result)
+
+
+def _component_schedule_intent(comp):
+    """Source intent is drift context, never proof of host scheduler installation."""
+    from lib.system_health_freshness import schedule_intent
+
+    try:
+        registry = json.loads((PROJECT_ROOT / "config" / "lane_registry.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        registry = None
+    return schedule_intent(comp, registry)
+
+
+def check_youtube_transcript_freshness(
+    conn=None, *, now=None, max_db_age_hours: float = 36.0, log_file: str = "youtube_ingest.log"
+):
     """YouTube transcripts freshness: log mtime + optional DB latest ingest / daily count.
 
     Returns status CURRENT / STALE / MISSING with a clear reason. Pure enough for unit tests
@@ -715,8 +1058,7 @@ def check_youtube_transcript_freshness(conn=None, *, now=None, max_db_age_hours:
             cur.execute("SELECT MAX(ingested_at) FROM youtube_transcripts")
             row = cur.fetchone()
             latest = row[0] if row else None
-            cur.execute(
-                "SELECT COUNT(*) FROM youtube_transcripts WHERE ingested_at::date = CURRENT_DATE")
+            cur.execute("SELECT COUNT(*) FROM youtube_transcripts WHERE ingested_at::date = CURRENT_DATE")
             crow = cur.fetchone()
             daily_count = int(crow[0] or 0) if crow else 0
         except Exception as e:
@@ -800,15 +1142,15 @@ def _check_output_validity(component, log_file, error_signatures=None, success_s
     if not log_path.exists():
         return {"valid": False, "reason": "log_missing"}
     try:
-        with open(log_path, 'rb') as f:
+        with open(log_path, "rb") as f:
             f.seek(0, 2)
             size = f.tell()
             f.seek(max(0, size - 4000))
-            tail = f.read().decode('utf-8', errors='replace')
+            tail = f.read().decode("utf-8", errors="replace")
         # Component-declared failure signatures FIRST — catches semantic failures that exit 0 with
         # valid-looking output (no Traceback, low ERROR count). Recency-gated by success markers.
         _last_ok = max((tail.rfind(s) for s in (success_signatures or [])), default=-1)
-        for sig in (error_signatures or []):
+        for sig in error_signatures or []:
             pos = tail.rfind(sig)
             if pos >= 0 and pos > _last_ok:
                 return {"valid": False, "reason": f"error_signature:{sig[:40]}"}
@@ -843,7 +1185,7 @@ def _attempt_retry(comp, conn):
     # Arming ~20 retry commands (several launch senders or daemons) is an operator decision, so the
     # path stays DISARMED unless TRADEAI_HEALTH_AGENT_RETRY=1.
     if cmd.startswith(".venv/bin/python"):
-        cmd = sys.executable + cmd[len(".venv/bin/python"):]
+        cmd = sys.executable + cmd[len(".venv/bin/python") :]
     if not _retry_armed():
         if component not in _RETRY_DISARMED_LOGGED:
             _RETRY_DISARMED_LOGGED.add(component)
@@ -856,17 +1198,25 @@ def _attempt_retry(comp, conn):
     retries_today = 0
     try:
         cur = conn.cursor()
-        cur.execute("""SELECT COUNT(*) FROM system_health_events
+        cur.execute(
+            """SELECT COUNT(*) FROM system_health_events
             WHERE component=%s AND event_type='RETRY' AND created_at > NOW() - INTERVAL '24 hours'""",
-            [component])
+            [component],
+        )
         retries_today = cur.fetchone()[0] or 0
         # Release the read txn NOW — the retry subprocess below blocks for up to max_runtime_sec
         # (300s+) while db_adapter kills idle-in-transaction at 120s, taking this shared conn with it
         # (the agent was logging idle-txn kills it caused itself, 1-2 per */15 run).
         conn.commit()
         if retries_today >= MAX_RETRIES:
-            _log_event(conn, component, "RETRY_EXHAUSTED", "CRITICAL",
-                       f"Max retries ({MAX_RETRIES}) exhausted today", success=False)
+            _log_event(
+                conn,
+                component,
+                "RETRY_EXHAUSTED",
+                "CRITICAL",
+                f"Max retries ({MAX_RETRIES}) exhausted today",
+                success=False,
+            )
             return False
     except Exception:
         try:
@@ -884,9 +1234,15 @@ def _attempt_retry(comp, conn):
         if lock_info["status"] == "STALE_LOCK":
             try:
                 os.remove(f"{lock_file}.pid")
-                _log_event(conn, component, "LOCK_CLEARED", "WARN",
-                           f"Cleared stale lock {lock_file} (dead PID {lock_info['pid']})",
-                           action="rm stale .pid", success=True)
+                _log_event(
+                    conn,
+                    component,
+                    "LOCK_CLEARED",
+                    "WARN",
+                    f"Cleared stale lock {lock_file} (dead PID {lock_info['pid']})",
+                    action="rm stale .pid",
+                    success=True,
+                )
             except Exception:
                 pass
 
@@ -904,13 +1260,20 @@ def _attempt_retry(comp, conn):
         # new session so a timeout kills the WHOLE tree (heavy orchestrator child included), not just
         # the shell — the old subprocess.run(timeout) orphaned the python child to keep loading the host.
         proc = subprocess.Popen(
-            run_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            text=True, cwd=str(PROJECT_ROOT), start_new_session=True)
+            run_cmd,
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            cwd=str(PROJECT_ROOT),
+            start_new_session=True,
+        )
         try:
             out, err = proc.communicate(timeout=timeout_s)
         except subprocess.TimeoutExpired:
             try:
                 import signal as _sig
+
                 pgid = os.getpgid(proc.pid)
                 os.killpg(pgid, _sig.SIGTERM)
                 try:
@@ -920,19 +1283,31 @@ def _attempt_retry(comp, conn):
                     proc.communicate(timeout=5)
             except Exception:
                 pass
-            _log_event(conn, component, "RETRY_TIMEOUT", "WARN",
-                       f"Retry timed out after {timeout_s}s — process group killed",
-                       action=cmd[:100], success=False)
+            _log_event(
+                conn,
+                component,
+                "RETRY_TIMEOUT",
+                "WARN",
+                f"Retry timed out after {timeout_s}s — process group killed",
+                action=cmd[:100],
+                success=False,
+            )
             return False
         success = proc.returncode == 0
-        _log_event(conn, component, "RETRY", "INFO" if success else "WARN",
-                   f"exit={proc.returncode} stdout={(out or '')[-200:]}" if success
-                   else f"exit={proc.returncode} stderr={(err or '')[-200:]}",
-                   action=cmd[:100], success=success)
+        _log_event(
+            conn,
+            component,
+            "RETRY",
+            "INFO" if success else "WARN",
+            f"exit={proc.returncode} stdout={(out or '')[-200:]}"
+            if success
+            else f"exit={proc.returncode} stderr={(err or '')[-200:]}",
+            action=cmd[:100],
+            success=success,
+        )
         return success
     except Exception as e:
-        _log_event(conn, component, "RETRY_ERROR", "WARN", str(e)[:200],
-                   action=cmd[:100], success=False)
+        _log_event(conn, component, "RETRY_ERROR", "WARN", str(e)[:200], action=cmd[:100], success=False)
         return False
 
 
@@ -961,11 +1336,13 @@ def _parse_et_timestamp(ts_str: str):
             naive = datetime.strptime(s[:19], fmt)
             try:
                 import pytz as _ptz_et
+
                 return _ptz_et.timezone("US/Eastern").localize(naive).astimezone(timezone.utc)
             except ModuleNotFoundError:
                 # Keep the pure health parser usable in minimal QA/bootstrap
                 # environments while preserving ET daylight-saving semantics.
                 from zoneinfo import ZoneInfo
+
                 return naive.replace(tzinfo=ZoneInfo("America/New_York")).astimezone(timezone.utc)
         except ValueError:
             continue
@@ -992,7 +1369,8 @@ def _portfolio_price_freshness_alerts(now_et, max_age_min: float = 25.0) -> list
                 if age > max_age_min:
                     alerts.append(
                         f"🚨 Finviz quote cache stale {age:.0f}m (>{max_age_min:.0f}m) — "
-                        f"portfolio cards may show wrong P/L")
+                        f"portfolio cards may show wrong P/L"
+                    )
             else:
                 alerts.append("⚠️ Finviz quote cache missing last_fetched timestamp")
         except Exception as e:
@@ -1010,8 +1388,8 @@ def _portfolio_price_freshness_alerts(now_et, max_age_min: float = 25.0) -> list
                 age = (now_utc - lr).total_seconds() / 60.0
                 if age > max_age_min:
                     alerts.append(
-                        f"🚨 Portfolio last_repriced stale {age:.0f}m (>{max_age_min:.0f}m) — "
-                        f"run portfolio_repricer.py")
+                        f"🚨 Portfolio last_repriced stale {age:.0f}m (>{max_age_min:.0f}m) — run portfolio_repricer.py"
+                    )
             else:
                 alerts.append("⚠️ holdings.json missing last_repriced")
         except Exception as e:
@@ -1020,10 +1398,14 @@ def _portfolio_price_freshness_alerts(now_et, max_age_min: float = 25.0) -> list
     return alerts
 
 
-def evaluate_broker_snapshot(snapshot: dict, *, now: datetime | None = None,
-                             max_age_min: float = 15.0,
-                             share_tolerance: float = 1e-6,
-                             cash_tolerance: float = 0.01) -> dict:
+def evaluate_broker_snapshot(
+    snapshot: dict,
+    *,
+    now: datetime | None = None,
+    max_age_min: float = 15.0,
+    share_tolerance: float = 1e-6,
+    cash_tolerance: float = 0.01,
+) -> dict:
     """Validate broker freshness semantically, independent of file mtime/log age.
 
     A successful repricer log is not evidence that broker positions are current.  This
@@ -1055,14 +1437,16 @@ def evaluate_broker_snapshot(snapshot: dict, *, now: datetime | None = None,
             try:
                 drift = float(broker_qty) - float(system_qty)
                 if abs(drift) > share_tolerance:
-                    reconciliation.append({
-                        "symbol": row.get("symbol") or "unknown",
-                        "account": row.get("account") or row.get("account_id"),
-                        "field": "shares",
-                        "broker": float(broker_qty),
-                        "system": float(system_qty),
-                        "difference": drift,
-                    })
+                    reconciliation.append(
+                        {
+                            "symbol": row.get("symbol") or "unknown",
+                            "account": row.get("account") or row.get("account_id"),
+                            "field": "shares",
+                            "broker": float(broker_qty),
+                            "system": float(system_qty),
+                            "difference": drift,
+                        }
+                    )
             except (TypeError, ValueError):
                 reasons.append(f"invalid_share_reconciliation:{row.get('symbol') or 'unknown'}")
 
@@ -1074,12 +1458,14 @@ def evaluate_broker_snapshot(snapshot: dict, *, now: datetime | None = None,
         try:
             cash_drift = float(broker_cash) - float(system_cash)
             if abs(cash_drift) > cash_tolerance:
-                reconciliation.append({
-                    "field": "cash_total",
-                    "broker": float(broker_cash),
-                    "system": float(system_cash),
-                    "difference": cash_drift,
-                })
+                reconciliation.append(
+                    {
+                        "field": "cash_total",
+                        "broker": float(broker_cash),
+                        "system": float(system_cash),
+                        "difference": cash_drift,
+                    }
+                )
         except (TypeError, ValueError):
             reasons.append("invalid_cash_reconciliation")
     if reconciliation:
@@ -1092,10 +1478,15 @@ def evaluate_broker_snapshot(snapshot: dict, *, now: datetime | None = None,
     if ages and max(ages) > max_age_min:
         reasons.append(f"broker_positions_stale:{max(ages):.1f}m")
     status = "CURRENT" if not reasons else "STALE_PORTFOLIO"
-    return {"status": status, "ok": status == "CURRENT", "max_age_min": max(ages, default=None),
-            "reasons": reasons, "snapshot_id": snapshot.get("portfolio_snapshot_id"),
-            "reconciliation": reconciliation,
-            "data_quality": "CURRENT" if status == "CURRENT" else "DEGRADED"}
+    return {
+        "status": status,
+        "ok": status == "CURRENT",
+        "max_age_min": max(ages, default=None),
+        "reasons": reasons,
+        "snapshot_id": snapshot.get("portfolio_snapshot_id"),
+        "reconciliation": reconciliation,
+        "data_quality": "CURRENT" if status == "CURRENT" else "DEGRADED",
+    }
 
 
 def _escalate(comp, check_result, conn):
@@ -1106,12 +1497,21 @@ def _escalate(comp, check_result, conn):
     # Dedup: don't spam same escalation within 2 hours
     try:
         cur = conn.cursor()
-        cur.execute("""SELECT COUNT(*) FROM system_health_events
+        cur.execute(
+            """SELECT COUNT(*) FROM system_health_events
             WHERE component=%s AND event_type='ESCALATION'
-            AND created_at > NOW() - INTERVAL '2 hours'""", [component])
+            AND created_at > NOW() - INTERVAL '2 hours'""",
+            [component],
+        )
         if (cur.fetchone()[0] or 0) > 0:
-            _log_event(conn, component, "ESCALATION_DEDUPED", severity,
-                       "Suppressed duplicate escalation (2h window)", success=True)
+            _log_event(
+                conn,
+                component,
+                "ESCALATION_DEDUPED",
+                severity,
+                "Suppressed duplicate escalation (2h window)",
+                success=True,
+            )
             return
     except Exception:
         pass
@@ -1138,8 +1538,7 @@ def _escalate(comp, check_result, conn):
 
     msg = "\n".join(msg_lines)
     _send_alert(msg, urgent=(severity == "CRITICAL"))
-    _log_event(conn, component, "ESCALATION", severity, msg[:500],
-               action="telegram_alert", success=True)
+    _log_event(conn, component, "ESCALATION", severity, msg[:500], action="telegram_alert", success=True)
 
 
 def run_health_check(dry_run=True, verbose=False):
@@ -1154,8 +1553,16 @@ def run_health_check(dry_run=True, verbose=False):
         "timestamp": now.isoformat(),
         "mode": "dry_run" if dry_run else "active",
         "checks": [],
-        "summary": {"ok": 0, "stale": 0, "missing": 0, "failed": 0,
-                     "locked": 0, "retried": 0, "retry_disarmed": 0, "escalated": 0},
+        "summary": {
+            "ok": 0,
+            "stale": 0,
+            "missing": 0,
+            "failed": 0,
+            "locked": 0,
+            "retried": 0,
+            "retry_disarmed": 0,
+            "escalated": 0,
+        },
     }
 
     # Semantic broker freshness is separate from log/file freshness.  Missing local
@@ -1164,21 +1571,26 @@ def run_health_check(dry_run=True, verbose=False):
         _state_path = PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json"
         if _state_path.exists():
             report["broker_snapshot_health"] = evaluate_broker_snapshot(
-                json.loads(_state_path.read_text(encoding="utf-8")), now=now)
+                json.loads(_state_path.read_text(encoding="utf-8")), now=now
+            )
         else:
             report["broker_snapshot_health"] = {
-                "status": "UNAVAILABLE", "ok": False,
-                "reasons": ["holdings_snapshot_missing"], "snapshot_id": None,
+                "status": "UNAVAILABLE",
+                "ok": False,
+                "reasons": ["holdings_snapshot_missing"],
+                "snapshot_id": None,
             }
     except Exception as exc:
         report["broker_snapshot_health"] = {
-            "status": "INVALID_SCHEMA", "ok": False,
+            "status": "INVALID_SCHEMA",
+            "ok": False,
             "reasons": [f"holdings_snapshot_unreadable:{type(exc).__name__}"],
             "snapshot_id": None,
         }
 
     # Determine if we're in market hours (ET)
     import pytz as _ptz
+
     _et = _ptz.timezone("US/Eastern")
     _now_et = now.astimezone(_et)
     _current_hour = _now_et.hour
@@ -1210,17 +1622,19 @@ def run_health_check(dry_run=True, verbose=False):
         _grace_min = max(comp.get("max_runtime_sec", 600) / 60.0, 5) + 10
 
         # 1. Check log freshness (schedule-aware when a scheduled fire time is known)
-        freshness = _check_log_freshness(
-            log_file, comp.get("max_age_min", 60),
-            prev_fire=_prev_fire, now=_now_et, grace_min=_grace_min,
-        )
+        freshness = _check_component_freshness(comp, prev_fire=_prev_fire, grace_min=_grace_min)
 
         # 2. Check lock contention
         lock_info = _check_lock_contention(comp.get("lock_file"))
 
         # 3. Check output validity
-        output_check = _check_output_validity(component, log_file, comp.get("error_signatures"),
-                                              comp.get("success_signatures"))
+        output_check = (
+            {"valid": freshness["status"] == "OK", "reason": freshness.get("reason", "")}
+            if comp.get("receipt_lane_id")
+            else _check_output_validity(
+                component, log_file, comp.get("error_signatures"), comp.get("success_signatures")
+            )
+        )
 
         # Build check result
         check = {
@@ -1239,6 +1653,9 @@ def run_health_check(dry_run=True, verbose=False):
             "downstream": comp.get("downstream", ""),
             "action_taken": None,
             "last_error": None,
+            "freshness_evidence": freshness,
+            "recovery_reason": None,
+            "schedule_evidence": _component_schedule_intent(comp),
         }
 
         # 4. Determine action
@@ -1251,6 +1668,10 @@ def run_health_check(dry_run=True, verbose=False):
             check["status"] = "OUTPUT_INVALID"
             check["last_error"] = output_check.get("reason", "unknown")
             report["summary"]["failed"] += 1
+        elif freshness["status"] == "ERROR":
+            needs_action = True
+            check["last_error"] = freshness.get("reason", "freshness_error")
+            report["summary"]["failed"] += 1
         elif lock_info["status"] == "STALE_LOCK":
             needs_action = True
             check["status"] = "STALE_LOCK"
@@ -1258,7 +1679,9 @@ def run_health_check(dry_run=True, verbose=False):
         elif lock_info["status"] == "LOCKED" and lock_info.get("runtime_sec", 0) > comp.get("max_runtime_sec", 600):
             needs_action = True
             check["status"] = "LOCK_TIMEOUT"
-            check["last_error"] = f"Process {lock_info['pid']} running {lock_info['runtime_sec']}s (max {comp.get('max_runtime_sec')}s)"
+            check["last_error"] = (
+                f"Process {lock_info['pid']} running {lock_info['runtime_sec']}s (max {comp.get('max_runtime_sec')}s)"
+            )
             report["summary"]["locked"] += 1
         else:
             report["summary"]["ok"] += 1
@@ -1270,6 +1693,7 @@ def run_health_check(dry_run=True, verbose=False):
                 # 2026-10-09: a disarmed retry is not a retry. The summary said "5 retried" on every run
                 # while _attempt_retry returned at RETRY_DISARMED without running anything.
                 check["action_taken"] = "retry_disarmed"
+                check["recovery_reason"] = "operator_retry_not_armed: TRADEAI_HEALTH_AGENT_RETRY requires explicit 1"
                 report["summary"]["retry_disarmed"] += 1
                 if comp.get("critical"):
                     _escalate(comp, check, conn)
@@ -1281,8 +1705,15 @@ def run_health_check(dry_run=True, verbose=False):
                 report["summary"]["retried"] += 1
                 if success:
                     check["status"] = "RECOVERED"
-                    _log_event(conn, component, "RECOVERED", "INFO",
-                               "Self-healed via retry", action=comp["retry_cmd"][:100], success=True)
+                    _log_event(
+                        conn,
+                        component,
+                        "RECOVERED",
+                        "INFO",
+                        "Self-healed via retry",
+                        action=comp["retry_cmd"][:100],
+                        success=True,
+                    )
                 else:
                     # Escalate
                     if comp.get("critical"):
@@ -1298,27 +1729,38 @@ def run_health_check(dry_run=True, verbose=False):
         # 6. Persist check result
         try:
             cur = conn.cursor()
-            cur.execute("""INSERT INTO system_health_checks
+            cur.execute(
+                """INSERT INTO system_health_checks
                 (check_type, component, status, expected_schedule, last_success_at,
                  last_failure_at, last_run_duration_sec, expected_max_duration_sec,
                  failure_count, retry_count, last_error, last_action, downstream_impact, severity)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
-                ["cron_health", component, check["status"], _fmt_schedule(comp.get("schedule")),
-                 now if check["status"] == "OK" else None,
-                 now if check["status"] not in ("OK", "RECOVERED") else None,
-                 None, comp.get("max_runtime_sec"),
-                 1 if check["status"] not in ("OK", "RECOVERED") else 0,
-                 1 if (check.get("action_taken") or "").startswith("retry") else 0,
-                 check.get("last_error"), check.get("action_taken"),
-                 comp.get("downstream"),
-                 "CRITICAL" if comp.get("critical") and needs_action else "INFO"])
+                [
+                    "cron_health",
+                    component,
+                    check["status"],
+                    _fmt_schedule(comp.get("schedule")),
+                    now if check["status"] == "OK" else None,
+                    now if check["status"] not in ("OK", "RECOVERED") else None,
+                    None,
+                    comp.get("max_runtime_sec"),
+                    1 if check["status"] not in ("OK", "RECOVERED") else 0,
+                    1 if (check.get("action_taken") or "").startswith("retry") else 0,
+                    check.get("last_error"),
+                    check.get("action_taken"),
+                    comp.get("downstream"),
+                    "CRITICAL" if comp.get("critical") and needs_action else "INFO",
+                ],
+            )
             conn.commit()
         except Exception as e:
             log.warning(f"Failed to persist check for {component}: {e}")
 
         if verbose:
             icon = "✅" if check["status"] == "OK" else "🔄" if check["status"] == "RECOVERED" else "❌"
-            log.info(f"  {icon} {comp['display']:30s} status={check['status']:15s} age={check.get('age_min', '?')}min lock={check['lock']}")
+            log.info(
+                f"  {icon} {comp['display']:30s} status={check['status']:15s} age={check.get('age_min', '?')}min lock={check['lock']}"
+            )
 
         report["checks"].append(check)
 
@@ -1328,22 +1770,24 @@ def run_health_check(dry_run=True, verbose=False):
         report["youtube_transcripts_freshness"] = yt_fresh
         _yt_status = yt_fresh.get("status") or "MISSING"
         _mapped = {"CURRENT": "OK", "STALE": "STALE", "MISSING": "MISSING"}.get(_yt_status, _yt_status)
-        report["checks"].append({
-            "component": "youtube_transcripts_freshness",
-            "display": "YouTube Transcripts Freshness",
-            "critical": False,
-            "schedule": "0 19 * * 1-5",
-            "status": _mapped,
-            "age_min": (
-                round((yt_fresh.get("db_age_hours") or yt_fresh.get("log_age_hours") or 0) * 60, 1)
-                if (yt_fresh.get("db_age_hours") is not None or yt_fresh.get("log_age_hours") is not None)
-                else None
-            ),
-            "last_line": (yt_fresh.get("reason") or "")[:100],
-            "downstream": "youtube_transcripts, CIO research queue",
-            "daily_ingested_count": yt_fresh.get("daily_ingested_count"),
-            "latest_ingest_at": yt_fresh.get("latest_ingest_at"),
-        })
+        report["checks"].append(
+            {
+                "component": "youtube_transcripts_freshness",
+                "display": "YouTube Transcripts Freshness",
+                "critical": False,
+                "schedule": "0 19 * * 1-5",
+                "status": _mapped,
+                "age_min": (
+                    round((yt_fresh.get("db_age_hours") or yt_fresh.get("log_age_hours") or 0) * 60, 1)
+                    if (yt_fresh.get("db_age_hours") is not None or yt_fresh.get("log_age_hours") is not None)
+                    else None
+                ),
+                "last_line": (yt_fresh.get("reason") or "")[:100],
+                "downstream": "youtube_transcripts, CIO research queue",
+                "daily_ingested_count": yt_fresh.get("daily_ingested_count"),
+                "latest_ingest_at": yt_fresh.get("latest_ingest_at"),
+            }
+        )
         if _mapped == "OK":
             report["summary"]["ok"] += 1
         elif _mapped == "STALE":
@@ -1360,9 +1804,14 @@ def run_health_check(dry_run=True, verbose=False):
 
     # ── Agent staleness check ──
     AGENT_MAX_AGE_DAYS = {
-        "maria": 1, "steph": 1, "risk_agent": 1,
-        "aegis": 3, "alex": 3, "tax_agent": 7,
-        "iris": 7, "maria_research": 7,
+        "maria": 1,
+        "steph": 1,
+        "risk_agent": 1,
+        "aegis": 3,
+        "alex": 3,
+        "tax_agent": 7,
+        "iris": 7,
+        "maria_research": 7,
     }
     try:
         cur = conn.cursor()
@@ -1371,13 +1820,15 @@ def run_health_check(dry_run=True, verbose=False):
                        FROM watchlist_agent_results GROUP BY agent""")
         agent_latest = {r[0]: r[1] for r in cur.fetchall()}
         # Check agent-specific home tables
-        for tbl, col, agent_name in [("aegis_portfolio_briefs", "observed_at", "aegis"),
-                                      ("cio_decisions", "created_at", "alex"),
-                                      # iris is the taxonomy/curation agent — it never writes
-                                      # ticker rows to watchlist_agent_results (its rows there
-                                      # were legacy topic-lane artifacts), so measure it by its
-                                      # actual run ledger (2026-07-19 fix).
-                                      ("iris_run_log", "ran_at", "iris")]:
+        for tbl, col, agent_name in [
+            ("aegis_portfolio_briefs", "observed_at", "aegis"),
+            ("cio_decisions", "created_at", "alex"),
+            # iris is the taxonomy/curation agent — it never writes
+            # ticker rows to watchlist_agent_results (its rows there
+            # were legacy topic-lane artifacts), so measure it by its
+            # actual run ledger (2026-07-19 fix).
+            ("iris_run_log", "ran_at", "iris"),
+        ]:
             try:
                 cur.execute(f"SELECT MAX({col}) FROM {tbl}")
                 r = cur.fetchone()
@@ -1409,10 +1860,13 @@ def run_health_check(dry_run=True, verbose=False):
             if _dedup_ok:
                 try:
                     from telegram_alert import send_telegram
-                    send_telegram("⚠️ AGENT STALENESS\n" + "\n".join(stale_agents),
-                                  priority="P3", producer="system_health_agent")
-                    _log_event(conn, "agent_staleness", "STALENESS_ALERT", "WARN",
-                               "\n".join(stale_agents), success=True)
+
+                    send_telegram(
+                        "⚠️ AGENT STALENESS\n" + "\n".join(stale_agents), priority="P3", producer="system_health_agent"
+                    )
+                    _log_event(
+                        conn, "agent_staleness", "STALENESS_ALERT", "WARN", "\n".join(stale_agents), success=True
+                    )
                 except Exception:
                     pass
             # Auto-remediate: queue jobs for stale agents that process via watchlist_agent_jobs
@@ -1422,25 +1876,33 @@ def run_health_check(dry_run=True, verbose=False):
                 if latest and (now - latest).total_seconds() / 86400 > max_days and agent in _QUEUE_REMEDIATE:
                     try:
                         # Queue a refresh job if none pending
-                        cur.execute("""SELECT COUNT(*) FROM watchlist_agent_jobs
-                            WHERE requested_agent=%s AND status IN ('queued','pending','processing')""", [agent])
+                        cur.execute(
+                            """SELECT COUNT(*) FROM watchlist_agent_jobs
+                            WHERE requested_agent=%s AND status IN ('queued','pending','processing')""",
+                            [agent],
+                        )
                         if (cur.fetchone()[0] or 0) == 0:
                             # Find a symbol to analyze (most recently analyzed per symbol).
                             # 'topic:*' rows are legacy topic-lane results, not tickers — queueing
                             # them dies at the processor's symbol gate, so remediation looped on
                             # the same two invalid jobs every cycle while iris stayed "stale"
                             # (368 failed jobs in 2 days, found 2026-07-19).
-                            cur.execute("""SELECT symbol, MAX(created_at) AS latest
+                            cur.execute(
+                                """SELECT symbol, MAX(created_at) AS latest
                                 FROM watchlist_agent_results
                                 WHERE agent=%s AND symbol NOT LIKE 'topic:%%'
                                   AND symbol ~ '^[A-Z][A-Z0-9.\\-]{0,9}$'
-                                GROUP BY symbol ORDER BY latest DESC LIMIT 2""", [agent])
+                                GROUP BY symbol ORDER BY latest DESC LIMIT 2""",
+                                [agent],
+                            )
                             _syms = [r[0] for r in cur.fetchall()]
                             for _sym in _syms:
-                                cur.execute("""INSERT INTO watchlist_agent_jobs
+                                cur.execute(
+                                    """INSERT INTO watchlist_agent_jobs
                                     (id, symbol, requested_agent, request_type, status, priority, submitted_from)
                                     VALUES (%s, %s, %s, 'full_analysis', 'queued', 1, 'health_agent_remediation')""",
-                                    [str(uuid.uuid4()), _sym, agent])
+                                    [str(uuid.uuid4()), _sym, agent],
+                                )
                             conn.commit()
                             if _syms:
                                 log.info(f"  🔧 Auto-queued {len(_syms)} jobs for stale {agent}")
@@ -1468,7 +1930,9 @@ def run_health_check(dry_run=True, verbose=False):
         expired_proposals = cur.rowcount
         conn.commit()
         if expired_jobs or stuck_jobs or expired_proposals:
-            log.info(f"  🧹 Queue cleanup: {expired_jobs} expired jobs, {stuck_jobs} stuck jobs, {expired_proposals} stale proposals")
+            log.info(
+                f"  🧹 Queue cleanup: {expired_jobs} expired jobs, {stuck_jobs} stuck jobs, {expired_proposals} stale proposals"
+            )
     except Exception as e:
         log.warning(f"Queue cleanup failed: {e}")
 
@@ -1480,6 +1944,7 @@ def run_health_check(dry_run=True, verbose=False):
     try:
         cur = conn.cursor()
         import psycopg2.extras
+
         rcur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
         # Step 1: Trigger enrichment for stuck proposals (>30 min, <3 attempts)
@@ -1496,11 +1961,19 @@ def run_health_check(dry_run=True, verbose=False):
             log.info(f"  🔧 Auto-enrichment: {len(_needs_enrichment)} stuck proposals need enrichment")
             try:
                 import subprocess
+
                 _enrich_result = subprocess.run(
-                    [sys.executable, str(PROJECT_ROOT / "scripts" / "auto_enrichment_runner.py"),
-                     "--force-all", "--limit", str(len(_needs_enrichment))],
-                    capture_output=True, text=True, timeout=300,
-                    cwd=str(PROJECT_ROOT)
+                    [
+                        sys.executable,
+                        str(PROJECT_ROOT / "scripts" / "auto_enrichment_runner.py"),
+                        "--force-all",
+                        "--limit",
+                        str(len(_needs_enrichment)),
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=300,
+                    cwd=str(PROJECT_ROOT),
                 )
                 log.info(f"  🔧 Auto-enrichment triggered (rc={_enrich_result.returncode})")
                 if _enrich_result.returncode != 0:
@@ -1508,10 +1981,13 @@ def run_health_check(dry_run=True, verbose=False):
 
                 # Increment attempt counter for proposals we tried
                 for p in _needs_enrichment:
-                    cur.execute("""UPDATE paper_trade_proposals
+                    cur.execute(
+                        """UPDATE paper_trade_proposals
                         SET enrichment_attempt_count = COALESCE(enrichment_attempt_count, 0) + 1,
                             enrichment_last_attempt_at = NOW(), updated_at = NOW()
-                        WHERE id = %s""", [p["id"]])
+                        WHERE id = %s""",
+                        [p["id"]],
+                    )
                 conn.commit()
             except Exception as _ee:
                 log.warning(f"  Auto-enrichment trigger failed: {_ee}")
@@ -1543,6 +2019,7 @@ def run_health_check(dry_run=True, verbose=False):
     try:
         cur = conn.cursor()
         import pytz as _ptz_pipe
+
         _et_pipe = _ptz_pipe.timezone("US/Eastern")
         _now_et_pipe = now.astimezone(_et_pipe)
         _h = _now_et_pipe.hour
@@ -1551,8 +2028,13 @@ def run_health_check(dry_run=True, verbose=False):
         if _is_market and not dry_run:
             # 1. Log error content scanning — detect Python crashes in key logs
             _ERROR_PATTERNS = ["Traceback", "NameError", "RISK_GATE_ERROR", "CRITICAL", "FATAL"]
-            _SCAN_LOGS = ["auto_proposal.log", "screener_pm.log", "incubator_promoter.log",
-                          "paper_execution.log", "unified_stop_supervisor.log"]
+            _SCAN_LOGS = [
+                "auto_proposal.log",
+                "screener_pm.log",
+                "incubator_promoter.log",
+                "paper_execution.log",
+                "unified_stop_supervisor.log",
+            ]
             for _logname in _SCAN_LOGS:
                 _logpath = PROJECT_ROOT / "logs" / _logname
                 if _logpath.exists():
@@ -1581,7 +2063,8 @@ def run_health_check(dry_run=True, verbose=False):
                 _uni_today = cur.fetchone()[0] or 0
                 pipeline_alerts.append(
                     f"⚠️ 0 signals generated today (universe={_uni_today} symbols) — "
-                    f"check Finviz 429/screener if universe is thin, else orchestrator scoring")
+                    f"check Finviz 429/screener if universe is thin, else orchestrator scoring"
+                )
 
             # 4. Trade execution rate — ATM active but 0 trades after 10 AM
             cur.execute("SELECT mode FROM atm_state WHERE id=1")
@@ -1602,15 +2085,17 @@ def run_health_check(dry_run=True, verbose=False):
             # last sync was Friday 16:00. Stale now means "older than the most recent
             # SCHEDULED sync + grace" (2026-07-20 fix, same class as monitor_freshness).
             _sync_cutoff = _last_scheduled_sync_fire()
-            cur.execute("""SELECT COUNT(*) FROM paper_trades
+            cur.execute(
+                """SELECT COUNT(*) FROM paper_trades
                            WHERE status='open'
                              AND (last_synced_at IS NULL OR last_synced_at < %s)""",
-                        [_sync_cutoff])
+                [_sync_cutoff],
+            )
             _unsync = cur.fetchone()[0] or 0
             if _unsync > 0:
                 pipeline_alerts.append(
-                    f"📊 {_unsync} open trade(s) not synced since the last scheduled "
-                    f"sync ({_sync_cutoff:%a %H:%M} ET)")
+                    f"📊 {_unsync} open trade(s) not synced since the last scheduled sync ({_sync_cutoff:%a %H:%M} ET)"
+                )
 
             # 6. Screener data quality — SOURCE-AWARE.
             # Counting every source together blamed "the screener" for rows written
@@ -1630,18 +2115,16 @@ def run_health_check(dry_run=True, verbose=False):
                 if not _tot or not str(_src).startswith(_float_bearing):
                     continue
                 if _zero / _tot > 0.5:
-                    pipeline_alerts.append(
-                        f"⚠️ Screener data quality: {_zero}/{_tot} '{_src}' scans have zero float")
+                    pipeline_alerts.append(f"⚠️ Screener data quality: {_zero}/{_tot} '{_src}' scans have zero float")
             # Non-float-bearing sources are reported separately and only when a
             # backfill that should have run clearly did not.
-            _social_zero = sum(z for s, t_, z in _by_src
-                               if not str(s).startswith(_float_bearing) and t_)
-            _social_tot = sum(t_ for s, t_, z in _by_src
-                              if not str(s).startswith(_float_bearing) and t_)
+            _social_zero = sum(z for s, t_, z in _by_src if not str(s).startswith(_float_bearing) and t_)
+            _social_tot = sum(t_ for s, t_, z in _by_src if not str(s).startswith(_float_bearing) and t_)
             if _social_tot and _social_zero == _social_tot and _social_tot >= 5:
                 pipeline_alerts.append(
                     f"ℹ️ {_social_zero}/{_social_tot} social-source scans lack float "
-                    f"(float backfill from watchlist_items may not be running)")
+                    f"(float backfill from watchlist_items may not be running)"
+                )
 
             # 7. Open trade agent coverage — detect trades with no recent agent analysis
             try:
@@ -1663,6 +2146,7 @@ def run_health_check(dry_run=True, verbose=False):
             # 8. Pre-promotion gate blocking — detect if ALL proposals are being blocked
             try:
                 import pathlib as _pl
+
                 _olog = _pl.Path(PROJECT_ROOT / "logs" / "screener_pm.log")
                 if _olog.exists():
                     _tail = _olog.read_text()[-5000:]
@@ -1677,9 +2161,7 @@ def run_health_check(dry_run=True, verbose=False):
                                 f"({_rr_blocks} R:R blocks — check floating point tolerance)"
                             )
                         else:
-                            pipeline_alerts.append(
-                                f"⚠️ Pre-promotion gate blocking {_blocked}/{_created} proposals"
-                            )
+                            pipeline_alerts.append(f"⚠️ Pre-promotion gate blocking {_blocked}/{_created} proposals")
             except Exception:
                 pass
 
@@ -1696,7 +2178,8 @@ def run_health_check(dry_run=True, verbose=False):
                     if _fv_429 >= _fv_429_thresh:
                         pipeline_alerts.append(
                             f"🔴 Finviz rate-limited (HTTP 429 ×{_fv_429} in recent log) — screener "
-                            f"universe starved; signal generation will be thin/zero until it clears")
+                            f"universe starved; signal generation will be thin/zero until it clears"
+                        )
             except Exception:
                 pass
 
@@ -1718,10 +2201,15 @@ def run_health_check(dry_run=True, verbose=False):
             if _pipe_dedup_ok:
                 try:
                     from telegram_alert import send_telegram
-                    send_telegram("🔴 PIPELINE HEALTH\n" + "\n".join(pipeline_alerts),
-                                  priority="P3", producer="system_health_agent")
-                    _log_event(conn, "pipeline_output", "PIPELINE_ALERT", "WARN",
-                               "\n".join(pipeline_alerts), success=True)
+
+                    send_telegram(
+                        "🔴 PIPELINE HEALTH\n" + "\n".join(pipeline_alerts),
+                        priority="P3",
+                        producer="system_health_agent",
+                    )
+                    _log_event(
+                        conn, "pipeline_output", "PIPELINE_ALERT", "WARN", "\n".join(pipeline_alerts), success=True
+                    )
                 except Exception:
                     pass
     except Exception as e:
@@ -1735,13 +2223,16 @@ def run_health_check(dry_run=True, verbose=False):
         _rm_path = _state_dir / "risk_management.json"
         if _rm_path.exists():
             import json as _json_rm
+
             _rm = _json_rm.loads(_rm_path.read_text())
 
         # 1. Triggered stops
         _STOP_EXEMPT = {"fidelity_401k", "schwab_rollover_ira", "schwab_roth_ira", "schwab_roth", "schwab_taxable"}
-        _triggered = [p for p in _rm.get("positions", [])
-                      if p.get("status") == "TRIGGERED"
-                      and (p.get("account", "") or "").lower() not in _STOP_EXEMPT]
+        _triggered = [
+            p
+            for p in _rm.get("positions", [])
+            if p.get("status") == "TRIGGERED" and (p.get("account", "") or "").lower() not in _STOP_EXEMPT
+        ]
         if _triggered:
             _syms = ", ".join(p.get("symbol", "?") for p in _triggered[:5])
             portfolio_alerts.append(f"🚨 {len(_triggered)} stop(s) triggered: {_syms}")
@@ -1752,17 +2243,26 @@ def run_health_check(dry_run=True, verbose=False):
             portfolio_alerts.append(f"⚠️ Portfolio heat {_heat:.1f}% — above 5% threshold")
 
         # 3. No-stop positions
-        _no_stop = sum(1 for p in _rm.get("positions", [])
-                       if p.get("status") == "NO STOP"
-                       and (p.get("account", "") or "").lower() not in _STOP_EXEMPT)
+        _no_stop = sum(
+            1
+            for p in _rm.get("positions", [])
+            if p.get("status") == "NO STOP" and (p.get("account", "") or "").lower() not in _STOP_EXEMPT
+        )
         if _no_stop > 5:
             portfolio_alerts.append(f"⚠️ {_no_stop} positions without stops")
 
         # 4. CIO critical decisions
-        _cio = _db_query("""SELECT COUNT(*) as cnt FROM cio_decisions
+        _cio = (
+            _db_query(
+                """SELECT COUNT(*) as cnt FROM cio_decisions
             WHERE priority IN ('critical','high')
             AND status NOT IN ('completed','dismissed')
-            AND created_at > NOW() - INTERVAL '7 days'""", fetch="one") if not dry_run else {}
+            AND created_at > NOW() - INTERVAL '7 days'""",
+                fetch="one",
+            )
+            if not dry_run
+            else {}
+        )
         _cio_cnt = (_cio or {}).get("cnt", 0)
         if _cio_cnt > 0:
             portfolio_alerts.append(f"⚡ {_cio_cnt} CIO critical/high decisions pending")
@@ -1773,14 +2273,22 @@ def run_health_check(dry_run=True, verbose=False):
         # and all weekend. Fixing only one copy left this one still paging
         # (2026-07-20; duplicate found during the schedule-blind sweep).
         _sync_cut = _last_scheduled_sync_fire()
-        _stale_trades = _db_query("""SELECT COUNT(*) as cnt FROM paper_trades
+        _stale_trades = (
+            _db_query(
+                """SELECT COUNT(*) as cnt FROM paper_trades
             WHERE status='open' AND (last_synced_at IS NULL OR last_synced_at < %s)""",
-            (_sync_cut,), fetch="one") if not dry_run else {}
+                (_sync_cut,),
+                fetch="one",
+            )
+            if not dry_run
+            else {}
+        )
         _stale_trade_cnt = (_stale_trades or {}).get("cnt", 0)
         if _stale_trade_cnt > 0:
             portfolio_alerts.append(
                 f"📊 {_stale_trade_cnt} paper trade(s) not synced since the last "
-                f"scheduled sync ({_sync_cut:%a %H:%M} ET)")
+                f"scheduled sync ({_sync_cut:%a %H:%M} ET)"
+            )
 
         # 6. Portfolio live prices (Finviz repricer — not SnapTrade, not holdings file mtime)
         portfolio_alerts.extend(_portfolio_price_freshness_alerts(_now_et))
@@ -1797,6 +2305,7 @@ def run_health_check(dry_run=True, verbose=False):
     stop_monitoring_alerts = []
     try:
         from lib.stop_monitoring_health import run_stop_monitoring_health
+
         _sm = run_stop_monitoring_health(conn, apply=not dry_run)
         report["stop_monitoring"] = _sm
         stop_monitoring_alerts = _sm.get("alerts") or []
@@ -1817,13 +2326,15 @@ def run_health_check(dry_run=True, verbose=False):
     # Collect failed retries
     for check in report.get("checks", []):
         if check.get("action_taken") in ("retry_failed_escalated", "escalated_no_retry"):
-            _escalation_items.append({
-                "component": check.get("component"),
-                "status": check.get("status"),
-                "age_min": check.get("age_min"),
-                "last_error": check.get("last_error"),
-                "retry_cmd": check.get("retry_cmd"),
-            })
+            _escalation_items.append(
+                {
+                    "component": check.get("component"),
+                    "status": check.get("status"),
+                    "age_min": check.get("age_min"),
+                    "last_error": check.get("last_error"),
+                    "retry_cmd": check.get("retry_cmd"),
+                }
+            )
     # Add stale agents that auto-remediation couldn't fix
     for sa in report.get("stale_agents", []):
         _escalation_items.append({"component": "agent_staleness", "detail": sa})
@@ -1842,18 +2353,21 @@ def run_health_check(dry_run=True, verbose=False):
             AND COALESCE(enrichment_attempt_count, 0) >= 2
             AND created_at < NOW() - INTERVAL '1 hour'""")
         for _er in _ecur.fetchall():
-            _escalation_items.append({
-                "component": "proposal_enrichment_stuck",
-                "detail": f"Proposal #{_er[0]} {_er[1]} stuck after {_er[2]} enrichment attempts (created {_er[3]})",
-                "fixable": True,
-                "retry_cmd": ".venv/bin/python scripts/auto_enrichment_runner.py --force-all --limit 5",
-            })
+            _escalation_items.append(
+                {
+                    "component": "proposal_enrichment_stuck",
+                    "detail": f"Proposal #{_er[0]} {_er[1]} stuck after {_er[2]} enrichment attempts (created {_er[3]})",
+                    "fixable": True,
+                    "retry_cmd": ".venv/bin/python scripts/auto_enrichment_runner.py --force-all --limit 5",
+                }
+            )
     except Exception:
         pass
 
     if _escalation_items and not dry_run:
         try:
             import json as _esc_json
+
             _esc_file = PROJECT_ROOT / "logs" / "claude_escalation_queue.json"
             _existing = []
             if _esc_file.exists():
@@ -1882,6 +2396,7 @@ def run_health_check(dry_run=True, verbose=False):
 def _db_query(sql, params=None, fetch="all"):
     try:
         from db_adapter import _get_conn as _gq_conn
+
         _c = _gq_conn()
         _cur = _c.cursor()
         _cur.execute(sql, params)
@@ -1914,10 +2429,12 @@ def main():
     mode = "DRY RUN" if args.dry_run else "ACTIVE"
     # Components checked (actions are counted separately, not as extra components).
     total = sum(s.get(k, 0) for k in ("ok", "stale", "missing", "failed", "locked"))
-    log.info(f"[{mode}] Health check complete: {s['ok']}/{total} OK, "
-             f"{s['stale']} stale, {s['missing']} missing, {s['failed']} failed, "
-             f"{s['locked']} locked, {s['retried']} retried, {s.get('retry_disarmed', 0)} retry disarmed, "
-             f"{s['escalated']} escalated")
+    log.info(
+        f"[{mode}] Health check complete: {s['ok']}/{total} OK, "
+        f"{s['stale']} stale, {s['missing']} missing, {s['failed']} failed, "
+        f"{s['locked']} locked, {s['retried']} retried, {s.get('retry_disarmed', 0)} retry disarmed, "
+        f"{s['escalated']} escalated"
+    )
 
     if args.output_json:
         Path(args.output_json).parent.mkdir(parents=True, exist_ok=True)
@@ -1926,10 +2443,12 @@ def main():
     # Exit EXIT_FINDING (3) if any critical component is down. Not 1: 1 is what an
     # uncaught exception exits with, and health_tick.py must tell a crash of this
     # agent from a finding (n8n maturity B3.1, 2026-10-09; scripts/lib/monitor_exit_codes.py).
-    critical_down = [c for c in report.get("checks", [])
-                     if c.get("critical") and c.get("status") not in ("OK", "RECOVERED")]
+    critical_down = [
+        c for c in report.get("checks", []) if c.get("critical") and c.get("status") not in ("OK", "RECOVERED")
+    ]
     if critical_down and not args.dry_run:
         from lib.monitor_exit_codes import EXIT_FINDING
+
         sys.exit(EXIT_FINDING)
 
 

@@ -1,0 +1,127 @@
+--- a/scripts/lib/n8n_coordination_gateway.py
++++ b/scripts/lib/n8n_coordination_gateway.py
+@@ -279,0 +280 @@
++    momentum_provider: Any = None,
+@@ -315,0 +317,9 @@
++    if operation == "momentum_lifecycle":
++        if route.strip().lower() != "coordination/status" or set(request) - {"route", "operation", "claim", "signature"}:
++            return _refused(None, "unexpected_field", peer_ignored=peer)
++        if momentum_provider is None:
++            return _refused(None, "momentum_lifecycle_not_configured", peer_ignored=peer)
++        try:
++            return momentum_provider(datetime.fromtimestamp(_unix(now), timezone.utc))
++        except (OSError, ValueError, TypeError):
++            return _refused(None, "momentum_lifecycle_source_unavailable", peer_ignored=peer)
+--- a/scripts/n8n_coordination_gateway.py
++++ b/scripts/n8n_coordination_gateway.py
+@@ -189,0 +190 @@
++    momentum_provider: Any = None,
+@@ -229,0 +231 @@
++        momentum_provider=momentum_provider,
+@@ -232,0 +235,2 @@
++    if result.get("schema") == "N8nMomentumLifecycle@v1":
++        return 200, result  # authenticated server-owned health projection; no state transition
+@@ -246 +250 @@
+-                 n8n_previous_key: bytes | None = None, due_sources: Any = None):
++                 n8n_previous_key: bytes | None = None, due_sources: Any = None, momentum_provider: Any = None):
+@@ -300,0 +305 @@
++                momentum_provider=momentum_provider,
+@@ -343,0 +349,7 @@
++    from scripts.lib.n8n_momentum_lifecycle import durable_view
++    code_root = (registry_path or DEFAULT_REGISTRY_PATH).resolve().parents[1]
++    state_root = ledger_path.resolve().parents[2] if ledger_path is not None else None
++    def momentum_provider(now):
++        if state_root is None:
++            return {"state": "REFUSED", "reason": "momentum_lifecycle_no_durable_store"}
++        return durable_view(code_root, state_root, now=now)
+@@ -346 +358,2 @@
+-                                                     n8n_previous_key=n8n_previous_key, due_sources=due))
++                                                     n8n_previous_key=n8n_previous_key, due_sources=due,
++                                                     momentum_provider=momentum_provider))
+--- a/scripts/n8n_run_relay.py
++++ b/scripts/n8n_run_relay.py
+@@ -602,0 +603,22 @@
++    def momentum_lifecycle(self, authorization: str | None, query: str = "") -> tuple[int, dict[str, Any]]:
++        """Authenticated fixed read projection. No caller paths, booleans, commands or repair submission."""
++        if not self._auth(authorization):
++            self.counts["auth_failures"] += 1
++            return self._refuse("relay_bad_bearer", 401, op="momentum_lifecycle")
++        if query:
++            return self._refuse("relay_bad_query", 400, op="momentum_lifecycle")
++        now = self.clock()
++        claim = {"v": 1, "caller_id": RELAY_CALLER, "project": "trade-ai", "iat": now,
++                 "exp": now + 120, "nonce": secrets.token_urlsafe(12), "scope": SCOPE_READ}
++        payload = {"route": "coordination/status", "operation": "momentum_lifecycle", "claim": claim,
++                   "signature": sign_claim(claim, self.key)}
++        try:
++            status, reply = self.transport(self.gateway_url + "/v1/coordination", payload)
++        except (OSError, urllib.error.URLError, TimeoutError):
++            return self._refuse("relay_gateway_unreachable", 502, op="momentum_lifecycle")
++        ok = reply.get("schema") == "N8nMomentumLifecycle@v1"
++        self._log({"at": datetime.now(timezone.utc).isoformat(), "op": "momentum_lifecycle",
++                   "state": "OK" if ok else "REFUSED", "gateway_http_status": status,
++                   "reason": None if ok else str(reply.get("reason") or "")[:64]})
++        return (200 if ok else status if isinstance(status, int) and status >= 400 else 403), reply
++
+@@ -648,0 +671,2 @@
++            elif path == "/momentum-lifecycle":
++                status, payload = relay.momentum_lifecycle(self.headers.get("Authorization"), query)
+--- a/scripts/n8n_incident_fanin.py
++++ b/scripts/n8n_incident_fanin.py
+@@ -331,0 +332 @@
++    out.extend(_momentum_lifecycle_findings(root, now))
+@@ -680,0 +682,22 @@
++
++
++def _momentum_lifecycle_findings(root: Path, now: datetime) -> list[dict[str, Any]]:
++    """Read host monitor health receipt; host notifier remains independent of n8n."""
++    from datetime import timedelta
++    from zoneinfo import ZoneInfo
++    from scripts.lib.n8n_momentum_lifecycle import SCHEMA, MONITOR_REL, _finding, stamp
++    config = _load(ROOT / "config/n8n_momentum_lifecycle_candidate.json") or {}
++    if config.get("enabled") is not True:
++        return []
++    doc = _load(root / MONITOR_REL) or {}
++    observed = stamp(doc.get("as_of"))
++    day = now.astimezone(ZoneInfo("America/New_York")).date().isoformat()
++    if doc.get("schema") != SCHEMA or observed is None or not timedelta(0) <= now - observed <= timedelta(minutes=10):
++        return [_finding("momentum-lifecycle-monitor", "monitor_missing_or_stale", day)]
++    expected_sha = (ROOT / "SOURCE_COMMIT").read_text().strip()
++    if doc.get("source_sha") != expected_sha:
++        return [_finding("momentum-lifecycle-monitor", "monitor_deployed_sha_drift", day)]
++    allowed = {"source", "item", "severity", "detail", "artifact_rel", "store", "detected_at",
++               "operator_action", "notification_dedupe_minutes"}
++    return [{k: v for k, v in f.items() if k in allowed} for f in doc.get("incidents", [])
++            if isinstance(f, dict) and f.get("source") == "scalp_lane"]
+--- a/scripts/incident_notifier.py
++++ b/scripts/incident_notifier.py
+@@ -211 +211 @@
+-        if prev is None or SEV_RANK[sev] < SEV_RANK[prev["severity"]]:
++        if prev is None or SEV_RANK[sev] < SEV_RANK[prev["severity"]] or r.get("momentum_host_watch"):
+@@ -214 +214,2 @@
+-                        "event_id": r.get("event_id")}
++                        "event_id": r.get("event_id"), "operator_action": r.get("operator_action") is True,
++                        "momentum_host_watch": r.get("momentum_host_watch") is True}
+@@ -289,0 +291,2 @@
++    if inc.get("severity") == "P1" and inc.get("operator_action") is True:
++        return True  # AGENTS 5.1.0: explicit operator action; stable incident key is not notification suppression
+@@ -425,0 +429 @@
++            "momentum_host_watch": inc.get("momentum_host_watch") is True,
+@@ -460 +464 @@
+-        host_records = {k: v for k, v in state["notified"].items() if v.get("source") == ALERT_PATH_SOURCE}
++        host_records = {k: v for k, v in state["notified"].items() if v.get("source") == ALERT_PATH_SOURCE or v.get("momentum_host_watch")}
+@@ -524 +528 @@
+-        for k in [k for k, v in state["notified"].items() if v.get("source") == ALERT_PATH_SOURCE]:
++        for k in [k for k, v in state["notified"].items() if v.get("source") == ALERT_PATH_SOURCE or v.get("momentum_host_watch")]:
+@@ -548 +552 @@
+-        return [], f"unavailable:{type(exc).__name__}"
++        found, note = [], f"unavailable:{type(exc).__name__}"
+@@ -550,0 +555,8 @@
++    # Read the same bounded host health projection directly, independent of n8n/fan-in availability.
++    # Canonical source/item keys match fan-in, so the two observations cannot double an incident.
++    try:
++        from scripts.n8n_incident_fanin import _momentum_lifecycle_findings
++        rows.extend({**f, "state": "HOST_WATCH", "momentum_host_watch": True}
++                    for f in _momentum_lifecycle_findings(root, now) if f.get("severity") == "P1")
++    except Exception as exc:  # fail-soft availability is retained in the host receipt
++        note += f";momentum_unavailable:{type(exc).__name__}"

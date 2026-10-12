@@ -1,6 +1,8 @@
 """Research completion → CIO investment-product reassessment (R6.8 missing link)."""
 from __future__ import annotations
 
+import importlib
+import json
 from pathlib import Path
 
 import pytest
@@ -27,6 +29,15 @@ def root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("RATIFIED_LESSON_ADVISORY_INFLUENCE", "SHADOW")
     monkeypatch.setenv("FINANCIAL_SENSES_ADVISORY_INFLUENCE", "SHADOW")
     monkeypatch.setenv("GOVERNED_MEMORY_ADVISORY_INFLUENCE", "SHADOW")
+    source_root = Path(__file__).resolve().parents[1]
+    monkeypatch.syspath_prepend(str(source_root / "scripts"))
+    monkeypatch.syspath_prepend(str(source_root / "scripts/lib"))
+    monkeypatch.chdir(tmp_path)
+    for name in ("scripts.lib.cio_investment_product", "cio_investment_product"):
+        module = importlib.import_module(name)
+        monkeypatch.setattr(module, "collect_queue", lambda root=None: {"items": []})
+        monkeypatch.setattr(module, "collect_previously_traded", _anet_prev)
+        monkeypatch.setattr(module, "collect_regime", lambda: {"label": "UNKNOWN", "as_of": None})
     return tmp_path
 
 
@@ -264,7 +275,31 @@ def test_research_change_notification_is_trigger_symbol_scoped():
     assert scoped["suppressed_reason"] == "unrelated_or_non_material_rebuild_churn"
 
 
-def test_hook_calls_reassessment(root: Path):
+def test_hook_calls_reassessment(root: Path, monkeypatch: pytest.MonkeyPatch):
+    # The completion hook also regenerates a memo, even with resynth=False.
+    # Supply public desk DTO input while exercising the real memo generator,
+    # renderer, completion hook and reassessment/persistence implementation.
+    desk_input = root / "desk_inputs.json"
+    desk_input.write_text(json.dumps({
+        "as_of": "2026-10-12T18:00:00+00:00", "pin": "fixture-desk@v1",
+        "thesis": {"stance": "observe", "summary": "Synthetic advisory desk inputs."},
+        "portfolio": {"total_value": 100000, "total_cash": 20000, "cash_pct": 20,
+                      "top_weights": [], "spcx": {}},
+        "thresholds": {"cash_band_min_pct": 20, "concentration_fire_pct": 16.5,
+                       "max_single_name_weight_pct": 12, "deep_dd_threshold_pct": 25},
+        "cash_stage": {"stage": 0, "label": "STAGE_0", "name": "Observe only"},
+        "sector_posture": {}, "reentry_book": {"cards": []}, "material_plans": [],
+        "learning": [], "evidence_spine": {"domains_present": [], "gaps": []},
+        "advisory_desk": {"ok": False, "status": "NOT_MEASURED"},
+    }))
+    desk_reads = []
+
+    def fixture_desk_inputs():
+        desk_reads.append(desk_input)
+        return json.loads(desk_input.read_text())
+
+    for name in ("lib.cio_desk_synthesis", "scripts.lib.cio_desk_synthesis"):
+        monkeypatch.setattr(importlib.import_module(name), "collect_desk_inputs", fixture_desk_inputs)
     persist_product(build_product(root=root, previously_traded=_anet_prev(), queue={"items": []}, holdings={}), root=root)
     out = on_hermes_completed(
         {"plan_id": "", "symbol": "ANET"},
@@ -275,6 +310,8 @@ def test_hook_calls_reassessment(root: Path):
     assert out.get("reassessment") or out.get("reassessment_error")
     if out.get("reassessment"):
         assert out["reassessment"].get("reassessment_id")
+    assert desk_reads == [desk_input]
+    assert out["memo"] is True and (root / "data/cio/cio_desk_note_latest.md").is_file()
 
 
 def test_cc_shows_what_changed():

@@ -19,12 +19,46 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
+from tests.pipeline_runner_fixtures import runner_env
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from scripts import n8n_migration_board as B  # noqa: E402
 from scripts import n8n_run_executor as X  # noqa: E402
 from scripts.lib import lane_registry as lr  # noqa: E402
+
+
+@pytest.fixture
+def scheduler_test_env(tmp_path):
+    """Child processes get scratch roots and no inherited runtime environment."""
+    root = tmp_path / "child-environment"
+    env = runner_env(root)
+    runtime = root / "runtime"
+    runtime.mkdir()
+    env.update(
+        {
+            "XDG_RUNTIME_DIR": str(runtime),
+            "TRADEAI_PERSISTENT_STATE_ROOT": env["TRADEAI_STATE_ROOT"],
+            "TRADEAI_TEST_PERSISTENT_ROOT": env["TRADEAI_STATE_ROOT"],
+        }
+    )
+    refusal_log = root / "scheduler-refusals.txt"
+    env["TRADEAI_TEST_SCHEDULER_REFUSALS"] = str(refusal_log)
+    fake_bin = root / "fixture-bin"
+    fake_bin.mkdir()
+    for name in ("crontab", "systemctl"):
+        refusal = fake_bin / name
+        refusal.write_text(
+            f"#!/bin/sh\nprintf '%s\\n' '{name}' >> \"$TRADEAI_TEST_SCHEDULER_REFUSALS\"\nexit 125\n",
+            encoding="utf-8",
+        )
+        refusal.chmod(0o755)
+    env["PATH"] = str(fake_bin) + ":" + env["PATH"]
+    yield env
+    assert not refusal_log.exists(), "unexpected scheduler probe reached the fixture refusal barrier"
 
 
 # ── 1. watchdog unit: a lock miss is a skip, not a failure ─────────────────────────────────────────
@@ -43,14 +77,15 @@ def test_watchdog_unit_waits_then_skips_cleanly_on_the_shared_lock():
     assert shadow["lock"] == "/tmp/tradeai-n8n-lab-watchdog.lock"  # still lock-equivalent with the unit
 
 
-def test_flock_conflict_exit_is_75_for_real(tmp_path):
+def test_flock_conflict_exit_is_75_for_real(tmp_path, scheduler_test_env):
     lock = tmp_path / "w.lock"
-    holder = subprocess.Popen(["flock", str(lock), "sleep", "3"])
+    # The holder execs its sleep so cleanup cannot orphan a grandchild.
+    holder = subprocess.Popen(["flock", "--no-fork", str(lock), "sleep", "3"], env=scheduler_test_env, cwd=tmp_path)
     try:
         for _ in range(50):
-            if subprocess.run(["flock", "-n", str(lock), "true"]).returncode != 0:
+            if subprocess.run(["flock", "-n", str(lock), "true"], env=scheduler_test_env, cwd=tmp_path).returncode != 0:
                 break
-        r = subprocess.run(["flock", "-w", "0.2", "-E", "75", str(lock), "true"])
+        r = subprocess.run(["flock", "-w", "0.2", "-E", "75", str(lock), "true"], env=scheduler_test_env, cwd=tmp_path)
         assert r.returncode == 75
     finally:
         holder.kill()
@@ -88,7 +123,7 @@ def test_inactive_workflow_rows_are_found_only_when_n8n_was_looked_at():
     assert lr.find_inactive_n8n_rows(reg, {"cron": []}) == []  # not measured is not "fine", nor a finding
 
 
-def test_the_gate_fails_on_an_active_row_whose_workflow_is_inactive(tmp_path):
+def test_the_gate_fails_on_an_active_row_whose_workflow_is_inactive(tmp_path, scheduler_test_env):
     reg = {"schema": "LaneRegistry@v1", "lanes": [_n8n_row("dead-lane", "wf-off")], "undeclared_baseline": []}
     regp = tmp_path / "reg.json"
     regp.write_text(json.dumps(reg))
@@ -106,12 +141,12 @@ def test_the_gate_fails_on_an_active_row_whose_workflow_is_inactive(tmp_path):
     ]
     disc.write_text(json.dumps({"cron": [], "systemd": [], "n8n": [{"kind": "n8n", "expression": "wf-other"}]}))
     (tmp_path / "none.json").write_text(json.dumps({"workflows": []}))
-    r = subprocess.run(cmd, capture_output=True, text=True, cwd=str(ROOT))
+    r = subprocess.run(cmd, capture_output=True, text=True, cwd=str(tmp_path), env=scheduler_test_env)
     assert r.returncode == 1 and "INACTIVE" not in r.stderr and "workflow wf-off is not active" in r.stdout, (
         r.stdout + r.stderr
     )
     disc.write_text(json.dumps({"cron": [], "systemd": [], "n8n": [{"kind": "n8n", "expression": "wf-off"}]}))
-    r = subprocess.run(cmd, capture_output=True, text=True, cwd=str(ROOT))
+    r = subprocess.run(cmd, capture_output=True, text=True, cwd=str(tmp_path), env=scheduler_test_env)
     assert r.returncode == 0 and "lane registry: clean" in r.stdout, r.stdout + r.stderr
 
 
@@ -265,9 +300,16 @@ def test_no_live_allowlist_entry_opts_in_without_review():
 # ── 5. lock cleanup never deletes ──────────────────────────────────────────────────────────────────
 
 
-def test_cleanup_stale_locks_is_report_only():
+def test_cleanup_stale_locks_is_report_only(tmp_path, scheduler_test_env):
     src = (ROOT / "scripts/cleanup_stale_locks.sh").read_text(encoding="utf-8")
     code = "\n".join(line for line in src.splitlines() if not line.lstrip().startswith("#"))
     assert "rm " not in code and "unlink" not in code
     assert "report-only" in code and "exit 0" in code
-    assert subprocess.run(["bash", "-n", str(ROOT / "scripts/cleanup_stale_locks.sh")]).returncode == 0
+    assert (
+        subprocess.run(
+            ["bash", "-n", str(ROOT / "scripts/cleanup_stale_locks.sh")],
+            env=scheduler_test_env,
+            cwd=tmp_path,
+        ).returncode
+        == 0
+    )

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import subprocess
 
 import pytest
 
@@ -10,6 +11,30 @@ from scripts.lib.agent_file_lease import LeaseCoordinator, paths_overlap
 from scripts.lib.agent_session_receipt import start_session
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+@pytest.fixture(autouse=True)
+def _owned_receipt_repository(tmp_path, monkeypatch, request):
+    """Session cases inspect a real seeded Git repository owned by this test."""
+    if request.node.name not in {
+        "test_mutating_unknown_client_fails",
+        "test_read_only_unknown_ok",
+        "test_mutating_requires_docs_attestation",
+    }:
+        return
+    repo = tmp_path / "session-repo"
+    repo.mkdir()
+    for args in (
+        ["init"],
+        ["config", "user.email", "session-fixture@example.test"],
+        ["config", "user.name", "Session Fixture"],
+    ):
+        subprocess.run(["git", *args], cwd=str(repo), check=True, capture_output=True, text=True)
+    (repo / "AGENTS.md").write_text("# Isolated session fixture policy\n", encoding="utf-8")
+    subprocess.run(["git", "add", "AGENTS.md"], cwd=str(repo), check=True, capture_output=True, text=True)
+    subprocess.run(["git", "commit", "-m", "seed"], cwd=str(repo), check=True, capture_output=True, text=True)
+    monkeypatch.setitem(globals(), "ROOT", repo)
+    monkeypatch.chdir(repo)
 
 
 def test_paths_overlap_parent_child():
@@ -152,7 +177,7 @@ def test_mutating_requires_docs_attestation(tmp_path: Path):
     assert any("DOCUMENTATION_ATTESTATION" in e for e in receipt["errors"])
 
 
-def test_mutating_with_docs_and_claims_ok(tmp_path: Path):
+def test_mutating_with_docs_and_claims_ok(tmp_path: Path, monkeypatch):
     """Hermetic: isolated hooked worktree — no ambient operator hooksPath required.
 
     CI runners have no ``core.hooksPath`` until ``install_ai_work_policy.sh`` runs.
@@ -195,6 +220,7 @@ def test_mutating_with_docs_and_claims_ok(tmp_path: Path):
     hp = subprocess.check_output(["git", "config", "--get", "core.hooksPath"], cwd=str(wt), text=True).strip()
     assert hp == ".githooks"
 
+    monkeypatch.chdir(wt)
     receipt = start_session(
         agent_id="grok",
         repo_root=wt,

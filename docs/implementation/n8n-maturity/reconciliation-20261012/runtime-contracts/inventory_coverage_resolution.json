@@ -1,0 +1,3581 @@
+{
+  "as_of": "2026-10-12T03:42:11.051528+00:00",
+  "authority_note": "This artifact proposes source joins and classifications. It grants nothing, confirms no owner and promotes no business mapping or retirement acceptance. Do not rewrite original observations or expand/reduce inventory denominator. Generic workflow, child-step and historical-trigger populations are distinct.",
+  "cio_parent_proposal": {
+    "accepted_business_mapping": "NOT_MEASURED",
+    "child_lane_id": "cio-wake-turn-effects",
+    "inventory_parent_rows": [
+      "timer:tradeai-cio-reactive.timer"
+    ],
+    "ownership_confirmation": "NOT_MEASURED",
+    "parent_scheduler_identity": "tradeai-cio-reactive.timer",
+    "parent_service_identity": "tradeai-cio-reactive.service",
+    "proposed_mapping_role": "CHILD_OUTPUT_EFFECT_OF_SHARED_CIO_REACTIVE_PARENT; preserve both source rows and one timer authority",
+    "proposed_parent_process_id": "cio-reactive-cycle",
+    "remaining_action": "Owner confirms that wake effects are an output/callback component of the same reactive turn, aligns both receipt/output identities and compares installed timer/service/drop-ins/code-root under appropriate read authority. Observe one natural turn with attributable parent/child artifacts. No financial or broker child code was investigated; no new scheduler, source row removal or business denominator change is proposed.",
+    "runtime": "NOT_MEASURED",
+    "source_declared_owner": "cio",
+    "source_entrypoint_receipts": {
+      "inner_execute_lane_id": "cio-reactive-cycle",
+      "main_wrapper_lane_id": "cio-wake-turn-effects",
+      "receipt_naming_note": "Wrapper and inner path use separate receipt identities; registry output names/accepted artifact relationship need owner review."
+    },
+    "source_parent_execstart": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/cio_reactive_cycle.py --once",
+    "source_refs": [
+      {
+        "line": 11,
+        "path": "config/systemd/user/tradeai-cio-reactive.service"
+      },
+      {
+        "line": 6,
+        "path": "config/systemd/user/tradeai-cio-reactive.timer"
+      },
+      {
+        "line": 630,
+        "path": "scripts/cio_reactive_cycle.py"
+      },
+      {
+        "line": 586,
+        "path": "scripts/cio_reactive_cycle.py"
+      }
+    ],
+    "source_registry_child": {
+      "declared_owner": "cio",
+      "lane_id": "cio-wake-turn-effects",
+      "scheduler_expression": "tradeai-cio-reactive.timer",
+      "scheduler_kind": "systemd",
+      "source_recommendation": "PIPELINE:P14",
+      "source_ref": "config/lane_registry.json#cio-wake-turn-effects",
+      "source_registry_state": "ACTIVE"
+    },
+    "source_registry_child_output_signal": {
+      "kind": "file_mtime",
+      "path": "data/cio/wake_turn_effects.jsonl"
+    },
+    "source_registry_parent": {
+      "declared_owner": "cio",
+      "lane_id": "cio-reactive-cycle",
+      "scheduler_expression": "tradeai-cio-reactive.timer",
+      "scheduler_kind": "systemd",
+      "source_recommendation": "PIPELINE:P14",
+      "source_ref": "config/lane_registry.json#cio-reactive-cycle",
+      "source_registry_state": "ACTIVE"
+    },
+    "source_registry_parent_output_signal": {
+      "kind": "file_mtime",
+      "path": "data/runtime/cio_reactive_cycle_last.json"
+    },
+    "source_timer_properties": {
+      "AccuracySec": [
+        "30s"
+      ],
+      "OnBootSec": [
+        "2min"
+      ],
+      "OnUnitActiveSec": [
+        "2min"
+      ],
+      "Persistent": [
+        "true"
+      ],
+      "Unit": []
+    },
+    "timer_service_binding": "Same-basename default service binding is a source inference because timer has no explicit Unit=; installed binding NOT_MEASURED."
+  },
+  "classification_proposals": [
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "classification_proposal_status": "SOURCE_METADATA_RECONCILED; OWNER_ACCEPTANCE_NOT_MEASURED",
+      "inv_id": "cron:L1052",
+      "original_classification": "",
+      "original_owner_declaration": "platform",
+      "original_row_changes_applied": false,
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_classification": "Retain as Existing Cron Job",
+      "proposed_target_disposition": "HOST_CRON_AUTHORITY; n8n may observe through approved existing coordination only",
+      "rationale": "Current source explicitly retains host cron. The incident notifier is the host communications gateway sender; bridge and diagnoser are host monitoring services. Classification does not authorize sends, model calls, scheduler changes or cutover.",
+      "review_authority": "Existing owner/operator; this proposal changes no authority",
+      "source_declared_owner": "platform",
+      "source_lane_id": "incident-notifier",
+      "source_recommendation": "KEEP_ON_CRON",
+      "source_refs": [
+        "config/lane_registry.json#incident-notifier",
+        "AGENTS.md#24.1",
+        "docs/implementation/n8n-maturity/N8N_MONITORING_AND_REMEDIATION_STANDARD.md"
+      ],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "classification_proposal_status": "SOURCE_METADATA_RECONCILED; OWNER_ACCEPTANCE_NOT_MEASURED",
+      "inv_id": "cron:NEW-n8n-siem-bridge",
+      "original_classification": "",
+      "original_owner_declaration": "",
+      "original_row_changes_applied": false,
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_classification": "Retain as Existing Cron Job",
+      "proposed_target_disposition": "HOST_CRON_AUTHORITY; n8n may observe through approved existing coordination only",
+      "rationale": "Current source explicitly retains host cron. The incident notifier is the host communications gateway sender; bridge and diagnoser are host monitoring services. Classification does not authorize sends, model calls, scheduler changes or cutover.",
+      "review_authority": "Existing owner/operator; this proposal changes no authority",
+      "source_declared_owner": "platform",
+      "source_lane_id": "n8n-siem-bridge",
+      "source_recommendation": "KEEP_ON_CRON",
+      "source_refs": [
+        "config/lane_registry.json#n8n-siem-bridge",
+        "AGENTS.md#24.1",
+        "docs/implementation/n8n-maturity/N8N_MONITORING_AND_REMEDIATION_STANDARD.md"
+      ],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "classification_proposal_status": "SOURCE_METADATA_RECONCILED; OWNER_ACCEPTANCE_NOT_MEASURED",
+      "inv_id": "cron:NEW-n8n-failure-diagnosis",
+      "original_classification": "",
+      "original_owner_declaration": "",
+      "original_row_changes_applied": false,
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_classification": "Retain as Existing Cron Job",
+      "proposed_target_disposition": "HOST_CRON_AUTHORITY; n8n may observe through approved existing coordination only",
+      "rationale": "Current source explicitly retains host cron. The incident notifier is the host communications gateway sender; bridge and diagnoser are host monitoring services. Classification does not authorize sends, model calls, scheduler changes or cutover.",
+      "review_authority": "Existing owner/operator; this proposal changes no authority",
+      "source_declared_owner": "platform",
+      "source_lane_id": "n8n-failure-diagnosis",
+      "source_recommendation": "KEEP_ON_CRON",
+      "source_refs": [
+        "config/lane_registry.json#n8n-failure-diagnosis",
+        "AGENTS.md#24.1",
+        "docs/implementation/n8n-maturity/N8N_MONITORING_AND_REMEDIATION_STANDARD.md"
+      ],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    }
+  ],
+  "counts": {
+    "accepted_business_mappings": "NOT_MEASURED",
+    "accepted_owner_confirmations": "NOT_MEASURED",
+    "classification_proposals": 3,
+    "explicit_retirement_collection_actions": 31,
+    "gap_active": 15,
+    "gap_by_source": {
+      "crontab": 39,
+      "health-tick": 13,
+      "n8n": 8,
+      "systemd-system-timer": 1
+    },
+    "gap_inactive": 46,
+    "original_inventory_rows": 679,
+    "original_registry_gaps": 61,
+    "proposed_bench_source_mappings": 2,
+    "proposed_exact_host_cron_mappings": 2,
+    "proposed_exact_retired_source_candidates": 0,
+    "proposed_generic_workflow_mappings": 6,
+    "proposed_health_tick_child_parent_mappings": 13,
+    "proposed_retired_parent_mappings": 7,
+    "source_mapping_status_partition": {
+      "EXPLICIT_RETIREMENT_COLLECTION_ACTION": 31,
+      "SOURCE_BENCH_ID_NAME_MATCH_PROPOSED": 2,
+      "SOURCE_CHILD_PARENT_MATCH_PROPOSED": 13,
+      "SOURCE_EXACT_MATCH_PROPOSED": 2,
+      "SOURCE_PARENT_CANDIDATE_FROM_RECORDED_RETIREMENT": 7,
+      "SOURCE_WORKFLOW_ID_TRIGGER_MATCH_PROPOSED": 6
+    }
+  },
+  "evidence_class": "SOURCE_ONLY_AND_ORIGINAL_WORKBOOK_SNAPSHOT",
+  "rows": [
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "cron:L115",
+      "join_evidence": [
+        {
+          "limitation": "No source identifier or successor is invented from wrapper/job-name resemblance.",
+          "recorded_retire_tag": "RETIRED_NO_AUTORESTORE_20260915 (superseded by run_watchlist_agent_jobs_offpeak.sh; script name masked so health_agent's containment auto-restore cannot revive it): # OFFPEAK_SOAK 2026-08-19 replaced ",
+          "snapshot_active": "no",
+          "snapshot_migration_status": "Retired",
+          "source_refs": [
+            "Inventory#cron:L115"
+          ],
+          "source_script_exists": {},
+          "type": "SNAPSHOT_RETIREMENT_OR_DISABLED_STATE"
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "no",
+        "classification": "Candidate for Retirement",
+        "declared_owner": "UNKNOWN",
+        "job_name": "timeout",
+        "migration_status": "Retired",
+        "parent": "",
+        "registry_row": "NONE",
+        "retire_tag": "RETIRED_NO_AUTORESTORE_20260915 (superseded by run_watchlist_agent_jobs_offpeak.sh; script name masked so health_agent's containment auto-restore cannot revive it): # OFFPEAK_SOAK 2026-08-19 replaced ",
+        "schedule_expr": "*/10 * * * 0,6",
+        "source": "crontab"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "PRESERVE_HISTORICAL_TRIGGER_PENDING_ARCHIVE_OR_PARENT_PROOF",
+      "remaining_action": "Retirement/parent collection: preserve this exact original trigger and retirement/disabled tag; obtain archived operator decision, exact installed inactive/commented trigger, no-auto-restore tripwire and accepted successor business/output coverage where applicable. Collect declared owner confirmation separately. Do not re-enable disabled local generation, credentials, broker or paper-execution paths; protected child investigation needs its own task grant.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [],
+      "source_candidate": null,
+      "source_declared_owner": "NOT_MEASURED",
+      "source_mapping_status": "EXPLICIT_RETIREMENT_COLLECTION_ACTION",
+      "source_script_identifiers": [],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "cron:L121",
+      "join_evidence": [
+        {
+          "limitation": "No source identifier or successor is invented from wrapper/job-name resemblance.",
+          "recorded_retire_tag": "RETIRED_NO_AUTORESTORE_20260915 (superseded by run_watchlist_agent_jobs_offpeak.sh; script name masked so health_agent's containment auto-restore cannot revive it): # CONTAINED_DELIBERATE 2026-08-04 w",
+          "snapshot_active": "no",
+          "snapshot_migration_status": "Retired",
+          "source_refs": [
+            "Inventory#cron:L121"
+          ],
+          "source_script_exists": {},
+          "type": "SNAPSHOT_RETIREMENT_OR_DISABLED_STATE"
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "no",
+        "classification": "Candidate for Retirement",
+        "declared_owner": "UNKNOWN",
+        "job_name": "15",
+        "migration_status": "Retired",
+        "parent": "",
+        "registry_row": "NONE",
+        "retire_tag": "RETIRED_NO_AUTORESTORE_20260915 (superseded by run_watchlist_agent_jobs_offpeak.sh; script name masked so health_agent's containment auto-restore cannot revive it): # CONTAINED_DELIBERATE 2026-08-04 w",
+        "schedule_expr": "*/15 6-19 * * 1-5",
+        "source": "crontab"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "PRESERVE_HISTORICAL_TRIGGER_PENDING_ARCHIVE_OR_PARENT_PROOF",
+      "remaining_action": "Retirement/parent collection: preserve this exact original trigger and retirement/disabled tag; obtain archived operator decision, exact installed inactive/commented trigger, no-auto-restore tripwire and accepted successor business/output coverage where applicable. Collect declared owner confirmation separately. Do not re-enable disabled local generation, credentials, broker or paper-execution paths; protected child investigation needs its own task grant.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [],
+      "source_candidate": null,
+      "source_declared_owner": "NOT_MEASURED",
+      "source_mapping_status": "EXPLICIT_RETIREMENT_COLLECTION_ACTION",
+      "source_script_identifiers": [],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "cron:L122",
+      "join_evidence": [
+        {
+          "limitation": "No source identifier or successor is invented from wrapper/job-name resemblance.",
+          "recorded_retire_tag": "RETIRED_NO_AUTORESTORE_20260915 (superseded by run_watchlist_agent_jobs_offpeak.sh; script name masked so health_agent's containment auto-restore cannot revive it): # AS_NEEDED_ONLY 2026-08-19 bulk mo",
+          "snapshot_active": "no",
+          "snapshot_migration_status": "Retired",
+          "source_refs": [
+            "Inventory#cron:L122"
+          ],
+          "source_script_exists": {},
+          "type": "SNAPSHOT_RETIREMENT_OR_DISABLED_STATE"
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "no",
+        "classification": "Candidate for Retirement",
+        "declared_owner": "UNKNOWN",
+        "job_name": "timeout",
+        "migration_status": "Retired",
+        "parent": "",
+        "registry_row": "NONE",
+        "retire_tag": "RETIRED_NO_AUTORESTORE_20260915 (superseded by run_watchlist_agent_jobs_offpeak.sh; script name masked so health_agent's containment auto-restore cannot revive it): # AS_NEEDED_ONLY 2026-08-19 bulk mo",
+        "schedule_expr": "*/15 6-19 * * 1-5",
+        "source": "crontab"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "PRESERVE_HISTORICAL_TRIGGER_PENDING_ARCHIVE_OR_PARENT_PROOF",
+      "remaining_action": "Retirement/parent collection: preserve this exact original trigger and retirement/disabled tag; obtain archived operator decision, exact installed inactive/commented trigger, no-auto-restore tripwire and accepted successor business/output coverage where applicable. Collect declared owner confirmation separately. Do not re-enable disabled local generation, credentials, broker or paper-execution paths; protected child investigation needs its own task grant.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [],
+      "source_candidate": null,
+      "source_declared_owner": "NOT_MEASURED",
+      "source_mapping_status": "EXPLICIT_RETIREMENT_COLLECTION_ACTION",
+      "source_script_identifiers": [],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "cron:L126",
+      "join_evidence": [
+        {
+          "limitation": "No source identifier or successor is invented from wrapper/job-name resemblance.",
+          "recorded_retire_tag": "RETIRED_NO_AUTORESTORE_20260915 (superseded by run_watchlist_agent_jobs_offpeak.sh; script name masked so health_agent's containment auto-restore cannot revive it): # OFFPEAK_SOAK 2026-08-19 replaced ",
+          "snapshot_active": "no",
+          "snapshot_migration_status": "Retired",
+          "source_refs": [
+            "Inventory#cron:L126"
+          ],
+          "source_script_exists": {},
+          "type": "SNAPSHOT_RETIREMENT_OR_DISABLED_STATE"
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "no",
+        "classification": "Candidate for Retirement",
+        "declared_owner": "UNKNOWN",
+        "job_name": "{",
+        "migration_status": "Retired",
+        "parent": "",
+        "registry_row": "NONE",
+        "retire_tag": "RETIRED_NO_AUTORESTORE_20260915 (superseded by run_watchlist_agent_jobs_offpeak.sh; script name masked so health_agent's containment auto-restore cannot revive it): # OFFPEAK_SOAK 2026-08-19 replaced ",
+        "schedule_expr": "*/5 0-5 * * 1-6",
+        "source": "crontab"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "PRESERVE_HISTORICAL_TRIGGER_PENDING_ARCHIVE_OR_PARENT_PROOF",
+      "remaining_action": "Retirement/parent collection: preserve this exact original trigger and retirement/disabled tag; obtain archived operator decision, exact installed inactive/commented trigger, no-auto-restore tripwire and accepted successor business/output coverage where applicable. Collect declared owner confirmation separately. Do not re-enable disabled local generation, credentials, broker or paper-execution paths; protected child investigation needs its own task grant.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [],
+      "source_candidate": null,
+      "source_declared_owner": "NOT_MEASURED",
+      "source_mapping_status": "EXPLICIT_RETIREMENT_COLLECTION_ACTION",
+      "source_script_identifiers": [],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "cron:L127",
+      "join_evidence": [
+        {
+          "limitation": "No source identifier or successor is invented from wrapper/job-name resemblance.",
+          "recorded_retire_tag": "RETIRED_NO_AUTORESTORE_20260915 (superseded by run_watchlist_agent_jobs_offpeak.sh; script name masked so health_agent's containment auto-restore cannot revive it): # OFFPEAK_SOAK 2026-08-19 replaced ",
+          "snapshot_active": "no",
+          "snapshot_migration_status": "Retired",
+          "source_refs": [
+            "Inventory#cron:L127"
+          ],
+          "source_script_exists": {},
+          "type": "SNAPSHOT_RETIREMENT_OR_DISABLED_STATE"
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "no",
+        "classification": "Candidate for Retirement",
+        "declared_owner": "UNKNOWN",
+        "job_name": "{",
+        "migration_status": "Retired",
+        "parent": "",
+        "registry_row": "NONE",
+        "retire_tag": "RETIRED_NO_AUTORESTORE_20260915 (superseded by run_watchlist_agent_jobs_offpeak.sh; script name masked so health_agent's containment auto-restore cannot revive it): # OFFPEAK_SOAK 2026-08-19 replaced ",
+        "schedule_expr": "*/5 20-23 * * 1-5",
+        "source": "crontab"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "PRESERVE_HISTORICAL_TRIGGER_PENDING_ARCHIVE_OR_PARENT_PROOF",
+      "remaining_action": "Retirement/parent collection: preserve this exact original trigger and retirement/disabled tag; obtain archived operator decision, exact installed inactive/commented trigger, no-auto-restore tripwire and accepted successor business/output coverage where applicable. Collect declared owner confirmation separately. Do not re-enable disabled local generation, credentials, broker or paper-execution paths; protected child investigation needs its own task grant.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [],
+      "source_candidate": null,
+      "source_declared_owner": "NOT_MEASURED",
+      "source_mapping_status": "EXPLICIT_RETIREMENT_COLLECTION_ACTION",
+      "source_script_identifiers": [],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "cron:L143",
+      "join_evidence": [
+        {
+          "limitation": "Historical retirement text supplies proposed relationship; source parent existence does not prove replacement coverage or accepted retirement.",
+          "recorded_retirement_tag": "RETIRED 2026-10-08 (folded into advice-digest, PR #1530, operator):",
+          "source_refs": [
+            "config/lane_registry.json#advice-digest",
+            "Inventory#cron:L143"
+          ],
+          "type": "SNAPSHOT_RETIREMENT_NAMES_EXISTING_SOURCE_PARENT"
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "no",
+        "classification": "Candidate for Retirement",
+        "declared_owner": "UNKNOWN",
+        "job_name": "send_alert_digest.py",
+        "migration_status": "Retired",
+        "parent": "",
+        "registry_row": "NONE",
+        "retire_tag": "RETIRED 2026-10-08 (folded into advice-digest, PR #1530, operator):",
+        "schedule_expr": "0 16 * * 1-5",
+        "source": "crontab"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "RETIRED_TRIGGER_TO_SUCCESSOR_PARENT_REVIEW",
+      "remaining_action": "Retirement/parent collection: preserve this exact original trigger and retirement/disabled tag; obtain archived operator decision, exact installed inactive/commented trigger, no-auto-restore tripwire and accepted successor business/output coverage where applicable. Collect declared owner confirmation separately. Do not re-enable disabled local generation, credentials, broker or paper-execution paths; protected child investigation needs its own task grant.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [
+        {
+          "declared_owner": "comms",
+          "lane_id": "advice-digest",
+          "scheduler_expression": "0 10,15,17 * * 1-5",
+          "scheduler_kind": "cron",
+          "source_recommendation": "KEEP_ON_CRON",
+          "source_ref": "config/lane_registry.json#advice-digest",
+          "source_registry_state": "ACTIVE"
+        }
+      ],
+      "source_candidate": {
+        "declared_owner": "comms",
+        "lane_id": "advice-digest",
+        "scheduler_expression": "0 10,15,17 * * 1-5",
+        "scheduler_kind": "cron",
+        "source_recommendation": "KEEP_ON_CRON",
+        "source_ref": "config/lane_registry.json#advice-digest",
+        "source_registry_state": "ACTIVE"
+      },
+      "source_declared_owner": "comms",
+      "source_mapping_status": "SOURCE_PARENT_CANDIDATE_FROM_RECORDED_RETIREMENT",
+      "source_script_identifiers": [
+        "scripts/market_day_gate.sh",
+        "scripts/send_alert_digest.py"
+      ],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "cron:L144",
+      "join_evidence": [
+        {
+          "limitation": "No source identifier or successor is invented from wrapper/job-name resemblance.",
+          "recorded_retire_tag": "PHASE102-RETIRED",
+          "snapshot_active": "no",
+          "snapshot_migration_status": "Retired",
+          "source_refs": [
+            "Inventory#cron:L144"
+          ],
+          "source_script_exists": {
+            "scripts/run_deep_overnight_llm_window.sh": true
+          },
+          "type": "SNAPSHOT_RETIREMENT_OR_DISABLED_STATE"
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "no",
+        "classification": "Candidate for Retirement",
+        "declared_owner": "UNKNOWN",
+        "job_name": "run_deep_overnight_llm_window.sh",
+        "migration_status": "Retired",
+        "parent": "",
+        "registry_row": "NONE",
+        "retire_tag": "PHASE102-RETIRED",
+        "schedule_expr": "0 16 * * 5",
+        "source": "crontab"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "PRESERVE_HISTORICAL_TRIGGER_PENDING_ARCHIVE_OR_PARENT_PROOF",
+      "remaining_action": "Retirement/parent collection: preserve this exact original trigger and retirement/disabled tag; obtain archived operator decision, exact installed inactive/commented trigger, no-auto-restore tripwire and accepted successor business/output coverage where applicable. Collect declared owner confirmation separately. Do not re-enable disabled local generation, credentials, broker or paper-execution paths; protected child investigation needs its own task grant.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [],
+      "source_candidate": null,
+      "source_declared_owner": "NOT_MEASURED",
+      "source_mapping_status": "EXPLICIT_RETIREMENT_COLLECTION_ACTION",
+      "source_script_identifiers": [
+        "scripts/run_deep_overnight_llm_window.sh"
+      ],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "cron:L146",
+      "join_evidence": [
+        {
+          "limitation": "No source identifier or successor is invented from wrapper/job-name resemblance.",
+          "recorded_retire_tag": "PHASE41-MIGRATED",
+          "snapshot_active": "no",
+          "snapshot_migration_status": "Retired",
+          "source_refs": [
+            "Inventory#cron:L146"
+          ],
+          "source_script_exists": {
+            "scripts/run_scheduled_system_facts.sh": true
+          },
+          "type": "SNAPSHOT_RETIREMENT_OR_DISABLED_STATE"
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "no",
+        "classification": "Candidate for Retirement",
+        "declared_owner": "UNKNOWN",
+        "job_name": "run_scheduled_system_facts.sh",
+        "migration_status": "Retired",
+        "parent": "",
+        "registry_row": "NONE",
+        "retire_tag": "PHASE41-MIGRATED",
+        "schedule_expr": "0 18 * * 0",
+        "source": "crontab"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "PRESERVE_HISTORICAL_TRIGGER_PENDING_ARCHIVE_OR_PARENT_PROOF",
+      "remaining_action": "Retirement/parent collection: preserve this exact original trigger and retirement/disabled tag; obtain archived operator decision, exact installed inactive/commented trigger, no-auto-restore tripwire and accepted successor business/output coverage where applicable. Collect declared owner confirmation separately. Do not re-enable disabled local generation, credentials, broker or paper-execution paths; protected child investigation needs its own task grant.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [],
+      "source_candidate": null,
+      "source_declared_owner": "NOT_MEASURED",
+      "source_mapping_status": "EXPLICIT_RETIREMENT_COLLECTION_ACTION",
+      "source_script_identifiers": [
+        "scripts/run_scheduled_system_facts.sh"
+      ],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "cron:L149",
+      "join_evidence": [
+        {
+          "limitation": "No source identifier or successor is invented from wrapper/job-name resemblance.",
+          "recorded_retire_tag": "PHASE102-RETIRED",
+          "snapshot_active": "no",
+          "snapshot_migration_status": "Retired",
+          "source_refs": [
+            "Inventory#cron:L149"
+          ],
+          "source_script_exists": {
+            "scripts/market_day_gate.sh": true,
+            "scripts/overnight_batch.py": true
+          },
+          "type": "SNAPSHOT_RETIREMENT_OR_DISABLED_STATE"
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "no",
+        "classification": "Candidate for Retirement",
+        "declared_owner": "UNKNOWN",
+        "job_name": "overnight_batch.py",
+        "migration_status": "Retired",
+        "parent": "",
+        "registry_row": "NONE",
+        "retire_tag": "PHASE102-RETIRED",
+        "schedule_expr": "0 20 * * 1-5",
+        "source": "crontab"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "PRESERVE_HISTORICAL_TRIGGER_PENDING_ARCHIVE_OR_PARENT_PROOF",
+      "remaining_action": "Retirement/parent collection: preserve this exact original trigger and retirement/disabled tag; obtain archived operator decision, exact installed inactive/commented trigger, no-auto-restore tripwire and accepted successor business/output coverage where applicable. Collect declared owner confirmation separately. Do not re-enable disabled local generation, credentials, broker or paper-execution paths; protected child investigation needs its own task grant.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [],
+      "source_candidate": null,
+      "source_declared_owner": "NOT_MEASURED",
+      "source_mapping_status": "EXPLICIT_RETIREMENT_COLLECTION_ACTION",
+      "source_script_identifiers": [
+        "scripts/market_day_gate.sh",
+        "scripts/overnight_batch.py"
+      ],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "cron:L155",
+      "join_evidence": [
+        {
+          "limitation": "No source identifier or successor is invented from wrapper/job-name resemblance.",
+          "recorded_retire_tag": "PHASE102-RETIRED",
+          "snapshot_active": "no",
+          "snapshot_migration_status": "Retired",
+          "source_refs": [
+            "Inventory#cron:L155"
+          ],
+          "source_script_exists": {
+            "scripts/run_deep_overnight_llm_window.sh": true
+          },
+          "type": "SNAPSHOT_RETIREMENT_OR_DISABLED_STATE"
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "no",
+        "classification": "Candidate for Retirement",
+        "declared_owner": "UNKNOWN",
+        "job_name": "run_deep_overnight_llm_window.sh",
+        "migration_status": "Retired",
+        "parent": "",
+        "registry_row": "NONE",
+        "retire_tag": "PHASE102-RETIRED",
+        "schedule_expr": "0 23 * * *",
+        "source": "crontab"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "PRESERVE_HISTORICAL_TRIGGER_PENDING_ARCHIVE_OR_PARENT_PROOF",
+      "remaining_action": "Retirement/parent collection: preserve this exact original trigger and retirement/disabled tag; obtain archived operator decision, exact installed inactive/commented trigger, no-auto-restore tripwire and accepted successor business/output coverage where applicable. Collect declared owner confirmation separately. Do not re-enable disabled local generation, credentials, broker or paper-execution paths; protected child investigation needs its own task grant.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [],
+      "source_candidate": null,
+      "source_declared_owner": "NOT_MEASURED",
+      "source_mapping_status": "EXPLICIT_RETIREMENT_COLLECTION_ACTION",
+      "source_script_identifiers": [
+        "scripts/run_deep_overnight_llm_window.sh"
+      ],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "cron:L163",
+      "join_evidence": [
+        {
+          "limitation": "No source identifier or successor is invented from wrapper/job-name resemblance.",
+          "recorded_retire_tag": "PHASE41-MIGRATED",
+          "snapshot_active": "no",
+          "snapshot_migration_status": "Retired",
+          "source_refs": [
+            "Inventory#cron:L163"
+          ],
+          "source_script_exists": {
+            "scripts/report_operator_readiness_summary.py": true
+          },
+          "type": "SNAPSHOT_RETIREMENT_OR_DISABLED_STATE"
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "no",
+        "classification": "Candidate for Retirement",
+        "declared_owner": "UNKNOWN",
+        "job_name": "report_operator_readiness_summary.py",
+        "migration_status": "Retired",
+        "parent": "",
+        "registry_row": "NONE",
+        "retire_tag": "PHASE41-MIGRATED",
+        "schedule_expr": "0 8 * * 1-5",
+        "source": "crontab"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "PRESERVE_HISTORICAL_TRIGGER_PENDING_ARCHIVE_OR_PARENT_PROOF",
+      "remaining_action": "Retirement/parent collection: preserve this exact original trigger and retirement/disabled tag; obtain archived operator decision, exact installed inactive/commented trigger, no-auto-restore tripwire and accepted successor business/output coverage where applicable. Collect declared owner confirmation separately. Do not re-enable disabled local generation, credentials, broker or paper-execution paths; protected child investigation needs its own task grant.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [],
+      "source_candidate": null,
+      "source_declared_owner": "NOT_MEASURED",
+      "source_mapping_status": "EXPLICIT_RETIREMENT_COLLECTION_ACTION",
+      "source_script_identifiers": [
+        "scripts/report_operator_readiness_summary.py"
+      ],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "cron:L165",
+      "join_evidence": [
+        {
+          "limitation": "Historical retirement text supplies proposed relationship; source parent existence does not prove replacement coverage or accepted retirement.",
+          "recorded_retirement_tag": "RETIRED 2026-10-08 (folded into advice-digest, PR #1530, operator):",
+          "source_refs": [
+            "config/lane_registry.json#advice-digest",
+            "Inventory#cron:L165"
+          ],
+          "type": "SNAPSHOT_RETIREMENT_NAMES_EXISTING_SOURCE_PARENT"
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "no",
+        "classification": "Candidate for Retirement",
+        "declared_owner": "UNKNOWN",
+        "job_name": "send_alert_digest.py",
+        "migration_status": "Retired",
+        "parent": "",
+        "registry_row": "NONE",
+        "retire_tag": "RETIRED 2026-10-08 (folded into advice-digest, PR #1530, operator):",
+        "schedule_expr": "0 8 * * 1-5",
+        "source": "crontab"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "RETIRED_TRIGGER_TO_SUCCESSOR_PARENT_REVIEW",
+      "remaining_action": "Retirement/parent collection: preserve this exact original trigger and retirement/disabled tag; obtain archived operator decision, exact installed inactive/commented trigger, no-auto-restore tripwire and accepted successor business/output coverage where applicable. Collect declared owner confirmation separately. Do not re-enable disabled local generation, credentials, broker or paper-execution paths; protected child investigation needs its own task grant.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [
+        {
+          "declared_owner": "comms",
+          "lane_id": "advice-digest",
+          "scheduler_expression": "0 10,15,17 * * 1-5",
+          "scheduler_kind": "cron",
+          "source_recommendation": "KEEP_ON_CRON",
+          "source_ref": "config/lane_registry.json#advice-digest",
+          "source_registry_state": "ACTIVE"
+        }
+      ],
+      "source_candidate": {
+        "declared_owner": "comms",
+        "lane_id": "advice-digest",
+        "scheduler_expression": "0 10,15,17 * * 1-5",
+        "scheduler_kind": "cron",
+        "source_recommendation": "KEEP_ON_CRON",
+        "source_ref": "config/lane_registry.json#advice-digest",
+        "source_registry_state": "ACTIVE"
+      },
+      "source_declared_owner": "comms",
+      "source_mapping_status": "SOURCE_PARENT_CANDIDATE_FROM_RECORDED_RETIREMENT",
+      "source_script_identifiers": [
+        "scripts/market_day_gate.sh",
+        "scripts/send_alert_digest.py"
+      ],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "cron:L171",
+      "join_evidence": [
+        {
+          "limitation": "No source identifier or successor is invented from wrapper/job-name resemblance.",
+          "recorded_retire_tag": "PHASE41-MIGRATED",
+          "snapshot_active": "no",
+          "snapshot_migration_status": "Retired",
+          "source_refs": [
+            "Inventory#cron:L171"
+          ],
+          "source_script_exists": {
+            "scripts/report_governance_status.py": true
+          },
+          "type": "SNAPSHOT_RETIREMENT_OR_DISABLED_STATE"
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "no",
+        "classification": "Candidate for Retirement",
+        "declared_owner": "UNKNOWN",
+        "job_name": "report_governance_status.py",
+        "migration_status": "Retired",
+        "parent": "",
+        "registry_row": "NONE",
+        "retire_tag": "PHASE41-MIGRATED",
+        "schedule_expr": "10 18 * * 0",
+        "source": "crontab"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "PRESERVE_HISTORICAL_TRIGGER_PENDING_ARCHIVE_OR_PARENT_PROOF",
+      "remaining_action": "Retirement/parent collection: preserve this exact original trigger and retirement/disabled tag; obtain archived operator decision, exact installed inactive/commented trigger, no-auto-restore tripwire and accepted successor business/output coverage where applicable. Collect declared owner confirmation separately. Do not re-enable disabled local generation, credentials, broker or paper-execution paths; protected child investigation needs its own task grant.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [],
+      "source_candidate": null,
+      "source_declared_owner": "NOT_MEASURED",
+      "source_mapping_status": "EXPLICIT_RETIREMENT_COLLECTION_ACTION",
+      "source_script_identifiers": [
+        "scripts/report_governance_status.py"
+      ],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "cron:L172",
+      "join_evidence": [
+        {
+          "limitation": "No source identifier or successor is invented from wrapper/job-name resemblance.",
+          "recorded_retire_tag": "PHASE41-MIGRATED",
+          "snapshot_active": "no",
+          "snapshot_migration_status": "Retired",
+          "source_refs": [
+            "Inventory#cron:L172"
+          ],
+          "source_script_exists": {
+            "scripts/run_scheduled_maturity_control_board.sh": true
+          },
+          "type": "SNAPSHOT_RETIREMENT_OR_DISABLED_STATE"
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "no",
+        "classification": "Candidate for Retirement",
+        "declared_owner": "UNKNOWN",
+        "job_name": "run_scheduled_maturity_control_board.sh",
+        "migration_status": "Retired",
+        "parent": "",
+        "registry_row": "NONE",
+        "retire_tag": "PHASE41-MIGRATED",
+        "schedule_expr": "15 18 * * 0",
+        "source": "crontab"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "PRESERVE_HISTORICAL_TRIGGER_PENDING_ARCHIVE_OR_PARENT_PROOF",
+      "remaining_action": "Retirement/parent collection: preserve this exact original trigger and retirement/disabled tag; obtain archived operator decision, exact installed inactive/commented trigger, no-auto-restore tripwire and accepted successor business/output coverage where applicable. Collect declared owner confirmation separately. Do not re-enable disabled local generation, credentials, broker or paper-execution paths; protected child investigation needs its own task grant.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [],
+      "source_candidate": null,
+      "source_declared_owner": "NOT_MEASURED",
+      "source_mapping_status": "EXPLICIT_RETIREMENT_COLLECTION_ACTION",
+      "source_script_identifiers": [
+        "scripts/run_scheduled_maturity_control_board.sh"
+      ],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "cron:L182",
+      "join_evidence": [
+        {
+          "limitation": "No source identifier or successor is invented from wrapper/job-name resemblance.",
+          "recorded_retire_tag": "PHASE41-MIGRATED",
+          "snapshot_active": "no",
+          "snapshot_migration_status": "Retired",
+          "source_refs": [
+            "Inventory#cron:L182"
+          ],
+          "source_script_exists": {
+            "scripts/report_operator_readiness_summary.py": true
+          },
+          "type": "SNAPSHOT_RETIREMENT_OR_DISABLED_STATE"
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "no",
+        "classification": "Candidate for Retirement",
+        "declared_owner": "UNKNOWN",
+        "job_name": "report_operator_readiness_summary.py",
+        "migration_status": "Retired",
+        "parent": "",
+        "registry_row": "NONE",
+        "retire_tag": "PHASE41-MIGRATED",
+        "schedule_expr": "20 18 * * 0",
+        "source": "crontab"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "PRESERVE_HISTORICAL_TRIGGER_PENDING_ARCHIVE_OR_PARENT_PROOF",
+      "remaining_action": "Retirement/parent collection: preserve this exact original trigger and retirement/disabled tag; obtain archived operator decision, exact installed inactive/commented trigger, no-auto-restore tripwire and accepted successor business/output coverage where applicable. Collect declared owner confirmation separately. Do not re-enable disabled local generation, credentials, broker or paper-execution paths; protected child investigation needs its own task grant.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [],
+      "source_candidate": null,
+      "source_declared_owner": "NOT_MEASURED",
+      "source_mapping_status": "EXPLICIT_RETIREMENT_COLLECTION_ACTION",
+      "source_script_identifiers": [
+        "scripts/report_operator_readiness_summary.py"
+      ],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "cron:L195",
+      "join_evidence": [
+        {
+          "limitation": "Historical retirement text supplies proposed relationship; source parent existence does not prove replacement coverage or accepted retirement.",
+          "recorded_retirement_tag": "RETIRED 2026-10-08 (folded into advice-digest, PR #1530, operator):",
+          "source_refs": [
+            "config/lane_registry.json#advice-digest",
+            "Inventory#cron:L195"
+          ],
+          "type": "SNAPSHOT_RETIREMENT_NAMES_EXISTING_SOURCE_PARENT"
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "no",
+        "classification": "Candidate for Retirement",
+        "declared_owner": "UNKNOWN",
+        "job_name": "run_closed_trade_digest_cron.sh",
+        "migration_status": "Retired",
+        "parent": "",
+        "registry_row": "NONE",
+        "retire_tag": "RETIRED 2026-10-08 (folded into advice-digest, PR #1530, operator):",
+        "schedule_expr": "30 16 * * 1-5",
+        "source": "crontab"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "RETIRED_TRIGGER_TO_SUCCESSOR_PARENT_REVIEW",
+      "remaining_action": "Retirement/parent collection: preserve this exact original trigger and retirement/disabled tag; obtain archived operator decision, exact installed inactive/commented trigger, no-auto-restore tripwire and accepted successor business/output coverage where applicable. Collect declared owner confirmation separately. Do not re-enable disabled local generation, credentials, broker or paper-execution paths; protected child investigation needs its own task grant.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [
+        {
+          "declared_owner": "comms",
+          "lane_id": "advice-digest",
+          "scheduler_expression": "0 10,15,17 * * 1-5",
+          "scheduler_kind": "cron",
+          "source_recommendation": "KEEP_ON_CRON",
+          "source_ref": "config/lane_registry.json#advice-digest",
+          "source_registry_state": "ACTIVE"
+        }
+      ],
+      "source_candidate": {
+        "declared_owner": "comms",
+        "lane_id": "advice-digest",
+        "scheduler_expression": "0 10,15,17 * * 1-5",
+        "scheduler_kind": "cron",
+        "source_recommendation": "KEEP_ON_CRON",
+        "source_ref": "config/lane_registry.json#advice-digest",
+        "source_registry_state": "ACTIVE"
+      },
+      "source_declared_owner": "comms",
+      "source_mapping_status": "SOURCE_PARENT_CANDIDATE_FROM_RECORDED_RETIREMENT",
+      "source_script_identifiers": [
+        "scripts/run_closed_trade_digest_cron.sh"
+      ],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "cron:L198",
+      "join_evidence": [
+        {
+          "limitation": "No source identifier or successor is invented from wrapper/job-name resemblance.",
+          "recorded_retire_tag": "R9_DISABLED_LOCAL_GENERATIVE 2026-08-23",
+          "snapshot_active": "no",
+          "snapshot_migration_status": "Retired",
+          "source_refs": [
+            "Inventory#cron:L198"
+          ],
+          "source_script_exists": {
+            "scripts/gemma3_calibration_scorer.py": true
+          },
+          "type": "SNAPSHOT_RETIREMENT_OR_DISABLED_STATE"
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "no",
+        "classification": "Candidate for Retirement",
+        "declared_owner": "UNKNOWN",
+        "job_name": "gemma3_calibration_scorer.py",
+        "migration_status": "Retired",
+        "parent": "",
+        "registry_row": "NONE",
+        "retire_tag": "R9_DISABLED_LOCAL_GENERATIVE 2026-08-23",
+        "schedule_expr": "30 21 * * 1-5",
+        "source": "crontab"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "PRESERVE_HISTORICAL_TRIGGER_PENDING_ARCHIVE_OR_PARENT_PROOF",
+      "remaining_action": "Retirement/parent collection: preserve this exact original trigger and retirement/disabled tag; obtain archived operator decision, exact installed inactive/commented trigger, no-auto-restore tripwire and accepted successor business/output coverage where applicable. Collect declared owner confirmation separately. Do not re-enable disabled local generation, credentials, broker or paper-execution paths; protected child investigation needs its own task grant.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [],
+      "source_candidate": null,
+      "source_declared_owner": "NOT_MEASURED",
+      "source_mapping_status": "EXPLICIT_RETIREMENT_COLLECTION_ACTION",
+      "source_script_identifiers": [
+        "scripts/gemma3_calibration_scorer.py"
+      ],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "cron:L201",
+      "join_evidence": [
+        {
+          "limitation": "Historical retirement text supplies proposed relationship; source parent existence does not prove replacement coverage or accepted retirement.",
+          "recorded_retirement_tag": "RETIRED_DUPLICATE (W0-7 2026-09-27 duplicate of recovery-watch.timer (Mon-Fri 07:30)) was:",
+          "source_refs": [
+            "config/lane_registry.json#recovery-watch",
+            "Inventory#cron:L201"
+          ],
+          "type": "SNAPSHOT_RETIREMENT_NAMES_EXISTING_SOURCE_PARENT"
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "no",
+        "classification": "Candidate for Retirement",
+        "declared_owner": "UNKNOWN",
+        "job_name": "recovery_watch_daily.py",
+        "migration_status": "Retired",
+        "parent": "",
+        "registry_row": "NONE",
+        "retire_tag": "RETIRED_DUPLICATE (W0-7 2026-09-27 duplicate of recovery-watch.timer (Mon-Fri 07:30)) was:",
+        "schedule_expr": "30 7 * * 1-5",
+        "source": "crontab"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "RETIRED_TRIGGER_TO_SUCCESSOR_PARENT_REVIEW",
+      "remaining_action": "Retirement/parent collection: preserve this exact original trigger and retirement/disabled tag; obtain archived operator decision, exact installed inactive/commented trigger, no-auto-restore tripwire and accepted successor business/output coverage where applicable. Collect declared owner confirmation separately. Do not re-enable disabled local generation, credentials, broker or paper-execution paths; protected child investigation needs its own task grant.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [
+        {
+          "declared_owner": "platform",
+          "lane_id": "recovery-watch",
+          "scheduler_expression": "recovery-watch.timer",
+          "scheduler_kind": "systemd",
+          "source_recommendation": "KEEP_ON_CRON",
+          "source_ref": "config/lane_registry.json#recovery-watch",
+          "source_registry_state": "ACTIVE"
+        }
+      ],
+      "source_candidate": {
+        "declared_owner": "platform",
+        "lane_id": "recovery-watch",
+        "scheduler_expression": "recovery-watch.timer",
+        "scheduler_kind": "systemd",
+        "source_recommendation": "KEEP_ON_CRON",
+        "source_ref": "config/lane_registry.json#recovery-watch",
+        "source_registry_state": "ACTIVE"
+      },
+      "source_declared_owner": "platform",
+      "source_mapping_status": "SOURCE_PARENT_CANDIDATE_FROM_RECORDED_RETIREMENT",
+      "source_script_identifiers": [
+        "scripts/recovery_watch_daily.py"
+      ],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "cron:L209",
+      "join_evidence": [
+        {
+          "limitation": "No source identifier or successor is invented from wrapper/job-name resemblance.",
+          "recorded_retire_tag": "PHASE41-MIGRATED",
+          "snapshot_active": "no",
+          "snapshot_migration_status": "Retired",
+          "source_refs": [
+            "Inventory#cron:L209"
+          ],
+          "source_script_exists": {
+            "scripts/run_scheduled_system_facts.sh": true
+          },
+          "type": "SNAPSHOT_RETIREMENT_OR_DISABLED_STATE"
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "no",
+        "classification": "Candidate for Retirement",
+        "declared_owner": "UNKNOWN",
+        "job_name": "run_scheduled_system_facts.sh",
+        "migration_status": "Retired",
+        "parent": "",
+        "registry_row": "NONE",
+        "retire_tag": "PHASE41-MIGRATED",
+        "schedule_expr": "40 7 * * 1-5",
+        "source": "crontab"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "PRESERVE_HISTORICAL_TRIGGER_PENDING_ARCHIVE_OR_PARENT_PROOF",
+      "remaining_action": "Retirement/parent collection: preserve this exact original trigger and retirement/disabled tag; obtain archived operator decision, exact installed inactive/commented trigger, no-auto-restore tripwire and accepted successor business/output coverage where applicable. Collect declared owner confirmation separately. Do not re-enable disabled local generation, credentials, broker or paper-execution paths; protected child investigation needs its own task grant.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [],
+      "source_candidate": null,
+      "source_declared_owner": "NOT_MEASURED",
+      "source_mapping_status": "EXPLICIT_RETIREMENT_COLLECTION_ACTION",
+      "source_script_identifiers": [
+        "scripts/run_scheduled_system_facts.sh"
+      ],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "cron:L212",
+      "join_evidence": [
+        {
+          "limitation": "No source identifier or successor is invented from wrapper/job-name resemblance.",
+          "recorded_retire_tag": "PAUSED_MASTER_REWRITE",
+          "snapshot_active": "no",
+          "snapshot_migration_status": "Retired",
+          "source_refs": [
+            "Inventory#cron:L212"
+          ],
+          "source_script_exists": {
+            "scripts/sync-docs-to-drive.py": true
+          },
+          "type": "SNAPSHOT_RETIREMENT_OR_DISABLED_STATE"
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "no",
+        "classification": "Retain as Existing Cron Job",
+        "declared_owner": "UNKNOWN",
+        "job_name": "sync-docs-to-drive.py",
+        "migration_status": "Retired",
+        "parent": "",
+        "registry_row": "NONE",
+        "retire_tag": "PAUSED_MASTER_REWRITE",
+        "schedule_expr": "5 * * * *",
+        "source": "crontab"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "PRESERVE_HISTORICAL_TRIGGER_PENDING_ARCHIVE_OR_PARENT_PROOF",
+      "remaining_action": "Retirement/parent collection: preserve this exact original trigger and retirement/disabled tag; obtain archived operator decision, exact installed inactive/commented trigger, no-auto-restore tripwire and accepted successor business/output coverage where applicable. Collect declared owner confirmation separately. Do not re-enable disabled local generation, credentials, broker or paper-execution paths; protected child investigation needs its own task grant.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [],
+      "source_candidate": null,
+      "source_declared_owner": "NOT_MEASURED",
+      "source_mapping_status": "EXPLICIT_RETIREMENT_COLLECTION_ACTION",
+      "source_script_identifiers": [
+        "scripts/sync-docs-to-drive.py"
+      ],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "cron:L219",
+      "join_evidence": [
+        {
+          "limitation": "No source identifier or successor is invented from wrapper/job-name resemblance.",
+          "recorded_retire_tag": "PHASE41-MIGRATED",
+          "snapshot_active": "no",
+          "snapshot_migration_status": "Retired",
+          "source_refs": [
+            "Inventory#cron:L219"
+          ],
+          "source_script_exists": {
+            "scripts/report_governance_status.py": true
+          },
+          "type": "SNAPSHOT_RETIREMENT_OR_DISABLED_STATE"
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "no",
+        "classification": "Candidate for Retirement",
+        "declared_owner": "UNKNOWN",
+        "job_name": "report_governance_status.py",
+        "migration_status": "Retired",
+        "parent": "",
+        "registry_row": "NONE",
+        "retire_tag": "PHASE41-MIGRATED",
+        "schedule_expr": "50 7 * * 1-5",
+        "source": "crontab"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "PRESERVE_HISTORICAL_TRIGGER_PENDING_ARCHIVE_OR_PARENT_PROOF",
+      "remaining_action": "Retirement/parent collection: preserve this exact original trigger and retirement/disabled tag; obtain archived operator decision, exact installed inactive/commented trigger, no-auto-restore tripwire and accepted successor business/output coverage where applicable. Collect declared owner confirmation separately. Do not re-enable disabled local generation, credentials, broker or paper-execution paths; protected child investigation needs its own task grant.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [],
+      "source_candidate": null,
+      "source_declared_owner": "NOT_MEASURED",
+      "source_mapping_status": "EXPLICIT_RETIREMENT_COLLECTION_ACTION",
+      "source_script_identifiers": [
+        "scripts/report_governance_status.py"
+      ],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "cron:L221",
+      "join_evidence": [
+        {
+          "limitation": "No source identifier or successor is invented from wrapper/job-name resemblance.",
+          "recorded_retire_tag": "PHASE41-MIGRATED",
+          "snapshot_active": "no",
+          "snapshot_migration_status": "Retired",
+          "source_refs": [
+            "Inventory#cron:L221"
+          ],
+          "source_script_exists": {
+            "scripts/run_scheduled_maturity_control_board.sh": true
+          },
+          "type": "SNAPSHOT_RETIREMENT_OR_DISABLED_STATE"
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "no",
+        "classification": "Candidate for Retirement",
+        "declared_owner": "UNKNOWN",
+        "job_name": "run_scheduled_maturity_control_board.sh",
+        "migration_status": "Retired",
+        "parent": "",
+        "registry_row": "NONE",
+        "retire_tag": "PHASE41-MIGRATED",
+        "schedule_expr": "55 7 * * 1-5",
+        "source": "crontab"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "PRESERVE_HISTORICAL_TRIGGER_PENDING_ARCHIVE_OR_PARENT_PROOF",
+      "remaining_action": "Retirement/parent collection: preserve this exact original trigger and retirement/disabled tag; obtain archived operator decision, exact installed inactive/commented trigger, no-auto-restore tripwire and accepted successor business/output coverage where applicable. Collect declared owner confirmation separately. Do not re-enable disabled local generation, credentials, broker or paper-execution paths; protected child investigation needs its own task grant.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [],
+      "source_candidate": null,
+      "source_declared_owner": "NOT_MEASURED",
+      "source_mapping_status": "EXPLICIT_RETIREMENT_COLLECTION_ACTION",
+      "source_script_identifiers": [
+        "scripts/run_scheduled_maturity_control_board.sh"
+      ],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "cron:L257",
+      "join_evidence": [
+        {
+          "limitation": "No source identifier or successor is invented from wrapper/job-name resemblance.",
+          "recorded_retire_tag": "DEAD_SCRIPT_20260915 (data_broker_indicator_refresh.py never on main, dcafb411e unmerged; its --operator-desks mode has no main equivalent; the 05:45 full refresh covers these symbols) \u2014 re-enable onl",
+          "snapshot_active": "no",
+          "snapshot_migration_status": "Retired",
+          "source_refs": [
+            "Inventory#cron:L257"
+          ],
+          "source_script_exists": {
+            "scripts/data_broker_indicator_refresh.py": false
+          },
+          "type": "SNAPSHOT_RETIREMENT_OR_DISABLED_STATE"
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "no",
+        "classification": "Candidate for Retirement",
+        "declared_owner": "UNKNOWN",
+        "job_name": "data_broker_indicator_refresh.py",
+        "migration_status": "Retired",
+        "parent": "",
+        "registry_row": "NONE",
+        "retire_tag": "DEAD_SCRIPT_20260915 (data_broker_indicator_refresh.py never on main, dcafb411e unmerged; its --operator-desks mode has no main equivalent; the 05:45 full refresh covers these symbols) \u2014 re-enable onl",
+        "schedule_expr": "15 12 * * 1-5",
+        "source": "crontab"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "PRESERVE_HISTORICAL_TRIGGER_PENDING_ARCHIVE_OR_PARENT_PROOF",
+      "remaining_action": "Retirement/parent collection: preserve this exact original trigger and retirement/disabled tag; obtain archived operator decision, exact installed inactive/commented trigger, no-auto-restore tripwire and accepted successor business/output coverage where applicable. Collect declared owner confirmation separately. Do not re-enable disabled local generation, credentials, broker or paper-execution paths; protected child investigation needs its own task grant.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [],
+      "source_candidate": null,
+      "source_declared_owner": "NOT_MEASURED",
+      "source_mapping_status": "EXPLICIT_RETIREMENT_COLLECTION_ACTION",
+      "source_script_identifiers": [
+        "scripts/data_broker_indicator_refresh.py"
+      ],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "cron:L259",
+      "join_evidence": [
+        {
+          "limitation": "No source identifier or successor is invented from wrapper/job-name resemblance.",
+          "recorded_retire_tag": "DEAD_SCRIPT_20260915 (data_broker_indicator_refresh.py never on main, dcafb411e unmerged; its --operator-desks mode has no main equivalent; the 05:45 full refresh covers these symbols) \u2014 re-enable onl",
+          "snapshot_active": "no",
+          "snapshot_migration_status": "Retired",
+          "source_refs": [
+            "Inventory#cron:L259"
+          ],
+          "source_script_exists": {
+            "scripts/data_broker_indicator_refresh.py": false
+          },
+          "type": "SNAPSHOT_RETIREMENT_OR_DISABLED_STATE"
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "no",
+        "classification": "Candidate for Retirement",
+        "declared_owner": "UNKNOWN",
+        "job_name": "data_broker_indicator_refresh.py",
+        "migration_status": "Retired",
+        "parent": "",
+        "registry_row": "NONE",
+        "retire_tag": "DEAD_SCRIPT_20260915 (data_broker_indicator_refresh.py never on main, dcafb411e unmerged; its --operator-desks mode has no main equivalent; the 05:45 full refresh covers these symbols) \u2014 re-enable onl",
+        "schedule_expr": "30 8,14 * * 0,6",
+        "source": "crontab"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "PRESERVE_HISTORICAL_TRIGGER_PENDING_ARCHIVE_OR_PARENT_PROOF",
+      "remaining_action": "Retirement/parent collection: preserve this exact original trigger and retirement/disabled tag; obtain archived operator decision, exact installed inactive/commented trigger, no-auto-restore tripwire and accepted successor business/output coverage where applicable. Collect declared owner confirmation separately. Do not re-enable disabled local generation, credentials, broker or paper-execution paths; protected child investigation needs its own task grant.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [],
+      "source_candidate": null,
+      "source_declared_owner": "NOT_MEASURED",
+      "source_mapping_status": "EXPLICIT_RETIREMENT_COLLECTION_ACTION",
+      "source_script_identifiers": [
+        "scripts/data_broker_indicator_refresh.py"
+      ],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "cron:L287",
+      "join_evidence": [
+        {
+          "limitation": "Historical retirement text supplies proposed relationship; source parent existence does not prove replacement coverage or accepted retirement.",
+          "recorded_retirement_tag": "RETIRED_DUPLICATE (W0-7 2026-09-27 duplicate of aegis-surveillance.timer (Mon-Fri 08:00)) was:",
+          "source_refs": [
+            "config/lane_registry.json#aegis-surveillance",
+            "Inventory#cron:L287"
+          ],
+          "type": "SNAPSHOT_RETIREMENT_NAMES_EXISTING_SOURCE_PARENT"
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "no",
+        "classification": "Candidate for Retirement",
+        "declared_owner": "UNKNOWN",
+        "job_name": "aegis_surveillance.py",
+        "migration_status": "Retired",
+        "parent": "",
+        "registry_row": "NONE",
+        "retire_tag": "RETIRED_DUPLICATE (W0-7 2026-09-27 duplicate of aegis-surveillance.timer (Mon-Fri 08:00)) was:",
+        "schedule_expr": "0 8 * * 1-5",
+        "source": "crontab"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "RETIRED_TRIGGER_TO_SUCCESSOR_PARENT_REVIEW",
+      "remaining_action": "Retirement/parent collection: preserve this exact original trigger and retirement/disabled tag; obtain archived operator decision, exact installed inactive/commented trigger, no-auto-restore tripwire and accepted successor business/output coverage where applicable. Collect declared owner confirmation separately. Do not re-enable disabled local generation, credentials, broker or paper-execution paths; protected child investigation needs its own task grant.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [
+        {
+          "declared_owner": "portfolio",
+          "lane_id": "aegis-surveillance",
+          "scheduler_expression": "aegis-surveillance.timer",
+          "scheduler_kind": "systemd",
+          "source_recommendation": "PIPELINE:P14",
+          "source_ref": "config/lane_registry.json#aegis-surveillance",
+          "source_registry_state": "ACTIVE"
+        }
+      ],
+      "source_candidate": {
+        "declared_owner": "portfolio",
+        "lane_id": "aegis-surveillance",
+        "scheduler_expression": "aegis-surveillance.timer",
+        "scheduler_kind": "systemd",
+        "source_recommendation": "PIPELINE:P14",
+        "source_ref": "config/lane_registry.json#aegis-surveillance",
+        "source_registry_state": "ACTIVE"
+      },
+      "source_declared_owner": "portfolio",
+      "source_mapping_status": "SOURCE_PARENT_CANDIDATE_FROM_RECORDED_RETIREMENT",
+      "source_script_identifiers": [
+        "scripts/aegis_surveillance.py"
+      ],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "cron:L357",
+      "join_evidence": [
+        {
+          "limitation": "No source identifier or successor is invented from wrapper/job-name resemblance.",
+          "recorded_retire_tag": "WS-0 retired 2026-09-26 (yearly one-shot):",
+          "snapshot_active": "no",
+          "snapshot_migration_status": "Retired",
+          "source_refs": [
+            "Inventory#cron:L357"
+          ],
+          "source_script_exists": {
+            "scripts/atm_market_open_watch.py": true,
+            "scripts/market_day_gate.sh": true
+          },
+          "type": "SNAPSHOT_RETIREMENT_OR_DISABLED_STATE"
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "no",
+        "classification": "Candidate for Retirement",
+        "declared_owner": "UNKNOWN",
+        "job_name": "atm_market_open_watch.py",
+        "migration_status": "Retired",
+        "parent": "",
+        "registry_row": "NONE",
+        "retire_tag": "WS-0 retired 2026-09-26 (yearly one-shot):",
+        "schedule_expr": "30 9 2 6 *",
+        "source": "crontab"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "PRESERVE_HISTORICAL_TRIGGER_PENDING_ARCHIVE_OR_PARENT_PROOF",
+      "remaining_action": "Retirement/parent collection: preserve this exact original trigger and retirement/disabled tag; obtain archived operator decision, exact installed inactive/commented trigger, no-auto-restore tripwire and accepted successor business/output coverage where applicable. Collect declared owner confirmation separately. Do not re-enable disabled local generation, credentials, broker or paper-execution paths; protected child investigation needs its own task grant.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [],
+      "source_candidate": null,
+      "source_declared_owner": "NOT_MEASURED",
+      "source_mapping_status": "EXPLICIT_RETIREMENT_COLLECTION_ACTION",
+      "source_script_identifiers": [
+        "scripts/atm_market_open_watch.py",
+        "scripts/market_day_gate.sh"
+      ],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "cron:L424",
+      "join_evidence": [
+        {
+          "limitation": "Historical retirement text supplies proposed relationship; source parent existence does not prove replacement coverage or accepted retirement.",
+          "recorded_retirement_tag": "[RETIRED 2026-06-06 \u2014 covered by tradeai-portfolio-backup-cadence @02:30]",
+          "source_refs": [
+            "config/lane_registry.json#portfolio-backup-cadence",
+            "Inventory#cron:L424"
+          ],
+          "type": "SNAPSHOT_RETIREMENT_NAMES_EXISTING_SOURCE_PARENT"
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "no",
+        "classification": "Candidate for Retirement",
+        "declared_owner": "UNKNOWN",
+        "job_name": "backup_secrets_state.sh",
+        "migration_status": "Retired",
+        "parent": "",
+        "registry_row": "NONE",
+        "retire_tag": "[RETIRED 2026-06-06 \u2014 covered by tradeai-portfolio-backup-cadence @02:30]",
+        "schedule_expr": "30 5 * * *",
+        "source": "crontab"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "RETIRED_TRIGGER_TO_SUCCESSOR_PARENT_REVIEW",
+      "remaining_action": "Retirement/parent collection: preserve this exact original trigger and retirement/disabled tag; obtain archived operator decision, exact installed inactive/commented trigger, no-auto-restore tripwire and accepted successor business/output coverage where applicable. Collect declared owner confirmation separately. Do not re-enable disabled local generation, credentials, broker or paper-execution paths; protected child investigation needs its own task grant.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [
+        {
+          "declared_owner": "platform",
+          "lane_id": "portfolio-backup-cadence",
+          "scheduler_expression": "tradeai-portfolio-backup-cadence.timer",
+          "scheduler_kind": "systemd",
+          "source_recommendation": "KEEP_ON_CRON",
+          "source_ref": "config/lane_registry.json#portfolio-backup-cadence",
+          "source_registry_state": "ACTIVE"
+        }
+      ],
+      "source_candidate": {
+        "declared_owner": "platform",
+        "lane_id": "portfolio-backup-cadence",
+        "scheduler_expression": "tradeai-portfolio-backup-cadence.timer",
+        "scheduler_kind": "systemd",
+        "source_recommendation": "KEEP_ON_CRON",
+        "source_ref": "config/lane_registry.json#portfolio-backup-cadence",
+        "source_registry_state": "ACTIVE"
+      },
+      "source_declared_owner": "platform",
+      "source_mapping_status": "SOURCE_PARENT_CANDIDATE_FROM_RECORDED_RETIREMENT",
+      "source_script_identifiers": [
+        "scripts/backup_secrets_state.sh"
+      ],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "cron:L425",
+      "join_evidence": [
+        {
+          "limitation": "Historical retirement text supplies proposed relationship; source parent existence does not prove replacement coverage or accepted retirement.",
+          "recorded_retirement_tag": "[RETIRED 2026-06-06 \u2014 folded into tradeai-portfolio-backup-cadence @02:30 with weekly staleness gate]",
+          "source_refs": [
+            "config/lane_registry.json#portfolio-backup-cadence",
+            "Inventory#cron:L425"
+          ],
+          "type": "SNAPSHOT_RETIREMENT_NAMES_EXISTING_SOURCE_PARENT"
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "no",
+        "classification": "Candidate for Retirement",
+        "declared_owner": "UNKNOWN",
+        "job_name": "backup_secrets_state.sh",
+        "migration_status": "Retired",
+        "parent": "",
+        "registry_row": "NONE",
+        "retire_tag": "[RETIRED 2026-06-06 \u2014 folded into tradeai-portfolio-backup-cadence @02:30 with weekly staleness gate]",
+        "schedule_expr": "45 5 * * 0",
+        "source": "crontab"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "RETIRED_TRIGGER_TO_SUCCESSOR_PARENT_REVIEW",
+      "remaining_action": "Retirement/parent collection: preserve this exact original trigger and retirement/disabled tag; obtain archived operator decision, exact installed inactive/commented trigger, no-auto-restore tripwire and accepted successor business/output coverage where applicable. Collect declared owner confirmation separately. Do not re-enable disabled local generation, credentials, broker or paper-execution paths; protected child investigation needs its own task grant.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [
+        {
+          "declared_owner": "platform",
+          "lane_id": "portfolio-backup-cadence",
+          "scheduler_expression": "tradeai-portfolio-backup-cadence.timer",
+          "scheduler_kind": "systemd",
+          "source_recommendation": "KEEP_ON_CRON",
+          "source_ref": "config/lane_registry.json#portfolio-backup-cadence",
+          "source_registry_state": "ACTIVE"
+        }
+      ],
+      "source_candidate": {
+        "declared_owner": "platform",
+        "lane_id": "portfolio-backup-cadence",
+        "scheduler_expression": "tradeai-portfolio-backup-cadence.timer",
+        "scheduler_kind": "systemd",
+        "source_recommendation": "KEEP_ON_CRON",
+        "source_ref": "config/lane_registry.json#portfolio-backup-cadence",
+        "source_registry_state": "ACTIVE"
+      },
+      "source_declared_owner": "platform",
+      "source_mapping_status": "SOURCE_PARENT_CANDIDATE_FROM_RECORDED_RETIREMENT",
+      "source_script_identifiers": [
+        "scripts/backup_secrets_state.sh"
+      ],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "cron:L477",
+      "join_evidence": [
+        {
+          "limitation": "No source identifier or successor is invented from wrapper/job-name resemblance.",
+          "recorded_retire_tag": "R9_DISABLED_LOCAL_GENERATIVE 2026-08-23",
+          "snapshot_active": "no",
+          "snapshot_migration_status": "Retired",
+          "source_refs": [
+            "Inventory#cron:L477"
+          ],
+          "source_script_exists": {
+            "scripts/check_local_model_fleet.py": true
+          },
+          "type": "SNAPSHOT_RETIREMENT_OR_DISABLED_STATE"
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "no",
+        "classification": "Candidate for Retirement",
+        "declared_owner": "UNKNOWN",
+        "job_name": "check_local_model_fleet.py",
+        "migration_status": "Retired",
+        "parent": "",
+        "registry_row": "NONE",
+        "retire_tag": "R9_DISABLED_LOCAL_GENERATIVE 2026-08-23",
+        "schedule_expr": "35 6 * * *",
+        "source": "crontab"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "PRESERVE_HISTORICAL_TRIGGER_PENDING_ARCHIVE_OR_PARENT_PROOF",
+      "remaining_action": "Retirement/parent collection: preserve this exact original trigger and retirement/disabled tag; obtain archived operator decision, exact installed inactive/commented trigger, no-auto-restore tripwire and accepted successor business/output coverage where applicable. Collect declared owner confirmation separately. Do not re-enable disabled local generation, credentials, broker or paper-execution paths; protected child investigation needs its own task grant.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [],
+      "source_candidate": null,
+      "source_declared_owner": "NOT_MEASURED",
+      "source_mapping_status": "EXPLICIT_RETIREMENT_COLLECTION_ACTION",
+      "source_script_identifiers": [
+        "scripts/check_local_model_fleet.py"
+      ],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "cron:L774",
+      "join_evidence": [
+        {
+          "limitation": "No source identifier or successor is invented from wrapper/job-name resemblance.",
+          "recorded_retire_tag": "WS-0 retired 2026-09-26 (yearly one-shot):",
+          "snapshot_active": "no",
+          "snapshot_migration_status": "Retired",
+          "source_refs": [
+            "Inventory#cron:L774"
+          ],
+          "source_script_exists": {
+            "scripts/run_paper_canary_chain.py": true
+          },
+          "type": "SNAPSHOT_RETIREMENT_OR_DISABLED_STATE"
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "no",
+        "classification": "Candidate for Retirement",
+        "declared_owner": "UNKNOWN",
+        "job_name": "run_paper_canary_chain.py",
+        "migration_status": "Retired",
+        "parent": "",
+        "registry_row": "NONE",
+        "retire_tag": "WS-0 retired 2026-09-26 (yearly one-shot):",
+        "schedule_expr": "20 12 20 7 *",
+        "source": "crontab"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "PRESERVE_HISTORICAL_TRIGGER_PENDING_ARCHIVE_OR_PARENT_PROOF",
+      "remaining_action": "Retirement/parent collection: preserve this exact original trigger and retirement/disabled tag; obtain archived operator decision, exact installed inactive/commented trigger, no-auto-restore tripwire and accepted successor business/output coverage where applicable. Collect declared owner confirmation separately. Do not re-enable disabled local generation, credentials, broker or paper-execution paths; protected child investigation needs its own task grant.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [],
+      "source_candidate": null,
+      "source_declared_owner": "NOT_MEASURED",
+      "source_mapping_status": "EXPLICIT_RETIREMENT_COLLECTION_ACTION",
+      "source_script_identifiers": [
+        "scripts/run_paper_canary_chain.py"
+      ],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "cron:L775",
+      "join_evidence": [
+        {
+          "limitation": "No source identifier or successor is invented from wrapper/job-name resemblance.",
+          "recorded_retire_tag": "WS-0 retired 2026-09-26 (yearly one-shot):",
+          "snapshot_active": "no",
+          "snapshot_migration_status": "Retired",
+          "source_refs": [
+            "Inventory#cron:L775"
+          ],
+          "source_script_exists": {
+            "scripts/run_paper_canary_chain.py": true
+          },
+          "type": "SNAPSHOT_RETIREMENT_OR_DISABLED_STATE"
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "no",
+        "classification": "Candidate for Retirement",
+        "declared_owner": "UNKNOWN",
+        "job_name": "run_paper_canary_chain.py",
+        "migration_status": "Retired",
+        "parent": "",
+        "registry_row": "NONE",
+        "retire_tag": "WS-0 retired 2026-09-26 (yearly one-shot):",
+        "schedule_expr": "22 10 20 7 *",
+        "source": "crontab"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "PRESERVE_HISTORICAL_TRIGGER_PENDING_ARCHIVE_OR_PARENT_PROOF",
+      "remaining_action": "Retirement/parent collection: preserve this exact original trigger and retirement/disabled tag; obtain archived operator decision, exact installed inactive/commented trigger, no-auto-restore tripwire and accepted successor business/output coverage where applicable. Collect declared owner confirmation separately. Do not re-enable disabled local generation, credentials, broker or paper-execution paths; protected child investigation needs its own task grant.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [],
+      "source_candidate": null,
+      "source_declared_owner": "NOT_MEASURED",
+      "source_mapping_status": "EXPLICIT_RETIREMENT_COLLECTION_ACTION",
+      "source_script_identifiers": [
+        "scripts/run_paper_canary_chain.py"
+      ],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "cron:L798",
+      "join_evidence": [
+        {
+          "limitation": "No source identifier or successor is invented from wrapper/job-name resemblance.",
+          "recorded_retire_tag": "DISABLED 2026-08-11 manual CC reauth page:",
+          "snapshot_active": "no",
+          "snapshot_migration_status": "Retired",
+          "source_refs": [
+            "Inventory#cron:L798"
+          ],
+          "source_script_exists": {
+            "scripts/schwab_auto_reauth.py": true
+          },
+          "type": "SNAPSHOT_RETIREMENT_OR_DISABLED_STATE"
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "no",
+        "classification": "Candidate for Retirement",
+        "declared_owner": "UNKNOWN",
+        "job_name": "schwab_auto_reauth.py",
+        "migration_status": "Retired",
+        "parent": "",
+        "registry_row": "NONE",
+        "retire_tag": "DISABLED 2026-08-11 manual CC reauth page:",
+        "schedule_expr": "*/17 8-21 * * *",
+        "source": "crontab"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "PRESERVE_HISTORICAL_TRIGGER_PENDING_ARCHIVE_OR_PARENT_PROOF",
+      "remaining_action": "Retirement/parent collection: preserve this exact original trigger and retirement/disabled tag; obtain archived operator decision, exact installed inactive/commented trigger, no-auto-restore tripwire and accepted successor business/output coverage where applicable. Collect declared owner confirmation separately. Do not re-enable disabled local generation, credentials, broker or paper-execution paths; protected child investigation needs its own task grant.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [],
+      "source_candidate": null,
+      "source_declared_owner": "NOT_MEASURED",
+      "source_mapping_status": "EXPLICIT_RETIREMENT_COLLECTION_ACTION",
+      "source_script_identifiers": [
+        "scripts/schwab_auto_reauth.py"
+      ],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "cron:L812",
+      "join_evidence": [
+        {
+          "limitation": "No source identifier or successor is invented from wrapper/job-name resemblance.",
+          "recorded_retire_tag": "R9_DISABLED_LOCAL_GENERATIVE 2026-08-23",
+          "snapshot_active": "no",
+          "snapshot_migration_status": "Retired",
+          "source_refs": [
+            "Inventory#cron:L812"
+          ],
+          "source_script_exists": {
+            "scripts/watchlist_entry_planner.py": true
+          },
+          "type": "SNAPSHOT_RETIREMENT_OR_DISABLED_STATE"
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "no",
+        "classification": "Candidate for Retirement",
+        "declared_owner": "UNKNOWN",
+        "job_name": "watchlist_entry_planner.py",
+        "migration_status": "Retired",
+        "parent": "",
+        "registry_row": "NONE",
+        "retire_tag": "R9_DISABLED_LOCAL_GENERATIVE 2026-08-23",
+        "schedule_expr": "15 10,15 * * 6,7",
+        "source": "crontab"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "PRESERVE_HISTORICAL_TRIGGER_PENDING_ARCHIVE_OR_PARENT_PROOF",
+      "remaining_action": "Retirement/parent collection: preserve this exact original trigger and retirement/disabled tag; obtain archived operator decision, exact installed inactive/commented trigger, no-auto-restore tripwire and accepted successor business/output coverage where applicable. Collect declared owner confirmation separately. Do not re-enable disabled local generation, credentials, broker or paper-execution paths; protected child investigation needs its own task grant.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [],
+      "source_candidate": null,
+      "source_declared_owner": "NOT_MEASURED",
+      "source_mapping_status": "EXPLICIT_RETIREMENT_COLLECTION_ACTION",
+      "source_script_identifiers": [
+        "scripts/watchlist_entry_planner.py"
+      ],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "cron:L819",
+      "join_evidence": [
+        {
+          "limitation": "No source identifier or successor is invented from wrapper/job-name resemblance.",
+          "recorded_retire_tag": "DEAD_SCRIPT_20260915 (never on main (333c0f462 unmerged); no lane row; fails every run) \u2014 re-enable only when the script is merged:",
+          "snapshot_active": "no",
+          "snapshot_migration_status": "Retired",
+          "source_refs": [
+            "Inventory#cron:L819"
+          ],
+          "source_script_exists": {
+            "scripts/refresh_reentry_resistance.py": false
+          },
+          "type": "SNAPSHOT_RETIREMENT_OR_DISABLED_STATE"
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "no",
+        "classification": "Candidate for Retirement",
+        "declared_owner": "UNKNOWN",
+        "job_name": "refresh_reentry_resistance.py",
+        "migration_status": "Retired",
+        "parent": "",
+        "registry_row": "NONE",
+        "retire_tag": "DEAD_SCRIPT_20260915 (never on main (333c0f462 unmerged); no lane row; fails every run) \u2014 re-enable only when the script is merged:",
+        "schedule_expr": "30 17 * * 1-5",
+        "source": "crontab"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "PRESERVE_HISTORICAL_TRIGGER_PENDING_ARCHIVE_OR_PARENT_PROOF",
+      "remaining_action": "Retirement/parent collection: preserve this exact original trigger and retirement/disabled tag; obtain archived operator decision, exact installed inactive/commented trigger, no-auto-restore tripwire and accepted successor business/output coverage where applicable. Collect declared owner confirmation separately. Do not re-enable disabled local generation, credentials, broker or paper-execution paths; protected child investigation needs its own task grant.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [],
+      "source_candidate": null,
+      "source_declared_owner": "NOT_MEASURED",
+      "source_mapping_status": "EXPLICIT_RETIREMENT_COLLECTION_ACTION",
+      "source_script_identifiers": [
+        "scripts/refresh_reentry_resistance.py"
+      ],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "cron:L838",
+      "join_evidence": [
+        {
+          "limitation": "No source identifier or successor is invented from wrapper/job-name resemblance.",
+          "recorded_retire_tag": "V2-DAEMON-OWNS",
+          "snapshot_active": "no",
+          "snapshot_migration_status": "Retired",
+          "source_refs": [
+            "Inventory#cron:L838"
+          ],
+          "source_script_exists": {
+            "scripts/inspect_all.py": false
+          },
+          "type": "SNAPSHOT_RETIREMENT_OR_DISABLED_STATE"
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "no",
+        "classification": "Candidate for Retirement",
+        "declared_owner": "UNKNOWN",
+        "job_name": "inspect_all.py",
+        "migration_status": "Retired",
+        "parent": "",
+        "registry_row": "NONE",
+        "retire_tag": "V2-DAEMON-OWNS",
+        "schedule_expr": "*/30 * * * *",
+        "source": "crontab"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "PRESERVE_HISTORICAL_TRIGGER_PENDING_ARCHIVE_OR_PARENT_PROOF",
+      "remaining_action": "Retirement/parent collection: preserve this exact original trigger and retirement/disabled tag; obtain archived operator decision, exact installed inactive/commented trigger, no-auto-restore tripwire and accepted successor business/output coverage where applicable. Collect declared owner confirmation separately. Do not re-enable disabled local generation, credentials, broker or paper-execution paths; protected child investigation needs its own task grant.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [],
+      "source_candidate": null,
+      "source_declared_owner": "NOT_MEASURED",
+      "source_mapping_status": "EXPLICIT_RETIREMENT_COLLECTION_ACTION",
+      "source_script_identifiers": [
+        "scripts/inspect_all.py"
+      ],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "cron:L849",
+      "join_evidence": [
+        {
+          "limitation": "No source identifier or successor is invented from wrapper/job-name resemblance.",
+          "recorded_retire_tag": "GATE_A_CONTAINED",
+          "snapshot_active": "no",
+          "snapshot_migration_status": "Retired",
+          "source_refs": [
+            "Inventory#cron:L849"
+          ],
+          "source_script_exists": {
+            "scripts/cio_heartbeat.py": true
+          },
+          "type": "SNAPSHOT_RETIREMENT_OR_DISABLED_STATE"
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "no",
+        "classification": "Retain as Existing Cron Job",
+        "declared_owner": "UNKNOWN",
+        "job_name": "cio_heartbeat.py",
+        "migration_status": "Retired",
+        "parent": "",
+        "registry_row": "NONE",
+        "retire_tag": "GATE_A_CONTAINED",
+        "schedule_expr": "*/30 * * * *",
+        "source": "crontab"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "PRESERVE_HISTORICAL_TRIGGER_PENDING_ARCHIVE_OR_PARENT_PROOF",
+      "remaining_action": "Retirement/parent collection: preserve this exact original trigger and retirement/disabled tag; obtain archived operator decision, exact installed inactive/commented trigger, no-auto-restore tripwire and accepted successor business/output coverage where applicable. Collect declared owner confirmation separately. Do not re-enable disabled local generation, credentials, broker or paper-execution paths; protected child investigation needs its own task grant.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [],
+      "source_candidate": null,
+      "source_declared_owner": "NOT_MEASURED",
+      "source_mapping_status": "EXPLICIT_RETIREMENT_COLLECTION_ACTION",
+      "source_script_identifiers": [
+        "scripts/cio_heartbeat.py"
+      ],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "cron:L865",
+      "join_evidence": [
+        {
+          "limitation": "No source identifier or successor is invented from wrapper/job-name resemblance.",
+          "recorded_retire_tag": "DEAD_SCRIPT_20260915 (never on main (PR #417 unmerged, ran from /tmp/wt-cio-phase-a); no lane row; 33 missing-file errors) \u2014 re-enable only when the script is merged:",
+          "snapshot_active": "no",
+          "snapshot_migration_status": "Retired",
+          "source_refs": [
+            "Inventory#cron:L865"
+          ],
+          "source_script_exists": {
+            "scripts/run_governed_cio_tis_digest.sh": false
+          },
+          "type": "SNAPSHOT_RETIREMENT_OR_DISABLED_STATE"
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "no",
+        "classification": "Candidate for Retirement",
+        "declared_owner": "UNKNOWN",
+        "job_name": "run_governed_cio_tis_digest.sh",
+        "migration_status": "Retired",
+        "parent": "",
+        "registry_row": "NONE",
+        "retire_tag": "DEAD_SCRIPT_20260915 (never on main (PR #417 unmerged, ran from /tmp/wt-cio-phase-a); no lane row; 33 missing-file errors) \u2014 re-enable only when the script is merged:",
+        "schedule_expr": "15 12,17 * * 1-5",
+        "source": "crontab"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "PRESERVE_HISTORICAL_TRIGGER_PENDING_ARCHIVE_OR_PARENT_PROOF",
+      "remaining_action": "Retirement/parent collection: preserve this exact original trigger and retirement/disabled tag; obtain archived operator decision, exact installed inactive/commented trigger, no-auto-restore tripwire and accepted successor business/output coverage where applicable. Collect declared owner confirmation separately. Do not re-enable disabled local generation, credentials, broker or paper-execution paths; protected child investigation needs its own task grant.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [],
+      "source_candidate": null,
+      "source_declared_owner": "NOT_MEASURED",
+      "source_mapping_status": "EXPLICIT_RETIREMENT_COLLECTION_ACTION",
+      "source_script_identifiers": [
+        "scripts/run_governed_cio_tis_digest.sh"
+      ],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "timer:system:tradeai-reprice.timer",
+      "join_evidence": [
+        {
+          "limitation": "No source identifier or successor is invented from wrapper/job-name resemblance.",
+          "recorded_retire_tag": "NOT_MEASURED",
+          "snapshot_active": "no",
+          "snapshot_migration_status": "Not started",
+          "source_refs": [
+            "Inventory#timer:system:tradeai-reprice.timer"
+          ],
+          "source_script_exists": {
+            "linux_launchers/run_reprice_only.sh": true
+          },
+          "type": "SNAPSHOT_RETIREMENT_OR_DISABLED_STATE"
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "no",
+        "classification": "Candidate for Retirement",
+        "declared_owner": "UNKNOWN",
+        "job_name": "tradeai-reprice",
+        "migration_status": "Not started",
+        "parent": "",
+        "registry_row": "NONE",
+        "retire_tag": "",
+        "schedule_expr": "OnCalendar=Mon..Fri *-*-* 09,10,11,12,13,14,15:00/15:00",
+        "source": "systemd-system-timer"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "PRESERVE_HISTORICAL_TRIGGER_PENDING_ARCHIVE_OR_PARENT_PROOF",
+      "remaining_action": "Execution owner provides the exact inactive tradeai-reprice.timer/service/drop-in metadata and historical disable/retirement decision under applicable authority. Preserve this original system-timer row; no reprice launcher, financial child or broker code was investigated. Parent/source candidate and accepted retirement remain NOT_MEASURED.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [],
+      "source_candidate": null,
+      "source_declared_owner": "NOT_MEASURED",
+      "source_mapping_status": "EXPLICIT_RETIREMENT_COLLECTION_ACTION",
+      "source_script_identifiers": [
+        "linux_launchers/run_reprice_only.sh"
+      ],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "tick:system-health-agent",
+      "join_evidence": [
+        {
+          "parent_timer_expression": "*:0/5",
+          "snapshot_script_equal": true,
+          "source_child_schedule": {
+            "cadence_minutes": 5,
+            "hours": [
+              9,
+              10,
+              11,
+              12,
+              13,
+              14,
+              15,
+              16,
+              17,
+              18,
+              19,
+              20
+            ],
+            "minute_offset": 0,
+            "weekdays": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ]
+          },
+          "source_parent_execstart": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python %h/trade-ai-releases/portfolio-server/CURRENT/scripts/health_tick.py --apply",
+          "source_refs": [
+            "config/health_tick_steps.json#steps.system-health-agent",
+            "config/lane_registry.json#health-tick",
+            "config/systemd/user/tradeai-health-tick.service:27",
+            "config/systemd/user/tradeai-health-tick.timer:10",
+            "config/systemd/user/tradeai-health-tick.timer:13"
+          ],
+          "step_id": "system-health-agent",
+          "step_script_identifiers": [
+            "scripts/system_health_agent.py"
+          ],
+          "type": "EXACT_CHILD_ID_AND_SCRIPT_TO_PARENT"
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "yes",
+        "classification": "Retain as Existing Cron Job",
+        "declared_owner": "UNKNOWN (no lane row; runs under health-tick, whose owner is platform)",
+        "job_name": "system-health-agent",
+        "migration_status": "Not started",
+        "parent": "timer:tradeai-health-tick.timer (scripts/health_tick.py --apply)",
+        "registry_row": "NONE",
+        "retire_tag": "",
+        "schedule_expr": "cadence_minutes=5 minute_offset=0 hours=[9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20] weekdays=[1, 2, 3, 4, 5]",
+        "source": "health-tick"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "HEALTH_TICK_CHILD; KEEP_CHILD_ROW_AND_SHARED_PARENT",
+      "remaining_action": "Owner confirms responsibility for this specific child and its schedule/receipt/notification contract; map child step to shared health-tick parent without inventing a separate lane, one-to-one scheduler mapping or accepted inherited owner. Correlate installed parent/child natural run evidence under applicable authority. Broker-adjacent moomoo child internals remain uninvestigated.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [
+        {
+          "declared_owner": "platform",
+          "lane_id": "health-tick",
+          "scheduler_expression": "tradeai-health-tick.timer (*:0/5)",
+          "scheduler_kind": "systemd",
+          "source_recommendation": "KEEP_ON_CRON",
+          "source_ref": "config/lane_registry.json#health-tick",
+          "source_registry_state": "ACTIVE"
+        }
+      ],
+      "source_candidate": {
+        "declared_owner": "platform",
+        "lane_id": "health-tick",
+        "scheduler_expression": "tradeai-health-tick.timer (*:0/5)",
+        "scheduler_kind": "systemd",
+        "source_recommendation": "KEEP_ON_CRON",
+        "source_ref": "config/lane_registry.json#health-tick",
+        "source_registry_state": "ACTIVE"
+      },
+      "source_declared_owner": "platform",
+      "source_mapping_status": "SOURCE_CHILD_PARENT_MATCH_PROPOSED",
+      "source_script_identifiers": [
+        "scripts/system_health_agent.py"
+      ],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "tick:moomoo-opend-health",
+      "join_evidence": [
+        {
+          "parent_timer_expression": "*:0/5",
+          "snapshot_script_equal": true,
+          "source_child_schedule": {
+            "cadence_minutes": 5,
+            "hours": [
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12,
+              13,
+              14,
+              15,
+              16,
+              17
+            ],
+            "minute_offset": 0,
+            "weekdays": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ]
+          },
+          "source_parent_execstart": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python %h/trade-ai-releases/portfolio-server/CURRENT/scripts/health_tick.py --apply",
+          "source_refs": [
+            "config/health_tick_steps.json#steps.moomoo-opend-health",
+            "config/lane_registry.json#health-tick",
+            "config/systemd/user/tradeai-health-tick.service:27",
+            "config/systemd/user/tradeai-health-tick.timer:10",
+            "config/systemd/user/tradeai-health-tick.timer:13"
+          ],
+          "step_id": "moomoo-opend-health",
+          "step_script_identifiers": [
+            "scripts/moomoo/opend_health.py"
+          ],
+          "type": "EXACT_CHILD_ID_AND_SCRIPT_TO_PARENT"
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "yes",
+        "classification": "Not Recommended for Migration",
+        "declared_owner": "UNKNOWN (no lane row; runs under health-tick, whose owner is platform)",
+        "job_name": "moomoo-opend-health",
+        "migration_status": "Not started",
+        "parent": "timer:tradeai-health-tick.timer (scripts/health_tick.py --apply)",
+        "registry_row": "NONE",
+        "retire_tag": "",
+        "schedule_expr": "cadence_minutes=5 minute_offset=0 hours=[6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17] weekdays=[1, 2, 3, 4, 5]",
+        "source": "health-tick"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "HEALTH_TICK_CHILD; KEEP_CHILD_ROW_AND_SHARED_PARENT",
+      "remaining_action": "Owner confirms responsibility for this specific child and its schedule/receipt/notification contract; map child step to shared health-tick parent without inventing a separate lane, one-to-one scheduler mapping or accepted inherited owner. Correlate installed parent/child natural run evidence under applicable authority. Broker-adjacent moomoo child internals remain uninvestigated.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [
+        {
+          "declared_owner": "platform",
+          "lane_id": "health-tick",
+          "scheduler_expression": "tradeai-health-tick.timer (*:0/5)",
+          "scheduler_kind": "systemd",
+          "source_recommendation": "KEEP_ON_CRON",
+          "source_ref": "config/lane_registry.json#health-tick",
+          "source_registry_state": "ACTIVE"
+        }
+      ],
+      "source_candidate": {
+        "declared_owner": "platform",
+        "lane_id": "health-tick",
+        "scheduler_expression": "tradeai-health-tick.timer (*:0/5)",
+        "scheduler_kind": "systemd",
+        "source_recommendation": "KEEP_ON_CRON",
+        "source_ref": "config/lane_registry.json#health-tick",
+        "source_registry_state": "ACTIVE"
+      },
+      "source_declared_owner": "platform",
+      "source_mapping_status": "SOURCE_CHILD_PARENT_MATCH_PROPOSED",
+      "source_script_identifiers": [
+        "scripts/moomoo/opend_health.py"
+      ],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "tick:pipeline-watchdog",
+      "join_evidence": [
+        {
+          "parent_timer_expression": "*:0/5",
+          "snapshot_script_equal": true,
+          "source_child_schedule": {
+            "cadence_minutes": 120,
+            "hours": null,
+            "minute_offset": 0,
+            "weekdays": null
+          },
+          "source_parent_execstart": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python %h/trade-ai-releases/portfolio-server/CURRENT/scripts/health_tick.py --apply",
+          "source_refs": [
+            "config/health_tick_steps.json#steps.pipeline-watchdog",
+            "config/lane_registry.json#health-tick",
+            "config/systemd/user/tradeai-health-tick.service:27",
+            "config/systemd/user/tradeai-health-tick.timer:10",
+            "config/systemd/user/tradeai-health-tick.timer:13"
+          ],
+          "step_id": "pipeline-watchdog",
+          "step_script_identifiers": [
+            "scripts/pipeline_watchdog.py"
+          ],
+          "type": "EXACT_CHILD_ID_AND_SCRIPT_TO_PARENT"
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "yes",
+        "classification": "Retain as Existing Cron Job",
+        "declared_owner": "UNKNOWN (no lane row; runs under health-tick, whose owner is platform)",
+        "job_name": "pipeline-watchdog",
+        "migration_status": "Not started",
+        "parent": "timer:tradeai-health-tick.timer (scripts/health_tick.py --apply)",
+        "registry_row": "NONE",
+        "retire_tag": "",
+        "schedule_expr": "cadence_minutes=120 minute_offset=0 hours=* weekdays=*",
+        "source": "health-tick"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "HEALTH_TICK_CHILD; KEEP_CHILD_ROW_AND_SHARED_PARENT",
+      "remaining_action": "Owner confirms responsibility for this specific child and its schedule/receipt/notification contract; map child step to shared health-tick parent without inventing a separate lane, one-to-one scheduler mapping or accepted inherited owner. Correlate installed parent/child natural run evidence under applicable authority. Broker-adjacent moomoo child internals remain uninvestigated.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [
+        {
+          "declared_owner": "platform",
+          "lane_id": "health-tick",
+          "scheduler_expression": "tradeai-health-tick.timer (*:0/5)",
+          "scheduler_kind": "systemd",
+          "source_recommendation": "KEEP_ON_CRON",
+          "source_ref": "config/lane_registry.json#health-tick",
+          "source_registry_state": "ACTIVE"
+        }
+      ],
+      "source_candidate": {
+        "declared_owner": "platform",
+        "lane_id": "health-tick",
+        "scheduler_expression": "tradeai-health-tick.timer (*:0/5)",
+        "scheduler_kind": "systemd",
+        "source_recommendation": "KEEP_ON_CRON",
+        "source_ref": "config/lane_registry.json#health-tick",
+        "source_registry_state": "ACTIVE"
+      },
+      "source_declared_owner": "platform",
+      "source_mapping_status": "SOURCE_CHILD_PARENT_MATCH_PROPOSED",
+      "source_script_identifiers": [
+        "scripts/pipeline_watchdog.py"
+      ],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "tick:health-agent",
+      "join_evidence": [
+        {
+          "parent_timer_expression": "*:0/5",
+          "snapshot_script_equal": true,
+          "source_child_schedule": {
+            "cadence_minutes": 15,
+            "hours": null,
+            "minute_offset": 0,
+            "weekdays": null
+          },
+          "source_parent_execstart": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python %h/trade-ai-releases/portfolio-server/CURRENT/scripts/health_tick.py --apply",
+          "source_refs": [
+            "config/health_tick_steps.json#steps.health-agent",
+            "config/lane_registry.json#health-tick",
+            "config/systemd/user/tradeai-health-tick.service:27",
+            "config/systemd/user/tradeai-health-tick.timer:10",
+            "config/systemd/user/tradeai-health-tick.timer:13"
+          ],
+          "step_id": "health-agent",
+          "step_script_identifiers": [
+            "scripts/health_agent.py"
+          ],
+          "type": "EXACT_CHILD_ID_AND_SCRIPT_TO_PARENT"
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "yes",
+        "classification": "Candidate for Retirement",
+        "declared_owner": "UNKNOWN (no lane row; runs under health-tick, whose owner is platform)",
+        "job_name": "health-agent",
+        "migration_status": "Not started",
+        "parent": "timer:tradeai-health-tick.timer (scripts/health_tick.py --apply)",
+        "registry_row": "NONE",
+        "retire_tag": "",
+        "schedule_expr": "cadence_minutes=15 minute_offset=0 hours=* weekdays=*",
+        "source": "health-tick"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "HEALTH_TICK_CHILD; KEEP_CHILD_ROW_AND_SHARED_PARENT",
+      "remaining_action": "Owner confirms responsibility for this specific child and its schedule/receipt/notification contract; map child step to shared health-tick parent without inventing a separate lane, one-to-one scheduler mapping or accepted inherited owner. Correlate installed parent/child natural run evidence under applicable authority. Broker-adjacent moomoo child internals remain uninvestigated.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [
+        {
+          "declared_owner": "platform",
+          "lane_id": "health-tick",
+          "scheduler_expression": "tradeai-health-tick.timer (*:0/5)",
+          "scheduler_kind": "systemd",
+          "source_recommendation": "KEEP_ON_CRON",
+          "source_ref": "config/lane_registry.json#health-tick",
+          "source_registry_state": "ACTIVE"
+        }
+      ],
+      "source_candidate": {
+        "declared_owner": "platform",
+        "lane_id": "health-tick",
+        "scheduler_expression": "tradeai-health-tick.timer (*:0/5)",
+        "scheduler_kind": "systemd",
+        "source_recommendation": "KEEP_ON_CRON",
+        "source_ref": "config/lane_registry.json#health-tick",
+        "source_registry_state": "ACTIVE"
+      },
+      "source_declared_owner": "platform",
+      "source_mapping_status": "SOURCE_CHILD_PARENT_MATCH_PROPOSED",
+      "source_script_identifiers": [
+        "scripts/health_agent.py"
+      ],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "tick:cron-self-heal",
+      "join_evidence": [
+        {
+          "parent_timer_expression": "*:0/5",
+          "snapshot_script_equal": true,
+          "source_child_schedule": {
+            "cadence_minutes": 15,
+            "hours": [
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12,
+              13,
+              14,
+              15,
+              16,
+              17,
+              18,
+              19,
+              20
+            ],
+            "minute_offset": 0,
+            "weekdays": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ]
+          },
+          "source_parent_execstart": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python %h/trade-ai-releases/portfolio-server/CURRENT/scripts/health_tick.py --apply",
+          "source_refs": [
+            "config/health_tick_steps.json#steps.cron-self-heal",
+            "config/lane_registry.json#health-tick",
+            "config/systemd/user/tradeai-health-tick.service:27",
+            "config/systemd/user/tradeai-health-tick.timer:10",
+            "config/systemd/user/tradeai-health-tick.timer:13"
+          ],
+          "step_id": "cron-self-heal",
+          "step_script_identifiers": [
+            "scripts/cron_self_heal.py"
+          ],
+          "type": "EXACT_CHILD_ID_AND_SCRIPT_TO_PARENT"
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "yes",
+        "classification": "Not Recommended for Migration",
+        "declared_owner": "UNKNOWN (no lane row; runs under health-tick, whose owner is platform)",
+        "job_name": "cron-self-heal",
+        "migration_status": "Not started",
+        "parent": "timer:tradeai-health-tick.timer (scripts/health_tick.py --apply)",
+        "registry_row": "NONE",
+        "retire_tag": "",
+        "schedule_expr": "cadence_minutes=15 minute_offset=0 hours=[6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20] weekdays=[1, 2, 3, 4, 5]",
+        "source": "health-tick"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "HEALTH_TICK_CHILD; KEEP_CHILD_ROW_AND_SHARED_PARENT",
+      "remaining_action": "Owner confirms responsibility for this specific child and its schedule/receipt/notification contract; map child step to shared health-tick parent without inventing a separate lane, one-to-one scheduler mapping or accepted inherited owner. Correlate installed parent/child natural run evidence under applicable authority. Broker-adjacent moomoo child internals remain uninvestigated.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [
+        {
+          "declared_owner": "platform",
+          "lane_id": "health-tick",
+          "scheduler_expression": "tradeai-health-tick.timer (*:0/5)",
+          "scheduler_kind": "systemd",
+          "source_recommendation": "KEEP_ON_CRON",
+          "source_ref": "config/lane_registry.json#health-tick",
+          "source_registry_state": "ACTIVE"
+        }
+      ],
+      "source_candidate": {
+        "declared_owner": "platform",
+        "lane_id": "health-tick",
+        "scheduler_expression": "tradeai-health-tick.timer (*:0/5)",
+        "scheduler_kind": "systemd",
+        "source_recommendation": "KEEP_ON_CRON",
+        "source_ref": "config/lane_registry.json#health-tick",
+        "source_registry_state": "ACTIVE"
+      },
+      "source_declared_owner": "platform",
+      "source_mapping_status": "SOURCE_CHILD_PARENT_MATCH_PROPOSED",
+      "source_script_identifiers": [
+        "scripts/cron_self_heal.py"
+      ],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "tick:siem-critical-notify",
+      "join_evidence": [
+        {
+          "parent_timer_expression": "*:0/5",
+          "snapshot_script_equal": true,
+          "source_child_schedule": {
+            "cadence_minutes": 15,
+            "hours": null,
+            "minute_offset": 0,
+            "weekdays": null
+          },
+          "source_parent_execstart": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python %h/trade-ai-releases/portfolio-server/CURRENT/scripts/health_tick.py --apply",
+          "source_refs": [
+            "config/health_tick_steps.json#steps.siem-critical-notify",
+            "config/lane_registry.json#health-tick",
+            "config/systemd/user/tradeai-health-tick.service:27",
+            "config/systemd/user/tradeai-health-tick.timer:10",
+            "config/systemd/user/tradeai-health-tick.timer:13"
+          ],
+          "step_id": "siem-critical-notify",
+          "step_script_identifiers": [
+            "scripts/siem_critical_notify.py"
+          ],
+          "type": "EXACT_CHILD_ID_AND_SCRIPT_TO_PARENT"
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "yes",
+        "classification": "Retain as Existing Cron Job",
+        "declared_owner": "UNKNOWN (no lane row; runs under health-tick, whose owner is platform)",
+        "job_name": "siem-critical-notify",
+        "migration_status": "Not started",
+        "parent": "timer:tradeai-health-tick.timer (scripts/health_tick.py --apply)",
+        "registry_row": "NONE",
+        "retire_tag": "",
+        "schedule_expr": "cadence_minutes=15 minute_offset=0 hours=* weekdays=*",
+        "source": "health-tick"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "HEALTH_TICK_CHILD; KEEP_CHILD_ROW_AND_SHARED_PARENT",
+      "remaining_action": "Owner confirms responsibility for this specific child and its schedule/receipt/notification contract; map child step to shared health-tick parent without inventing a separate lane, one-to-one scheduler mapping or accepted inherited owner. Correlate installed parent/child natural run evidence under applicable authority. Broker-adjacent moomoo child internals remain uninvestigated.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [
+        {
+          "declared_owner": "platform",
+          "lane_id": "health-tick",
+          "scheduler_expression": "tradeai-health-tick.timer (*:0/5)",
+          "scheduler_kind": "systemd",
+          "source_recommendation": "KEEP_ON_CRON",
+          "source_ref": "config/lane_registry.json#health-tick",
+          "source_registry_state": "ACTIVE"
+        }
+      ],
+      "source_candidate": {
+        "declared_owner": "platform",
+        "lane_id": "health-tick",
+        "scheduler_expression": "tradeai-health-tick.timer (*:0/5)",
+        "scheduler_kind": "systemd",
+        "source_recommendation": "KEEP_ON_CRON",
+        "source_ref": "config/lane_registry.json#health-tick",
+        "source_registry_state": "ACTIVE"
+      },
+      "source_declared_owner": "platform",
+      "source_mapping_status": "SOURCE_CHILD_PARENT_MATCH_PROPOSED",
+      "source_script_identifiers": [
+        "scripts/siem_critical_notify.py"
+      ],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "tick:log-error-scraper",
+      "join_evidence": [
+        {
+          "parent_timer_expression": "*:0/5",
+          "snapshot_script_equal": true,
+          "source_child_schedule": {
+            "cadence_minutes": 20,
+            "hours": null,
+            "minute_offset": 0,
+            "weekdays": null
+          },
+          "source_parent_execstart": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python %h/trade-ai-releases/portfolio-server/CURRENT/scripts/health_tick.py --apply",
+          "source_refs": [
+            "config/health_tick_steps.json#steps.log-error-scraper",
+            "config/lane_registry.json#health-tick",
+            "config/systemd/user/tradeai-health-tick.service:27",
+            "config/systemd/user/tradeai-health-tick.timer:10",
+            "config/systemd/user/tradeai-health-tick.timer:13"
+          ],
+          "step_id": "log-error-scraper",
+          "step_script_identifiers": [
+            "scripts/log_error_scraper.py"
+          ],
+          "type": "EXACT_CHILD_ID_AND_SCRIPT_TO_PARENT"
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "yes",
+        "classification": "Retain as Existing Cron Job",
+        "declared_owner": "UNKNOWN (no lane row; runs under health-tick, whose owner is platform)",
+        "job_name": "log-error-scraper",
+        "migration_status": "Not started",
+        "parent": "timer:tradeai-health-tick.timer (scripts/health_tick.py --apply)",
+        "registry_row": "NONE",
+        "retire_tag": "",
+        "schedule_expr": "cadence_minutes=20 minute_offset=0 hours=* weekdays=*",
+        "source": "health-tick"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "HEALTH_TICK_CHILD; KEEP_CHILD_ROW_AND_SHARED_PARENT",
+      "remaining_action": "Owner confirms responsibility for this specific child and its schedule/receipt/notification contract; map child step to shared health-tick parent without inventing a separate lane, one-to-one scheduler mapping or accepted inherited owner. Correlate installed parent/child natural run evidence under applicable authority. Broker-adjacent moomoo child internals remain uninvestigated.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [
+        {
+          "declared_owner": "platform",
+          "lane_id": "health-tick",
+          "scheduler_expression": "tradeai-health-tick.timer (*:0/5)",
+          "scheduler_kind": "systemd",
+          "source_recommendation": "KEEP_ON_CRON",
+          "source_ref": "config/lane_registry.json#health-tick",
+          "source_registry_state": "ACTIVE"
+        }
+      ],
+      "source_candidate": {
+        "declared_owner": "platform",
+        "lane_id": "health-tick",
+        "scheduler_expression": "tradeai-health-tick.timer (*:0/5)",
+        "scheduler_kind": "systemd",
+        "source_recommendation": "KEEP_ON_CRON",
+        "source_ref": "config/lane_registry.json#health-tick",
+        "source_registry_state": "ACTIVE"
+      },
+      "source_declared_owner": "platform",
+      "source_mapping_status": "SOURCE_CHILD_PARENT_MATCH_PROPOSED",
+      "source_script_identifiers": [
+        "scripts/log_error_scraper.py"
+      ],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "tick:system-freshness-monitor",
+      "join_evidence": [
+        {
+          "parent_timer_expression": "*:0/5",
+          "snapshot_script_equal": true,
+          "source_child_schedule": {
+            "cadence_minutes": 20,
+            "hours": null,
+            "minute_offset": 0,
+            "weekdays": null
+          },
+          "source_parent_execstart": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python %h/trade-ai-releases/portfolio-server/CURRENT/scripts/health_tick.py --apply",
+          "source_refs": [
+            "config/health_tick_steps.json#steps.system-freshness-monitor",
+            "config/lane_registry.json#health-tick",
+            "config/systemd/user/tradeai-health-tick.service:27",
+            "config/systemd/user/tradeai-health-tick.timer:10",
+            "config/systemd/user/tradeai-health-tick.timer:13"
+          ],
+          "step_id": "system-freshness-monitor",
+          "step_script_identifiers": [
+            "scripts/system_freshness_monitor.py"
+          ],
+          "type": "EXACT_CHILD_ID_AND_SCRIPT_TO_PARENT"
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "yes",
+        "classification": "Retain as Existing Cron Job",
+        "declared_owner": "UNKNOWN (no lane row; runs under health-tick, whose owner is platform)",
+        "job_name": "system-freshness-monitor",
+        "migration_status": "Not started",
+        "parent": "timer:tradeai-health-tick.timer (scripts/health_tick.py --apply)",
+        "registry_row": "NONE",
+        "retire_tag": "",
+        "schedule_expr": "cadence_minutes=20 minute_offset=0 hours=* weekdays=*",
+        "source": "health-tick"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "HEALTH_TICK_CHILD; KEEP_CHILD_ROW_AND_SHARED_PARENT",
+      "remaining_action": "Owner confirms responsibility for this specific child and its schedule/receipt/notification contract; map child step to shared health-tick parent without inventing a separate lane, one-to-one scheduler mapping or accepted inherited owner. Correlate installed parent/child natural run evidence under applicable authority. Broker-adjacent moomoo child internals remain uninvestigated.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [
+        {
+          "declared_owner": "platform",
+          "lane_id": "health-tick",
+          "scheduler_expression": "tradeai-health-tick.timer (*:0/5)",
+          "scheduler_kind": "systemd",
+          "source_recommendation": "KEEP_ON_CRON",
+          "source_ref": "config/lane_registry.json#health-tick",
+          "source_registry_state": "ACTIVE"
+        }
+      ],
+      "source_candidate": {
+        "declared_owner": "platform",
+        "lane_id": "health-tick",
+        "scheduler_expression": "tradeai-health-tick.timer (*:0/5)",
+        "scheduler_kind": "systemd",
+        "source_recommendation": "KEEP_ON_CRON",
+        "source_ref": "config/lane_registry.json#health-tick",
+        "source_registry_state": "ACTIVE"
+      },
+      "source_declared_owner": "platform",
+      "source_mapping_status": "SOURCE_CHILD_PARENT_MATCH_PROPOSED",
+      "source_script_identifiers": [
+        "scripts/system_freshness_monitor.py"
+      ],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "tick:freshness-watchdog-heartbeat",
+      "join_evidence": [
+        {
+          "parent_timer_expression": "*:0/5",
+          "snapshot_script_equal": true,
+          "source_child_schedule": {
+            "cadence_minutes": 30,
+            "hours": null,
+            "minute_offset": 0,
+            "weekdays": null
+          },
+          "source_parent_execstart": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python %h/trade-ai-releases/portfolio-server/CURRENT/scripts/health_tick.py --apply",
+          "source_refs": [
+            "config/health_tick_steps.json#steps.freshness-watchdog-heartbeat",
+            "config/lane_registry.json#health-tick",
+            "config/systemd/user/tradeai-health-tick.service:27",
+            "config/systemd/user/tradeai-health-tick.timer:10",
+            "config/systemd/user/tradeai-health-tick.timer:13"
+          ],
+          "step_id": "freshness-watchdog-heartbeat",
+          "step_script_identifiers": [
+            "scripts/freshness_watchdog_heartbeat.py"
+          ],
+          "type": "EXACT_CHILD_ID_AND_SCRIPT_TO_PARENT"
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "yes",
+        "classification": "Retain as Existing Cron Job",
+        "declared_owner": "UNKNOWN (no lane row; runs under health-tick, whose owner is platform)",
+        "job_name": "freshness-watchdog-heartbeat",
+        "migration_status": "Not started",
+        "parent": "timer:tradeai-health-tick.timer (scripts/health_tick.py --apply)",
+        "registry_row": "NONE",
+        "retire_tag": "",
+        "schedule_expr": "cadence_minutes=30 minute_offset=0 hours=* weekdays=*",
+        "source": "health-tick"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "HEALTH_TICK_CHILD; KEEP_CHILD_ROW_AND_SHARED_PARENT",
+      "remaining_action": "Owner confirms responsibility for this specific child and its schedule/receipt/notification contract; map child step to shared health-tick parent without inventing a separate lane, one-to-one scheduler mapping or accepted inherited owner. Correlate installed parent/child natural run evidence under applicable authority. Broker-adjacent moomoo child internals remain uninvestigated.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [
+        {
+          "declared_owner": "platform",
+          "lane_id": "health-tick",
+          "scheduler_expression": "tradeai-health-tick.timer (*:0/5)",
+          "scheduler_kind": "systemd",
+          "source_recommendation": "KEEP_ON_CRON",
+          "source_ref": "config/lane_registry.json#health-tick",
+          "source_registry_state": "ACTIVE"
+        }
+      ],
+      "source_candidate": {
+        "declared_owner": "platform",
+        "lane_id": "health-tick",
+        "scheduler_expression": "tradeai-health-tick.timer (*:0/5)",
+        "scheduler_kind": "systemd",
+        "source_recommendation": "KEEP_ON_CRON",
+        "source_ref": "config/lane_registry.json#health-tick",
+        "source_registry_state": "ACTIVE"
+      },
+      "source_declared_owner": "platform",
+      "source_mapping_status": "SOURCE_CHILD_PARENT_MATCH_PROPOSED",
+      "source_script_identifiers": [
+        "scripts/freshness_watchdog_heartbeat.py"
+      ],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "tick:pipeline-liveness-report",
+      "join_evidence": [
+        {
+          "parent_timer_expression": "*:0/5",
+          "snapshot_script_equal": true,
+          "source_child_schedule": {
+            "cadence_minutes": 30,
+            "hours": null,
+            "minute_offset": 0,
+            "weekdays": null
+          },
+          "source_parent_execstart": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python %h/trade-ai-releases/portfolio-server/CURRENT/scripts/health_tick.py --apply",
+          "source_refs": [
+            "config/health_tick_steps.json#steps.pipeline-liveness-report",
+            "config/lane_registry.json#health-tick",
+            "config/systemd/user/tradeai-health-tick.service:27",
+            "config/systemd/user/tradeai-health-tick.timer:10",
+            "config/systemd/user/tradeai-health-tick.timer:13"
+          ],
+          "step_id": "pipeline-liveness-report",
+          "step_script_identifiers": [
+            "scripts/pipeline_liveness_report.py"
+          ],
+          "type": "EXACT_CHILD_ID_AND_SCRIPT_TO_PARENT"
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "yes",
+        "classification": "Retain as Existing Cron Job",
+        "declared_owner": "UNKNOWN (no lane row; runs under health-tick, whose owner is platform)",
+        "job_name": "pipeline-liveness-report",
+        "migration_status": "Not started",
+        "parent": "timer:tradeai-health-tick.timer (scripts/health_tick.py --apply)",
+        "registry_row": "NONE",
+        "retire_tag": "",
+        "schedule_expr": "cadence_minutes=30 minute_offset=0 hours=* weekdays=*",
+        "source": "health-tick"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "HEALTH_TICK_CHILD; KEEP_CHILD_ROW_AND_SHARED_PARENT",
+      "remaining_action": "Owner confirms responsibility for this specific child and its schedule/receipt/notification contract; map child step to shared health-tick parent without inventing a separate lane, one-to-one scheduler mapping or accepted inherited owner. Correlate installed parent/child natural run evidence under applicable authority. Broker-adjacent moomoo child internals remain uninvestigated.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [
+        {
+          "declared_owner": "platform",
+          "lane_id": "health-tick",
+          "scheduler_expression": "tradeai-health-tick.timer (*:0/5)",
+          "scheduler_kind": "systemd",
+          "source_recommendation": "KEEP_ON_CRON",
+          "source_ref": "config/lane_registry.json#health-tick",
+          "source_registry_state": "ACTIVE"
+        }
+      ],
+      "source_candidate": {
+        "declared_owner": "platform",
+        "lane_id": "health-tick",
+        "scheduler_expression": "tradeai-health-tick.timer (*:0/5)",
+        "scheduler_kind": "systemd",
+        "source_recommendation": "KEEP_ON_CRON",
+        "source_ref": "config/lane_registry.json#health-tick",
+        "source_registry_state": "ACTIVE"
+      },
+      "source_declared_owner": "platform",
+      "source_mapping_status": "SOURCE_CHILD_PARENT_MATCH_PROPOSED",
+      "source_script_identifiers": [
+        "scripts/pipeline_liveness_report.py"
+      ],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "tick:pipeline-freshness-monitor",
+      "join_evidence": [
+        {
+          "parent_timer_expression": "*:0/5",
+          "snapshot_script_equal": true,
+          "source_child_schedule": {
+            "cadence_minutes": 240,
+            "hours": null,
+            "minute_offset": 20,
+            "weekdays": null
+          },
+          "source_parent_execstart": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python %h/trade-ai-releases/portfolio-server/CURRENT/scripts/health_tick.py --apply",
+          "source_refs": [
+            "config/health_tick_steps.json#steps.pipeline-freshness-monitor",
+            "config/lane_registry.json#health-tick",
+            "config/systemd/user/tradeai-health-tick.service:27",
+            "config/systemd/user/tradeai-health-tick.timer:10",
+            "config/systemd/user/tradeai-health-tick.timer:13"
+          ],
+          "step_id": "pipeline-freshness-monitor",
+          "step_script_identifiers": [
+            "scripts/pipeline_freshness_monitor.py"
+          ],
+          "type": "EXACT_CHILD_ID_AND_SCRIPT_TO_PARENT"
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "yes",
+        "classification": "Retain as Existing Cron Job",
+        "declared_owner": "UNKNOWN (no lane row; runs under health-tick, whose owner is platform)",
+        "job_name": "pipeline-freshness-monitor",
+        "migration_status": "Not started",
+        "parent": "timer:tradeai-health-tick.timer (scripts/health_tick.py --apply)",
+        "registry_row": "NONE",
+        "retire_tag": "",
+        "schedule_expr": "cadence_minutes=240 minute_offset=20 hours=* weekdays=*",
+        "source": "health-tick"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "HEALTH_TICK_CHILD; KEEP_CHILD_ROW_AND_SHARED_PARENT",
+      "remaining_action": "Owner confirms responsibility for this specific child and its schedule/receipt/notification contract; map child step to shared health-tick parent without inventing a separate lane, one-to-one scheduler mapping or accepted inherited owner. Correlate installed parent/child natural run evidence under applicable authority. Broker-adjacent moomoo child internals remain uninvestigated.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [
+        {
+          "declared_owner": "platform",
+          "lane_id": "health-tick",
+          "scheduler_expression": "tradeai-health-tick.timer (*:0/5)",
+          "scheduler_kind": "systemd",
+          "source_recommendation": "KEEP_ON_CRON",
+          "source_ref": "config/lane_registry.json#health-tick",
+          "source_registry_state": "ACTIVE"
+        }
+      ],
+      "source_candidate": {
+        "declared_owner": "platform",
+        "lane_id": "health-tick",
+        "scheduler_expression": "tradeai-health-tick.timer (*:0/5)",
+        "scheduler_kind": "systemd",
+        "source_recommendation": "KEEP_ON_CRON",
+        "source_ref": "config/lane_registry.json#health-tick",
+        "source_registry_state": "ACTIVE"
+      },
+      "source_declared_owner": "platform",
+      "source_mapping_status": "SOURCE_CHILD_PARENT_MATCH_PROPOSED",
+      "source_script_identifiers": [
+        "scripts/pipeline_freshness_monitor.py"
+      ],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "tick:pipeline-freshness-slo",
+      "join_evidence": [
+        {
+          "parent_timer_expression": "*:0/5",
+          "snapshot_script_equal": true,
+          "source_child_schedule": {
+            "cadence_minutes": 120,
+            "hours": [
+              7,
+              9,
+              11,
+              13,
+              15,
+              17
+            ],
+            "minute_offset": 15,
+            "weekdays": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ]
+          },
+          "source_parent_execstart": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python %h/trade-ai-releases/portfolio-server/CURRENT/scripts/health_tick.py --apply",
+          "source_refs": [
+            "config/health_tick_steps.json#steps.pipeline-freshness-slo",
+            "config/lane_registry.json#health-tick",
+            "config/systemd/user/tradeai-health-tick.service:27",
+            "config/systemd/user/tradeai-health-tick.timer:10",
+            "config/systemd/user/tradeai-health-tick.timer:13"
+          ],
+          "step_id": "pipeline-freshness-slo",
+          "step_script_identifiers": [
+            "scripts/pipeline_freshness_slo.py"
+          ],
+          "type": "EXACT_CHILD_ID_AND_SCRIPT_TO_PARENT"
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "yes",
+        "classification": "Retain as Existing Cron Job",
+        "declared_owner": "UNKNOWN (no lane row; runs under health-tick, whose owner is platform)",
+        "job_name": "pipeline-freshness-slo",
+        "migration_status": "Not started",
+        "parent": "timer:tradeai-health-tick.timer (scripts/health_tick.py --apply)",
+        "registry_row": "NONE",
+        "retire_tag": "",
+        "schedule_expr": "cadence_minutes=120 minute_offset=15 hours=[7, 9, 11, 13, 15, 17] weekdays=[1, 2, 3, 4, 5]",
+        "source": "health-tick"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "HEALTH_TICK_CHILD; KEEP_CHILD_ROW_AND_SHARED_PARENT",
+      "remaining_action": "Owner confirms responsibility for this specific child and its schedule/receipt/notification contract; map child step to shared health-tick parent without inventing a separate lane, one-to-one scheduler mapping or accepted inherited owner. Correlate installed parent/child natural run evidence under applicable authority. Broker-adjacent moomoo child internals remain uninvestigated.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [
+        {
+          "declared_owner": "platform",
+          "lane_id": "health-tick",
+          "scheduler_expression": "tradeai-health-tick.timer (*:0/5)",
+          "scheduler_kind": "systemd",
+          "source_recommendation": "KEEP_ON_CRON",
+          "source_ref": "config/lane_registry.json#health-tick",
+          "source_registry_state": "ACTIVE"
+        }
+      ],
+      "source_candidate": {
+        "declared_owner": "platform",
+        "lane_id": "health-tick",
+        "scheduler_expression": "tradeai-health-tick.timer (*:0/5)",
+        "scheduler_kind": "systemd",
+        "source_recommendation": "KEEP_ON_CRON",
+        "source_ref": "config/lane_registry.json#health-tick",
+        "source_registry_state": "ACTIVE"
+      },
+      "source_declared_owner": "platform",
+      "source_mapping_status": "SOURCE_CHILD_PARENT_MATCH_PROPOSED",
+      "source_script_identifiers": [
+        "scripts/pipeline_freshness_slo.py"
+      ],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "tick:system-health-alerts",
+      "join_evidence": [
+        {
+          "parent_timer_expression": "*:0/5",
+          "snapshot_script_equal": true,
+          "source_child_schedule": {
+            "cadence_minutes": 60,
+            "hours": [
+              12,
+              15
+            ],
+            "minute_offset": 10,
+            "weekdays": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ]
+          },
+          "source_parent_execstart": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python %h/trade-ai-releases/portfolio-server/CURRENT/scripts/health_tick.py --apply",
+          "source_refs": [
+            "config/health_tick_steps.json#steps.system-health-alerts",
+            "config/lane_registry.json#health-tick",
+            "config/systemd/user/tradeai-health-tick.service:27",
+            "config/systemd/user/tradeai-health-tick.timer:10",
+            "config/systemd/user/tradeai-health-tick.timer:13"
+          ],
+          "step_id": "system-health-alerts",
+          "step_script_identifiers": [
+            "scripts/system_health_alerts.py"
+          ],
+          "type": "EXACT_CHILD_ID_AND_SCRIPT_TO_PARENT"
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "yes",
+        "classification": "Retain as Existing Cron Job",
+        "declared_owner": "UNKNOWN (no lane row; runs under health-tick, whose owner is platform)",
+        "job_name": "system-health-alerts",
+        "migration_status": "Not started",
+        "parent": "timer:tradeai-health-tick.timer (scripts/health_tick.py --apply)",
+        "registry_row": "NONE",
+        "retire_tag": "",
+        "schedule_expr": "cadence_minutes=60 minute_offset=10 hours=[12, 15] weekdays=[1, 2, 3, 4, 5]",
+        "source": "health-tick"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "HEALTH_TICK_CHILD; KEEP_CHILD_ROW_AND_SHARED_PARENT",
+      "remaining_action": "Owner confirms responsibility for this specific child and its schedule/receipt/notification contract; map child step to shared health-tick parent without inventing a separate lane, one-to-one scheduler mapping or accepted inherited owner. Correlate installed parent/child natural run evidence under applicable authority. Broker-adjacent moomoo child internals remain uninvestigated.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [
+        {
+          "declared_owner": "platform",
+          "lane_id": "health-tick",
+          "scheduler_expression": "tradeai-health-tick.timer (*:0/5)",
+          "scheduler_kind": "systemd",
+          "source_recommendation": "KEEP_ON_CRON",
+          "source_ref": "config/lane_registry.json#health-tick",
+          "source_registry_state": "ACTIVE"
+        }
+      ],
+      "source_candidate": {
+        "declared_owner": "platform",
+        "lane_id": "health-tick",
+        "scheduler_expression": "tradeai-health-tick.timer (*:0/5)",
+        "scheduler_kind": "systemd",
+        "source_recommendation": "KEEP_ON_CRON",
+        "source_ref": "config/lane_registry.json#health-tick",
+        "source_registry_state": "ACTIVE"
+      },
+      "source_declared_owner": "platform",
+      "source_mapping_status": "SOURCE_CHILD_PARENT_MATCH_PROPOSED",
+      "source_script_identifiers": [
+        "scripts/system_health_alerts.py"
+      ],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "n8n:2yPuOGW9yYtJsoYk",
+      "join_evidence": [
+        {
+          "source_file_exists": true,
+          "source_id_equal": true,
+          "source_name_equal": true,
+          "source_refs": [
+            "docs/implementation/n8n-parallel/workflows/INDEX.json#2yPuOGW9yYtJsoYk",
+            "Inventory#n8n:2yPuOGW9yYtJsoYk"
+          ],
+          "type": "EXACT_LEGACY_WORKFLOW_ID_AND_NAME"
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "no",
+        "classification": "Candidate for Retirement",
+        "declared_owner": "UNKNOWN",
+        "job_name": "n8n-bench-nodes",
+        "migration_status": "Not started",
+        "parent": "",
+        "registry_row": "NONE",
+        "retire_tag": "",
+        "schedule_expr": "webhook",
+        "source": "n8n"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "BENCH_EXCLUSION_OR_ARCHIVAL_REVIEW",
+      "remaining_action": "Correct source-coverage narrative: matching bench source/index exists despite historical MISSING_IN_GIT label. Operator confirms bench exclusion versus archival and exact current inactive/archived state; retain original row and its snapshot retirement recommendation. Do not delete or equate a disabled bench with accepted retirement.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [],
+      "source_candidate": {
+        "declared_owner": "NOT_MEASURED",
+        "kind": "LEGACY_BENCH_WORKFLOW",
+        "source_file": "docs/implementation/n8n-parallel/workflows/n8n-bench-nodes.json",
+        "source_template_active": false,
+        "workflow_id": "2yPuOGW9yYtJsoYk"
+      },
+      "source_declared_owner": "NOT_MEASURED",
+      "source_mapping_status": "SOURCE_BENCH_ID_NAME_MATCH_PROPOSED",
+      "source_script_identifiers": [],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "n8n:Bi002YOPSpZOQpEo",
+      "join_evidence": [
+        {
+          "source_file_exists": true,
+          "source_id_equal": true,
+          "source_name_equal": true,
+          "source_refs": [
+            "docs/implementation/n8n-parallel/workflows/INDEX.json#Bi002YOPSpZOQpEo",
+            "Inventory#n8n:Bi002YOPSpZOQpEo"
+          ],
+          "type": "EXACT_LEGACY_WORKFLOW_ID_AND_NAME"
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "no",
+        "classification": "Candidate for Retirement",
+        "declared_owner": "UNKNOWN",
+        "job_name": "n8n-bench-error",
+        "migration_status": "Not started",
+        "parent": "",
+        "registry_row": "NONE",
+        "retire_tag": "",
+        "schedule_expr": "UNKNOWN",
+        "source": "n8n"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "BENCH_EXCLUSION_OR_ARCHIVAL_REVIEW",
+      "remaining_action": "Correct source-coverage narrative: matching bench source/index exists despite historical MISSING_IN_GIT label. Operator confirms bench exclusion versus archival and exact current inactive/archived state; retain original row and its snapshot retirement recommendation. Do not delete or equate a disabled bench with accepted retirement.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [],
+      "source_candidate": {
+        "declared_owner": "NOT_MEASURED",
+        "kind": "LEGACY_BENCH_WORKFLOW",
+        "source_file": "docs/implementation/n8n-parallel/workflows/n8n-bench-error.json",
+        "source_template_active": false,
+        "workflow_id": "Bi002YOPSpZOQpEo"
+      },
+      "source_declared_owner": "NOT_MEASURED",
+      "source_mapping_status": "SOURCE_BENCH_ID_NAME_MATCH_PROPOSED",
+      "source_script_identifiers": [],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "n8n:tradeai-approval-router",
+      "join_evidence": [
+        {
+          "source_refs": [
+            "docs/implementation/n8n-maturity/workflows/INDEX.json#tradeai-approval-router",
+            "config/n8n_health_contracts.json#tradeai-approval-router"
+          ],
+          "source_trigger_set": [
+            "schedule */5 * * * *"
+          ],
+          "source_workflow_sha256": "d38b089b512ae5874a5fff692c256ad48c3b6082958d39d34e15beaf7fd1c1fe",
+          "trigger_set_equal": true,
+          "type": "EXACT_WORKFLOW_ID_AND_TRIGGER_SET",
+          "workflow_id_equal": true
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "no",
+        "classification": "Requires Custom Development",
+        "declared_owner": "UNKNOWN",
+        "job_name": "tradeai-approval-router",
+        "migration_status": "Not started",
+        "parent": "",
+        "registry_row": "NONE",
+        "retire_tag": "",
+        "schedule_expr": "schedule */5 * * * *",
+        "source": "n8n"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "GENERIC_COORDINATOR; ONE_WORKFLOW_MANY_BUSINESS_LANES",
+      "remaining_action": "Use the native workflow index and contract for coordinator identity; do not fabricate a lane_registry business row or treat one coordinator as one completed business process. Correlate installed workflow ID/state/hash and routed child lane receipts/outputs; template active=false is import default, not a live-state measurement. Owner confirmation and accepted business mapping remain pending.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [],
+      "source_candidate": {
+        "declared_owner": "platform",
+        "kind": "GENERIC_COORDINATOR_WORKFLOW",
+        "source_file": "docs/implementation/n8n-maturity/workflows/tradeai-approval-router.json",
+        "source_registry_lane": "NOT_APPLICABLE; generic workflows are indexed separately",
+        "source_template_active": false,
+        "workflow_id": "tradeai-approval-router"
+      },
+      "source_declared_owner": "platform",
+      "source_mapping_status": "SOURCE_WORKFLOW_ID_TRIGGER_MATCH_PROPOSED",
+      "source_script_identifiers": [],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "n8n:tradeai-digest-scheduler",
+      "join_evidence": [
+        {
+          "source_refs": [
+            "docs/implementation/n8n-maturity/workflows/INDEX.json#tradeai-digest-scheduler",
+            "config/n8n_health_contracts.json#tradeai-digest-scheduler"
+          ],
+          "source_trigger_set": [
+            "schedule */5 * * * *"
+          ],
+          "source_workflow_sha256": "9e79b90b906e3dbbe402aeed42481669774f04b629cb3352d230a01835493883",
+          "trigger_set_equal": true,
+          "type": "EXACT_WORKFLOW_ID_AND_TRIGGER_SET",
+          "workflow_id_equal": true
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "no",
+        "classification": "Requires Custom Development",
+        "declared_owner": "UNKNOWN",
+        "job_name": "tradeai-digest-scheduler",
+        "migration_status": "Not started",
+        "parent": "",
+        "registry_row": "NONE",
+        "retire_tag": "",
+        "schedule_expr": "schedule */5 * * * *",
+        "source": "n8n"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "GENERIC_COORDINATOR; ONE_WORKFLOW_MANY_BUSINESS_LANES",
+      "remaining_action": "Use the native workflow index and contract for coordinator identity; do not fabricate a lane_registry business row or treat one coordinator as one completed business process. Correlate installed workflow ID/state/hash and routed child lane receipts/outputs; template active=false is import default, not a live-state measurement. Owner confirmation and accepted business mapping remain pending.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [],
+      "source_candidate": {
+        "declared_owner": "platform",
+        "kind": "GENERIC_COORDINATOR_WORKFLOW",
+        "source_file": "docs/implementation/n8n-maturity/workflows/tradeai-digest-scheduler.json",
+        "source_registry_lane": "NOT_APPLICABLE; generic workflows are indexed separately",
+        "source_template_active": false,
+        "workflow_id": "tradeai-digest-scheduler"
+      },
+      "source_declared_owner": "platform",
+      "source_mapping_status": "SOURCE_WORKFLOW_ID_TRIGGER_MATCH_PROPOSED",
+      "source_script_identifiers": [],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "n8n:tradeai-dispatcher",
+      "join_evidence": [
+        {
+          "source_refs": [
+            "docs/implementation/n8n-maturity/workflows/INDEX.json#tradeai-dispatcher",
+            "config/n8n_health_contracts.json#tradeai-dispatcher"
+          ],
+          "source_trigger_set": [
+            "schedule * * * * *"
+          ],
+          "source_workflow_sha256": "28451c9614e6d87c61bd750687d7c8b9758744088e1af5a03e0f0125fbba4a40",
+          "trigger_set_equal": true,
+          "type": "EXACT_WORKFLOW_ID_AND_TRIGGER_SET",
+          "workflow_id_equal": true
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "no",
+        "classification": "Requires Custom Development",
+        "declared_owner": "UNKNOWN",
+        "job_name": "tradeai-dispatcher",
+        "migration_status": "Not started",
+        "parent": "",
+        "registry_row": "NONE",
+        "retire_tag": "",
+        "schedule_expr": "schedule * * * * *",
+        "source": "n8n"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "GENERIC_COORDINATOR; ONE_WORKFLOW_MANY_BUSINESS_LANES",
+      "remaining_action": "Use the native workflow index and contract for coordinator identity; do not fabricate a lane_registry business row or treat one coordinator as one completed business process. Correlate installed workflow ID/state/hash and routed child lane receipts/outputs; template active=false is import default, not a live-state measurement. Owner confirmation and accepted business mapping remain pending.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [],
+      "source_candidate": {
+        "declared_owner": "platform",
+        "kind": "GENERIC_COORDINATOR_WORKFLOW",
+        "source_file": "docs/implementation/n8n-maturity/workflows/tradeai-dispatcher.json",
+        "source_registry_lane": "NOT_APPLICABLE; generic workflows are indexed separately",
+        "source_template_active": false,
+        "workflow_id": "tradeai-dispatcher"
+      },
+      "source_declared_owner": "platform",
+      "source_mapping_status": "SOURCE_WORKFLOW_ID_TRIGGER_MATCH_PROPOSED",
+      "source_script_identifiers": [],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "n8n:tradeai-event-router",
+      "join_evidence": [
+        {
+          "source_refs": [
+            "docs/implementation/n8n-maturity/workflows/INDEX.json#tradeai-event-router",
+            "config/n8n_health_contracts.json#tradeai-event-router"
+          ],
+          "source_trigger_set": [
+            "schedule * * * * *",
+            "webhook POST tradeai-nudge"
+          ],
+          "source_workflow_sha256": "59dde8bde4422e105fb6c8c16ad39ca5134eb82c8e0413fdea46e532fad833dd",
+          "trigger_set_equal": true,
+          "type": "EXACT_WORKFLOW_ID_AND_TRIGGER_SET",
+          "workflow_id_equal": true
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "no",
+        "classification": "Requires Custom Development",
+        "declared_owner": "UNKNOWN",
+        "job_name": "tradeai-event-router",
+        "migration_status": "Not started",
+        "parent": "",
+        "registry_row": "NONE",
+        "retire_tag": "",
+        "schedule_expr": "schedule * * * * *; webhook POST tradeai-nudge",
+        "source": "n8n"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "GENERIC_COORDINATOR; ONE_WORKFLOW_MANY_BUSINESS_LANES",
+      "remaining_action": "Use the native workflow index and contract for coordinator identity; do not fabricate a lane_registry business row or treat one coordinator as one completed business process. Correlate installed workflow ID/state/hash and routed child lane receipts/outputs; template active=false is import default, not a live-state measurement. Owner confirmation and accepted business mapping remain pending.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [],
+      "source_candidate": {
+        "declared_owner": "platform",
+        "kind": "GENERIC_COORDINATOR_WORKFLOW",
+        "source_file": "docs/implementation/n8n-maturity/workflows/tradeai-event-router.json",
+        "source_registry_lane": "NOT_APPLICABLE; generic workflows are indexed separately",
+        "source_template_active": false,
+        "workflow_id": "tradeai-event-router"
+      },
+      "source_declared_owner": "platform",
+      "source_mapping_status": "SOURCE_WORKFLOW_ID_TRIGGER_MATCH_PROPOSED",
+      "source_script_identifiers": [],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "n8n:tradeai-heartbeat-watcher",
+      "join_evidence": [
+        {
+          "source_refs": [
+            "docs/implementation/n8n-maturity/workflows/INDEX.json#tradeai-heartbeat-watcher",
+            "config/n8n_health_contracts.json#tradeai-heartbeat-watcher"
+          ],
+          "source_trigger_set": [
+            "schedule */5 * * * *"
+          ],
+          "source_workflow_sha256": "7b8fc8244b74a891b7bb8137b6955eb1223c91fdde9720f65f240736b9388003",
+          "trigger_set_equal": true,
+          "type": "EXACT_WORKFLOW_ID_AND_TRIGGER_SET",
+          "workflow_id_equal": true
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "no",
+        "classification": "Requires Custom Development",
+        "declared_owner": "UNKNOWN",
+        "job_name": "tradeai-heartbeat-watcher",
+        "migration_status": "Not started",
+        "parent": "",
+        "registry_row": "NONE",
+        "retire_tag": "",
+        "schedule_expr": "schedule */5 * * * *",
+        "source": "n8n"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "GENERIC_COORDINATOR; ONE_WORKFLOW_MANY_BUSINESS_LANES",
+      "remaining_action": "Use the native workflow index and contract for coordinator identity; do not fabricate a lane_registry business row or treat one coordinator as one completed business process. Correlate installed workflow ID/state/hash and routed child lane receipts/outputs; template active=false is import default, not a live-state measurement. Owner confirmation and accepted business mapping remain pending.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [],
+      "source_candidate": {
+        "declared_owner": "platform",
+        "kind": "GENERIC_COORDINATOR_WORKFLOW",
+        "source_file": "docs/implementation/n8n-maturity/workflows/tradeai-heartbeat-watcher.json",
+        "source_registry_lane": "NOT_APPLICABLE; generic workflows are indexed separately",
+        "source_template_active": false,
+        "workflow_id": "tradeai-heartbeat-watcher"
+      },
+      "source_declared_owner": "platform",
+      "source_mapping_status": "SOURCE_WORKFLOW_ID_TRIGGER_MATCH_PROPOSED",
+      "source_script_identifiers": [],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "n8n:tradeai-incident-router",
+      "join_evidence": [
+        {
+          "source_refs": [
+            "docs/implementation/n8n-maturity/workflows/INDEX.json#tradeai-incident-router",
+            "config/n8n_health_contracts.json#tradeai-incident-router"
+          ],
+          "source_trigger_set": [
+            "error trigger",
+            "schedule * * * * *"
+          ],
+          "source_workflow_sha256": "13d8ad954a4c7d5fae3da67c6f8dd9550b5dc477a5726606b390108f3e585f60",
+          "trigger_set_equal": true,
+          "type": "EXACT_WORKFLOW_ID_AND_TRIGGER_SET",
+          "workflow_id_equal": true
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "no",
+        "classification": "Requires Custom Development",
+        "declared_owner": "UNKNOWN",
+        "job_name": "tradeai-incident-router",
+        "migration_status": "Not started",
+        "parent": "",
+        "registry_row": "NONE",
+        "retire_tag": "",
+        "schedule_expr": "schedule * * * * *; error trigger",
+        "source": "n8n"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "GENERIC_COORDINATOR; ONE_WORKFLOW_MANY_BUSINESS_LANES",
+      "remaining_action": "Use the native workflow index and contract for coordinator identity; do not fabricate a lane_registry business row or treat one coordinator as one completed business process. Correlate installed workflow ID/state/hash and routed child lane receipts/outputs; template active=false is import default, not a live-state measurement. Owner confirmation and accepted business mapping remain pending.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [],
+      "source_candidate": {
+        "declared_owner": "platform",
+        "kind": "GENERIC_COORDINATOR_WORKFLOW",
+        "source_file": "docs/implementation/n8n-maturity/workflows/tradeai-incident-router.json",
+        "source_registry_lane": "NOT_APPLICABLE; generic workflows are indexed separately",
+        "source_template_active": false,
+        "workflow_id": "tradeai-incident-router"
+      },
+      "source_declared_owner": "platform",
+      "source_mapping_status": "SOURCE_WORKFLOW_ID_TRIGGER_MATCH_PROPOSED",
+      "source_script_identifiers": [],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "cron:NEW-n8n-siem-bridge",
+      "join_evidence": [
+        {
+          "checks": {
+            "expression_equal": true,
+            "snapshot_full_install_line_equal": true,
+            "snapshot_marker_present": true,
+            "source_marker_present": true,
+            "source_match_present_in_snapshot_command": true,
+            "workbook_job_name_equals_source_lane_id": true
+          },
+          "snapshot_full_command_sha256": "0b959b99870c2303570e31ad620f23d7318c61de138d7ac684eb011d38e86c64",
+          "source_install_line_sha256": "0b959b99870c2303570e31ad620f23d7318c61de138d7ac684eb011d38e86c64",
+          "source_refs": [
+            "config/lane_registry.json#n8n-siem-bridge.scheduler",
+            "Inventory#cron:NEW-n8n-siem-bridge"
+          ],
+          "type": "EXACT_ID_MARKER_EXPRESSION_JOIN"
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "yes",
+        "classification": "",
+        "declared_owner": "",
+        "job_name": "n8n-siem-bridge",
+        "migration_status": "Not started",
+        "parent": "",
+        "registry_row": "",
+        "retire_tag": "",
+        "schedule_expr": "1-59/5 * * * *",
+        "source": "crontab"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "HOST_CRON_LANE",
+      "remaining_action": "Integrator may record this exact source mapping in a supplemental crosswalk; preserve original blank registry_row and all operator history. Owner confirmation, deployed scheduler/output/incident proof and accepted business mapping remain separate requirements.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [
+        {
+          "declared_owner": "platform",
+          "lane_id": "n8n-siem-bridge",
+          "scheduler_expression": "1-59/5 * * * *",
+          "scheduler_kind": "cron",
+          "source_recommendation": "KEEP_ON_CRON",
+          "source_ref": "config/lane_registry.json#n8n-siem-bridge",
+          "source_registry_state": "ACTIVE"
+        }
+      ],
+      "source_candidate": {
+        "declared_owner": "platform",
+        "lane_id": "n8n-siem-bridge",
+        "scheduler_expression": "1-59/5 * * * *",
+        "scheduler_kind": "cron",
+        "source_recommendation": "KEEP_ON_CRON",
+        "source_ref": "config/lane_registry.json#n8n-siem-bridge",
+        "source_registry_state": "ACTIVE"
+      },
+      "source_declared_owner": "platform",
+      "source_mapping_status": "SOURCE_EXACT_MATCH_PROPOSED",
+      "source_script_identifiers": [
+        "scripts/n8n_siem_bridge.py",
+        "scripts/safe_flock.sh"
+      ],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    },
+    {
+      "accepted_business_mapping": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY",
+      "inv_id": "cron:NEW-n8n-failure-diagnosis",
+      "join_evidence": [
+        {
+          "checks": {
+            "expression_equal": true,
+            "snapshot_full_install_line_equal": true,
+            "snapshot_marker_present": true,
+            "source_marker_present": true,
+            "source_match_present_in_snapshot_command": true,
+            "workbook_job_name_equals_source_lane_id": true
+          },
+          "snapshot_full_command_sha256": "f462f71e8b997b5fcaab69bf356ae0526df6221ed5553d941fb45af50134669d",
+          "source_install_line_sha256": "f462f71e8b997b5fcaab69bf356ae0526df6221ed5553d941fb45af50134669d",
+          "source_refs": [
+            "config/lane_registry.json#n8n-failure-diagnosis.scheduler",
+            "Inventory#cron:NEW-n8n-failure-diagnosis"
+          ],
+          "type": "EXACT_ID_MARKER_EXPRESSION_JOIN"
+        }
+      ],
+      "original_row_changes_applied": false,
+      "original_snapshot": {
+        "active": "yes",
+        "classification": "",
+        "declared_owner": "",
+        "job_name": "n8n-failure-diagnosis",
+        "migration_status": "Not started",
+        "parent": "",
+        "registry_row": "",
+        "retire_tag": "",
+        "schedule_expr": "3-59/15 * * * *",
+        "source": "crontab"
+      },
+      "ownership_confirmation": "NOT_MEASURED",
+      "proposed_mapping_role": "HOST_CRON_LANE",
+      "remaining_action": "Integrator may record this exact source mapping in a supplemental crosswalk; preserve original blank registry_row and all operator history. Owner confirmation, deployed scheduler/output/incident proof and accepted business mapping remain separate requirements.",
+      "runtime": "NOT_MEASURED",
+      "source_backed_candidates": [
+        {
+          "declared_owner": "platform",
+          "lane_id": "n8n-failure-diagnosis",
+          "scheduler_expression": "3-59/15 * * * *",
+          "scheduler_kind": "cron",
+          "source_recommendation": "KEEP_ON_CRON",
+          "source_ref": "config/lane_registry.json#n8n-failure-diagnosis",
+          "source_registry_state": "ACTIVE"
+        }
+      ],
+      "source_candidate": {
+        "declared_owner": "platform",
+        "lane_id": "n8n-failure-diagnosis",
+        "scheduler_expression": "3-59/15 * * * *",
+        "scheduler_kind": "cron",
+        "source_recommendation": "KEEP_ON_CRON",
+        "source_ref": "config/lane_registry.json#n8n-failure-diagnosis",
+        "source_registry_state": "ACTIVE"
+      },
+      "source_declared_owner": "platform",
+      "source_mapping_status": "SOURCE_EXACT_MATCH_PROPOSED",
+      "source_script_identifiers": [
+        "scripts/n8n_failure_diagnosis.py",
+        "scripts/run_with_deepseek_offpeak.sh",
+        "scripts/safe_flock.sh"
+      ],
+      "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f"
+    }
+  ],
+  "runtime": "NOT_MEASURED",
+  "source_registry": {
+    "lane_rows": 630,
+    "path": "config/lane_registry.json",
+    "sha256": "423a73ffe677fa32b26734de9d43efb2331503e71306a5d1a0e3f37eb7ddda44"
+  },
+  "source_sha": "40208881dd34495b840bcbd4e373f593d06a659f",
+  "status": "SOURCE_PROPOSALS_FOR_INTEGRATOR_REVIEW",
+  "validation": {
+    "checks": {
+      "all61_have_specific_remaining_actions": true,
+      "all_accepted_business_mappings_NOT_MEASURED": true,
+      "all_owner_confirmations_NOT_MEASURED": true,
+      "gap_active15_inactive46": true,
+      "gap_exact61_unique": true,
+      "inventory_exact679_unique": true,
+      "no_secret_file_reads_or_raw_command_payloads_in_artifact": true,
+      "no_workbook_source_config_or_runtime_changes": true,
+      "protected_child_code_not_investigated": true,
+      "six_generic_id_trigger_set_matches": true,
+      "snapshot_bytes_unchanged_during_observation": true,
+      "thirteen_health_tick_id_script_parent_matches": true,
+      "three_blank_classifications_have_source_KEEP_ON_CRON_and_platform_declaration": true,
+      "two_bench_id_name_source_matches": true,
+      "two_host_mapping_id_marker_expression_full_command_checks": true
+    },
+    "model_calls": 0,
+    "remote_pushes": 0,
+    "status": "PASS",
+    "tests": "Population invariants, exact identity/marker/expression/full-command and parent joins checked using source metadata and stdlib workbook XML; no runtime tests or business execution."
+  },
+  "workbook_snapshot": {
+    "original_rows_preserved": true,
+    "path": "/home/johnclaw/n8n-maturity-verification/cron-inventory/CRON_INVENTORY_LATEST.xlsx",
+    "registry_gap_definition": "registry_row not in source config/lane_registry.json lane_id set; NONE=59, blank=2",
+    "row_count": 679,
+    "sha256": "2ffb98ed83fb936096e56e9382b1a588eabc43c430621fcd671bd335bd3f1f43",
+    "sheet": "Inventory"
+  }
+}

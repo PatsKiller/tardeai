@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import SharedMomentumCandidates from '../components/tradeai/SharedMomentumCandidates'
 import { useSearchParams } from 'react-router-dom';
 import { useApi } from '../hooks/useApi';
 import ActiveTraderPage from './ActiveTraderPage';
@@ -50,6 +51,8 @@ export default function ActiveTraderHub() {
           <span style={{ fontSize: 12, color: 'var(--text3)', fontFamily: 'ui-monospace, Menlo, monospace' }}>{statusPill}</span>
         )}
       </div>
+
+      <SharedMomentumCandidates />
 
       {tab === 'Review' && (
         <>

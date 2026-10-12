@@ -1,5 +1,6 @@
 """Gateway `model_job` operation (tranche D follow-up): STARTED event -> governed job -> artifact REFERENCE or typed refusal.
 The governed call is injected; no bridge, no provider, no socket."""
+
 from __future__ import annotations
 
 import datetime as dt
@@ -18,48 +19,110 @@ from scripts.lib import n8n_model_job as M  # noqa: E402
 
 KEY = b"k" * 32
 SHA = "a" * 40
-GOOD = {"headline": "AMC filed an 8-K", "items": [{"symbol": "AMC", "change_guid": "d13460e0", "summary": "8-K"}],
-        "sources_cited": ["d13460e0"], "confidence_note": "artifact only", "recommendation": "NONE"}
+GOOD = {
+    "headline": "AMC filed an 8-K",
+    "items": [{"symbol": "AMC", "change_guid": "d13460e0", "summary": "8-K"}],
+    "sources_cited": ["d13460e0"],
+    "confidence_note": "artifact only",
+    "recommendation": "NONE",
+}
 
 
 def _claim(nonce, now):
-    claim = {"v": 1, "caller_id": "n8n-lab", "project": "trade-ai", "iat": now, "exp": now + 60, "nonce": "nonce-mj-" + nonce, "scope": "coordination_read"}
+    claim = {
+        "v": 1,
+        "caller_id": "n8n-lab",
+        "project": "trade-ai",
+        "iat": now,
+        "exp": now + 60,
+        "nonce": "nonce-mj-" + nonce,
+        "scope": "coordination_read",
+    }
     return {"claim": claim, "signature": hmac.new(KEY, G.canonical(claim), hashlib.sha256).hexdigest()}
 
 
 def _call(op, nonce, nonces, store, **extra):
     now = time.time()
     route = "coordination/status" if op in ("status", "list") else "coordination/event"
-    return G.handle_request({**_claim(nonce, now), "route": route, "operation": op, **extra}, key=KEY,
-                            now=dt.datetime.fromtimestamp(now, dt.timezone.utc), nonce_store=nonces, idempotency_store=store, expected_origin_sha=SHA)
+    return G.handle_request(
+        {**_claim(nonce, now), "route": route, "operation": op, **extra},
+        key=KEY,
+        now=dt.datetime.fromtimestamp(now, dt.timezone.utc),
+        nonce_store=nonces,
+        idempotency_store=store,
+        expected_origin_sha=SHA,
+    )
 
 
 def _event(idem):
-    return {"event_id": "evt-" + idem, "source_project": "trade-ai", "lane_id": "material-change-digest", "schema_version": G.SCHEMA_VERSION,
-            "origin_sha": SHA, "subject_key": "AMC", "source_timestamp": "2026-10-07T04:30:00+00:00", "deadline": "2026-10-07T06:30:00+00:00",
-            "artifact_ref": "data/runtime/material_changes_digest_input.json", "authority_class": "coordination_read",
-            "correlation_id": "corr-" + idem, "idempotency_key": idem}
+    return {
+        "event_id": "evt-" + idem,
+        "source_project": "trade-ai",
+        "lane_id": "material-change-digest",
+        "schema_version": G.SCHEMA_VERSION,
+        "origin_sha": SHA,
+        "subject_key": "AMC",
+        "source_timestamp": "2026-10-07T04:30:00+00:00",
+        "deadline": "2026-10-07T06:30:00+00:00",
+        "artifact_ref": "data/runtime/material_changes_digest_input.json",
+        "authority_class": "coordination_read",
+        "correlation_id": "corr-" + idem,
+        "idempotency_key": idem,
+    }
 
 
 def _job(root, idem):
     raw = json.dumps({"changes": [{"change_guid": "d13460e0", "symbol": "AMC"}]}).encode()
     (root / "data" / "runtime").mkdir(parents=True, exist_ok=True)
     (root / "data" / "runtime" / "material_changes_digest_input.json").write_bytes(raw)
-    return {"process_id": "n8n_material_digest_draft", "artifact_ref": {"store": "data/runtime", "ref": "material_changes_digest_input.json", "sha256": hashlib.sha256(raw).hexdigest()},
-            "correlation_id": idem, "deadline": (dt.datetime.now(dt.timezone.utc) + dt.timedelta(hours=1)).isoformat(),
-            "output_schema_id": "material_change_digest_draft/v1"}
+    return {
+        "process_id": "n8n_material_digest_draft",
+        "artifact_ref": {
+            "store": "data/runtime",
+            "ref": "material_changes_digest_input.json",
+            "sha256": hashlib.sha256(raw).hexdigest(),
+        },
+        "correlation_id": idem,
+        "deadline": (dt.datetime.now(dt.timezone.utc) + dt.timedelta(hours=1)).isoformat(),
+        "output_schema_id": "material_change_digest_draft/v1",
+    }
 
 
 def _ok(answer=GOOD, seen=None):
     def call(messages, *, process_id, response_format, request_id, task_type=None, **named):
         if seen is not None:
-            seen.append({"process_id": process_id, "request_id": request_id, "task_type": task_type, "messages": messages, **named})
+            seen.append(
+                {
+                    "process_id": process_id,
+                    "request_id": request_id,
+                    "task_type": task_type,
+                    "messages": messages,
+                    **named,
+                }
+            )
         # 2026-10-08: the live bridge's nested envelope (cio_governed_model_bridge Step 10), not a flat fake
-        return {"id": request_id, "object": "chat.completion", "model": "deepseek-flash", "usage": {"total_tokens": 500},
-                "choices": [{"index": 0, "message": {"role": "assistant", "content": json.dumps(answer)}, "finish_reason": "stop"}],
-                "_tradeai": {"governance_pass": True, "bridge": "cio_governed", "process_id": process_id, "reservation_id": 7,
-                             "cost_estimate": 0.001, "model_id": "deepseek-flash", "provider": "deepseek", "mock": False,
-                             "request_id": request_id, "requested_policy": "FAST"}}
+        return {
+            "id": request_id,
+            "object": "chat.completion",
+            "model": "deepseek-flash",
+            "usage": {"total_tokens": 500},
+            "choices": [
+                {"index": 0, "message": {"role": "assistant", "content": json.dumps(answer)}, "finish_reason": "stop"}
+            ],
+            "_tradeai": {
+                "governance_pass": True,
+                "bridge": "cio_governed",
+                "process_id": process_id,
+                "reservation_id": 7,
+                "cost_estimate": 0.001,
+                "model_id": "deepseek-flash",
+                "provider": "deepseek",
+                "mock": False,
+                "request_id": request_id,
+                "requested_policy": "FAST",
+            },
+        }
+
     return call
 
 
@@ -70,13 +133,17 @@ def test_model_job_writes_an_artifact_reference_on_a_started_event(tmp_path, mon
     idem = "idem-mj-0001"
     assert _call("accept_event", "1", nonces, store, event=_event(idem))["state"] == "ACCEPTED"
     early = _call("model_job", "2", nonces, store, idempotency_key=idem, job=_job(tmp_path, idem))
-    assert early["reason"] == "illegal_transition:ACCEPTED->ARTIFACT_WRITTEN"        # must be STARTED first
+    assert early["reason"] == "illegal_transition:ACCEPTED->ARTIFACT_WRITTEN"  # must be STARTED first
     assert _call("claim", "3", nonces, store, idempotency_key=idem)["state"] == "CLAIMED"
     assert _call("start", "4", nonces, store, idempotency_key=idem)["state"] == "STARTED"
     r = _call("model_job", "5", nonces, store, idempotency_key=idem, job=_job(tmp_path, idem))
-    assert r["state"] == "ARTIFACT_WRITTEN" and r["artifact_ref"]["ref"].startswith("n8n_model_jobs/") and r["effects"] == []
+    assert (
+        r["state"] == "ARTIFACT_WRITTEN"
+        and r["artifact_ref"]["ref"].startswith("n8n_model_jobs/")
+        and r["effects"] == []
+    )
     assert r["model_job"]["cost"]["reservation_id"] == 7 and r["outbound"] == "blocked"
-    assert r["model_job"]["task_type"] == "model_job" and r["model_job"]["template_id"] is None     # derived server-side
+    assert r["model_job"]["task_type"] == "model_job" and r["model_job"]["template_id"] is None  # derived server-side
     written = json.loads((tmp_path / "data" / "runtime" / r["artifact_ref"]["ref"]).read_text())
     assert written["artifact_out"]["body"]["recommendation"] == "NONE"
     assert _call("status", "6", nonces, store, idempotency_key=idem)["state"] == "ARTIFACT_WRITTEN"
@@ -84,17 +151,25 @@ def test_model_job_writes_an_artifact_reference_on_a_started_event(tmp_path, mon
 
 def test_model_job_refusals_are_typed_and_leave_the_event_refused(tmp_path, monkeypatch):
     monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
-    monkeypatch.setattr(G, "MODEL_JOB_GOVERNED_CALL", lambda *a, **k: {"error": {"code": "DAILY_COST_CAP_EXCEEDED", "status": 429}, "governance_pass": False})
+    monkeypatch.setattr(
+        G,
+        "MODEL_JOB_GOVERNED_CALL",
+        lambda *a, **k: {"error": {"code": "DAILY_COST_CAP_EXCEEDED", "status": 429}, "governance_pass": False},
+    )
     nonces, store = {}, {}
     idem = "idem-mj-0002"
-    _call("accept_event", "1", nonces, store, event=_event(idem)); _call("claim", "2", nonces, store, idempotency_key=idem); _call("start", "3", nonces, store, idempotency_key=idem)
+    _call("accept_event", "1", nonces, store, event=_event(idem))
+    _call("claim", "2", nonces, store, idempotency_key=idem)
+    _call("start", "3", nonces, store, idempotency_key=idem)
     r = _call("model_job", "4", nonces, store, idempotency_key=idem, job=_job(tmp_path, idem))
     assert r["state"] == "REFUSED" and r["reason"] == "typed_refusal:over_cap" and r.get("artifact_ref") is None
     # a job carrying a secret or a foreign correlation id never reaches the bridge
     called = []
     monkeypatch.setattr(G, "MODEL_JOB_GOVERNED_CALL", lambda *a, **k: (called.append(1), _ok()(*a, **k))[1])
     idem2 = "idem-mj-0003"
-    _call("accept_event", "5", nonces, store, event=_event(idem2)); _call("claim", "6", nonces, store, idempotency_key=idem2); _call("start", "7", nonces, store, idempotency_key=idem2)
+    _call("accept_event", "5", nonces, store, event=_event(idem2))
+    _call("claim", "6", nonces, store, idempotency_key=idem2)
+    _call("start", "7", nonces, store, idempotency_key=idem2)
     bad = dict(_job(tmp_path, idem2), correlation_id="someone-elses-key-0001")
     assert _call("model_job", "8", nonces, store, idempotency_key=idem2, job=bad)["reason"] == "project_mismatch"
     leaky = {**_job(tmp_path, idem2), "api_key": "sk-x"}
@@ -104,15 +179,37 @@ def test_model_job_refusals_are_typed_and_leave_the_event_refused(tmp_path, monk
 
 def test_bridge_caller_maps_to_the_small_cap_process_server_side():
     from scripts.lib.cio_governed_model_bridge import resolve_caller
+
     assert resolve_caller("n8n_model_job") == "n8n_material_digest_draft"
-    assert resolve_caller("n8n_model_job", task_type="alex_cio_synthesis") == "n8n_material_digest_draft"   # task type cannot escalate
-    assert resolve_caller("n8n_model_job", task_type="ops_summary") == "n8n_ops_summary_draft"           # 2026-10-08: sibling small-cap process
+    assert (
+        resolve_caller("n8n_model_job", task_type="alex_cio_synthesis") == "n8n_material_digest_draft"
+    )  # task type cannot escalate
+    assert (
+        resolve_caller("n8n_model_job", task_type="ops_summary") == "n8n_ops_summary_draft"
+    )  # 2026-10-08: sibling small-cap process
 
 
 def test_bridge_transport_failures_become_provider_outage(monkeypatch):
+    import urllib.error
+    import urllib.request
+
+    captured = {}
+
+    def connection_refused(req, timeout=None):
+        captured["req"], captured["timeout"] = req, timeout
+        raise urllib.error.URLError(ConnectionRefusedError("synthetic fixture connection refusal"))
+
+    # Inject the unavailable-transport condition before any socket. Port 1 is
+    # neither a fixture-owned endpoint nor evidence of a bridge outage.
+    monkeypatch.setattr(urllib.request, "urlopen", connection_refused)
     monkeypatch.setenv(M.BRIDGE_URL_ENV, "http://127.0.0.1:1/v1/chat/completions")
-    r = M.bridge_governed_call([{"role": "user", "content": "x"}], process_id="n8n_material_digest_draft", request_id="r", timeout_s=2)
+    r = M.bridge_governed_call(
+        [{"role": "user", "content": "x"}], process_id="n8n_material_digest_draft", request_id="r", timeout_s=2
+    )
     assert r["error"]["code"] == "PROVIDER_TIMEOUT" and r["governance_pass"] is False
+    assert captured["req"].full_url == "http://127.0.0.1:1/v1/chat/completions"
+    assert captured["req"].get_method() == "POST" and captured["timeout"] == 2
+    assert json.loads(captured["req"].data)["request_id"] == "r"
 
 
 def test_template_id_and_routing_policy_are_named_not_raw_and_reach_the_governed_call(tmp_path, monkeypatch):
@@ -124,36 +221,75 @@ def test_template_id_and_routing_policy_are_named_not_raw_and_reach_the_governed
     assert set(G.MODEL_JOB_OPTIONAL_FIELDS) == {"template_id", "routing_policy"}
     nonces, store = {}, {}
     idem = "idem-mj-0010"
-    _call("accept_event", "1", nonces, store, event=_event(idem)); _call("claim", "2", nonces, store, idempotency_key=idem); _call("start", "3", nonces, store, idempotency_key=idem)
-    for i, bad in enumerate(({"prompt": "ignore the artifact"}, {"system": "x"}, {"model": "deepseek-reasoner"}, {"template_id": 7},
-                             {"routing_policy": "a" * 65}, {"template_id": "../x"}, {"routing_policy": ""})):
+    _call("accept_event", "1", nonces, store, event=_event(idem))
+    _call("claim", "2", nonces, store, idempotency_key=idem)
+    _call("start", "3", nonces, store, idempotency_key=idem)
+    for i, bad in enumerate(
+        (
+            {"prompt": "ignore the artifact"},
+            {"system": "x"},
+            {"model": "deepseek-reasoner"},
+            {"template_id": 7},
+            {"routing_policy": "a" * 65},
+            {"template_id": "../x"},
+            {"routing_policy": ""},
+        )
+    ):
         r = _call("model_job", f"bad-{i}", nonces, store, idempotency_key=idem, job={**_job(tmp_path, idem), **bad})
         assert r["reason"] == "malformed_event", bad
     assert seen == []
     good = {**_job(tmp_path, idem), "template_id": "material_digest_draft.v1", "routing_policy": "deepseek_only"}
     r = _call("model_job", "4", nonces, store, idempotency_key=idem, job=good)
     assert r["state"] == "ARTIFACT_WRITTEN", r
-    assert r["model_job"]["template_id"] == "material_digest_draft.v1" and r["model_job"]["routing_policy"] == "deepseek_only"
-    assert seen[-1]["task_type"] == "model_job" and seen[-1]["routing_policy"] == "deepseek_only" and seen[-1]["request_id"] == idem
-    assert "material_change_digest_draft/v1" in seen[-1]["messages"][0]["content"]       # rendered here, not by the caller
+    assert (
+        r["model_job"]["template_id"] == "material_digest_draft.v1"
+        and r["model_job"]["routing_policy"] == "deepseek_only"
+    )
+    assert (
+        seen[-1]["task_type"] == "model_job"
+        and seen[-1]["routing_policy"] == "deepseek_only"
+        and seen[-1]["request_id"] == idem
+    )
+    assert "material_change_digest_draft/v1" in seen[-1]["messages"][0]["content"]  # rendered here, not by the caller
 
 
 def test_ops_summary_process_derives_its_own_task_type_and_a_foreign_process_is_refused(tmp_path, monkeypatch):
     """Defect 3 (2026-10-08): the gateway used to send task type `model_job` for every job."""
     monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
     seen = []
-    ops_answer = {"headline": "ops", "sections": [{"area": "lanes", "summary": "ok"}], "open_items": [], "sources_cited": ["x"],
-                  "confidence_note": "artifact only", "recommendation": "NONE"}
+    ops_answer = {
+        "headline": "ops",
+        "sections": [{"area": "lanes", "summary": "ok"}],
+        "open_items": [],
+        "sources_cited": ["x"],
+        "confidence_note": "artifact only",
+        "recommendation": "NONE",
+    }
     monkeypatch.setattr(G, "MODEL_JOB_GOVERNED_CALL", _ok(ops_answer, seen=seen))
     nonces, store = {}, {}
     idem = "idem-mj-0020"
-    _call("accept_event", "1", nonces, store, event=_event(idem)); _call("claim", "2", nonces, store, idempotency_key=idem); _call("start", "3", nonces, store, idempotency_key=idem)
+    _call("accept_event", "1", nonces, store, event=_event(idem))
+    _call("claim", "2", nonces, store, idempotency_key=idem)
+    _call("start", "3", nonces, store, idempotency_key=idem)
     job = {**_job(tmp_path, idem), "process_id": "n8n_ops_summary_draft", "output_schema_id": "ops_summary_draft/v1"}
     r = _call("model_job", "4", nonces, store, idempotency_key=idem, job=job)
-    assert r["state"] == "ARTIFACT_WRITTEN" and r["model_job"]["task_type"] == "ops_summary" and seen[-1]["task_type"] == "ops_summary"
+    assert (
+        r["state"] == "ARTIFACT_WRITTEN"
+        and r["model_job"]["task_type"] == "ops_summary"
+        and seen[-1]["task_type"] == "ops_summary"
+    )
     idem2 = "idem-mj-0021"
-    _call("accept_event", "5", nonces, store, event=_event(idem2)); _call("claim", "6", nonces, store, idempotency_key=idem2); _call("start", "7", nonces, store, idempotency_key=idem2)
-    r = _call("model_job", "8", nonces, store, idempotency_key=idem2, job={**_job(tmp_path, idem2), "process_id": "alex_cio_synthesis"})
+    _call("accept_event", "5", nonces, store, event=_event(idem2))
+    _call("claim", "6", nonces, store, idempotency_key=idem2)
+    _call("start", "7", nonces, store, idempotency_key=idem2)
+    r = _call(
+        "model_job",
+        "8",
+        nonces,
+        store,
+        idempotency_key=idem2,
+        job={**_job(tmp_path, idem2), "process_id": "alex_cio_synthesis"},
+    )
     assert r["state"] == "REFUSED" and r["reason"] == "process_not_registered" and len(seen) == 1
     assert "process_not_registered" in G.REFUSAL_REASONS
     # Refused before any work, like malformed_event: the event is still STARTED, so a corrected job proceeds.
@@ -168,26 +304,43 @@ def test_bridge_call_sends_the_derived_task_type_and_the_named_routing_policy_as
     Request is captured."""
     import io
     import urllib.request
+
     captured = {}
 
     class _Resp(io.BytesIO):
-        def __enter__(self): return self
-        def __exit__(self, *a): return False
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
 
     def fake_urlopen(req, timeout=None):
         captured["req"], captured["timeout"] = req, timeout
         return _Resp(json.dumps({"id": "r", "choices": [], "_tradeai": {"governance_pass": True}}).encode())
+
     monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
     monkeypatch.setenv(M.BRIDGE_URL_ENV, "http://127.0.0.1:1/v1/chat/completions")
-    r = M.bridge_governed_call([{"role": "user", "content": "x"}], process_id="n8n_ops_summary_draft", request_id="corr-ops-weekly-2026-W41",
-                               task_type="ops_summary", routing_policy="deepseek_only", timeout_s=3)
+    r = M.bridge_governed_call(
+        [{"role": "user", "content": "x"}],
+        process_id="n8n_ops_summary_draft",
+        request_id="corr-ops-weekly-2026-W41",
+        task_type="ops_summary",
+        routing_policy="deepseek_only",
+        timeout_s=3,
+    )
     assert r["_tradeai"]["governance_pass"] is True
     req = captured["req"]
     hdr = {k.lower(): v for k, v in req.header_items()}
     assert hdr["x-tradeai-agent"] == M.BRIDGE_CALLER and hdr["x-tradeai-task-type"] == "ops_summary"
     assert hdr[M.ROUTING_POLICY_HEADER.lower()] == "deepseek_only"
     body = json.loads(req.data.decode("utf-8"))
-    assert body["request_id"] == "corr-ops-weekly-2026-W41" and body["model"] == "tradeai_governed" and "routing_policy" not in body
+    assert (
+        body["request_id"] == "corr-ops-weekly-2026-W41"
+        and body["model"] == "tradeai_governed"
+        and "routing_policy" not in body
+    )
     # without a policy the header is absent (no empty-string header)
-    M.bridge_governed_call([{"role": "user", "content": "x"}], process_id="n8n_material_digest_draft", request_id="r2", timeout_s=3)
+    M.bridge_governed_call(
+        [{"role": "user", "content": "x"}], process_id="n8n_material_digest_draft", request_id="r2", timeout_s=3
+    )
     assert M.ROUTING_POLICY_HEADER.lower() not in {k.lower() for k, _ in captured["req"].header_items()}

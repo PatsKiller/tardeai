@@ -1,0 +1,290 @@
+{
+  "active": false,
+  "connections": {
+    "Admitted live receipt": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Assert lifecycle receipt",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "GET shadow last run",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "GET lifecycle receipt": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Validate readback phase",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "GET shadow last run": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Verify shadow metadata",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Relay": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "GET lifecycle receipt",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Schedule": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Relay",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Validate readback phase": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Admitted live receipt",
+            "type": "main"
+          }
+        ]
+      ]
+    }
+  },
+  "id": "tradeai-momentum-lifecycle-candidate",
+  "meta": {
+    "authority": "host coordination gateway only; no secrets or external sends",
+    "kind": "momentum-lifecycle",
+    "role": "READ_ONLY_STAGE_AWARE_OBSERVER",
+    "runtime_activation": "requires exact-SHA review, operative monitor admission, relay API adapter and cron grant",
+    "sole_run_requester": "tradeai-dispatcher",
+    "source": "scripts/n8n_momentum_lifecycle.py",
+    "status": "DRAFT_FOR_OWNER_REVIEW"
+  },
+  "name": "tradeai-momentum-lifecycle-candidate",
+  "nodes": [
+    {
+      "id": "f6f07125-22d6-520e-b08c-71aaeb60202d",
+      "name": "Schedule",
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "expression": "*/5 * * * *",
+              "field": "cronExpression"
+            }
+          ]
+        }
+      },
+      "position": [
+        0,
+        300
+      ],
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2
+    },
+    {
+      "id": "149b17ac-1e11-5f33-8365-687a3fc1e2db",
+      "name": "Relay",
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "7196cbea-a7fa-5090-a9ba-5861f836856d",
+              "name": "TRADEAI_N8N_RUN_URL",
+              "type": "string",
+              "value": "http://172.19.0.1:18092"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {}
+      },
+      "position": [
+        480,
+        300
+      ],
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "tradeai-run-relay",
+          "name": "tradeai-run-relay"
+        }
+      },
+      "id": "687a54c0-2be7-5853-b546-35560eb7093b",
+      "maxTries": 2,
+      "name": "GET lifecycle receipt",
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "GET",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 10000
+        },
+        "url": "={{ $('Relay').first().json.TRADEAI_N8N_RUN_URL }}/momentum-lifecycle"
+      },
+      "position": [
+        720,
+        300
+      ],
+      "retryOnFail": true,
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "waitBetweenTries": 3000
+    },
+    {
+      "id": "aacd3c7c-a4f0-54b2-bf40-c2f5e91f4bf3",
+      "name": "Validate readback phase",
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\nconst body = response.body;\nif (!body || typeof response.statusCode !== 'number') throw new Error('lifecycle readback unavailable');\nif (response.statusCode === 200 && body.schema === 'N8nMomentumLifecycle@v1') return [{json:{live:true,receipt:body}}];\nconst shadowBoundaries = ['momentum_lifecycle_disabled','momentum_monitor_admission_unproven'];\nif (response.statusCode === 403 && body.state === 'REFUSED' && body.monitor_stage === 'shadow' && shadowBoundaries.includes(body.reason)) return [{json:{live:false,refusal:body.reason,acceptance:'NOT_MEASURED'}}];\nthrow new Error('lifecycle readback unexpected refusal or stale/missing admitted receipt');\n",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        960,
+        300
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "786ef404-ccae-5a16-a7ca-8ffbe367d893",
+      "name": "Admitted live receipt",
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "live",
+              "leftValue": "={{ $json.live }}",
+              "operator": {
+                "operation": "true",
+                "singleValue": true,
+                "type": "boolean"
+              },
+              "rightValue": true
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          }
+        }
+      },
+      "position": [
+        1200,
+        300
+      ],
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2
+    },
+    {
+      "id": "71854fed-afbb-5a09-9e3f-c55937845932",
+      "name": "Assert lifecycle receipt",
+      "parameters": {
+        "jsCode": "const r = $input.first().json.receipt;\nif (r.schema !== 'N8nMomentumLifecycle@v1') throw new Error('lifecycle receipt absent or refused');\nif (typeof r.as_of !== 'string' || !/(Z|[+-]\\d{2}:\\d{2})$/.test(r.as_of)) throw new Error('lifecycle timestamp must be zoned');\nconst age = Date.now() - Date.parse(r.as_of);\nif (!Number.isFinite(age) || age < 0 || age > 600000) throw new Error('lifecycle receipt stale');\nif (!/^[0-9a-f]{40}$/.test(r.source_sha || '')) throw new Error('lifecycle SHA missing');\nif (!Array.isArray(r.incidents)) throw new Error('lifecycle incident list missing');\n// P1 delivery is host-owned; this error is also routed by the existing incident workflow.\nif (r.incidents.some(i => i.severity === 'P1')) throw new Error('momentum lifecycle P1 evidence failure; inspect host receipt');\nreturn [{json:{schema:r.schema,as_of:r.as_of,source_sha:r.source_sha,acceptance:r.acceptance,\n  incidents:r.incidents.length,recovery_held:(r.recovery?.held || []).map(x => x.reason)}}];\n",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        1440,
+        180
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "tradeai-run-relay",
+          "name": "tradeai-run-relay"
+        }
+      },
+      "id": "c90164ba-a011-58c7-b7d6-e5496869fbf0",
+      "maxTries": 2,
+      "name": "GET shadow last run",
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "GET",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 10000
+        },
+        "url": "={{ $('Relay').first().json.TRADEAI_N8N_RUN_URL }}/runs/momentum-lifecycle-monitor/last?mode=dry_run"
+      },
+      "position": [
+        1440,
+        480
+      ],
+      "retryOnFail": true,
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "waitBetweenTries": 3000
+    },
+    {
+      "id": "34d0e6bd-6b8b-56cf-bf01-532e68e4846a",
+      "name": "Verify shadow metadata",
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\nconst body = response.body;\nif (response.statusCode !== 200 || !body || body.lane_id !== 'momentum-lifecycle-monitor') throw new Error('shadow last-run projection unavailable');\nconst r = body.last;\nif (!r || r.mode !== 'dry_run' || r.state !== 'RUN_DONE' || r.exit_code !== 0) throw new Error('shadow dry-run completion not proven');\nconst stamps = [r.requested_at,r.started_at,r.finished_at];\nif (stamps.some(x => typeof x !== 'string' || !/(Z|[+-]\\d{2}:\\d{2})$/.test(x))) throw new Error('shadow timestamps must be zoned');\nconst times = stamps.map(Date.parse);\nif (times.some(x => !Number.isFinite(x)) || !(times[0] <= times[1] && times[1] <= times[2])) throw new Error('shadow durable chain incomplete');\nif (Date.now()-times[2] < 0 || Date.now()-times[2] > 600000) throw new Error('shadow run metadata stale');\n// Compact last-run API does not expose receipt SHA or output-effect counters. Do not invent them.\nreturn [{json:{phase:'SHADOW_OBSERVATION',run_id:r.run_id,requested_started_finished:'PROVEN',\n  receipt_ref:r.receipt_ref,source_sha:'NOT_MEASURED',zero_business_effects:'NOT_MEASURED',\n  natural_trigger:'NOT_MEASURED',acceptance:'NOT_MEASURED',\n  next_action:'Correlate exact-host RunReceipt, source SHA, disjoint lock, output effects and natural n8n execution before advancement'}}];\n",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        1680,
+        480
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    }
+  ],
+  "settings": {
+    "errorWorkflow": "tradeai-incident-router",
+    "executionOrder": "v1",
+    "executionTimeout": 50,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": false,
+    "timezone": "America/New_York"
+  }
+}

@@ -31,6 +31,7 @@ from telegram_alert import send_telegram
 from scalp_ws_client import broadcast_scalp_update
 from social_route_policy import route_social_candidate
 from finviz_http import finviz_get, finviz_probe  # global Finviz throttle (2026-07-20)
+
 try:  # GAP 14 (2026-10-10): the one shared ticker check before any Finviz request
     from lib.provider_ticker_guard import partition as _ticker_partition
 except ImportError:  # imported as scripts.<module>
@@ -40,22 +41,38 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [SCALP] %(message)s"
 logger = logging.getLogger(__name__)
 
 # --- Config (env-tunable; defaults preserve prior behavior) ---
-LOOKBACK_HOURS      = int(os.getenv("SCALP_LOOKBACK_HOURS", "18"))       # social_posts window
-MIN_MENTIONS        = int(os.getenv("SCALP_MIN_MENTIONS", "2"))          # min ticker mentions to consider
-GO_THRESHOLD        = int(os.getenv("SCALP_GO_THRESHOLD", "40"))         # GO alert floor (of 55)
-APLUS_THRESHOLD     = int(os.getenv("SCALP_APLUS_THRESHOLD", "48"))      # A+ alert floor
-DEDUP_MINUTES       = int(os.getenv("SCALP_DEDUP_MINUTES", "90"))        # suppress re-alert window
-MAX_CANDIDATES      = int(os.getenv("SCALP_MAX_CANDIDATES", "15"))       # top-N by mentions per run
+LOOKBACK_HOURS = int(os.getenv("SCALP_LOOKBACK_HOURS", "18"))  # social_posts window
+MIN_MENTIONS = int(os.getenv("SCALP_MIN_MENTIONS", "2"))  # min ticker mentions to consider
+GO_THRESHOLD = int(os.getenv("SCALP_GO_THRESHOLD", "40"))  # GO alert floor (of 55)
+APLUS_THRESHOLD = int(os.getenv("SCALP_APLUS_THRESHOLD", "48"))  # A+ alert floor
+DEDUP_MINUTES = int(os.getenv("SCALP_DEDUP_MINUTES", "90"))  # suppress re-alert window
+MAX_CANDIDATES = int(os.getenv("SCALP_MAX_CANDIDATES", "15"))  # top-N by mentions per run
 
-SKIP_IF_PRICE_ABOVE = float(os.getenv("SCALP_SKIP_IF_PRICE_ABOVE", "50.0"))   # $ — above → route to portfolio
-SKIP_IF_FLOAT_ABOVE = float(os.getenv("SCALP_SKIP_IF_FLOAT_ABOVE", "200"))    # millions of shares
+SKIP_IF_PRICE_ABOVE = float(os.getenv("SCALP_SKIP_IF_PRICE_ABOVE", "50.0"))  # $ — above → route to portfolio
+SKIP_IF_FLOAT_ABOVE = float(os.getenv("SCALP_SKIP_IF_FLOAT_ABOVE", "200"))  # millions of shares
 
 PORTFOLIO_ROUTE_TAGS = {"retirement_income", "dividend_growth"}
 
 CATALYST_KEYWORDS = [
-    "fda", "approval", "earnings", "beat", "m&a", "merger", "acquisition",
-    "partnership", "contract", "deal", "upgrade", "buyout", "8-k", "patent",
-    "phase", "trial", "breakthrough", "guidance", "raised",
+    "fda",
+    "approval",
+    "earnings",
+    "beat",
+    "m&a",
+    "merger",
+    "acquisition",
+    "partnership",
+    "contract",
+    "deal",
+    "upgrade",
+    "buyout",
+    "8-k",
+    "patent",
+    "phase",
+    "trial",
+    "breakthrough",
+    "guidance",
+    "raised",
 ]
 
 
@@ -207,8 +224,12 @@ def get_social_candidates(conn) -> list[dict]:
     merge_sentiment_history(conn, ticker_data, cutoff)
 
     candidates = [
-        {**v, "sources": sorted(v["sources"]), "strategy_tags": list(v["strategy_tags"]),
-         "mentions_by_source": dict(v.get("mentions_by_source") or {})}
+        {
+            **v,
+            "sources": sorted(v["sources"]),
+            "strategy_tags": list(v["strategy_tags"]),
+            "mentions_by_source": dict(v.get("mentions_by_source") or {}),
+        }
         for v in ticker_data.values()
         if v["mention_count"] >= MIN_MENTIONS
     ]
@@ -259,9 +280,18 @@ def merge_sentiment_history(conn, ticker_data: dict, cutoff) -> int:
             d["external_mentions"] = d.get("external_mentions", 0) + n
         elif r.get("universe") == "scalp":
             # Hermes ran on today's scalp candidates: a scalp name seen only there is a candidate.
-            d = ticker_data.setdefault(sym, {"symbol": sym, "mention_count": 0, "sources": set(), "bull": 0,
-                                             "bear": 0, "strategy_tags": set(),
-                                             "sample_content": (r.get("top_posts_summary") or "")[:200]})
+            d = ticker_data.setdefault(
+                sym,
+                {
+                    "symbol": sym,
+                    "mention_count": 0,
+                    "sources": set(),
+                    "bull": 0,
+                    "bear": 0,
+                    "strategy_tags": set(),
+                    "sample_content": (r.get("top_posts_summary") or "")[:200],
+                },
+            )
             d["mention_count"] += n
         else:
             continue  # portfolio/watch-universe sentiment never creates a scalp candidate
@@ -356,6 +386,7 @@ def load_hermes_catalysts() -> dict:
     indexed by UPPER(symbol). Hermes researches catalysts via SearXNG (advisory-only); wiring it here lets a
     Hermes-confirmed catalyst satisfy the social-only cap so genuine setups can reach GO. mtime-cached."""
     import glob as _glob
+
     try:
         files = sorted(_glob.glob(str(ROOT / "data" / "hermes" / "momentum_catalysts" / "*_catalysts.jsonl")))
         if not files:
@@ -413,12 +444,14 @@ def route_to_portfolio_agents(conn, symbol: str, mention_count: int, strategy_ta
             "priority": 5,
             "status": "queued",
             "submitted_from": "social_scalp_scanner",
-            "payload": json.dumps({
-                "mention_count": mention_count,
-                "strategy_tags": strategy_tags,
-                "source": "social_discovery",
-                "note": f"Social mentions: {mention_count}x — routed to portfolio agents (not scalp)",
-            }),
+            "payload": json.dumps(
+                {
+                    "mention_count": mention_count,
+                    "strategy_tags": strategy_tags,
+                    "source": "social_discovery",
+                    "note": f"Social mentions: {mention_count}x — routed to portfolio agents (not scalp)",
+                }
+            ),
         },
         raw_columns={"created_at": "NOW()"},
         match_agent=False,
@@ -475,8 +508,9 @@ def apply_social_only_cap(decision: str, grade: str, catalyst_enrichment: dict):
     actually produces: `catalysts` (news_articles rows found for the symbol) → has_news;
     `rag_catalyst_confirmed` / `hermes_catalyst_confirmed` → verified."""
     ce = catalyst_enrichment or {}
-    verified = bool(ce.get("catalyst_verified") or ce.get("rag_catalyst_confirmed")
-                    or ce.get("hermes_catalyst_confirmed"))
+    verified = bool(
+        ce.get("catalyst_verified") or ce.get("rag_catalyst_confirmed") or ce.get("hermes_catalyst_confirmed")
+    )
     # Credible catalyst articles were actually found for this symbol (news_articles / Hermes),
     # not merely social keyword hits.
     has_news = bool(ce.get("catalysts")) or ce.get("catalyst_tier") in ("high_impact", "medium_impact")
@@ -540,8 +574,10 @@ def _has_trace_col(conn, table: str) -> bool:
     has = False
     try:
         cur = conn.cursor()
-        cur.execute("SELECT 1 FROM information_schema.columns "
-                    "WHERE table_name=%s AND column_name='discovery_trace_id'", (table,))
+        cur.execute(
+            "SELECT 1 FROM information_schema.columns WHERE table_name=%s AND column_name='discovery_trace_id'",
+            (table,),
+        )
         has = cur.fetchone() is not None
     except Exception:
         has = False
@@ -557,14 +593,20 @@ def stamp_discovery_trace(conn, table: str, symbol: str, trace_id: str) -> None:
     try:
         cur = conn.cursor()
         if table == "scalp_scan_results":
-            cur.execute("""UPDATE scalp_scan_results SET discovery_trace_id=%s
+            cur.execute(
+                """UPDATE scalp_scan_results SET discovery_trace_id=%s
                            WHERE id=(SELECT id FROM scalp_scan_results WHERE symbol=%s
                                      ORDER BY scanned_at DESC LIMIT 1)
-                             AND discovery_trace_id IS NULL""", (trace_id, symbol))
+                             AND discovery_trace_id IS NULL""",
+                (trace_id, symbol),
+            )
         elif table == "trade_ai_scans":
-            cur.execute("""UPDATE trade_ai_scans SET discovery_trace_id=%s
+            cur.execute(
+                """UPDATE trade_ai_scans SET discovery_trace_id=%s
                            WHERE symbol=%s AND run_date=CURRENT_DATE
-                             AND discovery_trace_id IS NULL""", (trace_id, symbol))
+                             AND discovery_trace_id IS NULL""",
+                (trace_id, symbol),
+            )
         conn.commit()
     except Exception as e:
         try:
@@ -581,8 +623,7 @@ def _has_col(conn, table: str, col: str) -> bool:
     has = False
     try:
         cur = conn.cursor()
-        cur.execute("SELECT 1 FROM information_schema.columns WHERE table_name=%s AND column_name=%s",
-                    (table, col))
+        cur.execute("SELECT 1 FROM information_schema.columns WHERE table_name=%s AND column_name=%s", (table, col))
         has = cur.fetchone() is not None
     except Exception:
         has = False
@@ -594,28 +635,51 @@ def stamp_route_fields(conn, table: str, symbol: str, route: dict, catalyst_enri
     """P0-3: persist durable route/actionability fields on the just-written row IF columns exist.
     No-op (safe, logged) when columns are missing — backward-compatible. Privacy-safe: no raw text."""
     import json as _json
+
     if not route or not _has_col(conn, table, "route"):
         return
     ce = catalyst_enrichment or {}
     try:
         cur = conn.cursor()
         sets = ["route=%s", "route_actionability=%s", "route_strategy_id=%s", "route_reason_codes=%s"]
-        vals = [route.get("route"), route.get("actionability"), route.get("strategy_id"),
-                _json.dumps(route.get("reason_codes") or [])]
+        vals = [
+            route.get("route"),
+            route.get("actionability"),
+            route.get("strategy_id"),
+            _json.dumps(route.get("reason_codes") or []),
+        ]
         if table == "scalp_scan_results":
             if _has_col(conn, table, "catalyst_verified"):
-                sets.append("catalyst_verified=%s"); vals.append(bool(ce.get("catalyst_verified")
-                            or ce.get("rag_catalyst_confirmed") or ce.get("hermes_catalyst_confirmed")))
+                sets.append("catalyst_verified=%s")
+                vals.append(
+                    bool(
+                        ce.get("catalyst_verified")
+                        or ce.get("rag_catalyst_confirmed")
+                        or ce.get("hermes_catalyst_confirmed")
+                    )
+                )
             if _has_col(conn, table, "catalyst_source"):
                 sets.append("catalyst_source=%s")
-                vals.append(ce.get("catalyst_source") or ("hermes" if ce.get("hermes_catalyst_confirmed")
-                            else ("rag" if ce.get("rag_catalyst_confirmed") else ("news" if ce.get("catalysts") else None))))
-            cur.execute(f"""UPDATE scalp_scan_results SET {', '.join(sets)}
+                vals.append(
+                    ce.get("catalyst_source")
+                    or (
+                        "hermes"
+                        if ce.get("hermes_catalyst_confirmed")
+                        else ("rag" if ce.get("rag_catalyst_confirmed") else ("news" if ce.get("catalysts") else None))
+                    )
+                )
+            cur.execute(
+                f"""UPDATE scalp_scan_results SET {", ".join(sets)}
                             WHERE id=(SELECT id FROM scalp_scan_results WHERE symbol=%s
-                                      ORDER BY scanned_at DESC LIMIT 1)""", vals + [symbol])
+                                      ORDER BY scanned_at DESC LIMIT 1)""",
+                vals + [symbol],
+            )
         elif table == "trade_ai_scans":
-            cur.execute(f"""UPDATE trade_ai_scans SET {', '.join(sets)}
-                            WHERE symbol=%s AND run_date=CURRENT_DATE""", vals + [symbol])
+            cur.execute(
+                f"""UPDATE trade_ai_scans SET {", ".join(sets)}
+                            WHERE symbol=%s AND run_date=CURRENT_DATE""",
+                vals + [symbol],
+            )
         conn.commit()
     except Exception as e:
         try:
@@ -633,27 +697,46 @@ def stamp_scout_fields(conn, table: str, symbol: str, route: dict) -> None:
     HARD invariant mirrored into storage: a persisted Social Scout row is ALWAYS not_tradeable +
     not_validation_ready. The pill is awareness only and can never flip a row tradeable."""
     import json as _json
+
     if not route or not _has_col(conn, table, "scout_status"):
         return
     try:
         cur = conn.cursor()
-        sets = ["scout_status=%s", "scout_pillar_count=%s", "scout_pillars_met=%s",
-                "scout_pillars_missing=%s", "operator_pill=%s", "operator_subtitle=%s",
-                "operator_color_token=%s", "not_validation_ready=%s", "not_tradeable=%s"]
-        vals = [route.get("scout_status"), route.get("scout_pillar_count"),
-                _json.dumps(route.get("pillars_met") or []),
-                _json.dumps(route.get("pillars_missing") or []),
-                route.get("operator_pill"), route.get("operator_subtitle"),
-                route.get("operator_color_token"),
-                bool(route.get("not_validation_ready", True)),
-                bool(route.get("not_tradeable", True))]
+        sets = [
+            "scout_status=%s",
+            "scout_pillar_count=%s",
+            "scout_pillars_met=%s",
+            "scout_pillars_missing=%s",
+            "operator_pill=%s",
+            "operator_subtitle=%s",
+            "operator_color_token=%s",
+            "not_validation_ready=%s",
+            "not_tradeable=%s",
+        ]
+        vals = [
+            route.get("scout_status"),
+            route.get("scout_pillar_count"),
+            _json.dumps(route.get("pillars_met") or []),
+            _json.dumps(route.get("pillars_missing") or []),
+            route.get("operator_pill"),
+            route.get("operator_subtitle"),
+            route.get("operator_color_token"),
+            bool(route.get("not_validation_ready", True)),
+            bool(route.get("not_tradeable", True)),
+        ]
         if table == "scalp_scan_results":
-            cur.execute(f"""UPDATE scalp_scan_results SET {', '.join(sets)}
+            cur.execute(
+                f"""UPDATE scalp_scan_results SET {", ".join(sets)}
                             WHERE id=(SELECT id FROM scalp_scan_results WHERE symbol=%s
-                                      ORDER BY scanned_at DESC LIMIT 1)""", vals + [symbol])
+                                      ORDER BY scanned_at DESC LIMIT 1)""",
+                vals + [symbol],
+            )
         elif table == "trade_ai_scans":
-            cur.execute(f"""UPDATE trade_ai_scans SET {', '.join(sets)}
-                            WHERE symbol=%s AND run_date=CURRENT_DATE""", vals + [symbol])
+            cur.execute(
+                f"""UPDATE trade_ai_scans SET {", ".join(sets)}
+                            WHERE symbol=%s AND run_date=CURRENT_DATE""",
+                vals + [symbol],
+            )
         conn.commit()
     except Exception as e:
         try:
@@ -663,8 +746,9 @@ def stamp_scout_fields(conn, table: str, symbol: str, route: dict) -> None:
         logger.debug("scout stamp skipped (%s/%s): %s", table, symbol, e)
 
 
-def save_scan_result(conn, symbol: str, mention_count: int, finviz_data: dict,
-                     score: int, grade: str, decision: str, sources: list):
+def save_scan_result(
+    conn, symbol: str, mention_count: int, finviz_data: dict, score: int, grade: str, decision: str, sources: list
+):
     """Store result in scalp_scan_results."""
     cur = conn.cursor()
     cur.execute(
@@ -675,7 +759,11 @@ def save_scan_result(conn, symbol: str, mention_count: int, finviz_data: dict,
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
         """,
         [
-            symbol, mention_count, score, grade, decision,
+            symbol,
+            mention_count,
+            score,
+            grade,
+            decision,
             finviz_data.get("rvol"),
             finviz_data.get("volume_base") or finviz_data.get("volume"),
             finviz_data.get("gap_pct"),
@@ -684,21 +772,24 @@ def save_scan_result(conn, symbol: str, mention_count: int, finviz_data: dict,
             finviz_data.get("change_pct"),
             finviz_data.get("sector"),
             sources,
-            decision == "GO",   # P0-2: alerted reflects the FINAL capped decision, not raw score
+            decision == "GO",  # P0-2: alerted reflects the FINAL capped decision, not raw score
         ],
     )
     conn.commit()
 
 
-def _upsert_trade_ai_scans(conn, symbol: str, mention_count: int, finviz_data: dict,
-                           score: int, grade: str, decision: str, sources: list):
+def _upsert_trade_ai_scans(
+    conn, symbol: str, mention_count: int, finviz_data: dict, score: int, grade: str, decision: str, sources: list
+):
     """Upsert social scan result into trade_ai_scans for pipeline harmonization."""
     from datetime import datetime
+
     cur = conn.cursor()
     run_date = datetime.now().date()
     run_id = f"social_{run_date.strftime('%Y%m%d')}_{datetime.now().strftime('%H%M')}"
     try:
-        cur.execute("""
+        cur.execute(
+            """
             INSERT INTO trade_ai_scans (
                 run_id, run_date, run_label, run_type,
                 symbol, score, grade, decision,
@@ -738,28 +829,57 @@ def _upsert_trade_ai_scans(conn, symbol: str, mention_count: int, finviz_data: d
                     WHEN trade_ai_scans.source LIKE '%%social%%'
                     THEN trade_ai_scans.source
                     ELSE trade_ai_scans.source || '+social' END
-        """, [
-            run_id, run_date,
-            symbol, score, grade, decision,
-            finviz_data.get("price"), finviz_data.get("rvol"),
-            finviz_data.get("float_m"), finviz_data.get("volume_base") or finviz_data.get("volume"),
-            finviz_data.get("gap_pct"), finviz_data.get("change_pct"),
-            finviz_data.get("sector"),
-            sum(1 for s in sources if s == 'reddit'),
-            sum(1 for s in sources if s == 'stocktwits'),
-            min(mention_count / 10.0, 1.0),
-            'bullish' if score >= 40 else 'neutral',
-            mention_count, sources,
-        ])
+        """,
+            [
+                run_id,
+                run_date,
+                symbol,
+                score,
+                grade,
+                decision,
+                finviz_data.get("price"),
+                finviz_data.get("rvol"),
+                finviz_data.get("float_m"),
+                finviz_data.get("volume_base") or finviz_data.get("volume"),
+                finviz_data.get("gap_pct"),
+                finviz_data.get("change_pct"),
+                finviz_data.get("sector"),
+                sum(1 for s in sources if s == "reddit"),
+                sum(1 for s in sources if s == "stocktwits"),
+                min(mention_count / 10.0, 1.0),
+                "bullish" if score >= 40 else "neutral",
+                mention_count,
+                sources,
+            ],
+        )
         conn.commit()
     except Exception as e:
         conn.rollback()
         logger.warning(f"trade_ai_scans upsert failed for {symbol}: {e}")
 
 
-def send_scalp_alert(symbol: str, score: int, grade: str, decision: str,
-                     finviz_data: dict, mention_count: int, sources: list,
-                     bull: int, bear: int):
+def _send_symbol_alert(symbol: str, message: str, *, priority: str):
+    """Bind the producer's symbol to links/packet metadata for this send only."""
+    from lib.comms_editor import set_primary_symbols, reset_primary_symbols
+
+    token = set_primary_symbols([symbol])
+    try:
+        return send_telegram(message, priority=priority, producer="social_scalp_scanner")
+    finally:
+        reset_primary_symbols(token)
+
+
+def send_scalp_alert(
+    symbol: str,
+    score: int,
+    grade: str,
+    decision: str,
+    finviz_data: dict,
+    mention_count: int,
+    sources: list,
+    bull: int,
+    bear: int,
+):
     """Send GO or A+ Telegram alert."""
     grade_emoji = "\U0001f525 A+" if grade == "A+" else "\u2705 GO"
     bull_bear = ""
@@ -774,6 +894,7 @@ def send_scalp_alert(symbol: str, score: int, grade: str, decision: str,
     sector = finviz_data.get("sector") or "?"
     try:
         from lib.scalp_alert_format import format_scalp_meta_line
+
         meta = format_scalp_meta_line(
             source="social",
             source_detail=", ".join(str(s) for s in (sources or [])[:2]),
@@ -799,6 +920,7 @@ def send_scalp_alert(symbol: str, score: int, grade: str, decision: str,
     try:
         from lib.cio_telegram_stance_gate import check_investment_send
         from lib.comms_editor import default_db_query
+
         gate = check_investment_send(
             symbol=str(symbol),
             message_text=msg,
@@ -807,23 +929,31 @@ def send_scalp_alert(symbol: str, score: int, grade: str, decision: str,
             source="social_scalp_scanner",
         )
         if not gate.allow:
-            logger.info("%s — GO alert held by CIO stance gate: %s (cio=%s)",
-                        symbol, gate.held_reason, gate.cio_action)
+            logger.info("%s — GO alert held by CIO stance gate: %s (cio=%s)", symbol, gate.held_reason, gate.cio_action)
             return
         from lib.cio_telegram_stance_gate import apply_stance_rewrite
+
         msg = apply_stance_rewrite(msg, str(symbol), gate)
     except Exception as exc:  # noqa: BLE001 — fail closed on gate errors
         logger.warning("%s — GO alert held: CIO stance gate error (%s)", symbol, type(exc).__name__)
         return
-    send_telegram(msg, priority="P1", producer="social_scalp_scanner")  # GO scalp setup: time-critical
+    _send_symbol_alert(symbol, msg, priority="P1")  # GO scalp setup: time-critical
     try:
         from lib.comms import CommunicationEvent, publish_communication
-        publish_communication(CommunicationEvent(
-            direction="OUTBOUND", event_type="alert", message_class="ops",
-            producer="social_scalp_scanner", subject_key=f"scalp:{symbol}",
-            retention_class="operational", severity="info",
-            sanitized_body=msg[:500], short_summary=msg[:120],
-        ))
+
+        publish_communication(
+            CommunicationEvent(
+                direction="OUTBOUND",
+                event_type="alert",
+                message_class="ops",
+                producer="social_scalp_scanner",
+                subject_key=f"scalp:{symbol}",
+                retention_class="operational",
+                severity="info",
+                sanitized_body=msg[:500],
+                short_summary=msg[:120],
+            )
+        )
     except Exception:
         # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
         pass
@@ -835,6 +965,7 @@ def _send_wait_alert(symbol: str, score: int, finviz_data: dict, mention_count: 
     price = finviz_data.get("price") or 0
     try:
         from lib.scalp_alert_format import format_scalp_meta_line
+
         meta = format_scalp_meta_line(
             source="social",
             source_detail="mention",
@@ -851,7 +982,7 @@ def _send_wait_alert(symbol: str, score: int, finviz_data: dict, mention_count: 
         f"Mentions: {mention_count}x \u2014 watching, not acting\n"
         f"Needs: higher RVOL or catalyst to reach GO"
     )
-    send_telegram(msg, priority="P2", producer="social_scalp_scanner")  # WAIT: watched, not time-critical
+    _send_symbol_alert(symbol, msg, priority="P2")  # WAIT: watched, not time-critical
 
 
 def run_scan():
@@ -947,18 +1078,21 @@ def run_scan():
         }
 
         # Build catalyst enrichment from social content + news
-        catalyst_enrichment = build_catalyst_enrichment(
-            conn, symbol, candidate.get("sample_content", "")
-        )
+        catalyst_enrichment = build_catalyst_enrichment(conn, symbol, candidate.get("sample_content", ""))
 
         # RAG catalyst confirmation — check if intelligence library has supporting evidence
         try:
             from rag_retrieval import get_rag_context
+
             rag_items = get_rag_context(symbol, limit=3, conn=conn)
-            catalyst_evidence = [r for r in rag_items if any(
-                kw in str(r.get("title", "")).lower()
-                for kw in ("catalyst", "fda", "earnings", "upgrade", "contract", "merger")
-            )]
+            catalyst_evidence = [
+                r
+                for r in rag_items
+                if any(
+                    kw in str(r.get("title", "")).lower()
+                    for kw in ("catalyst", "fda", "earnings", "upgrade", "contract", "merger")
+                )
+            ]
             if catalyst_evidence:
                 catalyst_enrichment["rag_catalyst_confirmed"] = True
                 catalyst_enrichment["rag_evidence"] = catalyst_evidence[0].get("title", "")[:200]
@@ -973,23 +1107,31 @@ def run_scan():
                 catalyst_enrichment["hermes_catalyst_confirmed"] = True
                 catalyst_enrichment["catalyst_source"] = "hermes"
                 catalyst_enrichment["hermes_catalyst"] = {
-                    "type": _hc.get("catalyst_type"), "strength": _hc.get("catalyst_strength"),
+                    "type": _hc.get("catalyst_type"),
+                    "strength": _hc.get("catalyst_strength"),
                     "summary": str(_hc.get("catalyst_summary", ""))[:200],
-                    "sources": _hc.get("source_count"), "confidence": _hc.get("confidence")}
-                logger.info(f"[SCALP] {symbol} — Hermes catalyst confirmed: "
-                            f"{_hc.get('catalyst_type')} ({_hc.get('source_count')} sources)")
+                    "sources": _hc.get("source_count"),
+                    "confidence": _hc.get("confidence"),
+                }
+                logger.info(
+                    f"[SCALP] {symbol} — Hermes catalyst confirmed: "
+                    f"{_hc.get('catalyst_type')} ({_hc.get('source_count')} sources)"
+                )
         except Exception as e:
             logger.debug(f"Hermes catalyst check failed for {symbol}: {e}")
 
         # Scar factor — penalize symbols with poor past scalp outcomes
         try:
             scur = conn.cursor()
-            scur.execute("""
+            scur.execute(
+                """
                 SELECT count(*) as total,
                        count(*) FILTER (WHERE outcome_status IN ('loss_5pct','loss_10pct')) as losses
                 FROM scalp_decision_outcomes
                 WHERE symbol = %s AND scored_at > NOW() - INTERVAL '90 days'
-            """, (symbol,))
+            """,
+                (symbol,),
+            )
             srow = scur.fetchone()
             if srow and srow[0] >= 3:
                 loss_rate = srow[1] / srow[0]
@@ -1008,21 +1150,29 @@ def run_scan():
         _raw_decision, _raw_grade = decision, grade
         decision, grade, _capped = apply_social_only_cap(decision, grade, catalyst_enrichment)
         if _capped:
-            logger.info("%s — SOCIAL_ONLY_CATALYST cap: %s/%s → %s/%s (no confirmed catalyst)",
-                        symbol, _raw_grade, _raw_decision, grade, decision)
+            logger.info(
+                "%s — SOCIAL_ONLY_CATALYST cap: %s/%s → %s/%s (no confirmed catalyst)",
+                symbol,
+                _raw_grade,
+                _raw_decision,
+                grade,
+                decision,
+            )
 
         # P0-6: stable per-candidate discovery trace id (scan → row → proposal → trade).
         discovery_trace_id = gen_discovery_trace_id(symbol)
 
         # P0-5: explicit, deterministic routing to the correct strategy family.
         _route_candidate = {
-            "symbol": symbol, "mention_count": mention_count,
-            "sources": candidate.get("sources", []), "strategy_tags": strategy_tags,
+            "symbol": symbol,
+            "mention_count": mention_count,
+            "sources": candidate.get("sources", []),
+            "strategy_tags": strategy_tags,
             "sample_content": candidate.get("sample_content"),
-            "bull": candidate.get("bull", 0), "bear": candidate.get("bear", 0),
+            "bull": candidate.get("bull", 0),
+            "bear": candidate.get("bear", 0),
         }
-        route = route_social_candidate(_route_candidate, finviz_data, catalyst_enrichment,
-                                       trace_id=discovery_trace_id)
+        route = route_social_candidate(_route_candidate, finviz_data, catalyst_enrichment, trace_id=discovery_trace_id)
         # Surface the social-only catalyst cap explicitly so the operator/UI can see a
         # GO/A+ was downgraded for lack of a verified catalyst (rather than a silent cap).
         # The route policy already emits SOCIAL_ONLY_UNVERIFIED; this adds the cap marker
@@ -1031,19 +1181,34 @@ def run_scan():
             _rc = route.setdefault("reason_codes", [])
             if "SOCIAL_ONLY_CATALYST_CAP" not in _rc:
                 _rc.append("SOCIAL_ONLY_CATALYST_CAP")
-        logger.info("%s — route=%s actionability=%s reasons=%s trace=%s",
-                    symbol, route["route"], route["actionability"],
-                    ",".join(route["reason_codes"]), discovery_trace_id)
+        logger.info(
+            "%s — route=%s actionability=%s reasons=%s trace=%s",
+            symbol,
+            route["route"],
+            route["actionability"],
+            ",".join(route["reason_codes"]),
+            discovery_trace_id,
+        )
 
         logger.info(
             "%s — score %d (%s/%s) | RVOL %.1fx | mentions %d",
-            symbol, score, grade, decision,
-            float(finviz_data.get("rvol") or 0), mention_count,
+            symbol,
+            score,
+            grade,
+            decision,
+            float(finviz_data.get("rvol") or 0),
+            mention_count,
         )
 
         save_scan_result(
-            conn, symbol, mention_count, finviz_data,
-            score, grade, decision, candidate["sources"],
+            conn,
+            symbol,
+            mention_count,
+            finviz_data,
+            score,
+            grade,
+            decision,
+            candidate["sources"],
         )
         stamp_discovery_trace(conn, "scalp_scan_results", symbol, discovery_trace_id)
         stamp_route_fields(conn, "scalp_scan_results", symbol, route, catalyst_enrichment)
@@ -1051,8 +1216,14 @@ def run_scan():
 
         # Harmonize: also upsert into trade_ai_scans
         _upsert_trade_ai_scans(
-            conn, symbol, mention_count, finviz_data,
-            score, grade, decision, candidate["sources"],
+            conn,
+            symbol,
+            mention_count,
+            finviz_data,
+            score,
+            grade,
+            decision,
+            candidate["sources"],
         )
         stamp_discovery_trace(conn, "trade_ai_scans", symbol, discovery_trace_id)
         stamp_route_fields(conn, "trade_ai_scans", symbol, route, catalyst_enrichment)
@@ -1062,46 +1233,55 @@ def run_scan():
         try:
             from intelligence_entity_manager import upsert_entity as _iem_upsert
             from datetime import datetime as _dt, timezone as _tz
-            _iem_upsert(conn, symbol, 'market', {
-                'social_mentions': mention_count,
-                'social_sources': candidate.get("sources", []),
-                'social_sentiment': 'bullish' if candidate.get("bull", 0) > candidate.get("bear", 0) else 'bearish',
-                'social_updated': _dt.now(_tz.utc),
-                'screener_score': score,
-                'screener_decision': decision,
-            }, source='social_scalp')
+
+            _iem_upsert(
+                conn,
+                symbol,
+                "market",
+                {
+                    "social_mentions": mention_count,
+                    "social_sources": candidate.get("sources", []),
+                    "social_sentiment": "bullish" if candidate.get("bull", 0) > candidate.get("bear", 0) else "bearish",
+                    "social_updated": _dt.now(_tz.utc),
+                    "screener_score": score,
+                    "screener_decision": decision,
+                },
+                source="social_scalp",
+            )
         except Exception:
             pass
         # === END WRITE-BACK ===
 
         # Live WS broadcast — non-fatal
         try:
-            broadcast_scalp_update({
-                "symbol": symbol,
-                "grade": grade,
-                "score": score,
-                "decision": decision,
-                "change_percent": str(finviz_data.get("change_pct", "")),
-                "rvol": float(finviz_data.get("rvol") or 0),
-                "catalyst_verified": bool(route["evidence"].get("catalyst_verified")),
-                "source": "social",
-                "mention_count": mention_count,
-                "route": route["route"],
-                "actionability": route["actionability"],
-                # Social Scout operator-awareness fields (P0-5) — surfaced live so the UI can render
-                # the pill without recomputing pillars. Awareness only: never tradeable/validation.
-                "scout_status": route.get("scout_status"),
-                "scout_pillar_count": route.get("scout_pillar_count"),
-                "scout_pillars_met": route.get("pillars_met"),
-                "scout_pillars_missing": route.get("pillars_missing"),
-                "operator_pill": route.get("operator_pill"),
-                "operator_subtitle": route.get("operator_subtitle"),
-                "operator_color_token": route.get("operator_color_token"),
-                "operator_tooltip_hints": route.get("operator_tooltip_hints"),
-                "not_validation_ready": route.get("not_validation_ready"),
-                "not_tradeable": route.get("not_tradeable"),
-                "discovery_trace_id": discovery_trace_id,
-            })
+            broadcast_scalp_update(
+                {
+                    "symbol": symbol,
+                    "grade": grade,
+                    "score": score,
+                    "decision": decision,
+                    "change_percent": str(finviz_data.get("change_pct", "")),
+                    "rvol": float(finviz_data.get("rvol") or 0),
+                    "catalyst_verified": bool(route["evidence"].get("catalyst_verified")),
+                    "source": "social",
+                    "mention_count": mention_count,
+                    "route": route["route"],
+                    "actionability": route["actionability"],
+                    # Social Scout operator-awareness fields (P0-5) — surfaced live so the UI can render
+                    # the pill without recomputing pillars. Awareness only: never tradeable/validation.
+                    "scout_status": route.get("scout_status"),
+                    "scout_pillar_count": route.get("scout_pillar_count"),
+                    "scout_pillars_met": route.get("pillars_met"),
+                    "scout_pillars_missing": route.get("pillars_missing"),
+                    "operator_pill": route.get("operator_pill"),
+                    "operator_subtitle": route.get("operator_subtitle"),
+                    "operator_color_token": route.get("operator_color_token"),
+                    "operator_tooltip_hints": route.get("operator_tooltip_hints"),
+                    "not_validation_ready": route.get("not_validation_ready"),
+                    "not_tradeable": route.get("not_tradeable"),
+                    "discovery_trace_id": discovery_trace_id,
+                }
+            )
         except Exception as e:
             logger.warning("WS broadcast skipped for %s: %s", symbol, e)
 
@@ -1119,21 +1299,36 @@ def run_scan():
                 from lib.scalp_go_criteria import evaluate as _go_eval
             except ImportError:
                 from scripts.lib.scalp_go_criteria import evaluate as _go_eval  # type: ignore
-            _verdict = _go_eval({
-                "price": finviz_data.get("price"), "float_m": finviz_data.get("float_m"),
-                "rvol": finviz_data.get("rvol"), "gap_pct": finviz_data.get("gap_pct"),
-                "volume": finviz_data.get("volume_base") or finviz_data.get("volume"),
-                "score": score, "catalyst_verified": route["evidence"].get("catalyst_verified"),
-            })
+            _verdict = _go_eval(
+                {
+                    "price": finviz_data.get("price"),
+                    "float_m": finviz_data.get("float_m"),
+                    "rvol": finviz_data.get("rvol"),
+                    "gap_pct": finviz_data.get("gap_pct"),
+                    "volume": finviz_data.get("volume_base") or finviz_data.get("volume"),
+                    "score": score,
+                    "catalyst_verified": route["evidence"].get("catalyst_verified"),
+                }
+            )
             if not _verdict.qualifies:
-                logger.info("%s — GO alert withheld: scalp criteria failed=%s missing=%s",
-                            symbol, _verdict.failed, _verdict.missing)
+                logger.info(
+                    "%s — GO alert withheld: scalp criteria failed=%s missing=%s",
+                    symbol,
+                    _verdict.failed,
+                    _verdict.missing,
+                )
                 _action = "WAIT"
         if _action == "GO":
             send_scalp_alert(
-                symbol, score, grade, decision, finviz_data,
-                mention_count, candidate["sources"],
-                candidate.get("bull", 0), candidate.get("bear", 0),
+                symbol,
+                score,
+                grade,
+                decision,
+                finviz_data,
+                mention_count,
+                candidate["sources"],
+                candidate.get("bull", 0),
+                candidate.get("bear", 0),
             )
             go_count += 1
         elif _action == "WAIT":
