@@ -1,5 +1,6 @@
 """General notification display fixtures: no AT engine, provider, secrets or sends."""
 
+import importlib.util
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -12,7 +13,15 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import scripts.lib.comms_editor as ce
 from lib import momentum_setup_evidence as evidence
 from lib.scanner_candidate_projection import build_candidate_projection
-import scripts.telegram_transport as tt
+
+# Load the exact source as a test module, matching rich-wiring fixtures. The
+# existing public chokepoint is exercised below; its raw delivery is always inert.
+spec = importlib.util.spec_from_file_location(
+    "momentum_notification_transport_fixture", ROOT / "scripts/telegram_transport.py"
+)
+tt = importlib.util.module_from_spec(spec)
+assert spec.loader is not None
+spec.loader.exec_module(tt)
 
 NOW = datetime(2026, 10, 12, 15, 0, tzinfo=timezone.utc)
 
