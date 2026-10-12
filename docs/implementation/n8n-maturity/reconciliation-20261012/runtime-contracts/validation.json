@@ -21,14 +21,14 @@
       "sha256": "ee6048ae72fd2599295b6daa7450ae94d0fde5d0412de1a911247e0f3ff0bee9"
     },
     {
-      "bytes": 660293,
+      "bytes": 659662,
       "path": "docs/implementation/n8n-maturity/reconciliation-20261012/runtime-contracts/monitoring_coverage.tsv",
-      "sha256": "b08a5253e47337673fa75f44725f08c1b13be024c4ebeb3854fe31b894521cce"
+      "sha256": "d3ddc066800eca2b3f168f9e831eb7b577efa9f511cfcccedd58ac5146288f4d"
     },
     {
-      "bytes": 7899,
+      "bytes": 7885,
       "path": "docs/implementation/n8n-maturity/reconciliation-20261012/runtime-contracts/openclaw_crosswalk.tsv",
-      "sha256": "2674b17e1bb0d1f50de5d7396588d23e6e2f2c55a474a6b964aa30d85e44583b"
+      "sha256": "67a9c3ec301a503bb4d55ac163a3b74f581a010024987dfffd70ca034e904e48"
     },
     {
       "bytes": 11905,
@@ -36,9 +36,9 @@
       "sha256": "45215840f656bc93b648827c7b3014452b1d4b874cb1b059d3731205d67775c0"
     },
     {
-      "bytes": 22646,
+      "bytes": 22614,
       "path": "docs/implementation/n8n-maturity/reconciliation-20261012/runtime-contracts/owner_decisions.tsv",
-      "sha256": "1698ee8e9f8e0e54fff3b3d7537948e204eb24fdb8292529b30aabccb8d690aa"
+      "sha256": "a643f7cc8542dba1ff0158bc4131c8605f7b9c7308cf078226bf1bc0f410126f"
     },
     {
       "bytes": 20798,
@@ -46,9 +46,9 @@
       "sha256": "8e9371dccf0ccd2a076f92187ca4268c7d0eed7b007808c1c2d998638b186c26"
     },
     {
-      "bytes": 4123,
+      "bytes": 4113,
       "path": "docs/implementation/n8n-maturity/reconciliation-20261012/runtime-contracts/timer_source_gaps.tsv",
-      "sha256": "06c58e81b73288a7905b4c6c948091d51e5e9807fc07f10d8daf630ccf2a146d"
+      "sha256": "e9ebd00d9f0dd9a97e0addecaf56e41fa85e2c2d2feaf1fc94a42012aaeff8b5"
     }
   ],
   "as_of": "2026-10-12T03:06:53.352282+00:00",
@@ -109,5 +109,6 @@
       "command": "git diff --check",
       "exit_code": 0
     }
-  ]
+  ],
+  "integrator_normalization": "New TSV artifacts normalized to LF; rows/cells unchanged; original worker manifests remain in worker worktree and commit98263ede3."
 }
