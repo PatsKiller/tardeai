@@ -416,6 +416,19 @@ def _editor_failed_hold(text: str, exc: BaseException) -> bool:
     return False
 
 
+def _annotate_accepted_momentum_alert(text: str, primary_symbols=None) -> str:
+    """Display cached facts only after existing editor/duplicate decisions."""
+    try:
+        try:
+            from lib.momentum_setup_evidence import enrich_active_trader_notification
+        except ImportError:
+            from scripts.lib.momentum_setup_evidence import enrich_active_trader_notification
+        return enrich_active_trader_notification(text, primary_symbols=primary_symbols)
+    except Exception as exc:  # noqa: BLE001
+        _log.warning("momentum_evidence_annotation_failed", extra={"error_type": type(exc).__name__})
+        return text
+
+
 def deliver_text(
     *,
     token: str,
@@ -444,6 +457,9 @@ def deliver_text(
 
     ``primary_symbols`` scopes footer chrome to the active turn (no residual
     ticker bleed from prior-turn text still present in the body).
+
+    Cached momentum facts annotate the accepted display text only, after the
+    original body has passed editor, stance and duplicate decisions.
 
     ``family`` selects the interdict switch (see ``SendFamily``). A SYSTEM_OPS
     claim is confirmed here from the calling module, token and chat; a refused
@@ -499,7 +515,7 @@ def deliver_text(
         result = _deliver_text_raw(
             token=token,
             chat_id=chat_id,
-            text=decision.text,
+            text=_annotate_accepted_momentum_alert(decision.text, primary_symbols),
             thread_id=thread_id,
             reply_markup=reply_markup,
             parse_mode="HTML",
@@ -516,7 +532,7 @@ def deliver_text(
     result = _deliver_text_raw(
         token=token,
         chat_id=chat_id,
-        text=text,
+        text=_annotate_accepted_momentum_alert(text, primary_symbols),
         thread_id=thread_id,
         reply_markup=reply_markup,
         parse_mode=parse_mode,

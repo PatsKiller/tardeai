@@ -55,12 +55,16 @@ def _text(value, limit=300):
 
 
 def _url(value):
-    if not isinstance(value, str):
+    if (
+        not isinstance(value, str)
+        or len(value) > 1000
+        or any(c.isspace() or ord(c) < 32 or c in '<>"`\\' for c in value)
+    ):
         return None
     try:
         parsed = urlsplit(value)
         return (
-            value[:1000]
+            value
             if parsed.scheme == "https" and parsed.hostname and not parsed.username and not parsed.password
             else None
         )
@@ -357,4 +361,4 @@ def enrich_active_trader_notification(
     if re.search(r"</?(?:b|i|a|blockquote|code)\b", message):
         appendix = html.escape(appendix)
     out = message.rstrip() + "\n\n" + appendix
-    return out if len(out) <= 4000 else message
+    return out if len(out.encode("utf-16-le")) // 2 <= 4000 else message
