@@ -13,6 +13,7 @@ from __future__ import annotations
 import copy
 import json
 import sqlite3
+import subprocess
 import sys
 from datetime import date
 from pathlib import Path
@@ -277,3 +278,189 @@ def test_builder_dry_run_writes_nothing(tmp_path):
     out = tmp_path / "contracts.json"
     assert B.main(["--dry-run", "--no-ledger", "--as-of", "2026-10-10", "--out", str(out)]) == 0
     assert not out.exists()
+
+
+# Baseline regeneration uses public source declarations, not production observations.
+
+
+def _workflow_fixture(wid, expression="*/5 * * * *", timeout=50):
+    return {
+        "id": wid,
+        "settings": {"executionTimeout": timeout, "timezone": "America/New_York"},
+        "nodes": [
+            {
+                "type": "n8n-nodes-base.scheduleTrigger",
+                "parameters": {"rule": {"interval": [{"field": "cronExpression", "expression": expression}]}},
+            }
+        ],
+    }
+
+
+@pytest.mark.parametrize(
+    "expression,timeout,degraded,failed",
+    [
+        ("* * * * *", 50, 0.033, 0.05),
+        ("*/5 * * * *", 50, 0.167, 0.25),
+        ("*/5 * * * *", 150, 0.167, 0.25),
+    ],
+)
+def test_generic_builder_derives_bounded_provisional_defaults_from_graph(expression, timeout, degraded, failed):
+    wf = {"id": "fixture-dispatcher", "kind": "dispatcher", "relay_calls": ["GET /due", "POST /run"]}
+    contract = B.generic_contract(wf, TODAY, workflow_source=_workflow_fixture(wf["id"], expression, timeout))
+    baseline = contract["baseline"]
+    assert (baseline["timeout_s"], baseline["freshness_degraded_after_h"], baseline["freshness_failed_after_h"]) == (
+        timeout,
+        degraded,
+        failed,
+    )
+    assert baseline["basis"] == "CLASS_DEFAULT_PROVISIONAL" and baseline["runs_considered"] is None
+    assert "NOT_MEASURED" in baseline["source"]
+    assert contract["status"] == "DRAFT"
+    assert H.validate_contract(contract) == []
+
+
+def test_generic_builder_never_invents_missing_or_invalid_source_limits():
+    wf = {"id": "fixture-dispatcher", "kind": "dispatcher", "relay_calls": ["GET /due"]}
+    for source in ({}, _workflow_fixture(wf["id"], "not a recurring cron", 0)):
+        contract = B.generic_contract(wf, TODAY, workflow_source=source)
+        assert contract["baseline"]["timeout_s"] is None
+        assert contract["baseline"]["freshness_degraded_after_h"] is None
+        assert contract["baseline"]["freshness_failed_after_h"] is None
+        assert "Collect" in contract["baseline"]["collection_action"]
+        assert contract["status"] == "DRAFT"
+
+
+@pytest.mark.parametrize(
+    "lane,timeout", [("incident-notifier", 120), ("n8n-failure-diagnosis", 600), ("n8n-siem-bridge", 120)]
+)
+def test_host_builder_uses_public_install_line_timeout_without_db(lane, timeout, committed, monkeypatch):
+    _, registry, _ = committed
+    row = next(row for row in registry["lanes"] if row["lane_id"] == lane)
+    monkeypatch.setattr(B.sqlite3, "connect", lambda *a, **k: pytest.fail("pure host generation opened a DB"))
+    contract = B.host_contract(lane, row, TODAY)
+    assert contract["baseline"]["timeout_s"] == timeout
+    assert contract["baseline"]["freshness_degraded_after_h"] == round(2 * row["expected_cadence_hours"], 3)
+    assert contract["baseline"]["freshness_failed_after_h"] == round(3 * row["expected_cadence_hours"], 3)
+    assert contract["baseline"]["runs_considered"] is None
+    assert contract["status"] == "DRAFT"
+
+
+def _build_public_catalogue(doc, registry, index):
+    return B.build(
+        registry=registry,
+        allowlist=H.load_json(B.ALLOWLIST_PATH),
+        catalogue=H.load_json(B.CATALOGUE_PATH),
+        inventory={},
+        index=index,
+        ledger=None,
+        excluded=frozenset(),
+        as_of=date(2026, 10, 12),
+        existing=doc,
+    )
+
+
+def test_regeneration_preserves_corrected_draft_limits_history_and_owner(committed, monkeypatch):
+    doc, registry, index = committed
+    original = copy.deepcopy(doc)
+    monkeypatch.setattr(B.sqlite3, "connect", lambda *a, **k: pytest.fail("no-ledger generation opened a DB"))
+    out = _build_public_catalogue(doc, registry, index)
+    by_id = {row["id"]: row for row in out["contracts"]}
+    affected = (*GENERIC, *H.HOST_MONITOR_LANES)
+    assert len(affected) == 9
+    for previous in (row for row in doc["contracts"] if row["id"] in affected):
+        generated = by_id[previous["id"]]
+        assert generated["baseline"] == previous["baseline"]
+        assert generated["owner"] == previous["owner"]
+        assert generated["status"] == previous["status"]
+        old_review, new_review = copy.deepcopy(previous.get("review")), copy.deepcopy(generated.get("review"))
+        if isinstance(old_review, dict):
+            old_review.pop("proposed_contract_body_sha256", None)
+            new_review.pop("proposed_contract_body_sha256", None)
+        assert new_review == old_review
+    assert doc == original
+    assert out["grandfathered_draft"] == sorted(original["grandfathered_draft"])
+
+
+def test_builder_keeps_entire_reviewed_rows_observer_and_retired_history(committed):
+    doc, registry, index = committed
+    original_registry = copy.deepcopy(registry)
+    out = _build_public_catalogue(doc, registry, index)
+    by_id = {row["id"]: row for row in out["contracts"]}
+    assert set(by_id) == {row["id"] for row in doc["contracts"]}
+    for reviewed in (row for row in doc["contracts"] if row["status"] == "REVIEWED"):
+        assert by_id[reviewed["id"]] == reviewed
+    assert by_id["tradeai-momentum-lifecycle-candidate"] == _contract(doc, "tradeai-momentum-lifecycle-candidate")
+    assert "tradeai-momentum-lifecycle-candidate" not in {row["lane_id"] for row in registry["lanes"]}
+    assert registry == original_registry
+
+
+def test_draft_owner_numbers_and_review_history_cannot_be_replaced_by_defaults():
+    previous = {
+        "id": "fixture-dispatcher",
+        "kind": "generic_workflow",
+        "status": "DRAFT",
+        "owner": "fixture-owner",
+        "ownership_confirmation": "NOT_MEASURED",
+        "baseline": {
+            "basis": "OPERATOR_SLO",
+            "timeout_s": 123,
+            "freshness_degraded_after_h": 63.25,
+            "freshness_failed_after_h": 63.5,
+        },
+        "review": {
+            "status": "PENDING_BODY_REVIEW",
+            "previous_review": {"metadata": {"decision_ref": "fixture://historical"}},
+            "proposed_contract_body_sha256": "stale-proposal",
+        },
+    }
+    wf = {"id": previous["id"], "kind": "dispatcher", "relay_calls": ["GET /due"]}
+    out = B.build(
+        registry={"lanes": []},
+        allowlist={"lanes": []},
+        catalogue={"lanes": []},
+        inventory={},
+        index={"workflows": [wf]},
+        ledger=None,
+        excluded=frozenset(),
+        as_of=TODAY,
+        existing={"contracts": [previous], "grandfathered_draft": []},
+        workflow_sources={wf["id"]: _workflow_fixture(wf["id"], "* * * * *", 50)},
+    )["contracts"][0]
+    from scripts.lib.n8n_momentum_lifecycle import contract_body_digest, contract_review_proven
+
+    assert out["baseline"] == previous["baseline"]
+    assert out["owner"] == "fixture-owner" and out["ownership_confirmation"] == "NOT_MEASURED"
+    assert out["review"]["previous_review"] == previous["review"]["previous_review"]
+    assert out["review"]["proposed_contract_body_sha256"] == contract_body_digest(out)
+    assert out["status"] == "DRAFT" and not contract_review_proven(out)
+
+
+def test_explicit_no_ledger_write_to_owned_fixture_retains_limits_and_review_history(tmp_path, committed):
+    doc, _, _ = committed
+    path = tmp_path / "contracts.json"
+    path.write_text(json.dumps(doc))
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts/build_n8n_health_contracts.py"),
+            "--write",
+            "--no-ledger",
+            "--as-of",
+            "2026-10-12",
+            "--out",
+            str(path),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["ledger_present"] is False
+    written = json.loads(path.read_text())
+    for cid in (*GENERIC, *H.HOST_MONITOR_LANES):
+        before, after = _contract(doc, cid), _contract(written, cid)
+        assert after["baseline"] == before["baseline"]
+        assert after["owner"] == before["owner"]
+        assert after["status"] == before["status"]
+    assert {row["id"] for row in written["contracts"]} == {row["id"] for row in doc["contracts"]}
