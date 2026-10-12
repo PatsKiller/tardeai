@@ -256,7 +256,9 @@ def build_candidate_projection(cache, journal, *, now=None, source_status=None, 
         }
     )
     identity = [{**r, "trade_ai": r["trade_ai"], "active_trader": r["active_trader"]} for r in candidates]
-    projection_hash = _digest({"schema": SCHEMA, "candidates": identity, "source_status": statuses})
+    projection_hash = _digest(
+        {"schema": SCHEMA, "candidates": identity, "source_status": statuses, "source_metadata": metadata}
+    )
     source_sha = cache.get("source_sha") or cache.get("code_sha")
     if not isinstance(source_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", source_sha):
         source_sha = "UNKNOWN"

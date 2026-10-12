@@ -423,3 +423,17 @@ def test_shared_projection_population_contract_does_not_invent_consumer_confirma
     assert out["source_verdicts_preserved"] is True
     assert "consumer_views" not in out
     assert out["source_metadata"]["TRADE_AI"]["freshness_bound_seconds"] == "NOT_MEASURED"
+
+
+def test_shared_snapshot_hash_binds_canonical_summary_without_retally(candidate_projection):
+    import copy
+
+    cache, journal = _shared_fixture()
+    original = _shared_build(candidate_projection, cache, journal)
+    corrected_cache = copy.deepcopy(cache)
+    corrected_cache["setup_run_summary"]["scanned_count"] = 42
+    corrected = _shared_build(candidate_projection, corrected_cache, journal)
+    assert original["candidates"] == corrected["candidates"]
+    assert original["snapshot_id"] != corrected["snapshot_id"]
+    assert original["source_metadata"]["TRADE_AI"]["summary"]["scanned_count"] == 44
+    assert corrected["source_metadata"]["TRADE_AI"]["summary"]["scanned_count"] == 42
