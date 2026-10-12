@@ -1,7 +1,7 @@
 {
   "schema": "MomentumActivationPacket@v1",
   "as_of": "2026-10-12",
-  "source_base_sha": "27a75a14b88e8ac0d3befbe21bebea3686ca45ff",
+  "source_base_sha": "40208881dd34495b840bcbd4e373f593d06a659f",
   "status": "DRAFT_FOR_OPERATOR_REVIEW",
   "source_release_sha": null,
   "reviewed_by": null,
@@ -637,7 +637,7 @@
     "Verify one authority and original lock; preserve independent host notifier/broker/safety/recovery scheduling",
     "Prove output recovery and record actual restored SHA/receipt; preserve monitor/incident historical evidence"
   ],
-  "current_observed_boundary": "Current n8n scalp workflow IDs absent; no n8n production receipts for scalp/cache/orchestrator lanes; three Finviz market-mover dry-run failures before child due to lockfile ENOSPC. Source preparation is not runtime activation.",
+  "current_observed_boundary": "Morning workflow census found no named momentum candidate; no accepted production scalp/cache/orchestrator n8n receipts. The read-only 2026-10-12T17:20:12Z snapshot at CURRENT40208881 observed five requests against307 source-calendar slots: three market-mover, one screener and one incubator request; four lockfile ENOSPC failures and one manual/unknown-trigger request. The302 no-request acceptance gaps do not prove missed legacy business work. Public13:17ET legacy scalp statusok does not prove output or consumer acceptance. Source preparation and this unserved evaluator are not runtime activation.",
   "review_binding": {
     "store": "existing operative config/n8n_health_contracts.json review metadata only; no new review authority",
     "body_digest": "sha256 canonical JSON excluding review and status",
@@ -646,7 +646,7 @@
       "actual reviewed_by",
       "actual decision_ref",
       "contract_body_sha256 matches current body",
-      "explicit ownership confirmation resolved when field declared"
+      "explicit ownership confirmation equals OWNER_ACCEPTED; missing, false or any other value refuses admission"
     ],
     "runtime_identity": "Actual SOURCE_COMMIT + monitor/run/output receipt SHA checked independently; never embed final release SHA in committed contract"
   },
