@@ -2,8 +2,7 @@
 """Every audited store gets one verdict, and detection is not called resolution.
 
 No network, broker or production path. The taxonomy tests run on synthetic scans;
-one live test asserts the shape of the real audit without asserting counts that
-change as producers run.
+the full scanner/disposition chain uses real files in isolated fixture roots.
 """
 
 from __future__ import annotations
@@ -167,26 +166,19 @@ def test_the_report_never_claims_it_resolved_anything(roots):
     assert "RESOLUTION IS NOT" in rep["note"]
 
 
-#: The live audit reads the real producer and served state roots. They exist on the
-#: operator's host and on no hosted runner, so the test is gated on their presence
-#: rather than asserting a count that can only ever be zero in CI. The gate is the
-#: directories themselves: where they exist the test runs in full, and where they do
-#: not it says so instead of reporting a failure that means "wrong machine".
-_LIVE_ROOTS = (
-    Path("/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/data/portfolios/state"),
-    Path("/home/johnclaw/trade-ai-releases/persistent-state/data/portfolios/state"),
-)
-needs_live_roots = pytest.mark.skipif(
-    not all(p.is_dir() for p in _LIVE_ROOTS),
-    reason="live state roots are not present on this host; the live audit has nothing to audit",
-)
+def test_the_full_audit_has_a_verdict_for_every_store(roots, tmp_path, monkeypatch):
+    from lib import state_root_divergence as scanner
+    from lib import state_root_disposition as disposition
 
+    make_store(roots, "_freshness.json", "DIVERGENT", "PRODUCER_AHEAD")
+    make_store(roots, "unknown_fixture.json", "PRODUCER_ONLY", "PRODUCER_AHEAD", s_exists=False)
+    surface = tmp_path / "fixture_surface.tsx"
+    surface.write_text("_freshness.json")
+    monkeypatch.setattr(scanner, "_roots", lambda checkout_root=None: roots)
+    monkeypatch.setattr(disposition, "CC_SURFACE", surface)
+    before = {str(p): p.read_bytes() for root in roots for p in root.iterdir()}
 
-@needs_live_roots
-def test_the_live_audit_has_a_verdict_for_every_store():
-    from lib.state_root_divergence import scan as live_scan
-
-    rep = state_root_disposition(live_scan(with_hashes=False))
+    rep = state_root_disposition(scanner.scan(with_hashes=False))
     assert rep["audited_store_count"] > 0
     assert sum(rep["disposition_counts"].values()) == rep["audited_store_count"]
     for row in rep["stores"]:
@@ -194,6 +186,9 @@ def test_the_live_audit_has_a_verdict_for_every_store():
         assert row["evidence"]
     assert rep["cc_critical_count"] >= 1
     assert isinstance(rep["ready"], bool)
+    assert rep["audited_store_count"] == 2
+    assert {row["store"] for row in rep["stores"]} == {"_freshness.json", "unknown_fixture.json"}
+    assert {str(p): p.read_bytes() for root in roots for p in root.iterdir()} == before
 
 
 def test_the_contract_is_registered_and_fails_closed():
