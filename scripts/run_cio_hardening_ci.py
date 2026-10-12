@@ -4068,6 +4068,9 @@ GATES = [
         "n8n_momentum_lifecycle_20261012",
         [
             "tests/test_n8n_momentum_lifecycle_20261012.py",
+            "tests/test_momentum_scheduler_authority_20261013.py",
+            "tests/test_momentum_admission_20261013.py",
+            "tests/test_n8n_read_only_observers_20261013.py",
             "tests/test_momentum_cache_reconcile_20261012.py",
             "tests/test_n8n_momentum_lifecycle_cli_20261012.py",
             "tests/test_momentum_setup_evidence_20261012.py",
