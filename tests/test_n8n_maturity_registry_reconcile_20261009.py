@@ -128,10 +128,12 @@ def test_native_shadow_admissions_are_preserved_before_the_generated_suffix(resu
             assert row["dispatch"]["mode"] == "dry_run"
 
 
-def test_canonical_row_order_preserves_actual_shadow_due_requests(committed):
+def test_canonical_row_order_preserves_actual_shadow_due_requests(committed, monkeypatch):
     """Registry order is provenance, not priority or a second scheduling authority."""
     from scripts.lib import n8n_due as due
     from scripts.lib import n8n_retry_policy as retry
+
+    monkeypatch.setenv(due.LIVE_LANES_ENV, "momentum-cache-reconcile")
 
     native_ids = {"momentum-lifecycle-monitor", "momentum-cache-reconcile"}
     native = [row for row in committed["lanes"] if row["lane_id"] in native_ids]

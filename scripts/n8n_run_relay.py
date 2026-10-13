@@ -60,6 +60,7 @@ from scripts.lib.n8n_due import DEFAULT_LIMIT as DUE_DEFAULT_LIMIT  # noqa: E402
 from scripts.lib.n8n_due import MAX_LANE_FILTER as DUE_MAX_LANES  # noqa: E402
 from scripts.lib.n8n_due import MAX_LIMIT as DUE_MAX_LIMIT  # noqa: E402
 from scripts.lib.n8n_due import SOURCES as DUE_SOURCES  # noqa: E402
+from scripts.lib.n8n_due import LIVE_LANES_ENV, RelayLiveLanesMissing, parse_relay_live_lanes  # noqa: E402
 from scripts.n8n_coordination_gateway import BLOCKED_PORTS, DEFAULT_RUN_ALLOWLIST, load_run_allowlist
 
 NO_CONSUMER_REASON = (
@@ -70,7 +71,7 @@ NO_CONSUMER_REASON = (
 BEARER_ENV = "TRADEAI_N8N_RELAY_BEARER"
 BEARER_PREVIOUS_ENV = "TRADEAI_N8N_RELAY_BEARER_PREVIOUS"
 N8N_KEY_ENV = "TRADEAI_N8N_GATEWAY_HMAC_KEY_N8N"
-LIVE_LANES_ENV = "TRADEAI_N8N_RELAY_LIVE_LANES"
+# Same name and parser as scripts/lib/n8n_due.py. A missing key is not an empty list.
 DEFAULT_GATEWAY = "http://127.0.0.1:18091"
 #: limit is at most 3 ASCII digits before int(): no Unicode digits ("²", "١٢"), no huge-int parsing.
 DUE_LIMIT_DIGITS = len(str(DUE_MAX_LIMIT))
@@ -124,6 +125,7 @@ REFUSALS = frozenset(
         "relay_lane_not_allowlisted",
         "relay_bad_mode",
         "relay_live_not_enabled",
+        "relay_live_lanes_missing",
         "relay_bad_run_id",
         "relay_gateway_unreachable",
         "relay_gateway_http_error",
@@ -293,7 +295,12 @@ class Relay:
         self.bearer_previous = _optional_secret(self.environ, BEARER_PREVIOUS_ENV)
         self.key = _secret(self.environ, N8N_KEY_ENV)
         self.allowlist = allowlist if allowlist is not None else load_run_allowlist(DEFAULT_RUN_ALLOWLIST)
-        self.live_lanes = frozenset(x for x in self.environ.get(LIVE_LANES_ENV, "").split() if x)
+        try:
+            self.live_lanes = parse_relay_live_lanes(self.environ)
+            self.live_lanes_missing = False
+        except RelayLiveLanesMissing:
+            self.live_lanes = frozenset()
+            self.live_lanes_missing = True
         self.gateway_url = self.environ.get("TRADEAI_N8N_GATEWAY_URL", DEFAULT_GATEWAY).rstrip("/")
         self.clock = clock
         self.transport = transport or self._transport
@@ -392,6 +399,8 @@ class Relay:
             return self._refuse("relay_lane_not_allowlisted", 403, lane_id=lane)
         if mode not in {"dry_run", "live"}:
             return self._refuse("relay_bad_mode", 403, lane_id=lane)
+        if mode == "live" and self.live_lanes_missing:
+            return self._refuse("relay_live_lanes_missing", 503, lane_id=lane)
         if mode == "live" and lane not in self.live_lanes:
             return self._refuse("relay_live_not_enabled", 403, lane_id=lane)
         run_id = _safe_run_id(data.get("idempotency_key")) or _derived_run_id(

@@ -270,6 +270,8 @@ def test_compute_due_week_sweep_proposed_vs_active(monkeypatch):
     assert emitted == {} and {c for _l, c in errors} == {"class_not_permitted"}
 
     monkeypatch.setattr(LD, "R1_SHADOW_SHAPE_STATUS", "ACTIVE")
+    live = " ".join(lane for lane, (_stage, mode) in STAGE.items() if mode == "live")
+    monkeypatch.setenv(D.LIVE_LANES_ENV, live)
     emitted, errors = _sweep(activated, ALLOW)
     assert errors == set(), sorted(errors)[:5]
     assert set(emitted) == set(WAVE3_ON_CRON), sorted(set(WAVE3_ON_CRON) - set(emitted))

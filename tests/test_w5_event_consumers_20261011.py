@@ -556,9 +556,13 @@ def test_w5_registry_rows_are_shadow_dry_run_with_their_triggers():
         assert LD.validate_dispatch_block(row, known_lane_ids=set(by_id), retry_policy_names={"none"}) == []
 
 
-def test_w5_rows_fire_on_the_real_registry(state, store):
+def test_w5_rows_fire_on_the_real_registry(state, store, monkeypatch):
     reg = json.loads((ROOT / "config" / "lane_registry.json").read_text())
     allow = json.loads((ROOT / "config" / "n8n_run_allowlist.json").read_text())
+    monkeypatch.setenv(
+        D.LIVE_LANES_ENV,
+        " ".join(r["lane_id"] for r in reg["lanes"] if (r.get("dispatch") or {}).get("mode") == "live"),
+    )
     # Wednesday 06:20 ET: before signal-fusion-active's next */30 slot is due, after its 06:00 slot ran
     now = datetime(2026, 10, 14, 10, 20, tzinfo=timezone.utc)
     _put(

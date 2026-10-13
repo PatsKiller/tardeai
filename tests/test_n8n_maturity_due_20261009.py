@@ -8,6 +8,7 @@ config/n8n_retry_policies.json read as data. No socket, no live ledger, no send.
 from __future__ import annotations
 
 import json
+import os
 import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -581,7 +582,8 @@ def test_soft_edge_without_deadline_uses_the_config_default(store):
 
 
 def test_live_lane_absent_from_the_relay_set_is_due_as_dry_run(store, monkeypatch):
-    monkeypatch.delenv("TRADEAI_N8N_RELAY_LIVE_LANES", raising=False)
+    """A present list that omits the lane is dry_run. A missing list is not this case."""
+    monkeypatch.setenv(D.LIVE_LANES_ENV, "heartbeat-watch")
     rows = [_row("momentum-cache-reconcile", ["0 10 * * *"], mode="live")]
     allow = _allow("momentum-cache-reconcile", live=("--apply",))
     resp = _due(rows, allow, store)
@@ -589,7 +591,94 @@ def test_live_lane_absent_from_the_relay_set_is_due_as_dry_run(store, monkeypatc
     assert item["mode"] == "dry_run"
     assert item["reason"] == "relay_live_not_enabled"
     assert item["idempotency_key"] == "d:momentum-cache-reconcile:dry_run:20261009T1000"
+    assert resp["errors"] == []
     _validate(resp)
+
+
+# Lanes with mode=live rows in the coordination ledger. The list is the operator's live set.
+LIVE_LANES_THAT_HAVE_RUN = (
+    "heartbeat-watch",
+    "n8n-incident-fanin",
+    "n8n-pilot-dispatch",
+    "n8n-research-intake-consumer",
+    "crontab-snapshot-for-health-agent",
+    "research-insight-extractor",
+    "aegis-brief-regenerate",
+    "analyst-prospectus-generate",
+    "momentum-cache-reconcile",
+)
+
+
+def test_missing_live_lane_list_never_downgrades_heartbeat_watch_or_the_other_eight(store, monkeypatch):
+    monkeypatch.delenv(D.LIVE_LANES_ENV, raising=False)
+    rows = [_row(lane, ["0 10 * * *"], mode="live") for lane in LIVE_LANES_THAT_HAVE_RUN]
+    allow = _allow(*LIVE_LANES_THAT_HAVE_RUN, live=("--apply",))
+    resp = _due(rows, allow, store)
+    assert resp["items"] == []
+    assert {e["code"] for e in resp["errors"]} == {"relay_live_lanes_missing"}
+    assert {e["lane_id"] for e in resp["errors"]} == set(LIVE_LANES_THAT_HAVE_RUN)
+    assert "heartbeat-watch" in {e["lane_id"] for e in resp["errors"]}
+    _validate(resp)
+    monkeypatch.setenv(D.LIVE_LANES_ENV, "")
+    present = _due(rows, allow, store)
+    assert present["errors"] == []
+    assert {i["lane_id"] for i in present["items"]} == set(LIVE_LANES_THAT_HAVE_RUN)
+    assert {i["mode"] for i in present["items"]} == {"dry_run"}
+    assert {i["reason"] for i in present["items"]} == {"relay_live_not_enabled"}
+
+
+def test_gateway_due_and_relay_see_the_same_live_lanes(store, monkeypatch, tmp_path):
+    from scripts.lib import n8n_coordination_gateway as G
+    from scripts.n8n_run_relay import Relay
+
+    listed = "heartbeat-watch\tresearch-insight-extractor  heartbeat-watch"
+    expected = frozenset({"heartbeat-watch", "research-insight-extractor"})
+    monkeypatch.setenv(D.LIVE_LANES_ENV, listed)
+    mapping = {
+        D.LIVE_LANES_ENV: listed,
+        "TRADEAI_N8N_RELAY_BEARER": "b" * 48,
+        "TRADEAI_N8N_GATEWAY_HMAC_KEY_N8N": "k" * 48,
+        "TRADEAI_STATE_ROOT": str(tmp_path),
+    }
+    relay = Relay(environ=mapping, allowlist=frozenset(LIVE_LANES_THAT_HAVE_RUN))
+    assert relay.live_lanes_missing is False
+    assert relay.live_lanes == expected == D.parse_relay_live_lanes(mapping)
+    from_process = Relay(
+        environ={**mapping, D.LIVE_LANES_ENV: os.environ[D.LIVE_LANES_ENV]},
+        allowlist=frozenset(LIVE_LANES_THAT_HAVE_RUN),
+    )
+    assert from_process.live_lanes == D.parse_relay_live_lanes(os.environ) == expected
+
+    rows = [
+        _row(lane, ["0 10 * * *"], mode="live")
+        for lane in ("heartbeat-watch", "research-insight-extractor", "momentum-cache-reconcile")
+    ]
+    allow = _allow(*(row["lane_id"] for row in rows), live=("--apply",))
+    modes = {item["lane_id"]: (item["mode"], item["reason"]) for item in _due(rows, allow, store)["items"]}
+    assert modes["heartbeat-watch"] == ("live", "schedule")
+    assert modes["research-insight-extractor"] == ("live", "schedule")
+    assert modes["momentum-cache-reconcile"] == ("dry_run", "relay_live_not_enabled")
+
+    def loader(value, sha):
+        def load():
+            return value, sha
+        return load
+
+    sources = D.DueSources(
+        loader(rows, "a" * 64),
+        loader(allow, "b" * 64),
+        loader(POLICIES, POLICIES.sha256),
+    )
+    gateway = G._due(
+        {"source": "schedule"},
+        run_store=store,
+        run_allowlist=None,
+        due_sources=sources,
+        now=NOW.timestamp(),
+        peer=None,
+    )
+    assert {item["lane_id"]: item["mode"] for item in gateway["items"]} == {lane: pair[0] for lane, pair in modes.items()}
+    assert gateway["errors"] == []
 
 
 def test_live_lane_named_in_the_relay_set_stays_live(store, monkeypatch):
@@ -620,7 +709,8 @@ def test_sub_hourly_soft_edge_counts_its_deadline_from_the_first_fire_of_the_day
     assert h["items"] == [] and _held(h, "WAITING_AFTER")[0]["wait_deadline"] == "2026-10-09T04:20:00Z"
 
 
-def test_unsatisfiable_after_edges_are_reported_and_the_lane_still_evaluated(store):
+def test_unsatisfiable_after_edges_are_reported_and_the_lane_still_evaluated(store, monkeypatch):
+    monkeypatch.setenv(D.LIVE_LANES_ENV, "")
     rows = [_row("cron-up", ["0 9 * * *"], mode="off"),
             _row("dry-up", ["0 9 * * *"], mode="dry_run"),
             _row("live-up", ["0 9 * * *"], mode="live"),

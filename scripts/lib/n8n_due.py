@@ -56,11 +56,14 @@ Lanes are considered only when the row's dispatch mode is not off, `lane_dispatc
 forbidden lane is skipped silently, whatever its block says — check_lane_registry reports it) and the allowlist
 supports the mode. Per-lane defects go to `errors[]` and never stop other lanes: not_allowlisted,
 unknown_retry_policy, class_not_permitted (pre-R1 classes AND the policy's permitted_classes),
-after_unknown_lane, bad_cron (an unparseable cron in a block whose mode is dry_run/live). Two `after` codes keep
-the lane evaluated: after_not_dispatched (the predecessor is off / on cron / ineligible, so it writes no ledger
-row and the edge can only time out) and after_mode_unsatisfiable (a live lane after a dry_run-dispatched
-predecessor). Any other malformed dispatch block is mode off (lane_dispatch fails closed) and is reported by
-check_lane_registry, not here.
+after_unknown_lane, bad_cron (an unparseable cron in a block whose mode is dry_run/live),
+relay_live_lanes_missing (TRADEAI_N8N_RELAY_LIVE_LANES is unset: the lane is not emitted, and it is not
+rewritten as dry_run). Two `after` codes keep the lane evaluated: after_not_dispatched (the predecessor is
+off / on cron / ineligible, so it writes no ledger row and the edge can only time out) and
+after_mode_unsatisfiable (a live lane after a dry_run-dispatched predecessor). A present live-lane list that
+omits a registry live lane emits that lane as dry_run with reason relay_live_not_enabled when the allowlist
+has a dry_run_arg. Any other malformed dispatch block is mode off (lane_dispatch fails closed) and is
+reported by check_lane_registry, not here.
 
 `source` "event" (design §6; W5, CONSOLIDATION_PLAN §E.4, 2026-10-11) is computed for rows whose dispatch block has
 `triggers` of a computed source (lane_dispatch.COMPUTED_TRIGGER_SOURCES); see "Event source" below. `source`
@@ -395,17 +398,31 @@ class _Lane:
     relay_reason: Optional[str] = None
 
 
-def _relay_live_lanes() -> frozenset[str]:
-    """Lanes the relay will accept with mode live (TRADEAI_N8N_RELAY_LIVE_LANES). Unset is empty."""
-    return frozenset(part for part in os.environ.get("TRADEAI_N8N_RELAY_LIVE_LANES", "").split() if part)
+# The relay reads this same variable (scripts/n8n_run_relay.py). Unset is not an empty list.
+LIVE_LANES_ENV = "TRADEAI_N8N_RELAY_LIVE_LANES"
+
+
+class RelayLiveLanesMissing(DueConfigError):
+    """TRADEAI_N8N_RELAY_LIVE_LANES is not in the environment. Do not invent an empty allowlist."""
+
+
+def parse_relay_live_lanes(environ: Mapping[str, str]) -> frozenset[str]:
+    """The live-lane list the gateway and the relay both use.
+
+    The key must be present. An empty value is an explicit empty list. A missing key raises.
+    """
+    if LIVE_LANES_ENV not in environ:
+        raise RelayLiveLanesMissing(f"{LIVE_LANES_ENV} is unset")
+    return frozenset(part for part in str(environ.get(LIVE_LANES_ENV) or "").split() if part)
 
 
 def _relay_dispatch_mode(lane_id: str, mode: str, entry: Mapping) -> tuple[str, Optional[str]]:
-    """A registry live lane the relay will refuse is due as dry_run, with that reason on the item.
+    """When the live-lane list is present, a registry live lane that is not on it is due as dry_run.
 
     The slot key uses the mode that will be posted. A lane with no dry_run_arg cannot be downgraded.
+    Callers must not use this when the list is missing.
     """
-    if mode != "live" or lane_id in _relay_live_lanes():
+    if mode != "live" or lane_id in parse_relay_live_lanes(os.environ):
         return mode, None
     if entry.get("dry_run_arg") is None:
         return mode, None
@@ -490,6 +507,12 @@ def _eligible_lanes(rows: list[dict], entries: Mapping[str, Mapping], policies: 
             errors.append(_err(lane, "after_unknown_lane", f"after {bad_after}"))
             continue
         errors.extend(_after_errors(lane, block, by_id, entries))
+        if block.mode == "live" and LIVE_LANES_ENV not in os.environ:
+            errors.append(_err(
+                lane, "relay_live_lanes_missing",
+                f"{LIVE_LANES_ENV} is unset; refusing to downgrade a live lane to dry_run",
+            ))
+            continue
         mode, relay_reason = _relay_dispatch_mode(lane, block.mode, entry)
         lanes.append(_Lane(row, block, policy, mode, relay_reason))
     return lanes, errors

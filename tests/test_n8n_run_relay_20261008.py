@@ -86,12 +86,10 @@ def test_lane_and_live_gates_do_not_call_transport(tmp_path):
         )[1]["reason"]
         == "relay_lane_not_allowlisted"
     )
-    assert (
-        r.run(auth, json.dumps({"lane_id": LANE, "mode": "live", "idempotency_key": "run-20261008-0002"}).encode())[1][
-            "reason"
-        ]
-        == "relay_live_not_enabled"
+    status, body = r.run(
+        auth, json.dumps({"lane_id": LANE, "mode": "live", "idempotency_key": "run-20261008-0002"}).encode()
     )
+    assert status == 503 and body["reason"] == "relay_live_lanes_missing"
     assert calls == []
 
 
@@ -328,6 +326,22 @@ def test_previous_bearer_is_accepted_and_a_short_one_refuses_start(tmp_path):
         relay(tmp_path, TRADEAI_N8N_RELAY_BEARER_PREVIOUS="short")
 
 
+def test_present_empty_live_list_is_not_enabled_and_a_missing_list_still_forwards_dry_run(tmp_path):
+    calls = []
+    auth = f"Bearer {BEARER}"
+    empty = relay(tmp_path, transport=lambda *_: calls.append(1) or (200, {"state": "REQUESTED"}),
+                  TRADEAI_N8N_RELAY_LIVE_LANES="")
+    live = json.dumps({"lane_id": LANE, "mode": "live", "idempotency_key": "run-20261008-0010"}).encode()
+    assert empty.run(auth, live) == (403, {"state": "REFUSED", "reason": "relay_live_not_enabled"})
+    assert empty.live_lanes_missing is False and empty.live_lanes == frozenset()
+    missing = relay(tmp_path, transport=lambda *_: calls.append(1) or (200, {"state": "REQUESTED"}))
+    assert missing.live_lanes_missing is True and missing.live_lanes == frozenset()
+    assert missing.run(auth, live) == (503, {"state": "REFUSED", "reason": "relay_live_lanes_missing"})
+    dry = json.dumps({"lane_id": LANE, "mode": "dry_run", "idempotency_key": "run-20261008-0011"}).encode()
+    assert missing.run(auth, dry)[0] == 200
+    assert calls == [1]
+
+
 def test_every_emitted_refusal_is_declared():
     assert R.REFUSALS
     for reason in (
@@ -338,6 +352,7 @@ def test_every_emitted_refusal_is_declared():
         "relay_lane_not_allowlisted",
         "relay_bad_mode",
         "relay_live_not_enabled",
+        "relay_live_lanes_missing",
         "relay_bad_run_id",
         "relay_gateway_unreachable",
     ):
