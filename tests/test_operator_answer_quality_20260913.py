@@ -61,8 +61,17 @@ def _schg_only(text: str) -> list[str]:
 
 
 def _turn(**kw) -> dict:
-    base = {"ts": _ago(1), "chat_id": "c", "message_id": "1", "question": "q", "reply_source": None,
-            "desk_kind": "answered", "pending_id": None, "provenance": None, "reply": "x\nSources: CIO snapshot"}
+    base = {
+        "ts": _ago(1),
+        "chat_id": "c",
+        "message_id": "1",
+        "question": "q",
+        "reply_source": None,
+        "desk_kind": "answered",
+        "pending_id": None,
+        "provenance": None,
+        "reply": "x\nSources: CIO snapshot",
+    }
     base.update(kw)
     return base
 
@@ -75,17 +84,21 @@ def _rules(turns, **kw):
 
 
 def test_no_sources_line_fires_and_a_reply_with_sources_does_not():
-    f = _rules([_turn(message_id="1", reply="answer only"), _turn(message_id="2", reply="answer\nSources: re-entry desk")])
+    f = _rules(
+        [_turn(message_id="1", reply="answer only"), _turn(message_id="2", reply="answer\nSources: re-entry desk")]
+    )
     assert [r["message_id"] for r in f["NO_SOURCES_LINE"]] == ["1"]
 
 
 def test_went_outside_unstated_fires_and_a_stated_one_does_not():
     prov = {"stores_read": ["CIO snapshot"], "went_outside": ["brave"], "model": None, "sources_line_present": True}
-    f = _rules([
-        _turn(message_id="1", provenance=prov, reply="a\nSources: x"),
-        _turn(message_id="2", provenance=prov, reply="a\nWent outside: brave\nSources: x"),
-        _turn(message_id="3", provenance={**prov, "went_outside": []}, reply="a\nSources: x"),
-    ])
+    f = _rules(
+        [
+            _turn(message_id="1", provenance=prov, reply="a\nSources: x"),
+            _turn(message_id="2", provenance=prov, reply="a\nWent outside: brave\nSources: x"),
+            _turn(message_id="3", provenance={**prov, "went_outside": []}, reply="a\nSources: x"),
+        ]
+    )
     assert [r["message_id"] for r in f["WENT_OUTSIDE_UNSTATED"]] == ["1"]
     assert f["WENT_OUTSIDE_UNSTATED"][0]["went_outside"] == ["brave"]
 
@@ -99,7 +112,12 @@ _TODAYS_SEASONALITY_REPLY = (
 
 
 def test_false_empty_claim_by_provenance_names_the_rule():
-    prov = {"stores_read": ["get_cio_snapshot"], "went_outside": [], "model": "deepseek-v4-flash", "sources_line_present": False}
+    prov = {
+        "stores_read": ["get_cio_snapshot"],
+        "went_outside": [],
+        "model": "deepseek-v4-flash",
+        "sources_line_present": False,
+    }
     f = _rules([_turn(reply=_TODAYS_SEASONALITY_REPLY, provenance=prov)])
     assert len(f["FALSE_EMPTY_CLAIM"]) == 1 and f["FALSE_EMPTY_CLAIM"][0]["rule"] == "provenance"
 
@@ -119,9 +137,14 @@ def test_a_snapshot_collected_after_the_turn_cannot_testify_and_store_health_dec
 
 
 def test_negative_control_an_empty_claim_is_not_false_when_the_house_had_nothing():
-    snap = {"collected_at": _ago(2), "domains": {"cash_buying_power": {"quality_state": "DATA_UNAVAILABLE", "data": {}},
-                                                 "holdings_detail": {"state": "DATA_UNAVAILABLE"},
-                                                 "sectors": {"state": "DATA_UNAVAILABLE"}}}
+    snap = {
+        "collected_at": _ago(2),
+        "domains": {
+            "cash_buying_power": {"quality_state": "DATA_UNAVAILABLE", "data": {}},
+            "holdings_detail": {"state": "DATA_UNAVAILABLE"},
+            "sectors": {"state": "DATA_UNAVAILABLE"},
+        },
+    }
     f = _rules([_turn(ts=_ago(1), reply=_TODAYS_SEASONALITY_REPLY)], snapshot=snap, holdings={})
     assert f["FALSE_EMPTY_CLAIM"] == []
 
@@ -133,17 +156,21 @@ def test_negative_control_a_holdings_file_written_after_the_turn_cannot_testify(
 
 
 def test_negative_control_unavailable_about_something_else_is_not_a_domain_claim():
-    f = _rules([_turn(reply="Analyst targets are not available for this name.\nSources: x")],
-               snapshot=json.loads((FIX / "snapshot.json").read_text()) | {"collected_at": _ago(2)},
-               holdings=json.loads((FIX / "holdings.json").read_text()))
+    f = _rules(
+        [_turn(reply="Analyst targets are not available for this name.\nSources: x")],
+        snapshot=json.loads((FIX / "snapshot.json").read_text()) | {"collected_at": _ago(2)},
+        holdings=json.loads((FIX / "holdings.json").read_text()),
+    )
     assert f["FALSE_EMPTY_CLAIM"] == []
 
 
 def test_negative_control_a_gap_bullet_beside_a_sources_footer_is_not_a_claim():
     """Found by the litmus replay: the gap bullet and the footer naming 'cash'
     fused into one 'sentence' and fired. Each line stands alone."""
-    txt = ("• Cash: pct=56.1 bp=710933.07\n• Gaps (DATA_UNAVAILABLE): book:topic\n"
-           "Sources: CIO snapshot (cash, sector_exposure, risk, investment_policy, portfolio)\nREAD_ONLY_ADVISORY")
+    txt = (
+        "• Cash: pct=56.1 bp=710933.07\n• Gaps (DATA_UNAVAILABLE): book:topic\n"
+        "Sources: CIO snapshot (cash, sector_exposure, risk, investment_policy, portfolio)\nREAD_ONLY_ADVISORY"
+    )
     assert oaq.empty_claims(txt) == []
     # positive control on the same shape: the claim on its own line still fires
     assert oaq.empty_claims(txt.replace("book:topic", "cash is empty"))[0]["domains"] == ["cash"]
@@ -155,9 +182,12 @@ _BOOK = "🎯 *Re-entry — purchase candidates*\n✅ *READY TO REVIEW* (3)\n�
 def test_book_dump_for_a_named_symbol_fires_with_the_desk_extractor(monkeypatch):
     """Uses the desk's own _extract_symbols, with a known-symbol set injected."""
     import scripts.lib.cio_operator_desk_loop as desk
+
     monkeypatch.setattr(desk, "_known_symbols", lambda ttl_s=0: frozenset({"SCHG"}))
-    f = oaq.evaluate_turns([_turn(question="Is now a good time to get back into schg", reply=_BOOK)],
-                           extract=oaq.default_symbol_extractor())
+    f = oaq.evaluate_turns(
+        [_turn(question="Is now a good time to get back into schg", reply=_BOOK)],
+        extract=oaq.default_symbol_extractor(),
+    )
     assert f["BOOK_DUMP_FOR_NAMED_SYMBOL"][0]["symbols"] == ["SCHG"]
 
 
@@ -188,20 +218,28 @@ def test_pending_never_closed_fires_and_closed_or_young_ones_do_not():
 
 def test_model_unlabelled_fires_from_provenance_and_from_reply_source():
     prov = {"stores_read": [], "went_outside": [], "model": "deepseek-v4-flash", "sources_line_present": True}
-    f = _rules([
-        _turn(message_id="1", provenance=prov, reply="September is weak.\nSources: x"),
-        _turn(message_id="2", reply_source="freeform_flash", reply="September is weak.\nSources: x"),
-    ])
+    f = _rules(
+        [
+            _turn(message_id="1", provenance=prov, reply="September is weak.\nSources: x"),
+            _turn(message_id="2", reply_source="freeform_flash", reply="September is weak.\nSources: x"),
+        ]
+    )
     assert [(r["message_id"], r["rule"]) for r in f["MODEL_UNLABELLED"]] == [("1", "provenance"), ("2", "reply_source")]
 
 
 def test_negative_control_labelled_model_prose_and_deterministic_replies_do_not_fire():
     prov = {"stores_read": [], "went_outside": [], "model": "deepseek-v4-flash", "sources_line_present": True}
-    f = _rules([
-        _turn(message_id="1", provenance=prov, reply="General market history (model knowledge, not Trade-AI data): ...\nSources: x"),
-        _turn(message_id="2", reply_source="deepseek_flash", reply="Desk facts (Flash: wording only)\nSources: x"),
-        _turn(message_id="3", reply_source="tradeai_deterministic", reply="card\nSources: x"),
-    ])
+    f = _rules(
+        [
+            _turn(
+                message_id="1",
+                provenance=prov,
+                reply="General market history (model knowledge, not Trade-AI data): ...\nSources: x",
+            ),
+            _turn(message_id="2", reply_source="deepseek_flash", reply="Desk facts (Flash: wording only)\nSources: x"),
+            _turn(message_id="3", reply_source="tradeai_deterministic", reply="card\nSources: x"),
+        ]
+    )
     assert f["MODEL_UNLABELLED"] == []
 
 
@@ -215,8 +253,16 @@ def test_a_turn_with_no_reply_text_is_reported_not_silently_passed():
 
 
 def _event(mid, text, ts, source, kind, pending=None, prov=None):
-    payload = {"text": text, "chat_id": OPERATOR_CHAT, "message_id": mid, "channel": "telegram", "ts": ts,
-               "reply_source": source, "desk_kind": kind, "pending_id": pending}
+    payload = {
+        "text": text,
+        "chat_id": OPERATOR_CHAT,
+        "message_id": mid,
+        "channel": "telegram",
+        "ts": ts,
+        "reply_source": source,
+        "desk_kind": kind,
+        "pending_id": pending,
+    }
     if prov is not None:
         payload["reply_provenance"] = prov
     return {"event_id": f"evt-{mid}", "event_type": "operator.message", "timestamp": ts, "payload": payload}
@@ -229,23 +275,60 @@ def test_collect_reproduces_the_2026_09_13_incident_from_injected_ledgers(tmp_pa
     # once as a spurious failure of the silence/recovery assertions).
     monkeypatch.setenv("TRADEAI_ALERT_STATE_PATH", str(tmp_path / "alert_state.json"))
     import scripts.lib.cio_operator_desk_loop as desk
+
     monkeypatch.setattr(desk, "_known_symbols", lambda ttl_s=0: frozenset({"SCHG", "WMT"}))
     ev = tmp_path / "cio_events.jsonl"
-    ev.write_text("\n".join(json.dumps(e) for e in [
-        _event("51666", "What a analyst saying about Walmart right now is it a buy and what's the target",
-               "2026-09-13T16:20:44+00:00", "tradeai_deterministic", "answered"),
-        _event("51668", "What's the outlook for SpaceX in the next 3 months",
-               "2026-09-13T16:32:36+00:00", "deferred_gap", "deferred", "opr_5bc20393b457"),
-        _event("51679", "Is now a good time to get back into schg", "2026-09-13T22:51:06+00:00",
-               "tradeai_deterministic", "answered"),
-        _event("51681", "How does the market normally perform in September ... what sectors",
-               "2026-09-13T22:56:24+00:00", "freeform_flash", "answered"),
-        {"event_type": "cio.other", "payload": {}},
-        _event("1", "an old question", "2026-09-11T10:00:00+00:00", "x", "answered"),
-    ]) + "\n")
+    ev.write_text(
+        "\n".join(
+            json.dumps(e)
+            for e in [
+                _event(
+                    "51666",
+                    "What a analyst saying about Walmart right now is it a buy and what's the target",
+                    "2026-09-13T16:20:44+00:00",
+                    "tradeai_deterministic",
+                    "answered",
+                ),
+                _event(
+                    "51668",
+                    "What's the outlook for SpaceX in the next 3 months",
+                    "2026-09-13T16:32:36+00:00",
+                    "deferred_gap",
+                    "deferred",
+                    "opr_5bc20393b457",
+                ),
+                _event(
+                    "51679",
+                    "Is now a good time to get back into schg",
+                    "2026-09-13T22:51:06+00:00",
+                    "tradeai_deterministic",
+                    "answered",
+                ),
+                _event(
+                    "51681",
+                    "How does the market normally perform in September ... what sectors",
+                    "2026-09-13T22:56:24+00:00",
+                    "freeform_flash",
+                    "answered",
+                ),
+                {"event_type": "cio.other", "payload": {}},
+                _event("1", "an old question", "2026-09-11T10:00:00+00:00", "x", "answered"),
+            ]
+        )
+        + "\n"
+    )
     pend = tmp_path / "pending.jsonl"
-    pend.write_text(json.dumps({"pending_id": "opr_5bc20393b457", "status": "open", "ts": "2026-09-13T16:32:36+00:00",
-                                "operator_text": "What's the outlook for SpaceX"}) + "\n")
+    pend.write_text(
+        json.dumps(
+            {
+                "pending_id": "opr_5bc20393b457",
+                "status": "open",
+                "ts": "2026-09-13T16:32:36+00:00",
+                "operator_text": "What's the outlook for SpaceX",
+            }
+        )
+        + "\n"
+    )
     hold = tmp_path / "holdings.json"
     hold.write_text((FIX / "holdings.json").read_text())
     replies = {
@@ -254,24 +337,40 @@ def test_collect_reproduces_the_2026_09_13_incident_from_injected_ledgers(tmp_pa
         "51679": _BOOK.replace("\nSources: re-entry desk", ""),
         "51681": _TODAYS_SEASONALITY_REPLY,
     }
-    rep = oaq.collect(now=NOW, root=tmp_path, events_path=ev, pending_path=pend, holdings_path=hold,
-                      snapshot={}, replies=replies)
+    rep = oaq.collect(
+        now=NOW, root=tmp_path, events_path=ev, pending_path=pend, holdings_path=hold, snapshot={}, replies=replies
+    )
     counts = {k: len(v) for k, v in rep["findings"].items()}
     assert rep["turns"] == 4 and rep["turns_with_reply"] == 4
-    assert counts == {"NO_SOURCES_LINE": 4, "WENT_OUTSIDE_UNSTATED": 0, "FALSE_EMPTY_CLAIM": 1,
-                      "BOOK_DUMP_FOR_NAMED_SYMBOL": 1, "PENDING_NEVER_CLOSED": 1, "RESEARCH_LANDED_UNSENT": 0,
-                      "MODEL_UNLABELLED": 1, "REPLY_TEXT_UNAVAILABLE": 0,
-                      # 2026-09-14: injected replies carry no delivery state, so none is undelivered.
-                      "REPLY_NOT_DELIVERED": 0}
+    assert counts == {
+        "NO_SOURCES_LINE": 4,
+        "WENT_OUTSIDE_UNSTATED": 0,
+        "FALSE_EMPTY_CLAIM": 1,
+        "BOOK_DUMP_FOR_NAMED_SYMBOL": 1,
+        "PENDING_NEVER_CLOSED": 1,
+        "RESEARCH_LANDED_UNSENT": 0,
+        "MODEL_UNLABELLED": 1,
+        "REPLY_TEXT_UNAVAILABLE": 0,
+        # 2026-09-14: injected replies carry no delivery state, so none is undelivered.
+        "REPLY_NOT_DELIVERED": 0,
+    }
     assert rep["findings"]["FALSE_EMPTY_CLAIM"][0]["rule"] == "store_health"
-    assert rep["findings"]["BOOK_DUMP_FOR_NAMED_SYMBOL"][0]["question"].startswith("Is now a good time to get back into schg")
+    assert rep["findings"]["BOOK_DUMP_FOR_NAMED_SYMBOL"][0]["question"].startswith(
+        "Is now a good time to get back into schg"
+    )
 
 
 def test_an_unreachable_reply_store_degrades_to_reply_text_unavailable(tmp_path):
     ev = tmp_path / "e.jsonl"
     ev.write_text(json.dumps(_event("9", "hello", _ago(1), "x", "answered")) + "\n")
-    rep = oaq.collect(now=NOW, root=tmp_path, events_path=ev, pending_path=tmp_path / "none", snapshot={},
-                      reply_loader=lambda since: ({}, "OperationalError: db down"))
+    rep = oaq.collect(
+        now=NOW,
+        root=tmp_path,
+        events_path=ev,
+        pending_path=tmp_path / "none",
+        snapshot={},
+        reply_loader=lambda since: ({}, "OperationalError: db down"),
+    )
     assert rep["reply_source_error"].startswith("OperationalError")
     assert len(rep["findings"]["REPLY_TEXT_UNAVAILABLE"]) == 1
 
@@ -322,14 +421,24 @@ def _report(**findings):
     return {"schema": oaq.SCHEMA, "findings": f, "finding_count": sum(len(v) for v in f.values())}
 
 
-_FEC = {"message_id": "51681", "question": "How does the market normally perform in September and normal",
-        "rule": "snapshot_health", "domain": "cash", "evidence": "persisted CIO snapshot said AVAILABLE"}
+_FEC = {
+    "message_id": "51681",
+    "question": "How does the market normally perform in September and normal",
+    "rule": "snapshot_health",
+    "domain": "cash",
+    "evidence": "persisted CIO snapshot said AVAILABLE",
+}
 
 
 def test_alarm_fires_in_operator_words_and_routes_as_an_interrupt(wired):
-    oaq._alert(_report(FALSE_EMPTY_CLAIM=[_FEC],
-                       BOOK_DUMP_FOR_NAMED_SYMBOL=[{"message_id": "51679", "question": "Is now a good time to get back into schg",
-                                                    "symbols": ["SCHG"]}]))
+    oaq._alert(
+        _report(
+            FALSE_EMPTY_CLAIM=[_FEC],
+            BOOK_DUMP_FOR_NAMED_SYMBOL=[
+                {"message_id": "51679", "question": "Is now a good time to get back into schg", "symbols": ["SCHG"]}
+            ],
+        )
+    )
     assert len(wired.sent) == 1
     body = wired.sent[0]
     assert body.startswith(oaq.SENTINEL), "the sentinel routes this, not the wording"
@@ -386,9 +495,22 @@ def test_dry_run_prints_the_alert_but_sends_nothing_and_writes_no_default_receip
     # single pytest session, which is a cross-suite leakage path (observed
     # once as a spurious failure of the silence/recovery assertions).
     monkeypatch.setenv("TRADEAI_ALERT_STATE_PATH", str(tmp_path / "alert_state.json"))
-    monkeypatch.setattr(oaq, "collect", lambda: _report(FALSE_EMPTY_CLAIM=[_FEC]) | {
-        "data_root": str(tmp_path), "turns": 1, "turns_with_reply": 1, "turns_with_provenance": 0,
-        "pending_rows": 0, "reply_source_error": None, "turn_index": []})
+    monkeypatch.setattr(
+        oaq,
+        "collect",
+        lambda: (
+            _report(FALSE_EMPTY_CLAIM=[_FEC])
+            | {
+                "data_root": str(tmp_path),
+                "turns": 1,
+                "turns_with_reply": 1,
+                "turns_with_provenance": 0,
+                "pending_rows": 0,
+                "reply_source_error": None,
+                "turn_index": [],
+            }
+        ),
+    )
     monkeypatch.setattr(oaq, "data_root", lambda: tmp_path)
     monkeypatch.setattr(sys, "argv", ["check_operator_answer_quality.py", "--dry-run"])
     assert oaq.main() == 1
@@ -404,9 +526,22 @@ def test_a_scheduled_run_writes_the_receipt(wired, monkeypatch, tmp_path):
     # single pytest session, which is a cross-suite leakage path (observed
     # once as a spurious failure of the silence/recovery assertions).
     monkeypatch.setenv("TRADEAI_ALERT_STATE_PATH", str(tmp_path / "alert_state.json"))
-    monkeypatch.setattr(oaq, "collect", lambda: _report() | {
-        "data_root": str(tmp_path), "turns": 0, "turns_with_reply": 0, "turns_with_provenance": 0,
-        "pending_rows": 0, "reply_source_error": None, "turn_index": []})
+    monkeypatch.setattr(
+        oaq,
+        "collect",
+        lambda: (
+            _report()
+            | {
+                "data_root": str(tmp_path),
+                "turns": 0,
+                "turns_with_reply": 0,
+                "turns_with_provenance": 0,
+                "pending_rows": 0,
+                "reply_source_error": None,
+                "turn_index": [],
+            }
+        ),
+    )
     monkeypatch.setattr(oaq, "data_root", lambda: tmp_path)
     monkeypatch.setattr(sys, "argv", ["check_operator_answer_quality.py", "--alert"])
     assert oaq.main() == 0
@@ -529,8 +664,10 @@ def test_litmus_seasonality_carries_house_facts_and_calls_nothing_empty(replays)
     assert "MODERATE_AGGRESSIVE" in txt, "policy risk level"
     # Research status, Agent C wording: either house research was found, or it says
     # plainly that none exists AND that nothing was queued (no unbacked follow-up).
-    assert ("Trade-AI research on file for this topic" in txt
-            or "Trade-AI holds no house research on this topic, and nothing was queued" in txt), "research status line"
+    assert (
+        "Trade-AI research on file for this topic" in txt
+        or "Trade-AI holds no house research on this topic, and nothing was queued" in txt
+    ), "research status line"
     assert "I will follow up" not in txt, "no follow-up promise without a pending row"
     assert "Sources:" in txt
     assert oaq.empty_claims(txt) == [], "no 'not available'/'empty' claim about cash, holdings, sectors or weights"
@@ -572,6 +709,7 @@ def test_litmus_seasonality_contract_findings_agent_c(replays):
 def test_replay_restores_every_patch_and_writes_nothing_outside_its_temp_dir(replays):
     import scripts.lib.cio_operator_desk_loop as desk
     import scripts.lib.data_broker.cio_portfolio as cp
+
     assert desk.PENDING_PATH == ROOT / "data" / "cio" / "cio_operator_pending_replies.jsonl"
     assert getattr(cp.get_cio_snapshot, "__name__", "") == "get_cio_snapshot"
     assert desk._known_symbols.__name__ == "_known_symbols"

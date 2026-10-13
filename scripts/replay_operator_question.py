@@ -38,6 +38,7 @@ EXIT CODES
     0  replayed
     2  could not run (fixture unreadable, desk raised)
 """
+
 from __future__ import annotations
 
 import argparse
@@ -144,8 +145,9 @@ def _modules(*names: str) -> list[Any]:
 
 
 @contextmanager
-def offline_desk(*, snapshot: Optional[dict], desk: Optional[dict], holdings: Optional[dict],
-                 workdir: Optional[Path] = None) -> Iterator[Any]:
+def offline_desk(
+    *, snapshot: Optional[dict], desk: Optional[dict], holdings: Optional[dict], workdir: Optional[Path] = None
+) -> Iterator[Any]:
     """Yield the desk module wired to fixtures, with every side effect stubbed."""
     p = _Patcher()
     tmp_ctx = tempfile.TemporaryDirectory(prefix="replay_operator_question_") if workdir is None else None
@@ -187,6 +189,7 @@ def offline_desk(*, snapshot: Optional[dict], desk: Optional[dict], holdings: Op
             p.setattr(m, "subject_research", lambda *a, **k: [])
         try:
             import scripts.lib.symbol_thesis_attach as sta  # noqa: PLC0415
+
             p.setattr(sta, "thesis_fields_for_symbol", lambda *a, **k: {})
         except Exception:
             pass
@@ -197,8 +200,15 @@ def offline_desk(*, snapshot: Optional[dict], desk: Optional[dict], holdings: Op
             tmp_ctx.cleanup()
 
 
-def replay(question: str, *, snapshot: Optional[dict], desk: Optional[dict], holdings: Optional[dict],
-           chat_id: str = "replay", message_id: str = "replay-1") -> dict[str, Any]:
+def replay(
+    question: str,
+    *,
+    snapshot: Optional[dict],
+    desk: Optional[dict],
+    holdings: Optional[dict],
+    chat_id: str = "replay",
+    message_id: str = "replay-1",
+) -> dict[str, Any]:
     """Run the desk path offline. Returns what the operator would receive and why."""
     with offline_desk(snapshot=snapshot, desk=desk, holdings=holdings) as d:
         res = d.handle_operator_desk_question(question, chat_id=chat_id, message_id=message_id, channel="telegram")
@@ -211,6 +221,7 @@ def replay(question: str, *, snapshot: Optional[dict], desk: Optional[dict], hol
     provenance = res.get("reply_provenance")
     try:
         from scripts.lib.reply_provenance import finalize_operator_reply, provenance_for_desk  # noqa: PLC0415
+
         final, prov = finalize_operator_reply(reply, provenance_for_desk(res))
         reply, provenance = final, prov.to_dict()
     except ImportError:
@@ -229,7 +240,8 @@ def replay(question: str, *, snapshot: Optional[dict], desk: Optional[dict], hol
         "pending_id": res.get("pending_id"),
         "pending_rows_written": len(pending_rows),
         # Agent C: evidence["contract_findings"]; Agent A: reply_provenance. None until they land.
-        "contract_findings": res.get("contract_findings") if "contract_findings" in res
+        "contract_findings": res.get("contract_findings")
+        if "contract_findings" in res
         else evidence.get("contract_findings"),
         "reply_provenance": provenance,
     }
@@ -248,10 +260,22 @@ def _print(out: dict[str, Any]) -> None:
         print(f"    - {g.get('domain')}:{g.get('symbol') or '-'}:{g.get('field')} — {g.get('reason')}")
     print(f"Blocking gaps    : {len(out['blocking_gaps'])}")
     print(f"Pending          : {out['pending_id']}  (rows written to the temp ledger: {out['pending_rows_written']})")
-    print("Contract findings: " + ("not present on this branch (Agent C)" if out["contract_findings"] is None
-                                   else json.dumps(out["contract_findings"], default=str)))
-    print("Reply provenance : " + ("not present on this branch (Agent A)" if out["reply_provenance"] is None
-                                   else json.dumps(out["reply_provenance"], default=str)))
+    print(
+        "Contract findings: "
+        + (
+            "not present on this branch (Agent C)"
+            if out["contract_findings"] is None
+            else json.dumps(out["contract_findings"], default=str)
+        )
+    )
+    print(
+        "Reply provenance : "
+        + (
+            "not present on this branch (Agent A)"
+            if out["reply_provenance"] is None
+            else json.dumps(out["reply_provenance"], default=str)
+        )
+    )
 
 
 def main() -> int:
@@ -264,8 +288,12 @@ def main() -> int:
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
     try:
-        out = replay(args.question, snapshot=_load(Path(args.snapshot)), desk=_load(Path(args.desk)),
-                     holdings=_load(Path(args.holdings)))
+        out = replay(
+            args.question,
+            snapshot=_load(Path(args.snapshot)),
+            desk=_load(Path(args.desk)),
+            holdings=_load(Path(args.holdings)),
+        )
     except Exception as exc:  # noqa: BLE001
         print(f"ERROR: replay failed: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 2
