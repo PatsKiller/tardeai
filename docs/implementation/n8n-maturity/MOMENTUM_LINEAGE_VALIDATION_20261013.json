@@ -1,0 +1,957 @@
+{
+  "as_of": "2026-10-13T15:20:37.103705+00:00",
+  "base_sha": "f0ebb82acd44fa0db790d29390d711daa0831a96",
+  "branch": "wt/momentum-lineage-20261013",
+  "frontend": {
+    "browser_script": {
+      "path": "/tmp/momentum-ui-browser-check.mjs",
+      "scope": "ISOLATED_TEST_DRIVER",
+      "sha256": "8e7d42d41b3f40bdf6c10f54b897df81a21c08e610193ea8e9d613c58f723b30"
+    },
+    "build_command": "npm run build",
+    "cwd": "/tmp/tradeai-momentum-lineage-20261013/apps/command-center-v3",
+    "fixture": {
+      "path": "/tmp/momentum-ui-fixture.json",
+      "scope": "SYNTHETIC_PUBLIC_INPUT",
+      "sha256": "274a5969688c9ccb7d9f6023c97927eff49821eba204a78b325ab649766ec453"
+    },
+    "includes": [
+      "frontend unit checks",
+      "design guard",
+      "UI standards",
+      "contrast 141/141 pairs",
+      "TypeScript",
+      "Vite"
+    ],
+    "network_policy": "all API responses intercepted with synthetic fixture; non-loopback requests blocked",
+    "production_consumer_receipts": "NOT_MEASURED",
+    "readback_artifact": {
+      "path": "/tmp/momentum-ui-readbacks.json",
+      "scope": "LOCAL_FIXTURE_DOM_READBACK",
+      "sha256": "fe2e9096ba6b83c22d9e2dae80a7fb0d62579b737e27675c2bcebb9dd4d84acf"
+    },
+    "readbacks": {
+      "receipts": [
+        {
+          "basis": "LOCAL_FIXTURE_DOM_READBACK",
+          "consumer": "active_trader",
+          "original_observed_at": "2026-10-13T14:10:00+00:00",
+          "projection_hash": "6eff2d426f97efd907e6f9f18f74ce941eff8e9b30963c077186603a37074b94",
+          "publication_link": "https://news.example/fixture",
+          "read_at": "2026-10-13T15:03:56.976Z",
+          "run_id": "2026-10-13::0900"
+        },
+        {
+          "basis": "LOCAL_FIXTURE_DOM_READBACK",
+          "consumer": "trade_ai",
+          "original_observed_at": "2026-10-13T14:10:00+00:00",
+          "projection_hash": "6eff2d426f97efd907e6f9f18f74ce941eff8e9b30963c077186603a37074b94",
+          "publication_link": "https://news.example/fixture",
+          "read_at": "2026-10-13T15:03:57.972Z",
+          "run_id": "2026-10-13::0900"
+        }
+      ],
+      "scope": "LOCAL_FIXTURE_ONLY"
+    },
+    "result": "PASS",
+    "screen_assertions": [
+      "same snapshot on both screens",
+      "original observation and run ID retained",
+      "factual verification, relevance and confidence separate",
+      "supporting publication URL and time present"
+    ],
+    "warnings": [
+      "existing non-module cc-boot.js bundle warning",
+      "existing chunk-size warning"
+    ]
+  },
+  "lifecycle_dry_run": {
+    "artifact": {
+      "path": "/tmp/momentum-lifecycle-dry-run.json",
+      "scope": "EXPLICIT_FIXTURE_ONLY",
+      "sha256": "2df77e786b964d8b740c3d24665d4846eb138bbc2525e214c00b700654653968"
+    },
+    "command": [
+      "env",
+      "TRADE_AI_CI=1",
+      "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python",
+      "/tmp/tradeai-momentum-lineage-20261013/scripts/n8n_momentum_lifecycle.py",
+      "--snapshot",
+      "/tmp/momentum-lifecycle-validation-fixture.json",
+      "--code-root",
+      "/tmp/momentum-lifecycle-validation-code",
+      "--now",
+      "2026-10-13T14:20:00Z",
+      "--dry-run"
+    ],
+    "exit_code": 0,
+    "first_attempt": {
+      "correction": "separately labeled isolated public-config fixture root; no source-worktree stamp added",
+      "reason": "source worktree has no release SOURCE_COMMIT stamp",
+      "result": "FAILED_BEFORE_EVALUATION"
+    },
+    "output": {
+      "acceptance": "NOT_MEASURED",
+      "as_of": "2026-10-13T14:20:00+00:00",
+      "authority": "READ_ONLY_ADVISORY",
+      "candidate_enabled": false,
+      "candidate_sha256": "c8677b82013d82035aa53ac5cd6b3cd027c961227073b330385208a00136ef03",
+      "collection_source": "EXPLICIT_FIXTURE",
+      "credential_tasks": [],
+      "date": "2026-10-13",
+      "diagnosis_coverage": {
+        "catalogue_review": "NOT_MEASURED",
+        "lanes": [
+          {
+            "execution": "existing host diagnoser only; gateway/executor retain admission",
+            "lane_id": "finviz-momentum-scalp-early-lane",
+            "mode": "NO_CATALOGUE_ENTRY_ESCALATE_ONLY"
+          },
+          {
+            "execution": "existing host diagnoser only; gateway/executor retain admission",
+            "lane_id": "finviz-market-movers",
+            "mode": "CATALOGUE_REVIEW_HELD"
+          },
+          {
+            "execution": "existing host diagnoser only; gateway/executor retain admission",
+            "lane_id": "finviz-screener-runner",
+            "mode": "CATALOGUE_REVIEW_HELD"
+          },
+          {
+            "execution": "existing host diagnoser only; gateway/executor retain admission",
+            "lane_id": "trade-ai-scalp-live",
+            "mode": "EXCLUDED_ESCALATE_ONLY"
+          },
+          {
+            "execution": "existing host diagnoser only; gateway/executor retain admission",
+            "lane_id": "auto-proposal-general",
+            "mode": "NO_CATALOGUE_ENTRY_ESCALATE_ONLY"
+          },
+          {
+            "execution": "existing host diagnoser only; gateway/executor retain admission",
+            "lane_id": "momentum-scalp-advisory-alerts",
+            "mode": "NO_CATALOGUE_ENTRY_ESCALATE_ONLY"
+          },
+          {
+            "execution": "existing host diagnoser only; gateway/executor retain admission",
+            "lane_id": "daily-incubator-refresh",
+            "mode": "CATALOGUE_REVIEW_HELD"
+          },
+          {
+            "execution": "existing host diagnoser only; gateway/executor retain admission",
+            "lane_id": "warm-caches",
+            "mode": "CATALOGUE_REVIEW_HELD"
+          },
+          {
+            "execution": "existing host diagnoser only; gateway/executor retain admission",
+            "lane_id": "orchestrator-slot",
+            "mode": "NO_CATALOGUE_ENTRY_ESCALATE_ONLY"
+          },
+          {
+            "execution": "existing host diagnoser only; gateway/executor retain admission",
+            "lane_id": "youtube-cookie-health-check",
+            "mode": "CATALOGUE_REVIEW_HELD"
+          },
+          {
+            "execution": "existing host diagnoser only; gateway/executor retain admission",
+            "lane_id": "youtube-transcript-ingest",
+            "mode": "NO_CATALOGUE_ENTRY_ESCALATE_ONLY"
+          },
+          {
+            "execution": "existing host diagnoser only; gateway/executor retain admission",
+            "lane_id": "incubator-proposal-promoter",
+            "mode": "NO_CATALOGUE_ENTRY_ESCALATE_ONLY"
+          }
+        ],
+        "model_selection_by_n8n": false,
+        "process_id": "n8n_lane_failure_diagnosis",
+        "template_id": "lane_failure_diagnosis.v1"
+      },
+      "diagnosis_status": {},
+      "host_receipt_metadata": {},
+      "incidents": [
+        {
+          "artifact_rel": "data/runtime/momentum_lifecycle_last.json",
+          "detail": "Momentum lifecycle evidence failed: expected_fire_without_request",
+          "detected_at": "2026-10-13T00:00:00+00:00",
+          "item": "finviz-market-movers:EXPECTED_FIRE_WITHOUT_REQUEST",
+          "notification_dedupe_minutes": null,
+          "operator_action": false,
+          "severity": "P1",
+          "source": "scalp_lane",
+          "store": "data/runtime"
+        },
+        {
+          "artifact_rel": "data/runtime/momentum_lifecycle_last.json",
+          "detail": "Momentum lifecycle evidence failed: expected_fire_without_request",
+          "detected_at": "2026-10-13T00:00:00+00:00",
+          "item": "finviz-screener-runner:EXPECTED_FIRE_WITHOUT_REQUEST",
+          "notification_dedupe_minutes": null,
+          "operator_action": false,
+          "severity": "P1",
+          "source": "scalp_lane",
+          "store": "data/runtime"
+        },
+        {
+          "artifact_rel": "data/runtime/momentum_lifecycle_last.json",
+          "detail": "Momentum lifecycle evidence failed: expected_fire_without_request",
+          "detected_at": "2026-10-13T00:00:00+00:00",
+          "item": "trade-ai-scalp-live:EXPECTED_FIRE_WITHOUT_REQUEST",
+          "notification_dedupe_minutes": null,
+          "operator_action": false,
+          "severity": "P1",
+          "source": "scalp_lane",
+          "store": "data/runtime"
+        },
+        {
+          "artifact_rel": "data/runtime/momentum_lifecycle_last.json",
+          "detail": "Momentum lifecycle evidence failed: expected_fire_without_request",
+          "detected_at": "2026-10-13T00:00:00+00:00",
+          "item": "daily-incubator-refresh:EXPECTED_FIRE_WITHOUT_REQUEST",
+          "notification_dedupe_minutes": null,
+          "operator_action": false,
+          "severity": "P1",
+          "source": "scalp_lane",
+          "store": "data/runtime"
+        },
+        {
+          "artifact_rel": "data/runtime/momentum_lifecycle_last.json",
+          "detail": "Momentum lifecycle evidence failed: output_not_measured",
+          "detected_at": "2026-10-13T00:00:00+00:00",
+          "item": "latest_scan_package:OUTPUT_NOT_MEASURED",
+          "notification_dedupe_minutes": null,
+          "operator_action": false,
+          "severity": "P1",
+          "source": "scalp_lane",
+          "store": "data/runtime"
+        },
+        {
+          "artifact_rel": "data/runtime/momentum_lifecycle_last.json",
+          "detail": "Momentum lifecycle evidence failed: output_not_measured",
+          "detected_at": "2026-10-13T00:00:00+00:00",
+          "item": "served_scan_cache:OUTPUT_NOT_MEASURED",
+          "notification_dedupe_minutes": null,
+          "operator_action": false,
+          "severity": "P1",
+          "source": "scalp_lane",
+          "store": "data/runtime"
+        },
+        {
+          "artifact_rel": "data/runtime/momentum_lifecycle_last.json",
+          "detail": "Momentum lifecycle evidence failed: upstream_output_not_measured",
+          "detected_at": "2026-10-13T00:00:00+00:00",
+          "item": "served_scan_cache:UPSTREAM_OUTPUT_NOT_MEASURED",
+          "notification_dedupe_minutes": null,
+          "operator_action": false,
+          "severity": "P1",
+          "source": "scalp_lane",
+          "store": "data/runtime"
+        },
+        {
+          "artifact_rel": "data/runtime/momentum_lifecycle_last.json",
+          "detail": "Momentum lifecycle evidence failed: output_not_measured",
+          "detected_at": "2026-10-13T00:00:00+00:00",
+          "item": "momentum_projection:OUTPUT_NOT_MEASURED",
+          "notification_dedupe_minutes": null,
+          "operator_action": false,
+          "severity": "P1",
+          "source": "scalp_lane",
+          "store": "data/runtime"
+        },
+        {
+          "artifact_rel": "data/runtime/momentum_lifecycle_last.json",
+          "detail": "Momentum lifecycle evidence failed: output_not_measured",
+          "detected_at": "2026-10-13T00:00:00+00:00",
+          "item": "notification_lineage:OUTPUT_NOT_MEASURED",
+          "notification_dedupe_minutes": null,
+          "operator_action": false,
+          "severity": "P1",
+          "source": "scalp_lane",
+          "store": "data/runtime"
+        },
+        {
+          "artifact_rel": "data/runtime/momentum_lifecycle_last.json",
+          "detail": "Momentum lifecycle evidence failed: output_not_measured",
+          "detected_at": "2026-10-13T00:00:00+00:00",
+          "item": "shared_signal_projection:OUTPUT_NOT_MEASURED",
+          "notification_dedupe_minutes": null,
+          "operator_action": false,
+          "severity": "P1",
+          "source": "scalp_lane",
+          "store": "data/runtime"
+        },
+        {
+          "artifact_rel": "data/runtime/momentum_lifecycle_last.json",
+          "detail": "Momentum lifecycle evidence failed: cycle_monitor_not_measured",
+          "detected_at": "2026-10-13T00:00:00+00:00",
+          "item": "trade-ai-scalp-live:CYCLE_MONITOR_NOT_MEASURED",
+          "notification_dedupe_minutes": null,
+          "operator_action": false,
+          "severity": "P1",
+          "source": "scalp_lane",
+          "store": "data/runtime"
+        }
+      ],
+      "lanes": [
+        {
+          "business_acceptance": "NOT_MEASURED",
+          "business_fire_status": "NOT_MEASURED",
+          "expected_due": 50,
+          "installed_scheduler_authority": "NOT_MEASURED",
+          "lane_id": "finviz-momentum-scalp-early-lane",
+          "migration_requirements_missing": [
+            "expected_fire_without_request"
+          ],
+          "observed_requested": 0,
+          "requirements_missing": [
+            "expected_fire_without_request"
+          ],
+          "role": "WATCH_ONLY_PROTECTED",
+          "schedule_timezone": "America/New_York",
+          "scheduler_authority": "LEGACY_ONLY",
+          "scheduler_authority_basis": "SOURCE_REGISTRY_INTENT",
+          "scheduler_requirements_missing": [],
+          "slot_states": {
+            "20261013T0600": "expected_fire_without_request",
+            "20261013T0605": "expected_fire_without_request",
+            "20261013T0610": "expected_fire_without_request",
+            "20261013T0615": "expected_fire_without_request",
+            "20261013T0620": "expected_fire_without_request",
+            "20261013T0625": "expected_fire_without_request",
+            "20261013T0630": "expected_fire_without_request",
+            "20261013T0635": "expected_fire_without_request",
+            "20261013T0640": "expected_fire_without_request",
+            "20261013T0645": "expected_fire_without_request",
+            "20261013T0650": "expected_fire_without_request",
+            "20261013T0655": "expected_fire_without_request",
+            "20261013T0700": "expected_fire_without_request",
+            "20261013T0705": "expected_fire_without_request",
+            "20261013T0710": "expected_fire_without_request",
+            "20261013T0715": "expected_fire_without_request",
+            "20261013T0720": "expected_fire_without_request",
+            "20261013T0725": "expected_fire_without_request",
+            "20261013T0730": "expected_fire_without_request",
+            "20261013T0735": "expected_fire_without_request",
+            "20261013T0740": "expected_fire_without_request",
+            "20261013T0745": "expected_fire_without_request",
+            "20261013T0750": "expected_fire_without_request",
+            "20261013T0755": "expected_fire_without_request",
+            "20261013T0800": "expected_fire_without_request",
+            "20261013T0805": "expected_fire_without_request",
+            "20261013T0810": "expected_fire_without_request",
+            "20261013T0815": "expected_fire_without_request",
+            "20261013T0820": "expected_fire_without_request",
+            "20261013T0825": "expected_fire_without_request",
+            "20261013T0830": "expected_fire_without_request",
+            "20261013T0835": "expected_fire_without_request",
+            "20261013T0840": "expected_fire_without_request",
+            "20261013T0845": "expected_fire_without_request",
+            "20261013T0850": "expected_fire_without_request",
+            "20261013T0855": "expected_fire_without_request",
+            "20261013T0900": "expected_fire_without_request",
+            "20261013T0905": "expected_fire_without_request",
+            "20261013T0910": "expected_fire_without_request",
+            "20261013T0915": "expected_fire_without_request",
+            "20261013T0920": "expected_fire_without_request",
+            "20261013T0925": "expected_fire_without_request",
+            "20261013T0930": "expected_fire_without_request",
+            "20261013T0935": "expected_fire_without_request",
+            "20261013T0940": "expected_fire_without_request",
+            "20261013T0945": "expected_fire_without_request",
+            "20261013T0950": "expected_fire_without_request",
+            "20261013T0955": "expected_fire_without_request",
+            "20261013T1000": "expected_fire_without_request",
+            "20261013T1005": "expected_fire_without_request"
+          }
+        },
+        {
+          "business_acceptance": "NOT_MEASURED",
+          "business_fire_status": "NOT_MEASURED",
+          "expected_due": 17,
+          "installed_scheduler_authority": "NOT_MEASURED",
+          "lane_id": "finviz-market-movers",
+          "migration_requirements_missing": [],
+          "observed_requested": 0,
+          "requirements_missing": [
+            "expected_fire_without_request"
+          ],
+          "role": "DATA_PRODUCER_OBSERVE",
+          "schedule_timezone": "America/New_York",
+          "scheduler_authority": "N8N_SHADOW_WITH_LEGACY_FALLBACK",
+          "scheduler_authority_basis": "SOURCE_REGISTRY_INTENT",
+          "scheduler_requirements_missing": [
+            "expected_fire_without_request"
+          ],
+          "slot_states": {
+            "20261013T0600": "expected_fire_without_request",
+            "20261013T0615": "expected_fire_without_request",
+            "20261013T0630": "expected_fire_without_request",
+            "20261013T0645": "expected_fire_without_request",
+            "20261013T0700": "expected_fire_without_request",
+            "20261013T0715": "expected_fire_without_request",
+            "20261013T0730": "expected_fire_without_request",
+            "20261013T0745": "expected_fire_without_request",
+            "20261013T0800": "expected_fire_without_request",
+            "20261013T0815": "expected_fire_without_request",
+            "20261013T0830": "expected_fire_without_request",
+            "20261013T0845": "expected_fire_without_request",
+            "20261013T0900": "expected_fire_without_request",
+            "20261013T0915": "expected_fire_without_request",
+            "20261013T0930": "expected_fire_without_request",
+            "20261013T0945": "expected_fire_without_request",
+            "20261013T1000": "expected_fire_without_request"
+          }
+        },
+        {
+          "business_acceptance": "NOT_MEASURED",
+          "business_fire_status": "NOT_MEASURED",
+          "expected_due": 1,
+          "installed_scheduler_authority": "NOT_MEASURED",
+          "lane_id": "finviz-screener-runner",
+          "migration_requirements_missing": [],
+          "observed_requested": 0,
+          "requirements_missing": [
+            "expected_fire_without_request"
+          ],
+          "role": "DATA_PRODUCER_OBSERVE",
+          "schedule_timezone": "America/New_York",
+          "scheduler_authority": "N8N_SHADOW_WITH_LEGACY_FALLBACK",
+          "scheduler_authority_basis": "SOURCE_REGISTRY_INTENT",
+          "scheduler_requirements_missing": [
+            "expected_fire_without_request"
+          ],
+          "slot_states": {
+            "20261013T1000": "expected_fire_without_request"
+          }
+        },
+        {
+          "business_acceptance": "NOT_MEASURED",
+          "business_fire_status": "NOT_MEASURED",
+          "expected_due": 10,
+          "installed_scheduler_authority": "NOT_MEASURED",
+          "lane_id": "trade-ai-scalp-live",
+          "migration_requirements_missing": [],
+          "observed_requested": 0,
+          "requirements_missing": [
+            "expected_fire_without_request"
+          ],
+          "role": "NAMED_EXCEPTION_WATCH_ONLY_NO_RETRY",
+          "schedule_timezone": "America/New_York",
+          "scheduler_authority": "N8N_SHADOW_WITH_LEGACY_FALLBACK",
+          "scheduler_authority_basis": "SOURCE_REGISTRY_INTENT",
+          "scheduler_requirements_missing": [
+            "expected_fire_without_request"
+          ],
+          "slot_states": {
+            "20261013T0930": "expected_fire_without_request",
+            "20261013T0935": "expected_fire_without_request",
+            "20261013T0940": "expected_fire_without_request",
+            "20261013T0945": "expected_fire_without_request",
+            "20261013T0950": "expected_fire_without_request",
+            "20261013T0955": "expected_fire_without_request",
+            "20261013T1000": "expected_fire_without_request",
+            "20261013T1005": "expected_fire_without_request",
+            "20261013T1010": "expected_fire_without_request",
+            "20261013T1015": "expected_fire_without_request"
+          }
+        },
+        {
+          "business_acceptance": "NOT_MEASURED",
+          "business_fire_status": "NOT_MEASURED",
+          "expected_due": 3,
+          "installed_scheduler_authority": "NOT_MEASURED",
+          "lane_id": "auto-proposal-general",
+          "migration_requirements_missing": [
+            "expected_fire_without_request"
+          ],
+          "observed_requested": 0,
+          "requirements_missing": [
+            "expected_fire_without_request"
+          ],
+          "role": "WATCH_ONLY_PROTECTED",
+          "schedule_timezone": "America/New_York",
+          "scheduler_authority": "LEGACY_ONLY",
+          "scheduler_authority_basis": "SOURCE_REGISTRY_INTENT",
+          "scheduler_requirements_missing": [],
+          "slot_states": {
+            "20261013T0900": "expected_fire_without_request",
+            "20261013T0930": "expected_fire_without_request",
+            "20261013T1000": "expected_fire_without_request"
+          }
+        },
+        {
+          "business_acceptance": "NOT_MEASURED",
+          "business_fire_status": "NOT_MEASURED",
+          "expected_due": 26,
+          "installed_scheduler_authority": "NOT_MEASURED",
+          "lane_id": "momentum-scalp-advisory-alerts",
+          "migration_requirements_missing": [
+            "expected_fire_without_request"
+          ],
+          "observed_requested": 0,
+          "requirements_missing": [
+            "expected_fire_without_request"
+          ],
+          "role": "WATCH_ONLY_PROTECTED",
+          "schedule_timezone": "America/New_York",
+          "scheduler_authority": "LEGACY_ONLY",
+          "scheduler_authority_basis": "SOURCE_REGISTRY_INTENT",
+          "scheduler_requirements_missing": [],
+          "slot_states": {
+            "20261013T0600": "expected_fire_without_request",
+            "20261013T0610": "expected_fire_without_request",
+            "20261013T0620": "expected_fire_without_request",
+            "20261013T0630": "expected_fire_without_request",
+            "20261013T0640": "expected_fire_without_request",
+            "20261013T0650": "expected_fire_without_request",
+            "20261013T0700": "expected_fire_without_request",
+            "20261013T0710": "expected_fire_without_request",
+            "20261013T0720": "expected_fire_without_request",
+            "20261013T0730": "expected_fire_without_request",
+            "20261013T0740": "expected_fire_without_request",
+            "20261013T0750": "expected_fire_without_request",
+            "20261013T0800": "expected_fire_without_request",
+            "20261013T0810": "expected_fire_without_request",
+            "20261013T0820": "expected_fire_without_request",
+            "20261013T0830": "expected_fire_without_request",
+            "20261013T0840": "expected_fire_without_request",
+            "20261013T0850": "expected_fire_without_request",
+            "20261013T0900": "expected_fire_without_request",
+            "20261013T0910": "expected_fire_without_request",
+            "20261013T0920": "expected_fire_without_request",
+            "20261013T0930": "expected_fire_without_request",
+            "20261013T0940": "expected_fire_without_request",
+            "20261013T0950": "expected_fire_without_request",
+            "20261013T1000": "expected_fire_without_request",
+            "20261013T1010": "expected_fire_without_request"
+          }
+        },
+        {
+          "business_acceptance": "NOT_MEASURED",
+          "business_fire_status": "NOT_MEASURED",
+          "expected_due": 1,
+          "installed_scheduler_authority": "NOT_MEASURED",
+          "lane_id": "daily-incubator-refresh",
+          "migration_requirements_missing": [],
+          "observed_requested": 0,
+          "requirements_missing": [
+            "expected_fire_without_request"
+          ],
+          "role": "WATCH_ONLY_PROTECTED",
+          "schedule_timezone": "America/New_York",
+          "scheduler_authority": "N8N_SHADOW_WITH_LEGACY_FALLBACK",
+          "scheduler_authority_basis": "SOURCE_REGISTRY_INTENT",
+          "scheduler_requirements_missing": [
+            "expected_fire_without_request"
+          ],
+          "slot_states": {
+            "20261013T0815": "expected_fire_without_request"
+          }
+        },
+        {
+          "business_acceptance": "NOT_MEASURED",
+          "business_fire_status": "NOT_MEASURED",
+          "expected_due": 82,
+          "installed_scheduler_authority": "NOT_MEASURED",
+          "lane_id": "warm-caches",
+          "migration_requirements_missing": [
+            "expected_fire_without_request"
+          ],
+          "observed_requested": 0,
+          "requirements_missing": [
+            "expected_fire_without_request"
+          ],
+          "role": "DATA_CACHE_OWNER_OBSERVE",
+          "schedule_timezone": "America/New_York",
+          "scheduler_authority": "LEGACY_ONLY",
+          "scheduler_authority_basis": "SOURCE_REGISTRY_INTENT",
+          "scheduler_requirements_missing": [],
+          "slot_states": {
+            "20261013T0000": "expected_fire_without_request",
+            "20261013T0008": "expected_fire_without_request",
+            "20261013T0016": "expected_fire_without_request",
+            "20261013T0024": "expected_fire_without_request",
+            "20261013T0032": "expected_fire_without_request",
+            "20261013T0040": "expected_fire_without_request",
+            "20261013T0048": "expected_fire_without_request",
+            "20261013T0056": "expected_fire_without_request",
+            "20261013T0100": "expected_fire_without_request",
+            "20261013T0108": "expected_fire_without_request",
+            "20261013T0116": "expected_fire_without_request",
+            "20261013T0124": "expected_fire_without_request",
+            "20261013T0132": "expected_fire_without_request",
+            "20261013T0140": "expected_fire_without_request",
+            "20261013T0148": "expected_fire_without_request",
+            "20261013T0156": "expected_fire_without_request",
+            "20261013T0200": "expected_fire_without_request",
+            "20261013T0208": "expected_fire_without_request",
+            "20261013T0216": "expected_fire_without_request",
+            "20261013T0224": "expected_fire_without_request",
+            "20261013T0232": "expected_fire_without_request",
+            "20261013T0240": "expected_fire_without_request",
+            "20261013T0248": "expected_fire_without_request",
+            "20261013T0256": "expected_fire_without_request",
+            "20261013T0300": "expected_fire_without_request",
+            "20261013T0308": "expected_fire_without_request",
+            "20261013T0316": "expected_fire_without_request",
+            "20261013T0324": "expected_fire_without_request",
+            "20261013T0332": "expected_fire_without_request",
+            "20261013T0340": "expected_fire_without_request",
+            "20261013T0348": "expected_fire_without_request",
+            "20261013T0356": "expected_fire_without_request",
+            "20261013T0400": "expected_fire_without_request",
+            "20261013T0408": "expected_fire_without_request",
+            "20261013T0416": "expected_fire_without_request",
+            "20261013T0424": "expected_fire_without_request",
+            "20261013T0432": "expected_fire_without_request",
+            "20261013T0440": "expected_fire_without_request",
+            "20261013T0448": "expected_fire_without_request",
+            "20261013T0456": "expected_fire_without_request",
+            "20261013T0500": "expected_fire_without_request",
+            "20261013T0508": "expected_fire_without_request",
+            "20261013T0516": "expected_fire_without_request",
+            "20261013T0524": "expected_fire_without_request",
+            "20261013T0532": "expected_fire_without_request",
+            "20261013T0540": "expected_fire_without_request",
+            "20261013T0548": "expected_fire_without_request",
+            "20261013T0556": "expected_fire_without_request",
+            "20261013T0600": "expected_fire_without_request",
+            "20261013T0608": "expected_fire_without_request",
+            "20261013T0616": "expected_fire_without_request",
+            "20261013T0624": "expected_fire_without_request",
+            "20261013T0632": "expected_fire_without_request",
+            "20261013T0640": "expected_fire_without_request",
+            "20261013T0648": "expected_fire_without_request",
+            "20261013T0656": "expected_fire_without_request",
+            "20261013T0700": "expected_fire_without_request",
+            "20261013T0708": "expected_fire_without_request",
+            "20261013T0716": "expected_fire_without_request",
+            "20261013T0724": "expected_fire_without_request",
+            "20261013T0732": "expected_fire_without_request",
+            "20261013T0740": "expected_fire_without_request",
+            "20261013T0748": "expected_fire_without_request",
+            "20261013T0756": "expected_fire_without_request",
+            "20261013T0800": "expected_fire_without_request",
+            "20261013T0808": "expected_fire_without_request",
+            "20261013T0816": "expected_fire_without_request",
+            "20261013T0824": "expected_fire_without_request",
+            "20261013T0832": "expected_fire_without_request",
+            "20261013T0840": "expected_fire_without_request",
+            "20261013T0848": "expected_fire_without_request",
+            "20261013T0856": "expected_fire_without_request",
+            "20261013T0900": "expected_fire_without_request",
+            "20261013T0908": "expected_fire_without_request",
+            "20261013T0916": "expected_fire_without_request",
+            "20261013T0924": "expected_fire_without_request",
+            "20261013T0932": "expected_fire_without_request",
+            "20261013T0940": "expected_fire_without_request",
+            "20261013T0948": "expected_fire_without_request",
+            "20261013T0956": "expected_fire_without_request",
+            "20261013T1000": "expected_fire_without_request",
+            "20261013T1008": "expected_fire_without_request"
+          }
+        },
+        {
+          "business_acceptance": "NOT_MEASURED",
+          "business_fire_status": "NOT_MEASURED",
+          "expected_due": 0,
+          "installed_scheduler_authority": "NOT_MEASURED",
+          "lane_id": "orchestrator-slot",
+          "migration_requirements_missing": [],
+          "observed_requested": 0,
+          "requirements_missing": [],
+          "role": "WATCH_ONLY_PROTECTED",
+          "schedule_timezone": "America/New_York",
+          "scheduler_authority": "LEGACY_ONLY",
+          "scheduler_authority_basis": "SOURCE_REGISTRY_INTENT",
+          "scheduler_requirements_missing": [],
+          "slot_states": {}
+        },
+        {
+          "business_acceptance": "NOT_MEASURED",
+          "business_fire_status": "NOT_MEASURED",
+          "expected_due": 0,
+          "installed_scheduler_authority": "NOT_MEASURED",
+          "lane_id": "youtube-cookie-health-check",
+          "migration_requirements_missing": [],
+          "observed_requested": 0,
+          "requirements_missing": [],
+          "role": "CREDENTIAL_METADATA_OBSERVE_NO_PROBE",
+          "schedule_timezone": "America/New_York",
+          "scheduler_authority": "LEGACY_ONLY",
+          "scheduler_authority_basis": "SOURCE_REGISTRY_INTENT",
+          "scheduler_requirements_missing": [],
+          "slot_states": {}
+        },
+        {
+          "business_acceptance": "NOT_MEASURED",
+          "business_fire_status": "NOT_MEASURED",
+          "expected_due": 0,
+          "installed_scheduler_authority": "NOT_MEASURED",
+          "lane_id": "youtube-transcript-ingest",
+          "migration_requirements_missing": [],
+          "observed_requested": 0,
+          "requirements_missing": [],
+          "role": "WATCH_ONLY_EGRESS",
+          "schedule_timezone": "America/New_York",
+          "scheduler_authority": "LEGACY_ONLY",
+          "scheduler_authority_basis": "SOURCE_REGISTRY_INTENT",
+          "scheduler_requirements_missing": [],
+          "slot_states": {}
+        },
+        {
+          "business_acceptance": "NOT_MEASURED",
+          "business_fire_status": "NOT_MEASURED",
+          "expected_due": 4,
+          "installed_scheduler_authority": "NOT_MEASURED",
+          "lane_id": "incubator-proposal-promoter",
+          "migration_requirements_missing": [
+            "expected_fire_without_request"
+          ],
+          "observed_requested": 0,
+          "requirements_missing": [
+            "expected_fire_without_request"
+          ],
+          "role": "WATCH_ONLY_PROTECTED",
+          "schedule_timezone": "America/New_York",
+          "scheduler_authority": "LEGACY_ONLY",
+          "scheduler_authority_basis": "SOURCE_REGISTRY_INTENT",
+          "scheduler_requirements_missing": [],
+          "slot_states": {
+            "20261013T0700": "expected_fire_without_request",
+            "20261013T0800": "expected_fire_without_request",
+            "20261013T0900": "expected_fire_without_request",
+            "20261013T1000": "expected_fire_without_request"
+          }
+        }
+      ],
+      "natural_cutover_proof": "NOT_MEASURED",
+      "products": {
+        "latest_scan_package": {
+          "accepted_producer": "NOT_MEASURED",
+          "applicable": true,
+          "declared_metadata": {},
+          "observed_metadata": {},
+          "populations": null,
+          "requirements_missing": [
+            "output_not_measured"
+          ],
+          "source_evidence": {},
+          "status": "UNPROVEN"
+        },
+        "momentum_projection": {
+          "accepted_producer": "NOT_MEASURED",
+          "applicable": true,
+          "declared_metadata": {},
+          "observed_metadata": {},
+          "populations": null,
+          "requirements_missing": [
+            "output_not_measured"
+          ],
+          "source_evidence": {},
+          "status": "UNPROVEN"
+        },
+        "notification_lineage": {
+          "accepted_producer": "NOT_MEASURED",
+          "applicable": true,
+          "declared_metadata": {},
+          "observed_metadata": {},
+          "populations": null,
+          "requirements_missing": [
+            "output_not_measured"
+          ],
+          "source_evidence": {},
+          "status": "UNPROVEN"
+        },
+        "served_scan_cache": {
+          "accepted_producer": "NOT_MEASURED",
+          "applicable": true,
+          "declared_metadata": {},
+          "observed_metadata": {},
+          "populations": null,
+          "requirements_missing": [
+            "output_not_measured",
+            "upstream_output_not_measured"
+          ],
+          "source_evidence": {},
+          "status": "UNPROVEN"
+        },
+        "shared_signal_projection": {
+          "accepted_producer": "NOT_MEASURED",
+          "applicable": true,
+          "declared_metadata": {},
+          "observed_metadata": {},
+          "populations": null,
+          "requirements_missing": [
+            "output_not_measured"
+          ],
+          "source_evidence": {},
+          "status": "UNPROVEN"
+        }
+      },
+      "recovery": {
+        "held": [
+          {
+            "reason": "retry_disarmed"
+          }
+        ],
+        "intents": []
+      },
+      "recovery_intents": [],
+      "scalp_cycle_metrics": null,
+      "schema": "N8nMomentumLifecycle@v1",
+      "source_collection": {},
+      "source_sha": "a5c427791997038d07a53038a40ccac6afc1ce57",
+      "storage_health": {
+        "status": "NOT_MEASURED"
+      }
+    },
+    "recovery_submissions": 0,
+    "runtime_acceptance": false,
+    "writes": "NONE"
+  },
+  "native_pr_selection": {
+    "base_sha": "f0ebb82acd44fa0db790d29390d711daa0831a96",
+    "budget_s": 540.0,
+    "deferred_files": 489,
+    "estimate_s": 539.9,
+    "execution": "PENDING_PER_TASK_EXECUTION_ENGINEERING_GRANT",
+    "mode": "PRINT_SELECTION_ONLY_NO_TEST_EXECUTION",
+    "release_equivalent": "NOT_RUN",
+    "selected_files": 346,
+    "selected_gates": 180,
+    "selection_artifact": {
+      "path": "/tmp/momentum-native-selection.json",
+      "scope": "TEST_PLAN_METADATA_ONLY",
+      "sha256": "1458d797ed6e893c7489ccc6d7c79d950b06068201ec6ddd79d06319ca94757e"
+    },
+    "source_commit": "a5c427791997038d07a53038a40ccac6afc1ce57"
+  },
+  "owner": "codex",
+  "provenance": {
+    "class": "TEST",
+    "deployment": "NOT_PERFORMED",
+    "independent_review": "PENDING",
+    "merge": "NOT_PERFORMED",
+    "production_validation": false,
+    "push": "NOT_PERFORMED",
+    "served_sha_observed_before_work": "f0ebb82acd44fa0db790d29390d711daa0831a96"
+  },
+  "quality_checks": {
+    "data_source_authority": {
+      "all_approved": true,
+      "domains": 58,
+      "findings": 0,
+      "providers": 22,
+      "result": "PASS"
+    },
+    "diff_check": {
+      "result": "PASS"
+    },
+    "formatting": {
+      "legacy_files_not_wholesale_reformatted": true,
+      "result": "PASS_BASE_FILE_RATCHET"
+    },
+    "line_endings": {
+      "files_examined_at_source_commit": 26,
+      "findings": 0,
+      "result": "PASS"
+    },
+    "ruff_changed_python": {
+      "file_count": 23,
+      "result": "PASS"
+    },
+    "secret_scan": {
+      "files_scanned_before_final_docs": 10634,
+      "result": "PASS"
+    },
+    "test_registration": {
+      "denied": 6,
+      "in_ci": 1087,
+      "legacy": 922,
+      "new_unlisted": 0,
+      "result": "PASS",
+      "total": 2015
+    }
+  },
+  "runtime_limits": [
+    "Source and fixtures do not prove installed job health or natural fires.",
+    "Production screen readbacks and gateway delivery binding remain unmeasured and require approved owner integration.",
+    "Upstream stale producer recovery and deployed observer repair are pending applicable grants.",
+    "Authenticated YouTube cookie refresh is an operator task; live cookie not read or replaced.",
+    "Missing original metadata remains UNKNOWN; no reconstructed timestamps or financial facts."
+  ],
+  "schema": "MomentumLineageLocalValidation@v1",
+  "session_id": "fe842e09-c425-4af2-bd3e-734dccfdb560",
+  "source_file_count": 25,
+  "source_file_sha256": {
+    "apps/command-center-v3/src/components/tradeai/SharedMomentumCandidates.tsx": "99cde58cb19071f7261c454dcf6ae0091ba535ae8bf8ff5c27dfa64fb10ce87f",
+    "apps/command-center-v3/src/pages/TradingHub.tsx": "f06c351f022780d1bbe97cb36f41a6cd2f08899438aa8f802d28dc0e1a36ffda",
+    "scripts/api_v2.py": "d81c82b1ee382c027a49bd9e83a9c08a6629c0dc179aa1598e7e338efac01060",
+    "scripts/finviz_ingestion.py": "80a1b181f62b19c8f16a4349884c9596e4113d7d4c7316a53ea3fef7ba9ad089",
+    "scripts/lib/comms_editor.py": "475da4788161d10a3c009cb90118525057deb5465a97c7b3f87934a6f6eda743",
+    "scripts/lib/data_broker/catalyst_record.py": "397ca9ab2db427961f7896dbe1d77fb88a129e5a5951823d5b1872b8eb6daa30",
+    "scripts/lib/momentum_setup_evidence.py": "fdaa58d77423a5de1e67848a5088e55b83c1fb3bee67adaed76b29a342d92169",
+    "scripts/lib/n8n_momentum_lifecycle.py": "236018f9d8f937fb2ad586e5b9c4b5d4bcef176f1948b6c1b4b9cc756647dbce",
+    "scripts/lib/scanner_candidate_projection.py": "2c5af13386ad052d1de667e805d247e993b532129aa03d4bccca773be1e79a5b",
+    "scripts/lib/setup_run_contract.py": "8907f5cf2fdebd0483685f16f1ba159a387a7143679533880a68c3a23a2a6b9c",
+    "scripts/morning_digest.py": "90c59d47dd3e599ec04d245414daaac9171a50cbe02dfb2eba4ae981c71dfad5",
+    "scripts/pipeline_freshness_slo.py": "25fd280292e91665819e9ecfa74daad7508586953b8f914d756cd2aa7789d306",
+    "scripts/system_health_agent.py": "a01d9ec70664370fd1ee25643a37c49960b01df5dc5dfea10918c4ff054bba42",
+    "scripts/trade_ai_orchestrator.py": "15d4ddf5bba81f57eb300051ae771dd7a14bf54a94783c5faa8ee1b20cc77771",
+    "scripts/youtube_cookie_health_check.py": "e1f8c122cbd109cee853da3438d727b875d4fbadd0da40e9155dc3d48166a9ef",
+    "tests/test_cc_header_truth_v2_api.py": "3a403f55fbaccd704f58a38fbd5e92040f981981473ce361a9f319d336e569ed",
+    "tests/test_comms_editor_20260914.py": "eff06e14a166b5635d695e0194724cc52bec6c56f9d66d390a31503411a7c98a",
+    "tests/test_m5_gate_coverage_20260923.py": "badb912c2449e0672880e471ade13b15d2697a3a65594620535ff3c4250eff57",
+    "tests/test_momentum_setup_evidence_20261012.py": "414c7aa71965270cc873f8194ff099b7c3db1b48ed5ecfdf438142e700a36429",
+    "tests/test_n8n_momentum_lifecycle_20261012.py": "6f16098435126e4a21143cf4bd0d03e398989dce1c2f2b859ddf72191444e15d",
+    "tests/test_notification_intents_wave2_20261011.py": "063050c277133257a8d1cb16f91176c17d042450fa74a47be9289f05c8e0f714",
+    "tests/test_orchestrator_market_context_rendering_20261012.py": "b01e8c5ff58f83c885d61da135a915b5d7f926568213b52afb291afb62b09dec",
+    "tests/test_refactor_w1_health_monitors_20261010.py": "4696b9cf22892dadb5f0693ffb20b5231723874f07ea99be13b8f75e4ffd011c",
+    "tests/test_setup_run_contract.py": "ddda0e4912d379d267c7a176cc5098bf9983cb215638cad4255f69a476ea3544",
+    "tests/test_system_health_freshness_identity_20261012.py": "8e0f6702a8bacec3b905c2552321a1cda199180dad18d785fe3ced5f2ba572b1"
+  },
+  "status": "LOCAL_TARGETED_PASS_NATIVE_AND_OPERATIONAL_ACCEPTANCE_PENDING",
+  "targeted_regression": {
+    "command": [
+      "env",
+      "TRADE_AI_CI=1",
+      "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python",
+      "-m",
+      "pytest",
+      "-q",
+      "tests/test_momentum_setup_evidence_20261012.py",
+      "tests/test_setup_run_contract.py",
+      "tests/test_momentum_cache_reconcile_20261012.py",
+      "tests/test_n8n_momentum_lifecycle_20261012.py",
+      "tests/test_cc_header_truth_v2_api.py",
+      "tests/test_comms_editor_20260914.py",
+      "tests/test_system_health_freshness_identity_20261012.py",
+      "tests/test_refactor_w1_health_monitors_20261010.py",
+      "tests/test_m5_gate_coverage_20260923.py",
+      "tests/test_alarm_fires_batch5.py",
+      "tests/test_notification_intents_wave2_20261011.py",
+      "tests/test_orchestrator_market_context_rendering_20261012.py",
+      "--disable-warnings",
+      "--tb=short",
+      "--junitxml=/tmp/tradeai-momentum-lineage-20261013-validation.xml"
+    ],
+    "containment_observation": "3 live-DSN connection attempts refused before libpq by the hermetic guard; no successful live database connection asserted",
+    "cwd": "/tmp/tradeai-momentum-lineage-20261013",
+    "errors": 0,
+    "failures": 0,
+    "junit_artifact": {
+      "path": "/tmp/tradeai-momentum-lineage-20261013-validation.xml",
+      "scope": "ISOLATED_TESTS_ONLY",
+      "sha256": "84db6251f9c3680cd24f5fc3f0e0c54590b876f77b24aac06b9b5939c4dc4467"
+    },
+    "junit_duration_s": 19.163,
+    "passed": 464,
+    "result": "PASS",
+    "skipped": 0,
+    "started_at": "2026-10-13T11:06:36.185456-04:00",
+    "stdout_summary": "464 passed in 19.18s"
+  },
+  "tested_source_commit": "a5c427791997038d07a53038a40ccac6afc1ce57",
+  "worktree": "/tmp/tradeai-momentum-lineage-20261013"
+}
