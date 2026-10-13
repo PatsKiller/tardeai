@@ -1,6 +1,6 @@
 {
  "schema": "N8nRemediationCatalogue@v1",
- "as_of": "2026-10-12",
+ "as_of": "2026-10-13",
  "status": "PROPOSED — operator review before activation (decision 4)",
  "generated_by": "scripts/build_remediation_catalogue.py",
  "sources": {
@@ -51,15 +51,15 @@
   }
  },
  "summary": {
-  "lanes": 115,
-  "actions": 169,
-  "lanes_with_auto_rerun": 52,
+  "lanes": 117,
+  "actions": 174,
+  "lanes_with_auto_rerun": 54,
   "lanes_suggest_only": 63,
   "by_severity": {
    "Critical": 19,
    "High": 19,
    "Medium": 55,
-   "Low": 22
+   "Low": 24
   }
  },
  "lanes": [
@@ -5307,6 +5307,159 @@
   },
   {
    "schema": "N8nLaneRemediation@v1",
+   "lane_id": "momentum-cache-reconcile",
+   "severity": "Low",
+   "severity_basis": "default Low (no inventory row)",
+   "inv_ids": [],
+   "classification": [
+    "UNKNOWN"
+   ],
+   "migration_risk": [
+    "UNKNOWN"
+   ],
+   "known_issues": [],
+   "registry": {
+    "present": true,
+    "state": "ACTIVE",
+    "scheduler_kind": "n8n",
+    "stage": "canary"
+   },
+   "allowlisted": true,
+   "allowlist_source": "config/n8n_run_allowlist.json",
+   "actions": [
+    {
+     "action_id": "rerun_dry_run",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "dry_run"
+     ],
+     "argv": {
+      "dry_run": [
+       "$PY",
+       "$CODE_ROOT/scripts/momentum_cache_reconcile.py",
+       "--code-root",
+       "$CODE_ROOT",
+       "--state-root",
+       "$STATE_ROOT",
+       "--dry-run"
+      ]
+     },
+     "auto": true,
+     "approval_reason": null,
+     "via": "coordination/run (host_run_request, mode=dry_run) -> tradeai-n8n-run-executor runs the allowlist argv under the lane lock, stage-clamped",
+     "preconditions": [
+      "lane in config/n8n_run_allowlist.json with dry_run_arg",
+      "no REQUESTED/RUNNING row for the lane",
+      "per-incident and per-lane-day caps not reached"
+     ],
+     "lock": "/tmp/tradeai_momentum_cache_reconcile.lock",
+     "timeout_s": 60,
+     "output_signal": "data/runtime/momentum-cache-reconcile_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "reap_orphan_run",
+     "handler": "ledger_reap_orphan",
+     "mode_sequence": [],
+     "argv": {},
+     "auto": true,
+     "approval_reason": null,
+     "via": "LedgerRunStore.finish(run_id, state=RUN_TIMEOUT, receipt.reason=executor_lost) — the executor v2 reaper's receipt",
+     "preconditions": [
+      "row RUNNING and started_at + 2 x timeout_s < now",
+      "heartbeat_at older than timeout_s (or absent)",
+      "row pid not alive on this host"
+     ],
+     "lock": "/tmp/tradeai_momentum_cache_reconcile.lock",
+     "timeout_s": 60,
+     "output_signal": "data/runtime/momentum-cache-reconcile_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    }
+   ],
+   "default_action": "suggest_only",
+   "suggest_only_reason": null
+  },
+  {
+   "schema": "N8nLaneRemediation@v1",
+   "lane_id": "momentum-lifecycle-monitor",
+   "severity": "Low",
+   "severity_basis": "default Low (no inventory row)",
+   "inv_ids": [],
+   "classification": [
+    "UNKNOWN"
+   ],
+   "migration_risk": [
+    "UNKNOWN"
+   ],
+   "known_issues": [],
+   "registry": {
+    "present": true,
+    "state": "ACTIVE",
+    "scheduler_kind": "n8n",
+    "stage": "shadow"
+   },
+   "allowlisted": true,
+   "allowlist_source": "config/n8n_run_allowlist.json",
+   "actions": [
+    {
+     "action_id": "rerun_dry_run",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "dry_run"
+     ],
+     "argv": {
+      "dry_run": [
+       "$PY",
+       "$CODE_ROOT/scripts/n8n_momentum_lifecycle.py",
+       "--host-snapshot",
+       "--code-root",
+       "$CODE_ROOT",
+       "--state-root",
+       "$STATE_ROOT",
+       "--dry-run"
+      ]
+     },
+     "auto": true,
+     "approval_reason": null,
+     "via": "coordination/run (host_run_request, mode=dry_run) -> tradeai-n8n-run-executor runs the allowlist argv under the lane lock, stage-clamped",
+     "preconditions": [
+      "lane in config/n8n_run_allowlist.json with dry_run_arg",
+      "no REQUESTED/RUNNING row for the lane",
+      "per-incident and per-lane-day caps not reached"
+     ],
+     "lock": "/tmp/tradeai_momentum_lifecycle.lock",
+     "timeout_s": 60,
+     "output_signal": "data/runtime/momentum_lifecycle_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "reap_orphan_run",
+     "handler": "ledger_reap_orphan",
+     "mode_sequence": [],
+     "argv": {},
+     "auto": true,
+     "approval_reason": null,
+     "via": "LedgerRunStore.finish(run_id, state=RUN_TIMEOUT, receipt.reason=executor_lost) — the executor v2 reaper's receipt",
+     "preconditions": [
+      "row RUNNING and started_at + 2 x timeout_s < now",
+      "heartbeat_at older than timeout_s (or absent)",
+      "row pid not alive on this host"
+     ],
+     "lock": "/tmp/tradeai_momentum_lifecycle.lock",
+     "timeout_s": 60,
+     "output_signal": "data/runtime/momentum_lifecycle_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    }
+   ],
+   "default_action": "suggest_only",
+   "suggest_only_reason": null
+  },
+  {
+   "schema": "N8nLaneRemediation@v1",
    "lane_id": "n8n-incident-fanin",
    "severity": "Critical",
    "severity_basis": "n8n:722fac0e043ea5c4: business_function=alerts-ops",
@@ -6103,8 +6256,8 @@
    "registry": {
     "present": true,
     "state": "ACTIVE",
-    "scheduler_kind": "cron",
-    "stage": "canary"
+    "scheduler_kind": "n8n",
+    "stage": "cutover"
    },
    "allowlisted": true,
    "allowlist_source": "config/n8n_run_allowlist.json",
@@ -6127,6 +6280,39 @@
      "via": "coordination/run (host_run_request, mode=dry_run) -> tradeai-n8n-run-executor runs the allowlist argv under the lane lock, stage-clamped",
      "preconditions": [
       "lane in config/n8n_run_allowlist.json with dry_run_arg",
+      "no REQUESTED/RUNNING row for the lane",
+      "per-incident and per-lane-day caps not reached"
+     ],
+     "lock": "/tmp/research_insight_extractor.lock",
+     "timeout_s": 300,
+     "output_signal": "data/runtime/research-insight-extractor_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "rerun_dry_then_live",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "dry_run",
+      "live"
+     ],
+     "argv": {
+      "dry_run": [
+       "$PY",
+       "scripts/research_insight_extractor.py",
+       "--dry-run"
+      ],
+      "live": [
+       "$PY",
+       "scripts/research_insight_extractor.py"
+      ]
+     },
+     "auto": true,
+     "approval_reason": null,
+     "via": "coordination/run dry_run request; live request only after that run is RUN_DONE and only while the registry stage is cutover; executor runs the allowlist argv, stage-clamped",
+     "preconditions": [
+      "registry scheduler.stage == cutover and state ACTIVE (re-checked at request time)",
+      "dry_run phase RUN_DONE",
       "no REQUESTED/RUNNING row for the lane",
       "per-incident and per-lane-day caps not reached"
      ],
