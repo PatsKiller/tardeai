@@ -426,16 +426,20 @@ def test_every_dispatcher_row_is_allowlisted_eligible_and_staged():
         assert ok, f"{lane}: {reason}"
         assert sched.get("match"), f"{lane}: scheduler.match names its source script or archived cron line"
         if lane in {"momentum-lifecycle-monitor", "momentum-cache-reconcile"}:
-            # These reviewed native shadow rows have no legacy cron line. Their
-            # cadence and wave are declared in dispatch, as the dispatcher reads.
+            # Reviewed native rows with no legacy cron line; cadence/wave in dispatch.
             dispatch = row["dispatch"]
-            assert row["state"] == "ACTIVE" and sched.get("stage") == "shadow", lane
-            assert dispatch["mode"] == "dry_run" and dispatch["wave"] == "W0", lane
+            assert row["state"] == "ACTIVE", lane
+            assert dispatch["wave"] == "W0", lane
             assert dispatch["cron"] == ["*/5 * * * *"], lane
             assert all(cron_schedule.parse(expr) for expr in dispatch["cron"]), lane
             assert sched["timezone"] == dispatch["tz"] == "America/New_York", lane
             assert ALLOW_LANES[lane]["dry_run_arg"] == ["--dry-run"], lane
-            assert ALLOW_LANES[lane]["live_arg"] is None, lane
+            if lane == "momentum-cache-reconcile":
+                assert sched.get("stage") == "canary" and dispatch["mode"] == "live", lane
+                assert ALLOW_LANES[lane]["live_arg"] == ["--apply"], lane
+            else:
+                assert sched.get("stage") == "shadow" and dispatch["mode"] == "dry_run", lane
+                assert ALLOW_LANES[lane]["live_arg"] is None, lane
             continue
         assert sched.get("cadence") and cron_schedule.parse(sched["cadence"]), lane
         assert sched.get("wave") and sched.get("stage") in {"shadow", "canary", "cutover"}, lane
