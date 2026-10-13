@@ -97,6 +97,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -391,6 +392,24 @@ class _Lane:
     block: Any
     policy: Any
     mode: str
+    relay_reason: Optional[str] = None
+
+
+def _relay_live_lanes() -> frozenset[str]:
+    """Lanes the relay will accept with mode live (TRADEAI_N8N_RELAY_LIVE_LANES). Unset is empty."""
+    return frozenset(part for part in os.environ.get("TRADEAI_N8N_RELAY_LIVE_LANES", "").split() if part)
+
+
+def _relay_dispatch_mode(lane_id: str, mode: str, entry: Mapping) -> tuple[str, Optional[str]]:
+    """A registry live lane the relay will refuse is due as dry_run, with that reason on the item.
+
+    The slot key uses the mode that will be posted. A lane with no dry_run_arg cannot be downgraded.
+    """
+    if mode != "live" or lane_id in _relay_live_lanes():
+        return mode, None
+    if entry.get("dry_run_arg") is None:
+        return mode, None
+    return "dry_run", "relay_live_not_enabled"
 
 
 def _err(lane: str, code: str, detail: str) -> dict[str, str]:
@@ -471,7 +490,8 @@ def _eligible_lanes(rows: list[dict], entries: Mapping[str, Mapping], policies: 
             errors.append(_err(lane, "after_unknown_lane", f"after {bad_after}"))
             continue
         errors.extend(_after_errors(lane, block, by_id, entries))
-        lanes.append(_Lane(row, block, policy, block.mode))
+        mode, relay_reason = _relay_dispatch_mode(lane, block.mode, entry)
+        lanes.append(_Lane(row, block, policy, mode, relay_reason))
     return lanes, errors
 
 
@@ -611,8 +631,9 @@ def _after_wait(lane: _Lane, fire: Any, now: datetime, tz: str, led: _Ledger, su
 def _evaluate_slot(lane: _Lane, fire: Any, newest: bool, rows: list[dict], now: datetime, tz: str,
                    led: _Ledger, breaker_open: bool, sub: bool = False, prefix: str = "d") -> SlotEval:
     b = lane.block
+    reason = lane.relay_reason or ("schedule" if newest else "catchup")
     ev = SlotEval(lane_id=lane.row["lane_id"], mode=lane.mode, slot_local=fire.slot_local, at=fire.at, state="DUE",
-                  priority=b.priority, klass=b.klass, reason="schedule" if newest else "catchup", prefix=prefix)
+                  priority=b.priority, klass=b.klass, reason=reason, prefix=prefix)
     latest = max(rows, key=_row_attempt) if rows else None
     latest_attempt = _row_attempt(latest) if latest else 0
     dl = led.dead_letter(ev.base_key)

@@ -249,7 +249,8 @@ def _gated(mode="live", soft=False, deadline=90, same_day=True):
     return [up, _row("planning", ["30 9 * * *"], mode=mode, after=[edge])]
 
 
-def test_waiting_after_until_the_predecessor_has_a_live_run_done_today(store):
+def test_waiting_after_until_the_predecessor_has_a_live_run_done_today(store, monkeypatch):
+    monkeypatch.setenv("TRADEAI_N8N_RELAY_LIVE_LANES", "planning")
     rows = _gated()
     resp = _due(rows, _allow("planning", "close-capture"), store)
     w = _held(resp, "WAITING_AFTER")
@@ -273,14 +274,16 @@ def test_dry_run_lane_accepts_a_dry_run_predecessor(store):
     assert _keys(_due(rows, _allow("planning", "close-capture"), store)) == ["d:planning:dry_run:20261009T0930"]
 
 
-def test_soft_edge_emits_at_its_deadline_hard_edge_keeps_waiting(store):
+def test_soft_edge_emits_at_its_deadline_hard_edge_keeps_waiting(store, monkeypatch):
+    monkeypatch.setenv("TRADEAI_N8N_RELAY_LIVE_LANES", "planning")
     hard = _due(_gated(deadline=20), _allow("planning", "close-capture"), store)
     assert hard["items"] == [] and _held(hard, "WAITING_AFTER")[0]["wait_deadline"] == "2026-10-09T13:50:00Z"
     soft = _due(_gated(deadline=20, soft=True), _allow("planning", "close-capture"), store)
     assert _keys(soft) == ["d:planning:live:20261009T0930"]
 
 
-def test_mode_filter_dry_run_row_never_satisfies_the_live_slot(store):
+def test_mode_filter_dry_run_row_never_satisfies_the_live_slot(store, monkeypatch):
+    monkeypatch.setenv("TRADEAI_N8N_RELAY_LIVE_LANES", "mf-lane")
     rows = [_row("mf-lane", ["30 9 * * *"], mode="live")]
     _put(store, "d:mf-lane:dry_run:20261009T0930", "mf-lane", "dry_run", "RUN_DONE", finished=NOW - timedelta(minutes=10))
     assert _keys(_due(rows, _allow("mf-lane"), store)) == ["d:mf-lane:live:20261009T0930"]
@@ -531,8 +534,9 @@ def _design_example(store, *, soft, upstream_mode="live"):
     return rows, allow
 
 
-def test_design_example_soft_deadline_beyond_catchup_releases_then_catches_up(store):
+def test_design_example_soft_deadline_beyond_catchup_releases_then_catches_up(store, monkeypatch):
     """Blocker 3: a soft deadline (90) longer than catchup (60) must release the slot at the deadline."""
+    monkeypatch.setenv("TRADEAI_N8N_RELAY_LIVE_LANES", "planning close-capture")
     rows, allow = _design_example(store, soft=True)
     key = "d:planning:live:20261009T0930"
     w = _due(rows, allow, store, now=_et(10, 45), lane_filter=["planning"])        # slot+75: past catchup
@@ -547,7 +551,8 @@ def test_design_example_soft_deadline_beyond_catchup_releases_then_catches_up(st
     assert not _check_slot(rows, allow, store, key, "planning", "live", _et(12, 1)).ok
 
 
-def test_design_example_hard_edge_stays_visible_past_its_deadline_then_runs_when_released(store):
+def test_design_example_hard_edge_stays_visible_past_its_deadline_then_runs_when_released(store, monkeypatch):
+    monkeypatch.setenv("TRADEAI_N8N_RELAY_LIVE_LANES", "planning close-capture")
     rows, allow = _design_example(store, soft=False)
     key = "d:planning:live:20261009T0930"
     w = _due(rows, allow, store, now=_et(11, 5), lane_filter=["planning"])
@@ -573,6 +578,28 @@ def test_soft_edge_without_deadline_uses_the_config_default(store):
     assert _held(before, "WAITING_AFTER")[0]["wait_deadline"] == D._iso_z(_et(9, 30) + timedelta(minutes=dflt))
     after = _due(rows, allow, store, now=_et(9, 30) + timedelta(minutes=dflt), lane_filter=["planning"])
     assert _keys(after) == ["d:planning:dry_run:20261009T0930"]
+
+
+def test_live_lane_absent_from_the_relay_set_is_due_as_dry_run(store, monkeypatch):
+    monkeypatch.delenv("TRADEAI_N8N_RELAY_LIVE_LANES", raising=False)
+    rows = [_row("momentum-cache-reconcile", ["0 10 * * *"], mode="live")]
+    allow = _allow("momentum-cache-reconcile", live=("--apply",))
+    resp = _due(rows, allow, store)
+    item = resp["items"][0]
+    assert item["mode"] == "dry_run"
+    assert item["reason"] == "relay_live_not_enabled"
+    assert item["idempotency_key"] == "d:momentum-cache-reconcile:dry_run:20261009T1000"
+    _validate(resp)
+
+
+def test_live_lane_named_in_the_relay_set_stays_live(store, monkeypatch):
+    monkeypatch.setenv("TRADEAI_N8N_RELAY_LIVE_LANES", "momentum-cache-reconcile")
+    rows = [_row("momentum-cache-reconcile", ["0 10 * * *"], mode="live")]
+    allow = _allow("momentum-cache-reconcile", live=("--apply",))
+    item = _due(rows, allow, store)["items"][0]
+    assert item["mode"] == "live"
+    assert item["reason"] == "schedule"
+    assert item["idempotency_key"] == "d:momentum-cache-reconcile:live:20261009T1000"
 
 
 def test_sub_hourly_soft_edge_counts_its_deadline_from_the_first_fire_of_the_day(store):
