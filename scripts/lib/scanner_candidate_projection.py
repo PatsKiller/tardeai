@@ -108,17 +108,23 @@ def build_candidate_projection(
             verdict = raw_verdict if raw_verdict in TRADE_VERDICTS else "UNKNOWN"
             run_id = row.get("run_id")
             if not isinstance(run_id, str):
-                run_id = (
-                    f"{row['run_date']}::{row['run_label']}" if row.get("run_date") and row.get("run_label") else None
-                )
+                # Cache tickers from /trade-ai use scan_run_*; orchestrator rows use run_date/run_label.
+                _rd = row.get("run_date") or row.get("scan_run_date")
+                _rl = row.get("run_label") or row.get("scan_run_label")
+                run_id = f"{_rd}::{_rl}" if _rd and _rl else None
             stamp = next(
                 (_stamp(row.get(k)) for k in ("observed_at", "scanned_at", "created_at") if _stamp(row.get(k))), None
             )
             if stamp is None and run_id and run_id == cache_run:
                 stamp = _stamp(cache.get("latest_run_timestamp"))
+            # Same-day scan_run_date with no per-row stamp: inherit the cache run finish clock
+            # so five-facts are CURRENT_SESSION instead of forced UNKNOWN (2026-10-13 diligence).
+            if stamp is None and _day(row.get("scan_run_date") or row.get("run_date")) == _day(cache_run):
+                stamp = _stamp(cache.get("latest_run_timestamp"))
             session_date = (
                 _day(run_id)
                 or _day(row.get("run_date"))
+                or _day(row.get("scan_run_date"))
                 or (stamp.astimezone(ET).date().isoformat() if stamp else None)
             )
             add(

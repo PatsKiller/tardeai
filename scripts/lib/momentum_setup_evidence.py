@@ -96,9 +96,14 @@ def build_setup_evidence(
         raise ValueError("evidence clock must be timezone-aware")
     row = row if isinstance(row, dict) else {}
     policy = FALLBACK if criteria is None else criteria if isinstance(criteria, dict) else {}
-    source_at = _stamp(observed_at or row.get("observed_at"))
+    source_at = _stamp(observed_at or row.get("observed_at") or row.get("scanned_at"))
     observed_state = _session_state(source_at, now)
-    declared_date = row.get("run_id") or row.get("run_date") or row.get("session_date")
+    declared_date = (
+        row.get("run_id")
+        or row.get("run_date")
+        or row.get("scan_run_date")
+        or row.get("session_date")
+    )
     try:
         source_day = datetime.strptime(str(declared_date)[:10], "%Y-%m-%d").date()
     except (ValueError, TypeError):
@@ -109,6 +114,10 @@ def build_setup_evidence(
         observed_state = (
             "STALE_SESSION" if source_at is None or source_at.astimezone(ET).date() == source_day else "TIMING_CONFLICT"
         )
+    elif source_at is None and source_day == now.astimezone(ET).date():
+        # Same-day scan without a row clock: still evaluate pillars (values are
+        # present); do not force UNKNOWN solely for a missing timestamp.
+        observed_state = "CURRENT_SESSION"
     text = _text(row.get("catalyst") or row.get("catalyst_headline"))
     source = _text(row.get("catalyst_source"), 120)
     published = _stamp(row.get("catalyst_at") or row.get("catalyst_published_at"))

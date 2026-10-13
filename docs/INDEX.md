@@ -1951,6 +1951,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/TRADE_AI_M4_CONTEXT_ENVELOPE_AND_CC_SPEC_2026-08-24.md` | M4 ContextEnvelope@v2 + Command Center spec | review_required | OK | `e9c01db7d3a0` |
 | `docs/ops/TRADE_AI_M4_CONTEXT_ENVELOPE_V2_2026-08-24.md` | M4 ContextEnvelope@v2 | review_required | OK | `15bfe2d162bb` |
 | `docs/ops/TRADE_AI_MEMORY_ARCHITECTURE_CORRECTION_CLOSEOUT_2026-08-24.md` | R10 memory architecture correction closeout | review_required | OK | `501672190cf5` |
+| `docs/ops/TRADE_AI_N8N_LADDER_EXECUTION_PLAN_20261013.md` | Trade AI → n8n ladder — execution plan | review_required | OK | `14e7e84b01b5` |
+| `docs/ops/TRADE_AI_PAGE_N8N_DILIGENCE_20261013.md` | Trade AI page — n8n diligence (host vs n8n) | review_required | OK | `2fcb2851c3ff` |
 | `docs/ops/TRADE_AI_R10_MEMORY_AUTONOMOUS_AGENT_CLOSEOUT_2026-08-24.md` | R10.2 closeout (in progress) | review_required | OK | `67a250882df4` |
 | `docs/ops/TRADE_AI_SCALP_5MIN_2026-10-09.md` | Trade-AI scalp scan every 5 minutes, one feed for both engines, runner GO with catalyst (2026-10-09) | review_required | MISSING HEADER | `31f8bffe21e6` |
 | `docs/ops/TRANSFERSON_UNIVERSE_CANONICAL_CLOSEOUT_2026-08-25.md` | Transferson canonical universe — local closeout | review_required | OK | `de74cfb4197d` |

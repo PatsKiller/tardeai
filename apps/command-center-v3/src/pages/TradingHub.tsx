@@ -475,23 +475,31 @@ export default function TradingHub({ onDrill }: Props) {
             })
           : (tradeAi?.run_date ? String(tradeAi.run_date) : 'timestamp unavailable')
         const healthStatusLabel = String(tradeAi?.run_health_status || 'UNKNOWN')
+        const integrity = tradeAi?.setup_run_summary?.count_integrity
+        const integrityReason = tradeAi?.setup_run_summary?.count_integrity_reason
+        const underfillNote = setupRunUi.healthDegraded
+          ? ` · ${setupRunUi.runHealthStatus || 'UNDERFILLED'}${scannedN != null ? ` ${scannedN}/${healthFloorLabel}` : ''}`
+          : ''
+        const integrityNote = integrity && integrity !== 'RECONCILED'
+          ? ` · integrity ${integrity}${integrityReason ? `: ${integrityReason}` : ''}`
+          : ''
         const kpis = [
           { label: 'UNIVERSE GO', value: goN, color: '#22c55e', title: universeScope },
-          { label: 'UNIVERSE WAIT', value: waitN, color: '#f59e0b', title: universeScope },
+          { label: 'UNIVERSE WAIT', value: waitN, color: '#f59e0b', title: `${universeScope} · includes social-awareness WAIT (higher than WAIT screener copy)` },
           { label: 'UNIVERSE NO-GO', value: noGoN, color: '#ef4444', title: universeScope },
           { label: 'Universe', value: universeN, color: 'var(--text0)', title: universeScope },
           { label: 'VIX', value: tradeAi?.vix != null ? Number(tradeAi.vix).toFixed(1) : '—', color: '#60a5fa', title: undefined as string | undefined },
           { label: 'Regime', value: tradeAi?.market_regime ?? '—', color: '#a855f7', title: undefined as string | undefined },
         ]
         const latestRunKpis = [
-          { label: 'RUN GO', value: tradeAi?.setup_run_summary?.go_count ?? '—', color: BB.green, title: latestRunScope },
-          { label: 'RUN WAIT', value: tradeAi?.setup_run_summary?.wait_count ?? '—', color: BB.amber, title: latestRunScope },
-          { label: 'RUN NOGO', value: tradeAi?.setup_run_summary?.nogo_count ?? '—', color: BB.red, title: latestRunScope },
+          { label: 'LATEST RUN GO', value: tradeAi?.setup_run_summary?.go_count ?? '—', color: BB.green, title: `${latestRunScope}${underfillNote}${integrityNote}` },
+          { label: 'LATEST RUN WAIT', value: tradeAi?.setup_run_summary?.wait_count ?? '—', color: BB.amber, title: `${latestRunScope}${underfillNote}${integrityNote}` },
+          { label: 'LATEST RUN NOGO', value: tradeAi?.setup_run_summary?.nogo_count ?? '—', color: BB.red, title: `${latestRunScope}${underfillNote}${integrityNote}` },
           {
-            label: 'RUN SCANNED',
+            label: 'LATEST RUN SCANNED',
             value: tradeAi?.setup_run_summary?.scanned_count ?? scannedN ?? '—',
             color: 'var(--text0)',
-            title: latestRunScope,
+            title: `${latestRunScope}${underfillNote}${integrityNote}`,
           },
         ]
         return (

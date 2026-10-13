@@ -1,14 +1,16 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import SecretsManager from '../components/SecretsManager'
 import AlpacaLiveReadPanel from '../components/AlpacaLiveReadPanel'
 
 // Deep-link: /v3/system?tab=Crons|LLM|SIEM|Brokers&query=<id> selects that tab (from a Reports action).
+// focus=youtube-cookies opens the cookie paste/upload panel on Pipeline.
 function _dlTab<T extends readonly string[]>(tabs: T, fallback: T[number]): T[number] {
   try { const t = new URLSearchParams(window.location.search).get('tab'); return (t && (tabs as readonly string[]).includes(t)) ? t as T[number] : fallback } catch { return fallback }
 }
 function _dlQuery(): string { try { return new URLSearchParams(window.location.search).get('query') || '' } catch { return '' } }
+function _dlFocus(): string { try { return new URLSearchParams(window.location.search).get('focus') || '' } catch { return '' } }
 import SchwabMonitor from '../components/SchwabMonitor'
 import CsvUpload from '../components/CsvUpload'
 import type { DrillContext } from '../components/DetailDrawer'
@@ -44,6 +46,13 @@ export default function SystemHub({ onDrill }: Props) {
   const [terminalUi] = useTerminalUi()
   const [tab, setTab] = useState<typeof TABS[number]>(() => _dlTab(TABS, 'Pipeline'))
   const [dlQuery] = useState(_dlQuery)
+  const [dlFocus] = useState(_dlFocus)
+  const [ytText, setYtText] = useState('')
+  const [ytBusy, setYtBusy] = useState(false)
+  const [ytMsg, setYtMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const [ytOpen, setYtOpen] = useState(() => _dlFocus() === 'youtube-cookies')
+  const ytAutoOpened = useRef(_dlFocus() === 'youtube-cookies')
+  const ytPanelRef = useRef<HTMLDivElement | null>(null)
   const { data: qct } = useApi<any>('/api/v2/system/queue-control-tower', 30_000)
   const { data: siem } = useApi<any>('/api/v2/system/siem', 120_000)
   const { data: crons } = useApi<any>('/api/v2/system/cron-compression', 120_000)
@@ -78,6 +87,46 @@ export default function SystemHub({ onDrill }: Props) {
   const cronDups = crons?.duplicates ?? []
 
   const fire = (path: string, body: any, label: string) => setPending({ path, body, label })
+
+  useEffect(() => {
+    if (dlFocus === 'youtube-cookies') {
+      setTab('Pipeline')
+      setYtOpen(true)
+      window.setTimeout(() => ytPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80)
+    }
+  }, [dlFocus])
+
+  useEffect(() => {
+    const st = (pipe?.data ?? pipe)?.ingestion?.youtube_cookies?.status
+    if ((st === 'red' || st === 'amber') && !ytAutoOpened.current) {
+      ytAutoOpened.current = true
+      setYtOpen(true)
+    }
+  }, [pipe])
+
+  const submitYoutubeCookies = async () => {
+    if (!ytText.trim() || ytBusy) return
+    setYtBusy(true)
+    setYtMsg(null)
+    try {
+      const r = await fetch('/api/v2/system/youtube-cookies', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cookies: ytText, actor: getOperator() }),
+      })
+      const j = await r.json()
+      if (j?.ok) {
+        setYtMsg({ ok: true, text: j.detail || `Wrote ${j.auth_cookies ?? 0} auth cookies` })
+        setYtText('')
+      } else {
+        setYtMsg({ ok: false, text: j?.error || `HTTP ${r.status}` })
+      }
+    } catch (e: any) {
+      setYtMsg({ ok: false, text: e?.message || 'upload failed' })
+    } finally {
+      setYtBusy(false)
+    }
+  }
 
   return (
     <div>
@@ -125,15 +174,59 @@ export default function SystemHub({ onDrill }: Props) {
               <Card title="Ingestion" sub="news · topics · transcripts · SEC">
                 {(() => {
                   const yc = ing.youtube_cookies ?? {}
-                  const sc = yc.status === 'green' ? '#22c55e' : yc.status === 'amber' ? '#f59e0b' : '#ef4444'
+                  const sc = yc.status === 'green' ? 'var(--green)' : yc.status === 'amber' ? 'var(--amber)' : 'var(--red)'
+                  const scBg = yc.status === 'green' ? 'var(--green-dim)' : yc.status === 'amber' ? 'var(--amber-dim)' : 'var(--red-dim)'
+                  const degraded = yc.status === 'red' || yc.status === 'amber'
                   return (
-                    <div title={`${yc.detail ?? ''}${yc.refreshed ? ' · refreshed ' + new Date(yc.refreshed).toLocaleString() : ''}`}
-                      style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 6px', marginBottom: 4, borderRadius: 5, background: `${sc}14`, border: `1px solid ${sc}40` }}>
-                      <span style={{ fontSize: 10, color: 'var(--text2)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ width: 9, height: 9, borderRadius: '50%', background: sc, boxShadow: `0 0 5px ${sc}` }} />
-                        YouTube cookies
-                      </span>
-                      <span style={{ fontSize: 9, fontWeight: 700, color: sc }}>{(yc.status ?? 'unknown').toUpperCase()} · {yc.auth_cookies ?? 0} auth</span>
+                    <div ref={ytPanelRef} style={{ marginBottom: 8 }}>
+                      <div title={`${yc.detail ?? ''}${yc.refreshed ? ' · refreshed ' + new Date(yc.refreshed).toLocaleString() : ''}`}
+                        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 6px', borderRadius: 'var(--radius-sm)', background: scBg, border: `1px solid ${sc}` }}>
+                        <span style={{ fontSize: 10, color: 'var(--text2)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ width: 10, height: 10, borderRadius: '50%', background: sc }} />
+                          YouTube cookies
+                        </span>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontSize: 10, fontWeight: 700, color: sc }}>{(yc.status ?? 'unknown').toUpperCase()} · {yc.auth_cookies ?? 0} auth</span>
+                          <button type="button" onClick={() => setYtOpen(o => !o)}
+                            style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 'var(--radius-sm)', border: `1px solid ${sc}`, background: 'transparent', color: sc, cursor: 'pointer' }}>
+                            {ytOpen ? 'Hide' : (degraded ? 'Refresh' : 'Upload')}
+                          </button>
+                        </span>
+                      </div>
+                      {ytOpen && (
+                        <div style={{ marginTop: 6, padding: 8, borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'var(--bg0)' }}>
+                          <div style={{ fontSize: 10, color: 'var(--text2)', marginBottom: 6, lineHeight: 1.35 }}>
+                            Paste Netscape <code style={{ fontSize: 10 }}>cookies.txt</code> from a logged-in youtube.com session, or upload the file. Host validates AUTH cookies and atomically replaces <code style={{ fontSize: 10 }}>config/youtube_cookies.txt</code>. n8n never writes this file.
+                          </div>
+                          <textarea
+                            value={ytText}
+                            onChange={e => setYtText(e.target.value)}
+                            placeholder="# Netscape HTTP Cookie File…"
+                            rows={5}
+                            spellCheck={false}
+                            style={{ width: '100%', fontFamily: 'var(--mono)', fontSize: 10, resize: 'vertical', background: 'var(--bg1)', color: 'var(--text1)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: 6, boxSizing: 'border-box' }}
+                          />
+                          <div style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                            <label style={{ fontSize: 10, color: 'var(--text2)', cursor: 'pointer' }}>
+                              <input type="file" accept=".txt,text/plain" style={{ display: 'none' }}
+                                onChange={async e => {
+                                  const f = e.target.files?.[0]
+                                  if (!f) return
+                                  setYtText(await f.text())
+                                  setYtOpen(true)
+                                }} />
+                              <span style={{ padding: '3px 8px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', display: 'inline-block' }}>Choose file</span>
+                            </label>
+                            <button type="button" disabled={ytBusy || !ytText.trim()} onClick={submitYoutubeCookies}
+                              style={{ fontSize: 10, fontWeight: 700, padding: '4px 10px', borderRadius: 'var(--radius-sm)', border: 'none', background: ytBusy || !ytText.trim() ? 'var(--border)' : 'var(--text0)', color: 'var(--bg0)', cursor: ytBusy || !ytText.trim() ? 'not-allowed' : 'pointer' }}>
+                              {ytBusy ? 'Writing…' : 'Validate & write'}
+                            </button>
+                            {ytMsg && (
+                              <span style={{ fontSize: 10, fontWeight: 650, color: ytMsg.ok ? 'var(--green)' : 'var(--red)' }}>{ytMsg.text}</span>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )
                 })()}

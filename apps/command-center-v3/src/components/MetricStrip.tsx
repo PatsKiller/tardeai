@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useApi } from '../hooks/useApi'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { fmt$ } from '../lib/format'
 import { pricingStampLine } from '../lib/pricingStamp'
 import { runLabel } from '../lib/homeLabels'
@@ -49,13 +49,30 @@ const VALUE_BIG = TYPE.lg
 const VALUE_COMPACT = TYPE.md
 
 const HEADER_PREF_KEY = 'cc_mobile_header_expanded'
+const TRADING_DRAWER_PREF_KEY = 'cc_trading_metric_drawer_open'
 
 function readHeaderExpanded(): boolean {
   try { return window.localStorage.getItem(HEADER_PREF_KEY) === '1' } catch { return false }
 }
 
+function readTradingDrawerOpen(): boolean {
+  try { return window.localStorage.getItem(TRADING_DRAWER_PREF_KEY) === '1' } catch { return false }
+}
+
+/** Trading / Trade AI / Active Trader: portfolio chrome is not actionable — collapse by default. */
+function isTradingSurfacePath(pathname: string): boolean {
+  const p = pathname.replace(/\/+$/, '') || '/'
+  return p === '/trading' || p.endsWith('/trading')
+    || p === '/active-trader' || p.endsWith('/active-trader')
+}
+
+const ALWAYS_VISIBLE_TILE_LABELS = new Set(['VIX', 'SETUPS · LATEST RUN'])
+const DRAWER_TILE_LABELS = new Set(['PORTFOLIO', 'TODAY', 'TRADING', 'REALIZED', 'REGIME'])
+
 export default function MetricStrip({ onDrill }: Props) {
   const navigate = useNavigate()
+  const location = useLocation()
+  const tradingSurface = isTradingSurfacePath(location.pathname)
   const [alertsOpen, setAlertsOpen] = useState(false)
   // Phones only (CSS shows .ms-compact at <=820px): one line by default, the full
   // strip on demand. Remembered per device; storage failure just means collapsed.
@@ -63,6 +80,13 @@ export default function MetricStrip({ onDrill }: Props) {
   const toggleMobileExpanded = () => setMobileExpanded(v => {
     const next = !v
     try { window.localStorage.setItem(HEADER_PREF_KEY, next ? '1' : '0') } catch { /* private mode */ }
+    return next
+  })
+  // Trading surfaces: PORTFOLIO…REGIME live in a drawer (default closed). SETUPS + VIX stay visible.
+  const [tradingDrawerOpen, setTradingDrawerOpen] = useState<boolean>(readTradingDrawerOpen)
+  const toggleTradingDrawer = () => setTradingDrawerOpen(v => {
+    const next = !v
+    try { window.localStorage.setItem(TRADING_DRAWER_PREF_KEY, next ? '1' : '0') } catch { /* private mode */ }
     return next
   })
 
@@ -597,7 +621,35 @@ export default function MetricStrip({ onDrill }: Props) {
           >{priceStampShort}</div>
         )}
       </div>
-      {tiles.map(t => {
+      {tradingSurface && (
+        <button
+          type="button"
+          data-testid="metric-strip-trading-drawer-toggle"
+          aria-expanded={tradingDrawerOpen}
+          aria-controls="ms-trading-drawer-tiles"
+          title={tradingDrawerOpen
+            ? 'Hide portfolio / P&L / regime tiles (not actionable on this page)'
+            : 'Show portfolio / P&L / regime tiles'}
+          onClick={toggleTradingDrawer}
+          style={{
+            flex: '0 0 auto', alignSelf: 'stretch', display: 'flex', flexDirection: 'column',
+            justifyContent: 'center', gap: 2, padding: '4px 10px', marginRight: 4,
+            border: '1px solid var(--border)', borderRadius: RADIUS.sm, background: 'var(--bg1)',
+            color: 'var(--text2)', cursor: 'pointer', fontSize: TYPE.xs, fontWeight: 700,
+          }}
+        >
+          <span>{tradingDrawerOpen ? '▾ PORTFOLIO' : '▸ PORTFOLIO'}</span>
+          <span style={{ color: 'var(--text3)', fontWeight: 500, maxWidth: 88, ...NOWRAP }}>
+            {tradingDrawerOpen ? 'hide extras' : 'drawer'}
+          </span>
+        </button>
+      )}
+      {tiles.filter(t => {
+        if (!tradingSurface) return true
+        if (ALWAYS_VISIBLE_TILE_LABELS.has(t.label)) return true
+        if (DRAWER_TILE_LABELS.has(t.label)) return tradingDrawerOpen
+        return true
+      }).map(t => {
         // Exception-driven: the tone decides whether this tile is quiet or loud.
         // 'ok' renders a dim dot and grey meta; 'warn'/'bad' recolour the meta
         // line and swap the glyph. No extra line, so height is invariant.
