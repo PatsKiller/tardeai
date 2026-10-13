@@ -283,7 +283,10 @@ def test_last_run_requires_bearer_rejects_bad_paths_and_returns_newest_row(tmp_p
         assert payload["last"]["state"] == "RUN_DONE"
         assert payload["last"]["mode"] == "live"
         assert payload["last"]["lane_id"] == lane
+        assert payload["last"]["exit_code"] == 0
+        assert payload["last"]["started_at"] == "2026-10-08T12:00:01+00:00"
         assert payload["last"]["finished_at"] == "2026-10-08T21:00:00+00:00"
+        assert payload["last"]["receipt_ref"].endswith("/run-new.json")
         assert "run-other" not in body.decode()
     assert calls == []
 
