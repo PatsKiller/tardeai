@@ -174,28 +174,29 @@ export default function SystemHub({ onDrill }: Props) {
               <Card title="Ingestion" sub="news · topics · transcripts · SEC">
                 {(() => {
                   const yc = ing.youtube_cookies ?? {}
-                  const sc = yc.status === 'green' ? '#22c55e' : yc.status === 'amber' ? '#f59e0b' : '#ef4444'
+                  const sc = yc.status === 'green' ? 'var(--green)' : yc.status === 'amber' ? 'var(--amber)' : 'var(--red)'
+                  const scBg = yc.status === 'green' ? 'var(--green-dim)' : yc.status === 'amber' ? 'var(--amber-dim)' : 'var(--red-dim)'
                   const degraded = yc.status === 'red' || yc.status === 'amber'
                   return (
                     <div ref={ytPanelRef} style={{ marginBottom: 8 }}>
                       <div title={`${yc.detail ?? ''}${yc.refreshed ? ' · refreshed ' + new Date(yc.refreshed).toLocaleString() : ''}`}
-                        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 6px', borderRadius: 5, background: `${sc}14`, border: `1px solid ${sc}40` }}>
+                        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 6px', borderRadius: 'var(--radius-sm)', background: scBg, border: `1px solid ${sc}` }}>
                         <span style={{ fontSize: 10, color: 'var(--text2)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <span style={{ width: 9, height: 9, borderRadius: '50%', background: sc, boxShadow: `0 0 5px ${sc}` }} />
+                          <span style={{ width: 10, height: 10, borderRadius: '50%', background: sc }} />
                           YouTube cookies
                         </span>
                         <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <span style={{ fontSize: 9, fontWeight: 700, color: sc }}>{(yc.status ?? 'unknown').toUpperCase()} · {yc.auth_cookies ?? 0} auth</span>
+                          <span style={{ fontSize: 10, fontWeight: 700, color: sc }}>{(yc.status ?? 'unknown').toUpperCase()} · {yc.auth_cookies ?? 0} auth</span>
                           <button type="button" onClick={() => setYtOpen(o => !o)}
-                            style={{ fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 4, border: `1px solid ${sc}60`, background: 'transparent', color: sc, cursor: 'pointer' }}>
+                            style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 'var(--radius-sm)', border: `1px solid ${sc}`, background: 'transparent', color: sc, cursor: 'pointer' }}>
                             {ytOpen ? 'Hide' : (degraded ? 'Refresh' : 'Upload')}
                           </button>
                         </span>
                       </div>
                       {ytOpen && (
-                        <div style={{ marginTop: 6, padding: 8, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg0)' }}>
+                        <div style={{ marginTop: 6, padding: 8, borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'var(--bg0)' }}>
                           <div style={{ fontSize: 10, color: 'var(--text2)', marginBottom: 6, lineHeight: 1.35 }}>
-                            Paste Netscape <code style={{ fontSize: 9 }}>cookies.txt</code> from a logged-in youtube.com session, or upload the file. Host validates AUTH cookies and atomically replaces <code style={{ fontSize: 9 }}>config/youtube_cookies.txt</code>. n8n never writes this file.
+                            Paste Netscape <code style={{ fontSize: 10 }}>cookies.txt</code> from a logged-in youtube.com session, or upload the file. Host validates AUTH cookies and atomically replaces <code style={{ fontSize: 10 }}>config/youtube_cookies.txt</code>. n8n never writes this file.
                           </div>
                           <textarea
                             value={ytText}
@@ -203,7 +204,7 @@ export default function SystemHub({ onDrill }: Props) {
                             placeholder="# Netscape HTTP Cookie File…"
                             rows={5}
                             spellCheck={false}
-                            style={{ width: '100%', fontFamily: 'var(--mono)', fontSize: 10, resize: 'vertical', background: 'var(--bg1)', color: 'var(--text1)', border: '1px solid var(--border)', borderRadius: 4, padding: 6, boxSizing: 'border-box' }}
+                            style={{ width: '100%', fontFamily: 'var(--mono)', fontSize: 10, resize: 'vertical', background: 'var(--bg1)', color: 'var(--text1)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: 6, boxSizing: 'border-box' }}
                           />
                           <div style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                             <label style={{ fontSize: 10, color: 'var(--text2)', cursor: 'pointer' }}>
@@ -214,14 +215,14 @@ export default function SystemHub({ onDrill }: Props) {
                                   setYtText(await f.text())
                                   setYtOpen(true)
                                 }} />
-                              <span style={{ padding: '3px 8px', borderRadius: 4, border: '1px solid var(--border)', display: 'inline-block' }}>Choose file</span>
+                              <span style={{ padding: '3px 8px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', display: 'inline-block' }}>Choose file</span>
                             </label>
                             <button type="button" disabled={ytBusy || !ytText.trim()} onClick={submitYoutubeCookies}
-                              style={{ fontSize: 10, fontWeight: 700, padding: '4px 10px', borderRadius: 4, border: 'none', background: ytBusy || !ytText.trim() ? 'var(--border)' : 'var(--text0)', color: 'var(--bg0)', cursor: ytBusy || !ytText.trim() ? 'not-allowed' : 'pointer' }}>
+                              style={{ fontSize: 10, fontWeight: 700, padding: '4px 10px', borderRadius: 'var(--radius-sm)', border: 'none', background: ytBusy || !ytText.trim() ? 'var(--border)' : 'var(--text0)', color: 'var(--bg0)', cursor: ytBusy || !ytText.trim() ? 'not-allowed' : 'pointer' }}>
                               {ytBusy ? 'Writing…' : 'Validate & write'}
                             </button>
                             {ytMsg && (
-                              <span style={{ fontSize: 10, fontWeight: 650, color: ytMsg.ok ? '#22c55e' : '#ef4444' }}>{ytMsg.text}</span>
+                              <span style={{ fontSize: 10, fontWeight: 650, color: ytMsg.ok ? 'var(--green)' : 'var(--red)' }}>{ytMsg.text}</span>
                             )}
                           </div>
                         </div>

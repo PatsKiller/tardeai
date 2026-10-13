@@ -83,7 +83,7 @@ export default function SharedMomentumCandidates() {
           <span key={pillar.id}
             title={`${pillar.label}: ${JSON.stringify(pillar.threshold)}`}
             style={{
-              fontSize: 10, padding: '1px 5px', borderRadius: 4,
+              fontSize: 10, padding: '1px 5px', borderRadius: RADIUS.sm,
               background: pillar.status === 'PASSED' ? 'rgba(34,197,94,.15)' : pillar.status === 'FAILED' ? 'rgba(239,68,68,.12)' : 'var(--bg2)',
               color: pillar.status === 'PASSED' ? TOKENS.success : pillar.status === 'FAILED' ? TOKENS.danger : 'var(--text3)',
             }}>
@@ -129,7 +129,7 @@ export default function SharedMomentumCandidates() {
           <button key={f.id} type="button" data-testid={`shared-candidates-filter-${f.id}`}
             onClick={() => setFilter(f.id)}
             style={{
-              fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 6, cursor: 'pointer',
+              fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: RADIUS.md, cursor: 'pointer',
               border: `1px solid ${filter === f.id ? TOKENS.info : 'var(--border)'}`,
               background: filter === f.id ? 'rgba(59,130,246,.15)' : 'var(--bg2)',
               color: filter === f.id ? TOKENS.info : 'var(--text2)',
