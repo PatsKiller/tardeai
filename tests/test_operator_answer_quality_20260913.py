@@ -24,6 +24,7 @@ reason while the field is absent and become ACTIVE once it is present:
 from __future__ import annotations
 
 import json
+import os
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -451,10 +452,42 @@ _Q = {q["id"]: q["text"] for q in json.loads((FIX / "questions.json").read_text(
 
 @pytest.fixture(scope="module")
 def replays():
+    from scripts.lib import cio_plan_enrichment as enrichment
+
     snap = json.loads((FIX / "snapshot.json").read_text())
     desk = json.loads((FIX / "desk.json").read_text())
     hold = json.loads((FIX / "holdings.json").read_text())
-    return {k: rq.replay(v, snapshot=snap, desk=desk, holdings=hold) for k, v in _Q.items()}
+    calls = []
+    original_transport = enrichment.urllib.request.urlopen
+
+    def forbidden_transport(*args, **kwargs):
+        calls.append("governed_transport")
+        raise AssertionError("Offline replay must not attempt a model transport")
+
+    with pytest.MonkeyPatch.context() as patch:
+        # urllib.request is shared by both desk import spellings; the actual
+        # governed transport leaf is guarded without replacing replay/curation.
+        patch.setattr(enrichment.urllib.request, "urlopen", forbidden_transport)
+        patch.setenv("CIO_SUBJECT_FLASH", "1")
+        results = {k: rq.replay(v, snapshot=snap, desk=desk, holdings=hold) for k, v in _Q.items()}
+        assert os.environ["CIO_SUBJECT_FLASH"] == "1"
+        # The product catches transport exceptions; zero attempts must therefore
+        # be asserted independently instead of relying on the raised sentinel.
+        assert calls == []
+    assert enrichment.urllib.request.urlopen is original_transport
+    return results
+
+
+@pytest.mark.parametrize("prior", [None, "1"])
+def test_offline_desk_disables_subject_flash_and_restores_prior_flag(tmp_path, monkeypatch, prior):
+    if prior is None:
+        monkeypatch.delenv("CIO_SUBJECT_FLASH", raising=False)
+    else:
+        monkeypatch.setenv("CIO_SUBJECT_FLASH", prior)
+    with rq.offline_desk(snapshot={}, desk={}, holdings={}, workdir=tmp_path) as desk:
+        assert os.environ["CIO_SUBJECT_FLASH"] == "0"
+        assert desk._subject_flash_enabled() is False
+    assert os.environ.get("CIO_SUBJECT_FLASH") == prior
 
 
 def test_fixtures_carry_the_live_domain_keys_and_no_secrets():
