@@ -15,6 +15,7 @@ Digest sections:
 """
 from __future__ import annotations
 import json
+import math
 import os
 import sys
 import urllib.request
@@ -24,6 +25,20 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 PROJECT_ROOT = Path(__file__).parent.parent
+
+
+def _market_value(value, *, positive=False):
+    if isinstance(value, dict):
+        value = value.get("price")
+    try:
+        number = float(value) if value is not None and not isinstance(value, bool) else None
+        return number if number is not None and math.isfinite(number) and (not positive or number > 0) else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _market_text(value, pattern, suffix=""):
+    return format(value, pattern) + suffix if value is not None else "unavailable"
 
 
 def _load_latest_run(project_root: Path) -> Optional[Dict]:
@@ -191,12 +206,12 @@ def build_premarket_digest(project_root: Path = PROJECT_ROOT) -> str:
     sections = []
 
     # Market regime
-    spy_chg = market.get("spy_change_pct", 0) or 0
-    vix = market.get("vix", 0) or 0
+    spy_chg = _market_value(market.get("spy_change_pct"))
+    vix = _market_value(market.get("vix"), positive=True)
     regime = market.get("regime", "Neutral")
-    regime_emoji = "🟢" if spy_chg > 0.5 else "🔴" if spy_chg < -0.5 else "🟡"
+    regime_emoji = "🟢" if spy_chg is not None and spy_chg > 0.5 else "🔴" if spy_chg is not None and spy_chg < -0.5 else "🟡"
     sections.append(
-        f"{regime_emoji} <b>Market:</b> SPY {spy_chg:+.2f}% | VIX {vix:.1f} | {regime}"
+        f"{regime_emoji} <b>Market:</b> SPY {_market_text(spy_chg, '+.2f', '%')} | VIX {_market_text(vix, '.1f')} | {regime}"
     )
 
     # GO tickers
@@ -242,7 +257,7 @@ def build_premarket_digest(project_root: Path = PROJECT_ROOT) -> str:
         prompt = f"""Pre-market intelligence brief for a scalp trader. Be direct, 2-3 sentences max.
 
 Date: {date_str} {time_str}
-Market: SPY {spy_chg:+.2f}%, VIX {vix:.1f}, Regime: {regime}
+Market: SPY {_market_text(spy_chg, '+.2f', '%')}, VIX {_market_text(vix, '.1f')}, Regime: {regime}
 GO tickers: {len(go_tickers)} | WAIT: {len(wait_tickers)} | Total scanned: {len(scored)}
 Building momentum: {[t['symbol'] for t in building_momentum[:3]]}
 Trap warnings: {[t['symbol'] for t in trap_warnings[:3]]}
@@ -275,8 +290,8 @@ def build_preopen_brief(project_root: Path = PROJECT_ROOT) -> str:
 
     go_tickers = [t for t in scored if t.get("decision") == "GO"]
     go_tickers, go_as_watch, go_held_line = _gate_go(go_tickers)
-    spy_chg = market.get("spy_change_pct", 0) or 0
-    vix = market.get("vix", 0) or 0
+    spy_chg = _market_value(market.get("spy_change_pct"))
+    vix = _market_value(market.get("vix"), positive=True)
     gate_tail = "\n".join(
         x for x in (
             ("👀 Watch (CIO stance): " + ", ".join(t["symbol"] for t in go_as_watch[:5])) if go_as_watch else "",
@@ -293,7 +308,7 @@ def build_preopen_brief(project_root: Path = PROJECT_ROOT) -> str:
         )
         prompt = f"""Market opens in 5 minutes. Write ONE sentence telling a scalp trader what to focus on.
 GO tickers: {[t['symbol'] for t in go_tickers]}
-SPY: {spy_chg:+.2f}%, VIX: {vix:.1f}
+SPY: {_market_text(spy_chg, '+.2f', '%')}, VIX: {_market_text(vix, '.1f')}
 Be specific and actionable. Max 20 words."""
         narrative = _ollama_narrative(prompt, timeout=30)
         return (
@@ -305,7 +320,7 @@ Be specific and actionable. Max 20 words."""
     else:
         return (
             f"⚡ <b>Pre-Open Brief — {time_str}</b>\n\n"
-            f"No GO tickers. SPY {spy_chg:+.2f}% | VIX {vix:.1f}\n"
+            f"No GO tickers in the observed run. SPY {_market_text(spy_chg, '+.2f', '%')} | VIX {_market_text(vix, '.1f')}\n"
             f"Stay patient. Wait for strong setups."
             + (f"\n\n{gate_tail}" if gate_tail else "")
         )

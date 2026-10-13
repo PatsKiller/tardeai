@@ -155,14 +155,27 @@ def _shared_fixture():
         "latest_run_timestamp": "2026-10-12T13:13:15+00:00",
         "setup_run_summary": {"run_id": "2026-10-12::0900", "run_date": "2026-10-12", "scanned_count": 44},
         "tickers": [
-            {"symbol": "ABCD", "decision": "WAIT", "run_id": "2026-10-12::0900"},
+            {
+                "symbol": "ABCD",
+                "decision": "WAIT",
+                "run_id": "2026-10-12::0900",
+                "security_guid": "tradeai:security:fixture-abcd",
+                "event_id": "fixture-event",
+                "event_at": "2026-10-12T13:10:00Z",
+            },
             {"symbol": "TRADE", "decision": "GO", "run_id": "2026-10-12::0900"},
         ],
     }, [
         {
             "contract": "active-trader-momentum-alert-v1",
             "ts_epoch": 1791813060,
-            "candidate": {"symbol": " abcd ", "session_date": "2026-10-12"},
+            "candidate": {
+                "symbol": " abcd ",
+                "session_date": "2026-10-12",
+                "security_guid": "tradeai:security:fixture-abcd",
+                "event_id": "fixture-event",
+                "event_at": "2026-10-12T13:10:00Z",
+            },
             "kind": "TRIGGERED",
             "verdict": "ALERT",
             "sent": True,

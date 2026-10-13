@@ -47,6 +47,39 @@ def test_markdown_links_become_anchors_and_html_input_is_untouched():
     assert ce.markdown_to_html(already) == already
 
 
+def test_operational_approval_does_not_resolve_technical_words_as_tickers(tmp_path):
+    message = "🔐 Approval requested\nScope: execution-engineering\nReason: DB fixture ROOT clone HST metadata"
+    out = ce.edit(
+        message,
+        chat_id="fixture",
+        now=NOW,
+        ledger=ce.DuplicateLedger(tmp_path / "ledger.json"),
+        resolve=lambda text: [{"symbol": s, "guid": f"fixture-{s}"} for s in ("DB", "ROOT", "HST")],
+        db_query=lambda *a, **k: [],
+        editor_mode="live",
+        primary_symbols=["DB"],
+    )
+    assert not out.subjects
+    assert "finviz.com" not in out.text and "finance.yahoo.com" not in out.text
+
+
+def test_social_wait_header_overrides_prior_turn_subject_without_changing_decision(tmp_path):
+    message = "👀 WAIT WFF — Social Mention\nEarlier TROW discussed."
+    out = ce.edit(
+        message,
+        chat_id="fixture",
+        now=NOW,
+        ledger=ce.DuplicateLedger(tmp_path / "ledger.json"),
+        resolve=lambda text: [{"symbol": s, "guid": f"fixture-{s}"} for s in ("WFF", "TROW")],
+        db_query=lambda *a, **k: [],
+        editor_mode="live",
+        primary_symbols=["TROW"],
+    )
+    assert [s["symbol"] for s in out.subjects] == ["WFF"]
+    assert "/intelligence/WFF" in out.text and "/intelligence/TROW" not in out.text
+    assert "WAIT WFF" in out.text
+
+
 def test_fingerprint_ignores_times_ages_and_ids_but_not_content():
     a = "☀️ MORNING CIO BRIEF\nPrice $64.76 · as of 2026-09-14 07:15 (1h old)\nrun 3e234df9-96e0-4b1a-9c3e-1234567890ab"
     b = "☀️ MORNING CIO BRIEF\nPrice $64.76 · as of 2026-09-15 08:05 (3h old)\nrun 45faf8c8-b5a0-4b1a-9c3e-1234567890ab"
@@ -386,7 +419,7 @@ def _social_context_fixture(monkeypatch):
     return _social_functions()
 
 
-def test_unbound_social_text_reproduces_wrong_publish_subject(tmp_path):
+def test_unbound_social_header_rejects_wrong_resolver_publish_subject(tmp_path):
     text = "WAIT *WFF* — Social Mention\nSocial · Malaysia\nPrice: $12.00\nNeeds: catalyst to reach GO"
     out = ce.edit(
         text,
@@ -397,8 +430,8 @@ def test_unbound_social_text_reproduces_wrong_publish_subject(tmp_path):
         resolve=lambda text: [{"symbol": "TROW", "guid": "trow-fixture-guid"}],
         editor_mode="live",
     )
-    assert "WFF" in out.text and out.subjects == [{"symbol": "TROW", "guid": "trow-fixture-guid"}]
-    assert "intelligence/TROW" in out.text
+    assert "WFF" in out.text and not out.subjects
+    assert "intelligence/WFF" in out.text and "intelligence/TROW" not in out.text
 
 
 def test_social_wait_binds_wff_even_if_resolver_and_prior_context_say_trow(tmp_path, monkeypatch):

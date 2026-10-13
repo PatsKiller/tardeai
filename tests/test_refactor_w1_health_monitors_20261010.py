@@ -261,6 +261,17 @@ def test_youtube_synthetic_comment_rows_are_not_auth_cookies():
     )
 
 
+def test_youtube_cookie_presence_rejects_expired_foreign_and_empty_synthetic_rows():
+    mod = _load("scripts/youtube_cookie_health_check.py", "_tested_refactor_w1_youtube_cookie")
+    lines = [
+        ".youtube.com\tTRUE\t/\tTRUE\t100\tSID\tfixture",
+        ".notyoutube.com\tTRUE\t/\tTRUE\t9999999999\tSID\tfixture",
+        ".youtube.com\tTRUE\t/\tTRUE\t9999999999\tLOGIN_INFO\t",
+        "#HttpOnly_.youtube.com\tTRUE\t/\tTRUE\t9999999999\tSAPISID\tfixture",
+    ]
+    assert mod._auth_cookie_names(lines, now=1000) == {"SAPISID"}
+
+
 def _run_yt(monkeypatch, argv, *, sent, sent_kw=None):
     """Run the script as __main__ with fake db_adapter / telegram_alert modules."""
 

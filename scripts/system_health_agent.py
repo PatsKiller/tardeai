@@ -782,7 +782,7 @@ def _log_event(conn, component, event_type, severity, message, action=None, succ
         log.warning(f"Failed to log event: {e}")
 
 
-def _send_alert(message, urgent=False):
+def _send_alert(message, urgent=False, *, dedupe_minutes=None):
     """Send alert through central router. NEVER bypass.
 
     A notification intent: CRITICAL escalations are P1 (time-critical); WARN escalations are P3 -- archived
@@ -791,9 +791,11 @@ def _send_alert(message, urgent=False):
     try:
         from telegram_alert import send_telegram
 
-        send_telegram(message, priority=("P1" if urgent else "P3"), producer="system_health_agent")
+        options = {"dedupe_minutes": dedupe_minutes} if dedupe_minutes is not None else {}
+        return send_telegram(message, priority=("P1" if urgent else "P3"), producer="system_health_agent", **options)
     except Exception as e:
         log.error(f"Alert send failed: {e}")
+        return False
 
 
 def _cron_field_matches(field, value, min_val, max_val):
@@ -1521,7 +1523,7 @@ def _escalate(comp, check_result, conn):
         "",
         f"Component: {component}",
         f"Expected: {_fmt_schedule(comp.get('schedule', 'unknown'))}",
-        f"Last output: {check_result.get('age_min', '?')} min ago",
+        f"Last observed output: {(check_result.get('freshness_evidence') or {}).get('success_at') or 'NOT_MEASURED'}",
         f"Status: {check_result['status']}",
     ]
     if check_result.get("last_error"):
@@ -1537,7 +1539,9 @@ def _escalate(comp, check_result, conn):
         msg_lines.append("Fix: Check logs and restart manually")
 
     msg = "\n".join(msg_lines)
-    _send_alert(msg, urgent=(severity == "CRITICAL"))
+    # Repeated polling must keep one content identity even when the diagnostic DB is
+    # unavailable. The existing two-hour window also applies at the host gateway.
+    _send_alert(msg, urgent=(severity == "CRITICAL"), dedupe_minutes=120)
     _log_event(conn, component, "ESCALATION", severity, msg[:500], action="telegram_alert", success=True)
 
 

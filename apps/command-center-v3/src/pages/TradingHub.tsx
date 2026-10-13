@@ -911,7 +911,7 @@ export default function TradingHub({ onDrill }: Props) {
                   <>
                     <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: 60 }}>
                       {runHistory.slice().reverse().map((r: any, i: number) => (
-                        <div key={i} title={`${r.label} · GO ${r.go} · WAIT ${r.wait}`} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', height: '100%' }}>
+                        <div key={i} data-run-id={r.run_id ?? ''} title={`${r.run_id ?? 'run unknown'} · ${renderSetupCounts(r.setup_run_summary, {}).counts} · ${r.count_integrity}`} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', height: '100%' }}>
                           <div style={{ width: '100%', height: `${((r.go ?? 0) / runGoMax) * 100}%`, minHeight: (r.go ?? 0) > 0 ? 3 : 0, background: (r.go ?? 0) > 0 ? '#22c55e' : 'var(--border)', borderRadius: '2px 2px 0 0' }} />
                           <span style={{ fontSize: 7, color: 'var(--text3)', marginTop: 2, whiteSpace: 'nowrap' }}>{r.label}</span>
                         </div>
@@ -919,7 +919,7 @@ export default function TradingHub({ onDrill }: Props) {
                     </div>
                     <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
                       {runHistory.map((r: any, i: number) => (
-                        <div key={i} style={{ fontSize: 9, color: 'var(--text3)' }}><span style={{ fontWeight: 600, color: 'var(--text2)' }}>{r.label}</span> GO:{r.go} W:{r.wait}</div>
+                        <div key={i} data-run-id={r.run_id ?? ''} style={{ fontSize: 9, color: 'var(--text3)' }}><span style={{ fontWeight: 600, color: 'var(--text2)' }}>{r.run_id ?? r.label}</span> {renderSetupCounts(r.setup_run_summary, {}).counts} · {r.count_integrity}</div>
                       ))}
                     </div>
                   </>

@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from .momentum_setup_evidence import build_setup_evidence
+from .momentum_setup_evidence import build_setup_evidence, observation_lineage
 
 SCHEMA = "SharedMomentumCandidates@v1"
 AT_CONTRACT = "active-trader-momentum-alert-v1"
@@ -97,10 +97,18 @@ def build_candidate_projection(
     invalid = {name: 0 for name in SOURCE_NAMES}
 
     def add(symbol, source, observation):
-        groups.setdefault(symbol, {name: [] for name in SOURCE_NAMES})[source].append(observation)
+        lineage = observation["lineage"]
+        scope = (
+            lineage.get("security_guid") or f"unresolved:{symbol}",
+            lineage.get("session_date"),
+            lineage.get("event_id"),
+            lineage.get("event_at"),
+        )
+        groups.setdefault((symbol, scope), {name: [] for name in SOURCE_NAMES})[source].append(observation)
 
     if valid_cache and statuses["TRADE_AI"] not in UNAVAILABLE:
-        for row in cache["tickers"]:
+        owner_observations = cache.get("source_observations")
+        for row in owner_observations if isinstance(owner_observations, list) else cache["tickers"]:
             if not isinstance(row, dict) or not (sym := _symbol(row.get("symbol"))):
                 invalid["TRADE_AI"] += 1
                 continue
@@ -111,11 +119,8 @@ def build_candidate_projection(
                 run_id = (
                     f"{row['run_date']}::{row['run_label']}" if row.get("run_date") and row.get("run_label") else None
                 )
-            stamp = next(
-                (_stamp(row.get(k)) for k in ("observed_at", "scanned_at", "created_at") if _stamp(row.get(k))), None
-            )
-            if stamp is None and run_id and run_id == cache_run:
-                stamp = _stamp(cache.get("latest_run_timestamp"))
+            lineage = observation_lineage(row, source_name="TRADE_AI", run_id=run_id)
+            stamp = _stamp(lineage["observed_at"])
             session_date = (
                 _day(run_id)
                 or _day(row.get("run_date"))
@@ -133,6 +138,10 @@ def build_candidate_projection(
                     "run_type": row.get("run_type") if isinstance(row.get("run_type"), str) else None,
                     "cache_run_id": cache_run,
                     "source": "TRADE_AI",
+                    "lineage": lineage,
+                    "event_at": lineage["event_at"],
+                    "source_ref": lineage["source_ref"],
+                    "security_guid": lineage["security_guid"],
                     "setup_evidence": build_setup_evidence(
                         row,
                         now=now,
@@ -158,7 +167,13 @@ def build_candidate_projection(
             if not (sym := _symbol(c.get("symbol"))):
                 invalid["ACTIVE_TRADER"] += 1
                 continue
-            stamp = _stamp(row.get("ts_epoch"))
+            advisory_at = _stamp(row.get("ts_epoch"))
+            source_observation = dict(c)
+            if not source_observation.get("observed_at") and advisory_at:
+                source_observation["observed_at"] = advisory_at.isoformat()
+            lineage = observation_lineage(source_observation, source_name="ACTIVE_TRADER")
+            # The journal timestamp proves publication of the advisory, not the quote's observation time.
+            stamp = _stamp(lineage["observed_at"])
             verdict = row.get("verdict") if row.get("verdict") in {"ALERT", "VETO"} else "UNKNOWN"
             add(
                 sym,
@@ -172,6 +187,12 @@ def build_candidate_projection(
                     "kind": row.get("kind") if isinstance(row.get("kind"), str) else "UNKNOWN",
                     "sent": row.get("sent") if isinstance(row.get("sent"), bool) else None,
                     "source": "ACTIVE_TRADER",
+                    "lineage": lineage,
+                    "observation_basis": "ADVISORY_PUBLICATION" if not c.get("observed_at") else "SOURCE_OBSERVATION",
+                    "event_at": lineage["event_at"],
+                    "source_ref": lineage["source_ref"],
+                    "security_guid": lineage["security_guid"],
+                    "published_at": (_stamp(row.get("ts_epoch")).isoformat() if _stamp(row.get("ts_epoch")) else None),
                     "setup_evidence": build_setup_evidence(
                         c,
                         now=now,
@@ -184,7 +205,7 @@ def build_candidate_projection(
                 },
             )
     candidates = []
-    for symbol, observations in sorted(groups.items()):
+    for (symbol, scope), observations in sorted(groups.items(), key=lambda item: str(item[0])):
         ta = _source_view(observations["TRADE_AI"], statuses["TRADE_AI"], today)
         at = _source_view(observations["ACTIVE_TRADER"], statuses["ACTIVE_TRADER"], today)
         conflicts = []
@@ -192,8 +213,10 @@ def build_candidate_projection(
             conflicts.append("TRADE_AI_VERDICT_CONFLICT")
         if len(at["verdicts"]) > 1:
             conflicts.append("ACTIVE_TRADER_VERDICT_CONFLICT")
-        if ("ALERT" in at["verdicts"] and set(ta["verdicts"]) & {"AVOID", "NOGO", "NO_GO", "EXCLUDED"}) or (
-            "VETO" in at["verdicts"] and "GO" in ta["verdicts"]
+        comparable = bool(scope[0] and not scope[0].startswith("unresolved:") and scope[1] and scope[3])
+        if comparable and (
+            ("ALERT" in at["verdicts"] and set(ta["verdicts"]) & {"AVOID", "NOGO", "NO_GO", "EXCLUDED"})
+            or ("VETO" in at["verdicts"] and "GO" in ta["verdicts"])
         ):
             conflicts.append("CROSS_SOURCE_DISAGREEMENT")
         classification = (
@@ -212,8 +235,13 @@ def build_candidate_projection(
         )
         candidates.append(
             {
-                "candidate_id": f"symbol:{symbol}",
+                "candidate_id": f"symbol:{symbol}:{_digest(scope)[:16]}",
                 "symbol": symbol,
+                "security_guid": scope[0] if not scope[0].startswith("unresolved:") else None,
+                "session_date": scope[1],
+                "event_id": scope[2],
+                "event_at": scope[3],
+                "reconciliation_status": "COMPARABLE_EVENT" if comparable else "IDENTITY_OR_EVENT_UNRESOLVED",
                 "sources": [name for name in SOURCE_NAMES if observations[name]],
                 "trade_ai": ta,
                 "active_trader": at,
@@ -278,7 +306,15 @@ def build_candidate_projection(
     )
     identity = [{**r, "trade_ai": r["trade_ai"], "active_trader": r["active_trader"]} for r in candidates]
     projection_hash = _digest(
-        {"schema": SCHEMA, "candidates": identity, "source_status": statuses, "source_metadata": metadata}
+        {
+            "schema": SCHEMA,
+            "candidates": identity,
+            "source_status": statuses,
+            "source_metadata": {
+                name: {key: value for key, value in fields.items() if key != "cache_generated_at"}
+                for name, fields in metadata.items()
+            },
+        }
     )
     source_sha = cache.get("source_sha") or cache.get("code_sha")
     if not isinstance(source_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", source_sha):
@@ -300,7 +336,7 @@ def build_candidate_projection(
         "consumers": ["Trade AI", "Active Trader"],
         "authority": "READ_ONLY_ADVISORY",
         "memory_behavior_influence": 0,
-        "calculation_version": "1.0.0",
+        "calculation_version": "1.1.0",
         "session_date": today,
         "generated_at": now.astimezone(timezone.utc).isoformat(),
         "snapshot_id": projection_hash,

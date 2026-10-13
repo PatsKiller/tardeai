@@ -15140,8 +15140,12 @@ def _compute_trade_ai():
 
     # Find all runs for today + yesterday
     all_runs = []
-    for pattern in ["reports/2026-*/*/run_summary.json"]:
-        for fp in sorted(glob.glob(str(PROJECT_ROOT / pattern)), reverse=True)[:24]:
+    for pattern in ["reports/2026-*/*/run_summary*.json"]:
+        for fp in sorted(
+            glob.glob(str(PROJECT_ROOT / pattern)),
+            key=lambda p: (str(Path(p).parent), Path(p).name == "run_summary.json"),
+            reverse=True,
+        )[:64]:
             rs = _load_json(Path(fp))
             if rs:
                 rs["_path"] = fp
@@ -15158,17 +15162,16 @@ def _compute_trade_ai():
         38-ticker evening package outranked the morning's 10-ticker run. The
         variable is called `latest`; it was returning the largest.
 
-        The intent of ranking by count was only to prefer real packages over empty
-        session-heal anchors -- so keep that as a BOOLEAN (non-empty beats empty)
-        and let date decide among real runs. Size becomes the last tiebreak, where
-        it cannot mask recency.
+        Session-heal anchors remain excluded from real-run priority. Among real
+        packages recency precedes population size, including a legitimate empty
+        run or a failed latest attempt whose status must remain visible.
         """
         tc = int(rs.get("ticker_count") or len(rs.get("tickers") or []) or 0)
         lbl = str(rs.get("run_label") or "")
         heal = 0 if lbl == "HEALTH_AUTOHEAL" or rs.get("session_heal") else 1
         date = str(rs.get("date") or rs.get("run_date") or "")
         has_tickers = 1 if tc > 0 else 0
-        return (heal, has_tickers, date, str(rs.get("generated_at") or ""), tc)
+        return (heal, date, str(rs.get("generated_at_utc") or rs.get("generated_at") or ""), has_tickers, tc)
 
     all_runs.sort(key=_run_rank, reverse=True)
     latest = all_runs[0] if all_runs else {}
@@ -15188,7 +15191,7 @@ def _compute_trade_ai():
                 ticker_perf_1m, sector_perf_1m, vs_sector_pct,
                 social_sentiment, social_score, social_reddit, social_stocktwits,
                 social_bullish_pct, social_wsb,
-                source, source_detail, run_type, run_label as scan_run_label,
+                source, source_detail, run_id, run_type, run_label as scan_run_label,
                 intelligence_readiness,
                 route, route_actionability,
                 scout_status, scout_pillar_count, scout_pillars_met, scout_pillars_missing,
@@ -15249,6 +15252,9 @@ def _compute_trade_ai():
                         # Run identity is (run_date, run_label). The label alone
                         # repeats every day -- see the scoping comment below.
                         "scan_run_date": str(r.get("scan_run_date") or "")[:10],
+                        "run_id": r.get("run_id"),
+                        "catalyst_source": r.get("catalyst_source"),
+                        "persisted_at": _json_clean(r.get("scanned_at")),
                         "intelligence_readiness": r.get("intelligence_readiness"),
                         # --- Social Scout operator-awareness fields (P0-5). Awareness only: a scout is
                         # never tradeable / never validation-ready (see route policy + gates). ---
@@ -15272,6 +15278,34 @@ def _compute_trade_ai():
     except Exception:
         pass
 
+    # Reattach original source metadata from the same business run's immutable package.
+    # The DB's scanned_at is a persistence stamp, never a quote/event observation time.
+    _original_observations = {}
+    for package in all_runs:
+        for observation in package.get("observations", []) if isinstance(package.get("observations"), list) else []:
+            if isinstance(observation, dict) and observation.get("run_id") and observation.get("symbol"):
+                _original_observations.setdefault((observation["run_id"], observation["symbol"]), observation)
+    _lineage_keys = (
+        "lineage",
+        "observed_at",
+        "event_at",
+        "event_id",
+        "security_guid",
+        "source_ref",
+        "source_sha",
+        "run_attempt_id",
+        "field_observations",
+        "catalyst_url",
+        "catalyst_published_at",
+        "catalyst_verification_method",
+        "catalyst_verified_at",
+        "catalyst_relevance",
+        "catalyst_relevance_reason",
+    )
+    for ticker in tickers:
+        original = _original_observations.get((ticker.get("run_id"), ticker.get("symbol")))
+        if original:
+            ticker.update({key: original[key] for key in _lineage_keys if key in original})
     # CSV fallback if DB is empty (bootstrap period)
     if not tickers:
         csv_pattern = latest.get("_path", "").replace("run_summary.json", "").rstrip("/")
@@ -15586,13 +15620,18 @@ def _compute_trade_ai():
     # Run history for sparkline
     run_history = []
     for rs in all_runs[:8]:
+        summary = rs.get("setup_run_summary") if isinstance(rs.get("setup_run_summary"), dict) else {}
         run_history.append(
             {
+                "run_id": summary.get("run_id") or rs.get("run_id"),
+                "run_attempt_id": rs.get("run_attempt_id"),
+                "setup_run_summary": summary or None,
+                "count_integrity": summary.get("count_integrity", "DATA_UNAVAILABLE"),
                 "date": rs.get("date", ""),
                 "label": rs.get("run_label", ""),
-                "go": rs.get("go_count", 0),
-                "wait": rs.get("wait_count", 0),
-                "total": rs.get("ticker_count", 0),
+                "go": summary.get("go_count"),
+                "wait": summary.get("wait_count"),
+                "total": summary.get("scanned_count"),
                 "top_ticker": rs.get("top_ticker", ""),
                 "top_score": rs.get("top_score", 0),
             }
@@ -15751,6 +15790,14 @@ def _compute_trade_ai():
         freshness_status=(_run_health_status or "UNKNOWN"),
         quality="OK" if _run_health_status == "RUN_HEALTHY" else "DEGRADED",
     )
+    if isinstance(latest.get("observations"), list) and isinstance(latest.get("setup_run_summary"), dict):
+        original_summary = latest["setup_run_summary"]
+        if original_summary.get("run_id") == _run_id:
+            _setup_run_summary = dict(original_summary)
+            current_run_total = _setup_run_summary.get("scanned_count")
+            current_run_go = _setup_run_summary.get("go_count")
+            current_run_wait = _setup_run_summary.get("wait_count")
+            current_run_nogo = _setup_run_summary.get("nogo_count")
 
     return {
         "ok": True,
@@ -15758,6 +15805,10 @@ def _compute_trade_ai():
         "run_label": latest.get("run_label", ""),
         "run_id": _run_id,
         "setup_run_summary": _setup_run_summary,
+        "source_observations": latest.get("observations") if isinstance(latest.get("observations"), list) else None,
+        "source_sha": latest.get("source_sha"),
+        "run_attempt_id": latest.get("run_attempt_id"),
+        "source_ref": latest.get("_path"),
         "latest_run_label": _latest_run_label,
         "latest_run_timestamp": _latest_run_timestamp,
         "latest_run_symbols_scanned": latest.get("ticker_count", 0),
@@ -18158,6 +18209,23 @@ _TRADE_AI_TRIM_KEYS = (
     "source",
     "catalyst",
     "reason",
+    "run_id",
+    "run_attempt_id",
+    "security_guid",
+    "event_id",
+    "event_at",
+    "observed_at",
+    "lineage",
+    "source_ref",
+    "source_sha",
+    "field_observations",
+    "catalyst_source",
+    "catalyst_url",
+    "catalyst_published_at",
+    "catalyst_verified",
+    "catalyst_verification_method",
+    "catalyst_relevance",
+    "catalyst_confidence",
 )
 
 # Any of these mark a row the scanner CAN render (social/manual/awareness lanes surface
@@ -19697,6 +19765,28 @@ def _tradeai_critique_status():
 def _tradeai_history():
     """GET /api/v2/trade-ai/history — historical scan data for trend analysis."""
     try:
+        from lib.setup_run_contract import build_run_history
+
+        history_rows = (
+            _db_query("""SELECT run_id, run_date, run_label, symbol, decision, disqualified,
+            scanned_at FROM trade_ai_scans WHERE run_type='full'
+            AND run_date >= CURRENT_DATE - INTERVAL '30 days' ORDER BY run_date DESC, run_label DESC""")
+            or []
+        )
+        original_rows = []
+        for path in sorted((PROJECT_ROOT / "reports").glob("2026-*/*/run_summary*.json"), reverse=True)[:150]:
+            package = _load_json(path) or {}
+            observations = package.get("observations")
+            if isinstance(observations, list):
+                original_rows.extend(
+                    {**row, "run_timestamp": package.get("generated_at_utc"), "source_ref": str(path)}
+                    for row in observations
+                    if isinstance(row, dict)
+                )
+        preserved_runs = {row.get("run_id") for row in original_rows if row.get("run_id")}
+        canonical_runs = build_run_history(
+            original_rows + [row for row in history_rows if row.get("run_id") not in preserved_runs]
+        )
         # Per-symbol aggregated history
         symbols = (
             _db_query("""
@@ -19740,6 +19830,9 @@ def _tradeai_history():
         recurring = [s for s in symbols if (s.get("days_appeared") or 0) >= 3]
 
         return {
+            "runs": canonical_runs,
+            "run_accounting_contract": "SetupRunSummary@v1",
+            "daily_summary_scope": "DAILY_DISTINCT_SECURITIES; not individual run totals",
             "symbols": [{k: _json_clean(v) for k, v in s.items()} for s in symbols],
             "daily_summary": [{k: _json_clean(v) for k, v in d.items()} for d in daily],
             "recurring_count": len(recurring),

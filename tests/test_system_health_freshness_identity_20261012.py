@@ -21,6 +21,28 @@ LANE = "finviz-screener-runner"
 SCRIPT = "finviz_screener_runner.py"
 
 
+def test_repeated_stale_escalation_keeps_content_when_database_dedupe_fails(agent, monkeypatch):
+    calls = []
+    monkeypatch.setattr(agent, "_send_alert", lambda message, **kwargs: calls.append((message, kwargs)) or True)
+    monkeypatch.setattr(agent, "_log_event", lambda *a, **k: None)
+    comp = component(agent)
+    original = "2026-10-09T13:00:00Z"
+    for age in (4249.5, 4254.4):
+        agent._escalate(
+            comp,
+            {
+                "status": "STALE",
+                "age_min": age,
+                "action_taken": "retry_disarmed",
+                "freshness_evidence": {"success_at": original},
+            },
+            None,
+        )
+    assert calls[0] == calls[1]
+    assert original in calls[0][0] and "4249.5" not in calls[0][0]
+    assert calls[0][1]["dedupe_minutes"] == 120
+
+
 @pytest.fixture
 def agent(tmp_path, monkeypatch):
     path = ROOT / "scripts" / "system_health_agent.py"

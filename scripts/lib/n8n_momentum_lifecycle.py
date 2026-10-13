@@ -261,6 +261,9 @@ def collect_server_snapshot(
         "populations",
         "notification_binding",
         "consumer_views",
+        "notification_expected",
+        "alert_delivery",
+        "notification_decision",
         "projection_hash",
         "source_verdicts_preserved",
     }
@@ -755,6 +758,58 @@ def product_proof(
             reasons.append("shared_projection_consumer_identity_drift")
         if not product.get("projection_hash") or product.get("source_verdicts_preserved") is not True:
             reasons.append("shared_projection_provenance_not_proven")
+        if isinstance(consumers, Mapping):
+            for surface, view in consumers.items():
+                if not isinstance(view, Mapping):
+                    continue
+                read_at = stamp(view.get("read_at"))
+                if (
+                    view.get("basis") != "CONSUMER_READBACK"
+                    or not view.get("receipt_id")
+                    or view.get("source_sha") != sha
+                    or read_at is None
+                    or finished is None
+                    or not finished <= read_at <= now
+                    or (now - read_at).total_seconds() > max_age_s
+                ):
+                    reasons.append(f"consumer_readback_not_proven:{surface}")
+    if product.get("population_contract") == "shared_signal_union" and not isinstance(
+        product.get("notification_expected"), bool
+    ):
+        reasons.append("notification_expectation_not_measured")
+    if product.get("notification_expected") is True:
+        delivery = product.get("alert_delivery")
+        if not isinstance(delivery, Mapping):
+            reasons.append("alert_delivery_not_measured")
+        else:
+            delivered_at = stamp(delivery.get("delivered_at"))
+            if (
+                delivery.get("status") not in {"DELIVERED", "LEGACY_DELIVERED"}
+                or delivery.get("observed_delivered") is not True
+                or not delivery.get("notification_id")
+                or not delivery.get("provider_message_id")
+                or not delivery.get("delivery_owner")
+                or delivered_at is None
+                or finished is None
+                or not finished <= delivered_at <= now
+            ):
+                reasons.append("alert_delivery_not_proven")
+            if (
+                delivery.get("run_id") != product.get("run_id")
+                or delivery.get("source_sha") != sha
+                or delivery.get("projection_hash") != product.get("projection_hash")
+            ):
+                reasons.append("alert_delivery_identity_drift")
+    elif product.get("notification_expected") is False:
+        decision = product.get("notification_decision")
+        if (
+            not isinstance(decision, Mapping)
+            or decision.get("basis") != "GATEWAY_ROUTE"
+            or not decision.get("reason_code")
+            or not decision.get("receipt_id")
+            or decision.get("run_id") != product.get("run_id")
+        ):
+            reasons.append("notification_absence_not_proven")
     return reasons
 
 

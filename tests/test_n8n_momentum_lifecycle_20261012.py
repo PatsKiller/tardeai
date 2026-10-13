@@ -954,8 +954,23 @@ def test_shared_projection_consumer_generation_and_verdicts_are_preserved():
         population_contract="shared_signal_union",
         projection_hash="hash-1",
         source_verdicts_preserved=True,
+        notification_expected=False,
+        notification_decision={
+            "basis": "GATEWAY_ROUTE",
+            "reason_code": "NO_ALERT_REQUIRED",
+            "receipt_id": "route-1",
+            "run_id": "scan-0900",
+        },
         consumer_views={
-            surface: {"projection_hash": "hash-1", "run_id": "scan-0900", "run_date": "2026-10-12"}
+            surface: {
+                "projection_hash": "hash-1",
+                "run_id": "scan-0900",
+                "run_date": "2026-10-12",
+                "basis": "CONSUMER_READBACK",
+                "receipt_id": f"read-{surface}",
+                "source_sha": SHA,
+                "read_at": "2026-10-12T06:10:00-04:00",
+            }
             for surface in ("active_trader", "trade_ai")
         },
     )
@@ -964,6 +979,53 @@ def test_shared_projection_consumer_generation_and_verdicts_are_preserved():
     assert "shared_projection_consumer_identity_drift" in M.product_proof(
         p, day="2026-10-12", now=NOW, sha=SHA, max_age_s=14400
     )
+
+
+def test_declared_consumer_generation_is_not_an_actual_readback():
+    p = product(
+        population_contract="shared_signal_union",
+        projection_hash="h",
+        source_verdicts_preserved=True,
+        consumer_views={
+            surface: {"projection_hash": "h", "run_id": "scan-0900", "run_date": "2026-10-12"}
+            for surface in ("active_trader", "trade_ai")
+        },
+    )
+    reasons = M.product_proof(p, day="2026-10-12", now=NOW, sha=SHA, max_age_s=14400)
+    assert {r for r in reasons if r.startswith("consumer_readback_not_proven")} == {
+        "consumer_readback_not_proven:active_trader",
+        "consumer_readback_not_proven:trade_ai",
+    }
+
+
+def test_accepted_send_does_not_prove_delivery_and_wrong_run_is_refused():
+    p = product(notification_expected=True, projection_hash="h")
+    assert "alert_delivery_not_measured" in M.product_proof(p, day="2026-10-12", now=NOW, sha=SHA, max_age_s=14400)
+    p["alert_delivery"] = {"status": "ACCEPTED", "run_id": p["run_id"], "source_sha": SHA, "projection_hash": "h"}
+    assert "alert_delivery_not_proven" in M.product_proof(p, day="2026-10-12", now=NOW, sha=SHA, max_age_s=14400)
+    p["alert_delivery"].update(
+        status="DELIVERED",
+        observed_delivered=True,
+        notification_id="notice-1",
+        provider_message_id="message-1",
+        delivery_owner="host-gateway",
+        delivered_at="2026-10-12T06:15:00-04:00",
+    )
+    assert M.product_proof(p, day="2026-10-12", now=NOW, sha=SHA, max_age_s=14400) == []
+    p["alert_delivery"]["run_id"] = "old-run"
+    assert "alert_delivery_identity_drift" in M.product_proof(p, day="2026-10-12", now=NOW, sha=SHA, max_age_s=14400)
+
+
+def test_zero_candidates_can_be_healthy_but_notification_absence_needs_route_receipt():
+    p = product(populations={"scanned_total": 0, "classified_total": 0, "manual_total": 0}, notification_expected=False)
+    assert "notification_absence_not_proven" in M.product_proof(p, day="2026-10-12", now=NOW, sha=SHA, max_age_s=14400)
+    p["notification_decision"] = {
+        "basis": "GATEWAY_ROUTE",
+        "reason_code": "NO_QUALIFYING_CANDIDATES",
+        "receipt_id": "route-1",
+        "run_id": p["run_id"],
+    }
+    assert M.product_proof(p, day="2026-10-12", now=NOW, sha=SHA, max_age_s=14400) == []
 
 
 def test_llm_diagnosis_coverage_uses_existing_exclusion_and_no_model_selection(setup):

@@ -1,6 +1,7 @@
 """Canonical catalyst read helper — single verification model for catalyst_record.
 
-Authority: catalyst_events.confidence >= 0.3 ⇒ verified (matches scoring.validate_catalyst_relevance).
+The legacy confidence-based decision flag remains compatible. Factual publication
+verification, relevance and model confidence are separate public evidence fields.
 """
 from __future__ import annotations
 
@@ -32,6 +33,16 @@ def normalize_catalyst_row(row: dict[str, Any] | None) -> dict[str, Any] | None:
         "catalyst_type": row.get("catalyst_type"),
         "verified": bool(verified),
         "confidence": conf,
+        # Preserve the legacy decision input, but do not present a confidence
+        # threshold as independently verified publication evidence.
+        "verification_basis": "EXPLICIT_SOURCE_FLAG" if row.get("verified") is not None else "LEGACY_CONFIDENCE_THRESHOLD",
+        "factual_verification_status": "VERIFIED" if row.get("verified") is True and row.get("verification_method") in {"PRIMARY_PUBLICATION", "PUBLICATION_MATCH", "SOURCE_CORROBORATION"} and row.get("source_url") else "UNVERIFIED" if row.get("verified") is False else "UNKNOWN",
+        "verification_method": row.get("verification_method"),
+        "relevance": row.get("relevance"),
+        "model_confidence": conf,
+        "published_at": row.get("published_at"),
+        "observed_at": row.get("observed_at"),
+        "source_ref": row.get("source_ref"),
         "severity": row.get("severity"),
         "impact_score": row.get("impact_score"),
         "source_url": row.get("source_url"),
