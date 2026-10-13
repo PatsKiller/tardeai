@@ -1,6 +1,6 @@
 {
-  "status": "DRAFT_FOR_OWNER_REVIEW",
-  "enabled": false,
+  "status": "ARMED_CANARY",
+  "enabled": true,
   "owner_declaration": "platform + scalp; confirmation required",
   "review": null,
   "timezone": "America/New_York",
@@ -115,7 +115,7 @@
     }
   ],
   "recovery": {
-    "armed": false,
+    "armed": true,
     "actions": [
       {
         "lane_id": "momentum-cache-reconcile",
@@ -126,7 +126,7 @@
         "scope": "RESETTABLE_DERIVED_ADVISORY_PROJECTION_ONLY"
       }
     ],
-    "admission_note": "Concrete safe helper exists, unadmitted. Existing due/dispatcher owns retries. Canonical business/cache drift and consumer acceptance cannot be healed by a derivative rebuild.",
+    "admission_note": "Canary 2026-10-13: armed for momentum-cache-reconcile --apply only. recovery_admitted still requires cutover; monitor remains shadow/live_arg-null so MONITOR_ONLY stays inactive.",
     "retry_policy_source": "config/n8n_retry_policies.json and operative registry dispatch.retry_policy",
     "never": [
       "order",

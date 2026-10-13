@@ -14830,7 +14830,7 @@
       "owner": "platform",
       "state": "ACTIVE",
       "state_since": "2026-10-12",
-      "state_reason": "Operator authorized initial shadow admission; exact bodies independently reviewed2026-10-12. Runtime deployment/natural zero-effect proof remains separate.",
+      "state_reason": "Canary 2026-10-13 after five-facts OBSERVED on CURRENT_SESSION; live write limited to resettable shared_momentum_candidates_projection.json; CONFLICT preserved. Autonomous recovery remains cutover-gated.",
       "reason_confidence": "ESTABLISHED",
       "review_by": "2026-10-13",
       "expected_cadence_hours": 0.08333333333333333,
@@ -14847,13 +14847,13 @@
         "kind": "n8n",
         "expression": "dispatcher",
         "timezone": "America/New_York",
-        "stage": "shadow",
+        "stage": "canary",
         "match": "scripts/momentum_cache_reconcile.py"
       },
       "dispatch": {
         "class": "report",
         "retry_policy": "none",
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
           "*/5 * * * *"
         ],

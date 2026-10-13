@@ -492,8 +492,8 @@ def test_registry_dispatch_errors_hook():
 # ── live registry (read-only) ────────────────────────────────────────────────────────────────────
 
 #: n8n-native lanes (no host line): dispatcher shape without a cron twin.
-N8N_NATIVE_SHADOW = frozenset({"momentum-lifecycle-monitor", "momentum-cache-reconcile"})
-N8N_NATIVE_CANARY = frozenset({"heartbeat-watch"})
+N8N_NATIVE_SHADOW = frozenset({"momentum-lifecycle-monitor"})
+N8N_NATIVE_CANARY = frozenset({"heartbeat-watch", "momentum-cache-reconcile"})
 
 
 def _live_rows():
@@ -523,11 +523,15 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
         assert LD.validate_dispatch_block(row, known_lane_ids=known) == [], lane
         mode = LD.dispatch_mode(row)
         if lane in N8N_NATIVE_CANARY:
-            # n8n-native canary — no cron twin; dispatcher row at stage canary + dispatch.mode live;
-            # allowlist live_arg [] (script default writes the receipt). Not an R1 ingest canary.
+            # n8n-native canary — no cron twin; dispatcher row at stage canary + dispatch.mode live.
             assert mode == "live" and row["scheduler"].get("stage") == "canary", lane
             assert (row["scheduler"]["kind"], row["scheduler"]["expression"]) == ("n8n", "dispatcher"), lane
-            assert allow[lane]["live_arg"] == [] and allow[lane]["dry_run_arg"] == ["--dry-run"], lane
+            assert allow[lane]["dry_run_arg"] == ["--dry-run"], lane
+            if lane == "momentum-cache-reconcile":
+                assert allow[lane]["live_arg"] == ["--apply"], lane
+            else:
+                # heartbeat-watch: script default writes the receipt (live_arg []).
+                assert allow[lane]["live_arg"] == [], lane
             assert LD.r1_class_admission(row, allow[lane])[0] is True, lane
             continue
         if (

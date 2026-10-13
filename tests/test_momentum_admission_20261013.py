@@ -107,8 +107,10 @@ def test_helper_canary_does_not_arm_autonomous_recovery():
     assert M.cache_helper_admitted(admission, lane)
     assert not M.recovery_admitted(admission, lane)
     policy = json.loads((ROOT / "config/n8n_momentum_lifecycle_candidate.json").read_text())
-    assert policy["recovery"]["armed"] is False
+    # Candidate recovery.armed gates explicit --apply; autonomous recovery_admitted stays cutover-only.
+    assert policy["recovery"]["armed"] is True
     assert policy["credential_recovery"]["automatic"] is False
+    assert policy["enabled"] is True
 
 
 def test_actual_helper_apply_refuses_while_recovery_remains_disarmed(tmp_path):

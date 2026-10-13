@@ -448,24 +448,31 @@ def test_monitor_evaluation_completion_does_not_stop_scheduling_on_watched_p1(se
 
 def test_candidate_config_needs_operative_admission_and_keeps_recovery_disarmed():
     c = json.loads((ROOT / "config/n8n_momentum_lifecycle_candidate.json").read_text())
-    assert c["recovery"]["armed"] is False
     assert c["credential_recovery"]["automatic"] is False
-    if c["enabled"]:
+    registry = json.loads((ROOT / "config/lane_registry.json").read_text())["lanes"]
+    contracts = json.loads((ROOT / "config/n8n_health_contracts.json").read_text())["contracts"]
+    allowlist = json.loads((ROOT / "config/n8n_run_allowlist.json").read_text())["lanes"]
+    admission = M.Admission(
+        {row["lane_id"]: row for row in registry},
+        {contract["id"]: contract for contract in contracts},
+        {entry["lane_id"]: entry for entry in allowlist},
+        None,
+        SHA,
+        {},
+    )
+    if c["status"] == "ARMED_CANARY" and c["enabled"] is True:
+        # Projection canary may arm recovery for --apply; monitor + autonomous recovery stay gated.
+        assert c["recovery"]["armed"] is True
+        assert not M.monitor_admitted(admission)
+        assert M.cache_helper_admitted(admission, "momentum-cache-reconcile")
+        assert not M.recovery_admitted(admission, "momentum-cache-reconcile")
+    elif c["enabled"]:
+        assert c["recovery"]["armed"] is False
         assert c["status"] == "REVIEWED" and c["review"]["reviewed_by"]
         assert c["review"]["decision_ref"]
-        registry = json.loads((ROOT / "config/lane_registry.json").read_text())["lanes"]
-        contracts = json.loads((ROOT / "config/n8n_health_contracts.json").read_text())["contracts"]
-        allowlist = json.loads((ROOT / "config/n8n_run_allowlist.json").read_text())["lanes"]
-        admission = M.Admission(
-            {row["lane_id"]: row for row in registry},
-            {contract["id"]: contract for contract in contracts},
-            {entry["lane_id"]: entry for entry in allowlist},
-            None,
-            SHA,
-            {},
-        )
         assert M.monitor_admitted(admission)
     else:
+        assert c["recovery"]["armed"] is False
         if c["status"] == "DRAFT_FOR_OWNER_REVIEW":
             assert c["review"] is None
         else:
@@ -1324,8 +1331,32 @@ def test_integration_patch_fanin_stale_deadman_is_independent_host_p1(setup):
     )
     namespace = {**fanin.__dict__, "ROOT": root}
     exec(compile(ast.Module(body=[fn], type_ignores=[]), "candidate-fanin", "exec"), namespace)
+    # enabled alone (reconcile canary) must not page: monitor stays unadmitted here.
+    assert namespace[fn.name](root, NOW) == []
+    # Deadman arms only once the monitor is operatively admitted (canary + live_arg + flock).
+    registry = json.loads((root / "config/lane_registry.json").read_text())
+    registry["lanes"].append(
+        {
+            "lane_id": "momentum-lifecycle-monitor",
+            "state": "ACTIVE",
+            "scheduler": {"stage": "canary"},
+            "dispatch": {"class": "monitor"},
+        }
+    )
+    (root / "config/lane_registry.json").write_text(json.dumps(registry))
+    contracts = json.loads((root / "config/n8n_health_contracts.json").read_text())
+    contracts["contracts"].append(reviewed_fixture_contract("momentum-lifecycle-monitor"))
+    (root / "config/n8n_health_contracts.json").write_text(json.dumps(contracts))
+    allow = json.loads((root / "config/n8n_run_allowlist.json").read_text())
+    allow["lanes"]["momentum-lifecycle-monitor"] = {
+        "live_arg": ["--write-monitor"],
+        "lock_kind": "flock",
+        "lock": "/tmp/tradeai_momentum_lifecycle.lock",
+    }
+    (root / "config/n8n_run_allowlist.json").write_text(json.dumps(allow))
     findings = namespace[fn.name](root, NOW)
     assert findings[0]["severity"] == "P1"
+    assert findings[0]["item"] == "momentum-lifecycle-monitor:MONITOR_MISSING_OR_STALE"
     assert findings[0]["operator_action"] is False
     assert findings[0]["notification_dedupe_minutes"] is None
     report = {

@@ -546,8 +546,13 @@ def test_native_shadow_reason_binds_source_review_without_claiming_runtime_proof
     assert bindings["operator_decision_refs"]
     assert binding["ownership_confirmation"] == "OWNER_ACCEPTED"
     assert "NOT_MEASURED" in row["reason_evidence"]
-    assert row["scheduler"]["stage"] == "shadow"
-    assert row["dispatch"]["mode"] == "dry_run"
+    if lane_id == "momentum-cache-reconcile":
+        # Canary 2026-10-13 after five-facts OBSERVED; contract body digest unchanged.
+        assert row["scheduler"]["stage"] == "canary"
+        assert row["dispatch"]["mode"] == "live"
+    else:
+        assert row["scheduler"]["stage"] == "shadow"
+        assert row["dispatch"]["mode"] == "dry_run"
 
 
 def test_correlated_reasons_refuse_to_claim_coverage():

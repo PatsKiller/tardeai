@@ -920,13 +920,31 @@ def _governance_findings(root: Path, now: datetime, prev: dict[str, Any] | None 
 
 
 def _momentum_lifecycle_findings(root: Path, now: datetime) -> list[dict[str, Any]]:
-    """Read host monitor health receipt; host notifier remains independent of n8n."""
+    """Read host monitor health receipt; host notifier remains independent of n8n.
+
+    Candidate ``enabled`` alone is not enough: reconcile canary may arm the candidate while the
+    monitor stays shadow / ``live_arg`` null. The missing/stale deadman and monitor incidents fire
+    only once ``monitor_admitted`` (canary|cutover + live_arg + flock lock) is true — same gate as
+    ``scripts/n8n_momentum_lifecycle.py`` publication.
+    """
     from datetime import timedelta
     from zoneinfo import ZoneInfo
-    from scripts.lib.n8n_momentum_lifecycle import SCHEMA, MONITOR_REL, _finding, stamp
+    from scripts.lib.n8n_momentum_lifecycle import (
+        SCHEMA,
+        MONITOR_REL,
+        _finding,
+        load_admission,
+        monitor_admitted,
+        stamp,
+    )
 
     config = _load(ROOT / "config/n8n_momentum_lifecycle_candidate.json") or {}
     if config.get("enabled") is not True:
+        return []
+    try:
+        if not monitor_admitted(load_admission(ROOT)):
+            return []
+    except Exception:  # noqa: BLE001 — unreadable admission is silence, not a page
         return []
     doc = _load(root / MONITOR_REL) or {}
     observed = stamp(doc.get("as_of"))
