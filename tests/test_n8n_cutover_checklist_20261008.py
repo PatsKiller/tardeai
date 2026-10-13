@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from scripts import n8n_cutover_checklist as cl
+from scripts.lib.n8n_momentum_lifecycle import contract_body_digest
 
 LANE = "n8n-lab-watchdog"
 SHA = "a" * 40
@@ -156,7 +157,12 @@ def _acceptance(tmp_path):
                     "healthy": [{"check": "fresh", "text": "fresh fixture output"}],
                     "degraded": [{"check": "late", "text": "late fixture output"}],
                     "failed": [{"check": "missing", "text": "missing fixture output"}],
-                    "baseline": {"basis": "OPERATOR_SLO", "freshness_degraded_after_h": 24, "timeout_s": 60},
+                    "baseline": {
+                        "basis": "OPERATOR_SLO",
+                        "freshness_degraded_after_h": 24,
+                        "freshness_failed_after_h": 48,
+                        "timeout_s": 60,
+                    },
                     "alerting": {"degraded": {"notifier_priority": "P2"}, "failed": {"notifier_priority": "P1"}},
                     "remediation": {},
                     "evidence": {"verify": ["inspect fixture"]},
@@ -164,6 +170,13 @@ def _acceptance(tmp_path):
             ]
         },
     )
+    contract_path = tmp_path / cl.CONTRACTS_FILE
+    contract_document = json.loads(contract_path.read_text())
+    contract = contract_document["contracts"][0]
+    contract["ownership_confirmation"] = "OWNER_ACCEPTED"
+    contract["review"] = {"reviewed_by": "fixture-owner", "decision_ref": "fixture://explicit-body-review"}
+    contract["review"]["contract_body_sha256"] = contract_body_digest(contract)
+    _plant(tmp_path, str(cl.CONTRACTS_FILE), contract_document)
     packet = {
         "tested_sha": SHA,
         "deployed_sha": SHA,
@@ -436,6 +449,59 @@ def test_additional_drift_is_not_hidden_by_successful_receipts(tmp_path, change)
         )
     items = _items(tmp_path, packet)
     assert not items["natural_fire" if change == "pre_cutover_natural" else "shadow"]["done"]
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        "missing_owner",
+        "unconfirmed_owner",
+        "missing_reviewer",
+        "blank_reviewer",
+        "missing_decision",
+        "blank_decision",
+        "wrong_digest",
+        "changed_body",
+        "missing_review",
+        "malformed_review",
+        "malformed_baseline",
+    ],
+)
+def test_contract_review_cannot_be_inferred_from_successful_receipts(tmp_path, change):
+    packet = _acceptance(tmp_path)
+    path = tmp_path / cl.CONTRACTS_FILE
+    doc = json.loads(path.read_text())
+    contract = doc["contracts"][0]
+    if change in {"missing_owner", "unconfirmed_owner"}:
+        if change == "missing_owner":
+            contract.pop("ownership_confirmation")
+        else:
+            contract["ownership_confirmation"] = "NOT_MEASURED"
+        # A matching digest cannot manufacture an actual owner confirmation.
+        contract["review"]["contract_body_sha256"] = contract_body_digest(contract)
+    elif change in {"missing_reviewer", "blank_reviewer", "missing_decision", "blank_decision"}:
+        field = "reviewed_by" if "reviewer" in change else "decision_ref"
+        if change.startswith("missing"):
+            contract["review"].pop(field)
+        else:
+            contract["review"][field] = " "
+    elif change == "wrong_digest":
+        contract["review"]["contract_body_sha256"] = "0" * 64
+    elif change == "changed_body":
+        contract["purpose"]["text"] += " changed after review"
+    elif change == "missing_review":
+        contract.pop("review")
+    elif change == "malformed_baseline":
+        contract["baseline"] = ["malformed fixture baseline"]
+    else:
+        contract["review"] = ["malformed fixture review"]
+    path.write_text(json.dumps(doc))
+    _, errors = cl.acceptance_context(tmp_path, LANE, packet, SHA, NOW)
+    assert any("body-bound reviewed contract" in error for error in errors)
+    items = _items(tmp_path, packet)
+    assert not items["shadow"]["done"]
+    assert not items["canary"]["done"]
+    assert not items["natural_fire"]["done"]
 
 
 def test_acceptance_cli_reads_the_declared_packet_and_writes_no_state(tmp_path, monkeypatch, capsys):

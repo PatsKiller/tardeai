@@ -16,12 +16,14 @@ service from the host (read-only) or from the committed scheduler snapshot. Thes
 
 Hermetic: reads only repository files (the snapshot is committed); no crontab, no systemd, no network.
 """
+
 from __future__ import annotations
 
 import json
 import re
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -40,8 +42,12 @@ DATA = ROOT / "docs" / "implementation" / "n8n-maturity" / "data"
 SNAPSHOT = DATA / "scheduler_snapshot_20261009.json"
 REGISTRY = ROOT / "config" / "lane_registry.json"
 GATE = ROOT / "scripts" / "check_lane_registry.py"
-COVERS = ["scripts/reconcile_lane_registry.py", "scripts/lib/lane_registry.py",
-          "scripts/check_lane_registry.py", "config/lane_registry.json"]
+COVERS = [
+    "scripts/reconcile_lane_registry.py",
+    "scripts/lib/lane_registry.py",
+    "scripts/check_lane_registry.py",
+    "config/lane_registry.json",
+]
 
 
 @pytest.fixture(scope="module")
@@ -63,8 +69,13 @@ def committed():
 
 @pytest.fixture(scope="module")
 def result(inputs, committed):
-    return R.reconcile(committed, cron_text=inputs["cron_text"], units=inputs["units"],
-                       f_rows=inputs["f_rows"], evidence=inputs["evidence"])
+    return R.reconcile(
+        committed,
+        cron_text=inputs["cron_text"],
+        units=inputs["units"],
+        f_rows=inputs["f_rows"],
+        evidence=inputs["evidence"],
+    )
 
 
 def _lines(inputs):
@@ -77,24 +88,94 @@ def _blocking(problems):
 
 # ── determinism ──────────────────────────────────────────────────────────────────────────────────
 
+
 def test_committed_registry_is_the_generators_fixed_point(result):
     assert not _blocking(result["problems"]), result["problems"][:5]
     assert R.dump_registry(result["registry"]) == REGISTRY.read_text(encoding="utf-8"), (
         "config/lane_registry.json differs from reconcile_lane_registry.py output on the committed snapshot; "
         "re-run: python3 scripts/reconcile_lane_registry.py --snapshot-in "
-        "docs/implementation/n8n-maturity/data/scheduler_snapshot_20261009.json --write")
+        "docs/implementation/n8n-maturity/data/scheduler_snapshot_20261009.json --write"
+    )
 
 
 def test_generation_is_deterministic_from_the_hand_written_rows(inputs, committed):
     """Strip every generated row and regenerate twice: byte-identical, and identical to the commit."""
     hand = dict(committed, lanes=[r for r in committed["lanes"] if r.get("generated_by") != R.GENERATOR_VERSION])
-    a = R.reconcile(hand, cron_text=inputs["cron_text"], units=inputs["units"], f_rows=inputs["f_rows"],
-                    evidence=inputs["evidence"])
-    b = R.reconcile(hand, cron_text=inputs["cron_text"], units=inputs["units"], f_rows=inputs["f_rows"],
-                    evidence=inputs["evidence"])
+    a = R.reconcile(
+        hand, cron_text=inputs["cron_text"], units=inputs["units"], f_rows=inputs["f_rows"], evidence=inputs["evidence"]
+    )
+    b = R.reconcile(
+        hand, cron_text=inputs["cron_text"], units=inputs["units"], f_rows=inputs["f_rows"], evidence=inputs["evidence"]
+    )
     assert R.dump_registry(a["registry"]) == R.dump_registry(b["registry"])
     assert R.dump_registry(a["registry"]) == REGISTRY.read_text(encoding="utf-8")
     assert len(a["added"]) == sum(1 for r in committed["lanes"] if r.get("generated_by") == R.GENERATOR_VERSION)
+
+
+def test_native_shadow_admissions_are_preserved_before_the_generated_suffix(result, committed):
+    """Appending native rows after generated rows must not make regeneration reorder the commit."""
+    native_ids = {"momentum-lifecycle-monitor", "momentum-cache-reconcile"}
+    generated_start = next(
+        i for i, row in enumerate(committed["lanes"]) if row.get("generated_by") == R.GENERATOR_VERSION
+    )
+    assert native_ids <= {row["lane_id"] for row in committed["lanes"][:generated_start]}
+    regenerated = {row["lane_id"]: row for row in result["registry"]["lanes"]}
+    for row in committed["lanes"]:
+        if row["lane_id"] in native_ids | {"trade-ai-scalp-live"}:
+            assert regenerated[row["lane_id"]] == row
+            assert row["scheduler"]["stage"] == "shadow"
+            assert row["dispatch"]["mode"] == "dry_run"
+
+
+def test_canonical_row_order_preserves_actual_shadow_due_requests(committed):
+    """Registry order is provenance, not priority or a second scheduling authority."""
+    from scripts.lib import n8n_due as due
+    from scripts.lib import n8n_retry_policy as retry
+
+    native_ids = {"momentum-lifecycle-monitor", "momentum-cache-reconcile"}
+    native = [row for row in committed["lanes"] if row["lane_id"] in native_ids]
+    # Reproduce the former handwritten append order without changing any row field.
+    former_order = [row for row in committed["lanes"] if row["lane_id"] not in native_ids] + native
+    allowlist = json.loads((ROOT / "config/n8n_run_allowlist.json").read_text(encoding="utf-8"))
+    policies = retry.load_policies(ROOT / "config/n8n_retry_policies.json")
+    kwargs = {"lane_filter": sorted(native_ids | {"trade-ai-scalp-live"})}
+    now = datetime(2026, 10, 12, 14, 0, tzinfo=timezone.utc)
+    canonical = due.compute_due(committed["lanes"], allowlist, policies, None, now, **kwargs)
+    former = due.compute_due(former_order, allowlist, policies, None, now, **kwargs)
+    assert canonical["registry_sha"] != former["registry_sha"]
+    for key in ("items", "counts", "held", "errors", "truncated"):
+        assert canonical[key] == former[key], key
+    assert not canonical["errors"]
+    assert {item["lane_id"] for item in canonical["items"]} == set(kwargs["lane_filter"])
+    assert {item["mode"] for item in canonical["items"]} == {"dry_run"}
+
+
+@pytest.mark.parametrize("lane_id", ["momentum-lifecycle-monitor", "momentum-cache-reconcile"])
+def test_native_shadow_children_keep_only_the_declared_public_bridge_route(lane_id):
+    """The transitive URL read is allowed; credentials and LLM invocation authority are not added."""
+    from scripts import n8n_run_executor as executor
+
+    entries = json.loads((ROOT / "config/n8n_run_allowlist.json").read_text(encoding="utf-8"))["lanes"]
+    entry = next(row for row in entries if row["lane_id"] == lane_id)
+    assert entry["env_names"] == ["TRADEAI_GOVERNED_BRIDGE_URL"]
+    assert entry["env_allowlist_mode"] == "enforce"
+    env = {
+        executor.ENV_ALLOWLIST_MODE_ENV: "enforce",
+        "TRADEAI_STATE_ROOT": "/fixture/public-state",
+        "TRADEAI_GOVERNED_BRIDGE_URL": "http://127.0.0.1:8766/fixture-route",
+        "UNLISTED_BROKER_KEY": "inert-fixture-only",
+        "TRADEAI_N8N_RELAY_BEARER": "inert-fixture-only",
+    }
+    child, receipt = executor.build_child_env(env, lane_id, entry)
+    assert child is not None
+    assert child["TRADEAI_GOVERNED_BRIDGE_URL"] == env["TRADEAI_GOVERNED_BRIDGE_URL"]
+    assert child["TRADEAI_STATE_ROOT"] == env["TRADEAI_STATE_ROOT"]
+    assert child[executor.ENV_BOUND_NAMES_ENV] == "TRADEAI_GOVERNED_BRIDGE_URL"
+    assert "UNLISTED_BROKER_KEY" not in child
+    assert "TRADEAI_N8N_RELAY_BEARER" not in child
+    assert executor.LLM_BRIDGE_ENV not in child
+    assert executor.LLM_PROCESS_ENV not in child
+    assert receipt["effective_mode"] == "enforce"
 
 
 def test_dry_run_is_the_default_and_writes_nothing(tmp_path):
@@ -107,6 +188,7 @@ def test_dry_run_is_the_default_and_writes_nothing(tmp_path):
 
 
 # ── mapping ──────────────────────────────────────────────────────────────────────────────────────
+
 
 def test_every_live_crontab_line_maps_to_exactly_one_row(inputs, committed):
     lines = _lines(inputs)
@@ -131,8 +213,9 @@ def test_the_gate_sees_nothing_undeclared_on_the_snapshot(inputs, committed):
     found = {
         "cron": LR.discover_cron(inputs["cron_text"]),
         "systemd": [{"expression": t["unit"], "enabled_state": t["enabled_state"]} for t in inputs["units"]["timers"]],
-        "systemd_services": [{"expression": s["unit"], "enabled_state": s["enabled_state"]}
-                             for s in inputs["units"]["services"]],
+        "systemd_services": [
+            {"expression": s["unit"], "enabled_state": s["enabled_state"]} for s in inputs["units"]["services"]
+        ],
     }
     assert LR.find_undeclared(committed, found, n8n_known_ids=[]) == []
 
@@ -158,12 +241,21 @@ def test_no_active_row_maps_nothing(inputs, committed):
 def test_no_exemptions_remain_and_the_gate_enforces_it(tmp_path, inputs, committed):
     assert "undeclared_baseline" not in committed and "inherited_tranches" not in committed
     disco = tmp_path / "discovery.json"
-    disco.write_text(json.dumps({
-        "cron": LR.discover_cron(inputs["cron_text"]), "cron_commented": [],
-        "systemd": [{"expression": t["unit"], "enabled_state": t["enabled_state"]} for t in inputs["units"]["timers"]],
-        "systemd_services": [{"expression": s["unit"], "enabled_state": s["enabled_state"]}
-                             for s in inputs["units"]["services"]],
-    }), encoding="utf-8")
+    disco.write_text(
+        json.dumps(
+            {
+                "cron": LR.discover_cron(inputs["cron_text"]),
+                "cron_commented": [],
+                "systemd": [
+                    {"expression": t["unit"], "enabled_state": t["enabled_state"]} for t in inputs["units"]["timers"]
+                ],
+                "systemd_services": [
+                    {"expression": s["unit"], "enabled_state": s["enabled_state"]} for s in inputs["units"]["services"]
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
     cmd = [sys.executable, str(GATE), "--fail-on-new", "--no-exemptions", "--no-n8n", "--discovery-json", str(disco)]
     ok = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True, timeout=300)
     assert ok.returncode == 0, ok.stdout[-2000:] + ok.stderr[-2000:]
@@ -175,6 +267,7 @@ def test_no_exemptions_remain_and_the_gate_enforces_it(tmp_path, inputs, committ
 
 
 # ── classification ───────────────────────────────────────────────────────────────────────────────
+
 
 def _row_for_line(committed, line):
     ids = R.line_mapping(committed, [line])[line]
@@ -195,9 +288,16 @@ def test_broker_order_secret_lines_are_kept_on_cron(inputs, committed):
         _sched, cmd = R.split_schedule(line)
         _tok, stem = R.primary_script(cmd)
         words = set(w for w in re.split(r"[^a-z0-9]+", stem.lower()) if w)
-        hit = ([t for t in FORBIDDEN_COMMAND_TOKENS if t in cmd] or sorted(words & route) or sorted(words & secret)
-               or [w for w in sorted(broker) if re.search(r"(?<![a-z0-9])%s(?![a-z0-9])" % re.escape(w),
-                                                          R.strip_shell_comment(cmd).lower())])
+        hit = (
+            [t for t in FORBIDDEN_COMMAND_TOKENS if t in cmd]
+            or sorted(words & route)
+            or sorted(words & secret)
+            or [
+                w
+                for w in sorted(broker)
+                if re.search(r"(?<![a-z0-9])%s(?![a-z0-9])" % re.escape(w), R.strip_shell_comment(cmd).lower())
+            ]
+        )
         if not hit:
             continue
         checked += 1
@@ -217,7 +317,9 @@ def test_r0_rows_stay_active_with_the_recommendation(committed):
 
 
 def test_every_rationalized_line_carries_value_class_and_recommendation(inputs, committed):
-    allowed = re.compile(r"^(R0_ELIMINATE|KEEP_ON_CRON|EVENT_DRIVEN_CANDIDATE|MIGRATE_N8N|MERGE_INTO:\S+|PIPELINE:P\d\d)$")
+    allowed = re.compile(
+        r"^(R0_ELIMINATE|KEEP_ON_CRON|EVENT_DRIVEN_CANDIDATE|MIGRATE_N8N|MERGE_INTO:\S+|PIPELINE:P\d\d)$"
+    )
     for line in _lines(inputs):
         row = _row_for_line(committed, line)
         assert row.get("value_class"), row["lane_id"]
@@ -228,14 +330,24 @@ def test_recommendation_normalisation():
     n = R.normalise_recommendation
     assert n({"recommendation": "ELIMINATE (dead since 10-02)", "pipeline": "P08"}) == "R0_ELIMINATE"
     assert n({"recommendation": "KEEP on cron/systemd; n8n watches heartbeat", "pipeline": "P09"}) == "KEEP_ON_CRON"
-    assert n({"recommendation": "CONSOLIDATE-into P07", "pipeline": "P07", "value_class": "Operationally Important"}) == "PIPELINE:P07"
-    assert n({"recommendation": "MERGE-into P07 sweep", "pipeline": "P07", "value_class": "Duplicated"}) == "MERGE_INTO:P07"
-    assert n({"recommendation": "EVENT-DRIVEN (queue drain/poller) inside P10", "pipeline": "P10"}) == "EVENT_DRIVEN_CANDIDATE"
+    assert (
+        n({"recommendation": "CONSOLIDATE-into P07", "pipeline": "P07", "value_class": "Operationally Important"})
+        == "PIPELINE:P07"
+    )
+    assert (
+        n({"recommendation": "MERGE-into P07 sweep", "pipeline": "P07", "value_class": "Duplicated"})
+        == "MERGE_INTO:P07"
+    )
+    assert (
+        n({"recommendation": "EVENT-DRIVEN (queue drain/poller) inside P10", "pipeline": "P10"})
+        == "EVENT_DRIVEN_CANDIDATE"
+    )
     assert n({"recommendation": "REPLACE by registry-driven dispatcher", "pipeline": ""}) == "MIGRATE_N8N"
     assert n(None) is None
 
 
 # ── output signals ───────────────────────────────────────────────────────────────────────────────
+
 
 def test_generated_rows_have_evidence_or_are_flagged_unverified(committed):
     gen = [r for r in committed["lanes"] if r.get("generated_by") == R.GENERATOR_VERSION]
@@ -273,8 +385,11 @@ def test_generated_rows_have_evidence_or_are_flagged_unverified(committed):
     # their lane_ids stable (the generator would re-derive them as build-symbol-profiles / social-ingest /
     # overnight-batch-2).
     assert adopted and all(
-        ("dispatch" in r or "r1_pending" in r
-         or r["lane_id"] in ("build-symbol-profiles-at-0-19", "social-ingest-stocktwits", "overnight-batch-tax"))
+        (
+            "dispatch" in r
+            or "r1_pending" in r
+            or r["lane_id"] in ("build-symbol-profiles-at-0-19", "social-ingest-stocktwits", "overnight-batch-tax")
+        )
         and "generated_by" not in r
         for r in adopted
     )
@@ -295,7 +410,7 @@ def test_evidence_overlay_is_source_verified_and_host_neutral():
     doc = json.loads(R.EVIDENCE_PATH.read_text(encoding="utf-8"))
     assert doc["schema"] == "LaneOutputEvidence@v1"
     for lane_id, e in doc["entries"].items():
-        assert "declared_state" not in e, lane_id      # a proposal, never a ruling (PR #1597 review)
+        assert "declared_state" not in e, lane_id  # a proposal, never a ruling (PR #1597 review)
         if "proposed_state" in e:
             assert e["proposed_state"]["state"] in ("PAUSED", "RETIRED", "NEVER_SCHEDULED"), lane_id
             assert e["proposed_state"]["reason_evidence"], lane_id
@@ -317,19 +432,32 @@ def test_nothing_added_carries_a_home_path(committed):
 
 # ── units of the generator ───────────────────────────────────────────────────────────────────────
 
+
 def test_identical_jobs_on_two_schedules_become_one_multi_schedule_row():
-    text = ("0 10 * * 1-5 cd $PROJ && flock -n /tmp/a.lock $PY /home/u/x/scripts/snap.py >> logs/snap.log 2>&1\n"
-            "35 17 * * 1-5 cd $PROJ && flock -n /tmp/a.lock $PY /home/u/x/scripts/snap.py >> logs/snap.log 2>&1\n"
-            "5 * * * * cd /home/u/x && $PY scripts/other.py >> logs/other.log 2>&1\n")
+    text = (
+        "0 10 * * 1-5 cd $PROJ && flock -n /tmp/a.lock $PY /home/u/x/scripts/snap.py >> logs/snap.log 2>&1\n"
+        "35 17 * * 1-5 cd $PROJ && flock -n /tmp/a.lock $PY /home/u/x/scripts/snap.py >> logs/snap.log 2>&1\n"
+        "5 * * * * cd /home/u/x && $PY scripts/other.py >> logs/other.log 2>&1\n"
+    )
     reg = {"schema": "LaneRegistry@v1", "lanes": []}
-    res = R.reconcile(reg, cron_text=text, units={"timers": [], "services": []}, f_rows=[], evidence={},
-                      tokens=((), frozenset(), frozenset()))
+    res = R.reconcile(
+        reg,
+        cron_text=text,
+        units={"timers": [], "services": []},
+        f_rows=[],
+        evidence={},
+        tokens=((), frozenset(), frozenset()),
+    )
     assert not _blocking(res["problems"]), res["problems"]
     by = {r["lane_id"]: r for r in res["registry"]["lanes"]}
     assert set(by) == {"snap", "other"}
     assert by["snap"]["scheduler"]["schedules"] == ["0 10 * * 1-5", "35 17 * * 1-5"]
     assert "/home/" not in by["snap"]["scheduler"]["match"]
-    assert by["snap"]["output_signal"] == {"kind": "file_mtime", "path": "logs/snap.log", "evidence": "CRON_LOG_REDIRECT"}
+    assert by["snap"]["output_signal"] == {
+        "kind": "file_mtime",
+        "path": "logs/snap.log",
+        "evidence": "CRON_LOG_REDIRECT",
+    }
     assert by["other"]["expected_cadence_hours"] == 1.0
     # a relative log outside CURRENT keeps its tree, host-neutrally
     assert by["other"]["output_signal"]["path"] == "~/x/logs/other.log"
@@ -339,16 +467,25 @@ def test_identical_jobs_on_two_schedules_become_one_multi_schedule_row():
 
 def test_a_line_with_no_output_is_flagged_not_invented():
     text = "*/5 * * * * cd /home/u/x && $PY scripts/silent_job.py\n"
-    res = R.reconcile({"lanes": []}, cron_text=text, units={"timers": [], "services": []}, f_rows=[], evidence={},
-                      tokens=((), frozenset(), frozenset()))
+    res = R.reconcile(
+        {"lanes": []},
+        cron_text=text,
+        units={"timers": [], "services": []},
+        f_rows=[],
+        evidence={},
+        tokens=((), frozenset(), frozenset()),
+    )
     row = res["registry"]["lanes"][0]
     assert row["output_signal"]["kind"] == "none" and row["flags"] == [R.UNVERIFIED_OUTPUT]
 
 
 def test_a_systemd_row_does_not_declare_a_cron_line_that_mentions_its_unit():
     reg = {"lanes": [{"lane_id": "svc", "scheduler": {"kind": "systemd", "expression": "x.service"}}]}
-    found = {"cron": [{"expression": "@reboot systemctl --user start x.service"}], "systemd": [],
-             "systemd_services": [{"expression": "x.service", "enabled_state": "enabled"}]}
+    found = {
+        "cron": [{"expression": "@reboot systemctl --user start x.service"}],
+        "systemd": [],
+        "systemd_services": [{"expression": "x.service", "enabled_state": "enabled"}],
+    }
     out = LR.find_undeclared(reg, found)
     assert [o["kind"] for o in out] == ["cron"]
 
@@ -374,15 +511,34 @@ def test_tilde_output_paths_resolve_under_home(tmp_path, monkeypatch):
 
 
 def _disabled_unit(name="z.timer"):
-    return {"timers": [{"unit": name, "enabled_state": "disabled", "service": "z.service", "on_calendar": [],
-                        "monotonic_hours": None, "expected_cadence_hours": None, "exec_start": "", "stdout": "",
-                        "working_directory": ""}], "services": []}
+    return {
+        "timers": [
+            {
+                "unit": name,
+                "enabled_state": "disabled",
+                "service": "z.service",
+                "on_calendar": [],
+                "monotonic_hours": None,
+                "expected_cadence_hours": None,
+                "exec_start": "",
+                "stdout": "",
+                "working_directory": "",
+            }
+        ],
+        "services": [],
+    }
 
 
 def test_disabled_timer_is_recorded_not_ruled():
     """PR #1597 review: a disabled unit is never declared RETIRED/PAUSED/NEVER_SCHEDULED by the generator."""
-    res = R.reconcile({"lanes": []}, cron_text="", units=_disabled_unit(), f_rows=[], evidence={},
-                      tokens=((), frozenset(), frozenset()))
+    res = R.reconcile(
+        {"lanes": []},
+        cron_text="",
+        units=_disabled_unit(),
+        f_rows=[],
+        evidence={},
+        tokens=((), frozenset(), frozenset()),
+    )
     row = res["registry"]["lanes"][0]
     assert row["state"] == "ACTIVE" and row["status"] == R.STATUS_DISABLED_UNRULED
     assert row["operator_decision_pending"] is True and "disabled" in row["disabled_evidence"]
@@ -391,10 +547,25 @@ def test_disabled_timer_is_recorded_not_ruled():
 
 
 def test_evidence_proposal_is_carried_as_unruled_proposed_state():
-    ev = {"z": {"proposed_state": {"state": "RETIRED", "state_since": "2026-09-16", "reason_confidence": "CORRELATED",
-                                   "state_reason": "orphan", "reason_evidence": "doc.md"}}}
-    res = R.reconcile({"lanes": []}, cron_text="", units=_disabled_unit(), f_rows=[], evidence=ev,
-                      tokens=((), frozenset(), frozenset()))
+    ev = {
+        "z": {
+            "proposed_state": {
+                "state": "RETIRED",
+                "state_since": "2026-09-16",
+                "reason_confidence": "CORRELATED",
+                "state_reason": "orphan",
+                "reason_evidence": "doc.md",
+            }
+        }
+    }
+    res = R.reconcile(
+        {"lanes": []},
+        cron_text="",
+        units=_disabled_unit(),
+        f_rows=[],
+        evidence=ev,
+        tokens=((), frozenset(), frozenset()),
+    )
     row = res["registry"]["lanes"][0]
     assert row["state"] == "ACTIVE" and row["status"] == R.STATUS_DISABLED_UNRULED
     assert row["proposed_state"]["state"] == "RETIRED" and row["proposed_state"]["ruled"] is False
@@ -402,10 +573,16 @@ def test_evidence_proposal_is_carried_as_unruled_proposed_state():
 
 
 def test_committed_disabled_units_are_all_unruled(inputs, committed):
-    by_unit = {r["scheduler"]["expression"]: r for r in committed["lanes"]
-               if r.get("generated_by") == R.GENERATOR_VERSION and r["scheduler"]["kind"] == "systemd"}
-    disabled = [u["unit"] for u in inputs["units"]["timers"] + inputs["units"]["services"]
-                if str(u.get("enabled_state") or "") not in R.ENABLED_STATES and u["unit"] in by_unit]
+    by_unit = {
+        r["scheduler"]["expression"]: r
+        for r in committed["lanes"]
+        if r.get("generated_by") == R.GENERATOR_VERSION and r["scheduler"]["kind"] == "systemd"
+    }
+    disabled = [
+        u["unit"]
+        for u in inputs["units"]["timers"] + inputs["units"]["services"]
+        if str(u.get("enabled_state") or "") not in R.ENABLED_STATES and u["unit"] in by_unit
+    ]
     assert len(disabled) >= 7
     for u in disabled:
         r = by_unit[u]
@@ -414,6 +591,7 @@ def test_committed_disabled_units_are_all_unruled(inputs, committed):
 
 
 # ── stay_on_cron over the whole command (PR #1597 review) ──────────────────────────────────────
+
 
 def test_stay_tokens_come_from_config_and_route_selection_is_a_gateway_subset():
     doc = json.loads(R.STAY_TOKENS_PATH.read_text(encoding="utf-8"))
@@ -426,15 +604,25 @@ def test_stay_tokens_come_from_config_and_route_selection_is_a_gateway_subset():
 
 
 def test_stay_on_cron_scans_python_c_bodies_and_skips_comments():
-    toks = (tuple(FORBIDDEN_COMMAND_TOKENS), frozenset(FORBIDDEN_ROUTE_TOKENS), frozenset(SECRET_KEYS),
-            R.load_stay_tokens())
-    cmd = ('cd $PROJ && bash -c "$PY -c \\"import sys; import defense_execution as d; d.poll_fills()\\"" '
-           '>> logs/x.log 2>&1')
+    toks = (
+        tuple(FORBIDDEN_COMMAND_TOKENS),
+        frozenset(FORBIDDEN_ROUTE_TOKENS),
+        frozenset(SECRET_KEYS),
+        R.load_stay_tokens(),
+    )
+    cmd = (
+        'cd $PROJ && bash -c "$PY -c \\"import sys; import defense_execution as d; d.poll_fills()\\"" '
+        ">> logs/x.log 2>&1"
+    )
     assert R.stay_on_cron(cmd, "inline", tokens=toks)["token"] == "defense_execution"
-    assert R.stay_on_cron("flock -n /tmp/s.lock $PY scripts/schwab_stream_daemon.py", "schwab_stream_daemon",
-                          tokens=toks)["token"] == "schwab"
+    assert (
+        R.stay_on_cron("flock -n /tmp/s.lock $PY scripts/schwab_stream_daemon.py", "schwab_stream_daemon", tokens=toks)[
+            "token"
+        ]
+        == "schwab"
+    )
     assert R.stay_on_cron("$PY scripts/x.py --apply >> logs/x.log 2>&1  # holdings vs broker", "x", tokens=toks) is None
-    assert R.stay_on_cron("$PY scripts/stopwatch.py", "stopwatch", tokens=toks) is None   # whole words only
+    assert R.stay_on_cron("$PY scripts/stopwatch.py", "stopwatch", tokens=toks) is None  # whole words only
     assert R.strip_shell_comment('echo "a # b" # c') == 'echo "a # b"'
 
 
@@ -446,11 +634,15 @@ def test_reviewed_broker_lines_are_keep_on_cron(committed):
 
 def test_stay_class_beats_r0_and_the_row_stays_active(committed):
     by = {r["lane_id"]: r for r in committed["lanes"]}
-    for lid in ("start-trade-ai-lab-moomoo-opend", "run-protection-pipeline-at-30-20",
-                "run-protection-pipeline-at-x-30-9-16", "eod-open-trade-alert"):
+    for lid in (
+        "start-trade-ai-lab-moomoo-opend",
+        "run-protection-pipeline-at-30-20",
+        "run-protection-pipeline-at-x-30-9-16",
+        "eod-open-trade-alert",
+    ):
         r = by[lid]
         assert r["state"] == "ACTIVE" and r["recommendation"] == R.REC_KEEP and r.get("stay_on_cron"), lid
-        assert r["rationalization"]["recommendation"] == R.REC_R0, lid      # the R0 stays visible
+        assert r["rationalization"]["recommendation"] == R.REC_R0, lid  # the R0 stays visible
     assert R._final_recommendation(R.REC_R0, {"class": "broker_order", "token": "x"}) == R.REC_KEEP
     assert R._final_recommendation(R.REC_R0, None) == R.REC_R0
 

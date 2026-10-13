@@ -1,0 +1,307 @@
+{
+  "schema": "MomentumTomorrowChangePacket@v1",
+  "status": "REVIEWED_SOURCE_INITIAL_SHADOW_RUNTIME_PROOF_PENDING",
+  "operator_decision_ref": "operator:PR1715:2026-10-12T21:17:10.578Z",
+  "operator_instruction": "push pr1715 live; let n8n take over live tomorrow to test; make new workflows active with contract admission; disable legacy, do not delete",
+  "source_base_sha": "0d3d0d67f24f43e5bbbedbe4887e7d2d69d427bd",
+  "test_date": "2026-10-13",
+  "timezone": "America/New_York",
+  "earliest_business_producer_expectation": "2026-10-13T06:00:00-04:00; existing premarket legacy producer remains until its separate source/runtime gates pass",
+  "new_operative_contract_ids": [
+    "momentum-lifecycle-monitor",
+    "tradeai-momentum-lifecycle-candidate",
+    "momentum-cache-reconcile",
+    "trade-ai-scalp-live"
+  ],
+  "review_state": "Four corrected operative bodies REVIEWED/OWNER_ACCEPTED with actual root + independent review and preserved operator decision; numeric limits are source-declared provisional, not measured production acceptance",
+  "request_authority": {
+    "sole_requester": "tradeai-dispatcher",
+    "observer": "tradeai-momentum-lifecycle-candidate",
+    "scalp_generated_workflows_keep_inactive": [
+      "537142069dd5b352",
+      "15b22c523f844467"
+    ],
+    "recovery_armed": false,
+    "credential_automatic_recovery": false,
+    "helper_live_apply": "HELD_DISARMED; no successful manual repair is claimed"
+  },
+  "transitions": {
+    "momentum-lifecycle-monitor": {
+      "shadow": {
+        "state": "ACTIVE",
+        "scheduler.stage": "shadow",
+        "dispatch.mode": "dry_run",
+        "allowlist.live_arg": null
+      },
+      "canary": {
+        "state": "ACTIVE",
+        "scheduler.stage": "canary",
+        "dispatch.mode": "live",
+        "allowlist.live_arg": [
+          "--write-monitor"
+        ]
+      },
+      "cutover": {
+        "scheduler.kind": "n8n",
+        "scheduler.expression": "dispatcher",
+        "scheduler.stage": "cutover",
+        "dispatch.mode": "live"
+      }
+    },
+    "momentum-cache-reconcile": {
+      "shadow": {
+        "state": "ACTIVE",
+        "scheduler.stage": "shadow",
+        "dispatch.mode": "dry_run",
+        "allowlist.live_arg": null
+      },
+      "canary": {
+        "state": "ACTIVE",
+        "scheduler.stage": "canary",
+        "dispatch.mode": "live",
+        "allowlist.live_arg": [
+          "--apply"
+        ],
+        "admission": "HELD_DISARMED: actual helper apply requires candidate.enabled and recovery.armed. Preserve armed=false; apply must refuse unless root records an explicitly bounded reviewed arm/disarm action.",
+        "request_authority": "Live dispatch.mode emits on the declared cadence; it is not manual-only. No live transition while recovery remains disarmed."
+      },
+      "cutover": {
+        "scheduler.kind": "n8n",
+        "scheduler.expression": "dispatcher",
+        "scheduler.stage": "cutover",
+        "dispatch.mode": "live"
+      }
+    },
+    "trade-ai-scalp-live": {
+      "shadow": {
+        "state": "ACTIVE",
+        "scheduler.stage": "shadow",
+        "dispatch.mode": "dry_run",
+        "allowlist.live_arg": []
+      },
+      "canary": {
+        "state": "ACTIVE",
+        "scheduler.stage": "canary",
+        "dispatch.mode": "live",
+        "allowlist.live_arg": []
+      },
+      "cutover": {
+        "scheduler.kind": "n8n",
+        "scheduler.expression": "dispatcher",
+        "scheduler.stage": "cutover",
+        "dispatch.mode": "live"
+      }
+    }
+  },
+  "scalp_fallback_timing": {
+    "prior_local_guideline": "AGENTS23.3: three clean n8n market days before cron retirement",
+    "explicit_operator_direction": "Tomorrow2026-10-13 n8n takeover and comment legacy",
+    "code_day_counter_found": false,
+    "code_scope_inspected": [
+      "scripts/pipelines/cutover/_cutover.py cmd_cutover_lane",
+      "scripts/n8n_cutover_checklist.py lane_items",
+      "scripts/report_n8n_lane_readiness.py",
+      "scripts/lib/lane_stage_clamp.py",
+      "scripts/check_n8n_activation_grants.py"
+    ],
+    "treatment": "Root records actual timed operator direction overriding local fallback guideline; no code guard weakened. All actual contract/shadow/canary/currentSHA/outputs/duplicate-effect/grant gates remain."
+  },
+  "scalp_legacy_change": {
+    "lane_id": "trade-ai-scalp-live",
+    "source_declared_full_line": "*/5 9-15 * * 1-5 cd $PROJ && flock -n /tmp/tradeai_scalp_live.lock timeout 295 bash scripts/market_day_gate.sh $PY scripts/run_trade_ai_scalp_live.py >> logs/trade_ai_scalp_live.log 2>&1 # TRADEAI_LANE trade-ai-scalp-live",
+    "source_line_sha256": "4de39d3a43b8bd2a7420d48402e30493b40c39d2590093bd14b1b02179b01170",
+    "installed_archived_full_line": null,
+    "installed_archived_full_line_sha256": "NOT_MEASURED",
+    "comment_preview": "# RETIRED 2026-10-13 n8n-cutover trade-ai-scalp-live */5 9-15 * * 1-5 cd $PROJ && flock -n /tmp/tradeai_scalp_live.lock timeout 295 bash scripts/market_day_gate.sh $PY scripts/run_trade_ai_scalp_live.py >> logs/trade_ai_scalp_live.log 2>&1 # TRADEAI_LANE trade-ai-scalp-live",
+    "ready_to_apply": false,
+    "preflight": "Root archive actual grant-authorized full installed line, require exactly one source match and unchanged full-line fingerprint immediately before apply; no match-fragment-only approval. Reconcile actual argv/env/lock/295s/market gate. Current packet contains source declaration, not a live census.",
+    "dry_run_argv": [
+      "$PY",
+      "$CODE_ROOT/scripts/pipelines/cutover/_cutover.py",
+      "cutover",
+      "--lane",
+      "trade-ai-scalp-live",
+      "--workflow-id",
+      "dispatcher",
+      "--code-root",
+      "$CODE_ROOT",
+      "--state-root",
+      "$STATE_ROOT",
+      "--dry-run"
+    ],
+    "apply": "Same approved dry-run command with --apply only under exact lane cron grant after acceptance proof",
+    "rollback_argv": [
+      "$PY",
+      "$CODE_ROOT/scripts/pipelines/cutover/_cutover.py",
+      "rollback",
+      "--lane",
+      "trade-ai-scalp-live",
+      "--receipt",
+      "$APPLIED_CUTOVER_RECEIPT",
+      "--code-root",
+      "$CODE_ROOT",
+      "--state-root",
+      "$STATE_ROOT",
+      "--dry-run"
+    ],
+    "rollback": "Stop only scalp candidate scheduling first; require tagged line body fingerprint equals archived applied receipt before per-line restore. Raw cutover rollback only NOTES drift, so root preflight must refuse drift. Preserve every other scheduler and independent notifier/safety/recovery lane."
+  },
+  "receipt_identity": {
+    "actual_run_ids": "NOT_MEASURED; never precreate acceptance receipts",
+    "expected_natural_slot_examples": [
+      "d:momentum-lifecycle-monitor:dry_run:20261013T0600",
+      "d:momentum-cache-reconcile:dry_run:20261013T0600",
+      "d:trade-ai-scalp-live:dry_run:20261013T0930",
+      "d:trade-ai-scalp-live:live:20261013T0930"
+    ],
+    "requirements": "Actual strictRunReceipt@v2 run_id/lane/mode/slot/attempt, CURRENT source_sha, complete requested/started/finished chain, effects, n8n execution and natural trigger correlation; manual remains MANUAL_CANARY"
+  },
+  "other_lanes": [
+    {
+      "lane_id": "finviz-momentum-scalp-early-lane",
+      "role": "WATCH_ONLY_PROTECTED",
+      "declared_owner": "scalp",
+      "cron": "*/5 6-11 * * 1-5",
+      "allowlist_lock": null,
+      "source_declared_locks": [
+        "/tmp/tradeai_finviz_momentum_scalp.lock"
+      ],
+      "installed_line_sha256": "NOT_MEASURED",
+      "next_action": "Held: missing operative allowlist/dry-run/lock/owner/source closure or protected role"
+    },
+    {
+      "lane_id": "finviz-market-movers",
+      "role": "DATA_PRODUCER_OBSERVE",
+      "declared_owner": "scalp",
+      "cron": "*/15 6-16 * * 1-5",
+      "allowlist_lock": "/tmp/finviz_market_movers.lock",
+      "source_declared_locks": [
+        "/tmp/finviz_market_movers.lock"
+      ],
+      "installed_line_sha256": "NOT_MEASURED",
+      "next_action": "Existing reviewed shadow retained; live_arg null and env report closure remains incomplete. Do not invent enforced env closure."
+    },
+    {
+      "lane_id": "finviz-screener-runner",
+      "role": "DATA_PRODUCER_OBSERVE",
+      "declared_owner": "scalp",
+      "cron": "0 10 * * 1-5",
+      "allowlist_lock": "/tmp/finviz_screener.lock",
+      "source_declared_locks": [
+        "/tmp/finviz_screener.lock"
+      ],
+      "installed_line_sha256": "NOT_MEASURED",
+      "next_action": "Existing reviewed shadow retained; live_arg null and env report closure remains incomplete. Do not invent enforced env closure."
+    },
+    {
+      "lane_id": "trade-ai-scalp-live",
+      "role": "NAMED_EXCEPTION_WATCH_ONLY_NO_RETRY",
+      "declared_owner": "scalp",
+      "cron": "*/5 9-15 * * 1-5",
+      "allowlist_lock": "/tmp/tradeai_scalp_live.lock",
+      "source_declared_locks": [
+        "/tmp/tradeai_scalp_live.lock"
+      ],
+      "installed_line_sha256": "NOT_MEASURED",
+      "next_action": "Named live exception prepared in this packet; only generic requester, actual review/shadow/canary/runtime grants still pending."
+    },
+    {
+      "lane_id": "auto-proposal-general",
+      "role": "WATCH_ONLY_PROTECTED",
+      "declared_owner": "watch",
+      "cron": "*/30 9-16 * * 1-5",
+      "allowlist_lock": null,
+      "source_declared_locks": [
+        "/tmp/auto_proposal_general.lock"
+      ],
+      "installed_line_sha256": "NOT_MEASURED",
+      "next_action": "Held: missing operative allowlist/dry-run/lock/owner/source closure or protected role"
+    },
+    {
+      "lane_id": "momentum-scalp-advisory-alerts",
+      "role": "WATCH_ONLY_PROTECTED",
+      "declared_owner": "scalp",
+      "cron": "*/10 6-11 * * 1-5",
+      "allowlist_lock": null,
+      "source_declared_locks": [
+        "/tmp/auto_proposal_momentum_scalp.lock"
+      ],
+      "installed_line_sha256": "NOT_MEASURED",
+      "next_action": "Held: missing operative allowlist/dry-run/lock/owner/source closure or protected role"
+    },
+    {
+      "lane_id": "daily-incubator-refresh",
+      "role": "WATCH_ONLY_PROTECTED",
+      "declared_owner": "proposals",
+      "cron": "15 8 * * 1-5",
+      "allowlist_lock": "/tmp/daily-incubator-refresh.lock",
+      "source_declared_locks": [],
+      "installed_line_sha256": "NOT_MEASURED",
+      "next_action": "Existing reviewed shadow retained; live_arg null/env report plus source cron lacks allowlist flock. No live lock parity proof."
+    },
+    {
+      "lane_id": "warm-caches",
+      "role": "DATA_CACHE_OWNER_OBSERVE",
+      "declared_owner": "platform",
+      "cron": "*/8 * * * *",
+      "allowlist_lock": null,
+      "source_declared_locks": [],
+      "installed_line_sha256": "NOT_MEASURED",
+      "next_action": "Held: missing operative allowlist/dry-run/lock/owner/source closure or protected role"
+    },
+    {
+      "lane_id": "orchestrator-slot",
+      "role": "WATCH_ONLY_PROTECTED",
+      "declared_owner": "platform",
+      "cron": "30 17 * * 1-5",
+      "allowlist_lock": null,
+      "source_declared_locks": [],
+      "installed_line_sha256": "NOT_MEASURED",
+      "next_action": "Held: missing operative allowlist/dry-run/lock/owner/source closure or protected role"
+    },
+    {
+      "lane_id": "youtube-cookie-health-check",
+      "role": "CREDENTIAL_METADATA_OBSERVE_NO_PROBE",
+      "declared_owner": "platform",
+      "cron": "45 19 * * *",
+      "allowlist_lock": null,
+      "source_declared_locks": [],
+      "installed_line_sha256": "NOT_MEASURED",
+      "next_action": "Held: missing operative allowlist/dry-run/lock/owner/source closure or protected role"
+    },
+    {
+      "lane_id": "youtube-transcript-ingest",
+      "role": "WATCH_ONLY_EGRESS",
+      "declared_owner": "research",
+      "cron": "0 19 * * 1-5",
+      "allowlist_lock": null,
+      "source_declared_locks": [],
+      "installed_line_sha256": "NOT_MEASURED",
+      "next_action": "Held: missing operative allowlist/dry-run/lock/owner/source closure or protected role"
+    },
+    {
+      "lane_id": "incubator-proposal-promoter",
+      "role": "WATCH_ONLY_PROTECTED",
+      "declared_owner": "proposals",
+      "cron": "0 7,8,9,10,11,12,13,14,15,16,17 * * 1-5",
+      "allowlist_lock": null,
+      "source_declared_locks": [],
+      "installed_line_sha256": "NOT_MEASURED",
+      "next_action": "Held: missing operative allowlist/dry-run/lock/owner/source closure or protected role"
+    }
+  ],
+  "no_changes": [
+    "No host mutations, import/activation, sends, scans, provider/model calls, cookie/credential operations, broker/order/stop/session/2FA authority",
+    "Six generic workflow INDEX bytes unchanged; GET-only observer declared separately",
+    "Existing reviewed contract decisions and other allowlist/registry entries preserved",
+    "No autonomous date flip; root executes reviewed stage transitions under actual grants"
+  ],
+  "reviewed_operative_body_sha256": {
+    "momentum-lifecycle-monitor": "2f6db22a4b1a012760dd7eaa913c3040effbfeb7289c433409564d43d067ab32",
+    "tradeai-momentum-lifecycle-candidate": "f654528faee455c5817eb9cb844546bcde7e9936956e2143a4cdafcd364d856e",
+    "momentum-cache-reconcile": "ce53b699246fb1296551327e9abc914125335c1c7fdb6bc6a4cdf6d813d37939",
+    "trade-ai-scalp-live": "4e9bff63f522132a1bec7f2c22a6a871f09e252d00c45b5d15f4d2ce5de63afe"
+  },
+  "scalp_shadow_window": "Relevant RTH natural shadows09:30/09:35America/New_York; outside-RTH09:00/09:05 exits do not prove the business cycle.",
+  "corrected_contract_review_evidence": "MOMENTUM_CONTRACT_REVIEW_BINDINGS_20261012.json"
+}

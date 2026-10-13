@@ -20,6 +20,8 @@ def reviewed_fixture_contract(lane):
         next(c for c in json.loads(path.read_text())["contracts"] if c["id"] == "momentum-lifecycle-monitor")
     )
     contract.update(id=lane, status="REVIEWED", owner="fixture-owner", ownership_confirmation="OWNER_ACCEPTED")
+    # This synthetic reviewed owner contract declares bounded fixture work, not host measurements.
+    contract["baseline"].update(timeout_s=60, freshness_degraded_after_h=0.167, freshness_failed_after_h=0.25)
     contract["review"] = {"reviewed_by": "fixture-owner", "decision_ref": "fixture://operator-decision"}
     contract["review"]["contract_body_sha256"] = M.contract_body_digest(contract)
     return contract
@@ -444,11 +446,32 @@ def test_monitor_evaluation_completion_does_not_stop_scheduling_on_watched_p1(se
     assert report["acceptance"] == "NOT_MEASURED"
 
 
-def test_candidate_config_is_disabled_and_not_an_operative_review():
+def test_candidate_config_needs_operative_admission_and_keeps_recovery_disarmed():
     c = json.loads((ROOT / "config/n8n_momentum_lifecycle_candidate.json").read_text())
-    assert c["status"] == "DRAFT_FOR_OWNER_REVIEW" and c["review"] is None
-    assert c["enabled"] is False and c["recovery"]["armed"] is False
+    assert c["recovery"]["armed"] is False
     assert c["credential_recovery"]["automatic"] is False
+    if c["enabled"]:
+        assert c["status"] == "REVIEWED" and c["review"]["reviewed_by"]
+        assert c["review"]["decision_ref"]
+        registry = json.loads((ROOT / "config/lane_registry.json").read_text())["lanes"]
+        contracts = json.loads((ROOT / "config/n8n_health_contracts.json").read_text())["contracts"]
+        allowlist = json.loads((ROOT / "config/n8n_run_allowlist.json").read_text())["lanes"]
+        admission = M.Admission(
+            {row["lane_id"]: row for row in registry},
+            {contract["id"]: contract for contract in contracts},
+            {entry["lane_id"]: entry for entry in allowlist},
+            None,
+            SHA,
+            {},
+        )
+        assert M.monitor_admitted(admission)
+    else:
+        if c["status"] == "DRAFT_FOR_OWNER_REVIEW":
+            assert c["review"] is None
+        else:
+            assert c["status"] == "REVIEWED" and c["review"]["reviewed_by"]
+            assert c["review"]["decision_ref"]
+            assert c["review"]["contract_body_sha256"] == M.contract_body_digest(c)
 
 
 def test_host_collector_reads_exact_ledger_without_mutating_or_exposing_payload(setup):

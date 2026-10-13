@@ -12,6 +12,7 @@ Operator 2026-10-11: "Add, enable, and manage all deletes and purges." Covers:
     hermes self-tune, governed-universe history (files) and the librarian receipt.
 No database, no network: fake connections and tmp dirs only.
 """
+
 from __future__ import annotations
 
 import copy
@@ -33,6 +34,13 @@ from scripts import check_retention_policy as crp  # noqa: E402
 
 REG = json.loads((ROOT / "config" / "data_retention_policy.json").read_text(encoding="utf-8"))
 HOLDS = {"market_quotes", "schwab_stream_book", "schwab_stream_quotes"}
+
+
+@pytest.fixture(autouse=True)
+def _synthetic_retention_import_environment(monkeypatch):
+    """Keep real imports away from credential bootstrap; every SQL connection is fake."""
+    monkeypatch.setenv("DB_PASSWORD", "synthetic-retention-fixture-unused")
+    monkeypatch.setenv("TRADE_AI_DSN", "fixture-only-never-connect")
 
 
 # ── fake DB: rows carry "old" (the WHERE clause stand-in); DELETEs stage until COMMIT ──────────
@@ -137,6 +145,7 @@ def test_every_delete_row_archives_first_except_the_declared_holds():
 
 def test_enforced_policies_route_rows_through_archive_first():
     import db_retention as dr
+
     enforced = dr.enforced_policies(REG)
     assert len(enforced) == 125
     assert sum(1 for *_x, af in enforced if af) == 122  # 93 DELETE + 29 ARCHIVE_THEN_DELETE
@@ -163,14 +172,17 @@ def test_gate_rejects_archive_first_false_without_a_hold():
     assert any("archive_first_hold" in e for e in crp.validate(doc))
 
 
-@pytest.mark.parametrize("mut,needle", [
-    (lambda d: d["file_prune"][0].update(days="7"), "days must be an int"),
-    (lambda d: d["file_prune"][0].update(archive="yes"), "archive must be true or false"),
-    (lambda d: d["file_prune"].append(dict(d["file_prune"][0])), "duplicate id"),
-    (lambda d: d.update(archive_growth_cap_gb_month=0), "archive_growth_cap_gb_month"),
-    (lambda d: d["purge_paths"][0].update(state="WHATEVER"), "state"),
-    (lambda d: d["purge_paths"][0].update(scripts=["scripts/nope_does_not_exist.py"]), "does not exist"),
-])
+@pytest.mark.parametrize(
+    "mut,needle",
+    [
+        (lambda d: d["file_prune"][0].update(days="7"), "days must be an int"),
+        (lambda d: d["file_prune"][0].update(archive="yes"), "archive must be true or false"),
+        (lambda d: d["file_prune"].append(dict(d["file_prune"][0])), "duplicate id"),
+        (lambda d: d.update(archive_growth_cap_gb_month=0), "archive_growth_cap_gb_month"),
+        (lambda d: d["purge_paths"][0].update(state="WHATEVER"), "state"),
+        (lambda d: d["purge_paths"][0].update(scripts=["scripts/nope_does_not_exist.py"]), "does not exist"),
+    ],
+)
 def test_gate_rejects_bad_managed_fields(mut, needle):
     doc = copy.deepcopy(REG)
     mut(doc)
@@ -201,8 +213,9 @@ def test_managed_purge_dry_run_only_counts(tmp_path, monkeypatch):
 def test_managed_purge_apply_archives_verifies_then_deletes(tmp_path, monkeypatch):
     monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
     t = _Table()
-    r = ra.managed_purge(_Conn(t), table="foo", where_sql="t.old", label="lbl", writer="siem_retention_purge",
-                         apply=True, batch_rows=2)
+    r = ra.managed_purge(
+        _Conn(t), table="foo", where_sql="t.old", label="lbl", writer="siem_retention_purge", apply=True, batch_rows=2
+    )
     assert r["deleted"] == r["archived"] == 5 and r["batches"] == 3
     assert sorted(t.rows) == [6, 7, 8]
     adir = tmp_path / "archive" / "db_retention" / "foo"
@@ -211,6 +224,7 @@ def test_managed_purge_apply_archives_verifies_then_deletes(tmp_path, monkeypatc
     archived_ids = []
     for f in sorted(adir.glob("*.jsonl.gz")):
         import gzip
+
         archived_ids += [json.loads(line)["id"] for line in gzip.open(f, "rt")]
     assert sorted(archived_ids) == [1, 2, 3, 4, 5]
 
@@ -296,6 +310,7 @@ def test_archive_usage_and_growth_findings(tmp_path):
 
 def test_hygiene_report_carries_archive_growth(tmp_path, monkeypatch):
     import report_db_hygiene as h
+
     monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
     (tmp_path / "archive" / "db_retention" / "t").mkdir(parents=True)
     (tmp_path / "archive" / "db_retention" / "t" / "a.jsonl.gz").write_bytes(b"x" * 10)
@@ -363,9 +378,20 @@ class _RetConn:
 
 def _ret_setup(monkeypatch, tmp_path, conn, archive_first=True, file_prune=None):
     import db_retention as dr
-    doc = {"schema": "DataRetentionPolicy@v1", "policies": [
-        {"table": "foo", "ts_column": "created_at", "class": "DELETE", "window_days": 30, "archive_first": archive_first}],
-        "file_prune": file_prune or []}
+
+    doc = {
+        "schema": "DataRetentionPolicy@v1",
+        "policies": [
+            {
+                "table": "foo",
+                "ts_column": "created_at",
+                "class": "DELETE",
+                "window_days": 30,
+                "archive_first": archive_first,
+            }
+        ],
+        "file_prune": file_prune or [],
+    }
     monkeypatch.setattr(dr, "load_registry", lambda path=None: doc)
     monkeypatch.setattr(dr, "_connect", lambda: conn)
     monkeypatch.setattr(dr, "_disk_too_low_for_retention", lambda: None)
@@ -378,8 +404,12 @@ def test_dry_run_is_a_read_only_session_and_reports_the_plan(monkeypatch, tmp_pa
     proj = tmp_path / "proj"
     _files(proj / "snaps", n=2, age_days=30)
     conn = _RetConn()
-    dr = _ret_setup(monkeypatch, tmp_path, conn, file_prune=[
-        {"id": "snaps", "dir": "snaps", "pattern": "*.json", "days": 14, "archive": True}])
+    dr = _ret_setup(
+        monkeypatch,
+        tmp_path,
+        conn,
+        file_prune=[{"id": "snaps", "dir": "snaps", "pattern": "*.json", "days": 14, "archive": True}],
+    )
     assert dr.run(dry_run=True) == 0
     out = capsys.readouterr().out
     assert conn.readonly is True
@@ -394,8 +424,12 @@ def test_apply_archives_then_deletes_and_prunes_files_through_an_archive(monkeyp
     proj = tmp_path / "proj"
     _files(proj / "snaps", n=2, age_days=30)
     conn = _RetConn()
-    dr = _ret_setup(monkeypatch, tmp_path, conn, file_prune=[
-        {"id": "snaps", "dir": "snaps", "pattern": "*.json", "days": 14, "archive": True}])
+    dr = _ret_setup(
+        monkeypatch,
+        tmp_path,
+        conn,
+        file_prune=[{"id": "snaps", "dir": "snaps", "pattern": "*.json", "days": 14, "archive": True}],
+    )
     assert dr.run(dry_run=False) == 0
     out = capsys.readouterr().out
     assert "Total deleted: 4 rows; archived first: 4" in out
@@ -424,8 +458,12 @@ def test_file_prune_archive_failure_unlinks_nothing_and_fails_the_run(monkeypatc
     proj = tmp_path / "proj"
     files = _files(proj / "snaps", n=2, age_days=30)
     conn = _RetConn()
-    dr = _ret_setup(monkeypatch, tmp_path, conn, file_prune=[
-        {"id": "snaps", "dir": "snaps", "pattern": "*.json", "days": 14, "archive": True}])
+    dr = _ret_setup(
+        monkeypatch,
+        tmp_path,
+        conn,
+        file_prune=[{"id": "snaps", "dir": "snaps", "pattern": "*.json", "days": 14, "archive": True}],
+    )
     monkeypatch.setattr(ra, "verify_file_archive", lambda *a, **k: (False, "forced"))
     assert dr.run(dry_run=False) == 1
     assert all(f.exists() for f in files)
@@ -434,6 +472,7 @@ def test_file_prune_archive_failure_unlinks_nothing_and_fails_the_run(monkeypatc
 
 def test_legacy_file_prune_without_registry_rows_stays_unarchived():
     import db_retention as dr
+
     rows = dr.file_prune_policies({"policies": []})
     assert len(rows) == 4 and all(r["archive"] is False for r in rows)
     assert {r["id"] for r in dr.file_prune_policies(REG)} == {r["id"] for r in rows}
@@ -465,6 +504,7 @@ class _ProjCur:
 
 def test_project_row_math():
     import db_retention as dr
+
     sample = [({"id": i, "v": "z" * 100},) for i in range(50)]
     r = dr.project_row(_ProjCur([10, 700, 1400], sample), "foo", "created_at", 30, True)
     bpr = ra.gz_bytes_per_row(sample)
@@ -474,10 +514,17 @@ def test_project_row_math():
 
 def test_archive_projection_flags_rows_over_the_cap(monkeypatch):
     import db_retention as dr
-    doc = {"schema": "DataRetentionPolicy@v1", "archive_growth_cap_gb_month": 1e-9, "policies": [
-        {"table": "foo", "ts_column": "c", "class": "DELETE", "window_days": 30, "archive_first": True}]}
-    monkeypatch.setattr(dr, "project_row", lambda cur, t, c, d, af, n: {
-        "table": t, "status": "ok", "archive_first": af, "gb_per_month": 0.5})
+
+    doc = {
+        "schema": "DataRetentionPolicy@v1",
+        "archive_growth_cap_gb_month": 1e-9,
+        "policies": [{"table": "foo", "ts_column": "c", "class": "DELETE", "window_days": 30, "archive_first": True}],
+    }
+    monkeypatch.setattr(
+        dr,
+        "project_row",
+        lambda cur, t, c, d, af, n: {"table": t, "status": "ok", "archive_first": af, "gb_per_month": 0.5},
+    )
 
     class _C:
         def cursor(self):
@@ -493,6 +540,7 @@ def test_archive_projection_flags_rows_over_the_cap(monkeypatch):
 # ── converted owners ─────────────────────────────────────────────────────────────────────────
 def test_siem_purge_is_archive_first(monkeypatch, tmp_path):
     import siem_retention_purge as sp
+
     monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
     t = _Table()
     out = sp.purge(_Conn(t), 14, apply=False)
@@ -504,6 +552,7 @@ def test_siem_purge_is_archive_first(monkeypatch, tmp_path):
 
 def test_protection_prune_is_archive_first(monkeypatch, tmp_path):
     import prune_protection_proposals_retention as pp
+
     monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
     t = _Table()
     assert pp.prune(_Conn(t), dry_run=True)["eligible"] == 5 and _deletes(t) == 0
@@ -514,6 +563,7 @@ def test_protection_prune_is_archive_first(monkeypatch, tmp_path):
 
 def test_research_critique_dry_run_no_longer_executes_deletes(monkeypatch, tmp_path):
     import research_critique_pipeline as rcp
+
     monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
     t = _Table()
     r = rcp.retention_purge(_Conn(t), apply=False)
@@ -525,6 +575,7 @@ def test_research_critique_dry_run_no_longer_executes_deletes(monkeypatch, tmp_p
 
 def test_self_tune_purges_are_archive_first(monkeypatch, tmp_path):
     import hermes_autonomous_self_tune as st
+
     monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
     t = _Table()
     conn = _Conn(t)
@@ -536,12 +587,17 @@ def test_self_tune_purges_are_archive_first(monkeypatch, tmp_path):
 
 def test_librarian_purges_route_through_managed_purge(monkeypatch):
     from lib.hermes_librarian import retention as lr
+
     calls = []
 
     def fake(conn, **kw):
         calls.append(kw)
-        return {"eligible": 2, "deleted": 0 if not kw["apply"] else 2, "archived": 2 if kw["archive"] else 0,
-                "archive": kw["archive"]}
+        return {
+            "eligible": 2,
+            "deleted": 0 if not kw["apply"] else 2,
+            "archived": 2 if kw["archive"] else 0,
+            "archive": kw["archive"],
+        }
 
     monkeypatch.setattr(lr, "_managed_purge", lambda: fake)
 
@@ -563,8 +619,12 @@ def test_librarian_purges_route_through_managed_purge(monkeypatch):
 
     monkeypatch.setattr(lr, "load_policy", lambda: {"content_embeddings": {"max_age_owner": "db_retention"}})
     out = lr.apply_retention(_C(), dry_run=True)
-    assert [c["label"] for c in calls] == ["librarian_archived_180d", "librarian_failed_14d",
-                                           "librarian_orphan_news", "librarian_orphan_hermes_research"]
+    assert [c["label"] for c in calls] == [
+        "librarian_archived_180d",
+        "librarian_failed_14d",
+        "librarian_orphan_news",
+        "librarian_orphan_hermes_research",
+    ]
     assert all(c["writer"] == "hermes_librarian" and c["archive"] is True and c["apply"] is False for c in calls)
     assert {a["action"]: a.get("archive_first") for a in out["actions"]}["purge_news_orphans"] is True
     calls.clear()
@@ -575,12 +635,14 @@ def test_librarian_purges_route_through_managed_purge(monkeypatch):
 
 def test_committed_librarian_policy_turns_archive_first_on():
     import yaml
+
     doc = yaml.safe_load((ROOT / "config" / "hermes_librarian_policy.yaml").read_text())
     assert doc["archive_first"] is True and doc["content_embeddings"]["max_age_owner"] == "db_retention"
 
 
 def test_librarian_runner_writes_a_receipt(monkeypatch, tmp_path):
     import run_hermes_librarian_retention as rr
+
     monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
     p = rr.write_receipt({"ok": True, "dry_run": False, "actions": []})
     doc = json.loads(p.read_text())
@@ -589,6 +651,7 @@ def test_librarian_runner_writes_a_receipt(monkeypatch, tmp_path):
 
 def _universe(hist: Path, days_old: list[int]):
     from datetime import datetime, timedelta, timezone
+
     hist.mkdir(parents=True)
     now = datetime.now(timezone.utc)
     for i, d in enumerate(days_old):
@@ -598,6 +661,7 @@ def _universe(hist: Path, days_old: list[int]):
 
 def test_universe_history_archives_before_unlinking(monkeypatch, tmp_path):
     import hermes_universe_history_retention as uh
+
     hist = tmp_path / "hist"
     _universe(hist, [1, 2, 120, 121, 122])
     monkeypatch.setattr(uh, "_history_dir", lambda: hist)
@@ -615,6 +679,7 @@ def test_universe_history_archives_before_unlinking(monkeypatch, tmp_path):
 
 def test_universe_history_failed_archive_unlinks_nothing(monkeypatch, tmp_path):
     import hermes_universe_history_retention as uh
+
     hist = tmp_path / "hist"
     _universe(hist, [1, 120, 121])
     monkeypatch.setattr(uh, "_history_dir", lambda: hist)

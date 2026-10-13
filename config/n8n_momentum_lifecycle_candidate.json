@@ -162,5 +162,17 @@
     "mode": "EXISTING_GOVERNED_HOST_PATH",
     "runtime_review": "NOT_MEASURED",
     "never": "No n8n model/provider choice, arbitrary commands, source edits, protected financial or secret actions. Excluded lanes escalate only."
+  },
+  "admission_plan": {
+    "operator_decision_ref": "operator:PR1715:2026-10-12T21:17:10.578Z",
+    "source_pr": 1715,
+    "source_merged_sha": "0d3d0d67f24f43e5bbbedbe4887e7d2d69d427bd",
+    "requested_test_date": "2026-10-13",
+    "timezone": "America/New_York",
+    "source_state": "STAGED_OFF_PENDING_ACTUAL_REVIEW",
+    "own_monitor_enable_only_after_admission": true,
+    "helper_mode": "SHADOW_DRY_RUN; live apply held while recovery.armed=false; a live dispatch mode schedules cadence and is not manual-only",
+    "business_requester": "tradeai-dispatcher",
+    "observer": "tradeai-momentum-lifecycle-candidate"
   }
 }

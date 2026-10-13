@@ -25,6 +25,7 @@ def setup(tmp_path):
     (code / "SOURCE_COMMIT").write_text(SHA)
     path = ROOT / "docs/implementation/n8n-maturity/reconciliation-20261012/MOMENTUM_HEALTH_CONTRACT_PROPOSALS.json"
     contract = copy.deepcopy(next(c for c in json.loads(path.read_text())["contracts"] if c["id"] == repair.LANE))
+    contract["baseline"].update(timeout_s=60, freshness_degraded_after_h=0.167, freshness_failed_after_h=0.25)
     contract.update(id=repair.LANE, status="REVIEWED", owner="fixture-owner", ownership_confirmation="OWNER_ACCEPTED")
     contract["review"] = {"reviewed_by": "fixture-owner", "decision_ref": "fixture://actual-test-decision"}
     contract["review"]["contract_body_sha256"] = lifecycle.contract_body_digest(contract)

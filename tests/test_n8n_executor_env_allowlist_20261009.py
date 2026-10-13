@@ -41,6 +41,31 @@ SECRETS = {
     "TRADEAI_N8N_RELAY_BEARER",
     "N8N_ENCRYPTION_KEY_ESCROW",
 }
+# Exact public source inventory reviewed in MOMENTUM_TWO_NEW_ENV_STATIC_CLOSURES_ROOT_REVIEW_20261012.json.
+# A larger blanket limit would hide growth in older lanes; new lanes must match every named module/read.
+_REVIEWED_NEW_COMMON_MODULES = frozenset(
+    {
+        "scripts/lib/cron_schedule.py",
+        "scripts/lib/lane_dispatch.py",
+        "scripts/lib/n8n_coordination_gateway.py",
+        "scripts/lib/n8n_coordination_ledger.py",
+        "scripts/lib/n8n_due.py",
+        "scripts/lib/n8n_health_contracts.py",
+        "scripts/lib/n8n_model_job.py",
+        "scripts/lib/n8n_momentum_lifecycle.py",
+        "scripts/lib/n8n_remediation_catalogue.py",
+        "scripts/lib/n8n_retry_policy.py",
+        "scripts/lib/scanner_candidate_projection.py",
+        "scripts/n8n_coordination_gateway.py",
+        "scripts/pipelines/pipeline_manifest.py",
+    }
+)
+_REVIEWED_NEW_MODULES = {
+    "momentum-cache-reconcile": _REVIEWED_NEW_COMMON_MODULES | {"scripts/momentum_cache_reconcile.py"},
+    "momentum-lifecycle-monitor": _REVIEWED_NEW_COMMON_MODULES
+    | {"scripts/market_session.py", "scripts/n8n_momentum_lifecycle.py"},
+}
+_REVIEWED_NEW_READS = frozenset({"TRADEAI_GOVERNED_BRIDGE_URL", "TRADEAI_STATE_ROOT"})
 
 
 def environment(mode: str | None = "enforce") -> dict[str, str]:
@@ -411,6 +436,27 @@ def _module_env_keys(tree: ast.Module) -> set:
     return set()
 
 
+def _repo_script_path(token: str) -> Path:
+    """Resolve the executor's code-root token only inside this test checkout."""
+    relative = token.removeprefix("$CODE_ROOT/")
+    parts = Path(relative).parts
+    assert parts and parts[0] == "scripts" and ".." not in parts and "$" not in relative, token
+    resolved = Path(X.resolve_token(token, env={}, state_root=ROOT, code_root=ROOT))
+    if not resolved.is_absolute():
+        resolved = ROOT / resolved
+    resolved = resolved.resolve()
+    assert resolved.is_relative_to(ROOT) and resolved.is_file(), token
+    return resolved
+
+
+@pytest.mark.parametrize(
+    "token", ["/outside/scripts/fake.py", "$STATE_ROOT/scripts/fake.py", "$CODE_ROOT/../fake.py", "scripts/../fake.py"]
+)
+def test_repo_script_path_rejects_unowned_or_traversing_tokens(token):
+    with pytest.raises(AssertionError):
+        _repo_script_path(token)
+
+
 def _env_reads(path: Path, visited: set) -> set:
     """Static drift guard for the enforced lanes: literal env reads across the recursive local import closure;
     a non-literal read fails (the lane must go back to report)."""
@@ -476,13 +522,38 @@ def _env_reads(path: Path, visited: set) -> set:
     return reads
 
 
+def _assert_reviewed_new_closure(lane_id: str, visited: set[Path], reads: set[str]) -> None:
+    assert {p.relative_to(ROOT).as_posix() for p in visited} == _REVIEWED_NEW_MODULES[lane_id], (
+        f"{lane_id}: recursive module inventory drift; re-inventory before enforcing"
+    )
+    assert reads == _REVIEWED_NEW_READS, (
+        f"{lane_id}: literal environment inventory drift; re-inventory before enforcing"
+    )
+
+
+@pytest.mark.parametrize("lane_id", sorted(_REVIEWED_NEW_MODULES))
+@pytest.mark.parametrize("extra", ["module", "env_read"])
+def test_reviewed_new_closures_refuse_unexpected_modules_or_environment_reads(lane_id, extra):
+    visited = {ROOT / path for path in _REVIEWED_NEW_MODULES[lane_id]}
+    reads = set(_REVIEWED_NEW_READS)
+    if extra == "module":
+        visited.add(ROOT / "scripts/unreviewed_fixture_module.py")
+    else:
+        reads.add("UNLISTED_API_KEY")
+    with pytest.raises(AssertionError, match="inventory drift"):
+        _assert_reviewed_new_closure(lane_id, visited, reads)
+
+
 @pytest.mark.parametrize("lane_id", sorted(k for k, e in LANES.items() if e["env_allowlist_mode"] == "enforce"))
 def test_enforced_inventories_cover_every_literal_read_in_the_import_closure(lane_id):
     entry = LANES[lane_id]
-    scripts = [ROOT / t for t in entry["command"] if t.endswith(".py")]
+    scripts = [_repo_script_path(t) for t in entry["command"] if t.endswith(".py")]
     visited: set = set()
     reads = set().union(set(), *(_env_reads(p, visited) for p in scripts))
-    assert len(visited) <= 10, f"{lane_id}: closure grew to {len(visited)} modules; re-inventory before enforcing"
+    if lane_id in _REVIEWED_NEW_MODULES:
+        _assert_reviewed_new_closure(lane_id, visited, reads)
+    else:
+        assert len(visited) <= 10, f"{lane_id}: closure grew to {len(visited)} modules; re-inventory before enforcing"
     if entry.get("lock_kind", "safe_flock") == "safe_flock":
         reads |= {"PROJECT_ROOT", "SAFE_FLOCK_LOG_DIR"}
     assert reads <= X.CHILD_ENV_BASE_NAMES | set(entry["env_names"]), sorted(
@@ -501,4 +572,13 @@ def test_lane_mode_counts_match_the_pr():
     # 10 -> 9 (2026-10-11 train 3): research-intelligence-materialize (enforce) stays RETIRED into the premarket C1 stage.
     # 2026-10-11 G8 (grok-g8-g9-env, train 4): cio_production_eligibility's state-root reads are literals; the
     # re-measure in tests/test_grok_g8_g9_env_20261011.py shows no report lane flips, so the count is unchanged (9).
-    assert modes.count("enforce") == 9 and modes.count("report") == len(LANES) - 9
+    # The reviewed admission adds exactly two enforced entries. Their recursive literal
+    # inventories are checked above; source admission does not authorize a live run.
+    added = {"momentum-cache-reconcile", "momentum-lifecycle-monitor"}
+    assert added <= LANES.keys()
+    assert all(
+        LANES[lane]["env_allowlist_mode"] == "enforce"
+        and set(LANES[lane]["env_names"]) == _REVIEWED_NEW_READS - X.CHILD_ENV_BASE_NAMES
+        for lane in added
+    )
+    assert modes.count("enforce") == 11 and modes.count("report") == len(LANES) - 11

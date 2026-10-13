@@ -3,8 +3,8 @@
 The watcher was held out of W0 on 2026-10-10 because its GET /due filter names lane ``heartbeat-watch``, which has no
 registry row (403 ``bad_lane_filter``). These tests keep the committed contract honest about that:
 
-* the six generic contracts in config/n8n_health_contracts.json are exactly what the builder produces (a DRAFT
-  contract is regenerated, so a hand edit would be lost on the next --write);
+* the six generic contracts use the actual builder merge: REVIEWED bodies are kept,
+  authored DRAFT limits and review history survive, and unreviewed generated fields refresh;
 * the watcher contract's "held / no registry row" claim matches the registry, so the note cannot outlive the fix;
 * the observe mode the activation packet relies on (stage shadow -> skipped=dispatched_dry_run) is in the generated
   workflow, and the contract describes it;
@@ -17,6 +17,7 @@ Reads committed files only; no n8n, no network, no state.
 from __future__ import annotations
 
 import json
+import copy
 import sys
 from datetime import date
 from pathlib import Path
@@ -27,6 +28,8 @@ for _p in (str(ROOT), str(ROOT / "scripts")):
         sys.path.insert(0, _p)
 
 from scripts import build_n8n_health_contracts as B  # noqa: E402
+from scripts.lib import n8n_health_contracts as H  # noqa: E402
+from scripts.lib.n8n_momentum_lifecycle import contract_body_digest, contract_review_proven  # noqa: E402
 
 WF_DIR = ROOT / "docs" / "implementation" / "n8n-maturity" / "workflows"
 WID = "tradeai-heartbeat-watcher"
@@ -51,10 +54,57 @@ def test_committed_generic_contracts_match_the_builder():
     contracts, index = _contracts(), _index()
     for wid, wf in index.items():
         c = contracts[wid]
+        as_of = date.fromisoformat(c["baseline"]["computed_on"])
+        rebuilt = B.build(
+            registry={"lanes": []},
+            allowlist={"lanes": []},
+            catalogue={},
+            inventory={},
+            index={"workflows": [wf]},
+            ledger=None,
+            excluded=frozenset(),
+            as_of=as_of,
+            existing={"contracts": [c]},
+        )["contracts"][0]
         if c.get("status") == "REVIEWED":
-            continue                                   # an owner-reviewed contract is kept byte for byte
-        built = B.generic_contract(wf, date.fromisoformat(c["baseline"]["computed_on"]))
-        assert built == c, f"{wid}: committed DRAFT contract differs from build_n8n_health_contracts.generic_contract"
+            assert rebuilt == c, f"{wid}: owner-reviewed contract was rewritten"
+            continue
+        assert rebuilt["status"] == c["status"] == "DRAFT"
+        assert rebuilt["baseline"] == c["baseline"], f"{wid}: authored limits were replaced by defaults"
+        assert rebuilt["owner"] == c["owner"]
+        assert rebuilt.get("ownership_confirmation") == c.get("ownership_confirmation")
+        review = copy.deepcopy(c.get("review"))
+        if isinstance(review, dict) and "proposed_contract_body_sha256" in review:
+            review["proposed_contract_body_sha256"] = contract_body_digest(rebuilt)
+        assert rebuilt.get("review") == review, f"{wid}: review history was lost or fabricated"
+        assert H.validate_contract(rebuilt) == [], wid
+        assert contract_review_proven(rebuilt) is False, wid
+        generated = B.generic_contract(wf, as_of)
+        generated_fields = set(generated) - {"baseline", "owner", "ownership_confirmation", "review"}
+        assert {k: rebuilt[k] for k in generated_fields} == {k: generated[k] for k in generated_fields}, wid
+
+
+def test_authored_draft_limits_survive_without_manufacturing_review():
+    wf = _index()["tradeai-dispatcher"]
+    draft = copy.deepcopy(_contracts()[wf["id"]])
+    draft["baseline"].update(timeout_s=99, freshness_degraded_after_h=0.5, freshness_failed_after_h=1.0)
+    before = copy.deepcopy(draft)
+    rebuilt = B.build(
+        registry={"lanes": []},
+        allowlist={"lanes": []},
+        catalogue={},
+        inventory={},
+        index={"workflows": [wf]},
+        ledger=None,
+        excluded=frozenset(),
+        as_of=date(2026, 10, 12),
+        existing={"contracts": [draft]},
+    )["contracts"][0]
+    assert draft == before
+    assert rebuilt["baseline"] == draft["baseline"]
+    assert rebuilt["status"] == "DRAFT" and contract_review_proven(rebuilt) is False
+    assert rebuilt["review"]["baseline_correction_requires_review"] is True
+    assert rebuilt["review"]["proposed_contract_body_sha256"] == contract_body_digest(rebuilt)
 
 
 def test_held_note_matches_the_registry():

@@ -1,0 +1,134 @@
+{
+  "schema": "MomentumCorrectedContractReviewBindings@v1",
+  "reviewed_at_utc": "2026-10-12T23:34:26.776857+00:00",
+  "source_base_sha": "92596621a984afb9999abfddd9e875480f30a7ec",
+  "integrated_author_commit": "c77698b56",
+  "root_reviewer": "Codex integrator /root",
+  "independent_reviewer": "Codex /root/runner_isolation",
+  "independent_receipt": "N8N_CONTRACT_BASELINES_FINAL_INDEPENDENT_REVIEW_RUNNER_99E95E33_20261012.json",
+  "independent_receipt_sha256": "5923711efa6443cb487898c31b904dfa4a8df1f31d8736feeffa73e2a98df7da",
+  "operator_decision_refs": [
+    "operator:PR1715:2026-10-12T21:17:10.578Z",
+    "OPERATOR_MOMENTUM_LIVE_INSTRUCTION_20261012T2309Z.json"
+  ],
+  "records": [
+    {
+      "id": "momentum-lifecycle-monitor",
+      "body_sha256": "2f6db22a4b1a012760dd7eaa913c3040effbfeb7289c433409564d43d067ab32",
+      "previous_body_sha256": "fa4c4227887da80ba5dacd6b5a295e3aa33140655228df4542d02bf6984310d9",
+      "source_declared_baseline": {
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "Proposed */5 * * * * America/New_York monitor schedule; owner review pending",
+        "calendar": "Existing market_session trading-day/session controls; all_days health lanes preserve their own schedules. Six-AM scan-output expectation is distinct from five-minute RTH execution.",
+        "completion_allowance_s": 60,
+        "business_volume_baseline": "NOT_MEASURED",
+        "zero_go_or_proposals_valid": true,
+        "population_rule": "scanned = classified + manual only under declared scan_partition; overlays have separate populations; never force all UI counters equal",
+        "timeout_s": 60,
+        "freshness_degraded_after_h": 0.167,
+        "freshness_failed_after_h": 0.25,
+        "source_derived_correction": {
+          "as_of": "2026-10-12",
+          "evidence": "docs/implementation/n8n-maturity/reconciliation-20261012/N8N_CONTRACT_BASELINE_CORRECTION_20261012.json",
+          "basis": "SOURCE_DECLARATION_ONLY; existing builder 2x/3x cadence policy, round(., 3)",
+          "calendar": "Cadence thresholds apply within the existing source calendar; off-session and market-day requirements remain unchanged.",
+          "runtime_and_business_baseline": "NOT_MEASURED; no ledger, expected-fire or output observations collected by this audit"
+        }
+      },
+      "owner": "platform",
+      "ownership_confirmation": "OWNER_ACCEPTED",
+      "root_verdict": "PASS_SCOPED_SOURCE_BODY_AND_BINDING_REVIEW",
+      "independent_verdict": "PASS_SCOPED_SUBSTANTIVE_BODY_SOURCE_REVIEW; numerical correction and unchanged prior-reviewed purpose/edges/healthy/degraded/failed/owner/evidence checked"
+    },
+    {
+      "id": "tradeai-momentum-lifecycle-candidate",
+      "body_sha256": "f654528faee455c5817eb9cb844546bcde7e9936956e2143a4cdafcd364d856e",
+      "previous_body_sha256": "c1694054741468c2a4642b7dc2f2f633a02e4e9b7cd2489f289b8d0accb2d8ab",
+      "source_declared_baseline": {
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "Proposed */5 * * * * America/New_York monitor schedule; owner review pending",
+        "calendar": "Existing market_session trading-day/session controls; all_days health lanes preserve their own schedules. Six-AM scan-output expectation is distinct from five-minute RTH execution.",
+        "completion_allowance_s": 60,
+        "business_volume_baseline": "NOT_MEASURED",
+        "zero_go_or_proposals_valid": true,
+        "population_rule": "scanned = classified + manual only under declared scan_partition; overlays have separate populations; never force all UI counters equal",
+        "timeout_s": 50,
+        "freshness_degraded_after_h": 0.167,
+        "freshness_failed_after_h": 0.25,
+        "source_derived_correction": {
+          "as_of": "2026-10-12",
+          "evidence": "docs/implementation/n8n-maturity/reconciliation-20261012/N8N_CONTRACT_BASELINE_CORRECTION_20261012.json",
+          "basis": "SOURCE_DECLARATION_ONLY; existing builder 2x/3x cadence policy, round(., 3)",
+          "calendar": "Cadence thresholds apply within the existing source calendar; off-session and market-day requirements remain unchanged.",
+          "runtime_and_business_baseline": "NOT_MEASURED; no ledger, expected-fire or output observations collected by this audit"
+        }
+      },
+      "owner": "platform",
+      "ownership_confirmation": "OWNER_ACCEPTED",
+      "root_verdict": "PASS_SCOPED_SOURCE_BODY_AND_BINDING_REVIEW",
+      "independent_verdict": "PASS_SCOPED_SUBSTANTIVE_BODY_SOURCE_REVIEW; numerical correction and unchanged prior-reviewed purpose/edges/healthy/degraded/failed/owner/evidence checked"
+    },
+    {
+      "id": "momentum-cache-reconcile",
+      "body_sha256": "ce53b699246fb1296551327e9abc914125335c1c7fdb6bc6a4cdf6d813d37939",
+      "previous_body_sha256": "28713e20dbd31c8b66b68394f44fc8036ef96f9b0f10d97f7ed23c0e3256768c",
+      "source_declared_baseline": {
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "Proposed resettable projection only; owner accepts schedule and resource reserve before operative admission",
+        "calendar": "Existing market_session trading-day/session controls; all_days health lanes preserve their own schedules. Six-AM scan-output expectation is distinct from five-minute RTH execution.",
+        "completion_allowance_s": 60,
+        "business_volume_baseline": "NOT_MEASURED",
+        "zero_go_or_proposals_valid": true,
+        "population_rule": "scanned = classified + manual only under declared scan_partition; overlays have separate populations; never force all UI counters equal",
+        "class": "report",
+        "timeout_s": 60,
+        "freshness_degraded_after_h": 0.167,
+        "freshness_failed_after_h": 0.25,
+        "source_derived_correction": {
+          "as_of": "2026-10-12",
+          "evidence": "docs/implementation/n8n-maturity/reconciliation-20261012/N8N_CONTRACT_BASELINE_CORRECTION_20261012.json",
+          "basis": "SOURCE_DECLARATION_ONLY; existing builder 2x/3x cadence policy, round(., 3)",
+          "calendar": "Cadence thresholds apply within the existing source calendar; off-session and market-day requirements remain unchanged.",
+          "runtime_and_business_baseline": "NOT_MEASURED; no ledger, expected-fire or output observations collected by this audit"
+        }
+      },
+      "owner": "platform",
+      "ownership_confirmation": "OWNER_ACCEPTED",
+      "root_verdict": "PASS_SCOPED_SOURCE_BODY_AND_BINDING_REVIEW",
+      "independent_verdict": "PASS_SCOPED_SUBSTANTIVE_BODY_SOURCE_REVIEW; numerical correction and unchanged prior-reviewed purpose/edges/healthy/degraded/failed/owner/evidence checked"
+    },
+    {
+      "id": "trade-ai-scalp-live",
+      "body_sha256": "4e9bff63f522132a1bec7f2c22a6a871f09e252d00c45b5d15f4d2ce5de63afe",
+      "previous_body_sha256": "c2ab0d7f6c81c6aa76e697b356aac4762d0d50fde84460a192f411c4a17a4c2d",
+      "source_declared_baseline": {
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "Exact existing295s timeout and */5 9-15 * * 1-5 America/New_York cadence; host wrapper self-gates RTH09:30\u201316:00. Six-AM producer expectation is separate. Actual business volume baseline NOT_MEASURED.",
+        "calendar": "Existing market_session trading-day/session controls; all_days health lanes preserve their own schedules. Six-AM scan-output expectation is distinct from five-minute RTH execution.",
+        "completion_allowance_s": 295,
+        "business_volume_baseline": "NOT_MEASURED",
+        "zero_go_or_proposals_valid": true,
+        "population_rule": "scanned = classified + manual only under declared scan_partition; overlays have separate populations; never force all UI counters equal",
+        "timeout_s": 295,
+        "freshness_degraded_after_h": 0.167,
+        "freshness_failed_after_h": 0.25,
+        "source_derived_correction": {
+          "as_of": "2026-10-12",
+          "evidence": "docs/implementation/n8n-maturity/reconciliation-20261012/N8N_CONTRACT_BASELINE_CORRECTION_20261012.json",
+          "basis": "SOURCE_DECLARATION_ONLY; existing builder 2x/3x cadence policy, round(., 3)",
+          "calendar": "Cadence thresholds apply within the existing source calendar; off-session and market-day requirements remain unchanged.",
+          "runtime_and_business_baseline": "NOT_MEASURED; no ledger, expected-fire or output observations collected by this audit"
+        }
+      },
+      "owner": "scalp",
+      "ownership_confirmation": "OWNER_ACCEPTED",
+      "root_verdict": "PASS_SCOPED_SOURCE_BODY_AND_BINDING_REVIEW",
+      "independent_verdict": "PASS_SCOPED_SUBSTANTIVE_BODY_SOURCE_REVIEW; numerical correction and unchanged prior-reviewed purpose/edges/healthy/degraded/failed/owner/evidence checked"
+    }
+  ],
+  "review_scope": "Actual source-derived timeout/cadence and unchanged purpose/edges/criteria/owners reviewed; metadata-only binding preserves exact peer-reviewed body digests. Original owner declarations and operator scope preserved.",
+  "held_contracts": "Nine other corrected bodies stay DRAFT, including heartbeat; no whole-catalogue review or runtime activation granted.",
+  "runtime_acceptance": "NOT_MEASURED",
+  "source_ready": false,
+  "runtime_changes": false
+}

@@ -5,6 +5,7 @@ skip (scripts/siem_critical_notify.select_incidents). Hermetic: no live .env, no
 psycopg2 is stubbed only when it is not installed, the same way as
 tests/test_notification_intents_wave2_20261011.py.
 """
+
 from __future__ import annotations
 
 import io
@@ -31,6 +32,7 @@ def no_psycopg2(monkeypatch):
     try:
         import psycopg2  # noqa: F401
         import psycopg2.extras  # noqa: F401
+
         return
     except ImportError:
         pass
@@ -100,8 +102,13 @@ def test_one_failed_outcome_row_exits_nonzero_and_keeps_the_rest(no_psycopg2):
     saved = aos.save_outcomes(conn, rows, stats)
     assert saved == 1 and stats["save_failed"] == 1 and conn.commits == 1
     assert any(s.startswith("ROLLBACK TO SAVEPOINT aos_outcome") for s in conn.cur.sql)
-    summary = {"unscored_pairs": 2, "saved": saved, "save_failed": 1, "rule_write_failed": 0,
-               "source_performance_ok": True}
+    summary = {
+        "unscored_pairs": 2,
+        "saved": saved,
+        "save_failed": 1,
+        "rule_write_failed": 0,
+        "source_performance_ok": True,
+    }
     assert aos._exit_code(summary) == 1
     assert aos._exit_code({**summary, "save_failed": 0, "unscored_pairs": 0, "saved": 0}) == 0
 
@@ -114,8 +121,12 @@ def test_a_failed_calibration_rule_write_exits_nonzero(no_psycopg2):
     aos.write_calibration_to_rules(conn, stats)
     assert stats["rule_write_failed"] == 1
     assert any(s.startswith("ROLLBACK TO SAVEPOINT aos_rule") for s in conn.cur.sql)
-    assert aos._exit_code({"unscored_pairs": 0, "saved": 0, "save_failed": 0, "rule_write_failed": 1,
-                           "source_performance_ok": True}) == 1
+    assert (
+        aos._exit_code(
+            {"unscored_pairs": 0, "saved": 0, "save_failed": 0, "rule_write_failed": 1, "source_performance_ok": True}
+        )
+        == 1
+    )
 
 
 def _import_backtest():
@@ -125,6 +136,7 @@ def _import_backtest():
         except ModuleNotFoundError:
             sys.modules.setdefault(name, types.ModuleType(name))
     import trade_backtest_engine as tbe
+
     return tbe
 
 
@@ -142,9 +154,20 @@ def test_backtest_full_outage_exits_nonzero_partial_and_empty_stay_zero(no_psyco
 
 def _lockup_seed(path: Path) -> None:
     est = (date.today() + timedelta(days=30)).isoformat()
-    path.write_text(json.dumps({"lockups": {"SPCX": {"tranches": [
-        {"date": est, "approx": True, "desc": "2nd trading day after earnings", "pct": 10},
-    ]}}}), encoding="utf-8")
+    path.write_text(
+        json.dumps(
+            {
+                "lockups": {
+                    "SPCX": {
+                        "tranches": [
+                            {"date": est, "approx": True, "desc": "2nd trading day after earnings", "pct": 10},
+                        ]
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
 
 
 def test_earnings_lookup_error_exits_nonzero_and_does_not_write(monkeypatch, tmp_path):
@@ -171,8 +194,9 @@ def test_lockup_snap_writes_the_state_copy_and_leaves_the_seed(monkeypatch, tmp_
     monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path / "receipts"))
     import update_lockup_earnings_dates as ule
 
-    seed = tmp_path / "seed" / "ipo_lockups.json"
-    seed.parent.mkdir()
+    source_root = tmp_path / "source"
+    seed = source_root / "config" / "ipo_lockups.json"
+    seed.parent.mkdir(parents=True)
     _lockup_seed(seed)
     before = seed.read_bytes()
     state = tmp_path / "persistent" / "config" / "ipo_lockups.json"
@@ -187,14 +211,17 @@ def test_lockup_snap_writes_the_state_copy_and_leaves_the_seed(monkeypatch, tmp_
     assert seed.read_bytes() == before
     written = json.loads(state.read_text())["lockups"]["SPCX"]["tranches"][0]
     assert written["approx"] is False and "snapped" in written["note"]
-    assert not str(state).startswith(str(ROOT))
+    # The harness may own scratch inside the real checkout. The business boundary is
+    # the synthetic source seed tree versus its separate persistent output tree.
+    assert not state.resolve().is_relative_to(source_root.resolve())
+    assert state.resolve().is_relative_to((tmp_path / "persistent").resolve())
 
 
-def test_lockup_reader_prefers_the_state_copy_outside_tests():
+def test_lockup_reader_prefers_the_state_copy_outside_tests(tmp_path):
     import ipo_lockups
 
-    state = Path("/tmp/g10-state/config/ipo_lockups.json")
-    seed = Path("/tmp/g10-seed/config/ipo_lockups.json")
+    state = tmp_path / "persistent" / "config" / "ipo_lockups.json"
+    seed = tmp_path / "source" / "config" / "ipo_lockups.json"
     assert ipo_lockups.resolve_lockup_cfg(state, seed, under_test=True) == seed
     assert ipo_lockups.resolve_lockup_cfg(state, seed, under_test=False) == seed
     state.parent.mkdir(parents=True, exist_ok=True)
@@ -212,9 +239,16 @@ def test_hermes_weights_write_goes_to_the_state_root(no_psycopg2, tmp_path, monk
 
     checkout = tmp_path / "release" / "data" / "runtime" / "hermes_discovery_weights.json"
     checkout.parent.mkdir(parents=True)
-    checkout.write_text(json.dumps({
-        "version": "discovery-weights-v1", "source_deltas": {"feed": 0.1}, "trend_deltas": {},
-    }), encoding="utf-8")
+    checkout.write_text(
+        json.dumps(
+            {
+                "version": "discovery-weights-v1",
+                "source_deltas": {"feed": 0.1},
+                "trend_deltas": {},
+            }
+        ),
+        encoding="utf-8",
+    )
     state = tmp_path / "persistent" / "data" / "runtime" / "hermes_discovery_weights.json"
     monkeypatch.setattr(fb, "_CHECKOUT_WEIGHTS", checkout)
     monkeypatch.setattr(fb, "weights_path", lambda: state)
@@ -242,8 +276,14 @@ def test_siem_notifier_skips_n8n_bridge_rows_and_pages_the_rest(monkeypatch, tmp
     monkeypatch.setattr(scn, "STATE", tmp_path / "siem_notified.json")
     now = datetime.now(timezone.utc).isoformat()
     rows = [
-        {"severity": "P1", "component": "n8n:expected_services/tradeai-phone-status.service",
-         "event_type": "INACTIVE", "last": now, "events": 4, "groups": 1},
+        {
+            "severity": "P1",
+            "component": "n8n:expected_services/tradeai-phone-status.service",
+            "event_type": "INACTIVE",
+            "last": now,
+            "events": 4,
+            "groups": 1,
+        },
         {"severity": "P0", "component": "disk", "event_type": "FULL", "last": now, "events": 2, "groups": 1},
         {"severity": "P1", "component": "n8n", "event_type": "OTHER", "last": now, "events": 1, "groups": 1},
     ]

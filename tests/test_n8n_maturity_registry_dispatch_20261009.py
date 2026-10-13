@@ -44,9 +44,14 @@ GOOD_WATCH = {"factor": 2.0, "severity": "P2", "max_run_s": 600}
 
 
 def _row(lane_id="daily-report", expression="30 7 * * 1-5", match="scripts/daily_report.py", **extra):
-    row = {"lane_id": lane_id, "owner": "platform",
-           "scheduler": {"kind": "cron", "expression": expression, "match": match},
-           "expected_cadence_hours": 24, "state": "ACTIVE", "output_signal": {"kind": "none"}}
+    row = {
+        "lane_id": lane_id,
+        "owner": "platform",
+        "scheduler": {"kind": "cron", "expression": expression, "match": match},
+        "expected_cadence_hours": 24,
+        "state": "ACTIVE",
+        "output_signal": {"kind": "none"},
+    }
     row.update(extra)
     return row
 
@@ -59,6 +64,7 @@ KNOWN = {"daily-report", "close-capture", "material-change-detector"}
 
 
 # ── constants ────────────────────────────────────────────────────────────────────────────────────
+
 
 def test_constants_match_schema():
     schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
@@ -77,8 +83,12 @@ def test_constants_match_schema():
 def test_issue_codes_align_with_due_response_schema():
     due = json.loads(DUE_SCHEMA_PATH.read_text(encoding="utf-8"))
     codes = set(due["properties"]["errors"]["items"]["properties"]["code"]["enum"])
-    for code in (LD.ISSUE_BAD_CRON, LD.ISSUE_UNKNOWN_RETRY_POLICY, LD.ISSUE_CLASS_NOT_PERMITTED,
-                 LD.ISSUE_AFTER_UNKNOWN_LANE):
+    for code in (
+        LD.ISSUE_BAD_CRON,
+        LD.ISSUE_UNKNOWN_RETRY_POLICY,
+        LD.ISSUE_CLASS_NOT_PERMITTED,
+        LD.ISSUE_AFTER_UNKNOWN_LANE,
+    ):
         assert code in codes
 
 
@@ -87,32 +97,44 @@ def test_forbidden_tokens_derive_from_sources_of_truth():
     assert set(FORBIDDEN_COMMAND_TOKENS) <= set(LD.FORBIDDEN_LANE_SUBSTRINGS)
     assert set(SECRET_KEYS) <= set(LD.FORBIDDEN_LANE_SUBSTRINGS)
     assert {"secret", "stop", "position", "guard", "deploy", "sender", "sm-render", "sm_render"} <= set(
-        LD.FORBIDDEN_LANE_SUBSTRINGS)
+        LD.FORBIDDEN_LANE_SUBSTRINGS
+    )
     # Every source token is a phrase of the one word-boundary matcher (operator ruling 2026-10-10, REMEDIATION_PLAN
     # §7 ruling 2; tests/test_lane_dispatch_word_boundary_20261010.py), derived from the lists, not copied.
-    assert set(FORBIDDEN_ROUTE_TOKENS) | set(FORBIDDEN_COMMAND_TOKENS) | set(SECRET_KEYS) <= {
-        t for t, _ in LD._PHRASES}
+    assert set(FORBIDDEN_ROUTE_TOKENS) | set(FORBIDDEN_COMMAND_TOKENS) | set(SECRET_KEYS) <= {t for t, _ in LD._PHRASES}
 
 
 # ── parsing ──────────────────────────────────────────────────────────────────────────────────────
+
 
 def test_absent_blocks_are_inert():
     row = _row()
     assert LD.parse_dispatch_block(row) is None
     assert LD.dispatch_mode(row) == "off"
-    assert LD.parse_watch_block(row) == LD.WatchBlock(factor=2.0, severity=None, max_run_s=None,
-                                                      stay_behind=False, restart_safe=False)
+    assert LD.parse_watch_block(row) == LD.WatchBlock(
+        factor=2.0, severity=None, max_run_s=None, stay_behind=False, restart_safe=False
+    )
     assert LD.validate_dispatch_block(row, known_lane_ids=KNOWN, retry_policy_names={"transient-2"}) == []
 
 
 def test_good_block_parses_to_frozen_dataclasses():
     block = LD.parse_dispatch_block(_good_row())
     assert block == LD.DispatchBlock(
-        mode="live", cron=("30 7 * * 1-5",), tz="America/New_York", wave="W3", klass="report", priority=5,
-        retry_policy="transient-2", catchup_min=60, min_interval_s=120,
+        mode="live",
+        cron=("30 7 * * 1-5",),
+        tz="America/New_York",
+        wave="W3",
+        klass="report",
+        priority=5,
+        retry_policy="transient-2",
+        catchup_min=60,
+        min_interval_s=120,
         after=(LD.AfterEdge("close-capture", same_day=True, deadline_min=90, soft=False),),
         triggers=(LD.Trigger("run_done", lane_id="material-change-detector"),),
-        sweep_cron=("0 * * * *",), digest_window=None, digest_role=None)
+        sweep_cron=("0 * * * *",),
+        digest_window=None,
+        digest_role=None,
+    )
     with pytest.raises(Exception):
         block.mode = "off"  # type: ignore[misc]
     assert LD.parse_watch_block(_good_row()) == LD.WatchBlock(factor=2.0, severity="P2", max_run_s=600)
@@ -132,27 +154,30 @@ def test_good_block_validates_against_json_schema():
     jsonschema.validate({"dispatch": GOOD_DISPATCH, "watch": GOOD_WATCH}, schema)
 
 
-@pytest.mark.parametrize("mutate,code", [
-    (lambda d: d.update(mode="on"), "bad_block"),
-    (lambda d: d.pop("retry_policy"), "bad_block"),
-    (lambda d: d.update(surprise=1), "bad_block"),
-    (lambda d: d.update(tz="UTC"), "bad_block"),
-    (lambda d: d.update(wave="W9"), "bad_block"),
-    (lambda d: d.update(**{"class": "trading"}), "bad_block"),
-    (lambda d: d.update(priority=10), "bad_block"),
-    (lambda d: d.update(priority=True), "bad_block"),
-    (lambda d: d.update(retry_policy="Bad Name"), "bad_block"),
-    (lambda d: d.update(catchup_min=0), "bad_block"),
-    (lambda d: d.update(after=[{"same_day": True}]), "bad_block"),
-    (lambda d: d.update(after=[{"lane_id": "x", "deadline_min": 721}]), "bad_block"),
-    (lambda d: d.update(triggers=[{"source": "webhook"}]), "bad_block"),
-    (lambda d: d.update(triggers=[{"source": "receipt", "receipt_rel": "/etc/passwd"}]), "bad_block"),
-    (lambda d: d.update(digest_role="owner"), "bad_block"),
-    (lambda d: d.update(cron=["@daily"]), "bad_cron"),
-    (lambda d: d.update(cron=["61 7 * * 1-5"]), "bad_cron"),
-    (lambda d: d.update(cron=["30 7 * * MON"]), "bad_cron"),
-    (lambda d: d.update(sweep_cron=["0 * * *"]), "bad_cron"),
-])
+@pytest.mark.parametrize(
+    "mutate,code",
+    [
+        (lambda d: d.update(mode="on"), "bad_block"),
+        (lambda d: d.pop("retry_policy"), "bad_block"),
+        (lambda d: d.update(surprise=1), "bad_block"),
+        (lambda d: d.update(tz="UTC"), "bad_block"),
+        (lambda d: d.update(wave="W9"), "bad_block"),
+        (lambda d: d.update(**{"class": "trading"}), "bad_block"),
+        (lambda d: d.update(priority=10), "bad_block"),
+        (lambda d: d.update(priority=True), "bad_block"),
+        (lambda d: d.update(retry_policy="Bad Name"), "bad_block"),
+        (lambda d: d.update(catchup_min=0), "bad_block"),
+        (lambda d: d.update(after=[{"same_day": True}]), "bad_block"),
+        (lambda d: d.update(after=[{"lane_id": "x", "deadline_min": 721}]), "bad_block"),
+        (lambda d: d.update(triggers=[{"source": "webhook"}]), "bad_block"),
+        (lambda d: d.update(triggers=[{"source": "receipt", "receipt_rel": "/etc/passwd"}]), "bad_block"),
+        (lambda d: d.update(digest_role="owner"), "bad_block"),
+        (lambda d: d.update(cron=["@daily"]), "bad_cron"),
+        (lambda d: d.update(cron=["61 7 * * 1-5"]), "bad_cron"),
+        (lambda d: d.update(cron=["30 7 * * MON"]), "bad_cron"),
+        (lambda d: d.update(sweep_cron=["0 * * *"]), "bad_cron"),
+    ],
+)
 def test_malformed_block_raises_typed_error_and_mode_off(mutate, code):
     d = copy.deepcopy(GOOD_DISPATCH)
     mutate(d)
@@ -165,8 +190,10 @@ def test_malformed_block_raises_typed_error_and_mode_off(mutate, code):
     assert [i.code for i in issues] == [code]
 
 
-@pytest.mark.parametrize("watch", [{"factor": 0.5}, {"factor": 7}, {"severity": "P0"}, {"max_run_s": 0},
-                                   {"stay_behind": "yes"}, {"other": 1}, "P2"])
+@pytest.mark.parametrize(
+    "watch",
+    [{"factor": 0.5}, {"factor": 7}, {"severity": "P0"}, {"max_run_s": 0}, {"stay_behind": "yes"}, {"other": 1}, "P2"],
+)
 def test_malformed_watch(watch):
     row = _row(watch=watch)
     with pytest.raises(LD.DispatchBlockError):
@@ -176,6 +203,7 @@ def test_malformed_watch(watch):
 
 
 # ── validation ───────────────────────────────────────────────────────────────────────────────────
+
 
 def test_good_row_has_no_issues():
     assert LD.validate_dispatch_block(_good_row(), known_lane_ids=KNOWN, retry_policy_names={"transient-2"}) == []
@@ -205,15 +233,18 @@ def test_after_and_run_done_unknown_lane():
     row = _good_row()
     issues = LD.validate_dispatch_block(row, known_lane_ids={"daily-report"})
     assert [i.code for i in issues] == ["after_unknown_lane", "after_unknown_lane"]
-    row["dispatch"]["after"] = [{"lane_id": "daily-report"}]       # self-edge
+    row["dispatch"]["after"] = [{"lane_id": "daily-report"}]  # self-edge
     row["dispatch"]["triggers"] = []
     assert [i.code for i in LD.validate_dispatch_block(row, known_lane_ids=KNOWN)] == ["after_unknown_lane"]
 
 
 def test_issue_as_dict_shape():
     issue = LD.validate_dispatch_block(_good_row(), retry_policy_names=set())[0]
-    assert issue.as_dict() == {"lane_id": "daily-report", "code": "unknown_retry_policy",
-                               "detail": "retry_policy 'transient-2'"}
+    assert issue.as_dict() == {
+        "lane_id": "daily-report",
+        "code": "unknown_retry_policy",
+        "detail": "retry_policy 'transient-2'",
+    }
 
 
 # ── forbidden-token rule ─────────────────────────────────────────────────────────────────────────
@@ -240,9 +271,9 @@ def test_forbidden_lanes_never_eligible_even_live(lane_id, expression, match):
     row = _row(lane_id=lane_id, expression=expression, match=match, dispatch=copy.deepcopy(GOOD_DISPATCH))
     ok, why = LD.dispatch_eligible(row)
     assert ok is False and why.startswith("forbidden_token:")
-    assert LD.dispatch_mode(row) == "live"            # the block says live ...
+    assert LD.dispatch_mode(row) == "live"  # the block says live ...
     codes = [i.code for i in LD.validate_dispatch_block(row)]
-    assert "forbidden_lane" in codes                   # ... and validation refuses it
+    assert "forbidden_lane" in codes  # ... and validation refuses it
 
 
 def test_forbidden_token_in_command_or_script_field():
@@ -253,8 +284,15 @@ def test_forbidden_token_in_command_or_script_field():
 # Blocker 2 (review of #1595): glued compounds must block. Kept under the 2026-10-10 whole-word ruling by the
 # brand-substring and COMPOUND_PARTNERS rules; `reorder-watchlist` (a watchlist re-sort, re+order) is now allowed
 # by that ruling and is asserted allowed below.
-SUBSTRING_LANES = ["schwab-brokers-sync", "placeorders", "liveorders", "n8n-activation-grants",
-                   "trailingstop-manager", "positionsync", "schwab-token-refresh"]
+SUBSTRING_LANES = [
+    "schwab-brokers-sync",
+    "placeorders",
+    "liveorders",
+    "n8n-activation-grants",
+    "trailingstop-manager",
+    "positionsync",
+    "schwab-token-refresh",
+]
 
 
 def test_reorder_watchlist_is_allowed_under_the_word_boundary_ruling():
@@ -285,7 +323,7 @@ def test_bash_c_wrapper_and_string_scheduler_are_checked():
     wrapped = "0 9 * * 1-5 bash -c 'cd $PROJ && $PY scripts/schwab_trade_executor.py --apply'"
     assert LD.dispatch_eligible(_row(expression=wrapped))[0] is False
     string_sched = _row()
-    string_sched["scheduler"] = wrapped                  # a plain-string scheduler is checked whole
+    string_sched["scheduler"] = wrapped  # a plain-string scheduler is checked whole
     assert LD.dispatch_eligible(string_sched)[0] is False
     string_ok = _row()
     string_ok["scheduler"] = "0 7 * * 1-5 $PY scripts/daily_report.py"
@@ -293,8 +331,12 @@ def test_bash_c_wrapper_and_string_scheduler_are_checked():
 
 
 def test_exec_start_and_service_checked():
-    row = _row(lane_id="nightly-refresh", expression="nightly-refresh.timer", match=None,
-               exec_start="/bin/bash ~/.config/mcporter/refresh_token.sh")
+    row = _row(
+        lane_id="nightly-refresh",
+        expression="nightly-refresh.timer",
+        match=None,
+        exec_start="/bin/bash ~/.config/mcporter/refresh_token.sh",
+    )
     assert LD.dispatch_eligible(row)[0] is False
     assert LD.dispatch_eligible(_row(service="tradeai-n8n-run-executor.service"))[0] is False
 
@@ -309,11 +351,24 @@ def test_allowlist_argv_checked():
 
 def test_allowlist_loader_reads_real_argv(tmp_path):
     p = tmp_path / "allow.json"
-    p.write_text(json.dumps({"lanes": [
-        {"lane_id": "a", "command": ["$PY", "scripts/a.py"], "dry_run_arg": ["--dry-run"], "live_arg": [],
-         "market_gate": True},
-        {"lane_id": "b", "command": ["$PY", "scripts/b.py"], "dry_run_arg": None, "live_arg": ["--send"]},
-        "junk"]}), encoding="utf-8")
+    p.write_text(
+        json.dumps(
+            {
+                "lanes": [
+                    {
+                        "lane_id": "a",
+                        "command": ["$PY", "scripts/a.py"],
+                        "dry_run_arg": ["--dry-run"],
+                        "live_arg": [],
+                        "market_gate": True,
+                    },
+                    {"lane_id": "b", "command": ["$PY", "scripts/b.py"], "dry_run_arg": None, "live_arg": ["--send"]},
+                    "junk",
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
     got = LD.load_run_allowlist_argv(p)
     assert got == {"a": "scripts/market_day_gate.sh $PY scripts/a.py --dry-run", "b": "$PY scripts/b.py --send"}
     assert LD.load_run_allowlist_argv(tmp_path / "missing.json") == {}
@@ -322,12 +377,15 @@ def test_allowlist_loader_reads_real_argv(tmp_path):
     assert all(isinstance(v, str) and v for v in real.values())
 
 
-@pytest.mark.parametrize("marker", [
-    {"stay_on_cron": {"class": "secret", "token": "token"}},
-    {"stay_on_cron": True},
-    {"recommendation": "KEEP_ON_CRON"},
-    {"rationalization": {"recommendation": "KEEP_ON_CRON"}},
-])
+@pytest.mark.parametrize(
+    "marker",
+    [
+        {"stay_on_cron": {"class": "secret", "token": "token"}},
+        {"stay_on_cron": True},
+        {"recommendation": "KEEP_ON_CRON"},
+        {"rationalization": {"recommendation": "KEEP_ON_CRON"}},
+    ],
+)
 def test_stay_on_cron_and_keep_on_cron_are_hard_ineligible(marker):
     row = _good_row(**marker)
     ok, why = LD.dispatch_eligible(row)
@@ -338,12 +396,12 @@ def test_stay_on_cron_and_keep_on_cron_are_hard_ineligible(marker):
 
 def test_dispatchable_requires_mode_and_eligibility():
     assert LD.dispatchable(_good_row(), allowlist_argv={}) is True
-    assert LD.dispatchable(_row(), allowlist_argv={}) is False                     # no block: mode off
+    assert LD.dispatchable(_row(), allowlist_argv={}) is False  # no block: mode off
     off = _good_row()
     off["dispatch"]["mode"] = "off"
     assert LD.dispatchable(off, allowlist_argv={}) is False
     bad = _good_row()
-    bad["dispatch"]["mode"] = "sometimes"                                           # malformed: fail closed
+    bad["dispatch"]["mode"] = "sometimes"  # malformed: fail closed
     assert LD.dispatchable(bad, allowlist_argv={}) is False
     assert LD.dispatchable(_good_row(lane_id="trailingstop-manager"), allowlist_argv={}) is False
     assert LR.dispatchable is LD.dispatchable
@@ -352,23 +410,35 @@ def test_dispatchable_requires_mode_and_eligibility():
 # ── PR #1597 reconcile rows (fixture extract) ────────────────────────────────────────────────────
 
 FIXTURE_1597 = ROOT / "tests" / "fixtures" / "lane_registry_1597_keep_on_cron_extract.json"
-NAMED_IN_REVIEW = ["paper-execution-sweep", "atm-auto-approver", "at-observation-01",
-                   "at-observation-01-closeout", "mcporter-token-refresh", "tradeai-n8n-run-executor-service",
-                   "alpaca-paper-adapter", "options-lifecycle-run", "options-tick"]
+NAMED_IN_REVIEW = [
+    "paper-execution-sweep",
+    "atm-auto-approver",
+    "at-observation-01",
+    "at-observation-01-closeout",
+    "mcporter-token-refresh",
+    "tradeai-n8n-run-executor-service",
+    "alpaca-paper-adapter",
+    "options-lifecycle-run",
+    "options-tick",
+]
 
 
 def test_1597_stay_on_cron_and_keep_on_cron_rows_never_eligible():
     rows = json.loads(FIXTURE_1597.read_text(encoding="utf-8"))["lanes"]
     by_id = {r["lane_id"]: r for r in rows}
     stay = [r for r in rows if r.get("stay_on_cron")]
-    keep = [r for r in rows if r.get("recommendation") == "KEEP_ON_CRON"
-            or (r.get("rationalization") or {}).get("recommendation") == "KEEP_ON_CRON"]
+    keep = [
+        r
+        for r in rows
+        if r.get("recommendation") == "KEEP_ON_CRON"
+        or (r.get("rationalization") or {}).get("recommendation") == "KEEP_ON_CRON"
+    ]
     assert len(stay) >= 60 and len(keep) >= 120
     for row in rows:
         live = dict(row, dispatch=copy.deepcopy(GOOD_DISPATCH))
         assert LD.dispatch_eligible(live, exceptions={})[0] is False, row["lane_id"]
         if row["lane_id"] in LD.load_policy_exceptions():
-            continue                       # AGENTS 4.0.0 §23.3 exception; pinned in the scalp tests below
+            continue  # AGENTS 4.0.0 §23.3 exception; pinned in the scalp tests below
         assert LD.dispatch_eligible(live)[0] is False, row["lane_id"]
         assert LD.dispatchable(live) is False, row["lane_id"]
     for lane in NAMED_IN_REVIEW:
@@ -397,9 +467,15 @@ def test_mode_off_on_forbidden_lane_is_not_an_issue():
 
 # ── re-exports + gate hook ───────────────────────────────────────────────────────────────────────
 
+
 def test_lane_registry_reexports():
-    for name in ("dispatch_eligible", "dispatch_mode", "parse_dispatch_block", "parse_watch_block",
-                 "validate_dispatch_block"):
+    for name in (
+        "dispatch_eligible",
+        "dispatch_mode",
+        "parse_dispatch_block",
+        "parse_watch_block",
+        "validate_dispatch_block",
+    ):
         assert getattr(LR, name) is getattr(LD, name)
 
 
@@ -416,7 +492,7 @@ def test_registry_dispatch_errors_hook():
 # ── live registry (read-only) ────────────────────────────────────────────────────────────────────
 
 #: n8n-native lanes (no host line): dispatcher shape without a cron twin.
-N8N_NATIVE_SHADOW = frozenset()
+N8N_NATIVE_SHADOW = frozenset({"momentum-lifecycle-monitor", "momentum-cache-reconcile"})
 N8N_NATIVE_CANARY = frozenset({"heartbeat-watch"})
 
 
@@ -454,7 +530,9 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
             assert allow[lane]["live_arg"] == [] and allow[lane]["dry_run_arg"] == ["--dry-run"], lane
             assert LD.r1_class_admission(row, allow[lane])[0] is True, lane
             continue
-        if lane in CANARY_ROWS:  # canary wave 1 (2026-10-11): the §23.18 (c) canary shape, tests/test_canary_wave1_20261011.py
+        if (
+            lane in CANARY_ROWS
+        ):  # canary wave 1 (2026-10-11): the §23.18 (c) canary shape, tests/test_canary_wave1_20261011.py
             assert mode == "live" and row["scheduler"].get("stage") == "canary", lane
             assert LD.r1_class_admission(row, allow[lane]) == (True, "r1_admitted:ingest"), lane
             continue
@@ -492,12 +570,17 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
     # premarket C1 stage (train 2 rows win), five are pinned off the dispatcher by SW4 EXCLUDED
     # (tests/test_sw4_shadow_wave4_20261011.py) and sec-filings-feed by the W4 provider-owner EXCLUDED list
     # (tests/test_w4_provider_owners_shadow_20261011.py): 22 - 5 - 5 - 1 = 11 shadow rows.
-    refactor = {r["lane_id"] for r in rows if (r.get("scheduler") or {}).get("wave") in
-                {"R2-05", "R2-06", "R2-07", "R2-08"}}
+    refactor = {
+        r["lane_id"] for r in rows if (r.get("scheduler") or {}).get("wave") in {"R2-05", "R2-06", "R2-07", "R2-08"}
+    }
     assert len(refactor) == 11 and refactor <= set(shadow), refactor
-    assert len(shadow) == 54 + 3 + 15 - len(CANARY_ROWS) - 17 + 10 + 11, shadow
+    # The reviewed momentum tranche adds two native shadow rows and the existing
+    # named scalp exception at shadow; it adds no live dispatch row.
+    assert len(shadow) == 54 + 3 + 15 - len(CANARY_ROWS) - 17 + 10 + 11 + len(N8N_NATIVE_SHADOW) + 1, shadow
     # heartbeat-watch moved shadow → canary (N8N_NATIVE_CANARY) 2026-10-11.
-    assert sorted(r["lane_id"] for r in rows if LD.dispatch_mode(r) == "live") == sorted(CANARY_ROWS | N8N_NATIVE_CANARY)
+    assert sorted(r["lane_id"] for r in rows if LD.dispatch_mode(r) == "live") == sorted(
+        CANARY_ROWS | N8N_NATIVE_CANARY
+    )
 
 
 #: canary wave 1 (2026-10-11): the only rows at dispatch.mode live (stage canary, the cron line's flock lock).
@@ -505,8 +588,16 @@ CANARY_ROWS = frozenset({"research-insight-extractor"})
 
 
 #: wave D2: allowlist entries that existed (with a live_arg) before the dispatcher row was added.
-PREEXISTING_LIVE_ARG = frozenset({"job-coverage-monitor", "source-attribution-monitor", "catalyst-calibration-monitor",
-                                  "watch-directives-monitor", "maturity-remeasure"})
+PREEXISTING_LIVE_ARG = frozenset(
+    {
+        "job-coverage-monitor",
+        "source-attribution-monitor",
+        "catalyst-calibration-monitor",
+        "watch-directives-monitor",
+        "maturity-remeasure",
+        "trade-ai-scalp-live",
+    }
+)
 #: wave D2: apply-gated scripts (no --apply = dry run that writes nothing; proven by a before/after snapshot under a
 #: read-only Postgres session, n8n-maturity dispatch-shadow-wave2 evidence).
 APPLY_GATED_DRY_DEFAULT = frozenset({"catalyst-symbol-impact", "catalyst-graph", "cio-draft-plan-hygiene"})
@@ -538,8 +629,9 @@ def test_wave_d2_dispatch_cron_equals_the_row_schedule_and_locks_match_cron():
         assert r["dispatch"]["cron"] == [r["scheduler"]["expression"]], r["lane_id"]
         assert r["dispatch"]["class"] in ("monitor", "report", "pipeline", "hygiene"), r["lane_id"]
         assert LD.r1_class_admission(r)[1] == "pre_r1_class", r["lane_id"]
-    locks = {allow[x]["lock"] for x in ("data-gap-resolver-at-0-10-16", "data-gap-resolver-pre",
-                                         "data-gap-resolver-weekly")}
+    locks = {
+        allow[x]["lock"] for x in ("data-gap-resolver-at-0-10-16", "data-gap-resolver-pre", "data-gap-resolver-weekly")
+    }
     assert locks == {"/tmp/data_gap_resolver.lock"}
 
 
@@ -549,7 +641,8 @@ def test_live_rows_naming_broker_order_secret_scripts_are_ineligible():
         sched = row.get("scheduler") or {}
         blob = " ".join(str(v) for v in (row["lane_id"], sched.get("expression"), sched.get("match")) if v).lower()
         if any(t in blob for t in FORBIDDEN_COMMAND_TOKENS) or any(
-                t in blob for t in ("broker", "place_order", "secret", "sm-render", "sm_render")):
+            t in blob for t in ("broker", "place_order", "secret", "sm-render", "sm_render")
+        ):
             named += 1
             assert LD.dispatch_eligible(row, exceptions={})[0] is False, row["lane_id"]
             if row["lane_id"] not in LD.load_policy_exceptions():
@@ -560,7 +653,7 @@ def test_live_rows_naming_broker_order_secret_scripts_are_ineligible():
 def test_scalp_lane_eligible_only_through_the_policy_exception():
     """AGENTS 4.0.0 §23.3 + operator 2026-10-09 ~18:05 ET: trade-ai-scalp-live wraps market_day_gate.sh (a
     pipeline_manifest excluded token). The config exception lifts exactly that token; without it the lane is
-    ineligible for exactly that reason. Mode stays off, so it is still not dispatchable."""
+    ineligible for exactly that reason. The reviewed shadow admission is dispatchable only as dry_run."""
     rows = {r["lane_id"]: r for r in _live_rows()}
     if "trade-ai-scalp-live" not in rows:
         pytest.skip("scalp row not present")
@@ -574,30 +667,44 @@ def test_scalp_lane_eligible_only_through_the_policy_exception():
     # registry-ops-crons 2026-10-09: the expression is the bare schedule; the command text it carried is kept
     # in scheduler.command_text, which the forbidden-token scan still reads.
     assert LD.dispatch_eligible(bare, exceptions={}) == (
-        False, "forbidden_token:market_day_gate.sh@scheduler.command_text")
+        False,
+        "forbidden_token:market_day_gate.sh@scheduler.command_text",
+    )
     assert LD.dispatch_eligible(bare) == (True, "eligible:policy_exception:market_day_gate.sh")
-    assert LD.dispatch_mode(row) == "off" and LD.dispatchable(row) is False
+    from scripts.lib.lane_stage_clamp import clamp_mode
+
+    assert LD.dispatch_mode(row) == "dry_run" and LD.dispatchable(row) is True
+    assert row["scheduler"]["kind"] == "cron" and row["scheduler"]["stage"] == "shadow"
+    assert row["dispatch"]["cron"] == [row["scheduler"]["expression"]]
+    assert clamp_mode("trade-ai-scalp-live", "live", list(rows.values()))["effective_mode"] == "dry_run"
 
 
 def test_only_the_excepted_lane_changes_eligibility_in_the_live_registry():
-    flipped = [r["lane_id"] for r in _live_rows()
-               if LD.dispatch_eligible(r)[0] != LD.dispatch_eligible(r, exceptions={})[0]]
+    flipped = [
+        r["lane_id"] for r in _live_rows() if LD.dispatch_eligible(r)[0] != LD.dispatch_eligible(r, exceptions={})[0]
+    ]
     assert flipped in ([], ["trade-ai-scalp-live"])
 
 
 # ── policy exceptions (config/lane_dispatch_policy_exceptions.json) ─────────────────────────────
 
-SCALP_EXPR = ("*/5 9-15 * * 1-5 cd $PROJ && flock -n /tmp/tradeai_scalp_live.lock timeout 295 bash "
-              "scripts/market_day_gate.sh $PY scripts/run_trade_ai_scalp_live.py >> logs/trade_ai_scalp_live.log 2>&1")
+SCALP_EXPR = (
+    "*/5 9-15 * * 1-5 cd $PROJ && flock -n /tmp/tradeai_scalp_live.lock timeout 295 bash "
+    "scripts/market_day_gate.sh $PY scripts/run_trade_ai_scalp_live.py >> logs/trade_ai_scalp_live.log 2>&1"
+)
 SCALP_EXC = {"trade-ai-scalp-live": frozenset({"market_day_gate.sh"})}
 SCALP_ARGV = {"trade-ai-scalp-live": "scripts/market_day_gate.sh scripts/run_trade_ai_scalp_live.py --dry-run"}
-GATE_MARK = {"class": "pipeline_excluded_gate", "token": "market_day_gate.sh",
-             "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"}
+GATE_MARK = {
+    "class": "pipeline_excluded_gate",
+    "token": "market_day_gate.sh",
+    "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS",
+}
 
 
 def _scalp(**extra):
-    return _row(lane_id="trade-ai-scalp-live", expression=SCALP_EXPR, match="scripts/run_trade_ai_scalp_live.py",
-                **extra)
+    return _row(
+        lane_id="trade-ai-scalp-live", expression=SCALP_EXPR, match="scripts/run_trade_ai_scalp_live.py", **extra
+    )
 
 
 def test_policy_exception_config_lists_only_scalp_live_market_day_gate():
@@ -614,33 +721,48 @@ def test_policy_exception_config_lists_only_scalp_live_market_day_gate():
 def test_scalp_live_eligible_with_exception_including_allowlist_argv():
     row = _scalp()
     assert LD.dispatch_eligible(row, allowlist_argv=SCALP_ARGV, exceptions=SCALP_EXC) == (
-        True, "eligible:policy_exception:market_day_gate.sh")
+        True,
+        "eligible:policy_exception:market_day_gate.sh",
+    )
     assert LD.dispatch_eligible(row, allowlist_argv=SCALP_ARGV, exceptions={})[0] is False
     live = _scalp(dispatch=copy.deepcopy(GOOD_DISPATCH))
     assert LD.dispatchable(live, allowlist_argv=SCALP_ARGV, exceptions=SCALP_EXC) is True
     off = _scalp(dispatch=dict(copy.deepcopy(GOOD_DISPATCH), mode="off"))
     assert LD.dispatchable(off, allowlist_argv=SCALP_ARGV, exceptions=SCALP_EXC) is False
-    assert LD.dispatchable(_scalp(), allowlist_argv=SCALP_ARGV, exceptions=SCALP_EXC) is False   # no block = off
+    assert LD.dispatchable(_scalp(), allowlist_argv=SCALP_ARGV, exceptions=SCALP_EXC) is False  # no block = off
 
 
 def test_unlisted_lane_with_market_day_gate_stays_ineligible():
-    row = _row(lane_id="gated-report", expression="0 10 * * 1-5 bash scripts/market_day_gate.sh $PY scripts/report.py",
-               match="scripts/report.py", dispatch=copy.deepcopy(GOOD_DISPATCH))
+    row = _row(
+        lane_id="gated-report",
+        expression="0 10 * * 1-5 bash scripts/market_day_gate.sh $PY scripts/report.py",
+        match="scripts/report.py",
+        dispatch=copy.deepcopy(GOOD_DISPATCH),
+    )
     assert LD.dispatch_eligible(row, exceptions=SCALP_EXC) == (
-        False, "forbidden_token:market_day_gate.sh@scheduler.expression")
+        False,
+        "forbidden_token:market_day_gate.sh@scheduler.expression",
+    )
     assert LD.dispatch_eligible(row) == (False, "forbidden_token:market_day_gate.sh@scheduler.expression")
 
 
-@pytest.mark.parametrize("extra", [
-    " && $PY scripts/broker_stop_reconcile.py",
-    " && $PY scripts/place_order_worker.py",
-    " && $PY scripts/positions_sync.py",
-    " && $PY scripts/digest.py --send",
-    " && bash scripts/sm-render.sh",
-])
+@pytest.mark.parametrize(
+    "extra",
+    [
+        " && $PY scripts/broker_stop_reconcile.py",
+        " && $PY scripts/place_order_worker.py",
+        " && $PY scripts/positions_sync.py",
+        " && $PY scripts/digest.py --send",
+        " && bash scripts/sm-render.sh",
+    ],
+)
 def test_scalp_live_with_any_other_forbidden_token_stays_ineligible(extra):
-    row = _row(lane_id="trade-ai-scalp-live", expression=SCALP_EXPR + extra,
-               match="scripts/run_trade_ai_scalp_live.py", dispatch=copy.deepcopy(GOOD_DISPATCH))
+    row = _row(
+        lane_id="trade-ai-scalp-live",
+        expression=SCALP_EXPR + extra,
+        match="scripts/run_trade_ai_scalp_live.py",
+        dispatch=copy.deepcopy(GOOD_DISPATCH),
+    )
     ok, why = LD.dispatch_eligible(row, exceptions=SCALP_EXC)
     assert ok is False and why.startswith("forbidden_token:") and "market_day_gate" not in why
     assert LD.dispatchable(row, exceptions=SCALP_EXC) is False
@@ -655,13 +777,15 @@ def test_exception_lifts_only_the_b1_gate_marker():
     row = _scalp(stay_on_cron=dict(GATE_MARK), recommendation="KEEP_ON_CRON")
     assert LD.dispatch_eligible(row, exceptions=SCALP_EXC) == (True, "eligible:policy_exception:market_day_gate.sh")
     assert LD.dispatch_eligible(row, exceptions={}) == (False, "stay_on_cron")
-    for mark in ({"class": "broker_order", "token": "market_day_gate.sh"},
-                 {"class": "pipeline_excluded_gate", "token": "other_gate.sh"},
-                 {"class": "secret", "token": "token"}, True):
+    for mark in (
+        {"class": "broker_order", "token": "market_day_gate.sh"},
+        {"class": "pipeline_excluded_gate", "token": "other_gate.sh"},
+        {"class": "secret", "token": "token"},
+        True,
+    ):
         assert LD.dispatch_eligible(_scalp(stay_on_cron=mark), exceptions=SCALP_EXC) == (False, "stay_on_cron")
     # KEEP_ON_CRON without the gate marker is some other reason: still blocks
-    assert LD.dispatch_eligible(_scalp(recommendation="KEEP_ON_CRON"), exceptions=SCALP_EXC) == (
-        False, "keep_on_cron")
+    assert LD.dispatch_eligible(_scalp(recommendation="KEEP_ON_CRON"), exceptions=SCALP_EXC) == (False, "keep_on_cron")
     # an unlisted lane carrying the gate marker stays blocked
     other = _row(lane_id="gated-report", stay_on_cron=dict(GATE_MARK))
     assert LD.dispatch_eligible(other, exceptions=SCALP_EXC) == (False, "stay_on_cron")
@@ -680,16 +804,25 @@ def test_stay_behind_still_blocks_excepted_lane():
     assert LD.dispatch_eligible(row, exceptions=SCALP_EXC) == (False, "stay_behind")
 
 
-@pytest.mark.parametrize("content", [
-    None, "", "not json", "[]", '{"exceptions": "x"}', '{"exceptions": [1, null]}',
-    '{"exceptions": [{"lane_id": "trade-ai-scalp-live"}]}',
-    '{"exceptions": [{"lane_id": "trade-ai-scalp-live", "exempt_tokens": []}]}',
-    '{"exceptions": [{"lane_id": "trade-ai-scalp-live", "exempt_tokens": "market_day_gate.sh"}]}',
-    '{"exceptions": [{"lane_id": "trade-ai-scalp-live", "exempt_tokens": ["market_day_gate.sh", "broker"]}]}',
-    '{"exceptions": [{"lane_id": "trade-ai-scalp-live", "exempt_tokens": ["sender"]}]}',
-    '{"exceptions": [{"lane_id": "trade-ai-scalp-live", "exempt_tokens": ["market_day_gate.sh"]},'
-    ' {"lane_id": "trade-ai-scalp-live", "exempt_tokens": ["market_day_gate.sh"]}]}',
-], ids=lambda c: "missing" if c is None else (c[:40] or "empty"))
+@pytest.mark.parametrize(
+    "content",
+    [
+        None,
+        "",
+        "not json",
+        "[]",
+        '{"exceptions": "x"}',
+        '{"exceptions": [1, null]}',
+        '{"exceptions": [{"lane_id": "trade-ai-scalp-live"}]}',
+        '{"exceptions": [{"lane_id": "trade-ai-scalp-live", "exempt_tokens": []}]}',
+        '{"exceptions": [{"lane_id": "trade-ai-scalp-live", "exempt_tokens": "market_day_gate.sh"}]}',
+        '{"exceptions": [{"lane_id": "trade-ai-scalp-live", "exempt_tokens": ["market_day_gate.sh", "broker"]}]}',
+        '{"exceptions": [{"lane_id": "trade-ai-scalp-live", "exempt_tokens": ["sender"]}]}',
+        '{"exceptions": [{"lane_id": "trade-ai-scalp-live", "exempt_tokens": ["market_day_gate.sh"]},'
+        ' {"lane_id": "trade-ai-scalp-live", "exempt_tokens": ["market_day_gate.sh"]}]}',
+    ],
+    ids=lambda c: "missing" if c is None else (c[:40] or "empty"),
+)
 def test_missing_or_malformed_exception_config_fails_closed(tmp_path, content):
     p = tmp_path / "exc.json"
     if content is not None:
@@ -701,43 +834,64 @@ def test_missing_or_malformed_exception_config_fails_closed(tmp_path, content):
 
 def test_exception_table_cannot_widen_beyond_exemptible_tokens():
     widened = {"trade-ai-scalp-live": frozenset({"market_day_gate.sh", "broker", "place_order"})}
-    row = _row(lane_id="trade-ai-scalp-live", expression=SCALP_EXPR + " && $PY scripts/place_order_worker.py",
-               match="x")
+    row = _row(
+        lane_id="trade-ai-scalp-live", expression=SCALP_EXPR + " && $PY scripts/place_order_worker.py", match="x"
+    )
     assert LD.dispatch_eligible(row, exceptions=widened)[0] is False
 
 
 def test_sender_lane_listed_in_exceptions_stays_ineligible():
     exc = {"digest-sender": frozenset({"market_day_gate.sh"})}
-    row = _row(lane_id="digest-sender", expression="0 17 * * 1-5 bash scripts/market_day_gate.sh $PY scripts/digest.py --send",
-               match="scripts/digest.py")
+    row = _row(
+        lane_id="digest-sender",
+        expression="0 17 * * 1-5 bash scripts/market_day_gate.sh $PY scripts/digest.py --send",
+        match="scripts/digest.py",
+    )
     ok, why = LD.dispatch_eligible(row, exceptions=exc)
     assert ok is False and why.startswith("forbidden_token:") and "market_day_gate" not in why
 
 
 def test_exception_entry_for_other_lane_is_ignored(tmp_path):
     p = tmp_path / "exc.json"
-    p.write_text(json.dumps({"exceptions": [
-        {"lane_id": "trade-ai-scalp-live", "exempt_tokens": ["market_day_gate.sh"]},
-        {"lane_id": "other-report", "exempt_tokens": ["market_day_gate.sh"]}]}), encoding="utf-8")
+    p.write_text(
+        json.dumps(
+            {
+                "exceptions": [
+                    {"lane_id": "trade-ai-scalp-live", "exempt_tokens": ["market_day_gate.sh"]},
+                    {"lane_id": "other-report", "exempt_tokens": ["market_day_gate.sh"]},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
     table = LD.load_policy_exceptions(p)
     assert table == SCALP_EXC
-    row = _row(lane_id="other-report", expression="0 10 * * 1-5 bash scripts/market_day_gate.sh $PY scripts/report.py",
-               match="scripts/report.py")
+    row = _row(
+        lane_id="other-report",
+        expression="0 10 * * 1-5 bash scripts/market_day_gate.sh $PY scripts/report.py",
+        match="scripts/report.py",
+    )
     assert LD.dispatch_eligible(row, exceptions=table) == (
-        False, "forbidden_token:market_day_gate.sh@scheduler.expression")
+        False,
+        "forbidden_token:market_day_gate.sh@scheduler.expression",
+    )
     # even a hand-built table naming the lane is intersected with the code ceiling
     forced = {"other-report": frozenset({"market_day_gate.sh"})}
     assert LD.dispatch_eligible(row, exceptions=forced) == (
-        False, "forbidden_token:market_day_gate.sh@scheduler.expression")
+        False,
+        "forbidden_token:market_day_gate.sh@scheduler.expression",
+    )
     assert LD.dispatch_eligible(dict(row, stay_on_cron=dict(GATE_MARK)), exceptions=forced) == (False, "stay_on_cron")
 
 
 def test_exception_lifts_only_top_level_keep_on_cron_not_rationalization():
-    lifted = _scalp(stay_on_cron=dict(GATE_MARK), recommendation="KEEP_ON_CRON",
-                    rationalization={"recommendation": "PIPELINE:P02"})
+    lifted = _scalp(
+        stay_on_cron=dict(GATE_MARK), recommendation="KEEP_ON_CRON", rationalization={"recommendation": "PIPELINE:P02"}
+    )
     assert LD.dispatch_eligible(lifted, exceptions=SCALP_EXC) == (True, "eligible:policy_exception:market_day_gate.sh")
-    rat_keep = _scalp(stay_on_cron=dict(GATE_MARK), recommendation="KEEP_ON_CRON",
-                      rationalization={"recommendation": "KEEP_ON_CRON"})
+    rat_keep = _scalp(
+        stay_on_cron=dict(GATE_MARK), recommendation="KEEP_ON_CRON", rationalization={"recommendation": "KEEP_ON_CRON"}
+    )
     assert LD.dispatch_eligible(rat_keep, exceptions=SCALP_EXC) == (False, "keep_on_cron")
     rat_only = _scalp(stay_on_cron=dict(GATE_MARK), rationalization={"recommendation": "KEEP_ON_CRON"})
     assert LD.dispatch_eligible(rat_only, exceptions=SCALP_EXC) == (False, "keep_on_cron")

@@ -328,10 +328,7 @@ def test_native_monitor_rows_do_not_flip_a_host_scheduler():
     kind event (fired by the OpenClaw scheduler, no host entry to go missing) and ACTIVE."""
     reg = lr.load_registry()
     assert lr.validate_registry(reg) == []
-    native = {
-        r["lane_id"]: r for r in reg["lanes"]
-        if (r.get("scheduler") or {}).get("kind") == "n8n"
-    }
+    native = {r["lane_id"]: r for r in reg["lanes"] if (r.get("scheduler") or {}).get("kind") == "n8n"}
     monitors = {"n8n-monitor-trade-ai", "n8n-monitor-dof"}
     reminders = {
         "openclaw-reminder-claude-plan-1",
@@ -349,7 +346,9 @@ def test_native_monitor_rows_do_not_flip_a_host_scheduler():
     }
     # 2026-10-11: heartbeat-watch is n8n-native (no host line ever existed): a dispatcher row (shadow then canary),
     # fired by tradeai-heartbeat-watcher and tradeai-dispatcher; it flips no host scheduler (match names its script only).
-    n8n_native_lanes = {"heartbeat-watch"}
+    # The operator's2026-10-12 admission adds two new native metadata lanes;
+    # neither retires or impersonates a legacy host trigger.
+    n8n_native_lanes = {"heartbeat-watch", "momentum-lifecycle-monitor", "momentum-cache-reconcile"}
     assert all(native[lane]["scheduler"]["expression"] == "dispatcher" for lane in n8n_native_lanes)
     assert set(native) == monitors | cutover | n8n_native_lanes
     assert not reminders & set(native)

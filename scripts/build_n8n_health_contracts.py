@@ -18,7 +18,9 @@ Sources, and what each contributes (nothing else is asserted; a missing fact is 
   >= 14 finished LIVE runs -> ``LEARNED_PROVISIONAL`` p50/p95 duration and failure rate; fewer ->
   ``CLASS_DEFAULT_PROVISIONAL``. Dry-run fires never set a baseline (they do not do the work).
 
-Every built contract is ``status: DRAFT``. A contract an owner has marked ``REVIEWED`` is kept byte for byte.
+Every new contract is ``status: DRAFT``. A contract an owner has marked ``REVIEWED`` is kept byte for byte.
+Regeneration retains authored DRAFT limits, ownership declarations and historical review metadata; a proposed
+body digest never becomes a review decision. Existing catalogue rows are not silently retired by this builder.
 
     python3 scripts/build_n8n_health_contracts.py --dry-run            # summary, writes nothing
     python3 scripts/build_n8n_health_contracts.py --write [--ledger PATH] [--as-of YYYY-MM-DD]
@@ -30,6 +32,7 @@ MBI_BEHAVIOR = 0: no broker, no send, no DB write, no crontab, no n8n.
 from __future__ import annotations
 
 import argparse
+import copy
 import csv
 import json
 import os
@@ -68,9 +71,11 @@ SEV_RANK = {"Critical": 0, "High": 1, "Medium": 2, "Low": 3}
 SIEM_SEVERITY = {"Critical": "CRITICAL", "High": "URGENT", "Medium": "WARN", "Low": "INFO"}  # n8n_siem_bridge
 TERMINAL = ("RUN_DONE", "RUN_FAILED", "RUN_TIMEOUT", "RUN_REFUSED")
 NOT_ENFORCED = (
-    "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row "
-    "`severity`, else the fan-in priority (RUN_* = P2 -> WARN). Wiring the bridge, notifier and "
-    "diagnoser to this contract is the next build item (N8N_MONITORING_AND_REMEDIATION_STANDARD.md §7)."
+    "partial source integration: scripts/n8n_incident_fanin.py _wferr_severity() consumes a workflow contract's "
+    "failed.notifier_priority to raise the workflow-error priority floor. scripts/lib/n8n_siem_bridge.py "
+    "severity_for() uses registry severity, else the fan-in priority. Full per-lane baseline, notification and "
+    "diagnosis enforcement is not established by these declarations; runtime coverage remains NOT_MEASURED "
+    "(N8N_MONITORING_AND_REMEDIATION_STANDARD.md §7)."
 )
 
 
@@ -248,29 +253,39 @@ def _event_edge(t: Mapping[str, Any]) -> dict[str, str]:
             "read",
             "config/lane_registry.json dispatch.triggers (run_done)",
         )
-    return _edge(f"trigger source {t.get('source')} (not computed by due yet)", "event_trigger", "read",
-                 "config/lane_registry.json dispatch.triggers")
+    return _edge(
+        f"trigger source {t.get('source')} (not computed by due yet)",
+        "event_trigger",
+        "read",
+        "config/lane_registry.json dispatch.triggers",
+    )
 
 
 def _event_checks(healthy: list, degraded: list, failed: list, disp: Mapping[str, Any]) -> None:
     """W5 event-trigger checks, appended to a lane contract whose dispatch block has triggers."""
     mi = int(disp.get("min_interval_s") or 0)
-    healthy.append({
-        "check": "event_fire_dry_run_done",
-        "text": "each input as_of advance past the lane's receipt watermark yields at most one e:<lane>:dry_run:<as_of "
-        "minute> run, which ends RUN_DONE or RUN_SKIPPED_LOCK (cron line held the lock) in the coordination ledger",
-    })
-    degraded.append({
-        "check": "event_debounced_or_coalesced",
-        "text": f"advances arrive faster than min_interval_s {mi} s or while a schedule run of the lane is due or in "
-        "flight, so they coalesce into one later fire (expected under bursts; investigate if no e: run lands in a "
-        "trading day with input advances)",
-    })
-    failed.append({
-        "check": "trigger_source_unreadable",
-        "text": "coordination/due reports errors[] trigger_source_unreadable for this lane (the domain as_of file is "
-        "missing or malformed, or the as_of is in the future) for more than one input cadence",
-    })
+    healthy.append(
+        {
+            "check": "event_fire_dry_run_done",
+            "text": "each input as_of advance past the lane's receipt watermark yields at most one e:<lane>:dry_run:<as_of "
+            "minute> run, which ends RUN_DONE or RUN_SKIPPED_LOCK (cron line held the lock) in the coordination ledger",
+        }
+    )
+    degraded.append(
+        {
+            "check": "event_debounced_or_coalesced",
+            "text": f"advances arrive faster than min_interval_s {mi} s or while a schedule run of the lane is due or in "
+            "flight, so they coalesce into one later fire (expected under bursts; investigate if no e: run lands in a "
+            "trading day with input advances)",
+        }
+    )
+    failed.append(
+        {
+            "check": "trigger_source_unreadable",
+            "text": "coordination/due reports errors[] trigger_source_unreadable for this lane (the domain as_of file is "
+            "missing or malformed, or the as_of is in the future) for more than one input cadence",
+        }
+    )
 
 
 def lane_contract(
@@ -522,12 +537,24 @@ GENERIC_STATE_DEFAULT = "state not recorded in build_n8n_health_contracts.GENERI
 GENERIC_EXTRA: dict[str, dict[str, Any]] = {
     "heartbeat-watcher": {
         "connects_to": [
-            ("host lane heartbeat-watch (scripts/heartbeat_watch.py; registry stage shadow)", "lane", "calls",
-             "design 02 §7"),
-            ("relay POST /event lane n8n-workflow-error (as this workflow's errorWorkflow posts it)", "relay_route",
-             "calls", "scripts/n8n_run_relay.py EVENT_LANE"),
-            ("fan-in incident wferr:tradeai-heartbeat-watcher, P1 (WFERR_P1_WORKFLOWS) -> incident-notifier",
-             "lane", "read", "scripts/n8n_incident_fanin.py _wferr_severity"),
+            (
+                "host lane heartbeat-watch (scripts/heartbeat_watch.py; registry stage shadow)",
+                "lane",
+                "calls",
+                "design 02 §7",
+            ),
+            (
+                "relay POST /event lane n8n-workflow-error (as this workflow's errorWorkflow posts it)",
+                "relay_route",
+                "calls",
+                "scripts/n8n_run_relay.py EVENT_LANE",
+            ),
+            (
+                "fan-in incident wferr:tradeai-heartbeat-watcher, P1 (WFERR_P1_WORKFLOWS) -> incident-notifier",
+                "lane",
+                "read",
+                "scripts/n8n_incident_fanin.py _wferr_severity",
+            ),
         ],
         "healthy": [
             {
@@ -570,8 +597,46 @@ WFERR_REMEDIATION = (
 )
 
 
-def generic_contract(wf: Mapping[str, Any], as_of: date) -> dict[str, Any]:
+def _workflow_source(wf: Mapping[str, Any]) -> dict[str, Any]:
+    """Only a declared public source graph, never n8n state or credential data."""
+    import re
+
+    filename = wf.get("file")
+    if not isinstance(filename, str) or not re.fullmatch(r"[a-z0-9-]+\.json", filename):
+        return {}
+    path = ROOT / "docs/implementation/n8n-maturity/workflows" / filename
+    try:
+        source = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return source if isinstance(source, dict) and source.get("id") == wf.get("id") else {}
+
+
+def generic_contract(
+    wf: Mapping[str, Any], as_of: date, *, workflow_source: Optional[Mapping[str, Any]] = None
+) -> dict[str, Any]:
+    # Local import avoids the auditor -> builder.baseline module-level cycle.
+    from scripts.audit_n8n_contract_baselines import source_values
+
     kind = str(wf.get("kind"))
+    source = workflow_source if workflow_source is not None else _workflow_source(wf)
+    values = source_values({"id": wf["id"], "kind": "generic_workflow"}, {}, {}, {wf["id"]: source})
+    base = baseline(
+        [],
+        cadence_h=values.get("cadence_h", {}).get("value"),
+        timeout_s=values.get("timeout_s", {}).get("value"),
+        cls="generic_workflow",
+        as_of=as_of,
+    )
+    base.update(
+        source="Source-declared workflow schedule and settings.executionTimeout; empirical execution history NOT_MEASURED",
+        source_declarations=values,
+        runs_considered=None,
+    )
+    if base["timeout_s"] is None or base["freshness_degraded_after_h"] is None:
+        base["collection_action"] = (
+            "Collect this workflow's declared bounded executionTimeout and recurring schedule; owner review required before acceptance"
+        )
     text, src = GENERIC.get(kind, (H.UNKNOWN, "none"))
     calls = [
         _edge(f"relay {c}", "relay_route", "calls", "workflows/INDEX.json relay_calls")
@@ -631,19 +696,14 @@ def generic_contract(wf: Mapping[str, Any], as_of: date) -> dict[str, Any]:
             {"check": "inactive", "text": "workflow_entity.active = false outside a granted rollback"},
         ]
         + list(extra.get("failed", [])),
-        "baseline": {
-            "basis": "CLASS_DEFAULT_PROVISIONAL",
-            "source": "no live history: the six ran 5 minutes on 2026-10-10 before the rollback",
-            "freshness_degraded_after_h": None,
-            "freshness_failed_after_h": round(5 / 60, 3),
-            "class": "generic_workflow",
-            "computed_on": as_of.isoformat(),
-        },
+        "baseline": base,
         "alerting": alerting(sev, "generic workflow: dispatcher/incident/heartbeat Critical, others High (DRAFT)"),
         "remediation": {
             "catalogue_entry": False,
             "diagnosis_excluded": False,
-            "note": WFERR_REMEDIATION + "; " + extra.get(
+            "note": WFERR_REMEDIATION
+            + "; "
+            + extra.get(
                 "remediation_note",
                 "rollback = unpublish + archive under a cron grant (packets/w0-import-six/rollback.sh)",
             ),
@@ -710,10 +770,21 @@ HOST = {
 
 
 def host_contract(lane: str, row: Mapping[str, Any], as_of: date) -> dict[str, Any]:
+    from scripts.audit_n8n_contract_baselines import positive_number, source_values
+
     h = HOST[lane]
     cadence_h = row.get("expected_cadence_hours")
     sig = (row.get("output_signal") or {}).get("path")
-    c = lane_contract(lane, "host_monitor", row, None, None, None, frozenset(), [], as_of)
+    values = source_values({"id": lane, "kind": "host_monitor"}, {lane: row}, {}, {})
+    if positive_number(cadence_h):
+        values["cadence_h"] = {
+            "value": cadence_h,
+            "path": "config/lane_registry.json",
+            "pointer": f"lanes[{lane}].expected_cadence_hours",
+        }
+    timeout_s = values.get("timeout_s", {}).get("value")
+    entry = {"timeout_s": timeout_s} if timeout_s else None
+    c = lane_contract(lane, "host_monitor", row, entry, None, None, frozenset(), [], as_of)
     c.update(
         {
             "kind": "host_monitor",
@@ -742,7 +813,41 @@ def host_contract(lane: str, row: Mapping[str, Any], as_of: date) -> dict[str, A
         }
     )
     c["baseline"]["class"] = "monitor (host cron)"
+    c["baseline"].update(
+        source="Source-declared host monitor cadence and install-line timeout; empirical host execution history NOT_MEASURED",
+        source_declarations=values,
+        runs_considered=None,
+    )
+    if timeout_s is None:
+        c["baseline"]["collection_action"] = (
+            "Collect the host monitor's explicit bounded timeout from its owner-approved scheduler declaration"
+        )
     return c
+
+
+def _preserve_draft(generated: dict[str, Any], previous: Optional[Mapping[str, Any]]) -> dict[str, Any]:
+    """Keep authored limits and ownership; retain history without manufacturing review."""
+    if not previous or previous.get("status") != "DRAFT":
+        return generated
+    from scripts.audit_n8n_contract_baselines import FIELDS, positive_number
+    from scripts.lib.n8n_momentum_lifecycle import contract_body_digest
+
+    old_base = previous.get("baseline") or {}
+    if all(positive_number(old_base.get(field)) for field in FIELDS):
+        generated["baseline"] = copy.deepcopy(old_base)
+    else:
+        # Existing valid numbers may be owner-set bounds; a source default cannot replace them.
+        for field, value in old_base.items():
+            if field not in FIELDS or positive_number(value):
+                generated["baseline"][field] = copy.deepcopy(value)
+    for field in ("owner", "ownership_confirmation"):
+        if field in previous:
+            generated[field] = copy.deepcopy(previous[field])
+    if "review" in previous:
+        generated["review"] = copy.deepcopy(previous["review"])
+        if isinstance(generated["review"], dict) and "proposed_contract_body_sha256" in generated["review"]:
+            generated["review"]["proposed_contract_body_sha256"] = contract_body_digest(generated)
+    return generated
 
 
 def build(
@@ -756,28 +861,43 @@ def build(
     excluded: frozenset,
     as_of: date,
     existing: Optional[Mapping[str, Any]] = None,
+    workflow_sources: Optional[Mapping[str, Mapping[str, Any]]] = None,
 ) -> dict[str, Any]:
     rows = {str(r.get("lane_id")): r for r in registry.get("lanes") or []}
-    entries = {str(e.get("lane_id")): e for e in allowlist.get("lanes") or []}
+    raw_entries = allowlist.get("lanes") or []
+    entries = raw_entries if isinstance(raw_entries, Mapping) else {str(e.get("lane_id")): e for e in raw_entries}
     cats = {str(c.get("lane_id")): c for c in catalogue.get("lanes") or []}
     kept = {str(c.get("id")): c for c in (existing or {}).get("contracts") or [] if c.get("status") == "REVIEWED"}
+    previous = {str(c.get("id")): c for c in (existing or {}).get("contracts") or []}
     out: list[dict[str, Any]] = []
     for lane, why in sorted(H.registry_targets(registry).items()):
         if lane in kept:
-            out.append(kept[lane])
+            out.append(copy.deepcopy(kept[lane]))
             continue
         row = rows[lane]
         if lane in HOST:
-            out.append(host_contract(lane, row, as_of))
+            out.append(_preserve_draft(host_contract(lane, row, as_of), previous.get(lane)))
             continue
         inv = pick_inventory_row(list(inventory.get(lane) or []), (row.get("scheduler") or {}).get("kind"))
         out.append(
-            lane_contract(
-                lane, why, row, entries.get(lane), inv, cats.get(lane), excluded, ledger_runs(ledger, lane), as_of
+            _preserve_draft(
+                lane_contract(
+                    lane, why, row, entries.get(lane), inv, cats.get(lane), excluded, ledger_runs(ledger, lane), as_of
+                ),
+                previous.get(lane),
             )
         )
     for wf in sorted(index.get("workflows") or [], key=lambda w: str(w.get("id"))):
-        out.append(kept.get(str(wf["id"])) or generic_contract(wf, as_of))
+        cid = str(wf["id"])
+        if cid in kept:
+            out.append(copy.deepcopy(kept[cid]))
+        else:
+            source = workflow_sources.get(cid, {}) if workflow_sources is not None else None
+            out.append(_preserve_draft(generic_contract(wf, as_of, workflow_source=source), previous.get(cid)))
+    generated_ids = {c["id"] for c in out}
+    # Registry target changes do not authorize retiring contracts, including GET-only
+    # observers and historical/retired rows. No host-run eligibility row is created.
+    out.extend(copy.deepcopy(c) for cid, c in sorted(previous.items()) if cid not in generated_ids)
     grand = (
         sorted(
             set((existing or {}).get("grandfathered_draft") or [])
