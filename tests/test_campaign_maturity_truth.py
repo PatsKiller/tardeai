@@ -1,11 +1,66 @@
 """Lane T — live maturity truth supersedes stale June-2026 body."""
+
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 from pathlib import Path
 
+import pytest
+
 from scripts.control_plane_api import handle
+from scripts.lib import campaign_maturity_truth as maturity
 from scripts.lib.campaign_maturity_truth import build_maturity_truth
+
+
+@pytest.fixture(autouse=True)
+def maturity_host_inputs(tmp_path, monkeypatch):
+    """The real builder reads owned files and fixed host snapshots only."""
+    calls, unexpected = [], []
+    snapshots = {
+        "flags": {
+            "PERSISTENT_WAKE_ENABLED": "1",
+            "PERSISTENT_WAKE_SCHEDULE_ENABLED": "1",
+            "COMMS_GATEWAY_MODE": "CANARY",
+        },
+        "schedule": True,
+        "db": {
+            "available": False,
+            "acr_total": 0,
+            "acr_usable": 0,
+            "delivery_owner_gateway": 0,
+            "delivery_owner_legacy": 0,
+            "deliveries_with_pmid": 0,
+            "inbound_with_usable_receipt": 0,
+            "shadow_proposals": 0,
+            "error": "fixture database unavailable",
+        },
+    }
+
+    def snapshot(name):
+        def read():
+            calls.append(name)
+            value = snapshots[name]
+            return dict(value) if isinstance(value, dict) else value
+
+        return read
+
+    def refuse(*args, **kwargs):
+        unexpected.append("unexpected external command")
+        raise AssertionError("maturity fixture forbids external commands")
+
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
+    monkeypatch.setattr(maturity, "_served_root", lambda: tmp_path)
+    monkeypatch.setattr(maturity, "_flag_sources", snapshot("flags"))
+    monkeypatch.setattr(maturity, "_crontab_has_persistent_wake", snapshot("schedule"))
+    monkeypatch.setattr(maturity, "_db_snapshot", snapshot("db"))
+    monkeypatch.setattr(subprocess, "run", refuse)
+    monkeypatch.setattr(subprocess, "Popen", refuse)
+    monkeypatch.setattr(os, "system", refuse)
+    yield
+    assert not unexpected, unexpected
+    assert calls == ["flags", "schedule", "db"], "real builder did not reach the controlled inputs"
 
 
 def test_build_maturity_truth_has_explicit_zeroes_and_classes(tmp_path: Path):

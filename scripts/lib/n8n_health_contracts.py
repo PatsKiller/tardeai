@@ -34,6 +34,7 @@ Pure: no network, no DB, no send. ``MBI_BEHAVIOR = 0``.
 from __future__ import annotations
 
 import json
+import math
 import re
 from datetime import date
 from pathlib import Path
@@ -143,6 +144,26 @@ def validate_contract(c: Mapping[str, Any]) -> list[str]:
     base = c.get("baseline") or {}
     if base.get("basis") not in BASELINE_BASES:
         errs.append(f"baseline.basis must be one of {BASELINE_BASES}")
+    # A DRAFT can describe an unavailable measurement without asserting a number.
+    # REVIEWED acceptance requires every limit; a supplied DRAFT number must also
+    # be valid. This keeps proposals distinct from operative review/admission.
+    for field in ("timeout_s", "freshness_degraded_after_h", "freshness_failed_after_h"):
+        value = base.get(field)
+        if c.get("status") == "DRAFT" and (value is None or value in (UNKNOWN, "NOT_MEASURED")):
+            continue
+        if type(value) not in (int, float) or not math.isfinite(value) or value <= 0:
+            errs.append(f"baseline.{field} must be finite and positive")
+    degraded, failed = base.get("freshness_degraded_after_h"), base.get("freshness_failed_after_h")
+    if (
+        type(degraded) in (int, float)
+        and math.isfinite(degraded)
+        and degraded > 0
+        and type(failed) in (int, float)
+        and math.isfinite(failed)
+        and failed > 0
+        and failed <= degraded
+    ):
+        errs.append("baseline.freshness_failed_after_h must exceed freshness_degraded_after_h")
     if base.get("basis") != "OPERATOR_SLO" and not _DATE_RE.match(str(c.get("review_by") or "")):
         errs.append("a provisional baseline needs review_by (YYYY-MM-DD)")
     al = c.get("alerting") or {}

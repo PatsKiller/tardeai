@@ -59,7 +59,7 @@ def test_message_states_break_level_and_trade_ai_verdict():
     assert "trigger above 4.15, now 4.05" in title
     assert "entry 4.17 · stop 4.00 · R 0.17" in body
     assert "Trade-AI today: WAIT 07:01 · not tradeable" in body
-    assert "Trade-AI: no scan today" in ma.build_message(armed(), ma.ARMED, L2_OK, {}, {})[1]
+    assert "Trade-AI: NO_SAME_DAY_SCAN · verdict not attached" in ma.build_message(armed(), ma.ARMED, L2_OK, {}, {})[1]
 
 
 def test_armed_levels_come_from_the_state_machine():

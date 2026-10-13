@@ -10,6 +10,7 @@ CPU-throttled scratch gateway, and a slow or refused call refuses the import.
 Hermetic: every relay / gateway is a loopback child under tmp_path with scratch keys; no live relay, gateway, ledger
 or n8n. The negative end-to-end case uses a stub gateway that burns CPU per call like the pre-#1667 matcher did.
 """
+
 from __future__ import annotations
 
 import json
@@ -67,8 +68,9 @@ def test_socket_manifest_refuses_unowned_or_unpassed_fd_before_connection(tmp_pa
     fd = None
     try:
         fd, passed = F.write_manifest(tmp_path, endpoint)
-        approved = F.validate_manifest(fd, allowed_scope=tmp_path, expected_parent=os.getpid(),
-                                       passed_fds=passed, owned=F.OWNED)
+        approved = F.validate_manifest(
+            fd, allowed_scope=tmp_path, expected_parent=os.getpid(), passed_fds=passed, owned=F.OWNED
+        )
         assert approved["endpoints"][0]["port"] == endpoint.port
         with pytest.raises(F.FixtureCapabilityRefused, match="not allocated"):
             F.validate_manifest(fd, allowed_scope=tmp_path, expected_parent=os.getpid(), passed_fds=passed, owned={})
@@ -104,11 +106,12 @@ def test_socket_manifest_refuses_malformed_document_before_adoption(tmp_path, do
 
 # ── inputs: quota, relay timeout, query shapes ──────────────────────────────────────────────────────
 
+
 def test_cpu_quota_is_read_from_the_gateway_unit(tmp_path):
     assert C.unit_cpu_quota(ROOT / C.GATEWAY_UNIT_REL) == pytest.approx(0.20)
     unit = tmp_path / "u.service"
     unit.write_text("[Service]\nCPUQuota=50%\n# CPUQuota=1%\nCPUQuota=12.5%\n")
-    assert C.unit_cpu_quota(unit) == pytest.approx(0.125)             # last assignment wins, comments ignored
+    assert C.unit_cpu_quota(unit) == pytest.approx(0.125)  # last assignment wins, comments ignored
     unit.write_text("[Service]\nMemoryMax=256M\n")
     assert C.unit_cpu_quota(unit) is None
     assert C.unit_cpu_quota(tmp_path / "missing.service") is None
@@ -118,7 +121,7 @@ def test_relay_timeout_is_read_from_the_relay_source(tmp_path):
     assert C.relay_timeout_s(ROOT / "scripts" / "n8n_run_relay.py") == pytest.approx(5.0)
     src = tmp_path / "r.py"
     src.write_text("urlopen(request, timeout=TIMEOUT)\n")
-    assert C.relay_timeout_s(src) is None                                # not a literal: fail closed upstream
+    assert C.relay_timeout_s(src) is None  # not a literal: fail closed upstream
 
 
 def test_due_shapes_are_the_workflows_own_queries():
@@ -132,6 +135,7 @@ def test_due_shapes_are_the_workflows_own_queries():
 
 
 # ── the throttle holds a process to its quota ──────────────────────────────────────────────────────
+
 
 def test_cpu_throttle_holds_a_busy_process_near_its_quota(tmp_path):
     out = tmp_path / "cpu.txt"
@@ -151,7 +155,7 @@ def test_cpu_throttle_holds_a_busy_process_near_its_quota(tmp_path):
             proc.kill()
     cpu = float(out.read_text())
     assert thr.cycles >= 5
-    assert cpu < 0.75, cpu                       # ~0.3 s at 20% of 1.5 s; unthrottled it would be ~1.5 s
+    assert cpu < 0.75, cpu  # ~0.3 s at 20% of 1.5 s; unthrottled it would be ~1.5 s
 
 
 def test_cpu_throttle_refuses_a_nonsense_quota():
@@ -161,9 +165,11 @@ def test_cpu_throttle_refuses_a_nonsense_quota():
 
 # ── end to end: this tree passes, a CPU-heavy gateway is refused ───────────────────────────────────
 
+
 def test_this_tree_passes_the_concurrent_due_probe(tmp_path, capsys):
-    rc = C.main(["--relay-root", str(ROOT), "--ids", ",".join(FOUR), "--scratch", str(tmp_path),
-                 "--require-concurrency"])
+    rc = C.main(
+        ["--relay-root", str(ROOT), "--ids", ",".join(FOUR), "--scratch", str(tmp_path), "--require-concurrency"]
+    )
     out = capsys.readouterr().out
     assert rc == 0, out
     summary = json.loads(out.strip().splitlines()[-1])
@@ -173,12 +179,12 @@ def test_this_tree_passes_the_concurrent_due_probe(tmp_path, capsys):
     assert [r["round"] for r in conc["rounds"]] == ["cold", "warm1"]
     assert out.count("concurrency cold") == 4 and "BAD concurrency" not in out
     # evidence the calls really went through the scratch gateway: the second relay logged 4 x 2 ok due lines
-    log = (tmp_path / "relay-concurrency" / "state" / "data" / "runtime" / "n8n_relay" / "relay_log.jsonl")
+    log = tmp_path / "relay-concurrency" / "state" / "data" / "runtime" / "n8n_relay" / "relay_log.jsonl"
     rows = [json.loads(x) for x in log.read_text().splitlines()]
     assert sum(1 for r in rows if r.get("op") == "due" and r.get("state") == "OK") == 8
 
 
-STUB_GATEWAY = '''
+STUB_GATEWAY = """
 import argparse, json, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 ap = argparse.ArgumentParser()
@@ -209,7 +215,7 @@ class H(BaseHTTPRequestHandler):
 server = ThreadingHTTPServer((a.host, a.port), H)
 print("FIXTURE_STUB_READY", flush=True)
 server.serve_forever()
-'''
+"""
 
 
 def _stub_root(tmp_path: Path, burn_s: float, quota: str = "20%") -> Path:
@@ -232,8 +238,18 @@ def test_a_cpu_heavy_gateway_under_the_quota_is_refused(tmp_path, capsys):
     """4 calls x 0.6 s CPU at 20% = ~12 s of wall: past the relay's 5 s, so the relay answers 502
     relay_gateway_unreachable — exactly the W0 re-run. The single-call route probe still passes."""
     root = _stub_root(tmp_path, burn_s=0.6)
-    rc = C.main(["--relay-root", str(root), "--ids", ",".join(FOUR), "--scratch", str(tmp_path / "s"),
-                 "--registry", str(REGISTRY)])
+    rc = C.main(
+        [
+            "--relay-root",
+            str(root),
+            "--ids",
+            ",".join(FOUR),
+            "--scratch",
+            str(tmp_path / "s"),
+            "--registry",
+            str(REGISTRY),
+        ]
+    )
     out = capsys.readouterr().out
     assert rc == 1, out
     summary = json.loads(out.strip().splitlines()[-1])
@@ -241,19 +257,30 @@ def test_a_cpu_heavy_gateway_under_the_quota_is_refused(tmp_path, capsys):
     assert codes <= {"due_concurrency_refused", "due_concurrency_slow"} and "due_concurrency_refused" in codes
     assert "502 relay_gateway_unreachable" in out
     assert summary["concurrency"]["verdict"] == "REFUSED"
-    assert not any(f["code"] == "unsupported_route" for f in summary["findings"])   # route probe alone: PASS
+    assert not any(f["code"] == "unsupported_route" for f in summary["findings"])  # route probe alone: PASS
 
 
 def test_the_same_stub_without_cpu_cost_passes(tmp_path, capsys):
     root = _stub_root(tmp_path, burn_s=0.0)
-    rc = C.main(["--relay-root", str(root), "--ids", ",".join(FOUR), "--scratch", str(tmp_path / "s"),
-                 "--registry", str(REGISTRY)])
+    rc = C.main(
+        [
+            "--relay-root",
+            str(root),
+            "--ids",
+            ",".join(FOUR),
+            "--scratch",
+            str(tmp_path / "s"),
+            "--registry",
+            str(REGISTRY),
+        ]
+    )
     out = capsys.readouterr().out
     assert rc == 0, out
     assert json.loads(out.strip().splitlines()[-1])["concurrency"]["verdict"] == "PASS"
 
 
 # ── classification and fail-closed paths (no processes) ────────────────────────────────────────────
+
 
 class _Ctx:
     def __init__(self, *a, **k):
@@ -279,25 +306,56 @@ def _fake(monkeypatch, rows):
 
 
 def test_slow_but_ok_is_refused_and_fast_ok_passes(monkeypatch, tmp_path):
-    shapes = [{"workflow": "a", "node": "n", "query": "source=schedule&limit=40"},
-              {"workflow": "b", "node": "n", "query": "source=event&limit=40"}]
+    shapes = [
+        {"workflow": "a", "node": "n", "query": "source=schedule&limit=40"},
+        {"workflow": "b", "node": "n", "query": "source=event&limit=40"},
+    ]
     base = {"status": 200, "reason": "", "ok": True}
     _fake(monkeypatch, [{**base, "query": "q", "wall_s": 3.1}, {**base, "query": "q", "wall_s": 0.2}])
-    res = C.concurrency_check(shapes, n=2, relay_root=ROOT, registry=REGISTRY, scratch=tmp_path, ledger=tmp_path / "l",
-                              python=sys.executable, quota=0.2, timeout_s=5.0, rounds=1)
+    res = C.concurrency_check(
+        shapes,
+        n=2,
+        relay_root=ROOT,
+        registry=REGISTRY,
+        scratch=tmp_path,
+        ledger=tmp_path / "l",
+        python=sys.executable,
+        quota=0.2,
+        timeout_s=5.0,
+        rounds=1,
+    )
     assert res["verdict"] == "REFUSED" and [f["code"] for f in res["findings"]] == ["due_concurrency_slow"]
     assert res["findings"][0]["workflow"] == "a"
     _fake(monkeypatch, [{**base, "query": "q", "wall_s": 0.3}, {**base, "query": "q", "wall_s": 0.2}])
-    res = C.concurrency_check(shapes, n=2, relay_root=ROOT, registry=REGISTRY, scratch=tmp_path, ledger=tmp_path / "l",
-                              python=sys.executable, quota=0.2, timeout_s=5.0, rounds=2)
+    res = C.concurrency_check(
+        shapes,
+        n=2,
+        relay_root=ROOT,
+        registry=REGISTRY,
+        scratch=tmp_path,
+        ledger=tmp_path / "l",
+        python=sys.executable,
+        quota=0.2,
+        timeout_s=5.0,
+        rounds=2,
+    )
     assert res["verdict"] == "PASS" and [r["round"] for r in res["rounds"]] == ["cold", "warm1"]
 
 
 def test_unknown_quota_or_timeout_fails_closed(tmp_path):
     shapes = [{"workflow": "a", "node": "n", "query": "source=schedule"}]
     for quota, timeout in ((None, 5.0), (0.2, None)):
-        res = C.concurrency_check(shapes, n=3, relay_root=ROOT, registry=REGISTRY, scratch=tmp_path,
-                                  ledger=tmp_path / "l", python=sys.executable, quota=quota, timeout_s=timeout)
+        res = C.concurrency_check(
+            shapes,
+            n=3,
+            relay_root=ROOT,
+            registry=REGISTRY,
+            scratch=tmp_path,
+            ledger=tmp_path / "l",
+            python=sys.executable,
+            quota=quota,
+            timeout_s=timeout,
+        )
         assert res["verdict"] == "REFUSED" and res["findings"][0]["code"] == "due_concurrency_unknown"
 
 
@@ -308,7 +366,7 @@ def test_require_concurrency_refuses_when_skipped(capsys):
     summary = json.loads(out.strip().splitlines()[-1])
     assert [f["code"] for f in summary["findings"]] == ["due_concurrency_not_run"]
     assert summary["concurrency"]["verdict"] == "NOT_RUN"
-    rc = C.main(["--no-probe", "--ids", ",".join(FOUR)])                  # without the flag: static PASS as before
+    rc = C.main(["--no-probe", "--ids", ",".join(FOUR)])  # without the flag: static PASS as before
     assert rc == 0
 
 
@@ -317,8 +375,17 @@ def test_default_n_is_the_workflow_count_with_a_floor_of_three(monkeypatch, tmp_
 
     def fake_check(shapes, *, n, **kw):
         seen["n"] = n
-        return {"n": n, "cpu_quota": 0.2, "relay_timeout_s": 5.0, "margin": 0.5, "budget_s": 2.5, "shapes": [],
-                "rounds": [], "findings": [], "verdict": "PASS"}
+        return {
+            "n": n,
+            "cpu_quota": 0.2,
+            "relay_timeout_s": 5.0,
+            "margin": 0.5,
+            "budget_s": 2.5,
+            "shapes": [],
+            "rounds": [],
+            "findings": [],
+            "verdict": "PASS",
+        }
 
     monkeypatch.setattr(C, "concurrency_check", fake_check)
     assert C.main(["--relay-root", str(ROOT), "--ids", "tradeai-dispatcher", "--scratch", str(tmp_path / "a")]) == 0

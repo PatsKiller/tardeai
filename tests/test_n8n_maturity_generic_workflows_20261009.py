@@ -29,12 +29,61 @@ EXPECTED_IDS = {
 CRON_RE = re.compile(r"^\s*(\S+\s+){4}\S+\s*$")
 CRON_FIELD_RE = re.compile(r"^[\d*/,\-]+$")
 SECRET_RE = re.compile(r"(?i)(bearer\s+[a-z0-9]|sk-[a-z0-9]{8}|api[_-]?key|password|secret|token=)")
+CANDIDATE_ID = "tradeai-momentum-lifecycle-candidate"
 
 
 def _workflows(out: Path) -> dict[str, dict]:
+    workflows = {}
+    for path in sorted(out.glob("*.json")):
+        if path.name == "INDEX.json":
+            continue
+        workflow = json.loads(path.read_text(encoding="utf-8"))
+        # This separately tested observer shares the docs directory with the six
+        # generated dispatch workflows. Exclude only that named dormant GET-only
+        # candidate; unknown extra templates must still fail the six-file gate.
+        if path.name == f"{CANDIDATE_ID}.json":
+            if workflow.get("id") != CANDIDATE_ID or workflow.get("active") is not False:
+                raise ValueError("candidate identity or dormant-state drift")
+            requests = [node for node in workflow.get("nodes", []) if node.get("type") == "n8n-nodes-base.httpRequest"]
+            if not requests or any(node.get("parameters", {}).get("method", "GET") != "GET" for node in requests):
+                raise ValueError("candidate read-only HTTP boundary drift")
+            continue
+        workflows[path.name] = workflow
+    return workflows
+
+
+def _candidate_fixture(**overrides):
     return {
-        p.name: json.loads(p.read_text(encoding="utf-8")) for p in sorted(out.glob("*.json")) if p.name != "INDEX.json"
+        "id": CANDIDATE_ID,
+        "active": False,
+        "nodes": [{"type": "n8n-nodes-base.httpRequest", "parameters": {"method": "GET"}}],
+        **overrides,
     }
+
+
+def test_named_dormant_observer_is_separate_from_the_six_generic_workflows(tmp_path):
+    assert gen.main(["build-generic", "--out", str(tmp_path)]) == 0
+    (tmp_path / f"{CANDIDATE_ID}.json").write_text(json.dumps(_candidate_fixture()))
+    workflows = _workflows(tmp_path)
+    assert len(workflows) == 6 and {workflow["id"] for workflow in workflows.values()} == EXPECTED_IDS
+    assert gen.main(["build-generic", "--out", str(tmp_path), "--check"]) == 0
+
+
+@pytest.mark.parametrize("overrides", [
+    {"active": True},
+    {"id": "tradeai-dispatcher"},
+    {"nodes": [{"type": "n8n-nodes-base.httpRequest", "parameters": {"method": "POST"}}]},
+])
+def test_candidate_drift_is_not_hidden_by_the_generic_boundary(tmp_path, overrides):
+    (tmp_path / f"{CANDIDATE_ID}.json").write_text(json.dumps(_candidate_fixture(**overrides)))
+    with pytest.raises(ValueError):
+        _workflows(tmp_path)
+
+
+def test_unknown_extra_workflow_remains_visible_to_the_six_file_gate(tmp_path):
+    assert gen.main(["build-generic", "--out", str(tmp_path)]) == 0
+    (tmp_path / "unexpected-extra.json").write_text(json.dumps({"id": "unexpected-extra", "active": False}))
+    assert len(_workflows(tmp_path)) == 7
 
 
 def _strings(obj, path=()):

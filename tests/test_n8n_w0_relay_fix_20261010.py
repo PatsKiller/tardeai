@@ -58,8 +58,13 @@ def _gateway_transport(lanes=frozenset({R.EVENT_LANE}), store=None, calls=None):
         if calls is not None:
             calls.append((url, payload))
         reply = G.handle_request(
-            payload, key=b"d" * 48, now=payload["claim"]["iat"], nonce_store=nonces, idempotency_store=store,
-            expected_origin_sha=SHA, lane_allowlist=lanes,
+            payload,
+            key=b"d" * 48,
+            now=payload["claim"]["iat"],
+            nonce_store=nonces,
+            idempotency_store=store,
+            expected_origin_sha=SHA,
+            lane_allowlist=lanes,
             caller_keys=G.build_caller_keys(b"d" * 48, n8n_key=KEY.encode()),
         )
         return (200 if reply.get("state") != "REFUSED" else 403), reply
@@ -72,8 +77,13 @@ def _relay(tmp_path, transport=None, **extra):
 
 
 def _body(**over):
-    body = {"lane_id": R.EVENT_LANE, "workflow_id": "tradeai-dispatcher", "execution_id": "1982",
-            "node": "GET relay /due", "message": "Forbidden - perhaps check your credentials?"}
+    body = {
+        "lane_id": R.EVENT_LANE,
+        "workflow_id": "tradeai-dispatcher",
+        "execution_id": "1982",
+        "node": "GET relay /due",
+        "message": "Forbidden - perhaps check your credentials?",
+    }
     body.update(over)
     return json.dumps(body).encode()
 
@@ -145,9 +155,10 @@ def test_event_needs_bearer_and_origin_sha(tmp_path):
     r = _relay(tmp_path, transport=lambda *a: calls.append(a) or (200, {}))
     assert r.event(None, _body())[0] == 401 and r.event("Bearer nope", _body())[0] == 401
     assert r.counts["auth_failures"] == 2
-    bad = _relay(tmp_path / "x", transport=lambda *a: calls.append(a) or (200, {}),
-                 TRADEAI_N8N_RELAY_ORIGIN_SHA="not-a-sha")
-    assert bad.origin_sha is None   # a malformed override never falls back to another sha
+    bad = _relay(
+        tmp_path / "x", transport=lambda *a: calls.append(a) or (200, {}), TRADEAI_N8N_RELAY_ORIGIN_SHA="not-a-sha"
+    )
+    assert bad.origin_sha is None  # a malformed override never falls back to another sha
     assert bad.event(AUTH, _body()) == (503, {"state": "REFUSED", "reason": "relay_no_origin_sha"})
     assert calls == []
 
@@ -205,8 +216,12 @@ def _http(relay_obj):
 
 
 def _call(port, method, path, body=None):
-    req = urllib.request.Request(f"http://127.0.0.1:{port}{path}", data=body, method=method,
-                                 headers={"Authorization": AUTH, "Content-Type": "application/json"})
+    req = urllib.request.Request(
+        f"http://127.0.0.1:{port}{path}",
+        data=body,
+        method=method,
+        headers={"Authorization": AUTH, "Content-Type": "application/json"},
+    )
     try:
         with urllib.request.urlopen(req, timeout=5) as resp:
             return resp.status, json.loads(resp.read() or b"{}")
@@ -222,8 +237,14 @@ def test_every_declared_route_is_served_and_nothing_else(tmp_path):
             status, body = _call(port, method, concrete.get(path, path), b"{}" if method == "POST" else None)
             assert body.get("reason") != "relay_bad_path", (method, path, status, body)
             assert R.route_supported(method, concrete.get(path, path))
-        for method, path in (("POST", "/events"), ("GET", "/event"), ("POST", "/due"), ("GET", "/run"),
-                             ("GET", "/runs/a/b/last"), ("POST", "/status")):
+        for method, path in (
+            ("POST", "/events"),
+            ("GET", "/event"),
+            ("POST", "/due"),
+            ("GET", "/run"),
+            ("GET", "/runs/a/b/last"),
+            ("POST", "/status"),
+        ):
             assert _call(port, method, path, b"{}" if method == "POST" else None)[1]["reason"] == "relay_bad_path"
             assert not R.route_supported(method, path)
         status, body = _call(port, "POST", "/event", _body())
@@ -268,22 +289,40 @@ def test_every_generated_relay_call_is_a_declared_route():
 def _doc(**settings):
     base = {"executionTimeout": 50, "saveManualExecutions": False}
     base.update(settings)
-    return {"id": "w", "settings": base, "nodes": [
-        {"name": "due", "type": C.HTTP_TYPE, "parameters": {
-            "method": "GET", "url": C.RELAY_EXPR + "/due?source=schedule&lane=known,ghost",
-            "options": {"timeout": 10000}}},
-        {"name": "ev", "type": C.HTTP_TYPE, "parameters": {"method": "POST", "url": C.RELAY_EXPR + "/event",
-                                                           "options": {}}},
-        {"name": "slow", "type": C.HTTP_TYPE, "parameters": {"method": "POST", "url": C.RELAY_EXPR + "/run",
-                                                             "options": {"timeout": 60000}}},
-    ]}
+    return {
+        "id": "w",
+        "settings": base,
+        "nodes": [
+            {
+                "name": "due",
+                "type": C.HTTP_TYPE,
+                "parameters": {
+                    "method": "GET",
+                    "url": C.RELAY_EXPR + "/due?source=schedule&lane=known,ghost",
+                    "options": {"timeout": 10000},
+                },
+            },
+            {
+                "name": "ev",
+                "type": C.HTTP_TYPE,
+                "parameters": {"method": "POST", "url": C.RELAY_EXPR + "/event", "options": {}},
+            },
+            {
+                "name": "slow",
+                "type": C.HTTP_TYPE,
+                "parameters": {"method": "POST", "url": C.RELAY_EXPR + "/run", "options": {"timeout": 60000}},
+            },
+        ],
+    }
 
 
 def test_static_findings_cover_every_refusal_code():
     codes = [f["code"] for f in C.static_findings("w", _doc(), {"known"})]
     assert codes == ["lane_filter_unknown", "http_timeout_missing", "http_timeout_exceeds_execution"]
-    codes = {f["code"] for f in C.static_findings("w", _doc(executionTimeout=None, saveManualExecutions=True),
-                                                  {"known", "ghost"})}
+    codes = {
+        f["code"]
+        for f in C.static_findings("w", _doc(executionTimeout=None, saveManualExecutions=True), {"known", "ghost"})
+    }
     assert codes == {"execution_timeout_missing", "save_manual_executions_true", "http_timeout_missing"}
 
 
@@ -302,15 +341,21 @@ def test_check_fails_closed_on_a_relay_without_routes_and_on_a_404_probe(tmp_pat
     old = tmp_path / "scripts"
     old.mkdir()
     (old / "n8n_run_relay.py").write_text("# a relay that declares no ROUTES\n")
-    res = C.check(WORKFLOWS, ["tradeai-incident-router"], registry=ROOT / "config" / "lane_registry.json",
-                  relay_root=tmp_path)
+    res = C.check(
+        WORKFLOWS, ["tradeai-incident-router"], registry=ROOT / "config" / "lane_registry.json", relay_root=tmp_path
+    )
     assert res["verdict"] == "REFUSED" and {f["code"] for f in res["findings"]} == {"route_table_unknown"}
 
     def probe(method, path, query):
         return (False, "404 relay_bad_path") if path == "/event" else (True, "502 relay_gateway_unreachable")
 
-    res = C.check(WORKFLOWS, ["tradeai-incident-router"], registry=ROOT / "config" / "lane_registry.json",
-                  relay_root=ROOT, probe=probe)
+    res = C.check(
+        WORKFLOWS,
+        ["tradeai-incident-router"],
+        registry=ROOT / "config" / "lane_registry.json",
+        relay_root=ROOT,
+        probe=probe,
+    )
     assert [f["code"] for f in res["findings"]] == ["unsupported_route"]
     assert "POST /event -> 404 relay_bad_path" in res["findings"][0]["detail"]
 

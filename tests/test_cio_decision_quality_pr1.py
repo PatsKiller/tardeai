@@ -11,10 +11,14 @@ target truth, and topology provenance precision.
 No broker, no network. Telegram classify/format are exercised in-process only
 (REAL_TELEGRAM_SENDS: 0).
 """
+
 from __future__ import annotations
 
 import sys
+import tempfile
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -32,23 +36,70 @@ from scripts.lib.cio_decision_quality import (  # noqa: E402
 from scripts.lib import cio_capital_plan as cp  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def isolated_topology_inputs(monkeypatch):
+    """Known host names are virtual fixture identities, never actual checkouts."""
+    from scripts.lib import cio_topology_audit as topo
+
+    approved = topo.APPROVED_ROOT_DEFAULT
+    deprecated = topo.DEPRECATED_ROOTS[0]
+    fixture_sha = "6f7009794e5178a7926f5b1c84ae16d0ee7b2bc6"
+    temporary_root = Path(tempfile.gettempdir())
+
+    def virtual_root(path):
+        return next((root for root in (approved, deprecated) if path == root or path.startswith(root + "/")), None)
+
+    class FixturePath(type(Path())):
+        def exists(self):
+            if virtual_root(str(self)):
+                return True
+            if str(self) == "/nonexistent/path/does/not/exist":
+                return False
+            assert self.is_relative_to(temporary_root), f"Unexpected topology path: {self}"
+            return super().exists()
+
+        def is_file(self):
+            return super().is_file() if self.is_relative_to(temporary_root) else False
+
+    def fixture_run(args, timeout=15):
+        assert len(args) == 5 and args[:2] == ["git", "-C"] and args[3] == "rev-parse", args
+        assert args[4] in {"--show-toplevel", "HEAD"}, args
+        root = virtual_root(args[2])
+        if root:
+            return root if args[4] == "--show-toplevel" else fixture_sha
+        assert Path(args[2]).is_relative_to(temporary_root), f"Unexpected topology command: {args}"
+        return ""  # copied-release fixture: exercise the real BUILD_SHA fallback
+
+    def unexpected_status(args, timeout=15):
+        raise AssertionError(f"Unexpected topology status probe: {args}")
+
+    monkeypatch.setattr(topo, "Path", FixturePath)
+    monkeypatch.setattr(topo, "_run", fixture_run)
+    monkeypatch.setattr(topo, "_run_status", unexpected_status)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # PR1_ACTIONABILITY — stale / risk text can never render ACT NOW
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def test_actionability_risk_text_never_act_now():
-    status, violations = evaluate_pr1_actionability({
-        "risk": "concentration > fire",
-        "act_now": False,
-        "action_label": None,
-    })
+    status, violations = evaluate_pr1_actionability(
+        {
+            "risk": "concentration > fire",
+            "act_now": False,
+            "action_label": None,
+        }
+    )
     assert status == "PASS", violations
     # Even a screaming breach is not ACT NOW unless act_now/label says so.
-    status, violations = evaluate_pr1_actionability({
-        "risk": "concentration > fire",
-        "act_now": False,
-        "action_label": "REVIEW",
-    })
+    status, violations = evaluate_pr1_actionability(
+        {
+            "risk": "concentration > fire",
+            "act_now": False,
+            "action_label": "REVIEW",
+        }
+    )
     assert status == "PASS", violations
 
 
@@ -60,38 +111,53 @@ def test_actionability_act_now_maps_high():
 
 
 def test_actionability_stale_is_not_high():
-    status, violations = evaluate_pr1_actionability({
-        "risk": "concentration > fire",
-        "action_label": "STALE_REFRESH_REQUIRED",
-        "act_now": False,
-    })
+    status, violations = evaluate_pr1_actionability(
+        {
+            "risk": "concentration > fire",
+            "action_label": "STALE_REFRESH_REQUIRED",
+            "act_now": False,
+        }
+    )
     assert status == "PASS", violations
 
 
 def test_actionability_stale_overrides_act_now():
     # Contradiction: act_now=True (or ACT_NOW label) must NOT render ACT NOW when
     # the freshness/conflict state blocks it (P0-3 fail-closed).
-    status, violations = evaluate_pr1_actionability({
-        "act_now": True, "action_label": "STALE_REFRESH_REQUIRED",
-    })
+    status, violations = evaluate_pr1_actionability(
+        {
+            "act_now": True,
+            "action_label": "STALE_REFRESH_REQUIRED",
+        }
+    )
     assert status == "PASS", violations
-    status, violations = evaluate_pr1_actionability({
-        "act_now": True, "freshness": "STALE",
-    })
+    status, violations = evaluate_pr1_actionability(
+        {
+            "act_now": True,
+            "freshness": "STALE",
+        }
+    )
     assert status == "PASS", violations
-    status, violations = evaluate_pr1_actionability({
-        "act_now": True, "action_label": "DATA_CONFLICT",
-    })
+    status, violations = evaluate_pr1_actionability(
+        {
+            "act_now": True,
+            "action_label": "DATA_CONFLICT",
+        }
+    )
     assert status == "PASS", violations
-    status, violations = evaluate_pr1_actionability({
-        "action_label": "ACT_NOW", "freshness": "EXPIRED",
-    })
+    status, violations = evaluate_pr1_actionability(
+        {
+            "action_label": "ACT_NOW",
+            "freshness": "EXPIRED",
+        }
+    )
     assert status == "PASS", violations
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PR1_SIZING_ZERO — no objective => $0
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def test_sizing_zero_below_policy_fire():
     positions = [
@@ -116,7 +182,10 @@ def test_sizing_zero_above_fire_skipped_not_penalized():
     # Above fire has a real objective; the no-objective evaluator must not
     # flag it (it skips) nor crash.
     status, _ = evaluate_pr1_sizing_zero(
-        positions, portfolio_value=500_000.0, policy_cap_pct=12.0, fire_pct=16.5,
+        positions,
+        portfolio_value=500_000.0,
+        policy_cap_pct=12.0,
+        fire_pct=16.5,
     )
     assert status == "PASS"
 
@@ -125,14 +194,17 @@ def test_sizing_zero_above_fire_skipped_not_penalized():
 # PR1_DIGEST_409 — exact pair required
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def test_digest_missing_and_wrong_rejected():
     status, violations = evaluate_pr1_digest_409(
-        catalog_digest="1e855bdb25f63ceb", supplied_digest=None,
+        catalog_digest="1e855bdb25f63ceb",
+        supplied_digest=None,
     )
     assert status == "PASS", violations  # missing digest is rejected (fail-closed)
 
     status, violations = evaluate_pr1_digest_409(
-        catalog_digest="1e855bdb25f63ceb", supplied_digest="deadbeef",
+        catalog_digest="1e855bdb25f63ceb",
+        supplied_digest="deadbeef",
     )
     assert status == "PASS", violations  # wrong digest is rejected
 
@@ -141,6 +213,7 @@ def test_digest_exact_pair_accepted():
     # Exact pair is fine — the evaluator only reports when a mismatch is wrongly
     # accepted. Empty catalog digest (LEGACY) must NOT be treated as DIGEST_CAPABLE.
     from scripts.api_v3_cio import _digests_match
+
     assert _digests_match("1e855bdb25f63ceb", "1e855bdb25f63ceb") is True
     assert _digests_match("", "") is True  # legacy decision-id-only
 
@@ -149,6 +222,7 @@ def test_digest_exact_pair_accepted():
 # PR1_REENTRY_CANONICAL — READY_TO_REVIEW != RE_ENTER
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def test_reentry_readiness_never_reenter():
     status, violations = evaluate_pr1_reentry_canonical()
     assert status == "PASS", violations
@@ -156,11 +230,13 @@ def test_reentry_readiness_never_reenter():
 
 def test_reentry_lifecycle_has_terminal_reenter():
     from scripts.lib.cio_decision_semantics import REENTRY_LIFECYCLE
+
     assert REENTRY_LIFECYCLE[-1] == "RE_ENTER"
 
 
 def test_reentry_stance_for_ready_to_review_is_review():
     from scripts.lib.cio_decision_semantics import stance_from_queue_item
+
     assert stance_from_queue_item({"symbol": "NVDA", "state": "READY TO REVIEW"}) == "REVIEW"
     assert stance_from_queue_item({"symbol": "NVDA", "state": "NEAR ENTRY"}) == "REVIEW"
 
@@ -172,21 +248,50 @@ def test_reentry_label_and_why_bypass_never_reenter():
         resolve_display_stance,
         stance_from_queue_item,
     )
-    assert stance_from_queue_item({
-        "symbol": "ADBE", "state": "READY TO REVIEW", "directive_label": "Re-enter ADBE",
-    }) == "REVIEW"
-    assert stance_from_queue_item({
-        "symbol": "ADBE", "state": "NEAR ENTRY", "note": "Re-enter",
-    }) == "REVIEW"
-    assert stance_from_queue_item({
-        "symbol": "ADBE", "state": "OVERSOLD REVIEW", "directive_label": "REENTER",
-    }) == "REVIEW"
+
+    assert (
+        stance_from_queue_item(
+            {
+                "symbol": "ADBE",
+                "state": "READY TO REVIEW",
+                "directive_label": "Re-enter ADBE",
+            }
+        )
+        == "REVIEW"
+    )
+    assert (
+        stance_from_queue_item(
+            {
+                "symbol": "ADBE",
+                "state": "NEAR ENTRY",
+                "note": "Re-enter",
+            }
+        )
+        == "REVIEW"
+    )
+    assert (
+        stance_from_queue_item(
+            {
+                "symbol": "ADBE",
+                "state": "OVERSOLD REVIEW",
+                "directive_label": "REENTER",
+            }
+        )
+        == "REVIEW"
+    )
     assert resolve_display_stance("REVIEW", "ready to re-enter ADBE") == "REVIEW"
     assert resolve_display_stance("REVIEW", "consider re-enter on trigger") == "REVIEW"
     # Explicit governed verdict still wins.
-    assert stance_from_queue_item({
-        "symbol": "ADBE", "state": "READY TO REVIEW", "verdict": "RE_ENTER",
-    }) == "RE_ENTER"
+    assert (
+        stance_from_queue_item(
+            {
+                "symbol": "ADBE",
+                "state": "READY TO REVIEW",
+                "verdict": "RE_ENTER",
+            }
+        )
+        == "RE_ENTER"
+    )
 
 
 def test_standing_current_parity_evaluator():
@@ -197,6 +302,7 @@ def test_standing_current_parity_evaluator():
 # ─────────────────────────────────────────────────────────────────────────────
 # CDQ-27 — scenario-only trim contributes $0 to capital sources
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def test_cdq27_scenario_only_trim_zero_to_sources():
     positions = [
@@ -221,10 +327,14 @@ def test_sizing_exception_fails_closed_no_10pct(monkeypatch):
     plan = cp.build_capital_plan(
         portfolio_value=500_000.0,
         cash_total=100_000.0,
-        positions=[{
-            "symbol": "V", "market_value": 40_000.0,
-            "account": "schwab_rollover_ira", "weight_pct": 8.0,
-        }],
+        positions=[
+            {
+                "symbol": "V",
+                "market_value": 40_000.0,
+                "account": "schwab_rollover_ira",
+                "weight_pct": 8.0,
+            }
+        ],
         queue={"items": [{"symbol": "V", "verdict": "TRIM", "directive_label": "Advisory TRIM — V"}]},
         redeploy_open_events=[],
     )
@@ -243,6 +353,7 @@ def test_sizing_exception_fails_closed_no_10pct(monkeypatch):
 # ─────────────────────────────────────────────────────────────────────────────
 # Phase-aware CDQ profile semantics
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def _all_required_pass():
     return {
@@ -292,6 +403,7 @@ def test_not_in_scope_is_never_counted_as_pass():
 
 def test_unknown_profile_raises():
     import pytest
+
     with pytest.raises(ValueError):
         evaluate_profile("NOPE", {})
 
@@ -300,8 +412,10 @@ def test_unknown_profile_raises():
 # CDQ-25/26 — topology audit fail-closed offline
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def test_topology_audit_offline_is_not_run_fail_closed():
     from scripts.lib.cio_topology_audit import audit_topology
+
     r = audit_topology("6f7009794e5178a7926f5b1c84ae16d0ee7b2bc6", offline=True)
     assert r["ok"] is False
     assert r["status"] == "NOT_RUN"
@@ -310,6 +424,7 @@ def test_topology_audit_offline_is_not_run_fail_closed():
 
 def test_topology_audit_resolve_checkout_missing_path():
     from scripts.lib.cio_topology_audit import resolve_checkout
+
     r = resolve_checkout("/nonexistent/path/does/not/exist")
     assert r["exists"] is False
     assert r["head_sha"] == ""
@@ -317,6 +432,7 @@ def test_topology_audit_resolve_checkout_missing_path():
 
 def test_topology_audit_deprecated_markers_present():
     from scripts.lib.cio_topology_audit import DEPRECATED_MARKERS
+
     assert DEPRECATED_MARKERS
     assert any("agent-jobs/" in m or "/tmp/" in m for m in DEPRECATED_MARKERS)
 
@@ -328,17 +444,22 @@ def test_topology_audit_rebuild_tree_is_deprecated_not_approved():
         DEPRECATED_ROOTS,
         _is_deprecated_path,
     )
+
     assert "/home/johnclaw/trade-ai-v12-rebuild" in DEPRECATED_ROOTS
     assert "/home/johnclaw/trade-ai-v12-rebuild" not in APPROVED_ROOT_DEFAULT
-    assert _is_deprecated_path(
-        "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild",
-        DEPRECATED_ROOTS,
-        DEPRECATED_MARKERS,
-    ) is True
+    assert (
+        _is_deprecated_path(
+            "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild",
+            DEPRECATED_ROOTS,
+            DEPRECATED_MARKERS,
+        )
+        is True
+    )
 
 
 def test_topology_audit_deprecated_root_flagged_even_on_sha_match():
     from scripts.lib.cio_topology_audit import _classify
+
     # A deprecated root must be flagged even if its SHA matches the expected one.
     v = _classify(
         path="/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild",
@@ -358,6 +479,7 @@ def test_topology_audit_deprecated_root_flagged_even_on_sha_match():
 # re-entry idempotence, SIZING_UNAVAILABLE target truth, topology provenance
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def test_telegram_actionability_parity_fixtures():
     """P0-1: Telegram shares the web/backend canonical actionability semantics."""
     from scripts.lib.cio_alex_telegram import (
@@ -366,43 +488,50 @@ def test_telegram_actionability_parity_fixtures():
     )
 
     # act_now=True + DATA_CONFLICT → DATA CONFLICT / no MY CALL
-    c = classify_actionability({"stance_code": "RE_ENTER", "act_now": True,
-                                "action_label": "DATA_CONFLICT"})
+    c = classify_actionability({"stance_code": "RE_ENTER", "act_now": True, "action_label": "DATA_CONFLICT"})
     assert c["act_now"] is False
     assert c["actionability"] == "DATA_CONFLICT"
-    body = format_cio_message({"stance_code": "RE_ENTER", "symbol": "X",
-                               "act_now": True, "action_label": "DATA_CONFLICT",
-                               "recommended_delta_usd": 0.0})
+    body = format_cio_message(
+        {
+            "stance_code": "RE_ENTER",
+            "symbol": "X",
+            "act_now": True,
+            "action_label": "DATA_CONFLICT",
+            "recommended_delta_usd": 0.0,
+        }
+    )
     assert "MY CALL" not in body
 
     # act_now=True + REVALIDATE → REVALIDATE / no MY CALL
-    c = classify_actionability({"stance_code": "TRIM", "act_now": True,
-                                "action_label": "REVALIDATE"})
+    c = classify_actionability({"stance_code": "TRIM", "act_now": True, "action_label": "REVALIDATE"})
     assert c["act_now"] is False
     assert c["actionability"] == "REVALIDATE"
 
     # act_now=True + STALE → REVALIDATE / no MY CALL
-    c = classify_actionability({"stance_code": "TRIM", "act_now": True,
-                                "freshness": "STALE"})
+    c = classify_actionability({"stance_code": "TRIM", "act_now": True, "freshness": "STALE"})
     assert c["act_now"] is False
     assert c["current_action"] in ("REVALIDATE", "WAIT")
 
     # RE_ENTER + no explicit act_now → WAIT/REVIEW, not ACT NOW
-    c = classify_actionability({"stance_code": "RE_ENTER",
-                                "recommended_delta_usd": 5000.0})
+    c = classify_actionability({"stance_code": "RE_ENTER", "recommended_delta_usd": 5000.0})
     assert c["act_now"] is False
-    body = format_cio_message({"stance_code": "RE_ENTER", "symbol": "X",
-                               "recommended_delta_usd": 5000.0,
-                               "why_now": "standing re-enter"})
+    body = format_cio_message(
+        {"stance_code": "RE_ENTER", "symbol": "X", "recommended_delta_usd": 5000.0, "why_now": "standing re-enter"}
+    )
     assert "MY CALL" not in body
 
     # fresh RE_ENTER + act_now=True → ACT NOW
-    c = classify_actionability({"stance_code": "RE_ENTER", "act_now": True,
-                                "recommended_delta_usd": 5000.0})
+    c = classify_actionability({"stance_code": "RE_ENTER", "act_now": True, "recommended_delta_usd": 5000.0})
     assert c["act_now"] is True
-    body = format_cio_message({"stance_code": "RE_ENTER", "symbol": "X",
-                               "act_now": True, "recommended_delta_usd": 5000.0,
-                               "why_now": "fresh re-enter"})
+    body = format_cio_message(
+        {
+            "stance_code": "RE_ENTER",
+            "symbol": "X",
+            "act_now": True,
+            "recommended_delta_usd": 5000.0,
+            "why_now": "fresh re-enter",
+        }
+    )
     assert "MY CALL" in body
 
 
@@ -425,12 +554,12 @@ def test_command_center_fallback_fail_closed(monkeypatch):
         "freshness": "STALE",
         "stance_code": "TRIM",
     }
-    out = cc.build_cio_now(position_decisions=[stale_conflict],
-                           portfolio_value=1_000_000.0)
+    out = cc.build_cio_now(position_decisions=[stale_conflict], portfolio_value=1_000_000.0)
     cards = out["decisions"]
     card = next(c for c in cards if c["symbol"] == "SCHD")
     assert card["urgency"] == "medium"  # blocked, never high
     from scripts.lib.cio_decision_semantics import canonical_act_now
+
     act_now, blocking = canonical_act_now(card)
     assert act_now is False
     assert blocking == "DATA_CONFLICT"
@@ -438,9 +567,14 @@ def test_command_center_fallback_fail_closed(monkeypatch):
     assert card["sizing_suppressed"] is True
     assert card["sizing_suppression_reason"] == "DATA_CONFLICT"
     for field in (
-        "delta_usd", "recommended_delta_usd", "target_weight_pct",
-        "trim_to_clear_fire_usd", "trim_to_policy_usd", "scenario_trim_usd",
-        "sizing_method", "sizing_objective",
+        "delta_usd",
+        "recommended_delta_usd",
+        "target_weight_pct",
+        "trim_to_clear_fire_usd",
+        "trim_to_policy_usd",
+        "scenario_trim_usd",
+        "sizing_method",
+        "sizing_objective",
     ):
         assert card.get(field) is None, field
 
@@ -448,6 +582,7 @@ def test_command_center_fallback_fail_closed(monkeypatch):
 def test_derived_actionability_owns_priority(monkeypatch):
     """P0-3: sort + Material Today use derived action, not raw act_now."""
     from scripts.lib.cio_command_center import _actionability_urgency, _canonical_action
+
     for blocked in (
         {"freshness": "STALE"},
         {"freshness": "EXPIRED"},
@@ -467,21 +602,26 @@ def test_derived_actionability_owns_priority(monkeypatch):
 def test_stale_act_now_ranked_below_fresh(monkeypatch):
     """P0-3: a stale act_now=True record may stay material but not ACT-NOW tier."""
     import scripts.lib.cio_command_center as cc
+
     stale = {
-        "symbol": "STALE1", "stance_code": "TRIM",
+        "symbol": "STALE1",
+        "stance_code": "TRIM",
         "why_now": "Advisory TRIM — STALE1 concentration fire",
         "risk": "concentration > fire",
         "recommended_delta_usd": 900000.0,
-        "act_now": True, "action_label": "ACT_NOW", "freshness": "STALE",
+        "act_now": True,
+        "action_label": "ACT_NOW",
+        "freshness": "STALE",
     }
     fresh = {
-        "symbol": "FRESH1", "stance_code": "ADD",
+        "symbol": "FRESH1",
+        "stance_code": "ADD",
         "why_now": "buy signal",
         "recommended_delta_usd": 1.0,
-        "act_now": True, "action_label": "ACT_NOW",
+        "act_now": True,
+        "action_label": "ACT_NOW",
     }
-    out = cc.build_cio_now(position_decisions=[stale, fresh],
-                           portfolio_value=1_000_000.0)
+    out = cc.build_cio_now(position_decisions=[stale, fresh], portfolio_value=1_000_000.0)
     cards = out["decisions"]
     assert cards
     # Fresh ACT NOW outranks stale ACT NOW (blocked) regardless of |delta|.
@@ -495,6 +635,7 @@ def test_stale_act_now_ranked_below_fresh(monkeypatch):
 def test_reentry_lifecycle_idempotent_on_canonical_states():
     """P1-1: canonical lifecycle states are recognized after normalization."""
     from scripts.lib.cio_decision_semantics import reentry_state_from_desk
+
     table = {
         "WATCH_REENTRY": "WATCH_REENTRY",
         "DESK_READY_TO_REVIEW": "DESK_READY_TO_REVIEW",
@@ -519,8 +660,8 @@ def test_reentry_lifecycle_idempotent_on_canonical_states():
 
 def test_reentry_canonical_states_not_reenter():
     from scripts.lib.cio_decision_semantics import stance_from_queue_item
-    for state in ("WATCH_REENTRY", "DESK_READY_TO_REVIEW",
-                  "NEAR_TRIGGER", "GOVERNED_ELIGIBLE"):
+
+    for state in ("WATCH_REENTRY", "DESK_READY_TO_REVIEW", "NEAR_TRIGGER", "GOVERNED_ELIGIBLE"):
         assert stance_from_queue_item({"symbol": "X", "state": state}) == "REVIEW", state
 
 
@@ -535,12 +676,15 @@ def test_sizing_unavailable_target_is_null_not_cap(monkeypatch):
     plan = cp.build_capital_plan(
         portfolio_value=500_000.0,
         cash_total=100_000.0,
-        positions=[{
-            "symbol": "V", "market_value": 40_000.0,
-            "account": "schwab_rollover_ira", "weight_pct": 8.0,
-        }],
-        queue={"items": [{"symbol": "V", "verdict": "TRIM",
-                          "directive_label": "Advisory TRIM — V"}]},
+        positions=[
+            {
+                "symbol": "V",
+                "market_value": 40_000.0,
+                "account": "schwab_rollover_ira",
+                "weight_pct": 8.0,
+            }
+        ],
+        queue={"items": [{"symbol": "V", "verdict": "TRIM", "directive_label": "Advisory TRIM — V"}]},
         redeploy_open_events=[],
     )
     dec = next(d for d in plan["position_decisions"] if d["symbol"] == "V")
@@ -556,11 +700,13 @@ def test_sizing_unavailable_target_is_null_not_cap(monkeypatch):
 # P1-3 — topology audit provenance precision (code vs artifact)
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def test_topology_artifact_paths_not_code():
     from scripts.lib.cio_topology_audit import (
         _code_paths_from_text,
         _is_artifact_path,
     )
+
     line = (
         "cd /home/johnclaw/trade-ai-releases/portfolio-server && "
         "python scripts/cio_worker.py >> /tmp/cio_worker.lock 2>&1"
@@ -585,6 +731,7 @@ def test_topology_build_sha_fallback_detects_stale_release():
         _classify_path,
         resolve_checkout,
     )
+
     with tempfile.TemporaryDirectory() as td:
         # Simulate a copied release snapshot: no .git, only BUILD_SHA.
         stale = os.path.join(td, "6f700979-main-exact-phase2-20260815-212024")
@@ -630,6 +777,7 @@ def test_topology_data_path_not_code():
         _code_paths_from_text,
         _is_data_path,
     )
+
     assert _is_data_path("/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/data/runtime") is True
     assert _is_data_path("/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/x.log") is True
     assert _is_data_path("/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/cio.py") is False
@@ -703,6 +851,7 @@ def test_topology_interpreter_is_runtime_not_code():
         _code_paths_from_text,
         _is_runtime_interpreter,
     )
+
     approved = ("/home/johnclaw/trade-ai-releases/portfolio-server",)
     # Interpreter binary under the deprecated root → runtime, not code.
     venv_py = "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python"
@@ -717,20 +866,26 @@ def test_topology_interpreter_is_runtime_not_code():
     assert "/home/johnclaw/trade-ai-releases/portfolio-server/scripts/portfolio_server.py" in code
 
     # Classifying the interpreter yields no violation, but the old-tree script does.
-    assert _classify_path(
-        venv_py,
-        expected="6f7009794e5178a7926f5b1c84ae16d0ee7b2bc6",
-        approved_roots=approved,
-        deprecated_roots=DEPRECATED_ROOTS,
-        deprecated_markers=DEPRECATED_MARKERS,
-    ) is None
-    assert _classify_path(
-        "/home/johnclaw/trade-ai-v12-rebuild/cio_worker.py",
-        expected="6f7009794e5178a7926f5b1c84ae16d0ee7b2bc6",
-        approved_roots=approved,
-        deprecated_roots=DEPRECATED_ROOTS,
-        deprecated_markers=DEPRECATED_MARKERS,
-    ) is not None
+    assert (
+        _classify_path(
+            venv_py,
+            expected="6f7009794e5178a7926f5b1c84ae16d0ee7b2bc6",
+            approved_roots=approved,
+            deprecated_roots=DEPRECATED_ROOTS,
+            deprecated_markers=DEPRECATED_MARKERS,
+        )
+        is None
+    )
+    assert (
+        _classify_path(
+            "/home/johnclaw/trade-ai-v12-rebuild/cio_worker.py",
+            expected="6f7009794e5178a7926f5b1c84ae16d0ee7b2bc6",
+            approved_roots=approved,
+            deprecated_roots=DEPRECATED_ROOTS,
+            deprecated_markers=DEPRECATED_MARKERS,
+        )
+        is not None
+    )
 
 
 def test_topology_old_tree_script_approved_cwd_fails():
@@ -740,6 +895,7 @@ def test_topology_old_tree_script_approved_cwd_fails():
         _classify_path,
         _code_paths_from_text,
     )
+
     approved = ("/home/johnclaw/trade-ai-releases/portfolio-server",)
     # Old-tree script launched from an approved cwd must still fail.
     cmd = "python /home/johnclaw/trade-ai-v12-rebuild/cio_worker.py"
@@ -771,6 +927,7 @@ def test_topology_old_tree_cron_one_violation_not_artifact():
         DEPRECATED_ROOTS,
         _validate_scheduled_entries,
     )
+
     entry = {
         "source": "test",
         "line": "*/5 * * * * cd /home/johnclaw/trade-ai-v12-rebuild && python cio_worker.py >> /tmp/foo.lock 2>&1",
@@ -799,6 +956,7 @@ def test_topology_approved_script_working_dir_pass():
         DEPRECATED_ROOTS,
         _classify_path,
     )
+
     approved = ("/home/johnclaw/trade-ai-releases/portfolio-server",)
     for p in (
         "/home/johnclaw/trade-ai-releases/portfolio-server",
@@ -818,6 +976,7 @@ def test_topology_approved_script_working_dir_pass():
 # TRUE FINAL CLOSURE — production-path defects
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def test_capital_plan_fallback_never_infers_reenter(monkeypatch):
     """P0-1: the fail-soft fallback must never manufacture RE_ENTER from text."""
     import scripts.lib.cio_decision_semantics as sem
@@ -828,13 +987,11 @@ def test_capital_plan_fallback_never_infers_reenter(monkeypatch):
     monkeypatch.setattr(sem, "stance_for_symbol", _boom)
 
     # verdict=None + label "Re-enter ADBE" → NOT RE_ENTER
-    q = {"items": [{"symbol": "ADBE", "verdict": None,
-                    "directive_label": "Re-enter ADBE"}]}
+    q = {"items": [{"symbol": "ADBE", "verdict": None, "directive_label": "Re-enter ADBE"}]}
     assert cp.stance_for("ADBE", q) != "RE_ENTER"
 
     # state="READY TO REVIEW" + label "RE_ENTER" → NOT RE_ENTER
-    q2 = {"items": [{"symbol": "ADBE", "verdict": None, "state": "READY TO REVIEW",
-                     "directive_label": "RE_ENTER"}]}
+    q2 = {"items": [{"symbol": "ADBE", "verdict": None, "state": "READY TO REVIEW", "directive_label": "RE_ENTER"}]}
     assert cp.stance_for("ADBE", q2) != "RE_ENTER"
 
     # explicit verdict=RE_ENTER → RE_ENTER (structured verdict, not text)
@@ -845,6 +1002,7 @@ def test_capital_plan_fallback_never_infers_reenter(monkeypatch):
 def test_canonical_blocking_honors_actionability_field():
     """P0-3: actionability is a canonical blocking representation."""
     from scripts.lib.cio_decision_semantics import canonical_act_now
+
     cases = [
         {"act_now": True, "actionability": "DATA_CONFLICT"},
         {"act_now": True, "actionability": "REVALIDATE"},
@@ -885,18 +1043,14 @@ def test_material_scan_preserves_freshness_and_blocks_act_now():
     from scripts.lib.cio_alex_telegram import format_cio_message
 
     for freshness in ("STALE", "EXPIRED"):
-        proj = _canonical_decisions(
-            {"position_decisions": [_material_scan_row(freshness=freshness)]}
-        )[0]
+        proj = _canonical_decisions({"position_decisions": [_material_scan_row(freshness=freshness)]})[0]
         assert proj.get("freshness") == freshness, proj.get("freshness")
         assert proj.get("act_now") is False
         assert proj.get("current_action") in ("REVALIDATE", "WAIT")
         assert "MY CALL" not in format_cio_message(proj)
 
     # DATA_CONFLICT via action_label must also survive projection.
-    proj = _canonical_decisions(
-        {"position_decisions": [_material_scan_row(action_label="DATA_CONFLICT")]}
-    )[0]
+    proj = _canonical_decisions({"position_decisions": [_material_scan_row(action_label="DATA_CONFLICT")]})[0]
     assert proj.get("act_now") is False
     assert proj.get("actionability") == "DATA_CONFLICT"
     assert "MY CALL" not in format_cio_message(proj)
@@ -913,9 +1067,14 @@ def test_reentry_unrelated_act_now_cannot_activate_ready():
         "capital_uses": {"reentry_usd": 5000.0},
         "freshness_materiality_gate": {"act_now_count": 1, "counts": {"ACT_NOW": 1}},
         "position_decisions": [
-            {"symbol": "SCHD", "stance_code": "TRIM", "act_now": True,
-             "action_label": "ACT_NOW", "recommended_delta_usd": -20000.0,
-             "why_now": "Advisory TRIM — SCHD concentration fire"},
+            {
+                "symbol": "SCHD",
+                "stance_code": "TRIM",
+                "act_now": True,
+                "action_label": "ACT_NOW",
+                "recommended_delta_usd": -20000.0,
+                "why_now": "Advisory TRIM — SCHD concentration fire",
+            },
         ],
     }
     dec = _reentry_decision(reclass, plan)
@@ -936,9 +1095,14 @@ def test_reentry_governed_positive_fixture():
         "capital_uses": {"reentry_usd": 5000.0},
         "freshness_materiality_gate": {"act_now_count": 0, "counts": {"ACT_NOW": 0}},
         "position_decisions": [
-            {"symbol": "ADBE", "stance_code": "RE_ENTER", "act_now": True,
-             "action_label": "ACT_NOW", "recommended_delta_usd": 5000.0,
-             "why_now": "governed re-enter"},
+            {
+                "symbol": "ADBE",
+                "stance_code": "RE_ENTER",
+                "act_now": True,
+                "action_label": "ACT_NOW",
+                "recommended_delta_usd": 5000.0,
+                "why_now": "governed re-enter",
+            },
         ],
     }
     dec = _reentry_decision(reclass, plan)
@@ -952,10 +1116,16 @@ def test_telegram_data_conflict_prose_distinct():
     from scripts.lib.cio_alex_telegram import classify_actionability, format_cio_message
 
     conflict = {
-        "decision_id": "dec_conflict", "symbol": "SCHD", "stance_code": "TRIM",
-        "action": "TRIM", "act_now": True, "action_label": "DATA_CONFLICT",
-        "recommended_delta_usd": -20000.0, "why_now": "concentration fire",
-        "decision_input_digest": "in", "decision_evidence_digest": "ev",
+        "decision_id": "dec_conflict",
+        "symbol": "SCHD",
+        "stance_code": "TRIM",
+        "action": "TRIM",
+        "act_now": True,
+        "action_label": "DATA_CONFLICT",
+        "recommended_delta_usd": -20000.0,
+        "why_now": "concentration fire",
+        "decision_input_digest": "in",
+        "decision_evidence_digest": "ev",
     }
     cls = classify_actionability(conflict)
     assert cls["actionability"] == "DATA_CONFLICT"

@@ -1,0 +1,3940 @@
+{
+  "schema": "N8nContractBaselineCorrection@v1",
+  "as_of": "2026-10-12",
+  "authority": "SOURCE_ONLY_PROPOSED_BODY_CORRECTION; no runtime, review, owner or admission authority",
+  "contracts_total": 118,
+  "fields": {
+    "timeout_s": {
+      "required": 118,
+      "present_before": 105,
+      "present_after": 118,
+      "fixed": 13,
+      "unresolved": 0,
+      "not_applicable": 0,
+      "missing_filled": 13,
+      "existing_value_revised": 0
+    },
+    "freshness_degraded_after_h": {
+      "required": 118,
+      "present_before": 108,
+      "present_after": 118,
+      "fixed": 10,
+      "unresolved": 0,
+      "not_applicable": 0,
+      "missing_filled": 10,
+      "existing_value_revised": 0
+    },
+    "freshness_failed_after_h": {
+      "required": 118,
+      "present_before": 114,
+      "present_after": 118,
+      "fixed": 10,
+      "unresolved": 0,
+      "not_applicable": 0,
+      "missing_filled": 4,
+      "existing_value_revised": 6
+    }
+  },
+  "contracts_changed": 13,
+  "changed_reviewed_bodies_held_draft": 5,
+  "contracts_with_unresolved_baselines": 0,
+  "not_applicable_reasons": [],
+  "records": [
+    {
+      "id": "aegis-nightly-ingestion",
+      "kind": "lane",
+      "status_before": "REVIEWED",
+      "status_after": "REVIEWED",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 600,
+        "freshness_degraded_after_h": 26.0,
+        "freshness_failed_after_h": 50.0
+      },
+      "after": {
+        "timeout_s": 600,
+        "freshness_degraded_after_h": 26.0,
+        "freshness_failed_after_h": 50.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "f611bdf1219ae5f94b40ddcac7d2452781af8ecca9ea176a78a6f73fc982a60b",
+      "body_sha256_after": "f611bdf1219ae5f94b40ddcac7d2452781af8ecca9ea176a78a6f73fc982a60b",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "aegis-social-sentiment",
+      "kind": "lane",
+      "status_before": "REVIEWED",
+      "status_after": "REVIEWED",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 600,
+        "freshness_degraded_after_h": 22.0,
+        "freshness_failed_after_h": 26.0
+      },
+      "after": {
+        "timeout_s": 600,
+        "freshness_degraded_after_h": 22.0,
+        "freshness_failed_after_h": 26.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "10216c25acc3cd347f9a080c331bf01966b4a8d8766a493895a774e86f84cd26",
+      "body_sha256_after": "10216c25acc3cd347f9a080c331bf01966b4a8d8766a493895a774e86f84cd26",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "aegis-transcript-discovery",
+      "kind": "lane",
+      "status_before": "REVIEWED",
+      "status_after": "REVIEWED",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 26.0,
+        "freshness_failed_after_h": 50.0
+      },
+      "after": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 26.0,
+        "freshness_failed_after_h": 50.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "05017643e8ed8b071c7675addc9e560ff50e39a77fd7bb6c0b11be57daaf261a",
+      "body_sha256_after": "05017643e8ed8b071c7675addc9e560ff50e39a77fd7bb6c0b11be57daaf261a",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "agent-calibration-engine",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 180,
+        "freshness_degraded_after_h": 336.0,
+        "freshness_failed_after_h": 504.0
+      },
+      "after": {
+        "timeout_s": 180,
+        "freshness_degraded_after_h": 336.0,
+        "freshness_failed_after_h": 504.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "a49bea66068c7242784514c3785ee84650518353c538c35b147b23a261fbe56d",
+      "body_sha256_after": "a49bea66068c7242784514c3785ee84650518353c538c35b147b23a261fbe56d",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "agent-number-grounding-slo",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 48.0,
+        "freshness_failed_after_h": 72.0
+      },
+      "after": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 48.0,
+        "freshness_failed_after_h": 72.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "dfaadea890d9d8f0c94e017e7a09608841e334b005c06e833568d5d903065a7f",
+      "body_sha256_after": "dfaadea890d9d8f0c94e017e7a09608841e334b005c06e833568d5d903065a7f",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "agent-outcome-linker",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 180,
+        "freshness_degraded_after_h": 144.0,
+        "freshness_failed_after_h": 216.0
+      },
+      "after": {
+        "timeout_s": 180,
+        "freshness_degraded_after_h": 144.0,
+        "freshness_failed_after_h": 216.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "b54c02c1951ac6d83fa94c91ae58c4f7bc3cc25f838685f3037483946715c1c8",
+      "body_sha256_after": "b54c02c1951ac6d83fa94c91ae58c4f7bc3cc25f838685f3037483946715c1c8",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "agent-outcome-scorer",
+      "kind": "lane",
+      "status_before": "REVIEWED",
+      "status_after": "REVIEWED",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 170.0,
+        "freshness_failed_after_h": 338.0
+      },
+      "after": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 170.0,
+        "freshness_failed_after_h": 338.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "8c822a9f7d34ee8e5356d4d31f848c4eeaa6bc92f9266f4a1c280c27a4dc2a11",
+      "body_sha256_after": "8c822a9f7d34ee8e5356d4d31f848c4eeaa6bc92f9266f4a1c280c27a4dc2a11",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "audit-enrichment-coverage",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 144.0,
+        "freshness_failed_after_h": 216.0
+      },
+      "after": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 144.0,
+        "freshness_failed_after_h": 216.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "4ee2136db8ff7fbff0102157a75340772f030c7a8c5ddb3e7f9f705e977ffe0c",
+      "body_sha256_after": "4ee2136db8ff7fbff0102157a75340772f030c7a8c5ddb3e7f9f705e977ffe0c",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "catalyst-graph",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 600,
+        "freshness_degraded_after_h": 48,
+        "freshness_failed_after_h": 72
+      },
+      "after": {
+        "timeout_s": 600,
+        "freshness_degraded_after_h": 48,
+        "freshness_failed_after_h": 72
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "b2746c313f46bffaf18acbda0593ebd6eb5421224b5a0633e8545861ad2b4f1f",
+      "body_sha256_after": "b2746c313f46bffaf18acbda0593ebd6eb5421224b5a0633e8545861ad2b4f1f",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "catalyst-momentum-engine-overnight",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 40.0,
+        "freshness_failed_after_h": 60.0
+      },
+      "after": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 40.0,
+        "freshness_failed_after_h": 60.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "016f42f34f1fcfb0e44dcbe186cf02607738da144fe8fc0323875a240216f51b",
+      "body_sha256_after": "016f42f34f1fcfb0e44dcbe186cf02607738da144fe8fc0323875a240216f51b",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "catalyst-symbol-impact",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 48.0,
+        "freshness_failed_after_h": 72.0
+      },
+      "after": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 48.0,
+        "freshness_failed_after_h": 72.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "85d1a79e8a1048b9f536de054c290827fa2eae8c5f11ead457f1f5a45b5cacc8",
+      "body_sha256_after": "85d1a79e8a1048b9f536de054c290827fa2eae8c5f11ead457f1f5a45b5cacc8",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "classifier-health-check",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 120,
+        "freshness_degraded_after_h": 144.0,
+        "freshness_failed_after_h": 216.0
+      },
+      "after": {
+        "timeout_s": 120,
+        "freshness_degraded_after_h": 144.0,
+        "freshness_failed_after_h": 216.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "1c8d8b62422978574999544ff8500a7fe8ab6a8320b96661e214dcea95762948",
+      "body_sha256_after": "1c8d8b62422978574999544ff8500a7fe8ab6a8320b96661e214dcea95762948",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "classify-instruments",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 336.0,
+        "freshness_failed_after_h": 504.0
+      },
+      "after": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 336.0,
+        "freshness_failed_after_h": 504.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "5b079b07713a0fe61e1548c354a1e984cfe6c975b1e9adeabb89a2ca8c9a8bf7",
+      "body_sha256_after": "5b079b07713a0fe61e1548c354a1e984cfe6c975b1e9adeabb89a2ca8c9a8bf7",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "crawl-v3-dashboard",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 600,
+        "freshness_degraded_after_h": 48,
+        "freshness_failed_after_h": 72
+      },
+      "after": {
+        "timeout_s": 600,
+        "freshness_degraded_after_h": 48,
+        "freshness_failed_after_h": 72
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "c86198694d89653d014d7cad28faf9240fa4f78e2ab6088b020a0e2e96ded65f",
+      "body_sha256_after": "c86198694d89653d014d7cad28faf9240fa4f78e2ab6088b020a0e2e96ded65f",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "crontab-snapshot-for-health-agent",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 30,
+        "freshness_degraded_after_h": 0.68,
+        "freshness_failed_after_h": 1.02
+      },
+      "after": {
+        "timeout_s": 30,
+        "freshness_degraded_after_h": 0.68,
+        "freshness_failed_after_h": 1.02
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "51ace32250213e67d838312d4614799247525ae502ae40827f5ec0a1ecc328f0",
+      "body_sha256_after": "51ace32250213e67d838312d4614799247525ae502ae40827f5ec0a1ecc328f0",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "daily-incubator-refresh",
+      "kind": "lane",
+      "status_before": "REVIEWED",
+      "status_after": "REVIEWED",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 1800,
+        "freshness_degraded_after_h": 144.0,
+        "freshness_failed_after_h": 216.0
+      },
+      "after": {
+        "timeout_s": 1800,
+        "freshness_degraded_after_h": 144.0,
+        "freshness_failed_after_h": 216.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "1e9e2c3587fdc05cc0f3a2de331ccb775fefc71bdaf609166de2e9b654248301",
+      "body_sha256_after": "1e9e2c3587fdc05cc0f3a2de331ccb775fefc71bdaf609166de2e9b654248301",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "data-gap-resolver-at-0-10-16",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 600,
+        "freshness_degraded_after_h": 132.0,
+        "freshness_failed_after_h": 198.0
+      },
+      "after": {
+        "timeout_s": 600,
+        "freshness_degraded_after_h": 132.0,
+        "freshness_failed_after_h": 198.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "c754168e01e5912e1949e6eb63a17c00e062a7214963533a7cffa5de1b8f4913",
+      "body_sha256_after": "c754168e01e5912e1949e6eb63a17c00e062a7214963533a7cffa5de1b8f4913",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "data-gap-resolver-pre",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 600,
+        "freshness_degraded_after_h": 144.0,
+        "freshness_failed_after_h": 216.0
+      },
+      "after": {
+        "timeout_s": 600,
+        "freshness_degraded_after_h": 144.0,
+        "freshness_failed_after_h": 216.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "ee2d0bdb058ace3215b00748d10d96977e47c71d2eff815f670c2547fce31d65",
+      "body_sha256_after": "ee2d0bdb058ace3215b00748d10d96977e47c71d2eff815f670c2547fce31d65",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "data-gap-resolver-weekly",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 600,
+        "freshness_degraded_after_h": 336.0,
+        "freshness_failed_after_h": 504.0
+      },
+      "after": {
+        "timeout_s": 600,
+        "freshness_degraded_after_h": 336.0,
+        "freshness_failed_after_h": 504.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "fec07d4d6bfac0c0e35139f3957189d9f7e5c6f6cdeca478b143f740e77935e5",
+      "body_sha256_after": "fec07d4d6bfac0c0e35139f3957189d9f7e5c6f6cdeca478b143f740e77935e5",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "enterprise-backtester",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 900,
+        "freshness_degraded_after_h": 336.0,
+        "freshness_failed_after_h": 504.0
+      },
+      "after": {
+        "timeout_s": 900,
+        "freshness_degraded_after_h": 336.0,
+        "freshness_failed_after_h": 504.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "2427d0ba63eb6441b2b34239f91d16c1d448423bb3e243e9cfadb965ebc8a396",
+      "body_sha256_after": "2427d0ba63eb6441b2b34239f91d16c1d448423bb3e243e9cfadb965ebc8a396",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "etf-analyst-enrich",
+      "kind": "lane",
+      "status_before": "REVIEWED",
+      "status_after": "REVIEWED",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 600,
+        "freshness_degraded_after_h": 170.0,
+        "freshness_failed_after_h": 338.0
+      },
+      "after": {
+        "timeout_s": 600,
+        "freshness_degraded_after_h": 170.0,
+        "freshness_failed_after_h": 338.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "ace1a9ed5a9b4d4a3cd9080bba1b1dfd6b9f53fafd9f1b0e77f4a309c21c23a9",
+      "body_sha256_after": "ace1a9ed5a9b4d4a3cd9080bba1b1dfd6b9f53fafd9f1b0e77f4a309c21c23a9",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "etf-performance-enrich",
+      "kind": "lane",
+      "status_before": "REVIEWED",
+      "status_after": "REVIEWED",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 900,
+        "freshness_degraded_after_h": 170.0,
+        "freshness_failed_after_h": 338.0
+      },
+      "after": {
+        "timeout_s": 900,
+        "freshness_degraded_after_h": 170.0,
+        "freshness_failed_after_h": 338.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "bdce9bd48d963a6ae705b7aa8b5700f0ab7aa0a2132975df38dcbb27e3ad513e",
+      "body_sha256_after": "bdce9bd48d963a6ae705b7aa8b5700f0ab7aa0a2132975df38dcbb27e3ad513e",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "fee-efficiency-analyzer",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 180,
+        "freshness_degraded_after_h": 336.0,
+        "freshness_failed_after_h": 504.0
+      },
+      "after": {
+        "timeout_s": 180,
+        "freshness_degraded_after_h": 336.0,
+        "freshness_failed_after_h": 504.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "929591e9bcc8f8ef8dce76d9f63bfcb41f52de6f94c73b11e4aa939c9641306c",
+      "body_sha256_after": "929591e9bcc8f8ef8dce76d9f63bfcb41f52de6f94c73b11e4aa939c9641306c",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "feedback-loop-processor",
+      "kind": "lane",
+      "status_before": "REVIEWED",
+      "status_after": "REVIEWED",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 600,
+        "freshness_degraded_after_h": 26.0,
+        "freshness_failed_after_h": 50.0
+      },
+      "after": {
+        "timeout_s": 600,
+        "freshness_degraded_after_h": 26.0,
+        "freshness_failed_after_h": 50.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "9f34ea70aca08ee43e1425f3f36fc4f43d77bd656c74782f8b901a9e36f7bbc5",
+      "body_sha256_after": "9f34ea70aca08ee43e1425f3f36fc4f43d77bd656c74782f8b901a9e36f7bbc5",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "finviz-enrichment",
+      "kind": "lane",
+      "status_before": "REVIEWED",
+      "status_after": "REVIEWED",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 900,
+        "freshness_degraded_after_h": 26.0,
+        "freshness_failed_after_h": 50.0
+      },
+      "after": {
+        "timeout_s": 900,
+        "freshness_degraded_after_h": 26.0,
+        "freshness_failed_after_h": 50.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "2cb8ee10bf2fdb90c6cdd005ed7064b5da37c0b8a264b4cc81eadacdb23d7d8b",
+      "body_sha256_after": "2cb8ee10bf2fdb90c6cdd005ed7064b5da37c0b8a264b4cc81eadacdb23d7d8b",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "finviz-health-check",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 120,
+        "freshness_degraded_after_h": 24,
+        "freshness_failed_after_h": 36
+      },
+      "after": {
+        "timeout_s": 120,
+        "freshness_degraded_after_h": 24,
+        "freshness_failed_after_h": 36
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "25a79d9f5dbacf9b7f3494778f77b0dc75e2cb20bf191538361000f3eeef5175",
+      "body_sha256_after": "25a79d9f5dbacf9b7f3494778f77b0dc75e2cb20bf191538361000f3eeef5175",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "finviz-proactive-research",
+      "kind": "lane",
+      "status_before": "REVIEWED",
+      "status_after": "REVIEWED",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 132.0,
+        "freshness_failed_after_h": 198.0
+      },
+      "after": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 132.0,
+        "freshness_failed_after_h": 198.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "cf0c1604a2edd4257ebe8fb5eae543dafc6638d22f2e4ada1ee87b51335458ad",
+      "body_sha256_after": "cf0c1604a2edd4257ebe8fb5eae543dafc6638d22f2e4ada1ee87b51335458ad",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "finviz-screener-runner",
+      "kind": "lane",
+      "status_before": "REVIEWED",
+      "status_after": "REVIEWED",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 1800,
+        "freshness_degraded_after_h": 144.0,
+        "freshness_failed_after_h": 216.0
+      },
+      "after": {
+        "timeout_s": 1800,
+        "freshness_degraded_after_h": 144.0,
+        "freshness_failed_after_h": 216.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "e540b60bf6d8ce4669c6879fd3055c1cd8fcd4c511b9acab91d283425e251644",
+      "body_sha256_after": "e540b60bf6d8ce4669c6879fd3055c1cd8fcd4c511b9acab91d283425e251644",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "heartbeat-watch",
+      "kind": "lane",
+      "status_before": "REVIEWED",
+      "status_after": "REVIEWED",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 60,
+        "freshness_degraded_after_h": 0.167,
+        "freshness_failed_after_h": 0.25
+      },
+      "after": {
+        "timeout_s": 60,
+        "freshness_degraded_after_h": 0.167,
+        "freshness_failed_after_h": 0.25
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "ccbbc936589b6fa3676f0bbdb273f2c68611bc5e7520724df4e78370d0f35e6f",
+      "body_sha256_after": "ccbbc936589b6fa3676f0bbdb273f2c68611bc5e7520724df4e78370d0f35e6f",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "hermes-analyst-signal-discovery",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 6.0,
+        "freshness_failed_after_h": 9.0
+      },
+      "after": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 6.0,
+        "freshness_failed_after_h": 9.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "24687457b08ef2cb3d8fa3b7bef054647f772a5b11331e47bdd157299b4375f9",
+      "body_sha256_after": "24687457b08ef2cb3d8fa3b7bef054647f772a5b11331e47bdd157299b4375f9",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "hermes-entity-spike-discovery",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 6.0,
+        "freshness_failed_after_h": 9.0
+      },
+      "after": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 6.0,
+        "freshness_failed_after_h": 9.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "b07ccb0b8c3f00e2c33f25f9ee2e7701a4b4ecc6e3a79fe08c0f31573d17fd60",
+      "body_sha256_after": "b07ccb0b8c3f00e2c33f25f9ee2e7701a4b4ecc6e3a79fe08c0f31573d17fd60",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "hermes-governance-api",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 120,
+        "freshness_degraded_after_h": 114.34,
+        "freshness_failed_after_h": 171.51
+      },
+      "after": {
+        "timeout_s": 120,
+        "freshness_degraded_after_h": 114.34,
+        "freshness_failed_after_h": 171.51
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "13f2e150a4e82a275d0e6118e83b54c6f346396b2bce41a9cdb1aa29df95b5ce",
+      "body_sha256_after": "13f2e150a4e82a275d0e6118e83b54c6f346396b2bce41a9cdb1aa29df95b5ce",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "hermes-industry-novelty-discovery",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 48.0,
+        "freshness_failed_after_h": 72.0
+      },
+      "after": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 48.0,
+        "freshness_failed_after_h": 72.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "30b43b800fe7a190bb696f33d037849b16a3f1d1a3cd87964217bdd34684825c",
+      "body_sha256_after": "30b43b800fe7a190bb696f33d037849b16a3f1d1a3cd87964217bdd34684825c",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "hermes-momentum-catalyst-scalp",
+      "kind": "lane",
+      "status_before": "REVIEWED",
+      "status_after": "REVIEWED",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 2.0,
+        "freshness_failed_after_h": 3.0
+      },
+      "after": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 2.0,
+        "freshness_failed_after_h": 3.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "417dd3618c8867baba79313eb0901ec16bd44b1f617fd4a3f5e74fcd5abb07aa",
+      "body_sha256_after": "417dd3618c8867baba79313eb0901ec16bd44b1f617fd4a3f5e74fcd5abb07aa",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "hermes-news-bridge",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 24.0,
+        "freshness_failed_after_h": 36.0
+      },
+      "after": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 24.0,
+        "freshness_failed_after_h": 36.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "a7f5a54246302b31d90860c7d6ab1952ae55ff8a04f4c71974f847bbea01ba2b",
+      "body_sha256_after": "a7f5a54246302b31d90860c7d6ab1952ae55ff8a04f4c71974f847bbea01ba2b",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "hermes-pipeline-health",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 32,
+        "freshness_failed_after_h": 48
+      },
+      "after": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 32,
+        "freshness_failed_after_h": 48
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "31ed48fbc36faed30f5a561642506ca7c8d41e543e66004ce23085c323a7cda3",
+      "body_sha256_after": "31ed48fbc36faed30f5a561642506ca7c8d41e543e66004ce23085c323a7cda3",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "hermes-research-agenda-at-45-7",
+      "kind": "lane",
+      "status_before": "REVIEWED",
+      "status_after": "REVIEWED",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 48.0,
+        "freshness_failed_after_h": 72.0
+      },
+      "after": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 48.0,
+        "freshness_failed_after_h": 72.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "e31e058246a30543857d972a7f83e0427ea14569929aeadb4a350a53e360ce10",
+      "body_sha256_after": "e31e058246a30543857d972a7f83e0427ea14569929aeadb4a350a53e360ce10",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "hermes-research-worker-pool",
+      "kind": "lane",
+      "status_before": "REVIEWED",
+      "status_after": "REVIEWED",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 900,
+        "freshness_degraded_after_h": 2.0,
+        "freshness_failed_after_h": 3.0
+      },
+      "after": {
+        "timeout_s": 900,
+        "freshness_degraded_after_h": 2.0,
+        "freshness_failed_after_h": 3.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "47ae1833db32cef147096ff02e829df851e6024c2e69c427deda52c94ae69c2d",
+      "body_sha256_after": "47ae1833db32cef147096ff02e829df851e6024c2e69c427deda52c94ae69c2d",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "hermes-social-sentiment",
+      "kind": "lane",
+      "status_before": "REVIEWED",
+      "status_after": "REVIEWED",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 600,
+        "freshness_degraded_after_h": 22.0,
+        "freshness_failed_after_h": 26.0
+      },
+      "after": {
+        "timeout_s": 600,
+        "freshness_degraded_after_h": 22.0,
+        "freshness_failed_after_h": 26.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "10537fe96beec0cd42568d8066ba4e352d90d45ba6bcf883263af28b74c23c19",
+      "body_sha256_after": "10537fe96beec0cd42568d8066ba4e352d90d45ba6bcf883263af28b74c23c19",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "hermes-tag-lift-discovery",
+      "kind": "lane",
+      "status_before": "REVIEWED",
+      "status_after": "REVIEWED",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 26.0,
+        "freshness_failed_after_h": 50.0
+      },
+      "after": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 26.0,
+        "freshness_failed_after_h": 50.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "05d8db25357fe79d6d457ba233803329bf8690f4238ed10c0cc3c1da5b64520b",
+      "body_sha256_after": "05d8db25357fe79d6d457ba233803329bf8690f4238ed10c0cc3c1da5b64520b",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "hermes-topic-monitor-bridge",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 180,
+        "freshness_degraded_after_h": 48.0,
+        "freshness_failed_after_h": 72.0
+      },
+      "after": {
+        "timeout_s": 180,
+        "freshness_degraded_after_h": 48.0,
+        "freshness_failed_after_h": 72.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "6d86e0305d7b12674ccb11f7b41875ecd6215ca5ef6a13df3906d1edd22ef3c0",
+      "body_sha256_after": "6d86e0305d7b12674ccb11f7b41875ecd6215ca5ef6a13df3906d1edd22ef3c0",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "identity-sweep-stage0",
+      "kind": "lane",
+      "status_before": "REVIEWED",
+      "status_after": "REVIEWED",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 2.5,
+        "freshness_failed_after_h": 3.0
+      },
+      "after": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 2.5,
+        "freshness_failed_after_h": 3.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "734212b581140d95f59930b19be3e5ae27501a8c799a9ea342d6574cbb57f7f6",
+      "body_sha256_after": "734212b581140d95f59930b19be3e5ae27501a8c799a9ea342d6574cbb57f7f6",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "incident-notifier",
+      "kind": "host_monitor",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": null,
+        "freshness_degraded_after_h": 0.2,
+        "freshness_failed_after_h": 0.3
+      },
+      "after": {
+        "timeout_s": 120,
+        "freshness_degraded_after_h": 0.2,
+        "freshness_failed_after_h": 0.3
+      },
+      "prior_baseline": {
+        "freshness_degraded_after_h": 0.2,
+        "freshness_failed_after_h": 0.3,
+        "freshness_rule": "degraded beyond 2x cadence (lane_registry.evaluate_lane SLOW), failed beyond 3x (incident fan-in stale threshold)",
+        "timeout_s": null,
+        "class": "monitor (host cron)",
+        "computed_on": "2026-10-11",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "fewer than 14 finished live runs in the coordination ledger (0); class defaults: duration degraded above 80% of timeout_s, freshness 2x/3x cadence, any RUN_FAILED/RUN_TIMEOUT/RUN_REFUSED failed",
+        "runs_considered": 0,
+        "duration_degraded_above_s": null
+      },
+      "source_values": {
+        "timeout_s": {
+          "value": 120,
+          "path": "config/lane_registry.json",
+          "pointer": "lanes[incident-notifier].scheduler.install_line:timeout"
+        },
+        "cadence_h": {
+          "value": 0.08333333333333333,
+          "path": "config/lane_registry.json",
+          "pointer": "lanes[incident-notifier].scheduler.expression"
+        }
+      },
+      "changed_fields": [
+        "timeout_s"
+      ],
+      "body_sha256_before": "9534f7240d1873ad81bb562452d570e17b75c82f44981b8a31b45663e22d4adb",
+      "body_sha256_after": "17250aa3f734651571017d04c6ed63be24b7350772d02d99bc1eafa5ef082265",
+      "errors_before": [
+        "baseline.timeout_s must be finite and positive"
+      ],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": "Fresh independent substantive-body review required; historical review is preserved, no decision is fabricated"
+    },
+    {
+      "id": "investment-costs",
+      "kind": "lane",
+      "status_before": "REVIEWED",
+      "status_after": "REVIEWED",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 600,
+        "freshness_degraded_after_h": 144.0,
+        "freshness_failed_after_h": 216.0
+      },
+      "after": {
+        "timeout_s": 600,
+        "freshness_degraded_after_h": 144.0,
+        "freshness_failed_after_h": 216.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "b1080684b4896ec7b7fac5dff0da203a18dabcb57590e0dbc20c9f784334042e",
+      "body_sha256_after": "b1080684b4896ec7b7fac5dff0da203a18dabcb57590e0dbc20c9f784334042e",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "job-coverage-monitor",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 180,
+        "freshness_degraded_after_h": 24,
+        "freshness_failed_after_h": 36
+      },
+      "after": {
+        "timeout_s": 180,
+        "freshness_degraded_after_h": 24,
+        "freshness_failed_after_h": 36
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "89958c1a0a6b02d656b28f6507ea7af953e96a30a3c585c52352d7a00a202a50",
+      "body_sha256_after": "89958c1a0a6b02d656b28f6507ea7af953e96a30a3c585c52352d7a00a202a50",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "journal-tilt-morning-hook",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 120,
+        "freshness_degraded_after_h": 144.0,
+        "freshness_failed_after_h": 216.0
+      },
+      "after": {
+        "timeout_s": 120,
+        "freshness_degraded_after_h": 144.0,
+        "freshness_failed_after_h": 216.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "48f282a0a659a51d141c66cf7743bab0a8f017fc18edd6086cc65f3f89487b03",
+      "body_sha256_after": "48f282a0a659a51d141c66cf7743bab0a8f017fc18edd6086cc65f3f89487b03",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "materialize-watchlist-strategy-cards",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 600,
+        "freshness_degraded_after_h": 123.0,
+        "freshness_failed_after_h": 184.5
+      },
+      "after": {
+        "timeout_s": 600,
+        "freshness_degraded_after_h": 123.0,
+        "freshness_failed_after_h": 184.5
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "6acdaaba36afe2036fe238461fba98fc06d33da7acc52a7da9fda250125e5751",
+      "body_sha256_after": "6acdaaba36afe2036fe238461fba98fc06d33da7acc52a7da9fda250125e5751",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "maturity-remeasure",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 600,
+        "freshness_degraded_after_h": 336.0,
+        "freshness_failed_after_h": 504.0
+      },
+      "after": {
+        "timeout_s": 600,
+        "freshness_degraded_after_h": 336.0,
+        "freshness_failed_after_h": 504.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "bd8766e86b4ad93fb33b7de0021d5f8be17f5ffc36667ab6781a035864275cb8",
+      "body_sha256_after": "bd8766e86b4ad93fb33b7de0021d5f8be17f5ffc36667ab6781a035864275cb8",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "n8n-failure-diagnosis",
+      "kind": "host_monitor",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": null,
+        "freshness_degraded_after_h": 0.5,
+        "freshness_failed_after_h": 0.75
+      },
+      "after": {
+        "timeout_s": 600,
+        "freshness_degraded_after_h": 0.5,
+        "freshness_failed_after_h": 0.75
+      },
+      "prior_baseline": {
+        "freshness_degraded_after_h": 0.5,
+        "freshness_failed_after_h": 0.75,
+        "freshness_rule": "degraded beyond 2x cadence (lane_registry.evaluate_lane SLOW), failed beyond 3x (incident fan-in stale threshold)",
+        "timeout_s": null,
+        "class": "monitor (host cron)",
+        "computed_on": "2026-10-11",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "fewer than 14 finished live runs in the coordination ledger (0); class defaults: duration degraded above 80% of timeout_s, freshness 2x/3x cadence, any RUN_FAILED/RUN_TIMEOUT/RUN_REFUSED failed",
+        "runs_considered": 0,
+        "duration_degraded_above_s": null
+      },
+      "source_values": {
+        "timeout_s": {
+          "value": 600,
+          "path": "config/lane_registry.json",
+          "pointer": "lanes[n8n-failure-diagnosis].scheduler.install_line:timeout"
+        },
+        "cadence_h": {
+          "value": 0.25,
+          "path": "config/lane_registry.json",
+          "pointer": "lanes[n8n-failure-diagnosis].expected_cadence_hours"
+        }
+      },
+      "changed_fields": [
+        "timeout_s"
+      ],
+      "body_sha256_before": "f11b42f4c740e54177bf9a094450ac67fb01e8612f2d3e6f9cf8611b1acc2e40",
+      "body_sha256_after": "7a839556bbdc860c1c9472873d666aa70d4e64fb5a29d63ac0274ee42047391b",
+      "errors_before": [
+        "baseline.timeout_s must be finite and positive"
+      ],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": "Fresh independent substantive-body review required; historical review is preserved, no decision is fabricated"
+    },
+    {
+      "id": "n8n-incident-fanin",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 180,
+        "freshness_degraded_after_h": 0.2,
+        "freshness_failed_after_h": 0.3
+      },
+      "after": {
+        "timeout_s": 180,
+        "freshness_degraded_after_h": 0.2,
+        "freshness_failed_after_h": 0.3
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "0cf3487854e7874918ed7bf0084fe4d0655ea0c41db39aed79b00049f2355e04",
+      "body_sha256_after": "0cf3487854e7874918ed7bf0084fe4d0655ea0c41db39aed79b00049f2355e04",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "n8n-pilot-dispatch",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 0.5,
+        "freshness_failed_after_h": 0.75
+      },
+      "after": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 0.5,
+        "freshness_failed_after_h": 0.75
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "e2bb9fc1461242cdc537755b1fb6c6b0ea548673433dc479004e1982fa79baeb",
+      "body_sha256_after": "e2bb9fc1461242cdc537755b1fb6c6b0ea548673433dc479004e1982fa79baeb",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "n8n-research-intake-consumer",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 0.5,
+        "freshness_failed_after_h": 0.75
+      },
+      "after": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 0.5,
+        "freshness_failed_after_h": 0.75
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "080e7f5f9764ee86328749c2a41e802ca719ead0025392865968aa9c00544224",
+      "body_sha256_after": "080e7f5f9764ee86328749c2a41e802ca719ead0025392865968aa9c00544224",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "n8n-siem-bridge",
+      "kind": "host_monitor",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": null,
+        "freshness_degraded_after_h": 0.2,
+        "freshness_failed_after_h": 0.3
+      },
+      "after": {
+        "timeout_s": 120,
+        "freshness_degraded_after_h": 0.2,
+        "freshness_failed_after_h": 0.3
+      },
+      "prior_baseline": {
+        "freshness_degraded_after_h": 0.2,
+        "freshness_failed_after_h": 0.3,
+        "freshness_rule": "degraded beyond 2x cadence (lane_registry.evaluate_lane SLOW), failed beyond 3x (incident fan-in stale threshold)",
+        "timeout_s": null,
+        "class": "monitor (host cron)",
+        "computed_on": "2026-10-11",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "fewer than 14 finished live runs in the coordination ledger (0); class defaults: duration degraded above 80% of timeout_s, freshness 2x/3x cadence, any RUN_FAILED/RUN_TIMEOUT/RUN_REFUSED failed",
+        "runs_considered": 0,
+        "duration_degraded_above_s": null
+      },
+      "source_values": {
+        "timeout_s": {
+          "value": 120,
+          "path": "config/lane_registry.json",
+          "pointer": "lanes[n8n-siem-bridge].scheduler.install_line:timeout"
+        },
+        "cadence_h": {
+          "value": 0.1,
+          "path": "config/lane_registry.json",
+          "pointer": "lanes[n8n-siem-bridge].expected_cadence_hours"
+        }
+      },
+      "changed_fields": [
+        "timeout_s"
+      ],
+      "body_sha256_before": "da32ea5572e5f15c41d68921cb9520e5d185181d506cd0dc82508259f8623ed3",
+      "body_sha256_after": "24ec4a8ea977e95b1b58289242b138842ddbad200c32fe7b10ab812d58c1bdff",
+      "errors_before": [
+        "baseline.timeout_s must be finite and positive"
+      ],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": "Fresh independent substantive-body review required; historical review is preserved, no decision is fabricated"
+    },
+    {
+      "id": "news-to-catalyst",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 600,
+        "freshness_degraded_after_h": 24.0,
+        "freshness_failed_after_h": 36.0
+      },
+      "after": {
+        "timeout_s": 600,
+        "freshness_degraded_after_h": 24.0,
+        "freshness_failed_after_h": 36.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "1318ad45230b36a3d2588ef622a7390cb287c962496ffdc98d15d5257151e874",
+      "body_sha256_after": "1318ad45230b36a3d2588ef622a7390cb287c962496ffdc98d15d5257151e874",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "record-decision-outcome",
+      "kind": "lane",
+      "status_before": "REVIEWED",
+      "status_after": "REVIEWED",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 26.0,
+        "freshness_failed_after_h": 50.0
+      },
+      "after": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 26.0,
+        "freshness_failed_after_h": 50.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "53604d521a4cfd46e37781eaf756000653fd3b2a9f68e4cb8fccca6eb75c0f37",
+      "body_sha256_after": "53604d521a4cfd46e37781eaf756000653fd3b2a9f68e4cb8fccca6eb75c0f37",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "research-insight-extractor",
+      "kind": "lane",
+      "status_before": "REVIEWED",
+      "status_after": "REVIEWED",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 24.0,
+        "freshness_failed_after_h": 36.0
+      },
+      "after": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 24.0,
+        "freshness_failed_after_h": 36.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "a5807208d2ba4cc54218c4d263ceee9bfdfa475114339fdc6e4c22f5a461a993",
+      "body_sha256_after": "a5807208d2ba4cc54218c4d263ceee9bfdfa475114339fdc6e4c22f5a461a993",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "resolve-due-checkpoints",
+      "kind": "lane",
+      "status_before": "REVIEWED",
+      "status_after": "REVIEWED",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 900,
+        "freshness_degraded_after_h": 2.0,
+        "freshness_failed_after_h": 3.0
+      },
+      "after": {
+        "timeout_s": 900,
+        "freshness_degraded_after_h": 2.0,
+        "freshness_failed_after_h": 3.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "9ee698a7b1a0fd573e0e72a10a3511bf40e8fcf20d07236c781982469fd33af0",
+      "body_sha256_after": "9ee698a7b1a0fd573e0e72a10a3511bf40e8fcf20d07236c781982469fd33af0",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "sec-data-ingest",
+      "kind": "lane",
+      "status_before": "REVIEWED",
+      "status_after": "REVIEWED",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 26.0,
+        "freshness_failed_after_h": 50.0
+      },
+      "after": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 26.0,
+        "freshness_failed_after_h": 50.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "998f21ea786fb2a9813a1ffbbf7e100442e9079ee28564cc07590d5633f9f673",
+      "body_sha256_after": "998f21ea786fb2a9813a1ffbbf7e100442e9079ee28564cc07590d5633f9f673",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "sector-rs-daily",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 600,
+        "freshness_degraded_after_h": 144.0,
+        "freshness_failed_after_h": 216.0
+      },
+      "after": {
+        "timeout_s": 600,
+        "freshness_degraded_after_h": 144.0,
+        "freshness_failed_after_h": 216.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "e965327020ddeeed6bde55a18bfe8d3f877989fe8b2bb16e3548b29915c1852f",
+      "body_sha256_after": "e965327020ddeeed6bde55a18bfe8d3f877989fe8b2bb16e3548b29915c1852f",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "setup-quality-prior",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 48.0,
+        "freshness_failed_after_h": 72.0
+      },
+      "after": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 48.0,
+        "freshness_failed_after_h": 72.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "bea7d5431145e926ce4fcd51c7d3aa3a63f243a583cab4345b632e6f627d2263",
+      "body_sha256_after": "bea7d5431145e926ce4fcd51c7d3aa3a63f243a583cab4345b632e6f627d2263",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "signal-fusion-active",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 600,
+        "freshness_degraded_after_h": 119.0,
+        "freshness_failed_after_h": 178.5
+      },
+      "after": {
+        "timeout_s": 600,
+        "freshness_degraded_after_h": 119.0,
+        "freshness_failed_after_h": 178.5
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "af570ea9831f8c4095470a7f3af527c353c98911286c1c68cf386fcf73ef86b3",
+      "body_sha256_after": "af570ea9831f8c4095470a7f3af527c353c98911286c1c68cf386fcf73ef86b3",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "signal-fusion-full",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 1200,
+        "freshness_degraded_after_h": 132.0,
+        "freshness_failed_after_h": 198.0
+      },
+      "after": {
+        "timeout_s": 1200,
+        "freshness_degraded_after_h": 132.0,
+        "freshness_failed_after_h": 198.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "3ea19a017a091e39ac6eb4feb4af4b99ef137b524c90c8e3612f422b459959ca",
+      "body_sha256_after": "3ea19a017a091e39ac6eb4feb4af4b99ef137b524c90c8e3612f422b459959ca",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "social-ingest-all",
+      "kind": "lane",
+      "status_before": "REVIEWED",
+      "status_after": "REVIEWED",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 26.0,
+        "freshness_failed_after_h": 50.0
+      },
+      "after": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 26.0,
+        "freshness_failed_after_h": 50.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "56a98d927be3633228af9f28de6b8dbae002566aacd919f1bf389ec43d5bf083",
+      "body_sha256_after": "56a98d927be3633228af9f28de6b8dbae002566aacd919f1bf389ec43d5bf083",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "source-attribution-monitor",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 180,
+        "freshness_degraded_after_h": 48,
+        "freshness_failed_after_h": 72
+      },
+      "after": {
+        "timeout_s": 180,
+        "freshness_degraded_after_h": 48,
+        "freshness_failed_after_h": 72
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "2ffba861e180ef608618ef6d5a95ed6b35563c9421c4ed7dfa0e332c79d54422",
+      "body_sha256_after": "2ffba861e180ef608618ef6d5a95ed6b35563c9421c4ed7dfa0e332c79d54422",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "sync-social-to-intelligence",
+      "kind": "lane",
+      "status_before": "REVIEWED",
+      "status_after": "REVIEWED",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 22.0,
+        "freshness_failed_after_h": 26.0
+      },
+      "after": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 22.0,
+        "freshness_failed_after_h": 26.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "43dde4f533160a6679e40ffe95954d81d404ef8e48fecf4da616db5062257568",
+      "body_sha256_after": "43dde4f533160a6679e40ffe95954d81d404ef8e48fecf4da616db5062257568",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "trade-backtest-engine",
+      "kind": "lane",
+      "status_before": "REVIEWED",
+      "status_after": "REVIEWED",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 1200,
+        "freshness_degraded_after_h": 26.0,
+        "freshness_failed_after_h": 50.0
+      },
+      "after": {
+        "timeout_s": 1200,
+        "freshness_degraded_after_h": 26.0,
+        "freshness_failed_after_h": 50.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "fcf2bcb5d4bd90285c4b96b3de25906f22fc7ceca88a42b555844fff0b288f22",
+      "body_sha256_after": "fcf2bcb5d4bd90285c4b96b3de25906f22fc7ceca88a42b555844fff0b288f22",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "update-agent-performance",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 144.0,
+        "freshness_failed_after_h": 216.0
+      },
+      "after": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 144.0,
+        "freshness_failed_after_h": 216.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "a1fb743cb08df608c954621eef30c48de6f0ef8970100a0c0457a5c2dd05004f",
+      "body_sha256_after": "a1fb743cb08df608c954621eef30c48de6f0ef8970100a0c0457a5c2dd05004f",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "update-lockup-earnings-dates",
+      "kind": "lane",
+      "status_before": "REVIEWED",
+      "status_after": "REVIEWED",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 26.0,
+        "freshness_failed_after_h": 50.0
+      },
+      "after": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 26.0,
+        "freshness_failed_after_h": 50.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "9fec873a7541e4dcda1c3a779602ae17486344de61ca01dd35f14ecb023ab658",
+      "body_sha256_after": "9fec873a7541e4dcda1c3a779602ae17486344de61ca01dd35f14ecb023ab658",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "validate-expense-ratios",
+      "kind": "lane",
+      "status_before": "REVIEWED",
+      "status_after": "REVIEWED",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 600,
+        "freshness_degraded_after_h": 746.0,
+        "freshness_failed_after_h": 1490.0
+      },
+      "after": {
+        "timeout_s": 600,
+        "freshness_degraded_after_h": 746.0,
+        "freshness_failed_after_h": 1490.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "54755a2e3d423536bee8e25ece6f30a4dfdc307d548a29daf65504d2fd7cb7b9",
+      "body_sha256_after": "54755a2e3d423536bee8e25ece6f30a4dfdc307d548a29daf65504d2fd7cb7b9",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "watch-goods-consistency",
+      "kind": "lane",
+      "status_before": "REVIEWED",
+      "status_after": "REVIEWED",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 48.0,
+        "freshness_failed_after_h": 72.0
+      },
+      "after": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 48.0,
+        "freshness_failed_after_h": 72.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "7bb1fb331a8da2f9d90e49ac48f39ab59588d20b2fbdba95d661c9cb50ef94af",
+      "body_sha256_after": "7bb1fb331a8da2f9d90e49ac48f39ab59588d20b2fbdba95d661c9cb50ef94af",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "watchlist-enrichment-sweep",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 900,
+        "freshness_degraded_after_h": 1.0,
+        "freshness_failed_after_h": 1.5
+      },
+      "after": {
+        "timeout_s": 900,
+        "freshness_degraded_after_h": 1.0,
+        "freshness_failed_after_h": 1.5
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "8a1f3593c1ff7ec7b9b847c55e5eabf8b8b1402bd8f09d77b13af942d21234c4",
+      "body_sha256_after": "8a1f3593c1ff7ec7b9b847c55e5eabf8b8b1402bd8f09d77b13af942d21234c4",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "weekly-incubator-builder",
+      "kind": "lane",
+      "status_before": "REVIEWED",
+      "status_after": "REVIEWED",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 600,
+        "freshness_degraded_after_h": 170,
+        "freshness_failed_after_h": 338
+      },
+      "after": {
+        "timeout_s": 600,
+        "freshness_degraded_after_h": 170,
+        "freshness_failed_after_h": 338
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "5f73541d1a5c5863a80537aeb9bc1be7c74e6346cd7e44d41dba2c40a3af8964",
+      "body_sha256_after": "5f73541d1a5c5863a80537aeb9bc1be7c74e6346cd7e44d41dba2c40a3af8964",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "write-state-freshness-history",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 144.0,
+        "freshness_failed_after_h": 216.0
+      },
+      "after": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 144.0,
+        "freshness_failed_after_h": 216.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "5c52e5ff38359a3a5ec1a2fd2f5d1a7f5248586a7f3f184e9cec5a40c90f4167",
+      "body_sha256_after": "5c52e5ff38359a3a5ec1a2fd2f5d1a7f5248586a7f3f184e9cec5a40c90f4167",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "tradeai-approval-router",
+      "kind": "generic_workflow",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": null,
+        "freshness_degraded_after_h": null,
+        "freshness_failed_after_h": 0.083
+      },
+      "after": {
+        "timeout_s": 50,
+        "freshness_degraded_after_h": 0.167,
+        "freshness_failed_after_h": 0.25
+      },
+      "prior_baseline": {
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "no live history: the six ran 5 minutes on 2026-10-10 before the rollback",
+        "freshness_degraded_after_h": null,
+        "freshness_failed_after_h": 0.083,
+        "class": "generic_workflow",
+        "computed_on": "2026-10-11"
+      },
+      "source_values": {
+        "timeout_s": {
+          "value": 50,
+          "path": "docs/implementation/n8n-maturity/workflows/tradeai-approval-router.json",
+          "pointer": "settings.executionTimeout"
+        },
+        "cadence_h": {
+          "value": 0.08333333333333333,
+          "expression": "*/5 * * * *",
+          "path": "docs/implementation/n8n-maturity/workflows/tradeai-approval-router.json",
+          "pointer": "nodes[scheduleTrigger].parameters.rule.interval"
+        }
+      },
+      "changed_fields": [
+        "timeout_s",
+        "freshness_degraded_after_h",
+        "freshness_failed_after_h"
+      ],
+      "body_sha256_before": "54f8fc9eeb805fee1d59e6c15759a9d2fd62310026bcfa0d182ce7133035a59a",
+      "body_sha256_after": "7864311cabf1b98774d5f343aa8da4ae263f09d5a455df6f574ce7e86d041ae7",
+      "errors_before": [
+        "baseline.timeout_s must be finite and positive",
+        "baseline.freshness_degraded_after_h must be finite and positive"
+      ],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": "Fresh independent substantive-body review required; historical review is preserved, no decision is fabricated"
+    },
+    {
+      "id": "tradeai-digest-scheduler",
+      "kind": "generic_workflow",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": null,
+        "freshness_degraded_after_h": null,
+        "freshness_failed_after_h": 0.083
+      },
+      "after": {
+        "timeout_s": 50,
+        "freshness_degraded_after_h": 0.167,
+        "freshness_failed_after_h": 0.25
+      },
+      "prior_baseline": {
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "no live history: the six ran 5 minutes on 2026-10-10 before the rollback",
+        "freshness_degraded_after_h": null,
+        "freshness_failed_after_h": 0.083,
+        "class": "generic_workflow",
+        "computed_on": "2026-10-11"
+      },
+      "source_values": {
+        "timeout_s": {
+          "value": 50,
+          "path": "docs/implementation/n8n-maturity/workflows/tradeai-digest-scheduler.json",
+          "pointer": "settings.executionTimeout"
+        },
+        "cadence_h": {
+          "value": 0.08333333333333333,
+          "expression": "*/5 * * * *",
+          "path": "docs/implementation/n8n-maturity/workflows/tradeai-digest-scheduler.json",
+          "pointer": "nodes[scheduleTrigger].parameters.rule.interval"
+        }
+      },
+      "changed_fields": [
+        "timeout_s",
+        "freshness_degraded_after_h",
+        "freshness_failed_after_h"
+      ],
+      "body_sha256_before": "c85c7d84b39bf739e52f3bb475e82403fbb263634c50461b31b6d501684747f9",
+      "body_sha256_after": "dd47cd7cdf5ed42cba6a95e1e98714d929e7992e327b7431fd0cb2e62ee9bb66",
+      "errors_before": [
+        "baseline.timeout_s must be finite and positive",
+        "baseline.freshness_degraded_after_h must be finite and positive"
+      ],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": "Fresh independent substantive-body review required; historical review is preserved, no decision is fabricated"
+    },
+    {
+      "id": "tradeai-dispatcher",
+      "kind": "generic_workflow",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": null,
+        "freshness_degraded_after_h": null,
+        "freshness_failed_after_h": 0.083
+      },
+      "after": {
+        "timeout_s": 50,
+        "freshness_degraded_after_h": 0.033,
+        "freshness_failed_after_h": 0.05
+      },
+      "prior_baseline": {
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "no live history: the six ran 5 minutes on 2026-10-10 before the rollback",
+        "freshness_degraded_after_h": null,
+        "freshness_failed_after_h": 0.083,
+        "class": "generic_workflow",
+        "computed_on": "2026-10-11"
+      },
+      "source_values": {
+        "timeout_s": {
+          "value": 50,
+          "path": "docs/implementation/n8n-maturity/workflows/tradeai-dispatcher.json",
+          "pointer": "settings.executionTimeout"
+        },
+        "cadence_h": {
+          "value": 0.016666666666666666,
+          "expression": "* * * * *",
+          "path": "docs/implementation/n8n-maturity/workflows/tradeai-dispatcher.json",
+          "pointer": "nodes[scheduleTrigger].parameters.rule.interval"
+        }
+      },
+      "changed_fields": [
+        "timeout_s",
+        "freshness_degraded_after_h",
+        "freshness_failed_after_h"
+      ],
+      "body_sha256_before": "fcb02b385a3a523718961fac29fcd700eb9335f9c24bf23de143791d2125845c",
+      "body_sha256_after": "67a17a8090e7e64a08554bf3c2bb55e3251070e7b3e04e0e355d364eaa630176",
+      "errors_before": [
+        "baseline.timeout_s must be finite and positive",
+        "baseline.freshness_degraded_after_h must be finite and positive"
+      ],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": "Fresh independent substantive-body review required; historical review is preserved, no decision is fabricated"
+    },
+    {
+      "id": "tradeai-event-router",
+      "kind": "generic_workflow",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": null,
+        "freshness_degraded_after_h": null,
+        "freshness_failed_after_h": 0.083
+      },
+      "after": {
+        "timeout_s": 50,
+        "freshness_degraded_after_h": 0.033,
+        "freshness_failed_after_h": 0.05
+      },
+      "prior_baseline": {
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "no live history: the six ran 5 minutes on 2026-10-10 before the rollback",
+        "freshness_degraded_after_h": null,
+        "freshness_failed_after_h": 0.083,
+        "class": "generic_workflow",
+        "computed_on": "2026-10-11"
+      },
+      "source_values": {
+        "timeout_s": {
+          "value": 50,
+          "path": "docs/implementation/n8n-maturity/workflows/tradeai-event-router.json",
+          "pointer": "settings.executionTimeout"
+        },
+        "cadence_h": {
+          "value": 0.016666666666666666,
+          "expression": "* * * * *",
+          "path": "docs/implementation/n8n-maturity/workflows/tradeai-event-router.json",
+          "pointer": "nodes[scheduleTrigger].parameters.rule.interval"
+        }
+      },
+      "changed_fields": [
+        "timeout_s",
+        "freshness_degraded_after_h",
+        "freshness_failed_after_h"
+      ],
+      "body_sha256_before": "0f9fecd9888eaec813ea7984c6d1286344d6f82211419d61e961bf2288039b16",
+      "body_sha256_after": "3ea88b6f02602c6c986b7204450ba851c347a2b5d1134db871061c0ce4ba7822",
+      "errors_before": [
+        "baseline.timeout_s must be finite and positive",
+        "baseline.freshness_degraded_after_h must be finite and positive"
+      ],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": "Fresh independent substantive-body review required; historical review is preserved, no decision is fabricated"
+    },
+    {
+      "id": "tradeai-heartbeat-watcher",
+      "kind": "generic_workflow",
+      "status_before": "REVIEWED",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": null,
+        "freshness_degraded_after_h": null,
+        "freshness_failed_after_h": 0.083
+      },
+      "after": {
+        "timeout_s": 150,
+        "freshness_degraded_after_h": 0.167,
+        "freshness_failed_after_h": 0.25
+      },
+      "prior_baseline": {
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "no live history: the six ran 5 minutes on 2026-10-10 before the rollback",
+        "freshness_degraded_after_h": null,
+        "freshness_failed_after_h": 0.083,
+        "class": "generic_workflow",
+        "computed_on": "2026-10-11"
+      },
+      "source_values": {
+        "timeout_s": {
+          "value": 150,
+          "path": "docs/implementation/n8n-maturity/workflows/tradeai-heartbeat-watcher.json",
+          "pointer": "settings.executionTimeout"
+        },
+        "cadence_h": {
+          "value": 0.08333333333333333,
+          "expression": "*/5 * * * *",
+          "path": "docs/implementation/n8n-maturity/workflows/tradeai-heartbeat-watcher.json",
+          "pointer": "nodes[scheduleTrigger].parameters.rule.interval"
+        }
+      },
+      "changed_fields": [
+        "timeout_s",
+        "freshness_degraded_after_h",
+        "freshness_failed_after_h"
+      ],
+      "body_sha256_before": "8b3812ff80931c464acb5eada0849463be911adec39781d99e0a50b18293573e",
+      "body_sha256_after": "2dd70477069c381410a29e5f90a5669cbb859d7c8f32d1015bad0b143152b4f8",
+      "errors_before": [
+        "baseline.timeout_s must be finite and positive",
+        "baseline.freshness_degraded_after_h must be finite and positive"
+      ],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": "Fresh independent substantive-body review required; historical review is preserved, no decision is fabricated"
+    },
+    {
+      "id": "tradeai-incident-router",
+      "kind": "generic_workflow",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": null,
+        "freshness_degraded_after_h": null,
+        "freshness_failed_after_h": 0.083
+      },
+      "after": {
+        "timeout_s": 50,
+        "freshness_degraded_after_h": 0.033,
+        "freshness_failed_after_h": 0.05
+      },
+      "prior_baseline": {
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "no live history: the six ran 5 minutes on 2026-10-10 before the rollback",
+        "freshness_degraded_after_h": null,
+        "freshness_failed_after_h": 0.083,
+        "class": "generic_workflow",
+        "computed_on": "2026-10-11"
+      },
+      "source_values": {
+        "timeout_s": {
+          "value": 50,
+          "path": "docs/implementation/n8n-maturity/workflows/tradeai-incident-router.json",
+          "pointer": "settings.executionTimeout"
+        },
+        "cadence_h": {
+          "value": 0.016666666666666666,
+          "expression": "* * * * *",
+          "path": "docs/implementation/n8n-maturity/workflows/tradeai-incident-router.json",
+          "pointer": "nodes[scheduleTrigger].parameters.rule.interval"
+        }
+      },
+      "changed_fields": [
+        "timeout_s",
+        "freshness_degraded_after_h",
+        "freshness_failed_after_h"
+      ],
+      "body_sha256_before": "2cc7545da34875d58a539de72c15ff079ddfc4fd281d5aea9c3ef41cb69f7679",
+      "body_sha256_after": "c55df8b800fb15d6be0b27d0015d7f324b66487b903fe37e0106fa8e0dc1f842",
+      "errors_before": [
+        "baseline.timeout_s must be finite and positive",
+        "baseline.freshness_degraded_after_h must be finite and positive"
+      ],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": "Fresh independent substantive-body review required; historical review is preserved, no decision is fabricated"
+    },
+    {
+      "id": "backtest-history-snapshot",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 144.0,
+        "freshness_failed_after_h": 216.0
+      },
+      "after": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 144.0,
+        "freshness_failed_after_h": 216.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "54239ce365e697318fa12cdeb0bf5c25ab6dc7d5259d1b4534cbc3795f9606b8",
+      "body_sha256_after": "54239ce365e697318fa12cdeb0bf5c25ab6dc7d5259d1b4534cbc3795f9606b8",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "backtest-results-aggregator",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 144.0,
+        "freshness_failed_after_h": 216.0
+      },
+      "after": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 144.0,
+        "freshness_failed_after_h": 216.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "41625db798cb483748d8c3e9daaea778a4f5aa0bd8f40dfd83219aa2945283f1",
+      "body_sha256_after": "41625db798cb483748d8c3e9daaea778a4f5aa0bd8f40dfd83219aa2945283f1",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "build-symbol-profiles-watchlist",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 144.0,
+        "freshness_failed_after_h": 216.0
+      },
+      "after": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 144.0,
+        "freshness_failed_after_h": 216.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "82e65343bbb75e2821a0041ff9bc1fc1f5d523fb22fa6efe30516e0526339e3d",
+      "body_sha256_after": "82e65343bbb75e2821a0041ff9bc1fc1f5d523fb22fa6efe30516e0526339e3d",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "catalyst-calibration",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 48.0,
+        "freshness_failed_after_h": 72.0
+      },
+      "after": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 48.0,
+        "freshness_failed_after_h": 72.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "1deb1f6bfd1822d0565fe00460d5e9b7b3124feff8c5c2bb1f0c948d99b958ca",
+      "body_sha256_after": "1deb1f6bfd1822d0565fe00460d5e9b7b3124feff8c5c2bb1f0c948d99b958ca",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "catalyst-calibration-monitor",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 180,
+        "freshness_degraded_after_h": 48,
+        "freshness_failed_after_h": 72
+      },
+      "after": {
+        "timeout_s": 180,
+        "freshness_degraded_after_h": 48,
+        "freshness_failed_after_h": 72
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "8c26efaff1c9ff57cc88189008f67f48285498dcc21929411fa36f2ffb8adae2",
+      "body_sha256_after": "8c26efaff1c9ff57cc88189008f67f48285498dcc21929411fa36f2ffb8adae2",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "cio-draft-plan-hygiene",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 180,
+        "freshness_degraded_after_h": 48.0,
+        "freshness_failed_after_h": 72.0
+      },
+      "after": {
+        "timeout_s": 180,
+        "freshness_degraded_after_h": 48.0,
+        "freshness_failed_after_h": 72.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "f6ddb3d3b4b5be1da485c5b73c60bb8de2d59e90a62913d96329785c7ac4af7b",
+      "body_sha256_after": "f6ddb3d3b4b5be1da485c5b73c60bb8de2d59e90a62913d96329785c7ac4af7b",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "classify-candidates",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 600,
+        "freshness_degraded_after_h": 144.0,
+        "freshness_failed_after_h": 216.0
+      },
+      "after": {
+        "timeout_s": 600,
+        "freshness_degraded_after_h": 144.0,
+        "freshness_failed_after_h": 216.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "939cca35c551d60dfd1b4a54a23cb2ce9e0d2b325b629c9401239ecff6a4d48d",
+      "body_sha256_after": "939cca35c551d60dfd1b4a54a23cb2ce9e0d2b325b629c9401239ecff6a4d48d",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "distributions-enrich",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 600,
+        "freshness_degraded_after_h": 144.0,
+        "freshness_failed_after_h": 216.0
+      },
+      "after": {
+        "timeout_s": 600,
+        "freshness_degraded_after_h": 144.0,
+        "freshness_failed_after_h": 216.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "598608fade55f20c5e0a6331854a1b6cec5f3b8882f419ce57cedbb5fcf09c26",
+      "body_sha256_after": "598608fade55f20c5e0a6331854a1b6cec5f3b8882f419ce57cedbb5fcf09c26",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "earnings-enrich",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 900,
+        "freshness_degraded_after_h": 144.0,
+        "freshness_failed_after_h": 216.0
+      },
+      "after": {
+        "timeout_s": 900,
+        "freshness_degraded_after_h": 144.0,
+        "freshness_failed_after_h": 216.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "a6ab5894e0dfdd017843d95bf55b0f7ea45a2df95bd3879167734cc74657ca4a",
+      "body_sha256_after": "a6ab5894e0dfdd017843d95bf55b0f7ea45a2df95bd3879167734cc74657ca4a",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "fund-technicals-enrich",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 600,
+        "freshness_degraded_after_h": 144.0,
+        "freshness_failed_after_h": 216.0
+      },
+      "after": {
+        "timeout_s": 600,
+        "freshness_degraded_after_h": 144.0,
+        "freshness_failed_after_h": 216.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "766ca356ade7775eddaecf6a94720a711c610df13ab8b1500b189d315dd65da4",
+      "body_sha256_after": "766ca356ade7775eddaecf6a94720a711c610df13ab8b1500b189d315dd65da4",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "hermes-config-governor",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 120,
+        "freshness_degraded_after_h": 48.0,
+        "freshness_failed_after_h": 72.0
+      },
+      "after": {
+        "timeout_s": 120,
+        "freshness_degraded_after_h": 48.0,
+        "freshness_failed_after_h": 72.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "13116150a5170718d8d46ca22bb01bfeb5ce06e3efe42dc76843b0dded2c84e0",
+      "body_sha256_after": "13116150a5170718d8d46ca22bb01bfeb5ce06e3efe42dc76843b0dded2c84e0",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "llm-retry-monitor",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 60,
+        "freshness_degraded_after_h": 48,
+        "freshness_failed_after_h": 72
+      },
+      "after": {
+        "timeout_s": 60,
+        "freshness_degraded_after_h": 48,
+        "freshness_failed_after_h": 72
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "a138dcd4ab5ecb9b838e22245c3a081489f17f8d3b911b683df727abac058cb7",
+      "body_sha256_after": "a138dcd4ab5ecb9b838e22245c3a081489f17f8d3b911b683df727abac058cb7",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "materialize-income-engine",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 144.0,
+        "freshness_failed_after_h": 216.0
+      },
+      "after": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 144.0,
+        "freshness_failed_after_h": 216.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "2a9699aac8745868269861cc10f950a276ca7cfe40e34763ca85b1363187a1bd",
+      "body_sha256_after": "2a9699aac8745868269861cc10f950a276ca7cfe40e34763ca85b1363187a1bd",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "mint-identity-registry",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 144.0,
+        "freshness_failed_after_h": 216.0
+      },
+      "after": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 144.0,
+        "freshness_failed_after_h": 216.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "a9ab33e323a5ce2c84c470e6690f8b386e0a19d0392c9cd502e7392539e4badd",
+      "body_sha256_after": "a9ab33e323a5ce2c84c470e6690f8b386e0a19d0392c9cd502e7392539e4badd",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "refresh-symbol-cards",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 480,
+        "freshness_degraded_after_h": 144.0,
+        "freshness_failed_after_h": 216.0
+      },
+      "after": {
+        "timeout_s": 480,
+        "freshness_degraded_after_h": 144.0,
+        "freshness_failed_after_h": 216.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "395303d77a27986e38e5c318dee4e74b5508c357e68d790629586c07b0caff98",
+      "body_sha256_after": "395303d77a27986e38e5c318dee4e74b5508c357e68d790629586c07b0caff98",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "strategy-backtester",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 600,
+        "freshness_degraded_after_h": 144.0,
+        "freshness_failed_after_h": 216.0
+      },
+      "after": {
+        "timeout_s": 600,
+        "freshness_degraded_after_h": 144.0,
+        "freshness_failed_after_h": 216.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "89096aa9a8f1ab66bed9cc8ca620e4498470ca7e94f6a3b1c0a0ba73a4c5039c",
+      "body_sha256_after": "89096aa9a8f1ab66bed9cc8ca620e4498470ca7e94f6a3b1c0a0ba73a4c5039c",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "sync-watchlist-items-to-db",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 120,
+        "freshness_degraded_after_h": 144.0,
+        "freshness_failed_after_h": 216.0
+      },
+      "after": {
+        "timeout_s": 120,
+        "freshness_degraded_after_h": 144.0,
+        "freshness_failed_after_h": 216.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "d9c13081040e555ad5f9f90f18a7dbfbb5b1fe6b7f4c81ca00b7539e8101e6d9",
+      "body_sha256_after": "d9c13081040e555ad5f9f90f18a7dbfbb5b1fe6b7f4c81ca00b7539e8101e6d9",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "watch-directives-monitor",
+      "kind": "lane",
+      "status_before": "DRAFT",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 180,
+        "freshness_degraded_after_h": 48,
+        "freshness_failed_after_h": 72
+      },
+      "after": {
+        "timeout_s": 180,
+        "freshness_degraded_after_h": 48,
+        "freshness_failed_after_h": 72
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "41be5afb521386716598c02c8d6248a3b08914978a65df657fba4c36775e9976",
+      "body_sha256_after": "41be5afb521386716598c02c8d6248a3b08914978a65df657fba4c36775e9976",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "research-intelligence-materialize",
+      "kind": "lane",
+      "status_before": "REVIEWED",
+      "status_after": "REVIEWED",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 26,
+        "freshness_failed_after_h": 50
+      },
+      "after": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 26,
+        "freshness_failed_after_h": 50
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "992acfac2f0dd86c938a292fdea5a8d9e4f75707f8fa3dd594adacdd4fceb087",
+      "body_sha256_after": "992acfac2f0dd86c938a292fdea5a8d9e4f75707f8fa3dd594adacdd4fceb087",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "source-outcome-attribution",
+      "kind": "lane",
+      "status_before": "REVIEWED",
+      "status_after": "REVIEWED",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 26,
+        "freshness_failed_after_h": 50
+      },
+      "after": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 26,
+        "freshness_failed_after_h": 50
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "8ee1f7045467b83bd7c7051aaf89771cf2f73a152aa39d7e82fe1304f92aa0b1",
+      "body_sha256_after": "8ee1f7045467b83bd7c7051aaf89771cf2f73a152aa39d7e82fe1304f92aa0b1",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "register-analyst-sources",
+      "kind": "lane",
+      "status_before": "REVIEWED",
+      "status_after": "REVIEWED",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 48.0,
+        "freshness_failed_after_h": 72.0
+      },
+      "after": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 48.0,
+        "freshness_failed_after_h": 72.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "9db9ee127599a873dcad0c15f7c33077768328f18680e8ec16ef470d0e41997e",
+      "body_sha256_after": "9db9ee127599a873dcad0c15f7c33077768328f18680e8ec16ef470d0e41997e",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "commitment-outcome-sweep",
+      "kind": "lane",
+      "status_before": "REVIEWED",
+      "status_after": "REVIEWED",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 26,
+        "freshness_failed_after_h": 50
+      },
+      "after": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 26,
+        "freshness_failed_after_h": 50
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "11b447bea1d8758e464b4c7756479019c5164e52a5b45e54e54b780a1cb71abc",
+      "body_sha256_after": "11b447bea1d8758e464b4c7756479019c5164e52a5b45e54e54b780a1cb71abc",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "finviz-sector-research",
+      "kind": "lane",
+      "status_before": "REVIEWED",
+      "status_after": "REVIEWED",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 20,
+        "freshness_failed_after_h": 38
+      },
+      "after": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 20,
+        "freshness_failed_after_h": 38
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "770670c4d7cea73859758900cc9cdce90ebd17c20e1125d7aa1accc982f596fe",
+      "body_sha256_after": "770670c4d7cea73859758900cc9cdce90ebd17c20e1125d7aa1accc982f596fe",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "material-change-detector-stage1",
+      "kind": "lane",
+      "status_before": "REVIEWED",
+      "status_after": "REVIEWED",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 1,
+        "freshness_failed_after_h": 1.5
+      },
+      "after": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 1,
+        "freshness_failed_after_h": 1.5
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "a7243629189488f8650b7d227cbda4d603eeb133e082c636e7da3984c3b400ed",
+      "body_sha256_after": "a7243629189488f8650b7d227cbda4d603eeb133e082c636e7da3984c3b400ed",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "finviz-market-movers",
+      "kind": "lane",
+      "status_before": "REVIEWED",
+      "status_after": "REVIEWED",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 600,
+        "freshness_degraded_after_h": 63.25,
+        "freshness_failed_after_h": 63.5
+      },
+      "after": {
+        "timeout_s": 600,
+        "freshness_degraded_after_h": 63.25,
+        "freshness_failed_after_h": 63.5
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "2e2d2d31ddc16530ffa476e1b9ed67a509d311e8da150e4faba6fa184772a670",
+      "body_sha256_after": "2e2d2d31ddc16530ffa476e1b9ed67a509d311e8da150e4faba6fa184772a670",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "proposal-backtest-engine",
+      "kind": "lane",
+      "status_before": "REVIEWED",
+      "status_after": "REVIEWED",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 600,
+        "freshness_degraded_after_h": 70.0,
+        "freshness_failed_after_h": 72.0
+      },
+      "after": {
+        "timeout_s": 600,
+        "freshness_degraded_after_h": 70.0,
+        "freshness_failed_after_h": 72.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "2a7668b0a1a75abc279acb376978fc366082edf7e2b808964dcb805f646e0da4",
+      "body_sha256_after": "2a7668b0a1a75abc279acb376978fc366082edf7e2b808964dcb805f646e0da4",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "instrument-belief-writer",
+      "kind": "lane",
+      "status_before": "REVIEWED",
+      "status_after": "REVIEWED",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 600,
+        "freshness_degraded_after_h": 26.0,
+        "freshness_failed_after_h": 50.0
+      },
+      "after": {
+        "timeout_s": 600,
+        "freshness_degraded_after_h": 26.0,
+        "freshness_failed_after_h": 50.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "a0f683cb2678f344325f4370668d0d56a837a808523dbad5973397b56049c009",
+      "body_sha256_after": "a0f683cb2678f344325f4370668d0d56a837a808523dbad5973397b56049c009",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "trade-thesis-review-engine",
+      "kind": "lane",
+      "status_before": "REVIEWED",
+      "status_after": "REVIEWED",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 600,
+        "freshness_degraded_after_h": 74.0,
+        "freshness_failed_after_h": 98.0
+      },
+      "after": {
+        "timeout_s": 600,
+        "freshness_degraded_after_h": 74.0,
+        "freshness_failed_after_h": 98.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "291ae33ee13b936ddbca9f979bd2cb330f9459bddf3de942c444d6cd2c8a4665",
+      "body_sha256_after": "291ae33ee13b936ddbca9f979bd2cb330f9459bddf3de942c444d6cd2c8a4665",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "document-mentions-backfill",
+      "kind": "lane",
+      "status_before": "REVIEWED",
+      "status_after": "REVIEWED",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 1500,
+        "freshness_degraded_after_h": 3.0,
+        "freshness_failed_after_h": 4.0
+      },
+      "after": {
+        "timeout_s": 1500,
+        "freshness_degraded_after_h": 3.0,
+        "freshness_failed_after_h": 4.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "e177bd620899886152fc0ad8d7da667c0fd957b15bb4300574eea4e177c01371",
+      "body_sha256_after": "e177bd620899886152fc0ad8d7da667c0fd957b15bb4300574eea4e177c01371",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "aegis-evening-packet",
+      "kind": "lane",
+      "status_before": "REVIEWED",
+      "status_after": "REVIEWED",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 26.0,
+        "freshness_failed_after_h": 50.0
+      },
+      "after": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 26.0,
+        "freshness_failed_after_h": 50.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "388cf441f37d71ad49bc72033ab7f67bb58969b391d918bd9f772252c07b1e72",
+      "body_sha256_after": "388cf441f37d71ad49bc72033ab7f67bb58969b391d918bd9f772252c07b1e72",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "hermes-scope-governor",
+      "kind": "lane",
+      "status_before": "REVIEWED",
+      "status_after": "REVIEWED",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 900,
+        "freshness_degraded_after_h": 2.5,
+        "freshness_failed_after_h": 3.0
+      },
+      "after": {
+        "timeout_s": 900,
+        "freshness_degraded_after_h": 2.5,
+        "freshness_failed_after_h": 3.0
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "ba93e4dda272859cc42d2b67d25708f575a4e70dbede93084fdee1cd25cde4f0",
+      "body_sha256_after": "ba93e4dda272859cc42d2b67d25708f575a4e70dbede93084fdee1cd25cde4f0",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "hermes-score-event-feeder",
+      "kind": "lane",
+      "status_before": "REVIEWED",
+      "status_after": "REVIEWED",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 0.16,
+        "freshness_failed_after_h": 0.24
+      },
+      "after": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 0.16,
+        "freshness_failed_after_h": 0.24
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "62ef7073bb3b56514673bb099606d2ea6b65a08f69baa0f27543b3b7c63afdb2",
+      "body_sha256_after": "62ef7073bb3b56514673bb099606d2ea6b65a08f69baa0f27543b3b7c63afdb2",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "advisory-desk-run-now",
+      "kind": "lane",
+      "status_before": "REVIEWED",
+      "status_after": "REVIEWED",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 900,
+        "freshness_degraded_after_h": 48,
+        "freshness_failed_after_h": 72
+      },
+      "after": {
+        "timeout_s": 900,
+        "freshness_degraded_after_h": 48,
+        "freshness_failed_after_h": 72
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "636cb9ea88a8a5dabc6d6d5e26ebe65f7d27374720136368d5a6202145292b51",
+      "body_sha256_after": "636cb9ea88a8a5dabc6d6d5e26ebe65f7d27374720136368d5a6202145292b51",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "aegis-brief-regenerate",
+      "kind": "lane",
+      "status_before": "REVIEWED",
+      "status_after": "REVIEWED",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 48,
+        "freshness_failed_after_h": 72
+      },
+      "after": {
+        "timeout_s": 300,
+        "freshness_degraded_after_h": 48,
+        "freshness_failed_after_h": 72
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "2b338523af15a8c05852abb2bba2808fee17f3d3155755b3fa05232809890bc1",
+      "body_sha256_after": "2b338523af15a8c05852abb2bba2808fee17f3d3155755b3fa05232809890bc1",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "analyst-prospectus-generate",
+      "kind": "lane",
+      "status_before": "REVIEWED",
+      "status_after": "REVIEWED",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": 1800,
+        "freshness_degraded_after_h": 48,
+        "freshness_failed_after_h": 72
+      },
+      "after": {
+        "timeout_s": 1800,
+        "freshness_degraded_after_h": 48,
+        "freshness_failed_after_h": 72
+      },
+      "prior_baseline": null,
+      "source_values": {},
+      "changed_fields": [],
+      "body_sha256_before": "4065483e26d44c7f4fa8cce7fc767b877093e636858580f50a4cab758a4759be",
+      "body_sha256_after": "4065483e26d44c7f4fa8cce7fc767b877093e636858580f50a4cab758a4759be",
+      "errors_before": [],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": null
+    },
+    {
+      "id": "momentum-lifecycle-monitor",
+      "kind": "lane",
+      "status_before": "REVIEWED",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": null,
+        "freshness_degraded_after_h": null,
+        "freshness_failed_after_h": null
+      },
+      "after": {
+        "timeout_s": 60,
+        "freshness_degraded_after_h": 0.167,
+        "freshness_failed_after_h": 0.25
+      },
+      "prior_baseline": {
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "Proposed */5 * * * * America/New_York monitor schedule; owner review pending",
+        "calendar": "Existing market_session trading-day/session controls; all_days health lanes preserve their own schedules. Six-AM scan-output expectation is distinct from five-minute RTH execution.",
+        "completion_allowance_s": 60,
+        "business_volume_baseline": "NOT_MEASURED",
+        "zero_go_or_proposals_valid": true,
+        "population_rule": "scanned = classified + manual only under declared scan_partition; overlays have separate populations; never force all UI counters equal"
+      },
+      "source_values": {
+        "timeout_s": {
+          "value": 60,
+          "path": "config/n8n_run_allowlist.json",
+          "pointer": "lanes.momentum-lifecycle-monitor.timeout_s"
+        },
+        "cadence_h": {
+          "value": 0.08333333333333333,
+          "path": "config/lane_registry.json",
+          "pointer": "lanes[momentum-lifecycle-monitor].expected_cadence_hours"
+        }
+      },
+      "changed_fields": [
+        "timeout_s",
+        "freshness_degraded_after_h",
+        "freshness_failed_after_h"
+      ],
+      "body_sha256_before": "fa4c4227887da80ba5dacd6b5a295e3aa33140655228df4542d02bf6984310d9",
+      "body_sha256_after": "2f6db22a4b1a012760dd7eaa913c3040effbfeb7289c433409564d43d067ab32",
+      "errors_before": [
+        "baseline.timeout_s must be finite and positive",
+        "baseline.freshness_degraded_after_h must be finite and positive",
+        "baseline.freshness_failed_after_h must be finite and positive"
+      ],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": "Fresh independent substantive-body review required; historical review is preserved, no decision is fabricated"
+    },
+    {
+      "id": "tradeai-momentum-lifecycle-candidate",
+      "kind": "generic_workflow",
+      "status_before": "REVIEWED",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": null,
+        "freshness_degraded_after_h": null,
+        "freshness_failed_after_h": null
+      },
+      "after": {
+        "timeout_s": 50,
+        "freshness_degraded_after_h": 0.167,
+        "freshness_failed_after_h": 0.25
+      },
+      "prior_baseline": {
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "Proposed */5 * * * * America/New_York monitor schedule; owner review pending",
+        "calendar": "Existing market_session trading-day/session controls; all_days health lanes preserve their own schedules. Six-AM scan-output expectation is distinct from five-minute RTH execution.",
+        "completion_allowance_s": 60,
+        "business_volume_baseline": "NOT_MEASURED",
+        "zero_go_or_proposals_valid": true,
+        "population_rule": "scanned = classified + manual only under declared scan_partition; overlays have separate populations; never force all UI counters equal"
+      },
+      "source_values": {
+        "timeout_s": {
+          "value": 50,
+          "path": "docs/implementation/n8n-maturity/workflows/tradeai-momentum-lifecycle-candidate.json",
+          "pointer": "settings.executionTimeout"
+        },
+        "cadence_h": {
+          "value": 0.08333333333333333,
+          "expression": "*/5 * * * *",
+          "path": "docs/implementation/n8n-maturity/workflows/tradeai-momentum-lifecycle-candidate.json",
+          "pointer": "nodes[scheduleTrigger].parameters.rule.interval"
+        }
+      },
+      "changed_fields": [
+        "timeout_s",
+        "freshness_degraded_after_h",
+        "freshness_failed_after_h"
+      ],
+      "body_sha256_before": "c1694054741468c2a4642b7dc2f2f633a02e4e9b7cd2489f289b8d0accb2d8ab",
+      "body_sha256_after": "f654528faee455c5817eb9cb844546bcde7e9936956e2143a4cdafcd364d856e",
+      "errors_before": [
+        "baseline.timeout_s must be finite and positive",
+        "baseline.freshness_degraded_after_h must be finite and positive",
+        "baseline.freshness_failed_after_h must be finite and positive"
+      ],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": "Fresh independent substantive-body review required; historical review is preserved, no decision is fabricated"
+    },
+    {
+      "id": "momentum-cache-reconcile",
+      "kind": "lane",
+      "status_before": "REVIEWED",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": null,
+        "freshness_degraded_after_h": null,
+        "freshness_failed_after_h": null
+      },
+      "after": {
+        "timeout_s": 60,
+        "freshness_degraded_after_h": 0.167,
+        "freshness_failed_after_h": 0.25
+      },
+      "prior_baseline": {
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "Proposed resettable projection only; owner accepts schedule and resource reserve before operative admission",
+        "calendar": "Existing market_session trading-day/session controls; all_days health lanes preserve their own schedules. Six-AM scan-output expectation is distinct from five-minute RTH execution.",
+        "completion_allowance_s": 60,
+        "business_volume_baseline": "NOT_MEASURED",
+        "zero_go_or_proposals_valid": true,
+        "population_rule": "scanned = classified + manual only under declared scan_partition; overlays have separate populations; never force all UI counters equal",
+        "class": "report"
+      },
+      "source_values": {
+        "timeout_s": {
+          "value": 60,
+          "path": "config/n8n_run_allowlist.json",
+          "pointer": "lanes.momentum-cache-reconcile.timeout_s"
+        },
+        "cadence_h": {
+          "value": 0.08333333333333333,
+          "path": "config/lane_registry.json",
+          "pointer": "lanes[momentum-cache-reconcile].expected_cadence_hours"
+        }
+      },
+      "changed_fields": [
+        "timeout_s",
+        "freshness_degraded_after_h",
+        "freshness_failed_after_h"
+      ],
+      "body_sha256_before": "28713e20dbd31c8b66b68394f44fc8036ef96f9b0f10d97f7ed23c0e3256768c",
+      "body_sha256_after": "ce53b699246fb1296551327e9abc914125335c1c7fdb6bc6a4cdf6d813d37939",
+      "errors_before": [
+        "baseline.timeout_s must be finite and positive",
+        "baseline.freshness_degraded_after_h must be finite and positive",
+        "baseline.freshness_failed_after_h must be finite and positive"
+      ],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": "Fresh independent substantive-body review required; historical review is preserved, no decision is fabricated"
+    },
+    {
+      "id": "trade-ai-scalp-live",
+      "kind": "lane",
+      "status_before": "REVIEWED",
+      "status_after": "DRAFT",
+      "applicability": {
+        "timeout_s": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_degraded_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue",
+        "freshness_failed_after_h": "REQUIRED: bounded work and recurring health observation in current catalogue"
+      },
+      "before": {
+        "timeout_s": null,
+        "freshness_degraded_after_h": null,
+        "freshness_failed_after_h": null
+      },
+      "after": {
+        "timeout_s": 295,
+        "freshness_degraded_after_h": 0.167,
+        "freshness_failed_after_h": 0.25
+      },
+      "prior_baseline": {
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "Exact existing295s timeout and */5 9-15 * * 1-5 America/New_York cadence; host wrapper self-gates RTH09:30–16:00. Six-AM producer expectation is separate. Actual business volume baseline NOT_MEASURED.",
+        "calendar": "Existing market_session trading-day/session controls; all_days health lanes preserve their own schedules. Six-AM scan-output expectation is distinct from five-minute RTH execution.",
+        "completion_allowance_s": 295,
+        "business_volume_baseline": "NOT_MEASURED",
+        "zero_go_or_proposals_valid": true,
+        "population_rule": "scanned = classified + manual only under declared scan_partition; overlays have separate populations; never force all UI counters equal"
+      },
+      "source_values": {
+        "timeout_s": {
+          "value": 295,
+          "path": "config/n8n_run_allowlist.json",
+          "pointer": "lanes.trade-ai-scalp-live.timeout_s"
+        },
+        "cadence_h": {
+          "value": 0.08333333333333333,
+          "path": "config/lane_registry.json",
+          "pointer": "lanes[trade-ai-scalp-live].scheduler.expression"
+        }
+      },
+      "changed_fields": [
+        "timeout_s",
+        "freshness_degraded_after_h",
+        "freshness_failed_after_h"
+      ],
+      "body_sha256_before": "c2ab0d7f6c81c6aa76e697b356aac4762d0d50fde84460a192f411c4a17a4c2d",
+      "body_sha256_after": "4e9bff63f522132a1bec7f2c22a6a871f09e252d00c45b5d15f4d2ce5de63afe",
+      "errors_before": [
+        "baseline.timeout_s must be finite and positive",
+        "baseline.freshness_degraded_after_h must be finite and positive",
+        "baseline.freshness_failed_after_h must be finite and positive"
+      ],
+      "errors_after": [],
+      "collection_action": null,
+      "review_action": "Fresh independent substantive-body review required; historical review is preserved, no decision is fabricated"
+    }
+  ],
+  "source_sha": "92596621a984afb9999abfddd9e875480f30a7ec",
+  "source_path": "config/n8n_health_contracts.json",
+  "source_file_sha256_before": "0a7833d3a962eba995fa1f4e671736f0c8b023f43b94e4fca3689cf2ac3bc6af",
+  "status_counts_before": {
+    "DRAFT": 66,
+    "REVIEWED": 52
+  },
+  "status_counts_after": {
+    "DRAFT": 71,
+    "REVIEWED": 47
+  },
+  "acceptance_boundary": "All corrected bodies require independent review. Only the four named momentum bodies are proposed for immediate root/independent-worker re-review; legacy generic and host contracts remain owner review work. No runtime thresholds, workflow activation or scheduling state changed."
+}

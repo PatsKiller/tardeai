@@ -455,11 +455,22 @@ def trade_ai_line(t: Optional[Mapping[str, Any]]) -> str:
     """Today's Trade-AI verdict for the symbol, stated plainly (the 🟢 Trade-AI pill on every house message
     is the sender, not a verdict)."""
     if not t:
-        return "Trade-AI: no scan today"
-    at = str(t.get("scanned_at") or "")
+        return "Trade-AI: NO_SAME_DAY_SCAN · verdict not attached"
+    at = str(t.get("scanned_at") or t.get("observed_at") or "")
     hhmm = at[11:16] if len(at) >= 16 else ""
-    return (f"Trade-AI today: {str(t.get('decision') or '?').upper()}" + (f" {hhmm}" if hhmm else "")
-            + (" · not tradeable" if t.get("not_tradeable") else ""))
+    decision = str(t.get("decision") or "?").upper()
+    facts = t.get("setup_evidence") if isinstance(t.get("setup_evidence"), Mapping) else None
+    facts_bit = ""
+    if facts is not None:
+        passed = facts.get("passed_count")
+        required = facts.get("required_count") or 5
+        cat = (facts.get("catalyst") or {}).get("text") if isinstance(facts.get("catalyst"), Mapping) else None
+        facts_bit = f" · {passed}/{required} facts"
+        if cat:
+            facts_bit += f" · {str(cat)[:80]}"
+    return (f"Trade-AI today: {decision}" + (f" {hhmm}" if hhmm else "")
+            + (" · not tradeable" if t.get("not_tradeable") else "")
+            + facts_bit)
 
 
 def _cc_base() -> str:

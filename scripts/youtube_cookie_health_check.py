@@ -46,26 +46,40 @@ STALE_H = 72
 
 REFRESH_STEPS = (
     "🔑 YouTube cookies need a refresh — transcript ingestion is blocked.\n\n"
-    "Fix: export cookies from a LOGGED-IN youtube.com tab and replace "
+    "Ops UI (preferred): Command Center → System → Pipeline → YouTube cookies\n"
+    "  deep-link: /v3/system?tab=Pipeline&focus=youtube-cookies\n"
+    "  paste or upload Netscape cookies.txt → Validate & write\n\n"
+    "CLI fallback: export from a LOGGED-IN youtube.com tab and replace "
     "config/youtube_cookies.txt:\n"
     "• Chrome ext 'Get cookies.txt LOCALLY', or\n"
     "• yt-dlp --cookies-from-browser chrome --cookies config/youtube_cookies.txt\n"
     "Must include auth cookies (e.g. SID / __Secure-1PSID / __Secure-3PSID / SAPISID / LOGIN_INFO).\n"
-    "Then: .venv/bin/python scripts/youtube_transcript_ingest.py --all-channels"
+    "Then: .venv/bin/python scripts/youtube_transcript_ingest.py --all-channels\n\n"
+    "n8n: MONITOR_ONLY — never fetch browser cookies or write this file."
 )
 
 
-def _auth_cookie_count():
-    if not COOKIE.exists():
-        return None
+def _auth_cookie_names(lines):
+    """Classify Netscape rows, including the standard HttpOnly domain prefix.
+
+    Cookie values are never returned; this pure helper is testable without opening a cookie file.
+    """
     names = set()
-    for ln in COOKIE.read_text().splitlines():
+    for ln in lines:
+        if ln.startswith("#HttpOnly_"):
+            ln = ln[len("#HttpOnly_") :]
         if ln.startswith("#") or "\t" not in ln:
             continue
         p = ln.split("\t")
         if len(p) >= 6:
             names.add(p[5])
-    return len(names & AUTH)
+    return names & AUTH
+
+
+def _auth_cookie_count():
+    if not COOKIE.exists():
+        return None
+    return len(_auth_cookie_names(COOKIE.read_text().splitlines()))
 
 
 def _transcript_age_h():
@@ -156,9 +170,12 @@ def main():
         }
     )
     if would_send and not no_send:
-        _LAST["sent"] = bool(_send_telegram(
-            f"[{status.upper()}] YouTube cookies: {detail}\n\n{REFRESH_STEPS}",
-            priority="P1" if status == "red" else "P2"))
+        _LAST["sent"] = bool(
+            _send_telegram(
+                f"[{status.upper()}] YouTube cookies: {detail}\n\n{REFRESH_STEPS}",
+                priority="P1" if status == "red" else "P2",
+            )
+        )
     elif would_send:
         print(f"[cookie-health] send suppressed ({'--dry-run' if dry_run else '--no-send'})")
     # Red/amber are findings, not a failed run (2026-10-10; was `0 if green else 1`).

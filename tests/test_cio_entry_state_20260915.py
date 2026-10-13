@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 import sys
+import json
 from datetime import date
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -14,13 +17,39 @@ from lib.market_cap_label import cap_label  # noqa: E402
 import operator_alert_policy_v2 as policy  # noqa: E402
 
 TODAY = date(2026, 9, 15)
+PORTFOLIO_UNAVAILABLE = {"status": "UNAVAILABLE", "flags": [], "unknowns": ["fixture portfolio facts"]}
+
+
+@pytest.fixture(autouse=True)
+def isolated_packet_inputs(tmp_path, monkeypatch):
+    """Exercise the real packet renderer using contained public DTO stores only."""
+    from scripts.lib import cio_options_fluency as fluency
+
+    paths = {}
+    for name, document in (
+        ("OPTIONS_DESK_RUNTIME_CANDIDATES", {"by_symbol": {}}),
+        ("GOALS_PROJECTION_CANDIDATES", {"goals": {}}),
+        ("ENRICHMENT_CANDIDATES", {}),
+    ):
+        path = tmp_path / (name.lower() + ".json")
+        path.write_text(json.dumps(document), encoding="utf-8")
+        paths[path] = document
+        monkeypatch.setattr(fluency, name, (path,))
+    load_json = fluency._load_json
+
+    def fixture_json(path):
+        assert path in paths, f"Unexpected packet store: {path}"
+        return load_json(path)
+
+    monkeypatch.setattr(fluency, "_load_json", fixture_json)
 
 
 def ev(**kw):
     base = {"symbol": "ACHV", "price": 7.0, "quote_age_h": 0.2, "entry_low": 6.9, "entry_high": 7.15,
             "stop": 6.6, "target": 9.5, "atr": 0.40, "quality_state": "ADMITTED", "cio_action": "RESEARCH_MORE",
             "wash_blocked": False, "held": False, "earnings_date": "2026-11-05",
-            "market_cap_label": cap_label(744), "catalyst": "Frazier Life Sciences buys new stake", "plan_source": "reentry_desk"}
+            "market_cap_label": cap_label(744), "catalyst": "Frazier Life Sciences buys new stake", "plan_source": "reentry_desk",
+            "portfolio_facts": dict(PORTFOLIO_UNAVAILABLE)}
     base.update(kw)
     return base
 
@@ -236,7 +265,8 @@ def test_held_alert_leads_with_add_decision_and_quote_rr():
     from scripts.lib import cio_entry_state as ces
 
     ev = {"symbol": "AXTI", "price": 78.17, "entry_low": 71.5, "entry_high": 74.5,
-          "stop": 67.5, "target": 96.5, "held": True, "catalyst": None}
+          "stop": 67.5, "target": 96.5, "held": True, "catalyst": None,
+          "portfolio_facts": dict(PORTFOLIO_UNAVAILABLE)}
     result = ces.evaluate(ev)
     text = ces.render_operator(result, ev)
     assert result["rr"] == 3.14

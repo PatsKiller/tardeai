@@ -73,6 +73,10 @@ def _wire(monkeypatch, tmp_path, *, cadence=1.0, executor_age_h=0.5, unit_expect
     monkeypatch.setenv("TRADEAI_FANIN_RUNS", "0")
     monkeypatch.delenv("TRADEAI_FANIN_RELAY", raising=False)
     monkeypatch.setattr(fanin, "_outbox_findings", lambda now: [])
+    # These tests own relay inputs only. Missing receipts for unrelated market-day
+    # collectors must not introduce clock-dependent incidents into the real fan-in.
+    for collector in ("_scalp_lane_findings", "_scalp_cycle_findings", "_momentum_lifecycle_findings"):
+        monkeypatch.setattr(fanin, collector, lambda root, now: [])
     monkeypatch.setattr(fanin, "PREV_RECEIPT", None)
     es = tmp_path / "expected_services.json"
     units = [{"unit": "tradeai-n8n-run-executor.service"}] + ([{"unit": fanin.RELAY_UNIT}] if unit_expected else [])

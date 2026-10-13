@@ -108,7 +108,12 @@ def _section(text: str, start: str, end: str) -> str:
     block = block.replace(RULE_2_EXCEPTION_5_0_0, "")  # operator-requested amendment 5.0.0; see the constant
     # §7A embeds a GENERATED table (render_source_of_truth.py); mask it so only rule text is pinned.
     # Operator 2026-10-10 ~18:40 ET ("Yes, from one to six", item 5); §20 PATCH.
-    return re.sub(r"(<!-- SOURCE_OF_TRUTH_TABLE_START -->).*?(<!-- SOURCE_OF_TRUTH_TABLE_END -->)", r"\1\n<generated>\n\2", block, flags=re.S)
+    return re.sub(
+        r"(<!-- SOURCE_OF_TRUTH_TABLE_START -->).*?(<!-- SOURCE_OF_TRUTH_TABLE_END -->)",
+        r"\1\n<generated>\n\2",
+        block,
+        flags=re.S,
+    )
 
 
 def _section_23() -> str:
@@ -419,7 +424,23 @@ def test_every_dispatcher_row_is_allowlisted_eligible_and_staged():
         assert lane in ALLOW_LANES, f"{lane}: dispatcher row without a config/n8n_run_allowlist.json entry"
         ok, reason = dispatcher_eligible(ALLOW_LANES[lane], row)
         assert ok, f"{lane}: {reason}"
-        assert sched.get("match"), f"{lane}: scheduler.match names the cron line it retires"
+        assert sched.get("match"), f"{lane}: scheduler.match names its source script or archived cron line"
+        if lane in {"momentum-lifecycle-monitor", "momentum-cache-reconcile"}:
+            # Reviewed native rows with no legacy cron line; cadence/wave in dispatch.
+            dispatch = row["dispatch"]
+            assert row["state"] == "ACTIVE", lane
+            assert dispatch["wave"] == "W0", lane
+            assert dispatch["cron"] == ["*/5 * * * *"], lane
+            assert all(cron_schedule.parse(expr) for expr in dispatch["cron"]), lane
+            assert sched["timezone"] == dispatch["tz"] == "America/New_York", lane
+            assert ALLOW_LANES[lane]["dry_run_arg"] == ["--dry-run"], lane
+            if lane == "momentum-cache-reconcile":
+                assert sched.get("stage") == "canary" and dispatch["mode"] == "live", lane
+                assert ALLOW_LANES[lane]["live_arg"] == ["--apply"], lane
+            else:
+                assert sched.get("stage") == "shadow" and dispatch["mode"] == "dry_run", lane
+                assert ALLOW_LANES[lane]["live_arg"] is None, lane
+            continue
         assert sched.get("cadence") and cron_schedule.parse(sched["cadence"]), lane
         assert sched.get("wave") and sched.get("stage") in {"shadow", "canary", "cutover"}, lane
 
@@ -484,7 +505,9 @@ def _entry(lane_id: str, command: list[str], dry=("--dry-run",), live=(), **kw) 
         (_entry("by-analogy", ["$PY", "scripts/run_trade_ai_scalp_live.py"]), None, SCALP_EXCEPTION),
         (_entry("grant-maker", ["$PY", "scripts/issue_grant.py"]), None, "grant"),
         (
-            _entry("env-submit", ["env", "MOMENTUM_SCALP_VALIDATION_SUBMIT=1", "$PY", "scripts/auto_proposal_generator.py"]),
+            _entry(
+                "env-submit", ["env", "MOMENTUM_SCALP_VALIDATION_SUBMIT=1", "$PY", "scripts/auto_proposal_generator.py"]
+            ),
             None,
             "submit",
         ),
@@ -516,8 +539,13 @@ def test_a_plain_report_lane_is_eligible():
 
 @pytest.mark.parametrize(
     "script",
-    ["scripts/topic_curator.py", "scripts/hermes_top20_external_intel.py", "scripts/hermes_synthesizer.py",
-     "scripts/cash_redeploy_planner.py", "scripts/defense_inverse_stoplights.py"],
+    [
+        "scripts/topic_curator.py",
+        "scripts/hermes_top20_external_intel.py",
+        "scripts/hermes_synthesizer.py",
+        "scripts/cash_redeploy_planner.py",
+        "scripts/defense_inverse_stoplights.py",
+    ],
 )
 def test_word_boundary_ruling_false_positives_pass_the_token_test(script):
     """Operator ruling 2026-10-10 (REMEDIATION_PLAN §7 ruling 2): whole words, not substrings."""

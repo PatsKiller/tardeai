@@ -1432,9 +1432,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-maturity/03-momentum-scalp-lanes.md` | 03 — Momentum-scalp lanes under n8n: inventory, root cause, dispatch design, monitoring | review_required | OK | `3ea31aa32eee` |
 | `docs/implementation/n8n-maturity/BROKER_ENV_AUDIT.md` | Broker env-name read audit — which jobs truly need broker names | review_required | OK | `76aa7605bcfb` |
 | `docs/implementation/n8n-maturity/B_FAMILIES_TOP5.md` | B families top 5 — one parameterised job per same-script cron family | review_required | OK | `e1f607cfa001` |
+| `docs/implementation/n8n-maturity/MIGRATION_RECONCILIATION_20261012.md` | TradeAI migration reconciliation | review_required | OK | `b6e056759869` |
 | `docs/implementation/n8n-maturity/MONITOR_FOLD_COVERAGE_W1-9.md` | Monitor fold coverage (W1-9): freshness contracts, input starvation and design notes for the rest | review_required | OK | `527bdf9c7d0f` |
 | `docs/implementation/n8n-maturity/N8N_CONFIGURATION.md` | N8N configuration — ms01-openclaw (the entry point) | review_required | OK | `6937964c5214` |
-| `docs/implementation/n8n-maturity/N8N_MONITORING_AND_REMEDIATION_STANDARD.md` | N8N monitoring, SIEM, Telegram and LLM auto-remediation standard — per lane | review_required | OK | `5fa48058a7b1` |
+| `docs/implementation/n8n-maturity/N8N_MONITORING_AND_REMEDIATION_STANDARD.md` | N8N monitoring, SIEM, Telegram and LLM auto-remediation standard — per lane | review_required | OK | `5425cba590c8` |
 | `docs/implementation/n8n-maturity/N8N_ONBOARDING_STANDARD.md` | N8N onboarding standard — the mandatory procedure for adding anything to n8n | review_required | OK | `dee91c74182d` |
 | `docs/implementation/n8n-maturity/REFACTOR_SHARDS_05_08_SOURCE_INTEGRATION_20261011.md` | Refactor shards 05–08 local source integration | review_required | OK | `442547ac5fe7` |
 | `docs/implementation/n8n-maturity/REFACTOR_SHARD_01_20261011.md` | Refactor shard 01 — offline CLI plans and durable receipts | review_required | OK | `79cbfc00a4a6` |
@@ -1462,6 +1463,9 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-maturity/cron-inventory/README.md` | Cron inventory — system of record | review_required | OK | `74edf16d290d` |
 | `docs/implementation/n8n-maturity/cron-inventory/REMEDIATION_PLAN.md` | Cron / n8n Remediation Plan — from the verified inventory | review_required | OK | `bbcf489b4a63` |
 | `docs/implementation/n8n-maturity/cron-inventory/SCHEMA.md` | Cron inventory — system of record: column specification (v1, 2026-10-09 21:55 ET) | review_required | OK | `993baebfd7cf` |
+| `docs/implementation/n8n-maturity/reconciliation-20261012/MOMENTUM_LIFECYCLE_CANDIDATE.md` | Momentum lifecycle implementation and activation packet | review_required | OK | `0abd4d2f7cb1` |
+| `docs/implementation/n8n-maturity/reconciliation-20261012/runtime-contracts/README.md` | Runtime and contract reconciliation receipt | review_required | OK | `5bb387e251b7` |
+| `docs/implementation/n8n-maturity/reconciliation-20261012/runtime-contracts/operational_change_packets.md` | Runtime reconciliation: operator change packets | review_required | OK | `45215840f656` |
 | `docs/implementation/n8n-parallel/00-baseline.md` | n8n parallel program — phase 0 baseline | review_required | OK | `743d99a3ee49` |
 | `docs/implementation/n8n-parallel/00-fact-reconciliation.md` | Fact reconciliation | review_required | MISSING HEADER | `f0da125c7130` |
 | `docs/implementation/n8n-parallel/01-disposition-and-pilots.md` | Phase 1 — disposition and five pilot contracts | review_required | MISSING HEADER | `91f823ffb010` |
@@ -1498,6 +1502,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-parallel/ledgers/cron_cutover_20261007.md` | Cron cutover ledger — 2026-10-07 (ranks 3–4 + tranche C install) | review_required | MISSING HEADER | `9d5cc13f4722` |
 | `docs/implementation/n8n-parallel/ledgers/window_runtimes_20261007.md` | Window runtimes — fixed-minute cron lines in 05:30–08:00 and 16:00–18:40 (7 days to 2026-10-07) | review_required | OK | `fc4884189c2f` |
 | `docs/implementation/n8n-parallel/parity/README.md` | n8n guardrail parity tables | review_required | OK | `a2f8fece9efe` |
+| `docs/implementation/n8n-parallel/parity/momentum-lifecycle-candidate-20261012.md` | Momentum lifecycle candidate guardrail parity | review_required | MISSING HEADER | `a247d9db3240` |
 | `docs/implementation/n8n-parallel/proposals/S1-portfolio-server-bind.md` | Proposal S1 — stop serving the Trade AI API unauthenticated on 0.0.0.0:7777 | review_required | OK | `5345f335f12b` |
 | `docs/implementation/n8n-parallel/proposals/S2-dof-bind-and-role.md` | Proposal S2 — DOF app exposure and database role | review_required | OK | `df85877b88a0` |
 | `docs/implementation/n8n-parallel/proposals/agents-3-0-0-governed-n8n-agents-20261009.md` | Proposal — AGENTS.md 3.0.0: governed LLM and Agent capability in n8n (2026-10-09) | archive_superseded | OK | `ddedd2c98d3d` |
@@ -1506,7 +1511,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-parallel/proposals/cron-rank4-maintenance-pipeline.md` | Cron consolidation RANK 4 — platform maintenance pipeline (PROPOSAL) | review_required | OK | `91ba4c978d19` |
 | `docs/implementation/n8n-parallel/proposals/cron-tranche-a-decisions.md` | Cron tranche A — operator decisions (2026-10-07) | review_required | MISSING HEADER | `cff41e44423f` |
 | `docs/implementation/n8n-parallel/proposals/cron-tranche-b-cutover-plan-20261008.md` | Cron tranche B — cutover readiness and compressed plan (2026-10-08) | review_required | OK | `335afbe4b093` |
-| `docs/implementation/n8n-parallel/proposals/cron-tranche-b-design.md` | Cron tranche B — post-close, premarket and Hermes chains: measurements, fit, manifests (2026-10-07) | review_required | OK | `37fb7b08b80c` |
+| `docs/implementation/n8n-parallel/proposals/cron-tranche-b-design.md` | Cron tranche B — post-close, premarket and Hermes chains: measurements, fit, manifests (2026-10-07) | review_required | OK | `ef0ad7c53b48` |
 | `docs/implementation/n8n-parallel/proposals/cron-tranche-c-lowrisk.md` | Cron consolidation — tranche C, low-risk part (ranks 13, 14, 18, 9), 2026-10-07 | review_required | MISSING HEADER | `459432353f4a` |
 | `docs/implementation/n8n-parallel/proposals/dof-reader-role-20261008.sql.md` | Proposal — `dof_reader`: a read-only role for the DOF queue and enrichment views (2026-10-08) | review_required | OK | `61dd0f77b3b5` |
 | `docs/implementation/n8n-parallel/proposals/key-rotation-schedule-20261008.md` | Weekly key rotation schedule — PROPOSAL (operator cron grant), 2026-10-08 | review_required | OK | `1b54faa6869a` |
@@ -1946,6 +1951,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/TRADE_AI_M4_CONTEXT_ENVELOPE_AND_CC_SPEC_2026-08-24.md` | M4 ContextEnvelope@v2 + Command Center spec | review_required | OK | `e9c01db7d3a0` |
 | `docs/ops/TRADE_AI_M4_CONTEXT_ENVELOPE_V2_2026-08-24.md` | M4 ContextEnvelope@v2 | review_required | OK | `15bfe2d162bb` |
 | `docs/ops/TRADE_AI_MEMORY_ARCHITECTURE_CORRECTION_CLOSEOUT_2026-08-24.md` | R10 memory architecture correction closeout | review_required | OK | `501672190cf5` |
+| `docs/ops/TRADE_AI_N8N_LADDER_EXECUTION_PLAN_20261013.md` | Trade AI → n8n ladder — execution plan | review_required | OK | `14e7e84b01b5` |
+| `docs/ops/TRADE_AI_PAGE_N8N_DILIGENCE_20261013.md` | Trade AI page — n8n diligence (host vs n8n) | review_required | OK | `2fcb2851c3ff` |
 | `docs/ops/TRADE_AI_R10_MEMORY_AUTONOMOUS_AGENT_CLOSEOUT_2026-08-24.md` | R10.2 closeout (in progress) | review_required | OK | `67a250882df4` |
 | `docs/ops/TRADE_AI_SCALP_5MIN_2026-10-09.md` | Trade-AI scalp scan every 5 minutes, one feed for both engines, runner GO with catalyst (2026-10-09) | review_required | MISSING HEADER | `31f8bffe21e6` |
 | `docs/ops/TRANSFERSON_UNIVERSE_CANONICAL_CLOSEOUT_2026-08-25.md` | Transferson canonical universe — local closeout | review_required | OK | `de74cfb4197d` |

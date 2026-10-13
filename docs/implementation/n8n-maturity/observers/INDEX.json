@@ -1,0 +1,16 @@
+{
+  "schema": "N8nReadOnlyWorkflowSet@v1",
+  "authority": "SOURCE_DECLARATION_ONLY; reviewed contract and exact cron activation grant remain mandatory",
+  "workflows": [
+    {
+      "id": "tradeai-momentum-lifecycle-candidate",
+      "file": "tradeai-momentum-lifecycle-candidate.json",
+      "sha256": "fd64f5848dff85bf27e0f42657e5094f5f8d6fc67f84d2708483069674437fc0",
+      "contract_id": "tradeai-momentum-lifecycle-candidate",
+      "read_routes": [
+        "/momentum-lifecycle",
+        "/runs/momentum-lifecycle-monitor/last?mode=dry_run"
+      ]
+    }
+  ]
+}

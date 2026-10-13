@@ -4,6 +4,7 @@
 missed single-character extraction in some paths, and only prompted
 ``research S`` instead of enqueueing a research gap.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -50,11 +51,7 @@ def test_single_letter_link_builder_isolation(tmp_path, monkeypatch):
                 out.append({"symbol": sym, "guid": guid})
         return out
 
-    body = (
-        "*S*\nPrice $12.00\n"
-        "Earlier you also looked at TROW.\n"
-        "READ_ONLY_ADVISORY"
-    )
+    body = "*S*\nPrice $12.00\nEarlier you also looked at TROW.\nREAD_ONLY_ADVISORY"
     d = ce.edit(
         body,
         chat_id="1",
@@ -91,6 +88,7 @@ def test_primary_symbols_survive_dual_import(tmp_path):
     sys.modules.pop(ce._PRIMARY_BUCKET_KEY, None)
 
     import lib.comms_editor as lib_ce  # type: ignore  # noqa: PLC0415
+
     scripts_ce = ce
 
     assert lib_ce is not scripts_ce, "precondition: dual import must produce two modules"
@@ -104,11 +102,7 @@ def test_primary_symbols_survive_dual_import(tmp_path):
                 out.append({"symbol": sym, "guid": guid})
         return out
 
-    body = (
-        "*S*\nPrice $19.84 close Sep 04 STALE\n"
-        "Earlier you also looked at TROW and HODO.\n"
-        "READ_ONLY_ADVISORY"
-    )
+    body = "*S*\nPrice $19.84 close Sep 04 STALE\nEarlier you also looked at TROW and HODO.\nREAD_ONLY_ADVISORY"
     tok = scripts_ce.set_primary_symbols(["S"])
     try:
         d = lib_ce.edit(
@@ -249,35 +243,49 @@ def test_hollow_s_subject_brief_opens_pending_followup(tmp_path, monkeypatch):
     monkeypatch.setattr(desk, "_emit_telegram_desk_payload", lambda *a, **k: None)
     monkeypatch.setattr(desk, "_gap_resolver_enabled", lambda: False)
     monkeypatch.setattr(desk, "subject_research", lambda *a, **k: [])
-    monkeypatch.setattr(desk, "subject_analyst_view", lambda syms: [{
-        "symbol": "S",
-        "rating": "Hold",
-        "target_mean": 22.0,
-        "target_low": 18.0,
-        "target_high": 28.0,
-        "n_analysts": 4,
-        "as_of": "2026-08-01",
-        "age_days": 52,
-        "stale": True,
-    }])
-    monkeypatch.setattr(desk, "subject_price_facts", lambda syms: {
-        "S": {
-            "close": 19.84,
-            "price_date": "2026-09-04",
-            "change_30d_pct": -10.8,
-            "start_close": 22.25,
-            "start_date": "2026-08-05",
-            "age_hours": 432.0,
-            "stale": True,
-        }
-    })
+    monkeypatch.setattr(
+        desk,
+        "subject_analyst_view",
+        lambda syms: [
+            {
+                "symbol": "S",
+                "rating": "Hold",
+                "target_mean": 22.0,
+                "target_low": 18.0,
+                "target_high": 28.0,
+                "n_analysts": 4,
+                "as_of": "2026-08-01",
+                "age_days": 52,
+                "stale": True,
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        desk,
+        "subject_price_facts",
+        lambda syms: {
+            "S": {
+                "close": 19.84,
+                "price_date": "2026-09-04",
+                "change_30d_pct": -10.8,
+                "start_close": 22.25,
+                "start_date": "2026-08-05",
+                "age_hours": 432.0,
+                "stale": True,
+            }
+        },
+    )
     monkeypatch.setattr(desk, "_subject_levels", lambda syms: ({}, None, None))
-    monkeypatch.setattr(desk, "analyze_operator_intent", lambda text: {
-        "intent": "analyst_view",
-        "needs": ["analyst_view"],
-        "symbols": ["S"],
-        "text": text,
-    })
+    monkeypatch.setattr(
+        desk,
+        "analyze_operator_intent",
+        lambda text: {
+            "intent": "analyst_view",
+            "needs": ["analyst_view"],
+            "symbols": ["S"],
+            "text": text,
+        },
+    )
 
     out = desk.handle_operator_desk_question(
         "what is the analyst target on S?",
@@ -297,11 +305,7 @@ def test_hollow_s_subject_brief_opens_pending_followup(tmp_path, monkeypatch):
     assert "STALE" in text  # Sep 04 close must not read as fresh
     assert enq_calls and enq_calls[0]["symbols"] == ["S"]
 
-    rows = [
-        __import__("json").loads(line)
-        for line in desk.PENDING_PATH.read_text().splitlines()
-        if line.strip()
-    ]
+    rows = [__import__("json").loads(line) for line in desk.PENDING_PATH.read_text().splitlines() if line.strip()]
     assert rows, "soft research enqueue must open PENDING_PATH for Hermes join-back"
     assert rows[-1]["status"] == "open"
     assert rows[-1]["pending_id"] == out["pending_id"]
@@ -316,6 +320,21 @@ def test_buy_perspective_leads_with_pending_not_hollow_essay(tmp_path, monkeypat
     BEFORE (live 857931d41): DeepSeek reword of Sep-04 $19.84 STALE + dossier +
     queue footnote. AFTER: deferred pending-first, no hollow essay, no price narration.
     """
+    # The renderer consumes a public aggregate DTO. Its real provider owns
+    # financial/store collection, outside this general-notification fixture.
+    import sys
+    from types import ModuleType
+    from unittest.mock import Mock
+
+    snapshot_provider = ModuleType("scripts.lib.data_broker.cio_portfolio")
+    snapshot_provider.get_cio_snapshot = Mock(
+        return_value={
+            "domains": {"hermes_research": {"data": {"items": []}}},
+        }
+    )
+    monkeypatch.setitem(sys.modules, "scripts.lib.data_broker.cio_portfolio", snapshot_provider)
+    monkeypatch.setitem(sys.modules, "lib.data_broker.cio_portfolio", snapshot_provider)
+
     monkeypatch.setenv("CIO_OPERATOR_INTENT_FLASH", "0")
     monkeypatch.setenv("CIO_SUBJECT_FLASH", "0")
     monkeypatch.setenv("CIO_OPERATOR_FREEFORM_FLASH", "0")
@@ -337,28 +356,37 @@ def test_buy_perspective_leads_with_pending_not_hollow_essay(tmp_path, monkeypat
     monkeypatch.setattr(desk, "_gap_resolver_enabled", lambda: False)
     monkeypatch.setattr(desk, "subject_research", lambda *a, **k: [])
     monkeypatch.setattr(desk, "subject_analyst_view", lambda syms: [])
-    monkeypatch.setattr(desk, "subject_price_facts", lambda syms: {
-        "S": {
-            "close": 19.84,
-            "price_date": "2026-09-04",
-            "change_30d_pct": -10.8,
-            "start_close": 22.25,
-            "start_date": "2026-08-05",
-            "age_hours": 432.0,
-            "stale": True,
-        }
-    })
+    monkeypatch.setattr(
+        desk,
+        "subject_price_facts",
+        lambda syms: {
+            "S": {
+                "close": 19.84,
+                "price_date": "2026-09-04",
+                "change_30d_pct": -10.8,
+                "start_close": 22.25,
+                "start_date": "2026-08-05",
+                "age_hours": 432.0,
+                "stale": True,
+            }
+        },
+    )
     monkeypatch.setattr(desk, "_subject_levels", lambda syms: ({}, None, None))
     ask = "im thinking of buying S give me the perspective"
-    monkeypatch.setattr(desk, "analyze_operator_intent", lambda text: {
-        "intent": "analyst_view",
-        "needs": ["analyst_view", "research"],
-        "symbols": ["S"],
-        "text": text,
-        "answerable": True,
-    })
+    monkeypatch.setattr(
+        desk,
+        "analyze_operator_intent",
+        lambda text: {
+            "intent": "analyst_view",
+            "needs": ["analyst_view", "research"],
+            "symbols": ["S"],
+            "text": text,
+            "answerable": True,
+        },
+    )
 
     out = desk.handle_operator_desk_question(ask, chat_id="42", message_id="17")
+    snapshot_provider.get_cio_snapshot.assert_called_once_with(max_age_s=60)
     text = out.get("text") or ""
 
     assert out["kind"] == "deferred"
@@ -375,11 +403,7 @@ def test_buy_perspective_leads_with_pending_not_hollow_essay(tmp_path, monkeypat
     assert "say 'research S'" not in text
     assert enq_calls and enq_calls[0]["symbols"] == ["S"]
 
-    rows = [
-        __import__("json").loads(line)
-        for line in desk.PENDING_PATH.read_text().splitlines()
-        if line.strip()
-    ]
+    rows = [__import__("json").loads(line) for line in desk.PENDING_PATH.read_text().splitlines() if line.strip()]
     assert rows[-1].get("kind") == "buy_perspective_research_first"
     assert rows[-1].get("eta_seconds") == 1800
 
@@ -389,30 +413,57 @@ def test_buy_perspective_intent_adds_research_need(monkeypatch):
     monkeypatch.setattr(desk, "_known_symbols", lambda ttl_s=0: frozenset())
     reg = _registry("S")
     monkeypatch.setattr(osr, "_registry_doc", lambda registry=None: reg if registry is None else registry)
-    monkeypatch.setattr(osr, "_identity", lambda doc, sym: {
-        "guid": f"guid-{sym}", "issuer_guid": f"issuer-{sym}", "identity_status": "CONFIRMED",
-    } if sym in (doc.get("by_symbol") or {}) else {})
+    monkeypatch.setattr(
+        osr,
+        "_identity",
+        lambda doc, sym: (
+            {
+                "guid": f"guid-{sym}",
+                "issuer_guid": f"issuer-{sym}",
+                "identity_status": "CONFIRMED",
+            }
+            if sym in (doc.get("by_symbol") or {})
+            else {}
+        ),
+    )
 
     intent = desk.analyze_operator_intent("im thinking of buying S give me the perspective")
     assert intent["symbols"] == ["S"]
     assert "research" in intent["needs"]
     assert "analyst_view" in intent["needs"]
-    assert desk.is_buy_perspective_ask(intent["text"] if "text" in intent else
-                                       "im thinking of buying S give me the perspective")
-
+    assert desk.is_buy_perspective_ask(
+        intent["text"] if "text" in intent else "im thinking of buying S give me the perspective"
+    )
 
 
 def test_subject_gather_emits_soft_missing_research_without_blocking(monkeypatch):
     """analyst_view-only subject brief gets a soft hermes gap, not a blocking one."""
     monkeypatch.setattr(desk, "subject_research", lambda *a, **k: [])
-    monkeypatch.setattr(desk, "subject_analyst_view", lambda syms: [{
-        "symbol": "S", "rating": "Hold", "target_mean": 22.0, "as_of": "2026-08-01",
-        "age_days": 52, "stale": True, "n_analysts": 1, "target_low": 18, "target_high": 28,
-    }])
-    monkeypatch.setattr(desk, "subject_price_facts", lambda syms: {
-        # Fresh-enough close so quote staleness does not become a blocking gap.
-        "S": {"close": 19.84, "price_date": "2026-09-22", "age_hours": 2.0, "stale": False},
-    })
+    monkeypatch.setattr(
+        desk,
+        "subject_analyst_view",
+        lambda syms: [
+            {
+                "symbol": "S",
+                "rating": "Hold",
+                "target_mean": 22.0,
+                "as_of": "2026-08-01",
+                "age_days": 52,
+                "stale": True,
+                "n_analysts": 1,
+                "target_low": 18,
+                "target_high": 28,
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        desk,
+        "subject_price_facts",
+        lambda syms: {
+            # Fresh-enough close so quote staleness does not become a blocking gap.
+            "S": {"close": 19.84, "price_date": "2026-09-22", "age_hours": 2.0, "stale": False},
+        },
+    )
     monkeypatch.setattr(desk, "_subject_levels", lambda syms: ({}, None, None))
     monkeypatch.setattr(desk, "_attach_contract_findings", lambda *a, **k: None)
 

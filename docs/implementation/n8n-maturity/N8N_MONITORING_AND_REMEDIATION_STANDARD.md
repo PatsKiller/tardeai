@@ -2,8 +2,8 @@
 
 ```
 Status:      ACTIVE
-as_of:       2026-10-10T18:55:00-04:00
-Measured at: origin/main 7df77950a (#1674) / live 8ddf2ad59-main-exact-phase2-20261010-183820; host ms01-openclaw
+as_of:       2026-10-12T02:55:00Z
+Measured at: source 40208881dd34495b840bcbd4e373f593d06a659f; historical runtime observations below retain their original dates
 Owner:       platform (n8n maturity program)
 Policy:      AGENTS.md 4.4.0 §2A, §9.1, §9.3, §12, §23.3, §23.4 (where this differs, AGENTS.md wins)
 Parent:      docs/implementation/n8n-maturity/N8N_ONBOARDING_STANDARD.md (steps 3, 7, 11)
@@ -26,7 +26,7 @@ proves it. Sources: REMEDIATION_PLAN §5 (L1–L8), §6 (R1–R7), §8; `V9-llm-
 ```
 lane run (executor) ──► coordination ledger runs (RunReceipt@v2) ──┐
 lane receipt data/runtime/<lane>_last.json (LaneRunReceipt@v1) ──┤
-n8n Error Trigger ─► incident-router ─► relay POST /event ─► gateway lane n8n-workflow-error ─┤ (fan-in reader: not built, §4.4)
+n8n Error Trigger ─► incident-router ─► relay POST /event ─► gateway lane n8n-workflow-error ─┤ (source reader exists, §4.4; runtime proof per lane required)
                                                                      ▼
                         scripts/n8n_incident_fanin.py (*/5, n8n per-lane workflow 722fac0e043ea5c4)
                           │  data/runtime/n8n_incident_fanin_last.json (P1/P2/P3 incidents)
@@ -110,14 +110,20 @@ fan-in stale threshold (`GOVERNANCE_STALE_FACTOR`, `DIAGNOSIS_STALE_FACTOR`).
   `agent-calibration-engine`, `crawl-v3-dashboard`, `finviz-health-check`, `hermes-pipeline-health`). 177 of 499
   edges are inventory free text awaiting owner review. `review_by` 2026-10-24.
 
-### 3.3 Not wired yet — the next build item
+### 3.3 Partial contract consumption — source reconciliation 2026-10-12
 
-Nothing at runtime reads a contract today: the SIEM bridge takes severity from the registry row `severity`, else the
-fan-in priority (`scripts/lib/n8n_siem_bridge.py` `severity_for` :121); the notifier routes on the fan-in priority;
-the diagnoser's evidence pack holds the SIEM row, registry row, catalogue row and recent runs, not the contract.
-Next build (each its own PR with tests): (1) the bridge reads `alerting.failed.siem_severity`; (2) the fan-in
-evaluates `degraded` / `failed` checks with the contract baseline; (3) the diagnoser adds `purpose` and
-`connects_to` to the evidence pack so the model diagnoses against intent (scrubbed like every other field).
+[SOURCE_ONLY] `scripts/n8n_incident_fanin.py:_wferr_severity` reads a generic workflow contract's
+`alerting.failed.notifier_priority`. Dispatcher, incident-router and heartbeat-watcher errors have a P1 floor;
+other workflow errors default to P2, and a contract can raise that floor to P1. This is partial contract consumption,
+not per-lane enforcement of every `healthy`, `degraded`, `failed` or baseline requirement.
+
+[SOURCE_ONLY] The SIEM bridge still takes severity from registry `severity`, otherwise the fan-in priority
+(`scripts/lib/n8n_siem_bridge.py:severity_for`); the notifier routes on that priority. The diagnoser's evidence pack
+holds the SIEM row, registry row, catalogue row and recent runs, not the full health contract. Remaining builds:
+(1) reviewed SIEM contract mapping; (2) per-lane criteria and baseline evaluation; (3) scrubbed contract intent in
+diagnosis evidence. These changes require their own review and tests. None is authorized by this documentation
+correction. Failure → incident → delivery/escalation/recovery proof remains NOT_MEASURED per lane in the
+[reconciliation matrix](reconciliation-20261012/runtime-contracts/monitoring_coverage.tsv).
 
 ---
 
@@ -226,12 +232,19 @@ n8n Error Trigger (incident router, `errorWorkflow` of the other five) → relay
 `{lane_id: "n8n-workflow-error", workflow_id, execution_id, node, message}` (ids regex-checked, node ≤ 64 and message
 ≤ 160 chars, control-stripped, secret-redacted; idempotency key `wferr-<wf>-<exec>`; one `op: event` relay_log line)
 → gateway `accept_event` on lane `n8n-workflow-error` (allowed by `TRADEAI_N8N_GATEWAY_EXTRA_LANES`, drop-in
-`20-workflow-error-lane.conf`, 2026-10-10 16:27 ET) → a ledger event on lane `n8n-workflow-error`. **Open item:**
-design 02 §8 says the fan-in reads these events as P2 (P1 for the dispatcher or watcher); `scripts/n8n_incident_fanin.py`
-has no reader for them yet (measured 2026-10-10: no `n8n-workflow-error` reference), so a workflow error is recorded
-but reaches neither the SIEM nor Telegram until that reader lands (fan-in PR with a test). Tests: `tests/test_n8n_w0_relay_fix_20261010.py`, `tests/test_gateway_workflow_error_lane_20261010.py`.
-**Live since the `e8a4a6815` promote (17:13 ET):** the 17:14 ET W0 re-run produced 5 `op: event` lines `ACCEPTED`
-(`packets/w0-import-six/rerun-verify-20261010.txt`). The path records; the reader is still the missing piece.
+`20-workflow-error-lane.conf`, historical 2026-10-10 16:27 ET) → a ledger event/receipt on lane
+`n8n-workflow-error`. [SOURCE_ONLY, 40208881d] `_workflow_error_findings` now reads read-only ledger receipt
+metadata and accepted relay events, groups errors by workflow and uses a 60-minute default incident window.
+Dispatcher, incident-router and heartbeat-watcher errors have a P1 floor; other workflow errors default to P2 and
+their health contract may raise the floor to P1 (§3.3). The SIEM bridge maps a `wferr:<workflow_id>` item to the
+workflow's component and `WORKFLOW_ERROR` kind. Tests include
+`tests/test_n8n_w0_relay_fix_20261010.py`, `tests/test_gateway_workflow_error_lane_20261010.py` and
+`tests/test_n8n_incident_fanin_workflow_error_20261010.py`.
+
+[HISTORICAL, 2026-10-10] The `e8a4a6815` promote and 17:14 ET W0 re-run produced five `op: event` lines
+`ACCEPTED` (`packets/w0-import-six/rerun-verify-20261010.txt`); the reader was missing at that observation.
+Its presence in current source corrects that old open item. Failure → current incident → delivery/escalation and
+recovery acceptance is still required per workflow/lane; the historical acceptance lines do not prove that chain.
 
 ### 4.5 Where the operator sees it
 
@@ -399,9 +412,9 @@ lock; exceed a cap; send portfolio data to a provider (§2A); act on a lane in `
 | Catalogue | 114 lanes (51 auto dry-run) after the 2026-10-11 train 4 rebuild (102 / 46 after train 3) (77 / 34 after the C1 premarket rebuild) (80 / 33 after #1681); scalp-live excluded | `config/n8n_remediation_catalogue.json` |
 | Severity | 2 of 619 registry rows set → RUN_* lands WARN (L6 open) | §4.1 |
 | Diagnoser DB row | synced 16:27 ET | `packets/llm-seed-sync/apply-20261010.txt` |
-| Health contracts | 68 DRAFT, not read at runtime yet | §3 |
+| Health contracts | Historical 2026-10-10 population: 68 DRAFT. Source 40208881d has 114 contracts (48 REVIEWED, 66 DRAFT); workflow-error priority partially reads them, full per-lane enforcement remains unproven | §3; [reconciliation](reconciliation-20261012/runtime-contracts/contract_reconciliation.json) |
 | Wrapper copies | 17 lines on `~/.config/tradeai/bin` copy (no `--defer-in-process`), 2 on the repo copy | crontab, measured 2026-10-10 |
-| Workflow-error path | relay `POST /event` → gateway `n8n-workflow-error` **live** (17:13 ET); fan-in reader **missing** | §4.4 |
+| Workflow-error path | Historical relay/gateway observation: live at 17:13 ET on 2026-10-10. Source 40208881d has `_workflow_error_findings`, reading ledger receipts and relay events; current per-lane runtime acceptance is NOT_MEASURED | §4.4; `scripts/n8n_incident_fanin.py:_workflow_error_findings` |
 | Generic workflows | dispatcher, event router, incident router, digest scheduler live (last published 18:47 ET); heartbeat watcher, approval router held | `N8N_CONFIGURATION.md` §3.1 |
 | Gateway `/due` latency | RC11 fixed (#1667, 510 → 10 ms), served since 18:40 ET; the relay contract check still has no concurrency probe | `N8N_CONFIGURATION.md` §2.1 |
 | Search spend health | `search_spend_report.py` → fan-in source `search_spend` (P2 at 80% of $15) — with PR #1676 | `N8N_CONFIGURATION.md` §6.2 |

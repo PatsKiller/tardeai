@@ -7,6 +7,7 @@ could not see a lane producing nothing because nobody told it the lane existed.
 
 These tests are the five acceptance criteria, asserted rather than described.
 """
+
 from __future__ import annotations
 
 import json
@@ -38,12 +39,14 @@ from scripts.lib.lane_registry import (
 
 ROOT = Path(__file__).resolve().parent.parent
 GATE = ROOT / "scripts" / "check_lane_registry.py"
-NOW = datetime(2026, 8, 30, 12, 0, tzinfo=timezone.utc)   # a Sunday
+NOW = datetime(2026, 8, 30, 12, 0, tzinfo=timezone.utc)  # a Sunday
 
 
 def _row(**kw):
     base = {
-        "lane_id": "demo", "owner": "platform", "state": "ACTIVE",
+        "lane_id": "demo",
+        "owner": "platform",
+        "state": "ACTIVE",
         "expected_cadence_hours": 24.0,
         "scheduler": {"kind": "systemd", "expression": "demo.timer"},
         "output_signal": {"kind": "file_mtime", "path": "demo.json"},
@@ -60,6 +63,7 @@ def _sig(tmp_path, age_hours):
     p = tmp_path / "demo.json"
     p.write_text("{}", encoding="utf-8")
     import os
+
     t = (NOW - timedelta(hours=age_hours)).timestamp()
     os.utime(p, (t, t))
     return {"kind": "file_mtime", "path": str(p)}
@@ -67,11 +71,12 @@ def _sig(tmp_path, age_hours):
 
 # ── acceptance 1 — a disabled ACTIVE lane produces exactly one finding ─────
 
+
 def test_an_active_lane_whose_scheduler_vanished_is_orphaned(tmp_path):
     """ORPHANED is the verdict that would have caught the June retirement
     within one cadence period."""
     row = _row(output_signal=_sig(tmp_path, 1))
-    v = evaluate_lane(row, now=NOW, found=_found(units=()))   # timer gone
+    v = evaluate_lane(row, now=NOW, found=_found(units=()))  # timer gone
     assert v["verdict"] == ORPHANED
     assert v["ok"] is False
     assert v["firing"] == [ORPHANED]
@@ -98,12 +103,17 @@ def test_within_cadence_is_live(tmp_path):
 
 # ── acceptance 2 — a declared RETIRED lane is expected, not a finding ──────
 
+
 def test_a_declared_retired_lane_is_expected_silent_and_never_alerts():
     """The entire point: 'off' must be distinguishable from 'gone'."""
     for state in ("RETIRED", "PAUSED", "NEVER_SCHEDULED"):
-        row = _row(state=state, state_reason="declared", state_since="2026-06-01",
-                   review_by="2026-09-15",
-                   output_signal={"kind": "file_mtime", "path": "/nonexistent"})
+        row = _row(
+            state=state,
+            state_reason="declared",
+            state_since="2026-06-01",
+            review_by="2026-09-15",
+            output_signal={"kind": "file_mtime", "path": "/nonexistent"},
+        )
         v = evaluate_lane(row, now=NOW, found=_found(units=()))
         assert v["verdict"] == EXPECTED_SILENT, state
         assert v["ok"] is True, state
@@ -120,6 +130,7 @@ def test_a_retired_lane_keeps_its_row_and_its_reason():
 
 # ── acceptance 3 — CI gate: undeclared job fails, declaring it passes ──────
 
+
 def _gate(registry=None, extra=(), *, discovery):
     if discovery is None:
         raise ValueError("an explicit source discovery fixture is required")
@@ -127,15 +138,13 @@ def _gate(registry=None, extra=(), *, discovery):
     cmd += ["--discovery-json", str(discovery)]
     if registry:
         cmd += ["--registry", str(registry)]
-    return subprocess.run(cmd, cwd=str(ROOT), capture_output=True,
-                          text=True, timeout=300).returncode
+    return subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True, timeout=300).returncode
 
 
 @pytest.fixture
 def empty_discovery(tmp_path):
     path = tmp_path / "empty-source-discovery.json"
-    path.write_text(json.dumps({"cron": [], "cron_commented": [], "systemd": []}),
-                    encoding="utf-8")
+    path.write_text(json.dumps({"cron": [], "cron_commented": [], "systemd": []}), encoding="utf-8")
     return path
 
 
@@ -144,6 +153,7 @@ def test_gate_helper_requires_and_forwards_explicit_source_discovery(tmp_path, m
     """Missing input or removing CLI forwarding must fail before a process."""
     import ast
     from types import SimpleNamespace
+
     args = [tmp_path / "registry.json"] if use_registry else []
     discovery = tmp_path / "discovery.json"
     calls = []
@@ -164,9 +174,15 @@ def test_gate_helper_requires_and_forwards_explicit_source_discovery(tmp_path, m
 
     tree = ast.parse(Path(__file__).read_text())
     helper = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "_gate")
-    helper.body = [n for n in helper.body if not (
-        isinstance(n, ast.AugAssign) and isinstance(n.value, ast.List)
-        and any(isinstance(v, ast.Constant) and v.value == "--discovery-json" for v in n.value.elts))]
+    helper.body = [
+        n
+        for n in helper.body
+        if not (
+            isinstance(n, ast.AugAssign)
+            and isinstance(n.value, ast.List)
+            and any(isinstance(v, ast.Constant) and v.value == "--discovery-json" for v in n.value.elts)
+        )
+    ]
     namespace = dict(globals())
     mutated = ast.fix_missing_locations(ast.Module(body=[helper], type_ignores=[]))
     exec(compile(mutated, "fixture-remove-discovery-forwarding", "exec"), namespace)
@@ -199,22 +215,34 @@ def test_a_scheduled_job_with_no_row_fails_the_build(tmp_path):
     """
     reg = json.loads((ROOT / "config" / "lane_registry.json").read_text())
     # 2026-10-09 (B1): the baseline is retired, so the mutation removes a declared timer's ROW.
-    victims = [r for r in reg["lanes"]
-               if (r.get("scheduler") or {}).get("kind") == "systemd"
-               and str(r["scheduler"].get("expression") or "").endswith(".timer")
-               and not r["scheduler"].get("match")]
+    victims = [
+        r
+        for r in reg["lanes"]
+        if (r.get("scheduler") or {}).get("kind") == "systemd"
+        and str(r["scheduler"].get("expression") or "").endswith(".timer")
+        and not r["scheduler"].get("match")
+    ]
     assert victims, "need a declared timer row to remove"
     victim = victims[0]
     unit = victim["scheduler"]["expression"]
-    assert not any(r is not victim and unit in (str((r.get("scheduler") or {}).get("expression") or ""),
-                                                 str((r.get("scheduler") or {}).get("match") or ""))
-                   for r in reg["lanes"]), "victim unit is declared twice"
+    assert not any(
+        r is not victim
+        and unit
+        in (str((r.get("scheduler") or {}).get("expression") or ""), str((r.get("scheduler") or {}).get("match") or ""))
+        for r in reg["lanes"]
+    ), "victim unit is declared twice"
 
     disco = tmp_path / "discovery.json"
-    disco.write_text(json.dumps({
-        "cron": [], "cron_commented": [],
-        "systemd": [{"expression": unit, "enabled_state": "enabled"}],
-    }), encoding="utf-8")
+    disco.write_text(
+        json.dumps(
+            {
+                "cron": [],
+                "cron_commented": [],
+                "systemd": [{"expression": unit, "enabled_state": "enabled"}],
+            }
+        ),
+        encoding="utf-8",
+    )
 
     p = tmp_path / "mutated.json"
     mutated = dict(reg, lanes=[r for r in reg["lanes"] if r is not victim])
@@ -285,11 +313,11 @@ def test_cio_delivery_lane_output_signal_is_the_worker_outbox_not_the_dark_recei
 
 # ── acceptance 4 — a quiet weekend reports QUIET, not a page ───────────────
 
+
 def test_a_weekday_only_lane_does_not_alarm_on_sunday(tmp_path):
     """Weekend cadences are declared, not inferred."""
     assert NOW.weekday() == 6, "fixture must be a Sunday"
-    row = _row(expected_cadence_hours=1.0, active_days=[0, 1, 2, 3, 4],
-               output_signal=_sig(tmp_path, 50))
+    row = _row(expected_cadence_hours=1.0, active_days=[0, 1, 2, 3, 4], output_signal=_sig(tmp_path, 50))
     v = evaluate_lane(row, now=NOW, found=_found())
     assert v["verdict"] == EXPECTED_SILENT
     assert v["ok"] is True
@@ -332,8 +360,7 @@ def test_stance_organic_observe_lanes_use_weekday_int_lists():
 def test_a_clean_report_says_quiet(tmp_path, monkeypatch):
     """Quiet presentation and its orphan negative control use source fixtures."""
     registry = tmp_path / "registry.json"
-    registry.write_text(json.dumps({"schema": "LaneRegistry@v1", "lanes": []}),
-                        encoding="utf-8")
+    registry.write_text(json.dumps({"schema": "LaneRegistry@v1", "lanes": []}), encoding="utf-8")
     monkeypatch.delenv("TRADEAI_LANE_REGISTRY_N8N", raising=False)
     process_calls = []
 
@@ -344,19 +371,18 @@ def test_a_clean_report_says_quiet(tmp_path, monkeypatch):
     monkeypatch.setattr(subprocess, "run", refuse_process)
     monkeypatch.setattr(subprocess, "Popen", refuse_process)
     empty = collect_lane_registry_report(
-        now=NOW, root=tmp_path, cron_text="", include_systemd=False,
-        registry_path=registry)
+        now=NOW, root=tmp_path, cron_text="", include_systemd=False, registry_path=registry
+    )
     assert empty["summary"] == "QUIET"
     assert empty["ok"] is True
     assert empty["declared"] == 0 and empty["lanes"] == []
 
     # A real row must make the quiet assertion fail when its scheduler is absent.
     row = _row(output_signal=_sig(tmp_path, 1))
-    registry.write_text(json.dumps({"schema": "LaneRegistry@v1", "lanes": [row]}),
-                        encoding="utf-8")
+    registry.write_text(json.dumps({"schema": "LaneRegistry@v1", "lanes": [row]}), encoding="utf-8")
     rep = collect_lane_registry_report(
-        now=NOW, root=tmp_path, cron_text="", include_systemd=False,
-        registry_path=registry)
+        now=NOW, root=tmp_path, cron_text="", include_systemd=False, registry_path=registry
+    )
     assert isinstance(rep["verdict_counts"], dict)
     assert rep["schema"] == empty["schema"] == "LaneRegistry@v1"
     assert rep["declared"] == 1 and len(rep["lanes"]) == 1
@@ -369,6 +395,7 @@ def test_a_clean_report_says_quiet(tmp_path, monkeypatch):
 
 
 # ── suppression — escalate on change, not on continuation ─────────────────
+
 
 def test_a_lane_silent_for_many_cycles_alerts_once():
     cur = {"lanes": [{"lane_id": "a", "verdict": SILENT}]}
@@ -384,15 +411,20 @@ def test_a_lane_silent_for_many_cycles_alerts_once():
 
 # ── acceptance 5 — the census names the disabled and unscheduled lanes ─────
 
+
 def test_the_registry_names_every_currently_disabled_lane():
     reg = load_registry()
     ids = {r["lane_id"] for r in reg["lanes"]}
     # Timers that previously ran and then stopped, cause not established.
-    for unit in ("tradeai-continuous", "hermes-autonomous-loop",
-                 "tradeai-flash-llm-intelligence", "tradeai-flash-watchlist-daily",
-                 "tradeai-hermes-research-remediation",
-                 "tradeai-intelligence-remediation",
-                 "tradeai-main-desk-free-llm-weekly"):
+    for unit in (
+        "tradeai-continuous",
+        "hermes-autonomous-loop",
+        "tradeai-flash-llm-intelligence",
+        "tradeai-flash-watchlist-daily",
+        "tradeai-hermes-research-remediation",
+        "tradeai-intelligence-remediation",
+        "tradeai-main-desk-free-llm-weekly",
+    ):
         assert unit in ids, f"{unit} stopped and is undeclared"
     # The lane that prompted all of this.
     assert "deep-overnight-llm" in ids
@@ -410,26 +442,29 @@ MAX_UNKNOWN_LANES = 3
 
 def test_the_unexplained_count_can_only_shrink():
     reg = load_registry()
-    unknown = [r["lane_id"] for r in reg["lanes"]
-               if r.get("state") != "ACTIVE"
-               and str(r.get("reason_confidence") or "UNKNOWN") == "UNKNOWN"]
+    unknown = [
+        r["lane_id"]
+        for r in reg["lanes"]
+        if r.get("state") != "ACTIVE" and str(r.get("reason_confidence") or "UNKNOWN") == "UNKNOWN"
+    ]
     assert len(unknown) <= MAX_UNKNOWN_LANES, (
         f"{len(unknown)} lanes have no established reason, was {MAX_UNKNOWN_LANES}. "
-        "Either establish the cause or lower the ratchet deliberately.")
+        "Either establish the cause or lower the ratchet deliberately."
+    )
 
 
 def test_unknown_reasons_are_recorded_as_unknown_not_invented():
     """An honest UNKNOWN is the correct entry and is itself a finding."""
     reg = load_registry()
-    unknown = [r for r in reg["lanes"]
-               if str(r.get("reason_confidence") or "") == "UNKNOWN"]
+    unknown = [r for r in reg["lanes"] if str(r.get("reason_confidence") or "") == "UNKNOWN"]
     assert unknown, "if nothing is unknown, check that the field is being read"
     for r in unknown:
         assert r.get("state_since"), r["lane_id"]
         # An UNKNOWN must still say what WAS looked at, so the next reader does
         # not repeat the dig.
         assert len(str(r.get("reason_evidence") or r.get("state_reason") or "")) > 60, (
-            f"{r['lane_id']}: UNKNOWN with no record of what was searched")
+            f"{r['lane_id']}: UNKNOWN with no record of what was searched"
+        )
 
 
 def test_recoverable_reasons_are_recorded_rather_than_marked_unknown():
@@ -441,6 +476,7 @@ def test_recoverable_reasons_are_recorded_rather_than_marked_unknown():
 
 
 # ── discovery ─────────────────────────────────────────────────────────────
+
 
 def test_a_commented_cron_line_is_not_a_running_job():
     text = "# 0 3 * * * /bin/true\n0 4 * * * /bin/false\n"
@@ -464,18 +500,19 @@ def test_an_unreadable_signal_is_not_reported_as_silence(tmp_path):
 
 def test_find_undeclared_respects_the_inherited_debt_baseline():
     reg = {"lanes": [], "undeclared_baseline": ["a.timer"]}
-    found = {"cron": [], "systemd": [{"expression": "a.timer"},
-                                     {"expression": "b.timer"}]}
+    found = {"cron": [], "systemd": [{"expression": "a.timer"}, {"expression": "b.timer"}]}
     got = find_undeclared(reg, found)
     assert [g["expression"] for g in got] == ["b.timer"]
 
 
 # ── reason quality: 26 UNKNOWN lanes → 6 (#722) → 3 (Wave 2b A4) ───────────
 
+
 def test_every_non_active_lane_declares_how_well_its_reason_is_established():
-    """"Superseded" has been asserted falsely in this repo twice. A reason now
+    """ "Superseded" has been asserted falsely in this repo twice. A reason now
     has to say whether it was proven or merely correlated."""
     from scripts.lib.lane_registry import REASON_CONFIDENCE
+
     for r in load_registry()["lanes"]:
         if r.get("state") != "ACTIVE":
             assert r.get("reason_confidence") in REASON_CONFIDENCE, r["lane_id"]
@@ -488,40 +525,83 @@ def test_an_established_reason_carries_the_evidence_that_established_it():
             assert len(ev) > 60, f"{r['lane_id']}: ESTABLISHED with no evidence"
 
 
+@pytest.mark.parametrize("lane_id", ["momentum-lifecycle-monitor", "momentum-cache-reconcile"])
+def test_native_shadow_reason_binds_source_review_without_claiming_runtime_proof(lane_id):
+    from scripts.lib.n8n_momentum_lifecycle import contract_body_digest
+
+    evidence_path = (
+        "docs/implementation/n8n-maturity/reconciliation-20261012/MOMENTUM_CONTRACT_REVIEW_BINDINGS_20261012.json"
+    )
+    bindings = json.loads((ROOT / evidence_path).read_text(encoding="utf-8"))
+    binding = next(row for row in bindings["records"] if row["id"] == lane_id)
+    catalogue = json.loads((ROOT / "config/n8n_health_contracts.json").read_text(encoding="utf-8"))
+    contract = next(row for row in catalogue["contracts"] if row["id"] == lane_id)
+    row = next(row for row in load_registry()["lanes"] if row["lane_id"] == lane_id)
+    assert row["reason_confidence"] == "ESTABLISHED"
+    assert row["reason_evidence"].startswith("SOURCE_AUTHORIZATION_ONLY:")
+    assert evidence_path in row["reason_evidence"]
+    assert binding["body_sha256"] in row["reason_evidence"]
+    assert binding["body_sha256"] == contract_body_digest(contract)
+    assert contract["review"]["contract_body_sha256"] == binding["body_sha256"]
+    assert bindings["operator_decision_refs"]
+    assert binding["ownership_confirmation"] == "OWNER_ACCEPTED"
+    assert "NOT_MEASURED" in row["reason_evidence"]
+    if lane_id == "momentum-cache-reconcile":
+        # Canary 2026-10-13 after five-facts OBSERVED; contract body digest unchanged.
+        assert row["scheduler"]["stage"] == "canary"
+        assert row["dispatch"]["mode"] == "live"
+    else:
+        assert row["scheduler"]["stage"] == "shadow"
+        assert row["dispatch"]["mode"] == "dry_run"
+
+
 def test_correlated_reasons_refuse_to_claim_coverage():
     """The whole point of the CORRELATED tier: a running successor is not proof
     that this lane's output is produced."""
-    rows = [r for r in load_registry()["lanes"]
-            if r.get("reason_confidence") == "CORRELATED"]
+    rows = [r for r in load_registry()["lanes"] if r.get("reason_confidence") == "CORRELATED"]
     assert rows, "the tier must actually be used, or it is decoration"
     for r in rows:
         blob = (str(r.get("state_reason")) + str(r.get("reason_evidence"))).lower()
-        assert any(k in blob for k in
-                   ("not established", "not proven", "not verify", "not verified",
-                    "inferred", "do not treat as covered")), r["lane_id"]
+        assert any(
+            k in blob
+            for k in (
+                "not established",
+                "not proven",
+                "not verify",
+                "not verified",
+                "inferred",
+                "do not treat as covered",
+            )
+        ), r["lane_id"]
 
 
 def test_the_unknown_count_is_read_from_the_field_not_the_prose(tmp_path):
     """The gate grepped state_reason for the word UNKNOWN and reported 2 the
     moment the reasons were rewritten, while 8 lanes were still UNKNOWN."""
     import subprocess, sys as _s
+
     discovery = tmp_path / "discovery.json"
-    discovery.write_text(json.dumps({"cron": [], "cron_commented": [], "systemd": []}),
-                         encoding="utf-8")
-    out = subprocess.run([_s.executable, str(GATE), "--json", "--discovery-json", str(discovery)], cwd=str(ROOT),
-                         capture_output=True, text=True, timeout=300).stdout
+    discovery.write_text(json.dumps({"cron": [], "cron_commented": [], "systemd": []}), encoding="utf-8")
+    out = subprocess.run(
+        [_s.executable, str(GATE), "--json", "--discovery-json", str(discovery)],
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        timeout=300,
+    ).stdout
     got = json.loads(out)
-    expected = [r["lane_id"] for r in load_registry()["lanes"]
-                if r.get("state") != "ACTIVE"
-                and str(r.get("reason_confidence") or "UNKNOWN") == "UNKNOWN"]
+    expected = [
+        r["lane_id"]
+        for r in load_registry()["lanes"]
+        if r.get("state") != "ACTIVE" and str(r.get("reason_confidence") or "UNKNOWN") == "UNKNOWN"
+    ]
     assert got["unknown_reason_lanes"] == expected
 
 
 def test_a_superseded_lane_names_the_unit_that_replaced_it():
     for r in load_registry()["lanes"]:
         if "supersed" in str(r.get("state_reason") or "").lower():
-            assert r.get("superseded_by"), (
-                f"{r['lane_id']} claims supersession without naming the successor")
+            assert r.get("superseded_by"), f"{r['lane_id']} claims supersession without naming the successor"
 
 
 def test_the_reboot_finding_is_recorded_on_both_lanes_it_explains():
@@ -546,6 +626,7 @@ def test_the_lane_that_crashed_is_not_described_as_turned_off():
 # paths against the CODE tree asks "did this job write into the checkout I am
 # running from", which is a different question. After the fix: LIVE 1 -> 15,
 # SILENT 28 -> 8.
+
 
 def test_output_signals_resolve_against_the_state_root():
     """The property, not the environment.
@@ -576,14 +657,13 @@ def test_observe_signal_does_not_resolve_output_against_the_code_tree():
     from scripts.lib import lane_registry as lr
 
     fn = ast.parse(textwrap.dedent(inspect.getsource(lr.observe_signal))).body[0]
-    if (fn.body and isinstance(fn.body[0], ast.Expr)
-            and isinstance(fn.body[0].value, ast.Constant)):
+    if fn.body and isinstance(fn.body[0], ast.Expr) and isinstance(fn.body[0].value, ast.Constant):
         fn.body = fn.body[1:]
     code = ast.unparse(ast.Module(body=fn.body, type_ignores=[]))
     assert "state_root()" in code
     assert "else ROOT" not in code, (
-        "output signal falls back to the code tree — a job writing to the state "
-        "root reads as SILENT from any worktree")
+        "output signal falls back to the code tree — a job writing to the state root reads as SILENT from any worktree"
+    )
 
 
 def test_an_explicit_root_still_wins_so_tests_stay_hermetic(tmp_path):
@@ -609,8 +689,7 @@ def test_absent_is_still_reported_as_silence_not_unverifiable(tmp_path):
     looked and found nothing is silence; being unable to look is not."""
     from scripts.lib import lane_registry as lr
 
-    obs = lr.observe_signal({"kind": "file_mtime", "path": "nope.json"},
-                            root=tmp_path, db_query=None)
+    obs = lr.observe_signal({"kind": "file_mtime", "path": "nope.json"}, root=tmp_path, db_query=None)
     assert obs["readable"] is True
     assert obs["last_output_at"] is None
     assert "(absent)" in str(obs["detail"])

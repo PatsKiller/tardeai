@@ -2,6 +2,7 @@
 
 Hermetic: fixture registry, fixture crontab text, fixture timer names. The live crontab is never read.
 """
+
 from __future__ import annotations
 
 import json
@@ -16,7 +17,11 @@ sys.path.insert(0, str(ROOT))
 
 from scripts.lib import lane_registry as LR  # noqa: E402
 from scripts.lib.lane_registry_drift import (  # noqa: E402
-    STATE_DRIFT, STRUCTURAL, UNDECLARED_CRON, UNDECLARED_UNIT, findings,
+    STATE_DRIFT,
+    STRUCTURAL,
+    UNDECLARED_CRON,
+    UNDECLARED_UNIT,
+    findings,
 )
 import scripts.n8n_incident_fanin as fanin  # noqa: E402
 
@@ -36,20 +41,32 @@ NEVER = "9 * * * * cd $PROJ && $PY scripts/never_scheduled_job.py --apply >> log
 
 
 def _lane(lane_id: str, state: str, match: str, **extra) -> dict:
-    row = {"lane_id": lane_id, "owner": "platform", "state": state,
-           "scheduler": {"kind": "cron", "expression": f"{match} every hour", "match": match},
-           "output_signal": {"kind": "file_mtime", "path": f"data/runtime/{lane_id}_last.json"},
-           "expected_cadence_hours": 1.0}
+    row = {
+        "lane_id": lane_id,
+        "owner": "platform",
+        "state": state,
+        "scheduler": {"kind": "cron", "expression": f"{match} every hour", "match": match},
+        "output_signal": {"kind": "file_mtime", "path": f"data/runtime/{lane_id}_last.json"},
+        "expected_cadence_hours": 1.0,
+    }
     if state != "ACTIVE":
-        row.update(state_reason="fixture: declared off for the test", state_since="2026-10-08",
-                   reason_confidence="ESTABLISHED", reason_evidence="x" * 70)
+        row.update(
+            state_reason="fixture: declared off for the test",
+            state_since="2026-10-08",
+            reason_confidence="ESTABLISHED",
+            reason_evidence="x" * 70,
+        )
     row.update(extra)
     return row
 
 
 def _registry(*lanes: dict, baseline: list[str] | None = None) -> dict:
-    return {"schema": "LaneRegistry@v1", "lanes": list(lanes), "undeclared_baseline": list(baseline or []),
-            "inherited_tranches": []}
+    return {
+        "schema": "LaneRegistry@v1",
+        "lanes": list(lanes),
+        "undeclared_baseline": list(baseline or []),
+        "inherited_tranches": [],
+    }
 
 
 def test_a_never_scheduled_lane_whose_line_is_live_is_state_drift():
@@ -69,7 +86,7 @@ def test_an_undeclared_cron_line_has_a_stable_item_that_is_not_the_command():
     assert item.startswith("cron:") and len(item) == len("cron:") + 12
     assert "nobody_declared_me" not in item and "$PY" not in item
     assert out[0]["detail"] == "undeclared cron line 7 * * * * nobody_declared_me.py"
-    again = findings(reg, UNDECLARED + "\n" + DECLARED + "\n", [])   # order and surroundings do not change the item
+    again = findings(reg, UNDECLARED + "\n" + DECLARED + "\n", [])  # order and surroundings do not change the item
     assert again[0]["item"] == item
 
 
@@ -91,22 +108,31 @@ def test_a_clean_fixture_yields_no_findings_and_the_baseline_is_honoured():
 
 
 def _wire(monkeypatch, reg: dict | Exception, cron_text: str, units: list[str]):
+    # These tests own the registry findings; an empty unrelated cycle ledger can
+    # correctly produce P1 during RTH when main() uses the real clock.
+    monkeypatch.setattr(fanin, "_scalp_cycle_findings", lambda root, now: [])
+
     def load_registry(path=None):
         if isinstance(reg, Exception):
             raise reg
         return reg
+
     monkeypatch.setattr(LR, "load_registry", load_registry)
     monkeypatch.setattr(LR, "discover_systemd", lambda: [{"kind": "systemd", "expression": u} for u in units])
     import subprocess
+
     real_run = subprocess.run
 
     def fake_run(cmd, *a, **k):
         if cmd[:2] == ["crontab", "-l"]:
+
             class R:  # noqa: D401
                 stdout = cron_text
                 returncode = 0
+
             return R()
         return real_run(cmd, *a, **k)
+
     monkeypatch.setattr(subprocess, "run", fake_run)
 
 
@@ -119,9 +145,12 @@ def test_the_fanin_emits_one_event_per_finding_with_a_stable_key(monkeypatch, tm
     events = [fanin.build_event(f, day="2026-10-08", now=NOW, sha="a" * 40) for f in found]
     keys = {e["idempotency_key"] for e in events}
     assert len(keys) == 2
-    later = fanin.collect(tmp_path, NOW.replace(hour=22))   # same UTC day, hours later: same keys, same payload
-    later_events = [fanin.build_event(f, day="2026-10-08", now=NOW.replace(hour=22), sha="a" * 40)
-                    for f in later if f["source"] == "lane_registry"]
+    later = fanin.collect(tmp_path, NOW.replace(hour=22))  # same UTC day, hours later: same keys, same payload
+    later_events = [
+        fanin.build_event(f, day="2026-10-08", now=NOW.replace(hour=22), sha="a" * 40)
+        for f in later
+        if f["source"] == "lane_registry"
+    ]
     assert {e["idempotency_key"] for e in later_events} == keys
     assert {e["source_timestamp"] for e in later_events} == {e["source_timestamp"] for e in events}
     for e in events:
@@ -137,7 +166,7 @@ def test_an_unavailable_source_is_a_note_on_the_receipt_not_a_crash(monkeypatch,
     monkeypatch.setattr(fanin, "served_sha", lambda: "b" * 40)
     receipt = tmp_path / "fanin.json"
     assert fanin.main(["--dry-run", "--receipt", str(receipt)]) == 0
-    assert not receipt.exists()   # dry-run writes nothing
+    assert not receipt.exists()  # dry-run writes nothing
     assert not (tmp_path / fanin.LANE_REGISTRY_RECEIPT_REL).exists()
 
 
@@ -149,13 +178,19 @@ def test_apply_writes_the_drift_receipt_the_incident_references(monkeypatch, tmp
     monkeypatch.setattr(fanin, "served_sha", lambda: "c" * 40)
 
     class Unreachable:
-        url = "http://127.0.0.1:1"; has_key = False
-        def healthz(self): return {"ok": False}
-        def status(self, key): return {"state": "UNREACHABLE"}
+        url = "http://127.0.0.1:1"
+        has_key = False
+
+        def healthz(self):
+            return {"ok": False}
+
+        def status(self, key):
+            return {"state": "UNREACHABLE"}
+
     monkeypatch.setattr(fanin, "GatewayClient", lambda caller_id: Unreachable())
     receipt = tmp_path / "fanin.json"
     rc = fanin.main(["--apply", "--receipt", str(receipt)])
-    assert rc == 1   # gateway unreachable is reported, not hidden
+    assert rc == 1  # gateway unreachable is reported, not hidden
     doc = json.loads((tmp_path / fanin.LANE_REGISTRY_RECEIPT_REL).read_text())
     assert doc["schema"] == "N8nLaneRegistryDrift@v1" and [f["code"] for f in doc["findings"]] == [STATE_DRIFT]
     rec = json.loads(receipt.read_text())
@@ -167,15 +202,19 @@ def test_a_host_without_a_crontab_or_an_env_opt_out_yields_no_findings_and_a_not
     """CI runners have no crontab (`crontab -l` exits 1): the source must note it and add nothing — the
     first CI run of this PR added a third incident to a fixture that expects two."""
     import subprocess
+
     real_run = subprocess.run
 
     def no_crontab(cmd, *a, **k):
         if cmd[:2] == ["crontab", "-l"]:
+
             class R:  # noqa: D401
                 stdout = ""
                 returncode = 1
+
             return R()
         return real_run(cmd, *a, **k)
+
     monkeypatch.setattr(subprocess, "run", no_crontab)
     assert [f for f in fanin.collect(tmp_path, NOW) if f["source"] == "lane_registry"] == []
     assert fanin.NOTES["lane_registry_source"].startswith("unavailable:RuntimeError:no_crontab")

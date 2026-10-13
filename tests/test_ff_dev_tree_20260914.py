@@ -33,6 +33,26 @@ def _git(cwd: Path, *args: str) -> str:
     return out.stdout.strip()
 
 
+def _clone_fixture(cwd: Path, origin: Path, destination: Path) -> None:
+    """A plain local clone needs no commit identity options or quiet flag."""
+    owned = cwd.resolve()
+    if (
+        origin.is_symlink()
+        or destination.exists()
+        or destination.is_symlink()
+        or not origin.resolve().is_relative_to(owned)
+        or not destination.resolve().is_relative_to(owned)
+    ):
+        raise ValueError("clone fixture must use an owned source and new owned destination")
+    subprocess.run(
+        ["git", "clone", str(origin), str(destination)],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+
 def _ff(repo: Path, target: str, *, errexit: bool = False) -> subprocess.CompletedProcess:
     prelude = "set -euo pipefail; " if errexit else ""
     script = f'{prelude}source "{LIB}"; ff_dev_tree "$1" "$2" || exit 1'
@@ -61,7 +81,7 @@ def _symlinked_dev_tree(tmp: Path) -> tuple[Path, Path, Path]:
     _git(origin, "add", ".gitignore", "app.py")
     _git(origin, "add", "-f", "data/runtime/manifest.json", "data/runtime/caps.json")
     _git(origin, "commit", "-qm", "base")
-    _git(tmp, "clone", "-q", str(origin), str(dev))
+    _clone_fixture(tmp, origin, dev)
     live = tmp / "persistent-state"
     live.mkdir()
     for name in ("manifest.json", "caps.json"):
@@ -99,7 +119,7 @@ def test_a_local_edit_to_a_still_tracked_file_stops_and_changes_nothing(tmp_path
     (origin / "app.py").write_text("base\n")
     _git(origin, "add", "-A")
     _git(origin, "commit", "-qm", "base")
-    _git(tmp_path, "clone", "-q", str(origin), str(dev))
+    _clone_fixture(tmp_path, origin, dev)
     (origin / "app.py").write_text("upstream\n")
     _git(origin, "commit", "-qam", "upstream")
     (dev / "app.py").write_text("local edit\n")
@@ -117,7 +137,7 @@ def test_a_plain_fast_forward_succeeds(tmp_path):
     (origin / "app.py").write_text("base\n")
     _git(origin, "add", "-A")
     _git(origin, "commit", "-qm", "base")
-    _git(tmp_path, "clone", "-q", str(origin), str(dev))
+    _clone_fixture(tmp_path, origin, dev)
     (origin / "app.py").write_text("more\n")
     _git(origin, "commit", "-qam", "more")
     _git(dev, "fetch", "-q", "origin")
@@ -134,7 +154,7 @@ def test_a_dev_tree_already_past_the_target_is_left_alone(tmp_path):
     old = _git(origin, "rev-parse", "HEAD")
     (origin / "app.py").write_text("newer\n")
     _git(origin, "commit", "-qam", "newer")
-    _git(tmp_path, "clone", "-q", str(origin), str(dev))
+    _clone_fixture(tmp_path, origin, dev)
     head = _git(dev, "rev-parse", "HEAD")
     r = _ff(dev, old)
     assert r.returncode == 0 and "already contains" in r.stdout
@@ -153,3 +173,45 @@ def test_promote_fast_forwards_the_dev_tree_after_promote_ok_and_fails_loudly():
     assert "CIO_DEPLOY_FF_DEV_TREE" in helper and "die " in helper
     # The swallowed-failure shape must not come back.
     assert "merge --ff-only -q origin/main &&" not in text
+
+
+def test_clone_fixture_preserves_the_plain_owned_command_shape(tmp_path, monkeypatch):
+    origin = tmp_path / "origin"
+    origin.mkdir()
+    destination = tmp_path / "dev"
+    calls = []
+    monkeypatch.setattr(subprocess, "run", lambda argv, **kwargs: calls.append((argv, kwargs)))
+    _clone_fixture(tmp_path, origin, destination)
+    assert calls == [
+        (
+            ["git", "clone", str(origin), str(destination)],
+            {"cwd": tmp_path, "capture_output": True, "text": True, "check": True},
+        )
+    ]
+    assert not destination.exists()
+
+
+@pytest.mark.parametrize(
+    "boundary", ["existing_destination", "outside_source", "outside_destination", "symlink_source"]
+)
+def test_clone_fixture_refuses_unowned_or_existing_paths_before_a_process(tmp_path, monkeypatch, boundary):
+    owned = tmp_path / "owned"
+    owned.mkdir()
+    origin, destination = owned / "origin", owned / "dev"
+    origin.mkdir()
+    if boundary == "existing_destination":
+        destination.mkdir()
+    elif boundary == "outside_source":
+        origin = tmp_path / "outside-origin"
+        origin.mkdir()
+    elif boundary == "outside_destination":
+        destination = tmp_path / "outside-dev"
+    else:
+        target = origin
+        origin = owned / "source-link"
+        origin.symlink_to(target, target_is_directory=True)
+    calls = []
+    monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: calls.append((args, kwargs)))
+    with pytest.raises(ValueError, match="owned"):
+        _clone_fixture(owned, origin, destination)
+    assert calls == []

@@ -12,6 +12,8 @@ import re
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -77,6 +79,27 @@ def _route_forbidden(token: str) -> str | None:
     return None
 
 
+def _repo_script_path(token: str) -> Path:
+    """Resolve the executor's code-root token only inside this test checkout."""
+    relative = token.removeprefix("$CODE_ROOT/")
+    parts = Path(relative).parts
+    assert parts and parts[0] == "scripts" and ".." not in parts and "$" not in relative, token
+    resolved = Path(X.resolve_token(token, env={}, state_root=ROOT, code_root=ROOT))
+    if not resolved.is_absolute():
+        resolved = ROOT / resolved
+    resolved = resolved.resolve()
+    assert resolved.is_relative_to(ROOT) and resolved.is_file(), token
+    return resolved
+
+
+@pytest.mark.parametrize(
+    "token", ["/outside/scripts/fake.py", "$STATE_ROOT/scripts/fake.py", "$CODE_ROOT/../fake.py", "scripts/../fake.py"]
+)
+def test_repo_script_path_rejects_unowned_or_traversing_tokens(token):
+    with pytest.raises(AssertionError):
+        _repo_script_path(token)
+
+
 def test_schema_and_every_entry_is_runnable_by_the_executor():
     assert DOC["schema"] == "N8nRunAllowlist@v1"
     assert LANES, "empty allowlist"
@@ -117,6 +140,7 @@ def test_commands_run_repo_scripts_or_crontab_only_and_mode_args_differ():
     for lane_id, entry in LANES.items():
         cmd = entry["command"]
         if cmd[0] == "$PY":
+            cmd = [cmd[0], str(_repo_script_path(cmd[1]).relative_to(ROOT)), *cmd[2:]]
             assert cmd[1].startswith("scripts/") and (ROOT / cmd[1]).is_file(), (lane_id, cmd[1])
         else:
             assert cmd[:2] == ["bash", "-c"] and cmd[2].startswith("crontab -l"), (lane_id, cmd)
@@ -129,7 +153,7 @@ def test_dry_run_arguments_match_each_scripts_argparse():
     for lane_id, entry in LANES.items():
         if entry["command"][0] != "$PY":
             continue
-        src = (ROOT / entry["command"][1]).read_text(encoding="utf-8")
+        src = _repo_script_path(entry["command"][1]).read_text(encoding="utf-8")
         for arg in [*(entry.get("dry_run_arg") or []), *(entry.get("live_arg") or [])]:
             if arg.startswith("--"):
                 assert f'"{arg}"' in src, (lane_id, arg)

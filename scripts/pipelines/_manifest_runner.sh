@@ -79,7 +79,8 @@ _mr_load_safety_env() {
 }
 
 # One step (reads id cron_line tmo dow logrel grp envnames cmd and the stage vars from the caller's scope).
-# Serial stages call it inline; parallel stages call it in a background subshell. Never fails the stage.
+# Serial stages call it inline; parallel stages call it in a background subshell.
+# Business failures are receipt statuses; receipt-writer failures return nonzero for stage accounting.
 _mr_step() {
   local status rc ms start end
   start=${EPOCHREALTIME/./}
@@ -113,7 +114,7 @@ _mr_step() {
     echo "  ---- step $id END status=$status rc=$rc log=$steplog ----"
   fi
   end=${EPOCHREALTIME/./}; ms=$(( (end - start) / 1000 ))
-  "$PY3" - "$RESULTS" "$STEPS_JSONL" "$PIPELINE" "$STAGE" "$id" "$cron_line" "$status" "$rc" "$ms" "$tmo" "$DRY_RUN" <<'PY'
+  "$PY3" - "$RESULTS" "$STEPS_JSONL" "$PIPELINE" "$STAGE" "$id" "$cron_line" "$status" "$rc" "$ms" "$tmo" "$DRY_RUN" <<'PY' || return $?
 import json, sys, datetime
 res, jsonl, pipeline, stage, sid, cron_line, status, rc, ms, tmo, dry = sys.argv[1:]
 rec = {"schema": "PipelineStepReceipt@v1", "ts": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -207,16 +208,20 @@ manifest_pipeline_main() {
   "$PY3" "$MANIFEST_PY" "$MANIFEST" --waves "$STAGE" --dow "$TODAY_DOW" || true
 
   local line id cron_line tmo dow logrel grp envnames cmd prev_grp="" _first=1
-  local -a _pids=()
+  local -a _pids=() _group_pids=()
+  local worker_failures=0 _wait_pid
   while IFS= read -r line; do
     [ -n "$line" ] || continue
     IFS=$'\x1f' read -r id cron_line tmo dow logrel grp envnames cmd <<<"$line"
     if [ "$MAXC" -le 1 ]; then
-      _mr_step
+      _mr_step || worker_failures=$((worker_failures + 1))
       continue
     fi
     if [ "$_first" = 0 ] && [ "$grp" != "$prev_grp" ]; then
-      [ "${#_pids[@]}" -gt 0 ] && wait "${_pids[@]}" || true
+      for _wait_pid in "${_group_pids[@]}"; do
+        wait "$_wait_pid" || worker_failures=$((worker_failures + 1))
+      done
+      _group_pids=()
       _pids=()
       echo "  ==== group $prev_grp done; next group $grp ===="
     fi
@@ -230,16 +235,23 @@ manifest_pipeline_main() {
     done
     _mr_step &
     _pids+=("$!")
+    _group_pids+=("$!")
   done <<<"$plan"
-  [ "${#_pids[@]}" -gt 0 ] && wait "${_pids[@]}" || true
+  for _wait_pid in "${_group_pids[@]}"; do
+    wait "$_wait_pid" || worker_failures=$((worker_failures + 1))
+  done
 
   local -a sumflags=()
   [ "$DRY_RUN" = 1 ] && sumflags+=(--dry-run)
   [ "$APPLY_REQUESTED" = 1 ] && sumflags+=(--apply-requested)
   "$PY3" "$MANIFEST_PY" "$MANIFEST" --summary "$STAGE" --results "$RESULTS" --out "$SUMMARY" \
-      --started-at "$STARTED_AT" --log "$RUN_LOG" "${sumflags[@]}"
+      --started-at "$STARTED_AT" --log "$RUN_LOG" --worker-failures "$worker_failures" "${sumflags[@]}"
   rm -f "$RESULTS"
   echo "[summary] wrote $SUMMARY"
   echo "[$(_ts)] END pipeline=$PIPELINE stage=$STAGE DRY_RUN=$DRY_RUN steps=$n_steps"
+  if [ "$worker_failures" -gt 0 ]; then
+    echo "[ERROR] a step worker failed before completing its receipt" >&2
+    return 1
+  fi
   return 0
 }

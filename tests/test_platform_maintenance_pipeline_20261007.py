@@ -5,11 +5,11 @@ no .env, no live locks, no live logs) with a fake step table supplied via --mani
 tables are checked by dry-running the real runner from the repo (it executes nothing and writes nothing).
 The purge wrapper is unit-tested against a fake connection — no Postgres, no token manager.
 """
+
 from __future__ import annotations
 
 import fcntl
 import json
-import os
 import re
 import shutil
 import subprocess
@@ -17,6 +17,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from tests.pipeline_runner_fixtures import runner_env
 
 ROOT = Path(__file__).resolve().parent.parent
 RUNNER = ROOT / "scripts" / "pipelines" / "run_platform_maintenance_pipeline.sh"
@@ -35,14 +36,15 @@ def _sandbox(tmp_path: Path) -> Path:
 
 
 def _env(tmp_path: Path) -> dict:
-    return {
-        "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
-        "HOME": str(tmp_path / "home"),
-        "LANG": "C.UTF-8",
-        "PLATFORM_MAINT_LOCK_DIR": str(tmp_path / "locks"),
-        "ALPACA_MODE": "paper",
-        "LIVE_TRADING_ENABLED": "false",
-    }
+    env = runner_env(tmp_path)
+    env.update(
+        {
+            "PLATFORM_MAINT_LOCK_DIR": str(tmp_path / "locks"),
+            "ALPACA_MODE": "paper",
+            "LIVE_TRADING_ENABLED": "false",
+        }
+    )
+    return env
 
 
 def _run(proj: Path, env: dict, *args: str, manifest: Path | None = None) -> subprocess.CompletedProcess:
@@ -64,18 +66,22 @@ def _write_manifest(tmp_path: Path, lines: list[str]) -> Path:
 
 # --- apply: order, continue-on-error, timeout, env, guard, summary shape ---------------------------
 
+
 def test_apply_runs_in_order_continues_on_error_records_timeout_and_summary(tmp_path):
     proj = _sandbox(tmp_path)
-    manifest = _write_manifest(tmp_path, [
-        "step_true|1m|||steplogs/true.log||echo hello-from-true",
-        "step_false|1m|||||false",
-        "step_sleep|1s|||||sleep 3",
-        'step_env|1m||||FOO=bar|[ "$FOO" = bar ]',
-        "step_guarded|1m||missing/never.txt|||echo never-runs",
-        "step_last|1m|||||echo last-still-ran",
-    ])
+    manifest = _write_manifest(
+        tmp_path,
+        [
+            "step_true|1m|||steplogs/true.log||echo hello-from-true",
+            "step_false|1m|||||false",
+            "step_sleep|1s|||||sleep 3",
+            'step_env|1m||||FOO=bar|[ "$FOO" = bar ]',
+            "step_guarded|1m||missing/never.txt|||echo never-runs",
+            "step_last|1m|||||echo last-still-ran",
+        ],
+    )
     r = _run(proj, _env(tmp_path), "--cadence", "nightly", "--apply", manifest=manifest)
-    assert r.returncode == 0, r.stdout + r.stderr   # continue-on-error; the summary is the signal
+    assert r.returncode == 0, r.stdout + r.stderr  # continue-on-error; the summary is the signal
 
     s = json.loads(_summary(proj, "nightly").read_text())
     assert s["schema"] == "PlatformMaintenanceRun@v1"
@@ -92,9 +98,9 @@ def test_apply_runs_in_order_continues_on_error_records_timeout_and_summary(tmp_
     assert by["step_false"]["rc"] == 1
     assert by["step_sleep"]["rc"] in (124, 137) and by["step_sleep"]["timed_out"] is True
     assert by["step_sleep"]["timeout"] == "1s" and by["step_sleep"]["duration_s"] >= 1
-    assert by["step_env"]["rc"] == 0                      # manifest env reached the command
+    assert by["step_env"]["rc"] == 0  # manifest env reached the command
     assert by["step_guarded"]["rc"] is None and by["step_guarded"]["skipped_missing"] is True
-    assert by["step_last"]["rc"] == 0                     # ran after the failures
+    assert by["step_last"]["rc"] == 0  # ran after the failures
     assert s["ok"] is False
     assert s["failed_steps"] == ["step_false", "step_sleep"]
     assert s["skipped_steps"] == ["step_guarded"]
@@ -108,6 +114,7 @@ def test_apply_runs_in_order_continues_on_error_records_timeout_and_summary(tmp_
 
 
 # --- dry run writes nothing -----------------------------------------------------------------------
+
 
 def test_dry_run_prints_plan_and_writes_nothing(tmp_path):
     proj = _sandbox(tmp_path)
@@ -131,6 +138,7 @@ def test_default_mode_is_dry_run(tmp_path):
 
 # --- locks ----------------------------------------------------------------------------------------
 
+
 def test_pipeline_lock_held_skips_cleanly(tmp_path):
     proj = _sandbox(tmp_path)
     manifest = _write_manifest(tmp_path, ["step_touch|1m|||||touch would-have-run.txt"])
@@ -147,10 +155,13 @@ def test_pipeline_lock_held_skips_cleanly(tmp_path):
 def test_step_lock_held_is_recorded_as_skipped_lock_not_failure(tmp_path):
     proj = _sandbox(tmp_path)
     step_lock = tmp_path / "locks" / "db_retention.lock"
-    manifest = _write_manifest(tmp_path, [
-        f"locked_step|1m|{step_lock}||||touch locked-ran.txt",
-        "free_step|1m|||||echo free",
-    ])
+    manifest = _write_manifest(
+        tmp_path,
+        [
+            f"locked_step|1m|{step_lock}||||touch locked-ran.txt",
+            "free_step|1m|||||echo free",
+        ],
+    )
     with open(step_lock, "w") as fh:
         fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
         r = _run(proj, _env(tmp_path), "--cadence", "nightly", "--apply", manifest=manifest)
@@ -165,6 +176,7 @@ def test_step_lock_held_is_recorded_as_skipped_lock_not_failure(tmp_path):
 
 
 # --- argument handling ----------------------------------------------------------------------------
+
 
 @pytest.mark.parametrize("args", [[], ["--cadence", "daily"], ["--cadence", "all"], ["--bogus"]])
 def test_bad_arguments_exit_64(tmp_path, args):
@@ -184,33 +196,41 @@ def test_manifest_env_var_is_honoured(tmp_path):
 
 # --- built-in tables = the absorbed crontab lines, in clock order ----------------------------------
 
-def _plan(cadence: str) -> list[dict]:
-    env = dict(os.environ, PLATFORM_MAINT_LOCK_DIR="/nonexistent-never-used")
-    env.pop("PLATFORM_MAINT_MANIFEST", None)
-    # The plan's DEFAULT state root ($HOME/trade-ai-releases/persistent-state, as cron renders it), not the hermetic
-    # bootstrap's TRADEAI_STATE_ROOT fixture; HOME is the bootstrap's empty fixture home, and this is a dry run.
-    env.pop("TRADEAI_STATE_ROOT", None)
-    r = subprocess.run(["bash", str(RUNNER), "--cadence", cadence, "--dry-run"], cwd=str(ROOT), env=env,
-                       capture_output=True, text=True, timeout=60)
+
+def _plan(tmp_path: Path, cadence: str) -> list[dict]:
+    proj = _sandbox(tmp_path / cadence)
+    env = _env(tmp_path / cadence)
+    # Preserve the cron-rendered state-root shape under the fixture HOME.
+    env["TRADEAI_STATE_ROOT"] = str(Path(env["HOME"]) / "trade-ai-releases" / "persistent-state")
+    r = _run(proj, env, "--cadence", cadence, "--dry-run")
     assert r.returncode == 0, r.stdout + r.stderr
     assert "nothing executed, nothing written" in r.stdout
     steps = []
     for line in r.stdout.splitlines():
         m = re.match(r"\s+\[\d+\] step=(\S+) timeout=(\S+) lock=(\S+) env=(.*?) log=(\S+)", line)
         if m:
-            steps.append({"step": m.group(1), "timeout": m.group(2), "lock": m.group(3), "env": m.group(4), "log": m.group(5)})
+            steps.append(
+                {"step": m.group(1), "timeout": m.group(2), "lock": m.group(3), "env": m.group(4), "log": m.group(5)}
+            )
         elif "would run:" in line:
             steps[-1]["cmd"] = line.split("would run:", 1)[1].strip()
     return steps
 
 
-def test_builtin_nightly_plan_is_the_absorbed_cron_lines_in_clock_order():
-    steps = _plan("nightly")
+def test_builtin_nightly_plan_is_the_absorbed_cron_lines_in_clock_order(tmp_path):
+    steps = _plan(tmp_path, "nightly")
     assert [s["step"] for s in steps] == [
-        "rotate_runtime_logs", "populate_performance_context", "report_platform_conformance",
-        "nightly_integrity_sweep", "strategy_config_sync", "siem_retention_purge",
-        "hermes_universe_history_retention", "n8n_lab_backup", "db_retention",
-        "prune_document_mentions", "report_db_hygiene",
+        "rotate_runtime_logs",
+        "populate_performance_context",
+        "report_platform_conformance",
+        "nightly_integrity_sweep",
+        "strategy_config_sync",
+        "siem_retention_purge",
+        "hermes_universe_history_retention",
+        "n8n_lab_backup",
+        "db_retention",
+        "prune_document_mentions",
+        "report_db_hygiene",
     ]
     by = {s["step"]: s for s in steps}
     # per-step locks preserved from the crontab lines (same /tmp path => no double-run with a leftover line)
@@ -227,7 +247,7 @@ def test_builtin_nightly_plan_is_the_absorbed_cron_lines_in_clock_order():
     assert by["strategy_config_sync"]["cmd"].endswith("scripts/strategy_config_loader.py --sync-db")
     assert by["hermes_universe_history_retention"]["cmd"].endswith("hermes_universe_history_retention.py --apply")
     assert by["n8n_lab_backup"]["cmd"].endswith("bash scripts/n8n_lab_backup.sh --apply")
-    assert by["db_retention"]["cmd"].endswith("scripts/db_retention.py")          # no flag added
+    assert by["db_retention"]["cmd"].endswith("scripts/db_retention.py")  # no flag added
     assert by["prune_document_mentions"]["cmd"].endswith("scripts/prune_document_mentions.py --apply")
     assert by["report_platform_conformance"]["cmd"].endswith("scripts/report_platform_conformance.py --write")
     # inline env of crontab line 1045 preserved
@@ -241,12 +261,12 @@ def test_builtin_nightly_plan_is_the_absorbed_cron_lines_in_clock_order():
         assert "sync-docs-to-drive" not in s["cmd"] and "sync_code_mirror" not in s["cmd"]
 
 
-def test_builtin_weekly_and_monthly_plans():
-    weekly = _plan("weekly")
+def test_builtin_weekly_and_monthly_plans(tmp_path):
+    weekly = _plan(tmp_path, "weekly")
     assert [s["step"] for s in weekly] == ["docs_retention", "n8n_lab_restore_drill", "check_system_versions"]
     assert weekly[1]["cmd"].endswith("bash scripts/n8n_lab_restore_drill.sh --apply")
     assert weekly[2]["log"].endswith("/logs/version_check.log")
-    monthly = _plan("monthly")
+    monthly = _plan(tmp_path, "monthly")
     assert [s["step"] for s in monthly] == ["backup_verify", "youtube_transcript_purge"]
     assert monthly[0]["lock"] == "/tmp/backup_verify.lock"
     assert monthly[1]["cmd"].endswith("scripts/purge_youtube_transcripts.py --apply")
@@ -254,7 +274,11 @@ def test_builtin_weekly_and_monthly_plans():
 
 def test_proposal_units_point_at_runner_and_are_marked_proposal_only():
     units = ROOT / "config" / "systemd" / "user"
-    for cadence, oncal in (("nightly", "*-*-* 01:15:00"), ("weekly", "Sun *-*-* 03:00:00"), ("monthly", "*-*-01 06:00:00")):
+    for cadence, oncal in (
+        ("nightly", "*-*-* 01:15:00"),
+        ("weekly", "Sun *-*-* 03:00:00"),
+        ("monthly", "*-*-01 06:00:00"),
+    ):
         timer = (units / f"tradeai-platform-maintenance-{cadence}.timer").read_text()
         service = (units / f"tradeai-platform-maintenance-{cadence}.service").read_text()
         assert "PROPOSAL ONLY" in timer and "PROPOSAL ONLY" in service
@@ -278,6 +302,7 @@ def test_registry_declares_the_three_lanes_as_installed_timers():
 
 
 # --- purge wrapper (crontab line 163) against a fake connection ----------------------------------
+
 
 class _FakeCursor:
     def __init__(self, state):
@@ -315,6 +340,7 @@ class _FakeConn:
 def test_purge_dry_run_counts_only():
     sys.path.insert(0, str(ROOT / "scripts"))
     import purge_youtube_transcripts as p
+
     conn = _FakeConn({"undated": 5, "expired": 3})
     res = p.purge(conn, apply=False)
     assert res["dry_run"] is True and res["undated_before"] == 5 and res["expired_before"] == 3
@@ -325,10 +351,11 @@ def test_purge_dry_run_counts_only():
 def test_purge_apply_stamps_deletes_commits_and_writes_receipt(tmp_path):
     sys.path.insert(0, str(ROOT / "scripts"))
     import purge_youtube_transcripts as p
+
     state = {"undated": 5, "expired": 3}
 
     def fake_set_purge_dates():
-        state["undated"] = 1   # 4 rows got a date
+        state["undated"] = 1  # 4 rows got a date
 
     conn = _FakeConn(state)
     res = p.purge(conn, apply=True, set_purge_dates=fake_set_purge_dates)
@@ -345,6 +372,6 @@ def test_the_performance_context_step_sources_the_rendered_env_and_its_dependenc
     once installed, soft-skipped because DB_* come only from the rendered env the old cron line never sourced."""
     runner = (ROOT / "scripts" / "pipelines" / "run_platform_maintenance_pipeline.sh").read_text()
     i = runner.index("add_step populate_performance_context")
-    block = runner[i:i + 400]
+    block = runner[i : i + 400]
     assert "tradeai/env" in block and "populate_performance_context.py --apply" in block
     assert "ruamel.yaml" in (ROOT / "requirements.txt").read_text()

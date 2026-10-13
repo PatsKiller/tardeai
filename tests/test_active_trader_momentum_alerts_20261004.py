@@ -137,6 +137,23 @@ def test_shadow_mode_journals_and_never_sends(_journal_dir):
     assert "ADVISORY ONLY — NOT AN ORDER" in rows[0]["message"]["body"]
 
 
+@pytest.mark.parametrize("attachment", [None, {}])
+def test_missing_trade_ai_attachment_does_not_claim_no_scan(attachment):
+    assert ma.trade_ai_line(attachment) == "Trade-AI: NO_SAME_DAY_SCAN · verdict not attached"
+    rows = _pass([cand(trade_ai=attachment)], persist=False)
+    assert rows[0]["verdict"] == ma.ALERT
+    assert "Trade-AI: NO_SAME_DAY_SCAN · verdict not attached" in rows[0]["message"]["body"]
+    assert "no scan today" not in rows[0]["message"]["body"]
+
+
+def test_present_trade_ai_verdict_message_is_unchanged():
+    attachment = {"decision": "WAIT", "not_tradeable": True, "scanned_at": "2026-10-05T07:01:00-04:00"}
+    expected = "Trade-AI today: WAIT 07:01 · not tradeable"
+    assert ma.trade_ai_line(attachment) == expected
+    rows = _pass([cand(trade_ai=attachment)], persist=False)
+    assert rows[0]["verdict"] == ma.ALERT and expected in rows[0]["message"]["body"]
+
+
 def test_send_mode_uses_own_alert_types_and_no_daily_dedupe():
     calls = []
     rows = _pass([cand()], cfg=ma.AlertConfig(mode="send"), sent=calls)

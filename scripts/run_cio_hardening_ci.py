@@ -1204,17 +1204,21 @@ GATES = [
     # incidents become one deduped system_health_events row per n8n:<lane>|kind; inbox accepts CRITICAL/URGENT.
     (
         "n8n_siem_bridge_20261010",
-        ["tests/test_n8n_siem_bridge_20261010.py",
-         # 2026-10-11: siem_critical_notify skips n8n:* bridge rows (the incident fan-in owns them).
-         "tests/test_siem_notify_n8n_single_route_20261011.py"],
+        [
+            "tests/test_n8n_siem_bridge_20261010.py",
+            # 2026-10-11: siem_critical_notify skips n8n:* bridge rows (the incident fan-in owns them).
+            "tests/test_siem_notify_n8n_single_route_20261011.py",
+        ],
     ),
     # LLM self-remediation for n8n lanes (REMEDIATION_PLAN §6, operator decisions 2026-10-09 23:38 ET): remediation
     # catalogue from the inventory, governed diagnosis (n8n_lane_failure_diagnosis), bounded actions, selftest lane.
     (
         "n8n_llm_remediation_20261010",
-        ["tests/test_n8n_llm_remediation_20261010.py",
-         # 2026-10-10 optional: trade-ai-scalp-live excluded from the LLM diagnosis catalogue (operator decision pending).
-         "tests/test_n8n_diagnosis_exclude_scalp_20261010.py"],
+        [
+            "tests/test_n8n_llm_remediation_20261010.py",
+            # 2026-10-10 optional: trade-ai-scalp-live excluded from the LLM diagnosis catalogue (operator decision pending).
+            "tests/test_n8n_diagnosis_exclude_scalp_20261010.py",
+        ],
     ),
     # Paper/broker-adjacent child steps use the same resolver; telegram run_promoter no longer shadows os (F823).
     # Code-only, under execution-engineering grant dc66eb4b6db5107e (operator 2026-10-09).
@@ -2318,6 +2322,8 @@ GATES = [
             "tests/test_watchlist_bridge_recreate_cooldown_20260915.py",
             "tests/test_system_health_retired_component_20260915.py",
             "tests/test_system_health_agent_conn_and_retired_20261007.py",
+            "tests/test_system_health_freshness_identity_20261012.py",
+            "tests/test_orchestrator_market_context_rendering_20261012.py",
             "tests/test_persistent_state_root_import_20261008.py",
             "tests/test_scheduled_wrappers_resolve_own_tree_20261007.py",
             "tests/test_units_execute_served_tree_20261008.py",
@@ -4053,6 +4059,23 @@ GATES = [
             "tests/test_n8n_coordination_runs_projection_20261008.py",
             "tests/test_n8n_incident_fanin_runs_20261008.py",
             "tests/test_n8n_migration_board_20261008.py",
+            "tests/test_migration_reconciliation.py",
+        ],
+    ),
+    (
+        # Read-only momentum lifecycle and derivative cache reconciliation: fixture-only expected
+        # fires, durable request/product provenance, admission drift and zero-effect dry runs.
+        "n8n_momentum_lifecycle_20261012",
+        [
+            "tests/test_n8n_momentum_lifecycle_20261012.py",
+            "tests/test_n8n_contract_baselines_20261012.py",
+            "tests/test_momentum_scheduler_authority_20261013.py",
+            "tests/test_momentum_admission_20261013.py",
+            "tests/test_n8n_read_only_observers_20261013.py",
+            "tests/test_momentum_cache_reconcile_20261012.py",
+            "tests/test_n8n_momentum_lifecycle_cli_20261012.py",
+            "tests/test_momentum_setup_evidence_20261012.py",
+            "tests/test_momentum_notification_evidence_20261012.py",
         ],
     ),
     (
@@ -4580,8 +4603,7 @@ GATES = [
         # claude_escalation_handler is imported only by its own env test, under TRADE_AI_CI.
         # ANCHOR: NOTIFICATION_INTENTS_WAVE3_20261011
         "notification_intents_wave3_20261011",
-        ["tests/test_notification_intents_wave3_20261011.py",
-         "tests/test_claude_escalation_env_20261011.py"],
+        ["tests/test_notification_intents_wave3_20261011.py", "tests/test_claude_escalation_env_20261011.py"],
     ),
     (
         # Release-pinned daemons (packets/unit-code-roots, 2026-10-10): one-off exact-SHA drop-ins left 4 user
@@ -4601,9 +4623,11 @@ GATES = [
         # severity, INPUT_STARVATION STARVED = P2 (else P3); the read-only parallel-run parity compare. Hermetic:
         # tmp_path ledgers, logs and registry; no DB, no live state root.
         "monitor_fold_coverage_20261011",
-        ["tests/test_monitor_fold_coverage_20261011.py",
-         "tests/test_n8n_incident_fanin_monitor_fold_20261011.py",
-         "tests/test_monitor_fold_parity_20261011.py"],
+        [
+            "tests/test_monitor_fold_coverage_20261011.py",
+            "tests/test_n8n_incident_fanin_monitor_fold_20261011.py",
+            "tests/test_monitor_fold_parity_20261011.py",
+        ],
     ),
     (
         # W5 event-triggered consumers (CONSOLIDATION_PLAN §B.3 W5, §E.4, 2026-10-11): coordination/due source
@@ -4632,9 +4656,11 @@ GATES = [
         # llm_lane (that import reads .env).
         # ANCHOR: GROK_G1_G7_20261011
         "grok_g1_g7_20261011",
-        ["tests/test_agent_recommendation_normalizer_dedupe_20261011.py",
-         "tests/test_approval_escalate_20261011.py",
-         "tests/test_llm_bridge_route_20261011.py"],
+        [
+            "tests/test_agent_recommendation_normalizer_dedupe_20261011.py",
+            "tests/test_approval_escalate_20261011.py",
+            "tests/test_llm_bridge_route_20261011.py",
+        ],
     ),
     (
         # Shard06 source-only previews: exact approved cron argv against frozen old entrypoints;
@@ -5046,8 +5072,19 @@ def _run_unit_junit(job):
     env = job[2] if len(job) > 2 else None
     t0 = time.monotonic()
     r = subprocess.run(
-        [sys.executable, "-m", "pytest", "-q", "--tb=line", "-p", "no:cacheprovider",
-         f"--junitxml={xml_path}", "-o", "junit_family=xunit1", *files],
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-q",
+            "--tb=line",
+            "-p",
+            "no:cacheprovider",
+            f"--junitxml={xml_path}",
+            "-o",
+            "junit_family=xunit1",
+            *files,
+        ],
         cwd=str(REPO),
         capture_output=True,
         text=True,
@@ -5104,8 +5141,12 @@ def _per_file_db_env(path: str, index: int) -> dict | None:
         if not base or not TEST_DATABASE_RE.match(f"{base}_f{index}"):
             continue
         name = f"{base}_f{index}"
-        r = subprocess.run([sys.executable, "scripts/ensure_m2_test_database.py", "--name", name],
-                           cwd=str(REPO), capture_output=True, text=True)
+        r = subprocess.run(
+            [sys.executable, "scripts/ensure_m2_test_database.py", "--name", name],
+            cwd=str(REPO),
+            capture_output=True,
+            text=True,
+        )
         print(f"[shard] {path}: {var} -> database {name} (ensure rc={r.returncode})", flush=True)
         if r.returncode == 0:
             env[var] = with_database(dsn, name)
@@ -5136,14 +5177,17 @@ def run_shard(shard_arg: str, *, jobs: int, out: Path | None) -> int:
     def record(res):
         results.append(res)
         status = "PASS" if res["passed"] else "FAIL"
-        print(f"[{status}] {res['gate']} ({len(res['files'])} files, {res['seconds']:.1f}s, "
-              f"skipped={res['skipped']}) {res['tail'][-100:]}", flush=True)
+        print(
+            f"[{status}] {res['gate']} ({len(res['files'])} files, {res['seconds']:.1f}s, "
+            f"skipped={res['skipped']}) {res['tail'][-100:]}",
+            flush=True,
+        )
         if not res["passed"]:
             print(res["output"][-6000:], flush=True)
 
     with tempfile.TemporaryDirectory(prefix=f"cio-shard-{sid}-") as tmp:
         jobs_list = [(u, str(Path(tmp) / f"u{i}.xml")) for i, u in enumerate(parallel + serial)]
-        par_jobs, ser_jobs = jobs_list[: len(parallel)], jobs_list[len(parallel):]
+        par_jobs, ser_jobs = jobs_list[: len(parallel)], jobs_list[len(parallel) :]
         if one_at_a_time:
             # serial/pg: one pytest process PER FILE (a gate unit may hold several files that
             # share state), and in the pg shard each file gets its own fresh database for the
@@ -5163,8 +5207,14 @@ def run_shard(shard_arg: str, *, jobs: int, out: Path | None) -> int:
     for res in results:
         res.pop("output", None)
     manifest = ci_shards.build_manifest(
-        shard=sid, n=n, sha=_git_value("rev-parse", "HEAD"), tree=_git_value("rev-parse", "HEAD^{tree}"),
-        digest=plan["digest"], files=files, units=results, wall=wall,
+        shard=sid,
+        n=n,
+        sha=_git_value("rev-parse", "HEAD"),
+        tree=_git_value("rev-parse", "HEAD^{tree}"),
+        digest=plan["digest"],
+        files=files,
+        units=results,
+        wall=wall,
     )
     out = out or Path(os.environ.get("RUNNER_TEMP") or tempfile.gettempdir()) / f"cio_shard_{sid}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -5175,8 +5225,10 @@ def run_shard(shard_arg: str, *, jobs: int, out: Path | None) -> int:
     if summary:
         try:
             with open(summary, "a", encoding="utf-8") as fh:
-                fh.write(f"## shard {sid}/{n}\n- files: {len(manifest['files'])}; wall {wall:.0f} s; "
-                         f"skipped tests: {sum(r['skipped'] for r in results)}; failed gates: {failed or 'none'}\n")
+                fh.write(
+                    f"## shard {sid}/{n}\n- files: {len(manifest['files'])}; wall {wall:.0f} s; "
+                    f"skipped tests: {sum(r['skipped'] for r in results)}; failed gates: {failed or 'none'}\n"
+                )
         except OSError:
             pass
     if failed:
@@ -5219,15 +5271,21 @@ def verify_shards(
     for m in manifests:
         for u in m.get("units") or []:
             if u.get("no_tests"):
-                print(f"[ci-gate] NOTE no test functions collected (accepted, as in the fast profile): {u.get('files')}")
+                print(
+                    f"[ci-gate] NOTE no test functions collected (accepted, as in the fast profile): {u.get('files')}"
+                )
     if timings_out:
         timings_out.parent.mkdir(parents=True, exist_ok=True)
-        timings_out.write_text(json.dumps(ci_shards.merge_timings(manifests), indent=1, sort_keys=True) + "\n",
-                               encoding="utf-8")
+        timings_out.write_text(
+            json.dumps(ci_shards.merge_timings(manifests), indent=1, sort_keys=True) + "\n", encoding="utf-8"
+        )
     if attestation_out:
         att = tree_attested_promote.build_attestation(
-            _git_value, ok=res["ok"], run_id=os.environ.get("GITHUB_RUN_ID"),
-            run_attempt=os.environ.get("GITHUB_RUN_ATTEMPT"), summary=res,
+            _git_value,
+            ok=res["ok"],
+            run_id=os.environ.get("GITHUB_RUN_ID"),
+            run_attempt=os.environ.get("GITHUB_RUN_ATTEMPT"),
+            summary=res,
         )
         attestation_out.parent.mkdir(parents=True, exist_ok=True)
         attestation_out.write_text(json.dumps(att, indent=1, sort_keys=True) + "\n", encoding="utf-8")
@@ -5235,9 +5293,11 @@ def verify_shards(
     if summary:
         try:
             with open(summary, "a", encoding="utf-8") as fh:
-                fh.write(f"## ci-gate\n- {'PASS' if res['ok'] else 'FAIL'}: {res['ran_files']} of "
-                         f"{res['expected_files']} registered files ran across {n}+2 shards\n"
-                         f"- errors: {res['errors'] or 'none'}\n- shard walls (s): {res['shard_walls']}\n")
+                fh.write(
+                    f"## ci-gate\n- {'PASS' if res['ok'] else 'FAIL'}: {res['ran_files']} of "
+                    f"{res['expected_files']} registered files ran across {n}+2 shards\n"
+                    f"- errors: {res['errors'] or 'none'}\n- shard walls (s): {res['shard_walls']}\n"
+                )
         except OSError:
             pass
     print("\nCI-GATE: " + ("PASS" if res["ok"] else "FAIL " + ", ".join(res["errors"])))
@@ -5291,8 +5351,17 @@ def main(argv: list[str] | None = None) -> int:
         import json
 
         plan = shard_plan(args.print_shard_plan)
-        print(json.dumps({"n": plan["n"], "digest": plan["digest"], "loads": plan["loads"],
-                          "counts": {k: len(v) for k, v in plan["shards"].items()}}, sort_keys=True))
+        print(
+            json.dumps(
+                {
+                    "n": plan["n"],
+                    "digest": plan["digest"],
+                    "loads": plan["loads"],
+                    "counts": {k: len(v) for k, v in plan["shards"].items()},
+                },
+                sort_keys=True,
+            )
+        )
         return 0
 
     if args.list_plan:

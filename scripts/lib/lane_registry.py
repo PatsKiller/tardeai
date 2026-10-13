@@ -26,8 +26,10 @@ Two rules this module exists to enforce:
 READ_ONLY_ADVISORY. No LLM calls, no broker mutation, no scheduler mutation —
 this module reads schedulers and never writes them.
 """
+
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -67,13 +69,16 @@ def state_root() -> Path:
     """
     try:
         from scripts.lib.canonical_store_registry import production_state_root
+
         return Path(production_state_root())
     except Exception:
         try:
             from lib.canonical_store_registry import production_state_root  # type: ignore
+
             return Path(production_state_root())
         except Exception:
             return Path.home() / "trade-ai-releases" / "persistent-state"
+
 
 # ── states ─────────────────────────────────────────────────────────────────
 
@@ -110,6 +115,7 @@ REASON_CONFIDENCE = ("ESTABLISHED", "CORRELATED", "UNKNOWN")
 
 # ── loading and validation ─────────────────────────────────────────────────
 
+
 def load_registry(path: Optional[Path] = None) -> dict[str, Any]:
     p = Path(path) if path else REGISTRY_PATH
     if not p.exists():
@@ -140,7 +146,8 @@ def validate_row(row: dict[str, Any]) -> list[str]:
         errs.append(
             f"{lane_id}: output_signal is required and must name the durable "
             "artifact that proves the lane ran (a file, a row, a store key) — "
-            "an exit code is not an output signal")
+            "an exit code is not an output signal"
+        )
     elif sig.get("kind") not in OUTPUT_SIGNAL_KINDS:
         errs.append(f"{lane_id}: output_signal.kind {sig.get('kind')!r} unknown")
 
@@ -156,24 +163,26 @@ def validate_row(row: dict[str, Any]) -> list[str]:
     if state != STATE_ACTIVE:
         conf = row.get("reason_confidence")
         if conf not in REASON_CONFIDENCE:
-            errs.append(f"{lane_id}: reason_confidence must be one of "
-                        f"{REASON_CONFIDENCE}, got {conf!r}")
+            errs.append(f"{lane_id}: reason_confidence must be one of {REASON_CONFIDENCE}, got {conf!r}")
     if state == STATE_PAUSED and not row.get("review_by"):
-        errs.append(f"{lane_id}: review_by is required when state == PAUSED "
-                    "(a paused lane the operator is never asked about again is a "
-                    "retired lane with better manners)")
+        errs.append(
+            f"{lane_id}: review_by is required when state == PAUSED "
+            "(a paused lane the operator is never asked about again is a "
+            "retired lane with better manners)"
+        )
 
     sched = row.get("scheduler")
     if not isinstance(sched, dict) or sched.get("kind") not in SCHEDULER_KINDS:
         errs.append(f"{lane_id}: scheduler.kind must be one of {SCHEDULER_KINDS}")
     elif sched.get("kind") != "none" and not sched.get("expression"):
-        errs.append(f"{lane_id}: scheduler.expression is required for "
-                    f"kind={sched.get('kind')}")
+        errs.append(f"{lane_id}: scheduler.expression is required for kind={sched.get('kind')}")
     elif sched.get("kind") == SCHEDULER_N8N and not sched.get("match"):
         # The workflow id alone cannot prove the host is clean: `match` keeps the retired cron
         # command text (or timer unit) so the double-scheduler conflict stays detectable.
-        errs.append(f"{lane_id}: scheduler.match is required for kind=n8n (the retired cron "
-                    "command text or timer unit, kept for host-conflict detection)")
+        errs.append(
+            f"{lane_id}: scheduler.match is required for kind=n8n (the retired cron "
+            "command text or timer unit, kept for host-conflict detection)"
+        )
 
     if state == STATE_ACTIVE and not row.get("expected_cadence_hours"):
         errs.append(f"{lane_id}: expected_cadence_hours is required when ACTIVE")
@@ -193,15 +202,10 @@ def validate_row(row: dict[str, Any]) -> list[str]:
                 try:
                     di = int(d)
                 except (TypeError, ValueError):
-                    errs.append(
-                        f"{lane_id}: active_days entries must be ints 0-6, "
-                        f"got {d!r}"
-                    )
+                    errs.append(f"{lane_id}: active_days entries must be ints 0-6, got {d!r}")
                     break
                 if di < 0 or di > 6:
-                    errs.append(
-                        f"{lane_id}: active_days entry {di} out of range 0-6"
-                    )
+                    errs.append(f"{lane_id}: active_days entry {di} out of range 0-6")
                     break
     return errs
 
@@ -298,7 +302,9 @@ def validate_freshness_contracts(contracts: Any, lane_ids: Iterable[str] = ()) -
         if not isinstance(sig, dict) or sig.get("kind") not in FRESHNESS_SIGNAL_KINDS:
             errs.append(f"{tag}: signal.kind must be one of {FRESHNESS_SIGNAL_KINDS}")
         elif sig["kind"] == "db_max":
-            if not _SAFE_IDENT.match(str(sig.get("table") or "")) or not _SAFE_IDENT.match(str(sig.get("column") or "")):
+            if not _SAFE_IDENT.match(str(sig.get("table") or "")) or not _SAFE_IDENT.match(
+                str(sig.get("column") or "")
+            ):
                 errs.append(f"{tag}: db_max needs a safe table and column")
             if sig.get("where") and not _SAFE_WHERE.match(str(sig["where"])):
                 errs.append(f"{tag}: unsafe where clause")
@@ -330,6 +336,7 @@ def validate_freshness_contracts(contracts: Any, lane_ids: Iterable[str] = ()) -
 
 # ── observing the durable artifact ─────────────────────────────────────────
 
+
 def _mtime_utc(p: Path) -> Optional[datetime]:
     try:
         return datetime.fromtimestamp(p.stat().st_mtime, tz=timezone.utc)
@@ -352,8 +359,7 @@ def _parse_ts(v: Any) -> Optional[datetime]:
     return None
 
 
-def observe_signal(sig: dict[str, Any], *, root: Optional[Path] = None,
-                   db_query: Any = None) -> dict[str, Any]:
+def observe_signal(sig: dict[str, Any], *, root: Optional[Path] = None, db_query: Any = None) -> dict[str, Any]:
     """When did this lane last produce? Returns {last_output_at, detail}.
 
     Never raises. An unreadable signal returns ``last_output_at=None`` with the
@@ -375,20 +381,24 @@ def observe_signal(sig: dict[str, Any], *, root: Optional[Path] = None,
             ts = _mtime_utc(p)
             # An absent file IS readable: we looked and there was nothing. That is
             # silence, not unverifiability.
-            return {"last_output_at": ts, "readable": True,
-                    "detail": str(p) + ("" if ts else " (absent)")}
+            return {"last_output_at": ts, "readable": True, "detail": str(p) + ("" if ts else " (absent)")}
 
         if kind == "systemd_result":
             # A oneshot service whose only per-run artifact is its journal: last SUCCESSFUL exit.
             # Found 2026-09-27: cio-delivery and advisory-lessons-reflect write files only when they
             # have work, so a file signal reads "silent" on a healthy idle worker.
             import subprocess as _sp
+
             unit = str(sig.get("unit") or "")
             if not unit:
                 return {"last_output_at": None, "readable": False, "detail": "systemd_result needs unit"}
             try:
-                out = _sp.run(["systemctl", "--user", "show", unit, "-p", "Result", "-p", "ExecMainExitTimestamp"],
-                              capture_output=True, text=True, timeout=10).stdout
+                out = _sp.run(
+                    ["systemctl", "--user", "show", unit, "-p", "Result", "-p", "ExecMainExitTimestamp"],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                ).stdout
             except Exception as exc:  # noqa: BLE001
                 return {"last_output_at": None, "readable": False, "detail": f"systemctl failed: {type(exc).__name__}"}
             props = dict(line.split("=", 1) for line in out.splitlines() if "=" in line)
@@ -397,7 +407,12 @@ def observe_signal(sig: dict[str, Any], *, root: Optional[Path] = None,
             raw = props.get("ExecMainExitTimestamp", "").strip()
             try:
                 from datetime import datetime as _dtc
-                ts = _dtc.strptime(" ".join(raw.split()[1:3]), "%Y-%m-%d %H:%M:%S").astimezone(timezone.utc) if raw else None
+
+                ts = (
+                    _dtc.strptime(" ".join(raw.split()[1:3]), "%Y-%m-%d %H:%M:%S").astimezone(timezone.utc)
+                    if raw
+                    else None
+                )
             except Exception:  # noqa: BLE001
                 ts = None
             return {"last_output_at": ts, "readable": bool(ts), "detail": f"{unit} success at {raw or 'unknown'}"}
@@ -406,8 +421,7 @@ def observe_signal(sig: dict[str, Any], *, root: Optional[Path] = None,
             if not p.is_absolute():
                 p = root / p
             if not p.exists():
-                return {"last_output_at": None, "readable": True,
-                        "detail": f"{p} (absent)"}
+                return {"last_output_at": None, "readable": True, "detail": f"{p} (absent)"}
             doc = json.loads(p.read_text(encoding="utf-8"))
             cur: Any = doc
             for part in str(sig.get("key") or "").split("."):
@@ -415,8 +429,7 @@ def observe_signal(sig: dict[str, Any], *, root: Optional[Path] = None,
                     continue
                 cur = cur.get(part) if isinstance(cur, dict) else None
             ts = _parse_ts(cur)
-            return {"last_output_at": ts, "readable": True,
-                    "detail": f"{p}#{sig.get('key')}={cur!r}"}
+            return {"last_output_at": ts, "readable": True, "detail": f"{p}#{sig.get('key')}={cur!r}"}
 
         if kind == "db_max":
             # Validate the DECLARATION before checking whether we can execute
@@ -426,31 +439,25 @@ def observe_signal(sig: dict[str, Any], *, root: Optional[Path] = None,
             table = str(sig.get("table") or "")
             col = str(sig.get("column") or "created_at")
             if not _SAFE_IDENT.match(table) or not _SAFE_IDENT.match(col):
-                return {"last_output_at": None, "readable": False,
-                        "detail": f"unsafe identifier {table}.{col}"}
+                return {"last_output_at": None, "readable": False, "detail": f"unsafe identifier {table}.{col}"}
             where = sig.get("where")
             if where and not _SAFE_WHERE.match(str(where)):
-                return {"last_output_at": None, "readable": False,
-                        "detail": f"unsafe where clause {where!r}"}
+                return {"last_output_at": None, "readable": False, "detail": f"unsafe where clause {where!r}"}
             if db_query is None:
                 # We could not look. Reporting SILENT here would be a lie about a
                 # store that may be perfectly healthy.
-                return {"last_output_at": None, "readable": False,
-                        "detail": "no db_query supplied"}
+                return {"last_output_at": None, "readable": False, "detail": "no db_query supplied"}
             sql = f"SELECT max({col}) FROM {table}"
             if where:
                 sql += f" WHERE {where}"
             rows = db_query(sql)
             if rows is None:
-                return {"last_output_at": None, "readable": False,
-                        "detail": sql + " (query unavailable)"}
+                return {"last_output_at": None, "readable": False, "detail": sql + " (query unavailable)"}
             val = rows[0][0] if rows and rows[0] else None
             return {"last_output_at": _parse_ts(val), "readable": True, "detail": sql}
-    except Exception as e:                    # never let a signal read break a cycle
-        return {"last_output_at": None, "readable": False,
-                "detail": f"{type(e).__name__}: {e}"}
-    return {"last_output_at": None, "readable": False,
-            "detail": "no output signal declared"}
+    except Exception as e:  # never let a signal read break a cycle
+        return {"last_output_at": None, "readable": False, "detail": f"{type(e).__name__}: {e}"}
+    return {"last_output_at": None, "readable": False, "detail": "no output signal declared"}
 
 
 _SAFE_IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -459,12 +466,12 @@ _SAFE_WHERE = re.compile(r"^[A-Za-z0-9_ '\"=<>!.:%+\-()]*$")
 
 # ── discovering what is actually scheduled ─────────────────────────────────
 
+
 def discover_cron(text: Optional[str] = None) -> list[dict[str, Any]]:
     """Active (uncommented) crontab entries. A commented line is NOT a job."""
     if text is None:
         try:
-            text = subprocess.run(["crontab", "-l"], capture_output=True,
-                                  text=True, timeout=30).stdout
+            text = subprocess.run(["crontab", "-l"], capture_output=True, text=True, timeout=30).stdout
         except Exception:
             text = ""
     out: list[dict[str, Any]] = []
@@ -473,7 +480,7 @@ def discover_cron(text: Optional[str] = None) -> list[dict[str, Any]]:
         if not s or s.startswith("#"):
             continue
         if "=" in s.split()[0] and not s[0].isdigit() and not s.startswith("*"):
-            continue                          # CRON_TZ=... / PATH=... assignment
+            continue  # CRON_TZ=... / PATH=... assignment
         out.append({"kind": "cron", "expression": s})
     return out
 
@@ -487,8 +494,7 @@ def discover_commented_cron(text: Optional[str] = None) -> list[dict[str, Any]]:
     """
     if text is None:
         try:
-            text = subprocess.run(["crontab", "-l"], capture_output=True,
-                                  text=True, timeout=30).stdout
+            text = subprocess.run(["crontab", "-l"], capture_output=True, text=True, timeout=30).stdout
         except Exception:
             text = ""
     out: list[dict[str, Any]] = []
@@ -501,8 +507,7 @@ def discover_commented_cron(text: Optional[str] = None) -> list[dict[str, Any]]:
             # Not a schedule expression; look for an explicit retirement tag.
             if not _RETIRE_TAG.search(body):
                 continue
-        entry = {"kind": "cron_commented", "expression": body,
-                 "tags": sorted(set(_RETIRE_TAG.findall(body)))}
+        entry = {"kind": "cron_commented", "expression": body, "tags": sorted(set(_RETIRE_TAG.findall(body)))}
         cut = n8n_cutover_tag(body)
         if cut:
             entry["retired_lane_id"] = cut["lane_id"]
@@ -513,7 +518,8 @@ def discover_commented_cron(text: Optional[str] = None) -> list[dict[str, Any]]:
 
 _RETIRE_TAG = re.compile(
     r"(PHASE\d+-RETIRED|R9_DISABLED[A-Z_]*|RETIRED\s+\d{4}-\d{2}-\d{2}"
-    r"|n8n-cutover|OFFPEAK_SOAK|DISABLED)")
+    r"|n8n-cutover|OFFPEAK_SOAK|DISABLED)"
+)
 
 #: `# RETIRED <date> n8n-cutover <lane_id> <original line>` — written by
 #: scripts/pipelines/cutover/_cutover.py --lane when a cron lane moves to n8n. The line is
@@ -536,15 +542,17 @@ def discover_systemd() -> list[dict[str, Any]]:
     try:
         r = subprocess.run(
             ["systemctl", "--user", "list-unit-files", "--type=timer", "--no-legend"],
-            capture_output=True, text=True, timeout=30)
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
     except Exception:
         return out
     for line in r.stdout.splitlines():
         parts = line.split()
         if len(parts) < 2 or not parts[0].endswith(".timer"):
             continue
-        out.append({"kind": "systemd", "expression": parts[0],
-                    "enabled_state": parts[1]})
+        out.append({"kind": "systemd", "expression": parts[0], "enabled_state": parts[1]})
     return out
 
 
@@ -564,9 +572,15 @@ def discover_systemd_services() -> list[dict[str, Any]]:
     try:
         r = subprocess.run(
             ["systemctl", "--user", "list-unit-files", "--type=service", "--state=enabled", "--no-legend"],
-            capture_output=True, text=True, timeout=30)
-        names = [ln.split()[0] for ln in r.stdout.splitlines()
-                 if ln.split() and ln.split()[0].endswith(".service") and "@" not in ln.split()[0]]
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        names = [
+            ln.split()[0]
+            for ln in r.stdout.splitlines()
+            if ln.split() and ln.split()[0].endswith(".service") and "@" not in ln.split()[0]
+        ]
         if not names:
             return out
         cmd = ["systemctl", "--user", "show", *names, "-p", "Id", "-p", "FragmentPath", "-p", "UnitFileState"]
@@ -576,14 +590,15 @@ def discover_systemd_services() -> list[dict[str, Any]]:
     for block in shown.split("\n\n"):
         props = dict(line.split("=", 1) for line in block.splitlines() if "=" in line)
         if USER_UNIT_DIR_MARKER in props.get("FragmentPath", "") and props.get("Id", "").endswith(".service"):
-            out.append({"kind": "systemd_service", "expression": props["Id"],
-                        "enabled_state": props.get("UnitFileState", "")})
+            out.append(
+                {"kind": "systemd_service", "expression": props["Id"], "enabled_state": props.get("UnitFileState", "")}
+            )
     return sorted(out, key=lambda u: u["expression"])
 
 
-def discover_all(*, cron_text: Optional[str] = None,
-                 include_systemd: bool = True,
-                 include_n8n: Optional[bool] = None) -> dict[str, Any]:
+def discover_all(
+    *, cron_text: Optional[str] = None, include_systemd: bool = True, include_n8n: Optional[bool] = None
+) -> dict[str, Any]:
     out = {
         "cron": discover_cron(cron_text),
         "cron_commented": discover_commented_cron(cron_text),
@@ -595,7 +610,7 @@ def discover_all(*, cron_text: Optional[str] = None,
     if include_n8n:
         try:
             out["n8n"] = discover_n8n_live()
-        except Exception as exc:   # noqa: BLE001 — could-not-look is a note, never "nothing there"
+        except Exception as exc:  # noqa: BLE001 — could-not-look is a note, never "nothing there"
             out["n8n_unavailable"] = f"{type(exc).__name__}: {str(exc)[:160]}"
     return out
 
@@ -618,7 +633,7 @@ UNDECLARED_N8N_WORKFLOW = "UNDECLARED_N8N_WORKFLOW"
 def discover_n8n_live(**kw: Any) -> list[dict[str, Any]]:
     try:
         from scripts.lib import n8n_live_inventory as inv
-    except ImportError:                                   # imported as lib.lane_registry
+    except ImportError:  # imported as lib.lane_registry
         from lib import n8n_live_inventory as inv  # type: ignore
     return inv.discover_n8n(inv.read_active_workflows(**kw))
 
@@ -637,6 +652,124 @@ def discover_n8n_snapshot(path: Optional[Path] = None) -> list[dict[str, Any]]:
 #: import packet dry run): without this, activating them under their `cron` grant turned the host gate
 #: `check_lane_registry --n8n-live --fail-on-new` red with six UNDECLARED_N8N_WORKFLOW.
 GENERIC_WORKFLOW_INDEX = ROOT / "docs" / "implementation" / "n8n-maturity" / "workflows" / "INDEX.json"
+READ_ONLY_WORKFLOW_INDEX = ROOT / "docs" / "implementation" / "n8n-maturity" / "observers" / "INDEX.json"
+
+
+def n8n_read_only_workflow_ids(
+    path: Optional[Path] = None, contracts_path: Optional[Path] = None, workflow_directory: Optional[Path] = None
+) -> dict[str, str]:
+    """Declare GET-only observers without inventing host-run lanes or changing the six generic workflows.
+
+    Source declarations confer no run or activation authority. The inactive workflow bytes,
+    fixed read routes and operative contract binding must agree; malformed input raises so
+    discovery reports CANNOT RUN. Reviewed contracts also retain their existing body-review gate.
+    """
+    index = Path(path or READ_ONLY_WORKFLOW_INDEX)
+    workflow_root = Path(workflow_directory or GENERIC_WORKFLOW_INDEX.parent)
+    doc = json.loads(index.read_text(encoding="utf-8"))
+    if doc.get("schema") != "N8nReadOnlyWorkflowSet@v1" or not isinstance(doc.get("workflows"), list):
+        raise ValueError("read-only workflow catalogue schema")
+    contracts_doc = json.loads(Path(contracts_path or ROOT / "config/n8n_health_contracts.json").read_text())
+    contracts = {c["id"]: c for c in contracts_doc.get("contracts", [])}
+    allowed_types = {"scheduleTrigger", "set", "httpRequest", "code", "if"}
+    prefix = "={{ $('Relay').first().json.TRADEAI_N8N_RUN_URL }}"
+    out: dict[str, str] = {}
+    for entry in doc["workflows"]:
+        if not isinstance(entry, dict):
+            raise ValueError("read-only workflow entry must be an object")
+        wid, name = entry.get("id"), entry.get("file")
+        if not isinstance(wid, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", wid) or wid in out:
+            raise ValueError("read-only workflow duplicate or missing id")
+        if not isinstance(name, str) or Path(name).name != name or not name.endswith(".json"):
+            raise ValueError("read-only workflow file must be a local JSON basename")
+        source = workflow_root / name
+        if source.is_symlink() or source.resolve().parent != workflow_root.resolve():
+            raise ValueError("read-only workflow source escapes catalogue")
+        raw = source.read_bytes()
+        digest = hashlib.sha256(raw).hexdigest()
+        if entry.get("sha256") != digest:
+            raise ValueError("read-only workflow source digest mismatch")
+        workflow = json.loads(raw)
+        if workflow.get("id") != wid or workflow.get("active") is not False:
+            raise ValueError("read-only workflow id mismatch or source active")
+        if workflow.get("settings", {}).get("timezone") != "America/New_York":
+            raise ValueError("read-only workflow timezone mismatch")
+        contract = contracts.get(entry.get("contract_id"), {})
+        binding = contract.get("workflow_source", {})
+        if contract.get("id") != wid or binding.get("file") != name or binding.get("sha256") != digest:
+            raise ValueError("read-only workflow operative contract binding mismatch")
+        from scripts.lib.n8n_health_contracts import validate_contract
+
+        if validate_contract(contract):
+            raise ValueError("read-only workflow contract schema mismatch")
+        if contract.get("status") == "REVIEWED":
+            from scripts.lib.n8n_momentum_lifecycle import contract_review_proven
+
+            if not contract_review_proven(contract):
+                raise ValueError("read-only workflow contract review mismatch")
+        routes = entry.get("read_routes")
+        if (
+            not isinstance(routes, list)
+            or not routes
+            or set(routes) != {"/momentum-lifecycle", "/runs/momentum-lifecycle-monitor/last?mode=dry_run"}
+        ):
+            raise ValueError("read-only workflow routes outside lifecycle observer scope")
+        nodes = workflow.get("nodes")
+        if not isinstance(nodes, list) or not nodes:
+            raise ValueError("read-only workflow nodes missing")
+        seen_routes: set[str] = set()
+        relays = []
+        for node in nodes:
+            kind = str(node.get("type", "")).removeprefix("n8n-nodes-base.")
+            if node.get("type") != "n8n-nodes-base." + kind or kind not in allowed_types:
+                raise ValueError("read-only workflow contains an execution/provider node")
+            params = node.get("parameters", {})
+            if not isinstance(params, dict) or "$env" in json.dumps(params):
+                raise ValueError("read-only workflow environment access or malformed parameters")
+            if kind == "httpRequest":
+                if params.get("method", "GET") != "GET" or set(params) - {
+                    "authentication",
+                    "genericAuthType",
+                    "method",
+                    "options",
+                    "url",
+                }:
+                    raise ValueError("read-only workflow contains a write request")
+                url = params.get("url", "")
+                route = url[len(prefix) :] if isinstance(url, str) and url.startswith(prefix) else None
+                if route not in routes:
+                    raise ValueError("read-only workflow request is not a declared fixed read route")
+                seen_routes.add(route)
+                credentials = node.get("credentials", {})
+                if set(credentials) != {"httpHeaderAuth"} or credentials["httpHeaderAuth"] != {
+                    "id": "tradeai-run-relay",
+                    "name": "tradeai-run-relay",
+                }:
+                    raise ValueError("read-only workflow credential reference mismatch")
+            elif kind == "set" and node.get("name") == "Relay":
+                relays.extend(params.get("assignments", {}).get("assignments", []))
+            elif kind == "code":
+                code = params.get("jsCode", "")
+                if (
+                    params.get("language") != "javaScript"
+                    or set(params) - {"language", "mode", "jsCode"}
+                    or not isinstance(code, str)
+                    or not code.strip()
+                    or re.search(
+                        r"\$env|\$http|\b(?:fetch|require|eval|Function)\s*\(|helpers\s*[.\[]|process\s*[.\[]|child_process",
+                        code,
+                    )
+                ):
+                    raise ValueError("read-only workflow code contains external execution or environment access")
+        if (
+            seen_routes != set(routes)
+            or len(relays) != 1
+            or relays[0].get("name") != "TRADEAI_N8N_RUN_URL"
+            or relays[0].get("value") != "http://172.19.0.1:18092"
+        ):
+            raise ValueError("read-only workflow relay/read routes mismatch")
+        out[wid] = "observer:read-only"
+    return out
 
 
 def n8n_generic_workflow_ids(path: Optional[Path] = None) -> dict[str, str]:
@@ -648,15 +781,24 @@ def n8n_generic_workflow_ids(path: Optional[Path] = None) -> dict[str, str]:
     return {str(w["id"]): f"generic:{w.get('kind') or '?'}" for w in doc.get("workflows") or [] if w.get("id")}
 
 
-def n8n_known_workflow_ids(index_path: Optional[Path] = None,
-                           generic_index_path: Optional[Path] = None) -> dict[str, str]:
-    """Per-lane generated INDEX ids (live + shadow) plus the six generic workflow ids."""
+def n8n_known_workflow_ids(
+    index_path: Optional[Path] = None,
+    generic_index_path: Optional[Path] = None,
+    observer_index_path: Optional[Path] = None,
+    observer_contracts_path: Optional[Path] = None,
+    observer_workflow_directory: Optional[Path] = None,
+) -> dict[str, str]:
+    """Generated lane ids, six generic ids and independently declared GET-only observers."""
     try:
         from scripts.lib import n8n_live_inventory as inv
     except ImportError:
         from lib import n8n_live_inventory as inv  # type: ignore
     out = inv.known_workflow_ids(path=index_path)
     out.update(n8n_generic_workflow_ids(generic_index_path))
+    observers = n8n_read_only_workflow_ids(observer_index_path, observer_contracts_path, observer_workflow_directory)
+    if set(observers) & set(out):
+        raise ValueError("read-only workflow id collides with a requester workflow")
+    out.update(observers)
     return out
 
 
@@ -686,12 +828,11 @@ def n8n_runs_dir(root: Optional[Path] = None) -> Path:
     return (Path(root) if root else state_root()) / N8N_RUNS_REL
 
 
-def _n8n_last_run_from_ledger(lane_id: str, path: Path,
-                              states: Iterable[str]) -> Optional[dict[str, Any]]:
+def _n8n_last_run_from_ledger(lane_id: str, path: Path, states: Iterable[str]) -> Optional[dict[str, Any]]:
     """Newest finished run for the lane in the given states, or None. Never raises, never writes."""
     if not path.is_file():
         return None
-    st = tuple(states)                   # empty = any state
+    st = tuple(states)  # empty = any state
     try:
         uri = f"file:{path}?mode=ro"
         conn = sqlite3.connect(uri, uri=True, timeout=5)
@@ -700,22 +841,29 @@ def _n8n_last_run_from_ledger(lane_id: str, path: Path,
             where = "lane_id = ? AND finished_at IS NOT NULL"
             if st:
                 where += " AND state IN (%s)" % ",".join("?" * len(st))
-            q = ("SELECT run_id, lane_id, mode, state, finished_at, exit_code FROM runs "
-                 f"WHERE {where} ORDER BY finished_at DESC LIMIT 1")
+            q = (
+                "SELECT run_id, lane_id, mode, state, finished_at, exit_code FROM runs "
+                f"WHERE {where} ORDER BY finished_at DESC LIMIT 1"
+            )
             row = conn.execute(q, (lane_id, *st)).fetchone()
         finally:
             conn.close()
     except sqlite3.Error:
-        return None                      # absent table / locked / not a db: fall back to receipts
+        return None  # absent table / locked / not a db: fall back to receipts
     if row is None:
         return None
-    return {"run_id": row["run_id"], "mode": row["mode"], "state": row["state"],
-            "finished_at": row["finished_at"], "exit_code": row["exit_code"],
-            "source": "ledger", "detail": str(path)}
+    return {
+        "run_id": row["run_id"],
+        "mode": row["mode"],
+        "state": row["state"],
+        "finished_at": row["finished_at"],
+        "exit_code": row["exit_code"],
+        "source": "ledger",
+        "detail": str(path),
+    }
 
 
-def _n8n_last_run_from_receipts(lane_id: str, folder: Path,
-                                states: Iterable[str]) -> Optional[dict[str, Any]]:
+def _n8n_last_run_from_receipts(lane_id: str, folder: Path, states: Iterable[str]) -> Optional[dict[str, Any]]:
     st = set(states)
     best: Optional[dict[str, Any]] = None
     best_ts: Optional[datetime] = None
@@ -735,14 +883,21 @@ def _n8n_last_run_from_receipts(lane_id: str, folder: Path,
             continue
         if best_ts is None or ts > best_ts:
             best_ts = ts
-            best = {"run_id": doc.get("run_id") or p.stem, "mode": doc.get("mode"),
-                    "state": doc.get("state"), "finished_at": doc.get("finished_at"),
-                    "exit_code": doc.get("exit_code"), "source": "receipt", "detail": str(p)}
+            best = {
+                "run_id": doc.get("run_id") or p.stem,
+                "mode": doc.get("mode"),
+                "state": doc.get("state"),
+                "finished_at": doc.get("finished_at"),
+                "exit_code": doc.get("exit_code"),
+                "source": "receipt",
+                "detail": str(p),
+            }
     return best
 
 
-def n8n_last_run(lane_id: str, *, root: Optional[Path] = None,
-                 states: Iterable[str] = N8N_RUN_STATES_PRESENT) -> Optional[dict[str, Any]]:
+def n8n_last_run(
+    lane_id: str, *, root: Optional[Path] = None, states: Iterable[str] = N8N_RUN_STATES_PRESENT
+) -> Optional[dict[str, Any]]:
     """The newest finished n8n run for a lane: the ledger first, else the newest RunReceipt file.
 
     None when neither exists — the lane has no scheduler-of-record evidence and is ORPHANED.
@@ -772,8 +927,7 @@ def n8n_last_run_label(last: Optional[dict[str, Any]]) -> str:
     """`mode/state finished_at` for the newest n8n run a report row carries, or the reason there is none."""
     if not last:
         return "no run (no ledger row, no RunReceipt)"
-    return (f"{last.get('mode') or '?'}/{last.get('state') or '?'} "
-            f"{last.get('finished_at') or '?'}")
+    return f"{last.get('mode') or '?'}/{last.get('state') or '?'} {last.get('finished_at') or '?'}"
 
 
 def lane_scheduler_text(row: dict[str, Any]) -> str:
@@ -805,9 +959,9 @@ def render_lane_table(rows: Iterable[dict[str, Any]]) -> str:
     return "\n".join(format_lane_line(r) for r in rows)
 
 
-def _scheduler_present(row: dict[str, Any], found: dict[str, Any], *,
-                       now: Optional[datetime] = None,
-                       root: Optional[Path] = None) -> bool:
+def _scheduler_present(
+    row: dict[str, Any], found: dict[str, Any], *, now: Optional[datetime] = None, root: Optional[Path] = None
+) -> bool:
     """Does this lane's declared scheduler still exist?
 
     ORPHANED — a registry row whose scheduler is gone — is the verdict that
@@ -832,8 +986,9 @@ def _scheduler_present(row: dict[str, Any], found: dict[str, Any], *,
         now = now or datetime.now(timezone.utc)
         return (now - ts) <= timedelta(hours=cadence_h)
     if kind == "systemd":
-        return any(u["expression"] == expr
-                   for u in (found.get("systemd") or []) + (found.get("systemd_services") or []))
+        return any(
+            u["expression"] == expr for u in (found.get("systemd") or []) + (found.get("systemd_services") or [])
+        )
     if kind == "cron":
         marker = str(sched.get("match") or expr)
         return any(marker in c["expression"] for c in found.get("cron") or [])
@@ -869,17 +1024,19 @@ def _within_declared_days(row: dict[str, Any], now: datetime) -> bool:
     if not days:
         return True
     if isinstance(days, str) or not isinstance(days, (list, tuple)):
-        raise ValueError(
-            f"active_days must be a list of weekday ints 0-6, got {days!r}"
-        )
+        raise ValueError(f"active_days must be a list of weekday ints 0-6, got {days!r}")
     # 0=Mon .. 6=Sun, matching datetime.weekday()
     return now.weekday() in {int(d) for d in days}
 
 
-def evaluate_lane(row: dict[str, Any], *, now: Optional[datetime] = None,
-                  found: Optional[dict[str, Any]] = None,
-                  root: Optional[Path] = None,
-                  db_query: Any = None) -> dict[str, Any]:
+def evaluate_lane(
+    row: dict[str, Any],
+    *,
+    now: Optional[datetime] = None,
+    found: Optional[dict[str, Any]] = None,
+    root: Optional[Path] = None,
+    db_query: Any = None,
+) -> dict[str, Any]:
     now = now or datetime.now(timezone.utc)
     found = found if found is not None else {"cron": [], "systemd": []}
     state = str(row.get("state") or STATE_ACTIVE)
@@ -962,8 +1119,9 @@ def evaluate_lane(row: dict[str, Any], *, now: Optional[datetime] = None,
 _BARE_CRON_SCHEDULE = re.compile(r"^\s*(?:[\d*/,\-]+\s+){4}[\d*/,\-]+\s*$")
 
 
-def find_undeclared(reg: dict[str, Any], found: dict[str, Any], *,
-                    n8n_known_ids: Optional[Iterable[str]] = None) -> list[dict[str, Any]]:
+def find_undeclared(
+    reg: dict[str, Any], found: dict[str, Any], *, n8n_known_ids: Optional[Iterable[str]] = None
+) -> list[dict[str, Any]]:
     """Scheduled jobs with no registry row, minus the inherited-debt baseline.
 
     The baseline is what makes the gate adoptable: green on day one, and it can
@@ -1010,16 +1168,14 @@ def find_undeclared(reg: dict[str, Any], found: dict[str, Any], *,
         expr = unit["expression"]
         if expr in declared or expr in baseline:
             continue
-        out.append({"kind": "systemd", "expression": expr,
-                    "enabled_state": unit.get("enabled_state")})
+        out.append({"kind": "systemd", "expression": expr, "enabled_state": unit.get("enabled_state")})
     # Platform services (2026-10-09): declared by a row whose expression or match names the unit.
     # No baseline applies — there was never service debt to inherit.
     for unit in found.get("systemd_services") or []:
         expr = unit["expression"]
         if expr in declared:
             continue
-        out.append({"kind": "systemd_service", "expression": expr,
-                    "enabled_state": unit.get("enabled_state")})
+        out.append({"kind": "systemd_service", "expression": expr, "enabled_state": unit.get("enabled_state")})
     for job in found.get("cron") or []:
         expr = job["expression"]
         if expr in baseline or any(d in expr for d in declared_cron if d):
@@ -1027,16 +1183,19 @@ def find_undeclared(reg: dict[str, Any], found: dict[str, Any], *,
         out.append({"kind": "cron", "expression": expr})
     n8n_rows = found.get("n8n") or []
     if n8n_rows:
-        n8n_declared = {str((r.get("scheduler") or {}).get("expression") or "")
-                        for r in reg.get("lanes") or []
-                        if (r.get("scheduler") or {}).get("kind") == SCHEDULER_N8N}
+        n8n_declared = {
+            str((r.get("scheduler") or {}).get("expression") or "")
+            for r in reg.get("lanes") or []
+            if (r.get("scheduler") or {}).get("kind") == SCHEDULER_N8N
+        }
         known = set(n8n_known_ids) if n8n_known_ids is not None else set(n8n_known_workflow_ids())
         for wf in n8n_rows:
             wid = str(wf.get("expression") or "")
             if wid and (wid in n8n_declared or wid in known):
                 continue
-            out.append({"kind": "n8n", "expression": wid, "name": str(wf.get("name") or ""),
-                        "code": UNDECLARED_N8N_WORKFLOW})
+            out.append(
+                {"kind": "n8n", "expression": wid, "name": str(wf.get("name") or ""), "code": UNDECLARED_N8N_WORKFLOW}
+            )
     return out
 
 
@@ -1070,12 +1229,16 @@ def find_inactive_n8n_rows(reg: dict[str, Any], found: dict[str, Any]) -> list[d
 
 # ── the report the monitor appends ─────────────────────────────────────────
 
-def collect_lane_registry_report(*, now: Optional[datetime] = None,
-                                 registry_path: Optional[Path] = None,
-                                 root: Optional[Path] = None,
-                                 cron_text: Optional[str] = None,
-                                 db_query: Any = None,
-                                 include_systemd: bool = True) -> dict[str, Any]:
+
+def collect_lane_registry_report(
+    *,
+    now: Optional[datetime] = None,
+    registry_path: Optional[Path] = None,
+    root: Optional[Path] = None,
+    cron_text: Optional[str] = None,
+    db_query: Any = None,
+    include_systemd: bool = True,
+) -> dict[str, Any]:
     """One lane row for `research_lane_health`, summarising every declared lane.
 
     Shaped exactly like the existing collectors (`lane`, `ok`, `firing`) so it
@@ -1087,8 +1250,7 @@ def collect_lane_registry_report(*, now: Optional[datetime] = None,
     reg = load_registry(registry_path)
     found = discover_all(cron_text=cron_text, include_systemd=include_systemd)
 
-    rows = [evaluate_lane(r, now=now, found=found, root=root, db_query=db_query)
-            for r in (reg.get("lanes") or [])]
+    rows = [evaluate_lane(r, now=now, found=found, root=root, db_query=db_query) for r in (reg.get("lanes") or [])]
     undeclared = find_undeclared(reg, found)
 
     counts: dict[str, int] = {}
@@ -1110,22 +1272,22 @@ def collect_lane_registry_report(*, now: Optional[datetime] = None,
         "declared": len(rows),
         "verdict_counts": counts,
         # A quiet system reports QUIET rather than paging.
-        "summary": "QUIET" if not firing else ", ".join(
-            f"{v}={counts.get(v, 0)}" for v in firing),
+        "summary": "QUIET" if not firing else ", ".join(f"{v}={counts.get(v, 0)}" for v in firing),
         "findings": findings,
         "undeclared": undeclared,
         "lanes": rows,
         "registry_path": str(registry_path or REGISTRY_PATH),
         # P17: whether n8n was looked at, and why not when it could not be (never "nothing there").
-        "n8n_discovery": ("unavailable: " + found["n8n_unavailable"]) if found.get("n8n_unavailable")
-                         else ("live" if "n8n" in found else "off"),
+        "n8n_discovery": ("unavailable: " + found["n8n_unavailable"])
+        if found.get("n8n_unavailable")
+        else ("live" if "n8n" in found else "off"),
     }
 
 
 # ── alert suppression: escalate on change, not on continuation ─────────────
 
-def changed_findings(current: dict[str, Any], previous: Optional[dict[str, Any]]
-                     ) -> list[dict[str, Any]]:
+
+def changed_findings(current: dict[str, Any], previous: Optional[dict[str, Any]]) -> list[dict[str, Any]]:
     """Only lanes whose verdict CHANGED since the last cycle.
 
     A lane silent for many cycles produces one alert, not one per cycle. A
@@ -1133,7 +1295,7 @@ def changed_findings(current: dict[str, Any], previous: Optional[dict[str, Any]]
     than none because it still looks like coverage.
     """
     prev = {}
-    for r in ((previous or {}).get("lanes") or []):
+    for r in (previous or {}).get("lanes") or []:
         prev[str(r.get("lane_id") or r.get("lane"))] = r.get("verdict")
     out = []
     for r in current.get("lanes") or []:
@@ -1152,11 +1314,14 @@ def lane_state_for_command(cmd: str, reg: dict[str, Any] | None = None) -> dict[
     {"lane_id", "state", "matched"}; state None when no lane owns the script.
     """
     import re as _re
+
     reg = reg or load_registry()
     scripts = set(_re.findall(r"scripts/[\w/-]+\.(?:py|sh)", str(cmd or "")))
     for row in reg.get("lanes") or []:
         sched = row.get("scheduler") or {}
-        blob = " ".join(str(sched.get(k) or "") for k in ("expression", "match")) + " " + str(row.get("entrypoint") or "")
+        blob = (
+            " ".join(str(sched.get(k) or "") for k in ("expression", "match")) + " " + str(row.get("entrypoint") or "")
+        )
         for sc in scripts:
             if sc in blob:
                 return {"lane_id": row.get("lane_id"), "state": str(row.get("state") or "").upper(), "matched": sc}
@@ -1168,6 +1333,20 @@ PAUSED_OR_RETIRED = frozenset({"PAUSED", "RETIRED", "NEVER_SCHEDULED"})
 
 # ── N8N Maturity B5.2: dispatch/watch blocks live in lane_dispatch.py (design 02 §2); re-exported here ──
 try:
-    from scripts.lib.lane_dispatch import dispatch_eligible, dispatch_mode, dispatchable, parse_dispatch_block, parse_watch_block, validate_dispatch_block  # noqa: E402,F401
-except ImportError:                                       # imported as lib.lane_registry
-    from lib.lane_dispatch import dispatch_eligible, dispatch_mode, dispatchable, parse_dispatch_block, parse_watch_block, validate_dispatch_block  # type: ignore # noqa: E402,F401
+    from scripts.lib.lane_dispatch import (
+        dispatch_eligible,
+        dispatch_mode,
+        dispatchable,
+        parse_dispatch_block,
+        parse_watch_block,
+        validate_dispatch_block,
+    )  # noqa: E402,F401
+except ImportError:  # imported as lib.lane_registry
+    from lib.lane_dispatch import (
+        dispatch_eligible,
+        dispatch_mode,
+        dispatchable,
+        parse_dispatch_block,
+        parse_watch_block,
+        validate_dispatch_block,
+    )  # type: ignore # noqa: E402,F401

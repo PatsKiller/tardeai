@@ -1,20 +1,15 @@
 #!/usr/bin/env python3
-"""heal_trade_ai_session_cache.py — Autonomous SETUPS session heal for Health Agent.
+"""heal_trade_ai_session_cache.py — record SETUPS calendar session context.
 
-CC SETUPS uses trade_ai_cache.json `run_date` (session), not file mtime.
-
-warm_caches → trade_ai(force=True) rebuilds the cache from reports/YYYY-*/**/run_summary.json
-and will overwrite a naive empty heal with the latest real package (often yesterday).
-
-This healer:
-  1. Writes reports/{today}/{label}/run_summary.json so recompute prefers today
-  2. Patches existing trade_ai_cache.json run_date **in place** (keeps tickers)
-  3. Writes both LIVE stamp and DEV trees
+Session anchors do not establish a scanner run. Business dates, identity, counters,
+timestamps and freshness stay as the scanner published them. Only warm_caches may
+replace that business evidence with a newly computed package.
 
 Usage:
     .venv/bin/python scripts/heal_trade_ai_session_cache.py
     .venv/bin/python scripts/heal_trade_ai_session_cache.py --dry-run
 """
+
 from __future__ import annotations
 
 import argparse
@@ -22,7 +17,7 @@ import json
 import os
 import sys
 import tempfile
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -38,6 +33,7 @@ LABEL = "HEALTH_AUTOHEAL"
 def _today_et() -> str:
     try:
         from zoneinfo import ZoneInfo
+
         return datetime.now(ZoneInfo("America/New_York")).date().isoformat()
     except Exception:
         return datetime.now().date().isoformat()
@@ -58,20 +54,68 @@ def _atomic_write(path: Path, text: str) -> None:
         raise
 
 
+def _write_json_if_changed(path: Path, value: dict) -> bool:
+    if path.exists():
+        try:
+            if json.loads(path.read_text()) == value:
+                return False
+        except (OSError, ValueError):
+            pass
+    _atomic_write(path, json.dumps(value, indent=2, default=str))
+    return True
+
+
 def _heal_root(root: Path, today: str, dry_run: bool) -> dict:
     root = Path(root)
     out = {"root": str(root), "today": today}
-    # 1) Package under reports/ so trade_ai(force=True) / warm_caches see today
     pkg_dir = root / "reports" / today / LABEL
-    # Package is only a session anchor — real GO/WAIT live on trade_ai_cache tickers.
-    # Use a low-sort label so warm_caches prefers the last real package when both exist,
-    # while run_date today still satisfies the session freshness check.
+    runtime_pkg = root / "data" / "runtime" / "run_summaries" / today
+    cache_path = root / "data" / "runtime" / "trade_ai_cache.json"
+    prev = {}
+    if cache_path.exists():
+        try:
+            prev = json.loads(cache_path.read_text())
+            if not isinstance(prev, dict):
+                raise ValueError("cache is not an object")
+        except (OSError, ValueError):
+            # Never replace unreadable business evidence with a healthy empty cache.
+            return {**out, "status": "CACHE_UNREADABLE", "changed": False, "dry_run": dry_run}
+
+    old = prev.get("run_date") or prev.get("date")
+    tickers = prev.get("tickers") if isinstance(prev.get("tickers"), list) else []
+    contract = prev.get("setup_run_summary") if isinstance(prev.get("setup_run_summary"), dict) else {}
+    business_date = contract.get("run_date") or old
+    now = datetime.now(timezone.utc).isoformat()
+    context = {
+        "calendar_date": today,
+        "timezone": "America/New_York",
+        "by": "heal_trade_ai_session_cache",
+        "action": "SESSION_ANCHOR_ONLY",
+        "business_run_unchanged": True,
+        "business_run_id": prev.get("run_id"),
+        "business_run_date": business_date,
+        "business_date_mismatch": bool(old and business_date and str(old)[:10] != str(business_date)[:10]),
+        "preserved_tickers": len(tickers),
+    }
+    previous_context = prev.get("session_heal")
+    if isinstance(previous_context, dict) and {k: v for k, v in previous_context.items() if k != "at"} == context:
+        context["at"] = previous_context.get("at") or now
+    else:
+        context["at"] = now
+    cache = dict(prev)
+    cache.update({"session_date": today, "session_heal": context})
+    if not prev:
+        cache.update({"ok": False, "stale": True, "cache_error": "business_run_not_proven", "tickers": []})
+
+    # Reserved zero-row calendar anchors stay excluded by the scanner run rank.
     summary = {
         "date": today,
         "run_date": today,
         "run_label": LABEL,
         "ok": True,
-        "generated_at": datetime.now().isoformat(),
+        "generated_at": now,
+        "generated_at_utc": now,
+        "generated_at_tz": "UTC",
         "source": "heal_trade_ai_session_cache",
         "ticker_count": 0,
         "go_count": 0,
@@ -83,98 +127,37 @@ def _heal_root(root: Path, today: str, dry_run: bool) -> dict:
         "session_heal": True,
         "_path_note": "session anchor only; do not use for GO/WAIT counts",
     }
-    # 2) Also runtime package (health collector / other tools)
-    runtime_pkg = root / "data" / "runtime" / "run_summaries" / today
-    cache_path = root / "data" / "runtime" / "trade_ai_cache.json"
-
-    prev = {}
-    if cache_path.exists():
+    anchor = pkg_dir / "run_summary.json"
+    if anchor.exists():
         try:
-            prev = json.loads(cache_path.read_text() or "{}")
-        except Exception:
-            prev = {}
-    old = prev.get("run_date") or prev.get("date")
-    tickers = list(prev.get("tickers") or []) if isinstance(prev, dict) else []
-    n_tickers = len(tickers)
-    # CC header uses current_run_* filtered by run_label — keep the real label that
-    # matches scan_run_label on tickers (do NOT overwrite with HEALTH_AUTOHEAL).
-    real_label = (
-        (prev.get("latest_run_label") if isinstance(prev, dict) else None)
-        or (prev.get("run_label") if isinstance(prev, dict) else None)
-        or ""
+            existing = json.loads(anchor.read_text())
+            if (
+                existing.get("run_label") == LABEL
+                and existing.get("date") == today
+                and existing.get("session_heal") is True
+            ):
+                summary = existing
+        except (AttributeError, OSError, ValueError):
+            pass
+
+    out.update(
+        {
+            "old": old,
+            "new": today,
+            "preserved_tickers": len(tickers),
+            "business_run_changed": False,
+            "changed": cache != prev,
+            "status": "SESSION_CONTEXT_ONLY",
+        }
     )
-    if real_label in ("", LABEL, "HEALTH_AUTOHEAL"):
-        # Recover from a previous bad heal: use most common scan_run_label on rows
-        labels = [str(t.get("scan_run_label") or "") for t in tickers if isinstance(t, dict)]
-        labels = [x for x in labels if x and x not in (LABEL, "HEALTH_AUTOHEAL")]
-        if labels:
-            real_label = max(set(labels), key=labels.count)
-        else:
-            real_label = "1000"  # last known default for this desk
-
-    def _dec(t):
-        return str((t or {}).get("decision") or "").upper()
-
-    # Prefer rows from real_label; fall back to all tickers
-    cur_rows = [t for t in tickers if str((t or {}).get("scan_run_label") or "") == real_label]
-    if not cur_rows:
-        cur_rows = tickers
-    go_n = sum(1 for t in cur_rows if _dec(t) == "GO")
-    wait_n = sum(1 for t in cur_rows if _dec(t) == "WAIT")
-    nogo_n = sum(1 for t in cur_rows if _dec(t) not in ("GO", "WAIT", ""))
-    # Universe-wide counts (header sometimes falls back to these)
-    go_all = sum(1 for t in tickers if _dec(t) == "GO")
-    wait_all = sum(1 for t in tickers if _dec(t) == "WAIT")
-    nogo_all = sum(1 for t in tickers if _dec(t) not in ("GO", "WAIT", ""))
-
-    # Preserve tickers — never wipe a full cache with an empty one
-    cache = dict(prev) if isinstance(prev, dict) else {}
-    cache.update({
-        "ok": True,
-        "run_date": today,
-        "date": today,
-        "run_label": real_label,
-        "latest_run_label": real_label,
-        "latest_run_go_count": go_n,
-        "latest_run_wait_count": wait_n,
-        "latest_run_no_go_count": nogo_n,
-        "current_run_go": go_n,
-        "current_run_wait": wait_n,
-        "current_run_nogo": nogo_n,
-        "current_run_scanned": len(cur_rows),
-        "go_count": go_n if go_n else go_all,
-        "wait_count": wait_n if wait_n else wait_all,
-        "avoid_count": nogo_n if nogo_n else nogo_all,
-        "ticker_count": n_tickers,
-        "session_heal": {
-            "from": old,
-            "to": today,
-            "at": datetime.now().isoformat(),
-            "by": "heal_trade_ai_session_cache",
-            "preserved_tickers": n_tickers,
-            "real_label": real_label,
-            "go": go_n, "wait": wait_n, "nogo": nogo_n,
-        },
-        "stale": False,
-        "cache_error": None,
-    })
-    if "tickers" not in cache:
-        cache["tickers"] = []
-
-    out.update({"old": old, "new": today, "preserved_tickers": n_tickers, "changed": str(old)[:10] != today})
 
     if dry_run:
         out["dry_run"] = True
         return out
 
-    _atomic_write(pkg_dir / "run_summary.json", json.dumps(summary, indent=2))
-    runtime_pkg.mkdir(parents=True, exist_ok=True)
-    _atomic_write(runtime_pkg / "run_summary.json", json.dumps(summary, indent=2))
-    # Preserve _cached_ts so age looks fresh
-    import time as _t
-    cache["_cached_ts"] = _t.time()
-    cache["_cached_at"] = datetime.utcnow().isoformat() + "Z"
-    _atomic_write(cache_path, json.dumps(cache, indent=2, default=str))
+    _write_json_if_changed(anchor, summary)
+    _write_json_if_changed(runtime_pkg / "run_summary.json", summary)
+    _write_json_if_changed(cache_path, cache)
     out["cache"] = str(cache_path)
     out["report_pkg"] = str(pkg_dir / "run_summary.json")
     out["dry_run"] = False
@@ -212,8 +195,9 @@ def main() -> int:
             results.append(_heal_root(r, today, args.dry_run))
         except Exception as e:
             results.append({"root": str(r), "error": str(e)[:240]})
-    print(json.dumps({"ok": True, "today_et": today, "results": results}, indent=2))
-    return 0
+    ok = all(not r.get("error") and r.get("status") != "CACHE_UNREADABLE" for r in results)
+    print(json.dumps({"ok": ok, "today_et": today, "business_run_proof": False, "results": results}, indent=2))
+    return 0 if ok else 1
 
 
 if __name__ == "__main__":

@@ -5,6 +5,7 @@ Accepts an event reference and refuses broker, grant, 2FA, promote, and bid
 routes. The in-process store is not a durable production ledger and this
 module does not bind a socket, send a message, or open a database.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -145,23 +146,68 @@ EDGES = {
 #: Every refusal reason the gateway can emit. A reason outside this set is a bug, not a new state;
 #: tests/test_n8n_gateway_durable_20261007.py scans the source for literals. ``illegal_transition:A->B``
 #: and ``typed_refusal:<code>`` are prefixed families.
-REFUSAL_REASONS = frozenset({
-    "missing_signature", "malformed_claim", "bad_scope", "unknown_project", "claim_lifetime", "claim_expired",
-    "bad_signature", "replayed_nonce", "missing_gateway_key", "naive_clock", "malformed_event", "unexpected_field",
-    "bad_schema_version", "authority_refused", "unknown_lane", "malformed_sha", "stale_origin_sha", "secret_material",
-    "forbidden_route", "project_mismatch", "idempotency_conflict", "unknown_operation", "missing_idempotency_key",
-    "unknown_event", "no_consumer_receipt", "missing_refusal_reason", "artifact_ref_required", "artifact_bytes_refused",
-    "artifact_ref_too_large", "list_unsupported", "bad_time",
-    # 2026-10-08 run route: lane not in config/n8n_run_allowlist.json; mode outside {dry_run, live}; no run-capable
-    # key or no durable run store on this gateway; a caller_id that maps to no key.
-    "run_lane_not_allowlisted", "run_bad_mode", "run_scope_unavailable", "unknown_caller",
-    "process_not_registered",   # 2026-10-08 model_job: job.process_id outside n8n_model_job.PROCESS_TASK_TYPE
-    # 2026-10-09 (B5.3): a d:/e:/g: key that compute_due does not currently hold DUE/RETRY_DUE in that mode.
-    "run_slot_not_due",
-    # 2026-10-09 (B5.3) operation `due` (DueResponse@v1 `refused`).
-    "due_clock_skew", "bad_source", "bad_lane_filter", "registry_unreadable", "allowlist_unreadable",
-    "policies_unreadable",
-})
+REFUSAL_REASONS = frozenset(
+    {
+        "missing_signature",
+        "malformed_claim",
+        "bad_scope",
+        "unknown_project",
+        "claim_lifetime",
+        "claim_expired",
+        "bad_signature",
+        "replayed_nonce",
+        "missing_gateway_key",
+        "naive_clock",
+        "malformed_event",
+        "unexpected_field",
+        "bad_schema_version",
+        "authority_refused",
+        "unknown_lane",
+        "malformed_sha",
+        "stale_origin_sha",
+        "secret_material",
+        "forbidden_route",
+        "project_mismatch",
+        "idempotency_conflict",
+        "unknown_operation",
+        "missing_idempotency_key",
+        "unknown_event",
+        "no_consumer_receipt",
+        "missing_refusal_reason",
+        "artifact_ref_required",
+        "artifact_bytes_refused",
+        "artifact_ref_too_large",
+        "list_unsupported",
+        "bad_time",
+        # 2026-10-08 run route: lane not in config/n8n_run_allowlist.json; mode outside {dry_run, live}; no run-capable
+        # key or no durable run store on this gateway; a caller_id that maps to no key.
+        "run_lane_not_allowlisted",
+        "run_bad_mode",
+        "run_scope_unavailable",
+        "unknown_caller",
+        "process_not_registered",  # 2026-10-08 model_job: job.process_id outside n8n_model_job.PROCESS_TASK_TYPE
+        # 2026-10-09 (B5.3): a d:/e:/g: key that compute_due does not currently hold DUE/RETRY_DUE in that mode.
+        "run_slot_not_due",
+        # 2026-10-09 (B5.3) operation `due` (DueResponse@v1 `refused`).
+        "due_clock_skew",
+        "bad_source",
+        "bad_lane_filter",
+        "registry_unreadable",
+        "allowlist_unreadable",
+        "policies_unreadable",
+        # Read-only lifecycle status keeps missing/unavailable sources as typed refusals.
+        "momentum_lifecycle_not_configured",
+        "momentum_lifecycle_source_unavailable",
+        # Server-owned providers return these protocol refusals as dictionaries.
+        "momentum_lifecycle_no_durable_store",
+        "momentum_lifecycle_disabled",
+        "momentum_monitor_admission_unproven",
+        "momentum_monitor_not_measured",
+        "momentum_monitor_stale",
+        "momentum_monitor_deployed_sha_drift",
+        "momentum_monitor_policy_or_collection_drift",
+    }
+)
 REFUSAL_PREFIXES = ("illegal_transition:", "typed_refusal:", "forbidden_route:")
 ARTIFACT_REF_FIELDS = frozenset({"store", "ref", "sha256", "as_of"})
 ARTIFACT_BYTES_KEYS = frozenset({"content", "bytes", "body", "data", "base64", "payload"})
@@ -277,6 +323,7 @@ def handle_request(
     run_store: Any = None,
     run_allowlist: frozenset[str] | set[str] | None = None,
     due_sources: Any = None,
+    momentum_provider: Any = None,
 ) -> dict[str, Any]:
     """Authenticate and accept, or return a typed refusal. Never sends, never spawns.
 
@@ -309,15 +356,42 @@ def handle_request(
             return _refused(None, "unknown_operation", peer_ignored=peer)
         if claim["scope"] != SCOPE_RUN:
             return _refused(None, "bad_scope", peer_ignored=peer)
-        return _run(request, claim, run_store=run_store, run_allowlist=run_allowlist, now=_unix(now), peer=peer,
-                    due_sources=due_sources)
+        return _run(
+            request,
+            claim,
+            run_store=run_store,
+            run_allowlist=run_allowlist,
+            now=_unix(now),
+            peer=peer,
+            due_sources=due_sources,
+        )
     if claim["scope"] != SCOPE_READ:
         return _refused(None, "bad_scope", peer_ignored=peer)
+    if operation == "momentum_lifecycle":
+        if route.strip().lower() != "coordination/status" or set(request) - {
+            "route",
+            "operation",
+            "claim",
+            "signature",
+        }:
+            return _refused(None, "unexpected_field", peer_ignored=peer)
+        if momentum_provider is None:
+            return _refused(None, "momentum_lifecycle_not_configured", peer_ignored=peer)
+        try:
+            return momentum_provider(datetime.fromtimestamp(_unix(now), timezone.utc))
+        except (OSError, ValueError, TypeError):
+            return _refused(None, "momentum_lifecycle_source_unavailable", peer_ignored=peer)
     if operation == "due" or route.strip().lower() == DUE_ROUTE:
         if operation != "due" or route.strip().lower() != DUE_ROUTE:
             return _refused(None, "unknown_operation", peer_ignored=peer)
-        return _due(request, run_store=run_store, run_allowlist=run_allowlist, due_sources=due_sources,
-                    now=_unix(now), peer=peer)
+        return _due(
+            request,
+            run_store=run_store,
+            run_allowlist=run_allowlist,
+            due_sources=due_sources,
+            now=_unix(now),
+            peer=peer,
+        )
     allow = frozenset(lane_allowlist) if lane_allowlist is not None else PILOT_LANES
     if operation == "status":
         return _status(request, claim, idempotency_store, peer)
@@ -402,12 +476,27 @@ def _due(request, *, run_store, run_allowlist, due_sources, now: float, peer) ->
     lane_filter = request.get("lane_filter")
     if lane_filter is not None:
         known = {r["lane_id"] for r in rows}
-        if (not isinstance(lane_filter, list) or not lane_filter or len(lane_filter) > D.MAX_LANE_FILTER
-                or not all(isinstance(x, str) and x in known for x in lane_filter)):
+        if (
+            not isinstance(lane_filter, list)
+            or not lane_filter
+            or len(lane_filter) > D.MAX_LANE_FILTER
+            or not all(isinstance(x, str) and x in known for x in lane_filter)
+        ):
             return _due_refused("bad_lane_filter", peer)
-    return D.compute_due(rows, entries, policies, run_store, now, source=source, lane_filter=lane_filter,
-                         limit=limit, tz=getattr(due_sources, "tz", D.DEFAULT_TZ), registry_sha=rsha,
-                         allowlist_sha=asha, policies_sha=psha)
+    return D.compute_due(
+        rows,
+        entries,
+        policies,
+        run_store,
+        now,
+        source=source,
+        lane_filter=lane_filter,
+        limit=limit,
+        tz=getattr(due_sources, "tz", D.DEFAULT_TZ),
+        registry_sha=rsha,
+        allowlist_sha=asha,
+        policies_sha=psha,
+    )
 
 
 def _run_envelope(row, duplicate: bool, run_store) -> dict[str, Any]:
@@ -478,16 +567,34 @@ def _run(request, claim, *, run_store, run_allowlist, now: float, peer, due_sour
             rows, _rsha, entries, _asha, policies, _psha = _load_due_inputs(due_sources, run_allowlist)
         except GatewayError:
             return _refused(None, "run_slot_not_due", peer_ignored=peer)
-        check = D.check_slot_key(run_id, lane_id, mode, registry_rows=rows, allowlist=entries, policies=policies,
-                                 run_store=run_store, now=now, tz=getattr(due_sources, "tz", D.DEFAULT_TZ))
+        check = D.check_slot_key(
+            run_id,
+            lane_id,
+            mode,
+            registry_rows=rows,
+            allowlist=entries,
+            policies=policies,
+            run_store=run_store,
+            now=now,
+            tz=getattr(due_sources, "tz", D.DEFAULT_TZ),
+        )
         if not check.ok:
             out = _refused(None, "run_slot_not_due", peer_ignored=peer)
             out["slot_state"] = check.state
             return out
         row, duplicate = run_store.request(
-            run_id=run_id, lane_id=lane_id, mode=mode, requested_by=requested_by, caller_id=claim["caller_id"],
-            now=now, slot_key=check.slot_key, attempt=check.attempt, parent_run_id=check.parent_run_id,
-            klass=check.klass, priority=check.priority)
+            run_id=run_id,
+            lane_id=lane_id,
+            mode=mode,
+            requested_by=requested_by,
+            caller_id=claim["caller_id"],
+            now=now,
+            slot_key=check.slot_key,
+            attempt=check.attempt,
+            parent_run_id=check.parent_run_id,
+            klass=check.klass,
+            priority=check.priority,
+        )
         return _run_envelope(row, duplicate, run_store)
     row, duplicate = run_store.request(
         run_id=run_id, lane_id=lane_id, mode=mode, requested_by=requested_by, caller_id=claim["caller_id"], now=now
@@ -495,8 +602,9 @@ def _run(request, claim, *, run_store, run_allowlist, now: float, peer, due_sour
     return _run_envelope(row, duplicate, run_store)
 
 
-def host_run_request(*, lane_id: str, mode: str, run_id: str, requested_by: str, caller_id: str, run_store,
-                     run_allowlist, now: float) -> dict[str, Any]:
+def host_run_request(
+    *, lane_id: str, mode: str, run_id: str, requested_by: str, caller_id: str, run_store, run_allowlist, now: float
+) -> dict[str, Any]:
     """``coordination/run`` for a caller already on the host (no bearer to verify): the SAME ``_run`` validation
     (allowlist, mode, run-id shape, secret material) and the same single REQUESTED row the gateway writes for n8n.
     The executor runs it, and the executor applies the §23.11 stage clamp (a shadow lane runs dry_run). Server-minted
@@ -505,8 +613,7 @@ def host_run_request(*, lane_id: str, mode: str, run_id: str, requested_by: str,
     if str(run_id or "")[:2].lower() in ("d:", "e:", "g:"):
         return _refused(None, "run_slot_not_due", peer_ignored=None)
     request = {"lane_id": lane_id, "mode": mode, "idempotency_key": run_id, "requested_by": requested_by}
-    return _run(request, {"caller_id": caller_id}, run_store=run_store, run_allowlist=run_allowlist, now=now,
-                peer=None)
+    return _run(request, {"caller_id": caller_id}, run_store=run_store, run_allowlist=run_allowlist, now=now, peer=None)
 
 
 #: Injected by tests; production uses n8n_model_job.bridge_governed_call (loopback HTTP to the governed bridge).
@@ -530,7 +637,11 @@ def _model_job(request, claim, store, peer, *, now) -> dict[str, Any]:
     if receipt["state"] != "STARTED":
         return _refused(None, f"illegal_transition:{receipt['state']}->ARTIFACT_WRITTEN", peer_ignored=peer)
     job = request.get("job")
-    if not isinstance(job, Mapping) or set(job) - (MODEL_JOB_FIELDS | MODEL_JOB_OPTIONAL_FIELDS) or not all(k in job for k in MODEL_JOB_FIELDS):
+    if (
+        not isinstance(job, Mapping)
+        or set(job) - (MODEL_JOB_FIELDS | MODEL_JOB_OPTIONAL_FIELDS)
+        or not all(k in job for k in MODEL_JOB_FIELDS)
+    ):
         return _refused(None, "malformed_event", peer_ignored=peer)
     for opt in MODEL_JOB_OPTIONAL_FIELDS:
         if opt in job and not (isinstance(job[opt], str) and MODEL_JOB_ID_RE.match(job[opt])):
@@ -539,7 +650,9 @@ def _model_job(request, claim, store, peer, *, now) -> dict[str, Any]:
         _reject_secret_material(job)
     except GatewayError as exc:
         return _refused(None, exc.reason, peer_ignored=peer)
-    if str(job.get("correlation_id")) != str(receipt.get("idempotency_key")) and str(job.get("correlation_id")) != str(receipt.get("event_id")):
+    if str(job.get("correlation_id")) != str(receipt.get("idempotency_key")) and str(job.get("correlation_id")) != str(
+        receipt.get("event_id")
+    ):
         return _refused(None, "project_mismatch", peer_ignored=peer)
     try:
         from scripts.lib import n8n_model_job as MJ  # type: ignore
@@ -550,19 +663,40 @@ def _model_job(request, claim, store, peer, *, now) -> dict[str, Any]:
     if str(job.get("process_id") or "") not in MJ.PROCESS_TASK_TYPE:
         return _refused(None, "process_not_registered", peer_ignored=peer)
     call = MODEL_JOB_GOVERNED_CALL or MJ.bridge_governed_call
-    result = MJ.run_model_job(job, governed_call=call, now=now if isinstance(now, datetime) else datetime.fromtimestamp(_unix(now), timezone.utc))
+    result = MJ.run_model_job(
+        job,
+        governed_call=call,
+        now=now if isinstance(now, datetime) else datetime.fromtimestamp(_unix(now), timezone.utc),
+    )
     updated = dict(receipt)
     updated["effects"] = []
     updated["outbound"] = "blocked"
     updated["mutation"] = "blocked"
     updated["durable"] = bool(getattr(store, "durable", False))
-    updated["model_job"] = {k: result.get(k) for k in ("state", "reason", "detail", "cost", "started_at", "ended_at", "output_schema_id",
-                                                        "task_type", "template_id", "routing_policy")}
+    updated["model_job"] = {
+        k: result.get(k)
+        for k in (
+            "state",
+            "reason",
+            "detail",
+            "cost",
+            "started_at",
+            "ended_at",
+            "output_schema_id",
+            "task_type",
+            "template_id",
+            "routing_policy",
+        )
+    }
     if result.get("state") == "ARTIFACT_WRITTEN":
         try:
             out_path = MJ.write_receipt(result)
-            ref = {"store": "data/runtime", "ref": f"n8n_model_jobs/{out_path.name}", "sha256": result["artifact_out"]["sha256"],
-                   "as_of": result.get("ended_at")}
+            ref = {
+                "store": "data/runtime",
+                "ref": f"n8n_model_jobs/{out_path.name}",
+                "sha256": result["artifact_out"]["sha256"],
+                "as_of": result.get("ended_at"),
+            }
         except OSError as exc:
             updated["state"] = "FAILED"
             updated["reason"] = "typed_refusal:receipt_write_failed"
@@ -607,8 +741,15 @@ def _list(request, claim, store, peer) -> dict[str, Any]:
         items = sorted(items, key=lambda r: str(r.get("recorded_at") or ""), reverse=True)[:MAX_LIST]
     else:
         return _refused(None, "list_unsupported", peer_ignored=peer)
-    return {"schema": LIST_SCHEMA, "state": "OK", "project": claim["project"], "count": len(items), "items": items,
-            "durable": bool(getattr(store, "durable", False)), "peer_used_as_auth": False}
+    return {
+        "schema": LIST_SCHEMA,
+        "state": "OK",
+        "project": claim["project"],
+        "count": len(items),
+        "items": items,
+        "durable": bool(getattr(store, "durable", False)),
+        "peer_used_as_auth": False,
+    }
 
 
 def _accept(
@@ -642,7 +783,7 @@ def _accept(
         return replay
     receipt = _receipt(event, state="ACCEPTED", reason=None, at=now)
     receipt["durable"] = bool(getattr(store, "durable", False))
-    store[key] = {"payload_hash": digest, "receipt": receipt}   # a ledger store commits here or raises
+    store[key] = {"payload_hash": digest, "receipt": receipt}  # a ledger store commits here or raises
     return dict(receipt)
 
 
@@ -874,7 +1015,7 @@ def _receipt(event: Mapping[str, Any], *, state: str, reason: str | None, at: fl
 
 def _refused(event: Mapping[str, Any] | None, reason: str, *, peer_ignored: Any) -> dict[str, Any]:
     if reason not in REFUSAL_REASONS and not reason.startswith(REFUSAL_PREFIXES):
-        raise GatewayError("unknown_refusal_reason:" + reason)   # a reason outside the enum is a bug
+        raise GatewayError("unknown_refusal_reason:" + reason)  # a reason outside the enum is a bug
     body = event if isinstance(event, Mapping) else {}
     receipt = _receipt(body, state="REFUSED", reason=reason, at=datetime.now(timezone.utc).timestamp())
     receipt["peer_ignored"] = peer_ignored is not None

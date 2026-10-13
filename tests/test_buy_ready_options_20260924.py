@@ -14,6 +14,7 @@ recorded.
 from __future__ import annotations
 
 import json
+import importlib
 import math
 import sys
 import types
@@ -40,6 +41,31 @@ V_PLAN = {"symbol": "V", "price": 367.53, "entry_low": 364.50, "entry_high": 369
 V_RESULT = {**V_PLAN, "state": "BUY_READY", "rr": 3.57, "plan_source": "reentry_desk",
             "distance_pct": 0.0, "held": True, "market_cap_label": "MEGA", "atr": 5.2}
 NOW = datetime(2026, 9, 24, 14, 20, tzinfo=timezone.utc)
+
+
+@pytest.fixture(autouse=True)
+def isolated_packet_inputs(tmp_path, monkeypatch):
+    """Keep real runner/packet rendering inside synthetic public JSON stores."""
+    paths = {}
+    for name, document in (
+        ("OPTIONS_DESK_RUNTIME_CANDIDATES", {"by_symbol": {}}),
+        ("GOALS_PROJECTION_CANDIDATES", {"goals": {}}),
+        ("ENRICHMENT_CANDIDATES", {}),
+    ):
+        path = tmp_path / (name.lower() + ".json")
+        path.write_text(json.dumps(document), encoding="utf-8")
+        paths[name] = path
+    # The entry renderer and runner use distinct module import names.
+    for module in (fl, importlib.import_module("scripts.lib.cio_options_fluency")):
+        for name, path in paths.items():
+            monkeypatch.setattr(module, name, (path,))
+        load_json = module._load_json
+
+        def fixture_json(path, loader=load_json):
+            assert path in paths.values(), f"Unexpected packet store: {path}"
+            return loader(path)
+
+        monkeypatch.setattr(module, "_load_json", fixture_json)
 
 
 # ── synthetic chain ──────────────────────────────────────────────────────────
@@ -157,7 +183,9 @@ def test_runner_emits_symbols_plural_on_the_bus(monkeypatch):
     monkeypatch.setattr(runner, "stamp_cio_stance", lambda text, syms, only_conflicts=False: text)
     monkeypatch.setattr(runner.ces, "render_operator", lambda r, e: "page")
     monkeypatch.setattr(runner.ces, "render_cio", lambda r, e: "cio")
-    runner.send_alerts({**V_RESULT, "market_cap_label": "MEGA"}, {})
+    runner.send_alerts({**V_RESULT, "market_cap_label": "MEGA"},
+                       {"portfolio_facts": {"status": "UNAVAILABLE", "flags": [],
+                                            "unknowns": ["fixture portfolio facts"]}})
     assert emitted["symbols"] == ["V"] and emitted["symbol"] == "V"
 
 

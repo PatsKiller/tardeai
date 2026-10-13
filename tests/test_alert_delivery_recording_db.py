@@ -34,7 +34,7 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-DSN = os.getenv("ALERT_TEST_DSN", "postgresql://postgres:x@127.0.0.1:55435/delivtest")
+DSN = os.getenv("ALERT_TEST_DSN")
 psycopg2 = pytest.importorskip("psycopg2")
 
 MIGRATION = ROOT / "migrations" / "2026_07_28_alert_notification_outbox.sql"
@@ -42,6 +42,8 @@ VIEW_FIX = ROOT / "migrations" / "2026_07_29_alert_events_view_last_delivery.sql
 
 
 def _connect():
+    if not DSN:
+        pytest.skip("explicit ALERT_TEST_DSN integration fixture is absent; PostgreSQL proof is unmeasured")
     if "trade_ai" in DSN:
         pytest.skip("refusing to run against a DSN naming trade_ai (production)")
     try:
@@ -49,6 +51,20 @@ def _connect():
     except Exception as e:                                          # pragma: no cover
         pytest.skip(f"no isolated postgres at {DSN} ({type(e).__name__}) — "
                     f"start the container in this module's docstring")
+
+
+def test_absent_integration_fixture_skips_before_any_database_attempt(monkeypatch):
+    monkeypatch.setattr(sys.modules[__name__], "DSN", None)
+    attempts = []
+
+    def forbidden_connect(*args, **kwargs):
+        attempts.append((args, kwargs))
+        raise AssertionError("an absent fixture must not probe a database")
+
+    monkeypatch.setattr(psycopg2, "connect", forbidden_connect)
+    with pytest.raises(pytest.skip.Exception, match="explicit ALERT_TEST_DSN integration fixture is absent"):
+        _connect()
+    assert attempts == []
 
 
 @pytest.fixture()

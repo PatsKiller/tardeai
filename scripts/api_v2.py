@@ -3192,6 +3192,107 @@ def _system_pipeline_health():
     }
 
 
+def _system_youtube_cookies_write(body: dict | None = None):
+    """POST /api/v2/system/youtube-cookies — validate Netscape jar + atomic replace.
+
+    Host/Ops human-aided path only. Never fetched by n8n. Cookie values are never
+    returned or logged — only AUTH cookie *names* and counts.
+    """
+    import os as _os
+    import tempfile as _tempfile
+
+    body = body or {}
+    raw = body.get("cookies") or body.get("content") or body.get("text") or ""
+    if isinstance(raw, bytes):
+        raw = raw.decode("utf-8", errors="replace")
+    if not isinstance(raw, str):
+        return 400, {"ok": False, "error": "cookies must be a Netscape cookie text string"}
+    text = raw.replace("\r\n", "\n").strip()
+    if not text:
+        return 400, {"ok": False, "error": "empty cookie payload"}
+    if len(text) > 2_000_000:
+        return 400, {"ok": False, "error": "cookie payload too large"}
+
+    # Same AUTH set as youtube_cookie_health_check / pipeline-health stoplight.
+    auth_names = {
+        "SID",
+        "HSID",
+        "SSID",
+        "SAPISID",
+        "LOGIN_INFO",
+        "__Secure-1PSID",
+        "__Secure-3PSID",
+        "__Secure-1PAPISID",
+        "__Secure-3PAPISID",
+    }
+    found: set[str] = set()
+    data_rows = 0
+    for ln in text.splitlines():
+        work = ln
+        if work.startswith("#HttpOnly_"):
+            work = work[len("#HttpOnly_") :]
+        if work.startswith("#") or "\t" not in work:
+            continue
+        parts = work.split("\t")
+        if len(parts) < 6:
+            continue
+        data_rows += 1
+        name = parts[5]
+        if name in auth_names:
+            found.add(name)
+    if data_rows < 1:
+        return 400, {
+            "ok": False,
+            "error": "not a Netscape cookie table (need tab-separated rows)",
+            "auth_cookies": 0,
+        }
+    if not found:
+        return 400, {
+            "ok": False,
+            "error": "no YouTube/Google AUTH cookies (SID / __Secure-*PSID / SAPISID / LOGIN_INFO)",
+            "auth_cookies": 0,
+            "ops_path": "/v3/system?tab=Pipeline&focus=youtube-cookies",
+        }
+
+    cpath = PROJECT_ROOT / "config" / "youtube_cookies.txt"
+    cpath.parent.mkdir(parents=True, exist_ok=True)
+    backup = None
+    try:
+        if cpath.exists():
+            backup = cpath.with_suffix(".txt.bak")
+            backup.write_bytes(cpath.read_bytes())
+        fd, tmp_name = _tempfile.mkstemp(prefix="youtube_cookies_", suffix=".txt", dir=str(cpath.parent))
+        try:
+            with _os.fdopen(fd, "w", encoding="utf-8") as fh:
+                if not text.endswith("\n"):
+                    text = text + "\n"
+                fh.write(text)
+                fh.flush()
+                _os.fsync(fh.fileno())
+            _os.replace(tmp_name, cpath)
+        except Exception:
+            try:
+                _os.unlink(tmp_name)
+            except OSError:
+                pass
+            raise
+        # Re-read counts only (never echo values).
+        auth_count = len(found)
+        return 200, {
+            "ok": True,
+            "status": "green" if auth_count else "red",
+            "auth_cookies": auth_count,
+            "auth_names": sorted(found),
+            "path": "config/youtube_cookies.txt",
+            "backup": "config/youtube_cookies.txt.bak" if backup is not None else None,
+            "detail": f"wrote {data_rows} cookie rows · {auth_count} auth",
+            "ops_path": "/v3/system?tab=Pipeline&focus=youtube-cookies",
+            "n8n_note": "n8n must not write this file — host Ops UI / human export only",
+        }
+    except Exception as e:
+        return 500, {"ok": False, "error": f"write failed: {type(e).__name__}"}
+
+
 # ── Endpoint handlers ─────────────────────────────────────────────────────
 
 
@@ -15630,10 +15731,14 @@ def _compute_trade_ai():
         # 2026-10-09 ("PARTIAL · run 55/40"): live cycles upsert into the same run_label, so the label held 55
         # symbols against the full run's 41 and the two "scanned" contracts disagreed. The run is its FULL rows.
         _full_rows = [t for t in _current_run_tickers if str(t.get("run_type") or "").lower() == "full"]
+        _full_filtered = bool(_full_rows)
         if _full_rows:
             _current_run_tickers = _full_rows
+        else:
+            _full_filtered = False
     else:
         _current_run_tickers = tickers
+        _full_filtered = False
     current_run_go = sum(1 for t in _current_run_tickers if t.get("decision") == "GO")
     current_run_wait = sum(1 for t in _current_run_tickers if t.get("decision") == "WAIT")
     current_run_nogo = sum(1 for t in _current_run_tickers if t.get("decision") not in ("GO", "WAIT"))
@@ -15651,6 +15756,7 @@ def _compute_trade_ai():
     _run_health_scope = None
     _run_health_run_label = None
     _today_signal_count = 0
+    _rh = None
     _RH_COLS = (
         "status, symbols_scanned, go_count AS rh_go, wait_count AS rh_wait, "
         "no_go_count, reason_codes, finished_at, expected_min_symbols, "
@@ -15739,6 +15845,18 @@ def _compute_trade_ai():
     _current_run_tally = tally_decisions(_current_run_tickers)
     _run_id = derive_run_id(_current_run_label, latest.get("date", ""), latest.get("generated_at", ""))
     _vix_val, _vix_src, _vix_obs = _vix_observation(latest.get("vix"), _latest_run_timestamp)
+    # Alternate scanned claim must measure the SAME population as primary.
+    # run_summary.ticker_count / health.symbols_scanned often include non-full upserts
+    # or a wider label population than the dated FULL rows (PARTIAL 3 vs 14, 49 vs 65,
+    # then 48 vs 65 on 2026-10-13). Omit alt when it would disagree rather than false PARTIAL.
+    _scanned_alt = latest.get("ticker_count")
+    try:
+        _alt_int = int(_scanned_alt) if _scanned_alt is not None else None
+    except (TypeError, ValueError):
+        _alt_int = None
+    _omit_alt = _full_filtered or (_alt_int is not None and _alt_int != int(current_run_total))
+    if _omit_alt:
+        _scanned_alt = None
     _setup_run_summary = build_setup_run_summary(
         run_id=_run_id,
         run_label=_current_run_label,
@@ -15747,10 +15865,17 @@ def _compute_trade_ai():
         source="trade_ai_scans",
         tally=_current_run_tally,
         scanned_count=current_run_total,
-        scanned_count_alt=latest.get("ticker_count"),
+        scanned_count_alt=_scanned_alt,
         freshness_status=(_run_health_status or "UNKNOWN"),
         quality="OK" if _run_health_status == "RUN_HEALTHY" else "DEGRADED",
     )
+    if _omit_alt and latest.get("ticker_count") is not None:
+        _setup_run_summary = dict(_setup_run_summary)
+        _setup_run_summary["scanned_population"] = "full_only" if _full_filtered else "run_scoped"
+        _setup_run_summary["scanned_count_alt_omitted"] = (
+            f"run_summary.ticker_count={latest.get('ticker_count')} != primary={current_run_total}; "
+            "not compared (label/upsert population mismatch)"
+        )
 
     return {
         "ok": True,
@@ -15840,12 +15965,7 @@ def warrior_audit_latest():
 
 
 def _normalize_trade_ai_session_date(data: dict) -> dict:
-    """Keep CC SETUPS header current on weekends / between scheduled scans.
-
-    warm_caches → trade_ai(force=True) rebuilds from the latest reports package
-    (often yesterday's 1000 label). Without this patch, SETUPS shows STALE every
-    8 minutes even when tickers are present. Preserves tickers + GO/WAIT counts.
-    """
+    """Attach calendar context without changing the scanner's business evidence."""
     if not isinstance(data, dict):
         return data
     try:
@@ -15856,53 +15976,26 @@ def _normalize_trade_ai_session_date(data: dict) -> dict:
         from datetime import date as _date
 
         today = _date.today().isoformat()
-    rd = str(data.get("run_date") or data.get("date") or "")[:10]
-    if not rd or rd >= today:
-        return data
-    tickers = data.get("tickers") or []
-    if not isinstance(tickers, list):
-        tickers = []
-
-    def _dec(t):
-        return str((t or {}).get("decision") or "").upper()
-
-    real_label = str(data.get("latest_run_label") or data.get("run_label") or "")
-    if real_label in ("", "HEALTH_AUTOHEAL"):
-        labels = [str(t.get("scan_run_label") or "") for t in tickers if isinstance(t, dict)]
-        labels = [x for x in labels if x and x != "HEALTH_AUTOHEAL"]
-        real_label = max(set(labels), key=labels.count) if labels else "1000"
-    cur = [t for t in tickers if str((t or {}).get("scan_run_label") or "") == real_label] or tickers
-    go_n = sum(1 for t in cur if _dec(t) == "GO")
-    wait_n = sum(1 for t in cur if _dec(t) == "WAIT")
-    nogo_n = sum(1 for t in cur if _dec(t) not in ("GO", "WAIT", ""))
     data = dict(data)
-    data.update(
+    rd = data.get("run_date") or data.get("date")
+    contract = data.get("setup_run_summary") if isinstance(data.get("setup_run_summary"), dict) else {}
+    business_date = contract.get("run_date") or rd
+    context = dict(data.get("session_context") or {}) if isinstance(data.get("session_context"), dict) else {}
+    context.update(
         {
-            "run_date": today,
-            "date": today,
-            "run_label": real_label,
-            "latest_run_label": real_label,
-            "go_count": go_n,
-            "wait_count": wait_n,
-            "avoid_count": nogo_n,
-            "latest_run_go_count": go_n,
-            "latest_run_wait_count": wait_n,
-            "latest_run_no_go_count": nogo_n,
-            "current_run_go": go_n,
-            "current_run_wait": wait_n,
-            "current_run_nogo": nogo_n,
-            "current_run_scanned": len(cur),
-            "session_date_normalized": {
-                "from": rd,
-                "to": today,
-                "label": real_label,
-                "go": go_n,
-                "wait": wait_n,
-                "nogo": nogo_n,
-            },
-            "stale": False,
+            "calendar_date": today,
+            "timezone": "America/New_York",
+            "business_run_id": data.get("run_id"),
+            "business_run_date": business_date,
+            "business_date_mismatch": bool(rd and business_date and str(rd)[:10] != str(business_date)[:10]),
         }
     )
+    # Old payloads retain their normalization record as drift evidence. Removing
+    # its write marker prevents an ordinary cache read from re-persisting it.
+    legacy = data.pop("session_date_normalized", None)
+    if legacy is not None:
+        context["legacy_date_normalization"] = legacy
+    data.update({"session_date": today, "session_context": context})
     return data
 
 
@@ -18241,6 +18334,20 @@ def trade_ai_scanner():
         _TRADE_AI_SCANNER_CACHE.update(etag=base_etag, data=out)
         return dict(out)
     return out
+
+
+def trade_ai_candidates():
+    """Read-only shared candidates; never invokes scanner, alerts engine or fills."""
+    from lib.scanner_candidate_projection import build_candidate_projection, read_candidate_snapshot
+
+    state = Path.home() / "trade-ai-releases" / "persistent-state"
+    if not (state / "PERSISTENT_STATE_ROOT.json").is_file():
+        return build_candidate_projection(
+            None, None, source_status={"TRADE_AI": "UNAVAILABLE", "ACTIVE_TRADER": "UNAVAILABLE"}
+        )
+    return read_candidate_snapshot(
+        state / "data/runtime/trade_ai_cache.json", state / "data/active_trader/momentum_alerts.jsonl"
+    )
 
 
 # ── Journal Review Layer ──────────────────────────────────────────────────
@@ -47716,6 +47823,7 @@ ROUTES = {
     "/api/v2/design-features": design_features,
     "/api/v2/trade-ai/summary": trade_ai_summary,
     "/api/v2/trade-ai/scanner": trade_ai_scanner,
+    "/api/v2/trade-ai/candidates": trade_ai_candidates,
     "/api/v2/warrior-audit/latest": warrior_audit_latest,
     "/api/v2/trade-ai/critique": _tradeai_critique_status,
     "/api/v2/trade-ai/history": _tradeai_history,
@@ -52393,6 +52501,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             return 500, {"ok": False, "error": str(e)[:160]}
     if method == "POST" and base_path == "/api/v2/upload-csv":
         return _upload_csv(body or {})
+    if method == "POST" and base_path == "/api/v2/system/youtube-cookies":
+        return _system_youtube_cookies_write(body or {})
     if method == "POST" and base_path == "/api/v2/tos-watchlists/manage":
         return _tos_watchlist_manage(body or {})
     if method == "POST" and base_path == "/api/v2/time-exit-proposals/decide":

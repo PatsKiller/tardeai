@@ -86,15 +86,30 @@ def build_candidates(results: Sequence[Mapping[str, Any]], trigger_fires: Sequen
 
 
 def trade_ai_today(conn, symbols: Sequence[str], day: str) -> dict[str, dict]:
-    """Latest trade_ai_scans verdict per symbol for the session day (read-only). {} on any failure."""
+    """Latest trade_ai_scans verdict + five-facts fields per symbol for the session day (read-only)."""
     syms = sorted({s for s in symbols if s})
     if conn is None or not syms:
         return {}
     try:
         with conn.cursor() as cur:
-            cur.execute("""SELECT DISTINCT ON (symbol) symbol, decision, not_tradeable, scanned_at
-                             FROM trade_ai_scans WHERE run_date = %s AND symbol = ANY(%s)
-                            ORDER BY symbol, scanned_at DESC""", (day, syms))
+            # Prefer rich columns when present; fall back to verdict-only on older schemas.
+            try:
+                cur.execute(
+                    """SELECT DISTINCT ON (symbol) symbol, decision, not_tradeable, scanned_at,
+                              price, float_m, rvol, gap_pct, change_pct, catalyst, catalyst_verified,
+                              catalyst_source, catalyst_url, catalyst_at
+                         FROM trade_ai_scans WHERE run_date = %s AND symbol = ANY(%s)
+                        ORDER BY symbol, scanned_at DESC""",
+                    (day, syms),
+                )
+            except Exception:  # noqa: BLE001
+                conn.rollback()
+                cur.execute(
+                    """SELECT DISTINCT ON (symbol) symbol, decision, not_tradeable, scanned_at
+                         FROM trade_ai_scans WHERE run_date = %s AND symbol = ANY(%s)
+                        ORDER BY symbol, scanned_at DESC""",
+                    (day, syms),
+                )
             rows = cur.fetchall()
         conn.rollback()
     except Exception:  # noqa: BLE001
@@ -103,12 +118,50 @@ def trade_ai_today(conn, symbols: Sequence[str], day: str) -> dict[str, dict]:
         except Exception:  # noqa: BLE001
             pass
         return {}
-    out = {}
+    out: dict[str, dict] = {}
+    try:
+        from lib.momentum_setup_evidence import build_setup_evidence
+    except Exception:  # noqa: BLE001
+        try:
+            from scripts.lib.momentum_setup_evidence import build_setup_evidence
+        except Exception:  # noqa: BLE001
+            build_setup_evidence = None  # type: ignore
     for r in rows:
-        sym, dec, nt, at = (r["symbol"], r["decision"], r["not_tradeable"], r["scanned_at"]) if isinstance(r, Mapping) \
-            else (r[0], r[1], r[2], r[3])
-        out[str(sym)] = {"decision": dec, "not_tradeable": bool(nt),
-                         "scanned_at": at.isoformat() if hasattr(at, "isoformat") else at}
+        if isinstance(r, Mapping):
+            payload = dict(r)
+            sym = str(payload.get("symbol"))
+            at = payload.get("scanned_at")
+            scanned = at.isoformat() if hasattr(at, "isoformat") else at
+            entry = {
+                "decision": payload.get("decision"),
+                "not_tradeable": bool(payload.get("not_tradeable")),
+                "scanned_at": scanned,
+                "run_date": day,
+                "scan_run_date": day,
+                "price": payload.get("price"),
+                "float_m": payload.get("float_m"),
+                "rvol": payload.get("rvol"),
+                "gap_pct": payload.get("gap_pct"),
+                "change_pct": payload.get("change_pct"),
+                "catalyst": payload.get("catalyst"),
+                "catalyst_verified": payload.get("catalyst_verified"),
+                "catalyst_source": payload.get("catalyst_source"),
+                "catalyst_url": payload.get("catalyst_url"),
+                "catalyst_at": payload.get("catalyst_at"),
+            }
+        else:
+            sym = str(r[0])
+            scanned = r[3].isoformat() if hasattr(r[3], "isoformat") else r[3]
+            entry = {"decision": r[1], "not_tradeable": bool(r[2]), "scanned_at": scanned,
+                     "run_date": day, "scan_run_date": day}
+        if build_setup_evidence is not None:
+            try:
+                entry["setup_evidence"] = build_setup_evidence(
+                    entry, observed_at=scanned, source_name="TRADE_AI"
+                )
+            except Exception:  # noqa: BLE001
+                pass
+        out[sym] = entry
     return out
 
 
