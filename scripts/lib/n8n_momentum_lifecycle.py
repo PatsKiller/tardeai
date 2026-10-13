@@ -846,12 +846,22 @@ def product_proof(
                 reasons.append("alert_delivery_identity_drift")
     elif product.get("notification_expected") is False:
         decision = product.get("notification_decision")
+        decided_at = stamp(decision.get("decided_at")) if isinstance(decision, Mapping) else None
         if (
             not isinstance(decision, Mapping)
             or decision.get("basis") != "GATEWAY_ROUTE"
+            or decision.get("observed_decision") is not True
             or not decision.get("reason_code")
             or not decision.get("receipt_id")
+            or not decision.get("route_owner")
             or decision.get("run_id") != product.get("run_id")
+            or decision.get("source_sha") != sha
+            or not product.get("projection_hash")
+            or decision.get("projection_hash") != product.get("projection_hash")
+            or decided_at is None
+            or finished is None
+            or not finished <= decided_at <= now
+            or (now - decided_at).total_seconds() > max_age_s
         ):
             reasons.append("notification_absence_not_proven")
     return reasons

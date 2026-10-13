@@ -964,6 +964,11 @@ def test_shared_projection_consumer_generation_and_verdicts_are_preserved():
         notification_expected=False,
         notification_decision={
             "basis": "GATEWAY_ROUTE",
+            "observed_decision": True,
+            "source_sha": SHA,
+            "projection_hash": "hash-1",
+            "route_owner": "host-gateway",
+            "decided_at": "2026-10-12T06:10:00-04:00",
             "reason_code": "NO_ALERT_REQUIRED",
             "receipt_id": "route-1",
             "run_id": "scan-0900",
@@ -1024,15 +1029,58 @@ def test_accepted_send_does_not_prove_delivery_and_wrong_run_is_refused():
 
 
 def test_zero_candidates_can_be_healthy_but_notification_absence_needs_route_receipt():
-    p = product(populations={"scanned_total": 0, "classified_total": 0, "manual_total": 0}, notification_expected=False)
+    p = product(
+        populations={"scanned_total": 0, "classified_total": 0, "manual_total": 0},
+        notification_expected=False,
+        projection_hash="h",
+    )
     assert "notification_absence_not_proven" in M.product_proof(p, day="2026-10-12", now=NOW, sha=SHA, max_age_s=14400)
     p["notification_decision"] = {
         "basis": "GATEWAY_ROUTE",
+        "observed_decision": True,
+        "source_sha": SHA,
+        "projection_hash": "h",
+        "route_owner": "host-gateway",
+        "decided_at": "2026-10-12T06:10:00-04:00",
         "reason_code": "NO_QUALIFYING_CANDIDATES",
         "receipt_id": "route-1",
         "run_id": p["run_id"],
     }
     assert M.product_proof(p, day="2026-10-12", now=NOW, sha=SHA, max_age_s=14400) == []
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("basis", "DECLARED"),
+        ("observed_decision", False),
+        ("reason_code", None),
+        ("receipt_id", None),
+        ("route_owner", None),
+        ("run_id", "old-run"),
+        ("source_sha", "b" * 40),
+        ("projection_hash", "old"),
+        ("decided_at", None),
+        ("decided_at", "2026-10-12T06:10:00"),
+        ("decided_at", "2026-10-12T05:00:00-04:00"),
+        ("decided_at", "2026-10-12T06:30:00-04:00"),
+    ],
+)
+def test_notification_absence_requires_observed_current_same_output_route(field, value):
+    p = product(notification_expected=False, projection_hash="h")
+    p["notification_decision"] = {
+        "basis": "GATEWAY_ROUTE",
+        "observed_decision": True,
+        "source_sha": SHA,
+        "projection_hash": "h",
+        "route_owner": "host-gateway",
+        "decided_at": "2026-10-12T06:10:00-04:00",
+        "reason_code": "NO_ALERT_REQUIRED",
+        "receipt_id": "route-1",
+        "run_id": p["run_id"],
+    }
+    p["notification_decision"][field] = value
+    assert "notification_absence_not_proven" in M.product_proof(p, day="2026-10-12", now=NOW, sha=SHA, max_age_s=14400)
 
 
 def test_llm_diagnosis_coverage_uses_existing_exclusion_and_no_model_selection(setup):
