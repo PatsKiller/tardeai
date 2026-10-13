@@ -448,24 +448,31 @@ def test_monitor_evaluation_completion_does_not_stop_scheduling_on_watched_p1(se
 
 def test_candidate_config_needs_operative_admission_and_keeps_recovery_disarmed():
     c = json.loads((ROOT / "config/n8n_momentum_lifecycle_candidate.json").read_text())
-    assert c["recovery"]["armed"] is False
     assert c["credential_recovery"]["automatic"] is False
-    if c["enabled"]:
+    registry = json.loads((ROOT / "config/lane_registry.json").read_text())["lanes"]
+    contracts = json.loads((ROOT / "config/n8n_health_contracts.json").read_text())["contracts"]
+    allowlist = json.loads((ROOT / "config/n8n_run_allowlist.json").read_text())["lanes"]
+    admission = M.Admission(
+        {row["lane_id"]: row for row in registry},
+        {contract["id"]: contract for contract in contracts},
+        {entry["lane_id"]: entry for entry in allowlist},
+        None,
+        SHA,
+        {},
+    )
+    if c["status"] == "ARMED_CANARY" and c["enabled"] is True:
+        # Projection canary may arm recovery for --apply; monitor + autonomous recovery stay gated.
+        assert c["recovery"]["armed"] is True
+        assert not M.monitor_admitted(admission)
+        assert M.cache_helper_admitted(admission, "momentum-cache-reconcile")
+        assert not M.recovery_admitted(admission, "momentum-cache-reconcile")
+    elif c["enabled"]:
+        assert c["recovery"]["armed"] is False
         assert c["status"] == "REVIEWED" and c["review"]["reviewed_by"]
         assert c["review"]["decision_ref"]
-        registry = json.loads((ROOT / "config/lane_registry.json").read_text())["lanes"]
-        contracts = json.loads((ROOT / "config/n8n_health_contracts.json").read_text())["contracts"]
-        allowlist = json.loads((ROOT / "config/n8n_run_allowlist.json").read_text())["lanes"]
-        admission = M.Admission(
-            {row["lane_id"]: row for row in registry},
-            {contract["id"]: contract for contract in contracts},
-            {entry["lane_id"]: entry for entry in allowlist},
-            None,
-            SHA,
-            {},
-        )
         assert M.monitor_admitted(admission)
     else:
+        assert c["recovery"]["armed"] is False
         if c["status"] == "DRAFT_FOR_OWNER_REVIEW":
             assert c["review"] is None
         else:
