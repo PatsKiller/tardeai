@@ -98,6 +98,29 @@ def test_projection_does_not_substitute_cache_time_for_original_observation(evid
     assert observed["setup_evidence"]["all_five_proven"] is False
 
 
+def test_scan_run_aliases_preserve_session_without_borrowing_a_run_finish_clock(evidence):
+    from lib.scanner_candidate_projection import build_candidate_projection
+
+    row = _row(
+        run_id=None,
+        observed_at=None,
+        scan_run_date="2026-10-12",
+        scan_run_label="0900",
+        scanned_at=NOW.isoformat(),
+        created_at=NOW.isoformat(),
+    )
+    cache = {"run_id": "2026-10-12::0900", "latest_run_timestamp": NOW.isoformat(), "tickers": [row]}
+    observed = build_candidate_projection(cache, [], now=NOW)["candidates"][0]["trade_ai"]["observations"][0]
+    assert observed["run_id"] == "2026-10-12::0900"
+    assert observed["lineage"]["session_date"] == "2026-10-12"
+    assert observed["observed_at"] is None
+    facts = observed["setup_evidence"]
+    assert facts["source_observation_state"] == "UNKNOWN"
+    assert facts["passed_count"] == 0 and facts["all_five_proven"] is False
+    assert facts["pillars"][0]["value"] == 12
+    assert facts["catalyst"]["factual_verification_status"] == "VERIFIED"
+
+
 def test_original_producer_package_wins_over_unrelated_cached_latest_symbol(evidence):
     from lib.scanner_candidate_projection import build_candidate_projection
 

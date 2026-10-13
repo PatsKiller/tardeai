@@ -116,14 +116,16 @@ def build_candidate_projection(
             verdict = raw_verdict if raw_verdict in TRADE_VERDICTS else "UNKNOWN"
             run_id = row.get("run_id")
             if not isinstance(run_id, str):
-                run_id = (
-                    f"{row['run_date']}::{row['run_label']}" if row.get("run_date") and row.get("run_label") else None
-                )
+                # Cache tickers from /trade-ai use scan_run_*; orchestrator rows use run_date/run_label.
+                _rd = row.get("run_date") or row.get("scan_run_date")
+                _rl = row.get("run_label") or row.get("scan_run_label")
+                run_id = f"{_rd}::{_rl}" if _rd and _rl else None
             lineage = observation_lineage(row, source_name="TRADE_AI", run_id=run_id)
             stamp = _stamp(lineage["observed_at"])
             session_date = (
                 _day(run_id)
                 or _day(row.get("run_date"))
+                or _day(row.get("scan_run_date"))
                 or (stamp.astimezone(ET).date().isoformat() if stamp else None)
             )
             add(

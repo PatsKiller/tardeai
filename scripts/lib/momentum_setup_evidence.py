@@ -97,7 +97,7 @@ def observation_lineage(row, *, source_name="CACHED_SOURCE", run_id=None, source
     raw_observed = value("observed_at")
     raw_event = value("event_at")
     observed, event = _stamp(raw_observed), _stamp(raw_event)
-    session = _text(value("session_date"), 40) or _text(row.get("run_date"), 40)
+    session = _text(value("session_date"), 40) or _text(row.get("run_date"), 40) or _text(row.get("scan_run_date"), 40)
     actual_run = _text(value("run_id"), 160) or _text(run_id, 160)
     if not session and actual_run:
         try:
@@ -212,7 +212,7 @@ def build_setup_evidence(
     lineage = observation_lineage(row, source_name=source_name)
     source_at = _stamp(lineage.get("observed_at") or observed_at)
     observed_state = _session_state(source_at, now)
-    declared_date = row.get("run_id") or row.get("run_date") or row.get("session_date")
+    declared_date = row.get("run_id") or row.get("run_date") or row.get("scan_run_date") or row.get("session_date")
     try:
         source_day = datetime.strptime(str(declared_date)[:10], "%Y-%m-%d").date()
     except (ValueError, TypeError):

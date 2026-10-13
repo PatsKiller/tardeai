@@ -2,7 +2,7 @@
 
 Status: DRAFT — locally implemented and tested; operational acceptance pending
 Owner: Codex; authoritative producer and lane owners retain their existing roles
-as_of: 2026-10-13T15:20:37.103705+00:00
+as_of: 2026-10-13T17:37:12.033950+00:00
 Measured at: base f0ebb82acd44fa0db790d29390d711daa0831a96; CURRENT f0ebb82ac-main-exact-phase2-20261012-224843
 Branch: wt/momentum-lineage-20261013
 Worktree: /tmp/tradeai-momentum-lineage-20261013
@@ -79,6 +79,20 @@ The local source tranche is implemented and its targeted behavior is tested. It 
 - After independent review, exact-head local/remote CI and explicit remote intent, request exact-SHA release and any applicable cron/service/producer grants. Validate authorized installed runs with durable host output, both consumer readbacks and actual delivery or a receipted route decision; observe every natural-fire gate required by the existing onboarding standard. Recovery stays disarmed until its health contract and bounded retry admission are accepted.
 
 Existing source observations without security identity, observation/publication time or factual-verification method remain explicitly unknown. This change cannot reconstruct original facts that their producer never recorded. Broker execution and financial decision policies remain outside this tranche.
+
+## Requested live rollout — 2026-10-13
+
+[DOC-CLAIM] The operator explicitly requested "push deploy live". This supplies remote intent and deployment intent; active scoped guard approval is still required by the repository's native approval procedure. Rollout session `a767b60e-d3ca-45a7-b74d-9b2e89ad2780` started at `2026-10-13T17:17:53+00:00` with documentation leases. The existing local candidate is `bcdcb69fc0306794b56379cdae0456fdc5262009`, source `a5c427791997038d07a53038a40ccac6afc1ce57`; no grant was active at the first rollout check.
+
+[VERIFIED] CURRENT and `origin/main` advanced to `f7b881ac147ac7237ccbabd9b72c5099b54f69b9` after PRs #1717 and #1718. Their exact-head PR checks were read; the working candidate's CI and deployed acceptance remain separate and pending. The rollback release observed for this rollout is `f7b881ac1-main-exact-phase2-20261013-112950`. Policy file blobs are unchanged from the candidate. A merge preview found four content conflicts: shared candidates, API, momentum evidence and scanner projection. It changed neither HEAD nor the worktree. Public conflicts will be prepared under leases; protected incoming main code and protected validation require the requested per-task grant.
+
+[CODE] Canonical release preparation currently clones CURRENT and creates `.env` / `config/broker_credentials.env` links in `scripts/cio_phase2_exact_main_deploy.sh`. This conflicts with AGENTS.md §24.7: "No agent reads, copies, links or prints `.env`, a rendered env file or any credential file". No release prepare/promote was executed. Preserve this finding; operator-owned secret provisioning is needed before an agent can complete a compliant rollout. An exact merged-SHA release grant is requested only after candidate integration and required CI are green.
+
+[DOC-CLAIM] A bounded test-only execution-engineering grant was requested in this chat for integration of candidate `bcdcb69fc` with approved main `f7b881ac1` and three isolated A1/A2 validation invocations. Requesting it does not grant it. No Telegram message, grant issuance, protected test execution, push, merge-to-main or production mutation occurred at this stage.
+
+[CODE] The four public conflicts are prepared in the registered worktree, without applying incoming protected paths. Preserve main's expandable five-fact controls, filter controls and full-row population labels; retain original source clocks, explicit factual verification and original producer accounting. `scan_run_date` / `scan_run_label` are accepted as run/session identity, never as an observation clock. A regression proves that a same-day row with only cache/DB/run-finish clocks retains its values and historical publication verification but cannot establish current qualifying facts. This preparation is a public integration checkpoint; it is not the final merge of main and has no native/full-release acceptance.
+
+[TEST] Prepared public integration: `TRADE_AI_CI=1` targeted regression **465 passed in 21.56 seconds**, zero failed/skipped. The hermetic guard again refused three live-DSN attempts before libpq. JUnit artifact: `/tmp/momentum-public-integration-validation.xml`. Changed Python lint/format and diff checks passed. Frontend `npm run build` passed. Both screen fixture browser checks passed, with new receipts at `/tmp/momentum-ui-readbacks-public-integration.json`; original `/tmp/momentum-ui-readbacks.json` bytes and their original timestamps/hash are preserved, also archived at `/tmp/momentum-ui-readbacks-20261013T150356Z.json`. Headless Chromium initially failed on sandbox IPC; the approved isolated rerun used a fresh temporary profile and blocked non-loopback requests. No production browser profile or cookie was used. The test server was stopped after verification.
 
 ## Operator supplied failure cases
 
