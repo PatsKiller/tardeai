@@ -46,12 +46,16 @@ STALE_H = 72
 
 REFRESH_STEPS = (
     "🔑 YouTube cookies need a refresh — transcript ingestion is blocked.\n\n"
-    "Fix: export cookies from a LOGGED-IN youtube.com tab and replace "
+    "Ops UI (preferred): Command Center → System → Pipeline → YouTube cookies\n"
+    "  deep-link: /v3/system?tab=Pipeline&focus=youtube-cookies\n"
+    "  paste or upload Netscape cookies.txt → Validate & write\n\n"
+    "CLI fallback: export from a LOGGED-IN youtube.com tab and replace "
     "config/youtube_cookies.txt:\n"
     "• Chrome ext 'Get cookies.txt LOCALLY', or\n"
     "• yt-dlp --cookies-from-browser chrome --cookies config/youtube_cookies.txt\n"
     "Must include auth cookies (e.g. SID / __Secure-1PSID / __Secure-3PSID / SAPISID / LOGIN_INFO).\n"
-    "Then: .venv/bin/python scripts/youtube_transcript_ingest.py --all-channels"
+    "Then: .venv/bin/python scripts/youtube_transcript_ingest.py --all-channels\n\n"
+    "n8n: MONITOR_ONLY — never fetch browser cookies or write this file."
 )
 
 

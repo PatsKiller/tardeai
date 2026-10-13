@@ -3192,6 +3192,107 @@ def _system_pipeline_health():
     }
 
 
+def _system_youtube_cookies_write(body: dict | None = None):
+    """POST /api/v2/system/youtube-cookies — validate Netscape jar + atomic replace.
+
+    Host/Ops human-aided path only. Never fetched by n8n. Cookie values are never
+    returned or logged — only AUTH cookie *names* and counts.
+    """
+    import os as _os
+    import tempfile as _tempfile
+
+    body = body or {}
+    raw = body.get("cookies") or body.get("content") or body.get("text") or ""
+    if isinstance(raw, bytes):
+        raw = raw.decode("utf-8", errors="replace")
+    if not isinstance(raw, str):
+        return 400, {"ok": False, "error": "cookies must be a Netscape cookie text string"}
+    text = raw.replace("\r\n", "\n").strip()
+    if not text:
+        return 400, {"ok": False, "error": "empty cookie payload"}
+    if len(text) > 2_000_000:
+        return 400, {"ok": False, "error": "cookie payload too large"}
+
+    # Same AUTH set as youtube_cookie_health_check / pipeline-health stoplight.
+    auth_names = {
+        "SID",
+        "HSID",
+        "SSID",
+        "SAPISID",
+        "LOGIN_INFO",
+        "__Secure-1PSID",
+        "__Secure-3PSID",
+        "__Secure-1PAPISID",
+        "__Secure-3PAPISID",
+    }
+    found: set[str] = set()
+    data_rows = 0
+    for ln in text.splitlines():
+        work = ln
+        if work.startswith("#HttpOnly_"):
+            work = work[len("#HttpOnly_") :]
+        if work.startswith("#") or "\t" not in work:
+            continue
+        parts = work.split("\t")
+        if len(parts) < 6:
+            continue
+        data_rows += 1
+        name = parts[5]
+        if name in auth_names:
+            found.add(name)
+    if data_rows < 1:
+        return 400, {
+            "ok": False,
+            "error": "not a Netscape cookie table (need tab-separated rows)",
+            "auth_cookies": 0,
+        }
+    if not found:
+        return 400, {
+            "ok": False,
+            "error": "no YouTube/Google AUTH cookies (SID / __Secure-*PSID / SAPISID / LOGIN_INFO)",
+            "auth_cookies": 0,
+            "ops_path": "/v3/system?tab=Pipeline&focus=youtube-cookies",
+        }
+
+    cpath = PROJECT_ROOT / "config" / "youtube_cookies.txt"
+    cpath.parent.mkdir(parents=True, exist_ok=True)
+    backup = None
+    try:
+        if cpath.exists():
+            backup = cpath.with_suffix(".txt.bak")
+            backup.write_bytes(cpath.read_bytes())
+        fd, tmp_name = _tempfile.mkstemp(prefix="youtube_cookies_", suffix=".txt", dir=str(cpath.parent))
+        try:
+            with _os.fdopen(fd, "w", encoding="utf-8") as fh:
+                if not text.endswith("\n"):
+                    text = text + "\n"
+                fh.write(text)
+                fh.flush()
+                _os.fsync(fh.fileno())
+            _os.replace(tmp_name, cpath)
+        except Exception:
+            try:
+                _os.unlink(tmp_name)
+            except OSError:
+                pass
+            raise
+        # Re-read counts only (never echo values).
+        auth_count = len(found)
+        return 200, {
+            "ok": True,
+            "status": "green" if auth_count else "red",
+            "auth_cookies": auth_count,
+            "auth_names": sorted(found),
+            "path": "config/youtube_cookies.txt",
+            "backup": "config/youtube_cookies.txt.bak" if backup is not None else None,
+            "detail": f"wrote {data_rows} cookie rows · {auth_count} auth",
+            "ops_path": "/v3/system?tab=Pipeline&focus=youtube-cookies",
+            "n8n_note": "n8n must not write this file — host Ops UI / human export only",
+        }
+    except Exception as e:
+        return 500, {"ok": False, "error": f"write failed: {type(e).__name__}"}
+
+
 # ── Endpoint handlers ─────────────────────────────────────────────────────
 
 
@@ -15630,10 +15731,14 @@ def _compute_trade_ai():
         # 2026-10-09 ("PARTIAL · run 55/40"): live cycles upsert into the same run_label, so the label held 55
         # symbols against the full run's 41 and the two "scanned" contracts disagreed. The run is its FULL rows.
         _full_rows = [t for t in _current_run_tickers if str(t.get("run_type") or "").lower() == "full"]
+        _full_filtered = bool(_full_rows)
         if _full_rows:
             _current_run_tickers = _full_rows
+        else:
+            _full_filtered = False
     else:
         _current_run_tickers = tickers
+        _full_filtered = False
     current_run_go = sum(1 for t in _current_run_tickers if t.get("decision") == "GO")
     current_run_wait = sum(1 for t in _current_run_tickers if t.get("decision") == "WAIT")
     current_run_nogo = sum(1 for t in _current_run_tickers if t.get("decision") not in ("GO", "WAIT"))
@@ -15651,6 +15756,7 @@ def _compute_trade_ai():
     _run_health_scope = None
     _run_health_run_label = None
     _today_signal_count = 0
+    _rh = None
     _RH_COLS = (
         "status, symbols_scanned, go_count AS rh_go, wait_count AS rh_wait, "
         "no_go_count, reason_codes, finished_at, expected_min_symbols, "
@@ -15739,6 +15845,13 @@ def _compute_trade_ai():
     _current_run_tally = tally_decisions(_current_run_tickers)
     _run_id = derive_run_id(_current_run_label, latest.get("date", ""), latest.get("generated_at", ""))
     _vix_val, _vix_src, _vix_obs = _vix_observation(latest.get("vix"), _latest_run_timestamp)
+    # Alternate scanned claim must measure the SAME population as primary.
+    # When we narrow to run_type=full, both run_summary.ticker_count and
+    # health.symbols_scanned still include non-full upserts on the same label
+    # (PARTIAL 3 vs 14, then 49 vs 65 on 2026-10-13). Omit alt rather than false PARTIAL.
+    _scanned_alt = latest.get("ticker_count")
+    if _full_filtered:
+        _scanned_alt = None
     _setup_run_summary = build_setup_run_summary(
         run_id=_run_id,
         run_label=_current_run_label,
@@ -15747,10 +15860,17 @@ def _compute_trade_ai():
         source="trade_ai_scans",
         tally=_current_run_tally,
         scanned_count=current_run_total,
-        scanned_count_alt=latest.get("ticker_count"),
+        scanned_count_alt=_scanned_alt,
         freshness_status=(_run_health_status or "UNKNOWN"),
         quality="OK" if _run_health_status == "RUN_HEALTHY" else "DEGRADED",
     )
+    if _full_filtered and _scanned_alt is None and latest.get("ticker_count") is not None:
+        _setup_run_summary = dict(_setup_run_summary)
+        _setup_run_summary["scanned_population"] = "full_only"
+        _setup_run_summary["scanned_count_alt_omitted"] = (
+            f"run_summary.ticker_count={latest.get('ticker_count')} spans non-full "
+            "upserts on this label; not compared after full-row filter"
+        )
 
     return {
         "ok": True,
@@ -52376,6 +52496,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             return 500, {"ok": False, "error": str(e)[:160]}
     if method == "POST" and base_path == "/api/v2/upload-csv":
         return _upload_csv(body or {})
+    if method == "POST" and base_path == "/api/v2/system/youtube-cookies":
+        return _system_youtube_cookies_write(body or {})
     if method == "POST" and base_path == "/api/v2/tos-watchlists/manage":
         return _tos_watchlist_manage(body or {})
     if method == "POST" and base_path == "/api/v2/time-exit-proposals/decide":
