@@ -3090,7 +3090,9 @@
       ],
       "timeout_s": 60,
       "lane_id": "momentum-lifecycle-monitor",
-      "env_names": [],
+      "env_names": [
+        "TRADEAI_GOVERNED_BRIDGE_URL"
+      ],
       "env_allowlist_mode": "enforce",
       "market_gate": false,
       "env_evidence": "CLI receives explicit server code/state roots; stdlib metadata readers and existing pure market calendar/projection only. No dotenv, provider, model, broker or secret input is required.",
@@ -3115,7 +3117,9 @@
       ],
       "timeout_s": 60,
       "lane_id": "momentum-cache-reconcile",
-      "env_names": [],
+      "env_names": [
+        "TRADEAI_GOVERNED_BRIDGE_URL"
+      ],
       "env_allowlist_mode": "enforce",
       "market_gate": false,
       "env_evidence": "CLI receives explicit server code/state roots; stdlib metadata readers and existing pure market calendar/projection only. No dotenv, provider, model, broker or secret input is required.",

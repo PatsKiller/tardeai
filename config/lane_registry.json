@@ -14777,6 +14777,104 @@
       "note": "API POST /api/v2/reports/brief/regenerate when TRADEAI_N8N_CC_WAVE_C_MODE=dry_run|apply."
     },
     {
+      "lane_id": "momentum-lifecycle-monitor",
+      "owner": "platform",
+      "state": "ACTIVE",
+      "state_since": "2026-10-12",
+      "state_reason": "Operator authorized initial shadow admission; exact bodies independently reviewed2026-10-12. Runtime deployment/natural zero-effect proof remains separate.",
+      "reason_confidence": "ESTABLISHED",
+      "review_by": "2026-10-13",
+      "expected_cadence_hours": 0.08333333333333333,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "timezone": "America/New_York",
+        "stage": "shadow",
+        "match": "scripts/n8n_momentum_lifecycle.py"
+      },
+      "dispatch": {
+        "class": "monitor",
+        "retry_policy": "none",
+        "mode": "dry_run",
+        "cron": [
+          "*/5 * * * *"
+        ],
+        "after": [],
+        "priority": 1,
+        "wave": "W0",
+        "tz": "America/New_York"
+      },
+      "output_signal": {
+        "path": "data/runtime/momentum_lifecycle_last.json",
+        "expected_cadence_hours": 0.08333333333333333,
+        "kind": "file_mtime"
+      },
+      "executor": {
+        "kind": "python",
+        "root": "CURRENT",
+        "command_text": "$PY $CODE_ROOT/scripts/n8n_momentum_lifecycle.py --host-snapshot --code-root $CODE_ROOT --state-root $STATE_ROOT"
+      },
+      "reason_evidence": "SOURCE_AUTHORIZATION_ONLY: docs/implementation/n8n-maturity/reconciliation-20261012/MOMENTUM_CONTRACT_REVIEW_BINDINGS_20261012.json records operator decision references, independent source review and OWNER_ACCEPTED for momentum-lifecycle-monitor (contract body_sha256 2f6db22a4b1a012760dd7eaa913c3040effbfeb7289c433409564d43d067ab32); config/n8n_health_contracts.json retains that exact REVIEWED body binding. Runtime deployment, natural zero-effect fires and output acceptance remain NOT_MEASURED; this reason establishes source shadow authorization only."
+    },
+    {
+      "lane_id": "momentum-cache-reconcile",
+      "owner": "platform",
+      "state": "ACTIVE",
+      "state_since": "2026-10-12",
+      "state_reason": "Operator authorized initial shadow admission; exact bodies independently reviewed2026-10-12. Runtime deployment/natural zero-effect proof remains separate.",
+      "reason_confidence": "ESTABLISHED",
+      "review_by": "2026-10-13",
+      "expected_cadence_hours": 0.08333333333333333,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "timezone": "America/New_York",
+        "stage": "shadow",
+        "match": "scripts/momentum_cache_reconcile.py"
+      },
+      "dispatch": {
+        "class": "report",
+        "retry_policy": "none",
+        "mode": "dry_run",
+        "cron": [
+          "*/5 * * * *"
+        ],
+        "after": [],
+        "priority": 5,
+        "wave": "W0",
+        "tz": "America/New_York"
+      },
+      "output_signal": {
+        "path": "data/runtime/momentum-cache-reconcile_last.json",
+        "expected_cadence_hours": 0.08333333333333333,
+        "kind": "file_mtime"
+      },
+      "executor": {
+        "kind": "python",
+        "root": "CURRENT",
+        "command_text": "$PY $CODE_ROOT/scripts/momentum_cache_reconcile.py --code-root $CODE_ROOT --state-root $STATE_ROOT"
+      },
+      "reason_evidence": "SOURCE_AUTHORIZATION_ONLY: docs/implementation/n8n-maturity/reconciliation-20261012/MOMENTUM_CONTRACT_REVIEW_BINDINGS_20261012.json records operator decision references, independent source review and OWNER_ACCEPTED for momentum-cache-reconcile (contract body_sha256 ce53b699246fb1296551327e9abc914125335c1c7fdb6bc6a4cdf6d813d37939); config/n8n_health_contracts.json retains that exact REVIEWED body binding. Runtime deployment, natural zero-effect fires and output acceptance remain NOT_MEASURED; this reason establishes source shadow authorization only."
+    },
+    {
       "lane_id": "run-scheduled-quote-refresh-incubator",
       "owner": "portfolio",
       "scheduler": {
@@ -22714,102 +22812,6 @@
       "flags": [
         "UNVERIFIED_OUTPUT"
       ]
-    },
-    {
-      "lane_id": "momentum-lifecycle-monitor",
-      "owner": "platform",
-      "state": "ACTIVE",
-      "state_since": "2026-10-12",
-      "state_reason": "Operator authorized initial shadow admission; exact bodies independently reviewed2026-10-12. Runtime deployment/natural zero-effect proof remains separate.",
-      "reason_confidence": "ESTABLISHED",
-      "review_by": "2026-10-13",
-      "expected_cadence_hours": 0.08333333333333333,
-      "active_days": [
-        0,
-        1,
-        2,
-        3,
-        4,
-        5,
-        6
-      ],
-      "scheduler": {
-        "kind": "n8n",
-        "expression": "dispatcher",
-        "timezone": "America/New_York",
-        "stage": "shadow",
-        "match": "scripts/n8n_momentum_lifecycle.py"
-      },
-      "dispatch": {
-        "class": "monitor",
-        "retry_policy": "none",
-        "mode": "dry_run",
-        "cron": [
-          "*/5 * * * *"
-        ],
-        "after": [],
-        "priority": 1,
-        "wave": "W0",
-        "tz": "America/New_York"
-      },
-      "output_signal": {
-        "path": "data/runtime/momentum_lifecycle_last.json",
-        "expected_cadence_hours": 0.08333333333333333,
-        "kind": "file_mtime"
-      },
-      "executor": {
-        "kind": "python",
-        "root": "CURRENT",
-        "command_text": "$PY $CODE_ROOT/scripts/n8n_momentum_lifecycle.py --host-snapshot --code-root $CODE_ROOT --state-root $STATE_ROOT"
-      }
-    },
-    {
-      "lane_id": "momentum-cache-reconcile",
-      "owner": "platform",
-      "state": "ACTIVE",
-      "state_since": "2026-10-12",
-      "state_reason": "Operator authorized initial shadow admission; exact bodies independently reviewed2026-10-12. Runtime deployment/natural zero-effect proof remains separate.",
-      "reason_confidence": "ESTABLISHED",
-      "review_by": "2026-10-13",
-      "expected_cadence_hours": 0.08333333333333333,
-      "active_days": [
-        0,
-        1,
-        2,
-        3,
-        4,
-        5,
-        6
-      ],
-      "scheduler": {
-        "kind": "n8n",
-        "expression": "dispatcher",
-        "timezone": "America/New_York",
-        "stage": "shadow",
-        "match": "scripts/momentum_cache_reconcile.py"
-      },
-      "dispatch": {
-        "class": "report",
-        "retry_policy": "none",
-        "mode": "dry_run",
-        "cron": [
-          "*/5 * * * *"
-        ],
-        "after": [],
-        "priority": 5,
-        "wave": "W0",
-        "tz": "America/New_York"
-      },
-      "output_signal": {
-        "path": "data/runtime/momentum-cache-reconcile_last.json",
-        "expected_cadence_hours": 0.08333333333333333,
-        "kind": "file_mtime"
-      },
-      "executor": {
-        "kind": "python",
-        "root": "CURRENT",
-        "command_text": "$PY $CODE_ROOT/scripts/momentum_cache_reconcile.py --code-root $CODE_ROOT --state-root $STATE_ROOT"
-      }
     }
   ],
   "freshness_contracts": [
