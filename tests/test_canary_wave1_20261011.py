@@ -39,18 +39,40 @@ ROWS = {r["lane_id"]: r for r in REGISTRY["lanes"]}
 ALLOW = {e["lane_id"]: e for e in json.loads((ROOT / "config" / "n8n_run_allowlist.json").read_text())["lanes"]}
 CONTRACTS = {c["id"]: c for c in json.loads((ROOT / "config" / "n8n_health_contracts.json").read_text())["contracts"]}
 
-#: lane -> the exact live cron line (crontab -l 2026-10-11, L418; matched by text, never by line number).
+#: lane -> the exact cron line it ran on as canary (crontab -l 2026-10-11, L418; matched by text, never by line number).
+#: research-insight-extractor climbed canary -> cutover 2026-10-13 17:56 ET (operator _cutover.py --apply, receipt
+#: n8n_cutover/research-insight-extractor-20261013T215647Z-cutover.json): this line is now `# RETIRED` and the row is
+#: the n8n dispatcher row. The canary-gate checks below run on the canary row rebuilt from this line (_as_canary), so
+#: the gate keeps its coverage; the live row is pinned at cutover.
 CANARY_WAVE1 = {
     "research-insight-extractor": (
         "50 6,12,18 * * * cd $PROJ && flock -n /tmp/research_insight_extractor.lock "
         "$PY scripts/research_insight_extractor.py >> logs/research_insight_extractor.log 2>&1"
     ),
 }
+CUTOVER = frozenset({"research-insight-extractor"})
+
+
+def _as_canary(lane: str) -> dict:
+    """The row as it stood at canary (2026-10-11 .. 2026-10-13): kind cron on its live line, stage canary."""
+    row = copy.deepcopy(ROWS[lane])
+    expr, cmd = CANARY_WAVE1[lane].split(" cd ", 1)[0], "cd " + CANARY_WAVE1[lane].split(" cd ", 1)[1]
+    row["scheduler"] = {"kind": "cron", "expression": expr, "match": row["scheduler"]["match"], "stage": "canary",
+                        "wave": row["scheduler"]["wave"], "command_text": cmd}
+    return row
+
+
+@pytest.mark.parametrize("lane", sorted(CUTOVER))
+def test_canary_lane_is_now_cut_over(lane):
+    s = ROWS[lane]["scheduler"]
+    assert s["kind"] == "n8n" and s["expression"] == "dispatcher" and s["stage"] == "cutover"
+    assert s["cadence"] == CANARY_WAVE1[lane].split(" cd ", 1)[0]
+    assert SC.clamp_mode(lane, "live", REGISTRY["lanes"])["effective_mode"] == "live"
 
 
 @pytest.mark.parametrize("lane", sorted(CANARY_WAVE1))
 def test_row_has_the_canary_on_cron_shape_and_is_admitted(lane):
-    row, e = ROWS[lane], ALLOW[lane]
+    row, e = _as_canary(lane), ALLOW[lane]
     s = row["scheduler"]
     assert s["kind"] == "cron" and s["stage"] == "canary"
     assert row["dispatch"]["mode"] == "live" and row["dispatch"]["class"] in LD.R1_ADMITTED_CLASSES
@@ -59,13 +81,12 @@ def test_row_has_the_canary_on_cron_shape_and_is_admitted(lane):
     assert LD.r1_shadow_on_cron_shape(row) == (True, "canary_on_cron")
     assert LD.r1_class_admission(row, e) == (True, f"r1_admitted:{row['dispatch']['class']}")
     assert LD.validate_dispatch_block(row) == []
-    assert SC.clamp_mode(lane, "live", REGISTRY["lanes"])["effective_mode"] == "live"
 
 
 @pytest.mark.parametrize("lane", sorted(CANARY_WAVE1))
 def test_command_text_is_the_live_cron_line_and_its_only_lock_is_the_allowlist_lock(lane):
     line = CANARY_WAVE1[lane]
-    s = ROWS[lane]["scheduler"]
+    s = _as_canary(lane)["scheduler"]
     assert line.startswith(s["expression"] + " ") and s["match"] in line
     assert s["command_text"] == line[len(s["expression"]) + 1:]
     assert LD.cron_flock_locks(s["command_text"]) == [ALLOW[lane]["lock"]]
@@ -75,7 +96,7 @@ def test_command_text_is_the_live_cron_line_and_its_only_lock_is_the_allowlist_l
 def test_live_argv_is_the_cron_argv(lane):
     """The executor runs command + live_arg; the cron line runs `$PY <script> <args>` (minus redirections)."""
     e = ALLOW[lane]
-    toks = shlex.split(ROWS[lane]["scheduler"]["command_text"].split(">>", 1)[0])
+    toks = shlex.split(_as_canary(lane)["scheduler"]["command_text"].split(">>", 1)[0])
     cron_argv = toks[toks.index("$PY"):]
     assert e["command"] + e["live_arg"] == cron_argv
     assert e["dry_run_arg"] == ["--dry-run"] and "--dry-run" not in e["live_arg"]
@@ -92,7 +113,7 @@ def test_health_contract_is_built_for_the_canary_stage(lane):
 @pytest.mark.parametrize("bad", ["lock_mismatch", "safe_flock", "no_cron_lock", "live_arg_null", "mode_dry_run"])
 def test_canary_gate_refuses_a_row_that_cannot_prove_no_double_run(bad):
     lane = "research-insight-extractor"
-    row, e = copy.deepcopy(ROWS[lane]), copy.deepcopy(ALLOW[lane])
+    row, e = _as_canary(lane), copy.deepcopy(ALLOW[lane])
     if bad == "lock_mismatch":
         e["lock"] = "/tmp/some_other.lock"
     elif bad == "safe_flock":
@@ -115,9 +136,11 @@ def test_no_other_shadow_row_gained_a_live_argv():
                 and (row.get("dispatch") or {}).get("class") in LD.R1_ADMITTED_CLASSES):
             assert ALLOW[lane].get("live_arg") is None, lane
     canary = sorted(r for r, row in ROWS.items() if (row.get("scheduler") or {}).get("stage") == "canary")
-    # research-insight-extractor is the R1 cron canary; heartbeat-watch + momentum-cache-reconcile
-    # are n8n-native canaries (reconcile climbed 2026-10-13 after five-facts OBSERVED).
-    assert canary == sorted(set(CANARY_WAVE1) | {"heartbeat-watch", "momentum-cache-reconcile"})
+    # heartbeat-watch + momentum-cache-reconcile are n8n-native canaries (reconcile climbed 2026-10-13 after
+    # five-facts OBSERVED); research-insight-extractor, the R1 cron canary, climbed to cutover 2026-10-13.
+    assert canary == sorted({"heartbeat-watch", "momentum-cache-reconcile"})
+    cut = sorted(r for r, row in ROWS.items() if (row.get("scheduler") or {}).get("stage") == "cutover")
+    assert set(CUTOVER) <= set(cut), cut
 
 
 def test_every_shadow_command_text_flock_lock_is_the_allowlist_lock():

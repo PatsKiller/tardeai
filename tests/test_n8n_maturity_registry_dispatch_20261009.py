@@ -536,8 +536,9 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
             continue
         if (
             lane in CANARY_ROWS
-        ):  # canary wave 1 (2026-10-11): the §23.18 (c) canary shape, tests/test_canary_wave1_20261011.py
-            assert mode == "live" and row["scheduler"].get("stage") == "canary", lane
+        ):  # canary wave 1 (2026-10-11): the §23.18 (c) canary shape, tests/test_canary_wave1_20261011.py;
+            # research-insight-extractor climbed to cutover 2026-10-13 (n8n dispatcher row, cron line retired).
+            assert mode == "live" and row["scheduler"].get("stage") in ("canary", "cutover"), lane
             assert LD.r1_class_admission(row, allow[lane]) == (True, "r1_admitted:ingest"), lane
             continue
         assert mode in ("off", "dry_run"), lane
