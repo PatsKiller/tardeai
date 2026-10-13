@@ -240,6 +240,7 @@ def _quiet_other_sources(monkeypatch):
     monkeypatch.setattr(fanin, "_outbox_findings", lambda now: [])
     monkeypatch.setattr(fanin, "_scalp_lane_findings", lambda root, now: [])
     monkeypatch.setattr(fanin, "_scalp_cycle_findings", lambda root, now: [])
+    monkeypatch.setattr(fanin, "_momentum_lifecycle_findings", lambda root, now: [])
 
 
 def test_collect_includes_workflow_errors(env, monkeypatch):

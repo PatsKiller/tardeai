@@ -1269,8 +1269,32 @@ def test_integration_patch_fanin_stale_deadman_is_independent_host_p1(setup):
     )
     namespace = {**fanin.__dict__, "ROOT": root}
     exec(compile(ast.Module(body=[fn], type_ignores=[]), "candidate-fanin", "exec"), namespace)
+    # enabled alone (reconcile canary) must not page: monitor stays unadmitted here.
+    assert namespace[fn.name](root, NOW) == []
+    # Deadman arms only once the monitor is operatively admitted (canary + live_arg + flock).
+    registry = json.loads((root / "config/lane_registry.json").read_text())
+    registry["lanes"].append(
+        {
+            "lane_id": "momentum-lifecycle-monitor",
+            "state": "ACTIVE",
+            "scheduler": {"stage": "canary"},
+            "dispatch": {"class": "monitor"},
+        }
+    )
+    (root / "config/lane_registry.json").write_text(json.dumps(registry))
+    contracts = json.loads((root / "config/n8n_health_contracts.json").read_text())
+    contracts["contracts"].append(reviewed_fixture_contract("momentum-lifecycle-monitor"))
+    (root / "config/n8n_health_contracts.json").write_text(json.dumps(contracts))
+    allow = json.loads((root / "config/n8n_run_allowlist.json").read_text())
+    allow["lanes"]["momentum-lifecycle-monitor"] = {
+        "live_arg": ["--write-monitor"],
+        "lock_kind": "flock",
+        "lock": "/tmp/tradeai_momentum_lifecycle.lock",
+    }
+    (root / "config/n8n_run_allowlist.json").write_text(json.dumps(allow))
     findings = namespace[fn.name](root, NOW)
     assert findings[0]["severity"] == "P1"
+    assert findings[0]["item"] == "momentum-lifecycle-monitor:MONITOR_MISSING_OR_STALE"
     assert findings[0]["operator_action"] is False
     assert findings[0]["notification_dedupe_minutes"] is None
     report = {
