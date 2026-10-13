@@ -80,9 +80,12 @@ MAX_BODY = 1024
 MIN_KEY_BYTES = 32
 LAST_SCHEMA = "N8nRunRelayLast@v1"
 _LANE_ID_RE = re.compile(r"^[A-Za-z0-9._-]+$")
-_LAST_FIELDS = ("run_id", "lane_id", "state", "finished_at", "requested_at", "mode")
-# Dropped first when the body would exceed MAX_BODY. state and finished_at stay until nothing else will.
-_LAST_OPTIONAL = ("requested_at", "mode", "run_id", "finished_at", "lane_id")
+_LAST_FIELDS = (
+    "run_id", "lane_id", "state", "exit_code", "started_at", "finished_at", "requested_at", "mode", "receipt_ref"
+)
+# Compact projection preserves the durable lifecycle fields needed to verify a run.
+# Only presentation/correlation fields are dropped to fit MAX_BODY.
+_LAST_OPTIONAL = ("receipt_ref", "requested_at", "mode", "run_id", "finished_at", "lane_id")
 #: The routes the handler serves, (method, path). `<lane_id>` is the one path parameter (parse_last_path).
 ROUTES: tuple[tuple[str, str], ...] = (
     ("GET", "/status"),
