@@ -290,7 +290,10 @@ def test_stream_run_outside_session_exits_with_receipt(monkeypatch, tmp_path):
 
     monkeypatch.setenv("STREAM_RECEIPT_DIR", str(tmp_path))
     monkeypatch.setattr(d, "KILL_FILE", tmp_path / "nope")
-    monkeypatch.setattr(d, "_market_open", lambda now=None: False)
+    # run() uses the fail-closed session status plus the provider's whole-day veto;
+    # _market_open is only used by the supervisor and does not control this path.
+    monkeypatch.setattr(d, "_session_status", lambda now=None, sessions=None: "closed")
+    monkeypatch.setattr(d, "_schwab_is_open", lambda: True)
     assert asyncio.run(d.run()) == 0
     assert _json.loads((tmp_path / "schwab_stream_receipt.json").read_text(encoding="utf-8"))["stop_reason"] == "outside_session"
 
