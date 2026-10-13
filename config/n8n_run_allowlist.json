@@ -3107,7 +3107,9 @@
         "--state-root",
         "$STATE_ROOT"
       ],
-      "live_arg": null,
+      "live_arg": [
+        "--apply"
+      ],
       "lock_kind": "flock",
       "lock": "/tmp/tradeai_momentum_cache_reconcile.lock",
       "output_signal": "data/runtime/momentum-cache-reconcile_last.json",
@@ -3123,7 +3125,7 @@
       "env_allowlist_mode": "enforce",
       "market_gate": false,
       "env_evidence": "CLI receives explicit server code/state roots; stdlib metadata readers and existing pure market calendar/projection only. No dotenv, provider, model, broker or secret input is required.",
-      "source": "Operator PR1715 instruction2026-10-12; stage-shaped source admission only, actual review and runtime proof pending."
+      "source": "Operator PR1715 instruction2026-10-12; canary 2026-10-13 live_arg --apply after five-facts OBSERVED (CURRENT_SESSION passed_count>0). Resettable SharedMomentumCandidates projection only; no CONFLICT winner."
     }
   ],
   "blocked_reasons": {

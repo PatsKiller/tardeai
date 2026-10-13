@@ -15846,11 +15846,16 @@ def _compute_trade_ai():
     _run_id = derive_run_id(_current_run_label, latest.get("date", ""), latest.get("generated_at", ""))
     _vix_val, _vix_src, _vix_obs = _vix_observation(latest.get("vix"), _latest_run_timestamp)
     # Alternate scanned claim must measure the SAME population as primary.
-    # When we narrow to run_type=full, both run_summary.ticker_count and
-    # health.symbols_scanned still include non-full upserts on the same label
-    # (PARTIAL 3 vs 14, then 49 vs 65 on 2026-10-13). Omit alt rather than false PARTIAL.
+    # run_summary.ticker_count / health.symbols_scanned often include non-full upserts
+    # or a wider label population than the dated FULL rows (PARTIAL 3 vs 14, 49 vs 65,
+    # then 48 vs 65 on 2026-10-13). Omit alt when it would disagree rather than false PARTIAL.
     _scanned_alt = latest.get("ticker_count")
-    if _full_filtered:
+    try:
+        _alt_int = int(_scanned_alt) if _scanned_alt is not None else None
+    except (TypeError, ValueError):
+        _alt_int = None
+    _omit_alt = _full_filtered or (_alt_int is not None and _alt_int != int(current_run_total))
+    if _omit_alt:
         _scanned_alt = None
     _setup_run_summary = build_setup_run_summary(
         run_id=_run_id,
@@ -15864,12 +15869,12 @@ def _compute_trade_ai():
         freshness_status=(_run_health_status or "UNKNOWN"),
         quality="OK" if _run_health_status == "RUN_HEALTHY" else "DEGRADED",
     )
-    if _full_filtered and _scanned_alt is None and latest.get("ticker_count") is not None:
+    if _omit_alt and latest.get("ticker_count") is not None:
         _setup_run_summary = dict(_setup_run_summary)
-        _setup_run_summary["scanned_population"] = "full_only"
+        _setup_run_summary["scanned_population"] = "full_only" if _full_filtered else "run_scoped"
         _setup_run_summary["scanned_count_alt_omitted"] = (
-            f"run_summary.ticker_count={latest.get('ticker_count')} spans non-full "
-            "upserts on this label; not compared after full-row filter"
+            f"run_summary.ticker_count={latest.get('ticker_count')} != primary={current_run_total}; "
+            "not compared (label/upsert population mismatch)"
         )
 
     return {
