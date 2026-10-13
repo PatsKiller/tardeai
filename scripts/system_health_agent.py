@@ -1492,18 +1492,27 @@ def evaluate_broker_snapshot(
 
 
 def _escalate(comp, check_result, conn):
-    """Escalate a failure to operator via central alert router. Dedup: max 1 per component per 2 hours."""
+    """Escalate a failure to operator via central alert router.
+
+    Dedup windows (host Telegram flood control, 2026-10-13 diligence):
+    - default: max 1 ESCALATION per component per 2 hours
+    - retry_disarmed*: 12 hours — autoheal is grant-gated; 5-min STALE rechecks must not
+      re-page Finviz/orchestrator/proposals every cycle while retry stays disarmed
+    """
     component = comp["component"]
     severity = "CRITICAL" if comp.get("critical") else "WARN"
+    action = str(check_result.get("action_taken") or "")
+    # Disarmed autoheal is an operator decision, not a new failure each poll.
+    dedupe_hours = 12 if action.startswith("retry_disarmed") else 2
 
-    # Dedup: don't spam same escalation within 2 hours
+    # Dedup: don't spam same escalation within the window
     try:
         cur = conn.cursor()
         cur.execute(
             """SELECT COUNT(*) FROM system_health_events
             WHERE component=%s AND event_type='ESCALATION'
-            AND created_at > NOW() - INTERVAL '2 hours'""",
-            [component],
+            AND created_at > NOW() - (%s || ' hours')::interval""",
+            [component, str(dedupe_hours)],
         )
         if (cur.fetchone()[0] or 0) > 0:
             _log_event(
@@ -1511,7 +1520,9 @@ def _escalate(comp, check_result, conn):
                 component,
                 "ESCALATION_DEDUPED",
                 severity,
-                "Suppressed duplicate escalation (2h window)",
+                f"Suppressed duplicate escalation ({dedupe_hours}h window"
+                + ("; retry_disarmed" if dedupe_hours == 12 else "")
+                + ")",
                 success=True,
             )
             return

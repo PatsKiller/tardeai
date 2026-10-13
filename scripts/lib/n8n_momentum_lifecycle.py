@@ -281,6 +281,7 @@ def collect_server_snapshot(
     # Project actual existing owner snapshots when the host input adapter has not supplied
     # stronger evidence. Producer SHA, business basis and consumer acks remain unknown;
     # this read-only mapping must never turn cache availability into accepted business work.
+    snapshot_completeness_seed: dict[str, Any] = {}
     try:
         from scripts.lib.scanner_candidate_projection import read_candidate_snapshot
 
@@ -322,6 +323,32 @@ def collect_server_snapshot(
         cache = {**view, "population_contract": "separate_populations", "derived_from_run_id": shared.get("run_id")}
         declared = products.get("served_scan_cache")
         products["served_scan_cache"] = {**cache, "declared_metadata": declared} if declared else cache
+        # MONITOR_ONLY completeness signals for Trade AI page diligence (no repair authority).
+        candidates = shared.get("candidates") if isinstance(shared.get("candidates"), list) else []
+        zero_facts = 0
+        conflict_n = 0
+        for row in candidates:
+            if not isinstance(row, Mapping):
+                continue
+            if row.get("conflicts") or row.get("classification") == "CONFLICT":
+                conflict_n += 1
+            ta = row.get("trade_ai") if isinstance(row.get("trade_ai"), Mapping) else {}
+            if ta.get("session_state") != "CURRENT_SESSION":
+                continue
+            obs = ta.get("observations") if isinstance(ta.get("observations"), list) else []
+            for item in obs:
+                if not isinstance(item, Mapping):
+                    continue
+                evidence = item.get("setup_evidence") if isinstance(item.get("setup_evidence"), Mapping) else {}
+                if isinstance(evidence.get("passed_count"), int) and evidence.get("passed_count") == 0:
+                    zero_facts += 1
+                    break
+        snapshot_completeness_seed = {
+            "shared_status": shared.get("status"),
+            "shared_candidate_count": shared.get("candidate_count"),
+            "conflict_count": conflict_n,
+            "zero_five_facts_current_session": zero_facts,
+        }
     except (ImportError, OSError, ValueError):
         pass
     auth = doc.get("credential_health") if isinstance(doc.get("credential_health"), Mapping) else {}
@@ -348,6 +375,14 @@ def collect_server_snapshot(
     }
     watch_ids = {spec["lane_id"] for spec in candidate.get("watch", [])}
     snapshot["host_receipts"] = _runtime_receipt_metadata(state_root, admission, watch_ids)
+    completeness: dict[str, Any] = {
+        "authority": "MONITOR_ONLY",
+        "run_underfilled": False,
+        "count_integrity": None,
+        "count_integrity_reason": None,
+        "freshness_status": None,
+        **snapshot_completeness_seed,
+    }
     cache_doc, cache_provenance = _metadata_document(
         state_root / "data/runtime/trade_ai_cache.json", "data/runtime/trade_ai_cache.json", limit=16000000
     )
@@ -385,6 +420,15 @@ def collect_server_snapshot(
             "remaining_action": "Bind an accepted producer's business run, output digest and source SHA to the durable host run receipt.",
         }
         products["served_scan_cache"] = product
+        freshness = contract.get("freshness_status") or cache_doc.get("run_health_status")
+        integrity = contract.get("count_integrity")
+        completeness["freshness_status"] = freshness
+        completeness["count_integrity"] = integrity
+        completeness["count_integrity_reason"] = contract.get("count_integrity_reason")
+        completeness["run_underfilled"] = freshness == "RUN_UNDERFILLED" or cache_doc.get(
+            "run_health_status"
+        ) == "RUN_UNDERFILLED"
+    snapshot["completeness"] = completeness
     if code_root is not None:
         day = now.astimezone(ET).date().isoformat()
         observed = []
@@ -1081,6 +1125,24 @@ def evaluate(
                 "automatic_cookie_or_secret_action": False,
             }
         )
+    # Trade AI page completeness — MONITOR_ONLY (no heal / no conflict winner).
+    completeness = snapshot.get("completeness") if isinstance(snapshot.get("completeness"), Mapping) else {}
+    if completeness.get("run_underfilled") is True:
+        findings.append(_finding("trade-ai-scan", "run_underfilled", day, "P2"))
+    integrity = completeness.get("count_integrity")
+    if isinstance(integrity, str) and integrity and integrity != "RECONCILED":
+        findings.append(
+            _finding("trade-ai-scan", f"count_integrity_{integrity.lower()}", day, "P2")
+        )
+    if completeness.get("shared_status") == "PARTIAL":
+        findings.append(_finding("shared-candidates", "projection_partial", day, "P2"))
+    zero_facts = completeness.get("zero_five_facts_current_session")
+    if isinstance(zero_facts, int) and zero_facts > 0:
+        findings.append(_finding("shared-candidates", "five_facts_zero_current_session", day, "P2"))
+    conflict_n = completeness.get("conflict_count")
+    if isinstance(conflict_n, int) and conflict_n >= 3:
+        findings.append(_finding("shared-candidates", "conflict_spike", day, "P2"))
+
     findings = list({(f["source"], f["item"]): f for f in findings}.values())
     storage = snapshot.get("storage_health") or {}
     if storage.get("status") == "FAILED":
@@ -1100,6 +1162,7 @@ def evaluate(
         "recovery_intents": [],
         "credential_tasks": credential_tasks,
         "storage_health": storage,
+        "completeness": completeness,
         "source_collection": snapshot.get("collection") or {},
         "host_receipt_metadata": snapshot.get("host_receipts") or {},
         "diagnosis_status": snapshot.get("diagnosis_status") or {},

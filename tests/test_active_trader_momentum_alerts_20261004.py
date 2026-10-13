@@ -139,10 +139,10 @@ def test_shadow_mode_journals_and_never_sends(_journal_dir):
 
 @pytest.mark.parametrize("attachment", [None, {}])
 def test_missing_trade_ai_attachment_does_not_claim_no_scan(attachment):
-    assert ma.trade_ai_line(attachment) == "Trade-AI: verdict not attached · scan status unverified"
+    assert ma.trade_ai_line(attachment) == "Trade-AI: NO_SAME_DAY_SCAN · verdict not attached"
     rows = _pass([cand(trade_ai=attachment)], persist=False)
     assert rows[0]["verdict"] == ma.ALERT
-    assert "Trade-AI: verdict not attached · scan status unverified" in rows[0]["message"]["body"]
+    assert "Trade-AI: NO_SAME_DAY_SCAN · verdict not attached" in rows[0]["message"]["body"]
     assert "no scan today" not in rows[0]["message"]["body"]
 
 
