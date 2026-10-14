@@ -52614,8 +52614,11 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             from scripts.lib.cc_auth import current_principal as _cc_current_principal
         _actor = _cc_current_principal()
         if not _actor.startswith("tailnet:"):
-            return 403, {"ok": False, "error": "refused: secret writes require an authenticated operator identity "
-                                               "(and step-up, not yet enabled); use the CLI"}
+            return 403, {
+                "ok": False,
+                "error": "refused: secret writes require an authenticated operator identity "
+                "(and step-up, not yet enabled); use the CLI",
+            }
         try:
             import secrets_admin
 
