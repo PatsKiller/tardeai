@@ -2853,7 +2853,7 @@
         "kind": "cron",
         "expression": "*/30 * * * *",
         "match": "scripts/backfill_subject_identity.py --all --apply",
-        "stage": "canary",
+        "stage": "shadow",
         "wave": "W4",
         "command_text": "cd $PROJ && flock -n /tmp/identity_sweep.lock $PY scripts/backfill_subject_identity.py --all --apply >> logs/identity_sweep.log 2>&1"
       },
@@ -2879,7 +2879,7 @@
       },
       "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible).",
       "dispatch": {
-        "mode": "live",
+        "mode": "dry_run",
         "cron": [
           "*/30 * * * *"
         ],
@@ -2888,13 +2888,6 @@
         "class": "ingest",
         "priority": 5,
         "retry_policy": "none"
-      },
-      "canary": {
-        "wave": "canary-wave-20261014",
-        "since": "2026-10-14",
-        "evidence": "run ledger data/runtime/n8n_runs (read-only) 2026-10-14: 137 natural dispatcher dry_run fires RUN_DONE exit 0 (d:identity-sweep-stage0:dry_run:20261011T1330 .. d:identity-sweep-stage0:dry_run:20261014T1100), 3 RUN_SKIPPED_LOCK, 0 RUN_FAILED / RUN_TIMEOUT / RUN_REFUSED (d:, e:, f: dry_run receipts); output_signal unchanged on 132/137 RUN_DONE. Admitted under the operator ruling 2026-10-14 ~11:05 ET via Agent A (cut over when defects fixed + n8n dry run passes + lane regression tests pass + >=1 successful LIVE n8n run with cron present under the shared lock; multi-day soak and natural-slot waits removed; a forced live relay fire counts if the lane's own window gate lets it run).",
-        "lock_proof": "scheduler.command_text == the live cron line L931 command (crontab -l 2026-10-14, read-only); its only flock lock /tmp/identity_sweep.lock == allowlist lock (lock_kind flock): r1_canary_lock_matches",
-        "rollback": "revert this registry/allowlist commit: stage shadow, dispatch.mode dry_run, allowlist live_arg null"
       }
     },
     {
@@ -10573,7 +10566,7 @@
         "kind": "cron",
         "expression": "45 6,12,18 * * *",
         "match": "scripts/news_to_catalyst.py",
-        "stage": "canary",
+        "stage": "shadow",
         "wave": "D3",
         "command_text": "cd $PROJ && flock -n /tmp/news_to_catalyst.lock $PY scripts/news_to_catalyst.py >> logs/news_to_catalyst.log 2>&1"
       },
@@ -10603,7 +10596,7 @@
       "adopted_on": "2026-10-10",
       "adopted_reason": "dispatcher shadow wave D3 (R1): a row carrying a reviewed r1_pending / dispatch block is hand-maintained (AGENTS §23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop the block.",
       "dispatch": {
-        "mode": "live",
+        "mode": "dry_run",
         "cron": [
           "45 6,12,18 * * *"
         ],
@@ -10623,13 +10616,6 @@
             "lane_id": "hermes-news-bridge"
           }
         ]
-      },
-      "canary": {
-        "wave": "canary-wave-20261014",
-        "since": "2026-10-14",
-        "evidence": "run ledger data/runtime/n8n_runs (read-only) 2026-10-14: 10 natural dispatcher dry_run fires RUN_DONE exit 0 (d:news-to-catalyst:dry_run:20261011T0645 .. d:news-to-catalyst:dry_run:20261014T0645), 1 RUN_SKIPPED_LOCK, 0 RUN_FAILED / RUN_TIMEOUT / RUN_REFUSED (d:, e:, f: dry_run receipts); output_signal unchanged on 10/10 RUN_DONE. Admitted under the operator ruling 2026-10-14 ~11:05 ET via Agent A (cut over when defects fixed + n8n dry run passes + lane regression tests pass + >=1 successful LIVE n8n run with cron present under the shared lock; multi-day soak and natural-slot waits removed; a forced live relay fire counts if the lane's own window gate lets it run).",
-        "lock_proof": "scheduler.command_text == the live cron line L408 command (crontab -l 2026-10-14, read-only); its only flock lock /tmp/news_to_catalyst.lock == allowlist lock (lock_kind flock): r1_canary_lock_matches",
-        "rollback": "revert this registry/allowlist commit: stage shadow, dispatch.mode dry_run, allowlist live_arg null"
       }
     },
     {

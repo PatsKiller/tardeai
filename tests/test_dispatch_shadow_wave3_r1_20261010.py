@@ -83,7 +83,7 @@ FLOCK_ADDED = {"agent-outcome-linker", "agent-calibration-engine", "update-agent
 #: research-insight-extractor climbed canary -> cutover 2026-10-13 17:56 ET (operator ran _cutover.py --apply; receipt
 #: n8n_cutover/research-insight-extractor-20261013T215647Z-cutover.json): its cron line is `# RETIRED`, its row is an
 #: n8n dispatcher row, so it leaves the cron-row checks below and is pinned by test_cutover_row_is_the_dispatcher_row.
-CANARY: set[str] = {"news-to-catalyst", "hermes-news-bridge"}  # canary-wave-20261014
+CANARY: set[str] = {"hermes-news-bridge"}  # canary-wave-20261014 (news-to-catalyst held at shadow)
 CUTOVER = frozenset({"research-insight-extractor"})
 #: The wave-3 rows still scheduled by cron (shadow or canary).
 WAVE3_ON_CRON = {k: v for k, v in WAVE3_LIVE.items() if k not in CUTOVER}

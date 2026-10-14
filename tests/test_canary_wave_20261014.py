@@ -1,4 +1,4 @@
-"""Canary wave 2026-10-14 (AGENTS.md §23.11 / §23.12 / §23.18 (c)) — 13 shadow cron rows move shadow -> canary.
+"""Canary wave 2026-10-14 (AGENTS.md §23.11 / §23.12 / §23.18 (c)) — 11 shadow cron rows move shadow -> canary.
 
 COVERS = ["config/lane_registry.json", "config/n8n_run_allowlist.json", "config/n8n_health_contracts.json"]
 
@@ -42,14 +42,12 @@ CONTRACTS = {c["id"]: c for c in json.loads((ROOT / "config" / "n8n_health_contr
 #: lane -> (live cron line number on 2026-10-14, flock lock, live_arg)
 CANARY_WAVE_20261014 = {
     "job-coverage-monitor": (391, "/tmp/tradeai_job_coverage_monitor.lock", []),
-    "identity-sweep-stage0": (931, "/tmp/identity_sweep.lock", ["--apply"]),
     "material-change-detector-stage1": (938, "/tmp/material_change_detect.lock", []),
     "document-mentions-backfill": (922, "/tmp/document_mentions_backfill.lock", []),
     "trade-ai-scalp-live": (1055, "/tmp/tradeai_scalp_live.lock", []),
     "hermes-entity-spike-discovery": (688, "/tmp/hermes_entity_spike.lock", []),
     "data-gap-resolver-at-0-10-16": (139, "/tmp/data_gap_resolver.lock", []),
     "hermes-analyst-signal-discovery": (690, "/tmp/hermes_analyst_signal.lock", []),
-    "news-to-catalyst": (408, "/tmp/news_to_catalyst.lock", []),
     "hermes-news-bridge": (415, "/tmp/hermes_news_bridge.lock", []),
     "finviz-proactive-research": (524, "/tmp/finviz_proactive.lock", []),
     "finviz-sector-research": (526, "/tmp/finviz_sector.lock", []),
@@ -64,6 +62,9 @@ EXCLUDED = {
     "catalyst-momentum-engine-overnight": "7.0.0 sender baseline; lock_kind safe_flock",
     # Passed every canary check, then held by the operator 2026-10-14 (~12:35 ET): failing on cron (pool_incomplete).
     "hermes-research-worker-pool": "held 2026-10-14: failing on cron (pool_incomplete)",
+    # Dropped from the wave 2026-10-14 (PR #1729 CI): their existing shadow contracts pin them at shadow.
+    "identity-sweep-stage0": "held 2026-10-14: sw4 shadow contract / --apply live_arg",
+    "news-to-catalyst": "held: unexplained 13:42Z live run + w5 event-consumer contract",
 }
 LANES = sorted(CANARY_WAVE_20261014)
 
@@ -121,7 +122,7 @@ def test_contract_is_reviewed_at_stage_canary(lane):
 
 
 REVIEWED_BEFORE_WAVE = frozenset({
-    "identity-sweep-stage0", "material-change-detector-stage1", "document-mentions-backfill", "trade-ai-scalp-live",
+    "material-change-detector-stage1", "document-mentions-backfill", "trade-ai-scalp-live",
     "finviz-proactive-research", "finviz-sector-research", "proposal-backtest-engine",
 })
 

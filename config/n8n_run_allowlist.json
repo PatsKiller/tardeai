@@ -1259,7 +1259,7 @@
       "dry_run_arg": [
         "--dry-run"
       ],
-      "live_arg": [],
+      "live_arg": null,
       "market_gate": false,
       "output_signal": "data/runtime/news-to-catalyst_last.json"
     },
@@ -2004,9 +2004,7 @@
       "dry_run_arg": [
         "--dry-run"
       ],
-      "live_arg": [
-        "--apply"
-      ],
+      "live_arg": null,
       "market_gate": false,
       "output_signal": "data/runtime/identity-sweep-stage0_last.json"
     },
