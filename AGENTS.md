@@ -4955,6 +4955,8 @@ monitored, not awaited; the gates the standard conditions on natural evidence ke
   were invisible to the dry run, and successful executions soft-deleted under
   `EXECUTIONS_DATA_SAVE_ON_SUCCESS=none` kept `status = 'running'` and read as hangs.*
 
+---
+
 ## 23.20 Advisory market-data lanes on the dispatcher (7.0.0, PROPOSED)
 
 Numbered §23.20 because §23.15–§23.17 are reserved for 4.2.0 (PR #1634, PROPOSED). This subsection **adds one class.
