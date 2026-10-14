@@ -492,8 +492,10 @@ def test_registry_dispatch_errors_hook():
 # ── live registry (read-only) ────────────────────────────────────────────────────────────────────
 
 #: n8n-native lanes (no host line): dispatcher shape without a cron twin.
-N8N_NATIVE_SHADOW = frozenset({"momentum-lifecycle-monitor"})
-N8N_NATIVE_CANARY = frozenset({"heartbeat-watch", "momentum-cache-reconcile"})
+# momentum-cache-reconcile climbed to canary 2026-10-13; the operator returned it to shadow the same day
+# (relay refused live, failing every dispatcher run).
+N8N_NATIVE_SHADOW = frozenset({"momentum-lifecycle-monitor", "momentum-cache-reconcile"})
+N8N_NATIVE_CANARY = frozenset({"heartbeat-watch"})
 
 
 def _live_rows():
@@ -603,6 +605,9 @@ PREEXISTING_LIVE_ARG = frozenset(
         "watch-directives-monitor",
         "maturity-remeasure",
         "trade-ai-scalp-live",
+        # Returned from canary to shadow by the operator 2026-10-13 (relay refused live); its reviewed --apply
+        # live_arg stays in the allowlist and the stage clamp runs every live request dry.
+        "momentum-cache-reconcile",
     }
 )
 #: wave D2: apply-gated scripts (no --apply = dry run that writes nothing; proven by a before/after snapshot under a

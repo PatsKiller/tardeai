@@ -3927,6 +3927,13 @@ GATES = [
         ["tests/test_hermetic_test_guard_20261011.py"],
     ),
     (
+        # /tmp inode exhaustion (2026-10-13): weekly sweep of leaked pytest scratch. Removes only empty matching
+        # dirs older than a day, archives non-empty ones older than a week, never follows symlinks or touches
+        # anything unmatched, and alarms (exit 3) when inode use stays above 80%. tmp_path roots only.
+        "tmp_scratch_cleanup_20261013",
+        ["tests/test_tmp_scratch_cleanup_20261013.py"],
+    ),
+    (
         # ANCHOR: GROK_G8_G9_ENV_20261011 — literal state-root reads in cio_production_eligibility,
         # and DB-only env copies in the hermes bridges and catalyst_momentum_engine. Hermetic:
         # tmp env files, synthetic values. The closure re-measure pins that no report lane flips.

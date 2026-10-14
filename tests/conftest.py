@@ -8,6 +8,20 @@ from pathlib import Path
 
 import pytest
 import tempfile as _tempfile
+import atexit as _atexit
+import shutil as _shutil
+
+# Every pytest process (and CI starts hundreds per run) used to leave the seven mkdtemp() dirs below in
+# /tmp. By 2026-10-13 that was 495k empty dirs, /tmp (tmpfs) ran out of inodes, and live cron jobs failed
+# with "flock: cannot open lock file /tmp/...: No space left on device". All of this process's scratch
+# now lives under one parent that is removed when the process exits.
+_TEST_SCRATCH = _tempfile.mkdtemp(prefix="tradeai_pytest_scratch_")
+_atexit.register(_shutil.rmtree, _TEST_SCRATCH, True)
+
+
+def _scratch(prefix: str) -> str:
+    return _tempfile.mkdtemp(prefix=prefix, dir=_TEST_SCRATCH)
+
 
 # The audit ledger is production evidence. No test may write to the live JSONL or mirror into the
 # audit_ledger_events table (R-01, 2026-09-15). Set before any test module imports audit_ledger.
@@ -16,21 +30,21 @@ os.environ["TRADEAI_AUDIT_LEDGER_DB"] = "0"
 # a row per transition, and a unit test driving _alert() must not mint one in the
 # live database. A test that wants to prove recording works injects a fake writer.
 os.environ["TRADEAI_ALERT_EVENT_DB"] = "0"
-os.environ["TRADEAI_AUDIT_LEDGER_DIR"] = _tempfile.mkdtemp(prefix="tradeai_audit_ledger_tests_")
+os.environ["TRADEAI_AUDIT_LEDGER_DIR"] = _scratch("tradeai_audit_ledger_tests_")
 # Producer hooks record CIO outputs (cio_operator_artifacts); tests must never append
 # to the live persistent store.
 os.environ["CIO_OPERATOR_ARTIFACTS_JSONL"] = os.path.join(
-    _tempfile.mkdtemp(prefix="tradeai_operator_artifacts_tests_"), "cio_operator_artifacts.jsonl")
+    _scratch("tradeai_operator_artifacts_tests_"), "cio_operator_artifacts.jsonl")
 # The host's Comms Editor mode file (live since the operator promoted it) must not decide what a test
 # sends: in live mode deliver_text holds the message, and test_plaintext_fallback_actually_unescapes_on_the_wire
 # failed on every host where the file says live. A test that exercises the editor sets its own mode.
-os.environ.setdefault("COMMS_EDITOR_MODE_FILE", os.path.join(_tempfile.mkdtemp(prefix="tradeai_comms_mode_tests_"), "absent"))
+os.environ.setdefault("COMMS_EDITOR_MODE_FILE", os.path.join(_scratch("tradeai_comms_mode_tests_"), "absent"))
 # Generated reports resolve to persistent-state (lib/portfolio_reports_root.py). A test that
 # imports a report writer without patching its output dir must not write into the live
 # reports tree (2026-10-09).
-os.environ.setdefault("TRADEAI_PORTFOLIO_REPORTS_ROOT", _tempfile.mkdtemp(prefix="tradeai_portfolio_reports_tests_"))
+os.environ.setdefault("TRADEAI_PORTFOLIO_REPORTS_ROOT", _scratch("tradeai_portfolio_reports_tests_"))
 # The host editor-failure policy file must not steer tests either (M5 4d, 2026-09-23).
-os.environ.setdefault("COMMS_EDITOR_FAIL_MODE_FILE", os.path.join(_tempfile.mkdtemp(prefix="tradeai_comms_fail_mode_tests_"), "absent"))
+os.environ.setdefault("COMMS_EDITOR_FAIL_MODE_FILE", os.path.join(_scratch("tradeai_comms_fail_mode_tests_"), "absent"))
 
 # The operator's ~/.pgpass is STALE and must never be a test's credential (n8nmat/b6, 2026-10-09).
 # A worktree has no .env, so every script helper that reads DB_PASSWORD from PROJECT_ROOT/.env
@@ -40,7 +54,7 @@ os.environ.setdefault("COMMS_EDITOR_FAIL_MODE_FILE", os.path.join(_tempfile.mkdt
 # competing for the 100 connection slots. A PGPASSFILE that does not exist turns that into a
 # client-side "fe_sendauth: no password supplied" (same OperationalError class, so tests that skip
 # on a connect error still skip) and the server logs nothing. An explicit PGPASSFILE is kept.
-os.environ.setdefault("PGPASSFILE", os.path.join(_tempfile.mkdtemp(prefix="tradeai_no_pgpass_"), "absent"))
+os.environ.setdefault("PGPASSFILE", os.path.join(_scratch("tradeai_no_pgpass_"), "absent"))
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))

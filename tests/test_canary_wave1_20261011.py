@@ -136,9 +136,10 @@ def test_no_other_shadow_row_gained_a_live_argv():
                 and (row.get("dispatch") or {}).get("class") in LD.R1_ADMITTED_CLASSES):
             assert ALLOW[lane].get("live_arg") is None, lane
     canary = sorted(r for r, row in ROWS.items() if (row.get("scheduler") or {}).get("stage") == "canary")
-    # heartbeat-watch + momentum-cache-reconcile are n8n-native canaries (reconcile climbed 2026-10-13 after
-    # five-facts OBSERVED); research-insight-extractor, the R1 cron canary, climbed to cutover 2026-10-13.
-    assert canary == sorted({"heartbeat-watch", "momentum-cache-reconcile"})
+    # heartbeat-watch is the n8n-native canary. momentum-cache-reconcile climbed to canary 2026-10-13 and the
+    # operator returned it to shadow the same day (relay refused live, failing every dispatcher run);
+    # research-insight-extractor, the R1 cron canary, climbed to cutover 2026-10-13.
+    assert canary == ["heartbeat-watch"]
     cut = sorted(r for r, row in ROWS.items() if (row.get("scheduler") or {}).get("stage") == "cutover")
     assert set(CUTOVER) <= set(cut), cut
 

@@ -1,6 +1,6 @@
 {
  "schema": "N8nRemediationCatalogue@v1",
- "as_of": "2026-10-13",
+ "as_of": "2026-10-14",
  "status": "PROPOSED — operator review before activation (decision 4)",
  "generated_by": "scripts/build_remediation_catalogue.py",
  "sources": {
@@ -5322,7 +5322,7 @@
     "present": true,
     "state": "ACTIVE",
     "scheduler_kind": "n8n",
-    "stage": "canary"
+    "stage": "shadow"
    },
    "allowlisted": true,
    "allowlist_source": "config/n8n_run_allowlist.json",

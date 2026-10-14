@@ -33,8 +33,10 @@ Pure stdlib at import. Never reads an env file and never prints a value.
 """
 from __future__ import annotations
 
+import atexit
 import os
 import re
+import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -350,6 +352,8 @@ def install(*, home: str | None = None) -> dict:
     STATE.allow = session_opted_in()
 
     fixture = Path(tempfile.mkdtemp(prefix="tradeai_hermetic_env_"))
+    # Removed at exit: one per pytest process otherwise accumulates in /tmp (inode exhaustion 2026-10-13).
+    atexit.register(shutil.rmtree, str(fixture), True)
     (fixture / "env").write_text("")
     # Named CURRENT so code that derives a release id from the link's resolved name sees what CI sees.
     (fixture / "CURRENT").mkdir()

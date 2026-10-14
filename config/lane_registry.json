@@ -14992,7 +14992,7 @@
       "owner": "platform",
       "state": "ACTIVE",
       "state_since": "2026-10-12",
-      "state_reason": "Canary 2026-10-13 after five-facts OBSERVED on CURRENT_SESSION; live write limited to resettable shared_momentum_candidates_projection.json; CONFLICT preserved. Autonomous recovery remains cutover-gated.",
+      "state_reason": "Returned to shadow 2026-10-13 (operator): canary live mode was refused by the relay (not on TRADEAI_N8N_RELAY_LIVE_LANES), failing every n8n dispatcher run since 13:27 ET. Re-arm canary after the relay live list admits it.",
       "reason_confidence": "ESTABLISHED",
       "review_by": "2026-10-13",
       "expected_cadence_hours": 0.08333333333333333,
@@ -15009,13 +15009,13 @@
         "kind": "n8n",
         "expression": "dispatcher",
         "timezone": "America/New_York",
-        "stage": "canary",
+        "stage": "shadow",
         "match": "scripts/momentum_cache_reconcile.py"
       },
       "dispatch": {
         "class": "report",
         "retry_policy": "none",
-        "mode": "live",
+        "mode": "dry_run",
         "cron": [
           "*/5 * * * *"
         ],

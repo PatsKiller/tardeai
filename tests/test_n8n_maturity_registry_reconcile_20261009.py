@@ -123,12 +123,9 @@ def test_native_shadow_admissions_are_preserved_before_the_generated_suffix(resu
     for row in committed["lanes"]:
         if row["lane_id"] in native_ids | {"trade-ai-scalp-live"}:
             assert regenerated[row["lane_id"]] == row
-            if row["lane_id"] == "momentum-cache-reconcile":
-                assert row["scheduler"]["stage"] == "canary"
-                assert row["dispatch"]["mode"] == "live"
-            else:
-                assert row["scheduler"]["stage"] == "shadow"
-                assert row["dispatch"]["mode"] == "dry_run"
+            # momentum-cache-reconcile: operator returned it to shadow 2026-10-13 (relay refused live).
+            assert row["scheduler"]["stage"] == "shadow"
+            assert row["dispatch"]["mode"] == "dry_run"
 
 
 def test_canonical_row_order_preserves_actual_shadow_due_requests(committed):
@@ -151,12 +148,13 @@ def test_canonical_row_order_preserves_actual_shadow_due_requests(committed):
         assert canonical[key] == former[key], key
     assert not canonical["errors"]
     assert {item["lane_id"] for item in canonical["items"]} == set(kwargs["lane_filter"])
-    # Monitor + scalp stay dry_run; reconcile canary may be live.
+    # All three are dry_run: momentum-cache-reconcile was returned to shadow by the operator 2026-10-13
+    # (relay refused its live mode, failing every dispatcher run).
     modes = {item["lane_id"]: item["mode"] for item in canonical["items"]}
     assert modes["momentum-lifecycle-monitor"] == "dry_run"
     assert modes["trade-ai-scalp-live"] == "dry_run"
-    assert modes["momentum-cache-reconcile"] == "live"
-    assert set(modes.values()) == {"dry_run", "live"}
+    assert modes["momentum-cache-reconcile"] == "dry_run"
+    assert set(modes.values()) == {"dry_run"}
 
 
 @pytest.mark.parametrize("lane_id", ["momentum-lifecycle-monitor", "momentum-cache-reconcile"])
