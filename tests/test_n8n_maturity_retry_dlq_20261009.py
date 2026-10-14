@@ -53,7 +53,8 @@ def policies():
 def test_policy_file_loads_with_program_values(policies):
     assert policies.default_policy == "transient-2"
     assert policies.breaker_threshold == 3
-    assert dict(policies.class_caps) == {"global": 3, "reserved_priority_max": 1, "heavy": 1, "llm": 1, "ingest": 1,
+    # 2026-10-14 scalp/premarket onboarding: ingest 1 -> 2, global 3 -> 4 (N8N_ONBOARDING_STANDARD.md §6).
+    assert dict(policies.class_caps) == {"global": 4, "reserved_priority_max": 1, "heavy": 1, "llm": 1, "ingest": 2,
                                          "send": 1, "pipeline": 2, "learn": 1}
     assert set(policies.policies) == {"none", "transient-2", "transient-1-slow", "llm-transient"}
     assert policies.get() is rp.UNRESOLVED_POLICY and policies.get("bogus") is rp.UNRESOLVED_POLICY

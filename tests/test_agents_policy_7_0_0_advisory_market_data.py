@@ -54,6 +54,10 @@ BASELINE = {
     "journal-tilt-morning-hook": "sends (momentum_alerts) + schwab_transport in reach",
     "catalyst-momentum-engine-overnight": "advisory send + account_policy account reads in reach",
     "aegis-evening-packet": "sends + api_v2 order verbs in reach",
+    # n8nmat/scalp-premarket-onboard-20261014 (W5 shadow): the --hot-list-only path returns before any handoff, but
+    # the entry script it shares with the */5 early lane statically reaches auto_proposal_generator (advisory send,
+    # account_policy reads). Fix: give the hot-list owner its own entry script (cron + allowlist change, cron grant).
+    "scalp-hot-list": "shared entry script reaches the early-lane proposal handoff (path-insensitive scan)",
 }
 NAMED_SENDER_EXCEPTIONS = frozenset({"trade-ai-scalp-live"})
 

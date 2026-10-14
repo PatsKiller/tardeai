@@ -159,17 +159,18 @@ def test_diagnoser_caps_and_exclusion_quoted_equal_the_code():
 
 def test_class_caps_quoted_equal_the_retry_policies():
     caps = json.loads((ROOT / "config" / "n8n_retry_policies.json").read_text(encoding="utf-8"))["class_caps"]
+    # 2026-10-14 scalp/premarket onboarding: ingest 1 -> 2, global 3 -> 4 (workers stay 3 until the operator drop-in).
     assert caps == {
-        "global": 3,
+        "global": 4,
         "reserved_priority_max": 1,
         "heavy": 1,
         "llm": 1,
-        "ingest": 1,
+        "ingest": 2,
         "send": 1,
         "pipeline": 2,
         "learn": 1,
     }
-    assert "global 3, `heavy` 1, `llm` 1, `ingest` 1, `send` 1, `pipeline` 2, `learn` 1" in _flat(ONBOARD)
+    assert "global 4, `heavy` 1, `llm` 1, `ingest` 2, `send` 1, `pipeline` 2, `learn` 1" in _flat(ONBOARD)
 
 
 def test_dispatcher_naming_quoted_equals_the_gate():

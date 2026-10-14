@@ -5606,7 +5606,7 @@
       "scheduler": {
         "kind": "cron",
         "expression": "*/5 6-11 * * 1-5",
-        "command_text": "cd $PROJ && flock -n /tmp/tradeai_finviz_momentum_scalp.lock timeout 280 env MOMENTUM_SCALP_OUTER_DEADLINE_S=260 $PY scripts/run_finviz_momentum_scalp_scan.py --window early --apply --refresh-if-older-min 15 --sync-signals --generate-proposals --run-validation-fast-path --submit-validation >> logs/finviz_momentum_scalp_scan.log 2>&1",
+        "command_text": "cd $PROJ && flock -n /tmp/tradeai_finviz_momentum_scalp.lock timeout 280 env MOMENTUM_SCALP_OUTER_DEADLINE_S=260 $PY scripts/run_finviz_momentum_scalp_scan.py --window early --apply --refresh-if-older-min 15 --sync-signals --generate-proposals --run-validation-fast-path >> logs/finviz_momentum_scalp_scan.log 2>&1",
         "match": "scripts/run_finviz_momentum_scalp_scan.py --window early"
       },
       "expected_cadence_hours": 0.084,
@@ -5634,7 +5634,8 @@
       },
       "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible).",
       "output_signal_note": "2026-10-09 registry-ops-crons (breach triage SIGNAL_WRONG): was file_mtime momentum_scalp_refresh_receipt.json, written only when a refresh happens (--refresh-if-older-min 15; 'skipped_finviz_refresh_fresh' runs write nothing), so healthy */5 runs read NO_OUTPUT. The line's redirect log gets a line every run. The old expression also carried --submit-validation, which the live line does not.",
-      "scheduler_match_note": "2026-10-14 (n8nmat/scalp-premarket-onboard): match narrowed from 'scripts/run_finviz_momentum_scalp_scan.py' to the --window early line only; the --hot-list-only line (# TRADEAI_LANE scalp-hot-list) has its own row scalp-hot-list. This lane stays on cron: it runs auto_proposal_generator --apply (momentum_scalp advisory Telegram delivery, paper_trade_proposals) and the paper validation fast path, so it is a sender / paper lane (AGENTS §23.14, allowlist never list)."
+      "scheduler_match_note": "2026-10-14 (n8nmat/scalp-premarket-onboard): match narrowed from 'scripts/run_finviz_momentum_scalp_scan.py' to the --window early line only; the --hot-list-only line (# TRADEAI_LANE scalp-hot-list) has its own row scalp-hot-list. This lane stays on cron: it runs auto_proposal_generator --apply (momentum_scalp advisory Telegram delivery, paper_trade_proposals) and the paper validation fast path, so it is a sender / paper lane (AGENTS §23.14, allowlist never list).",
+      "scheduler_command_note": "2026-10-14: command_text synced to the live line (crontab -l L638, read-only). The registry still carried `--submit-validation`, which the live line has not had since 2026-10-09 (output_signal_note above); the live run evaluates the validation fast path with --dry-run only (submit off). Not onboarded to the dispatcher: AGENTS 7.0.0 §23.20 condition (a) fails — its handoff reaches auto_proposal_generator -> account_policy.equity_for_account (Alpaca paper get_account, Schwab account read) and proposal_paper_submitter (scripts/lib/advisory_lane_guard.py)."
     },
     {
       "lane_id": "scalp-hot-list",
@@ -5829,7 +5830,26 @@
         "f_evidence": "core advisory/protection/data path; healthy logs today"
       },
       "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible).",
-      "scheduler_due_note": "2026-10-09 registry-ops-crons: the line fires */5 06:00-09:55 but premarket_watch.py returns before writing its heartbeat after 09:29 (premarket window), so the 09:30-09:55 fires produce nothing by design. supervisor_breach_detector judges the deadline on due_schedules (the fires whose output is due) when present."
+      "scheduler_due_note": "2026-10-09 registry-ops-crons: the line fires */5 06:00-09:55 but premarket_watch.py returns before writing its heartbeat after 09:29 (premarket window), so the 09:30-09:55 fires produce nothing by design. supervisor_breach_detector judges the deadline on due_schedules (the fires whose output is due) when present.",
+      "dispatch": {
+        "mode": "off",
+        "cron": [
+          "*/5 6-9 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W5",
+        "class": "pipeline",
+        "priority": 1,
+        "retry_policy": "none"
+      },
+      "advisory_md_staged": {
+        "policy": "AGENTS.md 7.0.0 §23.20 (PROPOSED; lane_dispatch.ADVISORY_MD_STATUS)",
+        "since": "2026-10-14",
+        "why_off": "Staged inert: dispatch.mode off and no allowlist entry until APPROVE_AGENTS_POLICY_7_0_0 is ratified and merged. An allowlist entry alone would let a forced relay fire reach the moomoo OpenD quote context (the gateway and executor check only the allowlist and the stage clamp), which 7.0.0 is what authorizes.",
+        "activation": "one registry PR after ratification: scheduler.stage shadow + wave W5, dispatch.mode dry_run, and the allowlist entry in ~/n8n-maturity-verification/packets/scalp-premarket-cutover-20261014/lanes/active-trader-premarket-watch.allowlist.json (lock /tmp/at_premarket.lock flock, timeout 240, dry_run_arg [] = the script's no---apply dry run, live_arg null; canary live_arg [\"--apply\"])",
+        "gate_evidence": "scripts/lib/advisory_lane_guard.py scan of scripts/active_trader/premarket_watch.py: market data only (FutuTransport -> OpenQuoteContext; MoomooReadOnlyAccount not in reach), sends only via send_telegram (bypass_router=True at momentum_alerts.py, on the 5.1.0 allowlist), no submit switch; tests/test_agents_policy_7_0_0_advisory_market_data.py"
+      },
+      "adopted_reason": "scalp/premarket onboarding 2026-10-14 (operator: \"move to n8n i approve … its just looking at level 2 on moomoo no trading\"): hand row carrying a reviewed, staged (mode off) dispatch block for the AGENTS 7.0.0 §23.20 class; reconcile_lane_registry.py keeps hand-written fields."
     },
     {
       "lane_id": "active-trader-micro-recorder-premarket",

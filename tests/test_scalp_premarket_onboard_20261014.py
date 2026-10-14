@@ -85,9 +85,49 @@ def test_policy_exception_bounded_to_three_lanes():
 
 
 @pytest.mark.parametrize("lane", NOT_ONBOARDED)
-def test_sender_and_paper_lanes_stay_off_the_dispatcher(lane):
+def test_advisory_lanes_are_not_runnable_before_7_0_0(lane):
+    """No allowlist entry (a forced relay fire is impossible) and no live/dry dispatch until AGENTS 7.0.0 is ACTIVE."""
     row = ROWS[lane]
-    assert "dispatch" not in row and row["scheduler"].get("stage") is None and lane not in ALLOW
+    assert lane not in ALLOW and row["scheduler"].get("stage") is None
+    assert LD.dispatch_mode(row) == "off"
+
+
+#: The allowlist entry the post-ratification activation PR adds (copy in the packet,
+#: lanes/active-trader-premarket-watch.allowlist.json). Pinned here so the activation is a reviewed diff.
+PREMARKET_ENTRY = {
+    "lane_id": "active-trader-premarket-watch",
+    "env_names": ["ACTIVE_TRADER_ALERTS_DIR", "DB_CONN_TRACE", "DB_HOST", "DB_NAME", "DB_PASSWORD", "DB_PORT", "DB_USER",
+                  "PROJECT_ROOT", "SAFE_FLOCK_LOG_DIR", "TRADEAI_PERSISTENT_STATE_ROOT", "TRADEAI_ROOT"],
+    "env_allowlist_mode": "report",
+    "command": ["$PY", "scripts/active_trader/premarket_watch.py"],
+    "lock": "/tmp/at_premarket.lock", "lock_kind": "flock", "timeout_s": 240,
+    "dry_run_arg": [], "live_arg": None, "market_gate": False,
+    "output_signal": "data/active_trader/momentum_alerts_premarket_heartbeat.json",
+}
+
+
+def test_premarket_watch_is_staged_inert_and_admissible_once_7_0_0_is_active():
+    row = ROWS["active-trader-premarket-watch"]
+    assert row["dispatch"]["mode"] == "off" and row["dispatch"]["class"] == "pipeline"
+    assert row["dispatch"]["cron"] == [row["scheduler"]["expression"]] == ["*/5 6-9 * * 1-5"]
+    assert LD.cron_flock_locks(row["scheduler"]["command_text"]) == [PREMARKET_ENTRY["lock"]]
+    assert row["advisory_md_staged"]["policy"].startswith("AGENTS.md 7.0.0 §23.20")
+    # The activation shape (stage shadow, dry_run). premarket_watch.py has no --dry-run flag: its bare command is the
+    # dry run (no journal, no throttle state, no heartbeat, send_fn None) and the cron line passes --apply, which the
+    # 7.0.0 gate accepts as an explicit-apply dry run (lane_dispatch._explicit_apply_dry_run).
+    active = json.loads(json.dumps(row))
+    active["scheduler"]["stage"], active["dispatch"]["mode"] = "shadow", "dry_run"
+    assert LD.advisory_md_admission(active, PREMARKET_ENTRY, status="PROPOSED")[0] is False
+    assert LD.advisory_md_admission(active, PREMARKET_ENTRY, status="ACTIVE") == (True, "advisory_md_admitted")
+    canary = dict(PREMARKET_ENTRY, live_arg=["--apply"])
+    assert LD.advisory_md_admission(active, canary, status="ACTIVE") == (True, "advisory_md_admitted")
+    assert LD.advisory_md_static_errors(active, PREMARKET_ENTRY) == []
+
+
+def test_early_lane_command_text_is_the_live_line_without_submit():
+    ct = ROWS["finviz-momentum-scalp-early-lane"]["scheduler"]["command_text"]
+    assert "--submit-validation" not in ct and "--run-validation-fast-path" in ct
+    assert LD.cron_flock_locks(ct) == ["/tmp/tradeai_finviz_momentum_scalp.lock"]
 
 
 def test_hot_list_line_has_its_own_row_and_early_lane_match_is_narrowed():

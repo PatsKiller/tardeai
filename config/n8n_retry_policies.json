@@ -3,7 +3,7 @@
   "as_of": "2026-10-09",
   "default_policy": "transient-2",
   "breaker_threshold": 3,
-  "class_caps": {"global": 3, "reserved_priority_max": 1, "heavy": 1, "llm": 1, "ingest": 1, "send": 1, "pipeline": 2, "learn": 1},
+  "class_caps": {"global": 4, "reserved_priority_max": 1, "heavy": 1, "llm": 1, "ingest": 2, "send": 1, "pipeline": 2, "learn": 1},
   "policies": {
     "none": {
       "description": "Never retry. Senders and learning writers: a retry could double-send or double-write.",
