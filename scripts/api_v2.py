@@ -40094,8 +40094,14 @@ def _schwab_access_fields() -> dict:
 
         st = _sam.status()
     except Exception as exc:  # noqa: BLE001 — an unreadable switch is reported, never guessed as normal
-        st = {"mode": "unknown", "paused": False, "reads_allowed": True, "reason": None, "since": None,
-              "error": f"{type(exc).__name__}: {exc}"[:160]}
+        st = {
+            "mode": "unknown",
+            "paused": False,
+            "reads_allowed": True,
+            "reason": None,
+            "since": None,
+            "error": f"{type(exc).__name__}: {exc}"[:160],
+        }
     paused = bool(st.get("paused"))
     return {
         "schwab_access_mode": st.get("mode"),
@@ -40241,7 +40247,8 @@ def _schwab_accounts_live(query=None):
         _acct_rows = [
             h
             for h in holdings
-            if str(h.get("account") or "").strip().lower() in (ak_canonical.lower(), ak_short.lower(), _resolve(ak_short))
+            if str(h.get("account") or "").strip().lower()
+            in (ak_canonical.lower(), ak_short.lower(), _resolve(ak_short))
         ]
         _sync = _last_sync.get(ak_canonical.lower()) or _last_sync.get(_resolve(ak_canonical).lower()) or {}
         _schwab_ok = (not _access["schwab_paused"]) and str(_sync.get("status") or "") == "ok"
