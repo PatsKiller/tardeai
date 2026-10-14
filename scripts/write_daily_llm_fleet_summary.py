@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
 """write_daily_llm_fleet_summary.py — Write daily fleet summary markdown. Read-only."""
+try:  # cc_auth (2026-10-14): service token for loopback Command Center (:7777) calls
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+except ImportError:  # pragma: no cover - scripts/ not on sys.path
+    import sys as _cc_sys
+    from pathlib import Path as _CcPath
+    _cc_sys.path.insert(0, str(next(p for p in _CcPath(__file__).resolve().parents if p.name == "scripts")))
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+
 import argparse, json, sys, urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
@@ -13,7 +21,7 @@ ROLES = {"gemma3:4b": "STANDARD/REALTIME",
 
 def _get(url, timeout=10):
     try:
-        with urllib.request.urlopen(url, timeout=timeout) as r: return json.loads(r.read())
+        with _cc_urlopen(url, timeout=timeout) as r: return json.loads(r.read())
     except: return None
 
 def main():

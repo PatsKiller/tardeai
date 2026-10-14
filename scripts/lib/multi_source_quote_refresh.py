@@ -2,6 +2,14 @@
 Multi-Source Quote Refresh — when finviz is stale, pull quotes from
 Schwab API first, then yfinance fallback. Never serve stale prices.
 """
+try:  # cc_auth (2026-10-14): service token for loopback Command Center (:7777) calls
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+except ImportError:  # pragma: no cover - scripts/ not on sys.path
+    import sys as _cc_sys
+    from pathlib import Path as _CcPath
+    _cc_sys.path.insert(0, str(next(p for p in _CcPath(__file__).resolve().parents if p.name == "scripts")))
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+
 import json, os, sys, time
 
 TRADEAI_ROOT = "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
@@ -48,7 +56,7 @@ class MultiSourceRefresh:
         # Schwab first
         for sym in symbols[:20]:
             try:
-                r = urllib.request.urlopen(f'http://localhost:7777/api/v2/brokers/schwab/quote/{sym}', timeout=5)
+                r = _cc_urlopen(f'http://localhost:7777/api/v2/brokers/schwab/quote/{sym}', timeout=5)
                 if r.status == 200:
                     d = json.loads(r.read()).get('data', {})
                     px = d.get('lastPrice') or d.get('mark')

@@ -2,6 +2,14 @@
 Quote Validator — cross-references quotes from multiple sources
 and identifies pricing discrepancies that cause P&L errors.
 """
+try:  # cc_auth (2026-10-14): service token for loopback Command Center (:7777) calls
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+except ImportError:  # pragma: no cover - scripts/ not on sys.path
+    import sys as _cc_sys
+    from pathlib import Path as _CcPath
+    _cc_sys.path.insert(0, str(next(p for p in _CcPath(__file__).resolve().parents if p.name == "scripts")))
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+
 import json, os, sys, time, subprocess
 from pathlib import Path
 
@@ -49,7 +57,7 @@ class QuoteValidator:
                 code = f"""
 import urllib.request, json
 try:
-    r = urllib.request.urlopen('http://localhost:7777/api/v2/brokers/schwab/quote/{sym}', timeout=5)
+    r = _cc_urlopen('http://localhost:7777/api/v2/brokers/schwab/quote/{sym}', timeout=5)
     d = json.loads(r.read()).get('data', {{}})
     px = d.get('lastPrice') or d.get('last_price') or d.get('mark')
     print(json.dumps({{'{sym}': px}}) if px else '')

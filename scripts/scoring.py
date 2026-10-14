@@ -8,6 +8,14 @@ Pipeline per ticker:
   4. Returns ScoredTicker with grade, decision, per-pillar breakdown, and LLM narrative
 """
 from __future__ import annotations
+try:  # cc_auth (2026-10-14): service token for loopback Command Center (:7777) calls
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+except ImportError:  # pragma: no cover - scripts/ not on sys.path
+    import sys as _cc_sys
+    from pathlib import Path as _CcPath
+    _cc_sys.path.insert(0, str(next(p for p in _CcPath(__file__).resolve().parents if p.name == "scripts")))
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+
 import json, logging, os
 from typing import Any, Dict, List, Optional
 import threading
@@ -389,7 +397,7 @@ def _vix_now():
         try:
             import urllib.request, json as _j, os as _os
             base = _os.getenv("LOCAL_API_BASE", "http://127.0.0.1:7777")
-            with urllib.request.urlopen(f"{base}/api/v2/trade-ai", timeout=5) as r:
+            with _cc_urlopen(f"{base}/api/v2/trade-ai", timeout=5) as r:
                 d = _j.load(r); d = d.get("data", d)
                 _VIX_CACHE["v"] = float(d.get("vix")) if d.get("vix") is not None else None
         except Exception:

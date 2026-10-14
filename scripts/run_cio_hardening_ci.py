@@ -23,6 +23,9 @@ REPO = Path(__file__).resolve().parents[1]
 
 # Ordered, explicit suite list (Phase 10.2)
 GATES = [
+    # ANCHOR: CC_TAILSCALE_IDENTITY_AUTH_20261014 — CC auth: tailnet identity on the serve socket,
+    # service token on :7777, step-up refusal on order/stop/credential/risk routes. Hermetic.
+    ("cc_tailscale_identity_auth_20261014", ["tests/test_cc_tailscale_identity_auth_20261014.py"]),
     ("refactor_shard_03_20261011", ["tests/test_refactor_shard_03_20261011.py"]),
     # ANCHOR: REFACTOR_SHARDS_05_08_LOCKS_20261011 — exact cron PID/OS lock identity, source only.
     ("refactor_shards_05_08_locks_20261011", ["tests/test_refactor_shards_05_08_locks_20261011.py"]),

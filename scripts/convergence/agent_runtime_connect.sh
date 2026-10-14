@@ -6,6 +6,7 @@
 # HTTP 200 / read_only / connected:true / zero-authority / reader_role=agentic_runtime_reader; rolls
 # back on any failure. The DSN is NEVER printed or persisted in evidence. DRY-RUN by default.
 set -u -o pipefail
+CC_CURL="${CC_CURL:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/cc_curl.sh}"  # cc_auth 2026-10-14: loopback CC calls carry the service token
 umask 077
 BASE="http://127.0.0.1:7777"; EP="$BASE/api/v3/agent-runtime/runs?limit=1"
 LIB="$(dirname "$0")/convergence_lib.py"
@@ -30,7 +31,7 @@ then
 fi
 
 # current posture
-resp="$(curl -sS --max-time 8 -w $'\n%{http_code}' "$EP" 2>/dev/null || printf '\n000')"
+resp="$("$CC_CURL" -sS --max-time 8 -w $'\n%{http_code}' "$EP" 2>/dev/null || printf '\n000')"
 code="${resp##*$'\n'}"; body="${resp%$'\n'*}"
 ok="$(PY_BODY="$body" PY_CODE="$code" python3 - "$LIB" "$EXPECT_ROLE" <<'PY'
 import os,sys,json,importlib.util

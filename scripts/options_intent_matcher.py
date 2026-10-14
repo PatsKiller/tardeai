@@ -12,6 +12,13 @@ option chain (read-only market data), rank the contracts that fit the plan, and 
 No proposal is staged and no order path exists (MBI_BEHAVIOR = 0).
 """
 from __future__ import annotations
+try:  # cc_auth (2026-10-14): service token for loopback Command Center (:7777) calls
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+except ImportError:  # pragma: no cover - scripts/ not on sys.path
+    import sys as _cc_sys
+    from pathlib import Path as _CcPath
+    _cc_sys.path.insert(0, str(next(p for p in _CcPath(__file__).resolve().parents if p.name == "scripts")))
+    from lib.cc_client import cc_urlopen as _cc_urlopen
 
 import argparse
 import json
@@ -40,7 +47,7 @@ def schwab_chain(sym: str, side: str) -> dict:
     import urllib.request
     base = os.environ.get("TRADEAI_CC_API_BASE", CC_BASE).rstrip("/")
     url = f"{base}/schwab/option-chain?" + urllib.parse.urlencode({"symbol": sym, "strikes": 40, "side": side})
-    with urllib.request.urlopen(url, timeout=45) as r:
+    with _cc_urlopen(url, timeout=45) as r:
         d = json.loads(r.read().decode())
     return d.get("data", d) if isinstance(d, dict) else {}
 

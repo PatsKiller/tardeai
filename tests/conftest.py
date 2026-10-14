@@ -30,6 +30,9 @@ os.environ["TRADEAI_AUDIT_LEDGER_DB"] = "0"
 # a row per transition, and a unit test driving _alert() must not mint one in the
 # live database. A test that wants to prove recording works injects a fake writer.
 os.environ["TRADEAI_ALERT_EVENT_DB"] = "0"
+# cc_auth (2026-10-14): lib/cc_client attaches the host's Command Center service token to loopback
+# :7777 calls. No test may read the live token file; point it at a path that never exists.
+os.environ["TRADEAI_CC_SERVICE_TOKEN_FILE"] = os.path.join(_scratch("tradeai_cc_token_tests_"), "absent_cc_service_token")
 os.environ["TRADEAI_AUDIT_LEDGER_DIR"] = _scratch("tradeai_audit_ledger_tests_")
 # Producer hooks record CIO outputs (cio_operator_artifacts); tests must never append
 # to the live persistent store.

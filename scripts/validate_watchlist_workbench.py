@@ -6,6 +6,14 @@ Checks: DB tables, API endpoints, source counts, dashboard HTML, cron, logs.
 Usage:
     python3 scripts/validate_watchlist_workbench.py [--json]
 """
+try:  # cc_auth (2026-10-14): service token for loopback Command Center (:7777) calls
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+except ImportError:  # pragma: no cover - scripts/ not on sys.path
+    import sys as _cc_sys
+    from pathlib import Path as _CcPath
+    _cc_sys.path.insert(0, str(next(p for p in _CcPath(__file__).resolve().parents if p.name == "scripts")))
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+
 import json, os, sys, subprocess, urllib.request
 from pathlib import Path
 
@@ -22,7 +30,7 @@ def check(name: str, passed: bool, detail: str = ""):
 
 def api_get(path):
     req = urllib.request.Request(f"{API_BASE}{path}", headers={"User-Agent": "validate/1.0"})
-    r = urllib.request.urlopen(req, timeout=10)
+    r = _cc_urlopen(req, timeout=10)
     return json.loads(r.read())
 
 
@@ -82,7 +90,7 @@ def main():
     try:
         payload = json.dumps({"symbols": ["TEST_VALIDATE"], "agent": "maria", "request_type": "research", "note": "validation test"}).encode()
         req = urllib.request.Request(f"{API_BASE}/api/v2/watchlist/submit", data=payload, headers={"Content-Type": "application/json"}, method="POST")
-        resp = json.loads(urllib.request.urlopen(req, timeout=10).read())
+        resp = json.loads(_cc_urlopen(req, timeout=10).read())
         check("Submit creates job", resp.get("ok", False) or True, f"response: {resp}")
     except Exception as e:
         check("Submit test", False, str(e))

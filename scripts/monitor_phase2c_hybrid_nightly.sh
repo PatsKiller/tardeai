@@ -2,6 +2,7 @@
 # monitor_phase2c_hybrid_nightly.sh — Watch Phase 2C hybrid RAG nightly run.
 # Read-only. No state changes. Safe to run anytime.
 set -uo pipefail
+CC_CURL="${CC_CURL:-$(cd "$(dirname "${BASH_SOURCE[0]}")/." && pwd)/cc_curl.sh}"  # cc_auth 2026-10-14: loopback CC calls carry the service token
 
 PROJ=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
 cd "$PROJ"
@@ -20,5 +21,5 @@ echo "=== ollama ps ==="
 ollama ps 2>/dev/null || true
 echo
 echo "=== gpu ==="
-curl -s http://localhost:7777/api/v2/gpu-status 2>/dev/null | python3 -m json.tool 2>/dev/null | grep -E "qwen3-embedding|gemma|qwen3:14b|nomic|vram" || echo "(unavailable)"
+"$CC_CURL" -s http://localhost:7777/api/v2/gpu-status 2>/dev/null | python3 -m json.tool 2>/dev/null | grep -E "qwen3-embedding|gemma|qwen3:14b|nomic|vram" || echo "(unavailable)"
 '

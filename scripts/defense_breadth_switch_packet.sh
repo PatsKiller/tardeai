@@ -24,6 +24,7 @@
 #
 # EXIT CODES: 0 ok/dry-run · 2 blocked (gate failed) · 3 smoke failed.
 set -euo pipefail
+CC_CURL="${CC_CURL:-$(cd "$(dirname "${BASH_SOURCE[0]}")/." && pwd)/cc_curl.sh}"  # cc_auth 2026-10-14: loopback CC calls carry the service token
 
 readonly ACK_REQUIRED="DEFENSE_BREADTH_SWITCH_EXACT20_SHADOW"
 readonly REPO_DEFAULT=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
@@ -95,11 +96,11 @@ smoke() {
   local fail=0
   for ep in defense/posture sectors/monitor defense/recommendations; do
     local code
-    code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 "$LOOPBACK/api/v2/$ep" || echo 000)"
+    code="$("$CC_CURL" -s -o /dev/null -w '%{http_code}' --max-time 8 "$LOOPBACK/api/v2/$ep" || echo 000)"
     if [[ "$code" != "200" ]]; then log "smoke|$ep|HTTP $code|FAIL"; fail=1; else log "smoke|$ep|HTTP 200|ok"; fi
   done
   # Assert the exact-20 switch surfaced quality/quarantine fields on sectors/monitor.
-  curl -s --max-time 8 "$LOOPBACK/api/v2/sectors/monitor" \
+  "$CC_CURL" -s --max-time 8 "$LOOPBACK/api/v2/sectors/monitor" \
     | "$PYTHON" -c 'import sys,json; d=json.load(sys.stdin); p=d.get("data",d); assert "data_quality" in p, "data_quality missing"; print("smoke|sectors/monitor|data_quality present|ok")' \
     || { log "smoke|data_quality|FAIL"; fail=1; }
   return $fail

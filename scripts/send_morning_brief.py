@@ -8,6 +8,14 @@ Usage:
     .venv/bin/python scripts/send_morning_brief.py --dry-run
     .venv/bin/python scripts/send_morning_brief.py --chat-id <chat_id>
 """
+try:  # cc_auth (2026-10-14): service token for loopback Command Center (:7777) calls
+    from lib.cc_client import cc_headers as _cc_headers
+except ImportError:  # pragma: no cover - scripts/ not on sys.path
+    import sys as _cc_sys
+    from pathlib import Path as _CcPath
+    _cc_sys.path.insert(0, str(next(p for p in _CcPath(__file__).resolve().parents if p.name == "scripts")))
+    from lib.cc_client import cc_headers as _cc_headers
+
 import argparse
 import json
 import logging
@@ -30,7 +38,7 @@ def fetch_brief():
     """Fetch morning brief from local API."""
     import requests
     try:
-        r = requests.get("http://localhost:7777/api/v2/morning-brief", timeout=10)
+        r = requests.get("http://localhost:7777/api/v2/morning-brief", headers=_cc_headers("http://localhost:7777/api/v2/morning-brief"), timeout=10)
         r.raise_for_status()
         d = r.json()
         if d.get("ok"):

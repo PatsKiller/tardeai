@@ -26,6 +26,7 @@
 # EXIT CODES: 0 ok · 2 usage/gate blocked · 3 prepare-only refusal · 5 step failed
 # =============================================================================
 set -euo pipefail
+CC_CURL="${CC_CURL:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/cc_curl.sh}"  # cc_auth 2026-10-14: loopback CC calls carry the service token
 
 readonly PACKET="B:watch_deploy"
 readonly REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -146,9 +147,9 @@ mkdir -p "$BACKUP_DIR"
 run_acceptance() {
   command -v curl >/dev/null 2>&1 || { note "curl unavailable — skipping acceptance"; return 0; }
   step "ACCEPTANCE (5-symbol + 200-card)"
-  local code; code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$HEALTH_URL" || echo 000)"
+  local code; code="$("$CC_CURL" -s -o /dev/null -w '%{http_code}' --max-time 10 "$HEALTH_URL" || echo 000)"
   note "GET decision/summary -> HTTP $code"
-  local cards; cards="$(curl -s --max-time 15 "$CARDS_URL" || echo '')"
+  local cards; cards="$("$CC_CURL" -s --max-time 15 "$CARDS_URL" || echo '')"
   local n; n="$(printf '%s' "$cards" | "$PYTHON" -c 'import sys,json;
 d=json.load(sys.stdin); a=d.get("data",d); a=a.get("cards",a) if isinstance(a,dict) else a
 print(len(a) if isinstance(a,list) else 0)' 2>/dev/null || echo 0)"

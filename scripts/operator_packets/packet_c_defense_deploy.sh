@@ -29,6 +29,7 @@
 # EXIT CODES: 0 ok · 2 usage/gate blocked · 3 prepare-only refusal · 5 step failed
 # =============================================================================
 set -euo pipefail
+CC_CURL="${CC_CURL:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/cc_curl.sh}"  # cc_auth 2026-10-14: loopback CC calls carry the service token
 
 readonly PACKET="C:defense_deploy"
 readonly REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -156,7 +157,7 @@ validate_payloads() {
   command -v curl >/dev/null 2>&1 || { note "curl unavailable — cannot validate payloads"; return 1; }
   local fail=0
   for ep in defense/posture sectors/monitor defense/recommendations; do
-    local code; code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 "$LOOPBACK/api/v2/$ep" || echo 000)"
+    local code; code="$("$CC_CURL" -s -o /dev/null -w '%{http_code}' --max-time 8 "$LOOPBACK/api/v2/$ep" || echo 000)"
     if [[ "$code" == "200" ]]; then note "  payload $ep -> 200 ok"; else note "  payload $ep -> $code FAIL"; fail=1; fi
   done
   return $fail

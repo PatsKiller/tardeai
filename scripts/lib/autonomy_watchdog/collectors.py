@@ -1,5 +1,12 @@
 """Observe existing intelligence-loop artifacts. Never fabricate activity."""
 from __future__ import annotations
+try:  # cc_auth (2026-10-14): service token for loopback Command Center (:7777) calls
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+except ImportError:  # pragma: no cover - scripts/ not on sys.path
+    import sys as _cc_sys
+    from pathlib import Path as _CcPath
+    _cc_sys.path.insert(0, str(next(p for p in _CcPath(__file__).resolve().parents if p.name == "scripts")))
+    from lib.cc_client import cc_urlopen as _cc_urlopen
 
 import json
 import os
@@ -469,7 +476,7 @@ def collect_host_health() -> dict[str, Any]:
     """Best-effort /api/v2/health; fail-soft."""
     try:
         import urllib.request
-        with urllib.request.urlopen("http://127.0.0.1:7777/api/v2/health", timeout=4) as resp:
+        with _cc_urlopen("http://127.0.0.1:7777/api/v2/health", timeout=4) as resp:
             data = json.loads(resp.read().decode())
     except Exception:
         data = {}

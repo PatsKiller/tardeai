@@ -18,6 +18,13 @@ Run during market hours (quotes must be <60m fresh):
 Then confirm each order in Telegram (or the web drawer) one by one.
 """
 from __future__ import annotations
+try:  # cc_auth (2026-10-14): service token for loopback Command Center (:7777) calls
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+except ImportError:  # pragma: no cover - scripts/ not on sys.path
+    import sys as _cc_sys
+    from pathlib import Path as _CcPath
+    _cc_sys.path.insert(0, str(next(p for p in _CcPath(__file__).resolve().parents if p.name == "scripts")))
+    from lib.cc_client import cc_urlopen as _cc_urlopen
 
 import json
 import sys
@@ -32,11 +39,11 @@ BASE = "http://127.0.0.1:7777"
 def post(path: str, body: dict) -> dict:
     req = urllib.request.Request(BASE + path, data=json.dumps(body).encode(),
                                  headers={"Content-Type": "application/json"})
-    return json.loads(urllib.request.urlopen(req, timeout=120).read())
+    return json.loads(_cc_urlopen(req, timeout=120).read())
 
 
 def get(path: str) -> dict:
-    return json.loads(urllib.request.urlopen(BASE + path, timeout=120).read())
+    return json.loads(_cc_urlopen(BASE + path, timeout=120).read())
 
 
 def candidates() -> list[dict]:

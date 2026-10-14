@@ -1,8 +1,16 @@
 #!/usr/bin/env python3
 """Regression: /api/v2/open-trades/intelligence shows only true current positions (no stale phantoms).
 Exits non-zero on any failure."""
+try:  # cc_auth (2026-10-14): service token for loopback Command Center (:7777) calls
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+except ImportError:  # pragma: no cover - scripts/ not on sys.path
+    import sys as _cc_sys
+    from pathlib import Path as _CcPath
+    _cc_sys.path.insert(0, str(next(p for p in _CcPath(__file__).resolve().parents if p.name == "scripts")))
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+
 import json, re, sys, urllib.request
-raw = urllib.request.urlopen("http://localhost:7777/api/v2/open-trades/intelligence", timeout=60).read().decode()
+raw = _cc_urlopen("http://localhost:7777/api/v2/open-trades/intelligence", timeout=60).read().decode()
 json.loads(raw, parse_constant=lambda x: (_ for _ in ()).throw(ValueError(f"bare {x}")))  # strict: no NaN/Inf
 d = json.loads(raw); d = d.get("data", d)
 rows = d["positions"]; s = d["summary"]; exc = d.get("excluded_items", [])

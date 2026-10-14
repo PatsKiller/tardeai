@@ -1,5 +1,12 @@
 """stop_consensus_check.py — Compare live protective stops to Street consensus mean targets."""
 from __future__ import annotations
+try:  # cc_auth (2026-10-14): service token for loopback Command Center (:7777) calls
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+except ImportError:  # pragma: no cover - scripts/ not on sys.path
+    import sys as _cc_sys
+    from pathlib import Path as _CcPath
+    _cc_sys.path.insert(0, str(next(p for p in _CcPath(__file__).resolve().parents if p.name == "scripts")))
+    from lib.cc_client import cc_urlopen as _cc_urlopen
 
 import json
 from pathlib import Path
@@ -201,7 +208,7 @@ def _load_broker_live_stops(project_root: Path | None = None) -> dict[str, dict]
         try:
             import urllib.request
 
-            with urllib.request.urlopen("http://127.0.0.1:7777/api/v2/holdings/live-stops", timeout=20) as resp:
+            with _cc_urlopen("http://127.0.0.1:7777/api/v2/holdings/live-stops", timeout=20) as resp:
                 payload = json.loads(resp.read().decode())
             for bs in ((payload.get("data") or payload).get("by_key") or {}).values():
                 _merge_live_stop(

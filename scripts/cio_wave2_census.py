@@ -11,6 +11,13 @@ scoreboard can be checked rather than trusted.
 READ_ONLY_ADVISORY. MBI=0. Reads only; writes nothing but --out.
 """
 from __future__ import annotations
+try:  # cc_auth (2026-10-14): service token for loopback Command Center (:7777) calls
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+except ImportError:  # pragma: no cover - scripts/ not on sys.path
+    import sys as _cc_sys
+    from pathlib import Path as _CcPath
+    _cc_sys.path.insert(0, str(next(p for p in _CcPath(__file__).resolve().parents if p.name == "scripts")))
+    from lib.cc_client import cc_urlopen as _cc_urlopen
 
 NO_CONSUMER_REASON = (
     "operator-invoked audit CLI: CIOWave2Census@v1 exists so the Wave 2 "
@@ -39,7 +46,7 @@ AUTHORITY = "READ_ONLY_ADVISORY"
 
 def _http_status(url: str, timeout: float = 10.0) -> int:
     try:
-        with urllib.request.urlopen(url, timeout=timeout) as resp:
+        with _cc_urlopen(url, timeout=timeout) as resp:
             return int(resp.status)
     except Exception:
         return 0
@@ -47,7 +54,7 @@ def _http_status(url: str, timeout: float = 10.0) -> int:
 
 def _http_json(url: str, timeout: float = 30.0) -> dict[str, Any]:
     try:
-        with urllib.request.urlopen(url, timeout=timeout) as resp:
+        with _cc_urlopen(url, timeout=timeout) as resp:
             return json.loads(resp.read().decode("utf-8"))
     except Exception:
         return {}

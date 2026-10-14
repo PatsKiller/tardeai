@@ -1,0 +1,159 @@
+# Command Center authentication (2026-10-14, SPCX incident security review).
+#
+# Operator decision: "tailscale identity now, no hardware key".
+#
+# Two listeners in ONE portfolio_server process (same app, same handler):
+#
+#   service      127.0.0.1:7777  loopback callers (cron, agents, n8n relay, health probes).
+#                                 Requires the per-host service token (header below), read from a
+#                                 0600 file OUTSIDE the repo. Tailscale-User-* headers are IGNORED
+#                                 here: any local process can forge them on a direct connection.
+#   serve_proxy  unix socket     the ONLY target `tailscale serve` should proxy to (or 127.0.0.1:7779
+#                                 with transport: tcp). Requests here
+#                                 must carry Tailscale-User-Login in allowed_logins. tailscale serve
+#                                 strips client-supplied copies of Tailscale-User-* and sets them from
+#                                 the tailnet identity (absent for tagged devices and Funnel).
+#
+# Rollout modes:
+#   enforce: false               middleware is OFF (legacy behaviour: every route open). Kill switch.
+#   enforce: true, report_only: true
+#                                 every would-be denial is LOGGED (decision_log + server log) and the
+#                                 request is ALLOWED. Use this to find unmigrated callers.
+#   enforce: true, report_only: false
+#                                 denials are returned (401 service listener / 403 serve listener).
+# Env overrides (systemd drop-in, no release needed): TRADEAI_CC_AUTH_ENFORCE=0|1,
+# TRADEAI_CC_AUTH_REPORT_ONLY=0|1, TRADEAI_CC_SERVICE_TOKEN_FILE=<path>.
+#
+# report_only is committed TRUE so promoting this code can never lock the operator or an unmigrated
+# local caller out before the operator packet (cc-tailscale-identity-20261014) has generated the token
+# and re-pointed `tailscale serve`. Packet step 6 flips it (drop-in TRADEAI_CC_AUTH_REPORT_ONLY=0).
+#
+# step_up is INDEPENDENT of report_only: dangerous routes refuse (403) from the moment this code is
+# served, on BOTH listeners, until TOTP step-up exists.
+cc_auth:
+  enforce: true
+  report_only: true
+
+  # Tailnet login names (Tailscale-User-Login), compared case-insensitively.
+  # Confirmed 2026-10-14 from `tailscale status --json` (User map): the operator's 4 devices
+  # (Lenovo_Aura, Pixel 11 Pro XL, lbigjohn718, John's S26+) are all owned by this login, untagged.
+  allowed_logins:
+    - john@jwwhiting.com
+  identity_header: Tailscale-User-Login
+
+  listeners:
+    service:
+      host: 127.0.0.1          # PORTFOLIO_SERVER_BIND env still wins when set
+      port: 7777
+    serve_proxy:
+      enabled: true
+      # unix (default): a 0600 socket in a 0700 dir owned by the service user. Only that uid and root
+      #   (tailscaled runs as root) can connect, so OTHER local uids cannot forge identity headers.
+      #   `tailscale serve --bg --https=443 unix:<resolved path>` (tailscale >= 1.98.8 verified).
+      # tcp: 127.0.0.1:<port> — any local uid can connect and forge Tailscale-User-Login.
+      transport: unix
+      unix_socket: ${XDG_RUNTIME_DIR}/tradeai-cc/serve.sock   # dedicated 0700 dir; unit sets XDG_RUNTIME_DIR=/run/user/1000
+      host: 127.0.0.1          # tcp only; must be loopback or the listener refuses to start
+      port: 7779               # tcp only
+
+  service_token:
+    header: X-TradeAI-Service-Token
+    file: ~/.config/tradeai/cc_service_token   # 0600, never in the repo; group/other bits => rejected
+    min_length: 32
+    accept_bearer: true        # also accept "Authorization: Bearer <token>"
+
+  # Service-listener paths answered WITHOUT a token (GET only, exact match). Liveness only — no
+  # portfolio data. The serve_proxy listener has NO exemptions.
+  service_exempt_paths:
+    - /api/health
+    - /api/v2/health
+    - /v3/build-meta.json
+
+  # Denials (and report_only would-be denials, and step-up refusals) are appended here as JSONL.
+  # Never contains a token value.
+  decision_log: ~/.local/state/tradeai/cc_auth_decisions.jsonl
+
+  # WS4-02 (2026-10-14): routes refused OUTRIGHT — on both listeners, whatever enforce, report_only
+  # or step_up.mode say. POST /api/v2/admin/secrets writes Bitwarden SM + tmpfs + disk .env
+  # (TELEGRAM_BOT_TOKEN, SCHWAB_CALLBACK_URL, *_DSN ...). Until operator step-up (TOTP) exists there is
+  # no identity strong enough to allow it: secret writes are CLI-only. The handler additionally takes
+  # its audit actor from the authenticated principal (never the body) and refuses without one.
+  always_refuse:
+    - action: secret_write
+      methods: [POST, PUT, PATCH, DELETE]
+      pattern: /api/v2/admin/secrets
+
+  # WS4-03 CSRF. tailscale serve stamps the operator's identity on a request a hostile page forged
+  # from the operator's own device, so state-changing methods must also prove same-origin.
+  csrf:
+    # Exact origins (scheme://host[:port]). Echoed as Access-Control-Allow-Origin; never "*".
+    allowed_origins:
+      - https://ms01-openclaw.tail163d14.ts.net
+      - http://localhost:7789          # CC v3 vite dev server (apps/command-center-v3/vite.config.ts)
+      - http://127.0.0.1:7789
+    allowed_fetch_sites: [same-origin, none]
+    # Enforced even when report_only is true AND when enforce is false.
+    hard_routes:
+      - action: secret_admin
+        methods: [POST, PUT, PATCH, DELETE]
+        pattern: /api/v2/admin/(secrets|validate-secret)
+      - action: broker_orders
+        methods: [POST, PUT, PATCH, DELETE]
+        pattern: /api/v2/broker-orders/.+
+      - action: kill_switch_disable
+        methods: [POST, PUT, PATCH, DELETE]
+        pattern: /api/v2/execution/kill-switches/(disable|clear|release|reset)
+      - action: unlock
+        methods: [POST, PUT, PATCH, DELETE]
+        pattern: /api/v[23]/(.+/)?unlock(/.*)?
+    # Signed CIO action links render a same-origin HTML <form method="post"> (urlencoded). Allowed
+    # content types widen to application/x-www-form-urlencoded, but Origin or Sec-Fetch-Site must be
+    # PRESENT and same-origin on every listener (a cross-site form post carries a foreign Origin).
+    form_routes:
+      - action: cio_action_link
+        methods: [POST]
+        pattern: /v3/go/cio/.+
+    # Stop-direction routes: same-origin required (Origin/Sec-Fetch-Site), but NO content-type rule
+    # and NEVER step-up, so stopping stays easy. Follow report_only like ordinary routes.
+    stop_routes:
+      - action: kill_switch_enable
+        methods: [POST]
+        pattern: /api/v2/execution/kill-switches/(enable|engage)
+      - action: panic
+        methods: [POST]
+        pattern: /api/v[23]/(.+/)?panic(/.*)?
+
+  step_up:
+    mode: enforce              # enforce | report_only | off
+    # false: a valid service token does NOT bypass step-up (no local caller posts to these routes
+    # on a schedule; see the operator packet for the one manual script affected).
+    service_token_bypass: false
+    # Route classes requiring step-up. Matched against the URL path (query string removed) with
+    # re.fullmatch, for the listed methods only.
+    routes:
+      - action: order_pilot
+        methods: [POST]
+        pattern: /api/v2/broker-orders/(pilot/(arm|execute|cancel)|approve|request-approval)
+      - action: order_route
+        methods: [POST]
+        pattern: /api/v2/broker-proposals/(route|route/confirm|manual-submit|promote-from-paper)
+      - action: order_execute
+        methods: [POST]
+        pattern: /api/v2/(snaptrade/trade/execute|paper-trades/close|atm/close-action)
+      - action: order_paper_submit
+        methods: [POST]
+        pattern: /api/v2/(paper-proposals/(submit-paper|submit-alpaca-paper|submit-alpaca-paper-bracket)|options/alpaca-paper/(submit|promote-live-review))
+      - action: stop_change
+        methods: [POST]
+        pattern: /api/v2/(holdings/(protective-stop|protective-stop/(confirm|cancel)|synthetic-stop|synthetic-stop/cancel)|atm/stop-trailing-control|stop-confirmations/respond|defense/intent/2fa)
+      - action: schwab_reauth
+        methods: [GET, POST]
+        pattern: /api/v2/brokers/schwab/(exchange-code|reauth-url)
+      - action: credential_change
+        methods: [POST]
+        pattern: /api/v2/(admin/(secrets|validate-secret|broker-account/api|brokers)|snaptrade/credentials|broker-accounts/api-read-toggle)
+      - action: risk_control_change
+        methods: [POST]
+        # Kill switches: only the DISABLE direction is gated. ENABLE / PANIC must stay one click away
+        # (csrf.stop_routes), so the bare and engage paths are deliberately absent here.
+        pattern: /api/v2/(admin/risk-config|admin/broker-account/policy|broker-accounts/automation-policy|execution/kill-switches/(disable|clear|release|reset)|live-trading-gate|entry-desk/automation|portfolio/stop-policy-migration)

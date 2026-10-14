@@ -2,6 +2,7 @@
 # Morning verification of the overnight AI Trade Eval batch + setup-quality prior.
 # READ-ONLY. Writes a report to logs/morning_eval_check.log and best-effort Telegram.
 set -uo pipefail
+CC_CURL="${CC_CURL:-$(cd "$(dirname "${BASH_SOURCE[0]}")/." && pwd)/cc_curl.sh}"  # cc_auth 2026-10-14: loopback CC calls carry the service token
 PROJ=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
 cd "$PROJ"
 LOG="$PROJ/logs/morning_eval_check.log"
@@ -20,7 +21,7 @@ else
 fi
 
 # 2) structured eval count + verdicts
-curl -s --max-time 10 "$B/api/v2/backtesting/trade-evaluations" | "$PY" -c "
+"$CC_CURL" -s --max-time 10 "$B/api/v2/backtesting/trade-evaluations" | "$PY" -c "
 import sys,json
 try:
   d=json.load(sys.stdin); x=d.get('data',{})
@@ -38,7 +39,7 @@ for f in structured_eval setup_quality_prior; do
 done
 
 # 4) refreshed prior + advisory counts
-curl -s --max-time 10 "$B/api/v2/atm/setup-advisory" | "$PY" -c "
+"$CC_CURL" -s --max-time 10 "$B/api/v2/atm/setup-advisory" | "$PY" -c "
 import sys,json
 try:
   d=json.load(sys.stdin); x=d.get('data',{})
@@ -50,7 +51,7 @@ try:
 except Exception as e: print('  ERROR reading setup-advisory:', e)
 "
 for ent in incubator watchlist; do
-  curl -s --max-time 10 "$B/api/v2/setup-advisory/candidates?entity=$ent" | "$PY" -c "
+  "$CC_CURL" -s --max-time 10 "$B/api/v2/setup-advisory/candidates?entity=$ent" | "$PY" -c "
 import sys,json
 try:
   d=json.load(sys.stdin); a=d.get('data',{}).get('advisories',[])

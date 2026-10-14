@@ -26,6 +26,7 @@
 # ────────────────────────────────────────────────────────────────────────
 
 set -uo pipefail
+CC_CURL="${CC_CURL:-$(cd "$(dirname "${BASH_SOURCE[0]}")/." && pwd)/cc_curl.sh}"  # cc_auth 2026-10-14: loopback CC calls carry the service token
 
 PROJ=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
 set -a; source "$PROJ/.env"; set +a
@@ -324,7 +325,7 @@ log "Ollama: alive"
 log "GPU state BEFORE deep window:"
 gpu_ps | tee -a "$LOG"
 
-GPU_STATUS=$(curl -s http://localhost:7777/api/v2/gpu-status 2>/dev/null | python3 -c "
+GPU_STATUS=$("$CC_CURL" -s http://localhost:7777/api/v2/gpu-status 2>/dev/null | python3 -c "
 import sys,json
 d=json.load(sys.stdin)
 print(f'ollama={d.get(\"ollama_alive\")}, vram_used={d.get(\"vram_used_gb\")}GB')
