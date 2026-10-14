@@ -723,3 +723,5 @@ def test_allowlist_preserves_exact_observed_cron_script_arguments():
         assert command[2:] == observed, row["lane_id"]
 
 from tests.test_canary_wave_20261014 import CANARY_WAVE_20261014 as _CANARY_WAVE  # noqa: E402  canary-wave-20261014
+from tests.test_canary_wave_1b_20261014 import CANARY_WAVE_1B as _CANARY_WAVE_1B  # noqa: E402  canary-wave-1b-20261014
+_CANARY_WAVE = {**_CANARY_WAVE, **_CANARY_WAVE_1B}

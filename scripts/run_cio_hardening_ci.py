@@ -3866,6 +3866,19 @@ GATES = [
             # canary-wave-20261014: 13 shadow cron rows at the canary shape (cron flock lock == allowlist lock,
             # live argv == the cron argv, REVIEWED contract), the 7 excluded rows stay shadow. Hermetic: repo config.
             "tests/test_canary_wave_20261014.py",
+            # canary-wave-1b-20261014 (stacked): 3 tier-A rows at the canary shape (identity-sweep-stage0,
+            # news-to-catalyst, hermes-research-worker-pool); lock-gated rows pinned shadow until canary-wave-1c-locks;
+            # news_to_catalyst --symbol writes no lane receipt. Hermetic: repo files, fake DB.
+            "tests/test_canary_wave_1b_20261014.py",
+            # hermes-research-worker-pool: an idle hour (every lane skipped on cadence/no_runner/disabled) is ok, not
+            # pool_incomplete; locked/paused/no_runner-only/lane error stay incomplete. Hermetic: stubbed pool.
+            "tests/test_research_worker_pool_fix_20261014.py",
+            # hermes-pipeline-health: the --send step is separate and recorded (summary.send); the dispatcher argv
+            # (no --send) does the same writes and sends nothing. Hermetic: fake DB and dispatcher.
+            "tests/test_pipeline_health_send_split_20261014.py",
+            # catalyst-momentum-engine-overnight: the overnight entry's reach holds no send / account read / broker
+            # module (advisory_lane_guard.scan_entry); premarket/swing bands unchanged. Hermetic.
+            "tests/test_catalyst_momentum_overnight_blockers_20261014.py",
             # W4 canary blocker (2026-10-11): finviz_enrichment._load_env copies only the six FINVIZ_* names (= the
             # lane's allowlist FINVIZ_* env_names) from the tmpfs render / .env into os.environ, never ALPACA_* /
             # SCHWAB_* / any other render name, on both the resolve_secret and the fallback path; it is the module's

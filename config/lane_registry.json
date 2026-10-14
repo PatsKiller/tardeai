@@ -2853,7 +2853,7 @@
         "kind": "cron",
         "expression": "*/30 * * * *",
         "match": "scripts/backfill_subject_identity.py --all --apply",
-        "stage": "shadow",
+        "stage": "canary",
         "wave": "W4",
         "command_text": "cd $PROJ && flock -n /tmp/identity_sweep.lock $PY scripts/backfill_subject_identity.py --all --apply >> logs/identity_sweep.log 2>&1"
       },
@@ -2879,7 +2879,7 @@
       },
       "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible).",
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
           "*/30 * * * *"
         ],
@@ -2888,6 +2888,13 @@
         "class": "ingest",
         "priority": 5,
         "retry_policy": "none"
+      },
+      "canary": {
+        "wave": "canary-wave-1b-20261014",
+        "since": "2026-10-14",
+        "evidence": "run ledger data/runtime/n8n_runs (read-only) 2026-10-14: 143 natural dispatcher dry_run fires RUN_DONE exit 0 (d:identity-sweep-stage0:dry_run:20261011T1330 .. d:identity-sweep-stage0:dry_run:20261014T1400), 3 RUN_SKIPPED_LOCK, 0 RUN_FAILED / RUN_TIMEOUT / RUN_REFUSED (d:, e:, f: dry_run receipts). Live argv == the cron line's real run: executor argv flock -n -E 75 /tmp/identity_sweep.lock timeout -k 30 300 $PY scripts/backfill_subject_identity.py --all --apply, cwd the release (code_sha == CURRENT == cron $PROJ), same $PY; cron runs take ~6 s (identity-sweep-stage0_last.json 2026-10-14T18:00:01Z..18:00:07Z), inside timeout_s 300. Admitted under the operator ruling 2026-10-14 ~11:05 ET via Agent A (cut over when defects fixed + n8n dry run passes + lane regression tests pass + >=1 successful LIVE n8n run with cron present under the shared lock; multi-day soak and natural-slot waits removed; a forced live relay fire counts if the lane's own window gate lets it run).",
+        "lock_proof": "scheduler.command_text == the live cron line L931 command (crontab -l 2026-10-14, read-only); its only flock lock /tmp/identity_sweep.lock == allowlist lock (lock_kind flock): r1_canary_lock_matches",
+        "rollback": "revert this registry/allowlist commit: stage shadow, dispatch.mode dry_run, allowlist live_arg null"
       }
     },
     {
@@ -10566,7 +10573,7 @@
         "kind": "cron",
         "expression": "45 6,12,18 * * *",
         "match": "scripts/news_to_catalyst.py",
-        "stage": "shadow",
+        "stage": "canary",
         "wave": "D3",
         "command_text": "cd $PROJ && flock -n /tmp/news_to_catalyst.lock $PY scripts/news_to_catalyst.py >> logs/news_to_catalyst.log 2>&1"
       },
@@ -10596,7 +10603,7 @@
       "adopted_on": "2026-10-10",
       "adopted_reason": "dispatcher shadow wave D3 (R1): a row carrying a reviewed r1_pending / dispatch block is hand-maintained (AGENTS §23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop the block.",
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
           "45 6,12,18 * * *"
         ],
@@ -10616,6 +10623,13 @@
             "lane_id": "hermes-news-bridge"
           }
         ]
+      },
+      "canary": {
+        "wave": "canary-wave-1b-20261014",
+        "since": "2026-10-14",
+        "evidence": "run ledger data/runtime/n8n_runs (read-only) 2026-10-14: 36 natural dispatcher dry_run fires RUN_DONE exit 0 (d:news-to-catalyst:dry_run:20261011T0645 .. e:news-to-catalyst:dry_run:20261014T1233), 1 RUN_SKIPPED_LOCK, 0 RUN_FAILED / RUN_TIMEOUT / RUN_REFUSED (d:, e:, f: dry_run receipts). (11 d: schedule + 24 e: event + 1 f: forced.) The unexplained live runs 2026-10-14 13:42:07Z (pid 358730) and 17:31:36Z (pid 1014073) were the watch decision refresh workers (tradeai-watch-decision-scheduler.timer 09:35 / 13:30 ET -> transient tradeai-watch-refresh-worker-* units -> watch_decision_refresh.py _refresh_dimension 'events' -> news_to_catalyst.py --symbol SYM), neither cron nor n8n; fixed in this branch: a --symbol run writes no lane receipt. At canary its triggers are inert (n8n_due.EVENT_MODES = dry_run only). Admitted under the operator ruling 2026-10-14 ~11:05 ET via Agent A (cut over when defects fixed + n8n dry run passes + lane regression tests pass + >=1 successful LIVE n8n run with cron present under the shared lock; multi-day soak and natural-slot waits removed; a forced live relay fire counts if the lane's own window gate lets it run).",
+        "lock_proof": "scheduler.command_text == the live cron line L408 command (crontab -l 2026-10-14, read-only); its only flock lock /tmp/news_to_catalyst.lock == allowlist lock (lock_kind flock): r1_canary_lock_matches",
+        "rollback": "revert this registry/allowlist commit: stage shadow, dispatch.mode dry_run, allowlist live_arg null"
       }
     },
     {
@@ -14444,7 +14458,7 @@
         "kind": "cron",
         "expression": "5 * * * *",
         "match": "scripts/hermes_research_worker_pool.py",
-        "stage": "shadow",
+        "stage": "canary",
         "wave": "R2-04",
         "command_text": "5 * * * * cd $PROJ && flock -n /tmp/hermes_worker_pool.lock $PY scripts/hermes_research_worker_pool.py --run --json >> logs/hermes_worker_pool.log 2>&1  # white-space/strategy/proxy/legal lanes, self-gated by lane cadence + do-no-harm (2026-07-05)"
       },
@@ -14471,7 +14485,7 @@
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
           "5 * * * *"
         ],
@@ -14483,7 +14497,14 @@
       },
       "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-10-11",
-      "adopted_reason": "R2-04 source shadow candidate (refactor train 3): a row carrying a dispatch block is hand-maintained, so the generator must not re-derive it. Health contract remains DRAFT; operator review is required before activation."
+      "adopted_reason": "R2-04 source shadow candidate (refactor train 3): a row carrying a dispatch block is hand-maintained, so the generator must not re-derive it. Health contract remains DRAFT; operator review is required before activation.",
+      "canary": {
+        "wave": "canary-wave-1b-20261014",
+        "since": "2026-10-14",
+        "evidence": "run ledger data/runtime/n8n_runs (read-only) 2026-10-14: 71 natural dispatcher dry_run fires RUN_DONE exit 0 (d:hermes-research-worker-pool:dry_run:20261011T1605 .. d:hermes-research-worker-pool:dry_run:20261014T1405), 0 RUN_SKIPPED_LOCK, 0 RUN_FAILED / RUN_TIMEOUT / RUN_REFUSED (d:, e:, f: dry_run receipts). Held 2026-10-14 (~12:35 ET) for 'failing on cron (pool_incomplete)': defect fixed in this branch - the receipt rule `healthy = rc == 0 and failures == 0 and completed > 0` failed every idle hour (logs/hermes_worker_pool.log 2026-10-14: 8 of 12 cron runs 07:05Z..18:05Z had lanes {cadence: 6, no_runner: 3}, no lane or pool error); an all-cadence/no_runner/disabled idle hour is now ok (summary.idle_nothing_due), locked/paused/no_runner-only /lane error stay pool_incomplete (tests/test_research_worker_pool_fix_20261014.py). Admitted under the operator ruling 2026-10-14 ~11:05 ET via Agent A (cut over when defects fixed + n8n dry run passes + lane regression tests pass + >=1 successful LIVE n8n run with cron present under the shared lock; multi-day soak and natural-slot waits removed; a forced live relay fire counts if the lane's own window gate lets it run).",
+        "lock_proof": "scheduler.command_text == the live cron line L693 command (crontab -l 2026-10-14, read-only); its only flock lock /tmp/hermes_worker_pool.lock == allowlist lock (lock_kind flock): r1_canary_lock_matches",
+        "rollback": "revert this registry/allowlist commit: stage shadow, dispatch.mode dry_run, allowlist live_arg null"
+      }
     },
     {
       "lane_id": "investment-costs",

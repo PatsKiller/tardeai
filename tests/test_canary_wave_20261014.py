@@ -66,6 +66,11 @@ EXCLUDED = {
     "identity-sweep-stage0": "held 2026-10-14: sw4 shadow contract / --apply live_arg",
     "news-to-catalyst": "held: unexplained 13:42Z live run + w5 event-consumer contract",
 }
+# canary-wave-1b-20261014 (stacked; tests/test_canary_wave_1b_20261014.py pins every field) moves the held and
+# lock-gated rows to canary; the rest stay pinned here.
+from tests.test_canary_wave_1b_20261014 import CANARY_WAVE_1B  # noqa: E402
+
+EXCLUDED = {k: v for k, v in EXCLUDED.items() if k not in CANARY_WAVE_1B}
 LANES = sorted(CANARY_WAVE_20261014)
 
 

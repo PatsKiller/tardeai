@@ -141,8 +141,10 @@ def test_no_other_shadow_row_gained_a_live_argv():
     # research-insight-extractor, the R1 cron canary, climbed to cutover 2026-10-13.
     # canary-wave-20261014 moves 14 cron rows to canary (tests/test_canary_wave_20261014.py).
     from tests.test_canary_wave_20261014 import CANARY_WAVE_20261014
+    # canary-wave-1b-20261014 (stacked) moves 7 more (tests/test_canary_wave_1b_20261014.py).
+    from tests.test_canary_wave_1b_20261014 import CANARY_WAVE_1B
 
-    assert canary == sorted(["heartbeat-watch", *CANARY_WAVE_20261014])
+    assert canary == sorted(["heartbeat-watch", *CANARY_WAVE_20261014, *CANARY_WAVE_1B])
     cut = sorted(r for r, row in ROWS.items() if (row.get("scheduler") or {}).get("stage") == "cutover")
     assert set(CUTOVER) <= set(cut), cut
 

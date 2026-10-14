@@ -53,7 +53,9 @@ W5_LANES = {
     "research-insight-extractor": [{"source": "run_done", "lane_id": "news-to-catalyst"}],
 }
 #: W5 trigger rows that canary wave 1 moved to canary (live cron slots; event fires inert while live).
-W5_CANARY_LANES = frozenset({"research-insight-extractor"})
+#: canary-wave-1b-20261014 moved news-to-catalyst to canary: its broker_as_of / run_done triggers go inert the same way
+#: (no event-triggered live run; its natural cron slots 06:45/12:45/18:45 fire live).
+W5_CANARY_LANES = frozenset({"research-insight-extractor", "news-to-catalyst"})
 
 
 # ── fixtures and helpers ────────────────────────────────────────────────────────────────────────
@@ -578,5 +580,7 @@ def test_w5_rows_fire_on_the_real_registry(state, store, monkeypatch):
     AS.emit_as_of("catalyst_news", rows_written=5, lane_id="news-ingestion", source="t", at=now - timedelta(minutes=4))
     resp = D.compute_due(reg, allow, POLICIES, store, now, source="event")
     _validate(resp)
-    assert _keys(resp) == ["e:news-to-catalyst:dry_run:20261014T0616", "e:signal-fusion-active:dry_run:20261014T0618"]
+    want = ["e:news-to-catalyst:dry_run:20261014T0616", "e:signal-fusion-active:dry_run:20261014T0618"]
+    # a canary (live) trigger row fires nothing from the event source (n8n_due.EVENT_MODES is dry_run only)
+    assert _keys(resp) == [k for k in want if k.split(":")[1] not in W5_CANARY_LANES]
     assert {i["mode"] for i in resp["items"]} == {"dry_run"} and resp["errors"] == []

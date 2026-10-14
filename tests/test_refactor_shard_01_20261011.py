@@ -311,8 +311,12 @@ def test_prepared_allowlist_has_no_broker_names_or_live_authority():
         if lane not in entries or not _owned_here(rows.get(lane), "R2-01"):
             continue
         entry = entries[lane]
-        assert entry["live_arg"] is None and entry["dry_run_arg"] == ["--dry-run"]
-        assert entry["command"][2:] == argv
+        canary = lane in _CANARY_WAVE_1B  # canary-wave-1b-20261014: live_arg set, cron inline env carried by `env`
+        assert (entry["live_arg"] is None or canary) and entry["dry_run_arg"] == ["--dry-run"]
+        command = entry["command"]
+        if canary and command[0] == "env":
+            command = [t for t in command[1:] if not ("=" in t and t.split("=", 1)[0].isupper())]
+        assert command[2:] == argv
         assert not any(any(token in name.upper() for token in ("SCHWAB", "ALPACA", "SNAPTRADE", "MOOMOO", "IBKR"))
                        for name in entry["env_names"])
         assert rows[lane]["scheduler"]["wave"] == "R2-01" and rows[lane]["dispatch"]["wave"] == "W4"
@@ -340,3 +344,5 @@ def test_real_cli_subprocess_has_no_state_writes_or_unknown_flag_fallthrough(nam
     bad = subprocess.run([*command, "--bogus"], env=env, capture_output=True, text=True, timeout=10)
     assert bad.returncode == 2
     assert snapshot(scratch) == before
+
+from tests.test_canary_wave_1b_20261014 import CANARY_WAVE_1B as _CANARY_WAVE_1B  # noqa: E402  canary-wave-1b-20261014

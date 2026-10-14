@@ -12,6 +12,12 @@ CLI: python3 scripts/news_to_catalyst.py [--json] [--symbol SYM] [--dry-run]
 the INSERT and commit are unreachable from it. A real run writes the lane receipt
 <state_root>/data/runtime/news-to-catalyst_last.json (ok_at only on success); a crash exits 1 with a failed
 receipt.
+
+--symbol SYM is a per-symbol enrichment call (watch_decision_refresh.py "events" dimension, the api_v2 watchlist
+refresh, remediate_watchlist_news_guard.py), not the lane run: it writes NO lane receipt. 2026-10-14: the watch
+decision refresh workers (tradeai-watch-decision-scheduler.timer -> watch_decision_refresh.py --worker) ran
+`news_to_catalyst.py --symbol SYM` at 13:42:07Z and 17:31:36Z; each overwrote news-to-catalyst_last.json with a
+mode-live ok receipt, so the lane's output_signal looked fresh although neither cron nor n8n had run the lane.
 """
 import json, os, sys
 from datetime import datetime
@@ -279,6 +285,10 @@ def main(argv: list[str] | None = None) -> int:
         summary = run(as_json=a.json, single_symbol=a.symbol, dry_run=True)
         _dry_report(LANE_ID, summary, would_write=["catalyst_events"],
             json_stdout=a.json)
+        return 0
+    if a.symbol:
+        # Per-symbol enrichment, not the lane run: no lane receipt (see module docstring).
+        run(as_json=a.json, single_symbol=a.symbol)
         return 0
     from datetime import datetime, timezone
     started = datetime.now(timezone.utc).isoformat()

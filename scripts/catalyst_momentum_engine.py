@@ -168,9 +168,35 @@ def main():
     ap.add_argument("--generate-proposals", action="store_true", help="also auto-create gated paper proposals (feed #2)")
     ap.add_argument("--dry-run", action="store_true",
                     help="read + search only; print what would be staged; wins over --apply/--generate-proposals")
+    ap.set_defaults(proposal_handoff=_proposal_handoff)
     args = ap.parse_args()
     if args.dry_run:
         return _dry_run(args)
+    return _guarded_run(args)
+
+
+def run_overnight(argv=None) -> int:
+    """Entry for the overnight band only (scripts/catalyst_momentum_overnight.py, 2026-10-14).
+
+    Same flags the overnight cron line uses (``--band overnight --apply``; ``--dry-run``), same lane receipt and
+    staged rows, but no ``--generate-proposals`` and no proposal handoff: nothing reachable from here references
+    auto_proposal_generator.py, so the lane's static reach (advisory_lane_guard.scan_entry) holds no send, no
+    account read and no broker client module. The overnight cron line never passed --generate-proposals, so this
+    is the behaviour it already had."""
+    _load_env()
+    ap = argparse.ArgumentParser(prog="catalyst_momentum_overnight.py")
+    ap.add_argument("--band", choices=["overnight"], default="overnight")
+    ap.add_argument("--apply", action="store_true", help="stage catalyst findings (feed #1)")
+    ap.add_argument("--dry-run", action="store_true", help="read + search only; print what would be staged")
+    ap.set_defaults(generate_proposals=False, proposal_handoff=None)
+    args = ap.parse_args(argv)
+    if args.dry_run:
+        return _dry_run(args)
+    return _guarded_run(args)
+
+
+def _guarded_run(args) -> int:
+    """Kill switch, the ALPACA_MODE proposal gate, then _run under the per-band lane receipt."""
     if kill_active():
         log.warning("kill switch active — engine halted"); return 0
     if args.generate_proposals and not _proposal_mode_ok():
@@ -306,19 +332,11 @@ def _run(args, stats: dict) -> int:
             gated.append((sym, conf, ctype))
         log.info("  %s: %s conf=%.2f (%d sources)%s", sym, ctype, conf, len(sources), " ✓gateable" if conf >= 0.6 else "")
 
-    # FEED #2 — gated proposals via existing pipeline (paper, 11 gates + risk gate). Capped.
-    if args.generate_proposals and band["gen_proposals"]:
-        for sym, conf, ctype in sorted(gated, key=lambda x: -x[1])[:band["prop_cap"]]:
-            try:
-                r = subprocess.run([PY, "scripts/auto_proposal_generator.py", "--symbol", sym, "--apply", "--limit", "1"],
-                                   cwd=str(ROOT), capture_output=True, text=True, timeout=300, env={**os.environ, "ALPACA_MODE": "paper"})
-                ok = r.returncode == 0
-                tail = (r.stdout or "").strip().splitlines()[-1:] or [""]
-                log.info("  proposal[%s]: %s — %s", sym, "ok" if ok else f"exit {r.returncode}", tail[0][:100])
-                if ok:
-                    proposals += 1
-            except Exception as e:
-                log.warning("  proposal[%s] failed: %s", sym, e)
+    # FEED #2 — gated proposals via existing pipeline (paper, 11 gates + risk gate). Capped. main() injects the
+    # handoff; run_overnight() injects none, so its static reach never includes the proposal subprocess.
+    handoff = getattr(args, "proposal_handoff", None)
+    if handoff is not None and args.generate_proposals and band["gen_proposals"]:
+        proposals = handoff(gated, band)
 
     log.info("Done: %d staged (advisory), %d catalyst-confirmed, %d gated proposals attempted", staged, len(gated), proposals)
     marker = {
@@ -349,6 +367,24 @@ def _run(args, stats: dict) -> int:
         log.error("  catalyst search failed for all %d candidates -> exit 1", len(cands))
         return 1
     return 0
+
+
+def _proposal_handoff(gated, band) -> int:
+    """Feed #2: the EXISTING gated auto_proposal_generator.py --apply, paper only, capped per band."""
+    proposals = 0
+    for sym, conf, ctype in sorted(gated, key=lambda x: -x[1])[:band["prop_cap"]]:
+        try:
+            r = subprocess.run([PY, "scripts/auto_proposal_generator.py", "--symbol", sym, "--apply", "--limit", "1"],
+                               cwd=str(ROOT), capture_output=True, text=True, timeout=300,
+                               env={**os.environ, "ALPACA_MODE": "paper"})
+            ok = r.returncode == 0
+            tail = (r.stdout or "").strip().splitlines()[-1:] or [""]
+            log.info("  proposal[%s]: %s — %s", sym, "ok" if ok else f"exit {r.returncode}", tail[0][:100])
+            if ok:
+                proposals += 1
+        except Exception as e:
+            log.warning("  proposal[%s] failed: %s", sym, e)
+    return proposals
 
 
 if __name__ == "__main__":

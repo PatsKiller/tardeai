@@ -213,7 +213,8 @@ def test_allowlist_keeps_exact_arguments_and_original_lock(lane, name, argv):
         return
     entry = next(e for e in doc["lanes"] if e["lane_id"] == lane)
     assert entry["command"] == PROOF[lane]["command"]
-    assert entry["live_arg"] is None and entry["dry_run_arg"] == ["--dry-run"]
+    # canary-wave-1b-20261014: hermes-score-event-feeder is canary (live_arg [], lock_kind flock under the cron flock).
+    assert (entry["live_arg"] is None or lane in _CANARY_WAVE_1B) and entry["dry_run_arg"] == ["--dry-run"]
     tokens = shlex.split(PROOF[lane]["job_line"])
     cmd_start = tokens.index("scripts/" + name)
     assert tokens[cmd_start + 1:cmd_start + 1 + len(argv)] == argv
@@ -276,3 +277,5 @@ def test_normalizer_close_failure_cannot_advance_success(state, monkeypatch):
         mod.main(["--apply"])
     receipt = json.loads(path.read_text())
     assert receipt["status"] == "failed" and receipt["ok_at"] == previous and receipt["exit"] == 1
+
+from tests.test_canary_wave_1b_20261014 import CANARY_WAVE_1B as _CANARY_WAVE_1B  # noqa: E402  canary-wave-1b-20261014

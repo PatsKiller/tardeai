@@ -10,7 +10,10 @@ constraint and nothing watched it. This monitor flags that class of failure:
   4. Embedding queue failure rate high.
 
 Emits a single 'system_health' alert_event (+ stdout) when anything is broken. Advisory/read-only.
-Run from cron daily; `--send` also pushes a telegram via the unified dispatcher if available.
+Run from cron daily; `--send` also pushes a telegram via the unified dispatcher if available
+(outcome recorded as summary.send; the dispatcher had no dispatch() on 2026-10-14, so --send sent nothing).
+Without --send the run writes the same alert_events / escalation_queue rows and receipt and sends nothing:
+that is the n8n dispatcher's argv.
 
 n8n refactor wave 1 (2026-10-10):
   * Exit 0 = the check ran (healthy OR issues found — issues are findings, carried in the receipt
@@ -300,12 +303,18 @@ def main(argv=None) -> int:
     except Exception as exc:  # noqa: BLE001
         record_errors.append(f"escalation_queue insert raised {type(exc).__name__}")
     if a.send:
+        # The send is a separate, optional step; it never decides the exit code. Its outcome is recorded in the
+        # receipt instead of being swallowed: on 2026-10-14 alert_dispatcher_unified had no dispatch() (only
+        # main()), so every cron `--send` raised AttributeError here and sent nothing — the findings reached the
+        # operator only through the alert_events / escalation_queue rows above. A dispatcher run (no --send) is
+        # therefore the same real work as the cron line's run.
         try:
             import alert_dispatcher_unified as ad
 
             ad.dispatch(alert_type="system_health", text=msg, severity="warning", source="hermes_pipeline_health")
-        except Exception:
-            pass
+            summary["send"] = "dispatched"
+        except Exception as exc:  # noqa: BLE001 — a failed optional send is recorded, never a failed run
+            summary["send"] = f"not_sent:{type(exc).__name__}"
     # Findings alone are not a failed run; findings that could not be RECORDED are.
     code = 1 if record_errors else 0
     if record_errors:
