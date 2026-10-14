@@ -1,12 +1,12 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      5.2.0
+Policy-Version:      8.0.0
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
 Status:              PROPOSED
 Effective-Date:      PENDING
-Last-Reviewed:       2026-10-11T09:45:00-04:00
+Last-Reviewed:       2026-10-14T13:30:00-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
 Supersedes:          5.1.0
@@ -110,6 +110,56 @@ asks the operator to decide needs `dedupe_minutes=0`; #1685 sets it only for `ap
 `stop_decision_brief.py` (a stop decision brief) is P1 with the default 60-minute exact-content dedupe — the
 operator classifies it before #1685 merges. **Numbering:** follows 5.0.0 (ACTIVE, PR #1686, merged `0ec320486`);
 `Supersedes` is 5.0.0. Operator approval phrase (§20): `APPROVE_AGENTS_POLICY_5_1_0 <pr_number> <head_sha>`.
+
+**8.0.0 is PROPOSED (MAJOR) — the n8n cutover standard: defect fixed, dry run, regression tests, one live n8n run
+with cron present; multi-day soaks removed (§23.21; one clause each replaced in §8.1, §23.3, §23.12 and §23.14).**
+Operator-directed 2026-10-14 ~11:05 ET, in session, verbatim: "new standards apply when i say so fix and dry and
+regression testing, yes it should run live successful to many road blocks to testing". Awaiting the operator's
+`APPROVE_AGENTS_POLICY_8_0_0 <pr_number> <head_sha>` (§20); until it is ratified and merged nothing here binds and
+the text it replaces governs, including §23.3's three clean market days for `trade-ai-scalp-live`. An n8n lane is
+ready to cut over when (1) the defect that held it is fixed and served, (2) its n8n dry run passes (a forced
+`dry_run` fire counts), (3) its regression tests pass under `TRADE_AI_CI=1`, and (4) it has at least one successful
+`live` n8n run with the cron line still present under the shared lock; a forced live relay fire counts when the
+lane's window allows it. Removed: every multi-day soak as a cutover condition — §23.3's "3 market days … no
+STALLED finding" and its §23.14 restatement for `trade-ai-scalp-live`, the natural-slot shadow fire as the gate to
+canary (onboarding step 8), and any N-clean-days program bar. Unchanged: §23.14's never-eligible rule and token
+test, comment-not-delete (§0 rail 6), one `cron` grant per wave, rollback per line, and natural-schedule evidence
+after cutover, monitored. **Why MAJOR:** it removes a restriction 4.0.0 (MAJOR) set on a lane that ingests and
+sends, so the weakest guarantee is weaker (version policy). It grants nothing: no lane, allowlist `never` entry,
+grant tier or §17 item changes, and §0, §2, §2A, §7A and §17 are byte-identical. **§23.14 changes by one clause**,
+which §23.14's last bullet permits only to a new MAJOR made outside a program window; the window closed
+2026-10-12T23:59:59-04:00. The §23.14 hash pins in the 4.3.0 … 7.0.0 tests now reverse that clause before hashing
+(as the 4.6.0 … 5.2.0 tests strip the 5.0.0 §0 sentence), and `tests/test_agents_policy_8_0_0_cutover_standard.py`
+pins the clause and the new digest. **Numbering:** 6.0.0 is claimed by PR #1697 (PROPOSED; its step-8 change is
+subsumed by §23.21 criterion (2)); 7.0.0 is PR #1725, approved by the operator
+(`APPROVE_AGENTS_POLICY_7_0_0 1725 73eebc5c1`, 2026-10-14T14:54:21Z) but not yet merged, and this branch is stacked
+on it. `Supersedes` is the last ACTIVE version, 5.1.0; if 7.0.0 is ACTIVE first it becomes 7.0.0, settled at
+ratification (§20). Operator approval phrase (§20): `APPROVE_AGENTS_POLICY_8_0_0 <pr_number> <head_sha>`.
+
+**7.0.0 is PROPOSED (MAJOR) — advisory market-data lanes may run from the n8n dispatcher (§23.20; one exception
+bullet in §23.3).** Operator-directed 2026-10-14, in session: "move to n8n i approve if i need to make amendment propose
+its just looking at level 2 on moomoo no trading". Awaiting the operator's
+`APPROVE_AGENTS_POLICY_7_0_0 <pr_number> <head_sha>` (§20); until it is ratified and merged nothing here binds,
+`scripts/lib/lane_dispatch.py` `ADVISORY_MD_STATUS` reads `PROPOSED`, and the gate refuses every §23.20 row. A lane in
+the code ceiling `lane_dispatch.ADVISORY_MARKET_DATA_LANES` (`active-trader-premarket-watch`,
+`finviz-momentum-scalp-early-lane`, `momentum-scalp-advisory-alerts`) becomes dispatcher-eligible only when four
+conditions hold, each a code check, not judgement: (a) its broker contact is market data only — a moomoo OpenD quote
+context (L2 book and tape subscriptions), never a trade context, `unlock_trade`, an order verb or an account or position
+read; (b) its writes are advisory only — journals, alert rows, the PENDING `paper_trade_proposals` review queue, and no
+sandbox or broker submit switch in its argv or env; (c) every send goes through the host `send_telegram` chokepoint,
+with `bypass_router=True` only at a call site the 5.1.0 shrink-only allowlist already holds; (d) n8n carries no secret —
+the host executor runs the lane, which reads its own environment as under cron, and its `env_names` name no broker
+credential. **Why MAJOR:** it widens what the n8n actor may cause and reaches a broker data API (version policy: broker
+access is MAJOR; classify by the weakest guarantee). It grants no order, stop, position, account, session or 2FA
+authority, and §0, §2, §2A, §7A, §17 and §23.14 are byte-identical: like §23.18 (4.3.0) it admits a class by its own
+conditions and an operator ruling, not by analogy, so every §23.14 sentence still binds every lane outside it.
+**Measured by the gate on 2026-10-14:** only `active-trader-premarket-watch` passes (a). The other two reach
+`account_policy.equity_for_account` (Alpaca paper `get_account`, a Schwab account read) through
+`auto_proposal_generator.py`, and the early lane also reaches `proposal_paper_submitter` through the paper fast-path
+hook, so they stay on cron until that read moves behind a data-broker projection. **Numbering:** 6.0.0 is claimed by
+PR #1697 (PROPOSED); this takes 7.0.0 and `Supersedes` is the last ACTIVE version, 5.1.0. If #1697 is withdrawn the
+number becomes 6.0.0 and nothing else changes; it is settled at ratification (§20). Operator approval phrase (§20):
+`APPROVE_AGENTS_POLICY_7_0_0 <pr_number> <head_sha>`.
 
 **5.2.0 is PROPOSED (MINOR) — "working" means validated now: tests, a dry run and a forced run; natural
 schedules are monitored, never awaited (§8.1).** Awaiting the operator's
@@ -1914,10 +1964,10 @@ and nobody waits for one to declare success: a dependent step may start on the f
 natural fire is still checked when it comes — it settles the separate claim that the job runs *on its schedule*
 (§8 "What counts as verified", §9.3) — and a natural fire that fails makes the change not working again: report
 it, and re-check any step that started on it. **This lifts no gate this file or a standard already conditions on
-natural-schedule evidence**, which keeps its condition: the lane-specific shadow fire on the natural schedule
-(`N8N_ONBOARDING_STANDARD.md` step 8), natural-schedule evidence after a cutover (§23.12, last bullet), a
-registry `PAUSED` row's flip to `ACTIVE` after its natural-slot verification, `trade-ai-scalp-live`'s three
-clean market days with cron as fallback (§23.3), and the maturity proofs (§15).
+natural-schedule evidence**, which keeps its condition: natural-schedule evidence after a cutover (§23.12, last
+bullet), a registry `PAUSED` row's flip to `ACTIVE` after its natural-slot verification, and the maturity proofs
+(§15). An n8n cutover is the exception: its readiness is the §23.21 cutover standard (8.0.0), which needs no
+natural shadow slot and no run of clean days.
 
 **The forced run has the same bounds as the thing it runs.**
 
@@ -4330,12 +4380,21 @@ mandatory. *Cause (§20): operator 2026-10-10 ~16:35 ET, after the W0 rollback
   behind the data broker on the host); the send stays the host chokepoint with GO de-duplication
   persisted in `state/trade_ai_scalp_live_state.json`; live is reachable only when the lane is also in
   the relay's `TRADEAI_N8N_RELAY_LIVE_LANES` (config-write grant) and the live workflow is activated
-  (grant naming the workflow id). The cron line stays live as the fallback until n8n has 3 market days
-  of `RUN_DONE` with no `trade-ai-scalp-live:STALLED` finding; it is then retired as
+  (grant naming the workflow id). The cron line stays live as the fallback until the lane meets the
+  §23.21 cutover standard (8.0.0) — one successful in-window `live` n8n run with the cron line present
+  under that lock; it is then retired as
   `# RETIRED <date> n8n-cutover trade-ai-scalp-live` under a cron grant. No other ingest writer or
   sender enters the allowlist by analogy. *Cause (§20): 2026-10-09 13:30–15:00 the cron-run scan
   stalled unseen for 90 minutes (cold catalyst cache, every run killed at 295 s); operator: "n8n drives
   a governed lane", then "APPROVE_AGENTS_POLICY_4_0_0".*
+- **Exception (7.0.0, PROPOSED) — §23.20 advisory market-data lanes.** A lane in
+  `lane_dispatch.ADVISORY_MARKET_DATA_LANES` that passes every §23.20 condition may be in the allowlist although its
+  run reads broker market data (a moomoo OpenD quote context: L2 book and tape) and sends advisory alerts through the
+  host `send_telegram` chokepoint. It is the second and last class that may. Every other sender and every order, stop,
+  position, account, paper-execution, secret-render, guard, release-deploy, retention and daemon command stays out of
+  the allowlist, and n8n itself still sends nothing. *Cause (§20): operator 2026-10-14, "move to n8n i approve … its
+  just looking at level 2 on moomoo no trading" — the Active Trader premarket watch and the momentum-scalp lanes run
+  06:00-12:00 ET on cron with no n8n retry, heartbeat or wave proof.*
 - **The gateway never spawns.** It validates the claim and writes a `RunRequested@v1` row to the
   ledger `runs` table and stops. `tradeai-n8n-run-executor.service` (own cgroup) runs the lane's
   existing runner under the lane's existing lock (`safe_flock.sh`, `market_day_gate.sh` where the
@@ -4541,6 +4600,15 @@ mandatory. *Cause (§20): operator 2026-10-10 ~16:35 ET, after the W0 rollback
   in the same sentence. Every never-under-any-class entry is word for word.
 - No sentence of §0, §2, §2A, §7A, §17 or §23.14 changes.
 
+7.0.0 (PROPOSED 2026-10-14; the 5.1.0 text stays readable at `origin/main` `8ae8a5b91`):
+
+- §23.3 gains the bullet "Exception (7.0.0, PROPOSED) — §23.20 advisory market-data lanes"; no §23.3 sentence is
+  removed or reworded.
+- §23.20 is added.
+- `config/n8n_run_allowlist.json` `never` gains a closing sentence naming the §23.20 class and its gate. Every
+  never-under-any-class entry is word for word.
+- No sentence of §0, §2, §2A, §7A, §17 or §23.14 changes.
+
 No sentence in §0, §2, §2A, §2B or §7A is weakened; this section only names where n8n sits under them.
 
 ## 23.8 n8n Agent nodes (3.0.0)
@@ -4705,7 +4773,8 @@ For dispatcher rows this replaces the per-lane ladder of §23.2; lane-specific w
   registry PR. *Cause (§20): due-diligence audit E C8 — `n8n-incident-fanin` was cut over when its
   only live fire was `RUN_SKIPPED_LOCK`, which proves no double run but not that the n8n-initiated
   run works.*
-- **Cutover is per wave, under one `cron` grant whose reason names every lane id in the wave.**
+- **Cutover is per wave, under one `cron` grant whose reason names every lane id in the wave.** A lane joins
+  the cutover when it meets the §23.21 cutover standard (8.0.0, PROPOSED); no soak precedes it.
   `scripts/pipelines/cutover/_cutover.py --lane <lane_id>` runs per lane: the line is commented,
   never deleted (§0 rail 6), the row moves to `scheduler.stage = "cutover"`, and each lane gets its own
   `CutoverReceipt@v1`. A lane the grant does not name is not cut over. **Rollback stays per line**
@@ -4782,7 +4851,7 @@ every merge needs the operator's per-PR word again.
   (`scripts/run_trade_ai_scalp_live.py`), the cron line's lock `/tmp/tradeai_scalp_live.lock`
   (`flock -n`), `timeout_s` 295, `market_day_gate.sh`, the lane listed in the relay's
   `TRADEAI_N8N_RELAY_LIVE_LANES` (config-write grant), a grant naming the id of the workflow that
-  fires it, and the cron line live as the fallback until 3 clean market days. The test checks those
+  fires it, and the cron line live as the fallback until the §23.21 cutover standard (8.0.0) is met. The test checks those
   conditions for it instead of the token test. No other ingest writer or sender becomes
   dispatcher-eligible by analogy. *Cause (§20): 4.0.0 admitted one lane by name after it stalled
   unseen for 90 minutes on 2026-10-09; dispatch must not turn that into a class.*
@@ -4912,6 +4981,112 @@ monitored, not awaited; the gates the standard conditions on natural evidence ke
   relay log — never an n8n execution status. *Cause (§20): RC8/RC9 — 403 `bad_lane_filter` and 404 `POST /event`
   were invisible to the dry run, and successful executions soft-deleted under
   `EXECUTIONS_DATA_SAVE_ON_SUCCESS=none` kept `status = 'running'` and read as hangs.*
+
+---
+
+## 23.20 Advisory market-data lanes on the dispatcher (7.0.0, PROPOSED)
+
+Numbered §23.20 because §23.15–§23.17 are reserved for 4.2.0 (PR #1634, PROPOSED). This subsection **adds one class.
+It grants no order, stop, position, account, session or 2FA authority**, and §23.14 is unchanged, as is every sentence
+it holds. Until the ratifying edit sets `lane_dispatch.ADVISORY_MD_STATUS` to `ACTIVE`, nothing here binds and the gate
+refuses every row below.
+
+- **The ceiling is code.** Only a lane in `scripts/lib/lane_dispatch.py` `ADVISORY_MARKET_DATA_LANES`
+  (`active-trader-premarket-watch`, `finviz-momentum-scalp-early-lane`, `momentum-scalp-advisory-alerts`) can be a
+  §23.20 lane. Adding one is a reviewed code change and an operator decision, never a config edit. A ceiling lane is
+  admitted only while every condition below holds; a lane in the ceiling that fails one is refused like any other.
+  *Cause (§20): operator ruling 2026-10-14 (see the 7.0.0 banner).*
+- **(a) Market data only.** The lane's reach — its entry script, the definitions it imports (followed at definition
+  granularity, so a quote-only class is judged apart from a trade-context class in the same file) and every script it
+  spawns — uses no broker trade context (`OpenSecTradeContext`, `OpenUSTradeContext`, `OpenHKTradeContext`, any other
+  `Open*TradeContext`, `TrdEnv`), no `unlock_trade` or `lock_trade`, no place, modify, cancel, submit or replace order
+  verb, no account or position read (`get_account`, `get_positions`, `accinfo_query`, `position_list_query`,
+  `order_list_query`, `deal_list_query`, `get_acc_list`, …) and imports no broker client module (Alpaca, Schwab,
+  SnapTrade, IBKR, `brokers/`). A moomoo OpenD quote context (`OpenQuoteContext`, order-book and ticker subscriptions)
+  is allowed. Enforced by `scripts/lib/advisory_lane_guard.py` through `lane_dispatch.advisory_md_static_errors`, which
+  `check_lane_registry` runs for every ceiling row whose dispatch mode is not off, and pinned by
+  `tests/test_agents_policy_7_0_0_advisory_market_data.py`. *Cause (§0 rails 1-2): "no trading" is only true if the
+  reach of the lane cannot contain a trade context.*
+- **(b) Advisory writes only.** A §23.20 lane writes journals, alert rows and the PENDING `paper_trade_proposals`
+  review queue. No order route, no broker submit and no sandbox submit: `--submit-validation`, `--submit-sandbox`,
+  `--submit`, `--live-orders`, `MOMENTUM_SCALP_VALIDATION_SUBMIT` and `MOMENTUM_SCALP_PAPER_FAST_PATH` may not appear in
+  the allowlist argv, its inline `env NAME=VALUE` prefix or the row's cron command text (`advisory_md_admission`), and
+  the forbidden word `submit` still refuses the rest. The paper-execution entry of the allowlist `never` list is
+  unchanged: (a) refuses a lane whose reach includes a paper submitter's broker client.
+- **(c) Sends go through the host chokepoint.** Every send is a host `send_telegram` call (or a wrapper that makes
+  one); a direct Telegram, SMTP or Slack call in the lane's reach refuses it. `bypass_router=True` is allowed only at a
+  call site the AGENTS 5.1.0 shrink-only allowlist already holds (`lane_dispatch.ADVISORY_MD_BYPASS_FILES`:
+  `scripts/active_trader/momentum_alerts.py`, `scripts/lib/scalp_advisory_alert.py`), and this amendment adds none.
+  **The bypass is kept, not routed, on purpose:** the call still goes through `send_telegram` and its delivery ledger;
+  a premarket heads-up held in a digest is useless; and `momentum_alerts.py` sits in the broker execution file set
+  (`config/agents_guard_hook_rules.json` `broker.execution_code_edit`), so moving it to a P1 notification intent is a
+  code change under an `execution-engineering` grant — a separate PR the 5.1.0 ratchet already expects.
+- **(d) No secret travels through n8n.** n8n sends `{lane_id, mode}` and nothing else (§23.3). The relay and the gateway
+  render no secret. The host executor runs the lane under the cron line's lock and builds its environment from its own
+  unit (`n8n_run_executor.build_child_env`): in `enforce` the base names plus the entry's `env_names`, in `report` the
+  executor's environment minus every n8n secret — the same rendered env file (`TRADEAI_ENV`) the cron line reads — so
+  the lane reads its own credentials exactly as under cron. `env_names` may not name a broker credential
+  (`advisory_md_admission`). A moomoo quote context needs no credential: OpenD holds the login.
+- **Shape and ladder.** Dispatch class `pipeline` only (`ADVISORY_MD_CLASSES`), never `send` or an R1 class. The
+  allowlist `lock` (`lock_kind` `flock`) equals every `flock` lock in `scheduler.command_text` at every stage, so cron
+  and n8n can never double-run. The entry has a non-empty `dry_run_arg`, or an empty one only when the lane writes and
+  sends solely under an explicit `--apply` that the cron line passes and the base argv does not, so its bare command is
+  its dry run and `live_arg` is `["--apply"]` (`lane_dispatch._explicit_apply_dry_run`). The lane climbs §23.12 shadow → canary →
+  cutover with a `RunReceipt@v1` per fire, its cutover needs the wave's `cron` grant naming it, and its rollback is per
+  line. The rationalization `KEEP_ON_CRON` verdict of a ceiling lane is superseded by name by the operator's ruling
+  (`lane_dispatch._keep_on_cron`); no other lane's verdict changes.
+- **The dispatcher sender gate is code too.** `tests/test_agents_policy_7_0_0_advisory_market_data.py` scans the reach of
+  every dispatched allowlist lane. A lane whose reach sends, or touches a broker client module, outside
+  `trade-ai-scalp-live` (4.0.0) and the §23.20 class fails CI, except a shrink-only baseline of the rows measured on
+  2026-10-14, each a finding to fix or to drop from its wave. *Cause (§20): the forbidden-token gate passed
+  `momentum-scalp-advisory-alerts` — no forbidden word in its argv — although it sends Telegram advisories; only the
+  prose sender rule kept it off.*
+- **Not changed:** no gateway `FORBIDDEN_ROUTE_TOKENS` or pipeline `FORBIDDEN_COMMAND_TOKENS` entry is removed (none
+  blocks the admitted lane: measured 2026-10-14), no relay route or credential is added, and an n8n Agent node never
+  invokes a §23.20 lane.
+
+---
+
+## 23.21 The cutover standard — fixed, dry run, regression tests, one live run (8.0.0, PROPOSED)
+
+Operator ruling 2026-10-14 ~11:05 ET, in session, verbatim: "new standards apply when i say so fix and dry and
+regression testing, yes it should run live successful to many road blocks to testing". This subsection records it.
+Until `APPROVE_AGENTS_POLICY_8_0_0` is given and merged, nothing here binds and the text it replaces governs (§20).
+
+- **An n8n lane is ready to cut over when all four hold, each with its evidence recorded in the change record.**
+  This applies to dispatcher rows (§23.12) and lane-specific workflows (§23.2) alike.
+  (1) **Defect fixed.** Whatever held the lane back (a failed fire, a refactor, a finding) is fixed: merged and
+  served from CURRENT, with the PR and the release named.
+  (2) **n8n dry run passes.** The lane's latest n8n `dry_run` fire is `RUN_DONE` with a `RunReceipt@v1`, and any
+  earlier failure is followed by a clean fire. A forced `dry_run` fire through `coordination/run` counts (§8.1); no
+  natural shadow slot is required.
+  (3) **Lane regression tests pass** under `TRADE_AI_CI=1`, command and result quoted (§8A, §24.6).
+  (4) **At least one successful `live` n8n run with the cron line still present under the shared lock.** `RUN_DONE`
+  in mode `live`, its `output_signal` advanced after the trigger (§0 rule 8), and the allowlist lock equal to the cron
+  line's lock, so the cron line could not double-run. A `RUN_SKIPPED_LOCK` is not this run (§23.12, second bullet).
+  A forced `live` relay fire counts when the lane's window allows it: a lane gated on market hours or another clock
+  window is fired inside that window, never with the gate overridden (§8.1).
+  *Cause (§20): on 2026-10-14 11:06 ET the migration matrix (`~/n8n-maturity-verification/status-20261014-1130/`)
+  held 6 lanes cut over, 61 canary-ready and 18 in shadow, six days after 2.0.0 opened n8n scheduling; the operator
+  ruled the waits, not the defects, the road block.*
+- **No multi-day soak is a cutover condition.** Removed by name: §23.3's "3 market days of `RUN_DONE` with no
+  `trade-ai-scalp-live:STALLED` finding" for `trade-ai-scalp-live` and its restatement in §23.14 (both now point
+  here); the onboarding standard's natural-slot shadow fire as the gate to canary (`N8N_ONBOARDING_STANDARD.md`
+  step 8); and any program bar of N clean days in shadow or canary in a design or runbook. A document that still
+  states one is stale and is corrected to this subsection. *Cause (§20): the operator ruling above — "to many road
+  blocks to testing".*
+- **Unchanged.** §23.14 — broker, order, secret and daemon lanes are never dispatcher-eligible, the token test, and
+  `trade-ai-scalp-live`'s other 4.0.0 conditions (exact argv, lock, `timeout_s` 295, `market_day_gate.sh`, relay
+  live list, workflow-id grant). Cutover comments the exact line, never deletes it (§0 rail 6, §23.2); one `cron`
+  grant per wave naming every lane id (§23.12); rollback per line (§23.2). After cutover, natural-schedule evidence is
+  monitored, not awaited (§23.12, last bullet), and a failing natural fire makes the lane not working again and is a
+  rollback trigger (§8.1).
+- **Why MAJOR, and why §23.14 could change.** It removes a restriction that 4.0.0 (MAJOR) set on a lane that ingests
+  and sends, so the weakest guarantee after the change is weaker (version policy). §23.14's last bullet says no
+  amendment made inside a program window can change it and it needs a new MAJOR: the program window ended
+  2026-10-12T23:59:59-04:00 (§23.13) and this is a new MAJOR. §23.14 changes by exactly one clause, which points here;
+  the hash pins of §23.14 in the 4.3.0 … 7.0.0 tests reverse that one clause before hashing, and
+  `tests/test_agents_policy_8_0_0_cutover_standard.py` pins the new clause and the new digest.
 
 ---
 
@@ -5192,6 +5367,8 @@ needs `execution-engineering` (§22), and A4/A5 stay the operator's and the dete
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 8.0.0 | 2026-10-14 | PROPOSED | MAJOR | Operator-directed 2026-10-14 (~11:05 ET, verbatim: "new standards apply when i say so fix and dry and regression testing, yes it should run live successful to many road blocks to testing"): §23.21 "The cutover standard" added. An n8n lane is cutover-ready when (1) its defect is fixed and served, (2) its n8n dry run passes (forced `dry_run` fire counts; no natural shadow slot required), (3) its lane regression tests pass under `TRADE_AI_CI=1`, (4) it has at least one successful `live` n8n run (`RUN_DONE`, output_signal advanced) with the cron line still present under the shared lock; a forced live relay fire counts when the lane's window allows (in-window for market-hours lanes, no gate override). Multi-day soaks removed: §23.3 `trade-ai-scalp-live` "3 market days" clause and its §23.14 restatement replaced in place by a pointer to §23.21; §8.1's list of natural-evidence gates loses onboarding step 8 and the scalp-live soak; §23.12 cutover bullet points to §23.21. Unchanged: §23.14 never-eligible rule and token test, comment-not-delete, one `cron` grant per wave, per-line rollback, post-cutover natural evidence monitored. §0, §2, §2A, §7A, §17 byte-identical; §23.14 changes by exactly one clause (permitted to a new MAJOR outside a program window; window closed 2026-10-12). §23.14 hash pins in `tests/test_agents_policy_4_3_0_r1_classes.py`, `4_4_0`, `4_6_0`, `5_0_0`, `5_1_0`, `5_2_0` (and `7_0_0` through it) reverse the one clause before hashing; `tests/test_agents_policy_8_0_0_cutover_standard.py` pins the new clause, the §23.21 text and the new digest; `4_0_0` and `5_2_0` fragment tests updated. Numbered 8.0.0 after #1697 (6.0.0, PROPOSED) and #1725 (7.0.0, approved, unmerged); `Supersedes` 5.1.0. | PENDING — operator `APPROVE_AGENTS_POLICY_8_0_0 <pr_number> <head_sha>` (§20) |
+| 7.0.0 | 2026-10-14 | PROPOSED | MAJOR | Operator-directed 2026-10-14 ("move to n8n i approve if i need to make amendment propose its just looking at level 2 on moomoo no trading"): §23.20 "Advisory market-data lanes on the dispatcher" added and one exception bullet added to §23.3. A lane in the code ceiling `lane_dispatch.ADVISORY_MARKET_DATA_LANES` is dispatcher-eligible only when (a) its reach uses market data only (moomoo OpenD quote context; no trade context, order verb, account/position read or broker client module), (b) it writes advisory output only and carries no sandbox/broker submit switch, (c) it sends only through the host `send_telegram` chokepoint (`bypass_router=True` only at sites already on the 5.1.0 allowlist), (d) n8n carries no secret and its `env_names` name no broker credential; class `pipeline`, lock = the cron lock, §23.12 ladder. Enforced by `scripts/lib/advisory_lane_guard.py`, `lane_dispatch.advisory_md_admission` / `advisory_md_static_errors` and `tests/test_agents_policy_7_0_0_advisory_market_data.py`, which also closes the dispatcher sender gap with a shrink-only baseline. §0, §2, §2A, §7A, §17 and §23.14 byte-identical. Numbered 7.0.0 after PR #1697 (6.0.0, PROPOSED); `Supersedes` 5.1.0. | PENDING — operator `APPROVE_AGENTS_POLICY_7_0_0 <pr_number> <head_sha>` (§20) |
 | 5.2.0 | 2026-10-11 | PROPOSED | MINOR | §8.1 "Working means validated now — tests, dry run, forced run; natural schedules are monitored, never awaited" added: before an agent calls a build, change or install working it quotes (1) the unit/regression tests for what it touched under `TRADE_AI_CI=1`, (2) a dry run (§0 rule 7, §6), and (3) a forced run — the installed job, stage or workflow triggered on demand exactly as its schedule would (same command, environment, cwd rule, wrappers and locks; an n8n lane through `coordination/run` in the mode its stage allows), proven by a durable artifact dated after the trigger (§0 rule 8). Natural fires are then monitored, never the first proof and never awaited; the first natural fire still settles the separate on-schedule claim, and a failing one reopens the change. Gates already conditioned on natural evidence keep their condition (onboarding step 8, §23.12 last bullet, registry `PAUSED` → `ACTIVE` after natural-slot verification, §23.3 three clean market days, §15). No forced run for broker/order/stop/session/2FA paths (§0 rule 2, §2, §22, §24.10), operator-only surfaces (§17) or a double send to the operator (senders go through the router with dedupe on or use their dry run); clock-gated jobs pass through their wrapper with no override, and a deferral receipt is the proof. A forced run of an `--apply` job needs the grant the install needed; an overlapping natural fire must skip on its lock or run harmlessly; the forced run is recorded in the change record. One-line pointers in §6, §8, §9.3, §16, §23.12 and §23.19; `docs/implementation/n8n-maturity/N8N_ONBOARDING_STANDARD.md` proof steps restate it. §0, §2, §2A, §7A, §17 and §23.14 byte-identical; no adapter changes (a §0 rule 7/8 pointer is proposed in the PR body only). Tests: `tests/test_agents_policy_5_2_0_validation.py`. Cause: 2026-10-10/11 C1 stage-runner manifest flips — flip 1's proof deferred to its 10:50 ET natural fire, flip 2 waited, the grant expired first; operator request 2026-10-11 ~09:22 ET. MINOR: a new proof obligation that widens no authority — forced runs are bounded by existing grants and gates (read as MAJOR, it becomes 6.0.0 unchanged otherwise). | **PENDING** operator ratification `APPROVE_AGENTS_POLICY_5_2_0 <pr_number> <head_sha>` (§20); per-PR word, excluded from the §23.13 standing merge approval because it changes `AGENTS.md`. Until then the 5.1.0 text governs. |
 | 5.1.0 | 2026-10-11 | ACTIVE | MINOR | §9.1 "Anything the operator must act on bypasses the router" replaced: an operator-action message (asks the operator to approve, deny or decide, or carries a button that does) is sent as a P1 notification intent with dedupe off (`send_telegram(..., priority="P1", dedupe_minutes=0)`, `telegram_alert_router.route_intent`) — never text-classified, capped, quiet-held, archived or suppressed, with a `NotificationIntentRoute@v1` receipt per decision, and still reported *accepted for interrupt delivery*, never *sent*. Two bullets added: `bypass_router=True` is legacy, allowlisted and shrink-only (`BYPASS_ALLOWLIST`, `tests/test_notification_intents_20261010.py`), with the four broker-execution sender units (`alpaca_stop_manager.py` ×2, `defense_execution.py`, `moomoo/opend_health.py`) and `active_trader/momentum_alerts.py` keeping their bypass until an `execution-engineering` grant names them, and `guard_request_approval.py` allowlisted; a P2 intent is held 22:00–07:00 ET (the incident notifier's window) to the Reports archive (`notification_intent_p2`) and folded into the advice digest, delivered if the hold cannot be archived, and anything that must reach the operator in the quiet window is P1. One sentence each added to the §8 remote-approval paragraph and the §24.1 "Senders emit notification intents" bullet, pointing to §9.1. Cause: PR #1685 (`n8nmat/bypass-senders-to-intents`, head `1d9eba216`, held for this amendment) moves 25 of the 30 measured `bypass_router=True` senders to intents (operator 2026-10-10). Merge order: #1685 first. Open item for #1685: `stop_decision_brief.py` is P1 with the default 60-minute dedupe; the operator classifies it before #1685 merges. MINOR: it replaces a mechanism with an equal guarantee for operator-action messages plus a receipt, and adds a declared dedupe window and a never-dropped hold for the rest; no authority rail, operator-only boundary, role, broker reach or egress changes. §0, §2, §2A, §7A, §17 and §23.14 byte-identical; no adapter, `CLAUDE.md` or `AI_WORK_POLICY.md` change. Read as MAJOR, it becomes 6.0.0 unchanged otherwise. Tests: `tests/test_agents_policy_5_1_0_notification_intents.py`. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_5_1_0 1689 b0f0c6eeb` (operator, PR #1689 comment by PatsKiller 2026-10-11T13:12:31Z, verbatim: "APPROVE_AGENTS_POLICY_5_1_0 1689 b0f0c6eeb"); merged #1689 as `26cf80f606e5bb797d5a5b714b23acb3ff95a9c6` (auto-merged 2026-10-11T13:15:17Z); ratification edit on the operator's in-session word 2026-10-11 ("yes - ratify 5.1.0"); per-PR word, excluded from the §23.13 standing merge approval because it changes `AGENTS.md`. |
 | 5.0.0 | 2026-10-10 | ACTIVE | MAJOR | §24.10 "Broker-adjacent daemon operations — the `execution-ops` grant" added, and one sentence added to §0 rule 2 pointing to it (binding only once 5.0.0 is ACTIVE). Under a per-incident `execution-ops` guard grant (≤ 6 h, remotely grantable by Telegram `/approve`, reason naming the unit, the actions and the incident), an agent may operate a broker-execution unit — a user unit whose `ExecStart` runs `scripts/active_trader/**` or `scripts/brokers/**`; measured: `tradeai-active-trader-motion.service` only. It may inspect status, journal, cwd and drop-ins (never `Environment` or env files). It may re-point the code root by `95-code-root-current.conf` to `portfolio-server/CURRENT`, archiving the superseded drop-in by rename. It may run `daemon-reload` with the restart, and `restart`. It may create or archive the unit's enable flag only under the operator's home (`/etc` flags stay operator-only). Every mutation runs only while `cio_market_session` says `CLOSED`, failing closed. A quoted preflight comes first: grant, market state, the unit's tests at CURRENT under `TRADE_AI_CI=1`, no store or `output_signal` move (unit-code-roots checks; `STORE_RISK` goes to the operator, §0 rule 5), `systemd-analyze verify`, and a dry run. Proof is by cwd readback and a receipt; rollback restores the archived drop-in. Never code edits, credentials, live/paper flags or modes, a restart into live mode (A4), order, stop, session-grant or 2FA paths, or broker calls. OpenD (`scripts/moomoo/**`), `--mode live` units, system units and root actions are out of reach. Guard scope installed by the operator-run `packets/agents-4-7-0/install_execution_ops_scope.py` (`bin/guard` `ALL_TIERS` plus a 6 h cap, `guard-lib.sh` scope text and classifier, hook rule `broker.execution_ops`); open gaps stated (unit binding is by reason text; other verbs still classify `service`; Claude hook not installed; the remote grant needs the scope in the poller's release). The §0 change is exactly that one sentence: the 4.1.0, 4.3.0, 4.4.0 and 4.6.0 tests strip it before hashing, and their §0 digest is unchanged. §2, §2A, §7A, §17 and §23.14 are byte-identical; the four adapters must carry the same sentence byte for byte (`tests/test_agents_section_zero_parity.py`); the operator applies it with the packet's `apply_adapters.py` before push, because `CLAUDE.md` is the operator's file. Tests: `tests/test_agents_policy_5_0_0_execution_ops.py`. Causes: the 2026-10-10 ~21:30–21:49 ET motion-unit incident (exact-SHA drop-in archived by hand, start skipped on the missing `/etc` flag, unit inactive on the dev-tree root); operator requests of 2026-10-10 ~21:50 and ~21:52 ET. MAJOR: it narrows §0 rule 2 for one operational purpose (version policy: authority rails and broker access, classified by the weakest guarantee); requested as 4.7.0 (MINOR) and renumbered. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_5_0_0 1686 d51b6c50e` (operator, PR #1686 comment by PatsKiller 2026-10-11T12:33:56Z, verbatim: "APPROVE_AGENTS_POLICY_5_0_0 1686 d51b6c50e"); merged #1686 as `0ec32048669b6a8329b6ab60818cbf527e01f30b` (operator-merged 2026-10-11T12:33:58Z); ratification edit on the operator's in-session word 2026-10-11 ~08:40 ET ("ratify 5.0.0"); per-PR word, excluded from the §23.13 standing merge approval because it changes `AGENTS.md` §0. Effective 2026-10-11. |

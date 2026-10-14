@@ -1426,18 +1426,20 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_00_PREFLIGHT.md` | Stage 0 · Fresh-state preflight and constitutional read | review_required | OK | `d565bb67c3fa` |
 | `docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_01_PR_COLLISION.md` | Stage 1 · Open-PR collision / convergence inventory | review_required | OK | `b072654894ad` |
 | `docs/implementation/maturity-program/sop-1.2.0-20260902/VERIFIER_RUNBOOK.md` | SOP 1.2.0 · Independent verifier runbook | review_required | OK | `db4ba680bfb7` |
-| `docs/implementation/n8n-maturity/00-MASTER-PROGRAM.md` | 00 — N8N Maturity Acceleration: program index | review_required | OK | `9c43aea80082` |
+| `docs/implementation/n8n-maturity/00-MASTER-PROGRAM.md` | 00 — N8N Maturity Acceleration: program index | review_required | OK | `530a686d1c64` |
 | `docs/implementation/n8n-maturity/01-registry-reconciliation.md` | 01 — Lane registry reconciliation (B1) | review_required | OK | `7ef9d42aa3c9` |
 | `docs/implementation/n8n-maturity/02-six-workflow-architecture.md` | N8N Maturity — 02: six-workflow architecture (registry-driven dispatch) | review_required | OK | `eca20f41c990` |
-| `docs/implementation/n8n-maturity/03-momentum-scalp-lanes.md` | 03 — Momentum-scalp lanes under n8n: inventory, root cause, dispatch design, monitoring | review_required | OK | `3ea31aa32eee` |
+| `docs/implementation/n8n-maturity/03-momentum-scalp-lanes.md` | 03 — Momentum-scalp lanes under n8n: inventory, root cause, dispatch design, monitoring | review_required | OK | `3cb08a345d41` |
 | `docs/implementation/n8n-maturity/BROKER_ENV_AUDIT.md` | Broker env-name read audit — which jobs truly need broker names | review_required | OK | `76aa7605bcfb` |
 | `docs/implementation/n8n-maturity/B_FAMILIES_TOP5.md` | B families top 5 — one parameterised job per same-script cron family | review_required | OK | `e1f607cfa001` |
-| `docs/implementation/n8n-maturity/MIGRATION_RECONCILIATION_20261012.md` | TradeAI migration reconciliation | review_required | OK | `b6e056759869` |
+| `docs/implementation/n8n-maturity/MIGRATION_RECONCILIATION_20261012.md` | TradeAI migration reconciliation | archive_superseded | OK | `4dce3c7c9f22` |
+| `docs/implementation/n8n-maturity/MIGRATION_STATE_20261014.md` | Cron → n8n migration state — 2026-10-14 | review_required | OK | `68ce060387fd` |
 | `docs/implementation/n8n-maturity/MOMENTUM_LINEAGE_IMPLEMENTATION_20261013.md` | Momentum lineage and lifecycle implementation | review_required | OK | `a8a7fb2c8c0c` |
 | `docs/implementation/n8n-maturity/MONITOR_FOLD_COVERAGE_W1-9.md` | Monitor fold coverage (W1-9): freshness contracts, input starvation and design notes for the rest | review_required | OK | `527bdf9c7d0f` |
-| `docs/implementation/n8n-maturity/N8N_CONFIGURATION.md` | N8N configuration — ms01-openclaw (the entry point) | review_required | OK | `6937964c5214` |
+| `docs/implementation/n8n-maturity/N8N_CONFIGURATION.md` | N8N configuration — ms01-openclaw (the entry point) | review_required | OK | `dcbf918c100a` |
 | `docs/implementation/n8n-maturity/N8N_MONITORING_AND_REMEDIATION_STANDARD.md` | N8N monitoring, SIEM, Telegram and LLM auto-remediation standard — per lane | review_required | OK | `5425cba590c8` |
-| `docs/implementation/n8n-maturity/N8N_ONBOARDING_STANDARD.md` | N8N onboarding standard — the mandatory procedure for adding anything to n8n | review_required | OK | `dee91c74182d` |
+| `docs/implementation/n8n-maturity/N8N_ONBOARDING_STANDARD.md` | N8N onboarding standard — the mandatory procedure for adding anything to n8n | review_required | OK | `02cb81888d11` |
+| `docs/implementation/n8n-maturity/N8N_RUNTIME_ARCHITECTURE.md` | N8N runtime architecture — cron vs n8n dispatch, relay, gateway, executor, locks, ledger, watch and incidents | review_required | OK | `f75ee3f5fa42` |
 | `docs/implementation/n8n-maturity/REFACTOR_SHARDS_05_08_SOURCE_INTEGRATION_20261011.md` | Refactor shards 05–08 local source integration | review_required | OK | `442547ac5fe7` |
 | `docs/implementation/n8n-maturity/REFACTOR_SHARD_01_20261011.md` | Refactor shard 01 — offline CLI plans and durable receipts | review_required | OK | `79cbfc00a4a6` |
 | `docs/implementation/n8n-maturity/REFACTOR_SHARD_02_20261011.md` | Refactor shard 02 — source handoff | review_required | OK | `92f50ecf978d` |
@@ -1447,6 +1449,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-maturity/REFACTOR_SHARD_06_20261011.md` | Shard06 cron writer preview and receipt proposal (2026-10-11) | review_required | MISSING HEADER | `77a266619a2c` |
 | `docs/implementation/n8n-maturity/REFACTOR_SHARD_07_20261011.md` | Shard 07 source refactor | review_required | OK | `2f2c13ca6634` |
 | `docs/implementation/n8n-maturity/REFACTOR_SHARD_08_20261011.md` | Refactor shard 08 | review_required | OK | `5d785957a2fd` |
+| `docs/implementation/n8n-maturity/RUNBOOK_CUTOVER_ROLLBACK.md` | Runbook — cut a lane over from cron to n8n, and roll it back | review_required | OK | `294ce68c7ce4` |
 | `docs/implementation/n8n-maturity/SEARCH_SOURCE_ROUTING.md` | Search source routing — which source answers what, and what it may spend | review_required | OK | `633c3aab392f` |
 | `docs/implementation/n8n-maturity/WAVE_B_CC_ORCHESTRATE_2026-10-11.md` | Wave B — CC orchestrate (research-intake + watch-refresh) | review_required | OK | `82db6193e3cb` |
 | `docs/implementation/n8n-maturity/WAVE_C_HEAVY_JOBS_2026-10-11.md` | Wave C — heavy CC jobs (advisory / analyst / brief / legacy Run) | review_required | OK | `d34284b77ce0` |
@@ -1462,7 +1465,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-maturity/cron-inventory/DEPENDENCY_MAP.md` | Dependency map — Trade AI scheduled work (cron · systemd · health-tick · n8n) | review_required | OK | `a6874bcd3c32` |
 | `docs/implementation/n8n-maturity/cron-inventory/GOVERNANCE_ANALYSIS.md` | Schedule and dependency governance — overlaps, duplicates, consolidation | review_required | OK | `529bca63c840` |
 | `docs/implementation/n8n-maturity/cron-inventory/README.md` | Cron inventory — system of record | review_required | OK | `74edf16d290d` |
-| `docs/implementation/n8n-maturity/cron-inventory/REMEDIATION_PLAN.md` | Cron / n8n Remediation Plan — from the verified inventory | review_required | OK | `bbcf489b4a63` |
+| `docs/implementation/n8n-maturity/cron-inventory/REMEDIATION_PLAN.md` | Cron / n8n Remediation Plan — from the verified inventory | review_required | OK | `9776f4684792` |
 | `docs/implementation/n8n-maturity/cron-inventory/SCHEMA.md` | Cron inventory — system of record: column specification (v1, 2026-10-09 21:55 ET) | review_required | OK | `993baebfd7cf` |
 | `docs/implementation/n8n-maturity/reconciliation-20261012/MOMENTUM_LIFECYCLE_CANDIDATE.md` | Momentum lifecycle implementation and activation packet | review_required | OK | `0abd4d2f7cb1` |
 | `docs/implementation/n8n-maturity/reconciliation-20261012/runtime-contracts/README.md` | Runtime and contract reconciliation receipt | review_required | OK | `5bb387e251b7` |

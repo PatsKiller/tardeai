@@ -75,10 +75,19 @@ def test_exception_bullet_names_exactly_one_lane_and_its_conditions():
     s = _flat(m.group(0))
     assert "**Exception (4.0.0) — `trade-ai-scalp-live` only.**" in s
     for frag in ("/tmp/tradeai_scalp_live.lock", "`timeout_s` 295", "market_day_gate.sh", "n8n holds no provider key",
-                 "send_telegram", "TRADEAI_N8N_RELAY_LIVE_LANES", "3 market days",
+                 "send_telegram", "TRADEAI_N8N_RELAY_LIVE_LANES",
                  "No other ingest writer or sender enters the allowlist by analogy"):
         assert frag in s, frag
-    assert s.count("**Exception (") == 1
+    # AGENTS 8.0.0 (PROPOSED, MAJOR, operator-directed 2026-10-14) replaced the 4.0.0 "3 market days" fallback soak in
+    # place with the §23.21 cutover standard: one in-window live n8n run with the cron line present under the lock.
+    assert "3 market days" not in s
+    for frag in ("§23.21 cutover standard (8.0.0)", "one successful in-window `live` n8n run with the cron line present",
+                 "# RETIRED <date> n8n-cutover trade-ai-scalp-live"):
+        assert frag in s, frag
+    # AGENTS 7.0.0 (PROPOSED, MAJOR, operator-directed 2026-10-14) adds exactly one more: the §23.20 advisory
+    # market-data class (tests/test_agents_policy_7_0_0_advisory_market_data.py). Any other exception still fails.
+    others = [x for x in re.findall(r"\*\*Exception \(([^)]*)\)", s) if x != "4.0.0"]
+    assert others in ([], ["7.0.0, PROPOSED"], ["7.0.0"]), others
 
 
 def test_allowlist_matches_the_exception_and_the_cron_line():

@@ -7,6 +7,9 @@ Measured at: origin/main 7df77950a (#1674) / live 8ddf2ad59-main-exact-phase2-20
 Owner:       platform (n8n maturity program)
 Policy:      AGENTS.md 4.4.0 §23 ACTIVE (where this file differs, AGENTS.md wins); 4.4.1 + 4.5.0 PROPOSED in PR #1666;
              4.6.0 PROPOSED (§24 platform rules) on branch n8nmat/agents-4-6-0
+Correction:  2026-10-14 — the version notes above are the 2026-10-10 record. Today: last ACTIVE 5.1.0; 5.2.0 merged
+             PROPOSED; 6.0.0 #1697 and 7.0.0 #1725 PROPOSED; 8.0.0 §23.21 (cutover standard) PROPOSED. See
+             00-MASTER-PROGRAM.md "Governing policy" and MIGRATION_STATE_20261014.md.
 Secrets:     none in this file — variables and credential ids are named, never valued (AGENTS.md §2A, §23.5)
 ```
 
@@ -262,11 +265,17 @@ One-line summaries; the procedure is in [`N8N_MONITORING_AND_REMEDIATION_STANDAR
 - **Grants per action:** n8n import / publish / unpublish / archive / edit and every cutover — `cron` naming the
   workflow ids or lane ids; host unit drop-ins and on-disk config — `config-write`; restarts — `service`; DB rows —
   `db-write`; a dispatcher-row PR — none (the merge is the decision). ≤ 12 h each; one per scope.
-- **Cron freeze:** no cron job, timer, health-tick step or n8n workflow is migrated, modified, disabled, consolidated
+- **Cron freeze (2026-10-09 record):** no cron job, timer, health-tick step or n8n workflow is migrated, modified, disabled, consolidated
   or retired until its inventory row is approved (operator 2026-10-09 ~21:50 ET; `cron-inventory/README.md`).
+  **Correction 2026-10-14:** no longer a blanket hold — changes go lane by lane under a `cron` grant and a packet, and
+  n8n cutovers follow the operator's cutover standard of 2026-10-14 ~11:05 ET (AGENTS.md 8.0.0 §23.21, PROPOSED):
+  defect fixed, n8n dry run passes, lane regression tests pass, ≥ 1 successful live n8n run with cron present under
+  the shared lock; no soak. Procedure: `RUNBOOK_CUTOVER_ROLLBACK.md`; diagram: `N8N_RUNTIME_ARCHITECTURE.md`.
 - **Never eligible:** broker, order, stop, position, paper execution, every sender, secret render, guard write,
   release deploy, destructive retention, daemons. **Exception:** `trade-ai-scalp-live` (4.0.0 terms), also excluded
-  from LLM diagnosis.
+  from LLM diagnosis. Its 4.0.0 cron fallback "until 3 clean market days" is replaced by the §23.21 standard once
+  AGENTS.md 8.0.0 is ratified (operator ruling 2026-10-14); retire its cron line only after
+  `APPROVE_AGENTS_POLICY_8_0_0`.
 - **Release grants name the SHA.** `scripts/lib/release_grant_binding.py` (`ReleaseGrantBinding@v1`, `enforce`)
   refuses a `release-write` grant whose reason names neither the PR (`#NNNN`) nor the target SHA (≥ 9 hex): on
   2026-10-10 ~17:07 ET the generic 6 h grant 7792ff3948d8d2d9 was refused ("no SHA named"); the re-requested grant
