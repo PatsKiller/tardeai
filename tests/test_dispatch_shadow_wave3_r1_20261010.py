@@ -37,6 +37,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from scripts.lib import lane_dispatch as LD  # noqa: E402
+from scripts.lib import lane_stage_clamp as SC  # noqa: E402
 from scripts.lib import n8n_due as D  # noqa: E402
 from scripts.lib import n8n_retry_policy as RP  # noqa: E402
 
@@ -79,9 +80,18 @@ WAVE3_LIVE = {k: v for k, v in WAVE3.items() if k not in C1_PREMARKET_ABSORBED}
 #: The three lanes whose cron line gains `flock -n <lock>` (packet n8n-maturity/packets/wave23-flock).
 FLOCK_ADDED = {"agent-outcome-linker", "agent-calibration-engine", "update-agent-performance"}
 #: Wave-3 lanes moved on to canary (live fire under the cron line's flock lock; tests/test_canary_wave1_20261011.py).
-CANARY = {"research-insight-extractor"}
+#: research-insight-extractor climbed canary -> cutover 2026-10-13 17:56 ET (operator ran _cutover.py --apply; receipt
+#: n8n_cutover/research-insight-extractor-20261013T215647Z-cutover.json): its cron line is `# RETIRED`, its row is an
+#: n8n dispatcher row, so it leaves the cron-row checks below and is pinned by test_cutover_row_is_the_dispatcher_row.
+CANARY: set[str] = set()
+CUTOVER = frozenset({"research-insight-extractor"})
+#: The wave-3 rows still scheduled by cron (shadow or canary).
+WAVE3_ON_CRON = {k: v for k, v in WAVE3_LIVE.items() if k not in CUTOVER}
 #: lane -> the stage / dispatch.mode its row carries now.
-STAGE = {lane: ("canary", "live") if lane in CANARY else ("shadow", "dry_run") for lane in WAVE3}
+STAGE = {
+    lane: ("cutover", "live") if lane in CUTOVER else ("canary", "live") if lane in CANARY else ("shadow", "dry_run")
+    for lane in WAVE3
+}
 
 
 def _activate(row: dict) -> dict:
@@ -120,7 +130,7 @@ def test_c1_absorbed_lane_left_the_wave(lane):
     assert lane not in ALLOW
 
 
-@pytest.mark.parametrize("lane", sorted(WAVE3_LIVE))
+@pytest.mark.parametrize("lane", sorted(WAVE3_ON_CRON))
 def test_row_is_a_shadow_cron_row_admitted_by_the_r1_gate(lane):
     row = ROWS[lane]
     assert LD.R1_SHADOW_SHAPE_STATUS == "ACTIVE"
@@ -131,7 +141,7 @@ def test_row_is_a_shadow_cron_row_admitted_by_the_r1_gate(lane):
     assert LD.r1_class_admission(row) == (True, f"r1_admitted:{WAVE3[lane][1]}")
 
 
-@pytest.mark.parametrize("lane", sorted(WAVE3_LIVE))
+@pytest.mark.parametrize("lane", sorted(WAVE3_ON_CRON))
 def test_dispatch_block_shape(lane):
     lno, klass = WAVE3[lane]
     row = ROWS[lane]
@@ -149,7 +159,7 @@ def test_dispatch_block_shape(lane):
 @pytest.mark.parametrize("lane", sorted(WAVE3_LIVE))
 def test_allowlist_entry_is_shadow_only_and_carries_no_broker_credential(lane):
     e = ALLOW[lane]
-    assert e["live_arg"] is None if lane not in CANARY else e["live_arg"] == []
+    assert e["live_arg"] is None if lane not in CANARY | CUTOVER else e["live_arg"] == []
     assert e["dry_run_arg"] == ["--dry-run"]
     assert not any(t.startswith("--apply") for t in e["command"])
     assert e["output_signal"] == ROWS[lane]["output_signal"]["path"]
@@ -158,7 +168,7 @@ def test_allowlist_entry_is_shadow_only_and_carries_no_broker_credential(lane):
     assert LD.forbidden_text_hits(" ".join(e["command"] + e["dry_run_arg"])) == []
 
 
-@pytest.mark.parametrize("lane", sorted(WAVE3_LIVE))
+@pytest.mark.parametrize("lane", sorted(WAVE3_ON_CRON))
 def test_allowlist_lock_is_the_cron_line_lock(lane):
     """The staged command_text is the live cron command (plus the packet's flock for the three FLOCK_ADDED lanes);
     its flock lock is the allowlist lock, as the canary step will require (r1_canary_lock_matches)."""
@@ -191,7 +201,7 @@ def test_the_script_writes_the_receipt_the_row_names():
 # ------------------------------------------------------------------------------ refused now, admitted later
 
 
-@pytest.mark.parametrize("lane", sorted(WAVE3_LIVE))
+@pytest.mark.parametrize("lane", sorted(WAVE3_ON_CRON))
 def test_activated_row_is_refused_while_4_4_0_is_proposed(lane):
     row = _activate(ROWS[lane])
     ok, why = _admit(row, "PROPOSED")
@@ -201,7 +211,7 @@ def test_activated_row_is_refused_while_4_4_0_is_proposed(lane):
         assert not ok and "shadow_on_cron_not_ratified" in why, (lane, why)
 
 
-@pytest.mark.parametrize("lane", sorted(WAVE3_LIVE))
+@pytest.mark.parametrize("lane", sorted(WAVE3_ON_CRON))
 def test_activated_row_is_admitted_once_4_4_0_is_active(lane, monkeypatch):
     row = _activate(ROWS[lane])
     assert _admit(row, "ACTIVE") == (True, f"r1_admitted:{WAVE3[lane][1]}")
@@ -226,7 +236,9 @@ def test_activated_registry_has_no_dispatch_issue_once_active(monkeypatch):
     # + 11 train 4 rows (shards 05-08, 2026-10-11; tests/test_refactor_shard_0[5-8]_20261011.py): 22 proposed, 5 stay
     # RETIRED into the premarket C1 stage (train 2), 5 are SW4 EXCLUDED (tests/test_sw4_shadow_wave4_20261011.py) and
     # sec-filings-feed is W4 provider-owner EXCLUDED (tests/test_w4_provider_owners_shadow_20261011.py).
-    assert len(r1_cron_shadow) == len(WAVE3_LIVE) + 3 + 15 + 10 + 11
+    # - 1: C1 hermes_overnight registry edit (train 6, 2026-10-12) absorbs SW4 hermes-tag-lift-discovery (dispatch_retired).
+    # (WAVE3_ON_CRON: research-insight-extractor left cron at cutover, 2026-10-13.)
+    assert len(r1_cron_shadow) == len(WAVE3_ON_CRON) + 3 + 15 + 10 + 11 - 1
     assert len(errs) == len(r1_cron_shadow) and all("shadow_on_cron_not_ratified" in x for x in errs), errs[:3]
     monkeypatch.setattr(LD, "R1_SHADOW_SHAPE_STATUS", "ACTIVE")
     assert LD.registry_dispatch_errors(doc) == []
@@ -252,7 +264,7 @@ def _sweep(rows, allow, days=7):
 
 
 def test_compute_due_week_sweep_proposed_vs_active(monkeypatch):
-    activated = [_activate(ROWS[x]) for x in WAVE3_LIVE]
+    activated = [_activate(ROWS[x]) for x in WAVE3_ON_CRON]
     monkeypatch.setattr(LD, "R1_SHADOW_SHAPE_STATUS", "PROPOSED")
     emitted, errors = _sweep(activated, ALLOW, days=1)
     assert emitted == {} and {c for _l, c in errors} == {"class_not_permitted"}
@@ -260,5 +272,20 @@ def test_compute_due_week_sweep_proposed_vs_active(monkeypatch):
     monkeypatch.setattr(LD, "R1_SHADOW_SHAPE_STATUS", "ACTIVE")
     emitted, errors = _sweep(activated, ALLOW)
     assert errors == set(), sorted(errors)[:5]
-    assert set(emitted) == set(WAVE3_LIVE), sorted(set(WAVE3_LIVE) - set(emitted))
+    assert set(emitted) == set(WAVE3_ON_CRON), sorted(set(WAVE3_ON_CRON) - set(emitted))
     assert all(modes == {STAGE[lane][1]} for lane, modes in emitted.items())
+
+
+@pytest.mark.parametrize("lane", sorted(CUTOVER))
+def test_cutover_row_is_the_dispatcher_row(lane):
+    """§23.11 cutover: the row is scheduled by the n8n dispatcher at the retired cron line's cadence, live, admitted,
+    and the stage clamp keeps it live; the allowlist still carries the cron line's flock lock and its live argv."""
+    row, e = ROWS[lane], ALLOW[lane]
+    s = row["scheduler"]
+    assert s["kind"] == "n8n" and s["expression"] == "dispatcher" and s["stage"] == "cutover" and s["wave"] == "D3"
+    assert "command_text" not in s and row["dispatch"]["cron"] == [s["cadence"]]
+    assert row["state"] == "ACTIVE" and LD.dispatch_mode(row) == "live"
+    assert LD.validate_dispatch_block(row) == []
+    assert LD.r1_class_admission(row, e) == (True, f"r1_admitted:{WAVE3[lane][1]}")
+    assert SC.clamp_mode(lane, "live", REGISTRY["lanes"])["reason"] == "stage_cutover"
+    assert e["lock_kind"] == "flock" and e["live_arg"] == []

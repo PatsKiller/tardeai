@@ -6893,19 +6893,19 @@
       "scheduler": {
         "kind": "cron",
         "expression": "20 2 * * *",
-        "command_text": "hermes_overnight.json --stage night --dry-run",
+        "command_text": "hermes_overnight.json --stage night --apply",
         "match": "hermes_overnight.json --stage night"
       },
       "expected_cadence_hours": 24.0,
       "state": "ACTIVE",
-      "state_since": "2026-10-07",
-      "state_reason": "Tranche B day 0 (2026-10-07 22:40Z, cron grant 69093b20b90691d1, backup ~/.local/state/tradeai/backups/crontab-20261007T224010Z-pre-tranche-b-day0.txt): the stage line is installed in --dry-run for the parallel-run observation — the runner executes nothing in that mode and writes only its PipelineRun@v1 summary; every absorbed line keeps running. Cutover (--apply + absorbed lines commented + their lanes RETIRED) follows per stage once the dry-run summaries match the old lines' receipts (docs/implementation/n8n-parallel/14-execution-week-20261008.md).",
+      "state_since": "2026-10-11",
+      "state_reason": "C1 manifest flip 2026-10-11 (operator approval 2026-10-10 ~18:28 ET, JOB_REDUCTION_DEEP_PASS.md D-1; cron grant <grant id>, backup ~/.local/state/tradeai/backups/crontab-<ts>-pre-c1-hermes_overnight.txt): stage line flipped --dry-run -> --apply and the 4 absorbed crontab line(s) commented `# RETIRED 2026-10-11 c1-manifest hermes_overnight ` (never deleted). Each step runs its live cron command verbatim with its own lock, timeout and log (equivalence: packets/c1-manifest-flips/hermes_overnight/EQUIVALENCE.txt).",
       "output_signal": {
         "kind": "file_mtime",
         "path": "data/runtime/pipeline_hermes_overnight_night_last.json"
       },
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "Serial sum 212 s median / 526 s p95 (PAM-group upper bounds; backlog_drain is bounded by its own --max-runtime 3000); window 02:20-06:15 = 14100 s. Every --official off-peak wrapper stays inside its step. Dry-run from the served tree 2026-10-07 21:09Z: END ... DRY_RUN=1 with the manifest step count for every stage; crontab non-comment lines 441 -> 449.",
+      "reason_evidence": "Pending: the first natural --apply run's data/runtime/pipeline_hermes_overnight_night_last.json (overall_status, per-step rc) — the natural-run proof required before the next manifest flips. Dry-run 2026-10-10 against the C1-synced manifest: 4 step(s) planned, ids and commands identical to the live lines.",
       "value_class": "Technical Debt",
       "recommendation": "PIPELINE:P06",
       "rationalization": {
@@ -6926,19 +6926,19 @@
       "scheduler": {
         "kind": "cron",
         "expression": "13 23 * * *",
-        "command_text": "hermes_overnight.json --stage close --dry-run",
+        "command_text": "hermes_overnight.json --stage close --apply",
         "match": "hermes_overnight.json --stage close"
       },
       "expected_cadence_hours": 24.0,
       "state": "ACTIVE",
-      "state_since": "2026-10-07",
-      "state_reason": "Tranche B day 0 (2026-10-07 22:40Z, cron grant 69093b20b90691d1, backup ~/.local/state/tradeai/backups/crontab-20261007T224010Z-pre-tranche-b-day0.txt): the stage line is installed in --dry-run for the parallel-run observation — the runner executes nothing in that mode and writes only its PipelineRun@v1 summary; every absorbed line keeps running. Cutover (--apply + absorbed lines commented + their lanes RETIRED) follows per stage once the dry-run summaries match the old lines' receipts (docs/implementation/n8n-parallel/14-execution-week-20261008.md).",
+      "state_since": "2026-10-11",
+      "state_reason": "C1 manifest flip 2026-10-11 (operator approval 2026-10-10 ~18:28 ET, JOB_REDUCTION_DEEP_PASS.md D-1; cron grant <grant id>, backup ~/.local/state/tradeai/backups/crontab-<ts>-pre-c1-hermes_overnight.txt): stage line flipped --dry-run -> --apply and the 1 absorbed crontab line(s) commented `# RETIRED 2026-10-11 c1-manifest hermes_overnight ` (never deleted). Each step runs its live cron command verbatim with its own lock, timeout and log (equivalence: packets/c1-manifest-flips/hermes_overnight/EQUIVALENCE.txt).",
       "output_signal": {
         "kind": "file_mtime",
         "path": "data/runtime/pipeline_hermes_overnight_close_last.json"
       },
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "commit 0.1 s (PAM exact, VERIFIED); source curation 274 s median (safe_flock, 2 of 7 firings completed through the lock — the other 5 were lock_skips or no receipt). Window to 23:59. Dry-run from the served tree 2026-10-07 21:09Z: END ... DRY_RUN=1 with the manifest step count for every stage; crontab non-comment lines 441 -> 449.",
+      "reason_evidence": "Pending: the first natural --apply run's data/runtime/pipeline_hermes_overnight_close_last.json (overall_status, per-step rc) — the natural-run proof required before the next manifest flips. Dry-run 2026-10-10 against the C1-synced manifest: 1 step(s) planned, ids and commands identical to the live lines.",
       "value_class": "Technical Debt",
       "recommendation": "PIPELINE:P06",
       "rationalization": {
@@ -10166,12 +10166,10 @@
         "kind": "cron",
         "expression": "25 4 * * *",
         "match": "scripts/hermes_industry_novelty_discovery.py",
-        "stage": "shadow",
-        "wave": "D2",
         "command_text": "cd $PROJ && bash \"$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh\" --official -- flock -n /tmp/hermes_industry_novelty.lock $PY scripts/hermes_industry_novelty_discovery.py --run --json >> logs/hermes_industry_novelty.log 2>&1  # industry/sector novelty discovery — LIVE (industry_novelty_enabled=true since 2026-08-04)"
       },
       "expected_cadence_hours": 24.0,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/hermes_industry_novelty.log",
@@ -10189,22 +10187,40 @@
         "event_driven_candidate": false,
         "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
       },
-      "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-10-10",
       "adopted_reason": "dispatcher shadow wave D2: a row carrying a reviewed dispatch block is hand-maintained (AGENTS §23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop the block.",
       "reconciled_on": "2026-10-09",
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
-      "dispatch": {
-        "mode": "dry_run",
-        "cron": [
-          "25 4 * * *"
-        ],
-        "tz": "America/New_York",
-        "wave": "W3",
-        "class": "report",
-        "priority": 5,
-        "retry_policy": "transient-2"
+      "state_since": "2026-10-11",
+      "superseded_by": "hermes-overnight-pipeline-night",
+      "state_reason": "Superseded by hermes-overnight-pipeline-night on 2026-10-11 (C1 manifest flip, operator approval 2026-10-10 ~18:28 ET): cron line cron:L689 commented (`# RETIRED 2026-10-11 c1-manifest hermes_overnight `), the command runs verbatim as step industry_novelty_discovery with its own lock, timeout and log. Nothing stopped; the owner of the schedule moved.",
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "packets/c1-manifest-flips/hermes_overnight/EQUIVALENCE.txt: the live line's command, log, cd root and day-of-week equal step industry_novelty_discovery of config/pipelines/hermes_overnight.json, and the real runner's --dry-run planned exactly that command. Output equivalence not verified until the stage's first natural --apply summary shows step industry_novelty_discovery rc=0 (CORRELATED until then; ESTABLISHED after).",
+      "inventory_id": "cron:L689",
+      "c1_flip": {
+        "manifest": "hermes_overnight",
+        "stage": "night",
+        "step_id": "industry_novelty_discovery",
+        "on": "2026-10-11"
+      },
+      "dispatch_retired": {
+        "on": "2026-10-11",
+        "reason": "absorbed by C1 stage hermes-overnight-pipeline-night; a pipeline stage step cannot also be a dispatcher row (its cron line is commented)",
+        "stage": "shadow",
+        "wave": "D2",
+        "dispatch": {
+          "mode": "dry_run",
+          "cron": [
+            "25 4 * * *"
+          ],
+          "tz": "America/New_York",
+          "wave": "W3",
+          "class": "report",
+          "priority": 5,
+          "retry_policy": "transient-2"
+        },
+        "adopted_from_generator": "reconcile_lane_registry@v1"
       }
     },
     {
@@ -10692,12 +10708,12 @@
       "lane_id": "research-insight-extractor",
       "owner": "research",
       "scheduler": {
-        "kind": "cron",
-        "expression": "50 6,12,18 * * *",
+        "kind": "n8n",
+        "expression": "dispatcher",
         "match": "scripts/research_insight_extractor.py",
-        "stage": "canary",
-        "wave": "D3",
-        "command_text": "cd $PROJ && flock -n /tmp/research_insight_extractor.lock $PY scripts/research_insight_extractor.py >> logs/research_insight_extractor.log 2>&1"
+        "cadence": "50 6,12,18 * * *",
+        "stage": "cutover",
+        "wave": "D3"
       },
       "expected_cadence_hours": 12.0,
       "state": "ACTIVE",
@@ -12302,12 +12318,10 @@
         "kind": "cron",
         "expression": "50 3 * * *",
         "match": "scripts/hermes_tag_lift_discovery.py",
-        "stage": "shadow",
-        "wave": "W4",
         "command_text": "cd $PROJ && bash \"$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh\" --official -- flock -n /tmp/hermes_tag_lift.lock $PY scripts/hermes_tag_lift_discovery.py --run --json >> logs/hermes_tag_lift.log 2>&1"
       },
       "expected_cadence_hours": 24.0,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "json_key",
         "path": "data/runtime/hermes-tag-lift-discovery_last.json",
@@ -12328,19 +12342,37 @@
       "reconciled_on": "2026-10-09",
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
-      "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-10-11",
       "adopted_reason": "shadow wave 4 (SW4, R1 learn, AGENTS §23.18, 4.4.0 cron-row shape): a row carrying a reviewed dispatch block is hand-maintained (AGENTS §23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop the block. Cron line L687 (crontab -l, 2026-10-11) keeps doing the real work; the dispatcher fires the dry run only. output_signal moved from the cron log/file mtime to the LaneRunReceipt@v1 the script already writes (refactor waves 1-3).",
-      "dispatch": {
-        "mode": "dry_run",
-        "cron": [
-          "50 3 * * *"
-        ],
-        "tz": "America/New_York",
+      "state_since": "2026-10-11",
+      "superseded_by": "hermes-overnight-pipeline-night",
+      "state_reason": "Superseded by hermes-overnight-pipeline-night on 2026-10-11 (C1 manifest flip, operator approval 2026-10-10 ~18:28 ET): cron line cron:L687 commented (`# RETIRED 2026-10-11 c1-manifest hermes_overnight `), the command runs verbatim as step tag_lift_discovery with its own lock, timeout and log. Nothing stopped; the owner of the schedule moved.",
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "packets/c1-manifest-flips/hermes_overnight/EQUIVALENCE.txt: the live line's command, log, cd root and day-of-week equal step tag_lift_discovery of config/pipelines/hermes_overnight.json, and the real runner's --dry-run planned exactly that command. Output equivalence not verified until the stage's first natural --apply summary shows step tag_lift_discovery rc=0 (CORRELATED until then; ESTABLISHED after).",
+      "inventory_id": "cron:L687",
+      "c1_flip": {
+        "manifest": "hermes_overnight",
+        "stage": "night",
+        "step_id": "tag_lift_discovery",
+        "on": "2026-10-11"
+      },
+      "dispatch_retired": {
+        "on": "2026-10-11",
+        "reason": "absorbed by C1 stage hermes-overnight-pipeline-night; a pipeline stage step cannot also be a dispatcher row (its cron line is commented)",
+        "stage": "shadow",
         "wave": "W4",
-        "class": "learn",
-        "priority": 5,
-        "retry_policy": "none"
+        "dispatch": {
+          "mode": "dry_run",
+          "cron": [
+            "50 3 * * *"
+          ],
+          "tz": "America/New_York",
+          "wave": "W4",
+          "class": "learn",
+          "priority": 5,
+          "retry_policy": "none"
+        },
+        "adopted_from_generator": "reconcile_lane_registry@v1"
       }
     },
     {
@@ -14777,6 +14809,136 @@
       "note": "API POST /api/v2/reports/brief/regenerate when TRADEAI_N8N_CC_WAVE_C_MODE=dry_run|apply."
     },
     {
+      "lane_id": "hermes-source-curation",
+      "owner": "research",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "30 23 * * *",
+        "match": "scripts/hermes_source_curation.py"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/hermes_source_curation.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Duplicated",
+      "recommendation": "MERGE_INTO:P10",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L376",
+        "pipeline": "P10",
+        "value_class": "Duplicated",
+        "recommendation": "MERGE_INTO:P10",
+        "f_recommendation": "CONSOLIDATE into P10 (already a pipeline step or quiet prewarm)",
+        "event_driven_candidate": false,
+        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "state_since": "2026-10-11",
+      "superseded_by": "hermes-overnight-pipeline-close",
+      "state_reason": "Superseded by hermes-overnight-pipeline-close on 2026-10-11 (C1 manifest flip, operator approval 2026-10-10 ~18:28 ET): cron line cron:L376 commented (`# RETIRED 2026-10-11 c1-manifest hermes_overnight `), the command runs verbatim as step source_curation with its own lock, timeout and log. Nothing stopped; the owner of the schedule moved.",
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "packets/c1-manifest-flips/hermes_overnight/EQUIVALENCE.txt: the live line's command, log, cd root and day-of-week equal step source_curation of config/pipelines/hermes_overnight.json, and the real runner's --dry-run planned exactly that command. Output equivalence not verified until the stage's first natural --apply summary shows step source_curation rc=0 (CORRELATED until then; ESTABLISHED after).",
+      "inventory_id": "cron:L376",
+      "c1_flip": {
+        "manifest": "hermes_overnight",
+        "stage": "close",
+        "step_id": "source_curation",
+        "on": "2026-10-11"
+      }
+    },
+    {
+      "lane_id": "hermes-discovery-yield-builder",
+      "owner": "learning",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "45 3 * * *",
+        "match": "scripts/hermes_discovery_yield_builder.py"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/hermes_discovery_yield.json",
+        "evidence": "SCRIPT_RECEIPT",
+        "evidence_ref": "scripts/hermes_discovery_yield_builder.py:28 OUTPUT_PATH written at :245; host mtime 2026-10-04T03:45:01 (STALE: offpeak wrapper logs PEAK_SKIP daily since)"
+      },
+      "value_class": "Duplicated",
+      "recommendation": "MERGE_INTO:P13",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L824",
+        "pipeline": "P13",
+        "value_class": "Duplicated",
+        "recommendation": "MERGE_INTO:P13",
+        "f_recommendation": "CONSOLIDATE into P13 (already a pipeline step or quiet prewarm)",
+        "event_driven_candidate": false,
+        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "state_since": "2026-10-11",
+      "superseded_by": "hermes-overnight-pipeline-night",
+      "state_reason": "Superseded by hermes-overnight-pipeline-night on 2026-10-11 (C1 manifest flip, operator approval 2026-10-10 ~18:28 ET): cron line cron:L827 commented (`# RETIRED 2026-10-11 c1-manifest hermes_overnight `), the command runs verbatim as step discovery_yield_builder with its own lock, timeout and log. Nothing stopped; the owner of the schedule moved.",
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "packets/c1-manifest-flips/hermes_overnight/EQUIVALENCE.txt: the live line's command, log, cd root and day-of-week equal step discovery_yield_builder of config/pipelines/hermes_overnight.json, and the real runner's --dry-run planned exactly that command. Output equivalence not verified until the stage's first natural --apply summary shows step discovery_yield_builder rc=0 (CORRELATED until then; ESTABLISHED after).",
+      "inventory_id": "cron:L827",
+      "c1_flip": {
+        "manifest": "hermes_overnight",
+        "stage": "night",
+        "step_id": "discovery_yield_builder",
+        "on": "2026-10-11"
+      }
+    },
+    {
+      "lane_id": "siem-to-hermes-backlog",
+      "owner": "research",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "15 6 * * *",
+        "match": "scripts/siem_to_hermes_backlog.py"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/siem_to_hermes_backlog.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Duplicated",
+      "recommendation": "MERGE_INTO:P10",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L835",
+        "pipeline": "P10",
+        "value_class": "Duplicated",
+        "recommendation": "MERGE_INTO:P10",
+        "f_recommendation": "CONSOLIDATE into P10 (already a pipeline step or quiet prewarm)",
+        "event_driven_candidate": false,
+        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "state_since": "2026-10-11",
+      "superseded_by": "hermes-overnight-pipeline-night",
+      "state_reason": "Superseded by hermes-overnight-pipeline-night on 2026-10-11 (C1 manifest flip, operator approval 2026-10-10 ~18:28 ET): cron line cron:L838 commented (`# RETIRED 2026-10-11 c1-manifest hermes_overnight `), the command runs verbatim as step siem_to_hermes_backlog with its own lock, timeout and log. Nothing stopped; the owner of the schedule moved.",
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "packets/c1-manifest-flips/hermes_overnight/EQUIVALENCE.txt: the live line's command, log, cd root and day-of-week equal step siem_to_hermes_backlog of config/pipelines/hermes_overnight.json, and the real runner's --dry-run planned exactly that command. Output equivalence not verified until the stage's first natural --apply summary shows step siem_to_hermes_backlog rc=0 (CORRELATED until then; ESTABLISHED after).",
+      "inventory_id": "cron:L838",
+      "c1_flip": {
+        "manifest": "hermes_overnight",
+        "stage": "night",
+        "step_id": "siem_to_hermes_backlog",
+        "on": "2026-10-11"
+      }
+    },
+    {
       "lane_id": "momentum-lifecycle-monitor",
       "owner": "platform",
       "state": "ACTIVE",
@@ -14830,7 +14992,7 @@
       "owner": "platform",
       "state": "ACTIVE",
       "state_since": "2026-10-12",
-      "state_reason": "Canary 2026-10-13 after five-facts OBSERVED on CURRENT_SESSION; live write limited to resettable shared_momentum_candidates_projection.json; CONFLICT preserved. Autonomous recovery remains cutover-gated.",
+      "state_reason": "Returned to shadow 2026-10-13 (operator): canary live mode was refused by the relay (not on TRADEAI_N8N_RELAY_LIVE_LANES), failing every n8n dispatcher run since 13:27 ET. Re-arm canary after the relay live list admits it.",
       "reason_confidence": "ESTABLISHED",
       "review_by": "2026-10-13",
       "expected_cadence_hours": 0.08333333333333333,
@@ -14847,13 +15009,13 @@
         "kind": "n8n",
         "expression": "dispatcher",
         "timezone": "America/New_York",
-        "stage": "canary",
+        "stage": "shadow",
         "match": "scripts/momentum_cache_reconcile.py"
       },
       "dispatch": {
         "class": "report",
         "retry_policy": "none",
-        "mode": "live",
+        "mode": "dry_run",
         "cron": [
           "*/5 * * * *"
         ],
@@ -17102,38 +17264,6 @@
         "f_recommendation": "CONSOLIDATE-into P10",
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "hermes-source-curation",
-      "owner": "research",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "30 23 * * *",
-        "match": "scripts/hermes_source_curation.py"
-      },
-      "expected_cadence_hours": 24.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/hermes_source_curation.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Duplicated",
-      "recommendation": "MERGE_INTO:P10",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L376",
-        "pipeline": "P10",
-        "value_class": "Duplicated",
-        "recommendation": "MERGE_INTO:P10",
-        "f_recommendation": "CONSOLIDATE into P10 (already a pipeline step or quiet prewarm)",
-        "event_driven_candidate": false,
-        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
       },
       "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",
@@ -20702,39 +20832,6 @@
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
     },
     {
-      "lane_id": "hermes-discovery-yield-builder",
-      "owner": "learning",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "45 3 * * *",
-        "match": "scripts/hermes_discovery_yield_builder.py"
-      },
-      "expected_cadence_hours": 24.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "data/runtime/hermes_discovery_yield.json",
-        "evidence": "SCRIPT_RECEIPT",
-        "evidence_ref": "scripts/hermes_discovery_yield_builder.py:28 OUTPUT_PATH written at :245; host mtime 2026-10-04T03:45:01 (STALE: offpeak wrapper logs PEAK_SKIP daily since)"
-      },
-      "value_class": "Duplicated",
-      "recommendation": "MERGE_INTO:P13",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L824",
-        "pipeline": "P13",
-        "value_class": "Duplicated",
-        "recommendation": "MERGE_INTO:P13",
-        "f_recommendation": "CONSOLIDATE into P13 (already a pipeline step or quiet prewarm)",
-        "event_driven_candidate": false,
-        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
       "lane_id": "hermes-discovery-scorecard",
       "owner": "learning",
       "scheduler": {
@@ -20759,38 +20856,6 @@
         "value_class": "Duplicated",
         "recommendation": "MERGE_INTO:P13",
         "f_recommendation": "CONSOLIDATE into P13 (already a pipeline step or quiet prewarm)",
-        "event_driven_candidate": false,
-        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "siem-to-hermes-backlog",
-      "owner": "research",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "15 6 * * *",
-        "match": "scripts/siem_to_hermes_backlog.py"
-      },
-      "expected_cadence_hours": 24.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/siem_to_hermes_backlog.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Duplicated",
-      "recommendation": "MERGE_INTO:P10",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L835",
-        "pipeline": "P10",
-        "value_class": "Duplicated",
-        "recommendation": "MERGE_INTO:P10",
-        "f_recommendation": "CONSOLIDATE into P10 (already a pipeline step or quiet prewarm)",
         "event_driven_candidate": false,
         "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
       },

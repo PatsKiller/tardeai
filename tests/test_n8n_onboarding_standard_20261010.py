@@ -147,7 +147,12 @@ def test_diagnoser_caps_and_exclusion_quoted_equal_the_code():
     # Train 3 rebuild (operator 2026-10-11): + SW4 (15) and shard 01-04 (10 admitted) lanes -> 102 lanes, 46 auto dry-run.
     # Train 4 rebuild (2026-10-11): + 11 shard 05-08 lanes admitted -> 113 lanes, 50 auto dry-run; after merging main
     # (#1700 heartbeat-watch lane, canary in #1710): + 1 -> 114 lanes, 51 auto dry-run.
-    assert cat["summary"]["lanes"] == 114 and cat["summary"]["lanes_with_auto_rerun"] == 51
+    # Train 6 rebuild (2026-10-12): main's committed catalogue had not been rebuilt after Wave C (#1712): + 3 on-demand
+    # lanes (advisory-desk-run-now, aegis-brief-regenerate, analyst-prospectus-generate); - 2 shadow rows absorbed by the
+    # C1 hermes_overnight registry edit (hermes-tag-lift-discovery, hermes-industry-novelty-discovery) -> 115, 52 auto.
+    # Train 6 refresh on main 5bfccec3a (2026-10-13): + 2 momentum lanes (#1716 momentum-lifecycle-monitor shadow,
+    # #1719 momentum-cache-reconcile canary) -> 117 lanes, 54 auto-rerun.
+    assert cat["summary"]["lanes"] == 117 and cat["summary"]["lanes_with_auto_rerun"] == 54
 
 
 def test_class_caps_quoted_equal_the_retry_policies():

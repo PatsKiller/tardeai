@@ -492,8 +492,10 @@ def test_registry_dispatch_errors_hook():
 # ── live registry (read-only) ────────────────────────────────────────────────────────────────────
 
 #: n8n-native lanes (no host line): dispatcher shape without a cron twin.
-N8N_NATIVE_SHADOW = frozenset({"momentum-lifecycle-monitor"})
-N8N_NATIVE_CANARY = frozenset({"heartbeat-watch", "momentum-cache-reconcile"})
+# momentum-cache-reconcile climbed to canary 2026-10-13; the operator returned it to shadow the same day
+# (relay refused live, failing every dispatcher run).
+N8N_NATIVE_SHADOW = frozenset({"momentum-lifecycle-monitor", "momentum-cache-reconcile"})
+N8N_NATIVE_CANARY = frozenset({"heartbeat-watch"})
 
 
 def _live_rows():
@@ -536,8 +538,9 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
             continue
         if (
             lane in CANARY_ROWS
-        ):  # canary wave 1 (2026-10-11): the §23.18 (c) canary shape, tests/test_canary_wave1_20261011.py
-            assert mode == "live" and row["scheduler"].get("stage") == "canary", lane
+        ):  # canary wave 1 (2026-10-11): the §23.18 (c) canary shape, tests/test_canary_wave1_20261011.py;
+            # research-insight-extractor climbed to cutover 2026-10-13 (n8n dispatcher row, cron line retired).
+            assert mode == "live" and row["scheduler"].get("stage") in ("canary", "cutover"), lane
             assert LD.r1_class_admission(row, allow[lane]) == (True, "r1_admitted:ingest"), lane
             continue
         assert mode in ("off", "dry_run"), lane
@@ -580,7 +583,9 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
     assert len(refactor) == 11 and refactor <= set(shadow), refactor
     # The reviewed momentum tranche adds two native shadow rows and the existing
     # named scalp exception at shadow; it adds no live dispatch row.
-    assert len(shadow) == 54 + 3 + 15 - len(CANARY_ROWS) - 17 + 10 + 11 + len(N8N_NATIVE_SHADOW) + 1, shadow
+    # - 2: C1 hermes_overnight registry edit (train 6, 2026-10-12) absorbs hermes-tag-lift-discovery (SW4/W4) and
+    # hermes-industry-novelty-discovery (D2) into hermes-overnight-pipeline-night (dispatch_retired, allowlist removed).
+    assert len(shadow) == 54 + 3 + 15 - len(CANARY_ROWS) - 17 + 10 + 11 + len(N8N_NATIVE_SHADOW) + 1 - 2, shadow
     # heartbeat-watch moved shadow → canary (N8N_NATIVE_CANARY) 2026-10-11.
     assert sorted(r["lane_id"] for r in rows if LD.dispatch_mode(r) == "live") == sorted(
         CANARY_ROWS | N8N_NATIVE_CANARY
@@ -600,6 +605,9 @@ PREEXISTING_LIVE_ARG = frozenset(
         "watch-directives-monitor",
         "maturity-remeasure",
         "trade-ai-scalp-live",
+        # Returned from canary to shadow by the operator 2026-10-13 (relay refused live); its reviewed --apply
+        # live_arg stays in the allowlist and the stage clamp runs every live request dry.
+        "momentum-cache-reconcile",
     }
 )
 #: wave D2: apply-gated scripts (no --apply = dry run that writes nothing; proven by a before/after snapshot under a
@@ -626,8 +634,9 @@ def test_wave_d2_dispatch_cron_equals_the_row_schedule_and_locks_match_cron():
     data-gap-resolver cadences share the one cron lock, so they can never run concurrently from either scheduler."""
     rows = [r for r in _live_rows() if (r.get("scheduler") or {}).get("wave") == "D2"]
     # 14 at D2; C1 premarket flip (2026-10-11) moved 4 out (catalyst-calibration-monitor, backtest-results-aggregator,
-    # watch-directives-monitor, cio-draft-plan-hygiene -> dispatch_retired).
-    assert len(rows) == 10
+    # watch-directives-monitor, cio-draft-plan-hygiene -> dispatch_retired). C1 hermes_overnight (train 6, 2026-10-12)
+    # moved hermes-industry-novelty-discovery out the same way: 9.
+    assert len(rows) == 9
     allow = {e["lane_id"]: e for e in json.loads((ROOT / "config" / "n8n_run_allowlist.json").read_text())["lanes"]}
     for r in rows:
         assert r["dispatch"]["cron"] == [r["scheduler"]["expression"]], r["lane_id"]

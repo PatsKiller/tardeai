@@ -309,3 +309,20 @@ def test_installed_drivers_are_wrapped():
         assert getattr(mod.connect, "_hermetic_guard", False), name
         with pytest.raises(mod.OperationalError, match="HERMETIC_TEST_GUARD"):
             mod.connect("dbname=trade_ai host=127.0.0.1 connect_timeout=1")
+
+
+def test_a_pytest_process_leaves_no_scratch_dirs_in_tmp(tmp_path):
+    """Each pytest process used to leave 8 mkdtemp() dirs in /tmp; 495k of them exhausted the tmpfs inodes
+    on 2026-10-13 and live cron jobs could not open their /tmp lock files. conftest and the hermetic guard
+    now remove their scratch at exit."""
+    tmpdir = tmp_path / "tmp"
+    tmpdir.mkdir()
+    env = {**os.environ, "TMPDIR": str(tmpdir)}
+    run = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
+         f"{Path(__file__).resolve()}::test_classify_ignores_ordinary_paths"],
+        cwd=ROOT, env=env, capture_output=True, text=True, timeout=300,
+    )
+    assert run.returncode == 0, run.stdout[-2000:] + run.stderr[-2000:]
+    leftovers = sorted(p.name for p in tmpdir.iterdir() if not p.name.startswith("pytest-of-"))
+    assert leftovers == [], leftovers

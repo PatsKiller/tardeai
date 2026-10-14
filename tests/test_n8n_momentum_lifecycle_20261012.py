@@ -464,7 +464,10 @@ def test_candidate_config_needs_operative_admission_and_keeps_recovery_disarmed(
         # Projection canary may arm recovery for --apply; monitor + autonomous recovery stay gated.
         assert c["recovery"]["armed"] is True
         assert not M.monitor_admitted(admission)
-        assert M.cache_helper_admitted(admission, "momentum-cache-reconcile")
+        # The helper is admitted only while the registry row is canary/cutover. The operator returned it to
+        # shadow 2026-10-13 (relay refused live), so the armed config is fail-closed: no --apply is admitted.
+        stage = {row["lane_id"]: row for row in registry}["momentum-cache-reconcile"]["scheduler"]["stage"]
+        assert M.cache_helper_admitted(admission, "momentum-cache-reconcile") is (stage in {"canary", "cutover"})
         assert not M.recovery_admitted(admission, "momentum-cache-reconcile")
     elif c["enabled"]:
         assert c["recovery"]["armed"] is False

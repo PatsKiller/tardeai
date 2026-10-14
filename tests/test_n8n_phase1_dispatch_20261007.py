@@ -18,6 +18,7 @@ from scripts import n8n_coordination_gateway as server
 from scripts.lib import n8n_gateway_client as gc
 from scripts.lib.n8n_coordination_gateway import PILOT_LANES
 from scripts.n8n_incident_fanin import LANE as INCIDENT_LANE
+from scripts import n8n_incident_fanin as fanin_mod
 from scripts.n8n_incident_fanin import collect, main as fanin_main
 from scripts.n8n_pilot_dispatch import main as dispatch_main, plan_lane
 
@@ -153,6 +154,15 @@ def env(tmp_path, monkeypatch):
     return root
 
 
+def _scalp_lane_healthy(root: Path) -> None:
+    """The scalp-cycle and scalp-stall sources are market-hours aware and read the wall clock inside main(); in RTH
+    a fixture with no scalp receipt is a real P1 (NO_CYCLES_30M). Mark the lane healthy right now so these tests,
+    which are not about scalp, give the same result in and out of market hours."""
+    p = root / fanin_mod.SCALP_RECEIPT_REL
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps({"status": "ok", "last_ok_at": datetime.now(timezone.utc).isoformat()}))
+
+
 def test_client_refuses_without_key_and_reports_unreachable(monkeypatch):
     c = gc.GatewayClient(key=b"short", transport=lambda u, e: (200, {}))
     assert c.status("whatever")["reason"] == "missing_gateway_key"
@@ -218,6 +228,7 @@ def test_dispatch_dry_run_writes_nothing(env, tmp_path):
 
 def test_incident_fanin_bounds_to_48h_and_closes_on_recovery(env, tmp_path, monkeypatch):
     now = datetime.now(timezone.utc)
+    _scalp_lane_healthy(env)
     findings = collect(env, now)
     items = {(f["source"], f["item"]) for f in findings}
     assert ("breach_detector", "cio-delivery:NO_OUTPUT") in items

@@ -435,7 +435,9 @@ def test_every_dispatcher_row_is_allowlisted_eligible_and_staged():
             assert sched["timezone"] == dispatch["tz"] == "America/New_York", lane
             assert ALLOW_LANES[lane]["dry_run_arg"] == ["--dry-run"], lane
             if lane == "momentum-cache-reconcile":
-                assert sched.get("stage") == "canary" and dispatch["mode"] == "live", lane
+                # Operator returned it to shadow 2026-10-13 (relay refused live, failing every dispatcher run);
+                # the allowlist keeps its reviewed --apply live_arg, which the stage clamp runs dry.
+                assert sched.get("stage") == "shadow" and dispatch["mode"] == "dry_run", lane
                 assert ALLOW_LANES[lane]["live_arg"] == ["--apply"], lane
             else:
                 assert sched.get("stage") == "shadow" and dispatch["mode"] == "dry_run", lane

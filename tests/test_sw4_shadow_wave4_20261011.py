@@ -73,6 +73,11 @@ SW4 = {
                                "/tmp/etf_perf.lock"),
 }
 
+#: SW4 rows later absorbed into a C1 stage lane (RETIRED, dispatch_retired, allowlist entry removed): the C1
+#: hermes_overnight registry edit (train 6, 2026-10-12) moved hermes-tag-lift-discovery into hermes-overnight-pipeline-night.
+SW4_ABSORBED = {"hermes-tag-lift-discovery": "hermes-overnight-pipeline-night"}
+SW4_LIVE = {k: v for k, v in SW4.items() if k not in SW4_ABSORBED}
+
 EXCLUDED = (
     "fred-data-ingest", "sync-dividend-data", "build-lesson-candidates", "candidate-discovery-orchestrator",
     "research-watchlist-discovery", "market-regime-collector", "agent-recommendation-normalizer", "rag-indexer",
@@ -88,7 +93,7 @@ def test_counts():
     assert sum(1 for v in SW4.values() if v[0] == "learn") == 5
 
 
-@pytest.mark.parametrize("lane", sorted(SW4))
+@pytest.mark.parametrize("lane", sorted(SW4_LIVE))
 def test_row_is_a_w4_shadow_cron_row_admitted_by_the_r1_gate(lane):
     klass, cron, _argv, receipt, _lock = SW4[lane]
     row = ROWS[lane]
@@ -105,7 +110,7 @@ def test_row_is_a_w4_shadow_cron_row_admitted_by_the_r1_gate(lane):
     assert not ok and why.startswith("shadow_on_cron_not_ratified"), why
 
 
-@pytest.mark.parametrize("lane", sorted(SW4))
+@pytest.mark.parametrize("lane", sorted(SW4_LIVE))
 def test_allowlist_entry_is_shadow_only_and_carries_no_broker_credential(lane):
     _klass, _cron, argv, receipt, cron_lock = SW4[lane]
     e = ALLOW[lane]
@@ -127,7 +132,7 @@ def test_allowlist_entry_is_shadow_only_and_carries_no_broker_credential(lane):
 
 
 def test_flock_lanes_are_canary_lock_equivalent_and_the_rest_stay_blocked():
-    for lane, (_k, _c, _a, _r, cron_lock) in SW4.items():
+    for lane, (_k, _c, _a, _r, cron_lock) in SW4_LIVE.items():
         e = ALLOW[lane]
         canary = json.loads(json.dumps(ROWS[lane]))
         canary["scheduler"]["stage"] = "canary"
@@ -140,14 +145,14 @@ def test_flock_lanes_are_canary_lock_equivalent_and_the_rest_stay_blocked():
 
 
 def test_the_script_writes_the_receipt_the_row_names():
-    for lane, (_k, _c, argv, receipt, _l) in SW4.items():
+    for lane, (_k, _c, argv, receipt, _l) in SW4_LIVE.items():
         src = (ROOT / argv[0]).read_text(encoding="utf-8")
         assert re.search(r"""['"]%s['"]""" % re.escape(receipt), src), (lane, receipt)
         assert "write_lane_receipt" in src or "write_receipt" in src, lane
         assert re.search(r"""['"]--dry-run['"]""", src), lane
 
 
-@pytest.mark.parametrize("lane", sorted(SW4))
+@pytest.mark.parametrize("lane", sorted(SW4_LIVE))
 def test_health_contract_is_reviewed_and_complete(lane):
     c = CONTRACTS[lane]
     assert c["status"] == "REVIEWED" and c["stage"] == "shadow" and c["kind"] == "lane"
@@ -196,10 +201,10 @@ def _sweep(rows, start, days, step_min):
 
 
 def test_compute_due_week_sweep_emits_dry_run_on_the_natural_slots_only():
-    slots, errors = _sweep([ROWS[x] for x in SW4 if x != "identity-sweep-stage0"], START, 7, 5)
+    slots, errors = _sweep([ROWS[x] for x in SW4_LIVE if x != "identity-sweep-stage0"], START, 7, 5)
     assert errors == set(), sorted(errors)
     want = {"record-decision-outcome": 5, "update-lockup-earnings-dates": 7, "etf-analyst-enrich": 1,
-            "hermes-tag-lift-discovery": 7, "agent-outcome-scorer": 1, "feedback-loop-processor": 5,
+            "agent-outcome-scorer": 1, "feedback-loop-processor": 5,
             "aegis-social-sentiment": 10, "aegis-transcript-discovery": 5, "aegis-nightly-ingestion": 7,
             "hermes-social-sentiment": 10, "sync-social-to-intelligence": 10, "trade-backtest-engine": 5,
             "etf-performance-enrich": 1}
@@ -216,3 +221,11 @@ def test_identity_sweep_fires_every_half_hour_dry_run_only():
 def test_monthly_lane_fires_on_the_first_only():
     slots, errors = _sweep([ROWS["validate-expense-ratios"]], datetime(2026, 10, 31, 4, 0, tzinfo=timezone.utc), 2, 10)
     assert errors == set() and slots == {"validate-expense-ratios": {"20261101T0740"}}
+
+
+def test_absorbed_sw4_rows_left_the_dispatcher_for_their_c1_stage():
+    for lane, stage_lane in SW4_ABSORBED.items():
+        r = ROWS[lane]
+        assert r["state"] == "RETIRED" and r["superseded_by"] == stage_lane, lane
+        assert "dispatch" not in r and r["dispatch_retired"]["wave"] == "W4", lane
+        assert lane not in ALLOW, lane

@@ -546,7 +546,8 @@ def test_w5_registry_rows_are_shadow_dry_run_with_their_triggers():
             # live on its cron slots; its triggers stay inert (n8n_due.EVENT_MODES is dry_run only) until the
             # operator rules an event canary.
             assert block.mode == "live" and block.mode not in D.EVENT_MODES
-            assert row["scheduler"]["stage"] == "canary" and allow[lane]["live_arg"] is not None
+            # research-insight-extractor climbed canary -> cutover 2026-10-13 (n8n dispatcher row, cron line retired).
+            assert row["scheduler"]["stage"] in {"canary", "cutover"} and allow[lane]["live_arg"] is not None
         else:
             assert block.mode == "dry_run"
             assert row["scheduler"]["stage"] == "shadow" and allow[lane]["live_arg"] is None

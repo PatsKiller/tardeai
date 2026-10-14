@@ -1198,40 +1198,6 @@
       "output_signal": "data/runtime/hermes-analyst-signal-discovery_last.json"
     },
     {
-      "lane_id": "hermes-industry-novelty-discovery",
-      "env_names": [
-        "DB_CONN_TRACE",
-        "DB_HOST",
-        "DB_NAME",
-        "DB_PASSWORD",
-        "DB_PORT",
-        "DB_USER",
-        "PROJECT_ROOT",
-        "SAFE_FLOCK_LOG_DIR",
-        "TRADEAI_PERSISTENT_STATE_ROOT",
-        "TRADEAI_ROOT"
-      ],
-      "env_allowlist_mode": "report",
-      "env_evidence": "Not inventoried per lane in dispatcher shadow wave D2: the generic db_adapter + state-root names; report mode records on each RunReceipt the names enforce would drop.",
-      "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as job-coverage-monitor).",
-      "source": "dispatcher shadow wave D2 (n8n-maturity), cron:L686. SHADOW ONLY: live_arg null (no live mode exists for this lane), registry dispatch.mode dry_run, scheduler.stage shadow; the cron line keeps doing the real work. lock and lock_kind reused from the live cron line (L686). Discovery Inbox candidate writer (see hermes-analyst-signal-discovery). The cron line runs under run_with_deepseek_offpeak.sh --official although the lane calls no model; the dispatcher argv has no wrapper, so at canary the lane would run in windows where cron PEAK_SKIPs it (same as hermes-config-governor in D1b). No lane receipt yet (canary blocker).",
-      "command": [
-        "$PY",
-        "scripts/hermes_industry_novelty_discovery.py",
-        "--run",
-        "--json"
-      ],
-      "lock": "/tmp/hermes_industry_novelty.lock",
-      "lock_kind": "flock",
-      "timeout_s": 300,
-      "dry_run_arg": [
-        "--dry-run"
-      ],
-      "live_arg": null,
-      "market_gate": false,
-      "output_signal": "data/runtime/hermes-industry-novelty-discovery_last.json"
-    },
-    {
       "lane_id": "catalyst-momentum-engine-overnight",
       "env_names": [
         "DB_CONN_TRACE",
@@ -1855,43 +1821,6 @@
       "live_arg": null,
       "market_gate": false,
       "output_signal": "data/runtime/etf-analyst-enrich_last.json"
-    },
-    {
-      "lane_id": "hermes-tag-lift-discovery",
-      "env_names": [
-        "DB_CONN_TRACE",
-        "DB_HOST",
-        "DB_NAME",
-        "DB_PASSWORD",
-        "DB_PORT",
-        "DB_USER",
-        "HERMES_DISCOVERY_SCHEDULE_JSON",
-        "PROJECT_ROOT",
-        "SAFE_FLOCK_LOG_DIR",
-        "TRADEAI_PERSISTENT_STATE_ROOT",
-        "TRADEAI_ROOT",
-        "TRADE_AI_DISCOVERY_OUTCOME_FEED_JSON",
-        "TRADE_AI_OUTCOME_BUS_JSON"
-      ],
-      "env_allowlist_mode": "report",
-      "env_evidence": "no script-level env load; DB via db_adapter; optional feed paths tag_lift.py:48-56. No broker credential name (AGENTS §23.18 ruling 3).",
-      "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file into the child when DB_PASSWORD is not already set (db_adapter.py:41-49), so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as job-coverage-monitor and the wave-3 rows).",
-      "source": "shadow wave 4 (SW4, n8n maturity, R1 class learn), cron:L687 (crontab -l 2026-10-11: `50 3 * * * cd $PROJ && bash \"$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh\" --official -- flock -n /tmp/hermes_tag_lift.lock $PY scripts/hermes_tag_lift_discovery.py --run --json >> logs/hermes_tag_lift.log 2>&1`). SHADOW ONLY: live_arg null, registry dispatch.mode dry_run, scheduler.stage shadow (4.4.0 cron-row shape); the cron line keeps doing the real work. lock /tmp/hermes_tag_lift.lock (flock) is the live cron line's lock. The cron line's live argument is (none); it is NOT in this entry. Dry run 2026-10-11 under TRADE_AI_CI=1 with a scratch TRADEAI_STATE_ROOT: dry run from the worktree (argv --run --json --dry-run; --dry-run alone prints usage and exits 2): exit 0, DRY-RUN candidates_planned 0, weight_deltas_planned 0, readonly_session true. 0 tracked, scratch-state or persistent receipt files changed (~/n8n-maturity-verification/dispatch-shadow-wave4/).",
-      "command": [
-        "$PY",
-        "scripts/hermes_tag_lift_discovery.py",
-        "--run",
-        "--json"
-      ],
-      "lock": "/tmp/hermes_tag_lift.lock",
-      "lock_kind": "flock",
-      "timeout_s": 300,
-      "dry_run_arg": [
-        "--dry-run"
-      ],
-      "live_arg": null,
-      "market_gate": false,
-      "output_signal": "data/runtime/hermes-tag-lift-discovery_last.json"
     },
     {
       "lane_id": "agent-outcome-scorer",

@@ -27,6 +27,15 @@ from scripts.lib import lane_registry as LR  # noqa: E402
 NOW = datetime(2026, 10, 8, 13, 0, tzinfo=timezone.utc)
 
 
+def _scalp_lane_healthy(root: Path) -> None:
+    """The scalp-cycle and scalp-stall sources are market-hours aware and read the wall clock inside main(); in RTH
+    a fixture with no scalp receipt is a real P1 (NO_CYCLES_30M). Mark the lane healthy right now so these tests,
+    which are not about scalp, give the same result in and out of market hours."""
+    p = root / fanin.SCALP_RECEIPT_REL
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps({"status": "ok", "last_ok_at": datetime.now(timezone.utc).isoformat()}))
+
+
 def _relay_last(root: Path, *, auth_failures: int, at: datetime, state="REFUSED", reason="relay_bad_bearer") -> Path:
     p = root / fanin.RELAY_LAST_REL
     p.parent.mkdir(parents=True, exist_ok=True)
@@ -175,6 +184,7 @@ def test_apply_writes_the_relay_counts_onto_the_receipt_and_keeps_the_baseline_w
 ):
     _wire(monkeypatch, tmp_path)
     _relay_last(tmp_path, auth_failures=7, at=NOW - timedelta(minutes=1))
+    _scalp_lane_healthy(tmp_path)
     monkeypatch.setattr(fanin, "state_root", lambda: tmp_path)
     monkeypatch.setattr(fanin, "served_sha", lambda: "b" * 40)
 
