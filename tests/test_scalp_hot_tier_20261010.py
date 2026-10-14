@@ -70,7 +70,9 @@ def test_knob_default_off_env_on_kill_file_off(state):
 
 def test_windows_market_days_only():
     assert hot.in_window("list_hot", MON_0700)
-    assert not hot.in_window("list_hot", MON_0945)  # L1050 owns the list from 09:30
+    assert hot.in_window("list_hot", MON_0945)  # operator 2026-10-14: 2-min pulls run to 12:00
+    assert hot.in_window("list_hot", datetime(2026, 10, 12, 11, 58, tzinfo=ET))
+    assert not hot.in_window("list_hot", datetime(2026, 10, 12, 12, 0, tzinfo=ET))
     assert hot.in_window("enrichment", MON_0945)
     assert not hot.in_window("social", datetime(2026, 10, 12, 11, 0, tzinfo=ET))
     assert not hot.in_window("enrichment", datetime(2026, 10, 12, 16, 0, tzinfo=ET))
@@ -98,7 +100,7 @@ def test_budget_against_finviz_ceiling():
     b = hot.budget_projection()
     f = b["finviz"]
     assert f["ceiling_per_week_24x7"] == 241_920
-    assert f["hot_list_per_week"] == 4 * 30 * 3.5 * 5  # 2,100
+    assert f["hot_list_per_week"] == 4 * 30 * 6 * 5  # 3,600 (06:00-12:00, operator 2026-10-14)
     assert f["hot_enrichment_per_week"] == 4 * 12 * 10 * 5  # 2,400
     assert f["within_ceiling"] and f["after_pct_of_ceiling"] < 10
     assert f["peak_requests_per_min"] < f["throttle_requests_per_min"]
@@ -487,7 +489,7 @@ def test_hot_list_only_dry_run_and_apply(hot_on, lane_stubs, monkeypatch, capsys
     assert lane_stubs[0][0] == "scan" and lane_stubs[0][1]["screener_ids"] == list(hot.DEFAULT_SCREENER_IDS)
     assert [c[0] for c in lane_stubs] == ["scan"]  # no handoff stage on the hot line
     lane_stubs.clear()
-    assert _run_scan(monkeypatch, ["--hot-list-only", "--apply", "--now", "2026-10-12T09:40:00"]) == 0
+    assert _run_scan(monkeypatch, ["--hot-list-only", "--apply", "--now", "2026-10-12T12:10:00"]) == 0
     assert "SKIPPED_OFF_HOT_WINDOW" in capsys.readouterr().out and lane_stubs == []
 
 

@@ -3,8 +3,9 @@
 Operator decision (4), 2026-10-10 (``CONSOLIDATION_PLAN.md`` §C, verification workspace): market days only, off
 weekends and after hours —
 
-- Finviz scalp screeners every **2 min** 06:00–09:30 ET (L636's refresh stage; L1050 keeps its 5-min pulls
-  09:30–16:00 and stays the writer of ``scalp_universe_latest.json``);
+- Finviz scalp screeners every **2 min** 06:00–12:00 ET (L636's refresh stage; L1050 keeps its 5-min pulls
+  09:30–16:00 and stays the writer of ``scalp_universe_latest.json``; readers take the fresher list). Operator
+  2026-10-14 extended the end from 09:30 to 12:00 to cover the whole scalp session;
 - scalp-only enrichment every **5 min** through one custom-column Finviz export (owner: ``scripts/finviz_enrichment.py``);
 - Hermes/SearXNG research only for names **new to the list or older than 30 min**, through the search routing
   engine (Agent V, ``n8nmat/search-routing-engine``) — never a direct provider call from the hot tier;
@@ -59,7 +60,10 @@ RESEARCH_SYMBOL_CAP = 15
 
 #: windows (ET, market days only); end is exclusive
 WINDOWS: dict[str, tuple[str, str]] = {
-    "list_hot": ("06:00", "09:30"),  # hot-tier screener pulls; L1050 owns 09:30-16:00
+    "list_hot": (
+        "06:00",
+        "12:00",
+    ),  # hot-tier screener pulls (operator 2026-10-14: whole scalp session); L1050 still pulls 09:30-16:00
     "enrichment": ("06:00", "16:00"),
     "research": ("06:00", "16:00"),
     "social": ("06:00", "11:00"),
