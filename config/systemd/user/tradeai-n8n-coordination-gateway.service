@@ -20,8 +20,11 @@ Type=simple
 WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
 EnvironmentFile=-%t/tradeai/env
 EnvironmentFile=-%h/.config/tradeai/n8n-gateway.env
-# Same file the relay reads. TRADEAI_N8N_RELAY_LIVE_LANES is the only live-lane list.
-EnvironmentFile=-%h/.config/tradeai/n8n-relay.env
+# The live-lane list only (TRADEAI_N8N_RELAY_LIVE_LANES), the single source the relay also loads.
+# Secret-free on purpose: the gateway must never load n8n-relay.env (relay bearer + HMAC key).
+# Create it BEFORE this unit is installed (packets/live-lanes-env-split); if absent, live lanes fail
+# closed with relay_live_lanes_missing instead of being downgraded to dry_run.
+EnvironmentFile=-%h/.config/tradeai/n8n-live-lanes.env
 Environment=TRADEAI_STATE_ROOT=%h/trade-ai-releases/persistent-state
 Environment="TRADEAI_N8N_GATEWAY_EXTRA_LANES=incident-fanin research-intake n8n-workflow-error"
 ExecStart=/bin/bash %h/trade-ai-releases/portfolio-server/CURRENT/scripts/n8n_coordination_gateway_run.sh

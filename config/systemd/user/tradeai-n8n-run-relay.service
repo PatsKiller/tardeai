@@ -25,6 +25,9 @@ Type=simple
 WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
 EnvironmentFile=-%t/tradeai/env
 EnvironmentFile=-%h/.config/tradeai/n8n-relay.env
+# Loaded after n8n-relay.env so it wins: the live-lane list lives in this secret-free file, shared with
+# the coordination gateway (single source, operator ruling 2026-10-13).
+EnvironmentFile=-%h/.config/tradeai/n8n-live-lanes.env
 Environment=TRADEAI_STATE_ROOT=%h/trade-ai-releases/persistent-state
 Environment=TRADEAI_N8N_GATEWAY_URL=http://127.0.0.1:18091
 ExecStart=%h/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python %h/trade-ai-releases/portfolio-server/CURRENT/scripts/n8n_run_relay.py --host 172.19.0.1 --port 18092

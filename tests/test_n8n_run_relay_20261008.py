@@ -174,6 +174,27 @@ def test_status_and_unit_registry_contract():
     assert "tradeai-n8n-run-relay.service" not in (root / "config/dev_tree_units_baseline.txt").read_text()
 
 
+def _env_files(unit_text):
+    return [line.split("=", 1)[1].lstrip("-") for line in unit_text.splitlines() if line.startswith("EnvironmentFile=")]
+
+
+def test_live_lane_list_is_a_secret_free_file_both_units_load():
+    """Operator ruling 2026-10-13: TRADEAI_N8N_RELAY_LIVE_LANES is the single live-lane source, in its own
+    secret-free file. The gateway must never load n8n-relay.env (relay bearer + HMAC key)."""
+    root = Path(__file__).resolve().parents[1]
+    gateway = (root / "config/systemd/user/tradeai-n8n-coordination-gateway.service").read_text()
+    relay = (root / "config/systemd/user/tradeai-n8n-run-relay.service").read_text()
+    live_lanes = "%h/.config/tradeai/n8n-live-lanes.env"
+    gateway_files = _env_files(gateway)
+    relay_files = _env_files(relay)
+    assert live_lanes in gateway_files and live_lanes in relay_files
+    assert not any("relay" in Path(f).name for f in gateway_files), gateway_files
+    directives = [line for line in gateway.splitlines() if line.strip() and not line.lstrip().startswith("#")]
+    assert not any("n8n-relay.env" in line for line in directives), directives
+    # The relay keeps its secrets file; the live-lanes file comes later so its list wins.
+    assert relay_files.index(live_lanes) > relay_files.index("%h/.config/tradeai/n8n-relay.env")
+
+
 _RUN_DDL = (
     "CREATE TABLE runs(run_id TEXT PRIMARY KEY, lane_id TEXT, mode TEXT, state TEXT, requested_by TEXT, "
     "caller_id TEXT, requested_at TEXT, started_at TEXT, finished_at TEXT, exit_code INTEGER, "
