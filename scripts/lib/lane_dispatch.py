@@ -772,11 +772,15 @@ def advisory_md_admission(row: Mapping[str, Any], entry: Optional[Mapping[str, A
     if not isinstance(entry, Mapping):
         return False, "not_allowlisted"
     dry = entry.get("dry_run_arg")
-    if not isinstance(dry, list) or not dry:
+    sched = row.get("scheduler") if isinstance(row.get("scheduler"), dict) else {}
+    if not isinstance(dry, list):
+        return False, "no_dry_run_arg"
+    if not dry and not _explicit_apply_dry_run(entry, sched):
+        # An empty dry_run_arg runs the bare command: a dry run only when the lane writes and sends solely under an
+        # explicit --apply that the cron line passes and the base argv does not (e.g. premarket_watch.py).
         return False, "no_dry_run_arg"
     if entry.get("lock_kind") != "flock" or not isinstance(entry.get("lock"), str):
         return False, f"advisory_md_lock_kind:{entry.get('lock_kind')!r}"
-    sched = row.get("scheduler") if isinstance(row.get("scheduler"), dict) else {}
     locks = cron_flock_locks(sched.get("command_text") or "")
     if not locks or any(x != entry["lock"] for x in locks):
         return False, f"advisory_md_lock_mismatch cron={locks} allowlist={entry.get('lock')!r}"
@@ -788,6 +792,15 @@ def advisory_md_admission(row: Mapping[str, Any], entry: Optional[Mapping[str, A
         if any(frag in str(name).upper() for frag in BROKER_CREDENTIAL_ENV_FRAGMENTS):
             return False, f"broker_credential_env:{name}"
     return True, "advisory_md_admitted"
+
+
+def _explicit_apply_dry_run(entry: Mapping[str, Any], sched: Mapping[str, Any]) -> bool:
+    """True when the lane's bare argv is its dry run: the cron command text passes `--apply`, the allowlist base command
+    does not, and the live_arg (when set) is exactly `["--apply"]`. Pure."""
+    cmd = [str(t) for t in entry.get("command") or []]
+    live = entry.get("live_arg")
+    return ("--apply" in str(sched.get("command_text") or "").split() and "--apply" not in cmd
+            and (live is None or live == ["--apply"]))
 
 
 def _guard():

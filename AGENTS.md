@@ -5000,7 +5000,9 @@ refuses every row below.
   (`advisory_md_admission`). A moomoo quote context needs no credential: OpenD holds the login.
 - **Shape and ladder.** Dispatch class `pipeline` only (`ADVISORY_MD_CLASSES`), never `send` or an R1 class. The
   allowlist `lock` (`lock_kind` `flock`) equals every `flock` lock in `scheduler.command_text` at every stage, so cron
-  and n8n can never double-run, and the entry has a non-empty `dry_run_arg`. The lane climbs §23.12 shadow → canary →
+  and n8n can never double-run. The entry has a non-empty `dry_run_arg`, or an empty one only when the lane writes and
+  sends solely under an explicit `--apply` that the cron line passes and the base argv does not, so its bare command is
+  its dry run and `live_arg` is `["--apply"]` (`lane_dispatch._explicit_apply_dry_run`). The lane climbs §23.12 shadow → canary →
   cutover with a `RunReceipt@v1` per fire, its cutover needs the wave's `cron` grant naming it, and its rollback is per
   line. The rationalization `KEEP_ON_CRON` verdict of a ceiling lane is superseded by name by the operator's ruling
   (`lane_dispatch._keep_on_cron`); no other lane's verdict changes.
