@@ -45,6 +45,8 @@ SECRETS = {
 # A larger blanket limit would hide growth in older lanes; new lanes must match every named module/read.
 _REVIEWED_NEW_COMMON_MODULES = frozenset(
     {
+        # AGENTS 7.0.0 (2026-10-14): lane_dispatch imports the §23.20 static guard lazily; stdlib only, no env read.
+        "scripts/lib/advisory_lane_guard.py",
         "scripts/lib/cron_schedule.py",
         "scripts/lib/lane_dispatch.py",
         "scripts/lib/n8n_coordination_gateway.py",
