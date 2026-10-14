@@ -1309,7 +1309,8 @@ GATES = [
     # Schwab paused (incident 2026-10-14): the pause switch + fail-loud readers (A-H; operator plan items 3+4).
     (
         "schwab_paused_fail_loud_20261014",
-        ["tests/test_schwab_paused_proof_20261014.py"],
+        ["tests/test_schwab_paused_proof_20261014.py",
+         "tests/test_schwab_paused_stops_20261014.py"],
     ),
     # Schwab ledger keeps transfer/journal direction; >1y fetch chunked; dry run never pages (2026-10-06).
     (

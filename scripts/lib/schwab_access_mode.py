@@ -86,6 +86,18 @@ def status() -> dict:
     return info
 
 
+def setting(path: str, default: Any = None) -> Any:
+    """A dotted value from the switch file (e.g. "alerts.stop_data_unavailable_realert_hours"), else default."""
+    try:
+        p = _path()
+        data: Any = _parse(p.read_text(encoding="utf-8")) if p.is_file() else {}
+        for part in path.split("."):
+            data = data.get(part) if isinstance(data, dict) else None
+        return default if data is None else data
+    except Exception:  # noqa: BLE001
+        return default
+
+
 def mode() -> str:
     return status()["mode"]
 

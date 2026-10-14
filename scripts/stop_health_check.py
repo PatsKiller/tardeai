@@ -39,7 +39,9 @@ def _write_heartbeat(doc: dict, path: Path | None = None) -> None:
     path = path or HEARTBEAT_FILE
     # ok_at is the lane's freshness key (json_key): it advances only on a successful run; a failed run still
     # writes this file (status error) but carries the previous ok_at forward, so it never looks fresh.
-    if doc.get("status") == "ok":
+    # "degraded" (Schwab stop data unavailable, 2026-10-14) is a COMPLETED run that already paged its own P1
+    # alert: it advances ok_at so the lane watchdog does not raise a second, misleading "stale lane" alarm.
+    if doc.get("status") in ("ok", "degraded"):
         doc = {**doc, "ok_at": doc.get("finished_at")}
     else:
         try:
@@ -56,7 +58,8 @@ def _write_heartbeat(doc: dict, path: Path | None = None) -> None:
         print(f"stop_health: heartbeat write failed: {type(exc).__name__}: {exc}", file=sys.stderr)
 
 
-def _send_telegram(msg: str, *, reply_markup: dict | None = None, link_preview_options: dict | None = None) -> str | None:
+def _send_telegram(msg: str, *, reply_markup: dict | None = None, link_preview_options: dict | None = None,
+                   priority: str | None = None, dedupe_minutes: int | None = None) -> str | None:
     """Send via the central router. Returns the provider message id, or None.
 
     None covers every case where no message reached Telegram — suppressed by the
@@ -68,8 +71,11 @@ def _send_telegram(msg: str, *, reply_markup: dict | None = None, link_preview_o
     try:
         from telegram_alert import send_telegram_with_id
         # Decision cards (2026-10-08) add buttons + preview; plain text sends exactly as before.
-        extra = {k: v for k, v in (("reply_markup", reply_markup), ("link_preview_options", link_preview_options))
+        extra = {k: v for k, v in (("reply_markup", reply_markup), ("link_preview_options", link_preview_options),
+                                   ("dedupe_minutes", dedupe_minutes))
                  if v is not None}
+        if priority:   # a declared notification intent (P1 = never capped, never quiet-held, never digested)
+            return send_telegram_with_id(msg, priority=priority, producer=_COMPONENT, **extra).get("message_id")
         return send_telegram_with_id(msg, **extra).get("message_id")
     except Exception:
         return None
@@ -429,6 +435,7 @@ def _recover_current_scan(scan: dict, started_at) -> dict:
     generated = _recovery_time(scan.get("generated_at"))
     if (not isinstance(stops, list) or not stops or generated is None or generated < started_at
             or scan.get("ok") is False or scan.get("errors")
+            or scan.get("schwab_stops_status") == "UNAVAILABLE"   # a scan blind to Schwab proves nothing
             or (scan.get("summary") or {}).get("total") != len(stops)):
         return {"ok": False, "resolved_ids": [], "reason": "incomplete_scan"}
     try:
@@ -465,6 +472,39 @@ def _recover_current_scan(scan: dict, started_at) -> dict:
         return result
     except Exception as exc:
         return {"ok": False, "resolved_ids": [], "reason": f"recovery_unverified:{type(exc).__name__}"}
+
+
+SCHWAB_UNAVAILABLE_CONDITION = "SCHWAB_STOPS_UNAVAILABLE"
+
+
+def _schwab_unavailable_alert(res: dict) -> dict | None:
+    """DEGRADED, routed P1 (never digested): the Schwab stop read failed or Schwab is paused (2026-10-14).
+
+    Before: _schwab_stops() swallowed every error into [], the scan held 0 Schwab stops, and this check logged
+    ok=True — a blind monitor reporting healthy. Returns the degraded record (None when Schwab stops were read)."""
+    if res.get("schwab_stops_status") != "UNAVAILABLE":
+        return None
+    info = (res.get("summary") or {}).get("schwab_stops") or {}
+    reason = str(info.get("reason") or "unknown")
+    line = ("🚨 STOP HEALTH — DEGRADED: Schwab stop data unavailable — stops at Schwab are NOT being monitored. "
+            f"Reason: {reason[:240]}")
+    try:
+        from lib import schwab_access_mode as _sam
+        hours = int(_sam.setting("alerts.stop_data_unavailable_realert_hours", 4) or 4)
+    except Exception:  # noqa: BLE001
+        hours = 4
+    out = {"status": "DEGRADED", "condition": SCHWAB_UNAVAILABLE_CONDITION, "reason": reason, "line": line,
+           "sent": False, "telegram_message_id": None, "realert_hours": hours}
+    if _recently_alerted("SCHWAB", SCHWAB_UNAVAILABLE_CONDITION, hours=hours):
+        out["deduped"] = True
+        return out
+    payload = {"kind": "stop_health", "condition": SCHWAB_UNAVAILABLE_CONDITION, "broker": "schwab",
+               "status": "DEGRADED", **{k: info.get(k) for k in ("reason", "failed_accounts", "paused")}}
+    aid = _siem("SCHWAB", "critical", f"[stop-health] {SCHWAB_UNAVAILABLE_CONDITION} · {line}", payload)
+    mid = _send_telegram(line, priority="P1", dedupe_minutes=hours * 60)
+    _attach_telegram_id([aid], mid)
+    out.update(sent=True, telegram_message_id=mid)
+    return out
 
 
 def _hermes_finding(symbol: str, condition: str, line: str, payload: dict) -> None:
@@ -641,13 +681,18 @@ def run(quiet: bool = False) -> dict:
     summary["incident_recovery"] = _recover_current_scan(res, scan_started_at)
     if not summary["incident_recovery"].get("ok"):
         print("stop_health: incident recovery unverified; alerts remain open", file=sys.stderr)
-    _log_health_event(ok=(not alerts), summary=summary)
+    degraded = _schwab_unavailable_alert(res)
+    summary["degraded"] = degraded
+    if degraded:
+        fired.append(f"SCHWAB:{SCHWAB_UNAVAILABLE_CONDITION}" + (":deduped" if degraded.get("deduped") else ""))
+        print(f"stop_health: DEGRADED — {degraded['line']}", file=sys.stderr)
+    _log_health_event(ok=(not alerts and not degraded), summary=summary)
     if not quiet:
         print(f"stop_health: {summary['total']} stops · health {summary['by_health']} · "
               f"alerts {len(alerts)} · telegram fired {fired or 'none'} · "
               f"drawdown {dd.get('drawdown_pct') if dd else 'n/a'}%")
     return {"summary": summary, "alert_count": len(alerts), "telegram_fired": fired,
-            "portfolio_drawdown": dd}
+            "portfolio_drawdown": dd, "ok": not degraded, "status": "DEGRADED" if degraded else "ok"}
 
 
 def main(argv: list[str] | None = None, *, heartbeat_path: Path | None = None) -> dict:
@@ -660,7 +705,9 @@ def main(argv: list[str] | None = None, *, heartbeat_path: Path | None = None) -
         out = run(quiet="--quiet" in argv)
         # building the success doc is inside the guard too: a malformed summary is a failed run, not a lost one
         summary = out.get("summary") or {}
-        doc = {"started_at": started, "finished_at": datetime.now(timezone.utc).isoformat(), "status": "ok",
+        doc = {"started_at": started, "finished_at": datetime.now(timezone.utc).isoformat(),
+               "status": "degraded" if out.get("status") == "DEGRADED" else "ok",
+               "schwab_stops": summary.get("schwab_stops"),
                "stops": summary.get("total"), "by_health": summary.get("by_health"),
                "alert_count": out.get("alert_count"), "telegram_fired": out.get("telegram_fired"),
                "incident_recovery_ok": (summary.get("incident_recovery") or {}).get("ok")}

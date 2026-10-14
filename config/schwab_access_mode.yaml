@@ -8,3 +8,6 @@
 mode: forbidden
 since: "2026-10-14T15:00:00-04:00"
 reason: "Schwab app deactivated by operator (incident 2026-10-14)"
+# Re-alert cadence while Schwab is unavailable (read by stop_health_check / account sync / health agent).
+alerts:
+  stop_data_unavailable_realert_hours: 4   # P1 "Schwab stop data unavailable" page, repeated at most this often
