@@ -2360,6 +2360,7 @@ GATES = [
             "tests/test_units_execute_served_tree_20261008.py",
             "tests/test_expected_services_lane_states_20261008.py",
             "tests/test_health_agent_retry_disarmed_20261008.py",
+            "tests/test_health_agent_no_broker_remediation_20261014.py",
             "tests/test_agent_auto_queue_valid_symbols_20260915.py",
         ],
     ),

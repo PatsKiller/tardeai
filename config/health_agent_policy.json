@@ -359,7 +359,6 @@
     "sector_momentum_stale": ".venv/bin/python scripts/sector_momentum_engine.py",
     "rotation_summary_stale": ".venv/bin/python scripts/rotation_autopilot.py",
     "holdings_stale": ".venv/bin/python scripts/portfolio_repricer.py",
-    "stops_stale": ".venv/bin/python scripts/unified_stop_supervisor.py --apply",
     "fred_data_stale": ".venv/bin/python scripts/fred_data_ingest.py --ingest",
     "sec_data_stale": ".venv/bin/python scripts/sec_data_ingest.py --all",
     "social_data_stale": ".venv/bin/python scripts/social_ingest.py --source all",
@@ -368,8 +367,6 @@
     "backup_cadence_stale": "bash linux_launchers/run_pg_backup.sh",
     "db_dump_stale": "bash linux_launchers/run_pg_backup.sh",
     "db_dump_missing": "bash linux_launchers/run_pg_backup.sh",
-    "log_errors": ".venv/bin/python scripts/unified_stop_supervisor.py --apply >> logs/unified_stop_supervisor.log 2>&1",
-    "execution_log_errors": ".venv/bin/python scripts/unified_stop_supervisor.py --apply >> logs/unified_stop_supervisor.log 2>&1",
     "data_source_stale": ".venv/bin/python scripts/external_market_data_ingest.py --quotes",
     "postgres_main_down": ".venv/bin/python scripts/remediate_postgres_main.py --apply",
     "disk_critical": ".venv/bin/python scripts/disk_hygiene_enforcer.py --apply"
