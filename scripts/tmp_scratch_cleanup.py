@@ -57,6 +57,7 @@ NONEMPTY_MIN_AGE = timedelta(days=7)
 INODE_ALARM_PCT = 80.0
 EXIT_INODE_ALARM = 3
 RECEIPT_REL = Path("data/runtime/tmp_scratch_cleanup_last.json")
+SCHEDULED_ENTRYPOINT = "cron: 30 3 * * 0 -- weekly Sun 03:30 ET, packets/tmp-scratch-cleanup (operator-approved 2026-10-13)"
 
 
 def _default_state_root() -> Path:
