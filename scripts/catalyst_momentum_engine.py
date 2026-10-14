@@ -35,9 +35,12 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT))
 # Names this process reads for its DB connection. Loaded from main(), not at import.
-# Broker-prefixed names (ALPACA_*, SCHWAB_*, ...) are never copied. ALPACA_MODE is still
-# read from the process environment when proposal generation asks for it; the overnight
-# cron line does not pass --generate-proposals.
+# Broker-prefixed names (ALPACA_*, SCHWAB_*, ...) are never copied from .env, so ALPACA_MODE
+# is set only when the cron line or caller exports it. The --generate-proposals gate in
+# main() therefore refuses only an explicit non-paper ALPACA_MODE; unset proceeds, and the
+# auto_proposal_generator subprocess is always run with ALPACA_MODE=paper.
+# (2026-10-12..14: the old "must equal paper" gate aborted every premarket_scalp and
+# market_swing run once ALPACA_MODE stopped arriving from .env.)
 _ENV_KEYS = frozenset({"DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD"})
 
 
@@ -146,6 +149,17 @@ def _write_last_run(payload: dict) -> Path | None:
         return None
 
 
+def _proposal_mode_ok() -> bool:
+    """True unless ALPACA_MODE is explicitly set to something other than paper.
+
+    auto_proposal_generator only populates the review queue (no approval, no orders) and is
+    launched with ALPACA_MODE=paper, so an unset value is safe. An explicit non-paper value
+    (e.g. "live") is a caller asking for something this engine does not do: refuse it.
+    """
+    mode = os.environ.get("ALPACA_MODE", "").strip().lower()
+    return mode in ("", "paper")
+
+
 def main():
     _load_env()
     ap = argparse.ArgumentParser()
@@ -159,8 +173,9 @@ def main():
         return _dry_run(args)
     if kill_active():
         log.warning("kill switch active — engine halted"); return 0
-    if os.environ.get("ALPACA_MODE", "") != "paper" and args.generate_proposals:
-        log.error("ALPACA_MODE must be paper for proposal generation. Aborting."); return 1
+    if args.generate_proposals and not _proposal_mode_ok():
+        log.error("ALPACA_MODE=%s is not paper; refusing proposal generation.",
+                  os.environ.get("ALPACA_MODE", "").strip()); return 1
     lane_id = BAND_LANE_IDS[args.band]
     started = datetime.now(timezone.utc).isoformat()
     stats: dict = {"band": args.band, "apply": bool(args.apply)}

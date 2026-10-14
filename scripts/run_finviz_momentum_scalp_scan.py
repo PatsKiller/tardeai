@@ -169,7 +169,7 @@ def main() -> int:
         rep["stages"].append({"stage": "finviz_scan", "ran": False, "ok": True, "reason": "skipped_finviz_refresh"})
     elif hot_list_phase:
         rep["stages"].append({"stage": "finviz_scan", "ran": False, "ok": True,
-                              "reason": "skipped_hot_tier_owns_refresh (--hot-list-only line, 06:00-09:30 ET)"})
+                              "reason": "skipped_hot_tier_owns_refresh (--hot-list-only line, 06:00-12:00 ET)"})
     elif args.refresh_if_older_min is not None:
         age = lane.refresh_age_min()
         # Grid tolerance (2026-09-28, observed 10:20→11:40): the lane runs on a */5 grid and the

@@ -205,7 +205,8 @@ def test_every_live_crontab_line_maps_to_exactly_one_row(inputs, committed):
     # + L638 finviz_enrichment.py --scalp-hot (live since the 2026-10-10 hot-tier install; added 2026-10-11 so the
     # finviz-enrichment W4 shadow row can match its own line L142 only)
     # + L1060 n8n-siem-bridge + L1063 n8n-failure-diagnosis (siem-active-flip 2026-10-11; ACTIVE with install_line)
-    assert len(lines) == 444
+    # + L1065 tmp-scratch-cleanup (weekly /tmp sweep, installed 2026-10-14 under cron grant 0cbad9ec6cef7eb6)
+    assert len(lines) == 445
     mapping = R.line_mapping(committed, lines)
     bad = {R.sanitize(ln)[:120]: ids for ln, ids in mapping.items() if len(ids) != 1}
     assert not bad, bad

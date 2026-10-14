@@ -15037,6 +15037,30 @@
       "reason_evidence": "SOURCE_AUTHORIZATION_ONLY: docs/implementation/n8n-maturity/reconciliation-20261012/MOMENTUM_CONTRACT_REVIEW_BINDINGS_20261012.json records operator decision references, independent source review and OWNER_ACCEPTED for momentum-cache-reconcile (contract body_sha256 ce53b699246fb1296551327e9abc914125335c1c7fdb6bc6a4cdf6d813d37939); config/n8n_health_contracts.json retains that exact REVIEWED body binding. Runtime deployment, natural zero-effect fires and output acceptance remain NOT_MEASURED; this reason establishes source shadow authorization only."
     },
     {
+      "lane_id": "tmp-scratch-cleanup",
+      "owner": "ops",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "30 3 * * 0",
+        "match": "scripts/tmp_scratch_cleanup.py",
+        "command_text": "cd $PROJ && flock -n /tmp/tradeai_tmp_scratch_cleanup.lock $PY scripts/tmp_scratch_cleanup.py --apply >> $HOME/trade-ai-releases/persistent-state/logs/tmp_scratch_cleanup.log 2>&1"
+      },
+      "expected_cadence_hours": 168.0,
+      "state": "ACTIVE",
+      "state_since": "2026-10-14",
+      "state_reason": "Weekly sweep of leaked pytest scratch in /tmp (tmpfs hit 100% inodes 2026-10-13 and cron lock files failed). Installed 2026-10-14 08:40 ET by packets/tmp-scratch-cleanup under operator cron grant 0cbad9ec6cef7eb6; root-cause leak fix shipped in train 6 (#1714).",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/tmp_scratch_cleanup_last.json",
+        "key": "finished_at"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "scripts/tmp_scratch_cleanup.py; tests/test_tmp_scratch_cleanup_20261013.py; first --apply receipt 2026-10-14T12:42Z removed 14,336 empty dirs, archived 387, inode use 47.12% -> 45.68%; grant 0cbad9ec6cef7eb6.",
+      "note": "Sun 03:30 ET: remove empty tradeai_* pytest scratch dirs, archive non-empty old ones; inode alarm >80%.",
+      "value_class": "Operationally Important",
+      "recommendation": "KEEP_ON_CRON"
+    },
+    {
       "lane_id": "run-scheduled-quote-refresh-incubator",
       "owner": "portfolio",
       "scheduler": {

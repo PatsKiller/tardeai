@@ -3943,6 +3943,13 @@ GATES = [
         ["tests/test_grok_g8_g9_env_20261011.py"],
     ),
     (
+        # ANCHOR: CATALYST_ALPACA_MODE_GATE_20261014 — catalyst_momentum_engine --generate-proposals
+        # refuses only an explicit non-paper ALPACA_MODE; unset proceeds (G8 stopped copying it from
+        # .env and the old equals-paper gate aborted every proposal run). Hermetic: _run stubbed.
+        "catalyst_alpaca_mode_gate_20261014",
+        ["tests/test_catalyst_alpaca_mode_gate_20261014.py"],
+    ),
+    (
         # ANCHOR: GROK_G10_G12_20261011 — honest non-zero exits, lockup and hermes weights off the
         # release tree, and --alert/--send/--telegram as sender tokens. The n8n: SIEM skip is the
         # g11 implementation; its own test is on the n8n_siem_bridge gate. Hermetic: tmp paths,
