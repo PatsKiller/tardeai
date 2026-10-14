@@ -14,6 +14,7 @@ The allowlist holds ONLY Alpaca PAPER files (operator: paper is training) and on
 control harness. Mutation proof: ``test_mutation_*`` delete the guard from three chokepoints in an
 in-memory copy and assert the scan goes red each time.
 """
+
 from __future__ import annotations
 
 import ast
@@ -29,11 +30,28 @@ GUARD = "assert_trading_unlocked"
 # ── sinks ───────────────────────────────────────────────────────────────────────────────────────────
 # Distinctive order-write method names: a call to any of these is a sink wherever it appears.
 WRITE_METHODS = {
-    "place_order", "replace_order", "cancel_order", "cancel_order_for_replace", "submit_order",
-    "unlock_trade", "modify_order", "cancel_user_account_order", "place_force_order",
-    "submit_entry", "submit_stop_order", "create_saved_order", "replace_saved_order", "delete_saved_order",
-    "submit_oco", "request_2fa", "request_approval", "submit_fully_approved", "confirm_and_submit",
-    "route_after_2fa", "request_route", "cancel_replace_stop_if_needed",
+    "place_order",
+    "replace_order",
+    "cancel_order",
+    "cancel_order_for_replace",
+    "submit_order",
+    "unlock_trade",
+    "modify_order",
+    "cancel_user_account_order",
+    "place_force_order",
+    "submit_entry",
+    "submit_stop_order",
+    "create_saved_order",
+    "replace_saved_order",
+    "delete_saved_order",
+    "submit_oco",
+    "request_2fa",
+    "request_approval",
+    "submit_fully_approved",
+    "confirm_and_submit",
+    "route_after_2fa",
+    "request_route",
+    "cancel_replace_stop_if_needed",
 }
 # Generic names that are sinks only when the receiver resolves to a broker module.
 GENERIC_METHODS = {"submit", "execute", "confirm", "place", "cancel", "arm", "replace", "preflight"}
@@ -44,14 +62,14 @@ ORDER_URL = re.compile(
     r"/orders\b|/v2/positions|/api/v2/(?:holdings/protective-stop(?:/confirm|/cancel)?(?![-/\w])"
     r"|broker-orders/(?:approve|request-approval|pilot/(?:execute|cancel|arm))"
     r"|broker-proposals/(?:route|route/confirm|manual-submit)(?![-/\w])"
-    r"|options/confirm|snaptrade/trade/(?:execute|preflight))")
+    r"|options/confirm|snaptrade/trade/(?:execute|preflight))"
+)
 WRITE_HTTP_METHOD = re.compile(r"^(POST|PUT|DELETE|PATCH)$", re.I)
 # HTTP helper definitions in broker adapters: the raw request must be guarded inside them.
 HTTP_HELPER_DEFS = {"_api_post", "_api_delete", "_api_put", "_api_patch"}
 
 # ── reviewed allowlist (Alpaca PAPER + hermetic test harness ONLY) ─────────────────────────────────────
-PAPER_MARKERS = ("paper-api.alpaca.markets", "require_paper_trading_base", "resolve_paper_base_url",
-                 "PAPER_BASE_URL")
+PAPER_MARKERS = ("paper-api.alpaca.markets", "require_paper_trading_base", "resolve_paper_base_url", "PAPER_BASE_URL")
 ALLOWLIST = {
     # path (relative to scripts/): reason
     "alpaca_paper_adapter.py": "Alpaca PAPER adapter; _api_post is paper-gated via alpaca_environment",
@@ -68,15 +86,22 @@ ALLOWLIST = {
     "run_whole_site_negative_controls.py": "hermetic mock server negative control (test harness, never CC)",
     "proposal_paper_submitter.py": "Alpaca PAPER submitter (AlpacaPaperAdapter.submit_entry)",
     "validate_broker_connectors.py": "validator harness: dry_run adapters; every adapter submit_entry is itself "
-                                     "a guarded chokepoint (CHOKEPOINTS) or the paper adapter",
+    "a guarded chokepoint (CHOKEPOINTS) or the paper adapter",
 }
 NON_PAPER_ALLOWLIST = {"run_whole_site_negative_controls.py", "validate_broker_connectors.py"}
+
 
 # Broker module names a generic call may resolve to.
 def _broker_module_names() -> set[str]:
     names = {p.stem for p in (SCRIPTS / "brokers").glob("*.py")}
-    return names | {"schwab_transport", "schwab_adapter", "tastytrade_adapter", "schwab_oco_bracket",
-                    "schwab_pilot_arm", "snaptrade_transport"}
+    return names | {
+        "schwab_transport",
+        "schwab_adapter",
+        "tastytrade_adapter",
+        "schwab_oco_bracket",
+        "schwab_pilot_arm",
+        "snaptrade_transport",
+    }
 
 
 # ── named chokepoints: the guard must be the FIRST statement ─────────────────────────────────────────
@@ -129,10 +154,15 @@ CHOKEPOINTS = [
     ("api_v2.py", "_snaptrade_trade_execute"),
 ]
 API_ROUTES = [
-    "/api/v2/broker-proposals/manual-submit", "/api/v2/broker-proposals/route",
-    "/api/v2/broker-proposals/route/confirm", "/api/v2/holdings/protective-stop",
-    "/api/v2/holdings/protective-stop/confirm", "/api/v2/holdings/protective-stop/cancel",
-    "/api/v2/broker-orders/request-approval", "/api/v2/broker-orders/approve", "/api/v2/options/confirm",
+    "/api/v2/broker-proposals/manual-submit",
+    "/api/v2/broker-proposals/route",
+    "/api/v2/broker-proposals/route/confirm",
+    "/api/v2/holdings/protective-stop",
+    "/api/v2/holdings/protective-stop/confirm",
+    "/api/v2/holdings/protective-stop/cancel",
+    "/api/v2/broker-orders/request-approval",
+    "/api/v2/broker-orders/approve",
+    "/api/v2/options/confirm",
 ]
 # Guard present (not necessarily first) — second-layer / precedence functions.
 CONTAINS_GUARD = [
@@ -143,8 +173,7 @@ CONTAINS_GUARD = [
     ("synthetic_stop_monitor.py", "check_and_trigger", GUARD),
     ("schwab_stop_batch_request.py", "main", GUARD),
 ]
-ARM_PRECEDENCE = ["_live_future_unlocked", "_protective_unlocked", "_options_unlocked",
-                  "_fidelity_monitored_unlocked"]
+ARM_PRECEDENCE = ["_live_future_unlocked", "_protective_unlocked", "_options_unlocked", "_fidelity_monitored_unlocked"]
 
 
 # ── helpers ─────────────────────────────────────────────────────────────────────────────────────────
@@ -189,6 +218,7 @@ def _files():
 
 def _parse(src: str, rel: str):
     import warnings
+
     try:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", SyntaxWarning)
@@ -226,8 +256,12 @@ def _guarded_functions(tree) -> set[str]:
 
 def _first_is_guard(body) -> bool:
     stmts = list(body)
-    if stmts and isinstance(stmts[0], ast.Expr) and isinstance(getattr(stmts[0], "value", None), ast.Constant) \
-            and isinstance(stmts[0].value.value, str):
+    if (
+        stmts
+        and isinstance(stmts[0], ast.Expr)
+        and isinstance(getattr(stmts[0], "value", None), ast.Constant)
+        and isinstance(stmts[0].value.value, str)
+    ):
         stmts = stmts[1:]
     stmts = [s for s in stmts if not (isinstance(s, ast.ImportFrom) and (s.module or "").endswith("trading_lock"))]
     return bool(stmts) and _is_guard_stmt(stmts[0])
@@ -285,15 +319,15 @@ def scan(overrides: dict[str, str] | None = None) -> list[str]:
     """Return a list of uncovered sinks as 'file:line name — reason'. `overrides` maps rel path → source
     (used by the mutation tests to scan an edited copy without touching the tree)."""
     overrides = overrides or {}
-    trees = {rel: (_parse(overrides[rel], rel) if rel in overrides else _cached_tree(rel, p))
-             for rel, p in _files()}
+    trees = {rel: (_parse(overrides[rel], rel) if rel in overrides else _cached_tree(rel, p)) for rel, p in _files()}
     guarded_by_module: dict[str, set[str]] = {}
     defined_by_module: dict[str, set[str]] = {}
     for rel, t in trees.items():
         if t is not None:
             guarded_by_module.setdefault(Path(rel).stem, set()).update(_guarded_functions(t))
             defined_by_module.setdefault(Path(rel).stem, set()).update(
-                n.name for n in t.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)))
+                n.name for n in t.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+            )
     broker_mods = _broker_module_names()
     problems = []
     for rel, t in trees.items():
@@ -317,7 +351,11 @@ def scan(overrides: dict[str, str] | None = None) -> list[str]:
             if name in WRITE_METHODS:
                 kind = "write-method"
             elif name in GENERIC_METHODS:
-                recv = n.func.value.id if isinstance(n.func, ast.Attribute) and isinstance(n.func.value, ast.Name) else None
+                recv = (
+                    n.func.value.id
+                    if isinstance(n.func, ast.Attribute) and isinstance(n.func.value, ast.Name)
+                    else None
+                )
                 mod = aliases.get(recv) if recv else None
                 if mod in broker_mods and name in defined_by_module.get(mod, set()):
                     kind = "broker-generic"
@@ -326,8 +364,11 @@ def scan(overrides: dict[str, str] | None = None) -> list[str]:
             elif name in HTTP_GENERIC and ORDER_URL.search(_strings(n)):
                 meth = [k for k in n.keywords if k.arg == "method"]
                 data = [k for k in n.keywords if k.arg == "data"]
-                if (meth and isinstance(meth[0].value, ast.Constant)
-                        and WRITE_HTTP_METHOD.match(str(meth[0].value.value))) or (name == "Request" and data):
+                if (
+                    meth
+                    and isinstance(meth[0].value, ast.Constant)
+                    and WRITE_HTTP_METHOD.match(str(meth[0].value.value))
+                ) or (name == "Request" and data):
                     kind = "http-write"
             if kind is None:
                 continue
@@ -363,8 +404,14 @@ def _allowlisted(rel: str, func: str | None) -> bool:
 def _find(tree, qual: str):
     node = tree
     for part in qual.split("."):
-        node = next((c for c in ast.iter_child_nodes(node)
-                     if isinstance(c, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and c.name == part), None)
+        node = next(
+            (
+                c
+                for c in ast.iter_child_nodes(node)
+                if isinstance(c, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and c.name == part
+            ),
+            None,
+        )
         if node is None:
             return None
     return node
@@ -416,8 +463,9 @@ def test_api_v2_order_routes_open_with_the_lock():
 def test_second_layer_functions_consult_the_lock(rel, qual, needle):
     fn = _find(ast.parse((SCRIPTS / rel).read_text()), qual)
     assert fn is not None, f"{rel}::{qual} not found"
-    assert any(isinstance(c, ast.Call) and _call_name(c) == needle for c in ast.walk(fn)), \
+    assert any(isinstance(c, ast.Call) and _call_name(c) == needle for c in ast.walk(fn)), (
         f"{rel}::{qual} does not call {needle}"
+    )
 
 
 @pytest.mark.parametrize("fname", ARM_PRECEDENCE)
@@ -426,8 +474,9 @@ def test_arm_state_functions_yield_to_the_lock_first(fname):
     fn = _find(ast.parse((SCRIPTS / "brokers" / "execution_guard.py").read_text()), fname)
     body = fn.body[1:] if isinstance(fn.body[0], ast.Expr) else fn.body
     first = body[0]
-    assert isinstance(first, ast.If) and "_lock_engaged" in ast.unparse(first.test), \
+    assert isinstance(first, ast.If) and "_lock_engaged" in ast.unparse(first.test), (
         f"{fname} must open with `if _lock_engaged(): return False`"
+    )
 
 
 def test_allowlist_is_paper_only():
@@ -437,10 +486,12 @@ def test_allowlist_is_paper_only():
         if rel in NON_PAPER_ALLOWLIST:
             continue
         src = (SCRIPTS / rel).read_text()
-        assert any(m in src for m in PAPER_MARKERS) or "AlpacaPaperAdapter" in src, \
+        assert any(m in src for m in PAPER_MARKERS) or "AlpacaPaperAdapter" in src, (
             f"allowlisted {rel} carries no Alpaca paper pin"
-        assert "schwab_transport" not in src or rel == "telegram_callback_handler.py", \
+        )
+        assert "schwab_transport" not in src or rel == "telegram_callback_handler.py", (
             f"allowlisted paper file {rel} imports the Schwab transport"
+        )
 
 
 def test_scanner_detects_known_sinks():
@@ -469,25 +520,27 @@ def _strip_guard(src: str, qual: str) -> str:
     assert kill, f"no guard in {qual}"
     for a, b in sorted(kill, reverse=True):
         indent = re.match(r"\s*", lines[a - 1]).group(0)
-        lines[a - 1:b] = [indent + "pass"]
+        lines[a - 1 : b] = [indent + "pass"]
     return "\n".join(lines)
 
 
-@pytest.mark.parametrize("rel,qual,raw_sink", [
-    # raw broker I/O lives here → BOTH the first-statement check and the sink scan must go red
-    ("schwab_transport.py", "cancel_order", True),
-    ("tastytrade_adapter.py", "TastytradeAdapter._api_post", True),
-    # a pilot that delegates to the guarded transport: the first-statement check goes red (the sink scan
-    # stays green because schwab_transport.place_order still guards — defence in depth, by design)
-    ("brokers/protective_stop_pilot.py", "submit", False),
-])
+@pytest.mark.parametrize(
+    "rel,qual,raw_sink",
+    [
+        # raw broker I/O lives here → BOTH the first-statement check and the sink scan must go red
+        ("schwab_transport.py", "cancel_order", True),
+        ("tastytrade_adapter.py", "TastytradeAdapter._api_post", True),
+        # a pilot that delegates to the guarded transport: the first-statement check goes red (the sink scan
+        # stays green because schwab_transport.place_order still guards — defence in depth, by design)
+        ("brokers/protective_stop_pilot.py", "submit", False),
+    ],
+)
 def test_mutation_removing_a_guard_turns_the_coverage_red(rel, qual, raw_sink):
     mutated = _strip_guard((SCRIPTS / rel).read_text(), qual)
     first = first_statement_problems({rel: mutated})
     sinks = scan({rel: mutated})
     assert any(qual in p for p in first), f"first-statement check missed removal from {rel}::{qual}"
     if raw_sink:
-        assert any(p.startswith(rel + ":") for p in sinks), \
-            f"sink scan missed removal from {rel}::{qual}: {sinks}"
+        assert any(p.startswith(rel + ":") for p in sinks), f"sink scan missed removal from {rel}::{qual}: {sinks}"
     # and the unmutated tree is green, so the red above is caused by the mutation alone
     assert not first_statement_problems()

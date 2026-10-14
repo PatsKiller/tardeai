@@ -25,10 +25,13 @@ REPO = Path(__file__).resolve().parents[1]
 GATES = [
     # ANCHOR: TRADING_READ_ONLY_LOCK_20261014 — incident SPCX: every broker place/replace/cancel path is
     # dominated by assert_trading_unlocked (static scan + mutation proof) and refuses with stubbed clients.
-    ("trading_read_only_lock_20261014", [
-        "tests/test_trading_lock_20261014.py",
-        "tests/test_trading_lock_coverage_20261014.py",
-    ]),
+    (
+        "trading_read_only_lock_20261014",
+        [
+            "tests/test_trading_lock_20261014.py",
+            "tests/test_trading_lock_coverage_20261014.py",
+        ],
+    ),
     ("refactor_shard_03_20261011", ["tests/test_refactor_shard_03_20261011.py"]),
     # ANCHOR: REFACTOR_SHARDS_05_08_LOCKS_20261011 — exact cron PID/OS lock identity, source only.
     ("refactor_shards_05_08_locks_20261011", ["tests/test_refactor_shards_05_08_locks_20261011.py"]),

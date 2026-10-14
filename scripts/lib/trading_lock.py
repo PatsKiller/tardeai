@@ -40,13 +40,16 @@ Every refusal appends one JSONL row to the audit ledger
 once per hour per caller through the house send path (``telegram_alert.send_telegram`` with an explicit
 ``priority="P1"`` intent, the highest intent priority: never digested, never quiet-held, never capped).
 """
+
 from __future__ import annotations
 
+import contextlib
 import datetime as _dt
 import json
 import os
 import stat
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Any, Callable
@@ -65,24 +68,36 @@ ALERT_INTERVAL_SECONDS = 3600
 
 WRITE_ACTIONS = ("place", "replace", "cancel")
 _ACTION_ALIASES = {
-    "place": "place", "submit": "place", "order": "place", "execute": "place", "route": "place",
-    "confirm": "place", "approve": "place", "request": "place", "arm": "place",
-    "replace": "replace", "modify": "replace",
-    "cancel": "cancel", "delete": "cancel", "close": "place",
+    "place": "place",
+    "submit": "place",
+    "order": "place",
+    "execute": "place",
+    "route": "place",
+    "confirm": "place",
+    "approve": "place",
+    "request": "place",
+    "arm": "place",
+    "replace": "replace",
+    "modify": "replace",
+    "cancel": "cancel",
+    "delete": "cancel",
+    "close": "place",
 }
 PAPER_BROKERS = ("alpaca_paper",)
 ALPACA_PAPER_HOST = "paper-api.alpaca.markets"
 
 # Test seams (in-process only; there is deliberately NO environment variable that moves the unlock path).
 _ALERT_SENDER: Callable[[str], Any] | None = None
+_AUDIT_PATH: Path | None = None  # set only by harness_scratch_lock (in-process, scratch dir)
 _CLOCK: Callable[[], _dt.datetime] = lambda: _dt.datetime.now(_dt.timezone.utc)
 
 
 class TradingLocked(RuntimeError):
     """Raised by assert_trading_unlocked when a broker write is refused."""
 
-    def __init__(self, message: str, *, action: str, broker: str, account: str | None,
-                 caller: str | None, lock_reason: str):
+    def __init__(
+        self, message: str, *, action: str, broker: str, account: str | None, caller: str | None, lock_reason: str
+    ):
         super().__init__(message)
         self.action = action
         self.broker = broker
@@ -92,10 +107,18 @@ class TradingLocked(RuntimeError):
 
     def payload(self) -> dict:
         """A structured refusal for routes/handlers that return dicts instead of raising."""
-        return {"ok": False, "status": "trading_locked", "mode": "trading_locked", "locked": True,
-                "broker_submitted": False,
-                "stage": "trading_lock", "action": self.action, "broker": self.broker,
-                "reason": self.lock_reason, "error": str(self)}
+        return {
+            "ok": False,
+            "status": "trading_locked",
+            "mode": "trading_locked",
+            "locked": True,
+            "broker_submitted": False,
+            "stage": "trading_lock",
+            "action": self.action,
+            "broker": self.broker,
+            "reason": self.lock_reason,
+            "error": str(self),
+        }
 
 
 def normalize_action(action: str | None) -> str:
@@ -127,7 +150,7 @@ def _parse_ts(value: Any) -> _dt.datetime | None:
     except ValueError:
         return None
     if ts.tzinfo is None:
-        return None          # a naive timestamp is ambiguous → locked
+        return None  # a naive timestamp is ambiguous → locked
     return ts
 
 
@@ -171,8 +194,7 @@ def lock_state(*, broker: str | None = None, action: str | None = None) -> dict:
     if until <= now:
         return {"locked": True, "reason": f"unlock expired at {until.isoformat()}"}
     if until - now > _dt.timedelta(hours=MAX_UNLOCK_HOURS):
-        return {"locked": True,
-                "reason": f"unlock horizon exceeds {MAX_UNLOCK_HOURS}h (standing unlocks are refused)"}
+        return {"locked": True, "reason": f"unlock horizon exceeds {MAX_UNLOCK_HOURS}h (standing unlocks are refused)"}
     reason = doc.get("reason")
     operator = doc.get("operator")
     if not (isinstance(reason, str) and reason.strip()):
@@ -196,12 +218,17 @@ def lock_state(*, broker: str | None = None, action: str | None = None) -> dict:
         return {"locked": True, "reason": f"unlock does not cover broker {broker!r}"}
     if action is not None and normalize_action(action) not in actions_n:
         return {"locked": True, "reason": f"unlock does not cover action {normalize_action(action)!r}"}
-    return {"locked": False, "reason": reason.strip(), "operator": operator.strip(),
-            "unlocked_until": until.isoformat(), "brokers": sorted(brokers_n), "actions": sorted(actions_n)}
+    return {
+        "locked": False,
+        "reason": reason.strip(),
+        "operator": operator.strip(),
+        "unlocked_until": until.isoformat(),
+        "brokers": sorted(brokers_n),
+        "actions": sorted(actions_n),
+    }
 
 
-def is_trading_locked(*, broker: str | None = None, action: str | None = None,
-                      environment: str | None = None) -> bool:
+def is_trading_locked(*, broker: str | None = None, action: str | None = None, environment: str | None = None) -> bool:
     """Non-raising, non-alerting query (for status pages and arm-state precedence)."""
     if is_paper(broker, environment):
         return False
@@ -213,6 +240,8 @@ def is_trading_locked(*, broker: str | None = None, action: str | None = None,
 
 # ── audit + alert ─────────────────────────────────────────────────────────────────────────────────
 def audit_path() -> Path:
+    if _AUDIT_PATH is not None:
+        return _AUDIT_PATH
     env = os.environ.get("TRADEAI_TRADING_LOCK_AUDIT_PATH")
     if env:
         return Path(env)
@@ -250,14 +279,17 @@ def _send_alert(message: str) -> bool:
         _ALERT_SENDER(message)
         return True
     if _under_test():
-        return False         # never page the operator from a test process
+        return False  # never page the operator from a test process
     try:
         try:
             from telegram_alert import send_telegram
         except ImportError:
             from scripts.telegram_alert import send_telegram  # type: ignore
-        return bool(send_telegram(message, message_class="operator_alert", priority="P1",
-                                  dedupe_minutes=0, producer="trading_lock"))
+        return bool(
+            send_telegram(
+                message, message_class="operator_alert", priority="P1", dedupe_minutes=0, producer="trading_lock"
+            )
+        )
     except Exception as e:  # noqa: BLE001
         print(f"[trading_lock] alert send failed: {type(e).__name__}: {e}", file=sys.stderr)
         return False
@@ -291,8 +323,9 @@ def _maybe_alert(caller: str, message: str) -> bool:
         return False
 
 
-def assert_trading_unlocked(action: str, *, broker: str, account: str | None = None,
-                            caller: str | None = None, environment: str | None = None) -> dict:
+def assert_trading_unlocked(
+    action: str, *, broker: str, account: str | None = None, caller: str | None = None, environment: str | None = None
+) -> dict:
     """THE broker write gate. Call it FIRST on every place/replace/cancel path.
 
     Returns the lock state when the write may proceed (Alpaca paper, or a valid operator unlock that
@@ -309,25 +342,115 @@ def assert_trading_unlocked(action: str, *, broker: str, account: str | None = N
         state = {"locked": True, "reason": f"lock state error ({type(e).__name__})"}
     now = _CLOCK().isoformat()
     if not state.get("locked", True):
-        _audit({"ts": now, "event": "allowed_by_operator_unlock", "action": act, "broker": b,
-                "account": account, "caller": who, "unlocked_until": state.get("unlocked_until"),
-                "unlock_operator": state.get("operator"), "unlock_reason": state.get("reason")})
+        _audit(
+            {
+                "ts": now,
+                "event": "allowed_by_operator_unlock",
+                "action": act,
+                "broker": b,
+                "account": account,
+                "caller": who,
+                "unlocked_until": state.get("unlocked_until"),
+                "unlock_operator": state.get("operator"),
+                "unlock_reason": state.get("reason"),
+            }
+        )
         return state
     reason = str(state.get("reason") or "locked")
-    msg = (f"TRADING LOCKED: refused {act} on {b}"
-           + (f" account {account}" if account else "") + f" (caller {who}) — {reason}. "
-           "The system is read-only toward brokers; nothing was sent.")
-    _audit({"ts": now, "event": "refused", "action": act, "broker": b, "account": account,
-            "caller": who, "lock_reason": reason, "pid": os.getpid()})
+    msg = (
+        f"TRADING LOCKED: refused {act} on {b}"
+        + (f" account {account}" if account else "")
+        + f" (caller {who}) — {reason}. "
+        "The system is read-only toward brokers; nothing was sent."
+    )
+    _audit(
+        {
+            "ts": now,
+            "event": "refused",
+            "action": act,
+            "broker": b,
+            "account": account,
+            "caller": who,
+            "lock_reason": reason,
+            "pid": os.getpid(),
+        }
+    )
     _maybe_alert(who, "P0 URGENT " + msg + " Unlock is operator-only (docs/runbooks/TRADING_LOCK.md).")
     raise TradingLocked(msg, action=act, broker=b, account=account, caller=who, lock_reason=reason)
+
+
+# ── standalone CI harness hook ──────────────────────────────────────────────────────────────────────
+# pytest gets its scratch unlock from tests/conftest.py. Standalone (non-pytest) CI harness scripts that
+# must still prove the guard stack can GRANT (e.g. validate_schwab_write_policy.py check 12) use this hook
+# instead. It never touches UNLOCK_PATH's production location: it repoints THIS PROCESS's lock at a fresh
+# temp dir for the duration of a ``with`` block and restores everything on exit. It is refused unless the
+# process's __main__ is a registered harness script in this repo, or pytest is loaded. No env var enables it.
+_HARNESS_SCRIPTS = frozenset({"scripts/validate_schwab_write_policy.py"})
+
+
+def _registered_harness() -> str | None:
+    """The repo-relative path of this process's __main__ when it is a registered harness script, else None."""
+    if "pytest" in sys.modules:
+        return "pytest"
+    main_file = getattr(sys.modules.get("__main__"), "__file__", None)
+    if not main_file:
+        return None
+    try:
+        rel = Path(main_file).resolve().relative_to(Path(__file__).resolve().parents[2]).as_posix()
+    except Exception:  # noqa: BLE001 — not inside this repo → not a harness
+        return None
+    return rel if rel in _HARNESS_SCRIPTS else None
+
+
+@contextlib.contextmanager
+def harness_scratch_lock(*, unlock_brokers: list[str] | None = None, actions: list[str] | None = None):
+    """Point this process's lock at a scratch temp dir (test/CI harness processes ONLY).
+
+    ``unlock_brokers=None`` → no unlock file in the scratch dir: the production default, LOCKED.
+    Otherwise a valid 1-hour scratch unlock covering exactly those brokers (and ``actions``, default all).
+    Refusal alerts are captured in the yielded ``alerts`` list (never sent); audit rows go to the scratch dir.
+    Raises RuntimeError in any process that is not a registered harness.
+    """
+    harness = _registered_harness()
+    if harness is None:
+        raise RuntimeError("harness_scratch_lock refused: this process is not a registered test/CI harness")
+    g = globals()
+    saved = {k: g[k] for k in ("UNLOCK_PATH", "PANIC_LOCK_PATH", "_ALERT_SENDER", "_AUDIT_PATH")}
+    alerts: list[str] = []
+    with tempfile.TemporaryDirectory(prefix="tradeai_trading_lock_harness_") as d:
+        scratch = Path(d)
+        try:
+            g["UNLOCK_PATH"] = scratch / "harness_unlock.json"
+            g["PANIC_LOCK_PATH"] = scratch / "HARNESS_TRADING_LOCKED"
+            g["_ALERT_SENDER"] = alerts.append
+            g["_AUDIT_PATH"] = scratch / "trading_lock_audit.jsonl"
+            if unlock_brokers:
+                doc = {
+                    "unlocked_until": (_CLOCK() + _dt.timedelta(hours=1)).isoformat(),
+                    "reason": f"scratch unlock for CI harness {harness}",
+                    "operator": f"harness:{harness}",
+                    "brokers": list(unlock_brokers),
+                }
+                if actions is not None:
+                    doc["actions"] = list(actions)
+                fd = os.open(g["UNLOCK_PATH"], os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                    fh.write(json.dumps(doc))
+            yield {"dir": scratch, "alerts": alerts, "harness": harness}
+        finally:
+            g.update(saved)
 
 
 def status() -> dict:
     """Read-only summary for status endpoints."""
     st = lock_state()
-    return {"locked": bool(st.get("locked", True)), **st, "unlock_path": str(UNLOCK_PATH),
-            "panic_lock_path": str(PANIC_LOCK_PATH), "max_unlock_hours": MAX_UNLOCK_HOURS}
+    return {
+        "locked": bool(st.get("locked", True)),
+        **st,
+        "unlock_path": str(UNLOCK_PATH),
+        "panic_lock_path": str(PANIC_LOCK_PATH),
+        "max_unlock_hours": MAX_UNLOCK_HOURS,
+    }
 
 
 if __name__ == "__main__":

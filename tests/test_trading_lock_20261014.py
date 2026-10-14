@@ -5,6 +5,7 @@ that raises if touched where it must not be). No broker, no credential, no real 
 this module is the production default — no unlock file → LOCKED (``pytestmark = trading_locked``); tests
 that need an unlock write one into the per-test tmp UNLOCK_PATH the conftest fixture provides.
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -23,6 +24,10 @@ sys.path.insert(0, str(ROOT))
 from scripts.lib import trading_lock as tl  # noqa: E402
 
 pytestmark = pytest.mark.trading_locked
+
+# C1 alarm-firing coverage (tests/test_alarm_coverage.py): the refusal alert in trading_lock._send_alert is
+# observed reaching the Telegram transport in test_refusal_alert_reaches_the_transport below.
+COVERS = ["scripts/lib/trading_lock.py"]
 
 
 class _Recorder:
@@ -61,6 +66,7 @@ def audit(tmp_path, monkeypatch):
 @pytest.fixture
 def nodb(monkeypatch):
     import db_adapter
+
     monkeypatch.setattr(db_adapter, "_get_conn", _NoDB())
 
 
@@ -70,16 +76,24 @@ def _write_unlock(doc, *, mode=0o600):
 
 
 def _valid(hours=1.0, **kw):
-    doc = {"unlocked_until": (dt.datetime.now(dt.timezone.utc) + dt.timedelta(hours=hours)).isoformat(),
-           "reason": "operator test", "operator": "john", "brokers": ["schwab"]}
+    doc = {
+        "unlocked_until": (dt.datetime.now(dt.timezone.utc) + dt.timedelta(hours=hours)).isoformat(),
+        "reason": "operator test",
+        "operator": "john",
+        "brokers": ["schwab"],
+    }
     doc.update(kw)
     return doc
 
 
 def _intent(broker="schwab", account="schwab_taxable"):
-    return types.SimpleNamespace(broker=broker, account_key=account, intent_id="iid-1",
-                                 correlation_id="cid-1", meta=types.SimpleNamespace(signal_evidence={},
-                                                                                     strategy_id=None))
+    return types.SimpleNamespace(
+        broker=broker,
+        account_key=account,
+        intent_id="iid-1",
+        correlation_id="cid-1",
+        meta=types.SimpleNamespace(signal_evidence={}, strategy_id=None),
+    )
 
 
 # ── lock state: fail secure ──────────────────────────────────────────────────────────────────────────
@@ -99,17 +113,20 @@ def test_valid_unlock_allows_only_listed_broker_and_actions(audit):
         tl.assert_trading_unlocked("cancel", broker="snaptrade", caller="t")
 
 
-@pytest.mark.parametrize("doc,why", [
-    (_valid(hours=-0.1), "expired"),
-    (_valid(hours=24 * 365 * 70), "2099-style standing unlock"),
-    ({**_valid(), "unlocked_until": "2026-10-14T23:00:00"}, "naive timestamp"),
-    ({k: v for k, v in _valid().items() if k != "reason"}, "no reason"),
-    ({k: v for k, v in _valid().items() if k != "brokers"}, "no brokers"),
-    ({**_valid(), "brokers": []}, "empty brokers"),
-    ({**_valid(), "actions": ["place", "liquidate"]}, "unknown action"),
-    ("{not json", "malformed json"),
-    ("[1, 2]", "not an object"),
-])
+@pytest.mark.parametrize(
+    "doc,why",
+    [
+        (_valid(hours=-0.1), "expired"),
+        (_valid(hours=24 * 365 * 70), "2099-style standing unlock"),
+        ({**_valid(), "unlocked_until": "2026-10-14T23:00:00"}, "naive timestamp"),
+        ({k: v for k, v in _valid().items() if k != "reason"}, "no reason"),
+        ({k: v for k, v in _valid().items() if k != "brokers"}, "no brokers"),
+        ({**_valid(), "brokers": []}, "empty brokers"),
+        ({**_valid(), "actions": ["place", "liquidate"]}, "unknown action"),
+        ("{not json", "malformed json"),
+        ("[1, 2]", "not an object"),
+    ],
+)
 def test_malformed_or_expired_unlock_is_locked(doc, why, audit, alerts):
     _write_unlock(doc)
     assert tl.lock_state(broker="schwab", action="place")["locked"] is True, why
@@ -196,12 +213,13 @@ def test_alpaca_paper_is_allowed_while_locked_and_live_is_not(audit, alerts):
     with pytest.raises(tl.TradingLocked):
         tl.assert_trading_unlocked("place", broker="alpaca", environment="live")
     with pytest.raises(tl.TradingLocked):
-        tl.assert_trading_unlocked("place", broker="alpaca")   # environment unknown → live
+        tl.assert_trading_unlocked("place", broker="alpaca")  # environment unknown → live
 
 
 def test_alpaca_paper_adapter_posts_on_paper_and_refuses_a_live_host(monkeypatch, audit, alerts):
     import requests
     from alpaca_paper_adapter import AlpacaPaperAdapter
+
     post = _Recorder(types.SimpleNamespace(raise_for_status=lambda: None, json=lambda: {"id": "x"}))
     monkeypatch.setattr(requests, "post", post)
     paper = types.SimpleNamespace(base_url="https://paper-api.alpaca.markets", headers={})
@@ -215,6 +233,7 @@ def test_alpaca_paper_adapter_posts_on_paper_and_refuses_a_live_host(monkeypatch
 
 def test_alpaca_factory_live_branch_is_locked(monkeypatch, audit, alerts):
     from brokers import alpaca_factory
+
     monkeypatch.setattr(alpaca_factory, "_row", lambda k: {"broker": "alpaca", "environment": "live"})
     with pytest.raises(tl.TradingLocked):
         alpaca_factory.adapter_for("alpaca_live_x")
@@ -224,6 +243,7 @@ def test_alpaca_factory_live_branch_is_locked(monkeypatch, audit, alerts):
 @pytest.fixture
 def transport(monkeypatch, nodb):
     import schwab_transport as st
+
     built = _Recorder((None, {"status": "stub"}))
     monkeypatch.setattr(st, "build_client", built)
     st._test_built = built
@@ -242,27 +262,33 @@ def test_transport_place_cancel_replace_refuse_before_any_io(transport, audit, a
         st.replace_order()
     with pytest.raises(tl.TradingLocked):
         st._pilot_preconditions("schwab_taxable", "protective_stop", action="cancel")
-    assert st._test_built.calls == []   # the broker client was never even built
+    assert st._test_built.calls == []  # the broker client was never even built
 
 
 def test_schwab_py_client_writes_are_guarded_and_reads_pass(audit, alerts):
     import schwab_transport as st
-    client = types.SimpleNamespace(place_order=_Recorder(), cancel_order=_Recorder(),
-                                   replace_order=_Recorder(), get_orders_for_account=_Recorder({"ok": 1}))
+
+    client = types.SimpleNamespace(
+        place_order=_Recorder(),
+        cancel_order=_Recorder(),
+        replace_order=_Recorder(),
+        get_orders_for_account=_Recorder({"ok": 1}),
+    )
     raw = {k: getattr(client, k) for k in ("place_order", "cancel_order", "replace_order")}
     st._lock_guard_client_writes(client, "schwab_taxable")
     for name in ("place_order", "cancel_order", "replace_order"):
         with pytest.raises(tl.TradingLocked):
             getattr(client, name)("hash", {})
         assert raw[name].calls == []
-    assert client.get_orders_for_account("hash") == {"ok": 1}   # reads still work while locked
+    assert client.get_orders_for_account("hash") == {"ok": 1}  # reads still work while locked
 
 
 def test_transport_reads_still_work_while_locked(monkeypatch, audit):
     import schwab_transport as st
+
     monkeypatch.setattr(st, "_read", lambda *a, **k: {"status": "ok", "orders": []})
     assert st.get_orders("schwab_taxable", account_hash="h")["status"] == "ok"
-    assert tl.is_trading_locked(broker="schwab") is True   # …and the lock is engaged while reading
+    assert tl.is_trading_locked(broker="schwab") is True  # …and the lock is engaged while reading
 
 
 def test_unlocked_transport_proceeds_to_its_own_gates(transport, monkeypatch, audit):
@@ -276,6 +302,7 @@ def test_unlocked_transport_proceeds_to_its_own_gates(transport, monkeypatch, au
 @pytest.fixture
 def no_transport(monkeypatch):
     import schwab_transport as st
+
     rec = _Recorder({"status": "submitted"})
     monkeypatch.setattr(st, "place_order", rec)
     monkeypatch.setattr(st, "cancel_order", rec)
@@ -294,6 +321,7 @@ def test_pilot_submit_and_2fa_request_refuse(modname, no_transport, nodb, audit,
 
 def test_entry_pilot_confirm_and_route_return_refusal(no_transport, nodb, audit, alerts):
     from brokers import broker_entry_pilot as bep
+
     assert bep.confirm_and_submit("iid")["mode"] == "trading_locked"
     assert bep.request_route(1)["mode"] == "trading_locked"
     assert no_transport.calls == []
@@ -301,13 +329,14 @@ def test_entry_pilot_confirm_and_route_return_refusal(no_transport, nodb, audit,
 
 def test_router_and_approval_refuse_without_consuming_approval(monkeypatch, no_transport, nodb, audit, alerts):
     from brokers import approval_service, intent_submit_router as isr
+
     monkeypatch.setattr(approval_service, "_load_intent_any", lambda iid: _intent())
     consulted = _Recorder(True)
     monkeypatch.setattr(approval_service, "is_fully_approved", consulted)
     r = isr.submit_fully_approved("iid-1")
     assert r["ok"] is False and r["mode"] == "trading_locked" and r["broker_submitted"] is False
     assert consulted.calls == [] and no_transport.calls == []
-    c = approval_service.confirm("iid-1", "telegram", "123456")   # DB is _NoDB → must not be reached
+    c = approval_service.confirm("iid-1", "telegram", "123456")  # DB is _NoDB → must not be reached
     assert c["ok"] is False and c["locked"] is True
     assert approval_service.request_approval(_intent())["mode"] == "trading_locked"
     assert isr.cancel_replace_stop_if_needed(_intent())["mode"] == "trading_locked"
@@ -315,6 +344,7 @@ def test_router_and_approval_refuse_without_consuming_approval(monkeypatch, no_t
 
 def test_schwab_order_adapter_refuses_with_lock_first(audit, alerts):
     from brokers.schwab_order_adapter import SchwabOrderAdapter
+
     a = SchwabOrderAdapter()
     for call in (lambda: a.submit(_intent(), {}), lambda: a.replace(_intent(), "1"), lambda: a.cancel("1")):
         with pytest.raises(tl.TradingLocked):
@@ -324,10 +354,16 @@ def test_schwab_order_adapter_refuses_with_lock_first(audit, alerts):
 def test_execution_guard_denies_every_write_action_including_cancel(monkeypatch, audit, alerts):
     from brokers import execution_guard as eg, audit as br_audit
     from brokers.order_intent import OrderIntent, Instrument, Direction, EntrySpec, EntryMethod, Quantity
+
     monkeypatch.setattr(br_audit, "record_guard_decision", lambda *a, **k: None)
-    it = OrderIntent(instrument=Instrument("SPCX"), direction=Direction.LONG,
-                     entry=EntrySpec(method=EntryMethod.LIMIT, limit_price=1.0), quantity=Quantity(qty=1),
-                     broker="schwab", account_key="schwab_taxable")
+    it = OrderIntent(
+        instrument=Instrument("SPCX"),
+        direction=Direction.LONG,
+        entry=EntrySpec(method=EntryMethod.LIMIT, limit_price=1.0),
+        quantity=Quantity(qty=1),
+        broker="schwab",
+        account_key="schwab_taxable",
+    )
     for action in ("submit", "replace", "cancel"):
         d = eg.authorize(it, action)
         assert d.allowed is False and d.reason.startswith("TRADING_LOCKED"), (action, d.reason)
@@ -356,11 +392,12 @@ def test_lock_wins_over_a_standing_2099_arm(monkeypatch, audit):
     assert eg._options_unlocked() is False
     assert eg._fidelity_monitored_unlocked() is False
     _write_unlock(_valid())
-    assert eg._live_future_unlocked() is True   # same arm rows, lock lifted → the arm is honoured again
+    assert eg._live_future_unlocked() is True  # same arm rows, lock lifted → the arm is honoured again
 
 
 def test_kill_switch_reports_the_lock(monkeypatch, audit):
     from brokers import kill_switches as ks
+
     monkeypatch.setattr(ks, "list_active", _NoDB())
     blocked, reasons = ks.is_blocked(live_submit=True)
     assert blocked and reasons[0].startswith("trading_lock:locked")
@@ -369,6 +406,7 @@ def test_kill_switch_reports_the_lock(monkeypatch, audit):
 def test_pilot_arm_refused_and_status_reports_lock(monkeypatch, nodb, audit, alerts):
     import schwab_pilot_arm as arm
     import datetime as _d
+
     r = arm.arm(f"ARM SCHWAB PILOT {_d.date.today().isoformat()}")
     assert r["ok"] is False and r["mode"] == "trading_locked"
 
@@ -377,6 +415,7 @@ def test_pilot_arm_refused_and_status_reports_lock(monkeypatch, nodb, audit, ale
 def test_snaptrade_paths_refuse(monkeypatch, audit, alerts):
     from brokers import snaptrade_trade as stt, snaptrade_transport as sttr
     from brokers import snaptrade_protective_stop_pilot as spsp, snaptrade_trade_pilot as stp
+
     client = _Recorder()
     monkeypatch.setattr(stt, "_client", client)
     with pytest.raises(tl.TradingLocked):
@@ -395,11 +434,18 @@ def test_snaptrade_paths_refuse(monkeypatch, audit, alerts):
 def test_tastytrade_http_helpers_refuse_and_never_post(monkeypatch, audit, alerts):
     import requests
     from tastytrade_adapter import TastytradeAdapter
+
     post, delete = _Recorder(), _Recorder()
     monkeypatch.setattr(requests, "post", post)
     monkeypatch.setattr(requests, "delete", delete)
-    fake = types.SimpleNamespace(session_token="tok", base_url="https://api.example", _headers=lambda: {},
-                                 enabled=True, account_number="0", dry_run=False)
+    fake = types.SimpleNamespace(
+        session_token="tok",
+        base_url="https://api.example",
+        _headers=lambda: {},
+        enabled=True,
+        account_number="0",
+        dry_run=False,
+    )
     with pytest.raises(tl.TradingLocked):
         TastytradeAdapter._api_post(fake, "/accounts/0/orders", {})
     with pytest.raises(tl.TradingLocked):
@@ -412,6 +458,7 @@ def test_tastytrade_http_helpers_refuse_and_never_post(monkeypatch, audit, alert
 
 def test_schwab_adapter_dead_paths_are_locked_too(audit, alerts):
     from schwab_adapter import SchwabAdapter
+
     fake = types.SimpleNamespace(account_label="schwab_taxable")
     with pytest.raises(tl.TradingLocked):
         SchwabAdapter._api_post(fake, "/trader/v1/accounts/h/orders", {})
@@ -422,6 +469,7 @@ def test_schwab_adapter_dead_paths_are_locked_too(audit, alerts):
 
 def test_moomoo_place_and_unlock_refuse(audit, alerts):
     from moomoo.client import MoomooClient
+
     with pytest.raises(tl.TradingLocked):
         MoomooClient.place_order(object())
     with pytest.raises(tl.TradingLocked):
@@ -447,8 +495,11 @@ def test_synthetic_stop_breach_while_locked_alerts_and_requests_nothing(monkeypa
             pass
 
     monkeypatch.setattr(ssm, "ensure_table", lambda: None)
-    monkeypatch.setattr(ssm, "list_stops", lambda status: [{"id": 1, "symbol": "SPCX", "account": "schwab_taxable",
-                                                            "stop_price": 150.0, "qty": 10}])
+    monkeypatch.setattr(
+        ssm,
+        "list_stops",
+        lambda status: [{"id": 1, "symbol": "SPCX", "account": "schwab_taxable", "stop_price": 150.0, "qty": 10}],
+    )
     monkeypatch.setattr(ssm, "_live_price", lambda s, a: 149.0)
     monkeypatch.setattr(ssm, "_conn", lambda: _C())
     req = _Recorder({"ok": True})
@@ -466,7 +517,55 @@ def test_synthetic_stop_breach_while_locked_alerts_and_requests_nothing(monkeypa
 def test_broker_trade_monitor_stop_modify_refuses(monkeypatch, audit, alerts):
     import schwab_broker_trade_monitor as m
     from brokers import protective_stop_pilot as psp
+
     req = _Recorder({"ok": True})
     monkeypatch.setattr(psp, "request_2fa", req)
     r = m._request_stop_modify("schwab_taxable", "SPCX", 10, 140.0, "1", 140.0, 150.0, 10)
     assert r["mode"] == "trading_locked" and req.calls == []
+
+
+# ── C1 firing test: the refusal alert reaches the transport ─────────────────────────────────────────
+def test_refusal_alert_reaches_the_transport(alarm_capture, monkeypatch, audit):
+    """Inject the condition (no unlock → a Schwab place is refused) through the REAL house send path
+    (telegram_alert.send_telegram, comms editor included); alarm_capture stubs only the wire."""
+    monkeypatch.setattr(tl, "_ALERT_SENDER", None)
+    monkeypatch.setattr(tl, "_under_test", lambda: False)
+    with pytest.raises(tl.TradingLocked):
+        tl.assert_trading_unlocked("place", broker="schwab", account="schwab_taxable", caller="c1-firing")
+    alarm_capture.assert_fired(contains="TRADING LOCKED")
+    assert "c1-firing" in alarm_capture.text()
+
+
+# ── standalone CI harness hook ───────────────────────────────────────────────────────────────────────
+def test_harness_hook_scratch_unlock_grants_then_restores(audit):
+    prod_unlock, prod_panic = tl.UNLOCK_PATH, tl.PANIC_LOCK_PATH
+    with tl.harness_scratch_lock(unlock_brokers=["schwab"]) as h:
+        assert tl.UNLOCK_PATH.parent == h["dir"] and tl.UNLOCK_PATH != prod_unlock
+        assert tl.assert_trading_unlocked("place", broker="schwab", caller="h")["locked"] is False
+        with pytest.raises(tl.TradingLocked):
+            tl.assert_trading_unlocked("place", broker="snaptrade", caller="h")
+        scratch = h["dir"]
+    assert (tl.UNLOCK_PATH, tl.PANIC_LOCK_PATH) == (prod_unlock, prod_panic)
+    assert tl._AUDIT_PATH is None and not scratch.exists()
+
+
+def test_harness_hook_without_unlock_is_locked_and_captures_alert(audit):
+    with tl.harness_scratch_lock(unlock_brokers=None) as h:
+        assert not tl.UNLOCK_PATH.exists()
+        with pytest.raises(tl.TradingLocked):
+            tl.assert_trading_unlocked("cancel", broker="schwab", caller="h-locked")
+        assert h["alerts"] and h["alerts"][0].startswith("P0 URGENT TRADING LOCKED")
+        assert (h["dir"] / "trading_lock_audit.jsonl").exists()
+    assert not audit.exists()  # the harness audit went to its scratch dir, not the ambient ledger
+
+
+def test_harness_hook_refused_outside_a_registered_harness(monkeypatch):
+    monkeypatch.delitem(sys.modules, "pytest")
+    fake_main = types.ModuleType("__main__")
+    fake_main.__file__ = str(ROOT / "scripts" / "api_v2.py")
+    monkeypatch.setitem(sys.modules, "__main__", fake_main)
+    with pytest.raises(RuntimeError, match="not a registered test/CI harness"):
+        with tl.harness_scratch_lock(unlock_brokers=["schwab"]):
+            pass
+    fake_main.__file__ = str(ROOT / "scripts" / "validate_schwab_write_policy.py")
+    assert tl._registered_harness() == "scripts/validate_schwab_write_policy.py"
