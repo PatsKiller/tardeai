@@ -15,6 +15,61 @@ Path convention: `$CODE_ROOT` is the pinned CURRENT release and `$STATE_ROOT` is
 
 ---
 
+## A. Platform architecture as deployed, and the target (refreshed 2026-10-14)
+
+Measured 2026-10-14T18:45-04:00 at served `3e9dc5e14` (origin/main `a1b1c5c93`). Status labels as in the
+[gap assessment](N8N_GAP_ASSESSMENT_AND_MATURITY_REVIEW_20261014.md) §0. AGENTS.md **7.0.0** is ACTIVE; the target
+below is **10.0.0 §23.23, MERGED AS PROPOSED, not ratified**. The sections from §0 on are the 2026-10-09 design
+record of the six generic workflows; what was built from it is in [`N8N_CONFIGURATION.md`](N8N_CONFIGURATION.md) §3.
+
+### A.1 Components and trust boundaries today
+
+```
+                 operator (Telegram, Command Center via tailnet)
+                        ▲ sends                          │ HTTPS (tailscale serve → 127.0.0.1:7777)
+  ┌─────────────────────┼────────────────────────────────┼──────────────────────────── host ms01 (one uid) ─┐
+  │  comms gateway: send_telegram / route_intent ── delivery ledger      Command Center + API :7777          │
+  │        ▲ (only sender, §24.1)                                         (cc_auth report_only, #1735 LIVE)  │
+  │  incident_notifier (cron */5) ◄── fan-in receipt ◄── SIEM bridge (cron)   health tick (timer) / agent    │
+  │        ▲                                                                                                 │
+  │  ledger (sqlite: runs, receipts, effects, breakers, dead_letters) ◄── executor v2 (systemd) ── lane scripts│
+  │        ▲                                                                   │ LLM: governed bridge :8766   │
+  │  coordination gateway 127.0.0.1:18091 (HMAC claim, allowlist, stage clamp) │ broker: Schwab paused        │
+  │        ▲                                                                   │ (trading lock #1734 not served)
+  │  run relay 172.19.0.1:18092 (bearer; never spawns)                                                       │
+  │        ▲ docker bridge                                                                                   │
+  │  ┌─ m8m-n8n (n8nio/n8n:2.43.0, 127.0.0.1:5678) ─ m8m-n8n-db (postgres 16, internal) ─┐                    │
+  │  │ 16 active workflows: schedule → GET /due → POST /run; Error Trigger → POST /event │                    │
+  │  └───────────────────────────────────────────────────────────────────────────────────┘                   │
+  └──────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+| Concern | Owner today | Status |
+|---|---|---|
+| When a lane runs | 453 cron lines, 142 systemd units, 81 registry dispatch rows ticked by n8n (`* * * * *`), 10 n8n per-lane schedules | LIVE |
+| Whether it runs, live or dry | host: allowlist (96 lanes), registry `dispatch.mode`, relay live list (7 lanes), gateway stage clamp — **four gates that disagree** (13 registry-live rows, 2 actually live) | LIVE (WS1-07 open) |
+| Retries, DLQ, breakers | host `n8n_due.py` + ledger | LIVE |
+| Execution | executor v2 (class caps global 4) | LIVE |
+| Evidence | ledger `RunReceipt@v2`, lane receipts, `output_signal` | LIVE |
+| Alerts to the operator | host comms gateway (CANARY, `owned_classes: ['ops']`) and `send_telegram` | LIVE |
+| LLM calls | governed bridge :8766 (DeepSeek in canary; OAuth transports PR-OPEN #1738) | LIVE / PR-OPEN |
+| Broker | Schwab app deactivated 10-14 (`config/schwab_access_mode.yaml` `forbidden`); read-only lock #1734 MERGED-NOT-SERVED | — |
+
+### A.2 Target (10.0.0 §23.23, PROPOSED) and the distance
+
+| Layer | Target owner | Distance today |
+|---|---|---|
+| Flow (sequence, dependencies, events, retries, approvals, escalation timers, LLM judgment steps) | n8n | 0 sub-workflows, 0 approval waits, 0 AI nodes; Run Lane + run-outcome callback BRANCH-ONLY (Build 1) |
+| Authority, execution, evidence | host | in place (the part to keep) |
+| LLM judgment | governed bridge `/v1/llm_step`, closed schema | PR-OPEN #1738, OFF by default |
+| Money | broker gateway (read projections) + execution service behind the trading lock and a per-order operator assertion | gateway PLANNED (9.0.0 §23.22, branch-only); lock MERGED-NOT-SERVED |
+| Independence | P0/P1 pages and dead-man never depend on n8n | heartbeat-watch runs in n8n (WS1-15); off-box dead-man absent (WS3-18) |
+
+Every workflow on the target is built to the mandatory framework of AGENTS.md §23.24 (PROPOSED 11.0.0;
+[`N8N_CONFIGURATION.md`](N8N_CONFIGURATION.md) §0.4).
+
+---
+
 ## 0. Decision in one paragraph
 
 n8n stops holding one workflow per lane. It runs exactly **six generic workflows**:

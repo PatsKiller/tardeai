@@ -3,6 +3,58 @@
 **Status:** documented 2026-09-06 after a full-day outage of the paid lane
 **Service:** `cio-governed-bridge.service` (systemd **user** unit) on `127.0.0.1:8766`
 **Code:** `scripts/lib/cio_governed_model_bridge.py`
+**Updated:** 2026-10-14 — §0 (AI and LLM governance as served at `3e9dc5e14`) added; §1–§9 are the 2026-09 record
+
+---
+
+## 0. AI and LLM governance — as served 2026-10-14
+
+Measured 2026-10-14 at served `3e9dc5e14` (origin/main `a1b1c5c93`). AGENTS.md §12 (model lanes), §9.2 (model calls)
+and §23.4 (n8n model calls) are canonical; this section records what the code does and labels each control
+(LIVE / MERGED-NOT-SERVED / PR-OPEN / BRANCH-ONLY / PLANNED / POLICY-ONLY). §4 "projections ~17×" below predates the
+calibrated projection (`calibrated_projected_usd`, p90 × 1.5) the bridge now uses.
+
+### 0.1 The pipeline (LIVE) — `execute_governed_call`
+
+The bridge serves `POST /v1/chat/completions` and `GET /health` on 127.0.0.1:8766 (`CIO_BRIDGE_MODE=canary`,
+`CIO_BRIDGE_MAX_INFLIGHT` default 4, watchdog `scripts/cio_bridge_watchdog.py`). In order: circuit breaker →
+process registration (`llm_process_config` row, else 404 `PROCESS_NOT_REGISTERED`) → server-side policy and lane
+(`select_governed_lane`, health gate) → legacy-model rejection and per-process policy allowlist → transport
+(canary: non-DeepSeek providers 503 `provider_not_configured`) → step 4b agent preconditions
+(`scripts/lib/bridge_agent_preconditions.py`) → step 5 caps (429 `COST_CAP_EXCEEDED`) → 5b routing-policy cost
+ceiling → 6 reservation → 6b egress sanitiser → 7 provider call → 8 model-mismatch check → 9 settlement → 9b output
+schema and behaviour-field scan → 10 `_tradeai` provenance and `ProviderRequestJournal@v1`.
+
+### 0.2 The six governance areas (§23.24, PROPOSED 11.0.0)
+
+| Area | Control | Status | Evidence |
+|---|---|---|---|
+| Prompt management | versioned prompts with an `active.json` pin, `vN_system.md` / `vN_user_template.md`, CHANGELOG (`prompts/cio_alex_enrich/` pin v2, `prompts/cio_judge/`); loader `scripts/lib/cio_prompt_loader.py` with last-known-good fallback; eval `cio_prompt_eval.py`, judge `cio_prompt_judge.py` | LIVE | no review/approval field in prompt files; most other prompts are inline in scripts |
+| | n8n templates `config/n8n_prompt_templates.json` (3: material_digest_draft.v1, ops_summary_draft.v1, lane_failure_diagnosis.v1), checked host-side in `scripts/lib/n8n_model_job.py` | LIVE | the bridge itself does not check templates |
+| Model selection and fallback | caller names a process, never a model: `CALLER_PROCESS_MAP` + `X-TradeAI-Agent`; `config/llm_model_registry.json` (FAST … PRO_MAX, fails closed on unknown/legacy ids); `config/llm_process_registry.json` (75 processes); `config/llm_routing_policy.json` (chains deepseek→grok→chatgpt 37, deepseek-only 28, grok→chatgpt→deepseek 10; concurrency deepseek 6 / grok 2 / chatgpt 2) | LIVE | live bridge transport is DeepSeek only ("no fallback"); OAuth grok/chatgpt transports **PR-OPEN #1738**, OFF unless `CIO_BRIDGE_OAUTH_TRANSPORTS` is set |
+| | escalation free → one paid → ask: `scripts/lib/llm_escalation.py` (grok → chatgpt → deepseek-flash → Telegram → stop); `scripts/lib/llm_fallback.py` `NEVER_CHAIN={local,gemma,ollama}` | LIVE | ~143 scripts still mention gemma/ollama; generative local models are policy-barred (`llm_task_policy.py`) |
+| Cost and token monitoring | per-process `daily_cost_cap_usd` / `daily_soft_cap` / max tokens; `/caps` (`scripts/lib/llm_cap_admin.py`); ledgers `llm_consumption_log` (reasoning and cache tokens), `llm_cost_reservations`; `ProviderCostEvent@v1`; `scripts/llm_spend_report.py`; global ruled ceiling $2.00/day | LIVE | the global cap is not universally enforced (~78 of 84 lanes, AGENTS.md §12) |
+| Response validation | closed schemas `config/schemas/n8n_model_job_outputs.json` + behaviour-field scan (step 9b) | LIVE for `n8n_*` processes only | `llm_output_schemas.py` / `llm_json_contract.py` imported only by tests |
+| Hallucination controls | number grounding `scripts/lib/agent_number_grounding.py` (`enforce`, demotes to RESEARCH_MORE), SLO `config/agent_number_grounding_slo.json` RATIFIED 2026-09-30, report `scripts/report_agent_number_grounding.py --check-slo` | LIVE for the watchlist agent jobs | host re-check of an LLM-recommended action (§23.23) PLANNED |
+| Output guardrails | `BehaviorWriteRefused` (`cio_instrument_record.py`); router write-gate `_TRADE_WRITE_RE` → `pending_approval`; PI guard `agent_model_pi_guard.scan_model_output` in 3 callers; egress sanitiser `scripts/lib/cio_egress_sanitiser.py` | LIVE (sanitiser in **report** mode) | PI guard not at the bridge; `sanitise_for_external()` single egress point POLICY-ONLY (§2A) |
+| HITL escalation | router write-gate forces reviewers; operator-action messages are P1 intents with dedupe off (§9.1) | LIVE | n8n approval Wait + host record (§23.23) PLANNED; `tradeai-approval-router` inactive; an LLM agent can write an operator-attributed approval (WS7-07) |
+
+### 0.3 Controls documented in AGENTS.md that the code does not enforce
+
+| Statement | Reality | Label |
+|---|---|---|
+| §23.4: caller identity bound to the credential | `TRADEAI_BRIDGE_CALLER_AUTH` defaults to `report`; the header is self-asserted | POLICY-ONLY |
+| §23.4: a refused call is queued by `llm_deferral` | the bridge has no deferral code; deferral is in `llm_consumption.gate_and_generate` and armed only where `LLM_DEFER_OFFPEAK=1` | POLICY-ONLY at the bridge |
+| §2A: one sanitising egress point | sanitiser runs in report mode; messages leave unchanged | POLICY-ONLY |
+| §23.23: `/v1/llm_step`, closed schema, `LlmStepAudit@v1` joined by `run_id` ↔ `execution_id` | PR-OPEN #1738 | PR-OPEN |
+| §23.23: AI Agent node only with the bridge-backed credential | `N8N_DISABLED_MODULES` includes `agents`; AI nodes excluded | PLANNED |
+
+### 0.4 n8n and LLMs today
+
+No n8n workflow contains an LLM step (0 AI nodes; `NODES_EXCLUDE` and `N8N_DISABLED_MODULES`). LLM work fired by the
+dispatcher is a host lane whose model calls go through this bridge; the failure diagnoser (`n8n_failure_diagnosis`)
+is a host lane with caps $0.05 per call and $0.10 per day and a 0.7 confidence floor
+(`docs/implementation/n8n-maturity/N8N_MONITORING_AND_REMEDIATION_STANDARD.md` §5).
 
 ---
 

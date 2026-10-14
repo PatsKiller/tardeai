@@ -111,6 +111,27 @@ asks the operator to decide needs `dedupe_minutes=0`; #1685 sets it only for `ap
 operator classifies it before #1685 merges. **Numbering:** follows 5.0.0 (ACTIVE, PR #1686, merged `0ec320486`);
 `Supersedes` is 5.0.0. Operator approval phrase (§20): `APPROVE_AGENTS_POLICY_5_1_0 <pr_number> <head_sha>`.
 
+**11.0.0 is PROPOSED (MAJOR) — a mandatory framework for every n8n workflow: monitoring, alerting, logging,
+recovery, security and AI/LLM governance, each element with an enforceable check (§23.24).** Operator-directed
+2026-10-14, in session: establish n8n as the primary orchestration and automation layer and define "a mandatory
+standard framework for every n8n workflow, contract, integration and automation" covering monitoring (success,
+failure, performance, capacity, dependency), alerting (failure, SLA breach, performance degradation, integration
+failure, AI/LLM exception), logging (execution, error, audit, security, change), recovery (retry, circuit breakers,
+fallback, dead-letter, manual recovery), security (authN, authZ, secrets, data protection, audit trails) and AI/LLM
+governance (prompt management, model selection and fallback, cost and token monitoring, response validation,
+hallucination controls, output guardrails, HITL escalation). Awaiting the operator's
+`APPROVE_AGENTS_POLICY_11_0_0 <pr_number> <head_sha>` (§20); until it is ratified and merged nothing here binds.
+Measured against it on 2026-10-14, no active workflow is compliant in any area (16 workflows, 39% of checks partly
+met; `docs/implementation/n8n-maturity/N8N_GAP_ASSESSMENT_AND_MATURITY_REVIEW_20261014.md` §4). **Why MAJOR:** once
+ACTIVE it changes what may stay active — every workflow that fails the framework is remediated or archived by a
+deadline, and no workflow is activated or promoted a stage without passing it — and it is the control set the
+§23.23 powers (LLM steps, approvals, events) must meet before they exist. Its content adds obligations only; the
+operator named the number, and an ambiguous class takes the higher one (version policy). If the operator rules it
+MINOR, it renumbers to 10.1.0 and nothing else changes. It grants nothing: no node, workflow, route, credential,
+broker, order, stop, secret, grant or §17 authority, and §0, §2, §2A, §7A, §17, §22, §23.14 and §23.23 are
+byte-identical. **Numbering:** after 10.0.0 (ACTIVE: #1740, ratified by PR comment 2026-10-14T23:25:56Z); the header block
+stays at 10.0.0 ACTIVE until a ratifying edit sets 11.0.0. Operator approval phrase (§20): `APPROVE_AGENTS_POLICY_11_0_0 <pr_number> <head_sha>`.
+
 **10.0.0 is ACTIVE (MAJOR) — n8n becomes the automation fabric: n8n owns flow; the host owns authority,
 execution and evidence (§23.23; supersedes the restrictive parts of §23.1, §23.11 and §24.1, each marked in place,
 plus one route note in §23.3).** Operator-directed 2026-10-14, in session, verbatim: n8n is "a centralized,
@@ -5173,6 +5194,85 @@ the architecture review of 2026-10-14 in `~/n8n-maturity-verification/arch-revie
   *Cause (§20): the operator's assignment of 2026-10-14 keeps these sections unchanged; the review's
   `TARGET_ARCHITECTURE.md` §10 keeps §0 rule 2, §23.14, §17 and §24.1's P1 independence.*
 
+## 23.24 Mandatory n8n workflow framework (11.0.0, PROPOSED)
+
+Operator directive 2026-10-14, in session: n8n is the primary orchestration and automation layer, and "a mandatory
+standard framework for every n8n workflow, contract, integration and automation" covers monitoring, alerting,
+logging, recovery, security and AI/LLM governance. **PROPOSED: nothing here binds** until
+`APPROVE_AGENTS_POLICY_11_0_0 <pr_number> <head_sha>` is given and merged (§20). It applies under whichever of §23.1
+(7.0.0, ACTIVE: n8n is a scheduler and a requester) or §23.23 (10.0.0, PROPOSED: n8n owns flow) is in force; an
+element for a power n8n does not hold (an LLM step, an approval Wait, an event webhook) applies the moment that
+power is enabled, and before. It adds obligations and grants nothing. Each element names its check: **(E)** the check
+exists today; **(P)** it is proposed and is built before the element binds by code — until then the PR's framework
+card (`docs/implementation/n8n-maturity/N8N_ONBOARDING_STANDARD.md` §0) is the reviewed evidence. Evidence for the
+gaps: `docs/implementation/n8n-maturity/N8N_GAP_ASSESSMENT_AND_MATURITY_REVIEW_20261014.md` (16 active workflows,
+none compliant in any area); the architecture review of 2026-10-14 (`~/n8n-maturity-verification/arch-review-20261014/`).
+
+- **Scope and class.** Every workflow in the `m8m-n8n` project, at every stage (shadow, canary, cutover, generic or
+  per-lane), and every relay route, gateway lane, LLM step and approval flow it calls. Each workflow declares one
+  class in its generator metadata: **business-critical**, **resilience**, **AI/LLM** or **monitoring/compliance**,
+  and one owner. A business-critical or AI/LLM workflow needs a REVIEWED health contract before it leaves shadow.
+  Check: generator metadata field (P); `config/n8n_health_contracts.json` status via `scripts/check_n8n_health_contracts.py` (E).
+- **Monitoring.** (1) Success: every run joins to a host ledger receipt by `run_id` (E: coordination ledger `runs`),
+  and n8n saves successful executions with `run_id` as custom data (P). (2) Failure: `settings.errorWorkflow` is set
+  (E: generic generator; P: invariant for every workflow with a CI check). (3) Performance: `settings.executionTimeout`
+  is set (E: generic generator) and the health contract states a p95 duration bound (P). (4) Capacity: the run's class
+  is under the executor class caps (E: `config/n8n_retry_policies.json` `class_caps`) and start lag is measured (P).
+  (5) Dependency: the contract's `connects_to` names every route and store the workflow depends on (E: contract field).
+- **Alerting.** (1) Failure reaches the incident router and the fan-in (E: `tradeai-incident-router`,
+  `scripts/n8n_incident_fanin.py`). (2) SLA breach: the contract's freshness bound is watched by a monitor that does
+  not run inside n8n (P; today `heartbeat-watch` runs in n8n). (3) Performance degradation: p95 over the contract bound
+  raises a P2 (P). (4) Integration failure: relay and gateway refusals are routed by class — transport, policy, lane —
+  and a policy refusal (`RUN_REFUSED`, already `RUNNING`) is data, not an alert (P). (5) AI/LLM exception: a bridge
+  refusal, cap hit, schema failure or provider outage on a workflow's step is a typed event, P1 when a
+  business-critical process stalls (P). (6) Every page carries a `runbook_id` (P). All delivery stays with the host
+  comms gateway (§9.1, §24.1); P0/P1 never depends on n8n.
+- **Logging.** (1) Execution: `RunRequested@v1` / `RunReceipt@v2` with `requested_by: n8n:workflow:<id>` (E). (2)
+  Error: `EXECUTIONS_DATA_SAVE_ON_ERROR=all` (E). (3) Audit: the ledger is the audit of record and the n8n DB role is
+  not superuser (P; WS1b-12). (4) Security: relay and Command Center auth refusals are logged (E:
+  `relay_log.jsonl`, `cc_auth_decisions.jsonl`). (5) Change: the workflow is generated from git, never edited in the
+  UI, and the drift check (`scripts/check_n8n_workflow_drift.py`, E) runs on a schedule outside n8n and pages P1 on
+  drift (P).
+- **Recovery.** (1) Retry has one owner: the Run Lane sub-workflow once it exists (P, Build 1), until then the host
+  retry policy (E: `scripts/lib/n8n_due.py`, `retryOnFail` on generic HTTP nodes). (2) Circuit breaker with half-open
+  (E: ledger `breakers`; P: half-open, WS1-05). (3) Fallback: a declared rollback — the commented cron line or a
+  command in `docs/ops/ROLLBACK_COMMANDS.md` (E). (4) Dead-letter: ledger `dead_letters` and `scripts/n8n_dlq.py` (E).
+  (5) Manual recovery: a `runbook_id` resolving to `docs/runbooks/INCIDENT_RESPONSE.md` or a lane runbook (P). (6)
+  Idempotency: a semantic effect key both schedulers respect before any live fire while another scheduler can run
+  the same work (P; `CANARY_DOUBLE_EFFECT_AUDIT.md` §4).
+- **Security.** (1) AuthN: relay bearer with a rotation slot, gateway HMAC claim, header auth on any webhook (E). (2)
+  AuthZ: the allowlist and its never-list, the relay live list and the registry agree on live authority — one live
+  authority, reconciled (E: the three gates; P: the reconciler, WS1-07). (3) Secrets: the only n8n credential is the
+  relay credential; no broker, messaging or provider credential; `N8N_BLOCK_ENV_ACCESS_IN_NODE=true`; community
+  packages off; pinned image (E). (4) Data protection: loopback or docker-bridge binds only; ingested text is data
+  (§23.23) (E: binds; P: a firewall check for the bridge bind). (5) Audit trail: activation grants name workflow ids
+  (E: `scripts/check_n8n_activation_grants.py`).
+- **AI/LLM governance** (any workflow with an LLM step; §23.4 and §23.23 bind as written). (1) Prompt management: a
+  registered template id (E: `config/n8n_prompt_templates.json`), never an inline prompt. (2) Model selection and
+  fallback: a process id only; model and fallback chain come from `config/llm_process_registry.json` and
+  `config/llm_routing_policy.json` (E). (3) Cost and tokens: per-process caps and the consumption ledger (E). (4)
+  Response validation: a closed output schema (E: `config/schemas/n8n_model_job_outputs.json`); branches on
+  enumerated fields only. (5) Hallucination controls: the host re-checks any recommended action and numbers are
+  grounded against supplied facts (P at the bridge; E for watchlist jobs). (6) Output guardrails: behaviour-field scan
+  (E: bridge step 9b) and a prompt-injection scan of output at the bridge (P). (7) HITL escalation: any side effect
+  behind an approval request whose authority is the host record; fail closed when n8n is down (P).
+- **Activation bar.** Once 11.0.0 is ACTIVE: no workflow is activated, re-activated or promoted a stage unless every
+  element above passes or has an exception the operator accepted in the PR; a workflow active at ratification
+  that fails is remediated or archived (never deleted, §0 rail 6) within 30 days, under the grants §23.2 already
+  requires. The proposed check is `scripts/check_n8n_workflow_framework.py` (P): offline against the generated
+  files in CI, live against the n8n DB (SELECT only) on a host schedule, with its receipt read by the fan-in.
+- **Reference documents** (informational, not normative): framework table and n8n operational standards —
+  `docs/implementation/n8n-maturity/N8N_CONFIGURATION.md` §0; workflow development —
+  `docs/implementation/n8n-maturity/N8N_ONBOARDING_STANDARD.md` §0; monitoring —
+  `docs/implementation/n8n-maturity/N8N_MONITORING_AND_REMEDIATION_STANDARD.md` §0; alerting —
+  `docs/ALERT_INCIDENT_RESOLUTION.md`; AI/LLM — `docs/architecture/GOVERNED_MODEL_BRIDGE.md` §0; incidents —
+  `docs/runbooks/INCIDENT_RESPONSE.md`; DR — `docs/RESTORE_GUIDE.md` §0; readiness —
+  `docs/ops/FEATURE_TO_LIVE_DEPLOY_RUNBOOK.md`; gap assessment —
+  `docs/implementation/n8n-maturity/N8N_GAP_ASSESSMENT_AND_MATURITY_REVIEW_20261014.md`.
+- **Unchanged.** §0, §2, §2A, §7A, §17, §22, §23.14 and §23.23 are byte-identical. *Cause (§20): operator directive
+  2026-10-14; the measured gap (no workflow compliant; 10 of 16 without an error workflow, WS1b-05; successes not
+  saved, WS1b-06; refusals as errors, WS1b-07; superuser DB role, WS1b-12; dead-man inside n8n, WS1-15).*
+
 ---
 
 # 24 · Platform rules from the 2026-10-10 consolidation (4.6.0 and 5.0.0, ACTIVE)
@@ -5462,6 +5562,7 @@ needs `execution-engineering` (§22), and A4/A5 stay the operator's and the dete
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 11.0.0 | 2026-10-14 | PROPOSED | MAJOR | Operator-directed 2026-10-14: n8n is the primary orchestration and automation layer, with "a mandatory standard framework for every n8n workflow, contract, integration and automation". §23.24 "Mandatory n8n workflow framework" added: every workflow in `m8m-n8n` declares a class (business-critical, resilience, AI/LLM, monitoring/compliance) and an owner, and meets six areas, each element with a check that exists (E) or is proposed (P): Monitoring (success joined by `run_id`, failure = error workflow, performance = timeout + p95 bound, capacity = class caps + start lag, dependency = `connects_to`); Alerting (failure, SLA breach watched outside n8n, performance degradation, integration failure routed by class with refusals as data, AI/LLM exception, `runbook_id` on every page; delivery stays with the host comms gateway, P0/P1 never via n8n); Logging (execution, error, audit with a non-superuser n8n DB role, security, change = generated from git + scheduled drift check paging P1); Recovery (one retry owner = Run Lane once built, half-open breakers, declared fallback, dead-letter, manual-recovery runbook, semantic effect key); Security (authN, authZ with one reconciled live authority, secrets, data protection, audit trail); AI/LLM governance (registered template, process id only, caps, closed schema, host re-check and grounding, output guardrails, HITL with host-record authority). Activation bar once ACTIVE: no activation or stage promotion without passing; active non-compliant workflows remediated or archived within 30 days; proposed check `scripts/check_n8n_workflow_framework.py`. Reference documents listed in §23.24 (informational). Measured 2026-10-14: 16 active workflows, none compliant in any area (39% of checks partly met). Grants nothing. §0, §2, §2A, §7A, §17, §22, §23.14 and §23.23 byte-identical. Tests: `tests/test_agents_policy_11_0_0_workflow_framework.py`. Numbered 11.0.0 after 10.0.0 (#1736, PROPOSED); renumbers to 10.1.0 if ruled MINOR; header stays 7.0.0 ACTIVE until ratification. | **PENDING** operator ratification `APPROVE_AGENTS_POLICY_11_0_0 <pr_number> <head_sha>` (§20); per-PR word, excluded from the §23.13 standing merge approval because it changes `AGENTS.md`. |
 | 10.0.0 | 2026-10-14 | ACTIVE | MAJOR | Operator-directed 2026-10-14, verbatim: n8n is "a centralized, intelligent automation fabric that provides: Workflow orchestration, Dependency management, Observability, Alerting, Human approvals, Agent coordination, LLM integration, Event-driven automation, Operational visibility, Auditability, Governance, Centralized controls." and "Do not tell me whether cron is a better scheduler. Tell me whether we are building the right platform." §23.23 "n8n is the automation fabric" added. n8n owns FLOW: sequencing and dependencies, event triggers, retries/backoff/dead-letter decisions through a Run Lane sub-workflow, error workflows, approval timelines (Wait nodes), escalation timers, invoking LLM judgment steps. The host owns AUTHORITY, EXECUTION and EVIDENCE: allowlist, live/dry authority, idempotency keys, secrets, the ledger as audit of record, the comms chokepoint for every send (n8n requests sends through a host intent API and never holds bot tokens). Broker: n8n never holds broker credentials or calls broker/order routes; reads only through the broker gateway (§23.22); writes only through the execution service behind the trading lock plus a per-order operator hardware-key or TOTP assertion over the intent hash; an n8n approval is a request, authority is the host record. LLM steps: governed bridge only, closed schema, branch on enumerated fields only, host re-check, bounded (read-only by default) tools, prompt/response/decision in one audit row joined by run_id ↔ execution_id, never an unlisted action, ingested text is data. Agents are judgment functions invoked by workflows; no side-effect tool without an approval gate; long-running loops retired into event-triggered workflows. Workflow governance: generated from git, never edited in the UI, drift pages P1, successes saved with run_id, an error workflow on every workflow, refusals are data, community nodes off, n8n DB role not superuser. Node enablement: the NODES_EXCLUDE / N8N_DISABLED_MODULES relaxation only for Execute Workflow / sub-workflows, Wait, Form or webhook-resume, Switch/Merge/If, Error Trigger and the AI Agent node restricted to the bridge-backed credential, one reviewed PR each; messaging nodes with their own credentials stay excluded. P0/P1 dead-man and pages never depend on n8n. Migration: timer-only leaf-lane cutovers FROZEN until the Run Lane sub-workflow, the async run-outcome callback and this amendment ACTIVE; then progress = business processes owned and orchestration owners retired; consolidate before migrating (WS2 families); cutover keeps the §23.21 standard plus a fenced single-owner switch. Preconditions before any money-touching flow: CC auth, trading lock served, uid separation for execution, DB role split, signed grants and unlock. WS9 controls C1–C10 bind before each new power. Supersedes, with notes in place and no text deleted, the restrictive parts of §23.1 ("a scheduler and a requester"), §23.11 ("decide nothing", six-workflow ceiling) and §24.1 ("fires host lanes and decides nothing"); one route note added to §23.3 (send-intent, approval-request and run-outcome callback routes, each its own PR). §0, §2, §2A, §7A, §17, §22 and §23.14 byte-identical (§23.14's never-eligible list stands; invoking an agent is a workflow step, not a dispatcher lane). Tests: `tests/test_agents_policy_10_0_0_n8n_fabric.py`. Numbered 10.0.0 after PR #1697 (6.0.0), PR #1727 (8.0.0) and branch `n8nmat/schwab-read-lanes-20261014` (9.0.0), all PROPOSED; header stays 7.0.0 ACTIVE until ratification. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_10_0_0 1736 7f275d279` (operator, PR #1736 comment by PatsKiller 2026-10-14T23:25:56Z, verbatim: "APPROVE_AGENTS_POLICY_10_0_0 1736 7f275d279"); merged #1736 as `3e9dc5e14` while PROPOSED; per-PR word, excluded from the §23.13 standing merge approval because it changes `AGENTS.md`. |
 | 7.0.0 | 2026-10-14 | ACTIVE | MAJOR | Operator-directed 2026-10-14 ("move to n8n i approve if i need to make amendment propose its just looking at level 2 on moomoo no trading"): §23.20 "Advisory market-data lanes on the dispatcher" added and one exception bullet added to §23.3. A lane in the code ceiling `lane_dispatch.ADVISORY_MARKET_DATA_LANES` is dispatcher-eligible only when (a) its reach uses market data only (moomoo OpenD quote context; no trade context, order verb, account/position read or broker client module), (b) it writes advisory output only and carries no sandbox/broker submit switch, (c) it sends only through the host `send_telegram` chokepoint (`bypass_router=True` only at sites already on the 5.1.0 allowlist), (d) n8n carries no secret and its `env_names` name no broker credential; class `pipeline`, lock = the cron lock, §23.12 ladder. Enforced by `scripts/lib/advisory_lane_guard.py`, `lane_dispatch.advisory_md_admission` / `advisory_md_static_errors` and `tests/test_agents_policy_7_0_0_advisory_market_data.py`, which also closes the dispatcher sender gap with a shrink-only baseline. §0, §2, §2A, §7A, §17 and §23.14 byte-identical. Numbered 7.0.0 after PR #1697 (6.0.0, PROPOSED); `Supersedes` 5.1.0. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_7_0_0 1725 73eebc5c1` (operator, PR #1725 comment by PatsKiller 2026-10-14T14:54:21Z, verbatim: "APPROVE_AGENTS_POLICY_7_0_0 1725 73eebc5c1"; re-approved for the merged head after the chokepoint-exemption commit: `APPROVE_AGENTS_POLICY_7_0_0 1725 1cdcdc7e3`, PR #1725 comment by PatsKiller 2026-10-14T16:09:44Z); merged #1725 as `712478bea`; per-PR word, excluded from the §23.13 standing merge approval because it changes `AGENTS.md`. |
 | 5.2.0 | 2026-10-11 | PROPOSED | MINOR | §8.1 "Working means validated now — tests, dry run, forced run; natural schedules are monitored, never awaited" added: before an agent calls a build, change or install working it quotes (1) the unit/regression tests for what it touched under `TRADE_AI_CI=1`, (2) a dry run (§0 rule 7, §6), and (3) a forced run — the installed job, stage or workflow triggered on demand exactly as its schedule would (same command, environment, cwd rule, wrappers and locks; an n8n lane through `coordination/run` in the mode its stage allows), proven by a durable artifact dated after the trigger (§0 rule 8). Natural fires are then monitored, never the first proof and never awaited; the first natural fire still settles the separate on-schedule claim, and a failing one reopens the change. Gates already conditioned on natural evidence keep their condition (onboarding step 8, §23.12 last bullet, registry `PAUSED` → `ACTIVE` after natural-slot verification, §23.3 three clean market days, §15). No forced run for broker/order/stop/session/2FA paths (§0 rule 2, §2, §22, §24.10), operator-only surfaces (§17) or a double send to the operator (senders go through the router with dedupe on or use their dry run); clock-gated jobs pass through their wrapper with no override, and a deferral receipt is the proof. A forced run of an `--apply` job needs the grant the install needed; an overlapping natural fire must skip on its lock or run harmlessly; the forced run is recorded in the change record. One-line pointers in §6, §8, §9.3, §16, §23.12 and §23.19; `docs/implementation/n8n-maturity/N8N_ONBOARDING_STANDARD.md` proof steps restate it. §0, §2, §2A, §7A, §17 and §23.14 byte-identical; no adapter changes (a §0 rule 7/8 pointer is proposed in the PR body only). Tests: `tests/test_agents_policy_5_2_0_validation.py`. Cause: 2026-10-10/11 C1 stage-runner manifest flips — flip 1's proof deferred to its 10:50 ET natural fire, flip 2 waited, the grant expired first; operator request 2026-10-11 ~09:22 ET. MINOR: a new proof obligation that widens no authority — forced runs are bounded by existing grants and gates (read as MAJOR, it becomes 6.0.0 unchanged otherwise). | **PENDING** operator ratification `APPROVE_AGENTS_POLICY_5_2_0 <pr_number> <head_sha>` (§20); per-PR word, excluded from the §23.13 standing merge approval because it changes `AGENTS.md`. Until then the 5.1.0 text governs. |

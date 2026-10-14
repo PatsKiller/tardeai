@@ -21,6 +21,60 @@ proves it. Sources: REMEDIATION_PLAN §5 (L1–L8), §6 (R1–R7), §8; `V9-llm-
 
 ---
 
+## 0. Monitoring and observability — the platform as measured 2026-10-14
+
+Refreshed 2026-10-14T18:45-04:00 at served `3e9dc5e14` (origin/main `a1b1c5c93`). §1–§7 below remain the per-lane
+standard; §8 is the 2026-10-10 snapshot and is superseded by this section. Framework checks (Monitoring and
+Logging areas) are listed in [`N8N_CONFIGURATION.md`](N8N_CONFIGURATION.md) §0.4; per-workflow results in the
+[gap assessment](N8N_GAP_ASSESSMENT_AND_MATURITY_REVIEW_20261014.md) §4.
+
+### 0.1 What exists (LIVE) — the health plane
+
+| Layer | Component | Schedule / unit | Evidence it ran (persistent-state) |
+|---|---|---|---|
+| Host health tick | `scripts/health_tick.py --apply` over `config/health_tick_steps.json` (16 steps: system-health-agent, moomoo-opend-health, cio-bridge-watchdog, pipeline-watchdog, health-agent, cron-self-heal, siem-critical-notify, log-error-scraper, system-freshness-monitor, freshness-watchdog-heartbeat, pipeline-liveness-report, pipeline-freshness-monitor/slo, llm-provider-health, symbol-news-curation-monitor, system-health-alerts) | `tradeai-health-tick.timer` `*:0/5` | `data/runtime/health_tick_last.json` |
+| Health agent | `scripts/health_agent.py`, policy `config/health_agent_policy.json` (`mode: advisory`; healthy ≥ 85, degraded ≥ 65; 16 never-auto-remediate types) | `tradeai-health-agent.service` daemon (adaptive 1800/300/90 s) + health-tick step every 15 min, shared flock | `data/runtime/health_agent_daemon_state.json` |
+| Supervisor breach detector | `scripts/supervisor_breach_detector.py` (HUNG, FAILING, NO_OUTPUT, SILENT, BACKLOG, SLO_MISS, UNGOVERNED, STALE_OUTPUT, INPUT_STARVATION) | user timer, 5 min | `supervisor_breach_detector_latest.json` |
+| n8n lab watchdog | `scripts/n8n_lab_watchdog.py` (n8n `/healthz`) | user timer, 5 min | receipt under `data/runtime/` |
+| Heartbeat watch | `scripts/heartbeat_watch.py` — freshness of 6 alert-path lanes | **n8n** (`tradeai-heartbeat-watcher` + dispatcher row, stage canary) every 5 min | `heartbeat-watch_last.json` |
+| Incident fan-in | `scripts/n8n_incident_fanin.py` — 10 sources → P1/P2/P3 incidents | **n8n** per-lane workflow `722fac0e043ea5c4`, `*/5` | `n8n_incident_fanin_last.json` (18:35 ET: 986 open — 18 P1, 943 P2, 25 P3; 798 from `n8n_failure_diagnosis`) |
+| SIEM bridge | `scripts/n8n_siem_bridge.py --apply` → `system_health_events` `n8n:<lane>` | cron `1-59/5` | `n8n_siem_bridge_last.json` |
+| Incident notifier | `scripts/incident_notifier.py --live` → `send_system` | cron `*/5` | `incident_notifier_last.json` |
+| Other monitors | agent-runtime-health, postgres-main-watchdog, autonomy-watchdog (5 min); research-lane-health (15 min); data-source-health (hourly); `stop_health_check.py` (10 min, market hours); `portfolio_server_watchdog.sh` (2 min) | user timers / cron | logs under `persistent-state/logs/` |
+| Command Center | `GET /api/health` (liveness), ~35 `/api/v2/*health*` routes; `/api/v2/health` score (82, degraded, at 18:37 ET) | portfolio-server | live GET |
+
+### 0.2 What does not exist
+
+- **No metrics stack.** No Prometheus, Grafana or Alertmanager; `/metrics` on :7777 is 404. Performance and capacity
+  are visible only as receipts, ledger `duration_s` and logs (WS8-10).
+- **No single ops view.** About ten health surfaces disagree: `/api/v2/health` says 82/degraded while the fan-in
+  holds 18 open P1 (WS8-10).
+- **No n8n process view.** Successful executions are not saved; n8n shows errors only (WS1-14, WS1b-06).
+- **No off-box liveness.** `heartbeat-receiver.service` (:18798) is on this host (WS3-18); the host dead-man of
+  §4.2.1 is a design, not built.
+- **No unit-failure / OOM alert** (WS3-27); **no `/tmp` inode monitor** (WS3-31).
+- **Coverage ~22%** of scheduled work: 120 health contracts (59 REVIEWED, 61 DRAFT) for 524 jobs (WS8-11).
+- **Run-id correlation** exists in the coordination ledger only; logs in four roots are not joined (WS8-08).
+
+### 0.3 Observability queries (read-only)
+
+```bash
+# n8n: active workflows, error counts per day (successes are soft-deleted: status 'running' + deletedAt set)
+docker exec m8m-n8n-db psql -U n8n -d n8n -At -c "select date_trunc('day',\"startedAt\")::date, count(*) from execution_entity where status='error' and \"deletedAt\" is null group by 1 order by 1"
+# ledger: outcomes per mode in 24 h (the evidence of record, not n8n)
+python3 -c "import sqlite3;c=sqlite3.connect('file:$HOME/trade-ai-releases/persistent-state/data/governance/n8n_coordination_ledger.sqlite?mode=ro',uri=True);print(c.execute(\"select mode,state,count(*) from runs where requested_at>datetime('now','-1 days') group by 1,2\").fetchall())"
+# relay refusal reasons (policy refusals are data, not failures)
+grep '"REFUSED"' ~/trade-ai-releases/persistent-state/data/runtime/n8n_relay/relay_log.jsonl | tail -400 | grep -o '"reason": *"[a-z_]*"' | sort | uniq -c
+# drift
+python3 scripts/check_n8n_workflow_drift.py --dry-run
+```
+
+Measured 2026-10-14 ~18:40 ET: n8n errors 419 (10-13), 763 (10-14), 836 of the last 24 h from `tradeai-dispatcher`
+policy refusals; ledger 24 h live 1,628 RUN_DONE / 8 RUN_TIMEOUT / 1 RUN_FAILED; relay refusals (last 400)
+`relay_live_not_enabled` 227, `momentum_monitor_admission_unproven` 168; drift 16/16 OK.
+
+---
+
 ## 1. The chain at a glance
 
 ```
@@ -402,6 +456,9 @@ lock; exceed a cap; send portfolio data to a provider (§2A); act on a lane in `
 ---
 
 ## 8. Current state (2026-10-10)
+
+*Historical snapshot. Superseded by §0 (2026-10-14). Since this was written: the SIEM bridge runs from cron
+`1-59/5` (LIVE); `heartbeat-watch` runs from n8n; health contracts are 120 (59 REVIEWED, 61 DRAFT).*
 
 | Item | State | Evidence |
 |---|---|---|

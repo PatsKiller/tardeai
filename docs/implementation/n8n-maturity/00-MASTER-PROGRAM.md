@@ -19,6 +19,8 @@ mirrored here, so this file does not go stale with it.
 | `docs/implementation/n8n-maturity/N8N_ONBOARDING_STANDARD.md` | **Mandatory** procedure for adding any lane, workflow, relay path or executor setting to n8n (AGENTS.md §23 pointer) |
 | `docs/implementation/n8n-maturity/N8N_MONITORING_AND_REMEDIATION_STANDARD.md` | Per-lane monitoring, SIEM, Telegram routing, LLM auto-remediation, R6 validation, workflow health contracts |
 | `config/n8n_health_contracts.json` | Workflow health contracts (gate `scripts/check_n8n_health_contracts.py`) |
+| `docs/implementation/n8n-maturity/N8N_GAP_ASSESSMENT_AND_MATURITY_REVIEW_20261014.md` | **2026-10-14 final gap assessment**: current vs target, per-workflow framework compliance matrix (16 workflows × 6 areas), maturity scores, next actions |
+| `N8N_CONFIGURATION.md` §0 | n8n operational standards and the mandatory workflow framework (AGENTS.md §23.24, PROPOSED 11.0.0) |
 
 ## Rules
 

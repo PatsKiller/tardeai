@@ -8,6 +8,8 @@ Owner:       platform (n8n maturity program)
 Policy:      AGENTS.md 4.4.0 §23 ACTIVE (where this file differs, AGENTS.md wins); 4.4.1 + 4.5.0 PROPOSED in PR #1666;
              4.6.0 PROPOSED (§24 platform rules) on branch n8nmat/agents-4-6-0
 Secrets:     none in this file — variables and credential ids are named, never valued (AGENTS.md §2A, §23.5)
+Refreshed:   §0 added 2026-10-14T18:45-04:00, measured at served 3e9dc5e14 / origin/main a1b1c5c93 (AGENTS.md 7.0.0
+             ACTIVE; 10.0.0 §23.23 and 11.0.0 §23.24 PROPOSED). §1–§8 keep their 2026-10-10/11 measurements.
 ```
 
 Operator, 2026-10-10 ~16:50 ET: *"start a separate document just for n8n configuration that will include all of this."*
@@ -24,6 +26,102 @@ This is the single reference for how n8n is configured on this host, and the ent
 | [`00-MASTER-PROGRAM.md`](00-MASTER-PROGRAM.md) | program index and maturity scorer |
 | [`SEARCH_SOURCE_ROUTING.md`](SEARCH_SOURCE_ROUTING.md) (lands with PR #1676; the link resolves once it merges) | web search: which source answers what, the Brave dollar budget, the scalp-priority pool — policy `config/search_routing_policy.json` (§6.2 below) |
 | `~/n8n-maturity-verification/CONSOLIDATION_PLAN.md`, `JOB_REDUCTION_DEEP_PASS.md` (host, operator-approved 2026-10-10) | the data broker as backbone, owners and domains, C1 manifests, job reduction (§6 below) |
+| §0 below | **n8n operational standards**: what n8n manages, monitors, validates, reports and escalates; workflow classes; the mandatory workflow framework (AGENTS.md §23.24, PROPOSED 11.0.0) |
+| [`N8N_GAP_ASSESSMENT_AND_MATURITY_REVIEW_20261014.md`](N8N_GAP_ASSESSMENT_AND_MATURITY_REVIEW_20261014.md) | the 2026-10-14 gap assessment: per-workflow compliance matrix, maturity scores, next actions |
+| [`docs/runbooks/INCIDENT_RESPONSE.md`](../../runbooks/INCIDENT_RESPONSE.md), [`docs/RESTORE_GUIDE.md`](../../RESTORE_GUIDE.md) §0, [`docs/ops/FEATURE_TO_LIVE_DEPLOY_RUNBOOK.md`](../../ops/FEATURE_TO_LIVE_DEPLOY_RUNBOOK.md) §"Production readiness checklist" | incident response, disaster recovery and failover, production readiness |
+
+---
+
+## 0. n8n operational standards (2026-10-14)
+
+### 0.1 Target and today — read this first
+
+| | Target (AGENTS.md 10.0.0 §23.23, **PROPOSED, not ratified**) | Today (AGENTS.md 7.0.0 §23.1, **ACTIVE**) |
+|---|---|---|
+| Role | the automation fabric: n8n owns FLOW (sequencing, dependencies, events, retries via one Run Lane sub-workflow, error workflows, approval timelines, escalation timers, LLM judgment steps) | "a scheduler and a requester, never an authority": 16 active workflows, all schedule-started, calling the relay |
+| Authority | host: allowlist, live/dry, idempotency, secrets, ledger, comms chokepoint | same — and that part is LIVE |
+| Retries / DLQ / breakers | n8n Run Lane sub-workflow (Build 1, **BRANCH-ONLY, in progress**) | host: `scripts/lib/n8n_due.py` + ledger `breakers` / `dead_letters` |
+| Run outcome | async `RunReceipt@v1` callback to n8n (Build 1, BRANCH-ONLY) | n8n learns "accepted", never "finished" (WS1b-04) |
+| LLM steps | `/v1/llm_step` on the governed bridge (Build 2, **PR-OPEN #1738**, OFF by default) | none in n8n; LLM calls happen inside host lanes |
+| Approvals | n8n Wait = request; authority = host record | `tradeai-approval-router` exists, **inactive** |
+| Error workflows | on every workflow | 6 of 16 |
+| Successful executions | saved with `run_id` | not saved (`EXECUTIONS_DATA_SAVE_ON_SUCCESS=none`) |
+
+The gap between the two columns is the program. Until 10.0.0 is ratified and Build 1 lands, timer-only leaf-lane
+cutovers stay frozen (§23.23 migration rule, PROPOSED; operator decision 2 of `DECISIONS_FOR_OPERATOR.md`).
+
+### 0.2 What n8n manages, monitors, validates, reports and escalates — today
+
+| Verb | Today (LIVE) | Not n8n's (host keeps it) | Target addition (PROPOSED) |
+|---|---|---|---|
+| **Manages** | the minute tick for registry dispatch rows (`tradeai-dispatcher`, `-event-router`, `-digest-scheduler`); 4 cut-over per-lane schedules (fan-in, pilot dispatch, research intake, crontab snapshot) | which lane may run, live vs dry, the lock, the command line, the receipt | process flows, dependencies, retries, approval timelines |
+| **Monitors** | freshness of 6 alert-path lanes (`tradeai-heartbeat-watcher` → `heartbeat-watch`) | everything else (health tick, health agent, SIEM bridge, notifier) | per-process SLA timers |
+| **Validates** | the momentum lifecycle shadow chain (`tradeai-momentum-lifecycle-candidate`) | allowlist, schema, stage clamp — the gateway | LLM step closed-schema branch (host re-check stays) |
+| **Reports** | its own workflow errors → `tradeai-incident-router` → relay `POST /event` (lane `n8n-workflow-error`); the fan-in receipt | delivery: `incident_notifier.py` (cron) → `send_system`; the comms gateway | digest batching decisions |
+| **Escalates** | nothing to a human directly (no messaging node, no credential) | P0/P1 pages — host only, never through n8n (§24.1) | approval reminders and expiry timers |
+
+### 0.3 Workflow classes
+
+Every workflow carries exactly one class in its generator metadata (PROPOSED §23.24; today recorded in the gap
+assessment §3):
+
+| Class | Definition | Active today | Minimum controls beyond the framework |
+|---|---|---|---|
+| **Business-critical (BC)** | its output is acted on by the operator or a trading surface | dispatcher, event router, digest scheduler, research intake, analyst-digest shadow | health contract REVIEWED; P1 on failure in market hours; a fallback (cron line kept commented, rollback by uncomment) |
+| **Resilience (RS)** | keeps the platform running or recovering | heartbeat watcher, incident router, incident fan-in, crontab snapshot | must not be the only watcher of itself (§24.1, §23.23 independence); host dead-man covers it |
+| **AI/LLM (AI)** | contains an LLM step | **none** | every AI/LLM governance check in §0.4; HITL gate before any side effect |
+| **Monitoring/compliance (MC)** | observes, validates or reports; changes nothing operational | momentum candidate, pilot dispatch, 6 shadows | read-only route reach; archived when superseded |
+
+### 0.4 The mandatory workflow framework (AGENTS.md §23.24, PROPOSED 11.0.0)
+
+Each element names its enforceable check. **E** = the check exists today; **P** = proposed, not built. A workflow
+is compliant in an area only when every check of the area passes; the per-workflow scores are in the gap
+assessment §4.
+
+| Area | Element | Check | E/P |
+|---|---|---|---|
+| Monitoring | success | every run joins to a ledger `RunReceipt` by `run_id`; n8n saves successes with `run_id` custom data | E (ledger) / P (n8n save) |
+| | failure | `settings.errorWorkflow` set | E on 6/16; generator invariant for generic only |
+| | performance | `settings.executionTimeout` set; contract `baseline` duration with a p95 bound | E (timeout on generic) / P (p95) |
+| | capacity | executor class caps `config/n8n_retry_policies.json` `class_caps`; container memory limit; start-lag metric | E / E / P |
+| | dependency | contract `connects_to` non-empty; relay/gateway reachability refusals typed (`relay_gateway_unreachable`) | E |
+| Alerting | failure | error → incident router → fan-in → `incident_notifier.py` | E (generic) |
+| | SLA breach | contract freshness bound watched by heartbeat-watch or a host monitor | E for 6 lanes / P for the rest |
+| | performance degradation | p95 > contract bound → P2 | P (no alert class) |
+| | integration failure | relay/gateway refusal classes routed by class (transport vs policy vs lane) | P (refusals are logged as n8n errors) |
+| | AI/LLM exception | bridge 429/503/schema refusal → typed event → P2, P1 if a BC process stalls | P |
+| | runbook | every PAGE row carries a `runbook_id` | P |
+| Logging | execution | ledger `RunRequested@v1` / `RunReceipt@v2`; relay `relay_log.jsonl` | E |
+| | error | `EXECUTIONS_DATA_SAVE_ON_ERROR=all`, 168 h prune | E |
+| | audit | `requested_by: n8n:workflow:<id>` on every ledger row; grant ledger | E |
+| | security | relay refusals (`relay_bad_bearer`, `relay_lane_not_allowlisted`), CC auth decision log | E |
+| | change | generated from git (`scripts/n8n_workflow_templates.py`), drift check `scripts/check_n8n_workflow_drift.py` scheduled with P1 on drift | E (checker) / P (schedule + P1) |
+| Recovery | retry | one owner: Run Lane sub-workflow; today `retryOnFail` + `n8n_due.py` policy | P / E |
+| | circuit breaker | ledger `breakers` with half-open | E (no half-open: WS1-05) |
+| | fallback | rollback path declared (cron line kept commented; `ROLLBACK_COMMANDS.md`) | E |
+| | dead-letter | ledger `dead_letters`; `scripts/n8n_dlq.py` | E |
+| | manual recovery | runbook id per workflow; `docs/runbooks/INCIDENT_RESPONSE.md` | P |
+| | idempotency | semantic effect key both runners respect (`CANARY_DOUBLE_EFFECT_AUDIT.md` §4) | P (Build 1) |
+| Security | authN | relay bearer (rotation slot), gateway HMAC claim, webhook header auth | E |
+| | authZ | `config/n8n_run_allowlist.json` + never-list; relay live list; `check_n8n_activation_grants.py` | E |
+| | secrets | no broker/messaging credential in n8n; `N8N_BLOCK_ENV_ACCESS_IN_NODE=true`; community packages off; pinned image | E |
+| | data protection | loopback binds (5678, 18091); relay on the docker bridge only; public API off | E (ufw for `172.19.0.1:18092` unverified) |
+| | audit trail | n8n DB role not superuser; ledger append-only | **fails** (role superuser, WS1b-12) |
+| AI/LLM governance | prompt management | template id from `config/n8n_prompt_templates.json`; never inline | E (3 templates) |
+| | model selection / fallback | process id only; model and chain from `config/llm_process_registry.json` + `config/llm_routing_policy.json` | E |
+| | cost and tokens | per-process caps; `llm_consumption_log`; `ProviderRequestJournal@v1` | E |
+| | response validation | closed schema `config/schemas/n8n_model_job_outputs.json`; branch on enumerated fields only | E (n8n_* processes) |
+| | hallucination controls | host re-check of the recommended action; number grounding where numbers are cited | P / E (watchlist agent) |
+| | output guardrails | behaviour-field scan (bridge step 9b); PI guard on output | E / P (not at the bridge) |
+| | HITL escalation | approval Wait = request; host record = authority; fail closed when n8n is down | P (approval router inactive) |
+
+### 0.5 Operating rules that already bind (7.0.0)
+
+- Workflows are generated from git and imported by packet under a `cron` grant naming the ids; never edited in the
+  UI (§23.10 P18; drift check above).
+- No sends from n8n; no broker, messaging or provider credential in n8n (§23.3, §23.5).
+- The P1 path does not depend on n8n (§24.1).
+- An n8n execution row is not evidence; the ledger receipt and the lane's `output_signal` are (§23.1).
 
 ---
 
@@ -206,6 +304,11 @@ single scheduler). **Next archive (approved, not applied):** `283ceeb030de5e66`,
 §D.1). Packet `~/n8n-maturity-verification/packets/consolidation-n8n-archive-1/` (`archive-3.sh`: deactivate, then
 n8n's archive endpoint, never delete; JSON backup + SHA256SUMS), needs one `cron` grant naming the three ids; after it
 the active per-lane count goes 10 → 7 and the `UNGRANTED_ACTIVATION` finding on `283ceeb0…` clears.
+
+**Measured 2026-10-14 18:40 ET:** still 10 per-lane + 6 generic = 16 active; the archive above has **not** been
+applied. `283ceeb030de5e66` and `5966437c872aa18b` fail every fire with relay `relay_lane_not_allowlisted` (their lanes
+are not in `config/n8n_run_allowlist.json`); `498d749165a93ff9` runs dry_run. `check_n8n_workflow_drift.py --dry-run`:
+16/16 OK, no drift. Per-workflow framework compliance: gap assessment §4.
 
 ### 3.3 Commands (operator, under a `cron` grant naming the ids)
 
