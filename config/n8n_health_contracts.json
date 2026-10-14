@@ -2804,9 +2804,9 @@
       "id": "data-gap-resolver-at-0-10-16",
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
-      "status": "DRAFT",
-      "target_reason": "stage:shadow",
-      "stage": "shadow",
+      "status": "REVIEWED",
+      "target_reason": "stage:canary",
+      "stage": "canary",
       "purpose": {
         "text": "Hourly 10:00\u201316:00 weekday sweep of open data gaps, dispatching enrichment/agent jobs.",
         "business_function": "research",
@@ -2865,16 +2865,16 @@
       ],
       "healthy": [
         {
-          "check": "shadow_dry_run_done",
-          "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+          "check": "last_live_run_done",
+          "text": "the latest live run is RUN_DONE in the coordination ledger"
         },
         {
-          "check": "dry_run_writes_nothing",
-          "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md \u00a76)"
+          "check": "output_advanced",
+          "text": "data/runtime/data-gap-resolver-at-0-10-16_last.json advanced on that run (RunReceipt output_signal_mtime_after > before, or LaneRunReceipt ok_at moved)"
         },
         {
-          "check": "cron_twin_output_fresh",
-          "text": "the live cron line keeps the registry output_signal logs/data_gap_resolver.log fresh within 132.0 h (2x cadence)"
+          "check": "fresh",
+          "text": "the output_signal is younger than 132.0 h (2x cadence)"
         },
         {
           "check": "duration_within_baseline",
@@ -2917,8 +2917,8 @@
           "text": "a dead letter was written or the lane's breaker opened (3 failures)"
         },
         {
-          "check": "dry_run_wrote",
-          "text": "a dry_run changed its output_signal or any durable state"
+          "check": "stale_output",
+          "text": "RUN_DONE but the output_signal did not advance"
         }
       ],
       "baseline": {
@@ -2945,7 +2945,7 @@
           "notifier_priority": "P3"
         },
         "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
-        "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row `severity`, else the fan-in priority (RUN_* = P2 -> WARN). Wiring the bridge, notifier and diagnoser to this contract is the next build item (N8N_MONITORING_AND_REMEDIATION_STANDARD.md \u00a77)."
+        "enforced": "partial source integration: scripts/n8n_incident_fanin.py _wferr_severity() consumes a workflow contract's failed.notifier_priority to raise the workflow-error priority floor. scripts/lib/n8n_siem_bridge.py severity_for() uses registry severity, else the fan-in priority. Full per-lane baseline, notification and diagnosis enforcement is not established by these declarations; runtime coverage remains NOT_MEASURED (N8N_MONITORING_AND_REMEDIATION_STANDARD.md \u00a77)."
       },
       "remediation": {
         "catalogue_entry": true,
@@ -2972,7 +2972,13 @@
         ],
         "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger"
       },
-      "review_by": "2026-10-25"
+      "review_by": "2026-10-28",
+      "review": {
+        "prepared_by": "agent draft (scripts/build_n8n_health_contracts.py --write --as-of 2026-10-14, run by the operator)",
+        "status": "REVIEWED",
+        "reviewed_by": "operator PatsKiller 2026-10-14 ~11:25 ET (in-session approval to Agent A: \"i looked and approve ... mark the 14 lanes' contracts REVIEWED\"; canary-wave-20261014)",
+        "reviewed_on": "2026-10-14"
+      }
     },
     {
       "schema": "N8nHealthContract@v1",
@@ -5038,9 +5044,9 @@
       "id": "hermes-analyst-signal-discovery",
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
-      "status": "DRAFT",
-      "target_reason": "stage:shadow",
-      "stage": "shadow",
+      "status": "REVIEWED",
+      "target_reason": "stage:canary",
+      "stage": "canary",
       "purpose": {
         "text": "Analyst-signal discovery: turn analyst rating/target changes into TICKER and sector TREND candidates.",
         "business_function": "research",
@@ -5099,16 +5105,16 @@
       ],
       "healthy": [
         {
-          "check": "shadow_dry_run_done",
-          "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+          "check": "last_live_run_done",
+          "text": "the latest live run is RUN_DONE in the coordination ledger"
         },
         {
-          "check": "dry_run_writes_nothing",
-          "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md \u00a76)"
+          "check": "output_advanced",
+          "text": "data/runtime/hermes-analyst-signal-discovery_last.json advanced on that run (RunReceipt output_signal_mtime_after > before, or LaneRunReceipt ok_at moved)"
         },
         {
-          "check": "cron_twin_output_fresh",
-          "text": "the live cron line keeps the registry output_signal logs/hermes_analyst_signal.log fresh within 6.0 h (2x cadence)"
+          "check": "fresh",
+          "text": "the output_signal is younger than 6.0 h (2x cadence)"
         },
         {
           "check": "duration_within_baseline",
@@ -5151,8 +5157,8 @@
           "text": "a dead letter was written or the lane's breaker opened (3 failures)"
         },
         {
-          "check": "dry_run_wrote",
-          "text": "a dry_run changed its output_signal or any durable state"
+          "check": "stale_output",
+          "text": "RUN_DONE but the output_signal did not advance"
         }
       ],
       "baseline": {
@@ -5179,7 +5185,7 @@
           "notifier_priority": "P3"
         },
         "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
-        "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row `severity`, else the fan-in priority (RUN_* = P2 -> WARN). Wiring the bridge, notifier and diagnoser to this contract is the next build item (N8N_MONITORING_AND_REMEDIATION_STANDARD.md \u00a77)."
+        "enforced": "partial source integration: scripts/n8n_incident_fanin.py _wferr_severity() consumes a workflow contract's failed.notifier_priority to raise the workflow-error priority floor. scripts/lib/n8n_siem_bridge.py severity_for() uses registry severity, else the fan-in priority. Full per-lane baseline, notification and diagnosis enforcement is not established by these declarations; runtime coverage remains NOT_MEASURED (N8N_MONITORING_AND_REMEDIATION_STANDARD.md \u00a77)."
       },
       "remediation": {
         "catalogue_entry": true,
@@ -5206,16 +5212,22 @@
         ],
         "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger"
       },
-      "review_by": "2026-10-25"
+      "review_by": "2026-10-28",
+      "review": {
+        "prepared_by": "agent draft (scripts/build_n8n_health_contracts.py --write --as-of 2026-10-14, run by the operator)",
+        "status": "REVIEWED",
+        "reviewed_by": "operator PatsKiller 2026-10-14 ~11:25 ET (in-session approval to Agent A: \"i looked and approve ... mark the 14 lanes' contracts REVIEWED\"; canary-wave-20261014)",
+        "reviewed_on": "2026-10-14"
+      }
     },
     {
       "schema": "N8nHealthContract@v1",
       "id": "hermes-entity-spike-discovery",
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
-      "status": "DRAFT",
-      "target_reason": "stage:shadow",
-      "stage": "shadow",
+      "status": "REVIEWED",
+      "target_reason": "stage:canary",
+      "stage": "canary",
       "purpose": {
         "text": "Entity/term spike discovery: file TREND/TOPIC candidates for 48h mention spikes into the Discovery Inbox.",
         "business_function": "research",
@@ -5274,16 +5286,16 @@
       ],
       "healthy": [
         {
-          "check": "shadow_dry_run_done",
-          "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+          "check": "last_live_run_done",
+          "text": "the latest live run is RUN_DONE in the coordination ledger"
         },
         {
-          "check": "dry_run_writes_nothing",
-          "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md \u00a76)"
+          "check": "output_advanced",
+          "text": "data/runtime/hermes-entity-spike-discovery_last.json advanced on that run (RunReceipt output_signal_mtime_after > before, or LaneRunReceipt ok_at moved)"
         },
         {
-          "check": "cron_twin_output_fresh",
-          "text": "the live cron line keeps the registry output_signal logs/hermes_entity_spike.log fresh within 6.0 h (2x cadence)"
+          "check": "fresh",
+          "text": "the output_signal is younger than 6.0 h (2x cadence)"
         },
         {
           "check": "duration_within_baseline",
@@ -5326,8 +5338,8 @@
           "text": "a dead letter was written or the lane's breaker opened (3 failures)"
         },
         {
-          "check": "dry_run_wrote",
-          "text": "a dry_run changed its output_signal or any durable state"
+          "check": "stale_output",
+          "text": "RUN_DONE but the output_signal did not advance"
         }
       ],
       "baseline": {
@@ -5354,7 +5366,7 @@
           "notifier_priority": "P3"
         },
         "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
-        "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row `severity`, else the fan-in priority (RUN_* = P2 -> WARN). Wiring the bridge, notifier and diagnoser to this contract is the next build item (N8N_MONITORING_AND_REMEDIATION_STANDARD.md \u00a77)."
+        "enforced": "partial source integration: scripts/n8n_incident_fanin.py _wferr_severity() consumes a workflow contract's failed.notifier_priority to raise the workflow-error priority floor. scripts/lib/n8n_siem_bridge.py severity_for() uses registry severity, else the fan-in priority. Full per-lane baseline, notification and diagnosis enforcement is not established by these declarations; runtime coverage remains NOT_MEASURED (N8N_MONITORING_AND_REMEDIATION_STANDARD.md \u00a77)."
       },
       "remediation": {
         "catalogue_entry": true,
@@ -5381,7 +5393,13 @@
         ],
         "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger"
       },
-      "review_by": "2026-10-25"
+      "review_by": "2026-10-28",
+      "review": {
+        "prepared_by": "agent draft (scripts/build_n8n_health_contracts.py --write --as-of 2026-10-14, run by the operator)",
+        "status": "REVIEWED",
+        "reviewed_by": "operator PatsKiller 2026-10-14 ~11:25 ET (in-session approval to Agent A: \"i looked and approve ... mark the 14 lanes' contracts REVIEWED\"; canary-wave-20261014)",
+        "reviewed_on": "2026-10-14"
+      }
     },
     {
       "schema": "N8nHealthContract@v1",
@@ -5920,9 +5938,9 @@
       "id": "hermes-news-bridge",
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
-      "status": "DRAFT",
-      "target_reason": "stage:shadow",
-      "stage": "shadow",
+      "status": "REVIEWED",
+      "target_reason": "stage:canary",
+      "stage": "canary",
       "purpose": {
         "text": "06:40/12:40/18:40: bridge Hermes ticker-level news (hermes_research_intelligence) into news_articles (source='hermes') for the catalyst chain",
         "business_function": "research",
@@ -5975,16 +5993,16 @@
       ],
       "healthy": [
         {
-          "check": "shadow_dry_run_done",
-          "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+          "check": "last_live_run_done",
+          "text": "the latest live run is RUN_DONE in the coordination ledger"
         },
         {
-          "check": "dry_run_writes_nothing",
-          "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md \u00a76)"
+          "check": "output_advanced",
+          "text": "data/runtime/hermes_news_bridge_last.json advanced on that run (RunReceipt output_signal_mtime_after > before, or LaneRunReceipt ok_at moved)"
         },
         {
-          "check": "cron_twin_output_fresh",
-          "text": "the live cron line keeps the registry output_signal data/runtime/hermes_news_bridge_last.json fresh within 24.0 h (2x cadence)"
+          "check": "fresh",
+          "text": "the output_signal is younger than 24.0 h (2x cadence)"
         },
         {
           "check": "duration_within_baseline",
@@ -6027,8 +6045,8 @@
           "text": "a dead letter was written or the lane's breaker opened (3 failures)"
         },
         {
-          "check": "dry_run_wrote",
-          "text": "a dry_run changed its output_signal or any durable state"
+          "check": "stale_output",
+          "text": "RUN_DONE but the output_signal did not advance"
         }
       ],
       "baseline": {
@@ -6055,7 +6073,7 @@
           "notifier_priority": "P3"
         },
         "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
-        "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row `severity`, else the fan-in priority (RUN_* = P2 -> WARN). Wiring the bridge, notifier and diagnoser to this contract is the next build item (N8N_MONITORING_AND_REMEDIATION_STANDARD.md \u00a77)."
+        "enforced": "partial source integration: scripts/n8n_incident_fanin.py _wferr_severity() consumes a workflow contract's failed.notifier_priority to raise the workflow-error priority floor. scripts/lib/n8n_siem_bridge.py severity_for() uses registry severity, else the fan-in priority. Full per-lane baseline, notification and diagnosis enforcement is not established by these declarations; runtime coverage remains NOT_MEASURED (N8N_MONITORING_AND_REMEDIATION_STANDARD.md \u00a77)."
       },
       "remediation": {
         "catalogue_entry": true,
@@ -6082,7 +6100,13 @@
         ],
         "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger"
       },
-      "review_by": "2026-10-25"
+      "review_by": "2026-10-28",
+      "review": {
+        "prepared_by": "agent draft (scripts/build_n8n_health_contracts.py --write --as-of 2026-10-14, run by the operator)",
+        "status": "REVIEWED",
+        "reviewed_by": "operator PatsKiller 2026-10-14 ~11:25 ET (in-session approval to Agent A: \"i looked and approve ... mark the 14 lanes' contracts REVIEWED\"; canary-wave-20261014)",
+        "reviewed_on": "2026-10-14"
+      }
     },
     {
       "schema": "N8nHealthContract@v1",
@@ -7585,9 +7609,9 @@
       "id": "job-coverage-monitor",
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
-      "status": "DRAFT",
-      "target_reason": "stage:shadow",
-      "stage": "shadow",
+      "status": "REVIEWED",
+      "target_reason": "stage:canary",
+      "stage": "canary",
       "purpose": {
         "text": "Twice-daily job coverage/heartbeat monitor: checks ~38 scheduled jobs are actually firing and producing (catches never-scheduled and always-crashing jobs)",
         "business_function": "monitoring",
@@ -7640,16 +7664,16 @@
       ],
       "healthy": [
         {
-          "check": "shadow_dry_run_done",
-          "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+          "check": "last_live_run_done",
+          "text": "the latest live run is RUN_DONE in the coordination ledger"
         },
         {
-          "check": "dry_run_writes_nothing",
-          "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md \u00a76)"
+          "check": "output_advanced",
+          "text": "data/runtime/job_coverage_monitor_last.json advanced on that run (RunReceipt output_signal_mtime_after > before, or LaneRunReceipt ok_at moved)"
         },
         {
-          "check": "cron_twin_output_fresh",
-          "text": "the live cron line keeps the registry output_signal data/runtime/job_coverage_monitor_last.json fresh within 24 h (2x cadence)"
+          "check": "fresh",
+          "text": "the output_signal is younger than 24 h (2x cadence)"
         },
         {
           "check": "duration_within_baseline",
@@ -7692,8 +7716,8 @@
           "text": "a dead letter was written or the lane's breaker opened (3 failures)"
         },
         {
-          "check": "dry_run_wrote",
-          "text": "a dry_run changed its output_signal or any durable state"
+          "check": "stale_output",
+          "text": "RUN_DONE but the output_signal did not advance"
         }
       ],
       "baseline": {
@@ -7720,7 +7744,7 @@
           "notifier_priority": "P3"
         },
         "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
-        "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row `severity`, else the fan-in priority (RUN_* = P2 -> WARN). Wiring the bridge, notifier and diagnoser to this contract is the next build item (N8N_MONITORING_AND_REMEDIATION_STANDARD.md \u00a77)."
+        "enforced": "partial source integration: scripts/n8n_incident_fanin.py _wferr_severity() consumes a workflow contract's failed.notifier_priority to raise the workflow-error priority floor. scripts/lib/n8n_siem_bridge.py severity_for() uses registry severity, else the fan-in priority. Full per-lane baseline, notification and diagnosis enforcement is not established by these declarations; runtime coverage remains NOT_MEASURED (N8N_MONITORING_AND_REMEDIATION_STANDARD.md \u00a77)."
       },
       "remediation": {
         "catalogue_entry": true,
@@ -7747,7 +7771,13 @@
         ],
         "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger"
       },
-      "review_by": "2026-10-25"
+      "review_by": "2026-10-28",
+      "review": {
+        "prepared_by": "agent draft (scripts/build_n8n_health_contracts.py --write --as-of 2026-10-14, run by the operator)",
+        "status": "REVIEWED",
+        "reviewed_by": "operator PatsKiller 2026-10-14 ~11:25 ET (in-session approval to Agent A: \"i looked and approve ... mark the 14 lanes' contracts REVIEWED\"; canary-wave-20261014)",
+        "reviewed_on": "2026-10-14"
+      }
     },
     {
       "schema": "N8nHealthContract@v1",
@@ -9085,9 +9115,9 @@
       "id": "news-to-catalyst",
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
-      "status": "DRAFT",
-      "target_reason": "stage:shadow",
-      "stage": "shadow",
+      "status": "REVIEWED",
+      "target_reason": "stage:canary",
+      "stage": "canary",
       "purpose": {
         "text": "06:45/12:45/18:45: classify unprocessed news_articles into scored catalyst_events (keyword classifier + DB weights)",
         "business_function": "research",
@@ -9152,16 +9182,16 @@
       ],
       "healthy": [
         {
-          "check": "shadow_dry_run_done",
-          "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+          "check": "last_live_run_done",
+          "text": "the latest live run is RUN_DONE in the coordination ledger"
         },
         {
-          "check": "dry_run_writes_nothing",
-          "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md \u00a76)"
+          "check": "output_advanced",
+          "text": "data/runtime/news-to-catalyst_last.json advanced on that run (RunReceipt output_signal_mtime_after > before, or LaneRunReceipt ok_at moved)"
         },
         {
-          "check": "cron_twin_output_fresh",
-          "text": "the live cron line keeps the registry output_signal data/runtime/news-to-catalyst_last.json fresh within 24.0 h (2x cadence)"
+          "check": "fresh",
+          "text": "the output_signal is younger than 24.0 h (2x cadence)"
         },
         {
           "check": "duration_within_baseline",
@@ -9216,8 +9246,8 @@
           "text": "coordination/due reports errors[] trigger_source_unreadable for this lane (the domain as_of file is missing or malformed, or the as_of is in the future) for more than one input cadence"
         },
         {
-          "check": "dry_run_wrote",
-          "text": "a dry_run changed its output_signal or any durable state"
+          "check": "stale_output",
+          "text": "RUN_DONE but the output_signal did not advance"
         }
       ],
       "baseline": {
@@ -9244,7 +9274,7 @@
           "notifier_priority": "P3"
         },
         "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
-        "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row `severity`, else the fan-in priority (RUN_* = P2 -> WARN). Wiring the bridge, notifier and diagnoser to this contract is the next build item (N8N_MONITORING_AND_REMEDIATION_STANDARD.md \u00a77)."
+        "enforced": "partial source integration: scripts/n8n_incident_fanin.py _wferr_severity() consumes a workflow contract's failed.notifier_priority to raise the workflow-error priority floor. scripts/lib/n8n_siem_bridge.py severity_for() uses registry severity, else the fan-in priority. Full per-lane baseline, notification and diagnosis enforcement is not established by these declarations; runtime coverage remains NOT_MEASURED (N8N_MONITORING_AND_REMEDIATION_STANDARD.md \u00a77)."
       },
       "remediation": {
         "catalogue_entry": true,
@@ -9271,7 +9301,13 @@
         ],
         "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger"
       },
-      "review_by": "2026-10-25"
+      "review_by": "2026-10-28",
+      "review": {
+        "prepared_by": "agent draft (scripts/build_n8n_health_contracts.py --write --as-of 2026-10-14, run by the operator)",
+        "status": "REVIEWED",
+        "reviewed_by": "operator PatsKiller 2026-10-14 ~11:25 ET (in-session approval to Agent A: \"i looked and approve ... mark the 14 lanes' contracts REVIEWED\"; canary-wave-20261014)",
+        "reviewed_on": "2026-10-14"
+      }
     },
     {
       "schema": "N8nHealthContract@v1",

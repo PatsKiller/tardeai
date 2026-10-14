@@ -62,14 +62,17 @@ def test_source_admission_retains_observed_cron_parameters_and_draft_evidence(la
     # Each actual argument is required; omission must differ from the approved command.
     for index in range(len(expected)):
         assert entry["command"] != ["$PY", "scripts/" + script, *expected[:index], *expected[index + 1:]]
-    assert entry["dry_run_arg"] == ["--dry-run"] and entry["live_arg"] is None
+    assert entry["dry_run_arg"] == ["--dry-run"] and (entry["live_arg"] is None or entry["lane_id"] in _CANARY_WAVE)
     assert entry["lock"] == observed["lock"] and entry["lock_kind"] == "flock"
     assert entry["env_allowlist_mode"] == "report" and entry["env_report_reason"]
     assert not any(any(word in name.upper() for word in ("MOOMOO", "ALPACA", "BROKER", "IBKR"))
                    for name in entry["env_names"])
     assert row["scheduler"]["command_text"] == observed["cron_line"]
-    assert row["scheduler"]["stage"] == "shadow" and row["scheduler"]["wave"] == "R2-06"
-    assert row["dispatch"]["mode"] == "dry_run" and row["dispatch"]["wave"] == "W4"
+    # canary-wave-20261014: proposal-backtest-engine is canary (live under the cron flock lock).
+    assert row["scheduler"]["stage"] == ("canary" if row["lane_id"] in _CANARY_WAVE else "shadow")
+    assert row["scheduler"]["wave"] == "R2-06"
+    assert row["dispatch"]["mode"] == ("live" if row["lane_id"] in _CANARY_WAVE else "dry_run")
+    assert row["dispatch"]["wave"] == "W4"
     assert row["dispatch"]["class"] in {"ingest", "learn"} and row["dispatch"]["retry_policy"] == "none"
     assert row["dispatch"]["cron"] == [" ".join(observed["cron_line"].split()[:5])]
     if lane == "social-ingest-stocktwits":
@@ -509,3 +512,5 @@ def test_thesis_frozen_exact_cron_argv_and_receipt(state, capsys):
         mod.main(argv)
     failed = json.loads(path.read_text())
     assert failed["status"] == "failed" and failed["ok_at"] == receipt["ok_at"] and failed["exit"] == 1
+
+from tests.test_canary_wave_20261014 import CANARY_WAVE_20261014 as _CANARY_WAVE  # noqa: E402  canary-wave-20261014

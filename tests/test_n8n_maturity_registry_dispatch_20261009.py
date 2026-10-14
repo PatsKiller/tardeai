@@ -543,6 +543,13 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
             assert mode == "live" and row["scheduler"].get("stage") in ("canary", "cutover"), lane
             assert LD.r1_class_admission(row, allow[lane]) == (True, "r1_admitted:ingest"), lane
             continue
+        if lane in CANARY_WAVE_20261014:
+            # canary-wave-20261014: cron rows at stage canary, mode live, live_arg = the cron argv suffix, allowlist
+            # lock == the cron flock lock (tests/test_canary_wave_20261014.py pins every field).
+            assert mode == "live" and row["scheduler"].get("stage") == "canary", lane
+            assert row["scheduler"]["kind"] == "cron" and isinstance(allow[lane]["live_arg"], list), lane
+            assert clamp_mode(lane, "live", rows)["effective_mode"] == "live", lane
+            continue
         assert mode in ("off", "dry_run"), lane
         if mode == "off":
             continue
@@ -580,22 +587,24 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
     refactor = {
         r["lane_id"] for r in rows if (r.get("scheduler") or {}).get("wave") in {"R2-05", "R2-06", "R2-07", "R2-08"}
     }
-    assert len(refactor) == 11 and refactor <= set(shadow), refactor
+    assert len(refactor) == 11 and refactor - set(CANARY_WAVE_20261014) <= set(shadow), refactor
     # The reviewed momentum tranche adds two native shadow rows and the existing
     # named scalp exception at shadow; it adds no live dispatch row.
     # - 2: C1 hermes_overnight registry edit (train 6, 2026-10-12) absorbs hermes-tag-lift-discovery (SW4/W4) and
     # hermes-industry-novelty-discovery (D2) into hermes-overnight-pipeline-night (dispatch_retired, allowlist removed).
     # + 2: scalp/premarket onboarding (2026-10-14, tests/test_scalp_premarket_onboard_20261014.py): the scalp hot-tier
     # R1 ingest rows finviz-enrichment-scalp-hot and scalp-hot-list at shadow (dry_run, live_arg null).
-    assert len(shadow) == 54 + 3 + 15 - len(CANARY_ROWS) - 17 + 10 + 11 + len(N8N_NATIVE_SHADOW) + 1 - 2 + 2, shadow
+    assert len(shadow) == 54 + 3 + 15 - len(CANARY_ROWS) - 17 + 10 + 11 + len(N8N_NATIVE_SHADOW) + 1 - 2 + 2 - len(CANARY_WAVE_20261014), shadow
     # heartbeat-watch moved shadow → canary (N8N_NATIVE_CANARY) 2026-10-11.
     assert sorted(r["lane_id"] for r in rows if LD.dispatch_mode(r) == "live") == sorted(
-        CANARY_ROWS | N8N_NATIVE_CANARY
+        CANARY_ROWS | N8N_NATIVE_CANARY | set(CANARY_WAVE_20261014)
     )
 
 
 #: canary wave 1 (2026-10-11): the only rows at dispatch.mode live (stage canary, the cron line's flock lock).
 CANARY_ROWS = frozenset({"research-insight-extractor"})
+#: canary-wave-20261014 (stage canary, mode live, cron flock lock == allowlist lock); single source in its own test.
+from tests.test_canary_wave_20261014 import CANARY_WAVE_20261014  # noqa: E402
 
 
 #: wave D2: allowlist entries that existed (with a live_arg) before the dispatcher row was added.
@@ -625,6 +634,8 @@ def test_refactored_wave_d2_writers_have_offline_shadow_proposals():
     allow = {e["lane_id"]: e for e in json.loads((ROOT / "config" / "n8n_run_allowlist.json").read_text())["lanes"]}
     for lane in OFFLINE_REFACTORED_DRY_RUNS:
         assert lane in rows, lane
+        if lane in CANARY_WAVE_20261014:  # canary-wave-20261014
+            continue
         assert LD.dispatch_mode(rows[lane]) == "dry_run", lane
         assert rows[lane]["scheduler"]["stage"] == "shadow", lane
         assert rows[lane]["scheduler"]["wave"] in {"R2-05", "R2-07", "R2-08"}, lane
@@ -688,10 +699,11 @@ def test_scalp_lane_eligible_only_through_the_policy_exception():
     assert LD.dispatch_eligible(bare) == (True, "eligible:policy_exception:market_day_gate.sh")
     from scripts.lib.lane_stage_clamp import clamp_mode
 
-    assert LD.dispatch_mode(row) == "dry_run" and LD.dispatchable(row) is True
-    assert row["scheduler"]["kind"] == "cron" and row["scheduler"]["stage"] == "shadow"
+    # canary-wave-20261014 (operator 2026-10-14): scalp-live is canary, live under the cron flock lock.
+    assert LD.dispatch_mode(row) == "live" and LD.dispatchable(row) is True
+    assert row["scheduler"]["kind"] == "cron" and row["scheduler"]["stage"] == "canary"
     assert row["dispatch"]["cron"] == [row["scheduler"]["expression"]]
-    assert clamp_mode("trade-ai-scalp-live", "live", list(rows.values()))["effective_mode"] == "dry_run"
+    assert clamp_mode("trade-ai-scalp-live", "live", list(rows.values()))["effective_mode"] == "live"
 
 
 def test_only_the_excepted_lane_changes_eligibility_in_the_live_registry():

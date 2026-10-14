@@ -231,7 +231,7 @@ def test_allowlist_exact_arguments_and_no_broker_environment(lane, name, argv):
         return
     entry = next(row for row in doc["lanes"] if row["lane_id"] == lane)
     assert entry["command"] == ["$PY", f"scripts/{name}.py", *argv]
-    assert entry["dry_run_arg"] == ["--dry-run"] and entry["live_arg"] is None
+    assert entry["dry_run_arg"] == ["--dry-run"] and (entry["live_arg"] is None or entry["lane_id"] in _CANARY_WAVE)
     assert not any(token in key.upper() for key in entry["env_names"]
                    for token in ("SCHWAB", "ALPACA", "SNAPTRADE", "MOOMOO", "IBKR", "BROKER"))
     # Real cron arguments are literal test inputs and the approved source lines are
@@ -303,3 +303,5 @@ def test_all_failed_valuation_fetches_preserve_cached_rows_and_success(tmp_path,
     receipt = json.loads(path.read_bytes())
     assert receipt["ok_at"] == "2026-10-01T00:00:00Z" and receipt["status"] == "failed"
     assert receipt["summary"]["fetched"] == 0 and receipt["summary"]["errors"] == 1
+
+from tests.test_canary_wave_20261014 import CANARY_WAVE_20261014 as _CANARY_WAVE  # noqa: E402  canary-wave-20261014
