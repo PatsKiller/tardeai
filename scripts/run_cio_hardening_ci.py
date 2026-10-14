@@ -3962,6 +3962,12 @@ GATES = [
         ["tests/test_catalyst_alpaca_mode_gate_20261014.py"],
     ),
     (
+        # ANCHOR: STOP_ALERT_NEVER_DIGEST_20261014 — SPCX incident: stop_health NEAR_TRIGGER/TRIGGERED warnings
+        # were classified P1_DIGEST by the policy router and suppressed; they now interrupt and skip the P0 budget.
+        "stop_alert_never_digest_20261014",
+        ["tests/test_stop_alert_never_digest_20261014.py"],
+    ),
+    (
         # ANCHOR: GROK_G10_G12_20261011 — honest non-zero exits, lockup and hermes weights off the
         # release tree, and --alert/--send/--telegram as sender tokens. The n8n: SIEM skip is the
         # g11 implementation; its own test is on the n8n_siem_bridge gate. Hermetic: tmp paths,
