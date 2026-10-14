@@ -103,6 +103,24 @@ R1_SHADOW_SHAPE_STATUS = "ACTIVE"  # ratified 2026-10-10: APPROVE_AGENTS_POLICY_
 GOVERNED_LLM_ROUTE = "cio-governed-bridge"
 #: Ruling 3: no broker credential in an admitted lane's environment. Name fragments, matched on env_names.
 BROKER_CREDENTIAL_ENV_FRAGMENTS = ("SCHWAB", "ALPACA", "SNAPTRADE", "MOOMOO", "IBKR", "FUTU", "TRADIER", "BROKER")
+# ── §23.20 advisory market-data lanes (AGENTS.md 7.0.0, PROPOSED; operator ruling 2026-10-14) ─────────────────────
+#: "move to n8n i approve … its just looking at level 2 on moomoo no trading" (operator, 2026-10-14). A lane in this
+#: code ceiling may be dispatched although it reads broker MARKET DATA (quote / L2 book / tape, never a trade context)
+#: and sends advisory alerts through the host chokepoint — only while ADVISORY_MD_STATUS is ACTIVE (only the 7.0.0
+#: ratifying edit flips it) and only when advisory_md_admission (cheap, hot path) and advisory_md_static_errors
+#: (scripts/lib/advisory_lane_guard.py import-graph scan; check_lane_registry / CI) both pass. Widening the ceiling is
+#: a reviewed code change, never a config edit. Nothing here touches §23.14: orders, secrets and daemons stay off.
+ADVISORY_MD_POLICY_VERSION = "7.0.0"
+ADVISORY_MD_STATUS = "PROPOSED"
+ADVISORY_MARKET_DATA_LANES = frozenset({
+    "active-trader-premarket-watch", "finviz-momentum-scalp-early-lane", "momentum-scalp-advisory-alerts",
+})
+#: The only classes a §23.20 lane may carry: never `send` (R2 stays gated), never an R1 class (no ingest authority).
+ADVISORY_MD_CLASSES = frozenset({"pipeline"})
+#: Sends a §23.20 lane may make with bypass_router=True: only call sites the AGENTS 5.1.0 shrink-only allowlist
+#: (tests/test_notification_intents_20261010.py BYPASS_ALLOWLIST) already holds. The amendment adds none.
+ADVISORY_MD_BYPASS_FILES = frozenset({"scripts/active_trader/momentum_alerts.py", "scripts/lib/scalp_advisory_alert.py"})
+
 #: argv tokens by which an LLM job would pick its own provider or model (§23.4: capability, never a provider).
 LLM_PROVIDER_ARGV_TOKENS = ("--model", "--provider", "--lane", "anthropic", "openai", "api_key", "--api-key")
 _RECEIPT_SIGNAL = re.compile(r"^data/runtime/[A-Za-z0-9._-]+_last\.json$")
@@ -703,10 +721,104 @@ def _gate_marker_exempt(row: Mapping[str, Any], exempt: frozenset[str]) -> bool:
 def _keep_on_cron(row: Mapping[str, Any], *, lift_top_level: bool = False) -> bool:
     """KEEP_ON_CRON at the row's top level (B1-forced) or in its rationalization block. The policy exception may
     lift only the top-level one (the reconciler forces it from the gate marker); a KEEP_ON_CRON inside the
-    rationalization block is an independent F-review verdict and always blocks."""
+    rationalization block is an independent F-review verdict and always blocks — except for a §23.20 advisory
+    market-data lane once 7.0.0 is ACTIVE, where the operator's 2026-10-14 ruling supersedes that verdict by name."""
+    if _advisory_md_lane(row):
+        return False
     rat = row.get("rationalization")
     top = row.get("recommendation") == KEEP_ON_CRON and not lift_top_level
     return top or (isinstance(rat, dict) and rat.get("recommendation") == KEEP_ON_CRON)
+
+
+def _advisory_md_lane(row: Mapping[str, Any], *, status: Optional[str] = None) -> bool:
+    """True only for a lane in ADVISORY_MARKET_DATA_LANES while 7.0.0 is ACTIVE (`status` / the row-copy key
+    `_advisory_md_status` override it in tests only; no registry row carries that key)."""
+    st = status or row.get("_advisory_md_status") or ADVISORY_MD_STATUS
+    return st == "ACTIVE" and row.get("lane_id") in ADVISORY_MARKET_DATA_LANES
+
+
+def advisory_md_admission(row: Mapping[str, Any], entry: Optional[Mapping[str, Any]] = None, *,
+                          status: Optional[str] = None) -> tuple[bool, str]:
+    """AGENTS.md 7.0.0 §23.20, the cheap half (hot path: n8n_due asks it through r1_class_admission). (ok, reason).
+
+    Admits a row only when ALL hold: 7.0.0 ACTIVE; the lane is in the ADVISORY_MARKET_DATA_LANES ceiling; the dispatch
+    class is in ADVISORY_MD_CLASSES; dispatch_eligible passes (forbidden tokens incl. `submit` still apply); the
+    allowlist entry exists with a non-empty dry_run_arg, lock_kind flock and a lock equal to every flock lock in
+    scheduler.command_text (the cron line's lock - no double run at any stage); no sandbox / broker submit switch in
+    the argv, its inline `env NAME=V` prefix or the cron command text (condition b); no broker credential name in
+    env_names (condition d). The import-graph half (conditions a and c) is advisory_md_static_errors."""
+    lane = str(row.get("lane_id") or "?")
+    st = status or ADVISORY_MD_STATUS
+    if st != "ACTIVE":
+        return False, f"advisory_md_not_ratified (AGENTS {ADVISORY_MD_POLICY_VERSION} is {st})"
+    if lane not in ADVISORY_MARKET_DATA_LANES:
+        return False, "advisory_md_not_in_ceiling"
+    try:
+        block = parse_dispatch_block(row)
+    except DispatchBlockError as e:
+        return False, f"bad_block:{e.detail}"
+    if block is None:
+        return False, "no_dispatch_block"
+    if block.klass not in ADVISORY_MD_CLASSES:
+        return False, f"advisory_md_class:{block.klass}"
+    if status is None:
+        ok, why = dispatch_eligible(row)
+    else:  # tests: evaluate eligibility as if 7.0.0 had the given status
+        ok, why = dispatch_eligible(dict(row, _advisory_md_status=st))
+    if not ok:
+        return False, f"ineligible:{why}"
+    if entry is None:
+        entry = load_run_allowlist_entries().get(lane)
+    if not isinstance(entry, Mapping):
+        return False, "not_allowlisted"
+    dry = entry.get("dry_run_arg")
+    if not isinstance(dry, list) or not dry:
+        return False, "no_dry_run_arg"
+    if entry.get("lock_kind") != "flock" or not isinstance(entry.get("lock"), str):
+        return False, f"advisory_md_lock_kind:{entry.get('lock_kind')!r}"
+    sched = row.get("scheduler") if isinstance(row.get("scheduler"), dict) else {}
+    locks = cron_flock_locks(sched.get("command_text") or "")
+    if not locks or any(x != entry["lock"] for x in locks):
+        return False, f"advisory_md_lock_mismatch cron={locks} allowlist={entry.get('lock')!r}"
+    argv = [*(entry.get("command") or []), *(dry or []), *(entry.get("live_arg") or [])]
+    hits = _submit_tokens(argv) + _submit_tokens(str(sched.get("command_text") or "").split())
+    if hits:
+        return False, f"advisory_md_submit:{hits[0]}"
+    for name in entry.get("env_names") or []:
+        if any(frag in str(name).upper() for frag in BROKER_CREDENTIAL_ENV_FRAGMENTS):
+            return False, f"broker_credential_env:{name}"
+    return True, "advisory_md_admitted"
+
+
+def _guard():
+    try:
+        from scripts.lib import advisory_lane_guard as g
+    except ImportError:  # imported as lib.lane_dispatch
+        from lib import advisory_lane_guard as g  # type: ignore
+    return g
+
+
+def _submit_tokens(argv) -> list[str]:
+    return _guard().submit_tokens(argv)
+
+
+def advisory_md_static_errors(row: Mapping[str, Any], entry: Optional[Mapping[str, Any]] = None) -> list[str]:
+    """AGENTS.md 7.0.0 §23.20 conditions (a) and (c) by import-graph scan (scripts/lib/advisory_lane_guard.py): the
+    lane's reach uses no broker trade context, order verb, account / position read or broker client module; every send
+    goes through the host chokepoint; bypass_router only at an ADVISORY_MD_BYPASS_FILES site. [] = clean.
+    Not on the hot path (a scan takes ~0.05-0.4 s): check_lane_registry and CI call it."""
+    g = _guard()
+    lane = str(row.get("lane_id") or "?")
+    if entry is None:
+        entry = load_run_allowlist_entries().get(lane)
+    script = g.entry_script((entry or {}).get("command") or [])
+    if not script:
+        return [f"{lane}: §23.20 no entry script in the allowlist command"]
+    rep = g.scan_entry(script)
+    out = [f"{lane}: §23.20 {p}" for p in rep.problems()]
+    out += [f"{lane}: §23.20 bypass_router outside the 5.1.0 allowlist: {site}" for site in rep.bypass_router
+            if site.rsplit(":", 1)[0] not in ADVISORY_MD_BYPASS_FILES]
+    return out
 
 
 def dispatch_eligible(row: Mapping[str, Any], *, allowlist_argv: Optional[Mapping[str, str]] = None,
@@ -838,6 +950,8 @@ def r1_class_admission(row: Mapping[str, Any], entry: Optional[Mapping[str, Any]
     if block is None:
         return False, "no_dispatch_block"
     klass = block.klass
+    if lane in ADVISORY_MARKET_DATA_LANES:   # AGENTS 7.0.0 §23.20: answered by its own gate, never by class alone
+        return advisory_md_admission(row, entry)
     if klass not in R1_ADMITTED_CLASSES:
         return (True, "pre_r1_class") if klass in PERMITTED_CLASSES_PRE_R1 else (False, f"class_gated:{klass}")
     if (status or R1_STATUS) != "ACTIVE":
@@ -1035,6 +1149,10 @@ def validate_dispatch_block(row: Mapping[str, Any], *, known_lane_ids: Optional[
         ok, why = dispatch_eligible(row)
         if not ok:
             issues.append(DispatchIssue(lane, ISSUE_FORBIDDEN_LANE, f"mode {block.mode} on an ineligible lane: {why}"))
+        elif lane in ADVISORY_MARKET_DATA_LANES:
+            ok, why = advisory_md_admission(row)
+            if not ok:
+                issues.append(DispatchIssue(lane, ISSUE_CLASS_NOT_PERMITTED, f"§23.20 advisory market-data: {why}"))
     return issues
 
 
@@ -1047,4 +1165,6 @@ def registry_dispatch_errors(reg: Mapping[str, Any], *,
     for r in rows:
         for issue in validate_dispatch_block(r, known_lane_ids=known, retry_policy_names=retry_policy_names):
             out.append(f"{issue.lane_id}: dispatch {issue.code}: {issue.detail}")
+        if r.get("lane_id") in ADVISORY_MARKET_DATA_LANES and dispatch_mode(r) != "off":
+            out.extend(advisory_md_static_errors(r))   # §23.20 (a)/(c): import-graph scan, off the hot path
     return out
