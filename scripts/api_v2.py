@@ -40502,10 +40502,38 @@ def _pilot_preflight_battery(b):
         return _json_clean({"ok": False, "error": str(e)[:200]})
 
 
+def _tl_broker_for_account(account_key) -> str:
+    """Broker family of an account key for the READ-ONLY trading lock ('schwab_taxable' → 'schwab').
+    Unknown/blank → 'unknown', which no unlock covers by accident (fail secure)."""
+    k = str(account_key or "").strip().lower()
+    if not k:
+        return "unknown"
+    if k in ("tradeai_automated", "alpaca_paper"):
+        return "alpaca_paper"
+    return k.split("_", 1)[0] or "unknown"
+
+
+def _tl_intent_broker(intent_id) -> str:
+    """Broker of a persisted broker intent for the trading lock; any failure → 'unknown' (locked)."""
+    try:
+        from brokers.approval_service import _intent_broker
+
+        b = _intent_broker(intent_id)
+        return b if isinstance(b, str) and b else "unknown"
+    except Exception:
+        return "unknown"
+
+
 def _pilot_execute(body=None):
     """POST /api/v2/broker-orders/pilot/execute {intent_id} — the ONLY caller of the transport write
     surface. Re-runs nothing itself: the transport enforces the entire stack (taxable-only assert,
     api_write_enabled, canary gate, standing locks, pilot cap, 2FA) and fails closed."""
+    from lib.trading_lock import assert_trading_unlocked, TradingLocked
+
+    try:
+        assert_trading_unlocked("place", broker="schwab", account=None, caller="api_v2._pilot_execute")
+    except TradingLocked as _tl:
+        return _tl.payload()
     from brokers import audit as br_audit
     from brokers.order_intent import OrderIntent
     import schwab_transport as st
@@ -40540,6 +40568,12 @@ def _pilot_arm(body=None):
     """POST /api/v2/broker-orders/pilot/arm {confirm} — UI arming (operator 2026-06-13: zero-shell).
     Validates the date-specific typed phrase and opens an AUTO-EXPIRING armed session (no env flag /
     restart). Per-order Telegram 2FA still gates every submit — arming alone places nothing."""
+    from lib.trading_lock import assert_trading_unlocked, TradingLocked
+
+    try:
+        assert_trading_unlocked("place", broker="schwab", account=None, caller="api_v2._pilot_arm")
+    except TradingLocked as _tl:
+        return _tl.payload()
     import schwab_pilot_arm as arm
 
     r = arm.arm(str((body or {}).get("confirm") or ""))
@@ -40556,6 +40590,12 @@ def _pilot_disarm(body=None):
 
 def _pilot_cancel(body=None):
     """POST /api/v2/broker-orders/pilot/cancel {broker_order_id} — cancel a PILOT order (safe direction)."""
+    from lib.trading_lock import assert_trading_unlocked, TradingLocked
+
+    try:
+        assert_trading_unlocked("cancel", broker="schwab", account=None, caller="api_v2._pilot_cancel")
+    except TradingLocked as _tl:
+        return _tl.payload()
     import schwab_transport as st
     from brokers.pilot_caps import PILOT_ACCOUNT_ALLOWLIST
 
@@ -46015,6 +46055,12 @@ def _fidelity_stops_sync(body=None):
 
 def _snaptrade_trade_preflight(body=None):
     """POST /api/v2/snaptrade/trade/preflight — one-share live test (no sandbox): preview + 2FA request."""
+    from lib.trading_lock import assert_trading_unlocked, TradingLocked
+
+    try:
+        assert_trading_unlocked("place", broker="snaptrade", account=None, caller="api_v2._snaptrade_trade_preflight")
+    except TradingLocked as _tl:
+        return _tl.payload()
     try:
         b = body or {}
         acct = str(b.get("account") or "").strip()
@@ -46040,6 +46086,12 @@ def _snaptrade_trade_preflight(body=None):
 
 def _snaptrade_trade_execute(body=None):
     """POST /api/v2/snaptrade/trade/execute — confirm 2FA and place the previewed one-share test order."""
+    from lib.trading_lock import assert_trading_unlocked, TradingLocked
+
+    try:
+        assert_trading_unlocked("place", broker="snaptrade", account=None, caller="api_v2._snaptrade_trade_execute")
+    except TradingLocked as _tl:
+        return _tl.payload()
     try:
         b = body or {}
         intent_id = str(b.get("intent_id") or "").strip()
@@ -48998,6 +49050,17 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 500, {"ok": False, "error": str(e)[:160]}
 
         if base_path == "/api/v2/broker-proposals/manual-submit":
+            # READ-ONLY trading lock FIRST (incident SPCX 2026-10-14) — refuse before any approval/submit.
+            from lib.trading_lock import assert_trading_unlocked, TradingLocked
+
+            try:
+                assert_trading_unlocked(
+                    "place",
+                    broker=_tl_broker_for_account((body or {}).get("account")),
+                    caller="api_v2:/api/v2/broker-proposals/manual-submit",
+                )
+            except TradingLocked as _tl:
+                return 200, _tl.payload()
             # Manual trade submission for a Schwab/Fidelity account → a manual proposal mapped to a chosen
             # strategy (operator 2026-06-19). Lands in the SAME unified queue (origin=manual, intended_broker
             # = the account). Schwab can then route via gated 2FA; Fidelity is record-only.
@@ -49041,6 +49104,17 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 500, {"ok": False, "error": str(e)[:160]}
 
         if base_path == "/api/v2/broker-proposals/route":
+            # READ-ONLY trading lock FIRST (incident SPCX 2026-10-14) — refuse before any approval/submit.
+            from lib.trading_lock import assert_trading_unlocked, TradingLocked
+
+            try:
+                assert_trading_unlocked(
+                    "place",
+                    broker=_tl_broker_for_account((body or {}).get("account")),
+                    caller="api_v2:/api/v2/broker-proposals/route",
+                )
+            except TradingLocked as _tl:
+                return 200, _tl.payload()
             # STEP 1 — Schwab armed: operator trade review applied, OTOCO bracket + per-order 2FA.
             # Ungated: preview spec only. Fidelity → record-only. Audited via queue_router.
             try:
@@ -49062,6 +49136,17 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 500, {"ok": False, "error": str(e)[:160]}
 
         if base_path == "/api/v2/broker-proposals/route/confirm":
+            # READ-ONLY trading lock FIRST (incident SPCX 2026-10-14) — refuse before any approval/submit.
+            from lib.trading_lock import assert_trading_unlocked, TradingLocked
+
+            try:
+                assert_trading_unlocked(
+                    "place",
+                    broker=_tl_intent_broker((body or {}).get("intent_id")),
+                    caller="api_v2:/api/v2/broker-proposals/route/confirm",
+                )
+            except TradingLocked as _tl:
+                return 200, _tl.payload()
             # STEP 2 — CONFIRM 2FA then submit Schwab OTOCO bracket. Spec rebuilt server-side from intent.
             try:
                 b = body or {}
@@ -49134,6 +49219,17 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 500, {"ok": False, "error": str(e)[:160]}
 
         if base_path == "/api/v2/holdings/protective-stop":
+            # READ-ONLY trading lock FIRST (incident SPCX 2026-10-14) — refuse before any approval/submit.
+            from lib.trading_lock import assert_trading_unlocked, TradingLocked
+
+            try:
+                assert_trading_unlocked(
+                    "place",
+                    broker=_tl_broker_for_account((body or {}).get("account")),
+                    caller="api_v2:/api/v2/holdings/protective-stop",
+                )
+            except TradingLocked as _tl:
+                return 200, _tl.payload()
             # Stage 2c STEP 1 — REQUEST a protective SELL stop / stop-limit / trailing on a real holding.
             # Two routes (chosen by the account, never by the client):
             #   • Schwab account with api_write_enabled + protective_stop_policy armed → builds the marked
@@ -49661,6 +49757,17 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 500, {"ok": False, "error": str(e)[:200]}
 
         if base_path == "/api/v2/holdings/protective-stop/confirm":
+            # READ-ONLY trading lock FIRST (incident SPCX 2026-10-14) — refuse before any approval/submit.
+            from lib.trading_lock import assert_trading_unlocked, TradingLocked
+
+            try:
+                assert_trading_unlocked(
+                    "place",
+                    broker=_tl_intent_broker((body or {}).get("intent_id")),
+                    caller="api_v2:/api/v2/holdings/protective-stop/confirm",
+                )
+            except TradingLocked as _tl:
+                return 200, _tl.payload()
             # Stage 2c STEP 2 — CONFIRM the per-order 2FA and, once satisfied, SUBMIT the live protective
             # stop through the proven transport (schwab_transport.place_order, kind='protective_stop', so it
             # never touches the canary 5-order budget). EITHER channel confirms: web (type the ticker) or
@@ -49760,6 +49867,17 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 500, {"ok": False, "error": str(e)[:200]}
 
         if base_path == "/api/v2/holdings/protective-stop/cancel":
+            # READ-ONLY trading lock FIRST (incident SPCX 2026-10-14) — refuse before any approval/submit.
+            from lib.trading_lock import assert_trading_unlocked, TradingLocked
+
+            try:
+                assert_trading_unlocked(
+                    "cancel",
+                    broker=_tl_broker_for_account((body or {}).get("account")),
+                    caller="api_v2:/api/v2/holdings/protective-stop/cancel",
+                )
+            except TradingLocked as _tl:
+                return 200, _tl.payload()
             # Stage 2c — cancel a LIVE protective stop from the Open Trades card (the "remove" control).
             # Cancel is the SAFE direction (no 2FA; guard grants cancel under an armed pilot). Standalone
             # cancel still requires a pilot row. Replace of a manual ToS stop uses cancel_order_for_replace
@@ -55160,6 +55278,17 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             return 500, {"ok": False, "error": str(e)}
 
     if method == "POST" and base_path == "/api/v2/broker-orders/request-approval":
+        # READ-ONLY trading lock FIRST (incident SPCX 2026-10-14) — refuse before any approval/submit.
+        from lib.trading_lock import assert_trading_unlocked, TradingLocked
+
+        try:
+            assert_trading_unlocked(
+                "place",
+                broker=_tl_broker_for_account((body or {}).get("account_key") or (body or {}).get("account")),
+                caller="api_v2:/api/v2/broker-orders/request-approval",
+            )
+        except TradingLocked as _tl:
+            return 200, _tl.payload()
         try:
             import sys as _sys
 
@@ -55226,6 +55355,17 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             return 500, {"ok": False, "error": str(e)[:160]}
 
     if method == "POST" and base_path == "/api/v2/broker-orders/approve":
+        # READ-ONLY trading lock FIRST (incident SPCX 2026-10-14) — refuse before any approval/submit.
+        from lib.trading_lock import assert_trading_unlocked, TradingLocked
+
+        try:
+            assert_trading_unlocked(
+                "place",
+                broker=_tl_intent_broker((body or {}).get("intent_id")),
+                caller="api_v2:/api/v2/broker-orders/approve",
+            )
+        except TradingLocked as _tl:
+            return 200, _tl.payload()
         try:
             import sys as _sys
 
@@ -55705,6 +55845,17 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             return 500, {"ok": False, "error": str(e)[:200]}
 
     if method == "POST" and base_path == "/api/v2/options/confirm":
+        # READ-ONLY trading lock FIRST (incident SPCX 2026-10-14) — refuse before any approval/submit.
+        from lib.trading_lock import assert_trading_unlocked, TradingLocked
+
+        try:
+            assert_trading_unlocked(
+                "place",
+                broker=_tl_intent_broker((body or {}).get("intent_id")),
+                caller="api_v2:/api/v2/options/confirm",
+            )
+        except TradingLocked as _tl:
+            return 200, _tl.payload()
         try:
             b = body if isinstance(body, dict) else {}
             if b.get("dry_run"):

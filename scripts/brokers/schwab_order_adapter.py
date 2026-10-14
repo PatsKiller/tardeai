@@ -15,9 +15,24 @@ class SchwabOrderAdapter:
     broker = "schwab"
 
     # ── mutating surface: blocked unconditionally ───────────────────────────
-    def submit(self, intent, translation):          raise ExecutionBlocked(_BLOCK)
-    def replace(self, intent, broker_order_id):     raise ExecutionBlocked(_BLOCK)
-    def cancel(self, broker_order_id):              raise ExecutionBlocked(_BLOCK)
+    # The READ-ONLY trading lock runs first (incident SPCX 2026-10-14), then the unconditional block.
+    def submit(self, intent, translation):
+        from lib.trading_lock import assert_trading_unlocked
+        assert_trading_unlocked("place", broker="schwab", account=getattr(intent, "account_key", None),
+                                caller="brokers.schwab_order_adapter.SchwabOrderAdapter.submit")
+        raise ExecutionBlocked(_BLOCK)
+
+    def replace(self, intent, broker_order_id):
+        from lib.trading_lock import assert_trading_unlocked
+        assert_trading_unlocked("replace", broker="schwab", account=getattr(intent, "account_key", None),
+                                caller="brokers.schwab_order_adapter.SchwabOrderAdapter.replace")
+        raise ExecutionBlocked(_BLOCK)
+
+    def cancel(self, broker_order_id):
+        from lib.trading_lock import assert_trading_unlocked
+        assert_trading_unlocked("cancel", broker="schwab",
+                                caller="brokers.schwab_order_adapter.SchwabOrderAdapter.cancel")
+        raise ExecutionBlocked(_BLOCK)
 
     # ── read-only surface: existing fence-guarded transport ────────────────
     def get_status(self, account_key, order_id):

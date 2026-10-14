@@ -63,7 +63,7 @@ def test_replace_order_fenced_in_transport():
     trans = (SCRIPTS / "schwab_transport.py").read_text()
     import re
     check("replace_order fenced (raises NotProvenWrite)",
-          bool(re.search(r"def replace_order\([^\n]*\n\s+raise NotProvenWrite", trans)))
+          bool(re.search(r"def replace_order\([^\n]*\n(?:\s+assert_trading_unlocked\([^\n]*\n)?\s+raise NotProvenWrite", trans)))
 
 
 def test_pilots_route_through_transport():

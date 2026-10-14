@@ -36,6 +36,11 @@ class NotProvenWrite(RuntimeError):
     """Raised by any wrapper write-surface symbol. Stage 1 is read-only; writes are fenced."""
 
 
+# READ-ONLY broker lock (incident SPCX 2026-10-14): every write symbol below calls this FIRST.
+# Import failure must refuse, never allow — so it is a plain import (an ImportError aborts the write).
+from lib.trading_lock import assert_trading_unlocked, TradingLocked  # noqa: E402,F401
+
+
 # ── Stage 2b WRITE SURFACE — the ONLY Schwab write path in the repo; full guard stack per call ──
 
 def _pilot_ensure_table(cur):
@@ -58,11 +63,13 @@ def _pilot_ensure_table(cur):
     cur.execute("ALTER TABLE schwab_pilot_orders ADD COLUMN IF NOT EXISTS kind TEXT DEFAULT 'canary'")
 
 
-def _pilot_preconditions(account_key, kind="canary"):
+def _pilot_preconditions(account_key, kind="canary", action="place"):
     """Hard structural asserts BEFORE the guard even runs. The committed account allowlist depends on the
     order family: canary writes are taxable-only (pilot_caps); protective stops use the protective policy's
     effective allowlist (taxable always, + the two Schwab IRAs ONLY when IRA_PROTECTIVE_ENABLED is committed
     True). With the IRA flag off, IRA keys can never reach a write here either."""
+    assert_trading_unlocked(action, broker="schwab", account=account_key,
+                            caller="schwab_transport._pilot_preconditions")
     if kind == "protective_stop":
         from brokers.protective_stop_policy import effective_account_allowlist
         allow = effective_account_allowlist()
@@ -104,6 +111,7 @@ def place_order(account_key, order_spec, intent, kind="canary"):
     consume approval → read-back. `kind` tags the pilot family ('canary' | 'protective_stop') so the
     canary 5-order cap counts only canary rows. Raises NotProvenWrite/ExecutionBlocked on any closed
     lock; returns a result dict on broker contact."""
+    assert_trading_unlocked("place", broker="schwab", account=account_key, caller="schwab_transport.place_order")
     import json as _json
     from brokers.execution_guard import require           # raises ExecutionBlocked when denied
     from brokers import approval_service
@@ -291,6 +299,8 @@ def place_order(account_key, order_spec, intent, kind="canary"):
                         (_json.dumps(issues), row_id))
             conn.commit()
             return {"status": "validation_blocked", "refusals": issues, "pilot_row_id": row_id, "broker_submitted": False}
+    assert_trading_unlocked("place", broker="schwab", account=account_key,
+                            caller="schwab_transport.place_order:post")
     try:
         resp = client.place_order(h, order_spec)
     except Exception as e:
@@ -477,6 +487,8 @@ def cancel_order_for_replace(account_key, broker_order_id, *, verify: bool = Tru
                              max_attempts: int = 5, sleep_sec: float = 1.0,
                              expected_symbol: str | None = None) -> dict:
     """Cancel a live protective stop (pilot or verified manual ToS) before a replace submit."""
+    assert_trading_unlocked("replace", broker="schwab", account=account_key,
+                            caller="schwab_transport.cancel_order_for_replace")
     result = cancel_order(account_key, broker_order_id,
                           allow_manual_protective=True,
                           expected_symbol=expected_symbol)
@@ -504,6 +516,7 @@ def cancel_order(account_key, broker_order_id, *, allow_manual_protective: bool 
     When allow_manual_protective=True (replace path only): also cancel a broker-verified live
     SELL STOP/TRAIL that was placed in ToS — operator already 2FA'd the replacement place.
     """
+    assert_trading_unlocked("cancel", broker="schwab", account=account_key, caller="schwab_transport.cancel_order")
     import logging as _logging
     from brokers.execution_guard import require
     from brokers.order_intent import OrderIntent, Instrument, Direction, EntrySpec, EntryMethod, Quantity
@@ -517,7 +530,7 @@ def cancel_order(account_key, broker_order_id, *, allow_manual_protective: bool 
     live = None
     if allow_manual_protective:
         live = _describe_live_sell_stop(account_key, oid, expected_symbol=expected_symbol)
-    conn = _pilot_preconditions(account_key, precond_kind)
+    conn = _pilot_preconditions(account_key, precond_kind, action="cancel")
     cur = conn.cursor()
     _pilot_ensure_table(cur)
     cur.execute("SELECT id, symbol, qty FROM schwab_pilot_orders WHERE broker_order_id=%s AND account_key=%s "
@@ -558,6 +571,8 @@ def cancel_order(account_key, broker_order_id, *, allow_manual_protective: bool 
         return {"status": "error", "error": "client unavailable", "detail": err, "manual": manual}
     h = _get_hash(account_key)
     _rate_acquire()
+    assert_trading_unlocked("cancel", broker="schwab", account=account_key,
+                            caller="schwab_transport.cancel_order:delete")
     try:
         resp = client.cancel_order(broker_order_id, h)
     except Exception as e:
@@ -585,6 +600,7 @@ def cancel_order(account_key, broker_order_id, *, allow_manual_protective: bool 
 
 
 def replace_order(*_a, **_k):
+    assert_trading_unlocked("replace", broker="schwab", caller="schwab_transport.replace_order")
     raise NotProvenWrite("Schwab replace_order is FENCED — no native PUT replace in the Stage 2b pilot "
                          "(cancel + new order instead; see cancel_order_for_replace)")
 
@@ -604,6 +620,35 @@ def _rate_acquire():
         tm.RATE.acquire()
     except Exception:
         pass
+
+
+# schwab-py Client methods that mutate broker state. A caller holding the raw client (build_client is
+# also used by read paths such as broker_stop_reconcile) still cannot write while trading is locked.
+_SCHWAB_CLIENT_WRITE_METHODS = ("place_order", "replace_order", "cancel_order",
+                                "create_saved_order", "replace_saved_order", "delete_saved_order")
+
+
+def _lock_guard_client_writes(client, account_key):
+    """Shadow every write method on this client instance with a lock-first wrapper."""
+    for _name in _SCHWAB_CLIENT_WRITE_METHODS:
+        _orig = getattr(client, _name, None)
+        if _orig is None:
+            continue
+
+        def _guarded(*a, __orig=_orig, __name=_name, **k):
+            assert_trading_unlocked("cancel" if "cancel" in __name or "delete" in __name
+                                    else ("replace" if "replace" in __name else "place"),
+                                    broker="schwab", account=account_key,
+                                    caller=f"schwab_transport.client.{__name}")
+            return __orig(*a, **k)
+        try:
+            setattr(client, _name, _guarded)
+        except Exception:
+            # Cannot shadow → refuse to hand out a write-capable client at all.
+            raise TradingLocked(f"TRADING LOCKED: could not guard schwab-py {_name}",
+                                action="place", broker="schwab", account=account_key,
+                                caller="schwab_transport.build_client", lock_reason="client_guard_failed")
+    return client
 
 
 def build_client(account_key, broker="schwab", environment="live"):
@@ -637,7 +682,7 @@ def build_client(account_key, broker="schwab", environment="live"):
             token_write_func=lambda token, *a, **k: tm.write_oauth_token(token, tkey, broker, environment),
             enforce_enums=False,
         )
-        return client, None
+        return _lock_guard_client_writes(client, account_key), None
     except Exception as e:
         return None, {"status": "NOT_PROVEN", "reason": f"client construction failed: {str(e)[:120]}"}
 

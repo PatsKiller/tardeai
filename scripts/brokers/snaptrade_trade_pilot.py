@@ -60,6 +60,12 @@ def preflight(*, account_key: str, symbol: str, action: str = "BUY", order_type:
               price: float | None = None, stop: float | None = None, units: float | None = None,
               one_share_test: bool = True) -> dict:
     """Non-executing: envelope + broker capability + SnapTrade preview + 2FA request."""
+    from lib.trading_lock import assert_trading_unlocked, TradingLocked
+    try:
+        assert_trading_unlocked("place", broker="snaptrade", account=account_key,
+                                caller="brokers.snaptrade_trade_pilot.preflight")
+    except TradingLocked as _tl:
+        return _tl.payload()
     sym = (symbol or "").strip().upper()
     act = (action or "BUY").upper()
     ot = (order_type or "Market").strip()
@@ -128,6 +134,12 @@ def load_intent(intent_id: str):
 
 def execute(intent_id: str) -> dict:
     """Place after full 2FA approval."""
+    from lib.trading_lock import assert_trading_unlocked, TradingLocked
+    try:
+        assert_trading_unlocked("place", broker="snaptrade", account=None,
+                                caller="brokers.snaptrade_trade_pilot.execute")
+    except TradingLocked as _tl:
+        return _tl.payload()
     from brokers import approval_service
     intent = load_intent(intent_id)
     if intent is None:

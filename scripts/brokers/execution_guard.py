@@ -34,6 +34,21 @@ class GuardDecision:
     correlation_id: str
 
 
+def _lock_engaged() -> bool:
+    """READ-ONLY trading lock (incident SPCX 2026-10-14) takes precedence over every standing arm state
+    (pilot_armed_until=2099, schwab_pilot_standing_unlock, BROKER_LIVE_ENABLED, protective/options/fidelity
+    standing flags). Any error reading the lock → engaged."""
+    try:
+        from lib.trading_lock import is_trading_locked
+        return bool(is_trading_locked())
+    except Exception:
+        return True
+
+
+# Non-write guard actions (local translate/preview/validate) — everything else is a broker write for the lock.
+_LOCK_EXEMPT_ACTIONS = ("translate", "preview", "validate")
+
+
 def mode_for(broker: str) -> BrokerExecutionMode:
     """Resolve the broker's execution mode — fail closed on anything unknown."""
     default = capabilities.get(broker).get("execution_mode_default", "BROKER_DISABLED")
@@ -47,6 +62,8 @@ def _live_future_unlocked() -> bool:
     """Standing locks open? Physical key = env flag OR non-expired session OR standing DB unlock
     (operator 2026-06-22: all 3 Schwab accounts, no session expiry). PLUS broker_live_enabled +
     standing approval. Per-order 2FA still required for every submit."""
+    if _lock_engaged():
+        return False   # the trading lock wins over any arm state
     try:
         from db_adapter import _get_conn
         cur = _get_conn().cursor()
@@ -83,6 +100,8 @@ def _protective_unlocked() -> bool:
     gate = policy ENABLED (committed) AND a standing DB authorization
     (system_controls['protective_stops_enabled']='true', set once, cleared to revoke). Per-order 2FA, the
     policy envelope, and the account's api_write_enabled still gate EVERY submit. Any error => locked."""
+    if _lock_engaged():
+        return False   # the trading lock wins over any arm state
     try:
         from .protective_stop_policy import ENABLED
         if not ENABLED:
@@ -121,6 +140,8 @@ def _is_options_execution(intent: OrderIntent) -> bool:
 
 def _options_unlocked() -> bool:
     """Standing unlock: policy ENABLED (commit) + DB options_execution_enabled flag."""
+    if _lock_engaged():
+        return False   # the trading lock wins over any arm state
     try:
         from .options_execution_policy import ENABLED
         if not ENABLED:
@@ -161,6 +182,8 @@ def _is_fidelity_monitored(intent: OrderIntent) -> bool:
 
 def _fidelity_monitored_unlocked() -> bool:
     """Standing unlock for Fidelity monitored stops (operator snaptrade_pilot_arm.py --approve)."""
+    if _lock_engaged():
+        return False   # the trading lock wins over any arm state
     try:
         from .snaptrade_protective_stop_policy import MONITORED_ENABLED
         if not MONITORED_ENABLED:
@@ -204,6 +227,23 @@ def _protective_gate_reason(intent: OrderIntent) -> str | None:
 def authorize(intent: OrderIntent, action: str = "submit") -> GuardDecision:
     """The single gate every adapter call must pass. Audited regardless of outcome."""
     mode = mode_for(intent.broker)
+    # READ-ONLY trading lock FIRST (incident SPCX 2026-10-14): every write action — submit, replace AND
+    # cancel — on every broker except the Alpaca paper-training pipeline is refused while locked.
+    if action not in _LOCK_EXEMPT_ACTIONS:
+        _paper = intent.broker == "alpaca" and mode == BrokerExecutionMode.PAPER_TRAINING
+        try:
+            from lib.trading_lock import assert_trading_unlocked
+            assert_trading_unlocked(action, broker=intent.broker, account=intent.account_key,
+                                    caller="brokers.execution_guard.authorize",
+                                    environment="paper" if _paper else None)
+        except Exception as e:  # TradingLocked, or the lock module unavailable → refuse
+            d = GuardDecision(False, mode, f"TRADING_LOCKED: {str(e)[:300]}", intent.correlation_id)
+            try:
+                from .audit import record_guard_decision
+                record_guard_decision(intent, action, d)
+            except Exception:
+                pass
+            return d
     protective = _is_protective_stop(intent)
     options_exec = _is_options_execution(intent)
     # ── HARDCODED CANARY GATE (Stage 2a Part D, operator 2026-06-12) ──────────────────────────

@@ -143,6 +143,9 @@ def build_intent(account_key: str, symbol: str, qty, order_kind: str, *, stop_pr
 def request_2fa(intent) -> dict:
     """Create the per-order approval set (web typed-ticker + telegram/email code) and notify the operator.
     EITHER channel suffices (REQUIRED_CHANNELS=1)."""
+    from lib.trading_lock import assert_trading_unlocked
+    assert_trading_unlocked("place", broker="schwab", account=getattr(intent, "account_key", None),
+                            caller="brokers.protective_stop_pilot.request_2fa")
     from brokers import approval_service
     return approval_service.request_approval(intent)
 
@@ -150,6 +153,9 @@ def request_2fa(intent) -> dict:
 def submit(account_key: str, order_spec: dict, intent) -> dict:
     """Submit through the proven transport once 2FA is satisfied. Tagged kind='protective_stop' so it
     does not consume the canary 5-order budget. Raises ExecutionBlocked/NotProvenWrite on any closed lock."""
+    from lib.trading_lock import assert_trading_unlocked
+    assert_trading_unlocked("place", broker="schwab", account=account_key,
+                            caller="brokers.protective_stop_pilot.submit")
     import schwab_transport
     return schwab_transport.place_order(account_key, order_spec, intent, kind="protective_stop")
 

@@ -89,6 +89,14 @@ def main() -> int:
     from dotenv import load_dotenv
     load_dotenv(str(ROOT / ".env"))
     fire = "--request" in sys.argv
+    from lib.trading_lock import assert_trading_unlocked, TradingLocked
+    if fire:
+        # READ-ONLY trading lock (incident SPCX 2026-10-14): requesting live stops is an order path.
+        try:
+            assert_trading_unlocked("place", broker="schwab", caller="schwab_stop_batch_request.main")
+        except TradingLocked as _tl:
+            print(f"REFUSING — {_tl}")
+            return 1
     rows = candidates()
     if fire:
         ok, why = _orders_lane_healthy({r["account"] for r in rows})
@@ -111,6 +119,8 @@ def main() -> int:
             blocked.append((r["symbol"], "; ".join(q.get("blockers") or ["quote not fresh"])))
             print(line, "→ BLOCKED:", (q.get("blockers") or ["stale quote"])[0])
             continue
+        assert_trading_unlocked("place", broker="schwab", account=r["account"],
+                                caller="schwab_stop_batch_request.main")
         res = post("/api/v2/holdings/protective-stop", {
             "symbol": r["symbol"], "account": r["account"], "qty": r["qty"],
             "order_kind": "STOP", "stop_price": r["stop_price"],

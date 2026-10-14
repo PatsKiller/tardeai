@@ -142,7 +142,7 @@ persist_first = ("INSERT INTO schwab_pilot_orders" in pb
                  and pb.index("INSERT INTO schwab_pilot_orders") < pb.index("client.place_order"))
 ok("transport persists the pilot row BEFORE any POST (Schwab does not dedupe)", persist_first)
 ok("replace_order remains FENCED (NotProvenWrite; no replace in the pilot)",
-   bool(re.search(r"def replace_order\([^\n]*\n\s+raise NotProvenWrite", trans)))
+   bool(re.search(r"def replace_order\([^\n]*\n(?:\s+assert_trading_unlocked\([^\n]*\n)?\s+raise NotProvenWrite", trans)))
 ok("consume(): 2FA approval burned single-use at submit", "approval_service.consume" in pb)
 
 # 6. schwab-py imported ONLY at the transport boundary
@@ -180,9 +180,18 @@ try:
                          quantity=Quantity(qty=2), broker="schwab", account_key="schwab_roth_ira")
     try:
         from brokers.execution_guard import ExecutionBlocked as _ExecBlocked
-        _fail_closed = (_st.NotProvenWrite, _ExecBlocked)
+        _fail_closed = (_st.NotProvenWrite, _ExecBlocked, _st.TradingLocked)
     except Exception:
-        _fail_closed = (_st.NotProvenWrite,)
+        _fail_closed = (_st.NotProvenWrite, _st.TradingLocked)
+    from lib import trading_lock as _tl
+
+    if _tl.is_trading_locked(broker="schwab", action="place") and _tl.is_trading_locked(
+        broker="schwab", action="replace"
+    ):
+        # The read-only lock already refuses both writes. Firing the probe would only send a real
+        # "TRADING LOCKED" alert every time api_v2 / compute_maturity_score run this validator.
+        ok("runtime: IRA write + replace fail closed (read-only trading lock engaged)", True)
+        raise _SkipGuard("trading lock engaged; probe not fired so it does not page the operator")
     ira_raised = False
     try:
         _st.place_order("schwab_roth_ira", {}, _probe)
@@ -193,7 +202,7 @@ try:
     rep_raised = False
     try:
         _st.replace_order()
-    except _st.NotProvenWrite:
+    except (_st.NotProvenWrite, _st.TradingLocked):
         rep_raised = True
     except Exception:
         rep_raised = False
@@ -215,13 +224,19 @@ try:
         and not re.search(r"db_adapter|_get_conn|json\.load|yaml|configparser|open\(", gate_src)
     _big = _OI(instrument=_In("AAPL"), direction=_Dir.LONG,
                entry=_ES(method=_EM.LIMIT, limit_price=180.0), quantity=_Q(qty=100), broker="schwab")
+    # Scratch unlock (this process only): prove the 2FA/canary stack denies, not the trading lock in front.
+    if str(SCRIPTS) not in sys.path:
+        sys.path.insert(0, str(SCRIPTS))
+    import lib.trading_lock as _tl
     if getattr(_cg, "GATES_REMOVED", False):
-        d = _auth(_big, "submit")
+        with _tl.harness_scratch_lock(unlock_brokers=["schwab"]):
+            d = _auth(_big, "submit")
         ok("canary gate: GATES_REMOVED pass-through; execution_guard still denies unapproved submit",
            pure and (not d.allowed),
            f"pure={pure} GATES_REMOVED=True reason={d.reason[:60]}")
     else:
-        d = _auth(_big, "submit")
+        with _tl.harness_scratch_lock(unlock_brokers=["schwab"]):
+            d = _auth(_big, "submit")
         ok("canary gate: pure module + out-of-envelope submit denied in front of guard",
            pure and (not d.allowed) and d.reason.startswith("CANARY_GATE BLOCK"),
            f"pure={pure} reason={d.reason[:60]}")
@@ -290,29 +305,61 @@ except Exception as e:
 
 # 12. 2FA REQUIRED: with every standing lock mocked open and caps green, an unapproved intent is
 #     DENIED; a fully-approved one is GRANTED (proves the stack can both deny and grant correctly).
+#     The READ-ONLY trading lock (incident SPCX 2026-10-14) sits in front of the whole stack, so the
+#     grant half runs under a SCRATCH unlock (temp dir, this process only — trading_lock's harness hook;
+#     the production unlock path is never read or written). 12b then proves the lock itself: with NO
+#     unlock, the same fully-approved, all-locks-open intent is refused for submit AND cancel.
 try:
     import brokers.execution_guard as _eg
     import brokers.approval_service as _aps
+    if str(SCRIPTS) not in sys.path:
+        sys.path.insert(0, str(SCRIPTS))
+    import lib.trading_lock as _tl
     _gp = _OI(instrument=_In("ZGATE"), direction=_Dir.LONG,
               entry=_ES(method=_EM.LIMIT, limit_price=3.0), quantity=_Q(qty=2),
               broker="schwab", account_key="schwab_taxable")
-    with _mock.patch.object(_cg, "CANARY_SYMBOL_ALLOWLIST", ("ZGATE",)), \
-         _mock.patch.object(_cg, "CANARY_SESSION_DATE", "2099-01-01"), \
-         _mock.patch.object(_cg, "_today", return_value="2099-01-01"), \
-         _mock.patch.object(_eg, "_live_future_unlocked", return_value=True), \
-         _mock.patch.object(_pc, "orders_used", return_value=0):
-        with _mock.patch.object(_aps, "is_fully_approved", return_value=False):
-            denied = not _eg.authorize(_gp, "submit").allowed
-        with _mock.patch.object(_aps, "is_fully_approved", return_value=True):
-            granted = _eg.authorize(_gp, "submit").allowed
-        cancel_ok = _eg.authorize(_gp, "cancel").allowed
-    with _mock.patch.object(_eg, "_live_future_unlocked", return_value=False):
-        locked_deny = not _eg.authorize(_gp, "cancel").allowed
+
+    def _all_standing_locks_open():
+        from contextlib import ExitStack
+        st = ExitStack()
+        st.enter_context(_mock.patch.object(_cg, "CANARY_SYMBOL_ALLOWLIST", ("ZGATE",)))
+        st.enter_context(_mock.patch.object(_cg, "CANARY_SESSION_DATE", "2099-01-01"))
+        st.enter_context(_mock.patch.object(_cg, "_today", return_value="2099-01-01"))
+        st.enter_context(_mock.patch.object(_eg, "_live_future_unlocked", return_value=True))
+        st.enter_context(_mock.patch.object(_pc, "orders_used", return_value=0))
+        return st
+
+    with _tl.harness_scratch_lock(unlock_brokers=["schwab"]):
+        with _all_standing_locks_open():
+            with _mock.patch.object(_aps, "is_fully_approved", return_value=False):
+                denied = not _eg.authorize(_gp, "submit").allowed
+            with _mock.patch.object(_aps, "is_fully_approved", return_value=True):
+                granted = _eg.authorize(_gp, "submit").allowed
+            cancel_ok = _eg.authorize(_gp, "cancel").allowed
+        with _mock.patch.object(_eg, "_live_future_unlocked", return_value=False):
+            locked_deny = not _eg.authorize(_gp, "cancel").allowed
     ok("guard: 2FA-less submit DENIED / fully-approved GRANTED / cancel safe-direction / locks-closed deny",
        denied and granted and cancel_ok and locked_deny,
        f"denied={denied} granted={granted} cancel={cancel_ok} locked_deny={locked_deny}")
 except Exception as e:
     ok("guard 2FA behavior check", False, str(e)[:80])
+
+# 12b. READ-ONLY TRADING LOCK: no unlock file → a fully-approved submit and a cancel are both DENIED by
+#      the lock (reason TRADING_LOCKED) even with every standing lock mocked open; the refusal alert is
+#      raised (captured, never sent) and nothing else in the stack is consulted first.
+try:
+    with _tl.harness_scratch_lock(unlock_brokers=None) as _h:
+        with _all_standing_locks_open(), _mock.patch.object(_aps, "is_fully_approved", return_value=True):
+            _ds = _eg.authorize(_gp, "submit")
+            _dc = _eg.authorize(_gp, "cancel")
+        _lock_alerted = bool(_h["alerts"])
+    _lk_sub = (not _ds.allowed) and _ds.reason.startswith("TRADING_LOCKED")
+    _lk_can = (not _dc.allowed) and _dc.reason.startswith("TRADING_LOCKED")
+    ok("trading lock: no unlock → fully-approved submit AND cancel DENIED (TRADING_LOCKED) + alert raised",
+       _lk_sub and _lk_can and _lock_alerted,
+       f"submit_locked={_lk_sub} cancel_locked={_lk_can} alerted={_lock_alerted}")
+except Exception as e:
+    ok("trading lock no-unlock deny check", False, str(e)[:80])
 
 # 13. TAMPER EVIDENCE: the gate modules on disk must match git HEAD — an uncommitted edit to the
 #     envelope/caps is a policy violation even if syntactically valid (commit-only means commit-only).

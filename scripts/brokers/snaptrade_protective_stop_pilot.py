@@ -67,12 +67,18 @@ def build_intent(account_key: str, symbol: str, qty, order_kind: str, *, stop_pr
 
 
 def request_2fa(intent) -> dict:
+    from lib.trading_lock import assert_trading_unlocked
+    assert_trading_unlocked("place", broker="snaptrade", account=getattr(intent, "account_key", None),
+                            caller="brokers.snaptrade_protective_stop_pilot.request_2fa")
     from brokers import approval_service
     return approval_service.request_approval(intent)
 
 
 def route_after_2fa(account_key: str, intent) -> dict:
     """After 2FA satisfied: broker API submit OR arm monitored stop."""
+    from lib.trading_lock import assert_trading_unlocked
+    assert_trading_unlocked("place", broker="snaptrade", account=account_key,
+                            caller="brokers.snaptrade_protective_stop_pilot.route_after_2fa")
     from brokers import approval_service
     from brokers.execution_guard import require
     require(intent, "submit")

@@ -249,6 +249,9 @@ def build_order_spec(proposal: dict) -> dict:
 
 
 def request_2fa(intent) -> dict:
+    from lib.trading_lock import assert_trading_unlocked
+    assert_trading_unlocked("place", broker="schwab", account=getattr(intent, "account_key", None),
+                            caller="brokers.options_order_pilot.request_2fa")
     from brokers import approval_service
     return approval_service.request_approval(intent)
 
@@ -258,6 +261,8 @@ def submit(account_key: str, order_spec: dict, intent, *, buying_power_reader=No
     document listed as the remaining gap): place_order's own readiness pass reads it from the
     intent's evidence, so the number it sees is from this call, not from confirm seconds
     earlier. A failed read leaves it None and readiness fails closed."""
+    from lib.trading_lock import assert_trading_unlocked
+    assert_trading_unlocked("place", broker="schwab", account=account_key, caller="brokers.options_order_pilot.submit")
     import schwab_transport
     ev = (getattr(getattr(intent, "meta", None), "signal_evidence", None) or {})
     bp, as_of = read_buying_power(account_key, reader=buying_power_reader)

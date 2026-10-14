@@ -71,7 +71,18 @@ def status() -> dict:
     standing_unlock = bool(sr2 and str(sr2[0]).lower() == "true")
     key_present = env_flag or session_active or standing_unlock
     all_writes = all(accounts.get(k) is True for k in PILOT_ACCOUNT_ALLOWLIST)
+    # The READ-ONLY trading lock wins over every arm state below (incident SPCX 2026-10-14):
+    # arm_state_armed reports the stored DB/env arm; armed is the EFFECTIVE state (False while locked).
+    try:
+        from lib.trading_lock import status as _lock_status
+        lock = _lock_status()
+    except Exception as e:
+        lock = {"locked": True, "reason": f"lock status unavailable ({type(e).__name__})"}
+    arm_state_armed = key_present and control and approvals > 0 and all_writes
     return {
+        "trading_lock": lock,
+        "trading_locked": bool(lock.get("locked", True)),
+        "arm_state_armed": arm_state_armed,
         "env_BROKER_LIVE_ENABLED": env_flag,
         "pilot_armed_until": session_until,
         "pilot_session_active": session_active,
@@ -89,13 +100,19 @@ def status() -> dict:
         "canary_envelope": {"max_price": cg.MAX_PRICE_USD, "max_qty": cg.MAX_QTY_SHARES,
                             "max_notional": cg.MAX_NOTIONAL_USD},
         "schwab_pilot_standing_unlock": standing_unlock,
-        "armed": key_present and control and approvals > 0 and all_writes,
+        "armed": bool(arm_state_armed and not lock.get("locked", True)),
         "note": "armed=true still places NOTHING by itself: per-order 2FA gates every submit. "
                 "Standing unlock (no expiry) OR env BROKER_LIVE_ENABLED OR session key required.",
     }
 
 
 def arm(confirm: str) -> dict:
+    # READ-ONLY trading lock (incident SPCX 2026-10-14): arming is refused while locked. Disarm stays free.
+    from lib.trading_lock import assert_trading_unlocked, TradingLocked
+    try:
+        assert_trading_unlocked("place", broker="schwab", caller="schwab_pilot_arm.arm")
+    except TradingLocked as _tl:
+        return {**_tl.payload(), "error": str(_tl)}
     today = dt.date.today().isoformat()
     want = f"ARM SCHWAB PILOT {today}"
     if confirm != want:

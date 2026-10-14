@@ -23,6 +23,15 @@ REPO = Path(__file__).resolve().parents[1]
 
 # Ordered, explicit suite list (Phase 10.2)
 GATES = [
+    # ANCHOR: TRADING_READ_ONLY_LOCK_20261014 — incident SPCX: every broker place/replace/cancel path is
+    # dominated by assert_trading_unlocked (static scan + mutation proof) and refuses with stubbed clients.
+    (
+        "trading_read_only_lock_20261014",
+        [
+            "tests/test_trading_lock_20261014.py",
+            "tests/test_trading_lock_coverage_20261014.py",
+        ],
+    ),
     # ANCHOR: CC_TAILSCALE_IDENTITY_AUTH_20261014 — CC auth: tailnet identity on the serve socket,
     # service token on :7777, step-up refusal on order/stop/credential/risk routes. Hermetic.
     ("cc_tailscale_identity_auth_20261014", ["tests/test_cc_tailscale_identity_auth_20261014.py"]),

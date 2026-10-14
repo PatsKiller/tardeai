@@ -89,6 +89,13 @@ def _pending_protective_intent(cur, trade_id: int) -> bool:
 
 def _request_stop_modify(acct: str, sym: str, qty: int, new_stop: float, old_stop_id: str,
                          advised_stop: float, current_price: float, held_qty: float) -> dict | None:
+    from lib.trading_lock import assert_trading_unlocked, TradingLocked
+    try:
+        assert_trading_unlocked("replace", broker="schwab", account=acct,
+                                caller="schwab_broker_trade_monitor._request_stop_modify")
+    except TradingLocked as _tl:
+        log.error(f"[{sym}] stop-modify refused: {_tl}")
+        return _tl.payload()
     from brokers import protective_stop_pilot as psp
     intent = psp.build_intent(
         acct, sym, qty, "STOP", stop_price=new_stop, advised_stop=advised_stop,

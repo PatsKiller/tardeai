@@ -103,7 +103,16 @@ def list_active(*, broker: str | None = None, account_key: str | None = None,
 def is_blocked(*, broker: str | None = None, account_key: str | None = None,
                strategy: str | None = None, symbol: str | None = None,
                asset_class: str | None = None, live_submit: bool = False) -> tuple[bool, list[str]]:
-    """True if any applicable kill switch blocks the path."""
+    """True if any applicable kill switch blocks the path. The READ-ONLY trading lock (incident SPCX
+    2026-10-14) counts as an always-on global switch while engaged (Alpaca paper exempt)."""
+    try:
+        from lib.trading_lock import is_trading_locked
+        _locked = is_trading_locked(broker=broker,
+                                    environment="paper" if (broker or "").lower() == "alpaca" else None)
+    except Exception:
+        _locked = True
+    if _locked:
+        return True, ["trading_lock:locked (read-only toward brokers; operator unlock required)"]
     active = list_active(broker=broker, account_key=account_key, strategy=strategy,
                          symbol=symbol, asset_class=asset_class)
     reasons = []

@@ -247,6 +247,18 @@ def handle_callback_query(cb):
             from brokers import approval_service
             iid = parts[1] if len(parts) > 1 else ""
             if action == "bkapprove":
+                # READ-ONLY trading lock FIRST (incident SPCX 2026-10-14): no approval is recorded and
+                # nothing is submitted while trading is locked. bkreject stays allowed (no broker write).
+                from lib.trading_lock import assert_trading_unlocked, TradingLocked
+                try:
+                    assert_trading_unlocked("place", broker=approval_service._intent_broker(iid),
+                                            caller="telegram_callback_handler.bkapprove")
+                except TradingLocked as _tl:
+                    answer_callback(cb_id, "TRADING LOCKED — not approved, nothing sent", show_alert=True)
+                    edit_message(chat_id, message_id,
+                                 f"⛔ TRADING LOCKED — approval refused {now_short}\n"
+                                 f"intent {iid[:8]} · {str(_tl)[:200]}")
+                    return
                 code = parts[2] if len(parts) > 2 else None
                 r = approval_service.confirm(iid, "telegram", code)
                 if r.get("ok"):

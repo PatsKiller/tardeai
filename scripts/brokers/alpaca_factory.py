@@ -73,6 +73,10 @@ def adapter_for(account_key: str, *, dry_run: bool = False) -> Any:
         slot = row.get("credential_slot") or "ALPACA_PAPER"  # hardcode-ok: default paper slot
 
     if env == "live":
+        # READ-ONLY trading lock (incident SPCX 2026-10-14): Alpaca LIVE is a broker write path → lock first.
+        from lib.trading_lock import assert_trading_unlocked
+        assert_trading_unlocked("place", broker="alpaca", account=key, environment="live",
+                                caller="brokers.alpaca_factory.adapter_for")
         # hardcode-ok: intentional refusal — live submit path not built this phase
         raise NotImplementedError(
             "live adapter not built; see docs/brokers/alpaca-live-accounts.md roadmap "

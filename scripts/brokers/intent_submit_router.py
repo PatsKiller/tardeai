@@ -11,6 +11,13 @@ def cancel_replace_stop_if_needed(intent) -> dict | None:
     Shared by the web confirm path and Telegram auto-fire so replace mode always
     cancel-then-places — never adds a second live stop. Returns None when no replace
     target is set; otherwise a result dict with ok=True/False."""
+    from lib.trading_lock import assert_trading_unlocked, TradingLocked
+    try:
+        assert_trading_unlocked("replace", broker=(getattr(intent, "broker", None) or "unknown"),
+                                account=getattr(intent, "account_key", None),
+                                caller="brokers.intent_submit_router.cancel_replace_stop_if_needed")
+    except TradingLocked as _tl:
+        return _tl.payload()
     from brokers.execution_guard import FIDELITY_PROTECTIVE_MARKER
 
     _ev = (getattr(getattr(intent, "meta", None), "signal_evidence", None) or {})
@@ -55,8 +62,24 @@ def cancel_replace_stop_if_needed(intent) -> dict | None:
         return {"ok": False, "error": f"could not cancel the existing stop #{_replace_id}: {str(ce)[:160]}"}
 
 
+def _intent_broker(intent_id) -> str:
+    """Broker of a persisted intent for the trading lock. Any failure → 'unknown' (which stays locked)."""
+    try:
+        from brokers.approval_service import _intent_broker as _ib
+        b = _ib(intent_id)
+        return b if isinstance(b, str) and b else "unknown"
+    except Exception:
+        return "unknown"
+
+
 def submit_fully_approved(intent_id: str) -> dict:
     """Submit a persisted intent once is_fully_approved() is true. Consumes 2FA on successful transport."""
+    from lib.trading_lock import assert_trading_unlocked, TradingLocked
+    try:
+        assert_trading_unlocked("place", broker=_intent_broker(intent_id), account=None,
+                                caller="brokers.intent_submit_router.submit_fully_approved")
+    except TradingLocked as _tl:
+        return _tl.payload()
     from brokers import approval_service
     from brokers.execution_guard import FIDELITY_PROTECTIVE_MARKER, PROTECTIVE_STOP_MARKER, QUEUE_ENTRY_MARKER
 
