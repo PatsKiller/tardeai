@@ -1050,6 +1050,13 @@ GATES = [
         "at_premarket_watch_20261005",
         ["tests/test_at_premarket_watch_20261005.py"],
     ),
+    # Active Trader premarket alert integrity (operator 2026-10-14, GLND): the sender gates on same-symbol
+    # momentum evidence (UNVALIDATED downgrade, config), "RE-ENTER" never narrows to RE/MAX (RMAX leak),
+    # and the CIO line shows its as-of time (legit 09:00 rescore read as a contradiction).
+    (
+        "at_premarket_alert_integrity_20261014",
+        ["tests/test_at_premarket_alert_integrity_20261014.py"],
+    ),
     # Policy apply script ratifies into production state, not the running tree (2026-10-04).
     (
         "apply_policy_default_store_20261004",
