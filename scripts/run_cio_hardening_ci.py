@@ -32,6 +32,9 @@ GATES = [
             "tests/test_trading_lock_coverage_20261014.py",
         ],
     ),
+    # ANCHOR: CC_TAILSCALE_IDENTITY_AUTH_20261014 — CC auth: tailnet identity on the serve socket,
+    # service token on :7777, step-up refusal on order/stop/credential/risk routes. Hermetic.
+    ("cc_tailscale_identity_auth_20261014", ["tests/test_cc_tailscale_identity_auth_20261014.py"]),
     ("refactor_shard_03_20261011", ["tests/test_refactor_shard_03_20261011.py"]),
     # ANCHOR: REFACTOR_SHARDS_05_08_LOCKS_20261011 — exact cron PID/OS lock identity, source only.
     ("refactor_shards_05_08_locks_20261011", ["tests/test_refactor_shards_05_08_locks_20261011.py"]),
@@ -1315,6 +1318,13 @@ GATES = [
         "positions_proof_phase2_20261006",
         ["tests/test_positions_proof_phase2_20261006.py"],
     ),
+    # Schwab paused (incident 2026-10-14): the pause switch + fail-loud readers (A-H; operator plan items 3+4).
+    (
+        "schwab_paused_fail_loud_20261014",
+        ["tests/test_schwab_paused_proof_20261014.py",
+         "tests/test_schwab_paused_stops_20261014.py",
+         "tests/test_schwab_paused_surfaces_20261014.py"],
+    ),
     # Schwab ledger keeps transfer/journal direction; >1y fetch chunked; dry run never pages (2026-10-06).
     (
         "ledger_transfer_direction_20261006",
@@ -2193,6 +2203,9 @@ GATES = [
             "tests/test_agents_policy_5_2_0_validation.py",
             # AGENTS.md 7.0.0 (PROPOSED 2026-10-14): §23.20 advisory market-data lanes + dispatcher sender gate.
             "tests/test_agents_policy_7_0_0_advisory_market_data.py",
+            # AGENTS.md 10.0.0 (PROPOSED 2026-10-14): §23.23 n8n is the automation fabric (flow in n8n, authority on
+            # the host); §23.1/§23.11/§24.1 marked superseded in place; §0/§2/§2A/§7A/§17/§22/§23.14 pinned.
+            "tests/test_agents_policy_10_0_0_n8n_fabric.py",
             "tests/test_trading_session_grant_20260925.py",
             "tests/test_operator_approval_workflow_docs.py",
         ],
@@ -3969,6 +3982,12 @@ GATES = [
         # .env and the old equals-paper gate aborted every proposal run). Hermetic: _run stubbed.
         "catalyst_alpaca_mode_gate_20261014",
         ["tests/test_catalyst_alpaca_mode_gate_20261014.py"],
+    ),
+    (
+        # ANCHOR: STOP_ALERT_NEVER_DIGEST_20261014 — SPCX incident: stop_health NEAR_TRIGGER/TRIGGERED warnings
+        # were classified P1_DIGEST by the policy router and suppressed; they now interrupt and skip the P0 budget.
+        "stop_alert_never_digest_20261014",
+        ["tests/test_stop_alert_never_digest_20261014.py"],
     ),
     (
         # ANCHOR: GROK_G10_G12_20261011 — honest non-zero exits, lockup and hermes weights off the

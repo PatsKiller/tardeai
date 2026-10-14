@@ -10,6 +10,13 @@ Exit 0 only when PRODUCTION_ACCEPTANCE == PASS (all hard gates green,
 p0_p1_open empty). Evidence is still written on FAIL.
 """
 from __future__ import annotations
+try:  # cc_auth (2026-10-14): service token for loopback Command Center (:7777) calls
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+except ImportError:  # pragma: no cover - scripts/ not on sys.path
+    import sys as _cc_sys
+    from pathlib import Path as _CcPath
+    _cc_sys.path.insert(0, str(next(p for p in _CcPath(__file__).resolve().parents if p.name == "scripts")))
+    from lib.cc_client import cc_urlopen as _cc_urlopen
 
 import hashlib
 import json
@@ -56,7 +63,7 @@ def _git_sha(ref: str, cwd: Path = REPO) -> str:
 def _http_json(url: str, timeout: int = 45) -> tuple[Optional[dict], str]:
     import urllib.request
     try:
-        with urllib.request.urlopen(url, timeout=timeout) as r:
+        with _cc_urlopen(url, timeout=timeout) as r:
             raw = r.read()
         d = json.loads(raw.decode())
         return (d.get("data") if isinstance(d, dict) and "data" in d and isinstance(d["data"], dict) else d), ""

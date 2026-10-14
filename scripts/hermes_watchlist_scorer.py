@@ -18,6 +18,14 @@ hermes_rank + hermes_score_components (the per-factor breakdown = the H-2 intel 
   python3 scripts/hermes_watchlist_scorer.py [--once] [--limit N]
 """
 from __future__ import annotations
+try:  # cc_auth (2026-10-14): service token for loopback Command Center (:7777) calls
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+except ImportError:  # pragma: no cover - scripts/ not on sys.path
+    import sys as _cc_sys
+    from pathlib import Path as _CcPath
+    _cc_sys.path.insert(0, str(next(p for p in _CcPath(__file__).resolve().parents if p.name == "scripts")))
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+
 import argparse, json, sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -267,7 +275,7 @@ def _vix(conn):
     try:
         import urllib.request, json as _j, os as _os
         base = _os.getenv("LOCAL_API_BASE", "http://127.0.0.1:7777")
-        with urllib.request.urlopen(f"{base}/api/v2/trade-ai", timeout=6) as r:
+        with _cc_urlopen(f"{base}/api/v2/trade-ai", timeout=6) as r:
             d = _j.load(r); d = d.get("data", d)
             v = d.get("vix")
             if v is not None:

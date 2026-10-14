@@ -16,6 +16,13 @@ total), MISSING (in one side only). No writes anywhere — pure report.
   python3 scripts/audit_position_basis.py [--json]
 """
 from __future__ import annotations
+try:  # cc_auth (2026-10-14): service token for loopback Command Center (:7777) calls
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+except ImportError:  # pragma: no cover - scripts/ not on sys.path
+    import sys as _cc_sys
+    from pathlib import Path as _CcPath
+    _cc_sys.path.insert(0, str(next(p for p in _CcPath(__file__).resolve().parents if p.name == "scripts")))
+    from lib.cc_client import cc_urlopen as _cc_urlopen
 
 import argparse
 import json
@@ -31,6 +38,16 @@ def main():
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--alert", action="store_true", help="send Telegram alert when discrepancies found")
     args = ap.parse_args()
+
+    from lib import schwab_access_mode as _sam
+    if not _sam.reads_allowed():
+        # Incident 2026-10-14: with Schwab paused there is no broker side. Comparing holdings.json against the
+        # server's cache of holdings.json would report a false "0 discrepancies" — refuse, say why, no alert.
+        report = {"status": "BROKER_SOURCE_UNAVAILABLE — Schwab paused by operator; audit skipped "
+                            "(no comparison possible)", "checked": 0, "flagged": 0,
+                  "access_mode": _sam.status()}
+        print(json.dumps(report, indent=1, default=str))
+        return report
 
     import schwab_transport as st
     from db_adapter import _get_conn
@@ -68,10 +85,14 @@ def main():
     if api_errors:
         try:
             import urllib.request
-            with urllib.request.urlopen("http://localhost:7777/api/v2/schwab/accounts-live", timeout=90) as r:
+            with _cc_urlopen("http://localhost:7777/api/v2/schwab/accounts-live", timeout=90) as r:
                 d = json.load(r)
             d = d.get("data", d)
             for a in d.get("accounts", []):
+                # The server's accounts-live serves the holdings.json CACHE (source "cache"): taking it as the
+                # broker compares holdings with itself (false clean, incident 2026-10-14). Broker sources only.
+                if a.get("source") in (None, "cache"):
+                    continue
                 if a.get("positions_status") == "ok":
                     api_errors.pop(a["account_key"], None)
                     for p in a["positions"]:
@@ -98,12 +119,13 @@ def main():
     # 2026-06-12 (first cron alarm was noise): if the live API is ENTIRELY unreachable, comparing
     # against it is meaningless — every holding would scream MISSING_FROM_API. Fail honest instead.
     if not A:
-        report = {"status": "API_UNREACHABLE — audit skipped (no comparison possible)",
+        report = {"status": "BROKER_SOURCE_UNAVAILABLE — Schwab API unreachable; audit skipped "
+                            "(no comparison possible)",
                   "api_errors": api_errors, "checked": 0, "flagged": 0,
                   "note": "creds missing in this environment or server fallback timed out; "
                           "fix the environment, don't trust holdings-vs-API flags from this run"}
         print(json.dumps(report, indent=1, default=str))
-        if alert:
+        if args.alert:   # was `alert` (undefined name): the unreachable path raised NameError instead of alerting
             _alert_unreachable(api_errors)
         return report
 

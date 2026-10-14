@@ -113,8 +113,21 @@ def diagnose(*, persist_scan: bool = True) -> dict[str, Any]:
             "fix": "monitor",
         })
 
+    # Schwab stop data UNAVAILABLE (read failed / operator pause, 2026-10-14): Schwab stops are UNKNOWN, not
+    # absent. Report the blind spot once, and never call a Schwab holding "naked" off a scan that could not see.
+    schwab_info = summary.get("schwab_stops") or {}
+    schwab_unknown = schwab_info.get("status") == "UNAVAILABLE"
+    if schwab_unknown:
+        issues.append({
+            "kind": "schwab_stops_unavailable",
+            "severity": "alert",
+            "detail": "Schwab stop data unavailable — stops at Schwab are NOT being monitored "
+                      f"({str(schwab_info.get('reason') or 'unknown')[:160]})",
+            "fix": "none_expected_while_schwab_paused" if schwab_info.get("paused") else "check_schwab_access",
+        })
     stop_keys = _active_stop_keys(scan)
     naked = []
+    unknown: list[str] = []
     for h in _holdings_rows():
         sym = str(h.get("symbol") or "").upper()
         acct = str(h.get("account") or "")
@@ -123,6 +136,9 @@ def diagnose(*, persist_scan: bool = True) -> dict[str, Any]:
         except (TypeError, ValueError):
             sh = 0
         if not sym or sh <= 0 or not _is_stop_eligible(sym, acct):
+            continue
+        if schwab_unknown and acct.lower().startswith("schwab"):
+            unknown.append(f"{sym}@{acct}")
             continue
         if (acct, sym) not in stop_keys:
             naked.append(f"{sym}@{acct}")
@@ -159,6 +175,8 @@ def diagnose(*, persist_scan: bool = True) -> dict[str, Any]:
         "scan_summary": summary,
         "issues": issues,
         "naked": naked,
+        "stop_status_unknown": unknown,
+        "schwab_stops": schwab_info or {"status": "ok"},
         "fidelity_orphans": [i["detail"] for i in fidelity_orphans],
         "stale_advisories": stale_adv,
         "snapshot_age_min": snap_age,

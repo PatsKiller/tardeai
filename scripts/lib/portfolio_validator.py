@@ -2,6 +2,14 @@
 Portfolio Validator — cross-references displayed portfolio values
 against broker data to detect P&L discrepancies.
 """
+try:  # cc_auth (2026-10-14): service token for loopback Command Center (:7777) calls
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+except ImportError:  # pragma: no cover - scripts/ not on sys.path
+    import sys as _cc_sys
+    from pathlib import Path as _CcPath
+    _cc_sys.path.insert(0, str(next(p for p in _CcPath(__file__).resolve().parents if p.name == "scripts")))
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+
 import json, os
 
 class PortfolioValidator:
@@ -33,7 +41,7 @@ class PortfolioValidator:
     def _api(self, path):
         import urllib.request
         try:
-            r = urllib.request.urlopen(f'http://localhost:7777{path}', timeout=10)
+            r = _cc_urlopen(f'http://localhost:7777{path}', timeout=10)
             return json.loads(r.read()).get('data', {})
         except:
             return {}

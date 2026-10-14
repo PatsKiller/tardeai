@@ -9,6 +9,14 @@ Checks all critical systems and reports status. Run this:
 Usage:
     python3 scripts/system_preflight_check.py
 """
+try:  # cc_auth (2026-10-14): service token for loopback Command Center (:7777) calls
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+except ImportError:  # pragma: no cover - scripts/ not on sys.path
+    import sys as _cc_sys
+    from pathlib import Path as _CcPath
+    _cc_sys.path.insert(0, str(next(p for p in _CcPath(__file__).resolve().parents if p.name == "scripts")))
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+
 import json, os, sys, urllib.request
 from datetime import datetime
 from pathlib import Path
@@ -89,7 +97,7 @@ def run():
         _base = get_local_llm_base_url().rstrip("/")
         payload = json.dumps({"model": _model, "stream": False, "prompt": "hi", "options": {"num_predict": 1}}).encode()
         req = urllib.request.Request(f"{_base}/api/generate", data=payload, headers={"Content-Type": "application/json"}, method="POST")
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with _cc_urlopen(req, timeout=30) as resp:
             check(f"Ollama {_model} responds", True)
     except Exception as e:
         check("Ollama", False, str(e))
@@ -98,7 +106,7 @@ def run():
     print("\nPORTFOLIO SERVER:")
     for endpoint in ["/api/v2/overview", "/api/v2/tax-situation", "/api/v2/alex/recent"]:
         try:
-            with urllib.request.urlopen(f"http://localhost:7777{endpoint}", timeout=5) as resp:
+            with _cc_urlopen(f"http://localhost:7777{endpoint}", timeout=5) as resp:
                 data = json.loads(resp.read())
                 check(f"API {endpoint}", data.get("ok", False), json.dumps(data)[:80])
         except Exception as e:
@@ -158,9 +166,9 @@ def run():
     # 8. Data sync (catches the value desync + header 0s issues)
     print("\nDATA SYNC:")
     try:
-        ov = json.loads(urllib.request.urlopen("http://localhost:7777/api/v2/overview", timeout=5).read()).get("data", {})
-        ta = json.loads(urllib.request.urlopen("http://localhost:7777/api/v2/trade-ai", timeout=5).read()).get("data", {})
-        ae = json.loads(urllib.request.urlopen("http://localhost:7777/api/v2/aegis/chat-context", timeout=5).read()).get("data", {})
+        ov = json.loads(_cc_urlopen("http://localhost:7777/api/v2/overview", timeout=5).read()).get("data", {})
+        ta = json.loads(_cc_urlopen("http://localhost:7777/api/v2/trade-ai", timeout=5).read()).get("data", {})
+        ae = json.loads(_cc_urlopen("http://localhost:7777/api/v2/aegis/chat-context", timeout=5).read()).get("data", {})
         # Portfolio value sync
         ov_val = ov.get("portfolio_value", 0)
         ae_sum = ae.get("portfolio_summary", "")

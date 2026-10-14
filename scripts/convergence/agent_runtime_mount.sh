@@ -7,6 +7,7 @@
 #   200       → already connected (this host) → MOUNT+CONNECT already done → verify only
 # DRY-RUN by default. --apply performs the install; --apply requires the MOUNT ack. No CONNECT here.
 set -u -o pipefail
+CC_CURL="${CC_CURL:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/cc_curl.sh}"  # cc_auth 2026-10-14: loopback CC calls carry the service token
 umask 077
 REPO="/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
 BASE="http://127.0.0.1:7777"; EP="$BASE/api/v3/agent-runtime/runs?limit=1"
@@ -14,7 +15,7 @@ LIB="$(dirname "$0")/convergence_lib.py"
 APPLY=""; ACK=""
 for a in "$@"; do case "$a" in --apply) APPLY=1;; --ack=*) ACK="${a#--ack=}";; esac; done
 
-resp="$(curl -sS --max-time 8 -w $'\n%{http_code}' "$EP" 2>/dev/null || printf '\n000')"
+resp="$("$CC_CURL" -sS --max-time 8 -w $'\n%{http_code}' "$EP" 2>/dev/null || printf '\n000')"
 code="${resp##*$'\n'}"; body="${resp%$'\n'*}"
 state="$(PY_BODY="$body" PY_CODE="$code" python3 - "$LIB" <<'PY'
 import os,sys,json,importlib.util

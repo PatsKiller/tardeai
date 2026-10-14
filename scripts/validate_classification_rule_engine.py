@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
 """validate_classification_rule_engine.py — Phase 15: Classification Rule Engine validation."""
+try:  # cc_auth (2026-10-14): service token for loopback Command Center (:7777) calls
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+except ImportError:  # pragma: no cover - scripts/ not on sys.path
+    import sys as _cc_sys
+    from pathlib import Path as _CcPath
+    _cc_sys.path.insert(0, str(next(p for p in _CcPath(__file__).resolve().parents if p.name == "scripts")))
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+
 import json, os, sys, urllib.request
 from pathlib import Path
 
@@ -15,7 +23,7 @@ def check(name, passed, detail=""):
 
 
 def api_get(path):
-    r = urllib.request.urlopen(urllib.request.Request(f"{API_BASE}{path}", headers={"User-Agent": "validate/1.0"}), timeout=10)
+    r = _cc_urlopen(urllib.request.Request(f"{API_BASE}{path}", headers={"User-Agent": "validate/1.0"}), timeout=10)
     return json.loads(r.read())
 
 

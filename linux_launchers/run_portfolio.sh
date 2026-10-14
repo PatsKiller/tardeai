@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+CC_CURL="${CC_CURL:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../scripts" && pwd)/cc_curl.sh}"  # cc_auth 2026-10-14: loopback CC calls carry the service token
 PROJECT_ROOT="/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
 LOG_DIR="$PROJECT_ROOT/logs"
 STAMP="$(date '+%Y%m%d-%H%M%S')"
@@ -33,5 +34,5 @@ fi
   # Refresh Steph SOUL.md live portfolio section from current holdings.json
   echo "[DAILY] Refreshing Steph SOUL.md..."
   python3 "$HOME/.openclaw/skills/steph-wealth-advisor/scripts/refresh_soul.py" || echo "[DAILY] SOUL refresh skipped (non-fatal)"
-  curl -s -X POST -H "Content-Type: application/json" -d '{}' http://127.0.0.1:7777/api/clear-pending >/dev/null 2>&1 || true
+  "$CC_CURL" -s -X POST -H "Content-Type: application/json" -d '{}' http://127.0.0.1:7777/api/clear-pending >/dev/null 2>&1 || true
 } 2>&1 | tee "$LOG_FILE"

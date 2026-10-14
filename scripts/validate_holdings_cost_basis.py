@@ -2,6 +2,14 @@
 """validate_holdings_cost_basis.py — assert the June-5 cost-basis + income repair against known anchors.
 Reads holdings.json + income_ledger.json + the /api/v2/open-trades/intelligence endpoint. Exits non-zero
 on any failure. Read-only."""
+try:  # cc_auth (2026-10-14): service token for loopback Command Center (:7777) calls
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+except ImportError:  # pragma: no cover - scripts/ not on sys.path
+    import sys as _cc_sys
+    from pathlib import Path as _CcPath
+    _cc_sys.path.insert(0, str(next(p for p in _CcPath(__file__).resolve().parents if p.name == "scripts")))
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+
 import json, os, sys, urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -50,7 +58,7 @@ fc = H.get(("schwab_rollover_ira", "FCNTX")) or {}
 chk("FCNTX flagged needs_transfer_mapping (basis None)", fc.get("cost_basis") is None and fc.get("cost_basis_source") == "basis_needs_transfer_mapping", str(fc.get("cost_basis_source")))
 # Open Trades JSON strict + no fabricated basis
 try:
-    raw = urllib.request.urlopen("http://localhost:7777/api/v2/open-trades/intelligence", timeout=60).read().decode()
+    raw = _cc_urlopen("http://localhost:7777/api/v2/open-trades/intelligence", timeout=60).read().decode()
     json.loads(raw, parse_constant=lambda x: (_ for _ in ()).throw(ValueError(x)))
     chk("Open Trades JSON strict valid", True)
 except Exception as e:

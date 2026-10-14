@@ -13,6 +13,14 @@ Usage:
     python3 scripts/iris_taxonomy_agent.py --audit           # channel audit only
     python3 scripts/iris_taxonomy_agent.py --propose "add channel X for dividend coverage"
 """
+try:  # cc_auth (2026-10-14): service token for loopback Command Center (:7777) calls
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+except ImportError:  # pragma: no cover - scripts/ not on sys.path
+    import sys as _cc_sys
+    from pathlib import Path as _CcPath
+    _cc_sys.path.insert(0, str(next(p for p in _CcPath(__file__).resolve().parents if p.name == "scripts")))
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+
 import json, os, sys, re, time, argparse
 from datetime import datetime, timezone
 from pathlib import Path
@@ -1408,7 +1416,7 @@ def run_library_audit(dry_run=False):
     print("  [3a] RAG Coverage...")
     try:
         import urllib.request as _ur
-        with _ur.urlopen("http://localhost:7777/api/v2/rag/status", timeout=10) as r:
+        with _cc_urlopen("http://localhost:7777/api/v2/rag/status", timeout=10) as r:
             rag = json.loads(r.read()).get("data", {})
         coverage = rag.get("coverage_pct", 0)
         # pct is None when embeddings outnumber current rows (orphans of pruned rows) — that is
@@ -2051,7 +2059,7 @@ def run_freshness_validation(dry_run=False):
 
     try:
         # Check data product health via API
-        with urllib.request.urlopen("http://localhost:7777/api/v2/data-product-health", timeout=10) as r:
+        with _cc_urlopen("http://localhost:7777/api/v2/data-product-health", timeout=10) as r:
             dp = json.loads(r.read()).get("data", {})
         products = dp.get("products", [])
         stale = [p for p in products if p.get("status") == "stale" and not p.get("weekend_market_closed")]
@@ -2061,7 +2069,7 @@ def run_freshness_validation(dry_run=False):
                 print(f"    {s['product']}: {s.get('age_hours',0):.0f}h old (max {s['max_stale_hours']}h) — remedy: {s.get('remediation','?')}")
 
         # Check pipeline health
-        with urllib.request.urlopen("http://localhost:7777/api/v2/pipeline-health-master", timeout=10) as r:
+        with _cc_urlopen("http://localhost:7777/api/v2/pipeline-health-master", timeout=10) as r:
             ph = json.loads(r.read())
         summary = ph.get("summary", ph.get("data", {}).get("summary", {}))
         critical = summary.get("critical", 0)

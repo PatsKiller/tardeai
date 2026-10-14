@@ -30,11 +30,20 @@ os.environ["TRADEAI_AUDIT_LEDGER_DB"] = "0"
 # a row per transition, and a unit test driving _alert() must not mint one in the
 # live database. A test that wants to prove recording works injects a fake writer.
 os.environ["TRADEAI_ALERT_EVENT_DB"] = "0"
+# cc_auth (2026-10-14): lib/cc_client attaches the host's Command Center service token to loopback
+# :7777 calls. No test may read the live token file; point it at a path that never exists.
+os.environ["TRADEAI_CC_SERVICE_TOKEN_FILE"] = os.path.join(_scratch("tradeai_cc_token_tests_"), "absent_cc_service_token")
 os.environ["TRADEAI_AUDIT_LEDGER_DIR"] = _scratch("tradeai_audit_ledger_tests_")
 # Producer hooks record CIO outputs (cio_operator_artifacts); tests must never append
 # to the live persistent store.
 os.environ["CIO_OPERATOR_ARTIFACTS_JSONL"] = os.path.join(
     _scratch("tradeai_operator_artifacts_tests_"), "cio_operator_artifacts.jsonl")
+# The committed Schwab pause switch (config/schwab_access_mode.yaml, operator 2026-10-14: mode forbidden) must not
+# decide what a test sees: every test runs in "normal" unless it sets TRADEAI_SCHWAB_ACCESS_MODE itself
+# (monkeypatch.setenv wins over this default).
+os.environ["TRADEAI_SCHWAB_ACCESS_MODE"] = "normal"
+os.environ["TRADEAI_SCHWAB_PAUSED_ALERT_STATE"] = os.path.join(
+    _scratch("tradeai_schwab_paused_alert_"), "schwab_paused_alert_days.json")
 # The host's Comms Editor mode file (live since the operator promoted it) must not decide what a test
 # sends: in live mode deliver_text holds the message, and test_plaintext_fallback_actually_unescapes_on_the_wire
 # failed on every host where the file says live. A test that exercises the editor sets its own mode.

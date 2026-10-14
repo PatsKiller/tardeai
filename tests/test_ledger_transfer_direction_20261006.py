@@ -95,7 +95,8 @@ def test_a_failed_window_is_reported_not_returned_as_partial_history():
 def test_a_dry_run_never_pages():
     src = (ROOT / "scripts" / "schwab_transaction_ingest.py").read_text()
     body = src[src.index("def run("):]
-    assert body.count("_emit_health_alert(report)") == 2 and body.count("if apply") >= 2
+    # 3 since 2026-10-14: the Schwab-paused branch also reports, and it too is under `if apply`.
+    assert body.count("_emit_health_alert(report)") == 3 and body.count("if apply") >= 3
 
 
 # ── reinvestments are separate events; per-account replace; full precision (2026-10-06, second fix) ──

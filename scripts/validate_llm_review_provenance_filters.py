@@ -2,6 +2,14 @@
 """validate_llm_review_provenance_filters.py — verify AI Trade Eval provenance + filter behaviour.
 Read-only (HTTP GET).  python3 scripts/validate_llm_review_provenance_filters.py [--json PATH]
 """
+try:  # cc_auth (2026-10-14): service token for loopback Command Center (:7777) calls
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+except ImportError:  # pragma: no cover - scripts/ not on sys.path
+    import sys as _cc_sys
+    from pathlib import Path as _CcPath
+    _cc_sys.path.insert(0, str(next(p for p in _CcPath(__file__).resolve().parents if p.name == "scripts")))
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+
 import sys, json, urllib.request, urllib.parse
 
 BASE = "http://127.0.0.1:7777/api/v2/backtesting/trade-evaluations"
@@ -9,7 +17,7 @@ BASE = "http://127.0.0.1:7777/api/v2/backtesting/trade-evaluations"
 
 def _get(params=None):
     qs = ("?" + urllib.parse.urlencode(params)) if params else ""
-    return json.loads(urllib.request.urlopen(BASE + qs, timeout=30).read())["data"]
+    return json.loads(_cc_urlopen(BASE + qs, timeout=30).read())["data"]
 
 
 def main():

@@ -15,6 +15,13 @@ daily from cron. Read-only re: trading — no broker, no orders.
 Refactor wave 1 (2026-10-10): the no-flag cron form is unchanged (both steps). A real run writes
 data/runtime/refresh_symbol_cards_last.json (LaneRunReceipt@v1, ok_at only on success).
 """
+try:  # cc_auth (2026-10-14): service token for loopback Command Center (:7777) calls
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+except ImportError:  # pragma: no cover - scripts/ not on sys.path
+    import sys as _cc_sys
+    from pathlib import Path as _CcPath
+    _cc_sys.path.insert(0, str(next(p for p in _CcPath(__file__).resolve().parents if p.name == "scripts")))
+    from lib.cc_client import cc_urlopen as _cc_urlopen
 
 import json
 import os
@@ -64,7 +71,7 @@ def load_policy(path: Path = CONFIG_FILE) -> dict:
 
 def _fetch_cards(timeout_s: float, min_cards: int) -> tuple[bytes, int]:
     """One attempt: the endpoint payload and its card count. Raises on timeout, bad JSON or too few cards."""
-    data = urllib.request.urlopen(ENDPOINT, timeout=timeout_s).read()
+    data = _cc_urlopen(ENDPOINT, timeout=timeout_s).read()
     n = len((json.loads(data).get("data") or {}).get("cards") or {})
     if n < min_cards:
         raise ValueError(f"only {n} cards (endpoint not ready)")

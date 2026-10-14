@@ -15,6 +15,10 @@ type Health = {
   days_to_true_expiry?: number | null
   true_expiry?: string | null
   message?: string
+  // Operator pause switch (config/schwab_access_mode.yaml, incident 2026-10-14): 'forbidden' = Schwab paused.
+  schwab_access_mode?: 'normal' | 'read_only' | 'forbidden'
+  schwab_paused?: boolean
+  schwab_paused_message?: string
 }
 
 function shouldShow(h: Health | null): boolean {
@@ -48,6 +52,21 @@ export default function SchwabReauthBanner() {
     const id = window.setInterval(load, 60_000)
     return () => { cancelled = true; window.clearInterval(id) }
   }, [])
+
+  // Schwab paused by the operator: say so plainly and offer NO re-auth link (re-auth cannot succeed and is not wanted).
+  if (health && (health.schwab_paused || health.schwab_access_mode === 'forbidden')) {
+    return (
+      <div
+        role="alert"
+        style={{
+          background: 'var(--amber-dim)', color: 'var(--amber)', borderBottom: '1px solid var(--amber)',
+          fontSize: 11.5, fontWeight: 650, textAlign: 'center', padding: '5px 10px', letterSpacing: 0.15,
+        }}
+      >
+        ⏸ Schwab paused — {health.schwab_paused_message || 'Schwab app deactivated by operator; Schwab data is stale and Schwab stops are not monitored'}
+      </div>
+    )
+  }
 
   const hard = !!(health?.needs_reauth || health?.degraded)
   const show = shouldShow(health) && (hard || !dismissedSoft)

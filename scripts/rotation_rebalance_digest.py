@@ -8,6 +8,14 @@ that come back as rotate-in ideas), and sends a Telegram digest.
 ADVISORY ONLY: no broker action, no order, no dollar amount is ever placed — the digest reports ranges to
 REVIEW only. Hits the local API (no external network, no Grok/xAI API).
 """
+try:  # cc_auth (2026-10-14): service token for loopback Command Center (:7777) calls
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+except ImportError:  # pragma: no cover - scripts/ not on sys.path
+    import sys as _cc_sys
+    from pathlib import Path as _CcPath
+    _cc_sys.path.insert(0, str(next(p for p in _CcPath(__file__).resolve().parents if p.name == "scripts")))
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+
 import json
 import sys
 import urllib.request
@@ -18,14 +26,14 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def _get(path: str) -> dict:
-    with urllib.request.urlopen(BASE + path, timeout=120) as r:
+    with _cc_urlopen(BASE + path, timeout=120) as r:
         return json.loads(r.read())
 
 
 def _post(path: str, body: dict | None = None) -> dict:
     req = urllib.request.Request(BASE + path, data=json.dumps(body or {}).encode(),
                                  headers={"Content-Type": "application/json"}, method="POST")
-    with urllib.request.urlopen(req, timeout=180) as r:
+    with _cc_urlopen(req, timeout=180) as r:
         return json.loads(r.read())
 
 

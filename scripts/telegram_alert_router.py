@@ -98,7 +98,8 @@ def _record_budget_send() -> None:
 
 
 def _ops_exempt(message: str) -> bool:
-    return bool(_OPS_EXEMPT_PATTERN.search(message or ""))
+    # A stop about to fire / fired always pages, even past the daily P0 budget (2026-10-14 SPCX incident).
+    return bool(_OPS_EXEMPT_PATTERN.search(message or "") or _STOP_FIRING_PATTERN.search(message or ""))
 
 
 def _load_policy() -> dict:
@@ -193,6 +194,17 @@ _P0_PATTERNS = [
 ]
 
 _STOP_PATTERN = re.compile(r"STOP.*(TRIGGERED|HIT|alert)", re.IGNORECASE)
+# 2026-10-14 incident (SPCX): stop_health_check flagged NEAR_TRIGGER "about to fire" on ~$120k of SPCX stops at
+# 13:50/14:00/14:10 ET and the stops filled at 14:36/14:38 — every warning went "Suppressed (P1_DIGEST)" because
+# operator_alert_policy_v2.route_event (checked first) returned DIGEST, so the P0 stop patterns below never ran.
+# A stop that is about to fire or has fired is always an interrupt: matched BEFORE the policy router.
+# Covers every stop_health_check format: the decision card ("STOP WARNING" / "CRITICAL STOP ALERT"), the single
+# line ("STOP HEALTH — NEAR_TRIGGER: ...") and the batch ("STOP HEALTH — N alert(s)" + per-row lines).
+_STOP_FIRING_PATTERN = re.compile(
+    r"(?:STOP HEALTH|STOP WARNING|CRITICAL STOP ALERT)[\s\S]*?"
+    r"(?:NEAR[_ ]TRIGGER|\bTRIGGERED\b|about to fire|stop FILLED)",
+    re.IGNORECASE,
+)
 _GO_PATTERN = re.compile(r"GO.Tier|🎯.*GO|Trade AI v12|Trade AI LIVE", re.IGNORECASE)
 # Momentum-scalp setup alerts (from social_scalp_scanner: "GO … Social Scalp Setup" / "WAIT … Social
 # Mention"). Operator wants these live; without a carve-out the WAIT ones die on suppress_wait.
@@ -231,6 +243,10 @@ def classify_alert(message: str) -> str:
             return "P3_LOG_ONLY"
     except Exception:
         pass
+
+    # Stop about to fire / fired → interrupt, ahead of every digest/dashboard route (2026-10-14 SPCX incident).
+    if _STOP_FIRING_PATTERN.search(message):
+        return "P0_INTERRUPT"
 
     try:
         from operator_alert_policy_v2 import classify_legacy_message, route_event

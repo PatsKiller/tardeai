@@ -10,6 +10,13 @@ prove M4 beyond pin-soak alone.
 Usage: python3 scripts/check_command_center_data_consistency.py
 """
 from __future__ import annotations
+try:  # cc_auth (2026-10-14): service token for loopback Command Center (:7777) calls
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+except ImportError:  # pragma: no cover - scripts/ not on sys.path
+    import sys as _cc_sys
+    from pathlib import Path as _CcPath
+    _cc_sys.path.insert(0, str(next(p for p in _CcPath(__file__).resolve().parents if p.name == "scripts")))
+    from lib.cc_client import cc_urlopen as _cc_urlopen
 
 import json
 import sys
@@ -50,7 +57,7 @@ def check(name, status, detail):
 
 def api_get(path):
     try:
-        with urllib.request.urlopen(f"{API_BASE}{path}", timeout=15) as r:
+        with _cc_urlopen(f"{API_BASE}{path}", timeout=15) as r:
             return json.loads(r.read())
     except Exception as e:
         return {"error": str(e)}

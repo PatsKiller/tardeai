@@ -8,6 +8,13 @@ Safety:
     - Read-only: no DB writes, no alerts, no service changes
     - File output only to docs/hermes/observations/
 """
+try:  # cc_auth (2026-10-14): service token for loopback Command Center (:7777) calls
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+except ImportError:  # pragma: no cover - scripts/ not on sys.path
+    import sys as _cc_sys
+    from pathlib import Path as _CcPath
+    _cc_sys.path.insert(0, str(next(p for p in _CcPath(__file__).resolve().parents if p.name == "scripts")))
+    from lib.cc_client import cc_urlopen as _cc_urlopen
 
 import json
 import os
@@ -32,7 +39,7 @@ def run_cmd(cmd, timeout=10):
 
 def http_check(url, timeout=5):
     try:
-        resp = urllib.request.urlopen(url, timeout=timeout)
+        resp = _cc_urlopen(url, timeout=timeout)
         return resp.status, True
     except Exception as e:
         return str(e)[:100], False

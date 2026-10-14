@@ -3,6 +3,14 @@
 
 Read-only. No trades. No orders.
 """
+try:  # cc_auth (2026-10-14): service token for loopback Command Center (:7777) calls
+    from lib.cc_client import cc_headers as _cc_headers
+except ImportError:  # pragma: no cover - scripts/ not on sys.path
+    import sys as _cc_sys
+    from pathlib import Path as _CcPath
+    _cc_sys.path.insert(0, str(next(p for p in _CcPath(__file__).resolve().parents if p.name == "scripts")))
+    from lib.cc_client import cc_headers as _cc_headers
+
 import argparse, json, sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -20,7 +28,7 @@ def main():
     p.add_argument("--verbose", action="store_true")
     args = p.parse_args()
 
-    resp = requests.get(f"{args.base_url}/api/v2/paper-proposals", timeout=30)
+    resp = requests.get(f"{args.base_url}/api/v2/paper-proposals", headers=_cc_headers(f"{args.base_url}/api/v2/paper-proposals"), timeout=30)
     data = resp.json()
     summary = data.get("summary", {})
     proposals = data.get("proposals", [])

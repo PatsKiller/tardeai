@@ -11,6 +11,7 @@
 # DRY-RUN by default. Sandbox-testable off-host: CC_DIST / BACKUP_ROOT / SKIP_SMOKE / SMOKE_BASE /
 # SMOKE_ROUTES / VERIFY_META_URL / VERIFY_AGENT_URL(=none to skip) / VERIFY_AGENT_ROLE. Never prints a secret.
 set -u -o pipefail
+CC_CURL="${CC_CURL:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/cc_curl.sh}"  # cc_auth 2026-10-14: loopback CC calls carry the service token
 umask 077
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="${REPO:-/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild}"
@@ -109,11 +110,11 @@ rollback(){
 if [ "${SKIP_SMOKE:-}" != "1" ]; then
   bad=0
   for r in $SMOKE_ROUTES; do
-    code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 "$BASE$r" 2>/dev/null || echo 000)"
+    code="$("$CC_CURL" -sS -o /dev/null -w '%{http_code}' --max-time 8 "$BASE$r" 2>/dev/null || echo 000)"
     echo "smoke|$r|$code"; [ "$code" = "200" ] || bad=1
   done
   # served build-meta must carry the candidate SHA (catches a stale/cached bundle or no-op swap)
-  sm="$(curl -sS --max-time 8 "$VERIFY_META_URL" 2>/dev/null || echo '{}')"
+  sm="$("$CC_CURL" -sS --max-time 8 "$VERIFY_META_URL" 2>/dev/null || echo '{}')"
   if printf '%s' "$sm" | PYTHONPATH="$DIR" python3 -c 'import json,sys,convergence_lib as cl
 raw=sys.stdin.read() or "{}"
 try: b=json.loads(raw)
@@ -125,7 +126,7 @@ sys.exit(0 if cl.served_build_ok(b, sys.argv[1]) else 1)' "$CAND_SC"; then
   fi
   # agent-runtime read plane must remain 200/read_only/connected/zero-authority
   if [ "$VERIFY_AGENT_URL" != "none" ]; then
-    ar="$(curl -sS --max-time 8 -w $'\n%{http_code}' "$VERIFY_AGENT_URL" 2>/dev/null || printf '{}\n000')"
+    ar="$("$CC_CURL" -sS --max-time 8 -w $'\n%{http_code}' "$VERIFY_AGENT_URL" 2>/dev/null || printf '{}\n000')"
     code="${ar##*$'\n'}"; body="${ar%$'\n'*}"
     if printf '%s' "$body" | PYTHONPATH="$DIR" python3 -c 'import json,sys,convergence_lib as cl
 raw=sys.stdin.read() or "{}"

@@ -10,6 +10,13 @@ Usage:
 
 Does NOT touch broker, holdings, execution, or trading behavior.
 """
+try:  # cc_auth (2026-10-14): service token for loopback Command Center (:7777) calls
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+except ImportError:  # pragma: no cover - scripts/ not on sys.path
+    import sys as _cc_sys
+    from pathlib import Path as _CcPath
+    _cc_sys.path.insert(0, str(next(p for p in _CcPath(__file__).resolve().parents if p.name == "scripts")))
+    from lib.cc_client import cc_urlopen as _cc_urlopen
 
 import argparse
 import json
@@ -27,7 +34,7 @@ API_BASE = os.getenv("API_BASE_URL", "http://localhost:7777")
 def fetch_dashboard():
     """Fetch the overnight dashboard data from the API."""
     url = f"{API_BASE}/api/v2/overnight-dashboard"
-    resp = urlopen(url, timeout=30)
+    resp = _cc_urlopen(url, timeout=30)
     data = json.loads(resp.read())
     if data.get("ok"):
         return data.get("data", {})

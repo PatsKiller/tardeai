@@ -3,6 +3,14 @@
 
 Tests all safety gates, simulations, and API endpoints.
 """
+try:  # cc_auth (2026-10-14): service token for loopback Command Center (:7777) calls
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+except ImportError:  # pragma: no cover - scripts/ not on sys.path
+    import sys as _cc_sys
+    from pathlib import Path as _CcPath
+    _cc_sys.path.insert(0, str(next(p for p in _CcPath(__file__).resolve().parents if p.name == "scripts")))
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+
 import json, os, sys, urllib.request
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -142,7 +150,7 @@ def run_tests():
     for ep in ["/api/v2/paper-execution-rechecks", "/api/v2/market-session"]:
         try:
             url = f"http://localhost:7777{ep}"
-            with urllib.request.urlopen(url, timeout=5) as resp:
+            with _cc_urlopen(url, timeout=5) as resp:
                 d = json.loads(resp.read())
                 test(f"API {ep} returns 200", d.get("ok", False), str(d)[:80])
         except Exception as e:
@@ -151,7 +159,7 @@ def run_tests():
 
     # 20. Dashboard route
     try:
-        with urllib.request.urlopen("http://localhost:7777/v2/paper-trade-intelligence", timeout=5) as resp:
+        with _cc_urlopen("http://localhost:7777/v2/paper-trade-intelligence", timeout=5) as resp:
             test("Dashboard /v2/paper-trade-intelligence returns 200", resp.status == 200)
     except Exception as e:
         test("Dashboard route returns 200", False, str(e))

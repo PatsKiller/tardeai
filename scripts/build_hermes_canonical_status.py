@@ -12,6 +12,14 @@ would write and exits; writes neither the snapshot nor the lane receipt. A real 
 snapshot exactly as before, then writes data/runtime/build-hermes-canonical-status_last.json
 (LaneRunReceipt@v1) and exits 1 when any endpoint failed (ok_at advances only when all succeeded).
 """
+try:  # cc_auth (2026-10-14): service token for loopback Command Center (:7777) calls
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+except ImportError:  # pragma: no cover - scripts/ not on sys.path
+    import sys as _cc_sys
+    from pathlib import Path as _CcPath
+    _cc_sys.path.insert(0, str(next(p for p in _CcPath(__file__).resolve().parents if p.name == "scripts")))
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+
 import os, sys, json, subprocess, urllib.request
 import argparse
 from datetime import datetime, timezone
@@ -28,7 +36,7 @@ XDG = {"XDG_RUNTIME_DIR": f"/run/user/{os.getuid()}", **os.environ}
 
 def api(ep):
     try:
-        with urllib.request.urlopen(f"{BASE}/{ep}", timeout=20) as r:
+        with _cc_urlopen(f"{BASE}/{ep}", timeout=20) as r:
             return json.loads(r.read()).get("data", {})
     except Exception as e:
         return {"_error": str(e)[:120]}

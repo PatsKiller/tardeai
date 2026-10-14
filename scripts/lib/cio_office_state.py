@@ -6,6 +6,13 @@ re-entry desk state. No manual --prev/--curr arguments required.
 Authority: READ_ONLY_ADVISORY. No broker / order / stop.
 """
 from __future__ import annotations
+try:  # cc_auth (2026-10-14): service token for loopback Command Center (:7777) calls
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+except ImportError:  # pragma: no cover - scripts/ not on sys.path
+    import sys as _cc_sys
+    from pathlib import Path as _CcPath
+    _cc_sys.path.insert(0, str(next(p for p in _CcPath(__file__).resolve().parents if p.name == "scripts")))
+    from lib.cc_client import cc_urlopen as _cc_urlopen
 
 import json
 import os
@@ -58,7 +65,7 @@ def office_state_path() -> Path:
 
 def _http_json(url: str, timeout: float = 20.0) -> dict[str, Any]:
     req = urllib.request.Request(url, method="GET", headers={"Accept": "application/json"})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
+    with _cc_urlopen(req, timeout=timeout) as resp:
         raw = resp.read()
     data = json.loads(raw.decode("utf-8"))
     if isinstance(data, dict) and "data" in data and isinstance(data["data"], dict):
