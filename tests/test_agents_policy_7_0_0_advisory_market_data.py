@@ -285,13 +285,22 @@ def test_admission_refuses_while_proposed_and_admits_once_active():
     (lambda r, e: e.update(env_names=["SCHWAB_APP_KEY"]), "broker_credential_env"),
     (lambda r, e: e.update(lock="/tmp/other.lock"), "advisory_md_lock_mismatch"),
     (lambda r, e: e.update(lock_kind="safe_flock"), "advisory_md_lock_kind"),
-    (lambda r, e: e.update(dry_run_arg=[]), "no_dry_run_arg"),
+    (lambda r, e: e.update(dry_run_arg=None), "no_dry_run_arg"),
+    (lambda r, e: e.update(dry_run_arg=[], command=["$PY", PREMARKET, "--apply"]), "no_dry_run_arg"),
+    (lambda r, e: e.update(dry_run_arg=[], live_arg=["--apply", "--symbols", "X"]), "no_dry_run_arg"),
+    (lambda r, e: (e.update(dry_run_arg=[]), r["scheduler"].update(command_text=r["scheduler"]["command_text"]
+                   .replace(" --apply", ""))), "no_dry_run_arg"),
 ])
 def test_admission_refusals(mutate, why):
     row, entry = _premarket_row(), dict(ENTRY, dry_run_arg=["--symbols", "AAPL"])
     mutate(row, entry)
     ok, reason = _admit(row, entry)
     assert ok is False and why in reason, reason
+
+
+def test_bare_command_is_the_dry_run_only_under_an_explicit_cron_apply():
+    entry = dict(ENTRY, dry_run_arg=[], live_arg=["--apply"])
+    assert _admit(_premarket_row(), entry) == (True, "advisory_md_admitted")
 
 
 def test_r1_class_admission_routes_ceiling_lanes_to_the_advisory_gate():
