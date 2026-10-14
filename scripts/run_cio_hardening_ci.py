@@ -4197,6 +4197,18 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: BRIDGE_OAUTH_LLM_STEP_20261014 — the governed bridge executes the routing row's order
+        # (Grok OAuth -> ChatGPT OAuth -> DeepSeek, opt-in rows, CIO_BRIDGE_OAUTH_TRANSPORTS) with one receipt
+        # per lane: Retry-After hold, per-provider breaker, shared route deadline, auth failure distinct from a
+        # serving failure. POST /v1/llm_step (AGENTS.md §23.23 LLM steps): registered + caller-mapped process,
+        # closed schema with enumerated decision fields, facts as data, one LlmStepAudit@v1 row per call.
+        # Mocked transports only; no live proxy, no key.
+        "bridge_oauth_llm_step_20261014",
+        [
+            "tests/test_bridge_oauth_llm_step_20261014.py",
+        ],
+    ),
+    (
         # ANCHOR: BACKUP_COVERAGE_GATE_20261009 — operator question 2026-10-09: every repo-declared asset
         # (authority store, persistent tree, unit, secret name, migration table, fixed infra) resolves to a
         # backup class in config/backup_coverage_manifest.json; a new unmapped asset or a new gap fails,
