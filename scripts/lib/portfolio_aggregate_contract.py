@@ -129,11 +129,12 @@ def _oldest_row_observation(rows: list[dict]) -> tuple[Optional[str], Optional[s
     """
     stamps: list[tuple[str, str, str]] = []
     for row in rows:
-        raw = row.get("broker_position_as_of") or row.get("as_of") or ""
-        raw = str(raw).strip()
+        # broker_position_as_of_at (2026-10-14) is the datetime twin of the date-only stamp: prefer it, so a
+        # book that stopped syncing at 14:52 reads as hours old the same day instead of "today" until tomorrow.
+        field = next((k for k in ("broker_position_as_of_at", "broker_position_as_of", "as_of") if row.get(k)), None)
+        raw = str(row.get(field) or "").strip() if field else ""
         if not raw:
             continue
-        field = "broker_position_as_of" if row.get("broker_position_as_of") else "as_of"
         stamps.append((_obs_key(raw), raw, field))
     if not stamps:
         return None, None

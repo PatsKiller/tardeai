@@ -40082,6 +40082,59 @@ def _proposal_accounts(query=None):
     return out
 
 
+def _schwab_access_fields() -> dict:
+    """The operator's Schwab pause switch (config/schwab_access_mode.yaml) for status surfaces (2026-10-14).
+
+    Every Schwab status route carries these so a dashboard can show "Schwab paused" instead of "re-auth"."""
+    try:
+        import sys as _sys
+
+        _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from lib import schwab_access_mode as _sam
+
+        st = _sam.status()
+    except Exception as exc:  # noqa: BLE001 — an unreadable switch is reported, never guessed as normal
+        st = {"mode": "unknown", "paused": False, "reads_allowed": True, "reason": None, "since": None,
+              "error": f"{type(exc).__name__}: {exc}"[:160]}
+    paused = bool(st.get("paused"))
+    return {
+        "schwab_access_mode": st.get("mode"),
+        "schwab_paused": paused,
+        "schwab_paused_since": st.get("since"),
+        "schwab_paused_message": (
+            f"{st.get('reason') or 'Schwab paused by operator'} — Schwab positions are stale (cache) and "
+            "Schwab stops are NOT being monitored; do not re-auth"
+            if paused
+            else None
+        ),
+    }
+
+
+def _schwab_last_sync_by_account() -> dict:
+    """Latest schwab_sync_history row per account_key: {account_key: {status, reason, created_at}}."""
+    rows = (
+        _db_query("""SELECT DISTINCT ON (account_key) account_key, status, reason, created_at
+                       FROM schwab_sync_history ORDER BY account_key, created_at DESC""")
+        or []
+    )
+    return {str(r.get("account_key") or "").lower(): r for r in rows if isinstance(r, dict)}
+
+
+def _holdings_rows_as_of(rows: list) -> str | None:
+    """Newest broker-confirmation stamp across an account's holdings rows: the datetime stamp
+    (broker_position_as_of_at, 2026-10-14) when present, else updated_at, else the legacy date-only stamp."""
+    best = None
+    for h in rows:
+        for k in ("broker_position_as_of_at", "updated_at", "broker_position_as_of"):
+            v = h.get(k)
+            if v:
+                v = str(v)
+                if best is None or v > best:
+                    best = v
+                break
+    return best
+
+
 def _schwab_accounts_live(query=None):
     """GET /api/v2/schwab/accounts-live — READ-ONLY positions + orders from periodic caches.
 
@@ -40128,6 +40181,10 @@ def _schwab_accounts_live(query=None):
     sdbr_rows = (
         _db_query("SELECT account_key FROM broker_accounts WHERE broker ILIKE '%schwab%' ORDER BY account_key") or []
     )
+    # Incident 2026-10-14: this route serves the holdings.json CACHE. When Schwab is paused, or the account's
+    # latest position sync did not succeed, the cache must be labelled stale — never "ok" as if live.
+    _access = _schwab_access_fields()
+    _last_sync = _schwab_last_sync_by_account()
 
     # One price truth (lib/portfolio_positions): data-broker quote → stored mark; never `current_price`.
     from lib import portfolio_positions as _pp_live
@@ -40181,6 +40238,15 @@ def _schwab_accounts_live(query=None):
                     }
                 )
 
+        _acct_rows = [
+            h
+            for h in holdings
+            if str(h.get("account") or "").strip().lower() in (ak_canonical.lower(), ak_short.lower(), _resolve(ak_short))
+        ]
+        _sync = _last_sync.get(ak_canonical.lower()) or _last_sync.get(_resolve(ak_canonical).lower()) or {}
+        _schwab_ok = (not _access["schwab_paused"]) and str(_sync.get("status") or "") == "ok"
+        _as_of = _holdings_rows_as_of(_acct_rows)
+
         # ── balances: cash rows from holdings.json ──
         cash = buying_power = account_value = None
         balances_status = "unavailable"
@@ -40214,7 +40280,14 @@ def _schwab_accounts_live(query=None):
             {
                 "account_key": ak_canonical,
                 "positions": pos,
-                "positions_status": "ok" if pos else "empty",
+                "positions_status": ("stale" if not _schwab_ok else "ok") if pos else "empty",
+                "source": "cache",
+                "as_of": _as_of,
+                "schwab_last_sync": {
+                    "status": _sync.get("status"),
+                    "reason": _sync.get("reason"),
+                    "at": _json_clean(_sync.get("created_at")),
+                },
                 "orders": orders,
                 "orders_status": "ok" if activity_rows else "empty",
                 "cash": cash,
@@ -40230,6 +40303,7 @@ def _schwab_accounts_live(query=None):
             "read_only": True,
             "cached_seconds": 120,
             "source": "holdings_json+schwab_activity_log",
+            **_access,
             "note": "READ-ONLY monitor — served from periodic caches (holdings.json + "
             "schwab_activity_log) refreshed every 15 min. Not real-time. "
             "'Edit' on this surface produces a DRAFT modification (preview/translate) "
@@ -43627,6 +43701,7 @@ def _schwab_status(query=None):
         ],
         "write_locked": True,
         "api_write_enabled": False,
+        **_schwab_access_fields(),
         "note": "Read-only Schwab integration. Writes fenced (NotProvenWrite); api_write_enabled=false; MANUAL_REVIEW.",
     }
 
@@ -43712,9 +43787,13 @@ def _schwab_token_health(query=None):
             "last_error": "no token on file — manual OAuth login required",
         }
     )
-    # cached live probe (5 min) — only worth probing when a token exists
+    _access = _schwab_access_fields()
+    # cached live probe (5 min) — only worth probing when a token exists, and never while Schwab is paused
+    # (the operator deactivated the app, 2026-10-14: a probe is a guaranteed 401 and a pointless Schwab call).
     probe = _SCHWAB_PROBE_CACHE["result"]
-    if key and h.get("has_token") and (force or probe is None or (_t.time() - _SCHWAB_PROBE_CACHE["ts"] > 300)):
+    if _access["schwab_paused"]:
+        probe = None
+    elif key and h.get("has_token") and (force or probe is None or (_t.time() - _SCHWAB_PROBE_CACHE["ts"] > 300)):
         probe = tm.live_probe(key, "schwab", "live")
         _SCHWAB_PROBE_CACHE.update(ts=_t.time(), result=probe)
         if probe.get("needs_reauth"):
@@ -43732,9 +43811,11 @@ def _schwab_token_health(query=None):
         or (dtr is not None and float(dtr) <= 1.0)
         or (sched.get("days_to_true_expiry") is not None and float(sched["days_to_true_expiry"]) <= 1.0)
     )
-    banner = bool(needs_reauth or proactive)
+    banner = bool(needs_reauth or proactive or _access["schwab_paused"])
     msg = (
-        "Schwab login expired/revoked — re-authenticate before placing live orders."
+        _access["schwab_paused_message"]
+        if _access["schwab_paused"]
+        else "Schwab login expired/revoked — re-authenticate before placing live orders."
         if needs_reauth
         else (
             "Schwab login renewal window — renew via Command Center before true expiry."
@@ -43775,6 +43856,7 @@ def _schwab_token_health(query=None):
         "proactive_due_at": sched.get("proactive_due_at"),
         "days_to_true_expiry": sched.get("days_to_true_expiry"),
         "message": msg,
+        **_access,
     }
 
 

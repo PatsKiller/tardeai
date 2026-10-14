@@ -34,12 +34,43 @@ def _conn():
     return _get_conn()
 
 
+PAUSED_ALERT_KEY = "schwab_transaction_ingest:auth_or_paused"
+
+
+def _paused_or_auth_alert(report, errs: dict, *, paused: bool) -> None:
+    """Schwab paused / auth failure: ONE rate-limited notice per ET day (2026-10-14), not a 15-minute
+    "empty weekday ingest" page. The SIEM row is still written on the first run of the day only."""
+    from lib import schwab_access_mode as _sam
+    if not _sam.once_per_day(PAUSED_ALERT_KEY):
+        print("  [monitor] Schwab paused/auth failure already reported today — not re-alerting")
+        return
+    if paused:
+        msg = (f"[schwab-ingest] Schwab paused by operator ({_sam.status().get('reason') or 'operator pause'}) — "
+               "transaction ingest skipped; journal/tax lots will be stale until Schwab is re-enabled. "
+               "Expected; do not re-auth. (once per day)")
+        severity = "warning"
+    else:
+        msg = (f"[schwab-ingest] Schwab paused/auth failure — 0 rows; errors={errs}. "
+               "Re-auth only if the Schwab app is meant to be active. (once per day)")
+        severity = "urgent"
+    from alert_event_writer import save_alert_event
+    save_alert_event(alert_type="data_integrity", severity=severity,
+                     source_script="schwab_transaction_ingest.py", symbol=None, raw_text=msg,
+                     parsed_payload={"kind": "schwab_ingest_health", "condition": "schwab_paused_or_auth",
+                                     "paused": paused, "errors": errs,
+                                     "rows_total": report.get("rows_total", 0)})
+    print(f"  [monitor] ALERT emitted: {msg}")
+
+
 def _emit_health_alert(report):
     """MONITOR: fire an urgent data_integrity alert (→ SIEM + Telegram) if Schwab auth failed — the
     silent NOT_PROVEN bug that zeroed the journal trade-sync for weeks — or a weekday ingest came back
     empty with every account erroring. This is the watchdog for the failure that previously went unseen."""
     try:
         errs = {ak: a.get("error") for ak, a in report.get("accounts", {}).items() if a.get("error")}
+        if report.get("mode") == "schwab_paused":
+            _paused_or_auth_alert(report, errs, paused=True)
+            return
         not_proven = any("NOT_PROVEN" in str(e).upper() or "ABSENT" in str(e).upper() for e in errs.values())
         auth_fail = False
         try:
@@ -47,6 +78,14 @@ def _emit_health_alert(report):
             auth_fail = any(tm.is_auth_failure(str(e)) for e in errs.values())
         except Exception:
             pass
+        try:
+            from lib import schwab_access_mode as _sam
+            auth_fail = auth_fail or any(_sam.is_auth_failure(e) for e in errs.values())
+        except Exception:
+            pass
+        if auth_fail and report.get("rows_total", 0) == 0:
+            _paused_or_auth_alert(report, errs, paused=False)
+            return
         weekday = datetime.datetime.now().weekday() < 5
         empty_all = weekday and report.get("rows_total", 0) == 0 and len(errs) >= len(ACCOUNTS)
         if not (not_proven or empty_all or auth_fail):
@@ -206,6 +245,17 @@ def _fetch_chunked(client, h, start, end):
 def run(apply=False, days=365):
     """Replace-in-window: the API is authoritative + complete (per-order, incl. slippage fills). Delete the
     Schwab ledger rows the API window covers and reload from the API; older pre-window CSV is kept."""
+    from lib import schwab_access_mode as _sam
+    if not _sam.reads_allowed():
+        # Operator pause (config/schwab_access_mode.yaml, incident 2026-10-14): no Schwab call, one INFO line,
+        # no ledger writes, and a once-per-day "Schwab paused" notice instead of "empty weekday ingest".
+        _sam.log_skip("schwab_transaction_ingest", printer=print)
+        report = {"accounts": {ak: {"error": _sam.PAUSED_STATUS} for ak in ACCOUNTS}, "rows_total": 0,
+                  "by_type": {}, "mode": "schwab_paused"}
+        if apply:
+            _emit_health_alert(report)
+        print(json.dumps(report, indent=2, default=str))
+        return report
     import schwab_transport as t
     conn = _conn(); cur = conn.cursor()
     now = datetime.datetime.now(datetime.timezone.utc)

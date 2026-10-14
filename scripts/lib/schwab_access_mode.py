@@ -130,6 +130,43 @@ def log_skip(component: str, logger: Optional[logging.Logger] = None, *, once: b
     return msg
 
 
+ALERT_STATE_PATH = ROOT / "data" / "runtime" / "schwab_paused_alert_days.json"
+
+
+def _alert_state_path() -> Path:
+    override = os.environ.get("TRADEAI_SCHWAB_PAUSED_ALERT_STATE")
+    return Path(override) if override else ALERT_STATE_PATH
+
+
+def once_per_day(key: str, *, now=None, record: bool = True) -> bool:
+    """True the first time `key` is asked on an ET calendar day, False after (durable across cron processes).
+
+    The "one alert per day" cap for paused / auth-failure notices: a module-level counter would reset on every
+    cron start (AGENTS.md §7). Fails OPEN (returns True) if the state file cannot be read — better one extra
+    notice than a silent pause."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    day = (now or datetime.now(ZoneInfo("America/New_York"))).strftime("%Y-%m-%d")
+    path = _alert_state_path()
+    try:
+        state = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+    except Exception:  # noqa: BLE001
+        state = {}
+    if state.get(key) == day:
+        return False
+    if record:
+        state[key] = day
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(state, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+            tmp.replace(path)
+        except Exception:  # noqa: BLE001
+            pass
+    return True
+
+
 def is_auth_failure(err: Any) -> bool:
     """True when an error (exception, dict or text) is an auth / forbidden failure rather than a data problem."""
     if err is None or err == "" or err == {}:

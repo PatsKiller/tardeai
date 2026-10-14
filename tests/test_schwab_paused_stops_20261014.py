@@ -20,8 +20,8 @@ import stop_health_check as shc  # noqa: E402
 import stop_lifecycle_monitor as slm  # noqa: E402
 from lib import stop_monitoring_health as smh  # noqa: E402
 
-COVERS = ["scripts/stop_lifecycle_monitor.py", "scripts/stop_health_check.py",
-          "scripts/lib/stop_monitoring_health.py"]
+# Alarm-firing coverage: the DEGRADED page is observed at the real transport (alarm_capture) below.
+COVERS = ["scripts/stop_health_check.py"]
 
 _STOP = {"orderId": 1, "status": "WORKING", "orderType": "STOP", "stopPrice": 90.0,
          "orderLegCollection": [{"instruction": "SELL", "quantity": 10, "instrument": {"symbol": "NVDA"}}]}

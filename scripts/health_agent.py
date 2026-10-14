@@ -3666,6 +3666,24 @@ def collect_broker_token_health() -> list[dict]:
         # false-positive. The log is used only to enrich the message once `degraded` confirms the failure.
         rows = _db("SELECT account_key, degraded, last_error FROM broker_oauth_tokens WHERE degraded IS TRUE",
                    fetch="all") or []
+        paused = None
+        try:
+            from lib import schwab_access_mode as _sam
+            paused = _sam.status() if _sam.is_paused() else None
+        except Exception:  # noqa: BLE001 — no switch readable: the normal (re-auth) path below applies
+            paused = None
+        if rows and paused:
+            # Incident 2026-10-14: the operator DEACTIVATED the Schwab app. The degraded token is expected and a
+            # re-auth cannot succeed (and is not wanted). Say so, and page once per ET day — not every cycle.
+            acct = rows[0].get("account_key")
+            first_today = _sam.once_per_day("health_agent:schwab_token_revoked")
+            out.append(_f("execution_health", "schwab_token_revoked", "critical" if first_today else "info",
+                          f"Schwab token degraded ({acct}) — {_sam.PAUSED_REMEDIATION}. "
+                          f"Schwab positions/stops/transactions are NOT being refreshed while paused"
+                          f"{'' if first_today else ' (already reported today)'}.",
+                          operator_action=False, reauth_cmd=_sam.PAUSED_REMEDIATION,
+                          schwab_access_mode=paused.get("mode"), schwab_paused=True))
+            return out
         if rows:
             acct = rows[0].get("account_key")
             err = str(rows[0].get("last_error") or "degraded flag set")

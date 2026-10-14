@@ -75,7 +75,7 @@ def _send_telegram(msg: str, *, reply_markup: dict | None = None, link_preview_o
                                    ("dedupe_minutes", dedupe_minutes))
                  if v is not None}
         if priority:   # a declared notification intent (P1 = never capped, never quiet-held, never digested)
-            return send_telegram_with_id(msg, priority=priority, producer=_COMPONENT, **extra).get("message_id")
+            extra.update(priority=priority, producer=_COMPONENT)
         return send_telegram_with_id(msg, **extra).get("message_id")
     except Exception:
         return None

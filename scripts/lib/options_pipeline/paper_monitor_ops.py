@@ -17,6 +17,13 @@ def _now_iso() -> str:
 def is_market_hours() -> bool:
     """Equity session open (Schwab market hours API with ET weekday fallback)."""
     try:
+        from lib import schwab_access_mode as _sam
+        schwab_ok = _sam.reads_allowed()   # paused (2026-10-14): no Schwab call — straight to the ET clock
+    except Exception:  # noqa: BLE001
+        schwab_ok = True
+    try:
+        if not schwab_ok:
+            raise LookupError("schwab paused")
         import schwab_transport
         eq = (schwab_transport.get_market_hours().get("markets") or {}).get("equity") or {}
         if eq.get("isOpen") is not None:

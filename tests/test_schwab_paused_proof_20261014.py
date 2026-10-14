@@ -19,8 +19,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import positions_proof_daily as pd  # noqa: E402
 from lib import schwab_access_mode as sam  # noqa: E402
 
-COVERS = ["scripts/positions_proof_daily.py", "scripts/lib/schwab_access_mode.py",
-          "config/schwab_access_mode.yaml"]
+COVERS = ["scripts/positions_proof_daily.py"]   # the SKIPPED line is observed at the real transport
 ET = ZoneInfo("America/New_York")
 
 

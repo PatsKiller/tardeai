@@ -186,6 +186,35 @@ def _alert(msg, source=""):
         pass
 
 
+PAUSED_ALERT_KEY = "schwab_position_sync:auth_or_paused"
+
+
+def report_paused_or_auth(results: dict, *, send=None) -> str | None:
+    """Account sync (2026-10-14): when EVERY Schwab account no-op'd for a pause or an auth failure, say so —
+    once per ET day — instead of the silent degraded_noop rows (no Telegram at all before). Returns the text
+    sent, or None (not all failed, not auth/paused, or already reported today)."""
+    from lib import schwab_access_mode as _sam
+    if not results or any((r or {}).get("status") != "degraded_noop" for r in results.values()):
+        return None
+    reasons = {k: str((r or {}).get("reason") or "") for k, r in results.items()}
+    paused = all(v == _sam.PAUSED_STATUS for v in reasons.values())
+    if not paused and not any(_sam.is_auth_failure(v) for v in reasons.values()):
+        return None
+    if not _sam.once_per_day(PAUSED_ALERT_KEY):
+        return None
+    if paused:
+        text = (f"⏸ Schwab paused — account sync skipped for {len(results)} Schwab accounts "
+                f"({_sam.status().get('reason') or 'operator pause'}). Schwab holdings are frozen at their last "
+                "broker-confirmed time (broker_position_as_of_at). Expected; do not re-auth. (once per day)")
+    else:
+        text = (f"⚠️ Schwab auth failure — account sync no-op for {len(results)} Schwab accounts: "
+                f"{'; '.join(f'{k}: {v[:80]}' for k, v in reasons.items())}. Schwab holdings are frozen. (once per day)")
+    if send is None:
+        from telegram_alert import send_telegram as send
+    send(text, priority="P2", producer="schwab_position_sync")
+    return text
+
+
 def reconcile_totals(doc, *, source="unknown"):
     """Make portfolio_totals.total_value agree with the positions being written.
 
@@ -527,7 +556,10 @@ def _build_account_rows(account_key, live, existing_by_key):
                     # rows beneath it kept updating daily, and every freshness consumer
                     # read a 18-day-old stamp on same-day data. The broker sync is the
                     # only writer that knows the real confirmation time; it stamps it.
-                    "broker_position_as_of": as_of})
+                    # broker_position_as_of stays date-only (existing readers compare it to a date); the
+                    # _at twin carries the full UTC datetime so same-day staleness is visible (2026-10-14:
+                    # Schwab rows froze at 14:52 ET yet read "fresh" until the next day).
+                    "broker_position_as_of": as_of, "broker_position_as_of_at": now})
         # Schwab's own P/L Day, with the mark it was computed at, so the repricer can check its
         # fill-aware day change against the broker at the SAME price (a later mark differs).
         # The broker's own average cost per share for THIS account, so the basis check compares like with like.
@@ -616,6 +648,7 @@ def _cash_rows_for_account(label: str, hold: list, account_key: str, st) -> list
         "updated_at": now,
         "as_of": as_of,
         "broker_position_as_of": as_of,   # see the equity-row note above
+        "broker_position_as_of_at": now,  # datetime twin (2026-10-14), see the equity-row note above
         "day_change": 0,
         "day_change_pct": 0,
     })
@@ -628,6 +661,13 @@ def sync_schwab_positions(account_key, dry_run=True):
     position enrichment), and writes through protected_holdings_write (GATE B: sane + catastrophic-drop
     guard + basis shield + backup/atomic/post-assert). dry_run=True returns the add/remove diff without
     writing. Cash row refreshed from Schwab account API cashBalance (positions endpoint excludes cash)."""
+    from lib import schwab_access_mode as _sam
+    if not _sam.reads_allowed():
+        # Operator pause (config/schwab_access_mode.yaml, incident 2026-10-14): no Schwab call, one INFO line,
+        # an honest history row; holdings.json keeps the last broker-confirmed rows (stamped with their datetime).
+        _sam.log_skip("schwab_position_sync", printer=print)
+        _record(account_key, "degraded_noop", f"{_sam.PAUSED_STATUS}: {_sam.status().get('reason') or 'operator pause'}")
+        return {"status": "degraded_noop", "reason": _sam.PAUSED_STATUS, "wrote": False}
     import schwab_transport as st
     label = _HOLDINGS_ACCT.get(account_key, account_key)   # write/read under the holdings.json label
     live = st.get_positions(account_key)
@@ -699,5 +739,12 @@ if __name__ == "__main__":
     ap.add_argument("--apply", action="store_true", help="write (default is dry-run diff)")
     a = ap.parse_args()
     accts = [a.account] if a.account else ["schwab_taxable", "schwab_roth_ira", "schwab_rollover_ira"]
+    results = {}
     for acct in accts:
-        print(json.dumps({acct: sync_schwab_positions(acct, dry_run=not a.apply)}, indent=2, default=str))
+        results[acct] = sync_schwab_positions(acct, dry_run=not a.apply)
+        print(json.dumps({acct: results[acct]}, indent=2, default=str))
+    if a.apply and not a.account:   # the scheduled all-accounts run; a manual single-account run never pages
+        try:
+            report_paused_or_auth(results)
+        except Exception as _pe:  # noqa: BLE001 — the sync result is already recorded; never crash on the notice
+            print(f"  [paused-notice] failed: {type(_pe).__name__}: {str(_pe)[:120]}")
