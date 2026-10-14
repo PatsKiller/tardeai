@@ -35,8 +35,25 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 HJ = PROJECT_ROOT / "data/portfolios/state/holdings.json"
 
 
+BROKER_SOURCE_UNAVAILABLE = "BROKER_SOURCE_UNAVAILABLE"
+
+
+def _server_account_is_live(a: dict) -> bool:
+    """A server accounts-live account counts as a BROKER source only when it says it came from the broker.
+
+    Incident 2026-10-14: /api/v2/schwab/accounts-live serves the holdings.json CACHE (source "cache"), so
+    taking it as the broker compared holdings.json against itself — a guaranteed false "no discrepancies"."""
+    return a.get("positions_status") == "ok" and a.get("source") not in (None, "cache")
+
+
 def _api_positions():
-    """Live positions per account: direct transport, else the running server (it holds the creds)."""
+    """Live positions per account: direct transport, else the running server (it holds the creds).
+
+    Schwab paused (config/schwab_access_mode.yaml forbidden): no Schwab call; every account is an error."""
+    from lib import schwab_access_mode as _sam
+    if not _sam.reads_allowed():
+        _sam.log_skip("sync_basis_from_broker", printer=print)
+        return {}, {"_schwab": "schwab_paused"}
     import schwab_transport as st
     from db_adapter import _get_conn
     cur = _get_conn().cursor()
@@ -56,6 +73,10 @@ def _api_positions():
             with urllib.request.urlopen("http://localhost:7777/api/v2/schwab/accounts-live", timeout=30) as r:
                 d = json.load(r)
             for a in (d.get("data", d)).get("accounts", []):
+                if not _server_account_is_live(a):
+                    errors[a.get("account_key") or "_server"] = (
+                        f"server serves {a.get('source') or 'unknown'} ({a.get('positions_status')}) — not a broker source")
+                    continue
                 if a.get("positions_status") == "ok":
                     errors.pop(a["account_key"], None)
                     for p in a["positions"]:
@@ -104,8 +125,12 @@ def main():
     from db_adapter import _get_conn
     conn = _get_conn(); cur = conn.cursor()
     api, errors = _api_positions()
+    if errors.get("_schwab") == "schwab_paused":
+        print(f"{BROKER_SOURCE_UNAVAILABLE}: Schwab paused by operator (config/schwab_access_mode.yaml) — "
+              "basis sync skipped; holdings basis NOT compared to anything")
+        return {"status": BROKER_SOURCE_UNAVAILABLE, "reason": "schwab_paused"}
     if errors:
-        print(f"⚠ API unavailable for {errors} — refusing to sync basis from partial data")
+        print(f"⚠ {BROKER_SOURCE_UNAVAILABLE}: API unavailable for {errors} — refusing to sync basis from partial data")
         sys.exit(1)
 
     # canonical DB layer

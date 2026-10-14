@@ -91,9 +91,41 @@ def _alpaca_positions_map() -> dict:
     return out
 
 
-def _schwab_stops() -> list[dict]:
-    """Live working SELL stop/trailing orders across all verified Schwab accounts."""
+class SchwabStopsUnavailable:
+    """Explicit UNAVAILABLE marker from _schwab_stops() (incident 2026-10-14) — never a silent [].
+
+    Before: any Schwab error was swallowed by a bare except and returned [], so the snapshot held 0 Schwab
+    stops and stop_health reported ok=True while the Schwab stops were not being read at all. ``rows`` holds
+    stops from the accounts that DID answer; ``failed_accounts`` names the ones that did not."""
+    status = "UNAVAILABLE"
+
+    def __init__(self, reason: str, *, rows: list[dict] | None = None, failed_accounts: list[str] | None = None,
+                 paused: bool = False):
+        self.reason = reason
+        self.rows = list(rows or [])
+        self.failed_accounts = list(failed_accounts or [])
+        self.paused = paused
+
+    def as_dict(self) -> dict:
+        return {"status": self.status, "reason": self.reason, "failed_accounts": self.failed_accounts,
+                "paused": self.paused, "partial_rows": len(self.rows)}
+
+    def __repr__(self) -> str:  # pragma: no cover — debugging aid
+        return f"SchwabStopsUnavailable({self.as_dict()!r})"
+
+
+def _schwab_stops() -> "list[dict] | SchwabStopsUnavailable":
+    """Live working SELL stop/trailing orders across all verified Schwab accounts.
+
+    Returns the list on a complete read; a SchwabStopsUnavailable marker when the operator pause switch is
+    `forbidden` (no Schwab call is made) or when any account's order read failed (error dict / exception)."""
+    from lib import schwab_access_mode as _sam
+    if not _sam.reads_allowed():
+        _sam.log_skip("stop_lifecycle_monitor", printer=lambda m: print(m, file=sys.stderr))
+        return SchwabStopsUnavailable(f"schwab_paused: {_sam.status().get('reason') or 'operator pause'}",
+                                      paused=True)
     rows = []
+    failed: list[str] = []
     try:
         import schwab_transport as st
         from db_adapter import _get_conn
@@ -101,8 +133,15 @@ def _schwab_stops() -> list[dict]:
         cur.execute("SELECT account_key FROM schwab_account_links WHERE verified=TRUE")
         accts = [r[0] for r in cur.fetchall()]
         for acct in accts:
-            raw = st.get_orders_raw(acct)
+            try:
+                raw = st.get_orders_raw(acct)
+            except Exception as exc:  # noqa: BLE001
+                failed.append(f"{acct}: {type(exc).__name__}: {str(exc)[:120]}")
+                continue
             if not isinstance(raw, list):
+                detail = ((raw.get("error") or raw.get("reason") or raw.get("status"))
+                          if isinstance(raw, dict) else raw)
+                failed.append(f"{acct}: {str(detail)[:160]}")
                 continue
             for o in raw:
                 leg = (o.get("orderLegCollection") or [{}])[0]
@@ -127,8 +166,12 @@ def _schwab_stops() -> list[dict]:
                              "trail_link": o.get("stopPriceLinkType"), "qty": qty,
                              "status": str(o.get("status", "")).lower(),
                              "closed_at": o.get("closeTime")})
-    except Exception:
-        pass
+    except Exception as exc:  # noqa: BLE001 — account list / transport import failed: nothing was read
+        return SchwabStopsUnavailable(f"schwab_read_failed: {type(exc).__name__}: {str(exc)[:160]}",
+                                      rows=rows, failed_accounts=[f.split(":", 1)[0] for f in failed])
+    if failed:
+        return SchwabStopsUnavailable("schwab_read_failed: " + "; ".join(failed)[:400], rows=rows,
+                                      failed_accounts=[f.split(":", 1)[0] for f in failed])
     return rows
 
 
@@ -327,7 +370,10 @@ def scan(persist: bool = True) -> dict:
     import datetime as _dt
     hmap = _holdings_map()
     hmap.update(_alpaca_positions_map())   # add paper held shares so paper stops aren't false-orphaned
-    stops = _schwab_stops() + _alpaca_stops() + _manual_stops()
+    schwab = _schwab_stops()
+    schwab_unavailable = schwab if isinstance(schwab, SchwabStopsUnavailable) else None
+    schwab_rows = schwab_unavailable.rows if schwab_unavailable else schwab
+    stops = schwab_rows + _alpaca_stops() + _manual_stops()
     # Broker stops carry the schwab account_key ('schwab_roth_ira') but holdings.json labels the
     # roth as 'schwab_roth' — translate via the SAME canonical map the position sync writes with,
     # else every roth stop is falsely ORPHANED (2026-07-17: V/SCHG roth stops flagged 'no matching
@@ -347,11 +393,15 @@ def scan(persist: bool = True) -> dict:
     }
     for r in records:
         summary["by_lifecycle"][r["lifecycle"]] = summary["by_lifecycle"].get(r["lifecycle"], 0) + 1
+    # Schwab stop data state: "ok" or the explicit UNAVAILABLE marker. Consumers (stop_health_check,
+    # stop_monitoring_health) must treat UNAVAILABLE as "Schwab stops unknown", never as "zero stops".
+    summary["schwab_stops"] = schwab_unavailable.as_dict() if schwab_unavailable else {"status": "ok"}
     alerts = [r for r in records if r["health"] == "alert"]
     if persist:
         _persist(records)
     return {"generated_at": _dt.datetime.now(_dt.timezone.utc).isoformat(),
-            "stops": records, "summary": summary, "alerts": alerts}
+            "stops": records, "summary": summary, "alerts": alerts,
+            "schwab_stops_status": "UNAVAILABLE" if schwab_unavailable else "ok"}
 
 
 if __name__ == "__main__":
@@ -365,6 +415,8 @@ if __name__ == "__main__":
         s = res["summary"]
         print(f"Stop lifecycle scan @ {res['generated_at'][:19]}")
         print(f"  {s['total']} live stops · health {s['by_health']} · lifecycle {s['by_lifecycle']}")
+        if s["schwab_stops"]["status"] != "ok":
+            print(f"  ⚠ SCHWAB STOP DATA UNAVAILABLE — {s['schwab_stops']['reason']}")
         if s["orphaned"]:
             print(f"  ⚠ ORPHANED (stop, no holding): {s['orphaned']}")
         if s["oversized"]:

@@ -81,21 +81,68 @@ MARKET_HOURS_CHECKS = [
 ]
 
 
-def _market_open():
+MARKET_OPEN, MARKET_CLOSED, MARKET_UNKNOWN = "OPEN", "CLOSED", "UNKNOWN"
+# Market-hours checks whose producer reads Schwab: while the operator has Schwab paused they are known-blind,
+# reported as SCHWAB_PAUSED (the stop-health P1 already pages the pause) rather than a CRITICAL every tick.
+SCHWAB_FED_CHECKS = {"schwab_stream_book_2h", "options_chain_snapshots_2h"}
+
+
+def _market_state():
+    """OPEN / CLOSED from Schwab market hours; UNKNOWN when Schwab errors, answers without a flag, or is paused.
+
+    Before (incident 2026-10-14): any Schwab error returned False = "closed", which silently suppressed every
+    market-hours SLO exactly when a Schwab outage made them matter."""
+    try:
+        from lib import schwab_access_mode as _sam
+        if not _sam.reads_allowed():
+            _sam.log_skip("pipeline_freshness_slo", printer=lambda m: print(m, file=sys.stderr))
+            return MARKET_UNKNOWN
+    except Exception:  # noqa: BLE001
+        pass
     try:
         import schwab_transport
-        eq = (schwab_transport.get_market_hours().get("markets") or {}).get("equity") or {}
-        return bool(eq.get("is_open"))
+        hours = schwab_transport.get_market_hours()
+        eq = ((hours or {}).get("markets") or {}).get("equity") or {} if isinstance(hours, dict) else {}
+        flag = eq.get("is_open", eq.get("isOpen"))
+        if flag is None:
+            return MARKET_UNKNOWN
+        return MARKET_OPEN if flag else MARKET_CLOSED
     except Exception:
-        return False
+        return MARKET_UNKNOWN
+
+
+def _clock_session_open(now=None):
+    """The regular equity session by the ET clock (weekday 09:30-16:00) — the conservative UNKNOWN fallback."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    now = now or datetime.now(ZoneInfo("America/New_York"))
+    mins = now.hour * 60 + now.minute
+    return now.weekday() < 5 and 9 * 60 + 30 <= mins <= 16 * 60
+
+
+def _market_open():
+    """Back-compat boolean: OPEN, or UNKNOWN inside the clock session (conservative — run the checks)."""
+    state = _market_state()
+    return state == MARKET_OPEN or (state == MARKET_UNKNOWN and _clock_session_open())
 
 
 def run(telegram=False):
     from db_adapter import _get_conn
     conn = _get_conn(); cur = conn.cursor()
-    checks = list(CHECKS) + (MARKET_HOURS_CHECKS if _market_open() else [])
+    state = _market_state()
+    include_market = state == MARKET_OPEN or (state == MARKET_UNKNOWN and _clock_session_open())
+    checks = list(CHECKS) + (MARKET_HOURS_CHECKS if include_market else [])
+    try:
+        from lib import schwab_access_mode as _sam
+        schwab_paused = _sam.is_paused()
+    except Exception:  # noqa: BLE001
+        schwab_paused = False
     findings, report = [], []
     for name, recent_q, base_q, factor in checks:
+        if schwab_paused and name in SCHWAB_FED_CHECKS:
+            report.append({"check": name, "status": "SCHWAB_PAUSED",
+                           "note": "producer reads Schwab; operator pause (config/schwab_access_mode.yaml)"})
+            continue
         try:
             cur.execute(recent_q); recent = cur.fetchone()[0] or 0
             cur.execute(base_q); base = float(cur.fetchone()[0] or 0) * factor
@@ -116,7 +163,8 @@ def run(telegram=False):
             report.append({"check": name, "recent": recent, "baseline": round(base, 1), "status": status})
         except Exception as e:
             report.append({"check": name, "status": "check-error", "error": str(e)[:80]})
-    out = {"status": "ALERT" if findings else "ok", "findings": findings, "checks": report}
+    out = {"status": "ALERT" if findings else "ok", "findings": findings, "checks": report,
+           "market_state": state, "market_checks_included": include_market}
     print(json.dumps(out, indent=2))
     if findings and telegram:
         try:

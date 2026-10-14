@@ -33,6 +33,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import positions_sync as ps  # noqa: E402
+from lib import schwab_access_mode as sam  # noqa: E402
 
 ET = ZoneInfo("America/New_York")
 LEDGER_REL = Path("data") / "runtime" / "positions_proof_ledger.jsonl"
@@ -98,11 +99,48 @@ def grade_day(day: date, runs: list[dict], differences: list[dict], lot_checks: 
     return {"date": day.isoformat(), "pass": all(v["ok"] for v in g.values()), "checks": g}
 
 
+SKIPPED_SCHWAB_PAUSED = "SKIPPED_SCHWAB_PAUSED"
+
+
+def is_skipped(row: dict) -> bool:
+    return row.get("status") == SKIPPED_SCHWAB_PAUSED
+
+
+def schwab_paused_for(day: date) -> Optional[dict]:
+    """The pause-switch state when Schwab is forbidden on `day` (operator 2026-10-14), else None.
+
+    A day before the switch's `since` date is graded normally, so re-grading history is unaffected."""
+    st = sam.status()
+    if not st["paused"]:
+        return None
+    since = str(st.get("since") or "")[:10]
+    try:
+        if since and day < date.fromisoformat(since):
+            return None
+    except ValueError:
+        pass
+    return st
+
+
+def mark_skipped(row: dict, st: dict) -> dict:
+    """A Schwab-paused day is SKIPPED: not a pass, and not a failure that resets the counter."""
+    row["graded_pass"] = row["pass"]
+    row["pass"] = False
+    row["status"] = SKIPPED_SCHWAB_PAUSED
+    row["skip_reason"] = (f"Schwab access mode={st['mode']} ({st.get('reason') or 'operator pause'}); "
+                          "Schwab accounts cannot sync, so the day proves nothing")
+    return row
+
+
 def proof_day_number(ledger: Iterable[dict], day: date, start: date) -> int:
-    """Consecutive passing trading days from the proof start through `day` (a failed day resets to 0)."""
+    """Consecutive passing trading days from the proof start through `day` (a failed day resets to 0).
+
+    A SKIPPED_SCHWAB_PAUSED day neither counts nor resets: the counter holds across it."""
     n = 0
     for row in sorted((r for r in ledger if start.isoformat() <= r["date"] <= day.isoformat()),
                       key=lambda r: r["date"]):
+        if is_skipped(row):
+            continue
         n = n + 1 if row["pass"] else 0
     return n
 
@@ -111,6 +149,9 @@ def one_line(row: dict, n: int, total: int, *, baseline: bool = False) -> str:
     c = row["checks"]
     feature = PLAN_FEATURES.get(min(n + 1, total), "")
     why = [k for k, v in c.items() if not v["ok"]]
+    if is_skipped(row):
+        return (f"Positions proof {SKIPPED_SCHWAB_PAUSED} · {row['date']} · Schwab paused by operator — "
+                f"day not counted, counter held at {n} of {total} (not a pass, not a reset)")
     if baseline:
         head = f"Positions proof baseline (proof starts later) {'PASS' if row['pass'] else 'FAIL (' + ', '.join(why) + ')'}"
     elif row["pass"]:
@@ -180,6 +221,9 @@ def main(argv: Optional[list[str]] = None) -> int:
         runs, diffs, lots = read_day(cur, day)
     conn.rollback()
     row = grade_day(day, runs, diffs, lots, cfg)
+    paused = schwab_paused_for(day)
+    if paused:
+        mark_skipped(row, paused)
     row["graded_at"] = datetime.now(timezone.utc).isoformat()
     path = ROOT / LEDGER_REL
     ledger = [r for r in read_ledger(path) if r.get("date") != row["date"]] + [row]
@@ -194,6 +238,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         # One line a day, operator-requested (plan: "a daily progress line"); the text router would fold it into
         # a digest, so it is a P2 intent: routed by its declared priority, never by the text classifier.
         send_telegram(row_line, message_class="report", priority="P2", producer="positions_proof_daily")
+    if is_skipped(row):
+        return 0
     return 0 if row["pass"] else 1
 
 
