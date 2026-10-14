@@ -4270,6 +4270,14 @@ GATES = [
         ["tests/test_portfolio_reports_state_root_20261009.py"],
     ),
     (
+        # ANCHOR: YOUTUBE_COOKIE_PATH_20261014 — the YouTube cookie jar resolves through lib.youtube_cookie_path:
+        # canonical ~/.config/tradeai/youtube_cookies.txt (TRADEAI_YOUTUBE_COOKIE_FILE override), legacy release-dir
+        # config/youtube_cookies.txt read-only fallback flagged amber; Ops UI writer writes canonical 0600.
+        # Hermetic: tmp HOME / tmp project roots / synthetic cookie rows, fake db_adapter.
+        "youtube_cookie_path_20261014",
+        ["tests/test_youtube_cookie_path_20261014.py"],
+    ),
+    (
         # R2-02: structural dry runs, exact cron argv, failed-ok_at carry, no broker env.
         "refactor_shard_02_20261011",
         ["tests/test_refactor_shard_02_20261011.py"],
