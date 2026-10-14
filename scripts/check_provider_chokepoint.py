@@ -61,6 +61,11 @@ APPROVED_TOOLING = {
     "tests/test_active_trader_session_control.py",
     "tests/test_cio_cc_record_narrative_slice_c.py",
     "tests/conftest.py",
+    # 2026-10-14 (AGENTS 7.0.0 §23.20 condition c): the advisory-lane static guard DETECTS direct sends (smtplib,
+    # raw Bot API / Slack URLs) in a lane's reach, and its test plants them in tmp fixtures to prove detection. They
+    # parse source with ast and never send. Named individually, like the scanners above.
+    "scripts/lib/advisory_lane_guard.py",
+    "tests/test_agents_policy_7_0_0_advisory_market_data.py",
 }
 
 CHANNEL_PATTERNS: dict[str, dict[str, re.Pattern[str]]] = {
