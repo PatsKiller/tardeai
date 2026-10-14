@@ -3714,6 +3714,23 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: N8N_FABRIC_PHASE1 — 2026-10-14 n8n fabric Phase 1 primitives (AGENTS.md §23.23, 10.0.0 PROPOSED;
+        # arch-review-20261014 REFACTOR_PLAN B4-B6 + addendum items 1-3): the executor's run_outcomes record and the
+        # read-only gateway op coordination/run_outcome (+ relay GET /run_outcome); the comms/intent op (scope
+        # comms_intent, dedupe, hourly cap, closed route table; + relay POST /intent); the semantic effect key with
+        # its owner-epoch fence, including the sequential cron->n8n duplicate a flock does not stop; and
+        # build-fabric (Run Lane sub-workflow, fabric error workflow, probe, graph/policy-hash manifest). Hermetic:
+        # tmp_path ledgers, fake runners, in-process gateway/relay; node.js runs the generated Code nodes when on
+        # PATH. Imports nothing into n8n, installs no unit, touches no crontab.
+        "n8n_fabric_phase1_20261014",
+        [
+            "tests/test_n8n_fabric_run_outcome_20261014.py",
+            "tests/test_n8n_fabric_comms_intent_20261014.py",
+            "tests/test_effect_claim_20261014.py",
+            "tests/test_n8n_fabric_workflows_20261014.py",
+        ],
+    ),
+    (
         # ANCHOR: N8N_MATURITY_CRON_TZ — 2026-10-09 n8n-maturity B5.1 (design 02 §3.2 step 1, F11):
         # DST-safe fires_between / is_sub_hourly / last_fire_at_or_before in scripts/lib/cron_schedule.py.
         # Pure and hermetic: explicit instants only, no clock, no I/O.

@@ -19,6 +19,13 @@ pre-import dry run can check every workflow HTTP node against the relay it will 
 2026-10-10 (alert-path watch): every forwarded /due line and its gateway-unreachable refusal carry `lanes` (the
 query's lane= filter, [] when none). Only the incident router asks for n8n-incident-fanin,incident-notifier, so the
 host-side watch (scripts/lib/n8n_alert_path_watch.py) can see that workflow's cadence and its refusals without n8n.
+
+2026-10-14 (n8n fabric Phase 1; AGENTS.md §23.23 + §23.3 route note, 10.0.0 PROPOSED): GET /run_outcome?run_id=<id>
+forwards one read-scope `coordination/run_outcome` (RunOutcome@v1: success / failed / refused_policy / skipped_lock /
+pending / unknown, all as data) for the Run Lane sub-workflow's poll. POST /intent takes the fabric error workflow's
+send-INTENT {domain, kind, subject, summary, workflow_id, execution_id, node}, cleans and bounds the text, and
+forwards one `comms/intent` claim (scope comms_intent); the host queues it for the comms gateway, which alone sends.
+n8n holds no bot token and the relay sends nothing.
 """
 
 from __future__ import annotations
@@ -51,6 +58,7 @@ from scripts.lib.n8n_coordination_gateway import (  # noqa: E402
     RELAY_CALLER,
     RUN_ID_RE,
     SCHEMA_VERSION as EVENT_SCHEMA_VERSION,
+    SCOPE_INTENT,
     SCOPE_READ,
     SCOPE_RUN,
     sign_claim,
@@ -82,7 +90,15 @@ MIN_KEY_BYTES = 32
 LAST_SCHEMA = "N8nRunRelayLast@v1"
 _LANE_ID_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 _LAST_FIELDS = (
-    "run_id", "lane_id", "state", "exit_code", "started_at", "finished_at", "requested_at", "mode", "receipt_ref"
+    "run_id",
+    "lane_id",
+    "state",
+    "exit_code",
+    "started_at",
+    "finished_at",
+    "requested_at",
+    "mode",
+    "receipt_ref",
 )
 # Compact projection preserves the durable lifecycle fields needed to verify a run.
 # Only presentation/correlation fields are dropped to fit MAX_BODY.
@@ -94,6 +110,8 @@ ROUTES: tuple[tuple[str, str], ...] = (
     ("GET", "/runs/<lane_id>/last"),
     ("POST", "/run"),
     ("POST", "/event"),
+    ("GET", "/run_outcome"),
+    ("POST", "/intent"),
 )
 ROUTES_SCHEMA = "N8nRunRelayRoutes@v1"
 #: POST /event (design 02 §8): the only lane, the exact body keys, and the bounds.
@@ -104,6 +122,12 @@ EVENT_NODE_MAX = 64
 EVENT_DEADLINE_S = 24 * 3600
 #: Retries of one execution's error replay the first event byte for byte (gateway payload-hash idempotency).
 EVENT_CACHE_MAX = 512
+#: POST /intent (2026-10-14): exact keys and bounds; the gateway re-validates (scripts/lib/n8n_fabric_store.py).
+INTENT_BODY_KEYS = frozenset({"domain", "kind", "subject", "summary", "workflow_id", "execution_id", "node"})
+INTENT_SUBJECT_MAX = 120
+INTENT_SUMMARY_MAX = 300
+_INTENT_DOMAIN_RE = re.compile(r"^[a-z][a-z_]{1,23}$")
+_INTENT_KIND_RE = re.compile(r"^[a-z][a-z0-9_]{1,47}$")
 _WORKFLOW_ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 _EXECUTION_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
 _CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]+")
@@ -132,6 +156,7 @@ REFUSALS = frozenset(
         "relay_missing_secret",
         "relay_bad_bind",
         "relay_bad_query",
+        "relay_bad_intent",
     }
 )
 
@@ -312,6 +337,8 @@ class Relay:
             "gateway_unreachable": 0,
             "due": 0,
             "events": 0,
+            "run_outcomes": 0,
+            "intents": 0,
         }
         self.last: dict[str, Any] | None = None
         root = Path(self.environ.get("TRADEAI_STATE_ROOT") or (Path.home() / "trade-ai-releases" / "persistent-state"))
@@ -554,6 +581,132 @@ class Relay:
             return 200, reply
         return (gateway_status if isinstance(gateway_status, int) and gateway_status >= 400 else 403), reply
 
+    def _claim(self, scope: str) -> dict[str, Any]:
+        now = self.clock()
+        return {
+            "v": 1,
+            "caller_id": RELAY_CALLER,
+            "project": "trade-ai",
+            "iat": now,
+            "exp": now + 120,
+            "nonce": secrets.token_urlsafe(12),
+            "scope": scope,
+        }
+
+    def run_outcome(self, authorization: str | None, query: str = "") -> tuple[int, dict[str, Any]]:
+        """GET /run_outcome?run_id=<id> (n8n fabric Phase 1): one read-scope ``coordination/run_outcome``. The answer
+        is data whatever the run did (a refused run is ``status: refused_policy`` with HTTP 200); only a bad query,
+        a bad bearer or an unreachable gateway is a refusal here."""
+        if not self._auth(authorization):
+            self.counts["auth_failures"] += 1
+            return self._refuse("relay_bad_bearer", 401, op="run_outcome")
+        try:
+            params = parse_qs(query, keep_blank_values=True, strict_parsing=True)
+        except ValueError:
+            return self._refuse("relay_bad_query", 400, op="run_outcome")
+        values = params.get("run_id", [])
+        if set(params) != {"run_id"} or len(values) != 1 or _safe_run_id(values[0]) is None:
+            return self._refuse("relay_bad_query", 400, op="run_outcome")
+        run_id = values[0]
+        claim = self._claim(SCOPE_READ)
+        payload = {
+            "route": "coordination/run_outcome",
+            "operation": "run_outcome",
+            "claim": claim,
+            "signature": sign_claim(claim, self.key),
+            "run_id": run_id,
+        }
+        self.counts["run_outcomes"] += 1
+        try:
+            gateway_status, reply = self.transport(self.gateway_url + "/v1/coordination", payload)
+        except (OSError, urllib.error.URLError, TimeoutError):
+            self.counts["gateway_unreachable"] += 1
+            return self._refuse("relay_gateway_unreachable", 502, op="run_outcome", run_id=run_id)
+        ok = reply.get("schema") == "RunOutcome@v1" and reply.get("state") == "OK"
+        self._log(
+            {
+                "at": datetime.now(timezone.utc).isoformat(),
+                "op": "run_outcome",
+                "state": "OK" if ok else "REFUSED",
+                "reason": None if ok else str(reply.get("reason") or "")[:64],
+                "run_id": run_id,
+                "status": reply.get("status") if ok else None,
+                "gateway_http_status": gateway_status,
+            }
+        )
+        if ok:
+            return 200, reply
+        return (gateway_status if isinstance(gateway_status, int) and gateway_status >= 400 else 403), reply
+
+    def intent(self, authorization: str | None, body: bytes) -> tuple[int, dict[str, Any]]:
+        """POST /intent (n8n fabric Phase 1): one send-INTENT -> one ``comms/intent`` claim (scope comms_intent).
+        Text is cleaned (control characters, secret-shaped runs) and cut to bounds before it leaves the relay;
+        the host dedupes, caps, routes and queues it. Nothing is sent by the relay or the gateway."""
+        if not self._auth(authorization):
+            self.counts["auth_failures"] += 1
+            return self._refuse("relay_bad_bearer", 401, op="intent")
+        if len(body) > MAX_BODY:
+            return self._refuse("relay_body_too_large", 413, op="intent")
+        try:
+            data = json.loads(body.decode())
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return self._refuse("relay_malformed_body", 400, op="intent")
+        if (
+            not isinstance(data, dict)
+            or set(data) != INTENT_BODY_KEYS
+            or not all(isinstance(v, str) for v in data.values())
+        ):
+            return self._refuse("relay_bad_intent", 400, op="intent")
+        if not (
+            _INTENT_DOMAIN_RE.fullmatch(data["domain"])
+            and _INTENT_KIND_RE.fullmatch(data["kind"])
+            and _WORKFLOW_ID_RE.fullmatch(data["workflow_id"])
+            and _EXECUTION_ID_RE.fullmatch(data["execution_id"])
+        ):
+            return self._refuse("relay_bad_intent", 400, op="intent")
+        subject = _clean_text(data["subject"], INTENT_SUBJECT_MAX)
+        if not subject:
+            return self._refuse("relay_bad_intent", 400, op="intent")
+        claim = self._claim(SCOPE_INTENT)
+        payload = {
+            "route": "comms/intent",
+            "operation": "intent",
+            "claim": claim,
+            "signature": sign_claim(claim, self.key),
+            "domain": data["domain"],
+            "kind": data["kind"],
+            "subject": subject,
+            "summary": _clean_text(data["summary"], INTENT_SUMMARY_MAX),
+            "workflow_id": data["workflow_id"],
+            "execution_id": data["execution_id"],
+            "node": _clean_text(data["node"], EVENT_NODE_MAX),
+        }
+        self.counts["intents"] += 1
+        try:
+            gateway_status, reply = self.transport(self.gateway_url + "/v1/coordination", payload)
+        except (OSError, urllib.error.URLError, TimeoutError):
+            self.counts["gateway_unreachable"] += 1
+            return self._refuse("relay_gateway_unreachable", 502, op="intent")
+        ok = reply.get("schema") == "CommsIntentReceipt@v1" and reply.get("state") == "ACCEPTED"
+        self._log(
+            {
+                "at": datetime.now(timezone.utc).isoformat(),
+                "op": "intent",
+                "state": "ACCEPTED" if ok else "REFUSED",
+                "reason": None if ok else str(reply.get("reason") or "")[:64],
+                "domain": data["domain"],
+                "kind": data["kind"],
+                "workflow_id": data["workflow_id"],
+                "execution_id": data["execution_id"],
+                "intent_id": reply.get("intent_id") if ok else None,
+                "duplicate": bool(reply.get("duplicate")) if ok else False,
+                "gateway_http_status": gateway_status,
+            }
+        )
+        if ok:
+            return 200, reply
+        return (gateway_status if isinstance(gateway_status, int) and gateway_status >= 400 else 403), reply
+
     def due(self, authorization: str | None, query: str = "") -> tuple[int, dict[str, Any]]:
         """GET /due passthrough to the gateway's read-only coordination/due (design 02 §3.1). The relay validates
         only the query shape; the gateway owns source / lane_filter / clock checks. One {"op": "due"} log line
@@ -719,6 +872,8 @@ def handler_for(relay: Relay) -> type[BaseHTTPRequestHandler]:
                 status, payload = relay.momentum_lifecycle(self.headers.get("Authorization"), query)
             elif path == "/due":
                 status, payload = relay.due(self.headers.get("Authorization"), query)
+            elif path == "/run_outcome":
+                status, payload = relay.run_outcome(self.headers.get("Authorization"), query)
             elif lane_id is not None:
                 status, payload = relay.last_run(self.headers.get("Authorization"), lane_id, query)
             else:
@@ -731,6 +886,8 @@ def handler_for(relay: Relay) -> type[BaseHTTPRequestHandler]:
                 op = relay.run
             elif self.path == "/event":
                 op = relay.event
+            elif self.path == "/intent":
+                op = relay.intent
             else:
                 _json_response(self, 404, {"state": "REFUSED", "reason": "relay_bad_path"})
                 return

@@ -1,0 +1,174 @@
+{
+  "authority": "READ_ONLY_ADVISORY",
+  "generator": "scripts/n8n_workflow_templates.py build-fabric",
+  "policy": {
+    "allowed_node_types": [
+      "n8n-nodes-base.code",
+      "n8n-nodes-base.errorTrigger",
+      "n8n-nodes-base.executeWorkflow",
+      "n8n-nodes-base.executeWorkflowTrigger",
+      "n8n-nodes-base.httpRequest",
+      "n8n-nodes-base.if",
+      "n8n-nodes-base.merge",
+      "n8n-nodes-base.scheduleTrigger",
+      "n8n-nodes-base.set",
+      "n8n-nodes-base.splitInBatches",
+      "n8n-nodes-base.stopAndError",
+      "n8n-nodes-base.switch",
+      "n8n-nodes-base.wait",
+      "n8n-nodes-base.webhook"
+    ],
+    "credential": {
+      "name": "tradeai-run-relay",
+      "types": [
+        "httpHeaderAuth"
+      ]
+    },
+    "error_workflow": "tradeai-fabric-error",
+    "forbidden_node_types": [
+      "@n8n/n8n-nodes-langchain.agent",
+      "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "@n8n/n8n-nodes-langchain.openAi",
+      "n8n-nodes-base.discord",
+      "n8n-nodes-base.emailReadImap",
+      "n8n-nodes-base.emailSend",
+      "n8n-nodes-base.executeCommand",
+      "n8n-nodes-base.executeCommandTool",
+      "n8n-nodes-base.form",
+      "n8n-nodes-base.formTrigger",
+      "n8n-nodes-base.ftp",
+      "n8n-nodes-base.function",
+      "n8n-nodes-base.functionItem",
+      "n8n-nodes-base.gmail",
+      "n8n-nodes-base.localFileTrigger",
+      "n8n-nodes-base.mailgun",
+      "n8n-nodes-base.mattermost",
+      "n8n-nodes-base.microsoftSql",
+      "n8n-nodes-base.microsoftTeams",
+      "n8n-nodes-base.mongoDb",
+      "n8n-nodes-base.mySql",
+      "n8n-nodes-base.postgres",
+      "n8n-nodes-base.pushover",
+      "n8n-nodes-base.readBinaryFile",
+      "n8n-nodes-base.readBinaryFiles",
+      "n8n-nodes-base.readWriteFile",
+      "n8n-nodes-base.redis",
+      "n8n-nodes-base.respondToWebhook",
+      "n8n-nodes-base.sendGrid",
+      "n8n-nodes-base.slack",
+      "n8n-nodes-base.slackTrigger",
+      "n8n-nodes-base.ssh",
+      "n8n-nodes-base.telegram",
+      "n8n-nodes-base.telegramTrigger",
+      "n8n-nodes-base.twilio",
+      "n8n-nodes-base.whatsApp",
+      "n8n-nodes-base.writeBinaryFile"
+    ],
+    "intent_routes_sha256": "e233d5ffa7635c22f0e4608f938ad4df636e554215768bc7aa6a4793f1d94792",
+    "node_package": "n8n-nodes-base.",
+    "relay_calls": {
+      "tradeai-fabric-error": [
+        "POST /intent"
+      ],
+      "tradeai-fabric-error-probe": [],
+      "tradeai-fabric-run-lane": [
+        "POST /run",
+        "GET /run_outcome"
+      ],
+      "tradeai-fabric-run-lane-probe": []
+    },
+    "relay_url": "http://172.19.0.1:18092",
+    "required_settings": {
+      "executionOrder": "v1",
+      "saveDataErrorExecution": "all",
+      "saveDataSuccessExecution": "all",
+      "saveManualExecutions": false,
+      "timezone": "America/New_York"
+    },
+    "run_lane": {
+      "execution_timeout_s": 3600,
+      "max_attempts": 3,
+      "outcome_timeout_max_s": 1000,
+      "terminal": [
+        "success",
+        "failed",
+        "refused_policy",
+        "skipped_lock"
+      ]
+    }
+  },
+  "policy_sha256": "940c8a22fd2b2e53e2fb186749fabab9a1b2d6ea5ad9447f1bd31f76ddbabf6b",
+  "schema": "N8nFabricManifest@v1",
+  "workflows": [
+    {
+      "active": false,
+      "error_workflow": "tradeai-fabric-error",
+      "file": "tradeai-fabric-run-lane.json",
+      "graph_sha256": "b72c74dd202bde396faa3eb705d893a330d0560023c92ac9d2965e051b9f0b55",
+      "id": "tradeai-fabric-run-lane",
+      "kind": "run-lane",
+      "node_types": [
+        "n8n-nodes-base.code",
+        "n8n-nodes-base.executeWorkflowTrigger",
+        "n8n-nodes-base.httpRequest",
+        "n8n-nodes-base.if",
+        "n8n-nodes-base.set",
+        "n8n-nodes-base.switch",
+        "n8n-nodes-base.wait"
+      ],
+      "relay_calls": [
+        "POST /run",
+        "GET /run_outcome"
+      ],
+      "sha256": "85e043e5bfa021daf63f3f889b6d951c4486fd58090df6cbef8c7294dbded23e"
+    },
+    {
+      "active": false,
+      "error_workflow": "tradeai-fabric-error",
+      "file": "tradeai-fabric-error.json",
+      "graph_sha256": "21c7ddd097b1eca3859f3ba6c407817d6ba6eed73a6a37a9f5d1858cfbd578da",
+      "id": "tradeai-fabric-error",
+      "kind": "error",
+      "node_types": [
+        "n8n-nodes-base.code",
+        "n8n-nodes-base.errorTrigger",
+        "n8n-nodes-base.httpRequest",
+        "n8n-nodes-base.set"
+      ],
+      "relay_calls": [
+        "POST /intent"
+      ],
+      "sha256": "ed24dbffe47d4076dcf34d1b0fb01d2e77f4a01590be820fd67b176e7f4132a0"
+    },
+    {
+      "active": false,
+      "error_workflow": "tradeai-fabric-error",
+      "file": "tradeai-fabric-run-lane-probe.json",
+      "graph_sha256": "5d562f770f09c19bdc42fa5c2177a5ab00ec7546e0f4c4b2dec1d32ee729cbfe",
+      "id": "tradeai-fabric-run-lane-probe",
+      "kind": "probe",
+      "node_types": [
+        "n8n-nodes-base.code",
+        "n8n-nodes-base.executeWorkflow",
+        "n8n-nodes-base.scheduleTrigger",
+        "n8n-nodes-base.set"
+      ],
+      "relay_calls": [],
+      "sha256": "a931e6ab397882eec673f25d72de85ef74720364a33cc031fb2fb6d475cde5cc"
+    },
+    {
+      "active": false,
+      "error_workflow": "tradeai-fabric-error",
+      "file": "tradeai-fabric-error-probe.json",
+      "graph_sha256": "f92070400e85d42fc047dd6f0fade44d81174fe654d55f8bbb7e4d1bbdab116e",
+      "id": "tradeai-fabric-error-probe",
+      "kind": "error-probe",
+      "node_types": [
+        "n8n-nodes-base.code",
+        "n8n-nodes-base.scheduleTrigger"
+      ],
+      "relay_calls": [],
+      "sha256": "dcaa2d9befcbdd984e539d0da8f6489e72436d0359bcea8dabb797e9bda05882"
+    }
+  ]
+}

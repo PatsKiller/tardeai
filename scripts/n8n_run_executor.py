@@ -46,6 +46,15 @@ workers (both spawn through ``_execute_once`` -> ``build_child_env``). Global mo
 ``env_names`` only; a lane pinned ``env_allowlist_mode: "report"`` keeps the pre-P7 env, and a lane with no
 ``env_names`` list is RUN_REFUSED (fail closed, never a silent fallback to the full env). An unknown mode value is
 RUN_REFUSED for every lane. The n8n secret strip below applies in every mode.
+
+2026-10-14 (n8n fabric Phase 1; AGENTS.md §23.23, 10.0.0 PROPOSED; REFACTOR_PLAN B4 + addendum items 1-2). Two
+additions on both the v1 and v2 paths. (1) Run outcome: after the ledger row is finished and the receipt file
+written, the terminal outcome (status success / failed / refused_policy / skipped_lock, exit code, receipt path,
+duration, effect key) is upserted into ``run_outcomes`` (scripts/lib/n8n_fabric_store.py), which the gateway's
+read-only ``coordination/run_outcome`` serves to the Run Lane sub-workflow. A refusal is a status, not an error.
+(2) Effect key: a LIVE run of a lane listed in config/n8n_effect_keys.json claims ``fx:<process>:<slot>:<ver>``
+(scripts/lib/effect_claim.py) right before the spawn, under the owner-epoch fence; a refused claim is RUN_REFUSED
+``effect:<reason>`` and nothing runs. That file is empty at merge, so no lane's behaviour changes.
 """
 
 from __future__ import annotations
@@ -82,6 +91,19 @@ from scripts.lib.n8n_coordination_ledger import (  # noqa: E402
 )
 from scripts.lib.lane_stage_clamp import clamp_mode, load_stage_rows  # noqa: E402
 from scripts.lib.n8n_retry_policy import RetryPolicyError, class_verdict, finalize_outcome, load_policies  # noqa: E402
+from scripts.lib.effect_claim import (  # noqa: E402
+    EFFECT_CONFIG_REL,
+    STATE_DONE as EFFECT_DONE,
+    STATE_FAILED as EFFECT_FAILED,
+    STATE_RELEASED as EFFECT_RELEASED,
+    STATE_UNKNOWN as EFFECT_UNKNOWN,
+    EffectClaimStore,
+    EffectKeyError,
+    effect_key,
+    load_effect_config,
+)
+from scripts.lib.n8n_due import parse_key as parse_slot_key  # noqa: E402
+from scripts.lib.n8n_fabric_store import FabricStoreError, RunOutcomeStore  # noqa: E402
 from scripts.n8n_coordination_gateway import default_ledger_path  # noqa: E402
 
 RECEIPT_SCHEMA = "RunReceipt@v1"
@@ -141,11 +163,27 @@ LANE_ENV_ALLOWLIST_MODES = ("report", "enforce")
 ENV_BOUND_NAMES_ENV = "TRADEAI_ENV_BOUND_NAMES"
 LLM_BRIDGE_ENV = "TRADEAI_LLM_VIA_BRIDGE"
 LLM_PROCESS_ENV = "TRADEAI_LLM_PROCESS_ID"
-CHILD_ENV_BASE_NAMES = frozenset({
-    "PATH", "HOME", "LANG", "LC_ALL", "TZ", "USER", "LOGNAME", "XDG_RUNTIME_DIR", "PYTHONPATH",
-    "PROJ", "PY", "TRADEAI_ENV", "TRADEAI_STATE_ROOT", "TRADEAI_VENV_PYTHON", "LLM_DEFER_OFFPEAK",
-    "BLIND_REVIEW_LANES", ENV_BOUND_NAMES_ENV,
-})
+CHILD_ENV_BASE_NAMES = frozenset(
+    {
+        "PATH",
+        "HOME",
+        "LANG",
+        "LC_ALL",
+        "TZ",
+        "USER",
+        "LOGNAME",
+        "XDG_RUNTIME_DIR",
+        "PYTHONPATH",
+        "PROJ",
+        "PY",
+        "TRADEAI_ENV",
+        "TRADEAI_STATE_ROOT",
+        "TRADEAI_VENV_PYTHON",
+        "LLM_DEFER_OFFPEAK",
+        "BLIND_REVIEW_LANES",
+        ENV_BOUND_NAMES_ENV,
+    }
+)
 ENV_NAME_RE = re.compile(r"^[A-Z_][A-Z0-9_]*$")
 
 
@@ -164,8 +202,11 @@ def env_policy_problem(entry: Mapping[str, Any]) -> str | None:
     A list may not name an n8n secret the lane is not already entitled to (relay keys, _PREVIOUS keys, ...)."""
     names = entry.get("env_names")
     if names is not None:
-        if not isinstance(names, list) or not all(isinstance(n, str) and ENV_NAME_RE.fullmatch(n) for n in names) \
-                or len(names) != len(set(names)):
+        if (
+            not isinstance(names, list)
+            or not all(isinstance(n, str) and ENV_NAME_RE.fullmatch(n) for n in names)
+            or len(names) != len(set(names))
+        ):
             return "bad_env_names"
         permitted = CHILD_ENV_N8N_NON_SECRET | CHILD_ENV_LANE_PASSTHROUGH.get(str(entry.get("lane_id")), frozenset())
         if any(n.startswith(CHILD_ENV_STRIP_PREFIXES) and n not in permitted for n in names):
@@ -203,7 +244,9 @@ def env_allowlist_mode(env: Mapping[str, str]) -> str | None:
 
 
 def build_child_env(
-    env: Mapping[str, str], lane_id: str, entry: Mapping[str, Any] | None,
+    env: Mapping[str, str],
+    lane_id: str,
+    entry: Mapping[str, Any] | None,
 ) -> tuple[dict[str, str] | None, dict[str, Any]]:
     """(child env, names-only ``env_allowlist`` receipt block) for one spawn — the ONE builder for v1 and v2.
 
@@ -216,10 +259,16 @@ def build_child_env(
     requested = env_allowlist_mode(env)
     lane_mode = entry.get("env_allowlist_mode", "enforce")
     names = entry.get("env_names")
-    block: dict[str, Any] = {"requested_mode": requested, "effective_mode": None, "lane_mode": lane_mode,
-                             "env_names_declared": isinstance(names, list), "reason": None, "dropped_names": None}
+    block: dict[str, Any] = {
+        "requested_mode": requested,
+        "effective_mode": None,
+        "lane_mode": lane_mode,
+        "env_names_declared": isinstance(names, list),
+        "reason": None,
+        "dropped_names": None,
+    }
     if requested is None:
-        block["reason"] = "bad_env_allowlist_mode"   # the bad value itself is never recorded
+        block["reason"] = "bad_env_allowlist_mode"  # the bad value itself is never recorded
         return None, block
     problem = env_policy_problem(entry)
     if problem is not None:
@@ -389,8 +438,13 @@ def execute(
     sleeper=time.sleep,
     v2: bool = False,
     stage_rows: Any = NO_STAGE_CLAMP,
+    effects: "EffectGate | None" = None,
 ) -> dict[str, Any]:
     """Run one claimed row (plus the entry's opt-in bounded retries) and return its RunReceipt@v1.
+
+    ``effects`` (n8n fabric Phase 1, 2026-10-14): the semantic effect-key gate. None = no gate (library callers and
+    tests of other behaviour); ``main`` always passes one, which is inert for every lane not in
+    config/n8n_effect_keys.json.
 
     ``runner`` / ``sleeper`` are injected by tests. The receipt is the LAST attempt's, with ``attempts`` and
     ``attempt_states`` recording every try; ``started_at`` and ``output_signal_mtime_before`` stay the first's.
@@ -400,15 +454,33 @@ def execute(
     in-worker layer would sleep without heartbeats and outlive the reaper's overdue bound. An entry that declares
     ``retry`` gets ``allowlist_retry: "ignored_v2"`` on its receipt. The v1 path (``v2=False``) is unchanged.
     """
-    receipt = _execute_once(row, entry, env=env, state_root=state_root, code_root=code_root, runner=runner, typed=v2,
-                            stage_rows=stage_rows)
+    receipt = _execute_once(
+        row,
+        entry,
+        env=env,
+        state_root=state_root,
+        code_root=code_root,
+        runner=runner,
+        typed=v2,
+        stage_rows=stage_rows,
+        effects=effects,
+    )
     policy = retry_policy(entry) if entry is not None and not v2 else None
     states = [str(receipt["state"])]
     first = receipt
     while policy and len(states) <= policy["max"] and states[-1] in policy["on"]:
         sleeper(policy["backoff_s"])
-        receipt = _execute_once(row, entry, env=env, state_root=state_root, code_root=code_root, runner=runner,
-                                typed=v2, stage_rows=stage_rows)
+        receipt = _execute_once(
+            row,
+            entry,
+            env=env,
+            state_root=state_root,
+            code_root=code_root,
+            runner=runner,
+            typed=v2,
+            stage_rows=stage_rows,
+            effects=effects,
+        )
         states.append(str(receipt["state"]))
     if len(states) > 1:
         receipt["started_at"] = first["started_at"]
@@ -430,9 +502,14 @@ def _execute_once(
     runner=None,
     typed: bool = False,
     stage_rows: Any = NO_STAGE_CLAMP,
+    effects: "EffectGate | None" = None,
 ) -> dict[str, Any]:
     """One attempt: run the claimed row and return its RunReceipt@v1. ``typed`` (executor v2 only) adds the errno
-    name to a spawn failure's reason (``spawn:OSError:ENOMEM``) so the retry policy can match it."""
+    name to a spawn failure's reason (``spawn:OSError:ENOMEM``) so the retry policy can match it.
+
+    ``effects``: a LIVE run (after the stage clamp) of a lane with an effect key claims it immediately before the
+    spawn; a refused claim is RUN_REFUSED ``effect:<reason>`` and nothing is spawned. The claim is finished from
+    the attempt's terminal state (EffectGate.end) and recorded on the receipt as ``effect``."""
     run_id, lane_id, mode = str(row["run_id"]), str(row["lane_id"]), str(row["mode"])
     started = time.time()
     receipt: dict[str, Any] = {
@@ -474,14 +551,44 @@ def _execute_once(
     receipt["output_signal"] = signal_rel
     receipt["output_signal_mtime_before"] = _mtime(signal_path)
     receipt["argv"] = argv
-    receipt["lock"] = {"path": lock_path_for(entry, mode), "scope": "dryrun" if mode == "dry_run" else "live",
-                       "kind": entry.get("lock_kind", "safe_flock")}
+    receipt["lock"] = {
+        "path": lock_path_for(entry, mode),
+        "scope": "dryrun" if mode == "dry_run" else "live",
+        "kind": entry.get("lock_kind", "safe_flock"),
+    }
     timeout_s = float(entry["timeout_s"])
     run = runner or _subprocess_runner
     lane_env, receipt["env_allowlist"] = build_child_env(env, lane_id, entry)
     if lane_env is None:
-        return _finish(receipt, "RUN_REFUSED", reason=f"env_allowlist:{receipt['env_allowlist']['reason']}",
-                       started=started)
+        return _finish(
+            receipt, "RUN_REFUSED", reason=f"env_allowlist:{receipt['env_allowlist']['reason']}", started=started
+        )
+    if effects is not None:
+        effect, refusal = effects.begin(row, lane_id, mode)
+        if effect is not None:
+            receipt["effect"] = effect
+        if refusal is not None:
+            return _finish(receipt, "RUN_REFUSED", reason=refusal, started=started)
+        out = _spawn(receipt, entry, argv, run, timeout_s, lane_env, code_root, signal_path, typed, started)
+        if effect is not None:
+            effects.end(effect, out)
+        return out
+    return _spawn(receipt, entry, argv, run, timeout_s, lane_env, code_root, signal_path, typed, started)
+
+
+def _spawn(
+    receipt: dict[str, Any],
+    entry: Mapping[str, Any],
+    argv: list[str],
+    run,
+    timeout_s: float,
+    lane_env: dict[str, str],
+    code_root: Path,
+    signal_path: Path | None,
+    typed: bool,
+    started: float,
+) -> dict[str, Any]:
+    """The spawn and its classification (unchanged from the pre-2026-10-14 tail of ``_execute_once``)."""
     try:
         result = run(argv, timeout=timeout_s + KILL_AFTER_S + 30, env=lane_env, cwd=code_root)
     except subprocess.TimeoutExpired:
@@ -529,6 +636,124 @@ def _finish(receipt: dict[str, Any], state: str, *, reason: str | None, started:
     return receipt
 
 
+# ── n8n fabric Phase 1 (2026-10-14; AGENTS.md §23.23, 10.0.0 PROPOSED): effect key + run outcome ──────────────
+#: Attempt terminal state -> effect claim state. A lock skip and a refusal ran nothing (the claim is released); a
+#: timeout may have produced the effect, so it is UNKNOWN and never re-claimed without an operator release.
+EFFECT_FINISH_FOR_STATE = {
+    "RUN_DONE": EFFECT_DONE,
+    "RUN_FAILED": EFFECT_FAILED,
+    "RUN_TIMEOUT": EFFECT_UNKNOWN,
+    "RUN_SKIPPED_LOCK": EFFECT_RELEASED,
+    "RUN_REFUSED": EFFECT_RELEASED,
+}
+
+
+class EffectGate:
+    """The executor side of scripts/lib/effect_claim.py. Inert for a dry_run and for a lane absent from
+    config/n8n_effect_keys.json. A live run of an opted-in lane claims ``fx:<process>:<slot>:<input_version>`` as
+    scheduler ``n8n``, with the run's ``requested_at`` as its admission time (the owner-epoch fence); the slot is
+    the server-minted ``d:``/``e:``/``g:`` key's slot. Every failure to decide fails closed (RUN_REFUSED)."""
+
+    def __init__(
+        self,
+        store: EffectClaimStore | None,
+        config: Mapping[str, Mapping[str, str]] | None,
+        *,
+        config_error: str | None = None,
+        clock=time.time,
+    ) -> None:
+        self.store, self.config, self.config_error, self.clock = store, dict(config or {}), config_error, clock
+
+    @classmethod
+    def from_ledger(cls, ledger: CoordinationLedger, code_root: Path, *, clock=time.time) -> "EffectGate":
+        try:
+            config, error = load_effect_config(code_root / EFFECT_CONFIG_REL), None
+        except EffectKeyError as exc:
+            config, error = {}, str(exc)
+        return cls(EffectClaimStore(ledger), config, config_error=error, clock=clock)
+
+    def begin(self, row: Mapping[str, Any], lane_id: str, mode: str) -> tuple[dict[str, Any] | None, str | None]:
+        """(effect block for the receipt or None, refusal reason or None)."""
+        if mode != "live":
+            return None, None
+        if self.config_error is not None:
+            return {"key": None, "claimed": False, "reason": self.config_error}, f"effect:{self.config_error}"
+        spec = self.config.get(lane_id)
+        if spec is None:
+            return None, None
+        parsed = parse_slot_key(str(row.get("run_id") or ""))
+        if parsed is None:
+            block = {"key": None, "process": spec["process"], "claimed": False, "reason": "effect_slot_unknown"}
+            return block, "effect:effect_slot_unknown"
+        slot = parsed[3]
+        key = effect_key(spec["process"], slot, spec["input_version"])
+        block: dict[str, Any] = {
+            "key": key,
+            "process": spec["process"],
+            "slot": slot,
+            "input_version": spec["input_version"],
+            "scheduler": "n8n",
+            "claimed": False,
+        }
+        if self.store is None:
+            block["reason"] = "effect_store_unavailable"
+            return block, "effect:effect_store_unavailable"
+        try:
+            res = self.store.claim(
+                key,
+                scheduler="n8n",
+                now=self.clock(),
+                run_id=str(row.get("run_id")),
+                admitted_at=_ts(row.get("requested_at")),
+            )
+        except sqlite3.Error:
+            block["reason"] = "effect_store_unavailable"
+            return block, "effect:effect_store_unavailable"
+        block.update(
+            {
+                "claimed": res.ok,
+                "reason": res.reason,
+                "owner": res.owner,
+                "epoch": res.epoch,
+                "attempt": res.attempt,
+                "holder": dict(res.holder) if res.holder else None,
+            }
+        )
+        return block, (None if res.ok else f"effect:{res.reason}")
+
+    def end(self, block: dict[str, Any], receipt: Mapping[str, Any]) -> None:
+        """Finish a claimed key from the attempt's terminal state; the result lands on the receipt's block."""
+        if not block.get("claimed") or self.store is None:
+            return
+        state = EFFECT_FINISH_FOR_STATE.get(str(receipt.get("state")), EFFECT_UNKNOWN)
+        try:
+            row = self.store.finish(
+                block["key"],
+                state=state,
+                now=self.clock(),
+                run_id=str(receipt.get("run_id")),
+                detail=str(receipt.get("reason") or "")[:120] or None,
+            )
+        except sqlite3.Error as exc:
+            block["finish_error"] = type(exc).__name__  # the claim stays CLAIMED = held; an operator releases it
+            return
+        block["final_state"] = None if row is None else row.get("state")
+        block["fenced_late"] = bool(row and row.get("fenced_late"))
+
+
+def record_outcome(outcomes: RunOutcomeStore | None, receipt: Mapping[str, Any], receipt_path: Path | None) -> None:
+    """The terminal outcome for coordination/run_outcome. A failed write is logged, never fatal: the ledger
+    ``runs`` row stays the record of truth and the gateway view falls back to it."""
+    if outcomes is None:
+        return
+    try:
+        outcomes.record(receipt, receipt_path=None if receipt_path is None else str(receipt_path), now=time.time())
+    except (sqlite3.Error, FabricStoreError) as exc:
+        print(
+            json.dumps({"run_id": receipt.get("run_id"), "outcome_record": f"failed:{type(exc).__name__}"}), flush=True
+        )
+
+
 def write_receipt(receipt: Mapping[str, Any], *, state_root: Path, write_last: bool = True) -> Path:
     run_id = str(receipt["run_id"])
     if not RUN_ID_RE.fullmatch(run_id):
@@ -560,26 +785,40 @@ def drain(
     runner=None,
     max_runs: int | None = None,
     stage_rows: Any = NO_STAGE_CLAMP,
+    outcomes: RunOutcomeStore | None = None,
+    effects: EffectGate | None = None,
 ) -> list[dict[str, Any]]:
     """Claim and execute until the queue is empty (or max_runs). One receipt per claimed row, always.
-    ``stage_rows``: the registry lanes for the stage clamp (None = unreadable, fail closed)."""
+    ``stage_rows``: the registry lanes for the stage clamp (None = unreadable, fail closed).
+    ``outcomes`` / ``effects`` (2026-10-14): the run_outcomes recorder and the effect-key gate; None = off."""
     out: list[dict[str, Any]] = []
     while max_runs is None or len(out) < max_runs:
         row = store.claim_next()
         if row is None:
             break
         receipt = execute(
-            row, allowlist.get(str(row["lane_id"])), env=env, state_root=state_root, code_root=code_root, runner=runner,
+            row,
+            allowlist.get(str(row["lane_id"])),
+            env=env,
+            state_root=state_root,
+            code_root=code_root,
+            runner=runner,
             stage_rows=stage_rows,
+            effects=effects,
         )
+        finished = True
         try:
             store.finish(str(row["run_id"]), state=str(receipt["state"]), receipt=receipt)
         except LedgerError as exc:  # B2: another executor finished (reaped) the row meanwhile; keep draining
+            finished = False
             print(json.dumps({"run_id": row["run_id"], "finish_error": exc.reason}), flush=True)
+        receipt_path: Path | None = None
         try:
-            write_receipt(receipt, state_root=state_root)
+            receipt_path = write_receipt(receipt, state_root=state_root)
         except OSError as exc:  # the ledger row is the record of truth; the file is a convenience copy
             print(json.dumps({"run_id": row["run_id"], "receipt_file": f"failed:{type(exc).__name__}"}), flush=True)
+        if finished:  # a row finished elsewhere (reaped) keeps that executor's outcome
+            record_outcome(outcomes, receipt, receipt_path)
         print(
             json.dumps(
                 {
@@ -642,8 +881,16 @@ EXECUTOR_DEFAULTS: dict[str, tuple[float, float, float]] = {
     "status_queue_limit": (5000, 10, 100000),
     "receipt_history": (200, 1, 10000),
 }
-_INT_KEYS = frozenset({"max_workers", "heavy_timeout_s", "unknown_lane_timeout_s", "finish_retry_attempts",
-                       "status_queue_limit", "receipt_history"})
+_INT_KEYS = frozenset(
+    {
+        "max_workers",
+        "heavy_timeout_s",
+        "unknown_lane_timeout_s",
+        "finish_retry_attempts",
+        "status_queue_limit",
+        "receipt_history",
+    }
+)
 #: A failed run whose output tail matches one of these gets the typed reason ``<TYPE>:<old reason>`` (the retry
 #: rails match COST_CAP / PEAK_SKIP on the reason text; llm-class lanes are terminal on them whatever the policy).
 TYPED_REASON_MARKERS: dict[str, str] = {"COST_CAP": r"(?i)cost_cap|skipped_budget", "PEAK_SKIP": r"(?i)peak_skip"}
@@ -673,8 +920,12 @@ def load_executor_config(path: Path | None) -> dict[str, Any]:
             _warn({"executor": "config_default", "key": key, "reason": "missing"})
             continue
         v = doc[key]
-        if isinstance(v, bool) or not isinstance(v, (int, float)) or not lo <= v <= hi \
-                or (key in _INT_KEYS and int(v) != v):
+        if (
+            isinstance(v, bool)
+            or not isinstance(v, (int, float))
+            or not lo <= v <= hi
+            or (key in _INT_KEYS and int(v) != v)
+        ):
             _warn({"executor": "config_default", "key": key, "reason": "out_of_range"})
             continue
         cfg[key] = int(v) if key in _INT_KEYS else float(v)
@@ -713,13 +964,15 @@ def resolve_workers(cli_value: int | None, env: Mapping[str, str], max_workers: 
     return max(1, min(max_workers, n))
 
 
-def derived_class(entry: Mapping[str, Any] | None,
-                  heavy_timeout_s: float = EXECUTOR_DEFAULTS["heavy_timeout_s"][0]) -> str:
+def derived_class(
+    entry: Mapping[str, Any] | None, heavy_timeout_s: float = EXECUTOR_DEFAULTS["heavy_timeout_s"][0]
+) -> str:
     """Class for a run whose ``runs.class`` is NULL: heavy when the allowlist timeout_s >= heavy_timeout_s
     (config, 1800), else report."""
     t = (entry or {}).get("timeout_s")
-    return "heavy" if isinstance(t, (int, float)) and not isinstance(t, bool) and t >= heavy_timeout_s \
-        else DEFAULT_CLASS
+    return (
+        "heavy" if isinstance(t, (int, float)) and not isinstance(t, bool) and t >= heavy_timeout_s else DEFAULT_CLASS
+    )
 
 
 def typed_reason(receipt: Mapping[str, Any], markers: Mapping[str, str] = TYPED_REASON_MARKERS) -> str | None:
@@ -833,23 +1086,33 @@ def heartbeat_runner(on_spawn, on_beat, heartbeat_s: float = EXECUTOR_DEFAULTS["
     return run
 
 
-def upgrade_receipt(receipt: Mapping[str, Any], row: Mapping[str, Any], *, klass: str, priority: int,
-                    worker_id: str | None, verdict: str, retry_policy: str) -> dict[str, Any]:
+def upgrade_receipt(
+    receipt: Mapping[str, Any],
+    row: Mapping[str, Any],
+    *,
+    klass: str,
+    priority: int,
+    worker_id: str | None,
+    verdict: str,
+    retry_policy: str,
+) -> dict[str, Any]:
     """RunReceipt@v1 fields + the v2 dispatch fields. Pure."""
     started, requested = _ts(row.get("started_at")), _ts(row.get("requested_at"))
     out = dict(receipt)
-    out.update({
-        "schema": RECEIPT_SCHEMA_V2,
-        "slot_key": row.get("slot_key"),
-        "attempt": int(row.get("attempt") or 1),
-        "parent_run_id": row.get("parent_run_id"),
-        "class": klass,
-        "priority": int(priority),
-        "worker_id": worker_id,
-        "queue_wait_s": None if started is None or requested is None else round(max(0.0, started - requested), 3),
-        "verdict": verdict,
-        "retry_policy": retry_policy,
-    })
+    out.update(
+        {
+            "schema": RECEIPT_SCHEMA_V2,
+            "slot_key": row.get("slot_key"),
+            "attempt": int(row.get("attempt") or 1),
+            "parent_run_id": row.get("parent_run_id"),
+            "class": klass,
+            "priority": int(priority),
+            "worker_id": worker_id,
+            "queue_wait_s": None if started is None or requested is None else round(max(0.0, started - requested), 3),
+            "verdict": verdict,
+            "retry_policy": retry_policy,
+        }
+    )
     return out
 
 
@@ -858,13 +1121,33 @@ class ExecutorV2:
     ``pid_alive``, ``sleeper`` and every interval are injectable so tests run on a fake clock with fake runners.
     Intervals and limits come from ``config`` (``load_executor_config``); an explicit keyword overrides it."""
 
-    def __init__(self, store: LedgerRunStore, allowlist: Mapping[str, Mapping[str, Any]], *, env: Mapping[str, str],
-                 state_root: Path, code_root: Path, workers: int, policies, registry_rows=None, clock=time.time,
-                 runner_factory=None, pid_alive=pid_alive, config: Mapping[str, Any] | None = None,
-                 heartbeat_s: float | None = None, stale_heartbeat_s: float | None = None,
-                 reap_every_s: float | None = None, lost_grace_s: float | None = None,
-                 worker_prefix: str | None = None, quiet: bool = False, sleeper=time.sleep,
-                 stage_rows: Any = NO_STAGE_CLAMP, stage_rows_loader=None) -> None:
+    def __init__(
+        self,
+        store: LedgerRunStore,
+        allowlist: Mapping[str, Mapping[str, Any]],
+        *,
+        env: Mapping[str, str],
+        state_root: Path,
+        code_root: Path,
+        workers: int,
+        policies,
+        registry_rows=None,
+        clock=time.time,
+        runner_factory=None,
+        pid_alive=pid_alive,
+        config: Mapping[str, Any] | None = None,
+        heartbeat_s: float | None = None,
+        stale_heartbeat_s: float | None = None,
+        reap_every_s: float | None = None,
+        lost_grace_s: float | None = None,
+        worker_prefix: str | None = None,
+        quiet: bool = False,
+        sleeper=time.sleep,
+        stage_rows: Any = NO_STAGE_CLAMP,
+        stage_rows_loader=None,
+        outcomes: RunOutcomeStore | None = None,
+        effects: EffectGate | None = None,
+    ) -> None:
         cfg = dict(load_executor_config(None))
         cfg.update(config or {})
         if not 2 <= int(workers) <= min(MAX_WORKERS, int(cfg["max_workers"])):
@@ -875,6 +1158,8 @@ class ExecutorV2:
         self.workers, self.policies, self.registry_rows = int(workers), policies, registry_rows
         #: stage clamp (§23.11): fixed rows, or a loader re-read per claimed run so a stage PR applies without restart
         self.stage_rows, self.stage_rows_loader = stage_rows, stage_rows_loader
+        #: 2026-10-14 fabric Phase 1: run_outcomes recorder and effect-key gate (None = off)
+        self.outcomes, self.effects = outcomes, effects
         self.clock, self.runner_factory, self.pid_alive, self.sleeper = clock, runner_factory, pid_alive, sleeper
         self.heartbeat_s = float(cfg["heartbeat_s"] if heartbeat_s is None else heartbeat_s)
         self.stale_heartbeat_s = float(cfg["stale_heartbeat_s"] if stale_heartbeat_s is None else stale_heartbeat_s)
@@ -906,8 +1191,12 @@ class ExecutorV2:
         return f"{self.worker_prefix}:w{i}"
 
     def class_of(self, row: Mapping[str, Any]) -> str:
-        return str(row.get("effective_class") or row.get("class") or self.default_classes.get(str(row["lane_id"]))
-                   or DEFAULT_CLASS)
+        return str(
+            row.get("effective_class")
+            or row.get("class")
+            or self.default_classes.get(str(row["lane_id"]))
+            or DEFAULT_CLASS
+        )
 
     def busy(self) -> list[dict[str, Any]]:
         with self._lock:
@@ -944,7 +1233,7 @@ class ExecutorV2:
             busy = self.workers - len(free)
             running = self.store.list_running()
             used = max(busy, len(running))
-            if used >= self.capacity:            # class_caps.global (or N) RUNNING rows: nothing more starts
+            if used >= self.capacity:  # class_caps.global (or N) RUNNING rows: nothing more starts
                 return started
             counts: dict[str, int] = {}
             for r in running:
@@ -954,17 +1243,27 @@ class ExecutorV2:
             # the last free unit of capacity is the reserved one: it only takes priority <= reserved_priority_max
             max_p = self.reserved_priority_max if self.capacity >= 2 and used >= self.capacity - 1 else None
             i = free[0]
-            row = self.store.claim_next_v2(worker_id=self.worker_id(i), exclude_classes=exclude, max_priority=max_p,
-                                           now=now, default_classes=self.default_classes)
+            row = self.store.claim_next_v2(
+                worker_id=self.worker_id(i),
+                exclude_classes=exclude,
+                max_priority=max_p,
+                now=now,
+                default_classes=self.default_classes,
+            )
             if row is None:
                 return started
             self._start(i, row)
             started += 1
 
     def _start(self, i: int, row: dict[str, Any]) -> None:
-        slot = {"worker_id": self.worker_id(i), "run_id": str(row["run_id"]), "lane_id": str(row["lane_id"]),
-                "class": self.class_of(row), "priority": int(row.get("effective_priority") or 0),
-                "started_at": row.get("started_at")}
+        slot = {
+            "worker_id": self.worker_id(i),
+            "run_id": str(row["run_id"]),
+            "lane_id": str(row["lane_id"]),
+            "class": self.class_of(row),
+            "priority": int(row.get("effective_priority") or 0),
+            "started_at": row.get("started_at"),
+        }
         with self._lock:
             self._slots[i] = slot
         t = threading.Thread(target=self._work, args=(i, row, slot), name=f"n8n-exec-w{i}", daemon=True)
@@ -974,19 +1273,31 @@ class ExecutorV2:
     def _work(self, i: int, row: dict[str, Any], slot: Mapping[str, Any]) -> None:
         run_id = str(row["run_id"])
         try:
+
             def beat(pid: int | None) -> None:
                 try:
                     self.store.touch_heartbeat(run_id, pid, self.clock())
                 except Exception:  # noqa: BLE001 — a missed beat is survivable; the reaper allows 3
                     pass
 
-            factory = self.runner_factory or (lambda on_spawn, on_beat: heartbeat_runner(on_spawn, on_beat,
-                                                                                          self.heartbeat_s))
+            factory = self.runner_factory or (
+                lambda on_spawn, on_beat: heartbeat_runner(on_spawn, on_beat, self.heartbeat_s)
+            )
             stage_rows = self.stage_rows_loader() if self.stage_rows_loader is not None else self.stage_rows
-            receipt = execute(row, self.allowlist.get(str(row["lane_id"])), env=self.env, state_root=self.state_root,
-                              code_root=self.code_root, runner=factory(beat, beat), v2=True, stage_rows=stage_rows)
-            self.complete(row, receipt, klass=str(slot["class"]), priority=int(slot["priority"]),
-                          worker_id=str(slot["worker_id"]))
+            receipt = execute(
+                row,
+                self.allowlist.get(str(row["lane_id"])),
+                env=self.env,
+                state_root=self.state_root,
+                code_root=self.code_root,
+                runner=factory(beat, beat),
+                v2=True,
+                stage_rows=stage_rows,
+                effects=self.effects,
+            )
+            self.complete(
+                row, receipt, klass=str(slot["class"]), priority=int(slot["priority"]), worker_id=str(slot["worker_id"])
+            )
         except Exception as exc:  # noqa: BLE001 — never lose a worker; the row stays RUNNING for the reaper
             self._log({"run_id": run_id, "worker_error": f"{type(exc).__name__}:{str(exc)[:120]}"})
         finally:
@@ -1003,8 +1314,15 @@ class ExecutorV2:
             try:
                 return fn()
             except (sqlite3.OperationalError, OSError) as exc:
-                self._log({"run_id": run_id, "retry": what, "attempt": k, "of": n,
-                           "error": f"{type(exc).__name__}:{str(exc)[:120]}"})
+                self._log(
+                    {
+                        "run_id": run_id,
+                        "retry": what,
+                        "attempt": k,
+                        "of": n,
+                        "error": f"{type(exc).__name__}:{str(exc)[:120]}",
+                    }
+                )
                 if k >= n:
                     raise
                 self.sleeper(min(delay, cap))
@@ -1019,16 +1337,28 @@ class ExecutorV2:
         except LedgerError:
             cur = self.store.get(run_id)
             rec = (cur or {}).get("receipt")
-            if cur is not None and cur.get("state") == out["state"] and isinstance(rec, Mapping) \
-                    and rec.get("worker_id") == out.get("worker_id") and rec.get("finished_at") == out.get("finished_at"):
+            if (
+                cur is not None
+                and cur.get("state") == out["state"]
+                and isinstance(rec, Mapping)
+                and rec.get("worker_id") == out.get("worker_id")
+                and rec.get("finished_at") == out.get("finished_at")
+            ):
                 return cur
             raise
 
     def _finalize(self, finished: Mapping[str, Any], job: Mapping[str, Any]) -> bool:
         """finalize_outcome (idempotent: verdict set, dead letter upserted by slot key, breaker opened only when
         closed). True when a dead letter was written."""
-        outcome = finalize_outcome(self.store, finished, job["policy"], breaker_threshold=self.policies.breaker_threshold,
-                                   now=self.clock(), severity=job["severity"], klass=job["klass"])
+        outcome = finalize_outcome(
+            self.store,
+            finished,
+            job["policy"],
+            breaker_threshold=self.policies.breaker_threshold,
+            now=self.clock(),
+            severity=job["severity"],
+            klass=job["klass"],
+        )
         with self._lock:
             for f in outcome.findings:
                 self._findings[str(f["item"])] = dict(f)
@@ -1038,7 +1368,7 @@ class ExecutorV2:
         """Drive one completion through finish -> finalize. Returns "done", "lost" (finished elsewhere) or
         "pending" (a transient ledger error outlasted the bounded retry)."""
         run_id, out = job["run_id"], job["out"]
-        out.pop("complete_pending", None)       # never stored on the ledger row: it only marks a parked run
+        out.pop("complete_pending", None)  # never stored on the ledger row: it only marks a parked run
         try:
             if job["stage"] == "finish":
                 try:
@@ -1064,8 +1394,9 @@ class ExecutorV2:
                     self._pending.pop(job["run_id"], None)
                 self._record(job)
 
-    def complete(self, row: Mapping[str, Any], receipt: Mapping[str, Any], *, klass: str, priority: int,
-                 worker_id: str | None) -> dict[str, Any]:
+    def complete(
+        self, row: Mapping[str, Any], receipt: Mapping[str, Any], *, klass: str, priority: int, worker_id: str | None
+    ) -> dict[str, Any]:
         """finish + verdict + finalize_outcome + receipt file for one executed (or reaped) run. B1: finish and
         finalize_outcome retry with bounded backoff; past that the run is parked in ``_pending`` (still owned by
         this process, so the reaper never turns an exit-0 run into executor_lost) and retried every step."""
@@ -1074,12 +1405,22 @@ class ExecutorV2:
         rec = dict(receipt)
         rec["reason"] = typed_reason(rec, self.cfg["typed_reason_markers"])
         exit_code = rec.get("exit_code")
-        v = class_verdict(str(rec["state"]), exit_code if isinstance(exit_code, int) else None, rec.get("reason"),
-                          policy, klass)
-        out = upgrade_receipt(rec, row, klass=klass, priority=priority, worker_id=worker_id, verdict=v,
-                              retry_policy=policy.name)
-        job = {"run_id": str(row["run_id"]), "out": out, "policy": policy, "klass": klass, "stage": "finish",
-               "severity": _lane_severity(lane, self.registry_rows), "dead": False, "finished": None}
+        v = class_verdict(
+            str(rec["state"]), exit_code if isinstance(exit_code, int) else None, rec.get("reason"), policy, klass
+        )
+        out = upgrade_receipt(
+            rec, row, klass=klass, priority=priority, worker_id=worker_id, verdict=v, retry_policy=policy.name
+        )
+        job = {
+            "run_id": str(row["run_id"]),
+            "out": out,
+            "policy": policy,
+            "klass": klass,
+            "stage": "finish",
+            "severity": _lane_severity(lane, self.registry_rows),
+            "dead": False,
+            "finished": None,
+        }
         if self._advance(job) == "pending":
             with self._lock:
                 self._pending[job["run_id"]] = job
@@ -1090,17 +1431,40 @@ class ExecutorV2:
 
     def _record(self, job: Mapping[str, Any]) -> None:
         out = job["out"]
+        receipt_path: Path | None = None
         try:
-            write_receipt(out, state_root=self.state_root, write_last=False)
+            receipt_path = write_receipt(out, state_root=self.state_root, write_last=False)
         except OSError as exc:
             self._log({"run_id": out["run_id"], "receipt_file": f"failed:{type(exc).__name__}"})
+        if "finish_error" not in out:  # a row finished elsewhere (reaped) keeps that executor's outcome
+            record_outcome(self.outcomes, out, receipt_path)
         with self._lock:
             self._last_receipt = out
             self.receipts.append(out)
-            del self.receipts[:-int(self.cfg["receipt_history"])]
-        self._log({**{k: out.get(k) for k in ("run_id", "lane_id", "mode", "state", "exit_code", "duration_s",
-                                             "lock_skipped", "timed_out", "class", "priority", "worker_id",
-                                             "verdict", "reason")}, "dead_letter": bool(job["dead"])})
+            del self.receipts[: -int(self.cfg["receipt_history"])]
+        self._log(
+            {
+                **{
+                    k: out.get(k)
+                    for k in (
+                        "run_id",
+                        "lane_id",
+                        "mode",
+                        "state",
+                        "exit_code",
+                        "duration_s",
+                        "lock_skipped",
+                        "timed_out",
+                        "class",
+                        "priority",
+                        "worker_id",
+                        "verdict",
+                        "reason",
+                    )
+                },
+                "dead_letter": bool(job["dead"]),
+            }
+        )
 
     # -- reaper (F4) --
     def _owner_live_elsewhere(self, worker_id: Any) -> bool:
@@ -1110,7 +1474,7 @@ class ExecutorV2:
         if not isinstance(worker_id, str) or not worker_id:
             return True
         if worker_id.startswith(f"{self.worker_prefix}:"):
-            return False                              # ours, but no live slot or pending completion holds it
+            return False  # ours, but no live slot or pending completion holds it
         parts = worker_id.rsplit(":", 2)
         if len(parts) != 3 or parts[0] != os.uname().nodename or not parts[1].isdigit():
             return True
@@ -1136,19 +1500,38 @@ class ExecutorV2:
             if not (lost or overdue):
                 continue
             receipt = {
-                "schema": RECEIPT_SCHEMA, "run_id": r["run_id"], "lane_id": r["lane_id"], "mode": r["mode"],
-                "exit_code": None, "duration_s": None if started is None else round(max(0.0, now - started), 3),
-                "lock_skipped": False, "timed_out": False, "output_signal": entry.get("output_signal"),
-                "output_signal_mtime_before": None, "output_signal_mtime_after": None,
-                "started_at": r.get("started_at"), "finished_at": _iso(now), "code_sha": _code_sha(self.code_root),
-                "state": "RUN_TIMEOUT", "reason": LOST_REASON, "argv": None, "stdout_tail": None, "stderr_tail": None,
+                "schema": RECEIPT_SCHEMA,
+                "run_id": r["run_id"],
+                "lane_id": r["lane_id"],
+                "mode": r["mode"],
+                "exit_code": None,
+                "duration_s": None if started is None else round(max(0.0, now - started), 3),
+                "lock_skipped": False,
+                "timed_out": False,
+                "output_signal": entry.get("output_signal"),
+                "output_signal_mtime_before": None,
+                "output_signal_mtime_after": None,
+                "started_at": r.get("started_at"),
+                "finished_at": _iso(now),
+                "code_sha": _code_sha(self.code_root),
+                "state": "RUN_TIMEOUT",
+                "reason": LOST_REASON,
+                "argv": None,
+                "stdout_tail": None,
+                "stderr_tail": None,
                 "authority": "READ_ONLY_ADVISORY",
                 "lost": {"pid": r.get("pid"), "heartbeat_at": r.get("heartbeat_at"), "overdue": overdue},
             }
             prio = r.get("priority")
-            reaped.append(self.complete(r, receipt, klass=self.class_of(r),
-                                        priority=int(prio) if prio is not None else DEFAULT_RUN_PRIORITY,
-                                        worker_id=r.get("worker_id")))
+            reaped.append(
+                self.complete(
+                    r,
+                    receipt,
+                    klass=self.class_of(r),
+                    priority=int(prio) if prio is not None else DEFAULT_RUN_PRIORITY,
+                    worker_id=r.get("worker_id"),
+                )
+            )
         self.reaped_total += len(reaped)
         return reaped
 
@@ -1163,25 +1546,46 @@ class ExecutorV2:
             t = _ts(r.get("requested_at"))
             if t is not None and (oldest is None or t < oldest):
                 oldest = t
-        dead = [d for d in self.store.list_dead_letters()
-                if (_ts(d.get("dead_at")) or 0) >= now - self.cfg["dlq_window_s"]]
-        dlq_24h = len([d for d in self.store.list_dead_letters(include_released=True)
-                       if (_ts(d.get("dead_at")) or 0) >= now - self.cfg["dlq_window_s"]])
+        dead = [
+            d for d in self.store.list_dead_letters() if (_ts(d.get("dead_at")) or 0) >= now - self.cfg["dlq_window_s"]
+        ]
+        dlq_24h = len(
+            [
+                d
+                for d in self.store.list_dead_letters(include_released=True)
+                if (_ts(d.get("dead_at")) or 0) >= now - self.cfg["dlq_window_s"]
+            ]
+        )
         breakers = self.store.list_breakers()
         open_items = {f"dlq:{d['lane_id']}" for d in dead} | {f"breaker:{b['lane_id']}" for b in breakers}
         with self._lock:
             for item in list(self._findings):
                 if item not in open_items:
-                    del self._findings[item]       # released / closed: the finding disappears, the fan-in closes it
-            for d in dead:                          # seed after a restart: the ledger is the record of truth
-                self._findings.setdefault(f"dlq:{d['lane_id']}", {
-                    "source": "dlq", "item": f"dlq:{d['lane_id']}", "severity": "P2",
-                    "detail": f"{d['slot_key']} {d['last_state']} {d['last_reason'] or ''} attempts {d['attempts']}"[:160],
-                    "detected_at": d.get("dead_at")})
+                    del self._findings[item]  # released / closed: the finding disappears, the fan-in closes it
+            for d in dead:  # seed after a restart: the ledger is the record of truth
+                self._findings.setdefault(
+                    f"dlq:{d['lane_id']}",
+                    {
+                        "source": "dlq",
+                        "item": f"dlq:{d['lane_id']}",
+                        "severity": "P2",
+                        "detail": f"{d['slot_key']} {d['last_state']} {d['last_reason'] or ''} attempts {d['attempts']}"[
+                            :160
+                        ],
+                        "detected_at": d.get("dead_at"),
+                    },
+                )
             for b in breakers:
-                self._findings.setdefault(f"breaker:{b['lane_id']}", {
-                    "source": "dlq", "item": f"breaker:{b['lane_id']}", "severity": "P2",
-                    "detail": f"{b.get('consecutive')} consecutive dead slots; lane paused", "detected_at": b.get("opened_at")})
+                self._findings.setdefault(
+                    f"breaker:{b['lane_id']}",
+                    {
+                        "source": "dlq",
+                        "item": f"breaker:{b['lane_id']}",
+                        "severity": "P2",
+                        "detail": f"{b.get('consecutive')} consecutive dead slots; lane paused",
+                        "detected_at": b.get("opened_at"),
+                    },
+                )
             findings = [dict(self._findings[k]) for k in sorted(self._findings)]
             busy = [dict(s) for s in self._slots if s is not None]
             pending = sorted(self._pending)
@@ -1205,8 +1609,12 @@ class ExecutorV2:
             "dlq_24h": dlq_24h,
             "breakers_open": sorted(b["lane_id"] for b in breakers),
             "findings": findings,
-            "last_receipt": None if last is None else {k: last.get(k) for k in (
-                "run_id", "lane_id", "mode", "state", "exit_code", "finished_at", "verdict", "worker_id")},
+            "last_receipt": None
+            if last is None
+            else {
+                k: last.get(k)
+                for k in ("run_id", "lane_id", "mode", "state", "exit_code", "finished_at", "verdict", "worker_id")
+            },
             "retry_policies_sha256": getattr(self.policies, "sha256", None),
             "authority": "READ_ONLY_ADVISORY",
         }
@@ -1311,6 +1719,8 @@ def main(argv: list[str] | None = None) -> int:
 
     ledger = CoordinationLedger(ledger_path)
     store = LedgerRunStore(ledger)
+    outcomes = RunOutcomeStore(ledger)
+    effects = EffectGate.from_ledger(ledger, code_root)
     print(
         json.dumps(
             {
@@ -1322,14 +1732,29 @@ def main(argv: list[str] | None = None) -> int:
                 "once": bool(args.once),
                 "workers": workers,
                 "stage_clamp": "on" if stage_rows_now() is not None else "fail_closed:registry_unreadable",
+                "effect_keys": (
+                    f"fail_closed:{effects.config_error}" if effects.config_error else sorted(effects.config)
+                ),
+                "run_outcomes": "on",
             }
         ),
         flush=True,
     )
     if workers > 1:
-        ex = ExecutorV2(store, allowlist, env=env, state_root=state_root, code_root=code_root, workers=workers,
-                        policies=policies, registry_rows=registry_rows, config=exec_cfg,
-                        stage_rows_loader=stage_rows_now)
+        ex = ExecutorV2(
+            store,
+            allowlist,
+            env=env,
+            state_root=state_root,
+            code_root=code_root,
+            workers=workers,
+            policies=policies,
+            registry_rows=registry_rows,
+            config=exec_cfg,
+            stage_rows_loader=stage_rows_now,
+            outcomes=outcomes,
+            effects=effects,
+        )
         try:
             if args.once:
                 ex.drain_until_idle()
@@ -1341,7 +1766,16 @@ def main(argv: list[str] | None = None) -> int:
             ledger.close()
     try:
         while True:
-            drain(store, allowlist, env=env, state_root=state_root, code_root=code_root, stage_rows=stage_rows_now())
+            drain(
+                store,
+                allowlist,
+                env=env,
+                state_root=state_root,
+                code_root=code_root,
+                stage_rows=stage_rows_now(),
+                outcomes=outcomes,
+                effects=effects,
+            )
             if args.once:
                 return 0
             time.sleep(max(0.5, float(args.interval)))

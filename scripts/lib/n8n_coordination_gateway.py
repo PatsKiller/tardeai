@@ -12,6 +12,7 @@ import hashlib
 import hmac
 import json
 import re
+import sqlite3
 import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -28,7 +29,11 @@ RUN_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{16,128}$")
 MAX_REQUESTED_BY = 128
 SCOPE_READ = "coordination_read"
 SCOPE_RUN = "coordination_run"
-SCOPES = frozenset({SCOPE_READ, SCOPE_RUN})
+#: 2026-10-14 (n8n fabric Phase 1; AGENTS.md §23.23 + §23.3 route note, 10.0.0 PROPOSED): the send-INTENT scope.
+#: It opens exactly one operation (`intent`) on exactly one route (`comms/intent`), only on the relay key. An intent
+#: is queued for the host comms gateway (scripts/lib/n8n_fabric_store.py); the gateway itself never sends.
+SCOPE_INTENT = "comms_intent"
+SCOPES = frozenset({SCOPE_READ, SCOPE_RUN, SCOPE_INTENT})
 #: Trade AI-side callers (dispatch, incident fan-in, research intake, telegram ack) all sign with
 #: TRADEAI_N8N_GATEWAY_HMAC_KEY and carry read scope only. The relay identity signs with a second
 #: key that never grants anything but run+read; it never falls back to the dispatch key.
@@ -36,8 +41,21 @@ DISPATCH_CALLER = "tradeai-dispatch"
 RELAY_CALLER = "n8n-relay"
 #: 2026-10-09 (n8n maturity B5.3, design 02 §3.1): `coordination/due` is a READ route (scope coordination_read,
 #: operation `due` only). It computes what is due from the registry; it writes nothing and runs nothing.
-ALLOWED_ROUTES = frozenset({"coordination/event", "coordination/status", "coordination/run", "coordination/due"})
+#: 2026-10-14 (n8n fabric Phase 1): `coordination/run_outcome` is a READ route (scope coordination_read, operation
+#: `run_outcome`, one run_id; writes nothing). `comms/intent` is the send-intent route (scope comms_intent only).
+ALLOWED_ROUTES = frozenset(
+    {
+        "coordination/event",
+        "coordination/status",
+        "coordination/run",
+        "coordination/due",
+        "coordination/run_outcome",
+        "comms/intent",
+    }
+)
 DUE_ROUTE = "coordination/due"
+RUN_OUTCOME_ROUTE = "coordination/run_outcome"
+INTENT_ROUTE = "comms/intent"
 #: `now` on a due request is advisory; more than this many seconds from the gateway clock is refused
 #: (`due_clock_skew`). The value is the design's, not a tunable: docs/implementation/n8n-maturity/
 #: 02-six-workflow-architecture.md §3.1 line 117 ("refuses `now` values more than 90 s from it") and failure row F12.
@@ -206,6 +224,15 @@ REFUSAL_REASONS = frozenset(
         "momentum_monitor_stale",
         "momentum_monitor_deployed_sha_drift",
         "momentum_monitor_policy_or_collection_drift",
+        # 2026-10-14 (n8n fabric Phase 1): run_outcome without a durable outcome store; comms/intent without an
+        # intent store, a (domain, kind) outside config/n8n_comms_intent_routes.json, the hourly cap, an unreadable
+        # route table, or a store error.
+        "run_outcome_unavailable",
+        "intent_scope_unavailable",
+        "intent_unrouted",
+        "intent_rate_limited",
+        "intent_routes_unreadable",
+        "intent_store_unavailable",
     }
 )
 REFUSAL_PREFIXES = ("illegal_transition:", "typed_refusal:", "forbidden_route:")
@@ -248,7 +275,7 @@ def build_caller_keys(
     if n8n_key is not None:
         out[RELAY_CALLER] = CallerKey(
             key=n8n_key,
-            scopes=frozenset({SCOPE_RUN, SCOPE_READ}),
+            scopes=frozenset({SCOPE_RUN, SCOPE_READ, SCOPE_INTENT}),
             previous_key=n8n_previous_key,
         )
     return out
@@ -324,8 +351,13 @@ def handle_request(
     run_allowlist: frozenset[str] | set[str] | None = None,
     due_sources: Any = None,
     momentum_provider: Any = None,
+    outcome_store: Any = None,
+    intent_store: Any = None,
 ) -> dict[str, Any]:
     """Authenticate and accept, or return a typed refusal. Never sends, never spawns.
+
+    ``outcome_store`` (scripts/lib/n8n_fabric_store.RunOutcomeStore) serves the read operation ``run_outcome``;
+    ``intent_store`` (CommsIntentStore) the ``intent`` operation. None = that operation refuses as unavailable.
 
     ``due_sources`` (scripts/lib/n8n_due.DueSources) feeds the read operation ``due`` and the slot-key check in
     ``run``; None means neither is configured (``due`` refuses registry_unreadable, server-minted run keys refuse
@@ -365,8 +397,19 @@ def handle_request(
             peer=peer,
             due_sources=due_sources,
         )
+    # The intent scope likewise opens exactly one operation on exactly one route, and nothing else opens it.
+    if operation == "intent" or route.strip().lower() == INTENT_ROUTE:
+        if operation != "intent" or route.strip().lower() != INTENT_ROUTE:
+            return _refused(None, "unknown_operation", peer_ignored=peer)
+        if claim["scope"] != SCOPE_INTENT:
+            return _refused(None, "bad_scope", peer_ignored=peer)
+        return _intent(request, claim, intent_store=intent_store, now=_unix(now), peer=peer)
     if claim["scope"] != SCOPE_READ:
         return _refused(None, "bad_scope", peer_ignored=peer)
+    if operation == "run_outcome" or route.strip().lower() == RUN_OUTCOME_ROUTE:
+        if operation != "run_outcome" or route.strip().lower() != RUN_OUTCOME_ROUTE:
+            return _refused(None, "unknown_operation", peer_ignored=peer)
+        return _run_outcome(request, outcome_store=outcome_store, run_store=run_store, peer=peer)
     if operation == "momentum_lifecycle":
         if route.strip().lower() != "coordination/status" or set(request) - {
             "route",
@@ -600,6 +643,68 @@ def _run(request, claim, *, run_store, run_allowlist, now: float, peer, due_sour
         run_id=run_id, lane_id=lane_id, mode=mode, requested_by=requested_by, caller_id=claim["caller_id"], now=now
     )
     return _run_envelope(row, duplicate, run_store)
+
+
+RUN_OUTCOME_FIELDS = frozenset({"route", "operation", "claim", "signature", "peer", "run_id"})
+INTENT_REQUEST_FIELDS = frozenset(
+    {
+        "route",
+        "operation",
+        "claim",
+        "signature",
+        "peer",
+        "domain",
+        "kind",
+        "subject",
+        "summary",
+        "workflow_id",
+        "execution_id",
+        "node",
+    }
+)
+
+
+def _run_outcome(request, *, outcome_store, run_store, peer) -> dict[str, Any]:
+    """RunOutcome@v1 for one run_id (n8n fabric Phase 1, REFACTOR_PLAN B4 poll route). Read-only. A run the
+    ledger does not know is ``status: unknown``; one still REQUESTED/RUNNING is ``pending``; a refused run is
+    ``refused_policy`` — all data with state OK, never a gateway refusal."""
+    if set(request) - RUN_OUTCOME_FIELDS:
+        return _refused(None, "unexpected_field", peer_ignored=peer)
+    run_id = request.get("run_id")
+    if not isinstance(run_id, str) or not RUN_ID_RE.fullmatch(run_id):
+        return _refused(None, "malformed_event", peer_ignored=peer)
+    if outcome_store is None:
+        return _refused(None, "run_outcome_unavailable", peer_ignored=peer)
+    try:
+        view = outcome_store.view(run_id, run_store)
+    except sqlite3.Error:
+        return _refused(None, "run_outcome_unavailable", peer_ignored=peer)
+    view["peer_used_as_auth"] = False
+    view["durable"] = True
+    return view
+
+
+def _intent(request, claim, *, intent_store, now: float, peer) -> dict[str, Any]:
+    """CommsIntentReceipt@v1: validate, dedupe, cap, route and QUEUE one notification intent for the host comms
+    gateway (§23.23, §24.1). Nothing is sent here. The store raises n8n_fabric_store.FabricStoreError (a ValueError
+    with ``reason``); it is matched by that attribute so this module imports nothing new."""
+    if intent_store is None:
+        return _refused(None, "intent_scope_unavailable", peer_ignored=peer)
+    if set(request) - INTENT_REQUEST_FIELDS:
+        return _refused(None, "unexpected_field", peer_ignored=peer)
+    try:
+        _reject_secret_material({k: v for k, v in request.items() if k not in {"claim", "signature"}})
+    except GatewayError as exc:
+        return _refused(None, exc.reason, peer_ignored=peer)
+    try:
+        receipt = intent_store.accept(request, caller_id=claim["caller_id"], now=now)
+    except ValueError as exc:
+        reason = getattr(exc, "reason", None)
+        return _refused(None, reason if reason in REFUSAL_REASONS else "intent_store_unavailable", peer_ignored=peer)
+    except sqlite3.Error:
+        return _refused(None, "intent_store_unavailable", peer_ignored=peer)
+    receipt["peer_used_as_auth"] = False
+    return receipt
 
 
 def host_run_request(

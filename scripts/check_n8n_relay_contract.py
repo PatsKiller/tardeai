@@ -74,11 +74,14 @@ HTTP_TYPE = "n8n-nodes-base.httpRequest"
 SCHEMA = "N8nRelayContractCheck@v1"
 #: The relay refuses ports below 1024 and the gateway's BLOCKED_PORTS; a free ephemeral port is always above both.
 _UNSUPPORTED_REASONS = frozenset({"relay_bad_path", "relay_bad_query"})
+#: An n8n expression inside a probed query is replaced by this well-formed run id (RUN_ID_RE: 16-128 chars).
+EXPR_RE = re.compile(r"\{\{.*?\}\}")
+PROBE_EXPR_VALUE = "contract-probe-run-0000000001"
 GATEWAY_UNIT_REL = Path("config") / "systemd" / "user" / "tradeai-n8n-coordination-gateway.service"
 CONCURRENCY_MIN = 3
-CONCURRENCY_MARGIN = 0.5          # every call must finish inside half the relay timeout
-CONCURRENCY_ROUNDS = 2            # cold (first minute after a gateway restart), then warm
-THROTTLE_PERIOD_S = 0.1           # CFS default cpu.cfs_period_us = 100 ms
+CONCURRENCY_MARGIN = 0.5  # every call must finish inside half the relay timeout
+CONCURRENCY_ROUNDS = 2  # cold (first minute after a gateway restart), then warm
+THROTTLE_PERIOD_S = 0.1  # CFS default cpu.cfs_period_us = 100 ms
 
 
 def _finding(wid: str, node: str, code: str, detail: str) -> dict[str, str]:
@@ -93,11 +96,19 @@ def http_calls(doc: dict) -> list[dict[str, Any]]:
             continue
         params = node.get("parameters") or {}
         url = str(params.get("url") or "")
-        rest = url[len(RELAY_EXPR):] if url.startswith(RELAY_EXPR) else url
+        rest = url[len(RELAY_EXPR) :] if url.startswith(RELAY_EXPR) else url
         path, _, query = rest.partition("?")
         timeout = (params.get("options") or {}).get("timeout")
-        out.append({"node": str(node.get("name")), "method": str(params.get("method") or "GET").upper(),
-                    "path": path, "query": query, "timeout_ms": timeout, "via_relay": url.startswith(RELAY_EXPR)})
+        out.append(
+            {
+                "node": str(node.get("name")),
+                "method": str(params.get("method") or "GET").upper(),
+                "path": path,
+                "query": query,
+                "timeout_ms": timeout,
+                "via_relay": url.startswith(RELAY_EXPR),
+            }
+        )
     return out
 
 
@@ -114,8 +125,11 @@ def declared_routes(relay_source: Path) -> Optional[set[tuple[str, str]]]:
     except (OSError, SyntaxError):
         return None
     for stmt in tree.body:
-        target = stmt.target if isinstance(stmt, ast.AnnAssign) else (
-            stmt.targets[0] if isinstance(stmt, ast.Assign) and len(stmt.targets) == 1 else None)
+        target = (
+            stmt.target
+            if isinstance(stmt, ast.AnnAssign)
+            else (stmt.targets[0] if isinstance(stmt, ast.Assign) and len(stmt.targets) == 1 else None)
+        )
         if isinstance(target, ast.Name) and target.id == "ROUTES" and stmt.value is not None:
             try:
                 return {(str(m), str(p)) for m, p in ast.literal_eval(stmt.value)}
@@ -128,8 +142,13 @@ def route_in_table(method: str, path: str, table: set[tuple[str, str]]) -> bool:
     if (method, path) in table:
         return True
     parts = path.split("/")
-    return (method, "/runs/<lane_id>/last") in table and len(parts) == 4 and parts[1] == "runs" and \
-        parts[3] == "last" and bool(re.fullmatch(r"[A-Za-z0-9._-]+", parts[2]))
+    return (
+        (method, "/runs/<lane_id>/last") in table
+        and len(parts) == 4
+        and parts[1] == "runs"
+        and parts[3] == "last"
+        and bool(re.fullmatch(r"[A-Za-z0-9._-]+", parts[2]))
+    )
 
 
 def static_findings(wid: str, doc: dict, lanes: set[str]) -> list[dict[str, str]]:
@@ -140,22 +159,40 @@ def static_findings(wid: str, doc: dict, lanes: set[str]) -> list[dict[str, str]
         out.append(_finding(wid, "-", "execution_timeout_missing", f"settings.executionTimeout={exec_timeout!r}"))
         exec_timeout = None
     if settings.get("saveManualExecutions") is not False:
-        out.append(_finding(wid, "-", "save_manual_executions_true",
-                            f"settings.saveManualExecutions={settings.get('saveManualExecutions')!r} (F4/P19)"))
+        out.append(
+            _finding(
+                wid,
+                "-",
+                "save_manual_executions_true",
+                f"settings.saveManualExecutions={settings.get('saveManualExecutions')!r} (F4/P19)",
+            )
+        )
     for call in http_calls(doc):
         t = call["timeout_ms"]
         if isinstance(t, bool) or not isinstance(t, int) or t <= 0:
             out.append(_finding(wid, call["node"], "http_timeout_missing", f"options.timeout={t!r}"))
         elif exec_timeout is not None and t > exec_timeout * 1000:
-            out.append(_finding(wid, call["node"], "http_timeout_exceeds_execution",
-                                f"options.timeout={t} ms > executionTimeout={exec_timeout} s"))
+            out.append(
+                _finding(
+                    wid,
+                    call["node"],
+                    "http_timeout_exceeds_execution",
+                    f"options.timeout={t} ms > executionTimeout={exec_timeout} s",
+                )
+            )
         if call["path"] == "/due" and call["query"]:
             params = parse_qs(call["query"], keep_blank_values=True)
             for value in params.get("lane", []):
                 for lane in (x for x in value.split(",") if x):
                     if lane not in lanes:
-                        out.append(_finding(wid, call["node"], "lane_filter_unknown",
-                                            f"lane={lane} is not a registry row (gateway: bad_lane_filter)"))
+                        out.append(
+                            _finding(
+                                wid,
+                                call["node"],
+                                "lane_filter_unknown",
+                                f"lane={lane} is not a registry row (gateway: bad_lane_filter)",
+                            )
+                        )
     return out
 
 
@@ -189,8 +226,12 @@ def _copy_ledger(source: Optional[Path], dest: Path) -> None:
 
 def _request(port: int, method: str, path_query: str, bearer: str, timeout: float = 5.0) -> tuple[int, dict]:
     data = b"{}" if method == "POST" else None
-    req = urllib.request.Request(f"http://127.0.0.1:{port}{path_query}", data=data, method=method,
-                                 headers={"Authorization": f"Bearer {bearer}", "Content-Type": "application/json"})
+    req = urllib.request.Request(
+        f"http://127.0.0.1:{port}{path_query}",
+        data=data,
+        method=method,
+        headers={"Authorization": f"Bearer {bearer}", "Content-Type": "application/json"},
+    )
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             raw = resp.read()
@@ -207,9 +248,17 @@ def _request(port: int, method: str, path_query: str, bearer: str, timeout: floa
 class ScratchRelay:
     """`<relay_root>/scripts/n8n_run_relay.py` on 127.0.0.1 with scratch secrets, state root and ledger."""
 
-    def __init__(self, relay_root: Path, scratch: Path, *, python: str = sys.executable,
-                 ledger_source: Optional[Path] = None, gateway_url: Optional[str] = None,
-                 n8n_key: Optional[str] = None, copy_ledger: bool = True) -> None:
+    def __init__(
+        self,
+        relay_root: Path,
+        scratch: Path,
+        *,
+        python: str = sys.executable,
+        ledger_source: Optional[Path] = None,
+        gateway_url: Optional[str] = None,
+        n8n_key: Optional[str] = None,
+        copy_ledger: bool = True,
+    ) -> None:
         self.relay_root = relay_root
         self.scratch = scratch
         self.python = python
@@ -247,15 +296,25 @@ class ScratchRelay:
             env["PYTHONPATH"] = os.environ["PYTHONPATH"]
         log = (self.scratch / "relay.stdout").open("w", encoding="utf-8")
         self.proc = subprocess.Popen(
-            [self.python, str(self.relay_root / "scripts" / "n8n_run_relay.py"), "--host", "127.0.0.1",
-             "--port", str(self.port)],
-            cwd=str(self.scratch), env=env, stdout=log, stderr=subprocess.STDOUT,
+            [
+                self.python,
+                str(self.relay_root / "scripts" / "n8n_run_relay.py"),
+                "--host",
+                "127.0.0.1",
+                "--port",
+                str(self.port),
+            ],
+            cwd=str(self.scratch),
+            env=env,
+            stdout=log,
+            stderr=subprocess.STDOUT,
         )
         deadline = time.monotonic() + 15
         while time.monotonic() < deadline:
             if self.proc.poll() is not None:
-                raise RuntimeError(f"scratch relay exited {self.proc.returncode}: "
-                                   f"{(self.scratch / 'relay.stdout').read_text()[:300]}")
+                raise RuntimeError(
+                    f"scratch relay exited {self.proc.returncode}: {(self.scratch / 'relay.stdout').read_text()[:300]}"
+                )
             try:
                 with socket.create_connection(("127.0.0.1", self.port), timeout=0.5):
                     return self
@@ -273,6 +332,9 @@ class ScratchRelay:
                 self.proc.wait(timeout=5)
 
     def probe(self, method: str, path: str, query: str) -> tuple[bool, str]:
+        # 2026-10-14 (n8n fabric Phase 1): a query may carry an n8n expression (Run Lane's
+        # `run_id={{ encodeURIComponent($json.run_id) }}`); probe it with a well-formed sample value.
+        query = EXPR_RE.sub(PROBE_EXPR_VALUE, query)
         status, body = _request(self.port, method, path + (f"?{query}" if query else ""), self.bearer)
         reason = str(body.get("reason") or body.get("state") or "")
         supported = not (status in (404, 405) or reason in _UNSUPPORTED_REASONS)
@@ -292,7 +354,7 @@ def unit_cpu_quota(unit: Path) -> Optional[float]:
     for line in text.splitlines():
         m = re.fullmatch(r"\s*CPUQuota\s*=\s*([0-9]+(?:\.[0-9]+)?)%\s*", line)
         if m:
-            found = float(m.group(1)) / 100.0          # the last assignment wins, as in systemd
+            found = float(m.group(1)) / 100.0  # the last assignment wins, as in systemd
     return found if found and found > 0 else None
 
 
@@ -319,7 +381,9 @@ def due_shapes(workflows: Path, ids: Iterable[str], lanes: set[str]) -> list[dic
         for call in http_calls(doc):
             if call["method"] != "GET" or call["path"] != "/due" or not call["via_relay"]:
                 continue
-            named = [x for v in parse_qs(call["query"], keep_blank_values=True).get("lane", []) for x in v.split(",") if x]
+            named = [
+                x for v in parse_qs(call["query"], keep_blank_values=True).get("lane", []) for x in v.split(",") if x
+            ]
             if any(x not in lanes for x in named):
                 continue
             out.append({"workflow": wid, "node": call["node"], "query": call["query"]})
@@ -370,7 +434,7 @@ class CpuThrottle:
         if self._thread is not None:
             self._thread.join(timeout=5)
         try:
-            os.kill(self.pid, signal.SIGCONT)            # never leave the scratch gateway stopped
+            os.kill(self.pid, signal.SIGCONT)  # never leave the scratch gateway stopped
         except ProcessLookupError:
             pass
 
@@ -378,9 +442,16 @@ class CpuThrottle:
 class ScratchGateway:
     """`<relay_root>/scripts/n8n_coordination_gateway.py` on 127.0.0.1 with scratch keys and the scratch ledger."""
 
-    def __init__(self, relay_root: Path, scratch: Path, ledger: Path, registry: Path, *,
-                 python: str = sys.executable) -> None:
-        self.relay_root, self.scratch, self.ledger, self.registry, self.python = relay_root, scratch, ledger, registry, python
+    def __init__(
+        self, relay_root: Path, scratch: Path, ledger: Path, registry: Path, *, python: str = sys.executable
+    ) -> None:
+        self.relay_root, self.scratch, self.ledger, self.registry, self.python = (
+            relay_root,
+            scratch,
+            ledger,
+            registry,
+            python,
+        )
         self.key = secrets.token_urlsafe(36)
         self.n8n_key = secrets.token_urlsafe(36)
         self.port = 0
@@ -407,17 +478,36 @@ class ScratchGateway:
             env["PYTHONPATH"] = os.environ["PYTHONPATH"]
         log = (self.scratch / "gateway.stdout").open("w", encoding="utf-8")
         self.proc = subprocess.Popen(
-            [self.python, str(self.relay_root / "scripts" / "n8n_coordination_gateway.py"), "--host", "127.0.0.1",
-             "--port", str(self.port), "--expected-sha", "0" * 40, "--ledger", str(self.ledger),
-             "--registry", str(self.registry), "--run-allowlist", str(cfg / "n8n_run_allowlist.json"),
-             "--retry-policies", str(cfg / "n8n_retry_policies.json")],
-            cwd=str(self.scratch), env=env, stdout=log, stderr=subprocess.STDOUT,
+            [
+                self.python,
+                str(self.relay_root / "scripts" / "n8n_coordination_gateway.py"),
+                "--host",
+                "127.0.0.1",
+                "--port",
+                str(self.port),
+                "--expected-sha",
+                "0" * 40,
+                "--ledger",
+                str(self.ledger),
+                "--registry",
+                str(self.registry),
+                "--run-allowlist",
+                str(cfg / "n8n_run_allowlist.json"),
+                "--retry-policies",
+                str(cfg / "n8n_retry_policies.json"),
+            ],
+            cwd=str(self.scratch),
+            env=env,
+            stdout=log,
+            stderr=subprocess.STDOUT,
         )
         deadline = time.monotonic() + 30
         while time.monotonic() < deadline:
             if self.proc.poll() is not None:
-                raise RuntimeError(f"scratch gateway exited {self.proc.returncode}: "
-                                   f"{(self.scratch / 'gateway.stdout').read_text()[:300]}")
+                raise RuntimeError(
+                    f"scratch gateway exited {self.proc.returncode}: "
+                    f"{(self.scratch / 'gateway.stdout').read_text()[:300]}"
+                )
             try:
                 with socket.create_connection(("127.0.0.1", self.port), timeout=0.5):
                     return self
@@ -452,32 +542,69 @@ def concurrent_due(port: int, bearer: str, queries: list[str], *, client_timeout
             status, body = 0, {"reason": f"client_{type(exc).__name__}"}
         wall = time.perf_counter() - t0
         ok = status == 200 and body.get("schema") == "DueResponse@v1" and body.get("ok") is True
-        return {"query": q, "status": status, "reason": str(body.get("reason") or body.get("state") or ""),
-                "ok": ok, "wall_s": round(wall, 3)}
+        return {
+            "query": q,
+            "status": status,
+            "reason": str(body.get("reason") or body.get("state") or ""),
+            "ok": ok,
+            "wall_s": round(wall, 3),
+        }
 
     with ThreadPoolExecutor(max_workers=len(queries)) as pool:
         return list(pool.map(call, queries))
 
 
-def concurrency_check(shapes: list[dict[str, str]], *, n: int, relay_root: Path, registry: Path, scratch: Path,
-                      ledger: Path, python: str, quota: Optional[float], timeout_s: Optional[float],
-                      margin: float = CONCURRENCY_MARGIN, rounds: int = CONCURRENCY_ROUNDS) -> dict[str, Any]:
+def concurrency_check(
+    shapes: list[dict[str, str]],
+    *,
+    n: int,
+    relay_root: Path,
+    registry: Path,
+    scratch: Path,
+    ledger: Path,
+    python: str,
+    quota: Optional[float],
+    timeout_s: Optional[float],
+    margin: float = CONCURRENCY_MARGIN,
+    rounds: int = CONCURRENCY_ROUNDS,
+) -> dict[str, Any]:
     """{verdict, n, quota, relay_timeout_s, budget_s, rounds:[...], findings:[...]} for N concurrent /due calls
     through a scratch relay wired to a CPU-throttled scratch gateway. ``ledger`` is the scratch copy (never live)."""
-    out: dict[str, Any] = {"n": n, "cpu_quota": quota, "relay_timeout_s": timeout_s, "margin": margin,
-                           "shapes": [s["workflow"] for s in shapes], "rounds": [], "findings": []}
+    out: dict[str, Any] = {
+        "n": n,
+        "cpu_quota": quota,
+        "relay_timeout_s": timeout_s,
+        "margin": margin,
+        "shapes": [s["workflow"] for s in shapes],
+        "rounds": [],
+        "findings": [],
+    }
     if quota is None or timeout_s is None:
-        out["findings"].append(_finding("-", "-", "due_concurrency_unknown",
-                                        f"cpu_quota={quota} relay_timeout_s={timeout_s}: cannot set the budget"))
+        out["findings"].append(
+            _finding(
+                "-",
+                "-",
+                "due_concurrency_unknown",
+                f"cpu_quota={quota} relay_timeout_s={timeout_s}: cannot set the budget",
+            )
+        )
         out["verdict"] = "REFUSED"
         return out
     budget = round(timeout_s * (1 - margin), 3)
     out["budget_s"] = budget
     queries = [shapes[i % len(shapes)]["query"] for i in range(n)]
     owners = [shapes[i % len(shapes)]["workflow"] for i in range(n)]
-    with ScratchGateway(relay_root, scratch / "gateway", ledger, registry, python=python) as gw, \
-            ScratchRelay(relay_root, scratch / "relay-concurrency", python=python, gateway_url=gw.url,
-                         n8n_key=gw.n8n_key, copy_ledger=False) as relay:
+    with (
+        ScratchGateway(relay_root, scratch / "gateway", ledger, registry, python=python) as gw,
+        ScratchRelay(
+            relay_root,
+            scratch / "relay-concurrency",
+            python=python,
+            gateway_url=gw.url,
+            n8n_key=gw.n8n_key,
+            copy_ledger=False,
+        ) as relay,
+    ):
         assert gw.proc is not None
         for rnd in range(rounds):
             with CpuThrottle(gw.proc.pid, quota) as thr:
@@ -485,23 +612,47 @@ def concurrency_check(shapes: list[dict[str, str]], *, n: int, relay_root: Path,
             for row, wid in zip(rows, owners):
                 row["workflow"] = wid
             label = "cold" if rnd == 0 else f"warm{rnd}"
-            out["rounds"].append({"round": label, "throttle_cycles": thr.cycles,
-                                  "max_wall_s": max(r["wall_s"] for r in rows), "calls": rows})
+            out["rounds"].append(
+                {
+                    "round": label,
+                    "throttle_cycles": thr.cycles,
+                    "max_wall_s": max(r["wall_s"] for r in rows),
+                    "calls": rows,
+                }
+            )
             for r in rows:
                 if not r["ok"]:
-                    out["findings"].append(_finding(r["workflow"], "GET /due", "due_concurrency_refused",
-                                                    f"{label} n={n} quota={quota:.0%}: {r['status']} {r['reason']} "
-                                                    f"after {r['wall_s']} s ({r['query']})"))
+                    out["findings"].append(
+                        _finding(
+                            r["workflow"],
+                            "GET /due",
+                            "due_concurrency_refused",
+                            f"{label} n={n} quota={quota:.0%}: {r['status']} {r['reason']} "
+                            f"after {r['wall_s']} s ({r['query']})",
+                        )
+                    )
                 elif r["wall_s"] > budget:
-                    out["findings"].append(_finding(r["workflow"], "GET /due", "due_concurrency_slow",
-                                                    f"{label} n={n} quota={quota:.0%}: {r['wall_s']} s > budget "
-                                                    f"{budget} s (relay timeout {timeout_s} s, margin {margin:.0%})"))
+                    out["findings"].append(
+                        _finding(
+                            r["workflow"],
+                            "GET /due",
+                            "due_concurrency_slow",
+                            f"{label} n={n} quota={quota:.0%}: {r['wall_s']} s > budget "
+                            f"{budget} s (relay timeout {timeout_s} s, margin {margin:.0%})",
+                        )
+                    )
     out["verdict"] = "REFUSED" if out["findings"] else "PASS"
     return out
 
 
-def check(workflows: Path, ids: Optional[Iterable[str]], *, registry: Path, relay_root: Path,
-          probe: Optional[Callable[[str, str, str], tuple[bool, str]]] = None) -> dict[str, Any]:
+def check(
+    workflows: Path,
+    ids: Optional[Iterable[str]],
+    *,
+    registry: Path,
+    relay_root: Path,
+    probe: Optional[Callable[[str, str, str], tuple[bool, str]]] = None,
+) -> dict[str, Any]:
     """Findings for every selected workflow. ``probe(method, path, query) -> (supported, evidence)``; None means
     the static ROUTES table of ``relay_root`` is the route source."""
     index = json.loads((workflows / "INDEX.json").read_text(encoding="utf-8"))
@@ -530,42 +681,87 @@ def check(workflows: Path, ids: Optional[Iterable[str]], *, registry: Path, rela
             else:
                 ok = route_in_table(call["method"], call["path"], table)
                 result = (ok, "in ROUTES" if ok else "not in ROUTES")
-            if not result[0] and not any(f["node"] == call["node"] and f["workflow"] == wid
-                                         and f["code"] == "route_table_unknown" for f in findings):
-                findings.append(_finding(wid, call["node"], "unsupported_route",
-                                         f"{call['method']} {call['path']} -> {result[1]}"))
-            calls_out.append({"workflow": wid, "node": call["node"], "method": call["method"],
-                              "path": call["path"] + (f"?{call['query']}" if call["query"] else ""),
-                              "timeout_ms": call["timeout_ms"], "supported": result[0], "evidence": result[1]})
-    return {"schema": SCHEMA, "verdict": "REFUSED" if findings else "PASS", "workflows": wanted,
-            "relay_root": str(relay_root), "registry": str(registry),
-            "route_source": "probe" if probe is not None else "static_ROUTES", "calls": calls_out,
-            "findings": findings}
+            if not result[0] and not any(
+                f["node"] == call["node"] and f["workflow"] == wid and f["code"] == "route_table_unknown"
+                for f in findings
+            ):
+                findings.append(
+                    _finding(wid, call["node"], "unsupported_route", f"{call['method']} {call['path']} -> {result[1]}")
+                )
+            calls_out.append(
+                {
+                    "workflow": wid,
+                    "node": call["node"],
+                    "method": call["method"],
+                    "path": call["path"] + (f"?{call['query']}" if call["query"] else ""),
+                    "timeout_ms": call["timeout_ms"],
+                    "supported": result[0],
+                    "evidence": result[1],
+                }
+            )
+    return {
+        "schema": SCHEMA,
+        "verdict": "REFUSED" if findings else "PASS",
+        "workflows": wanted,
+        "relay_root": str(relay_root),
+        "registry": str(registry),
+        "route_source": "probe" if probe is not None else "static_ROUTES",
+        "calls": calls_out,
+        "findings": findings,
+    }
 
 
 def main(argv: Optional[list[str]] = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--workflows", type=Path, default=DEFAULT_WORKFLOWS, help="dir holding INDEX.json + the files")
     ap.add_argument("--ids", default="", help="comma/space list of workflow ids (default: every INDEX row)")
-    ap.add_argument("--relay-root", type=Path, default=ROOT,
-                    help="release or worktree root whose scripts/n8n_run_relay.py is checked (served: CURRENT)")
-    ap.add_argument("--registry", type=Path, default=None,
-                    help="lane registry the gateway reads (default: <relay-root>/config/lane_registry.json)")
+    ap.add_argument(
+        "--relay-root",
+        type=Path,
+        default=ROOT,
+        help="release or worktree root whose scripts/n8n_run_relay.py is checked (served: CURRENT)",
+    )
+    ap.add_argument(
+        "--registry",
+        type=Path,
+        default=None,
+        help="lane registry the gateway reads (default: <relay-root>/config/lane_registry.json)",
+    )
     ap.add_argument("--no-probe", action="store_true", help="static ROUTES table only; no scratch relay")
-    ap.add_argument("--ledger-source", type=Path, default=None,
-                    help="sqlite ledger to COPY (read-only backup) into the scratch relay; default an empty one")
+    ap.add_argument(
+        "--ledger-source",
+        type=Path,
+        default=None,
+        help="sqlite ledger to COPY (read-only backup) into the scratch relay; default an empty one",
+    )
     ap.add_argument("--scratch", type=Path, default=None, help="scratch dir (default: a new temp dir, kept)")
     ap.add_argument("--python", default=sys.executable)
-    ap.add_argument("--concurrency", type=int, default=0,
-                    help=f"concurrent GET /due calls (default: number of workflows checked, at least {CONCURRENCY_MIN})")
-    ap.add_argument("--concurrency-margin", type=float, default=CONCURRENCY_MARGIN,
-                    help="fraction of the relay timeout every call must leave unused (default 0.5)")
-    ap.add_argument("--gateway-unit", type=Path, default=None,
-                    help="unit file whose CPUQuota is simulated (default: <relay-root>/" + str(GATEWAY_UNIT_REL)
-                         + ", else this tree's)")
+    ap.add_argument(
+        "--concurrency",
+        type=int,
+        default=0,
+        help=f"concurrent GET /due calls (default: number of workflows checked, at least {CONCURRENCY_MIN})",
+    )
+    ap.add_argument(
+        "--concurrency-margin",
+        type=float,
+        default=CONCURRENCY_MARGIN,
+        help="fraction of the relay timeout every call must leave unused (default 0.5)",
+    )
+    ap.add_argument(
+        "--gateway-unit",
+        type=Path,
+        default=None,
+        help="unit file whose CPUQuota is simulated (default: <relay-root>/"
+        + str(GATEWAY_UNIT_REL)
+        + ", else this tree's)",
+    )
     ap.add_argument("--no-concurrency", action="store_true", help="skip the concurrent /due probe")
-    ap.add_argument("--require-concurrency", action="store_true",
-                    help="refuse (due_concurrency_not_run) unless the concurrent /due probe ran")
+    ap.add_argument(
+        "--require-concurrency",
+        action="store_true",
+        help="refuse (due_concurrency_not_run) unless the concurrent /due probe ran",
+    )
     a = ap.parse_args(argv)
     ids = [x for x in re.split(r"[,\s]+", a.ids) if x]
     relay_root = a.relay_root.resolve()
@@ -581,15 +777,27 @@ def main(argv: Optional[list[str]] = None) -> int:
                 result = check(a.workflows, ids, registry=registry, relay_root=relay_root, probe=relay.probe)
                 scratch_ledger = relay.ledger
             result["scratch"] = str(scratch)
-            shapes = [] if a.no_concurrency else due_shapes(a.workflows, result["workflows"], registry_lane_ids(registry))
+            shapes = (
+                [] if a.no_concurrency else due_shapes(a.workflows, result["workflows"], registry_lane_ids(registry))
+            )
             if shapes:
-                unit = a.gateway_unit or next((p for p in (relay_root / GATEWAY_UNIT_REL, ROOT / GATEWAY_UNIT_REL)
-                                               if p.is_file()), relay_root / GATEWAY_UNIT_REL)
+                unit = a.gateway_unit or next(
+                    (p for p in (relay_root / GATEWAY_UNIT_REL, ROOT / GATEWAY_UNIT_REL) if p.is_file()),
+                    relay_root / GATEWAY_UNIT_REL,
+                )
                 n = a.concurrency or max(CONCURRENCY_MIN, len(result["workflows"]))
-                conc = concurrency_check(shapes, n=n, relay_root=relay_root, registry=registry, scratch=scratch,
-                                         ledger=scratch_ledger, python=a.python, quota=unit_cpu_quota(unit),
-                                         timeout_s=relay_timeout_s(relay_root / "scripts" / "n8n_run_relay.py"),
-                                         margin=a.concurrency_margin)
+                conc = concurrency_check(
+                    shapes,
+                    n=n,
+                    relay_root=relay_root,
+                    registry=registry,
+                    scratch=scratch,
+                    ledger=scratch_ledger,
+                    python=a.python,
+                    quota=unit_cpu_quota(unit),
+                    timeout_s=relay_timeout_s(relay_root / "scripts" / "n8n_run_relay.py"),
+                    margin=a.concurrency_margin,
+                )
                 conc["gateway_unit"] = str(unit)
     except (OSError, ValueError, KeyError, RuntimeError, sqlite3.Error) as exc:
         print(json.dumps({"schema": SCHEMA, "verdict": "UNCHECKED", "error": f"{type(exc).__name__}: {exc}"}))
@@ -600,21 +808,29 @@ def main(argv: Optional[list[str]] = None) -> int:
         result["concurrency"]["rounds"] = [{k: v for k, v in r.items() if k != "calls"} for r in conc["rounds"]]
         result["concurrency"]["verdict"] = conc["verdict"]
     else:
-        result["concurrency"] = {"verdict": "NOT_RUN", "reason": "--no-probe" if a.no_probe else (
-            "--no-concurrency" if a.no_concurrency else "no GET /due call in the selected workflows")}
+        result["concurrency"] = {
+            "verdict": "NOT_RUN",
+            "reason": "--no-probe"
+            if a.no_probe
+            else ("--no-concurrency" if a.no_concurrency else "no GET /due call in the selected workflows"),
+        }
         if a.require_concurrency:
             result["findings"].append(_finding("-", "-", "due_concurrency_not_run", result["concurrency"]["reason"]))
     result["verdict"] = "REFUSED" if result["findings"] else "PASS"
     for call in result["calls"]:
         mark = "ok " if call["supported"] else "BAD"
-        print(f"{mark} {call['workflow']:26s} {call['method']:4s} {call['path']:62s} timeout={call['timeout_ms']} "
-              f"-> {call['evidence']}")
+        print(
+            f"{mark} {call['workflow']:26s} {call['method']:4s} {call['path']:62s} timeout={call['timeout_ms']} "
+            f"-> {call['evidence']}"
+        )
     for rnd in (conc or {}).get("rounds") or []:
         for c in rnd["calls"]:
             mark = "ok " if c["ok"] and c["wall_s"] <= conc["budget_s"] else "BAD"
-            print(f"{mark} concurrency {rnd['round']:5s} n={conc['n']} quota={conc['cpu_quota']:.0%} "
-                  f"{c['workflow']:26s} GET /due?{c['query']:52s} -> {c['status']} {c['reason'] or 'ok'} "
-                  f"{c['wall_s']} s (budget {conc['budget_s']} s)")
+            print(
+                f"{mark} concurrency {rnd['round']:5s} n={conc['n']} quota={conc['cpu_quota']:.0%} "
+                f"{c['workflow']:26s} GET /due?{c['query']:52s} -> {c['status']} {c['reason'] or 'ok'} "
+                f"{c['wall_s']} s (budget {conc['budget_s']} s)"
+            )
     for f in result["findings"]:
         print(f"REFUSE {f['workflow']} [{f['node']}] {f['code']}: {f['detail']}")
     print(json.dumps({k: v for k, v in result.items() if k != "calls"}, separators=(",", ":")))

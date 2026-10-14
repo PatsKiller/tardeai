@@ -1924,11 +1924,973 @@ def generic_main(argv: list[str]) -> int:
     return 0
 
 
+# ── n8n fabric Phase 1 (2026-10-14; AGENTS.md §23.23, 10.0.0 PROPOSED; REFACTOR_PLAN B5/B6 + addendum item 3) ────
+# `build-fabric` generates the fabric primitives into workflows/fabric/, separate from the six generic workflows (whose
+# bytes are unchanged, so nothing live drifts): the Run Lane sub-workflow, the fabric error workflow and an inactive
+# probe that calls Run Lane once in dry_run. Every fabric workflow carries settings.errorWorkflow (the error workflow
+# names itself; n8n skips an error workflow's own failure when errorWorkflow == its id), saves successful executions,
+# and is checked against FABRIC_ALLOWED_NODE_TYPES. INDEX.json is the trusted-deployer manifest: per workflow the file
+# sha256 and the GRAPH hash (behavioural fields only, so an n8n export of the same graph verifies), plus one POLICY
+# hash over the node allowlist, the required settings, the relay routes and the intent route table.
+#
+#     python3 scripts/n8n_workflow_templates.py build-fabric [--out DIR] [--check]
+#     python3 scripts/n8n_workflow_templates.py build-fabric --verify EXPORTED.json [...]   # trusted deployer
+
+FABRIC_DEFAULT_OUT = GENERIC_DEFAULT_OUT / "fabric"
+FABRIC_SCHEMA = "N8nFabricManifest@v1"
+FABRIC_GENERATOR = "scripts/n8n_workflow_templates.py build-fabric"
+RUN_LANE_ID = "tradeai-fabric-run-lane"
+FABRIC_ERROR_ID = "tradeai-fabric-error"
+FABRIC_PROBE_ID = "tradeai-fabric-run-lane-probe"
+#: REFACTOR_PLAN addendum item 9: Error Trigger acceptance needs an AUTOMATIC failure (an editor run does not fire
+#: it). This workflow fails on purpose at every scheduled fire; the packet publishes it for one fire, then unpublishes.
+FABRIC_ERROR_PROBE_ID = "tradeai-fabric-error-probe"
+#: The probe's lane: in config/n8n_run_allowlist.json; its dry_run writes only a shadow crontab copy (30 s timeout).
+FABRIC_PROBE_LANE = "crontab-snapshot-for-health-agent"
+#: §23.23 node enablement, this PR's share: Execute Workflow + Trigger, Wait, Switch, If, Merge, Error Trigger.
+#: Form / webhook-resume (approvals) and the AI Agent node are later PRs, one each.
+FABRIC_RELAXED_NODE_TYPES = frozenset(
+    {
+        "n8n-nodes-base.executeWorkflow",
+        "n8n-nodes-base.executeWorkflowTrigger",
+        "n8n-nodes-base.wait",
+        "n8n-nodes-base.switch",
+        "n8n-nodes-base.if",
+        "n8n-nodes-base.merge",
+        "n8n-nodes-base.errorTrigger",
+    }
+)
+FABRIC_ALLOWED_NODE_TYPES = GENERIC_ALLOWED_NODE_TYPES | FABRIC_RELAXED_NODE_TYPES
+#: Never in a fabric workflow. Also refused: any type outside the `n8n-nodes-base.` package (community nodes and every
+#: @n8n/n8n-nodes-langchain AI / agent / tool / vector-store node; AI comes in a later PR behind the bridge).
+FABRIC_FORBIDDEN_NODE_TYPES = (GENERIC_FORBIDDEN_NODE_TYPES - {"n8n-nodes-base.executeWorkflow"}) | frozenset(
+    {
+        "n8n-nodes-base.executeCommand",
+        "n8n-nodes-base.executeCommandTool",
+        "n8n-nodes-base.ssh",
+        "n8n-nodes-base.ftp",
+        "n8n-nodes-base.localFileTrigger",
+        "n8n-nodes-base.readWriteFile",
+        "n8n-nodes-base.readBinaryFile",
+        "n8n-nodes-base.readBinaryFiles",
+        "n8n-nodes-base.writeBinaryFile",
+        "n8n-nodes-base.telegram",
+        "n8n-nodes-base.telegramTrigger",
+        "n8n-nodes-base.slack",
+        "n8n-nodes-base.slackTrigger",
+        "n8n-nodes-base.discord",
+        "n8n-nodes-base.mattermost",
+        "n8n-nodes-base.microsoftTeams",
+        "n8n-nodes-base.twilio",
+        "n8n-nodes-base.whatsApp",
+        "n8n-nodes-base.emailSend",
+        "n8n-nodes-base.emailReadImap",
+        "n8n-nodes-base.gmail",
+        "n8n-nodes-base.sendGrid",
+        "n8n-nodes-base.mailgun",
+        "n8n-nodes-base.pushover",
+        "n8n-nodes-base.form",
+        "n8n-nodes-base.formTrigger",
+        "n8n-nodes-base.respondToWebhook",
+        "n8n-nodes-base.postgres",
+        "n8n-nodes-base.mySql",
+        "n8n-nodes-base.redis",
+        "n8n-nodes-base.function",
+        "n8n-nodes-base.functionItem",
+    }
+)
+FABRIC_NODE_PACKAGE = "n8n-nodes-base."
+#: Retention is the instance's: EXECUTIONS_DATA_PRUNE=true, EXECUTIONS_DATA_MAX_AGE=168 (h) (N8N_CONFIGURATION.md
+#: §1); successes are saved per workflow so the run_id custom data is visible (§23.23 governance (3)).
+FABRIC_REQUIRED_SETTINGS = {
+    "executionOrder": "v1",
+    "timezone": TIMEZONE,
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all",
+    "saveManualExecutions": False,
+}
+FABRIC_CREDENTIAL_TYPES = frozenset({"httpHeaderAuth"})
+#: Run Lane bounds. n8n caps a workflow at EXECUTIONS_TIMEOUT_MAX (default 3600 s), so the worst case
+#: (attempts x outcome timeout + backoffs) stays under RUN_LANE_EXECUTION_TIMEOUT_S.
+RUN_LANE_EXECUTION_TIMEOUT_S = 3600
+RUN_LANE_MAX_ATTEMPTS = 3
+RUN_LANE_OUTCOME_TIMEOUT_DEFAULT_S = 900
+RUN_LANE_OUTCOME_TIMEOUT_MAX_S = 1000
+RUN_LANE_POLL_FIRST_S = 5
+RUN_LANE_POLL_MAX_S = 60
+RUN_LANE_RETRY_BACKOFF_BASE_S = 30
+RUN_LANE_RETRY_BACKOFF_MAX_S = 120
+RUN_LANE_TERMINAL = ("success", "failed", "refused_policy", "skipped_lock")
+FABRIC_ERROR_TIMEOUT_S = 60
+FABRIC_PROBE_TIMEOUT_S = 300
+#: Relay calls each fabric workflow makes (checked against scripts/n8n_run_relay.py ROUTES by the tests).
+FABRIC_RELAY_CALLS = {
+    RUN_LANE_ID: ["POST /run", "GET /run_outcome"],
+    FABRIC_ERROR_ID: ["POST /intent"],
+    FABRIC_PROBE_ID: [],
+    FABRIC_ERROR_PROBE_ID: [],
+}
+#: Node fields that change behaviour; the graph hash covers exactly these (plus connections and settings), so a
+#: re-export from n8n (which adds position, webhookId, notes, versionId, ...) of the same graph verifies.
+GRAPH_NODE_FIELDS = (
+    "name",
+    "type",
+    "typeVersion",
+    "parameters",
+    "credentials",
+    "disabled",
+    "onError",
+    "retryOnFail",
+    "maxTries",
+    "waitBetweenTries",
+    "alwaysOutputData",
+    "executeOnce",
+)
+GRAPH_SETTINGS_FIELDS = (
+    "executionOrder",
+    "timezone",
+    "executionTimeout",
+    "saveDataSuccessExecution",
+    "saveDataErrorExecution",
+    "saveManualExecutions",
+    "errorWorkflow",
+    "callerPolicy",
+)
+
+RL_INPUT = "Run Lane input"
+RL_SET = "Relay"
+RL_INIT = "Init"
+RL_PREP = "Prepare attempt"
+RL_POST = "POST relay /run"
+RL_CLASSIFY = "Classify request"
+RL_REQUESTED = "Requested?"
+RL_WAIT = "Wait poll"
+RL_GET = "GET relay /run_outcome"
+RL_EVAL = "Evaluate outcome"
+RL_PENDING = "Still pending?"
+RL_SWITCH = "Route status"
+RL_BUDGET = "Retry budget?"
+RL_BACKOFF = "Wait backoff"
+RL_NEXT = "Next attempt"
+RL_RESULT = "Result"
+FE_TRIGGER = "Error Trigger"
+FE_SHAPE = "Shape intent"
+FE_SET = "Relay"
+FE_POST = "POST relay /intent"
+FE_ASSERT = "Assert intent"
+FP_SCHED = "Schedule"
+FP_INPUT = "Probe input"
+FP_CALL = "Call Run Lane"
+FP_ASSERT = "Assert probe result"
+
+
+def _f_node_id(wid: str, node: str) -> str:
+    return str(uuid.uuid5(_UUID_NS, f"fabric:{wid}:{node}"))
+
+
+def _f_code(wid: str, name: str, js: str, position: list[int]) -> dict:
+    node = _g_code(wid, name, js, position)
+    node["id"] = _f_node_id(wid, name)
+    return node
+
+
+def _f_http(
+    wid: str,
+    name: str,
+    *,
+    method: str,
+    path_expr: str,
+    position: list[int],
+    json_body: str | None = None,
+    relay_node: str = RL_SET,
+) -> dict:
+    """Relay HTTP node: full response + neverError, so a refusal (403) or an unreachable relay reaches the next Code
+    node as data; transport retries (2 tries) are the node's, lane retries are Run Lane's."""
+    params: dict = {
+        "method": method,
+        "url": "={{ $('" + relay_node + "').first().json." + RELAY_URL_VAR + " }}" + path_expr,
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {"timeout": HTTP_TIMEOUT_MS, "response": {"response": {"fullResponse": True, "neverError": True}}},
+    }
+    if json_body is not None:
+        params.update({"sendBody": True, "specifyBody": "json", "jsonBody": json_body})
+    return {
+        "id": _f_node_id(wid, name),
+        "name": name,
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": position,
+        "credentials": _relay_credentials(),
+        "parameters": params,
+        "retryOnFail": True,
+        "maxTries": 2,
+        "waitBetweenTries": 2000,
+        "onError": "continueRegularOutput",
+    }
+
+
+def _f_set_relay(wid: str, name: str, position: list[int]) -> dict:
+    return {
+        "id": _f_node_id(wid, name),
+        "name": name,
+        "type": "n8n-nodes-base.set",
+        "typeVersion": 3.4,
+        "position": position,
+        "parameters": {
+            "assignments": {
+                "assignments": [
+                    {
+                        "id": _f_node_id(wid, name + ":url"),
+                        "name": RELAY_URL_VAR,
+                        "type": "string",
+                        "value": GENERIC_RELAY_URL,
+                    }
+                ]
+            },
+            "includeOtherFields": True,
+            "options": {},
+        },
+    }
+
+
+def _f_wait(wid: str, name: str, amount_expr: str, position: list[int]) -> dict:
+    return {
+        "id": _f_node_id(wid, name),
+        "name": name,
+        "type": "n8n-nodes-base.wait",
+        "typeVersion": 1.1,
+        "position": position,
+        "webhookId": _f_node_id(wid, name + ":webhook"),
+        "parameters": {"amount": amount_expr, "unit": "seconds"},
+    }
+
+
+def _f_if(wid: str, name: str, left: str, position: list[int]) -> dict:
+    node = _g_if(wid, name, left, position)
+    node["id"] = _f_node_id(wid, name)
+    node["parameters"]["conditions"]["conditions"][0]["id"] = _f_node_id(wid, name + ":cond")
+    return node
+
+
+def _f_switch(wid: str, name: str, field_expr: str, values: tuple[str, ...], position: list[int]) -> dict:
+    """Switch v3.2: one renamed output per value (in order), plus the fallback output last."""
+    rules = []
+    for v in values:
+        rules.append(
+            {
+                "conditions": {
+                    "options": {"caseSensitive": True, "leftValue": "", "typeValidation": "strict", "version": 2},
+                    "conditions": [
+                        {
+                            "id": _f_node_id(wid, f"{name}:{v}"),
+                            "leftValue": field_expr,
+                            "rightValue": v,
+                            "operator": {"type": "string", "operation": "equals"},
+                        }
+                    ],
+                    "combinator": "and",
+                },
+                "renameOutput": True,
+                "outputKey": v,
+            }
+        )
+    return {
+        "id": _f_node_id(wid, name),
+        "name": name,
+        "type": "n8n-nodes-base.switch",
+        "typeVersion": 3.2,
+        "position": position,
+        "parameters": {"rules": {"values": rules}, "options": {"fallbackOutput": "extra"}},
+    }
+
+
+def _run_lane_init_js() -> str:
+    return "\n".join(
+        [
+            "// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n.",
+            "// Validates the caller's inputs. A bad input is a caller bug: it throws (-> error workflow).",
+            "const LANE_RE = /^[a-z0-9][a-z0-9._-]{1,63}$/;",
+            "const KEY_RE = /^[A-Za-z0-9._:-]{16,125}$/;",
+            f"const MAX_ATTEMPTS = {RUN_LANE_MAX_ATTEMPTS};",
+            f"const TIMEOUT_DEFAULT_S = {RUN_LANE_OUTCOME_TIMEOUT_DEFAULT_S};",
+            f"const TIMEOUT_MAX_S = {RUN_LANE_OUTCOME_TIMEOUT_MAX_S};",
+            "const i = $input.first().json || {};",
+            "const lane = i.lane_id;",
+            "if (typeof lane !== 'string' || !LANE_RE.test(lane)) throw new Error('run-lane: bad lane_id');",
+            "if (i.mode !== 'dry_run' && i.mode !== 'live') throw new Error('run-lane: bad mode for ' + lane);",
+            "const key = i.idempotency_key;",
+            "if (typeof key !== 'string' || !KEY_RE.test(key)) throw new Error('run-lane: bad idempotency_key for ' + lane);",
+            "// Attempt n > 1 re-requests <base>:a<n>; the gateway validates it (a d: key must be RETRY_DUE).",
+            "const base = key.replace(/:a[2-9]$/, '');",
+            "const maxA = Math.max(1, Math.min(MAX_ATTEMPTS, Math.floor(Number(i.max_attempts) || 1)));",
+            "const tmo = Math.max(60, Math.min(TIMEOUT_MAX_S, Math.floor(Number(i.outcome_timeout_s) || TIMEOUT_DEFAULT_S)));",
+            "const proc = (typeof i.process_id === 'string' && LANE_RE.test(i.process_id)) ? i.process_id : '';",
+            "$execution.customData.set('lane_id', lane);",
+            "if (proc) $execution.customData.set('process_id', proc);",
+            "const first = /:a([2-9])$/.exec(key);",
+            "return [{ json: { lane_id: lane, mode: i.mode, base_key: base, attempt: 1,",
+            "  key_attempt: first ? Number(first[1]) : 1, max_attempts: maxA, outcome_timeout_s: tmo,",
+            "  process_id: proc, history: [] } }];",
+            "",
+        ]
+    )
+
+
+def _run_lane_prepare_js() -> str:
+    return "\n".join(
+        [
+            "// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n.",
+            f"const POLL_FIRST_S = {RUN_LANE_POLL_FIRST_S};",
+            "// key_attempt moves only after a run was actually requested; a transport failure re-sends the same key",
+            "// (the gateway returns the existing row as duplicate, so nothing runs twice).",
+            "const s = $input.first().json;",
+            "const key = s.key_attempt > 1 ? s.base_key + ':a' + s.key_attempt : s.base_key;",
+            "return [{ json: { ...s, idempotency_key: key, run_id: key, phase: 'request', requested: false,",
+            "  status: null, reason: null, retryable: false, polls: 0, waited_s: 0, wait_s: POLL_FIRST_S } }];",
+            "",
+        ]
+    )
+
+
+def _run_lane_classify_js() -> str:
+    return "\n".join(
+        [
+            "// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n.",
+            "// The /run reply -> poll, or a terminal status as DATA. A policy refusal (403) is refused_policy, never",
+            "// an n8n error. Relay auth or a malformed request is a configuration bug: it throws.",
+            f"const s = $('{RL_PREP}').last().json;",
+            "const r = $input.first().json || {};",
+            "const body = (r.body && typeof r.body === 'object') ? r.body : {};",
+            "const out = { ...s };",
+            "const code = r.statusCode;",
+            "if (typeof code !== 'number' || r.error) {",
+            "  Object.assign(out, { phase: 'done', status: 'failed', reason: 'relay_unreachable', retryable: true });",
+            "} else if (code === 200 && (body.state === 'REQUESTED' || body.duplicate === true)) {",
+            "  out.phase = 'poll';",
+            "  out.requested = true;",
+            "  if (typeof body.run_id === 'string' && body.run_id) out.run_id = body.run_id;",
+            "} else if (code === 502 || code === 503) {",
+            "  const why = String(body.reason || ('HTTP ' + code)).slice(0, 80);",
+            "  Object.assign(out, { phase: 'done', status: 'failed', reason: why, retryable: true });",
+            "} else if (code === 403 && s.attempt > 1) {",
+            "  // The host refused the retry key (e.g. a d: slot not RETRY_DUE under the lane's host retry policy):",
+            "  // the run already FAILED, so it stays failed and the budget ends here.",
+            "  const why = String(body.reason || body.state || 'refused').slice(0, 72);",
+            "  Object.assign(out, { phase: 'done', status: 'failed', reason: 'retry_refused:' + why, retryable: false });",
+            "} else if (code === 403) {",
+            "  const why = String(body.reason || body.state || 'refused').slice(0, 80);",
+            "  Object.assign(out, { phase: 'done', status: 'refused_policy', reason: why, retryable: false });",
+            "} else {",
+            "  throw new Error('run-lane: relay /run HTTP ' + code + ' ' + String(body.reason || '').slice(0, 60));",
+            "}",
+            "$execution.customData.set('run_id', String(out.run_id));",
+            "return [{ json: out }];",
+            "",
+        ]
+    )
+
+
+def _run_lane_evaluate_js() -> str:
+    return "\n".join(
+        [
+            "// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n.",
+            "// One RunOutcome@v1 poll. Terminal -> status; pending/unknown/unreachable -> poll again with bounded",
+            "// exponential backoff until outcome_timeout_s, then failed/outcome_timeout (RUN_LOST: never retried).",
+            f"const TERMINAL = {json.dumps(list(RUN_LANE_TERMINAL))};",
+            f"const POLL_MAX_S = {RUN_LANE_POLL_MAX_S};",
+            f"const s = $('{RL_WAIT}').last().json;",
+            "const r = $input.first().json || {};",
+            "const body = (r.body && typeof r.body === 'object') ? r.body : {};",
+            "const out = { ...s, polls: s.polls + 1, waited_s: s.waited_s + s.wait_s };",
+            "const ok = r.statusCode === 200 && body.schema === 'RunOutcome@v1' && body.state === 'OK';",
+            "if (ok && TERMINAL.includes(body.status)) {",
+            "  Object.assign(out, { phase: 'done', status: body.status, exit_code: body.exit_code ?? null,",
+            "    receipt_path: body.receipt_path ?? null, effect_key: body.effect_key ?? null,",
+            "    duration_s: body.duration_s ?? null, reason: body.reason ?? null,",
+            "    retryable: body.status === 'failed' && !String(body.reason || '').startsWith('effect:') });",
+            "} else if (out.waited_s >= s.outcome_timeout_s) {",
+            "  Object.assign(out, { phase: 'done', status: 'failed', reason: 'outcome_timeout', retryable: false });",
+            "} else {",
+            "  out.phase = 'poll';",
+            "  out.last_seen = ok ? String(body.status) : ('HTTP ' + String(r.statusCode));",
+            "  out.wait_s = Math.min(POLL_MAX_S, s.wait_s * 2, Math.max(1, s.outcome_timeout_s - out.waited_s));",
+            "}",
+            "return [{ json: out }];",
+            "",
+        ]
+    )
+
+
+def _run_lane_next_js() -> str:
+    return "\n".join(
+        [
+            "// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n.",
+            "const s = $input.first().json;",
+            "const history = (s.history || []).concat([{ attempt: s.attempt, run_id: s.run_id, status: s.status,",
+            "  reason: s.reason }]);",
+            "return [{ json: { lane_id: s.lane_id, mode: s.mode, base_key: s.base_key, attempt: s.attempt + 1,",
+            "  key_attempt: s.requested ? s.key_attempt + 1 : s.key_attempt, max_attempts: s.max_attempts,",
+            "  outcome_timeout_s: s.outcome_timeout_s, process_id: s.process_id, history } }];",
+            "",
+        ]
+    )
+
+
+def _run_lane_result_js() -> str:
+    return "\n".join(
+        [
+            "// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n.",
+            "// RunLaneResult@v1: the structured result the calling workflow branches on. A failed run with no budget",
+            "// left is dead_letter: true; its dead-letter ROW stays in the host ledger (scripts/n8n_dlq.py).",
+            f"const TERMINAL = {json.dumps(list(RUN_LANE_TERMINAL))};",
+            "const s = $input.first().json;",
+            "const status = TERMINAL.includes(s.status) ? s.status : 'failed';",
+            "const history = (s.history || []).concat([{ attempt: s.attempt, run_id: s.run_id, status,",
+            "  reason: s.reason ?? null }]);",
+            "return [{ json: {",
+            "  schema: 'RunLaneResult@v1', lane_id: s.lane_id, mode: s.mode, process_id: s.process_id || null,",
+            "  run_id: s.run_id, status, reason: TERMINAL.includes(s.status) ? (s.reason ?? null) : 'unrouted_status',",
+            "  attempts: s.attempt, max_attempts: s.max_attempts, exit_code: s.exit_code ?? null,",
+            "  receipt_path: s.receipt_path ?? null, effect_key: s.effect_key ?? null, duration_s: s.duration_s ?? null,",
+            "  dead_letter: status === 'failed', history,",
+            "} }];",
+            "",
+        ]
+    )
+
+
+def _fabric_settings(wid: str, timeout_s: int, *, caller_policy: str | None = None) -> dict:
+    settings: dict = dict(FABRIC_REQUIRED_SETTINGS)
+    settings["executionTimeout"] = timeout_s
+    settings["errorWorkflow"] = FABRIC_ERROR_ID  # the error workflow names itself (n8n skips self-recursion)
+    if caller_policy is not None:
+        settings["callerPolicy"] = caller_policy
+    return settings
+
+
+def _fabric_doc(wid: str, kind: str, nodes: list[dict], conns: dict, settings: dict) -> dict:
+    nodes.sort(key=lambda n: n["name"])
+    wf = {
+        "id": wid,
+        "name": wid,
+        "active": False,
+        "nodes": nodes,
+        "connections": conns,
+        "settings": settings,
+        "meta": {
+            "generator": FABRIC_GENERATOR,
+            "kind": kind,
+            "design": "AGENTS.md §23.23 (10.0.0 PROPOSED); arch-review-20261014 REFACTOR_PLAN B4-B6",
+        },
+    }
+    wf["meta"]["graph_sha256"] = graph_hash(wf)
+    wf["meta"]["policy_sha256"] = policy_hash()
+    return wf
+
+
+def build_run_lane() -> dict:
+    """The Run Lane sub-workflow: request -> poll outcome (bounded backoff) -> Switch on status -> retry budget ->
+    RunLaneResult@v1. Retries are owned here; refusals are data; nothing here sends or holds a secret."""
+    wid = RUN_LANE_ID
+    inputs = [
+        {"name": "lane_id", "type": "string"},
+        {"name": "mode", "type": "string"},
+        {"name": "idempotency_key", "type": "string"},
+        {"name": "max_attempts", "type": "number"},
+        {"name": "outcome_timeout_s", "type": "number"},
+        {"name": "process_id", "type": "string"},
+    ]
+    run_body = (
+        "={{ JSON.stringify({ lane_id: $json.lane_id, mode: $json.mode, idempotency_key: $json.idempotency_key, "
+        "workflow_id: String($workflow.id), execution_id: String($execution.id) }) }}"
+    )
+    nodes = [
+        {
+            "id": _f_node_id(wid, RL_INPUT),
+            "name": RL_INPUT,
+            "type": "n8n-nodes-base.executeWorkflowTrigger",
+            "typeVersion": 1.1,
+            "position": [0, 300],
+            "parameters": {"inputSource": "workflowInputs", "workflowInputs": {"values": inputs}},
+        },
+        _f_set_relay(wid, RL_SET, [240, 300]),
+        _f_code(wid, RL_INIT, _run_lane_init_js(), [480, 300]),
+        _f_code(wid, RL_PREP, _run_lane_prepare_js(), [720, 300]),
+        _f_http(wid, RL_POST, method="POST", path_expr="/run", position=[960, 300], json_body=run_body),
+        _f_code(wid, RL_CLASSIFY, _run_lane_classify_js(), [1200, 300]),
+        _f_if(wid, RL_REQUESTED, "={{ $json.phase === 'poll' }}", [1440, 300]),
+        _f_wait(wid, RL_WAIT, "={{ $json.wait_s }}", [1680, 180]),
+        _f_http(
+            wid,
+            RL_GET,
+            method="GET",
+            path_expr="/run_outcome?run_id={{ encodeURIComponent($json.run_id) }}",
+            position=[1920, 180],
+        ),
+        _f_code(wid, RL_EVAL, _run_lane_evaluate_js(), [2160, 180]),
+        _f_if(wid, RL_PENDING, "={{ $json.phase === 'poll' }}", [2400, 180]),
+        _f_switch(wid, RL_SWITCH, "={{ $json.status }}", RUN_LANE_TERMINAL, [2640, 420]),
+        _f_if(wid, RL_BUDGET, "={{ $json.retryable === true && $json.attempt < $json.max_attempts }}", [2880, 420]),
+        _f_wait(
+            wid,
+            RL_BACKOFF,
+            "={{ Math.min("
+            + str(RUN_LANE_RETRY_BACKOFF_MAX_S)
+            + ", "
+            + str(RUN_LANE_RETRY_BACKOFF_BASE_S)
+            + " * Math.pow(2, $json.attempt - 1)) }}",
+            [3120, 300],
+        ),
+        _f_code(wid, RL_NEXT, _run_lane_next_js(), [3360, 300]),
+        _f_code(wid, RL_RESULT, _run_lane_result_js(), [3360, 600]),
+    ]
+    conns: dict = {}
+    _g_main(conns, RL_INPUT, [RL_SET])
+    _g_main(conns, RL_SET, [RL_INIT])
+    _g_main(conns, RL_INIT, [RL_PREP])
+    _g_main(conns, RL_PREP, [RL_POST])
+    _g_main(conns, RL_POST, [RL_CLASSIFY])
+    _g_main(conns, RL_CLASSIFY, [RL_REQUESTED])
+    _g_main(conns, RL_REQUESTED, [RL_WAIT], [RL_SWITCH])
+    _g_main(conns, RL_WAIT, [RL_GET])
+    _g_main(conns, RL_GET, [RL_EVAL])
+    _g_main(conns, RL_EVAL, [RL_PENDING])
+    _g_main(conns, RL_PENDING, [RL_WAIT], [RL_SWITCH])
+    # Switch outputs in RUN_LANE_TERMINAL order, then the fallback (an unrouted status -> Result as failed).
+    _g_main(conns, RL_SWITCH, [RL_RESULT], [RL_BUDGET], [RL_RESULT], [RL_RESULT], [RL_RESULT])
+    _g_main(conns, RL_BUDGET, [RL_BACKOFF], [RL_RESULT])
+    _g_main(conns, RL_BACKOFF, [RL_NEXT])
+    _g_main(conns, RL_NEXT, [RL_PREP])
+    settings = _fabric_settings(wid, RUN_LANE_EXECUTION_TIMEOUT_S, caller_policy="workflowsFromSameOwner")
+    return _fabric_doc(wid, "run-lane", nodes, conns, settings)
+
+
+def _fabric_shape_intent_js() -> str:
+    return "\n".join(
+        [
+            "// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n.",
+            "// Error Trigger payload -> one send-INTENT. n8n holds no bot token: the host dedupes, caps, routes by the",
+            "// alert taxonomy (config/n8n_comms_intent_routes.json) and the comms gateway alone sends.",
+            "const e = $input.first().json || {};",
+            "const exec = e.execution || {};",
+            "const wf = e.workflow || {};",
+            "const err = exec.error || (e.trigger && e.trigger.error) || {};",
+            "const WF_RE = /^[A-Za-z0-9._-]{1,64}$/;",
+            "const EX_RE = /^[A-Za-z0-9_-]{1,40}$/;",
+            "const wid = WF_RE.test(String(wf.id ?? '')) ? String(wf.id) : 'unknown';",
+            "const xid = EX_RE.test(String(exec.id ?? '')) ? String(exec.id) : 'none';",
+            "const node = String(exec.lastNodeExecuted ?? (err.node && err.node.name) ?? '').slice(0, 64);",
+            "return [{ json: {",
+            "  domain: 'fabric', kind: 'workflow_error',",
+            "  subject: ('workflow ' + String(wf.name ?? wid) + ' failed at ' + (node || 'trigger')).slice(0, 120),",
+            "  summary: String(err.message ?? '').slice(0, 300),",
+            "  workflow_id: wid, execution_id: xid, node,",
+            "} }];",
+            "",
+        ]
+    )
+
+
+def _fabric_assert_intent_js() -> str:
+    return "\n".join(
+        [
+            "// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n.",
+            "// An intent the host did not accept is this execution's error (saved; n8n does not re-enter an error",
+            "// workflow from its own failure). The host-side P1 path never depends on this (§24.1).",
+            "const r = $input.first().json || {};",
+            "const body = (r.body && typeof r.body === 'object') ? r.body : {};",
+            "if (r.statusCode === 200 && body.state === 'ACCEPTED') {",
+            "  return [{ json: { intent_id: body.intent_id, tier: body.tier, duplicate: body.duplicate === true } }];",
+            "}",
+            "throw new Error('fabric-error: intent not accepted: ' + String(body.reason || ('HTTP ' + r.statusCode)).slice(0, 80));",
+            "",
+        ]
+    )
+
+
+def build_fabric_error() -> dict:
+    wid = FABRIC_ERROR_ID
+    intent_body = (
+        "={{ JSON.stringify({ domain: $json.domain, kind: $json.kind, subject: $json.subject, summary: $json.summary, "
+        "workflow_id: $json.workflow_id, execution_id: $json.execution_id, node: $json.node }) }}"
+    )
+    nodes = [
+        {
+            "id": _f_node_id(wid, FE_TRIGGER),
+            "name": FE_TRIGGER,
+            "type": "n8n-nodes-base.errorTrigger",
+            "typeVersion": 1,
+            "position": [0, 300],
+            "parameters": {},
+        },
+        _f_code(wid, FE_SHAPE, _fabric_shape_intent_js(), [240, 300]),
+        _f_set_relay(wid, FE_SET, [480, 300]),
+        _f_http(
+            wid,
+            FE_POST,
+            method="POST",
+            path_expr="/intent",
+            position=[720, 300],
+            json_body=intent_body,
+            relay_node=FE_SET,
+        ),
+        _f_code(wid, FE_ASSERT, _fabric_assert_intent_js(), [960, 300]),
+    ]
+    conns: dict = {}
+    _g_main(conns, FE_TRIGGER, [FE_SHAPE])
+    _g_main(conns, FE_SHAPE, [FE_SET])
+    _g_main(conns, FE_SET, [FE_POST])
+    _g_main(conns, FE_POST, [FE_ASSERT])
+    return _fabric_doc(wid, "error", nodes, conns, _fabric_settings(wid, FABRIC_ERROR_TIMEOUT_S))
+
+
+def _fabric_probe_assert_js() -> str:
+    return "\n".join(
+        [
+            "// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n.",
+            "// Dry-run proof: Run Lane returned a RunLaneResult@v1 with a terminal status (any of the four).",
+            f"const TERMINAL = {json.dumps(list(RUN_LANE_TERMINAL))};",
+            "const r = $input.first().json || {};",
+            "if (r.schema !== 'RunLaneResult@v1' || !TERMINAL.includes(r.status)) {",
+            "  throw new Error('fabric-probe: unexpected Run Lane result ' + String(r.status));",
+            "}",
+            "return [{ json: { probe_ok: true, status: r.status, run_id: r.run_id, attempts: r.attempts } }];",
+            "",
+        ]
+    )
+
+
+def build_fabric_probe() -> dict:
+    """Inactive; for the operator's one-off dry-run proof (`n8n execute --id`). Its schedule (04:00 on 1 January)
+    never matters while inactive. It calls Run Lane once, in dry_run, for FABRIC_PROBE_LANE."""
+    wid = FABRIC_PROBE_ID
+    key_expr = "={{ 'fabric-probe-' + String($execution.id) + '-' + $now.toFormat('yyyyLLddHHmmss') }}"
+    nodes = [
+        {
+            "id": _f_node_id(wid, FP_SCHED),
+            "name": FP_SCHED,
+            "type": "n8n-nodes-base.scheduleTrigger",
+            "typeVersion": 1.2,
+            "position": [0, 300],
+            "parameters": {"rule": {"interval": [{"field": "cronExpression", "expression": "0 4 1 1 *"}]}},
+        },
+        {
+            "id": _f_node_id(wid, FP_INPUT),
+            "name": FP_INPUT,
+            "type": "n8n-nodes-base.set",
+            "typeVersion": 3.4,
+            "position": [240, 300],
+            "parameters": {
+                "assignments": {
+                    "assignments": [
+                        {
+                            "id": _f_node_id(wid, "lane"),
+                            "name": "lane_id",
+                            "type": "string",
+                            "value": FABRIC_PROBE_LANE,
+                        },
+                        {"id": _f_node_id(wid, "mode"), "name": "mode", "type": "string", "value": "dry_run"},
+                        {"id": _f_node_id(wid, "key"), "name": "idempotency_key", "type": "string", "value": key_expr},
+                        {"id": _f_node_id(wid, "max"), "name": "max_attempts", "type": "number", "value": 1},
+                        {"id": _f_node_id(wid, "tmo"), "name": "outcome_timeout_s", "type": "number", "value": 120},
+                    ]
+                },
+                "options": {},
+            },
+        },
+        {
+            "id": _f_node_id(wid, FP_CALL),
+            "name": FP_CALL,
+            "type": "n8n-nodes-base.executeWorkflow",
+            "typeVersion": 1.2,
+            "position": [480, 300],
+            "parameters": {
+                "source": "database",
+                "workflowId": {"__rl": True, "value": RUN_LANE_ID, "mode": "id"},
+                "workflowInputs": {
+                    "mappingMode": "defineBelow",
+                    "value": {
+                        "lane_id": "={{ $json.lane_id }}",
+                        "mode": "={{ $json.mode }}",
+                        "idempotency_key": "={{ $json.idempotency_key }}",
+                        "max_attempts": "={{ $json.max_attempts }}",
+                        "outcome_timeout_s": "={{ $json.outcome_timeout_s }}",
+                        "process_id": "",
+                    },
+                    "matchingColumns": [],
+                    "schema": [],
+                },
+                "options": {"waitForSubWorkflow": True},
+            },
+        },
+        _f_code(wid, FP_ASSERT, _fabric_probe_assert_js(), [720, 300]),
+    ]
+    conns: dict = {}
+    _g_main(conns, FP_SCHED, [FP_INPUT])
+    _g_main(conns, FP_INPUT, [FP_CALL])
+    _g_main(conns, FP_CALL, [FP_ASSERT])
+    return _fabric_doc(wid, "probe", nodes, conns, _fabric_settings(wid, FABRIC_PROBE_TIMEOUT_S))
+
+
+FEP_SCHED = "Schedule"
+FEP_FAIL = "Fail on purpose"
+
+
+def build_fabric_error_probe() -> dict:
+    """Inactive. Every fire throws, so the fabric error workflow runs from an AUTOMATIC failure (addendum item 9).
+    The packet publishes it for exactly one fire and unpublishes it; the resulting intent is a DIGEST row, queued."""
+    wid = FABRIC_ERROR_PROBE_ID
+    js = "\n".join(
+        [
+            "// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n.",
+            "// Deliberate failure for the Error Trigger acceptance proof (packet n8n-fabric-phase1-20261014).",
+            "throw new Error('fabric-error-probe: deliberate failure (acceptance proof)');",
+            "",
+        ]
+    )
+    nodes = [
+        {
+            "id": _f_node_id(wid, FEP_SCHED),
+            "name": FEP_SCHED,
+            "type": "n8n-nodes-base.scheduleTrigger",
+            "typeVersion": 1.2,
+            "position": [0, 300],
+            "parameters": {"rule": {"interval": [{"field": "cronExpression", "expression": "* * * * *"}]}},
+        },
+        _f_code(wid, FEP_FAIL, js, [240, 300]),
+    ]
+    conns: dict = {}
+    _g_main(conns, FEP_SCHED, [FEP_FAIL])
+    return _fabric_doc(wid, "error-probe", nodes, conns, _fabric_settings(wid, FABRIC_ERROR_TIMEOUT_S))
+
+
+FABRIC_BUILDERS = {
+    RUN_LANE_ID: build_run_lane,
+    FABRIC_ERROR_ID: build_fabric_error,
+    FABRIC_PROBE_ID: build_fabric_probe,
+    FABRIC_ERROR_PROBE_ID: build_fabric_error_probe,
+}
+
+
+def _canon(obj) -> str:
+    return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+
+
+def graph_view(wf: dict) -> dict:
+    """The behavioural graph: GRAPH_NODE_FIELDS of each node (absent/None/False-default dropped), connections, the
+    GRAPH_SETTINGS_FIELDS of settings, id and name. Position, webhookId, node ids, meta and active are not graph."""
+    nodes = []
+    for n in wf.get("nodes") or []:
+        view = {}
+        for k in GRAPH_NODE_FIELDS:
+            v = n.get(k)
+            if v is None or (k == "disabled" and v is False):
+                continue
+            view[k] = v
+        nodes.append(view)
+    nodes.sort(key=lambda n: str(n.get("name")))
+    settings = wf.get("settings") or {}
+    return {
+        "id": wf.get("id"),
+        "name": wf.get("name"),
+        "nodes": nodes,
+        "connections": wf.get("connections") or {},
+        "settings": {k: settings[k] for k in GRAPH_SETTINGS_FIELDS if k in settings},
+    }
+
+
+def graph_hash(wf: dict) -> str:
+    return hashlib.sha256(_canon(graph_view(wf)).encode("utf-8")).hexdigest()
+
+
+def fabric_policy() -> dict:
+    """What a fabric workflow is allowed to be. Its sha256 is the POLICY hash the trusted deployer checks."""
+    routes_path = ROOT / "config" / "n8n_comms_intent_routes.json"
+    try:
+        routes_sha = hashlib.sha256(routes_path.read_bytes()).hexdigest()
+    except OSError:
+        routes_sha = None
+    return {
+        "allowed_node_types": sorted(FABRIC_ALLOWED_NODE_TYPES),
+        "forbidden_node_types": sorted(FABRIC_FORBIDDEN_NODE_TYPES),
+        "node_package": FABRIC_NODE_PACKAGE,
+        "required_settings": FABRIC_REQUIRED_SETTINGS,
+        "error_workflow": FABRIC_ERROR_ID,
+        "credential": {"name": CREDENTIAL_NAME, "types": sorted(FABRIC_CREDENTIAL_TYPES)},
+        "relay_url": GENERIC_RELAY_URL,
+        "relay_calls": FABRIC_RELAY_CALLS,
+        "intent_routes_sha256": routes_sha,
+        "run_lane": {
+            "max_attempts": RUN_LANE_MAX_ATTEMPTS,
+            "outcome_timeout_max_s": RUN_LANE_OUTCOME_TIMEOUT_MAX_S,
+            "execution_timeout_s": RUN_LANE_EXECUTION_TIMEOUT_S,
+            "terminal": list(RUN_LANE_TERMINAL),
+        },
+    }
+
+
+def policy_hash() -> str:
+    return hashlib.sha256(_canon(fabric_policy()).encode("utf-8")).hexdigest()
+
+
+def validate_fabric_workflow(wf: dict, known_ids: set[str] | frozenset[str]) -> list[str]:
+    """Problems that refuse a fabric workflow (generator invariant, CI and the trusted deployer). [] = fit."""
+    problems: list[str] = []
+    if wf.get("active") is not False:
+        problems.append("active_not_false")
+    for n in wf.get("nodes") or []:
+        t = str(n.get("type"))
+        if not t.startswith(FABRIC_NODE_PACKAGE):
+            problems.append(f"node_package_refused:{t}")
+        elif t in FABRIC_FORBIDDEN_NODE_TYPES:
+            problems.append(f"node_forbidden:{t}")
+        elif t not in FABRIC_ALLOWED_NODE_TYPES:
+            problems.append(f"node_not_allowed:{t}")
+        for ctype, cred in (n.get("credentials") or {}).items():
+            if (
+                ctype not in FABRIC_CREDENTIAL_TYPES
+                or not isinstance(cred, dict)
+                or cred.get("name") != CREDENTIAL_NAME
+            ):
+                problems.append(f"credential_refused:{n.get('name')}:{ctype}")
+    settings = wf.get("settings") or {}
+    ew = settings.get("errorWorkflow")
+    if not ew:
+        problems.append("error_workflow_missing")
+    elif ew not in known_ids:
+        problems.append(f"error_workflow_unknown:{ew}")
+    for k, v in FABRIC_REQUIRED_SETTINGS.items():
+        if settings.get(k) != v:
+            problems.append(f"setting:{k}")
+    if not isinstance(settings.get("executionTimeout"), int) or settings["executionTimeout"] < 1:
+        problems.append("setting:executionTimeout")
+    meta = wf.get("meta") or {}
+    if meta.get("graph_sha256") != graph_hash(wf):
+        problems.append("graph_hash_mismatch")
+    return problems
+
+
+def render_fabric() -> dict[str, str]:
+    """file name -> text for the fabric workflows plus INDEX.json (the trusted-deployer manifest; byte-stable)."""
+    wfs = [builder() for builder in FABRIC_BUILDERS.values()]
+    known = {wf["id"] for wf in wfs}
+    files: dict[str, str] = {}
+    rows = []
+    for wf in wfs:
+        problems = validate_fabric_workflow(wf, known)
+        if problems:
+            raise ValueError(f"fabric workflow {wf['id']} refused by its own generator: {problems}")
+        text = _dump(wf)
+        fname = f"{wf['id']}.json"
+        files[fname] = text
+        rows.append(
+            {
+                "id": wf["id"],
+                "kind": wf["meta"]["kind"],
+                "file": fname,
+                "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+                "graph_sha256": wf["meta"]["graph_sha256"],
+                "node_types": sorted({n["type"] for n in wf["nodes"]}),
+                "error_workflow": wf["settings"]["errorWorkflow"],
+                "relay_calls": FABRIC_RELAY_CALLS[wf["id"]],
+                "active": False,
+            }
+        )
+    files["INDEX.json"] = _dump(
+        {
+            "schema": FABRIC_SCHEMA,
+            "generator": FABRIC_GENERATOR,
+            "authority": "READ_ONLY_ADVISORY",
+            "policy": fabric_policy(),
+            "policy_sha256": policy_hash(),
+            "workflows": rows,
+        }
+    )
+    return files
+
+
+def verify_fabric(paths: list[Path], manifest_path: Path) -> dict:
+    """Trusted-deployer check of workflow JSON (an n8n export or a staged import file) against the committed
+    manifest: graph hash equal, policy hash equal to the generator's, and validate_fabric_workflow clean. Exports
+    may hold one workflow or a list."""
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    expected = {row["id"]: row for row in manifest.get("workflows") or []}
+    known = set(expected)
+    out: dict = {
+        "policy_sha256_manifest": manifest.get("policy_sha256"),
+        "policy_sha256_code": policy_hash(),
+        "workflows": [],
+        "ok": True,
+    }
+    if manifest.get("policy_sha256") != policy_hash():
+        out["ok"] = False
+        out["policy_mismatch"] = True
+    for p in paths:
+        doc = json.loads(Path(p).read_text(encoding="utf-8"))
+        for wf in doc if isinstance(doc, list) else [doc]:
+            wid = str(wf.get("id"))
+            row = expected.get(wid)
+            got = graph_hash(wf)
+            # An export carries its own meta (or none): re-stamp so validate checks the graph, not the stamp.
+            stamped = dict(wf)
+            stamped["meta"] = dict(wf.get("meta") or {}, graph_sha256=got)
+            problems = validate_fabric_workflow(stamped, known)
+            # A live export is active once published; activation state is the grant's business, not the graph's.
+            problems = [x for x in problems if x != "active_not_false"]
+            if row is None:
+                problems.append("not_in_manifest")
+            elif row["graph_sha256"] != got:
+                problems.append("graph_hash_mismatch")
+            extra = sorted(set((wf.get("settings") or {})) - set(GRAPH_SETTINGS_FIELDS))
+            entry = {"id": wid, "file": str(p), "graph_sha256": got, "problems": problems, "extra_settings": extra}
+            out["workflows"].append(entry)
+            if problems:
+                out["ok"] = False
+    return out
+
+
+def fabric_main(argv: list[str]) -> int:
+    ap = argparse.ArgumentParser(prog="n8n_workflow_templates.py build-fabric", description="n8n fabric primitives")
+    ap.add_argument("--out", default=str(FABRIC_DEFAULT_OUT))
+    ap.add_argument("--check", action="store_true", help="fail if regenerating would change any byte")
+    ap.add_argument("--verify", nargs="+", default=None, help="workflow JSON files to verify against the manifest")
+    a = ap.parse_args(argv)
+    out = Path(a.out)
+    if a.verify:
+        result = verify_fabric([Path(p) for p in a.verify], out / "INDEX.json")
+        print(json.dumps(result, sort_keys=True))
+        return 0 if result["ok"] else 1
+    files = render_fabric()
+    if a.check:
+        diffs = []
+        for rel, text in sorted(files.items()):
+            path = out / rel
+            if not path.exists():
+                diffs.append(f"missing: {rel}")
+            elif path.read_bytes() != text.encode("utf-8"):
+                diffs.append(f"stale: {rel}")
+        print(json.dumps({"mode": "check-fabric", "files": len(files), "diffs": diffs, "out": str(out)}))
+        return 1 if diffs else 0
+    changed = []
+    out.mkdir(parents=True, exist_ok=True)
+    for rel, text in sorted(files.items()):
+        path = out / rel
+        data = text.encode("utf-8")
+        if not path.exists() or path.read_bytes() != data:
+            path.write_bytes(data)
+            changed.append(rel)
+    print(json.dumps({"mode": "write-fabric", "files": len(files), "changed": changed, "out": str(out)}))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     if argv is None:
         argv = sys.argv[1:]
     if argv and argv[0] == "build-generic":
         return generic_main(list(argv[1:]))
+    if argv and argv[0] == "build-fabric":
+        return fabric_main(list(argv[1:]))
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--lanes", default="all", help="N1|N2|...|N6 (comma list) or all")
     ap.add_argument("--out", default=str(DEFAULT_OUT))

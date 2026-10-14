@@ -366,7 +366,8 @@
       "authority": "READ_ONLY_ADVISORY",
       "gateway_scopes": [
         "coordination_run",
-        "coordination_read"
+        "coordination_read",
+        "comms_intent"
       ],
       "broker": false,
       "send": false,
