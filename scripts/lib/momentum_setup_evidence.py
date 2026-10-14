@@ -458,6 +458,77 @@ def _cached_snapshot():
     )
 
 
+def load_cached_snapshot():
+    """The served shared-candidate snapshot (persistent state), or None off the served host."""
+    return _cached_snapshot()
+
+
+#: The opening of the explicit line a sender adds when it ships an alert WITHOUT validated same-symbol
+#: momentum evidence (operator 2026-10-14, GLND premarket). Chrome that implies a setup — the CIO
+#: conviction/stance line — is not added to a message carrying it (scripts/lib/opportunity_alert.py).
+UNVALIDATED_MARK = "⚠️ UNVALIDATED —"
+
+
+def same_symbol_evidence(symbol, snapshot, *, now=None):
+    """Current same-symbol MomentumSetupEvidence from a candidate snapshot, with WHY when there is none.
+
+    status: CURRENT (evidence returned) · CONFLICT (the candidate carries conflicts) · AMBIGUOUS (more than
+    one current-session candidate) · UNKNOWN (no current observation with current evidence) ·
+    SNAPSHOT_UNAVAILABLE. Candidates from another known session can never be current evidence and are
+    ignored, so yesterday's row for the same ticker does not make today's ambiguous. Read-only, never raises.
+    """
+    now = now or datetime.now(timezone.utc)
+    sym = str(symbol or "").strip().upper()
+    out = {"symbol": sym, "status": "UNKNOWN", "conflicts": [], "evidence": None, "source": None,
+           "passed_count": None, "required_count": None, "observations": {}}
+    candidates = snapshot.get("candidates") if isinstance(snapshot, dict) else None
+    if not isinstance(candidates, list):
+        out["status"] = "SNAPSHOT_UNAVAILABLE"
+        return out
+    today = now.astimezone(ET).date().isoformat()
+    matched = [
+        r for r in candidates
+        if isinstance(r, dict) and r.get("symbol") == sym and r.get("session_date") in (None, today)
+    ]
+    if len(matched) > 1:
+        out["status"] = "AMBIGUOUS"
+        return out
+    if not matched:
+        return out
+    row = matched[0]
+    for source in ("trade_ai", "active_trader"):
+        view = row.get(source) if isinstance(row.get(source), dict) else {}
+        out["observations"][source] = len(view.get("observations") or [])
+    if row.get("conflicts"):
+        out["status"] = "CONFLICT"
+        out["conflicts"] = [str(c) for c in row["conflicts"]]
+        return out
+    try:
+        for source in ("trade_ai", "active_trader"):
+            observations = (row.get(source) or {}).get("observations") or []
+            if not observations:
+                continue
+            candidate_evidence = observations[0].get("setup_evidence")
+            stamp = _stamp(observations[0].get("observed_at"))
+            if (
+                isinstance(candidate_evidence, dict)
+                and _session_state(stamp, now) == "CURRENT_SESSION"
+                and candidate_evidence.get("source_observation_state") == "CURRENT_SESSION"
+                and observations[0].get("freshness") != "STALE"
+            ):
+                out.update(
+                    status="CURRENT",
+                    evidence=candidate_evidence,
+                    source=source,
+                    passed_count=candidate_evidence.get("passed_count"),
+                    required_count=candidate_evidence.get("required_count"),
+                )
+                break
+    except (ValueError, TypeError, AttributeError):
+        out["status"] = "UNKNOWN"
+    return out
+
+
 def enrich_active_trader_notification(
     message, *, message_class="operator_alert", primary_symbols=None, snapshot_loader=None, now=None
 ):
@@ -483,25 +554,9 @@ def enrich_active_trader_notification(
     if len(symbols) == 1:
         try:
             snapshot = (snapshot_loader or _cached_snapshot)()
-            candidates = snapshot.get("candidates") if isinstance(snapshot, dict) else None
-            matched = [r for r in candidates or [] if isinstance(r, dict) and r.get("symbol") == symbols[0]]
-            if len(matched) == 1 and not matched[0].get("conflicts"):
-                for source in ("trade_ai", "active_trader"):
-                    observations = (matched[0].get(source) or {}).get("observations") or []
-                    if not observations:
-                        continue
-                    candidate_evidence = observations[0].get("setup_evidence")
-                    stamp = _stamp(observations[0].get("observed_at"))
-                    if (
-                        isinstance(candidate_evidence, dict)
-                        and _session_state(stamp, now) == "CURRENT_SESSION"
-                        and candidate_evidence.get("source_observation_state") == "CURRENT_SESSION"
-                        and observations[0].get("freshness") != "STALE"
-                    ):
-                        evidence = candidate_evidence
-                        break
         except (OSError, ValueError, TypeError, AttributeError):
-            evidence = None
+            snapshot = None
+        evidence = same_symbol_evidence(symbols[0], snapshot, now=now)["evidence"]
     has_catalyst = bool(re.search(r"(?mi)^\s*[^A-Za-z0-9]*catalyst\s*:", plain))
     appendix = format_notification_evidence(evidence, include_catalyst=not has_catalyst)
     if re.search(r"</?(?:b|i|a|blockquote|code)\b", message):

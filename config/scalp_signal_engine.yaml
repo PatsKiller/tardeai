@@ -303,6 +303,14 @@ active_trader_premarket:
   mode: send
   window_start: "06:00"
   window_end: "09:29"
+  # operator 2026-10-14 (GLND): a heads-up ships as a normal alert only with CURRENT, unconflicted
+  # same-symbol momentum evidence proving >= evidence_min_passed of the five source facts
+  # (scripts/lib/momentum_setup_evidence.same_symbol_evidence). Replay 10-06..10-14: 10 of 10 sent
+  # premarket alerts had none (premarket evidence cannot be complete: no premarket RVOL, catalyst rarely
+  # verified, trade_ai cache rows carry no observation clock), so `hold` would silence the lane. downgrade =
+  # explicit UNVALIDATED heads-up with no CIO chrome; hold = journal only; off = pre-10-14 behaviour.
+  evidence_gate: downgrade
+  evidence_min_passed: 5
 
 # ── Active Trader doctrine: session review + automated mode (SIMULATION ONLY) ──
 # operator 2026-10-05: "build this methodology in as a soul and its foundation … both the option for

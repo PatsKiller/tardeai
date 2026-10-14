@@ -46,11 +46,17 @@ try:
     from active_trader import momentum_alerts as ma
 except ModuleNotFoundError:
     from scripts.active_trader import momentum_alerts as ma
+try:
+    from scripts.lib import momentum_setup_evidence as mse
+except ModuleNotFoundError:  # pragma: no cover
+    from lib import momentum_setup_evidence as mse  # type: ignore
 
 ET = ZoneInfo("America/New_York")
 PREMARKET_WATCH = "PREMARKET_WATCH"
 THROTTLE_FILE = "momentum_alerts_premarket_throttle.json"
 HEARTBEAT_FILE = "momentum_alerts_premarket_heartbeat.json"
+EVIDENCE_GATES = ("downgrade", "hold", "off")
+VALIDATED, UNVALIDATED = "VALIDATED", "UNVALIDATED"
 
 
 @dataclass(frozen=True)
@@ -80,6 +86,13 @@ class PremarketConfig:
     cooldown_s: float = 1800.0              # 1 per symbol per 30 min
     max_alerts_per_hour: int = 12
     excluded_routes: tuple = field(default=("reject", "large_float_social_scout", "portfolio"))
+    # Momentum-evidence gate (operator 2026-10-14, GLND: "why does this even fire without validated
+    # momentum?"). An ALERT ships as a normal heads-up only when the shared same-symbol evidence
+    # (scripts/lib/momentum_setup_evidence.same_symbol_evidence) is CURRENT, unconflicted and proves at
+    # least evidence_min_passed of its five source facts. Otherwise: downgrade = send an explicit
+    # UNVALIDATED heads-up with no CIO chrome; hold = journal only, never sent; off = the pre-10-14 path.
+    evidence_gate: str = "downgrade"
+    evidence_min_passed: int = 5
 
     @classmethod
     def from_mapping(cls, raw: Optional[Mapping[str, Any]]) -> "PremarketConfig":
@@ -90,6 +103,9 @@ class PremarketConfig:
         cfg = cls(**kw)
         if cfg.mode not in ("shadow", "send"):
             raise ValueError(f"active_trader_premarket.mode must be shadow or send, got {cfg.mode!r}")
+        if cfg.evidence_gate not in EVIDENCE_GATES:
+            raise ValueError(f"active_trader_premarket.evidence_gate must be one of {EVIDENCE_GATES}, "
+                             f"got {cfg.evidence_gate!r}")
         return cfg
 
 
@@ -204,14 +220,50 @@ def decide(feat: Mapping[str, Any], l2: Mapping[str, Any], tape: Mapping[str, An
     return {"verdict": ma.VETO if reasons else ma.ALERT, "veto_reasons": reasons}
 
 
+def momentum_gate(sym: str, snapshot: Any, *, cfg: PremarketConfig, now: float) -> dict:
+    """Is there validated same-symbol momentum evidence for this heads-up? Pure over the snapshot.
+
+    Reads the shared candidate snapshot through the evidence library (never re-derives it). VALIDATED
+    only when the library returns CURRENT evidence with passed_count >= cfg.evidence_min_passed;
+    every other state (UNKNOWN, CONFLICT, AMBIGUOUS, SNAPSHOT_UNAVAILABLE, too few facts) is UNVALIDATED.
+    """
+    found = mse.same_symbol_evidence(sym, snapshot, now=datetime.fromtimestamp(now, ET))
+    passed = found.get("passed_count")
+    ok = found["status"] == "CURRENT" and isinstance(passed, int) and passed >= int(cfg.evidence_min_passed)
+    return {
+        "gate": cfg.evidence_gate, "result": VALIDATED if ok else UNVALIDATED, "status": found["status"],
+        "conflicts": found.get("conflicts") or [], "passed_count": passed,
+        "required_count": found.get("required_count"), "min_passed": int(cfg.evidence_min_passed),
+        "source": found.get("source"), "observations": found.get("observations") or {},
+        "evidence": found.get("evidence"),
+    }
+
+
+def _gate_reason(gate: Mapping[str, Any]) -> str:
+    status = gate.get("status") or "UNKNOWN"
+    if status == "CONFLICT":
+        return f"CONFLICTED ({', '.join(gate.get('conflicts') or [])})"
+    if status == "CURRENT":
+        return f"{gate.get('passed_count')}/{gate.get('required_count')} source facts (needs {gate.get('min_passed')})"
+    return status
+
+
 def build_message(sym: str, feat: Mapping[str, Any], l2: Mapping[str, Any], tape: Mapping[str, Any],
-                  near: Mapping[str, Any]) -> tuple[str, str]:
-    """(title, body). First line is the fixed AT header the comms editor recognises."""
+                  near: Mapping[str, Any], gate: Optional[Mapping[str, Any]] = None) -> tuple[str, str]:
+    """(title, body). First line is the fixed AT header the comms editor recognises.
+
+    gate None or VALIDATED: the normal heads-up (the transport adds the evidence footer). UNVALIDATED:
+    the title says so, the second body line is the library's UNVALIDATED line with the reason, and the
+    evidence line is written here, so the CIO conviction/stance line and a second footer are not added."""
     f2 = ma._fmt
+    unvalidated = bool(gate) and gate.get("result") == UNVALIDATED
     title = (f"{ma.AT_SCALP_ALERT_HEADER}\n🔵 PREMARKET · {sym} · gapping {feat.get('gap_pct', 0):+.1f}% — "
-             f"levels for the open")
-    lines = [
-        ma.NOT_AN_ORDER,
+             + ("UNVALIDATED heads-up, levels only" if unvalidated else "levels for the open"))
+    lines = [ma.NOT_AN_ORDER]
+    if unvalidated:
+        lines.append(f"{mse.UNVALIDATED_MARK} same-symbol momentum evidence {_gate_reason(gate)}. "
+                     "Not a validated setup; no CIO view attached.")
+    lines += [
         f"last {f2(feat.get('last'))} · prev close {f2(feat.get('prev_close'))} · as of {feat.get('last_bar_at')} ET",
         f"PM high {f2(feat.get('pm_high'))} ({feat.get('pm_high_at')}) = break level · "
         f"PM VWAP {f2(feat.get('pm_vwap'))} = stop reference",
@@ -230,6 +282,8 @@ def build_message(sym: str, feat: Mapping[str, Any], l2: Mapping[str, Any], tape
     base = ma._cc_base()
     if base:
         lines.append(f"Active Trader: {base}/v3/active-trader?tab=Alerts")
+    if unvalidated:
+        lines.append(mse.format_notification_evidence(gate.get("evidence"), include_catalyst=False))
     return title, "\n".join(lines)
 
 
@@ -317,11 +371,33 @@ def resolve_universe(conn, cfg: PremarketConfig) -> list[dict]:
 
 # ── pass ──────────────────────────────────────────────────────────────────────
 
+def _send_scoped(send_fn: Callable, sym: str, *, title: str, body: str) -> dict:
+    """Send with the comms editor's primary symbols bound to this heads-up's one ticker, so footer links,
+    ids and the transport's evidence lookup are about `sym` only — never a word in the chrome that happens
+    to resolve to another issuer (2026-10-14: RMAX links on a GLND alert). Binding is best-effort."""
+    token = reset = None
+    try:
+        try:
+            from scripts.lib.comms_editor import reset_primary_symbols, set_primary_symbols
+        except ImportError:  # pragma: no cover
+            from lib.comms_editor import reset_primary_symbols, set_primary_symbols  # type: ignore
+        token, reset = set_primary_symbols([sym]), reset_primary_symbols
+    except Exception:  # noqa: BLE001 — scoping is chrome hygiene; the alert still goes
+        token = None
+    try:
+        return send_fn(alert_type="at_scalp_premarket", title=title, body=body)
+    finally:
+        if token is not None and reset is not None:
+            reset(token)
+
+
 def evaluate(universe: Sequence[Mapping[str, Any]], *, data, cfg: PremarketConfig, now: float, day: str,
              as_of_hm: str, live_book: bool, persist: bool, send_fn: Optional[Callable] = None,
-             throttle_path: Optional[Path] = None) -> list[dict]:
+             throttle_path: Optional[Path] = None, evidence_loader: Optional[Callable] = None) -> list[dict]:
     """One premarket pass. Floats from the scan, else the moomoo snapshot; unknown fails closed.
-    live_book=False (replay) skips book/tape: they cannot be replayed and are not guessed."""
+    live_book=False (replay) skips book/tape: they cannot be replayed and are not guessed.
+    evidence_loader: () -> shared candidate snapshot, read at most once per pass (first ALERT). None
+    means no evidence was read: the gate sees SNAPSHOT_UNAVAILABLE and fails closed to UNVALIDATED."""
     # spread is judged against the premarket limit in decide(), not the RTH one
     acfg = ma.AlertConfig(book_levels=cfg.book_levels, max_book_age_s=cfg.max_book_age_s, max_spread_bps=1e9)
     syms = [u["symbol"] for u in universe][: int(cfg.max_symbols) * 3]
@@ -330,6 +406,15 @@ def evaluate(universe: Sequence[Mapping[str, Any]], *, data, cfg: PremarketConfi
     thr = ma.Throttle(ma.load_throttle_state(tpath), cfg)  # type: ignore[arg-type]
     rows: list[dict] = []
     checked = 0
+    snapshot_box: dict[str, Any] = {}
+
+    def evidence_snapshot() -> Any:
+        if "v" not in snapshot_box:
+            try:
+                snapshot_box["v"] = evidence_loader() if evidence_loader is not None else None
+            except Exception:  # noqa: BLE001 — unreadable evidence is UNKNOWN evidence, never a pass
+                snapshot_box["v"] = None
+        return snapshot_box["v"]
     for u in universe:
         if checked >= cfg.max_symbols:
             break
@@ -378,6 +463,11 @@ def evaluate(universe: Sequence[Mapping[str, Any]], *, data, cfg: PremarketConfi
             block = thr.check(sym, PREMARKET_WATCH, now)
             if block:
                 d = {"verdict": ma.VETO, "veto_reasons": [block]}
+        gate: Optional[dict] = None
+        if d["verdict"] == ma.ALERT and cfg.evidence_gate != "off":
+            gate = momentum_gate(sym, evidence_snapshot(), cfg=cfg, now=now)
+            if gate["result"] == UNVALIDATED and cfg.evidence_gate == "hold":
+                d = {"verdict": ma.VETO, "veto_reasons": [f"MOMENTUM_EVIDENCE_{gate['status']}"]}
         row = {
             "contract": ma.CONTRACT, "authority": ma.AUTHORITY, "run_id": f"{day}:pm:{int(now)}",
             "ts_epoch": now, "kind": PREMARKET_WATCH, "mode": cfg.mode, "verdict": d["verdict"],
@@ -389,12 +479,14 @@ def evaluate(universe: Sequence[Mapping[str, Any]], *, data, cfg: PremarketConfi
             "r_dollars": None, "premarket": feat, "l2": l2, "tape": tape, "supply_near_pm_high": near,
             "sent": False,
         }
+        if gate is not None:
+            row["momentum_evidence"] = {k: v for k, v in gate.items() if k != "evidence"}
         if d["verdict"] == ma.ALERT:
-            title, body = build_message(sym, feat, l2, tape, near)
+            title, body = build_message(sym, feat, l2, tape, near, gate)
             row["message"] = {"title": title, "body": body}
             if send_fn is not None and cfg.mode == "send":
                 try:
-                    res = send_fn(alert_type="at_scalp_premarket", title=title, body=body)
+                    res = _send_scoped(send_fn, sym, title=title, body=body)
                 except Exception as exc:  # noqa: BLE001
                     res = {"sent": False, "error": type(exc).__name__}
                 row["send_result"], row["sent"] = res, bool(res.get("sent"))
@@ -438,19 +530,23 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     try:
         rows = evaluate(universe, data=data, cfg=cfg, now=now, day=day, as_of_hm=as_of,
                         live_book=not a.as_of, persist=a.apply,
-                        send_fn=ma.telegram_send if (a.apply and cfg.mode == "send") else None)
+                        send_fn=ma.telegram_send if (a.apply and cfg.mode == "send") else None,
+                        evidence_loader=mse.load_cached_snapshot)
     finally:
         data.close()
     for r in rows:
         f = r["premarket"]
         print(f"{r['candidate']['symbol']:6} {r['verdict']:5} gap={f.get('gap_pct')}% pmvol={f.get('pm_volume')} "
               f"rot={f.get('rotation_pct')}% pmH={f.get('pm_high')}@{f.get('pm_high_at')} vwap={f.get('pm_vwap')} "
-              f"last={f.get('last')} above_vwap={f.get('above_vwap')} {','.join(r['veto_reasons'])}")
+              f"last={f.get('last')} above_vwap={f.get('above_vwap')} {','.join(r['veto_reasons'])}"
+              + (f" evidence={r['momentum_evidence']['result']}:{r['momentum_evidence']['status']}"
+                 if r.get("momentum_evidence") else ""))
         if r.get("message"):
             print("  " + (r["message"]["title"] + "\n" + r["message"]["body"]).replace("\n", "\n  "))
     summary = {"as_of": as_of, "mode": cfg.mode, "applied": a.apply, "universe": len(universe),
                "evaluated": len(rows), "alerts": sum(r["verdict"] == ma.ALERT for r in rows),
-               "sent": sum(bool(r.get("sent")) for r in rows)}
+               "sent": sum(bool(r.get("sent")) for r in rows),
+               "unvalidated": sum((r.get("momentum_evidence") or {}).get("result") == UNVALIDATED for r in rows)}
     print(json.dumps(summary))
     if a.apply:
         try:
