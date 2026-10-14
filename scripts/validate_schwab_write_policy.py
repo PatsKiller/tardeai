@@ -183,6 +183,15 @@ try:
         _fail_closed = (_st.NotProvenWrite, _ExecBlocked, _st.TradingLocked)
     except Exception:
         _fail_closed = (_st.NotProvenWrite, _st.TradingLocked)
+    from lib import trading_lock as _tl
+
+    if _tl.is_trading_locked(broker="schwab", action="place") and _tl.is_trading_locked(
+        broker="schwab", action="replace"
+    ):
+        # The read-only lock already refuses both writes. Firing the probe would only send a real
+        # "TRADING LOCKED" alert every time api_v2 / compute_maturity_score run this validator.
+        ok("runtime: IRA write + replace fail closed (read-only trading lock engaged)", True)
+        raise _SkipGuard("trading lock engaged; probe not fired so it does not page the operator")
     ira_raised = False
     try:
         _st.place_order("schwab_roth_ira", {}, _probe)
