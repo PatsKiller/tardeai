@@ -63,6 +63,13 @@
       }
     },
     {
+      "name": "schema:BridgeRouteReceipt@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Per-lane routing telemetry from the governed bridge OAuth-first route walk (provider, model, latency, outcome, cost or unknown, auth_failure), carried in _tradeai.route_receipts and LlmStepAudit rows; diagnoses LLM transport health, not CIO reasoning, policy, decisions or evidence.",
+      "owner_hint": "scripts/lib/cio_governed_model_bridge.py"
+    },
+    {
       "name": "schema:BitemporalEvaluation@v1",
       "kind": "schema",
       "classification": "RETIRE_CANDIDATE",

@@ -1,0 +1,26 @@
+{
+  "schema": "N8nLlmStepOutputSchemas@v1",
+  "as_of": "2026-10-14",
+  "note": "Closed output contracts for the governed bridge op POST /v1/llm_step (AGENTS.md §23.23 LLM steps). A schema here must be closed: every property declared, no extra keys accepted, and every field named in decision_fields a string with a non-empty enum. n8n branches on decision fields only; every other field is display. A caller may narrow a decision field's enum per call (allowed_values), never widen it. process_ids binds a schema to the registered processes that may use it. Read by scripts/lib/bridge_llm_step.py; validation is the structural check in scripts/lib/n8n_model_job.py.",
+  "schemas": {
+    "lane_failure_decision/v1": {
+      "description": "Closed decision form of lane_failure_diagnosis/v1 for n8n: action_id is enumerated (the remediation catalogue's rules.action_ids plus suggest_only, pinned by test against config/n8n_remediation_catalogue.json). The host re-checks the chosen action against the lane's catalogue entry before anything runs (scripts/lib/n8n_failure_diagnosis.py check_verdict / decide).",
+      "process_ids": ["n8n_lane_failure_diagnosis"],
+      "decision_fields": ["action_id", "recommendation"],
+      "required": ["cause", "confidence", "action_id", "rationale", "citations", "recommendation"],
+      "properties": {
+        "cause": {"type": "string", "max_length": 400},
+        "confidence": {"type": "number"},
+        "action_id": {
+          "type": "string",
+          "max_length": 64,
+          "enum": ["rerun_dry_run", "rerun_dry_then_live", "reap_orphan_run", "suggest_only"]
+        },
+        "rationale": {"type": "string", "max_length": 600},
+        "citations": {"type": "array", "max_items": 12, "items": {"type": "string", "max_length": 160}},
+        "recommendation": {"type": "string", "enum": ["NONE"]}
+      },
+      "forbidden_keys": ["buy", "sell", "size", "order", "price_target", "position", "command", "argv", "shell"]
+    }
+  }
+}

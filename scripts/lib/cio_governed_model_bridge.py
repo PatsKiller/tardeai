@@ -10,6 +10,7 @@ Switch with CIO_BRIDGE_MODE=canary env var.
 
 Bind: 127.0.0.1 (never 0.0.0.0). Port: configurable (default 8766).
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -38,10 +39,14 @@ log = logging.getLogger("tradeai.cio_bridge")
 
 # Single source of truth for the exact DeepSeek model id (registry + env override).
 from lib.llm_model_registry import deepseek_model_id  # noqa: E402
+
 # 2026-10-09 (AGENTS.md 3.0.0 §23.10 P4/P5/P6/P21): the single egress sanitiser and the n8n Agent
 # preconditions run inside execute_governed_call for every process (see those modules' docstrings).
 from lib import bridge_agent_preconditions as agent_gate  # noqa: E402
 from lib import cio_egress_sanitiser as egress_sanitiser  # noqa: E402
+
+# 2026-10-14: Grok / ChatGPT OAuth transports, per-provider breaker and Retry-After (off unless enabled by env).
+from lib import bridge_oauth_transport as oauth_transport  # noqa: E402
 
 # ── Bind / port config ─────────────────────────────────────────────────
 BIND_HOST = os.environ.get("CIO_BRIDGE_HOST", "127.0.0.1")
@@ -109,9 +114,9 @@ CALLER_TASK_PROCESS_MAP: dict[str, dict[str, str]] = {
 # map there is no path by which a count breach can be reported as anything but
 # a server fault.
 _RESERVATION_CODE_STATUS: dict[str, int] = {
-    "COST_CAP_EXCEEDED": 429,            # -> NON_RETRYABLE_COST. Budget, not fault.
-    "COST_CONFIGURATION_INVALID": 500,   # -> NON_RETRYABLE_COST by code.
-    "COST_PERSISTENCE_UNAVAILABLE": 503, # -> RETRYABLE_TRANSIENT. A ledger blip.
+    "COST_CAP_EXCEEDED": 429,  # -> NON_RETRYABLE_COST. Budget, not fault.
+    "COST_CONFIGURATION_INVALID": 500,  # -> NON_RETRYABLE_COST by code.
+    "COST_PERSISTENCE_UNAVAILABLE": 503,  # -> RETRYABLE_TRANSIENT. A ledger blip.
 }
 
 
@@ -179,13 +184,15 @@ POLICY_RESOLUTION: dict[str, dict[str, Any]] = {
 }
 
 # ── Legacy model IDs that must be rejected ─────────────────────────────
-LEGACY_MODEL_IDS = frozenset({
-    "deepseek-chat",
-    "deepseek-reasoner",
-    "deepseek-v4",
-    "deepseek-v4-flash",
-    "deepseek-v4-pro",
-})
+LEGACY_MODEL_IDS = frozenset(
+    {
+        "deepseek-chat",
+        "deepseek-reasoner",
+        "deepseek-v4",
+        "deepseek-v4-flash",
+        "deepseek-v4-pro",
+    }
+)
 
 
 # ── Circuit breaker (in-process, per-bridge instance) ──────────────────
@@ -212,8 +219,9 @@ class UpstreamDeadlineExceeded(Exception):
     """The provider kept one request open past UPSTREAM_DEADLINE_S."""
 
 
-def read_body_with_deadline(resp: Any, started: float, deadline_s: float | None = None,
-                            clock: Any = time.time) -> bytes:
+def read_body_with_deadline(
+    resp: Any, started: float, deadline_s: float | None = None, clock: Any = time.time
+) -> bytes:
     """Read a streamed response body, giving up at a wall-clock deadline measured from `started`.
 
     Keep-alive bytes from a provider that is holding the request still turn this loop, so the deadline
@@ -227,7 +235,8 @@ def read_body_with_deadline(resp: Any, started: float, deadline_s: float | None 
                 buf.extend(chunk)
             if clock() - started > limit:
                 raise UpstreamDeadlineExceeded(
-                    f"upstream kept the request open past {limit:g}s ({len(buf)} bytes received)")
+                    f"upstream kept the request open past {limit:g}s ({len(buf)} bytes received)"
+                )
     finally:
         try:
             resp.close()
@@ -240,8 +249,11 @@ def inflight_snapshot(now: float | None = None) -> dict[str, Any]:
     t = time.time() if now is None else now
     with _INFLIGHT_LOCK:
         starts = list(_INFLIGHT.values())
-    return {"inflight": len(starts), "max_inflight": MAX_INFLIGHT,
-            "oldest_inflight_s": round(t - min(starts), 1) if starts else None}
+    return {
+        "inflight": len(starts),
+        "max_inflight": MAX_INFLIGHT,
+        "oldest_inflight_s": round(t - min(starts), 1) if starts else None,
+    }
 
 
 # ── Module-level global cap overrides ──────────────────────────────────
@@ -263,6 +275,7 @@ def _ensure_governance_imports() -> bool:
         import lib.llm_consumption as lc_mod  # noqa: F401
         import lib.llm_model_registry as lmr  # noqa: F401
         import lib.consumption_run_manual as crm  # noqa: F401
+
         _governance_imports_ok = True
         return True
     except Exception as e:
@@ -274,6 +287,7 @@ def _ensure_governance_imports() -> bool:
 # ══════════════════════════════════════════════════════════════════════════
 #  CIRCUIT BREAKER
 # ══════════════════════════════════════════════════════════════════════════
+
 
 def circuit_open() -> bool:
     return time.time() < float(_CIRCUIT.get("open_until") or 0)
@@ -287,14 +301,27 @@ def _trip_circuit(err: str) -> None:
         log.error("CIO bridge circuit breaker OPEN until %s", _CIRCUIT["open_until"])
 
 
-def _reset_circuit() -> None:
+def _close_bridge_circuit() -> None:
+    """A served call closes the bridge-wide breaker only; per-provider state is the walk's to keep."""
     _CIRCUIT["errors"] = 0
     _CIRCUIT["open_until"] = 0.0
+
+
+def _reset_circuit() -> None:
+    """Full reset (tests, operator tooling): the bridge-wide breaker and every per-provider breaker."""
+    _close_bridge_circuit()
+    PROVIDER_CIRCUITS.reset()
+
+
+# Per-provider breaker + Retry-After hold (2026-10-14). The bridge-wide breaker above still trips only when a
+# whole call fails; this one decides, per attempt, whether a provider may be tried at all.
+PROVIDER_CIRCUITS = oauth_transport.ProviderCircuits()
 
 
 # ══════════════════════════════════════════════════════════════════════════
 #  IDENTITY RESOLUTION
 # ══════════════════════════════════════════════════════════════════════════
+
 
 def resolve_caller(caller: str | None, task_type: str | None = None) -> str | None:
     """Map caller (+ optional task_type) → process_id. Unknown callers → None.
@@ -552,7 +579,9 @@ def _provider_health_status(
                     break
     if provider == "deepseek":
         embedded = health.get("balance") if isinstance(health, dict) else None
-        if _balance_unavailable(balance_row, balance_state) or _balance_unavailable(embedded if isinstance(embedded, dict) else None, health_state):
+        if _balance_unavailable(balance_row, balance_state) or _balance_unavailable(
+            embedded if isinstance(embedded, dict) else None, health_state
+        ):
             indicted = True
     if indicted:
         return "unhealthy"
@@ -575,8 +604,7 @@ def read_health_snapshot(row: dict[str, Any] | None) -> dict[str, Any]:
                 if prov and prov not in providers:
                     providers.append(prov)
     lanes = {
-        prov: _provider_health_status(prov, health, health_state, balance_row, balance_state)
-        for prov in providers
+        prov: _provider_health_status(prov, health, health_state, balance_row, balance_state) for prov in providers
     }
     available = None
     if balance_state == "present" and isinstance(balance_row, dict) and "is_available" in balance_row:
@@ -679,9 +707,7 @@ def select_governed_lane(process_id: str, routing_policy: str | None = None) -> 
                 return {
                     "refused": "unknown_health_policy",
                     "refused_status": 400,
-                    "refused_message": (
-                        f"Routing policy {policy_id!r} on_health_unknown must be route or refuse"
-                    ),
+                    "refused_message": (f"Routing policy {policy_id!r} on_health_unknown must be route or refuse"),
                     "routing_decision": decision,
                 }
             chosen = "primary"
@@ -733,7 +759,9 @@ def select_governed_lane(process_id: str, routing_policy: str | None = None) -> 
     return {"policy": resolved, "routing_decision": decision}
 
 
-def stream_policy_refusal(process_id: str, routing_policy: str | None, policy: dict[str, Any] | None) -> dict[str, Any] | None:
+def stream_policy_refusal(
+    process_id: str, routing_policy: str | None, policy: dict[str, Any] | None
+) -> dict[str, Any] | None:
     """Typed JSON when the stream path's second resolve is not a usable lane.
 
     None means the lane is usable. A refused lane keeps its code, status, and
@@ -834,6 +862,7 @@ def resolve_model_policy(
 #  PRIVACY / LOGGING
 # ══════════════════════════════════════════════════════════════════════════
 
+
 def hash_content(content: str) -> str:
     """SHA-256 hash of full prompt/response content for audit trail."""
     return hashlib.sha256((content or "").encode("utf-8", errors="replace")).hexdigest()[:32]
@@ -842,7 +871,7 @@ def hash_content(content: str) -> str:
 def sanitize_log_summary(messages: list[dict]) -> str:
     """Return a safe summary for logging — role counts, no raw content."""
     parts = []
-    for m in (messages or []):
+    for m in messages or []:
         role = str(m.get("role") or "unknown")
         content_len = len(str(m.get("content") or ""))
         has_tools = "tools" in m
@@ -860,6 +889,7 @@ def sanitize_log_summary(messages: list[dict]) -> str:
 # ══════════════════════════════════════════════════════════════════════════
 #  MOCK PROVIDER (P-1.2A only — zero real provider calls)
 # ══════════════════════════════════════════════════════════════════════════
+
 
 class MockProvider:
     """Returns valid OpenAI-compatible chat completion fixtures.
@@ -880,15 +910,19 @@ class MockProvider:
             cls._instance = cls()
         return cls._instance
 
-    def generate(self, messages: list[dict], model_id: str,
-                 tools: list[dict] | None = None,
-                 tool_choice: str | None = None,
-                 response_format: dict | None = None,
-                 stream: bool = False,
-                 max_tokens: int = 16384,
-                 thinking: str = "disabled",
-                 reasoning_effort: str | None = None,
-                 client_request_id: str | None = None) -> dict[str, Any]:
+    def generate(
+        self,
+        messages: list[dict],
+        model_id: str,
+        tools: list[dict] | None = None,
+        tool_choice: str | None = None,
+        response_format: dict | None = None,
+        stream: bool = False,
+        max_tokens: int = 16384,
+        thinking: str = "disabled",
+        reasoning_effort: str | None = None,
+        client_request_id: str | None = None,
+    ) -> dict[str, Any]:
         with self._lock:
             self.call_count += 1
 
@@ -897,36 +931,38 @@ class MockProvider:
         tool_call_requested = has_tools and (tool_choice is None or tool_choice != "none")
 
         # Check if structured JSON requested
-        has_json_schema = (
-            response_format is not None
-            and response_format.get("type") == "json_schema"
-        )
+        has_json_schema = response_format is not None and response_format.get("type") == "json_schema"
 
         if tool_call_requested:
             content = None
-            tool_calls = [{
-                "id": f"mock_tool_call_{self.call_count}",
-                "type": "function",
-                "function": {
-                    "name": (tools[0].get("function", {}).get("name") if tools
-                             else "get_financial_data"),
-                    "arguments": json.dumps({
-                        "summary": "Governed mock tool response from CIO bridge",
-                        "confidence": 0.95,
-                        "source": "Trade AI canonical data",
-                    }),
-                },
-            }]
+            tool_calls = [
+                {
+                    "id": f"mock_tool_call_{self.call_count}",
+                    "type": "function",
+                    "function": {
+                        "name": (tools[0].get("function", {}).get("name") if tools else "get_financial_data"),
+                        "arguments": json.dumps(
+                            {
+                                "summary": "Governed mock tool response from CIO bridge",
+                                "confidence": 0.95,
+                                "source": "Trade AI canonical data",
+                            }
+                        ),
+                    },
+                }
+            ]
             response_content = None
         elif has_json_schema:
             schema_name = response_format.get("json_schema", {}).get("name", "response")
-            content = json.dumps({
-                "analysis": f"Governed CIO bridge mock structured response for {schema_name}",
-                "status": "ok",
-                "model": model_id,
-                "provider": "tradeai_governed_mock",
-                "confidence": 0.92,
-            })
+            content = json.dumps(
+                {
+                    "analysis": f"Governed CIO bridge mock structured response for {schema_name}",
+                    "status": "ok",
+                    "model": model_id,
+                    "provider": "tradeai_governed_mock",
+                    "confidence": 0.92,
+                }
+            )
             tool_calls = None
             response_content = content
         else:
@@ -943,15 +979,17 @@ class MockProvider:
             "object": "chat.completion",
             "created": int(time.time()),
             "model": model_id,
-            "choices": [{
-                "index": 0,
-                "message": {
-                    "role": "assistant",
-                    "content": response_content,
-                    **(dict(tool_calls=tool_calls) if tool_calls else {}),
-                },
-                "finish_reason": "tool_calls" if tool_calls else "stop",
-            }],
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": response_content,
+                        **(dict(tool_calls=tool_calls) if tool_calls else {}),
+                    },
+                    "finish_reason": "tool_calls" if tool_calls else "stop",
+                }
+            ],
             "usage": {
                 "prompt_tokens": 120,
                 "completion_tokens": 80,
@@ -965,12 +1003,11 @@ class MockProvider:
             },
         }
 
-    def generate_stream(self, messages: list[dict], model_id: str,
-                        tools: list[dict] | None = None,
-                        max_tokens: int = 16384) -> list[str]:
+    def generate_stream(
+        self, messages: list[dict], model_id: str, tools: list[dict] | None = None, max_tokens: int = 16384
+    ) -> list[str]:
         """Return list of SSE-formatted strings for streaming simulation."""
-        response = self.generate(messages, model_id, tools=tools, max_tokens=max_tokens,
-                                 stream=False)
+        response = self.generate(messages, model_id, tools=tools, max_tokens=max_tokens, stream=False)
         content = response["choices"][0]["message"].get("content") or ""
         if content is None:
             content = ""
@@ -984,11 +1021,13 @@ class MockProvider:
                 "object": "chat.completion.chunk",
                 "created": response["created"],
                 "model": response["model"],
-                "choices": [{
-                    "index": 0,
-                    "delta": {"content": word + " "},
-                    "finish_reason": None,
-                }],
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"content": word + " "},
+                        "finish_reason": None,
+                    }
+                ],
             }
             chunks.append(f"data: {json.dumps(chunk)}\n\n")
         # Final chunk
@@ -997,11 +1036,13 @@ class MockProvider:
             "object": "chat.completion.chunk",
             "created": response["created"],
             "model": response["model"],
-            "choices": [{
-                "index": 0,
-                "delta": {},
-                "finish_reason": "stop",
-            }],
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {},
+                    "finish_reason": "stop",
+                }
+            ],
             "usage": response["usage"],
         }
         chunks.append(f"data: {json.dumps(final)}\n\n")
@@ -1012,6 +1053,7 @@ class MockProvider:
 # ══════════════════════════════════════════════════════════════════════════
 #  REAL PROVIDER (P-1.2B canary — live DeepSeek calls through governance)
 # ══════════════════════════════════════════════════════════════════════════
+
 
 def _emit_bridge_cost(
     *,
@@ -1028,6 +1070,7 @@ def _emit_bridge_cost(
     """Direct-bypass emit. RealProvider does not call deepseek_client.chat (tools)."""
     try:
         from lib.provider_cost.emit import emit_cost_event
+
         usage = usage or {}
         emit_cost_event(
             provider="deepseek",
@@ -1070,16 +1113,20 @@ class RealProvider:
             cls._instance = cls()
         return cls._instance
 
-    def generate(self, messages: list[dict], model_id: str,
-                 tools: list[dict] | None = None,
-                 tool_choice: str | None = None,
-                 response_format: dict | None = None,
-                 stream: bool = False,
-                 max_tokens: int = 16384,
-                 temperature: float = 0.3,
-                 thinking: str = "disabled",
-                 reasoning_effort: str | None = None,
-                 client_request_id: str | None = None) -> dict[str, Any]:
+    def generate(
+        self,
+        messages: list[dict],
+        model_id: str,
+        tools: list[dict] | None = None,
+        tool_choice: str | None = None,
+        response_format: dict | None = None,
+        stream: bool = False,
+        max_tokens: int = 16384,
+        temperature: float = 0.3,
+        thinking: str = "disabled",
+        reasoning_effort: str | None = None,
+        client_request_id: str | None = None,
+    ) -> dict[str, Any]:
         if stream:
             raise NotImplementedError("RealProvider does not support streaming in P-1.2B")
 
@@ -1097,10 +1144,12 @@ class RealProvider:
         # ── Get API key (never log, never expose) ───────────────────────
         key, env_name, _legacy = get_deepseek_api_key()
         if not key:
-            raise RuntimeError(
+            missing = RuntimeError(
                 "DeepSeek API key not configured (canonical env: deepseek_tradeai). "
                 "RealProvider requires a configured key for live canary calls."
             )
+            missing.auth_failure = True  # type: ignore[attr-defined]
+            raise missing
 
         # ── Build request body ──────────────────────────────────────────
         import requests as _requests
@@ -1198,12 +1247,14 @@ class RealProvider:
                 possibly_billable=True,
                 error_class=f"HTTP_{r.status_code}",
             )
-            err = RuntimeError(
-                f"DeepSeek API returned HTTP {r.status_code}: "
-                f"{raw[:500].decode('utf-8', 'replace')}"
-            )
+            err = RuntimeError(f"DeepSeek API returned HTTP {r.status_code}: {raw[:500].decode('utf-8', 'replace')}")
             err.request_sent = True  # type: ignore[attr-defined]
             err.possibly_billable = True  # type: ignore[attr-defined]
+            # 2026-10-14: the route walker reads these (auth vs serving failure; 429 Retry-After hold).
+            err.http_status = r.status_code  # type: ignore[attr-defined]
+            err.retry_after_s = oauth_transport.parse_retry_after(  # type: ignore[attr-defined]
+                (r.headers or {}).get("retry-after")
+            )
             raise err
 
         try:
@@ -1238,9 +1289,7 @@ class RealProvider:
                 possibly_billable=True,
                 error_class="MISMATCHED_RETURNED_MODEL",
             )
-            err = RuntimeError(
-                f"Model mismatch: requested {model_id}, returned {returned_model}"
-            )
+            err = RuntimeError(f"Model mismatch: requested {model_id}, returned {returned_model}")
             err.request_sent = True  # type: ignore[attr-defined]
             err.possibly_billable = True  # type: ignore[attr-defined]
             raise err
@@ -1258,6 +1307,7 @@ class RealProvider:
 
         usage = payload.get("usage") or {}
         import hashlib
+
         raw_hash = hashlib.sha256(raw).hexdigest()[:24]
         _emit_bridge_cost(
             outcome="success",
@@ -1275,15 +1325,17 @@ class RealProvider:
             "object": "chat.completion",
             "created": int(time.time()),
             "model": returned_model or model_id,
-            "choices": [{
-                "index": 0,
-                "message": {
-                    "role": "assistant",
-                    "content": content,
-                    **({"tool_calls": msg["tool_calls"]} if msg.get("tool_calls") else {}),
-                },
-                "finish_reason": finish_reason,
-            }],
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": content,
+                        **({"tool_calls": msg["tool_calls"]} if msg.get("tool_calls") else {}),
+                    },
+                    "finish_reason": finish_reason,
+                }
+            ],
             "usage": usage,
             "_tradeai": {
                 "real": True,
@@ -1309,8 +1361,38 @@ _CALL_LATENCY_BUDGET_S: contextvars.ContextVar[float | None] = contextvars.Conte
     "tradeai_bridge_latency_budget_s", default=None
 )
 
-# Providers the live (canary) transport can reach. RealProvider speaks DeepSeek only today.
+# Providers the live (canary) transport can always reach: RealProvider speaks DeepSeek. The OAuth lanes
+# (Grok :8645, ChatGPT :8646) are added per host by CIO_BRIDGE_OAUTH_TRANSPORTS - see enabled_transport_providers().
 BRIDGE_TRANSPORT_PROVIDERS = frozenset({"deepseek"})
+#: An attempt with less wall clock than this left is not started (receipt outcome deadline_exhausted).
+MIN_ATTEMPT_S = float(os.environ.get("CIO_BRIDGE_MIN_ATTEMPT_S", "1.0"))
+#: Test seams: wall clock for the route budget, and per-provider transport overrides.
+_monotonic = time.monotonic
+_TRANSPORT_OVERRIDES: dict[str, Any] = {}
+
+
+def enabled_transport_providers() -> frozenset[str]:
+    """DeepSeek plus every OAuth lane this host enabled (CIO_BRIDGE_OAUTH_TRANSPORTS). Read per call."""
+    return BRIDGE_TRANSPORT_PROVIDERS | oauth_transport.enabled_oauth_providers()
+
+
+def set_transport_override(provider: str, transport: Any | None) -> None:
+    """Tests only: answer `provider` with `transport` (None removes it)."""
+    if transport is None:
+        _TRANSPORT_OVERRIDES.pop(provider, None)
+    else:
+        _TRANSPORT_OVERRIDES[provider] = transport
+
+
+def get_transport(provider: str) -> Any:
+    """The transport for one attempt. Mock mode answers every provider with MockProvider (no network)."""
+    if provider in _TRANSPORT_OVERRIDES:
+        return _TRANSPORT_OVERRIDES[provider]
+    if BIND_MODE != "canary":
+        return MockProvider.instance()
+    if provider in oauth_transport.OAUTH_PROVIDERS:
+        return oauth_transport.OAuthProxyTransport.for_provider(provider)
+    return RealProvider.instance()
 
 
 def set_call_latency_budget(policy: dict[str, Any] | None) -> float | None:
@@ -1340,7 +1422,8 @@ def transport_failover_policy(
     health-indicted, and records each skip on routing_decision. No usable lane returns `policy` unchanged
     (the caller then refuses provider_not_configured, as before).
     """
-    if str(policy.get("provider") or "deepseek") in BRIDGE_TRANSPORT_PROVIDERS:
+    transports = enabled_transport_providers()
+    if str(policy.get("provider") or "deepseek") in transports:
         return policy
     policy_id = normalize_routing_policy_header(routing_policy)
     block = _policy_block(policy_id) or {}
@@ -1349,17 +1432,21 @@ def transport_failover_policy(
     if not isinstance(row, dict) or row.get("transport_failover") is not True:
         return policy
     decision = policy.get("routing_decision") if isinstance(policy.get("routing_decision"), dict) else {}
-    snapshot = decision.get("health_snapshot") if isinstance(decision.get("health_snapshot"), dict) else read_health_snapshot(row)
+    snapshot = (
+        decision.get("health_snapshot")
+        if isinstance(decision.get("health_snapshot"), dict)
+        else read_health_snapshot(row)
+    )
     lanes = snapshot.get("lanes") if isinstance(snapshot.get("lanes"), dict) else {}
     start = decision.get("lane_chosen") or "primary"
     order = ["primary", "secondary", "fallback"]
     skipped: list[dict[str, Any]] = []
-    for lane_name in order[order.index(start) if start in order else 0:]:
+    for lane_name in order[order.index(start) if start in order else 0 :]:
         spec = row.get(lane_name)
         if not isinstance(spec, dict):
             continue
         provider = str(spec.get("provider") or "")
-        if provider not in BRIDGE_TRANSPORT_PROVIDERS:
+        if provider not in transports:
             skipped.append({"lane": lane_name, "provider": provider, "reason": "no_bridge_transport"})
             continue
         if lanes.get(provider) == "unhealthy":
@@ -1380,6 +1467,262 @@ def transport_failover_policy(
     return policy
 
 
+# ── Route walk with receipts (2026-10-14) ───────────────────────────────────────────────────────────
+# Route order comes from the routing-policy row (primary -> secondary -> fallback), starting at the lane the
+# selector chose. Only rows with `"transport_failover": true` walk; every other row is one attempt on its chosen
+# lane, as before. OAuth lanes serve only opt-in rows. Every lane considered gets one receipt.
+ROUTE_RECEIPT_SCHEMA = "BridgeRouteReceipt@v1"
+_LANE_ORDER = ("primary", "secondary", "fallback")
+
+
+def _policy_row(process_id: str, policy_id: str | None) -> dict[str, Any] | None:
+    block = _policy_block(normalize_routing_policy_header(policy_id)) or {}
+    processes = block.get("processes") if isinstance(block.get("processes"), dict) else {}
+    row = processes.get(process_id) if isinstance(processes, dict) else None
+    return row if isinstance(row, dict) else None
+
+
+def row_walks_routes(process_id: str, policy_id: str | None) -> bool:
+    row = _policy_row(process_id, policy_id)
+    return bool(row and row.get("transport_failover") is True)
+
+
+def _lane_model_id(provider: str, policy_name: str) -> str | None:
+    if provider in oauth_transport.OAUTH_PROVIDERS:
+        return oauth_transport.pinned_model(provider)
+    return str(POLICY_RESOLUTION.get(policy_name, POLICY_RESOLUTION["FAST"])["model_id"])
+
+
+def _registry_allows_lane(cfg: dict[str, Any] | None, provider: str) -> bool:
+    """An OAuth lane must also be listed in the process registry row's allowed_lanes (when it has the field)."""
+    if provider not in oauth_transport.OAUTH_PROVIDERS:
+        return True
+    lanes = (cfg or {}).get("allowed_lanes")
+    if not isinstance(lanes, list):
+        return True
+    return provider in {str(x).strip().lower() for x in lanes}
+
+
+def route_plan(
+    process_id: str,
+    policy_id: str | None,
+    policy: dict[str, Any],
+    allowed_policies: list[str] | None = None,
+    cfg: dict[str, Any] | None = None,
+    tools: list[dict] | None = None,
+) -> list[dict[str, Any]]:
+    """Ordered candidate lanes, each with `skip` (a receipt outcome) when it must not be attempted."""
+    decision = policy.get("routing_decision") if isinstance(policy.get("routing_decision"), dict) else {}
+    start = str(decision.get("lane_chosen") or "primary")
+    first_provider = str(policy.get("provider") or "deepseek")
+    first_policy = str(policy.get("requested_policy") or "FAST")
+    row = _policy_row(process_id, policy_id)
+    if not row or row.get("transport_failover") is not True:
+        return [
+            {
+                "lane": start,
+                "provider": first_provider,
+                "policy_name": first_policy,
+                "model_id": policy.get("model_id")
+                if first_provider == "deepseek"
+                else _lane_model_id(first_provider, first_policy),
+                "skip": None,
+            }
+        ]
+    transports = enabled_transport_providers()
+    snapshot = decision.get("health_snapshot") if isinstance(decision.get("health_snapshot"), dict) else {}
+    lanes_health = snapshot.get("lanes") if isinstance(snapshot.get("lanes"), dict) else {}
+    plan: list[dict[str, Any]] = []
+    # Every lane of the row gets a receipt, from primary: a lane the selector or the transport walk passed over
+    # is recorded with its reason (no_transport, lane_unhealthy, ...), never silently dropped.
+    for lane_name in _LANE_ORDER:
+        spec = row.get(lane_name)
+        if not isinstance(spec, dict):
+            continue
+        provider = str(spec.get("provider") or "")
+        policy_name = _lane_policy_name(spec)
+        skip = None
+        if provider not in transports:
+            skip = "no_transport"
+        elif lanes_health.get(provider) == "unhealthy":
+            skip = "lane_unhealthy"
+        elif allowed_policies and policy_name not in allowed_policies:
+            skip = "policy_not_allowed"
+        elif not _registry_allows_lane(cfg, provider):
+            skip = "registry_lane_not_allowed"
+        elif tools and provider in oauth_transport.OAUTH_PROVIDERS:
+            skip = "tools_unsupported"
+        plan.append(
+            {
+                "lane": lane_name,
+                "provider": provider,
+                "policy_name": policy_name,
+                "model_id": _lane_model_id(provider, policy_name),
+                "skip": skip,
+            }
+        )
+    return plan
+
+
+def _attempt_failure_kind(exc: BaseException) -> tuple[str, int | None, float | None]:
+    """(receipt outcome, http_status, retry_after_s) for one failed attempt."""
+    if isinstance(exc, oauth_transport.TransportError):
+        return exc.kind, exc.http_status, exc.retry_after_s
+    status = getattr(exc, "http_status", None)
+    retry_after = getattr(exc, "retry_after_s", None)
+    if getattr(exc, "auth_failure", False) or status in (401, 403):
+        return "auth_failure", status, None
+    if status == 429:
+        return "rate_limited", status, retry_after
+    text = str(exc).lower()
+    if isinstance(exc, UpstreamDeadlineExceeded) or "timeout" in text:
+        return "timeout", status, None
+    return "serving_failure", status, None
+
+
+def _receipt(cand: dict[str, Any], outcome: str, **extra: Any) -> dict[str, Any]:
+    oauth = cand["provider"] in oauth_transport.OAUTH_PROVIDERS
+    out = {
+        "schema": ROUTE_RECEIPT_SCHEMA,
+        "lane": cand["lane"],
+        "provider": cand["provider"],
+        "model": cand.get("model_id"),
+        "attempted": False,
+        "outcome": outcome,
+        "latency_ms": 0,
+        "cost_usd": "unknown",
+        "cost_basis": "free_oauth_unmetered" if oauth else "not_attempted",
+        "auth_failure": outcome == "auth_failure",
+        "http_status": None,
+        "retry_after_s": None,
+        "detail": None,
+    }
+    out.update(extra)
+    return out
+
+
+def walk_routes(
+    plan: list[dict[str, Any]],
+    messages: list[dict],
+    *,
+    policy_id: str | None,
+    budget_s: float,
+    tools: list[dict] | None,
+    tool_choice: str | None,
+    response_format: dict | None,
+    max_tokens: int,
+    thinking: str,
+    reasoning_effort: str | None,
+    request_id: str,
+    use_circuits: bool = True,
+) -> dict[str, Any]:
+    """Try each lane in order until one serves. Never retries a lane inside one call; a 429 holds that provider
+    until its Retry-After; the whole walk shares one wall-clock budget. Returns response / served / receipts /
+    last_error (the last attempt's exception, None when nothing was attempted)."""
+    started = _monotonic()
+    receipts: list[dict[str, Any]] = []
+    last_error: BaseException | None = None
+    billable_seen = False
+    try:
+        for cand in plan:
+            provider = cand["provider"]
+            if cand.get("skip"):
+                receipts.append(_receipt(cand, cand["skip"]))
+                continue
+            blocked = PROVIDER_CIRCUITS.blocked(provider) if use_circuits else None
+            if blocked is not None:
+                receipts.append(_receipt(cand, blocked[0], retry_after_s=round(blocked[1], 1)))
+                continue
+            # The first attempt gets the whole budget; later ones what the earlier attempts left.
+            attempted_any = any(r.get("attempted") for r in receipts)
+            remaining = float(budget_s) - (_monotonic() - started) if attempted_any else float(budget_s)
+            if remaining < MIN_ATTEMPT_S:
+                receipts.append(_receipt(cand, "deadline_exhausted", detail=f"{max(0.0, remaining):.1f}s left"))
+                continue
+            if billable_seen and provider not in oauth_transport.OAUTH_PROVIDERS:
+                # A paid attempt may already be billed; never pay twice for one call.
+                receipts.append(_receipt(cand, "paid_after_billable_attempt"))
+                continue
+            transport = get_transport(provider)
+            kwargs: dict[str, Any] = {
+                "tools": tools,
+                "tool_choice": tool_choice,
+                "response_format": response_format,
+                "stream": False,
+                "max_tokens": max_tokens,
+                "thinking": thinking,
+                "reasoning_effort": reasoning_effort,
+                "client_request_id": request_id,
+            }
+            if isinstance(transport, oauth_transport.OAuthProxyTransport):
+                kwargs["deadline_s"] = remaining
+            _CALL_LATENCY_BUDGET_S.set(remaining)
+            slot = provider_semaphore(provider, policy_id)
+            t_attempt = _monotonic()
+            slot.acquire()
+            try:
+                response = transport.generate(messages, cand.get("model_id"), **kwargs)
+            except Exception as exc:  # noqa: BLE001 -- every failure becomes a receipt, then the next lane
+                kind, status, retry_after = _attempt_failure_kind(exc)
+                sent = bool(getattr(exc, "possibly_billable", False) or getattr(exc, "request_sent", False))
+                billable = provider not in oauth_transport.OAUTH_PROVIDERS and sent
+                billable_seen = billable_seen or billable
+                if use_circuits:
+                    PROVIDER_CIRCUITS.failure(provider, kind, retry_after)
+                receipts.append(
+                    _receipt(
+                        cand,
+                        kind,
+                        attempted=True,
+                        latency_ms=int((_monotonic() - t_attempt) * 1000),
+                        http_status=status,
+                        retry_after_s=retry_after,
+                        request_sent=sent,
+                        possibly_billable=billable,
+                        cost_basis="free_oauth_unmetered"
+                        if provider in oauth_transport.OAUTH_PROVIDERS
+                        else ("possibly_billable_unknown" if billable else "not_sent"),
+                        detail=f"{type(exc).__name__}: {str(exc)[:160]}",
+                    )
+                )
+                last_error = exc
+                continue
+            finally:
+                slot.release()
+            if use_circuits:
+                PROVIDER_CIRCUITS.success(provider)
+            served_model = str(response.get("model") or cand.get("model_id") or "")
+            receipts.append(
+                _receipt(
+                    cand,
+                    "ok",
+                    attempted=True,
+                    model=served_model or cand.get("model_id"),
+                    latency_ms=int((_monotonic() - t_attempt) * 1000),
+                    cost_basis="free_oauth_unmetered"
+                    if provider in oauth_transport.OAUTH_PROVIDERS
+                    else "pending_settlement",
+                    http_status=200,
+                )
+            )
+            return {
+                "response": response,
+                "served": dict(cand, model_id=served_model or cand.get("model_id")),
+                "receipts": receipts,
+                "last_error": last_error,
+                "billable_seen": billable_seen,
+            }
+    finally:
+        _CALL_LATENCY_BUDGET_S.set(budget_s)
+    return {
+        "response": None,
+        "served": None,
+        "receipts": receipts,
+        "last_error": last_error,
+        "billable_seen": billable_seen,
+    }
+
+
 def execute_governed_call(
     messages: list[dict],
     *,
@@ -1391,8 +1734,12 @@ def execute_governed_call(
     max_tokens: int = 16384,
     request_id: str | None = None,
     routing_policy: str | None = None,
+    budget: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Governed CIO model call pipeline — fail-closed, no silent fallback.
+
+    `budget` (llm_step, 2026-10-14) may only NARROW the routing row: latency_budget_ms and cost_ceiling_usd
+    below the row's values replace them; larger values are ignored.
 
     Pipeline:
       1. Circuit breaker check
@@ -1415,8 +1762,7 @@ def execute_governed_call(
         "decision": _routing_decision(selected_policy_id, None, "not_routed", dict(_HEALTH_NOT_READ)),
     }
 
-    def _error(code: str, message: str, status: int = 400,
-               **extra: Any) -> dict[str, Any]:
+    def _error(code: str, message: str, status: int = 400, **extra: Any) -> dict[str, Any]:
         if "retry" not in extra:
             from scripts.lib.cio_provider_retry_v1 import classify_failure
 
@@ -1491,6 +1837,7 @@ def execute_governed_call(
 
     # ── Step 4: Reject legacy model IDs ────────────────────────────────
     import lib.llm_model_registry as lmr
+
     try:
         lmr.reject_legacy_model_id(model_id)
     except lmr.RegistryError as e:
@@ -1502,8 +1849,7 @@ def execute_governed_call(
     if ds_pols and requested_policy not in ds_pols:
         return _error(
             "POLICY_NOT_ALLOWED",
-            f"Policy {requested_policy} not allowed for process {process_id}. "
-            f"Allowed: {ds_pols}",
+            f"Policy {requested_policy} not allowed for process {process_id}. Allowed: {ds_pols}",
             status=403,
         )
 
@@ -1515,12 +1861,36 @@ def execute_governed_call(
     if isinstance(policy.get("routing_decision"), dict):
         routing_box["decision"] = policy["routing_decision"]
 
-    if BIND_MODE == "canary" and str(policy.get("provider") or "deepseek") != "deepseek":
+    _walks = row_walks_routes(process_id, selected_policy_id)
+    _lane_provider = str(policy.get("provider") or "deepseek")
+    if (
+        BIND_MODE == "canary"
+        and _lane_provider not in BRIDGE_TRANSPORT_PROVIDERS
+        and not (_walks and _lane_provider in enabled_transport_providers())
+    ):
+        # OAuth transports serve only rows that opt in to the walk (transport_failover); others keep this refusal.
         return _error(
             "provider_not_configured",
             "Live bridge transport is DeepSeek only; this lane's provider is not configured",
             status=503,
         )
+
+    # llm_step budget: narrow only (never widen) the row's latency budget and per-call ceiling.
+    if isinstance(budget, dict):
+        policy = dict(policy)
+        for _key in ("latency_budget_ms", "cost_ceiling_usd"):
+            try:
+                _asked = float(budget.get(_key)) if budget.get(_key) is not None else None
+            except (TypeError, ValueError):
+                _asked = None
+            if _asked is None or _asked <= 0:
+                continue
+            try:
+                _row_value = float(policy.get(_key) or 0)
+            except (TypeError, ValueError):
+                _row_value = 0.0
+            if _row_value <= 0 or _asked < _row_value:
+                policy[_key] = _asked
 
     # ── Step 4b: Agent preconditions (§23.10 P5 tools, P6 schema present, P21 advisory_only) ──
     _pre = agent_gate.pre_reservation_refusal(process_id, tools, tool_choice)
@@ -1567,14 +1937,20 @@ def execute_governed_call(
     if _ceiling is not None:
         from scripts.lib.cio_provider_retry_v1 import classify_failure as _classify
 
-        return _error(_ceiling["code"], _ceiling["message"], status=_ceiling["status"],
-                      retry=_classify("COST_CAP_EXCEEDED"), **_ceiling["extra"])
+        return _error(
+            _ceiling["code"],
+            _ceiling["message"],
+            status=_ceiling["status"],
+            retry=_classify("COST_CAP_EXCEEDED"),
+            **_ceiling["extra"],
+        )
 
     # ── Step 6: Reservation ────────────────────────────────────────────
     reservation_id: int | None = None
     try:
         reservation_id = lc.reserve_projected_cost(
-            process_id, projected,
+            process_id,
+            projected,
             model_id=model_id,
             process_config=cfg,
             global_cap=gcap,
@@ -1600,8 +1976,7 @@ def execute_governed_call(
         return _error("RESERVATION_FAILED", str(e), status=500)
     except Exception as e:
         log.exception("reservation failed for %s", process_id)
-        return _error("RESERVATION_FAILED", f"Unexpected reservation error: {type(e).__name__}",
-                      status=500)
+        return _error("RESERVATION_FAILED", f"Unexpected reservation error: {type(e).__name__}", status=500)
 
     # Real provider calls get a durable side-effect identity before dispatch.
     # Mock calls intentionally remain isolated from the production journal.
@@ -1646,19 +2021,29 @@ def execute_governed_call(
     if "refused" in _egress:
         lc.settle_reservation(reservation_id, None, ok=False, billable_attempt=False)
         if provider_journal is not None and provider_semantic_key is not None:
-            provider_journal.record(provider_semantic_key, state="NON_RETRYABLE", error_class="EGRESS_POLICY_UNAVAILABLE")
+            provider_journal.record(
+                provider_semantic_key, state="NON_RETRYABLE", error_class="EGRESS_POLICY_UNAVAILABLE"
+            )
         return _error(_egress["refused"]["code"], _egress["refused"]["message"], status=_egress["refused"]["status"])
     messages = _egress["messages"]
     set_call_latency_budget(policy)
 
-    # ── Step 7: Provider (mock or real based on BIND_MODE) ──────────────
+    # ── Step 7: Provider route walk (mock or real based on BIND_MODE) ───
+    # 2026-10-14: the routing row's order is executed: Grok OAuth -> ChatGPT OAuth -> DeepSeek for rows that opt
+    # in (transport_failover) and whose lanes this host enabled; one receipt per lane considered. Every other row
+    # is a single attempt on its chosen lane, exactly as before.
     if BIND_MODE == "canary":
-        provider = RealProvider.instance()
-        log.info("RealProvider selected for canary: model=%s policy=%s", model_id, requested_policy)
+        log.info("RealProvider route walk for canary: model=%s policy=%s", model_id, requested_policy)
         assert provider_journal is not None and provider_semantic_key is not None
         provider_journal.record(provider_semantic_key, state="DISPATCHED")
-    else:
-        provider = MockProvider.instance()
+    plan = route_plan(process_id, selected_policy_id, policy, ds_pols, cfg, tools)
+    walk: dict[str, Any] = {
+        "response": None,
+        "served": None,
+        "receipts": [],
+        "last_error": None,
+        "billable_seen": False,
+    }
     try:
         try:
             from lib.provider_cost.context import cost_attribution
@@ -1668,6 +2053,7 @@ def execute_governed_call(
             @_cm
             def cost_attribution(**_kw):
                 yield {}
+
         with cost_attribution(
             source_service="cio_governed_model_bridge",
             source_process=process_id,
@@ -1675,51 +2061,92 @@ def execute_governed_call(
             reservation_id=str(reservation_id) if reservation_id is not None else None,
             run_id=rid,
         ):
-            _provider_slot = provider_semaphore(
-                str(policy.get("provider") or "deepseek"),
-                selected_policy_id,
+            walk = walk_routes(
+                plan,
+                messages,
+                policy_id=selected_policy_id,
+                budget_s=effective_upstream_deadline_s(),
+                tools=tools,
+                tool_choice=tool_choice,
+                response_format=response_format,
+                max_tokens=max_tokens,
+                thinking=policy.get("thinking", "disabled"),
+                reasoning_effort=policy.get("reasoning_effort"),
+                request_id=rid,
+                use_circuits=_walks,
             )
-            _provider_slot.acquire()
-            try:
-                response = provider.generate(
-                    messages, model_id,
-                    tools=tools,
-                    tool_choice=tool_choice,
-                    response_format=response_format,
-                    stream=False,
-                    max_tokens=max_tokens,
-                    thinking=policy.get("thinking", "disabled"),
-                    reasoning_effort=policy.get("reasoning_effort"),
-                    client_request_id=rid,
-                )
-            finally:
-                _provider_slot.release()
-    except Exception as e:
-        provider_name = "RealProvider" if BIND_MODE == "canary" else "MockProvider"
-        _trip_circuit(f"provider_failure:{type(e).__name__}:{provider_name}")
-        sent = bool(getattr(e, "possibly_billable", False) or getattr(e, "request_sent", False))
+    except Exception as exc:  # noqa: BLE001 -- the walk itself failing is a provider failure, typed below
+        walk["last_error"] = exc
+    route_receipts: list[dict[str, Any]] = walk.get("receipts") or []
+    if isinstance(routing_box.get("decision"), dict):
+        routing_box["decision"]["route_receipts"] = route_receipts
+    response = walk.get("response")
+    if response is None:
+        e = walk.get("last_error")
+        attempted = [r for r in route_receipts if r.get("attempted")]
+        deadline_hit = any(r.get("outcome") == "deadline_exhausted" for r in route_receipts)
+        # Billable = a paid (non-OAuth) attempt that may have reached the provider.
+        sent = bool(walk.get("billable_seen")) or bool(
+            e is not None
+            and not attempted
+            and (getattr(e, "possibly_billable", False) or getattr(e, "request_sent", False))
+        )
         lc.settle_reservation(reservation_id, None, ok=False, billable_attempt=sent)
+        if e is not None or attempted:
+            provider_name = "RealProvider" if BIND_MODE == "canary" else "MockProvider"
+            _trip_circuit(f"provider_failure:{type(e).__name__ if e else 'none'}:{provider_name}")
+        if deadline_hit:
+            code, status = "DEADLINE_EXCEEDED", 504
+            message = "Route budget exhausted before a lane served: " + ", ".join(
+                f"{r['provider']}={r['outcome']}" for r in route_receipts
+            )
+        elif e is None:
+            code, status = "PROVIDER_UNAVAILABLE", 503
+            message = "No routing-policy lane could be attempted: " + ", ".join(
+                f"{r['provider']}={r['outcome']}" for r in route_receipts
+            )
+        else:
+            code, status = "PROVIDER_ERROR", 500
+            provider_name = "RealProvider" if BIND_MODE == "canary" else "MockProvider"
+            message = f"{provider_name} failure: {type(e).__name__}"
         retry = None
         if provider_journal is not None and provider_semantic_key is not None:
             from scripts.lib.cio_provider_retry_v1 import classify_failure
 
-            retry = classify_failure(type(e).__name__, request_sent=sent)
-            journal_state = "AMBIGUOUS" if sent else (
-                "RETRYABLE" if retry["retryable"] else "NON_RETRYABLE"
-            )
+            retry = classify_failure(type(e).__name__ if e is not None else code, request_sent=sent)
+            journal_state = "AMBIGUOUS" if sent else ("RETRYABLE" if retry["retryable"] else "NON_RETRYABLE")
             provider_journal.record(
                 provider_semantic_key,
                 state=journal_state,
                 retry_disposition=retry["disposition"],
-                error_class=type(e).__name__,
+                error_class=type(e).__name__ if e is not None else code,
                 request_sent=sent,
             )
-        return _error(
-            "PROVIDER_ERROR",
-            f"{provider_name} failure: {type(e).__name__}",
-            status=500,
-            **({"retry": retry} if retry else {}),
-        )
+        hold = [
+            float(r["retry_after_s"])
+            for r in route_receipts
+            if isinstance(r.get("retry_after_s"), (int, float))
+            and r.get("outcome") in ("rate_limited", "retry_after_pending")
+        ]
+        extra: dict[str, Any] = {"route_receipts": route_receipts}
+        if hold and code == "PROVIDER_UNAVAILABLE":
+            extra["retry_after_s"] = round(min(hold), 1)
+        if retry:
+            extra["retry"] = retry
+        return _error(code, message, status=status, **extra)
+    served = walk.get("served") or {}
+    served_provider = str(served.get("provider") or policy.get("provider") or "deepseek")
+    if served_provider != str(policy.get("provider") or "deepseek") or served.get("lane") != (
+        (routing_box.get("decision") or {}).get("lane_chosen")
+    ):
+        policy = dict(policy)
+        policy["provider"] = served_provider
+        if isinstance(routing_box.get("decision"), dict):
+            routing_box["decision"]["served_lane"] = served.get("lane")
+            routing_box["decision"]["served_provider"] = served_provider
+    if served_provider in oauth_transport.OAUTH_PROVIDERS:
+        # The OAuth proxies name the model they served; the DeepSeek model id was only the cost projection.
+        model_id = str(served.get("model_id") or response.get("model") or model_id)
 
     # ── Step 8: Model mismatch check ───────────────────────────────────
     returned_model = response.get("model")
@@ -1744,20 +2171,34 @@ def execute_governed_call(
 
     # ── Step 9: Settlement ─────────────────────────────────────────────
     usage = response.get("usage") or {}
-    try:
-        import lib.llm_model_registry as lmr2
-        cost_est = lmr2.estimate_usd_cost(
-            model_id=model_id,
-            prompt_tokens=usage.get("prompt_tokens"),
-            completion_tokens=usage.get("completion_tokens"),
-        )
-        actual_cost = cost_est.get("estimated_cost_usd")
-    except Exception:
+    _oauth_served = served_provider in oauth_transport.OAUTH_PROVIDERS
+    cost_basis = "provider_usage_x_registry_snapshot"
+    if _oauth_served:
+        # Free OAuth subscription lane: no metered price. Cost is "unknown" on the receipt; the reservation
+        # settles at its projection (conservative) so the daily cap never under-counts.
         actual_cost = None
+        cost_basis = "free_oauth_unmetered"
+    else:
+        try:
+            import lib.llm_model_registry as lmr2
+
+            cost_est = lmr2.estimate_usd_cost(
+                model_id=model_id,
+                prompt_tokens=usage.get("prompt_tokens"),
+                completion_tokens=usage.get("completion_tokens"),
+            )
+            actual_cost = cost_est.get("estimated_cost_usd")
+        except Exception:
+            actual_cost = None
+    for _r in route_receipts:
+        if _r.get("outcome") == "ok":
+            _r["cost_usd"] = actual_cost if actual_cost is not None else "unknown"
+            _r["cost_basis"] = cost_basis
 
     try:
         lc.settle_reservation(
-            reservation_id, actual_cost,
+            reservation_id,
+            actual_cost,
             ok=True,
             billable_attempt=True,
             projected_fallback=projected,
@@ -1795,12 +2236,10 @@ def execute_governed_call(
                 "total_tokens": usage.get("total_tokens"),
             },
             actual_cost_usd=actual_cost,
-            result_hash=hashlib.sha256(
-                json.dumps(response, sort_keys=True, default=str).encode("utf-8")
-            ).hexdigest(),
+            result_hash=hashlib.sha256(json.dumps(response, sort_keys=True, default=str).encode("utf-8")).hexdigest(),
         )
 
-    _reset_circuit()
+    _close_bridge_circuit()
 
     # ── Step 9b: Output checks (§23.10 P5 tool_calls, P6 n8n schema + behaviour scan) ──
     # The call is settled and billed; a refused answer never reaches the caller, and says why.
@@ -1810,17 +2249,36 @@ def execute_governed_call(
 
         try:
             lc.log_call(
-                lane=requested_policy.lower(), process_id=process_id, task_summary=sanitize_log_summary(messages),
+                lane=requested_policy.lower(),
+                process_id=process_id,
+                task_summary=sanitize_log_summary(messages),
                 trigger_mode="manual" if str(cfg.get("mode") or "") == "manual" else "automated",
-                success=False, model_name=model_id, error_message=_out["code"], estimated_cost_usd=actual_cost,
-                cost_basis="provider_usage_x_registry_snapshot", requested_policy=requested_policy,
-                requested_model_id=model_id, returned_model=returned_model, provider_request_id=rid,
-                metadata={"governance": "cio_bridge_v1", "reservation_id": reservation_id, "output_refused": _out["code"]},
+                success=False,
+                model_name=model_id,
+                error_message=_out["code"],
+                estimated_cost_usd=actual_cost,
+                cost_basis="provider_usage_x_registry_snapshot",
+                requested_policy=requested_policy,
+                requested_model_id=model_id,
+                returned_model=returned_model,
+                provider_request_id=rid,
+                metadata={
+                    "governance": "cio_bridge_v1",
+                    "reservation_id": reservation_id,
+                    "output_refused": _out["code"],
+                },
             )
         except Exception:  # noqa: BLE001 -- logging must not change the refusal
             pass
-        return _error(_out["code"], _out["message"], status=_out["status"], retry=_classify("VALIDATION_ERROR"),
-                      billed_cost_estimate=actual_cost, reservation_id=reservation_id, **_out["extra"])
+        return _error(
+            _out["code"],
+            _out["message"],
+            status=_out["status"],
+            retry=_classify("VALIDATION_ERROR"),
+            billed_cost_estimate=actual_cost,
+            reservation_id=reservation_id,
+            **_out["extra"],
+        )
 
     # ── Step 10: Assemble response with provenance ─────────────────────
     latency_ms = int((time.time() - t0) * 1000)
@@ -1840,7 +2298,8 @@ def execute_governed_call(
         "request_id": rid,
         "reservation_id": reservation_id,
         "cost_estimate": actual_cost,
-        "cost_basis": "provider_usage_x_registry_snapshot",
+        "cost_basis": cost_basis,
+        "route_receipts": route_receipts,
         "legacy_model_ids_rejected": True,
         "client_model_ignored": True,
         "routing_decision": routing_box["decision"],
@@ -1851,7 +2310,8 @@ def execute_governed_call(
                 "semantic_key": provider_semantic_key,
                 "state": "COMPLETED",
             }
-            if provider_semantic_key else None
+            if provider_semantic_key
+            else None
         ),
     }
 
@@ -1883,8 +2343,7 @@ def execute_governed_call(
                 "mock": is_mock,
                 "bridge_version": "P-1.2B" if BIND_MODE == "canary" else "P-1.2A",
                 "reservation_id": reservation_id,
-                **{k: v for k, v in response.get("_tradeai", {}).items()
-                   if k not in ("usage",)},
+                **{k: v for k, v in response.get("_tradeai", {}).items() if k not in ("usage",)},
             },
         )
     except Exception:
@@ -1928,8 +2387,7 @@ def governed_result_sse_chunks(result: dict[str, Any]) -> list[str]:
     chunks.extend(_chunk({"content": piece}) for piece in _SSE_PIECE.findall(content))
     if message.get("tool_calls"):
         tool_calls = [
-            {**call, "index": i} if isinstance(call, dict) else call
-            for i, call in enumerate(message["tool_calls"])
+            {**call, "index": i} if isinstance(call, dict) else call for i, call in enumerate(message["tool_calls"])
         ]
         chunks.append(_chunk({"tool_calls": tool_calls}))
     finish = choice.get("finish_reason") or ("tool_calls" if message.get("tool_calls") else "stop")
@@ -2067,7 +2525,7 @@ def caller_auth_refusal(caller: str, verdict: str) -> dict[str, Any]:
         "error": {
             "code": code,
             "message": f"Caller '{caller}' is not authenticated ({verdict}); "
-                       f"send Authorization: Bearer <{caller_key_env_name(caller)}>",
+            f"send Authorization: Bearer <{caller_key_env_name(caller)}>",
             "status": 401,
         },
         "id": uuid.uuid4().hex[:12],
@@ -2081,9 +2539,22 @@ def caller_auth_refusal(caller: str, verdict: str) -> dict[str, Any]:
     }
 
 
+LLM_STEP_PATH = "/v1/llm_step"
+
+
+def llm_step_processes_for(caller: str | None) -> frozenset[str]:
+    """Processes a caller may name in llm_step: exactly the ones its server-side map already routes to."""
+    c = (caller or "").strip().lower()
+    found = set((CALLER_TASK_PROCESS_MAP.get(c) or {}).values())
+    if c in CALLER_PROCESS_MAP:
+        found.add(CALLER_PROCESS_MAP[c])
+    return frozenset(found)
+
+
 # ══════════════════════════════════════════════════════════════════════════
 #  HTTP HANDLER
 # ══════════════════════════════════════════════════════════════════════════
+
 
 class GovernedBridgeHandler(http.server.BaseHTTPRequestHandler):
     """OpenAI-compatible /v1/chat/completions handler."""
@@ -2099,37 +2570,43 @@ class GovernedBridgeHandler(http.server.BaseHTTPRequestHandler):
         if self.path.split("?", 1)[0] != "/health":
             self._send_error(404, "NOT_FOUND", "Only GET /health is supported")
             return
-        self._send_json(200, {
-            "ok": not circuit_open(),
-            "mode": BIND_MODE,
-            "pid": os.getpid(),
-            "uptime_s": round(time.time() - _STARTED_AT, 1),
-            "circuit_open": circuit_open(),
-            "circuit_errors": int(_CIRCUIT.get("errors") or 0),
-            "last_error": _CIRCUIT.get("last_error"),
-            "upstream_deadline_s": UPSTREAM_DEADLINE_S,
-            "caller_auth": caller_auth_snapshot(),
-            "egress_sanitiser": egress_sanitiser.snapshot(),
-            **inflight_snapshot(),
-        })
+        self._send_json(
+            200,
+            {
+                "ok": not circuit_open(),
+                "mode": BIND_MODE,
+                "pid": os.getpid(),
+                "uptime_s": round(time.time() - _STARTED_AT, 1),
+                "circuit_open": circuit_open(),
+                "circuit_errors": int(_CIRCUIT.get("errors") or 0),
+                "last_error": _CIRCUIT.get("last_error"),
+                "upstream_deadline_s": UPSTREAM_DEADLINE_S,
+                "caller_auth": caller_auth_snapshot(),
+                "egress_sanitiser": egress_sanitiser.snapshot(),
+                "transports": sorted(enabled_transport_providers()),
+                "provider_circuits": PROVIDER_CIRCUITS.snapshot(),
+                **inflight_snapshot(),
+            },
+        )
 
     def do_POST(self) -> None:
+        if self.path == LLM_STEP_PATH:
+            self._do_llm_step()
+            return
         if self.path != "/v1/chat/completions":
-            self._send_error(404, "NOT_FOUND", "Only /v1/chat/completions is supported")
+            self._send_error(404, "NOT_FOUND", "Only /v1/chat/completions and /v1/llm_step are supported")
             return
 
         # Auth: require X-TradeAI-Agent header
         caller = self.headers.get(AUTH_HEADER)
         if not caller:
-            self._send_error(401, "UNAUTHORIZED",
-                             f"Missing {AUTH_HEADER} header")
+            self._send_error(401, "UNAUTHORIZED", f"Missing {AUTH_HEADER} header")
             return
 
         task_type = self.headers.get("X-TradeAI-Task-Type") or ""
         process_id = resolve_caller(caller, task_type=task_type)
         if not process_id:
-            self._send_error(401, "UNAUTHORIZED",
-                             f"Unknown caller '{caller}' — not in server-side mapping")
+            self._send_error(401, "UNAUTHORIZED", f"Unknown caller '{caller}' — not in server-side mapping")
             return
         if not self._caller_auth_admits(caller, process_id):
             return
@@ -2144,16 +2621,29 @@ class GovernedBridgeHandler(http.server.BaseHTTPRequestHandler):
         # the miss, ENFORCED answers 428 and spends nothing.
         try:
             try:
-                from memory_ring2 import check as _ring2_check, research_class as _ring2_research, MemoryContextRequired as _MCR  # type: ignore
+                from memory_ring2 import (
+                    check as _ring2_check,
+                    research_class as _ring2_research,
+                    MemoryContextRequired as _MCR,
+                )  # type: ignore
             except ImportError:  # pragma: no cover
-                from scripts.lib.memory_ring2 import check as _ring2_check, research_class as _ring2_research, MemoryContextRequired as _MCR  # type: ignore
+                from scripts.lib.memory_ring2 import (
+                    check as _ring2_check,
+                    research_class as _ring2_research,
+                    MemoryContextRequired as _MCR,
+                )  # type: ignore
             _ctx_id = self.headers.get("X-TradeAI-Context-Id") or None
             try:
                 from llm_consumption import _registry_process as _reg  # type: ignore
             except ImportError:  # pragma: no cover
                 from scripts.lib.llm_consumption import _registry_process as _reg  # type: ignore
-            _r2 = _ring2_check("model_bridge", process_id, _ctx_id, required=_ring2_research(process_id, _reg(process_id) or {}),
-                               extra={"caller": caller, "task_type": task_type})
+            _r2 = _ring2_check(
+                "model_bridge",
+                process_id,
+                _ctx_id,
+                required=_ring2_research(process_id, _reg(process_id) or {}),
+                extra={"caller": caller, "task_type": task_type},
+            )
         except _MCR as exc:
             self._send_error(428, "MEMORY_CONTEXT_REQUIRED", str(exc)[:300])
             return
@@ -2193,25 +2683,28 @@ class GovernedBridgeHandler(http.server.BaseHTTPRequestHandler):
 
         # Reject client-supplied legacy model IDs
         if client_model and client_model.strip().lower() in LEGACY_MODEL_IDS:
-            self._send_error(400, "LEGACY_MODEL_REJECTED",
-                             f"Legacy model {client_model!r} is rejected. "
-                             f"Server resolves model independently.")
+            self._send_error(
+                400,
+                "LEGACY_MODEL_REJECTED",
+                f"Legacy model {client_model!r} is rejected. Server resolves model independently.",
+            )
             return
 
         # Reject client arbitrary process/model injection
         client_process = data.get("process_id") or data.get("process")
         if client_process and str(client_process).strip().lower() != "alex_cio_synthesis":
             log.warning("Client attempted arbitrary process_id: %s", client_process)
-            self._send_error(403, "PROCESS_ID_REJECTED",
-                             "Client-supplied process_id is rejected. "
-                             "Server resolves process from caller identity.")
+            self._send_error(
+                403,
+                "PROCESS_ID_REJECTED",
+                "Client-supplied process_id is rejected. Server resolves process from caller identity.",
+            )
             return
 
         # Execute governed call. A bounded number at once: when every slot is held, answer 503 now
         # rather than queue the caller behind a provider that is holding requests (2026-09-14).
         if not _INFLIGHT_SLOTS.acquire(blocking=False):
-            self._send_error(503, "BRIDGE_BUSY",
-                             f"{MAX_INFLIGHT} provider calls already in flight; retry later")
+            self._send_error(503, "BRIDGE_BUSY", f"{MAX_INFLIGHT} provider calls already in flight; retry later")
             return
         call_id = uuid.uuid4().hex
         with _INFLIGHT_LOCK:
@@ -2244,6 +2737,55 @@ class GovernedBridgeHandler(http.server.BaseHTTPRequestHandler):
             self._send_stream(result, messages, process_id, tools, max_tokens, routing_policy_name)
         else:
             self._send_json(200, result)
+
+    def _do_llm_step(self) -> None:
+        """POST /v1/llm_step - the bounded LLM judgment step n8n calls (AGENTS.md §23.23 LLM steps).
+
+        Same caller identity and caller-auth as chat completions. The body names a registered process, a template
+        id, facts (data), a closed output schema id, a budget, run_id and execution_id; the answer is always a
+        LlmStepResult@v1 (status ok or refused). Malformed requests and unknown callers are HTTP 4xx."""
+        caller = self.headers.get(AUTH_HEADER)
+        if not caller:
+            self._send_error(401, "UNAUTHORIZED", f"Missing {AUTH_HEADER} header")
+            return
+        allowed = llm_step_processes_for(caller)
+        if not allowed:
+            self._send_error(401, "UNAUTHORIZED", f"Unknown caller '{caller}' — not in server-side mapping")
+            return
+        try:
+            content_length = int(self.headers.get("Content-Length", "0"))
+            data = json.loads(self.rfile.read(content_length)) if content_length > 0 else None
+        except (ValueError, OSError):
+            data = None
+        if not isinstance(data, dict):
+            self._send_error(400, "BAD_REQUEST", "llm_step body must be a JSON object")
+            return
+        process_id = str(data.get("process_id") or "")
+        if not self._caller_auth_admits(caller, process_id or "llm_step"):
+            return
+        routing_policy_name = normalize_routing_policy_header(self.headers.get(ROUTING_POLICY_HEADER))
+        if not routing_policy_known(routing_policy_name):
+            self._send_json(400, unknown_routing_policy_response(routing_policy_name))
+            return
+        if not _INFLIGHT_SLOTS.acquire(blocking=False):
+            self._send_error(503, "BRIDGE_BUSY", f"{MAX_INFLIGHT} provider calls already in flight; retry later")
+            return
+        call_id = uuid.uuid4().hex
+        with _INFLIGHT_LOCK:
+            _INFLIGHT[call_id] = time.time()
+        try:
+            from lib import bridge_llm_step
+
+            # This module's own execute_governed_call: the service runs this file as __main__, and importing
+            # it again by name would build a second bridge with its own breakers and in-flight slots.
+            result = bridge_llm_step.execute_llm_step(
+                data, allowed_processes=allowed, routing_policy=routing_policy_name, governed_call=execute_governed_call
+            )
+        finally:
+            with _INFLIGHT_LOCK:
+                _INFLIGHT.pop(call_id, None)
+            _INFLIGHT_SLOTS.release()
+        self._send_json(200, result)
 
     def _send_json(self, status: int, data: dict) -> None:
         body = json.dumps(data).encode("utf-8")
@@ -2279,8 +2821,15 @@ class GovernedBridgeHandler(http.server.BaseHTTPRequestHandler):
             return False
         return True
 
-    def _send_stream(self, result: dict, messages: list, process_id: str,
-                     tools: list | None, max_tokens: int, routing_policy: str | None = None) -> None:
+    def _send_stream(
+        self,
+        result: dict,
+        messages: list,
+        process_id: str,
+        tools: list | None,
+        max_tokens: int,
+        routing_policy: str | None = None,
+    ) -> None:
         # 2026-10-09 (audit B, H1): `result` is already governed - reserved, capped, called once and
         # settled. Re-emit it; never resolve or call a provider again here.
         del messages, process_id, tools, max_tokens, routing_policy
@@ -2302,6 +2851,7 @@ class GovernedBridgeHandler(http.server.BaseHTTPRequestHandler):
 # ══════════════════════════════════════════════════════════════════════════
 #  SERVER LIFECYCLE
 # ══════════════════════════════════════════════════════════════════════════
+
 
 def start_server(host: str = BIND_HOST, port: int = BIND_PORT) -> http.server.HTTPServer:
     """Start the CIO governed bridge server (blocking)."""

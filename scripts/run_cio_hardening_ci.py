@@ -1321,9 +1321,11 @@ GATES = [
     # Schwab paused (incident 2026-10-14): the pause switch + fail-loud readers (A-H; operator plan items 3+4).
     (
         "schwab_paused_fail_loud_20261014",
-        ["tests/test_schwab_paused_proof_20261014.py",
-         "tests/test_schwab_paused_stops_20261014.py",
-         "tests/test_schwab_paused_surfaces_20261014.py"],
+        [
+            "tests/test_schwab_paused_proof_20261014.py",
+            "tests/test_schwab_paused_stops_20261014.py",
+            "tests/test_schwab_paused_surfaces_20261014.py",
+        ],
     ),
     # Schwab ledger keeps transfer/journal direction; >1y fetch chunked; dry run never pages (2026-10-06).
     (
@@ -4202,6 +4204,18 @@ GATES = [
         "n8n_agent_gate_bridge_20261009",
         [
             "tests/test_bridge_agent_preconditions_20261009.py",
+        ],
+    ),
+    (
+        # ANCHOR: BRIDGE_OAUTH_LLM_STEP_20261014 — the governed bridge executes the routing row's order
+        # (Grok OAuth -> ChatGPT OAuth -> DeepSeek, opt-in rows, CIO_BRIDGE_OAUTH_TRANSPORTS) with one receipt
+        # per lane: Retry-After hold, per-provider breaker, shared route deadline, auth failure distinct from a
+        # serving failure. POST /v1/llm_step (AGENTS.md §23.23 LLM steps): registered + caller-mapped process,
+        # closed schema with enumerated decision fields, facts as data, one LlmStepAudit@v1 row per call.
+        # Mocked transports only; no live proxy, no key.
+        "bridge_oauth_llm_step_20261014",
+        [
+            "tests/test_bridge_oauth_llm_step_20261014.py",
         ],
     ),
     (
