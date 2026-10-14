@@ -1312,9 +1312,11 @@ GATES = [
     # Schwab paused (incident 2026-10-14): the pause switch + fail-loud readers (A-H; operator plan items 3+4).
     (
         "schwab_paused_fail_loud_20261014",
-        ["tests/test_schwab_paused_proof_20261014.py",
-         "tests/test_schwab_paused_stops_20261014.py",
-         "tests/test_schwab_paused_surfaces_20261014.py"],
+        [
+            "tests/test_schwab_paused_proof_20261014.py",
+            "tests/test_schwab_paused_stops_20261014.py",
+            "tests/test_schwab_paused_surfaces_20261014.py",
+        ],
     ),
     # Schwab ledger keeps transfer/journal direction; >1y fetch chunked; dry run never pages (2026-10-06).
     (
@@ -3699,6 +3701,23 @@ GATES = [
             # 2026-10-08 first N1 shadow burst: ledger RLock across gateway handler threads (16-wide run and
             # event bursts, same-nonce race) on a tmp_path ledger and 127.0.0.1 port 0.
             "tests/test_n8n_gateway_concurrency_20261008.py",
+        ],
+    ),
+    (
+        # ANCHOR: N8N_FABRIC_PHASE1 — 2026-10-14 n8n fabric Phase 1 primitives (AGENTS.md §23.23, 10.0.0 PROPOSED;
+        # arch-review-20261014 REFACTOR_PLAN B4-B6 + addendum items 1-3): the executor's run_outcomes record and the
+        # read-only gateway op coordination/run_outcome (+ relay GET /run_outcome); the comms/intent op (scope
+        # comms_intent, dedupe, hourly cap, closed route table; + relay POST /intent); the semantic effect key with
+        # its owner-epoch fence, including the sequential cron->n8n duplicate a flock does not stop; and
+        # build-fabric (Run Lane sub-workflow, fabric error workflow, probe, graph/policy-hash manifest). Hermetic:
+        # tmp_path ledgers, fake runners, in-process gateway/relay; node.js runs the generated Code nodes when on
+        # PATH. Imports nothing into n8n, installs no unit, touches no crontab.
+        "n8n_fabric_phase1_20261014",
+        [
+            "tests/test_n8n_fabric_run_outcome_20261014.py",
+            "tests/test_n8n_fabric_comms_intent_20261014.py",
+            "tests/test_effect_claim_20261014.py",
+            "tests/test_n8n_fabric_workflows_20261014.py",
         ],
     ),
     (

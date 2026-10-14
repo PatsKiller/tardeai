@@ -1,0 +1,5 @@
+{
+  "schema": "N8nEffectKeys@v1",
+  "_comment": "n8n fabric Phase 1 (2026-10-14; AGENTS.md §23.23 migration rule (4), REFACTOR_PLAN addendum items 1-2). Lanes whose LIVE runs claim a semantic effect key fx:<process>:<slot>:<input_version> before they run (scripts/lib/effect_claim.py; scripts/n8n_run_executor.py). The slot is the server-minted d: key's slot (YYYYMMDDTHHMM, America/New_York); a live run without one is refused effect_slot_unknown. Empty = no lane opted in, executor behaviour unchanged. A lane added here also needs an effect_owners row (effect_claim.py set-owner) or every live run is refused effect_no_owner (fail closed). Each addition is a reviewed PR in the cutover packet of that process.",
+  "lanes": {}
+}

@@ -47,7 +47,20 @@ DENIED_TOOL_MAP: dict[str, str] = {
 #: The routes the ALLOWLIST mapping relies on. Adding a route means re-reviewing every ALLOWLIST row.
 #: 2026-10-09 re-review (n8n maturity B5.3): coordination/due is a READ route (scope coordination_read, operation
 #: `due` only, writes nothing, returns lane_id/mode/key items); it serves none of the ALLOWLIST rows above.
-EXPECTED_ROUTES = frozenset({"coordination/event", "coordination/status", "coordination/run", "coordination/due"})
+#: 2026-10-14 re-review (n8n fabric Phase 1, AGENTS.md §23.23 PROPOSED): coordination/run_outcome is a READ route
+#: (scope coordination_read, one run_id, writes nothing); comms/intent queues one notification INTENT for the host
+#: comms gateway under its own scope comms_intent (no send, no trade, no execution, no account/position write, no
+#: secret, no config activation, no shell/systemd). Neither serves any ALLOWLIST row above.
+EXPECTED_ROUTES = frozenset(
+    {
+        "coordination/event",
+        "coordination/status",
+        "coordination/run",
+        "coordination/due",
+        "coordination/run_outcome",
+        "comms/intent",
+    }
+)
 
 
 def _mvl() -> dict:
@@ -106,7 +119,7 @@ def test_n8n_registry_row_is_a_scheduler_with_run_and_read_scopes_only():
     env = {"TRADEAI_AGENT_REGISTRY": str(ROOT / "config" / "agent_registry.json")}
     row = AR.get("n8n", env)
     assert row is not None and AR.canonical(G.RELAY_CALLER, env) == "n8n"
-    assert set(row["gateway_scopes"]) == {G.SCOPE_RUN, G.SCOPE_READ} == set(G.SCOPES)
+    assert set(row["gateway_scopes"]) == {G.SCOPE_RUN, G.SCOPE_READ, G.SCOPE_INTENT} == set(G.SCOPES)
     assert row["broker"] is False and row["send"] is False
     assert row["authority"] == "READ_ONLY_ADVISORY" and row["status"] == "SCHEDULER"
     assert row["wake_eligible"] is False and row["model_caller"] is None and row["bus_events"] == []
@@ -116,5 +129,5 @@ def test_n8n_registry_row_is_a_scheduler_with_run_and_read_scopes_only():
 
 def test_the_relay_caller_key_grants_exactly_the_registry_scopes():
     keys = G.build_caller_keys(b"k" * 32, n8n_key=b"n" * 32)
-    assert set(keys[G.RELAY_CALLER].scopes) == {G.SCOPE_RUN, G.SCOPE_READ}
+    assert set(keys[G.RELAY_CALLER].scopes) == {G.SCOPE_RUN, G.SCOPE_READ, G.SCOPE_INTENT}
     assert set(keys[G.DISPATCH_CALLER].scopes) == {G.SCOPE_READ}

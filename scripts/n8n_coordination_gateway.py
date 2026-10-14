@@ -51,6 +51,7 @@ from scripts.lib.n8n_coordination_ledger import (  # noqa: E402
     LedgerReceiptStore,
     LedgerRunStore,
 )
+from scripts.lib.n8n_fabric_store import INTENT_ROUTES_REL, CommsIntentStore, RunOutcomeStore  # noqa: E402
 
 KEY_ENV = "TRADEAI_N8N_GATEWAY_HMAC_KEY"
 PREVIOUS_KEY_ENV = "TRADEAI_N8N_GATEWAY_HMAC_KEY_PREVIOUS"
@@ -189,6 +190,8 @@ def dispatch_http(
     run_allowlist: frozenset[str] | None = None,
     due_sources: Any = None,
     momentum_provider: Any = None,
+    outcome_store: Any = None,
+    intent_store: Any = None,
 ) -> tuple[int, dict]:
     """One HTTP decision. Proxy headers are not copied into the claim check."""
     del headers  # identity is the HMAC claim; forwarded headers are not read
@@ -235,6 +238,8 @@ def dispatch_http(
         run_allowlist=run_allowlist,
         due_sources=due_sources,
         momentum_provider=momentum_provider,
+        outcome_store=outcome_store,
+        intent_store=intent_store,
     )
     if result.get("schema") == "DueResponse@v1" and result.get("ok") is True:
         return 200, result  # closed schema (additionalProperties: false); nothing was written
@@ -261,11 +266,15 @@ def make_handler(
     n8n_previous_key: bytes | None = None,
     due_sources: Any = None,
     momentum_provider: Any = None,
+    intent_routes_path: Path | None = None,
 ):
     nonce_store: Any = LedgerNonceStore(ledger) if ledger is not None else {}
     idempotency_store: Any = LedgerReceiptStore(ledger) if ledger is not None else {}
     # runs are durable or nothing: memory-only mode has no executor to drain it, so no run store
     run_store: Any = LedgerRunStore(ledger) if ledger is not None else None
+    # 2026-10-14 (n8n fabric Phase 1): run outcomes (read) and comms send-intents (queued, never sent); durable or off
+    outcome_store: Any = RunOutcomeStore(ledger) if ledger is not None else None
+    intent_store: Any = CommsIntentStore(ledger, routes_path=intent_routes_path) if ledger is not None else None
     caller_keys = build_caller_keys(key, previous_key=previous_key, n8n_key=n8n_key, n8n_previous_key=n8n_previous_key)
 
     class Handler(BaseHTTPRequestHandler):
@@ -315,6 +324,8 @@ def make_handler(
                 run_allowlist=run_allowlist,
                 due_sources=due_sources,
                 momentum_provider=momentum_provider,
+                outcome_store=outcome_store,
+                intent_store=intent_store,
             )
             self._send(status, payload)
 
@@ -385,6 +396,7 @@ def serve(
             n8n_previous_key=n8n_previous_key,
             due_sources=due,
             momentum_provider=momentum_provider,
+            intent_routes_path=code_root / INTENT_ROUTES_REL,
         ),
     )
     httpd.coordination_ledger = ledger  # type: ignore[attr-defined]

@@ -52,6 +52,9 @@ _REVIEWED_NEW_COMMON_MODULES = frozenset(
         "scripts/lib/n8n_coordination_gateway.py",
         "scripts/lib/n8n_coordination_ledger.py",
         "scripts/lib/n8n_due.py",
+        # n8n fabric Phase 1 (2026-10-14): imported by scripts/n8n_coordination_gateway.py for the run_outcome and
+        # comms/intent stores; stdlib only (hashlib, json, re, datetime, pathlib), no environment read, no network.
+        "scripts/lib/n8n_fabric_store.py",
         "scripts/lib/n8n_health_contracts.py",
         "scripts/lib/n8n_model_job.py",
         "scripts/lib/n8n_momentum_lifecycle.py",

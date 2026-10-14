@@ -1,0 +1,11 @@
+{
+  "schema": "N8nCommsIntentRoutes@v1",
+  "_comment": "n8n fabric Phase 1 (2026-10-14; AGENTS.md §23.23, 10.0.0 PROPOSED). The CLOSED (domain, kind) -> tier table for send-intents n8n posts to the gateway's comms/intent operation (scripts/lib/n8n_fabric_store.py). Tiers and domains after ~/n8n-maturity-verification/arch-review-20261014/ARCHITECTURE_REVIEW_20261014/ALERT_TAXONOMY.md §2-§3. A (domain, kind) with no row is refused (intent_unrouted). No PAGE row: the P1 path never depends on n8n (§24.1). dedupe_window_s: identical (domain, kind, subject) within the window increments one row. max_per_hour: new intents accepted per rolling hour across all routes. Changed only by reviewed PR (§24.1).",
+  "dedupe_window_s": 3600,
+  "max_per_hour": 30,
+  "routes": [
+    {"domain": "fabric", "kind": "workflow_error", "tier": "DIGEST", "runbook_id": "n8n-workflow-error"},
+    {"domain": "fabric", "kind": "run_lane_dead_letter", "tier": "DIGEST", "runbook_id": "n8n-dlq"},
+    {"domain": "fabric", "kind": "run_lane_outcome_lost", "tier": "DIGEST", "runbook_id": "n8n-run-lost"}
+  ]
+}
