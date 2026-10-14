@@ -2291,6 +2291,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/runbooks/KEY_ROTATION.md` | Key Rotation Runbook (2026-07-18) | review_required | OK | `986b4883e260` |
 | `docs/runbooks/OPTIONS_FIRST_POSITION_ACCEPTANCE.md` | First Real Option Position — Acceptance Runbook (v1.1 Phase 10) | review_required | OK | `0de9b8a462fb` |
 | `docs/runbooks/PLAYWRIGHT_ARTIFACTS_POLICY.md` | Playwright / visual-review artifact policy | review_required | OK | `fed6d1aae523` |
+| `docs/runbooks/TRADING_LOCK.md` | Trading lock (READ-ONLY toward brokers) — operator runbook | review_required | OK | `3f15bb4a7472` |
 | `docs/runbooks/post-sale-redeploy-sync-2026-07-14.md` | Post-Sale Redeploy Sync — 2026-07-14 | review_required | OK | `6fbb9d526d81` |
 | `docs/runbooks/protective-stop-integration-2026-06-30.md` | Protective Stop Integration Runbook — 2026-06-30 | review_required | OK | `5286e6a1ce61` |
 | `docs/screener_architecture/phase_afterhours_ready1_full_candidate_preparation/00_README.md` | AFTERHOURS-READY-1 — Full After-Hours Candidate Preparation Pipeline | current_phase_keep | OK | `21878c19cfaf` |

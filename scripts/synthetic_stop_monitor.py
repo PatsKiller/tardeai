@@ -173,6 +173,26 @@ def check_and_trigger(dry_run=True, verbose=False):
             out.append({"symbol": sym, "account": acct, "status": "would_trigger", "price": px, "stop": sp,
                         "action": "Market-Day sell-all 2FA request"})
             continue
+        # ── order step: READ-ONLY trading lock first (incident SPCX 2026-10-14). A breach while locked is
+        # surfaced as a critical alert for MANUAL action; no sell intent / 2FA request is created.
+        from lib.trading_lock import assert_trading_unlocked, TradingLocked
+        try:
+            assert_trading_unlocked("place", broker="schwab", account=acct,
+                                    caller="synthetic_stop_monitor.check_and_trigger")
+        except TradingLocked as _tl:
+            try:
+                from alert_event_writer import save_alert_event
+                save_alert_event(alert_type="strategic_alert", severity="critical",
+                                 source_script="synthetic_stop", symbol=sym,
+                                 raw_text=f"[synthetic-stop:breach-locked] {sym} {acct} px ${px} <= stop ${sp} — "
+                                          "TRADING LOCKED, no order requested; act manually at the broker",
+                                 parsed_payload={"kind": "synthetic_stop", "symbol": sym, "account": acct,
+                                                 "price": px, "stop": sp, "trading_locked": True})
+            except Exception:
+                pass
+            out.append({"symbol": sym, "account": acct, "status": "breach_trading_locked", "price": px,
+                        "stop": sp, "error": str(_tl)[:200]})
+            continue
         try:
             from brokers import protective_stop_pilot as psp
             intent = psp.build_intent(acct, sym, float(s["qty"]), "MARKET",

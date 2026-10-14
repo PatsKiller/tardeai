@@ -95,6 +95,9 @@ class SchwabAdapter:
         return resp.json()
 
     def _api_post(self, path, data):
+        from lib.trading_lock import assert_trading_unlocked
+        assert_trading_unlocked("place", broker="schwab", account=getattr(self, "account_label", None),
+                                caller="schwab_adapter._api_post")
         # Phase 1 read-only foundation: ALL Schwab write paths are fail-closed (Gate / Hard Rule #1).
         raise RuntimeError("NOT_PROVEN: Schwab write path disabled in Phase 1 (read-only foundation)")
         import requests
@@ -200,6 +203,12 @@ class SchwabAdapter:
     def submit_entry(self, symbol, shares, entry_price, stop_price, target_price,
                      strategy_id, conn, proposal_id=None, **kwargs):
         """Submit a limit buy order. DISABLED in Phase 1 — read-only foundation only."""
+        from lib.trading_lock import assert_trading_unlocked, TradingLocked
+        try:
+            assert_trading_unlocked("place", broker="schwab", account=getattr(self, "account_label", None),
+                                    caller="schwab_adapter.submit_entry")
+        except TradingLocked as _tl:
+            return _tl.payload()   # adapter contract: a dict with 'status' (status='trading_locked')
         return {"status": "NOT_PROVEN", "error": "Schwab order submission disabled in Phase 1 (read-only foundation)"}
         if not self.enabled or not self.account_hash:
             return {"status": "disabled", "error": "Schwab not configured"}
@@ -268,6 +277,9 @@ class SchwabAdapter:
 
     def cancel_order(self, order_id):
         """Cancel an order. DISABLED in Phase 1 — read-only foundation only (Hard Rule #1)."""
+        from lib.trading_lock import assert_trading_unlocked
+        assert_trading_unlocked("cancel", broker="schwab", account=getattr(self, "account_label", None),
+                                caller="schwab_adapter.cancel_order")
         return {"status": "NOT_PROVEN", "error": "Schwab cancel/replace disabled in Phase 1 (read-only foundation)"}
         import requests
         if not self.enabled or not self.account_hash:

@@ -137,6 +137,7 @@ def pytest_configure(config) -> None:
         "host_state(reason): opt this test out of the hermetic guard (live env loaders, host paths, live DSN). "
         "AGENTS §24.6: needs a stated reason.",
     )
+    config.addinivalue_line("markers", "trading_locked: run with the production trading-lock default (no unlock file)")
 
 
 _HERMETIC_COLLECTION: list[dict] = []
@@ -663,3 +664,53 @@ def _advice_holds_off_by_default(monkeypatch):
     except Exception:
         return
     monkeypatch.setattr(_ad, "hold", lambda name: False)
+
+
+# READ-ONLY trading lock (incident SPCX 2026-10-14). Production default is LOCKED. Unit tests that exercise
+# broker code with STUBBED clients predate the lock, so by default each test gets a valid, short-lived unlock
+# in its own tmp dir (never the operator's ~/.config/tradeai path), audit rows go to scratch, and alerts are a
+# no-op. Lock tests mark themselves @pytest.mark.trading_locked to get the real default (no unlock file), or
+# repoint UNLOCK_PATH / PANIC_LOCK_PATH themselves.
+os.environ.setdefault("TRADEAI_TRADING_LOCK_AUDIT_PATH",
+                      os.path.join(_scratch("tradeai_trading_lock_tests_"), "trading_lock_audit.jsonl"))
+
+
+def _trading_lock_unlock_doc() -> str:
+    import datetime as _dt
+    import json as _json
+    return _json.dumps({
+        "unlocked_until": (_dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(hours=23)).isoformat(),
+        "reason": "pytest stubbed-broker unit tests", "operator": "pytest",
+        "brokers": ["schwab", "snaptrade", "fidelity", "tastytrade", "moomoo", "alpaca", "unknown"],
+    })
+
+
+# Script-style test modules run checks at IMPORT (collection) time, before any fixture: give the whole
+# process a scratch unlock too, so those checks keep exercising the gates they were written for.
+try:
+    from scripts.lib import trading_lock as _tl_mod
+    _tl_dir = Path(_scratch("tradeai_trading_lock_session_"))
+    _tl_mod.UNLOCK_PATH = _tl_dir / "trading_unlock.json"
+    _tl_mod.PANIC_LOCK_PATH = _tl_dir / "TRADING_LOCKED"
+    _tl_mod._ALERT_SENDER = lambda _msg: None
+    _tl_mod.UNLOCK_PATH.write_text(_trading_lock_unlock_doc())
+    _tl_mod.UNLOCK_PATH.chmod(0o600)
+except Exception:  # pragma: no cover — the lock module absent means locked, which is the safe side
+    pass
+
+
+@pytest.fixture(autouse=True)
+def _trading_lock_test_unlock(request, monkeypatch, tmp_path_factory):
+    try:
+        from scripts.lib import trading_lock as _tl
+    except Exception:
+        return
+    d = tmp_path_factory.mktemp("trading_lock")
+    monkeypatch.setattr(_tl, "PANIC_LOCK_PATH", d / "TRADING_LOCKED")
+    monkeypatch.setattr(_tl, "_ALERT_SENDER", lambda _msg: None)
+    unlock = d / "trading_unlock.json"
+    monkeypatch.setattr(_tl, "UNLOCK_PATH", unlock)
+    if request.node.get_closest_marker("trading_locked"):
+        return
+    unlock.write_text(_trading_lock_unlock_doc())
+    unlock.chmod(0o600)

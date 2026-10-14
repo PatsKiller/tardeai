@@ -89,6 +89,13 @@ def request_approval(intent) -> dict:
     anti-fat-finger, operator-confirmed 2026-06-12) + telegram row w/ one-time code; notify operator
     with a Tailscale deep-link straight to this intent. ONE ORDER AT A TIME: while any OTHER intent
     holds an unexpired pending/confirmed approval, a new request is refused (fail closed)."""
+    from lib.trading_lock import assert_trading_unlocked, TradingLocked
+    try:
+        assert_trading_unlocked("place", broker=(getattr(intent, "broker", None) or "unknown"),
+                                account=getattr(intent, "account_key", None),
+                                caller="brokers.approval_service.request_approval")
+    except TradingLocked as _tl:
+        return _tl.payload()
     conn = _conn(); cur = conn.cursor()
     _ensure_intent_persisted(cur, intent)
     # one-order-at-a-time slot check (operator requirement 2026-06-12)
@@ -493,10 +500,26 @@ def reject(intent_id: str) -> dict:
     return {"ok": True, "rejected_rows": n}
 
 
+def _intent_broker(intent_id) -> str:
+    """Broker of a persisted intent for the trading lock. Any failure → 'unknown' (which stays locked)."""
+    try:
+        it = _load_intent_any(str(intent_id or ""))
+        b = getattr(it, "broker", None)
+        return b.strip().lower() if isinstance(b, str) and b.strip() else "unknown"
+    except Exception:
+        return "unknown"
+
+
 def confirm(intent_id: str, channel: str, code: str | None = None) -> dict:
     """Confirm one channel. telegram requires the matching one-time code; web requires the operator to
     have TYPED the ticker symbol exactly (anti-fat-finger — a click alone never confirms). Fail-closed
     on everything."""
+    from lib.trading_lock import assert_trading_unlocked, TradingLocked
+    try:
+        assert_trading_unlocked("place", broker=_intent_broker(intent_id), account=None,
+                                caller="brokers.approval_service.confirm")
+    except TradingLocked as _tl:
+        return _tl.payload()
     conn = _conn(); cur = conn.cursor()
     cur.execute("""SELECT id, code, expires_at, status FROM trade_approvals
                    WHERE intent_id=%s AND channel=%s ORDER BY id DESC LIMIT 1""", (intent_id, channel))

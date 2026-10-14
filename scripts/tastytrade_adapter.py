@@ -116,6 +116,9 @@ class TastytradeAdapter:
         return resp.json()
 
     def _api_post(self, path, data):
+        from lib.trading_lock import assert_trading_unlocked
+        assert_trading_unlocked("place", broker="tastytrade", account=None,
+                                caller="tastytrade_adapter.TastytradeAdapter._api_post")
         import requests
         if not self.session_token:
             return None
@@ -124,6 +127,9 @@ class TastytradeAdapter:
         return resp
 
     def _api_delete(self, path):
+        from lib.trading_lock import assert_trading_unlocked
+        assert_trading_unlocked("cancel", broker="tastytrade", account=None,
+                                caller="tastytrade_adapter.TastytradeAdapter._api_delete")
         import requests
         if not self.session_token:
             return None
@@ -179,6 +185,12 @@ class TastytradeAdapter:
     def submit_entry(self, symbol, shares, entry_price, stop_price, target_price,
                      strategy_id, conn, proposal_id=None, **kwargs):
         """Submit a limit buy order."""
+        from lib.trading_lock import assert_trading_unlocked, TradingLocked
+        try:
+            assert_trading_unlocked("place", broker="tastytrade",
+                                    caller="tastytrade_adapter.TastytradeAdapter.submit_entry")
+        except TradingLocked as _tl:
+            return _tl.payload()   # adapter contract: a dict with 'status' (status='trading_locked')
         if not self.enabled or not self.account_number:
             return {"status": "disabled", "error": "Tastytrade not configured"}
         if self.dry_run:
@@ -219,6 +231,9 @@ class TastytradeAdapter:
 
     def submit_stop_order(self, symbol, shares, stop_price):
         """Submit a stop sell order."""
+        from lib.trading_lock import assert_trading_unlocked
+        assert_trading_unlocked("place", broker="tastytrade", account=None,
+                                caller="tastytrade_adapter.TastytradeAdapter.submit_stop_order")
         if not self.enabled or not self.account_number:
             return None
         order = {
@@ -264,6 +279,9 @@ class TastytradeAdapter:
 
     def cancel_order(self, order_id):
         """Cancel an order."""
+        from lib.trading_lock import assert_trading_unlocked
+        assert_trading_unlocked("cancel", broker="tastytrade", account=None,
+                                caller="tastytrade_adapter.TastytradeAdapter.cancel_order")
         if not self.enabled or not self.account_number:
             return False
         try:

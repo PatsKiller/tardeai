@@ -180,9 +180,9 @@ try:
                          quantity=Quantity(qty=2), broker="schwab", account_key="schwab_roth_ira")
     try:
         from brokers.execution_guard import ExecutionBlocked as _ExecBlocked
-        _fail_closed = (_st.NotProvenWrite, _ExecBlocked)
+        _fail_closed = (_st.NotProvenWrite, _ExecBlocked, _st.TradingLocked)
     except Exception:
-        _fail_closed = (_st.NotProvenWrite,)
+        _fail_closed = (_st.NotProvenWrite, _st.TradingLocked)
     ira_raised = False
     try:
         _st.place_order("schwab_roth_ira", {}, _probe)
@@ -193,7 +193,7 @@ try:
     rep_raised = False
     try:
         _st.replace_order()
-    except _st.NotProvenWrite:
+    except (_st.NotProvenWrite, _st.TradingLocked):
         rep_raised = True
     except Exception:
         rep_raised = False

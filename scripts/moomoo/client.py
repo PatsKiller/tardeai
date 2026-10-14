@@ -456,9 +456,14 @@ class MoomooClient:
         return ()
 
     def place_order(self, *args: Any, **kwargs: Any) -> None:  # noqa: ANN401
+        from lib.trading_lock import assert_trading_unlocked
+        assert_trading_unlocked("place", broker="moomoo", account=None, caller="moomoo.client.MoomooClient.place_order")
         raise MoomooAuthorityError("place_order is OUT of Stage 0 (order path forbidden)")
 
     def unlock_trade(self, *args: Any, **kwargs: Any) -> None:  # noqa: ANN401
+        from lib.trading_lock import assert_trading_unlocked
+        assert_trading_unlocked("place", broker="moomoo", account=None,
+                                caller="moomoo.client.MoomooClient.unlock_trade")
         raise MoomooAuthorityError("unlock_trade is OUT of Stage 0 (trade unlock forbidden)")
 
     def __getattr__(self, name: str) -> Any:

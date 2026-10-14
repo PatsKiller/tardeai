@@ -30,6 +30,9 @@ def resolve_and_preview(*, account_id: str, symbol: str, action: str, order_type
 
 def place_order(account_key: str, order_spec: dict, intent) -> dict:
     """Preview then place via SnapTrade SDK. Requires BROKER_API_ENABLED + per-order 2FA already consumed."""
+    from lib.trading_lock import assert_trading_unlocked
+    assert_trading_unlocked("place", broker="snaptrade", account=account_key,
+                            caller="brokers.snaptrade_transport.place_order")
     from brokers.execution_guard import require
     require(intent, "submit")
     from brokers import snaptrade_trade as st

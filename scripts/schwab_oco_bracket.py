@@ -147,6 +147,8 @@ def submit_oco(account_key, symbol, qty, take_profit_price, stop_price, intent=N
     no intent is supplied one is built via make_oco_intent (protective-marker routed); `evidence` forwards
     current_price/advised_stop/held_qty.
     """
+    from lib.trading_lock import assert_trading_unlocked
+    assert_trading_unlocked("place", broker="schwab", account=account_key, caller="schwab_oco_bracket.submit_oco")
     validate_oco(symbol, qty, take_profit_price, stop_price)
     if not flag_enabled():
         raise OcoAbort(f"{OCO_FLAG} is OFF — live Schwab OCO submit disabled (canary proof required first)")

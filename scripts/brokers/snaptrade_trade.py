@@ -182,6 +182,8 @@ def preview(*, account_id: str, action: str, universal_symbol_id: str, order_typ
 
 def place(*, trade_id: str, confirmed: bool = False, one_share_test: bool = False) -> dict:
     """EXECUTE a previewed order. Gated: ENABLED + broker allows trading + 2FA consumed by caller."""
+    from lib.trading_lock import assert_trading_unlocked
+    assert_trading_unlocked("place", broker="snaptrade", account=None, caller="brokers.snaptrade_trade.place")
     if not ENABLED:
         raise RuntimeError("SnapTrade trade path DISABLED — commit ENABLED=True to arm.")
     ok, detail = broker_allows_trading()
@@ -198,6 +200,8 @@ def place(*, trade_id: str, confirmed: bool = False, one_share_test: bool = Fals
 
 def cancel(*, account_id: str, brokerage_order_id: str) -> dict:
     """Cancel a working order. Allowed whenever ENABLED (cancelling is risk-reducing)."""
+    from lib.trading_lock import assert_trading_unlocked
+    assert_trading_unlocked("cancel", broker="snaptrade", account=None, caller="brokers.snaptrade_trade.cancel")
     if not ENABLED:
         raise RuntimeError("SnapTrade trade path DISABLED.")
     u = _user(); c = _client()

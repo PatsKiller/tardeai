@@ -81,6 +81,10 @@ class AlpacaPaperAdapter:
         return resp.json()
 
     def _api_post(self, path, data):
+        # READ-ONLY trading lock: Alpaca PAPER is training and stays allowed; any non-paper host is LIVE → locked.
+        from lib.trading_lock import assert_trading_unlocked, alpaca_environment
+        assert_trading_unlocked("place", broker="alpaca", environment=alpaca_environment(self.base_url),
+                                caller="alpaca_paper_adapter.AlpacaPaperAdapter._api_post")
         import requests
         resp = requests.post(f'{self.base_url}{path}', headers=self.headers, json=data, timeout=10)
         resp.raise_for_status()

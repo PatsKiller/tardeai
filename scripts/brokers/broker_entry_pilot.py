@@ -106,6 +106,9 @@ def spec_from_intent(intent) -> dict:
 
 
 def request_2fa(intent) -> dict:
+    from lib.trading_lock import assert_trading_unlocked
+    assert_trading_unlocked("place", broker="schwab", account=getattr(intent, "account_key", None),
+                            caller="brokers.broker_entry_pilot.request_2fa")
     from brokers import approval_service
     out = approval_service.request_approval(intent)
     out["mode"] = "awaiting_approval"
@@ -113,6 +116,8 @@ def request_2fa(intent) -> dict:
 
 
 def submit(account_key: str, order_spec: dict, intent) -> dict:
+    from lib.trading_lock import assert_trading_unlocked
+    assert_trading_unlocked("place", broker="schwab", account=account_key, caller="brokers.broker_entry_pilot.submit")
     import schwab_transport
     return schwab_transport.place_order(account_key, order_spec, intent, kind="queue_entry")
 
@@ -215,6 +220,12 @@ def apply_route_trade(proposal_id: int, trade: dict) -> dict:
 
 def request_route(proposal_id: int, *, trade: dict | None = None) -> dict:
     """Step 1: apply operator trade (optional), build bracket, request per-order 2FA."""
+    from lib.trading_lock import assert_trading_unlocked, TradingLocked
+    try:
+        assert_trading_unlocked("place", broker="schwab", account=None,
+                                caller="brokers.broker_entry_pilot.request_route")
+    except TradingLocked as _tl:
+        return _tl.payload()
     if trade:
         applied = apply_route_trade(proposal_id, trade)
         if not applied.get("ok"):
@@ -374,6 +385,12 @@ def persist_route_result(proposal_id: int, submit_res: dict, intent) -> None:
 
 def confirm_and_submit(intent_id: str) -> dict:
     """Step 2 after 2FA: submit bracket + persist linkage. Caller must verify approval first."""
+    from lib.trading_lock import assert_trading_unlocked, TradingLocked
+    try:
+        assert_trading_unlocked("place", broker="schwab", account=None,
+                                caller="brokers.broker_entry_pilot.confirm_and_submit")
+    except TradingLocked as _tl:
+        return _tl.payload()
     intent = load_intent(intent_id)
     if intent is None:
         return {"ok": False, "error": "no queue-entry intent for that id (expired?)"}
