@@ -2194,6 +2194,9 @@ GATES = [
             "tests/test_agents_policy_5_2_0_validation.py",
             # AGENTS.md 7.0.0 (PROPOSED 2026-10-14): §23.20 advisory market-data lanes + dispatcher sender gate.
             "tests/test_agents_policy_7_0_0_advisory_market_data.py",
+            # AGENTS.md 10.0.0 (PROPOSED 2026-10-14): §23.23 n8n is the automation fabric (flow in n8n, authority on
+            # the host); §23.1/§23.11/§24.1 marked superseded in place; §0/§2/§2A/§7A/§17/§22/§23.14 pinned.
+            "tests/test_agents_policy_10_0_0_n8n_fabric.py",
             "tests/test_trading_session_grant_20260925.py",
             "tests/test_operator_approval_workflow_docs.py",
         ],
