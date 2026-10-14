@@ -220,10 +220,29 @@ def test_kwargs_reach_every_attempt_so_the_gate_is_not_bypassed():
 # ── the root cause that made this necessary ─────────────────────────────────
 
 def test_the_proxy_default_model_is_one_the_account_accepts():
-    """gpt-5.4 was the default and 400s on this account. Probed 2026-09-05:
-    gpt-5.5 and gpt-5.4-mini are the two that work."""
+    """gpt-5.4 was the default and 400'd (2026-09-05); then gpt-5.5 and gpt-5.4-mini 400'd too (2026-10-14).
+    gpt-6.1-sol answers. The default must be it, and no retired slug may be hard-coded as accepted."""
     src = (ROOT / "scripts" / "chatgpt_oauth_proxy.py").read_text(encoding="utf-8")
-    assert 'CHATGPT_PROXY_MODEL", "gpt-5.5"' in src
-    for rejected in ('"gpt-5.4"', '"gpt-5.3-codex"', '"gpt-5-codex"'):
+    assert 'CHATGPT_PROXY_MODEL", "gpt-6.1-sol"' in src
+    for rejected in ('"gpt-5.5"', '"gpt-5.4-mini"', '"gpt-5.4"', '"gpt-5.3-codex"', '"gpt-5-codex"'):
         assert f"MODELS = [{rejected}" not in src
-    assert 'MODELS = ["gpt-5.5", "gpt-5.4-mini"]' in src
+
+
+def test_a_retired_requested_slug_is_served_by_the_default(monkeypatch):
+    """Callers still ask for gpt-5.5; with it out of MODELS the proxy substitutes DEFAULT_MODEL (2026-10-14)."""
+    import importlib
+    import sys
+
+    monkeypatch.delenv("CHATGPT_PROXY_MODEL", raising=False)
+    monkeypatch.delenv("CHATGPT_PROXY_MODELS", raising=False)
+    sys.path.insert(0, str(ROOT / "scripts"))
+    sys.modules.pop("chatgpt_oauth_proxy", None)
+    proxy = importlib.import_module("chatgpt_oauth_proxy")
+    assert proxy.DEFAULT_MODEL == "gpt-6.1-sol" and proxy.MODELS == ["gpt-6.1-sol"]
+    assert "gpt-5.5" not in proxy.MODELS
+    monkeypatch.setenv("CHATGPT_PROXY_MODEL", "x-new")
+    monkeypatch.setenv("CHATGPT_PROXY_MODELS", "y-other")
+    sys.modules.pop("chatgpt_oauth_proxy", None)
+    proxy = importlib.import_module("chatgpt_oauth_proxy")
+    assert proxy.MODELS == ["x-new", "y-other"]
+    sys.modules.pop("chatgpt_oauth_proxy", None)
