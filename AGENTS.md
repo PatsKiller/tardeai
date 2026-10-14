@@ -5233,13 +5233,13 @@ none compliant in any area); the architecture review of 2026-10-14 (`~/n8n-matur
   `relay_log.jsonl`, `cc_auth_decisions.jsonl`). (5) Change: the workflow is generated from git, never edited in the
   UI, and the drift check (`scripts/check_n8n_workflow_drift.py`, E) runs on a schedule outside n8n and pages P1 on
   drift (P).
-- **Recovery.** (1) Retry has one owner: the Run Lane sub-workflow once it exists (P, Build 1), until then the host
+- **Recovery.** (1) Retry has one owner: the Run Lane sub-workflow once it is served (P; Build 1, PR #1739), until then the host
   retry policy (E: `scripts/lib/n8n_due.py`, `retryOnFail` on generic HTTP nodes). (2) Circuit breaker with half-open
   (E: ledger `breakers`; P: half-open, WS1-05). (3) Fallback: a declared rollback — the commented cron line or a
   command in `docs/ops/ROLLBACK_COMMANDS.md` (E). (4) Dead-letter: ledger `dead_letters` and `scripts/n8n_dlq.py` (E).
   (5) Manual recovery: a `runbook_id` resolving to `docs/runbooks/INCIDENT_RESPONSE.md` or a lane runbook (P). (6)
   Idempotency: a semantic effect key both schedulers respect before any live fire while another scheduler can run
-  the same work (P; `CANARY_DOUBLE_EFFECT_AUDIT.md` §4).
+  the same work (P; `CANARY_DOUBLE_EFFECT_AUDIT.md` §4; `effect_claim.py` in PR #1739).
 - **Security.** (1) AuthN: relay bearer with a rotation slot, gateway HMAC claim, header auth on any webhook (E). (2)
   AuthZ: the allowlist and its never-list, the relay live list and the registry agree on live authority — one live
   authority, reconciled (E: the three gates; P: the reconciler, WS1-07). (3) Secrets: the only n8n credential is the

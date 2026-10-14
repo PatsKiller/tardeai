@@ -42,7 +42,7 @@ section is the target every new workflow PR should already meet. The element-by-
 [gap assessment](N8N_GAP_ASSESSMENT_AND_MATURITY_REVIEW_20261014.md) §4.
 
 **Timer-only leaf-lane cutovers are frozen** under the proposed §23.23 migration rule until the Run Lane
-sub-workflow and the async run-outcome callback exist (Build 1, BRANCH-ONLY `n8nfab/phase1-primitives-20261014`)
+sub-workflow and the async run-outcome callback exist (Build 1, PR-OPEN #1739, head `25e19cef9`; operator packet `docs/ops/packets/n8n-fabric-phase1-20261014/`)
 and 10.0.0 is ACTIVE. New work is a business process, consolidated on the host first (WS2 families).
 
 Every new or changed workflow PR carries, in its description, a filled framework card:

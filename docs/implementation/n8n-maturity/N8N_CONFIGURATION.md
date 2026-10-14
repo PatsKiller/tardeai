@@ -40,11 +40,11 @@ This is the single reference for how n8n is configured on this host, and the ent
 |---|---|---|
 | Role | the automation fabric: n8n owns FLOW (sequencing, dependencies, events, retries via one Run Lane sub-workflow, error workflows, approval timelines, escalation timers, LLM judgment steps) | "a scheduler and a requester, never an authority": 16 active workflows, all schedule-started, calling the relay |
 | Authority | host: allowlist, live/dry, idempotency, secrets, ledger, comms chokepoint | same — and that part is LIVE |
-| Retries / DLQ / breakers | n8n Run Lane sub-workflow (Build 1, **BRANCH-ONLY, in progress**) | host: `scripts/lib/n8n_due.py` + ledger `breakers` / `dead_letters` |
-| Run outcome | async `RunReceipt@v1` callback to n8n (Build 1, BRANCH-ONLY) | n8n learns "accepted", never "finished" (WS1b-04) |
-| LLM steps | `/v1/llm_step` on the governed bridge (Build 2, **PR-OPEN #1738**, OFF by default) | none in n8n; LLM calls happen inside host lanes |
+| Retries / DLQ / breakers | n8n Run Lane sub-workflow (Build 1, **PR-OPEN #1739**, head `25e19cef9`) | host: `scripts/lib/n8n_due.py` + ledger `breakers` / `dead_letters` |
+| Run outcome | `run_outcomes` contract, gateway op `coordination/run_outcome`, relay `GET /run_outcome` (Build 1, PR-OPEN #1739) | n8n learns "accepted", never "finished" (WS1b-04) |
+| LLM steps | `/v1/llm_step` on the governed bridge (Build 2, **PR-OPEN #1738**, head `3c67b55d0`, OFF by default) | none in n8n; LLM calls happen inside host lanes |
 | Approvals | n8n Wait = request; authority = host record | `tradeai-approval-router` exists, **inactive** |
-| Error workflows | on every workflow | 6 of 16 |
+| Error workflows | on every workflow; Build 1 (PR-OPEN #1739) adds an error workflow → comms/intent (queued only, DIGEST-only routes, deduped and capped) | 6 of 16 |
 | Successful executions | saved with `run_id` | not saved (`EXECUTIONS_DATA_SAVE_ON_SUCCESS=none`) |
 
 The gap between the two columns is the program. Until 10.0.0 is ratified and Build 1 lands, timer-only leaf-lane
@@ -101,7 +101,7 @@ assessment §4.
 | | fallback | rollback path declared (cron line kept commented; `ROLLBACK_COMMANDS.md`) | E |
 | | dead-letter | ledger `dead_letters`; `scripts/n8n_dlq.py` | E |
 | | manual recovery | runbook id per workflow; `docs/runbooks/INCIDENT_RESPONSE.md` | P |
-| | idempotency | semantic effect key both runners respect (`CANARY_DOUBLE_EFFECT_AUDIT.md` §4) | P (Build 1) |
+| | idempotency | semantic effect key both runners respect (`CANARY_DOUBLE_EFFECT_AUDIT.md` §4) | P (Build 1 `effect_claim.py`, owner-epoch fence, PR-OPEN #1739) |
 | Security | authN | relay bearer (rotation slot), gateway HMAC claim, webhook header auth | E |
 | | authZ | `config/n8n_run_allowlist.json` + never-list; relay live list; `check_n8n_activation_grants.py` | E |
 | | secrets | no broker/messaging credential in n8n; `N8N_BLOCK_ENV_ACCESS_IN_NODE=true`; community packages off; pinned image | E |

@@ -46,7 +46,7 @@ schema and behaviour-field scan → 10 `_tradeai` provenance and `ProviderReques
 | §23.4: caller identity bound to the credential | `TRADEAI_BRIDGE_CALLER_AUTH` defaults to `report`; the header is self-asserted | POLICY-ONLY |
 | §23.4: a refused call is queued by `llm_deferral` | the bridge has no deferral code; deferral is in `llm_consumption.gate_and_generate` and armed only where `LLM_DEFER_OFFPEAK=1` | POLICY-ONLY at the bridge |
 | §2A: one sanitising egress point | sanitiser runs in report mode; messages leave unchanged | POLICY-ONLY |
-| §23.23: `/v1/llm_step`, closed schema, `LlmStepAudit@v1` joined by `run_id` ↔ `execution_id` | PR-OPEN #1738 | PR-OPEN |
+| §23.23: `/v1/llm_step`, closed schema, `LlmStepAudit@v1` joined by `run_id` ↔ `execution_id` | PR-OPEN #1738 (head `3c67b55d0`), OFF by default | PR-OPEN |
 | §23.23: AI Agent node only with the bridge-backed credential | `N8N_DISABLED_MODULES` includes `agents`; AI nodes excluded | PLANNED |
 
 ### 0.4 n8n and LLMs today

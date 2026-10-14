@@ -13,8 +13,10 @@ _Last updated: 2026-09-13 (data-source health decay view; prior 2026-08-08)_
 > (`config_documents`, key `health_agent_policy`) before the file. **#1737** (merged `a1b1c5c93`) removed the three
 > remediation-map entries that ran `unified_stop_supervisor.py --apply` (`stops_stale`, `log_errors`,
 > `execution_log_errors`; WS7-09) and bans broker-class scripts from the map
-> (`tests/test_health_agent_no_broker_remediation_20261014.py`); it is MERGED-NOT-SERVED as a release, but the served
-> release's policy file was replaced in place at 18:11 ET with the merged version (see
+> (`tests/test_health_agent_no_broker_remediation_20261014.py`); it is MERGED-NOT-SERVED as a release. As incident
+> containment the operator ran a `config-write` grant script (grants `96a0ab8c`, `d3a80ca0`) that edited the served
+> release's policy file in place at 18:11 ET to the merged content, so the effect is live and #1737 makes it durable
+> once released (release-immutability finding:
 > `docs/implementation/n8n-maturity/N8N_GAP_ASSESSMENT_AND_MATURITY_REVIEW_20261014.md` §6). **#1733** (LIVE) adds a
 > `schwab_token_revoked` finding while Schwab access is paused. The health agent effectively never pages (WS3-26); the
 > paging path is `incident_notifier.py` (`docs/ALERT_INCIDENT_RESOLUTION.md` "Alerting framework").

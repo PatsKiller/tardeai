@@ -55,7 +55,7 @@ within 3 days of RESOLVED (§7).
 | Trading code misbehaving | once #1734 is served: create the PANIC file `~/.local/state/tradeai/TRADING_LOCKED` (locks every broker write; `docs/runbooks/TRADING_LOCK.md`) | writing the unlock file for anyone |
 | Alert plane down | verify on the phone; read `incident_notifier_last.json`, `notification_intent_receipts.jsonl`; restart the notifier's dependency, not the notifier's rules | raising caps or muting categories to "make it quiet" |
 | n8n stalled or wrong | deactivate the workflow (packet, `cron` grant); uncomment the lane's `# RETIRED … n8n-cutover` cron line (`docs/ops/ROLLBACK_COMMANDS.md`) | editing a workflow in the n8n UI |
-| Bad release | `bash scripts/cio_phase2_exact_main_deploy.sh rollback` (release grant) | hot-patching files inside a release directory (it happened 2026-10-14 18:11; see gap assessment §6) |
+| Bad release | `bash scripts/cio_phase2_exact_main_deploy.sh rollback` (release grant) | an agent editing files inside a release directory. A containment edit there is an operator decision under a `config-write` grant, recorded in the incident timeline and followed by a release that makes it durable (2026-10-14 18:11, grants `96a0ab8c`/`d3a80ca0`, made durable by #1737; gap assessment §6) |
 | Secret exposure | rotate (`docs/runbooks/KEY_ROTATION.md`); agents never read or copy the credential (§24.7) | pasting values anywhere |
 | Disk / DB | `docs/runbooks/DB_RETENTION.md`, `docs/runbooks/DB_HANG_PREVENTION.md`; ENOSPC opens ledger breakers that need release | deleting data (§0 rule 6: archive) |
 

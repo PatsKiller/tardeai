@@ -295,8 +295,9 @@ Answer every line with evidence (a command output, a receipt path, a PR link) be
 **A. Identity and release**
 - [ ] The change is merged on `main`; the candidate SHA has green push-to-main CI (step 4).
 - [ ] After promote, `curl -s 127.0.0.1:7777/v3/build-meta.json` names the SHA (step 6); the change is **LIVE**, not
-      MERGED-NOT-SERVED. Nothing was edited inside a release directory (the 2026-10-14 18:11 hot-patch of
-      `config/health_agent_policy.json` is the counter-example).
+      MERGED-NOT-SERVED. Nothing was edited inside a release directory; if an operator containment edit was made
+      there (2026-10-14 18:11, `config/health_agent_policy.json`, `config-write` grants `96a0ab8c`/`d3a80ca0`), this
+      release must carry the same content so served identity and running files agree again.
 - [ ] Bound units restarted onto CURRENT (step 7); `systemctl --user --failed` empty.
 
 **B. Safety rails**

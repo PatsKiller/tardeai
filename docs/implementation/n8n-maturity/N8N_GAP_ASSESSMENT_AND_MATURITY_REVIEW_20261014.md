@@ -38,10 +38,10 @@ A capability that is LIVE in code but switched off at runtime is written "LIVE (
 | #1733 Schwab paused → fail loud | **LIVE** | `config/schwab_access_mode.yaml` (`mode: forbidden`), `scripts/lib/schwab_access_mode.py`, `stop_health_check._schwab_unavailable_alert` (P1), health agent `schwab_token_revoked` |
 | #1735 CC Tailscale identity auth | **LIVE (code), report_only (runtime)** | `config/cc_auth.yaml` `enforce: true, report_only: true`. Enforced in every mode: secret writes 403 (`/api/v2/admin/secrets`), CSRF hard routes, 42 step-up method+path pairs refused ("TOTP unlock not yet enabled"). Not done: operator packet `docs/ops/packets/cc-tailscale-identity-20261014/` (service token file absent; `tailscale serve` still proxies to `localhost:7777`, not the unix socket); 1,681 `would_deny` rows in `~/.local/state/tradeai/cc_auth_decisions.jsonl` |
 | #1734 trading read-only lock | **MERGED-NOT-SERVED** (`21692c038`) | `scripts/lib/trading_lock.py` absent from CURRENT; release `a1b1c5c93-…-183100` prepared 18:32, not promoted. Default once served: LOCKED (no unlock file) |
-| #1737 health agent: no broker remediation | **MERGED-NOT-SERVED as a release; its policy file is hot-patched into the served release** | CURRENT `config/health_agent_policy.json` mtime 18:11 ET (after the 17:18 build) equals `a1b1c5c93`; `git show 3e9dc5e14:` copy still has the `unified_stop_supervisor.py --apply` map entries. Released directories are meant to be immutable — see §6 item 1 |
+| #1737 health agent: no broker remediation | **MERGED-NOT-SERVED as a release; effect LIVE by operator containment** | As incident containment, the operator ran a `config-write` grant script (grants `96a0ab8c`, `d3a80ca0`) that edited CURRENT's `config/health_agent_policy.json` in place, on purpose (mtime 18:11 ET, after the 17:18 build; content now equals `a1b1c5c93`; the `git show 3e9dc5e14:` copy still has the `unified_stop_supervisor.py --apply` map entries). #1737 makes the change durable once released. The release-immutability concern stays a finding — §6 item 1 |
 | AGENTS policy | **7.0.0 ACTIVE**; 10.0.0 MERGED-AS-PROPOSED (#1736, `3e9dc5e14`), not ratified | AGENTS.md header; 10.0.0 version row PENDING |
-| Build 2 — governed bridge OAuth transports + `/v1/llm_step` | **PR-OPEN #1738** (head `9c11ed5c2`), OFF by default (`CIO_BRIDGE_OAUTH_TRANSPORTS` unset) | `gh pr view 1738` |
-| Build 1 — run-outcome contract, effect key, Run Lane sub-workflow, error workflow, generator node enablement | **BRANCH-ONLY, IN PROGRESS** (`n8nfab/phase1-primitives-20261014`) | local branch at `3e9dc5e14` with no commits of its own at 18:40 ET; not on origin |
+| Build 2 — governed bridge OAuth transports + `/v1/llm_step` | **PR-OPEN #1738** (head `3c67b55d0`), OFF by default (`CIO_BRIDGE_OAUTH_TRANSPORTS` unset) | `gh pr view 1738` |
+| Build 1 — fabric phase-1 primitives | **PR-OPEN #1739** (head `25e19cef9`, branch `n8nfab/phase1-primitives-20261014`) | `gh pr view 1739`. Contains: the `run_outcomes` contract with gateway op `coordination/run_outcome` and relay `GET /run_outcome`; `effect_claim.py` (owner-epoch fence, empty lane list, CLI); the Run Lane sub-workflow and the error workflow → comms/intent (queued only, DIGEST-only routes, deduped and capped); the fabric generator allowlist plus an `INDEX.json` graph-hash manifest with `--verify`; operator packet `docs/ops/packets/n8n-fabric-phase1-20261014/`. Nothing of it is merged or served |
 
 ## 2. n8n: what it is today vs the target
 
@@ -147,7 +147,7 @@ fail fleet-wide: successes are not saved (L1), the n8n DB role is superuser (S5)
 - **r1** retry — E on generic HTTP nodes (`retryOnFail`) plus the host `config/n8n_retry_policies.json`; per-lane
   workflows have none. **r2** breaker — E (ledger `breakers`; no half-open, WS1-05). **r4** DLQ — E (ledger
   `dead_letters`, `scripts/n8n_dlq.py`). No workflow names a manual-recovery runbook. The Run Lane sub-workflow
-  and the async run-outcome callback are BRANCH-ONLY (Build 1).
+  and the async run-outcome callback are PR-OPEN (Build 1, #1739).
 - **s1** authN — E: relay bearer (`httpHeaderAuth` credential `tradeai-run-relay`, previous-bearer rotation), gateway
   HMAC claim. **s2** authZ — E: `config/n8n_run_allowlist.json` (96 lanes, never-list) + relay live list. **s3**
   secrets — E: one credential; `N8N_BLOCK_ENV_ACCESS_IN_NODE=true`; no broker or messaging credential; community
@@ -221,15 +221,18 @@ Risk = likelihood × impact for money or for the operator being told: **CRITICAL
 | No `trade_ai` restore ever drilled (n8n drill passes weekly) | HIGH | WS6-07; `config/backup_coverage_manifest.json` "NEVER DRILLED"; `n8n_lab_restore_drill_last.json` 10-11 ok |
 | No incident lifecycle (record, roles, severity, postmortem) | HIGH | WS8-01 — answered by [`docs/runbooks/INCIDENT_RESPONSE.md`](../../runbooks/INCIDENT_RESPONSE.md) (procedure only) |
 | Broker orders the host did not place are invisible | CRITICAL | WS8-02 |
-| Release friction leaves money-risk fixes unserved; a fix hot-patched into a release directory | HIGH | WS8-04; §1 #1737 |
+| Release friction leaves money-risk fixes unserved; a containment fix applied in place inside a release directory | HIGH | WS8-04; §1 #1737 |
 | Production executes the dev tree | HIGH | WS7-01 |
 | Registry "live" ≠ runtime live (11 canary rows run dry) | HIGH | §2 |
 
 ## 6. Documented functionality that does not exist (or is not running)
 
-1. **Release immutability.** The deploy runbook treats a release directory as immutable; on 10-14 at 18:11 ET the
-   served release's `config/health_agent_policy.json` was changed in place to the #1737 version. The effect
-   (no stop supervisor via remediation) is live; the release identity says 3e9dc5e14.
+1. **Release immutability.** The deploy runbook treats a release directory as immutable. On 10-14 at 18:11 ET, as
+   deliberate incident containment, the operator ran a `config-write` grant script (grants `96a0ab8c`, `d3a80ca0`)
+   that edited the served release's `config/health_agent_policy.json` in place to the #1737 content. The effect (no
+   stop supervisor via remediation) is live, and #1737 makes it durable once released; but until then the served
+   release identity (3e9dc5e14) does not describe the file that runs. The finding is the mechanism, not the decision:
+   there is no recorded, release-identity-preserving way to apply a containment change.
 2. **Canary-live lanes** — 11 registry rows say `live`; they run `dry_run` (§2).
 3. **Drift pages P1** (§23.23, PROPOSED) and **the drift check** — the checker exists, is not scheduled, writes no
    receipt.
@@ -286,14 +289,15 @@ this refresh changes no finding status, so they stand. The framework compliance 
 
 **MUST, before any further migration (ordered):**
 
-1. Promote `a1b1c5c93` (serves #1734 and #1737) and record the 18:11 hot-patch in the release log — owner:
+1. Promote `a1b1c5c93` (serves #1734 and #1737) and record the 18:11 containment edit in the release log — owner:
    operator (release grant naming the SHA).
 2. Execute the CC auth packet (`docs/ops/packets/cc-tailscale-identity-20261014/`) and flip `report_only` off.
 3. Reconcile live authority: one source for "live" (registry vs relay list vs allowlist `live_arg`); until then the
    registry rows of the 11 dry-running canary lanes say what they do (WS1-07).
 4. Archive the three superseded shadow workflows (approved 10-10; one `cron` grant).
-5. Ratify or reject 10.0.0 (§23.23) and 11.0.0 (§23.24); land Build 1 (Run Lane, run-outcome callback, error
-   workflow on every workflow, effect key) and the framework check `scripts/check_n8n_workflow_framework.py`
+5. Ratify or reject 10.0.0 (§23.23) and 11.0.0 (§23.24); review and land Build 1 (PR #1739: Run Lane, run-outcome
+   contract, error workflow, effect claim) and Build 2 (PR #1738), then put an error workflow on every workflow and
+   build the framework check `scripts/check_n8n_workflow_framework.py`
    (PROPOSED in §23.24).
 6. Host dead-man outside n8n and an off-box dead-man + second channel (WS1-15, WS3-18, WS3-20).
 7. UPS and a cold-boot drill; first `trade_ai` restore drill (WS8-06, WS6-07).

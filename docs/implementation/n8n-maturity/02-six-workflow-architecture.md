@@ -59,7 +59,7 @@ record of the six generic workflows; what was built from it is in [`N8N_CONFIGUR
 
 | Layer | Target owner | Distance today |
 |---|---|---|
-| Flow (sequence, dependencies, events, retries, approvals, escalation timers, LLM judgment steps) | n8n | 0 sub-workflows, 0 approval waits, 0 AI nodes; Run Lane + run-outcome callback BRANCH-ONLY (Build 1) |
+| Flow (sequence, dependencies, events, retries, approvals, escalation timers, LLM judgment steps) | n8n | 0 sub-workflows, 0 approval waits, 0 AI nodes; Run Lane, run-outcome contract, error workflow and effect claim PR-OPEN (Build 1, #1739) |
 | Authority, execution, evidence | host | in place (the part to keep) |
 | LLM judgment | governed bridge `/v1/llm_step`, closed schema | PR-OPEN #1738, OFF by default |
 | Money | broker gateway (read projections) + execution service behind the trading lock and a per-order operator assertion | gateway PLANNED (9.0.0 §23.22, branch-only); lock MERGED-NOT-SERVED |
