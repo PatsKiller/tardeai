@@ -84,6 +84,7 @@ def _s2320() -> str:
 
 
 def test_header_row_and_status_constant_agree():
+    assert _control("Status") == "ACTIVE" and _control("Effective-Date") == "2026-10-14"
     status = _row().group(1)
     if _control("Policy-Version") == "7.0.0":
         assert _control("Status") == status and _control("Supersedes") == "5.1.0"
@@ -98,6 +99,9 @@ def test_row_waits_for_the_operator_and_names_the_enforcement():
     if status == "PROPOSED":
         assert "PENDING" in rest and f"{TOKEN} <pr_number> <head_sha>" in rest
         assert not re.search(r"\brides?\b", rest, re.I)
+    else:  # ratified 2026-10-14: PR #1725 comment by PatsKiller 2026-10-14T14:54:21Z
+        assert re.search(rf"{TOKEN} 1725 73eebc5c1", rest), "ACTIVE 7.0.0 row must record token, PR and sha"
+        assert "2026-10-14T14:54:21Z" in rest and "merged #1725 as" in rest
     for frag in ("Operator-directed 2026-10-14", "§23.20", "advisory_lane_guard.py",
                  "tests/test_agents_policy_7_0_0_advisory_market_data.py", "§23.14 byte-identical"):
         assert frag in rest, frag
@@ -105,7 +109,7 @@ def test_row_waits_for_the_operator_and_names_the_enforcement():
 
 def test_banner_section_and_23_3_bullet():
     banner = _flat(AGENTS[AGENTS.index("**7.0.0 is "): AGENTS.index("**5.2.0 is ")])
-    for frag in ("PROPOSED (MAJOR)", "Why MAJOR", "level 2 on moomoo no trading", "ADVISORY_MD_STATUS",
+    for frag in ("ACTIVE (MAJOR)", "Ratified by the operator 2026-10-14", f"{TOKEN} 1725 73eebc5c1", "Why MAJOR", "level 2 on moomoo no trading", "ADVISORY_MD_STATUS",
                  "not by analogy", f"{TOKEN} <pr_number> <head_sha>", "Supersedes` is the last ACTIVE version, 5.1.0"):
         assert frag in banner, frag
     sec = _s2320()
@@ -115,9 +119,9 @@ def test_banner_section_and_23_3_bullet():
                  "build_child_env", "shrink-only baseline", "§23.14 is unchanged"):
         assert frag in sec, frag
     s233 = AGENTS[AGENTS.index("## 23.3 "): AGENTS.index("## 23.4 ")]
-    assert "**Exception (7.0.0, PROPOSED) — §23.20 advisory market-data lanes.**" in s233
+    assert "**Exception (7.0.0) — §23.20 advisory market-data lanes.**" in s233
     assert "It is the second and last class that may" in _flat(s233)
-    assert "Second exception class, PROPOSED until APPROVE_AGENTS_POLICY_7_0_0" in ALLOW["never"]
+    assert "Second exception class (AGENTS.md 7.0.0 §23.20, ACTIVE: APPROVE_AGENTS_POLICY_7_0_0 1725 73eebc5c1)" in ALLOW["never"]
     assert "Sole exception: trade-ai-scalp-live" in ALLOW["never"]
 
 
@@ -274,6 +278,9 @@ def test_admission_refuses_while_proposed_and_admits_once_active():
     assert _admit(_premarket_row(), entry) == (True, "advisory_md_admitted")
     if LD.ADVISORY_MD_STATUS == "PROPOSED":
         assert LD.dispatch_eligible(_premarket_row()) == (False, "keep_on_cron")
+    else:  # ACTIVE: the ceiling lane's KEEP_ON_CRON verdict is lifted by name; any other lane keeps it
+        assert LD.dispatch_eligible(_premarket_row()) == (True, "eligible")
+        assert LD.dispatch_eligible(dict(_premarket_row(), lane_id="not-in-ceiling")) == (False, "keep_on_cron")
 
 
 @pytest.mark.parametrize("mutate,why", [

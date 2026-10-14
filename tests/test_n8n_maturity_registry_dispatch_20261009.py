@@ -436,6 +436,10 @@ def test_1597_stay_on_cron_and_keep_on_cron_rows_never_eligible():
     assert len(stay) >= 60 and len(keep) >= 120
     for row in rows:
         live = dict(row, dispatch=copy.deepcopy(GOOD_DISPATCH))
+        if row["lane_id"] in LD.ADVISORY_MARKET_DATA_LANES and LD.ADVISORY_MD_STATUS == "ACTIVE":
+            # AGENTS 7.0.0 §23.20 (ratified 2026-10-14): the ceiling lanes' KEEP_ON_CRON verdict is lifted by name;
+            # admission is then advisory_md_admission + advisory_md_static_errors (pinned in the 7.0.0 test).
+            continue
         assert LD.dispatch_eligible(live, exceptions={})[0] is False, row["lane_id"]
         if row["lane_id"] in LD.load_policy_exceptions():
             continue  # AGENTS 4.0.0 §23.3 exception; pinned in the scalp tests below
