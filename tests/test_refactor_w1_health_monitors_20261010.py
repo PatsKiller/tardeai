@@ -298,12 +298,15 @@ def _run_yt(monkeypatch, argv, *, sent, sent_kw=None):
 
 @pytest.fixture
 def no_cookie(monkeypatch, tmp_path):
-    # COOKIE resolves from the script's PROJECT_ROOT; point the check at an absent file.
+    # Canonical jar -> an absent tmp file (TRADEAI_YOUTUBE_COOKIE_FILE); the legacy release-tree
+    # fallback resolves from the script's PROJECT_ROOT, so hide that one too.
     import pathlib
 
-    real = pathlib.Path.exists
+    monkeypatch.setenv("TRADEAI_YOUTUBE_COOKIE_FILE", str(tmp_path / "absent" / "youtube_cookies.txt"))
+    real_exists, real_is_file = pathlib.Path.exists, pathlib.Path.is_file
     target = str(ROOT / "config" / "youtube_cookies.txt")
-    monkeypatch.setattr(pathlib.Path, "exists", lambda self: False if str(self) == target else real(self))
+    monkeypatch.setattr(pathlib.Path, "exists", lambda self: False if str(self) == target else real_exists(self))
+    monkeypatch.setattr(pathlib.Path, "is_file", lambda self: False if str(self) == target else real_is_file(self))
 
 
 def test_youtube_dry_run_neither_sends_nor_writes_receipt(monkeypatch, state_root, no_cookie, capsys):

@@ -179,7 +179,7 @@ export default function SystemHub({ onDrill }: Props) {
                   const degraded = yc.status === 'red' || yc.status === 'amber'
                   return (
                     <div ref={ytPanelRef} style={{ marginBottom: 8 }}>
-                      <div title={`${yc.detail ?? ''}${yc.refreshed ? ' · refreshed ' + new Date(yc.refreshed).toLocaleString() : ''}`}
+                      <div title={`${yc.detail ?? ''}${yc.refreshed ? ' · refreshed ' + new Date(yc.refreshed).toLocaleString() : ''}${yc.path ? ' · ' + yc.path + ' (' + (yc.location ?? '?') + ')' : ''}`}
                         style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 6px', borderRadius: 'var(--radius-sm)', background: scBg, border: `1px solid ${sc}` }}>
                         <span style={{ fontSize: 10, color: 'var(--text2)', display: 'flex', alignItems: 'center', gap: 6 }}>
                           <span style={{ width: 10, height: 10, borderRadius: '50%', background: sc }} />
@@ -196,7 +196,7 @@ export default function SystemHub({ onDrill }: Props) {
                       {ytOpen && (
                         <div style={{ marginTop: 6, padding: 8, borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'var(--bg0)' }}>
                           <div style={{ fontSize: 10, color: 'var(--text2)', marginBottom: 6, lineHeight: 1.35 }}>
-                            Paste Netscape <code style={{ fontSize: 10 }}>cookies.txt</code> from a logged-in youtube.com session, or upload the file. Host validates AUTH cookies and atomically replaces <code style={{ fontSize: 10 }}>config/youtube_cookies.txt</code>. n8n never writes this file.
+                            Paste Netscape <code style={{ fontSize: 10 }}>cookies.txt</code> from a logged-in youtube.com session, or upload the file. Host validates AUTH cookies and atomically replaces <code style={{ fontSize: 10 }}>~/.config/tradeai/youtube_cookies.txt</code> (outside any release, mode 600 — survives promotes). n8n never writes this file.
                           </div>
                           <textarea
                             value={ytText}

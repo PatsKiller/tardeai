@@ -117,9 +117,15 @@ def check_finviz() -> dict:
 
 def check_youtube_cookie() -> dict:
     """Check YouTube cookie validity."""
-    cookie_path = PROJECT_ROOT / "config" / "youtube_cookies.txt"
-    if not cookie_path.exists():
-        return {"name": "YouTube Cookie", "status": "missing", "error": "config/youtube_cookies.txt not found"}
+    try:  # canonical jar outside the release dir; legacy config/ fallback is flagged
+        from lib.youtube_cookie_path import CANONICAL_DISPLAY, resolve_cookie_path
+    except ImportError:  # pragma: no cover - imported as scripts.credential_monitor
+        from scripts.lib.youtube_cookie_path import CANONICAL_DISPLAY, resolve_cookie_path
+
+    res = resolve_cookie_path(PROJECT_ROOT)
+    cookie_path = res.path
+    if not res.exists:
+        return {"name": "YouTube Cookie", "status": "missing", "error": f"{CANONICAL_DISPLAY} not found"}
     try:
         import http.cookiejar
         jar = http.cookiejar.MozillaCookieJar(str(cookie_path))
@@ -130,6 +136,8 @@ def check_youtube_cookie() -> dict:
             return {"name": "YouTube Cookie", "status": "expired", "error": "No auth cookies — re-export from browser"}
         # Check cookie file age
         age_days = (datetime.now() - datetime.fromtimestamp(cookie_path.stat().st_mtime)).days
+        if res.is_legacy:
+            return {"name": "YouTube Cookie", "status": "warning", "error": res.legacy_warning()}
         if age_days > 14:
             return {"name": "YouTube Cookie", "status": "warning", "error": f"Cookie file is {age_days} days old — may need refresh"}
         return {"name": "YouTube Cookie", "status": "ok", "detail": f"{len(auth_cookies)} auth cookies, {age_days}d old"}

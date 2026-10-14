@@ -529,7 +529,12 @@ def _youtube_search(query: str, max_results: int = 5) -> list[dict]:
         return []
 
 
-COOKIE_PATH = PROJECT_ROOT / "config" / "youtube_cookies.txt"
+try:  # canonical jar lives outside the release dir; legacy config/ fallback (lib/youtube_cookie_path.py)
+    from lib.youtube_cookie_path import youtube_cookie_path as _youtube_cookie_path
+except ImportError:  # pragma: no cover - imported as scripts.<module>
+    from scripts.lib.youtube_cookie_path import youtube_cookie_path as _youtube_cookie_path
+
+COOKIE_PATH = _youtube_cookie_path(PROJECT_ROOT)
 
 
 def _load_cookie_session():

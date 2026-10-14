@@ -2223,11 +2223,18 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
                     _m = _v[:4] + "****" + _v[-4:] if len(_v) > 10 else "****"
                     _flds.append({"key": _k, "value": _v if _k in _SHOW else "", "masked": _m, "sensitive": _k in _SENS})
             # Inject YouTube cookie status as virtual field
-            _yt_ck = PROJECT_ROOT / "config" / "youtube_cookies.txt"
-            if _yt_ck.exists():
+            try:
+                from lib.youtube_cookie_path import resolve_cookie_path as _yt_resolve
+            except ImportError:  # pragma: no cover
+                from scripts.lib.youtube_cookie_path import resolve_cookie_path as _yt_resolve
+            _yt_res = _yt_resolve(PROJECT_ROOT)
+            _yt_ck = _yt_res.path
+            if _yt_res.exists:
                 _yt_lines = [l for l in _yt_ck.read_text().splitlines() if l.strip() and not l.startswith("#")]
                 _yt_auth = [l for l in _yt_lines if "SID" in l.split("\t")[-2] or "LOGIN" in l.split("\t")[-2]] if _yt_lines else []
                 _yt_val = f"LOADED ({len(_yt_lines)} cookies, {len(_yt_auth)} auth)"
+                if _yt_res.is_legacy:
+                    _yt_val += " — LEGACY release path, lost on next release; move to ~/.config/tradeai/youtube_cookies.txt"
             else:
                 _yt_val = "MISSING — bash scripts/setup_youtube_cookies.sh"
             _flds.append({"key": "YOUTUBE_COOKIE", "value": _yt_val, "masked": _yt_val, "sensitive": False})

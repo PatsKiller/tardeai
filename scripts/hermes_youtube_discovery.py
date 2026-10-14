@@ -6,7 +6,7 @@ rows). This adds the DISCOVERY half: for symbols Hermes is researching, use Sear
 engine to find relevant videos, fetch their transcripts (cookie-gated, via youtube_transcript_ingest),
 and stage a finding into hermes_research_intelligence so the content flows into curation → RAG.
 
-Cookie-gated: transcript fetch needs authenticated config/youtube_cookies.txt (see Pipeline tab
+Cookie-gated: transcript fetch needs authenticated ~/.config/tradeai/youtube_cookies.txt (see Pipeline tab
 stoplight). Kept small per run to avoid YouTube 429 rate-limiting.
 
     python3 scripts/hermes_youtube_discovery.py                    # dry-run (discover only)

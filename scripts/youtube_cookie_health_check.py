@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """YouTube cookie health check → Telegram alert.
 
-The YouTube auth cookies (config/youtube_cookies.txt) are the single blocker for ALL
+The YouTube auth cookies (~/.config/tradeai/youtube_cookies.txt; resolved by
+scripts/lib/youtube_cookie_path.py, legacy fallback config/youtube_cookies.txt) are the single blocker for ALL
 transcript ingestion, and they rotate/expire. When they go logged-out, ingestion silently
 returns 0 (it froze for 14 days before anyone noticed). This pings the operator on Telegram
 with the exact refresh steps when the cookies are missing/logged-out OR ingestion has gone stale.
@@ -13,6 +14,12 @@ Status mirrors the v3 Pipeline stoplight: red=logged-out, amber=authed-but-stale
     python3 scripts/youtube_cookie_health_check.py --no-send  # report only: receipt, no Telegram
     python3 scripts/youtube_cookie_health_check.py --dry-run  # report only: no Telegram, no receipt
 Cron: daily ~19:45 (after the 19:00 ingest).
+
+Cookie location (2026-10-14): the jar lives outside any release, at the canonical path
+``~/.config/tradeai/youtube_cookies.txt`` (``TRADEAI_YOUTUBE_COOKIE_FILE`` overrides). A jar found
+only at the legacy release path ``config/youtube_cookies.txt`` still authenticates but is AMBER —
+every promote builds a new release dir, so it will be lost on the next release. The status line
+and receipt name the path used (``cookie_path`` / ``cookie_location``).
 
 n8n refactor wave 1 (2026-10-10):
   * ``--no-send`` (alias ``--report``) computes and prints the status and writes the
@@ -31,7 +38,10 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
-COOKIE = PROJECT_ROOT / "config" / "youtube_cookies.txt"
+try:
+    from lib.youtube_cookie_path import CANONICAL_DISPLAY, resolve_cookie_path
+except ImportError:  # pragma: no cover - imported as scripts.youtube_cookie_health_check
+    from scripts.lib.youtube_cookie_path import CANONICAL_DISPLAY, resolve_cookie_path
 AUTH = {
     "SID",
     "HSID",
@@ -51,9 +61,9 @@ REFRESH_STEPS = (
     "  deep-link: /v3/system?tab=Pipeline&focus=youtube-cookies\n"
     "  paste or upload Netscape cookies.txt → Validate & write\n\n"
     "CLI fallback: export from a LOGGED-IN youtube.com tab and replace "
-    "config/youtube_cookies.txt:\n"
+    f"{CANONICAL_DISPLAY} (outside any release; chmod 600):\n"
     "• Chrome ext 'Get cookies.txt LOCALLY', or\n"
-    "• yt-dlp --cookies-from-browser chrome --cookies config/youtube_cookies.txt\n"
+    f"• yt-dlp --cookies-from-browser chrome --cookies {CANONICAL_DISPLAY}\n"
     "Must include auth cookies (e.g. SID / __Secure-1PSID / __Secure-3PSID / SAPISID / LOGIN_INFO).\n"
     "Then: .venv/bin/python scripts/youtube_transcript_ingest.py --all-channels\n\n"
     "n8n: MONITOR_ONLY — never fetch browser cookies or write this file."
@@ -87,10 +97,24 @@ def _auth_cookie_names(lines, *, now=None):
     return names & AUTH
 
 
-def _auth_cookie_count():
-    if not COOKIE.exists():
+def _auth_cookie_count(path):
+    if not path.exists():
         return None
-    return len(_auth_cookie_names(COOKIE.read_text().splitlines()))
+    return len(_auth_cookie_names(path.read_text().splitlines()))
+
+
+def classify(auth, age_h, location):
+    """(status, detail) — red: missing/logged-out; amber: legacy release path or stale; green: ok."""
+    if auth is None or auth == 0:
+        return "red", "cookie file missing or logged-out (0 auth cookies)"
+    if location == "legacy":
+        return "amber", (
+            f"authenticated ({auth} auth cookies) but read from the legacy release path "
+            f"config/youtube_cookies.txt — will be lost on next release; move to {CANONICAL_DISPLAY}"
+        )
+    if age_h is not None and age_h > STALE_H:
+        return "amber", f"authenticated but ingestion {round(age_h)}h stale"
+    return "green", f"authenticated ({auth} auth cookies), ingestion fresh"
 
 
 def _transcript_age_h():
@@ -155,16 +179,13 @@ def main():
             if ln and not ln.startswith("#") and "=" in ln and ln.split("=", 1)[0] not in os.environ:
                 os.environ[ln.split("=", 1)[0]] = ln.split("=", 1)[1]
 
-    auth = _auth_cookie_count()
+    res = resolve_cookie_path(PROJECT_ROOT)
+    auth = _auth_cookie_count(res.path) if res.exists else None
     age = _transcript_age_h()
-    if auth is None or auth == 0:
-        status, detail = "red", "cookie file missing or logged-out (0 auth cookies)"
-    elif age is not None and age > STALE_H:
-        status, detail = "amber", f"authenticated but ingestion {round(age)}h stale"
-    else:
-        status, detail = "green", f"authenticated ({auth} auth cookies), ingestion fresh"
+    status, detail = classify(auth, age, res.location)
 
     print(f"[cookie-health] {status.upper()}: {detail}")
+    print(f"[cookie-health] cookie path: {res.path} ({res.location})")
     always = "--always" in sys.argv
     dry_run = "--dry-run" in sys.argv
     no_send = dry_run or "--no-send" in sys.argv or "--report" in sys.argv
@@ -175,6 +196,8 @@ def main():
             "status": status,
             "detail": detail,
             "auth_cookies": auth,
+            "cookie_path": str(res.path),
+            "cookie_location": res.location,
             "transcript_age_h": None if age is None else round(age, 1),
             "would_send": would_send,
             "sent": False,

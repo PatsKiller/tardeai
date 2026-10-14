@@ -12,24 +12,43 @@
 #   Install "Get cookies.txt LOCALLY" Chrome extension
 #   Go to youtube.com (make sure you're logged in)
 #   Click the extension icon → Export → Save as youtube_cookies.txt
-#   Copy to: config/youtube_cookies.txt
+#   Copy to: ~/.config/tradeai/youtube_cookies.txt   (chmod 600)
 #
 # METHOD 3: Copy from another machine
 #   If you have a desktop/laptop where you're logged into YouTube,
 #   export cookies there and scp to the server:
-#   scp youtube_cookies.txt ms01-openclaw:~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/config/
+#   scp youtube_cookies.txt ms01-openclaw:.config/tradeai/youtube_cookies.txt
+#
+# LOCATION (2026-10-14): the cookie jar lives OUTSIDE any release or checkout, at
+# ~/.config/tradeai/youtube_cookies.txt (TRADEAI_YOUTUBE_COOKIE_FILE overrides) — the host's
+# durable operator-secret directory (same as broker_credentials.env). The old location
+# config/youtube_cookies.txt is inside the served release dir and is LOST at every promote.
+# Readers still fall back to it (flagged amber); scripts/lib/youtube_cookie_path.py resolves both.
 
 set -e
 PROJ="$(cd "$(dirname "$0")/.." && pwd)"
-COOKIE_FILE="$PROJ/config/youtube_cookies.txt"
+COOKIE_FILE="${TRADEAI_YOUTUBE_COOKIE_FILE:-$HOME/.config/tradeai/youtube_cookies.txt}"
+LEGACY_COOKIE_FILE="$PROJ/config/youtube_cookies.txt"
+mkdir -p "$(dirname "$COOKIE_FILE")"
+chmod 700 "$(dirname "$COOKIE_FILE")" 2>/dev/null || true
 
 echo "=== YouTube Cookie Setup ==="
 echo ""
 
+# A jar only at the legacy release path: tell the operator how to move it (never auto-moved).
+if [ ! -f "$COOKIE_FILE" ] && [ -f "$LEGACY_COOKIE_FILE" ]; then
+    echo "WARNING: cookie file found only at the LEGACY release path: $LEGACY_COOKIE_FILE"
+    echo "         It will be lost on the next release. Place it at the canonical path:"
+    echo "    install -m 600 -p \"$LEGACY_COOKIE_FILE\" \"$COOKIE_FILE\""
+    echo ""
+fi
+
 # Check if cookies already exist
-if [ -f "$COOKIE_FILE" ]; then
-    LINES=$(wc -l < "$COOKIE_FILE")
-    echo "Cookie file exists: $COOKIE_FILE ($LINES lines)"
+EXISTING=""
+if [ -f "$COOKIE_FILE" ]; then EXISTING="$COOKIE_FILE"; elif [ -f "$LEGACY_COOKIE_FILE" ]; then EXISTING="$LEGACY_COOKIE_FILE"; fi
+if [ -n "$EXISTING" ]; then
+    LINES=$(wc -l < "$EXISTING")
+    echo "Cookie file exists: $EXISTING ($LINES lines)"
     echo "To refresh: delete it and re-run this script"
     echo ""
     echo "Testing cookies..."
@@ -61,7 +80,8 @@ if command -v yt-dlp &>/dev/null; then
     TEMP_COOKIE="/tmp/yt-cookie-export-$$.txt"
     yt-dlp --cookies-from-browser chrome --cookies "$TEMP_COOKIE" --skip-download "https://www.youtube.com/watch?v=dQw4w9WgXcQ" 2>/dev/null
     if [ -f "$TEMP_COOKIE" ] && grep -q "SID\|LOGIN_INFO" "$TEMP_COOKIE" 2>/dev/null; then
-        cp "$TEMP_COOKIE" "$COOKIE_FILE"
+        install -m 600 "$TEMP_COOKIE" "$COOKIE_FILE"
+        rm -f "$TEMP_COOKIE"
         echo "Auth cookies exported to $COOKIE_FILE"
     elif [ -f "$TEMP_COOKIE" ]; then
         echo "WARNING: Exported cookies don't have SID/LOGIN_INFO — not using them"
@@ -87,13 +107,14 @@ else
     echo "  1. Install 'Get cookies.txt LOCALLY' Chrome extension"
     echo "  2. Go to youtube.com (logged in)"
     echo "  3. Click extension → Export"
-    echo "  4. Save as: $COOKIE_FILE"
+    echo "  4. Save as: $COOKIE_FILE   (then: chmod 600 $COOKIE_FILE)"
     echo ""
     echo "Option C: Export from another machine"
     echo "  On a machine with Chrome logged into YouTube:"
     echo "    pip install yt-dlp"
     echo "    yt-dlp --cookies-from-browser chrome --cookies youtube_cookies.txt --skip-download https://www.youtube.com/watch?v=dQw4w9WgXcQ"
     echo "    scp youtube_cookies.txt $(whoami)@$(hostname):$COOKIE_FILE"
+    echo "    ssh $(whoami)@$(hostname) chmod 600 $COOKIE_FILE"
 fi
 
 echo ""

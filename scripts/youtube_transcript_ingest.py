@@ -58,14 +58,20 @@ def _parse_transcript_entries(transcript) -> dict:
             "timed_segments": segments}
 
 
-COOKIE_PATH = PROJECT_ROOT / "config" / "youtube_cookies.txt"
+try:  # canonical jar lives outside the release dir; legacy config/ fallback (lib/youtube_cookie_path.py)
+    from lib.youtube_cookie_path import youtube_cookie_path as _youtube_cookie_path
+except ImportError:  # pragma: no cover - imported as scripts.<module>
+    from scripts.lib.youtube_cookie_path import youtube_cookie_path as _youtube_cookie_path
+
+COOKIE_PATH = _youtube_cookie_path(PROJECT_ROOT)
 
 def _load_cookie_session():
     """Load YouTube cookies from Netscape-format cookie file into a requests.Session.
 
-    Cookie file: config/youtube_cookies.txt (Netscape/Mozilla format)
+    Cookie file: ~/.config/tradeai/youtube_cookies.txt (Netscape/Mozilla format; legacy
+    fallback config/youtube_cookies.txt — see scripts/lib/youtube_cookie_path.py)
     Export from browser using: "Get cookies.txt LOCALLY" Chrome extension
-    or: yt-dlp --cookies-from-browser chrome --cookies config/youtube_cookies.txt
+    or: yt-dlp --cookies-from-browser chrome --cookies ~/.config/tradeai/youtube_cookies.txt
 
     Returns requests.Session with cookies loaded, or None if no cookie file.
     """
@@ -102,7 +108,7 @@ def _get_cookie_opener():
 
 def _fetch_timedtext(video_id: str) -> dict:
     """Fallback: fetch transcript via YouTube's timedtext XML endpoint.
-    Uses cookies from config/youtube_cookies.txt if available to bypass IP blocks."""
+    Uses cookies from ~/.config/tradeai/youtube_cookies.txt if available to bypass IP blocks."""
     import time, xml.etree.ElementTree as ET
     try:
         time.sleep(1)  # Rate limit protection
@@ -151,7 +157,7 @@ def _fetch_timedtext(video_id: str) -> dict:
         return {"error": "Captions empty", "text": "", "segments": 0, "duration_seconds": 0}
     except urllib.error.HTTPError as e:
         if e.code == 429:
-            cookie_hint = " (cookies loaded)" if COOKIE_PATH.exists() else " — add cookies: config/youtube_cookies.txt"
+            cookie_hint = " (cookies loaded)" if COOKIE_PATH.exists() else " — add cookies: ~/.config/tradeai/youtube_cookies.txt"
             return {"error": f"Rate limited (429){cookie_hint}", "text": "", "segments": 0,
                     "duration_seconds": 0, "rate_limited": True}
         return {"error": f"HTTP {e.code}", "text": "", "segments": 0, "duration_seconds": 0}
