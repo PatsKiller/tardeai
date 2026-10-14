@@ -35,6 +35,10 @@ os.environ["TRADEAI_AUDIT_LEDGER_DIR"] = _scratch("tradeai_audit_ledger_tests_")
 # to the live persistent store.
 os.environ["CIO_OPERATOR_ARTIFACTS_JSONL"] = os.path.join(
     _scratch("tradeai_operator_artifacts_tests_"), "cio_operator_artifacts.jsonl")
+# The committed Schwab pause switch (config/schwab_access_mode.yaml, operator 2026-10-14: mode forbidden) must not
+# decide what a test sees: every test runs in "normal" unless it sets TRADEAI_SCHWAB_ACCESS_MODE itself
+# (monkeypatch.setenv wins over this default).
+os.environ["TRADEAI_SCHWAB_ACCESS_MODE"] = "normal"
 # The host's Comms Editor mode file (live since the operator promoted it) must not decide what a test
 # sends: in live mode deliver_text holds the message, and test_plaintext_fallback_actually_unescapes_on_the_wire
 # failed on every host where the file says live. A test that exercises the editor sets its own mode.

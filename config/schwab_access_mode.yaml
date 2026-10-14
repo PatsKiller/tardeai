@@ -1,0 +1,10 @@
+# Schwab access mode — the operator's pause switch for every Schwab READ caller and status surface.
+# Read by scripts/lib/schwab_access_mode.py. Values:
+#   normal     — Schwab reads proceed as usual (the default when this file is absent)
+#   read_only  — reads proceed; surfaces show the mode (write paths are governed elsewhere, not by this file)
+#   forbidden  — the Schwab developer app is deactivated: readers SKIP Schwab with one INFO line, report
+#                "Schwab paused", and never treat cached data as live or a Schwab error as "all clear"
+# Operator deactivated the Schwab developer app ~15:00 ET 2026-10-14 (SPCX incident).
+mode: forbidden
+since: "2026-10-14T15:00:00-04:00"
+reason: "Schwab app deactivated by operator (incident 2026-10-14)"
