@@ -2182,6 +2182,8 @@ GATES = [
             "tests/test_agents_policy_5_1_0_notification_intents.py",
             # AGENTS.md 5.2.0 (PROPOSED 2026-10-11): §8.1 working = tests + dry run + forced run; natural fires monitored.
             "tests/test_agents_policy_5_2_0_validation.py",
+            # AGENTS.md 7.0.0 (PROPOSED 2026-10-14): §23.20 advisory market-data lanes + dispatcher sender gate.
+            "tests/test_agents_policy_7_0_0_advisory_market_data.py",
             "tests/test_trading_session_grant_20260925.py",
             "tests/test_operator_approval_workflow_docs.py",
         ],

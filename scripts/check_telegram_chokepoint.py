@@ -117,6 +117,11 @@ APPROVED_TOOLING = {
     "tests/test_desk_reply_delivery_20260914.py",
     "tests/test_m5_gate_coverage_20260923.py",
     "tests/test_telegram_operator_presentation.py",
+    # 2026-10-14 (AGENTS 7.0.0 §23.20 condition c): the advisory-lane static guard detects raw Bot API URLs in a
+    # lane's reach, and its test plants one in a tmp fixture to prove the detector can go red. Source parsing only
+    # (ast); neither file sends. Named individually, per this file's convention.
+    "scripts/lib/advisory_lane_guard.py",
+    "tests/test_agents_policy_7_0_0_advisory_market_data.py",
 }
 APPROVED = APPROVED_OUTBOUND | APPROVED_DELIVERY | APPROVED_INBOUND | APPROVED_TOOLING
 
