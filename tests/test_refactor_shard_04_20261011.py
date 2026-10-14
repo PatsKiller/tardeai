@@ -149,7 +149,7 @@ def test_shard04_allowlist_does_not_carry_broker_names():
     for entry in entries:
         if entry["lane_id"] not in own:
             continue
-        assert entry["live_arg"] is None
+        assert entry["live_arg"] is None or entry["lane_id"] in _CANARY_WAVE
         assert entry["dry_run_arg"] == ["--dry-run"]
         assert not any(any(token in name.upper() for token in
                            ("ALPACA", "SCHWAB", "MOOMOO", "BROKER", "IBKR", "ROBINHOOD"))
@@ -621,7 +621,9 @@ def test_shard04_dispatch_rows_obey_current_policy_and_lock_proof():
         assert validate_dispatch_block(row) == []
         assert row["dispatch"]["retry_policy"] == "none"
         assert row["output_signal"]["path"] == allow[row["lane_id"]]["output_signal"]
-        assert row["scheduler"]["stage"] == "shadow" and row["dispatch"]["mode"] == "dry_run"
+        assert (row["scheduler"]["stage"], row["dispatch"]["mode"]) in (
+            {("shadow", "dry_run"), ("canary", "live")} if row["lane_id"] in _CANARY_WAVE else {("shadow", "dry_run")}
+        )
 
 
 @pytest.mark.parametrize("script,args", [
@@ -719,3 +721,5 @@ def test_allowlist_preserves_exact_observed_cron_script_arguments():
             if token != "--apply":
                 observed.append(token)
         assert command[2:] == observed, row["lane_id"]
+
+from tests.test_canary_wave_20261014 import CANARY_WAVE_20261014 as _CANARY_WAVE  # noqa: E402  canary-wave-20261014

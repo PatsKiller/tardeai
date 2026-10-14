@@ -274,7 +274,7 @@ def test_own_allowlist_source_shape_and_no_broker_names():
             assert lane not in lanes, lane  # held: the owner's row wins, no allowlist entry
             continue
         entry = lanes[lane]
-        assert entry["live_arg"] is None and entry["dry_run_arg"] == ["--dry-run"]
+        assert (entry["live_arg"] is None or entry["lane_id"] in _CANARY_WAVE) and entry["dry_run_arg"] == ["--dry-run"]
         assert entry["env_evidence"] and entry["env_report_reason"]
         assert not any(any(t in n.upper() for t in ("ALPACA", "SCHWAB", "MOOMOO", "BROKER", "IBKR", "SNAPTRADE"))
                        for n in entry["env_names"])
@@ -316,3 +316,5 @@ def test_frozen_argv_matches_observed_cron_arguments():
         assert proof[lane]["command"][2:] == args
         actual_case = next(argv for case, _, argv in CASES if case == lane)
         assert actual_case == args
+
+from tests.test_canary_wave_20261014 import CANARY_WAVE_20261014 as _CANARY_WAVE  # noqa: E402  canary-wave-20261014

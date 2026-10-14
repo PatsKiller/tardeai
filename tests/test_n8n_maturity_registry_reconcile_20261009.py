@@ -124,6 +124,9 @@ def test_native_shadow_admissions_are_preserved_before_the_generated_suffix(resu
         if row["lane_id"] in native_ids | {"trade-ai-scalp-live"}:
             assert regenerated[row["lane_id"]] == row
             # momentum-cache-reconcile: operator returned it to shadow 2026-10-13 (relay refused live).
+            if row["lane_id"] == "trade-ai-scalp-live" and row["scheduler"]["stage"] == "canary":
+                assert row["dispatch"]["mode"] == "live"  # canary-wave-20261014
+                continue
             assert row["scheduler"]["stage"] == "shadow"
             assert row["dispatch"]["mode"] == "dry_run"
 

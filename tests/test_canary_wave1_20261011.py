@@ -139,7 +139,10 @@ def test_no_other_shadow_row_gained_a_live_argv():
     # heartbeat-watch is the n8n-native canary. momentum-cache-reconcile climbed to canary 2026-10-13 and the
     # operator returned it to shadow the same day (relay refused live, failing every dispatcher run);
     # research-insight-extractor, the R1 cron canary, climbed to cutover 2026-10-13.
-    assert canary == ["heartbeat-watch"]
+    # canary-wave-20261014 moves 14 cron rows to canary (tests/test_canary_wave_20261014.py).
+    from tests.test_canary_wave_20261014 import CANARY_WAVE_20261014
+
+    assert canary == sorted(["heartbeat-watch", *CANARY_WAVE_20261014])
     cut = sorted(r for r, row in ROWS.items() if (row.get("scheduler") or {}).get("stage") == "cutover")
     assert set(CUTOVER) <= set(cut), cut
 
