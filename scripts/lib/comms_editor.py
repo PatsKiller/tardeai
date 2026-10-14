@@ -849,6 +849,21 @@ def edit(
     was_html = parse_mode == "HTML" or looks_like_html(body)
 
     primary = _resolve_primary_symbols(primary_symbols)
+    # Operational approval packets are not security research. Technical words such
+    # as DB/ROOT/HST must never acquire financial links or CIO stance annotations.
+    operational_approval = is_operator_approval_request(body) or bool(
+        re.search(r"(?im)^\s*(?:🔐\s*)?Approval requested\b", re.sub(r"<[^>]+>", " ", body))
+    )
+    if operational_approval:
+        primary = []
+        changes.append("operational_approval_subjects_disabled")
+    else:
+        # Bind explicit financial headers before ambient context from another turn.
+        header = re.sub(r"<[^>]+>", " ", body).splitlines()[0] if body else ""
+        match = re.search(r"\b(?:GO|WAIT|NOGO|NO_GO|AVOID)\s+\*?([A-Z][A-Z0-9.-]{0,15})\*?\s*(?:[—·:]|$)", header)
+        if match:
+            primary = [match.group(1)]
+            changes.append("structured_header_subject_bound")
     subs = unambiguous_subjects(body, subjects(body, resolve=resolve))
     if primary is not None:
         allow = set(primary)

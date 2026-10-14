@@ -79,7 +79,7 @@ scripts/secrets/render_env.py 1
 scripts/secrets/rotation_daemon.py 1
 scripts/secrets_admin.py 1
 scripts/send_alert_digest.py 1
-scripts/system_health_agent.py 5
+scripts/system_health_agent.py 4
 scripts/telegram_alert.py 1
 scripts/telegram_callback_handler.py 3
 scripts/telegram_cio_summary.py 1

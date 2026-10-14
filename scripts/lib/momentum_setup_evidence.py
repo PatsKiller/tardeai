@@ -8,11 +8,13 @@ from source verdicts/approval. No provider, model, credential or writer is used.
 from __future__ import annotations
 
 import html
+import hashlib
+import json
 import math
 import re
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlsplit
 from zoneinfo import ZoneInfo
 
 from .scalp_go_criteria import FALLBACK
@@ -65,7 +67,12 @@ def _url(value):
         parsed = urlsplit(value)
         return (
             value
-            if parsed.scheme == "https" and parsed.hostname and not parsed.username and not parsed.password
+            if parsed.scheme == "https"
+            and parsed.hostname
+            and not parsed.username
+            and not parsed.password
+            and not {key.lower() for key, _ in parse_qsl(parsed.query)}
+            & {"api_key", "token", "key", "auth", "access_token", "signature", "secret", "password"}
             else None
         )
     except ValueError:
@@ -78,6 +85,112 @@ def _session_state(stamp, now):
     if stamp > now:
         return "FUTURE"
     return "CURRENT_SESSION" if stamp.astimezone(ET).date() == now.astimezone(ET).date() else "STALE_SESSION"
+
+
+def observation_lineage(row, *, source_name="CACHED_SOURCE", run_id=None, source_ref=None):
+    """Public original metadata only. Composition/DB/cache times never become observation times."""
+    original = row.get("lineage") if isinstance(row.get("lineage"), dict) else {}
+
+    def value(key):
+        return original.get(key) if original.get(key) is not None else row.get(key)
+
+    raw_observed = value("observed_at")
+    raw_event = value("event_at")
+    observed, event = _stamp(raw_observed), _stamp(raw_event)
+    session = _text(value("session_date"), 40) or _text(row.get("run_date"), 40) or _text(row.get("scan_run_date"), 40)
+    actual_run = _text(value("run_id"), 160) or _text(run_id, 160)
+    if not session and actual_run:
+        try:
+            session = datetime.strptime(actual_run[:10], "%Y-%m-%d").date().isoformat()
+        except ValueError:
+            pass
+    if not session and observed:
+        session = observed.astimezone(ET).date().isoformat()
+    result = {
+        "security_guid": _text(value("security_guid"), 160),
+        "event_id": _text(value("event_id"), 160),
+        "run_id": actual_run,
+        "run_attempt_id": _text(value("run_attempt_id"), 160),
+        "session_date": session,
+        "event_at": event.isoformat() if event else None,
+        "observed_at": observed.isoformat() if observed else None,
+        "source_ref": _text(value("source_ref"), 1000) or _text(source_ref, 1000),
+        "source_sha": _text(value("source_sha"), 80),
+        "source": source_name,
+        "original_timestamps": {
+            key: value
+            if isinstance(value, str) and len(value) <= 80 and re.match(r"\d{4}-\d{2}-\d{2}", value)
+            else None
+            for key, value in {
+                "observed_at": (original.get("original_timestamps") or {}).get("observed_at", raw_observed)
+                if isinstance(original.get("original_timestamps"), dict)
+                else raw_observed,
+                "event_at": (original.get("original_timestamps") or {}).get("event_at", raw_event)
+                if isinstance(original.get("original_timestamps"), dict)
+                else raw_event,
+            }.items()
+        },
+    }
+    # This hash identifies the public observation snapshot; it never invents an event or security GUID.
+    result["observation_hash"] = hashlib.sha256(
+        json.dumps({**result, "decision": row.get("decision")}, sort_keys=True).encode()
+    ).hexdigest()
+    return result
+
+
+def public_scan_observation(row, *, run_id, run_date, run_label, source_sha=None):
+    """Preserve public source facts in the existing run package, before daily DB upserts lose history."""
+    aliases = {"rvol": "relative_volume", "gap_pct": "gap_percent", "change_pct": "change_percent"}
+    keys = (
+        "symbol",
+        "security_guid",
+        "event_id",
+        "event_at",
+        "observed_at",
+        "source_ref",
+        "run_attempt_id",
+        "decision",
+        "original_decision",
+        "disqualified",
+        "price",
+        "float_m",
+        "rvol",
+        "gap_pct",
+        "change_pct",
+        "catalyst",
+        "catalyst_source",
+        "catalyst_url",
+        "catalyst_published_at",
+        "catalyst_verified",
+        "catalyst_verification_method",
+        "catalyst_verified_at",
+        "catalyst_relevance",
+        "catalyst_relevance_reason",
+        "catalyst_confidence",
+        "field_observations",
+    )
+    out = {key: row[key] for key in keys if key in row}
+    if isinstance(out.get("field_observations"), dict):
+        out["field_observations"] = {
+            name: {key: fact[key] for key in ("observed_at", "source_ref", "source_sha") if key in fact}
+            for name, fact in out["field_observations"].items()
+            if name in {"price", "float", "rvol", "gap"} and isinstance(fact, dict)
+        }
+    for target, source in aliases.items():
+        if target not in out and source in row:
+            out[target] = row[source]
+    article = row.get("top_catalyst") if isinstance(row.get("top_catalyst"), dict) else {}
+    for key, sources in {
+        "catalyst": ("title", "headline"),
+        "catalyst_source": ("source", "provider"),
+        "catalyst_url": ("source_url", "url"),
+        "catalyst_published_at": ("published_at",),
+    }.items():
+        if key not in out:
+            out[key] = next((article[k] for k in sources if article.get(k) is not None), None)
+    out.update(run_id=run_id, run_date=run_date, run_label=run_label, source_sha=source_sha)
+    out["lineage"] = observation_lineage(out, source_name="TRADE_AI", source_ref=out.get("source_ref"))
+    return out
 
 
 def build_setup_evidence(
@@ -96,14 +209,10 @@ def build_setup_evidence(
         raise ValueError("evidence clock must be timezone-aware")
     row = row if isinstance(row, dict) else {}
     policy = FALLBACK if criteria is None else criteria if isinstance(criteria, dict) else {}
-    source_at = _stamp(observed_at or row.get("observed_at") or row.get("scanned_at"))
+    lineage = observation_lineage(row, source_name=source_name)
+    source_at = _stamp(lineage.get("observed_at") or observed_at)
     observed_state = _session_state(source_at, now)
-    declared_date = (
-        row.get("run_id")
-        or row.get("run_date")
-        or row.get("scan_run_date")
-        or row.get("session_date")
-    )
+    declared_date = row.get("run_id") or row.get("run_date") or row.get("scan_run_date") or row.get("session_date")
     try:
         source_day = datetime.strptime(str(declared_date)[:10], "%Y-%m-%d").date()
     except (ValueError, TypeError):
@@ -114,26 +223,46 @@ def build_setup_evidence(
         observed_state = (
             "STALE_SESSION" if source_at is None or source_at.astimezone(ET).date() == source_day else "TIMING_CONFLICT"
         )
-    elif source_at is None and source_day == now.astimezone(ET).date():
-        # Same-day scan without a row clock: still evaluate pillars (values are
-        # present); do not force UNKNOWN solely for a missing timestamp.
-        observed_state = "CURRENT_SESSION"
     text = _text(row.get("catalyst") or row.get("catalyst_headline"))
     source = _text(row.get("catalyst_source"), 120)
-    published = _stamp(row.get("catalyst_at") or row.get("catalyst_published_at"))
+    original_publication = row.get("catalyst_published_at") or row.get("catalyst_at")
+    published = _stamp(original_publication)
     publication_state = _session_state(published, now)
     reported = row.get("catalyst_verified") if isinstance(row.get("catalyst_verified"), bool) else None
+    method = _text(row.get("catalyst_verification_method"), 120)
+    publication_url = _url(row.get("catalyst_url"))
+    factual = (
+        "UNVERIFIED"
+        if reported is False
+        else "VERIFIED"
+        if reported is True
+        and text
+        and source
+        and publication_url
+        and published
+        and method in {"PRIMARY_PUBLICATION", "PUBLICATION_MATCH", "SOURCE_CORROBORATION"}
+        else "UNKNOWN"
+    )
     catalyst_status = "UNKNOWN"
     if reported is False:
         catalyst_status = "UNVERIFIED"
-    elif reported is True and text and source and publication_state == observed_state == "CURRENT_SESSION":
+    elif factual == "VERIFIED" and publication_state == observed_state == "CURRENT_SESSION":
         catalyst_status = "SOURCE_VERIFIED"
     catalyst = {
         "text": text,
         "source": source,
-        "url": _url(row.get("catalyst_url")),
+        "url": publication_url,
         "reported_verified": reported,
         "verification_status": catalyst_status,
+        "factual_verification_status": factual,
+        "verification_method": method,
+        "verified_at": row.get("catalyst_verified_at"),
+        "relevance": row.get("catalyst_relevance")
+        if isinstance(row.get("catalyst_relevance"), (str, bool, int, float))
+        else None,
+        "relevance_reason": _text(row.get("catalyst_relevance_reason")),
+        "model_confidence": _number(row.get("catalyst_confidence")),
+        "original_published_at": original_publication if isinstance(original_publication, str) else None,
         "published_at": published.isoformat() if published else None,
         "observed_at": source_at.isoformat() if source_at else None,
         "publication_state": publication_state,
@@ -150,7 +279,13 @@ def build_setup_evidence(
             unknown = True
         status = "UNKNOWN" if unknown else "PASSED" if predicate(value) else "FAILED"
         # Preserve stale values, but never report them as current qualifying facts.
-        if observed_state != "CURRENT_SESSION":
+        fields = row.get("field_observations") if isinstance(row.get("field_observations"), dict) else {}
+        fact = fields.get(name) if isinstance(fields.get(name), dict) else {}
+        fact_at = _stamp(fact.get("observed_at")) if fact else source_at
+        if not fact and source_name == "ACTIVE_TRADER" and not lineage.get("observed_at"):
+            # An advisory's publication clock is not the underlying quote clock.
+            fact_at = None
+        if observed_state != "CURRENT_SESSION" or _session_state(fact_at, now) != "CURRENT_SESSION":
             status = "UNKNOWN"
         pillars.append(
             {
@@ -159,7 +294,8 @@ def build_setup_evidence(
                 "value": value,
                 "status": status,
                 "threshold": bounds,
-                "observed_at": catalyst["observed_at"],
+                "observed_at": fact_at.isoformat() if fact_at else None,
+                "source_ref": _text(fact.get("source_ref"), 1000) or lineage["source_ref"],
             }
         )
 
@@ -238,6 +374,7 @@ def build_setup_evidence(
         or ("scripts/lib/scalp_go_criteria.py:FALLBACK" if criteria is None else "EXPLICIT_CRITERIA"),
         "policy_path": "config/finviz_momentum_scalp_screen.yaml:screen.tradeable",
         "symbol": _text(row.get("symbol"), 20),
+        "lineage": lineage,
         "catalyst": catalyst,
         "pillars": pillars,
         "passed_count": passes,

@@ -25,6 +25,7 @@ def _row(**changes):
         "catalyst_source": "fixture-news",
         "catalyst_url": "https://news.example/clinical",
         "catalyst_verified": True,
+        "catalyst_verification_method": "PRIMARY_PUBLICATION",
         "catalyst_at": "2026-10-12T14:00:00+00:00",
         "observed_at": "2026-10-12T14:30:00+00:00",
         "run_id": "2026-10-12::0900",
@@ -59,6 +60,165 @@ def test_five_policy_facts_catalyst_and_scout_are_distinct_and_input_immutable(e
     assert out["authority"] == "READ_ONLY_ADVISORY" and out["execution_authority"] == "NONE"
     assert out["criteria_source"] == "scripts/lib/scalp_go_criteria.py:FALLBACK"
     assert out["pillar_definition"] == "momentum_policy_five"
+
+
+def test_verification_relevance_and_confidence_survive_old_publication_independently(evidence):
+    out = evidence.build_setup_evidence(
+        _row(catalyst_at="2026-10-09T14:00:00Z", catalyst_relevance="RELEVANT", catalyst_confidence=0.97), now=NOW
+    )
+    assert out["catalyst"]["factual_verification_status"] == "VERIFIED"
+    assert out["catalyst"]["relevance"] == "RELEVANT"
+    assert out["catalyst"]["model_confidence"] == 0.97
+    assert out["catalyst"]["publication_state"] == "STALE_SESSION"
+    assert out["all_five_proven"] is False
+
+
+def test_model_confidence_or_reported_boolean_cannot_establish_publication_verification(evidence):
+    row = _row(catalyst_verification_method="MODEL_CONFIDENCE", catalyst_confidence=0.99)
+    out = evidence.build_setup_evidence(row, now=NOW)
+    assert out["catalyst"]["reported_verified"] is True
+    assert out["catalyst"]["factual_verification_status"] == "UNKNOWN"
+    assert out["all_five_proven"] is False
+
+
+def test_advisory_publication_time_does_not_prove_underlying_quote_freshness(evidence):
+    row = _row(observed_at=None)
+    out = evidence.build_setup_evidence(row, now=NOW, observed_at=NOW.isoformat(), source_name="ACTIVE_TRADER")
+    price = next(p for p in out["pillars"] if p["id"] == "price")
+    assert price["observed_at"] is None and price["status"] == "UNKNOWN"
+
+
+def test_projection_does_not_substitute_cache_time_for_original_observation(evidence):
+    from lib.scanner_candidate_projection import build_candidate_projection
+
+    cache = {"run_id": "2026-10-12::0900", "latest_run_timestamp": NOW.isoformat(), "tickers": [_row(observed_at=None)]}
+    out = build_candidate_projection(cache, [], now=NOW)
+    observed = out["candidates"][0]["trade_ai"]["observations"][0]
+    assert observed["observed_at"] is None
+    assert observed["setup_evidence"]["all_five_proven"] is False
+
+
+def test_scan_run_aliases_preserve_session_without_borrowing_a_run_finish_clock(evidence):
+    from lib.scanner_candidate_projection import build_candidate_projection
+
+    row = _row(
+        run_id=None,
+        observed_at=None,
+        scan_run_date="2026-10-12",
+        scan_run_label="0900",
+        scanned_at=NOW.isoformat(),
+        created_at=NOW.isoformat(),
+    )
+    cache = {"run_id": "2026-10-12::0900", "latest_run_timestamp": NOW.isoformat(), "tickers": [row]}
+    observed = build_candidate_projection(cache, [], now=NOW)["candidates"][0]["trade_ai"]["observations"][0]
+    assert observed["run_id"] == "2026-10-12::0900"
+    assert observed["lineage"]["session_date"] == "2026-10-12"
+    assert observed["observed_at"] is None
+    facts = observed["setup_evidence"]
+    assert facts["source_observation_state"] == "UNKNOWN"
+    assert facts["passed_count"] == 0 and facts["all_five_proven"] is False
+    assert facts["pillars"][0]["value"] == 12
+    assert facts["catalyst"]["factual_verification_status"] == "VERIFIED"
+
+
+def test_original_producer_package_wins_over_unrelated_cached_latest_symbol(evidence):
+    from lib.scanner_candidate_projection import build_candidate_projection
+
+    source = _row(source_ref="fixture://original/row", observed_at="2026-10-12T14:30:00Z")
+    row = evidence.public_scan_observation(
+        source, run_id=source["run_id"], run_date="2026-10-12", run_label="0900", source_sha="a" * 40
+    )
+    cache = {
+        "run_id": source["run_id"],
+        "_cached_at": NOW.isoformat(),
+        "tickers": [_row(decision="GO", observed_at=NOW.isoformat())],
+        "source_observations": [row],
+    }
+    observation = build_candidate_projection(cache, [], now=NOW)["candidates"][0]["trade_ai"]["observations"][0]
+    assert observation["verdict"] == "WAIT"
+    assert observation["observed_at"] == "2026-10-12T14:30:00+00:00"
+    assert observation["lineage"]["source_ref"] == source["source_ref"]
+
+
+def test_source_snapshot_identity_ignores_cache_composition_time_and_keeps_original_zone(evidence):
+    from lib.scanner_candidate_projection import build_candidate_projection
+
+    row = _row(observed_at="2026-10-12T10:30:00-04:00")
+    row["lineage"] = evidence.observation_lineage(row, source_name="TRADE_AI")
+    cache = {"run_id": row["run_id"], "tickers": [row], "_cached_at": "2026-10-12T14:45:00Z"}
+    first = build_candidate_projection(cache, [], now=NOW)
+    cache["_cached_at"] = "2026-10-12T14:59:00Z"
+    second = build_candidate_projection(cache, [], now=NOW)
+    assert first["snapshot_id"] == second["snapshot_id"]
+    observation = second["candidates"][0]["trade_ai"]["observations"][0]
+    assert observation["lineage"]["original_timestamps"]["observed_at"] == "2026-10-12T10:30:00-04:00"
+
+
+def test_public_observations_do_not_forward_unrelated_private_nested_fields(evidence):
+    row = _row(
+        field_observations={
+            "price": {"observed_at": "2026-10-12T14:30:00Z", "source_ref": "fixture://price", "account": "PRIVATE"},
+            "account": {"value": "PRIVATE"},
+        }
+    )
+    out = evidence.public_scan_observation(row, run_id=row["run_id"], run_date="2026-10-12", run_label="0900")
+    assert "PRIVATE" not in str(out)
+    assert (
+        evidence.build_setup_evidence(_row(catalyst_url="https://news.example/story?access_token=fixture"), now=NOW)[
+            "catalyst"
+        ]["url"]
+        is None
+    )
+
+
+def test_observation_lineage_keeps_per_fact_time_and_source_after_refresh(evidence):
+    row = _row(
+        security_guid="tradeai:security:fixture",
+        event_id="fixture-event",
+        source_ref="fixture://scan/row-4",
+        event_at="2026-10-12T14:10:00Z",
+        field_observations={"price": {"observed_at": "2026-10-09T14:10:00Z", "source_ref": "fixture://quote/4"}},
+    )
+    before = copy.deepcopy(row)
+    out = evidence.build_setup_evidence(row, now=NOW)
+    price = next(p for p in out["pillars"] if p["id"] == "price")
+    assert price["observed_at"] == "2026-10-09T14:10:00+00:00"
+    assert price["source_ref"] == "fixture://quote/4" and price["status"] == "UNKNOWN"
+    assert out["lineage"]["event_id"] == "fixture-event"
+    assert out["lineage"]["source_ref"] == row["source_ref"] and row == before
+
+
+def test_different_event_times_and_security_ids_do_not_create_false_decision_conflicts(evidence):
+    from lib.scanner_candidate_projection import build_candidate_projection
+
+    cache = {
+        "run_id": "2026-10-12::0900",
+        "tickers": [
+            _row(
+                security_guid="tradeai:security:one", event_id="event-1", event_at="2026-10-12T14:10:00Z", decision="GO"
+            )
+        ],
+    }
+    journal = [
+        {
+            "contract": "active-trader-momentum-alert-v1",
+            "ts_epoch": NOW.timestamp(),
+            "verdict": "VETO",
+            "candidate": {
+                "symbol": "ABCD",
+                "security_guid": "tradeai:security:one",
+                "event_id": "event-2",
+                "event_at": "2026-10-12T14:20:00Z",
+            },
+        }
+    ]
+    out = build_candidate_projection(cache, journal, now=NOW)
+    assert len(out["candidates"]) == 2
+    assert all("CROSS_SOURCE_DISAGREEMENT" not in c["conflicts"] for c in out["candidates"])
+    journal[0]["candidate"].update(
+        security_guid="tradeai:security:two", event_id="event-1", event_at="2026-10-12T14:10:00Z"
+    )
+    assert len(build_candidate_projection(cache, journal, now=NOW)["candidates"]) == 2
 
 
 @pytest.mark.parametrize(

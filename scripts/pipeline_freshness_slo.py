@@ -99,11 +99,15 @@ def run(telegram=False):
         try:
             cur.execute(recent_q); recent = cur.fetchone()[0] or 0
             cur.execute(base_q); base = float(cur.fetchone()[0] or 0) * factor
-            if base <= 0:
+            if name in {"go_decisions_24h", "proposals_48h"}:
+                # These are business outcomes, not producer heartbeats. Zero can
+                # be the correct decision even when every scheduled run succeeds.
+                status = "OUTCOME_OBSERVED; PRODUCER_LIVENESS_NOT_MEASURED"
+            elif base <= 0:
                 status = "no-baseline"
             elif recent == 0:
                 status = "CRITICAL"
-                findings.append(f"🔴 {name}: 0 rows (baseline ≈{base:.0f}) — pipeline silently dead?")
+                findings.append(f"🔴 {name}: 0 recent rows (baseline ≈{base:.0f}) — inspect scheduled run receipts and source output")
             elif recent < 0.4 * base:
                 status = "WARN"
                 findings.append(f"🟠 {name}: {recent} rows vs baseline ≈{base:.0f} (<40%)")

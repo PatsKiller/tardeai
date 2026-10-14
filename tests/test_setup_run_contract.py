@@ -105,6 +105,54 @@ def test_derive_run_id_falls_back_without_label_or_date():
     assert rid.startswith("ts-")
 
 
+def test_history_keeps_distinct_runs_and_canonical_residual_classes():
+    from lib.setup_run_contract import build_run_history
+
+    rows = [
+        {
+            "run_id": "2026-10-12::0900",
+            "run_date": "2026-10-12",
+            "run_label": "0900",
+            "decision": "GO",
+            "symbol": "ABC",
+        },
+        {
+            "run_id": "2026-10-12::1000",
+            "run_date": "2026-10-12",
+            "run_label": "1000",
+            "decision": "MANUAL_REVIEW",
+            "symbol": "ABC",
+        },
+        {
+            "run_id": "2026-10-12::1000",
+            "run_date": "2026-10-12",
+            "run_label": "1000",
+            "decision": "ERROR",
+            "symbol": "XYZ",
+        },
+    ]
+    out = build_run_history(rows)
+    assert len(out) == 2
+    second = next(r for r in out if r["run_id"].endswith("1000"))
+    assert second["review_count"] == second["error_count"] == 1
+    assert second["nogo_count"] == 0 and second["scanned_count"] == 2
+    assert second["count_integrity"] == "RECONCILED"
+
+
+def test_history_does_not_invent_run_identity_or_merge_attempts():
+    from lib.setup_run_contract import build_run_history
+
+    rows = [
+        {"symbol": "ABC", "decision": "GO"},
+        {"run_id": "r", "run_attempt_id": "attempt-1", "decision": "WAIT"},
+        {"run_id": "r", "run_attempt_id": "attempt-2", "decision": "GO"},
+    ]
+    out = build_run_history(rows)
+    assert len(out) == 3
+    assert {r.get("run_attempt_id") for r in out if r["run_id"] == "r"} == {"attempt-1", "attempt-2"}
+    assert next(r for r in out if r["run_id"] == "unknown")["count_integrity"] == "DATA_UNAVAILABLE"
+
+
 # ── invariants ───────────────────────────────────────────────────────────────
 
 

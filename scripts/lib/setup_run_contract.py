@@ -116,6 +116,30 @@ def tally_decisions(rows: Iterable[dict[str, Any]]) -> dict[str, int]:
     return counts
 
 
+def build_run_history(rows: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Per business run/attempt accounting; daily aggregates never replace this identity."""
+    groups: dict[tuple[str, str | None], list[dict[str, Any]]] = {}
+    for index, row in enumerate(rows):
+        rid = row.get("run_id") or derive_run_id(row.get("run_label"), row.get("run_date"))
+        # Unattributed rows cannot silently become one invented historical run.
+        key = (str(rid), row.get("run_attempt_id") or (f"unattributed:{index}" if rid == "unknown" else None))
+        groups.setdefault(key, []).append(row)
+    result = []
+    for (rid, attempt), members in groups.items():
+        first = members[0]
+        summary = build_setup_run_summary(
+            run_id=rid,
+            run_label=first.get("run_label"),
+            run_date=first.get("run_date"),
+            run_timestamp=first.get("run_timestamp"),
+            tally=tally_decisions(members),
+            scanned_count=len(members) if rid != "unknown" else None,
+        )
+        summary.update(run_attempt_id=attempt if rid != "unknown" else None, count_scope="BUSINESS_RUN_ATTEMPT")
+        result.append(summary)
+    return sorted(result, key=lambda r: (r["run_date"] or "", r["run_id"], r.get("run_attempt_id") or ""), reverse=True)
+
+
 def derive_run_id(
     run_label: Any,
     run_date: Any,

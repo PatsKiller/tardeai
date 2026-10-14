@@ -360,6 +360,31 @@ OPERATOR_ACTION_DEDUPE_OFF = {
     "scripts/iris_taxonomy_agent.py", "scripts/notify_material_change.py",
 }
 
+
+def test_zero_go_and_proposals_are_outcomes_not_producer_liveness(monkeypatch):
+    import importlib.util
+    import sys
+    import types
+    path = ROOT / "scripts/pipeline_freshness_slo.py"
+    spec = importlib.util.spec_from_file_location("_isolated_freshness_outcomes", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    class Cursor:
+        def execute(self, sql):
+            self.sql = sql
+        def fetchone(self):
+            return [100 if "percentile_cont" in self.sql else 0]
+    connection = types.SimpleNamespace(cursor=lambda: Cursor())
+    adapter = types.ModuleType("db_adapter")
+    adapter._get_conn = lambda: connection
+    monkeypatch.setitem(sys.modules, "db_adapter", adapter)
+    monkeypatch.setattr(module, "_market_open", lambda: False)
+    result = module.run(telegram=False)
+    for name in ("go_decisions_24h", "proposals_48h"):
+        row = next(r for r in result["checks"] if r["check"] == name)
+        assert row["recent"] == 0 and row["status"] == "OUTCOME_OBSERVED; PRODUCER_LIVENESS_NOT_MEASURED"
+        assert not any(name in finding for finding in result["findings"])
+
 # The broker execution file set and order/stop files are out of scope without an execution-engineering grant.
 _BROKER_PREFIXES = ("scripts/brokers/", "scripts/active_trader/", "scripts/moomoo/")
 

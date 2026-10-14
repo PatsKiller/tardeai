@@ -18,6 +18,23 @@ def formatter():
     return namespace["_market_context_detail"]
 
 
+def test_previous_run_attempt_is_preserved_before_owner_replacement(tmp_path):
+    tree = ast.parse((ROOT / "scripts" / "trade_ai_orchestrator.py").read_text())
+    fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "preserve_run_package")
+    namespace = {"Path": Path}
+    exec(compile(ast.Module(body=[fn], type_ignores=[]), "<isolated-run-package-preservation>", "exec"), namespace)
+    preserve = namespace["preserve_run_package"]
+    path = tmp_path / "run_summary.json"
+    original = b'{"run_id":"same-business-run","run_attempt_id":"first","observed_at":"2026-10-12T13:00:00Z"}'
+    path.write_bytes(original)
+    preview = preserve(path, dry_run=True)
+    assert not list(tmp_path.glob("run_summary.previous-*.json")) and path.read_bytes() == original
+    receipt = preserve(path)
+    assert receipt["archived"] == preview["would_archive"]
+    path.write_bytes(b'{"run_id":"same-business-run","run_attempt_id":"second"}')
+    assert Path(receipt["archived"]).read_bytes() == original
+
+
 def test_real_zero_change_and_known_numbers_keep_their_format():
     rendered = formatter()(
         {

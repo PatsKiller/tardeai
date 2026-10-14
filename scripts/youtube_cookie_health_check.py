@@ -25,6 +25,7 @@ n8n refactor wave 1 (2026-10-10):
 
 import os
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -59,19 +60,29 @@ REFRESH_STEPS = (
 )
 
 
-def _auth_cookie_names(lines):
+def _auth_cookie_names(lines, *, now=None):
     """Classify Netscape rows, including the standard HttpOnly domain prefix.
 
     Cookie values are never returned; this pure helper is testable without opening a cookie file.
     """
     names = set()
+    current = time.time() if now is None else now
     for ln in lines:
         if ln.startswith("#HttpOnly_"):
             ln = ln[len("#HttpOnly_") :]
         if ln.startswith("#") or "\t" not in ln:
             continue
         p = ln.split("\t")
-        if len(p) >= 6:
+        if len(p) != 7 or not p[6].strip():
+            continue
+        domain = p[0].lstrip(".").lower()
+        if domain not in {"youtube.com", "google.com"} and not domain.endswith((".youtube.com", ".google.com")):
+            continue
+        try:
+            expires = int(p[4])
+        except ValueError:
+            continue
+        if expires == 0 or expires > current:
             names.add(p[5])
     return names & AUTH
 

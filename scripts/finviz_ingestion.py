@@ -12,7 +12,7 @@ import json
 import os
 import re
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -146,7 +146,7 @@ def normalize_finviz_columns(df: pd.DataFrame) -> pd.DataFrame:
                 _msg = f"⚠️ TRADE AI DATA QUALITY ALERT\nMissing: {_missing}\nAll-zero: {_zero}\n→ Scoring degraded. Check screeners.yaml uses v=152"
             print(f"  [finviz] ⚠️  DATA QUALITY: missing columns {_missing}, all-zero columns {_zero}"
                   + (f" (RATE-LIMITED: {_RATE_LIMITED_SCREENERS})" if _RATE_LIMITED_SCREENERS else ""))
-            print(f"  [finviz]    → " + ("partial run due to Finviz 429s; next run should recover"
+            print("  [finviz]    → " + ("partial run due to Finviz 429s; next run should recover"
                   if _RATE_LIMITED_SCREENERS else "Scoring will be degraded. Check screeners.yaml uses v=152 (not v=111)"))
             try:
                 _dq_key = f"m:{_missing}|z:{_zero}|rl:{bool(_RATE_LIMITED_SCREENERS)}"
@@ -159,7 +159,7 @@ def normalize_finviz_columns(df: pd.DataFrame) -> pd.DataFrame:
             except Exception:
                 pass
     else:
-        print(f"  [finviz] No matching stocks — this is normal pre-market / low-activity")
+        print("  [finviz] No matching stocks — this is normal pre-market / low-activity")
     return df
 
 
@@ -394,6 +394,7 @@ def download_screener_csvs(
             "path": path,
             "meta": entry,
             "finviz_url": export_url,
+            "observed_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         })
     return rows
 
@@ -407,7 +408,7 @@ def combine_and_track(
     run_label: str,
 ) -> pd.DataFrame:
     frames: List[pd.DataFrame] = []
-    now = datetime.now().isoformat(timespec="seconds")
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
     for item in downloads:
         try:
@@ -427,6 +428,11 @@ def combine_and_track(
             df["run_window"] = run_label
             df["finviz_url_used"] = item["finviz_url"]
             df["ingestion_timestamp"] = now
+            # First owner observation of this downloaded source snapshot. Preserve
+            # it through scoring/cache reads; it is not the provider quote clock.
+            if "observed_at" not in df.columns:
+                df["observed_at"] = item.get("observed_at")
+            df["source_ref"] = str(item["path"])
             df["strategy_class"] = strategy_class
             df["day_scalping_flag"] = day_flag
             frames.append(df)

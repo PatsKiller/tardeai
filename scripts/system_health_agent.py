@@ -782,18 +782,24 @@ def _log_event(conn, component, event_type, severity, message, action=None, succ
         log.warning(f"Failed to log event: {e}")
 
 
-def _send_alert(message, urgent=False):
+def _send_alert(message, urgent=False, *, dedupe_minutes=None):
     """Send alert through central router. NEVER bypass.
 
-    A notification intent: CRITICAL escalations are P1 (time-critical); WARN escalations are P3 -- archived
-    for the digest, as the text classifier already routed them (tests/test_alarm_fires_batch5.py).
+    CRITICAL escalations are P1 intents with dedupe off; WARN escalations are P3, archived for the digest.
+    The return value reports intent acceptance; it cannot establish delivery.
     """
     try:
         from telegram_alert import send_telegram
 
-        send_telegram(message, priority=("P1" if urgent else "P3"), producer="system_health_agent")
+        options = (
+            {"dedupe_minutes": 0}
+            if urgent
+            else ({"dedupe_minutes": dedupe_minutes} if dedupe_minutes is not None else {})
+        )
+        return send_telegram(message, priority=("P1" if urgent else "P3"), producer="system_health_agent", **options)
     except Exception as e:
         log.error(f"Alert send failed: {e}")
+        return False
 
 
 def _cron_field_matches(field, value, min_val, max_val):
@@ -1509,6 +1515,7 @@ def _escalate(comp, check_result, conn):
         cur.execute(
             """SELECT COUNT(*) FROM system_health_events
             WHERE component=%s AND event_type='ESCALATION'
+            AND success IS TRUE
             AND created_at > NOW() - (%s || ' hours')::interval""",
             [component, str(dedupe_hours)],
         )
@@ -1532,7 +1539,7 @@ def _escalate(comp, check_result, conn):
         "",
         f"Component: {component}",
         f"Expected: {_fmt_schedule(comp.get('schedule', 'unknown'))}",
-        f"Last output: {check_result.get('age_min', '?')} min ago",
+        f"Last observed output: {(check_result.get('freshness_evidence') or {}).get('success_at') or 'NOT_MEASURED'}",
         f"Status: {check_result['status']}",
     ]
     if check_result.get("last_error"):
@@ -1548,8 +1555,18 @@ def _escalate(comp, check_result, conn):
         msg_lines.append("Fix: Check logs and restart manually")
 
     msg = "\n".join(msg_lines)
-    _send_alert(msg, urgent=(severity == "CRITICAL"))
-    _log_event(conn, component, "ESCALATION", severity, msg[:500], action="telegram_alert", success=True)
+    # Stable content supports bounded informational dedupe when the diagnostic DB
+    # is unavailable. P1 keeps dedupe off; the producer ledger bounds accepted repeats.
+    accepted = bool(_send_alert(msg, urgent=(severity == "CRITICAL"), dedupe_minutes=120))
+    _log_event(
+        conn,
+        component,
+        "ESCALATION" if accepted else "ESCALATION_REJECTED",
+        severity,
+        msg[:500],
+        action="notification_intent",
+        success=accepted,
+    )
 
 
 def run_health_check(dry_run=True, verbose=False):

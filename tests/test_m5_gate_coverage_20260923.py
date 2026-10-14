@@ -125,6 +125,18 @@ def test_morning_preopen_brief_never_goes_silent_for_one_held_name(cio, monkeypa
     assert "No GO tickers" in msg and "Held for CIO review (1): AXTI (CIO AVOID)" in msg
 
 
+def test_preopen_missing_market_observations_never_render_as_zero(cio, monkeypatch):
+    import morning_digest as md
+    monkeypatch.setattr(md, "_load_latest_run", lambda root: {"tickers": [], "market_snapshot": {}})
+    monkeypatch.setattr(md, "_load_ticker_memory", lambda root: {})
+    monkeypatch.setattr(md, "_gate_go", lambda rows: (rows, [], ""))
+    message = md.build_preopen_brief()
+    assert "SPY unavailable" in message and "VIX unavailable" in message
+    assert "+0.00%" not in message and "VIX 0.0" not in message
+    monkeypatch.setattr(md, "_load_latest_run", lambda root: {"tickers": [], "market_snapshot": {"spy_change_pct": 0, "vix": 15}})
+    assert "SPY +0.00%" in md.build_preopen_brief()
+
+
 def test_overnight_reenter_list_is_gated(cio):
     import overnight_digest_telegram as od
 

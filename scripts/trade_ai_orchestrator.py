@@ -190,8 +190,32 @@ def write_failure_run_summary(output_dir: Path, payload: dict) -> Path:
     doc = dict(payload)
     doc.setdefault("status", "FAILED")
     doc.setdefault("generated_at", datetime.now().isoformat(timespec="seconds"))
+    preserve_run_package(path)
     path.write_text(json.dumps(doc, indent=2, default=str))
     return path
+
+
+def preserve_run_package(path: Path, *, dry_run=False):
+    """Archive exact previous attempt bytes before the existing owner replaces its run package."""
+    import hashlib
+
+    path = Path(path)
+    if not path.exists():
+        return None
+    if path.is_symlink():
+        raise ValueError("run package must be an owned regular artifact")
+    original = path.read_bytes()
+    digest = hashlib.sha256(original).hexdigest()
+    archive = path.with_name(f"run_summary.previous-{digest}.json")
+    if dry_run:
+        return {"would_archive": str(archive), "sha256": digest, "bytes": len(original)}
+    try:
+        with archive.open("xb") as stream:
+            stream.write(original)
+    except FileExistsError:
+        if archive.read_bytes() != original:
+            raise ValueError("previous attempt archive content mismatch")
+    return {"archived": str(archive), "sha256": digest, "bytes": len(original)}
 
 
 def _market_context_detail(snapshot):
@@ -296,6 +320,7 @@ def run_pipeline(
         print(f"  \u23f8  NYSE closed {date_str}. Use --skip-market-check to force.\n")
         return 0
 
+    run_started_at = datetime.now(timezone.utc).isoformat()
     output_dir = _ensure(root / os.getenv("REPORT_OUTPUT_DIR", "reports") / date_str / run_label)
     # Publish gate: RUN_FAILED / RUN_UNDERFILLED must not stamp dashboard/PDF/live
     # as a successful run (B3). allow_underfilled keeps the old continue-anyway path.
@@ -549,6 +574,27 @@ def run_pipeline(
         from scoring import score_all
 
         scored = score_all(tickers, enrichments, project_root=str(root), use_llm=use_llm)
+        # Scoring authors decisions; the owner snapshot retains its original metadata.
+        from lib.cio_subject_guid import lookup_identity_envelope
+
+        original_by_symbol = {row.get("symbol"): row for row in tickers if isinstance(row, dict)}
+        for result in scored:
+            original = original_by_symbol.get(result.get("symbol"), {})
+            for key in (
+                "observed_at",
+                "event_at",
+                "event_id",
+                "source_ref",
+                "source_sha",
+                "field_observations",
+                "security_guid",
+            ):
+                if key in original:
+                    result[key] = original[key]
+            if not result.get("security_guid"):
+                identity = lookup_identity_envelope(result.get("symbol"), root=root)
+                result["security_guid"] = identity.get("security_guid")
+                result["identity_lookup"] = identity.get("identity_lookup")
         go_count = sum(1 for t in scored if t.get("decision") == "GO")
         wait_count = sum(1 for t in scored if t.get("decision") == "WAIT")
         _ok(
@@ -1259,10 +1305,41 @@ def run_pipeline(
             1 for v in social_data.values() if v.get("sentiment_label", "") in ("Bullish", "Very Bullish")
         )
         social_wsb_spikes = [sym for sym, v in social_data.items() if v.get("wsb_mentions", 0) >= 3]
+        from lib.momentum_setup_evidence import public_scan_observation
+        from lib.setup_run_contract import build_setup_run_summary, derive_run_id, tally_decisions
+        from lib.runtime_identity import resolve_source_sha
+
+        business_run_id = derive_run_id(run_label, date_str)
+        producer_sha = resolve_source_sha({}, project_root=root, current_release=root)
+        observations = [
+            public_scan_observation(
+                t, run_id=business_run_id, run_date=date_str, run_label=run_label, source_sha=producer_sha
+            )
+            for t in scored
+        ]
+        for observation in observations:
+            observation["run_attempt_id"] = run_started_at
+            observation["lineage"]["run_attempt_id"] = run_started_at
+        finished_at = datetime.now(timezone.utc).isoformat()
+        canonical_summary = build_setup_run_summary(
+            run_id=business_run_id,
+            run_label=run_label,
+            run_date=date_str,
+            run_timestamp=finished_at,
+            tally=tally_decisions(observations),
+            scanned_count=len(observations),
+            source="trade_ai_orchestrator:run_summary",
+        )
         summary = {
             "version": "12.0",
             "date": date_str,
             "run_label": run_label,
+            "run_id": business_run_id,
+            "run_attempt_id": run_started_at,
+            "started_at": run_started_at,
+            "source_sha": producer_sha,
+            "observations": observations,
+            "setup_run_summary": canonical_summary,
             # `generated_at` is naive and host-local: no offset, no Z. It cannot
             # be converted, and any surface that renders it must say so rather
             # than infer a zone from the host's TZ. Kept verbatim because
@@ -1275,7 +1352,7 @@ def run_pipeline(
             # datetime.now().astimezone(): a tz-aware LOCAL stamp is still a
             # function of host config and breaks the moment the box moves or a
             # container runs UTC.
-            "generated_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "generated_at_utc": finished_at,
             "generated_at_tz": "UTC",
             "ticker_count": len(scored),
             "go_count": sum(1 for t in scored if t.get("decision") == "GO"),
@@ -1306,6 +1383,7 @@ def run_pipeline(
         }
         from db_adapter import save_run_summary
 
+        preserve_run_package(output_dir / "run_summary.json")
         save_run_summary(summary, output_dir / "run_summary.json")
         _ok("run_summary", "run_summary.json saved")
         # Save full ticker decisions for live cycle preservation

@@ -1,0 +1,160 @@
+{
+  "base_sha": "5bfccec3a31bde75c68233ba9ce98022ae8adcd9",
+  "branch": "wt/momentum-lineage-20261013",
+  "code_sha": "5b674ec4b33ac4e5aa6da18e30f1e6bcf69aa660",
+  "corrected_harness_preflight": {
+    "artifact": {
+      "path": "/tmp/momentum-containment-preflight-rd4_56fy/receipt.json",
+      "sha256": "393307c5b2e050624a3f7c837330c96ea846a198877ad3c0640fb907bd5656de"
+    },
+    "as_of": "2026-10-13T23:08:57.757409+00:00",
+    "business_test_invocations": 0,
+    "exit_code": 0,
+    "grant_consumed": false,
+    "original_build_meta_unchanged": true,
+    "private_build_writable": true,
+    "public_awk_usable": true,
+    "scope": "CONTAINMENT_PREFLIGHT_ONLY_NO_BUSINESS_TESTS"
+  },
+  "deployment": "NOT_PERFORMED",
+  "github_ci_cycles": 0,
+  "grant": {
+    "operator_approved_in_native_terminal": true,
+    "original_launcher_archive": {
+      "path": "/tmp/momentum-bounded-validation-20261013T225914Z.py",
+      "sha256": "3e147c3e31a0d0a98c2fd1a6e9b6d421593cd64185c3957bdf1dd7160fa575fd"
+    },
+    "original_launcher_sha256": "3e147c3e31a0d0a98c2fd1a6e9b6d421593cd64185c3957bdf1dd7160fa575fd",
+    "original_packet": "/tmp/MOMENTUM_NATIVE_READY_d08a12507.json",
+    "original_packet_sha256": "9ef21de71f920766a00b7b34b0fa70967eb3c5f326f01bf52cac639d7130eb3e",
+    "remaining_uses": 0,
+    "scope": "execution-engineering",
+    "uses_authorized": 3,
+    "uses_consumed": 3
+  },
+  "planned_correction": {
+    "additional_business_invocations_required": 1,
+    "invocation": "unchanged native PR profile at the frozen candidate with base5bfccec3a, budget540, jobs8",
+    "network_or_state_access_widened": false,
+    "private_build_copy": "Owned writable copy of the public frontend dist; original build stays unchanged.",
+    "public_dependency": "Bind only the resolved public awk binary into private /etc/alternatives/awk.",
+    "source_edits": false
+  },
+  "production_acceptance": "NOT_MEASURED",
+  "ready_to_sync": false,
+  "recorded_at": "2026-10-13T23:07:50.794748+00:00",
+  "remote_pushes": 0,
+  "runs": {
+    "adversarial": {
+      "artifacts": {
+        "receipt.json": {
+          "path": "/tmp/momentum-adversarial-xtpui6qe/receipt.json",
+          "sha256": "1bd4292fc31f26b86f9f45e812e0e7fb0d26e5f4923774c9654f42c537226a12"
+        },
+        "stderr.log": {
+          "path": "/tmp/momentum-adversarial-xtpui6qe/stderr.log",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stdout.log": {
+          "path": "/tmp/momentum-adversarial-xtpui6qe/stdout.log",
+          "sha256": "db79e693fba82904ecf2f8675e1617f8c72d9ff69cc6204debbf39a6b8a6b831"
+        }
+      },
+      "base_sha": "5bfccec3a31bde75c68233ba9ce98022ae8adcd9",
+      "exit_code": 0,
+      "finished_at": "2026-10-13T23:05:21.295359+00:00",
+      "grant_use_consumed": true,
+      "head_sha": "d08a12507d9700b8c31fad3fe5bbe573b5e408b2",
+      "production_runtime_acceptance": false,
+      "profile": "adversarial",
+      "scope": "ISOLATED_A1_A2_FIXTURE_ONLY",
+      "source_sha": "5b674ec4b33ac4e5aa6da18e30f1e6bcf69aa660",
+      "started_at": "2026-10-13T23:05:18.374150+00:00",
+      "tests": {
+        "duration_s": 2.48,
+        "failed": 0,
+        "passed": 15
+      }
+    },
+    "native": {
+      "artifacts": {
+        "receipt.json": {
+          "path": "/tmp/momentum-native-oysle_v_/receipt.json",
+          "sha256": "b9b9aa6036567185d2c32fef68a4a41814e58af8f58ec2ce9bc19befc4e5c2bc"
+        },
+        "stderr.log": {
+          "path": "/tmp/momentum-native-oysle_v_/stderr.log",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stdout.log": {
+          "path": "/tmp/momentum-native-oysle_v_/stdout.log",
+          "sha256": "7a3c550c77f7397fc05291ca7a76832307e4d0af6060b34e7bba670c3be8c772"
+        }
+      },
+      "base_sha": "5bfccec3a31bde75c68233ba9ce98022ae8adcd9",
+      "diagnosis": {
+        "cc_v3_boot_no_reload_loop": "The harness mounted its public build read-only; this unchanged test rewrites and restores build-meta.json.",
+        "deploy_ff_dev_tree": "The harness masked /etc/alternatives/awk, breaking the public /usr/bin/awk symlink; two unchanged fixture tests could not parse Git diagnostics."
+      },
+      "exit_code": 1,
+      "failed_file_chunks": 2,
+      "failed_gates": [
+        "cc_v3_boot_no_reload_loop",
+        "deploy_ff_dev_tree"
+      ],
+      "finished_at": "2026-10-13T23:04:07.820135+00:00",
+      "grant_use_consumed": true,
+      "head_sha": "d08a12507d9700b8c31fad3fe5bbe573b5e408b2",
+      "observed_file_chunks": 189,
+      "passed_file_chunks": 187,
+      "production_runtime_acceptance": false,
+      "profile": "native",
+      "scope": "ISOLATED_A1_A2_FIXTURE_ONLY",
+      "source_sha": "5b674ec4b33ac4e5aa6da18e30f1e6bcf69aa660",
+      "started_at": "2026-10-13T22:59:14.067249+00:00",
+      "test_failures": 3
+    },
+    "source": {
+      "artifacts": {
+        "receipt.json": {
+          "path": "/tmp/momentum-source-kbxwhn5_/receipt.json",
+          "sha256": "be5f9a50717803b86857364b95947885f7f6461c95f43943436f963b21229148"
+        },
+        "source-only.json": {
+          "path": "/tmp/momentum-source-kbxwhn5_/source-only.json",
+          "sha256": "f019ef78300ec28daa237dc743766c7efc214c04c20e58135f8e8a35e881fa05"
+        },
+        "stderr.log": {
+          "path": "/tmp/momentum-source-kbxwhn5_/stderr.log",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stdout.log": {
+          "path": "/tmp/momentum-source-kbxwhn5_/stdout.log",
+          "sha256": "c77a66ae565d65c0c3392d73cd1b7adcb2aa67f5b3162d13f64a1237eb9985f2"
+        }
+      },
+      "base_sha": "5bfccec3a31bde75c68233ba9ce98022ae8adcd9",
+      "exit_code": 0,
+      "finished_at": "2026-10-13T23:04:53.073712+00:00",
+      "grant_use_consumed": true,
+      "head_sha": "d08a12507d9700b8c31fad3fe5bbe573b5e408b2",
+      "production_runtime_acceptance": false,
+      "profile": "source",
+      "scope": "ISOLATED_A1_A2_FIXTURE_ONLY",
+      "source_sha": "5b674ec4b33ac4e5aa6da18e30f1e6bcf69aa660",
+      "started_at": "2026-10-13T23:04:14.303992+00:00",
+      "steps": {
+        "failed": 0,
+        "passed": 17,
+        "source_only": true,
+        "total_duration_s": 38.7,
+        "total_steps": 17,
+        "warned": 0
+      }
+    }
+  },
+  "schema": "MomentumLineageNativeValidation@v1",
+  "scope": "ISOLATED_A1_A2_FIXTURE_ONLY",
+  "status": "NATIVE_FIXTURE_CORRECTION_REQUIRED",
+  "tested_head_sha": "d08a12507d9700b8c31fad3fe5bbe573b5e408b2"
+}
