@@ -1892,6 +1892,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/MATURE_INVESTMENT_OFFICE_LIVE_CONVERGENCE_2026-08-23.md` | Trade AI v12 R9.1 - Mature Investment Office Live Convergence | review_required | OK | `05d7f40f4fee` |
 | `docs/ops/MATURITY_GAP_CLOSEOUT_2026-09-20-1445.md` | Maturity gap closeout — 2026-09-20 14:45 ET | review_required | OK | `51b34430333f` |
 | `docs/ops/MATURITY_SCORECARD.md` | Maturity scorecard (GET-only) | review_required | OK | `45731da83d49` |
+| `docs/ops/N8N_MOMENTUM_SCALP_ACTIVATION_20261013.md` | n8n momentum-scalp activation — 2026-10-13 | review_required | MISSING HEADER | `60d1dab2dee8` |
 | `docs/ops/OPERATOR_ACTION_REQUIRED.md` | OPERATOR_ACTION_REQUIRED — live advisory notification canary | review_required | OK | `840fa4562f95` |
 | `docs/ops/OPERATOR_CLOSE_BRIEF_AEC_MATURITY_2026-09-20.md` | Operator close brief — Trade AI AEC maturity goal | review_required | OK | `563472683d55` |
 | `docs/ops/OPERATOR_DEPLOYMENT_REQUIRED.md` | OPERATOR_DEPLOYMENT_REQUIRED | review_required | OK | `ad67ce75eb83` |

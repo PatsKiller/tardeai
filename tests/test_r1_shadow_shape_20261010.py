@@ -422,6 +422,7 @@ def test_compute_due_emits_the_cron_canary_lane_live_only_once_ratified(klass, m
     resp = D.compute_due([row], allow, POLICIES, None, NOW)
     assert resp["items"] == [] and [e["code"] for e in resp["errors"]] == ["class_not_permitted"]
     monkeypatch.setattr(LD, "R1_SHADOW_SHAPE_STATUS", "ACTIVE")
+    monkeypatch.setenv(D.LIVE_LANES_ENV, row["lane_id"])
     resp = D.compute_due([row], allow, POLICIES, None, NOW)
     assert resp["errors"] == [], resp["errors"]
     assert {i["mode"] for i in resp["items"]} == {"live"}

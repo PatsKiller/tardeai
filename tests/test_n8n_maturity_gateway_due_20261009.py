@@ -64,7 +64,8 @@ def _sources(registry=None, entries=None, fail=None):
 
 
 @pytest.fixture
-def stores(tmp_path):
+def stores(tmp_path, monkeypatch):
+    monkeypatch.setenv("TRADEAI_N8N_RELAY_LIVE_LANES", "backup-verify")
     ledger = CoordinationLedger(tmp_path / "ledger.sqlite")
     yield ledger, LedgerNonceStore(ledger), LedgerReceiptStore(ledger), LedgerRunStore(ledger)
     ledger.close()

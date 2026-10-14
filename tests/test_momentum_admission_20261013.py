@@ -39,8 +39,12 @@ def reviewed(contract):
     return contract
 
 
-def test_current_admission_is_structurally_valid_and_unreviewed_work_stays_off():
+def test_current_admission_is_structurally_valid_and_unreviewed_work_stays_off(monkeypatch):
     rows, allow, contracts = source()
+    monkeypatch.setenv(
+        "TRADEAI_N8N_RELAY_LIVE_LANES",
+        " ".join(lane for lane in IDS if rows[lane]["dispatch"]["mode"] == "live"),
+    )
     for lane in IDS:
         assert L.validate_row(rows[lane]) == []
         assert D.validate_dispatch_block(rows[lane]) == []
@@ -63,7 +67,7 @@ def test_current_admission_is_structurally_valid_and_unreviewed_work_stays_off()
 
 
 @pytest.mark.parametrize("lane", IDS)
-def test_shadow_and_canary_keep_natural_slot_identity_and_original_lock(lane, tmp_path):
+def test_shadow_and_canary_keep_natural_slot_identity_and_original_lock(lane, tmp_path, monkeypatch):
     rows, allow, _ = source()
     row, entry = copy.deepcopy(rows[lane]), copy.deepcopy(allow[lane])
     row["state"] = "ACTIVE"
@@ -82,6 +86,7 @@ def test_shadow_and_canary_keep_natural_slot_identity_and_original_lock(lane, tm
     assert entry["lock"] + ".dryrun" in dry and "--dry-run" in dry
     row["scheduler"]["stage"] = "canary"
     row["dispatch"]["mode"] = "live"
+    monkeypatch.setenv("TRADEAI_N8N_RELAY_LIVE_LANES", lane)
     entry["live_arg"] = (
         []
         if lane == "trade-ai-scalp-live"

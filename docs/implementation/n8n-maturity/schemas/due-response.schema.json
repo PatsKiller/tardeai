@@ -59,7 +59,7 @@
       }
     },
     "errors": {
-      "description": "Registry rows skipped because their dispatch block could not be evaluated (bad cron, unknown policy), plus after-edge defects that keep the lane evaluated (after_not_dispatched: the predecessor is off/on cron and writes no ledger row, so the edge can only time out; after_mode_unsatisfiable: a live lane after a dry_run-dispatched predecessor). Never fatal for other lanes.",
+      "description": "Registry rows skipped because their dispatch block could not be evaluated (bad cron, unknown policy), plus after-edge defects that keep the lane evaluated (after_not_dispatched: the predecessor is off/on cron and writes no ledger row, so the edge can only time out; after_mode_unsatisfiable: a live lane after a dry_run-dispatched predecessor). relay_live_lanes_missing means TRADEAI_N8N_RELAY_LIVE_LANES is unset: that live lane is not emitted and is not rewritten as dry_run. Never fatal for other lanes.",
       "type": "array",
       "items": {
         "type": "object",
@@ -67,7 +67,7 @@
         "required": ["lane_id", "code"],
         "properties": {
           "lane_id": {"$ref": "#/$defs/lane_id"},
-          "code": {"enum": ["bad_cron", "unknown_retry_policy", "not_allowlisted", "class_not_permitted", "after_unknown_lane", "after_not_dispatched", "after_mode_unsatisfiable", "trigger_source_unreadable"]},
+          "code": {"enum": ["bad_cron", "unknown_retry_policy", "not_allowlisted", "class_not_permitted", "after_unknown_lane", "after_not_dispatched", "after_mode_unsatisfiable", "trigger_source_unreadable", "relay_live_lanes_missing"]},
           "detail": {"type": "string", "maxLength": 160}
         }
       }
@@ -94,7 +94,7 @@
         },
         "attempt": {"type": "integer", "minimum": 1, "maximum": 9},
         "slot_local": {"$ref": "#/$defs/slot_local"},
-        "reason": {"enum": ["schedule", "catchup", "retry", "event", "sweep", "digest_prepare", "digest_send", "digest_send_partial", "dlq_release"]},
+        "reason": {"enum": ["schedule", "catchup", "retry", "event", "sweep", "digest_prepare", "digest_send", "digest_send_partial", "dlq_release", "relay_live_not_enabled"]},
         "priority": {"type": "integer", "minimum": 0, "maximum": 9}
       }
     }

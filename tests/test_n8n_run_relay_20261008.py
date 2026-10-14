@@ -86,12 +86,10 @@ def test_lane_and_live_gates_do_not_call_transport(tmp_path):
         )[1]["reason"]
         == "relay_lane_not_allowlisted"
     )
-    assert (
-        r.run(auth, json.dumps({"lane_id": LANE, "mode": "live", "idempotency_key": "run-20261008-0002"}).encode())[1][
-            "reason"
-        ]
-        == "relay_live_not_enabled"
+    status, body = r.run(
+        auth, json.dumps({"lane_id": LANE, "mode": "live", "idempotency_key": "run-20261008-0002"}).encode()
     )
+    assert status == 503 and body["reason"] == "relay_live_lanes_missing"
     assert calls == []
 
 
@@ -174,6 +172,27 @@ def test_status_and_unit_registry_contract():
     services = json.loads((root / "config/expected_services.json").read_text())["units"]
     assert sum(row.get("unit") == "tradeai-n8n-run-relay.service" for row in services) == 1
     assert "tradeai-n8n-run-relay.service" not in (root / "config/dev_tree_units_baseline.txt").read_text()
+
+
+def _env_files(unit_text):
+    return [line.split("=", 1)[1].lstrip("-") for line in unit_text.splitlines() if line.startswith("EnvironmentFile=")]
+
+
+def test_live_lane_list_is_a_secret_free_file_both_units_load():
+    """Operator ruling 2026-10-13: TRADEAI_N8N_RELAY_LIVE_LANES is the single live-lane source, in its own
+    secret-free file. The gateway must never load n8n-relay.env (relay bearer + HMAC key)."""
+    root = Path(__file__).resolve().parents[1]
+    gateway = (root / "config/systemd/user/tradeai-n8n-coordination-gateway.service").read_text()
+    relay = (root / "config/systemd/user/tradeai-n8n-run-relay.service").read_text()
+    live_lanes = "%h/.config/tradeai/n8n-live-lanes.env"
+    gateway_files = _env_files(gateway)
+    relay_files = _env_files(relay)
+    assert live_lanes in gateway_files and live_lanes in relay_files
+    assert not any("relay" in Path(f).name for f in gateway_files), gateway_files
+    directives = [line for line in gateway.splitlines() if line.strip() and not line.lstrip().startswith("#")]
+    assert not any("n8n-relay.env" in line for line in directives), directives
+    # The relay keeps its secrets file; the live-lanes file comes later so its list wins.
+    assert relay_files.index(live_lanes) > relay_files.index("%h/.config/tradeai/n8n-relay.env")
 
 
 _RUN_DDL = (
@@ -328,6 +347,22 @@ def test_previous_bearer_is_accepted_and_a_short_one_refuses_start(tmp_path):
         relay(tmp_path, TRADEAI_N8N_RELAY_BEARER_PREVIOUS="short")
 
 
+def test_present_empty_live_list_is_not_enabled_and_a_missing_list_still_forwards_dry_run(tmp_path):
+    calls = []
+    auth = f"Bearer {BEARER}"
+    empty = relay(tmp_path, transport=lambda *_: calls.append(1) or (200, {"state": "REQUESTED"}),
+                  TRADEAI_N8N_RELAY_LIVE_LANES="")
+    live = json.dumps({"lane_id": LANE, "mode": "live", "idempotency_key": "run-20261008-0010"}).encode()
+    assert empty.run(auth, live) == (403, {"state": "REFUSED", "reason": "relay_live_not_enabled"})
+    assert empty.live_lanes_missing is False and empty.live_lanes == frozenset()
+    missing = relay(tmp_path, transport=lambda *_: calls.append(1) or (200, {"state": "REQUESTED"}))
+    assert missing.live_lanes_missing is True and missing.live_lanes == frozenset()
+    assert missing.run(auth, live) == (503, {"state": "REFUSED", "reason": "relay_live_lanes_missing"})
+    dry = json.dumps({"lane_id": LANE, "mode": "dry_run", "idempotency_key": "run-20261008-0011"}).encode()
+    assert missing.run(auth, dry)[0] == 200
+    assert calls == [1]
+
+
 def test_every_emitted_refusal_is_declared():
     assert R.REFUSALS
     for reason in (
@@ -338,6 +373,7 @@ def test_every_emitted_refusal_is_declared():
         "relay_lane_not_allowlisted",
         "relay_bad_mode",
         "relay_live_not_enabled",
+        "relay_live_lanes_missing",
         "relay_bad_run_id",
         "relay_gateway_unreachable",
     ):
