@@ -35,7 +35,11 @@ PORT = int(os.environ.get("CHATGPT_PROXY_PORT", "8646"))
 # monitor reported as an error streak without ever naming the cause. The slug
 # was presumably valid when it was written; the account's Codex model set moved
 # and the constant did not.
-DEFAULT_MODEL = os.environ.get("CHATGPT_PROXY_MODEL", "gpt-5.5")
+# 2026-10-14: the account's Codex set moved again — gpt-5.5, gpt-5.4-mini, gpt-5, gpt-5-mini, gpt-5.6 and
+# gpt-5.5-mini all 400 "not supported when using Codex with a ChatGPT account"; gpt-6.1-sol (the codex CLI's
+# default) answers. Both the default and the accepted list are env-configurable so the next move is a drop-in,
+# not a release.
+DEFAULT_MODEL = os.environ.get("CHATGPT_PROXY_MODEL", "gpt-6.1-sol")
 AUTH_JSON = os.path.expanduser("~/.hermes/auth.json")
 TIMEOUT = int(os.environ.get("CHATGPT_PROXY_TIMEOUT", "240"))
 KEEPALIVE_INTERVAL = int(os.environ.get("CHATGPT_PROXY_KEEPALIVE_INTERVAL", "25"))
@@ -44,7 +48,10 @@ KEEPALIVE_INTERVAL = int(os.environ.get("CHATGPT_PROXY_KEEPALIVE_INTERVAL", "25"
 # gpt-5.4 and gpt-5.3-codex — and its comment asserted the opposite of what the
 # backend does, which is how the broken default survived: the list looked like
 # evidence and was an assumption. Re-probe before adding a slug here.
-MODELS = ["gpt-5.5", "gpt-5.4-mini"]
+# A requested slug not in MODELS is served as DEFAULT_MODEL, so callers still asking for a retired slug keep working.
+MODELS = [m.strip() for m in os.environ.get("CHATGPT_PROXY_MODELS", DEFAULT_MODEL).split(",") if m.strip()]
+if DEFAULT_MODEL not in MODELS:
+    MODELS.insert(0, DEFAULT_MODEL)
 _SESSION_LINE = re.compile(r"\n?session_id:\s*\S+\s*$")
 
 _ANSI = re.compile(r"\x1b\[[0-9;?]*[a-zA-Z]|\x1b\][^\x07]*\x07")
