@@ -238,7 +238,8 @@ def test_activated_registry_has_no_dispatch_issue_once_active(monkeypatch):
     # sec-filings-feed is W4 provider-owner EXCLUDED (tests/test_w4_provider_owners_shadow_20261011.py).
     # - 1: C1 hermes_overnight registry edit (train 6, 2026-10-12) absorbs SW4 hermes-tag-lift-discovery (dispatch_retired).
     # (WAVE3_ON_CRON: research-insight-extractor left cron at cutover, 2026-10-13.)
-    assert len(r1_cron_shadow) == len(WAVE3_ON_CRON) + 3 + 15 + 10 + 11 - 1
+    # + 2 scalp hot-tier ingest rows (2026-10-14; tests/test_scalp_premarket_onboard_20261014.py).
+    assert len(r1_cron_shadow) == len(WAVE3_ON_CRON) + 3 + 15 + 10 + 11 - 1 + 2
     assert len(errs) == len(r1_cron_shadow) and all("shadow_on_cron_not_ratified" in x for x in errs), errs[:3]
     monkeypatch.setattr(LD, "R1_SHADOW_SHAPE_STATUS", "ACTIVE")
     assert LD.registry_dispatch_errors(doc) == []

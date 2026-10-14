@@ -585,7 +585,9 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
     # named scalp exception at shadow; it adds no live dispatch row.
     # - 2: C1 hermes_overnight registry edit (train 6, 2026-10-12) absorbs hermes-tag-lift-discovery (SW4/W4) and
     # hermes-industry-novelty-discovery (D2) into hermes-overnight-pipeline-night (dispatch_retired, allowlist removed).
-    assert len(shadow) == 54 + 3 + 15 - len(CANARY_ROWS) - 17 + 10 + 11 + len(N8N_NATIVE_SHADOW) + 1 - 2, shadow
+    # + 2: scalp/premarket onboarding (2026-10-14, tests/test_scalp_premarket_onboard_20261014.py): the scalp hot-tier
+    # R1 ingest rows finviz-enrichment-scalp-hot and scalp-hot-list at shadow (dry_run, live_arg null).
+    assert len(shadow) == 54 + 3 + 15 - len(CANARY_ROWS) - 17 + 10 + 11 + len(N8N_NATIVE_SHADOW) + 1 - 2 + 2, shadow
     # heartbeat-watch moved shadow → canary (N8N_NATIVE_CANARY) 2026-10-11.
     assert sorted(r["lane_id"] for r in rows if LD.dispatch_mode(r) == "live") == sorted(
         CANARY_ROWS | N8N_NATIVE_CANARY
@@ -696,7 +698,8 @@ def test_only_the_excepted_lane_changes_eligibility_in_the_live_registry():
     flipped = [
         r["lane_id"] for r in _live_rows() if LD.dispatch_eligible(r)[0] != LD.dispatch_eligible(r, exceptions={})[0]
     ]
-    assert flipped in ([], ["trade-ai-scalp-live"])
+    # 2026-10-14: + the two scalp hot-tier ingest lanes (bounded by lane_dispatch.EXEMPTIBLE_LANES).
+    assert set(flipped) <= {"trade-ai-scalp-live", "finviz-enrichment-scalp-hot", "scalp-hot-list"}
 
 
 # ── policy exceptions (config/lane_dispatch_policy_exceptions.json) ─────────────────────────────
@@ -720,14 +723,16 @@ def _scalp(**extra):
     )
 
 
-def test_policy_exception_config_lists_only_scalp_live_market_day_gate():
+def test_policy_exception_config_lists_only_market_day_gate_for_the_bounded_lanes():
     doc = json.loads(LD.DEFAULT_POLICY_EXCEPTIONS.read_text(encoding="utf-8"))
-    assert [e["lane_id"] for e in doc["exceptions"]] == ["trade-ai-scalp-live"]
-    assert doc["exceptions"][0]["exempt_tokens"] == ["market_day_gate.sh"]
+    # 2026-10-14: + the two scalp hot-tier ingest lanes (operator directive, n8nmat/scalp-premarket-onboard-20261014).
+    assert [e["lane_id"] for e in doc["exceptions"]] == [
+        "trade-ai-scalp-live", "finviz-enrichment-scalp-hot", "scalp-hot-list"]
+    assert all(e["exempt_tokens"] == ["market_day_gate.sh"] for e in doc["exceptions"])
     assert "4.0.0" in doc["exceptions"][0]["authority"] and "2026-10-09" in doc["exceptions"][0]["approval"]
-    assert LD.load_policy_exceptions() == SCALP_EXC
+    assert LD.load_policy_exceptions()["trade-ai-scalp-live"] == SCALP_EXC["trade-ai-scalp-live"]
     assert LD.EXEMPTIBLE_TOKENS == frozenset({"market_day_gate.sh"})
-    assert LD.EXEMPTIBLE_LANES == frozenset({"trade-ai-scalp-live"})
+    assert LD.EXEMPTIBLE_LANES == frozenset({"trade-ai-scalp-live", "finviz-enrichment-scalp-hot", "scalp-hot-list"})
     assert "market_day_gate.sh" in FORBIDDEN_COMMAND_TOKENS
 
 

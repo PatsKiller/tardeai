@@ -136,9 +136,27 @@ def test_every_command_token_passes_both_forbidden_lists_and_names_no_authority_
         assert "market_day_gate" not in json.dumps(entry["command"])  # the executor prepends the gate from the flag
 
 
+#: Inline cron env knobs a command may set through a leading `env NAME=VALUE ...` (the executor has no per-lane env
+#: values; the cron line sets these inline). Non-secret switches only, each pinned to the cron line's literal value
+#: (2026-10-14, n8nmat/scalp-premarket-onboard-20261014: the scalp hot-tier lanes).
+INLINE_ENV_KNOBS = {"SCALP_HOT_TIER": {"1"}, "MOMENTUM_SCALP_OUTER_DEADLINE_S": {"100"}}
+
+
+def _strip_inline_env(lane_id, cmd):
+    if cmd[:1] != ["env"]:
+        return cmd
+    i = 1
+    while i < len(cmd) and "=" in cmd[i] and not cmd[i].startswith("-"):
+        name, _, value = cmd[i].partition("=")
+        assert value in INLINE_ENV_KNOBS.get(name, set()), (lane_id, cmd[i])
+        i += 1
+    assert i > 1 and cmd[i:i + 1] == ["$PY"], (lane_id, cmd)
+    return cmd[i:]
+
+
 def test_commands_run_repo_scripts_or_crontab_only_and_mode_args_differ():
     for lane_id, entry in LANES.items():
-        cmd = entry["command"]
+        cmd = _strip_inline_env(lane_id, entry["command"])
         if cmd[0] == "$PY":
             cmd = [cmd[0], str(_repo_script_path(cmd[1]).relative_to(ROOT)), *cmd[2:]]
             assert cmd[1].startswith("scripts/") and (ROOT / cmd[1]).is_file(), (lane_id, cmd[1])
@@ -151,9 +169,10 @@ def test_commands_run_repo_scripts_or_crontab_only_and_mode_args_differ():
 def test_dry_run_arguments_match_each_scripts_argparse():
     """--dry-run/--apply/--write exist on the script they are passed to (no invented flags)."""
     for lane_id, entry in LANES.items():
-        if entry["command"][0] != "$PY":
+        cmd = _strip_inline_env(lane_id, entry["command"])
+        if cmd[0] != "$PY":
             continue
-        src = _repo_script_path(entry["command"][1]).read_text(encoding="utf-8")
+        src = _repo_script_path(cmd[1]).read_text(encoding="utf-8")
         for arg in [*(entry.get("dry_run_arg") or []), *(entry.get("live_arg") or [])]:
             if arg.startswith("--"):
                 assert f'"{arg}"' in src, (lane_id, arg)

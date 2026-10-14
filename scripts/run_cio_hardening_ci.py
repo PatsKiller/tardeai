@@ -4385,6 +4385,14 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: SCALP_PREMARKET_ONBOARD_20261014 — operator directive 2026-10-14: the two scalp hot-tier R1 ingest
+        # lanes (finviz-enrichment-scalp-hot, scalp-hot-list) enter the dispatcher at shadow (cron-exact lock,
+        # market_gate, receipt, no broker env), the market_day_gate.sh exception stays bounded to three lanes, the
+        # hot-list line writes its LaneRunReceipt@v1 on a real run only, and the sender / paper scalp lanes stay off.
+        "scalp_premarket_onboard_20261014",
+        ["tests/test_scalp_premarket_onboard_20261014.py"],
+    ),
+    (
         # ANCHOR: CONSOLIDATION_STEP1_FINVIZ_BROKER — 2026-10-10 provider consolidation step 1 (cron L442 watch
         # directives servicer, cron L142 finviz-enrichment owner): the Finviz enrichment cache's single writer saves
         # locked + merged + atomic; consumers read lib.data_broker.finviz_enrichment_snapshot (as_of/age/stale,
