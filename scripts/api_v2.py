@@ -48,6 +48,10 @@ try:  # reports live in persistent-state, not the release dir (lib/portfolio_rep
     from lib.portfolio_reports_root import portfolio_reports_root as _portfolio_reports_root  # noqa: E402
 except ImportError:  # pragma: no cover - imported as scripts.<module>
     from scripts.lib.portfolio_reports_root import portfolio_reports_root as _portfolio_reports_root  # noqa: E402
+try:  # YouTube cookie jar lives outside the release dir (lib/youtube_cookie_path.py)
+    from lib import youtube_cookie_path as _yt_cookie_path  # noqa: E402
+except ImportError:  # pragma: no cover - imported as scripts.<module>
+    from scripts.lib import youtube_cookie_path as _yt_cookie_path  # noqa: E402
 STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
 # Dev tree often owns the venv while portfolio-server runs from a release stamp
 # that has scripts/ but no .venv (Fix-now Errno 2 on live/.venv/bin/python).
@@ -3061,12 +3065,23 @@ def _system_pipeline_health():
 
     # YouTube cookie health → stoplight. red=logged-out (refresh needed), amber=authed but
     # ingestion stale, green=authed + flowing. The blocker that froze transcripts for 14 days.
-    yt = {"status": "red", "auth_cookies": 0, "refreshed": None, "detail": "no cookie file"}
+    # Canonical jar is ~/.config/tradeai/youtube_cookies.txt (survives promotes); a jar found only
+    # at the legacy release path still authenticates but is amber — lost on the next release.
+    yt = {
+        "status": "red",
+        "auth_cookies": 0,
+        "refreshed": None,
+        "detail": f"no cookie file — place it at {_yt_cookie_path.CANONICAL_DISPLAY}",
+        "path": None,
+        "location": "missing",
+    }
     try:
         import os as _os
 
-        cpath = PROJECT_ROOT / "config" / "youtube_cookies.txt"
-        if cpath.exists():
+        _res = _yt_cookie_path.resolve_cookie_path(PROJECT_ROOT)
+        cpath = _res.path
+        yt["path"], yt["location"] = str(cpath), _res.location
+        if _res.exists:
             names = set()
             for ln in cpath.read_text().splitlines():
                 if ln.startswith("#") or "\t" not in ln:
@@ -3099,7 +3114,16 @@ def _system_pipeline_health():
                     else None
                 )
             if not auth:
-                yt["status"], yt["detail"] = "red", "logged-out cookies — refresh config/youtube_cookies.txt"
+                yt["status"], yt["detail"] = (
+                    "red",
+                    f"logged-out cookies — refresh {_yt_cookie_path.CANONICAL_DISPLAY}",
+                )
+            elif _res.is_legacy:
+                yt["status"], yt["detail"] = (
+                    "amber",
+                    "authenticated, but read from the legacy release path config/youtube_cookies.txt — "
+                    f"will be lost on next release; move to {_yt_cookie_path.CANONICAL_DISPLAY}",
+                )
             elif age_h is not None and age_h > 72:
                 yt["status"], yt["detail"] = "amber", f"authenticated, but ingestion {round(age_h)}h stale"
             else:
@@ -3254,13 +3278,19 @@ def _system_youtube_cookies_write(body: dict | None = None):
             "ops_path": "/v3/system?tab=Pipeline&focus=youtube-cookies",
         }
 
-    cpath = PROJECT_ROOT / "config" / "youtube_cookies.txt"
-    cpath.parent.mkdir(parents=True, exist_ok=True)
+    # Always write the canonical jar outside the release dir (a release-dir write is lost at the
+    # next promote — 2026-10-13 refresh vanished at the 2026-10-14 promote).
+    _res = _yt_cookie_path.resolve_cookie_path(PROJECT_ROOT)
+    cpath = _res.canonical
     backup = None
     try:
-        if cpath.exists():
+        cpath.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        if _res.exists:
             backup = cpath.with_suffix(".txt.bak")
-            backup.write_bytes(cpath.read_bytes())
+            _bfd = _os.open(str(backup), _os.O_WRONLY | _os.O_CREAT | _os.O_TRUNC, 0o600)
+            with _os.fdopen(_bfd, "wb") as _bfh:
+                _bfh.write(_res.path.read_bytes())
+            _os.chmod(backup, 0o600)
         fd, tmp_name = _tempfile.mkstemp(prefix="youtube_cookies_", suffix=".txt", dir=str(cpath.parent))
         try:
             with _os.fdopen(fd, "w", encoding="utf-8") as fh:
@@ -3269,6 +3299,7 @@ def _system_youtube_cookies_write(body: dict | None = None):
                 fh.write(text)
                 fh.flush()
                 _os.fsync(fh.fileno())
+            _os.chmod(tmp_name, 0o600)
             _os.replace(tmp_name, cpath)
         except Exception:
             try:
@@ -3283,8 +3314,9 @@ def _system_youtube_cookies_write(body: dict | None = None):
             "status": "green" if auth_count else "red",
             "auth_cookies": auth_count,
             "auth_names": sorted(found),
-            "path": "config/youtube_cookies.txt",
-            "backup": "config/youtube_cookies.txt.bak" if backup is not None else None,
+            "path": str(cpath),
+            "location": "canonical",
+            "backup": (str(backup) if backup is not None else None),
             "detail": f"wrote {data_rows} cookie rows · {auth_count} auth",
             "ops_path": "/v3/system?tab=Pipeline&focus=youtube-cookies",
             "n8n_note": "n8n must not write this file — host Ops UI / human export only",

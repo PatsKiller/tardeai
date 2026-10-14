@@ -18,8 +18,10 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
+from zoneinfo import ZoneInfo
 
 MARK = "🧭 Conviction"
+_ET = ZoneInfo("America/New_York")
 _cache: dict[str, Any] = {"mtime": None, "proj": None}
 
 
@@ -43,7 +45,20 @@ def _cfg() -> dict[str, Any]:
 SWING_VIEW_CLASSES = ("active_trader_scalp_alert",)
 
 
-def line_for(a: dict[str, Any], total: Optional[int], base: str) -> str:
+def _as_of_label(value: Any) -> Optional[str]:
+    """'as of MM-DD HH:MM ET' for an ISO stamp; None when absent/unparseable (never a guessed time)."""
+    try:
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    if dt.tzinfo is None:
+        return None
+    return "as of " + dt.astimezone(_ET).strftime("%m-%d %H:%M ET")
+
+
+def line_for(a: dict[str, Any], total: Optional[int], base: str, *, as_of: Any = None) -> str:
+    """One CIO line. The scoring time is shown (operator 2026-10-14, GLND: 82/100 RE-ENTER at 08:30 from the
+    previous session's curator run, 62/100 WATCH at 09:05 after the 09:00 rescore — same symbol, no age shown)."""
     rr = (a.get("risk_reward") or {}).get("rr")
     up = a.get("upside_pct")
     parts = [f"{MARK} {a['conviction']:.0f}/100"]
@@ -55,6 +70,9 @@ def line_for(a: dict[str, Any], total: Optional[int], base: str) -> str:
         parts.append(f"Upside {up:+.0f}%")
     if a.get("stance"):
         parts.append(str(a["stance"]).replace("_", "-"))
+    stamp = _as_of_label(a.get("as_of") or as_of)
+    if stamp:
+        parts.append(stamp)
     sym = html.escape(a["symbol"])
     link = f'<a href="{base}/v3/watch?tab=opportunities&amp;opp={sym}">Open in Command Center</a>'
     return " · ".join(parts) + f" — {link}"
@@ -64,6 +82,14 @@ def enrich(message: str, *, message_class: str = "operator_alert", projection_pa
            now: Optional[datetime] = None) -> str:
     try:
         if not message or MARK in message:
+            return message
+        try:
+            from scripts.lib.momentum_setup_evidence import UNVALIDATED_MARK
+        except ImportError:  # pragma: no cover
+            from lib.momentum_setup_evidence import UNVALIDATED_MARK  # type: ignore
+        if UNVALIDATED_MARK in message:
+            # The sender declared it has no validated same-symbol evidence (premarket_watch downgrade): a CIO
+            # conviction/stance line beside it reads as a setup endorsement (operator 2026-10-14, GLND RE-ENTER).
             return message
         cfg = _cfg()
         if not cfg.get("enabled"):
@@ -89,7 +115,7 @@ def enrich(message: str, *, message_class: str = "operator_alert", projection_pa
             return message
         items = proj.get("items") or {}
         total = sum(1 for v in items.values() if v.get("rank"))
-        lines = [line_for(items[s], total, cc_base()) for s in syms
+        lines = [line_for(items[s], total, cc_base(), as_of=proj.get("as_of")) for s in syms
                  if s in items and items[s].get("conviction") is not None]
         if not lines:
             return message

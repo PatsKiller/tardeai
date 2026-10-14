@@ -1050,6 +1050,13 @@ GATES = [
         "at_premarket_watch_20261005",
         ["tests/test_at_premarket_watch_20261005.py"],
     ),
+    # Active Trader premarket alert integrity (operator 2026-10-14, GLND): the sender gates on same-symbol
+    # momentum evidence (UNVALIDATED downgrade, config), "RE-ENTER" never narrows to RE/MAX (RMAX leak),
+    # and the CIO line shows its as-of time (legit 09:00 rescore read as a contradiction).
+    (
+        "at_premarket_alert_integrity_20261014",
+        ["tests/test_at_premarket_alert_integrity_20261014.py"],
+    ),
     # Policy apply script ratifies into production state, not the running tree (2026-10-04).
     (
         "apply_policy_default_store_20261004",
@@ -4277,6 +4284,14 @@ GATES = [
         # one-shot copy-only migration (dry-run default, never moves/deletes/overwrites). Hermetic: tmp roots.
         "portfolio_reports_state_root_20261009",
         ["tests/test_portfolio_reports_state_root_20261009.py"],
+    ),
+    (
+        # ANCHOR: YOUTUBE_COOKIE_PATH_20261014 — the YouTube cookie jar resolves through lib.youtube_cookie_path:
+        # canonical ~/.config/tradeai/youtube_cookies.txt (TRADEAI_YOUTUBE_COOKIE_FILE override), legacy release-dir
+        # config/youtube_cookies.txt read-only fallback flagged amber; Ops UI writer writes canonical 0600.
+        # Hermetic: tmp HOME / tmp project roots / synthetic cookie rows, fake db_adapter.
+        "youtube_cookie_path_20261014",
+        ["tests/test_youtube_cookie_path_20261014.py"],
     ),
     (
         # R2-02: structural dry runs, exact cron argv, failed-ok_at carry, no broker env.

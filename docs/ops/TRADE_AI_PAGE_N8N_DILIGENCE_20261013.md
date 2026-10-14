@@ -20,7 +20,7 @@ n8n **coordinates and shadows**; the **host** owns Command Center Trade truth, G
 | Active Trader journal / scalp sessions | Host cron/systemd (`active-trader-*`, motion) | `trade-ai-scalp-live` allowlisted but **cron authoritative** until per-lane cutover |
 | Scalp GO Telegram body | Host communications | n8n may schedule/trigger; must not bypass senders |
 | STALE flood (Finviz / orchestrator / proposals) | Host `system_health_agent` | Not n8n; host dedupe extended for `retry_disarmed` (12h) |
-| YouTube cookies (`config/youtube_cookies.txt`) | Host CC Ops UI + human export | **MONITOR_ONLY** — never fetch browser cookies, never write the file |
+| YouTube cookies (`~/.config/tradeai/youtube_cookies.txt`; legacy `config/youtube_cookies.txt` read-only fallback, amber) | Host CC Ops UI + human export | **MONITOR_ONLY** — never fetch browser cookies, never write the file |
 | `tradeai-momentum-lifecycle-candidate` | Imported, **inactive** | Leave inactive until first-fire failure (relay metadata) is fixed and re-granted |
 | `n8n-monitor-trade-ai` | **RETIRED** | Wave B emit = research-intake / watch-refresh only |
 

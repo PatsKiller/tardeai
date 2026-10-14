@@ -308,6 +308,11 @@ def resolve_name(name: Any) -> Optional[dict[str, Any]]:
         tokens = norm.split()
         for k in range(len(tokens), 0, -1):
             prefix = " ".join(tokens[:k])
+            if len(prefix) < 3:
+                # A narrowed prefix obeys the same "too short to be meaningful" floor as the query.
+                # 2026-10-14: the CIO stance chrome "RE-ENTER" normalised to "RE ENTER", narrowed to
+                # "RE", matched only "RE MAX HLDGS" and bound RMAX links + an RMAX id to a GLND alert.
+                break
             cands = sorted({sym for name, syms in exact.items()
                             if name == prefix or name.startswith(prefix + " ")
                             for sym in syms})
