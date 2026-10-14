@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 NOW = datetime(2026, 10, 12, 14, 15, tzinfo=timezone.utc)
 LANE = "finviz-screener-runner"
 SCRIPT = "finviz_screener_runner.py"
+COVERS = ["scripts/system_health_agent.py:799"]
 
 
 def test_repeated_stale_escalation_keeps_content_when_database_dedupe_fails(agent, monkeypatch):
@@ -26,6 +27,7 @@ def test_repeated_stale_escalation_keeps_content_when_database_dedupe_fails(agen
     monkeypatch.setattr(agent, "_send_alert", lambda message, **kwargs: calls.append((message, kwargs)) or True)
     monkeypatch.setattr(agent, "_log_event", lambda *a, **k: None)
     comp = component(agent)
+    comp["critical"] = False
     original = "2026-10-09T13:00:00Z"
     for age in (4249.5, 4254.4):
         agent._escalate(
@@ -324,10 +326,79 @@ def test_failed_receipt_is_actionable_and_disarm_reason_survives_core_loop(agent
     assert len(escalations) == 1 and statements
 
 
-def test_urgent_delivery_intent_remains_p1_without_a_new_dedupe_gate(agent, monkeypatch):
+@pytest.mark.parametrize("accepted", [True, False])
+@pytest.mark.parametrize("requested_dedupe", [None, 120])
+def test_urgent_delivery_intent_reaches_transport_with_dedupe_off(agent, monkeypatch, accepted, requested_dedupe):
     calls = []
     fake = types.ModuleType("telegram_alert")
-    fake.send_telegram = lambda message, **kwargs: calls.append((message, kwargs))
+    fake.send_telegram = lambda message, **kwargs: calls.append((message, kwargs)) or accepted
     monkeypatch.setitem(sys.modules, "telegram_alert", fake)
-    agent._send_alert("fixture operator action", urgent=True)
-    assert calls == [("fixture operator action", {"priority": "P1", "producer": "system_health_agent"})]
+    assert agent._send_alert("fixture operator action", urgent=True, dedupe_minutes=requested_dedupe) is accepted
+    assert calls == [
+        ("fixture operator action", {"priority": "P1", "producer": "system_health_agent", "dedupe_minutes": 0})
+    ]
+
+
+def test_firing_annotation_names_the_exercised_transport():
+    tree = ast.parse((ROOT / "scripts" / "system_health_agent.py").read_text())
+    fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "_send_alert")
+    sites = [
+        n.lineno
+        for n in ast.walk(fn)
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "send_telegram"
+    ]
+    assert COVERS == [f"scripts/system_health_agent.py:{line}" for line in sites]
+
+
+def test_transport_exception_returns_rejected_intent(agent, monkeypatch):
+    fake = types.ModuleType("telegram_alert")
+
+    def unavailable(*_a, **_k):
+        raise RuntimeError("fixture gateway unavailable")
+
+    fake.send_telegram = unavailable
+    monkeypatch.setitem(sys.modules, "telegram_alert", fake)
+    assert agent._send_alert("fixture operator action", urgent=True) is False
+
+
+@pytest.mark.parametrize("critical", [False, True])
+def test_failed_intent_does_not_suppress_next_poll_or_claim_delivery(agent, monkeypatch, critical):
+    records, queries, calls = [], [], []
+    outcomes = iter([False, True])
+    fake = types.ModuleType("telegram_alert")
+    fake.send_telegram = lambda message, **kwargs: calls.append((message, kwargs)) or next(outcomes)
+    monkeypatch.setitem(sys.modules, "telegram_alert", fake)
+
+    class Conn:
+        def cursor(self):
+            return self
+
+        def execute(self, sql, params):
+            queries.append((sql, params))
+
+        def fetchone(self):
+            # Match the actual successful-escalation predicate; a failed record
+            # would suppress the retry if the production SQL omitted success.
+            success_only = "success IS TRUE" in queries[-1][0]
+            return [sum(row[0] == "ESCALATION" and (not success_only or row[1]["success"]) for row in records)]
+
+    monkeypatch.setattr(agent, "_log_event", lambda conn, comp, kind, severity, msg, **kw: records.append((kind, kw)))
+    comp = {**component(agent), "critical": critical}
+    check = {
+        "status": "STALE",
+        "action_taken": "retry_disarmed",
+        "freshness_evidence": {"success_at": "2026-10-09T13:00:00Z"},
+    }
+    conn = Conn()
+    for _ in range(3):
+        agent._escalate(comp, check, conn)
+
+    assert len(calls) == 2 and calls[0] == calls[1]
+    assert calls[0][1]["priority"] == ("P1" if critical else "P3")
+    assert calls[0][1]["dedupe_minutes"] == (0 if critical else 120)
+    assert all("success IS TRUE" in sql for sql, _ in queries)
+    assert records == [
+        ("ESCALATION_REJECTED", {"action": "notification_intent", "success": False}),
+        ("ESCALATION", {"action": "notification_intent", "success": True}),
+        ("ESCALATION_DEDUPED", {"success": True}),
+    ]
