@@ -35,7 +35,13 @@ for _p in (str(ROOT), str(ROOT / "scripts")):
 from scripts import check_agents_policy_state as STATE  # noqa: E402
 from scripts.lib import advisory_lane_guard as G  # noqa: E402
 from scripts.lib import lane_dispatch as LD  # noqa: E402
-from tests.test_agents_policy_5_2_0_validation import PINNED_SECTIONS, SECTION_23_14_SHA256, _section  # noqa: E402
+from tests.test_agents_policy_5_2_0_validation import (  # noqa: E402
+    CLAUSE_23_14_8_0_0,
+    CLAUSE_23_14_PRE_8_0_0,
+    PINNED_SECTIONS,
+    SECTION_23_14_SHA256,
+    _section,
+)
 
 AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
 TOKEN = "APPROVE_AGENTS_POLICY_7_0_0"
@@ -133,6 +139,7 @@ def test_rails_and_23_14_are_byte_identical():
     sec = re.search(r"^# 23 · .*?(?=^# 24 · |^# Version history)", AGENTS, re.M | re.S).group(0)
     m = re.search(r"^## 23\.14 .*?(?=^## |^---$|^# |\Z)", sec, re.M | re.S)
     block = m.group(0).rstrip("\n").rstrip("-").rstrip("\n")
+    block = block.replace(CLAUSE_23_14_8_0_0, CLAUSE_23_14_PRE_8_0_0)  # AGENTS 8.0.0 (§23.21)
     assert hashlib.sha256(block.encode("utf-8")).hexdigest() == SECTION_23_14_SHA256
 
 

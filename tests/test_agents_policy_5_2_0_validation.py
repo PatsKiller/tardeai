@@ -40,6 +40,11 @@ TOKEN = "APPROVE_AGENTS_POLICY_5_2_0"
 # Same digests as tests/test_agents_policy_5_1_0_notification_intents.py (5.0.0 ACTIVE, 5.1.0 merged at 26cf80f60).
 SECTION_0_SHA256 = "d7ce297890a85a125b2b0d7dc8234a0e4e679ffd6bae6d7820b2076a0267ec29"
 SECTION_23_14_SHA256 = "bb8722f69b8e54a8582011bdbe266d55ea7c2c0c6b120d123a1d4e43394311e7"
+# AGENTS 8.0.0 (PROPOSED, MAJOR, operator-directed 2026-10-14, §23.21) replaced exactly one clause of §23.14 in place
+# (§20: replaced, not accumulated). Reversing that one replacement before hashing proves every other byte of §23.14
+# is unchanged; the new clause and the new digest are pinned by tests/test_agents_policy_8_0_0_cutover_standard.py.
+CLAUSE_23_14_8_0_0 = "until the §23.21 cutover standard (8.0.0) is met."
+CLAUSE_23_14_PRE_8_0_0 = "until 3 clean market days."
 PINNED_SECTIONS = {
     "§0": ("# 0 · If you read nothing else", "# 1 · Identity and responsibilities", SECTION_0_SHA256),
     "§2": ("# 2 · Authority rails", "# 2A ·", "5fd247be2571bd2a8c75d4c789bf1f0b59a1068817ed8d541b852b24a512c2af"),
@@ -162,6 +167,7 @@ def test_23_14_is_byte_identical():
     m = re.search(r"^## 23\.14 .*?(?=^## |^---$|^# |\Z)", sec.group(0), re.M | re.S)
     assert m
     block = m.group(0).rstrip("\n").rstrip("-").rstrip("\n")
+    block = block.replace(CLAUSE_23_14_8_0_0, CLAUSE_23_14_PRE_8_0_0)  # AGENTS 8.0.0 (§23.21)
     assert hashlib.sha256(block.encode("utf-8")).hexdigest() == SECTION_23_14_SHA256
 
 
@@ -209,13 +215,15 @@ def test_8_1_natural_fires_are_monitored_never_awaited_and_lift_no_gate():
         "a dependent step may start on the forced-run proof",
         "a natural fire that fails makes the change not working again",
         "This lifts no gate this file or a standard already conditions on natural-schedule evidence",
-        "step 8",
         "§23.12, last bullet",
         "`PAUSED` row's flip to `ACTIVE`",
-        "three clean market days",
         "(§15)",
     ):
         assert frag in f, frag
+    # AGENTS 8.0.0 (PROPOSED, §23.21, operator-directed 2026-10-14) took onboarding step 8's natural shadow slot and
+    # trade-ai-scalp-live's three clean market days off this list: an n8n cutover needs no natural slot and no soak.
+    assert "three clean market days" not in f and "step 8" not in f
+    assert "its readiness is the §23.21 cutover standard (8.0.0)" in f
 
 
 def test_8_1_bounds_grant_overlap_and_change_record():

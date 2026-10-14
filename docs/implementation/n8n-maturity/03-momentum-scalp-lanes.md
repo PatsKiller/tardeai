@@ -2,7 +2,7 @@
 
 **Status:** B4 deliverable, n8n maturity program, 2026-10-09 (T0 + ~1 h). Owner: Agent B (workstream B4). Agent A reviews and merges.
 **Operator directive:** "make sure momentum_scalp are developed and monitored correctly in N8N".
-**Policy:** AGENTS.md **4.0.0** (on main since train #1583). trade-ai-scalp-live may run live from n8n under the cron line's argv, lock, 295 s timeout and market gate. That needs a relay live-lane listing and a workflow-id grant, and cron stays the fallback until **3 clean market days**. Active Trader is a notifier only. Scalps here are signals and alerts; no broker, order or stop code is in scope.
+**Policy:** AGENTS.md **4.0.0** (on main since train #1583). trade-ai-scalp-live may run live from n8n under the cron line's argv, lock, 295 s timeout and market gate. That needs a relay live-lane listing and a workflow-id grant, and cron stays the fallback until **3 clean market days** (4.0.0 text; the operator removed this soak on 2026-10-14 — see the §6 correction; AGENTS.md 8.0.0 §23.21, PROPOSED). Active Trader is a notifier only. Scalps here are signals and alerts; no broker, order or stop code is in scope.
 **Companion docs:**
 - `docs/implementation/n8n-parallel/lanes/scalp-lane-20261009.md` (#1573 and 4.0.0 lane packet);
 - `docs/ops/SCALP_CATALYST_BULK_2026-10-09.md`;
@@ -299,6 +299,16 @@ B1 must confirm the exact heartbeat filename against the dev tree's `data/active
 ---
 
 ## 6. Cutover wave placement
+
+> **Correction, 2026-10-14 (operator ruling ~11:05 ET; AGENTS.md 8.0.0 §23.21, PROPOSED).** The gates below — "3 clean
+> market days", "2 clean RTH days in shadow", "3 clean live market days" and step 5 "wait for 3 clean days" — are the
+> 2026-10-09 design and are **superseded**. The standard now: (1) defect fixed and served, (2) n8n dry run passes (a
+> forced `dry_run` fire counts), (3) lane regression tests pass, (4) at least one successful in-window `live` n8n run
+> with the cron line present under `/tmp/tradeai_scalp_live.lock`. Then cut over under the wave's `cron` grant
+> (`RUNBOOK_CUTOVER_ROLLBACK.md`). Because the 3-day fallback is written into ACTIVE AGENTS.md §23.3 / §23.14, retire
+> this lane's cron line only after `APPROVE_AGENTS_POLICY_8_0_0`. The canary is pre-staged in PR #1726
+> (`flip_scalp_canary.py`), not applied (as of 2026-10-14 11:06 ET). The clean-RTH-day definition below stays useful as
+> the post-cutover monitoring bar; it is no longer a cutover gate. The 2026-10-09 text is kept unchanged below.
 
 - **The gate is 3 clean market days.** The program's generic bar is **2 clean RTH days in shadow**. AGENTS.md 4.0.0 §23.3 requires **3 market days** of n8n `RUN_DONE` with no `STALLED` before the cron line retires. **The stricter rule governs.**
 - **Wave:** scalps go in the **first (early) wave**, alone, on the reserved priority-1 worker, and only after both of these:

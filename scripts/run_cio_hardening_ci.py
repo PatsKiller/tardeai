@@ -2177,6 +2177,8 @@ GATES = [
             "tests/test_agents_policy_5_2_0_validation.py",
             # AGENTS.md 7.0.0 (PROPOSED 2026-10-14): §23.20 advisory market-data lanes + dispatcher sender gate.
             "tests/test_agents_policy_7_0_0_advisory_market_data.py",
+            # AGENTS.md 8.0.0 (PROPOSED 2026-10-14): §23.21 cutover standard; multi-day soaks removed.
+            "tests/test_agents_policy_8_0_0_cutover_standard.py",
             "tests/test_trading_session_grant_20260925.py",
             "tests/test_operator_approval_workflow_docs.py",
         ],

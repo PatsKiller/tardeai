@@ -50,6 +50,11 @@ RULE_2_EXCEPTION_5_0_0 = (
 SECTION_0_WITHOUT_SENTENCE_SHA256 = "61fe9dfbeaa3c61cf354e42ed1cdc6f7006a105b46d538cd79a74407f349af32"
 SECTION_0_WITH_SENTENCE_SHA256 = "d7ce297890a85a125b2b0d7dc8234a0e4e679ffd6bae6d7820b2076a0267ec29"
 SECTION_23_14_SHA256 = "bb8722f69b8e54a8582011bdbe266d55ea7c2c0c6b120d123a1d4e43394311e7"
+# AGENTS 8.0.0 (PROPOSED, MAJOR, operator-directed 2026-10-14, §23.21) replaced exactly one clause of §23.14 in place
+# (§20: replaced, not accumulated). Reversing that one replacement before hashing proves every other byte of §23.14
+# is unchanged; the new clause and the new digest are pinned by tests/test_agents_policy_8_0_0_cutover_standard.py.
+CLAUSE_23_14_8_0_0 = "until the §23.21 cutover standard (8.0.0) is met."
+CLAUSE_23_14_PRE_8_0_0 = "until 3 clean market days."
 UNCHANGED_SECTIONS = {
     "§2": ("# 2 · Authority rails", "# 2A ·", "5fd247be2571bd2a8c75d4c789bf1f0b59a1068817ed8d541b852b24a512c2af"),
     "§2A": ("# 2A ·", "# 2B ·", "38c78841b9b7cc3bf8ef3dea6be825ad5f892a6d4c7c8209404e4ef3855b79bb"),
@@ -161,6 +166,7 @@ def test_23_14_is_byte_identical():
     m = re.search(r"^## 23\.14 .*?(?=^## |^---$|^# |\Z)", sec.group(0), re.M | re.S)
     assert m
     block = m.group(0).rstrip("\n").rstrip("-").rstrip("\n")
+    block = block.replace(CLAUSE_23_14_8_0_0, CLAUSE_23_14_PRE_8_0_0)  # AGENTS 8.0.0 (§23.21)
     assert hashlib.sha256(block.encode("utf-8")).hexdigest() == SECTION_23_14_SHA256
 
 

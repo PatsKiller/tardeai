@@ -1,9 +1,27 @@
 # TradeAI migration reconciliation
 
-Status: DRAFT — local source and evidence package; additional cutover BLOCKED
+Status: SUPERSEDED BY docs/implementation/n8n-maturity/MIGRATION_STATE_20261014.md for current state and the cutover
+proof standard (2026-10-14); otherwise HISTORICAL — the 2026-10-12 local source and evidence package. Was: "DRAFT —
+additional cutover BLOCKED".
 Owner: platform integrator; per-process owners remain declared, unconfirmed
 as_of: 2026-10-12T04:10:00+00:00
 Measured at: source base 40208881dd34495b840bcbd4e373f593d06a659f; observed CURRENT 37752b193-main-exact-phase2-20261011-201624
+
+> **Correction, 2026-10-14 (operator ruling ~11:05 ET; AGENTS.md 8.0.0 §23.21, PROPOSED).** Three statements below
+> no longer describe the standard and must not be acted on: (1) "additional cutover remains blocked until the
+> applicable … natural schedule … requirements pass" — cutover is no longer blocked on natural-schedule evidence;
+> (2) "two distinct natural shadow slots must follow the fixes" and "manual canaries … cannot substitute for natural
+> fires" — a forced `dry_run` fire passes criterion 2 and a forced in-window `live` relay fire with the cron line
+> present under the shared lock passes criterion 4; (3) "market-day proofs cannot be replaced by synthetic bursts or
+> manual executions" — no multi-day or market-day soak is a cutover condition (window-bound lanes still fire
+> in-window). The standard is: defect fixed, n8n dry run passes, lane regression tests pass, at least one successful
+> live n8n run with cron present under the shared lock. 6 lanes were cut over by 2026-10-14 (`n8n-pilot-dispatch`,
+> `n8n-incident-fanin`, `n8n-research-intake-consumer`, `crontab-snapshot-for-health-agent` on 10-09;
+> `research-insight-extractor` on 10-13; `heartbeat-watch` n8n-only). Current state:
+> [`MIGRATION_STATE_20261014.md`](MIGRATION_STATE_20261014.md); procedure:
+> [`RUNBOOK_CUTOVER_ROLLBACK.md`](RUNBOOK_CUTOVER_ROLLBACK.md). `scripts/n8n_cutover_checklist.py` still encodes the
+> natural-slot rule described below; its forced-fire verdicts are stale until a code PR changes it. The text below is
+> kept unchanged as the 2026-10-12 record.
 
 The authoritative workbook retains 679 inventory rows, including 262 rows classified for refactoring or custom development. Historical migration labels, implementation annotations and planning records remain evidence with their original scope. They do not establish production acceptance. Additional cutover remains blocked until the applicable source, deployment, natural schedule, output, monitoring and recovery requirements pass.
 

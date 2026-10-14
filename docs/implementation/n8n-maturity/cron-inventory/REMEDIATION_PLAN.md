@@ -1,10 +1,20 @@
-Status:      ACTIVE
-as_of:       2026-10-09T23:00:06-04:00
+Status:      HISTORICAL (v1 plan of 2026-10-09; current state: docs/implementation/n8n-maturity/MIGRATION_STATE_20261014.md)
+as_of:       2026-10-09T23:00:06-04:00 (correction note added 2026-10-14T13:30:00-04:00)
 Measured at: main c4782f219 / live b7dbe6e60-main-exact-phase2-20261009-210323
 
 # Cron / n8n Remediation Plan — from the verified inventory
 
-**Status:** v1, 2026-10-09 ~23:00 ET. Owner: verifier session trade-ai-v12-rebuild-0e. **Operator freeze in force:** no cron job is
+> **Correction, 2026-10-14.** The blanket "operator freeze in force" below is a 2026-10-09 record, not the current
+> state. Cron changes have since been made lane by lane under operator `cron` grants and packets (C1 manifest flips
+> 10-10/11, five `RETIRED … n8n-cutover` lines on 10-09 and 10-13, the diagnoser install approved 10-12), and on
+> 2026-10-14 ~11:05 ET the operator set the cutover standard (AGENTS.md 8.0.0 §23.21, PROPOSED): defect fixed, n8n dry
+> run passes, lane regression tests pass, one successful live n8n run with cron present under the shared lock — no
+> soak. What still binds: no crontab line changes without a `cron` grant and a packet (dry run, backup, per-line
+> rollback); lines are commented, never deleted; the job's inventory row records the change. Current state and
+> procedure: `../MIGRATION_STATE_20261014.md`, `../RUNBOOK_CUTOVER_ROLLBACK.md`.
+
+**Status:** v1, 2026-10-09 ~23:00 ET. Owner: verifier session trade-ai-v12-rebuild-0e. **Operator freeze in force
+(2026-10-09; see the 2026-10-14 correction above):** no cron job is
 migrated, modified, disabled, consolidated or retired without operator approval of its inventory row (2026-10-09 21:50 ET).
 Every item below is a **proposal awaiting approval** unless marked APPROVED. Evidence per row:
 `cron-inventory/enrich_S*.csv` (`evidence_notes`) and `cron-inventory/analysis/`.
