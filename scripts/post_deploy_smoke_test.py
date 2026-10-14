@@ -10,6 +10,13 @@ Usage:
 Exit code 0 = all passed, 1 = failures found.
 """
 from __future__ import annotations
+try:  # cc_auth (2026-10-14): service token for loopback Command Center (:7777) calls
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+except ImportError:  # pragma: no cover - scripts/ not on sys.path
+    import sys as _cc_sys
+    from pathlib import Path as _CcPath
+    _cc_sys.path.insert(0, str(next(p for p in _CcPath(__file__).resolve().parents if p.name == "scripts")))
+    from lib.cc_client import cc_urlopen as _cc_urlopen
 
 import json
 import os
@@ -91,7 +98,7 @@ def _fetch(path: str, timeout_s: float) -> tuple[int, float, int, str]:
     try:
         req = Request(f"{BASE_URL}{path}")
         req.add_header("User-Agent", "smoke-test/1.0")
-        resp = urlopen(req, timeout=int(timeout_s + 5))
+        resp = _cc_urlopen(req, timeout=int(timeout_s + 5))
         body = resp.read()
         elapsed = time.time() - t0
         code = resp.status

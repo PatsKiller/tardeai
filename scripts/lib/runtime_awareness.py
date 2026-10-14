@@ -2,6 +2,14 @@
 Runtime Awareness — discovers what is actually running live, not just what's in dev.
 Must answer: what process serves port 7777? From what directory? What cache file does it use?
 """
+try:  # cc_auth (2026-10-14): service token for loopback Command Center (:7777) calls
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+except ImportError:  # pragma: no cover - scripts/ not on sys.path
+    import sys as _cc_sys
+    from pathlib import Path as _CcPath
+    _cc_sys.path.insert(0, str(next(p for p in _CcPath(__file__).resolve().parents if p.name == "scripts")))
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+
 import json
 import os
 import re
@@ -131,7 +139,7 @@ class RuntimeAwareness:
         """Check if the live endpoint responds."""
         import urllib.request
         try:
-            req = urllib.request.urlopen('http://localhost:7777/api/v2/health', timeout=5)
+            req = _cc_urlopen('http://localhost:7777/api/v2/health', timeout=5)
             return req.status == 200
         except Exception:
             return False

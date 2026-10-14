@@ -52604,15 +52604,25 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         return _broker_accounts_test_connection(body)
     if method == "POST" and base_path == "/api/v2/admin/secrets":
         # write-only secret rotation. NEVER log the value; return masked confirmation only.
+        # WS4-02 (2026-10-14): portfolio_server's cc_auth gate refuses this route outright
+        # (config/cc_auth.yaml always_refuse) until operator step-up exists. Defence in depth for any
+        # in-process caller: the audit actor is the AUTHENTICATED principal of this request — never a
+        # body field — and there is no write without one. A service token is not an operator.
+        try:
+            from lib.cc_auth import current_principal as _cc_current_principal
+        except ImportError:  # pragma: no cover - imported as scripts.api_v2
+            from scripts.lib.cc_auth import current_principal as _cc_current_principal
+        _actor = _cc_current_principal()
+        if not _actor.startswith("tailnet:"):
+            return 403, {"ok": False, "error": "refused: secret writes require an authenticated operator identity "
+                                               "(and step-up, not yet enabled); use the CLI"}
         try:
             import secrets_admin
 
             b = body or {}
             return 200, {
                 "ok": True,
-                "data": secrets_admin.set_secret(
-                    b.get("key", ""), b.get("value", ""), actor=b.get("actor", "operator")
-                ),
+                "data": secrets_admin.set_secret(b.get("key", ""), b.get("value", ""), actor=_actor),
             }
         except Exception as e:
             return 400, {"ok": False, "error": str(e)[:160]}

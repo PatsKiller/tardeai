@@ -10,6 +10,13 @@ No provider can bypass the circuit breaker, budget cap, or authority deny-list
 enforced by BoundedDispatcher + MvlRuntime.
 """
 from __future__ import annotations
+try:  # cc_auth (2026-10-14): service token for loopback Command Center (:7777) calls
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+except ImportError:  # pragma: no cover - scripts/ not on sys.path
+    import sys as _cc_sys
+    from pathlib import Path as _CcPath
+    _cc_sys.path.insert(0, str(next(p for p in _CcPath(__file__).resolve().parents if p.name == "scripts")))
+    from lib.cc_client import cc_urlopen as _cc_urlopen
 
 import json
 import os
@@ -99,7 +106,7 @@ def _build_ollama_provider(model_name: str = "gemma3:12b") -> Callable[[str, Map
                 data=payload,
                 headers={"Content-Type": "application/json"},
             )
-            with urllib.request.urlopen(req, timeout=120) as resp:
+            with _cc_urlopen(req, timeout=120) as resp:
                 body = json.loads(resp.read())
             return {"response": body.get("message", {}).get("content", ""),
                     "provider": "ollama", "model": model_name}
@@ -179,7 +186,7 @@ def _build_data_broker_retrieval(agent_id: str) -> Callable[[str, str], Sequence
                     f"{BASE}/api/v3/data-broker/cio/{domain}",
                     headers={"Accept": "application/json"},
                 )
-                with urllib.request.urlopen(req, timeout=10) as resp:
+                with _cc_urlopen(req, timeout=10) as resp:
                     data = json.loads(resp.read())
                 results.append({"ref": f"data-broker:{domain}",
                                 "domain": domain,

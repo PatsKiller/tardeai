@@ -3,13 +3,21 @@
 Read-only (HTTP GET). No trading/proposal/strategy mutation.
   python3 scripts/validate_missed_opportunities_dedup.py
 """
+try:  # cc_auth (2026-10-14): service token for loopback Command Center (:7777) calls
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+except ImportError:  # pragma: no cover - scripts/ not on sys.path
+    import sys as _cc_sys
+    from pathlib import Path as _CcPath
+    _cc_sys.path.insert(0, str(next(p for p in _CcPath(__file__).resolve().parents if p.name == "scripts")))
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+
 import sys, json, urllib.request
 
 URL = "http://127.0.0.1:7777/api/v2/backtesting/missed-opportunities"
 
 
 def main():
-    raw = urllib.request.urlopen(URL, timeout=40).read().decode()
+    raw = _cc_urlopen(URL, timeout=40).read().decode()
     doc = json.loads(raw)  # strict JSON (raises on NaN/invalid)
     d = doc["data"]; s = d["summary"]; rows = d["rows"]
     checks = []

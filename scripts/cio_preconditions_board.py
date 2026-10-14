@@ -27,6 +27,13 @@ AUTHORITY: READ_ONLY_ADVISORY. MBI_BEHAVIOR=0. Sends no Telegram, makes no
 vendor/LLM call, changes no flag.
 """
 from __future__ import annotations
+try:  # cc_auth (2026-10-14): service token for loopback Command Center (:7777) calls
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+except ImportError:  # pragma: no cover - scripts/ not on sys.path
+    import sys as _cc_sys
+    from pathlib import Path as _CcPath
+    _cc_sys.path.insert(0, str(next(p for p in _CcPath(__file__).resolve().parents if p.name == "scripts")))
+    from lib.cc_client import cc_urlopen as _cc_urlopen
 
 NO_CONSUMER_REASON = (
     "operator-run CLI entry point: CIOPreconditionsBoard@v1 is the shape this "
@@ -57,7 +64,7 @@ HOME_URL = "http://127.0.0.1:7777/api/v3/cio/home"
 def fetch_home(url: str, timeout: float) -> tuple[Optional[dict[str, Any]], Optional[str]]:
     """GET the live payload. A failure is reported, never swallowed into a RED."""
     try:
-        with urllib.request.urlopen(url, timeout=timeout) as resp:
+        with _cc_urlopen(url, timeout=timeout) as resp:
             return json.loads(resp.read().decode("utf-8", "replace")), None
     except Exception as exc:                                     # noqa: BLE001
         return None, f"{type(exc).__name__}: {exc}"

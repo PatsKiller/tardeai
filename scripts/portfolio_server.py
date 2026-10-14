@@ -33,6 +33,8 @@ IMPORT CONTRACT (/api/import):
 
 import http.server
 import socketserver
+import socket
+import stat
 import json
 import os
 import subprocess
@@ -42,8 +44,13 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
-PORT = 7777
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
+try:  # Command Center auth policy (config/cc_auth.yaml) — also owns the listener ports
+    from lib import cc_auth as _cc_auth  # noqa: E402
+except ImportError:  # pragma: no cover - imported as scripts.<module>
+    from scripts.lib import cc_auth as _cc_auth  # noqa: E402
+# Historical port is the fallback only when cc_auth.yaml failed to load (cc_auth then fails closed).
+PORT = _cc_auth.load_config().service_port or 7777
 try:  # reports live in persistent-state, not the release dir (lib/portfolio_reports_root.py)
     from lib.portfolio_reports_root import portfolio_reports_root as _portfolio_reports_root, union_glob as _reports_union_glob, url_for_report_file as _report_file_url, resolve_report_file as _resolve_report_file  # noqa: E402
 except ImportError:  # pragma: no cover - imported as scripts.<module>
@@ -763,7 +770,7 @@ def json_response(handler, status: int, data: dict) -> None:
         if inm.strip() == etag:
             handler.send_response(304)
             handler.send_header("ETag", etag)
-            handler.send_header("Access-Control-Allow-Origin", "*")
+            _send_cors(handler)
             handler.send_header("Connection", "close")
             handler.end_headers()
             return
@@ -824,7 +831,7 @@ def json_response(handler, status: int, data: dict) -> None:
         handler.send_header("Content-Encoding", "gzip")
         handler.send_header("Vary", "Accept-Encoding")
     handler.send_header("Content-Length", str(len(body)))
-    handler.send_header("Access-Control-Allow-Origin", "*")
+    _send_cors(handler)
     handler.send_header("Connection", "close")
     handler.end_headers()
     try:
@@ -1053,7 +1060,7 @@ def serve_file(handler, path: Path, root: Path | None = None) -> None:
     handler.send_response(200)
     handler.send_header("Content-Type", ctype)
     handler.send_header("Content-Length", str(len(data)))
-    handler.send_header("Access-Control-Allow-Origin", "*")
+    _send_cors(handler)
     ext = path.suffix.lower()
     if ext == ".pdf":
         handler.send_header("Content-Disposition", f'inline; filename="{path.name}"')
@@ -1538,6 +1545,31 @@ API_AUTH_ENABLED = bool(API_AUTH_TOKEN)
 # Paths exempt from auth (frontend, static files, health check)
 AUTH_EXEMPT_PREFIXES = ("/v2/", "/v3/", "/v3-next/", "/data/", "/archive/", "/reports/", "/assets/", "/api/health")
 
+# ── Command Center auth: Tailscale identity + service token + step-up (2026-10-14) ─────────────
+# config/cc_auth.yaml. Runs BEFORE every route (and before the legacy API_AUTH_TOKEN check above,
+# which stays as-is). The listener a request arrived on decides what is trusted:
+#   serve_proxy (127.0.0.1:7779, tailscale serve's target) -> Tailscale-User-Login in allowlist
+#   service     (127.0.0.1:7777, loopback callers)          -> per-host service token
+# Dangerous route classes additionally hit require_step_up(), which refuses until TOTP exists.
+CC_AUTH_CONFIG = _cc_auth.load_config()
+
+
+def _send_cors(handler) -> None:
+    """Access-Control-Allow-Origin for an allowlisted Origin only (config cc_auth.csrf.allowed_origins).
+
+    Replaces the historical "*" (WS4-03). Same-origin pages need no ACAO at all.
+    """
+    try:
+        origin = _cc_auth.cors_allow_origin(CC_AUTH_CONFIG, getattr(handler, "headers", None))
+    except Exception:
+        origin = None
+    if origin:
+        handler.send_header("Access-Control-Allow-Origin", origin)
+        handler.send_header("Vary", "Origin")
+CC_AUTH_TOKENS = _cc_auth.ServiceTokenStore(CC_AUTH_CONFIG.token_file, CC_AUTH_CONFIG.token_min_length)
+if CC_AUTH_CONFIG.load_error:
+    print(f"[cc-auth] CONFIG LOAD FAILED ({CC_AUTH_CONFIG.load_error}) — failing closed", flush=True)
+
 
 # ── Engine Room v1 (WS-1, Path B): in-process topology relief ──────────────────
 # Root cause of the server-busy storms: threads keep computing + serializing MB
@@ -1644,19 +1676,55 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
             return True
         return False
 
+    def _cc_auth_gate(self) -> bool:
+        """cc_auth (config/cc_auth.yaml): True = proceed; False = denial already sent.
+
+        The listener role is stamped on the server object at bind time; an unstamped server is
+        treated as the stricter service listener.
+        """
+        listener = getattr(self.server, "cc_listener_role", _cc_auth.LISTENER_SERVICE)
+        try:
+            d = _cc_auth.evaluate_request(CC_AUTH_CONFIG, listener, self.command, self.path,
+                                          self.headers, CC_AUTH_TOKENS, request=self)
+        except Exception as exc:  # fail CLOSED on a policy bug
+            d = _cc_auth.Decision(False, 403, f"cc_auth error: {type(exc).__name__}", listener)
+        # Handlers attribute actions (e.g. secret-write audit actor) to THIS, never to body fields.
+        _cc_auth.set_request_principal(_cc_auth.authenticated_principal(d))
+        try:
+            _cc_auth.record_decision(CC_AUTH_CONFIG, d, self.command, self.path,
+                                     client=str(self.client_address[0]) if self.client_address else "",
+                                     user_agent=self.headers.get("User-Agent", ""))
+        except Exception:
+            pass
+        if d.allowed:
+            return True
+        wants_html = self.command == "GET" and "text/html" in (self.headers.get("Accept", "") or "")
+        ctype, body = _cc_auth.denial_body(d, wants_html)
+        self.send_response(d.status)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        if d.status == 401:
+            self.send_header("WWW-Authenticate", f'{CC_AUTH_CONFIG.token_header} realm="tradeai-cc"')
+        self.end_headers()
+        self.wfile.write(body)
+        return False
+
     def _send_auth_error(self):
         """Send 401 Unauthorized response."""
         self.send_response(401)
         self.send_header("Content-Type", "application/json")
-        self.send_header("Access-Control-Allow-Origin", "*")
+        _send_cors(self)
         self.end_headers()
         self.wfile.write(json.dumps({"ok": False, "error": "Unauthorized. Set Authorization: Bearer <token> header."}).encode())
 
     def do_OPTIONS(self):
-        self.send_response(200)
-        self.send_header("Access-Control-Allow-Origin", "*")
+        # Preflight: only an allowlisted Origin gets ACAO back; anything else gets no CORS grant.
+        self.send_response(204)
+        _send_cors(self)
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        self.send_header("Content-Length", "0")
         self.end_headers()
 
     def _reject_non_get_agent_runtime(self):
@@ -1682,6 +1750,8 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
         return False
 
     def do_PUT(self):
+        if not self._cc_auth_gate():
+            return
         if self._reject_non_get_agent_runtime():
             return
         if self._reject_non_get_active_trader():
@@ -1689,6 +1759,8 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
         self.send_error(405, "Method Not Allowed")
 
     def do_PATCH(self):
+        if not self._cc_auth_gate():
+            return
         if self._reject_non_get_agent_runtime():
             return
         if self._reject_non_get_active_trader():
@@ -1696,6 +1768,8 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
         self.send_error(405, "Method Not Allowed")
 
     def do_DELETE(self):
+        if not self._cc_auth_gate():
+            return
         if self._reject_non_get_agent_runtime():
             return
         if self._reject_non_get_active_trader():
@@ -1719,6 +1793,8 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
                 _INFLIGHT.pop(tid, None)
 
     def _do_GET_inner(self):
+        if not self._cc_auth_gate():
+            return
         if not self._check_auth():
             self._send_auth_error()
             return
@@ -2285,6 +2361,8 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
                 _INFLIGHT.pop(tid, None)
 
     def _do_POST_inner(self):
+        if not self._cc_auth_gate():
+            return
         if not self._check_auth():
             self._send_auth_error()
             return
@@ -2763,7 +2841,6 @@ class ReusableHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
                         b"Content-Length: " + str(len(body)).encode() + b"\r\n"
                         b"Connection: close\r\n"
                         b"Retry-After: 2\r\n"
-                        b"Access-Control-Allow-Origin: *\r\n"
                         b"\r\n" + body
                     )
                     request.sendall(resp)
@@ -2783,6 +2860,79 @@ class ReusableHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
                     pass
 
 
+class ServeProxyUnixHTTPServer(ReusableHTTPServer):
+    """ReusableHTTPServer on an AF_UNIX socket (cc_auth serve_proxy, transport: unix).
+
+    Same threading + shared concurrency semaphore as :7777. The socket file is 0600 inside a 0700
+    directory, so only the service uid and root (tailscaled) can connect — other local uids cannot
+    reach the listener that trusts Tailscale identity headers.
+    """
+    address_family = socket.AF_UNIX
+    allow_reuse_address = False
+    allow_reuse_port = False
+
+    def server_bind(self):
+        path = Path(self.server_address)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        os.chmod(path.parent, 0o700)
+        if path.exists() or path.is_symlink():
+            st = os.lstat(path)
+            if not stat.S_ISSOCK(st.st_mode):
+                raise OSError(f"{path} exists and is not a socket; refusing to replace it")
+            probe = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            try:
+                probe.settimeout(1.0)
+                probe.connect(str(path))
+                raise OSError(f"{path} is held by a live listener")
+            except (ConnectionRefusedError, FileNotFoundError, socket.timeout):
+                os.unlink(path)  # stale socket left by a previous process; nothing listening
+            finally:
+                probe.close()
+        old = os.umask(0o177)
+        try:
+            self.socket.bind(str(path))
+        finally:
+            os.umask(old)
+        os.chmod(path, 0o600)
+        self.server_address = str(path)
+        self.server_name = "cc-serve-proxy"
+        self.server_port = 0
+
+    def get_request(self):
+        sock, _ = self.socket.accept()
+        return sock, ("unix-socket", 0)
+
+
+def _start_serve_proxy_listener(cfg, handler_cls=None):
+    """Second listener for `tailscale serve` (cc_auth). Same app/handler; identity headers trusted.
+
+    transport unix (default): 0600 socket; transport tcp: loopback host:port only. A bind failure
+    is logged and the service listener keeps serving (tailscale serve, if already re-pointed, then
+    answers 502 until fixed). Returns the server (daemon thread running) or None.
+    """
+    if not cfg.serve_proxy_enabled:
+        print("[cc-auth] serve_proxy listener disabled in config")
+        return None
+    target = _cc_auth.serve_proxy_target(cfg)
+    if not _cc_auth.serve_proxy_bind_ok(cfg):
+        print(f"[cc-auth] REFUSING serve_proxy listener {target} (unix needs a resolved absolute "
+              "socket path; tcp needs a loopback host and port)")
+        return None
+    try:
+        if cfg.serve_proxy_transport == "unix":
+            sp = ServeProxyUnixHTTPServer(str(cfg.serve_proxy_unix_socket), handler_cls or PortfolioHandler)
+        else:
+            sp = ReusableHTTPServer((cfg.serve_proxy_host, cfg.serve_proxy_port), handler_cls or PortfolioHandler)
+    except OSError as exc:
+        print(f"[cc-auth] serve_proxy listener bind failed on {target}: {exc}")
+        return None
+    sp.cc_listener_role = _cc_auth.LISTENER_SERVE_PROXY
+    threading.Thread(target=sp.serve_forever, daemon=True, name="cc-serve-proxy-listener").start()
+    print(f"[cc-auth] serve_proxy listener → {target} "
+          f"(enforce={cfg.enforce} report_only={cfg.report_only} step_up={cfg.step_up_mode})")
+    return sp
+
+
 if __name__ == "__main__":
     # Do NOT fuser-kill :7777 here — overlapping systemd restarts + port-guard SIGTERM caused
     # adopt churn (orphan PPID=1 while systemctl shows inactive). Watchdog clears unhealthy orphans;
@@ -2795,7 +2945,10 @@ if __name__ == "__main__":
     try:
         # 2026-10-07 (audit S1): bind host is env-driven; default "" (all interfaces) is UNCHANGED until the
         # operator sets PORTFOLIO_SERVER_BIND=127.0.0.1 in a drop-in (tailscale serve proxies localhost:7777).
-        server = ReusableHTTPServer((os.environ.get("PORTFOLIO_SERVER_BIND", ""), PORT), PortfolioHandler)
+        # 2026-10-14 (cc_auth): env still wins; otherwise config/cc_auth.yaml listeners.service.host.
+        _svc_host = os.environ.get("PORTFOLIO_SERVER_BIND", CC_AUTH_CONFIG.service_host)
+        server = ReusableHTTPServer((_svc_host, PORT), PortfolioHandler)
+        server.cc_listener_role = _cc_auth.LISTENER_SERVICE
     except OSError as e:
         print(f"[fatal] Cannot bind port {PORT}: {e}")
         print("Another portfolio_server may already be listening. Check: ss -tlnp | grep 7777")
@@ -2816,6 +2969,7 @@ if __name__ == "__main__":
         }, indent=2) + "\n", encoding="utf-8")
     except OSError as _be:
         print(f"[warn] could not write boot stamp: {_be}")
+    _start_serve_proxy_listener(CC_AUTH_CONFIG)
     threading.Thread(target=_compute_watchdog, daemon=True,
                      name="engine-room-compute-watchdog").start()
     # ── Startup data freshness check ──────────────────────────────────────

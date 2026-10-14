@@ -20,6 +20,13 @@ Accounts without a broker read path (Fidelity manual/SnapTrade, moomoo, Alpaca) 
 Read-only: SELECTs in a READ ONLY transaction and HTTP GETs to the local Command Center API.
 """
 from __future__ import annotations
+try:  # cc_auth (2026-10-14): service token for loopback Command Center (:7777) calls
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+except ImportError:  # pragma: no cover - scripts/ not on sys.path
+    import sys as _cc_sys
+    from pathlib import Path as _CcPath
+    _cc_sys.path.insert(0, str(next(p for p in _CcPath(__file__).resolve().parents if p.name == "scripts")))
+    from lib.cc_client import cc_urlopen as _cc_urlopen
 
 import argparse
 import json
@@ -304,7 +311,7 @@ def reconcile_closed(sells: Iterable[dict], closed: Iterable[dict], all_txns: It
 # ── loaders (read-only) ───────────────────────────────────────────────────────
 
 def _get(path: str):
-    with urllib.request.urlopen(CC_BASE + path, timeout=60) as r:
+    with _cc_urlopen(CC_BASE + path, timeout=60) as r:
         d = json.loads(r.read().decode())
     return d.get("data", d) if isinstance(d, dict) else d
 

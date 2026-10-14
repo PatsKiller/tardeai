@@ -19,6 +19,7 @@
 # Does NOT set AUTHORIZE_P2_LIVE_OPERATOR_DELIVERY.
 #
 set -euo pipefail
+CC_CURL="${CC_CURL:-$(cd "$(dirname "${BASH_SOURCE[0]}")/." && pwd)/cc_curl.sh}"  # cc_auth 2026-10-14: loopback CC calls carry the service token
 
 RC_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 RELEASES_BASE="${HOME}/trade-ai-releases/portfolio-server"
@@ -73,7 +74,7 @@ health_check() {
     sleep 2
   done
   local code_cio
-  code_cio=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 "$CIO_URL" || echo 000)
+  code_cio=$("$CC_CURL" -sS -o /dev/null -w '%{http_code}' --max-time 8 "$CIO_URL" || echo 000)
   if [[ "$ok" -ne 1 ]]; then
     log "FAIL $label: health endpoint not ok"
     return 1

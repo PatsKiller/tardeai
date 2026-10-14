@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Staged restart of protective services — ONLY outside market hours (before 09:00 or after 16:15 ET).
 set -euo pipefail
+CC_CURL="${CC_CURL:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/cc_curl.sh}"  # cc_auth 2026-10-14: loopback CC calls carry the service token
 export TZ=America/New_York
 PROJ=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
 cd "$PROJ"
@@ -27,7 +28,7 @@ health() {
   echo "== health $name =="
   case "$name" in
     portfolio_server)
-      curl -fsS -o /dev/null -w "%{http_code}\n" http://127.0.0.1:7777/api/v2/broker-accounts || return 1
+      "$CC_CURL" -fsS -o /dev/null -w "%{http_code}\n" http://127.0.0.1:7777/api/v2/broker-accounts || return 1
       ;;
     db)
       PYTHONPATH=scripts:scripts/lib .venv/bin/python -c "from db_adapter import _get_conn; c=_get_conn(); c.cursor().execute('SELECT 1'); print('db_ok')"

@@ -4,6 +4,14 @@
 Pure data assembly. No side effects. Caller decides what to send.
 No trades, no orders, no live execution.
 """
+try:  # cc_auth (2026-10-14): service token for loopback Command Center (:7777) calls
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+except ImportError:  # pragma: no cover - scripts/ not on sys.path
+    import sys as _cc_sys
+    from pathlib import Path as _CcPath
+    _cc_sys.path.insert(0, str(next(p for p in _CcPath(__file__).resolve().parents if p.name == "scripts")))
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+
 import json, logging, os, sys
 from pathlib import Path
 from urllib.request import Request, urlopen
@@ -18,7 +26,7 @@ BASE_URL = "http://localhost:7777"
 def _api_get(path):
     try:
         req = Request(f"{BASE_URL}{path}", method="GET")
-        resp = urlopen(req, timeout=10)
+        resp = _cc_urlopen(req, timeout=10)
         return json.loads(resp.read())
     except Exception as e:
         log.warning(f"API {path} failed: {e}")

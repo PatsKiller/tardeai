@@ -2,6 +2,14 @@
 Site Validator — checks that what the API returns matches what renders on the frontend.
 Does NOT require browser/headless — checks via API response validation.
 """
+try:  # cc_auth (2026-10-14): service token for loopback Command Center (:7777) calls
+    from lib.cc_client import cc_headers as _cc_headers
+except ImportError:  # pragma: no cover - scripts/ not on sys.path
+    import sys as _cc_sys
+    from pathlib import Path as _CcPath
+    _cc_sys.path.insert(0, str(next(p for p in _CcPath(__file__).resolve().parents if p.name == "scripts")))
+    from lib.cc_client import cc_headers as _cc_headers
+
 import json
 import sys
 import os
@@ -29,7 +37,7 @@ class SiteValidator:
             import requests
             for endpoint, label in endpoints:
                 try:
-                    r = requests.get(f'http://localhost:7777{endpoint}', timeout=10)
+                    r = requests.get(f'http://localhost:7777{endpoint}', headers=_cc_headers(f'http://localhost:7777{endpoint}'), timeout=10)
                     if r.status_code != 200:
                         self.findings.append({
                             'severity': 'P0' if r.status_code >= 500 else 'P2',

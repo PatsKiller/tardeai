@@ -6,6 +6,14 @@ Grounded in the Phase 208 audit of what each profile does + the research fleet t
   python3 scripts/seed_hermes_identities.py            # dry-run (print)
   python3 scripts/seed_hermes_identities.py --apply    # POST to localhost:7777
 """
+try:  # cc_auth (2026-10-14): service token for loopback Command Center (:7777) calls
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+except ImportError:  # pragma: no cover - scripts/ not on sys.path
+    import sys as _cc_sys
+    from pathlib import Path as _CcPath
+    _cc_sys.path.insert(0, str(next(p for p in _CcPath(__file__).resolve().parents if p.name == "scripts")))
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+
 import sys, json, urllib.request
 
 BASE = "http://127.0.0.1:7777/api/v2/hermes"
@@ -125,7 +133,7 @@ def post(path, payload):
     req = urllib.request.Request(BASE + path, data=json.dumps(payload).encode(),
                                  headers={"Content-Type": "application/json"})
     try:
-        return json.loads(urllib.request.urlopen(req, timeout=20).read())
+        return json.loads(_cc_urlopen(req, timeout=20).read())
     except urllib.error.HTTPError as e:
         return json.loads(e.read())
 

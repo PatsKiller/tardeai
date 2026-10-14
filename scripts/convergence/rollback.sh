@@ -4,6 +4,7 @@
 # <manifest> would restore backend, static bundle, read-plane connection state, and service state.
 # Never prints a DSN/secret. In this draft PR only the manifest-capture (read-only) path is exercised.
 set -u -o pipefail
+CC_CURL="${CC_CURL:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/cc_curl.sh}"  # cc_auth 2026-10-14: loopback CC calls carry the service token
 umask 077
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="${REPO:-/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild}"
@@ -74,7 +75,7 @@ PY
   echo "restored|from=$BK|superseded=$SUP"
   # post-restore verification: SERVED build-meta carries the backup's commit + read-plane intact
   if [ "${SKIP_SMOKE:-}" != "1" ] && [ -n "$BK_SC" ]; then
-    sm="$(curl -sS --max-time 8 "$VERIFY_META_URL" 2>/dev/null || echo '{}')"
+    sm="$("$CC_CURL" -sS --max-time 8 "$VERIFY_META_URL" 2>/dev/null || echo '{}')"
     printf '%s' "$sm" | PYTHONPATH="$DIR" python3 -c 'import json,sys,convergence_lib as cl
 raw=sys.stdin.read() or "{}"
 try: b=json.loads(raw)
@@ -82,7 +83,7 @@ except Exception: b={}
 sys.exit(0 if cl.served_build_ok(b, sys.argv[1]) else 1)' "$BK_SC" \
       && echo "verify_served_meta|OK|$BK_SC" || echo "verify_served_meta|MISMATCH (served != $BK_SC)"
     if [ "$VERIFY_AGENT_URL" != "none" ]; then
-      ar="$(curl -sS --max-time 8 -w $'\n%{http_code}' "$VERIFY_AGENT_URL" 2>/dev/null || printf '{}\n000')"
+      ar="$("$CC_CURL" -sS --max-time 8 -w $'\n%{http_code}' "$VERIFY_AGENT_URL" 2>/dev/null || printf '{}\n000')"
       printf '%s' "${ar%$'\n'*}" | PYTHONPATH="$DIR" python3 -c 'import json,sys,convergence_lib as cl
 raw=sys.stdin.read() or "{}"
 try: b=json.loads(raw)

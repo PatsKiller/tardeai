@@ -6,6 +6,13 @@ writes one non-secret observation for Command Center and the system health
 agent. It has no dispatch, provider, scheduler, or financial authority.
 """
 from __future__ import annotations
+try:  # cc_auth (2026-10-14): service token for loopback Command Center (:7777) calls
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+except ImportError:  # pragma: no cover - scripts/ not on sys.path
+    import sys as _cc_sys
+    from pathlib import Path as _CcPath
+    _cc_sys.path.insert(0, str(next(p for p in _CcPath(__file__).resolve().parents if p.name == "scripts")))
+    from lib.cc_client import cc_urlopen as _cc_urlopen
 
 import argparse
 import json
@@ -23,7 +30,7 @@ DEFAULT_STATE = "~/.local/state/tradeai/agent-runtime-health.json"
 
 def _get_json(url: str) -> dict[str, Any]:
     request = Request(url, headers={"Accept": "application/json"}, method="GET")
-    with urlopen(request, timeout=10) as response:
+    with _cc_urlopen(request, timeout=10) as response:
         if response.status != 200:
             raise RuntimeError(f"HTTP {response.status} from {url}")
         payload = json.load(response)

@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 """hermes_tradeai_handshake.py — Enqueue T1 research for Trade AI GO symbols (audit 2026-07-02)."""
 from __future__ import annotations
+try:  # cc_auth (2026-10-14): service token for loopback Command Center (:7777) calls
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+except ImportError:  # pragma: no cover - scripts/ not on sys.path
+    import sys as _cc_sys
+    from pathlib import Path as _CcPath
+    _cc_sys.path.insert(0, str(next(p for p in _CcPath(__file__).resolve().parents if p.name == "scripts")))
+    from lib.cc_client import cc_urlopen as _cc_urlopen
 
 import argparse
 import json
@@ -16,7 +23,7 @@ def _load_go_symbols() -> list[str]:
     """GO tickers from latest trade-ai API snapshot or run_summary."""
     import urllib.request
     try:
-        with urllib.request.urlopen("http://127.0.0.1:7777/api/v2/trade-ai", timeout=12) as r:
+        with _cc_urlopen("http://127.0.0.1:7777/api/v2/trade-ai", timeout=12) as r:
             payload = json.load(r)
             data = payload.get("data", payload)
         syms = []

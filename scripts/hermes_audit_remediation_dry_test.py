@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 """Dry test for Hermes audit remediation (2026-07-02) — static + live contract checks."""
 from __future__ import annotations
+try:  # cc_auth (2026-10-14): service token for loopback Command Center (:7777) calls
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+except ImportError:  # pragma: no cover - scripts/ not on sys.path
+    import sys as _cc_sys
+    from pathlib import Path as _CcPath
+    _cc_sys.path.insert(0, str(next(p for p in _CcPath(__file__).resolve().parents if p.name == "scripts")))
+    from lib.cc_client import cc_urlopen as _cc_urlopen
 
 import json
 import subprocess
@@ -116,7 +123,7 @@ def check_maturity_report() -> tuple[bool, str]:
 
 def check_maturity_api() -> tuple[bool, str]:
     try:
-        with urllib.request.urlopen("http://127.0.0.1:7777/api/v2/hermes/maturity-dashboard", timeout=30) as resp:
+        with _cc_urlopen("http://127.0.0.1:7777/api/v2/hermes/maturity-dashboard", timeout=30) as resp:
             body = resp.read(500000).decode()
         data = json.loads(body)
         sk = data.get("scalp_kpis") or data.get("data", {}).get("scalp_kpis")

@@ -18,6 +18,13 @@ Usage:
     .venv/bin/python scripts/hermes_health_inspector.py --dry-run
 """
 from __future__ import annotations
+try:  # cc_auth (2026-10-14): service token for loopback Command Center (:7777) calls
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+except ImportError:  # pragma: no cover - scripts/ not on sys.path
+    import sys as _cc_sys
+    from pathlib import Path as _CcPath
+    _cc_sys.path.insert(0, str(next(p for p in _CcPath(__file__).resolve().parents if p.name == "scripts")))
+    from lib.cc_client import cc_urlopen as _cc_urlopen
 
 import argparse
 import fcntl
@@ -139,7 +146,7 @@ def _fetch_health_agent() -> dict | None:
     try:
         req = urllib.request.Request("http://localhost:7777/api/v2/health", method="GET")
         req.add_header("Accept", "application/json")
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with _cc_urlopen(req, timeout=10) as resp:
             return json.loads(resp.read())
     except Exception as e:
         _log(f"Failed to fetch /api/v2/health: {e}")

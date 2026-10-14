@@ -12,6 +12,7 @@
 #   Rollback the most recent backup this script made:
 #     ROLLBACK=1 scripts/deploy_watch_production_reconciliation_from_ref.sh
 set -euo pipefail
+CC_CURL="${CC_CURL:-$(cd "$(dirname "${BASH_SOURCE[0]}")/." && pwd)/cc_curl.sh}"  # cc_auth 2026-10-14: loopback CC calls carry the service token
 
 readonly ACK_REQUIRED="WATCH_PRODUCTION_RECONCILIATION_V1"
 readonly REPO_DEFAULT=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
@@ -148,7 +149,7 @@ step "PACKET REBUILD (same governance contract; writes packets, NOT schedules)"
 # --------------------------------------------------------------- health smoke
 step "HEALTH SMOKE (loopback, read-only)"
 if command -v curl >/dev/null 2>&1; then
-  code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$HEALTH_URL" || echo 000)"
+  code="$("$CC_CURL" -s -o /dev/null -w '%{http_code}' --max-time 10 "$HEALTH_URL" || echo 000)"
   log "GET $HEALTH_URL -> HTTP $code"
   [[ "$code" == "200" ]] || log "WARN: health smoke non-200 — consider ROLLBACK=1 APPLY=1"
 else

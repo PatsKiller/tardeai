@@ -4,6 +4,14 @@ Provides stock-level insights, ETF look-through, and specific recommendations.
 Refreshes monthly. Daily runs use cached analysis.
 """
 from __future__ import annotations
+try:  # cc_auth (2026-10-14): service token for loopback Command Center (:7777) calls
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+except ImportError:  # pragma: no cover - scripts/ not on sys.path
+    import sys as _cc_sys
+    from pathlib import Path as _CcPath
+    _cc_sys.path.insert(0, str(next(p for p in _CcPath(__file__).resolve().parents if p.name == "scripts")))
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+
 import json, os, sys, time
 from datetime import datetime, timedelta
 import re
@@ -445,7 +453,7 @@ def _load_personal_situation(server_url: str = "http://localhost:7777") -> Dict:
 
     # Try API first — server has authoritative computed-fields logic
     try:
-        with urllib.request.urlopen(f"{server_url}/api/personal/read", timeout=3) as r:
+        with _cc_urlopen(f"{server_url}/api/personal/read", timeout=3) as r:
             data = json.loads(r.read().decode())
             if data.get("ok"):
                 fields = data.get("data", {}).get("fields", {})

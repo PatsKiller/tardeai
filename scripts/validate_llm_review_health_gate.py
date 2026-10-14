@@ -4,6 +4,14 @@ Read-only except a controlled UNHEALTHY skip test (which by design writes NO per
 run-level skip record). No trading mutation.
   python3 scripts/validate_llm_review_health_gate.py [--json PATH] [--markdown PATH]
 """
+try:  # cc_auth (2026-10-14): service token for loopback Command Center (:7777) calls
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+except ImportError:  # pragma: no cover - scripts/ not on sys.path
+    import sys as _cc_sys
+    from pathlib import Path as _CcPath
+    _cc_sys.path.insert(0, str(next(p for p in _CcPath(__file__).resolve().parents if p.name == "scripts")))
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+
 import os, sys, json, subprocess, urllib.request, psycopg2
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -49,7 +57,7 @@ def main():
     chk("parser errors classified non-retryable", _count(cur, "SELECT count(*) FROM trade_llm_reviews WHERE error_class='parse_error' AND retryable IS FALSE") >= 0)
     # 5) endpoint separates categories (strict JSON)
     try:
-        d = json.loads(urllib.request.urlopen("http://127.0.0.1:7777/api/v2/lifecycle/llm-review-status", timeout=20).read())["data"]
+        d = json.loads(_cc_urlopen("http://127.0.0.1:7777/api/v2/lifecycle/llm-review-status", timeout=20).read())["data"]
         eb = d.get("error_breakdown", {})
         chk("endpoint strict JSON + error_breakdown", "infrastructure_errors" in eb and "parser_errors" in eb, f"infra={eb.get('infrastructure_errors')} parser={eb.get('parser_errors')}")
         chk("endpoint exposes ollama_health", "ollama_health" in d)

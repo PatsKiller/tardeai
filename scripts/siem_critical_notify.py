@@ -18,6 +18,14 @@ owns them; they still show on the SIEM dashboard.
 
 Cron: every 15 min.
 """
+try:  # cc_auth (2026-10-14): service token for loopback Command Center (:7777) calls
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+except ImportError:  # pragma: no cover - scripts/ not on sys.path
+    import sys as _cc_sys
+    from pathlib import Path as _CcPath
+    _cc_sys.path.insert(0, str(next(p for p in _CcPath(__file__).resolve().parents if p.name == "scripts")))
+    from lib.cc_client import cc_urlopen as _cc_urlopen
+
 import json
 import os
 import sys
@@ -86,7 +94,7 @@ def main():
                 os.environ[ln.split("=", 1)[0]] = ln.split("=", 1)[1]
 
     try:
-        with urllib.request.urlopen("http://localhost:7777/api/v2/system/siem", timeout=20) as r:
+        with _cc_urlopen("http://localhost:7777/api/v2/system/siem", timeout=20) as r:
             data = json.load(r).get("data", {})
     except Exception as e:
         print(f"[siem-notify] could not read SIEM: {e}"); return 0
