@@ -103,7 +103,7 @@ R1_SHADOW_SHAPE_STATUS = "ACTIVE"  # ratified 2026-10-10: APPROVE_AGENTS_POLICY_
 GOVERNED_LLM_ROUTE = "cio-governed-bridge"
 #: Ruling 3: no broker credential in an admitted lane's environment. Name fragments, matched on env_names.
 BROKER_CREDENTIAL_ENV_FRAGMENTS = ("SCHWAB", "ALPACA", "SNAPTRADE", "MOOMOO", "IBKR", "FUTU", "TRADIER", "BROKER")
-# ── §23.20 advisory market-data lanes (AGENTS.md 7.0.0, PROPOSED; operator ruling 2026-10-14) ─────────────────────
+# ── §23.20 advisory market-data lanes (AGENTS.md 7.0.0, ACTIVE; operator ruling 2026-10-14) ─────────────────────
 #: "move to n8n i approve … its just looking at level 2 on moomoo no trading" (operator, 2026-10-14). A lane in this
 #: code ceiling may be dispatched although it reads broker MARKET DATA (quote / L2 book / tape, never a trade context)
 #: and sends advisory alerts through the host chokepoint — only while ADVISORY_MD_STATUS is ACTIVE (only the 7.0.0
@@ -111,7 +111,7 @@ BROKER_CREDENTIAL_ENV_FRAGMENTS = ("SCHWAB", "ALPACA", "SNAPTRADE", "MOOMOO", "I
 #: (scripts/lib/advisory_lane_guard.py import-graph scan; check_lane_registry / CI) both pass. Widening the ceiling is
 #: a reviewed code change, never a config edit. Nothing here touches §23.14: orders, secrets and daemons stay off.
 ADVISORY_MD_POLICY_VERSION = "7.0.0"
-ADVISORY_MD_STATUS = "PROPOSED"
+ADVISORY_MD_STATUS = "ACTIVE"  # ratified 2026-10-14: APPROVE_AGENTS_POLICY_7_0_0 1725 73eebc5c1 (PR #1725)
 ADVISORY_MARKET_DATA_LANES = frozenset({
     "active-trader-premarket-watch", "finviz-momentum-scalp-early-lane", "momentum-scalp-advisory-alerts",
 })
