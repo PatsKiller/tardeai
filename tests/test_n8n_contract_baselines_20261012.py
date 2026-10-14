@@ -35,7 +35,8 @@ def fixture_review(contract):
 
 def test_all_operative_baselines_have_applicable_fields_and_order():
     catalogue, _, _, _ = A.load_sources(ROOT)
-    assert len(catalogue["contracts"]) == 118
+    # + 2 (2026-10-14 scalp-premarket-onboard: finviz-enrichment-scalp-hot, scalp-hot-list)
+    assert len(catalogue["contracts"]) == 120
     assert not {row["id"]: A.baseline_errors(row) for row in catalogue["contracts"] if A.baseline_errors(row)}
 
 

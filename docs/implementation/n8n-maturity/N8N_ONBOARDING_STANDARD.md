@@ -260,9 +260,14 @@ Packet: `~/n8n-maturity-verification/packets/w0-import-six/` (`README.md`, `impo
 - **Setting:** drop-in `~/.config/systemd/user/tradeai-n8n-run-executor.service.d/10-executor-v2.conf`,
   `Environment=TRADEAI_N8N_EXECUTOR_WORKERS=3` (operator "go executor v2", service grant eebd4ca0a6b31bd2). The
   repo unit sets no value, and a promote restarts the unit with the drop-in in place, so v2 survives promotes.
-- **Caps** (`config/n8n_retry_policies.json#class_caps`): global 3, `heavy` 1, `llm` 1, `ingest` 1, `send` 1,
+- **Caps** (`config/n8n_retry_policies.json#class_caps`): global 4, `heavy` 1, `llm` 1, `ingest` 2, `send` 1,
   `pipeline` 2, `learn` 1; the last free worker takes only priority ≤ 1 (`reserved_priority_max: 1`), so 3 workers
   are 2 general + 1 reserved. Per-lane exclusivity: `claim_next_v2` never claims a lane with a RUNNING row.
+  2026-10-14 (scalp/premarket onboarding): `ingest` 1 → 2 and global 3 → 4, so the two window-bound scalp ingest
+  lanes (`scalp-hot-list` */2 ≤ 110 s, `finviz-enrichment-scalp-hot` */5 ≤ 240 s) never queue behind each other.
+  The effective global is min(workers, global): it stays 3 until the operator sets
+  `TRADEAI_N8N_EXECUTOR_WORKERS=4` in `10-executor-v2.conf` (service grant), which the scalp packet requires before
+  `scalp-hot-list` cuts over (peak 2 pipeline + 2 ingest = 4; Finviz requests stay serialised by `finviz_throttle`).
 - **Reaper:** a RUNNING row past `started + timeout_s + 120 s`, or whose dead owner's heartbeat is stale beyond
   90 s, ends `RUN_TIMEOUT / executor_lost` (closed the 14 h orphan `-1552` class, RC2).
 - **Verify:** `data/runtime/n8n_run_executor_last.json` is `ExecutorStatus@v1` with `workers: 3`; ledger rows carry

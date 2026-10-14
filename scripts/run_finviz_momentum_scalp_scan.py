@@ -46,6 +46,15 @@ from lib import scalp_hot_tier as hot  # noqa: E402
 from lib import scalp_list_trigger as trig  # noqa: E402
 
 CONFIG = ROOT / "config" / "finviz_momentum_scalp_screen.yaml"
+#: Registry lane of the `--hot-list-only` line (crontab tag `# TRADEAI_LANE scalp-hot-list`); its LaneRunReceipt@v1 is
+#: <state_root>/data/runtime/scalp-hot-list_last.json.
+HOT_LIST_LANE_ID = "scalp-hot-list"
+
+
+def _receipts():
+    from lib import lane_last_receipt as lr
+
+    return lr
 
 
 def load_window() -> dict:
@@ -88,6 +97,7 @@ def _hot_list_only(args, rep: dict, *, apply: bool, hot_on: bool, hot_list_phase
     due_after = max(0.0, hot.LIST_REFRESH_MIN - hot.LIST_REFRESH_GRID_TOLERANCE_MIN)
     rep["refresh_policy"] = {"screener_ids": ids, "refresh_if_older_min": hot.LIST_REFRESH_MIN,
                              "due_after_min": due_after, "refresh_age_min": None if age is None else round(age, 2)}
+    started = _receipts().now_iso()
     if age is not None and age < due_after:
         rep["stages"].append({"stage": "finviz_scan", "ran": False, "ok": True,
                               "reason": f"skipped_fresh (age={age:.2f}m < {due_after:g}m)"})
@@ -102,6 +112,19 @@ def _hot_list_only(args, rep: dict, *, apply: bool, hot_on: bool, hot_list_phase
     failed = [st["stage"] for st in rep["stages"] if not st.get("ok")]
     rep.update(status=("DRY_RUN" if not apply else ("PASS" if not failed else "PARTIAL")), failed_stages=failed,
                safety_note="Source refresh only (screener membership). No broker call, no proposal, no send.")
+    # LaneRunReceipt@v1 (n8n onboarding refactor contract §2.3, 2026-10-14): ok_at advances only when the list is
+    # fresh after this run (refreshed now, or already inside the refresh threshold); a failed refresh carries the
+    # previous ok_at forward. The dry run writes nothing (dry_run_report prints only). SKIPPED_FLAG_OFF and
+    # SKIPPED_OFF_HOT_WINDOW above return before this point and write no receipt.
+    summary = {"stages": [{k: st.get(k) for k in ("stage", "ran", "ok", "reason", "rc", "rows")}
+                          for st in rep["stages"]], "screener_ids": ids,
+               "refresh_age_min_before": rep["refresh_policy"]["refresh_age_min"]}
+    if not apply:
+        _receipts().dry_run_report(HOT_LIST_LANE_ID, summary, would_write=["finviz screener rows (scalp screeners)"])
+    else:
+        _receipts().write_lane_receipt(HOT_LIST_LANE_ID, ok=not failed, exit_code=1 if failed else 0,
+                                       started_at=started, script="run_finviz_momentum_scalp_scan.py --hot-list-only",
+                                       summary=summary)
     print(json.dumps(rep, default=str))
     return 0 if not failed else 1
 

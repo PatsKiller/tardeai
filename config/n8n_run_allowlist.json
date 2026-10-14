@@ -1658,6 +1658,93 @@
       "output_signal": "data/runtime/finviz-enrichment_last.json"
     },
     {
+      "lane_id": "finviz-enrichment-scalp-hot",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "FINVIZ_API_TOKEN",
+        "FINVIZ_COOKIE",
+        "FINVIZ_COOLDOWN_DEFAULT",
+        "FINVIZ_MAX_COOLDOWN_S",
+        "FINVIZ_MIN_INTERVAL",
+        "FINVIZ_USER_AGENT",
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "SCALP_HOT_TIER",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "scripts/finviz_enrichment.py _env(:298, FINVIZ_* via scripts/secrets/resolve_secret per key), scripts/finviz_throttle.py :90-92 (FINVIZ_MIN_INTERVAL/COOLDOWN), lib/lane_last_receipt.py :57 (TRADEAI_STATE_ROOT) and resolve_secret.render_env_path (XDG_RUNTIME_DIR), both implicit executor base names (CHILD_ENV_BASE_NAMES); DB_PASSWORD read from the checkout .env line by line (:995, :759) and by pipeline_registry.py :15. No broker credential name (AGENTS §23.18 ruling 3). --scalp-hot adds lib/scalp_hot_tier (SCALP_HOT_TIER, set by the command's `env` prefix exactly as the cron line sets it) and lib/data_broker/scalp_list (read-only projection).",
+      "env_report_reason": "Same closure as finviz-enrichment (report until its _load_env narrowing is reviewed); the dry run never reaches _fetch_view, so a shadow fire holds no fetched-path name. Enforce before canary.",
+      "source": "scalp/premarket dispatcher shadow 2026-10-14 (operator directive: scalp lanes off cron onto n8n; R1 class ingest). crontab -l 2026-10-14 (read-only): `*/5 6-15 * * 1-5 cd $PROJ && SCALP_HOT_TIER=1 flock -n /tmp/finviz_enrichment_scalp_hot.lock timeout 240 bash scripts/market_day_gate.sh $PY scripts/finviz_enrichment.py --scalp-hot >> logs/finviz_enrichment_scalp_hot.log 2>&1`. SHADOW ONLY: live_arg null (canary: []). command = the cron argv with its inline SCALP_HOT_TIER=1 carried by `env` (the executor has no per-lane env values); market_gate true = the executor wraps market_day_gate.sh like the cron line; lock = the cron line's flock lock; timeout 240 = the cron line's. --dry-run is write-free: the main_scalp_hot dry branch calls scalp_hot_plan (load_cache without mkdir) and lane_last_receipt.dry_run_report (prints only); no Finviz request, no receipt.",
+      "command": [
+        "env",
+        "SCALP_HOT_TIER=1",
+        "$PY",
+        "scripts/finviz_enrichment.py",
+        "--scalp-hot"
+      ],
+      "lock": "/tmp/finviz_enrichment_scalp_hot.lock",
+      "lock_kind": "flock",
+      "timeout_s": 240,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": true,
+      "output_signal": "data/runtime/finviz-enrichment-scalp-hot_last.json"
+    },
+    {
+      "lane_id": "scalp-hot-list",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "FINVIZ_API_TOKEN",
+        "FINVIZ_COOKIE",
+        "FINVIZ_COOLDOWN_DEFAULT",
+        "FINVIZ_MAX_COOLDOWN_S",
+        "FINVIZ_MIN_INTERVAL",
+        "FINVIZ_USER_AGENT",
+        "MOMENTUM_SCALP_OUTER_DEADLINE_S",
+        "MOMENTUM_SCALP_REFRESH_RECEIPT",
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "SCALP_HOT_TIER",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "run_finviz_momentum_scalp_scan.py _hot_list_only: lib/scalp_hot_tier (SCALP_HOT_TIER), momentum_scalp_early_lane_runner (MOMENTUM_SCALP_OUTER_DEADLINE_S, MOMENTUM_SCALP_REFRESH_RECEIPT, TRADEAI_STATE_ROOT); the live stage spawns finviz_screener_runner.py --screener <id> (FINVIZ_* + DB_*). No broker credential name (AGENTS §23.18 ruling 3).",
+      "env_report_reason": "finviz_screener_runner.py (the live child) is not inventoried for whole-.env loading yet; the dry run spawns no child (dry_run_no_refresh), so a shadow fire holds none of it. Inventory + enforce before canary.",
+      "source": "scalp/premarket dispatcher shadow 2026-10-14 (operator directive; R1 class ingest). crontab -l 2026-10-14 (read-only): `*/2 6-9 * * 1-5 cd $PROJ && SCALP_HOT_TIER=1 MOMENTUM_SCALP_OUTER_DEADLINE_S=100 flock -n /tmp/tradeai_scalp_hot_list.lock timeout 110 bash scripts/market_day_gate.sh $PY scripts/run_finviz_momentum_scalp_scan.py --hot-list-only --apply >> logs/scalp_hot_list.log 2>&1  # TRADEAI_LANE scalp-hot-list` (*/2 6-11 after PR #1722's cron edit). SHADOW ONLY: live_arg null (canary: [\"--apply\"]). Inline env carried by `env`; market_gate true; lock = the cron line's flock lock; timeout 110 = the cron line's. --dry-run is write-free: _hot_list_only reads the refresh receipt and config only, records dry_run_no_refresh with the would-run screener calls, and calls lane_last_receipt.dry_run_report (prints only).",
+      "command": [
+        "env",
+        "SCALP_HOT_TIER=1",
+        "MOMENTUM_SCALP_OUTER_DEADLINE_S=100",
+        "$PY",
+        "scripts/run_finviz_momentum_scalp_scan.py",
+        "--hot-list-only"
+      ],
+      "lock": "/tmp/tradeai_scalp_hot_list.lock",
+      "lock_kind": "flock",
+      "timeout_s": 110,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": true,
+      "output_signal": "data/runtime/scalp-hot-list_last.json"
+    },
+    {
       "lane_id": "sec-data-ingest",
       "env_names": [
         "DB_CONN_TRACE",

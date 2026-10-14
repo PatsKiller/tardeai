@@ -131,7 +131,10 @@ def test_each_match_hits_exactly_its_own_cron_line():
         hits = [ln for ln in SIBLING_LINES if marker in ln]
         assert hits == [row["scheduler"]["command_text"]], (lane, marker, hits)
     hot = ROWS["finviz-enrichment-scalp-hot"]
-    assert "dispatch" not in hot and hot["scheduler"]["kind"] == "cron"
+    # 2026-10-14 scalp-premarket-onboard: the hot tier is now its own W5 shadow cron row (dry_run) matching only its line
+    # (tests/test_scalp_premarket_onboard_20261014.py).
+    assert hot["dispatch"]["mode"] == "dry_run" and hot["scheduler"]["kind"] == "cron"
+    assert hot["scheduler"]["stage"] == "shadow" and hot["scheduler"]["wave"] == "W5"
     assert [ln for ln in SIBLING_LINES if hot["scheduler"]["match"] in ln] == [SIBLING_LINES[1]]
 
 

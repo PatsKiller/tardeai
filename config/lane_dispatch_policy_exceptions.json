@@ -11,6 +11,22 @@
       "approval": "Operator John 2026-10-09 ~18:05 ET: \"Okay to everything except extending the scout to closing\" (approves the scalp-live dispatch exception).",
       "approved_on": "2026-10-09",
       "reason": "The lane's cron line and allowlist argv wrap scripts/market_day_gate.sh, a pipeline_manifest FORBIDDEN_COMMAND_TOKENS entry; the gate is a market-calendar check, not a broker/order/stop authority."
+    },
+    {
+      "lane_id": "finviz-enrichment-scalp-hot",
+      "exempt_tokens": ["market_day_gate.sh"],
+      "authority": "AGENTS.md 4.3.0 §23.18 (R1 class ingest) + 4.4.0 §23.11 cron-row shadow; operator directive 2026-10-14 (move the scalp lanes off cron onto the n8n dispatcher).",
+      "approval": "Operator directive 2026-10-14 relayed by Agent A (compressed timeline, 'do now'); the merge of this reviewed registry PR is the §23.11 decision. lane_dispatch.EXEMPTIBLE_LANES widened in the same PR.",
+      "approved_on": "2026-10-14",
+      "reason": "The cron line wraps scripts/market_day_gate.sh (calendar check, not a broker/order/stop authority). The lane is the Finviz enrichment owner's hot tier: no send, no order, no broker credential; its allowlist entry sets market_gate true so the executor keeps the same gate."
+    },
+    {
+      "lane_id": "scalp-hot-list",
+      "exempt_tokens": ["market_day_gate.sh"],
+      "authority": "AGENTS.md 4.3.0 §23.18 (R1 class ingest) + 4.4.0 §23.11 cron-row shadow; operator directive 2026-10-14 (move the scalp lanes off cron onto the n8n dispatcher).",
+      "approval": "Operator directive 2026-10-14 relayed by Agent A (compressed timeline, 'do now'); the merge of this reviewed registry PR is the §23.11 decision. lane_dispatch.EXEMPTIBLE_LANES widened in the same PR.",
+      "approved_on": "2026-10-14",
+      "reason": "The cron line wraps scripts/market_day_gate.sh (calendar check, not a broker/order/stop authority). The lane refreshes the scalp screeners through finviz_screener_runner only: no handoff, no proposal, no send, no broker call; its allowlist entry sets market_gate true so the executor keeps the same gate."
     }
   ]
 }

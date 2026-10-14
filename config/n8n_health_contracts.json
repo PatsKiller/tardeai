@@ -19817,6 +19817,362 @@
         "digest_status": "ACTUAL_CORRECTED_BODY_REVIEW; source-declared provisional limits; runtime acceptance NOT_MEASURED",
         "independent_review_sha256": "5923711efa6443cb487898c31b904dfa4a8df1f31d8736feeffa73e2a98df7da"
       }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "scalp-hot-list",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "stage:shadow",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Scalp hot-tier list owner: every 2 min on market days 06:00-12:00 ET (SCALP_HOT_TIER=1, no kill file) refresh the four scalp screeners (assets/screeners.yaml window `scalp`) through finviz_screener_runner.py --screener <id> when the last DONE refresh receipt is older than ~2 min, so the shared scalp list that the Trade-AI scalp scan and Active Trader read is never older than ~2-4 min in the premarket/early session. No handoff, no proposal, no send, no broker call.",
+        "business_function": "scalp_advisory",
+        "source": "scripts/run_finviz_momentum_scalp_scan.py module docstring + _hot_list_only; scripts/lib/scalp_hot_tier.py WINDOWS list_hot (06:00-12:00 after PR #1722); crontab -l 2026-10-14 `# TRADEAI_LANE scalp-hot-list`"
+      },
+      "owner": "scalp",
+      "connects_to": [
+        {
+          "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md \u00a723.3"
+        },
+        {
+          "name": "env SCALP_HOT_TIER=1 MOMENTUM_SCALP_OUTER_DEADLINE_S=100 $PY scripts/run_finviz_momentum_scalp_scan.py --hot-list-only",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/tradeai_scalp_hot_list.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "config/n8n_run_allowlist.json lock (flock)"
+        },
+        {
+          "name": "data/runtime/scalp-hot-list_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt / allowlist output_signal"
+        },
+        {
+          "name": "$STATE_ROOT data/runtime/momentum_scalp_refresh_receipt.json (MomentumScalpRefreshReceipt@v1: read for age; STARTED/DONE/FAILED written by a live refresh only)",
+          "kind": "store",
+          "direction": "read_write",
+          "source": "scripts/momentum_scalp_early_lane_runner.py refresh_receipt_path / write_refresh_receipt"
+        },
+        {
+          "name": "finviz_screener_runner.py --screener <id> x4 (Finviz Elite export via the throttle; single writer of the screener rows); never spawned by the dry run",
+          "kind": "provider",
+          "direction": "calls",
+          "source": "momentum_scalp_early_lane_runner.stage_finviz_scan"
+        },
+        {
+          "name": "scripts/market_day_gate.sh (allowlist market_gate true; same calendar gate as the cron line)",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json market_gate"
+        },
+        {
+          "name": "consumers: lib/data_broker/scalp_list.get_scalp_list (trade-ai-scalp-live, Active Trader, finviz-enrichment-scalp-hot, the */5 early lane's proposal trigger)",
+          "kind": "consumer",
+          "direction": "read",
+          "source": "scripts/lib/data_broker/scalp_list.py; run_finviz_momentum_scalp_scan._proposal_trigger"
+        },
+        {
+          "name": "cron twin: the live line `*/2 6-9 * * 1-5 ... --hot-list-only --apply` (*/2 6-11 after PR #1722's cron edit) keeps doing the real work while this row is at shadow",
+          "kind": "cron_twin",
+          "direction": "calls",
+          "source": "crontab -l 2026-10-14"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "shadow_dry_run_done",
+          "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+        },
+        {
+          "check": "dry_run_writes_nothing",
+          "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md \u00a76)"
+        },
+        {
+          "check": "cron_twin_output_fresh",
+          "text": "the live cron line keeps the registry output_signal data/runtime/scalp-hot-list_last.json fresh within 0.068 h (2x cadence)"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 88.0 s (80% of timeout_s 110)"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "output_signal older than 0.068 h but younger than 0.102 h (2x-3x cadence)"
+        },
+        {
+          "check": "slow",
+          "text": "duration above 88.0 s"
+        },
+        {
+          "check": "retried",
+          "text": "a run needed attempt > 1 (retry_policy) or ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
+        },
+        {
+          "check": "upstream_stale",
+          "text": "Finviz auth invalid or finviz_throttle in cooldown (a refresh stage ends rc != 0 and the refresh receipt reads FAILED); not machine-checked yet"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "stale",
+          "text": "output_signal older than 0.102 h (3x cadence)"
+        },
+        {
+          "check": "breaker_or_dlq",
+          "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+        },
+        {
+          "check": "dry_run_wrote",
+          "text": "a dry_run changed its output_signal or any durable state"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 0.068,
+        "freshness_failed_after_h": 0.102,
+        "freshness_rule": "degraded beyond 2x cadence (lane_registry.evaluate_lane SLOW), failed beyond 3x (incident fan-in stale threshold); freshness applies only inside the lane's window on market days (lib/scalp_hot_tier WINDOWS); outside it the script prints SKIPPED_* and writes no receipt, so ok_at is expected to age overnight and on weekends/holidays (market_day_gate.sh)",
+        "timeout_s": 110,
+        "class": "ingest",
+        "computed_on": "2026-10-14",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "fewer than 14 finished live runs in the coordination ledger (0); class defaults: duration degraded above 80% of timeout_s, freshness 2x/3x cadence, any RUN_FAILED/RUN_TIMEOUT/RUN_REFUSED failed",
+        "runs_considered": 0,
+        "duration_degraded_above_s": 88.0
+      },
+      "alerting": {
+        "lane_severity": "High",
+        "severity_basis": "Business Critical (registry value_class): a stale scalp list silently degrades every scalp consumer in the 06:00-12:00 session",
+        "failed": {
+          "siem_severity": "ERROR",
+          "notifier_priority": "P1"
+        },
+        "degraded": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+        "enforced": "partial source integration: scripts/n8n_incident_fanin.py _wferr_severity() consumes a workflow contract's failed.notifier_priority to raise the workflow-error priority floor. scripts/lib/n8n_siem_bridge.py severity_for() uses registry severity, else the fan-in priority. Full per-lane baseline, notification and diagnosis enforcement is not established by these declarations; runtime coverage remains NOT_MEASURED (N8N_MONITORING_AND_REMEDIATION_STANDARD.md \u00a77)."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
+      },
+      "evidence": {
+        "receipt": "data/runtime/scalp-hot-list_last.json",
+        "verify": [
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='scalp-hot-list' ORDER BY requested_at DESC LIMIT 10\"",
+          "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:scalp-hot-list' ORDER BY created_at DESC LIMIT 10",
+          "stat / jq the receipt: data/runtime/scalp-hot-list_last.json"
+        ],
+        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger"
+      },
+      "review_by": "2026-10-28",
+      "review": {
+        "status": "REVIEWED",
+        "prepared_by": "agent draft (Claude, branch n8nmat/scalp-premarket-onboard-20261014) from build_n8n_health_contracts.py --no-ledger",
+        "reviewed_by": "agent-reviewed 2026-10-14 against source; awaiting the operator's REVIEW pass (SW4 precedent)",
+        "reviewed_on": "2026-10-14",
+        "method": "every field checked against the script source on this branch, the live crontab (crontab -l, read-only, 2026-10-14) and config/n8n_run_allowlist.json; owner-needed draft fields replaced by source-cited text",
+        "basis_note": "baseline CLASS_DEFAULT_PROVISIONAL: 0 live dispatcher runs; re-learn after 14 live runs (canary)"
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "finviz-enrichment-scalp-hot",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "stage:shadow",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Finviz enrichment owner's scalp hot tier: every 5 min on market days 06:00-16:00 ET (SCALP_HOT_TIER=1) refresh the hot fields (float, ATR, RSI, change-from-open, relative volume) of up to ENRICH_SYMBOL_CAP names on the shared scalp list into the enrichment cache, the store every consumer reads through the finviz_enrichment_snapshot projection. No send, no order, no broker credential.",
+        "business_function": "scalp_advisory",
+        "source": "scripts/finviz_enrichment.py module docstring SCALP HOT TIER + main_scalp_hot; config/data_source_authority.json domain finviz_enrichment (writer scripts/finviz_enrichment.py); crontab -l 2026-10-14 `# TRADEAI_LANE finviz-enrichment-scalp-hot`"
+      },
+      "owner": "scalp",
+      "connects_to": [
+        {
+          "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md \u00a723.3"
+        },
+        {
+          "name": "env SCALP_HOT_TIER=1 $PY scripts/finviz_enrichment.py --scalp-hot",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/finviz_enrichment_scalp_hot.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "config/n8n_run_allowlist.json lock (flock)"
+        },
+        {
+          "name": "data/runtime/finviz-enrichment-scalp-hot_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt / allowlist output_signal"
+        },
+        {
+          "name": "lib/data_broker/scalp_list.get_scalp_list (read-only projection of the scalp list)",
+          "kind": "store",
+          "direction": "read",
+          "source": "scripts/finviz_enrichment.py main_scalp_hot"
+        },
+        {
+          "name": "Finviz Elite custom-column export (FINVIZ_API_TOKEN / FINVIZ_COOKIE via resolve_secret), metered by finviz_throttle; never called by the dry run",
+          "kind": "provider",
+          "direction": "calls",
+          "source": "scripts/finviz_enrichment.py enrich_scalp_hot"
+        },
+        {
+          "name": "$STATE_ROOT data/state/ticker_enrichment_cache.json (hot fields; save_cache fcntl-locked merge + atomic replace)",
+          "kind": "store",
+          "direction": "write",
+          "source": "scripts/finviz_enrichment.py enrich_scalp_hot; config/data_source_authority.json finviz_enrichment"
+        },
+        {
+          "name": "scripts/market_day_gate.sh (allowlist market_gate true; same calendar gate as the cron line)",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json market_gate"
+        },
+        {
+          "name": "cron twin: the live line `*/5 6-15 * * 1-5 ... finviz_enrichment.py --scalp-hot` keeps doing the real work while this row is at shadow",
+          "kind": "cron_twin",
+          "direction": "calls",
+          "source": "crontab -l 2026-10-14"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "shadow_dry_run_done",
+          "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+        },
+        {
+          "check": "dry_run_writes_nothing",
+          "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md \u00a76)"
+        },
+        {
+          "check": "cron_twin_output_fresh",
+          "text": "the live cron line keeps the registry output_signal data/runtime/finviz-enrichment-scalp-hot_last.json fresh within 0.168 h (2x cadence)"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 192.0 s (80% of timeout_s 240)"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "output_signal older than 0.168 h but younger than 0.252 h (2x-3x cadence)"
+        },
+        {
+          "check": "slow",
+          "text": "duration above 192.0 s"
+        },
+        {
+          "check": "retried",
+          "text": "a run needed attempt > 1 (retry_policy) or ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
+        },
+        {
+          "check": "upstream_stale",
+          "text": "the scalp list is stale (get_scalp_list stale=true) or Finviz auth invalid / throttle cooldown (receipt ok=false, returned 0 of due); not machine-checked yet"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "stale",
+          "text": "output_signal older than 0.252 h (3x cadence)"
+        },
+        {
+          "check": "breaker_or_dlq",
+          "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+        },
+        {
+          "check": "dry_run_wrote",
+          "text": "a dry_run changed its output_signal or any durable state"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 0.168,
+        "freshness_failed_after_h": 0.252,
+        "freshness_rule": "degraded beyond 2x cadence (lane_registry.evaluate_lane SLOW), failed beyond 3x (incident fan-in stale threshold); freshness applies only inside the lane's window on market days (lib/scalp_hot_tier WINDOWS); outside it the script prints SKIPPED_* and writes no receipt, so ok_at is expected to age overnight and on weekends/holidays (market_day_gate.sh)",
+        "timeout_s": 240,
+        "class": "ingest",
+        "computed_on": "2026-10-14",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "fewer than 14 finished live runs in the coordination ledger (0); class defaults: duration degraded above 80% of timeout_s, freshness 2x/3x cadence, any RUN_FAILED/RUN_TIMEOUT/RUN_REFUSED failed",
+        "runs_considered": 0,
+        "duration_degraded_above_s": 192.0
+      },
+      "alerting": {
+        "lane_severity": "Medium",
+        "severity_basis": "scalp hot-tier enrichment: the CORE enrichment lane (finviz-enrichment) still refreshes daily; a stale hot tier degrades scalp context, not correctness",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+        "enforced": "partial source integration: scripts/n8n_incident_fanin.py _wferr_severity() consumes a workflow contract's failed.notifier_priority to raise the workflow-error priority floor. scripts/lib/n8n_siem_bridge.py severity_for() uses registry severity, else the fan-in priority. Full per-lane baseline, notification and diagnosis enforcement is not established by these declarations; runtime coverage remains NOT_MEASURED (N8N_MONITORING_AND_REMEDIATION_STANDARD.md \u00a77)."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
+      },
+      "evidence": {
+        "receipt": "data/runtime/finviz-enrichment-scalp-hot_last.json",
+        "verify": [
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='finviz-enrichment-scalp-hot' ORDER BY requested_at DESC LIMIT 10\"",
+          "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:finviz-enrichment-scalp-hot' ORDER BY created_at DESC LIMIT 10",
+          "stat / jq the receipt: data/runtime/finviz-enrichment-scalp-hot_last.json"
+        ],
+        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger"
+      },
+      "review_by": "2026-10-28",
+      "review": {
+        "status": "REVIEWED",
+        "prepared_by": "agent draft (Claude, branch n8nmat/scalp-premarket-onboard-20261014) from build_n8n_health_contracts.py --no-ledger",
+        "reviewed_by": "agent-reviewed 2026-10-14 against source; awaiting the operator's REVIEW pass (SW4 precedent)",
+        "reviewed_on": "2026-10-14",
+        "method": "every field checked against the script source on this branch, the live crontab (crontab -l, read-only, 2026-10-14) and config/n8n_run_allowlist.json; owner-needed draft fields replaced by source-cited text",
+        "basis_note": "baseline CLASS_DEFAULT_PROVISIONAL: 0 live dispatcher runs; re-learn after 14 live runs (canary)"
+      }
     }
   ]
 }

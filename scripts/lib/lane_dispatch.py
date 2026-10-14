@@ -188,7 +188,10 @@ DEFAULT_LLM_PROCESS_REGISTRY = Path(__file__).resolve().parents[2] / "config" / 
 EXEMPTIBLE_TOKENS = frozenset({"market_day_gate.sh"})
 #: Safety ceiling on which lanes config may ever except (AGENTS 4.0.0 §23.3; operator 2026-10-09 ~18:05 ET).
 #: An entry for any other lane is dropped; widening this needs a code change + review, not a config edit.
-EXEMPTIBLE_LANES = frozenset({"trade-ai-scalp-live"})
+#: 2026-10-14 (operator directive: scalp lanes off cron onto the n8n dispatcher): + the two scalp hot-tier R1 `ingest`
+#: lanes, whose cron lines wrap the same calendar gate. Neither sends, orders or touches a broker; every other rule
+#: (forbidden tokens, R1 admission, sender/paper never-list) still applies to them.
+EXEMPTIBLE_LANES = frozenset({"trade-ai-scalp-live", "finviz-enrichment-scalp-hot", "scalp-hot-list"})
 #: The B1 reconciler's stay_on_cron class for a gate token (scripts/reconcile_lane_registry.py, PR #1597).
 GATE_STAY_CLASS = "pipeline_excluded_gate"
 
