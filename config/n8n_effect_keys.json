@@ -757,6 +757,20 @@
       "wave": "tierB",
       "cron_claim": false,
       "n8n_claim": false
+    },
+    "incubator-rolloff-engine": {
+      "process": "incubator-rolloff-engine",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "0 10 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "guarded:a rolled-off row leaves the ACTIVE selection, so a second run in the slot appends no incubator_events row",
+      "wave": "LD-W1 shadow",
+      "cron_claim": false,
+      "n8n_claim": false
     }
   },
   "_comment_process_steps": "2026-10-15 (n8n fabric process hermes-learning, packet docs/ops/packets/n8n-hermes-learning-flow-20261015/): one key per process STEP, process = the step lane id, slot = the stage's business slot <YYYYMMDD>T<HHMM of the stage cron minute> (America/New_York), the same string the cron stage runner computes (pipeline_manifest.py --effect-slot) and the process workflow sends. pipeline/stage/step_id map the key to the manifest step. cron_claim false = the cron stage runner does NOT claim yet (scripts/pipelines/_manifest_runner.sh); the cutover packet flips it to true only after effect_claim.py set-owner --owner cron has created the owner row, then moves the owner to n8n. Executor side: inert for dry_run; a LIVE run with a p: key is refused effect_slot_unknown until the gateway validates p: keys (cutover prerequisite).",

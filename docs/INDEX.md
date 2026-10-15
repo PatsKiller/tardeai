@@ -1432,6 +1432,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-maturity/03-momentum-scalp-lanes.md` | 03 — Momentum-scalp lanes under n8n: inventory, root cause, dispatch design, monitoring | review_required | OK | `3ea31aa32eee` |
 | `docs/implementation/n8n-maturity/BROKER_ENV_AUDIT.md` | Broker env-name read audit — which jobs truly need broker names | review_required | OK | `76aa7605bcfb` |
 | `docs/implementation/n8n-maturity/B_FAMILIES_TOP5.md` | B families top 5 — one parameterised job per same-script cron family | review_required | OK | `e1f607cfa001` |
+| `docs/implementation/n8n-maturity/LANE_DISPOSITION_20261015.md` | Lane disposition, 2026-10-15 | review_required | MISSING HEADER | `8e558186f068` |
 | `docs/implementation/n8n-maturity/MIGRATION_RECONCILIATION_20261012.md` | TradeAI migration reconciliation | review_required | OK | `b6e056759869` |
 | `docs/implementation/n8n-maturity/MOMENTUM_LINEAGE_IMPLEMENTATION_20261013.md` | Momentum lineage and lifecycle implementation | review_required | OK | `a8a7fb2c8c0c` |
 | `docs/implementation/n8n-maturity/MONITOR_FOLD_COVERAGE_W1-9.md` | Monitor fold coverage (W1-9): freshness contracts, input starvation and design notes for the rest | review_required | OK | `527bdf9c7d0f` |
@@ -2009,10 +2010,12 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/live_proof_20260928/07-operator-summary.md` | 07 — Operator summary (redacted) | review_required | OK | `e4e6a058cde6` |
 | `docs/ops/openclaw_stage2_soul_patch_20260923.md` | OpenClaw Maria SOUL / skill patch — Stage 2 (specialist honesty) | review_required | OK | `d0a83ec99d47` |
 | `docs/ops/packets/consolidation-health-audit-c3-20261015/README.md` | consolidation-health-audit-c3-20261015: CONSOLIDATE wave C3, operator packet | review_required | MISSING HEADER | `32436806ff21` |
+| `docs/ops/packets/lane-retire-wave1-20261015/README.md` | lane-retire-wave1-20261015: RETIRE wave 1, operator packet | review_required | MISSING HEADER | `3820bc394e43` |
 | `docs/ops/packets/maturity-remeasure-relay-live-removal-20261015/README.md` | Packet: take maturity-remeasure off the relay live list (config-write, NOT APPLIED) | review_required | MISSING HEADER | `59b9f653cd6a` |
 | `docs/ops/packets/n8n-comms-intent-consumer-20261015/03_apply.md` | Apply once (operator) | review_required | MISSING HEADER | `498d580f4571` |
 | `docs/ops/packets/n8n-comms-intent-consumer-20261015/04_rollback.md` | Rollback | review_required | MISSING HEADER | `12e007b5b1d1` |
 | `docs/ops/packets/n8n-comms-intent-consumer-20261015/README.md` | n8n comms-intent consumer — operator packet (2026-10-15) | review_required | MISSING HEADER | `801391d629ff` |
+| `docs/ops/packets/n8n-shadow-wave-ld-w1-20261015/README.md` | n8n shadow wave LD-W1 (2026-10-15): operator packet | review_required | MISSING HEADER | `1bb88e10b921` |
 | `docs/ops/packets/research-insights-unique-index-20261015/README.md` | Packet: UNIQUE index on research_insights(source_reference) (DDL, NOT APPLIED) | review_required | MISSING HEADER | `f53f51854f25` |
 | `docs/ops/packets/run-from-release-cohort1-20261015/03_apply.md` | Apply cohort 1 (operator) | review_required | MISSING HEADER | `dc911f2436e6` |
 | `docs/ops/packets/run-from-release-cohort1-20261015/04_rollback.md` | Roll back cohort 1 (operator) | review_required | MISSING HEADER | `f3d25844a007` |
