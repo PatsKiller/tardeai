@@ -3743,6 +3743,19 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: N8N_FABRIC_HERMES_LEARNING — 2026-10-15 the first business process on the fabric (AGENTS.md §23.23):
+        # tradeai-fabric-hermes-learning (learn -> tune) generated from config/n8n_fabric_processes.json + the
+        # hermes_learning manifest; each step -> Execute Workflow -> Run Lane in dependency order, Merge fan-in,
+        # stop-on-failure, BLOCKED steps as data. Host side: three shadow step lanes (allowlist dry run only,
+        # registry rows with no dispatch block, REVIEWED contracts, effect keys) and the stage runner's effect-key
+        # claim (OFF unless PIPELINE_EFFECT_CLAIM=1 and cron_claim true). Hermetic: tmp_path ledgers and sandboxed
+        # runner, node.js interprets the generated graph. Imports nothing into n8n, touches no crontab or unit.
+        "n8n_fabric_hermes_learning_20261015",
+        [
+            "tests/test_n8n_fabric_hermes_learning_20261015.py",
+        ],
+    ),
+    (
         # ANCHOR: N8N_MATURITY_CRON_TZ — 2026-10-09 n8n-maturity B5.1 (design 02 §3.2 step 1, F11):
         # DST-safe fires_between / is_sub_hourly / last_fire_at_or_before in scripts/lib/cron_schedule.py.
         # Pure and hermetic: explicit instants only, no clock, no I/O.

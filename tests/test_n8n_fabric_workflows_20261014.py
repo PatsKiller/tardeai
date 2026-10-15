@@ -48,9 +48,15 @@ def _node(wf: dict, name: str) -> dict:
 # ── determinism and isolation from the live generic set ─────────────────────────────────────────────────────────
 
 
+#: Process workflows (2026-10-15, config/n8n_fabric_processes.json; tests/test_n8n_fabric_hermes_learning_20261015.py).
+PROCESS_IDS = ("tradeai-fabric-hermes-learning",)
+
+
 def test_committed_fabric_files_equal_a_fresh_render():
     assert T.main(["build-fabric", "--check"]) == 0
-    assert sorted(p.name for p in FABRIC_DIR.iterdir()) == sorted([f"{i}.json" for i in IDS] + ["INDEX.json"])
+    assert sorted(p.name for p in FABRIC_DIR.iterdir()) == sorted(
+        [f"{i}.json" for i in IDS + PROCESS_IDS] + ["INDEX.json"]
+    )
 
 
 def test_the_six_generic_workflows_are_byte_unchanged():
@@ -166,7 +172,7 @@ def test_manifest_hashes_match_the_files():
         idx["policy"]["intent_routes_sha256"]
         == hashlib.sha256((ROOT / "config" / "n8n_comms_intent_routes.json").read_bytes()).hexdigest()
     )
-    assert [r["id"] for r in idx["workflows"]] == list(IDS)
+    assert [r["id"] for r in idx["workflows"]] == list(IDS + PROCESS_IDS)
     for row in idx["workflows"]:
         text = (FABRIC_DIR / row["file"]).read_bytes()
         wf = json.loads(text)
@@ -325,7 +331,11 @@ def test_manual_trigger_is_the_run_lane_probe_start_node_and_nowhere_else():
         if wid != T.FABRIC_PROBE_ID:
             assert "n8n-nodes-base.manualTrigger" not in {n["type"] for n in _wf(wid)["nodes"]}, wid
     rows = {r["id"]: r for r in _index()["workflows"]}
-    assert [w for w, r in rows.items() if "n8n-nodes-base.manualTrigger" in r["node_types"]] == [T.FABRIC_PROBE_ID]
+    # 2026-10-15: a process workflow also carries one Manual Trigger, for the operator's CLI proof run.
+    assert [w for w, r in rows.items() if "n8n-nodes-base.manualTrigger" in r["node_types"]] == [
+        T.FABRIC_PROBE_ID,
+        *PROCESS_IDS,
+    ]
 
 
 #: Graph hashes in INDEX.json. The three non-probe graphs are pinned to what the operator imported on 2026-10-15
@@ -335,6 +345,8 @@ GRAPH_PINS = {
     T.FABRIC_ERROR_ID: "21c7ddd097b1eca3859f3ba6c407817d6ba6eed73a6a37a9f5d1858cfbd578da",
     T.FABRIC_PROBE_ID: "4dc071b31eaaa3788522ffae581a95be66918f3b6a4d24fff68931de484b9510",
     T.FABRIC_ERROR_PROBE_ID: "f92070400e85d42fc047dd6f0fade44d81174fe654d55f8bbb7e4d1bbdab116e",
+    # 2026-10-15: the first process workflow (adding it moves none of the four pins above, nor the policy hash).
+    "tradeai-fabric-hermes-learning": "573444e1e8f718052a72b04746459bf13f404e019c3a0f762778a28ea7913f71",
 }
 
 

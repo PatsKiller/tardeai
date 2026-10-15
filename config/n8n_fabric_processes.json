@@ -1,0 +1,55 @@
+{
+  "schema": "N8nFabricProcesses@v1",
+  "_comment": "n8n fabric process workflows (AGENTS.md §23.23 10.0.0 ACTIVE: n8n owns FLOW, the host owns authority and evidence). One entry per business process the fabric owns or is about to own. The generator (scripts/n8n_workflow_templates.py build-fabric) reads this file plus the process's PipelineManifest@v1 (step order, stage schedules) and config/n8n_run_allowlist.json (per-step timeout) and renders one inactive workflow per process into docs/implementation/n8n-maturity/workflows/fabric/. Every runnable step calls the published Run Lane sub-workflow; a BLOCKED step never calls it and is recorded as status 'blocked' with its reason. depends_on names steps of the SAME stage that come EARLIER in the manifest (the shell runner's order stays a valid topological order, so shadow parity is comparable). mode is what the workflow requests: 'dry_run' until the cutover PR changes it (the executor's stage clamp also forces dry_run while a lane is at stage shadow). The step lanes, their allowlist entries, health contracts and effect keys are reviewed in the same PR as this file (packet docs/ops/packets/n8n-hermes-learning-flow-20261015/).",
+  "processes": {
+    "hermes-learning": {
+      "workflow_id": "tradeai-fabric-hermes-learning",
+      "manifest": "config/pipelines/hermes_learning.json",
+      "runner": "scripts/pipelines/run_hermes_pipeline.sh",
+      "runner_lanes": {
+        "learn": "hermes-learning-pipeline-learn",
+        "tune": "hermes-learning-pipeline-tune"
+      },
+      "mode": "dry_run",
+      "input_version": "v1",
+      "default_max_attempts": 2,
+      "steps": {
+        "outcome_grader": {
+          "lane_id": "hermes-learning-outcome-grader",
+          "depends_on": [],
+          "blocked": null
+        },
+        "tag_engine": {
+          "lane_id": "hermes-learning-tag-engine",
+          "depends_on": ["outcome_grader"],
+          "blocked": "NO SAFE DRY RUN: without --apply, scripts/hermes_tag_engine.py retag() still calls lib.governed_cloud_generation.generate_cloud (process_id hermes_tag_engine) for up to llm_batch rows (_llm_tags), so a dry run spends a model call. Needs a --dry-run that skips _llm_tags plus an llm_route declaration (AGENTS.md §23.18 llm class) in its own code PR."
+        },
+        "outcome_feedback_agent": {
+          "lane_id": "hermes-learning-outcome-feedback-agent",
+          "depends_on": ["tag_engine"],
+          "blocked": "SENDER (never-list, AGENTS.md §23.14): --apply calls lib/hermes_outcome_bus/alert_notifications.dispatch_alert_notifications -> _send_telegram -> telegram_alert.send_telegram. Its dry run is write-free, but a sender is never on the run allowlist; the send must become a host comms intent (§24.1) in a code PR first."
+        },
+        "outcome_learning": {
+          "lane_id": "hermes-learning-outcome-learning",
+          "depends_on": ["outcome_grader"],
+          "blocked": null
+        },
+        "score_history_retention": {
+          "lane_id": "hermes-learning-score-history-retention",
+          "depends_on": ["outcome_grader"],
+          "blocked": "DESTRUCTIVE RETENTION (never-list): --apply runs DELETE FROM hermes_score_history (scripts/hermes_score_history_retention.py). The allowlist never-list names destructive retention stages under any class; moving retention into n8n at all is an operator decision. Ordered after outcome_grader because the grader freezes score components before retention can delete them."
+        },
+        "config_governor": {
+          "lane_id": "hermes-learning-config-governor",
+          "depends_on": ["outcome_learning"],
+          "blocked": null
+        },
+        "autonomous_self_tune": {
+          "lane_id": "hermes-learning-autonomous-self-tune",
+          "depends_on": [],
+          "blocked": "DESTRUCTIVE RETENTION (never-list): --apply runs self_purge (archived DELETEs through lib.retention_archive.managed_purge on hermes_embedding_queue, hermes_score_history, hermes_research_intelligence, hermes_external_research and the dead legacy tables, plus queue UPDATEs) together with the auto-graft. Split --learn (auto-graft, a learn-class writer) from --purge in a code PR before the learn half can be a lane; the purge half stays a host step."
+        }
+      }
+    }
+  }
+}

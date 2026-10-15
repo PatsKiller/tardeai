@@ -36,7 +36,7 @@ NO_CONSUMER_REASON = (
 MANIFEST_SCHEMA = "PipelineManifest@v1"
 RUN_SCHEMA = "PipelineRun@v1"
 STEP_RECEIPT_SCHEMA = "PipelineStepReceipt@v1"
-STEP_STATUSES = ("dry_run", "ok", "failed", "timeout", "skipped_dow", "skipped_lock")
+STEP_STATUSES = ("dry_run", "ok", "failed", "timeout", "skipped_dow", "skipped_lock", "skipped_effect")
 SEP = "\x1f"
 
 # Tokens that must never appear inside an absorbed step: broker/stop/order lines and the
@@ -280,6 +280,68 @@ def plan_records(manifest: dict, stage: str) -> list[str]:
     return out
 
 
+# ── semantic effect key, cron side (2026-10-15; n8n fabric process hermes-learning, AGENTS.md §23.23 rule (4)) ─────
+# A step whose lane is in config/n8n_effect_keys.json with `cron_claim: true` (and this pipeline/stage/step_id) is
+# claimed by the runner before it runs, through scripts/lib/effect_claim.py, under the same key the n8n process
+# workflow's run claims: fx:<process>:<slot>:<input_version>. The slot is the stage's BUSINESS slot -- today's date
+# (America/New_York) + the stage's cron minute -- so cron and n8n name the same slot whichever of them fires. Off by
+# default: no lane has cron_claim true until its cutover packet flips it (after the owner row exists).
+EFFECT_SLOT_TZ = "America/New_York"
+EFFECT_CONFIG_SCHEMA = "N8nEffectKeys@v1"
+
+
+def stage_slot_hhmm(manifest: dict, stage: str) -> str:
+    """The stage's cron minute as HHMM ('50 10 * * *' -> '1050'); ValueError unless a single daily minute."""
+    expr = str(((manifest.get("stages") or {}).get(stage) or {}).get("proposed_schedule") or "")
+    parts = expr.split()
+    if len(parts) != 5 or parts[2:] != ["*", "*", "*"] or not (parts[0].isdigit() and parts[1].isdigit()):
+        raise ValueError(f"stage {stage!r} proposed_schedule {expr!r} is not a single daily minute")
+    m, h = int(parts[0]), int(parts[1])
+    if not (0 <= m <= 59 and 0 <= h <= 23):
+        raise ValueError(f"stage {stage!r} proposed_schedule {expr!r} out of range")
+    return f"{h:02d}{m:02d}"
+
+
+def effect_slot(manifest: dict, stage: str, date_yyyymmdd: str | None = None) -> str:
+    """<YYYYMMDD>T<HHMM>: the effect-key slot of today's run of ``stage`` (the n8n process sends the same string)."""
+    if date_yyyymmdd is None:
+        from zoneinfo import ZoneInfo
+
+        date_yyyymmdd = datetime.now(ZoneInfo(EFFECT_SLOT_TZ)).strftime("%Y%m%d")
+    if not re.fullmatch(r"\d{8}", date_yyyymmdd):
+        raise ValueError(f"bad date {date_yyyymmdd!r}")
+    return f"{date_yyyymmdd}T{stage_slot_hhmm(manifest, stage)}"
+
+
+def effect_spec(manifest: dict, stage: str, effect_config: dict) -> list[tuple[str, str, str]]:
+    """(step_id, process, input_version) for each step of ``stage`` whose lane opted in with cron_claim true.
+    A malformed config raises ValueError: the runner then refuses to run the stage (fail closed)."""
+    lanes = effect_config.get("lanes") if isinstance(effect_config, dict) else None
+    if not isinstance(effect_config, dict) or effect_config.get("schema") != EFFECT_CONFIG_SCHEMA:
+        raise ValueError(f"effect config is not {EFFECT_CONFIG_SCHEMA}")
+    if not isinstance(lanes, dict):
+        raise ValueError("effect config lanes is not an object")
+    ids = {str(st["id"]) for st in stage_steps(manifest, stage)}
+    out = []
+    for lane, spec in sorted(lanes.items()):
+        if not isinstance(spec, dict):
+            raise ValueError(f"effect config lane {lane}: not an object")
+        if spec.get("pipeline") != manifest.get("pipeline") or spec.get("stage") != stage:
+            continue
+        if spec.get("cron_claim") is not True:
+            continue
+        sid = str(spec.get("step_id") or "")
+        if sid not in ids:
+            raise ValueError(f"effect config lane {lane}: step_id {sid!r} is not a step of stage {stage}")
+        proc, ver = spec.get("process"), spec.get("input_version")
+        if not (isinstance(proc, str) and re.fullmatch(r"[a-z0-9][a-z0-9._-]{1,63}", proc)):
+            raise ValueError(f"effect config lane {lane}: bad process")
+        if not (isinstance(ver, str) and re.fullmatch(r"[0-9A-Za-z][0-9A-Za-z._-]{0,63}", ver)):
+            raise ValueError(f"effect config lane {lane}: bad input_version")
+        out.append((sid, proc, ver))
+    return out
+
+
 def _p95(st: dict) -> tuple[float, bool]:
     # Same rule as report_tranche_b_readiness.step_duration: a p95 counts as measured only when the
     # design VERIFIED it; otherwise the PAM upper bound wins over a partial (unverified) p95_s, which can be
@@ -411,6 +473,14 @@ def main(argv=None) -> int:
     sub.add_argument("--summary", metavar="STAGE")
     sub.add_argument("--concurrency", metavar="STAGE", help="print the stage's max_concurrency (1 = serial)")
     sub.add_argument("--waves", metavar="STAGE", help="print the group/wave plan and p95 critical path")
+    sub.add_argument(
+        "--effect-spec",
+        metavar="STAGE",
+        help="print step_id, process, input_version (SEP-delimited) per step the runner must claim (cron_claim true)",
+    )
+    sub.add_argument("--effect-slot", metavar="STAGE", help="print the stage's effect-key slot <YYYYMMDD>T<HHMM>")
+    ap.add_argument("--effect-config", help="--effect-spec: config/n8n_effect_keys.json (missing file = none)")
+    ap.add_argument("--date", default=None, help="--effect-slot: YYYYMMDD (default: today, America/New_York)")
     ap.add_argument("--dow", type=int, default=None, help="--waves: drop steps whose dow excludes this day")
     ap.add_argument("--results", help="--summary: step results jsonl written by the runner")
     ap.add_argument("--out", help="--summary: PipelineRun@v1 path")
@@ -456,6 +526,26 @@ def main(argv=None) -> int:
             print(stage_concurrency(manifest["stages"][stage]))
         else:
             print("\n".join(format_wave_plan(wave_plan(manifest, stage, args.dow))))
+        return 0
+    if args.effect_spec is not None or args.effect_slot is not None:
+        stage = args.effect_spec if args.effect_spec is not None else args.effect_slot
+        try:
+            if stage not in (manifest.get("stages") or {}):
+                raise ValueError(f"stage {stage!r} not in manifest")
+            if args.effect_slot is not None:
+                print(effect_slot(manifest, stage, args.date))
+                return 0
+            if not args.effect_config:
+                raise ValueError("--effect-spec needs --effect-config")
+            try:
+                cfg = load(args.effect_config)
+            except FileNotFoundError:
+                cfg = {"schema": EFFECT_CONFIG_SCHEMA, "lanes": {}}  # no file = no lane opted in
+            for rec in effect_spec(manifest, stage, cfg):
+                print(SEP.join(rec))
+        except (ValueError, OSError) as e:
+            print(f"[manifest] effect: {e}", file=sys.stderr)
+            return 2
         return 0
     if args.summary is not None:
         if not args.results or not args.out:
