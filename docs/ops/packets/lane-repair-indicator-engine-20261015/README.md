@@ -141,9 +141,13 @@ Each first natural run writes its receipt with `summary.output`. Watch for the f
 
 ## Interactions to resolve in the train
 
-- PR #1761's retire packet (`lane-retire-wave1-20261015`) lists `indicator-engine` as RETIRE because of the demo
-  line. With this repair the operator directive turns it on instead, so drop it from that packet before installing.
-- Both PRs touch `config/lane_registry.json`. Because of the one-registry-PR-at-a-time rule (§23.11), this PR goes
-  after #1761 in the registry train.
+- The retire packet `lane-retire-wave1-20261015` (on main since train 2026-10-15 b, #1758) lists `indicator-engine`
+  in tier B ("OPERATOR YES REQUIRED") as RETIRE, because of the demo line. The indicator-engine registry row still
+  carries that packet's `retire_pending` block, and this PR leaves it alone. The operator's "turn these on" directive
+  is a NO for that row. Following that packet's own procedure, delete the row from `lines_to_retire_tier_b.tsv` and the
+  `retire_pending` block together, and do it before tier B is installed. If tier B is installed with the row still in
+  it, the line is commented out and this repair has nothing to run.
+- PR #1761 (shadow wave LD-W1) also touches `config/lane_registry.json`. Under the one-registry-PR-at-a-time rule
+  (§23.11), the second of the two to merge must rebase onto the first.
 - The run-from-release cohort 1 packet prefixes the two `build_symbol_profiles` lines. The registry `command_text`
   recorded here is the pre-cohort line. Update it in the same follow-up PR if cohort 1 is applied first.
