@@ -928,12 +928,12 @@
         "match": "linux_launchers/backup_generated_docs.sh"
       },
       "expected_cadence_hours": 24,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "none"
       },
       "note": "Observed crontab -l 2026-10-08 10:53 EDT. linux_launchers/backup_generated_docs.sh git commit-tree/update-ref/push plus Telegram failure alerts; NO_SIGNAL: no per-run durable receipt. Git authority is not relay authority.",
-      "state_since": "2026-10-08",
+      "state_since": "2026-10-15",
       "value_class": "Business Critical",
       "recommendation": "KEEP_ON_CRON",
       "rationalization": {
@@ -946,15 +946,10 @@
         "event_driven_candidate": false,
         "f_evidence": "core advisory/protection/data path; healthy logs today"
       },
-      "retire_pending": {
-        "packet": "docs/ops/packets/lane-retire-wave1-20261015",
-        "tier": "tier B (operator YES)",
-        "cron_line_20261015": 543,
-        "reason": "push-from-cron-24.5-no-changes",
-        "evidence": "OPERATOR YES REQUIRED. linux_launchers/backup_generated_docs.sh pushes from cron (AGENTS.md 24.5 forbids a push from a scheduled job); logs/docs_backup.log 'no generated-doc changes' every night 10-10..10-14",
-        "duplicate_of": null,
-        "state_until_install": "ACTIVE (the line still runs; the registry flips only after the read-back verify)"
-      }
+      "state_reason": "lane-retire-wave1-20261015 (tier B (operator YES)): crontab line commented in place as `# RETIRED 2026-10-15 retire-ld-w1 push-from-cron-24.5-no-changes <original>` (never deleted) under cron grant 1aa15633f09a4f4c9ee1af5b763ff858. OPERATOR YES REQUIRED. linux_launchers/backup_generated_docs.sh pushes from cron (AGENTS.md 24.5 forbids a push from a scheduled job); logs/docs_backup.log 'no generated-doc changes' every night 10-10..10-14 Rollback: docs/ops/packets/lane-retire-wave1-20261015/rollback.sh.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "OPERATOR YES REQUIRED. linux_launchers/backup_generated_docs.sh pushes from cron (AGENTS.md 24.5 forbids a push from a scheduled job); logs/docs_backup.log 'no generated-doc changes' every night 10-10..10-14",
+      "retire_batch": "retire-ld-w1"
     },
     {
       "lane_id": "sync-memory-to-drive",
@@ -4369,7 +4364,7 @@
         "match": "run_goal_pilot_material_change.py"
       },
       "expected_cadence_hours": 1,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "file_mtime",
         "path": "data/cio/goal_pilot_material_change.jsonl"
@@ -4388,15 +4383,11 @@
         "f_evidence": "Unverified use: no consumer check run for this line"
       },
       "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible).",
-      "retire_pending": {
-        "packet": "docs/ops/packets/lane-retire-wave1-20261015",
-        "tier": "tier B (operator YES)",
-        "cron_line_20261015": 984,
-        "reason": "168of168-UNEVALUABLE-no-consumer",
-        "evidence": "OPERATOR YES REQUIRED. hourly pilot; every verdict in ~/logs/goal_pilot_material_change.log is UNEVALUABLE missing_facts (168/168, WS2 F04); no consumer acts on it",
-        "duplicate_of": null,
-        "state_until_install": "ACTIVE (the line still runs; the registry flips only after the read-back verify)"
-      }
+      "state_since": "2026-10-15",
+      "state_reason": "lane-retire-wave1-20261015 (tier B (operator YES)): crontab line commented in place as `# RETIRED 2026-10-15 retire-ld-w1 168of168-UNEVALUABLE-no-consumer <original>` (never deleted) under cron grant 1aa15633f09a4f4c9ee1af5b763ff858. OPERATOR YES REQUIRED. hourly pilot; every verdict in ~/logs/goal_pilot_material_change.log is UNEVALUABLE missing_facts (168/168, WS2 F04); no consumer acts on it Rollback: docs/ops/packets/lane-retire-wave1-20261015/rollback.sh.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "OPERATOR YES REQUIRED. hourly pilot; every verdict in ~/logs/goal_pilot_material_change.log is UNEVALUABLE missing_facts (168/168, WS2 F04); no consumer acts on it",
+      "retire_batch": "retire-ld-w1"
     },
     {
       "lane_id": "dormant-lane-consumers",
@@ -4408,7 +4399,7 @@
         "match": "run_dormant_lane_consumers.py"
       },
       "expected_cadence_hours": 1,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "file_mtime",
         "path": "/home/johnclaw/logs/dormant_lane_consumers.log"
@@ -4427,15 +4418,11 @@
         "f_evidence": "Unverified use: no consumer check run for this line"
       },
       "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible).",
-      "retire_pending": {
-        "packet": "docs/ops/packets/lane-retire-wave1-20261015",
-        "tier": "tier B (operator YES)",
-        "cron_line_20261015": 985,
-        "reason": "log-only-wiring-harness-no-reader",
-        "evidence": "OPERATOR YES REQUIRED. hourly harness that re-checks wiring ('lanes ok: 10/10 already wired: 2', ~/logs/dormant_lane_consumers.log); log-only, no reader (WS2 F04)",
-        "duplicate_of": null,
-        "state_until_install": "ACTIVE (the line still runs; the registry flips only after the read-back verify)"
-      }
+      "state_since": "2026-10-15",
+      "state_reason": "lane-retire-wave1-20261015 (tier B (operator YES)): crontab line commented in place as `# RETIRED 2026-10-15 retire-ld-w1 log-only-wiring-harness-no-reader <original>` (never deleted) under cron grant 1aa15633f09a4f4c9ee1af5b763ff858. OPERATOR YES REQUIRED. hourly harness that re-checks wiring ('lanes ok: 10/10 already wired: 2', ~/logs/dormant_lane_consumers.log); log-only, no reader (WS2 F04) Rollback: docs/ops/packets/lane-retire-wave1-20261015/rollback.sh.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "OPERATOR YES REQUIRED. hourly harness that re-checks wiring ('lanes ok: 10/10 already wired: 2', ~/logs/dormant_lane_consumers.log); log-only, no reader (WS2 F04)",
+      "retire_batch": "retire-ld-w1"
     },
     {
       "lane_id": "tradeai-aec-command-center-cycle",
@@ -15452,7 +15439,7 @@
         "match": "scripts/agent_intelligence_cron.sh deep"
       },
       "expected_cadence_hours": 168.0,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "none",
         "reason": "UNVERIFIED_OUTPUT",
@@ -15479,15 +15466,11 @@
       "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-10-15",
       "adopted_reason": "lane-retire-wave1-20261015: the row carries a retire_pending block; reconcile_lane_registry.py re-derives generated rows and would drop it, so the row is hand-maintained until the post-install flip (apply_registry.py) retires it.",
-      "retire_pending": {
-        "packet": "docs/ops/packets/lane-retire-wave1-20261015",
-        "tier": "tier A",
-        "cron_line_20261015": 162,
-        "reason": "no-venv-in-CURRENT-0-steps",
-        "evidence": "wrapper runs .venv/bin/python relative to CURRENT; CURRENT/.venv does not exist (ls 2026-10-15); every CURRENT-era log is 'No such file or directory' with 0 steps (latest logs/agent_intelligence_daily_20261015_062501.log); retire-wave2 OPERATOR_DECISION row 2 YES",
-        "duplicate_of": null,
-        "state_until_install": "ACTIVE (the line still runs; the registry flips only after the read-back verify)"
-      }
+      "state_since": "2026-10-15",
+      "state_reason": "lane-retire-wave1-20261015 (tier A): crontab line commented in place as `# RETIRED 2026-10-15 retire-ld-w1 no-venv-in-CURRENT-0-steps <original>` (never deleted) under cron grant 1aa15633f09a4f4c9ee1af5b763ff858. wrapper runs .venv/bin/python relative to CURRENT; CURRENT/.venv does not exist (ls 2026-10-15); every CURRENT-era log is 'No such file or directory' with 0 steps (latest logs/agent_intelligence_daily_20261015_062501.log); retire-wave2 OPERATOR_DECISION row 2 YES Rollback: docs/ops/packets/lane-retire-wave1-20261015/rollback.sh.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "wrapper runs .venv/bin/python relative to CURRENT; CURRENT/.venv does not exist (ls 2026-10-15); every CURRENT-era log is 'No such file or directory' with 0 steps (latest logs/agent_intelligence_daily_20261015_062501.log); retire-wave2 OPERATOR_DECISION row 2 YES",
+      "retire_batch": "retire-ld-w1"
     },
     {
       "lane_id": "agent-intelligence-cron-daily",
@@ -15498,7 +15481,7 @@
         "match": "scripts/agent_intelligence_cron.sh daily"
       },
       "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "none",
         "reason": "UNVERIFIED_OUTPUT",
@@ -15525,15 +15508,11 @@
       "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-10-15",
       "adopted_reason": "lane-retire-wave1-20261015: the row carries a retire_pending block; reconcile_lane_registry.py re-derives generated rows and would drop it, so the row is hand-maintained until the post-install flip (apply_registry.py) retires it.",
-      "retire_pending": {
-        "packet": "docs/ops/packets/lane-retire-wave1-20261015",
-        "tier": "tier A",
-        "cron_line_20261015": 189,
-        "reason": "no-venv-in-CURRENT-0-steps",
-        "evidence": "same wrapper; logs/agent_intelligence_daily_20261015_062501.log = '.venv/bin/python: No such file or directory' x N, 0 steps; retire-wave2 row 1 YES",
-        "duplicate_of": null,
-        "state_until_install": "ACTIVE (the line still runs; the registry flips only after the read-back verify)"
-      }
+      "state_since": "2026-10-15",
+      "state_reason": "lane-retire-wave1-20261015 (tier A): crontab line commented in place as `# RETIRED 2026-10-15 retire-ld-w1 no-venv-in-CURRENT-0-steps <original>` (never deleted) under cron grant 1aa15633f09a4f4c9ee1af5b763ff858. same wrapper; logs/agent_intelligence_daily_20261015_062501.log = '.venv/bin/python: No such file or directory' x N, 0 steps; retire-wave2 row 1 YES Rollback: docs/ops/packets/lane-retire-wave1-20261015/rollback.sh.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "same wrapper; logs/agent_intelligence_daily_20261015_062501.log = '.venv/bin/python: No such file or directory' x N, 0 steps; retire-wave2 row 1 YES",
+      "retire_batch": "retire-ld-w1"
     },
     {
       "lane_id": "agent-intelligence-cron-intraday",
@@ -15544,7 +15523,7 @@
         "match": "scripts/agent_intelligence_cron.sh intraday"
       },
       "expected_cadence_hours": 69.0,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "none",
         "reason": "UNVERIFIED_OUTPUT",
@@ -15571,15 +15550,11 @@
       "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-10-15",
       "adopted_reason": "lane-retire-wave1-20261015: the row carries a retire_pending block; reconcile_lane_registry.py re-derives generated rows and would drop it, so the row is hand-maintained until the post-install flip (apply_registry.py) retires it.",
-      "retire_pending": {
-        "packet": "docs/ops/packets/lane-retire-wave1-20261015",
-        "tier": "tier A",
-        "cron_line_20261015": 194,
-        "reason": "no-venv-in-CURRENT-0-steps",
-        "evidence": "same wrapper; logs/agent_intelligence_intraday_20261014_143002.log 1297 B of 'No such file'; retire-wave2 row 3 YES",
-        "duplicate_of": null,
-        "state_until_install": "ACTIVE (the line still runs; the registry flips only after the read-back verify)"
-      }
+      "state_since": "2026-10-15",
+      "state_reason": "lane-retire-wave1-20261015 (tier A): crontab line commented in place as `# RETIRED 2026-10-15 retire-ld-w1 no-venv-in-CURRENT-0-steps <original>` (never deleted) under cron grant 1aa15633f09a4f4c9ee1af5b763ff858. same wrapper; logs/agent_intelligence_intraday_20261014_143002.log 1297 B of 'No such file'; retire-wave2 row 3 YES Rollback: docs/ops/packets/lane-retire-wave1-20261015/rollback.sh.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "same wrapper; logs/agent_intelligence_intraday_20261014_143002.log 1297 B of 'No such file'; retire-wave2 row 3 YES",
+      "retire_batch": "retire-ld-w1"
     },
     {
       "lane_id": "cleanup-stale-locks",
@@ -15590,7 +15565,7 @@
         "match": "scripts/cleanup_stale_locks.sh"
       },
       "expected_cadence_hours": 0.08,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "none",
         "reason": "UNVERIFIED_OUTPUT",
@@ -15617,15 +15592,11 @@
       "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-10-15",
       "adopted_reason": "lane-retire-wave1-20261015: the row carries a retire_pending block; reconcile_lane_registry.py re-derives generated rows and would drop it, so the row is hand-maintained until the post-install flip (apply_registry.py) retires it.",
-      "retire_pending": {
-        "packet": "docs/ops/packets/lane-retire-wave1-20261015",
-        "tier": "tier B (operator YES)",
-        "cron_line_20261015": 232,
-        "reason": "races-lock-holders-flock-needs-no-cleanup",
-        "evidence": "OPERATOR YES REQUIRED. */5 deletes of holder-less lock files (59,387 deletes, duplicates_obsolete.md E) race the jobs that create them; flock locks need no cleanup. Risk if wrong: a safe_flock pid lock left by a killed job stays until the next holder check",
-        "duplicate_of": null,
-        "state_until_install": "ACTIVE (the line still runs; the registry flips only after the read-back verify)"
-      }
+      "state_since": "2026-10-15",
+      "state_reason": "lane-retire-wave1-20261015 (tier B (operator YES)): crontab line commented in place as `# RETIRED 2026-10-15 retire-ld-w1 races-lock-holders-flock-needs-no-cleanup <original>` (never deleted) under cron grant 1aa15633f09a4f4c9ee1af5b763ff858. OPERATOR YES REQUIRED. */5 deletes of holder-less lock files (59,387 deletes, duplicates_obsolete.md E) race the jobs that create them; flock locks need no cleanup. Risk if wrong: a safe_flock pid lock left by a killed job stays until the next holder check Rollback: docs/ops/packets/lane-retire-wave1-20261015/rollback.sh.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "OPERATOR YES REQUIRED. */5 deletes of holder-less lock files (59,387 deletes, duplicates_obsolete.md E) race the jobs that create them; flock locks need no cleanup. Risk if wrong: a safe_flock pid lock left by a killed job stays until the next holder check",
+      "retire_batch": "retire-ld-w1"
     },
     {
       "lane_id": "symbol-enrichment",
@@ -15636,7 +15607,7 @@
         "match": "scripts/symbol_enrichment.py"
       },
       "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/symbol_enrichment.log",
@@ -15660,15 +15631,11 @@
       "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-10-15",
       "adopted_reason": "lane-retire-wave1-20261015: the row carries a retire_pending block; reconcile_lane_registry.py re-derives generated rows and would drop it, so the row is hand-maintained until the post-install flip (apply_registry.py) retires it.",
-      "retire_pending": {
-        "packet": "docs/ops/packets/lane-retire-wave1-20261015",
-        "tier": "tier A",
-        "cron_line_20261015": 252,
-        "reason": "argv-rejected-exit2-every-run",
-        "evidence": "cron argv '--limit 50' is not an option of scripts/symbol_enrichment.py (positional symbol/score only; strict parser since 1c733d98f 2026-10-11): logs/symbol_enrichment.log ends 'error: unrecognized arguments: --limit' on every weekday run since the release (3 of 3, last 2026-10-15 07:30, exit 2). Before that the line enriched only the CLI default symbol. enrich_symbol() stays a library for its other callers; only this cron line is dead",
-        "duplicate_of": null,
-        "state_until_install": "ACTIVE (the line still runs; the registry flips only after the read-back verify)"
-      }
+      "state_since": "2026-10-15",
+      "state_reason": "lane-retire-wave1-20261015 (tier A): crontab line commented in place as `# RETIRED 2026-10-15 retire-ld-w1 argv-rejected-exit2-every-run <original>` (never deleted) under cron grant 1aa15633f09a4f4c9ee1af5b763ff858. cron argv '--limit 50' is not an option of scripts/symbol_enrichment.py (positional symbol/score only; strict parser since 1c733d98f 2026-10-11): logs/symbol_enrichment.log ends 'error: unrecognized arguments: --limit' on every weekday run since the release (3 of 3, last 2026-10-15 07:30, exit 2). Before that the line enriched only the CLI default symbol. enrich_symbol() stays a library for its other callers; only this cron line is dead Rollback: docs/ops/packets/lane-retire-wave1-20261015/rollback.sh.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "cron argv '--limit 50' is not an option of scripts/symbol_enrichment.py (positional symbol/score only; strict parser since 1c733d98f 2026-10-11): logs/symbol_enrichment.log ends 'error: unrecognized arguments: --limit' on every weekday run since the release (3 of 3, last 2026-10-15 07:30, exit 2). Before that the line enriched only the CLI default symbol. enrich_symbol() stays a library for its other callers; only this cron line is dead",
+      "retire_batch": "retire-ld-w1"
     },
     {
       "lane_id": "indicator-engine",
@@ -15703,14 +15670,10 @@
       "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-10-15",
       "adopted_reason": "lane-retire-wave1-20261015: the row carries a retire_pending block; reconcile_lane_registry.py re-derives generated rows and would drop it, so the row is hand-maintained until the post-install flip (apply_registry.py) retires it.",
-      "retire_pending": {
+      "retire_declined": {
         "packet": "docs/ops/packets/lane-retire-wave1-20261015",
-        "tier": "tier B (operator YES)",
-        "cron_line_20261015": 262,
-        "reason": "module-demo-AMD-only-dup-of-indicator-cache-refresh",
-        "evidence": "OPERATOR YES REQUIRED. the line runs the module's __main__ demo with no argv: analyze_confluence('AMD', 'scalp') printed to logs/indicator_engine.log (pivot tables, 2026-10-15 08:00). The universe indicator cache is refreshed by indicator-cache-refresh (premarket step); duplicate_of names it",
-        "duplicate_of": "indicator-cache-refresh",
-        "state_until_install": "ACTIVE (the line still runs; the registry flips only after the read-back verify)"
+        "decided": "2026-10-15",
+        "decision": "operator NO (tier B): keep and turn ON; repair planned in release train 4"
       }
     },
     {
@@ -15722,7 +15685,7 @@
         "match": "scripts/risk_gate.py"
       },
       "expected_cadence_hours": 65.0,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/risk_gate.log",
@@ -15746,15 +15709,11 @@
       "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-10-15",
       "adopted_reason": "lane-retire-wave1-20261015: the row carries a retire_pending block; reconcile_lane_registry.py re-derives generated rows and would drop it, so the row is hand-maintained until the post-install flip (apply_registry.py) retires it.",
-      "retire_pending": {
-        "packet": "docs/ops/packets/lane-retire-wave1-20261015",
-        "tier": "tier B (operator YES)",
-        "cron_line_20261015": 275,
-        "reason": "hourly-selftest-pollutes-risk_gate_results",
-        "evidence": "OPERATOR YES REQUIRED. hourly 'risk_gate.py --test' runs the 7 synthetic self-test cases ('=== All risk gate tests passed ===', logs/risk_gate.log 2026-10-15) and writes them into risk_gate_results, which api_v2.py:55048 and telegram_command_handler.py:1786 aggregate as if real gate decisions (4,081 writes / 14 reads). The self-test belongs in CI",
-        "duplicate_of": null,
-        "state_until_install": "ACTIVE (the line still runs; the registry flips only after the read-back verify)"
-      }
+      "state_since": "2026-10-15",
+      "state_reason": "lane-retire-wave1-20261015 (tier B (operator YES)): crontab line commented in place as `# RETIRED 2026-10-15 retire-ld-w1 hourly-selftest-pollutes-risk_gate_results <original>` (never deleted) under cron grant 1aa15633f09a4f4c9ee1af5b763ff858. OPERATOR YES REQUIRED. hourly 'risk_gate.py --test' runs the 7 synthetic self-test cases ('=== All risk gate tests passed ===', logs/risk_gate.log 2026-10-15) and writes them into risk_gate_results, which api_v2.py:55048 and telegram_command_handler.py:1786 aggregate as if real gate decisions (4,081 writes / 14 reads). The self-test belongs in CI Rollback: docs/ops/packets/lane-retire-wave1-20261015/rollback.sh.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "OPERATOR YES REQUIRED. hourly 'risk_gate.py --test' runs the 7 synthetic self-test cases ('=== All risk gate tests passed ===', logs/risk_gate.log 2026-10-15) and writes them into risk_gate_results, which api_v2.py:55048 and telegram_command_handler.py:1786 aggregate as if real gate decisions (4,081 writes / 14 reads). The self-test belongs in CI",
+      "retire_batch": "retire-ld-w1"
     },
     {
       "lane_id": "run-scheduled-quote-refresh-incubator",

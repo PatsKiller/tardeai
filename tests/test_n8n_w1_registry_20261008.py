@@ -64,6 +64,9 @@ def test_registry_has_all_21_observed_cron_lanes_without_serialisation_churn():
         elif lane in RETIRED_C1_PREMARKET:
             assert row["state"] == "RETIRED" and row["superseded_by"] == "premarket-data-pipeline", lane
             assert row["c1_flip"]["manifest"] == "premarket", lane
+        elif row.get("retire_batch") == "retire-ld-w1":
+            # lane retire wave 1, installed 2026-10-15 (docs/ops/packets/lane-retire-wave1-20261015)
+            assert row["state"] == "RETIRED" and row["state_since"] == "2026-10-15", lane
         else:
             assert row["state"] == "ACTIVE"
             assert row["state_since"] == "2026-10-08"

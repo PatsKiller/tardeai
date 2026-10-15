@@ -408,6 +408,8 @@ def test_generated_rows_have_evidence_or_are_flagged_unverified(committed):
             "dispatch" in r
             or "r1_pending" in r
             or "retire_pending" in r  # lane retire wave 1 (2026-10-15): flipped RETIRED after the read-back
+            or r.get("retire_batch") == "retire-ld-w1"  # ...and flipped (install 2026-10-15, apply_registry.py)
+            or "retire_declined" in r  # indicator-engine: operator NO 2026-10-15, kept ACTIVE
             or r["lane_id"] in ("build-symbol-profiles-at-0-19", "social-ingest-stocktwits", "overnight-batch-tax")
         )
         and "generated_by" not in r
