@@ -85,7 +85,7 @@ EXCLUDED = (
     "research-watchlist-discovery", "market-regime-collector", "agent-recommendation-normalizer", "rag-indexer",
     "journal-review-builder", "social-ingest-stocktwits",
     "cio-stance-classification-drain", "siem-to-hermes-backlog", "desk-suggestions-digest",
-    "build-hermes-canonical-status", "drain-discovery-backlog", "build-symbol-profiles-at-0-19",
+    "build-hermes-canonical-status", "drain-discovery-backlog",
 )
 #: Released from EXCLUDED by shadow wave LD-W1 (2026-10-15, tests/test_shadow_wave_ld_w1_20261015.py):
 #: hermes-discovery-scorecard (class report) was out of SW4 only because SW4 was an R1-class wave.
