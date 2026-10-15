@@ -343,6 +343,8 @@ def test_compound_receipt_counts_only_this_runs_step_receipts(tmp_path):
 def test_the_three_processes_are_registered_capped_and_oauth_only():
     for pid in NEW_PROCESSES:
         p = LLM_REG[pid]
+        # allowed_lanes stays the cron path's OAuth pair; the n8n path's DeepSeek fallback (routing row n8n_oauth_first,
+        # 2026-10-15 bridge routes batch 1) is not an allowed_lanes entry the bridge reads.
         assert p["default_mode"] == "automated" and p["allowed_lanes"] == ["grok", "chatgpt"], pid
         assert p["daily_soft_cap"] > 0 and 0 < p["daily_cost_cap_usd"] <= 0.25, pid
         assert set(ROUTING[pid]) >= {"primary", "secondary", "fallback", "cost_ceiling_usd"}, pid
@@ -571,7 +573,7 @@ def test_litmus_is_a_shadow_row_with_a_dry_run_only_entry():
     assert not any(LIT in v for v in ALLOW_DOC["pending_tranches"].values() if isinstance(v, list))
 
 
-def test_ri_is_staged_shadow_and_blocked_until_its_bridge_route_exists():
+def test_ri_is_staged_shadow_and_its_bridge_route_now_exists():
     row = REGISTRY[RI]
     pend = row["r1_pending"]
     assert pend["scheduler"]["stage"] == "shadow" and pend["dispatch"]["mode"] == "dry_run"
@@ -592,9 +594,13 @@ def test_ri_is_staged_shadow_and_blocked_until_its_bridge_route_exists():
         "env_allowlist_mode": "report",
         "env_report_reason": "x",
         "output_signal": f"data/runtime/{RI}_last.json",
-        "llm_route": {"via": "cio-governed-bridge", "process_id": "topic_ingestion"},
+        # 2026-10-15 (bridge routes batch 1): a compound lane declares its process SET; every id is routed now.
+        "llm_route": {"via": "cio-governed-bridge", "process_ids": sorted(NEW_PROCESSES)},
     }
-    assert X.validate_entry(planned) == "llm_process_route_not_registered"
+    assert X.validate_entry(planned) is None  # was llm_process_route_not_registered before the routes existed
+    assert X.validate_entry({**planned, "llm_route": {"via": "cio-governed-bridge",
+                                                      "process_ids": ["topic_ingestion", "unrouted"]}}) \
+        == "llm_process_route_not_registered"
     activated = dict(
         row,
         scheduler={**row["scheduler"], **pend["scheduler"]},

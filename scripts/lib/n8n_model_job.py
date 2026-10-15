@@ -407,7 +407,8 @@ ROUTING_POLICY_HEADER = "X-TradeAI-Routing-Policy"   # the bridge reads this; an
 
 def bridge_governed_call(messages: list[dict[str, str]], *, process_id: str, response_format: Optional[dict] = None,
                          request_id: Optional[str] = None, timeout_s: float = 60.0, task_type: str = "model_job",
-                         routing_policy: Optional[str] = None, caller: str = BRIDGE_CALLER) -> dict[str, Any]:
+                         routing_policy: Optional[str] = None, caller: str = BRIDGE_CALLER,
+                         max_tokens: int = 2048) -> dict[str, Any]:
     """Loopback HTTP to the running governed bridge (cio-governed-bridge.service, 127.0.0.1:8766).
 
     The bridge maps the caller header + task type to the process server-side (CALLER_TASK_PROCESS_MAP); the
@@ -417,7 +418,7 @@ def bridge_governed_call(messages: list[dict[str, str]], *, process_id: str, res
     import urllib.request
     url = os.environ.get(BRIDGE_URL_ENV) or "http://127.0.0.1:8766/v1/chat/completions"
     body = json.dumps({"model": "tradeai_governed", "messages": messages, "response_format": response_format or {"type": "json_object"},
-                       "max_tokens": 2048, "request_id": request_id}).encode("utf-8")
+                       "max_tokens": int(max_tokens), "request_id": request_id}).encode("utf-8")
     headers = {"Content-Type": "application/json", "X-TradeAI-Agent": caller,
                "X-TradeAI-Task-Type": task_type}   # 2026-10-08: ops_summary selects n8n_ops_summary_draft server-side
     if routing_policy:

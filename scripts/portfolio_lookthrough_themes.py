@@ -17,11 +17,19 @@ or write a cache, report or receipt. The run(persist=False) API still supports d
 holdings are missing/empty or the served report could not be written. A run without --grok keeps the previous
 grok_narrative / agent_advisories (with their grok_generated_at) instead of blanking them, so the
 deterministic report can run on its own schedule.
+
+Governed bridge (2026-10-15, n8n llm lane batch 2): with TRADEAI_LLM_VIA_BRIDGE=1 (bound by the n8n run executor from
+the allowlist ``llm_route`` of lane portfolio-lookthrough-themes) the narrative and the three agent reads (--grok) are
+each ONE governed-bridge request as process ``portfolio_lookthrough_themes`` (grok -> chatgpt -> DeepSeek server-side;
+the reply is asked as {"text": ...} because the bridge transport requests a JSON object). llm_lane is never imported,
+so neither a provider client nor the ``local`` lane is reachable; a refusal leaves that section empty (grok_status
+``unavailable`` when every call was refused). The cron line is unchanged.
 """
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -300,10 +308,43 @@ _AGENT_ROLES = [
 ]
 
 
+#: Registered process + governed-bridge route (advisory_desk / portfolio_lookthrough_themes).
+LLM_PROCESS_ID = "portfolio_lookthrough_themes"
+#: The flag the n8n run executor binds from the allowlist llm_route; read directly (a failed import with the flag ON
+#: raises inside the caller's try and yields no text, never the in-process llm_lane path).
+VIA_BRIDGE_ENV = "TRADEAI_LLM_VIA_BRIDGE"
+BRIDGE_MODEL = "governed-bridge"
+
+
+def _via_bridge() -> bool:
+    return os.environ.get(VIA_BRIDGE_ENV, "off").strip().lower() in {"1", "on", "bridge"}
+
+
+def _bridge_text(prompt: str, timeout: int = 60) -> str:
+    """ONE governed-bridge request for a prose answer; "" on a refusal or an unusable reply (no output)."""
+    try:
+        from lib.llm_bridge_route import require_text_via_bridge
+
+        raw = require_text_via_bridge(
+            LLM_PROCESS_ID, prompt + '\n\nReply ONLY with JSON: {"text": "<your answer>"}', timeout_s=timeout)
+        start, end = raw.find("{"), raw.rfind("}")
+        text = json.loads(raw[start:end + 1]).get("text") if start >= 0 and end > start else None
+        return str(text).strip() if isinstance(text, str) and text.strip() else ""
+    except Exception:  # noqa: BLE001 -- refused / unusable: no output, never another provider
+        return ""
+
+
 def agent_advisories(data: dict) -> list:
     """Run the look-through through multiple agent lenses (CIO / Risk / Allocation) on the free Grok lane
     (local fallback). Returns [{agent, model, text}]. Each call is independent + resilient."""
     out = []
+    if _via_bridge():
+        ctx = _lookthrough_ctx(data)
+        for agent, role in _AGENT_ROLES:
+            txt = _bridge_text(f"{role}\n\n{ctx}")
+            if txt:
+                out.append({"agent": agent, "model": BRIDGE_MODEL, "text": txt})
+        return out
     try:
         import llm_lane
         lane = "grok" if llm_lane.available("grok") else "local"
@@ -324,8 +365,18 @@ def agent_advisories(data: dict) -> list:
     return out
 
 
+def _lookthrough_ctx(data: dict) -> str:
+    themes = " · ".join(f"{k} {v['pct']}%" for k, v in data.get("themes", {}).items())
+    top = ", ".join(f"{t['symbol']} {t['pct']}%" for t in data.get("top_underlying", [])[:8])
+    return (f"Portfolio ${data.get('portfolio_total',0):,.0f}. LOOK-THROUGH exposure (funds resolved to "
+            f"underlying stocks): themes [{themes}]; top names [{top}]. Be specific and brief.")
+
+
 def grok_narrative(data: dict) -> str:
     """LLM read of the look-through (free Grok lane, local fallback). Returns a short narrative."""
+    if _via_bridge():
+        return _bridge_text("You are a portfolio risk analyst. " + _lookthrough_ctx(data)
+                            + " In 4-5 sentences, give a concentration/diversification read and 2 concrete actions.")
     try:
         import llm_lane
         themes = " · ".join(f"{k} {v['pct']}%" for k, v in data.get("themes", {}).items())

@@ -6,9 +6,17 @@ to BOTH free seats (ChatGPT + Grok OAuth lanes) — quota-aware, cached until th
 build; page refreshes read cache, never re-call. Verdicts are schema-strict JSON;
 malformed → `unparseable` with the raw kept — never coerced. The oversight layer
 INFORMS: it never blocks, never edits a card, never stages anything.
+
+Governed bridge (2026-10-15, n8n llm lane batch 2): with TRADEAI_LLM_VIA_BRIDGE=1 (bound by the n8n run executor from
+the allowlist ``llm_route`` of lane defense-weekly-paid-review) each requested free seat is ONE governed-bridge request
+as process ``defense_weekly_oversight`` (grok -> chatgpt -> DeepSeek server-side; the memo records served_by). llm_lane
+is never imported, so no OAuth proxy or provider client is reachable from the lane; a refusal is the seat's
+``unavailable`` status row (no verdicts, no memo). The paid tier is never reachable on that path. The cron line is
+unchanged.
 """
 import hashlib
 import json
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -172,6 +180,14 @@ def _parse_strict(raw: str):
 
 
 FREE_SEATS = (("chatgpt", "chatgpt"), ("grok", "grok"), ("deepseek", "deepseek-flash"))
+#: The n8n path's registered process + governed-bridge route (advisory_desk / defense_weekly_oversight).
+BRIDGE_PROCESS_ID = "defense_weekly_oversight"
+BRIDGE_SERVED_BY = "governed-bridge:defense_weekly_oversight"
+
+
+def _via_bridge() -> bool:
+    """The flag the n8n run executor binds from the allowlist llm_route; read directly."""
+    return os.environ.get("TRADEAI_LLM_VIA_BRIDGE", "off").strip().lower() in {"1", "on", "bridge"}
 
 
 def run_free_critiques(cur, force: bool = False, seats=None) -> dict:
@@ -186,7 +202,17 @@ def run_free_critiques(cur, force: bool = False, seats=None) -> dict:
     bh = art["build_hash"]
     out = {"build_hash": bh, "token_estimate": art["token_estimate"], "seats": {}}
     import time
-    from llm_lane import available, generate
+    via_bridge = _via_bridge()
+    if via_bridge:
+        from lib.llm_bridge_route import require_text_via_bridge
+
+        def available(_lane):
+            return True
+
+        def generate(text, lane=None, timeout=150, max_tokens=4096):
+            return require_text_via_bridge(BRIDGE_PROCESS_ID, text, timeout_s=timeout, max_tokens=max_tokens)
+    else:
+        from llm_lane import available, generate
     prompt = ("You are an independent risk overseer for a retirement-scale defensive trading desk. "
               "Judge WITHIN the constitution. Be adversarial where warranted.\n\n"
               + art["markdown"] + "\n\n" + CONTRACT)
@@ -235,6 +261,8 @@ def run_free_critiques(cur, force: bool = False, seats=None) -> dict:
             want = {c["id"] for c in art["brief"]["cards"]}
             got = {c.get("id") for c in parsed["cards"]}
             parsed["memo"]["coverage"] = f"{len(want & got)}/{len(want)} cards"
+            if via_bridge:
+                parsed["memo"]["served_by"] = BRIDGE_SERVED_BY
         cur.execute("""INSERT INTO oversight_reviews (build_hash, seat, status, verdicts, memo, raw, latency_ms)
                        VALUES (%s,%s,%s,%s,%s,%s,%s)
                        ON CONFLICT (build_hash, seat) DO UPDATE SET status=EXCLUDED.status,

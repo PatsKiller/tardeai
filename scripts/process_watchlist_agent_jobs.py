@@ -12,6 +12,15 @@ Agents:
 - risk_agent: technical/risk/stop review
 - tax_agent: tax/location review
 - full_chain: orchestrated multi-agent review
+
+Governed bridge (2026-10-15, n8n llm lane batch 4): with TRADEAI_LLM_VIA_BRIDGE=1 (bound by the n8n run executor from
+the allowlist ``llm_route`` of lanes run-watchlist-agent-jobs-offpeak / agent-event-router, a process SET) every model
+call is ONE governed-bridge request as the task's registered process: ``_llm`` as
+lib.agent_flash_governance.process_for_task(task_type) (no OAuth preempt, no OAuth soft fallback, no llm_router
+provider chain), ``_synthesis_llm`` with no grok fallback, and ``_synthesis_lanes`` as ONE vote (lane ``bridge``,
+process watchlist_cio_synthesis_cron) because the caller cannot pick a provider on the bridge (a single vote is never
+reported as a consensus). gate_and_generate / llm_lane are never reached; a refusal is the existing
+``LLM error: ...`` failure (no narrative stored as an answer). The cron path is unchanged.
 """
 import json, os, sys, re, hashlib, urllib.request
 from datetime import datetime, timedelta
@@ -69,6 +78,22 @@ except ImportError:
         def __exit__(self, *a): pass
         def rows(self, n): pass
 NO_MODEL = "none"
+#: The n8n path (see the module docstring). Read from the environment directly.
+VIA_BRIDGE_ENV = "TRADEAI_LLM_VIA_BRIDGE"
+BRIDGE_MODEL = "governed-bridge"
+#: CIO synthesis on the bridge path is scheduled work: the automated process (never the manual-mode one).
+BRIDGE_CIO_PROCESS_ID = "watchlist_cio_synthesis_cron"
+
+
+def _via_bridge() -> bool:
+    return os.environ.get(VIA_BRIDGE_ENV, "off").strip().lower() in {"1", "on", "bridge"}
+
+
+def _bridge_text(process_id: str, prompt: str, max_tokens: int) -> str:
+    """ONE governed-bridge request; raises BridgeRouteRefused (never another provider)."""
+    from lib.llm_bridge_route import require_text_via_bridge
+
+    return require_text_via_bridge(process_id, _strip_local_tokens(prompt), timeout_s=180, max_tokens=max_tokens)
 
 # Agent name normalization (risk_agent/tax_agent → risk/tax for maturity tracking)
 AGENT_TO_MATURITY = {
@@ -314,6 +339,26 @@ def _llm(prompt: str, max_tokens: int = 800, task_type: str = "agent_narrative",
     """
     global _MARIA_OAUTH_RUN_CALLS
     _llm._fallback_chain = []  # Gate-B.2: explicit provider provenance
+    if _via_bridge():
+        from lib.agent_flash_governance import process_for_task
+
+        pid = process_for_task(task_type)
+        _llm._requested_policy = "GOVERNED_BRIDGE"
+        _llm._first_attempt = "governed-bridge"
+        _llm._fallback_reason = None
+        _llm._manual_vs_automatic = "automatic"
+        try:
+            out = _bridge_text(pid, prompt, max_tokens)
+        except Exception as e:  # noqa: BLE001 -- refused: a failure, never another provider
+            _llm._fallback_reason = "BRIDGE_ROUTE_REFUSED"
+            _llm._fallback_chain = [{"attempted": "governed-bridge", "failed": True, "process_id": pid}]
+            return f"LLM error: BRIDGE_ROUTE_REFUSED: {str(e)[:160]}"
+        if _is_refusal(out):
+            _llm._fallback_chain = [{"attempted": "governed-bridge", "refusal": True, "process_id": pid}]
+            return "LLM error: model refusal (governed bridge)"
+        _llm._last_model, _llm._last_provider, _llm._last_cost = BRIDGE_MODEL, "bridge", None
+        _llm._fallback_chain = [{"used": "governed-bridge", "process_id": pid}]
+        return out
     from lib.agent_job_provider_policy import (
         first_provider_attempt,
         is_hard_policy_failure,
@@ -503,6 +548,8 @@ def _synthesis_llm(prompt: str, max_tokens: int = 2000) -> str:
              "declared_lanes": ["grok-oauth"]},
         ]
         return out
+    if _via_bridge():
+        return out if out else "LLM error: synthesis_failed"  # no in-process grok fallback on the bridge path
     try:
         import llm_lane
         if llm_lane.available("grok"):
@@ -612,6 +659,8 @@ def _synthesis_lanes(prompt: str, lanes=None, max_tokens: int = 2000, manual_tri
     lanes: None → grok+chatgpt+deepseek-flash; or an explicit subset.
     manual_trigger: route via watchlist_cio_synthesis consumption gate (Manual mode safe)."""
     global _dual_chatgpt_count
+    if _via_bridge():
+        return _synthesis_bridge_vote(prompt, max_tokens)
     import llm_lane
     cloud_prompt = _strip_local_tokens(prompt)
     want = _normalize_cio_lanes(lanes)
@@ -782,6 +831,31 @@ def _synthesis_lanes(prompt: str, lanes=None, max_tokens: int = 2000, manual_tri
                 fallback_lane="governed-deepseek-flash", declared_fallback=True,
                 deepseek_status=deepseek_status or "FALLBACK_ROUTER")
     return out, meta
+
+
+def _synthesis_bridge_vote(prompt: str, max_tokens: int = 2000):
+    """The n8n path's CIO synthesis: ONE governed-bridge vote (lane ``bridge``), never a consensus."""
+    meta = {"grok": None, "chatgpt": None, "deepseek": None, "deepseek_status": None,
+            "deepseek_model": None, "declared_lanes": ["bridge"], "consensus_kind": "single"}
+    try:
+        raw = _bridge_text(BRIDGE_CIO_PROCESS_ID, prompt, max_tokens)
+    except Exception as e:  # noqa: BLE001 -- refused: a failure, never another lane
+        meta.update(participating_lanes=[], agree=None, consensus=None, consensus_confidence=None,
+                    error="bridge_refused")
+        return f"LLM error: BRIDGE_ROUTE_REFUSED: {str(e)[:160]}", meta
+    rec, conf = _rec_from(raw) if raw and not _is_refusal(raw) else (None, 0.0)
+    if not rec:
+        meta.update(participating_lanes=[], agree=None, consensus=None, consensus_confidence=None,
+                    error="bridge_no_recommendation")
+        return "LLM error: governed bridge answer had no recommendation", meta
+    votes = [{"lane": "bridge", "rec": rec, "conf": conf, "model": BRIDGE_MODEL}]
+    meta.update(_reconcile_cio_votes(votes))
+    # One lane is never a consensus: the recommendation stands, agreement is not claimed.
+    meta.update(agree=None, majority=False)
+    meta.update(participating_lanes=["bridge"], bridge={"recommendation": rec, "confidence": conf,
+                                                          "model": BRIDGE_MODEL, "process_id": BRIDGE_CIO_PROCESS_ID})
+    _llm._last_model = f"{BRIDGE_MODEL}(single)"
+    return raw, meta
 
 
 def _synthesis_dual(prompt: str, max_tokens: int = 2000):

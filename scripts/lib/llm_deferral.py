@@ -389,10 +389,33 @@ def reclaim_stale(now: datetime | None = None) -> dict[str, int]:
     return {"requeued": len(back), "retired": len(dead)}
 
 
-def claim_due(limit: int = 25, now: datetime | None = None) -> list[dict[str, Any]]:
-    """Lease due rows. SKIP LOCKED so two drainers cannot run the same question twice."""
+def claim_due(limit: int = 25, now: datetime | None = None,
+              process_ids: list[str] | None = None) -> list[dict[str, Any]]:
+    """Lease due rows. SKIP LOCKED so two drainers cannot run the same question twice.
+
+    ``process_ids`` (2026-10-15, the n8n governed-bridge drain): lease ONLY rows of these processes; every other row
+    stays pending for the host drainer. None (the cron drainer) is the unchanged query."""
     ensure_schema()
     from db_adapter import _execute
+    t = now or datetime.now(ET)
+    if process_ids is not None:
+        return _execute(
+            """
+            UPDATE llm_deferred_requests SET status = 'claimed', claimed_at = NOW(),
+                   attempts = attempts + 1
+            WHERE id IN (
+                SELECT id FROM llm_deferred_requests
+                WHERE status = 'pending' AND run_after <= %s AND expires_at > %s
+                  AND process_id = ANY(%s)
+                ORDER BY run_after
+                FOR UPDATE SKIP LOCKED
+                LIMIT %s
+            )
+            RETURNING id, process_id, lane, prompt, task_summary, payload, tier
+            """,
+            (t, t, sorted(set(process_ids)), int(limit)),
+            fetch="all",
+        ) or []
     return _execute(
         """
         UPDATE llm_deferred_requests SET status = 'claimed', claimed_at = NOW(),
@@ -406,7 +429,7 @@ def claim_due(limit: int = 25, now: datetime | None = None) -> list[dict[str, An
         )
         RETURNING id, process_id, lane, prompt, task_summary, payload, tier
         """,
-        (now or datetime.now(ET), now or datetime.now(ET), int(limit)),
+        (t, t, int(limit)),
         fetch="all",
     ) or []
 

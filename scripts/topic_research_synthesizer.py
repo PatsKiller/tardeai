@@ -19,6 +19,7 @@ marked low_quality/blocked or that was demoted — so research never cites garba
           grounded on 0 articles, once the crawler has since ingested+graded the topic)
 """
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -60,7 +61,12 @@ def _synthesize(topic, context, articles=None):
         from lib.governed_cloud_generation import generate_cloud
     except Exception:
         return None
-    for lane in ("grok", "chatgpt"):  # governed cloud lanes; local generation is refused by policy
+    # 2026-10-15 (n8n llm lane batch 1): on the governed-bridge path (TRADEAI_LLM_VIA_BRIDGE, bound from the allowlist
+    # llm_route of run-research-intelligence-overnight) generate_cloud makes ONE bridge request and the bridge walks
+    # grok -> chatgpt -> DeepSeek itself, so the per-lane loop collapses to one attempt (no second request on a
+    # refusal); the cron path's grok-then-chatgpt loop is unchanged.
+    via_bridge = os.environ.get("TRADEAI_LLM_VIA_BRIDGE", "off").strip().lower() in {"1", "on", "bridge"}
+    for lane in (("bridge",) if via_bridge else ("grok", "chatgpt")):  # local generation is refused by policy
         try:
             raw, _used = generate_cloud(_prompt(topic, context, articles), process_id=PROCESS_ID,
                                         task_summary=f"topic research {str(topic)[:80]}", timeout=70,
