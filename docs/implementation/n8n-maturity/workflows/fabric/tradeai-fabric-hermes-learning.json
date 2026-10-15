@@ -1,0 +1,1544 @@
+{
+  "active": false,
+  "connections": {
+    "Done learn": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Then tune?",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Done tune": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Process result",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Gate autonomous_self_tune": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Run? autonomous_self_tune",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Gate config_governor": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Run? config_governor",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Gate outcome_feedback_agent": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Run? outcome_feedback_agent",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Gate outcome_grader": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Run? outcome_grader",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Gate outcome_learning": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Run? outcome_learning",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Gate score_history_retention": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Run? score_history_retention",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Gate tag_engine": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Run? tag_engine",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Join learn": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Done learn",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Manual run": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Plan manual",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Plan learn": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Process context",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Plan manual": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Process context",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Plan tune": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Process context",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Process context": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Route stage",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Process result": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Assert process",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Result autonomous_self_tune": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Done tune",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Result config_governor": {
+      "main": [
+        [
+          {
+            "index": 2,
+            "node": "Join learn",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Result outcome_feedback_agent": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Join learn",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Result outcome_grader": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Gate tag_engine",
+            "type": "main"
+          },
+          {
+            "index": 0,
+            "node": "Gate outcome_learning",
+            "type": "main"
+          },
+          {
+            "index": 0,
+            "node": "Gate score_history_retention",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Result outcome_learning": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Gate config_governor",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Result score_history_retention": {
+      "main": [
+        [
+          {
+            "index": 1,
+            "node": "Join learn",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Result tag_engine": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Gate outcome_feedback_agent",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Route stage": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Gate outcome_grader",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Gate autonomous_self_tune",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Gate outcome_grader",
+            "type": "main"
+          }
+        ],
+        []
+      ]
+    },
+    "Run autonomous_self_tune": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Result autonomous_self_tune",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Run config_governor": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Result config_governor",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Run outcome_feedback_agent": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Result outcome_feedback_agent",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Run outcome_grader": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Result outcome_grader",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Run outcome_learning": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Result outcome_learning",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Run score_history_retention": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Result score_history_retention",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Run tag_engine": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Result tag_engine",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Run? autonomous_self_tune": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Run autonomous_self_tune",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Result autonomous_self_tune",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Run? config_governor": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Run config_governor",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Result config_governor",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Run? outcome_feedback_agent": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Run outcome_feedback_agent",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Result outcome_feedback_agent",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Run? outcome_grader": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Run outcome_grader",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Result outcome_grader",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Run? outcome_learning": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Run outcome_learning",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Result outcome_learning",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Run? score_history_retention": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Run score_history_retention",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Result score_history_retention",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Run? tag_engine": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Run tag_engine",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Result tag_engine",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Schedule learn": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Plan learn",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Schedule tune": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Plan tune",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Then tune?": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Gate autonomous_self_tune",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Process result",
+            "type": "main"
+          }
+        ]
+      ]
+    }
+  },
+  "id": "tradeai-fabric-hermes-learning",
+  "meta": {
+    "design": "AGENTS.md §23.23 (10.0.0 PROPOSED); arch-review-20261014 REFACTOR_PLAN B4-B6",
+    "generator": "scripts/n8n_workflow_templates.py build-fabric",
+    "graph_sha256": "44c35ad3374fe14f295b59825d20632d9266f1ab42d9ca3d8278fda8c21056dd",
+    "kind": "process",
+    "policy_sha256": "c6750b96ada49f816798bf3714ad390616b1b32769fdcbcc54e0635e32caf31f"
+  },
+  "name": "tradeai-fabric-hermes-learning",
+  "nodes": [
+    {
+      "id": "4616d65e-c455-5eaa-a103-c125be76873b",
+      "name": "Assert process",
+      "parameters": {
+        "jsCode": "// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n.\n// A failed run is this execution's error: saved, and the error workflow raises a host intent.\nconst r = $input.first().json || {};\nif (r.overall === 'failed') {\n  throw new Error('process ' + r.process_id + ' slot ' + r.slot + ': failed step(s) ' + r.failed_steps.join(','));\n}\nreturn [{ json: r }];\n",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        7200,
+        240
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "1e00dcc3-093c-50e2-bd9a-bd6d01bf11b9",
+      "name": "Done learn",
+      "parameters": {
+        "jsCode": "// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n.\n// One item per stage, whatever number of branches joined here.\nreturn [{ json: { stage_done: \"learn\", branches: $input.all().length } }];\n",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        4800,
+        0
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "f77041ad-c4fa-5837-a4ac-8ebf87a3f795",
+      "name": "Done tune",
+      "parameters": {
+        "jsCode": "// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n.\n// One item per stage, whatever number of branches joined here.\nreturn [{ json: { stage_done: \"tune\", branches: $input.all().length } }];\n",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        6720,
+        720
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "2faf662f-cd7b-56b5-9c5e-f0d956ff6a99",
+      "name": "Gate autonomous_self_tune",
+      "parameters": {
+        "jsCode": "// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n.\n// Run this step only when it is not BLOCKED and every dependency ended `success`. Otherwise the step is\n// recorded (blocked / skipped_upstream) without a host call, and its own dependents skip in turn.\nconst STEP = {\"blocked\": null, \"depends_on\": [], \"lane_id\": \"hermes-learning-autonomous-self-tune\", \"max_attempts\": 1, \"outcome_timeout_s\": 600, \"stage\": \"tune\", \"step_id\": \"autonomous_self_tune\"};\nconst DEP_NODES = {};\nconst KEY_PREFIX = \"p\";\n// A node that did not run in this execution throws on $(name).first(): that is 'not_run', never success.\nfunction res(name) { try { return $(name).first().json; } catch (e) { return null; } }\nconst ctx = $('Process context').first().json;\nconst base = { step_id: STEP.step_id, lane_id: STEP.lane_id, stage: STEP.stage, depends_on: STEP.depends_on };\nif (STEP.blocked) return [{ json: { ...base, run: false, skip: 'blocked', reason: STEP.blocked } }];\nconst notOk = [];\nfor (const d of STEP.depends_on) {\n  const r = res(DEP_NODES[d]);\n  if (!r || r.status !== 'success') notOk.push(d + ':' + (r ? String(r.status) : 'not_run'));\n}\nif (notOk.length) return [{ json: { ...base, run: false, skip: 'skipped_upstream', reason: notOk.join(',') } }];\nconst key = [KEY_PREFIX, STEP.lane_id, ctx.mode, ctx.slot].join(':');\nreturn [{ json: { ...base, run: true, mode: ctx.mode, idempotency_key: key, max_attempts: STEP.max_attempts,\n  outcome_timeout_s: STEP.outcome_timeout_s, process_id: ctx.process_id } }];\n",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        5280,
+        720
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "2c3607c4-6846-552c-8860-a4dcee5068be",
+      "name": "Gate config_governor",
+      "parameters": {
+        "jsCode": "// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n.\n// Run this step only when it is not BLOCKED and every dependency ended `success`. Otherwise the step is\n// recorded (blocked / skipped_upstream) without a host call, and its own dependents skip in turn.\nconst STEP = {\"blocked\": null, \"depends_on\": [\"outcome_learning\"], \"lane_id\": \"hermes-learning-config-governor\", \"max_attempts\": 1, \"outcome_timeout_s\": 720, \"stage\": \"learn\", \"step_id\": \"config_governor\"};\nconst DEP_NODES = {\"outcome_learning\": \"Result outcome_learning\"};\nconst KEY_PREFIX = \"p\";\n// A node that did not run in this execution throws on $(name).first(): that is 'not_run', never success.\nfunction res(name) { try { return $(name).first().json; } catch (e) { return null; } }\nconst ctx = $('Process context').first().json;\nconst base = { step_id: STEP.step_id, lane_id: STEP.lane_id, stage: STEP.stage, depends_on: STEP.depends_on };\nif (STEP.blocked) return [{ json: { ...base, run: false, skip: 'blocked', reason: STEP.blocked } }];\nconst notOk = [];\nfor (const d of STEP.depends_on) {\n  const r = res(DEP_NODES[d]);\n  if (!r || r.status !== 'success') notOk.push(d + ':' + (r ? String(r.status) : 'not_run'));\n}\nif (notOk.length) return [{ json: { ...base, run: false, skip: 'skipped_upstream', reason: notOk.join(',') } }];\nconst key = [KEY_PREFIX, STEP.lane_id, ctx.mode, ctx.slot].join(':');\nreturn [{ json: { ...base, run: true, mode: ctx.mode, idempotency_key: key, max_attempts: STEP.max_attempts,\n  outcome_timeout_s: STEP.outcome_timeout_s, process_id: ctx.process_id } }];\n",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        3360,
+        240
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "973dd605-8466-5314-b207-d1457b46755d",
+      "name": "Gate outcome_feedback_agent",
+      "parameters": {
+        "jsCode": "// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n.\n// Run this step only when it is not BLOCKED and every dependency ended `success`. Otherwise the step is\n// recorded (blocked / skipped_upstream) without a host call, and its own dependents skip in turn.\nconst STEP = {\"blocked\": null, \"depends_on\": [\"tag_engine\"], \"lane_id\": \"hermes-learning-outcome-feedback-agent\", \"max_attempts\": 1, \"outcome_timeout_s\": 420, \"stage\": \"learn\", \"step_id\": \"outcome_feedback_agent\"};\nconst DEP_NODES = {\"tag_engine\": \"Result tag_engine\"};\nconst KEY_PREFIX = \"p\";\n// A node that did not run in this execution throws on $(name).first(): that is 'not_run', never success.\nfunction res(name) { try { return $(name).first().json; } catch (e) { return null; } }\nconst ctx = $('Process context').first().json;\nconst base = { step_id: STEP.step_id, lane_id: STEP.lane_id, stage: STEP.stage, depends_on: STEP.depends_on };\nif (STEP.blocked) return [{ json: { ...base, run: false, skip: 'blocked', reason: STEP.blocked } }];\nconst notOk = [];\nfor (const d of STEP.depends_on) {\n  const r = res(DEP_NODES[d]);\n  if (!r || r.status !== 'success') notOk.push(d + ':' + (r ? String(r.status) : 'not_run'));\n}\nif (notOk.length) return [{ json: { ...base, run: false, skip: 'skipped_upstream', reason: notOk.join(',') } }];\nconst key = [KEY_PREFIX, STEP.lane_id, ctx.mode, ctx.slot].join(':');\nreturn [{ json: { ...base, run: true, mode: ctx.mode, idempotency_key: key, max_attempts: STEP.max_attempts,\n  outcome_timeout_s: STEP.outcome_timeout_s, process_id: ctx.process_id } }];\n",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        3360,
+        0
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "9b4b77a9-647e-57e2-94ff-f671c3e77e5b",
+      "name": "Gate outcome_grader",
+      "parameters": {
+        "jsCode": "// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n.\n// Run this step only when it is not BLOCKED and every dependency ended `success`. Otherwise the step is\n// recorded (blocked / skipped_upstream) without a host call, and its own dependents skip in turn.\nconst STEP = {\"blocked\": null, \"depends_on\": [], \"lane_id\": \"hermes-learning-outcome-grader\", \"max_attempts\": 1, \"outcome_timeout_s\": 420, \"stage\": \"learn\", \"step_id\": \"outcome_grader\"};\nconst DEP_NODES = {};\nconst KEY_PREFIX = \"p\";\n// A node that did not run in this execution throws on $(name).first(): that is 'not_run', never success.\nfunction res(name) { try { return $(name).first().json; } catch (e) { return null; } }\nconst ctx = $('Process context').first().json;\nconst base = { step_id: STEP.step_id, lane_id: STEP.lane_id, stage: STEP.stage, depends_on: STEP.depends_on };\nif (STEP.blocked) return [{ json: { ...base, run: false, skip: 'blocked', reason: STEP.blocked } }];\nconst notOk = [];\nfor (const d of STEP.depends_on) {\n  const r = res(DEP_NODES[d]);\n  if (!r || r.status !== 'success') notOk.push(d + ':' + (r ? String(r.status) : 'not_run'));\n}\nif (notOk.length) return [{ json: { ...base, run: false, skip: 'skipped_upstream', reason: notOk.join(',') } }];\nconst key = [KEY_PREFIX, STEP.lane_id, ctx.mode, ctx.slot].join(':');\nreturn [{ json: { ...base, run: true, mode: ctx.mode, idempotency_key: key, max_attempts: STEP.max_attempts,\n  outcome_timeout_s: STEP.outcome_timeout_s, process_id: ctx.process_id } }];\n",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        960,
+        0
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "d5d8323d-469e-5dca-a7a0-0d55bd54a0f8",
+      "name": "Gate outcome_learning",
+      "parameters": {
+        "jsCode": "// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n.\n// Run this step only when it is not BLOCKED and every dependency ended `success`. Otherwise the step is\n// recorded (blocked / skipped_upstream) without a host call, and its own dependents skip in turn.\nconst STEP = {\"blocked\": null, \"depends_on\": [\"outcome_grader\"], \"lane_id\": \"hermes-learning-outcome-learning\", \"max_attempts\": 1, \"outcome_timeout_s\": 420, \"stage\": \"learn\", \"step_id\": \"outcome_learning\"};\nconst DEP_NODES = {\"outcome_grader\": \"Result outcome_grader\"};\nconst KEY_PREFIX = \"p\";\n// A node that did not run in this execution throws on $(name).first(): that is 'not_run', never success.\nfunction res(name) { try { return $(name).first().json; } catch (e) { return null; } }\nconst ctx = $('Process context').first().json;\nconst base = { step_id: STEP.step_id, lane_id: STEP.lane_id, stage: STEP.stage, depends_on: STEP.depends_on };\nif (STEP.blocked) return [{ json: { ...base, run: false, skip: 'blocked', reason: STEP.blocked } }];\nconst notOk = [];\nfor (const d of STEP.depends_on) {\n  const r = res(DEP_NODES[d]);\n  if (!r || r.status !== 'success') notOk.push(d + ':' + (r ? String(r.status) : 'not_run'));\n}\nif (notOk.length) return [{ json: { ...base, run: false, skip: 'skipped_upstream', reason: notOk.join(',') } }];\nconst key = [KEY_PREFIX, STEP.lane_id, ctx.mode, ctx.slot].join(':');\nreturn [{ json: { ...base, run: true, mode: ctx.mode, idempotency_key: key, max_attempts: STEP.max_attempts,\n  outcome_timeout_s: STEP.outcome_timeout_s, process_id: ctx.process_id } }];\n",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        2160,
+        240
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "2f60924e-937b-5f66-b6d4-6e3e379e85d2",
+      "name": "Gate score_history_retention",
+      "parameters": {
+        "jsCode": "// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n.\n// Run this step only when it is not BLOCKED and every dependency ended `success`. Otherwise the step is\n// recorded (blocked / skipped_upstream) without a host call, and its own dependents skip in turn.\nconst STEP = {\"blocked\": \"EXCLUDED, OPERATOR DECISION (destructive retention, never-list): --apply runs DELETE FROM hermes_score_history (scripts/hermes_score_history_retention.py --days 21). It stays on cron as a retention concern and is excluded from the fabric process: not changed by the 2026-10-15 unblock; moving retention into n8n at all is an operator decision (AGENTS.md §17, §23.14). Ordered after outcome_grader because the grader freezes score components before retention can delete them.\", \"depends_on\": [\"outcome_grader\"], \"lane_id\": \"hermes-learning-score-history-retention\", \"max_attempts\": 1, \"outcome_timeout_s\": 720, \"stage\": \"learn\", \"step_id\": \"score_history_retention\"};\nconst DEP_NODES = {\"outcome_grader\": \"Result outcome_grader\"};\nconst KEY_PREFIX = \"p\";\n// A node that did not run in this execution throws on $(name).first(): that is 'not_run', never success.\nfunction res(name) { try { return $(name).first().json; } catch (e) { return null; } }\nconst ctx = $('Process context').first().json;\nconst base = { step_id: STEP.step_id, lane_id: STEP.lane_id, stage: STEP.stage, depends_on: STEP.depends_on };\nif (STEP.blocked) return [{ json: { ...base, run: false, skip: 'blocked', reason: STEP.blocked } }];\nconst notOk = [];\nfor (const d of STEP.depends_on) {\n  const r = res(DEP_NODES[d]);\n  if (!r || r.status !== 'success') notOk.push(d + ':' + (r ? String(r.status) : 'not_run'));\n}\nif (notOk.length) return [{ json: { ...base, run: false, skip: 'skipped_upstream', reason: notOk.join(',') } }];\nconst key = [KEY_PREFIX, STEP.lane_id, ctx.mode, ctx.slot].join(':');\nreturn [{ json: { ...base, run: true, mode: ctx.mode, idempotency_key: key, max_attempts: STEP.max_attempts,\n  outcome_timeout_s: STEP.outcome_timeout_s, process_id: ctx.process_id } }];\n",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        2160,
+        480
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "1254f8fc-5cdd-50b3-8791-59a2ff8e9228",
+      "name": "Gate tag_engine",
+      "parameters": {
+        "jsCode": "// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n.\n// Run this step only when it is not BLOCKED and every dependency ended `success`. Otherwise the step is\n// recorded (blocked / skipped_upstream) without a host call, and its own dependents skip in turn.\nconst STEP = {\"blocked\": null, \"depends_on\": [\"outcome_grader\"], \"lane_id\": \"hermes-learning-tag-engine\", \"max_attempts\": 1, \"outcome_timeout_s\": 1000, \"stage\": \"learn\", \"step_id\": \"tag_engine\"};\nconst DEP_NODES = {\"outcome_grader\": \"Result outcome_grader\"};\nconst KEY_PREFIX = \"p\";\n// A node that did not run in this execution throws on $(name).first(): that is 'not_run', never success.\nfunction res(name) { try { return $(name).first().json; } catch (e) { return null; } }\nconst ctx = $('Process context').first().json;\nconst base = { step_id: STEP.step_id, lane_id: STEP.lane_id, stage: STEP.stage, depends_on: STEP.depends_on };\nif (STEP.blocked) return [{ json: { ...base, run: false, skip: 'blocked', reason: STEP.blocked } }];\nconst notOk = [];\nfor (const d of STEP.depends_on) {\n  const r = res(DEP_NODES[d]);\n  if (!r || r.status !== 'success') notOk.push(d + ':' + (r ? String(r.status) : 'not_run'));\n}\nif (notOk.length) return [{ json: { ...base, run: false, skip: 'skipped_upstream', reason: notOk.join(',') } }];\nconst key = [KEY_PREFIX, STEP.lane_id, ctx.mode, ctx.slot].join(':');\nreturn [{ json: { ...base, run: true, mode: ctx.mode, idempotency_key: key, max_attempts: STEP.max_attempts,\n  outcome_timeout_s: STEP.outcome_timeout_s, process_id: ctx.process_id } }];\n",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        2160,
+        0
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "22f29af3-03b3-5354-9a57-5b005c93b116",
+      "name": "Join learn",
+      "parameters": {
+        "numberInputs": 3
+      },
+      "position": [
+        4560,
+        0
+      ],
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.1
+    },
+    {
+      "id": "e12203ae-0df2-517a-812c-53a9ab62b87a",
+      "name": "Manual run",
+      "parameters": {},
+      "position": [
+        0,
+        0
+      ],
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1
+    },
+    {
+      "id": "7bb47f32-adaa-57e2-834a-f32f52eee095",
+      "name": "Plan learn",
+      "parameters": {
+        "jsCode": "// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n.\nreturn [{ json: { trigger: \"schedule\", stage: \"learn\" } }];\n",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        240,
+        240
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "71dd0f23-f1c4-5ea2-94af-617ff48e596c",
+      "name": "Plan manual",
+      "parameters": {
+        "jsCode": "// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n.\nreturn [{ json: { trigger: \"manual\", stage: \"all\" } }];\n",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        240,
+        0
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "29fbb227-3b99-51f6-bb27-073d0e6f4376",
+      "name": "Plan tune",
+      "parameters": {
+        "jsCode": "// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n.\nreturn [{ json: { trigger: \"schedule\", stage: \"tune\" } }];\n",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        240,
+        480
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "49151c45-08ba-5087-adb3-23c6411213ee",
+      "name": "Process context",
+      "parameters": {
+        "jsCode": "// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n.\n// One process run: which stage(s), the mode the host is asked for, and the business slot. A scheduled\n// stage's slot is today's date + the stage's cron minute (the cron runner's effect-key slot is the same\n// string: scripts/pipelines/pipeline_manifest.py --effect-slot); a manual proof run uses its own minute\n// so it never reuses a scheduled slot's idempotency keys.\nconst PROCESS_ID = \"hermes-learning\";\nconst MODE = \"dry_run\";\nconst SLOTS = {\"learn\": \"1050\", \"tune\": \"1700\"};\nconst TZ = \"America/New_York\";\nconst p = $input.first().json || {};\nconst stages = Object.keys(SLOTS).concat(['all']);\nif (!stages.includes(p.stage)) throw new Error('process ' + PROCESS_ID + ': bad stage ' + String(p.stage));\nif (p.trigger !== 'schedule' && p.trigger !== 'manual') throw new Error('process ' + PROCESS_ID + ': bad trigger');\nif (p.trigger === 'schedule' && p.stage === 'all') throw new Error('process ' + PROCESS_ID + ': schedule runs one stage');\nconst now = $now.setZone(TZ);\nconst slot = p.trigger === 'schedule' ? now.toFormat('yyyyLLdd') + 'T' + SLOTS[p.stage] : now.toFormat(\"yyyyLLdd'T'HHmm\");\n$execution.customData.set('process_id', PROCESS_ID);\n$execution.customData.set('stage', p.stage);\n$execution.customData.set('slot', slot);\n$execution.customData.set('mode', MODE);\nreturn [{ json: { process_id: PROCESS_ID, stage: p.stage, trigger: p.trigger, mode: MODE, slot } }];\n",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        480,
+        240
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "1077e79c-8a86-5176-849e-5fe946a862e1",
+      "name": "Process result",
+      "parameters": {
+        "jsCode": "// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n.\n// FabricProcessResult@v1: every step of the stage(s) this run covered, in manifest order, with its run_id\n// and status. A failed / refused / missing step makes the run `failed` (Assert process then throws, so the\n// execution is an error and tradeai-fabric-error raises a host intent); blocked or skipped only is `partial`.\nconst SCHEMA = \"FabricProcessResult@v1\";\nconst STEPS = [{\"step_id\": \"outcome_grader\", \"stage\": \"learn\"}, {\"step_id\": \"tag_engine\", \"stage\": \"learn\"}, {\"step_id\": \"outcome_feedback_agent\", \"stage\": \"learn\"}, {\"step_id\": \"outcome_learning\", \"stage\": \"learn\"}, {\"step_id\": \"score_history_retention\", \"stage\": \"learn\"}, {\"step_id\": \"config_governor\", \"stage\": \"learn\"}, {\"step_id\": \"autonomous_self_tune\", \"stage\": \"tune\"}];\nconst FAILING = [\"failed\", \"refused_policy\", \"not_run\"];\n// A node that did not run in this execution throws on $(name).first(): that is 'not_run', never success.\nfunction res(name) { try { return $(name).first().json; } catch (e) { return null; } }\nconst ctx = $('Process context').first().json;\nconst steps = [];\nfor (const s of STEPS) {\n  if (ctx.stage !== 'all' && s.stage !== ctx.stage) continue;\n  const r = res('Result ' + s.step_id);\n  steps.push(r || { step_id: s.step_id, stage: s.stage, status: 'not_run', run_id: null, attempts: 0,\n    reason: 'result_node_not_executed' });\n}\nconst failed = steps.filter((s) => FAILING.includes(s.status)).map((s) => s.step_id);\nconst overall = failed.length ? 'failed' : (steps.every((s) => s.status === 'success') ? 'ok' : 'partial');\nconst counts = {};\nfor (const s of steps) counts[s.status] = (counts[s.status] || 0) + 1;\n$execution.customData.set('overall', overall);\nif (failed.length) $execution.customData.set('failed_steps', failed.join(',').slice(0, 250));\nreturn [{ json: { schema: SCHEMA, process_id: ctx.process_id, stage: ctx.stage, trigger: ctx.trigger,\n  mode: ctx.mode, slot: ctx.slot, overall, failed_steps: failed, first_failed_step: failed[0] || null,\n  counts, steps } }];\n",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        6960,
+        240
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "c9099e52-ebf4-5c72-9af8-f2d1eb61fdc0",
+      "name": "Result autonomous_self_tune",
+      "parameters": {
+        "jsCode": "// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n.\n// FabricStepResult@v1: the Run Lane result of this step, or the Gate's skip as data.\nconst SCHEMA = \"FabricStepResult@v1\";\nconst g = $('Gate autonomous_self_tune').first().json;\nconst r = $input.first().json || {};\nconst base = { schema: SCHEMA, step_id: g.step_id, lane_id: g.lane_id, stage: g.stage };\nif (g.run !== true) {\n  return [{ json: { ...base, status: g.skip, run_id: null, attempts: 0, reason: g.reason ?? null } }];\n}\nif (r.schema !== 'RunLaneResult@v1') {\n  return [{ json: { ...base, status: 'failed', run_id: null, attempts: 0, reason: 'no_run_lane_result' } }];\n}\nreturn [{ json: { ...base, status: r.status, run_id: r.run_id, attempts: r.attempts, reason: r.reason ?? null,\n  exit_code: r.exit_code ?? null, duration_s: r.duration_s ?? null, dead_letter: r.dead_letter === true,\n  effect_key: r.effect_key ?? null, receipt_path: r.receipt_path ?? null } }];\n",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        6000,
+        720
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "036fc463-1433-5aea-b30b-6e4b6434cd8b",
+      "name": "Result config_governor",
+      "parameters": {
+        "jsCode": "// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n.\n// FabricStepResult@v1: the Run Lane result of this step, or the Gate's skip as data.\nconst SCHEMA = \"FabricStepResult@v1\";\nconst g = $('Gate config_governor').first().json;\nconst r = $input.first().json || {};\nconst base = { schema: SCHEMA, step_id: g.step_id, lane_id: g.lane_id, stage: g.stage };\nif (g.run !== true) {\n  return [{ json: { ...base, status: g.skip, run_id: null, attempts: 0, reason: g.reason ?? null } }];\n}\nif (r.schema !== 'RunLaneResult@v1') {\n  return [{ json: { ...base, status: 'failed', run_id: null, attempts: 0, reason: 'no_run_lane_result' } }];\n}\nreturn [{ json: { ...base, status: r.status, run_id: r.run_id, attempts: r.attempts, reason: r.reason ?? null,\n  exit_code: r.exit_code ?? null, duration_s: r.duration_s ?? null, dead_letter: r.dead_letter === true,\n  effect_key: r.effect_key ?? null, receipt_path: r.receipt_path ?? null } }];\n",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        4080,
+        240
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "1dbfe4e7-f4df-5365-8846-732127a384c8",
+      "name": "Result outcome_feedback_agent",
+      "parameters": {
+        "jsCode": "// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n.\n// FabricStepResult@v1: the Run Lane result of this step, or the Gate's skip as data.\nconst SCHEMA = \"FabricStepResult@v1\";\nconst g = $('Gate outcome_feedback_agent').first().json;\nconst r = $input.first().json || {};\nconst base = { schema: SCHEMA, step_id: g.step_id, lane_id: g.lane_id, stage: g.stage };\nif (g.run !== true) {\n  return [{ json: { ...base, status: g.skip, run_id: null, attempts: 0, reason: g.reason ?? null } }];\n}\nif (r.schema !== 'RunLaneResult@v1') {\n  return [{ json: { ...base, status: 'failed', run_id: null, attempts: 0, reason: 'no_run_lane_result' } }];\n}\nreturn [{ json: { ...base, status: r.status, run_id: r.run_id, attempts: r.attempts, reason: r.reason ?? null,\n  exit_code: r.exit_code ?? null, duration_s: r.duration_s ?? null, dead_letter: r.dead_letter === true,\n  effect_key: r.effect_key ?? null, receipt_path: r.receipt_path ?? null } }];\n",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        4080,
+        0
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "83073e78-86b8-57f8-a661-2c2f98969173",
+      "name": "Result outcome_grader",
+      "parameters": {
+        "jsCode": "// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n.\n// FabricStepResult@v1: the Run Lane result of this step, or the Gate's skip as data.\nconst SCHEMA = \"FabricStepResult@v1\";\nconst g = $('Gate outcome_grader').first().json;\nconst r = $input.first().json || {};\nconst base = { schema: SCHEMA, step_id: g.step_id, lane_id: g.lane_id, stage: g.stage };\nif (g.run !== true) {\n  return [{ json: { ...base, status: g.skip, run_id: null, attempts: 0, reason: g.reason ?? null } }];\n}\nif (r.schema !== 'RunLaneResult@v1') {\n  return [{ json: { ...base, status: 'failed', run_id: null, attempts: 0, reason: 'no_run_lane_result' } }];\n}\nreturn [{ json: { ...base, status: r.status, run_id: r.run_id, attempts: r.attempts, reason: r.reason ?? null,\n  exit_code: r.exit_code ?? null, duration_s: r.duration_s ?? null, dead_letter: r.dead_letter === true,\n  effect_key: r.effect_key ?? null, receipt_path: r.receipt_path ?? null } }];\n",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        1680,
+        0
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "46fac391-b0b8-58bb-ac4e-02c860d64bcf",
+      "name": "Result outcome_learning",
+      "parameters": {
+        "jsCode": "// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n.\n// FabricStepResult@v1: the Run Lane result of this step, or the Gate's skip as data.\nconst SCHEMA = \"FabricStepResult@v1\";\nconst g = $('Gate outcome_learning').first().json;\nconst r = $input.first().json || {};\nconst base = { schema: SCHEMA, step_id: g.step_id, lane_id: g.lane_id, stage: g.stage };\nif (g.run !== true) {\n  return [{ json: { ...base, status: g.skip, run_id: null, attempts: 0, reason: g.reason ?? null } }];\n}\nif (r.schema !== 'RunLaneResult@v1') {\n  return [{ json: { ...base, status: 'failed', run_id: null, attempts: 0, reason: 'no_run_lane_result' } }];\n}\nreturn [{ json: { ...base, status: r.status, run_id: r.run_id, attempts: r.attempts, reason: r.reason ?? null,\n  exit_code: r.exit_code ?? null, duration_s: r.duration_s ?? null, dead_letter: r.dead_letter === true,\n  effect_key: r.effect_key ?? null, receipt_path: r.receipt_path ?? null } }];\n",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        2880,
+        240
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "f69133bf-df24-58ec-b85f-da2f681ba79c",
+      "name": "Result score_history_retention",
+      "parameters": {
+        "jsCode": "// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n.\n// FabricStepResult@v1: the Run Lane result of this step, or the Gate's skip as data.\nconst SCHEMA = \"FabricStepResult@v1\";\nconst g = $('Gate score_history_retention').first().json;\nconst r = $input.first().json || {};\nconst base = { schema: SCHEMA, step_id: g.step_id, lane_id: g.lane_id, stage: g.stage };\nif (g.run !== true) {\n  return [{ json: { ...base, status: g.skip, run_id: null, attempts: 0, reason: g.reason ?? null } }];\n}\nif (r.schema !== 'RunLaneResult@v1') {\n  return [{ json: { ...base, status: 'failed', run_id: null, attempts: 0, reason: 'no_run_lane_result' } }];\n}\nreturn [{ json: { ...base, status: r.status, run_id: r.run_id, attempts: r.attempts, reason: r.reason ?? null,\n  exit_code: r.exit_code ?? null, duration_s: r.duration_s ?? null, dead_letter: r.dead_letter === true,\n  effect_key: r.effect_key ?? null, receipt_path: r.receipt_path ?? null } }];\n",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        2880,
+        480
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "cd38b01a-5813-51e7-bfd9-6bf0d55cb76b",
+      "name": "Result tag_engine",
+      "parameters": {
+        "jsCode": "// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n.\n// FabricStepResult@v1: the Run Lane result of this step, or the Gate's skip as data.\nconst SCHEMA = \"FabricStepResult@v1\";\nconst g = $('Gate tag_engine').first().json;\nconst r = $input.first().json || {};\nconst base = { schema: SCHEMA, step_id: g.step_id, lane_id: g.lane_id, stage: g.stage };\nif (g.run !== true) {\n  return [{ json: { ...base, status: g.skip, run_id: null, attempts: 0, reason: g.reason ?? null } }];\n}\nif (r.schema !== 'RunLaneResult@v1') {\n  return [{ json: { ...base, status: 'failed', run_id: null, attempts: 0, reason: 'no_run_lane_result' } }];\n}\nreturn [{ json: { ...base, status: r.status, run_id: r.run_id, attempts: r.attempts, reason: r.reason ?? null,\n  exit_code: r.exit_code ?? null, duration_s: r.duration_s ?? null, dead_letter: r.dead_letter === true,\n  effect_key: r.effect_key ?? null, receipt_path: r.receipt_path ?? null } }];\n",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        2880,
+        0
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "db3fc778-546b-5a45-98c1-4399c5ba2875",
+      "name": "Route stage",
+      "parameters": {
+        "options": {
+          "fallbackOutput": "extra"
+        },
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "c64cb66b-9169-5702-8994-3a0497283ac6",
+                    "leftValue": "={{ $json.stage }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "learn"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                }
+              },
+              "outputKey": "learn",
+              "renameOutput": true
+            },
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "79a04486-44b1-5973-8cd0-e8d3c25e56a9",
+                    "leftValue": "={{ $json.stage }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "tune"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                }
+              },
+              "outputKey": "tune",
+              "renameOutput": true
+            },
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "9bbb3417-fcaa-5da6-a984-80a7767bbf75",
+                    "leftValue": "={{ $json.stage }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "all"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                }
+              },
+              "outputKey": "all",
+              "renameOutput": true
+            }
+          ]
+        }
+      },
+      "position": [
+        720,
+        240
+      ],
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2
+    },
+    {
+      "id": "b1ef8553-c565-5cbe-8565-5abdb678c3e2",
+      "name": "Run autonomous_self_tune",
+      "parameters": {
+        "options": {
+          "waitForSubWorkflow": true
+        },
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "tradeai-fabric-run-lane"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "matchingColumns": [],
+          "schema": [],
+          "value": {
+            "idempotency_key": "={{ $json.idempotency_key }}",
+            "lane_id": "={{ $json.lane_id }}",
+            "max_attempts": "={{ $json.max_attempts }}",
+            "mode": "={{ $json.mode }}",
+            "outcome_timeout_s": "={{ $json.outcome_timeout_s }}",
+            "process_id": "={{ $json.process_id }}"
+          }
+        }
+      },
+      "position": [
+        5760,
+        640
+      ],
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2
+    },
+    {
+      "id": "3c60c073-b74c-5f05-8e8d-137dfbf811d7",
+      "name": "Run config_governor",
+      "parameters": {
+        "options": {
+          "waitForSubWorkflow": true
+        },
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "tradeai-fabric-run-lane"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "matchingColumns": [],
+          "schema": [],
+          "value": {
+            "idempotency_key": "={{ $json.idempotency_key }}",
+            "lane_id": "={{ $json.lane_id }}",
+            "max_attempts": "={{ $json.max_attempts }}",
+            "mode": "={{ $json.mode }}",
+            "outcome_timeout_s": "={{ $json.outcome_timeout_s }}",
+            "process_id": "={{ $json.process_id }}"
+          }
+        }
+      },
+      "position": [
+        3840,
+        160
+      ],
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2
+    },
+    {
+      "id": "00067b6f-a59c-5b76-9d16-e812ca4d45a8",
+      "name": "Run outcome_feedback_agent",
+      "parameters": {
+        "options": {
+          "waitForSubWorkflow": true
+        },
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "tradeai-fabric-run-lane"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "matchingColumns": [],
+          "schema": [],
+          "value": {
+            "idempotency_key": "={{ $json.idempotency_key }}",
+            "lane_id": "={{ $json.lane_id }}",
+            "max_attempts": "={{ $json.max_attempts }}",
+            "mode": "={{ $json.mode }}",
+            "outcome_timeout_s": "={{ $json.outcome_timeout_s }}",
+            "process_id": "={{ $json.process_id }}"
+          }
+        }
+      },
+      "position": [
+        3840,
+        -80
+      ],
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2
+    },
+    {
+      "id": "6abcd35a-30ac-5b6e-aeb9-10da9d1cb63e",
+      "name": "Run outcome_grader",
+      "parameters": {
+        "options": {
+          "waitForSubWorkflow": true
+        },
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "tradeai-fabric-run-lane"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "matchingColumns": [],
+          "schema": [],
+          "value": {
+            "idempotency_key": "={{ $json.idempotency_key }}",
+            "lane_id": "={{ $json.lane_id }}",
+            "max_attempts": "={{ $json.max_attempts }}",
+            "mode": "={{ $json.mode }}",
+            "outcome_timeout_s": "={{ $json.outcome_timeout_s }}",
+            "process_id": "={{ $json.process_id }}"
+          }
+        }
+      },
+      "position": [
+        1440,
+        -80
+      ],
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2
+    },
+    {
+      "id": "dc2cabc2-61a6-5997-9f73-68efd4f01099",
+      "name": "Run outcome_learning",
+      "parameters": {
+        "options": {
+          "waitForSubWorkflow": true
+        },
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "tradeai-fabric-run-lane"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "matchingColumns": [],
+          "schema": [],
+          "value": {
+            "idempotency_key": "={{ $json.idempotency_key }}",
+            "lane_id": "={{ $json.lane_id }}",
+            "max_attempts": "={{ $json.max_attempts }}",
+            "mode": "={{ $json.mode }}",
+            "outcome_timeout_s": "={{ $json.outcome_timeout_s }}",
+            "process_id": "={{ $json.process_id }}"
+          }
+        }
+      },
+      "position": [
+        2640,
+        160
+      ],
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2
+    },
+    {
+      "id": "923455e0-6f7b-5939-9c62-e2da19d1feab",
+      "name": "Run score_history_retention",
+      "parameters": {
+        "options": {
+          "waitForSubWorkflow": true
+        },
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "tradeai-fabric-run-lane"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "matchingColumns": [],
+          "schema": [],
+          "value": {
+            "idempotency_key": "={{ $json.idempotency_key }}",
+            "lane_id": "={{ $json.lane_id }}",
+            "max_attempts": "={{ $json.max_attempts }}",
+            "mode": "={{ $json.mode }}",
+            "outcome_timeout_s": "={{ $json.outcome_timeout_s }}",
+            "process_id": "={{ $json.process_id }}"
+          }
+        }
+      },
+      "position": [
+        2640,
+        400
+      ],
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2
+    },
+    {
+      "id": "7920378b-1235-55b7-bca6-82a14c8a9383",
+      "name": "Run tag_engine",
+      "parameters": {
+        "options": {
+          "waitForSubWorkflow": true
+        },
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "tradeai-fabric-run-lane"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "matchingColumns": [],
+          "schema": [],
+          "value": {
+            "idempotency_key": "={{ $json.idempotency_key }}",
+            "lane_id": "={{ $json.lane_id }}",
+            "max_attempts": "={{ $json.max_attempts }}",
+            "mode": "={{ $json.mode }}",
+            "outcome_timeout_s": "={{ $json.outcome_timeout_s }}",
+            "process_id": "={{ $json.process_id }}"
+          }
+        }
+      },
+      "position": [
+        2640,
+        -80
+      ],
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2
+    },
+    {
+      "id": "8d41645a-b4e7-535d-b0e1-a2964a8b947d",
+      "name": "Run? autonomous_self_tune",
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "0eb369e1-f5fd-50a0-8b2b-14f3fdacb56a",
+              "leftValue": "={{ $json.run === true }}",
+              "operator": {
+                "operation": "true",
+                "singleValue": true,
+                "type": "boolean"
+              },
+              "rightValue": true
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          }
+        }
+      },
+      "position": [
+        5520,
+        720
+      ],
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2
+    },
+    {
+      "id": "03a48f97-e49d-558b-9099-8bcb0364945a",
+      "name": "Run? config_governor",
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "4d77c0cf-ba3b-5cdb-892a-da550df9e56b",
+              "leftValue": "={{ $json.run === true }}",
+              "operator": {
+                "operation": "true",
+                "singleValue": true,
+                "type": "boolean"
+              },
+              "rightValue": true
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          }
+        }
+      },
+      "position": [
+        3600,
+        240
+      ],
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2
+    },
+    {
+      "id": "17ff213c-ce41-5466-bc9d-e21a22e02d1d",
+      "name": "Run? outcome_feedback_agent",
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "13bbdbdf-354d-509d-a020-6faf90c755e1",
+              "leftValue": "={{ $json.run === true }}",
+              "operator": {
+                "operation": "true",
+                "singleValue": true,
+                "type": "boolean"
+              },
+              "rightValue": true
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          }
+        }
+      },
+      "position": [
+        3600,
+        0
+      ],
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2
+    },
+    {
+      "id": "a0c0b275-8a44-5039-ac7e-7aa079b91973",
+      "name": "Run? outcome_grader",
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "f391e8c4-45bd-5c0e-afe6-8d979b2ede6a",
+              "leftValue": "={{ $json.run === true }}",
+              "operator": {
+                "operation": "true",
+                "singleValue": true,
+                "type": "boolean"
+              },
+              "rightValue": true
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          }
+        }
+      },
+      "position": [
+        1200,
+        0
+      ],
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2
+    },
+    {
+      "id": "36e130e6-750d-5575-b878-8ef32ee62dc0",
+      "name": "Run? outcome_learning",
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "ac7dd769-ad86-5692-9b26-fc79b9917206",
+              "leftValue": "={{ $json.run === true }}",
+              "operator": {
+                "operation": "true",
+                "singleValue": true,
+                "type": "boolean"
+              },
+              "rightValue": true
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          }
+        }
+      },
+      "position": [
+        2400,
+        240
+      ],
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2
+    },
+    {
+      "id": "511d0b63-0187-5d5c-9cd1-627198bfe408",
+      "name": "Run? score_history_retention",
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "15633685-4c5d-5080-a492-e9a6eb47264e",
+              "leftValue": "={{ $json.run === true }}",
+              "operator": {
+                "operation": "true",
+                "singleValue": true,
+                "type": "boolean"
+              },
+              "rightValue": true
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          }
+        }
+      },
+      "position": [
+        2400,
+        480
+      ],
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2
+    },
+    {
+      "id": "b1d9e9b8-a3f7-5fca-ae70-95ec46c229cf",
+      "name": "Run? tag_engine",
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "7281ff74-0983-57fa-a799-ab411c37c20d",
+              "leftValue": "={{ $json.run === true }}",
+              "operator": {
+                "operation": "true",
+                "singleValue": true,
+                "type": "boolean"
+              },
+              "rightValue": true
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          }
+        }
+      },
+      "position": [
+        2400,
+        0
+      ],
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2
+    },
+    {
+      "id": "b06025f8-4835-5c39-970d-2182cab7c0b8",
+      "name": "Schedule learn",
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "expression": "50 10 * * *",
+              "field": "cronExpression"
+            }
+          ]
+        }
+      },
+      "position": [
+        0,
+        240
+      ],
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2
+    },
+    {
+      "id": "8f48ce5a-644a-5f82-a2e7-153da9a22e48",
+      "name": "Schedule tune",
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "expression": "0 17 * * *",
+              "field": "cronExpression"
+            }
+          ]
+        }
+      },
+      "position": [
+        0,
+        480
+      ],
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2
+    },
+    {
+      "id": "2bc9cb74-1817-55ce-9a58-8fafc76a2f99",
+      "name": "Then tune?",
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "f9c7aa4a-05d6-511e-8f46-c8c2430e0e58",
+              "leftValue": "={{ $('Process context').first().json.stage === 'all' }}",
+              "operator": {
+                "operation": "true",
+                "singleValue": true,
+                "type": "boolean"
+              },
+              "rightValue": true
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          }
+        }
+      },
+      "position": [
+        5040,
+        0
+      ],
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2
+    }
+  ],
+  "settings": {
+    "errorWorkflow": "tradeai-fabric-error",
+    "executionOrder": "v1",
+    "executionTimeout": 3600,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": false,
+    "timezone": "America/New_York"
+  }
+}

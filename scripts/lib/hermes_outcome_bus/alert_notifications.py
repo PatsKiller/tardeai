@@ -1,4 +1,17 @@
-"""Telegram (and future email) notifications for Hermes closed-loop alerts."""
+"""Telegram (and future email) notifications for Hermes closed-loop alerts.
+
+2026-10-15 (AGENTS.md §23.23, §24.1, §9.1 5.1.0): every send is a notification INTENT through the host chokepoint
+``telegram_alert.send_telegram(priority=..., producer=PRODUCER)``; the router (telegram_alert_router.route_intent)
+decides delivery, quiet-hours hold and dedupe. ``bypass_router`` is no longer passed (it was the shrink-only
+BYPASS_ALLOWLIST entry in tests/test_notification_intents_20261010.py; the config key
+channels.telegram.bypass_router is ignored). Priorities, declared:
+
+  P2  critical / warning closed-loop alerts: operator-attention findings -- delivered now, held 22:00-07:00 ET.
+  P3  info (below the default min_severity, only sent when it is lowered): FYI, folded by the digest.
+
+``notify="record"`` emits the intent in the summary (``results[].intent``) and calls NO sender at all: the mode a
+fabric-run step uses, so a host lane fired by n8n never sends (n8n asks the host through the send-intent route).
+"""
 from __future__ import annotations
 
 import json
@@ -12,6 +25,15 @@ AUDIT_PATH = PROJECT_ROOT / "state" / "hermes" / "alert_notification_audit.jsonl
 ALERTS_CFG_PATH = PROJECT_ROOT / "config" / "hermes_alerts.yaml"
 
 _SEVERITY_ORDER = {"info": 0, "warning": 1, "critical": 2}
+#: Producer the router receipts and the P3 digest archive name (notification_intent_p3:<producer>).
+PRODUCER = "hermes_outcome_feedback_agent"
+#: Notify modes: "chokepoint" sends an intent through send_telegram; "record" only returns the intent (no sender).
+NOTIFY_MODES = ("chokepoint", "record")
+
+
+def intent_priority(severity: str | None) -> str:
+    """The declared notification-intent priority of one closed-loop alert (module docstring)."""
+    return "P2" if _SEVERITY_ORDER.get(str(severity or "warning"), 1) >= _SEVERITY_ORDER["warning"] else "P3"
 
 
 def _load_cfg() -> dict[str, Any]:
@@ -117,14 +139,15 @@ def _format_telegram_message(alert: dict[str, Any], panel_url: str) -> str:
     return "\n".join(lines)
 
 
-def _send_telegram(message: str, cfg: dict[str, Any]) -> bool:
+def _send_telegram(message: str, cfg: dict[str, Any], severity: str | None = None) -> bool:
     tg = (cfg.get("channels") or {}).get("telegram") or {}
     if not tg.get("enabled", True):
         return False
     try:
         from telegram_alert import send_telegram
-        bypass = bool(tg.get("bypass_router", True))
-        return bool(send_telegram(message, bypass_router=bypass))
+        if intent_priority(severity) == "P2":
+            return bool(send_telegram(message, priority="P2", producer=PRODUCER))
+        return bool(send_telegram(message, priority="P3", producer=PRODUCER))
     except Exception as e:
         print(f"[hermes_alert_notify] telegram error: {e}")
         return False
@@ -143,8 +166,15 @@ def dispatch_alert_notifications(
     *,
     cfg: dict[str, Any] | None = None,
     dry_run: bool = False,
+    notify: str = "chokepoint",
 ) -> dict[str, Any]:
-    """Send notifications for newly active / cooldown-eligible alerts. Returns summary."""
+    """Send notifications for newly active / cooldown-eligible alerts. Returns summary.
+
+    ``notify`` "chokepoint" (default): each eligible alert becomes an intent through the host chokepoint.
+    "record": each eligible alert is returned as ``{"status": "intent", "intent": {...}}`` and no sender is called;
+    no cooldown state is written (nothing was delivered), one audit line per intent is."""
+    if notify not in NOTIFY_MODES:
+        raise ValueError(f"notify must be one of {NOTIFY_MODES}, got {notify!r}")
     cfg = cfg or _load_cfg()
     if not cfg.get("enabled", True):
         return {"ok": True, "skipped": "notifications_disabled", "sent": 0}
@@ -176,8 +206,15 @@ def dispatch_alert_notifications(
         if dry_run:
             results.append({"id": aid, "status": "dry_run", "message_preview": message[:120]})
             continue
+        if notify == "record":
+            intent = {"producer": PRODUCER, "priority": intent_priority(sev), "severity": sev,
+                      "dedupe_key": f"hermes_closed_loop:{aid}", "body": message}
+            _log_audit({"alert_id": aid, "severity": sev, "channel": "intent", "status": "intent_recorded",
+                        "priority": intent["priority"]})
+            results.append({"id": aid, "status": "intent", "intent": intent})
+            continue
 
-        tg_ok = _send_telegram(message, cfg)
+        tg_ok = _send_telegram(message, cfg, sev)
         em_ok = _send_email(message, cfg)
         status = "sent" if tg_ok else "failed"
         if tg_ok:
@@ -202,5 +239,6 @@ def dispatch_alert_notifications(
         "sent": sent,
         "suppressed": suppressed,
         "dry_run": dry_run,
+        "notify": notify,
         "results": results,
     }

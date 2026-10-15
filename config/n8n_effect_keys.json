@@ -1,5 +1,764 @@
 {
   "schema": "N8nEffectKeys@v1",
   "_comment": "n8n fabric Phase 1 (2026-10-14; AGENTS.md §23.23 migration rule (4), REFACTOR_PLAN addendum items 1-2). Lanes whose LIVE runs claim a semantic effect key fx:<process>:<slot>:<input_version> before they run (scripts/lib/effect_claim.py; scripts/n8n_run_executor.py). The slot is the server-minted d: key's slot (YYYYMMDDTHHMM, America/New_York); a live run without one is refused effect_slot_unknown. Empty = no lane opted in, executor behaviour unchanged. A lane added here also needs an effect_owners row (effect_claim.py set-owner) or every live run is refused effect_no_owner (fail closed). Each addition is a reviewed PR in the cutover packet of that process.",
-  "lanes": {}
+  "lanes": {
+    "hermes-learning-outcome-grader": {
+      "process": "hermes-learning-outcome-grader",
+      "input_version": "v1",
+      "pipeline": "hermes_learning",
+      "stage": "learn",
+      "step_id": "outcome_grader",
+      "cron_claim": false
+    },
+    "hermes-learning-outcome-learning": {
+      "process": "hermes-learning-outcome-learning",
+      "input_version": "v1",
+      "pipeline": "hermes_learning",
+      "stage": "learn",
+      "step_id": "outcome_learning",
+      "cron_claim": false
+    },
+    "hermes-learning-config-governor": {
+      "process": "hermes-learning-config-governor",
+      "input_version": "v1",
+      "pipeline": "hermes_learning",
+      "stage": "learn",
+      "step_id": "config_governor",
+      "cron_claim": false
+    },
+    "hermes-learning-tag-engine": {
+      "process": "hermes-learning-tag-engine",
+      "input_version": "v1",
+      "pipeline": "hermes_learning",
+      "stage": "learn",
+      "step_id": "tag_engine",
+      "cron_claim": false
+    },
+    "hermes-learning-outcome-feedback-agent": {
+      "process": "hermes-learning-outcome-feedback-agent",
+      "input_version": "v1",
+      "pipeline": "hermes_learning",
+      "stage": "learn",
+      "step_id": "outcome_feedback_agent",
+      "cron_claim": false
+    },
+    "hermes-learning-autonomous-self-tune": {
+      "process": "hermes-learning-autonomous-self-tune",
+      "input_version": "v1",
+      "pipeline": "hermes_learning",
+      "stage": "tune",
+      "step_id": "autonomous_self_tune",
+      "cron_claim": false
+    },
+    "n8n-pilot-dispatch": {
+      "process": "n8n-pilot-dispatch",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "*/15 * * * *",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "guarded:gateway idempotency_key",
+      "wave": "live",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
+    "n8n-incident-fanin": {
+      "process": "n8n-incident-fanin",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "*/5 * * * *",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "guarded:gateway idempotency_key source+item+UTC day",
+      "wave": "live",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
+    "n8n-research-intake-consumer": {
+      "process": "n8n-research-intake-consumer",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "*/15 * * * *",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "guarded:ri_research_queue topic_id app check",
+      "wave": "live",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
+    "maturity-remeasure": {
+      "process": "maturity-remeasure",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "40 6 * * 1",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no:maturity_scores.jsonl line per run",
+      "wave": "live",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
+    "research-insight-extractor": {
+      "process": "research-insight-extractor",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "50 6,12,18 * * *",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "guarded:NOT EXISTS source_reference (sequential only)",
+      "wave": "live",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
+    "heartbeat-watch": {
+      "process": "heartbeat-watch",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "*/5 * * * *",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "guarded:per-lane OPEN/CLEARED state",
+      "wave": "live",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
+    "material-change-detector-stage1": {
+      "process": "material-change-detector-stage1",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "*/30 * * * *",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "guarded:change_guid/link_guid DO NOTHING",
+      "wave": "tierA",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
+    "document-mentions-backfill": {
+      "process": "document-mentions-backfill",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "25 * * * *",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "guarded:document_mentions natural key DO NOTHING",
+      "wave": "tierA",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
+    "trade-ai-scalp-live": {
+      "process": "trade-ai-scalp-live",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "*/5 9-15 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "send"
+      ],
+      "idempotent_today": "guarded:alert dedupe in day state",
+      "wave": "tierA",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
+    "hermes-entity-spike-discovery": {
+      "process": "hermes-entity-spike-discovery",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "15 */3 * * *",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no:audit rows + seen_count bump",
+      "wave": "tierA",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
+    "data-gap-resolver-at-0-10-16": {
+      "process": "data-gap-resolver-at-0-10-16",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "0 10-16 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append",
+        "llm"
+      ],
+      "idempotent_today": "no:gap_resolution_receipts.jsonl; llm only when GAP_RESOLVER_LIVE",
+      "wave": "tierA",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
+    "hermes-analyst-signal-discovery": {
+      "process": "hermes-analyst-signal-discovery",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "20 */3 * * *",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no:audit rows + seen_count bump",
+      "wave": "tierA",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
+    "hermes-news-bridge": {
+      "process": "hermes-news-bridge",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "40 6,12,18 * * *",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "guarded:NOT EXISTS hermes_research_id + is_duplicate",
+      "wave": "tierA",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
+    "finviz-proactive-research": {
+      "process": "finviz-proactive-research",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "30 9,11,13,15 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "guarded:is_duplicate SELECT (no unique index)",
+      "wave": "tierA",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
+    "proposal-backtest-engine": {
+      "process": "proposal-backtest-engine",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "5 10-15/2 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no:strategy_backtest_results plain INSERT",
+      "wave": "tierA",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
+    "aegis-social-sentiment": {
+      "process": "aegis-social-sentiment",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "0 11,15 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no:run_id is a timestamp",
+      "wave": "tierA",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
+    "hermes-pipeline-health": {
+      "process": "hermes-pipeline-health",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "45 7,15 * * *",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append",
+        "send"
+      ],
+      "idempotent_today": "guarded:alert_uid per hour; send via alert_events",
+      "wave": "tierA",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
+    "hermes-research-worker-pool": {
+      "process": "hermes-research-worker-pool",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "5 * * * *",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no:audit rows per lane run",
+      "wave": "tierA",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
+    "hermes-scope-governor": {
+      "process": "hermes-scope-governor",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "7,37 * * * *",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no:scope_governor_audit per run_id",
+      "wave": "tierA",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
+    "hermes-score-event-feeder": {
+      "process": "hermes-score-event-feeder",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "*/5 * * * *",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no:scope_governor_audit per run_id",
+      "wave": "tierA",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
+    "news-to-catalyst": {
+      "process": "news-to-catalyst",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "45 6,12,18 * * *",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append",
+        "llm"
+      ],
+      "idempotent_today": "guarded:(symbol, headline); local Ollama classifier",
+      "wave": "tierA",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
+    "resolve-due-checkpoints": {
+      "process": "resolve-due-checkpoints",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "20 * * * *",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "guarded:checkpoint status + outcome_id",
+      "wave": "tierA",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
+    "advisory-desk-run-now": {
+      "process": "advisory-desk-run-now",
+      "input_version": "v1",
+      "slot": "request_minute",
+      "schedule": null,
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append",
+        "llm"
+      ],
+      "idempotent_today": "no:run history + telemetry jsonl; DeepSeek opinions",
+      "wave": "tierB",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
+    "analyst-prospectus-generate": {
+      "process": "analyst-prospectus-generate",
+      "input_version": "v1",
+      "slot": "request_minute",
+      "schedule": null,
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append",
+        "llm"
+      ],
+      "idempotent_today": "no:archived history JSON per generation; Grok + oversight",
+      "wave": "tierB",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
+    "aegis-nightly-ingestion": {
+      "process": "aegis-nightly-ingestion",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "0 19 * * *",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no:run_id is a timestamp",
+      "wave": "tierB",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
+    "aegis-transcript-discovery": {
+      "process": "aegis-transcript-discovery",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "0 9 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no:run_id is a timestamp",
+      "wave": "tierB",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
+    "agent-calibration-engine": {
+      "process": "agent-calibration-engine",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "0 12 * * 0",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no:uuid ids, now()-based windows",
+      "wave": "tierB",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
+    "agent-outcome-linker": {
+      "process": "agent-outcome-linker",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "0 11 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "guarded:NOT EXISTS natural pair",
+      "wave": "tierB",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
+    "catalyst-symbol-impact": {
+      "process": "catalyst-symbol-impact",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "20 7,12,17 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "guarded:NOT EXISTS (catalyst_event_id, symbol)",
+      "wave": "tierB",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
+    "commitment-outcome-sweep": {
+      "process": "commitment-outcome-sweep",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "20 18 * * *",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "guarded:idempotency_key incl. observation",
+      "wave": "tierB",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
+    "daily-incubator-refresh": {
+      "process": "daily-incubator-refresh",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "15 8 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no:incubator_events per ticker per run",
+      "wave": "tierB",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
+    "data-gap-resolver-pre": {
+      "process": "data-gap-resolver-pre",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "0 18 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append",
+        "llm"
+      ],
+      "idempotent_today": "no:receipts jsonl; llm only when GAP_RESOLVER_LIVE",
+      "wave": "tierB",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
+    "data-gap-resolver-weekly": {
+      "process": "data-gap-resolver-weekly",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "0 8 * * 0",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append",
+        "llm"
+      ],
+      "idempotent_today": "no:receipts jsonl; llm only when GAP_RESOLVER_LIVE",
+      "wave": "tierB",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
+    "feedback-loop-processor": {
+      "process": "feedback-loop-processor",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "30 20 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "guarded:natural keys (one bare ON CONFLICT unverified)",
+      "wave": "tierB",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
+    "finviz-screener-runner": {
+      "process": "finviz-screener-runner",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "0 10 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "guarded:new tickers only",
+      "wave": "tierB",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
+    "hermes-research-agenda-at-45-7": {
+      "process": "hermes-research-agenda-at-45-7",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "45 7 * * *",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "guarded:per-day caps; audit row per decision",
+      "wave": "tierB",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
+    "hermes-social-sentiment": {
+      "process": "hermes-social-sentiment",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "15 11,15 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no:run_id is a timestamp",
+      "wave": "tierB",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
+    "hermes-topic-monitor-bridge": {
+      "process": "hermes-topic-monitor-bridge",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "30 7 * * *",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "guarded:NOT EXISTS topic_research within 7d",
+      "wave": "tierB",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
+    "instrument-belief-writer": {
+      "process": "instrument-belief-writer",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "50 18 * * *",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "guarded:belief change only",
+      "wave": "tierB",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
+    "investment-costs": {
+      "process": "investment-costs",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "5 17 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "guarded:dedupe_key DO NOTHING",
+      "wave": "tierB",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
+    "record-decision-outcome": {
+      "process": "record-decision-outcome",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "50 7 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "guarded:time-window NOT EXISTS (not a key)",
+      "wave": "tierB",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
+    "sec-data-ingest": {
+      "process": "sec-data-ingest",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "0 20 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "guarded:NOT EXISTS (symbol, sec_url)",
+      "wave": "tierB",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
+    "signal-fusion-full": {
+      "process": "signal-fusion-full",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "0 7,13 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no:fused_signals plain INSERT per symbol",
+      "wave": "tierB",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
+    "social-ingest-all": {
+      "process": "social-ingest-all",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "0 6 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "guarded:(platform, post_id) SELECT pre-check",
+      "wave": "tierB",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
+    "source-attribution-monitor": {
+      "process": "source-attribution-monitor",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "0 6 * * *",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no:history snapshot per run",
+      "wave": "tierB",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
+    "trade-thesis-review-engine": {
+      "process": "trade-thesis-review-engine",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "40 18 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "guarded:NOT EXISTS paper_trade_id",
+      "wave": "tierB",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
+    "update-agent-performance": {
+      "process": "update-agent-performance",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "0 20 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no:agent_performance_history plain INSERT",
+      "wave": "tierB",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
+    "update-lockup-earnings-dates": {
+      "process": "update-lockup-earnings-dates",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "18 8 * * *",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append",
+        "send"
+      ],
+      "idempotent_today": "guarded:approx flag; alert_events row (sender uncertain)",
+      "wave": "tierB",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
+    "weekly-incubator-builder": {
+      "process": "weekly-incubator-builder",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "0 19 * * 0",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no:incubator_events per ticker per run",
+      "wave": "tierB",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
+    "write-state-freshness-history": {
+      "process": "write-state-freshness-history",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "15 7 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no:state_freshness_history per run",
+      "wave": "tierB",
+      "cron_claim": false,
+      "n8n_claim": false
+    }
+  },
+  "_comment_process_steps": "2026-10-15 (n8n fabric process hermes-learning, packet docs/ops/packets/n8n-hermes-learning-flow-20261015/): one key per process STEP, process = the step lane id, slot = the stage's business slot <YYYYMMDD>T<HHMM of the stage cron minute> (America/New_York), the same string the cron stage runner computes (pipeline_manifest.py --effect-slot) and the process workflow sends. pipeline/stage/step_id map the key to the manifest step. cron_claim false = the cron stage runner does NOT claim yet (scripts/pipelines/_manifest_runner.sh); the cutover packet flips it to true only after effect_claim.py set-owner --owner cron has created the owner row, then moves the owner to n8n. Executor side: inert for dry_run; a LIVE run with a p: key is refused effect_slot_unknown until the gateway validates p: keys (cutover prerequisite).",
+  "_comment_canary_keys": "2026-10-15 (canary double-effect audit, ~/n8n-maturity-verification/arch-review-20261014/CANARY_DOUBLE_EFFECT_AUDIT.md section 4; branch fix/canary-effect-keys-20261015). One key per lane that is live, canary or staged for the 61-lane canary wave (tier A 21 + tier B 40, MIGRATION_STATUS 2026-10-14) AND whose live effect APPENDS rows, SENDS or CALLS AN LLM (effects; idempotent_today records today's own guard, from a read-only code trace). Overwrite-only and read-only lanes are not keyed. process = the lane id; slot = scheduled_minute (the dispatcher d: key slot of the scheduled minute = effect_claim.py --slot now at the cron minute, America/New_York) or request_minute (on-demand lanes: the minted e:/g: key slot); input_version v1. STAGED ONLY: cron_claim false (scripts/effect_claim_cron.sh runs the line unchanged) and n8n_claim false (scripts/lib/effect_claim.load_effect_config skips the lane, so the executor claims nothing and every live run behaves as before). Each lane's cutover packet arms it in order: effect_claim.py set-owner --owner cron; cron_claim true + TRADEAI_EFFECT_CLAIM=<lane> on its cron line; n8n_claim true; set-owner --owner n8n."
 }

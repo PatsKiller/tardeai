@@ -2671,6 +2671,527 @@ def build_fabric_error_probe() -> dict:
     return _fabric_doc(wid, "error-probe", nodes, conns, _fabric_settings(wid, FABRIC_ERROR_TIMEOUT_S))
 
 
+# ── n8n fabric process workflows (2026-10-15; AGENTS.md §23.23 10.0.0 ACTIVE: n8n owns FLOW) ───────────────────────
+# One workflow per business process in config/n8n_fabric_processes.json. The first is hermes-learning (learn -> tune,
+# the 7 steps of config/pipelines/hermes_learning.json). Shape: a Schedule Trigger per stage at the manifest's
+# proposed_schedule (identical to the runner's cron slot; the workflow is generated INACTIVE so nothing fires) plus a
+# Manual Trigger for proofs (runs every stage in order) -> Process context (slot, mode) -> Route stage (Switch) -> per
+# step: Gate (dependencies all `success`? not BLOCKED?) -> Run? (If) -> Run <step> (Execute Workflow -> the PUBLISHED
+# Run Lane sub-workflow, which owns retries) -> Result <step> (FabricStepResult@v1). Independent steps sit on separate
+# branches joined by Merge; n8n's v1 execution order runs branches one after another, so "parallel" means "a failure
+# in one branch never stops a sibling", not concurrency. A step whose dependency did not end `success` is
+# skipped_upstream: a failed step stops everything downstream of it and the Process result names it. The process
+# calls no relay route itself: every host call goes through Run Lane.
+
+PROCESS_SPEC_REL = Path("config") / "n8n_fabric_processes.json"
+PROCESS_SPEC_SCHEMA = "N8nFabricProcesses@v1"
+PROCESS_KIND = "process"
+PROCESS_STEP_RESULT_SCHEMA = "FabricStepResult@v1"
+PROCESS_RESULT_SCHEMA = "FabricProcessResult@v1"
+#: n8n's EXECUTIONS_TIMEOUT_MAX default; a process must finish its worst case (every runnable step using its whole Run
+#: Lane budget, every stage: the manual run) inside it, or the generator refuses the spec.
+PROCESS_EXECUTION_TIMEOUT_S = 3600
+#: outcome_timeout_s handed to Run Lane = the step's executor timeout + this margin (queueing, receipt write).
+PROCESS_OUTCOME_MARGIN_S = 120
+PROCESS_MODES = ("dry_run", "live")
+#: Step statuses a Result node can carry: Run Lane's four terminal statuses plus the two the process decides itself.
+PROCESS_STEP_STATUSES = RUN_LANE_TERMINAL + ("blocked", "skipped_upstream")
+#: Statuses that make the whole execution an error (-> errorWorkflow tradeai-fabric-error -> host intent).
+PROCESS_FAILING_STATUSES = ("failed", "refused_policy", "not_run")
+#: Idempotency key a process step requests: p:<lane>:<mode>:<slot>. Not a server-minted d:/e:/g: key, so the gateway
+#: accepts it as a caller key today and the executor's effect gate refuses it for a LIVE run (effect_slot_unknown)
+#: until the gateway validates p: keys against this spec (cutover prerequisite, packet README).
+PROCESS_KEY_PREFIX = "p"
+_PROCESS_ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{1,63}$")
+_STEP_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
+PN_MANUAL = "Manual run"
+PN_CTX = "Process context"
+PN_ROUTE = "Route stage"
+PN_RESULT = "Process result"
+PN_ASSERT = "Assert process"
+
+
+def load_process_specs(path: Path | None = None) -> dict:
+    doc = json.loads((path or (ROOT / PROCESS_SPEC_REL)).read_text(encoding="utf-8"))
+    if doc.get("schema") != PROCESS_SPEC_SCHEMA or not isinstance(doc.get("processes"), dict):
+        raise ValueError(f"{PROCESS_SPEC_REL}: not a {PROCESS_SPEC_SCHEMA} document")
+    return doc["processes"]
+
+
+def schedule_hhmm(expr: str) -> str:
+    """'50 10 * * *' -> '1050'. A process stage slot is one minute a day (the runner's cron slot)."""
+    parts = str(expr or "").split()
+    if len(parts) != 5 or parts[2:] != ["*", "*", "*"] or not (parts[0].isdigit() and parts[1].isdigit()):
+        raise ValueError(f"stage schedule {expr!r} is not a single daily minute 'M H * * *'")
+    m, h = int(parts[0]), int(parts[1])
+    if not (0 <= m <= 59 and 0 <= h <= 23):
+        raise ValueError(f"stage schedule {expr!r} out of range")
+    return f"{h:02d}{m:02d}"
+
+
+def timeout_seconds_of(value) -> int:
+    s = str(value).strip()
+    unit = s[-1] if s and s[-1] in "smh" else ""
+    num = s[:-1] if unit else s
+    if not num.isdigit():
+        raise ValueError(f"bad timeout {value!r}")
+    return int(num) * {"": 1, "s": 1, "m": 60, "h": 3600}[unit]
+
+
+def run_lane_worst_case_s(max_attempts: int, outcome_timeout_s: int) -> int:
+    """Run Lane's longest wall time for one call: every attempt waits its whole outcome timeout, plus the backoffs
+    between attempts (Run Lane: min(MAX, BASE * 2^(attempt-1)))."""
+    backoff = sum(
+        min(RUN_LANE_RETRY_BACKOFF_MAX_S, RUN_LANE_RETRY_BACKOFF_BASE_S * 2 ** (a - 1)) for a in range(1, max_attempts)
+    )
+    return max_attempts * outcome_timeout_s + backoff
+
+
+def process_plan(process_id: str, spec: dict, manifest: dict) -> dict:
+    """Validated plan: stages in manifest order, each with its steps (manifest order), schedules, Run Lane budgets.
+    Raises ValueError on any inconsistency between the spec and the manifest (the generator refuses to render)."""
+    if not _PROCESS_ID_RE.fullmatch(process_id):
+        raise ValueError(f"bad process id {process_id!r}")
+    if spec.get("mode") not in PROCESS_MODES:
+        raise ValueError(f"{process_id}: mode must be one of {PROCESS_MODES}")
+    stages_doc = manifest.get("stages") or {}
+    steps_spec = spec.get("steps") or {}
+    default_attempts = int(spec.get("default_max_attempts") or 1)
+    manifest_ids = [str(st["id"]) for s in stages_doc.values() for st in s.get("steps") or []]
+    if sorted(manifest_ids) != sorted(steps_spec):
+        raise ValueError(f"{process_id}: spec steps {sorted(steps_spec)} != manifest steps {sorted(manifest_ids)}")
+    lanes = [str(v.get("lane_id")) for v in steps_spec.values()]
+    if len(set(lanes)) != len(lanes) or not all(_PROCESS_ID_RE.fullmatch(lane) for lane in lanes):
+        raise ValueError(f"{process_id}: step lane ids must be unique lane ids")
+    stages = []
+    for stage, sdoc in stages_doc.items():
+        order = [str(st["id"]) for st in sdoc.get("steps") or []]
+        if not order:
+            raise ValueError(f"{process_id}: stage {stage} has no steps")
+        steps = []
+        for i, st in enumerate(sdoc["steps"]):
+            sid = str(st["id"])
+            ss = steps_spec[sid]
+            if not _STEP_ID_RE.fullmatch(sid):
+                raise ValueError(f"{process_id}: bad step id {sid!r}")
+            deps = list(ss.get("depends_on") or [])
+            for d in deps:
+                if d not in order[:i]:
+                    raise ValueError(f"{process_id}: step {sid} depends on {d!r}, not an earlier step of stage {stage}")
+            blocked = ss.get("blocked")
+            if blocked is not None and (not isinstance(blocked, str) or not blocked.strip()):
+                raise ValueError(f"{process_id}: step {sid} blocked must be null or a reason")
+            attempts = max(1, min(RUN_LANE_MAX_ATTEMPTS, int(ss.get("max_attempts") or default_attempts)))
+            tmo = min(RUN_LANE_OUTCOME_TIMEOUT_MAX_S, timeout_seconds_of(st["timeout"]) + PROCESS_OUTCOME_MARGIN_S)
+            # Optional per-step cap on how long Run Lane waits (2026-10-15): only ever LOWERS the derived wait, so a
+            # spec can fit the manual all-stages run into the execution timeout. The executor's own timeout (the
+            # allowlist timeout_s = the manifest step timeout) is unchanged; a step that outlives the wait ends
+            # failed/outcome_timeout in Run Lane (the process fails), never success.
+            cap = ss.get("outcome_timeout_s")
+            if cap is not None:
+                if isinstance(cap, bool) or not isinstance(cap, int) or not PROCESS_OUTCOME_MARGIN_S <= cap <= tmo:
+                    raise ValueError(
+                        f"{process_id}: step {sid} outcome_timeout_s must be an int in"
+                        f" [{PROCESS_OUTCOME_MARGIN_S}, {tmo}] (it can only lower the derived wait)"
+                    )
+                tmo = cap
+            steps.append(
+                {
+                    "id": sid,
+                    "lane_id": ss["lane_id"],
+                    "stage": stage,
+                    "depends_on": deps,
+                    "blocked": blocked,
+                    "max_attempts": attempts,
+                    "outcome_timeout_s": tmo,
+                    "worst_case_s": 0 if blocked else run_lane_worst_case_s(attempts, tmo),
+                }
+            )
+        dependents = {s["id"]: [t["id"] for t in steps if s["id"] in t["depends_on"]] for s in steps}
+        stages.append(
+            {
+                "stage": stage,
+                "schedule": sdoc.get("proposed_schedule"),
+                "slot_hhmm": schedule_hhmm(sdoc.get("proposed_schedule")),
+                "steps": steps,
+                "entry": [s["id"] for s in steps if not s["depends_on"]],
+                "terminals": [s["id"] for s in steps if not dependents[s["id"]]],
+                "dependents": dependents,
+                "worst_case_s": sum(s["worst_case_s"] for s in steps),
+            }
+        )
+    total = sum(s["worst_case_s"] for s in stages)
+    if total > PROCESS_EXECUTION_TIMEOUT_S:
+        raise ValueError(
+            f"{process_id}: worst case {total} s (every runnable step of every stage: the manual run) exceeds the"
+            f" execution timeout {PROCESS_EXECUTION_TIMEOUT_S} s; lower max_attempts or split the process"
+        )
+    return {
+        "process_id": process_id,
+        "workflow_id": spec["workflow_id"],
+        "mode": spec["mode"],
+        "stages": stages,
+        "worst_case_s": total,
+    }
+
+
+def _js_header() -> list[str]:
+    return ["// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n."]
+
+
+def _js_res_helper() -> list[str]:
+    return [
+        "// A node that did not run in this execution throws on $(name).first(): that is 'not_run', never success.",
+        "function res(name) { try { return $(name).first().json; } catch (e) { return null; } }",
+    ]
+
+
+def _process_plan_js(trigger: str, stage: str) -> str:
+    return "\n".join(
+        _js_header() + [f"return [{{ json: {{ trigger: {json.dumps(trigger)}, stage: {json.dumps(stage)} }} }}];", ""]
+    )
+
+
+def _process_context_js(plan: dict) -> str:
+    slots = {s["stage"]: s["slot_hhmm"] for s in plan["stages"]}
+    return "\n".join(
+        _js_header()
+        + [
+            "// One process run: which stage(s), the mode the host is asked for, and the business slot. A scheduled",
+            "// stage's slot is today's date + the stage's cron minute (the cron runner's effect-key slot is the same",
+            "// string: scripts/pipelines/pipeline_manifest.py --effect-slot); a manual proof run uses its own minute",
+            "// so it never reuses a scheduled slot's idempotency keys.",
+            f"const PROCESS_ID = {json.dumps(plan['process_id'])};",
+            f"const MODE = {json.dumps(plan['mode'])};",
+            f"const SLOTS = {json.dumps(slots, sort_keys=True)};",
+            f"const TZ = {json.dumps(TIMEZONE)};",
+            "const p = $input.first().json || {};",
+            "const stages = Object.keys(SLOTS).concat(['all']);",
+            "if (!stages.includes(p.stage)) throw new Error('process ' + PROCESS_ID + ': bad stage ' + String(p.stage));",
+            "if (p.trigger !== 'schedule' && p.trigger !== 'manual') throw new Error('process ' + PROCESS_ID + ': bad trigger');",
+            "if (p.trigger === 'schedule' && p.stage === 'all') throw new Error('process ' + PROCESS_ID + ': schedule runs one stage');",
+            "const now = $now.setZone(TZ);",
+            "const slot = p.trigger === 'schedule' ? now.toFormat('yyyyLLdd') + 'T' + SLOTS[p.stage]"
+            " : now.toFormat(\"yyyyLLdd'T'HHmm\");",
+            "$execution.customData.set('process_id', PROCESS_ID);",
+            "$execution.customData.set('stage', p.stage);",
+            "$execution.customData.set('slot', slot);",
+            "$execution.customData.set('mode', MODE);",
+            "return [{ json: { process_id: PROCESS_ID, stage: p.stage, trigger: p.trigger, mode: MODE, slot } }];",
+            "",
+        ]
+    )
+
+
+def _process_gate_js(step: dict) -> str:
+    dep_nodes = {d: f"Result {d}" for d in step["depends_on"]}
+    spec = {
+        "step_id": step["id"],
+        "lane_id": step["lane_id"],
+        "stage": step["stage"],
+        "depends_on": step["depends_on"],
+        "blocked": step["blocked"],
+        "max_attempts": step["max_attempts"],
+        "outcome_timeout_s": step["outcome_timeout_s"],
+    }
+    return "\n".join(
+        _js_header()
+        + [
+            "// Run this step only when it is not BLOCKED and every dependency ended `success`. Otherwise the step is",
+            "// recorded (blocked / skipped_upstream) without a host call, and its own dependents skip in turn.",
+            f"const STEP = {json.dumps(spec, sort_keys=True, ensure_ascii=False)};",
+            f"const DEP_NODES = {json.dumps(dep_nodes, sort_keys=True)};",
+            f"const KEY_PREFIX = {json.dumps(PROCESS_KEY_PREFIX)};",
+        ]
+        + _js_res_helper()
+        + [
+            f"const ctx = $('{PN_CTX}').first().json;",
+            "const base = { step_id: STEP.step_id, lane_id: STEP.lane_id, stage: STEP.stage, depends_on: STEP.depends_on };",
+            "if (STEP.blocked) return [{ json: { ...base, run: false, skip: 'blocked', reason: STEP.blocked } }];",
+            "const notOk = [];",
+            "for (const d of STEP.depends_on) {",
+            "  const r = res(DEP_NODES[d]);",
+            "  if (!r || r.status !== 'success') notOk.push(d + ':' + (r ? String(r.status) : 'not_run'));",
+            "}",
+            "if (notOk.length) return [{ json: { ...base, run: false, skip: 'skipped_upstream', reason: notOk.join(',') } }];",
+            "const key = [KEY_PREFIX, STEP.lane_id, ctx.mode, ctx.slot].join(':');",
+            "return [{ json: { ...base, run: true, mode: ctx.mode, idempotency_key: key, max_attempts: STEP.max_attempts,",
+            "  outcome_timeout_s: STEP.outcome_timeout_s, process_id: ctx.process_id } }];",
+            "",
+        ]
+    )
+
+
+def _process_result_step_js(step: dict) -> str:
+    return "\n".join(
+        _js_header()
+        + [
+            "// FabricStepResult@v1: the Run Lane result of this step, or the Gate's skip as data.",
+            f"const SCHEMA = {json.dumps(PROCESS_STEP_RESULT_SCHEMA)};",
+            f"const g = $('Gate {step['id']}').first().json;",
+            "const r = $input.first().json || {};",
+            "const base = { schema: SCHEMA, step_id: g.step_id, lane_id: g.lane_id, stage: g.stage };",
+            "if (g.run !== true) {",
+            "  return [{ json: { ...base, status: g.skip, run_id: null, attempts: 0, reason: g.reason ?? null } }];",
+            "}",
+            "if (r.schema !== 'RunLaneResult@v1') {",
+            "  return [{ json: { ...base, status: 'failed', run_id: null, attempts: 0, reason: 'no_run_lane_result' } }];",
+            "}",
+            "return [{ json: { ...base, status: r.status, run_id: r.run_id, attempts: r.attempts, reason: r.reason ?? null,",
+            "  exit_code: r.exit_code ?? null, duration_s: r.duration_s ?? null, dead_letter: r.dead_letter === true,",
+            "  effect_key: r.effect_key ?? null, receipt_path: r.receipt_path ?? null } }];",
+            "",
+        ]
+    )
+
+
+def _process_stage_done_js(stage: str) -> str:
+    return "\n".join(
+        _js_header()
+        + [
+            "// One item per stage, whatever number of branches joined here.",
+            f"return [{{ json: {{ stage_done: {json.dumps(stage)}, branches: $input.all().length }} }}];",
+            "",
+        ]
+    )
+
+
+def _process_result_js(plan: dict) -> str:
+    steps = [{"step_id": s["id"], "stage": s["stage"]} for st in plan["stages"] for s in st["steps"]]
+    return "\n".join(
+        _js_header()
+        + [
+            "// FabricProcessResult@v1: every step of the stage(s) this run covered, in manifest order, with its run_id",
+            "// and status. A failed / refused / missing step makes the run `failed` (Assert process then throws, so the",
+            "// execution is an error and tradeai-fabric-error raises a host intent); blocked or skipped only is `partial`.",
+            f"const SCHEMA = {json.dumps(PROCESS_RESULT_SCHEMA)};",
+            f"const STEPS = {json.dumps(steps)};",
+            f"const FAILING = {json.dumps(list(PROCESS_FAILING_STATUSES))};",
+        ]
+        + _js_res_helper()
+        + [
+            f"const ctx = $('{PN_CTX}').first().json;",
+            "const steps = [];",
+            "for (const s of STEPS) {",
+            "  if (ctx.stage !== 'all' && s.stage !== ctx.stage) continue;",
+            "  const r = res('Result ' + s.step_id);",
+            "  steps.push(r || { step_id: s.step_id, stage: s.stage, status: 'not_run', run_id: null, attempts: 0,",
+            "    reason: 'result_node_not_executed' });",
+            "}",
+            "const failed = steps.filter((s) => FAILING.includes(s.status)).map((s) => s.step_id);",
+            "const overall = failed.length ? 'failed' : (steps.every((s) => s.status === 'success') ? 'ok' : 'partial');",
+            "const counts = {};",
+            "for (const s of steps) counts[s.status] = (counts[s.status] || 0) + 1;",
+            "$execution.customData.set('overall', overall);",
+            "if (failed.length) $execution.customData.set('failed_steps', failed.join(',').slice(0, 250));",
+            "return [{ json: { schema: SCHEMA, process_id: ctx.process_id, stage: ctx.stage, trigger: ctx.trigger,",
+            "  mode: ctx.mode, slot: ctx.slot, overall, failed_steps: failed, first_failed_step: failed[0] || null,",
+            "  counts, steps } }];",
+            "",
+        ]
+    )
+
+
+def _process_assert_js() -> str:
+    return "\n".join(
+        _js_header()
+        + [
+            "// A failed run is this execution's error: saved, and the error workflow raises a host intent.",
+            "const r = $input.first().json || {};",
+            "if (r.overall === 'failed') {",
+            "  throw new Error('process ' + r.process_id + ' slot ' + r.slot + ': failed step(s) ' + r.failed_steps.join(','));",
+            "}",
+            "return [{ json: r }];",
+            "",
+        ]
+    )
+
+
+def _p_conn(conns: dict, src: str, outputs: list[list[tuple[str, int]]]) -> None:
+    conns[src] = {"main": [[{"node": n, "type": "main", "index": i} for n, i in out] for out in outputs]}
+
+
+def _p_merge(wid: str, name: str, inputs: int, position: list[int]) -> dict:
+    return {
+        "id": _f_node_id(wid, name),
+        "name": name,
+        "type": "n8n-nodes-base.merge",
+        "typeVersion": 3.1,
+        "position": position,
+        "parameters": {"numberInputs": inputs},
+    }
+
+
+def _p_run(wid: str, name: str, position: list[int]) -> dict:
+    return {
+        "id": _f_node_id(wid, name),
+        "name": name,
+        "type": "n8n-nodes-base.executeWorkflow",
+        "typeVersion": 1.2,
+        "position": position,
+        "parameters": {
+            "source": "database",
+            "workflowId": {"__rl": True, "value": RUN_LANE_ID, "mode": "id"},
+            "workflowInputs": {
+                "mappingMode": "defineBelow",
+                "value": {
+                    "lane_id": "={{ $json.lane_id }}",
+                    "mode": "={{ $json.mode }}",
+                    "idempotency_key": "={{ $json.idempotency_key }}",
+                    "max_attempts": "={{ $json.max_attempts }}",
+                    "outcome_timeout_s": "={{ $json.outcome_timeout_s }}",
+                    "process_id": "={{ $json.process_id }}",
+                },
+                "matchingColumns": [],
+                "schema": [],
+            },
+            "options": {"waitForSubWorkflow": True},
+        },
+    }
+
+
+def build_process(process_id: str, spec: dict, manifest: dict) -> dict:
+    """The process workflow for one config/n8n_fabric_processes.json entry (inactive; see the section comment)."""
+    plan = process_plan(process_id, spec, manifest)
+    wid = plan["workflow_id"]
+    nodes: list[dict] = [
+        {
+            "id": _f_node_id(wid, PN_MANUAL),
+            "name": PN_MANUAL,
+            "type": "n8n-nodes-base.manualTrigger",
+            "typeVersion": 1,
+            "position": [0, 0],
+            "parameters": {},
+        },
+        _f_code(wid, "Plan manual", _process_plan_js("manual", "all"), [240, 0]),
+    ]
+    conns: dict = {}
+    _p_conn(conns, PN_MANUAL, [[("Plan manual", 0)]])
+    for k, st in enumerate(plan["stages"], 1):
+        sched, pl = f"Schedule {st['stage']}", f"Plan {st['stage']}"
+        nodes.append(
+            {
+                "id": _f_node_id(wid, sched),
+                "name": sched,
+                "type": "n8n-nodes-base.scheduleTrigger",
+                "typeVersion": 1.2,
+                "position": [0, 240 * k],
+                "parameters": {"rule": {"interval": [{"field": "cronExpression", "expression": st["schedule"]}]}},
+            }
+        )
+        nodes.append(_f_code(wid, pl, _process_plan_js("schedule", st["stage"]), [240, 240 * k]))
+        _p_conn(conns, sched, [[(pl, 0)]])
+    for pl in ["Plan manual"] + [f"Plan {st['stage']}" for st in plan["stages"]]:
+        _p_conn(conns, pl, [[(PN_CTX, 0)]])
+    nodes.append(_f_code(wid, PN_CTX, _process_context_js(plan), [480, 240]))
+    stage_names = tuple(st["stage"] for st in plan["stages"]) + ("all",)
+    nodes.append(_f_switch(wid, PN_ROUTE, "={{ $json.stage }}", stage_names, [720, 240]))
+    _p_conn(conns, PN_CTX, [[(PN_ROUTE, 0)]])
+
+    def entry(st: dict) -> list[tuple[str, int]]:
+        return [(f"Gate {sid}", 0) for sid in st["entry"]]
+
+    # Switch outputs in stage order, then 'all' (starts at the first stage), then the unused fallback.
+    _p_conn(conns, PN_ROUTE, [entry(st) for st in plan["stages"]] + [entry(plan["stages"][0]), []])
+    x0 = 960
+    for k, st in enumerate(plan["stages"]):
+        by_id = {s["id"]: s for s in st["steps"]}
+        depth: dict[str, int] = {}
+        rows: dict[int, int] = {}
+        for s in st["steps"]:
+            sid = s["id"]
+            depth[sid] = 1 + max((depth[d] for d in s["depends_on"]), default=-1)
+            row = rows.get(depth[sid], 0)
+            rows[depth[sid]] = row + 1
+            x, y = x0 + depth[sid] * 1200, 240 * (row + 3 * k)
+            gate, ask, run, res = f"Gate {sid}", f"Run? {sid}", f"Run {sid}", f"Result {sid}"
+            if len(s["depends_on"]) > 1:
+                nodes.append(_p_merge(wid, f"Join {sid}", len(s["depends_on"]), [x - 240, y]))
+                _p_conn(conns, f"Join {sid}", [[(gate, 0)]])
+            nodes.append(_f_code(wid, gate, _process_gate_js(s), [x, y]))
+            nodes.append(_f_if(wid, ask, "={{ $json.run === true }}", [x + 240, y]))
+            nodes.append(_p_run(wid, run, [x + 480, y - 80]))
+            nodes.append(_f_code(wid, res, _process_result_step_js(s), [x + 720, y]))
+            _p_conn(conns, gate, [[(ask, 0)]])
+            _p_conn(conns, ask, [[(run, 0)], [(res, 0)]])
+            _p_conn(conns, run, [[(res, 0)]])
+        done, stage_join = f"Done {st['stage']}", f"Join {st['stage']}"
+        for s in st["steps"]:
+            outs: list[tuple[str, int]] = []
+            for dep_sid in st["dependents"][s["id"]]:
+                dep = by_id[dep_sid]
+                if len(dep["depends_on"]) > 1:
+                    outs.append((f"Join {dep_sid}", dep["depends_on"].index(s["id"])))
+                else:
+                    outs.append((f"Gate {dep_sid}", 0))
+            if s["id"] in st["terminals"]:
+                if len(st["terminals"]) > 1:
+                    outs.append((stage_join, st["terminals"].index(s["id"])))
+                else:
+                    outs.append((done, 0))
+            _p_conn(conns, f"Result {s['id']}", [outs])
+        xe = x0 + (max(depth.values()) + 1) * 1200
+        if len(st["terminals"]) > 1:
+            nodes.append(_p_merge(wid, stage_join, len(st["terminals"]), [xe, 240 * 3 * k]))
+            _p_conn(conns, stage_join, [[(done, 0)]])
+        nodes.append(_f_code(wid, done, _process_stage_done_js(st["stage"]), [xe + 240, 240 * 3 * k]))
+        if k + 1 < len(plan["stages"]):
+            nxt = plan["stages"][k + 1]
+            then = f"Then {nxt['stage']}?"
+            nodes.append(
+                _f_if(wid, then, "={{ $('" + PN_CTX + "').first().json.stage === 'all' }}", [xe + 480, 240 * 3 * k])
+            )
+            _p_conn(conns, done, [[(then, 0)]])
+            _p_conn(conns, then, [entry(nxt), [(PN_RESULT, 0)]])
+            x0 = xe + 720
+        else:
+            _p_conn(conns, done, [[(PN_RESULT, 0)]])
+            x0 = xe + 480
+    nodes.append(_f_code(wid, PN_RESULT, _process_result_js(plan), [x0, 240]))
+    nodes.append(_f_code(wid, PN_ASSERT, _process_assert_js(), [x0 + 240, 240]))
+    _p_conn(conns, PN_RESULT, [[(PN_ASSERT, 0)]])
+    wf = _fabric_doc(wid, PROCESS_KIND, nodes, conns, _fabric_settings(wid, PROCESS_EXECUTION_TIMEOUT_S))
+    return wf
+
+
+def process_workflow_plans() -> dict[str, dict]:
+    """workflow id -> validated plan for every process in config/n8n_fabric_processes.json."""
+    out = {}
+    for pid, spec in load_process_specs().items():
+        manifest = json.loads((ROOT / spec["manifest"]).read_text(encoding="utf-8"))
+        out[spec["workflow_id"]] = process_plan(pid, spec, manifest)
+    return out
+
+
+def process_builders() -> dict:
+    """workflow id -> zero-argument builder for every process in config/n8n_fabric_processes.json."""
+    out = {}
+    for pid, spec in load_process_specs().items():
+        manifest = json.loads((ROOT / spec["manifest"]).read_text(encoding="utf-8"))
+        out[spec["workflow_id"]] = lambda p=pid, s=spec, m=manifest: build_process(p, s, m)
+    return out
+
+
+def process_problems(wf: dict) -> list[str]:
+    """Process-workflow invariants on top of validate_fabric_workflow: no HTTP node (every host call goes through Run
+    Lane), every Execute Workflow node calls Run Lane by id and waits for it, and no trigger other than Manual and
+    Schedule (no webhook, no Execute Workflow Trigger, no Error Trigger)."""
+    problems = []
+    for n in wf.get("nodes") or []:
+        t = n.get("type")
+        if t == "n8n-nodes-base.httpRequest":
+            problems.append(f"process_http_node:{n.get('name')}")
+        elif t == "n8n-nodes-base.executeWorkflow":
+            p = n.get("parameters") or {}
+            if (p.get("workflowId") or {}).get("value") != RUN_LANE_ID or not (p.get("options") or {}).get(
+                "waitForSubWorkflow"
+            ):
+                problems.append(f"process_call_not_run_lane:{n.get('name')}")
+        elif t in ("n8n-nodes-base.webhook", "n8n-nodes-base.executeWorkflowTrigger", "n8n-nodes-base.errorTrigger"):
+            problems.append(f"process_trigger_refused:{n.get('name')}")
+    return problems
+
+
 FABRIC_BUILDERS = {
     RUN_LANE_ID: build_run_lane,
     FABRIC_ERROR_ID: build_fabric_error,
@@ -2779,12 +3300,15 @@ def validate_fabric_workflow(wf: dict, known_ids: set[str] | frozenset[str]) -> 
 
 def render_fabric() -> dict[str, str]:
     """file name -> text for the fabric workflows plus INDEX.json (the trusted-deployer manifest; byte-stable)."""
-    wfs = [builder() for builder in FABRIC_BUILDERS.values()]
+    procs = process_builders()
+    wfs = [builder() for builder in FABRIC_BUILDERS.values()] + [builder() for builder in procs.values()]
     known = {wf["id"] for wf in wfs}
     files: dict[str, str] = {}
     rows = []
     for wf in wfs:
         problems = validate_fabric_workflow(wf, known)
+        if wf["id"] in procs:
+            problems += process_problems(wf)
         if problems:
             raise ValueError(f"fabric workflow {wf['id']} refused by its own generator: {problems}")
         text = _dump(wf)
@@ -2799,7 +3323,8 @@ def render_fabric() -> dict[str, str]:
                 "graph_sha256": wf["meta"]["graph_sha256"],
                 "node_types": sorted({n["type"] for n in wf["nodes"]}),
                 "error_workflow": wf["settings"]["errorWorkflow"],
-                "relay_calls": FABRIC_RELAY_CALLS[wf["id"]],
+                # A process workflow makes no relay call of its own (process_problems): Run Lane makes them.
+                "relay_calls": FABRIC_RELAY_CALLS.get(wf["id"], []),
                 "active": False,
             }
         )
@@ -2842,6 +3367,8 @@ def verify_fabric(paths: list[Path], manifest_path: Path) -> dict:
             stamped = dict(wf)
             stamped["meta"] = dict(wf.get("meta") or {}, graph_sha256=got)
             problems = validate_fabric_workflow(stamped, known)
+            if row is not None and row.get("kind") == PROCESS_KIND:
+                problems += process_problems(wf)
             # A live export is active once published; activation state is the grant's business, not the graph's.
             problems = [x for x in problems if x != "active_not_false"]
             if row is None:

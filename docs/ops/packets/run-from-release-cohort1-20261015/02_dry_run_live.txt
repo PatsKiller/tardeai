@@ -1,0 +1,67 @@
+# run_from_release.py dry run against the live crontab, 2026-10-15 ~00:30 ET (read-only snapshot of crontab -l)
+# Generated: python3 scripts/run_from_release.py crontab --crontab-file <snapshot> --cohorts c1 --out <dir>
+
+## crontab.summary.json
+{
+  "cohorts": [
+    "c1"
+  ],
+  "revert": [],
+  "final": false,
+  "lines_prefixed": 5,
+  "lines_stripped": 0,
+  "lines_refused": 0,
+  "lines_prefix_only": 0,
+  "header_changes": 2,
+  "jobs_total": 394,
+  "lane_gate": {
+    "ok": true,
+    "undeclared_before": 0,
+    "undeclared_after": 0,
+    "added": []
+  }
+}
+
+## changed lines (crontab.diff, +/- only)
++RPY=/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/.venv/bin/python
++TRADEAI_CODE_ROOT=/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT
+-0 19 * * 0 cd $PROJ && flock -n /tmp/symbol_profiles.lock $PY scripts/build_symbol_profiles.py >> logs/symbol_profiles.log 2>&1  # weekly company-profile refresh (operator 2026-06-12)
++0 19 * * 0 export PY=$RPY TRADEAI_VENV_PYTHON=$RPY TRADEAI_RUN_FROM_RELEASE=c1; cd $PROJ && flock -n /tmp/symbol_profiles.lock $RPY scripts/build_symbol_profiles.py >> logs/symbol_profiles.log 2>&1  # weekly company-profile refresh (operator 2026-06-12)
+-45 6 * * 1-5 cd $PROJ && flock -n /tmp/symprofiles_wl.lock $PY scripts/build_symbol_profiles.py --watchlist-top 300 >> logs/symbol_profiles_watchlist.log 2>&1  # watchlist card sector/description coverage (operator 2026-06-18)
++45 6 * * 1-5 export PY=$RPY TRADEAI_VENV_PYTHON=$RPY TRADEAI_RUN_FROM_RELEASE=c1; cd $PROJ && flock -n /tmp/symprofiles_wl.lock $RPY scripts/build_symbol_profiles.py --watchlist-top 300 >> logs/symbol_profiles_watchlist.log 2>&1  # watchlist card sector/description coverage (operator 2026-06-18)
+-52 6 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && TRADEAI_ROOT=/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT flock -n /tmp/cio_draft_hygiene.lock $PY scripts/cio_draft_plan_hygiene.py --apply >> /home/johnclaw/logs/cio_draft_hygiene.log 2>&1
++52 6 * * * export PY=$RPY TRADEAI_VENV_PYTHON=$RPY TRADEAI_RUN_FROM_RELEASE=c1; cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && TRADEAI_ROOT=/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT flock -n /tmp/cio_draft_hygiene.lock $RPY scripts/cio_draft_plan_hygiene.py --apply >> /home/johnclaw/logs/cio_draft_hygiene.log 2>&1
+-20 * * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash -c 'set -a; . "/run/user/$(id -u)/tradeai/env" 2>/dev/null; . /home/johnclaw/.config/tradeai/agent_runtime_overrides.env 2>/dev/null; set +a; exec $PY scripts/report_goal_loop_baseline.py --json' >> /home/johnclaw/logs/goal_loop_baseline.log 2>&1
++20 * * * * export PY=$RPY TRADEAI_VENV_PYTHON=$RPY TRADEAI_RUN_FROM_RELEASE=c1; cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash -c 'set -a; . "/run/user/$(id -u)/tradeai/env" 2>/dev/null; . /home/johnclaw/.config/tradeai/agent_runtime_overrides.env 2>/dev/null; set +a; exec $RPY scripts/report_goal_loop_baseline.py --json' >> /home/johnclaw/logs/goal_loop_baseline.log 2>&1
+-40 18 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/tradeai_agent_number_grounding_slo.lock $PY scripts/report_agent_number_grounding.py --days 7 --check-slo --out data/runtime/agent_number_grounding_slo_last_run.json >> logs/agent_number_grounding_slo.log 2>&1
++40 18 * * * export PY=$RPY TRADEAI_VENV_PYTHON=$RPY TRADEAI_RUN_FROM_RELEASE=c1; cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/tradeai_agent_number_grounding_slo.lock $RPY scripts/report_agent_number_grounding.py --days 7 --check-slo --out data/runtime/agent_number_grounding_slo_last_run.json >> logs/agent_number_grounding_slo.log 2>&1
+
+## verify --cohorts c1 (bwrap: ro /, private /tmp + /run/user/1000, no network; python = scratch build of the 134-pin lock, py3.14.4)
+{"lines": 5, "tally": {"pass": 5}}
+479 pass scripts/build_symbol_profiles.py | --help exit 0 from CURRENT with the release venv
+512 pass scripts/build_symbol_profiles.py | --help exit 0 from CURRENT with the release venv
+915 pass scripts/cio_draft_plan_hygiene.py | --help exit 0 from CURRENT with the release venv
+984 pass scripts/report_goal_loop_baseline.py | --help exit 0 from CURRENT with the release venv
+1009 pass scripts/report_agent_number_grounding.py | --help exit 0 from CURRENT with the release venv
+
+## forced_run_c1.sh probe (RUN=0). Expected to fail today: CURRENT has no .venv until P0 ships
+== line 479
+RPY not executable: /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/.venv/bin/python
+probe FAILED line 479
+== line 512
+RPY not executable: /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/.venv/bin/python
+probe FAILED line 512
+== line 915
+RPY not executable: /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/.venv/bin/python
+probe FAILED line 915
+== line 984
+RPY not executable: /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/.venv/bin/python
+probe FAILED line 984
+== line 1009
+RPY not executable: /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/.venv/bin/python
+probe FAILED line 1009
+cohort c1: 5 line(s); RUN=0
+exit=1
+
+## round trip: crontab --revert c1 on the candidate == live snapshot
+byte-identical

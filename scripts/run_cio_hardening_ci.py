@@ -2208,6 +2208,9 @@ GATES = [
             # AGENTS.md 10.0.0 (PROPOSED 2026-10-14): §23.23 n8n is the automation fabric (flow in n8n, authority on
             # the host); §23.1/§23.11/§24.1 marked superseded in place; §0/§2/§2A/§7A/§17/§22/§23.14 pinned.
             "tests/test_agents_policy_10_0_0_n8n_fabric.py",
+            # AGENTS.md 11.0.0 (PROPOSED 2026-10-14): §23.24 mandatory n8n workflow framework (six areas, each element
+            # with an existing or proposed check); §0/§2/§2A/§7A/§17/§22/§23.14/§23.23 pinned.
+            "tests/test_agents_policy_11_0_0_workflow_framework.py",
             "tests/test_trading_session_grant_20260925.py",
             "tests/test_operator_approval_workflow_docs.py",
         ],
@@ -3743,6 +3746,35 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: N8N_FABRIC_HERMES_LEARNING — 2026-10-15 the first business process on the fabric (AGENTS.md §23.23):
+        # tradeai-fabric-hermes-learning (learn -> tune) generated from config/n8n_fabric_processes.json + the
+        # hermes_learning manifest; each step -> Execute Workflow -> Run Lane in dependency order, Merge fan-in,
+        # stop-on-failure, BLOCKED steps as data. Host side: three shadow step lanes (allowlist dry run only,
+        # registry rows with no dispatch block, REVIEWED contracts, effect keys) and the stage runner's effect-key
+        # claim (OFF unless PIPELINE_EFFECT_CLAIM=1 and cron_claim true). Hermetic: tmp_path ledgers and sandboxed
+        # runner, node.js interprets the generated graph. Imports nothing into n8n, touches no crontab or unit.
+        "n8n_fabric_hermes_learning_20261015",
+        [
+            "tests/test_n8n_fabric_hermes_learning_20261015.py",
+            # 2026-10-15 unblock: tag_engine --dry-run (no model call), outcome_feedback_agent declared chokepoint
+            # intents (--notify record: no sender), autonomous_self_tune --learn (purge helpers refuse; historical
+            # flags byte-identical). Hermetic: recording DB fakes, stub chokepoint module, tmp_path files.
+            "tests/test_hermes_learning_unblock_20261015.py",
+        ],
+    ),
+    (
+        # ANCHOR: CANARY_EFFECT_KEYS — 2026-10-15 canary double-effect audit (arch-review-20261014): every live, canary
+        # or canary-wave lane that appends, sends or calls an LLM carries a STAGED effect key (cron_claim false,
+        # n8n_claim false: neither side claims, executor view unchanged); the cron-side wrapper
+        # scripts/effect_claim_cron.sh (off unless TRADEAI_EFFECT_CLAIM=<lane>; refusals exit 75/65 and run nothing);
+        # the maturity-remeasure live-list packet; the research_insights(source_reference) unique-index migration,
+        # parsed and applied twice on a disposable PostgreSQL cluster. Hermetic: tmp_path ledgers and files.
+        "canary_effect_keys_20261015",
+        [
+            "tests/test_canary_effect_keys_20261015.py",
+        ],
+    ),
+    (
         # ANCHOR: N8N_MATURITY_CRON_TZ — 2026-10-09 n8n-maturity B5.1 (design 02 §3.2 step 1, F11):
         # DST-safe fires_between / is_sub_hourly / last_fire_at_or_before in scripts/lib/cron_schedule.py.
         # Pure and hermetic: explicit instants only, no clock, no I/O.
@@ -4020,6 +4052,20 @@ GATES = [
         # were classified P1_DIGEST by the policy router and suppressed; they now interrupt and skip the P0 budget.
         "stop_alert_never_digest_20261014",
         ["tests/test_stop_alert_never_digest_20261014.py"],
+    ),
+    (
+        # ANCHOR: ALERT_FLOOD_AND_DEADMAN_20261015 — WS1-09/WS3-10/WS3-35 incident-flood rules behind a report_only
+        # flag (drop diagnoser policy refusals and lock skips, auto-resolve on lane success, collapse per lane and
+        # failure class, per-source P2 budget, P1/recoveries off the P2 cap), pinned so no P0/P1 stop, broker or
+        # safety finding (SPCX cases) is ever suppressed; WS3-18 off-box dead-man sender (dry run opens nothing);
+        # WS3-21 send_telegram no longer returns True for an undelivered transport attempt. Hermetic: tmp state
+        # roots, tmp sqlite, stub sender/requester/transport. Listing them here schedules nothing.
+        "alert_flood_and_deadman_20261015",
+        [
+            "tests/test_incident_flood_policy_20261015.py",
+            "tests/test_offbox_deadman_20261015.py",
+            "tests/test_telegram_delivery_outcome_20261015.py",
+        ],
     ),
     (
         # ANCHOR: GROK_G10_G12_20261011 — honest non-zero exits, lockup and hermes weights off the
@@ -4623,6 +4669,23 @@ GATES = [
         ["tests/test_llm_process_seed_sync_20261010.py"],
     ),
     (
+        # hermes_tag_engine dollar cap (2026-10-15): the registry row had no daily_cost_cap_usd, so check_cost_cap
+        # logged llm_lane_unregistered and enforced no process cap. Pins: the row declares $0.05; the warning no
+        # longer fires; with mocked ledger spend, spend + projection over the cap is refused COST_CAP_EXCEEDED
+        # scope=process; an uncapped control id still warns. Hermetic: no DB, ledger replaced.
+        "hermes_tag_engine_cost_cap_20261015",
+        ["tests/test_hermes_tag_engine_cost_cap_20261015.py"],
+    ),
+    (
+        # Run-from-release P0 (2026-10-15): prepare builds or reuses a shared venv keyed by
+        # py<X.Y.Z>-sha12(requirements.lock.txt) and links <release>/.venv to it. Pins: hash keying; reuse runs
+        # no pip; a failed install/smoke leaves no partial venv and the previous one untouched; the link and
+        # RELEASE_VENV_PYTHON; refusals (interpreter minor, freeze drift, real .venv dir); the dry venv-plan
+        # writes nothing; prepare moves no cron/unit and keeps VENV_PYTHON. Hermetic: stub interpreter + pip.
+        "release_venv_p0_20261015",
+        ["tests/test_release_venv_p0_20261015.py"],
+    ),
+    (
         # The six generic n8n workflows (AGENTS.md §23.11) are declared by their committed INDEX, so activating
         # them under their `cron` grant does not turn check_lane_registry --n8n-live red with six
         # UNDECLARED_N8N_WORKFLOW; an unknown id still fails; a missing/foreign INDEX fails closed. Hermetic.
@@ -4729,6 +4792,14 @@ GATES = [
         # broker-adjacent unit, and rollback restores the archived drop-ins. Fake systemd tree + fake systemctl.
         "release_pin_daemons_20261010",
         ["tests/test_release_pin_daemons_20261010.py"],
+    ),
+    (
+        # Run-from-release tooling (WS7-01 / WS8-14, 2026-10-15): cron $PY and most user units execute the dev
+        # checkout's .venv. Candidate crontab per cohort (strippable prefix, $PY -> $RPY, exact revert round
+        # trip, lane-registry gate), unit drop-ins with blockers, sandboxed --help / import-probe verifier,
+        # forced-run probe script, write-path scan. Hermetic: fake trees, fake runner; no crontab/systemctl/bwrap.
+        "run_from_release_20261015",
+        ["tests/test_run_from_release_20261015.py"],
     ),
     (
         # W1-9 monitor fold coverage (2026-10-11, MONITOR_FOLD_COVERAGE.md gaps 1/3/6): the registry's

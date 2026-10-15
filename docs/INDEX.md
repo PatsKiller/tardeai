@@ -17,7 +17,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/AGENT_PAGES_DETAIL.md` | Agent Pages — Detailed Function Matrix | review_required | OK | `c52bb8ece19f` |
 | `docs/AGENT_ROSTER.md` | Trade AI v12 — Agent Roster | review_required | OK | `18d7b6acdc41` |
 | `docs/AI_TRADE_CRITIQUE.md` | AI Trade Critique — Persistence & System Integration | review_required | OK | `a36de70f5d2c` |
-| `docs/ALERT_INCIDENT_RESOLUTION.md` | Alert Incident Resolution | review_required | OK | `642fbc9ee5b0` |
+| `docs/ALERT_INCIDENT_RESOLUTION.md` | Alert Incident Resolution | review_required | OK | `f8b35a869a52` |
 | `docs/APPENDIX_E_SCRIPT_ROUTING_MATRIX.md` | Appendix E — Initial Script Routing Matrix | review_required | OK | `1bf4f69d9156` |
 | `docs/ATM_PROPOSAL_CONTROLS_2026_06_04.md` | Editable ATM + Proposal Controls — PAPER-ONLY, GATE-INTERLOCKED (2026-06-04) | review_required | OK | `fcd9627cba2d` |
 | `docs/BROKER_PROPOSALS_UI.md` | Broker Proposals UI — Live Execution Desk (v3) | review_required | OK | `f9f26cffd1f3` |
@@ -49,7 +49,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/CURSOR_CLOUD_PLAIN_ENGLISH_STARTER_GUIDE.md` | Cursor Cloud Plain-English Starter Guide | review_required | OK | `c7ab9524a7e1` |
 | `docs/DAILY_OPS_LOG.md` | DAILY_OPS_LOG.md | review_required | OK | `80578251dbf0` |
 | `docs/DASHBOARD_AUDIT_WORKFLOW.md` | Dashboard Visual Audit — Operator Workflow | review_required | OK | `4f878d49e6a9` |
-| `docs/DOCUMENTATION_INDEX.md` | Trade AI v12 — Documentation Index | review_required | OK | `a0306230d441` |
+| `docs/DOCUMENTATION_INDEX.md` | Trade AI v12 — Documentation Index | review_required | OK | `1fd9d8b731f6` |
 | `docs/ENGINEERING_HARD_RULES.md` | Engineering Hard Rules (enforced) | review_required | OK | `c9798da3d1f2` |
 | `docs/ENGINE_ROOM_V1.md` | Engine Room v1 — Plumbing & Intake Hardening (2026-07-16) | review_required | OK | `c13ce7b7e784` |
 | `docs/EXECUTIVE_ARCHITECTURE_OVERVIEW.md` | Trade AI v12 — Executive Architecture Overview | review_required | OK | `84fd22510408` |
@@ -61,7 +61,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/GOAL_LAP_PIPELINE.md` | Goal Lap Pipeline | review_required | OK | `e63bfa42a604` |
 | `docs/GPU_OLLAMA_SETUP.md` | Intel Arc B50: Trade AI Runtime Status | review_required | OK | `8c1dff864802` |
 | `docs/GROUNDING_SLO_2026-09-18.md` | Agent number-grounding SLO — 2026-09-18 breach and closure | review_required | OK | `e244f8a2896f` |
-| `docs/HEALTH_AGENT.md` | Health Agent + Multi-Coder Auto-Fix | review_required | OK | `e6f4cbc44b06` |
+| `docs/HEALTH_AGENT.md` | Health Agent + Multi-Coder Auto-Fix | review_required | OK | `cf252688d347` |
 | `docs/HEALTH_AUTONOMOUS_LOOP.md` | Health autonomous fix loop (no manual operator / no one-off agent fixes) | review_required | OK | `e4865c52f780` |
 | `docs/HERMES_DATA_ACCESS.md` | Hermes Data Access — the one canonical way every consumer reads Hermes intelligence | review_required | OK | `e597b05f60f3` |
 | `docs/HERMES_DISCOVERY_COVERAGE.md` | Hermes Discovery Inbox — Current Coverage & Discovery Mechanics (2026-07-05) | review_required | OK | `28f9832642be` |
@@ -101,7 +101,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/RESEARCH_PRIORITIZATION.md` | Research Prioritization & Refresh Methodology (all Hermes lanes, 24/7) | review_required | OK | `0ab567d5d5c4` |
 | `docs/RESEARCH_PROVIDER_ROUTING.md` | Research provider routing — when Brave should be used | review_required | OK | `84b24e817e4b` |
 | `docs/RESEARCH_TOPIC_REGISTRY_2026_06_04.md` | Research Topic Registry — 2026-06-04 | review_required | OK | `f51d95275ab4` |
-| `docs/RESTORE_GUIDE.md` | Trade AI v12 — Restore Guide | active_keep | OK | `e75090b6bb16` |
+| `docs/RESTORE_GUIDE.md` | Trade AI v12 — Restore Guide | active_keep | OK | `5f2f410ce87a` |
 | `docs/SCHWAB_AUTO_REAUTH.md` | Schwab OAuth Reauth (manual-first) | review_required | OK | `039c557e4214` |
 | `docs/SOURCE_OF_TRUTH.md` | Source of Truth — one declaration per domain | review_required | MISSING HEADER | `2eda5e703f8c` |
 | `docs/STAGING_VS_V2_BITEMPORAL_STATUS_REPORT.md` | Staging vs V2 bitemporal database — status report | review_required | OK | `809ec60535eb` |
@@ -273,7 +273,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/AGENT_SERVICE_MAP_2026-09-25.md` | Agent and Service Map — traced from code and the served host | review_required | OK | `5d1890b5787e` |
 | `docs/architecture/AGENT_TOOL_PERMISSION_MATRIX_2026-07-23.md` | Trade AI Agent Tool Permission Matrix — 2026-07-23 | review_required | OK | `f40d7f04bd37` |
 | `docs/architecture/ALERT_DATA_SOURCES_2026-10-05.md` | Alert data sources — inventory 2026-10-05 | review_required | MISSING HEADER | `fc2ae5f8b1bb` |
-| `docs/architecture/ARCHITECTURE_INDEX.md` | Architecture Index — where to look before you change a component | review_required | OK | `3af8b36899d6` |
+| `docs/architecture/ARCHITECTURE_INDEX.md` | Architecture Index — where to look before you change a component | review_required | OK | `c3e4fdb118e5` |
 | `docs/architecture/ATM_BROKER_ACCOUNT_AUTOMATION_2026_06_05.md` | ATM → Broker/Account Automation Console (Phase 1) — 2026-06-05 | review_required | OK | `4cc7fdd232c2` |
 | `docs/architecture/ATM_BROKER_ACCOUNT_REFACTOR_DUE_DILIGENCE.md` | ATM Controls → Broker/Account Automation — Due Diligence (Phase 1) | review_required | OK | `34549ef247f4` |
 | `docs/architecture/ATM_EXECUTOR_AUTOMATION_MODE_WIRING_2026_06_05.md` | ATM Executor ← automation_mode Wiring (2026-06-05) | review_required | OK | `62abcc4e67d2` |
@@ -352,7 +352,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/FUNDAMENTALS_FEED_PLAN_2026-09-27.md` | Fundamentals Feed Plan: SEC company facts and 8-K into the living thesis | review_required | OK | `cef82749ea3f` |
 | `docs/architecture/GAIN_GUARDIAN.md` | Gain Guardian — Holdings Exit Intelligence (Live Book, Advisory-Only) | review_required | OK | `1d3bec366edc` |
 | `docs/architecture/GOOGLE_NOTES_BITEMPORAL_DDL_ARCHITECT_RECONCILIATION_2026-08-24.md` | Google Notes bitemporal DDL — architect reconciliation | review_required | OK | `8d29266fc3e6` |
-| `docs/architecture/GOVERNED_MODEL_BRIDGE.md` | The governed model bridge — caps, callers, and how it fails | review_required | OK | `bc68c49ea023` |
+| `docs/architecture/GOVERNED_MODEL_BRIDGE.md` | The governed model bridge — caps, callers, and how it fails | review_required | OK | `41c62f4aafab` |
 | `docs/architecture/HERMES_PERSISTENT_TICKER_INTELLIGENCE_ARCHITECTURE_2026-08-23.md` | Hermes Persistent Ticker Intelligence Architecture | review_required | OK | `3a4320625b1e` |
 | `docs/architecture/HOME_COMMAND_BRAIN_V2.md` | Home v2 — The Command Brain (2026-07-17) | review_required | OK | `6e695df9a86e` |
 | `docs/architecture/HONEST_MATURITY_ASSESSMENT_2026-09-20-0902.md` | Honest maturity assessment — 2026-09-20 09:02 ET | archive_superseded | OK | `9400539bf093` |
@@ -569,7 +569,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/communications-workspace.md` | Communications Workspace — Phase 7 | review_required | OK | `ef24c2e77a8e` |
 | `docs/architecture/curation-and-provenance.md` | Controlled Curation and Provenance (Phase 5) | review_required | OK | `3e135a9b0d64` |
 | `docs/architecture/delivery-ledger.md` | ChannelDelivery@v1 — Delivery Ledger | review_required | OK | `c1ee03bda33f` |
-| `docs/architecture/gateway-enforcement.md` | Communications Gateway Enforcement (Phase 2) | review_required | OK | `d27d4e832ef1` |
+| `docs/architecture/gateway-enforcement.md` | Communications Gateway Enforcement (Phase 2) | review_required | OK | `34207af4545b` |
 | `docs/architecture/holding_llm_curation_20260909/CIO_AS_IS_2026-09-09-1634.md` | CIO / Command Center — AS-IS (holding LLM curation) — 2026-09-09-1634 | review_required | OK | `ee2974ce5e48` |
 | `docs/architecture/holding_llm_curation_20260909/CIO_FUTURE_2026-09-09-1634.md` | CIO / Command Center — FUTURE (holding LLM curation) — 2026-09-09-1634 | review_required | OK | `731960050b0c` |
 | `docs/architecture/holding_llm_curation_20260909/CIO_GAP_2026-09-09-1634.md` | CIO / Command Center — GAP (holding LLM curation) — 2026-09-09-1634 | review_required | OK | `abb87a5a6101` |
@@ -1426,18 +1426,20 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_00_PREFLIGHT.md` | Stage 0 · Fresh-state preflight and constitutional read | review_required | OK | `d565bb67c3fa` |
 | `docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_01_PR_COLLISION.md` | Stage 1 · Open-PR collision / convergence inventory | review_required | OK | `b072654894ad` |
 | `docs/implementation/maturity-program/sop-1.2.0-20260902/VERIFIER_RUNBOOK.md` | SOP 1.2.0 · Independent verifier runbook | review_required | OK | `db4ba680bfb7` |
-| `docs/implementation/n8n-maturity/00-MASTER-PROGRAM.md` | 00 — N8N Maturity Acceleration: program index | review_required | OK | `9c43aea80082` |
+| `docs/implementation/n8n-maturity/00-MASTER-PROGRAM.md` | 00 — N8N Maturity Acceleration: program index | review_required | OK | `5b6d93c7ffb8` |
 | `docs/implementation/n8n-maturity/01-registry-reconciliation.md` | 01 — Lane registry reconciliation (B1) | review_required | OK | `7ef9d42aa3c9` |
-| `docs/implementation/n8n-maturity/02-six-workflow-architecture.md` | N8N Maturity — 02: six-workflow architecture (registry-driven dispatch) | review_required | OK | `eca20f41c990` |
+| `docs/implementation/n8n-maturity/02-six-workflow-architecture.md` | N8N Maturity — 02: six-workflow architecture (registry-driven dispatch) | review_required | OK | `9a47d5da852d` |
 | `docs/implementation/n8n-maturity/03-momentum-scalp-lanes.md` | 03 — Momentum-scalp lanes under n8n: inventory, root cause, dispatch design, monitoring | review_required | OK | `3ea31aa32eee` |
 | `docs/implementation/n8n-maturity/BROKER_ENV_AUDIT.md` | Broker env-name read audit — which jobs truly need broker names | review_required | OK | `76aa7605bcfb` |
 | `docs/implementation/n8n-maturity/B_FAMILIES_TOP5.md` | B families top 5 — one parameterised job per same-script cron family | review_required | OK | `e1f607cfa001` |
 | `docs/implementation/n8n-maturity/MIGRATION_RECONCILIATION_20261012.md` | TradeAI migration reconciliation | review_required | OK | `b6e056759869` |
 | `docs/implementation/n8n-maturity/MOMENTUM_LINEAGE_IMPLEMENTATION_20261013.md` | Momentum lineage and lifecycle implementation | review_required | OK | `a8a7fb2c8c0c` |
 | `docs/implementation/n8n-maturity/MONITOR_FOLD_COVERAGE_W1-9.md` | Monitor fold coverage (W1-9): freshness contracts, input starvation and design notes for the rest | review_required | OK | `527bdf9c7d0f` |
-| `docs/implementation/n8n-maturity/N8N_CONFIGURATION.md` | N8N configuration — ms01-openclaw (the entry point) | review_required | OK | `33f54fe4fb90` |
-| `docs/implementation/n8n-maturity/N8N_MONITORING_AND_REMEDIATION_STANDARD.md` | N8N monitoring, SIEM, Telegram and LLM auto-remediation standard — per lane | review_required | OK | `5425cba590c8` |
-| `docs/implementation/n8n-maturity/N8N_ONBOARDING_STANDARD.md` | N8N onboarding standard — the mandatory procedure for adding anything to n8n | review_required | OK | `e274b7907193` |
+| `docs/implementation/n8n-maturity/N8N_CONFIGURATION.md` | N8N configuration — ms01-openclaw (the entry point) | review_required | OK | `f641fa554902` |
+| `docs/implementation/n8n-maturity/N8N_GAP_ASSESSMENT_AND_MATURITY_REVIEW_20261014.md` | Final gap assessment and maturity review — platform, n8n and the mandatory workflow framework (2026-10-14) | review_required | OK | `2463bbcc784d` |
+| `docs/implementation/n8n-maturity/N8N_MONITORING_AND_REMEDIATION_STANDARD.md` | N8N monitoring, SIEM, Telegram and LLM auto-remediation standard — per lane | review_required | OK | `fb93127b9fe6` |
+| `docs/implementation/n8n-maturity/N8N_ONBOARDING_STANDARD.md` | N8N onboarding standard — the mandatory procedure for adding anything to n8n | review_required | OK | `b082eeb784ef` |
+| `docs/implementation/n8n-maturity/PROGRAM_TRACKER_20261015.md` | n8n fabric program — WHAT'S DONE / WHAT'S LEFT (2026-10-15) | review_required | OK | `d7f7b5e0b70d` |
 | `docs/implementation/n8n-maturity/REFACTOR_SHARDS_05_08_SOURCE_INTEGRATION_20261011.md` | Refactor shards 05–08 local source integration | review_required | OK | `442547ac5fe7` |
 | `docs/implementation/n8n-maturity/REFACTOR_SHARD_01_20261011.md` | Refactor shard 01 — offline CLI plans and durable receipts | review_required | OK | `79cbfc00a4a6` |
 | `docs/implementation/n8n-maturity/REFACTOR_SHARD_02_20261011.md` | Refactor shard 02 — source handoff | review_required | OK | `92f50ecf978d` |
@@ -1526,6 +1528,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/sot/phase9_watch_directives_notes.md` | Phase 9 — `watch_directives`: one write module | review_required | MISSING HEADER | `8d703bc3a61f` |
 | `docs/incidents/DAY_SCALP_PIPELINE_FIXES_2026-08-19.md` | Day-Scalp Pipeline — Fixes & Enhancements (2026-08-19) | review_required | OK | `c6c4a11b63fb` |
 | `docs/incidents/DAY_SCALP_PIPELINE_OUTAGE_2026-08-19.md` | Day-Scalp Pipeline Outage — Root Cause & Remediation Plan (2026-08-19) | review_required | OK | `304b9f0e8db6` |
+| `docs/incidents/INCIDENT_20261014_SPCX_RESTING_STOPS.md` | INC-20261014-SPCX — resting Schwab stops filled; the stop alerts were digested | review_required | OK | `ee98be2adfdf` |
 | `docs/incidents/PHASE67A_FINVIZ_AGENT_STALENESS_INCIDENT_INVENTORY.md` | Phase 67A — Finviz & Agent Staleness Incident Inventory | review_required | OK | `4e6a66d54dd5` |
 | `docs/incidents/PHASE67B_FINVIZ_CREDENTIAL_HEALTH_VALIDATION.md` | Phase 67B — Finviz Credential Health Validation | review_required | OK | `f0dfd8990571` |
 | `docs/incidents/PHASE67C_FINVIZ_SECRET_UPDATE_CHECKPOINT.md` | Phase 67C — Finviz Secret Update Checkpoint | review_required | OK | `a17d03c5149b` |
@@ -1700,7 +1703,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/operator/ATM_RUNBOOK.md` | ATM Operator Runbook | review_required | OK | `b273f679aff3` |
 | `docs/ops/ACTIVE_TRADER_ARMED_QUALITY_2026-10-09.md` | Active Trader: ARMED quality, stand-down, Trade-AI verdict (2026-10-09) | review_required | MISSING HEADER | `a9da923f94da` |
 | `docs/ops/ADVICE_DIGESTS_2026-10-08.md` | Advice digests — 10:00 / 15:00 / 17:00 ET (2026-10-08) | review_required | MISSING HEADER | `b4e24d80618c` |
-| `docs/ops/AGENTS_GUARD_HOOK.md` | AGENTS.md guard hook for Claude Code (PreToolUse) | review_required | OK | `73eaf7ad75b7` |
+| `docs/ops/AGENTS_GUARD_HOOK.md` | AGENTS.md guard hook for Claude Code (PreToolUse) | review_required | OK | `5e8e04efbd3f` |
 | `docs/ops/AUTONOMOUS_ADVISORY_LOOP_CLOSURE_RESULT_2026-08-23.md` | Trade AI Autonomous Advisory Loop Closure Result | review_required | OK | `51a39935be0a` |
 | `docs/ops/AUTONOMOUS_ADVISOR_SESSION_CLOSEOUT_2026-08-20.md` | Autonomous Advisor Session Closeout — 2026-08-20 | review_required | OK | `368297046d4f` |
 | `docs/ops/AUTONOMY_OPERATOR_RUNBOOK.md` | Autonomy Operator Runbook (READ_ONLY_ADVISORY) | review_required | OK | `e30957166ceb` |
@@ -1865,7 +1868,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/DRIVE_ARCHIVE_2026-09-01.md` | Drive archive — 2026-09-01 | review_required | OK | `3490029f050c` |
 | `docs/ops/DRIVE_MUTATION_SAFETY.md` | Drive mutation safety (gog v0.12.x) | review_required | OK | `9b701b444eb7` |
 | `docs/ops/F6_UTC_CRON_PROPOSALS.md` | F6 — UTC scheduling proposals for LLM-heavy jobs | review_required | OK | `991bedac8b13` |
-| `docs/ops/FEATURE_TO_LIVE_DEPLOY_RUNBOOK.md` | Feature-to-live deploy runbook (single-approval) | review_required | OK | `6addbfc81c7f` |
+| `docs/ops/FEATURE_TO_LIVE_DEPLOY_RUNBOOK.md` | Feature-to-live deploy runbook (single-approval) | review_required | OK | `e863240076e1` |
 | `docs/ops/FLASH_ACTIVATION_AND_THESIS_CANARY_2026-08-20.md` | Flash activation + thesis canary — 2026-08-20 | review_required | OK | `2423165b9ce4` |
 | `docs/ops/GITHUB_ACTIONS_COST_REDUCTION_PLAN.md` | GitHub Actions cost-reduction plan | review_required | OK | `820bad46ce5f` |
 | `docs/ops/GITHUB_ACTIONS_QUOTA_INCIDENT_2026-08-27.md` | GitHub Actions outage — repo visibility flip exhausted the private-repo minute quota | review_required | OK | `1d1b620b91db` |
@@ -2005,9 +2008,14 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/live_proof_20260928/06-changes-and-promotion.md` | 06 — Changes and promotion | review_required | OK | `6ed3b5907f66` |
 | `docs/ops/live_proof_20260928/07-operator-summary.md` | 07 — Operator summary (redacted) | review_required | OK | `e4e6a058cde6` |
 | `docs/ops/openclaw_stage2_soul_patch_20260923.md` | OpenClaw Maria SOUL / skill patch — Stage 2 (specialist honesty) | review_required | OK | `d0a83ec99d47` |
+| `docs/ops/packets/maturity-remeasure-relay-live-removal-20261015/README.md` | Packet: take maturity-remeasure off the relay live list (config-write, NOT APPLIED) | review_required | MISSING HEADER | `59b9f653cd6a` |
 | `docs/ops/packets/n8n-comms-intent-consumer-20261015/03_apply.md` | Apply once (operator) | review_required | MISSING HEADER | `498d580f4571` |
 | `docs/ops/packets/n8n-comms-intent-consumer-20261015/04_rollback.md` | Rollback | review_required | MISSING HEADER | `12e007b5b1d1` |
 | `docs/ops/packets/n8n-comms-intent-consumer-20261015/README.md` | n8n comms-intent consumer — operator packet (2026-10-15) | review_required | MISSING HEADER | `801391d629ff` |
+| `docs/ops/packets/research-insights-unique-index-20261015/README.md` | Packet: UNIQUE index on research_insights(source_reference) (DDL, NOT APPLIED) | review_required | MISSING HEADER | `f53f51854f25` |
+| `docs/ops/packets/run-from-release-cohort1-20261015/03_apply.md` | Apply cohort 1 (operator) | review_required | MISSING HEADER | `dc911f2436e6` |
+| `docs/ops/packets/run-from-release-cohort1-20261015/04_rollback.md` | Roll back cohort 1 (operator) | review_required | MISSING HEADER | `f3d25844a007` |
+| `docs/ops/packets/run-from-release-cohort1-20261015/README.md` | Run from the release: cohort 1 operator packet (2026-10-15) | review_required | MISSING HEADER | `e65023d6a400` |
 | `docs/ops/provider-spend-attribution/README.md` | Provider spend attribution | review_required | OK | `df44cfc4ee62` |
 | `docs/ops/telegram_channel_diligence_20260916/00_EXECUTIVE_SUMMARY.md` | Telegram Channel Diligence — Executive Summary | review_required | OK | `19050e08a848` |
 | `docs/ops/telegram_channel_diligence_20260916/01_CHANNEL_INVENTORY_SOURCE_MAP.md` | Phase 1 — Channel Inventory & Source Mapping | review_required | OK | `6be06281ea6d` |
@@ -2292,6 +2300,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/runbooks/DB_HANG_PREVENTION.md` | DB-induced dashboard hang — prevention & recovery | review_required | OK | `4105584e570c` |
 | `docs/runbooks/DB_RETENTION.md` | DB retention — owners, archive + tripwire, grants | review_required | OK | `d5b6b3bb4587` |
 | `docs/runbooks/FINNHUB_KEY_ROTATION.md` | Finnhub API Key Rotation Runbook | review_required | OK | `b3f47d44596c` |
+| `docs/runbooks/INCIDENT_RESPONSE.md` | Incident response runbook — Trade AI on ms01 | review_required | OK | `1e34cd5ab633` |
 | `docs/runbooks/KEY_ROTATION.md` | Key Rotation Runbook (2026-07-18) | review_required | OK | `986b4883e260` |
 | `docs/runbooks/OPTIONS_FIRST_POSITION_ACCEPTANCE.md` | First Real Option Position — Acceptance Runbook (v1.1 Phase 10) | review_required | OK | `0de9b8a462fb` |
 | `docs/runbooks/PLAYWRIGHT_ARTIFACTS_POLICY.md` | Playwright / visual-review artifact policy | review_required | OK | `fed6d1aae523` |

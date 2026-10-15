@@ -619,6 +619,8 @@ def _dlq_findings(root: Path, now: datetime) -> list[dict[str, Any]]:
                 "artifact_rel": LEDGER_REL,
                 "store": "persistent-state",
                 "detected_at": d.get("dead_at") or day,
+                "lane": d.get("lane_id"),  # flood-policy auto-resolve evidence; not part of the event payload
+                "mode": d.get("mode"),
             }
         )
     open_lanes = {str(b.get("lane_id")): b for b in breakers}
@@ -1072,6 +1074,11 @@ def _diagnosis_findings(root: Path, now: datetime) -> list[dict[str, Any]]:
                     "severity": sev,
                     "detail": str(e.get("detail") or e.get("reason") or "")[:160],
                     "detected_at": e.get("at") or doc.get("as_of"),
+                    # 2026-10-15 flood policy (scripts/lib/incident_flood_policy.py): the collapse and refusal rules
+                    # key on these. Receipt evidence only; build_event() does not read them, so payloads are unchanged.
+                    "lane": e.get("lane"),
+                    "event_type": e.get("event_type"),
+                    "reason": e.get("reason"),
                 }
             )
             passed += 1
@@ -1355,6 +1362,30 @@ def write_lane_registry_receipt(root: Path, drift: list[dict[str, Any]], now: da
     return p
 
 
+def _flood_policy(root: Path, findings: list[dict[str, Any]]) -> dict[str, Any]:
+    """The incident-flood rules (scripts/lib/incident_flood_policy.py) over this run's findings.
+
+    report_only (the default): the summary goes on the receipt and the findings are published unchanged.
+    enforce: ``_findings`` (the reduced list) replaces them; the caller pops it. A broken policy is a note on the
+    receipt and the findings are published unchanged — the flood rules can never stop the fan-in."""
+    try:
+        from scripts.lib import incident_flood_policy as FP
+
+        policy = FP.load_policy()
+        explicit = os.environ.get("TRADEAI_N8N_COORDINATION_LEDGER")
+        ledger = Path(explicit) if explicit else root / LEDGER_REL
+        try:
+            succ = FP.latest_successes(ledger)
+        except Exception as exc:  # noqa: BLE001 — no success map means no auto-resolve, never a crash
+            succ, NOTES["flood_policy_source"] = {}, f"runs_unavailable:{type(exc).__name__}"
+        res = FP.apply_fanin_policy(findings, policy, successes=succ)
+        out = FP.summary(res)
+        out["_findings"] = res["findings"]
+        return out
+    except Exception as exc:  # noqa: BLE001
+        return {"applied": False, "mode": "error", "error": f"{type(exc).__name__}: {str(exc)[:120]}"}
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
     g = ap.add_mutually_exclusive_group(required=True)
@@ -1371,6 +1402,11 @@ def main(argv: list[str] | None = None) -> int:
     global PREV_RECEIPT
     PREV_RECEIPT = prev
     findings = collect(root, now)
+    flood = _flood_policy(root, findings)
+    if flood.get("applied"):
+        findings = flood.pop("_findings")
+    else:
+        flood.pop("_findings", None)
     by_sev: dict[str, int] = {}
     for f in findings:
         by_sev[f["severity"]] = by_sev.get(f["severity"], 0) + 1
@@ -1398,7 +1434,16 @@ def main(argv: list[str] | None = None) -> int:
             "event_id": ev["event_id"],
             "ops": [],
         }
-        for extra in ("workflow_id", "count", "event_keys", "comms_intent_incident_key"):  # grouping evidence (gap 11)
+        for extra in (  # grouping evidence (gap 11); lane/event_type/reason/mode for the flood policy (2026-10-15)
+            "workflow_id",
+            "count",
+            "event_keys",
+            "comms_intent_incident_key",
+            "lane",
+            "event_type",
+            "reason",
+            "mode",
+        ):
             if extra in f:
                 row[extra] = f[extra]
         if client is None:
@@ -1459,6 +1504,7 @@ def main(argv: list[str] | None = None) -> int:
         "recovered": recovered,
         "outbox_source": OUTBOX_SOURCE_STATUS,
         "source_notes": dict(NOTES),
+        "flood_policy": flood,
         # the relay baseline survives a run where the relay source was off or broken (no false +delta later)
         "relay_counts": dict(RELAY_COUNTS) or prev.get("relay_counts") or None,
         "ok": (not args.apply) or all(r.get("state") not in {"UNREACHABLE", "REFUSED", "UNKNOWN"} for r in rows),
@@ -1475,6 +1521,11 @@ def main(argv: list[str] | None = None) -> int:
                 "open": len(findings),
                 "by_severity": by_sev,
                 "recovered": len(recovered),
+                "flood_policy": {
+                    "mode": flood.get("mode"),
+                    "before": (flood.get("before") or {}).get("open"),
+                    "after": (flood.get("after") or {}).get("open"),
+                },
                 "ok": receipt["ok"],
                 "sample": [(r["severity"], r["source"], r["item"][:60]) for r in rows[:8]],
             },

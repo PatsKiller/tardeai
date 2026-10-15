@@ -6,6 +6,21 @@ Measured at: e8a173e7d / not measured
 
 _Last updated: 2026-09-13 (data-source health decay view; prior 2026-08-08)_
 
+> **Correction 2026-10-14 (measured at served `3e9dc5e14`):** the agent does **not** run from cron every 30 min. It runs
+> as the `tradeai-health-agent.service` daemon (adaptive cadence 1800/300/90 s, entry via drop-in
+> `30-current-collectors.conf`) **and** as the `health-agent` step of `tradeai-health-tick.timer` every 15 min, sharing
+> `/tmp/health_agent.lock`. Policy `config/health_agent_policy.json` is `mode: advisory` and is read from the DB
+> (`config_documents`, key `health_agent_policy`) before the file. **#1737** (merged `a1b1c5c93`) removed the three
+> remediation-map entries that ran `unified_stop_supervisor.py --apply` (`stops_stale`, `log_errors`,
+> `execution_log_errors`; WS7-09) and bans broker-class scripts from the map
+> (`tests/test_health_agent_no_broker_remediation_20261014.py`). It is **LIVE @5aa61048d** (served since 00:24Z 10-15;
+> the served policy file's sha256 equals origin/main's). Before that, as incident containment, the operator ran a
+> `config-write` grant script (grants `96a0ab8c`, `d3a80ca0`) that edited the then-served release's policy file in
+> place at 18:11 ET to the merged content; the release has now superseded that edit (release-immutability finding:
+> `docs/implementation/n8n-maturity/N8N_GAP_ASSESSMENT_AND_MATURITY_REVIEW_20261014.md` §6). **#1733** (LIVE) adds a
+> `schwab_token_revoked` finding while Schwab access is paused. The health agent effectively never pages (WS3-26); the
+> paging path is `incident_notifier.py` (`docs/ALERT_INCIDENT_RESOLUTION.md` "Alerting framework").
+
 A centralized, proactive health layer that sits **on top of** the existing fragmented monitors and turns
 their scattered signals into a single score, proactive trend detection, and bounded auto-remediation —
 including routing code-level defects to AI coders (Claude Code, Cursor, Grok, ChatGPT/Codex, …).
