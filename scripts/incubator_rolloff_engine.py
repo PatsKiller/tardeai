@@ -5,8 +5,15 @@ Run daily on trading days (6 PM). Marks symbols as ROLLED_OFF.
 Does NOT delete rows.
 
 Usage:
-    .venv/bin/python scripts/incubator_rolloff_engine.py --dry-run
+    .venv/bin/python scripts/incubator_rolloff_engine.py --dry-run    # offline plan: no env, DB, telemetry or writes
+    .venv/bin/python scripts/incubator_rolloff_engine.py --preview    # READ ONLY DB preview of what --apply would do
     .venv/bin/python scripts/incubator_rolloff_engine.py --apply
+
+n8n shadow wave LD-W1 (2026-10-15): an explicit ``--dry-run`` returns an offline plan before the DB import, the env
+load, pipeline telemetry and any file write, and wins over ``--apply`` (before this change ``--dry-run`` opened a
+DB session and ``--dry-run --apply`` COMMITTED). The old DB-reading preview is ``--preview`` on a READ ONLY session.
+A real ``--apply`` run writes LaneRunReceipt@v1 ``<state_root>/data/runtime/incubator-rolloff-engine_last.json``
+(``ok_at`` advances only on success).
 """
 import argparse
 import json
@@ -15,10 +22,17 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+LANE_ID = "incubator-rolloff-engine"
+
+if __name__ == "__main__" and "--dry-run" in sys.argv[1:]:
+    print(f"DRY-RUN {LANE_ID}: would evaluate ACTIVE incubator_universe rows, mark stale/failed entries ROLLED_OFF "
+          "with one incubator_events row each (--apply) and write a LaneRunReceipt; no env, DB, telemetry or writes")
+    raise SystemExit(0)
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
-from session13_db import get_conn
+from session13_db import get_conn  # noqa: E402
 
 # Pipeline telemetry
 try:
@@ -158,15 +172,23 @@ def rolloff_ticker(conn, inc, reasons, dry_run=False):
 
 def main():
     parser = argparse.ArgumentParser(description="Incubator roll-off engine")
-    parser.add_argument("--dry-run", action="store_true", help="Print actions without writing to DB")
+    parser.add_argument("--dry-run", action="store_true", help="offline plan (handled before any import); wins")
+    parser.add_argument("--preview", action="store_true", help="READ ONLY DB preview of the roll-offs")
     parser.add_argument("--apply", action="store_true", help="Write changes to DB")
     args = parser.parse_args()
+    args.dry_run = bool(args.dry_run or args.preview)
+    if args.dry_run:
+        args.apply = False
 
     if not args.dry_run and not args.apply:
-        log.error("Must specify --dry-run or --apply")
+        log.error("Must specify --dry-run, --preview or --apply")
         sys.exit(1)
 
     conn = get_conn()
+    if args.dry_run:
+        from lib.lane_last_receipt import enforce_readonly
+
+        enforce_readonly(conn)  # the preview cannot write even if a write statement were reached
     try:
         cur = conn.cursor()
         cur.execute(ACTIVE_INCUBATOR_QUERY)
@@ -196,6 +218,8 @@ def main():
         log.info("Still active:  %d", still_active)
         log.info("Total checked: %d", len(active))
         log.info("Mode:          %s", "DRY-RUN" if args.dry_run else "APPLIED")
+        return {"rolled_off": rolled_off, "still_active": still_active, "checked": len(active),
+                "mode": "preview" if args.dry_run else "apply"}
 
     except Exception:
         conn.rollback()
@@ -205,7 +229,30 @@ def main():
         conn.close()
 
 
+def _apply_with_receipt() -> int:
+    """A real --apply run: run main() and write the lane receipt whatever the outcome (never from a preview)."""
+    from lib.lane_last_receipt import now_iso, write_lane_receipt
+
+    started = now_iso()
+    try:
+        summary = main()
+    except SystemExit as exc:
+        rc = exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
+        write_lane_receipt(LANE_ID, ok=rc == 0, exit_code=rc, started_at=started, script="incubator_rolloff_engine.py",
+                           summary={"completed": rc == 0})
+        raise
+    except Exception as exc:
+        write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started, script="incubator_rolloff_engine.py",
+                           error=type(exc).__name__)
+        raise
+    write_lane_receipt(LANE_ID, ok=True, exit_code=0, started_at=started, script="incubator_rolloff_engine.py",
+                       summary=summary or {})
+    return 0
+
+
 if __name__ == "__main__":
     with PipelineRun("incubator_rolloff_engine") as _run:
+        if "--apply" in sys.argv[1:] and "--preview" not in sys.argv[1:]:
+            sys.exit(_apply_with_receipt())
         main()
 

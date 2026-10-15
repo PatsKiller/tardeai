@@ -1,0 +1,202 @@
+{
+  "schema": "LdW1DryRunProof@v1",
+  "generated_at": "2026-10-15T12:45:57Z",
+  "how": "scripts/n8n_run_executor.py --once (real executor, real allowlist entries with locks in a scratch dir, real registry from the code root); each lane requested in mode live; scratch ledger and state root; no DB variables in the environment",
+  "state_root_files_after": [
+    "data/runtime/n8n_run_executor_last.json",
+    "data/runtime/n8n_runs/run-ldw1-proof-000000.json",
+    "data/runtime/n8n_runs/run-ldw1-proof-000001.json",
+    "data/runtime/n8n_runs/run-ldw1-proof-000002.json",
+    "data/runtime/n8n_runs/run-ldw1-proof-000003.json",
+    "data/runtime/n8n_runs/run-ldw1-proof-000004.json",
+    "data/runtime/n8n_runs/run-ldw1-proof-000005.json"
+  ],
+  "runs": [
+    {
+      "lane_id": "opening-intelligence-render",
+      "state": "RUN_DONE",
+      "mode": "dry_run",
+      "requested_mode": "live",
+      "stage_clamp": {
+        "clamped": true,
+        "effective_mode": "dry_run",
+        "reason": "stage_shadow",
+        "requested_mode": "live",
+        "stage": "shadow"
+      },
+      "argv": [
+        "flock",
+        "-n",
+        "-E",
+        "75",
+        "/tmp/claude-1000/-home-johnclaw/f49ed69f-8848-494d-8386-0e0c35d9dd59/scratchpad/disp/tmp1svky2fk/locks/opening_intel.lock.dryrun",
+        "timeout",
+        "-k",
+        "30",
+        "600",
+        "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python",
+        "scripts/opening_intelligence.py",
+        "--dry-run"
+      ],
+      "exit_code": 0,
+      "duration_s": 0.105,
+      "stdout_tail": "DRY-RUN opening-intelligence: would fetch futures, ETF proxies and cross-asset quotes; persist=False, render=False, snapshot=False; write the selected live receipt; no provider requests or files written\n",
+      "output_signal": "data/runtime/opening-intelligence-render_last.json"
+    },
+    {
+      "lane_id": "hermes-discovery-scorecard",
+      "state": "RUN_DONE",
+      "mode": "dry_run",
+      "requested_mode": "live",
+      "stage_clamp": {
+        "clamped": true,
+        "effective_mode": "dry_run",
+        "reason": "stage_shadow",
+        "requested_mode": "live",
+        "stage": "shadow"
+      },
+      "argv": [
+        "flock",
+        "-n",
+        "-E",
+        "75",
+        "/tmp/claude-1000/-home-johnclaw/f49ed69f-8848-494d-8386-0e0c35d9dd59/scratchpad/disp/tmp1svky2fk/locks/hermes_discovery_scorecard.lock.dryrun",
+        "timeout",
+        "-k",
+        "30",
+        "600",
+        "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python",
+        "scripts/hermes_discovery_scorecard.py",
+        "--dry-run"
+      ],
+      "exit_code": 0,
+      "duration_s": 0.104,
+      "stdout_tail": "DRY-RUN hermes-discovery-scorecard: would compute advisory discovery outcomes and publish the scorecard feed\n",
+      "output_signal": "data/runtime/hermes-discovery-scorecard_last.json"
+    },
+    {
+      "lane_id": "wire-advisory-lessons",
+      "state": "RUN_DONE",
+      "mode": "dry_run",
+      "requested_mode": "live",
+      "stage_clamp": {
+        "clamped": true,
+        "effective_mode": "dry_run",
+        "reason": "stage_shadow",
+        "requested_mode": "live",
+        "stage": "shadow"
+      },
+      "argv": [
+        "flock",
+        "-n",
+        "-E",
+        "75",
+        "/tmp/claude-1000/-home-johnclaw/f49ed69f-8848-494d-8386-0e0c35d9dd59/scratchpad/disp/tmp1svky2fk/locks/wire_lessons.lock.dryrun",
+        "timeout",
+        "-k",
+        "30",
+        "900",
+        "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python",
+        "scripts/wire_advisory_lessons.py",
+        "--dry-run"
+      ],
+      "exit_code": 0,
+      "duration_s": 0.106,
+      "stdout_tail": "DRY-RUN wire-advisory-lessons: would stage human-review lessons and refresh strategy lesson rollup; no DB or child execution; options={'dry_run': True}; inputs NOT_MEASURED\n",
+      "output_signal": "data/runtime/wire-advisory-lessons_last.json"
+    },
+    {
+      "lane_id": "incubator-rolloff-engine",
+      "state": "RUN_DONE",
+      "mode": "dry_run",
+      "requested_mode": "live",
+      "stage_clamp": {
+        "clamped": true,
+        "effective_mode": "dry_run",
+        "reason": "stage_shadow",
+        "requested_mode": "live",
+        "stage": "shadow"
+      },
+      "argv": [
+        "flock",
+        "-n",
+        "-E",
+        "75",
+        "/tmp/claude-1000/-home-johnclaw/f49ed69f-8848-494d-8386-0e0c35d9dd59/scratchpad/disp/tmp1svky2fk/locks/incubator_rolloff.lock.dryrun",
+        "timeout",
+        "-k",
+        "30",
+        "600",
+        "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python",
+        "scripts/incubator_rolloff_engine.py",
+        "--dry-run"
+      ],
+      "exit_code": 0,
+      "duration_s": 0.114,
+      "stdout_tail": "DRY-RUN incubator-rolloff-engine: would evaluate ACTIVE incubator_universe rows, mark stale/failed entries ROLLED_OFF with one incubator_events row each (--apply) and write a LaneRunReceipt; no env, DB, telemetry or writes\n",
+      "output_signal": "data/runtime/incubator-rolloff-engine_last.json"
+    },
+    {
+      "lane_id": "pattern-extractor",
+      "state": "RUN_DONE",
+      "mode": "dry_run",
+      "requested_mode": "live",
+      "stage_clamp": {
+        "clamped": true,
+        "effective_mode": "dry_run",
+        "reason": "stage_shadow",
+        "requested_mode": "live",
+        "stage": "shadow"
+      },
+      "argv": [
+        "flock",
+        "-n",
+        "-E",
+        "75",
+        "/tmp/claude-1000/-home-johnclaw/f49ed69f-8848-494d-8386-0e0c35d9dd59/scratchpad/disp/tmp1svky2fk/locks/pattern_extractor.lock.dryrun",
+        "timeout",
+        "-k",
+        "30",
+        "1200",
+        "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python",
+        "scripts/pattern_extractor.py",
+        "--dry-run"
+      ],
+      "exit_code": 0,
+      "duration_s": 0.117,
+      "stdout_tail": "DRY-RUN pattern-extractor: would group closed paper trades into patterns, upsert pattern_library rows and write a LaneRunReceipt; no env, DB, log-file or receipt writes\n",
+      "output_signal": "data/runtime/pattern-extractor_last.json"
+    },
+    {
+      "lane_id": "goal-gate-bridge",
+      "state": "RUN_DONE",
+      "mode": "dry_run",
+      "requested_mode": "live",
+      "stage_clamp": {
+        "clamped": true,
+        "effective_mode": "dry_run",
+        "reason": "stage_shadow",
+        "requested_mode": "live",
+        "stage": "shadow"
+      },
+      "argv": [
+        "flock",
+        "-n",
+        "-E",
+        "75",
+        "/tmp/claude-1000/-home-johnclaw/f49ed69f-8848-494d-8386-0e0c35d9dd59/scratchpad/disp/tmp1svky2fk/locks/goal_gate_bridge.lock.dryrun",
+        "timeout",
+        "-k",
+        "30",
+        "300",
+        "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python",
+        "scripts/cio_gate_measurement_bridge.py",
+        "--dry-run"
+      ],
+      "exit_code": 0,
+      "duration_s": 0.108,
+      "stdout_tail": "DRY-RUN goal-gate-bridge: would measure the alex maturity gates from data/cio and write data/cio/agent_gate_measurements.json (--write-measurements) and a LaneRunReceipt; nothing read or written\n",
+      "output_signal": "data/runtime/goal-gate-bridge_last.json"
+    }
+  ]
+}
