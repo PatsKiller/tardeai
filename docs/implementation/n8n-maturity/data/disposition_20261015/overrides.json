@@ -1,0 +1,183 @@
+{
+ "schema": "LaneDispositionOverrides@v1",
+ "as_of": "2026-10-15",
+ "_why": "Per-lane verdicts that were re-checked against fresh host evidence on 2026-10-15 (read-only: crontab -l, log files, LaneRunReceipt files, code). They win over the WS2 family default in scripts/n8n_lane_disposition.py. Every RETIRE row names its evidence; an empty or idle result alone is never grounds to retire (REFACTOR_PLAN addendum item 4).",
+ "lanes": {
+  "agent-intelligence-cron-deep": {
+   "disposition": "RETIRE",
+   "target": "-",
+   "target_shape": "none",
+   "wave": "R1",
+   "evidence": "wrapper runs .venv/bin/python relative to CURRENT; CURRENT/.venv does not exist (ls 2026-10-15); every CURRENT-era log is 'No such file or directory' with 0 steps (latest logs/agent_intelligence_daily_20261015_062501.log); retire-wave2 OPERATOR_DECISION row 2 YES",
+   "duplicate_of": ""
+  },
+  "agent-intelligence-cron-daily": {
+   "disposition": "RETIRE",
+   "target": "-",
+   "target_shape": "none",
+   "wave": "R1",
+   "evidence": "same wrapper; logs/agent_intelligence_daily_20261015_062501.log = '.venv/bin/python: No such file or directory' x N, 0 steps; retire-wave2 row 1 YES",
+   "duplicate_of": ""
+  },
+  "agent-intelligence-cron-intraday": {
+   "disposition": "RETIRE",
+   "target": "-",
+   "target_shape": "none",
+   "wave": "R1",
+   "evidence": "same wrapper; logs/agent_intelligence_intraday_20261014_143002.log 1297 B of 'No such file'; retire-wave2 row 3 YES",
+   "duplicate_of": ""
+  },
+  "symbol-enrichment": {
+   "disposition": "RETIRE",
+   "target": "-",
+   "target_shape": "none",
+   "wave": "R1",
+   "evidence": "cron argv '--limit 50' is not an option of scripts/symbol_enrichment.py (positional symbol/score only; strict parser since 1c733d98f 2026-10-11): logs/symbol_enrichment.log ends 'error: unrecognized arguments: --limit' on every weekday run since the release (3 of 3, last 2026-10-15 07:30, exit 2). Before that the line enriched only the CLI default symbol. enrich_symbol() stays a library for its other callers; only this cron line is dead",
+   "duplicate_of": ""
+  },
+  "cleanup-stale-locks": {
+   "disposition": "RETIRE",
+   "target": "-",
+   "target_shape": "none",
+   "wave": "R1b",
+   "evidence": "OPERATOR YES REQUIRED. */5 deletes of holder-less lock files (59,387 deletes, duplicates_obsolete.md E) race the jobs that create them; flock locks need no cleanup. Risk if wrong: a safe_flock pid lock left by a killed job stays until the next holder check",
+   "duplicate_of": ""
+  },
+  "risk-gate": {
+   "disposition": "RETIRE",
+   "target": "-",
+   "target_shape": "none",
+   "wave": "R1b",
+   "evidence": "OPERATOR YES REQUIRED. hourly 'risk_gate.py --test' runs the 7 synthetic self-test cases ('=== All risk gate tests passed ===', logs/risk_gate.log 2026-10-15) and writes them into risk_gate_results, which api_v2.py:55048 and telegram_command_handler.py:1786 aggregate as if real gate decisions (4,081 writes / 14 reads). The self-test belongs in CI",
+   "duplicate_of": ""
+  },
+  "backup-generated-docs": {
+   "disposition": "RETIRE",
+   "target": "-",
+   "target_shape": "none",
+   "wave": "R1b",
+   "evidence": "OPERATOR YES REQUIRED. linux_launchers/backup_generated_docs.sh pushes from cron (AGENTS.md 24.5 forbids a push from a scheduled job); logs/docs_backup.log 'no generated-doc changes' every night 10-10..10-14",
+   "duplicate_of": ""
+  },
+  "goal-pilot-material-change": {
+   "disposition": "RETIRE",
+   "target": "-",
+   "target_shape": "none",
+   "wave": "R1b",
+   "evidence": "OPERATOR YES REQUIRED. hourly pilot; every verdict in ~/logs/goal_pilot_material_change.log is UNEVALUABLE missing_facts (168/168, WS2 F04); no consumer acts on it",
+   "duplicate_of": ""
+  },
+  "dormant-lane-consumers": {
+   "disposition": "RETIRE",
+   "target": "-",
+   "target_shape": "none",
+   "wave": "R1b",
+   "evidence": "OPERATOR YES REQUIRED. hourly harness that re-checks wiring ('lanes ok: 10/10 already wired: 2', ~/logs/dormant_lane_consumers.log); log-only, no reader (WS2 F04)",
+   "duplicate_of": ""
+  },
+  "indicator-engine": {
+   "disposition": "RETIRE",
+   "target": "-",
+   "target_shape": "none",
+   "wave": "R1b",
+   "evidence": "OPERATOR YES REQUIRED. the line runs the module's __main__ demo with no argv: analyze_confluence('AMD', 'scalp') printed to logs/indicator_engine.log (pivot tables, 2026-10-15 08:00). The universe indicator cache is refreshed by indicator-cache-refresh (premarket step); duplicate_of names it",
+   "duplicate_of": "indicator-cache-refresh"
+  },
+  "ipo-lockup-alert": {
+   "disposition": "STAY_HOST",
+   "target": "host sender (comms chokepoint)",
+   "target_shape": "host",
+   "wave": "-",
+   "evidence": "NOT retired: an empty fired[] is the correct result when no lockup is within 14 days (addendum item 4); it is a Telegram alert producer (sender class)",
+   "duplicate_of": ""
+  },
+  "shadow-batch-generator-at-15-10": {
+   "disposition": "MIGRATE_N8N",
+   "target": "fabric Run Lane (registry leaf dispatcher)",
+   "target_shape": "leaf_lane",
+   "wave": "M4",
+   "evidence": "NOT retired: retire-wave2 row 11 NO (10-11 run complete, 93 packets; api_v2.py:17325 serves shadow_batch_status.json)",
+   "duplicate_of": ""
+  },
+  "hermes-research-worker-pool": {
+   "disposition": "MIGRATE_N8N",
+   "target": "hermes research process (fabric) once the receipt is honest",
+   "target_shape": "leaf_lane",
+   "wave": "M2",
+   "evidence": "NOT retired (built-but-not-wired claim checked 2026-10-15 and refuted): logs/hermes_worker_pool.log holds 421 runs 09-27..10-15; 6 of 9 lanes have runners and upsert 30-50 discovery candidates a day (10-14: 56 scanned / 40 upserted). Only tax_retirement, system_ops, custom_domain report no_runner. REPAIR: a run where every lane is cadence-skipped writes status failed/pool_incomplete (data/runtime/hermes-research-worker-pool_last.json 11:05Z), which is what the NO_OUTPUT page sees; ok_at advances only on working runs (08:05Z). Fix the receipt semantics and drop the three runner-less lanes from config/hermes_research_worker_lanes.yaml",
+   "duplicate_of": ""
+  },
+  "advisory-shadow-seed": {
+   "disposition": "RETIRE",
+   "target": "-",
+   "target_shape": "none",
+   "wave": "R2",
+   "evidence": "retire-wave2 row 12 NO today: three health clocks read data/cio/agent_tool_traces.jsonl; retire only after those readers move (operator decision)",
+   "duplicate_of": ""
+  },
+  "cio-memory-shadow-measure": {
+   "disposition": "RETIRE",
+   "target": "-",
+   "target_shape": "none",
+   "wave": "R2",
+   "evidence": "retire-wave2 row 13 NO today: measurement for open operator decision O-W3-4; retire when O-W3-4 is decided",
+   "duplicate_of": ""
+  },
+  "hermes-shadow-scorer": {
+   "disposition": "RETIRE",
+   "target": "-",
+   "target_shape": "none",
+   "wave": "R1-timer",
+   "evidence": "retire-wave2 row 4 YES: candidate_shadow_scores readers (evaluate_shadow_efficacy.py, audit_hermes_self_learning_loops.py) are unscheduled; no API reader. Timer, so a service grant (packets/consolidation-retire-wave2-20261014/timers.sh), not this cron packet",
+   "duplicate_of": ""
+  },
+  "opening-intelligence-render": {
+   "disposition": "MIGRATE_N8N",
+   "target": "fabric Run Lane (registry leaf dispatcher)",
+   "target_shape": "leaf_lane",
+   "wave": "M1",
+   "evidence": "shadow wave LD-W1 (PR #1761) (2026-10-15): offline --dry-run + LaneRunReceipt exist (shard 03); no send, no broker reach (advisory_lane_guard), no LLM",
+   "duplicate_of": ""
+  },
+  "hermes-discovery-scorecard": {
+   "disposition": "MIGRATE_N8N",
+   "target": "fabric Run Lane (registry leaf dispatcher)",
+   "target_shape": "leaf_lane",
+   "wave": "M1",
+   "evidence": "shadow wave LD-W1 (PR #1761): offline --dry-run + LaneRunReceipt (shard 04); class report; no send/broker/LLM",
+   "duplicate_of": ""
+  },
+  "wire-advisory-lessons": {
+   "disposition": "MIGRATE_N8N",
+   "target": "fabric Run Lane (registry leaf dispatcher)",
+   "target_shape": "leaf_lane",
+   "wave": "M1",
+   "evidence": "shadow wave LD-W1 (PR #1761): offline --dry-run + LaneRunReceipt (completion 119); class learn; no send/broker reach; reads Grok/ChatGPT output already stored, calls no model",
+   "duplicate_of": ""
+  },
+  "incubator-rolloff-engine": {
+   "disposition": "MIGRATE_N8N",
+   "target": "fabric Run Lane (registry leaf dispatcher)",
+   "target_shape": "leaf_lane",
+   "wave": "M1",
+   "evidence": "shadow wave LD-W1 (PR #1761): offline --dry-run + LaneRunReceipt added in this wave; class hygiene; no send/broker/LLM",
+   "duplicate_of": ""
+  },
+  "pattern-extractor": {
+   "disposition": "MIGRATE_N8N",
+   "target": "fabric Run Lane (registry leaf dispatcher)",
+   "target_shape": "leaf_lane",
+   "wave": "M1",
+   "evidence": "shadow wave LD-W1 (PR #1761): offline --dry-run + LaneRunReceipt added in this wave; class learn; import closure is the script alone",
+   "duplicate_of": ""
+  },
+  "goal-gate-bridge": {
+   "disposition": "MIGRATE_N8N",
+   "target": "fabric Run Lane (registry leaf dispatcher)",
+   "target_shape": "leaf_lane",
+   "wave": "M1",
+   "evidence": "shadow wave LD-W1 (PR #1761): offline --dry-run + LaneRunReceipt added in this wave; class report; import closure is the script alone",
+   "duplicate_of": ""
+  }
+ }
+}
