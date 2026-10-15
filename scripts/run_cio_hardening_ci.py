@@ -1239,6 +1239,16 @@ GATES = [
             "tests/test_n8n_diagnosis_exclude_scalp_20261010.py",
         ],
     ),
+    (
+        # ANCHOR: ONBOARD_DRYRUN_B8_20261015 — n8n onboarding batch B8 (lane disposition 2026-10-15, MIGRATE_N8N, no
+        # allowlist entry, no --dry-run before): run-ensemble-worker and run-governed-symbol-thesis-acquisition (LLM;
+        # Python worker + shell launcher both guarded), cio-entry-state and cio-opportunity-curator (deterministic).
+        # Offline --dry-run wins over --apply/--run: no model call, no DB, network, lock, log or send (in-process
+        # record-and-raise proof for Python, PATH-of-recording-stubs proof for the launchers); static capability audit
+        # pins chokepoint_send and no direct_sender. Listing it schedules nothing.
+        "onboard_dryrun_b8_20261015",
+        ["tests/test_onboard_dryrun_b8_20261015.py"],
+    ),
     # 2026-10-15: n8n_lane_failure_diagnosis offpeak_tier critical (OAuth first, $0.05/call, $0.10/day) — with
     # deferral armed, a failure outside the window is diagnosed now, not escalated as `conf=None; cause=`; an
     # escalation without a verdict says why and whether it retries; a later handled cycle clears the stale one.
