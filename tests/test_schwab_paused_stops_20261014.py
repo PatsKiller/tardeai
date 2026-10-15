@@ -101,6 +101,11 @@ def _health(monkeypatch, res, sent=None):
     monkeypatch.setitem(sys.modules, "stop_lifecycle_monitor",
                         types.SimpleNamespace(scan=lambda persist=True: res))
     monkeypatch.setattr(shc, "_recently_alerted", lambda sym, cond, hours=2: False)
+    monkeypatch.setattr(shc, "_alerted_since", lambda *a, **k: False)
+    # ZETA 2026-10-15 last-known fallback: hermetic (no DB, no holdings.json) — covered in its own test file.
+    monkeypatch.setattr(shc, "_last_known_blind_alerts", lambda res, **k: {"stops": [], "findings": [], "sent": []})
+    from lib import last_known_stops as _lks
+    monkeypatch.setattr(_lks, "holdings_quotes", lambda path=None: {})
     monkeypatch.setattr(shc, "_siem", lambda *a, **k: None)
     monkeypatch.setattr(shc, "_portfolio_drawdown_guard", lambda: None)
     monkeypatch.setattr(shc, "_log_health_event", lambda *a, **k: None)

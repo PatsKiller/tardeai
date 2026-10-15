@@ -4108,6 +4108,15 @@ GATES = [
         ["tests/test_stop_alert_never_digest_20261014.py"],
     ),
     (
+        # ANCHOR: STOP_LAST_KNOWN_BLIND_20261015 — ZETA/DT incident: resting Schwab stops filled with no warning while
+        # Schwab was forbidden (blind scan held zero Schwab stops). stop_health now warns NEAR_TRIGGER /
+        # TRIGGERED-LIKELY from last-known stop levels (stop_last_known table + stop_health SIEM payloads + operator
+        # entries) priced on the non-Schwab canonical mark, as immediate P1 (never digested), deduped; DEGRADED pages
+        # once per ET day naming unverifiable symbols. Hermetic: no DB, no holdings.json, transport captured.
+        "stop_last_known_blind_20261015",
+        ["tests/test_stop_last_known_blind_20261015.py"],
+    ),
+    (
         # ANCHOR: ALERT_FLOOD_AND_DEADMAN_20261015 — WS1-09/WS3-10/WS3-35 incident-flood rules behind a report_only
         # flag (drop diagnoser policy refusals and lock skips, auto-resolve on lane success, collapse per lane and
         # failure class, per-source P2 budget, P1/recoveries off the P2 cap), pinned so no P0/P1 stop, broker or
