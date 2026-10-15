@@ -3798,6 +3798,20 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: N8N_AUDIT_FINDINGS_20261015 — third-party n8n architecture audit (pinned e355be188), gap register
+        # DD03-DD08 + DD14, each reproduced from the auditor's probes and fixed: request identity (a replayed key never
+        # returns another lane/mode/workflow's row; live relay runs need a validated namespace; every executor path
+        # refuses an unvalidated p: row), one retry owner per key namespace with a typed retry block and a durable
+        # dead letter on v1 and v2, FAILED effect claims held unless proven pre-effect, the assert_fence late-write
+        # fence and late-completion incident, the attempt-bound output verdict (immutable LaneRunReceipt@v2), per-
+        # request policy reload, and the relay route table/body strictness. Hermetic: tmp_path ledgers and files,
+        # fake runners; no lane process, network, secret or broker.
+        "n8n_audit_findings_20261015",
+        [
+            "tests/test_n8n_audit_findings_20261015.py",
+        ],
+    ),
+    (
         # ANCHOR: CANARY_EFFECT_KEYS — 2026-10-15 canary double-effect audit (arch-review-20261014): every live, canary
         # or canary-wave lane that appends, sends or calls an LLM carries a STAGED effect key (cron_claim false,
         # n8n_claim false: neither side claims, executor view unchanged); the cron-side wrapper

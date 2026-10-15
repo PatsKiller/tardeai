@@ -108,9 +108,13 @@ def test_a_repeated_idempotency_key_returns_the_existing_row_as_a_duplicate_not_
     ledger, _n, _r, runs = stores
     first = _run(stores, "d1")
     runs.claim_next(now=NOW.timestamp() + 5)  # the executor picked it up meanwhile
-    again = _run(stores, "d2", mode="live")  # same key, even with a different mode
+    again = _run(stores, "d2")  # the same request identity again
     assert again["duplicate"] is True and again["state"] == "RUNNING" and again["run_id"] == first["run_id"]
-    assert again["mode"] == "dry_run"  # the recorded request wins; nothing was re-queued
+    # 2026-10-15 (audit finding 1 / DD03): the same key with a different mode is NOT a duplicate of the first
+    # request; it used to return the first (dry_run) row as this live request's success.
+    other = _run(stores, "d3", mode="dry_run", requested_by="n8n:wf-2")
+    assert other["state"] == "REFUSED" and other["reason"] == "run_idempotency_conflict"
+    assert other["conflict_fields"] == ["requested_by"]
     assert ledger._conn.execute("SELECT count(*) AS n FROM runs").fetchone()["n"] == 1
 
 
@@ -194,7 +198,12 @@ def test_lane_mode_and_idempotency_key_are_validated_against_the_allowlist(store
     assert _run(stores, "v7", requested_by="Bearer abc")["reason"] == "secret_material"
     assert _run(stores, "v8", route="coordination/event")["reason"] == "unknown_operation"
     assert stores[3].list() == []  # every refusal wrote nothing
-    assert _run(stores, "v9", mode="live")["state"] == "REQUESTED"
+    # 2026-10-15 (audit DD03): a LIVE relay request with a free-form key is refused before queueing; the same key
+    # in dry_run is still accepted.
+    live = _run(stores, "v9", mode="live")
+    assert live["reason"] == "run_key_namespace_refused" and live["key_state"] == "UNVALIDATED_NAMESPACE"
+    assert stores[3].list() == []
+    assert _run(stores, "v10")["state"] == "REQUESTED"
 
 
 def test_run_route_is_allowlisted_and_forbidden_tokens_still_block():

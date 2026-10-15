@@ -55,6 +55,36 @@ read-only ``coordination/run_outcome`` serves to the Run Lane sub-workflow. A re
 (2) Effect key: a LIVE run of a lane listed in config/n8n_effect_keys.json claims ``fx:<process>:<slot>:<ver>``
 (scripts/lib/effect_claim.py) right before the spawn, under the owner-epoch fence; a refused claim is RUN_REFUSED
 ``effect:<reason>`` and nothing runs. That file is empty at merge, so no lane's behaviour changes.
+
+2026-10-15 (third-party architecture audit against e355be188; findings DD03-DD08). Five changes, all on both the v1
+and v2 paths unless stated:
+
+* **Policy reload (DD08).** ``main`` reads config/n8n_run_allowlist.json, config/n8n_effect_keys.json and
+  config/n8n_health_contracts.json through stat-cached ``PolicyFile`` readers (scripts/lib/n8n_policy_reload.py)
+  that are re-validated for EVERY claimed run, immediately before the spawn decision: a lane revoked while its run
+  was queued or claimed is RUN_REFUSED ``lane_not_allowlisted`` without a restart, and an unreadable replacement
+  allowlist refuses every run (``allowlist_unreadable``) instead of serving the cached one. The receipt's ``policy``
+  block records the effective versions. A lane already SPAWNED is not cancelled (in-flight cancellation is (P)); a
+  fenced lane's ``assert_fence`` still refuses its write after an operator release.
+* **Attempt identity (DD07).** Every child gets ``TRADEAI_RUN_ID``, ``TRADEAI_RUN_ATTEMPT``, ``TRADEAI_RUN_MODE``
+  and ``TRADEAI_CODE_SHA``; scripts/lib/lane_last_receipt.py binds a ``LaneRunReceipt@v2`` to them and writes it
+  once, immutably, per attempt.
+* **Output verdict (DD07).** After an exit-0 LIVE run of a lane whose health contract declares ``expected_output``,
+  the per-attempt receipt is evaluated (scripts/lib/n8n_output_verdict.py): ``empty_violation`` -> RUN_FAILED
+  ``empty_output``, ``unverifiable`` -> RUN_FAILED ``output_unverifiable``. No block = ``output_verdict.verdict
+  no_rule`` and the run is unchanged (every contract today). v2 receipts that carry an evaluated verdict are
+  ``RunReceipt@v3``.
+* **Effect proof and late writes (DD05/DD06).** A FAILED effect finish is reclaimable only when proven pre-effect
+  (spawn failure, or a ``late_write_fenced`` lane that exited before passing ``assert_fence``); every other failure
+  is held for operator reconciliation. The claimed lane gets ``TRADEAI_EFFECT_FENCE`` (+ ``..._LEDGER``). A finish
+  after the owner epoch moved is a late completion (UNKNOWN + ``effect.incident = effect_late_completion``).
+* **Retry ownership (DD04).** One owner per key namespace: ``p:`` keys (fabric Run Lane) -> ``run_lane`` (the host
+  never re-runs them; the gateway admits ``:a<n>`` only after attempt n-1 finished with verdict ``retryable``);
+  ``d:``/``e:``/``g:`` -> ``host_policy`` (config/n8n_retry_policies.json via coordination/due); any other key ->
+  ``executor_inline`` (the allowlist ``retry`` loop, v1 only). The allowlist loop no longer runs for p:/d:/e:/g:
+  rows. Both paths write the verdict and a durable ``dead_letters`` row (v1: no breaker), and the receipt carries a
+  typed ``retry`` block (owner, attempt, max_attempts, attempts_remaining, retryable, next_attempt_at,
+  terminal_reason, dlq_ref).
 """
 
 from __future__ import annotations
@@ -90,7 +120,24 @@ from scripts.lib.n8n_coordination_ledger import (  # noqa: E402
     LedgerRunStore,
 )
 from scripts.lib.lane_stage_clamp import clamp_mode, load_stage_rows  # noqa: E402
-from scripts.lib.n8n_retry_policy import RetryPolicyError, class_verdict, finalize_outcome, load_policies  # noqa: E402
+from scripts.lib.n8n_retry_policy import (  # noqa: E402
+    RetryPolicyError,
+    class_verdict,
+    effective_max_attempts,
+    finalize_outcome,
+    load_policies,
+    next_attempt_at,
+)
+from scripts.lib.n8n_coordination_ledger import SINGLE_ATTEMPT_CLASSES  # noqa: E402
+from scripts.lib.n8n_policy_reload import PolicyFile  # noqa: E402
+from scripts.lib.n8n_output_verdict import FAILING as OUTPUT_FAILING, evaluate as evaluate_output  # noqa: E402
+from scripts.lib.lane_last_receipt import (  # noqa: E402
+    CODE_SHA_ENV,
+    RUN_ATTEMPT_ENV,
+    RUN_ID_ENV,
+    RUN_MODE_ENV,
+    attempt_receipt_path,
+)
 from scripts.lib.effect_claim import (  # noqa: E402
     EFFECT_CONFIG_REL,
     STATE_DONE as EFFECT_DONE,
@@ -98,9 +145,13 @@ from scripts.lib.effect_claim import (  # noqa: E402
     STATE_RELEASED as EFFECT_RELEASED,
     STATE_UNKNOWN as EFFECT_UNKNOWN,
     EffectClaimStore,
+    FENCE_ENV as EFFECT_FENCE_ENV,
+    FENCE_LEDGER_ENV as EFFECT_FENCE_LEDGER_ENV,
     EffectKeyError,
     effect_key,
+    fence_token,
     load_effect_config,
+    load_fenced_lanes,
 )
 from scripts.lib.n8n_due import parse_key as parse_slot_key  # noqa: E402
 from scripts.lib.n8n_process_keys import is_process_key, parse_process_key  # noqa: E402
@@ -132,6 +183,33 @@ TAIL_CHARS = 800
 RETRY_MAX_CAP = 3
 RETRY_BACKOFF_CAP_S = 300.0
 RETRYABLE_STATES = ("RUN_FAILED", "RUN_TIMEOUT")
+#: 2026-10-15 (audit DD04): the ONE retry owner of a run, by its key namespace (``retry_owner``).
+RETRY_OWNER_RUN_LANE = "run_lane"
+RETRY_OWNER_HOST = "host_policy"
+RETRY_OWNER_INLINE = "executor_inline"
+NEXT_ATTEMPT_BY = {
+    RETRY_OWNER_RUN_LANE: "n8n Run Lane requests <base>:a<n+1>; the gateway admits it only after this verdict",
+    RETRY_OWNER_HOST: "coordination/due mints RETRY_DUE <slot>:a<n+1> at next_attempt_at",
+    RETRY_OWNER_INLINE: "none: the executor's own allowlist retry loop already ran (v1)",
+}
+#: 2026-10-15 (audit DD07): health contracts; an ``expected_output`` block arms the runtime output verdict.
+CONTRACTS_REL = Path("config") / "n8n_health_contracts.json"
+RECEIPT_SCHEMA_V3 = "RunReceipt@v3"
+#: output_verdict values that leave the run state as the spawn decided it.
+OUTPUT_NOT_EVALUATED = frozenset({"no_rule", "not_evaluated", "dry_run_exempt", "rules_unreadable"})
+
+
+def retry_owner(key: Any) -> str:
+    """``p:`` -> run_lane; ``d:``/``e:``/``g:`` -> host_policy; anything else -> executor_inline. Pure. ``key`` is a
+    run key or a runs row (its ``slot_key`` wins over its ``run_id``: the slot names the namespace)."""
+    if isinstance(key, Mapping):
+        key = key.get("slot_key") or key.get("run_id")
+    prefix = str(key or "")[:2].lower()
+    if prefix == "p:":
+        return RETRY_OWNER_RUN_LANE
+    if prefix in ("d:", "e:", "g:"):
+        return RETRY_OWNER_HOST
+    return RETRY_OWNER_INLINE
 
 
 #: 2026-10-09 (guardrail audit B, M2): the executor's own env holds the n8n gateway keys, the relay run-scope
@@ -183,6 +261,11 @@ CHILD_ENV_BASE_NAMES = frozenset(
         "LLM_DEFER_OFFPEAK",
         "BLIND_REVIEW_LANES",
         ENV_BOUND_NAMES_ENV,
+        # 2026-10-15 (audit DD07): the attempt identity the executor SETS on every child (never inherited).
+        RUN_ID_ENV,
+        RUN_ATTEMPT_ENV,
+        RUN_MODE_ENV,
+        CODE_SHA_ENV,
     }
 )
 ENV_NAME_RE = re.compile(r"^[A-Z_][A-Z0-9_]*$")
@@ -301,7 +384,38 @@ def build_child_env(
 
 def load_allowlist(path: Path) -> dict[str, dict[str, Any]]:
     """lane_id -> entry. Malformed entries are dropped with their reason recorded, not guessed around."""
-    doc = json.loads(Path(path).read_text(encoding="utf-8"))
+    return parse_allowlist(Path(path).read_bytes())
+
+
+def allowlist_source(path: Path) -> PolicyFile:
+    """2026-10-15 (audit DD08): the allowlist as a per-claim, stat-cached PolicyFile (unreadable = {} = refuse)."""
+    return PolicyFile(path, parse_allowlist, fail_value={})
+
+
+def parse_expected_outputs(raw: bytes) -> dict[str, Any]:
+    """lane id -> ``expected_output`` block of the lane health contracts that declare one (kind ``lane``)."""
+    doc = json.loads(raw.decode("utf-8"))
+    contracts = doc.get("contracts") if isinstance(doc, dict) else None
+    if not isinstance(contracts, list):
+        raise ValueError("bad_contracts")
+    return {
+        str(c["id"]): c["expected_output"]
+        for c in contracts
+        if isinstance(c, Mapping) and c.get("kind") == "lane" and isinstance(c.get("expected_output"), Mapping)
+    }
+
+
+def expected_outputs_source(path: Path) -> PolicyFile:
+    """Per-run re-validated expected-output rules; unreadable -> None (``rules_unreadable`` on the receipt)."""
+    return PolicyFile(path, parse_expected_outputs, fail_value=None)
+
+
+def _resolve(source: Any) -> Any:
+    return source() if callable(source) else source
+
+
+def parse_allowlist(raw: bytes) -> dict[str, dict[str, Any]]:
+    doc = json.loads(raw.decode("utf-8"))
     if not isinstance(doc, dict) or doc.get("schema") != ALLOWLIST_SCHEMA:
         raise AllowlistError("bad_allowlist_schema")
     out: dict[str, dict[str, Any]] = {}
@@ -487,8 +601,14 @@ def execute(
     v2: bool = False,
     stage_rows: Any = NO_STAGE_CLAMP,
     effects: "EffectGate | None" = None,
+    outputs: Any = None,
+    policy: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Run one claimed row (plus the entry's opt-in bounded retries) and return its RunReceipt@v1.
+
+    ``outputs`` (2026-10-15, DD07): lane -> ``expected_output`` rules (a mapping, a PolicyFile, or None = no rules).
+    ``policy``: the effective policy-version block stamped on the receipt (DD08). The allowlist ``retry`` loop runs
+    only for ``executor_inline`` keys (DD04): a p:/d:/e:/g: row is retried by its own owner, never here.
 
     ``effects`` (n8n fabric Phase 1, 2026-10-14): the semantic effect-key gate. None = no gate (library callers and
     tests of other behaviour); ``main`` always passes one, which is inert for every lane not in
@@ -512,12 +632,15 @@ def execute(
         typed=v2,
         stage_rows=stage_rows,
         effects=effects,
+        outputs=outputs,
+        policy=policy,
     )
-    policy = retry_policy(entry) if entry is not None and not v2 else None
+    owner = retry_owner(row)
+    inline = retry_policy(entry) if entry is not None and not v2 and owner == RETRY_OWNER_INLINE else None
     states = [str(receipt["state"])]
     first = receipt
-    while policy and len(states) <= policy["max"] and states[-1] in policy["on"]:
-        sleeper(policy["backoff_s"])
+    while inline and len(states) <= inline["max"] and states[-1] in inline["on"]:
+        sleeper(inline["backoff_s"])
         receipt = _execute_once(
             row,
             entry,
@@ -528,6 +651,8 @@ def execute(
             typed=v2,
             stage_rows=stage_rows,
             effects=effects,
+            outputs=outputs,
+            policy=policy,
         )
         states.append(str(receipt["state"]))
     if len(states) > 1:
@@ -535,8 +660,11 @@ def execute(
         receipt["output_signal_mtime_before"] = first["output_signal_mtime_before"]
     receipt["attempts"] = len(states)
     receipt["attempt_states"] = states
+    receipt["retry_owner"] = owner
     if v2 and entry is not None and entry.get("retry") is not None:
         receipt["allowlist_retry"] = "ignored_v2"
+    elif entry is not None and entry.get("retry") is not None and owner != RETRY_OWNER_INLINE:
+        receipt["allowlist_retry"] = f"ignored_owner:{owner}"
     return receipt
 
 
@@ -551,6 +679,8 @@ def _execute_once(
     typed: bool = False,
     stage_rows: Any = NO_STAGE_CLAMP,
     effects: "EffectGate | None" = None,
+    outputs: Any = None,
+    policy: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """One attempt: run the claimed row and return its RunReceipt@v1. ``typed`` (executor v2 only) adds the errno
     name to a spawn failure's reason (``spawn:OSError:ENOMEM``) so the retry policy can match it.
@@ -582,10 +712,28 @@ def _execute_once(
         "stderr_tail": None,
         "authority": "READ_ONLY_ADVISORY",
     }
+    if policy is not None:
+        receipt["policy"] = dict(policy)
+        if policy.get("allowlist_error"):
+            # DD08: an unreadable replacement allowlist refuses; the previously cached one is never served.
+            return _finish(receipt, "RUN_REFUSED", reason="allowlist_unreadable", started=started)
     if entry is None:
         return _finish(receipt, "RUN_REFUSED", reason="lane_not_allowlisted", started=started)
     if mode not in RUN_MODES:
         return _finish(receipt, "RUN_REFUSED", reason="bad_mode", started=started)
+    if is_process_key(run_id):
+        # 2026-10-15 (audit DD03: "the claim that live p: requests universally fail closed is incorrect": before, only
+        # an EFFECT-KEYED lane checked the marker, so a p: row of an unkeyed lane ran whoever wrote it). A p: row runs
+        # (either mode, every path: v1 drain, v2 workers, :aN retries) only when its lane/mode are the key's and it
+        # carries the base-key slot_key that ONLY the gateway's n8n_process_keys validation writes.
+        pk = parse_process_key(run_id)
+        if (
+            pk is None
+            or pk[0] != lane_id
+            or pk[1] != mode
+            or str(row.get("slot_key") or "") != f"p:{pk[0]}:{pk[1]}:{pk[2]}"
+        ):
+            return _finish(receipt, "RUN_REFUSED", reason="process_key_unvalidated", started=started)
     if stage_rows is not NO_STAGE_CLAMP:
         clamp = clamp_mode(lane_id, mode, stage_rows)
         receipt["requested_mode"] = mode
@@ -611,6 +759,12 @@ def _execute_once(
         return _finish(
             receipt, "RUN_REFUSED", reason=f"env_allowlist:{receipt['env_allowlist']['reason']}", started=started
         )
+    # DD07: the attempt identity a LaneRunReceipt@v2 must carry to count as THIS attempt's evidence.
+    attempt_no = int(row.get("attempt") or 1)
+    lane_env[RUN_ID_ENV] = run_id
+    lane_env[RUN_ATTEMPT_ENV] = str(attempt_no)
+    lane_env[RUN_MODE_ENV] = mode
+    lane_env[CODE_SHA_ENV] = str(receipt["code_sha"] or "")
     offpeak = offpeak_verdict(entry, mode, env=lane_env, now=_offpeak_now())
     if offpeak is not None:
         receipt["offpeak"] = offpeak
@@ -625,11 +779,48 @@ def _execute_once(
             receipt["effect"] = effect
         if refusal is not None:
             return _finish(receipt, "RUN_REFUSED", reason=refusal, started=started)
+        if effect is not None and effect.get("claimed"):
+            # DD06: the fencing token the lane passes to assert_fence() right before its target write.
+            lane_env[EFFECT_FENCE_ENV] = fence_token(effect["key"], int(effect.get("epoch") or 0), effect["attempt"])
+            if effects.ledger_path is not None:
+                lane_env[EFFECT_FENCE_LEDGER_ENV] = str(effects.ledger_path)
         out = _spawn(receipt, entry, argv, run, timeout_s, lane_env, code_root, signal_path, typed, started)
         if effect is not None:
-            effects.end(effect, out)
-        return out
-    return _spawn(receipt, entry, argv, run, timeout_s, lane_env, code_root, signal_path, typed, started)
+            effects.end(effect, out)  # from the RAW spawn state, before the output verdict
+        return apply_output_verdict(out, outputs, lane_id=lane_id, mode=mode, state_root=state_root)
+    out = _spawn(receipt, entry, argv, run, timeout_s, lane_env, code_root, signal_path, typed, started)
+    return apply_output_verdict(out, outputs, lane_id=lane_id, mode=mode, state_root=state_root)
+
+
+def read_attempt_receipt(state_root: Path, lane_id: str, run_id: str) -> Any:
+    """The lane's immutable LaneRunReceipt for this attempt, or None (missing / unreadable)."""
+    try:
+        return json.loads(attempt_receipt_path(lane_id, run_id, state_root).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def apply_output_verdict(
+    receipt: dict[str, Any], outputs: Any, *, lane_id: str, mode: str, state_root: Path
+) -> dict[str, Any]:
+    """DD07: stamp ``output_verdict`` and turn an exit-0 run that produced nothing (or cannot prove it did) into
+    RUN_FAILED ``empty_output`` / ``output_unverifiable``. No rule for the lane = ``no_rule``, state unchanged."""
+    if receipt.get("state") != "RUN_DONE" or receipt.get("reason") == "offpeak_skip":
+        receipt["output_verdict"] = {"verdict": "not_evaluated", "why": receipt.get("reason") or receipt.get("state")}
+        return receipt
+    rules = _resolve(outputs) if outputs is not None else {}
+    if rules is None:
+        receipt["output_verdict"] = {"verdict": "rules_unreadable"}
+        return receipt
+    rule = rules.get(lane_id) if isinstance(rules, Mapping) else None
+    doc = read_attempt_receipt(state_root, lane_id, str(receipt["run_id"])) if rule is not None else None
+    verdict = evaluate_output(rule, doc, run_id=str(receipt["run_id"]), lane_id=lane_id, mode=mode)
+    receipt["output_verdict"] = verdict
+    failed_reason = OUTPUT_FAILING.get(verdict.get("verdict"))
+    if failed_reason is not None:
+        receipt["state"] = "RUN_FAILED"
+        receipt["reason"] = failed_reason
+    return receipt
 
 
 def _spawn(
@@ -717,21 +908,54 @@ class EffectGate:
         *,
         config_error: str | None = None,
         clock=time.time,
+        config_path: Path | None = None,
+        fenced: frozenset[str] | None = None,
+        ledger_path: Path | None = None,
     ) -> None:
         self.store, self.config, self.config_error, self.clock = store, dict(config or {}), config_error, clock
+        #: DD08: when set, config/n8n_effect_keys.json is re-validated per run (stat-cached), not read once.
+        self.config_path = Path(config_path) if config_path is not None else None
+        self._sig: tuple[int, int, int] | None = None
+        self.fenced = frozenset(fenced or ())
+        self.ledger_path = ledger_path
 
     @classmethod
     def from_ledger(cls, ledger: CoordinationLedger, code_root: Path, *, clock=time.time) -> "EffectGate":
+        gate = cls(
+            EffectClaimStore(ledger),
+            {},
+            clock=clock,
+            config_path=code_root / EFFECT_CONFIG_REL,
+            ledger_path=getattr(ledger, "path", None),
+        )
+        gate.refresh()
+        return gate
+
+    def refresh(self) -> None:
+        """Re-read the effect config when its file changed (stat signature); an unreadable file fails closed
+        (``config_error``: every live run of any lane refused), a missing one is the empty map."""
+        if self.config_path is None:
+            return
         try:
-            config, error = load_effect_config(code_root / EFFECT_CONFIG_REL), None
+            st = os.stat(self.config_path)
+            sig: tuple[int, int, int] | None = (st.st_mtime_ns, st.st_size, st.st_ino)
+        except OSError:
+            sig = None
+        if sig is not None and sig == self._sig:
+            return
+        self._sig = sig
+        try:
+            self.config = load_effect_config(self.config_path)
+            self.fenced = load_fenced_lanes(self.config_path)
+            self.config_error = None
         except EffectKeyError as exc:
-            config, error = {}, str(exc)
-        return cls(EffectClaimStore(ledger), config, config_error=error, clock=clock)
+            self.config, self.fenced, self.config_error = {}, frozenset(), str(exc)
 
     def begin(self, row: Mapping[str, Any], lane_id: str, mode: str) -> tuple[dict[str, Any] | None, str | None]:
         """(effect block for the receipt or None, refusal reason or None)."""
         if mode != "live":
             return None, None
+        self.refresh()
         if self.config_error is not None:
             return {"key": None, "claimed": False, "reason": self.config_error}, f"effect:{self.config_error}"
         spec = self.config.get(lane_id)
@@ -794,23 +1018,40 @@ class EffectGate:
         return block, (None if res.ok else f"effect:{res.reason}")
 
     def end(self, block: dict[str, Any], receipt: Mapping[str, Any]) -> None:
-        """Finish a claimed key from the attempt's terminal state; the result lands on the receipt's block."""
+        """Finish a claimed key from the attempt's terminal state; the result lands on the receipt's block.
+
+        2026-10-15 (DD05): a RUN_FAILED is ``pre_effect`` (reclaimable FAILED) only when PROVEN: the spawn itself
+        failed, or the lane is ``late_write_fenced`` and never passed ``assert_fence``. Otherwise the FAILED key is
+        held for operator reconciliation. (DD06) a finish after the owner epoch moved is a late completion: the key
+        is UNKNOWN and the block carries ``incident: effect_late_completion``."""
         if not block.get("claimed") or self.store is None:
             return
         state = EFFECT_FINISH_FOR_STATE.get(str(receipt.get("state")), EFFECT_UNKNOWN)
+        pre_effect = False
         try:
+            if state == EFFECT_FAILED:
+                if str(receipt.get("reason") or "").startswith("spawn:"):
+                    pre_effect, block["pre_effect_proof"] = True, "spawn_failed"
+                elif str(receipt.get("lane_id")) in self.fenced and not self.store.fence_passed(block["key"]):
+                    pre_effect, block["pre_effect_proof"] = True, "exited_before_fence"
             row = self.store.finish(
                 block["key"],
                 state=state,
                 now=self.clock(),
                 run_id=str(receipt.get("run_id")),
                 detail=str(receipt.get("reason") or "")[:120] or None,
+                pre_effect=pre_effect,
             )
         except sqlite3.Error as exc:
             block["finish_error"] = type(exc).__name__  # the claim stays CLAIMED = held; an operator releases it
             return
         block["final_state"] = None if row is None else row.get("state")
         block["fenced_late"] = bool(row and row.get("fenced_late"))
+        block["held_for_reconciliation"] = bool(row and row.get("state") in (EFFECT_UNKNOWN, EFFECT_FAILED)
+                                                and not row.get("pre_effect"))
+        if row and row.get("late_completion"):
+            block["incident"] = "effect_late_completion"
+            _warn({"effect": "late_completion", "key": block["key"], "run_id": receipt.get("run_id")})
 
 
 def record_outcome(outcomes: RunOutcomeStore | None, receipt: Mapping[str, Any], receipt_path: Path | None) -> None:
@@ -824,6 +1065,18 @@ def record_outcome(outcomes: RunOutcomeStore | None, receipt: Mapping[str, Any],
         print(
             json.dumps({"run_id": receipt.get("run_id"), "outcome_record": f"failed:{type(exc).__name__}"}), flush=True
         )
+
+
+def _policy_block(allowlist: Any, effects: Any, outputs: Any) -> dict[str, Any] | None:
+    """DD08: the effective policy versions of one decision; None when no source is versioned (library callers)."""
+    if not any(isinstance(x, PolicyFile) for x in (allowlist, outputs)) and getattr(effects, "config_path", None) is None:
+        return None
+    return {
+        "allowlist_version": getattr(allowlist, "version", None),
+        "allowlist_error": getattr(allowlist, "error", None),
+        "expected_outputs_version": getattr(outputs, "version", None),
+        "effect_config_error": getattr(effects, "config_error", None),
+    }
 
 
 def write_receipt(receipt: Mapping[str, Any], *, state_root: Path, write_last: bool = True) -> Path:
@@ -847,6 +1100,111 @@ def write_receipt(receipt: Mapping[str, Any], *, state_root: Path, write_last: b
     return out
 
 
+def run_lane_budget(lane_id: str, code_root: Path) -> int | None:
+    """Run Lane's attempt budget for a p: step (n8n_process_keys: step max_attempts, spec default, cap 3); None when
+    the process spec is unreadable or the lane is not a step (the caller then treats this attempt as final)."""
+    from scripts.lib import n8n_process_keys as PK
+
+    try:
+        found = PK.find_step(PK.load_sources(code_root), lane_id)
+    except (PK.ProcessKeyError, OSError, ValueError):
+        return None
+    if found is None:
+        return None
+    raw = found["step"].get("max_attempts") or found["spec"].get("default_max_attempts") or 1
+    return max(1, min(PK.RUN_LANE_MAX_ATTEMPTS, int(raw)))
+
+
+def retry_contract(
+    row: Mapping[str, Any],
+    receipt: Mapping[str, Any],
+    verdict: str,
+    *,
+    policy: Any,
+    klass: str | None,
+    code_root: Path,
+) -> dict[str, Any]:
+    """DD04: the typed retry block (owner, attempt, max_attempts, attempts_remaining, retryable, next_attempt_at,
+    next_attempt_by, terminal_reason, dlq_ref) and ``budget`` (the max_attempts finalize_outcome must use). Pure
+    apart from the process spec read for p: rows. send/learn stay single-attempt whoever owns the retry."""
+    owner = retry_owner(row)
+    attempt = int(row.get("attempt") or 1)
+    if owner == RETRY_OWNER_HOST:
+        budget = effective_max_attempts(policy, klass)
+    elif owner == RETRY_OWNER_RUN_LANE:
+        found = run_lane_budget(str(row.get("lane_id")), code_root)
+        budget = attempt if found is None else found
+    else:
+        budget = attempt
+    if klass in SINGLE_ATTEMPT_CLASSES:
+        budget = 1
+    dead = verdict == "terminal" or (verdict == "retryable" and attempt >= budget)
+    retryable = verdict == "retryable" and attempt < budget
+    next_at = None
+    if retryable and owner == RETRY_OWNER_HOST and receipt.get("finished_at"):
+        when = next_attempt_at(policy, attempt, str(receipt["finished_at"]), klass)
+        next_at = None if when is None else when.isoformat()
+    return {
+        "owner": owner,
+        "attempt": attempt,
+        "max_attempts": budget,
+        "attempts_remaining": max(0, budget - attempt) if retryable else 0,
+        "retryable": retryable,
+        "next_attempt_at": next_at,
+        "next_attempt_by": NEXT_ATTEMPT_BY[owner] if retryable else None,
+        "terminal_reason": (receipt.get("reason") or receipt.get("state")) if dead else None,
+        "dlq_ref": (str(row.get("slot_key") or row.get("run_id"))) if dead else None,
+        "verdict": verdict,
+    }
+
+
+def v1_retry_decision(
+    row: Mapping[str, Any],
+    receipt: dict[str, Any],
+    *,
+    policies: Any,
+    registry_rows: Any,
+    entry: Mapping[str, Any] | None,
+    code_root: Path,
+) -> dict[str, Any] | None:
+    """DD04 on the v1 serial path, BEFORE the ledger finish: the verdict and the typed ``retry`` block (stamped on the
+    receipt, so the ledger row and the file carry it). ``policies`` None = nothing decided (said on the receipt)."""
+    owner = retry_owner(row)
+    if policies is None:
+        receipt["retry"] = {"owner": owner, "verdict": None, "why": "retry_policies_unavailable"}
+        return None
+    lane = str(row["lane_id"])
+    policy = resolve_retry_policy(lane, policies, registry_rows)
+    klass = str(row.get("class") or derived_class(entry))
+    exit_code = receipt.get("exit_code")
+    verdict = class_verdict(
+        str(receipt["state"]), exit_code if isinstance(exit_code, int) else None, receipt.get("reason"), policy, klass
+    )
+    contract = retry_contract(row, receipt, verdict, policy=policy, klass=klass, code_root=code_root)
+    receipt["retry"] = contract
+    return {"policy": policy, "klass": klass, "lane": lane, "contract": contract}
+
+
+def finalize_v1(store: LedgerRunStore, row: Mapping[str, Any], decision: Mapping[str, Any], *, policies: Any,
+                registry_rows: Any) -> None:
+    """After the ledger finish: runs.verdict + a DURABLE dead_letters row (no breaker: v1 never paused a lane)."""
+    finished = store.get(str(row["run_id"]))
+    if finished is None:
+        return
+    contract = decision["contract"]
+    finalize_outcome(
+        store,
+        finished,
+        decision["policy"],
+        breaker_threshold=policies.breaker_threshold,
+        now=time.time(),
+        severity=_lane_severity(decision["lane"], registry_rows),
+        klass=decision["klass"],
+        max_attempts_override=None if contract["owner"] == RETRY_OWNER_HOST else contract["max_attempts"],
+        open_breakers=False,
+    )
+
+
 def drain(
     store: LedgerRunStore,
     allowlist: Mapping[str, Mapping[str, Any]],
@@ -859,24 +1217,41 @@ def drain(
     stage_rows: Any = NO_STAGE_CLAMP,
     outcomes: RunOutcomeStore | None = None,
     effects: EffectGate | None = None,
+    outputs: Any = None,
+    policies: Any = None,
+    registry_rows: Any = None,
 ) -> list[dict[str, Any]]:
     """Claim and execute until the queue is empty (or max_runs). One receipt per claimed row, always.
     ``stage_rows``: the registry lanes for the stage clamp (None = unreadable, fail closed).
-    ``outcomes`` / ``effects`` (2026-10-14): the run_outcomes recorder and the effect-key gate; None = off."""
+    ``outcomes`` / ``effects`` (2026-10-14): the run_outcomes recorder and the effect-key gate; None = off.
+    2026-10-15: ``allowlist`` may be a PolicyFile / loader, re-validated per claimed row (DD08); ``outputs`` the
+    expected-output rules (DD07); ``policies`` the retry policies for the v1 verdict + dead letter (DD04; None =
+    not recorded)."""
     out: list[dict[str, Any]] = []
     while max_runs is None or len(out) < max_runs:
         row = store.claim_next()
         if row is None:
             break
+        entries = _resolve(allowlist)
+        policy_block = _policy_block(allowlist, effects, outputs)
+        entry = (entries or {}).get(str(row["lane_id"]))
         receipt = execute(
             row,
-            allowlist.get(str(row["lane_id"])),
+            entry,
             env=env,
             state_root=state_root,
             code_root=code_root,
             runner=runner,
             stage_rows=stage_rows,
             effects=effects,
+            outputs=outputs,
+            policy=policy_block,
+        )
+        decision = (
+            v1_retry_decision(row, receipt, policies=policies, registry_rows=registry_rows, entry=entry,
+                              code_root=code_root)
+            if policies is not None
+            else None
         )
         finished = True
         try:
@@ -884,6 +1259,11 @@ def drain(
         except LedgerError as exc:  # B2: another executor finished (reaped) the row meanwhile; keep draining
             finished = False
             print(json.dumps({"run_id": row["run_id"], "finish_error": exc.reason}), flush=True)
+        if finished and decision is not None:
+            try:
+                finalize_v1(store, row, decision, policies=policies, registry_rows=registry_rows)
+            except (sqlite3.Error, LedgerError) as exc:
+                print(json.dumps({"run_id": row["run_id"], "finalize_error": type(exc).__name__}), flush=True)
         receipt_path: Path | None = None
         try:
             receipt_path = write_receipt(receipt, state_root=state_root)
@@ -1168,12 +1548,13 @@ def upgrade_receipt(
     verdict: str,
     retry_policy: str,
 ) -> dict[str, Any]:
-    """RunReceipt@v1 fields + the v2 dispatch fields. Pure."""
+    """RunReceipt@v1 fields + the v2 dispatch fields (``RunReceipt@v3`` when an output rule was evaluated). Pure."""
     started, requested = _ts(row.get("started_at")), _ts(row.get("requested_at"))
     out = dict(receipt)
+    output = (receipt.get("output_verdict") or {}).get("verdict")
     out.update(
         {
-            "schema": RECEIPT_SCHEMA_V2,
+            "schema": RECEIPT_SCHEMA_V2 if output in OUTPUT_NOT_EVALUATED or output is None else RECEIPT_SCHEMA_V3,
             "slot_key": row.get("slot_key"),
             "attempt": int(row.get("attempt") or 1),
             "parent_run_id": row.get("parent_run_id"),
@@ -1219,6 +1600,7 @@ class ExecutorV2:
         stage_rows_loader=None,
         outcomes: RunOutcomeStore | None = None,
         effects: EffectGate | None = None,
+        outputs: Any = None,
     ) -> None:
         cfg = dict(load_executor_config(None))
         cfg.update(config or {})
@@ -1232,6 +1614,8 @@ class ExecutorV2:
         self.stage_rows, self.stage_rows_loader = stage_rows, stage_rows_loader
         #: 2026-10-14 fabric Phase 1: run_outcomes recorder and effect-key gate (None = off)
         self.outcomes, self.effects = outcomes, effects
+        #: 2026-10-15: expected-output rules (DD07); ``allowlist`` may be a PolicyFile re-validated per run (DD08)
+        self.outputs = outputs
         self.clock, self.runner_factory, self.pid_alive, self.sleeper = clock, runner_factory, pid_alive, sleeper
         self.heartbeat_s = float(cfg["heartbeat_s"] if heartbeat_s is None else heartbeat_s)
         self.stale_heartbeat_s = float(cfg["stale_heartbeat_s"] if stale_heartbeat_s is None else stale_heartbeat_s)
@@ -1244,7 +1628,7 @@ class ExecutorV2:
         glob = policies.class_caps.get("global")
         self.capacity = min(self.workers, int(glob)) if isinstance(glob, int) and glob >= 1 else self.workers
         heavy = cfg["heavy_timeout_s"]
-        self.default_classes = {lane: derived_class(e, heavy) for lane, e in allowlist.items()}
+        self.default_classes = {lane: derived_class(e, heavy) for lane, e in (self.entries() or {}).items()}
         self.worker_prefix = worker_prefix or f"{os.uname().nodename}:{os.getpid()}"
         self._lock = threading.Lock()
         self._slots: list[dict[str, Any] | None] = [None] * self.workers
@@ -1259,6 +1643,10 @@ class ExecutorV2:
         self._pending: dict[str, dict[str, Any]] = {}
 
     # -- helpers --
+    def entries(self) -> Mapping[str, Mapping[str, Any]]:
+        """The allowlist as of NOW (a PolicyFile is re-validated; unreadable = {})."""
+        return _resolve(self.allowlist) or {}
+
     def worker_id(self, i: int) -> str:
         return f"{self.worker_prefix}:w{i}"
 
@@ -1358,7 +1746,7 @@ class ExecutorV2:
             stage_rows = self.stage_rows_loader() if self.stage_rows_loader is not None else self.stage_rows
             receipt = execute(
                 row,
-                self.allowlist.get(str(row["lane_id"])),
+                self.entries().get(str(row["lane_id"])),
                 env=self.env,
                 state_root=self.state_root,
                 code_root=self.code_root,
@@ -1366,6 +1754,8 @@ class ExecutorV2:
                 v2=True,
                 stage_rows=stage_rows,
                 effects=self.effects,
+                outputs=self.outputs,
+                policy=_policy_block(self.allowlist, self.effects, self.outputs),
             )
             self.complete(
                 row, receipt, klass=str(slot["class"]), priority=int(slot["priority"]), worker_id=str(slot["worker_id"])
@@ -1430,6 +1820,7 @@ class ExecutorV2:
             now=self.clock(),
             severity=job["severity"],
             klass=job["klass"],
+            max_attempts_override=job.get("budget"),
         )
         with self._lock:
             for f in outcome.findings:
@@ -1483,6 +1874,8 @@ class ExecutorV2:
         out = upgrade_receipt(
             rec, row, klass=klass, priority=priority, worker_id=worker_id, verdict=v, retry_policy=policy.name
         )
+        contract = retry_contract(row, rec, v, policy=policy, klass=klass, code_root=self.code_root)
+        out["retry"] = contract
         job = {
             "run_id": str(row["run_id"]),
             "out": out,
@@ -1492,6 +1885,7 @@ class ExecutorV2:
             "severity": _lane_severity(lane, self.registry_rows),
             "dead": False,
             "finished": None,
+            "budget": None if contract["owner"] == RETRY_OWNER_HOST else contract["max_attempts"],
         }
         if self._advance(job) == "pending":
             with self._lock:
@@ -1562,7 +1956,7 @@ class ExecutorV2:
         for r in self.store.list_running():
             if str(r["run_id"]) in own:
                 continue
-            entry = self.allowlist.get(str(r["lane_id"])) or {}
+            entry = self.entries().get(str(r["lane_id"])) or {}
             timeout_s = float(entry.get("timeout_s") or self.cfg["unknown_lane_timeout_s"])
             started = _ts(r.get("started_at"))
             hb = _ts(r.get("heartbeat_at")) or started
@@ -1758,10 +2152,14 @@ def main(argv: list[str] | None = None) -> int:
     allowlist_path = Path(args.allowlist) if args.allowlist else code_root / "config" / "n8n_run_allowlist.json"
     ledger_path = Path(args.ledger) if args.ledger else default_ledger_path(env)
     try:
-        allowlist = load_allowlist(allowlist_path)
+        load_allowlist(allowlist_path)  # unreadable at START is still a refusal to start
     except (OSError, ValueError) as exc:
         print(json.dumps({"error": f"allowlist:{type(exc).__name__}", "path": str(allowlist_path)}), file=sys.stderr)
         return 2
+    # DD08: from here on the allowlist is re-validated per claimed run; an unreadable replacement refuses every run.
+    allowlist = allowlist_source(allowlist_path)
+    allowlist()
+    outputs = expected_outputs_source(code_root / CONTRACTS_REL)
     (state_root / RUNS_REL / "shadow").mkdir(parents=True, exist_ok=True)
     workers = resolve_workers(args.workers, env)
     policies = None
@@ -1769,14 +2167,15 @@ def main(argv: list[str] | None = None) -> int:
     if workers > 1:  # v2 only: the v1 path never reads config/n8n_executor.json
         exec_cfg = load_executor_config(code_root / EXECUTOR_CONFIG_REL)
         workers = resolve_workers(workers, {}, max_workers=int(exec_cfg["max_workers"]))
-    if workers > 1:
-        try:
-            policies = load_policies(code_root / RETRY_POLICIES_REL)
-        except RetryPolicyError as exc:  # no caps/verdicts without policies: fall back to the v1 serial path
-            print(json.dumps({"executor": "v2_unavailable", "reason": f"retry_policies:{exc}"[:300]}), flush=True)
-            workers = 1
+    try:
+        policies = load_policies(code_root / RETRY_POLICIES_REL)
+    except RetryPolicyError as exc:  # no caps/verdicts without policies: v1 path, and v1 records no verdict/DLQ
+        state = "v2_unavailable" if workers > 1 else "retry_policies_unavailable"
+        print(json.dumps({"executor": state, "reason": f"retry_policies:{exc}"[:300]}), flush=True)
+        policies = None
+        workers = 1
     registry_rows = None
-    if workers > 1:
+    if True:  # DD04: v1 also resolves each lane's retry policy (verdict + durable dead letter)
         try:
             from scripts.lib.lane_registry import load_registry
 
@@ -1799,7 +2198,8 @@ def main(argv: list[str] | None = None) -> int:
                 "executor": "started",
                 "ledger": str(ledger_path),
                 "allowlist": str(allowlist_path),
-                "lanes": sorted(allowlist),
+                "lanes": sorted(allowlist()),
+                "allowlist_version": allowlist.version,
                 "code_root": str(code_root),
                 "once": bool(args.once),
                 "workers": workers,
@@ -1826,6 +2226,7 @@ def main(argv: list[str] | None = None) -> int:
             stage_rows_loader=stage_rows_now,
             outcomes=outcomes,
             effects=effects,
+            outputs=outputs,
         )
         try:
             if args.once:
@@ -1847,6 +2248,9 @@ def main(argv: list[str] | None = None) -> int:
                 stage_rows=stage_rows_now(),
                 outcomes=outcomes,
                 effects=effects,
+                outputs=outputs,
+                policies=policies,
+                registry_rows=registry_rows,
             )
             if args.once:
                 return 0

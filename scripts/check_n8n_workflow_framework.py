@@ -354,26 +354,14 @@ def _check_expected_output(c: Mapping | None) -> dict:
             f"contract {c.get('id')} declares no expected_output rule: exit 0 with nothing produced "
             "would read as success (operator rule 2026-10-15)",
         )
-    problems = []
-    if eo.get("schema") != EXPECTED_OUTPUT_SCHEMA:
-        problems.append(f"schema != {EXPECTED_OUTPUT_SCHEMA}")
+    # 2026-10-15 (audit DD07 / probe malformed_expected_output: numeric produced_field/unit and evidence=[{}]
+    # passed): the closed semantic schema the executor's runtime verdict also uses (scripts/lib/n8n_output_verdict.py).
+    try:
+        from scripts.lib.n8n_output_verdict import validate_expected_output  # noqa: PLC0415
+    except ImportError:  # scripts/ on sys.path
+        from lib.n8n_output_verdict import validate_expected_output  # type: ignore[no-redef]  # noqa: PLC0415
+    problems = validate_expected_output(eo)
     rule = eo.get("rule")
-    if rule not in EXPECTED_OUTPUT_RULES:
-        problems.append(f"rule {rule!r} not in {EXPECTED_OUTPUT_RULES}")
-    if rule in ("min_produced", "per_window") and not (
-        isinstance(eo.get("min_produced"), int) and eo["min_produced"] >= 1
-    ):
-        problems.append("min_produced must be an int >= 1")
-    if rule == "per_window" and not (isinstance(eo.get("window_h"), (int, float)) and eo["window_h"] > 0):
-        problems.append("per_window needs window_h > 0")
-    if not eo.get("produced_field"):
-        problems.append("produced_field missing")
-    if not eo.get("unit"):
-        problems.append("unit missing")
-    if not isinstance(eo.get("fatal_skip_reasons"), list):
-        problems.append("fatal_skip_reasons list missing")
-    if not (isinstance(eo.get("evidence"), list) and eo["evidence"]):
-        problems.append("evidence list empty")
     if problems:
         return _r(FAIL, "expected_output invalid: " + "; ".join(problems))
     return _r(PASS, f"expected_output rule {rule} on {eo.get('produced_field')} ({eo.get('unit')})")

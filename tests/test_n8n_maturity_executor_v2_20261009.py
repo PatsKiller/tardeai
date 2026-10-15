@@ -480,7 +480,10 @@ def test_workers_one_is_the_v1_path_with_run_receipt_v1(bench, monkeypatch):
     assert _main(bench) == 0 and called["v1"] == 1
     row = _get(bench, "run-v1-00000000000a")
     r = row["receipt"]
-    assert r["schema"] == "RunReceipt@v1" and "verdict" not in r and row["verdict"] is None and row["worker_id"] is None
+    assert r["schema"] == "RunReceipt@v1" and "verdict" not in r and row["worker_id"] is None
+    # 2026-10-15 (audit DD04): the v1 path now records the verdict (and a durable dead letter on failure) too; the
+    # typed retry block names the slot's one retry owner.
+    assert row["verdict"] == "ok" and r["retry"]["owner"] == "host_policy" and r["retry"]["dlq_ref"] is None
     last = json.loads((bench.state / X.LAST_REL).read_text())
     assert last == r                                        # v1: the last file IS the last receipt
 

@@ -15,7 +15,7 @@ Owner:       platform (n8n maturity program)
 
 ## 1. Result
 
-**0 of 18 active workflows are fully compliant. Fleet 221.5/472 = 46.9%** (pass 1, partial 0.5, n/a excluded;
+**0 of 18 active workflows are fully compliant. Fleet 222.5/472 = 47.1%** (pass 1, partial 0.5, n/a excluded;
 platform elements reported separately). The reference mature workflow
 (`docs/implementation/n8n-parallel/workflows/reference/tradeai-reference-mature-workflow.json`) scores 27/27 = 100%
 on the same checker. Every committed workflow file (`--all`, 163 files including pending per-lane shadows and
@@ -32,7 +32,7 @@ fails.
 | `tradeai-digest-scheduler` | business-critical | N | P | P | P | P | Y | n/a | 14/26 (53.8%) | FW-C1, FW-C2, FW-C3, FW-M6, FW-A3, FW-A4, FW-A6, FW-L1, FW-R3, FW-R5 |
 | `tradeai-heartbeat-watcher` | resilience | P | P | P | P | P | Y | n/a | 14.5/26 (55.8%) | FW-C1, FW-C2, FW-M6, FW-A3, FW-A4, FW-A6, FW-L1, FW-R3, FW-R5 |
 | `tradeai-incident-router` | resilience | P | P | P | P | P | Y | n/a | 12.5/26 (48.1%) | FW-C1, FW-C2, FW-M2, FW-M6, FW-A1, FW-A3, FW-A4, FW-A6, FW-L1, FW-R3, FW-R5 |
-| `tradeai-momentum-lifecycle-candidate` | monitoring-compliance | P | P | P | P | P | P | n/a | 11.5/23 (50.0%) | FW-C1, FW-C2, FW-M1, FW-M6, FW-A3, FW-A6, FW-L1, FW-L5, FW-R3, FW-R5, FW-S2 |
+| `tradeai-momentum-lifecycle-candidate` | monitoring-compliance | P | P | P | P | P | P | n/a | 12.5/23 (54.3%) | FW-C1, FW-C2, FW-M1, FW-M6, FW-A3, FW-A6, FW-L1, FW-L5, FW-R3, FW-R5 |
 | `n8n-incident-fanin` | resilience | P | P | P | P | P | Y | n/a | 12.5/27 (46.3%) | FW-C1, FW-C2, FW-M2, FW-M3, FW-M6, FW-A1, FW-A4, FW-A6, FW-L1, FW-R1, FW-R3, FW-R5 |
 | `n8n-pilot-dispatch` | monitoring-compliance | P | P | P | P | P | Y | n/a | 12.5/27 (46.3%) | FW-C1, FW-C2, FW-M2, FW-M3, FW-M6, FW-A1, FW-A4, FW-A6, FW-L1, FW-R1, FW-R3, FW-R5 |
 | `n8n-research-intake-consumer` | business-critical | N | P | P | P | P | Y | n/a | 12/27 (44.4%) | FW-C1, FW-C2, FW-C3, FW-M2, FW-M3, FW-M6, FW-A1, FW-A4, FW-A6, FW-L1, FW-R1, FW-R3, FW-R5 |
@@ -46,7 +46,7 @@ fails.
 | `tradeai-fabric-run-lane` | resilience | N | P | P | Y | P | Y | n/a | 14.5/26 (55.8%) | FW-C1, FW-C2, FW-C3, FW-M4, FW-M5, FW-M6, FW-A2, FW-A3, FW-A6, FW-R3, FW-R5 |
 | `tradeai-fabric-error` | resilience | N | P | P | Y | P | Y | n/a | 12.5/23 (54.3%) | FW-C1, FW-C2, FW-C3, FW-M5, FW-M6, FW-A1, FW-A2, FW-A3, FW-R3 |
 
-**Fleet:** 18 workflows, 0 fully compliant, 221.5/472 = 46.9%; 217 failing elements.
+**Fleet:** 18 workflows, 0 fully compliant, 222.5/472 = 47.1%; 216 failing elements.
 
 ### Platform elements (instance-wide; not in any workflow's score)
 
@@ -70,7 +70,7 @@ Common to the 16 legacy: FW-L1 (successes not saved), FW-A6/FW-R5 (no runbook id
 | dispatcher, event-router, digest-scheduler | C3 business-critical past shadow with a DRAFT contract; A4 direct `POST /run` + Stop-and-Error on refusal (599 refusals/day as errors, WS1b-07); A3/M3 contract has no duration bound or `slow` check; M4 class `generic_workflow` has no cap row; R1 legacy `retryOnFail`, not Run Lane |
 | heartbeat-watcher | as above (contract DRAFT is partial for resilience); it is also the watcher inside n8n (FW-P6) |
 | incident-router | M2/A1 no error workflow for the error router; A4, A3, M3, M4, R1 as above |
-| momentum-lifecycle-candidate | S2 calls `GET /momentum-lifecycle`, which the relay handler serves but its `ROUTES` table (and so `--routes` and the relay contract check) omits; L5 the workflow JSON is not listed by any generator manifest; M1 successes not saved and no run_id join |
+| momentum-lifecycle-candidate | S2 PASS since the 2026-10-15 audit DD14 fix (`GET /momentum-lifecycle` added to relay `ROUTES`; the handler now dispatches only through `ROUTE_HANDLERS`); L5 the workflow JSON is not listed by any generator manifest; M1 successes not saved and no run_id join |
 | n8n-incident-fanin, n8n-pilot-dispatch | per-lane 2.0.0 shape: M2/A1 no error workflow, M3 no executionTimeout, R1 no retry, A4 direct `POST /run`; M4 class `report` uncapped |
 | n8n-research-intake-consumer | as fan-in, plus C3 business-critical live with a DRAFT contract |
 | crontab-snapshot-for-health-agent | as fan-in, plus R6: live lane not in `config/n8n_effect_keys.json` |

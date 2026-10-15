@@ -62,6 +62,9 @@ _REVIEWED_NEW_COMMON_MODULES = frozenset(
         # validate p: process-step keys; stdlib only (json, re, dataclasses, datetime, zoneinfo, pathlib) plus the
         # already-reviewed pipelines/pipeline_manifest.py, no environment read, no network.
         "scripts/lib/n8n_process_keys.py",
+        # 2026-10-15 (audit DD08): imported lazily by scripts/n8n_coordination_gateway.py for the per-request run
+        # allowlist reload; stdlib only (hashlib, os.stat, threading, pathlib), no environment read, no network.
+        "scripts/lib/n8n_policy_reload.py",
         "scripts/lib/n8n_remediation_catalogue.py",
         "scripts/lib/n8n_retry_policy.py",
         "scripts/lib/scanner_candidate_projection.py",
@@ -254,11 +257,24 @@ def test_malformed_lane_is_dropped_by_load_allowlist(tmp_path):
 # ── execute(): receipts, no values, no spawn on refusal ──────────────────────────────────────────────────────
 
 
+#: 2026-10-15 (audit DD07): the attempt identity the executor SETS on every child (values are not inherited).
+_IDENTITY = {X.RUN_ID_ENV, X.RUN_ATTEMPT_ENV, X.RUN_MODE_ENV, X.CODE_SHA_ENV}
+
+
+def _without_identity(child: dict) -> dict:
+    assert _IDENTITY <= set(child), sorted(_IDENTITY - set(child))
+    return {k: v for k, v in child.items() if k not in _IDENTITY}
+
+
+def _drop_identity(child: dict) -> dict:
+    return {k: v for k, v in child.items() if k not in _IDENTITY}
+
+
 def test_execute_report_runs_inherited_env_and_receipt_carries_names_only(tmp_path):
     env = environment(None)
     receipt, seen = _run(tmp_path, env)
     assert receipt["state"] == "RUN_DONE"
-    assert seen == [X.child_env(env, "fixture-lane")]
+    assert [_without_identity(c) for c in seen] == [_drop_identity(X.child_env(env, "fixture-lane"))]
     block = receipt["env_allowlist"]
     assert block["effective_mode"] == "report" and "UNLISTED_API_KEY" in block["dropped_names"]
     _no_values(receipt)
@@ -340,7 +356,7 @@ def _check_path_results(receipts: dict, seen: dict, env: dict) -> None:
     assert receipts["enf"]["state"] == "RUN_DONE"
     assert set(seen["enf"]) == X.CHILD_ENV_BASE_NAMES | {"DB_PASSWORD"}
     assert receipts["rep"]["state"] == "RUN_DONE" and receipts["rep"]["env_allowlist"]["reason"] == "lane_report_only"
-    assert seen["rep"] == X.child_env(env, "rep")
+    assert _without_identity(seen["rep"]) == _drop_identity(X.child_env(env, "rep"))
     assert receipts["nolist"]["state"] == "RUN_REFUSED"
     assert receipts["nolist"]["reason"] == "env_allowlist:env_names_missing" and "nolist" not in seen
     for r in receipts.values():
