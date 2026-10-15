@@ -58,6 +58,23 @@ def test_missing_and_pending_rerun_refused():
     assert report["checks"][0]["run_attempt"] == 2
 
 
+@pytest.mark.parametrize("status,conclusion", [("in_progress", None), ("completed", "failure")])
+def test_advisory_sharded_main_run_does_not_gate_promote(status, conclusion):
+    """cio-full-suite-sharded.yml runs on push/main since 2026-10-09 (ci_signal) but stays advisory."""
+    path = ".github/workflows/cio-full-suite-sharded.yml"
+    assert path in gate.ADVISORY_PUSH_WORKFLOWS
+    rows = runs()
+    rows.append(dict(rows[0], id=99, workflow_id=199, path=path, name="cio-full-suite-sharded",
+                     status=status, conclusion=conclusion))
+    report = gate.evaluate_push_checks(SHA, rows)
+    assert report["ok"], report
+    assert report["advisory_not_gating"] == [path]
+    assert path not in {c["path"] for c in report["checks"]}
+    # Any other unexpected push workflow on the SHA still fails closed.
+    rows[-1]["path"] = ".github/workflows/some-other-ci.yml"
+    assert not gate.evaluate_push_checks(SHA, rows)["ok"]
+
+
 def test_github_unavailable_and_pagination():
     def offline(*args, **kwargs):
         raise OSError("unavailable")
