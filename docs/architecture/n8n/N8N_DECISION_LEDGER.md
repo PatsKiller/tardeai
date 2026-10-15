@@ -1,4 +1,4 @@
-# n8n decision ledger — D1–D9
+# n8n decision ledger — D1–D10
 
 ```
 Status:      PROPOSED record (informational; AGENTS.md is normative). Closes the decision-provenance half of audit DD18.
@@ -26,7 +26,7 @@ operator names the person per role.
 | Status | Count | Decisions |
 |---|---|---|
 | accepted | 0 | — |
-| partially_realized | 8 | D1, D2, D3, D4, D5, D6, D7, D8 |
+| partially_realized | 9 | D1, D10, D2, D3, D4, D5, D6, D7, D8 |
 | specified_not_enforced | 1 | D9 |
 
 ## Ledger
@@ -42,6 +42,7 @@ operator names the person per role.
 | D7 | send-intents, never sends | partially_realized | communications / domain owner | §23.23 10.0.0 + §24.1 | DD01 DD11 | intent → delivery receipt; transitive raw-sender closure (scalp lane) |
 | D8 | LLM steps: process + template, closed schema, host re-check | partially_realized | bridge owner + action owner | §23.23 10.0.0 LLM steps + §23.4 | DD02 DD17 | one-door `/llm_step`; enforced caller; action-refusal receipt |
 | D9 | empty success is a failure | specified_not_enforced | contract owner + verifier owner | §0 rule 8 + §23.24 11.0.0 FW-M6 | DD07 | immutable attempt receipt + independent verifier |
+| D10 | n8n LLM: OAuth first, DeepSeek on failure or higher reasoning | partially_realized | bridge owner | operator decision 2026-10-15 (verbatim in the JSON row) | DD17 | operator 4-path proof after release; route receipts in production |
 
 Implementing files, commits, dependencies, acceptance criteria, test ids and dated runtime evidence for each row are
 in `N8N_DECISION_LEDGER.json`. A row moves to `accepted` only in a PR that adds a dated `runtime_evidence` entry

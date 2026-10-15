@@ -28,7 +28,7 @@ for all 18 and for the reference).
 
 ## 1. Result
 
-**0 of 18 active workflows statically conformant; 0 of 18 activation-eligible. Static conformance 273/531 = 51.4%**
+**0 of 18 active workflows statically conformant; 0 of 18 activation-eligible. Static conformance 274/531 = 51.6%**
 (up to 31 elements per workflow, n/a excluded; platform elements reported separately and gated). 220 failing elements.
 
 Why the number moved from 46.9% and why the two are not comparable: the audit fix added four structural elements
@@ -54,7 +54,7 @@ probes): 1 statically conformant (the reference), 2030/4877 = 41.6%, 0 activatio
 | `tradeai-digest-scheduler` | business-critical | Y | N | P | P | P | P | Y | n/a | 18/30 (60.0%) | UNPROVEN (18) | no | FW-C1, FW-C2, FW-C3, FW-M6, FW-A3, FW-A4, FW-A6, FW-L1, FW-R3, FW-R5 |
 | `tradeai-heartbeat-watcher` | resilience | Y | P | P | P | P | P | Y | n/a | 18/30 (60.0%) | UNPROVEN (18) | no | FW-C1, FW-C2, FW-M6, FW-A3, FW-A4, FW-A6, FW-L1, FW-R3, FW-R5 |
 | `tradeai-incident-router` | resilience | Y | P | P | P | P | P | Y | n/a | 16.5/30 (55.0%) | UNPROVEN (18) | no | FW-C1, FW-C2, FW-M2, FW-M6, FW-A1, FW-A3, FW-A4, FW-A6, FW-L1, FW-R3, FW-R5 |
-| `tradeai-momentum-lifecycle-candidate` | monitoring-compliance | Y | P | P | P | P | P | P | n/a | 13/25 (52.0%) | UNPROVEN (9) | no | FW-C1, FW-C2, FW-M1, FW-M6, FW-A3, FW-A6, FW-L1, FW-L5, FW-R3, FW-R5, FW-S2 |
+| `tradeai-momentum-lifecycle-candidate` | monitoring-compliance | Y | P | P | P | P | P | P | n/a | 14/25 (56.0%) | UNPROVEN (9) | no | FW-C1, FW-C2, FW-M1, FW-M6, FW-A3, FW-A6, FW-L1, FW-L5, FW-R3, FW-R5, FW-S2 |
 | `n8n-incident-fanin` | resilience | Y | P | P | P | P | P | Y | n/a | 14/30 (46.7%) | UNPROVEN (18) | no | FW-C1, FW-C2, FW-M2, FW-M3, FW-M6, FW-A1, FW-A4, FW-A6, FW-L1, FW-R1, FW-R3, FW-R5, FW-R6 |
 | `n8n-pilot-dispatch` | monitoring-compliance | Y | P | P | P | P | P | Y | n/a | 14/30 (46.7%) | UNPROVEN (18) | no | FW-C1, FW-C2, FW-M2, FW-M3, FW-M6, FW-A1, FW-A4, FW-A6, FW-L1, FW-R1, FW-R3, FW-R5, FW-R6 |
 | `n8n-research-intake-consumer` | business-critical | Y | N | P | P | P | P | Y | n/a | 13.5/30 (45.0%) | UNPROVEN (18) | no | FW-C1, FW-C2, FW-C3, FW-M2, FW-M3, FW-M6, FW-A1, FW-A4, FW-A6, FW-L1, FW-R1, FW-R3, FW-R5, FW-R6 |
@@ -68,7 +68,7 @@ probes): 1 statically conformant (the reference), 2030/4877 = 41.6%, 0 activatio
 | `tradeai-fabric-run-lane` | resilience | Y | N | P | P | Y | P | Y | n/a | 18.5/30 (61.7%) | UNPROVEN (18) | no | FW-C1, FW-C2, FW-C3, FW-M4, FW-M5, FW-M6, FW-A2, FW-A3, FW-A6, FW-R3, FW-R5 |
 | `tradeai-fabric-error` | resilience | Y | N | P | P | Y | P | Y | n/a | 15.5/26 (59.6%) | UNPROVEN (9) | no | FW-C1, FW-C2, FW-C3, FW-M5, FW-M6, FW-A1, FW-A2, FW-A3, FW-R3 |
 
-**Fleet:** 18 workflows, 0 statically conformant, 0 activation-eligible; static conformance 273/531 = 51.4%; 220 failing elements.
+**Fleet:** 18 workflows, 0 statically conformant, 0 activation-eligible; static conformance 274/531 = 51.6%; 219 failing elements (train 3: +1 FW-S2 for momentum-lifecycle-candidate after the relay route fix, audit DD14).
 
 "Runtime" = the runtime obligations that apply to the workflow (§23.24 crosswalk rows marked
 `not_checkable_offline`), all UNPROVEN: 18 for a workflow that requests lane runs, 9 for one that does not.

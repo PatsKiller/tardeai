@@ -189,6 +189,24 @@
       "runtime_evidence": [{"date": "2026-10-15", "evidence": "audit: executor maps exit 0 to RUN_DONE; 0 of 126 health contracts carry an expected_output rule", "source": "audit section 7"}],
       "proof_required": "stale/wrong-run/forged receipt fails the verifier; real no-op distinct from no_runner",
       "open_findings": ["DD07"]
+    },
+    {
+      "id": "D10",
+      "statement": "n8n LLM processes route OAuth first (grok, then chatgpt), DeepSeek on OAuth failure or for higher reasoning (declared reasoning_tier high, or one capped escalation on a low-confidence OAuth answer).",
+      "scope": "every n8n-coordination LLM process and every LLM step an n8n fabric process calls",
+      "status": "partially_realized",
+      "accountable_owner_role": "bridge owner (ROLE to confirm)",
+      "alternatives_rejected": ["DeepSeek-first (metered; degraded upstream 2026-10-15 00:11-05:04Z)", "OAuth-only with no fallback"],
+      "authority_impact": "selects which provider serves an n8n LLM step and when a metered escalation is spent; grants no new route or credential",
+      "ratification": {"policy": "operator decision in session", "ratifier": "operator", "ref": "in terms of n8n, then, we should try OAuth first. And if OAuth fails or if the answer needs higher reasoning, then we go to DeepSeek.", "date": "2026-10-15"},
+      "implementing_files": ["scripts/lib/cio_governed_model_bridge.py", "scripts/lib/bridge_llm_step.py", "scripts/lib/n8n_model_job.py", "config/llm_process_registry.json"],
+      "implementing_commits": ["00061cba9 (#1770 route_profile n8n_oauth_first)"],
+      "dependencies": ["DD17"],
+      "acceptance_criteria": "served release routes each n8n process grok -> chatgpt -> DeepSeek with route receipts; reasoning_tier high serves DeepSeek PRO_THINK first; at most one capped escalation; operator 4-path proof (< $0.05) recorded",
+      "test_ids": ["tests/test_n8n_oauth_first_routing_20261015.py"],
+      "runtime_evidence": [],
+      "proof_required": "operator proof after release: OAuth serves; DeepSeek fallback with OAuth disabled; low-confidence escalation; reasoning_tier high",
+      "open_findings": ["DD17"]
     }
   ]
 }
