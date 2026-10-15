@@ -57,6 +57,7 @@ for _p in (str(ROOT), str(ROOT / "scripts")):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
+from scripts.lib import incident_flood_policy as FP  # noqa: E402
 from scripts.lib.atomic_json_store import append_jsonl, atomic_write_json  # noqa: E402
 from scripts.lib.n8n_pilot_observations import served_sha, state_root  # noqa: E402
 from scripts.n8n_incident_fanin import LANE as FANIN_LANE  # noqa: E402
@@ -216,6 +217,8 @@ def open_incidents(fanin: dict[str, Any], acked_event_ids: set[str]) -> tuple[di
     acked: list[str] = []
     for r in fanin.get("incidents") or []:
         sev = str(r.get("severity") or "")
+        if sev == "P0":
+            sev = "P1"  # 2026-10-15: a P0 row (comms-intent PAGE) was skipped as "not P1/P2"; it pages as P1
         if sev not in NOTIFY_SEVERITIES:
             continue
         key = incident_key(str(r.get("source")), str(r.get("item")))
@@ -234,6 +237,9 @@ def open_incidents(fanin: dict[str, Any], acked_event_ids: set[str]) -> tuple[di
                 "event_id": r.get("event_id"),
                 "operator_action": r.get("operator_action") is True,
                 "momentum_host_watch": r.get("momentum_host_watch") is True,
+                # flood-policy protection reads these (scripts/lib/incident_flood_policy.is_protected)
+                "lane": r.get("lane"),
+                "event_type": r.get("event_type"),
             }
     return out, sorted(set(acked))
 
@@ -246,7 +252,12 @@ def load_state(path: Path) -> dict[str, Any]:
         "schema": STATE_SCHEMA,
         "notified": dict(doc.get("notified") or {}),
         "last_p2_batch_at": doc.get("last_p2_batch_at"),
+        "last_recovery_at": doc.get("last_recovery_at"),
         "sends_by_day": dict(doc.get("sends_by_day") or {}),
+        # 2026-10-15 flood policy: P1-bearing sends per day (kept apart from the P2 cap when enforcing) and the
+        # P2 batches each source triggered per day (the per-source budget).
+        "p1_sends_by_day": dict(doc.get("p1_sends_by_day") or {}),
+        "source_triggers_by_day": dict(doc.get("source_triggers_by_day") or {}),
     }
 
 
@@ -388,11 +399,16 @@ def plan_messages(
     cfg: dict[str, Any],
     fanin: dict[str, Any],
     acked: Optional[set[str]] = None,
+    policy: Optional[dict[str, Any]] = None,
 ) -> tuple[list[dict], dict[str, Any]]:
     """Pure: which messages this run sends, in priority order (P1, recovery, P2 batch). No I/O.
 
     Quiet hours (22:00-07:00 America/New_York by default) hold the P2 batch and P2-only recoveries; P1 and
-    any recovery that includes a P1 always go out. Held P2s leave as one batch at the end of the window."""
+    any recovery that includes a P1 always go out. Held P2s leave as one batch at the end of the window.
+
+    ``policy`` (scripts/lib/incident_flood_policy): the per-source P2 budget. report_only records on the batch what
+    the budget would do; enforce holds a batch that only over-budget sources would trigger, orders the lines
+    protected-first and round-robin by source, and records the charge on the message (``budget_charge``)."""
     by_sev = fanin.get("by_severity") or {}
     footer = (
         f"Fan-in as of {str(fanin.get('as_of') or '')[:16]}Z · open P1 {by_sev.get('P1', 0)} · "
@@ -432,8 +448,18 @@ def plan_messages(
             }
             for k in cleared
         ]
-        if quiet and not any(r["severity"] == "P1" for r in rec):
+        p2_only = not any(r["severity"] == "P1" for r in rec)
+        last_rec = _parse_ts(state.get("last_recovery_at"))
+        if quiet and p2_only:
             recovery["held"] = "quiet_hours"
+        elif (
+            policy is not None
+            and FP.enforcing(policy)
+            and p2_only
+            and last_rec is not None
+            and (now - last_rec) < timedelta(minutes=cfg["p2_batch_min"])
+        ):
+            recovery["held"] = "recovery_window"  # enforce: P2-only recoveries leave at most once per batch window
         else:
             msgs.append(
                 {
@@ -464,15 +490,36 @@ def plan_messages(
             batch["next_batch_at"] = (last + timedelta(minutes=cfg["p2_batch_min"])).isoformat()
             batch["deferred"] = True
         else:
-            msgs.append(
-                {
-                    "kind": "p2_batch",
-                    "severity": "P2",
-                    "incident_keys": [i["key"] for i in p2],
-                    "incidents": p2,
-                    "header": f"TRADE AI SYSTEM INCIDENTS — P2 batch ({len(p2)})",
+            charge: dict[str, int] = {}
+            if policy is not None:
+                today = (state.get("source_triggers_by_day") or {}).get(local_day(now, cfg)) or {}
+                b = FP.budget_p2(p2, today, policy)
+                batch["source_budget"] = {
+                    "mode": policy.get("mode"),
+                    "triggering": len(b["triggering"]),
+                    "riding": len(b["riding"]),
+                    "exhausted": b["exhausted"],
+                    "would_hold": not b["send"],
+                    "triggers_today": dict(today),
                 }
-            )
+                charge = b["charge"]
+                if FP.enforcing(policy):
+                    if not b["send"]:
+                        batch["held"] = "source_budget"  # only over-budget sources are due: they wait, not drop
+                        p2 = []
+                    else:
+                        p2 = FP.order_lines(b["triggering"] + b["riding"], policy)
+            if p2:
+                msgs.append(
+                    {
+                        "kind": "p2_batch",
+                        "severity": "P2",
+                        "incident_keys": [i["key"] for i in p2],
+                        "incidents": p2,
+                        "header": f"TRADE AI SYSTEM INCIDENTS — P2 batch ({len(p2)})",
+                        "budget_charge": charge,
+                    }
+                )
     flap_keys, flap_line = _flap_note(state, cfg)
     for m in msgs:
         tail = footer
@@ -509,6 +556,7 @@ def apply_result(state: dict, msg: dict, now: datetime) -> None:
         if k in state["notified"]:
             state["notified"][k]["flap_note_pending"] = False
     if msg["kind"] == "recovery":
+        state["last_recovery_at"] = iso
         for k in msg["incident_keys"]:
             r = state["notified"].get(k)
             if r is not None:
@@ -553,10 +601,15 @@ def run(
         else {"status": "not_read", "acked_event_ids": []}
     )
     state = load_state(root / STATE_REL)
+    policy = FP.load_policy(env)
+    p1_in_cap = FP.p1_counts_toward_cap(policy)
+    rec_in_cap = FP.recoveries_count_toward_cap(policy)
     day = local_day(now, cfg)
     keep_from = local_day(now - timedelta(days=7), cfg)
-    state["sends_by_day"] = {d: n for d, n in state["sends_by_day"].items() if d >= keep_from}
+    for k in ("sends_by_day", "p1_sends_by_day", "source_triggers_by_day"):
+        state[k] = {d: n for d, n in state[k].items() if d >= keep_from}
     used = int(state["sends_by_day"].get(day, 0))
+    p1_used = int(state["p1_sends_by_day"].get(day, 0))
     receipt: dict[str, Any] = {
         "schema": SCHEMA,
         "authority": AUTHORITY,
@@ -604,7 +657,7 @@ def run(
     receipt["acked_keys"] = acked
     receipt["open_notifiable"] = len(open_now)
     receipt["flaps"] = reconcile(open_now, set(acked), work, now, cfg)
-    msgs, batch = plan_messages(open_now, work, now, cfg, view, set(acked))
+    msgs, batch = plan_messages(open_now, work, now, cfg, view, set(acked), policy=policy)
     receipt["p2_batch"] = batch
     send = sender if sender is not None else (_default_sender() if live else None)
     preview = previewer if previewer is not None else (None if live else _default_previewer())
@@ -614,7 +667,9 @@ def run(
         row["lines"] = m["text"].count("\n") + 1
         row["text"] = m["text"]
         p1_bearing = m["kind"] == "p1" or any(i.get("severity") == "P1" for i in m["incidents"])
-        if used >= cfg["daily_cap"] and not p1_bearing:
+        # enforce (flood policy): a P1-bearing message and a recovery neither spend nor wait on the P2 cap
+        off_cap = (p1_bearing and not p1_in_cap) or (m["kind"] == "recovery" and not rec_in_cap)
+        if used >= cfg["daily_cap"] and not p1_bearing and not off_cap:
             row["status"] = "CAPPED"  # incidents stay un-notified; tomorrow's budget sends them. P1 (and a
             #                                   recovery that includes a P1) never caps.
         elif not live:
@@ -624,7 +679,10 @@ def run(
                 plan = {"would_send": False, "reason": f"preview_failed:{type(exc).__name__}"}
             row["status"] = "DRY_RUN"
             row["preview"] = {k: plan.get(k) for k in ("would_send", "reason", "transport_gate") if k in plan}
-            used += 1  # the plan counts against the cap exactly as a live run would
+            if p1_bearing:
+                p1_used += 1
+            if not off_cap:
+                used += 1  # the plan counts against the cap exactly as a live run would
         else:
             try:
                 res = send(m["text"], identity=m["identity"], kind=f"incident_{m['kind']}")  # type: ignore[misc]
@@ -647,7 +705,14 @@ def run(
                 failed = True
             elif res.get("ok"):
                 row["status"] = "SENT"
-                used += 1
+                if p1_bearing:
+                    p1_used += 1
+                if not off_cap:
+                    used += 1
+                if m.get("budget_charge"):
+                    tday = work.setdefault("source_triggers_by_day", {}).setdefault(day, {})
+                    for src, n in m["budget_charge"].items():
+                        tday[src] = int(tday.get(src, 0)) + int(n)
                 apply_result(work, m, now)
             else:
                 row["status"] = "FAILED"
@@ -664,12 +729,25 @@ def run(
         state["notified"].update(work["notified"])
     if live:
         state["sends_by_day"][day] = used
+        state["p1_sends_by_day"][day] = p1_used
+        if host_only:  # the budget ledger lives on the full state, not the host-only view
+            state["source_triggers_by_day"] = work.get("source_triggers_by_day") or state["source_triggers_by_day"]
     receipt["cap"] = {
         "day": day,
         "tz": cfg["tz"],
         "used": used,
         "limit": cfg["daily_cap"],
         "capped": sum(1 for r in receipt["messages"] if r["status"] == "CAPPED"),
+    }
+    receipt["flood_policy"] = {
+        "mode": policy.get("mode"),
+        "config_note": policy.get("config_note"),
+        "p1_counts_toward_p2_cap": p1_in_cap,
+        "recoveries_count_toward_p2_cap": rec_in_cap,
+        "cap_basis": "p2_only" if not p1_in_cap else "all_messages",
+        "p1_used": p1_used,
+        "source_budget": (batch or {}).get("source_budget"),
+        "triggers_today": dict((state.get("source_triggers_by_day") or {}).get(day) or {}),
     }
     receipt["status"] = "FAILED" if failed else (f"HOST_ONLY:{fanin['status']}" if host_only else "OK")
     receipt["ok"] = not failed

@@ -4022,6 +4022,20 @@ GATES = [
         ["tests/test_stop_alert_never_digest_20261014.py"],
     ),
     (
+        # ANCHOR: ALERT_FLOOD_AND_DEADMAN_20261015 — WS1-09/WS3-10/WS3-35 incident-flood rules behind a report_only
+        # flag (drop diagnoser policy refusals and lock skips, auto-resolve on lane success, collapse per lane and
+        # failure class, per-source P2 budget, P1/recoveries off the P2 cap), pinned so no P0/P1 stop, broker or
+        # safety finding (SPCX cases) is ever suppressed; WS3-18 off-box dead-man sender (dry run opens nothing);
+        # WS3-21 send_telegram no longer returns True for an undelivered transport attempt. Hermetic: tmp state
+        # roots, tmp sqlite, stub sender/requester/transport. Listing them here schedules nothing.
+        "alert_flood_and_deadman_20261015",
+        [
+            "tests/test_incident_flood_policy_20261015.py",
+            "tests/test_offbox_deadman_20261015.py",
+            "tests/test_telegram_delivery_outcome_20261015.py",
+        ],
+    ),
+    (
         # ANCHOR: GROK_G10_G12_20261011 — honest non-zero exits, lockup and hermes weights off the
         # release tree, and --alert/--send/--telegram as sender tokens. The n8n: SIEM skip is the
         # g11 implementation; its own test is on the n8n_siem_bridge gate. Hermetic: tmp paths,

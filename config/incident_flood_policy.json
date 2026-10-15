@@ -1,0 +1,66 @@
+{
+  "schema": "IncidentFloodPolicy@v1",
+  "as_of": "2026-10-15",
+  "owner": "scripts/lib/incident_flood_policy.py",
+  "design": "~/n8n-maturity-verification/arch-review-20261014/designs/ALERT_FLOOD_AND_DEADMAN.md (WS1-09, WS3-10, WS3-35)",
+  "mode": "report_only",
+  "mode_values": {
+    "report_only": "compute every rule and write what it would do to the fan-in and notifier receipts; publish and send exactly as before",
+    "enforce": "publish the reduced incident list and apply the per-source P2 budget; operator activation only"
+  },
+  "protected": {
+    "note": "Checked before every rule. A protected finding is never dropped, collapsed, demoted, auto-resolved or budgeted.",
+    "always_severities": ["P0"],
+    "p1_rule_sources": ["n8n_failure_diagnosis"],
+    "pattern": "(?<![a-z0-9])(stops?|stop[-_ ]?(loss|health|check|drift|supervisor|sync|watch|fill|alert)|broker|schwab|alpaca|moomoo|fidelity|snaptrade|orders?|positions?|fills?|filled|naked|safety|kill[-_ ]?switch|interdict|2fa|trading[-_ ]?lock|containment|egress_refused|cost_cap_breached)(?![a-z0-9])"
+  },
+  "drop_policy_refusals": {
+    "enabled": true,
+    "note": "A diagnoser escalation whose reason is the diagnoser's own policy refusal (it declined to spend a model call, or a remediation run was refused or skipped because the lock was held) is not an incident: the original detector's finding for that lane stays open on its own source.",
+    "sources": ["n8n_failure_diagnosis"],
+    "reasons": [
+      "deferred_offpeak",
+      "lane_daily_call_cap",
+      "process_daily_cap",
+      "per_call_cost_cap",
+      "model_refused:governance_refused",
+      "remediation_failed:RUN_REFUSED",
+      "remediation_failed:RUN_SKIPPED_LOCK"
+    ],
+    "run_states": ["RUN_REFUSED", "RUN_SKIPPED_LOCK"]
+  },
+  "auto_resolve": {
+    "enabled": true,
+    "note": "A run-failure incident tied to a lane closes when that lane's next run (same mode when the incident names one) ends RUN_DONE with exit 0 after the incident was detected. The ledger row is not touched; a dead letter stays in dead_letters for the operator's release.",
+    "sources": ["dlq", "runs", "n8n_failure_diagnosis"],
+    "diagnoser_event_types": ["RUN_FAILED", "RUN_TIMEOUT"],
+    "diagnoser_reason_prefixes": ["remediation_failed:", "remediation_stuck", "remediation_run_missing"]
+  },
+  "collapse": {
+    "enabled": true,
+    "note": "Diagnoser self-reports collapse to one incident per (lane, failure class); the worst severity wins, the count and the keys are carried as evidence.",
+    "sources": ["n8n_failure_diagnosis"]
+  },
+  "demote_low_confidence_p1": {
+    "enabled": true,
+    "note": "WS3-35: a low-confidence diagnoser escalation is not 'money or alert path at risk'. P1 -> P2 unless protected.",
+    "sources": ["n8n_failure_diagnosis"],
+    "reasons": ["low_confidence"],
+    "to": "P2"
+  },
+  "source_budget": {
+    "enabled": true,
+    "note": "Each source may TRIGGER at most this many P2 batch messages per operator day. Over budget, its incidents ride along on a batch another source triggers (shown, never dropped) and the next day's budget sends them. P1-bearing messages no longer count toward the P2 daily cap.",
+    "default_batches_per_day": 4,
+    "per_source": {
+      "n8n_failure_diagnosis": 2,
+      "dlq": 2,
+      "breach_detector": 6,
+      "data_plausibility": 4
+    },
+    "lines_per_source": 4,
+    "p1_counts_toward_p2_cap": false,
+    "recoveries_count_toward_p2_cap": false,
+    "recoveries_note": "WS3-11: good news must not crowd out bad news. When enforcing, a recovery neither spends nor waits on the P2 cap, and a P2-only recovery leaves at most once per P2 batch window."
+  }
+}

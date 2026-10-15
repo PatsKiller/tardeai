@@ -110,6 +110,30 @@ def _held_bucket() -> dict:
     return _sys.modules.setdefault("_tradeai_telegram_held_chunks", {"held": []})  # type: ignore[return-value]
 
 
+def _attempts_bucket() -> dict:
+    """Process-wide record of the raw transport attempts made by the CURRENT ``send_telegram`` call (WS3-21).
+
+    Same ``sys.modules`` bucket trick as ``_held_bucket`` so both import paths share it. ``send_telegram`` clears
+    it on entry; ``_raw_send_telegram_result`` and the unconfigured skip append to it. It is how the caller learns
+    whether anything reached Telegram, without changing the 182 boolean call sites' signature."""
+    import sys as _sys  # noqa: PLC0415
+
+    return _sys.modules.setdefault("_tradeai_telegram_send_attempts", {"attempts": []})  # type: ignore[return-value]
+
+
+def _record_attempt(**row) -> None:
+    _attempts_bucket().setdefault("attempts", []).append(row)
+
+
+def _transport_failed() -> bool:
+    """True when this send reached for the transport and nothing was accepted by Telegram (every attempt failed,
+    or the bot was unconfigured). A routed / digested / deduped message made no attempt and is NOT a failure, and
+    a send that reached at least one chat (a provider message id came back) is a partial delivery, not a failure:
+    a retry would duplicate it there."""
+    attempts = _attempts_bucket().get("attempts") or []
+    return bool(attempts) and not any(a.get("ok") or int(a.get("message_ids") or 0) for a in attempts)
+
+
 def last_held_chunks() -> list[dict]:
     """Chunks of the most recent send that the comms editor held instead of sending.
 
@@ -153,15 +177,18 @@ def _raw_send_telegram_result(
     held: list[dict] = []
     _held_bucket()["held"] = held
     if not token or not targets:
+        _record_attempt(ok=False, reason="unconfigured", message_ids=0, held=0, chunks=0)
         return {"ok": False, "message_ids": [], "chat_ids": [], "held": []}
     ok = True
     message_ids: list[str] = []
+    attempted = 0
     try:
         chunks = _smart_split(message, MAX_MSG_LEN)
         for cid in targets:
             for i, chunk in enumerate(chunks):
                 # Attach keyboard only on the final chunk so buttons stay with the full body.
                 markup = reply_markup if (reply_markup and i == len(chunks) - 1) else None
+                attempted += 1
                 result = send_message(
                     token=token,
                     chat_id=cid,
@@ -191,6 +218,8 @@ def _raw_send_telegram_result(
     # Record before returning: callers holding only the legacy bool read this.
     _LAST_MESSAGE_IDS.clear()
     _LAST_MESSAGE_IDS.extend(message_ids)
+    _record_attempt(ok=ok, reason=None if ok else "transport_error", message_ids=len(message_ids), held=len(held),
+                    chunks=attempted)
     return {
         "ok": ok,
         "message_ids": message_ids,
@@ -307,6 +336,7 @@ def _legacy_send(
     targets = chat_ids or _chat_ids()
     if not _token() or not targets:
         print("[telegram] Skipped — TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not set")
+        _record_attempt(ok=False, reason="unconfigured", message_ids=0, held=0, chunks=0)
         return False
     if priority:
         return _intent_send(
@@ -745,6 +775,7 @@ def send_telegram(
     # and staple it to this alert. An absent id must stay absent.
     reset_last_message_ids()
     _LAST_INTENT_ROUTE.clear()
+    _attempts_bucket()["attempts"] = []  # WS3-21: this call's transport attempts only
     # Only an intent passes intent kwargs, so every non-intent call keeps its exact pre-intent shape.
     intent = ({"priority": priority, "dedupe_minutes": dedupe_minutes, "producer": producer}
               if priority else {})
@@ -834,7 +865,55 @@ def send_telegram(
                                delivered=bool(result.get("delivered")))
     if not result.get("delivered") and result.get("route_mode") not in (None, "LEGACY"):
         print(f"[telegram] {result.get('route_mode')} ({result.get('reason')}): {message[:60]}...")
+    # WS3-21 (2026-10-15): SHADOW reports accepted:True for every message, so a send that reached for Telegram and
+    # failed on every chat (or found no token) returned True. "Accepted" keeps meaning routed / digested / deduped
+    # (no attempt was made); a transport attempt that delivered nothing is a failure the caller must see.
+    if _transport_failed():
+        return False
     return bool(result.get("accepted"))
+
+
+def delivery_outcome(accepted: bool) -> dict:
+    """The typed outcome of the most recent ``send_telegram`` call in this process (WS3-21). Pure read.
+
+    status: DELIVERED (Telegram returned a message id for at least one chunk and not every chunk was held;
+    ``partial_failure`` is True when another chat or chunk failed),
+    HELD (the comms editor held every chunk), FAILED (attempted, nothing accepted), UNCONFIGURED (no token/chat),
+    UNCONFIRMED (Telegram said ok but returned no id), ROUTED (no transport attempt: suppressed, digested, deduped
+    or gateway-owned; ``accepted`` says whether the platform took responsibility), DISABLED."""
+    attempts = list(_attempts_bucket().get("attempts") or [])
+    ids = sum(int(a.get("message_ids") or 0) for a in attempts)
+    held = sum(int(a.get("held") or 0) for a in attempts)
+    chunks = sum(int(a.get("chunks") or 0) for a in attempts)
+    if not _enabled():
+        status = "DISABLED"
+    elif not attempts:
+        status = "ROUTED"
+    elif all(a.get("reason") == "unconfigured" for a in attempts):
+        status = "UNCONFIGURED"
+    elif not any(a.get("ok") for a in attempts) and not ids:
+        status = "FAILED"
+    elif chunks and held >= chunks:
+        status = "HELD"
+    elif ids:
+        status = "DELIVERED"
+    else:
+        status = "UNCONFIRMED"
+    return {
+        "status": status,
+        "delivered": status == "DELIVERED",
+        "accepted": bool(accepted),
+        "message_ids": last_message_ids(),
+        "attempts": len(attempts),
+        "held_chunks": held,
+        "partial_failure": any(not a.get("ok") for a in attempts) and bool(ids),
+    }
+
+
+def send_telegram_outcome(message: str, **kwargs) -> dict:
+    """``send_telegram`` with the typed delivery outcome instead of a bool (WS3-21). Same routing, same sends."""
+    accepted = send_telegram(message, **kwargs)
+    return delivery_outcome(bool(accepted))
 
 
 def send_telegram_with_id(
