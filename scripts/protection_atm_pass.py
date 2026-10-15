@@ -13,6 +13,31 @@ Advisory/no-bypass by construction: it only ever calls the existing guarded appl
 """
 from __future__ import annotations
 
+import sys as _f09_sys
+
+if __name__ == "__main__" and "--dry-run" in _f09_sys.argv[1:]:
+    # n8n onboarding F09 (operator N8N Cutover Decision 2026-10-15; staged under AGENTS.md §23.14 until 12.0.0 is
+    # ratified): --dry-run is OFFLINE and wins over every live flag. It returns here, before any .env load, DB,
+    # broker, LLM, network or sender import and before any file write, and it makes NO broker call, not even a read.
+    # It prints the plan and one LaneOutput@v1 line on stderr: produced 0, empty_reason dry_run_requires_broker_read
+    # (the lane cannot plan without a broker read, so it does nothing). Proof: tests/test_onboard_f09_b2_20261015.py.
+    import os as _f09_os
+
+    _f09_sys.path.insert(0, _f09_os.path.dirname(_f09_os.path.abspath(__file__)))
+    from lib.lane_output import emit as _f09_emit, output_block as _f09_block
+
+    _f09_lane = "protection-atm-pass"
+    _f09_would = (
+        "read pending protection adjustments and, for PAPER positions, auto-apply the stop-up actions via an "
+        "Alpaca REPLACE (order path: trading lock applies); real accounts stay advisory"
+    )
+    print(f"DRY-RUN {_f09_lane}: would {_f09_would}; argv={_f09_sys.argv[1:]!r}; dry-run wins over live flags; "
+          "broker read required to plan: nothing done; "
+          "nothing read from env/DB/broker/network, no model call, no send, no file write")
+    _f09_emit(_f09_lane, "dry_run", _f09_block(produced=0, attempted=0, empty_reason="dry_run_requires_broker_read",
+                                               unit="protection adjustments auto-applied"))
+    raise SystemExit(0)
+
 import os
 
 def _is_paper_account(acct: str) -> bool:
