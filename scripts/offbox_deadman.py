@@ -44,6 +44,10 @@ from typing import Any, Callable, Optional
 ROOT = Path(__file__).resolve().parent.parent
 CONFIG_PATH = ROOT / "config" / "offbox_deadman.json"
 SCHEMA = "OffboxDeadmanPing@v1"
+NO_CONSUMER_REASON = (
+    "the consumer is off-box by design: the external dead-man service reads the ping; the local receipt is "
+    "operator evidence only. Its systemd timer is not installed until the operator runs the packet in PR #1751."
+)
 AUTHORITY = "OPERATOR_NOTIFY_OFFBOX"
 RECEIPT_REL = "data/runtime/offbox_deadman_last.json"
 DEFAULT_ENV = "TRADEAI_OFFBOX_DEADMAN_PING_URL"

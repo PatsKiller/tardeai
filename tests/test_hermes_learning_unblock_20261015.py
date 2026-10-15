@@ -27,6 +27,10 @@ from pathlib import Path
 
 import pytest
 
+# Firing test (tests/test_alarm_coverage.py): test_sends_are_declared_intents_through_the_chokepoint injects a
+# critical, a warning and an info alert and asserts each P2 / P3 send reaches the stub transport.
+COVERS = ["scripts/lib/hermes_outcome_bus/alert_notifications.py"]
+
 ROOT = Path(__file__).resolve().parents[1]
 for _p in (str(ROOT), str(ROOT / "scripts"), str(ROOT / "scripts" / "lib")):
     if _p not in sys.path:

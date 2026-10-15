@@ -147,6 +147,11 @@ def test_promotion_gate_precedes_activation_in_real_shell(tmp_path):
     # Source only the function definitions; replace host mutations with sentinels.
     source = (ROOT / "scripts/cio_phase2_exact_main_deploy.sh").read_text()
     source = source[:source.rindex('case "$MODE" in')]
+    # The deploy script sources its release-venv library relative to its own path (run-from-release P0,
+    # 2026-10-15); this harness runs a copy from tmp_path, so point that one line at the real library.
+    lib_line = 'source "${ROOT}/scripts/lib/release_venv.sh"'
+    assert source.count(lib_line) == 1
+    source = source.replace(lib_line, 'source "' + str(ROOT / "scripts/lib/release_venv.sh") + '"')
     candidate = tmp_path / "candidate"
     candidate.mkdir()
     (candidate / "BUILD_SHA").write_text(SHA)

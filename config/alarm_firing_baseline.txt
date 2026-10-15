@@ -80,7 +80,6 @@ scripts/interlock_parity_monitor.py 1
 scripts/iris_taxonomy_agent.py 1
 scripts/lib/cio_operator_renderers.py 2
 scripts/lib/gain_guardian_publish.py 1
-scripts/lib/hermes_outcome_bus/alert_notifications.py 1
 scripts/lib/options_pipeline/paper_position_alerts.py 1
 scripts/moomoo/opend_health.py 1
 scripts/morning_digest.py 1
