@@ -155,6 +155,7 @@ def test_reclassification_lands_in_declared_not_in_new():
     # design"; that is a not-installed claim, so it belongs here, not in NEW.
     assert set(res["declared_not_installed"]) == {
         "scripts/check_operator_answer_quality.py",
+        "scripts/cio_provider_journal_rotate.py",  # operator-run rotation CLI (2026-10-15)
         "scripts/report_slo_burn_rate.py",
         "scripts/set_goal_predicate.py",
     }
