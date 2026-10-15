@@ -3792,9 +3792,14 @@ GATES = [
         # the INERT reference mature workflow (scripts/build_n8n_reference_workflow.py --check, 100% on the checker),
         # the scorecard and the contracts design kept true by grep. Hermetic: committed repo files, synthetic
         # workflows, node.js for the reference Code nodes; no n8n, relay, gateway, ledger or DB.
+        # 2026-10-15 third-party audit fix (DD09/DD15/DD16): the score is STATIC CONFORMANCE, not maturity;
+        # graph-structural elements FW-W1..W4 stand on the graph alone (a re-stamped manifest / graph hash never
+        # carries the verdict); every §23.24 obligation mapped (static / platform / not_checkable_offline = UNPROVEN);
+        # fail-closed `--gate activation`; the auditor's mutations are failing regression fixtures.
         "n8n_workflow_framework_20261015",
         [
             "tests/test_check_n8n_workflow_framework.py",
+            "tests/test_check_n8n_workflow_framework_adversarial.py",
         ],
     ),
     (
