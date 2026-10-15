@@ -180,7 +180,10 @@ def test_excluded_lanes_stay_off_the_dispatcher():
         assert (row.get("scheduler") or {}).get("stage") is None, lane
         assert lane not in ALLOW, lane
     src = (ROOT / "scripts" / "news_ingestion.py").read_text(encoding="utf-8")
-    assert "--dry-run" not in src and "write_lane_receipt" not in src  # refactor first, then a W4 row
+    # onboarding B3 (2026-10-15) added the offline --dry-run guard (tests/test_onboard_dryrun_b3_20261015.py); the lane
+    # still writes no LaneRunReceipt, so it stays off the dispatcher until its onboarding row adds one.
+    assert "write_lane_receipt" not in src  # refactor first, then a W4 row
+    assert '"--dry-run" in _dr_sys.argv[1:]' in src
 
 
 START = datetime(2026, 10, 12, 4, 0, tzinfo=timezone.utc)  # Monday 00:00 America/New_York
