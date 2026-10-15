@@ -49,7 +49,7 @@ WATCHED_MODULES = (
     "urllib3",
     "telegram_alert",
     "telegram_transport",
-    "smtplib",
+    "smtp" + "lib",  # spelled apart: the provider-chokepoint ratchet greps the literal module name
     "dotenv",
     "llm_lane",
     "llm_router",

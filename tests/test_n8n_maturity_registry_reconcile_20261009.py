@@ -405,9 +405,9 @@ def test_generated_rows_have_evidence_or_are_flagged_unverified(committed):
     # run-research-intelligence-overnight-archive unchanged to keep its lane_id (else re-derived as -2): 214 left.
     # Shadow wave LD-W1 (2026-10-15, #1761) adopts 4 generated rows with dispatch blocks (hermes-discovery-scorecard,
     # wire-advisory-lessons, incubator-rolloff-engine, pattern-extractor); merged 2026-10-15 (DD01 ruling PR): 214 - 4 = 210.
-    # n8n onboarding ONB-1 (2026-10-15, tests/test_n8n_onboard_dryrun_proven_1_20261015.py) adopts 3 generated rows with
-    # dispatch blocks (hermes-discovery-ingestors, strategy-weekly-review, premarket-watcher): 210 - 3 = 207.
-    assert len(gen) >= 207
+    # n8n onboarding ONB-1 (2026-10-15, tests/test_n8n_onboard_dryrun_proven_1_20261015.py) adopts 1 generated row with a
+    # dispatch block (drain-discovery-backlog): 210 - 1 = 209.
+    assert len(gen) >= 209
     adopted = [r for r in committed["lanes"] if r.get("adopted_from_generator") == R.GENERATOR_VERSION]
     # D3 rows carry an r1_pending block (inert until AGENTS 4.4.0 is ACTIVE) instead of a dispatch block;
     # build-symbol-profiles-at-0-19, social-ingest-stocktwits and overnight-batch-tax are adopted unchanged only to keep

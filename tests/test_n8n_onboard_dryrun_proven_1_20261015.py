@@ -1,31 +1,35 @@
-"""n8n onboarding ONB-1 (operator "N8N Cutover Decision" 2026-10-15): 6 MIGRATE_N8N lanes onto the fabric in SHADOW.
+"""n8n onboarding ONB-1 (operator "N8N Cutover Decision" 2026-10-15): MIGRATE_N8N lanes onto the fabric in SHADOW.
 
 COVERS = ["config/lane_registry.json", "config/n8n_run_allowlist.json", "config/n8n_health_contracts.json",
           "config/n8n_effect_keys.json", "config/n8n_lane_capability_baseline.json",
+          "scripts/drain_cio_stance_classification.py", "scripts/drain_discovery_backlog.py",
           "scripts/hermes_discovery_ingestors.py", "scripts/youtube_cookie_health_check.py",
           "scripts/generate_weekly_docx.py", "scripts/strategy_weekly_review.py", "scripts/premarket_watcher.py",
-          "scripts/drain_cio_stance_classification.py", "tests/support/dry_run_write_recorder.py"]
+          "scripts/system_rollup_snapshot.py", "tests/support/dry_run_write_recorder.py"]
 
 Selection (docs/implementation/n8n-maturity/LANE_DISPOSITION_20261015.csv): disposition MIGRATE_N8N, family != F09,
 source != registry_systemd, no allowlist entry, a --dry-run flag already in source, dispatch_eligible on the exact cron
-line, no in-process model call (an llm-class lane needs the cio-governed-bridge llm_route), no paper/broker execution
-on the live path, no direct sender (a send goes through the telegram_alert chokepoint; capability audit new=0).
+line, no in-process model call (an llm lane needs the cio-governed-bridge llm_route), no paper/broker execution on the
+live path, and NO sender anywhere in the definition-level reach (the dispatcher sender gate,
+tests/test_agents_policy_7_0_0_advisory_market_data.py: its BASELINE is shrink-only).
 
-Every lane's --dry-run was read on its code path; five WROTE or reached the network/DB and were fixed here so an explicit
---dry-run is an offline plan before env, DB, log file, network, send or receipt (the old behaviour is --preview):
-premarket-watcher (log file + pipeline_runs INSERT + EDGAR/StockTwits/Yahoo), strategy-weekly-review (logs mkdir + log
-file + pipeline_runs + snapshot rewrite + a possible Telegram), generate-weekly-docx (3 chart PNGs), youtube-cookie-
-health-check (opened the cookie jar + DB), hermes-discovery-ingestors (env + DB). cio-stance-classification-drain was
-already write-free. Each lane now writes its LaneRunReceipt@v1 (with produced_count) on a real run.
+ONBOARDED (2): cio-stance-classification-drain and drain-discovery-backlog adopt their refactor shard 05 proposals
+unchanged (R2-05, frozen argv; --dry-run wins over --apply); both were out of SW4 only because SW4 admitted R1
+classes. Their receipts gain produced_count (output={...}: the document stays LaneRunReceipt@v1).
 
-Shape = the 4.4.0 cron-row shadow shape (SW4 / LD-W1): scheduler.stage shadow, dispatch.mode dry_run, allowlist
-live_arg null; the cron line keeps doing the real work.
+FIX ONLY (6): these lanes are MIGRATE_N8N but reach a send (telegram_alert chokepoint) so the sender gate holds them off
+the dispatcher; their --dry-run WROTE or reached the network/DB and is fixed here to an offline plan (old behaviour
+--preview), with a LaneRunReceipt on the real run, so they are ready the day the sender question is decided:
+premarket-watcher (log file + pipeline_runs + EDGAR/StockTwits/Yahoo), strategy-weekly-review (logs mkdir + log file +
+pipeline_runs + snapshot + possible Telegram), generate-weekly-docx (3 chart PNGs), youtube-cookie-health-check
+(opened the cookie jar + DB), hermes-discovery-ingestors (env + DB), system-rollup-snapshot (api_v2 ->
+llm_consumption DDL + llm_process_config seed + OAuth proxy probes).
 
-Dry-run proof: (1) each script runs under tests/support/dry_run_write_recorder.py, a CPython audit hook that records
-every write-mode open, filesystem mutation, socket connect, subprocess and sqlite connect, with the cron line's live
-switches added: zero events, no DB/HTTP/send module imported; (2) the REAL executor (scripts/n8n_run_executor.py
---once) drains a LIVE request per lane, the stage clamp runs it dry_run, RUN_DONE, and no receipt or state file appears.
-Hermetic: tmp_path ledger/state/locks, no DB variables, fake DB/send modules for the receipt tests, repo config read only.
+Dry-run proof: (1) tests/support/dry_run_write_recorder.py, a CPython audit hook recording every write-mode open, fs
+mutation, socket connect, subprocess and sqlite connect, with the cron line's live switches added: zero events and no
+DB/HTTP/send module imported, for all 8 scripts; (2) the REAL executor drains a LIVE request per onboarded lane, the
+stage clamp runs it dry_run, RUN_DONE, no receipt. Hermetic: tmp_path ledger/state/locks, no DB variables, fake
+DB/send modules, repo config read only.
 """
 
 from __future__ import annotations
@@ -64,51 +68,6 @@ RECORDER = ROOT / "tests/support/dry_run_write_recorder.py"
 
 #: lane -> (crontab line 2026-10-15, class, script, lock, lock on the cron line?, effects, cron live switches)
 WAVE = {
-    "hermes-discovery-ingestors": (
-        687,
-        "ingest",
-        "scripts/hermes_discovery_ingestors.py",
-        "/tmp/hermes_discovery_ingest.lock",
-        True,
-        ["append"],
-        ["--scheduled", "--json"],
-    ),
-    "youtube-cookie-health-check": (
-        397,
-        "monitor",
-        "scripts/youtube_cookie_health_check.py",
-        "/tmp/youtube_cookie_health_check.lock",
-        True,
-        ["send"],
-        ["--always"],
-    ),
-    "generate-weekly-docx": (
-        155,
-        "report",
-        "scripts/generate_weekly_docx.py",
-        "/tmp/weekly_docx.lock",
-        True,
-        ["send"],
-        ["--format", "all"],
-    ),
-    "strategy-weekly-review": (
-        279,
-        "learn",
-        "scripts/strategy_weekly_review.py",
-        "/tmp/strategy_weekly_review.lock",
-        False,
-        ["append", "send"],
-        [],
-    ),
-    "premarket-watcher": (
-        264,
-        "ingest",
-        "scripts/premarket_watcher.py",
-        "/tmp/premarket_watcher.lock",
-        False,
-        ["append", "send"],
-        [],
-    ),
     "cio-stance-classification-drain": (
         987,
         "pipeline",
@@ -118,22 +77,52 @@ WAVE = {
         ["append"],
         ["--apply"],
     ),
+    "drain-discovery-backlog": (
+        867,
+        "hygiene",
+        "scripts/drain_discovery_backlog.py",
+        "/tmp/drain-discovery-backlog.lock",
+        False,
+        ["append"],
+        ["--apply"],
+    ),
+}
+
+#: Rows that adopt their refactor shard 05 proposal unchanged (tests/test_refactor_shard_05_20261011.py pins the shape):
+#: lane -> (scheduler.wave, extra command args = the frozen cron argv, whose --apply the --dry-run wins over). The
+#: build-symbol-profiles-at-0-19 lane repair (2026-10-15) is the precedent.
+SHARD = {"cio-stance-classification-drain": ("R2-05", ["--apply"]), "drain-discovery-backlog": ("R2-05", ["--apply"])}
+
+#: Fix-only lanes (held off the dispatcher by the sender gate): script -> the cron line's live switches.
+FIX_ONLY = {
+    "hermes-discovery-ingestors": ("scripts/hermes_discovery_ingestors.py", ["--scheduled", "--json"]),
+    "youtube-cookie-health-check": ("scripts/youtube_cookie_health_check.py", ["--always"]),
+    "generate-weekly-docx": ("scripts/generate_weekly_docx.py", ["--format", "all"]),
+    "strategy-weekly-review": ("scripts/strategy_weekly_review.py", []),
+    "premarket-watcher": ("scripts/premarket_watcher.py", []),
+    "system-rollup-snapshot": ("scripts/system_rollup_snapshot.py", []),
 }
 
 
-#: Rows that adopt their refactor shard 05 proposal unchanged (tests/test_refactor_shard_05_20261011.py pins the shape):
-#: scheduler.wave R2-05 and the allowlist command = the frozen cron argv (tests/fixtures/refactor_shard_05/cron_argv.json),
-#: whose --apply the --dry-run wins over. The build-symbol-profiles-at-0-19 lane repair (2026-10-15) is the precedent.
-SHARD05 = {"cio-stance-classification-drain": ["--apply"]}
-
-
 def _sched_wave(lane: str) -> str:
-    return "R2-05" if lane in SHARD05 else "ONB-1"
+    return SHARD[lane][0] if lane in SHARD else "ONB-1"
 
 
 def test_wave_size_and_classes():
-    assert len(WAVE) == 6
-    assert {v[1] for v in WAVE.values()} == {"ingest", "monitor", "report", "learn", "pipeline"}
+    assert len(WAVE) == 2
+    assert {v[1] for v in WAVE.values()} == {"pipeline", "hygiene"}
+
+
+def test_fix_only_lanes_stay_off_the_dispatcher_and_are_senders():
+    """The reason they are not onboarded: each reaches a send, and the dispatcher sender gate refuses that."""
+    from scripts.lib import advisory_lane_guard as G
+
+    for lane, (script, _live) in FIX_ONLY.items():
+        assert lane not in ALLOW, lane
+        assert "dispatch" not in ROWS[lane], lane
+        assert G.scan_entry(script).is_sender, lane
+    for lane in WAVE:
+        assert not G.scan_entry(WAVE[lane][2]).is_sender, lane
 
 
 @pytest.mark.parametrize("lane", sorted(WAVE))
@@ -169,9 +158,9 @@ def test_row_is_a_shadow_cron_row_on_its_own_line(lane):
 def test_allowlist_entry_is_shadow_only(lane):
     ln, _klass, script, lock, on_line, _fx, live = WAVE[lane]
     e = ALLOW[lane]
-    assert e["command"] == ["$PY", script, *SHARD05.get(lane, [])]
+    assert e["command"] == ["$PY", script, *SHARD.get(lane, ("", []))[1]]
     assert e["dry_run_arg"] == ["--dry-run"] and e["live_arg"] is None
-    if lane not in SHARD05:
+    if lane not in SHARD:
         assert not set(live) & set(e["command"] + e["dry_run_arg"])
     assert e["output_signal"] == ROWS[lane]["output_signal"]["path"] == LD.receipt_signal_path(ROWS[lane])
     assert e["env_allowlist_mode"] == "report" and e["env_report_reason"]
@@ -185,7 +174,7 @@ def test_allowlist_entry_is_shadow_only(lane):
     else:  # canary-ready on the lock: the allowlist lock equals the cron line's flock lock
         canary = json.loads(json.dumps(ROWS[lane]))
         canary["scheduler"]["stage"], canary["dispatch"]["mode"] = "canary", "live"
-        assert LD.r1_canary_lock_matches(canary, dict(e, live_arg=[] if lane in SHARD05 else live))[0]
+        assert LD.r1_canary_lock_matches(canary, dict(e, live_arg=[] if lane in SHARD else live))[0]
 
 
 @pytest.mark.parametrize("lane", sorted(WAVE))
@@ -266,9 +255,9 @@ def _record(tmp_path: Path, script: str, args: list[str]) -> dict:
     return rec
 
 
-@pytest.mark.parametrize("lane", sorted(WAVE))
+@pytest.mark.parametrize("lane", sorted(WAVE) + sorted(FIX_ONLY))
 def test_offline_dry_run_records_zero_writes(tmp_path, lane):
-    _ln, _k, script, _l, _o, _fx, live = WAVE[lane]
+    script, live = (WAVE[lane][2], WAVE[lane][6]) if lane in WAVE else FIX_ONLY[lane]
     (tmp_path / "state").mkdir()
     # --dry-run wins over every live switch the cron line carries
     rec = _record(tmp_path, script, [*live, "--dry-run"])
@@ -493,3 +482,76 @@ def test_cio_stance_and_ingestors_receipts_carry_produced_count():
         ("scripts/hermes_discovery_ingestors.py", '"produced_count": produced'),
     ):
         assert needle in (ROOT / script).read_text(encoding="utf-8"), script
+
+
+def test_system_rollup_lane_receipt_counts_landed_outputs(tmp_path, monkeypatch):
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
+    monkeypatch.setenv("TRADEAI_SYSTEM_ROLLUP_RECEIPTS", str(tmp_path / "rollup.jsonl"))
+    mod = _load("system_rollup_snapshot_onb2", ROOT / "scripts/system_rollup_snapshot.py")
+    ok = {"status": "ok"}
+    monkeypatch.setattr(
+        mod,
+        "run",
+        lambda dry_run=False: (
+            0,
+            {
+                "started_at": "2026-10-15T20:40:00+00:00",
+                "status": "ok",
+                "failed_steps": [],
+                "steps": {"snapshot": ok, "digest": ok, "ai_reports": ok, "telegram": {"status": "accepted"}},
+            },
+        ),
+    )
+    assert mod.main([]) == 0
+    r = _receipt(tmp_path, "system-rollup-snapshot")
+    assert r["status"] == "ok" and r["produced_count"] == 3 and r["attempted_count"] == 3
+    monkeypatch.setattr(
+        mod,
+        "run",
+        lambda dry_run=False: (
+            1,
+            {
+                "started_at": "2026-10-15T20:40:00+00:00",
+                "status": "failed",
+                "failed_steps": ["snapshot"],
+                "steps": {"snapshot": {"status": "failed"}, "digest": ok, "ai_reports": ok},
+            },
+        ),
+    )
+    assert mod.main([]) == 1
+    r2 = _receipt(tmp_path, "system-rollup-snapshot")
+    assert r2["status"] == "failed" and r2["produced_count"] == 2 and r2["ok_at"] == r["ok_at"]
+    os.remove(tmp_path / "data" / "runtime" / "system-rollup-snapshot_last.json")
+    seen = []
+    monkeypatch.setattr(mod, "run", lambda dry_run=False: seen.append(dry_run) or (0, {"steps": {}, "status": "ok"}))
+    assert mod.main(["--preview"]) == 0 and seen == [True]  # the old measuring run: no lane receipt
+    assert not (tmp_path / "data" / "runtime" / "system-rollup-snapshot_last.json").exists()
+
+
+def test_drain_discovery_backlog_receipt_counts_moves(tmp_path, monkeypatch):
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
+    mod = _load("drain_discovery_backlog_onb2", ROOT / "scripts/drain_discovery_backlog.py")
+
+    class Cur:
+        def execute(self, *a, **k):
+            return None
+
+    class Conn:
+        def cursor(self):
+            return Cur()
+
+        def commit(self):
+            return None
+
+        def close(self):
+            return None
+
+    monkeypatch.setattr(mod, "_get_conn", lambda: Conn())
+    monkeypatch.setattr(mod, "_transition", lambda *a, **k: None)
+    monkeypatch.setattr(mod, "_select", lambda cur, n: ([(1, "a", None), (2, "b", None)], [(3, "c", "CLUSTERED")]))
+    assert mod.main(["--apply"]) == 0
+    r = _receipt(tmp_path, "drain-discovery-backlog")
+    assert r["status"] == "ok" and r["produced_count"] == 3 and r["empty_reason"] is None
+    monkeypatch.setattr(mod, "_select", lambda cur, n: ([], []))
+    assert mod.main(["--apply"]) == 0
+    assert _receipt(tmp_path, "drain-discovery-backlog")["empty_reason"] == "nothing_due"

@@ -28986,1045 +28986,6 @@
     },
     {
       "schema": "N8nHealthContract@v1",
-      "id": "hermes-discovery-ingestors",
-      "kind": "lane",
-      "workflow_id": "tradeai-dispatcher",
-      "status": "REVIEWED",
-      "target_reason": "stage:shadow",
-      "stage": "shadow",
-      "purpose": {
-        "text": "Hermes discovery ingestors: adapt existing producer outputs (source registry, directive hits, etc.) into Discovery Inbox candidates (observe-only).",
-        "business_function": "research",
-        "source": "inventory cron:L682"
-      },
-      "owner": "research",
-      "connects_to": [
-        {
-          "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
-          "kind": "service",
-          "direction": "calls",
-          "source": "AGENTS.md \u00a723.3"
-        },
-        {
-          "name": "$PY scripts/hermes_discovery_ingestors.py",
-          "kind": "runner",
-          "direction": "calls",
-          "source": "config/n8n_run_allowlist.json command"
-        },
-        {
-          "name": "/tmp/hermes_discovery_ingest.lock",
-          "kind": "lock",
-          "direction": "read_write",
-          "source": "config/n8n_run_allowlist.json lock (flock)"
-        },
-        {
-          "name": "data/runtime/hermes-discovery-ingestors_last.json",
-          "kind": "receipt",
-          "direction": "write",
-          "source": "LaneRunReceipt / allowlist output_signal"
-        },
-        {
-          "name": "Postgres trade_ai: research_sources, hermes_directive_hits_staging, watch_directives, ticker_strategy_classifications, watchlist_items, news_articles, hermes_research_intelligence, topic_monitor, hermes_discovery_candidates (daily caps)",
-          "kind": "store",
-          "direction": "read",
-          "source": "scripts/hermes_discovery_ingestors.py _rows / ingest_* (source reviewed 2026-10-15)"
-        },
-        {
-          "name": "config/hermes_discovery_schedule.json + data/runtime/hermes_discovery_scorecard.json (do-no-harm gate)",
-          "kind": "config",
-          "direction": "read",
-          "source": "hermes_discovery_ingestors.py run_scheduled :353-370"
-        },
-        {
-          "name": "hermes_discovery_candidates / hermes_discovery_audit / hermes_discovery_clusters via lib.hermes_discovery.inbox.upsert_candidate",
-          "kind": "store",
-          "direction": "write",
-          "source": "lib/hermes_discovery/inbox.py upsert_candidate :275"
-        },
-        {
-          "name": "telegram_alert.send_telegram P2 (config failure or every ingestor failed; 6 h throttle)",
-          "kind": "service",
-          "direction": "calls",
-          "source": "hermes_discovery_ingestors.py _critical_alert :485-501 (chokepoint)"
-        }
-      ],
-      "healthy": [
-        {
-          "check": "shadow_dry_run_done",
-          "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
-        },
-        {
-          "check": "dry_run_writes_nothing",
-          "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md \u00a76)"
-        },
-        {
-          "check": "cron_twin_output_fresh",
-          "text": "the live cron line keeps the registry output_signal data/runtime/hermes-discovery-ingestors_last.json fresh within 4.0 h (2x cadence)"
-        },
-        {
-          "check": "duration_within_baseline",
-          "text": "duration <= 720.0 s (80% of timeout_s 900)"
-        },
-        {
-          "check": "output_produced",
-          "text": "produced_count is an integer on every live run (discovery candidates upserted); 0 only with an allowed empty_reason ['no_new_input', 'nothing_due']"
-        }
-      ],
-      "degraded": [
-        {
-          "check": "late",
-          "text": "output_signal older than 4.0 h but younger than 6.0 h (2x-3x cadence)"
-        },
-        {
-          "check": "slow",
-          "text": "duration above 720.0 s"
-        },
-        {
-          "check": "retried",
-          "text": "a run needed attempt > 1 (retry_policy) or ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
-        },
-        {
-          "check": "upstream_stale",
-          "text": "an upstream input is stale: Postgres research/directive/watchlist tables; config/hermes_discovery_schedule.json (not machine-checked yet)"
-        }
-      ],
-      "failed": [
-        {
-          "check": "run_failed",
-          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
-        },
-        {
-          "check": "no_receipt",
-          "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
-        },
-        {
-          "check": "stale",
-          "text": "output_signal older than 6.0 h (3x cadence)"
-        },
-        {
-          "check": "breaker_or_dlq",
-          "text": "a dead letter was written or the lane's breaker opened (3 failures)"
-        },
-        {
-          "check": "dry_run_wrote",
-          "text": "a dry_run changed its output_signal or any durable state"
-        },
-        {
-          "check": "empty_output",
-          "text": "an exit-0 live run produced nothing outside the expected_output rule (empty_allowed), or skipped for a fatal reason ['no_runner', 'dependency_unavailable'] -> RUN_FAILED empty_output, P2"
-        },
-        {
-          "check": "output_unverifiable",
-          "text": "an exit-0 live run left no LaneRunReceipt@v2 attempt receipt bound to its run_id with an integer produced_count -> RUN_FAILED output_unverifiable"
-        }
-      ],
-      "baseline": {
-        "freshness_degraded_after_h": 4.0,
-        "freshness_failed_after_h": 6.0,
-        "freshness_rule": "degraded beyond 2x cadence (lane_registry.evaluate_lane SLOW), failed beyond 3x (incident fan-in stale threshold)",
-        "timeout_s": 900,
-        "class": "ingest",
-        "computed_on": "2026-10-15",
-        "basis": "CLASS_DEFAULT_PROVISIONAL",
-        "source": "fewer than 14 finished live runs in the coordination ledger (0); class defaults: duration degraded above 80% of timeout_s, freshness 2x/3x cadence, any RUN_FAILED/RUN_TIMEOUT/RUN_REFUSED failed",
-        "runs_considered": 0,
-        "duration_degraded_above_s": 720.0
-      },
-      "alerting": {
-        "lane_severity": "Medium",
-        "severity_basis": "inventory cron:L682 business_function=research (catalogue rule)",
-        "failed": {
-          "siem_severity": "WARN",
-          "notifier_priority": "P2"
-        },
-        "degraded": {
-          "siem_severity": "INFO",
-          "notifier_priority": "P3"
-        },
-        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
-        "enforced": "partial source integration: scripts/n8n_incident_fanin.py _wferr_severity() consumes a workflow contract's failed.notifier_priority to raise the workflow-error priority floor. scripts/lib/n8n_siem_bridge.py severity_for() uses registry severity, else the fan-in priority. Full per-lane baseline, notification and diagnosis enforcement is not established by these declarations; runtime coverage remains NOT_MEASURED (N8N_MONITORING_AND_REMEDIATION_STANDARD.md \u00a77)."
-      },
-      "remediation": {
-        "catalogue_entry": false,
-        "diagnosis_excluded": false,
-        "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
-      },
-      "evidence": {
-        "receipt": "data/runtime/hermes-discovery-ingestors_last.json",
-        "verify": [
-          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='hermes-discovery-ingestors' ORDER BY requested_at DESC LIMIT 10\"",
-          "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:hermes-discovery-ingestors' ORDER BY created_at DESC LIMIT 10",
-          "stat / jq the receipt: data/runtime/hermes-discovery-ingestors_last.json"
-        ],
-        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger",
-        "expected_output_basis": "expected_output derived 2026-10-15 (n8n onboarding ONB-1) from hermes_discovery_ingestors.py run_scheduled by_type_counts[*].upserted (capped by max_candidates_per_run and per-day caps; 0 is legitimate when paused or capped); the --scheduled receipt now carries produced_count = sum(upserted). produced_count emission: the script's LaneRunReceipt carries produced_count; enforcement NOT YET - declared, not enforced (no output_receipt v2)"
-      },
-      "review_by": "2026-10-29",
-      "expected_output": {
-        "schema": "N8nExpectedOutput@v1",
-        "unit": "discovery candidates upserted",
-        "rule": "empty_allowed",
-        "min_produced": null,
-        "produced_field": "produced_count",
-        "fatal_skip_reasons": [
-          "no_runner",
-          "dependency_unavailable"
-        ],
-        "empty_allowed_reasons": [
-          "no_new_input",
-          "nothing_due"
-        ],
-        "evidence": [
-          {
-            "kind": "receipt_field",
-            "ref": "data/runtime/hermes-discovery-ingestors_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/hermes-discovery-ingestors/<run_id>.json)"
-          }
-        ],
-        "on_violation": {
-          "run_state": "RUN_FAILED",
-          "reason": "empty_output",
-          "notifier_priority": "P2"
-        }
-      },
-      "review": {
-        "prepared_by": "agent draft (build_n8n_health_contracts.py --as-of 2026-10-15; n8n onboarding ONB-1)",
-        "status": "REVIEWED",
-        "reviewed_by": "agent-reviewed 2026-10-15 against source (dry-run branch, receipt writer, import closure via advisory_lane_guard / audit_lane_transitive_capabilities); awaiting the operator's REVIEW pass (SW4 / LD-W1 precedent)",
-        "reviewed_on": "2026-10-15"
-      }
-    },
-    {
-      "schema": "N8nHealthContract@v1",
-      "id": "youtube-cookie-health-check",
-      "kind": "lane",
-      "workflow_id": "tradeai-dispatcher",
-      "status": "REVIEWED",
-      "target_reason": "stage:shadow",
-      "stage": "shadow",
-      "purpose": {
-        "text": "Daily 19:45 YouTube auth-cookie and transcript-freshness check (red/amber/green); alerts the operator through the chokepoint on red/amber.",
-        "business_function": "alerts-ops",
-        "source": "inventory cron:L395"
-      },
-      "owner": "platform",
-      "connects_to": [
-        {
-          "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
-          "kind": "service",
-          "direction": "calls",
-          "source": "AGENTS.md \u00a723.3"
-        },
-        {
-          "name": "$PY scripts/youtube_cookie_health_check.py",
-          "kind": "runner",
-          "direction": "calls",
-          "source": "config/n8n_run_allowlist.json command"
-        },
-        {
-          "name": "/tmp/youtube_cookie_health_check.lock",
-          "kind": "lock",
-          "direction": "read_write",
-          "source": "config/n8n_run_allowlist.json lock (flock)"
-        },
-        {
-          "name": "data/runtime/youtube-cookie-health-check_last.json",
-          "kind": "receipt",
-          "direction": "write",
-          "source": "LaneRunReceipt / allowlist output_signal"
-        },
-        {
-          "name": "YouTube cookie jar (TRADEAI_YOUTUBE_COOKIE_FILE / ~/.config/tradeai/youtube_cookies.txt): auth-cookie count only, never values",
-          "kind": "credential",
-          "direction": "read",
-          "source": "youtube_cookie_health_check.py _auth_cookie_count :103 (live path only; the dry run never opens it)"
-        },
-        {
-          "name": "Postgres youtube_transcripts MAX(ingested_at)",
-          "kind": "store",
-          "direction": "read",
-          "source": "youtube_cookie_health_check.py _transcript_age_h :122"
-        },
-        {
-          "name": "data/runtime/youtube_cookie_health_check_last.json (ScheduledJobReceipt@v1, legacy)",
-          "kind": "receipt",
-          "direction": "write",
-          "source": "lib/scheduled_job_receipt.run_with_receipt"
-        },
-        {
-          "name": "telegram_alert.send_telegram P1 red / P2 amber",
-          "kind": "service",
-          "direction": "calls",
-          "source": "youtube_cookie_health_check.py _send_telegram :133-153 (chokepoint)"
-        }
-      ],
-      "healthy": [
-        {
-          "check": "shadow_dry_run_done",
-          "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
-        },
-        {
-          "check": "dry_run_writes_nothing",
-          "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md \u00a76)"
-        },
-        {
-          "check": "cron_twin_output_fresh",
-          "text": "the live cron line keeps the registry output_signal data/runtime/youtube-cookie-health-check_last.json fresh within 48 h (2x cadence)"
-        },
-        {
-          "check": "duration_within_baseline",
-          "text": "duration <= 240.0 s (80% of timeout_s 300)"
-        },
-        {
-          "check": "output_produced",
-          "text": "produced_count >= 1 on every live run (cookie health statuses classified)"
-        }
-      ],
-      "degraded": [
-        {
-          "check": "late",
-          "text": "output_signal older than 48 h but younger than 72 h (2x-3x cadence)"
-        },
-        {
-          "check": "slow",
-          "text": "duration above 240.0 s"
-        },
-        {
-          "check": "retried",
-          "text": "a run needed attempt > 1 (retry_policy) or ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
-        },
-        {
-          "check": "upstream_stale",
-          "text": "an upstream input is stale: youtube_transcripts ingestion (19:00 lane) and the operator-maintained cookie jar (not machine-checked yet)"
-        }
-      ],
-      "failed": [
-        {
-          "check": "run_failed",
-          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
-        },
-        {
-          "check": "no_receipt",
-          "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
-        },
-        {
-          "check": "stale",
-          "text": "output_signal older than 72 h (3x cadence)"
-        },
-        {
-          "check": "breaker_or_dlq",
-          "text": "a dead letter was written or the lane's breaker opened (3 failures)"
-        },
-        {
-          "check": "dry_run_wrote",
-          "text": "a dry_run changed its output_signal or any durable state"
-        },
-        {
-          "check": "empty_output",
-          "text": "an exit-0 live run produced nothing outside the expected_output rule (min_produced), or skipped for a fatal reason ['no_runner', 'dependency_unavailable'] -> RUN_FAILED empty_output, P2"
-        },
-        {
-          "check": "output_unverifiable",
-          "text": "an exit-0 live run left no LaneRunReceipt@v2 attempt receipt bound to its run_id with an integer produced_count -> RUN_FAILED output_unverifiable"
-        }
-      ],
-      "baseline": {
-        "freshness_degraded_after_h": 48,
-        "freshness_failed_after_h": 72,
-        "freshness_rule": "degraded beyond 2x cadence (lane_registry.evaluate_lane SLOW), failed beyond 3x (incident fan-in stale threshold)",
-        "timeout_s": 300,
-        "class": "monitor",
-        "computed_on": "2026-10-15",
-        "basis": "CLASS_DEFAULT_PROVISIONAL",
-        "source": "fewer than 14 finished live runs in the coordination ledger (0); class defaults: duration degraded above 80% of timeout_s, freshness 2x/3x cadence, any RUN_FAILED/RUN_TIMEOUT/RUN_REFUSED failed",
-        "runs_considered": 0,
-        "duration_degraded_above_s": 240.0
-      },
-      "alerting": {
-        "lane_severity": "Critical",
-        "severity_basis": "remediation catalogue (cron:L395: business_function=alerts-ops)",
-        "failed": {
-          "siem_severity": "CRITICAL",
-          "notifier_priority": "P1"
-        },
-        "degraded": {
-          "siem_severity": "URGENT",
-          "notifier_priority": "P2"
-        },
-        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
-        "enforced": "partial source integration: scripts/n8n_incident_fanin.py _wferr_severity() consumes a workflow contract's failed.notifier_priority to raise the workflow-error priority floor. scripts/lib/n8n_siem_bridge.py severity_for() uses registry severity, else the fan-in priority. Full per-lane baseline, notification and diagnosis enforcement is not established by these declarations; runtime coverage remains NOT_MEASURED (N8N_MONITORING_AND_REMEDIATION_STANDARD.md \u00a77)."
-      },
-      "remediation": {
-        "catalogue_entry": true,
-        "diagnosis_excluded": false,
-        "actions": [],
-        "default_action": "suggest_only",
-        "suggest_only_reason": "no config/n8n_run_allowlist.json entry: the executor cannot run it; regenerate after its allowlist PR"
-      },
-      "evidence": {
-        "receipt": "data/runtime/youtube-cookie-health-check_last.json",
-        "verify": [
-          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='youtube-cookie-health-check' ORDER BY requested_at DESC LIMIT 10\"",
-          "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:youtube-cookie-health-check' ORDER BY created_at DESC LIMIT 10",
-          "stat / jq the receipt: data/runtime/youtube-cookie-health-check_last.json"
-        ],
-        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger",
-        "expected_output_basis": "expected_output derived 2026-10-15 (n8n onboarding ONB-1) from youtube_cookie_health_check.py main() classifies exactly one status per run; the lane receipt writes produced_count 1 on success. produced_count emission: the script's LaneRunReceipt carries produced_count; enforcement NOT YET - declared, not enforced (no output_receipt v2)"
-      },
-      "review_by": "2026-10-29",
-      "expected_output": {
-        "schema": "N8nExpectedOutput@v1",
-        "unit": "cookie health statuses classified",
-        "rule": "min_produced",
-        "min_produced": 1,
-        "produced_field": "produced_count",
-        "fatal_skip_reasons": [
-          "no_runner",
-          "dependency_unavailable"
-        ],
-        "empty_allowed_reasons": [
-          "no_new_input"
-        ],
-        "evidence": [
-          {
-            "kind": "receipt_field",
-            "ref": "data/runtime/youtube-cookie-health-check_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/youtube-cookie-health-check/<run_id>.json)"
-          }
-        ],
-        "on_violation": {
-          "run_state": "RUN_FAILED",
-          "reason": "empty_output",
-          "notifier_priority": "P2"
-        }
-      },
-      "review": {
-        "prepared_by": "agent draft (build_n8n_health_contracts.py --as-of 2026-10-15; n8n onboarding ONB-1)",
-        "status": "REVIEWED",
-        "reviewed_by": "agent-reviewed 2026-10-15 against source (dry-run branch, receipt writer, import closure via advisory_lane_guard / audit_lane_transitive_capabilities); awaiting the operator's REVIEW pass (SW4 / LD-W1 precedent)",
-        "reviewed_on": "2026-10-15"
-      }
-    },
-    {
-      "schema": "N8nHealthContract@v1",
-      "id": "generate-weekly-docx",
-      "kind": "lane",
-      "workflow_id": "tradeai-dispatcher",
-      "status": "REVIEWED",
-      "target_reason": "stage:shadow",
-      "stage": "shadow",
-      "purpose": {
-        "text": "Sunday 21:00 consolidated weekly portfolio review DOCX, with a Telegram 'generated' notice.",
-        "business_function": "reporting",
-        "source": "inventory cron:L153"
-      },
-      "owner": "platform",
-      "connects_to": [
-        {
-          "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
-          "kind": "service",
-          "direction": "calls",
-          "source": "AGENTS.md \u00a723.3"
-        },
-        {
-          "name": "$PY scripts/generate_weekly_docx.py",
-          "kind": "runner",
-          "direction": "calls",
-          "source": "config/n8n_run_allowlist.json command"
-        },
-        {
-          "name": "/tmp/weekly_docx.lock",
-          "kind": "lock",
-          "direction": "read_write",
-          "source": "config/n8n_run_allowlist.json lock (flock)"
-        },
-        {
-          "name": "data/runtime/generate-weekly-docx_last.json",
-          "kind": "receipt",
-          "direction": "write",
-          "source": "LaneRunReceipt / allowlist output_signal"
-        },
-        {
-          "name": "Postgres trade_ai + data/portfolios/state JSONs (analyst_report_builder.build_weekly_review)",
-          "kind": "store",
-          "direction": "read",
-          "source": "analyst_report_builder.py :2452-2571"
-        },
-        {
-          "name": "<reports_root>/analyst/weekly_review_<date>.json/.docx (+ chart PNGs) and archive/weekly/<date>/reports_weekly copy",
-          "kind": "store",
-          "direction": "write",
-          "source": "generate_weekly_docx.py main (save_report_json, report_export.export_report)"
-        },
-        {
-          "name": "telegram_alert.send_telegram P2 notice (only after every export succeeded)",
-          "kind": "service",
-          "direction": "calls",
-          "source": "generate_weekly_docx.py main (chokepoint)"
-        }
-      ],
-      "healthy": [
-        {
-          "check": "shadow_dry_run_done",
-          "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
-        },
-        {
-          "check": "dry_run_writes_nothing",
-          "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md \u00a76)"
-        },
-        {
-          "check": "cron_twin_output_fresh",
-          "text": "the live cron line keeps the registry output_signal data/runtime/generate-weekly-docx_last.json fresh within 336 h (2x cadence)"
-        },
-        {
-          "check": "duration_within_baseline",
-          "text": "duration <= 720.0 s (80% of timeout_s 900)"
-        },
-        {
-          "check": "output_produced",
-          "text": "produced_count >= 1 on every live run (weekly report files exported)"
-        }
-      ],
-      "degraded": [
-        {
-          "check": "late",
-          "text": "output_signal older than 336 h but younger than 504 h (2x-3x cadence)"
-        },
-        {
-          "check": "slow",
-          "text": "duration above 720.0 s"
-        },
-        {
-          "check": "retried",
-          "text": "a run needed attempt > 1 (retry_policy) or ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
-        },
-        {
-          "check": "upstream_stale",
-          "text": "an upstream input is stale: Postgres trade_ai weekly aggregates; analyst state JSONs (not machine-checked yet)"
-        }
-      ],
-      "failed": [
-        {
-          "check": "run_failed",
-          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
-        },
-        {
-          "check": "no_receipt",
-          "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
-        },
-        {
-          "check": "stale",
-          "text": "output_signal older than 504 h (3x cadence)"
-        },
-        {
-          "check": "breaker_or_dlq",
-          "text": "a dead letter was written or the lane's breaker opened (3 failures)"
-        },
-        {
-          "check": "dry_run_wrote",
-          "text": "a dry_run changed its output_signal or any durable state"
-        },
-        {
-          "check": "empty_output",
-          "text": "an exit-0 live run produced nothing outside the expected_output rule (min_produced), or skipped for a fatal reason ['no_runner', 'dependency_unavailable'] -> RUN_FAILED empty_output, P2"
-        },
-        {
-          "check": "output_unverifiable",
-          "text": "an exit-0 live run left no LaneRunReceipt@v2 attempt receipt bound to its run_id with an integer produced_count -> RUN_FAILED output_unverifiable"
-        }
-      ],
-      "baseline": {
-        "freshness_degraded_after_h": 336,
-        "freshness_failed_after_h": 504,
-        "freshness_rule": "degraded beyond 2x cadence (lane_registry.evaluate_lane SLOW), failed beyond 3x (incident fan-in stale threshold)",
-        "timeout_s": 900,
-        "class": "report",
-        "computed_on": "2026-10-15",
-        "basis": "CLASS_DEFAULT_PROVISIONAL",
-        "source": "fewer than 14 finished live runs in the coordination ledger (0); class defaults: duration degraded above 80% of timeout_s, freshness 2x/3x cadence, any RUN_FAILED/RUN_TIMEOUT/RUN_REFUSED failed",
-        "runs_considered": 0,
-        "duration_degraded_above_s": 720.0
-      },
-      "alerting": {
-        "lane_severity": "High",
-        "severity_basis": "inventory cron:L153 business_function=reporting (catalogue rule)",
-        "failed": {
-          "siem_severity": "URGENT",
-          "notifier_priority": "P1"
-        },
-        "degraded": {
-          "siem_severity": "WARN",
-          "notifier_priority": "P3"
-        },
-        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
-        "enforced": "partial source integration: scripts/n8n_incident_fanin.py _wferr_severity() consumes a workflow contract's failed.notifier_priority to raise the workflow-error priority floor. scripts/lib/n8n_siem_bridge.py severity_for() uses registry severity, else the fan-in priority. Full per-lane baseline, notification and diagnosis enforcement is not established by these declarations; runtime coverage remains NOT_MEASURED (N8N_MONITORING_AND_REMEDIATION_STANDARD.md \u00a77)."
-      },
-      "remediation": {
-        "catalogue_entry": false,
-        "diagnosis_excluded": false,
-        "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
-      },
-      "evidence": {
-        "receipt": "data/runtime/generate-weekly-docx_last.json",
-        "verify": [
-          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='generate-weekly-docx' ORDER BY requested_at DESC LIMIT 10\"",
-          "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:generate-weekly-docx' ORDER BY created_at DESC LIMIT 10",
-          "stat / jq the receipt: data/runtime/generate-weekly-docx_last.json"
-        ],
-        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger",
-        "expected_output_basis": "expected_output derived 2026-10-15 (n8n onboarding ONB-1) from generate_weekly_docx.py main(): one export per requested format (docx by default); produced_count = exports that returned ok; any failed export exits 1. produced_count emission: the script's LaneRunReceipt carries produced_count; enforcement NOT YET - declared, not enforced (no output_receipt v2)"
-      },
-      "review_by": "2026-10-29",
-      "expected_output": {
-        "schema": "N8nExpectedOutput@v1",
-        "unit": "weekly report files exported",
-        "rule": "min_produced",
-        "min_produced": 1,
-        "produced_field": "produced_count",
-        "fatal_skip_reasons": [
-          "no_runner",
-          "dependency_unavailable"
-        ],
-        "empty_allowed_reasons": [
-          "no_new_input"
-        ],
-        "evidence": [
-          {
-            "kind": "receipt_field",
-            "ref": "data/runtime/generate-weekly-docx_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/generate-weekly-docx/<run_id>.json)"
-          }
-        ],
-        "on_violation": {
-          "run_state": "RUN_FAILED",
-          "reason": "empty_output",
-          "notifier_priority": "P2"
-        }
-      },
-      "review": {
-        "prepared_by": "agent draft (build_n8n_health_contracts.py --as-of 2026-10-15; n8n onboarding ONB-1)",
-        "status": "REVIEWED",
-        "reviewed_by": "agent-reviewed 2026-10-15 against source (dry-run branch, receipt writer, import closure via advisory_lane_guard / audit_lane_transitive_capabilities); awaiting the operator's REVIEW pass (SW4 / LD-W1 precedent)",
-        "reviewed_on": "2026-10-15"
-      }
-    },
-    {
-      "schema": "N8nHealthContract@v1",
-      "id": "strategy-weekly-review",
-      "kind": "lane",
-      "workflow_id": "tradeai-dispatcher",
-      "status": "REVIEWED",
-      "target_reason": "stage:shadow",
-      "stage": "shadow",
-      "purpose": {
-        "text": "Sunday 10:30 strategy performance review that manages strategy lifecycle status (strategy_registry) and sends a Telegram report.",
-        "business_function": "governance",
-        "source": "inventory cron:L277"
-      },
-      "owner": "learning",
-      "connects_to": [
-        {
-          "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
-          "kind": "service",
-          "direction": "calls",
-          "source": "AGENTS.md \u00a723.3"
-        },
-        {
-          "name": "$PY scripts/strategy_weekly_review.py",
-          "kind": "runner",
-          "direction": "calls",
-          "source": "config/n8n_run_allowlist.json command"
-        },
-        {
-          "name": "/tmp/strategy_weekly_review.lock",
-          "kind": "lock",
-          "direction": "read_write",
-          "source": "config/n8n_run_allowlist.json lock (flock)"
-        },
-        {
-          "name": "data/runtime/strategy-weekly-review_last.json",
-          "kind": "receipt",
-          "direction": "write",
-          "source": "LaneRunReceipt / allowlist output_signal"
-        },
-        {
-          "name": "Postgres strategy_registry, strategy_signals, trade_closed, paper_trades",
-          "kind": "store",
-          "direction": "read",
-          "source": "strategy_weekly_review.py run :266-328"
-        },
-        {
-          "name": "strategy_state_transitions INSERT, strategy_registry.status UPDATE",
-          "kind": "store",
-          "direction": "write",
-          "source": "strategy_weekly_review.py _log_transition :211, _update_status :225"
-        },
-        {
-          "name": "data/portfolios/state/strategy_weekly_review_latest.json (read by health_agent)",
-          "kind": "store",
-          "direction": "write",
-          "source": "strategy_weekly_review.py STATE_FILE :448"
-        },
-        {
-          "name": "telegram_alert.send_telegram P2 weekly report",
-          "kind": "service",
-          "direction": "calls",
-          "source": "strategy_weekly_review.py :455 (chokepoint)"
-        }
-      ],
-      "healthy": [
-        {
-          "check": "shadow_dry_run_done",
-          "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
-        },
-        {
-          "check": "dry_run_writes_nothing",
-          "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md \u00a76)"
-        },
-        {
-          "check": "cron_twin_output_fresh",
-          "text": "the live cron line keeps the registry output_signal data/runtime/strategy-weekly-review_last.json fresh within 336.0 h (2x cadence)"
-        },
-        {
-          "check": "duration_within_baseline",
-          "text": "duration <= 480.0 s (80% of timeout_s 600)"
-        },
-        {
-          "check": "output_produced",
-          "text": "produced_count >= 1 on every live run (strategies reviewed)"
-        }
-      ],
-      "degraded": [
-        {
-          "check": "late",
-          "text": "output_signal older than 336.0 h but younger than 504.0 h (2x-3x cadence)"
-        },
-        {
-          "check": "slow",
-          "text": "duration above 480.0 s"
-        },
-        {
-          "check": "retried",
-          "text": "a run needed attempt > 1 (retry_policy) or ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
-        },
-        {
-          "check": "upstream_stale",
-          "text": "an upstream input is stale: strategy_registry / strategy_signals / trade_closed (schwab journal) freshness (not machine-checked yet)"
-        }
-      ],
-      "failed": [
-        {
-          "check": "run_failed",
-          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
-        },
-        {
-          "check": "no_receipt",
-          "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
-        },
-        {
-          "check": "stale",
-          "text": "output_signal older than 504.0 h (3x cadence)"
-        },
-        {
-          "check": "breaker_or_dlq",
-          "text": "a dead letter was written or the lane's breaker opened (3 failures)"
-        },
-        {
-          "check": "dry_run_wrote",
-          "text": "a dry_run changed its output_signal or any durable state"
-        },
-        {
-          "check": "empty_output",
-          "text": "an exit-0 live run produced nothing outside the expected_output rule (min_produced), or skipped for a fatal reason ['no_runner', 'dependency_unavailable'] -> RUN_FAILED empty_output, P2"
-        },
-        {
-          "check": "output_unverifiable",
-          "text": "an exit-0 live run left no LaneRunReceipt@v2 attempt receipt bound to its run_id with an integer produced_count -> RUN_FAILED output_unverifiable"
-        }
-      ],
-      "baseline": {
-        "freshness_degraded_after_h": 336.0,
-        "freshness_failed_after_h": 504.0,
-        "freshness_rule": "degraded beyond 2x cadence (lane_registry.evaluate_lane SLOW), failed beyond 3x (incident fan-in stale threshold)",
-        "timeout_s": 600,
-        "class": "learn",
-        "computed_on": "2026-10-15",
-        "basis": "CLASS_DEFAULT_PROVISIONAL",
-        "source": "fewer than 14 finished live runs in the coordination ledger (0); class defaults: duration degraded above 80% of timeout_s, freshness 2x/3x cadence, any RUN_FAILED/RUN_TIMEOUT/RUN_REFUSED failed",
-        "runs_considered": 0,
-        "duration_degraded_above_s": 480.0
-      },
-      "alerting": {
-        "lane_severity": "Medium",
-        "severity_basis": "inventory cron:L277 business_function=governance (catalogue rule)",
-        "failed": {
-          "siem_severity": "WARN",
-          "notifier_priority": "P2"
-        },
-        "degraded": {
-          "siem_severity": "INFO",
-          "notifier_priority": "P3"
-        },
-        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
-        "enforced": "partial source integration: scripts/n8n_incident_fanin.py _wferr_severity() consumes a workflow contract's failed.notifier_priority to raise the workflow-error priority floor. scripts/lib/n8n_siem_bridge.py severity_for() uses registry severity, else the fan-in priority. Full per-lane baseline, notification and diagnosis enforcement is not established by these declarations; runtime coverage remains NOT_MEASURED (N8N_MONITORING_AND_REMEDIATION_STANDARD.md \u00a77)."
-      },
-      "remediation": {
-        "catalogue_entry": false,
-        "diagnosis_excluded": false,
-        "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
-      },
-      "evidence": {
-        "receipt": "data/runtime/strategy-weekly-review_last.json",
-        "verify": [
-          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='strategy-weekly-review' ORDER BY requested_at DESC LIMIT 10\"",
-          "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:strategy-weekly-review' ORDER BY created_at DESC LIMIT 10",
-          "stat / jq the receipt: data/runtime/strategy-weekly-review_last.json"
-        ],
-        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger",
-        "expected_output_basis": "expected_output derived 2026-10-15 (n8n onboarding ONB-1) from strategy_weekly_review.py run() stats['strategies'] (every registered strategy is reviewed and snapshotted each Sunday); an empty registry carries empty_reason no_new_input. produced_count emission: the script's LaneRunReceipt carries produced_count; enforcement NOT YET - declared, not enforced (no output_receipt v2)"
-      },
-      "review_by": "2026-10-29",
-      "expected_output": {
-        "schema": "N8nExpectedOutput@v1",
-        "unit": "strategies reviewed",
-        "rule": "min_produced",
-        "min_produced": 1,
-        "produced_field": "produced_count",
-        "fatal_skip_reasons": [
-          "no_runner",
-          "dependency_unavailable"
-        ],
-        "empty_allowed_reasons": [
-          "no_new_input"
-        ],
-        "evidence": [
-          {
-            "kind": "receipt_field",
-            "ref": "data/runtime/strategy-weekly-review_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/strategy-weekly-review/<run_id>.json)"
-          }
-        ],
-        "on_violation": {
-          "run_state": "RUN_FAILED",
-          "reason": "empty_output",
-          "notifier_priority": "P2"
-        }
-      },
-      "review": {
-        "prepared_by": "agent draft (build_n8n_health_contracts.py --as-of 2026-10-15; n8n onboarding ONB-1)",
-        "status": "REVIEWED",
-        "reviewed_by": "agent-reviewed 2026-10-15 against source (dry-run branch, receipt writer, import closure via advisory_lane_guard / audit_lane_transitive_capabilities); awaiting the operator's REVIEW pass (SW4 / LD-W1 precedent)",
-        "reviewed_on": "2026-10-15"
-      }
-    },
-    {
-      "schema": "N8nHealthContract@v1",
-      "id": "premarket-watcher",
-      "kind": "lane",
-      "workflow_id": "tradeai-dispatcher",
-      "status": "REVIEWED",
-      "target_reason": "stage:shadow",
-      "stage": "shadow",
-      "purpose": {
-        "text": "Every 15 min 07:00\u201309:45 weekday watch for overnight catalysts (SEC 8-K, social) on GO/WAIT symbols with Telegram alerts.",
-        "business_function": "trading-adjacent",
-        "source": "inventory cron:L262"
-      },
-      "owner": "scalp",
-      "connects_to": [
-        {
-          "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
-          "kind": "service",
-          "direction": "calls",
-          "source": "AGENTS.md \u00a723.3"
-        },
-        {
-          "name": "$PY scripts/premarket_watcher.py",
-          "kind": "runner",
-          "direction": "calls",
-          "source": "config/n8n_run_allowlist.json command"
-        },
-        {
-          "name": "/tmp/premarket_watcher.lock",
-          "kind": "lock",
-          "direction": "read_write",
-          "source": "config/n8n_run_allowlist.json lock (flock)"
-        },
-        {
-          "name": "data/runtime/premarket-watcher_last.json",
-          "kind": "receipt",
-          "direction": "write",
-          "source": "LaneRunReceipt / allowlist output_signal"
-        },
-        {
-          "name": "Postgres trade_ai_scans GO/WAIT symbols",
-          "kind": "store",
-          "direction": "read",
-          "source": "premarket_watcher.py get_watch_symbols :29"
-        },
-        {
-          "name": "SEC EDGAR full-text search, StockTwits, Yahoo RSS",
-          "kind": "external_provider",
-          "direction": "read",
-          "source": "premarket_watcher.py :62, :93, :326"
-        },
-        {
-          "name": "news_articles (news_articles_writer), social_posts, trade_ai_scans premarket upsert, scalp_scan_results",
-          "kind": "store",
-          "direction": "write",
-          "source": "premarket_watcher.py :49-53, :149, :183, :273, :295"
-        },
-        {
-          "name": "telegram_alert.send_telegram P2 PRE-MARKET CATALYST",
-          "kind": "service",
-          "direction": "calls",
-          "source": "premarket_watcher.py send_telegram :393 (chokepoint)"
-        }
-      ],
-      "healthy": [
-        {
-          "check": "shadow_dry_run_done",
-          "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
-        },
-        {
-          "check": "dry_run_writes_nothing",
-          "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md \u00a76)"
-        },
-        {
-          "check": "cron_twin_output_fresh",
-          "text": "the live cron line keeps the registry output_signal data/runtime/premarket-watcher_last.json fresh within 138.5 h (2x cadence)"
-        },
-        {
-          "check": "duration_within_baseline",
-          "text": "duration <= 672.0 s (80% of timeout_s 840)"
-        },
-        {
-          "check": "output_produced",
-          "text": "produced_count is an integer on every live run (symbols with pre-market activity recorded); 0 only with an allowed empty_reason ['no_new_input', 'market_closed', 'holiday']"
-        }
-      ],
-      "degraded": [
-        {
-          "check": "late",
-          "text": "output_signal older than 138.5 h but younger than 207.75 h (2x-3x cadence)"
-        },
-        {
-          "check": "slow",
-          "text": "duration above 672.0 s"
-        },
-        {
-          "check": "retried",
-          "text": "a run needed attempt > 1 (retry_policy) or ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
-        },
-        {
-          "check": "upstream_stale",
-          "text": "an upstream input is stale: trade_ai_scans GO/WAIT universe; EDGAR/StockTwits/Yahoo availability (not machine-checked yet)"
-        }
-      ],
-      "failed": [
-        {
-          "check": "run_failed",
-          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
-        },
-        {
-          "check": "no_receipt",
-          "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
-        },
-        {
-          "check": "stale",
-          "text": "output_signal older than 207.75 h (3x cadence)"
-        },
-        {
-          "check": "breaker_or_dlq",
-          "text": "a dead letter was written or the lane's breaker opened (3 failures)"
-        },
-        {
-          "check": "dry_run_wrote",
-          "text": "a dry_run changed its output_signal or any durable state"
-        },
-        {
-          "check": "empty_output",
-          "text": "an exit-0 live run produced nothing outside the expected_output rule (empty_allowed), or skipped for a fatal reason ['no_runner', 'dependency_unavailable'] -> RUN_FAILED empty_output, P2"
-        },
-        {
-          "check": "output_unverifiable",
-          "text": "an exit-0 live run left no LaneRunReceipt@v2 attempt receipt bound to its run_id with an integer produced_count -> RUN_FAILED output_unverifiable"
-        }
-      ],
-      "baseline": {
-        "freshness_degraded_after_h": 138.5,
-        "freshness_failed_after_h": 207.75,
-        "freshness_rule": "degraded beyond 2x cadence (lane_registry.evaluate_lane SLOW), failed beyond 3x (incident fan-in stale threshold)",
-        "timeout_s": 840,
-        "class": "ingest",
-        "computed_on": "2026-10-15",
-        "basis": "CLASS_DEFAULT_PROVISIONAL",
-        "source": "fewer than 14 finished live runs in the coordination ledger (0); class defaults: duration degraded above 80% of timeout_s, freshness 2x/3x cadence, any RUN_FAILED/RUN_TIMEOUT/RUN_REFUSED failed",
-        "runs_considered": 0,
-        "duration_degraded_above_s": 672.0
-      },
-      "alerting": {
-        "lane_severity": "Critical",
-        "severity_basis": "inventory cron:L262 business_function=trading-adjacent (catalogue rule)",
-        "failed": {
-          "siem_severity": "CRITICAL",
-          "notifier_priority": "P1"
-        },
-        "degraded": {
-          "siem_severity": "URGENT",
-          "notifier_priority": "P2"
-        },
-        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
-        "enforced": "partial source integration: scripts/n8n_incident_fanin.py _wferr_severity() consumes a workflow contract's failed.notifier_priority to raise the workflow-error priority floor. scripts/lib/n8n_siem_bridge.py severity_for() uses registry severity, else the fan-in priority. Full per-lane baseline, notification and diagnosis enforcement is not established by these declarations; runtime coverage remains NOT_MEASURED (N8N_MONITORING_AND_REMEDIATION_STANDARD.md \u00a77)."
-      },
-      "remediation": {
-        "catalogue_entry": false,
-        "diagnosis_excluded": false,
-        "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
-      },
-      "evidence": {
-        "receipt": "data/runtime/premarket-watcher_last.json",
-        "verify": [
-          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='premarket-watcher' ORDER BY requested_at DESC LIMIT 10\"",
-          "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:premarket-watcher' ORDER BY created_at DESC LIMIT 10",
-          "stat / jq the receipt: data/runtime/premarket-watcher_last.json"
-        ],
-        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger",
-        "expected_output_basis": "expected_output derived 2026-10-15 (n8n onboarding ONB-1) from premarket_watcher.py run_premarket_scan symbols_with_activity (0 is legitimate on a quiet morning); the lane receipt writes produced_count = symbols_with_activity, attempted_count = symbols_checked. produced_count emission: the script's LaneRunReceipt carries produced_count; enforcement NOT YET - declared, not enforced (no output_receipt v2)"
-      },
-      "review_by": "2026-10-29",
-      "expected_output": {
-        "schema": "N8nExpectedOutput@v1",
-        "unit": "symbols with pre-market activity recorded",
-        "rule": "empty_allowed",
-        "min_produced": null,
-        "produced_field": "produced_count",
-        "fatal_skip_reasons": [
-          "no_runner",
-          "dependency_unavailable"
-        ],
-        "empty_allowed_reasons": [
-          "no_new_input",
-          "market_closed",
-          "holiday"
-        ],
-        "evidence": [
-          {
-            "kind": "receipt_field",
-            "ref": "data/runtime/premarket-watcher_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/premarket-watcher/<run_id>.json)"
-          }
-        ],
-        "on_violation": {
-          "run_state": "RUN_FAILED",
-          "reason": "empty_output",
-          "notifier_priority": "P2"
-        }
-      },
-      "review": {
-        "prepared_by": "agent draft (build_n8n_health_contracts.py --as-of 2026-10-15; n8n onboarding ONB-1)",
-        "status": "REVIEWED",
-        "reviewed_by": "agent-reviewed 2026-10-15 against source (dry-run branch, receipt writer, import closure via advisory_lane_guard / audit_lane_transitive_capabilities); awaiting the operator's REVIEW pass (SW4 / LD-W1 precedent)",
-        "reviewed_on": "2026-10-15"
-      }
-    },
-    {
-      "schema": "N8nHealthContract@v1",
       "id": "cio-stance-classification-drain",
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
@@ -30211,6 +29172,203 @@
           {
             "kind": "receipt_field",
             "ref": "data/runtime/cio-stance-classification-drain_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/cio-stance-classification-drain/<run_id>.json)"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      },
+      "review": {
+        "prepared_by": "agent draft (build_n8n_health_contracts.py --as-of 2026-10-15; n8n onboarding ONB-1)",
+        "status": "REVIEWED",
+        "reviewed_by": "agent-reviewed 2026-10-15 against source (dry-run branch, receipt writer, import closure via advisory_lane_guard / audit_lane_transitive_capabilities); awaiting the operator's REVIEW pass (SW4 / LD-W1 precedent)",
+        "reviewed_on": "2026-10-15"
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "drain-discovery-backlog",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "stage:shadow",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Advance the stuck Hermes discovery inbox: promote CLUSTERED->READY_FOR_REVIEW, archive stale -> ARCHIVED_COLD.",
+        "business_function": "maintenance",
+        "source": "inventory cron:L862"
+      },
+      "owner": "research",
+      "connects_to": [
+        {
+          "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md \u00a723.3"
+        },
+        {
+          "name": "$PY scripts/drain_discovery_backlog.py --apply",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/drain-discovery-backlog.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "config/n8n_run_allowlist.json lock (flock)"
+        },
+        {
+          "name": "data/runtime/drain-discovery-backlog_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt / allowlist output_signal"
+        },
+        {
+          "name": "Postgres hermes_discovery_candidates (CLUSTERED + expired non-operator selection)",
+          "kind": "store",
+          "direction": "read",
+          "source": "drain_discovery_backlog.py _select"
+        },
+        {
+          "name": "hermes_discovery_candidates UPDATE (READY_FOR_REVIEW / ARCHIVED_COLD) + hermes_discovery_audit TRANSITION INSERT",
+          "kind": "store",
+          "direction": "write",
+          "source": "drain_discovery_backlog.py :139-151"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "shadow_dry_run_done",
+          "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+        },
+        {
+          "check": "dry_run_writes_nothing",
+          "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md \u00a76)"
+        },
+        {
+          "check": "cron_twin_output_fresh",
+          "text": "the live cron line keeps the registry output_signal data/runtime/drain-discovery-backlog_last.json fresh within 144.0 h (2x cadence)"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 480.0 s (80% of timeout_s 600)"
+        },
+        {
+          "check": "output_produced",
+          "text": "produced_count is an integer on every live run (discovery candidates promoted or archived); 0 only with an allowed empty_reason ['nothing_due', 'no_new_input']"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "output_signal older than 144.0 h but younger than 216.0 h (2x-3x cadence)"
+        },
+        {
+          "check": "slow",
+          "text": "duration above 480.0 s"
+        },
+        {
+          "check": "retried",
+          "text": "a run needed attempt > 1 (retry_policy) or ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
+        },
+        {
+          "check": "upstream_stale",
+          "text": "an upstream input is stale: hermes discovery inbox (hermes-discovery-ingestors upserts) (not machine-checked yet)"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "stale",
+          "text": "output_signal older than 216.0 h (3x cadence)"
+        },
+        {
+          "check": "breaker_or_dlq",
+          "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+        },
+        {
+          "check": "dry_run_wrote",
+          "text": "a dry_run changed its output_signal or any durable state"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run produced nothing outside the expected_output rule (empty_allowed), or skipped for a fatal reason ['no_runner', 'dependency_unavailable'] -> RUN_FAILED empty_output, P2"
+        },
+        {
+          "check": "output_unverifiable",
+          "text": "an exit-0 live run left no LaneRunReceipt@v2 attempt receipt bound to its run_id with an integer produced_count -> RUN_FAILED output_unverifiable"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 144.0,
+        "freshness_failed_after_h": 216.0,
+        "freshness_rule": "degraded beyond 2x cadence (lane_registry.evaluate_lane SLOW), failed beyond 3x (incident fan-in stale threshold)",
+        "timeout_s": 600,
+        "class": "hygiene",
+        "computed_on": "2026-10-15",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "class defaults (no learned baseline: the lane has no finished dispatcher run; shard 05 contract shape)",
+        "runs_considered": null,
+        "duration_degraded_above_s": 480.0
+      },
+      "alerting": {
+        "lane_severity": "Low",
+        "severity_basis": "inventory cron:L862 business_function=maintenance (catalogue rule)",
+        "failed": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+        "enforced": "partial source integration: scripts/n8n_incident_fanin.py _wferr_severity() consumes a workflow contract's failed.notifier_priority to raise the workflow-error priority floor. scripts/lib/n8n_siem_bridge.py severity_for() uses registry severity, else the fan-in priority. Full per-lane baseline, notification and diagnosis enforcement is not established by these declarations; runtime coverage remains NOT_MEASURED (N8N_MONITORING_AND_REMEDIATION_STANDARD.md \u00a77)."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
+      },
+      "evidence": {
+        "receipt": "data/runtime/drain-discovery-backlog_last.json",
+        "verify": [
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='drain-discovery-backlog' ORDER BY requested_at DESC LIMIT 10\"",
+          "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:drain-discovery-backlog' ORDER BY created_at DESC LIMIT 10",
+          "stat / jq the receipt: data/runtime/drain-discovery-backlog_last.json"
+        ],
+        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger",
+        "expected_output_basis": "expected_output derived 2026-10-15 (n8n onboarding ONB-1) from drain_discovery_backlog.py promoted + archived (0 when the backlog is empty); the receipt now carries produced_count. produced_count emission: the script's LaneRunReceipt carries produced_count; enforcement NOT YET - declared, not enforced (no output_receipt v2)"
+      },
+      "review_by": "2026-10-29",
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "discovery candidates promoted or archived",
+        "rule": "empty_allowed",
+        "min_produced": null,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [
+          "nothing_due",
+          "no_new_input"
+        ],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/drain-discovery-backlog_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/drain-discovery-backlog/<run_id>.json)"
           }
         ],
         "on_violation": {

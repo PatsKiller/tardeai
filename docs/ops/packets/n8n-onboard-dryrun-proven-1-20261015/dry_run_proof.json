@@ -1,9 +1,124 @@
 {
   "schema": "N8nOnboardDryRunProof@v1",
   "wave": "ONB-1",
-  "generated_at": "2026-10-15T21:19:54Z",
+  "generated_at": "2026-10-15T21:41:32Z",
   "how": "(1) tests/support/dry_run_write_recorder.py runs each lane script as __main__ under a CPython audit hook (PEP 578) that records every write-mode open, filesystem mutation, socket connect/getaddrinfo, subprocess and sqlite3.connect, with the cron line's live switches added before --dry-run; no DB / TELEGRAM variables in the environment. (2) scripts/n8n_run_executor.py --once (the real executor; real allowlist entries with locks moved to a scratch dir; the real registry from the code root) drains a LIVE request per lane from a scratch ledger; the stage clamp runs it dry_run. Scratch state root; no DB, network or host store touched. The same proof runs in CI as the wave's test file.",
   "recorder": [
+    {
+      "lane_id": "cio-stance-classification-drain",
+      "argv": [
+        "scripts/drain_cio_stance_classification.py",
+        "--apply",
+        "--dry-run"
+      ],
+      "exit_code": 0,
+      "events": {
+        "file_writes": [],
+        "fs_mutations": [],
+        "network": [],
+        "subprocess": [],
+        "sqlite": []
+      },
+      "watched_modules_loaded": [],
+      "stdout": "DRY-RUN cio-stance-classification-drain: would classify pending symbols and write classification/rule rows plus receipts; inputs NOT_MEASURED"
+    },
+    {
+      "lane_id": "drain-discovery-backlog",
+      "argv": [
+        "scripts/drain_discovery_backlog.py",
+        "--apply",
+        "--dry-run"
+      ],
+      "exit_code": 0,
+      "events": {
+        "file_writes": [],
+        "fs_mutations": [],
+        "network": [],
+        "subprocess": [],
+        "sqlite": []
+      },
+      "watched_modules_loaded": [],
+      "stdout": "DRY-RUN drain-discovery-backlog: would promote up to 200 candidates, archive expired non-operator candidates and write audit/receipt rows; inputs NOT_MEASURED"
+    }
+  ],
+  "executor_runs": [
+    {
+      "lane_id": "cio-stance-classification-drain",
+      "state": "RUN_DONE",
+      "mode": "dry_run",
+      "requested_mode": "live",
+      "stage_clamp": {
+        "clamped": true,
+        "effective_mode": "dry_run",
+        "reason": "stage_shadow",
+        "requested_mode": "live",
+        "stage": "shadow"
+      },
+      "argv": [
+        "flock",
+        "-n",
+        "-E",
+        "75",
+        "/tmp/claude-1000/-home-johnclaw/f49ed69f-8848-494d-8386-0e0c35d9dd59/scratchpad/onbproof-o2c2r2sq/locks/cio_stance_classify.lock.dryrun",
+        "timeout",
+        "-k",
+        "30",
+        "900",
+        "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python",
+        "scripts/drain_cio_stance_classification.py",
+        "--apply",
+        "--dry-run"
+      ],
+      "exit_code": 0,
+      "stdout_tail": "DRY-RUN cio-stance-classification-drain: would classify pending symbols and write classification/rule rows plus receipts; inputs NOT_MEASURED\n",
+      "output_signal": "data/runtime/cio-stance-classification-drain_last.json",
+      "lane_receipt_written": false
+    },
+    {
+      "lane_id": "drain-discovery-backlog",
+      "state": "RUN_DONE",
+      "mode": "dry_run",
+      "requested_mode": "live",
+      "stage_clamp": {
+        "clamped": true,
+        "effective_mode": "dry_run",
+        "reason": "stage_shadow",
+        "requested_mode": "live",
+        "stage": "shadow"
+      },
+      "argv": [
+        "flock",
+        "-n",
+        "-E",
+        "75",
+        "/tmp/claude-1000/-home-johnclaw/f49ed69f-8848-494d-8386-0e0c35d9dd59/scratchpad/onbproof-o2c2r2sq/locks/drain-discovery-backlog.lock.dryrun",
+        "timeout",
+        "-k",
+        "30",
+        "600",
+        "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python",
+        "scripts/drain_discovery_backlog.py",
+        "--apply",
+        "--dry-run"
+      ],
+      "exit_code": 0,
+      "stdout_tail": "DRY-RUN drain-discovery-backlog: would promote up to 200 candidates, archive expired non-operator candidates and write audit/receipt rows; inputs NOT_MEASURED\n",
+      "output_signal": "data/runtime/drain-discovery-backlog_last.json",
+      "lane_receipt_written": false
+    }
+  ],
+  "state_root_files_after": [
+    "data/runtime/n8n_run_executor_last.json",
+    "data/runtime/n8n_runs/run-onb-1-proof-000000.json",
+    "data/runtime/n8n_runs/run-onb-1-proof-000001.json"
+  ],
+  "verdict": {
+    "all_recorder_events_empty": true,
+    "all_run_done_dry_run": true,
+    "no_lane_receipt_written": true,
+    "fix_only_recorder_events_empty": true
+  },
+  "fix_only_recorder": [
     {
       "lane_id": "hermes-discovery-ingestors",
       "argv": [
@@ -95,10 +210,9 @@
       "stdout": "DRY-RUN premarket-watcher: would scan up to 50 GO/WAIT symbols (EDGAR, StockTwits, Yahoo RSS), upsert news_articles / social_posts / trade_ai_scans / scalp_scan_results, send one P2 catalyst alert through the telegram_alert chokepoint and write the lane receipt; no env, DB, network, log-file, send or receipt; inputs NOT_MEASURED"
     },
     {
-      "lane_id": "cio-stance-classification-drain",
+      "lane_id": "system-rollup-snapshot",
       "argv": [
-        "scripts/drain_cio_stance_classification.py",
-        "--apply",
+        "scripts/system_rollup_snapshot.py",
         "--dry-run"
       ],
       "exit_code": 0,
@@ -110,210 +224,8 @@
         "sqlite": []
       },
       "watched_modules_loaded": [],
-      "stdout": "DRY-RUN cio-stance-classification-drain: would classify pending symbols and write classification/rule rows plus receipts; inputs NOT_MEASURED"
+      "stdout": "DRY-RUN system-rollup-snapshot: would compute the 24h system rollup (api_v2._system_rollup), upsert one system_rollup_daily row (payload cap), write system_digest_<date>.md and an ai_reports row, refresh the report catalog, send one P2 line through the telegram_alert chokepoint and write the run + lane receipts; no env file, DB, proxy, file or send; inputs NOT_MEASURED"
     }
   ],
-  "executor_runs": [
-    {
-      "lane_id": "hermes-discovery-ingestors",
-      "state": "RUN_DONE",
-      "mode": "dry_run",
-      "requested_mode": "live",
-      "stage_clamp": {
-        "clamped": true,
-        "effective_mode": "dry_run",
-        "reason": "stage_shadow",
-        "requested_mode": "live",
-        "stage": "shadow"
-      },
-      "argv": [
-        "flock",
-        "-n",
-        "-E",
-        "75",
-        "/tmp/claude-1000/-home-johnclaw/f49ed69f-8848-494d-8386-0e0c35d9dd59/scratchpad/onbproof-b8ic8oie/locks/hermes_discovery_ingest.lock.dryrun",
-        "timeout",
-        "-k",
-        "30",
-        "900",
-        "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python",
-        "scripts/hermes_discovery_ingestors.py",
-        "--dry-run"
-      ],
-      "exit_code": 0,
-      "stdout_tail": "DRY-RUN hermes-discovery-ingestors: would run the selected (--run) source/trend/ticker/topic ingestors (caps from config/hermes_discovery_schedule.json, scorecard do-no-harm), upsert hermes_discovery_candidates and write the lane receipt; no env, DB, Telegram or write; inputs NOT_MEASURED\n",
-      "output_signal": "data/runtime/hermes-discovery-ingestors_last.json",
-      "lane_receipt_written": false
-    },
-    {
-      "lane_id": "youtube-cookie-health-check",
-      "state": "RUN_DONE",
-      "mode": "dry_run",
-      "requested_mode": "live",
-      "stage_clamp": {
-        "clamped": true,
-        "effective_mode": "dry_run",
-        "reason": "stage_shadow",
-        "requested_mode": "live",
-        "stage": "shadow"
-      },
-      "argv": [
-        "flock",
-        "-n",
-        "-E",
-        "75",
-        "/tmp/claude-1000/-home-johnclaw/f49ed69f-8848-494d-8386-0e0c35d9dd59/scratchpad/onbproof-b8ic8oie/locks/youtube_cookie_health_check.lock.dryrun",
-        "timeout",
-        "-k",
-        "30",
-        "300",
-        "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python",
-        "scripts/youtube_cookie_health_check.py",
-        "--dry-run"
-      ],
-      "exit_code": 0,
-      "stdout_tail": "DRY-RUN youtube-cookie-health-check: would classify the YouTube cookie jar (auth-cookie count only, never values) and transcript ingestion age, alert P1 red / P2 amber through the telegram_alert chokepoint, and write the lane receipt; no env, jar, DB, Telegram or write; inputs NOT_MEASURED\n",
-      "output_signal": "data/runtime/youtube-cookie-health-check_last.json",
-      "lane_receipt_written": false
-    },
-    {
-      "lane_id": "generate-weekly-docx",
-      "state": "RUN_DONE",
-      "mode": "dry_run",
-      "requested_mode": "live",
-      "stage_clamp": {
-        "clamped": true,
-        "effective_mode": "dry_run",
-        "reason": "stage_shadow",
-        "requested_mode": "live",
-        "stage": "shadow"
-      },
-      "argv": [
-        "flock",
-        "-n",
-        "-E",
-        "75",
-        "/tmp/claude-1000/-home-johnclaw/f49ed69f-8848-494d-8386-0e0c35d9dd59/scratchpad/onbproof-b8ic8oie/locks/weekly_docx.lock.dryrun",
-        "timeout",
-        "-k",
-        "30",
-        "900",
-        "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python",
-        "scripts/generate_weekly_docx.py",
-        "--dry-run"
-      ],
-      "exit_code": 0,
-      "stdout_tail": "DRY-RUN generate-weekly-docx: would build the weekly review (DB + state), write weekly_review_<date>.json and docx under <reports_root>/analyst (+ charts, archive/weekly/<date> copy), send one P2 notice through the telegram_alert chokepoint and write the lane receipt; no env, DB, chart, file or send; inputs NOT_MEASURED\n",
-      "output_signal": "data/runtime/generate-weekly-docx_last.json",
-      "lane_receipt_written": false
-    },
-    {
-      "lane_id": "strategy-weekly-review",
-      "state": "RUN_DONE",
-      "mode": "dry_run",
-      "requested_mode": "live",
-      "stage_clamp": {
-        "clamped": true,
-        "effective_mode": "dry_run",
-        "reason": "stage_shadow",
-        "requested_mode": "live",
-        "stage": "shadow"
-      },
-      "argv": [
-        "flock",
-        "-n",
-        "-E",
-        "75",
-        "/tmp/claude-1000/-home-johnclaw/f49ed69f-8848-494d-8386-0e0c35d9dd59/scratchpad/onbproof-b8ic8oie/locks/strategy_weekly_review.lock.dryrun",
-        "timeout",
-        "-k",
-        "30",
-        "600",
-        "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python",
-        "scripts/strategy_weekly_review.py",
-        "--dry-run"
-      ],
-      "exit_code": 0,
-      "stdout_tail": "DRY-RUN strategy-weekly-review: would review strategy_registry against strategy_signals / trade_closed, log lifecycle transitions (strategy_state_transitions, strategy_registry.status), rewrite data/portfolios/state/strategy_weekly_review_latest.json, send one P2 report through the telegram_alert chokepoint and write the lane receipt; no env, DB, log-file, snapshot, send or receipt; inputs NOT_MEASURED\n",
-      "output_signal": "data/runtime/strategy-weekly-review_last.json",
-      "lane_receipt_written": false
-    },
-    {
-      "lane_id": "premarket-watcher",
-      "state": "RUN_DONE",
-      "mode": "dry_run",
-      "requested_mode": "live",
-      "stage_clamp": {
-        "clamped": true,
-        "effective_mode": "dry_run",
-        "reason": "stage_shadow",
-        "requested_mode": "live",
-        "stage": "shadow"
-      },
-      "argv": [
-        "flock",
-        "-n",
-        "-E",
-        "75",
-        "/tmp/claude-1000/-home-johnclaw/f49ed69f-8848-494d-8386-0e0c35d9dd59/scratchpad/onbproof-b8ic8oie/locks/premarket_watcher.lock.dryrun",
-        "timeout",
-        "-k",
-        "30",
-        "840",
-        "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python",
-        "scripts/premarket_watcher.py",
-        "--dry-run"
-      ],
-      "exit_code": 0,
-      "stdout_tail": "DRY-RUN premarket-watcher: would scan up to 50 GO/WAIT symbols (EDGAR, StockTwits, Yahoo RSS), upsert news_articles / social_posts / trade_ai_scans / scalp_scan_results, send one P2 catalyst alert through the telegram_alert chokepoint and write the lane receipt; no env, DB, network, log-file, send or receipt; inputs NOT_MEASURED\n",
-      "output_signal": "data/runtime/premarket-watcher_last.json",
-      "lane_receipt_written": false
-    },
-    {
-      "lane_id": "cio-stance-classification-drain",
-      "state": "RUN_DONE",
-      "mode": "dry_run",
-      "requested_mode": "live",
-      "stage_clamp": {
-        "clamped": true,
-        "effective_mode": "dry_run",
-        "reason": "stage_shadow",
-        "requested_mode": "live",
-        "stage": "shadow"
-      },
-      "argv": [
-        "flock",
-        "-n",
-        "-E",
-        "75",
-        "/tmp/claude-1000/-home-johnclaw/f49ed69f-8848-494d-8386-0e0c35d9dd59/scratchpad/onbproof-b8ic8oie/locks/cio_stance_classify.lock.dryrun",
-        "timeout",
-        "-k",
-        "30",
-        "900",
-        "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python",
-        "scripts/drain_cio_stance_classification.py",
-        "--apply",
-        "--dry-run"
-      ],
-      "exit_code": 0,
-      "stdout_tail": "DRY-RUN cio-stance-classification-drain: would classify pending symbols and write classification/rule rows plus receipts; inputs NOT_MEASURED\n",
-      "output_signal": "data/runtime/cio-stance-classification-drain_last.json",
-      "lane_receipt_written": false
-    }
-  ],
-  "state_root_files_after": [
-    "data/runtime/n8n_run_executor_last.json",
-    "data/runtime/n8n_runs/run-onb-1-proof-000000.json",
-    "data/runtime/n8n_runs/run-onb-1-proof-000001.json",
-    "data/runtime/n8n_runs/run-onb-1-proof-000002.json",
-    "data/runtime/n8n_runs/run-onb-1-proof-000003.json",
-    "data/runtime/n8n_runs/run-onb-1-proof-000004.json",
-    "data/runtime/n8n_runs/run-onb-1-proof-000005.json"
-  ],
-  "verdict": {
-    "all_recorder_events_empty": true,
-    "all_run_done_dry_run": true,
-    "no_lane_receipt_written": true
-  }
+  "fix_only_note": "Not onboarded: each reaches a send (telegram_alert chokepoint), and the dispatcher sender gate (tests/test_agents_policy_7_0_0_advisory_market_data.py, shrink-only BASELINE) refuses a dispatched sender. Their --dry-run wrote or reached the network/DB before this PR and is now write-free, recorded here."
 }

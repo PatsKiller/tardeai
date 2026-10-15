@@ -14,8 +14,13 @@
    (1) or a refused snapshot (3). Storage audit 2026-10-09: this job failed every night from
    2026-08-01 for ~70 days and nothing noticed.
 
---dry-run computes the rollup and the stored payload, measures it against the cap and renders
-the digest, then prints a receipt. It writes no row, no file, no receipt and sends nothing.
+--dry-run (n8n onboarding ONB-2, 2026-10-15) is an offline plan: it returns before api_v2, the env files, the DB, the
+OAuth proxy probes and any write (the old measuring run reached lib/llm_consumption.ensure_schema, which runs DDL and
+seeds llm_process_config). --preview is the old behaviour: compute the rollup and the stored payload, measure it
+against the cap and render the digest, then print a receipt; no row, file, receipt or send of its own.
+
+A real run also writes the LaneRunReceipt@v1 data/runtime/system-rollup-snapshot_last.json (ok_at only on exit 0;
+produced_count = the system_rollup_daily row + the digest file + the ai_reports row that landed).
 
 Deterministic, zero LLM, advisory-only. Cron: 20:40 daily.
 """
@@ -270,14 +275,46 @@ def run(dry_run: bool = False, today=None) -> tuple[int, dict]:
     return _finish(EXIT_OK, "ok")
 
 
+LANE_ID = "system-rollup-snapshot"
+#: The steps whose "ok" is a produced output (expected_output produced_count).
+PRODUCED_STEPS = ("snapshot", "digest", "ai_reports")
+
+
+def _lane_receipt(code: int, receipt: dict) -> None:
+    try:
+        from lib.lane_last_receipt import write_lane_receipt
+    except ImportError:  # pragma: no cover - imported as scripts.<module>
+        from scripts.lib.lane_last_receipt import write_lane_receipt
+    steps = receipt.get("steps") or {}
+    produced = sum(1 for k in PRODUCED_STEPS if (steps.get(k) or {}).get("status") == "ok")
+    write_lane_receipt(
+        LANE_ID, ok=code == EXIT_OK, exit_code=code, started_at=receipt.get("started_at"),
+        script="system_rollup_snapshot.py",
+        summary={"status": receipt.get("status"), "payload_bytes": receipt.get("payload_bytes"),
+                 "failed_steps": receipt.get("failed_steps")},
+        output={"produced_count": produced, "attempted_count": len(PRODUCED_STEPS)},
+        error=None if code == EXIT_OK else f"status {receipt.get('status')}: {receipt.get('failed_steps')}",
+    )
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--dry-run", action="store_true",
-                    help="compute + measure + render only; no DB write, file, receipt or Telegram")
+                    help="offline plan: no api_v2, env file, DB, proxy probe, file, receipt or Telegram")
+    ap.add_argument("--preview", action="store_true",
+                    help="compute + measure + render only (reads the DB); no row, file, receipt or Telegram")
     args = ap.parse_args(argv)
-    code, receipt = run(dry_run=args.dry_run)
-    if args.dry_run or code != EXIT_OK:
+    if args.dry_run:
+        print(f"DRY-RUN {LANE_ID}: would compute the 24h system rollup (api_v2._system_rollup), upsert one "
+              "system_rollup_daily row (payload cap), write system_digest_<date>.md and an ai_reports row, refresh the "
+              "report catalog, send one P2 line through the telegram_alert chokepoint and write the run + lane "
+              "receipts; no env file, DB, proxy, file or send; inputs NOT_MEASURED")
+        return 0
+    code, receipt = run(dry_run=args.preview)
+    if args.preview or code != EXIT_OK:
         print(json.dumps(receipt, default=str, indent=1))
+    if not args.preview:
+        _lane_receipt(code, receipt)
     return code
 
 

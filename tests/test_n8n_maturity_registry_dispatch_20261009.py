@@ -606,9 +606,10 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
     # + 1: lane repair 2026-10-15 takes the shard 05 proposal for build-symbol-profiles-at-0-19 (its SW4 exclusion
     # reason, the shared receipt, is gone; tests/test_lane_repair_20261015.py): 12.
     # (train 2026-10-15 d parked its wiring for DD01, 11; restored 2026-10-15 by the operator DD01 ruling: 12.)
-    # + 1: n8n onboarding ONB-1 (2026-10-15) adopts the shard 05 proposal for cio-stance-classification-drain unchanged
-    # (its SW4 exclusion was class scope only; tests/test_n8n_onboard_dryrun_proven_1_20261015.py): 13.
-    assert len(refactor) == 13 and refactor - set(CANARY_WAVE_20261014) - CW_NEW <= set(shadow), refactor
+    # + 2: n8n onboarding ONB-1 (2026-10-15) adopts the shard 05 proposals for cio-stance-classification-drain and
+    # drain-discovery-backlog unchanged (their SW4 exclusion was class scope only;
+    # tests/test_n8n_onboard_dryrun_proven_1_20261015.py): 14.
+    assert len(refactor) == 14 and refactor - set(CANARY_WAVE_20261014) - CW_NEW <= set(shadow), refactor
     # The reviewed momentum tranche adds two native shadow rows and the existing
     # named scalp exception at shadow; it adds no live dispatch row.
     # - 2: C1 hermes_overnight registry edit (train 6, 2026-10-12) absorbs hermes-tag-lift-discovery (SW4/W4) and
@@ -619,8 +620,8 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
     # train 2026-10-15 d merged both sets. (Train d had deferred build-symbol-profiles-at-0-19 / indicator-engine for
     # DD01; restored 2026-10-15 by the operator DD01 ruling: transitive lazy broker reach accepted, trading lock.)
     # + 6: shadow wave LD-W1 (lane disposition 2026-10-15; tests/test_shadow_wave_ld_w1_20261015.py).
-    # + 6: n8n onboarding ONB-1 (2026-10-15; tests/test_n8n_onboard_dryrun_proven_1_20261015.py).
-    assert len(shadow) == 54 + 3 + 15 - len(CANARY_ROWS) - 17 + 10 + 11 + len(N8N_NATIVE_SHADOW) + 1 - 2 + 2 - len(CANARY_WAVE_20261014) + 2 + len(SYSTEMD_TIMER_SHADOW) + 6 + 6 - len(CW_NEW), shadow
+    # + 2: n8n onboarding ONB-1 (2026-10-15; tests/test_n8n_onboard_dryrun_proven_1_20261015.py).
+    assert len(shadow) == 54 + 3 + 15 - len(CANARY_ROWS) - 17 + 10 + 11 + len(N8N_NATIVE_SHADOW) + 1 - 2 + 2 - len(CANARY_WAVE_20261014) + 2 + len(SYSTEMD_TIMER_SHADOW) + 6 + 2 - len(CW_NEW), shadow
     # heartbeat-watch moved shadow → canary (N8N_NATIVE_CANARY) 2026-10-11.
     assert sorted(r["lane_id"] for r in rows if LD.dispatch_mode(r) == "live") == sorted(
         CANARY_ROWS | N8N_NATIVE_CANARY | set(CANARY_WAVE_20261014) | CW_NEW

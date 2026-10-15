@@ -259,9 +259,7 @@ def test_activated_registry_has_no_dispatch_issue_once_active(monkeypatch):
     # tests/test_shadow_wave_ld_w1_20261015.py).
     # (train 2026-10-15 d deferred build-symbol-profiles-at-0-19 / indicator-engine, -2; restored 2026-10-15 by the
     # operator DD01 ruling "n8n ignor broker code it can't trade live ccontinue": transitive lazy broker reach accepted.)
-    # + 3 R1 rows of n8n onboarding ONB-1 (2026-10-15; hermes-discovery-ingestors and premarket-watcher ingest,
-    # strategy-weekly-review learn; tests/test_n8n_onboard_dryrun_proven_1_20261015.py).
-    assert len(r1_cron_shadow) == len(WAVE3_ON_CRON) + 3 + 15 + 10 + 11 - 1 + 2 + 4 + 2 + 3
+    assert len(r1_cron_shadow) == len(WAVE3_ON_CRON) + 3 + 15 + 10 + 11 - 1 + 2 + 4 + 2
     assert len(errs) == len(r1_cron_shadow) and all("shadow_on_cron_not_ratified" in x for x in errs), errs[:3]
     monkeypatch.setattr(LD, "R1_SHADOW_SHAPE_STATUS", "ACTIVE")
     # The staged entry planner rows (lane repair 2026-10-15) stay refused for exactly the reason they are staged: no

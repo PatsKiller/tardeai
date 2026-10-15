@@ -157,7 +157,10 @@ def main(argv=None) -> int:
         raise
     lr.write_lane_receipt(LANE_ID, ok=True, exit_code=0, started_at=started,
                           script="drain_discovery_backlog.py",
-                          summary={"promoted": len(to_promote), "archived": len(to_archive)})
+                          summary={"promoted": len(to_promote), "archived": len(to_archive)},
+                          # n8n onboarding ONB-2 (2026-10-15): candidates moved; 0 is legitimate on an empty backlog.
+                          output={"produced_count": len(to_promote) + len(to_archive),
+                                  "empty_reason": None if (to_promote or to_archive) else "nothing_due"})
     return 0
 
 

@@ -176,14 +176,10 @@ def test_no_key_outside_scope_except_reviewed_process_steps():
         "run-research-intelligence-overnight",
         # shadow wave LD-W1 (2026-10-15): the wave's appending lane, keyed and staged before any canary.
         "incubator-rolloff-engine",
-        # n8n onboarding ONB-1 (2026-10-15, tests/test_n8n_onboard_dryrun_proven_1_20261015.py): the wave's appending /
-        # chokepoint-sending lanes, keyed and staged before any canary.
-        "hermes-discovery-ingestors",
-        "youtube-cookie-health-check",
-        "generate-weekly-docx",
-        "strategy-weekly-review",
-        "premarket-watcher",
+        # n8n onboarding ONB-1 (2026-10-15, tests/test_n8n_onboard_dryrun_proven_1_20261015.py): the wave's two
+        # appending lanes, keyed and staged before any canary.
         "cio-stance-classification-drain",
+        "drain-discovery-backlog",
     }
 
 
