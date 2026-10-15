@@ -47,6 +47,11 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping
 
 ROOT = Path(__file__).resolve().parents[1]
+#: Dark-contract guard: an operator/architect-run report; its output is the committed packet
+#: docs/architecture/n8n/ENV_ENFORCE_READINESS_20261015.{json,md}, read by people and by N8N_THREAT_MODEL.md.
+NO_CONSUMER_REASON = (
+    "operator/architect-run report; output is the committed docs/architecture/n8n/ENV_ENFORCE_READINESS packet"
+)
 SCHEMA = "N8nEnvEnforceReadiness@v1"
 ALLOWLIST_REL = Path("config") / "n8n_run_allowlist.json"
 SAFE_FLOCK_NAMES = frozenset({"PROJECT_ROOT", "SAFE_FLOCK_LOG_DIR"})
