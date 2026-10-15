@@ -169,8 +169,10 @@ produced_count=...)` writes `LaneRunReceipt@v2` with that identity and ALSO crea
 at `data/runtime/lane_attempts/<lane>/<run_id>.json`; the executor reads only that file and requires its
 `run_id`/`lane_id` to be the run's (a stale, concurrent-cron, v1 or other-lane receipt = `unverifiable`). Rules
 are validated by one closed semantic schema (`scripts/lib/n8n_output_verdict.validate_expected_output`, shared
-with FW-M6). No contract declares `expected_output` yet, so every run reports `output_verdict: no_rule` and is
-unchanged. Remaining (P): dry runs are exempt (they write no receipt; captured dry evidence is not built), the
+with FW-M6). Since the 2026-10-15 expected_output PR, 122 of 126 contracts declare an evidence-derived `expected_output`
+(all with `produced_field: produced_count`; no lane emits it yet, so a LIVE run of a lane-kind contract with a rule is
+`output_unverifiable` until the lane passes `produced_count`; the four digest-bound REVIEWED contracts carry none
+until re-reviewed). Contracts without a block still report `output_verdict: no_rule` and are unchanged. Remaining (P): dry runs are exempt (they write no receipt; captured dry evidence is not built), the
 per-window rule is evaluated by monitors not per run, the verifier trusts the lane's own counts (an independent
 query of the declared durable output is not built), and a lane writes v2 only once it is changed to pass
 `produced_count`.

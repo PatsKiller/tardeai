@@ -157,13 +157,36 @@ def test_m6_fails_on_an_invalid_rule(patch):
     assert F._check_expected_output(c)["status"] == F.FAIL
 
 
-def test_every_active_workflow_fails_m6_today(ctx):
-    """No committed health contract declares expected_output yet: the whole active fleet fails FW-M6."""
+#: 2026-10-15 expected_output PR: 122 of 126 contracts declare a rule. Still failing FW-M6: the digest-bound REVIEWED
+#: momentum candidate (adding a rule needs a fresh review) and the five workflows with no health contract on main.
+M6_STILL_FAILING = {
+    "tradeai-momentum-lifecycle-candidate",
+    "finviz-view-contracts-shadow",
+    "generate-analyst-daily-digest-shadow",
+    "lane-governance-packet-weekly-shadow",
+    "tradeai-fabric-run-lane",
+    "tradeai-fabric-error",
+}
+
+
+def test_active_fleet_m6_passes_exactly_where_a_contract_declares_the_rule(ctx):
     active = json.loads((ROOT / F.DEFAULT_ACTIVE).read_text())
     rep = F.build_report([(ROOT / w["file"], w) for w in active["workflows"]], ctx, None, source="t")
     assert rep["fleet"]["workflows"] == len(active["workflows"]) == 18
-    assert all(r["elements"]["FW-M6"]["status"] == F.FAIL for r in rep["workflows"])
+    failing = {r["name"] for r in rep["workflows"] if r["elements"]["FW-M6"]["status"] != F.PASS}
+    assert failing == M6_STILL_FAILING
+    assert all(r["elements"]["FW-M6"]["status"] == F.FAIL for r in rep["workflows"] if r["name"] in failing)
     assert rep["fleet"]["fully_compliant"] == 0
+
+
+def test_every_committed_expected_output_rule_passes_m6():
+    doc = json.loads((ROOT / "config/n8n_health_contracts.json").read_text())
+    declared = [c for c in doc["contracts"] if "expected_output" in c]
+    assert len(declared) == 122
+    for c in declared:
+        assert F._check_expected_output(c)["status"] == F.PASS, c["id"]
+        assert "output_produced" in {x["check"] for x in c["healthy"]}, c["id"]
+        assert "empty_output" in {x["check"] for x in c["failed"]}, c["id"]
 
 
 # ── element rules on synthetic workflows ─────────────────────────────────────────────────────────────────────────
