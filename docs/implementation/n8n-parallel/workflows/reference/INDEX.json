@@ -1,0 +1,28 @@
+{
+  "authority": "READ_ONLY_ADVISORY",
+  "generator": "scripts/build_n8n_reference_workflow.py",
+  "inert": "never imported or activated; a reference for reviewers and for scripts/check_n8n_workflow_framework.py",
+  "schema": "N8nReferenceWorkflowSet@v1",
+  "workflows": [
+    {
+      "active": false,
+      "error_workflow": "tradeai-fabric-error",
+      "file": "tradeai-reference-mature-workflow.json",
+      "graph_sha256": "7dbb4ef60f5a5c05f750706760d18a2b94f5eae47027df1753aeef0231bdcdee",
+      "health_contract": "tradeai-reference-mature-workflow.health_contract.json",
+      "id": "tradeai-reference-mature-workflow",
+      "kind": "reference",
+      "node_types": [
+        "n8n-nodes-base.code",
+        "n8n-nodes-base.executeWorkflow",
+        "n8n-nodes-base.manualTrigger",
+        "n8n-nodes-base.scheduleTrigger",
+        "n8n-nodes-base.switch"
+      ],
+      "policy_sha256": "c6750b96ada49f816798bf3714ad390616b1b32769fdcbcc54e0635e32caf31f",
+      "relay_calls": [],
+      "runbook": "RUNBOOK_tradeai-reference-mature-workflow.md",
+      "sha256": "082b057116f588d7abb9cc312f36104da87b14a5f03275f979ac9249ba8e390f"
+    }
+  ]
+}

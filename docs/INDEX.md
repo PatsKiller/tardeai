@@ -621,6 +621,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/maturity_reconciliation_20260917/HONEST_MATURITY_ASSESSMENT_2026-09-17-rev8.md` | Honest maturity assessment — Revision 8 (2026-09-17) | review_required | OK | `ede40d194307` |
 | `docs/architecture/maturity_reconciliation_20260917/REVISION_LEDGER_2026-09-17-rev8.md` | Revision ledger — which revision is canonical, and what is still published | review_required | OK | `2abe45079289` |
 | `docs/architecture/n8n/ADR_COORDINATION_SECRETS.md` | ADR: coordination secrets for the n8n lab | review_required | OK | `7d29625fd708` |
+| `docs/architecture/n8n/N8N_CONTRACTS_DESIGN.md` | n8n contracts — design architecture | review_required | OK | `f602daf6aaf1` |
+| `docs/architecture/n8n/N8N_REFERENCE_ARCHITECTURE.md` | n8n reference architecture — Trade AI automation fabric | review_required | OK | `4078d803f31f` |
 | `docs/architecture/narrative-subject-identity.md` | NarrativeSubjectLink@v1 — Architecture | review_required | OK | `3ee93de9443e` |
 | `docs/architecture/retention.md` | Librarian Retention — RetentionDecision@v1 (Phase 6) | review_required | OK | `ca8630975a92` |
 | `docs/architecture/subject-memory.md` | Subject Memory / SubjectThread@v1 — Architecture | review_required | OK | `1cbdf5ccdf27` |
@@ -1436,6 +1438,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-maturity/MOMENTUM_LINEAGE_IMPLEMENTATION_20261013.md` | Momentum lineage and lifecycle implementation | review_required | OK | `a8a7fb2c8c0c` |
 | `docs/implementation/n8n-maturity/MONITOR_FOLD_COVERAGE_W1-9.md` | Monitor fold coverage (W1-9): freshness contracts, input starvation and design notes for the rest | review_required | OK | `527bdf9c7d0f` |
 | `docs/implementation/n8n-maturity/N8N_CONFIGURATION.md` | N8N configuration — ms01-openclaw (the entry point) | review_required | OK | `f641fa554902` |
+| `docs/implementation/n8n-maturity/N8N_FRAMEWORK_SCORECARD_20261015.md` | n8n workflow framework scorecard — measured by `scripts/check_n8n_workflow_framework.py` (2026-10-15) | review_required | OK | `72546370c65c` |
 | `docs/implementation/n8n-maturity/N8N_GAP_ASSESSMENT_AND_MATURITY_REVIEW_20261014.md` | Final gap assessment and maturity review — platform, n8n and the mandatory workflow framework (2026-10-14) | review_required | OK | `2463bbcc784d` |
 | `docs/implementation/n8n-maturity/N8N_MONITORING_AND_REMEDIATION_STANDARD.md` | N8N monitoring, SIEM, Telegram and LLM auto-remediation standard — per lane | review_required | OK | `fb93127b9fe6` |
 | `docs/implementation/n8n-maturity/N8N_ONBOARDING_STANDARD.md` | N8N onboarding standard — the mandatory procedure for adding anything to n8n | review_required | OK | `b082eeb784ef` |
@@ -1520,6 +1523,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-parallel/proposals/key-rotation-schedule-20261008.md` | Weekly key rotation schedule — PROPOSAL (operator cron grant), 2026-10-08 | review_required | OK | `1b54faa6869a` |
 | `docs/implementation/n8n-parallel/proposals/n8n-lab-hardening-compose-diff-20261008.md` | Proposal — n8n lab hardening: compose diff, SM key names, firewall (2026-10-08) | review_required | OK | `bcb3fa902f33` |
 | `docs/implementation/n8n-parallel/proposals/phase1-install-commands.md` | Phase 1 install commands (operator), 2026-10-07 | review_required | MISSING HEADER | `d491f8368e49` |
+| `docs/implementation/n8n-parallel/workflows/reference/RUNBOOK_tradeai-reference-mature-workflow.md` | Runbook — `tradeai-reference-mature-workflow` (runbook id `n8n-reference-mature-workflow`) | review_required | OK | `31716cc5856d` |
 | `docs/implementation/sot/DOCS_AUDIT_20260913.md` | One Source of Truth — documentation and governance audit (Phase 8) | review_required | OK | `5da4931f6bd6` |
 | `docs/implementation/sot/phase9_hermes_research_notes.md` | Phase 9 — one write module for `hermes_research_intelligence` | review_required | MISSING HEADER | `089989d1da1b` |
 | `docs/implementation/sot/phase9_news_articles_notes.md` | Phase 9 — `news_articles`: one write module | review_required | OK | `4faa0228c5d1` |
