@@ -3743,6 +3743,18 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: CANARY_EFFECT_KEYS — 2026-10-15 canary double-effect audit (arch-review-20261014): every live, canary
+        # or canary-wave lane that appends, sends or calls an LLM carries a STAGED effect key (cron_claim false,
+        # n8n_claim false: neither side claims, executor view unchanged); the cron-side wrapper
+        # scripts/effect_claim_cron.sh (off unless TRADEAI_EFFECT_CLAIM=<lane>; refusals exit 75/65 and run nothing);
+        # the maturity-remeasure live-list packet; the research_insights(source_reference) unique-index migration,
+        # parsed and applied twice on a disposable PostgreSQL cluster. Hermetic: tmp_path ledgers and files.
+        "canary_effect_keys_20261015",
+        [
+            "tests/test_canary_effect_keys_20261015.py",
+        ],
+    ),
+    (
         # ANCHOR: N8N_MATURITY_CRON_TZ — 2026-10-09 n8n-maturity B5.1 (design 02 §3.2 step 1, F11):
         # DST-safe fires_between / is_sub_hourly / last_fire_at_or_before in scripts/lib/cron_schedule.py.
         # Pure and hermetic: explicit instants only, no clock, no I/O.

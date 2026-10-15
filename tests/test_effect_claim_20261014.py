@@ -338,7 +338,9 @@ def test_unreadable_effect_config_fails_every_live_run_closed(led, tmp_path):
     assert runner.calls == 0
 
 
-def test_committed_effect_config_is_empty_so_nothing_changes_at_merge():
+def test_committed_effect_config_arms_no_executor_claim_so_nothing_changes_at_merge():
+    # 2026-10-15: the canary-wave keys are staged (n8n_claim false), so the executor's view stays empty
+    # (tests/test_canary_effect_keys_20261015.py pins the staged set).
     assert E.load_effect_config(ROOT / "config" / "n8n_effect_keys.json") == {}
 
 

@@ -89,6 +89,8 @@ KEY_RE = re.compile(
 #: ``run`` exits with this when the claim is refused (flock -n's "skipped" code; scripts/n8n_run_executor.py
 #: FLOCK_CONFLICT_EXIT), so a cron wrapper reads like a lock skip, not a failure.
 REFUSED_EXIT = 75
+#: ``lane-spec`` exits with this when the lane has no entry in config/n8n_effect_keys.json.
+LANE_NOT_KEYED_EXIT = 3
 SLOT_TZ = "America/New_York"
 
 
@@ -352,9 +354,13 @@ class EffectClaimStore:
 # ── executor side: which lanes carry an effect key (config/n8n_effect_keys.json) ──────────────────────────────
 
 
-def load_effect_config(path: Path | None = None) -> dict[str, dict[str, str]]:
-    """{lane_id: {"process": ..., "input_version": ...}}. A missing file is an empty map (no lane opted in); an
-    unreadable or malformed file raises EffectKeyError("effect_config_unreadable") so the executor fails closed."""
+def load_effect_lanes(path: Path | None = None) -> dict[str, dict[str, Any]]:
+    """Every keyed lane: {lane_id: {"process", "input_version", "cron_claim", "n8n_claim"}}.
+
+    ``cron_claim`` (default False) arms the cron side (scripts/effect_claim_cron.sh, the manifest runner);
+    ``n8n_claim`` (default True, so an entry written before 2026-10-15 keeps its meaning) arms the executor side.
+    A missing file is an empty map; an unreadable or malformed file raises EffectKeyError("effect_config_unreadable")
+    so both sides fail closed."""
     p = path or (ROOT / EFFECT_CONFIG_REL)
     try:
         doc = json.loads(p.read_text(encoding="utf-8"))
@@ -364,7 +370,7 @@ def load_effect_config(path: Path | None = None) -> dict[str, dict[str, str]]:
         raise EffectKeyError("effect_config_unreadable") from exc
     if not isinstance(doc, dict) or doc.get("schema") != EFFECT_CONFIG_SCHEMA or not isinstance(doc.get("lanes"), dict):
         raise EffectKeyError("effect_config_unreadable")
-    out: dict[str, dict[str, str]] = {}
+    out: dict[str, dict[str, Any]] = {}
     for lane, spec in doc["lanes"].items():
         if not isinstance(spec, dict):
             raise EffectKeyError("effect_config_unreadable")
@@ -373,8 +379,28 @@ def load_effect_config(path: Path | None = None) -> dict[str, dict[str, str]]:
             raise EffectKeyError("effect_config_unreadable")
         if not (isinstance(version, str) and VERSION_RE.fullmatch(version)):
             raise EffectKeyError("effect_config_unreadable")
-        out[str(lane)] = {"process": process, "input_version": version}
+        cron_claim, n8n_claim = spec.get("cron_claim", False), spec.get("n8n_claim", True)
+        if not isinstance(cron_claim, bool) or not isinstance(n8n_claim, bool):
+            raise EffectKeyError("effect_config_unreadable")
+        out[str(lane)] = {
+            "process": process,
+            "input_version": version,
+            "cron_claim": cron_claim,
+            "n8n_claim": n8n_claim,
+        }
     return out
+
+
+def load_effect_config(path: Path | None = None) -> dict[str, dict[str, str]]:
+    """The executor's view: {lane_id: {"process": ..., "input_version": ...}} for lanes whose n8n side is armed
+    (``n8n_claim`` absent or true). A lane keyed with ``n8n_claim: false`` (2026-10-15, the canary-wave keys) is
+    staged only: the executor does not claim for it, so its live runs behave exactly as before. A missing file is an
+    empty map; an unreadable or malformed file raises EffectKeyError("effect_config_unreadable") (fail closed)."""
+    return {
+        lane: {"process": spec["process"], "input_version": spec["input_version"]}
+        for lane, spec in load_effect_lanes(path).items()
+        if spec["n8n_claim"]
+    }
 
 
 # ── CLI (cron side) ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -438,11 +464,24 @@ def main(argv: list[str] | None = None) -> int:
     p_rel.add_argument("--key", required=True)
     p_rel.add_argument("--by", required=True)
     p_rel.add_argument("--note", required=True)
+    p_spec = sub.add_parser(
+        "lane-spec",
+        help="print a keyed lane's process, input_version and cron_claim (tab-separated; exit 3 = lane not keyed)",
+    )
+    p_spec.add_argument("--lane", required=True)
+    p_spec.add_argument("--config", default=None, help="config/n8n_effect_keys.json (default: this tree's)")
     a = ap.parse_args(argv)
     now = datetime.now(timezone.utc).timestamp()
     try:
         if a.cmd == "key":
             print(_key_from_args(a))
+            return 0
+        if a.cmd == "lane-spec":
+            spec = load_effect_lanes(Path(a.config) if a.config else None).get(a.lane)
+            if spec is None:
+                print(json.dumps({"error": "lane_not_keyed", "lane": a.lane}), file=sys.stderr)
+                return LANE_NOT_KEYED_EXIT
+            print(f"{spec['process']}\t{spec['input_version']}\t{'1' if spec['cron_claim'] else '0'}")
             return 0
         store = _open_store(a.ledger)
         if a.cmd == "claim":
