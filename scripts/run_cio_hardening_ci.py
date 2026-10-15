@@ -1239,6 +1239,18 @@ GATES = [
             "tests/test_n8n_diagnosis_exclude_scalp_20261010.py",
         ],
     ),
+    # 2026-10-15: n8n_lane_failure_diagnosis offpeak_tier critical (OAuth first, $0.05/call, $0.10/day) — with
+    # deferral armed, a failure outside the window is diagnosed now, not escalated as `conf=None; cause=`; an
+    # escalation without a verdict says why and whether it retries; a later handled cycle clears the stale one.
+    (
+        "n8n_diagnosis_not_deferred_20261015",
+        [
+            "tests/test_n8n_diagnosis_not_deferred_20261015.py",
+            # n8n diagnosis end to end through the real bridge route walk: DeepSeek serves when it is the selected
+            # lane (OAuth lanes failing, or no OAuth transport enabled on the host). Fake providers; no network.
+            "tests/test_n8n_diagnosis_deepseek_route_20261015.py",
+        ],
+    ),
     # Paper/broker-adjacent child steps use the same resolver; telegram run_promoter no longer shadows os (F823).
     # Code-only, under execution-engineering grant dc66eb4b6db5107e (operator 2026-10-09).
     (
@@ -1845,6 +1857,11 @@ GATES = [
             "tests/test_lane_state_drift_20261007.py",
             # Retire batch 1 (2026-10-09): 32 RETIRED rows + opening-intelligence schedule, pipelines, services.
             "tests/test_retire_batch_1_20261009.py",
+            # Lane disposition 2026-10-15: one row per active crontab line (394) with one of RETIRE / CONSOLIDATE /
+            # STAY_HOST / MIGRATE_N8N, reproducible from the committed inputs; RETIRE wave 1 packet comments exactly
+            # its lines in place, refuses drift, rolls back byte-exactly (fake-crontab install/rollback round trip);
+            # registry rows stay ACTIVE with retire_pending until the read-back. Hermetic: repo files + tmp_path.
+            "tests/test_lane_disposition_retire_wave1_20261015.py",
             "tests/test_report_lane_fire_ledger_20261007.py",
             "tests/test_lane_portfolio_repricer.py",
             # Day P/L for shares traded today (fills) + basis rebase on trade-sized share change.
@@ -3760,6 +3777,24 @@ GATES = [
             # intents (--notify record: no sender), autonomous_self_tune --learn (purge helpers refuse; historical
             # flags byte-identical). Hermetic: recording DB fakes, stub chokepoint module, tmp_path files.
             "tests/test_hermes_learning_unblock_20261015.py",
+            # 2026-10-15 cutover prerequisites G3-G5: gateway validation of p: process-step keys (+ the executor's
+            # validated-marker effect claim), the executor's off-peak gate (offpeak_gate = the cron wrapper), the
+            # tag engine's governed-bridge llm_route, and outcome_feedback_agent --notify queue (host comms intent ->
+            # consumer -> P2 incident; no sender, fabric policy hash unchanged). Hermetic: tmp_path ledgers, stub
+            # bridge transport and chokepoint, pinned clocks. Everything stays inert (spec dry_run, live_arg null).
+            "tests/test_hermes_learning_prereqs_20261015.py",
+        ],
+    ),
+    (
+        # ANCHOR: N8N_WORKFLOW_FRAMEWORK_20261015 — AGENTS.md §23.24 framework checker
+        # (scripts/check_n8n_workflow_framework.py: every workflow scored per element, pass/partial/fail with a
+        # reason; FW-M6 fails a contract with no expected_output rule — exit 0 with nothing produced is a FAILURE),
+        # the INERT reference mature workflow (scripts/build_n8n_reference_workflow.py --check, 100% on the checker),
+        # the scorecard and the contracts design kept true by grep. Hermetic: committed repo files, synthetic
+        # workflows, node.js for the reference Code nodes; no n8n, relay, gateway, ledger or DB.
+        "n8n_workflow_framework_20261015",
+        [
+            "tests/test_check_n8n_workflow_framework.py",
         ],
     ),
     (
@@ -4856,6 +4891,18 @@ GATES = [
         # on failure. Seven DRAFT admissions, no broker env, existing reviewed rows preserved.
         "refactor_shard_06_20261011",
         ["tests/test_refactor_shard_06_20261011.py"],
+    ),
+    (
+        # ANCHOR: HERMES_WORKER_POOL_WIRE_20261015 — tax_retirement / system_ops / custom_domain reported
+        # "no_runner" every hour from 2026-07-05 with exit 0. Real runners (existing coverage adapters, no new
+        # host, no LLM), expected_output_hours per lane, lane_outcomes + failures, exit 3 fail-closed, durable
+        # output clock, dry-run plan that exits 3 on no_runner/overdue (n8n shadow catches it), executor dry_run
+        # path, REVIEWED contract checks. Hermetic: faked DB/inbox, tmp_path state, locks and receipts.
+        "hermes_worker_pool_wire_20261015",
+        [
+            "tests/test_hermes_worker_pool_wire_20261015.py",
+            "tests/test_hermes_research_worker_pool.py",
+        ],
     ),
 ]
 

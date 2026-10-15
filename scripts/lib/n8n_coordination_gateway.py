@@ -233,6 +233,9 @@ REFUSAL_REASONS = frozenset(
         "intent_rate_limited",
         "intent_routes_unreadable",
         "intent_store_unavailable",
+        # 2026-10-15 (hermes-learning cutover prerequisite G3): a p:<lane>:<mode>:<slot> process-step key that
+        # scripts/lib/n8n_process_keys.check_process_key refuses (``key_state`` on the refusal names why).
+        "run_process_key_invalid",
     }
 )
 REFUSAL_PREFIXES = ("illegal_transition:", "typed_refusal:", "forbidden_route:")
@@ -353,8 +356,13 @@ def handle_request(
     momentum_provider: Any = None,
     outcome_store: Any = None,
     intent_store: Any = None,
+    process_sources: Any = None,
 ) -> dict[str, Any]:
     """Authenticate and accept, or return a typed refusal. Never sends, never spawns.
+
+    ``process_sources`` (2026-10-15): what validates a ``p:`` process-step run key — None re-reads
+    config/n8n_fabric_processes.json + the process manifests on every call (n8n_process_keys.load_sources), a
+    Mapping is used as given (tests), a callable is called per request.
 
     ``outcome_store`` (scripts/lib/n8n_fabric_store.RunOutcomeStore) serves the read operation ``run_outcome``;
     ``intent_store`` (CommsIntentStore) the ``intent`` operation. None = that operation refuses as unavailable.
@@ -396,6 +404,7 @@ def handle_request(
             now=_unix(now),
             peer=peer,
             due_sources=due_sources,
+            process_sources=process_sources,
         )
     # The intent scope likewise opens exactly one operation on exactly one route, and nothing else opens it.
     if operation == "intent" or route.strip().lower() == INTENT_ROUTE:
@@ -558,7 +567,80 @@ def _run_envelope(row, duplicate: bool, run_store) -> dict[str, Any]:
     }
 
 
-def _run(request, claim, *, run_store, run_allowlist, now: float, peer, due_sources=None) -> dict[str, Any]:
+def _process_sources(process_sources: Any):
+    """The p: key validation sources, or None when unreadable (the check then fails closed)."""
+    from scripts.lib import n8n_process_keys as PK
+
+    try:
+        if process_sources is None:
+            return PK.load_sources()
+        if callable(process_sources):
+            return process_sources()
+        return process_sources
+    except (PK.ProcessKeyError, OSError, ValueError):
+        return None
+
+
+def _run_process_key(
+    request,
+    claim,
+    *,
+    run_store,
+    run_id: str,
+    lane_id: str,
+    mode: str,
+    requested_by,
+    now: float,
+    peer,
+    process_sources: Any,
+) -> dict[str, Any]:
+    """2026-10-15 (AGENTS.md §23.23 "idempotency keys server-minted or manifest-validated, never free-form"): a
+    ``p:<lane>:<mode>:<slot>[:aN]`` key is accepted only when it names a runnable step of a registered fabric process,
+    in a mode the process spec allows, for a current slot (scripts/lib/n8n_process_keys.py). The row stores the base
+    key as ``slot_key``: the executor's effect gate claims a live p: key only when that marker is present."""
+    from scripts.lib import n8n_process_keys as PK
+
+    parsed = PK.parse_process_key(run_id)
+    if parsed is None or parsed[0] != lane_id or parsed[1] != mode:
+        out = _refused(None, "run_process_key_invalid", peer_ignored=peer)
+        out["key_state"] = "MALFORMED_KEY" if parsed is None else "KEY_MISMATCH"
+        return out
+    existing = run_store.get(run_id)
+    if existing is not None:
+        if existing.get("lane_id") != lane_id or existing.get("mode") != mode:
+            out = _refused(None, "run_process_key_invalid", peer_ignored=peer)
+            out["key_state"] = "KEY_MISMATCH"
+            return out
+        return _run_envelope(existing, True, run_store)
+    check = PK.check_process_key(run_id, lane_id, mode, sources=_process_sources(process_sources), now=now)
+    if not check.ok:
+        out = _refused(None, "run_process_key_invalid", peer_ignored=peer)
+        out["key_state"] = check.state
+        return out
+    row, duplicate = run_store.request(
+        run_id=run_id,
+        lane_id=lane_id,
+        mode=mode,
+        requested_by=requested_by,
+        caller_id=claim["caller_id"],
+        now=now,
+        slot_key=check.slot_key,
+        attempt=check.attempt,
+    )
+    out = _run_envelope(row, duplicate, run_store)
+    out["process_key"] = {
+        "process_id": check.process_id,
+        "step_id": check.step_id,
+        "stage": check.stage,
+        "slot": check.slot,
+        "slot_kind": check.slot_kind,
+    }
+    return out
+
+
+def _run(
+    request, claim, *, run_store, run_allowlist, now: float, peer, due_sources=None, process_sources: Any = None
+) -> dict[str, Any]:
     """Record a run REQUEST for an allowlisted lane. The gateway writes one ``runs`` row (state REQUESTED) and
     returns RunRequested@v1; scripts/n8n_run_executor.py claims it from the ledger. A repeated idempotency_key
     returns the existing row with ``duplicate: true`` whatever state it has reached. Nothing is spawned here."""
@@ -582,6 +664,19 @@ def _run(request, claim, *, run_store, run_allowlist, now: float, peer, due_sour
     requested_by = request.get("requested_by")
     if requested_by is not None and (not isinstance(requested_by, str) or len(requested_by) > MAX_REQUESTED_BY):
         return _refused(None, "malformed_event", peer_ignored=peer)
+    if run_id[:2].lower() == "p:":
+        return _run_process_key(
+            request,
+            claim,
+            run_store=run_store,
+            run_id=run_id,
+            lane_id=lane_id,
+            mode=mode,
+            requested_by=requested_by,
+            now=now,
+            peer=peer,
+            process_sources=process_sources,
+        )
     if run_id[:2].lower() in ("d:", "e:", "g:"):
         # 2026-10-09 (B5.3, design 02 §3.3): a server-minted slot key. A replay of an accepted key returns the
         # existing row (it is IN_FLIGHT/DONE now, so it is no longer DUE); otherwise compute_due must currently
@@ -717,6 +812,11 @@ def host_run_request(
     diagnoser's catalogue reruns (REMEDIATION_PLAN §6 R2; operator "Ok" ~00:35 ET)."""
     if str(run_id or "")[:2].lower() in ("d:", "e:", "g:"):
         return _refused(None, "run_slot_not_due", peer_ignored=None)
+    if str(run_id or "")[:2].lower() == "p:":
+        # 2026-10-15: process-step keys belong to the fabric process workflow and are validated on the n8n route only.
+        out = _refused(None, "run_process_key_invalid", peer_ignored=None)
+        out["key_state"] = "HOST_CALLER_REFUSED"
+        return out
     request = {"lane_id": lane_id, "mode": mode, "idempotency_key": run_id, "requested_by": requested_by}
     return _run(request, {"caller_id": caller_id}, run_store=run_store, run_allowlist=run_allowlist, now=now, peer=None)
 

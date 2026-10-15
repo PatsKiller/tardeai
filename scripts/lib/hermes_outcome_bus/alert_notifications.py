@@ -11,6 +11,13 @@ channels.telegram.bypass_router is ignored). Priorities, declared:
 
 ``notify="record"`` emits the intent in the summary (``results[].intent``) and calls NO sender at all: the mode a
 fabric-run step uses, so a host lane fired by n8n never sends (n8n asks the host through the send-intent route).
+
+``notify="queue"`` (2026-10-15, n8n fabric cutover prerequisite G5 — the live argv of fabric step
+outcome_feedback_agent): each eligible alert is QUEUED as a host comms intent (scripts/lib/host_comms_intents.py,
+route research/hermes_closed_loop_alert in config/host_comms_intent_routes.json) in the coordination ledger; the host
+comms-intent consumer turns it into an incident and the incident notifier delivers it (DIGEST -> P2). No sender is
+called here. A queued (or folded duplicate) intent counts as delivered for the cooldown, exactly like a chokepoint
+send; a refused queue is ``failed`` with its reason and leaves the cooldown alone, so the next run tries again.
 """
 from __future__ import annotations
 
@@ -27,8 +34,19 @@ ALERTS_CFG_PATH = PROJECT_ROOT / "config" / "hermes_alerts.yaml"
 _SEVERITY_ORDER = {"info": 0, "warning": 1, "critical": 2}
 #: Producer the router receipts and the P3 digest archive name (notification_intent_p3:<producer>).
 PRODUCER = "hermes_outcome_feedback_agent"
-#: Notify modes: "chokepoint" sends an intent through send_telegram; "record" only returns the intent (no sender).
-NOTIFY_MODES = ("chokepoint", "record")
+#: Notify modes: "chokepoint" sends an intent through send_telegram; "record" only returns the intent (no sender);
+#: "queue" queues the intent for the host comms-intent consumer (no sender).
+NOTIFY_MODES = ("chokepoint", "record", "queue")
+#: The host-lane intent route (config/host_comms_intent_routes.json) this producer owns.
+INTENT_DOMAIN = "research"
+INTENT_KIND = "hermes_closed_loop_alert"
+
+
+def _queue_host_intent(**kwargs: Any) -> dict[str, Any]:
+    """scripts/lib/host_comms_intents.queue_intent (a seam the tests replace)."""
+    from lib.host_comms_intents import queue_intent
+
+    return queue_intent(**kwargs)
 
 
 def intent_priority(severity: str | None) -> str:
@@ -167,6 +185,7 @@ def dispatch_alert_notifications(
     cfg: dict[str, Any] | None = None,
     dry_run: bool = False,
     notify: str = "chokepoint",
+    run_id: str | None = None,
 ) -> dict[str, Any]:
     """Send notifications for newly active / cooldown-eligible alerts. Returns summary.
 
@@ -183,6 +202,7 @@ def dispatch_alert_notifications(
     state = _load_state()
     panel_url = _panel_url(cfg)
     sent = 0
+    queued = 0
     suppressed = 0
     results: list[dict[str, Any]] = []
 
@@ -213,6 +233,32 @@ def dispatch_alert_notifications(
                         "priority": intent["priority"]})
             results.append({"id": aid, "status": "intent", "intent": intent})
             continue
+        if notify == "queue":
+            label = alert.get("label") or aid
+            try:
+                receipt = _queue_host_intent(
+                    producer=PRODUCER,
+                    domain=INTENT_DOMAIN,
+                    kind=INTENT_KIND,
+                    subject=f"Hermes closed loop {sev.upper()}: {label}",
+                    summary=str(alert.get("detail") or label),
+                    execution_id=str(run_id or "hermes_ofb"),
+                    node=aid,
+                )
+            except Exception as e:  # noqa: BLE001 - a refused queue is a failed notification, never a crash
+                reason = getattr(e, "reason", type(e).__name__)
+                _log_audit({"alert_id": aid, "severity": sev, "channel": "intent_queue", "status": "failed",
+                            "reason": reason})
+                results.append({"id": aid, "status": "failed", "reason": f"queue:{reason}"})
+                continue
+            queued += 1
+            state.setdefault("last_sent", {})[aid] = datetime.now(timezone.utc).isoformat()
+            _save_state(state)
+            _log_audit({"alert_id": aid, "severity": sev, "channel": "intent_queue", "status": "queued",
+                        "intent_id": receipt.get("intent_id"), "duplicate": bool(receipt.get("duplicate"))})
+            results.append({"id": aid, "status": "queued", "intent_id": receipt.get("intent_id"),
+                            "duplicate": bool(receipt.get("duplicate")), "tier": receipt.get("tier")})
+            continue
 
         tg_ok = _send_telegram(message, cfg, sev)
         em_ok = _send_email(message, cfg)
@@ -237,6 +283,7 @@ def dispatch_alert_notifications(
     return {
         "ok": True,
         "sent": sent,
+        "queued": queued,
         "suppressed": suppressed,
         "dry_run": dry_run,
         "notify": notify,

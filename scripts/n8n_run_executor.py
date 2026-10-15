@@ -103,6 +103,7 @@ from scripts.lib.effect_claim import (  # noqa: E402
     load_effect_config,
 )
 from scripts.lib.n8n_due import parse_key as parse_slot_key  # noqa: E402
+from scripts.lib.n8n_process_keys import is_process_key, parse_process_key  # noqa: E402
 from scripts.lib.n8n_fabric_store import FabricStoreError, RunOutcomeStore  # noqa: E402
 from scripts.n8n_coordination_gateway import default_ledger_path  # noqa: E402
 
@@ -346,7 +347,54 @@ def validate_entry(entry: Mapping[str, Any]) -> str | None:
         return "bad_output_signal"
     if entry.get("retry") is not None and retry_policy(entry) is None:
         return "bad_retry"
+    if entry.get("offpeak_gate") is not None and entry["offpeak_gate"] not in OFFPEAK_GATES:
+        return "bad_offpeak_gate"
     return env_policy_problem(entry)
+
+
+# ── Off-peak gate (2026-10-15; hermes-learning cutover prerequisite G4) ─────────────────────────────────────────────
+#: allowlist ``offpeak_gate`` -> (the cron wrapper flag it reproduces, the in-window test, the override env name).
+#: The cron steps run inside ``run_with_deepseek_offpeak.sh [--official|--scheduled] -- ...``: outside the window the
+#: wrapper prints PEAK_SKIP and exits 0 without running the command. A lane fired from n8n reproduces exactly that
+#: here, with the SAME window functions (scripts/lib/deepseek_offpeak.py, which the wrapper calls), for a LIVE run.
+#: A dry run makes no paid call and is never skipped; its receipt records the verdict it would have had (parity).
+OFFPEAK_GATES = {
+    "bulk": ("--gate", "is_bulk_deepseek_window", "HERMES_ALLOW_DEEPSEEK_PEAK"),
+    "official": ("--official", "is_deepseek_peak_utc", "HERMES_ALLOW_DEEPSEEK_PEAK"),
+    "scheduled": ("--scheduled", "is_scheduled_deepseek_window", "TRADEAI_ALLOW_SCHEDULED_PEAK"),
+}
+_OFFPEAK_TRUTHY = frozenset({"1", "true", "yes", "on"})
+
+
+def _offpeak_now() -> datetime:
+    """Injected by tests (monkeypatch)."""
+    return datetime.now(timezone.utc)
+
+
+def offpeak_verdict(
+    entry: Mapping[str, Any], mode: str, *, env: Mapping[str, str], now: datetime
+) -> dict[str, Any] | None:
+    """None when the entry declares no ``offpeak_gate``; otherwise the verdict block for the receipt. Pure apart from
+    the window functions. ``skipped`` is true only for a LIVE run outside the window without the wrapper's override
+    env in the lane's own env."""
+    gate = entry.get("offpeak_gate")
+    if gate is None:
+        return None
+    flag, fn_name, override_name = OFFPEAK_GATES[gate]
+    from scripts.lib import deepseek_offpeak as O
+
+    raw = getattr(O, fn_name)(now)
+    in_window = (not raw) if gate == "official" else bool(raw)
+    override = str(env.get(override_name) or "").strip().lower() in _OFFPEAK_TRUTHY
+    return {
+        "gate": gate,
+        "wrapper_flag": flag,
+        "in_window": in_window,
+        "override": override,
+        "applies": mode == "live",
+        "skipped": mode == "live" and not in_window and not override,
+        "at": now.astimezone(timezone.utc).isoformat(),
+    }
 
 
 def retry_policy(entry: Mapping[str, Any]) -> dict[str, Any] | None:
@@ -563,6 +611,14 @@ def _execute_once(
         return _finish(
             receipt, "RUN_REFUSED", reason=f"env_allowlist:{receipt['env_allowlist']['reason']}", started=started
         )
+    offpeak = offpeak_verdict(entry, mode, env=lane_env, now=_offpeak_now())
+    if offpeak is not None:
+        receipt["offpeak"] = offpeak
+        if offpeak["skipped"]:
+            # The cron wrapper's PEAK_SKIP: nothing runs, exit 0. Decided before the effect claim, so the slot's key
+            # is never claimed by a run that did no work.
+            receipt["stdout_tail"] = f"{_iso(time.time())} PEAK_SKIP gate={offpeak['wrapper_flag']} (n8n executor)"
+            return _finish(receipt, "RUN_DONE", reason="offpeak_skip", started=started)
     if effects is not None:
         effect, refusal = effects.begin(row, lane_id, mode)
         if effect is not None:
@@ -681,11 +737,27 @@ class EffectGate:
         spec = self.config.get(lane_id)
         if spec is None:
             return None, None
-        parsed = parse_slot_key(str(row.get("run_id") or ""))
-        if parsed is None:
-            block = {"key": None, "process": spec["process"], "claimed": False, "reason": "effect_slot_unknown"}
-            return block, "effect:effect_slot_unknown"
-        slot = parsed[3]
+        run_key = str(row.get("run_id") or "")
+        if is_process_key(run_key):
+            # 2026-10-15: a p:<lane>:<mode>:<slot>[:aN] process-step key. Its slot is trusted only when the gateway
+            # validated it against config/n8n_fabric_processes.json + the manifest (scripts/lib/n8n_process_keys.py)
+            # and stored the base key as the row's slot_key. A p: row without that marker (requested before the
+            # gateway check existed, or written by any other path) is refused, never guessed; the key's lane and mode
+            # must be this run's.
+            pk = parse_process_key(run_key)
+            if pk is None:
+                block = {"key": None, "process": spec["process"], "claimed": False, "reason": "effect_slot_unknown"}
+                return block, "effect:effect_slot_unknown"
+            if pk[0] != lane_id or pk[1] != mode or str(row.get("slot_key") or "") != f"p:{pk[0]}:{pk[1]}:{pk[2]}":
+                reason = "effect_process_key_unvalidated"
+                return {"key": None, "process": spec["process"], "claimed": False, "reason": reason}, f"effect:{reason}"
+            slot = pk[2]
+        else:
+            parsed = parse_slot_key(run_key)
+            if parsed is None:
+                block = {"key": None, "process": spec["process"], "claimed": False, "reason": "effect_slot_unknown"}
+                return block, "effect:effect_slot_unknown"
+            slot = parsed[3]
         key = effect_key(spec["process"], slot, spec["input_version"])
         block: dict[str, Any] = {
             "key": key,

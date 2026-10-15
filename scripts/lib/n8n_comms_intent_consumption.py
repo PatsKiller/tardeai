@@ -51,7 +51,12 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Mapping, Optional
 
-from scripts.lib.n8n_fabric_store import FabricStoreError, load_intent_routes
+from scripts.lib.n8n_fabric_store import (
+    FabricStoreError,
+    load_host_intent_routes,
+    load_intent_routes,
+    merged_intent_routes,
+)
 
 LANE_ID = "n8n-comms-intent-consumer"
 SCHEMA = "N8nCommsIntentConsumption@v1"
@@ -539,8 +544,18 @@ def close_expired(conn: sqlite3.Connection, now: datetime) -> list[str]:
 # ── the run ────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 
-def load_routes(path: Optional[Path] = None) -> dict[str, Any]:
-    return load_intent_routes(path)
+def load_routes(path: Optional[Path] = None, host_path: Optional[Path] = None) -> dict[str, Any]:
+    """The n8n route table plus (2026-10-15) the host-lane table config/host_comms_intent_routes.json, so an intent a
+    HOST lane queued (scripts/lib/host_comms_intents.py) maps to its tier here. The n8n gateway never reads the host
+    table. An unreadable host table leaves the n8n table alone (``host_routes: unreadable``): a host intent is then
+    refused as unrouted (terminal -> the dead-letter finding), never guessed."""
+    routes = load_intent_routes(path)
+    try:
+        merged = merged_intent_routes(routes, load_host_intent_routes(host_path))
+    except FabricStoreError:
+        return {**routes, "host_routes": "unreadable"}
+    merged["host_routes"] = "ok"
+    return merged
 
 
 def plan(

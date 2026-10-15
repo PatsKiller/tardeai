@@ -23,6 +23,10 @@ Zero paid LLM. Advisory-only; honors data/runtime/HERMES_DISABLED.
 --dry-run (2026-10-15, n8n fabric process hermes-learning step tag_engine): the rows the live run would send to
 the governed cloud classifier are counted (``retag.llm_would_call``) and keep their rule/fallback tag in the
 preview; ``generate_cloud`` is never imported or called. The --apply path and the bare preview are unchanged.
+
+Governed route (2026-10-15, n8n fabric cutover prerequisite G5): with TRADEAI_LLM_VIA_BRIDGE=1 (bound by the n8n run
+executor from the allowlist ``llm_route`` of lane hermes-learning-tag-engine) the classifier call goes only through the
+governed bridge as process ``hermes_tag_engine`` ($0.05/day registry cap); a refusal keeps the rule/fallback tag.
 """
 from __future__ import annotations
 
@@ -77,15 +81,52 @@ def _rule_tags(text, cues, max_tags):
     return [s for _n, s in hits[:max_tags]]
 
 
+#: The registered process (config/llm_process_registry.json, daily_cost_cap_usd 0.05) and its governed-bridge route
+#: (scripts/lib/governed_process_routes.py: advisory_desk / hermes_tag_engine).
+LLM_PROCESS_ID = "hermes_tag_engine"
+#: The flag lib.llm_bridge_route.bridge_enabled reads (scripts/n8n_run_executor.py LLM_BRIDGE_ENV). Read here
+#: directly so a failed import with the flag ON can never fall through to the in-process provider path.
+VIA_BRIDGE_ENV = "TRADEAI_LLM_VIA_BRIDGE"
+
+
+def _via_bridge():
+    import os
+    return os.environ.get(VIA_BRIDGE_ENV, "off").strip().lower() in {"1", "on", "bridge"}
+
+
+def _tags_from_json(raw, vocab, max_tags):
+    """Registry slugs from a classifier reply; anything else (prose, a fence, an unknown slug) is dropped."""
+    text = (raw or "").strip()
+    if text.startswith("```"):
+        text = text.strip("`")
+        text = text[text.find("{"):] if "{" in text else text
+    tags = (json.loads(text).get("tags") or [])
+    return [t for t in tags if t in vocab][:max_tags]
+
+
 def _llm_tags(text, vocab, timeout, max_tags):
-    """Governed cloud classifier constrained to registry slugs."""
+    """Governed cloud classifier constrained to registry slugs.
+
+    2026-10-15 (n8n fabric, hermes-learning cutover prerequisite G5): when the run executor binds the allowlist
+    ``llm_route`` (TRADEAI_LLM_VIA_BRIDGE=1, TRADEAI_LLM_PROCESS_ID=hermes_tag_engine), the call goes ONLY through the
+    governed bridge (lib.llm_bridge_route.text_via_bridge -> cio-governed-bridge, 127.0.0.1:8766), which holds the
+    provider credential and enforces the process's $0.05/day cap, the global cap, routing and deferral server-side.
+    A refusal or an unreachable bridge is "no tags" (the row keeps its rule/fallback tag): never a fall-through to an
+    in-process provider call. Without the flag (the cron line) the in-process governed path is unchanged."""
+    prompt = ("You are a strict classifier for a trading research system. Pick up to "
+              f"{max_tags} strategy slugs that genuinely fit this research text, from ONLY "
+              "this list (empty list if none fit):\n" + ", ".join(vocab) +
+              "\n\nText:\n" + (text or "")[:1500] +
+              '\n\nRespond ONLY with JSON: {"tags": ["slug", ...]}')
+    if _via_bridge():
+        try:
+            from lib.llm_bridge_route import text_via_bridge
+            raw = text_via_bridge(LLM_PROCESS_ID, prompt, timeout_s=float(timeout))
+            return [] if raw is None else _tags_from_json(raw, vocab, max_tags)
+        except Exception:
+            return []
     try:
         from lib.governed_cloud_generation import generate_cloud
-        prompt = ("You are a strict classifier for a trading research system. Pick up to "
-                  f"{max_tags} strategy slugs that genuinely fit this research text, from ONLY "
-                  "this list (empty list if none fit):\n" + ", ".join(vocab) +
-                  "\n\nText:\n" + (text or "")[:1500] +
-                  '\n\nRespond ONLY with JSON: {"tags": ["slug", ...]}')
         raw, _lane = generate_cloud(
             prompt, process_id="hermes_tag_engine",
             task_summary="Hermes controlled-vocabulary tagging", timeout=timeout,

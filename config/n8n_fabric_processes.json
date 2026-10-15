@@ -2,6 +2,7 @@
   "schema": "N8nFabricProcesses@v1",
   "_comment": "n8n fabric process workflows (AGENTS.md §23.23 10.0.0 ACTIVE: n8n owns FLOW, the host owns authority and evidence). One entry per business process the fabric owns or is about to own. The generator (scripts/n8n_workflow_templates.py build-fabric) reads this file plus the process's PipelineManifest@v1 (step order, stage schedules) and config/n8n_run_allowlist.json (per-step timeout) and renders one inactive workflow per process into docs/implementation/n8n-maturity/workflows/fabric/. Every runnable step calls the published Run Lane sub-workflow; a BLOCKED step never calls it and is recorded as status 'blocked' with its reason. depends_on names steps of the SAME stage that come EARLIER in the manifest (the shell runner's order stays a valid topological order, so shadow parity is comparable). mode is what the workflow requests: 'dry_run' until the cutover PR changes it (the executor's stage clamp also forces dry_run while a lane is at stage shadow). The step lanes, their allowlist entries, health contracts and effect keys are reviewed in the same PR as this file (packet docs/ops/packets/n8n-hermes-learning-flow-20261015/).",
   "_comment_unblock_20261015": "2026-10-15 unblock (branch n8nfab/hermes-learning-unblock-20261015): tag_engine (--dry-run makes no model call), outcome_feedback_agent (sends are declared chokepoint intents; --dry-run never notifies; --notify record calls no sender) and autonomous_self_tune (--learn half only: the purge helpers refuse in that mode) became dry-run shadow lanes. score_history_retention stays BLOCKED: destructive retention, an operator decision; it stays on cron and is excluded from the fabric process. Per-step keys the generator reads: lane_id, depends_on, blocked, max_attempts (optional, default default_max_attempts), outcome_timeout_s (optional; only LOWERS Run Lane's wait, step timeout + 120 s capped at 1000 s). lane_extra_args is documentation the tests check: argv the step lane adds to the manifest step's command (the cron step keeps its own argv). default_max_attempts 1 (was 2): with six runnable steps the manual all-stages run's worst case must fit the 3600 s execution timeout (n8n EXECUTIONS_TIMEOUT_MAX); 420+1000+420+420+720+600 = 3580 s.",
+  "_comment_prereqs_20261015": "2026-10-15 cutover prerequisites (branch n8nfab/hermes-learning-prereqs-20261015; packet docs/ops/packets/hermes-learning-cutover-20261015/). live_manual_slots (process): false = the gateway accepts a LIVE p: key only for the step's scheduled stage slot (the same slot the cron runner's effect key uses); true lets a manual minute run live (an operator flag for a proof run, never left on). cutover_live_arg (step): the argv the cutover PR sets as the step lane's allowlist live_arg; documentation the tests check, never read by the executor (live_arg stays null until the cutover PR). The gateway validates every p: key against this file + the manifest (scripts/lib/n8n_process_keys.py).",
   "processes": {
     "hermes-learning": {
       "workflow_id": "tradeai-fabric-hermes-learning",
@@ -12,28 +13,33 @@
         "tune": "hermes-learning-pipeline-tune"
       },
       "mode": "dry_run",
+      "live_manual_slots": false,
       "input_version": "v1",
       "default_max_attempts": 1,
       "steps": {
         "outcome_grader": {
           "lane_id": "hermes-learning-outcome-grader",
+          "cutover_live_arg": ["--apply"],
           "depends_on": [],
           "blocked": null
         },
         "tag_engine": {
           "lane_id": "hermes-learning-tag-engine",
+          "cutover_live_arg": ["--apply"],
           "depends_on": ["outcome_grader"],
           "blocked": null,
           "dry_run": "--dry-run: no model call (generate_cloud never imported; the rows the live run would classify are counted in retag.llm_would_call), read-only DB session, no DDL (scripts/hermes_tag_engine.py run/retag/tag_efficacy)."
         },
         "outcome_feedback_agent": {
           "lane_id": "hermes-learning-outcome-feedback-agent",
+          "cutover_live_arg": ["--apply", "--notify", "queue"],
           "depends_on": ["tag_engine"],
           "blocked": null,
           "dry_run": "--dry-run: read-only DB session, writes nothing, never reaches the notifier. Live (cron) sends are declared intents through the host chokepoint send_telegram(priority P2/P3, producer hermes_outcome_feedback_agent); --notify record returns the intents and calls no sender."
         },
         "outcome_learning": {
           "lane_id": "hermes-learning-outcome-learning",
+          "cutover_live_arg": ["--apply"],
           "depends_on": ["outcome_grader"],
           "blocked": null
         },
@@ -44,11 +50,13 @@
         },
         "config_governor": {
           "lane_id": "hermes-learning-config-governor",
+          "cutover_live_arg": ["--apply"],
           "depends_on": ["outcome_learning"],
           "blocked": null
         },
         "autonomous_self_tune": {
           "lane_id": "hermes-learning-autonomous-self-tune",
+          "cutover_live_arg": ["--apply"],
           "depends_on": [],
           "blocked": null,
           "lane_extra_args": ["--learn"],

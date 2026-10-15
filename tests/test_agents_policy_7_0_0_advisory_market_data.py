@@ -88,7 +88,8 @@ def _s2320() -> str:
 
 
 def test_header_row_and_status_constant_agree():
-    assert _control("Status") == "ACTIVE" and _control("Effective-Date") == "2026-10-14"
+    # 11.0.0 (ratified 2026-10-15, #1747 comment) moved the header date; 7.0.0 and 10.0.0 were 2026-10-14.
+    assert _control("Status") == "ACTIVE" and _control("Effective-Date") in ("2026-10-14", "2026-10-15")
     status = _row().group(1)
     if _control("Policy-Version") == "7.0.0":
         assert _control("Status") == status and _control("Supersedes") == "5.1.0"

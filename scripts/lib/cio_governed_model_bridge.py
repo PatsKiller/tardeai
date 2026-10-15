@@ -97,6 +97,10 @@ CALLER_TASK_PROCESS_MAP: dict[str, dict[str, str]] = {
         "usefulness_score": "hermes_usefulness_score",
         "hermes_research_job": "cio_hermes_research",
         "golden_judge": "hermes_golden_judge",
+        # 2026-10-15 (hermes-learning cutover prerequisite G5): the Hermes tag engine's controlled-vocabulary
+        # classifier on the n8n fabric path (allowlist llm_route via cio-governed-bridge). Its own process id, so the
+        # registry's $0.05/day daily_cost_cap_usd binds it here, server-side; a caller cannot relabel into it.
+        "hermes_tag_engine": "hermes_tag_engine",
     },
 }
 
