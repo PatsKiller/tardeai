@@ -1,0 +1,278 @@
+{
+ "_why": "Forbidden transitive capabilities (direct_sender, broker_module, order_placement) that n8n-allowlisted lanes already reach, each with a reason. scripts/audit_lane_transitive_capabilities.py --check and tests/test_lane_transitive_capabilities_20261015.py fail on a (lane, capability) pair missing here and on an entry here that is no longer reached. SHRINK-ONLY: the test pins this file to a subset of the 2026-10-15 set, so adding an entry needs a reviewed test edit, never just a config edit.",
+ "as_of": "2026-10-15",
+ "lanes": {
+  "advisory-desk-run-now": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/schwab_transport.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "aegis-brief-regenerate": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "aegis-evening-packet": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/api_v2.py -> ... -> scripts/schwab_transport.py (file name schwab_transport.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/api_v2.py -> ... -> scripts/api_v2.py (calls place_order() line 40552). Owner: platform; review under DD02 worker isolation."
+  },
+  "aegis-nightly-ingestion": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "aegis-social-sentiment": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "aegis-transcript-discovery": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "analyst-prospectus-generate": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/options_engine.py -> ... -> scripts/schwab_transport.py (file name schwab_transport.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/options_engine.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "audit-enrichment-coverage": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "catalyst-graph": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "catalyst-momentum-engine-overnight": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "catalyst-symbol-impact": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "classify-instruments": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "data-gap-resolver-at-0-10-16": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/lib/company_name_index.py -> ... -> scripts/lib/schwab_instrument_evidence.py (file name schwab_instrument_evidence.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/api_v2.py -> ... -> scripts/api_v2.py (calls place_order() line 40552). Owner: platform; review under DD02 worker isolation."
+  },
+  "data-gap-resolver-pre": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/lib/company_name_index.py -> ... -> scripts/lib/schwab_instrument_evidence.py (file name schwab_instrument_evidence.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/api_v2.py -> ... -> scripts/api_v2.py (calls place_order() line 40552). Owner: platform; review under DD02 worker isolation."
+  },
+  "data-gap-resolver-weekly": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/lib/company_name_index.py -> ... -> scripts/lib/schwab_instrument_evidence.py (file name schwab_instrument_evidence.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/api_v2.py -> ... -> scripts/api_v2.py (calls place_order() line 40552). Owner: platform; review under DD02 worker isolation."
+  },
+  "desk-suggestions-digest": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "document-mentions-backfill": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/lib/company_name_index.py -> ... -> scripts/lib/schwab_instrument_evidence.py (file name schwab_instrument_evidence.py). Owner: platform; review under DD02 worker isolation."
+  },
+  "enterprise-backtester": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "etf-analyst-enrich": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "etf-performance-enrich": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "fee-efficiency-analyzer": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "feedback-loop-processor": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "finviz-enrichment": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "finviz-enrichment-scalp-hot": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "finviz-market-movers": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "finviz-proactive-research": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "finviz-screener-runner": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "finviz-sector-research": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "finviz-view-contracts": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "generate-analyst-daily-digest": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/options_engine.py -> ... -> scripts/schwab_transport.py (file name schwab_transport.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/options_engine.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "heartbeat-watch": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/lib/company_name_index.py -> ... -> scripts/lib/schwab_instrument_evidence.py (file name schwab_instrument_evidence.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/api_v2.py -> ... -> scripts/api_v2.py (calls place_order() line 40552). Owner: platform; review under DD02 worker isolation."
+  },
+  "hermes-analyst-signal-discovery": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "hermes-entity-spike-discovery": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "hermes-governance-api": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "hermes-learning-autonomous-self-tune": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "hermes-learning-config-governor": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "hermes-learning-outcome-feedback-agent": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "hermes-learning-outcome-grader": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "hermes-learning-outcome-learning": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "hermes-learning-tag-engine": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "hermes-momentum-catalyst-scalp": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "hermes-pipeline-health": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "hermes-research-worker-pool": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "hermes-scope-governor": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "hermes-score-event-feeder": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "hermes-social-sentiment": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "instrument-belief-writer": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/schwab_transport.py -> ... -> scripts/schwab_transport.py (file name schwab_transport.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/schwab_transport.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "investment-costs": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "job-coverage-monitor": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "journal-tilt-morning-hook": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/api_v2.py -> ... -> scripts/schwab_transport.py (file name schwab_transport.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/api_v2.py -> ... -> scripts/api_v2.py (calls place_order() line 40552). Owner: platform; review under DD02 worker isolation."
+  },
+  "lane-governance-packet-weekly": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "material-change-detector-stage1": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "momentum-cache-reconcile": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/lib/company_name_index.py -> ... -> scripts/lib/schwab_instrument_evidence.py (file name schwab_instrument_evidence.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/api_v2.py -> ... -> scripts/api_v2.py (calls place_order() line 40552). Owner: platform; review under DD02 worker isolation."
+  },
+  "momentum-lifecycle-monitor": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/lib/company_name_index.py -> ... -> scripts/lib/schwab_instrument_evidence.py (file name schwab_instrument_evidence.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/api_v2.py -> ... -> scripts/api_v2.py (calls place_order() line 40552). Owner: platform; review under DD02 worker isolation."
+  },
+  "n8n-incident-fanin": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "n8n-research-intake-consumer": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "news-to-catalyst": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "scalp-hot-list": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "sector-rs-daily": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "signal-fusion-active": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "signal-fusion-full": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "social-ingest-all": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "sync-social-to-intelligence": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "trade-ai-scalp-live": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "update-agent-performance": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "validate-expense-ratios": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "watch-goods-consistency": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "watchlist-enrichment-sweep": {
+   "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/open_trades_intelligence.py -> ... -> scripts/alpaca_paper_reconciler.py (file name alpaca_paper_reconciler.py). Owner: platform; review under DD02 worker isolation.",
+   "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/open_trades_intelligence.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  }
+ },
+ "schema": "N8nLaneCapabilityBaseline@v1"
+}

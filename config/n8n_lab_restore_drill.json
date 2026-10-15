@@ -1,0 +1,16 @@
+{
+  "schema": "N8nLabRestoreDrillPolicy@v1",
+  "as_of": "2026-10-15",
+  "_why": "Minimum content a restored n8n lab dump must hold before scripts/n8n_lab_restore_drill.sh may call it PASSED (third-party DR audit finding A, 2026-10-15: restore errors were ignored when table counts matched, an empty workflow_entity passed, and a false verdict still exited 0). Read by scripts/lib/n8n_lab_restore_verdict.py; tests: tests/test_n8n_lab_restore_drill_verdict_20261015.py.",
+  "required_workflow_ids": [
+    "tradeai-fabric-run-lane",
+    "tradeai-fabric-error"
+  ],
+  "required_workflow_ids_evidence": "docs/implementation/n8n-maturity/PROGRAM_TRACKER_20261015.md row 10: tradeai-fabric-run-lane and tradeai-fabric-error active + published in n8n workflow_entity (LIVE @5aa61048d). Every other id is checked against the dump's own manifest (workflow_ids recorded by scripts/n8n_lab_backup.sh at dump time).",
+  "manifest_always_required": "Without the dump's manifest the drill cannot prove the restore holds what was backed up; a dump older than the manifest change fails until the next nightly backup writes one.",
+  "key_check": "required",
+  "key_check_reason": "DD10: a dump that restores rows but whose credentials the escrowed key cannot decrypt is not a recovery. scripts/lib/n8n_credential_key_probe.js runs inside the n8n app container (N8N_APP_CONTAINER, default m8m-n8n), reads the key where n8n reads it and prints one word; the key and plaintext never leave the container.",
+  "min_workflows": 1,
+  "max_restore_errors": 0,
+  "_tables": "workflow_entity, credentials_entity and execution_entity are fixed in the drill's SQL (n8n schema), not configurable here."
+}

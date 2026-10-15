@@ -37,7 +37,8 @@ Trade AI runs a single host (`ms01-openclaw`) with ~524 scheduled jobs, a tradin
 bridge and a host-side communications gateway. In October 2026 the operator made n8n the **automation fabric**:
 n8n owns *flow* (when, in what order, retry, approval timeline, escalation, when an LLM is asked), and the host keeps
 *authority, execution and evidence* (allowlist, live/dry authority, idempotency keys, secrets, the audit ledger, the
-only sender). This document is the reference architecture for that split.
+only sender for n8n-originated intents; lanes' own transitive senders are listed in
+`docs/implementation/n8n-maturity/LANE_TRANSITIVE_CAPABILITIES_20261015.md`). This document is the reference architecture for that split.
 
 The design in one paragraph: **n8n talks to the host through exactly one door** — a bearer-authenticated relay
 (`scripts/n8n_run_relay.py`, `172.19.0.1:18092`) that re-signs each request as a short-lived HMAC claim to the
@@ -117,7 +118,7 @@ flowchart LR
     LED[("Coordination ledger (SQLite)<br/>runs, run_outcomes, comms_intents,<br/>dead_letters, breakers, effect_claims (E)")]
     REC[("Receipts<br/>data/runtime/n8n_runs/&lt;run_id&gt;.json,<br/>&lt;lane&gt;_last.json (E)")]
   end
-  subgraph COMMS["Comms gateway (host; only sender)"]
+  subgraph COMMS["Comms gateway (host; only sender for n8n intents)"]
     CONS["Comms-intent consumer → fan-in (E merged, not applied: TRK-16/25)"]
     FAN["Incident fan-in (E)"]
     NOTI["incident_notifier → send_telegram (E)"]
@@ -177,7 +178,7 @@ flowchart TB
   N8N -- "B1: bearer over docker bridge 172.19.0.1:18092" --> R
   G -. "B2: HMAC claim, 18091 loopback" .- R
   X -- "B3: spawn allowlisted argv, env allowlist" --> LANES["Lane processes"]
-  C -- "B4: only sender" --> OP
+  C -- "B4: only sender for n8n intents" --> OP
   OP -- "B5: assertion over H(intent) (P)" --> XS
   N8N -. "never" .-x BG
   N8N -. "never" .-x XS
@@ -190,7 +191,7 @@ flowchart TB
 | **B2** relay → gateway | short-lived HMAC claim (`v, caller_id, project, iat, exp, nonce, scope`), caller `n8n-relay`, scopes `coordination_read` / `coordination_run` / `comms_intent`; the HMAC key never enters n8n | `scripts/lib/n8n_coordination_gateway.py` `CLAIM_FIELDS`, `SCOPES`, `RELAY_CALLER`, `sign_claim` | (E) |
 | **B2** route policy | `ALLOWED_ROUTES` (6) and `FORBIDDEN_ROUTE_TOKENS` (broker, order, approve, grant, 2fa, totp, promote, rollback, telegram, send, sql, postgres, …) | same file | (E) |
 | **B3** executor → lane | argv only from the allowlist; per-lane lock; `timeout -k`; stage clamp; per-lane env allowlist (`report` default, `enforce` opt-in) | `scripts/n8n_run_executor.py`, `scripts/lib/lane_stage_clamp.py` | (E); global `TRADEAI_EXECUTOR_ENV_ALLOWLIST=enforce` measured on the unit 2026-10-15, but 91 of 103 lanes are pinned `env_allowlist_mode: report` and keep the full pre-P7 env — **report mode is not confinement**, and every lane runs as the same uid as the relay, gateway and ledger (`N8N_THREAT_MODEL.md` B3, RR1; `ENV_ENFORCE_READINESS_20261015.md`) |
-| **B4** comms | n8n holds no bot token; intents are queued, deduped, capped, routed by a closed table | `config/n8n_comms_intent_routes.json`, `scripts/lib/n8n_fabric_store.py` | (E) |
+| **B4** comms | The host comms gateway is the only sender **for n8n-originated intents**: n8n holds no bot token; intents are queued, deduped, capped, routed by a closed table. It is **not** the only sender a lane can reach: an allowlisted lane runs its own code, and that code's transitive senders are listed per lane in `docs/implementation/n8n-maturity/LANE_TRANSITIVE_CAPABILITIES_20261015.{json,md}` (today none: the one found, `trade-ai-scalp-live` `continuous_runner._deliver_live_alert` -> `alerting.send_slack` / `send_whatsapp`, third-party audit DD01, was removed 2026-10-15 and the lane delivers only through `send_telegram`). A new lane or a new transitive sender fails CI (`tests/test_lane_transitive_capabilities_20261015.py`, baseline `config/n8n_lane_capability_baseline.json`, shrink-only) | `config/n8n_comms_intent_routes.json`, `scripts/lib/n8n_fabric_store.py`; `scripts/audit_lane_transitive_capabilities.py` | (E) for n8n intents; (E) lane closures audited, zero direct senders (DD01 closed) |
 | **B5** money | n8n can notify about an order intent, never confirm one; per-order operator assertion | AGENTS.md §23.23 "Broker"; TARGET_ARCHITECTURE §5 | (P) (trading lock LIVE, LOCKED: TRK-4; uid split TRK-31) |
 
 ## 6. Routes n8n may call, and what it may never touch (§23.23, §23.3)
@@ -217,8 +218,12 @@ The relay's route table is the complete list of host calls a workflow can make. 
 list, the allowlist never-list and the generator's forbidden node list):
 
 - any broker route, order verb, position/account read, stop, arm, unlock, 2FA/TOTP, or broker credential;
-- any send (Telegram, email, Slack, Discord nodes are forbidden node types; `FABRIC_FORBIDDEN_NODE_TYPES` in
-  `scripts/n8n_workflow_templates.py`);
+- any send from n8n itself (Telegram, email, Slack, Discord nodes are forbidden node types;
+  `FABRIC_FORBIDDEN_NODE_TYPES` in `scripts/n8n_workflow_templates.py`). This is a rule about workflow nodes and
+  routes. It does not certify what an allowlisted lane's own code can reach: the allowlist `never` text admits
+  `trade-ai-scalp-live` (AGENTS.md 4.0.0 §23.3) and the advisory market-data class (7.0.0 §23.20) as sender
+  exceptions. Each lane's transitive senders, broker modules and order functions are listed in
+  `docs/implementation/n8n-maturity/LANE_TRANSITIVE_CAPABILITIES_20261015.md`;
 - SQL, Postgres, MySQL, Redis, file, SSH, `executeCommand` nodes (same list);
 - guard grants, promote/rollback of a release, lane registry or allowlist edits;
 - the `trade_ai` database, any secret file, the n8n API key;
