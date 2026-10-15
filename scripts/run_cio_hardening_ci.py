@@ -4139,6 +4139,10 @@ GATES = [
         "cron_tranche_b_20261007",
         [
             "tests/test_pipeline_manifest_runner_20261007.py",
+            # Consolidation C3 (lane disposition 2026-10-15): F36 health/audit plane manifest (4 weekday-morning
+            # checks -> stage `morning`, 11 deferred, 7 excluded = the 22 live F36 lines), NEVER_SCHEDULED runner
+            # dry run, flip packet build/verify/rollback byte-exact + fake-crontab round trip. Hermetic.
+            "tests/test_consolidation_health_audit_c3_20261015.py",
         ],
     ),
     (
