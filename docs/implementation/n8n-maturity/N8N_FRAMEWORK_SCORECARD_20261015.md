@@ -28,8 +28,9 @@ for all 18 and for the reference).
 
 ## 1. Result
 
-**0 of 18 active workflows statically conformant; 0 of 18 activation-eligible. Static conformance 274/531 = 51.6%**
-(up to 31 elements per workflow, n/a excluded; platform elements reported separately and gated). 220 failing elements.
+**0 of 18 active workflows statically conformant; 0 of 18 activation-eligible. Static conformance 286/531 = 53.9%**
+(up to 31 elements per workflow, n/a excluded; platform elements reported separately and gated). 207 failing elements (2026-10-15 expected_output PR: FW-M6 now passes on the 12 workflows whose
+contract carries an evidence-derived `expected_output` rule; was 274/531 = 51.6%, 220 failing).
 
 Why the number moved from 46.9% and why the two are not comparable: the audit fix added four structural elements
 (FW-W1..W4: connections valid, reachability, required nodes on a trigger path, metadata = graph) that the legacy
@@ -45,30 +46,30 @@ The reference mature workflow
 (`docs/implementation/n8n-parallel/workflows/reference/tradeai-reference-mature-workflow.json`) scores 31/31 static
 conformance and is **not activation-eligible** (24 blocking reasons: 6 platform elements not PASS, 18 runtime
 obligations UNPROVEN). Every committed workflow file (`--all`, 163 files including pending per-lane shadows and
-probes): 1 statically conformant (the reference), 2030/4877 = 41.6%, 0 activation-eligible.
+probes): 1 statically conformant (the reference), 2064/4877 = 42.3%, 0 activation-eligible.
 
 | Workflow | Class | Graph | Scope | Mon | Alert | Log | Recov | Sec | AI | Static conformance | Runtime | Eligible | Failing elements |
 |---|---|---|---|---|---|---|---|---|---|---:|---|---|---|
-| `tradeai-dispatcher` | business-critical | Y | N | P | P | P | P | Y | n/a | 18/30 (60.0%) | UNPROVEN (18) | no | FW-C1, FW-C2, FW-C3, FW-M6, FW-A3, FW-A4, FW-A6, FW-L1, FW-R3, FW-R5 |
-| `tradeai-event-router` | business-critical | Y | N | P | P | P | P | Y | n/a | 18/30 (60.0%) | UNPROVEN (18) | no | FW-C1, FW-C2, FW-C3, FW-M6, FW-A3, FW-A4, FW-A6, FW-L1, FW-R3, FW-R5 |
-| `tradeai-digest-scheduler` | business-critical | Y | N | P | P | P | P | Y | n/a | 18/30 (60.0%) | UNPROVEN (18) | no | FW-C1, FW-C2, FW-C3, FW-M6, FW-A3, FW-A4, FW-A6, FW-L1, FW-R3, FW-R5 |
-| `tradeai-heartbeat-watcher` | resilience | Y | P | P | P | P | P | Y | n/a | 18/30 (60.0%) | UNPROVEN (18) | no | FW-C1, FW-C2, FW-M6, FW-A3, FW-A4, FW-A6, FW-L1, FW-R3, FW-R5 |
-| `tradeai-incident-router` | resilience | Y | P | P | P | P | P | Y | n/a | 16.5/30 (55.0%) | UNPROVEN (18) | no | FW-C1, FW-C2, FW-M2, FW-M6, FW-A1, FW-A3, FW-A4, FW-A6, FW-L1, FW-R3, FW-R5 |
-| `tradeai-momentum-lifecycle-candidate` | monitoring-compliance | Y | P | P | P | P | P | P | n/a | 14/25 (56.0%) | UNPROVEN (9) | no | FW-C1, FW-C2, FW-M1, FW-M6, FW-A3, FW-A6, FW-L1, FW-L5, FW-R3, FW-R5, FW-S2 |
-| `n8n-incident-fanin` | resilience | Y | P | P | P | P | P | Y | n/a | 14/30 (46.7%) | UNPROVEN (18) | no | FW-C1, FW-C2, FW-M2, FW-M3, FW-M6, FW-A1, FW-A4, FW-A6, FW-L1, FW-R1, FW-R3, FW-R5, FW-R6 |
-| `n8n-pilot-dispatch` | monitoring-compliance | Y | P | P | P | P | P | Y | n/a | 14/30 (46.7%) | UNPROVEN (18) | no | FW-C1, FW-C2, FW-M2, FW-M3, FW-M6, FW-A1, FW-A4, FW-A6, FW-L1, FW-R1, FW-R3, FW-R5, FW-R6 |
-| `n8n-research-intake-consumer` | business-critical | Y | N | P | P | P | P | Y | n/a | 13.5/30 (45.0%) | UNPROVEN (18) | no | FW-C1, FW-C2, FW-C3, FW-M2, FW-M3, FW-M6, FW-A1, FW-A4, FW-A6, FW-L1, FW-R1, FW-R3, FW-R5, FW-R6 |
-| `crontab-snapshot-for-health-agent` | resilience | Y | P | P | P | P | P | Y | n/a | 14/30 (46.7%) | UNPROVEN (18) | no | FW-C1, FW-C2, FW-M2, FW-M3, FW-M6, FW-A1, FW-A4, FW-A6, FW-L1, FW-R1, FW-R3, FW-R5, FW-R6 |
-| `catalyst-calibration-monitor-shadow` | monitoring-compliance | Y | P | P | P | P | P | P | n/a | 15/30 (50.0%) | UNPROVEN (18) | no | FW-C1, FW-C2, FW-M2, FW-M6, FW-A1, FW-A4, FW-A6, FW-L1, FW-R1, FW-R3, FW-R5, FW-S2 |
-| `watch-directives-monitor-shadow` | monitoring-compliance | Y | P | P | P | P | P | P | n/a | 15/30 (50.0%) | UNPROVEN (18) | no | FW-C1, FW-C2, FW-M2, FW-M6, FW-A1, FW-A4, FW-A6, FW-L1, FW-R1, FW-R3, FW-R5, FW-S2 |
-| `source-attribution-monitor-shadow` | monitoring-compliance | Y | P | P | P | P | P | Y | n/a | 16/30 (53.3%) | UNPROVEN (18) | no | FW-C1, FW-C2, FW-M2, FW-M6, FW-A1, FW-A4, FW-A6, FW-L1, FW-R1, FW-R3, FW-R5 |
+| `tradeai-dispatcher` | business-critical | Y | N | P | P | P | P | Y | n/a | 19/30 (63.3%) | UNPROVEN (18) | no | FW-C1, FW-C2, FW-C3, FW-A3, FW-A4, FW-A6, FW-L1, FW-R3, FW-R5 |
+| `tradeai-event-router` | business-critical | Y | N | P | P | P | P | Y | n/a | 19/30 (63.3%) | UNPROVEN (18) | no | FW-C1, FW-C2, FW-C3, FW-A3, FW-A4, FW-A6, FW-L1, FW-R3, FW-R5 |
+| `tradeai-digest-scheduler` | business-critical | Y | N | P | P | P | P | Y | n/a | 19/30 (63.3%) | UNPROVEN (18) | no | FW-C1, FW-C2, FW-C3, FW-A3, FW-A4, FW-A6, FW-L1, FW-R3, FW-R5 |
+| `tradeai-heartbeat-watcher` | resilience | Y | P | P | P | P | P | Y | n/a | 19/30 (63.3%) | UNPROVEN (18) | no | FW-C1, FW-C2, FW-A3, FW-A4, FW-A6, FW-L1, FW-R3, FW-R5 |
+| `tradeai-incident-router` | resilience | Y | P | P | P | P | P | Y | n/a | 17.5/30 (58.3%) | UNPROVEN (18) | no | FW-C1, FW-C2, FW-M2, FW-A1, FW-A3, FW-A4, FW-A6, FW-L1, FW-R3, FW-R5 |
+| `tradeai-momentum-lifecycle-candidate` | monitoring-compliance | Y | P | P | P | P | P | Y | n/a | 14/25 (56.0%) | UNPROVEN (9) | no | FW-C1, FW-C2, FW-M1, FW-M6, FW-A3, FW-A6, FW-L1, FW-L5, FW-R3, FW-R5 |
+| `n8n-incident-fanin` | resilience | Y | P | P | P | P | P | Y | n/a | 15/30 (50.0%) | UNPROVEN (18) | no | FW-C1, FW-C2, FW-M2, FW-M3, FW-A1, FW-A4, FW-A6, FW-L1, FW-R1, FW-R3, FW-R5, FW-R6 |
+| `n8n-pilot-dispatch` | monitoring-compliance | Y | P | P | P | P | P | Y | n/a | 15/30 (50.0%) | UNPROVEN (18) | no | FW-C1, FW-C2, FW-M2, FW-M3, FW-A1, FW-A4, FW-A6, FW-L1, FW-R1, FW-R3, FW-R5, FW-R6 |
+| `n8n-research-intake-consumer` | business-critical | Y | N | P | P | P | P | Y | n/a | 14.5/30 (48.3%) | UNPROVEN (18) | no | FW-C1, FW-C2, FW-C3, FW-M2, FW-M3, FW-A1, FW-A4, FW-A6, FW-L1, FW-R1, FW-R3, FW-R5, FW-R6 |
+| `crontab-snapshot-for-health-agent` | resilience | Y | P | P | P | P | P | Y | n/a | 15/30 (50.0%) | UNPROVEN (18) | no | FW-C1, FW-C2, FW-M2, FW-M3, FW-A1, FW-A4, FW-A6, FW-L1, FW-R1, FW-R3, FW-R5, FW-R6 |
+| `catalyst-calibration-monitor-shadow` | monitoring-compliance | Y | P | P | P | P | P | P | n/a | 16/30 (53.3%) | UNPROVEN (18) | no | FW-C1, FW-C2, FW-M2, FW-A1, FW-A4, FW-A6, FW-L1, FW-R1, FW-R3, FW-R5, FW-S2 |
+| `watch-directives-monitor-shadow` | monitoring-compliance | Y | P | P | P | P | P | P | n/a | 16/30 (53.3%) | UNPROVEN (18) | no | FW-C1, FW-C2, FW-M2, FW-A1, FW-A4, FW-A6, FW-L1, FW-R1, FW-R3, FW-R5, FW-S2 |
+| `source-attribution-monitor-shadow` | monitoring-compliance | Y | P | P | P | P | P | Y | n/a | 17/30 (56.7%) | UNPROVEN (18) | no | FW-C1, FW-C2, FW-M2, FW-A1, FW-A4, FW-A6, FW-L1, FW-R1, FW-R3, FW-R5 |
 | `finviz-view-contracts-shadow` | monitoring-compliance | Y | N | P | N | P | P | Y | n/a | 12/30 (40.0%) | UNPROVEN (18) | no | FW-C1, FW-C2, FW-C3, FW-M2, FW-M3, FW-M4, FW-M5, FW-M6, FW-A1, FW-A2, FW-A3, FW-A4, FW-A6, FW-L1, FW-R1, FW-R3, FW-R5 |
 | `generate-analyst-daily-digest-shadow` | business-critical | Y | N | P | N | P | P | Y | n/a | 12/30 (40.0%) | UNPROVEN (18) | no | FW-C1, FW-C2, FW-C3, FW-M2, FW-M3, FW-M4, FW-M5, FW-M6, FW-A1, FW-A2, FW-A3, FW-A4, FW-A6, FW-L1, FW-R1, FW-R3, FW-R5 |
 | `lane-governance-packet-weekly-shadow` | monitoring-compliance | Y | N | P | N | P | P | Y | n/a | 12/30 (40.0%) | UNPROVEN (18) | no | FW-C1, FW-C2, FW-C3, FW-M2, FW-M3, FW-M4, FW-M5, FW-M6, FW-A1, FW-A2, FW-A3, FW-A4, FW-A6, FW-L1, FW-R1, FW-R3, FW-R5 |
 | `tradeai-fabric-run-lane` | resilience | Y | N | P | P | Y | P | Y | n/a | 18.5/30 (61.7%) | UNPROVEN (18) | no | FW-C1, FW-C2, FW-C3, FW-M4, FW-M5, FW-M6, FW-A2, FW-A3, FW-A6, FW-R3, FW-R5 |
 | `tradeai-fabric-error` | resilience | Y | N | P | P | Y | P | Y | n/a | 15.5/26 (59.6%) | UNPROVEN (9) | no | FW-C1, FW-C2, FW-C3, FW-M5, FW-M6, FW-A1, FW-A2, FW-A3, FW-R3 |
 
-**Fleet:** 18 workflows, 0 statically conformant, 0 activation-eligible; static conformance 274/531 = 51.6%; 219 failing elements (train 3: +1 FW-S2 for momentum-lifecycle-candidate after the relay route fix, audit DD14).
+**Fleet:** 18 workflows, 0 statically conformant, 0 activation-eligible; static conformance 286/531 = 53.9%; 207 failing elements (train 3: +1 FW-S2 for momentum-lifecycle-candidate after the relay route fix, audit DD14; 2026-10-15 expected_output PR: -12 FW-M6).
 
 "Runtime" = the runtime obligations that apply to the workflow (§23.24 crosswalk rows marked
 `not_checkable_offline`), all UNPROVEN: 18 for a workflow that requests lane runs, 9 for one that does not.
@@ -121,8 +122,10 @@ hash or generator check can carry the verdict. v1 = the checker at e355be188; v2
 
 ## 2. Gap list per workflow (what each failing element means here)
 
-Common to **all 18**: FW-C1/FW-C2 (no `meta.framework` class/owner in generator output), FW-M6 (no contract declares
-`expected_output` — an exit-0 run that produced nothing reads as success), FW-R3 (no declared fallback in metadata).
+Common to **all 18**: FW-C1/FW-C2 (no `meta.framework` class/owner in generator output), FW-M6 on 6 of 18 (2026-10-15: 122 of 126 health
+contracts now declare an evidence-derived `expected_output`; still failing: `tradeai-momentum-lifecycle-candidate`, whose
+REVIEWED body is digest-bound so adding the rule needs a fresh review, and the 5 shadow/fabric workflows whose lanes
+have no contract on main), FW-R3 (no declared fallback in metadata).
 Common to the 16 legacy: FW-L1 (successes not saved), FW-A6/FW-R5 (no runbook id or path).
 
 | Workflow | Specific gaps (beyond the common set) |

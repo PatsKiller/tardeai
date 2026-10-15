@@ -10,6 +10,8 @@ executor put in ``TRADEAI_RUN_ID``) and calls :func:`evaluate`:
 verdict                meaning / run outcome
 =====================  ======================================================================================
 ``no_rule``            no contract or no ``expected_output`` block: behaviour unchanged (RUN_DONE stays)
+``declared_not_enforced``  (executor only) rule declared but the lane's allowlist entry lacks ``output_receipt: v2``:
+                       recorded, run state unchanged (per-lane opt-in, 2026-10-15)
 ``dry_run_exempt``     a dry run writes no receipt (AGENTS.md §6); not checked (captured dry evidence is (P))
 ``produced``           ``produced_count >= min_produced`` on a receipt bound to THIS attempt
 ``empty_allowed``      zero produced with a typed, contract-listed ``empty_reason`` and no fatal skip
@@ -34,7 +36,15 @@ EXPECTED_OUTPUT_SCHEMA = "N8nExpectedOutput@v1"
 RULES = ("min_produced", "per_window", "empty_allowed")
 EVIDENCE_KINDS = ("store_rows", "file", "receipt_field", "ledger_row")
 LANE_RECEIPT_V2 = "LaneRunReceipt@v2"
-VERDICTS = ("no_rule", "dry_run_exempt", "produced", "empty_allowed", "empty_violation", "unverifiable")
+VERDICTS = (
+    "no_rule",
+    "declared_not_enforced",
+    "dry_run_exempt",
+    "produced",
+    "empty_allowed",
+    "empty_violation",
+    "unverifiable",
+)
 FAILING = {"empty_violation": "empty_output", "unverifiable": "output_unverifiable"}
 _REASON_RE = re.compile(r"^[a-z][a-z0-9_]{1,47}$")
 _FIELD_RE = re.compile(r"^[a-z][a-z0-9_]{1,47}$")

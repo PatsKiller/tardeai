@@ -72,8 +72,10 @@ and v2 paths unless stated:
 * **Output verdict (DD07).** After an exit-0 LIVE run of a lane whose health contract declares ``expected_output``,
   the per-attempt receipt is evaluated (scripts/lib/n8n_output_verdict.py): ``empty_violation`` -> RUN_FAILED
   ``empty_output``, ``unverifiable`` -> RUN_FAILED ``output_unverifiable``. No block = ``output_verdict.verdict
-  no_rule`` and the run is unchanged (every contract today). v2 receipts that carry an evaluated verdict are
-  ``RunReceipt@v3``.
+  no_rule`` and the run is unchanged. v2 receipts that carry an evaluated verdict are ``RunReceipt@v3``.
+  ENFORCEMENT IS PER-LANE OPT-IN (2026-10-15): the verdict is applied only when the lane's allowlist entry declares
+  ``"output_receipt": "v2"`` -- set together with the lane code that writes ``produced_count``. A declared rule on a
+  lane without it is recorded as ``output_verdict.verdict declared_not_enforced`` and the run state is unchanged.
 * **Effect proof and late writes (DD05/DD06).** A FAILED effect finish is reclaimable only when proven pre-effect
   (spawn failure, or a ``late_write_fenced`` lane that exited before passing ``assert_fence``); every other failure
   is held for operator reconciliation. The claimed lane gets ``TRADEAI_EFFECT_FENCE`` (+ ``..._LEDGER``). A finish
@@ -196,7 +198,12 @@ NEXT_ATTEMPT_BY = {
 CONTRACTS_REL = Path("config") / "n8n_health_contracts.json"
 RECEIPT_SCHEMA_V3 = "RunReceipt@v3"
 #: output_verdict values that leave the run state as the spawn decided it.
-OUTPUT_NOT_EVALUATED = frozenset({"no_rule", "not_evaluated", "dry_run_exempt", "rules_unreadable"})
+OUTPUT_NOT_EVALUATED = frozenset(
+    {"no_rule", "not_evaluated", "dry_run_exempt", "rules_unreadable", "declared_not_enforced"}
+)
+#: 2026-10-15: allowlist ``output_receipt`` value that opts a lane into the runtime output verdict. A lane gets it only
+#: together with the code that writes LaneRunReceipt@v2 ``produced_count``; absent/other = declared_not_enforced.
+OUTPUT_RECEIPT_ENFORCED = "v2"
 
 
 def retry_owner(key: Any) -> str:
@@ -787,9 +794,9 @@ def _execute_once(
         out = _spawn(receipt, entry, argv, run, timeout_s, lane_env, code_root, signal_path, typed, started)
         if effect is not None:
             effects.end(effect, out)  # from the RAW spawn state, before the output verdict
-        return apply_output_verdict(out, outputs, lane_id=lane_id, mode=mode, state_root=state_root)
+        return apply_output_verdict(out, outputs, lane_id=lane_id, mode=mode, state_root=state_root, entry=entry)
     out = _spawn(receipt, entry, argv, run, timeout_s, lane_env, code_root, signal_path, typed, started)
-    return apply_output_verdict(out, outputs, lane_id=lane_id, mode=mode, state_root=state_root)
+    return apply_output_verdict(out, outputs, lane_id=lane_id, mode=mode, state_root=state_root, entry=entry)
 
 
 def read_attempt_receipt(state_root: Path, lane_id: str, run_id: str) -> Any:
@@ -801,10 +808,19 @@ def read_attempt_receipt(state_root: Path, lane_id: str, run_id: str) -> Any:
 
 
 def apply_output_verdict(
-    receipt: dict[str, Any], outputs: Any, *, lane_id: str, mode: str, state_root: Path
+    receipt: dict[str, Any],
+    outputs: Any,
+    *,
+    lane_id: str,
+    mode: str,
+    state_root: Path,
+    entry: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """DD07: stamp ``output_verdict`` and turn an exit-0 run that produced nothing (or cannot prove it did) into
-    RUN_FAILED ``empty_output`` / ``output_unverifiable``. No rule for the lane = ``no_rule``, state unchanged."""
+    RUN_FAILED ``empty_output`` / ``output_unverifiable``. No rule for the lane = ``no_rule``, state unchanged.
+
+    Per-lane opt-in (2026-10-15): a declared rule is enforced only when the allowlist ``entry`` has
+    ``output_receipt: "v2"``; otherwise the verdict is ``declared_not_enforced`` and the state is unchanged."""
     if receipt.get("state") != "RUN_DONE" or receipt.get("reason") == "offpeak_skip":
         receipt["output_verdict"] = {"verdict": "not_evaluated", "why": receipt.get("reason") or receipt.get("state")}
         return receipt
@@ -813,6 +829,14 @@ def apply_output_verdict(
         receipt["output_verdict"] = {"verdict": "rules_unreadable"}
         return receipt
     rule = rules.get(lane_id) if isinstance(rules, Mapping) else None
+    if rule is not None and (entry or {}).get("output_receipt") != OUTPUT_RECEIPT_ENFORCED:
+        receipt["output_verdict"] = {
+            "verdict": "declared_not_enforced",
+            "rule": rule.get("rule") if isinstance(rule, Mapping) else None,
+            "contract_id": lane_id,
+            "why": f"allowlist output_receipt != {OUTPUT_RECEIPT_ENFORCED!r} (lane does not emit produced_count yet)",
+        }
+        return receipt
     doc = read_attempt_receipt(state_root, lane_id, str(receipt["run_id"])) if rule is not None else None
     verdict = evaluate_output(rule, doc, run_id=str(receipt["run_id"]), lane_id=lane_id, mode=mode)
     receipt["output_verdict"] = verdict
@@ -1047,8 +1071,9 @@ class EffectGate:
             return
         block["final_state"] = None if row is None else row.get("state")
         block["fenced_late"] = bool(row and row.get("fenced_late"))
-        block["held_for_reconciliation"] = bool(row and row.get("state") in (EFFECT_UNKNOWN, EFFECT_FAILED)
-                                                and not row.get("pre_effect"))
+        block["held_for_reconciliation"] = bool(
+            row and row.get("state") in (EFFECT_UNKNOWN, EFFECT_FAILED) and not row.get("pre_effect")
+        )
         if row and row.get("late_completion"):
             block["incident"] = "effect_late_completion"
             _warn({"effect": "late_completion", "key": block["key"], "run_id": receipt.get("run_id")})
@@ -1069,7 +1094,10 @@ def record_outcome(outcomes: RunOutcomeStore | None, receipt: Mapping[str, Any],
 
 def _policy_block(allowlist: Any, effects: Any, outputs: Any) -> dict[str, Any] | None:
     """DD08: the effective policy versions of one decision; None when no source is versioned (library callers)."""
-    if not any(isinstance(x, PolicyFile) for x in (allowlist, outputs)) and getattr(effects, "config_path", None) is None:
+    if (
+        not any(isinstance(x, PolicyFile) for x in (allowlist, outputs))
+        and getattr(effects, "config_path", None) is None
+    ):
         return None
     return {
         "allowlist_version": getattr(allowlist, "version", None),
@@ -1185,8 +1213,9 @@ def v1_retry_decision(
     return {"policy": policy, "klass": klass, "lane": lane, "contract": contract}
 
 
-def finalize_v1(store: LedgerRunStore, row: Mapping[str, Any], decision: Mapping[str, Any], *, policies: Any,
-                registry_rows: Any) -> None:
+def finalize_v1(
+    store: LedgerRunStore, row: Mapping[str, Any], decision: Mapping[str, Any], *, policies: Any, registry_rows: Any
+) -> None:
     """After the ledger finish: runs.verdict + a DURABLE dead_letters row (no breaker: v1 never paused a lane)."""
     finished = store.get(str(row["run_id"]))
     if finished is None:
@@ -1248,8 +1277,9 @@ def drain(
             policy=policy_block,
         )
         decision = (
-            v1_retry_decision(row, receipt, policies=policies, registry_rows=registry_rows, entry=entry,
-                              code_root=code_root)
+            v1_retry_decision(
+                row, receipt, policies=policies, registry_rows=registry_rows, entry=entry, code_root=code_root
+            )
             if policies is not None
             else None
         )

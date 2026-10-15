@@ -825,6 +825,10 @@ def host_contract(lane: str, row: Mapping[str, Any], as_of: date) -> dict[str, A
     return c
 
 
+#: healthy/failed checks that belong to an authored expected_output rule (FW-M6), kept across regeneration.
+OUTPUT_CHECKS = frozenset({"output_produced", "empty_output", "output_unverifiable"})
+
+
 def _preserve_draft(generated: dict[str, Any], previous: Optional[Mapping[str, Any]]) -> dict[str, Any]:
     """Keep authored limits and ownership; retain history without manufacturing review."""
     if not previous or previous.get("status") != "DRAFT":
@@ -843,6 +847,20 @@ def _preserve_draft(generated: dict[str, Any], previous: Optional[Mapping[str, A
     for field in ("owner", "ownership_confirmation"):
         if field in previous:
             generated[field] = copy.deepcopy(previous[field])
+    # 2026-10-15 (FW-M6): the evidence-derived expected_output rule and its healthy/failed checks are authored
+    # content, not a source default; a regeneration keeps them.
+    if isinstance(previous.get("expected_output"), Mapping):
+        generated["expected_output"] = copy.deepcopy(previous["expected_output"])
+        for section in ("healthy", "failed"):
+            have = {x.get("check") for x in generated.get(section) or [] if isinstance(x, Mapping)}
+            generated[section] = list(generated.get(section) or []) + [
+                copy.deepcopy(x)
+                for x in previous.get(section) or []
+                if isinstance(x, Mapping) and x.get("check") in OUTPUT_CHECKS and x.get("check") not in have
+            ]
+        basis = (previous.get("evidence") or {}).get("expected_output_basis")
+        if basis and isinstance(generated.get("evidence"), dict):
+            generated["evidence"]["expected_output_basis"] = basis
     if "review" in previous:
         generated["review"] = copy.deepcopy(previous["review"])
         if isinstance(generated["review"], dict) and "proposed_contract_body_sha256" in generated["review"]:
