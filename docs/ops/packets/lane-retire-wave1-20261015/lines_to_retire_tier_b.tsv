@@ -1,0 +1,7 @@
+line	lane_id	reason	original
+232	cleanup-stale-locks	races-lock-holders-flock-needs-no-cleanup	*/5 * * * * bash /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/cleanup_stale_locks.sh
+275	risk-gate	hourly-selftest-pollutes-risk_gate_results	0 9-16 * * 1-5 cd $PROJ && $PY scripts/risk_gate.py --test >> logs/risk_gate.log 2>&1
+543	backup-generated-docs	push-from-cron-24.5-no-changes	50 23 * * * cd $PROJ && bash linux_launchers/backup_generated_docs.sh >> logs/docs_backup.log 2>&1
+984	goal-pilot-material-change	168of168-UNEVALUABLE-no-consumer	40 * * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash -c 'set -a; . "/run/user/$(id -u)/tradeai/env" 2>/dev/null; . /home/johnclaw/.config/tradeai/agent_runtime_overrides.env 2>/dev/null; set +a; exec $PY scripts/run_goal_pilot_material_change.py' >> /home/johnclaw/logs/goal_pilot_material_change.log 2>&1
+985	dormant-lane-consumers	log-only-wiring-harness-no-reader	50 * * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash -c 'set -a; . "/run/user/$(id -u)/tradeai/env" 2>/dev/null; . /home/johnclaw/.config/tradeai/agent_runtime_overrides.env 2>/dev/null; set +a; exec $PY scripts/run_dormant_lane_consumers.py' >> /home/johnclaw/logs/dormant_lane_consumers.log 2>&1
+262	indicator-engine	module-demo-AMD-only-dup-of-indicator-cache-refresh	0 8 * * 1-5 cd $PROJ && $PY scripts/indicator_engine.py >> logs/indicator_engine.log 2>&1

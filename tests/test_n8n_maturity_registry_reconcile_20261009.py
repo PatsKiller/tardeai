@@ -394,9 +394,11 @@ def test_generated_rows_have_evidence_or_are_flagged_unverified(committed):
     # discovery-drain adoptions are held (SW4 EXCLUDED, train 2 rows kept): 235 - 7 = 228 generated rows left.
     # C1 hermes_overnight registry edit (train 6, 2026-10-12) hand-curates 3 more generated rows it RETIRED into the
     # overnight stage lanes: 228 - 3 = 225 generated rows left.
-    # Shadow wave LD-W1 (2026-10-15) adopts 4 generated rows with dispatch blocks (hermes-discovery-scorecard,
-    # wire-advisory-lessons, incubator-rolloff-engine, pattern-extractor): 225 - 4 = 221 generated rows left.
-    assert len(gen) >= 221
+    # Lane retire wave 1 (2026-10-15) hand-curates the 7 generated rows that carry a retire_pending block
+    # (agent-intelligence-cron x3, symbol-enrichment, cleanup-stale-locks, risk-gate, indicator-engine), and shadow
+    # wave LD-W1 (2026-10-15) adopts 4 generated rows with dispatch blocks (hermes-discovery-scorecard,
+    # wire-advisory-lessons, incubator-rolloff-engine, pattern-extractor): 225 - 7 - 4 = 214 generated rows left.
+    assert len(gen) >= 214
     adopted = [r for r in committed["lanes"] if r.get("adopted_from_generator") == R.GENERATOR_VERSION]
     # D3 rows carry an r1_pending block (inert until AGENTS 4.4.0 is ACTIVE) instead of a dispatch block;
     # build-symbol-profiles-at-0-19, social-ingest-stocktwits and overnight-batch-tax are adopted unchanged only to keep
@@ -406,6 +408,7 @@ def test_generated_rows_have_evidence_or_are_flagged_unverified(committed):
         (
             "dispatch" in r
             or "r1_pending" in r
+            or "retire_pending" in r  # lane retire wave 1 (2026-10-15): flipped RETIRED after the read-back
             or r["lane_id"] in ("build-symbol-profiles-at-0-19", "social-ingest-stocktwits", "overnight-batch-tax")
         )
         and "generated_by" not in r
