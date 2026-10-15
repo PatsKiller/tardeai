@@ -128,6 +128,7 @@ profile_lane:
   top_n: 150
   stub_retry_days: 7
   stub_retry_max: 150
+  db_lock_retry_sleep_s: 2        # lane repair 2026-10-15: one retry after a lock_timeout, then a typed skip
 
 # Advice ordering (operator 2026-10-08: "fix implement" — the reward list was ordered by each message's own reward
 # score, and CIO entry alerts fired on names the CIO ranks near the bottom, e.g. VCIG conviction 34, rank #1314).

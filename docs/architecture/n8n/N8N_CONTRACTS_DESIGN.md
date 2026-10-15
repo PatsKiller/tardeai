@@ -296,11 +296,12 @@ on refusal. Both tables live in the coordination ledger, one `BEGIN IMMEDIATE`.
   `late_completion:<state>`, receipt `effect.incident = effect_late_completion` (no longer a silent DONE).
   Residual: `release` still trusts the operator's note (no reconciliation evidence is required by code), and no
   lane yet calls `assert_fence`, so ownership switches still need drain-before-switch.
-- **Effect-keyed lanes that do NOT call `assert_fence` (not late-write safe):** all 56 effect-keyed lanes in
+- **Effect-keyed lanes that do NOT call `assert_fence` (not late-write safe):** all 59 effect-keyed lanes in
   `config/n8n_effect_keys.json` (none declares `late_write_fenced`). The six whose executor side is armed
   (`n8n_claim` default true): `hermes-learning-outcome-grader`, `hermes-learning-outcome-learning`,
   `hermes-learning-config-governor`, `hermes-learning-tag-engine`, `hermes-learning-outcome-feedback-agent`,
-  `hermes-learning-autonomous-self-tune`; the other 50 are staged (`n8n_claim: false`).
+  `hermes-learning-autonomous-self-tune`; the other 53 are staged (`n8n_claim: false`; train 2026-10-15 d added the
+  lane-repair keys `watchlist-entry-planner-limit`, `watchlist-entry-planner-scope`, `run-research-intelligence-overnight`).
 
 ## 8. Error workflow → incident contract
 

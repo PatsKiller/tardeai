@@ -211,3 +211,14 @@ cache:
   ttl_weekend: 14400              # 4 hours weekend
   lookback_days: 90               # OHLCV lookback for indicator computation
   lookback_days_annual: 252       # for 52-week / annual metrics
+
+# Universe lane (`scripts/indicator_engine.py --universe`, lane indicator-engine; lane repair 2026-10-15).
+# Gap-fill for indicator_confluence_cache: recompute `profile` for every symbol of the cache's own universe
+# (scripts/lib/indicator_universe_lane.py universe_symbols = the indicator_cache_refresh selection) whose row is
+# missing or older than stale_after_hours, missing first then oldest, at most max_symbols per run. A second run in
+# the same window finds the rows fresh and writes nothing (idempotent upsert keyed (symbol, profile)).
+universe_lane:
+  profile: swing                  # the profile every cache reader expects (indicator_cache_refresh writes swing)
+  stale_after_hours: 6            # 05:45 refresh + 6 h: an 08:00 run fills only what the pre-market run missed
+  max_symbols: 400                # bound per run (yfinance throttle 0.35 s/symbol + backoff)
+  cache_ttl_minutes: 60           # expires_at = now + ttl, same as indicator_cache_refresh

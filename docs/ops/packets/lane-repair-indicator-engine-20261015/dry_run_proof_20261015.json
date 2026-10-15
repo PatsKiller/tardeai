@@ -1,0 +1,206 @@
+{
+ "schema": "LaneRepairDryRunProof@v1",
+ "as_of": "2026-10-15",
+ "where": "branch lane-repair/three-lanes-20261015 run with the dev venv against the production DB on READ ONLY sessions (enforce_readonly); the offline preview touches no DB",
+ "write_check": {
+  "receipts_before_equals_after": true,
+  "db_counts_before_equals_after": true,
+  "db_after": [
+   "SELECT count(*), max(computed_at) FROM indicator_confluence_cache (1930, datetime.datetime(2026, 10, 15, 5, 52, 4, 459487, tzinfo=datetime.timezone(datetime.timedelta(days=-1, seconds=72000))))",
+   "SELECT count(*), max(updated_at) FROM symbol_profiles (3348, datetime.datetime(2026, 10, 14, 9, 41, 48, 338536, tzinfo=datetime.timezone(datetime.timedelta(days=-1, seconds=72000))))",
+   "SELECT count(*), max(created_at) FROM watchlist_entry_plans (21426, datetime.datetime(2026, 10, 14, 17, 47, 39, 965054, tzinfo=datetime.timezone(datetime.timedelta(days=-1, seconds=72000))))"
+  ],
+  "receipts": [
+   "-rw-rw-r--  1 johnclaw johnclaw       356 2026-10-15 06:59:51.783677641 -0400 build-symbol-profiles-at-0-19_last.json",
+   "-rw-rw-r--  1 johnclaw johnclaw       373 2026-10-15 06:59:51.778128086 -0400 build_symbol_profiles_last.json",
+   "-rw-rw-r--  1 johnclaw johnclaw       363 2026-10-15 07:06:01.930085640 -0400 build_symbol_profiles_watchlist_last.json",
+   "-rw-rw-r--  1 johnclaw johnclaw       345 2026-10-14 17:38:09.601704462 -0400 watchlist_entry_planner_last.json",
+   "-rw-rw-r--  1 johnclaw johnclaw       365 2026-10-14 17:47:42.613664310 -0400 watchlist_entry_planner_proposals_last.json"
+  ]
+ },
+ "runs": {
+  "indicator-engine: indicator_engine.py --universe --dry-run": {
+   "exit": 0,
+   "stdout": {
+    "lane_id": "indicator-engine",
+    "profile": "swing",
+    "universe": 874,
+    "proxy_codes_excluded": 10,
+    "stale": 24,
+    "capped": 0,
+    "mode": "dry_run",
+    "would_compute": 24,
+    "sample": [
+     "SPAXX",
+     "CCRN",
+     "EVTV",
+     "NSTR",
+     "GTLS",
+     "HKIT",
+     "EQR",
+     "BBCQ",
+     "FBRX",
+     "BTAI",
+     "..."
+    ],
+    "would_write": {
+     "table": "indicator_confluence_cache",
+     "key": "(symbol, profile)",
+     "max_rows": 24
+    },
+    "output": {
+     "schema": "LaneOutput@v1",
+     "unit": "indicator_confluence_cache rows upserted",
+     "produced_count": 0,
+     "attempted_count": 24,
+     "skipped_reasons": {},
+     "empty_reason": "dry_run"
+    }
+   },
+   "lane_output": {
+    "attempted_count": 24,
+    "emitted_at": "2026-10-15T13:40:09.885704+00:00",
+    "empty_reason": "dry_run",
+    "lane_id": "indicator-engine",
+    "mode": "dry_run",
+    "pid": 348996,
+    "produced_count": 0,
+    "schema": "LaneOutput@v1",
+    "skipped_reasons": {},
+    "started_at": "2026-10-15T13:40:09.228707+00:00",
+    "unit": "indicator_confluence_cache rows upserted"
+   }
+  },
+  "build-symbol-profiles-at-0-19: build_symbol_profiles.py --dry-run (offline, shard 05 contract)": {
+   "exit": 0,
+   "stdout": "DRY-RUN build-symbol-profiles-at-0-19: would refresh profiles for watch-grade universe (force=False, watchlist_top=0) via yfinance/Finviz and symbol_profiles; inputs NOT_MEASURED",
+   "lane_output": {
+    "attempted_count": 0,
+    "emitted_at": "2026-10-15T13:40:10.482332+00:00",
+    "empty_reason": "dry_run_offline",
+    "lane_id": "build-symbol-profiles-at-0-19",
+    "mode": "dry_run",
+    "pid": 349627,
+    "produced_count": 0,
+    "schema": "LaneOutput@v1",
+    "skipped_reasons": {},
+    "started_at": null,
+    "unit": "symbol_profiles rows upserted"
+   }
+  },
+  "build_symbol_profiles_watchlist: build_symbol_profiles.py --watchlist-top 300 --dry-run (READ ONLY)": {
+   "exit": 0,
+   "stdout": {
+    "mode": "dry_run",
+    "checked": 592,
+    "would_upsert_proxy_labels": 0,
+    "would_fetch": 592,
+    "sample": [
+     "A",
+     "AAL",
+     "AAMI",
+     "AAON",
+     "AAOZ",
+     "AAP",
+     "AARD",
+     "AAUA",
+     "ABAT",
+     "ABB",
+     "..."
+    ],
+    "would_write": {
+     "table": "symbol_profiles",
+     "max_rows": 592
+    },
+    "output": {
+     "schema": "LaneOutput@v1",
+     "unit": "symbol_profiles rows upserted",
+     "produced_count": 0,
+     "attempted_count": 592,
+     "skipped_reasons": {},
+     "empty_reason": "dry_run"
+    }
+   }
+  },
+  "watchlist-entry-planner-limit: watchlist_entry_planner_lane.py --limit 60 --buy-rated-cap 400 --dry-run": {
+   "exit": 0,
+   "stdout": {
+    "dry_run": true,
+    "scope": "watchlist",
+    "lane": "grok",
+    "candidates": 378,
+    "buy_rated": 318,
+    "would_call_llm": 378,
+    "would_insert": "up to 378 watchlist_entry_plans rows",
+    "alerts": "suppressed (--no-alert)",
+    "symbols": [
+     "CECO",
+     "SWBI",
+     "ANET",
+     "SMCI",
+     "RDDT",
+     "ABTC",
+     "LX",
+     "AMPG",
+     "SPCX",
+     "ALAB",
+     "..."
+    ],
+    "note": "bars, LLM, plan writes and alerts not reached; lane availability not probed"
+   },
+   "lane_output": {
+    "attempted_count": 378,
+    "emitted_at": "2026-10-15T13:40:14.459927+00:00",
+    "empty_reason": "dry_run",
+    "lane_id": "watchlist_entry_planner",
+    "mode": "dry_run",
+    "pid": 349965,
+    "produced_count": 0,
+    "schema": "LaneOutput@v1",
+    "skipped_reasons": {},
+    "started_at": "2026-10-15T13:40:11.619316+00:00",
+    "unit": "watchlist_entry_plans rows inserted"
+   }
+  },
+  "watchlist-entry-planner-scope: watchlist_entry_planner_lane.py --scope proposals --dry-run": {
+   "exit": 0,
+   "stdout": {
+    "dry_run": true,
+    "scope": "proposals",
+    "lane": "grok",
+    "candidates": 71,
+    "buy_rated": 0,
+    "would_call_llm": 71,
+    "would_insert": "up to 71 watchlist_entry_plans rows",
+    "alerts": "suppressed (--no-alert)",
+    "symbols": [
+     "ABNB",
+     "AES",
+     "AJG",
+     "ALGN",
+     "ALLE",
+     "AMAT",
+     "AMGN",
+     "BAX",
+     "BE",
+     "CARR",
+     "..."
+    ],
+    "note": "bars, LLM, plan writes and alerts not reached; lane availability not probed"
+   },
+   "lane_output": {
+    "attempted_count": 71,
+    "emitted_at": "2026-10-15T13:40:14.697384+00:00",
+    "empty_reason": "dry_run",
+    "lane_id": "watchlist_entry_planner_proposals",
+    "mode": "dry_run",
+    "pid": 350416,
+    "produced_count": 0,
+    "schema": "LaneOutput@v1",
+    "skipped_reasons": {},
+    "started_at": "2026-10-15T13:40:14.617313+00:00",
+    "unit": "watchlist_entry_plans rows inserted"
+   }
+  }
+ }
+}

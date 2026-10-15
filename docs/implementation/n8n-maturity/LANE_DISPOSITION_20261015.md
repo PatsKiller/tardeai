@@ -24,8 +24,8 @@ over the family default.
 |---|---:|---|
 | RETIRE | **10** | R1 4 (this packet, tier A) · R1b 6 (same packet, tier B, operator YES per row) |
 | CONSOLIDATE | **148** | C1 52 · C2 29 · C3 15 · C4 33 · C5 19 |
-| STAY_HOST | **99** | broker/order/stop/protection/secret (F09 43), senders and `--send` lanes, daemons and watchdogs, deploy chain, §23.14 keep-on-cron |
-| MIGRATE_N8N | **137** | M0 6 · M1 6 (PR #1761) · M2 38 · M3 16 · M4 33 · M5 16 · M6 22 |
+| STAY_HOST | **100** | broker/order/stop/protection/secret (F09 43), senders and `--send` lanes (incl. hermes-coordinator, L376: moved from M5 by lane repair #1772, train 2026-10-15 d), daemons and watchdogs, deploy chain, §23.14 keep-on-cron |
+| MIGRATE_N8N | **136** | M0 6 · M1 6 (PR #1761) · M2 38 · M3 16 · M4 33 · M5 15 · M6 22 |
 | **Total** | **394** | = 394 active job lines in the snapshot (379 distinct lanes; 15 lanes have 2-3 lines) |
 
 There are also 140 registry-only rows: 101 systemd units, 23 cron rows with no live line, 8 n8n rows, 5 event rows and

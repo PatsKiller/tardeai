@@ -238,16 +238,26 @@ def test_finviz_partial_fetch_keeps_exit_zero_but_does_not_refresh_ok(state, mon
     assert result["status"] == "failed" and result["ok_at"] == old and result["summary"]["failed_groups"] == 1
 
 
-def test_weekly_profile_partial_failure_keeps_exit_zero_without_advancing_ok(state, monkeypatch):
+def test_weekly_profile_provider_skips_advance_ok_but_lost_writes_fail(state, monkeypatch):
     mod = load("build_symbol_profiles.py")
     fake_work(mod, "build_symbol_profiles.py", monkeypatch)
     assert mod.main([]) == 0
     path = state / "data/runtime/build-symbol-profiles-at-0-19_last.json"
     old = json.loads(path.read_text())["ok_at"]
+    # 2026-10-15 lane repair: a provider with no profile for some symbols (yfinance 404 for VIX, ABB ... every week)
+    # is a typed skip, so a partial run advances ok_at; a lost/rejected write or nothing written fails, exit 1.
     monkeypatch.setattr(mod, "run", lambda **kw: {"checked": 2, "updated": 1, "no_profile": 1})
     assert mod.main([]) == 0
     receipt = json.loads(path.read_text())
-    assert receipt["status"] == "failed" and receipt["exit"] == 0 and receipt["ok_at"] == old
+    assert receipt["status"] == "ok" and receipt["exit"] == 0 and receipt["ok_at"] != old
+    advanced = receipt["ok_at"]
+    monkeypatch.setattr(mod, "run", lambda **kw: {"checked": 2, "updated": 0, "no_profile": 2})
+    assert mod.main([]) == 1
+    receipt = json.loads(path.read_text())
+    assert receipt["status"] == "failed" and receipt["exit"] == 1 and receipt["ok_at"] == advanced
+    monkeypatch.setattr(mod, "run", lambda **kw: {"checked": 2, "updated": 1, "rejected": 1})
+    assert mod.main([]) == 1
+    assert json.loads(path.read_text())["ok_at"] == advanced
 
 
 # Operator ruling 2026-10-11 ("yes to all 4 for train 3", applied the same way in train 4): lanes another wave
@@ -269,7 +279,12 @@ def test_own_allowlist_source_shape_and_no_broker_names():
     lanes = {x["lane_id"]: x for x in json.loads((ROOT / "config/n8n_run_allowlist.json").read_text())["lanes"]}
     rows = {x["lane_id"]: x for x in json.loads((ROOT / "config/lane_registry.json").read_text())["lanes"]}
     contracts = {x["id"]: x for x in json.loads((ROOT / "config/n8n_health_contracts.json").read_text())["contracts"]}
+    blocked = json.loads((ROOT / "config/n8n_run_allowlist.json").read_text())["blocked_reasons"]
     for lane in CRON_PROOF:
+        if "DD01 capability audit" in str((rows.get(lane) or {}).get("dispatch_blocked_reason", "")):
+            # train 2026-10-15 d: n8n wiring deferred (transitive broker reach, operator review); repair stays on cron
+            assert lane not in lanes and "DD01 capability audit" in blocked[lane], lane
+            continue
         if not _owned_here(rows.get(lane), "R2-05"):
             assert lane not in lanes, lane  # held: the owner's row wins, no allowlist entry
             continue
