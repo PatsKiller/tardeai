@@ -61,11 +61,270 @@ class _Trickle:
 
 
 def test_a_trickling_upstream_is_cut_off_at_the_wall_clock_deadline():
+    # Re-checked 2026-10-15: the read now runs on a reader thread and the caller also reads the clock once
+    # (before starting it), so both share `ticks`. The caller's first tick is 0 -> it joins for up to 25 real
+    # seconds, while the reader's own ticks pass 25 within three chunks and it raises by itself, at once.
     ticks = iter(range(0, 10_000, 10))
     resp = _Trickle()
+    t0 = time.time()
     with pytest.raises(bridge.UpstreamDeadlineExceeded):
         bridge.read_body_with_deadline(resp, 0.0, deadline_s=25, clock=lambda: next(ticks))
     assert resp.closed
+    assert time.time() - t0 < 2
+
+
+class _Silent:
+    """A provider that holds the request and sends nothing: iter_content blocks without yielding."""
+
+    status_code = 200
+    headers: dict = {}
+
+    def __init__(self, hold: float = 5.0):
+        self.hold = hold
+        self.closed = False
+        self.released = threading.Event()
+
+    def iter_content(self, chunk_size: int = 8192):
+        self.released.wait(self.hold)
+        yield b"\n"
+
+    def close(self):
+        self.closed = True
+        self.released.set()
+
+
+class _MidBodyReadTimeout:
+    """iter_content raising what requests raises for a mid-body socket read timeout (models.py:827-828)."""
+
+    status_code = 200
+    headers: dict = {}
+
+    def __init__(self):
+        self.closed = False
+
+    def iter_content(self, chunk_size: int = 8192):
+        import requests
+        from urllib3.exceptions import ReadTimeoutError
+
+        yield b"{"
+        raise requests.ConnectionError(ReadTimeoutError(None, "/v1/chat/completions", "Read timed out."))
+
+    def close(self):
+        self.closed = True
+
+
+def test_a_silent_upstream_is_cut_off_at_the_deadline_without_a_single_byte():
+    """2026-10-15: the deadline was checked only when a chunk arrived. Nothing arriving must not extend it."""
+    resp = _Silent(hold=5.0)
+    t0 = time.time()
+    with pytest.raises(bridge.UpstreamDeadlineExceeded) as err:
+        bridge.read_body_with_deadline(resp, t0, deadline_s=0.3)
+    assert time.time() - t0 < 0.3 + 0.5
+    assert "past 0.3s" in str(err.value)
+    assert resp.closed  # closed at the deadline, which also releases the abandoned reader
+
+
+def test_a_keepalive_trickle_cannot_stretch_the_deadline_in_real_time():
+    """The 180 s overrun of a 150 s budget, scaled down: bytes keep arriving, the deadline still holds."""
+    resp = _Trickle(pause=0.05)
+    t0 = time.time()
+    with pytest.raises(bridge.UpstreamDeadlineExceeded):
+        bridge.read_body_with_deadline(resp, t0, deadline_s=0.3)
+    assert time.time() - t0 < 0.3 + 0.5
+
+
+def test_a_mid_body_read_timeout_is_a_timeout_not_a_network_error():
+    import requests
+    from urllib3.exceptions import ReadTimeoutError
+
+    wrapped = requests.ConnectionError(ReadTimeoutError(None, "/x", "Read timed out."))
+    assert bridge.is_upstream_timeout(wrapped)
+    assert not bridge.is_upstream_timeout(requests.ConnectionError("connection reset by peer"))
+    resp = _MidBodyReadTimeout()
+    with pytest.raises(bridge.UpstreamReadTimeout):
+        bridge.read_body_with_deadline(resp, time.time(), deadline_s=30)
+    assert resp.closed
+
+
+def _deepseek_generate(monkeypatch, response):
+    import requests
+
+    import lib.llm_model_registry as lmr
+
+    costs = []
+    seen = {}
+
+    def fake_post(url, **kw):
+        seen.update(kw)
+        if isinstance(response, BaseException):
+            raise response
+        return response
+
+    monkeypatch.setattr(requests, "post", fake_post)
+    monkeypatch.setattr(lmr, "get_deepseek_api_key", lambda: ("test-key", "deepseek_tradeai", False))
+    monkeypatch.setattr(bridge, "_emit_bridge_cost", lambda **kw: costs.append(kw))
+    with pytest.raises(RuntimeError) as err:
+        bridge.RealProvider().generate([{"role": "user", "content": "x"}], "deepseek-flash")
+    return err.value, costs, seen
+
+
+def test_generate_records_a_mid_body_read_timeout_as_timeout(monkeypatch):
+    err, costs, _seen = _deepseek_generate(monkeypatch, _MidBodyReadTimeout())
+    assert "timeout" in str(err).lower()
+    assert getattr(err, "possibly_billable", False) is True
+    assert costs and costs[-1]["error_class"] == "TIMEOUT"
+
+
+def test_generate_still_records_a_real_network_error_as_network_error(monkeypatch):
+    import requests
+
+    err, costs, _seen = _deepseek_generate(monkeypatch, requests.ConnectionError("connection reset by peer"))
+    assert "network error" in str(err).lower()
+    assert costs and costs[-1]["error_class"] == "NETWORK_ERROR"
+
+
+def test_generate_caps_the_per_read_socket_timeout(monkeypatch):
+    monkeypatch.setattr(bridge, "UPSTREAM_DEADLINE_S", 150.0)
+    monkeypatch.setattr(bridge, "UPSTREAM_READ_TIMEOUT_S", 60.0)
+    _err, _costs, seen = _deepseek_generate(monkeypatch, _MidBodyReadTimeout())
+    assert seen["timeout"][1] == bridge.UPSTREAM_READ_TIMEOUT_CAP_S == 30.0
+
+
+def test_generate_on_a_silent_upstream_returns_at_the_deadline(monkeypatch):
+    monkeypatch.setattr(bridge, "UPSTREAM_DEADLINE_S", 0.3)
+    t0 = time.time()
+    err, costs, _seen = _deepseek_generate(monkeypatch, _Silent(hold=5.0))
+    assert time.time() - t0 < 0.3 + 0.5
+    assert "past 0.3s" in str(err) and costs[-1]["error_class"] == "TIMEOUT"
+
+
+# ── the breaker on stalls (2026-10-15) ───────────────────────────────────────
+
+
+def _single_lane_plan():
+    return [
+        {"lane": "primary", "provider": "deepseek", "policy_name": "FAST", "model_id": "deepseek-flash", "skip": None}
+    ]
+
+
+def _walk(use_circuits: bool = False, budget_s: float = 5.0):
+    return bridge.walk_routes(
+        _single_lane_plan(),
+        [{"role": "user", "content": "x"}],
+        policy_id=None,
+        budget_s=budget_s,
+        tools=None,
+        tool_choice=None,
+        response_format=None,
+        max_tokens=64,
+        thinking="disabled",
+        reasoning_effort=None,
+        request_id="t-stall",
+        use_circuits=use_circuits,
+    )
+
+
+class _FailingDeepSeek:
+    def __init__(self, exc_factory):
+        self.exc_factory = exc_factory
+        self.calls = 0
+
+    def generate(self, messages, model_id=None, **kw):
+        self.calls += 1
+        raise self.exc_factory()
+
+
+def _timeout_exc():
+    err = RuntimeError("DeepSeek API timeout after 150s: upstream kept the request open past 150s (3 bytes)")
+    err.request_sent = True
+    err.possibly_billable = True
+    return err
+
+
+def _overloaded_exc():
+    err = RuntimeError('DeepSeek API returned HTTP 503: {"error": "server overloaded"}')
+    err.request_sent = True
+    err.possibly_billable = True
+    err.http_status = 503
+    return err
+
+
+def _network_exc():
+    err = RuntimeError("DeepSeek API network error: ConnectionError")
+    err.request_sent = True
+    return err
+
+
+@pytest.fixture
+def breaker():
+    bridge._reset_circuit()
+    yield bridge.PROVIDER_CIRCUITS
+    bridge.set_transport_override("deepseek", None)
+    bridge._reset_circuit()
+
+
+@pytest.mark.parametrize("exc_factory", [_timeout_exc, _overloaded_exc], ids=["timeout", "http_503"])
+def test_single_lane_rows_open_the_provider_breaker_on_repeated_stalls(breaker, exc_factory):
+    """A DeepSeek-only row (use_circuits=False) used to feed nothing, so every later call paid the full deadline."""
+    fake = _FailingDeepSeek(exc_factory)
+    bridge.set_transport_override("deepseek", fake)
+    for _ in range(breaker.threshold):
+        out = _walk()
+        assert out["receipts"][-1]["attempted"] is True
+    assert breaker.snapshot()["deepseek"]["open"] is True
+    t0 = time.time()
+    out = _walk()
+    assert time.time() - t0 < 0.5  # skipped fast, not another deadline
+    assert out["receipts"][-1]["outcome"] == "circuit_open" and out["response"] is None
+    assert fake.calls == breaker.threshold
+
+
+def test_a_non_stall_failure_on_a_single_lane_row_does_not_open_the_breaker(breaker):
+    fake = _FailingDeepSeek(_network_exc)
+    bridge.set_transport_override("deepseek", fake)
+    for _ in range(breaker.threshold + 1):
+        _walk()
+    assert fake.calls == breaker.threshold + 1
+    assert breaker.snapshot()["deepseek"]["open"] is False
+
+
+def test_a_served_call_closes_the_stall_count(breaker):
+    fake = _FailingDeepSeek(_timeout_exc)
+    bridge.set_transport_override("deepseek", fake)
+    for _ in range(breaker.threshold - 1):
+        _walk()
+
+    class _Ok:
+        def generate(self, messages, model_id=None, **kw):
+            return {"model": "deepseek-flash", "choices": [{"message": {"content": "ok"}}]}
+
+    bridge.set_transport_override("deepseek", _Ok())
+    assert _walk()["response"] is not None
+    assert breaker.snapshot()["deepseek"]["errors"] == 0
+
+
+def test_a_held_upstream_never_leaks_a_provider_slot(breaker):
+    """The reader thread outlives the deadline briefly; the provider slot must already be back."""
+    held = []
+
+    class _HeldDeepSeek:
+        def generate(self, messages, model_id=None, **kw):
+            resp = _Silent(hold=5.0)
+            held.append(resp)
+            bridge.read_body_with_deadline(resp, time.time(), deadline_s=0.2)
+
+    bridge.set_transport_override("deepseek", _HeldDeepSeek())
+    sem = bridge.provider_semaphore("deepseek", None)
+    limit = bridge.provider_slot_limit("deepseek", bridge.normalize_routing_policy_header(None))
+    out = _walk()
+    assert out["receipts"][-1]["outcome"] == "timeout" and held[0].closed
+    taken = [sem.acquire(blocking=False) for _ in range(limit)]
+    try:
+        assert all(taken)
+    finally:
+        for ok in taken:
+            if ok:
+                sem.release()
 
 
 def test_a_complete_body_inside_the_deadline_is_returned():

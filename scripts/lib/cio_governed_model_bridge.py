@@ -208,6 +208,9 @@ CIRCUIT_COOLDOWN_SEC = int(os.environ.get("CIO_BRIDGE_CIRCUIT_COOLDOWN_SEC", "90
 # the server is threaded with a bounded number of provider calls, and GET /health reports what is in flight.
 UPSTREAM_DEADLINE_S = float(os.environ.get("CIO_BRIDGE_UPSTREAM_DEADLINE_S", "150"))
 UPSTREAM_READ_TIMEOUT_S = float(os.environ.get("CIO_BRIDGE_UPSTREAM_READ_TIMEOUT_S", "60"))
+# 2026-10-15: the per-read socket timeout is also capped, so a reader thread abandoned at the deadline
+# (read_body_with_deadline) lingers at most this long before its socket read gives up.
+UPSTREAM_READ_TIMEOUT_CAP_S = float(os.environ.get("CIO_BRIDGE_UPSTREAM_READ_TIMEOUT_CAP_S", "30"))
 MAX_INFLIGHT = int(os.environ.get("CIO_BRIDGE_MAX_INFLIGHT", "4"))
 _INFLIGHT: dict[str, float] = {}
 _INFLIGHT_LOCK = threading.Lock()
@@ -219,30 +222,44 @@ class UpstreamDeadlineExceeded(Exception):
     """The provider kept one request open past UPSTREAM_DEADLINE_S."""
 
 
+class UpstreamReadTimeout(UpstreamDeadlineExceeded):
+    """A socket read timed out mid-body. requests raises it as ConnectionError; it is a TIMEOUT."""
+
+
+def is_upstream_timeout(exc: BaseException) -> bool:
+    """TIMEOUT, not NETWORK_ERROR: requests.Timeout, a deadline overrun, or a mid-body read timeout that
+    requests re-raised as ConnectionError(ReadTimeoutError) (2026-10-15)."""
+    if isinstance(exc, UpstreamDeadlineExceeded):
+        return True
+    try:
+        import requests as _requests
+
+        if isinstance(exc, _requests.Timeout):
+            return True
+    except ImportError:  # pragma: no cover - requests is a bridge dependency
+        pass
+    return oauth_transport.is_mid_body_read_timeout(exc)
+
+
 def read_body_with_deadline(
     resp: Any, started: float, deadline_s: float | None = None, clock: Any = time.time
 ) -> bytes:
     """Read a streamed response body, giving up at a wall-clock deadline measured from `started`.
 
-    Keep-alive bytes from a provider that is holding the request still turn this loop, so the deadline
-    is checked even when no single read ever times out.
+    The deadline holds whether or not bytes arrive. Until 2026-10-15 it was checked only between chunks, so
+    a provider trickling one keep-alive byte per read timeout overran the 150 s budget by up to the read
+    timeout (180 s observed, 3 bytes). The read runs on a daemon thread joined until the deadline
+    (oauth_transport.read_with_hard_deadline); a mid-body socket read timeout raises UpstreamReadTimeout.
     """
     limit = effective_upstream_deadline_s() if deadline_s is None else float(deadline_s)
-    buf = bytearray()
-    try:
-        for chunk in resp.iter_content(chunk_size=8192):
-            if chunk:
-                buf.extend(chunk)
-            if clock() - started > limit:
-                raise UpstreamDeadlineExceeded(
-                    f"upstream kept the request open past {limit:g}s ({len(buf)} bytes received)"
-                )
-    finally:
-        try:
-            resp.close()
-        except (OSError, RuntimeError, AttributeError):
-            pass
-    return bytes(buf)
+    return oauth_transport.read_with_hard_deadline(
+        resp,
+        started,
+        limit,
+        clock,
+        lambda n: UpstreamDeadlineExceeded(f"upstream kept the request open past {limit:g}s ({n} bytes received)"),
+        lambda n: UpstreamReadTimeout(f"upstream read timed out mid-body ({n} bytes received)"),
+    )
 
 
 def inflight_snapshot(now: float | None = None) -> dict[str, Any]:
@@ -316,6 +333,25 @@ def _reset_circuit() -> None:
 # Per-provider breaker + Retry-After hold (2026-10-14). The bridge-wide breaker above still trips only when a
 # whole call fails; this one decides, per attempt, whether a provider may be tried at all.
 PROVIDER_CIRCUITS = oauth_transport.ProviderCircuits()
+
+# 2026-10-15: a stall (timeout, or a 502/503/504/529 overload answer) is provider-wide, so it feeds the
+# per-provider breaker from EVERY row, not only rows that walk routes. Until then a DeepSeek-only row ran
+# with use_circuits=False: from 00:33Z DeepSeek held or 503'd every call and each later row still paid up to
+# the full deadline, because nothing it saw counted. Statuses come from env, like the breaker's thresholds.
+STALL_HTTP_STATUSES = frozenset(
+    int(s)
+    for s in os.environ.get("CIO_BRIDGE_STALL_HTTP_STATUSES", "502,503,504,529").split(",")
+    if s.strip().isdigit()
+)
+
+
+def is_stall_failure(kind: str, http_status: int | None, exc: BaseException | None = None) -> bool:
+    """True when an attempt failed because the provider is holding or shedding load, not because of this call."""
+    if kind == "timeout":
+        return True
+    if http_status is not None and int(http_status) in STALL_HTTP_STATUSES:
+        return True
+    return exc is not None and "overload" in str(exc).lower()
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -1200,11 +1236,30 @@ class RealProvider:
                     "User-Agent": "tradeai-cio-bridge/1.0",
                     "X-TradeAI-Request-Id": client_rid,
                 },
-                timeout=(10.0, min(UPSTREAM_READ_TIMEOUT_S, effective_upstream_deadline_s())),
+                timeout=(
+                    10.0,
+                    min(UPSTREAM_READ_TIMEOUT_S, effective_upstream_deadline_s(), UPSTREAM_READ_TIMEOUT_CAP_S),
+                ),
                 stream=True,
             )
             raw = read_body_with_deadline(r, t0)
-        except (_requests.Timeout, UpstreamDeadlineExceeded) as timeout_exc:
+        except (_requests.RequestException, UpstreamDeadlineExceeded) as e:
+            if not is_upstream_timeout(e):
+                _emit_bridge_cost(
+                    outcome="possibly_billable_attempt",
+                    model=model_id,
+                    client_request_id=client_rid,
+                    raw_key=key,
+                    request_sent=True,
+                    possibly_billable=True,
+                    error_class="NETWORK_ERROR",
+                )
+                err = RuntimeError(f"DeepSeek API network error: {type(e).__name__}")
+                err.request_sent = True  # type: ignore[attr-defined]
+                err.possibly_billable = True  # type: ignore[attr-defined]
+                raise err from e
+            # A timeout, including a mid-body read timeout requests re-raised as ConnectionError (2026-10-15).
+            timeout_exc = e
             _emit_bridge_cost(
                 outcome="possibly_billable_attempt",
                 model=model_id,
@@ -1218,20 +1273,6 @@ class RealProvider:
             err.request_sent = True  # type: ignore[attr-defined]
             err.possibly_billable = True  # type: ignore[attr-defined]
             raise err
-        except _requests.RequestException as e:
-            _emit_bridge_cost(
-                outcome="possibly_billable_attempt",
-                model=model_id,
-                client_request_id=client_rid,
-                raw_key=key,
-                request_sent=True,
-                possibly_billable=True,
-                error_class="NETWORK_ERROR",
-            )
-            err = RuntimeError(f"DeepSeek API network error: {type(e).__name__}")
-            err.request_sent = True  # type: ignore[attr-defined]
-            err.possibly_billable = True  # type: ignore[attr-defined]
-            raise err from e
 
         latency_ms = int((time.time() - t0) * 1000)
         provider_request_id = r.headers.get("x-request-id", client_rid)
@@ -1618,7 +1659,8 @@ def walk_routes(
 ) -> dict[str, Any]:
     """Try each lane in order until one serves. Never retries a lane inside one call; a 429 holds that provider
     until its Retry-After; the whole walk shares one wall-clock budget. Returns response / served / receipts /
-    last_error (the last attempt's exception, None when nothing was attempted)."""
+    last_error (the last attempt's exception, None when nothing was attempted). use_circuits=False (a single-lane
+    row) still skips an open provider and feeds the breaker its stalls (timeout / 5xx overload), nothing else."""
     started = _monotonic()
     receipts: list[dict[str, Any]] = []
     last_error: BaseException | None = None
@@ -1629,7 +1671,8 @@ def walk_routes(
             if cand.get("skip"):
                 receipts.append(_receipt(cand, cand["skip"]))
                 continue
-            blocked = PROVIDER_CIRCUITS.blocked(provider) if use_circuits else None
+            # Every row honours an open provider; only walking rows feed it every failure kind (below).
+            blocked = PROVIDER_CIRCUITS.blocked(provider)
             if blocked is not None:
                 receipts.append(_receipt(cand, blocked[0], retry_after_s=round(blocked[1], 1)))
                 continue
@@ -1667,7 +1710,7 @@ def walk_routes(
                 sent = bool(getattr(exc, "possibly_billable", False) or getattr(exc, "request_sent", False))
                 billable = provider not in oauth_transport.OAUTH_PROVIDERS and sent
                 billable_seen = billable_seen or billable
-                if use_circuits:
+                if use_circuits or is_stall_failure(kind, status, exc):
                     PROVIDER_CIRCUITS.failure(provider, kind, retry_after)
                 receipts.append(
                     _receipt(
@@ -1689,8 +1732,7 @@ def walk_routes(
                 continue
             finally:
                 slot.release()
-            if use_circuits:
-                PROVIDER_CIRCUITS.success(provider)
+            PROVIDER_CIRCUITS.success(provider)
             served_model = str(response.get("model") or cand.get("model_id") or "")
             receipts.append(
                 _receipt(

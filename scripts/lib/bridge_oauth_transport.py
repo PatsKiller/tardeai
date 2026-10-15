@@ -204,20 +204,93 @@ class ProviderCircuits:
             }
 
 
-def _read_with_deadline(resp: Any, started: float, deadline_s: float, clock: Callable[[], float]) -> bytes:
+def is_mid_body_read_timeout(exc: BaseException) -> bool:
+    """True for a socket read timeout raised while the body is being read.
+
+    requests re-raises urllib3's ReadTimeoutError from inside `iter_content` as `requests.ConnectionError`
+    (requests 2.33.1 models.py:827-828), not as `requests.Timeout`, so a class check alone files a read
+    timeout as a network error. Walks args and the exception chain; matches by name so urllib3 need not load.
+    """
+    seen: set[int] = set()
+    stack: list[Any] = [exc]
+    while stack:
+        cur = stack.pop()
+        if not isinstance(cur, BaseException) or id(cur) in seen:
+            continue
+        seen.add(id(cur))
+        if type(cur).__name__ in ("ReadTimeoutError", "ReadTimeout"):
+            return True
+        stack.extend(a for a in getattr(cur, "args", ()) if isinstance(a, BaseException))
+        stack.extend((cur.__cause__, cur.__context__))
+    return False
+
+
+def read_with_hard_deadline(
+    resp: Any,
+    started: float,
+    deadline_s: float,
+    clock: Callable[[], float],
+    expired: Callable[[int], BaseException],
+    read_timeout: Callable[[int], BaseException] | None = None,
+) -> bytes:
+    """Read a streamed body, returning or raising by `started + deadline_s` whether or not bytes arrive.
+
+    2026-10-15: the deadline was checked only when `iter_content` yielded a chunk, so a provider that sent one
+    keep-alive byte per read timeout overran a 150 s budget to 180 s (3 bytes received), and a silent one was
+    bounded only by the per-read socket timeout. The read now runs on a daemon thread and the caller joins it
+    until the deadline. On expiry the response is closed and the caller raises at once; the reader exits at its
+    next chunk or socket read timeout and holds no slot or semaphore, only `resp` and its own buffer.
+    `expired(n)` / `read_timeout(n)` build the exception for n bytes received; a mid-body read timeout uses
+    `read_timeout` (default: `expired`).
+    """
+    limit = float(deadline_s)
     buf = bytearray()
+    stop = threading.Event()
+    outcome: list[BaseException] = []
+    on_read_timeout = read_timeout or expired
+
+    def _pump() -> None:
+        try:
+            for chunk in resp.iter_content(chunk_size=8192):
+                if stop.is_set():
+                    return
+                if chunk:
+                    buf.extend(chunk)
+                if clock() - started > limit:
+                    outcome.append(expired(len(buf)))
+                    return
+        except BaseException as exc:  # noqa: BLE001 -- handed to the caller's thread
+            if stop.is_set():
+                return  # the caller already gave up and closed the response under us
+            outcome.append(on_read_timeout(len(buf)) if is_mid_body_read_timeout(exc) else exc)
+
+    remaining = max(0.0, limit - (clock() - started))
+    reader = threading.Thread(target=_pump, name="bridge-upstream-read", daemon=True)
     try:
-        for chunk in resp.iter_content(chunk_size=8192):
-            if chunk:
-                buf.extend(chunk)
-            if clock() - started > deadline_s:
-                raise TransportError("timeout", f"proxy kept the request open past {deadline_s:g}s")
+        reader.start()
+        reader.join(remaining)
+        if reader.is_alive():
+            stop.set()
+            raise expired(len(buf))
+        if outcome:
+            raise outcome[0]
     finally:
         try:
             resp.close()
         except (OSError, RuntimeError, AttributeError):
             pass
     return bytes(buf)
+
+
+def _read_with_deadline(resp: Any, started: float, deadline_s: float, clock: Callable[[], float]) -> bytes:
+    return read_with_hard_deadline(
+        resp,
+        started,
+        deadline_s,
+        clock,
+        lambda n: TransportError("timeout", f"proxy kept the request open past {deadline_s:g}s ({n} bytes received)"),
+        lambda n: TransportError("timeout", f"proxy read timed out mid-body ({n} bytes received)"),
+    )
 
 
 class OAuthProxyTransport:

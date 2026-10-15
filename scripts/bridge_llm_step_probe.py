@@ -58,7 +58,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     ap.add_argument("--send", action="store_true", help="actually POST (default: dry run)")
     ap.add_argument("--url", default=os.environ.get("TRADEAI_LLM_STEP_URL", DEFAULT_URL))
-    ap.add_argument("--timeout", type=float, default=170.0)
+    # 2026-10-15: above the bridge budget (CIO_BRIDGE_UPSTREAM_DEADLINE_S, 150 s) with margin, so the probe reads
+    # the bridge's typed refusal instead of hanging up first (170 s lost probe 1's answer to a BrokenPipe).
+    ap.add_argument("--timeout", type=float, default=float(os.environ.get("TRADEAI_LLM_STEP_PROBE_TIMEOUT_S", "190")))
     args = ap.parse_args(argv)
     body = build_request(args.expect, dt.datetime.now(dt.timezone.utc))
     if not args.send:

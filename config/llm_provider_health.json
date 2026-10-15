@@ -1,0 +1,16 @@
+{
+  "_note": "Thresholds for scripts/check_llm_provider_health.py stall findings (2026-10-15, DeepSeek held or 503'd every bridge call from 00:33Z while llm_provider_health.json said OK). Stalls are read from the provider_cost event ledger, which records every bridge attempt. A provider stalls when its newest consecutive_threshold attempts are TIMEOUT/5xx-overload, or more than ratio_threshold of its attempts in the last window_minutes stalled (with at least min_events_for_ratio attempts). DEGRADED (a lane is down, every caller has another) goes to the digest at priority_degraded; CRITICAL (some process has no allowed lane left) pages at priority_all_lanes_down.",
+  "stall": {
+    "window_minutes": 30,
+    "consecutive_threshold": 3,
+    "ratio_threshold": 0.5,
+    "min_events_for_ratio": 3,
+    "consecutive_lookback_minutes": 120,
+    "recovery_successes": 3,
+    "stall_error_classes": ["TIMEOUT", "HTTP_502", "HTTP_503", "HTTP_504", "HTTP_529"],
+    "tail_bytes": 8388608,
+    "dedupe_minutes": 120,
+    "priority_degraded": "P3",
+    "priority_all_lanes_down": "P1"
+  }
+}
