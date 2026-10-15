@@ -161,6 +161,8 @@ def test_no_key_outside_scope_except_reviewed_process_steps():
         "hermes-learning-tag-engine",
         "hermes-learning-outcome-feedback-agent",
         "hermes-learning-autonomous-self-tune",
+        # shadow wave LD-W1 (2026-10-15): the wave's appending lane, keyed and staged before any canary.
+        "incubator-rolloff-engine",
     }
 
 

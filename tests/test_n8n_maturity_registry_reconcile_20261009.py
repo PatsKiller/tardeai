@@ -394,7 +394,9 @@ def test_generated_rows_have_evidence_or_are_flagged_unverified(committed):
     # discovery-drain adoptions are held (SW4 EXCLUDED, train 2 rows kept): 235 - 7 = 228 generated rows left.
     # C1 hermes_overnight registry edit (train 6, 2026-10-12) hand-curates 3 more generated rows it RETIRED into the
     # overnight stage lanes: 228 - 3 = 225 generated rows left.
-    assert len(gen) >= 225
+    # Shadow wave LD-W1 (2026-10-15) adopts 4 generated rows with dispatch blocks (hermes-discovery-scorecard,
+    # wire-advisory-lessons, incubator-rolloff-engine, pattern-extractor): 225 - 4 = 221 generated rows left.
+    assert len(gen) >= 221
     adopted = [r for r in committed["lanes"] if r.get("adopted_from_generator") == R.GENERATOR_VERSION]
     # D3 rows carry an r1_pending block (inert until AGENTS 4.4.0 is ACTIVE) instead of a dispatch block;
     # build-symbol-profiles-at-0-19, social-ingest-stocktwits and overnight-batch-tax are adopted unchanged only to keep

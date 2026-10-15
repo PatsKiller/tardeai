@@ -3941,6 +3941,11 @@ GATES = [
             # excluded lanes pinned (premarket C1 steps, P0, llm in-process, shared receipt, non-R1 class); compute_due
             # week / half-hour / monthly sweeps. Hermetic: repo config read only.
             "tests/test_sw4_shadow_wave4_20261011.py",
+            # Shadow wave LD-W1 (lane disposition 2026-10-15, M1): 8 leaf lanes (no send / LLM / broker reach in the
+            # import closure) at the cron-row shadow shape; offline --dry-run writes nothing; the REAL executor drains
+            # a live request per hermetic lane, the stage clamp runs it dry, RUN_DONE; receipts on the real path of
+            # the three scripts this wave changed. Hermetic: tmp_path ledger/state/locks, no DB variables.
+            "tests/test_shadow_wave_ld_w1_20261015.py",
             # SW4 env narrowing: nine lane scripts copy only named keys from <checkout>/.env (no broker credential
             # reaches os.environ); etf_performance_enrich strict argparse. Hermetic: scratch .env, monkeypatched env.
             "tests/test_sw4_env_narrowing_20261011.py",

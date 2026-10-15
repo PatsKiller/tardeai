@@ -3356,6 +3356,198 @@
       "market_gate": false,
       "output_signal": null,
       "source": "n8n fabric process hermes-learning (2026-10-15, AGENTS.md §23.23; packets docs/ops/packets/n8n-hermes-learning-flow-20261015/ and the unblock branch n8nfab/hermes-learning-unblock-20261015): the LEARN half of step autonomous_self_tune of config/pipelines/hermes_learning.json stage tune (crontab line 610 as absorbed by the C1 flip; runs today inside run_hermes_pipeline.sh --stage tune --apply, both halves). Called only by the process workflow tradeai-fabric-hermes-learning through Run Lane, never by the generic dispatcher (no dispatch block). SHADOW ONLY: live_arg null; registry scheduler.stage shadow clamps any live request to dry_run. lock and lock_kind are the step command's own lock (flock -n /tmp/hermes_self_tune.lock); the dry run takes <lock>.dryrun. timeout_s = the manifest step timeout (30m). --learn: auto-graft only; self_purge is never called and the purge helpers raise LearnOnlyViolation in learn-only mode, so this lane cannot DELETE. --dry-run wins over --apply: read-only DB session, no CREATE TABLE, no weights-file write (scripts/hermes_autonomous_self_tune.py main). The purge half (--purge: archived DELETEs, queue UPDATEs) is destructive retention (never-list) and stays on host cron. The live argument would be --apply (cron line `--apply` runs both halves today; at cutover it becomes --purge --apply); it is NOT in this entry."
+    },
+    {
+      "lane_id": "opening-intelligence-render",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "Script reads only db_adapter / psycopg2 DB names and the state-root names (no broker credential name, AGENTS 23.18 ruling 3); not inventoried per literal read.",
+      "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env (or a module-level load_dotenv) re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as the SW4 rows).",
+      "source": "shadow wave LD-W1 (lane disposition 2026-10-15, class report), cron:L796 (crontab -l 2026-10-15: `15 9 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/opening_intel.lock $PY scripts/opening_intelligence.py --persist --render >> logs/opening_intelligence.log 2>&1`). SHADOW ONLY: live_arg null, registry dispatch.mode dry_run, scheduler.stage shadow; the cron line keeps doing the real work. The live argument would be ['--persist', '--render']; it is NOT in this entry. lock /tmp/opening_intel.lock (flock) is the live cron line's lock. Dry run: an explicit --dry-run returns an offline plan before env loading, DB connection, telemetry or any write; proof in docs/ops/packets/n8n-shadow-wave-ld-w1-20261015/.",
+      "command": [
+        "$PY",
+        "scripts/opening_intelligence.py"
+      ],
+      "lock": "/tmp/opening_intel.lock",
+      "lock_kind": "flock",
+      "timeout_s": 600,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/opening-intelligence-render_last.json"
+    },
+    {
+      "lane_id": "hermes-discovery-scorecard",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "Script reads only db_adapter / psycopg2 DB names and the state-root names (no broker credential name, AGENTS 23.18 ruling 3); not inventoried per literal read.",
+      "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env (or a module-level load_dotenv) re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as the SW4 rows).",
+      "source": "shadow wave LD-W1 (lane disposition 2026-10-15, class report), cron:L837 (crontab -l 2026-10-15: `30 5 * * * cd $PROJ && $PY scripts/hermes_discovery_scorecard.py >> logs/hermes_discovery_scorecard.log 2>&1`). SHADOW ONLY: live_arg null, registry dispatch.mode dry_run, scheduler.stage shadow; the cron line keeps doing the real work. The live argument would be (none); it is NOT in this entry. lock /tmp/hermes_discovery_scorecard.lock is PROPOSED: the cron line holds no flock today, so canary stays blocked until a cron packet adds `flock -n` with this path. Dry run: an explicit --dry-run returns an offline plan before env loading, DB connection, telemetry or any write; proof in docs/ops/packets/n8n-shadow-wave-ld-w1-20261015/.",
+      "command": [
+        "$PY",
+        "scripts/hermes_discovery_scorecard.py"
+      ],
+      "lock": "/tmp/hermes_discovery_scorecard.lock",
+      "lock_kind": "flock",
+      "timeout_s": 600,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/hermes-discovery-scorecard_last.json"
+    },
+    {
+      "lane_id": "wire-advisory-lessons",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "Script reads only db_adapter / psycopg2 DB names and the state-root names (no broker credential name, AGENTS 23.18 ruling 3); not inventoried per literal read.",
+      "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env (or a module-level load_dotenv) re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as the SW4 rows).",
+      "source": "shadow wave LD-W1 (lane disposition 2026-10-15, class learn), cron:L606 (crontab -l 2026-10-15: `30 */6 * * * cd $PROJ && flock -n /tmp/wire_lessons.lock $PY scripts/wire_advisory_lessons.py >> logs/wire_advisory_lessons.log 2>&1  # wire external advisory lessons → trade_lesson_memory → strategy_lesson_rollup (learning loop)`). SHADOW ONLY: live_arg null, registry dispatch.mode dry_run, scheduler.stage shadow; the cron line keeps doing the real work. The live argument would be (none); it is NOT in this entry. lock /tmp/wire_lessons.lock (flock) is the live cron line's lock. Dry run: an explicit --dry-run returns an offline plan before env loading, DB connection, telemetry or any write; proof in docs/ops/packets/n8n-shadow-wave-ld-w1-20261015/.",
+      "command": [
+        "$PY",
+        "scripts/wire_advisory_lessons.py"
+      ],
+      "lock": "/tmp/wire_lessons.lock",
+      "lock_kind": "flock",
+      "timeout_s": 900,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/wire-advisory-lessons_last.json"
+    },
+    {
+      "lane_id": "incubator-rolloff-engine",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "Script reads only db_adapter / psycopg2 DB names and the state-root names (no broker credential name, AGENTS 23.18 ruling 3); not inventoried per literal read.",
+      "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env (or a module-level load_dotenv) re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as the SW4 rows).",
+      "source": "shadow wave LD-W1 (lane disposition 2026-10-15, class hygiene), cron:L269 (crontab -l 2026-10-15: `0 10 * * 1-5 cd $PROJ && $PY scripts/incubator_rolloff_engine.py --apply >> logs/incubator_rolloff.log 2>&1`). SHADOW ONLY: live_arg null, registry dispatch.mode dry_run, scheduler.stage shadow; the cron line keeps doing the real work. The live argument would be ['--apply']; it is NOT in this entry. lock /tmp/incubator_rolloff.lock is PROPOSED: the cron line holds no flock today, so canary stays blocked until a cron packet adds `flock -n` with this path. Dry run: an explicit --dry-run returns an offline plan before env loading, DB connection, telemetry or any write; proof in docs/ops/packets/n8n-shadow-wave-ld-w1-20261015/.",
+      "command": [
+        "$PY",
+        "scripts/incubator_rolloff_engine.py"
+      ],
+      "lock": "/tmp/incubator_rolloff.lock",
+      "lock_kind": "flock",
+      "timeout_s": 600,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/incubator-rolloff-engine_last.json"
+    },
+    {
+      "lane_id": "pattern-extractor",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "Script reads only db_adapter / psycopg2 DB names and the state-root names (no broker credential name, AGENTS 23.18 ruling 3); not inventoried per literal read.",
+      "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env (or a module-level load_dotenv) re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as the SW4 rows).",
+      "source": "shadow wave LD-W1 (lane disposition 2026-10-15, class learn), cron:L790 (crontab -l 2026-10-15: `0 9 1 * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/pattern_extractor.lock $PY scripts/pattern_extractor.py >> logs/pattern_extractor.log 2>&1`). SHADOW ONLY: live_arg null, registry dispatch.mode dry_run, scheduler.stage shadow; the cron line keeps doing the real work. The live argument would be (none); it is NOT in this entry. lock /tmp/pattern_extractor.lock (flock) is the live cron line's lock. Dry run: an explicit --dry-run returns an offline plan before env loading, DB connection, telemetry or any write; proof in docs/ops/packets/n8n-shadow-wave-ld-w1-20261015/.",
+      "command": [
+        "$PY",
+        "scripts/pattern_extractor.py"
+      ],
+      "lock": "/tmp/pattern_extractor.lock",
+      "lock_kind": "flock",
+      "timeout_s": 1200,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/pattern-extractor_last.json"
+    },
+    {
+      "lane_id": "goal-gate-bridge",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "Script reads only db_adapter / psycopg2 DB names and the state-root names (no broker credential name, AGENTS 23.18 ruling 3); not inventoried per literal read.",
+      "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env (or a module-level load_dotenv) re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as the SW4 rows).",
+      "source": "shadow wave LD-W1 (lane disposition 2026-10-15, class report), cron:L983 (crontab -l 2026-10-15: `35 * * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash -c 'set -a; . \"/run/user/$(id -u)/tradeai/env\" 2>/dev/null; . /home/johnclaw/.config/tradeai/agent_runtime_overrides.env 2>/dev/null; set +a; exec $PY scripts/cio_gate_measurement_bridge.py --write-measurements' >> /home/johnclaw/logs/goal_gate_bridge.log 2>&1`). SHADOW ONLY: live_arg null, registry dispatch.mode dry_run, scheduler.stage shadow; the cron line keeps doing the real work. The live argument would be ['--write-measurements']; it is NOT in this entry. lock /tmp/goal_gate_bridge.lock is PROPOSED: the cron line holds no flock today, so canary stays blocked until a cron packet adds `flock -n` with this path. Dry run: an explicit --dry-run returns an offline plan before env loading, DB connection, telemetry or any write; proof in docs/ops/packets/n8n-shadow-wave-ld-w1-20261015/.",
+      "command": [
+        "$PY",
+        "scripts/cio_gate_measurement_bridge.py"
+      ],
+      "lock": "/tmp/goal_gate_bridge.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/goal-gate-bridge_last.json"
     }
   ],
   "blocked_reasons": {
