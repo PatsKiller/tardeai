@@ -26,6 +26,28 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import audit_lane_transitive_capabilities as cap  # noqa: E402
 
+#: OPERATOR RULING 2026-10-15 (verbatim: "n8n ignor broker code it can't trade live ccontinue"; DD01 operator-reviewed
+#: baseline entry, agreed with the Chief Architect): TRANSITIVE lazy reach to broker_module / order_placement (the
+#: chain db_adapter -> holdings_guard -> schwab_position_sync -> schwab_transport) is ACCEPTED for these
+#: n8n-allowlisted lanes, because the trading lock (scripts/lib/trading_lock.py assert_trading_unlocked, the first
+#: statement of schwab_transport.place_order; LOCKED by default, operator unlock file) refuses every order placement
+#: whatever the caller. It admits broker_module/order_placement ONLY: direct_sender stays forbidden with no exception.
+#: Train 2026-10-15 d had deferred the first four; #1761 (shadow wave LD-W1) adds the last two.
+OPERATOR_RULING_DD01_20261015 = frozenset(
+    {
+        "build-symbol-profiles-at-0-19",
+        "indicator-engine",
+        "watchlist-entry-planner-limit",
+        "watchlist-entry-planner-scope",
+        "hermes-discovery-scorecard",
+        "wire-advisory-lessons",
+    }
+)
+OPERATOR_RULING_DD01_REASON = (
+    'operator ruling 2026-10-15 (verbatim: "n8n ignor broker code it can\'t trade live ccontinue"): transitive lazy '
+    "broker reach accepted; trading lock refuses every order; direct_sender remains forbidden"
+)
+
 FROZEN_20261015 = {
     "broker_module": frozenset(
         {
@@ -98,7 +120,8 @@ FROZEN_20261015 = {
             "watch-goods-consistency",
             "watchlist-enrichment-sweep",
         }
-    ),
+    )
+    | OPERATOR_RULING_DD01_20261015,
     # 2026-10-15: trade-ai-scalp-live removed (DD01 fix, delivery only through send_telegram). Empty: no lane may
     # reach a direct sender.
     "direct_sender": frozenset(),
@@ -172,7 +195,8 @@ FROZEN_20261015 = {
             "watch-goods-consistency",
             "watchlist-enrichment-sweep",
         }
-    ),
+    )
+    | OPERATOR_RULING_DD01_20261015,
 }
 
 
@@ -203,6 +227,21 @@ def test_baseline_only_shrinks_and_every_entry_has_a_reason():
             assert c in cap.FORBIDDEN, (lid, c)
             assert lid in FROZEN_20261015.get(c, frozenset()), f"baseline grew: {lid} {c} is not in FROZEN_20261015"
             assert len(reason.strip()) >= 40, (lid, c)
+
+
+def test_operator_ruling_dd01_entries_are_exactly_the_ruled_pairs(result):
+    """The 2026-10-15 operator ruling admits transitive, lazy broker_module/order_placement reach only: each ruled
+    lane's baseline entry is exactly those two capabilities with the ruling's reason, the reach is not at import, and
+    no ruled lane reaches (or may baseline) a direct sender."""
+    base = cap.load_baseline()
+    for lid in sorted(OPERATOR_RULING_DD01_20261015):
+        assert set(base.get(lid, {})) == {"broker_module", "order_placement"}, lid
+        assert all(r == OPERATOR_RULING_DD01_REASON for r in base[lid].values()), lid
+        caps = result[lid]["capabilities"]
+        assert "direct_sender" not in caps, lid
+        for c in ("broker_module", "order_placement"):
+            assert c in caps and caps[c]["at_import"] is False, (lid, c)
+    assert FROZEN_20261015["direct_sender"] == frozenset()
 
 
 def test_no_forbidden_capability_is_loaded_at_import_time(result):

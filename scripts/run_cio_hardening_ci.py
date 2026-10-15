@@ -4015,6 +4015,11 @@ GATES = [
             # planner rows, REVIEWED contracts with N8nExpectedOutput@v1; cron packet diff. Hermetic: fake DB modules,
             # TRADEAI_STATE_ROOT = tmp, repo config read only.
             "tests/test_lane_repair_20261015.py",
+            # Shadow wave LD-W1 (lane disposition 2026-10-15, M1): 8 leaf lanes (no send / LLM / broker reach in the
+            # import closure) at the cron-row shadow shape; offline --dry-run writes nothing; the REAL executor drains
+            # a live request per hermetic lane, the stage clamp runs it dry, RUN_DONE; receipts on the real path of
+            # the three scripts this wave changed. Hermetic: tmp_path ledger/state/locks, no DB variables.
+            "tests/test_shadow_wave_ld_w1_20261015.py",
             # SW4 env narrowing: nine lane scripts copy only named keys from <checkout>/.env (no broker credential
             # reaches os.environ); etf_performance_enrich strict argparse. Hermetic: scratch .env, monkeypatched env.
             "tests/test_sw4_env_narrowing_20261011.py",
@@ -4237,6 +4242,10 @@ GATES = [
         "cron_tranche_b_20261007",
         [
             "tests/test_pipeline_manifest_runner_20261007.py",
+            # Consolidation C3 (lane disposition 2026-10-15): F36 health/audit plane manifest (4 weekday-morning
+            # checks -> stage `morning`, 11 deferred, 7 excluded = the 22 live F36 lines), NEVER_SCHEDULED runner
+            # dry run, flip packet build/verify/rollback byte-exact + fake-crontab round trip. Hermetic.
+            "tests/test_consolidation_health_audit_c3_20261015.py",
         ],
     ),
     (

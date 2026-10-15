@@ -279,12 +279,7 @@ def test_own_allowlist_source_shape_and_no_broker_names():
     lanes = {x["lane_id"]: x for x in json.loads((ROOT / "config/n8n_run_allowlist.json").read_text())["lanes"]}
     rows = {x["lane_id"]: x for x in json.loads((ROOT / "config/lane_registry.json").read_text())["lanes"]}
     contracts = {x["id"]: x for x in json.loads((ROOT / "config/n8n_health_contracts.json").read_text())["contracts"]}
-    blocked = json.loads((ROOT / "config/n8n_run_allowlist.json").read_text())["blocked_reasons"]
     for lane in CRON_PROOF:
-        if "DD01 capability audit" in str((rows.get(lane) or {}).get("dispatch_blocked_reason", "")):
-            # train 2026-10-15 d: n8n wiring deferred (transitive broker reach, operator review); repair stays on cron
-            assert lane not in lanes and "DD01 capability audit" in blocked[lane], lane
-            continue
         if not _owned_here(rows.get(lane), "R2-05"):
             assert lane not in lanes, lane  # held: the owner's row wins, no allowlist entry
             continue

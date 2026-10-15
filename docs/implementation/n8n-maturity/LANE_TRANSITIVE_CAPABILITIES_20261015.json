@@ -65,7 +65,7 @@
      "module_evidence": [
       "SQL INSERT line 555"
      ],
-     "modules_with_capability": 147
+     "modules_with_capability": 149
     },
     "network_http": {
      "at_import": false,
@@ -121,7 +121,7 @@
    "entry": "scripts/advisory_desk_run_now.py",
    "kind": "python",
    "modules_at_import": 1,
-   "modules_in_closure": 1139
+   "modules_in_closure": 1142
   },
   "aegis-brief-regenerate": {
    "capabilities": {
@@ -166,7 +166,7 @@
      "module_evidence": [
       "SQL INSERT line 676"
      ],
-     "modules_with_capability": 147
+     "modules_with_capability": 149
     },
     "network_http": {
      "at_import": false,
@@ -221,7 +221,7 @@
    "entry": "scripts/aegis_brief_regenerate.py",
    "kind": "python",
    "modules_at_import": 1,
-   "modules_in_closure": 1139
+   "modules_in_closure": 1142
   },
   "aegis-evening-packet": {
    "capabilities": {
@@ -274,7 +274,7 @@
      "module_evidence": [
       "SQL INSERT line 555"
      ],
-     "modules_with_capability": 147
+     "modules_with_capability": 149
     },
     "network_http": {
      "at_import": false,
@@ -329,7 +329,7 @@
    "entry": "scripts/aegis_evening_packet.py",
    "kind": "python",
    "modules_at_import": 1,
-   "modules_in_closure": 1140
+   "modules_in_closure": 1143
   },
   "aegis-nightly-ingestion": {
    "capabilities": {
@@ -377,7 +377,7 @@
      "module_evidence": [
       "SQL INSERT line 343"
      ],
-     "modules_with_capability": 148
+     "modules_with_capability": 150
     },
     "network_http": {
      "at_import": true,
@@ -435,7 +435,7 @@
    "entry": "scripts/aegis_nightly_ingestion.py",
    "kind": "python",
    "modules_at_import": 1,
-   "modules_in_closure": 1139
+   "modules_in_closure": 1142
   },
   "aegis-social-sentiment": {
    "capabilities": {
@@ -483,7 +483,7 @@
      "module_evidence": [
       "SQL INSERT line 383"
      ],
-     "modules_with_capability": 149
+     "modules_with_capability": 151
     },
     "network_http": {
      "at_import": true,
@@ -541,7 +541,7 @@
    "entry": "scripts/aegis_social_sentiment.py",
    "kind": "python",
    "modules_at_import": 1,
-   "modules_in_closure": 1140
+   "modules_in_closure": 1143
   },
   "aegis-transcript-discovery": {
    "capabilities": {
@@ -589,7 +589,7 @@
      "module_evidence": [
       "SQL INSERT line 502"
      ],
-     "modules_with_capability": 149
+     "modules_with_capability": 151
     },
     "network_http": {
      "at_import": true,
@@ -647,7 +647,7 @@
    "entry": "scripts/aegis_transcript_discovery.py",
    "kind": "python",
    "modules_at_import": 1,
-   "modules_in_closure": 1140
+   "modules_in_closure": 1143
   },
   "agent-calibration-engine": {
    "capabilities": {
@@ -790,7 +790,7 @@
      "module_evidence": [
       "SQL INSERT line 331"
      ],
-     "modules_with_capability": 147
+     "modules_with_capability": 149
     },
     "network_http": {
      "at_import": false,
@@ -845,7 +845,7 @@
    "entry": "scripts/analyst_prospectus_generate.py",
    "kind": "python",
    "modules_at_import": 1,
-   "modules_in_closure": 1139
+   "modules_in_closure": 1142
   },
   "audit-enrichment-coverage": {
    "capabilities": {
@@ -888,7 +888,7 @@
      "module_evidence": [
       "SQL INSERT line 555"
      ],
-     "modules_with_capability": 147
+     "modules_with_capability": 149
     },
     "network_http": {
      "at_import": false,
@@ -946,7 +946,7 @@
    "entry": "scripts/audit_enrichment_coverage.py",
    "kind": "python",
    "modules_at_import": 1,
-   "modules_in_closure": 1140
+   "modules_in_closure": 1143
   },
   "backup-verify": {
    "capabilities": {
@@ -997,6 +997,108 @@
    "kind": "python",
    "modules_at_import": 3,
    "modules_in_closure": 8
+  },
+  "build-symbol-profiles-at-0-19": {
+   "capabilities": {
+    "broker_module": {
+     "at_import": false,
+     "chain": [
+      "scripts/build_symbol_profiles.py",
+      "scripts/db_adapter.py",
+      "scripts/holdings_guard.py",
+      "scripts/schwab_position_sync.py"
+     ],
+     "evidence": "file name schwab_position_sync.py",
+     "module": "scripts/schwab_position_sync.py",
+     "module_evidence": [
+      "file name schwab_position_sync.py"
+     ],
+     "modules_with_capability": 19
+    },
+    "chokepoint_send": {
+     "at_import": false,
+     "chain": [
+      "scripts/build_symbol_profiles.py",
+      "scripts/db_adapter.py",
+      "scripts/holdings_guard.py",
+      "scripts/schwab_position_sync.py",
+      "scripts/telegram_alert.py"
+     ],
+     "evidence": "approved delivery chokepoint (check_telegram_chokepoint.py)",
+     "module": "scripts/telegram_alert.py",
+     "module_evidence": [
+      "approved delivery chokepoint (check_telegram_chokepoint.py)"
+     ],
+     "modules_with_capability": 13
+    },
+    "db_write": {
+     "at_import": false,
+     "chain": [
+      "scripts/build_symbol_profiles.py",
+      "scripts/db_adapter.py"
+     ],
+     "evidence": "SQL INSERT line 555",
+     "module": "scripts/db_adapter.py",
+     "module_evidence": [
+      "SQL INSERT line 555"
+     ],
+     "modules_with_capability": 149
+    },
+    "network_http": {
+     "at_import": false,
+     "chain": [
+      "scripts/build_symbol_profiles.py",
+      "scripts/finviz_enrichment.py"
+     ],
+     "evidence": "imports requests",
+     "module": "scripts/finviz_enrichment.py",
+     "module_evidence": [
+      "imports requests"
+     ],
+     "modules_with_capability": 66
+    },
+    "order_placement": {
+     "at_import": false,
+     "chain": [
+      "scripts/build_symbol_profiles.py",
+      "scripts/db_adapter.py",
+      "scripts/holdings_guard.py",
+      "scripts/schwab_position_sync.py",
+      "scripts/schwab_transport.py"
+     ],
+     "evidence": "defines place_order() line 108",
+     "module": "scripts/schwab_transport.py",
+     "module_evidence": [
+      "calls cancel_order() line 492",
+      "calls cancel_order() line 577",
+      "calls place_order() line 305",
+      "defines cancel_order() line 511",
+      "defines place_order() line 108",
+      "defines replace_order() line 602"
+     ],
+     "modules_with_capability": 10
+    },
+    "subprocess": {
+     "at_import": false,
+     "chain": [
+      "scripts/build_symbol_profiles.py",
+      "scripts/db_adapter.py",
+      "scripts/holdings_guard.py",
+      "scripts/schwab_position_sync.py",
+      "scripts/holdings_change_trigger.py"
+     ],
+     "evidence": "imports subprocess",
+     "module": "scripts/holdings_change_trigger.py",
+     "module_evidence": [
+      "imports subprocess"
+     ],
+     "modules_with_capability": 45
+    }
+   },
+   "entry": "scripts/build_symbol_profiles.py",
+   "kind": "python",
+   "modules_at_import": 4,
+   "modules_in_closure": 1143
   },
   "catalyst-graph": {
    "capabilities": {
@@ -1054,7 +1156,7 @@
      "module_evidence": [
       "SQL INSERT line 137"
      ],
-     "modules_with_capability": 147
+     "modules_with_capability": 149
     },
     "network_http": {
      "at_import": false,
@@ -1116,7 +1218,7 @@
    "entry": "scripts/build_catalyst_graph.py",
    "kind": "python",
    "modules_at_import": 14,
-   "modules_in_closure": 1141
+   "modules_in_closure": 1144
   },
   "catalyst-momentum-engine-overnight": {
    "capabilities": {
@@ -1168,7 +1270,7 @@
      "module_evidence": [
       "SQL INSERT line 555"
      ],
-     "modules_with_capability": 147
+     "modules_with_capability": 149
     },
     "network_http": {
      "at_import": false,
@@ -1225,7 +1327,7 @@
    "entry": "scripts/catalyst_momentum_engine.py",
    "kind": "python",
    "modules_at_import": 3,
-   "modules_in_closure": 1142
+   "modules_in_closure": 1145
   },
   "catalyst-symbol-impact": {
    "capabilities": {
@@ -1273,7 +1375,7 @@
      "module_evidence": [
       "SQL INSERT line 128"
      ],
-     "modules_with_capability": 148
+     "modules_with_capability": 150
     },
     "network_http": {
      "at_import": false,
@@ -1331,7 +1433,7 @@
    "entry": "scripts/catalyst_symbol_impact_writer.py",
    "kind": "python",
    "modules_at_import": 1,
-   "modules_in_closure": 1139
+   "modules_in_closure": 1142
   },
   "classifier-health-check": {
    "capabilities": {},
@@ -1386,7 +1488,7 @@
      "module_evidence": [
       "SQL ALTER line 63"
      ],
-     "modules_with_capability": 148
+     "modules_with_capability": 150
     },
     "network_http": {
      "at_import": false,
@@ -1444,7 +1546,7 @@
    "entry": "scripts/classify_instruments.py",
    "kind": "python",
    "modules_at_import": 5,
-   "modules_in_closure": 1139
+   "modules_in_closure": 1142
   },
   "commitment-outcome-sweep": {
    "capabilities": {
@@ -1600,7 +1702,7 @@
      "module_evidence": [
       "SQL INSERT line 407"
      ],
-     "modules_with_capability": 148
+     "modules_with_capability": 150
     },
     "network_http": {
      "at_import": false,
@@ -1651,7 +1753,7 @@
    "entry": "scripts/data_gap_resolver.py",
    "kind": "python",
    "modules_at_import": 5,
-   "modules_in_closure": 1139
+   "modules_in_closure": 1142
   },
   "data-gap-resolver-pre": {
    "capabilities": {
@@ -1701,7 +1803,7 @@
      "module_evidence": [
       "SQL INSERT line 407"
      ],
-     "modules_with_capability": 148
+     "modules_with_capability": 150
     },
     "network_http": {
      "at_import": false,
@@ -1752,7 +1854,7 @@
    "entry": "scripts/data_gap_resolver.py",
    "kind": "python",
    "modules_at_import": 5,
-   "modules_in_closure": 1139
+   "modules_in_closure": 1142
   },
   "data-gap-resolver-weekly": {
    "capabilities": {
@@ -1802,7 +1904,7 @@
      "module_evidence": [
       "SQL INSERT line 407"
      ],
-     "modules_with_capability": 148
+     "modules_with_capability": 150
     },
     "network_http": {
      "at_import": false,
@@ -1853,7 +1955,7 @@
    "entry": "scripts/data_gap_resolver.py",
    "kind": "python",
    "modules_at_import": 5,
-   "modules_in_closure": 1139
+   "modules_in_closure": 1142
   },
   "desk-suggestions-digest": {
    "capabilities": {
@@ -1899,7 +2001,7 @@
      "module_evidence": [
       "SQL INSERT line 555"
      ],
-     "modules_with_capability": 147
+     "modules_with_capability": 149
     },
     "network_http": {
      "at_import": false,
@@ -1955,7 +2057,7 @@
    "entry": "scripts/desk_suggestions_digest.py",
    "kind": "python",
    "modules_at_import": 1,
-   "modules_in_closure": 1140
+   "modules_in_closure": 1143
   },
   "document-mentions-backfill": {
    "capabilities": {
@@ -2041,7 +2143,7 @@
      "module_evidence": [
       "SQL INSERT line 356"
      ],
-     "modules_with_capability": 148
+     "modules_with_capability": 150
     },
     "network_http": {
      "at_import": false,
@@ -2099,7 +2201,7 @@
    "entry": "scripts/enterprise_backtester.py",
    "kind": "python",
    "modules_at_import": 1,
-   "modules_in_closure": 1139
+   "modules_in_closure": 1142
   },
   "etf-analyst-enrich": {
    "capabilities": {
@@ -2147,7 +2249,7 @@
      "module_evidence": [
       "SQL ALTER line 87"
      ],
-     "modules_with_capability": 148
+     "modules_with_capability": 150
     },
     "network_http": {
      "at_import": false,
@@ -2205,7 +2307,7 @@
    "entry": "scripts/etf_analyst_enrich.py",
    "kind": "python",
    "modules_at_import": 5,
-   "modules_in_closure": 1139
+   "modules_in_closure": 1142
   },
   "etf-performance-enrich": {
    "capabilities": {
@@ -2253,7 +2355,7 @@
      "module_evidence": [
       "SQL ALTER line 126"
      ],
-     "modules_with_capability": 148
+     "modules_with_capability": 150
     },
     "network_http": {
      "at_import": false,
@@ -2311,7 +2413,7 @@
    "entry": "scripts/etf_performance_enrich.py",
    "kind": "python",
    "modules_at_import": 1,
-   "modules_in_closure": 1139
+   "modules_in_closure": 1142
   },
   "fee-efficiency-analyzer": {
    "capabilities": {
@@ -2357,7 +2459,7 @@
      "module_evidence": [
       "SQL INSERT line 555"
      ],
-     "modules_with_capability": 147
+     "modules_with_capability": 149
     },
     "network_http": {
      "at_import": false,
@@ -2415,7 +2517,7 @@
    "entry": "scripts/fee_efficiency_analyzer.py",
    "kind": "python",
    "modules_at_import": 1,
-   "modules_in_closure": 1138
+   "modules_in_closure": 1141
   },
   "feedback-loop-processor": {
    "capabilities": {
@@ -2469,7 +2571,7 @@
      "module_evidence": [
       "SQL UPDATE line 243"
      ],
-     "modules_with_capability": 148
+     "modules_with_capability": 150
     },
     "network_http": {
      "at_import": false,
@@ -2536,7 +2638,7 @@
    "entry": "scripts/feedback_loop_processor.py",
    "kind": "python",
    "modules_at_import": 1,
-   "modules_in_closure": 1139
+   "modules_in_closure": 1142
   },
   "finviz-enrichment": {
    "capabilities": {
@@ -2584,7 +2686,7 @@
      "module_evidence": [
       "SQL INSERT line 45"
      ],
-     "modules_with_capability": 147
+     "modules_with_capability": 149
     },
     "network_http": {
      "at_import": true,
@@ -2644,7 +2746,7 @@
    "entry": "scripts/finviz_enrichment.py",
    "kind": "python",
    "modules_at_import": 4,
-   "modules_in_closure": 1138
+   "modules_in_closure": 1141
   },
   "finviz-enrichment-scalp-hot": {
    "capabilities": {
@@ -2692,7 +2794,7 @@
      "module_evidence": [
       "SQL INSERT line 45"
      ],
-     "modules_with_capability": 147
+     "modules_with_capability": 149
     },
     "network_http": {
      "at_import": true,
@@ -2752,7 +2854,7 @@
    "entry": "scripts/finviz_enrichment.py",
    "kind": "python",
    "modules_at_import": 4,
-   "modules_in_closure": 1138
+   "modules_in_closure": 1141
   },
   "finviz-health-check": {
    "capabilities": {
@@ -2851,7 +2953,7 @@
      "module_evidence": [
       "SQL CREATE line 128"
      ],
-     "modules_with_capability": 148
+     "modules_with_capability": 150
     },
     "network_http": {
      "at_import": true,
@@ -2909,7 +3011,7 @@
    "entry": "scripts/finviz_market_movers.py",
    "kind": "python",
    "modules_at_import": 2,
-   "modules_in_closure": 1139
+   "modules_in_closure": 1142
   },
   "finviz-proactive-research": {
    "capabilities": {
@@ -2955,7 +3057,7 @@
      "module_evidence": [
       "SQL INSERT line 555"
      ],
-     "modules_with_capability": 147
+     "modules_with_capability": 149
     },
     "network_http": {
      "at_import": false,
@@ -3011,7 +3113,7 @@
    "entry": "scripts/finviz_proactive_research.py",
    "kind": "python",
    "modules_at_import": 1,
-   "modules_in_closure": 1140
+   "modules_in_closure": 1143
   },
   "finviz-screener-runner": {
    "capabilities": {
@@ -3059,7 +3161,7 @@
      "module_evidence": [
       "SQL UPDATE line 224"
      ],
-     "modules_with_capability": 148
+     "modules_with_capability": 150
     },
     "network_http": {
      "at_import": true,
@@ -3117,7 +3219,7 @@
    "entry": "scripts/finviz_screener_runner.py",
    "kind": "python",
    "modules_at_import": 1,
-   "modules_in_closure": 1139
+   "modules_in_closure": 1142
   },
   "finviz-sector-research": {
    "capabilities": {
@@ -3165,7 +3267,7 @@
      "module_evidence": [
       "SQL CREATE line 63"
      ],
-     "modules_with_capability": 148
+     "modules_with_capability": 150
     },
     "network_http": {
      "at_import": true,
@@ -3223,7 +3325,7 @@
    "entry": "scripts/finviz_sector_research.py",
    "kind": "python",
    "modules_at_import": 1,
-   "modules_in_closure": 1139
+   "modules_in_closure": 1142
   },
   "finviz-view-contracts": {
    "capabilities": {
@@ -3272,7 +3374,7 @@
      "module_evidence": [
       "SQL INSERT line 45"
      ],
-     "modules_with_capability": 147
+     "modules_with_capability": 149
     },
     "network_http": {
      "at_import": false,
@@ -3334,7 +3436,7 @@
    "entry": "scripts/check_finviz_view_contracts.py",
    "kind": "python",
    "modules_at_import": 3,
-   "modules_in_closure": 1139
+   "modules_in_closure": 1142
   },
   "generate-analyst-daily-digest": {
    "capabilities": {
@@ -3384,7 +3486,7 @@
      "module_evidence": [
       "SQL INSERT line 555"
      ],
-     "modules_with_capability": 147
+     "modules_with_capability": 149
     },
     "network_http": {
      "at_import": false,
@@ -3437,7 +3539,14 @@
    "entry": "scripts/generate_analyst_daily_digest.py",
    "kind": "python",
    "modules_at_import": 1,
-   "modules_in_closure": 1140
+   "modules_in_closure": 1143
+  },
+  "goal-gate-bridge": {
+   "capabilities": {},
+   "entry": "scripts/cio_gate_measurement_bridge.py",
+   "kind": "python",
+   "modules_at_import": 1,
+   "modules_in_closure": 5
   },
   "heartbeat-watch": {
    "capabilities": {
@@ -3499,7 +3608,7 @@
      "module_evidence": [
       "SQL INSERT line 86"
      ],
-     "modules_with_capability": 147
+     "modules_with_capability": 149
     },
     "network_http": {
      "at_import": false,
@@ -3558,7 +3667,7 @@
    "entry": "scripts/heartbeat_watch.py",
    "kind": "python",
    "modules_at_import": 1,
-   "modules_in_closure": 1139
+   "modules_in_closure": 1142
   },
   "hermes-analyst-signal-discovery": {
    "capabilities": {
@@ -3609,7 +3718,7 @@
      "module_evidence": [
       "SQL INSERT line 555"
      ],
-     "modules_with_capability": 147
+     "modules_with_capability": 149
     },
     "network_http": {
      "at_import": false,
@@ -3667,6 +3776,109 @@
    "entry": "scripts/hermes_analyst_signal_discovery.py",
    "kind": "python",
    "modules_at_import": 12,
+   "modules_in_closure": 1144
+  },
+  "hermes-discovery-scorecard": {
+   "capabilities": {
+    "broker_module": {
+     "at_import": false,
+     "chain": [
+      "scripts/hermes_discovery_scorecard.py",
+      "scripts/db_adapter.py",
+      "scripts/holdings_guard.py",
+      "scripts/schwab_position_sync.py"
+     ],
+     "evidence": "file name schwab_position_sync.py",
+     "module": "scripts/schwab_position_sync.py",
+     "module_evidence": [
+      "file name schwab_position_sync.py"
+     ],
+     "modules_with_capability": 19
+    },
+    "chokepoint_send": {
+     "at_import": false,
+     "chain": [
+      "scripts/hermes_discovery_scorecard.py",
+      "scripts/db_adapter.py",
+      "scripts/holdings_guard.py",
+      "scripts/schwab_position_sync.py",
+      "scripts/telegram_alert.py"
+     ],
+     "evidence": "approved delivery chokepoint (check_telegram_chokepoint.py)",
+     "module": "scripts/telegram_alert.py",
+     "module_evidence": [
+      "approved delivery chokepoint (check_telegram_chokepoint.py)"
+     ],
+     "modules_with_capability": 13
+    },
+    "db_write": {
+     "at_import": false,
+     "chain": [
+      "scripts/hermes_discovery_scorecard.py",
+      "scripts/db_adapter.py"
+     ],
+     "evidence": "SQL INSERT line 555",
+     "module": "scripts/db_adapter.py",
+     "module_evidence": [
+      "SQL INSERT line 555"
+     ],
+     "modules_with_capability": 149
+    },
+    "network_http": {
+     "at_import": false,
+     "chain": [
+      "scripts/hermes_discovery_scorecard.py",
+      "scripts/db_adapter.py",
+      "scripts/lib/env_bootstrap.py",
+      "scripts/lib/broker_env_audit.py"
+     ],
+     "evidence": "imports socket",
+     "module": "scripts/lib/broker_env_audit.py",
+     "module_evidence": [
+      "imports socket"
+     ],
+     "modules_with_capability": 66
+    },
+    "order_placement": {
+     "at_import": false,
+     "chain": [
+      "scripts/hermes_discovery_scorecard.py",
+      "scripts/db_adapter.py",
+      "scripts/holdings_guard.py",
+      "scripts/schwab_position_sync.py",
+      "scripts/schwab_transport.py"
+     ],
+     "evidence": "defines place_order() line 108",
+     "module": "scripts/schwab_transport.py",
+     "module_evidence": [
+      "calls cancel_order() line 492",
+      "calls cancel_order() line 577",
+      "calls place_order() line 305",
+      "defines cancel_order() line 511",
+      "defines place_order() line 108",
+      "defines replace_order() line 602"
+     ],
+     "modules_with_capability": 10
+    },
+    "subprocess": {
+     "at_import": true,
+     "chain": [
+      "scripts/hermes_discovery_scorecard.py"
+     ],
+     "evidence": "imports subprocess",
+     "import_chain": [
+      "scripts/hermes_discovery_scorecard.py"
+     ],
+     "module": "scripts/hermes_discovery_scorecard.py",
+     "module_evidence": [
+      "imports subprocess"
+     ],
+     "modules_with_capability": 45
+    }
+   },
+   "entry": "scripts/hermes_discovery_scorecard.py",
+   "kind": "python",
+   "modules_at_import": 1,
    "modules_in_closure": 1141
   },
   "hermes-entity-spike-discovery": {
@@ -3721,7 +3933,7 @@
      "module_evidence": [
       "SQL INSERT line 137"
      ],
-     "modules_with_capability": 147
+     "modules_with_capability": 149
     },
     "network_http": {
      "at_import": false,
@@ -3782,7 +3994,7 @@
    "entry": "scripts/hermes_entity_spike_discovery.py",
    "kind": "python",
    "modules_at_import": 11,
-   "modules_in_closure": 1140
+   "modules_in_closure": 1143
   },
   "hermes-governance-api": {
    "capabilities": {
@@ -3828,7 +4040,7 @@
      "module_evidence": [
       "SQL INSERT line 555"
      ],
-     "modules_with_capability": 147
+     "modules_with_capability": 149
     },
     "network_http": {
      "at_import": false,
@@ -3886,7 +4098,7 @@
    "entry": "scripts/hermes_governance_api.py",
    "kind": "python",
    "modules_at_import": 1,
-   "modules_in_closure": 1138
+   "modules_in_closure": 1141
   },
   "hermes-learning-autonomous-self-tune": {
    "capabilities": {
@@ -3934,7 +4146,7 @@
      "module_evidence": [
       "SQL CREATE line 120"
      ],
-     "modules_with_capability": 148
+     "modules_with_capability": 150
     },
     "network_http": {
      "at_import": false,
@@ -3992,7 +4204,7 @@
    "entry": "scripts/hermes_autonomous_self_tune.py",
    "kind": "python",
    "modules_at_import": 1,
-   "modules_in_closure": 1139
+   "modules_in_closure": 1142
   },
   "hermes-learning-config-governor": {
    "capabilities": {
@@ -4040,7 +4252,7 @@
      "module_evidence": [
       "SQL INSERT line 84"
      ],
-     "modules_with_capability": 148
+     "modules_with_capability": 150
     },
     "network_http": {
      "at_import": false,
@@ -4098,7 +4310,7 @@
    "entry": "scripts/hermes_config_governor.py",
    "kind": "python",
    "modules_at_import": 1,
-   "modules_in_closure": 1139
+   "modules_in_closure": 1142
   },
   "hermes-learning-outcome-feedback-agent": {
    "capabilities": {
@@ -4148,7 +4360,7 @@
      "module_evidence": [
       "SQL INSERT line 555"
      ],
-     "modules_with_capability": 147
+     "modules_with_capability": 149
     },
     "network_http": {
      "at_import": false,
@@ -4206,7 +4418,7 @@
    "entry": "scripts/hermes_outcome_feedback_agent.py",
    "kind": "python",
    "modules_at_import": 23,
-   "modules_in_closure": 1145
+   "modules_in_closure": 1149
   },
   "hermes-learning-outcome-grader": {
    "capabilities": {
@@ -4254,7 +4466,7 @@
      "module_evidence": [
       "SQL INSERT line 78"
      ],
-     "modules_with_capability": 148
+     "modules_with_capability": 150
     },
     "network_http": {
      "at_import": false,
@@ -4312,7 +4524,7 @@
    "entry": "scripts/hermes_outcome_grader.py",
    "kind": "python",
    "modules_at_import": 1,
-   "modules_in_closure": 1139
+   "modules_in_closure": 1142
   },
   "hermes-learning-outcome-learning": {
    "capabilities": {
@@ -4360,7 +4572,7 @@
      "module_evidence": [
       "SQL INSERT line 135"
      ],
-     "modules_with_capability": 148
+     "modules_with_capability": 150
     },
     "network_http": {
      "at_import": false,
@@ -4418,7 +4630,7 @@
    "entry": "scripts/hermes_outcome_learning.py",
    "kind": "python",
    "modules_at_import": 1,
-   "modules_in_closure": 1139
+   "modules_in_closure": 1142
   },
   "hermes-learning-tag-engine": {
    "capabilities": {
@@ -4466,7 +4678,7 @@
      "module_evidence": [
       "SQL CREATE line 256"
      ],
-     "modules_with_capability": 148
+     "modules_with_capability": 150
     },
     "network_http": {
      "at_import": true,
@@ -4524,7 +4736,7 @@
    "entry": "scripts/hermes_tag_engine.py",
    "kind": "python",
    "modules_at_import": 1,
-   "modules_in_closure": 1139
+   "modules_in_closure": 1142
   },
   "hermes-momentum-catalyst-scalp": {
    "capabilities": {
@@ -4573,7 +4785,7 @@
      "module_evidence": [
       "SQL INSERT line 555"
      ],
-     "modules_with_capability": 147
+     "modules_with_capability": 149
     },
     "network_http": {
      "at_import": true,
@@ -4633,7 +4845,7 @@
    "entry": "scripts/hermes_momentum_catalyst_researcher.py",
    "kind": "python",
    "modules_at_import": 1,
-   "modules_in_closure": 1141
+   "modules_in_closure": 1144
   },
   "hermes-news-bridge": {
    "capabilities": {
@@ -4714,7 +4926,7 @@
      "module_evidence": [
       "SQL INSERT line 267"
      ],
-     "modules_with_capability": 148
+     "modules_with_capability": 150
     },
     "network_http": {
      "at_import": false,
@@ -4770,7 +4982,7 @@
    "entry": "scripts/hermes_pipeline_health.py",
    "kind": "python",
    "modules_at_import": 1,
-   "modules_in_closure": 1143
+   "modules_in_closure": 1146
   },
   "hermes-research-agenda-at-45-7": {
    "capabilities": {
@@ -4841,7 +5053,7 @@
      "module_evidence": [
       "SQL INSERT line 137"
      ],
-     "modules_with_capability": 148
+     "modules_with_capability": 150
     },
     "network_http": {
      "at_import": false,
@@ -4905,7 +5117,7 @@
    "entry": "scripts/hermes_research_worker_pool.py",
    "kind": "python",
    "modules_at_import": 1,
-   "modules_in_closure": 1143
+   "modules_in_closure": 1146
   },
   "hermes-scope-governor": {
    "capabilities": {
@@ -4951,7 +5163,7 @@
      "module_evidence": [
       "SQL INSERT line 555"
      ],
-     "modules_with_capability": 147
+     "modules_with_capability": 149
     },
     "network_http": {
      "at_import": false,
@@ -5009,7 +5221,7 @@
    "entry": "scripts/hermes_scope_governor.py",
    "kind": "python",
    "modules_at_import": 1,
-   "modules_in_closure": 1139
+   "modules_in_closure": 1142
   },
   "hermes-score-event-feeder": {
    "capabilities": {
@@ -5057,7 +5269,7 @@
      "module_evidence": [
       "SQL INSERT line 205"
      ],
-     "modules_with_capability": 148
+     "modules_with_capability": 150
     },
     "network_http": {
      "at_import": false,
@@ -5115,7 +5327,7 @@
    "entry": "scripts/hermes_score_event_feeder.py",
    "kind": "python",
    "modules_at_import": 1,
-   "modules_in_closure": 1139
+   "modules_in_closure": 1142
   },
   "hermes-social-sentiment": {
    "capabilities": {
@@ -5163,7 +5375,7 @@
      "module_evidence": [
       "SQL INSERT line 246"
      ],
-     "modules_with_capability": 149
+     "modules_with_capability": 151
     },
     "network_http": {
      "at_import": true,
@@ -5221,7 +5433,7 @@
    "entry": "scripts/hermes_social_sentiment.py",
    "kind": "python",
    "modules_at_import": 1,
-   "modules_in_closure": 1143
+   "modules_in_closure": 1146
   },
   "hermes-topic-monitor-bridge": {
    "capabilities": {
@@ -5268,6 +5480,158 @@
    "kind": "python",
    "modules_at_import": 1,
    "modules_in_closure": 13
+  },
+  "incubator-rolloff-engine": {
+   "capabilities": {
+    "db_write": {
+     "at_import": true,
+     "chain": [
+      "scripts/incubator_rolloff_engine.py",
+      "scripts/pipeline_registry.py"
+     ],
+     "evidence": "SQL INSERT line 45",
+     "import_chain": [
+      "scripts/incubator_rolloff_engine.py",
+      "scripts/pipeline_registry.py"
+     ],
+     "module": "scripts/pipeline_registry.py",
+     "module_evidence": [
+      "SQL INSERT line 45"
+     ],
+     "modules_with_capability": 1
+    },
+    "network_http": {
+     "at_import": false,
+     "chain": [
+      "scripts/incubator_rolloff_engine.py",
+      "scripts/session13_db.py",
+      "scripts/lib/env_bootstrap.py",
+      "scripts/lib/broker_env_audit.py"
+     ],
+     "evidence": "imports socket",
+     "module": "scripts/lib/broker_env_audit.py",
+     "module_evidence": [
+      "imports socket"
+     ],
+     "modules_with_capability": 1
+    }
+   },
+   "entry": "scripts/incubator_rolloff_engine.py",
+   "kind": "python",
+   "modules_at_import": 3,
+   "modules_in_closure": 10
+  },
+  "indicator-engine": {
+   "capabilities": {
+    "broker_module": {
+     "at_import": false,
+     "chain": [
+      "scripts/indicator_engine.py",
+      "scripts/lib/indicator_universe_lane.py",
+      "scripts/db_adapter.py",
+      "scripts/holdings_guard.py",
+      "scripts/schwab_position_sync.py"
+     ],
+     "evidence": "file name schwab_position_sync.py",
+     "module": "scripts/schwab_position_sync.py",
+     "module_evidence": [
+      "file name schwab_position_sync.py"
+     ],
+     "modules_with_capability": 19
+    },
+    "chokepoint_send": {
+     "at_import": false,
+     "chain": [
+      "scripts/indicator_engine.py",
+      "scripts/lib/indicator_universe_lane.py",
+      "scripts/db_adapter.py",
+      "scripts/holdings_guard.py",
+      "scripts/schwab_position_sync.py",
+      "scripts/telegram_alert.py"
+     ],
+     "evidence": "approved delivery chokepoint (check_telegram_chokepoint.py)",
+     "module": "scripts/telegram_alert.py",
+     "module_evidence": [
+      "approved delivery chokepoint (check_telegram_chokepoint.py)"
+     ],
+     "modules_with_capability": 13
+    },
+    "db_write": {
+     "at_import": true,
+     "chain": [
+      "scripts/indicator_engine.py",
+      "scripts/pipeline_registry.py"
+     ],
+     "evidence": "SQL INSERT line 45",
+     "import_chain": [
+      "scripts/indicator_engine.py",
+      "scripts/pipeline_registry.py"
+     ],
+     "module": "scripts/pipeline_registry.py",
+     "module_evidence": [
+      "SQL INSERT line 45"
+     ],
+     "modules_with_capability": 149
+    },
+    "network_http": {
+     "at_import": false,
+     "chain": [
+      "scripts/indicator_engine.py",
+      "scripts/pipeline_registry.py",
+      "scripts/lib/env_bootstrap.py",
+      "scripts/lib/broker_env_audit.py"
+     ],
+     "evidence": "imports socket",
+     "module": "scripts/lib/broker_env_audit.py",
+     "module_evidence": [
+      "imports socket"
+     ],
+     "modules_with_capability": 66
+    },
+    "order_placement": {
+     "at_import": false,
+     "chain": [
+      "scripts/indicator_engine.py",
+      "scripts/lib/indicator_universe_lane.py",
+      "scripts/db_adapter.py",
+      "scripts/holdings_guard.py",
+      "scripts/schwab_position_sync.py",
+      "scripts/schwab_transport.py"
+     ],
+     "evidence": "defines place_order() line 108",
+     "module": "scripts/schwab_transport.py",
+     "module_evidence": [
+      "calls cancel_order() line 492",
+      "calls cancel_order() line 577",
+      "calls place_order() line 305",
+      "defines cancel_order() line 511",
+      "defines place_order() line 108",
+      "defines replace_order() line 602"
+     ],
+     "modules_with_capability": 10
+    },
+    "subprocess": {
+     "at_import": false,
+     "chain": [
+      "scripts/indicator_engine.py",
+      "scripts/lib/indicator_universe_lane.py",
+      "scripts/db_adapter.py",
+      "scripts/holdings_guard.py",
+      "scripts/schwab_position_sync.py",
+      "scripts/holdings_change_trigger.py"
+     ],
+     "evidence": "imports subprocess",
+     "module": "scripts/holdings_change_trigger.py",
+     "module_evidence": [
+      "imports subprocess"
+     ],
+     "modules_with_capability": 45
+    }
+   },
+   "entry": "scripts/indicator_engine.py",
+   "kind": "python",
+   "modules_at_import": 5,
+   "modules_in_closure": 1141
   },
   "instrument-belief-writer": {
    "capabilities": {
@@ -5322,7 +5686,7 @@
      "module_evidence": [
       "SQL INSERT line 265"
      ],
-     "modules_with_capability": 147
+     "modules_with_capability": 149
     },
     "network_http": {
      "at_import": false,
@@ -5385,7 +5749,7 @@
    "entry": "scripts/write_instrument_beliefs.py",
    "kind": "python",
    "modules_at_import": 5,
-   "modules_in_closure": 1139
+   "modules_in_closure": 1142
   },
   "investment-costs": {
    "capabilities": {
@@ -5433,7 +5797,7 @@
      "module_evidence": [
       "SQL CREATE line 34"
      ],
-     "modules_with_capability": 147
+     "modules_with_capability": 149
     },
     "network_http": {
      "at_import": false,
@@ -5491,7 +5855,7 @@
    "entry": "scripts/investment_costs.py",
    "kind": "python",
    "modules_at_import": 1,
-   "modules_in_closure": 1138
+   "modules_in_closure": 1141
   },
   "job-coverage-monitor": {
    "capabilities": {
@@ -5537,7 +5901,7 @@
      "module_evidence": [
       "SQL INSERT line 555"
      ],
-     "modules_with_capability": 147
+     "modules_with_capability": 149
     },
     "network_http": {
      "at_import": false,
@@ -5594,7 +5958,7 @@
    "entry": "scripts/job_coverage_monitor.py",
    "kind": "python",
    "modules_at_import": 1,
-   "modules_in_closure": 1140
+   "modules_in_closure": 1143
   },
   "journal-tilt-morning-hook": {
    "capabilities": {
@@ -5645,7 +6009,7 @@
      "module_evidence": [
       "SQL INSERT line 43"
      ],
-     "modules_with_capability": 148
+     "modules_with_capability": 150
     },
     "network_http": {
      "at_import": false,
@@ -5696,7 +6060,7 @@
    "entry": "scripts/journal_tilt_morning_hook.py",
    "kind": "python",
    "modules_at_import": 1,
-   "modules_in_closure": 1139
+   "modules_in_closure": 1142
   },
   "lane-governance-packet-weekly": {
    "capabilities": {
@@ -5744,7 +6108,7 @@
      "module_evidence": [
       "SQL CREATE line 46"
      ],
-     "modules_with_capability": 147
+     "modules_with_capability": 149
     },
     "network_http": {
      "at_import": true,
@@ -5804,7 +6168,7 @@
    "entry": "scripts/report_lane_governance_packet.py",
    "kind": "python",
    "modules_at_import": 9,
-   "modules_in_closure": 1145
+   "modules_in_closure": 1148
   },
   "material-change-detector-stage1": {
    "capabilities": {
@@ -5853,7 +6217,7 @@
      "module_evidence": [
       "SQL CREATE line 134"
      ],
-     "modules_with_capability": 148
+     "modules_with_capability": 150
     },
     "network_http": {
      "at_import": false,
@@ -5916,7 +6280,7 @@
    "entry": "scripts/material_change_detector.py",
    "kind": "python",
    "modules_at_import": 1,
-   "modules_in_closure": 1140
+   "modules_in_closure": 1143
   },
   "materialize-watchlist-strategy-cards": {
    "capabilities": {
@@ -6016,7 +6380,7 @@
      "module_evidence": [
       "SQL INSERT line 86"
      ],
-     "modules_with_capability": 147
+     "modules_with_capability": 149
     },
     "network_http": {
      "at_import": false,
@@ -6077,7 +6441,7 @@
    "entry": "scripts/momentum_cache_reconcile.py",
    "kind": "python",
    "modules_at_import": 9,
-   "modules_in_closure": 1139
+   "modules_in_closure": 1142
   },
   "momentum-lifecycle-monitor": {
    "capabilities": {
@@ -6136,7 +6500,7 @@
      "module_evidence": [
       "SQL INSERT line 86"
      ],
-     "modules_with_capability": 147
+     "modules_with_capability": 149
     },
     "network_http": {
      "at_import": false,
@@ -6199,7 +6563,7 @@
    "entry": "scripts/n8n_momentum_lifecycle.py",
    "kind": "python",
    "modules_at_import": 7,
-   "modules_in_closure": 1139
+   "modules_in_closure": 1142
   },
   "n8n-comms-intent-consumer": {
    "capabilities": {},
@@ -6255,7 +6619,7 @@
      "module_evidence": [
       "SQL INSERT line 555"
      ],
-     "modules_with_capability": 147
+     "modules_with_capability": 149
     },
     "network_http": {
      "at_import": true,
@@ -6315,7 +6679,7 @@
    "entry": "scripts/n8n_incident_fanin.py",
    "kind": "python",
    "modules_at_import": 5,
-   "modules_in_closure": 1148
+   "modules_in_closure": 1151
   },
   "n8n-lab-watchdog": {
    "capabilities": {
@@ -6422,7 +6786,7 @@
      "module_evidence": [
       "SQL CREATE line 33"
      ],
-     "modules_with_capability": 147
+     "modules_with_capability": 149
     },
     "network_http": {
      "at_import": true,
@@ -6480,7 +6844,7 @@
    "entry": "scripts/n8n_research_intake_consumer.py",
    "kind": "python",
    "modules_at_import": 6,
-   "modules_in_closure": 1139
+   "modules_in_closure": 1142
   },
   "n8n-workflow-drift-check": {
    "capabilities": {
@@ -6555,7 +6919,7 @@
      "module_evidence": [
       "SQL INSERT line 216"
      ],
-     "modules_with_capability": 148
+     "modules_with_capability": 150
     },
     "network_http": {
      "at_import": false,
@@ -6610,7 +6974,37 @@
    "entry": "scripts/news_to_catalyst.py",
    "kind": "python",
    "modules_at_import": 1,
-   "modules_in_closure": 1141
+   "modules_in_closure": 1144
+  },
+  "opening-intelligence-render": {
+   "capabilities": {},
+   "entry": "scripts/opening_intelligence.py",
+   "kind": "python",
+   "modules_at_import": 1,
+   "modules_in_closure": 5
+  },
+  "pattern-extractor": {
+   "capabilities": {
+    "db_write": {
+     "at_import": true,
+     "chain": [
+      "scripts/pattern_extractor.py"
+     ],
+     "evidence": "SQL INSERT line 347",
+     "import_chain": [
+      "scripts/pattern_extractor.py"
+     ],
+     "module": "scripts/pattern_extractor.py",
+     "module_evidence": [
+      "SQL INSERT line 347"
+     ],
+     "modules_with_capability": 1
+    }
+   },
+   "entry": "scripts/pattern_extractor.py",
+   "kind": "python",
+   "modules_at_import": 1,
+   "modules_in_closure": 5
   },
   "proposal-backtest-engine": {
    "capabilities": {
@@ -6751,7 +7145,7 @@
      "module_evidence": [
       "SQL INSERT line 555"
      ],
-     "modules_with_capability": 147
+     "modules_with_capability": 149
     },
     "network_http": {
      "at_import": false,
@@ -6812,7 +7206,7 @@
    "entry": "scripts/run_finviz_momentum_scalp_scan.py",
    "kind": "python",
    "modules_at_import": 5,
-   "modules_in_closure": 1140
+   "modules_in_closure": 1143
   },
   "sec-data-ingest": {
    "capabilities": {
@@ -6898,7 +7292,7 @@
      "module_evidence": [
       "SQL CREATE line 44"
      ],
-     "modules_with_capability": 148
+     "modules_with_capability": 150
     },
     "network_http": {
      "at_import": false,
@@ -6956,7 +7350,7 @@
    "entry": "scripts/sector_rs_daily.py",
    "kind": "python",
    "modules_at_import": 1,
-   "modules_in_closure": 1139
+   "modules_in_closure": 1142
   },
   "setup-quality-prior": {
    "capabilities": {
@@ -7027,7 +7421,7 @@
      "module_evidence": [
       "SQL INSERT line 231"
      ],
-     "modules_with_capability": 148
+     "modules_with_capability": 150
     },
     "network_http": {
      "at_import": false,
@@ -7085,7 +7479,7 @@
    "entry": "scripts/signal_fusion.py",
    "kind": "python",
    "modules_at_import": 1,
-   "modules_in_closure": 1139
+   "modules_in_closure": 1142
   },
   "signal-fusion-full": {
    "capabilities": {
@@ -7133,7 +7527,7 @@
      "module_evidence": [
       "SQL INSERT line 231"
      ],
-     "modules_with_capability": 148
+     "modules_with_capability": 150
     },
     "network_http": {
      "at_import": false,
@@ -7191,7 +7585,7 @@
    "entry": "scripts/signal_fusion.py",
    "kind": "python",
    "modules_at_import": 1,
-   "modules_in_closure": 1139
+   "modules_in_closure": 1142
   },
   "social-ingest-all": {
    "capabilities": {
@@ -7241,7 +7635,7 @@
      "module_evidence": [
       "SQL INSERT line 124"
      ],
-     "modules_with_capability": 148
+     "modules_with_capability": 150
     },
     "network_http": {
      "at_import": true,
@@ -7301,7 +7695,7 @@
    "entry": "scripts/social_ingest.py",
    "kind": "python",
    "modules_at_import": 1,
-   "modules_in_closure": 1139
+   "modules_in_closure": 1142
   },
   "source-attribution-monitor": {
    "capabilities": {},
@@ -7309,6 +7703,13 @@
    "kind": "python",
    "modules_at_import": 1,
    "modules_in_closure": 1
+  },
+  "source-litmus-vs-yahoo": {
+   "capabilities": {},
+   "entry": "scripts/source_litmus_vs_yahoo.py",
+   "kind": "python",
+   "modules_at_import": 1,
+   "modules_in_closure": 5
   },
   "storage-watch": {
    "capabilities": {
@@ -7377,7 +7778,7 @@
      "module_evidence": [
       "SQL INSERT line 343"
      ],
-     "modules_with_capability": 148
+     "modules_with_capability": 150
     },
     "network_http": {
      "at_import": false,
@@ -7433,7 +7834,7 @@
    "entry": "scripts/sync_social_to_intelligence.py",
    "kind": "python",
    "modules_at_import": 1,
-   "modules_in_closure": 1140
+   "modules_in_closure": 1143
   },
   "trade-ai-restore-drill": {
    "capabilities": {
@@ -7531,7 +7932,7 @@
      "module_evidence": [
       "SQL INSERT line 996"
      ],
-     "modules_with_capability": 150
+     "modules_with_capability": 152
     },
     "network_http": {
      "at_import": false,
@@ -7586,7 +7987,7 @@
    "entry": "scripts/run_trade_ai_scalp_live.py",
    "kind": "python",
    "modules_at_import": 1,
-   "modules_in_closure": 1166
+   "modules_in_closure": 1169
   },
   "trade-backtest-engine": {
    "capabilities": {
@@ -7679,7 +8080,7 @@
      "module_evidence": [
       "SQL INSERT line 168"
      ],
-     "modules_with_capability": 148
+     "modules_with_capability": 150
     },
     "network_http": {
      "at_import": false,
@@ -7737,7 +8138,7 @@
    "entry": "scripts/update_agent_performance.py",
    "kind": "python",
    "modules_at_import": 1,
-   "modules_in_closure": 1139
+   "modules_in_closure": 1142
   },
   "update-lockup-earnings-dates": {
    "capabilities": {
@@ -7804,7 +8205,7 @@
      "module_evidence": [
       "SQL INSERT line 555"
      ],
-     "modules_with_capability": 147
+     "modules_with_capability": 149
     },
     "network_http": {
      "at_import": false,
@@ -7862,7 +8263,7 @@
    "entry": "scripts/validate_expense_ratios.py",
    "kind": "python",
    "modules_at_import": 4,
-   "modules_in_closure": 1139
+   "modules_in_closure": 1142
   },
   "watch-goods-consistency": {
    "capabilities": {
@@ -7910,7 +8311,7 @@
      "module_evidence": [
       "SQL UPDATE line 193"
      ],
-     "modules_with_capability": 148
+     "modules_with_capability": 150
     },
     "network_http": {
      "at_import": false,
@@ -7968,7 +8369,7 @@
    "entry": "scripts/watch_goods_consistency_check.py",
    "kind": "python",
    "modules_at_import": 1,
-   "modules_in_closure": 1140
+   "modules_in_closure": 1143
   },
   "watchlist-enrichment-sweep": {
    "capabilities": {
@@ -8015,7 +8416,7 @@
      "module_evidence": [
       "SQL UPDATE line 152"
      ],
-     "modules_with_capability": 147
+     "modules_with_capability": 149
     },
     "network_http": {
      "at_import": false,
@@ -8069,7 +8470,221 @@
    "entry": "scripts/watchlist_enrichment_sweep.py",
    "kind": "python",
    "modules_at_import": 2,
-   "modules_in_closure": 1138
+   "modules_in_closure": 1141
+  },
+  "watchlist-entry-planner-limit": {
+   "capabilities": {
+    "broker_module": {
+     "at_import": false,
+     "chain": [
+      "scripts/watchlist_entry_planner_lane.py",
+      "scripts/watchlist_entry_planner.py",
+      "scripts/db_adapter.py",
+      "scripts/holdings_guard.py",
+      "scripts/schwab_position_sync.py"
+     ],
+     "evidence": "file name schwab_position_sync.py",
+     "module": "scripts/schwab_position_sync.py",
+     "module_evidence": [
+      "file name schwab_position_sync.py"
+     ],
+     "modules_with_capability": 19
+    },
+    "chokepoint_send": {
+     "at_import": false,
+     "chain": [
+      "scripts/watchlist_entry_planner_lane.py",
+      "scripts/watchlist_entry_planner.py",
+      "scripts/telegram_alert.py"
+     ],
+     "evidence": "approved delivery chokepoint (check_telegram_chokepoint.py)",
+     "module": "scripts/telegram_alert.py",
+     "module_evidence": [
+      "approved delivery chokepoint (check_telegram_chokepoint.py)"
+     ],
+     "modules_with_capability": 13
+    },
+    "db_write": {
+     "at_import": true,
+     "chain": [
+      "scripts/watchlist_entry_planner_lane.py",
+      "scripts/watchlist_entry_planner.py"
+     ],
+     "evidence": "SQL INSERT line 598",
+     "import_chain": [
+      "scripts/watchlist_entry_planner_lane.py",
+      "scripts/watchlist_entry_planner.py"
+     ],
+     "module": "scripts/watchlist_entry_planner.py",
+     "module_evidence": [
+      "SQL INSERT line 598"
+     ],
+     "modules_with_capability": 149
+    },
+    "network_http": {
+     "at_import": false,
+     "chain": [
+      "scripts/watchlist_entry_planner_lane.py",
+      "scripts/watchlist_entry_planner.py",
+      "scripts/llm_lane.py"
+     ],
+     "evidence": "imports requests",
+     "module": "scripts/llm_lane.py",
+     "module_evidence": [
+      "imports requests"
+     ],
+     "modules_with_capability": 66
+    },
+    "order_placement": {
+     "at_import": false,
+     "chain": [
+      "scripts/watchlist_entry_planner_lane.py",
+      "scripts/watchlist_entry_planner.py",
+      "scripts/db_adapter.py",
+      "scripts/holdings_guard.py",
+      "scripts/schwab_position_sync.py",
+      "scripts/schwab_transport.py"
+     ],
+     "evidence": "defines place_order() line 108",
+     "module": "scripts/schwab_transport.py",
+     "module_evidence": [
+      "calls cancel_order() line 492",
+      "calls cancel_order() line 577",
+      "calls place_order() line 305",
+      "defines cancel_order() line 511",
+      "defines place_order() line 108",
+      "defines replace_order() line 602"
+     ],
+     "modules_with_capability": 10
+    },
+    "subprocess": {
+     "at_import": false,
+     "chain": [
+      "scripts/watchlist_entry_planner_lane.py",
+      "scripts/watchlist_entry_planner.py",
+      "scripts/lib/comms_editor.py",
+      "scripts/lib/operator_subject_resolver.py",
+      "scripts/lib/cio_operator_desk_loop.py"
+     ],
+     "evidence": "imports subprocess",
+     "module": "scripts/lib/cio_operator_desk_loop.py",
+     "module_evidence": [
+      "imports subprocess"
+     ],
+     "modules_with_capability": 45
+    }
+   },
+   "entry": "scripts/watchlist_entry_planner_lane.py",
+   "kind": "python",
+   "modules_at_import": 2,
+   "modules_in_closure": 1142
+  },
+  "watchlist-entry-planner-scope": {
+   "capabilities": {
+    "broker_module": {
+     "at_import": false,
+     "chain": [
+      "scripts/watchlist_entry_planner_lane.py",
+      "scripts/watchlist_entry_planner.py",
+      "scripts/db_adapter.py",
+      "scripts/holdings_guard.py",
+      "scripts/schwab_position_sync.py"
+     ],
+     "evidence": "file name schwab_position_sync.py",
+     "module": "scripts/schwab_position_sync.py",
+     "module_evidence": [
+      "file name schwab_position_sync.py"
+     ],
+     "modules_with_capability": 19
+    },
+    "chokepoint_send": {
+     "at_import": false,
+     "chain": [
+      "scripts/watchlist_entry_planner_lane.py",
+      "scripts/watchlist_entry_planner.py",
+      "scripts/telegram_alert.py"
+     ],
+     "evidence": "approved delivery chokepoint (check_telegram_chokepoint.py)",
+     "module": "scripts/telegram_alert.py",
+     "module_evidence": [
+      "approved delivery chokepoint (check_telegram_chokepoint.py)"
+     ],
+     "modules_with_capability": 13
+    },
+    "db_write": {
+     "at_import": true,
+     "chain": [
+      "scripts/watchlist_entry_planner_lane.py",
+      "scripts/watchlist_entry_planner.py"
+     ],
+     "evidence": "SQL INSERT line 598",
+     "import_chain": [
+      "scripts/watchlist_entry_planner_lane.py",
+      "scripts/watchlist_entry_planner.py"
+     ],
+     "module": "scripts/watchlist_entry_planner.py",
+     "module_evidence": [
+      "SQL INSERT line 598"
+     ],
+     "modules_with_capability": 149
+    },
+    "network_http": {
+     "at_import": false,
+     "chain": [
+      "scripts/watchlist_entry_planner_lane.py",
+      "scripts/watchlist_entry_planner.py",
+      "scripts/llm_lane.py"
+     ],
+     "evidence": "imports requests",
+     "module": "scripts/llm_lane.py",
+     "module_evidence": [
+      "imports requests"
+     ],
+     "modules_with_capability": 66
+    },
+    "order_placement": {
+     "at_import": false,
+     "chain": [
+      "scripts/watchlist_entry_planner_lane.py",
+      "scripts/watchlist_entry_planner.py",
+      "scripts/db_adapter.py",
+      "scripts/holdings_guard.py",
+      "scripts/schwab_position_sync.py",
+      "scripts/schwab_transport.py"
+     ],
+     "evidence": "defines place_order() line 108",
+     "module": "scripts/schwab_transport.py",
+     "module_evidence": [
+      "calls cancel_order() line 492",
+      "calls cancel_order() line 577",
+      "calls place_order() line 305",
+      "defines cancel_order() line 511",
+      "defines place_order() line 108",
+      "defines replace_order() line 602"
+     ],
+     "modules_with_capability": 10
+    },
+    "subprocess": {
+     "at_import": false,
+     "chain": [
+      "scripts/watchlist_entry_planner_lane.py",
+      "scripts/watchlist_entry_planner.py",
+      "scripts/lib/comms_editor.py",
+      "scripts/lib/operator_subject_resolver.py",
+      "scripts/lib/cio_operator_desk_loop.py"
+     ],
+     "evidence": "imports subprocess",
+     "module": "scripts/lib/cio_operator_desk_loop.py",
+     "module_evidence": [
+      "imports subprocess"
+     ],
+     "modules_with_capability": 45
+    }
+   },
+   "entry": "scripts/watchlist_entry_planner_lane.py",
+   "kind": "python",
+   "modules_at_import": 2,
+   "modules_in_closure": 1142
   },
   "weekly-incubator-builder": {
    "capabilities": {
@@ -8104,6 +8719,111 @@
    "kind": "python",
    "modules_at_import": 1,
    "modules_in_closure": 12
+  },
+  "wire-advisory-lessons": {
+   "capabilities": {
+    "broker_module": {
+     "at_import": false,
+     "chain": [
+      "scripts/wire_advisory_lessons.py",
+      "scripts/db_adapter.py",
+      "scripts/holdings_guard.py",
+      "scripts/schwab_position_sync.py"
+     ],
+     "evidence": "file name schwab_position_sync.py",
+     "module": "scripts/schwab_position_sync.py",
+     "module_evidence": [
+      "file name schwab_position_sync.py"
+     ],
+     "modules_with_capability": 19
+    },
+    "chokepoint_send": {
+     "at_import": false,
+     "chain": [
+      "scripts/wire_advisory_lessons.py",
+      "scripts/db_adapter.py",
+      "scripts/holdings_guard.py",
+      "scripts/schwab_position_sync.py",
+      "scripts/telegram_alert.py"
+     ],
+     "evidence": "approved delivery chokepoint (check_telegram_chokepoint.py)",
+     "module": "scripts/telegram_alert.py",
+     "module_evidence": [
+      "approved delivery chokepoint (check_telegram_chokepoint.py)"
+     ],
+     "modules_with_capability": 13
+    },
+    "db_write": {
+     "at_import": true,
+     "chain": [
+      "scripts/wire_advisory_lessons.py"
+     ],
+     "evidence": "SQL INSERT line 91",
+     "import_chain": [
+      "scripts/wire_advisory_lessons.py"
+     ],
+     "module": "scripts/wire_advisory_lessons.py",
+     "module_evidence": [
+      "SQL INSERT line 91"
+     ],
+     "modules_with_capability": 150
+    },
+    "network_http": {
+     "at_import": false,
+     "chain": [
+      "scripts/wire_advisory_lessons.py",
+      "scripts/db_adapter.py",
+      "scripts/lib/env_bootstrap.py",
+      "scripts/lib/broker_env_audit.py"
+     ],
+     "evidence": "imports socket",
+     "module": "scripts/lib/broker_env_audit.py",
+     "module_evidence": [
+      "imports socket"
+     ],
+     "modules_with_capability": 66
+    },
+    "order_placement": {
+     "at_import": false,
+     "chain": [
+      "scripts/wire_advisory_lessons.py",
+      "scripts/db_adapter.py",
+      "scripts/holdings_guard.py",
+      "scripts/schwab_position_sync.py",
+      "scripts/schwab_transport.py"
+     ],
+     "evidence": "defines place_order() line 108",
+     "module": "scripts/schwab_transport.py",
+     "module_evidence": [
+      "calls cancel_order() line 492",
+      "calls cancel_order() line 577",
+      "calls place_order() line 305",
+      "defines cancel_order() line 511",
+      "defines place_order() line 108",
+      "defines replace_order() line 602"
+     ],
+     "modules_with_capability": 10
+    },
+    "subprocess": {
+     "at_import": true,
+     "chain": [
+      "scripts/wire_advisory_lessons.py"
+     ],
+     "evidence": "imports subprocess",
+     "import_chain": [
+      "scripts/wire_advisory_lessons.py"
+     ],
+     "module": "scripts/wire_advisory_lessons.py",
+     "module_evidence": [
+      "imports subprocess"
+     ],
+     "modules_with_capability": 46
+    }
+   },
+   "entry": "scripts/wire_advisory_lessons.py",
+   "kind": "python",
+   "modules_at_import": 1,
+   "modules_in_closure": 1142
   },
   "write-state-freshness-history": {
    "capabilities": {
@@ -8151,21 +8871,21 @@
  ],
  "schema": "LaneTransitiveCapabilities@v1",
  "totals": {
-  "broker_module": 68,
-  "chokepoint_send": 71,
-  "db_write": 84,
+  "broker_module": 74,
+  "chokepoint_send": 77,
+  "db_write": 92,
   "direct_sender": 0,
-  "network_http": 85,
-  "order_placement": 67,
-  "subprocess": 74
+  "network_http": 92,
+  "order_placement": 73,
+  "subprocess": 80
  },
  "totals_at_import": {
   "broker_module": 0,
   "chokepoint_send": 0,
-  "db_write": 50,
+  "db_write": 56,
   "direct_sender": 0,
   "network_http": 20,
   "order_placement": 0,
-  "subprocess": 11
+  "subprocess": 13
  }
 }

@@ -6,7 +6,7 @@ CI (`tests/test_lane_transitive_capabilities_20261015.py`) fails when a lane rea
 that `config/n8n_lane_capability_baseline.json` does not list with a reason, and when a baseline entry is
 no longer reached (the baseline only shrinks). This file is a dated snapshot, not a live gate.
 
-Lanes: **103**. Allowlist `as_of` 2026-10-09.
+Lanes: **114**. Allowlist `as_of` 2026-10-09.
 
 ## Totals (lanes reaching each capability)
 
@@ -16,12 +16,12 @@ Lanes: **103**. Allowlist `as_of` 2026-10-09.
 | Capability | Class | Lanes (reachable) | Lanes (at import) |
 |---|---|---|---|
 | `direct_sender` | FORBIDDEN | 0 | 0 |
-| `broker_module` | FORBIDDEN | 68 | 0 |
-| `order_placement` | FORBIDDEN | 67 | 0 |
-| `db_write` | review | 84 | 50 |
-| `subprocess` | review | 74 | 11 |
-| `network_http` | review | 85 | 20 |
-| `chokepoint_send` | review | 71 | 0 |
+| `broker_module` | FORBIDDEN | 74 | 0 |
+| `order_placement` | FORBIDDEN | 73 | 0 |
+| `db_write` | review | 92 | 56 |
+| `subprocess` | review | 80 | 13 |
+| `network_http` | review | 92 | 20 |
+| `chokepoint_send` | review | 77 | 0 |
 
 Why broker/order reach is so wide: one lazy chain is shared by most DB lanes. `scripts/db_adapter.py`
 imports `holdings_guard` inside its holdings write function; `holdings_guard` imports
@@ -36,108 +36,119 @@ a broker credential, which `env_names` / the executor env policy are meant to ke
 
 | Lane | Closure | S | B | O | W | X | N | C |
 |---|---|---|---|---|---|---|---|---|
-| `advisory-desk-run-now` | 1139 |  | x | x | x | x | x | x |
-| `aegis-brief-regenerate` | 1139 |  | x | x | x | x | x | x |
-| `aegis-evening-packet` | 1140 |  | x | x | x | x | x | x |
-| `aegis-nightly-ingestion` | 1139 |  | x | x | x | x | x | x |
-| `aegis-social-sentiment` | 1140 |  | x | x | x | x | x | x |
-| `aegis-transcript-discovery` | 1140 |  | x | x | x | x | x | x |
+| `advisory-desk-run-now` | 1142 |  | x | x | x | x | x | x |
+| `aegis-brief-regenerate` | 1142 |  | x | x | x | x | x | x |
+| `aegis-evening-packet` | 1143 |  | x | x | x | x | x | x |
+| `aegis-nightly-ingestion` | 1142 |  | x | x | x | x | x | x |
+| `aegis-social-sentiment` | 1143 |  | x | x | x | x | x | x |
+| `aegis-transcript-discovery` | 1143 |  | x | x | x | x | x | x |
 | `agent-calibration-engine` | 9 |  |  |  |  |  | x |  |
 | `agent-number-grounding-slo` | 3 |  |  |  |  |  |  |  |
 | `agent-outcome-linker` | 9 |  |  |  |  |  | x |  |
 | `agent-outcome-scorer` | 9 |  |  |  | x |  | x |  |
-| `analyst-prospectus-generate` | 1139 |  | x | x | x | x | x | x |
-| `audit-enrichment-coverage` | 1140 |  | x | x | x | x | x | x |
+| `analyst-prospectus-generate` | 1142 |  | x | x | x | x | x | x |
+| `audit-enrichment-coverage` | 1143 |  | x | x | x | x | x | x |
 | `backup-verify` | 8 |  |  |  | x | x |  | x |
-| `catalyst-graph` | 1141 |  | x | x | x | x | x | x |
-| `catalyst-momentum-engine-overnight` | 1142 |  | x | x | x | x | x | x |
-| `catalyst-symbol-impact` | 1139 |  | x | x | x | x | x | x |
+| `build-symbol-profiles-at-0-19` | 1143 |  | x | x | x | x | x | x |
+| `catalyst-graph` | 1144 |  | x | x | x | x | x | x |
+| `catalyst-momentum-engine-overnight` | 1145 |  | x | x | x | x | x | x |
+| `catalyst-symbol-impact` | 1142 |  | x | x | x | x | x | x |
 | `classifier-health-check` | 5 |  |  |  |  |  |  |  |
-| `classify-instruments` | 1139 |  | x | x | x | x | x | x |
+| `classify-instruments` | 1142 |  | x | x | x | x | x | x |
 | `commitment-outcome-sweep` | 34 |  |  |  |  |  | x |  |
 | `crawl-v3-dashboard` | 9 |  |  |  |  |  | x | x |
 | `crontab-snapshot-for-health-agent` | 0 |  |  |  |  | x |  |  |
 | `daily-incubator-refresh` | 22 |  |  |  | x |  | x |  |
-| `data-gap-resolver-at-0-10-16` | 1139 |  | x | x | x | x | x | x |
-| `data-gap-resolver-pre` | 1139 |  | x | x | x | x | x | x |
-| `data-gap-resolver-weekly` | 1139 |  | x | x | x | x | x | x |
-| `desk-suggestions-digest` | 1140 |  | x | x | x | x | x | x |
+| `data-gap-resolver-at-0-10-16` | 1142 |  | x | x | x | x | x | x |
+| `data-gap-resolver-pre` | 1142 |  | x | x | x | x | x | x |
+| `data-gap-resolver-weekly` | 1142 |  | x | x | x | x | x | x |
+| `desk-suggestions-digest` | 1143 |  | x | x | x | x | x | x |
 | `document-mentions-backfill` | 24 |  | x |  |  |  | x |  |
-| `enterprise-backtester` | 1139 |  | x | x | x | x | x | x |
-| `etf-analyst-enrich` | 1139 |  | x | x | x | x | x | x |
-| `etf-performance-enrich` | 1139 |  | x | x | x | x | x | x |
-| `fee-efficiency-analyzer` | 1138 |  | x | x | x | x | x | x |
-| `feedback-loop-processor` | 1139 |  | x | x | x | x | x | x |
-| `finviz-enrichment` | 1138 |  | x | x | x | x | x | x |
-| `finviz-enrichment-scalp-hot` | 1138 |  | x | x | x | x | x | x |
+| `enterprise-backtester` | 1142 |  | x | x | x | x | x | x |
+| `etf-analyst-enrich` | 1142 |  | x | x | x | x | x | x |
+| `etf-performance-enrich` | 1142 |  | x | x | x | x | x | x |
+| `fee-efficiency-analyzer` | 1141 |  | x | x | x | x | x | x |
+| `feedback-loop-processor` | 1142 |  | x | x | x | x | x | x |
+| `finviz-enrichment` | 1141 |  | x | x | x | x | x | x |
+| `finviz-enrichment-scalp-hot` | 1141 |  | x | x | x | x | x | x |
 | `finviz-health-check` | 11 |  |  |  | x |  | x | x |
-| `finviz-market-movers` | 1139 |  | x | x | x | x | x | x |
-| `finviz-proactive-research` | 1140 |  | x | x | x | x | x | x |
-| `finviz-screener-runner` | 1139 |  | x | x | x | x | x | x |
-| `finviz-sector-research` | 1139 |  | x | x | x | x | x | x |
-| `finviz-view-contracts` | 1139 |  | x | x | x | x | x | x |
-| `generate-analyst-daily-digest` | 1140 |  | x | x | x | x | x | x |
-| `heartbeat-watch` | 1139 |  | x | x | x | x | x | x |
-| `hermes-analyst-signal-discovery` | 1141 |  | x | x | x | x | x | x |
-| `hermes-entity-spike-discovery` | 1140 |  | x | x | x | x | x | x |
-| `hermes-governance-api` | 1138 |  | x | x | x | x | x | x |
-| `hermes-learning-autonomous-self-tune` | 1139 |  | x | x | x | x | x | x |
-| `hermes-learning-config-governor` | 1139 |  | x | x | x | x | x | x |
-| `hermes-learning-outcome-feedback-agent` | 1145 |  | x | x | x | x | x | x |
-| `hermes-learning-outcome-grader` | 1139 |  | x | x | x | x | x | x |
-| `hermes-learning-outcome-learning` | 1139 |  | x | x | x | x | x | x |
-| `hermes-learning-tag-engine` | 1139 |  | x | x | x | x | x | x |
-| `hermes-momentum-catalyst-scalp` | 1141 |  | x | x | x | x | x | x |
+| `finviz-market-movers` | 1142 |  | x | x | x | x | x | x |
+| `finviz-proactive-research` | 1143 |  | x | x | x | x | x | x |
+| `finviz-screener-runner` | 1142 |  | x | x | x | x | x | x |
+| `finviz-sector-research` | 1142 |  | x | x | x | x | x | x |
+| `finviz-view-contracts` | 1142 |  | x | x | x | x | x | x |
+| `generate-analyst-daily-digest` | 1143 |  | x | x | x | x | x | x |
+| `goal-gate-bridge` | 5 |  |  |  |  |  |  |  |
+| `heartbeat-watch` | 1142 |  | x | x | x | x | x | x |
+| `hermes-analyst-signal-discovery` | 1144 |  | x | x | x | x | x | x |
+| `hermes-discovery-scorecard` | 1141 |  | x | x | x | x | x | x |
+| `hermes-entity-spike-discovery` | 1143 |  | x | x | x | x | x | x |
+| `hermes-governance-api` | 1141 |  | x | x | x | x | x | x |
+| `hermes-learning-autonomous-self-tune` | 1142 |  | x | x | x | x | x | x |
+| `hermes-learning-config-governor` | 1142 |  | x | x | x | x | x | x |
+| `hermes-learning-outcome-feedback-agent` | 1149 |  | x | x | x | x | x | x |
+| `hermes-learning-outcome-grader` | 1142 |  | x | x | x | x | x | x |
+| `hermes-learning-outcome-learning` | 1142 |  | x | x | x | x | x | x |
+| `hermes-learning-tag-engine` | 1142 |  | x | x | x | x | x | x |
+| `hermes-momentum-catalyst-scalp` | 1144 |  | x | x | x | x | x | x |
 | `hermes-news-bridge` | 20 |  |  |  | x |  | x |  |
-| `hermes-pipeline-health` | 1143 |  | x | x | x | x | x | x |
+| `hermes-pipeline-health` | 1146 |  | x | x | x | x | x | x |
 | `hermes-research-agenda-at-45-7` | 6 |  |  |  | x |  |  |  |
-| `hermes-research-worker-pool` | 1143 |  | x | x | x | x | x | x |
-| `hermes-scope-governor` | 1139 |  | x | x | x | x | x | x |
-| `hermes-score-event-feeder` | 1139 |  | x | x | x | x | x | x |
-| `hermes-social-sentiment` | 1143 |  | x | x | x | x | x | x |
+| `hermes-research-worker-pool` | 1146 |  | x | x | x | x | x | x |
+| `hermes-scope-governor` | 1142 |  | x | x | x | x | x | x |
+| `hermes-score-event-feeder` | 1142 |  | x | x | x | x | x | x |
+| `hermes-social-sentiment` | 1146 |  | x | x | x | x | x | x |
 | `hermes-topic-monitor-bridge` | 14 |  |  |  | x |  |  |  |
 | `identity-sweep-stage0` | 13 |  |  |  | x |  |  |  |
-| `instrument-belief-writer` | 1139 |  | x | x | x | x | x | x |
-| `investment-costs` | 1138 |  | x | x | x | x | x | x |
-| `job-coverage-monitor` | 1140 |  | x | x | x | x | x | x |
-| `journal-tilt-morning-hook` | 1139 |  | x | x | x | x | x | x |
-| `lane-governance-packet-weekly` | 1145 |  | x | x | x | x | x | x |
-| `material-change-detector-stage1` | 1140 |  | x | x | x | x | x | x |
+| `incubator-rolloff-engine` | 10 |  |  |  | x |  | x |  |
+| `indicator-engine` | 1141 |  | x | x | x | x | x | x |
+| `instrument-belief-writer` | 1142 |  | x | x | x | x | x | x |
+| `investment-costs` | 1141 |  | x | x | x | x | x | x |
+| `job-coverage-monitor` | 1143 |  | x | x | x | x | x | x |
+| `journal-tilt-morning-hook` | 1142 |  | x | x | x | x | x | x |
+| `lane-governance-packet-weekly` | 1148 |  | x | x | x | x | x | x |
+| `material-change-detector-stage1` | 1143 |  | x | x | x | x | x | x |
 | `materialize-watchlist-strategy-cards` | 6 |  |  |  | x |  |  |  |
 | `maturity-remeasure` | 6 |  |  |  |  |  | x |  |
-| `momentum-cache-reconcile` | 1139 |  | x | x | x | x | x | x |
-| `momentum-lifecycle-monitor` | 1139 |  | x | x | x | x | x | x |
+| `momentum-cache-reconcile` | 1142 |  | x | x | x | x | x | x |
+| `momentum-lifecycle-monitor` | 1142 |  | x | x | x | x | x | x |
 | `n8n-comms-intent-consumer` | 7 |  |  |  |  |  |  |  |
-| `n8n-incident-fanin` | 1148 |  | x | x | x | x | x | x |
+| `n8n-incident-fanin` | 1151 |  | x | x | x | x | x | x |
 | `n8n-lab-watchdog` | 1 |  |  |  |  |  | x |  |
 | `n8n-pilot-dispatch` | 17 |  |  |  |  | x | x |  |
-| `n8n-research-intake-consumer` | 1139 |  | x | x | x | x | x | x |
+| `n8n-research-intake-consumer` | 1142 |  | x | x | x | x | x | x |
 | `n8n-workflow-drift-check` | 6 |  |  |  |  | x |  |  |
-| `news-to-catalyst` | 1141 |  | x | x | x | x | x | x |
+| `news-to-catalyst` | 1144 |  | x | x | x | x | x | x |
+| `opening-intelligence-render` | 5 |  |  |  |  |  |  |  |
+| `pattern-extractor` | 5 |  |  |  | x |  |  |  |
 | `proposal-backtest-engine` | 9 |  |  |  |  |  | x |  |
 | `record-decision-outcome` | 5 |  |  |  | x |  |  |  |
 | `research-insight-extractor` | 5 |  |  |  | x |  |  |  |
 | `resolve-due-checkpoints` | 30 |  |  |  |  |  | x |  |
-| `scalp-hot-list` | 1140 |  | x | x | x | x | x | x |
+| `scalp-hot-list` | 1143 |  | x | x | x | x | x | x |
 | `sec-data-ingest` | 12 |  |  |  | x |  | x |  |
-| `sector-rs-daily` | 1139 |  | x | x | x | x | x | x |
+| `sector-rs-daily` | 1142 |  | x | x | x | x | x | x |
 | `setup-quality-prior` | 5 |  |  |  | x |  |  |  |
-| `signal-fusion-active` | 1139 |  | x | x | x | x | x | x |
-| `signal-fusion-full` | 1139 |  | x | x | x | x | x | x |
-| `social-ingest-all` | 1139 |  | x | x | x | x | x | x |
+| `signal-fusion-active` | 1142 |  | x | x | x | x | x | x |
+| `signal-fusion-full` | 1142 |  | x | x | x | x | x | x |
+| `social-ingest-all` | 1142 |  | x | x | x | x | x | x |
 | `source-attribution-monitor` | 1 |  |  |  |  |  |  |  |
+| `source-litmus-vs-yahoo` | 5 |  |  |  |  |  |  |  |
 | `storage-watch` | 6 |  |  |  |  | x |  |  |
-| `sync-social-to-intelligence` | 1140 |  | x | x | x | x | x | x |
+| `sync-social-to-intelligence` | 1143 |  | x | x | x | x | x | x |
 | `trade-ai-restore-drill` | 9 |  |  |  | x | x |  | x |
-| `trade-ai-scalp-live` | 1166 |  | x | x | x | x | x | x |
+| `trade-ai-scalp-live` | 1169 |  | x | x | x | x | x | x |
 | `trade-backtest-engine` | 5 |  |  |  | x |  |  |  |
 | `trade-thesis-review-engine` | 9 |  |  |  |  |  | x |  |
-| `update-agent-performance` | 1139 |  | x | x | x | x | x | x |
+| `update-agent-performance` | 1142 |  | x | x | x | x | x | x |
 | `update-lockup-earnings-dates` | 6 |  |  |  | x |  |  |  |
-| `validate-expense-ratios` | 1139 |  | x | x | x | x | x | x |
-| `watch-goods-consistency` | 1140 |  | x | x | x | x | x | x |
-| `watchlist-enrichment-sweep` | 1138 |  | x | x | x | x | x | x |
+| `validate-expense-ratios` | 1142 |  | x | x | x | x | x | x |
+| `watch-goods-consistency` | 1143 |  | x | x | x | x | x | x |
+| `watchlist-enrichment-sweep` | 1141 |  | x | x | x | x | x | x |
+| `watchlist-entry-planner-limit` | 1142 |  | x | x | x | x | x | x |
+| `watchlist-entry-planner-scope` | 1142 |  | x | x | x | x | x | x |
 | `weekly-incubator-builder` | 12 |  |  |  | x |  | x |  |
+| `wire-advisory-lessons` | 1142 |  | x | x | x | x | x | x |
 | `write-state-freshness-history` | 9 |  |  |  |  | x | x |  |
 
 ## Forbidden reach: shortest import chain per lane
@@ -181,6 +192,11 @@ a broker credential, which `env_names` / the executor env policy are meant to ke
 
 - **broker_module** at `scripts/schwab_position_sync.py` (file name schwab_position_sync.py); chain: `scripts/audit_enrichment_coverage.py` -> `scripts/db_adapter.py` -> `scripts/holdings_guard.py` -> `scripts/schwab_position_sync.py`
 - **order_placement** at `scripts/schwab_transport.py` (defines place_order() line 108); chain: `scripts/audit_enrichment_coverage.py` -> `scripts/db_adapter.py` -> `scripts/holdings_guard.py` -> `scripts/schwab_position_sync.py` -> `scripts/schwab_transport.py`
+
+### `build-symbol-profiles-at-0-19`
+
+- **broker_module** at `scripts/schwab_position_sync.py` (file name schwab_position_sync.py); chain: `scripts/build_symbol_profiles.py` -> `scripts/db_adapter.py` -> `scripts/holdings_guard.py` -> `scripts/schwab_position_sync.py`
+- **order_placement** at `scripts/schwab_transport.py` (defines place_order() line 108); chain: `scripts/build_symbol_profiles.py` -> `scripts/db_adapter.py` -> `scripts/holdings_guard.py` -> `scripts/schwab_position_sync.py` -> `scripts/schwab_transport.py`
 
 ### `catalyst-graph`
 
@@ -301,6 +317,11 @@ a broker credential, which `env_names` / the executor env policy are meant to ke
 - **broker_module** at `scripts/schwab_position_sync.py` (file name schwab_position_sync.py); chain: `scripts/hermes_analyst_signal_discovery.py` -> `scripts/db_adapter.py` -> `scripts/holdings_guard.py` -> `scripts/schwab_position_sync.py`
 - **order_placement** at `scripts/schwab_transport.py` (defines place_order() line 108); chain: `scripts/hermes_analyst_signal_discovery.py` -> `scripts/db_adapter.py` -> `scripts/holdings_guard.py` -> `scripts/schwab_position_sync.py` -> `scripts/schwab_transport.py`
 
+### `hermes-discovery-scorecard`
+
+- **broker_module** at `scripts/schwab_position_sync.py` (file name schwab_position_sync.py); chain: `scripts/hermes_discovery_scorecard.py` -> `scripts/db_adapter.py` -> `scripts/holdings_guard.py` -> `scripts/schwab_position_sync.py`
+- **order_placement** at `scripts/schwab_transport.py` (defines place_order() line 108); chain: `scripts/hermes_discovery_scorecard.py` -> `scripts/db_adapter.py` -> `scripts/holdings_guard.py` -> `scripts/schwab_position_sync.py` -> `scripts/schwab_transport.py`
+
 ### `hermes-entity-spike-discovery`
 
 - **broker_module** at `scripts/schwab_position_sync.py` (file name schwab_position_sync.py); chain: `scripts/hermes_entity_spike_discovery.py` -> `scripts/lib/hermes_discovery/entity_spikes.py` -> `scripts/db_adapter.py` -> `scripts/holdings_guard.py` -> `scripts/schwab_position_sync.py`
@@ -370,6 +391,11 @@ a broker credential, which `env_names` / the executor env policy are meant to ke
 
 - **broker_module** at `scripts/schwab_position_sync.py` (file name schwab_position_sync.py); chain: `scripts/hermes_social_sentiment.py` -> `scripts/db_adapter.py` -> `scripts/holdings_guard.py` -> `scripts/schwab_position_sync.py`
 - **order_placement** at `scripts/schwab_transport.py` (defines place_order() line 108); chain: `scripts/hermes_social_sentiment.py` -> `scripts/db_adapter.py` -> `scripts/holdings_guard.py` -> `scripts/schwab_position_sync.py` -> `scripts/schwab_transport.py`
+
+### `indicator-engine`
+
+- **broker_module** at `scripts/schwab_position_sync.py` (file name schwab_position_sync.py); chain: `scripts/indicator_engine.py` -> `scripts/lib/indicator_universe_lane.py` -> `scripts/db_adapter.py` -> `scripts/holdings_guard.py` -> `scripts/schwab_position_sync.py`
+- **order_placement** at `scripts/schwab_transport.py` (defines place_order() line 108); chain: `scripts/indicator_engine.py` -> `scripts/lib/indicator_universe_lane.py` -> `scripts/db_adapter.py` -> `scripts/holdings_guard.py` -> `scripts/schwab_position_sync.py` -> `scripts/schwab_transport.py`
 
 ### `instrument-belief-writer`
 
@@ -480,6 +506,21 @@ a broker credential, which `env_names` / the executor env policy are meant to ke
 
 - **broker_module** at `scripts/alpaca_paper_reconciler.py` (file name alpaca_paper_reconciler.py); chain: `scripts/watchlist_enrichment_sweep.py` -> `scripts/open_trades_intelligence.py` -> `scripts/alpaca_paper_reconciler.py`
 - **order_placement** at `scripts/schwab_transport.py` (defines place_order() line 108); chain: `scripts/watchlist_enrichment_sweep.py` -> `scripts/open_trades_intelligence.py` -> `scripts/schwab_transport.py`
+
+### `watchlist-entry-planner-limit`
+
+- **broker_module** at `scripts/schwab_position_sync.py` (file name schwab_position_sync.py); chain: `scripts/watchlist_entry_planner_lane.py` -> `scripts/watchlist_entry_planner.py` -> `scripts/db_adapter.py` -> `scripts/holdings_guard.py` -> `scripts/schwab_position_sync.py`
+- **order_placement** at `scripts/schwab_transport.py` (defines place_order() line 108); chain: `scripts/watchlist_entry_planner_lane.py` -> `scripts/watchlist_entry_planner.py` -> `scripts/db_adapter.py` -> `scripts/holdings_guard.py` -> `scripts/schwab_position_sync.py` -> `scripts/schwab_transport.py`
+
+### `watchlist-entry-planner-scope`
+
+- **broker_module** at `scripts/schwab_position_sync.py` (file name schwab_position_sync.py); chain: `scripts/watchlist_entry_planner_lane.py` -> `scripts/watchlist_entry_planner.py` -> `scripts/db_adapter.py` -> `scripts/holdings_guard.py` -> `scripts/schwab_position_sync.py`
+- **order_placement** at `scripts/schwab_transport.py` (defines place_order() line 108); chain: `scripts/watchlist_entry_planner_lane.py` -> `scripts/watchlist_entry_planner.py` -> `scripts/db_adapter.py` -> `scripts/holdings_guard.py` -> `scripts/schwab_position_sync.py` -> `scripts/schwab_transport.py`
+
+### `wire-advisory-lessons`
+
+- **broker_module** at `scripts/schwab_position_sync.py` (file name schwab_position_sync.py); chain: `scripts/wire_advisory_lessons.py` -> `scripts/db_adapter.py` -> `scripts/holdings_guard.py` -> `scripts/schwab_position_sync.py`
+- **order_placement** at `scripts/schwab_transport.py` (defines place_order() line 108); chain: `scripts/wire_advisory_lessons.py` -> `scripts/db_adapter.py` -> `scripts/holdings_guard.py` -> `scripts/schwab_position_sync.py` -> `scripts/schwab_transport.py`
 
 ## trade-ai-scalp-live: the direct Slack / Twilio path (DD01)
 

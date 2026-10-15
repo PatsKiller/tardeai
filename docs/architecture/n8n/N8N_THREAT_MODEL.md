@@ -120,7 +120,7 @@ never reach, the NYC DOF instance (§24.4), and physical/host-OS compromise (DD1
 | S | an n8n "approved" branch, callback URL or wait-node resume treated as approval | n8n can notify, never confirm; per-order operator assertion | (E) policy; route **(P)** | N8N_HITL_CONTRACT_SPEC.md (Level 1, specified) |
 | T | intent altered between approval and effect | bind `H(intent)` and re-verify at effect | (P) | HITL spec §4 |
 | R/I/D | — | trading lock LIVE, LOCKED (TRK-4) | (E) | operator |
-| E | money authority by analogy through a non-money route | `FORBIDDEN_ROUTE_TOKENS`, generator forbidden nodes, never-list | (E) at the declared surface | transitive closure (DD01) |
+| E | money authority by analogy through a non-money route | `FORBIDDEN_ROUTE_TOKENS`, generator forbidden nodes, never-list; trading lock refuses every order whatever the caller | (E) at the declared surface | transitive lazy broker reach accepted by operator 2026-10-15 (RR11, DD01) |
 
 ### Cross-boundary surfaces the audit asked to include
 
@@ -194,10 +194,11 @@ unit/config change; this document flips nothing.
 | RR4 | 91 lanes report-pinned keep the full pre-P7 env (broker names included where rendered) | High | executor/platform | §6; staged flips; DD02 |
 | RR5 | Shared dispatch HMAC key is the default for every `tradeai-*` caller | High | identity (agent 1) | DD02/DD03 |
 | RR6 | Startup-cached policy; revocation not immediate | High | agent 1 | DD08 |
-| RR7 | Transitive raw senders (scalp lane) | High | agent 3 | DD01 |
+| RR7 | Transitive raw senders (scalp lane); raw transports removed 2026-10-15, no allowlisted lane reaches a direct_sender (broker reach: RR11) | High | agent 3 | DD01 |
 | RR8 | Approval/HITL route absent; an n8n approval must never be authority | Medium (no route exists) | operator + platform | N8N_HITL_CONTRACT_SPEC.md acceptance tests |
 | RR9 | OAuth proxies on loopback are callable without the bridge | Medium | bridge owner | DD17 |
 | RR10 | Logs/receipts/ledger writable by uid 1000 → repudiation | Medium | platform | append-only / separate-writer ledger (DD02) |
+| RR11 | **Accepted by operator 2026-10-15 (DD01 ruling, verbatim: "n8n ignor broker code it can't trade live ccontinue").** n8n-allowlisted lanes reach `broker_module` / `order_placement` transitively through the lazy chain `db_adapter -> holdings_guard -> schwab_position_sync -> schwab_transport` (74 / 73 lanes, none at import; LANE_TRANSITIVE_CAPABILITIES_20261015.md). Mitigation relied on: the trading lock (`assert_trading_unlocked`, first statement of `schwab_transport.place_order`; LOCKED, default-locked, operator unlock file) refuses every order whatever the caller. `direct_sender` remains forbidden (no exception). Residual: a lane child could still *read* broker state / tokens through that chain (same uid, RR1/RR4), and an operator unlock would make the reach effective for any caller | Medium (accepted) | operator (lock owner) + platform | shrink-only baseline + `OPERATOR_RULING_DD01_20261015` in `tests/test_lane_transitive_capabilities_20261015.py`; cutting the lazy chain (DD02 worker isolation) retires it |
 
 ## 8. Negative tests required before more effectful migration (audit §2 last paragraph)
 
@@ -214,6 +215,9 @@ unit/config change; this document flips nothing.
 
 ## 9. Change log
 
+* 2026-10-15 — DD01 operator ruling ("n8n ignor broker code it can't trade live ccontinue") recorded as
+  RR11 (accepted residual): transitive lazy broker reach for n8n-allowlisted lanes accepted on the trading lock;
+  direct_sender stays forbidden.
 * 2026-10-15 — first version (audit DD02). Measurements: executor unit env (mode names only), bridge `/health`
   (`caller_auth.mode`, `transports`, verdict counts), `ss -ltn` listeners, container `N8N_BLOCK_ENV_ACCESS_IN_NODE`
   and `id`, CC decision-log reason counts, served release `config/cc_auth.yaml` modes. No secret, `.env` or

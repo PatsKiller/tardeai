@@ -167,6 +167,8 @@ def test_no_key_outside_scope_except_reviewed_process_steps():
         "watchlist-entry-planner-scope",
         # lane repair 2026-10-15 (tests/test_lane_repair_ri_hermes_litmus_20261015.py): staged, no claim.
         "run-research-intelligence-overnight",
+        # shadow wave LD-W1 (2026-10-15): the wave's appending lane, keyed and staged before any canary.
+        "incubator-rolloff-engine",
     }
 
 

@@ -118,6 +118,8 @@ REVIEWED_NOW_ALLOWED: dict[str, tuple[frozenset[str], str]] = {
     "active-trader-micro-recorder": (frozenset({"order"}), "recorder; script states 'no order path'"),
     "active-trader-micro-recorder-premarket": (frozenset({"order"}), "recorder; script states 'no order path'"),
     "n8n-incident-fanin": (frozenset({"2fa"}), "workflow id 722fac0e... collapsed"),
+    # shadow wave LD-W1 (2026-10-15): this corpus's own "allowlist:" id prefix + "opening" collapses to "listopening".
+    "opening-intelligence-render": (frozenset({"stop"}), "corpus id 'allowlist:opening...' -> 'listopening'"),
     # crontab_backup.txt lines, keyed by script
     "topic_curator.py": (frozenset({"stop"}), "topic"),
     "hermes_topic_monitor_bridge.py": (frozenset({"stop"}), "topic"),
