@@ -1845,6 +1845,11 @@ GATES = [
             "tests/test_lane_state_drift_20261007.py",
             # Retire batch 1 (2026-10-09): 32 RETIRED rows + opening-intelligence schedule, pipelines, services.
             "tests/test_retire_batch_1_20261009.py",
+            # Lane disposition 2026-10-15: one row per active crontab line (394) with one of RETIRE / CONSOLIDATE /
+            # STAY_HOST / MIGRATE_N8N, reproducible from the committed inputs; RETIRE wave 1 packet comments exactly
+            # its lines in place, refuses drift, rolls back byte-exactly (fake-crontab install/rollback round trip);
+            # registry rows stay ACTIVE with retire_pending until the read-back. Hermetic: repo files + tmp_path.
+            "tests/test_lane_disposition_retire_wave1_20261015.py",
             "tests/test_report_lane_fire_ledger_20261007.py",
             "tests/test_lane_portfolio_repricer.py",
             # Day P/L for shares traded today (fills) + basis rebase on trade-sized share change.
