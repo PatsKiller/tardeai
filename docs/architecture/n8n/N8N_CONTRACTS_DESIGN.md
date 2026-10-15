@@ -170,9 +170,13 @@ at `data/runtime/lane_attempts/<lane>/<run_id>.json`; the executor reads only th
 `run_id`/`lane_id` to be the run's (a stale, concurrent-cron, v1 or other-lane receipt = `unverifiable`). Rules
 are validated by one closed semantic schema (`scripts/lib/n8n_output_verdict.validate_expected_output`, shared
 with FW-M6). Since the 2026-10-15 expected_output PR, 122 of 126 contracts declare an evidence-derived `expected_output`
-(all with `produced_field: produced_count`; no lane emits it yet, so a LIVE run of a lane-kind contract with a rule is
-`output_unverifiable` until the lane passes `produced_count`; the four digest-bound REVIEWED contracts carry none
-until re-reviewed). Contracts without a block still report `output_verdict: no_rule` and are unchanged. Remaining (P): dry runs are exempt (they write no receipt; captured dry evidence is not built), the
+(all with `produced_field: produced_count`; the four digest-bound REVIEWED contracts carry none until re-reviewed).
+**Runtime enforcement is per-lane opt-in:** the executor applies the verdict only when the lane's allowlist entry
+(`config/n8n_run_allowlist.json`) declares `"output_receipt": "v2"`; a declared rule without it is recorded as
+`output_verdict: declared_not_enforced` and the run state is unchanged. A lane gets `output_receipt: v2` only in the
+same change as the code that writes `LaneRunReceipt@v2 produced_count` (test
+`test_dd07_output_receipt_v2_only_with_code_that_writes_produced_count`); no committed entry opts in yet.
+Contracts without a block still report `output_verdict: no_rule` and are unchanged. Remaining (P): dry runs are exempt (they write no receipt; captured dry evidence is not built), the
 per-window rule is evaluated by monitors not per run, the verifier trusts the lane's own counts (an independent
 query of the declared durable output is not built), and a lane writes v2 only once it is changed to pass
 `produced_count`.
@@ -211,7 +215,8 @@ only when the signal is older than 3× cadence.
 - **Failure behaviour:** the run is a failure everywhere downstream (ledger, DLQ/breaker on v2, run outcome, Run
   Lane, error workflow intent, fan-in). The hermes worker-pool case — `produced_count 0`, `skipped_reasons
   {no_runner: N}` — is `empty_violation` on its first run.
-- **Validation points:** executor (per run, **E** 2026-10-15); health monitors (per window, P); framework
+- **Validation points:** executor (per run, **E** 2026-10-15; enforced only for lanes whose allowlist entry has
+  `output_receipt: "v2"`, otherwise `declared_not_enforced`); health monitors (per window, P); framework
   checker FW-M6 (closed semantic validation shared with the executor — E).
 
 ## 6. Health contract (REVIEWED / DRAFT lifecycle)
@@ -264,7 +269,8 @@ operator's word "PROPOSED" for a contract change maps to a DRAFT entry; REVIEWED
   required by the framework checker, not by `check_n8n_health_contracts.py`, so no existing contract is broken by
   the schema. Making it schema-required is `N8nHealthContract@v2` after the 30-day remediation window.
 - **Failure behaviour:** at review time FW-M6 fails (blocks activation once §23.24 binds by code); at run time §5's
-  executor verdict fails the run.
+  executor verdict fails the run — for a lane whose allowlist entry declares `output_receipt: "v2"` (per-lane opt-in,
+  set with the code that writes `produced_count`); FW-M6 checks the declaration only.
 
 ## 7. Effect-key contract
 
