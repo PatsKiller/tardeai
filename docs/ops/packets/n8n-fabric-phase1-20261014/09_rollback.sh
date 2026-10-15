@@ -23,7 +23,7 @@ fi
 [[ -n "${TRADEAI_FABRIC_GRANT:-}" ]] || fail "TRADEAI_FABRIC_GRANT not set"
 [[ ${#ACTIVE[@]} -gt 0 && -n "${ACTIVE[0]}" ]] || { echo "nothing active; no restart"; exit 0; }
 for id in "${ACTIVE[@]}"; do
-  docker exec m8m-n8n n8n unpublish:workflow --id="$id" 2>&1 | grep -v '^Postgres 16' || true
+  docker exec -e N8N_RUNNERS_BROKER_PORT=5690 m8m-n8n n8n unpublish:workflow --id="$id" 2>&1 | grep -v '^Postgres 16' || true
 done
 docker restart m8m-n8n >/dev/null
 sleep 20

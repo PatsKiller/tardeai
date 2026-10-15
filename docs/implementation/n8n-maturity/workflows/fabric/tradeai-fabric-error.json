@@ -52,7 +52,7 @@
     "generator": "scripts/n8n_workflow_templates.py build-fabric",
     "graph_sha256": "21c7ddd097b1eca3859f3ba6c407817d6ba6eed73a6a37a9f5d1858cfbd578da",
     "kind": "error",
-    "policy_sha256": "940c8a22fd2b2e53e2fb186749fabab9a1b2d6ea5ad9447f1bd31f76ddbabf6b"
+    "policy_sha256": "c6750b96ada49f816798bf3714ad390616b1b32769fdcbcc54e0635e32caf31f"
   },
   "name": "tradeai-fabric-error",
   "nodes": [

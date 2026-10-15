@@ -12,6 +12,17 @@
         ]
       ]
     },
+    "Manual run": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Probe input",
+            "type": "main"
+          }
+        ]
+      ]
+    },
     "Probe input": {
       "main": [
         [
@@ -22,26 +33,15 @@
           }
         ]
       ]
-    },
-    "Schedule": {
-      "main": [
-        [
-          {
-            "index": 0,
-            "node": "Probe input",
-            "type": "main"
-          }
-        ]
-      ]
     }
   },
   "id": "tradeai-fabric-run-lane-probe",
   "meta": {
     "design": "AGENTS.md §23.23 (10.0.0 PROPOSED); arch-review-20261014 REFACTOR_PLAN B4-B6",
     "generator": "scripts/n8n_workflow_templates.py build-fabric",
-    "graph_sha256": "5d562f770f09c19bdc42fa5c2177a5ab00ec7546e0f4c4b2dec1d32ee729cbfe",
+    "graph_sha256": "4dc071b31eaaa3788522ffae581a95be66918f3b6a4d24fff68931de484b9510",
     "kind": "probe",
-    "policy_sha256": "940c8a22fd2b2e53e2fb186749fabab9a1b2d6ea5ad9447f1bd31f76ddbabf6b"
+    "policy_sha256": "c6750b96ada49f816798bf3714ad390616b1b32769fdcbcc54e0635e32caf31f"
   },
   "name": "tradeai-fabric-run-lane-probe",
   "nodes": [
@@ -95,6 +95,17 @@
       "typeVersion": 1.2
     },
     {
+      "id": "f6006bf0-4139-5438-9e92-50a525d76d0d",
+      "name": "Manual run",
+      "parameters": {},
+      "position": [
+        0,
+        300
+      ],
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1
+    },
+    {
       "id": "16d0a590-eedd-54c9-9425-0f5e9e5e5154",
       "name": "Probe input",
       "parameters": {
@@ -140,26 +151,6 @@
       ],
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4
-    },
-    {
-      "id": "39cf0bda-1a0f-54a6-93c0-d01814983339",
-      "name": "Schedule",
-      "parameters": {
-        "rule": {
-          "interval": [
-            {
-              "expression": "0 4 1 1 *",
-              "field": "cronExpression"
-            }
-          ]
-        }
-      },
-      "position": [
-        0,
-        300
-      ],
-      "type": "n8n-nodes-base.scheduleTrigger",
-      "typeVersion": 1.2
     }
   ],
   "settings": {

@@ -2,7 +2,8 @@
 
 Static: committed files equal a fresh render (--check); the six generic workflows are byte-unchanged; every fabric
 workflow uses only FABRIC_ALLOWED_NODE_TYPES (the §23.23 relaxation adds exactly Execute Workflow + Trigger,
-Switch and Merge to what the generic set already allowed), no messaging / AI / community node, an errorWorkflow on
+Switch and Merge to what the generic set already allowed, plus the Manual Trigger the Run Lane probe starts from so
+`n8n execute --id` can run it, 2026-10-15), no messaging / AI / community node, an errorWorkflow on
 every workflow, successes saved, inactive; the manifest's graph and policy hashes verify, and the trusted-deployer
 verify accepts a re-export but refuses a tampered graph. Behaviour: the generated Code nodes run under node.js with
 stubbed n8n globals (skipped when node is absent). Imports nothing into n8n."""
@@ -71,13 +72,17 @@ def test_relaxation_is_exactly_the_section_23_23_list_for_this_pr():
         "n8n-nodes-base.if",
         "n8n-nodes-base.merge",
         "n8n-nodes-base.errorTrigger",
+        "n8n-nodes-base.manualTrigger",
     }
     assert T.FABRIC_ALLOWED_NODE_TYPES - T.GENERIC_ALLOWED_NODE_TYPES == {
         "n8n-nodes-base.executeWorkflow",
         "n8n-nodes-base.executeWorkflowTrigger",
         "n8n-nodes-base.switch",
         "n8n-nodes-base.merge",
+        "n8n-nodes-base.manualTrigger",
     }
+    # The generic (live) set does not gain it: the relaxation is fabric-only.
+    assert "n8n-nodes-base.manualTrigger" not in T.GENERIC_ALLOWED_NODE_TYPES
     assert not T.FABRIC_ALLOWED_NODE_TYPES & T.FABRIC_FORBIDDEN_NODE_TYPES
     assert all(t.startswith("n8n-nodes-base.") for t in T.FABRIC_ALLOWED_NODE_TYPES)
     for msg in ("telegram", "slack", "discord", "emailSend", "gmail", "microsoftTeams", "form", "formTrigger"):
@@ -304,6 +309,37 @@ def test_probe_calls_run_lane_by_id_in_dry_run_on_an_allowlisted_lane():
     assert vals["mode"] == "dry_run" and vals["lane_id"] == T.FABRIC_PROBE_LANE and vals["max_attempts"] == 1
     allow = {x["lane_id"]: x for x in json.loads((ROOT / "config" / "n8n_run_allowlist.json").read_text())["lanes"]}
     assert T.FABRIC_PROBE_LANE in allow and allow[T.FABRIC_PROBE_LANE]["dry_run_arg"]
+
+
+def test_manual_trigger_is_the_run_lane_probe_start_node_and_nowhere_else():
+    # `n8n execute --id` needs a Manual Trigger start node (operator live run 2026-10-15: "Missing node to start
+    # execution"). The probe has no schedule at all, so it can never fire on its own.
+    wf = _wf(T.FABRIC_PROBE_ID)
+    types = [n["type"] for n in wf["nodes"]]
+    assert types.count("n8n-nodes-base.manualTrigger") == 1
+    assert "n8n-nodes-base.scheduleTrigger" not in types
+    manual = _node(wf, T.FP_MANUAL)
+    assert manual["type"] == "n8n-nodes-base.manualTrigger" and manual["parameters"] == {}
+    assert [c["node"] for c in wf["connections"][T.FP_MANUAL]["main"][0]] == [T.FP_INPUT]
+    for wid in IDS:
+        if wid != T.FABRIC_PROBE_ID:
+            assert "n8n-nodes-base.manualTrigger" not in {n["type"] for n in _wf(wid)["nodes"]}, wid
+    rows = {r["id"]: r for r in _index()["workflows"]}
+    assert [w for w, r in rows.items() if "n8n-nodes-base.manualTrigger" in r["node_types"]] == [T.FABRIC_PROBE_ID]
+
+
+#: Graph hashes in INDEX.json. The three non-probe graphs are pinned to what the operator imported on 2026-10-15
+#: (they must not move, or the imported copies stop verifying); the probe pin is the Manual Trigger graph.
+GRAPH_PINS = {
+    T.RUN_LANE_ID: "b72c74dd202bde396faa3eb705d893a330d0560023c92ac9d2965e051b9f0b55",
+    T.FABRIC_ERROR_ID: "21c7ddd097b1eca3859f3ba6c407817d6ba6eed73a6a37a9f5d1858cfbd578da",
+    T.FABRIC_PROBE_ID: "4dc071b31eaaa3788522ffae581a95be66918f3b6a4d24fff68931de484b9510",
+    T.FABRIC_ERROR_PROBE_ID: "f92070400e85d42fc047dd6f0fade44d81174fe654d55f8bbb7e4d1bbdab116e",
+}
+
+
+def test_index_graph_hash_pins():
+    assert {r["id"]: r["graph_sha256"] for r in _index()["workflows"]} == GRAPH_PINS
 
 
 def test_error_probe_fails_on_its_own_schedule_into_the_fabric_error_workflow():

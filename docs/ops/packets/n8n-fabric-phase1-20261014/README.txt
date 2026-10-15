@@ -27,12 +27,36 @@ n8n side (generated JSON in git; docs/implementation/n8n-maturity/workflows/fabr
                                     to 60 s, until outcome_timeout_s <= 1000) -> Switch on status -> retry budget
                                     (<= 3, backoff 30 s doubling to 120 s) -> RunLaneResult@v1.
   * tradeai-fabric-error            Error Trigger -> send-INTENT {domain fabric, kind workflow_error} -> POST /intent.
-  * tradeai-fabric-run-lane-probe   inactive; calls Run Lane once, dry_run, lane crontab-snapshot-for-health-agent
-                                    (its dry_run writes only a shadow crontab copy; 30 s timeout).
+  * tradeai-fabric-run-lane-probe   inactive; Manual Trigger -> calls Run Lane once, dry_run, lane
+                                    crontab-snapshot-for-health-agent (its dry_run writes only a shadow crontab copy;
+                                    30 s timeout). No schedule: it runs only when the operator executes it.
   * tradeai-fabric-error-probe      inactive; throws on every scheduled fire (automatic-failure proof).
   Every one: active false, settings.errorWorkflow = tradeai-fabric-error, saveDataSuccessExecution all,
   saveManualExecutions false, only node types in FABRIC_ALLOWED_NODE_TYPES, only credential tradeai-run-relay.
   The six generic workflows are byte-unchanged (no live drift).
+
+FINDINGS FROM THE OPERATOR'S LIVE RUN (2026-10-15 ~00:55 UTC) AND THE FIX (branch n8nfab/probe-manual-trigger-20261015)
+-----------------------------------------------------------------------------------------------------------------
+  State before the fix: the four workflows were IMPORTED INACTIVE with ids tradeai-fabric-run-lane,
+  tradeai-fabric-error, tradeai-fabric-run-lane-probe and tradeai-fabric-error-probe; their graph hashes matched
+  INDEX.json. 02 --probe then failed twice:
+  F1 `n8n execute` -> "n8n Task Broker's port 5679 is already in use". Every n8n CLI process starts its own task
+     broker and the live instance holds 5679. Fix: 02_proofs.sh runs EVERY n8n CLI call (execute, and the
+     publish:workflow / unpublish:workflow of --error-proof) as `docker exec -e N8N_RUNNERS_BROKER_PORT=5690 ...`;
+     01_import_inactive.sh (import/export) and 09_rollback.sh (unpublish) do the same, harmlessly, so no packet
+     CLI call can collide with 5679.
+  F2 with the port moved: "CliWorkflowOperationError: Missing node to start execution. Please make sure the
+     workflow you're calling contains an Execute Workflow Trigger node". The CLI starts only from a Manual Trigger
+     or an Execute Workflow Trigger; the probe started from a never-firing Schedule Trigger. Fix: the generator
+     gives the probe a Manual Trigger ("Manual run") wired to "Probe input" and drops its schedule.
+     n8n-nodes-base.manualTrigger joins FABRIC_RELAXED_NODE_TYPES (it runs only on an explicit CLI or editor
+     execution and never on its own; the generic set does not gain it; live NODES_EXCLUDE does not exclude it).
+     The ERROR probe is unchanged: it must fail AUTOMATICALLY on its schedule (addendum item 9).
+  Hashes: the probe's graph hash changes (INDEX.json). The other three graph hashes do NOT change; only the policy
+  hash (allowlist +1 type) and each file's meta.policy_sha256 do. The imported copies are therefore stale for the
+  probe graph and for the policy stamp, so all four are re-imported: 01_import_inactive.sh --reimport.
+  CLI-run executions: manual/CLI runs may not be stored in n8n (compose: manual executions are not saved), so for
+  P1 the durable proof is the ledger runs + run_outcomes rows and the relay log (03_evidence.py), not n8n's list.
 
 WHAT ACTIVATION NEEDS (in order; each is an operator act)
 ---------------------------------------------------------
@@ -52,15 +76,25 @@ STEPS
   00_preflight.sh            read-only. build-fabric --check, --verify of the files, check_n8n_import_ready,
                              check_n8n_relay_contract (static + scratch-relay probe), the served release has the new
                              relay routes (relay --routes from CURRENT), and the four ids are absent from n8n.
+                             --reimport: instead of absent, every row matching a fabric id or name must BE one of the
+                             four ids, inactive (active false), unpublished (activeVersionId NULL), not archived;
+                             prints the plan (CREATE / REPLACE per id).
   01_import_inactive.sh      --apply: docker cp + `n8n import:workflow` for the four files (inactive), then
                              `n8n export:workflow` of each and build-fabric --verify on the export (TRUSTED DEPLOYER:
                              the graph hash of what n8n holds must equal the manifest). Nothing is published.
-  02_proofs.sh --probe       --apply: `n8n execute --id=tradeai-fabric-run-lane-probe` (a CLI run of an inactive
-                             workflow; publishes nothing). Then 03_evidence.py.
+  01_import_inactive.sh --reimport [--apply]: the same import OVER the inactive fabric set (preflight --reimport).
+                             --apply exports each existing row to <stage>/before first (pre-image, kept), re-checks
+                             the inactive rule, imports, then the same state check + export + --verify. Dry run (no
+                             --apply) prints the plan and the graph hashes the exports must match.
+  02_proofs.sh --probe       --apply: `docker exec -e N8N_RUNNERS_BROKER_PORT=5690 m8m-n8n n8n execute
+                             --id=tradeai-fabric-run-lane-probe` (a CLI run of an inactive workflow from its Manual
+                             Trigger; publishes nothing). Prints the CLI exit code, then 03_evidence.py either way.
   02_proofs.sh --error-proof --apply: at a quiet minute (hh:07 or hh:37), publish tradeai-fabric-error-probe,
                              restart n8n (CLI publish loads at start), wait for ONE fire (<= 75 s), unpublish,
                              restart. Then 03_evidence.py. Two n8n restarts: read the relay log for `op: due` between.
   03_evidence.py             read-only (sqlite mode=ro + relay log tail). Prints the rows the proofs must produce.
+                             Usage: 03_evidence.py --since <ISO-8601 UTC, e.g. 2026-10-15T14:07:00+00:00>
+                             [--ledger PATH]; with no arguments it prints this help (02_proofs.sh passes --since).
 
 DRY-RUN PROOF PLAN (what "done" looks like; quote 03_evidence.py output in the PR)
 ----------------------------------------------------------------------------------
@@ -69,8 +103,9 @@ DRY-RUN PROOF PLAN (what "done" looks like; quote 03_evidence.py output in the P
        state RUN_DONE (or RUN_SKIPPED_LOCK if the cron snapshot held the lock: still a pass, status skipped_lock);
      - run_outcomes row for the same run_id: status success|skipped_lock, receipt_path that exists, duration_s;
      - relay_log.jsonl: one POST /run line (state REQUESTED) and >= 1 `op: run_outcome` line for that run_id;
-     - n8n: the probe execution and the Run Lane sub-execution saved with status success; Run Lane custom data
-       run_id and lane_id set (Executions list -> custom data);
+     - n8n: `n8n execute` exits 0 and prints the probe's last node output (probe_ok true); IF n8n stored the CLI
+       run, the probe and Run Lane executions show status success with Run Lane custom data run_id and lane_id
+       (not guaranteed: see FINDINGS, CLI-run executions);
      - $STATE/data/runtime/n8n_runs/shadow/crontab_snapshot.txt mtime moved; the live snapshot did NOT move.
   P2 Error Trigger from an automatic failure (02 --error-proof; REFACTOR_PLAN addendum item 9):
      - n8n: one tradeai-fabric-error-probe execution, status error; one tradeai-fabric-error execution, success;

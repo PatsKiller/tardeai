@@ -9,6 +9,7 @@
       "n8n-nodes-base.executeWorkflowTrigger",
       "n8n-nodes-base.httpRequest",
       "n8n-nodes-base.if",
+      "n8n-nodes-base.manualTrigger",
       "n8n-nodes-base.merge",
       "n8n-nodes-base.scheduleTrigger",
       "n8n-nodes-base.set",
@@ -97,7 +98,7 @@
       ]
     }
   },
-  "policy_sha256": "940c8a22fd2b2e53e2fb186749fabab9a1b2d6ea5ad9447f1bd31f76ddbabf6b",
+  "policy_sha256": "c6750b96ada49f816798bf3714ad390616b1b32769fdcbcc54e0635e32caf31f",
   "schema": "N8nFabricManifest@v1",
   "workflows": [
     {
@@ -120,7 +121,7 @@
         "POST /run",
         "GET /run_outcome"
       ],
-      "sha256": "85e043e5bfa021daf63f3f889b6d951c4486fd58090df6cbef8c7294dbded23e"
+      "sha256": "2be69ee35360a2ba8cd396f08ea6ee280eb6973d22ee01ba4e419c56b0a4ca51"
     },
     {
       "active": false,
@@ -138,23 +139,23 @@
       "relay_calls": [
         "POST /intent"
       ],
-      "sha256": "ed24dbffe47d4076dcf34d1b0fb01d2e77f4a01590be820fd67b176e7f4132a0"
+      "sha256": "fc5e728924d1539ffd4b15a3935c888ac81c968e587e4fcc83314bc609fdfdcd"
     },
     {
       "active": false,
       "error_workflow": "tradeai-fabric-error",
       "file": "tradeai-fabric-run-lane-probe.json",
-      "graph_sha256": "5d562f770f09c19bdc42fa5c2177a5ab00ec7546e0f4c4b2dec1d32ee729cbfe",
+      "graph_sha256": "4dc071b31eaaa3788522ffae581a95be66918f3b6a4d24fff68931de484b9510",
       "id": "tradeai-fabric-run-lane-probe",
       "kind": "probe",
       "node_types": [
         "n8n-nodes-base.code",
         "n8n-nodes-base.executeWorkflow",
-        "n8n-nodes-base.scheduleTrigger",
+        "n8n-nodes-base.manualTrigger",
         "n8n-nodes-base.set"
       ],
       "relay_calls": [],
-      "sha256": "a931e6ab397882eec673f25d72de85ef74720364a33cc031fb2fb6d475cde5cc"
+      "sha256": "47b71559f13cc440dee1ad41f08ff5da8c0ea139542f919ec381c522f62d331c"
     },
     {
       "active": false,
@@ -168,7 +169,7 @@
         "n8n-nodes-base.scheduleTrigger"
       ],
       "relay_calls": [],
-      "sha256": "dcaa2d9befcbdd984e539d0da8f6489e72436d0359bcea8dabb797e9bda05882"
+      "sha256": "66859c09459ee5b62ef69e32ef38748f0d162ba18852b6d12260b0e996e50676"
     }
   ]
 }
