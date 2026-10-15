@@ -586,4 +586,7 @@ def test_lane_mode_counts_match_the_pr():
         and set(LANES[lane]["env_names"]) == _REVIEWED_NEW_READS - X.CHILD_ENV_BASE_NAMES
         for lane in added
     )
-    assert modes.count("enforce") == 11 and modes.count("report") == len(LANES) - 11
+    # 2026-10-15 (n8nfab/comms-intent-consumer-20261015): + n8n-comms-intent-consumer, enforced from its first entry
+    # (shadow, live_arg null); its literal closure inventory is checked above. 11 + 1 = 12.
+    assert LANES["n8n-comms-intent-consumer"]["env_allowlist_mode"] == "enforce"
+    assert modes.count("enforce") == 12 and modes.count("report") == len(LANES) - 12

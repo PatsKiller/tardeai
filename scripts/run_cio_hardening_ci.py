@@ -3731,6 +3731,18 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: N8N_COMMS_INTENT_CONSUMER — 2026-10-15 the host consumer of the queued comms/intent rows (operator:
+        # the incident fan-in route). Claim QUEUED -> CLAIMED -> DONE/FAILED (compare-and-set), route-table mapping to a
+        # fan-in incident at the route's tier (DIGEST -> P2) deduped per workflow and kind, the fan-in merge into the
+        # relay's wferr:<workflow> incident, the dead-letter rule (FAILED 3x / refused, QUEUED > 2 h), the per-run cap,
+        # a write-free dry run, a no-sender import ratchet, the staged (NEVER_SCHEDULED, live_arg null) lane and the
+        # health-contract draft. Hermetic: tmp_path ledgers and state roots; the Telegram chokepoints are stubs.
+        "n8n_comms_intent_consumer_20261015",
+        [
+            "tests/test_n8n_comms_intent_consumer_20261015.py",
+        ],
+    ),
+    (
         # ANCHOR: N8N_MATURITY_CRON_TZ — 2026-10-09 n8n-maturity B5.1 (design 02 §3.2 step 1, F11):
         # DST-safe fires_between / is_sub_hourly / last_fire_at_or_before in scripts/lib/cron_schedule.py.
         # Pure and hermetic: explicit instants only, no clock, no I/O.

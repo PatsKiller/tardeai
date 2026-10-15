@@ -1,0 +1,23 @@
+# Dry run against the LIVE coordination ledger, 2026-10-15T01:56:19Z (21:56 ET 10-14).
+# Run by Agent A from the worktree on branch n8nfab/comms-intent-consumer-20261015 (base origin/main 6182aa824,
+# code as committed on this branch). Read-only: sqlite mode=ro; no table created, no row changed, no receipt written.
+# The evidence script was run immediately before and after; both outputs are identical (below once).
+
+$ python3 docs/ops/packets/n8n-comms-intent-consumer-20261015/evidence.py --state-root /home/johnclaw/trade-ai-releases/persistent-state
+ledger: /home/johnclaw/trade-ai-releases/persistent-state/data/governance/n8n_coordination_ledger.sqlite
+table comms_intents: present
+   {"caller_id": "n8n-relay", "count": 1, "dedupe_key": "cd-8da36d276bfbf8b77ae865c38d4c8746", "domain": "fabric", "execution_id": "25953", "first_at": "2026-10-15T01:37:00.354708+00:00", "intent_id": "ci-2a845bc6aa846e66525eb957", "kind": "workflow_error", "last_at": "2026-10-15T01:37:00.354708+00:00", "node": "Fail on purpose", "routes_sha256": "689e0a98bad103ec6c97bca20d1a0279f18a81f8dbe60324ac908897ed37c57a", "runbook_id": "n8n-workflow-error", "state": "QUEUED", "subject": "workflow tradeai-fabric-error-probe failed at Fail on purpose", "summary": "fabric-error-probe: deliberate failure (acceptance proof) [line 3]", "tier": "DIGEST", "workflow_id": "tradeai-fabric-error-probe"}
+table comms_intent_consumption: absent
+table comms_intent_incidents: absent
+receipt: /home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n-comms-intent-consumer_last.json absent
+
+$ python3 scripts/n8n_comms_intent_consumer.py --dry-run --state-root /home/johnclaw/trade-ai-releases/persistent-state
+DRY-RUN {"dry_run": true, "lane_id": "n8n-comms-intent-consumer", "summary": {"backlog": {"by_state": {"QUEUED": 1}, "table": "present"}, "deferred": 0, "ledger": "present", "max_intents": 30, "routes_sha256": "689e0a98bad103ec6c97bca20d1a0279f18a81f8dbe60324ac908897ed37c57a", "schema": "N8nCommsIntentConsumption@v1", "would": [{"action": "incident", "attempt": 1, "domain": "fabric", "execution_id": "25953", "fanin_event_key": "inc-6f5953fac2e159c6db0af5aa", "fanin_item": "wferr:tradeai-fabric-error-probe", "fanin_source": "n8n_workflow_error", "from_state": "QUEUED", "incident": "create_or_reopen", "incident_key": "inc-7b246a5388b496801e92", "intent_id": "ci-2a845bc6aa846e66525eb957", "kind": "workflow_error", "runbook_id": "n8n-workflow-error", "severity": "P2", "tier": "DIGEST", "workflow_id": "tradeai-fabric-error-probe"}], "would_close": [], "would_refresh": []}, "would_write": ["/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n-comms-intent-consumer_last.json"], "would_write_receipt": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n-comms-intent-consumer_last.json"}
+exit=0
+
+# Reading: intent ci-2a845bc6aa846e66525eb957 (fabric/workflow_error, tradeai-fabric-error-probe exec 25953) would be
+# claimed (attempt 1) and become the fan-in incident n8n_workflow_error / wferr:tradeai-fabric-error-probe at P2
+# (route tier DIGEST). incident_key inc-7b246a5388b496801e92 is the incident notifier's day-independent key
+# (incident_key(source, item)); fanin_event_key inc-6f5953fac2e159c6db0af5aa is the fan-in's coordination event key
+# for UTC day 2026-10-15. The ledger has 0 receipts on lane n8n-workflow-error for tradeai-fabric-error-probe
+# (SELECT count(*) ... store_key LIKE '%fabric-error-probe%' = 0), so this is a new incident, not a merge.
