@@ -1352,10 +1352,10 @@
       "advisory_only": true,
       "dedupe_policy": "request_id_only",
       "circuit_breaker": true,
-      "offpeak_tier": "standard",
+      "offpeak_tier": "critical",
       "registered_by": "n8nmat/llm-self-remediation",
       "registered_at": "2026-10-10T05:00:00Z",
-      "notes": "Per-call ceiling $0.05 (routing policy cost_ceiling_usd, enforced by the bridge, §23.10 P21) and re-checked by the caller; $0.10/day and 40 calls/day for this process inside LLM_GLOBAL_DAILY_USD_CAP 2.00. One call per incident, at most 3 per lane per day. A refused or deferred call escalates the incident without a diagnosis and says so. Claude is not a bridge provider today: the operator's 'DeepSeek or Claude' fallback is DeepSeek until a Claude lane is provisioned (§17)."
+      "notes": "Per-call ceiling $0.05 (routing policy cost_ceiling_usd, enforced by the bridge, §23.10 P21) and re-checked by the caller; $0.10/day and 40 calls/day for this process inside LLM_GLOBAL_DAILY_USD_CAP 2.00. One call per incident, at most 3 per lane per day. A refused or deferred call escalates the incident without a diagnosis and says so. offpeak_tier critical (2026-10-15): a diagnosis is about a failure happening now and routes OAuth first (free); at 'standard' every failure outside the scheduled window escalated with no cause (2026-10-12..15: 8,662 deferred records vs 25 diagnoses). The $0.05/call and $0.10/day caps above still bound the paid DeepSeek fallback at peak; an operator row in llm_caller_priority overrides this seed. Claude is not a bridge provider today: the operator's 'DeepSeek or Claude' fallback is DeepSeek until a Claude lane is provisioned (§17)."
     }
   ],
   "default_deepseek_policy": "FAST",
