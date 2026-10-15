@@ -54,6 +54,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from scripts.lib.cio_provider_retry_v1 import ProviderRequestJournal  # noqa: E402
 
 CONFIG_PATH = PROJECT_ROOT / "config" / "cio_provider_journal_retention.json"
+SCHEDULED_ENTRYPOINT = "NONE — unscheduled by design; operator-run rotation (packet). Scheduling is operator-only (AGENTS.md §17)."
 REPORT_SCHEMA = "ProviderJournalRotation@v1"
 WRITER = "cio_provider_journal_rotate"
 
