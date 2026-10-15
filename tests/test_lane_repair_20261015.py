@@ -504,17 +504,19 @@ def test_shadow_rows_are_deferred_until_the_capability_review(lane):
     klass, cron, argv, receipt, wave = SHADOW[lane]
     row = ROWS[lane]
     s = row["scheduler"]
-    assert s["kind"] == "cron" and s["stage"] == "shadow" and s["wave"] == wave and s["expression"] == cron
+    # the n8n ladder fields are parked, not applied: a scheduler.stage shadow row must be allowlisted (stage clamp,
+    # canary lock checks), so stage/wave/dispatch move together into deferred_n8n until the DD01 review.
+    assert s["kind"] == "cron" and "stage" not in s and "wave" not in s and s["expression"] == cron
     assert row["state"] == "ACTIVE" and "generated_by" not in row
-    # dispatch OFF: no dispatch block (a shadow cron row with dispatch.mode off is refused by R1 shape admission);
-    # the reviewed block is parked as deferred_dispatch, so re-enabling = rename it back + restore the allowlist entry
+    parked = row["deferred_n8n"]
+    assert parked["scheduler"] == {"stage": "shadow", "wave": wave}
     assert "dispatch" not in row and LD.dispatch_mode(row) == "off" and LD.validate_dispatch_block(row) == []
-    assert row["deferred_dispatch"] == {"mode": "dry_run", "cron": [cron], "tz": "America/New_York", "wave": "W4",
-                                        "class": klass, "priority": 5, "retry_policy": "none"}
+    assert parked["dispatch"] == {"mode": "dry_run", "cron": [cron], "tz": "America/New_York", "wave": "W4",
+                                  "class": klass, "priority": 5, "retry_policy": "none"}
     assert "DD01 capability audit" in row["dispatch_blocked_reason"]
-    parked = dict(row, dispatch=row["deferred_dispatch"])
-    # the ONLY thing between the parked block and admission is the missing (deferred) allowlist entry
-    assert [i.detail for i in LD.validate_dispatch_block(parked)] == [f"class {klass!r} (R1): not_allowlisted"]
+    activated = dict(row, scheduler={**s, **parked["scheduler"]}, dispatch=parked["dispatch"])
+    # the ONLY thing between the parked wiring and admission is the missing (deferred) allowlist entry
+    assert [i.detail for i in LD.validate_dispatch_block(activated)] == [f"class {klass!r} (R1): not_allowlisted"]
     assert lane not in ALLOW  # the n8n run route cannot start it
     sig = f"data/runtime/{receipt}_last.json"
     assert row["output_signal"] == {"kind": "json_key", "path": sig, "key": "ok_at"}

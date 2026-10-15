@@ -605,9 +605,9 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
     }
     # + 1: lane repair 2026-10-15 takes the shard 05 proposal for build-symbol-profiles-at-0-19 (its SW4 exclusion
     # reason, the shared receipt, is gone; tests/test_lane_repair_20261015.py): 12.
-    # train 2026-10-15 d: build-symbol-profiles-at-0-19 keeps scheduler.wave R2-05 but its dispatch is deferred (DD01
-    # transitive capability audit, operator review; no dispatch block, no allowlist entry), so it is not a shadow row.
-    assert len(refactor) == 12 and refactor - set(CANARY_WAVE_20261014) - DEFERRED_DD01 <= set(shadow), refactor
+    # - 1 (train 2026-10-15 d): build-symbol-profiles-at-0-19's n8n wiring (wave R2-05, stage, dispatch) is parked in
+    # deferred_n8n until the operator reviews its transitive broker reach (DD01 capability audit): 11.
+    assert len(refactor) == 11 and refactor - set(CANARY_WAVE_20261014) <= set(shadow), refactor
     # The reviewed momentum tranche adds two native shadow rows and the existing
     # named scalp exception at shadow; it adds no live dispatch row.
     # - 2: C1 hermes_overnight registry edit (train 6, 2026-10-12) absorbs hermes-tag-lift-discovery (SW4/W4) and
