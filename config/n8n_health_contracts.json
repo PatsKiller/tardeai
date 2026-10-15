@@ -28983,6 +28983,1490 @@
           "notifier_priority": "P2"
         }
       }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "alpaca-live-read-sync",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "f09_staged",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Read-only sync of live Alpaca accounts (positions + cash) into holdings via protected write; Telegram on fail/recovery.",
+        "business_function": "portfolio data",
+        "source": "inventory cron:L795"
+      },
+      "owner": "execution",
+      "connects_to": [
+        {
+          "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md \u00a723.3"
+        },
+        {
+          "name": "$PY scripts/alpaca_live_read_sync.py",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/alpaca_live_read_sync.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "config/n8n_run_allowlist.json lock (safe_flock)"
+        },
+        {
+          "name": "logs/alpaca_live_read_sync.log",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt / allowlist output_signal"
+        },
+        {
+          "name": "Alpaca live API (api_read_enabled accounts); holdings_guard / holdings_write_lock; Postgres; safe_flock",
+          "kind": "inventory_text",
+          "direction": "read",
+          "source": "inventory cron:L795 dependencies (DRAFT: free text)"
+        },
+        {
+          "name": "broker_accounts (alpaca, live, api_read_enabled)",
+          "kind": "inventory_text",
+          "direction": "read",
+          "source": "inventory cron:L795 triggers_inputs (DRAFT: free text)"
+        },
+        {
+          "name": "holdings.json merge; UPDATE broker_accounts; portfolio repricer",
+          "kind": "inventory_text",
+          "direction": "write",
+          "source": "inventory cron:L795 outputs_downstream (DRAFT: free text)"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "shadow_dry_run_done",
+          "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+        },
+        {
+          "check": "dry_run_writes_nothing",
+          "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md \u00a76)"
+        },
+        {
+          "check": "cron_twin_output_fresh",
+          "text": "the live cron line keeps the registry output_signal logs/alpaca_live_read_sync.log fresh within 128.5 h (2x cadence)"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 708.0 s (80% of timeout_s 885)"
+        },
+        {
+          "check": "output_produced",
+          "text": "produced_count >= 1 within every 96 h window (live Alpaca accounts merged into holdings.json); an empty run carries an allowed empty_reason (market_closed, holiday, no_new_input, nothing_due)"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "output_signal older than 128.5 h but younger than 192.75 h (2x-3x cadence)"
+        },
+        {
+          "check": "slow",
+          "text": "duration above 708.0 s"
+        },
+        {
+          "check": "retried",
+          "text": "a run needed attempt > 1 (retry_policy) or ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
+        },
+        {
+          "check": "upstream_stale",
+          "text": "an upstream input is stale: Alpaca live API (api_read_enabled accounts); holdings_guard / holdings_write_lock; Postgres; safe_flock (not machine-checked yet)"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "stale",
+          "text": "output_signal older than 192.75 h (3x cadence)"
+        },
+        {
+          "check": "breaker_or_dlq",
+          "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+        },
+        {
+          "check": "dry_run_wrote",
+          "text": "a dry_run changed its output_signal or any durable state"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run produced nothing outside the expected_output rule (per_window), or skipped for a fatal reason ['no_runner', 'no_credentials', 'dependency_unavailable'] -> RUN_FAILED empty_output, P2"
+        },
+        {
+          "check": "output_unverifiable",
+          "text": "an exit-0 live run left no LaneRunReceipt@v2 attempt receipt bound to its run_id with an integer produced_count -> RUN_FAILED output_unverifiable (enforced only once the entry opts into output_receipt v2; declared only today)"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 128.5,
+        "freshness_failed_after_h": 192.75,
+        "freshness_rule": "degraded beyond 2x cadence (lane_registry.evaluate_lane SLOW), failed beyond 3x (incident fan-in stale threshold)",
+        "timeout_s": 885,
+        "class": "pipeline",
+        "computed_on": "2026-10-15",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "fewer than 14 finished live runs in the coordination ledger (0); class defaults: duration degraded above 80% of timeout_s, freshness 2x/3x cadence, any RUN_FAILED/RUN_TIMEOUT/RUN_REFUSED failed",
+        "runs_considered": 0,
+        "duration_degraded_above_s": 708.0
+      },
+      "alerting": {
+        "lane_severity": "High",
+        "severity_basis": "inventory cron:L795 business_function=portfolio data (catalogue rule)",
+        "failed": {
+          "siem_severity": "URGENT",
+          "notifier_priority": "P1"
+        },
+        "degraded": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+        "enforced": "partial source integration: scripts/n8n_incident_fanin.py _wferr_severity() consumes a workflow contract's failed.notifier_priority to raise the workflow-error priority floor. scripts/lib/n8n_siem_bridge.py severity_for() uses registry severity, else the fan-in priority. Full per-lane baseline, notification and diagnosis enforcement is not established by these declarations; runtime coverage remains NOT_MEASURED (N8N_MONITORING_AND_REMEDIATION_STANDARD.md \u00a77)."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
+      },
+      "evidence": {
+        "receipt": "logs/alpaca_live_read_sync.log",
+        "verify": [
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='alpaca-live-read-sync' ORDER BY requested_at DESC LIMIT 10\"",
+          "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:alpaca-live-read-sync' ORDER BY created_at DESC LIMIT 10",
+          "stat / jq the receipt: logs/alpaca_live_read_sync.log"
+        ],
+        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger",
+        "expected_output_basis": "expected_output declared 2026-10-15 (F09 onboarding batch 1): live Alpaca accounts merged into holdings.json per 96 h window (schedule */15 9-16 * * 1-5). DECLARED ONLY: the activation entry carries no output_receipt v2 opt-in and the lane writes no LaneRunReceipt@v2 produced_count yet, so the executor records declared_not_enforced; a dry run is dry_run_exempt."
+      },
+      "review_by": "2026-10-29",
+      "review": {
+        "status": "REVIEWED",
+        "reviewed_by": "agent n8n_cutover_wave.py 2026-10-15 (machine cross-check of runner, lock and receipt edges against the f09_staged activation allowlist entry and the live cron line; operator REVIEW pass still owed)",
+        "reviewed_on": "2026-10-15",
+        "prepared_by": "build_n8n_health_contracts.py DRAFT"
+      },
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "live Alpaca accounts merged into holdings.json",
+        "rule": "per_window",
+        "min_produced": 1,
+        "window_h": 96,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "no_credentials",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [
+          "market_closed",
+          "holiday",
+          "no_new_input",
+          "nothing_due"
+        ],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/alpaca-live-read-sync_last.json produced_count (LaneRunReceipt@v2 attempt copy data/runtime/lane_attempts/alpaca-live-read-sync/<run_id>.json); NOT YET emitted by this lane"
+          },
+          {
+            "kind": "ledger_row",
+            "ref": "coordination ledger runs row for lane_id alpaca-live-read-sync (state, mode, verdict)"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      },
+      "state_note": "F09 staged 2026-10-15: lane is not on the dispatcher until AGENTS.md 12.0.0 is ratified (registry f09_staged); this contract is ready for that activation."
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "moomoo-live-read-sync",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "f09_staged",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Read-only sync of the live moomoo account (positions + cash) into holdings.json via protected write (RTH every 15 min).",
+        "business_function": "portfolio data",
+        "source": "inventory cron:L810"
+      },
+      "owner": "portfolio",
+      "connects_to": [
+        {
+          "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md \u00a723.3"
+        },
+        {
+          "name": "$PY scripts/moomoo_live_read_sync.py",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/moomoo_live_read.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "config/n8n_run_allowlist.json lock (flock)"
+        },
+        {
+          "name": "data/runtime/sync_receipts/moomoo_taxable_live.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt / allowlist output_signal"
+        },
+        {
+          "name": "moomoo OpenD daemon; holdings_guard; Postgres; flock; timeout 10m",
+          "kind": "inventory_text",
+          "direction": "read",
+          "source": "inventory cron:L810 dependencies (DRAFT: free text)"
+        },
+        {
+          "name": "moomoo live account",
+          "kind": "inventory_text",
+          "direction": "read",
+          "source": "inventory cron:L810 triggers_inputs (DRAFT: free text)"
+        },
+        {
+          "name": "holdings.json; UPDATE broker_accounts; data/runtime/sync_receipts/moomoo_taxable_live.json",
+          "kind": "inventory_text",
+          "direction": "write",
+          "source": "inventory cron:L810 outputs_downstream (DRAFT: free text)"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "shadow_dry_run_done",
+          "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+        },
+        {
+          "check": "dry_run_writes_nothing",
+          "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md \u00a76)"
+        },
+        {
+          "check": "cron_twin_output_fresh",
+          "text": "the live cron line keeps the registry output_signal data/runtime/sync_receipts/moomoo_taxable_live.json fresh within 48 h (2x cadence)"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 480.0 s (80% of timeout_s 600)"
+        },
+        {
+          "check": "output_produced",
+          "text": "produced_count >= 1 within every 96 h window (moomoo accounts merged into holdings.json); an empty run carries an allowed empty_reason (market_closed, holiday, no_new_input, nothing_due)"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "output_signal older than 48 h but younger than 72 h (2x-3x cadence)"
+        },
+        {
+          "check": "slow",
+          "text": "duration above 480.0 s"
+        },
+        {
+          "check": "retried",
+          "text": "a run needed attempt > 1 (retry_policy) or ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
+        },
+        {
+          "check": "upstream_stale",
+          "text": "an upstream input is stale: moomoo OpenD daemon; holdings_guard; Postgres; flock; timeout 10m (not machine-checked yet)"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "stale",
+          "text": "output_signal older than 72 h (3x cadence)"
+        },
+        {
+          "check": "breaker_or_dlq",
+          "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+        },
+        {
+          "check": "dry_run_wrote",
+          "text": "a dry_run changed its output_signal or any durable state"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run produced nothing outside the expected_output rule (per_window), or skipped for a fatal reason ['no_runner', 'no_credentials', 'dependency_unavailable'] -> RUN_FAILED empty_output, P2"
+        },
+        {
+          "check": "output_unverifiable",
+          "text": "an exit-0 live run left no LaneRunReceipt@v2 attempt receipt bound to its run_id with an integer produced_count -> RUN_FAILED output_unverifiable (enforced only once the entry opts into output_receipt v2; declared only today)"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 48,
+        "freshness_failed_after_h": 72,
+        "freshness_rule": "degraded beyond 2x cadence (lane_registry.evaluate_lane SLOW), failed beyond 3x (incident fan-in stale threshold)",
+        "timeout_s": 600,
+        "class": "pipeline",
+        "computed_on": "2026-10-15",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "fewer than 14 finished live runs in the coordination ledger (0); class defaults: duration degraded above 80% of timeout_s, freshness 2x/3x cadence, any RUN_FAILED/RUN_TIMEOUT/RUN_REFUSED failed",
+        "runs_considered": 0,
+        "duration_degraded_above_s": 480.0
+      },
+      "alerting": {
+        "lane_severity": "High",
+        "severity_basis": "inventory cron:L810 business_function=portfolio data (catalogue rule)",
+        "failed": {
+          "siem_severity": "URGENT",
+          "notifier_priority": "P1"
+        },
+        "degraded": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+        "enforced": "partial source integration: scripts/n8n_incident_fanin.py _wferr_severity() consumes a workflow contract's failed.notifier_priority to raise the workflow-error priority floor. scripts/lib/n8n_siem_bridge.py severity_for() uses registry severity, else the fan-in priority. Full per-lane baseline, notification and diagnosis enforcement is not established by these declarations; runtime coverage remains NOT_MEASURED (N8N_MONITORING_AND_REMEDIATION_STANDARD.md \u00a77)."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
+      },
+      "evidence": {
+        "receipt": "data/runtime/sync_receipts/moomoo_taxable_live.json",
+        "verify": [
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='moomoo-live-read-sync' ORDER BY requested_at DESC LIMIT 10\"",
+          "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:moomoo-live-read-sync' ORDER BY created_at DESC LIMIT 10",
+          "stat / jq the receipt: data/runtime/sync_receipts/moomoo_taxable_live.json"
+        ],
+        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger",
+        "expected_output_basis": "expected_output declared 2026-10-15 (F09 onboarding batch 1): moomoo accounts merged into holdings.json per 96 h window (schedule */15 9-16 * * 1-5). DECLARED ONLY: the activation entry carries no output_receipt v2 opt-in and the lane writes no LaneRunReceipt@v2 produced_count yet, so the executor records declared_not_enforced; a dry run is dry_run_exempt."
+      },
+      "review_by": "2026-10-29",
+      "review": {
+        "status": "REVIEWED",
+        "reviewed_by": "agent n8n_cutover_wave.py 2026-10-15 (machine cross-check of runner, lock and receipt edges against the f09_staged activation allowlist entry and the live cron line; operator REVIEW pass still owed)",
+        "reviewed_on": "2026-10-15",
+        "prepared_by": "build_n8n_health_contracts.py DRAFT"
+      },
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "moomoo accounts merged into holdings.json",
+        "rule": "per_window",
+        "min_produced": 1,
+        "window_h": 96,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "no_credentials",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [
+          "market_closed",
+          "holiday",
+          "no_new_input",
+          "nothing_due"
+        ],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/moomoo-live-read-sync_last.json produced_count (LaneRunReceipt@v2 attempt copy data/runtime/lane_attempts/moomoo-live-read-sync/<run_id>.json); NOT YET emitted by this lane"
+          },
+          {
+            "kind": "ledger_row",
+            "ref": "coordination ledger runs row for lane_id moomoo-live-read-sync (state, mode, verdict)"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      },
+      "state_note": "F09 staged 2026-10-15: lane is not on the dispatcher until AGENTS.md 12.0.0 is ratified (registry f09_staged); this contract is ready for that activation."
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "snaptrade-sync",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "f09_staged",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Weekday 09:50: read-only SnapTrade holdings sync (Fidelity) merged into holdings.json via protected_holdings_write",
+        "business_function": "portfolio data",
+        "source": "inventory cron:L479"
+      },
+      "owner": "execution",
+      "connects_to": [
+        {
+          "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md \u00a723.3"
+        },
+        {
+          "name": "$PY scripts/snaptrade_sync.py",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/snaptrade_sync.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "config/n8n_run_allowlist.json lock (flock)"
+        },
+        {
+          "name": "logs/snaptrade_sync.log",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt / allowlist output_signal"
+        },
+        {
+          "name": "SnapTrade API (credentials), config/snaptrade_accounts.json, holdings guard, market_day_gate.sh, flock /tmp/snaptrade_sync.lock",
+          "kind": "inventory_text",
+          "direction": "read",
+          "source": "inventory cron:L479 dependencies (DRAFT: free text)"
+        },
+        {
+          "name": "SnapTrade positions for mapped accounts",
+          "kind": "inventory_text",
+          "direction": "read",
+          "source": "inventory cron:L479 triggers_inputs (DRAFT: free text)"
+        },
+        {
+          "name": "holdings.json (mapped Fidelity accounts)",
+          "kind": "inventory_text",
+          "direction": "write",
+          "source": "inventory cron:L479 outputs_downstream (DRAFT: free text)"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "shadow_dry_run_done",
+          "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+        },
+        {
+          "check": "dry_run_writes_nothing",
+          "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md \u00a76)"
+        },
+        {
+          "check": "cron_twin_output_fresh",
+          "text": "the live cron line keeps the registry output_signal logs/snaptrade_sync.log fresh within 128.5 h (2x cadence)"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 1440.0 s (80% of timeout_s 1800)"
+        },
+        {
+          "check": "output_produced",
+          "text": "produced_count >= 1 within every 96 h window (SnapTrade accounts merged into holdings.json); an empty run carries an allowed empty_reason (market_closed, holiday, no_new_input, nothing_due)"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "output_signal older than 128.5 h but younger than 192.75 h (2x-3x cadence)"
+        },
+        {
+          "check": "slow",
+          "text": "duration above 1440.0 s"
+        },
+        {
+          "check": "retried",
+          "text": "a run needed attempt > 1 (retry_policy) or ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
+        },
+        {
+          "check": "upstream_stale",
+          "text": "an upstream input is stale: SnapTrade API (credentials), config/snaptrade_accounts.json, holdings guard, market_day_gate.sh, flock /tmp/snaptrade_sync.lock (not machine-checked yet)"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "stale",
+          "text": "output_signal older than 192.75 h (3x cadence)"
+        },
+        {
+          "check": "breaker_or_dlq",
+          "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+        },
+        {
+          "check": "dry_run_wrote",
+          "text": "a dry_run changed its output_signal or any durable state"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run produced nothing outside the expected_output rule (per_window), or skipped for a fatal reason ['no_runner', 'no_credentials', 'dependency_unavailable'] -> RUN_FAILED empty_output, P2"
+        },
+        {
+          "check": "output_unverifiable",
+          "text": "an exit-0 live run left no LaneRunReceipt@v2 attempt receipt bound to its run_id with an integer produced_count -> RUN_FAILED output_unverifiable (enforced only once the entry opts into output_receipt v2; declared only today)"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 128.5,
+        "freshness_failed_after_h": 192.75,
+        "freshness_rule": "degraded beyond 2x cadence (lane_registry.evaluate_lane SLOW), failed beyond 3x (incident fan-in stale threshold)",
+        "timeout_s": 1800,
+        "class": "pipeline",
+        "computed_on": "2026-10-15",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "fewer than 14 finished live runs in the coordination ledger (0); class defaults: duration degraded above 80% of timeout_s, freshness 2x/3x cadence, any RUN_FAILED/RUN_TIMEOUT/RUN_REFUSED failed",
+        "runs_considered": 0,
+        "duration_degraded_above_s": 1440.0
+      },
+      "alerting": {
+        "lane_severity": "High",
+        "severity_basis": "inventory cron:L479 business_function=portfolio data (catalogue rule)",
+        "failed": {
+          "siem_severity": "URGENT",
+          "notifier_priority": "P1"
+        },
+        "degraded": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+        "enforced": "partial source integration: scripts/n8n_incident_fanin.py _wferr_severity() consumes a workflow contract's failed.notifier_priority to raise the workflow-error priority floor. scripts/lib/n8n_siem_bridge.py severity_for() uses registry severity, else the fan-in priority. Full per-lane baseline, notification and diagnosis enforcement is not established by these declarations; runtime coverage remains NOT_MEASURED (N8N_MONITORING_AND_REMEDIATION_STANDARD.md \u00a77)."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
+      },
+      "evidence": {
+        "receipt": "logs/snaptrade_sync.log",
+        "verify": [
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='snaptrade-sync' ORDER BY requested_at DESC LIMIT 10\"",
+          "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:snaptrade-sync' ORDER BY created_at DESC LIMIT 10",
+          "stat / jq the receipt: logs/snaptrade_sync.log"
+        ],
+        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger",
+        "expected_output_basis": "expected_output declared 2026-10-15 (F09 onboarding batch 1): SnapTrade accounts merged into holdings.json per 96 h window (schedule 50 9 * * 1-5 | 35 17 * * 1-5). DECLARED ONLY: the activation entry carries no output_receipt v2 opt-in and the lane writes no LaneRunReceipt@v2 produced_count yet, so the executor records declared_not_enforced; a dry run is dry_run_exempt."
+      },
+      "review_by": "2026-10-29",
+      "review": {
+        "status": "REVIEWED",
+        "reviewed_by": "agent n8n_cutover_wave.py 2026-10-15 (machine cross-check of runner, lock and receipt edges against the f09_staged activation allowlist entry and the live cron line; operator REVIEW pass still owed)",
+        "reviewed_on": "2026-10-15",
+        "prepared_by": "build_n8n_health_contracts.py DRAFT"
+      },
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "SnapTrade accounts merged into holdings.json",
+        "rule": "per_window",
+        "min_produced": 1,
+        "window_h": 96,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "no_credentials",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [
+          "market_closed",
+          "holiday",
+          "no_new_input",
+          "nothing_due"
+        ],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/snaptrade-sync_last.json produced_count (LaneRunReceipt@v2 attempt copy data/runtime/lane_attempts/snaptrade-sync/<run_id>.json); NOT YET emitted by this lane"
+          },
+          {
+            "kind": "ledger_row",
+            "ref": "coordination ledger runs row for lane_id snaptrade-sync (state, mode, verdict)"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      },
+      "state_note": "F09 staged 2026-10-15: lane is not on the dispatcher until AGENTS.md 12.0.0 is ratified (registry f09_staged); this contract is ready for that activation."
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "snaptrade-activity-ingest",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "f09_staged",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Mon-Sat 07:20: ingest read-only SnapTrade/Fidelity activity (buys, sells, dividends, cash) into trade_transactions",
+        "business_function": "portfolio data",
+        "source": "inventory cron:L482"
+      },
+      "owner": "execution",
+      "connects_to": [
+        {
+          "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md \u00a723.3"
+        },
+        {
+          "name": "$PY scripts/snaptrade_activity_ingest.py",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/snaptrade_activity_ingest.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "config/n8n_run_allowlist.json lock (flock)"
+        },
+        {
+          "name": "logs/snaptrade_activity_ingest.log",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt / allowlist output_signal"
+        },
+        {
+          "name": "SnapTrade API, config/snaptrade_accounts.json, Postgres, flock",
+          "kind": "inventory_text",
+          "direction": "read",
+          "source": "inventory cron:L482 dependencies (DRAFT: free text)"
+        },
+        {
+          "name": "SnapTrade activities (45 days)",
+          "kind": "inventory_text",
+          "direction": "read",
+          "source": "inventory cron:L482 triggers_inputs (DRAFT: free text)"
+        },
+        {
+          "name": "trade_transactions (Fidelity ledger)",
+          "kind": "inventory_text",
+          "direction": "write",
+          "source": "inventory cron:L482 outputs_downstream (DRAFT: free text)"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "shadow_dry_run_done",
+          "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+        },
+        {
+          "check": "dry_run_writes_nothing",
+          "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md \u00a76)"
+        },
+        {
+          "check": "cron_twin_output_fresh",
+          "text": "the live cron line keeps the registry output_signal logs/snaptrade_activity_ingest.log fresh within 96.0 h (2x cadence)"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 1440.0 s (80% of timeout_s 1800)"
+        },
+        {
+          "check": "output_produced",
+          "text": "produced_count >= 1 within every 96 h window (activity rows ingested into trade_transactions); an empty run carries an allowed empty_reason (market_closed, holiday, no_new_input, nothing_due)"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "output_signal older than 96.0 h but younger than 144.0 h (2x-3x cadence)"
+        },
+        {
+          "check": "slow",
+          "text": "duration above 1440.0 s"
+        },
+        {
+          "check": "retried",
+          "text": "a run needed attempt > 1 (retry_policy) or ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
+        },
+        {
+          "check": "upstream_stale",
+          "text": "an upstream input is stale: SnapTrade API, config/snaptrade_accounts.json, Postgres, flock (not machine-checked yet)"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "stale",
+          "text": "output_signal older than 144.0 h (3x cadence)"
+        },
+        {
+          "check": "breaker_or_dlq",
+          "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+        },
+        {
+          "check": "dry_run_wrote",
+          "text": "a dry_run changed its output_signal or any durable state"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run produced nothing outside the expected_output rule (per_window), or skipped for a fatal reason ['no_runner', 'no_credentials', 'dependency_unavailable'] -> RUN_FAILED empty_output, P2"
+        },
+        {
+          "check": "output_unverifiable",
+          "text": "an exit-0 live run left no LaneRunReceipt@v2 attempt receipt bound to its run_id with an integer produced_count -> RUN_FAILED output_unverifiable (enforced only once the entry opts into output_receipt v2; declared only today)"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 96.0,
+        "freshness_failed_after_h": 144.0,
+        "freshness_rule": "degraded beyond 2x cadence (lane_registry.evaluate_lane SLOW), failed beyond 3x (incident fan-in stale threshold)",
+        "timeout_s": 1800,
+        "class": "pipeline",
+        "computed_on": "2026-10-15",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "fewer than 14 finished live runs in the coordination ledger (0); class defaults: duration degraded above 80% of timeout_s, freshness 2x/3x cadence, any RUN_FAILED/RUN_TIMEOUT/RUN_REFUSED failed",
+        "runs_considered": 0,
+        "duration_degraded_above_s": 1440.0
+      },
+      "alerting": {
+        "lane_severity": "High",
+        "severity_basis": "inventory cron:L482 business_function=portfolio data (catalogue rule)",
+        "failed": {
+          "siem_severity": "URGENT",
+          "notifier_priority": "P1"
+        },
+        "degraded": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+        "enforced": "partial source integration: scripts/n8n_incident_fanin.py _wferr_severity() consumes a workflow contract's failed.notifier_priority to raise the workflow-error priority floor. scripts/lib/n8n_siem_bridge.py severity_for() uses registry severity, else the fan-in priority. Full per-lane baseline, notification and diagnosis enforcement is not established by these declarations; runtime coverage remains NOT_MEASURED (N8N_MONITORING_AND_REMEDIATION_STANDARD.md \u00a77)."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
+      },
+      "evidence": {
+        "receipt": "logs/snaptrade_activity_ingest.log",
+        "verify": [
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='snaptrade-activity-ingest' ORDER BY requested_at DESC LIMIT 10\"",
+          "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:snaptrade-activity-ingest' ORDER BY created_at DESC LIMIT 10",
+          "stat / jq the receipt: logs/snaptrade_activity_ingest.log"
+        ],
+        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger",
+        "expected_output_basis": "expected_output declared 2026-10-15 (F09 onboarding batch 1): activity rows ingested into trade_transactions per 96 h window (schedule 20 7 * * 1-6). DECLARED ONLY: the activation entry carries no output_receipt v2 opt-in and the lane writes no LaneRunReceipt@v2 produced_count yet, so the executor records declared_not_enforced; a dry run is dry_run_exempt."
+      },
+      "review_by": "2026-10-29",
+      "review": {
+        "status": "REVIEWED",
+        "reviewed_by": "agent n8n_cutover_wave.py 2026-10-15 (machine cross-check of runner, lock and receipt edges against the f09_staged activation allowlist entry and the live cron line; operator REVIEW pass still owed)",
+        "reviewed_on": "2026-10-15",
+        "prepared_by": "build_n8n_health_contracts.py DRAFT"
+      },
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "activity rows ingested into trade_transactions",
+        "rule": "per_window",
+        "min_produced": 1,
+        "window_h": 96,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "no_credentials",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [
+          "market_closed",
+          "holiday",
+          "no_new_input",
+          "nothing_due"
+        ],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/snaptrade-activity-ingest_last.json produced_count (LaneRunReceipt@v2 attempt copy data/runtime/lane_attempts/snaptrade-activity-ingest/<run_id>.json); NOT YET emitted by this lane"
+          },
+          {
+            "kind": "ledger_row",
+            "ref": "coordination ledger runs row for lane_id snaptrade-activity-ingest (state, mode, verdict)"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      },
+      "state_note": "F09 staged 2026-10-15: lane is not on the dispatcher until AGENTS.md 12.0.0 is ratified (registry f09_staged); this contract is ready for that activation."
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "positions-sync",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "f09_staged",
+      "stage": "shadow",
+      "purpose": {
+        "text": "positions_sync phase 1: the only writer of the positions store \u2014 read every live account through its broker read-only path and rebuild snapshots/lots/positions_current.",
+        "business_function": "portfolio data",
+        "source": "inventory cron:L1019"
+      },
+      "owner": "portfolio",
+      "connects_to": [
+        {
+          "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md \u00a723.3"
+        },
+        {
+          "name": "$PY scripts/positions_sync.py",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/positions_sync.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "config/n8n_run_allowlist.json lock (flock)"
+        },
+        {
+          "name": "logs/positions_sync.log",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt / allowlist output_signal"
+        },
+        {
+          "name": "Schwab trader API (schwab_transport), Alpaca live and moomoo read clients, Postgres positions_* tables, ./.env",
+          "kind": "inventory_text",
+          "direction": "read",
+          "source": "inventory cron:L1019 dependencies (DRAFT: free text)"
+        },
+        {
+          "name": "broker account reads + transaction ledger",
+          "kind": "inventory_text",
+          "direction": "read",
+          "source": "inventory cron:L1019 triggers_inputs (DRAFT: free text)"
+        },
+        {
+          "name": "positions_sync_runs, position_snapshots, position_lots, realized_lots, positions_current (phase-3 readers pending); proof L1022",
+          "kind": "inventory_text",
+          "direction": "write",
+          "source": "inventory cron:L1019 outputs_downstream (DRAFT: free text)"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "shadow_dry_run_done",
+          "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+        },
+        {
+          "check": "dry_run_writes_nothing",
+          "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md \u00a76)"
+        },
+        {
+          "check": "cron_twin_output_fresh",
+          "text": "the live cron line keeps the registry output_signal logs/positions_sync.log fresh within 0.5 h (2x cadence)"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 192.0 s (80% of timeout_s 240)"
+        },
+        {
+          "check": "output_produced",
+          "text": "produced_count >= 1 within every 96 h window (positions snapshots written to the positions store); an empty run carries an allowed empty_reason (market_closed, holiday, no_new_input, nothing_due)"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "output_signal older than 0.5 h but younger than 0.75 h (2x-3x cadence)"
+        },
+        {
+          "check": "slow",
+          "text": "duration above 192.0 s"
+        },
+        {
+          "check": "retried",
+          "text": "a run needed attempt > 1 (retry_policy) or ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
+        },
+        {
+          "check": "upstream_stale",
+          "text": "an upstream input is stale: Schwab trader API (schwab_transport), Alpaca live and moomoo read clients, Postgres positions_* tables, ./.env (not machine-checked yet)"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "stale",
+          "text": "output_signal older than 0.75 h (3x cadence)"
+        },
+        {
+          "check": "breaker_or_dlq",
+          "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+        },
+        {
+          "check": "dry_run_wrote",
+          "text": "a dry_run changed its output_signal or any durable state"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run produced nothing outside the expected_output rule (per_window), or skipped for a fatal reason ['no_runner', 'no_credentials', 'dependency_unavailable'] -> RUN_FAILED empty_output, P2"
+        },
+        {
+          "check": "output_unverifiable",
+          "text": "an exit-0 live run left no LaneRunReceipt@v2 attempt receipt bound to its run_id with an integer produced_count -> RUN_FAILED output_unverifiable (enforced only once the entry opts into output_receipt v2; declared only today)"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 0.5,
+        "freshness_failed_after_h": 0.75,
+        "freshness_rule": "degraded beyond 2x cadence (lane_registry.evaluate_lane SLOW), failed beyond 3x (incident fan-in stale threshold)",
+        "timeout_s": 240,
+        "class": "pipeline",
+        "computed_on": "2026-10-15",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "fewer than 14 finished live runs in the coordination ledger (0); class defaults: duration degraded above 80% of timeout_s, freshness 2x/3x cadence, any RUN_FAILED/RUN_TIMEOUT/RUN_REFUSED failed",
+        "runs_considered": 0,
+        "duration_degraded_above_s": 192.0
+      },
+      "alerting": {
+        "lane_severity": "High",
+        "severity_basis": "inventory cron:L1019 business_function=portfolio data (catalogue rule)",
+        "failed": {
+          "siem_severity": "URGENT",
+          "notifier_priority": "P1"
+        },
+        "degraded": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+        "enforced": "partial source integration: scripts/n8n_incident_fanin.py _wferr_severity() consumes a workflow contract's failed.notifier_priority to raise the workflow-error priority floor. scripts/lib/n8n_siem_bridge.py severity_for() uses registry severity, else the fan-in priority. Full per-lane baseline, notification and diagnosis enforcement is not established by these declarations; runtime coverage remains NOT_MEASURED (N8N_MONITORING_AND_REMEDIATION_STANDARD.md \u00a77)."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
+      },
+      "evidence": {
+        "receipt": "logs/positions_sync.log",
+        "verify": [
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='positions-sync' ORDER BY requested_at DESC LIMIT 10\"",
+          "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:positions-sync' ORDER BY created_at DESC LIMIT 10",
+          "stat / jq the receipt: logs/positions_sync.log"
+        ],
+        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger",
+        "expected_output_basis": "expected_output declared 2026-10-15 (F09 onboarding batch 1): positions snapshots written to the positions store per 96 h window (schedule 9,24,39,54 9-16 * * 1-5). DECLARED ONLY: the activation entry carries no output_receipt v2 opt-in and the lane writes no LaneRunReceipt@v2 produced_count yet, so the executor records declared_not_enforced; a dry run is dry_run_exempt."
+      },
+      "review_by": "2026-10-29",
+      "review": {
+        "status": "REVIEWED",
+        "reviewed_by": "agent n8n_cutover_wave.py 2026-10-15 (machine cross-check of runner, lock and receipt edges against the f09_staged activation allowlist entry and the live cron line; operator REVIEW pass still owed)",
+        "reviewed_on": "2026-10-15",
+        "prepared_by": "build_n8n_health_contracts.py DRAFT"
+      },
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "positions snapshots written to the positions store",
+        "rule": "per_window",
+        "min_produced": 1,
+        "window_h": 96,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "no_credentials",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [
+          "market_closed",
+          "holiday",
+          "no_new_input",
+          "nothing_due"
+        ],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/positions-sync_last.json produced_count (LaneRunReceipt@v2 attempt copy data/runtime/lane_attempts/positions-sync/<run_id>.json); NOT YET emitted by this lane"
+          },
+          {
+            "kind": "ledger_row",
+            "ref": "coordination ledger runs row for lane_id positions-sync (state, mode, verdict)"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      },
+      "state_note": "F09 staged 2026-10-15: lane is not on the dispatcher until AGENTS.md 12.0.0 is ratified (registry f09_staged); this contract is ready for that activation."
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "alpaca-paper-adapter",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "f09_staged",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Hourly 10:00\u201316:00 weekday Alpaca paper position sync (--sync-only) into paper_trades.",
+        "business_function": "trading-adjacent",
+        "source": "inventory cron:L136"
+      },
+      "owner": "execution",
+      "connects_to": [
+        {
+          "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md \u00a723.3"
+        },
+        {
+          "name": "$PY scripts/alpaca_paper_adapter.py",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/alpaca_recon.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "config/n8n_run_allowlist.json lock (safe_flock)"
+        },
+        {
+          "name": "logs/alpaca_paper_adapter.log",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt / allowlist output_signal"
+        },
+        {
+          "name": "$PY = dev-tree venv interpreter (crontab L4) running served CURRENT code; Postgres trade_ai; Alpaca paper API; safe_flock /tmp/alpaca_recon.lock",
+          "kind": "inventory_text",
+          "direction": "read",
+          "source": "inventory cron:L136 dependencies (DRAFT: free text)"
+        },
+        {
+          "name": "Alpaca paper positions",
+          "kind": "inventory_text",
+          "direction": "read",
+          "source": "inventory cron:L136 triggers_inputs (DRAFT: free text)"
+        },
+        {
+          "name": "paper_trades sync (alpaca_paper_adapter.log 'Synced 6 positions')",
+          "kind": "inventory_text",
+          "direction": "write",
+          "source": "inventory cron:L136 outputs_downstream (DRAFT: free text)"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "shadow_dry_run_done",
+          "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+        },
+        {
+          "check": "dry_run_writes_nothing",
+          "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md \u00a76)"
+        },
+        {
+          "check": "cron_twin_output_fresh",
+          "text": "the live cron line keeps the registry output_signal logs/alpaca_paper_adapter.log fresh within 132.0 h (2x cadence)"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 1440.0 s (80% of timeout_s 1800)"
+        },
+        {
+          "check": "output_produced",
+          "text": "produced_count >= 1 within every 96 h window (paper positions reconciled from Alpaca paper); an empty run carries an allowed empty_reason (market_closed, holiday, no_new_input, nothing_due)"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "output_signal older than 132.0 h but younger than 198.0 h (2x-3x cadence)"
+        },
+        {
+          "check": "slow",
+          "text": "duration above 1440.0 s"
+        },
+        {
+          "check": "retried",
+          "text": "a run needed attempt > 1 (retry_policy) or ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
+        },
+        {
+          "check": "upstream_stale",
+          "text": "an upstream input is stale: $PY = dev-tree venv interpreter (crontab L4) running served CURRENT code; Postgres trade_ai; Alpaca paper API; safe_flock /tmp/alpaca_recon.lock (not machine-checked yet)"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "stale",
+          "text": "output_signal older than 198.0 h (3x cadence)"
+        },
+        {
+          "check": "breaker_or_dlq",
+          "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+        },
+        {
+          "check": "dry_run_wrote",
+          "text": "a dry_run changed its output_signal or any durable state"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run produced nothing outside the expected_output rule (per_window), or skipped for a fatal reason ['no_runner', 'no_credentials', 'dependency_unavailable'] -> RUN_FAILED empty_output, P2"
+        },
+        {
+          "check": "output_unverifiable",
+          "text": "an exit-0 live run left no LaneRunReceipt@v2 attempt receipt bound to its run_id with an integer produced_count -> RUN_FAILED output_unverifiable (enforced only once the entry opts into output_receipt v2; declared only today)"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 132.0,
+        "freshness_failed_after_h": 198.0,
+        "freshness_rule": "degraded beyond 2x cadence (lane_registry.evaluate_lane SLOW), failed beyond 3x (incident fan-in stale threshold)",
+        "timeout_s": 1800,
+        "class": "pipeline",
+        "computed_on": "2026-10-15",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "fewer than 14 finished live runs in the coordination ledger (0); class defaults: duration degraded above 80% of timeout_s, freshness 2x/3x cadence, any RUN_FAILED/RUN_TIMEOUT/RUN_REFUSED failed",
+        "runs_considered": 0,
+        "duration_degraded_above_s": 1440.0
+      },
+      "alerting": {
+        "lane_severity": "Critical",
+        "severity_basis": "inventory cron:L136 business_function=trading-adjacent (catalogue rule)",
+        "failed": {
+          "siem_severity": "CRITICAL",
+          "notifier_priority": "P1"
+        },
+        "degraded": {
+          "siem_severity": "URGENT",
+          "notifier_priority": "P2"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+        "enforced": "partial source integration: scripts/n8n_incident_fanin.py _wferr_severity() consumes a workflow contract's failed.notifier_priority to raise the workflow-error priority floor. scripts/lib/n8n_siem_bridge.py severity_for() uses registry severity, else the fan-in priority. Full per-lane baseline, notification and diagnosis enforcement is not established by these declarations; runtime coverage remains NOT_MEASURED (N8N_MONITORING_AND_REMEDIATION_STANDARD.md \u00a77)."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
+      },
+      "evidence": {
+        "receipt": "logs/alpaca_paper_adapter.log",
+        "verify": [
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='alpaca-paper-adapter' ORDER BY requested_at DESC LIMIT 10\"",
+          "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:alpaca-paper-adapter' ORDER BY created_at DESC LIMIT 10",
+          "stat / jq the receipt: logs/alpaca_paper_adapter.log"
+        ],
+        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger",
+        "expected_output_basis": "expected_output declared 2026-10-15 (F09 onboarding batch 1): paper positions reconciled from Alpaca paper per 96 h window (schedule 0 10-16 * * 1-5). DECLARED ONLY: the activation entry carries no output_receipt v2 opt-in and the lane writes no LaneRunReceipt@v2 produced_count yet, so the executor records declared_not_enforced; a dry run is dry_run_exempt."
+      },
+      "review_by": "2026-10-29",
+      "review": {
+        "status": "REVIEWED",
+        "reviewed_by": "agent n8n_cutover_wave.py 2026-10-15 (machine cross-check of runner, lock and receipt edges against the f09_staged activation allowlist entry and the live cron line; operator REVIEW pass still owed)",
+        "reviewed_on": "2026-10-15",
+        "prepared_by": "build_n8n_health_contracts.py DRAFT"
+      },
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "paper positions reconciled from Alpaca paper",
+        "rule": "per_window",
+        "min_produced": 1,
+        "window_h": 96,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "no_credentials",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [
+          "market_closed",
+          "holiday",
+          "no_new_input",
+          "nothing_due"
+        ],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/alpaca-paper-adapter_last.json produced_count (LaneRunReceipt@v2 attempt copy data/runtime/lane_attempts/alpaca-paper-adapter/<run_id>.json); NOT YET emitted by this lane"
+          },
+          {
+            "kind": "ledger_row",
+            "ref": "coordination ledger runs row for lane_id alpaca-paper-adapter (state, mode, verdict)"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      },
+      "state_note": "F09 staged 2026-10-15: lane is not on the dispatcher until AGENTS.md 12.0.0 is ratified (registry f09_staged); this contract is ready for that activation."
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "portfolio-broker-reconciliation",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "f09_staged",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Nightly read-only reconciliation of Command Center vs broker truth for open and closed positions (source-of-truth check).",
+        "business_function": "portfolio data",
+        "source": "inventory cron:L1017"
+      },
+      "owner": "portfolio",
+      "connects_to": [
+        {
+          "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md \u00a723.3"
+        },
+        {
+          "name": "$PY scripts/portfolio_reconcile.py",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/portfolio_reconcile.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "config/n8n_run_allowlist.json lock (flock)"
+        },
+        {
+          "name": "data/runtime/portfolio_reconcile_latest.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt / allowlist output_signal"
+        },
+        {
+          "name": "Postgres schwab_positions_live, trade_transactions (schwab_api), market_quotes; local Command Center API",
+          "kind": "inventory_text",
+          "direction": "read",
+          "source": "inventory cron:L1017 dependencies (DRAFT: free text)"
+        },
+        {
+          "name": "broker position/transaction ledgers, CC holdings + closed trades",
+          "kind": "inventory_text",
+          "direction": "read",
+          "source": "inventory cron:L1017 triggers_inputs (DRAFT: free text)"
+        },
+        {
+          "name": "data/runtime/portfolio_reconcile_latest.json (+ md)",
+          "kind": "inventory_text",
+          "direction": "write",
+          "source": "inventory cron:L1017 outputs_downstream (DRAFT: free text)"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "shadow_dry_run_done",
+          "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+        },
+        {
+          "check": "dry_run_writes_nothing",
+          "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md \u00a76)"
+        },
+        {
+          "check": "cron_twin_output_fresh",
+          "text": "the live cron line keeps the registry output_signal data/runtime/portfolio_reconcile_latest.json fresh within 48 h (2x cadence)"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 240.0 s (80% of timeout_s 300)"
+        },
+        {
+          "check": "output_produced",
+          "text": "produced_count >= 1 within every 96 h window (reconciliation report written); an empty run carries an allowed empty_reason (market_closed, holiday, no_new_input, nothing_due)"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "output_signal older than 48 h but younger than 72 h (2x-3x cadence)"
+        },
+        {
+          "check": "slow",
+          "text": "duration above 240.0 s"
+        },
+        {
+          "check": "retried",
+          "text": "a run needed attempt > 1 (retry_policy) or ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
+        },
+        {
+          "check": "upstream_stale",
+          "text": "an upstream input is stale: Postgres schwab_positions_live, trade_transactions (schwab_api), market_quotes; local Command Center API (not machine-checked yet)"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "stale",
+          "text": "output_signal older than 72 h (3x cadence)"
+        },
+        {
+          "check": "breaker_or_dlq",
+          "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+        },
+        {
+          "check": "dry_run_wrote",
+          "text": "a dry_run changed its output_signal or any durable state"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run produced nothing outside the expected_output rule (per_window), or skipped for a fatal reason ['no_runner', 'no_credentials', 'dependency_unavailable'] -> RUN_FAILED empty_output, P2"
+        },
+        {
+          "check": "output_unverifiable",
+          "text": "an exit-0 live run left no LaneRunReceipt@v2 attempt receipt bound to its run_id with an integer produced_count -> RUN_FAILED output_unverifiable (enforced only once the entry opts into output_receipt v2; declared only today)"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 48,
+        "freshness_failed_after_h": 72,
+        "freshness_rule": "degraded beyond 2x cadence (lane_registry.evaluate_lane SLOW), failed beyond 3x (incident fan-in stale threshold)",
+        "timeout_s": 300,
+        "class": "pipeline",
+        "computed_on": "2026-10-15",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "fewer than 14 finished live runs in the coordination ledger (0); class defaults: duration degraded above 80% of timeout_s, freshness 2x/3x cadence, any RUN_FAILED/RUN_TIMEOUT/RUN_REFUSED failed",
+        "runs_considered": 0,
+        "duration_degraded_above_s": 240.0
+      },
+      "alerting": {
+        "lane_severity": "High",
+        "severity_basis": "inventory cron:L1017 business_function=portfolio data (catalogue rule)",
+        "failed": {
+          "siem_severity": "URGENT",
+          "notifier_priority": "P1"
+        },
+        "degraded": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+        "enforced": "partial source integration: scripts/n8n_incident_fanin.py _wferr_severity() consumes a workflow contract's failed.notifier_priority to raise the workflow-error priority floor. scripts/lib/n8n_siem_bridge.py severity_for() uses registry severity, else the fan-in priority. Full per-lane baseline, notification and diagnosis enforcement is not established by these declarations; runtime coverage remains NOT_MEASURED (N8N_MONITORING_AND_REMEDIATION_STANDARD.md \u00a77)."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
+      },
+      "evidence": {
+        "receipt": "data/runtime/portfolio_reconcile_latest.json",
+        "verify": [
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='portfolio-broker-reconciliation' ORDER BY requested_at DESC LIMIT 10\"",
+          "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:portfolio-broker-reconciliation' ORDER BY created_at DESC LIMIT 10",
+          "stat / jq the receipt: data/runtime/portfolio_reconcile_latest.json"
+        ],
+        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger",
+        "expected_output_basis": "expected_output declared 2026-10-15 (F09 onboarding batch 1): reconciliation report written per 96 h window (schedule 30 20 * * 1-5). DECLARED ONLY: the activation entry carries no output_receipt v2 opt-in and the lane writes no LaneRunReceipt@v2 produced_count yet, so the executor records declared_not_enforced; a dry run is dry_run_exempt."
+      },
+      "review_by": "2026-10-29",
+      "review": {
+        "status": "REVIEWED",
+        "reviewed_by": "agent n8n_cutover_wave.py 2026-10-15 (machine cross-check of runner, lock and receipt edges against the f09_staged activation allowlist entry and the live cron line; operator REVIEW pass still owed)",
+        "reviewed_on": "2026-10-15",
+        "prepared_by": "build_n8n_health_contracts.py DRAFT"
+      },
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "reconciliation report written",
+        "rule": "per_window",
+        "min_produced": 1,
+        "window_h": 96,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "no_credentials",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [
+          "market_closed",
+          "holiday",
+          "no_new_input",
+          "nothing_due"
+        ],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/portfolio-broker-reconciliation_last.json produced_count (LaneRunReceipt@v2 attempt copy data/runtime/lane_attempts/portfolio-broker-reconciliation/<run_id>.json); NOT YET emitted by this lane"
+          },
+          {
+            "kind": "ledger_row",
+            "ref": "coordination ledger runs row for lane_id portfolio-broker-reconciliation (state, mode, verdict)"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      },
+      "state_note": "F09 staged 2026-10-15: lane is not on the dispatcher until AGENTS.md 12.0.0 is ratified (registry f09_staged); this contract is ready for that activation."
     }
   ]
 }

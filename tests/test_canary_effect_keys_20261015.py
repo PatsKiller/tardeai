@@ -161,6 +161,9 @@ def test_overwrite_only_lanes_are_not_keyed():
 def test_no_key_outside_scope_except_reviewed_process_steps():
     # The hermes-learning process step lanes (PRs #1746 and #1749) may also be present; anything else is a new review.
     extra = set(_raw()["lanes"]) - set(STAGED) - set(CW.ARMED)
+    # F09 onboarding 2026-10-15 (tests/support/f09_onboarding.py): a lane whose registry row carries the reviewed
+    # f09_staged record has a staged key (no side claims); tests/test_onboard_f09_b*_20261015.py pins each one.
+    extra -= {lane for lane, row in _registry().items() if isinstance(row.get("f09_staged"), dict)}
     assert extra <= {
         "hermes-learning-outcome-grader",
         "hermes-learning-outcome-learning",
