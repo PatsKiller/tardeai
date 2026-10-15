@@ -1244,7 +1244,12 @@ GATES = [
     # escalation without a verdict says why and whether it retries; a later handled cycle clears the stale one.
     (
         "n8n_diagnosis_not_deferred_20261015",
-        ["tests/test_n8n_diagnosis_not_deferred_20261015.py"],
+        [
+            "tests/test_n8n_diagnosis_not_deferred_20261015.py",
+            # n8n diagnosis end to end through the real bridge route walk: DeepSeek serves when it is the selected
+            # lane (OAuth lanes failing, or no OAuth transport enabled on the host). Fake providers; no network.
+            "tests/test_n8n_diagnosis_deepseek_route_20261015.py",
+        ],
     ),
     # Paper/broker-adjacent child steps use the same resolver; telegram run_promoter no longer shadows os (F823).
     # Code-only, under execution-engineering grant dc66eb4b6db5107e (operator 2026-10-09).
