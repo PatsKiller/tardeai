@@ -5010,6 +5010,43 @@ GATES = [
         "n8n_cutover_wave_20261015",
         ["tests/test_n8n_cutover_wave_20261015.py"],
     ),
+    (
+        # ANCHOR: ONBOARD_F09_B1_20261015 — F09 n8n onboarding batch 1 (operator N8N Cutover Decision 2026-10-15;
+        # grant execution-engineering): broker read / sync lanes get an OFFLINE --dry-run that makes no broker call (not
+        # even a read; dry_run_requires_broker_read), a staged registry row (dispatch off, f09_staged activation entry;
+        # §23.14 ACTIVE until AGENTS 12.0.0 is ratified), a staged effect key and a REVIEWED contract. Hermetic proof:
+        # write/network/subprocess primitives and broker/DB/sender modules are raising recorders. Schedules nothing.
+        "onboard_f09_b1_20261015",
+        ["tests/test_onboard_f09_b1_20261015.py"],
+    ),
+    (
+        # ANCHOR: ONBOARD_F09_B2_20261015 — F09 n8n onboarding batch 2 (stop / protection lanes); same shape and proof as B1
+        # (tests/support/f09_onboarding.py): OFFLINE broker-call-free --dry-run, staged registry row (dispatch off,
+        # f09_staged; §23.14 ACTIVE until AGENTS 12.0.0 is ratified), staged effect key, REVIEWED contract. Schedules nothing.
+        "onboard_f09_b2_20261015",
+        ["tests/test_onboard_f09_b2_20261015.py"],
+    ),
+    (
+        # ANCHOR: ONBOARD_F09_B3_20261015 — F09 n8n onboarding batch 3 (advisory / protection-learning lanes); same shape and proof as B1
+        # (tests/support/f09_onboarding.py): OFFLINE broker-call-free --dry-run, staged registry row (dispatch off,
+        # f09_staged; §23.14 ACTIVE until AGENTS 12.0.0 is ratified), staged effect key, REVIEWED contract. Schedules nothing.
+        "onboard_f09_b3_20261015",
+        ["tests/test_onboard_f09_b3_20261015.py"],
+    ),
+    (
+        # ANCHOR: ONBOARD_F09_B4_20261015 — F09 n8n onboarding batch 4 (paper / order-path lanes); same shape and proof as B1
+        # (tests/support/f09_onboarding.py): OFFLINE broker-call-free --dry-run, staged registry row (dispatch off,
+        # f09_staged; §23.14 ACTIVE until AGENTS 12.0.0 is ratified), staged effect key, REVIEWED contract. Schedules nothing.
+        "onboard_f09_b4_20261015",
+        ["tests/test_onboard_f09_b4_20261015.py"],
+    ),
+    (
+        # ANCHOR: ONBOARD_F09_B5_20261015 — F09 n8n onboarding batch 5 (options / market-data / ingest lanes); same shape and proof as B1
+        # (tests/support/f09_onboarding.py): OFFLINE broker-call-free --dry-run, staged registry row (dispatch off,
+        # f09_staged; §23.14 ACTIVE until AGENTS 12.0.0 is ratified), staged effect key, REVIEWED contract. Schedules nothing.
+        "onboard_f09_b5_20261015",
+        ["tests/test_onboard_f09_b5_20261015.py"],
+    ),
 ]
 
 
