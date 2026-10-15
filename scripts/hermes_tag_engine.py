@@ -15,8 +15,14 @@
 The 3-axis taxonomy cron is retired with this change (zero readers repo-wide — write-only cost).
 Zero paid LLM. Advisory-only; honors data/runtime/HERMES_DISABLED.
 
-  python3 scripts/hermes_tag_engine.py            # dry-run
+  python3 scripts/hermes_tag_engine.py            # preview: writes nothing, but the LLM refine leg still runs
+  python3 scripts/hermes_tag_engine.py --dry-run  # LLM-free dry run (n8n fabric shadow lane): no model call,
+                                                  # read-only DB session, no DDL; wins over --apply
   python3 scripts/hermes_tag_engine.py --apply    # nightly cron
+
+--dry-run (2026-10-15, n8n fabric process hermes-learning step tag_engine): the rows the live run would send to
+the governed cloud classifier are counted (``retag.llm_would_call``) and keep their rule/fallback tag in the
+preview; ``generate_cloud`` is never imported or called. The --apply path and the bare preview are unchanged.
 """
 from __future__ import annotations
 
@@ -91,15 +97,28 @@ def _llm_tags(text, vocab, timeout, max_tags):
         return []
 
 
-def retag(cfg, apply):
+def _readonly(conn):
+    """A dry run's DB session is READ ONLY at the server (AGENTS.md §6): any write is refused by PostgreSQL."""
+    from lib.lane_last_receipt import enforce_readonly
+    return enforce_readonly(conn)
+
+
+def retag(cfg, apply, *, dry_run=False):
     """Two-connection design: the LLM refine batch can queue on the shared GPU for many minutes,
     which kills an idle DB connection — so fetch first, classify with NO connection held, then
-    write on a fresh connection. LLM work is additionally wall-clock capped."""
+    write on a fresh connection. LLM work is additionally wall-clock capped.
+
+    ``dry_run``: never calls the model. A row that would have gone to ``_llm_tags`` is counted in
+    ``llm_would_call`` (same budget and eligibility as the live run) and previews as fallback."""
     import time
     r = cfg["retag"]
     fb, mx = cfg["fallback_tag"], int(cfg["max_tags"])
+    apply = apply and not dry_run
 
-    conn = _conn(); cur = conn.cursor()
+    conn = _conn()
+    if dry_run:
+        _readonly(conn)
+    cur = conn.cursor()
     vocab = _vocab(cur)
     cues = _cues(cfg, vocab)
     # eligible: fallback-only or empty tags; newest first (fresh research matters most)
@@ -112,14 +131,17 @@ def retag(cfg, apply):
     rows = cur.fetchall()
     conn.close()
 
-    ruled = llmed = fell_back = 0
+    ruled = llmed = fell_back = would_call = 0
     llm_budget = int(r["llm_batch"])
     llm_deadline = time.monotonic() + int(r.get("llm_wall_clock_s", 240))
     results = []
     for rid, sym, txt in rows:
         tags = _rule_tags(txt, cues, mx)
         how = "rule"
-        if not tags and sym and llm_budget > 0 and time.monotonic() < llm_deadline:
+        if not tags and sym and llm_budget > 0 and dry_run:
+            would_call += 1  # dry run: the model is never called (no spend, no wall clock)
+            llm_budget -= 1
+        elif not tags and sym and llm_budget > 0 and time.monotonic() < llm_deadline:
             tags = _llm_tags(txt, vocab, int(r["llm_timeout_s"]), mx)
             llm_budget -= 1
             how = "llm" if tags else how
@@ -133,7 +155,10 @@ def retag(cfg, apply):
         else:
             fell_back += 1
 
-    conn = _conn(); cur = conn.cursor()
+    conn = _conn()
+    if dry_run:
+        _readonly(conn)
+    cur = conn.cursor()
     if apply:
         # One write module per store (SoT Phase 9): SQL lives in lib.writers.hermes_research_writer.
         from lib.writers.hermes_research_writer import set_fields_by_id
@@ -146,8 +171,12 @@ def retag(cfg, apply):
                    WHERE created_at > NOW() - interval '30 days'""", ([fb],))
     fbn, tot = cur.fetchone()
     conn.close()
-    return {"batch": len(rows), "rule_tagged": ruled, "llm_tagged": llmed, "fallback": fell_back,
-            "fallback_share_30d": round(fbn / tot, 3) if tot else None}
+    out = {"batch": len(rows), "rule_tagged": ruled, "llm_tagged": llmed, "fallback": fell_back,
+           "fallback_share_30d": round(fbn / tot, 3) if tot else None}
+    if dry_run:
+        out["llm_would_call"] = would_call
+        out["llm_called"] = 0
+    return out
 
 
 def quality_v2(cur, cfg, apply):
@@ -181,12 +210,14 @@ def quality_v2(cur, cfg, apply):
             "distinct_values": distinct}
 
 
-def tag_efficacy(cur, cfg, apply):
-    cur.execute("""CREATE TABLE IF NOT EXISTS hermes_tag_efficacy (
-                     tag TEXT PRIMARY KEY, n INT, hits INT, hit_rate NUMERIC,
-                     base_rate NUMERIC, lift NUMERIC, flagged BOOLEAN, updated_at TIMESTAMPTZ)""")
-    cur.execute("ALTER TABLE hermes_tag_efficacy ADD COLUMN IF NOT EXISTS trade_n INT")
-    cur.execute("ALTER TABLE hermes_tag_efficacy ADD COLUMN IF NOT EXISTS avg_realized_r NUMERIC")
+def tag_efficacy(cur, cfg, apply, *, dry_run=False):
+    if not dry_run:  # DDL is a write: a read-only dry-run session refuses it (the SELECTs below never read this table)
+        cur.execute("""CREATE TABLE IF NOT EXISTS hermes_tag_efficacy (
+                         tag TEXT PRIMARY KEY, n INT, hits INT, hit_rate NUMERIC,
+                         base_rate NUMERIC, lift NUMERIC, flagged BOOLEAN, updated_at TIMESTAMPTZ)""")
+        cur.execute("ALTER TABLE hermes_tag_efficacy ADD COLUMN IF NOT EXISTS trade_n INT")
+        cur.execute("ALTER TABLE hermes_tag_efficacy ADD COLUMN IF NOT EXISTS avg_realized_r NUMERIC")
+    apply = apply and not dry_run
     cur.execute("""SELECT unnest(hri.strategy_tags) tag,
                           count(*) FILTER (WHERE l.actioned <> 'none') hits, count(*) n
                    FROM hermes_outcome_ledger l
@@ -234,12 +265,23 @@ def tag_efficacy(cur, cfg, apply):
     return out
 
 
-def run(apply=False):
+def run(apply=False, dry_run=False):
     if KILL_SWITCH.exists():
         out = {"ok": False, "reason": "HERMES_DISABLED kill switch present — tag engine idle"}
         print(json.dumps(out))
         return out
     cfg = _cfg()
+    if dry_run:
+        apply = False  # --dry-run wins over --apply
+        out = {"ok": True, "apply": False, "mode": "dry_run"}
+        out["retag"] = retag(cfg, False, dry_run=True)
+        conn = _readonly(_conn()); cur = conn.cursor()
+        out["quality"] = quality_v2(cur, cfg, False)
+        out["efficacy"] = tag_efficacy(cur, cfg, False, dry_run=True)
+        conn.close()
+        out["ts"] = datetime.now(timezone.utc).isoformat()
+        print(json.dumps(out, indent=2, default=str))
+        return out
     out = {"ok": True, "apply": apply}
     out["retag"] = retag(cfg, apply)   # manages its own connections (LLM batch is slow)
     conn = _conn(); cur = conn.cursor()
@@ -255,7 +297,10 @@ def run(apply=False):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true")
-    run(apply=ap.parse_args().apply)
+    ap.add_argument("--dry-run", action="store_true",
+                    help="LLM-free dry run: no model call, read-only DB session, no DDL; wins over --apply")
+    a = ap.parse_args()
+    run(apply=a.apply and not a.dry_run, dry_run=a.dry_run)
 
 
 if __name__ == "__main__":

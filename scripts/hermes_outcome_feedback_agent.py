@@ -13,7 +13,14 @@ Cadence (nightly):
 Design law: outcome yield outranks throughput yield.
 
   python3 scripts/hermes_outcome_feedback_agent.py            # dry-run
+  python3 scripts/hermes_outcome_feedback_agent.py --dry-run  # same, explicit; wins over --apply; read-only DB session
   python3 scripts/hermes_outcome_feedback_agent.py --apply   # write outcome_bus.json
+
+Notifications (2026-10-15, AGENTS.md §23.23 / §24.1): --apply hands each eligible closed-loop alert to the host
+chokepoint as a declared intent (send_telegram priority P2/P3, producer hermes_outcome_feedback_agent;
+lib/hermes_outcome_bus/alert_notifications.py). ``--notify record`` calls no sender at all: the intents are
+returned in the run summary (notifications.results[].intent) -- the mode a step fired by n8n uses. A dry run never
+reaches the notifier.
 """
 from __future__ import annotations
 
@@ -296,7 +303,7 @@ def fetch_stop_quality(cur, cfg: dict[str, Any]) -> dict[str, Any]:
         tier_map = {}
 
     try:
-        cur.execute(f"""SELECT
+        cur.execute("""SELECT
                          count(*) AS n,
                          avg(CASE WHEN pao.advisory_existed THEN 1.0 ELSE 0.0 END) AS coverage,
                          count(*) FILTER (WHERE pao.advisory_accuracy='confirmed') AS confirmed,
@@ -333,7 +340,7 @@ def fetch_stop_quality(cur, cfg: dict[str, Any]) -> dict[str, Any]:
         result["notes"] = "protection_advisory_outcomes + trade_mfe_analysis"
 
         # Per-tier breakdown (current tier at analysis time — v1 pragmatic)
-        cur.execute(f"""SELECT UPPER(pao.symbol) AS sym,
+        cur.execute("""SELECT UPPER(pao.symbol) AS sym,
                                avg(CASE WHEN pao.trailing_would_have_helped THEN 1.0
                                         WHEN pao.trailing_would_have_helped IS NOT NULL THEN 0.0
                                         ELSE NULL END) AS trail_rate,
@@ -750,7 +757,8 @@ def build_bus(cur, cfg: dict[str, Any], run_id: str) -> dict[str, Any]:
     return enrich_bus_traceability(bus, trend=trend, prior_bus=prior)
 
 
-def run(apply: bool = False) -> dict[str, Any]:
+def run(apply: bool = False, *, dry_run: bool = False, notify: str = "chokepoint") -> dict[str, Any]:
+    apply = apply and not dry_run
     if KILL_SWITCH.exists():
         out = {"ok": False, "reason": "HERMES_DISABLED kill switch present — feedback agent idle"}
         print(json.dumps(out))
@@ -759,6 +767,9 @@ def run(apply: bool = False) -> dict[str, Any]:
     cfg = _cfg()
     run_id = f"ofb_{uuid.uuid4().hex[:10]}"
     conn = _conn()
+    if dry_run:
+        from lib.lane_last_receipt import enforce_readonly
+        enforce_readonly(conn)  # dry run: the server refuses any write (AGENTS.md §6)
     cur = conn.cursor()
     try:
         bus = build_bus(cur, cfg, run_id)
@@ -790,7 +801,8 @@ def run(apply: bool = False) -> dict[str, Any]:
         out["maturity_snapshot_path"] = str(snap_path) if snap_path else None
         notify_cfg = cfg.get("notifications") or {}
         if notify_cfg.get("enabled", True) and (bus.get("alerts") or {}).get("active_count", 0) > 0:
-            out["notifications"] = dispatch_alert_notifications(bus.get("alerts") or {}, cfg=notify_cfg)
+            out["notifications"] = dispatch_alert_notifications(bus.get("alerts") or {}, cfg=notify_cfg,
+                                                                notify=notify)
         else:
             out["notifications"] = {"ok": True, "sent": 0, "skipped": "no_active_alerts_or_disabled"}
         _write_heartbeat(out)
@@ -801,6 +813,9 @@ def run(apply: bool = False) -> dict[str, Any]:
             "global": g,
         }
         out["note"] = "dry-run: pass --apply to write outcome_bus.json"
+        if dry_run:
+            out["mode"] = "dry_run"
+            out["notifications"] = {"ok": True, "sent": 0, "skipped": "dry_run"}
 
     out["ts"] = datetime.now(timezone.utc).isoformat()
     print(json.dumps(out, indent=2, default=str))
@@ -819,7 +834,13 @@ def _write_heartbeat(summary: dict[str, Any]) -> None:
 def main():
     ap = argparse.ArgumentParser(description="Hermes Outcome & Feedback Agent — outcome_bus.json v1")
     ap.add_argument("--apply", action="store_true", help="Write state/hermes/outcome_bus.json")
-    run(apply=ap.parse_args().apply)
+    ap.add_argument("--dry-run", action="store_true",
+                    help="write-free preview; wins over --apply; read-only DB session; never notifies")
+    ap.add_argument("--notify", choices=("chokepoint", "record"), default="chokepoint",
+                    help="chokepoint: intents through the host send_telegram chokepoint (default, cron); "
+                         "record: return the intents in the summary and call no sender (fabric-run step)")
+    a = ap.parse_args()
+    run(apply=a.apply and not a.dry_run, dry_run=a.dry_run, notify=a.notify)
 
 
 if __name__ == "__main__":

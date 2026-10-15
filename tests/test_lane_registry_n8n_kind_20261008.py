@@ -352,7 +352,24 @@ def test_native_monitor_rows_do_not_flip_a_host_scheduler():
     # neither retires or impersonates a legacy host trigger.
     n8n_native_lanes = {"heartbeat-watch", "momentum-lifecycle-monitor", "momentum-cache-reconcile"}
     assert all(native[lane]["scheduler"]["expression"] == "dispatcher" for lane in n8n_native_lanes)
-    assert set(native) == monitors | cutover | n8n_native_lanes
+    # 2026-10-15: the step lanes of the n8n fabric process hermes-learning (AGENTS.md §23.23). Fired only by the
+    # process workflow, NEVER_SCHEDULED until it is published for shadow; `match` names the process step, so no
+    # host line maps to them (the scripts' retired cron rows keep their own lines).
+    process_steps = {
+        "hermes-learning-outcome-grader",
+        "hermes-learning-outcome-learning",
+        "hermes-learning-config-governor",
+        # 2026-10-15 unblock (n8nfab/hermes-learning-unblock-20261015): three more shadow step lanes.
+        "hermes-learning-tag-engine",
+        "hermes-learning-outcome-feedback-agent",
+        "hermes-learning-autonomous-self-tune",
+    }
+    for lane in process_steps:
+        s = native[lane]["scheduler"]
+        assert s["expression"] == "tradeai-fabric-hermes-learning" and s["stage"] == "shadow"
+        assert s["match"] == f"tradeai-fabric-hermes-learning:{s['process_step']}"
+        assert native[lane]["state"] == "NEVER_SCHEDULED"
+    assert set(native) == monitors | cutover | n8n_native_lanes | process_steps
     assert not reminders & set(native)
     assert all(native[lane]["state"] == "ACTIVE" for lane in cutover)
     assert all((native[lane]["scheduler"].get("match") or "").strip() for lane in cutover)

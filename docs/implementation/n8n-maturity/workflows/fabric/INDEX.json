@@ -170,6 +170,25 @@
       ],
       "relay_calls": [],
       "sha256": "66859c09459ee5b62ef69e32ef38748f0d162ba18852b6d12260b0e996e50676"
+    },
+    {
+      "active": false,
+      "error_workflow": "tradeai-fabric-error",
+      "file": "tradeai-fabric-hermes-learning.json",
+      "graph_sha256": "44c35ad3374fe14f295b59825d20632d9266f1ab42d9ca3d8278fda8c21056dd",
+      "id": "tradeai-fabric-hermes-learning",
+      "kind": "process",
+      "node_types": [
+        "n8n-nodes-base.code",
+        "n8n-nodes-base.executeWorkflow",
+        "n8n-nodes-base.if",
+        "n8n-nodes-base.manualTrigger",
+        "n8n-nodes-base.merge",
+        "n8n-nodes-base.scheduleTrigger",
+        "n8n-nodes-base.switch"
+      ],
+      "relay_calls": [],
+      "sha256": "3b37efe0ba85b78bccc67f1df7db7040542a717a826aefa8656d9bb0ea85c6f2"
     }
   ]
 }

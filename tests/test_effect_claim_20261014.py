@@ -338,8 +338,27 @@ def test_unreadable_effect_config_fails_every_live_run_closed(led, tmp_path):
     assert runner.calls == 0
 
 
-def test_committed_effect_config_is_empty_so_nothing_changes_at_merge():
-    assert E.load_effect_config(ROOT / "config" / "n8n_effect_keys.json") == {}
+def test_committed_effect_config_changes_no_live_run_at_merge():
+    # 2026-10-15: the three hermes-learning process step lanes opted in (n8n fabric process, packet
+    # n8n-hermes-learning-flow-20261015). None can run live: allowlist live_arg null and registry stage shadow (the
+    # executor clamps to dry_run before the effect gate, which is inert for dry_run); the cron runner claims nothing
+    # (cron_claim false). Any other lane opting in is a reviewed cutover PR that updates this pin.
+    cfg = E.load_effect_config(ROOT / "config" / "n8n_effect_keys.json")
+    assert set(cfg) == {
+        "hermes-learning-outcome-grader",
+        "hermes-learning-outcome-learning",
+        "hermes-learning-config-governor",
+        # 2026-10-15 unblock (n8nfab/hermes-learning-unblock-20261015): three more shadow step lanes.
+        "hermes-learning-tag-engine",
+        "hermes-learning-outcome-feedback-agent",
+        "hermes-learning-autonomous-self-tune",
+    }
+    allow = {e["lane_id"]: e for e in json.loads((ROOT / "config" / "n8n_run_allowlist.json").read_text())["lanes"]}
+    reg = {r["lane_id"]: r for r in json.loads((ROOT / "config" / "lane_registry.json").read_text())["lanes"]}
+    raw = json.loads((ROOT / "config" / "n8n_effect_keys.json").read_text())["lanes"]
+    for lane, spec in cfg.items():
+        assert spec["process"] == lane and allow[lane]["live_arg"] is None
+        assert reg[lane]["scheduler"]["stage"] == "shadow" and raw[lane]["cron_claim"] is False
 
 
 def test_missing_effect_config_is_an_empty_map(tmp_path):
