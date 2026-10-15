@@ -1,5 +1,17 @@
 # Follow-up audit — n8n workload eligibility and secret-management review
 
+> **Superseded in part — operator directive 2026-10-15 "N8N Cutover Decision" (decision D11).** All lane families are
+> approved for n8n cutover except F07 (long-running daemons and `@reboot` services) and all `registry_systemd` assets,
+> which stay on the server unchanged (revisit at the next architecture review). Verbatim: "The rationale that these
+> workflows should remain host-side, cron-based, or external due to maturity, reliability, operational risk,
+> monitoring requirements, or similar concerns is not accepted as a blocker." "If any existing documentation,
+> standards, inventory notes, exception records, or implementation guidance state otherwise, consider that guidance
+> superseded." Every keep-on-cron / stay-on-cron / §23.14 / `pipeline_excluded_gate` / STAY_HOST / STAY EXTERNAL /
+> "not eligible for n8n" statement in this document is kept as history and is superseded for every non-F07,
+> non-`registry_systemd` lane. Current dispositions: `docs/implementation/n8n-maturity/LANE_DISPOSITION_20261015.csv`
+> (waves CD1-CD6); n8n schedules broker-family lanes but never holds a broker credential or calls an order route
+> itself (`docs/architecture/n8n/N8N_REFERENCE_ARCHITECTURE.md` §2a).
+
 Second pass over the live evidence in `09-live-audit-20261007.md` (collected 2026-10-07, host `ms01-openclaw`, read-only). Same labels, same rule: every decision cites the discovered runtime, or says NOT VERIFIED. Nothing here is installed, granted, or changed.
 
 Questions answered: (1) exactly which processes, jobs, services, agents and lanes should run inside n8n; (2) what secret-management architecture to use given that n8n Community Edition cannot use Bitwarden natively.

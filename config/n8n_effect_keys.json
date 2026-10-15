@@ -803,6 +803,20 @@
       "cron_claim": false,
       "n8n_claim": false
     },
+    "incubator-rolloff-engine": {
+      "process": "incubator-rolloff-engine",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "0 10 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "guarded:a rolled-off row leaves the ACTIVE selection, so a second run in the slot appends no incubator_events row",
+      "wave": "LD-W1 shadow",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
     "etf-analyst-enrich": {
       "process": "etf-analyst-enrich",
       "input_version": "v1",

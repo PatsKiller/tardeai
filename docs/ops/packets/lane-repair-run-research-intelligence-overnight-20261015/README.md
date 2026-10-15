@@ -206,21 +206,23 @@ The lane receipt said `status: failed` whenever the check found what it exists t
 | File | What it is |
 |---|---|
 | `candidate.py` | Builds `crontab.candidate` from the LIVE crontab by exact-line replacement. It refuses on any drift, and `--revert` builds the rollback. |
-| `02_dry_run_live.txt` | The candidate diff against the live crontab of 2026-10-15 (sha256 `6a5c6768…`): 4 lines changed. The rollback is byte-identical. |
+| `02_dry_run_live.txt` | The candidate diff against a copy of the live crontab of 2026-10-15 18:44Z, after the B-families install (sha256 `36f172d1…`): 2 lines changed. The rollback is byte-identical. |
 | `03_apply.md` / `04_rollback.md` | Install under a `cron` grant, with a forced run as proof. Restore. |
 
-The four changes:
+The two changes (C3 and C4 were dropped; see below):
 
 | Change | Line | Before | After | Why |
 |---|---|---|---|---|
-| C1 | L731 | RI `--phase full` at 02:15 | 00:15, wrapper kept | 00:15 ET is 04:15 UTC under EDT and 05:15 UTC under EST, both outside the official peaks. |
-| C2 | L732 | archive at 05:15 behind the DeepSeek wrapper | 05:15, no wrapper | The archive phase makes no model call. |
-| C3 | L736 | standalone topic ingestion at 20:45 | adds `--budget-s 1500 --max-items-per-topic 12` | Bounds it like the RI ingest step. |
-| C4 | L737 | standalone topic ingestion at 02:45 | the same bound, schedule unchanged | Bounds it like C3. |
+| C1 | L735 | RI `--phase full` at 02:15 | 00:15, wrapper kept | 00:15 ET is 04:15 UTC under EDT and 05:15 UTC under EST, both outside the official peaks. |
+| C2 | L736 | archive at 05:15 behind the DeepSeek wrapper | 05:15, no wrapper | The archive phase makes no model call. |
+**C3 and C4 were dropped: absorbed by the C1 B-families consolidation; the bound is now in `family_slot_jobs` B2.**
+C3 and C4 added `--budget-s 1500 --max-items-per-topic 12` to the two standalone topic-ingestion lines (20:45
+weekdays, 02:45). Earlier on 2026-10-15 the B-families top-5 install retired both lines into
+`scripts/run_family_slot.py --family topic-ingestion`. With them gone, the 4-change candidate refused C3 and C4
+("found 0") and installed nothing. The same bound now sits in the family job definition
+(`scripts/lib/family_slot_jobs.py` `TOPIC_INGEST_BOUND`, both the `after_close` and `weekend_overnight` modes). That is
+served code, so it takes effect with the release and needs no crontab change. The new batch lock still stops a
+family run from overlapping the RI ingest step.
 
-Note on C3 and C4: the registry already lists these two lines as `topic-ingestion-cron-lines` RETIRED into a family
-slot, but they are still in the crontab. Retiring them is the family packet's job. Until then, C3 and C4 bound them,
-and the new batch lock stops them from overlapping the RI ingest step.
-
-The code fix needs none of these changes to stop the exit 124. C1 and C2 make the two dead lines do work, and C3
-and C4 stop the standalone line from being killed at 30 minutes.
+The code fix needs none of these changes to stop the exit 124. C1 and C2 make the two dead lines do work, and the
+family bound stops the standalone topic ingestion from being killed at 30 minutes.

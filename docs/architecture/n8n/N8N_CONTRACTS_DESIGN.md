@@ -1,5 +1,17 @@
 # n8n contracts — design architecture
 
+> **Superseded in part — operator directive 2026-10-15 "N8N Cutover Decision" (decision D11).** All lane families are
+> approved for n8n cutover except F07 (long-running daemons and `@reboot` services) and all `registry_systemd` assets,
+> which stay on the server unchanged (revisit at the next architecture review). Verbatim: "The rationale that these
+> workflows should remain host-side, cron-based, or external due to maturity, reliability, operational risk,
+> monitoring requirements, or similar concerns is not accepted as a blocker." "If any existing documentation,
+> standards, inventory notes, exception records, or implementation guidance state otherwise, consider that guidance
+> superseded." Every keep-on-cron / stay-on-cron / §23.14 / `pipeline_excluded_gate` / STAY_HOST / STAY EXTERNAL /
+> "not eligible for n8n" statement in this document is kept as history and is superseded for every non-F07,
+> non-`registry_systemd` lane. Current dispositions: `docs/implementation/n8n-maturity/LANE_DISPOSITION_20261015.csv`
+> (waves CD1-CD6); n8n schedules broker-family lanes but never holds a broker credential or calls an order route
+> itself (`docs/architecture/n8n/N8N_REFERENCE_ARCHITECTURE.md` §2a).
+
 ```
 Status:      PROPOSED design (informational; AGENTS.md is normative). For external architect review.
 as_of:       2026-10-15
@@ -169,8 +181,14 @@ produced_count=...)` writes `LaneRunReceipt@v2` with that identity and ALSO crea
 at `data/runtime/lane_attempts/<lane>/<run_id>.json`; the executor reads only that file and requires its
 `run_id`/`lane_id` to be the run's (a stale, concurrent-cron, v1 or other-lane receipt = `unverifiable`). Rules
 are validated by one closed semantic schema (`scripts/lib/n8n_output_verdict.validate_expected_output`, shared
-with FW-M6). No contract declares `expected_output` yet, so every run reports `output_verdict: no_rule` and is
-unchanged. Remaining (P): dry runs are exempt (they write no receipt; captured dry evidence is not built), the
+with FW-M6). Since the 2026-10-15 expected_output PR, 122 of 126 contracts declare an evidence-derived `expected_output`
+(all with `produced_field: produced_count`; the four digest-bound REVIEWED contracts carry none until re-reviewed).
+**Runtime enforcement is per-lane opt-in:** the executor applies the verdict only when the lane's allowlist entry
+(`config/n8n_run_allowlist.json`) declares `"output_receipt": "v2"`; a declared rule without it is recorded as
+`output_verdict: declared_not_enforced` and the run state is unchanged. A lane gets `output_receipt: v2` only in the
+same change as the code that writes `LaneRunReceipt@v2 produced_count` (test
+`test_dd07_output_receipt_v2_only_with_code_that_writes_produced_count`); no committed entry opts in yet.
+Contracts without a block still report `output_verdict: no_rule` and are unchanged. Remaining (P): dry runs are exempt (they write no receipt; captured dry evidence is not built), the
 per-window rule is evaluated by monitors not per run, the verifier trusts the lane's own counts (an independent
 query of the declared durable output is not built), and a lane writes v2 only once it is changed to pass
 `produced_count`.
@@ -209,7 +227,8 @@ only when the signal is older than 3× cadence.
 - **Failure behaviour:** the run is a failure everywhere downstream (ledger, DLQ/breaker on v2, run outcome, Run
   Lane, error workflow intent, fan-in). The hermes worker-pool case — `produced_count 0`, `skipped_reasons
   {no_runner: N}` — is `empty_violation` on its first run.
-- **Validation points:** executor (per run, **E** 2026-10-15); health monitors (per window, P); framework
+- **Validation points:** executor (per run, **E** 2026-10-15; enforced only for lanes whose allowlist entry has
+  `output_receipt: "v2"`, otherwise `declared_not_enforced`); health monitors (per window, P); framework
   checker FW-M6 (closed semantic validation shared with the executor — E).
 
 ## 6. Health contract (REVIEWED / DRAFT lifecycle)
@@ -262,7 +281,8 @@ operator's word "PROPOSED" for a contract change maps to a DRAFT entry; REVIEWED
   required by the framework checker, not by `check_n8n_health_contracts.py`, so no existing contract is broken by
   the schema. Making it schema-required is `N8nHealthContract@v2` after the 30-day remediation window.
 - **Failure behaviour:** at review time FW-M6 fails (blocks activation once §23.24 binds by code); at run time §5's
-  executor verdict fails the run.
+  executor verdict fails the run — for a lane whose allowlist entry declares `output_receipt: "v2"` (per-lane opt-in,
+  set with the code that writes `produced_count`); FW-M6 checks the declaration only.
 
 ## 7. Effect-key contract
 
@@ -288,14 +308,15 @@ on refusal. Both tables live in the coordination ledger, one `BEGIN IMMEDIATE`.
   `late_completion:<state>`, receipt `effect.incident = effect_late_completion` (no longer a silent DONE).
   Residual: `release` still trusts the operator's note (no reconciliation evidence is required by code), and no
   lane yet calls `assert_fence`, so ownership switches still need drain-before-switch.
-- **Effect-keyed lanes that do NOT call `assert_fence` (not late-write safe):** all 64 effect-keyed lanes in
+- **Effect-keyed lanes that do NOT call `assert_fence` (not late-write safe):** all 65 effect-keyed lanes in
   `config/n8n_effect_keys.json` (none declares `late_write_fenced`). The six whose executor side is armed
   (`n8n_claim` default true): `hermes-learning-outcome-grader`, `hermes-learning-outcome-learning`,
   `hermes-learning-config-governor`, `hermes-learning-tag-engine`, `hermes-learning-outcome-feedback-agent`,
-  `hermes-learning-autonomous-self-tune`; plus the 18 armed (`n8n_claim` + `cron_claim` true) by n8n cutover wave
-  CW1 (2026-10-15, `scripts/n8n_cutover_wave.py`, packet `docs/ops/packets/n8n-cutover-wave-1-20261015/`):
-  `agent-outcome-linker`, `catalyst-symbol-impact`, `document-mentions-backfill`, `etf-analyst-enrich`, `etf-performance-enrich`, `feedback-loop-processor`, `finviz-proactive-research`, `finviz-screener-runner`, `hermes-analyst-signal-discovery`, `hermes-momentum-catalyst-scalp`, `hermes-news-bridge`, `journal-tilt-morning-hook`, `material-change-detector-stage1`, `proposal-backtest-engine`, `sec-data-ingest`, `source-attribution-monitor`, `update-agent-performance`, `watchlist-enrichment-sweep`; the other 40 are staged (`n8n_claim: false`; train 2026-10-15 d added
-  the lane-repair keys `watchlist-entry-planner-limit`, `watchlist-entry-planner-scope`, `run-research-intelligence-overnight`).
+  `hermes-learning-autonomous-self-tune`; plus the 18 armed (`n8n_claim` + `cron_claim` true) by the n8n cutover waves (2026-10-15,
+  `scripts/n8n_cutover_wave.py`, packets `docs/ops/packets/n8n-cutover-wave-<n>-20261015/`):
+  `agent-outcome-linker`, `catalyst-symbol-impact`, `document-mentions-backfill`, `etf-analyst-enrich`, `etf-performance-enrich`, `feedback-loop-processor`, `finviz-proactive-research`, `finviz-screener-runner`, `hermes-analyst-signal-discovery`, `hermes-momentum-catalyst-scalp`, `hermes-news-bridge`, `journal-tilt-morning-hook`, `material-change-detector-stage1`, `proposal-backtest-engine`, `sec-data-ingest`, `source-attribution-monitor`, `update-agent-performance`, `watchlist-enrichment-sweep`; the other 41 are staged (`n8n_claim: false`; train 2026-10-15 d added the
+  lane-repair keys `watchlist-entry-planner-limit`, `watchlist-entry-planner-scope`, `run-research-intelligence-overnight`;
+  shadow wave LD-W1 (#1761, merged 2026-10-15 with the DD01 ruling PR) added `incubator-rolloff-engine`).
 
 ## 8. Error workflow → incident contract
 
@@ -327,6 +348,9 @@ notifications from process workflows use the same route with new `(domain, kind)
 (§24.1 "Senders emit notification intents"; ratchet `notification_intent_baseline.json`). Validation: relay (keys,
 bounds), gateway (route table, caps, dedupe), comms gateway (quiet hours, caps). Failure: refused intents are data;
 P0/P1 never use this path.
+*Operator directive 2026-10-15 (D11, reference architecture §2a): F10 operator senders move to "independent host P1
+backstop + n8n-orchestrated primary" — the n8n-orchestrated primary may emit intents on this path; the host P1
+backstop still never depends on it.*
 
 ## 10. LLM step contract
 
@@ -400,6 +424,9 @@ and before the executor loop; the relay live-lane list and bearers are still pro
 required; N8N_REFERENCE_ARCHITECTURE §8.1a) — an unreadable allowlist refuses every run,
 `scripts/check_n8n_relay_contract.py`, registry checks in `scripts/run_cio_hardening_ci.py`. **Change:** reviewed
 PR; adding a lane, widening the never-list exceptions or adding a live arg is an operator decision (§17, §23.14).
+*Operator directive 2026-10-15 (D11): the §23.14 keep-on-cron basis is superseded for every non-F07,
+non-`registry_systemd` lane; n8n may schedule broker-family (F09) host lanes, which execute under the trading lock —
+the never-list still forbids n8n itself a broker credential or an order route.*
 **Known gap:** live authority split across registry, relay live list and allowlist `live_arg` (WS1-07; P reconciler).
 
 ## 12. Framework element catalogue (implemented by `scripts/check_n8n_workflow_framework.py`)

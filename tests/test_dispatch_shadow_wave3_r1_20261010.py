@@ -254,20 +254,19 @@ def test_activated_registry_has_no_dispatch_issue_once_active(monkeypatch):
     # - 1: C1 hermes_overnight registry edit (train 6, 2026-10-12) absorbs SW4 hermes-tag-lift-discovery (dispatch_retired).
     # (WAVE3_ON_CRON: research-insight-extractor left cron at cutover, 2026-10-13.)
     # + 2 scalp hot-tier ingest rows (2026-10-14; tests/test_scalp_premarket_onboard_20261014.py).
-    # + 4 lane repair rows (2026-10-15; tests/test_lane_repair_20261015.py): build-symbol-profiles-at-0-19 and
-    # indicator-engine (R1 ingest, cron shadow, dry_run, live_arg null), plus the two entry planner rows this fixture
     # activates from their r1_pending block (R1 llm; staged on the registry until a governed bridge route exists).
-    # - 2 (train 2026-10-15 d): build-symbol-profiles-at-0-19 and indicator-engine have their n8n wiring deferred
-    # (DD01 transitive capability audit, operator review): no dispatch block, so they are not R1 cron-shadow rows.
-    assert len(r1_cron_shadow) == len(WAVE3_ON_CRON) + 3 + 15 + 10 + 11 - 1 + 2 + 4 - 2
+    # + 2 learn rows of shadow wave LD-W1 (2026-10-15; wire-advisory-lessons, pattern-extractor;
+    # tests/test_shadow_wave_ld_w1_20261015.py).
+    # (train 2026-10-15 d deferred build-symbol-profiles-at-0-19 / indicator-engine, -2; restored 2026-10-15 by the
+    # operator DD01 ruling "n8n ignor broker code it can't trade live ccontinue": transitive lazy broker reach accepted.)
+    assert len(r1_cron_shadow) == len(WAVE3_ON_CRON) + 3 + 15 + 10 + 11 - 1 + 2 + 4 + 2
     assert len(errs) == len(r1_cron_shadow) and all("shadow_on_cron_not_ratified" in x for x in errs), errs[:3]
     monkeypatch.setattr(LD, "R1_SHADOW_SHAPE_STATUS", "ACTIVE")
-    # The staged entry planner rows (lane repair 2026-10-15) stay refused: train 2026-10-15 d also deferred their
-    # allowlist entries (DD01 transitive capability audit, operator review), so the first refusal is not_allowlisted;
-    # with the entry restored they would still be refused llm_route_not_governed_bridge
-    # (tests/test_lane_repair_20261015.py::test_planner_rows_are_staged_until_a_governed_bridge_route_exists).
+    # The staged entry planner rows (lane repair 2026-10-15) stay refused for exactly the reason they are staged: no
+    # llm_route via cio-governed-bridge until a governed route exists for process watchlist_entry_planner. (Their
+    # allowlist entries, deferred by train 2026-10-15 d for DD01, are restored by the operator DD01 ruling 2026-10-15.)
     assert sorted(LD.registry_dispatch_errors(doc)) == [
-        f"{lane}: dispatch class_not_permitted: class 'llm' (R1): not_allowlisted"
+        f"{lane}: dispatch class_not_permitted: class 'llm' (R1): llm_route_not_governed_bridge:None"
         for lane in ("watchlist-entry-planner-limit", "watchlist-entry-planner-scope")]
 
 

@@ -135,6 +135,42 @@ def test_classify_rules():
     assert D.classify("z", {"state": "ACTIVE"}, None, single, ov, {})["disposition"] == "RETIRE"
 
 
+def test_cutover_directive_2026_10_15():
+    """Operator directive 2026-10-15 "N8N Cutover Decision": STAY_HOST only for F07 and every registry_systemd row."""
+    stay = {"disposition": "STAY_HOST", "target": "host cron/systemd", "target_shape": "host", "wave": "-",
+            "evidence": "inventory 2026-10-14: not eligible for n8n", "duplicate_of": ""}
+    b = D.apply_cutover_directive(stay, "F09", "crontab")
+    assert b["disposition"] == "MIGRATE_N8N" and b["wave"] == "CD6" and "no broker credential" in b["target"]
+    assert D.apply_cutover_directive(stay, "F10", "crontab")["target"].startswith("n8n-orchestrated primary")
+    assert D.apply_cutover_directive(stay, "F40", "crontab")["wave"] == "CD4"
+    assert D.apply_cutover_directive(stay, "F07w", "crontab")["wave"] == "CD5"
+    assert D.apply_cutover_directive(stay, "F36", "crontab")["wave"] == "CD1"
+    assert D.apply_cutover_directive(dict(stay, target="host sender (comms chokepoint)"), "F36", "crontab")["wave"] == "CD3"
+    for fid, src in (("F07", "crontab"), ("F41", "registry_systemd"), ("F07w", "registry_systemd")):
+        d = D.apply_cutover_directive(stay, fid, src)
+        assert d["disposition"] == "STAY_HOST" and d["wave"] == "DEFERRED-I2" and "2026-10-15" in d["evidence"]
+    mig = dict(stay, disposition="MIGRATE_N8N", wave="M3")
+    assert D.apply_cutover_directive(mig, "F09", "crontab") == mig
+    # registry_systemd: "not to be migrated, refactored, or reclassified" -> every disposition is held on the host.
+    for disp in ("MIGRATE_N8N", "CONSOLIDATE", "RETIRE"):
+        d = D.apply_cutover_directive(dict(stay, disposition=disp, wave="M5"), "F40", "registry_systemd")
+        assert d["disposition"] == "STAY_HOST" and d["wave"] == "DEFERRED-I2"
+        assert d["evidence"].startswith("operator directive 2026-10-15: registry_systemd deferred this iteration (was: ")
+        assert f"(was: {disp}/M5" in d["evidence"]
+    # The committed table: STAY_HOST only for F07 / registry_systemd, every converted row cites the directive.
+    for r in _rows():
+        if r["disposition"] == "STAY_HOST":
+            assert r["family_id"] == "F07" or r["source"] == "registry_systemd", r["row_id"]
+            assert r["wave"] == "DEFERRED-I2", r["row_id"]
+        if r["source"] == "registry_systemd":
+            assert r["disposition"] == "STAY_HOST" and r["wave"] == "DEFERRED-I2", r["row_id"]
+        if r["wave"] in D.DIRECTIVE_WAVES:
+            assert r["disposition"] == "MIGRATE_N8N" and D.DIRECTIVE_ID in r["evidence"], r["row_id"]
+    t = D.totals(_rows())
+    assert t["crontab"] == {"RETIRE": 10, "CONSOLIDATE": 148, "STAY_HOST": 1, "MIGRATE_N8N": 235}
+    assert t["registry_only"] == {"RETIRE": 1, "CONSOLIDATE": 5, "STAY_HOST": 102, "MIGRATE_N8N": 32}
+
+
 def test_parse_crontab_skips_env_and_comments():
     env, jobs = D.parse_crontab(
         "SHELL=/bin/bash\nPY=/x\n# 1 2 * * * old\n\n*/5 * * * * cd $PROJ && x  # TRADEAI_LANE l1\n"

@@ -464,3 +464,50 @@ def test_explicit_no_ledger_write_to_owned_fixture_retains_limits_and_review_his
         assert after["owner"] == before["owner"]
         assert after["status"] == before["status"]
     assert {row["id"] for row in written["contracts"]} == {row["id"] for row in doc["contracts"]}
+
+
+def test_regeneration_keeps_authored_expected_output_rule_and_checks():
+    """2026-10-15 (FW-M6): a DRAFT's evidence-derived expected_output is authored content, not a source default."""
+    eo = {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "POST /run requests accepted",
+        "rule": "empty_allowed",
+        "min_produced": None,
+        "window_h": None,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": ["no_runner"],
+        "empty_allowed_reasons": ["nothing_due"],
+        "evidence": [{"kind": "receipt_field", "ref": "relay_log.jsonl produced_count"}],
+        "on_violation": {"run_state": "RUN_FAILED", "reason": "empty_output", "notifier_priority": "P2"},
+    }
+    previous = {
+        "id": "fixture-dispatcher",
+        "kind": "generic_workflow",
+        "status": "DRAFT",
+        "owner": "fixture-owner",
+        "expected_output": eo,
+        "healthy": [{"check": "output_produced", "text": "h"}],
+        "failed": [{"check": "empty_output", "text": "f"}],
+        "evidence": {"expected_output_basis": "derived 2026-10-15 from fixture"},
+        "review": {"status": "PENDING_BODY_REVIEW", "proposed_contract_body_sha256": "stale"},
+    }
+    wf = {"id": previous["id"], "kind": "dispatcher", "relay_calls": ["GET /due"]}
+    out = B.build(
+        registry={"lanes": []},
+        allowlist={"lanes": []},
+        catalogue={"lanes": []},
+        inventory={},
+        index={"workflows": [wf]},
+        ledger=None,
+        excluded=frozenset(),
+        as_of=TODAY,
+        existing={"contracts": [previous], "grandfathered_draft": []},
+        workflow_sources={wf["id"]: _workflow_fixture(wf["id"], "* * * * *", 50)},
+    )["contracts"][0]
+    from scripts.lib.n8n_momentum_lifecycle import contract_body_digest
+
+    assert out["expected_output"] == eo
+    assert "output_produced" in {x["check"] for x in out["healthy"]}
+    assert "empty_output" in {x["check"] for x in out["failed"]}
+    assert out["evidence"]["expected_output_basis"] == "derived 2026-10-15 from fixture"
+    assert out["review"]["proposed_contract_body_sha256"] == contract_body_digest(out)

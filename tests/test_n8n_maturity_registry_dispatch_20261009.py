@@ -509,12 +509,6 @@ def _live_rows():
     return json.loads((ROOT / "config" / "lane_registry.json").read_text(encoding="utf-8"))["lanes"]
 
 
-#: train 2026-10-15 d: lane-repair rows whose n8n wiring is deferred (DD01 transitive capability audit: the import
-#: closure reaches broker_module/order_placement via db_adapter -> holdings_guard -> schwab_position_sync; the
-#: SHRINK-ONLY baseline needs operator review). Dispatch off, no allowlist entry; the repaired cron line does the work.
-DEFERRED_DD01 = frozenset({"build-symbol-profiles-at-0-19", "indicator-engine"})
-
-
 def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
     """2026-10-10 dispatcher shadow wave D1b: the first rows leave mode off. A non-off row is only ever the
     shadow step of the AGENTS §23.12 ladder: dispatch.mode dry_run, scheduler.stage shadow (so the executor's
@@ -611,24 +605,19 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
     }
     # + 1: lane repair 2026-10-15 takes the shard 05 proposal for build-symbol-profiles-at-0-19 (its SW4 exclusion
     # reason, the shared receipt, is gone; tests/test_lane_repair_20261015.py): 12.
-    # - 1 (train 2026-10-15 d): build-symbol-profiles-at-0-19's n8n wiring (wave R2-05, stage, dispatch) is parked in
-    # deferred_n8n until the operator reviews its transitive broker reach (DD01 capability audit): 11.
-    assert len(refactor) == 11 and refactor - set(CANARY_WAVE_20261014) <= set(shadow), refactor
+    # (train 2026-10-15 d parked its wiring for DD01, 11; restored 2026-10-15 by the operator DD01 ruling: 12.)
+    assert len(refactor) == 12 and refactor - set(CANARY_WAVE_20261014) <= set(shadow), refactor
     # The reviewed momentum tranche adds two native shadow rows and the existing
     # named scalp exception at shadow; it adds no live dispatch row.
     # - 2: C1 hermes_overnight registry edit (train 6, 2026-10-12) absorbs hermes-tag-lift-discovery (SW4/W4) and
     # hermes-industry-novelty-discovery (D2) into hermes-overnight-pipeline-night (dispatch_retired, allowlist removed).
     # + 2: scalp/premarket onboarding (2026-10-14, tests/test_scalp_premarket_onboard_20261014.py): the scalp hot-tier
     # R1 ingest rows finviz-enrichment-scalp-hot and scalp-hot-list at shadow (dry_run, live_arg null).
-    # + 2: lane repair 2026-10-15 (tests/test_lane_repair_20261015.py): build-symbol-profiles-at-0-19 (shard 05
-    # proposal taken) and indicator-engine (--universe), both R1 ingest at shadow (dry_run, live_arg null).
-    # - len(DEFERRED_DD01) (train 2026-10-15 d): those two rows' n8n wiring is deferred (dispatch off, no allowlist
-    # entry) until the operator reviews their transitive broker reach (DD01 capability audit).
     # + len(SYSTEMD_TIMER_SHADOW): lane repair 2026-10-15 (tests/test_lane_repair_ri_hermes_litmus_20261015.py);
-    # train 2026-10-15 d merged both sets.
-    assert len(shadow) == 54 + 3 + 15 - len(CANARY_ROWS) - 17 + 10 + 11 + len(N8N_NATIVE_SHADOW) + 1 - 2 + 2 - len(CANARY_WAVE_20261014) + 2 - len(DEFERRED_DD01) + len(SYSTEMD_TIMER_SHADOW) - len(CW_NEW), shadow
-    for lane in DEFERRED_DD01:
-        assert LD.dispatch_mode(next(r for r in rows if r["lane_id"] == lane)) == "off" and lane not in allow, lane
+    # train 2026-10-15 d merged both sets. (Train d had deferred build-symbol-profiles-at-0-19 / indicator-engine for
+    # DD01; restored 2026-10-15 by the operator DD01 ruling: transitive lazy broker reach accepted, trading lock.)
+    # + 6: shadow wave LD-W1 (lane disposition 2026-10-15; tests/test_shadow_wave_ld_w1_20261015.py).
+    assert len(shadow) == 54 + 3 + 15 - len(CANARY_ROWS) - 17 + 10 + 11 + len(N8N_NATIVE_SHADOW) + 1 - 2 + 2 - len(CANARY_WAVE_20261014) + 2 + len(SYSTEMD_TIMER_SHADOW) + 6 - len(CW_NEW), shadow
     # heartbeat-watch moved shadow → canary (N8N_NATIVE_CANARY) 2026-10-11.
     assert sorted(r["lane_id"] for r in rows if LD.dispatch_mode(r) == "live") == sorted(
         CANARY_ROWS | N8N_NATIVE_CANARY | set(CANARY_WAVE_20261014) | CW_NEW

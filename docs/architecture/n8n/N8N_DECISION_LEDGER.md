@@ -1,4 +1,4 @@
-# n8n decision ledger — D1–D10
+# n8n decision ledger — D1–D11
 
 ```
 Status:      PROPOSED record (informational; AGENTS.md is normative). Closes the decision-provenance half of audit DD18.
@@ -26,7 +26,7 @@ operator names the person per role.
 | Status | Count | Decisions |
 |---|---|---|
 | accepted | 0 | — |
-| partially_realized | 9 | D1, D10, D2, D3, D4, D5, D6, D7, D8 |
+| partially_realized | 10 | D1, D10, D11, D2, D3, D4, D5, D6, D7, D8 |
 | specified_not_enforced | 1 | D9 |
 
 ## Ledger
@@ -43,6 +43,7 @@ operator names the person per role.
 | D8 | LLM steps: process + template, closed schema, host re-check | partially_realized | bridge owner + action owner | §23.23 10.0.0 LLM steps + §23.4 | DD02 DD17 | one-door `/llm_step`; enforced caller; action-refusal receipt |
 | D9 | empty success is a failure | specified_not_enforced | contract owner + verifier owner | §0 rule 8 + §23.24 11.0.0 FW-M6 | DD07 | immutable attempt receipt + independent verifier |
 | D10 | n8n LLM: OAuth first, DeepSeek on failure or higher reasoning | partially_realized | bridge owner | operator decision 2026-10-15 (verbatim in the JSON row) | DD17 | operator 4-path proof after release; route receipts in production |
+| D11 | n8n cutover directive: all families except F07 + `registry_systemd` approved; host-side rationales not a blocker; conflicting guidance superseded | partially_realized | program owner + operator | operator directive 2026-10-15 "N8N Cutover Decision" (verbatim in the JSON row) | DD01 DD11 DD12 | per-wave live n8n cutover receipts (CD1-CD6); F10 host P1 backstop; F07w outside dead-man; AGENTS.md amendment |
 
 Implementing files, commits, dependencies, acceptance criteria, test ids and dated runtime evidence for each row are
 in `N8N_DECISION_LEDGER.json`. A row moves to `accepted` only in a PR that adds a dated `runtime_evidence` entry

@@ -37,10 +37,12 @@ lock = the cron line's `flock -n` lock). 18 of them get an armed effect key (`n8
 
 ## Steps (after the wave PR is merged and its release is CURRENT)
 
-1. `bash 01_relay_live_lanes.sh --apply` (config-write + service): adds the lanes to `TRADEAI_N8N_RELAY_LIVE_LANES`,
+1. `TRADEAI_FABRIC_GRANT=<cron grant> bash 02_effect_owners.sh --apply` FIRST, for the keyed lanes (owner -> n8n).
+   Harmless before step 2 (no cron line claims; dry runs never claim). Done the other way round, every keyed live
+   fire between the two steps is RUN_REFUSED `effect_no_owner`.
+2. `bash 01_relay_live_lanes.sh --apply` (config-write + service): adds the lanes to `TRADEAI_N8N_RELAY_LIVE_LANES`,
    restarts the relay, reads back. Until then the dispatcher's live requests for these lanes are refused
-   `relay_live_lanes` (no effect; the cron line still does the work).
-2. `TRADEAI_FABRIC_GRANT=<cron grant> bash 02_effect_owners.sh --apply` for the keyed lanes (owner -> n8n).
+   `relay_live_lanes` (no effect; the cron line still does the work). Do it right after the release is CURRENT.
 3. Live run: the dispatcher's natural slot (`d:` key, server-validated, effect-key compatible) is the live n8n run with
    the cron line present; the shared flock makes one of the two `RUN_SKIPPED_LOCK` / exit 1. A forced run outside the
    slot is NOT used: the gateway refuses a free-form live key (`run_key_namespace_refused`) and a keyed lane needs the
