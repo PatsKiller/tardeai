@@ -1,0 +1,103 @@
+{
+  "schema": "RunFromReleaseCohorts@v1",
+  "as_of": "2026-10-15",
+  "authority": "READ_ONLY_ADVISORY",
+  "description": "Cohort plan for moving cron and user units off the dev tree's code and .venv onto the served release (WS7-01 / WS8-14). Read by scripts/run_from_release.py. A crontab job is assigned to the FIRST cohort whose `match` regex (Python re.search) hits its command text and whose `exclude` regexes do not. Jobs no cohort selects stay on the header $PY until the `final` step. Nothing here installs anything: the generator writes candidate files and diffs only.",
+  "layout": {
+    "dev_root": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild",
+    "releases_base": "/home/johnclaw/trade-ai-releases/portfolio-server",
+    "current_name": "CURRENT",
+    "release_venv_relpath": ".venv/bin/python",
+    "worktree_root_patterns": [
+      "/home/johnclaw/tradeai-wt-[^/\\s'\"]+",
+      "/home/johnclaw/worktrees/[^/\\s'\"]+"
+    ],
+    "non_release_names": [
+      "CURRENT",
+      "EXPECTED_RELEASE",
+      "ACTIVE_RELEASE"
+    ]
+  },
+  "exclude_units": [
+    "portfolio-server.service"
+  ],
+  "exclude_units_note": "portfolio-server's drop-in is written by write_systemd() in scripts/cio_phase2_exact_main_deploy.sh; the release venv lands there by changing VENV_PYTHON, not by a drop-in.",
+  "broker_adjacent_markers": [
+    "active-trader",
+    "active_trader",
+    "broker",
+    "moomoo",
+    "schwab",
+    "alpaca",
+    "oco",
+    "stop_supervisor",
+    "unified_stop",
+    "protective_stop",
+    "protection_pipeline",
+    "order",
+    "execution",
+    "execute_",
+    "trade_exec",
+    "reconcile_alpaca",
+    "options_monitor",
+    "paper_position_monitor",
+    "scalp"
+  ],
+  "broker_adjacent_note": "AGENTS.md section 0 rule 2. A job whose command contains one of these markers, or a path matching the broker.execution_code_edit globs in config/agents_guard_hook_rules.json, is never placed in an early cohort: the generator refuses to select it for any cohort except one with `broker_adjacent_allowed: true`. Conservative on purpose; a false positive only delays a job.",
+  "cohorts": [
+    {
+      "id": "c1",
+      "title": "Read-only reports and no-notify hygiene lanes (direct $PY, no wrapper) \u2014 6 lines",
+      "rationale": "Chosen from the 2026-10-15 verifier run: each line calls one python script directly with $PY (no shell wrapper), the script passes the sandboxed --help from CURRENT under the release venv, and it sends nothing (no Telegram, no paid LLM, no broker). Writes: logs/ and persistent-state receipts (linked), symbol_profiles rows, CIO draft-plan expiry receipts. A wrong interpreter shows up as an ImportError in the next run's log; a missed run costs one stale report. Excluded on purpose: watch_directive_hygiene (sends Telegram P1), market_regime_* and compute_source_weights (--apply writers that feed decisions) go to c2.",
+      "broker_adjacent_allowed": false,
+      "match": [
+        "\\$PY scripts/build_symbol_profiles\\.py",
+        "\\$PY scripts/cio_draft_plan_hygiene\\.py",
+        "\\$PY scripts/report_goal_loop_baseline\\.py",
+        "\\$PY scripts/report_agent_number_grounding\\.py"
+      ],
+      "exclude": [
+        "--send",
+        "telegram",
+        "deepseek",
+        "run_with_deepseek_offpeak",
+        "claude -p"
+      ]
+    },
+    {
+      "id": "c2",
+      "title": "Remaining direct-$PY python lanes (data ingest, analytics, CIO batch)",
+      "rationale": "Same mechanism as c1 at volume; includes DB writers and paid-LLM lanes that run under the off-peak wrapper. Promote only after c1 has a clean natural day plus forced runs.",
+      "broker_adjacent_allowed": false,
+      "match": [
+        "\\$PY [^|;&]*scripts/[A-Za-z0-9_/]+\\.py"
+      ],
+      "exclude": []
+    },
+    {
+      "id": "c3",
+      "title": "Shell-wrapper lanes whose wrappers resolve $PROJ/$PY from the environment",
+      "rationale": "The exported PY/TRADEAI_VENV_PYTHON reach the wrapper; only wrappers the verifier marks clean or env-overridable belong here. Wrappers that hard-code the dev tree (`PROJ=\"<dev>\"`) are refused by the verifier and wait for c4.",
+      "broker_adjacent_allowed": false,
+      "match": [
+        "\\.sh\\b"
+      ],
+      "exclude": []
+    },
+    {
+      "id": "c4",
+      "title": "Broker-adjacent and money-path lanes (stops, options monitors, protection, scalps)",
+      "rationale": "Operator-supervised, market closed, one at a time, after the wrapper code fixes have shipped in a release.",
+      "broker_adjacent_allowed": true,
+      "match": [
+        "."
+      ],
+      "exclude": []
+    }
+  ],
+  "unit_cohorts": {
+    "u1": "Timer-driven oneshot services that are not broker-adjacent",
+    "u2": "Long-running daemons (Restart=, Type=simple) that are not broker-adjacent; each joins TRADEAI_CURRENT_BOUND_UNITS so promote restarts it",
+    "u3": "Broker-adjacent units and units running from a feature worktree: operator decision per unit"
+  }
+}
