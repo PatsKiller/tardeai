@@ -942,6 +942,601 @@
       "wave": "CW3",
       "n8n_claim": true,
       "cron_claim": true
+    },
+    "alpaca-live-read-sync": {
+      "process": "alpaca-live-read-sync",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "*/15 9-16 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "overwrite"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key once armed",
+      "wave": "F09-staged",
+      "n8n_claim": false,
+      "cron_claim": false
+    },
+    "moomoo-live-read-sync": {
+      "process": "moomoo-live-read-sync",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "*/15 9-16 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "overwrite"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key once armed",
+      "wave": "F09-staged",
+      "n8n_claim": false,
+      "cron_claim": false
+    },
+    "snaptrade-sync": {
+      "process": "snaptrade-sync",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": [
+        "50 9 * * 1-5",
+        "35 17 * * 1-5"
+      ],
+      "slot_tz": "America/New_York",
+      "effects": [
+        "overwrite"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key once armed",
+      "wave": "F09-staged",
+      "n8n_claim": false,
+      "cron_claim": false
+    },
+    "snaptrade-activity-ingest": {
+      "process": "snaptrade-activity-ingest",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "20 7 * * 1-6",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key once armed",
+      "wave": "F09-staged",
+      "n8n_claim": false,
+      "cron_claim": false
+    },
+    "positions-sync": {
+      "process": "positions-sync",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "9,24,39,54 9-16 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key once armed",
+      "wave": "F09-staged",
+      "n8n_claim": false,
+      "cron_claim": false
+    },
+    "alpaca-paper-adapter": {
+      "process": "alpaca-paper-adapter",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "0 10-16 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "overwrite"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key once armed",
+      "wave": "F09-staged",
+      "n8n_claim": false,
+      "cron_claim": false
+    },
+    "portfolio-broker-reconciliation": {
+      "process": "portfolio-broker-reconciliation",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "30 20 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "overwrite"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key once armed",
+      "wave": "F09-staged",
+      "n8n_claim": false,
+      "cron_claim": false
+    },
+    "unified-stop-supervisor": {
+      "process": "unified-stop-supervisor",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "*/3 9-16 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append",
+        "send"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key once armed",
+      "wave": "F09-staged",
+      "n8n_claim": false,
+      "cron_claim": false
+    },
+    "stop-health-check": {
+      "process": "stop-health-check",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "*/10 9-16 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append",
+        "send"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key once armed",
+      "wave": "F09-staged",
+      "n8n_claim": false,
+      "cron_claim": false
+    },
+    "alpaca-stop-manager-rth": {
+      "process": "alpaca-stop-manager-rth",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "7-59/20 9-16 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "broker_order",
+        "append"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key once armed",
+      "wave": "F09-staged",
+      "n8n_claim": false,
+      "cron_claim": false
+    },
+    "alpaca-stop-manager-oco-repair": {
+      "process": "alpaca-stop-manager-oco-repair",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "*/15 4-10 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "broker_order",
+        "append"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key once armed",
+      "wave": "F09-staged",
+      "n8n_claim": false,
+      "cron_claim": false
+    },
+    "fidelity-stop-sync": {
+      "process": "fidelity-stop-sync",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "5 10 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key once armed",
+      "wave": "F09-staged",
+      "n8n_claim": false,
+      "cron_claim": false
+    },
+    "protection-atm-pass": {
+      "process": "protection-atm-pass",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "*/15 9-16 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "broker_order",
+        "append"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key once armed",
+      "wave": "F09-staged",
+      "n8n_claim": false,
+      "cron_claim": false
+    },
+    "holdings-gain-guardian": {
+      "process": "holdings-gain-guardian",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "40 17 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key once armed",
+      "wave": "F09-staged",
+      "n8n_claim": false,
+      "cron_claim": false
+    },
+    "holding-protection-advisor-at-5-17": {
+      "process": "holding-protection-advisor-at-5-17",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "5 17 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append",
+        "llm"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key once armed",
+      "wave": "F09-staged",
+      "n8n_claim": false,
+      "cron_claim": false
+    },
+    "holding-protection-advisor-lane": {
+      "process": "holding-protection-advisor-lane",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "20 17 * * 1",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append",
+        "llm"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key once armed",
+      "wave": "F09-staged",
+      "n8n_claim": false,
+      "cron_claim": false
+    },
+    "monthly-protection-meta-review": {
+      "process": "monthly-protection-meta-review",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "10 8 1 * *",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append",
+        "llm"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key once armed",
+      "wave": "F09-staged",
+      "n8n_claim": false,
+      "cron_claim": false
+    },
+    "run-protection-pipeline-at-x-30-9-16": {
+      "process": "run-protection-pipeline-at-x-30-9-16",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "*/30 9-16 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append",
+        "llm"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key once armed",
+      "wave": "F09-staged",
+      "n8n_claim": false,
+      "cron_claim": false
+    },
+    "run-protection-pipeline-at-30-20": {
+      "process": "run-protection-pipeline-at-30-20",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "30 20 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append",
+        "llm"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key once armed",
+      "wave": "F09-staged",
+      "n8n_claim": false,
+      "cron_claim": false
+    },
+    "generate-max-hold-exit-proposals": {
+      "process": "generate-max-hold-exit-proposals",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "20 10 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key once armed",
+      "wave": "F09-staged",
+      "n8n_claim": false,
+      "cron_claim": false
+    },
+    "paper-trade-advisory": {
+      "process": "paper-trade-advisory",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "15 */6 * * *",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append",
+        "llm"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key once armed",
+      "wave": "F09-staged",
+      "n8n_claim": false,
+      "cron_claim": false
+    },
+    "paper-execution-sweep": {
+      "process": "paper-execution-sweep",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "*/5 9-16 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "broker_order",
+        "append"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key once armed",
+      "wave": "F09-staged",
+      "n8n_claim": false,
+      "cron_claim": false
+    },
+    "alpaca-paper-reconciler": {
+      "process": "alpaca-paper-reconciler",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "35 9 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "overwrite"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key once armed",
+      "wave": "F09-staged",
+      "n8n_claim": false,
+      "cron_claim": false
+    },
+    "atm-auto-approver": {
+      "process": "atm-auto-approver",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "*/15 4-19 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "broker_order",
+        "append",
+        "send"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key once armed",
+      "wave": "F09-staged",
+      "n8n_claim": false,
+      "cron_claim": false
+    },
+    "watchlist-proposal-bridge": {
+      "process": "watchlist-proposal-bridge",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "*/30 10-15 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key once armed",
+      "wave": "F09-staged",
+      "n8n_claim": false,
+      "cron_claim": false
+    },
+    "options-intent-matcher": {
+      "process": "options-intent-matcher",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "15,45 9-15 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key once armed",
+      "wave": "F09-staged",
+      "n8n_claim": false,
+      "cron_claim": false
+    },
+    "reconcile-alpaca-paper-options": {
+      "process": "reconcile-alpaca-paper-options",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "0 10-15 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "overwrite"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key once armed",
+      "wave": "F09-staged",
+      "n8n_claim": false,
+      "cron_claim": false
+    },
+    "run-options-paper-position-monitor": {
+      "process": "run-options-paper-position-monitor",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "10 17 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key once armed",
+      "wave": "F09-staged",
+      "n8n_claim": false,
+      "cron_claim": false
+    },
+    "options-iv-snapshot": {
+      "process": "options-iv-snapshot",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "45 15 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key once armed",
+      "wave": "F09-staged",
+      "n8n_claim": false,
+      "cron_claim": false
+    },
+    "options-tick": {
+      "process": "options-tick",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "7,22,37,52 * * * *",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key once armed",
+      "wave": "F09-staged",
+      "n8n_claim": false,
+      "cron_claim": false
+    },
+    "run-options-monitor": {
+      "process": "run-options-monitor",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": [
+        "*/10 12-15 * * 1-5",
+        "5 16 * * 1-5"
+      ],
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key once armed",
+      "wave": "F09-staged",
+      "n8n_claim": false,
+      "cron_claim": false
+    },
+    "active-trader-micro-recorder-premarket": {
+      "process": "active-trader-micro-recorder-premarket",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "0 6 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key once armed",
+      "wave": "F09-staged",
+      "n8n_claim": false,
+      "cron_claim": false
+    },
+    "active-trader-micro-recorder": {
+      "process": "active-trader-micro-recorder",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "28 9 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key once armed",
+      "wave": "F09-staged",
+      "n8n_claim": false,
+      "cron_claim": false
+    },
+    "active-trader-premarket-watch": {
+      "process": "active-trader-premarket-watch",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "*/5 6-9 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "send"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key once armed",
+      "wave": "F09-staged",
+      "n8n_claim": false,
+      "cron_claim": false
+    },
+    "ingest-tos-watchlists": {
+      "process": "ingest-tos-watchlists",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "45 18 * * *",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key once armed",
+      "wave": "F09-staged",
+      "n8n_claim": false,
+      "cron_claim": false
+    },
+    "agent-router-cron-light": {
+      "process": "agent-router-cron-light",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "0 10-15 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "overwrite"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key once armed",
+      "wave": "F09-staged",
+      "n8n_claim": false,
+      "cron_claim": false
+    },
+    "agent-router-cron-full": {
+      "process": "agent-router-cron-full",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "15 6 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "overwrite"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key once armed",
+      "wave": "F09-staged",
+      "n8n_claim": false,
+      "cron_claim": false
+    },
+    "agent-router-cron-deep": {
+      "process": "agent-router-cron-deep",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "30 7 * * 0",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "overwrite"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key once armed",
+      "wave": "F09-staged",
+      "n8n_claim": false,
+      "cron_claim": false
+    },
+    "rotation-autopilot": {
+      "process": "rotation-autopilot",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "*/15 4-16 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append",
+        "send"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key once armed",
+      "wave": "F09-staged",
+      "n8n_claim": false,
+      "cron_claim": false
+    },
+    "run-broker-queue-autocal": {
+      "process": "run-broker-queue-autocal",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "*/5 9-16 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "overwrite"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key once armed",
+      "wave": "F09-staged",
+      "n8n_claim": false,
+      "cron_claim": false
+    },
+    "run-broker-proposal-curator": {
+      "process": "run-broker-proposal-curator",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "0,30 9-16 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key once armed",
+      "wave": "F09-staged",
+      "n8n_claim": false,
+      "cron_claim": false
     }
   },
   "_comment_process_steps": "2026-10-15 (n8n fabric process hermes-learning, packet docs/ops/packets/n8n-hermes-learning-flow-20261015/): one key per process STEP, process = the step lane id, slot = the stage's business slot <YYYYMMDD>T<HHMM of the stage cron minute> (America/New_York), the same string the cron stage runner computes (pipeline_manifest.py --effect-slot) and the process workflow sends. pipeline/stage/step_id map the key to the manifest step. cron_claim false = the cron stage runner does NOT claim yet (scripts/pipelines/_manifest_runner.sh); the cutover packet flips it to true only after effect_claim.py set-owner --owner cron has created the owner row, then moves the owner to n8n. Executor side: inert for dry_run; a LIVE run with a p: key is refused effect_slot_unknown until the gateway validates p: keys (cutover prerequisite).",
