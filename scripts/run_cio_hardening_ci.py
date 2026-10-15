@@ -3760,6 +3760,12 @@ GATES = [
             # intents (--notify record: no sender), autonomous_self_tune --learn (purge helpers refuse; historical
             # flags byte-identical). Hermetic: recording DB fakes, stub chokepoint module, tmp_path files.
             "tests/test_hermes_learning_unblock_20261015.py",
+            # 2026-10-15 cutover prerequisites G3-G5: gateway validation of p: process-step keys (+ the executor's
+            # validated-marker effect claim), the executor's off-peak gate (offpeak_gate = the cron wrapper), the
+            # tag engine's governed-bridge llm_route, and outcome_feedback_agent --notify queue (host comms intent ->
+            # consumer -> P2 incident; no sender, fabric policy hash unchanged). Hermetic: tmp_path ledgers, stub
+            # bridge transport and chokepoint, pinned clocks. Everything stays inert (spec dry_run, live_arg null).
+            "tests/test_hermes_learning_prereqs_20261015.py",
         ],
     ),
     (
