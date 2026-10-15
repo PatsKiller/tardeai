@@ -41,6 +41,25 @@ systemd_state() {
   esac
 }
 
+# Evidence before any kill (n8nmat reliability 2026-10-09): every SIGKILL since 10-05
+# landed on a process at its MemoryHigh (1.5G peak in the systemd "Consumed" line),
+# where the kernel throttles reclaim and the whole process stalls. Record the cgroup
+# memory state so the next kill says whether that is what froze it.
+cgroup_evidence() {
+  local runtime_dir="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+  local bus="${DBUS_SESSION_BUS_ADDRESS:-unix:path=${runtime_dir}/bus}"
+  local cg dir cur high events psi
+  cg=$(XDG_RUNTIME_DIR="$runtime_dir" DBUS_SESSION_BUS_ADDRESS="$bus" \
+    systemctl --user show -p ControlGroup --value portfolio-server.service 2>/dev/null)
+  dir="/sys/fs/cgroup${cg}"
+  [ -n "$cg" ] && [ -d "$dir" ] || { log "evidence: cgroup unavailable"; return 0; }
+  cur=$(cat "$dir/memory.current" 2>/dev/null || echo ?)
+  high=$(cat "$dir/memory.high" 2>/dev/null || echo ?)
+  events=$(tr '\n' ' ' < "$dir/memory.events" 2>/dev/null)
+  psi=$(head -1 "$dir/memory.pressure" 2>/dev/null)
+  log "evidence: memory.current=$cur memory.high=$high events=[${events}] pressure=[${psi}]"
+}
+
 ok=0
 for i in $(seq 1 "$FAILS"); do
   if curl -s -o /dev/null --max-time "$TIMEOUT" "$URL" 2>/dev/null; then
@@ -94,6 +113,7 @@ if [ "$state" = "inactive" ]; then
   fi
   exit 0
 fi
+cgroup_evidence
 log "UNRESPONSIVE after ${FAILS} probes — killing pid $pid (systemd Restart=always will respawn)"
 kill -TERM "$pid" 2>/dev/null
 sleep 5
