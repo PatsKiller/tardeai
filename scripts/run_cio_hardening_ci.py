@@ -4829,6 +4829,16 @@ GATES = [
         ["tests/test_n8n_llm_bridge_routes_b3_20261015.py"],
     ),
     (
+        # n8n llm lanes on the governed bridge, batch 4 (2026-10-15): run-watchlist-agent-jobs-offpeak and
+        # agent-event-router (process set of the agent-jobs processes; the router adds topic_ingestion) through the
+        # llm_router bridge branch (one request as process_for_task) and process_watchlist_agent_jobs (_llm one
+        # request, no OAuth preempt/soft fallback; _synthesis_llm no grok fallback; CIO synthesis = ONE vote, never a
+        # consensus); hermes-subject-enhance-dispatch (one researcher call per subject, binding inherited).
+        # Hermetic: fake _call_bridge, poison provider modules, fake subprocess.
+        "n8n_llm_bridge_routes_b4_20261015",
+        ["tests/test_n8n_llm_bridge_routes_b4_20261015.py"],
+    ),
+    (
         # Run-from-release P0 (2026-10-15): prepare builds or reuses a shared venv keyed by
         # py<X.Y.Z>-sha12(requirements.lock.txt) and links <release>/.venv to it. Pins: hash keying; reuse runs
         # no pip; a failed install/smoke leaves no partial venv and the previous one untouched; the link and

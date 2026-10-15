@@ -12,7 +12,7 @@ pattern. NEVER touches orders/stops/holdings.
   types: proposal | position | closed_trade | sector | report | options_proposal
 """
 from __future__ import annotations
-import argparse, json, subprocess, sys
+import argparse, json, os, subprocess, sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -213,6 +213,12 @@ def _recent(conn, key, lane, ttype):
 
 
 def run(ttype, lanes=("grok",), apply=False, limit=20):
+    # 2026-10-15 (n8n llm lane batch 4): on the governed-bridge path (TRADEAI_LLM_VIA_BRIDGE, bound by the n8n run
+    # executor from the allowlist llm_route of hermes-subject-enhance-dispatch and inherited through the dispatcher's
+    # env) the bridge chooses the provider, so the per-lane fan-out collapses to ONE researcher call per subject (the
+    # first lane is the bookkeeping label); the child hermes_external_researcher calls only the bridge.
+    if os.environ.get("TRADEAI_LLM_VIA_BRIDGE", "off").strip().lower() in {"1", "on", "bridge"}:
+        lanes = tuple(lanes)[:1]
     conn = _conn()
     subjects = GATHERERS[ttype](conn, limit)
     rep = {"type": ttype, "subjects": len(subjects), "lanes": list(lanes), "called": 0, "skipped": 0}
