@@ -1,0 +1,15 @@
+# PROPOSED — not applied. config/n8n_run_allowlist.json env_allowlist_mode flips for READY_NOW lanes.
+# Each flip also needs: the lane added to the enforced closure test, one enforced dry_run shadow receipt
+# with env_allowlist.effective_mode=enforce and a non-empty output, then the §23.24 cutover standard.
+@@ lane_id "hermes-research-worker-pool" @@
+-  "env_allowlist_mode": "report",
++  "env_allowlist_mode": "enforce",
+-  "env_report_reason": "...",
+@@ lane_id "proposal-backtest-engine" @@
+-  "env_allowlist_mode": "report",
++  "env_allowlist_mode": "enforce",
+-  "env_report_reason": "...",
+@@ lane_id "trade-thesis-review-engine" @@
+-  "env_allowlist_mode": "report",
++  "env_allowlist_mode": "enforce",
+-  "env_report_reason": "...",

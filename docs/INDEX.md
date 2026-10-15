@@ -621,8 +621,14 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/maturity_reconciliation_20260917/HONEST_MATURITY_ASSESSMENT_2026-09-17-rev8.md` | Honest maturity assessment — Revision 8 (2026-09-17) | review_required | OK | `ede40d194307` |
 | `docs/architecture/maturity_reconciliation_20260917/REVISION_LEDGER_2026-09-17-rev8.md` | Revision ledger — which revision is canonical, and what is still published | review_required | OK | `2abe45079289` |
 | `docs/architecture/n8n/ADR_COORDINATION_SECRETS.md` | ADR: coordination secrets for the n8n lab | review_required | OK | `7d29625fd708` |
+| `docs/architecture/n8n/AUDIT_20261015_FINDINGS.md` | Independent n8n architecture audit 2026-10-15 — findings tracker | review_required | OK | `f5bfe5bbb4d8` |
+| `docs/architecture/n8n/ENV_ENFORCE_READINESS_20261015.md` | n8n executor env-allowlist enforce readiness (generated) | review_required | MISSING HEADER | `1b6ea3934bc0` |
 | `docs/architecture/n8n/N8N_CONTRACTS_DESIGN.md` | n8n contracts — design architecture | review_required | OK | `f602daf6aaf1` |
-| `docs/architecture/n8n/N8N_REFERENCE_ARCHITECTURE.md` | n8n reference architecture — Trade AI automation fabric | review_required | OK | `4078d803f31f` |
+| `docs/architecture/n8n/N8N_DECISION_LEDGER.md` | n8n decision ledger — D1–D9 | review_required | OK | `96341a790385` |
+| `docs/architecture/n8n/N8N_HITL_CONTRACT_SPEC.md` | Approval / HITL authority contract — specification | review_required | OK | `e9c14b9f23c1` |
+| `docs/architecture/n8n/N8N_LLM_STEP_ROUTE_SPEC.md` | n8n → LLM step route — specification and proof list | review_required | OK | `6b7f8e1ee9e8` |
+| `docs/architecture/n8n/N8N_REFERENCE_ARCHITECTURE.md` | n8n reference architecture — Trade AI automation fabric | review_required | OK | `cbe466412fbb` |
+| `docs/architecture/n8n/N8N_THREAT_MODEL.md` | n8n automation fabric — threat model | review_required | OK | `3f22447af489` |
 | `docs/architecture/narrative-subject-identity.md` | NarrativeSubjectLink@v1 — Architecture | review_required | OK | `3ee93de9443e` |
 | `docs/architecture/retention.md` | Librarian Retention — RetentionDecision@v1 (Phase 6) | review_required | OK | `ca8630975a92` |
 | `docs/architecture/subject-memory.md` | Subject Memory / SubjectThread@v1 — Architecture | review_required | OK | `1cbdf5ccdf27` |
