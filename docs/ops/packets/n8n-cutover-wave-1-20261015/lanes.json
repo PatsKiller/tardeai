@@ -1,0 +1,537 @@
+{
+  "wave": "CW1",
+  "ready": [
+    "agent-outcome-linker",
+    "catalyst-graph",
+    "catalyst-symbol-impact",
+    "classify-instruments",
+    "document-mentions-backfill",
+    "etf-analyst-enrich",
+    "etf-performance-enrich",
+    "feedback-loop-processor",
+    "finviz-enrichment",
+    "finviz-proactive-research",
+    "finviz-screener-runner",
+    "finviz-sector-research",
+    "hermes-analyst-signal-discovery",
+    "hermes-governance-api",
+    "hermes-momentum-catalyst-scalp",
+    "hermes-news-bridge",
+    "identity-sweep-stage0",
+    "journal-tilt-morning-hook",
+    "material-change-detector-stage1",
+    "materialize-watchlist-strategy-cards",
+    "proposal-backtest-engine",
+    "sec-data-ingest",
+    "source-attribution-monitor",
+    "update-agent-performance",
+    "watchlist-enrichment-sweep"
+  ],
+  "effect_keyed": [
+    "agent-outcome-linker",
+    "catalyst-symbol-impact",
+    "document-mentions-backfill",
+    "etf-analyst-enrich",
+    "etf-performance-enrich",
+    "feedback-loop-processor",
+    "finviz-proactive-research",
+    "finviz-screener-runner",
+    "hermes-analyst-signal-discovery",
+    "hermes-momentum-catalyst-scalp",
+    "hermes-news-bridge",
+    "journal-tilt-morning-hook",
+    "material-change-detector-stage1",
+    "proposal-backtest-engine",
+    "sec-data-ingest",
+    "source-attribution-monitor",
+    "update-agent-performance",
+    "watchlist-enrichment-sweep"
+  ],
+  "plan": [
+    {
+      "lane_id": "agent-outcome-linker",
+      "row_id": "cron:L320",
+      "family_id": "F50",
+      "tier_name": "append",
+      "status": "READY_CANARY",
+      "lock": "/tmp/agent_outcome_linker.lock",
+      "live_arg": [
+        "--apply"
+      ],
+      "slots": [
+        "0 11 * * 1-5"
+      ],
+      "cron_lines": [
+        {
+          "line": 320,
+          "text": "0 11 * * 1-5 cd $PROJ && flock -n /tmp/agent_outcome_linker.lock $PY scripts/agent_outcome_linker.py --apply >> logs/agent_outcome_linker.log 2>&1"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "catalyst-graph",
+      "row_id": "cron:L980",
+      "family_id": "F44",
+      "tier_name": "read/overwrite",
+      "status": "READY_CANARY",
+      "lock": "/tmp/build_catalyst_graph.lock",
+      "live_arg": [
+        "--apply"
+      ],
+      "slots": [
+        "10 6 * * 1-5"
+      ],
+      "cron_lines": [
+        {
+          "line": 991,
+          "text": "10 6 * * 1-5 cd $PROJ && flock -n /tmp/build_catalyst_graph.lock $PY scripts/build_catalyst_graph.py --apply >> logs/build_catalyst_graph.log 2>&1  # lane catalyst-graph"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "catalyst-symbol-impact",
+      "row_id": "cron:L974",
+      "family_id": "F44",
+      "tier_name": "append",
+      "status": "READY_CANARY",
+      "lock": "/tmp/catalyst_symbol_impact.lock",
+      "live_arg": [
+        "--apply"
+      ],
+      "slots": [
+        "20 7,12,17 * * 1-5"
+      ],
+      "cron_lines": [
+        {
+          "line": 985,
+          "text": "20 7,12,17 * * 1-5 cd $PROJ && flock -n /tmp/catalyst_symbol_impact.lock $PY scripts/catalyst_symbol_impact_writer.py --apply >> logs/catalyst_symbol_impact.log 2>&1  # lane catalyst-symbol-impact"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "classify-instruments",
+      "row_id": "cron:L506",
+      "family_id": "F42",
+      "tier_name": "read/overwrite",
+      "status": "READY_CANARY",
+      "lock": "/tmp/classify_instr.lock",
+      "live_arg": [],
+      "slots": [
+        "30 6 * * 6"
+      ],
+      "cron_lines": [
+        {
+          "line": 506,
+          "text": "30 6 * * 6 cd $PROJ && flock -n /tmp/classify_instr.lock $PY scripts/classify_instruments.py >> logs/classify_instruments.log 2>&1  # weekly: instrument_type + expense ratios"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "document-mentions-backfill",
+      "row_id": "cron:L922",
+      "family_id": "F44",
+      "tier_name": "append",
+      "status": "ALREADY_CANARY",
+      "lock": "/tmp/document_mentions_backfill.lock",
+      "live_arg": [],
+      "slots": [
+        "25 * * * *"
+      ],
+      "cron_lines": [
+        {
+          "line": 933,
+          "text": "25 * * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/document_mentions_backfill.lock timeout 25m $PY scripts/backfill_document_mentions.py --all --limit 4000 --apply >> /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/logs/document_mentions.log 2>&1"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "etf-analyst-enrich",
+      "row_id": "cron:L507",
+      "family_id": "F42",
+      "tier_name": "append",
+      "status": "READY_CANARY",
+      "lock": "/tmp/etf_analyst.lock",
+      "live_arg": [],
+      "slots": [
+        "0 7 * * 6"
+      ],
+      "cron_lines": [
+        {
+          "line": 507,
+          "text": "0 7 * * 6 cd $PROJ && flock -n /tmp/etf_analyst.lock $PY scripts/etf_analyst_enrich.py >> logs/etf_analyst_enrich.log 2>&1  # weekly: ETF analyst look-through"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "etf-performance-enrich",
+      "row_id": "cron:L522",
+      "family_id": "F42",
+      "tier_name": "append",
+      "status": "READY_CANARY",
+      "lock": "/tmp/etf_perf.lock",
+      "live_arg": [],
+      "slots": [
+        "15 7 * * 6"
+      ],
+      "cron_lines": [
+        {
+          "line": 522,
+          "text": "15 7 * * 6 cd $PROJ && flock -n /tmp/etf_perf.lock $PY scripts/etf_performance_enrich.py >> logs/etf_performance_enrich.log 2>&1  # weekly: ETF YTD/yield/dividends"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "feedback-loop-processor",
+      "row_id": "cron:L199",
+      "family_id": "F50",
+      "tier_name": "append",
+      "status": "READY_CANARY",
+      "lock": "/tmp/feedback_loop.lock",
+      "live_arg": [],
+      "slots": [
+        "30 20 * * 1-5"
+      ],
+      "cron_lines": [
+        {
+          "line": 199,
+          "text": "30 20 * * 1-5 cd $PROJ && flock -n /tmp/feedback_loop.lock $PY scripts/feedback_loop_processor.py >> logs/feedback_loop.log 2>&1"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "finviz-enrichment",
+      "row_id": "cron:L144",
+      "family_id": "F43",
+      "tier_name": "read/overwrite",
+      "status": "READY_CANARY",
+      "lock": "/tmp/finviz_enrichment.lock",
+      "live_arg": [],
+      "slots": [
+        "0 13 * * 1-5"
+      ],
+      "cron_lines": [
+        {
+          "line": 144,
+          "text": "0 13 * * 1-5 cd $PROJ && flock -n /tmp/finviz_enrichment.lock $PY scripts/finviz_enrichment.py >> logs/finviz_enrichment.log 2>&1"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "finviz-proactive-research",
+      "row_id": "cron:L524",
+      "family_id": "F43",
+      "tier_name": "append",
+      "status": "ALREADY_CANARY",
+      "lock": "/tmp/finviz_proactive.lock",
+      "live_arg": [],
+      "slots": [
+        "30 9,11,13,15 * * 1-5"
+      ],
+      "cron_lines": [
+        {
+          "line": 524,
+          "text": "30 9,11,13,15 * * 1-5 cd $PROJ && flock -n /tmp/finviz_proactive.lock $PY scripts/finviz_proactive_research.py --max 400 --lookback-hours 12 >> logs/finviz_proactive.log 2>&1"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "finviz-screener-runner",
+      "row_id": "cron:L135",
+      "family_id": "F43",
+      "tier_name": "append",
+      "status": "READY_CANARY",
+      "lock": "/tmp/finviz_screener.lock",
+      "live_arg": [],
+      "slots": [
+        "0 10 * * 1-5"
+      ],
+      "cron_lines": [
+        {
+          "line": 135,
+          "text": "0 10 * * 1-5 cd $PROJ && flock -n /tmp/finviz_screener.lock $PY scripts/finviz_screener_runner.py --run >> logs/finviz_screener.log 2>&1"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "finviz-sector-research",
+      "row_id": "cron:L526",
+      "family_id": "F43",
+      "tier_name": "read/overwrite",
+      "status": "ALREADY_CANARY",
+      "lock": "/tmp/finviz_sector.lock",
+      "live_arg": [],
+      "slots": [
+        "15 10,16 * * 1-5"
+      ],
+      "cron_lines": [
+        {
+          "line": 526,
+          "text": "15 10,16 * * 1-5 cd $PROJ && flock -n /tmp/finviz_sector.lock $PY scripts/finviz_sector_research.py >> logs/finviz_sector.log 2>&1"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "hermes-analyst-signal-discovery",
+      "row_id": "cron:L690",
+      "family_id": "F44",
+      "tier_name": "append",
+      "status": "ALREADY_CANARY",
+      "lock": "/tmp/hermes_analyst_signal.lock",
+      "live_arg": [],
+      "slots": [
+        "20 */3 * * *"
+      ],
+      "cron_lines": [
+        {
+          "line": 694,
+          "text": "20 */3 * * * cd $PROJ && flock -n /tmp/hermes_analyst_signal.lock $PY scripts/hermes_analyst_signal_discovery.py --run --json >> logs/hermes_analyst_signal.log 2>&1  # analyst-signal discovery feeder \u2014 LIVE (analyst_signal_enabled=true since 2026-07-30)"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "hermes-governance-api",
+      "row_id": "cron:L647",
+      "family_id": "F47",
+      "tier_name": "read/overwrite",
+      "status": "READY_CANARY",
+      "lock": "/tmp/tradeai_hermes_gov_warm.lock",
+      "live_arg": [],
+      "slots": [
+        "*/10 6-20 * * 1-5"
+      ],
+      "cron_lines": [
+        {
+          "line": 651,
+          "text": "*/10 6-20 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/tradeai_hermes_gov_warm.lock $PY scripts/hermes_governance_api.py --warm >> logs/hermes_governance_warm.log 2>&1  # pre-warm Hermes governance panel cache"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "hermes-momentum-catalyst-scalp",
+      "row_id": "cron:L713",
+      "family_id": "F47",
+      "tier_name": "append",
+      "status": "READY_CANARY",
+      "lock": "/tmp/hermes_scalp_catalyst.lock",
+      "live_arg": [
+        "--apply"
+      ],
+      "slots": [
+        "25 6-15 * * 1-5"
+      ],
+      "cron_lines": [
+        {
+          "line": 717,
+          "text": "25 6-15 * * 1-5 cd $PROJ && flock -n /tmp/hermes_scalp_catalyst.lock timeout 5m $PY scripts/hermes_momentum_catalyst_researcher.py --source scalp --apply >> logs/hermes_scalp_catalyst.log 2>&1  # Hermes catalyst research on the day scalp candidates (feeds social_scalp_scanner GO gate)"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "hermes-news-bridge",
+      "row_id": "cron:L415",
+      "family_id": "F44",
+      "tier_name": "append",
+      "status": "ALREADY_CANARY",
+      "lock": "/tmp/hermes_news_bridge.lock",
+      "live_arg": [],
+      "slots": [
+        "40 6,12,18 * * *"
+      ],
+      "cron_lines": [
+        {
+          "line": 415,
+          "text": "40 6,12,18 * * * cd $PROJ && flock -n /tmp/hermes_news_bridge.lock $PY scripts/hermes_news_bridge.py >> logs/hermes_news_bridge.log 2>&1"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "identity-sweep-stage0",
+      "row_id": "cron:L931",
+      "family_id": "F39",
+      "tier_name": "read/overwrite",
+      "status": "READY_CANARY",
+      "lock": "/tmp/identity_sweep.lock",
+      "live_arg": [
+        "--apply"
+      ],
+      "slots": [
+        "*/30 * * * *"
+      ],
+      "cron_lines": [
+        {
+          "line": 942,
+          "text": "*/30 * * * * cd $PROJ && flock -n /tmp/identity_sweep.lock $PY scripts/backfill_subject_identity.py --all --apply >> logs/identity_sweep.log 2>&1  # stage-0 identity sweep"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "journal-tilt-morning-hook",
+      "row_id": "cron:L628",
+      "family_id": "F50",
+      "tier_name": "append",
+      "status": "READY_CANARY",
+      "lock": "/tmp/journal_tilt_hook.lock",
+      "live_arg": [],
+      "slots": [
+        "0 12 * * 1-5"
+      ],
+      "cron_lines": [
+        {
+          "line": 632,
+          "text": "0 12 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/journal_tilt_hook.lock $PY scripts/journal_tilt_morning_hook.py >> /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/logs/journal_tilt_hook.log 2>&1"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "material-change-detector-stage1",
+      "row_id": "cron:L938",
+      "family_id": "F39",
+      "tier_name": "append",
+      "status": "ALREADY_CANARY",
+      "lock": "/tmp/material_change_detect.lock",
+      "live_arg": [],
+      "slots": [
+        "*/30 * * * *"
+      ],
+      "cron_lines": [
+        {
+          "line": 949,
+          "text": "*/30 * * * * cd $PROJ && flock -n /tmp/material_change_detect.lock $PY scripts/material_change_detector.py --apply >> logs/material_change_detect.log 2>&1  # stage-1 detector"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "materialize-watchlist-strategy-cards",
+      "row_id": "cron:L219",
+      "family_id": "F51",
+      "tier_name": "read/overwrite",
+      "status": "READY_CANARY",
+      "lock": "/tmp/materialize_cards.lock",
+      "live_arg": [],
+      "slots": [
+        "*/30 6-16 * * 1-5"
+      ],
+      "cron_lines": [
+        {
+          "line": 219,
+          "text": "*/30 6-16 * * 1-5 cd $PROJ && flock -n /tmp/materialize_cards.lock $PY scripts/materialize_watchlist_strategy_cards.py >> logs/watchlist_strategy_cards.log 2>&1"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "proposal-backtest-engine",
+      "row_id": "cron:L608",
+      "family_id": "F45",
+      "tier_name": "append",
+      "status": "ALREADY_CANARY",
+      "lock": "/tmp/proposal_backtest.lock",
+      "live_arg": [],
+      "slots": [
+        "5 10-15/2 * * 1-5"
+      ],
+      "cron_lines": [
+        {
+          "line": 612,
+          "text": "5 10-15/2 * * 1-5 cd $PROJ && flock -n /tmp/proposal_backtest.lock $PY scripts/proposal_backtest_engine.py --all-pending --apply >> logs/proposal_backtest_engine.log 2>&1  # backtest active proposals \u2192 proposal_backtest_snapshots (Backtest field on cards)"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "sec-data-ingest",
+      "row_id": "cron:L152",
+      "family_id": "F44",
+      "tier_name": "append",
+      "status": "READY_CANARY",
+      "lock": "/tmp/sec_data_ingest.lock",
+      "live_arg": [],
+      "slots": [
+        "0 20 * * 1-5"
+      ],
+      "cron_lines": [
+        {
+          "line": 152,
+          "text": "0 20 * * 1-5 cd $PROJ && flock -n /tmp/sec_data_ingest.lock $PY scripts/sec_data_ingest.py --all >> logs/sec_ingest.log 2>&1"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "source-attribution-monitor",
+      "row_id": "cron:L435",
+      "family_id": "F50",
+      "tier_name": "append",
+      "status": "READY_CANARY",
+      "lock": "/tmp/source_attribution_monitor.lock",
+      "live_arg": [],
+      "slots": [
+        "0 6 * * *"
+      ],
+      "cron_lines": [
+        {
+          "line": 435,
+          "text": "0 6 * * * cd $PROJ && flock -n /tmp/source_attribution_monitor.lock $PY scripts/source_attribution_monitor.py >> logs/source_attribution_monitor.log 2>&1"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "update-agent-performance",
+      "row_id": "cron:L429",
+      "family_id": "F50",
+      "tier_name": "append",
+      "status": "READY_CANARY",
+      "lock": "/tmp/update_agent_performance.lock",
+      "live_arg": [],
+      "slots": [
+        "0 20 * * 1-5"
+      ],
+      "cron_lines": [
+        {
+          "line": 429,
+          "text": "0 20 * * 1-5 cd $PROJ && flock -n /tmp/update_agent_performance.lock $PY scripts/update_agent_performance.py >> logs/update_agent_performance.log 2>&1"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "watchlist-enrichment-sweep",
+      "row_id": "cron:L449",
+      "family_id": "F39",
+      "tier_name": "append",
+      "status": "READY_CANARY",
+      "lock": "/tmp/watchlist_sweep.lock",
+      "live_arg": [],
+      "slots": [
+        "*/30 9-16 * * 1-5"
+      ],
+      "cron_lines": [
+        {
+          "line": 449,
+          "text": "*/30 9-16 * * 1-5 cd $PROJ && flock -n /tmp/watchlist_sweep.lock $PY scripts/watchlist_enrichment_sweep.py --once >> logs/watchlist_sweep.log 2>&1  # E-1 intraday watchlist enrichment"
+        }
+      ],
+      "reasons": []
+    }
+  ]
+}

@@ -19,6 +19,9 @@ from types import SimpleNamespace
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT / "tests") not in sys.path:
+    sys.path.append(str(ROOT / "tests"))
+from support import n8n_cutover_waves as CW  # noqa: E402
 sys.path.insert(0, str(ROOT))
 
 from scripts import n8n_run_executor as X  # noqa: E402
@@ -364,11 +367,15 @@ def test_committed_effect_config_changes_no_live_run_at_merge():
         "hermes-learning-tag-engine",
         "hermes-learning-outcome-feedback-agent",
         "hermes-learning-autonomous-self-tune",
-    }
+    } | set(CW.ARMED)  # 2026-10-15 n8n cutover waves: armed for canary (tests/support/n8n_cutover_waves.py)
     allow = {e["lane_id"]: e for e in json.loads((ROOT / "config" / "n8n_run_allowlist.json").read_text())["lanes"]}
     reg = {r["lane_id"]: r for r in json.loads((ROOT / "config" / "lane_registry.json").read_text())["lanes"]}
     raw = json.loads((ROOT / "config" / "n8n_effect_keys.json").read_text())["lanes"]
     for lane, spec in cfg.items():
+        if lane in CW.ARMED:  # canary: live under the shared flock; owner row -> n8n in the wave packet (step 2)
+            assert spec["process"] == lane and isinstance(allow[lane]["live_arg"], list)
+            assert reg[lane]["scheduler"]["stage"] in ("canary", "cutover") and raw[lane]["cron_claim"] is True
+            continue
         assert spec["process"] == lane and allow[lane]["live_arg"] is None
         assert reg[lane]["scheduler"]["stage"] == "shadow" and raw[lane]["cron_claim"] is False
 

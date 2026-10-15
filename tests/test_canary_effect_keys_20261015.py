@@ -29,6 +29,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 if str(ROOT / "tests") not in sys.path:
     sys.path.append(str(ROOT / "tests"))
+from support import n8n_cutover_waves as CW  # noqa: E402
 
 from scripts import n8n_run_executor as X  # noqa: E402
 from scripts.lib import effect_claim as E  # noqa: E402
@@ -113,6 +114,9 @@ def _registry() -> dict:
 def _scope() -> set[str]:
     reg = _registry()
     canary = {k for k, v in reg.items() if (v.get("scheduler") or {}).get("stage") in ("canary", "cutover")}
+    # 2026-10-15 cutover waves (scripts/n8n_cutover_wave.py) promote lanes outside this audit's scope; their keys are
+    # that wave's review (tests/support/n8n_cutover_waves.py ARMED), not this audit's.
+    canary -= set(CW.PROMOTED) - set(RELAY_LIVE) - set(TIER_A) - set(TIER_B)
     return set(RELAY_LIVE) | set(TIER_A) | set(TIER_B) | canary
 
 
@@ -134,7 +138,10 @@ def test_every_append_send_llm_lane_has_a_staged_key(lane):
     spec = _raw()["lanes"].get(lane)
     assert spec is not None, f"{lane} appends/sends/calls an LLM but has no effect key"
     assert spec["process"] == lane and spec["input_version"] == "v1"
-    assert spec["cron_claim"] is False and spec["n8n_claim"] is False
+    if lane in CW.ARMED:  # armed by a 2026-10-15 cutover wave for its canary (owner row -> n8n in the wave packet)
+        assert spec["cron_claim"] is True and spec["n8n_claim"] is True
+    else:
+        assert spec["cron_claim"] is False and spec["n8n_claim"] is False
     assert set(spec["effects"]) <= {"append", "send", "llm"} and spec["effects"]
     assert ("send" in spec["effects"]) == (lane in SENDS)
     assert ("llm" in spec["effects"]) == (lane in LLM)
@@ -153,7 +160,7 @@ def test_overwrite_only_lanes_are_not_keyed():
 
 def test_no_key_outside_scope_except_reviewed_process_steps():
     # The hermes-learning process step lanes (PRs #1746 and #1749) may also be present; anything else is a new review.
-    extra = set(_raw()["lanes"]) - set(STAGED)
+    extra = set(_raw()["lanes"]) - set(STAGED) - set(CW.ARMED)
     assert extra <= {
         "hermes-learning-outcome-grader",
         "hermes-learning-outcome-learning",
@@ -183,9 +190,11 @@ def test_keys_are_unique():
 def test_committed_staged_keys_arm_neither_side():
     lanes = E.load_effect_lanes(CONFIG)
     executor_view = E.load_effect_config(CONFIG)
-    for lane in STAGED:
+    for lane in sorted(set(STAGED) - set(CW.ARMED)):
         assert lane not in executor_view
         assert lanes[lane]["cron_claim"] is False
+    for lane in CW.ARMED:
+        assert lane in executor_view and lanes[lane]["cron_claim"] is True
 
 
 # ── 1b. the loader: n8n_claim / cron_claim semantics ───────────────────────────────────────────────────────────────

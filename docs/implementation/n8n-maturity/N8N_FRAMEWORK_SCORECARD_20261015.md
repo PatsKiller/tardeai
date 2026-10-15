@@ -28,7 +28,7 @@ for all 18 and for the reference).
 
 ## 1. Result
 
-**0 of 18 active workflows statically conformant; 0 of 18 activation-eligible. Static conformance 274/531 = 51.6%**
+**0 of 18 active workflows statically conformant; 0 of 18 activation-eligible. Static conformance 274.5/531 = 51.7%** (n8n cutover wave CW1, 2026-10-15: +0.5 from lane contracts agent-reviewed for canary)
 (up to 31 elements per workflow, n/a excluded; platform elements reported separately and gated). 220 failing elements.
 
 Why the number moved from 46.9% and why the two are not comparable: the audit fix added four structural elements
@@ -68,7 +68,7 @@ probes): 1 statically conformant (the reference), 2030/4877 = 41.6%, 0 activatio
 | `tradeai-fabric-run-lane` | resilience | Y | N | P | P | Y | P | Y | n/a | 18.5/30 (61.7%) | UNPROVEN (18) | no | FW-C1, FW-C2, FW-C3, FW-M4, FW-M5, FW-M6, FW-A2, FW-A3, FW-A6, FW-R3, FW-R5 |
 | `tradeai-fabric-error` | resilience | Y | N | P | P | Y | P | Y | n/a | 15.5/26 (59.6%) | UNPROVEN (9) | no | FW-C1, FW-C2, FW-C3, FW-M5, FW-M6, FW-A1, FW-A2, FW-A3, FW-R3 |
 
-**Fleet:** 18 workflows, 0 statically conformant, 0 activation-eligible; static conformance 274/531 = 51.6%; 219 failing elements (train 3: +1 FW-S2 for momentum-lifecycle-candidate after the relay route fix, audit DD14).
+**Fleet:** 18 workflows, 0 statically conformant, 0 activation-eligible; static conformance 274.5/531 = 51.7% (CW1 +0.5); 219 failing elements (train 3: +1 FW-S2 for momentum-lifecycle-candidate after the relay route fix, audit DD14).
 
 "Runtime" = the runtime obligations that apply to the workflow (§23.24 crosswalk rows marked
 `not_checkable_offline`), all UNPROVEN: 18 for a workflow that requests lane runs, 9 for one that does not.

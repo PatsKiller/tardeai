@@ -28,6 +28,9 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT / "tests") not in sys.path:
+    sys.path.append(str(ROOT / "tests"))
+from support import n8n_cutover_waves as CW  # noqa: E402
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
@@ -142,7 +145,9 @@ def test_no_other_shadow_row_gained_a_live_argv():
     # canary-wave-20261014 moves 14 cron rows to canary (tests/test_canary_wave_20261014.py).
     from tests.test_canary_wave_20261014 import CANARY_WAVE_20261014
 
-    assert canary == sorted(["heartbeat-watch", *CANARY_WAVE_20261014])
+    # 2026-10-15 cutover waves (scripts/n8n_cutover_wave.py) add their promoted lanes (tests/support/n8n_cutover_waves.py).
+    assert canary == sorted({"heartbeat-watch", *CANARY_WAVE_20261014} | {
+        lane for lane in CW.PROMOTED if (ROWS[lane].get("scheduler") or {}).get("stage") == "canary"})
     cut = sorted(r for r, row in ROWS.items() if (row.get("scheduler") or {}).get("stage") == "cutover")
     assert set(CUTOVER) <= set(cut), cut
 

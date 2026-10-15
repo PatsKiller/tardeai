@@ -24,6 +24,9 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT / "tests") not in sys.path:
+    sys.path.append(str(ROOT / "tests"))
+from support import n8n_cutover_waves as CW  # noqa: E402
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
@@ -291,7 +294,8 @@ def test_runnable_step_is_a_shadow_lane_with_the_step_lock_and_timeout(sid):
 
 def test_effect_config_loads_for_the_executor_and_the_runner_claims_nothing_yet():
     cfg = E.load_effect_config(ROOT / "config" / "n8n_effect_keys.json")
-    assert set(cfg) == {SPEC["steps"][s]["lane_id"] for s in RUNNABLE}
+    # 2026-10-15 n8n cutover waves arm their own lanes (tests/support/n8n_cutover_waves.py); the hermes steps are these.
+    assert set(cfg) - set(CW.ARMED) == {SPEC["steps"][s]["lane_id"] for s in RUNNABLE}
     for stage in MANIFEST["stages"]:
         assert PM.effect_spec(MANIFEST, stage, EFFECTS) == []  # cron_claim false everywhere: OFF until cutover
 

@@ -33,6 +33,9 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT / "tests") not in sys.path:
+    sys.path.append(str(ROOT / "tests"))
+from support import n8n_cutover_waves as CW  # noqa: E402
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
@@ -84,6 +87,8 @@ FLOCK_ADDED = {"agent-outcome-linker", "agent-calibration-engine", "update-agent
 #: n8n_cutover/research-insight-extractor-20261013T215647Z-cutover.json): its cron line is `# RETIRED`, its row is an
 #: n8n dispatcher row, so it leaves the cron-row checks below and is pinned by test_cutover_row_is_the_dispatcher_row.
 CANARY: set[str] = {"hermes-news-bridge"}  # canary-wave-20261014 (news-to-catalyst held at shadow)
+#: 2026-10-15 cutover waves (scripts/n8n_cutover_wave.py; tests/support/n8n_cutover_waves.py): promoted to canary.
+CANARY |= set(WAVE3) & set(CW.PROMOTED)
 CUTOVER = frozenset({"research-insight-extractor"})
 #: The wave-3 rows still scheduled by cron (shadow or canary).
 WAVE3_ON_CRON = {k: v for k, v in WAVE3_LIVE.items() if k not in CUTOVER}
@@ -167,7 +172,7 @@ def test_dispatch_block_shape(lane):
 @pytest.mark.parametrize("lane", sorted(WAVE3_LIVE))
 def test_allowlist_entry_is_shadow_only_and_carries_no_broker_credential(lane):
     e = ALLOW[lane]
-    assert e["live_arg"] is None if lane not in CANARY | CUTOVER else e["live_arg"] == []
+    assert e["live_arg"] is None if lane not in CANARY | CUTOVER else e["live_arg"] == CW.live_arg(lane, [])
     assert e["dry_run_arg"] == ["--dry-run"]
     assert not any(t.startswith("--apply") for t in e["command"])
     assert e["output_signal"] == ROWS[lane]["output_signal"]["path"]
