@@ -7526,28 +7526,12 @@
       "scripts/run_trade_ai_scalp_live.py",
       "scripts/continuous_runner.py"
      ],
-     "evidence": "SQL INSERT line 997",
+     "evidence": "SQL INSERT line 996",
      "module": "scripts/continuous_runner.py",
      "module_evidence": [
-      "SQL INSERT line 997"
+      "SQL INSERT line 996"
      ],
      "modules_with_capability": 150
-    },
-    "direct_sender": {
-     "at_import": false,
-     "chain": [
-      "scripts/run_trade_ai_scalp_live.py",
-      "scripts/continuous_runner.py",
-      "scripts/alerting.py"
-     ],
-     "evidence": "imports smtplib",
-     "module": "scripts/alerting.py",
-     "module_evidence": [
-      "imports smtplib",
-      "imports twilio.rest.Client",
-      "reads SLACK_WEBHOOK_URL line 224"
-     ],
-     "modules_with_capability": 1
     },
     "network_http": {
      "at_import": false,
@@ -7561,7 +7545,7 @@
      "module_evidence": [
       "imports requests"
      ],
-     "modules_with_capability": 73
+     "modules_with_capability": 72
     },
     "order_placement": {
      "at_import": false,
@@ -7602,7 +7586,7 @@
    "entry": "scripts/run_trade_ai_scalp_live.py",
    "kind": "python",
    "modules_at_import": 1,
-   "modules_in_closure": 1167
+   "modules_in_closure": 1166
   },
   "trade-backtest-engine": {
    "capabilities": {
@@ -8170,7 +8154,7 @@
   "broker_module": 68,
   "chokepoint_send": 71,
   "db_write": 84,
-  "direct_sender": 1,
+  "direct_sender": 0,
   "network_http": 85,
   "order_placement": 67,
   "subprocess": 74

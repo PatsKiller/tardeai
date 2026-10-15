@@ -441,6 +441,11 @@ def totals(result: dict[str, Any]) -> dict[str, int]:
 
 SCALP_SECTION = """## trade-ai-scalp-live: the direct Slack / Twilio path (DD01)
 
+**STATUS: CLOSED 2026-10-15** (operator: "yes apply the scalp fix in train 3"). The recommended diff below is
+applied: `_deliver_live_alert` delivers only through `send_telegram`; the baseline entry and the frozen-set entry
+are removed; the strict xfail is now a passing assertion across every outcome with credentials configured; the
+allowlist `source` text says chokepoint-only. The rest of this section is the finding as audited.
+
 Static chain: `scripts/run_trade_ai_scalp_live.py` -> `scripts/continuous_runner.py` -> `scripts/alerting.py`.
 Call path (source lines on the train branch, 2026-10-15):
 

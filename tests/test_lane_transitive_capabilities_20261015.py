@@ -99,11 +99,9 @@ FROZEN_20261015 = {
             "watchlist-enrichment-sweep",
         }
     ),
-    "direct_sender": frozenset(
-        {
-            "trade-ai-scalp-live",
-        }
-    ),
+    # 2026-10-15: trade-ai-scalp-live removed (DD01 fix, delivery only through send_telegram). Empty: no lane may
+    # reach a direct sender.
+    "direct_sender": frozenset(),
     "order_placement": frozenset(
         {
             "advisory-desk-run-now",
@@ -217,14 +215,10 @@ def test_no_forbidden_capability_is_loaded_at_import_time(result):
     assert eager == [], eager
 
 
-def test_scalp_lane_direct_sender_path_is_the_documented_one(result):
-    s = result["trade-ai-scalp-live"]["capabilities"]["direct_sender"]
-    assert s["chain"] == ["scripts/run_trade_ai_scalp_live.py", "scripts/continuous_runner.py", "scripts/alerting.py"]
-    assert any("twilio" in e for e in s["module_evidence"]) and any(
-        "SLACK_WEBHOOK_URL" in e for e in s["module_evidence"]
-    )
-    # it is the only lane with a direct sender
-    assert [lid for lid, row in result.items() if "direct_sender" in row["capabilities"]] == ["trade-ai-scalp-live"]
+def test_no_lane_reaches_a_direct_sender(result):
+    """DD01 closed 2026-10-15: the scalp lane's continuous_runner -> alerting path is gone; no lane reaches one."""
+    assert [lid for lid, row in result.items() if "direct_sender" in row["capabilities"]] == []
+    assert "chokepoint_send" in result["trade-ai-scalp-live"]["capabilities"]
 
 
 # ── detector unit proofs on synthetic trees ───────────────────────────────────────────────────────────────────────

@@ -1,8 +1,8 @@
 """DD01 closure evidence (third-party n8n audit, 2026-10-15): the scalp GO delivery path under every raw transport.
 
 Finding: lane trade-ai-scalp-live is allowlisted with a sender exception; its runner calls
-continuous_runner._deliver_live_alert, which lazily imports alerting.send_whatsapp / alerting.send_slack and calls
-both BEFORE the send_telegram chokepoint (scripts/continuous_runner.py lines 636-637). Required evidence: a hermetic
+continuous_runner._deliver_live_alert, which lazily imported alerting.send_whatsapp / alerting.send_slack and called
+both BEFORE the send_telegram chokepoint (scripts/continuous_runner.py lines 636-637 before the fix). Required evidence: a hermetic
 GO integration that intercepts every raw transport and shows one bounded intent and one delivery-owner action per
 attempt, across disabled / partial / failed / retried delivery, without duplication.
 
@@ -14,13 +14,11 @@ socket.create_connection / socket.socket.connect (raise), and a fake twilio.rest
 (telegram_alert.send_telegram) is a stub that records the intent; no token store, env file or network is touched.
 Credentials below are fake literals, never read from any environment file.
 
-Results:
-  * transports not configured (no SLACK_WEBHOOK_URL / TWILIO_*): zero raw sends, one chokepoint call per attempt,
-    no duplicate after delivery, in all four outcomes -> passes today;
-  * ENABLE_SLACK=false and ENABLE_WHATSAPP=false with credentials present: zero raw sends -> the interim mitigation;
-  * credentials present, switches unset (alerting._enabled defaults to "true"): the raw Slack + Twilio sends fire on
-    every attempt, retries included. The closure assertion is xfail(strict=True) until the DD01 fix lands, and
-    test_dd01_open_gap_raw_transports_fire_per_attempt_today records the duplication count (delete it with the fix).
+Results (after the operator-approved fix, 2026-10-15: the direct send_whatsapp / send_slack calls were removed):
+  * transports not configured, switched off, or fully configured with switches at their "true" default: zero raw
+    sends and exactly one chokepoint call per attempt, no duplicate after delivery, across delivered / disabled /
+    partial / failed-then-retried / failed-capped. Before the fix, a configured GO retried twice reached Slack and
+    WhatsApp three times each while the chokepoint delivered it once.
 """
 
 from __future__ import annotations
@@ -261,31 +259,41 @@ def test_go_delivery_switches_off_with_credentials_present_no_raw_sends(monkeypa
     _assert_bounded_intents(wire)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="DD01 OPEN: continuous_runner.py:636-637 calls alerting.send_whatsapp/send_slack "
-    "before send_telegram; see docs/implementation/n8n-maturity/LANE_TRANSITIVE_CAPABILITIES_20261015.md",
+@pytest.mark.parametrize(
+    "outcomes,expect_intents,final",
+    [
+        (["accepted"], 1, "delivered"),
+        (["disabled"], 1, "disabled"),
+        (["partial"], 1, "partial"),
+        (["rejected", "raise", "accepted"], 3, "delivered"),
+        (["rejected"], 3, "failed_final"),
+    ],
+    ids=["delivered", "disabled", "partial", "failed-then-retried-ok", "failed-capped"],
 )
-def test_dd01_closure_no_raw_sends_even_with_credentials_configured(monkeypatch, wire):
+def test_dd01_closure_no_raw_sends_even_with_credentials_configured(monkeypatch, wire, outcomes, expect_intents, final):
+    """DD01 CLOSED (operator-approved 2026-10-15): with every Slack / Twilio credential set and the switches left at
+    their "true" default, no outcome reaches a raw transport; the chokepoint is the only delivery action."""
     for k, v in FAKE_CREDS.items():
         monkeypatch.setenv(k, v)
     _cheap_lines(monkeypatch)
-    _session(monkeypatch, wire, ["rejected", "raise", "accepted"])
+    st, seen = _session(monkeypatch, wire, outcomes)
     assert wire.raw() == [], f"raw transports reached: {wire.raw()}"
-    assert len(wire.intents) == 3
+    assert len(wire.intents) == expect_intents
+    _assert_bounded_intents(wire)
+    assert [o for _, o, _ in seen if o not in (None, "deferred")][-1] == final
+    assert sum(n for _, _, n in seen) == (1 if final in ("delivered", "partial") else 0)
 
 
-def test_dd01_open_gap_raw_transports_fire_per_attempt_today(monkeypatch, wire):
-    """Characterises the open gap (delete with the DD01 fix): with credentials set and switches unset, each delivery
-    attempt sends one raw Slack webhook POST and one Twilio WhatsApp message BEFORE the chokepoint, so a GO that is
-    retried twice reaches Slack and WhatsApp three times while the delivery owner delivers it once."""
-    for k, v in FAKE_CREDS.items():
-        monkeypatch.setenv(k, v)
-    _cheap_lines(monkeypatch)
-    _session(monkeypatch, wire, ["rejected", "raise", "accepted"])
-    assert len(wire.intents) == 3
-    assert wire.count("requests.post") == 3 and all(
-        "hooks.slack.invalid" in t for k, t in wire.calls if k == "requests.post"
-    )
-    assert wire.count("twilio") == 3
-    assert {k for k, _ in wire.calls} == {"requests.post", "twilio"}  # nothing else (no SMTP, no socket)
+def test_deliver_live_alert_names_no_raw_transport():
+    """Static pin: the delivery function imports nothing from alerting and calls no raw sender."""
+    import ast
+    import inspect
+    import textwrap
+
+    tree = ast.parse(textwrap.dedent(inspect.getsource(cr._deliver_live_alert)))
+    mods = {n.module for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)}
+    names = {n.id for n in ast.walk(tree) if isinstance(n, ast.Name)} | {
+        n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute)
+    }
+    assert "alerting" not in mods and mods <= {"telegram_alert"}
+    assert not names & {"send_whatsapp", "send_slack", "send_email", "send_all_alerts"}

@@ -255,7 +255,6 @@
   },
   "trade-ai-scalp-live": {
    "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
-   "direct_sender": "DD01 OPEN (2026-10-15): scripts/continuous_runner.py _deliver_live_alert lines 636-637 lazily imports alerting.send_whatsapp / alerting.send_slack and calls both before the send_telegram chokepoint; reached on every GO send attempt, retries included. Gated only by ENABLE_WHATSAPP / ENABLE_SLACK (alerting._enabled defaults to true) plus TWILIO_* / SLACK_WEBHOOK_URL being set. Remove this entry when the proposed fix in LANE_TRANSITIVE_CAPABILITIES_20261015.md lands.",
    "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
   },
   "update-agent-performance": {

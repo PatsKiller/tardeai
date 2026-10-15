@@ -15,7 +15,7 @@ Lanes: **103**. Allowlist `as_of` 2026-10-09.
 
 | Capability | Class | Lanes (reachable) | Lanes (at import) |
 |---|---|---|---|
-| `direct_sender` | FORBIDDEN | 1 | 0 |
+| `direct_sender` | FORBIDDEN | 0 | 0 |
 | `broker_module` | FORBIDDEN | 68 | 0 |
 | `order_placement` | FORBIDDEN | 67 | 0 |
 | `db_write` | review | 84 | 50 |
@@ -129,7 +129,7 @@ a broker credential, which `env_names` / the executor env policy are meant to ke
 | `storage-watch` | 6 |  |  |  |  | x |  |  |
 | `sync-social-to-intelligence` | 1140 |  | x | x | x | x | x | x |
 | `trade-ai-restore-drill` | 9 |  |  |  | x | x |  | x |
-| `trade-ai-scalp-live` | 1167 | x | x | x | x | x | x | x |
+| `trade-ai-scalp-live` | 1166 |  | x | x | x | x | x | x |
 | `trade-backtest-engine` | 5 |  |  |  | x |  |  |  |
 | `trade-thesis-review-engine` | 9 |  |  |  |  |  | x |  |
 | `update-agent-performance` | 1139 |  | x | x | x | x | x | x |
@@ -458,7 +458,6 @@ a broker credential, which `env_names` / the executor env policy are meant to ke
 
 ### `trade-ai-scalp-live`
 
-- **direct_sender** at `scripts/alerting.py` (imports smtplib); chain: `scripts/run_trade_ai_scalp_live.py` -> `scripts/continuous_runner.py` -> `scripts/alerting.py`
 - **broker_module** at `scripts/schwab_position_sync.py` (file name schwab_position_sync.py); chain: `scripts/run_trade_ai_scalp_live.py` -> `scripts/continuous_runner.py` -> `scripts/db_adapter.py` -> `scripts/holdings_guard.py` -> `scripts/schwab_position_sync.py`
 - **order_placement** at `scripts/schwab_transport.py` (defines place_order() line 108); chain: `scripts/run_trade_ai_scalp_live.py` -> `scripts/continuous_runner.py` -> `scripts/db_adapter.py` -> `scripts/holdings_guard.py` -> `scripts/schwab_position_sync.py` -> `scripts/schwab_transport.py`
 
@@ -483,6 +482,11 @@ a broker credential, which `env_names` / the executor env policy are meant to ke
 - **order_placement** at `scripts/schwab_transport.py` (defines place_order() line 108); chain: `scripts/watchlist_enrichment_sweep.py` -> `scripts/open_trades_intelligence.py` -> `scripts/schwab_transport.py`
 
 ## trade-ai-scalp-live: the direct Slack / Twilio path (DD01)
+
+**STATUS: CLOSED 2026-10-15** (operator: "yes apply the scalp fix in train 3"). The recommended diff below is
+applied: `_deliver_live_alert` delivers only through `send_telegram`; the baseline entry and the frozen-set entry
+are removed; the strict xfail is now a passing assertion across every outcome with credentials configured; the
+allowlist `source` text says chokepoint-only. The rest of this section is the finding as audited.
 
 Static chain: `scripts/run_trade_ai_scalp_live.py` -> `scripts/continuous_runner.py` -> `scripts/alerting.py`.
 Call path (source lines on the train branch, 2026-10-15):
