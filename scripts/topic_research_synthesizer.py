@@ -48,16 +48,23 @@ def _prompt(topic, context, articles=None):
     )
 
 
+#: Registered in config/llm_process_registry.json (lane repair 2026-10-15). Before this the call named no
+#: process_id, so llm_lane.generate skipped the consumption gate entirely: no registration check, no process
+#: or global cap, no consumption log row -- the RI overnight topic_synth (--max 40) and reground (--max 25)
+#: steps and the hourly synth line spent with nothing counting them.
+PROCESS_ID = "topic_research_synthesizer"
+
+
 def _synthesize(topic, context, articles=None):
     try:
-        import llm_lane
+        from lib.governed_cloud_generation import generate_cloud
     except Exception:
         return None
-    for lane in ("grok", "chatgpt", "local"):
+    for lane in ("grok", "chatgpt"):  # governed cloud lanes; local generation is refused by policy
         try:
-            if not llm_lane.available(lane):
-                continue
-            raw = llm_lane.generate(_prompt(topic, context, articles), lane=lane, timeout=70)
+            raw, _used = generate_cloud(_prompt(topic, context, articles), process_id=PROCESS_ID,
+                                        task_summary=f"topic research {str(topic)[:80]}", timeout=70,
+                                        lanes=(lane,))
             d = parse_hermes_topic_result(raw)
             if not d:
                 continue

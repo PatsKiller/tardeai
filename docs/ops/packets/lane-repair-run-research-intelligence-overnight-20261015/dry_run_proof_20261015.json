@@ -1,0 +1,125 @@
+{
+ "schema": "LaneRepairDryRunProof@v1",
+ "generated_at": "2026-10-15T13:43:57.107538+00:00",
+ "authority": "READ_ONLY_ADVISORY",
+ "model_calls": 0,
+ "writes": "1 UNINTENDED prod write: the gate-decision probe (lib.llm_consumption.should_call) calls get_process_config -> ensure_schema -> _seed_registry, which upserted llm_process_config from THIS branch's registry at 2026-10-15 09:44:36 ET (59 rows refreshed; 2 new rows ri_narrative_enrich / topic_research_synthesizer; topic_ingestion daily_soft_cap NULL->600, daily_cost_cap_usd NULL->0.25). See README 'Incident'. Every other read in this proof is a READ ONLY session.",
+ "offline_dry_runs": [
+  {
+   "argv": [
+    "bash",
+    "scripts/run_research_intelligence_overnight.sh",
+    "--phase",
+    "full",
+    "--dry-run"
+   ],
+   "exit": 0,
+   "stdout": "DRY-RUN run-research-intelligence-overnight phase=full: would run 6 locked step(s) under the market/priority gates: archive topic_bridge(max-rows 60) topic_synth(max 40; llm process topic_research_synthesizer) reground(max 25; llm process topic_research_synthesizer) narrative(limit 25, budget 900s; llm process ri_narrative_enrich) ingest(max-topics 20, items/topic 12, budget 1500s inside timeout 30m; llm process topic_ingestion); receipt run-research-intelligence-overnight_last.json sums produced_count from the ingest + narrative run receipts; no gate, child, model, lock, log, DB or writes now; inputs NOT_MEASURED",
+   "stderr": ""
+  },
+  {
+   "argv": [
+    "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python",
+    "scripts/hermes_coordinator.py",
+    "--dry-run"
+   ],
+   "exit": 0,
+   "stdout": "DRY-RUN hermes-coordinator: would run capped research children, promotion and embedding steps; no child, DB, model or state read; options={'dry_run': True}; inputs NOT_MEASURED",
+   "stderr": ""
+  },
+  {
+   "argv": [
+    "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python",
+    "scripts/source_litmus_vs_yahoo.py",
+    "--dry-run"
+   ],
+   "exit": 0,
+   "stdout": "DRY-RUN source-litmus-vs-yahoo: would sample stored closes with seed=20261015, compare an independent Yahoo reference and persist a report; no DB, network or writes",
+   "stderr": ""
+  }
+ ],
+ "run_research_intelligence_overnight": {
+  "measured_2026_10_14_20_45_21_30_ET": [
+   {
+    "process_id": "topic_ingestion",
+    "lane": "grok",
+    "calls": 326,
+    "avg_ms": 10617.0,
+    "sum_s": 3461.0
+   },
+   {
+    "process_id": "topic_ingestion",
+    "lane": "chatgpt",
+    "calls": 5,
+    "avg_ms": 6072.0,
+    "sum_s": 30.0
+   }
+  ],
+  "mean_call_s": 10.5,
+  "enabled_topics_tradeai_shared": 374,
+  "old_plan": {
+   "max_topics": 20,
+   "items_per_topic": "unbounded (~50 measured)",
+   "est_s": 10547,
+   "timeout_s": 1800
+  },
+  "new_plan": {
+   "max_topics": 20,
+   "items_per_topic_cap": 12,
+   "budget_s": 1500,
+   "timeout_s": 1800,
+   "est_s_per_topic": 152,
+   "est_topics_per_run": 9,
+   "already_stored_skip": "pre-model (news_articles dedupe), so a resumed topic re-rates nothing"
+  },
+  "consumption_log_rows_30d_for_new_ids": {},
+  "gate_decisions_no_model_call": {
+   "topic_ingestion": {
+    "allow": true,
+    "mode": "automated",
+    "process_id": "topic_ingestion"
+   },
+   "ri_narrative_enrich": {
+    "allow": true,
+    "mode": "automated",
+    "process_id": "ri_narrative_enrich"
+   },
+   "topic_research_synthesizer": {
+    "allow": true,
+    "mode": "automated",
+    "process_id": "topic_research_synthesizer"
+   }
+  }
+ },
+ "hermes_coordinator": {
+  "root_cause": "research_curator exit 1 every tick: retention_purge DELETE of archived watch_directives referenced by strategy_watchpool (ForeignKeyViolation, Key (id)=(239))",
+  "eligible_directives_old_predicate": 93,
+  "of_which_fk_referenced_by_strategy_watchpool": 12,
+  "eligible_directives_new_predicate": 81,
+  "eligible_research_new_predicate": 19581,
+  "per_pass_cap": 2000,
+  "managed_purge_mode": "dry_run"
+ },
+ "source_litmus_vs_yahoo": {
+  "session": "2026-10-14",
+  "old_verdict": {
+   "exit": 1,
+   "block": [
+    "market_quotes 3/114",
+    "holdings 1/1 (SRNE 0.0003 vs 0.0002)",
+    "finviz 1/40 (XCUR 13.2%)"
+   ],
+   "lane_receipt_status": "failed"
+  },
+  "new_verdict": {
+   "block": [
+    "market_quotes: 3/114 closes off by >10% (limit 2%)"
+   ],
+   "warn": [
+    "finviz: 1/40 closes off by >10% (limit 2%) -- one row under 50% off, reported not blocked"
+   ],
+   "lane_receipt_status": "ok (verdict carried in summary)",
+   "exit": 1
+  }
+ }
+}

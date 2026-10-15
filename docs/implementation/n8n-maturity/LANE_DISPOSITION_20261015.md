@@ -88,8 +88,8 @@ over the family default.
 |---|---:|---|
 | RETIRE | **10** | R1 4 (this packet, tier A) · R1b 6 (same packet, tier B, operator YES per row) |
 | CONSOLIDATE | **148** | C1 52 · C2 29 · C3 15 · C4 33 · C5 19 |
-| STAY_HOST | **1** (~~99~~) | F07 daemon/`@reboot` line only, wave `DEFERRED-I2` (operator directive 2026-10-15). ~~broker/order/stop/protection/secret (F09 43), senders and `--send` lanes, daemons and watchdogs, deploy chain, §23.14 keep-on-cron~~ — superseded |
-| MIGRATE_N8N | **235** (~~137~~) | M0 6 · M1 6 (PR #1761) · M2 38 · M3 16 · M4 33 · M5 16 · M6 22 · **directive waves: CD1 5 · CD2 18 · CD3 19 · CD4 9 · CD5 2 · CD6 45** |
+| STAY_HOST | **1** (~~100~~; ~~99~~ before train d) | F07 daemon/`@reboot` line only, wave `DEFERRED-I2` (operator directive 2026-10-15). ~~broker/order/stop/protection/secret (F09 43), senders and `--send` lanes (incl. hermes-coordinator, L376: moved from M5 by lane repair #1772, train 2026-10-15 d), daemons and watchdogs, deploy chain, §23.14 keep-on-cron~~ — superseded |
+| MIGRATE_N8N | **235** (~~136~~) | M0 6 · M1 6 (PR #1761) · M2 38 · M3 16 · M4 33 · M5 15 · M6 22 · **directive waves: CD1 5 · CD2 18 · CD3 19 · CD4 10 · CD5 2 · CD6 45** (CD4 includes hermes-coordinator L376, STAY_HOST via #1772, moved by the directive) |
 | **Total** | **394** | = 394 active job lines in the snapshot (379 distinct lanes; 15 lanes have 2-3 lines) |
 
 There are also 140 registry-only rows: 101 systemd units, 23 cron rows with no live line, 8 n8n rows, 5 event rows and
@@ -113,7 +113,7 @@ not an activation grant.
 | CD1 read-only | 5 | 5 | F36 (non-sending health/audit), F49 (already-n8n platform lanes) | fabric Run Lane leaf |
 | CD2 appenders | 18 | 1 | F06, F12, F23, F33, F39, F45, F46, F52, 2 unfamilied KEEP_ON_CRON lines | fabric Run Lane leaf |
 | CD3 senders | 19 | 1 | F10 (8), F37 (5), F22 (3), sender-blocked F36 (2) and F04 (1); 1 unfamilied event row | n8n orchestrates; send stays the host chokepoint (send-intent). F10 = "independent host P1 backstop + n8n-orchestrated primary" |
-| CD4 LLM agents | 9 | 0 | F40, F29 | agent workflow via the governed bridge |
+| CD4 LLM agents | 10 | 0 | F40 (incl. hermes-coordinator L376), F29 | agent workflow via the governed bridge |
 | CD5 watchdogs | 2 | 0 | F07w (crontab only; F07w systemd units are deferred) | n8n-orchestrated; independence from the outside dead-man (DD12) |
 | CD6 broker | 45 | 13 | F09 | n8n **schedules** the host lane; the host executes under the trading lock; n8n holds no broker credential and calls no order route |
 | DEFERRED-I2 | 1 | 102 | F07 STAY_HOST rows (any source) and every `registry_systemd` row (F36 18, F41 15, F07 12, F40 12, F03 7, F06 7, F51 5, F07w 5, F08 4, F38 4, F39 4, F04 2, F05 2, F02 1, F09 1, F15 1, unfamilied 1) | stays on the server unchanged; next architecture review |
@@ -186,8 +186,8 @@ not an activation grant.
 
 ### MIGRATE_N8N
 
-*The M-waves below are the 2026-10-14 MIGRATE set (137 lines). The 98 lines moved by the operator directive are in
-waves CD1-CD6 above.*
+*The M-waves below are the 2026-10-14 MIGRATE set (137 lines; 136 after #1772). The 99 lines moved by the operator directive are in
+waves CD1-CD6 above (M5 shows 15: hermes-coordinator went to STAY_HOST in #1772, then to CD4).*
 
 | Wave | Lines | What | Gate |
 |---|---:|---|---|

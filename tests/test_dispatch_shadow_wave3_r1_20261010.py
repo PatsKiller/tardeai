@@ -94,6 +94,10 @@ STAGE = {
 }
 
 
+#: Staged r1_pending rows that are NOT activated by the wave-3 simulation (held for a named prerequisite).
+HELD_PENDING = frozenset({"run-research-intelligence-overnight"})  # bridge route (lane repair 2026-10-15)
+
+
 def _activate(row: dict) -> dict:
     """The post-ratification registry edit: apply r1_pending and drop it (identity on an activated row)."""
     out = copy.deepcopy(row)
@@ -116,7 +120,11 @@ def _admit(row: dict, shape: str) -> tuple[bool, str]:
 def test_wave3_is_19_lanes_and_only_r1_classes():
     assert len(WAVE3) == 19
     assert {k for _l, k in WAVE3.values()} == {"ingest", "learn"}
-    assert [r["lane_id"] for r in REGISTRY["lanes"] if "r1_pending" in r] == []  # activated 2026-10-10
+    # activated 2026-10-10; the only r1_pending rows since are the lane repair 2026-10-15 llm rows, staged until a
+    # governed bridge route exists for their llm class: the entry planner rows (tests/test_lane_repair_20261015.py)
+    # and run-research-intelligence-overnight (tests/test_lane_repair_ri_hermes_litmus_20261015.py); train 2026-10-15 d.
+    assert sorted(r["lane_id"] for r in REGISTRY["lanes"] if "r1_pending" in r) == [
+        "run-research-intelligence-overnight", "watchlist-entry-planner-limit", "watchlist-entry-planner-scope"]
     d3 = sorted(r["lane_id"] for r in REGISTRY["lanes"] if (r.get("scheduler") or {}).get("wave") == "D3")
     assert d3 == sorted(WAVE3_LIVE) and len(WAVE3_LIVE) == 13
 
@@ -221,7 +229,9 @@ def test_activated_row_is_admitted_once_4_4_0_is_active(lane, monkeypatch):
 
 
 def test_activated_registry_has_no_dispatch_issue_once_active(monkeypatch):
-    doc = dict(REGISTRY, lanes=[_activate(r) if "r1_pending" in r else r for r in REGISTRY["lanes"]])
+    # The lane repair llm row stays staged (not allowlisted until its bridge route exists): not activated here.
+    doc = dict(REGISTRY, lanes=[_activate(r) if "r1_pending" in r and r["lane_id"] not in HELD_PENDING else r
+                                for r in REGISTRY["lanes"]])
     monkeypatch.setattr(LD, "R1_SHADOW_SHAPE_STATUS", "PROPOSED")
     errs = LD.registry_dispatch_errors(doc)
     # 19 wave-3 rows + the 3 W4 provider-owner rows (tests/test_w4_provider_owners_shadow_20261011.py) - the 6 D3 rows
@@ -239,10 +249,21 @@ def test_activated_registry_has_no_dispatch_issue_once_active(monkeypatch):
     # - 1: C1 hermes_overnight registry edit (train 6, 2026-10-12) absorbs SW4 hermes-tag-lift-discovery (dispatch_retired).
     # (WAVE3_ON_CRON: research-insight-extractor left cron at cutover, 2026-10-13.)
     # + 2 scalp hot-tier ingest rows (2026-10-14; tests/test_scalp_premarket_onboard_20261014.py).
-    assert len(r1_cron_shadow) == len(WAVE3_ON_CRON) + 3 + 15 + 10 + 11 - 1 + 2
+    # + 4 lane repair rows (2026-10-15; tests/test_lane_repair_20261015.py): build-symbol-profiles-at-0-19 and
+    # indicator-engine (R1 ingest, cron shadow, dry_run, live_arg null), plus the two entry planner rows this fixture
+    # activates from their r1_pending block (R1 llm; staged on the registry until a governed bridge route exists).
+    # - 2 (train 2026-10-15 d): build-symbol-profiles-at-0-19 and indicator-engine have their n8n wiring deferred
+    # (DD01 transitive capability audit, operator review): no dispatch block, so they are not R1 cron-shadow rows.
+    assert len(r1_cron_shadow) == len(WAVE3_ON_CRON) + 3 + 15 + 10 + 11 - 1 + 2 + 4 - 2
     assert len(errs) == len(r1_cron_shadow) and all("shadow_on_cron_not_ratified" in x for x in errs), errs[:3]
     monkeypatch.setattr(LD, "R1_SHADOW_SHAPE_STATUS", "ACTIVE")
-    assert LD.registry_dispatch_errors(doc) == []
+    # The staged entry planner rows (lane repair 2026-10-15) stay refused: train 2026-10-15 d also deferred their
+    # allowlist entries (DD01 transitive capability audit, operator review), so the first refusal is not_allowlisted;
+    # with the entry restored they would still be refused llm_route_not_governed_bridge
+    # (tests/test_lane_repair_20261015.py::test_planner_rows_are_staged_until_a_governed_bridge_route_exists).
+    assert sorted(LD.registry_dispatch_errors(doc)) == [
+        f"{lane}: dispatch class_not_permitted: class 'llm' (R1): not_allowlisted"
+        for lane in ("watchlist-entry-planner-limit", "watchlist-entry-planner-scope")]
 
 
 # ---------------------------------------------------------------------------------- compute_due week sweep

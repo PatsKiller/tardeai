@@ -3473,13 +3473,18 @@
       "owner": "platform",
       "scheduler": {
         "kind": "systemd",
-        "expression": "tradeai-source-litmus.timer"
+        "expression": "tradeai-source-litmus.timer",
+        "stage": "shadow",
+        "wave": "LR-20261015",
+        "match": "tradeai-source-litmus.timer",
+        "on_calendar": "Tue..Sat *-*-* 07:45:00"
       },
       "expected_cadence_hours": 24.0,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "data/runtime/source_litmus_last_run.json"
+        "kind": "json_key",
+        "path": "data/runtime/source-litmus-vs-yahoo_last.json",
+        "key": "ok_at"
       },
       "note": "Samples stored closes per source against Yahoo Finance's close for the same session. Operator-approved 2026-09-14 after the litmus found 29% of quote-derived closes off by >1%, sub-share position values written as closes, and a session-stale Alpaca previous close.",
       "value_class": "Duplicated",
@@ -3493,7 +3498,19 @@
         "f_recommendation": "CONSOLIDATE → P12 check registry",
         "event_driven_candidate": false,
         "f_evidence": "one of ~73 health/monitor mechanisms"
-      }
+      },
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "45 7 * * 2-6"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "monitor",
+        "priority": 5,
+        "retry_policy": "none"
+      },
+      "adopted_reason": "lane repair 2026-10-15 (docs/ops/packets/lane-repair-run-research-intelligence-overnight-20261015/): a row carrying a reviewed dispatch block is hand-maintained (AGENTS 23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop it. The systemd timer tradeai-source-litmus.timer keeps doing the real work; the dispatcher fires the offline dry run only (SHADOW). output_signal moved from the log/file mtime to the LaneRunReceipt@v1 (+ v2 output fields) the lane writes on a real run."
     },
     {
       "lane_id": "eod-consolidated-close-sync",
@@ -11038,14 +11055,15 @@
       "scheduler": {
         "kind": "cron",
         "expression": "0 19 * * 0",
-        "match": "scripts/build_symbol_profiles.py >>"
+        "match": "scripts/build_symbol_profiles.py >>",
+        "command_text": "0 19 * * 0 cd $PROJ && flock -n /tmp/symbol_profiles.lock $PY scripts/build_symbol_profiles.py >> logs/symbol_profiles.log 2>&1  # weekly company-profile refresh (operator 2026-06-12)"
       },
       "expected_cadence_hours": 168.0,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/symbol_profiles.log",
-        "evidence": "CRON_LOG_REDIRECT"
+        "kind": "json_key",
+        "path": "data/runtime/build-symbol-profiles-at-0-19_last.json",
+        "key": "ok_at"
       },
       "value_class": "Operationally Important",
       "recommendation": "PIPELINE:P01",
@@ -11064,7 +11082,26 @@
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
       "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-10-10",
-      "adopted_reason": "dispatcher shadow wave D3: adopted unchanged to keep its lane_id stable. Once the same script's build-symbol-profiles-watchlist row is hand-maintained, the generator would re-derive this row as `build-symbol-profiles` (a rename with no change on the host)."
+      "adopted_reason": "dispatcher shadow wave D3: adopted unchanged to keep its lane_id stable. Once the same script's build-symbol-profiles-watchlist row is hand-maintained, the generator would re-derive this row as `build-symbol-profiles` (a rename with no change on the host). | lane repair 2026-10-15 (operator: 'turn these on and then re-engineer them for n8n'): the refactor shard 05 shadow proposal (REFACTOR_SHARD_05_20261011.md: SHADOW_READY, observed outer flock) is taken in SHADOW now that the OperationalError is fixed (read transaction ends before the Finviz/yfinance calls; one short transaction per symbol). The SW4 hold reason (shared build_symbol_profiles_last.json receipt) is gone: the lane writes its own build-symbol-profiles-at-0-19_last.json. Cron line L477 (crontab -l 2026-10-15, sha256 6a5c6768) keeps doing the real work; the dispatcher fires the offline --dry-run only.",
+      "dispatch_blocked_reason": "awaiting operator review of transitive broker reach (DD01 capability audit): the entrypoint's import closure reaches broker_module / order_placement through the shared lazy chain db_adapter -> holdings_guard -> schwab_position_sync (-> schwab_transport) (scripts/lib/lane_capability_audit via tests/test_lane_transitive_capabilities_20261015.py). The SHRINK-ONLY baseline (config/n8n_lane_capability_baseline.json + the frozen set in that test) may only grow by operator review, so train 2026-10-15 d (merging #1771) keeps the lane REPAIR (the code fixes run under cron today) and defers the n8n wiring: no allowlist entry, registry dispatch off. Re-enable = an operator-reviewed baseline entry (or cutting the lazy chain) plus restoring the #1771 allowlist entry (branch lane-repair/three-lanes-20261015, head 8c037b710) in one registry-train PR.",
+      "deferred_n8n": {
+        "scheduler": {
+          "stage": "shadow",
+          "wave": "R2-05"
+        },
+        "dispatch": {
+          "mode": "dry_run",
+          "cron": [
+            "0 19 * * 0"
+          ],
+          "tz": "America/New_York",
+          "wave": "W4",
+          "class": "ingest",
+          "priority": 5,
+          "retry_policy": "none"
+        },
+        "note": "train 2026-10-15 d: the reviewed #1771 shadow wiring, parked (not applied) until the operator reviews the DD01 transitive broker reach (dispatch_blocked_reason). Re-enable in one registry-train PR: scheduler.update(deferred_n8n.scheduler), dispatch = deferred_n8n.dispatch, restore the allowlist entry from config/n8n_run_allowlist.json blocked_reasons[<lane>] 'Deferred entry', drop deferred_n8n and dispatch_blocked_reason."
+      }
     },
     {
       "lane_id": "classify-instruments",
@@ -15643,14 +15680,15 @@
       "scheduler": {
         "kind": "cron",
         "expression": "0 8 * * 1-5",
-        "match": "scripts/indicator_engine.py"
+        "match": "scripts/indicator_engine.py",
+        "command_text": "0 8 * * 1-5 cd $PROJ && $PY scripts/indicator_engine.py >> logs/indicator_engine.log 2>&1"
       },
       "expected_cadence_hours": 72.0,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/indicator_engine.log",
-        "evidence": "CRON_LOG_REDIRECT"
+        "kind": "json_key",
+        "path": "data/runtime/indicator-engine_last.json",
+        "key": "ok_at"
       },
       "value_class": "Operationally Important",
       "recommendation": "PIPELINE:P01",
@@ -15669,7 +15707,26 @@
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
       "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-10-15",
-      "adopted_reason": "lane-retire-wave1-20261015: the row carries a retire_pending block; reconcile_lane_registry.py re-derives generated rows and would drop it, so the row is hand-maintained until the post-install flip (apply_registry.py) retires it.",
+      "adopted_reason": "lane-retire-wave1-20261015: the row carries a retire_pending block; reconcile_lane_registry.py re-derives generated rows and would drop it, so the row is hand-maintained until the post-install flip (apply_registry.py) retires it. | lane repair 2026-10-15 (operator: 'turn these on and then re-engineer them for n8n'): the cron line L262 (crontab -l 2026-10-15, sha256 6a5c6768) ran only the module's CLI test mode (analyze_confluence('AMD','scalp') printed to the log; no universe, no write). `indicator_engine.py --universe` gap-fills indicator_confluence_cache (profile swing) over the indicator_cache_refresh universe (scripts/lib/indicator_universe_lane.py). output_signal moved from the cron log mtime (proof only that cron opened a file) to the LaneRunReceipt@v1 the --universe run writes; it stays stale until the operator applies docs/ops/packets/lane-repair-indicator-engine-20261015 (cron grant), which adds --universe and the flock lock. The dispatcher fires only the READ ONLY --dry-run. The retire_pending block (lane-retire-wave1-20261015, tier B, OPERATOR YES REQUIRED) predates this repair; the operator's 2026-10-15 directive to turn the lane on is a NO for that row: drop it from lines_to_retire_tier_b.tsv and this block together (that packet's own procedure) before installing tier B.",
+      "dispatch_blocked_reason": "awaiting operator review of transitive broker reach (DD01 capability audit): the entrypoint's import closure reaches broker_module / order_placement through the shared lazy chain db_adapter -> holdings_guard -> schwab_position_sync (-> schwab_transport) (scripts/lib/lane_capability_audit via tests/test_lane_transitive_capabilities_20261015.py). The SHRINK-ONLY baseline (config/n8n_lane_capability_baseline.json + the frozen set in that test) may only grow by operator review, so train 2026-10-15 d (merging #1771) keeps the lane REPAIR (the code fixes run under cron today) and defers the n8n wiring: no allowlist entry, registry dispatch off. Re-enable = an operator-reviewed baseline entry (or cutting the lazy chain) plus restoring the #1771 allowlist entry (branch lane-repair/three-lanes-20261015, head 8c037b710) in one registry-train PR.",
+      "deferred_n8n": {
+        "scheduler": {
+          "stage": "shadow",
+          "wave": "LR-W1"
+        },
+        "dispatch": {
+          "mode": "dry_run",
+          "cron": [
+            "0 8 * * 1-5"
+          ],
+          "tz": "America/New_York",
+          "wave": "W4",
+          "class": "ingest",
+          "priority": 5,
+          "retry_policy": "none"
+        },
+        "note": "train 2026-10-15 d: the reviewed #1771 shadow wiring, parked (not applied) until the operator reviews the DD01 transitive broker reach (dispatch_blocked_reason). Re-enable in one registry-train PR: scheduler.update(deferred_n8n.scheduler), dispatch = deferred_n8n.dispatch, restore the allowlist entry from config/n8n_run_allowlist.json blocked_reasons[<lane>] 'Deferred entry', drop deferred_n8n and dispatch_blocked_reason."
+      },
       "retire_declined": {
         "packet": "docs/ops/packets/lane-retire-wave1-20261015",
         "decided": "2026-10-15",
@@ -15714,6 +15771,225 @@
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "OPERATOR YES REQUIRED. hourly 'risk_gate.py --test' runs the 7 synthetic self-test cases ('=== All risk gate tests passed ===', logs/risk_gate.log 2026-10-15) and writes them into risk_gate_results, which api_v2.py:55048 and telegram_command_handler.py:1786 aggregate as if real gate decisions (4,081 writes / 14 reads). The self-test belongs in CI",
       "retire_batch": "retire-ld-w1"
+    },
+    {
+      "lane_id": "watchlist-entry-planner-limit",
+      "owner": "proposals",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "35 17 * * 1-5",
+        "match": "scripts/watchlist_entry_planner.py --limit"
+      },
+      "expected_cadence_hours": 72.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/entry_planner.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Duplicated",
+      "recommendation": "MERGE_INTO:P07",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L473",
+        "pipeline": "P07",
+        "value_class": "Duplicated",
+        "recommendation": "MERGE_INTO:P07",
+        "f_recommendation": "CONSOLIDATE into P07 (already a pipeline step or quiet prewarm)",
+        "event_driven_candidate": false,
+        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "r1_pending": {
+        "requires": "A governed bridge route for LLM process watchlist_entry_planner (scripts/lib/governed_process_routes.py has none; the process is registered in config/llm_process_registry.json and llm_lane.generate already routes through cio-governed-bridge under TRADEAI_LLM_VIA_BRIDGE). The R1 llm class admits a lane only with llm_route via cio-governed-bridge and a routed process (lane_dispatch.r1_class_admission; n8n_run_executor refuses llm_process_route_not_registered). Adding the route is a bridge-server change (operator decision). Until then this block is inert: no dispatch block, the dispatcher never emits the lane, the cron line keeps doing the real work. Activation (one registry-train PR): scheduler.update(scheduler), output_signal = output_signal, dispatch = dispatch, allowlist llm_route = {via: cio-governed-bridge, process_id: watchlist_entry_planner}, drop r1_pending.",
+        "inventory": "cron:L475",
+        "scheduler": {
+          "stage": "shadow",
+          "wave": "LR-W1",
+          "command_text": "35 17 * * 1-5 cd $PROJ && flock -n /tmp/entry_planner.lock $PY scripts/watchlist_entry_planner.py --limit 60 --buy-rated-cap 400 >> logs/entry_planner.log 2>&1  # daily watchlist entry plans: ALL operator-entered + buy/strong-buy/add/wait, drains resumably (operator 2026-06-18)"
+        },
+        "output_signal": {
+          "kind": "json_key",
+          "path": "data/runtime/watchlist_entry_planner_last.json",
+          "key": "ok_at"
+        },
+        "dispatch": {
+          "mode": "dry_run",
+          "cron": [
+            "35 17 * * 1-5"
+          ],
+          "tz": "America/New_York",
+          "wave": "W4",
+          "class": "llm",
+          "priority": 5,
+          "retry_policy": "none"
+        },
+        "blocked_by": "lane_registry dispatch_blocked_reason (DD01 capability audit) + config/n8n_run_allowlist.json blocked_reasons[watchlist-entry-planner-limit]"
+      },
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-10-15",
+      "adopted_reason": "lane repair 2026-10-15: InterfaceError fixed at its source (lib/comms/delivery.py closed db_adapter's thread-local connection after every send); n8n entry scripts/watchlist_entry_planner_lane.py plans only (no sender in its reach). Staged r1_pending, see its `requires`.",
+      "dispatch_blocked_reason": "awaiting operator review of transitive broker reach (DD01 capability audit): the entrypoint's import closure reaches broker_module / order_placement through the shared lazy chain db_adapter -> holdings_guard -> schwab_position_sync (-> schwab_transport) (scripts/lib/lane_capability_audit via tests/test_lane_transitive_capabilities_20261015.py). The SHRINK-ONLY baseline (config/n8n_lane_capability_baseline.json + the frozen set in that test) may only grow by operator review, so train 2026-10-15 d (merging #1771) keeps the lane REPAIR (the code fixes run under cron today) and defers the n8n wiring: no allowlist entry, registry dispatch off. Re-enable = an operator-reviewed baseline entry (or cutting the lazy chain) plus restoring the #1771 allowlist entry (branch lane-repair/three-lanes-20261015, head 8c037b710) in one registry-train PR."
+    },
+    {
+      "lane_id": "watchlist-entry-planner-scope",
+      "owner": "proposals",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "45 17 * * 1-5",
+        "match": "scripts/watchlist_entry_planner.py --scope"
+      },
+      "expected_cadence_hours": 72.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/entry_planner.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Duplicated",
+      "recommendation": "MERGE_INTO:P07",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L474",
+        "pipeline": "P07",
+        "value_class": "Duplicated",
+        "recommendation": "MERGE_INTO:P07",
+        "f_recommendation": "CONSOLIDATE into P07 (already a pipeline step or quiet prewarm)",
+        "event_driven_candidate": false,
+        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "r1_pending": {
+        "requires": "A governed bridge route for LLM process watchlist_entry_planner (scripts/lib/governed_process_routes.py has none; the process is registered in config/llm_process_registry.json and llm_lane.generate already routes through cio-governed-bridge under TRADEAI_LLM_VIA_BRIDGE). The R1 llm class admits a lane only with llm_route via cio-governed-bridge and a routed process (lane_dispatch.r1_class_admission; n8n_run_executor refuses llm_process_route_not_registered). Adding the route is a bridge-server change (operator decision). Until then this block is inert: no dispatch block, the dispatcher never emits the lane, the cron line keeps doing the real work. Activation (one registry-train PR): scheduler.update(scheduler), output_signal = output_signal, dispatch = dispatch, allowlist llm_route = {via: cio-governed-bridge, process_id: watchlist_entry_planner}, drop r1_pending.",
+        "inventory": "cron:L476",
+        "scheduler": {
+          "stage": "shadow",
+          "wave": "LR-W1",
+          "command_text": "45 17 * * 1-5 cd $PROJ && flock -n /tmp/entry_planner_prop.lock $PY scripts/watchlist_entry_planner.py --scope proposals >> logs/entry_planner.log 2>&1  # daily proposal entry validation (advisory)"
+        },
+        "output_signal": {
+          "kind": "json_key",
+          "path": "data/runtime/watchlist_entry_planner_proposals_last.json",
+          "key": "ok_at"
+        },
+        "dispatch": {
+          "mode": "dry_run",
+          "cron": [
+            "45 17 * * 1-5"
+          ],
+          "tz": "America/New_York",
+          "wave": "W4",
+          "class": "llm",
+          "priority": 5,
+          "retry_policy": "none"
+        },
+        "blocked_by": "lane_registry dispatch_blocked_reason (DD01 capability audit) + config/n8n_run_allowlist.json blocked_reasons[watchlist-entry-planner-scope]"
+      },
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-10-15",
+      "adopted_reason": "lane repair 2026-10-15: InterfaceError fixed at its source (lib/comms/delivery.py closed db_adapter's thread-local connection after every send); n8n entry scripts/watchlist_entry_planner_lane.py plans only (no sender in its reach). Staged r1_pending, see its `requires`.",
+      "dispatch_blocked_reason": "awaiting operator review of transitive broker reach (DD01 capability audit): the entrypoint's import closure reaches broker_module / order_placement through the shared lazy chain db_adapter -> holdings_guard -> schwab_position_sync (-> schwab_transport) (scripts/lib/lane_capability_audit via tests/test_lane_transitive_capabilities_20261015.py). The SHRINK-ONLY baseline (config/n8n_lane_capability_baseline.json + the frozen set in that test) may only grow by operator review, so train 2026-10-15 d (merging #1771) keeps the lane REPAIR (the code fixes run under cron today) and defers the n8n wiring: no allowlist entry, registry dispatch off. Re-enable = an operator-reviewed baseline entry (or cutting the lazy chain) plus restoring the #1771 allowlist entry (branch lane-repair/three-lanes-20261015, head 8c037b710) in one registry-train PR."
+    },
+    {
+      "lane_id": "run-research-intelligence-overnight",
+      "owner": "research",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "30 20 * * 1-5 + 15 2 * * *",
+        "match": "scripts/run_research_intelligence_overnight.sh --phase full",
+        "schedules": [
+          "30 20 * * 1-5",
+          "15 2 * * *"
+        ],
+        "command_text": "30 20 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/non_trading_hours_gate.sh bash /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/run_research_intelligence_overnight.sh --phase full >> /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/logs/ri_overnight.log 2>&1"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/run-research-intelligence-overnight_last.json",
+        "key": "ok_at"
+      },
+      "value_class": "Duplicated",
+      "recommendation": "MERGE_INTO:P10",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L725",
+        "pipeline": "P10",
+        "value_class": "Duplicated",
+        "recommendation": "MERGE_INTO:P10",
+        "f_recommendation": "CONSOLIDATE → one full run in P10",
+        "event_driven_candidate": false,
+        "f_evidence": "`--phase full` scheduled twice (20:30 + 02:15); log: \"SKIP/FAIL ingest (lock busy or exit non-zero)\" x14"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "scheduler_note": "2026-10-15 lane repair: both `--phase full` lines stay listed (expression/schedules). Only the 20:30 weekday line does work today: the 02:15 line is wrapped in run_with_deepseek_offpeak.sh --official and 02:15 ET = 06:15 UTC falls in the official DeepSeek peak (06:00-10:00 UTC), so it logs PEAK_SKIP every night under EDT (ri_overnight.log 2026-10-14/15); the lane-repair packet proposes 00:15 (C1). command_text is the 20:30 line, the one the staged r1_pending shadow row mirrors (dispatch.cron 30 20 * * 1-5); the activation PR updates expression/schedules to the installed crontab.",
+      "adopted_reason": "lane repair 2026-10-15 (docs/ops/packets/lane-repair-run-research-intelligence-overnight-20261015/): a row carrying a staged r1_pending block (shadow, activated by a later registry PR once the bridge route exists) is hand-maintained (AGENTS 23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop it. The host scheduler keeps doing the real work; the dispatcher fires the offline dry run only (SHADOW). output_signal moved from the log/file mtime to the LaneRunReceipt@v1 (+ v2 output fields) the lane writes on a real run.",
+      "r1_pending": {
+        "scheduler": {
+          "command_text": "30 20 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/non_trading_hours_gate.sh bash /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/run_research_intelligence_overnight.sh --phase full >> /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/logs/ri_overnight.log 2>&1",
+          "stage": "shadow",
+          "wave": "LR-20261015",
+          "expression": "30 20 * * 1-5"
+        },
+        "output_signal": {
+          "kind": "json_key",
+          "path": "data/runtime/run-research-intelligence-overnight_last.json",
+          "key": "ok_at"
+        },
+        "dispatch": {
+          "mode": "dry_run",
+          "cron": [
+            "30 20 * * 1-5"
+          ],
+          "tz": "America/New_York",
+          "wave": "W4",
+          "class": "llm",
+          "priority": 5,
+          "retry_policy": "none"
+        },
+        "blocked_by": "config/n8n_run_allowlist.json blocked_reasons[run-research-intelligence-overnight]"
+      }
+    },
+    {
+      "lane_id": "run-research-intelligence-overnight-archive",
+      "owner": "research",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "15 5 * * *",
+        "match": "scripts/run_research_intelligence_overnight.sh --phase archive"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/ri_overnight.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Duplicated",
+      "recommendation": "MERGE_INTO:P10",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L727",
+        "pipeline": "P10",
+        "value_class": "Duplicated",
+        "recommendation": "MERGE_INTO:P10",
+        "f_recommendation": "CONSOLIDATE → one full run in P10",
+        "event_driven_candidate": false,
+        "f_evidence": "`--phase full` scheduled twice (20:30 + 02:15); log: \"SKIP/FAIL ingest (lock busy or exit non-zero)\" x14"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-10-15",
+      "adopted_reason": "train 2026-10-15 d: adopted unchanged to keep its lane_id stable. Lane repair #1772 hand-curates run-research-intelligence-overnight (r1_pending row), so reconcile_lane_registry.py no longer sees two generated rows for scripts/run_research_intelligence_overnight.sh and would re-derive this --phase archive row as run-research-intelligence-overnight-2 (a rename with no change on the host; LANE_DISPOSITION_20261015 cron:L732 and receipts name -archive)."
     },
     {
       "lane_id": "run-scheduled-quote-refresh-incubator",
@@ -18516,70 +18792,6 @@
       }
     },
     {
-      "lane_id": "watchlist-entry-planner-limit",
-      "owner": "proposals",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "35 17 * * 1-5",
-        "match": "scripts/watchlist_entry_planner.py --limit"
-      },
-      "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/entry_planner.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Duplicated",
-      "recommendation": "MERGE_INTO:P07",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L473",
-        "pipeline": "P07",
-        "value_class": "Duplicated",
-        "recommendation": "MERGE_INTO:P07",
-        "f_recommendation": "CONSOLIDATE into P07 (already a pipeline step or quiet prewarm)",
-        "event_driven_candidate": false,
-        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "watchlist-entry-planner-scope",
-      "owner": "proposals",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "45 17 * * 1-5",
-        "match": "scripts/watchlist_entry_planner.py --scope"
-      },
-      "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/entry_planner.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Duplicated",
-      "recommendation": "MERGE_INTO:P07",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L474",
-        "pipeline": "P07",
-        "value_class": "Duplicated",
-        "recommendation": "MERGE_INTO:P07",
-        "f_recommendation": "CONSOLIDATE into P07 (already a pipeline step or quiet prewarm)",
-        "event_driven_candidate": false,
-        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
       "lane_id": "snaptrade-sync",
       "owner": "execution",
       "scheduler": {
@@ -20338,82 +20550,6 @@
         "f_recommendation": "CONSOLIDATE-into P12",
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "run-research-intelligence-overnight",
-      "owner": "research",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "30 20 * * 1-5 + 15 2 * * *",
-        "match": "scripts/run_research_intelligence_overnight.sh --phase full",
-        "schedules": [
-          "30 20 * * 1-5",
-          "15 2 * * *"
-        ]
-      },
-      "expected_cadence_hours": 24.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/ri_overnight.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Duplicated",
-      "recommendation": "MERGE_INTO:P10",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L725",
-        "pipeline": "P10",
-        "value_class": "Duplicated",
-        "recommendation": "MERGE_INTO:P10",
-        "f_recommendation": "CONSOLIDATE → one full run in P10",
-        "event_driven_candidate": false,
-        "f_evidence": "`--phase full` scheduled twice (20:30 + 02:15); log: \"SKIP/FAIL ingest (lock busy or exit non-zero)\" x14",
-        "f_ids": [
-          "L725",
-          "L726"
-        ],
-        "f_recommendations": [
-          "MERGE_INTO:P10",
-          "MERGE_INTO:P10"
-        ]
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "run-research-intelligence-overnight-archive",
-      "owner": "research",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "15 5 * * *",
-        "match": "scripts/run_research_intelligence_overnight.sh --phase archive"
-      },
-      "expected_cadence_hours": 24.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/ri_overnight.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Duplicated",
-      "recommendation": "MERGE_INTO:P10",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L727",
-        "pipeline": "P10",
-        "value_class": "Duplicated",
-        "recommendation": "MERGE_INTO:P10",
-        "f_recommendation": "CONSOLIDATE → one full run in P10",
-        "event_driven_candidate": false,
-        "f_evidence": "`--phase full` scheduled twice (20:30 + 02:15); log: \"SKIP/FAIL ingest (lock busy or exit non-zero)\" x14"
       },
       "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",

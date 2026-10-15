@@ -397,7 +397,13 @@ def test_generated_rows_have_evidence_or_are_flagged_unverified(committed):
     # Lane retire wave 1 (2026-10-15) hand-curates the 7 generated rows that carry a retire_pending block
     # (agent-intelligence-cron x3, symbol-enrichment, cleanup-stale-locks, risk-gate, indicator-engine):
     # 225 - 7 = 218 generated rows left.
-    assert len(gen) >= 218
+    # Lane repair 2026-10-15 (tests/test_lane_repair_20261015.py) adopts 2 more generated rows with an r1_pending block
+    # (watchlist-entry-planner-limit, watchlist-entry-planner-scope); indicator-engine was already hand-curated above:
+    # 218 - 2 = 216.
+    # Lane repair 2026-10-15 (#1772) hand-curates run-research-intelligence-overnight (staged r1_pending shadow row,
+    # tests/test_lane_repair_ri_hermes_litmus_20261015.py): 216 - 1 = 215; train 2026-10-15 d adopts
+    # run-research-intelligence-overnight-archive unchanged to keep its lane_id (else re-derived as -2): 214 left.
+    assert len(gen) >= 214
     adopted = [r for r in committed["lanes"] if r.get("adopted_from_generator") == R.GENERATOR_VERSION]
     # D3 rows carry an r1_pending block (inert until AGENTS 4.4.0 is ACTIVE) instead of a dispatch block;
     # build-symbol-profiles-at-0-19, social-ingest-stocktwits and overnight-batch-tax are adopted unchanged only to keep
@@ -408,9 +414,12 @@ def test_generated_rows_have_evidence_or_are_flagged_unverified(committed):
             "dispatch" in r
             or "r1_pending" in r
             or "retire_pending" in r  # lane retire wave 1 (2026-10-15): flipped RETIRED after the read-back
+            or "deferred_n8n" in r  # train 2026-10-15 d: n8n wiring parked pending the DD01 capability review
             or r.get("retire_batch") == "retire-ld-w1"  # ...and flipped (install 2026-10-15, apply_registry.py)
             or "retire_declined" in r  # indicator-engine: operator NO 2026-10-15, kept ACTIVE
             or r["lane_id"] in ("build-symbol-profiles-at-0-19", "social-ingest-stocktwits", "overnight-batch-tax")
+            # train 2026-10-15 d: adopted unchanged to keep its lane_id (else re-derived as ...-overnight-2)
+            or r["lane_id"] == "run-research-intelligence-overnight-archive"
         )
         and "generated_by" not in r
         for r in adopted
