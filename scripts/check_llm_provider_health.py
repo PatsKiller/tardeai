@@ -237,7 +237,13 @@ def _deliver(message: str, priority: str, heartbeat: dict, labels: list[str]) ->
     try:
         from telegram_alert import send_telegram
 
-        sent = send_telegram(message, priority=priority, producer="check_llm_provider_health")
+        # Declared priorities (tests/test_notification_intents_wave2_20261011.py): lane findings P2, stall
+        # DEGRADED P3 and stall CRITICAL P1 come from config/llm_provider_health.json; anything else is P2.
+        sent = send_telegram(
+            message,
+            priority=priority if priority in ("P1", "P2", "P3") else "P2",
+            producer="check_llm_provider_health",
+        )
     except Exception as e:
         _record_delivery_failure(heartbeat, f"{type(e).__name__}: {e}", labels)
         return False
