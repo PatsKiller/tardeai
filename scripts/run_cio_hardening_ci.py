@@ -4904,6 +4904,17 @@ GATES = [
             "tests/test_hermes_research_worker_pool.py",
         ],
     ),
+    (
+        # ANCHOR: N8N_AUDIT_20261015_THREAT_LEDGER — independent audit 2026-10-15 (Level 2 of 5): DD02 threat model +
+        # report-mode confinement packet (static env-allowlist enforce readiness per lane, names only, flips nothing),
+        # DD18 D1-D9 decision ledger (every §11 decision has a complete row; JSON/MD parity), DD01-DD18 findings
+        # tracker completeness, DD13/DD17 specs. Hermetic: tmp_path fake repos and committed docs only.
+        "n8n_audit_20261015_threat_ledger",
+        [
+            "tests/test_n8n_decision_ledger_20261015.py",
+            "tests/test_n8n_env_enforce_readiness_20261015.py",
+        ],
+    ),
 ]
 
 
