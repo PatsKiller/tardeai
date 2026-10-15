@@ -182,7 +182,15 @@ def test_active_fleet_m6_passes_exactly_where_a_contract_declares_the_rule(ctx):
 def test_every_committed_expected_output_rule_passes_m6():
     doc = json.loads((ROOT / "config/n8n_health_contracts.json").read_text())
     declared = [c for c in doc["contracts"] if "expected_output" in c]
-    assert len(declared) == 122
+    # 122 from the 2026-10-15 expected_output PR + rules that later lanes carry themselves (#1777: 6).
+    assert len(declared) >= 122
+    undeclared = {c["id"] for c in doc["contracts"]} - {c["id"] for c in declared}
+    assert undeclared == {
+        "momentum-lifecycle-monitor",
+        "tradeai-momentum-lifecycle-candidate",
+        "momentum-cache-reconcile",
+        "trade-ai-scalp-live",
+    }  # digest-bound REVIEWED bodies: a rule needs a fresh content-bound review
     for c in declared:
         assert F._check_expected_output(c)["status"] == F.PASS, c["id"]
         assert "output_produced" in {x["check"] for x in c["healthy"]}, c["id"]
