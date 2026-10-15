@@ -3721,6 +3721,16 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: ONBOARD_DRYRUN_B6_20261015 — n8n onboarding batch B6 (lane disposition 2026-10-15, MIGRATE_N8N, no
+        # allowlist entry, no --dry-run before): material-change-notifier-stage2, agent-watchlist-engine, hermes-
+        # watchlist-scorer, portfolio-ai-analyst, auto-enrichment-runner, analyst-urgent-refresh. Offline --dry-run
+        # wins over --apply/--telegram and the always-on paths (in-process record-and-raise proof: no DB, network,
+        # model call, subprocess or sender import); static capability audit pins chokepoint_send and no direct_sender.
+        # Listing it schedules nothing.
+        "onboard_dryrun_b6_20261015",
+        ["tests/test_onboard_dryrun_b6_20261015.py"],
+    ),
+    (
         # N8N_RUN_ROUTE — 2026-10-08 n8n scheduler-of-record tranche N1: the gateway `run` operation
         # (per-caller keys, coordination_run scope, config/n8n_run_allowlist.json), the ledger `runs`
         # table, the executor (fake runner, lock skip, timeout, receipt) and the allowlist safety test.
