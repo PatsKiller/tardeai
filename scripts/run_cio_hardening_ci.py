@@ -2228,6 +2228,9 @@ GATES = [
             # AGENTS.md 11.0.0 (PROPOSED 2026-10-14): §23.24 mandatory n8n workflow framework (six areas, each element
             # with an existing or proposed check); §0/§2/§2A/§7A/§17/§22/§23.14/§23.23 pinned.
             "tests/test_agents_policy_11_0_0_workflow_framework.py",
+            # AGENTS.md 12.0.0 (PROPOSED 2026-10-15): §23.25 n8n cutover directive (all families except F07 and
+            # registry_systemd); §0/§2/§2A/§7A/§17/§22 pinned.
+            "tests/test_agents_policy_12_0_0_cutover_directive.py",
             "tests/test_trading_session_grant_20260925.py",
             "tests/test_operator_approval_workflow_docs.py",
         ],
