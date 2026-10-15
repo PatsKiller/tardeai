@@ -18,15 +18,31 @@ A real run writes <state_root>/data/runtime/journal-review-builder_last.json (La
 only on success). Exit codes: 0 = ran (nothing new to review is 0; some reviews failing while others
 were written is 0, counted in ``failed``); 1 = the run failed: crash / DB unavailable, or there were
 trades to review and EVERY one failed (no LLM lane, unparseable replies); 2 = usage error.
+
+Governed bridge (2026-10-15, n8n llm lane batch 1): with TRADEAI_LLM_VIA_BRIDGE=1 (bound by the n8n run executor from
+the allowlist ``llm_route`` of lane journal-review-builder) each review is ONE governed-bridge request as process
+``journal_review_builder`` (grok -> chatgpt -> DeepSeek server-side). llm_lane is never imported, so neither a provider
+client nor the ``local`` lane is reachable; a refusal is a failed review (no INSERT). ``--lane`` is ignored there (the
+bridge chooses). The cron line is unchanged.
 """
 from __future__ import annotations
-import argparse, json, re, sys
+import argparse, json, os, re, sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 GRADE_TO_SCORE = {"A": 5, "B": 4, "C": 3, "D": 2, "F": 1}
 LANE_ID = "journal-review-builder"
+#: Registered process (bridge path only) and its governed-bridge route (advisory_desk / journal_review_builder).
+LLM_PROCESS_ID = "journal_review_builder"
+#: The flag the n8n run executor binds from the allowlist llm_route; read directly (a failed import with the flag ON
+#: raises, it never falls through to llm_lane).
+VIA_BRIDGE_ENV = "TRADEAI_LLM_VIA_BRIDGE"
+BRIDGE_LANE = "bridge"
+
+
+def _via_bridge():
+    return os.environ.get(VIA_BRIDGE_ENV, "off").strip().lower() in {"1", "on", "bridge"}
 
 
 def _receipt_lib():
@@ -107,13 +123,23 @@ def run(limit=None, lane="grok", dry_run=False):
         _receipt_lib().dry_run_report(LANE_ID, res, would_write=[
             f"journal_trade_reviews (insert) x {len(todo)} -- one {lane} LLM call each"])
         return res
-    import llm_lane
-    if not llm_lane.available(lane):
-        lane = "local"
+    if _via_bridge():
+        from lib.llm_bridge_route import require_text_via_bridge
+        lane = BRIDGE_LANE
+
+        def _generate(prompt):
+            return require_text_via_bridge(LLM_PROCESS_ID, prompt, timeout_s=90)
+    else:
+        import llm_lane
+        if not llm_lane.available(lane):
+            lane = "local"
+
+        def _generate(prompt):
+            return llm_lane.generate(prompt, lane=lane, timeout=90)
     done = fail = 0
     for tk, r in todo:
         try:
-            p = _parse(llm_lane.generate(PROMPT.format(**r), lane=lane, timeout=90))
+            p = _parse(_generate(PROMPT.format(**r)))
         except Exception:
             p = None
         if not p:

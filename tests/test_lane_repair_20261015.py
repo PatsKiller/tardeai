@@ -510,7 +510,7 @@ def test_shadow_rows_are_admitted_dry_run_only(lane):
 
 
 @pytest.mark.parametrize("lane", sorted(STAGED))
-def test_planner_rows_are_staged_until_a_governed_bridge_route_exists(lane):
+def test_planner_rows_are_staged_and_admitted_once_activated(lane):
     cron, argv, receipt, lock = STAGED[lane]
     row, entry = ROWS[lane], ALLOW[lane]
     assert "dispatch" not in row and row["scheduler"].get("stage") is None and LD.dispatch_mode(row) == "off"
@@ -519,11 +519,15 @@ def test_planner_rows_are_staged_until_a_governed_bridge_route_exists(lane):
     assert pend["dispatch"]["mode"] == "dry_run" and pend["dispatch"]["cron"] == [cron]
     assert pend["output_signal"]["path"] == f"data/runtime/{receipt}_last.json" == entry["output_signal"]
     assert entry["command"] == ["$PY", *argv] and entry["live_arg"] is None and entry["lock"] == lock
-    assert "llm_route" not in entry and not any("--lane" in t for t in entry["command"])
+    assert not any("--lane" in t for t in entry["command"])
+    # 2026-10-15 (n8n llm lane bridge routes batch 1): the documented blocker is cleared -- process
+    # watchlist_entry_planner has a cio-governed-bridge route and the entry declares it; the rows stay inert (no
+    # dispatch block) until the r1_pending activation, which is then admitted.
+    assert entry["llm_route"] == {"via": "cio-governed-bridge", "process_id": "watchlist_entry_planner"}
     activated = dict(row, scheduler={**row["scheduler"], **pend["scheduler"]}, output_signal=pend["output_signal"],
                      dispatch=pend["dispatch"])
     ok, why = LD.r1_class_admission(activated, entry)
-    assert not ok and why.startswith("llm_route_not_governed_bridge"), why  # the documented blocker
+    assert ok and why == "r1_admitted:llm", why
     fx = EFFECTS[lane]
     assert fx["effects"] == ["append", "llm"] and fx["cron_claim"] is False and fx["n8n_claim"] is False
     assert fx["schedule"] == cron

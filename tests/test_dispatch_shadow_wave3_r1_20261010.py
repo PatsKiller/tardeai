@@ -267,12 +267,12 @@ def test_activated_registry_has_no_dispatch_issue_once_active(monkeypatch):
     assert len(r1_cron_shadow) == len(WAVE3_ON_CRON) + 3 + 15 + 10 + 11 - 1 + 2 + 4 + 2 - len(cut_r1)
     assert len(errs) == len(r1_cron_shadow) and all("shadow_on_cron_not_ratified" in x for x in errs), errs[:3]
     monkeypatch.setattr(LD, "R1_SHADOW_SHAPE_STATUS", "ACTIVE")
-    # The staged entry planner rows (lane repair 2026-10-15) stay refused for exactly the reason they are staged: no
-    # llm_route via cio-governed-bridge until a governed route exists for process watchlist_entry_planner. (Their
-    # allowlist entries, deferred by train 2026-10-15 d for DD01, are restored by the operator DD01 ruling 2026-10-15.)
-    assert sorted(LD.registry_dispatch_errors(doc)) == [
-        f"{lane}: dispatch class_not_permitted: class 'llm' (R1): llm_route_not_governed_bridge:None"
-        for lane in ("watchlist-entry-planner-limit", "watchlist-entry-planner-scope")]
+    # The staged entry planner rows (lane repair 2026-10-15) were refused for exactly the reason they were staged (no
+    # llm_route via cio-governed-bridge: llm_route_not_governed_bridge:None) until process watchlist_entry_planner got a
+    # governed route; the n8n llm lane bridge routes batch 1 (2026-10-15) added it and the allowlist llm_route, so the
+    # activated registry has no dispatch issue at all. (Their allowlist entries, deferred by train 2026-10-15 d for
+    # DD01, are restored by the operator DD01 ruling 2026-10-15.)
+    assert sorted(LD.registry_dispatch_errors(doc)) == []
 
 
 # ---------------------------------------------------------------------------------- compute_due week sweep
