@@ -311,7 +311,7 @@ def no_cookie(monkeypatch, tmp_path):
 
 def test_youtube_dry_run_neither_sends_nor_writes_receipt(monkeypatch, state_root, no_cookie, capsys):
     sent: list = []
-    assert _run_yt(monkeypatch, ["--dry-run"], sent=sent) == 0
+    assert _run_yt(monkeypatch, ["--preview"], sent=sent) == 0  # the old DB-reading dry run (2026-10-15)
     assert sent == []
     rep = _dry_report(capsys.readouterr().out)
     assert rep["summary"]["status"] == "red" and rep["summary"]["would_send"] is True

@@ -1622,16 +1622,19 @@
       "scheduler": {
         "kind": "cron",
         "expression": "20 7,19 * * 1-5",
-        "command_text": "drain_cio_stance_classification.py --apply",
-        "match": "drain_cio_stance_classification.py"
+        "command_text": "20 7,19 * * 1-5 cd $PROJ && bash -c 'set -a; . \"/run/user/$(id -u)/tradeai/env\" 2>/dev/null; set +a; exec flock -n /tmp/cio_stance_classify.lock \"$PY\" scripts/drain_cio_stance_classification.py --apply' >> logs/cio_stance_classification_drain.log 2>&1  # lane cio-stance-classification-drain (M5, deterministic classification for missing-CIO-stance holds; no LLM)",
+        "match": "drain_cio_stance_classification.py",
+        "stage": "shadow",
+        "wave": "R2-05"
       },
       "expected_cadence_hours": 24.0,
       "state": "ACTIVE",
       "state_since": "2026-09-24",
       "state_reason": "Installed 2026-09-24 at the M5 tranche-2 deploy (operator: 'do the post-merge steps'): weekday cron 07:20 and 19:20 from the dev tree, flock /tmp/cio_stance_classify.lock, logs/cio_stance_classification_drain.log. Deterministic Phase-1 classification only; no LLM.",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/cio_stance_classification_drain.log"
+        "kind": "json_key",
+        "path": "data/runtime/cio-stance-classification-drain_last.json",
+        "key": "ok_at"
       },
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "scripts/drain_cio_stance_classification.py docstring; the CIO engine inner-joins an active ticker_strategy_classifications row with strategy_rule_evaluations, and strategy_rule_engine.py has been unscheduled since 2026-09-06.",
@@ -1648,7 +1651,20 @@
         "f_evidence": "Unverified use: no consumer check run for this line"
       },
       "output_signal_note": "2026-10-09 (registry-signals-r1): was file_mtime ~/.local/state/tradeai/cio_stance_classification_receipts.jsonl, which the drain appends only when a request is pending, so an idle drain (pending=0) read as a false NO_OUTPUT breach (supervisor_breaches.jsonl 2026-10-01..05). The cron line appends to logs/cio_stance_classification_drain.log (state-root logs) and main() prints one '[APPLY] pending=N counts=...' line on every run.",
-      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible).",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "20 7,19 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "pipeline",
+        "priority": 5,
+        "retry_policy": "none"
+      },
+      "adopted_on": "2026-10-15",
+      "adopted_reason": "n8n onboarding ONB-1, adopting the refactor shard 05 proposal unchanged (scheduler.wave R2-05, frozen argv tests/fixtures/refactor_shard_05/cron_argv.json) (operator N8N Cutover Decision 2026-10-15, disposition MIGRATE_N8N): a row carrying a reviewed dispatch block is hand-maintained (AGENTS 23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop it. Cron line L987 (crontab -l 2026-10-15, sha256 6a5c6768) keeps doing the real work; the dispatcher fires the offline dry run only. output_signal moved to the LaneRunReceipt@v1 the script writes on a real run."
     },
     {
       "lane_id": "cio-decision-engine",
@@ -16241,6 +16257,54 @@
       "adopted_reason": "shadow wave LD-W1 (lane disposition 2026-10-15, M1): a row carrying a reviewed dispatch block is hand-maintained (AGENTS 23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop it. Cron line L837 (crontab -l 2026-10-15, sha256 6a5c6768) keeps doing the real work; the dispatcher fires the offline dry run only. output_signal moved from the cron log / file mtime to the LaneRunReceipt@v1 the script writes on a real run."
     },
     {
+      "lane_id": "drain-discovery-backlog",
+      "owner": "research",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 6 * * 1-5",
+        "match": "scripts/drain_discovery_backlog.py",
+        "stage": "shadow",
+        "wave": "R2-05",
+        "command_text": "0 6 * * 1-5 cd $PROJ && $PY scripts/drain_discovery_backlog.py --apply >> logs/drain_discovery_backlog.log 2>&1"
+      },
+      "expected_cadence_hours": 72.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/drain-discovery-backlog_last.json",
+        "key": "ok_at"
+      },
+      "value_class": "Nice to Have",
+      "recommendation": "PIPELINE:P10",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L862",
+        "pipeline": "P10",
+        "value_class": "Nice to Have",
+        "recommendation": "PIPELINE:P10",
+        "f_recommendation": "CONSOLIDATE-into P10",
+        "event_driven_candidate": false,
+        "f_evidence": "Unverified use: no consumer check run for this line"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "0 6 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "hygiene",
+        "priority": 5,
+        "retry_policy": "none"
+      },
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-10-15",
+      "adopted_reason": "n8n onboarding ONB-1, adopting the refactor shard 05 proposal unchanged (scheduler.wave R2-05, frozen argv tests/fixtures/refactor_shard_05/cron_argv.json, lock_proposed) (operator N8N Cutover Decision 2026-10-15, disposition MIGRATE_N8N): a row carrying a reviewed dispatch block is hand-maintained (AGENTS 23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop it. Cron line L867 (crontab -l 2026-10-15, sha256 6a5c6768) keeps doing the real work; the dispatcher fires the offline dry run only. output_signal moved to the LaneRunReceipt@v1 the script writes on a real run."
+    },
+    {
       "lane_id": "run-scheduled-quote-refresh-incubator",
       "owner": "portfolio",
       "scheduler": {
@@ -21621,38 +21685,6 @@
         "value_class": "Operationally Important",
         "recommendation": "PIPELINE:P14",
         "f_recommendation": "CONSOLIDATE-into P14",
-        "event_driven_candidate": false,
-        "f_evidence": "Unverified use: no consumer check run for this line"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "drain-discovery-backlog",
-      "owner": "research",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "0 6 * * 1-5",
-        "match": "scripts/drain_discovery_backlog.py"
-      },
-      "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/drain_discovery_backlog.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Nice to Have",
-      "recommendation": "PIPELINE:P10",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L862",
-        "pipeline": "P10",
-        "value_class": "Nice to Have",
-        "recommendation": "PIPELINE:P10",
-        "f_recommendation": "CONSOLIDATE-into P10",
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
       },

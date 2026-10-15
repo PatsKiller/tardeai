@@ -125,6 +125,7 @@ def harness(monkeypatch, tmp_path):
     (tmp_path / "reports").mkdir()
     receipts = tmp_path / "receipts.jsonl"
     monkeypatch.setenv(snap.RECEIPTS_ENV, str(receipts))
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path / "state"))  # main() also writes the lane receipt (ONB-2)
     monkeypatch.delenv(srp.MAX_PAYLOAD_ENV, raising=False)
     return types.SimpleNamespace(store=store, sent=sent, snap=snap, receipts=receipts, conn=conn,
                                  api=real_api, tmp=tmp_path)

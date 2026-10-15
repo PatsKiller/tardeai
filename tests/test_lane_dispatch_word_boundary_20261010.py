@@ -120,6 +120,9 @@ REVIEWED_NOW_ALLOWED: dict[str, tuple[frozenset[str], str]] = {
     "n8n-incident-fanin": (frozenset({"2fa"}), "workflow id 722fac0e... collapsed"),
     # shadow wave LD-W1 (2026-10-15): this corpus's own "allowlist:" id prefix + "opening" collapses to "listopening".
     "opening-intelligence-render": (frozenset({"stop"}), "corpus id 'allowlist:opening...' -> 'listopening'"),
+    # n8n onboarding ONB-1 (2026-10-15): the cron line's comment "missing-CIO-stance holds; no LLM" collapses to
+    # "holdsnollm", which contains the secret word "dsn"; the line names no DSN.
+    "cio-stance-classification-drain": (frozenset({"dsn"}), "comment 'holds; no LLM' -> 'holdsnollm'"),
     # crontab_backup.txt lines, keyed by script
     "topic_curator.py": (frozenset({"stop"}), "topic"),
     "hermes_topic_monitor_bridge.py": (frozenset({"stop"}), "topic"),
@@ -128,7 +131,7 @@ REVIEWED_NOW_ALLOWED: dict[str, tuple[frozenset[str], str]] = {
     "topic_research_synthesizer.py": (frozenset({"stop", "size"}), "topic + synthesizer"),
     "defense_inverse_stoplights.py": (frozenset({"stop"}), "stoplights"),
 }
-REVIEWED_TOKENS = frozenset({"stop", "size", "order", "2fa"})
+REVIEWED_TOKENS = frozenset({"stop", "size", "order", "2fa", "dsn"})
 #: Legacy tokens that drop from a row that STAYS blocked by another token (asserted per row).
 INCIDENTAL_TOKEN_DROPS = {
     "guard": "holdings_gain_guardian: 'guardian' is not the guard ledger; the script name still blocks",

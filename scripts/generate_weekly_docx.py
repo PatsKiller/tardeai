@@ -6,7 +6,13 @@ Designed to run every Sunday evening via cron.
 
 Usage:
     .venv/bin/python scripts/generate_weekly_docx.py
-    .venv/bin/python scripts/generate_weekly_docx.py --dry-run
+    .venv/bin/python scripts/generate_weekly_docx.py --dry-run   # offline plan: no env, DB, chart, file or send
+    .venv/bin/python scripts/generate_weekly_docx.py --preview   # print the report JSON (reads DB; renders charts)
+
+n8n onboarding (2026-10-15): ``--dry-run`` returns an offline plan before ``.env``, the DB, the chart renderer, any
+file or Telegram (the old JSON print rendered up to three chart PNGs, so it moved to ``--preview``). A real run
+exits 1 when an export failed and writes the LaneRunReceipt@v1 data/runtime/generate-weekly-docx_last.json
+(ok_at only on success; produced_count = report files exported).
 """
 import argparse, json, os, sys
 from datetime import datetime, date, timedelta
@@ -20,8 +26,7 @@ except ImportError:  # pragma: no cover - imported as scripts.<module>
     from scripts.lib.portfolio_reports_root import portfolio_reports_root as _portfolio_reports_root  # noqa: E402
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
-from dotenv import load_dotenv
-load_dotenv(PROJECT_ROOT / ".env")
+LANE_ID = "generate-weekly-docx"
 
 
 def _f(v):
@@ -178,7 +183,7 @@ def generate_docx(data: dict, output_path: Path):
     title = doc.add_heading('Weekly Portfolio Intelligence Report', level=0)
     doc.add_paragraph(f"Period: {data['period_start']} — {data['period_end']}")
     doc.add_paragraph(f"Generated: {data['generated_at']}")
-    doc.add_paragraph(f"System: Trade AI v12 — Paper Only Mode")
+    doc.add_paragraph("System: Trade AI v12 — Paper Only Mode")
 
     # Executive Summary
     doc.add_heading('Executive Summary', level=1)
@@ -340,11 +345,28 @@ def generate_docx(data: dict, output_path: Path):
 
 def main():
     parser = argparse.ArgumentParser(description="Weekly DOCX Report Generator")
-    parser.add_argument("--dry-run", action="store_true", help="Print data without generating docx")
+    parser.add_argument("--dry-run", action="store_true", help="offline plan: no env, DB, chart, file or send")
+    parser.add_argument("--preview", action="store_true", help="print the report JSON (reads DB, renders charts)")
     parser.add_argument("--output", help="Custom output path")
     parser.add_argument("--legacy", action="store_true", help="Use legacy table-based DOCX layout")
     parser.add_argument("--format", default="docx", choices=("docx", "pdf", "all"))
     args = parser.parse_args()
+
+    formats = ["docx", "pdf"] if args.format == "all" else [args.format]
+    if args.dry_run:
+        print(f"DRY-RUN {LANE_ID}: would build the weekly review (DB + state), write weekly_review_<date>.json and "
+              f"{'/'.join(formats)} under <reports_root>/analyst (+ charts, archive/weekly/<date> copy), send one P2 "
+              "notice through the telegram_alert chokepoint and write the lane receipt; no env, DB, chart, file or "
+              "send; inputs NOT_MEASURED")
+        return 0
+
+    from dotenv import load_dotenv
+    load_dotenv(PROJECT_ROOT / ".env")
+    try:
+        from lib.lane_last_receipt import now_iso, write_lane_receipt
+    except ImportError:  # pragma: no cover - imported as scripts.<module>
+        from scripts.lib.lane_last_receipt import now_iso, write_lane_receipt
+    started = now_iso()
 
     from analyst_report_builder import build_weekly_review, save_report_json
     from report_export import export_report
@@ -353,48 +375,63 @@ def main():
     today = date.today()
     stem = f"weekly_review_{today.strftime('%Y%m%d')}"
 
-    if args.dry_run:
+    if args.preview:
         print(json.dumps(report, indent=2, default=str))
-        return
+        return 0
 
-    week_dir = PROJECT_ROOT / "archive" / "weekly" / str(today) / "reports_weekly"
-    week_dir.mkdir(parents=True, exist_ok=True)
-    analyst_dir = _portfolio_reports_root() / "analyst"
-    analyst_dir.mkdir(parents=True, exist_ok=True)
-
-    save_report_json(report, stem=stem)
-
-    if args.legacy:
-        conn = _get_conn()
-        try:
-            data = gather_weekly_data(conn)
-            output = Path(args.output) if args.output else week_dir / f"weekly_{today}.docx"
-            path = generate_docx(data, output)
-            print(f"[weekly] Legacy DOCX: {path} ({path.stat().st_size / 1024:.1f} KB)")
-        finally:
-            conn.close()
-
-    formats = ["docx", "pdf"] if args.format == "all" else [args.format]
-    for fmt in formats:
-        result = export_report(report, fmt, output_stem=stem)
-        if result.get("ok"):
-            dest = week_dir / result["filename"]
-            try:
-                import shutil
-                shutil.copy2(result["path"], dest)
-            except Exception:
-                dest = Path(result["path"])
-            print(f"[weekly] Analyst {fmt.upper()}: {dest} ({result.get('size_kb')} KB)")
-        else:
-            print(f"[weekly] Analyst {fmt.upper()} failed: {result.get('error')}", file=sys.stderr)
-
+    produced, failed, evidence = 0, [], []
     try:
-        from telegram_alert import send_telegram
-        send_telegram(f"*Weekly Portfolio Review*\n{stem} generated\nView Reports → Analyst Reports",
-                      priority="P2", producer="generate_weekly_docx")
-    except Exception:
-        pass
+        week_dir = PROJECT_ROOT / "archive" / "weekly" / str(today) / "reports_weekly"
+        week_dir.mkdir(parents=True, exist_ok=True)
+        analyst_dir = _portfolio_reports_root() / "analyst"
+        analyst_dir.mkdir(parents=True, exist_ok=True)
+
+        save_report_json(report, stem=stem)
+
+        if args.legacy:
+            conn = _get_conn()
+            try:
+                data = gather_weekly_data(conn)
+                output = Path(args.output) if args.output else week_dir / f"weekly_{today}.docx"
+                path = generate_docx(data, output)
+                print(f"[weekly] Legacy DOCX: {path} ({path.stat().st_size / 1024:.1f} KB)")
+            finally:
+                conn.close()
+
+        for fmt in formats:
+            result = export_report(report, fmt, output_stem=stem)
+            if result.get("ok"):
+                produced += 1
+                evidence.append({"path": str(result["path"]), "format": fmt})
+                dest = week_dir / result["filename"]
+                try:
+                    import shutil
+                    shutil.copy2(result["path"], dest)
+                except Exception:
+                    dest = Path(result["path"])
+                print(f"[weekly] Analyst {fmt.upper()}: {dest} ({result.get('size_kb')} KB)")
+            else:
+                failed.append(fmt)
+                print(f"[weekly] Analyst {fmt.upper()} failed: {result.get('error')}", file=sys.stderr)
+    except Exception as exc:
+        write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started, script="generate_weekly_docx.py",
+                           output={"produced_count": produced, "attempted_count": len(formats)}, error=str(exc)[:300])
+        raise
+
+    ok = not failed
+    if ok:
+        try:
+            from telegram_alert import send_telegram
+            send_telegram(f"*Weekly Portfolio Review*\n{stem} generated\nView Reports → Analyst Reports",
+                          priority="P2", producer="generate_weekly_docx")
+        except Exception:
+            pass
+    write_lane_receipt(LANE_ID, ok=ok, exit_code=0 if ok else 1, started_at=started, script="generate_weekly_docx.py",
+                       summary={"stem": stem, "formats": formats, "failed": failed}, output={"produced_count": produced,
+                       "attempted_count": len(formats), "output_evidence": evidence},
+                       error=None if ok else f"export failed: {','.join(failed)}")
+    return 0 if ok else 1
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

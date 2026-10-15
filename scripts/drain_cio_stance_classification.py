@@ -448,6 +448,9 @@ def main(argv: Optional[list[str]] = None) -> int:
         started_at=started,
         script="drain_cio_stance_classification.py",
         summary=res,
+        # n8n onboarding ONB-1 (2026-10-15): the expected-output count (N8nExpectedOutput@v1 produced_count).
+        output={"produced_count": int(res["applied"]), "attempted_count": int(res["pending"]),
+                "empty_reason": "no_new_input" if rc == 0 and not res["applied"] else None},
     )
     return rc
 

@@ -3746,6 +3746,72 @@
       "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as the SW4 / LD-W1 rows). A live run also needs the governed bridge names (TRADEAI_LLM_VIA_BRIDGE / the bridge process env the executor binds from llm_route).",
       "env_evidence": "watchlist_entry_planner_lane.py imports preview / plan_run / receipt_name from watchlist_entry_planner.py (db_adapter DB_* names; llm_lane only on a live run). The dry run reaches no LLM, bars provider or send. No broker credential name.",
       "source": "lane repair 2026-10-15, cron:L476 (crontab -l 2026-10-15, sha256 6a5c6768: `45 17 * * 1-5 cd $PROJ && flock -n /tmp/entry_planner_prop.lock $PY scripts/watchlist_entry_planner.py --scope proposals >> logs/entry_planner.log 2>&1  # daily proposal entry validation (advisory)`). STAGED (registry r1_pending, no dispatch block): the llm class needs llm_route via cio-governed-bridge and process watchlist_entry_planner has no governed route yet; llm_route is therefore absent here and the lane is inert. live_arg null. The command is the plan-only n8n entry (no sender in its static reach; `--lane` dropped: a provider-selecting token is refused on a dispatched argv); entry alerts stay on the cron line until a host notification-intent consumer delivers them. lock /tmp/entry_planner_prop.lock (flock) is the live cron line's lock. Dry run: --dry-run is the planner's READ ONLY candidate preview; proof in docs/ops/packets/lane-repair-indicator-engine-20261015/."
+    },
+    {
+      "lane_id": "cio-stance-classification-drain",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "Script reads db_adapter / psycopg2 DB names and the state-root names (no broker credential name, AGENTS 23.18 ruling 3); not inventoried per literal read.",
+      "env_report_reason": "the live path loads the rendered env file (load_dotenv / db_adapter -> lib/env_bootstrap.load_env) into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as the SW4 / LD-W1 rows).",
+      "source": "n8n onboarding ONB-1 (lane disposition 2026-10-15 MIGRATE_N8N, class pipeline), cron:L987 (crontab -l 2026-10-15: `20 7,19 * * 1-5 cd $PROJ && bash -c 'set -a; . \"/run/user/$(id -u)/tradeai/env\" 2>/dev/null; set +a; exec flock -n /tmp/cio_stance_classify.lock \"$PY\" scripts/drain_cio_stance_classification.py --apply' >> logs/cio_stance_classification_drain.log 2>&1  # lane cio-stance-classification-drain (M5, deterministic classification for missing-CIO-stance holds; no LLM)`). SHADOW ONLY: live_arg null, registry dispatch.mode dry_run, scheduler.stage shadow; the cron line keeps doing the real work. The command is the refactor shard 05 frozen cron argv (--apply included, tests/fixtures/refactor_shard_05/cron_argv.json); dry_run_arg --dry-run wins over --apply (drain_cio_stance_classification.py main), proven by the write recorder. lock /tmp/cio_stance_classify.lock is the cron line's flock lock. Dry run: an explicit --dry-run wins over --apply and returns an offline plan before the request ledger, the DB or any write (unchanged source; refactor M5). Proof in docs/ops/packets/n8n-onboard-dryrun-proven-1-20261015/.",
+      "command": [
+        "$PY",
+        "scripts/drain_cio_stance_classification.py",
+        "--apply"
+      ],
+      "lock": "/tmp/cio_stance_classify.lock",
+      "lock_kind": "flock",
+      "timeout_s": 900,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/cio-stance-classification-drain_last.json"
+    },
+    {
+      "lane_id": "drain-discovery-backlog",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "Script reads db_adapter / psycopg2 DB names and the state-root names (no broker credential name, AGENTS 23.18 ruling 3); not inventoried per literal read.",
+      "env_report_reason": "the live path loads the rendered env file (load_dotenv / db_adapter -> lib/env_bootstrap.load_env) into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as the SW4 / LD-W1 rows).",
+      "source": "n8n onboarding ONB-1 (lane disposition 2026-10-15 MIGRATE_N8N, class hygiene), cron:L867 (crontab -l 2026-10-15: `0 6 * * 1-5 cd $PROJ && $PY scripts/drain_discovery_backlog.py --apply >> logs/drain_discovery_backlog.log 2>&1`). SHADOW ONLY: live_arg null, registry dispatch.mode dry_run, scheduler.stage shadow; the cron line keeps doing the real work. The command is the refactor shard 05 frozen cron argv (--apply included); dry_run_arg --dry-run wins over --apply (drain_discovery_backlog.py main), proven by the write recorder. lock /tmp/drain-discovery-backlog.lock is PROPOSED: the cron line holds no flock today, so canary stays blocked until a cron packet adds `flock -n` with this path. Dry run: an explicit --dry-run wins over --apply and returns an offline plan before the DB or any write (unchanged source, refactor W3). Proof in docs/ops/packets/n8n-onboard-dryrun-proven-1-20261015/.",
+      "command": [
+        "$PY",
+        "scripts/drain_discovery_backlog.py",
+        "--apply"
+      ],
+      "lock": "/tmp/drain-discovery-backlog.lock",
+      "lock_kind": "flock",
+      "timeout_s": 600,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/drain-discovery-backlog_last.json"
     }
   ],
   "blocked_reasons": {
