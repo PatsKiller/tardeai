@@ -25,7 +25,7 @@ over the family default.
 | RETIRE | **10** | R1 4 (this packet, tier A) · R1b 6 (same packet, tier B, operator YES per row) |
 | CONSOLIDATE | **148** | C1 52 · C2 29 · C3 15 · C4 33 · C5 19 |
 | STAY_HOST | **99** | broker/order/stop/protection/secret (F09 43), senders and `--send` lanes, daemons and watchdogs, deploy chain, §23.14 keep-on-cron |
-| MIGRATE_N8N | **137** | M0 6 · M1 8 (this wave) · M2 38 · M3 15 · M4 33 · M5 16 · M6 21 |
+| MIGRATE_N8N | **137** | M0 6 · M1 6 (PR #1761) · M2 38 · M3 16 · M4 33 · M5 16 · M6 22 |
 | **Total** | **394** | = 394 active job lines in the snapshot (379 distinct lanes; 15 lanes have 2-3 lines) |
 
 There are also 140 registry-only rows: 101 systemd units, 23 cron rows with no live line, 8 n8n rows, 5 event rows and
@@ -97,7 +97,7 @@ There are also 140 registry-only rows: 101 systemd units, 23 cron rows with no l
 |---|---:|---|---|
 | C1 | 52 | premarket-data-pipeline (38); B-families (14) | packets built; operator cron grant flips each |
 | C2 | 29 | after-close pipeline (25, manifest exists, stages run `--dry-run`); hermes stages (4, already `--apply`) | after-close flip packet; hermes is the fabric pilot (#1746) |
-| C3 | 15 | F36 health/audit plane: `config/pipelines/health_audit.json` (this wave, inert) takes the 4-line weekday morning chain; the multi-slot members are deferred in the manifest | PR-C |
+| C3 | 15 | F36 health/audit plane: `config/pipelines/health_audit.json` (PR #1763, inert) takes the 4-line weekday-morning chain into stage `morning`; 11 multi-slot or fabric members are deferred and 7 STAY_HOST members excluded in the manifest | PR #1763; flip packet `consolidation-health-audit-c3-20261015` |
 | C4 | 33 | 17 same-script multi-slot families (F17-F34): one lane, N slots, slot→argv | one registry PR per family |
 | C5 | 19 | quote writers (7), digests/approvals (7), cache prewarmers (4), maintenance (1) | after the send-intent API and the quote service |
 
@@ -106,14 +106,14 @@ There are also 140 registry-only rows: 101 systemd units, 23 cron rows with no l
 | Wave | Lines | What | Gate |
 |---|---:|---|---|
 | M0 | 6 | already canary or cutover | — |
-| **M1** | **8** | **this wave (PR-B): shadow on the fabric, dry run only** | none: inert at merge, no scheduler change |
+| **M1** | **6** | **shadow wave LD-W1 (PR #1761): shadow on the fabric, dry run only** | none: inert at merge, no scheduler change |
 | M2 | 38 | already shadow | each needs canary plus ≥1 live n8n run (§23.21). Cutover waits for the freeze exit: Run Lane fault matrix plus outcome callback |
-| M3 | 15 | no refactor flag, but each needs a write-free dry run and a receipt audit before shadow | next shadow wave |
+| M3 | 16 | no refactor flag, but each needs a write-free dry run and a receipt audit before shadow | next shadow wave |
 | M4 | 33 | refactor first: dry-run flag, receipt, or sender/broker reach | refactor shards |
 | M5 | 16 | agent workflows (CIO/Hermes/Aegis/persona) | phase 5, WS9 C1-C10 |
-| M6 | 21 | event subscriptions (pollers) | phase 5, producers emit `Event@v1` first |
+| M6 | 22 | event subscriptions (pollers) | phase 5, producers emit `Event@v1` first |
 
-**Why M1 has 8 lanes, not 15-25.** I applied a strict filter to every MIGRATE line:
+**Why M1 has 6 lanes, not 15-25.** I applied a strict filter to every MIGRATE line:
 
 - one script;
 - no `--send`, `--telegram` or `--alert`;
@@ -122,8 +122,10 @@ There are also 140 registry-only rows: 101 systemd units, 23 cron rows with no l
 - not a lane pinned off the dispatcher by an earlier wave for a reason that still holds;
 - not yet on the allowlist.
 
-8 lanes passed and are onboarded. Others were held or rerouted:
+8 lanes passed; 6 are onboarded. The others were held or rerouted:
 
+- `build-symbol-profiles-at-0-19` and `drain-discovery-backlog` passed but stay with their refactor shard 05-08
+  proposals, which `tests/test_refactor_shards_05_08_locks_20261011.py` pins as held. They are M3 and M6 here.
 - `agent-recommendation-normalizer` passed the filter but is held: SW4 P0, random `recommendation_id` per run.
 - `symbol-enrichment` and `indicator-engine` passed the filter but go to RETIRE instead (dead line, demo line).
 - `sec-filings-feed` and `sec-fundamentals-ingest` fail the filter: their import closure reaches `api_v2`.
