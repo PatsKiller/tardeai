@@ -249,6 +249,10 @@ LANE_ENV_ALLOWLIST_MODES = ("report", "enforce")
 ENV_BOUND_NAMES_ENV = "TRADEAI_ENV_BOUND_NAMES"
 LLM_BRIDGE_ENV = "TRADEAI_LLM_VIA_BRIDGE"
 LLM_PROCESS_ENV = "TRADEAI_LLM_PROCESS_ID"
+#: 2026-10-15: a compound lane (several registered processes, e.g. run-research-intelligence-overnight) declares
+#: ``llm_route: {"via": "cio-governed-bridge", "process_ids": [...]}``; the executor binds the comma-joined SET here
+#: and lib/llm_bridge_route refuses any process outside it. Exactly one of process_id / process_ids per route.
+LLM_PROCESS_SET_ENV = "TRADEAI_LLM_PROCESS_IDS"
 CHILD_ENV_BASE_NAMES = frozenset(
     {
         "PATH",
@@ -312,9 +316,28 @@ def env_policy_problem(entry: Mapping[str, Any]) -> str | None:
             from scripts.lib.governed_process_routes import route_for_process
         except ImportError:
             from lib.governed_process_routes import route_for_process
-        if not isinstance(route.get("process_id"), str) or route_for_process(route["process_id"]) is None:
+        pids = llm_route_process_ids(route)
+        if pids is None:
+            return "bad_llm_route"
+        if any(route_for_process(pid) is None for pid in pids):
             return "llm_process_route_not_registered"
     return None
+
+
+def llm_route_process_ids(route: Mapping[str, Any]) -> tuple[str, ...] | None:
+    """The route's process ids in declared order, or None when the shape is wrong. Pure.
+
+    ``process_id`` (one string) or ``process_ids`` (a non-empty list of distinct strings), never both, never
+    neither; a comma inside an id is refused (it would forge the bound set)."""
+    single, many = route.get("process_id"), route.get("process_ids")
+    if (single is None) == (many is None):
+        return None
+    pids = [single] if single is not None else many
+    if not isinstance(pids, list) or not pids or len(pids) != len(set(map(str, pids))):
+        return None
+    if not all(isinstance(p, str) and p and "," not in p and p == p.strip() for p in pids):
+        return None
+    return tuple(pids)
 
 
 def _bind_llm_route(env: dict[str, str], entry: Mapping[str, Any]) -> dict[str, str]:
@@ -322,7 +345,12 @@ def _bind_llm_route(env: dict[str, str], entry: Mapping[str, Any]) -> dict[str, 
     route = entry.get("llm_route")
     if route is not None:
         env[LLM_BRIDGE_ENV] = "1"
-        env[LLM_PROCESS_ENV] = route["process_id"]
+        env.pop(LLM_PROCESS_ENV, None)
+        env.pop(LLM_PROCESS_SET_ENV, None)
+        if route.get("process_id") is not None:
+            env[LLM_PROCESS_ENV] = route["process_id"]
+        else:
+            env[LLM_PROCESS_SET_ENV] = ",".join(route["process_ids"])
     return env
 
 

@@ -8,6 +8,12 @@ social, and technical data. Sets llm_screen_grade (A-F) and llm_screen_verdict
 Usage:
     .venv/bin/python3 scripts/incubator_llm_screener.py --dry-run
     .venv/bin/python3 scripts/incubator_llm_screener.py --run --limit 10
+
+Governed bridge (2026-10-15, n8n llm lane batch 1): with TRADEAI_LLM_VIA_BRIDGE=1 (bound by the n8n run executor from
+the allowlist ``llm_route`` of lane incubator-llm-screener) the screen is ONE governed-bridge request as process
+``incubator_llm_screener`` (grok -> chatgpt -> DeepSeek server-side); llm_lane is never imported and the optional
+in-process cloud_review (CLOUD_REVIEW=1) is skipped, so no provider client is reachable. A refusal is a per-symbol
+``error`` (no UPDATE). --dry-run makes no model call. The cron line is unchanged.
 """
 import argparse
 import json
@@ -344,6 +350,18 @@ JSON only:
 {{"screen_grade":"A|B|C|D|F","verdict":"PROMOTE|HOLD|DROP","confidence":0-100,"reasoning":"1-2 sentences","setup_quality":"textbook|decent|marginal|broken"}}"""
 
 
+#: Registered process (config/llm_process_registry.json, default_mode manual) and its governed-bridge route
+#: (scripts/lib/governed_process_routes.py advisory_desk / incubator_llm_screener).
+LLM_PROCESS_ID = "incubator_llm_screener"
+#: The flag the n8n run executor binds from the allowlist llm_route. Read directly so a failed import with the flag
+#: ON can never fall through to the in-process provider path.
+VIA_BRIDGE_ENV = "TRADEAI_LLM_VIA_BRIDGE"
+
+
+def _via_bridge():
+    return os.environ.get(VIA_BRIDGE_ENV, "off").strip().lower() in {"1", "on", "bridge"}
+
+
 def screen_one(conn, candidate, dry_run=False):
     """Run LLM screen on one incubator candidate."""
     symbol = candidate['symbol']
@@ -414,14 +432,19 @@ def screen_one(conn, candidate, dry_run=False):
         # Default: existing momentum prompt (unchanged)
         prompt = build_screen_prompt(candidate, news, social, technical, web_news_line)
 
+    via_bridge = _via_bridge()
     try:
-        from llm_lane import generate
-        raw = generate(
-            prompt,
-            lane="deepseek-flash",
-            timeout=120,
-            process_id="incubator_llm_screener",
-        )
+        if via_bridge:
+            from lib.llm_bridge_route import require_text_via_bridge
+            raw = require_text_via_bridge(LLM_PROCESS_ID, prompt, timeout_s=120)
+        else:
+            from llm_lane import generate
+            raw = generate(
+                prompt,
+                lane="deepseek-flash",
+                timeout=120,
+                process_id=LLM_PROCESS_ID,
+            )
         if not raw:
             log.warning(f"  {symbol}: LLM returned empty")
             return {'symbol': symbol, 'status': 'empty'}
@@ -438,7 +461,7 @@ def screen_one(conn, candidate, dry_run=False):
         verdict = result.get('verdict', 'HOLD')
         confidence = min(100, max(0, int(result.get('confidence', 50))))
 
-        model = "deepseek-flash"
+        model = "governed-bridge" if via_bridge else "deepseek-flash"
 
         # Validate
         if grade not in ('A', 'B', 'C', 'D', 'F'):
@@ -468,7 +491,8 @@ def screen_one(conn, candidate, dry_run=False):
         # Gated behind CLOUD_REVIEW=1; only PROMOTE/HOLD picks; capped per run.
         cloud_verdict = None
         global _cloud_review_count
-        if (os.getenv("CLOUD_REVIEW") == "1" and verdict in ("PROMOTE", "HOLD")
+        # Never on the governed-bridge path: cloud_review calls OAuth providers in-process.
+        if (not via_bridge and os.getenv("CLOUD_REVIEW") == "1" and verdict in ("PROMOTE", "HOLD")
                 and _cloud_review_count < _CLOUD_REVIEW_CAP):
             try:
                 import cloud_review

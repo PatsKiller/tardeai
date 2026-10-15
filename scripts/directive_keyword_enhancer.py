@@ -9,9 +9,17 @@ output is keyword/seed metadata, never a trade. Falls back to a label-derived ke
 
   python3 scripts/directive_keyword_enhancer.py --backfill [--apply]   # enhance active trend/sector dirs lacking keywords
   python3 scripts/directive_keyword_enhancer.py --label "Energy" --kind trend   # one-off preview
+
+Governed bridge (2026-10-15, n8n llm lane batch 1): with TRADEAI_LLM_VIA_BRIDGE=1 (bound by the n8n run executor from
+the allowlist ``llm_route`` of lane directive-keyword-enhancer) each theme is ONE governed-bridge request as process
+``directive_keyword_enhancer`` (grok -> chatgpt -> DeepSeek server-side) instead of the grok+chatgpt ensemble;
+llm_lane is never imported. A refusal or an empty answer is NO output: the directive is left untouched (no
+label-derived fallback keyword is written on this path) and reported with lane ``bridge_refused``. --dry-run makes no
+model call. The cron line is unchanged.
 """
 from __future__ import annotations
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -19,6 +27,46 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 _TICK = re.compile(r"^[A-Z]{1,5}$")
+#: Registered process + governed-bridge route (advisory_desk / directive_keyword_enhancer).
+LLM_PROCESS_ID = "directive_keyword_enhancer"
+#: The flag the n8n run executor binds from the allowlist llm_route; read directly (a failed import with the flag ON
+#: raises, it never falls through to the in-process ensemble).
+VIA_BRIDGE_ENV = "TRADEAI_LLM_VIA_BRIDGE"
+BRIDGE_REFUSED_LANE = "bridge_refused"
+
+
+def _via_bridge() -> bool:
+    return os.environ.get(VIA_BRIDGE_ENV, "off").strip().lower() in {"1", "on", "bridge"}
+
+
+def _merge(parsed: dict, kws: list, syms: list) -> bool:
+    lk = [k.strip() for k in (parsed.get("keywords") or []) if isinstance(k, str) and k.strip()]
+    ls = [s.strip().upper() for s in (parsed.get("seed_symbols") or [])
+          if isinstance(s, str) and _TICK.match(s.strip().upper())]
+    for k in lk:
+        if k.lower() not in [x.lower() for x in kws]:
+            kws.append(k)
+    for s in ls:
+        if s not in syms:
+            syms.append(s)
+    return bool(lk or ls)
+
+
+def _enhance_via_bridge(prompt: str, label: str, existing_keywords) -> dict:
+    """ONE governed-bridge request. No answer = no output (lane bridge_refused, nothing to write)."""
+    from lib.llm_bridge_route import require_text_via_bridge
+
+    kws, syms = [], []
+    try:
+        ok = _merge(_parse_json(require_text_via_bridge(LLM_PROCESS_ID, prompt, timeout_s=60)), kws, syms)
+    except Exception:  # noqa: BLE001 -- a refusal is no output, never another provider
+        ok = False
+    if not ok:
+        return {"keywords": [], "seed_symbols": [], "lane": BRIDGE_REFUSED_LANE}
+    for k in (existing_keywords or []):
+        if k and k not in kws:
+            kws.append(k)
+    return {"keywords": kws[:12], "seed_symbols": syms[:10], "lane": "bridge"}
 
 
 def _parse_json(text: str) -> dict:
@@ -45,6 +93,8 @@ def enhance(label: str, kind: str = "trend", existing_keywords=None) -> dict:
         '"seed_symbols": [4-8 well-known US-listed tickers that are leading or pure-play names for this theme]}.'
         ' Tickers uppercase only.'
     )
+    if _via_bridge():
+        return _enhance_via_bridge(prompt, label, existing_keywords)
     # Merge the two governed OAuth lanes. Failure falls back to deterministic label metadata.
     kws, syms, used = [], [], []
     try:
@@ -101,6 +151,8 @@ def backfill(apply: bool = False, force: bool = False) -> list:
         enh = enhance(label, kind, existing_keywords=[k for k in kws if len(str(k).split()) < 4])
         results.append({"id": did, "label": label, "lane": enh["lane"],
                         "keywords": enh["keywords"], "seed_symbols": enh["seed_symbols"]})
+        if enh["lane"] == BRIDGE_REFUSED_LANE:
+            continue  # governed bridge refused: the directive is left exactly as it was
         if apply:
             sp["keywords"] = enh["keywords"]
             if enh["seed_symbols"]:
