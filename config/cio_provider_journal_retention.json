@@ -1,0 +1,14 @@
+{
+ "schema": "ProviderJournalRetention@v1",
+ "authority": "READ_ONLY_ADVISORY",
+ "as_of": "2026-10-15",
+ "owner": "cio",
+ "window_days": 30,
+ "min_window_days": 7,
+ "retain_states": [
+  "AMBIGUOUS",
+  "DISPATCHED"
+ ],
+ "archive_label": "provider_request_journal",
+ "note": "Read by scripts/cio_provider_journal_rotate.py (operator-run, NOT scheduled). A semantic key is archived only when its NEWEST row is older than window_days AND its latest state is not in retain_states (an unresolved AMBIGUOUS/DISPATCHED request needs explicit resolution, so it stays live at any age). Every row of a key moves together, so latest() and the attempt count are unchanged for every key still in the live journal. Retry policy (classify_failure) is 3 attempts with a 30 s max interval, so the idempotency window is minutes; 30 days is the audit margin. Archived rows go, byte-for-byte, to the file-prune archive root (retention_archive.file_archive_root() / archive_label) as .jsonl.gz with a sha256 manifest and a RetentionArchiveTripwire@v1 record (AGENTS.md rule 6: never delete)."
+}
