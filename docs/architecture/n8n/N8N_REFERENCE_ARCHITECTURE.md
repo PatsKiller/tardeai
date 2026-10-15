@@ -10,7 +10,9 @@ Maturity:    Level 2 of 5 (independent audit 2026-10-15): partial implemented fo
              revocation → reliable output/effect semantics → independent delivery and recovery tests → acceptance of
              one bounded business process with superseded orchestration retired or fenced
              (AUDIT_20261015_FINDINGS.md §6)
-Audit:       AUDIT_20261015_FINDINGS.md (DD01-DD18 tracker); N8N_THREAT_MODEL.md; N8N_DECISION_LEDGER.md (D1-D9)
+Audit:       AUDIT_20261015_FINDINGS.md (DD01-DD18 tracker); N8N_THREAT_MODEL.md; N8N_DECISION_LEDGER.md (D1-D11)
+Directive:   operator directive 2026-10-15 "N8N Cutover Decision" (D11; §2a) supersedes every scope, never-list,
+             keep-on-cron and STAY_HOST statement below that conflicts with it
 Canonical:   this file on GitHub is canonical; Drive copies are regenerated from the merged text and carry its SHA and
              normalized-text SHA-256 (AUDIT_20261015_FINDINGS.md §4)
 Policy:      AGENTS.md §23.23 (10.0.0, ACTIVE: n8n owns flow, the host owns authority) and §23.24 (11.0.0, the
@@ -74,9 +76,41 @@ coordination gateway, the run executor, the coordination ledger, the governed LL
 intent path, and the configs that bind them (`config/n8n_*.json`, `config/lane_registry.json`,
 `config/llm_process_registry.json`).
 
-**Out of scope:** the broker execution subsystem (AGENTS.md §0 rule 2, §22 — n8n never reaches it), the NYC DOF
+**Out of scope:** the broker execution subsystem (AGENTS.md §0 rule 2, §22 — n8n never reaches it;
+*superseded in part by the operator directive 2026-10-15 (§2a): n8n may schedule broker-family host lanes, the host
+executes them under the trading lock, n8n holds no broker credential and calls no order route*), F07 daemons and
+`@reboot` services and all `registry_systemd` assets (deferred this iteration by the same directive), the NYC DOF
 application (own instance, AGENTS.md §24.4), the Command Center UI, and the internals of individual lanes (each lane
 is a black box with an allowlist row, a receipt and a health contract).
+
+## 2a. Operator directive 2026-10-15 — N8N Cutover Decision (supersedes conflicting text)
+
+The operator decided on 2026-10-15 ("N8N Cutover Decision"):
+
+- **Approved for n8n cutover:** all lane families **except F07** (long-running daemons and `@reboot` services) and
+  **all `registry_systemd` assets**, which stay on the server unchanged and are revisited at the next architecture
+  review. The approved list names F09, F36, F41, F06, F40, F10, F07w (monitoring independence preserved through
+  architecture), F37, F49, F08, F23, F33, F22 — and every other non-F07 family.
+- Verbatim: "The rationale that these workflows should remain host-side, cron-based, or external due to maturity,
+  reliability, operational risk, monitoring requirements, or similar concerns is not accepted as a blocker."
+- Verbatim: "If any existing documentation, standards, inventory notes, exception records, or implementation guidance
+  state otherwise, consider that guidance superseded."
+
+Consequences recorded here (decision D11, `N8N_DECISION_LEDGER.json`):
+
+- `docs/implementation/n8n-maturity/LANE_DISPOSITION_20261015.csv`: every STAY_HOST row outside F07 and
+  `registry_systemd` is now MIGRATE_N8N, waves CD1 read-only → CD2 appenders → CD3 senders (F10/F37/F22 and every
+  sender-blocked lane) → CD4 LLM agents (F40) → CD5 watchdogs (F07w) → CD6 broker (F09) last. F07 and
+  `registry_systemd` rows stay STAY_HOST, wave `DEFERRED-I2`.
+- **Broker family (F09):** n8n may **schedule** broker-family host lanes. n8n still never holds a broker credential and
+  never calls a broker or order route itself; the host lane executes under the trading lock and the per-order
+  operator assertion (§6, B5 unchanged in substance).
+- **Senders (F10/F37/F22):** n8n orchestrates; the send itself stays the host chokepoint via send-intent (D7). For F10
+  the P1 posture becomes **"independent host P1 backstop + n8n-orchestrated primary"** (§8.3).
+- **Watchdogs (F07w):** may move to n8n orchestration; monitoring independence is preserved by architecture (the
+  host/outside dead-man, DD12), not by keeping the watchdog on cron.
+- Directive approval is a direction, not an activation grant: each cutover still follows the n8n cutover standard
+  (fix + dry run + regression + at least one live n8n run) and the existing grant/packet process.
 
 ## 3. Glossary
 
@@ -217,7 +251,14 @@ The relay's route table is the complete list of host calls a workflow can make. 
 **Never, under any route or amendment window** (AGENTS.md §23.3, §23.14, §23.23; enforced by the gateway token
 list, the allowlist never-list and the generator's forbidden node list):
 
-- any broker route, order verb, position/account read, stop, arm, unlock, 2FA/TOTP, or broker credential;
+> **Superseded in part — operator directive 2026-10-15 (§2a, D11).** n8n **may schedule** broker-family (F09) and
+> other formerly host-only lanes through the Run Lane → relay → gateway path; the host lane executes them under the
+> trading lock. What remains never: n8n **itself** holding a broker credential or calling a broker/order route,
+> 2FA/TOTP, arm or unlock. The §23.14 keep-on-cron basis for the bullets below is superseded for every non-F07,
+> non-`registry_systemd` lane.
+
+- any broker route, order verb, position/account read, stop, arm, unlock, 2FA/TOTP, or broker credential
+  *(called by n8n itself; scheduling a host-executed broker-family lane is permitted by the 2026-10-15 directive)*;
 - any send from n8n itself (Telegram, email, Slack, Discord nodes are forbidden node types;
   `FABRIC_FORBIDDEN_NODE_TYPES` in `scripts/n8n_workflow_templates.py`). This is a rule about workflow nodes and
   routes. It does not certify what an allowlisted lane's own code can reach: the allowlist `never` text admits
@@ -366,7 +407,10 @@ Step-by-step, with the implementing file:
 
 ### 8.3 Independence
 
-The P0/P1 page path, the dead-man and the kill switch do not depend on n8n (§24.1; §23.23 "Independence"). Today
+The P0/P1 page path, the dead-man and the kill switch do not depend on n8n (§24.1; §23.23 "Independence").
+*Operator directive 2026-10-15 (§2a): for F10 operator senders this becomes **an independent host P1 backstop + an
+n8n-orchestrated primary** — the primary path may run through n8n; the host backstop must page without n8n. F07w
+watchdogs may be n8n-orchestrated with independence preserved by the outside dead-man (DD12).* Today
 `heartbeat-watch` runs inside n8n and reports through the fan-in, so the watcher is inside what it watches (WS1-15):
 **(P)** a host-timer dead-man and an off-box dead-man (GAP §9 item 6).
 
@@ -416,8 +460,8 @@ state, decided on the host from the lane's receipt against a declared `expected_
 ## 11. Decisions and rationale
 
 Per-decision status, accountable owner role, ratification, implementing files, dependencies, acceptance criteria,
-test ids and dated runtime evidence: `N8N_DECISION_LEDGER.md` / `.json` (8 partially realized, 1 specified not
-enforced, 0 accepted at 2026-10-15). Policy ratification accepts the direction; it does not mark a decision realized.
+test ids and dated runtime evidence: `N8N_DECISION_LEDGER.md` / `.json` (10 partially realized, 1 specified not
+enforced, 0 accepted at 2026-10-15; ~~8 partially realized~~ before D10/D11). Policy ratification accepts the direction; it does not mark a decision realized.
 
 | # | Decision | Rationale | Alternatives rejected |
 |---|---|---|---|
@@ -431,6 +475,7 @@ enforced, 0 accepted at 2026-10-15). Policy ratification accepts the direction; 
 | D8 | LLM steps name a process + template, closed schema, host re-check | prompt injection and model drift are contained at the bridge (WS9 C3) | AI Agent node with a provider credential |
 | D9 | empty success is a failure | exit 0 is not evidence (§0 rule 8); a pool ran for months producing nothing | mtime-only freshness |
 | D10 | n8n LLM processes route OAuth first, DeepSeek on failure or for higher reasoning. Operator decision 2026-10-15, verbatim: "in terms of n8n, then, we should try OAuth first. And if OAuth fails or if the answer needs higher reasoning, then we go to DeepSeek." | OAuth lanes are $0 (subscription); DeepSeek is metered and is the working fallback and the reasoning lane. Routing policy rows `route_profile: n8n_oauth_first` (the three `N8nCoordination` processes and `hermes_tag_engine`, the one process an n8n fabric step calls): grok OAuth → chatgpt OAuth → DeepSeek FAST; an OAuth lane not enabled on the host is skipped; an OAuth transport error, timeout, 401/403/429, outage or empty / invalid / schema-invalid answer moves to the next lane; `reasoning_tier: high` (registry or template) puts the row's `reasoning_lane` (DeepSeek `PRO_THINK`) first, OAuth after it; a schema-valid OAuth answer below `escalate_below_confidence` (or carrying an `escalate_on_values` flag) is re-asked ONCE on DeepSeek inside the caps, else returned flagged `escalation_skipped_cap`. Contract: N8N_CONTRACTS_DESIGN §10 | DeepSeek first (pays for answers OAuth gives free); OAuth only (no fallback for an OAuth outage or a hard question) |
+| D11 | n8n cutover directive: every lane family except F07 (daemons/`@reboot`) and all `registry_systemd` assets is approved for n8n cutover. Operator directive 2026-10-15 "N8N Cutover Decision", verbatim: "The rationale that these workflows should remain host-side, cron-based, or external due to maturity, reliability, operational risk, monitoring requirements, or similar concerns is not accepted as a blocker." "If any existing documentation, standards, inventory notes, exception records, or implementation guidance state otherwise, consider that guidance superseded." | the operator owns the scope of the fabric; n8n schedules every non-F07 lane while the host keeps authority (D1): broker lanes run host-side under the trading lock with no broker credential in n8n, sends stay the host chokepoint (D7), F10 keeps an independent host P1 backstop, F07w independence comes from the outside dead-man. Disposition: `LANE_DISPOSITION_20261015.csv` waves CD1-CD6, F07/`registry_systemd` = `DEFERRED-I2` (§2a) | keep STAY_HOST families on cron for maturity/reliability/monitoring reasons (rejected by the operator as a blocker); migrate F07 and systemd assets now (deferred to the next architecture review) |
 
 ## 12. Open questions and risks
 

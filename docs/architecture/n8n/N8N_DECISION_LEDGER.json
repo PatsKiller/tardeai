@@ -1,7 +1,7 @@
 {
   "schema": "N8nDecisionLedger@v1",
   "as_of": "2026-10-15",
-  "source": "docs/architecture/n8n/N8N_REFERENCE_ARCHITECTURE.md section 11 (D1-D9)",
+  "source": "docs/architecture/n8n/N8N_REFERENCE_ARCHITECTURE.md section 11 (D1-D11)",
   "audit": "independent due diligence 2026-10-15 (pinned e355be188), sections 14-15 and register DD01-DD18",
   "status_values": {
     "accepted": "direction ratified AND acceptance criteria proved with dated runtime evidence",
@@ -207,6 +207,24 @@
       "runtime_evidence": [],
       "proof_required": "operator proof after release: OAuth serves; DeepSeek fallback with OAuth disabled; low-confidence escalation; reasoning_tier high",
       "open_findings": ["DD17"]
+    },
+    {
+      "id": "D11",
+      "statement": "n8n cutover directive: every lane family except F07 (long-running daemons and @reboot services) and every registry_systemd asset is approved for n8n cutover; host-side/cron/external rationales (maturity, reliability, operational risk, monitoring) are not accepted as blockers, and conflicting guidance is superseded.",
+      "scope": "every lane in docs/implementation/n8n-maturity/LANE_DISPOSITION_20261015.csv; F07 and registry_systemd rows deferred to the next architecture review",
+      "status": "partially_realized",
+      "accountable_owner_role": "program owner (n8n maturity) + operator (ROLE to confirm)",
+      "alternatives_rejected": ["keep STAY_HOST families (F09, F10, F36, F40, F07w, ...) on cron for maturity/reliability/monitoring reasons (rejected by the operator as a blocker)", "migrate F07 daemons and registry_systemd assets in this iteration (deferred)"],
+      "authority_impact": "n8n may schedule broker-family and other formerly host-only lanes; n8n still holds no broker credential and calls no broker/order route itself; host executes under the trading lock; sends stay at the host chokepoint; F10 keeps an independent host P1 backstop",
+      "ratification": {"policy": "operator directive 2026-10-15 \"N8N Cutover Decision\"", "ratifier": "operator", "ref": "The rationale that these workflows should remain host-side, cron-based, or external due to maturity, reliability, operational risk, monitoring requirements, or similar concerns is not accepted as a blocker. If any existing documentation, standards, inventory notes, exception records, or implementation guidance state otherwise, consider that guidance superseded.", "date": "2026-10-15"},
+      "implementing_files": ["scripts/n8n_lane_disposition.py", "docs/implementation/n8n-maturity/LANE_DISPOSITION_20261015.csv", "docs/implementation/n8n-maturity/LANE_DISPOSITION_20261015.md"],
+      "implementing_commits": ["this PR (docs/n8n-cutover-directive-20261015): disposition reclassification + supersede notes"],
+      "dependencies": ["D1", "D2", "D7", "DD01", "DD11", "DD12"],
+      "acceptance_criteria": "every non-F07, non-registry_systemd lane cut over wave by wave (CD1 read-only -> CD2 appenders -> CD3 senders -> CD4 LLM agents -> CD5 watchdogs -> CD6 broker), each with fix + dry run + regression + at least one live n8n run; F10 independent host P1 backstop proven; F07w outside dead-man proven; no broker credential in n8n",
+      "test_ids": ["tests/test_lane_disposition_retire_wave1_20261015.py"],
+      "runtime_evidence": [],
+      "proof_required": "per-wave cutover receipts (live n8n runs) and the AGENTS.md policy amendment (Agent A)",
+      "open_findings": ["DD01", "DD11", "DD12"]
     }
   ]
 }

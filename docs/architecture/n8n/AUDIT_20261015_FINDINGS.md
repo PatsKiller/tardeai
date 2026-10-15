@@ -1,5 +1,17 @@
 # Independent n8n architecture audit 2026-10-15 — findings tracker
 
+> **Superseded in part — operator directive 2026-10-15 "N8N Cutover Decision" (decision D11).** All lane families are
+> approved for n8n cutover except F07 (long-running daemons and `@reboot` services) and all `registry_systemd` assets,
+> which stay on the server unchanged (revisit at the next architecture review). Verbatim: "The rationale that these
+> workflows should remain host-side, cron-based, or external due to maturity, reliability, operational risk,
+> monitoring requirements, or similar concerns is not accepted as a blocker." "If any existing documentation,
+> standards, inventory notes, exception records, or implementation guidance state otherwise, consider that guidance
+> superseded." Every keep-on-cron / stay-on-cron / §23.14 / `pipeline_excluded_gate` / STAY_HOST / STAY EXTERNAL /
+> "not eligible for n8n" statement in this document is kept as history and is superseded for every non-F07,
+> non-`registry_systemd` lane. Current dispositions: `docs/implementation/n8n-maturity/LANE_DISPOSITION_20261015.csv`
+> (waves CD1-CD6); n8n schedules broker-family lanes but never holds a broker credential or calls an order route
+> itself (`docs/architecture/n8n/N8N_REFERENCE_ARCHITECTURE.md` §2a).
+
 ```
 Status:      LIVE tracker (informational; AGENTS.md is normative)
 as_of:       2026-10-15
@@ -106,6 +118,11 @@ host rather than inferred from a workflow percentage.
 5. Never auto-reconcile in the other direction (AGENTS.md §0 rule 5): a Drive edit is reported, not merged back.
 
 ## 5. DD11 — critical delivery: required trace and current evidence
+
+*Operator directive 2026-10-15 "N8N Cutover Decision" (D11): F10 operator senders are approved for n8n cutover as
+"independent host P1 backstop + n8n-orchestrated primary"; DD11's trace requirement now applies to both paths, and
+the backstop must page without n8n. DD01 (never-list vs allowlisted lane) and DD12 (outside dead-man) are dependencies
+of the directive's broker (F09) and watchdog (F07w) waves.*
 
 Required chain (audit §12), each hop with a durable record joined by one id:
 

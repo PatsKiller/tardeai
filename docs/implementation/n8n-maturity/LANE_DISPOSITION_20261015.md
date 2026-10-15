@@ -1,5 +1,19 @@
 # Lane disposition, 2026-10-15
 
+> **Operator directive 2026-10-15 "N8N Cutover Decision" (decision D11) — applied to this table.** All lane families
+> are approved for n8n cutover except F07 (long-running daemons and `@reboot` services) and all `registry_systemd`
+> assets, which stay on the server unchanged (revisit at the next architecture review). Approved list as given: F09,
+> F36, F41, F06, F40, F10, F07w (monitoring independence preserved through architecture), F37, F49, F08, F23, F33, F22
+> — and every other non-F07 family. Verbatim: "The rationale that these workflows should remain host-side, cron-based,
+> or external due to maturity, reliability, operational risk, monitoring requirements, or similar concerns is not
+> accepted as a blocker." "If any existing documentation, standards, inventory notes, exception records, or
+> implementation guidance state otherwise, consider that guidance superseded."
+>
+> The builder applies it after the 2026-10-14 rules (`apply_cutover_directive`): every STAY_HOST row with
+> `family_id != F07` and `source != registry_systemd` is now **MIGRATE_N8N**, with the directive cited in `evidence`
+> (`was: <old reason>` kept). F07 and `registry_systemd` rows stay **STAY_HOST**, wave **`DEFERRED-I2`** (deferred this
+> iteration). The old totals below are struck, not deleted.
+
 One row per active crontab job line, plus one row per ACTIVE registry lane that no crontab line schedules. Every row
 has exactly one disposition. The table is `LANE_DISPOSITION_20261015.csv` (beside this file).
 
@@ -24,8 +38,8 @@ over the family default.
 |---|---:|---|
 | RETIRE | **10** | R1 4 (this packet, tier A) · R1b 6 (same packet, tier B, operator YES per row) |
 | CONSOLIDATE | **148** | C1 52 · C2 29 · C3 15 · C4 33 · C5 19 |
-| STAY_HOST | **99** | broker/order/stop/protection/secret (F09 43), senders and `--send` lanes, daemons and watchdogs, deploy chain, §23.14 keep-on-cron |
-| MIGRATE_N8N | **137** | M0 6 · M1 6 (PR #1761) · M2 38 · M3 16 · M4 33 · M5 16 · M6 22 |
+| STAY_HOST | **1** (~~99~~) | F07 daemon/`@reboot` line only, wave `DEFERRED-I2` (operator directive 2026-10-15). ~~broker/order/stop/protection/secret (F09 43), senders and `--send` lanes, daemons and watchdogs, deploy chain, §23.14 keep-on-cron~~ — superseded |
+| MIGRATE_N8N | **235** (~~137~~) | M0 6 · M1 6 (PR #1761) · M2 38 · M3 16 · M4 33 · M5 16 · M6 22 · **directive waves: CD1 5 · CD2 18 · CD3 19 · CD4 9 · CD5 2 · CD6 45** |
 | **Total** | **394** | = 394 active job lines in the snapshot (379 distinct lanes; 15 lanes have 2-3 lines) |
 
 There are also 140 registry-only rows: 101 systemd units, 23 cron rows with no live line, 8 n8n rows, 5 event rows and
@@ -35,8 +49,28 @@ There are also 140 registry-only rows: 101 systemd units, 23 cron rows with no l
 |---|---:|
 | RETIRE | 13 (R1-timer 1, `hermes-shadow-scorer`; R2 12) |
 | CONSOLIDATE | 17 |
-| STAY_HOST | 73 |
-| MIGRATE_N8N | 37 |
+| STAY_HOST | **53** (~~73~~): 52 `registry_systemd` + 1 F07 cron row with no line, all wave `DEFERRED-I2` |
+| MIGRATE_N8N | **57** (~~37~~): +20 by the directive — CD1 5 · CD2 1 · CD3 1 · CD6 13 (F09 cron rows with no live line) |
+
+Note: 25 `registry_systemd` rows were already MIGRATE_N8N (and 12 CONSOLIDATE, 12 RETIRE) under the 2026-10-14 rules;
+this PR changes only STAY_HOST rows. Whether the directive's "all `registry_systemd` assets stay on the server
+unchanged" also defers those 25 is an open question for the operator / Agent A.
+
+## Directive cutover waves (CD1-CD6), in order
+
+Order set with the directive: read-only first, broker last. Each wave still follows the n8n cutover standard (fix +
+dry run + regression + at least one live n8n run) and the existing grant/packet process; the directive is a direction,
+not an activation grant.
+
+| Wave | Crontab lines | Registry-only rows | Families | Shape |
+|---|---:|---:|---|---|
+| CD1 read-only | 5 | 5 | F36 (non-sending health/audit), F49 (already-n8n platform lanes) | fabric Run Lane leaf |
+| CD2 appenders | 18 | 1 | F06, F12, F23, F33, F39, F45, F46, F52, 2 unfamilied KEEP_ON_CRON lines | fabric Run Lane leaf |
+| CD3 senders | 19 | 1 | F10 (8), F37 (5), F22 (3), sender-blocked F36 (2) and F04 (1); 1 unfamilied event row | n8n orchestrates; send stays the host chokepoint (send-intent). F10 = "independent host P1 backstop + n8n-orchestrated primary" |
+| CD4 LLM agents | 9 | 0 | F40, F29 | agent workflow via the governed bridge |
+| CD5 watchdogs | 2 | 0 | F07w (crontab only; F07w systemd units are deferred) | n8n-orchestrated; independence from the outside dead-man (DD12) |
+| CD6 broker | 45 | 13 | F09 | n8n **schedules** the host lane; the host executes under the trading lock; n8n holds no broker credential and calls no order route |
+| DEFERRED-I2 | 1 | 53 | F07 (any source), every STAY_HOST `registry_systemd` row (F41, F36, F06, F07, F07w, F08, F09, F40) | stays on the server unchanged; next architecture review |
 
 ## What changed against the 2026-10-14 status pass
 
@@ -102,6 +136,9 @@ There are also 140 registry-only rows: 101 systemd units, 23 cron rows with no l
 | C5 | 19 | quote writers (7), digests/approvals (7), cache prewarmers (4), maintenance (1) | after the send-intent API and the quote service |
 
 ### MIGRATE_N8N
+
+*The M-waves below are the 2026-10-14 MIGRATE set (137 lines). The 98 lines moved by the operator directive are in
+waves CD1-CD6 above.*
 
 | Wave | Lines | What | Gate |
 |---|---:|---|---|
