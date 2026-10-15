@@ -168,7 +168,7 @@ def test_guard_precedes_every_project_import(lane):
 def test_senders_reach_telegram_only_through_the_chokepoint(tmp_path):
     """Static capability audit (scripts/audit_lane_transitive_capabilities.py) over each lane's import closure: the
     live path reaches the approved delivery chokepoint (chokepoint_send) and never a direct sender (direct_sender stays
-    forbidden: no smtplib/twilio/slack/Bot API host outside the chokepoint set)."""
+    forbidden: no raw mail, SMS, chat-webhook or Bot API transport outside the chokepoint set)."""
     sys.path.insert(0, str(ROOT / "scripts"))
     import audit_lane_transitive_capabilities as A
 
