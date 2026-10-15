@@ -754,7 +754,57 @@
       "category": "Research",
       "lane_policy": "either",
       "default_mode": "automated",
-      "description": "Research query, quality, and normalization through governed OAuth; no local generation"
+      "description": "Research query, quality, and normalization through governed OAuth; no local generation",
+      "allowed_lanes": [
+        "grok",
+        "chatgpt"
+      ],
+      "daily_soft_cap": 600,
+      "daily_cost_cap_usd": 0.25,
+      "tools_allowed": false,
+      "fallback_allowed": false,
+      "advisory_only": true,
+      "notes": "2026-10-15 lane repair: caps added (the process had none, so every call logged 'llm_lane_unregistered ... process cap not enforced' -- 164 such lines in one ri_overnight ingest step). Measured 2026-10-05..14: 181-348 calls/day (llm_consumption_log), all grok/chatgpt OAuth. daily_soft_cap 600 is ~1.7x the busiest day; the RI overnight ingest step is now bounded by --budget-s / --max-items-per-topic, so a normal day stays well under it. OAuth lanes settle $0.00, so daily_cost_cap_usd is a guard, not a budget; LLM_GLOBAL_DAILY_USD_CAP still binds. Registered by lane repair 2026-10-15 (docs/ops/packets/lane-repair-run-research-intelligence-overnight-20261015/); operator review of the caps invited."
+    },
+    {
+      "id": "ri_narrative_enrich",
+      "name": "Research Intelligence Narrative Enrich",
+      "category": "Research",
+      "lane_policy": "either",
+      "default_mode": "automated",
+      "description": "scripts/research_intelligence_narrative_enrich.py (RI overnight step 'narrative', --limit 25): a JSON reading narrative for staged/reviewed/promoted hermes_research_intelligence rows, written into evidence_json.narrative. Governed OAuth (grok then chatgpt); no local generation. READ_ONLY_ADVISORY.",
+      "allowed_lanes": [
+        "grok",
+        "chatgpt"
+      ],
+      "daily_soft_cap": 120,
+      "daily_cost_cap_usd": 0.1,
+      "tools_allowed": false,
+      "fallback_allowed": false,
+      "advisory_only": true,
+      "registered_by": "lane-repair-ri-overnight-20261015",
+      "registered_at": "2026-10-15T14:00:00Z",
+      "notes": "The script has named this process_id since 303f7ef43 but it was never registered, so every call was refused PROCESS_NOT_REGISTERED (ri_overnight.log 2026-10-13 and 10-14: 25 rows x 2 lanes, step exit 1). It also claimed manual_trigger=True on a cron run; that claim is removed, so the caps and off-peak tier apply. Cap 120/day = 25 rows x 2 lanes x 2 scheduled runs + headroom. OAuth lanes settle $0.00, so daily_cost_cap_usd is a guard, not a budget; LLM_GLOBAL_DAILY_USD_CAP still binds. Registered by lane repair 2026-10-15 (docs/ops/packets/lane-repair-run-research-intelligence-overnight-20261015/); operator review of the caps invited."
+    },
+    {
+      "id": "topic_research_synthesizer",
+      "name": "Topic Research Synthesizer",
+      "category": "Research",
+      "lane_policy": "either",
+      "default_mode": "automated",
+      "description": "scripts/topic_research_synthesizer.py: topic_research briefings (RI overnight topic_synth --max 40 and reground --max 25, the hourly off-hours synth --max 15, the 21:50 reground --max 20). Governed OAuth (grok then chatgpt) via lib.governed_cloud_generation; no local generation. READ_ONLY_ADVISORY.",
+      "allowed_lanes": [
+        "grok",
+        "chatgpt"
+      ],
+      "daily_soft_cap": 600,
+      "daily_cost_cap_usd": 0.25,
+      "tools_allowed": false,
+      "fallback_allowed": false,
+      "advisory_only": true,
+      "registered_by": "lane-repair-ri-overnight-20261015",
+      "registered_at": "2026-10-15T14:00:00Z",
+      "notes": "Before 2026-10-15 the script called llm_lane.generate with no process_id, which skips the consumption gate (no registration, no cap, no log row), and listed the forbidden local lane last. Upper bound of scheduled demand: 40 + 25 + 20 + 15 x ~14 off-hours ticks = ~295 topics/day, up to 2 lanes each; cap 600. OAuth lanes settle $0.00, so daily_cost_cap_usd is a guard, not a budget; LLM_GLOBAL_DAILY_USD_CAP still binds. Registered by lane repair 2026-10-15 (docs/ops/packets/lane-repair-run-research-intelligence-overnight-20261015/); operator review of the caps invited."
     },
     {
       "id": "unregistered",

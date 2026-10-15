@@ -3469,13 +3469,18 @@
       "owner": "platform",
       "scheduler": {
         "kind": "systemd",
-        "expression": "tradeai-source-litmus.timer"
+        "expression": "tradeai-source-litmus.timer",
+        "stage": "shadow",
+        "wave": "LR-20261015",
+        "match": "tradeai-source-litmus.timer",
+        "on_calendar": "Tue..Sat *-*-* 07:45:00"
       },
       "expected_cadence_hours": 24.0,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "data/runtime/source_litmus_last_run.json"
+        "kind": "json_key",
+        "path": "data/runtime/source-litmus-vs-yahoo_last.json",
+        "key": "ok_at"
       },
       "note": "Samples stored closes per source against Yahoo Finance's close for the same session. Operator-approved 2026-09-14 after the litmus found 29% of quote-derived closes off by >1%, sub-share position values written as closes, and a session-stale Alpaca previous close.",
       "value_class": "Duplicated",
@@ -3489,7 +3494,19 @@
         "f_recommendation": "CONSOLIDATE → P12 check registry",
         "event_driven_candidate": false,
         "f_evidence": "one of ~73 health/monitor mechanisms"
-      }
+      },
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "45 7 * * 2-6"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "monitor",
+        "priority": 5,
+        "retry_policy": "none"
+      },
+      "adopted_reason": "lane repair 2026-10-15 (docs/ops/packets/lane-repair-run-research-intelligence-overnight-20261015/): a row carrying a reviewed dispatch block is hand-maintained (AGENTS 23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop it. The systemd timer tradeai-source-litmus.timer keeps doing the real work; the dispatcher fires the offline dry run only (SHADOW). output_signal moved from the log/file mtime to the LaneRunReceipt@v1 (+ v2 output fields) the lane writes on a real run."
     },
     {
       "lane_id": "eod-consolidated-close-sync",
@@ -15417,6 +15434,69 @@
       "note": "Fired only by the process workflow tradeai-fabric-hermes-learning through Run Lane (process_step autonomous_self_tune); no dispatch block, so the generic dispatcher never emits it. Class learn (AGENTS.md §23.18). Its RETIRED cron-era row (superseded by hermes-learning-pipeline-tune) is unchanged. The LEARN half only (--learn: auto-graft; the purge helpers refuse in that mode). Output is event-driven: an audit row exists only when a graft clears its persistence and drift gates, so the RunReceipt is the per-run evidence. The purge half (--purge) stays on host cron as destructive retention."
     },
     {
+      "lane_id": "run-research-intelligence-overnight",
+      "owner": "research",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "30 20 * * 1-5 + 15 2 * * *",
+        "match": "scripts/run_research_intelligence_overnight.sh --phase full",
+        "schedules": [
+          "30 20 * * 1-5",
+          "15 2 * * *"
+        ],
+        "command_text": "30 20 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/non_trading_hours_gate.sh bash /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/run_research_intelligence_overnight.sh --phase full >> /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/logs/ri_overnight.log 2>&1"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/run-research-intelligence-overnight_last.json",
+        "key": "ok_at"
+      },
+      "value_class": "Duplicated",
+      "recommendation": "MERGE_INTO:P10",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L725",
+        "pipeline": "P10",
+        "value_class": "Duplicated",
+        "recommendation": "MERGE_INTO:P10",
+        "f_recommendation": "CONSOLIDATE → one full run in P10",
+        "event_driven_candidate": false,
+        "f_evidence": "`--phase full` scheduled twice (20:30 + 02:15); log: \"SKIP/FAIL ingest (lock busy or exit non-zero)\" x14"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "scheduler_note": "2026-10-15 lane repair: both `--phase full` lines stay listed (expression/schedules). Only the 20:30 weekday line does work today: the 02:15 line is wrapped in run_with_deepseek_offpeak.sh --official and 02:15 ET = 06:15 UTC falls in the official DeepSeek peak (06:00-10:00 UTC), so it logs PEAK_SKIP every night under EDT (ri_overnight.log 2026-10-14/15); the lane-repair packet proposes 00:15 (C1). command_text is the 20:30 line, the one the staged r1_pending shadow row mirrors (dispatch.cron 30 20 * * 1-5); the activation PR updates expression/schedules to the installed crontab.",
+      "adopted_reason": "lane repair 2026-10-15 (docs/ops/packets/lane-repair-run-research-intelligence-overnight-20261015/): a row carrying a staged r1_pending block (shadow, activated by a later registry PR once the bridge route exists) is hand-maintained (AGENTS 23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop it. The host scheduler keeps doing the real work; the dispatcher fires the offline dry run only (SHADOW). output_signal moved from the log/file mtime to the LaneRunReceipt@v1 (+ v2 output fields) the lane writes on a real run.",
+      "r1_pending": {
+        "scheduler": {
+          "command_text": "30 20 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/non_trading_hours_gate.sh bash /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/run_research_intelligence_overnight.sh --phase full >> /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/logs/ri_overnight.log 2>&1",
+          "stage": "shadow",
+          "wave": "LR-20261015",
+          "expression": "30 20 * * 1-5"
+        },
+        "output_signal": {
+          "kind": "json_key",
+          "path": "data/runtime/run-research-intelligence-overnight_last.json",
+          "key": "ok_at"
+        },
+        "dispatch": {
+          "mode": "dry_run",
+          "cron": [
+            "30 20 * * 1-5"
+          ],
+          "tz": "America/New_York",
+          "wave": "W4",
+          "class": "llm",
+          "priority": 5,
+          "retry_policy": "none"
+        },
+        "blocked_by": "config/n8n_run_allowlist.json blocked_reasons[run-research-intelligence-overnight]"
+      }
+    },
+    {
       "lane_id": "run-scheduled-quote-refresh-incubator",
       "owner": "portfolio",
       "scheduler": {
@@ -20282,51 +20362,7 @@
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
     },
     {
-      "lane_id": "run-research-intelligence-overnight",
-      "owner": "research",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "30 20 * * 1-5 + 15 2 * * *",
-        "match": "scripts/run_research_intelligence_overnight.sh --phase full",
-        "schedules": [
-          "30 20 * * 1-5",
-          "15 2 * * *"
-        ]
-      },
-      "expected_cadence_hours": 24.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/ri_overnight.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Duplicated",
-      "recommendation": "MERGE_INTO:P10",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L725",
-        "pipeline": "P10",
-        "value_class": "Duplicated",
-        "recommendation": "MERGE_INTO:P10",
-        "f_recommendation": "CONSOLIDATE → one full run in P10",
-        "event_driven_candidate": false,
-        "f_evidence": "`--phase full` scheduled twice (20:30 + 02:15); log: \"SKIP/FAIL ingest (lock busy or exit non-zero)\" x14",
-        "f_ids": [
-          "L725",
-          "L726"
-        ],
-        "f_recommendations": [
-          "MERGE_INTO:P10",
-          "MERGE_INTO:P10"
-        ]
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "run-research-intelligence-overnight-archive",
+      "lane_id": "run-research-intelligence-overnight-2",
       "owner": "research",
       "scheduler": {
         "kind": "cron",

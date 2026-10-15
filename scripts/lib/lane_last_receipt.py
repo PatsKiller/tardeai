@@ -130,6 +130,7 @@ def build_receipt(
     error: str | None = None,
     previous_ok_at: str | None = None,
     finished_at: str | None = None,
+    output: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     finished = finished_at or now_iso()
     doc: dict[str, Any] = {
@@ -147,7 +148,46 @@ def build_receipt(
     }
     if error:
         doc["error"] = _scrub_error(str(error))
+    doc.update(output_fields(output))
     return doc
+
+
+#: LaneRunReceipt@v2 output fields (docs/architecture/n8n/N8N_CONTRACTS_DESIGN.md §5), written ADDITIVELY on the
+#: v1 document: ``schema`` stays ``LaneRunReceipt@v1`` because v1 readers (system_health_freshness) match it exactly
+#: and ignore unknown keys. A health contract's ``expected_output`` rule (§6) reads ``produced_count``.
+OUTPUT_FIELDS = ("produced_count", "attempted_count", "skipped_reasons", "empty_reason", "output_evidence")
+
+
+def output_fields(output: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Validated v2 output fields from ``output`` ({} when None). Counts are non-negative ints; skipped_reasons is
+    {reason: count}; empty_reason a string or None; output_evidence a list of dicts. Anything else is dropped."""
+    if not output:
+        return {}
+    out: dict[str, Any] = {}
+    for key in ("produced_count", "attempted_count"):
+        if key in output:
+            try:
+                out[key] = max(0, int(output[key]))
+            except (TypeError, ValueError):
+                continue
+    sr = output.get("skipped_reasons")
+    if isinstance(sr, Mapping):
+        clean: dict[str, int] = {}
+        for k, v in sr.items():
+            try:
+                clean[str(k)] = max(0, int(v))
+            except (TypeError, ValueError):
+                continue
+        out["skipped_reasons"] = dict(sorted(clean.items()))
+    if "empty_reason" in output:
+        er = output.get("empty_reason")
+        out["empty_reason"] = str(er) if er not in (None, "") else None
+    ev = output.get("output_evidence")
+    if isinstance(ev, list):
+        out["output_evidence"] = [dict(x) for x in ev if isinstance(x, Mapping)]
+    if out:
+        out["output_fields"] = "LaneRunReceipt@v2"
+    return out
 
 
 def write_lane_receipt(
@@ -160,6 +200,7 @@ def write_lane_receipt(
     summary: Mapping[str, Any] | None = None,
     error: str | None = None,
     path: Path | str | None = None,
+    output: Mapping[str, Any] | None = None,
 ) -> Path | None:
     """Atomically replace the lane receipt for one REAL run. Returns the path, or None on failure.
 
@@ -176,6 +217,7 @@ def write_lane_receipt(
             summary=summary,
             error=error,
             previous_ok_at=previous_ok_at(target),
+            output=output,
         )
         try:
             from scripts.lib.atomic_json_store import atomic_write_json

@@ -21115,6 +21115,443 @@
         "reviewed_by": "agent-reviewed 2026-10-15 against source; awaiting the operator's REVIEW pass (SW4 precedent)",
         "reviewed_on": "2026-10-15"
       }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "run-research-intelligence-overnight",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "r1_pending",
+      "stage": "shadow",
+      "purpose": {
+        "text": "After-close Research Intelligence content batch (--phase full): ingest, synthesize, narrative LLM, archive.",
+        "business_function": "research",
+        "source": "inventory cron:L725"
+      },
+      "owner": "research",
+      "connects_to": [
+        {
+          "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md \u00a723.3"
+        },
+        {
+          "name": "bash scripts/run_research_intelligence_overnight.sh --phase full (dry_run_arg --dry-run; planned entry)",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json blocked_reasons[run-research-intelligence-overnight]"
+        },
+        {
+          "name": "/tmp/ri_overnight_full.lock (PROPOSED; steps keep /tmp/ri_overnight_<step>.lock, ingest also /tmp/topic_ingestion_batch.lock)",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "scripts/run_research_intelligence_overnight.sh; scripts/topic_ingestion.py BATCH_LOCK_PATH"
+        },
+        {
+          "name": "data/runtime/run-research-intelligence-overnight_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt / allowlist output_signal"
+        },
+        {
+          "name": "non_trading_hours_gate.sh; run_research_intelligence_overnight.sh -> topic_ingestion, synthesizer, narrative enrich (LLM), archive; Postgres",
+          "kind": "inventory_text",
+          "direction": "read",
+          "source": "inventory cron:L725 dependencies (DRAFT: free text)"
+        },
+        {
+          "name": "topic_monitor, ri_research_queue, news/transcripts",
+          "kind": "inventory_text",
+          "direction": "read",
+          "source": "inventory cron:L725 triggers_inputs (DRAFT: free text)"
+        },
+        {
+          "name": "RI desk content (hermes_research_intelligence etc.), ri snapshots; logs/ri_overnight.log",
+          "kind": "inventory_text",
+          "direction": "write",
+          "source": "inventory cron:L725 outputs_downstream (DRAFT: free text)"
+        },
+        {
+          "name": "governed LLM gate lib/llm_consumption.gate_and_generate (registered processes topic_ingestion, topic_research_synthesizer, ri_narrative_enrich; grok -> chatgpt OAuth; process + global caps; consumption log). Not yet the cio-governed-bridge route (allowlist llm_route.bridge_route_status)",
+          "kind": "provider",
+          "direction": "calls",
+          "source": "config/llm_process_registry.json; config/n8n_run_allowlist.json llm_route"
+        },
+        {
+          "name": "cron twin L730 (30 20 * * 1-5) keeps the real work; the dispatcher fires the offline dry run only",
+          "kind": "cron_twin",
+          "direction": "calls",
+          "source": "crontab -l 2026-10-15; config/lane_registry.json scheduler.command_text"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "shadow_dry_run_done",
+          "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+        },
+        {
+          "check": "dry_run_writes_nothing",
+          "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md \u00a76)"
+        },
+        {
+          "check": "cron_twin_output_fresh",
+          "text": "the live cron line keeps the registry output_signal data/runtime/run-research-intelligence-overnight_last.json fresh within 48.0 h (2x cadence)"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 4320.0 s (80% of the planned timeout_s 5400)"
+        },
+        {
+          "check": "output_produced",
+          "text": "a live run's receipt carries produced_count >= 1 (per_window)"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "output_signal older than 48.0 h but younger than 72.0 h (2x-3x cadence)"
+        },
+        {
+          "check": "slow",
+          "text": "duration above 4320.0 s"
+        },
+        {
+          "check": "retried",
+          "text": "a run needed attempt > 1 (retry_policy) or ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
+        },
+        {
+          "check": "upstream_stale",
+          "text": "an upstream input is stale: non_trading_hours_gate.sh; run_research_intelligence_overnight.sh -> topic_ingestion, synthesizer, narrative enrich (LLM), archive; Postgres (not machine-checked yet)"
+        },
+        {
+          "check": "deferred_offpeak",
+          "text": "the receipt counts deferred paid calls (lib/llm_deferral queued them for the next off-peak window)"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "stale",
+          "text": "output_signal older than 72.0 h (3x cadence)"
+        },
+        {
+          "check": "breaker_or_dlq",
+          "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+        },
+        {
+          "check": "dry_run_wrote",
+          "text": "a dry_run changed its output_signal or any durable state"
+        },
+        {
+          "check": "empty_output",
+          "text": "expected_output violated: produced_count 0 with no empty_allowed_reasons, or a fatal skip reason (N8nExpectedOutput@v1)"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 48.0,
+        "freshness_failed_after_h": 72.0,
+        "freshness_rule": "degraded beyond 2x cadence (lane_registry.evaluate_lane SLOW), failed beyond 3x (incident fan-in stale threshold)",
+        "timeout_s": 5400,
+        "class": "llm",
+        "computed_on": "2026-10-15",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "fewer than 14 finished live runs in the coordination ledger (0); class defaults: duration degraded above 80% of timeout_s, freshness 2x/3x cadence, any RUN_FAILED/RUN_TIMEOUT/RUN_REFUSED failed",
+        "runs_considered": 0,
+        "duration_degraded_above_s": 4320.0,
+        "timeout_source": "planned allowlist timeout_s 5400 (config/n8n_run_allowlist.json blocked_reasons; the entry is added at activation): topic_synth ~18 min + reground ~10 min (ri_overnight.log 2026-10-14) + narrative budget 900 s + ingest timeout 30 min + margin"
+      },
+      "alerting": {
+        "lane_severity": "Medium",
+        "severity_basis": "inventory cron:L725 business_function=research (catalogue rule)",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+        "enforced": "partial source integration: scripts/n8n_incident_fanin.py _wferr_severity() consumes a workflow contract's failed.notifier_priority to raise the workflow-error priority floor. scripts/lib/n8n_siem_bridge.py severity_for() uses registry severity, else the fan-in priority. Full per-lane baseline, notification and diagnosis enforcement is not established by these declarations; runtime coverage remains NOT_MEASURED (N8N_MONITORING_AND_REMEDIATION_STANDARD.md \u00a77)."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
+      },
+      "evidence": {
+        "receipt": "data/runtime/run-research-intelligence-overnight_last.json",
+        "verify": [
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='run-research-intelligence-overnight' ORDER BY requested_at DESC LIMIT 10\"",
+          "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:run-research-intelligence-overnight' ORDER BY created_at DESC LIMIT 10",
+          "stat / jq the receipt: data/runtime/run-research-intelligence-overnight_last.json"
+        ],
+        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger"
+      },
+      "review_by": "2026-10-29",
+      "review": {
+        "prepared_by": "agent draft (build_n8n_health_contracts.py --as-of 2026-10-15; lane repair 2026-10-15)",
+        "status": "REVIEWED",
+        "reviewed_by": "agent-reviewed 2026-10-15 against source (dry-run branch, receipt writer, v2 output fields, import closure via advisory_lane_guard); awaiting the operator's REVIEW pass (SW4 precedent)",
+        "reviewed_on": "2026-10-15"
+      },
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "research items this run wrote: topic_ingestion articles + transcripts (news_articles / youtube_transcripts) plus narratives written by ri_narrative_enrich (hermes_research_intelligence.evidence_json.narrative)",
+        "rule": "per_window",
+        "min_produced": 1,
+        "window_h": 72,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "ri-narrative-enrich_last:governance_refused",
+          "step_receipt_missing:topic_ingestion_run_latest",
+          "step_receipt_missing:ri-narrative-enrich_last"
+        ],
+        "empty_allowed_reasons": [
+          "no_new_items",
+          "lock_busy",
+          "no_candidates"
+        ],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/run-research-intelligence-overnight_last.json#produced_count"
+          },
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/topic_ingestion_run_latest.json#produced_count"
+          },
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/ri-narrative-enrich_last.json#produced_count"
+          },
+          {
+            "kind": "store_rows",
+            "ref": "Postgres news_articles rows source LIKE 'topic_%' created_at >= started_at"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        },
+        "note": "per_window, not min_produced: a run whose stalest topics return only already-stored results legitimately saves 0 (empty_reason no_new_items), but 72 h (three weekday runs) with nothing written is the failure this lane had from 2026-10-12 to 10-15 (every ingest SIGTERMed, every narrative refused PROCESS_NOT_REGISTERED). Dry runs are exempt from min_produced (\u00a75)."
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "source-litmus-vs-yahoo",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "stage:shadow",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Tue\u2013Sat 07:45: litmus stored closes against Yahoo Finance by source (read-only).",
+        "business_function": "monitoring",
+        "source": "inventory timer:tradeai-source-litmus.timer"
+      },
+      "owner": "platform",
+      "connects_to": [
+        {
+          "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md \u00a723.3"
+        },
+        {
+          "name": "$PY scripts/source_litmus_vs_yahoo.py",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/source_litmus.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "config/n8n_run_allowlist.json lock (flock)"
+        },
+        {
+          "name": "data/runtime/source-litmus-vs-yahoo_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt / allowlist output_signal"
+        },
+        {
+          "name": "CURRENT release, Postgres (read-only)",
+          "kind": "inventory_text",
+          "direction": "read",
+          "source": "inventory timer:tradeai-source-litmus.timer dependencies (DRAFT: free text)"
+        },
+        {
+          "name": "ticker_prices by source, Yahoo Finance",
+          "kind": "inventory_text",
+          "direction": "read",
+          "source": "inventory timer:tradeai-source-litmus.timer triggers_inputs (DRAFT: free text)"
+        },
+        {
+          "name": "data/runtime/source_litmus_last_run.json",
+          "kind": "inventory_text",
+          "direction": "write",
+          "source": "inventory timer:tradeai-source-litmus.timer outputs_downstream (DRAFT: free text)"
+        },
+        {
+          "name": "systemd twin tradeai-source-litmus.timer (Tue..Sat 07:45) keeps the real work",
+          "kind": "cron_twin",
+          "direction": "calls",
+          "source": "systemctl --user cat tradeai-source-litmus.timer 2026-10-15"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "shadow_dry_run_done",
+          "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+        },
+        {
+          "check": "dry_run_writes_nothing",
+          "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md \u00a76)"
+        },
+        {
+          "check": "cron_twin_output_fresh",
+          "text": "the live cron line keeps the registry output_signal data/runtime/source-litmus-vs-yahoo_last.json fresh within 48.0 h (2x cadence)"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 720.0 s (80% of timeout_s 900)"
+        },
+        {
+          "check": "output_produced",
+          "text": "a live run's receipt carries produced_count >= 1 (min_produced)"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "output_signal older than 48.0 h but younger than 72.0 h (2x-3x cadence)"
+        },
+        {
+          "check": "slow",
+          "text": "duration above 720.0 s"
+        },
+        {
+          "check": "retried",
+          "text": "a run needed attempt > 1 (retry_policy) or ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
+        },
+        {
+          "check": "upstream_stale",
+          "text": "an upstream input is stale: CURRENT release, Postgres (read-only) (not machine-checked yet)"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "stale",
+          "text": "output_signal older than 72.0 h (3x cadence)"
+        },
+        {
+          "check": "breaker_or_dlq",
+          "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+        },
+        {
+          "check": "dry_run_wrote",
+          "text": "a dry_run changed its output_signal or any durable state"
+        },
+        {
+          "check": "empty_output",
+          "text": "expected_output violated: produced_count 0 with no empty_allowed_reasons, or a fatal skip reason (N8nExpectedOutput@v1)"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 48.0,
+        "freshness_failed_after_h": 72.0,
+        "freshness_rule": "degraded beyond 2x cadence (lane_registry.evaluate_lane SLOW), failed beyond 3x (incident fan-in stale threshold)",
+        "timeout_s": 900,
+        "class": "monitor",
+        "computed_on": "2026-10-15",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "fewer than 14 finished live runs in the coordination ledger (0); class defaults: duration degraded above 80% of timeout_s, freshness 2x/3x cadence, any RUN_FAILED/RUN_TIMEOUT/RUN_REFUSED failed",
+        "runs_considered": 0,
+        "duration_degraded_above_s": 720.0
+      },
+      "alerting": {
+        "lane_severity": "Low",
+        "severity_basis": "inventory timer:tradeai-source-litmus.timer business_function=monitoring (catalogue rule)",
+        "failed": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+        "enforced": "partial source integration: scripts/n8n_incident_fanin.py _wferr_severity() consumes a workflow contract's failed.notifier_priority to raise the workflow-error priority floor. scripts/lib/n8n_siem_bridge.py severity_for() uses registry severity, else the fan-in priority. Full per-lane baseline, notification and diagnosis enforcement is not established by these declarations; runtime coverage remains NOT_MEASURED (N8N_MONITORING_AND_REMEDIATION_STANDARD.md \u00a77)."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
+      },
+      "evidence": {
+        "receipt": "data/runtime/source-litmus-vs-yahoo_last.json",
+        "verify": [
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='source-litmus-vs-yahoo' ORDER BY requested_at DESC LIMIT 10\"",
+          "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:source-litmus-vs-yahoo' ORDER BY created_at DESC LIMIT 10",
+          "stat / jq the receipt: data/runtime/source-litmus-vs-yahoo_last.json"
+        ],
+        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger"
+      },
+      "review_by": "2026-10-29",
+      "review": {
+        "prepared_by": "agent draft (build_n8n_health_contracts.py --as-of 2026-10-15; lane repair 2026-10-15)",
+        "status": "REVIEWED",
+        "reviewed_by": "agent-reviewed 2026-10-15 against source (dry-run branch, receipt writer, v2 output fields, import closure via advisory_lane_guard); awaiting the operator's REVIEW pass (SW4 precedent)",
+        "reviewed_on": "2026-10-15"
+      },
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "stored closes compared with the independent Yahoo close (SourceLitmusReport@v1 compared)",
+        "rule": "min_produced",
+        "min_produced": 1,
+        "window_h": null,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [],
+        "empty_allowed_reasons": [
+          "reference_unavailable"
+        ],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/source-litmus-vs-yahoo_last.json#produced_count"
+          },
+          {
+            "kind": "file",
+            "ref": "data/runtime/source_litmus_last_run.json (compared, sources, block, warn)"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        },
+        "note": "Nothing compared is not nothing wrong (AGENTS rule 8): a live run comparing 0 closes fails, except the typed reference_unavailable soft skip (Yahoo empty/rate-limited). A BLOCK verdict is a finding, not a run failure: the receipt is ok with summary.verdict BLOCK and exit 1 under systemd (SuccessExitStatus=0 1); an n8n live arg would add --exit-zero-on-block."
+      }
     }
   ]
 }

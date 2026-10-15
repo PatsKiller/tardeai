@@ -500,6 +500,9 @@ def test_registry_dispatch_errors_hook():
 # (relay refused live, failing every dispatcher run).
 N8N_NATIVE_SHADOW = frozenset({"momentum-lifecycle-monitor", "momentum-cache-reconcile"})
 N8N_NATIVE_CANARY = frozenset({"heartbeat-watch"})
+#: lane repair 2026-10-15: a systemd-timer lane at shadow (its timer keeps the real work; dispatch.cron mirrors the
+#: timer's OnCalendar). tests/test_lane_repair_ri_hermes_litmus_20261015.py pins the row and its allowlist entry.
+SYSTEMD_TIMER_SHADOW = frozenset({"source-litmus-vs-yahoo"})
 
 
 def _live_rows():
@@ -563,6 +566,9 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
             # an n8n-native lane has no cron line to stay on; its shadow row is the dispatcher shape at
             # stage shadow (the clamp still runs it dry), and its allowlist entry has no live mode.
             assert (sched["kind"], sched["expression"], sched.get("stage")) == ("n8n", "dispatcher", "shadow"), lane
+        elif lane in SYSTEMD_TIMER_SHADOW:
+            assert sched["kind"] == "systemd" and sched.get("stage") == "shadow", lane
+            assert sched["expression"].endswith(".timer"), lane
         else:
             assert sched["kind"] == "cron" and sched.get("stage") == "shadow", lane
         assert LD.dispatchable(row), lane
@@ -598,7 +604,7 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
     # hermes-industry-novelty-discovery (D2) into hermes-overnight-pipeline-night (dispatch_retired, allowlist removed).
     # + 2: scalp/premarket onboarding (2026-10-14, tests/test_scalp_premarket_onboard_20261014.py): the scalp hot-tier
     # R1 ingest rows finviz-enrichment-scalp-hot and scalp-hot-list at shadow (dry_run, live_arg null).
-    assert len(shadow) == 54 + 3 + 15 - len(CANARY_ROWS) - 17 + 10 + 11 + len(N8N_NATIVE_SHADOW) + 1 - 2 + 2 - len(CANARY_WAVE_20261014), shadow
+    assert len(shadow) == 54 + 3 + 15 - len(CANARY_ROWS) - 17 + 10 + 11 + len(N8N_NATIVE_SHADOW) + 1 - 2 + 2 - len(CANARY_WAVE_20261014) + len(SYSTEMD_TIMER_SHADOW), shadow
     # heartbeat-watch moved shadow → canary (N8N_NATIVE_CANARY) 2026-10-11.
     assert sorted(r["lane_id"] for r in rows if LD.dispatch_mode(r) == "live") == sorted(
         CANARY_ROWS | N8N_NATIVE_CANARY | set(CANARY_WAVE_20261014)

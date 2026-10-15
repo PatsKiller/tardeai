@@ -161,6 +161,8 @@ def test_no_key_outside_scope_except_reviewed_process_steps():
         "hermes-learning-tag-engine",
         "hermes-learning-outcome-feedback-agent",
         "hermes-learning-autonomous-self-tune",
+        # lane repair 2026-10-15 (tests/test_lane_repair_ri_hermes_litmus_20261015.py): staged, no claim.
+        "run-research-intelligence-overnight",
     }
 
 

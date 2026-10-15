@@ -94,6 +94,10 @@ STAGE = {
 }
 
 
+#: Staged r1_pending rows that are NOT activated by the wave-3 simulation (held for a named prerequisite).
+HELD_PENDING = frozenset({"run-research-intelligence-overnight"})  # bridge route (lane repair 2026-10-15)
+
+
 def _activate(row: dict) -> dict:
     """The post-ratification registry edit: apply r1_pending and drop it (identity on an activated row)."""
     out = copy.deepcopy(row)
@@ -116,7 +120,9 @@ def _admit(row: dict, shape: str) -> tuple[bool, str]:
 def test_wave3_is_19_lanes_and_only_r1_classes():
     assert len(WAVE3) == 19
     assert {k for _l, k in WAVE3.values()} == {"ingest", "learn"}
-    assert [r["lane_id"] for r in REGISTRY["lanes"] if "r1_pending" in r] == []  # activated 2026-10-10
+    # activated 2026-10-10; the one staged row since is the lane repair 2026-10-15 llm row, held until its bridge
+    # route exists (tests/test_lane_repair_ri_hermes_litmus_20261015.py)
+    assert [r["lane_id"] for r in REGISTRY["lanes"] if "r1_pending" in r] == ["run-research-intelligence-overnight"]
     d3 = sorted(r["lane_id"] for r in REGISTRY["lanes"] if (r.get("scheduler") or {}).get("wave") == "D3")
     assert d3 == sorted(WAVE3_LIVE) and len(WAVE3_LIVE) == 13
 
@@ -221,7 +227,9 @@ def test_activated_row_is_admitted_once_4_4_0_is_active(lane, monkeypatch):
 
 
 def test_activated_registry_has_no_dispatch_issue_once_active(monkeypatch):
-    doc = dict(REGISTRY, lanes=[_activate(r) if "r1_pending" in r else r for r in REGISTRY["lanes"]])
+    # The lane repair llm row stays staged (not allowlisted until its bridge route exists): not activated here.
+    doc = dict(REGISTRY, lanes=[_activate(r) if "r1_pending" in r and r["lane_id"] not in HELD_PENDING else r
+                                for r in REGISTRY["lanes"]])
     monkeypatch.setattr(LD, "R1_SHADOW_SHAPE_STATUS", "PROPOSED")
     errs = LD.registry_dispatch_errors(doc)
     # 19 wave-3 rows + the 3 W4 provider-owner rows (tests/test_w4_provider_owners_shadow_20261011.py) - the 6 D3 rows

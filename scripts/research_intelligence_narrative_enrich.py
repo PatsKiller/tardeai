@@ -125,16 +125,26 @@ def _normalize_narrative(nar: dict) -> dict | None:
 
 
 def _lane_chain(preferred: str) -> list[str]:
+    """Governed cloud OAuth lanes only. ``local`` is refused by policy for generative work
+    (lib/governed_cloud_generation: POLICY_LOCAL_GENERATIVE_FORBIDDEN; llm_lane.available('local') is always
+    False), so ``auto`` and ``local`` both mean grok then chatgpt."""
     preferred = (preferred or "auto").lower()
-    if preferred == "auto":
-        return ["local", "grok", "chatgpt"]
-    if preferred == "local":
-        return ["local", "grok", "chatgpt"]
-    if preferred == "grok":
-        return ["grok", "chatgpt", "local"]
     if preferred == "chatgpt":
-        return ["chatgpt", "grok", "local"]
-    return [preferred]
+        return ["chatgpt", "grok"]
+    return ["grok", "chatgpt"]
+
+
+#: Governance refusals from the consumption gate (lib/llm_consumption.should_call / check_cost_cap). Not
+#: retryable on another row or lane: the 2026-10-13/14 runs tried 25 rows x 2 lanes and every call returned
+#: PROCESS_NOT_REGISTERED -- stop at the first one and say so.
+GOVERNANCE_REFUSALS = ("PROCESS_NOT_REGISTERED", "POLICY_NOT_ALLOWED", "COST_CAP_EXCEEDED", "BUDGET_UNAVAILABLE",
+                       "AMBIGUOUS_LEGACY_LANE", "manual_mode", "ManualRequired")
+PROCESS_ID = "ri_narrative_enrich"
+RECEIPT_LANE = "ri-narrative-enrich"
+
+
+class GovernanceRefused(RuntimeError):
+    """The governed gate refused this process; no further row or lane can succeed this run."""
 
 
 def _generate_parsed(prompt: str, lanes: list[str], timeout: int = 180) -> tuple[dict | None, str | None]:
@@ -149,13 +159,14 @@ def _generate_parsed(prompt: str, lanes: list[str], timeout: int = 180) -> tuple
             if lane == "local":
                 os.environ["LOCAL_LLM_NUM_PREDICT"] = "1200"
             print(f"  · trying lane={lane}…")
+            # Scheduled work, so no manual_trigger: the process's registry caps and off-peak tier apply
+            # (it used to claim manual_trigger=True, the one exemption the gate honours, on a cron run).
             text = llm_lane.generate(
                 prompt,
                 lane=lane,
-                timeout=timeout if lane != "local" else max(timeout, 180),
-                process_id="ri_narrative_enrich",
+                timeout=timeout,
+                process_id=PROCESS_ID,
                 task_summary="ri narrative enrich",
-                manual_trigger=True,
             )
             if not text or not str(text).strip():
                 print(f"  · {lane} empty response")
@@ -169,13 +180,16 @@ def _generate_parsed(prompt: str, lanes: list[str], timeout: int = 180) -> tuple
         except Exception as e:
             last_err = e
             print(f"  · {lane} error: {str(e)[:160]}")
+            refusal = next((g for g in GOVERNANCE_REFUSALS if g in f"{type(e).__name__}: {e}"), None)
+            if refusal:
+                raise GovernanceRefused(refusal) from e
             continue
     if last_err:
         print(f"  · all lanes failed last={last_err}")
     return None, None
 
 
-def main() -> int:
+def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--limit", type=int, default=8)
@@ -186,7 +200,9 @@ def main() -> int:
     )
     ap.add_argument("--retirement-only", action="store_true")
     ap.add_argument("--timeout", type=int, default=180)
-    args = ap.parse_args()
+    ap.add_argument("--budget-s", type=float, default=0.0,
+                    help="wall-clock budget (0=none): no new row starts once it is spent")
+    args = ap.parse_args(argv)
 
     from db_adapter import _execute, USE_DB
     if not USE_DB:
@@ -244,6 +260,11 @@ def main() -> int:
     lanes = _lane_chain(args.lane)
     print(f"[narrative-enrich] candidates={len(selected)} apply={args.apply} lanes={lanes}")
     if not selected:
+        if args.apply:
+            from lib.lane_last_receipt import write_lane_receipt
+            write_lane_receipt(RECEIPT_LANE, ok=True, exit_code=0, script="research_intelligence_narrative_enrich.py",
+                               summary={"candidates": 0},
+                               output={"produced_count": 0, "attempted_count": 0, "empty_reason": "no_candidates"})
         return 0
 
     if not args.apply:
@@ -251,8 +272,20 @@ def main() -> int:
             print(f"  · hermes:{r['id']} {(r.get('topic') or '')[:55]} cats={cats[:2]}")
         return 0
 
+    import time
+    from lib.lane_last_receipt import now_iso, write_lane_receipt
+    started = now_iso()
+    t0 = time.monotonic()
     ok, fail = 0, 0
-    for r, cats in selected:
+    attempted = 0
+    skipped: dict[str, int] = {}
+    refused = None
+    for idx, (r, cats) in enumerate(selected):
+        if args.budget_s and time.monotonic() - t0 >= args.budget_s:
+            skipped["budget_exhausted"] = len(selected) - idx
+            print(f"  [budget] {args.budget_s:.0f}s spent -- {len(selected) - idx} row(s) left for the next run")
+            break
+        attempted += 1
         prompt = PROMPT.format(
             title=(r.get("topic") or "")[:160],
             cats=", ".join(cats[:3]),
@@ -285,16 +318,29 @@ def main() -> int:
                              producer="research_intelligence_narrative_enrich")
             print(f"  ✓ hermes:{r['id']} narrative via {used_lane}")
             ok += 1
+        except GovernanceRefused as e:
+            refused = str(e)
+            skipped["governance_refused"] = len(selected) - idx
+            print(f"  ! governance refused process {PROCESS_ID}: {refused} -- stopping (not retryable this run)")
+            break
         except Exception as e:
             print(f"  ! hermes:{r['id']} {e}")
             fail += 1
+    if fail:
+        skipped["no_narrative"] = fail
 
-    print(f"[narrative-enrich] done ok={ok} fail={fail}")
-    print(
-        "Root cause note: default LOCAL_LLM_NUM_PREDICT=300 truncates JSON; "
-        "this run uses 1200 + OAuth fallback."
+    print(f"[narrative-enrich] done ok={ok} fail={fail} attempted={attempted} skipped={skipped}")
+    # Healthy = it produced, or there was nothing to try. Some rows failing to parse is a partial result, not a
+    # failed step; a governance refusal or a run where every attempt failed is a failure.
+    code = 1 if refused or (attempted and ok == 0) else 0
+    write_lane_receipt(
+        RECEIPT_LANE, ok=code == 0, exit_code=code, started_at=started,
+        script="research_intelligence_narrative_enrich.py",
+        summary={"candidates": len(selected), "ok": ok, "fail": fail, "refusal": refused},
+        output={"produced_count": ok, "attempted_count": attempted, "skipped_reasons": skipped,
+                "empty_reason": None if ok or attempted else "no_candidates"},
     )
-    return 0 if fail == 0 else 1
+    return code
 
 
 if __name__ == "__main__":

@@ -3775,6 +3775,19 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: LANE_REPAIR_RI_HERMES_LITMUS — 2026-10-15 lane repair of three lanes the lane-disposition audit found
+        # broken: run-research-intelligence-overnight (ingest bounded by --budget-s / --max-items-per-topic, stored
+        # results skip pre-model, SIGTERM still writes the receipt, batch lock; narrative + synthesizer registered and
+        # capped, no manual_trigger claim), hermes-coordinator (retention purge skips FK-referenced rows, bounded per
+        # pass) and source-litmus-vs-yahoo (a BLOCK finding is an ok receipt with a verdict; one tick / one noisy row
+        # does not BLOCK). n8n SHADOW wiring: litmus dry-run-only entry, RI staged r1_pending (bridge route missing),
+        # hermes-coordinator excluded (closure reaches broker modules + raw senders). Hermetic: stubs, tmp_path receipts.
+        "lane_repair_ri_hermes_litmus_20261015",
+        [
+            "tests/test_lane_repair_ri_hermes_litmus_20261015.py",
+        ],
+    ),
+    (
         # ANCHOR: N8N_MATURITY_CRON_TZ — 2026-10-09 n8n-maturity B5.1 (design 02 §3.2 step 1, F11):
         # DST-safe fires_between / is_sub_hourly / last_fire_at_or_before in scripts/lib/cron_schedule.py.
         # Pure and hermetic: explicit instants only, no clock, no I/O.
