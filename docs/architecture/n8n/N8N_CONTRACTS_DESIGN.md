@@ -329,16 +329,45 @@ P0/P1 never use this path.
 
 | Part | Contract | Owner | Status |
 |---|---|---|---|
-| Process registry | `config/llm_process_registry.json` entry: `id, allowed_lanes, max_input_tokens, max_output_tokens, daily_soft_cap, daily_cost_cap_usd, tools_allowed, fallback_allowed, advisory_only, circuit_breaker, offpeak_tier` | registry; bridge | (E); n8n processes `n8n_material_digest_draft`, `n8n_ops_summary_draft`, `n8n_lane_failure_diagnosis` |
+| Process registry | `config/llm_process_registry.json` entry: `id, allowed_lanes, max_input_tokens, max_output_tokens, daily_soft_cap, daily_cost_cap_usd, tools_allowed, fallback_allowed, advisory_only, circuit_breaker, offpeak_tier, reasoning_tier, escalate_below_confidence, escalation_confidence_field, escalate_on_values` | registry; bridge | (E); n8n processes `n8n_material_digest_draft`, `n8n_ops_summary_draft`, `n8n_lane_failure_diagnosis`; fabric process `hermes_tag_engine` |
+| Routing | `config/llm_routing_policy.json` row with `route_profile: n8n_oauth_first`: `primary` grok OAuth → `secondary` chatgpt OAuth → `fallback` DeepSeek FAST, `transport_failover: true`, `reasoning_lane` DeepSeek `PRO_THINK`; registry `allowed_lanes` lists grok, chatgpt and the DeepSeek lanes, `deepseek_allowed_policies` FAST + PRO_THINK (pinned in agreement by `tests/test_n8n_oauth_first_routing_20261015.py`) | bridge (`route_plan`, `walk_routes`, `escalate_once`) | (E) |
+| Escalation | `BridgeEscalation@v1` under `_tradeai.escalation`: `reason, outcome ∈ {escalated, escalation_skipped_cap, escalation_skipped, escalation_failed}, request_id (<rid>:esc1), parent_request_id, provider, model, projected_usd, cost_usd, reservation_id, oauth_answer{provider, model, response_sha256}`; `_tradeai.escalation_skipped_cap` boolean | bridge | (E) |
 | Template | `N8nPromptTemplateSet@v1` / `N8nPromptTemplate@v1` (`config/n8n_prompt_templates.json`: `material_digest_draft.v1`, `ops_summary_draft.v1`, `lane_failure_diagnosis.v1`), rendered server-side | `scripts/lib/n8n_model_job.py` | (E) |
 | Output schema | `N8nLlmStepOutputSchemas@v1` (`config/schemas/n8n_llm_step_outputs.json`, e.g. `lane_failure_decision/v1`); closed; decision fields enumerated | `scripts/lib/bridge_llm_step.py` | (E) |
 | Request | `POST /v1/llm_step {process_id, template_id, output_schema_id, allowed_values ⊆ enum, facts (provenance-wrapped), run_id, execution_id, budget}` — never a model, provider or key | bridge (`LLM_STEP_PATH`) | (E) on loopback `:8766` |
 | Result | `LlmStepResult@v1` `status ok|refused`, typed refusal (`process_not_registered`, `schema_not_closed`, `over_cap`, `provider_outage`, …), `decision`, `host_recheck_required: true` | bridge | (E) |
-| Audit | `LlmStepAudit@v1` one row per call (prompt hash, response hash, route receipts, decision, run_id, execution_id) | bridge | (E) |
+| Audit | `LlmStepAudit@v1` one row per call (prompt hash, response hash, route receipts, `route` {route_profile, reasoning_tier, served lane/provider, each lane tried with outcome and detail, escalated + why}, decision, run_id, execution_id); the model-job receipt `N8nModelJobReceipt@v1` carries the same `route` block | bridge; `scripts/lib/n8n_model_job.py` | (E) |
 | Caps | per-process `daily_cost_cap_usd`, per-call ceiling (routing policy `cost_ceiling_usd`), global `LLM_GLOBAL_DAILY_USD_CAP` | bridge | (E) |
 | Deferral tier | `offpeak_tier ∈ {critical, standard, deferred}` (`scripts/lib/llm_deferral.py` `TIERS`) | registry | (E) field; (P) bridge-side deferral (GAP §5.3) |
 | n8n reach | relay `POST /llm_step` (scope `llm_step`) or a scoped bridge token | — | **(P)** RP-B / Q1 in the reference architecture |
 | Host re-check | gateway re-checks a recommended action (allowlist, stage, mode, catalogue) before any action | — | (P) |
+
+**Routing — operator decision 2026-10-15, verbatim:** "in terms of n8n, then, we should try OAuth first. And if OAuth fails or if the answer needs higher reasoning, then we go to DeepSeek."
+
+How the bridge implements it for every `route_profile: n8n_oauth_first` row (`scripts/lib/cio_governed_model_bridge.py`):
+
+1. **Default order.** grok OAuth, then chatgpt OAuth, then DeepSeek FAST. An OAuth lane the host has not enabled
+   (`CIO_BRIDGE_OAUTH_TRANSPORTS`) is skipped with receipt outcome `no_transport` — not an error.
+2. **Fallback to DeepSeek when OAuth fails.** Transport error, timeout, 401/403 (`auth_failure`), 429
+   (`rate_limited`, Retry-After held), outage, and — new 2026-10-15 — an empty, non-JSON or schema-invalid answer
+   (receipt outcome `output_invalid`, detail = the output-gate code) all move the walk to the next lane. A paid lane is
+   never attempted twice in one call; a rejected paid answer is still metered on its receipt and settled.
+3. **Higher reasoning, declared.** `reasoning_tier: "standard" | "high"` on the registry row; a template's
+   `reasoning_tier` overrides it on the in-process `llm_step` path (the loopback model-job path uses the registry
+   tier). `high` routes the row's `reasoning_lane` (DeepSeek `PRO_THINK`: thinking on, reasoning_effort high) first
+   and the OAuth lanes after it. Every process is `standard` today.
+4. **Higher reasoning, escalation.** A schema-valid OAuth answer whose closed output has `escalation_confidence_field`
+   (default `confidence`) below `escalate_below_confidence`, or a field value listed in `escalate_on_values`, is
+   re-asked ONCE on the reasoning lane: request id `<rid>:esc1`, its own reservation and provider-journal identity,
+   inside the per-process daily caps and the per-call ceiling. If it does not fit, the OAuth answer returns with
+   `escalation_skipped_cap`; if the escalation fails or is itself invalid, the OAuth answer stands
+   (`escalation_failed`). Never a second escalation. `n8n_lane_failure_diagnosis` escalates below 0.7
+   (= `CONFIDENCE_MIN`, V9 §6.4); the digest and ops-summary schemas have no numeric confidence, and no schema
+   declares `needs_escalation` yet, so those two escalate only once a schema/template version adds that field.
+5. **Audit.** Every lane considered has a `BridgeRouteReceipt@v1` (escalation receipts carry `attempt: escalation`);
+   the decision (`route_profile`, `reasoning_tier`, served lane, `escalation`) is on `routing_decision`, in the
+   `LlmStepAudit@v1` row and on the model-job receipt. Spend accounting is unchanged: OAuth $0 (`free_oauth_unmetered`,
+   reservation settled at projection), DeepSeek metered.
 
 **Workflow-side declaration (P, in `meta.framework.llm_steps[]`):** `{node, process_id, template_id,
 output_schema_id, branch_fields[], offpeak_tier, hitl: "none | approval_request"}`. FW-G1..G7 check each entry against

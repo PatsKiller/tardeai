@@ -4746,6 +4746,17 @@ GATES = [
         ["tests/test_hermes_tag_engine_cost_cap_20261015.py"],
     ),
     (
+        # n8n OAuth-first routing (operator decision 2026-10-15: "in terms of n8n, then, we should try OAuth first.
+        # And if OAuth fails or if the answer needs higher reasoning, then we go to DeepSeek."). Pins, through the
+        # real bridge with fake transports: OAuth success makes no DeepSeek call; grok fails -> chatgpt; both fail
+        # (or not enabled) -> DeepSeek; a schema-invalid / empty OAuth answer falls through; reasoning_tier high ->
+        # DeepSeek PRO_THINK first, OAuth as fallback; a low-confidence OAuth answer escalates exactly once
+        # (<rid>:esc1, own reservation), over cap / ceiling -> escalation_skipped_cap; route decision in the
+        # llm_step audit and the model-job receipt; registry and routing policy agree. No network, no paid call.
+        "n8n_oauth_first_routing_20261015",
+        ["tests/test_n8n_oauth_first_routing_20261015.py"],
+    ),
+    (
         # Run-from-release P0 (2026-10-15): prepare builds or reuses a shared venv keyed by
         # py<X.Y.Z>-sha12(requirements.lock.txt) and links <release>/.venv to it. Pins: hash keying; reuse runs
         # no pip; a failed install/smoke leaves no partial venv and the previous one untouched; the link and

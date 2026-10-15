@@ -407,7 +407,10 @@ def test_non_opt_in_grok_row_still_refuses_with_oauth_enabled(monkeypatch):
 
 
 def test_registry_row_without_oauth_lanes_skips_them(monkeypatch):
-    # n8n_material_digest_draft: routing row says grok -> chatgpt -> deepseek, registry allowed_lanes is DeepSeek only.
+    # A routing row that says grok -> chatgpt -> deepseek while the registry allowed_lanes is DeepSeek only.
+    # Until 2026-10-15 n8n_material_digest_draft was such a row; the operator's OAuth-first decision put grok and
+    # chatgpt in its allowed_lanes, so the mechanism is pinned on a DeepSeek-only copy of the row.
+    monkeypatch.setitem(REGISTRY, DIGEST, dict(REGISTRY[DIGEST], allowed_lanes=["fast", "deepseek-flash"]))
     grok, chat = Proxy("grok", FakeResp(200, ok_body("{}", "g"))), Proxy("chatgpt", FakeResp(200, ok_body("{}", "c")))
     digest = {
         "headline": "two material changes",

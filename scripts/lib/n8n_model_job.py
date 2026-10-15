@@ -75,6 +75,30 @@ def governance_envelope(result: Mapping[str, Any]) -> Mapping[str, Any]:
     return meta if isinstance(meta, Mapping) else result
 
 
+def route_summary(gov: Mapping[str, Any]) -> dict[str, Any]:
+    """The bridge's route decision in one small block (operator decision 2026-10-15, n8n OAuth first): reasoning
+    tier, the lane that served, each lane tried with its outcome, and whether the answer was escalated and why."""
+    decision = gov.get("routing_decision") if isinstance(gov.get("routing_decision"), Mapping) else {}
+    esc = gov.get("escalation") if isinstance(gov.get("escalation"), Mapping) else None
+    return {
+        "route_profile": decision.get("route_profile"),
+        "reasoning_tier": gov.get("reasoning_tier"),
+        "served_provider": gov.get("provider"),
+        "served_lane": decision.get("served_lane") or decision.get("lane_chosen"),
+        "lanes": [
+            {k: r.get(k) for k in ("lane", "provider", "outcome", "attempt", "detail")}
+            for r in (gov.get("route_receipts") or [])
+            if isinstance(r, Mapping)
+        ],
+        "escalated": bool(esc and esc.get("outcome") == "escalated"),
+        "escalation": None if esc is None else {
+            k: esc.get(k) for k in ("outcome", "reason", "detail", "request_id", "provider", "model", "cost_usd",
+                                    "projected_usd", "reservation_id")
+        },
+        "escalation_skipped_cap": bool(gov.get("escalation_skipped_cap")),
+    }
+
+
 def state_root(env: Optional[dict] = None) -> Path:
     env = os.environ if env is None else env
     return Path(env.get("TRADEAI_STATE_ROOT") or (Path.home() / "trade-ai-releases" / "persistent-state"))
@@ -123,6 +147,8 @@ def _template_problem(row: Any) -> Optional[str]:
         return f"unknown placeholders {sorted(unknown)}"
     if "{{artifact}}" not in row["user_template"]:
         return "user_template must contain {{artifact}}"
+    if "reasoning_tier" in row and row.get("reasoning_tier") not in ("standard", "high"):
+        return "reasoning_tier must be standard or high"
     return None
 
 
@@ -297,6 +323,7 @@ def run_model_job(job: Mapping[str, Any], *, governed_call: Callable[..., dict[s
         "started_at": now.isoformat(), "effects": [], "outbound": "blocked", "mutation": "blocked",
         "fallback": "none", "artifact_in": None, "artifact_out": None, "cost": None,
         "task_type": None, "template_id": job.get("template_id"), "routing_policy": job.get("routing_policy"),
+        "route": None,
     }
     try:
         deadline = _parse_time(job.get("deadline"))
@@ -322,6 +349,9 @@ def run_model_job(job: Mapping[str, Any], *, governed_call: Callable[..., dict[s
             raise ModelJobRefused("governance_refused", "no result")
         err = result.get("error")
         if err:
+            if isinstance(err, Mapping):
+                receipt["route"] = route_summary({"routing_decision": result.get("routing_decision"),
+                                                  "route_receipts": err.get("route_receipts")})
             code = str((err or {}).get("code") or "")
             status = int((err or {}).get("status") or 0)
             if "CAP" in code or "BUDGET" in code:
@@ -358,6 +388,7 @@ def run_model_job(job: Mapping[str, Any], *, governed_call: Callable[..., dict[s
                            "model_id": gov.get("model_id"), "provider": gov.get("provider"), "mock": bool(gov.get("mock")),
                            "provider_cost_event": cost_event, "settlement": "MEASURED" if cost_event else "NOT_MEASURED",
                            "usage": result.get("usage"), "bridge_request_id": gov.get("request_id")}
+        receipt["route"] = route_summary(gov)
         receipt["artifact_out"] = {"schema_id": schema_id, "sha256": hashlib.sha256(json.dumps(answer, sort_keys=True).encode()).hexdigest(),
                                    "body": answer}
         receipt["state"] = "ARTIFACT_WRITTEN"

@@ -458,20 +458,26 @@
         },
         "hermes_tag_engine": {
           "primary": {
-            "provider": "deepseek",
-            "policy": "FAST"
-          },
-          "secondary": {
             "provider": "grok",
             "policy": "FAST"
           },
-          "fallback": {
+          "secondary": {
             "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
             "policy": "FAST"
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 2.0
+          "cost_ceiling_usd": 2.0,
+          "transport_failover": true,
+          "route_profile": "n8n_oauth_first",
+          "reasoning_lane": {
+            "provider": "deepseek",
+            "policy": "PRO_THINK"
+          }
         },
         "hermes_usefulness_score": {
           "primary": {
@@ -727,7 +733,12 @@
           "health_gate": true,
           "latency_budget_ms": 150000,
           "cost_ceiling_usd": 0.05,
-          "transport_failover": true
+          "transport_failover": true,
+          "route_profile": "n8n_oauth_first",
+          "reasoning_lane": {
+            "provider": "deepseek",
+            "policy": "PRO_THINK"
+          }
         },
         "n8n_material_digest_draft": {
           "primary": {
@@ -745,7 +756,12 @@
           "health_gate": true,
           "latency_budget_ms": 150000,
           "cost_ceiling_usd": 0.1,
-          "transport_failover": true
+          "transport_failover": true,
+          "route_profile": "n8n_oauth_first",
+          "reasoning_lane": {
+            "provider": "deepseek",
+            "policy": "PRO_THINK"
+          }
         },
         "n8n_ops_summary_draft": {
           "primary": {
@@ -763,7 +779,12 @@
           "health_gate": true,
           "latency_budget_ms": 150000,
           "cost_ceiling_usd": 0.1,
-          "transport_failover": true
+          "transport_failover": true,
+          "route_profile": "n8n_oauth_first",
+          "reasoning_lane": {
+            "provider": "deepseek",
+            "policy": "PRO_THINK"
+          }
         },
         "oauth_lane_keepalive": {
           "primary": {

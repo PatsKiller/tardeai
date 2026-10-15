@@ -54,8 +54,10 @@ def test_the_process_is_registered_like_the_digest_job():
     reg = json.loads((ROOT / "config" / "llm_process_registry.json").read_text(encoding="utf-8"))
     by = {p["id"]: p for p in reg["processes"]}
     ops, digest = by[PROC], by["n8n_material_digest_draft"]
-    assert ops["lane_policy"] == "deepseek_only" and ops["allowed_lanes"] == digest["allowed_lanes"]
-    assert ops["deepseek_allowed_policies"] == ["FAST"] and ops["daily_cost_cap_usd"] <= digest["daily_cost_cap_usd"]
+    # 2026-10-15 operator decision (n8n OAuth first): both drafts route grok -> chatgpt -> deepseek.
+    assert ops["lane_policy"] == digest["lane_policy"] == "either" and ops["allowed_lanes"] == digest["allowed_lanes"]
+    assert ops["deepseek_allowed_policies"] == ["FAST", "PRO_THINK"]
+    assert ops["daily_cost_cap_usd"] <= digest["daily_cost_cap_usd"]
     assert ops["daily_soft_cap"] == 1 and ops["advisory_only"] is True and ops["tools_allowed"] is False
     assert "ops_summary_draft/v1" in ops["description"]
 
