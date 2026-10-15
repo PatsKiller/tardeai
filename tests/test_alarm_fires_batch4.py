@@ -21,7 +21,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 # paper-account mute, since alpaca_stop_manager only manages ALPACA_PAPER and the
 # operator's 09-22 decision is that paper never pages. The classification pinned
 # below still holds for any real-money reuse of this message.
-COVERS = ["scripts/alpaca_stop_manager.py:461"]
+COVERS = ["scripts/alpaca_stop_manager.py:503"]  # was :461 before the F09 --dry-run guard (2026-10-15)
 
 NAKED = ("🛑 NAKED paper position ABCD: OCO convert interrupted (OCO_REPLACING) and NO stop "
          "exists at the broker. Run alpaca_stop_manager.py --repair-oco --apply to re-place.")
