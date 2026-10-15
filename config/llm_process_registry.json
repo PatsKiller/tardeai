@@ -332,7 +332,9 @@
       "default_mode": "automated",
       "description": "Controlled-vocabulary judgment tags through governed OAuth; no local generation",
       "daily_cost_cap_usd": 0.05,
-      "notes": "2026-10-15: daily_cost_cap_usd added (was absent, so check_cost_cap logged llm_lane_unregistered and enforced no process cap). Sized from measured spend: llm_cost_reservations 0 rows ever; llm_consumption_log 2026-10-01..10-14 = 375 calls, all grok OAuth, $0.00 every day (max 48 calls on 10-14); no provider_cost events. 2 x max observed day = $0.00, so the floor applies: $0.05 = 2 x 48 calls x ~$0.0005 per call if the routing row's DeepSeek FAST primary were ever used at peak price (~700 in x $0.30/M + 256 out x $1.20/M), and equal to the smallest existing cap in this registry. Global LLM_GLOBAL_DAILY_USD_CAP still binds. No daily_soft_cap added: that would also bound OAuth call counts via over_daily_cap."
+      "tools_allowed": false,
+      "advisory_only": true,
+      "notes": "2026-10-15 (n8n fabric cutover prerequisite G5): routed through cio_governed_model_bridge (8766) as caller advisory_desk task hermes_tag_engine when the n8n run executor binds the lane's llm_route; tools_allowed false (the classifier takes no tools; the bridge strips any) and advisory_only true, like every other bridge-mapped hermes_* row. | 2026-10-15: daily_cost_cap_usd added (was absent, so check_cost_cap logged llm_lane_unregistered and enforced no process cap). Sized from measured spend: llm_cost_reservations 0 rows ever; llm_consumption_log 2026-10-01..10-14 = 375 calls, all grok OAuth, $0.00 every day (max 48 calls on 10-14); no provider_cost events. 2 x max observed day = $0.00, so the floor applies: $0.05 = 2 x 48 calls x ~$0.0005 per call if the routing row's DeepSeek FAST primary were ever used at peak price (~700 in x $0.30/M + 256 out x $1.20/M), and equal to the smallest existing cap in this registry. Global LLM_GLOBAL_DAILY_USD_CAP still binds. No daily_soft_cap added: that would also bound OAuth call counts via over_daily_cap."
     },
     {
       "id": "holding_protection_advisor",
