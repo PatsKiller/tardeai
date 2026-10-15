@@ -2024,9 +2024,9 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/packets/hermes-learning-cutover-20261015/README.md` | hermes-learning on the n8n fabric: cutover packet (learn stage) | review_required | OK | `f332e5a5f082` |
 | `docs/ops/packets/hermes-worker-pool-wire-20261015/README.md` | hermes-research-worker-pool — real lane runners + fail closed on zero output (2026-10-15) | review_required | MISSING HEADER | `1232e0f775a0` |
 | `docs/ops/packets/lane-repair-indicator-engine-20261015/README.md` | Lane repair 2026-10-15: build-symbol-profiles, watchlist entry planner, indicator-engine | review_required | OK | `5f8cf669d6e3` |
-| `docs/ops/packets/lane-repair-run-research-intelligence-overnight-20261015/03_apply.md` | Apply the RI overnight crontab changes (operator) | review_required | MISSING HEADER | `896f5b9e6472` |
-| `docs/ops/packets/lane-repair-run-research-intelligence-overnight-20261015/04_rollback.md` | Roll back the RI overnight crontab changes (operator) | review_required | MISSING HEADER | `5ee730cbbbb8` |
-| `docs/ops/packets/lane-repair-run-research-intelligence-overnight-20261015/README.md` | Lane repair 2026-10-15: RI overnight, hermes-coordinator, source litmus | review_required | MISSING HEADER | `866e56dfe2db` |
+| `docs/ops/packets/lane-repair-run-research-intelligence-overnight-20261015/03_apply.md` | Apply the RI overnight crontab changes (operator) | review_required | MISSING HEADER | `5655f73a4d32` |
+| `docs/ops/packets/lane-repair-run-research-intelligence-overnight-20261015/04_rollback.md` | Roll back the RI overnight crontab changes (operator) | review_required | MISSING HEADER | `bf3aae49d3e7` |
+| `docs/ops/packets/lane-repair-run-research-intelligence-overnight-20261015/README.md` | Lane repair 2026-10-15: RI overnight, hermes-coordinator, source litmus | review_required | MISSING HEADER | `06923b986aa9` |
 | `docs/ops/packets/lane-retire-wave1-20261015/README.md` | lane-retire-wave1-20261015: RETIRE wave 1, operator packet | review_required | MISSING HEADER | `3820bc394e43` |
 | `docs/ops/packets/maturity-remeasure-relay-live-removal-20261015/README.md` | Packet: take maturity-remeasure off the relay live list (config-write, NOT APPLIED) | review_required | MISSING HEADER | `59b9f653cd6a` |
 | `docs/ops/packets/n8n-comms-intent-consumer-20261015/03_apply.md` | Apply once (operator) | review_required | MISSING HEADER | `498d580f4571` |

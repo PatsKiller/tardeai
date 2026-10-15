@@ -121,5 +121,23 @@
    "lane_receipt_status": "ok (verdict carried in summary)",
    "exit": 1
   }
+ },
+ "crontab_candidate": {
+  "regenerated_at": "2026-10-15T18:44:09Z",
+  "input": "COPY of crontab -l (read-only), after the B-families top-5 install (C1 consolidation)",
+  "crontab_live_sha256": "36f172d1be19d62a8d7bcc94355bc66e7e55d63f1e7c0b2517c2ffc845ffdba2",
+  "changes": [
+   "C1",
+   "C2"
+  ],
+  "exit": 0,
+  "lines_changed": 2,
+  "rollback_byte_identical": true,
+  "installed": false,
+  "dropped": {
+   "C3": "absorbed by the C1 B-families consolidation; bound now in family_slot_jobs B2 (TOPIC_INGEST_BOUND)",
+   "C4": "absorbed by the C1 B-families consolidation; bound now in family_slot_jobs B2 (TOPIC_INGEST_BOUND)"
+  },
+  "superseded_proof": "the 4-change proof against crontab sha256 6a5c6768... (pre-install) REFUSED C3/C4 (found 0) on the post-install crontab, so it installed nothing"
  }
 }

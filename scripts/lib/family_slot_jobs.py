@@ -106,9 +106,14 @@ _CATALYST = (
     "bash $PROJ/scripts/safe_flock.sh /tmp/catalyst_%s.lock $PY scripts/catalyst_momentum_engine.py "
     "--band %s --apply%s"
 )
+#: The work bound (RI overnight lane repair 2026-10-15, its C3/C4 absorbed here after the C1 consolidation retired
+#: the standalone lines): --budget-s stops starting new topics/items once 1500 s are spent, so the run exits clean
+#: with a receipt well inside its `timeout 30m` instead of being killed; --max-items-per-topic caps model calls
+#: per topic. Same bound as the RI ingest step.
+TOPIC_INGEST_BOUND = " --budget-s 1500 --max-items-per-topic 12"
 _TOPIC_INGEST = (
     "bash {root}/scripts/non_trading_hours_gate.sh timeout 30m $PY scripts/topic_ingestion.py "
-    "--use-llm-queries --max-topics 14"
+    "--use-llm-queries --max-topics 14" + TOPIC_INGEST_BOUND
 )
 _CIO_DETECTOR = (
     "flock -n /tmp/cio_event_detector.lock python3 -c 'from scripts.lib.cio_event_detector import "
@@ -213,6 +218,11 @@ FAMILIES: tuple[Family, ...] = (
             Slot("45 2 * * 0,6", ("weekend_overnight",)),  # weekday 02:45 ET is inside the UTC peak (PEAK_SKIP)
         ),
         cron_lines=("45 20 * * 1-5", "45 2 * * 0,6"),
+        deltas=(
+            "both modes add `--budget-s 1500 --max-items-per-topic 12` (TOPIC_INGEST_BOUND; the RI overnight lane "
+            "repair 2026-10-15 C3/C4, absorbed here): the run stops starting work at 1500 s and exits clean inside "
+            "its `timeout 30m`, rather than being killed mid-topic",
+        ),
     ),
     Family(
         lane_id="cio-event-detector",

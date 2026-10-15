@@ -656,17 +656,28 @@ def test_litmus_offline_dry_run_writes_nothing(tmp_path):
     assert not (tmp_path / "state").exists()
 
 
-def test_packet_candidate_changes_four_exact_lines_and_reverts_byte_identically():
+def test_packet_candidate_changes_two_exact_lines_and_reverts_byte_identically():
+    """C1+C2 only: C3/C4 (bound the standalone topic-ingestion lines) were absorbed by the C1 B-families
+    consolidation, which retired those lines; the bound now lives in family_slot_jobs B2 (served code)."""
     pkt = _load(
         "lane_repair_candidate_under_test",
         "docs/ops/packets/lane-repair-run-research-intelligence-overnight-20261015/candidate.py",
     )
+    assert [cid for cid, _old, _new in pkt.CHANGES] == ["C1", "C2"] and pkt.DROPPED == ("C3", "C4")
+    assert not any("topic_ingestion" in old or "topic_ingestion" in new for _cid, old, new in pkt.CHANGES)
     live = ["# header", "PY=/x/python"] + [old for _cid, old, _new in pkt.CHANGES] + ["0 1 * * * true"]
     cand, problems = pkt.build(live)
-    assert problems == [] and sum(a != b for a, b in zip(live, cand)) == 4
+    assert problems == [] and sum(a != b for a, b in zip(live, cand)) == 2
     assert cand[2].startswith("15 0 * * * ") and "run_with_deepseek_offpeak" not in cand[3]
-    assert all("--budget-s 1500 --max-items-per-topic 12" in c for c in cand[4:6])
     back, problems = pkt.build(cand, revert=True)
     assert problems == [] and back == live
     drifted, problems = pkt.build(live[:2] + live[3:])  # one target line missing -> refused, never half-applied
     assert problems and problems[0].startswith("C1:")
+
+
+def test_topic_ingestion_bound_lives_in_the_family_job():
+    """Where C3/C4's bound went: both topic-ingestion family modes carry it (served code, no crontab change)."""
+    from scripts.lib import family_slot_jobs as fsj
+
+    for mode in fsj.family("topic-ingestion").modes:
+        assert mode.command.endswith("--max-topics 14 --budget-s 1500 --max-items-per-topic 12")

@@ -4,7 +4,7 @@ Equivalence proof for scripts/lib/family_slot_jobs.py + scripts/run_family_slot.
 
   1. text   — each mode's command is the retired crontab line's command, verbatim (the lines below are copied
               from the live crontab of 2026-10-11, sha256 7eb97ad6…, with the served root replaced by a fake one);
-              same log, same schedule recorded, same lock inside the command.
+              same log, same schedule recorded, same lock inside the command (B1 adds a lock, B2 the work bound).
   2. time   — minute by minute over an EDT week and an EST week, the union of the family's crontab lines fires
               exactly at the slot-table minutes (no fire without a slot, no slot without a fire, never two lines
               in one minute).
@@ -82,6 +82,8 @@ MODE_LINE = {
 }
 #: The one deliberate command change: B1 gains a lock (design B1).
 B1_LOCK = "flock -n /tmp/cio_event_detector.lock "
+#: The second: B2 gains the work bound (RI overnight lane repair 2026-10-15 C3/C4, absorbed after C1 retired them).
+B2_BOUND = " --budget-s 1500 --max-items-per-topic 12"
 LINE_RE = re.compile(r"^(\S+ \S+ \S+ \S+ \S+) cd (\S+) && (.*) >> (\S+) 2>&1$")
 
 
@@ -106,6 +108,9 @@ def test_mode_command_is_the_retired_line_verbatim(fam, mode):
     if fam.lane_id == "cio-event-detector":
         assert rendered.startswith(B1_LOCK)
         rendered = rendered[len(B1_LOCK):]
+    if fam.lane_id == "topic-ingestion":
+        assert rendered.endswith(B2_BOUND)
+        rendered = rendered[: -len(B2_BOUND)]
     assert rendered == body
     assert mode.log == log
     assert mode.old_schedule == sched
@@ -124,6 +129,16 @@ def test_locks_are_the_retired_lines_locks():
             assert old == set() and new == {"/tmp/cio_event_detector.lock"}
         else:
             assert new == old, (lane, name)   # topic-ingestion had no lock and still has none
+
+
+def test_topic_ingestion_bound_matches_the_ri_packet_intent():
+    """Both B2 modes carry exactly the bound the RI overnight packet's C3/C4 meant to add to the retired lines,
+    after the gate and `timeout 30m` (so the bound exits inside the timeout)."""
+    assert FSJ.TOPIC_INGEST_BOUND == B2_BOUND
+    for mode in FSJ.family("topic-ingestion").modes:
+        cmd = FSJ.render(mode, FAKE)
+        assert cmd.count("--budget-s 1500") == 1 and cmd.count("--max-items-per-topic 12") == 1
+        assert cmd.index("timeout 30m") < cmd.index("--budget-s 1500")
 
 
 # ── 2. time ─────────────────────────────────────────────────────────────────────────────────────────────
