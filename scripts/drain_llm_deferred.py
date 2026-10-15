@@ -14,6 +14,14 @@ a way of paying peak prices on a delay. `--force` exists for an operator who mea
   drain_llm_deferred.py --force       # run outside the window (operator, deliberate)
 
 Exit 0 = drained (or nothing due). Exit 2 = queue unreachable.
+
+Governed bridge (2026-10-15, n8n llm lane batch 3): with TRADEAI_LLM_VIA_BRIDGE=1 (bound by the n8n run executor from
+the allowlist ``llm_route`` of lane llm-deferred-drain, a process SET) the drainer leases ONLY rows whose process is in
+the bound set (llm_deferral.claim_due process_ids; every other row stays pending for the host drainer) and re-issues
+each as ONE governed-bridge request as that row's own process (the bridge routes it OAuth first and applies that
+process's caps; the row's stored lane / model / policy are NOT honoured, because §23.4 lets no request choose a
+model). gate_and_generate is never imported on that path. A refusal fails the row exactly like a provider error
+(failed + error text); nothing else runs for it. --dry-run claims nothing and calls nothing. The cron line is unchanged.
 """
 from __future__ import annotations
 
@@ -48,8 +56,39 @@ def _write_heartbeat(payload: dict) -> None:
         print(f"[deferred-drain] could not write heartbeat: {e}", file=sys.stderr)
 
 
+def _via_bridge() -> bool:
+    """The flag the n8n run executor binds from the allowlist llm_route; read directly."""
+    import os
+
+    return os.environ.get("TRADEAI_LLM_VIA_BRIDGE", "off").strip().lower() in {"1", "on", "bridge"}
+
+
+def _bound_process_set() -> list[str]:
+    """The processes the executor bound for this run ([] = none: the bridge drain then leases nothing)."""
+    from lib.llm_bridge_route import bound_processes
+
+    return sorted(bound_processes() or ())
+
+
+def _run_one_via_bridge(row: dict) -> tuple[bool, str | None]:
+    """ONE governed-bridge request as the row's own process. Never gate_and_generate, never the row's lane."""
+    from lib.llm_bridge_route import require_text_via_bridge
+
+    payload = row.get("payload") or {}
+    if isinstance(payload, str):
+        payload = json.loads(payload or "{}")
+    try:
+        require_text_via_bridge(str(row["process_id"]), row["prompt"], timeout_s=180,
+                                max_tokens=int(payload.get("max_tokens") or 2048))
+    except Exception as e:  # noqa: BLE001 -- a refusal fails the row; never another provider
+        return False, f"{type(e).__name__}: {e}"[:300]
+    return True, None
+
+
 def _run_one(row: dict) -> tuple[bool, str | None]:
     """Re-issue one queued call, with deferral bypassed so it cannot re-queue itself."""
+    if _via_bridge():
+        return _run_one_via_bridge(row)
     from lib.llm_consumption import gate_and_generate
 
     payload = row.get("payload") or {}
@@ -115,7 +154,8 @@ def main(argv=None) -> int:
         return 0
 
     try:
-        batch = llm_deferral.claim_due(limit=args.limit)
+        batch = (llm_deferral.claim_due(limit=args.limit, process_ids=_bound_process_set()) if _via_bridge()
+                 else llm_deferral.claim_due(limit=args.limit))
     except Exception as e:
         print(f"[deferred-drain] could not claim: {e}", file=sys.stderr)
         _receipt(False, 2, {"claim_error": type(e).__name__})
