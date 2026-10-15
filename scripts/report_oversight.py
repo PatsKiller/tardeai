@@ -13,6 +13,14 @@ ONLY when explicitly requested (operator / --claude-oversight) or when REPORT_CL
 enabled AND a trigger fires (free lane flagged a fabrication/contradiction, or a BUY/ADD holding on
 the monthly cadence). If the Claude lane is down it degrades to the dual free-lane verdict and never
 blocks the report.
+
+Governed bridge (2026-10-15, n8n llm lane batch 2): with TRADEAI_LLM_VIA_BRIDGE=1 (bound by the n8n run executor from
+the allowlist ``llm_route`` of lanes generate-analyst-reports-autonomous-weekly / -full, process SET
+analyst_report_editorial + analyst_report_critique) step 1 is ONE critique through the governed bridge as process
+``analyst_report_critique`` (lane label ``bridge``; grok -> chatgpt -> DeepSeek server-side) and step 2 never runs:
+Claude is not a bridge provider, so the metered arbiter is skipped (reason ``governed_bridge_no_claude_lane``) and the
+verdict degrades to the free-lane verdict exactly as when the Claude lane is down. Neither the shared researcher
+(hermes_external_researcher) nor llm_lane is called on that path. The cron line is unchanged.
 """
 from __future__ import annotations
 
@@ -155,7 +163,19 @@ def _section_text(report: dict, *, limit: int = 5000) -> str:
 
 
 # ───────────────────────── free lanes ─────────────────────────
+#: The n8n path's critique process + governed-bridge route (advisory_desk / analyst_report_critique).
+BRIDGE_CRITIQUE_PROCESS = "analyst_report_critique"
+BRIDGE_LANE = "bridge"
+
+
+def _via_bridge() -> bool:
+    """The flag the n8n run executor binds from the allowlist llm_route; read directly."""
+    return os.environ.get("TRADEAI_LLM_VIA_BRIDGE", "off").strip().lower() in {"1", "on", "bridge"}
+
+
 def _lane_available(lane: str) -> bool:
+    if _via_bridge():
+        return lane == BRIDGE_LANE
     try:
         import llm_lane
         return bool(llm_lane.available(lane))
@@ -165,6 +185,15 @@ def _lane_available(lane: str) -> bool:
 
 def _call_lane(lane: str, prompt: str, *, timeout: int = 120, model: str = "") -> str:
     """Resolve and call a lane via the shared researcher (handles grok/chatgpt/claude)."""
+    if _via_bridge():
+        if lane != BRIDGE_LANE:
+            return ""  # never a provider client on the governed-bridge path
+        try:
+            from lib.llm_bridge_route import require_text_via_bridge
+
+            return require_text_via_bridge(BRIDGE_CRITIQUE_PROCESS, prompt, timeout_s=timeout, max_tokens=1600)
+        except Exception:  # noqa: BLE001 -- refused: no critique, never another provider
+            return ""
     try:
         import hermes_external_researcher as her
         cfg = her.LANE_CFG.get(lane) or {}
@@ -301,6 +330,8 @@ def apply_fixes(report: dict, oversight: dict) -> int:
 # ───────────────────────── orchestration ─────────────────────────
 def _should_run_claude(report: dict, free_critiques: list[dict], *, requested: bool | None,
                        cadence: str | None) -> tuple[bool, str]:
+    if _via_bridge():
+        return False, "governed_bridge_no_claude_lane"
     if requested is True:
         return True, "explicit_request"
     if requested is False:
@@ -442,7 +473,7 @@ def oversee_report(
     packet = build_data_packet(report)
 
     free: list[dict] = []
-    for lane in ("grok", "chatgpt"):
+    for lane in ((BRIDGE_LANE,) if _via_bridge() else ("grok", "chatgpt")):
         try:
             free.append(free_lane_critique(report, packet, lane, timeout=min(timeout, 120)))
         except Exception as e:

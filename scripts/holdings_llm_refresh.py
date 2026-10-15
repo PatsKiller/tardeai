@@ -16,6 +16,11 @@ Refactor wave 2 (cron -> n8n, 2026-10-10; cron:L383 --run --limit 50):
 - A real ``--run`` writes data/runtime/holdings_llm_refresh_last.json (LaneRunReceipt@v1, ok_at only
   on success) and exits 1 when it had candidates and refreshed none (lane dead). Per-symbol
   parse_error/empty results are findings, counted in the receipt, not a failed run.
+
+Governed bridge (2026-10-15, n8n llm lane batch 1): with TRADEAI_LLM_VIA_BRIDGE=1 (bound by the n8n run executor from
+the allowlist ``llm_route`` of lane holdings-llm-refresh) ``generate_cloud`` makes ONE governed-bridge request as
+process ``holdings_llm_refresh`` and never imports llm_lane; a refusal is a per-symbol ``error`` (no UPDATE, no
+payload). The cron line is unchanged.
 """
 import argparse
 import json
@@ -264,7 +269,9 @@ def refresh_one(conn, holding, dry_run=False):
         action = result.get('action', 'HOLD')
         confidence = min(100, max(0, int(result.get('confidence', 50))))
 
-        model = "grok-3-mini" if lane == "grok" else "gpt-5.4"
+        # lane "bridge": the n8n path (allowlist llm_route -> lib.governed_cloud_generation's governed-bridge branch,
+        # process holdings_llm_refresh); the bridge, not this script, chose the provider.
+        model = "governed-bridge" if lane == "bridge" else "grok-3-mini" if lane == "grok" else "gpt-5.4"
 
         # Validate
         if health not in ('STRONG', 'STABLE', 'WATCH', 'CONCERN', 'EXIT'):

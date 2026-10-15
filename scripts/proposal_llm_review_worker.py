@@ -162,7 +162,9 @@ def main(argv=None):
             log.info(f"Found {len(queue)} queued LLM reviews")
 
             # Warmup Ollama before processing (handles cold GPU model load)
-            if queue and args.run:
+            # Never on the governed-bridge path (n8n): the warmup is a local model call.
+            if queue and args.run and os.environ.get("TRADEAI_LLM_VIA_BRIDGE", "off").strip().lower() not in {
+                    "1", "on", "bridge"}:
                 try:
                     from local_llm import warmup_ollama
                     log.info("Warming up Ollama (may take minutes on cold start)...")
