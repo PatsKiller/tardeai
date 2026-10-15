@@ -4649,6 +4649,16 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: ONBOARD_DRYRUN_B2_20261015 — n8n onboarding batch B2 (lane disposition 2026-10-15, MIGRATE_N8N, no
+        # allowlist entry, no --dry-run before): an offline --dry-run that wins over --apply for 7 appender/writer
+        # lanes (deepseek-balance-snapshot, plan-drift-revalidator, enrich-proposal-technicals, reclassify-momentum-
+        # proposals, active-trader-session-review, active-trader-signal-calibration, proposal-lifecycle). Hermetic in-
+        # process proof: write/send/network/subprocess primitives recorded, zero calls, one LaneOutput@v1 line.
+        # Listing it schedules nothing.
+        "onboard_dryrun_b2_20261015",
+        ["tests/test_onboard_dryrun_b2_20261015.py"],
+    ),
+    (
         # ANCHOR: BROKER_DOMAINS_Q1 — 2026-10-10 operator decisions CONSOLIDATION_PLAN §D (2)(3)(5)(6)(7)(13)(14):
         # registry rows finviz_enrichment / scalp_list / social_posts / yfinance_info_snapshot with the operator's
         # grant; StockTwits rate limit; latest_quote projection; quote-only get_best_quote (stored first, first
