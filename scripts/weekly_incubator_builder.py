@@ -248,11 +248,22 @@ def main(argv=None):
             summary = _execute(args)
     except Exception as exc:
         write_lane_receipt("weekly-incubator-builder", ok=False, exit_code=1, started_at=started,
-                           script="weekly_incubator_builder.py", error=f"{type(exc).__name__}: {exc}")
+                           script="weekly_incubator_builder.py", error=f"{type(exc).__name__}: {exc}",
+                           output={"produced_count": 0, "attempted_count": 0, "skipped_reasons": {"dependency_unavailable": 1}})
         return 1
     write_lane_receipt("weekly-incubator-builder", ok=True, exit_code=0, started_at=started,
-                       script="weekly_incubator_builder.py", summary=summary)
+                       script="weekly_incubator_builder.py", summary=summary, output=lane_output(summary))
     return 0
+
+
+def lane_output(summary: dict) -> dict:
+    """LaneRunReceipt@v2 output fields (n8n expected_output, unit: incubator_universe rows upserted, one per
+    (symbol, strategy) match, each with an incubator_events row; one transaction, so attempted = produced). No
+    qualifying 7-day scan ticker is fatal (``no_input_unexpected``)."""
+    produced = int(summary.get("strategy_matches") or 0)
+    skipped = {} if int(summary.get("symbols") or 0) else {"no_input_unexpected": 1}
+    return {"produced_count": produced, "attempted_count": produced, "skipped_reasons": skipped,
+            "empty_reason": None}
 
 
 def _execute(args):

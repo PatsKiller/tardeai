@@ -449,7 +449,16 @@ def main():
         from lib.lane_last_receipt import write_lane_receipt
 
         write_lane_receipt(LANE_ID, ok=not result['errors'], exit_code=0, started_at=started,
-                           script='pattern_extractor.py', summary=result)
+                           script='pattern_extractor.py', summary=result, output=lane_output(result))
+
+
+def lane_output(result: dict) -> dict:
+    """LaneRunReceipt@v2 output fields (n8n expected_output, unit: pattern_library rows upserted). attempted =
+    patterns found at >= min-trades; an upsert or DB error is a failed receipt (status failed) already."""
+    upserted, found = int(result.get('upserted') or 0), int(result.get('patterns_found') or 0)
+    return {'produced_count': upserted, 'attempted_count': max(found, upserted),
+            'skipped_reasons': {'upsert_error': int(result.get('errors') or 0)},
+            'empty_reason': None if upserted else 'no_new_input'}
 
 
 if __name__ == '__main__':

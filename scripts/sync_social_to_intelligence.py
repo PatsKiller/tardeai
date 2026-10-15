@@ -232,7 +232,8 @@ def main(argv=None) -> int:
                 pass
     except Exception as exc:
         lr.write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
-                              script="sync_social_to_intelligence.py", error=f"{type(exc).__name__}: {exc}")
+                              script="sync_social_to_intelligence.py", error=f"{type(exc).__name__}: {exc}",
+                              output={"produced_count": 0, "attempted_count": 0, "skipped_reasons": {"dependency_unavailable": 1}})
         raise
 
     print(f"  Folded: {folded} symbols")
@@ -241,8 +242,22 @@ def main(argv=None) -> int:
     lr.write_lane_receipt(LANE_ID, ok=rc == 0, exit_code=rc, started_at=started,
                           script="sync_social_to_intelligence.py",
                           summary={"universe": len(symbols), "rows": len(rows), "folded": folded,
-                                   "failed": failed})
+                                   "failed": failed},
+                          output=lane_output(len(symbols), len(rows), folded, failed))
     return rc
+
+
+def lane_output(universe: int, rows: int, folded: int, failed: int) -> dict:
+    """LaneRunReceipt@v2 output fields (n8n expected_output, unit: intelligence_entities rows upserted with social_*
+    fields). attempted = sentiment rows inside the MAX_AGE_HOURS window. The lane runs 15-30 min after the two
+    sentiment writers, so no fresh row is ``upstream_stale``; an empty universe is ``universe_empty_unexpected``."""
+    skipped = {"fold_failed": failed}
+    if universe == 0:
+        skipped["universe_empty_unexpected"] = 1
+    elif rows == 0:
+        skipped["upstream_stale"] = 1
+    return {"produced_count": folded, "attempted_count": max(rows, folded), "skipped_reasons": skipped,
+            "empty_reason": None}
 
 
 if __name__ == "__main__":

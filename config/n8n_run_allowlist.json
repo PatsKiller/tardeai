@@ -1872,7 +1872,8 @@
       ],
       "live_arg": [],
       "market_gate": false,
-      "output_signal": "data/runtime/record-decision-outcome_last.json"
+      "output_signal": "data/runtime/record-decision-outcome_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "update-lockup-earnings-dates",
@@ -2245,7 +2246,8 @@
         "--apply"
       ],
       "market_gate": false,
-      "output_signal": "data/runtime/sync-social-to-intelligence_last.json"
+      "output_signal": "data/runtime/sync-social-to-intelligence_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "trade-backtest-engine",
@@ -2466,7 +2468,8 @@
       ],
       "live_arg": [],
       "market_gate": false,
-      "output_signal": "data/runtime/weekly-incubator-builder_last.json"
+      "output_signal": "data/runtime/weekly-incubator-builder_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "investment-costs",
@@ -3446,7 +3449,8 @@
         "--render"
       ],
       "market_gate": false,
-      "output_signal": "data/runtime/opening-intelligence-render_last.json"
+      "output_signal": "data/runtime/opening-intelligence-render_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "hermes-discovery-scorecard",
@@ -3478,7 +3482,8 @@
       ],
       "live_arg": [],
       "market_gate": false,
-      "output_signal": "data/runtime/hermes-discovery-scorecard_last.json"
+      "output_signal": "data/runtime/hermes-discovery-scorecard_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "wire-advisory-lessons",
@@ -3510,7 +3515,8 @@
       ],
       "live_arg": [],
       "market_gate": false,
-      "output_signal": "data/runtime/wire-advisory-lessons_last.json"
+      "output_signal": "data/runtime/wire-advisory-lessons_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "incubator-rolloff-engine",
@@ -3544,7 +3550,8 @@
         "--apply"
       ],
       "market_gate": false,
-      "output_signal": "data/runtime/incubator-rolloff-engine_last.json"
+      "output_signal": "data/runtime/incubator-rolloff-engine_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "pattern-extractor",
@@ -3576,7 +3583,8 @@
       ],
       "live_arg": [],
       "market_gate": false,
-      "output_signal": "data/runtime/pattern-extractor_last.json"
+      "output_signal": "data/runtime/pattern-extractor_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "goal-gate-bridge",
@@ -3642,7 +3650,8 @@
       "env_allowlist_mode": "report",
       "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as the SW4 / LD-W1 rows). finviz_enrichment (the Finviz fallback) reads FINVIZ_API_TOKEN / FINVIZ_COOKIE; yfinance needs no credential.",
       "env_evidence": "build_symbol_profiles.py imports db_adapter (DB_* names), finviz_enrichment (FINVIZ_* names) and yfinance (no credential); lib/lane_last_receipt.py and lib/persistent_state_root.py read TRADEAI_STATE_ROOT / TRADEAI_PERSISTENT_STATE_ROOT. No broker credential name.",
-      "source": "lane repair 2026-10-15 (taking the refactor shard 05 proposal, wave R2-05), cron:L477 (crontab -l 2026-10-15, sha256 6a5c6768: `0 19 * * 0 cd $PROJ && flock -n /tmp/symbol_profiles.lock $PY scripts/build_symbol_profiles.py >> logs/symbol_profiles.log 2>&1  # weekly company-profile refresh (operator 2026-06-12)`). SHADOW ONLY: live_arg null, registry dispatch.mode dry_run, scheduler.stage shadow; the cron line keeps doing the real work. The live argument would be [] (the bare command); it is NOT in this entry. lock /tmp/symbol_profiles.lock (flock) is the live cron line's lock. Dry run: an explicit --dry-run prints an offline plan before env loading, DB connection, provider call or any write (refactor shard 05 contract) plus one LANE_OUTPUT stderr line; the measured READ ONLY preview is --watchlist-top N --dry-run. Proof in docs/ops/packets/lane-repair-indicator-engine-20261015/. | CW3 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv [], lock = the cron flock lock /tmp/symbol_profiles.lock (shared: the lock proves no double run)."
+      "source": "lane repair 2026-10-15 (taking the refactor shard 05 proposal, wave R2-05), cron:L477 (crontab -l 2026-10-15, sha256 6a5c6768: `0 19 * * 0 cd $PROJ && flock -n /tmp/symbol_profiles.lock $PY scripts/build_symbol_profiles.py >> logs/symbol_profiles.log 2>&1  # weekly company-profile refresh (operator 2026-06-12)`). SHADOW ONLY: live_arg null, registry dispatch.mode dry_run, scheduler.stage shadow; the cron line keeps doing the real work. The live argument would be [] (the bare command); it is NOT in this entry. lock /tmp/symbol_profiles.lock (flock) is the live cron line's lock. Dry run: an explicit --dry-run prints an offline plan before env loading, DB connection, provider call or any write (refactor shard 05 contract) plus one LANE_OUTPUT stderr line; the measured READ ONLY preview is --watchlist-top N --dry-run. Proof in docs/ops/packets/lane-repair-indicator-engine-20261015/. | CW3 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv [], lock = the cron flock lock /tmp/symbol_profiles.lock (shared: the lock proves no double run).",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "indicator-engine",

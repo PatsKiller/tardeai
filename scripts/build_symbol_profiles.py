@@ -437,7 +437,7 @@ def _now_iso() -> str:
 
 
 def _receipt(name, **kw):
-    from lib.lane_last_receipt import write_receipt
+    from lib.lane_last_receipt import write_lane_receipt, write_receipt
 
     write_receipt(name, **kw)
     if name == "build_symbol_profiles":
@@ -445,7 +445,20 @@ def _receipt(name, **kw):
         # Partial provider misses are typed skips; a lost or rejected write, or nothing written although there was
         # work, keeps the legacy CLI's receipt but cannot advance success.
         own["ok"] = own["ok"] and _work_landed(own.get("summary") or {})
-        write_receipt(OWN_LANE, exit_code=0 if own["ok"] else 1, **own)
+        write_lane_receipt(OWN_LANE, exit_code=0 if own["ok"] else 1, output=_receipt_output(own), **own)
+
+
+def _receipt_output(own: dict) -> dict:
+    """LaneRunReceipt@v2 output fields for the n8n lane receipt (expected_output unit: symbol_profiles rows
+    upserted), from the run's LaneOutput@v1 block. Nothing stale (profiles are fresh for 30 days) is the closed-enum
+    ``nothing_due``; a crash is ``dependency_unavailable``."""
+    if "summary" not in own:
+        return {"produced_count": 0, "attempted_count": 0, "skipped_reasons": {"dependency_unavailable": 1}}
+    block = _output_of(own.get("summary") or {})
+    produced, attempted = block["produced_count"], block["attempted_count"]
+    return {"produced_count": produced, "attempted_count": max(attempted, produced),
+            "skipped_reasons": dict(block.get("skipped_reasons") or {}),
+            "empty_reason": "nothing_due" if not produced and not attempted else None}
 
 
 if __name__ == "__main__":
