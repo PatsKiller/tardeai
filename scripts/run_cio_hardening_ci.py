@@ -4731,6 +4731,14 @@ GATES = [
         ["tests/test_release_pin_daemons_20261010.py"],
     ),
     (
+        # Run-from-release tooling (WS7-01 / WS8-14, 2026-10-15): cron $PY and most user units execute the dev
+        # checkout's .venv. Candidate crontab per cohort (strippable prefix, $PY -> $RPY, exact revert round
+        # trip, lane-registry gate), unit drop-ins with blockers, sandboxed --help / import-probe verifier,
+        # forced-run probe script, write-path scan. Hermetic: fake trees, fake runner; no crontab/systemctl/bwrap.
+        "run_from_release_20261015",
+        ["tests/test_run_from_release_20261015.py"],
+    ),
+    (
         # W1-9 monitor fold coverage (2026-10-11, MONITOR_FOLD_COVERAGE.md gaps 1/3/6): the registry's
         # freshness_contracts carry job_coverage_monitor's 12 DB checks, 8 pipeline_freshness and 8
         # system_freshness targets (each pinned to its source line); supervisor_breach_detector raises STALE_OUTPUT
