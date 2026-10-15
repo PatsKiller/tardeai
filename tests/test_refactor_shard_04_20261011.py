@@ -561,7 +561,9 @@ def test_pool_cron_argv_receipts_and_incomplete_pool(state, capsys):
     import types
     mod = load_script("hermes_research_worker_pool")
     calls = []
-    report = {"lanes": {"research": {"scanned": 2, "upserted": 1}}}
+    report = {"lanes": {"research": {"scanned": 2, "upserted": 1}},
+              "lane_outcomes": {"research": {"outcome": "produced", "ok": True}},
+              "failures": [], "ok": True}
 
     def run_pool(*args, **kwargs):
         calls.append((args, kwargs))
@@ -579,11 +581,23 @@ def test_pool_cron_argv_receipts_and_incomplete_pool(state, capsys):
     path = state / "data/runtime/hermes-research-worker-pool_last.json"
     receipt = json.loads(path.read_text())
     assert receipt["status"] == "ok" and receipt["summary"]["upserted"] == 1
+    assert receipt["summary"]["lane_outcomes"] == {"research": "produced"}
     previous = receipt["ok_at"]
-    report["lanes"] = {"research": {"skipped": "no_runner"}}
-    assert mod.main(["--run", "--json"]) == 0
+    # 2026-10-15 intentional change (hermes-worker-pool-wire): an enabled lane
+    # with no runner used to exit 0 with a failed receipt; it is now a lane
+    # FAILURE — exit 3, receipt failed, ok_at preserved.
+    report.update(lanes={"research": {"skipped": "no_runner"}},
+                  lane_outcomes={"research": {"outcome": "no_runner", "ok": False}},
+                  failures=[{"lane": "research", "outcome": "no_runner", "reason": "x"}],
+                  ok=False)
+    assert mod.main(["--run", "--json"]) == 3
     receipt = json.loads(path.read_text())
-    assert receipt["status"] == "failed" and receipt["exit"] == 0 and receipt["ok_at"] == previous
+    assert receipt["status"] == "failed" and receipt["exit"] == 3 and receipt["ok_at"] == previous
+    assert receipt["summary"]["failures"] == [{"lane": "research", "outcome": "no_runner"}]
+    # a report without an ok verdict is never healthy (fail closed)
+    report.update(lanes={"research": {"scanned": 1}}, lane_outcomes={}, failures=[])
+    report.pop("ok")
+    assert mod.main(["--run", "--json"]) == 3
     report.update(error="fake pool failure")
     assert mod.main(["--run", "--json"]) == 1
     receipt = json.loads(path.read_text())

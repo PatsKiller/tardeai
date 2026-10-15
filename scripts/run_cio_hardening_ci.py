@@ -4887,6 +4887,18 @@ GATES = [
         "refactor_shard_06_20261011",
         ["tests/test_refactor_shard_06_20261011.py"],
     ),
+    (
+        # ANCHOR: HERMES_WORKER_POOL_WIRE_20261015 — tax_retirement / system_ops / custom_domain reported
+        # "no_runner" every hour from 2026-07-05 with exit 0. Real runners (existing coverage adapters, no new
+        # host, no LLM), expected_output_hours per lane, lane_outcomes + failures, exit 3 fail-closed, durable
+        # output clock, dry-run plan that exits 3 on no_runner/overdue (n8n shadow catches it), executor dry_run
+        # path, REVIEWED contract checks. Hermetic: faked DB/inbox, tmp_path state, locks and receipts.
+        "hermes_worker_pool_wire_20261015",
+        [
+            "tests/test_hermes_worker_pool_wire_20261015.py",
+            "tests/test_hermes_research_worker_pool.py",
+        ],
+    ),
 ]
 
 

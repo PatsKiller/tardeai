@@ -7,9 +7,18 @@
 #
 # Each lane is a bounded, lockable research worker. Lanes only ever WRITE
 # DISCOVERY CANDIDATES (via inbox.upsert_candidate) — never watchlists,
-# directives, proposals, or any producer table. Stage 1 wires runners for the
-# holdings + watchlist lanes (existing coverage adapters); Stages 2-4 register
-# runners for the rest via worker_pool.register_lane_runner(lane_id, fn).
+# directives, proposals, or any producer table. Runners register at import time
+# from the modules in worker_pool.RUNNER_MODULES (holdings/watchlist: worker_pool;
+# white_space, strategy, private_proxy, legal_domain: their Stage 2-4 modules;
+# tax_retirement, system_ops, custom_domain: coverage_lanes.py, wired 2026-10-15
+# after three months of silent "no_runner" skips).
+#
+# Fail closed on zero output (2026-10-15): an enabled lane with no runner, a
+# runner error, or no payload for longer than expected_output_hours is a pool
+# FAILURE (non-zero exit, failed lane receipt). There is deliberately no default
+# for expected_output_hours — every enabled lane states its own expectation.
+# Windows were set from the 2026-09-27..10-15 pool log (421 runs): roughly 3-4x
+# the longest observed gap between producing runs, never shorter than a cadence.
 #
 # Per-lane schema (defaults below apply when a key is omitted):
 #   enabled                        lane may run at all
@@ -30,6 +39,12 @@
 #   promotion_allowed              MUST be false (hard rule, validated)
 #   promotion_requires_operator    MUST be true  (hard rule, validated)
 #   do_no_harm_policy              MUST be respect (scorecard pause/tighten honored)
+#   expected_output_hours          REQUIRED when enabled (no default): the lane must
+#                                  return >= 1 payload within this many hours of
+#                                  its last output (or of tracking start); 0 means
+#                                  zero output is healthy and needs zero_output_reason
+#   zero_output_reason             why an empty run is a healthy result (hours = 0)
+#   disabled_reason                REQUIRED when enabled: false — never silently off
 
 version: 1
 
@@ -56,12 +71,14 @@ lanes:
     cadence_minutes: 240
     max_candidates_per_run: 10
     allowed_domains: [portfolio_holdings]
+    expected_output_hours: 48   # observed max gap 12 h
 
   watchlist:
     description: Stale-intelligence / missing-research findings over the governed watchlist.
     cadence_minutes: 240
     max_candidates_per_run: 10
     allowed_domains: [watchlist]
+    expected_output_hours: 48   # observed max gap 12 h
 
   white_space:
     description: >-
@@ -71,6 +88,7 @@ lanes:
     max_candidates_per_run: 8
     max_llm_reviews_per_run: 4
     blocked_domains: [broker_ops]
+    expected_output_hours: 72   # observed max gap 19 h
 
   strategy:
     description: Trading-strategy white-space research (STRATEGY_CANDIDATE emissions).
@@ -78,6 +96,7 @@ lanes:
     max_candidates_per_run: 5
     max_llm_reviews_per_run: 3
     allowed_domains: [watchlist, sectors, industry_themes, technology, macro]
+    expected_output_hours: 96   # observed max gap 25 h
 
   private_proxy:
     description: >-
@@ -86,6 +105,7 @@ lanes:
     cadence_minutes: 1440
     max_candidates_per_run: 5
     allowed_domains: [watchlist, sectors, industry_themes, technology]
+    expected_output_hours: 96   # observed max gap 25 h
 
   legal_domain:
     description: >-
@@ -101,6 +121,7 @@ lanes:
     sensitive_domain: true
     requires_citations: true
     cloud_allowed: false
+    expected_output_hours: 336  # niche pack: observed max gap 149 h (5 empty runs of 17)
 
   tax_retirement:
     description: >-
@@ -113,12 +134,23 @@ lanes:
     sensitive_domain: true
     requires_citations: true
     cloud_allowed: false
+    # runner: coverage_lanes.tax_retirement_runner (coverage.taxes_findings +
+    # retirement_findings over news_articles/hermes_research_intelligence, cited rows only)
+    expected_output_hours: 72
 
   system_ops:
     description: Platform/system-operations research findings (health, pipelines, connectors).
     cadence_minutes: 360
     max_candidates_per_run: 8
     allowed_domains: [system_ops, broker_ops]
+    # runner: coverage_lanes.system_ops_runner (coverage.system_ops_findings over
+    # system_health_checks, behind a 48 h source-freshness probe that raises)
+    expected_output_hours: 0
+    zero_output_reason: >-
+      A healthy platform has no failing health-check components, so an empty run
+      is correct. The runner raises (lane error, pool failure) when
+      system_health_checks is unreadable, empty, or not written for 48 h, so
+      "nothing failing" is never reported from a dead source.
 
   custom_domain:
     description: >-
@@ -129,3 +161,6 @@ lanes:
     allowed_domains: [custom, legal_general, health_general, technology_general]
     sensitive_domain: true
     requires_citations: true
+    # runner: coverage_lanes.custom_domain_runner (classification_keywords of the
+    # admitted custom domains → term recurrence, denylist + blocked source types)
+    expected_output_hours: 336
