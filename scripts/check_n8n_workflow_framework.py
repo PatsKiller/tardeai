@@ -1146,7 +1146,13 @@ def _check_expected_output(c: Mapping | None) -> dict:
             f"contract {c.get('id')} declares no expected_output rule: exit 0 with nothing produced "
             "would read as success (operator rule 2026-10-15)",
         )
-    p: list[str] = []
+    # 2026-10-15 train 3: both the shared runtime validator (scripts/lib/n8n_output_verdict.py, audit DD07) and the
+    # checker's stricter closed-schema checks (audit DD15) apply; either one failing fails FW-M6.
+    try:
+        from scripts.lib.n8n_output_verdict import validate_expected_output  # noqa: PLC0415
+    except ImportError:  # scripts/ on sys.path
+        from lib.n8n_output_verdict import validate_expected_output  # type: ignore[no-redef]  # noqa: PLC0415
+    p: list[str] = list(validate_expected_output(eo))
     extra = sorted(set(eo) - EXPECTED_OUTPUT_KEYS)
     if extra:
         p.append(f"unknown keys {extra} (closed schema)")
@@ -1212,7 +1218,7 @@ def _check_expected_output(c: Mapping | None) -> dict:
     ):
         p.append("on_violation must be {run_state: RUN_FAILED, reason: empty_output, notifier_priority: P1|P2}")
     if p:
-        return _r(FAIL, "expected_output invalid: " + "; ".join(p))
+        return _r(FAIL, "expected_output invalid: " + "; ".join(dict.fromkeys(p)))
     return _r(PASS, f"expected_output rule {rule} on {pf} ({eo.get('unit')}); enforcement is runtime (23.24-M6b)")
 
 

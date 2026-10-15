@@ -283,19 +283,35 @@ Step-by-step, with the implementing file:
    `scripts/n8n_run_relay.py`.
 3. **Run key.** `d:<lane>:<mode>:<YYYYMMDDTHHMM>` (server-minted by `/due`), `:a<n>` per retry attempt
    (`scripts/lib/n8n_due.py` `slot_key`, `KEY_RE`). Process steps use `p:<lane>:<mode>:<slot>`
-   (`scripts/n8n_workflow_templates.py` `PROCESS_KEY_PREFIX`): accepted as a caller key today; **a live `p:` run is
-   refused by the executor's effect gate (`effect_slot_unknown`) until the gateway validates `p:` keys against the
-   process manifest (P, packet `docs/ops/packets/n8n-hermes-learning-flow-*`, TRK-21/33)**.
-4. **Gateway.** HMAC, scope, allowlist (`config/n8n_run_allowlist.json`), never-list, mode; records REQUESTED;
-   repeated `idempotency_key` returns the original (no second row). — `scripts/lib/n8n_coordination_gateway.py`.
+   (`scripts/n8n_workflow_templates.py` `PROCESS_KEY_PREFIX`), validated by the gateway against the process spec and
+   manifest (`scripts/lib/n8n_process_keys.py`, #1760) and stored with a base-key `slot_key` marker. **Correction
+   (2026-10-15 audit DD03):** this document previously said a live `p:` run was universally refused; that was false
+   — only an EFFECT-KEYED lane checked the marker, so a `p:` row of an unkeyed lane written by any other path ran.
+   Now every executor path (v1 drain, v2 workers, `:a<n>` retries) refuses a `p:` row without the validated marker
+   (`RUN_REFUSED process_key_unvalidated`), `host_run_request` refuses `p:` keys, an `:a<n>` key is admitted only
+   after attempt n-1 finished `retryable`, and a LIVE relay request whose key is in no validated namespace
+   (`d:`/`e:`/`g:`/`p:`, or the relay-minted `n8n-wf-<workflow>-<execution>` key the generated per-lane workflows
+   get because they send none) is refused (`run_key_namespace_refused`). (E)
+4. **Gateway.** HMAC, scope, allowlist (`config/n8n_run_allowlist.json`, re-validated per request: a revoked lane
+   is refused on the next request, an unreadable file refuses every run — 2026-10-15 audit DD08), never-list, mode;
+   records REQUESTED. A repeated `idempotency_key` returns the original row ONLY for the same request identity
+   (lane, mode, requesting workflow); any other identity is `run_idempotency_conflict` (audit DD03: it used to
+   return another lane's row as a duplicate success). The relay also refuses a gateway reply naming another
+   lane/mode/run (`relay_identity_mismatch`). — `scripts/lib/n8n_coordination_gateway.py`.
 5. **Executor.** Claims the row, applies the stage clamp, builds the child env, takes the lane's lock
    (`<lock>.dryrun` for dry runs), runs `safe_flock.sh <lock> timeout -k 30 <timeout_s> <argv>`. Class caps,
    reaper and DLQ/breaker on v2 (`config/n8n_executor.json`, `config/n8n_retry_policies.json`). —
    `scripts/n8n_run_executor.py`.
-6. **Effect claim.** Only for a LIVE run of a lane listed in `config/n8n_effect_keys.json`; owner-epoch fence;
-   refused claim = `RUN_REFUSED effect:<reason>`, nothing runs. — `scripts/lib/effect_claim.py`.
-7. **Receipts.** `RunReceipt@v1` (serial) or `@v2` (workers) at `data/runtime/n8n_runs/<run_id>.json`; the lane's own
-   `LaneRunReceipt@v1` at its `output_signal`. — executor; `scripts/lib/lane_last_receipt.py`.
+6. **Effect claim.** Only for a LIVE run of a lane listed in `config/n8n_effect_keys.json`; owner-epoch fence at
+   ADMISSION; refused claim = `RUN_REFUSED effect:<reason>`, nothing runs. A non-zero exit holds the key for
+   operator reconciliation unless proven pre-effect; late writes are fenced only for lanes that call
+   `assert_fence()` (none today; contracts §7). — `scripts/lib/effect_claim.py`.
+7. **Receipts.** `RunReceipt@v1` (serial) or `@v2`/`@v3` (workers; v3 = an output rule was evaluated) at
+   `data/runtime/n8n_runs/<run_id>.json`; the lane's own `LaneRunReceipt@v1/@v2` at its `output_signal`, and a v2
+   receipt bound to the attempt (`TRADEAI_RUN_ID`) written once, immutably, under `data/runtime/lane_attempts/`;
+   the executor's `output_verdict` turns an exit-0 run that produced nothing into `RUN_FAILED empty_output` for a
+   lane whose contract declares `expected_output` (none yet). — executor; `scripts/lib/lane_last_receipt.py`,
+   `scripts/lib/n8n_output_verdict.py`.
 8. **Run outcome.** `run_outcomes` row: `success | failed | refused_policy | skipped_lock` (`pending | unknown`
    while not terminal). — `scripts/lib/n8n_fabric_store.py`.
 9. **Run Lane.** Polls `GET /run_outcome` (first 5 s, max 60 s), retries up to `max_attempts` (≤ 3) with backoff
@@ -324,12 +340,24 @@ Step-by-step, with the implementing file:
 | Workflow drift | live graph ≠ git | `scripts/check_n8n_workflow_drift.py` | P1 | (E) checker; (P) schedule + P1 (TRK-40) |
 | n8n down | container, DB or runner failure | host watchers | host dead-man → notifier | (P) host dead-man outside n8n (GAP §9 item 6; WS1-15) |
 
+### 8.1a Policy revocation semantics (2026-10-15, audit DD08 — corrects earlier "re-read per request" claims)
+
+| Policy | Where it is read | Revocation takes effect |
+|---|---|---|
+| Run allowlist (`config/n8n_run_allowlist.json`) | gateway per request; relay per request; executor per claimed run, before the spawn (stat-cached `PolicyFile`, `scripts/lib/n8n_policy_reload.py`) | next request / next claimed run, no restart; an unreadable replacement refuses everything (fail safe); receipts record `policy.allowlist_version` |
+| Effect keys (`config/n8n_effect_keys.json`) | executor per live run (stat signature) | next live run; unreadable = every live run refused |
+| Expected-output rules (`config/n8n_health_contracts.json`) | executor per run | next run; unreadable = `output_verdict: rules_unreadable`, state unchanged (residual) |
+| Registry stage / due inputs / retry policies (due) | per call / per drain pass | next call |
+| Relay live-lane list (`TRADEAI_N8N_RELAY_LIVE_LANES`), relay bearer, gateway HMAC keys | process environment at START (EnvironmentFile) | **only after a restart** of that unit (operator `systemctl --user restart`); the allowlist and stage clamp still refuse a revoked lane meanwhile |
+| Never-list | static: CI tests over the allowlist + gateway `FORBIDDEN_ROUTE_TOKENS` (code) | at release |
+| A run already SPAWNED | — | not cancelled (P); a lane that calls `assert_fence()` is refused at its write after an operator release |
+
 ### 8.2 Recovery mechanisms
 
 | Mechanism | Implementation | Status |
 |---|---|---|
-| Retry (one owner) | Run Lane retry budget + backoff; legacy: `retryOnFail` on generic HTTP nodes + `config/n8n_retry_policies.json` via `scripts/lib/n8n_due.py` | (E); legacy callers not on Run Lane (P) |
-| Dead letter | ledger `dead_letters`; `scripts/n8n_dlq.py` (list, release) | (E) |
+| Retry (one owner per key namespace) | `p:` (fabric Run Lane): Run Lane schedules, the host never re-runs and admits `:a<n>` only after a `retryable` verdict; `d:`/`e:`/`g:`: `config/n8n_retry_policies.json` via `scripts/lib/n8n_due.py` RETRY_DUE (the allowlist `retry` loop no longer runs for them); other keys: the executor's allowlist loop (v1). Every receipt carries the typed `retry` block (`owner, attempts_remaining, retryable, next_attempt_at, terminal_reason, dlq_ref`), surfaced on `RunOutcome@v1` | (E) 2026-10-15 (audit DD04); Run Lane does not yet read `retry.retryable` (P: generator change + import) |
+| Dead letter | ledger `dead_letters` written on v1 AND v2 (v1 opens no breaker); `retry.dlq_ref` names the row; `scripts/n8n_dlq.py` (list, release) | (E) |
 | Circuit breaker | ledger `breakers` (`breaker_threshold: 3`) | (E); half-open (P, WS1-05) |
 | Fallback | commented cron line; `docs/ops/ROLLBACK_COMMANDS.md` | (E) |
 | Fenced single-owner switch | `effect_claim.py set-owner` (compare-and-swap on epoch) | (E) code; first use with hermes learning (P, TRK-33) |
@@ -413,10 +441,10 @@ enforced, 0 accepted at 2026-10-15). Policy ratification accepts the direction; 
 | Q4 | n8n DB role superuser | an n8n compromise is a DB compromise | operator | WS1b-12 |
 | Q5 | Dead-man inside n8n | silent total failure | operator + agent | GAP §9 item 6 |
 | Q6 | Single host, no UPS, never cold-booted | total outage | operator | TRK-30 |
-| Q7 | `p:` keys not validated by the gateway | live process steps impossible (fail-closed today) | Agent A | TRK-21/33 |
+| Q7 | `p:` keys: gateway validation (#1760) + executor marker check + retry admission (audit DD03/DD04) | closed in code; a live process step still needs spec mode live + owner rows | Agent A | TRK-21/33 |
 | Q8 | `expected_output` rule absent from all 126 contracts | empty successes stay green | contract owners | FW-M6 (this PR measures it) |
 | R1 | Legacy per-lane workflows lack errorWorkflow/timeout | failures unrouted | Agent A | scorecard remediation order |
-| R2 | The relay serves `GET /momentum-lifecycle` outside its `ROUTES` table | an unreviewed route surface | Agent A | scorecard wave 3 |
+| R2 | ~~The relay serves `GET /momentum-lifecycle` outside its `ROUTES` table~~ — fixed 2026-10-15 (audit DD14: `ROUTES` = `ROUTE_HANDLERS`, the only dispatch path) | — | Agent A | done |
 
 Measured compliance (this PR): **0 of 18 active workflows fully compliant, 46.9% by element**; the reference
 mature workflow scores 100% — `docs/implementation/n8n-maturity/N8N_FRAMEWORK_SCORECARD_20261015.md`.

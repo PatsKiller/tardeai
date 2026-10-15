@@ -395,7 +395,8 @@ def _finding(source: str, item: str, severity: str, detail: str, now: float) -> 
 
 
 def finalize_outcome(store: Any, run_row: Mapping[str, Any], policy: Optional[RetryPolicy], *, breaker_threshold: int,
-                     now: float, severity: Optional[str] = None, klass: Optional[str] = None) -> Outcome:
+                     now: float, severity: Optional[str] = None, klass: Optional[str] = None,
+                     max_attempts_override: Optional[int] = None, open_breakers: bool = True) -> Outcome:
     """Verdict + dead letter + breaker for one FINISHED run row (as returned by ``LedgerRunStore.finish``).
 
     ``store`` is a ``LedgerRunStore``. Writes ``runs.verdict``; on terminal, or retryable with
@@ -409,7 +410,10 @@ def finalize_outcome(store: Any, run_row: Mapping[str, Any], policy: Optional[Re
     class (``klass`` or the row's ``class``) not permitted by the policy ⇒ terminal; send/learn ⇒ one attempt,
     never retryable; llm with a COST_CAP/PEAK_SKIP reason ⇒ terminal. ``policy`` None (missing/unknown name) ⇒
     ``UNRESOLVED_POLICY``: every failure terminal. The dead letter records ``class`` and the effective
-    ``max_attempts`` so ``dead_letter_rearmable`` can refuse re-arming single-attempt / send / learn slots."""
+    ``max_attempts`` so ``dead_letter_rearmable`` can refuse re-arming single-attempt / send / learn slots.
+
+    2026-10-15 (audit DD04): ``max_attempts_override`` = the budget of a non-host retry owner; ``open_breakers``
+    False (executor v1) records the dead letter without pausing the lane."""
     if policy is None:
         log.warning("finalize_outcome: no retry policy for lane %r; terminal on failure", run_row.get("lane_id"))
         policy = UNRESOLVED_POLICY
@@ -420,6 +424,12 @@ def finalize_outcome(store: Any, run_row: Mapping[str, Any], policy: Optional[Re
     exit_code = run_row.get("exit_code")
     v = class_verdict(str(run_row["state"]), exit_code if _int(exit_code) else None, reason, policy, klass)
     max_attempts = effective_max_attempts(policy, klass)
+    if max_attempts_override is not None:
+        # 2026-10-15 (audit DD04): the run's retry OWNER sets the budget when it is not the host policy (Run Lane's
+        # process-step budget for p: keys; 1 for executor-inline keys, whose retries already ran). The class rails
+        # still cap it (send/learn = 1).
+        max_attempts = max(1, min(int(max_attempts_override), max_attempts if klass in SINGLE_ATTEMPT_CLASSES
+                                  else int(max_attempts_override)))
     with store.lock:
         store.set_verdict(str(run_row["run_id"]), v)
         out = Outcome(verdict=v)
@@ -443,7 +453,7 @@ def finalize_outcome(store: Any, run_row: Mapping[str, Any], policy: Optional[Re
                                      now))
         out.consecutive_dead = store.consecutive_dead(lane)
         brk = store.breaker(lane)
-        if out.consecutive_dead >= breaker_threshold and not (brk and brk["open"]):
+        if open_breakers and out.consecutive_dead >= breaker_threshold and not (brk and brk["open"]):
             store.open_breaker(lane, out.consecutive_dead, now)
             out.breaker_opened = True
             out.findings.append(_finding("dlq", f"breaker:{lane}", "P2",

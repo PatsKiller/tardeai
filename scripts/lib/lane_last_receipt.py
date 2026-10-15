@@ -23,6 +23,16 @@ a dispatcher or the registry reads instead, as a ``json_key`` signal on ``ok_at`
 
 :func:`enforce_readonly` puts a dry run's psycopg2 session in READ ONLY at the server.
 
+2026-10-15 (third-party audit DD07, "output truth"): ``LaneRunReceipt@v2``. A writer that passes
+``produced_count`` (and optionally ``attempted_count``, ``skipped_reasons``, ``output_evidence``,
+``empty_reason``) writes schema v2: every v1 field plus those, plus the ATTEMPT identity the n8n executor hands
+the lane in its env (``TRADEAI_RUN_ID``, ``TRADEAI_RUN_ATTEMPT``, ``TRADEAI_RUN_MODE``, ``TRADEAI_CODE_SHA``).
+The mutable ``<lane>_last.json`` alone cannot prove the CURRENT attempt produced anything (a previous success or
+a concurrent cron write satisfies it), so a v2 receipt with a run id is ALSO written once, immutably (``O_EXCL``),
+to ``data/runtime/lane_attempts/<lane_id>/<run_id>.json`` (:func:`attempt_receipt_path`). The executor's
+``output_verdict`` reads only that per-attempt file and requires its ``run_id`` / ``lane_id`` to be the run's.
+The process exit field is ``exit`` (not ``exit_code``) in both versions.
+
 Monitor bookkeeping only: MBI_BEHAVIOR = 0, no broker, no send.
 """
 
@@ -37,6 +47,14 @@ from pathlib import Path
 from typing import Any, Mapping
 
 SCHEMA = "LaneRunReceipt@v1"
+SCHEMA_V2 = "LaneRunReceipt@v2"
+#: Attempt identity the n8n executor sets on the lane's env (scripts/n8n_run_executor.py RUN_ID_ENV ...).
+RUN_ID_ENV = "TRADEAI_RUN_ID"
+RUN_ATTEMPT_ENV = "TRADEAI_RUN_ATTEMPT"
+RUN_MODE_ENV = "TRADEAI_RUN_MODE"
+CODE_SHA_ENV = "TRADEAI_CODE_SHA"
+ATTEMPTS_DIR = "lane_attempts"
+_SAFE_RUN_ID = re.compile(r"[^A-Za-z0-9._-]")
 
 _TYPE_PREFIX = re.compile(r"^\s*([A-Za-z_][\w.]*)\s*:")
 _MAX_ERROR = 300
@@ -75,6 +93,15 @@ def receipt_path(
     if not lane_id or "/" in lane_id or "\\" in lane_id or lane_id.startswith("."):
         raise ValueError(f"bad lane_id {lane_id!r}")
     return runtime_dir(state_root or root) / f"{lane_id}_last.json"
+
+
+def attempt_receipt_path(lane_id: str, run_id: str, state_root: Path | str | None = None) -> Path:
+    """``<state_root>/data/runtime/lane_attempts/<lane_id>/<run_id with ':' -> '_'>.json`` (immutable, one per attempt)."""
+    base = receipt_path(lane_id, state_root).parent
+    safe = _SAFE_RUN_ID.sub("_", str(run_id))[:160]
+    if not safe or safe.startswith("."):
+        raise ValueError(f"bad run_id {run_id!r}")
+    return base / ATTEMPTS_DIR / lane_id / f"{safe}.json"
 
 
 def now_iso() -> str:
@@ -130,6 +157,12 @@ def build_receipt(
     error: str | None = None,
     previous_ok_at: str | None = None,
     finished_at: str | None = None,
+    produced_count: int | None = None,
+    attempted_count: int | None = None,
+    skipped_reasons: Mapping[str, int] | None = None,
+    output_evidence: list[Mapping[str, Any]] | None = None,
+    empty_reason: str | None = None,
+    run_id: str | None = None,
 ) -> dict[str, Any]:
     finished = finished_at or now_iso()
     doc: dict[str, Any] = {
@@ -147,6 +180,31 @@ def build_receipt(
     }
     if error:
         doc["error"] = _scrub_error(str(error))
+    rid = run_id if run_id is not None else os.environ.get(RUN_ID_ENV)
+    if rid:
+        doc["run_id"] = str(rid)[:160]
+        attempt = os.environ.get(RUN_ATTEMPT_ENV)
+        doc["attempt"] = int(attempt) if attempt and attempt.isdigit() else None
+        doc["run_mode"] = os.environ.get(RUN_MODE_ENV) or None
+        doc["code_sha"] = os.environ.get(CODE_SHA_ENV) or None
+    if produced_count is not None:
+        if isinstance(produced_count, bool) or not isinstance(produced_count, int) or produced_count < 0:
+            raise ValueError("produced_count must be an int >= 0")
+        if attempted_count is not None and (
+            isinstance(attempted_count, bool) or not isinstance(attempted_count, int) or attempted_count < 0
+        ):
+            raise ValueError("attempted_count must be an int >= 0")
+        skipped = {str(k): int(v) for k, v in (skipped_reasons or {}).items() if not isinstance(v, bool)}
+        doc.update(
+            {
+                "schema": SCHEMA_V2,
+                "produced_count": produced_count,
+                "attempted_count": attempted_count,
+                "skipped_reasons": skipped,
+                "output_evidence": [dict(e) for e in (output_evidence or [])],
+                "empty_reason": empty_reason if produced_count == 0 else None,
+            }
+        )
     return doc
 
 
@@ -160,10 +218,17 @@ def write_lane_receipt(
     summary: Mapping[str, Any] | None = None,
     error: str | None = None,
     path: Path | str | None = None,
+    produced_count: int | None = None,
+    attempted_count: int | None = None,
+    skipped_reasons: Mapping[str, int] | None = None,
+    output_evidence: list[Mapping[str, Any]] | None = None,
+    empty_reason: str | None = None,
 ) -> Path | None:
     """Atomically replace the lane receipt for one REAL run. Returns the path, or None on failure.
 
-    Never raises: the run's own result comes first. Never call this from a dry-run branch.
+    Never raises: the run's own result comes first. Never call this from a dry-run branch. With ``produced_count``
+    the receipt is LaneRunReceipt@v2 and, when the executor set ``TRADEAI_RUN_ID``, it is also written once,
+    immutably, as this attempt's receipt (:func:`attempt_receipt_path`).
     """
     try:
         target = Path(path) if path else receipt_path(lane_id)
@@ -176,7 +241,14 @@ def write_lane_receipt(
             summary=summary,
             error=error,
             previous_ok_at=previous_ok_at(target),
+            produced_count=produced_count,
+            attempted_count=attempted_count,
+            skipped_reasons=skipped_reasons,
+            output_evidence=output_evidence,
+            empty_reason=empty_reason,
         )
+        if doc.get("schema") == SCHEMA_V2 and doc.get("run_id"):
+            _write_attempt_receipt(lane_id, doc, target)
         try:
             from scripts.lib.atomic_json_store import atomic_write_json
         except ImportError:
@@ -186,6 +258,24 @@ def write_lane_receipt(
     except Exception as exc:  # noqa: BLE001 -- the receipt must never mask the run's own result
         print(f"[{lane_id}] lane receipt write failed: {type(exc).__name__}", file=sys.stderr)
         return None
+
+
+def _write_attempt_receipt(lane_id: str, doc: Mapping[str, Any], last_target: Path) -> Path | None:
+    """Create the per-attempt receipt with O_EXCL: written once, never replaced (a second write for the same attempt
+    is refused and reported). Sits next to ``last_target``'s directory so a test or explicit path stays together."""
+    attempt = attempt_receipt_path(lane_id, str(doc["run_id"]), last_target.parent.parent.parent)
+    attempt.parent.mkdir(parents=True, exist_ok=True)
+    body = (json.dumps(dict(doc), indent=1, sort_keys=True, default=str) + "\n").encode("utf-8")
+    try:
+        fd = os.open(attempt, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+    except FileExistsError:
+        print(f"[{lane_id}] attempt receipt already exists (immutable): {attempt.name}", file=sys.stderr)
+        return None
+    with os.fdopen(fd, "wb") as fh:
+        fh.write(body)
+        fh.flush()
+        os.fsync(fh.fileno())
+    return attempt
 
 
 def write_receipt(

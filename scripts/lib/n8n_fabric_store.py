@@ -236,10 +236,14 @@ class RunOutcomeStore:
                 out[k] = row[k]
             out["terminal"] = out["status"] in TERMINAL_STATUSES
             out["source"] = "outcome"
+            run = run_store.get(run_id) if run_store is not None else None
+            if run is not None:
+                _attach_identity(out, run)
             return out
         run = run_store.get(run_id) if run_store is not None else None
         if run is None:
             return out
+        _attach_identity(out, run)
         receipt = run.get("receipt") if isinstance(run.get("receipt"), Mapping) else {}
         state = run.get("state")
         out.update(
@@ -261,6 +265,24 @@ class RunOutcomeStore:
             out["effect_key"] = effect["key"]
         out["terminal"] = out["status"] in TERMINAL_STATUSES
         return out
+
+
+def _attach_identity(out: dict[str, Any], run: Mapping[str, Any]) -> None:
+    """2026-10-15 (audit DD03/DD04, additive): the run's immutable request identity, so a caller can verify the outcome
+    is the one it asked for, and the typed retry decision (owner, retryable, next_attempt_at, attempts_remaining,
+    terminal_reason, dlq_ref) the executor recorded on the receipt."""
+    out["identity"] = {
+        "run_id": run.get("run_id"),
+        "lane_id": run.get("lane_id"),
+        "requested_mode": run.get("mode"),
+        "requested_by": run.get("requested_by"),
+        "caller_id": run.get("caller_id"),
+        "slot_key": run.get("slot_key"),
+        "attempt": run.get("attempt"),
+    }
+    receipt = run.get("receipt") if isinstance(run.get("receipt"), Mapping) else {}
+    retry = receipt.get("retry")
+    out["retry"] = dict(retry) if isinstance(retry, Mapping) else None
 
 
 # ── comms intents ──────────────────────────────────────────────────────────────────────────────────────────────

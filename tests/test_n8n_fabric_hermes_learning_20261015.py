@@ -725,13 +725,21 @@ def test_no_owner_row_fails_closed(tmp_path):
     assert {s["id"]: s for s in _summary(tmp_path)["steps"]}["claimed"]["status"] == "skipped_effect"
 
 
-def test_a_failed_step_finishes_failed_and_is_reclaimable(tmp_path):
+def test_a_failed_step_finishes_failed_and_is_held_until_released(tmp_path):
     marker, ledger = tmp_path / "ran", tmp_path / "ledger.sqlite"
     _set_owner(ledger, "cron", None)
     cfg = _effect_cfg(tmp_path, cron_claim=True)
     r = _runner(tmp_path, _manifest(tmp_path, marker, rc=3), claim=True, cfg=cfg, ledger=ledger)
     assert r.returncode == 0, r.stdout + r.stderr
     assert _claim_row(ledger, KEY) == ("FAILED", "cron"), r.stdout + r.stderr
+    # 2026-10-15 (audit DD05): the failed step may have written before its non-zero exit, so the slot is HELD until an
+    # operator release (after checking the target); the second run is refused and does not execute.
+    r = _runner(tmp_path, _manifest(tmp_path, marker), claim=True, cfg=cfg, ledger=ledger)
+    assert marker.read_text() == "x\n" and _claim_row(ledger, KEY) == ("FAILED", "cron"), r.stdout + r.stderr
+    from scripts.lib.effect_claim import EffectClaimStore
+    from scripts.lib.n8n_coordination_ledger import CoordinationLedger
+
+    EffectClaimStore(CoordinationLedger(ledger)).release(KEY, by="t", now=1.0, note="target checked")
     r = _runner(tmp_path, _manifest(tmp_path, marker), claim=True, cfg=cfg, ledger=ledger)
     assert marker.read_text() == "x\nx\n" and _claim_row(ledger, KEY) == ("DONE", "cron")
 
