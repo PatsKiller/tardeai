@@ -557,6 +557,12 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
             assert row["scheduler"]["kind"] == "cron" and isinstance(allow[lane]["live_arg"], list), lane
             assert clamp_mode(lane, "live", rows)["effective_mode"] == "live", lane
             continue
+        if lane in CW_NEW:
+            # 2026-10-15 cutover waves (scripts/n8n_cutover_wave.py): cron canary (or its later dispatcher cutover row)
+            # with the cron line's flock lock; tests/test_n8n_cutover_wave_20261015.py pins every field.
+            assert mode == "live" and row["scheduler"].get("stage") in ("canary", "cutover"), lane
+            assert row["scheduler"]["kind"] == "n8n" or LD.r1_canary_lock_matches(row, allow[lane])[0], lane
+            continue
         assert mode in ("off", "dry_run"), lane
         if mode == "off":
             continue
@@ -611,10 +617,10 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
     # train 2026-10-15 d merged both sets. (Train d had deferred build-symbol-profiles-at-0-19 / indicator-engine for
     # DD01; restored 2026-10-15 by the operator DD01 ruling: transitive lazy broker reach accepted, trading lock.)
     # + 6: shadow wave LD-W1 (lane disposition 2026-10-15; tests/test_shadow_wave_ld_w1_20261015.py).
-    assert len(shadow) == 54 + 3 + 15 - len(CANARY_ROWS) - 17 + 10 + 11 + len(N8N_NATIVE_SHADOW) + 1 - 2 + 2 - len(CANARY_WAVE_20261014) + 2 + len(SYSTEMD_TIMER_SHADOW) + 6, shadow
+    assert len(shadow) == 54 + 3 + 15 - len(CANARY_ROWS) - 17 + 10 + 11 + len(N8N_NATIVE_SHADOW) + 1 - 2 + 2 - len(CANARY_WAVE_20261014) + 2 + len(SYSTEMD_TIMER_SHADOW) + 6 - len(CW_NEW), shadow
     # heartbeat-watch moved shadow → canary (N8N_NATIVE_CANARY) 2026-10-11.
     assert sorted(r["lane_id"] for r in rows if LD.dispatch_mode(r) == "live") == sorted(
-        CANARY_ROWS | N8N_NATIVE_CANARY | set(CANARY_WAVE_20261014)
+        CANARY_ROWS | N8N_NATIVE_CANARY | set(CANARY_WAVE_20261014) | CW_NEW
     )
 
 
@@ -622,6 +628,10 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
 CANARY_ROWS = frozenset({"research-insight-extractor"})
 #: canary-wave-20261014 (stage canary, mode live, cron flock lock == allowlist lock); single source in its own test.
 from tests.test_canary_wave_20261014 import CANARY_WAVE_20261014  # noqa: E402
+from tests.support import n8n_cutover_waves as _CW  # noqa: E402
+
+#: 2026-10-15 cutover waves: lanes promoted to canary that no earlier wave set already counts.
+CW_NEW = frozenset(_CW.PROMOTED) - set(CANARY_WAVE_20261014) - CANARY_ROWS
 
 
 #: wave D2: allowlist entries that existed (with a live_arg) before the dispatcher row was added.

@@ -28,7 +28,7 @@ for all 18 and for the reference).
 
 ## 1. Result
 
-**0 of 18 active workflows statically conformant; 0 of 18 activation-eligible. Static conformance 286/531 = 53.9%**
+**0 of 18 active workflows statically conformant; 0 of 18 activation-eligible. Static conformance 286.5/531 = 54.0%** (re-measured after the 2026-10-15 n8n cutover waves)
 (up to 31 elements per workflow, n/a excluded; platform elements reported separately and gated). 207 failing elements (2026-10-15 expected_output PR: FW-M6 now passes on the 12 workflows whose
 contract carries an evidence-derived `expected_output` rule; was 274/531 = 51.6%, 220 failing).
 
@@ -69,7 +69,7 @@ probes): 1 statically conformant (the reference), 2064/4877 = 42.3%, 0 activatio
 | `tradeai-fabric-run-lane` | resilience | Y | N | P | P | Y | P | Y | n/a | 18.5/30 (61.7%) | UNPROVEN (18) | no | FW-C1, FW-C2, FW-C3, FW-M4, FW-M5, FW-M6, FW-A2, FW-A3, FW-A6, FW-R3, FW-R5 |
 | `tradeai-fabric-error` | resilience | Y | N | P | P | Y | P | Y | n/a | 15.5/26 (59.6%) | UNPROVEN (9) | no | FW-C1, FW-C2, FW-C3, FW-M5, FW-M6, FW-A1, FW-A2, FW-A3, FW-R3 |
 
-**Fleet:** 18 workflows, 0 statically conformant, 0 activation-eligible; static conformance 286/531 = 53.9%; 207 failing elements (train 3: +1 FW-S2 for momentum-lifecycle-candidate after the relay route fix, audit DD14; 2026-10-15 expected_output PR: -12 FW-M6).
+**Fleet:** 18 workflows, 0 statically conformant, 0 activation-eligible; static conformance 286.5/531 = 54.0%; 207 failing elements (train 3: +1 FW-S2 for momentum-lifecycle-candidate after the relay route fix, audit DD14; 2026-10-15 expected_output PR: -12 FW-M6).
 
 "Runtime" = the runtime obligations that apply to the workflow (§23.24 crosswalk rows marked
 `not_checkable_offline`), all UNPROVEN: 18 for a workflow that requests lane runs, 9 for one that does not.

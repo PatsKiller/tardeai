@@ -638,9 +638,10 @@
         "kind": "cron",
         "expression": "0 6 * * *",
         "match": "scripts/source_attribution_monitor.py",
-        "stage": "shadow",
+        "stage": "canary",
         "wave": "D2",
-        "command_text": "cd $PROJ && flock -n /tmp/source_attribution_monitor.lock $PY scripts/source_attribution_monitor.py >> logs/source_attribution_monitor.log 2>&1"
+        "command_text": "cd $PROJ && flock -n /tmp/source_attribution_monitor.lock $PY scripts/source_attribution_monitor.py >> logs/source_attribution_monitor.log 2>&1",
+        "cutover_wave": "CW1"
       },
       "expected_cadence_hours": 24,
       "state": "ACTIVE",
@@ -663,7 +664,7 @@
         "f_evidence": "~73 health/monitor mechanisms across cron (23), timers (23), health-tick steps (17), services (4), n8n (6); ≥18 independently check \"is X fresh\""
       },
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
           "0 6 * * *"
         ],
@@ -2857,9 +2858,10 @@
         "kind": "cron",
         "expression": "*/30 * * * *",
         "match": "scripts/backfill_subject_identity.py --all --apply",
-        "stage": "shadow",
+        "stage": "canary",
         "wave": "W4",
-        "command_text": "cd $PROJ && flock -n /tmp/identity_sweep.lock $PY scripts/backfill_subject_identity.py --all --apply >> logs/identity_sweep.log 2>&1"
+        "command_text": "cd $PROJ && flock -n /tmp/identity_sweep.lock $PY scripts/backfill_subject_identity.py --all --apply >> logs/identity_sweep.log 2>&1",
+        "cutover_wave": "CW1"
       },
       "expected_cadence_hours": 0.5,
       "state": "ACTIVE",
@@ -2883,7 +2885,7 @@
       },
       "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible).",
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
           "*/30 * * * *"
         ],
@@ -2903,7 +2905,8 @@
         "command_text": "*/30 * * * * cd $PROJ && flock -n /tmp/material_change_detect.lock $PY scripts/material_change_detector.py --apply >> logs/material_change_detect.log 2>&1  # stage-1 detector",
         "match": "scripts/material_change_detector.py --apply",
         "stage": "canary",
-        "wave": "R2-05"
+        "wave": "R2-05",
+        "cutover_wave": "CW1"
       },
       "expected_cadence_hours": 0.5,
       "state": "ACTIVE",
@@ -3105,7 +3108,8 @@
         "command_text": "25 * * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/document_mentions_backfill.lock timeout 25m $PY scripts/backfill_document_mentions.py --all --limit 4000 --apply >> /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/logs/document_mentions.log 2>&1",
         "match": "scripts/backfill_document_mentions.py --all",
         "stage": "canary",
-        "wave": "R2-07"
+        "wave": "R2-07",
+        "cutover_wave": "CW1"
       },
       "expected_cadence_hours": 1.0,
       "state": "ACTIVE",
@@ -4145,8 +4149,9 @@
         "expression": "20 7,12,17 * * 1-5",
         "command_text": "cd $PROJ && flock -n /tmp/catalyst_symbol_impact.lock $PY scripts/catalyst_symbol_impact_writer.py --apply >> logs/catalyst_symbol_impact.log 2>&1  # lane catalyst-symbol-impact",
         "match": "catalyst_symbol_impact_writer.py",
-        "stage": "shadow",
-        "wave": "D2"
+        "stage": "canary",
+        "wave": "D2",
+        "cutover_wave": "CW1"
       },
       "expected_cadence_hours": 24.0,
       "state": "ACTIVE",
@@ -4170,7 +4175,7 @@
       },
       "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible).",
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
           "20 7,12,17 * * 1-5"
         ],
@@ -4276,8 +4281,9 @@
         "expression": "10 6 * * 1-5",
         "command_text": "cd $PROJ && flock -n /tmp/build_catalyst_graph.lock $PY scripts/build_catalyst_graph.py --apply >> logs/build_catalyst_graph.log 2>&1  # lane catalyst-graph",
         "match": "build_catalyst_graph.py --apply",
-        "stage": "shadow",
-        "wave": "D2"
+        "stage": "canary",
+        "wave": "D2",
+        "cutover_wave": "CW1"
       },
       "expected_cadence_hours": 24,
       "state": "ACTIVE",
@@ -4300,7 +4306,7 @@
       },
       "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible).",
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
           "10 6 * * 1-5"
         ],
@@ -6600,8 +6606,9 @@
         "expression": "*/30 9-16 * * 1-5",
         "command_text": "cd $PROJ && flock -n /tmp/watchlist_sweep.lock $PY scripts/watchlist_enrichment_sweep.py --once >> logs/watchlist_sweep.log 2>&1  # E-1 intraday watchlist enrichment",
         "match": "scripts/watchlist_enrichment_sweep.py",
-        "stage": "shadow",
-        "wave": "D3"
+        "stage": "canary",
+        "wave": "D3",
+        "cutover_wave": "CW1"
       },
       "expected_cadence_hours": 0.5,
       "state": "ACTIVE",
@@ -6633,7 +6640,7 @@
       },
       "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible).",
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
           "*/30 9-16 * * 1-5"
         ],
@@ -6749,8 +6756,9 @@
         "expression": "25 6-15 * * 1-5",
         "command_text": "25 6-15 * * 1-5 cd $PROJ && flock -n /tmp/hermes_scalp_catalyst.lock timeout 5m $PY scripts/hermes_momentum_catalyst_researcher.py --source scalp --apply >> logs/hermes_scalp_catalyst.log 2>&1  # Hermes catalyst research on the day scalp candidates (feeds social_scalp_scanner GO gate)",
         "match": "scripts/hermes_momentum_catalyst_researcher.py",
-        "stage": "shadow",
-        "wave": "R2-04"
+        "stage": "canary",
+        "wave": "R2-04",
+        "cutover_wave": "CW1"
       },
       "expected_cadence_hours": 1.0,
       "state": "ACTIVE",
@@ -6782,7 +6790,7 @@
       },
       "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible).",
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
           "25 6-15 * * 1-5"
         ],
@@ -9353,9 +9361,10 @@
         "kind": "cron",
         "expression": "*/30 6-16 * * 1-5",
         "match": "scripts/materialize_watchlist_strategy_cards.py",
-        "stage": "shadow",
+        "stage": "canary",
         "wave": "D1b",
-        "command_text": "cd $PROJ && flock -n /tmp/materialize_cards.lock $PY scripts/materialize_watchlist_strategy_cards.py >> logs/watchlist_strategy_cards.log 2>&1"
+        "command_text": "cd $PROJ && flock -n /tmp/materialize_cards.lock $PY scripts/materialize_watchlist_strategy_cards.py >> logs/watchlist_strategy_cards.log 2>&1",
+        "cutover_wave": "CW1"
       },
       "expected_cadence_hours": 61.5,
       "state": "ACTIVE",
@@ -9383,7 +9392,7 @@
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
           "*/30 6-16 * * 1-5"
         ],
@@ -9893,8 +9902,10 @@
         "kind": "cron",
         "expression": "0 12 * * 1-5",
         "match": "scripts/journal_tilt_morning_hook.py",
-        "stage": "shadow",
-        "wave": "D1b"
+        "stage": "canary",
+        "wave": "D1b",
+        "command_text": "cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/journal_tilt_hook.lock $PY scripts/journal_tilt_morning_hook.py >> /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/logs/journal_tilt_hook.log 2>&1",
+        "cutover_wave": "CW1"
       },
       "expected_cadence_hours": 72.0,
       "state": "ACTIVE",
@@ -9922,7 +9933,7 @@
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
           "0 12 * * 1-5"
         ],
@@ -9940,9 +9951,10 @@
         "kind": "cron",
         "expression": "*/10 6-20 * * 1-5",
         "match": "scripts/hermes_governance_api.py",
-        "stage": "shadow",
+        "stage": "canary",
         "wave": "D1b",
-        "command_text": "cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/tradeai_hermes_gov_warm.lock $PY scripts/hermes_governance_api.py --warm >> logs/hermes_governance_warm.log 2>&1  # pre-warm Hermes governance panel cache"
+        "command_text": "cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/tradeai_hermes_gov_warm.lock $PY scripts/hermes_governance_api.py --warm >> logs/hermes_governance_warm.log 2>&1  # pre-warm Hermes governance panel cache",
+        "cutover_wave": "CW1"
       },
       "expected_cadence_hours": 57.17,
       "state": "ACTIVE",
@@ -9970,7 +9982,7 @@
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
           "*/10 6-20 * * 1-5"
         ],
@@ -10322,7 +10334,8 @@
         "match": "scripts/hermes_analyst_signal_discovery.py",
         "stage": "canary",
         "wave": "D2",
-        "command_text": "cd $PROJ && flock -n /tmp/hermes_analyst_signal.lock $PY scripts/hermes_analyst_signal_discovery.py --run --json >> logs/hermes_analyst_signal.log 2>&1  # analyst-signal discovery feeder — LIVE (analyst_signal_enabled=true since 2026-07-30)"
+        "command_text": "cd $PROJ && flock -n /tmp/hermes_analyst_signal.lock $PY scripts/hermes_analyst_signal_discovery.py --run --json >> logs/hermes_analyst_signal.log 2>&1  # analyst-signal discovery feeder — LIVE (analyst_signal_enabled=true since 2026-07-30)",
+        "cutover_wave": "CW1"
       },
       "expected_cadence_hours": 3.0,
       "state": "ACTIVE",
@@ -10550,9 +10563,10 @@
         "kind": "cron",
         "expression": "0 11 * * 1-5",
         "match": "scripts/agent_outcome_linker.py",
-        "stage": "shadow",
+        "stage": "canary",
         "wave": "D3",
-        "command_text": "cd $PROJ && flock -n /tmp/agent_outcome_linker.lock $PY scripts/agent_outcome_linker.py --apply >> logs/agent_outcome_linker.log 2>&1"
+        "command_text": "cd $PROJ && flock -n /tmp/agent_outcome_linker.lock $PY scripts/agent_outcome_linker.py --apply >> logs/agent_outcome_linker.log 2>&1",
+        "cutover_wave": "CW1"
       },
       "expected_cadence_hours": 72.0,
       "state": "ACTIVE",
@@ -10580,7 +10594,7 @@
       "adopted_on": "2026-10-10",
       "adopted_reason": "dispatcher shadow wave D3 (R1): a row carrying a reviewed r1_pending / dispatch block is hand-maintained (AGENTS §23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop the block.",
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
           "0 11 * * 1-5"
         ],
@@ -10874,7 +10888,8 @@
         "match": "scripts/hermes_news_bridge.py",
         "stage": "canary",
         "wave": "D3",
-        "command_text": "cd $PROJ && flock -n /tmp/hermes_news_bridge.lock $PY scripts/hermes_news_bridge.py >> logs/hermes_news_bridge.log 2>&1"
+        "command_text": "cd $PROJ && flock -n /tmp/hermes_news_bridge.lock $PY scripts/hermes_news_bridge.py >> logs/hermes_news_bridge.log 2>&1",
+        "cutover_wave": "CW1"
       },
       "expected_cadence_hours": 12.0,
       "state": "ACTIVE",
@@ -11037,9 +11052,10 @@
         "kind": "cron",
         "expression": "0 20 * * 1-5",
         "match": "scripts/update_agent_performance.py",
-        "stage": "shadow",
+        "stage": "canary",
         "wave": "D3",
-        "command_text": "cd $PROJ && flock -n /tmp/update_agent_performance.lock $PY scripts/update_agent_performance.py >> logs/update_agent_performance.log 2>&1"
+        "command_text": "cd $PROJ && flock -n /tmp/update_agent_performance.lock $PY scripts/update_agent_performance.py >> logs/update_agent_performance.log 2>&1",
+        "cutover_wave": "CW1"
       },
       "expected_cadence_hours": 72.0,
       "state": "ACTIVE",
@@ -11067,7 +11083,7 @@
       "adopted_on": "2026-10-10",
       "adopted_reason": "dispatcher shadow wave D3 (R1): a row carrying a reviewed r1_pending / dispatch block is hand-maintained (AGENTS §23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop the block.",
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
           "0 20 * * 1-5"
         ],
@@ -11133,9 +11149,10 @@
         "kind": "cron",
         "expression": "30 6 * * 6",
         "match": "scripts/classify_instruments.py",
-        "stage": "shadow",
+        "stage": "canary",
         "wave": "D3",
-        "command_text": "cd $PROJ && flock -n /tmp/classify_instr.lock $PY scripts/classify_instruments.py >> logs/classify_instruments.log 2>&1  # weekly: instrument_type + expense ratios"
+        "command_text": "cd $PROJ && flock -n /tmp/classify_instr.lock $PY scripts/classify_instruments.py >> logs/classify_instruments.log 2>&1  # weekly: instrument_type + expense ratios",
+        "cutover_wave": "CW1"
       },
       "expected_cadence_hours": 168.0,
       "state": "ACTIVE",
@@ -11163,7 +11180,7 @@
       "adopted_on": "2026-10-10",
       "adopted_reason": "dispatcher shadow wave D3 (R1): a row carrying a reviewed r1_pending / dispatch block is hand-maintained (AGENTS §23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop the block.",
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
           "30 6 * * 6"
         ],
@@ -11809,9 +11826,10 @@
         "kind": "cron",
         "expression": "0 13 * * 1-5",
         "match": "scripts/finviz_enrichment.py >> logs/finviz_enrichment.log",
-        "stage": "shadow",
+        "stage": "canary",
         "wave": "W4",
-        "command_text": "cd $PROJ && flock -n /tmp/finviz_enrichment.lock $PY scripts/finviz_enrichment.py >> logs/finviz_enrichment.log 2>&1"
+        "command_text": "cd $PROJ && flock -n /tmp/finviz_enrichment.lock $PY scripts/finviz_enrichment.py >> logs/finviz_enrichment.log 2>&1",
+        "cutover_wave": "CW1"
       },
       "expected_cadence_hours": 72.0,
       "state": "ACTIVE",
@@ -11839,7 +11857,7 @@
       "adopted_on": "2026-10-11",
       "adopted_reason": "consolidation W4 provider-owner dispatcher shadow (R1 ingest, AGENTS §23.18, 4.4.0 cron-row shape): a row carrying a reviewed dispatch block is hand-maintained (AGENTS §23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop the block. Cron line L142 (crontab -l, 2026-10-11) keeps doing the real work; the dispatcher fires the dry run only. output_signal moved from the cron log mtime to the LaneRunReceipt@v1 the script already writes (refactor wave 3, #1658).",
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
           "0 13 * * 1-5"
         ],
@@ -11913,9 +11931,10 @@
         "kind": "cron",
         "expression": "0 20 * * 1-5",
         "match": "scripts/sec_data_ingest.py",
-        "stage": "shadow",
+        "stage": "canary",
         "wave": "W4",
-        "command_text": "cd $PROJ && flock -n /tmp/sec_data_ingest.lock $PY scripts/sec_data_ingest.py --all >> logs/sec_ingest.log 2>&1"
+        "command_text": "cd $PROJ && flock -n /tmp/sec_data_ingest.lock $PY scripts/sec_data_ingest.py --all >> logs/sec_ingest.log 2>&1",
+        "cutover_wave": "CW1"
       },
       "expected_cadence_hours": 72.0,
       "state": "ACTIVE",
@@ -11943,7 +11962,7 @@
       "adopted_on": "2026-10-11",
       "adopted_reason": "consolidation W4 provider-owner dispatcher shadow (R1 ingest, AGENTS §23.18, 4.4.0 cron-row shape): a row carrying a reviewed dispatch block is hand-maintained (AGENTS §23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop the block. Cron line L150 (crontab -l, 2026-10-11) keeps doing the real work; the dispatcher fires the dry run only. output_signal moved from the cron log mtime to the LaneRunReceipt@v1 the script already writes (refactor wave 3, #1658).",
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
           "0 20 * * 1-5"
         ],
@@ -12043,9 +12062,10 @@
         "kind": "cron",
         "expression": "30 20 * * 1-5",
         "match": "scripts/feedback_loop_processor.py",
-        "stage": "shadow",
+        "stage": "canary",
         "wave": "W4",
-        "command_text": "cd $PROJ && flock -n /tmp/feedback_loop.lock $PY scripts/feedback_loop_processor.py >> logs/feedback_loop.log 2>&1"
+        "command_text": "cd $PROJ && flock -n /tmp/feedback_loop.lock $PY scripts/feedback_loop_processor.py >> logs/feedback_loop.log 2>&1",
+        "cutover_wave": "CW1"
       },
       "expected_cadence_hours": 72.0,
       "state": "ACTIVE",
@@ -12073,7 +12093,7 @@
       "adopted_on": "2026-10-11",
       "adopted_reason": "shadow wave 4 (SW4, R1 learn, AGENTS §23.18, 4.4.0 cron-row shape): a row carrying a reviewed dispatch block is hand-maintained (AGENTS §23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop the block. Cron line L197 (crontab -l, 2026-10-11) keeps doing the real work; the dispatcher fires the dry run only. output_signal moved from the cron log/file mtime to the LaneRunReceipt@v1 the script already writes (refactor waves 1-3).",
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
           "30 20 * * 1-5"
         ],
@@ -12427,9 +12447,10 @@
         "kind": "cron",
         "expression": "0 7 * * 6",
         "match": "scripts/etf_analyst_enrich.py",
-        "stage": "shadow",
+        "stage": "canary",
         "wave": "W4",
-        "command_text": "cd $PROJ && flock -n /tmp/etf_analyst.lock $PY scripts/etf_analyst_enrich.py >> logs/etf_analyst_enrich.log 2>&1"
+        "command_text": "cd $PROJ && flock -n /tmp/etf_analyst.lock $PY scripts/etf_analyst_enrich.py >> logs/etf_analyst_enrich.log 2>&1",
+        "cutover_wave": "CW1"
       },
       "expected_cadence_hours": 168.0,
       "state": "ACTIVE",
@@ -12457,7 +12478,7 @@
       "adopted_on": "2026-10-11",
       "adopted_reason": "shadow wave 4 (SW4, R1 ingest, AGENTS §23.18, 4.4.0 cron-row shape): a row carrying a reviewed dispatch block is hand-maintained (AGENTS §23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop the block. Cron line L505 (crontab -l, 2026-10-11) keeps doing the real work; the dispatcher fires the dry run only. output_signal moved from the cron log/file mtime to the LaneRunReceipt@v1 the script already writes (refactor waves 1-3).",
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
           "0 7 * * 6"
         ],
@@ -12475,9 +12496,10 @@
         "kind": "cron",
         "expression": "15 7 * * 6",
         "match": "scripts/etf_performance_enrich.py",
-        "stage": "shadow",
+        "stage": "canary",
         "wave": "W4",
-        "command_text": "cd $PROJ && flock -n /tmp/etf_perf.lock $PY scripts/etf_performance_enrich.py >> logs/etf_performance_enrich.log 2>&1"
+        "command_text": "cd $PROJ && flock -n /tmp/etf_perf.lock $PY scripts/etf_performance_enrich.py >> logs/etf_performance_enrich.log 2>&1",
+        "cutover_wave": "CW1"
       },
       "expected_cadence_hours": 168.0,
       "state": "ACTIVE",
@@ -12505,7 +12527,7 @@
       "adopted_on": "2026-10-11",
       "adopted_reason": "shadow wave 4 (SW4, R1 ingest, AGENTS §23.18, 4.4.0 cron-row shape): a row carrying a reviewed dispatch block is hand-maintained (AGENTS §23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop the block. Cron line L520 (crontab -l, 2026-10-11) keeps doing the real work; the dispatcher fires the dry run only. output_signal moved from the cron log/file mtime to the LaneRunReceipt@v1 the script already writes (refactor waves 1-3).",
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
           "15 7 * * 6"
         ],
@@ -14326,9 +14348,10 @@
         "kind": "cron",
         "expression": "0 10 * * 1-5",
         "match": "scripts/finviz_screener_runner.py",
-        "stage": "shadow",
+        "stage": "canary",
         "wave": "R2-01",
-        "command_text": "0 10 * * 1-5 cd $PROJ && flock -n /tmp/finviz_screener.lock $PY scripts/finviz_screener_runner.py --run >> logs/finviz_screener.log 2>&1"
+        "command_text": "0 10 * * 1-5 cd $PROJ && flock -n /tmp/finviz_screener.lock $PY scripts/finviz_screener_runner.py --run >> logs/finviz_screener.log 2>&1",
+        "cutover_wave": "CW1"
       },
       "expected_cadence_hours": 72.0,
       "state": "ACTIVE",
@@ -14353,7 +14376,7 @@
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one. | Refactor shard 01: SOURCE_ONLY shadow proposal; native-approved cron snapshot 2026-10-11T14:57:08.697196+00:00. Scheduler wave R2-01 is shard provenance; dispatch W4 is the existing allowed wave. Health contract remains DRAFT; no host changes.",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
           "0 10 * * 1-5"
         ],
@@ -14485,7 +14508,8 @@
         "match": "scripts/finviz_proactive_research.py",
         "stage": "canary",
         "wave": "R2-04",
-        "command_text": "30 9,11,13,15 * * 1-5 cd $PROJ && flock -n /tmp/finviz_proactive.lock $PY scripts/finviz_proactive_research.py --max 400 --lookback-hours 12 >> logs/finviz_proactive.log 2>&1"
+        "command_text": "30 9,11,13,15 * * 1-5 cd $PROJ && flock -n /tmp/finviz_proactive.lock $PY scripts/finviz_proactive_research.py --max 400 --lookback-hours 12 >> logs/finviz_proactive.log 2>&1",
+        "cutover_wave": "CW1"
       },
       "expected_cadence_hours": 66.0,
       "state": "ACTIVE",
@@ -14670,7 +14694,8 @@
         "match": "scripts/finviz_sector_research.py",
         "stage": "canary",
         "wave": "R2-05",
-        "command_text": "15 10,16 * * 1-5 cd $PROJ && flock -n /tmp/finviz_sector.lock $PY scripts/finviz_sector_research.py >> logs/finviz_sector.log 2>&1"
+        "command_text": "15 10,16 * * 1-5 cd $PROJ && flock -n /tmp/finviz_sector.lock $PY scripts/finviz_sector_research.py >> logs/finviz_sector.log 2>&1",
+        "cutover_wave": "CW1"
       },
       "expected_cadence_hours": 66.0,
       "state": "ACTIVE",
@@ -14726,7 +14751,8 @@
         "match": "scripts/proposal_backtest_engine.py",
         "stage": "canary",
         "wave": "R2-06",
-        "command_text": "5 10-15/2 * * 1-5 cd $PROJ && flock -n /tmp/proposal_backtest.lock $PY scripts/proposal_backtest_engine.py --all-pending --apply >> logs/proposal_backtest_engine.log 2>&1  # backtest active proposals → proposal_backtest_snapshots (Backtest field on cards)"
+        "command_text": "5 10-15/2 * * 1-5 cd $PROJ && flock -n /tmp/proposal_backtest.lock $PY scripts/proposal_backtest_engine.py --all-pending --apply >> logs/proposal_backtest_engine.log 2>&1  # backtest active proposals → proposal_backtest_snapshots (Backtest field on cards)",
+        "cutover_wave": "CW1"
       },
       "expected_cadence_hours": 68.0,
       "state": "ACTIVE",

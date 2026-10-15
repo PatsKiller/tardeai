@@ -33,6 +33,9 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT / "tests") not in sys.path:
+    sys.path.append(str(ROOT / "tests"))
+from support import n8n_cutover_waves as CW  # noqa: E402
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
@@ -79,6 +82,9 @@ SW4 = {
 #: hermes_overnight registry edit (train 6, 2026-10-12) moved hermes-tag-lift-discovery into hermes-overnight-pipeline-night.
 SW4_ABSORBED = {"hermes-tag-lift-discovery": "hermes-overnight-pipeline-night"}
 SW4_LIVE = {k: v for k, v in SW4.items() if k not in SW4_ABSORBED}
+#: 2026-10-15: lanes a cutover wave promoted to canary leave the shadow pins below; tests/test_n8n_cutover_wave_20261015.py
+#: pins their canary shape (tests/support/n8n_cutover_waves.py).
+SW4_SHADOW = {k: v for k, v in SW4_LIVE.items() if k not in CW.PROMOTED}
 
 EXCLUDED = (
     "fred-data-ingest", "sync-dividend-data", "build-lesson-candidates", "candidate-discovery-orchestrator",
@@ -98,7 +104,7 @@ def test_counts():
     assert sum(1 for v in SW4.values() if v[0] == "learn") == 5
 
 
-@pytest.mark.parametrize("lane", sorted(SW4_LIVE))
+@pytest.mark.parametrize("lane", sorted(SW4_SHADOW))
 def test_row_is_a_w4_shadow_cron_row_admitted_by_the_r1_gate(lane):
     klass, cron, _argv, receipt, _lock = SW4[lane]
     row = ROWS[lane]
@@ -115,7 +121,7 @@ def test_row_is_a_w4_shadow_cron_row_admitted_by_the_r1_gate(lane):
     assert not ok and why.startswith("shadow_on_cron_not_ratified"), why
 
 
-@pytest.mark.parametrize("lane", sorted(SW4_LIVE))
+@pytest.mark.parametrize("lane", sorted(SW4_SHADOW))
 def test_allowlist_entry_is_shadow_only_and_carries_no_broker_credential(lane):
     _klass, _cron, argv, receipt, cron_lock = SW4[lane]
     e = ALLOW[lane]
@@ -157,7 +163,7 @@ def test_the_script_writes_the_receipt_the_row_names():
         assert re.search(r"""['"]--dry-run['"]""", src), lane
 
 
-@pytest.mark.parametrize("lane", sorted(SW4_LIVE))
+@pytest.mark.parametrize("lane", sorted(SW4_SHADOW))
 def test_health_contract_is_reviewed_and_complete(lane):
     c = CONTRACTS[lane]
     assert c["status"] == "REVIEWED" and c["stage"] == "shadow" and c["kind"] == "lane"
@@ -206,18 +212,20 @@ def _sweep(rows, start, days, step_min):
 
 
 def test_compute_due_week_sweep_emits_dry_run_on_the_natural_slots_only():
-    slots, errors = _sweep([ROWS[x] for x in SW4_LIVE if x != "identity-sweep-stage0"], START, 7, 5)
+    slots, errors = _sweep([ROWS[x] for x in SW4_SHADOW if x != "identity-sweep-stage0"], START, 7, 5)
     assert errors == set(), sorted(errors)
     want = {"record-decision-outcome": 5, "update-lockup-earnings-dates": 7, "etf-analyst-enrich": 1,
             "agent-outcome-scorer": 1, "feedback-loop-processor": 5,
             "aegis-social-sentiment": 10, "aegis-transcript-discovery": 5, "aegis-nightly-ingestion": 7,
             "hermes-social-sentiment": 10, "sync-social-to-intelligence": 10, "trade-backtest-engine": 5,
             "etf-performance-enrich": 1}
+    want = {k: n for k, n in want.items() if k not in CW.PROMOTED}
     assert {k: len(v) for k, v in slots.items()} == want
     assert {s[-4:] for s in slots["aegis-social-sentiment"]} == {"1100", "1500"}
     assert {s[:8] for s in slots["agent-outcome-scorer"]} == {"20261018"}  # Sunday
 
 
+@pytest.mark.skipif("identity-sweep-stage0" in CW.PROMOTED, reason="promoted to canary by a 2026-10-15 cutover wave")
 def test_identity_sweep_fires_every_half_hour_dry_run_only():
     slots, errors = _sweep([ROWS["identity-sweep-stage0"]], START, 1, 30)
     assert errors == set() and len(slots["identity-sweep-stage0"]) == 48
