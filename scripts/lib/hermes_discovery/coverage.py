@@ -26,7 +26,9 @@ Design rules (same as the rest of the package):
   * ADVISORY-ONLY: never imports broker/execution modules, never writes
     producer tables. Payloads only become rows via inbox.upsert_candidate.
   * Defensive reads: a missing table/file/column makes that finding class
-    return nothing — it never raises out of an adapter.
+    return nothing — it never raises out of an adapter. EXCEPTION: strict=True
+    (used by the worker-pool lane runners) re-raises a failed read, so an
+    unreadable source is a loud lane error, never a silent "nothing found".
   * One statement per DB call via db_adapter._execute (no held transactions).
   * Labels are stable per finding class so re-runs bump seen_count instead of
     spawning duplicates (idempotency comes free from upsert_candidate).
@@ -80,12 +82,15 @@ _HEALTHY_STATUSES = ("OK", "RECOVERED")
 
 # ── low-level helpers ────────────────────────────────────────────────────────
 
-def _rows(sql: str, params=None) -> list[dict[str, Any]]:
-    """One-statement DB read; any failure (no DB, missing table) → []."""
+def _rows(sql: str, params=None, *, strict: bool = False) -> list[dict[str, Any]]:
+    """One-statement DB read; any failure (no DB, missing table) → [] —
+    unless strict, which re-raises (lane runners: fail loud, not empty)."""
     try:
         from db_adapter import _execute
         return [dict(r) for r in (_execute(sql, params, fetch="all") or [])]
     except Exception:
+        if strict:
+            raise
         return []
 
 
@@ -107,10 +112,12 @@ def _topic_payload(area: str, label: str, summary: str, *,
                    evidence: list[dict[str, Any]] | None = None,
                    seed_symbols: list[str] | None = None,
                    finding_class: str, meta_extra: dict | None = None,
+                   domain: str | None = None,
                    ) -> dict[str, Any]:
-    """Standard TOPIC payload for inbox.upsert_candidate (domain pinned)."""
+    """Standard TOPIC payload for inbox.upsert_candidate (domain pinned;
+    `domain` overrides the area's COVERAGE_DOMAINS entry)."""
     meta = {
-        "research_domain": COVERAGE_DOMAINS[area],
+        "research_domain": domain or COVERAGE_DOMAINS[area],
         "coverage_adapter": area,
         "finding_class": finding_class,
     }
@@ -320,12 +327,33 @@ def sector_cluster_findings(*, min_cluster: int = 3, limit: int = 5,
 # ── term-recurrence adapters (taxes / retirement / legal / macro) ────────────
 
 def term_topic_findings(area: str, *, days: int = 7, limit: int = 5,
-                        min_matches: int = 2) -> list[dict[str, Any]]:
+                        min_matches: int = 2,
+                        strict: bool = False) -> list[dict[str, Any]]:
     """Recent news_articles + hermes_research_intelligence rows matching the
     area's term list → one TOPIC per recurring term (domain pinned)."""
     terms = TERM_SETS.get(area)
     if not terms:
         return []
+    return term_recurrence_findings(area, terms, days=days, limit=limit,
+                                    min_matches=min_matches, strict=strict)
+
+
+def term_recurrence_findings(area: str, terms: list[str], *,
+                             domain: str | None = None,
+                             label_prefix: str | None = None,
+                             denylist_terms: list[str] | None = None,
+                             exclude_sources: list[str] | None = None,
+                             days: int = 7, limit: int = 5,
+                             min_matches: int = 2,
+                             strict: bool = False) -> list[dict[str, Any]]:
+    """The term-recurrence scan over an explicit term list. `domain` pins a
+    research domain other than the area's (custom domains); rows whose text
+    hits a denylist term, or whose source name contains an exclude_sources
+    substring (blocked source types), are dropped before counting."""
+    terms = [str(t).strip().lower() for t in (terms or []) if str(t).strip()]
+    if not terms:
+        return []
+    deny = [str(t).strip().lower() for t in (denylist_terms or []) if str(t).strip()]
     ilikes_news = " OR ".join(["title ILIKE %s OR summary ILIKE %s"] * len(terms))
     news_params: list[Any] = [int(days)]
     for t in terms:
@@ -336,7 +364,8 @@ def term_topic_findings(area: str, *, days: int = 7, limit: int = 5,
             FROM news_articles
             WHERE created_at > now() - make_interval(days => %s)
               AND ({ilikes_news})
-            ORDER BY created_at DESC LIMIT 300""", tuple(news_params))
+            ORDER BY created_at DESC LIMIT 300""", tuple(news_params),
+        strict=strict)
 
     ilikes_hri = " OR ".join(["topic ILIKE %s OR summary ILIKE %s"] * len(terms))
     hri_params: list[Any] = [int(days)]
@@ -349,11 +378,17 @@ def term_topic_findings(area: str, *, days: int = 7, limit: int = 5,
             FROM hermes_research_intelligence
             WHERE created_at > now() - make_interval(days => %s)
               AND ({ilikes_hri})
-            ORDER BY created_at DESC LIMIT 200""", tuple(hri_params))
+            ORDER BY created_at DESC LIMIT 200""", tuple(hri_params),
+        strict=strict)
 
     by_term: dict[str, list[dict[str, Any]]] = {}
     for r in rows:
         text = f"{r.get('text_a') or ''} {r.get('text_b') or ''}"
+        if deny and any(_term_matches(text, d) for d in deny):
+            continue
+        src = str(r.get("source") or "").lower()
+        if exclude_sources and any(x in src for x in exclude_sources):
+            continue
         for term in terms:
             if _term_matches(text, term):
                 by_term.setdefault(term, []).append(r)
@@ -365,8 +400,11 @@ def term_topic_findings(area: str, *, days: int = 7, limit: int = 5,
         if len(payloads) >= int(limit):
             break
         sources = sorted({str(m.get("source") or "unknown") for m in matched})
+        # cited rows (a source_url) lead the evidence list — stable otherwise
+        matched = sorted(matched, key=lambda m: 0 if m.get("source_url") else 1)
+        prefix = label_prefix or area.replace('_', ' ').title()
         payloads.append(_topic_payload(
-            area, f"{area.replace('_', ' ').title()} research: {term}",
+            area, f"{prefix} research: {term}",
             f"{len(matched)} recent news/research item(s) in {int(days)}d "
             f"matched '{term}' (sources: {', '.join(sources[:5])})",
             evidence=[{"source_domain": m.get("source"),
@@ -374,6 +412,7 @@ def term_topic_findings(area: str, *, days: int = 7, limit: int = 5,
                        "note": (m.get("text_a") or "")[:140]}
                       for m in matched[:5]],
             finding_class="term_recurrence",
+            domain=domain,
             meta_extra={"matched_term": term, "match_count": len(matched),
                         "window_days": int(days), "keywords": [term]}))
     return payloads
@@ -397,7 +436,8 @@ def macro_findings(**kw) -> list[dict[str, Any]]:
 
 # ── system_ops (domain=system_ops) ───────────────────────────────────────────
 
-def system_ops_findings(*, limit: int = 5) -> list[dict[str, Any]]:
+def system_ops_findings(*, limit: int = 5,
+                        strict: bool = False) -> list[dict[str, Any]]:
     """Latest failing/stale system_health_checks components → one TOPIC each.
     Promotion path for these is escalation_candidate (operator-gated), which
     the system_ops domain registry entry allows."""
@@ -412,7 +452,7 @@ def system_ops_findings(*, limit: int = 5) -> list[dict[str, Any]]:
            WHERE status NOT IN %s
            ORDER BY CASE WHEN severity = 'CRITICAL' THEN 0 ELSE 1 END,
                     updated_at DESC
-           LIMIT %s""", (_HEALTHY_STATUSES, int(limit)))
+           LIMIT %s""", (_HEALTHY_STATUSES, int(limit)), strict=strict)
     payloads = []
     for r in rows:
         component = str(r.get("component") or "unknown")

@@ -80,6 +80,7 @@ defaults:
   max_candidates_per_run: 5
   max_llm_reviews_per_run: 2
   timeout_seconds: {timeout}
+  expected_output_hours: 24
   allowed_domains: []
   blocked_domains: []
   sensitive_domain: false
@@ -148,6 +149,9 @@ def test_register_duplicate_requires_replace():
 
 
 def test_unregistered_lane_is_skipped_not_error(no_db):
+    # run_lane reports the skip; since 2026-10-15 run_pool turns it into a
+    # no_runner FAILURE (tests/test_hermes_worker_pool_wire_20261015.py)
+    worker_pool._RUNNERS.pop("strategy", None)  # fixture restores the registry
     report = worker_pool.run_lane("strategy", dry_run=True)
     assert report["skipped"] == "no_runner"
     assert "error" not in report

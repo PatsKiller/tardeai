@@ -491,7 +491,6 @@ UNLISTED_BASELINE: frozenset = frozenset([
     "tests/test_hermes_research_curator.py",
     "tests/test_hermes_research_fingerprint.py",
     "tests/test_hermes_research_loop.py",
-    "tests/test_hermes_research_worker_pool.py",
     "tests/test_hermes_research_workspaces.py",
     "tests/test_hermes_scalp_phase3.py",
     "tests/test_hermes_scope_governor.py",
