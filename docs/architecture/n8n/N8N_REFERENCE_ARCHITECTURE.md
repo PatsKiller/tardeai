@@ -267,7 +267,8 @@ Step-by-step, with the implementing file:
    Now every executor path (v1 drain, v2 workers, `:a<n>` retries) refuses a `p:` row without the validated marker
    (`RUN_REFUSED process_key_unvalidated`), `host_run_request` refuses `p:` keys, an `:a<n>` key is admitted only
    after attempt n-1 finished `retryable`, and a LIVE relay request whose key is in no validated namespace
-   (`d:`/`e:`/`g:`/`p:`) is refused (`run_key_namespace_refused`). (E)
+   (`d:`/`e:`/`g:`/`p:`, or the relay-minted `n8n-wf-<workflow>-<execution>` key the generated per-lane workflows
+   get because they send none) is refused (`run_key_namespace_refused`). (E)
 4. **Gateway.** HMAC, scope, allowlist (`config/n8n_run_allowlist.json`, re-validated per request: a revoked lane
    is refused on the next request, an unreadable file refuses every run — 2026-10-15 audit DD08), never-list, mode;
    records REQUESTED. A repeated `idempotency_key` returns the original row ONLY for the same request identity

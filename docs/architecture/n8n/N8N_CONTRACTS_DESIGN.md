@@ -107,9 +107,13 @@ workflow_id, execution_id` (`scripts/n8n_workflow_templates.py`); relay bounds: 
 `idempotency_key` from the SAME request identity (lane_id, mode, requested_by) returns the original row with
 `duplicate: true` (no second run); from any other identity it is `run_idempotency_conflict` with `conflict_fields`
 (**corrected 2026-10-15, audit DD03**: it used to return the original row whatever lane/mode asked, a cross-scope
-false success). The relay refuses unknown or duplicated `POST /run` body keys (`relay_unexpected_field`) and a
-gateway reply naming another lane/mode/run (`relay_identity_mismatch`). A LIVE request from the relay caller must
-carry a `d:`/`e:`/`g:`/`p:` key (`run_key_namespace_refused`). **Refusals** are typed codes (gateway `REFUSALS`,
+false success). The relay refuses unknown or duplicated `POST /run` body keys (`relay_unexpected_field`; the
+accepted set is `RUN_BODY_KEYS` plus `requested_by`, which the ten generated per-lane workflows send and the relay
+ignores) and a gateway reply naming another lane/mode/run (`relay_identity_mismatch`). A LIVE request from the relay
+caller must carry a `d:`/`e:`/`g:`/`p:` key or the RELAY-MINTED `n8n-wf-<workflow_id>-<execution_id>` key (what a
+body without `idempotency_key` gets; one per n8n execution; a caller-supplied key in that namespace is refused
+`relay_bad_run_id`), else `run_key_namespace_refused`. Every active workflow's exact body is replayed through the
+relay and the real gateway by `tests/test_n8n_audit_findings_20261015.py::test_active_workflow_run_bodies_*`. **Refusals** are typed codes (gateway `REFUSALS`,
 relay `REFUSALS`), never free text. (E)
 
 **Outcome `RunOutcome@v1`** (`scripts/lib/n8n_fabric_store.py`, relay `GET /run_outcome?run_id=`): `status ∈

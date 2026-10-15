@@ -135,9 +135,18 @@ ROUTE_HANDLERS: dict[tuple[str, str], str] = {
 }
 if set(ROUTE_HANDLERS) != set(ROUTES) or len(ROUTES) != len(set(ROUTES)):  # pragma: no cover - import-time guard
     raise RuntimeError("relay ROUTES and ROUTE_HANDLERS disagree")
-#: POST /run: the exact body keys (scripts/n8n_workflow_templates.py RUN_BODY_KEYS). An extra key is refused
-#: (audit DD14: it was silently discarded), as is a JSON object with a duplicated key.
-RUN_BODY_KEYS = frozenset({"lane_id", "mode", "idempotency_key", "workflow_id", "execution_id"})
+#: POST /run: the exact body keys. An extra key is refused (audit DD14: it was silently discarded), as is a JSON
+#: object with a duplicated key. The set is the union of what the ACTIVE workflows send (replayed byte-for-byte by
+#: tests/test_n8n_audit_findings_20261015.py::test_active_workflow_run_bodies_*): the generic/fabric workflows send
+#: scripts/n8n_workflow_templates.py RUN_BODY_KEYS; the ten generated per-lane workflows
+#: (docs/implementation/n8n-parallel/workflows/generated/*.json) send ``requested_by`` and NO idempotency_key.
+#: ``requested_by`` is accepted and IGNORED: the relay derives it from ``workflow_id`` (_requested_by).
+RUN_BODY_KEYS = frozenset({"lane_id", "mode", "idempotency_key", "workflow_id", "execution_id", "requested_by"})
+#: The run key the RELAY mints when the body carries none: n8n-wf-<workflow_id>-<execution_id> (_derived_run_id), one
+#: per n8n execution. n8n cannot choose it: a caller-supplied idempotency_key in this namespace is refused
+#: (relay_bad_run_id), so the gateway can treat it as relay-minted (scripts/lib/n8n_coordination_gateway.py
+#: RELAY_DERIVED_KEY_PREFIX) and admit it for LIVE runs.
+RELAY_DERIVED_PREFIX = "n8n-wf-"
 ROUTES_SCHEMA = "N8nRunRelayRoutes@v1"
 #: POST /event (design 02 §8): the only lane, the exact body keys, and the bounds.
 EVENT_LANE = "n8n-workflow-error"
@@ -492,9 +501,10 @@ class Relay:
             return self._refuse("relay_live_lanes_missing", 503, lane_id=lane)
         if mode == "live" and lane not in self.live_lanes:
             return self._refuse("relay_live_not_enabled", 403, lane_id=lane)
-        run_id = _safe_run_id(data.get("idempotency_key")) or _derived_run_id(
-            data.get("workflow_id"), data.get("execution_id")
-        )
+        supplied = data.get("idempotency_key")
+        if isinstance(supplied, str) and supplied[: len(RELAY_DERIVED_PREFIX)].lower() == RELAY_DERIVED_PREFIX:
+            return self._refuse("relay_bad_run_id", 403, lane_id=lane)  # relay-minted namespace, never caller-chosen
+        run_id = _safe_run_id(supplied) or _derived_run_id(data.get("workflow_id"), data.get("execution_id"))
         if not run_id:
             return self._refuse("relay_bad_run_id", 403, lane_id=lane)
         now = self.clock()

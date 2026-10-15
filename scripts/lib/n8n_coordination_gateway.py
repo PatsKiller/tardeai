@@ -29,6 +29,13 @@ RUN_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{16,128}$")
 #: Run-key namespaces the host validates before queueing (d:/e:/g: by n8n_due.check_slot_key, p: by
 #: n8n_process_keys.check_process_key). Compared lower-case, so a case variant cannot pass as free-form.
 VALIDATED_KEY_PREFIXES = frozenset({"d:", "e:", "g:", "p:"})
+#: 2026-10-15 (#1767 follow-up): the key the relay MINTS for a body without idempotency_key,
+#: n8n-wf-<workflow_id>-<execution_id> (scripts/n8n_run_relay.py _derived_run_id). One per n8n execution, bound to
+#: the execution, and never caller-chosen (the relay refuses a supplied key in this namespace). The ten generated
+#: per-lane workflows (four of them LIVE: crontab-snapshot-for-health-agent, n8n-pilot-dispatch, n8n-incident-fanin,
+#: n8n-research-intake-consumer) send no key, so a live run from them carries this key. It is a host-minted
+#: namespace, not a free-form one, and a LIVE relay run may use it.
+RELAY_DERIVED_KEY_PREFIX = "n8n-wf-"
 MAX_REQUESTED_BY = 128
 SCOPE_READ = "coordination_read"
 SCOPE_RUN = "coordination_run"
@@ -726,7 +733,13 @@ def _run(
     if requested_by is not None and (not isinstance(requested_by, str) or len(requested_by) > MAX_REQUESTED_BY):
         return _refused(None, "malformed_event", peer_ignored=peer)
     prefix = run_id[:2].lower()
-    if mode == "live" and claim.get("caller_id") == RELAY_CALLER and prefix not in VALIDATED_KEY_PREFIXES:
+    relay_minted = run_id[: len(RELAY_DERIVED_KEY_PREFIX)].lower() == RELAY_DERIVED_KEY_PREFIX
+    if (
+        mode == "live"
+        and claim.get("caller_id") == RELAY_CALLER
+        and prefix not in VALIDATED_KEY_PREFIXES
+        and not relay_minted
+    ):
         # 2026-10-15 (audit DD03 "reject unknown/unvalidated namespaces before queueing"): n8n may not name the
         # identity of a LIVE run with a free-form string; it must carry a server-minted or manifest-validated key.
         out = _refused(None, "run_key_namespace_refused", peer_ignored=peer)

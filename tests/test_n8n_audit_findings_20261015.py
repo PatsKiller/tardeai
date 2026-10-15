@@ -221,7 +221,9 @@ def test_dd03_free_form_replay_with_another_identity_is_refused(gw, change, fiel
     assert gw.runs.get(key)["lane_id"] == "n8n-lab-watchdog" and _count(gw) == 1
 
 
-@pytest.mark.parametrize("key", ["legacy-free-form-live-0001", "x:anything:live:20261015T1050", "n8n-wf-wf1-exec-1"])
+@pytest.mark.parametrize(
+    "key", ["legacy-free-form-live-0001", "x:anything:live:20261015T1050", "wc:lane:20261015T1050:ab"]
+)
 def test_dd03_live_relay_request_needs_a_validated_namespace(gw, key):
     out = _req(gw, lane="maturity-remeasure", mode="live", key=key)
     assert out["reason"] == "run_key_namespace_refused" and out["key_state"] == "UNVALIDATED_NAMESPACE"
@@ -957,3 +959,159 @@ def test_docs_no_longer_claim_startup_cached_policy_or_universal_p_refusal():
 def test_now_fixture_is_inside_the_learn_window():
     assert NOW - timedelta(minutes=7) == datetime(2026, 10, 15, 10, 50, tzinfo=ET)
     assert NOW.tzinfo is not None and NOW.astimezone(timezone.utc).hour == 14
+
+
+# ── live-safety: replay the exact POST /run body every ACTIVE workflow sends (#1767 follow-up) ──────────────────
+
+ACTIVE = json.loads((ROOT / "docs/implementation/n8n-maturity/data/n8n_active_workflows_20261015.json").read_text())
+#: TRADEAI_N8N_RELAY_LIVE_LANES as documented live today (docs/implementation/n8n-maturity/N8N_CONFIGURATION.md).
+RELAY_LIVE = (
+    "n8n-pilot-dispatch n8n-incident-fanin n8n-research-intake-consumer crontab-snapshot-for-health-agent "
+    "maturity-remeasure"
+)
+#: The $json each templated body is evaluated against (what the upstream node hands it at run time).
+DUE_ITEM = {
+    "lane_id": "maturity-remeasure",
+    "mode": "live",
+    "idempotency_key": "d:maturity-remeasure:live:20261015T0640",
+}
+RUN_LANE_ITEM = {"lane_id": GRADER, "mode": "dry_run", "idempotency_key": f"p:{GRADER}:dry_run:20261015T1050"}
+#: Refusal reasons introduced by #1767; none of them may hit a currently active workflow.
+NEW_REASONS = {
+    "run_key_namespace_refused",
+    "relay_unexpected_field",
+    "run_idempotency_conflict",
+    "relay_identity_mismatch",
+    "process_key_unvalidated",
+}
+#: Refusals that predate #1767 and are recorded as such (scorecard: archive approved, lane not allowlisted).
+PREEXISTING = {
+    "catalyst-calibration-monitor-shadow": "relay_lane_not_allowlisted",
+    "watch-directives-monitor-shadow": "relay_lane_not_allowlisted",
+}
+
+
+def _run_nodes(wf: dict) -> list[dict]:
+    return [n for n in wf.get("nodes", []) if str((n.get("parameters") or {}).get("url") or "").endswith("}}/run")]
+
+
+def _render_body(expr: str, *, json_item: dict, workflow_id: str, execution_id: str) -> str:
+    """Evaluate the node's n8n body expression in node.js with the n8n globals it reads."""
+    import shutil
+    import subprocess
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node.js not available")
+    body = expr.strip()
+    assert body.startswith("={{") and body.endswith("}}"), body[:40]
+    js = (
+        f"const $json = {json.dumps(json_item)};\n"
+        f"const $workflow = {{id: {json.dumps(workflow_id)}}};\n"
+        f"const $execution = {{id: {json.dumps(execution_id)}}};\n"
+        "const $ = () => ({first: () => ({json: {}})});\n"
+        f"process.stdout.write(String({body[3:-2]}));\n"
+    )
+    return subprocess.run([node, "-e", js], capture_output=True, text=True, check=True, timeout=30).stdout
+
+
+def _gateway_transport(gw, monkeypatch):
+    """The relay's transport, wired to the REAL gateway handle_request on a tmp ledger with the real allowlist. Only
+    the d: slot computation is stubbed (compute_due needs the live registry clock); that path is unchanged here."""
+    from scripts.lib import n8n_due as D
+
+    monkeypatch.setattr(G, "_load_due_inputs", lambda *_a, **_k: ([], "", {}, "", None, ""))
+    monkeypatch.setattr(
+        D,
+        "check_slot_key",
+        lambda key, *_a, **_k: SimpleNamespace(
+            ok=True, state="DUE", slot_key=key, attempt=1, parent_run_id=None, klass=None, priority=None
+        ),
+    )
+    allow = SRV.run_allowlist_source(ROOT / "config" / "n8n_run_allowlist.json")
+
+    def transport(_url, payload):
+        out = G.handle_request(
+            payload,
+            key=KEY,
+            now=NOW,
+            nonce_store=gw.nonces,
+            idempotency_store=gw.receipts,
+            expected_origin_sha="a" * 40,
+            caller_keys=G.build_caller_keys(KEY, n8n_key=b"k" * 48),
+            run_store=gw.runs,
+            run_allowlist=allow,
+            process_sources=SOURCES,
+            due_sources=object(),
+        )
+        return (403 if out.get("state") == "REFUSED" else 200), out
+
+    return transport
+
+
+@pytest.mark.parametrize("wf", ACTIVE["workflows"], ids=[w["id"] for w in ACTIVE["workflows"]])
+def test_active_workflow_run_bodies_are_not_refused_by_1767(gw, tmp_path, monkeypatch, wf):
+    doc = json.loads((ROOT / wf["file"]).read_text())
+    nodes = _run_nodes(doc)
+    if not nodes:
+        assert wf["id"] in ("tradeai-momentum-lifecycle-candidate", "tradeai-fabric-error")  # no POST /run node
+        return
+    env = {
+        "TRADEAI_N8N_RELAY_BEARER": "b" * 48,
+        "TRADEAI_N8N_GATEWAY_HMAC_KEY_N8N": "k" * 48,
+        "TRADEAI_STATE_ROOT": str(tmp_path),
+        "TRADEAI_N8N_RELAY_LIVE_LANES": RELAY_LIVE,
+    }
+    relay = R.Relay(
+        environ=env,
+        allowlist=SRV.run_allowlist_source(ROOT / "config" / "n8n_run_allowlist.json"),
+        transport=_gateway_transport(gw, monkeypatch),
+        clock=lambda: NOW.timestamp(),
+    )
+    item = RUN_LANE_ITEM if wf["id"] == "tradeai-fabric-run-lane" else DUE_ITEM
+    for i, node in enumerate(nodes):
+        body = _render_body(
+            node["parameters"]["jsonBody"], json_item=item, workflow_id=wf["live_id"], execution_id=str(4242 + i)
+        )
+        status, out = relay.run("Bearer " + "b" * 48, body.encode())
+        assert out.get("reason") not in NEW_REASONS, (wf["id"], body, out)
+        if wf["id"] in PREEXISTING:
+            assert out["reason"] == PREEXISTING[wf["id"]], (wf["id"], out)
+            continue
+        sent = json.loads(body)
+        assert status == 200 and out["state"] == "REQUESTED", (wf["id"], body, out)
+        assert out["lane_id"] == sent["lane_id"] and out["mode"] == sent["mode"]
+        if "idempotency_key" not in sent:  # generated per-lane workflow: the relay mints the execution-bound key
+            assert out["run_id"].startswith("n8n-wf-") and out["mode"] == wf["mode"]
+        # a transport retry of the same execution is the same request: a true duplicate, never a conflict
+        status2, again = relay.run("Bearer " + "b" * 48, body.encode())
+        assert again["duplicate"] is True and again["run_id"] == out["run_id"], again
+        assert again.get("reason") not in NEW_REASONS and status2 == 200
+
+
+def test_relay_minted_namespace_cannot_be_chosen_by_n8n(gw, tmp_path):
+    env = {
+        "TRADEAI_N8N_RELAY_BEARER": "b" * 48,
+        "TRADEAI_N8N_GATEWAY_HMAC_KEY_N8N": "k" * 48,
+        "TRADEAI_STATE_ROOT": str(tmp_path),
+        "TRADEAI_N8N_RELAY_LIVE_LANES": "maturity-remeasure",
+    }
+    calls: list = []
+    relay = R.Relay(
+        environ=env,
+        allowlist=frozenset({"maturity-remeasure"}),
+        transport=lambda *_: calls.append(1) or (200, {"state": "REQUESTED"}),
+    )
+    for key in ("n8n-wf-forged-0000000001", "N8N-WF-forged-0000000001"):
+        body = json.dumps({"lane_id": "maturity-remeasure", "mode": "live", "idempotency_key": key}).encode()
+        assert relay.run("Bearer " + "b" * 48, body)[1]["reason"] == "relay_bad_run_id"
+    assert calls == []
+    # the gateway admits the relay-minted namespace for a LIVE relay run
+    out = _req(
+        gw,
+        lane="maturity-remeasure",
+        mode="live",
+        key="n8n-wf-c0d4c7845e5c4fcc-4242",
+        requested_by="n8n:workflow:c0d4c7845e5c4fcc",
+    )
+    assert out["state"] == "REQUESTED"
