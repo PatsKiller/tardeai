@@ -27758,6 +27758,10 @@
         {
           "check": "duration_within_baseline",
           "text": "duration <= 480.0 s (80% of timeout_s 600)"
+        },
+        {
+          "check": "output_produced",
+          "text": "produced_count >= 1 within every 72 h window (opening-intelligence snapshots appended (data/opening_intelligence snapshot jsonl + latest.json)); an empty run carries an allowed empty_reason"
         }
       ],
       "degraded": [
@@ -27798,6 +27802,14 @@
         {
           "check": "dry_run_wrote",
           "text": "a dry_run changed its output_signal or any durable state"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run produced nothing outside the expected_output rule (per_window), or skipped for a fatal reason ['no_runner', 'dependency_unavailable'] -> RUN_FAILED empty_output, P2"
+        },
+        {
+          "check": "output_unverifiable",
+          "text": "an exit-0 live run left no LaneRunReceipt@v2 attempt receipt bound to its run_id with an integer produced_count -> RUN_FAILED output_unverifiable"
         }
       ],
       "baseline": {
@@ -27838,7 +27850,8 @@
           "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:opening-intelligence-render' ORDER BY created_at DESC LIMIT 10",
           "stat / jq the receipt: data/runtime/opening-intelligence-render_last.json"
         ],
-        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger"
+        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger",
+        "expected_output_basis": "expected_output derived 2026-10-15 (train 5 integration) from opening_intelligence.py:320-321 appends a snapshot line and rewrites latest.json each weekday 09:15 run; 72h spans a weekend. produced_count emission: NOT YET - declared, not enforced (no output_receipt v2)"
       },
       "review_by": "2026-10-29",
       "review": {
@@ -27846,6 +27859,32 @@
         "status": "REVIEWED",
         "reviewed_by": "agent-reviewed 2026-10-15 against source (dry-run branch, receipt writer, import closure via advisory_lane_guard); awaiting the operator's REVIEW pass (SW4 precedent)",
         "reviewed_on": "2026-10-15"
+      },
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "opening-intelligence snapshots appended (data/opening_intelligence snapshot jsonl + latest.json)",
+        "rule": "per_window",
+        "min_produced": 1,
+        "window_h": 72,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [
+          "no_new_input"
+        ],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/opening-intelligence-render_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/opening-intelligence-render/<run_id>.json)"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
       }
     },
     {
@@ -27922,6 +27961,10 @@
         {
           "check": "duration_within_baseline",
           "text": "duration <= 480.0 s (80% of timeout_s 600)"
+        },
+        {
+          "check": "output_produced",
+          "text": "produced_count >= 1 within every 48 h window (discovery scorecard documents written); an empty run carries an allowed empty_reason"
         }
       ],
       "degraded": [
@@ -27962,6 +28005,14 @@
         {
           "check": "dry_run_wrote",
           "text": "a dry_run changed its output_signal or any durable state"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run produced nothing outside the expected_output rule (per_window), or skipped for a fatal reason ['no_runner', 'dependency_unavailable'] -> RUN_FAILED empty_output, P2"
+        },
+        {
+          "check": "output_unverifiable",
+          "text": "an exit-0 live run left no LaneRunReceipt@v2 attempt receipt bound to its run_id with an integer produced_count -> RUN_FAILED output_unverifiable"
         }
       ],
       "baseline": {
@@ -28002,7 +28053,8 @@
           "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:hermes-discovery-scorecard' ORDER BY created_at DESC LIMIT 10",
           "stat / jq the receipt: data/runtime/hermes-discovery-scorecard_last.json"
         ],
-        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger"
+        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger",
+        "expected_output_basis": "expected_output derived 2026-10-15 (train 5 integration) from hermes_discovery_scorecard.py:354 writes the scorecard payload daily 05:30; 48h tolerates one missed day. produced_count emission: NOT YET - declared, not enforced (no output_receipt v2)"
       },
       "review_by": "2026-10-29",
       "review": {
@@ -28010,6 +28062,32 @@
         "status": "REVIEWED",
         "reviewed_by": "agent-reviewed 2026-10-15 against source (dry-run branch, receipt writer, import closure via advisory_lane_guard); awaiting the operator's REVIEW pass (SW4 precedent)",
         "reviewed_on": "2026-10-15"
+      },
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "discovery scorecard documents written",
+        "rule": "per_window",
+        "min_produced": 1,
+        "window_h": 48,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [
+          "no_new_input"
+        ],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/hermes-discovery-scorecard_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/hermes-discovery-scorecard/<run_id>.json)"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
       }
     },
     {
@@ -28086,6 +28164,10 @@
         {
           "check": "duration_within_baseline",
           "text": "duration <= 720.0 s (80% of timeout_s 900)"
+        },
+        {
+          "check": "output_produced",
+          "text": "produced_count >= 1 within every 48 h window (rows inserted into trade_lesson_memory); an empty run carries an allowed empty_reason"
         }
       ],
       "degraded": [
@@ -28126,6 +28208,14 @@
         {
           "check": "dry_run_wrote",
           "text": "a dry_run changed its output_signal or any durable state"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run produced nothing outside the expected_output rule (per_window), or skipped for a fatal reason ['no_runner', 'dependency_unavailable'] -> RUN_FAILED empty_output, P1"
+        },
+        {
+          "check": "output_unverifiable",
+          "text": "an exit-0 live run left no LaneRunReceipt@v2 attempt receipt bound to its run_id with an integer produced_count -> RUN_FAILED output_unverifiable"
         }
       ],
       "baseline": {
@@ -28166,7 +28256,8 @@
           "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:wire-advisory-lessons' ORDER BY created_at DESC LIMIT 10",
           "stat / jq the receipt: data/runtime/wire-advisory-lessons_last.json"
         ],
-        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger"
+        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger",
+        "expected_output_basis": "expected_output derived 2026-10-15 (train 5 integration) from runs every 6h; lessons only exist when advisories closed, so a single run may be empty; 48h window. produced_count emission: NOT YET - declared, not enforced (no output_receipt v2)"
       },
       "review_by": "2026-10-29",
       "review": {
@@ -28174,6 +28265,36 @@
         "status": "REVIEWED",
         "reviewed_by": "agent-reviewed 2026-10-15 against source (dry-run branch, receipt writer, import closure via advisory_lane_guard); awaiting the operator's REVIEW pass (SW4 precedent)",
         "reviewed_on": "2026-10-15"
+      },
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "rows inserted into trade_lesson_memory",
+        "rule": "per_window",
+        "min_produced": 1,
+        "window_h": 48,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [
+          "no_new_input"
+        ],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/wire-advisory-lessons_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/wire-advisory-lessons/<run_id>.json)"
+          },
+          {
+            "kind": "store_rows",
+            "ref": "Postgres trade_lesson_memory INSERT scripts/wire_advisory_lessons.py:91"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P1"
+        }
       }
     },
     {
@@ -28250,6 +28371,10 @@
         {
           "check": "duration_within_baseline",
           "text": "duration <= 480.0 s (80% of timeout_s 600)"
+        },
+        {
+          "check": "output_produced",
+          "text": "produced_count >= 1 within every 72 h window (incubator events recorded (incubator_events rows)); an empty run carries an allowed empty_reason"
         }
       ],
       "degraded": [
@@ -28290,6 +28415,14 @@
         {
           "check": "dry_run_wrote",
           "text": "a dry_run changed its output_signal or any durable state"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run produced nothing outside the expected_output rule (per_window), or skipped for a fatal reason ['no_runner', 'dependency_unavailable'] -> RUN_FAILED empty_output, P1"
+        },
+        {
+          "check": "output_unverifiable",
+          "text": "an exit-0 live run left no LaneRunReceipt@v2 attempt receipt bound to its run_id with an integer produced_count -> RUN_FAILED output_unverifiable"
         }
       ],
       "baseline": {
@@ -28330,7 +28463,8 @@
           "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:incubator-rolloff-engine' ORDER BY created_at DESC LIMIT 10",
           "stat / jq the receipt: data/runtime/incubator-rolloff-engine_last.json"
         ],
-        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger"
+        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger",
+        "expected_output_basis": "expected_output derived 2026-10-15 (train 5 integration) from weekday 10:00; roll-offs are sparse, so a run can be empty; 72h spans a weekend. produced_count emission: NOT YET - declared, not enforced (no output_receipt v2)"
       },
       "review_by": "2026-10-29",
       "review": {
@@ -28338,6 +28472,36 @@
         "status": "REVIEWED",
         "reviewed_by": "agent-reviewed 2026-10-15 against source (dry-run branch, receipt writer, import closure via advisory_lane_guard); awaiting the operator's REVIEW pass (SW4 precedent)",
         "reviewed_on": "2026-10-15"
+      },
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "incubator events recorded (incubator_events rows)",
+        "rule": "per_window",
+        "min_produced": 1,
+        "window_h": 72,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [
+          "no_new_input"
+        ],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/incubator-rolloff-engine_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/incubator-rolloff-engine/<run_id>.json)"
+          },
+          {
+            "kind": "store_rows",
+            "ref": "Postgres incubator_events INSERT scripts/incubator_rolloff_engine.py:77"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P1"
+        }
       }
     },
     {
@@ -28414,6 +28578,10 @@
         {
           "check": "duration_within_baseline",
           "text": "duration <= 960.0 s (80% of timeout_s 1200)"
+        },
+        {
+          "check": "output_produced",
+          "text": "produced_count >= 1 within every 744 h window (rows inserted into pattern_library); an empty run carries an allowed empty_reason"
         }
       ],
       "degraded": [
@@ -28454,6 +28622,14 @@
         {
           "check": "dry_run_wrote",
           "text": "a dry_run changed its output_signal or any durable state"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run produced nothing outside the expected_output rule (per_window), or skipped for a fatal reason ['no_runner', 'dependency_unavailable'] -> RUN_FAILED empty_output, P2"
+        },
+        {
+          "check": "output_unverifiable",
+          "text": "an exit-0 live run left no LaneRunReceipt@v2 attempt receipt bound to its run_id with an integer produced_count -> RUN_FAILED output_unverifiable"
         }
       ],
       "baseline": {
@@ -28494,7 +28670,8 @@
           "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:pattern-extractor' ORDER BY created_at DESC LIMIT 10",
           "stat / jq the receipt: data/runtime/pattern-extractor_last.json"
         ],
-        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger"
+        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger",
+        "expected_output_basis": "expected_output derived 2026-10-15 (train 5 integration) from monthly (day 1 09:00); 744h = 31 days. produced_count emission: NOT YET - declared, not enforced (no output_receipt v2)"
       },
       "review_by": "2026-10-29",
       "review": {
@@ -28502,6 +28679,36 @@
         "status": "REVIEWED",
         "reviewed_by": "agent-reviewed 2026-10-15 against source (dry-run branch, receipt writer, import closure via advisory_lane_guard); awaiting the operator's REVIEW pass (SW4 precedent)",
         "reviewed_on": "2026-10-15"
+      },
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "rows inserted into pattern_library",
+        "rule": "per_window",
+        "min_produced": 1,
+        "window_h": 744,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [
+          "no_new_input"
+        ],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/pattern-extractor_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/pattern-extractor/<run_id>.json)"
+          },
+          {
+            "kind": "store_rows",
+            "ref": "Postgres pattern_library INSERT scripts/pattern_extractor.py:348"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
       }
     },
     {
@@ -28578,6 +28785,10 @@
         {
           "check": "duration_within_baseline",
           "text": "duration <= 240.0 s (80% of timeout_s 300)"
+        },
+        {
+          "check": "output_produced",
+          "text": "produced_count >= 1 within every 24 h window (gate measurement documents written); an empty run carries an allowed empty_reason"
         }
       ],
       "degraded": [
@@ -28618,6 +28829,14 @@
         {
           "check": "dry_run_wrote",
           "text": "a dry_run changed its output_signal or any durable state"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run produced nothing outside the expected_output rule (per_window), or skipped for a fatal reason ['no_runner', 'dependency_unavailable'] -> RUN_FAILED empty_output, P2"
+        },
+        {
+          "check": "output_unverifiable",
+          "text": "an exit-0 live run left no LaneRunReceipt@v2 attempt receipt bound to its run_id with an integer produced_count -> RUN_FAILED output_unverifiable"
         }
       ],
       "baseline": {
@@ -28658,7 +28877,8 @@
           "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:goal-gate-bridge' ORDER BY created_at DESC LIMIT 10",
           "stat / jq the receipt: data/runtime/goal-gate-bridge_last.json"
         ],
-        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger"
+        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger",
+        "expected_output_basis": "expected_output derived 2026-10-15 (train 5 integration) from cio_gate_measurement_bridge.py:674 writes the measurement doc each hourly :35 run; 24h window. produced_count emission: NOT YET - declared, not enforced (no output_receipt v2)"
       },
       "review_by": "2026-10-29",
       "review": {
@@ -28666,6 +28886,32 @@
         "status": "REVIEWED",
         "reviewed_by": "agent-reviewed 2026-10-15 against source (dry-run branch, receipt writer, import closure via advisory_lane_guard); awaiting the operator's REVIEW pass (SW4 precedent)",
         "reviewed_on": "2026-10-15"
+      },
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "gate measurement documents written",
+        "rule": "per_window",
+        "min_produced": 1,
+        "window_h": 24,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [
+          "no_new_input"
+        ],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/goal-gate-bridge_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/goal-gate-bridge/<run_id>.json)"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
       }
     }
   ]
