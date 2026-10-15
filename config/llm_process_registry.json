@@ -1016,7 +1016,9 @@
       "description": "CIO decision-plan JSON enrichment and callers that do not name themselves (situation detector, desk synthesis, stale-plan regeneration). READ_ONLY_ADVISORY. Routed through cio_governed_model_bridge (8766), caller advisory_desk.",
       "allowed_lanes": [
         "fast",
-        "deepseek-flash"
+        "deepseek-flash",
+        "grok",
+        "chatgpt"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
@@ -1033,7 +1035,7 @@
       "daily_cost_cap_usd": 0.5,
       "registered_by": "llm-label-split-20260914",
       "registered_at": "2026-09-14T23:00:00Z",
-      "notes": "2026-09-14: split out of the shared advisory_desk_opinion id (operator approved) so spend names its caller and scheduled work can be held to the 09:00-21:00 ET weekday window. Global LLM_GLOBAL_DAILY_USD_CAP still binds."
+      "notes": "2026-09-14: split out of the shared advisory_desk_opinion id (operator approved) so spend names its caller and scheduled work can be held to the 09:00-21:00 ET weekday window. Global LLM_GLOBAL_DAILY_USD_CAP still binds. | 2026-10-15: operator decision (~02:10Z, yes) after DeepSeek degraded from ~00:33Z (timeouts, 503s): the bridge may fall back to Grok OAuth then ChatGPT OAuth. allowed_lanes gains grok + chatgpt and the default routing row walks deepseek FAST -> grok -> chatgpt (transport_failover). DeepSeek stays primary; lane_policy stays deepseek_only so model_chooser keeps DeepSeek first (it prefers a free lane only for rows that are not deepseek_only). Caps unchanged; OAuth attempts settle $0."
     },
     {
       "id": "cio_prompt_judge",
@@ -1100,7 +1102,9 @@
       "description": "hermes_llm_failover.chat_json callers that do not name themselves: autonomous loop, overnight deep research. READ_ONLY_ADVISORY. Routed through cio_governed_model_bridge (8766), caller advisory_desk.",
       "allowed_lanes": [
         "fast",
-        "deepseek-flash"
+        "deepseek-flash",
+        "grok",
+        "chatgpt"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
@@ -1117,7 +1121,7 @@
       "daily_cost_cap_usd": 0.3,
       "registered_by": "llm-label-split-20260914",
       "registered_at": "2026-09-14T23:00:00Z",
-      "notes": "2026-09-14: split out of the shared advisory_desk_opinion id (operator approved) so spend names its caller and scheduled work can be held to the 09:00-21:00 ET weekday window. Global LLM_GLOBAL_DAILY_USD_CAP still binds."
+      "notes": "2026-09-14: split out of the shared advisory_desk_opinion id (operator approved) so spend names its caller and scheduled work can be held to the 09:00-21:00 ET weekday window. Global LLM_GLOBAL_DAILY_USD_CAP still binds. | 2026-10-15: operator decision (~02:10Z, yes) after DeepSeek degraded from ~00:33Z (timeouts, 503s): the bridge may fall back to Grok OAuth then ChatGPT OAuth. allowed_lanes gains grok + chatgpt and the default routing row walks deepseek FAST -> grok -> chatgpt (transport_failover). DeepSeek stays primary; lane_policy stays deepseek_only so model_chooser keeps DeepSeek first (it prefers a free lane only for rows that are not deepseek_only). Caps unchanged; OAuth attempts settle $0."
     },
     {
       "id": "hermes_usefulness_score",
@@ -1156,7 +1160,9 @@
       "description": "CIO Hermes research queue worker (BridgeHermesResearchBackend): desk and operator research requests, replays and restores. READ_ONLY_ADVISORY. Routed through cio_governed_model_bridge (8766), caller advisory_desk.",
       "allowed_lanes": [
         "fast",
-        "deepseek-flash"
+        "deepseek-flash",
+        "grok",
+        "chatgpt"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
@@ -1173,7 +1179,7 @@
       "daily_cost_cap_usd": 0.4,
       "registered_by": "llm-label-split-20260914",
       "registered_at": "2026-09-14T23:00:00Z",
-      "notes": "2026-09-14: split out of the shared advisory_desk_opinion id (operator approved) so spend names its caller and scheduled work can be held to the 09:00-21:00 ET weekday window. Global LLM_GLOBAL_DAILY_USD_CAP still binds."
+      "notes": "2026-09-14: split out of the shared advisory_desk_opinion id (operator approved) so spend names its caller and scheduled work can be held to the 09:00-21:00 ET weekday window. Global LLM_GLOBAL_DAILY_USD_CAP still binds. | 2026-10-15: operator decision (~02:10Z, yes) after DeepSeek degraded from ~00:33Z (timeouts, 503s): the bridge may fall back to Grok OAuth then ChatGPT OAuth. allowed_lanes gains grok + chatgpt and the default routing row walks deepseek FAST -> grok -> chatgpt (transport_failover). DeepSeek stays primary; lane_policy stays deepseek_only so model_chooser keeps DeepSeek first (it prefers a free lane only for rows that are not deepseek_only). Caps unchanged; OAuth attempts settle $0."
     },
     {
       "id": "hermes_golden_judge",

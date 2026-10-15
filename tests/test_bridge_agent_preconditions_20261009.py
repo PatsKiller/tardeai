@@ -499,11 +499,19 @@ def test_todays_latency_budgets_do_not_move_any_deadline():
 
 # ── Routing: n8n rows Grok -> ChatGPT -> DeepSeek ──────────────────────────
 
+#: Operator decision 2026-10-15 ~02:10Z ("yes"): these were DeepSeek-only and fall back to Grok OAuth then
+#: ChatGPT OAuth, DeepSeek staying primary (DeepSeek degraded from ~00:33Z).
+DEEPSEEK_FIRST_OAUTH_FALLBACK = {"cio_hermes_research", "cio_plan_enrichment", "hermes_cloud_json"}
+
+
 def test_only_n8n_rows_route_grok_chatgpt_deepseek_with_transport_failover():
     rows = json.loads((ROOT / "config" / "llm_routing_policy.json").read_text())["policies"]["default"]["processes"]
     for pid, row in rows.items():
         if pid.startswith("n8n_"):
             assert [row[k]["provider"] for k in ("primary", "secondary", "fallback")] == ["grok", "chatgpt", "deepseek"]
+            assert row["transport_failover"] is True
+        elif pid in DEEPSEEK_FIRST_OAUTH_FALLBACK:
+            assert [row[k]["provider"] for k in ("primary", "secondary", "fallback")] == ["deepseek", "grok", "chatgpt"]
             assert row["transport_failover"] is True
         else:
             assert "transport_failover" not in row, pid

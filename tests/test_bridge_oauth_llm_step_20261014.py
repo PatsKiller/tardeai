@@ -684,3 +684,108 @@ def test_operator_probe_dry_run_sends_nothing(capsys, monkeypatch):
     req = printed["request"]
     assert printed["dry_run"] is True and req["process_id"] == DIAG and req["output_schema_id"] == SCHEMA
     assert req["template_id"] == TEMPLATE and req["allowed_values"] == {"action_id": ["suggest_only"]}
+
+
+# ── DeepSeek-first rows with OAuth fallback (operator decision 2026-10-15 ~02:10Z) ──────────────────
+# cio_hermes_research, cio_plan_enrichment and hermes_cloud_json were DeepSeek-only. DeepSeek degraded from ~00:33Z
+# (timeouts, 503s) and the operator approved Grok OAuth then ChatGPT OAuth as fallback. DeepSeek stays primary.
+
+DEEPSEEK_FIRST = ("cio_hermes_research", "cio_plan_enrichment", "hermes_cloud_json")
+DEEPSEEK_FIRST_CEILINGS = {"cio_hermes_research": 0.4, "cio_plan_enrichment": 0.5, "hermes_cloud_json": 0.3}
+DEEPSEEK_FIRST_CAPS = {"cio_hermes_research": 0.4, "cio_plan_enrichment": 0.5, "hermes_cloud_json": 0.3}
+
+
+class StalledDeepSeek:
+    """DeepSeek holding the request, then giving up on a read timeout (the 2026-10-15 00:33Z shape)."""
+
+    def __init__(self, clock: Clock, stall_s: float = 60.0) -> None:
+        self.clock, self.stall_s, self.calls = clock, stall_s, []
+
+    def generate(self, messages, model_id, **kwargs):
+        self.calls.append({"model_id": model_id, **kwargs})
+        self.clock.t += self.stall_s
+        err = bridge.UpstreamDeadlineExceeded(f"upstream kept the request open past {self.stall_s:g}s")
+        err.request_sent = True
+        err.possibly_billable = True
+        raise err
+
+
+def json_call(process_id: str):
+    # The three callers send no tools and no response_format; they parse JSON out of the content themselves.
+    return bridge.execute_governed_call(
+        [{"role": "user", "content": "research question"}],
+        process_id=process_id,
+        max_tokens=1200,
+    )
+
+
+def test_deepseek_first_rows_walk_deepseek_grok_chatgpt():
+    rows = json.loads((ROOT / "config" / "llm_routing_policy.json").read_text())["policies"]["default"]["processes"]
+    for pid in DEEPSEEK_FIRST:
+        row = rows[pid]
+        assert [row[k]["provider"] for k in ("primary", "secondary", "fallback")] == ["deepseek", "grok", "chatgpt"]
+        assert [row[k]["policy"] for k in ("primary", "secondary", "fallback")] == ["FAST"] * 3
+        assert row["transport_failover"] is True and row["health_gate"] is True
+        assert row["latency_budget_ms"] == 150000 and row["cost_ceiling_usd"] == DEEPSEEK_FIRST_CEILINGS[pid]
+        reg = REGISTRY[pid]
+        assert reg["allowed_lanes"][:2] == ["fast", "deepseek-flash"]
+        assert {"grok", "chatgpt"} <= set(reg["allowed_lanes"])
+        # deepseek_only keeps model_chooser on DeepSeek first; caps and tool policy are unchanged.
+        assert reg["lane_policy"] == "deepseek_only" and reg["deepseek_allowed_policies"] == ["FAST"]
+        assert reg["daily_cost_cap_usd"] == DEEPSEEK_FIRST_CAPS[pid] and reg["tools_allowed"] is False
+
+
+@pytest.mark.parametrize("process_id", DEEPSEEK_FIRST)
+def test_healthy_deepseek_serves_and_oauth_is_not_called(monkeypatch, process_id):
+    grok, chat = Proxy("grok", FakeResp(200, ok_body("{}", "g"))), Proxy("chatgpt", FakeResp(200, ok_body("{}", "c")))
+    ds = FakeDeepSeek(json.dumps({"summary": "ok"}))
+    wire(monkeypatch, grok, chat, ds)
+    with governed(monkeypatch):
+        out = json_call(process_id)
+    assert "error" not in out, out.get("error")
+    assert outcomes(out) == [("deepseek", "ok")] and grok.calls == [] and chat.calls == []
+    assert out["_tradeai"]["provider"] == "deepseek"
+
+
+@pytest.mark.parametrize("process_id", DEEPSEEK_FIRST)
+def test_stalled_deepseek_falls_through_to_grok(monkeypatch, hermetic, process_id):
+    ds = StalledDeepSeek(hermetic["clock"])
+    grok = Proxy("grok", FakeResp(200, ok_body(json.dumps({"summary": "from grok"}), "grok-3-mini")))
+    chat = Proxy("chatgpt", FakeResp(200, ok_body("{}", "c")))
+    wire(monkeypatch, grok, chat, ds)
+    with governed(monkeypatch):
+        out = json_call(process_id)
+    assert "error" not in out, out.get("error")
+    assert outcomes(out) == [("deepseek", "timeout"), ("grok", "ok")] and chat.calls == []
+    assert out["_tradeai"]["provider"] == "grok" and len(ds.calls) == 1
+    # grok gets what the stalled attempt left of the shared 150 s budget, and no tools / response_format
+    assert grok.calls[0]["timeout"][1] == pytest.approx(90.0)
+    assert set(grok.calls[0]["json"]) == {"messages", "stream", "max_tokens"}
+    assert out["_tradeai"]["route_receipts"][0]["possibly_billable"] is True
+
+
+@pytest.mark.parametrize("process_id", DEEPSEEK_FIRST)
+def test_stalled_deepseek_and_failing_grok_fall_through_to_chatgpt(monkeypatch, hermetic, process_id):
+    ds = StalledDeepSeek(hermetic["clock"])
+    grok = Proxy("grok", FakeResp(503))
+    chat = Proxy("chatgpt", FakeResp(200, ok_body(json.dumps({"summary": "from chatgpt"}), "gpt-6.1-sol")))
+    wire(monkeypatch, grok, chat, ds)
+    with governed(monkeypatch):
+        out = json_call(process_id)
+    assert "error" not in out, out.get("error")
+    assert outcomes(out) == [("deepseek", "timeout"), ("grok", "serving_failure"), ("chatgpt", "ok")]
+    assert out["_tradeai"]["provider"] == "chatgpt"
+    assert json.loads(out["choices"][0]["message"]["content"]) == {"summary": "from chatgpt"}
+
+
+def test_repeated_deepseek_stalls_open_its_breaker_and_grok_serves_at_once(monkeypatch, hermetic):
+    ds = StalledDeepSeek(hermetic["clock"])
+    grok = Proxy("grok", FakeResp(200, ok_body(json.dumps({"summary": "g"}), "grok-3-mini")))
+    wire(monkeypatch, grok, Proxy("chatgpt", FakeResp(500)), ds)
+    with governed(monkeypatch):
+        for _ in range(bridge.PROVIDER_CIRCUITS.threshold):
+            assert outcomes(json_call("hermes_cloud_json"))[0] == ("deepseek", "timeout")
+        t0 = hermetic["clock"].t
+        out = json_call("cio_plan_enrichment")
+    assert outcomes(out) == [("deepseek", "circuit_open"), ("grok", "ok")]
+    assert len(ds.calls) == bridge.PROVIDER_CIRCUITS.threshold and hermetic["clock"].t == t0
