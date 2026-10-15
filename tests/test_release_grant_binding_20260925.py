@@ -112,3 +112,181 @@ def test_preflight_cli_fail_closed_and_warn_mode(tmp_path, monkeypatch):
     assert r2.returncode == 0 and "warn mode" in r2.stderr
     out = json.loads(r2.stdout.strip().splitlines()[0])
     assert out["allowed"] is False and out["pending_request_ids"] == ["0f7ca85f285bfd49"]
+
+
+# ---------------------------------------------------------------------------
+# 2026-10-09 (due diligence B §2 / R2, R5): SHA wins over PR; CI before consume
+# ---------------------------------------------------------------------------
+TRAIN_SHA = "8c2eec70dea0b87915ed6b353e60359c620f8c77"
+TRAIN_GRANT = {"grant_id": "g-train", "tier": "release-write", "expires": NOW + 3600, "uses": 9,
+               "reason": f"PR #1567 sha {TRAIN_SHA}: prepare + promote (and rollback) exact-main release — "
+                         "AGENTS 3.0.0 ratified (#1552), governance P16-P20 (#1554), bridge P4-P6/P21 (#1555), "
+                         "health_unknown (#1562), de-flake (#1559), sharded CI (#1556), rollup fix (#1566) "
+                         "[remote_request_id=c73b122335aa11ff chat=8797974247 via=button]"}
+LIVE_CAMPAIGN_GRANT = {"grant_id": "g-campaign", "tier": "release-write", "expires": NOW + 3600, "uses": 1992,
+                       "reason": "campaign n8n-maturity-20261009 (N8N Maturity program, 72h keyboard approval 10-09). "
+                                 "Agent A runs prepare/promote, program installs/restarts/cutovers; every action "
+                                 "logged on ~/N8N_PROGRAM_BOARD.md with PR # and sha."}
+
+
+def _act(sha, pr=None, campaign=None, action="promote"):
+    return ReleaseAction(action=action, target_sha=sha, pr_number=pr, campaign=campaign, now=NOW)
+
+
+def test_audit_replay_pr_listed_in_train_grant_no_longer_authorizes_another_sha():
+    # The 10-09 audit: pr=1554 with a made-up SHA was allowed because the grant lists (#1554).
+    for pr, sha in ((1554, "0123456789abcdef0123456789abcdef01234567"), (1567, "f" * 40)):
+        v = decide(_act(sha, pr), grants=[TRAIN_GRANT])
+        assert v.allowed is False, (pr, sha)
+        why = v.refused_grants[0]["why"]
+        assert "a PR match alone does not bind" in why and TRAIN_SHA[:12] in why
+
+
+def test_train_grant_still_binds_its_own_sha_with_or_without_pr():
+    for pr in (1567, 1554, None):
+        v = decide(_act(TRAIN_SHA, pr), grants=[TRAIN_GRANT])
+        assert v.allowed is True and any(m.startswith("sha:8c2eec70d") for m in v.matched_by)
+    # a 9-char prefix of the target is enough, as before
+    assert decide(_act(TRAIN_SHA[:9], 1567), grants=[TRAIN_GRANT]).allowed is True
+
+
+def test_request_and_chat_ids_are_not_mistaken_for_a_named_sha():
+    from scripts.lib.release_grant_binding import named_shas
+
+    pr_only = {**TRAIN_GRANT, "grant_id": "g-pr-only",
+               "reason": "PR #1553 (+ merged #1549 #1550): deploy the merge of #1553 on main "
+                         "[remote_request_id=0e7f8366ad8150ff chat=8797974247 via=button]"}
+    assert named_shas(pr_only["reason"]) == []
+    # A grant that names no SHA keeps the PR binding (unchanged behaviour).
+    v = decide(_act("a1b2c3d4e5f6a7b8c9d0a1b2c3d4e5f6a7b8c9d0", 1553), grants=[pr_only])
+    assert v.allowed is True and v.matched_by == ["pr:#1553"]
+    assert named_shas("prepared /x/377e9b536-main-exact-phase2-20261009-122248 sha 377e9b536afc") == [
+        "377e9b536", "377e9b536afc"]
+    assert named_shas("amount 123456789012 and id_deadbeef12 and deadbeef1234567890abcdef0123456789abcdef12") == []
+
+
+def test_live_campaign_grant_keeps_working_for_any_sha_under_its_campaign():
+    for sha in (TRAIN_SHA, "f" * 40):
+        v = decide(_act(sha, 1625, campaign="n8n-maturity-20261009"), grants=[LIVE_CAMPAIGN_GRANT])
+        assert v.allowed is True and v.matched_by == ["campaign:n8n-maturity-20261009"]
+    # ...and binds nothing without the campaign
+    assert decide(_act(TRAIN_SHA, 1625), grants=[LIVE_CAMPAIGN_GRANT]).allowed is False
+    # A campaign grant whose text mentions some sha still binds via the campaign.
+    noted = {**LIVE_CAMPAIGN_GRANT, "reason": LIVE_CAMPAIGN_GRANT["reason"] + " first release b7dbe6e60"}
+    assert decide(_act(TRAIN_SHA, campaign="n8n-maturity-20261009"), grants=[noted]).allowed is True
+
+
+def test_settled_request_cannot_widen_a_grant_to_another_sha():
+    pending = {"request_id": "c73b122335aa11ff", "tier": "release-write", "status": "PENDING",
+               "reason": "PR #1567: prepare + promote exact main"}
+    settled = {**TRAIN_GRANT, "remote_request_id": "c73b122335aa11ff"}
+    assert decide(_act("f" * 40, 1567), grants=[settled], requests=[pending]).allowed is False
+    assert decide(_act(TRAIN_SHA, 1567), grants=[settled], requests=[pending]).allowed is True
+
+
+def _preflight(monkeypatch, argv, *, allowed=True, ci_ok=True):
+    import release_grant_preflight as pf
+    from scripts.lib.release_grant_binding import Verdict
+
+    calls = {"consume": 0, "collect": 0}
+
+    def consume(**_):
+        calls["consume"] += 1
+        return {"ok": True}
+
+    def collect(sha):
+        calls["collect"] += 1
+        return {"ok": ci_ok, "candidate_sha": sha, "checked_at": "2026-10-09T20:00:00Z",
+                "errors": [] if ci_ok else ["not_successful:.github/workflows/agent-governance.yml"]}
+
+    monkeypatch.setattr(pf, "decide_from_disk", lambda act: Verdict(allowed, "test", grant_id="g", matched_by=["sha:x"]))
+    monkeypatch.setattr(pf, "consume_release_grant", consume)
+    monkeypatch.setattr(pf, "collect_ci_evidence", collect)
+    monkeypatch.setattr(sys, "argv", ["release_grant_preflight.py", *argv])
+    return pf.main(), calls
+
+
+def test_promote_with_ci_not_green_refuses_before_consuming(monkeypatch, tmp_path, capsys):
+    rc, calls = _preflight(monkeypatch, ["--action", "promote", "--sha", TRAIN_SHA,
+                                         "--ci-receipt", str(tmp_path / "ci.json")], ci_ok=False)
+    assert rc == 3 and calls == {"consume": 0, "collect": 1}
+    out = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert out["consumed"] == {"ok": False, "skipped": "ci_not_green"} and out["ci_gate"]["ok"] is False
+    assert json.loads((tmp_path / "ci.json").read_text())["ok"] is False   # receipt written for the deploy record
+
+
+def test_promote_with_ci_green_consumes_exactly_once(monkeypatch, tmp_path):
+    rc, calls = _preflight(monkeypatch, ["--action", "promote", "--sha", TRAIN_SHA,
+                                         "--ci-receipt", str(tmp_path / "ci.json")])
+    assert rc == 0 and calls == {"consume": 1, "collect": 1}
+
+
+def test_fresh_green_receipt_is_reused_and_stale_or_foreign_is_not(tmp_path):
+    import release_grant_preflight as pf
+    from datetime import datetime, timezone
+
+    receipt = tmp_path / "ci.json"
+    checked = "2026-10-09T20:00:00Z"
+    t0 = datetime(2026, 10, 9, 20, 0, tzinfo=timezone.utc).timestamp()
+    receipt.write_text(json.dumps({"ok": True, "candidate_sha": TRAIN_SHA, "checked_at": checked}))
+    collected = []
+    col = lambda s: collected.append(s) or {"ok": False, "errors": ["x"]}  # noqa: E731
+    assert pf.promote_ci_gate(TRAIN_SHA, receipt, collect=col, now=t0 + 60)["source"] == "receipt"
+    assert collected == []
+    assert pf.promote_ci_gate(TRAIN_SHA, receipt, collect=col, now=t0 + pf.CI_RECEIPT_REUSE_S + 1)["ok"] is False
+    receipt.write_text(json.dumps({"ok": True, "candidate_sha": "f" * 40, "checked_at": checked}))
+    assert pf.promote_ci_gate(TRAIN_SHA, receipt, collect=col, now=t0 + 60)["ok"] is False
+    receipt.write_text("not json")
+    assert pf.promote_ci_gate(TRAIN_SHA, receipt, collect=col, now=t0 + 60)["ok"] is False
+    assert len(collected) == 3
+
+
+def test_prepare_rollback_and_emergency_skip_do_not_read_ci(monkeypatch):
+    for argv in (["--action", "prepare", "--sha", TRAIN_SHA],
+                 ["--action", "rollback", "--sha", TRAIN_SHA],
+                 ["--action", "promote", "--sha", TRAIN_SHA, "--skip-ci-gate"]):
+        rc, calls = _preflight(monkeypatch, argv, ci_ok=False)
+        assert rc == 0 and calls == {"consume": 1, "collect": 0}, argv
+
+
+def test_refused_binding_never_reads_ci_nor_consumes(monkeypatch):
+    rc, calls = _preflight(monkeypatch, ["--action", "promote", "--sha", TRAIN_SHA], allowed=False)
+    assert rc == 2 and calls == {"consume": 0, "collect": 0}
+
+
+def _shell_harness(tmp_path, rc, emergency=""):
+    import subprocess
+
+    source = (ROOT / "scripts/cio_phase2_exact_main_deploy.sh").read_text()
+    source = source[:source.rindex('case "$MODE" in')]
+    fake = tmp_path / "fakepy"
+    fake.write_text(f'#!/bin/sh\necho "ARGS:$*"\nexit {rc}\n')
+    fake.chmod(0o755)
+    script = tmp_path / "harness.sh"
+    script.write_text(source + f'\nCANONICAL_SOURCE="{ROOT}"\nVENV_PYTHON="{fake}"\nEMERGENCY_SHA="{emergency}"\n'
+                      + 'CI_RECEIPT_FILE=/x/post_merge_ci.json\n'
+                      + 'write_deploy_receipt() { echo "RECEIPT:$*"; }\n'
+                      + 'release_grant_preflight "$1" "$2"\necho AFTER\n')
+    return lambda action: subprocess.run(["bash", str(script), action, TRAIN_SHA], capture_output=True, text=True)
+
+
+def test_shell_promote_passes_receipt_and_rc3_is_a_ci_refusal(tmp_path):
+    run = _shell_harness(tmp_path, 3)
+    r = run("promote")
+    assert r.returncode != 0 and "AFTER" not in r.stdout
+    assert "--ci-receipt /x/post_merge_ci.json" in r.stdout and "--skip-ci-gate" not in r.stdout
+    assert "RECEIPT:false promote blocked false post_merge_ci_refused" in r.stdout
+    assert "before any release grant use was consumed" in r.stderr
+
+
+def test_shell_binding_refusal_and_success_paths(tmp_path):
+    r = _shell_harness(tmp_path, 2)("promote")
+    assert r.returncode != 0 and "binds only that SHA" in r.stderr and "RECEIPT:" not in r.stdout
+    ok = _shell_harness(tmp_path, 0)
+    r = ok("prepare")
+    assert r.returncode == 0 and "AFTER" in r.stdout and "--ci-receipt" not in r.stdout
+
+
+def test_shell_emergency_promote_skips_the_ci_read(tmp_path):
+    r = _shell_harness(tmp_path, 0, emergency=TRAIN_SHA)("promote")
+    assert r.returncode == 0 and "--skip-ci-gate" in r.stdout and "--ci-receipt" not in r.stdout
