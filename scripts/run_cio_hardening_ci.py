@@ -5033,6 +5033,13 @@ GATES = [
         "onboard_f09_b3_20261015",
         ["tests/test_onboard_f09_b3_20261015.py"],
     ),
+    (
+        # ANCHOR: ONBOARD_F09_B4_20261015 — F09 n8n onboarding batch 4 (paper / order-path lanes); same shape and proof as B1
+        # (tests/support/f09_onboarding.py): OFFLINE broker-call-free --dry-run, staged registry row (dispatch off,
+        # f09_staged; §23.14 ACTIVE until AGENTS 12.0.0 is ratified), staged effect key, REVIEWED contract. Schedules nothing.
+        "onboard_f09_b4_20261015",
+        ["tests/test_onboard_f09_b4_20261015.py"],
+    ),
 ]
 
 

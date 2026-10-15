@@ -5614,7 +5614,86 @@
         "token": "alpaca",
         "source": "config/lane_stay_on_cron_tokens.json"
       },
-      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible).",
+      "dispatch": {
+        "mode": "off",
+        "cron": [
+          "0 10-15 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W5",
+        "class": "pipeline",
+        "priority": 1,
+        "retry_policy": "none"
+      },
+      "f09_staged": {
+        "policy": "operator N8N Cutover Decision 2026-10-15 (F09 approved for n8n cutover; grant execution-engineering: write-free --dry-run + onboarding, mocks only); AGENTS.md 12.0.0 §23.25 is PROPOSED (\"nothing here binds\" until APPROVE_AGENTS_POLICY_12_0_0), so ACTIVE §23.14 keeps this lane off the dispatcher until then",
+        "since": "2026-10-15",
+        "why_off": "Staged inert: dispatch.mode off and no entry in config/n8n_run_allowlist.json lanes (the only list the gateway and executor read). §23.14 (ACTIVE) says a broker / order / stop lane does not enter the registry as a dispatcher row and that only a new MAJOR can change it; 12.0.0 is that MAJOR and is not ratified. Everything activation needs is here and proven: the write-free, broker-call-free --dry-run, the activation allowlist entry (live cron argv, cron lock, live_arg null), the staged effect key and the REVIEWED health contract.",
+        "order_path": false,
+        "entry_script": "linux_launchers/reconcile_alpaca_paper_options.sh",
+        "cron_lines": [
+          {
+            "row_id": "cron:L704",
+            "text": "0 10-15 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && PROJECT_ROOT=/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT PY=$PY bash linux_launchers/reconcile_alpaca_paper_options.sh"
+          }
+        ],
+        "cron_argv": [
+          []
+        ],
+        "cron_lock": null,
+        "effects": [
+          "overwrite"
+        ],
+        "dry_run": {
+          "arg": [
+            "--dry-run"
+          ],
+          "empty_reason": "dry_run_requires_broker_read",
+          "lane_output_lane_id": "reconcile-alpaca-paper-options",
+          "would": "poll Alpaca PAPER option fills and closes (--reconcile; no order submit) and record them",
+          "broker_calls": 0,
+          "writes": 0,
+          "proof": "tests/test_onboard_f09_b4_20261015.py"
+        },
+        "activation_allowlist_entry": {
+          "lane_id": "reconcile-alpaca-paper-options",
+          "command": [
+            "bash",
+            "linux_launchers/reconcile_alpaca_paper_options.sh"
+          ],
+          "lock": "/tmp/tradeai_f09_reconcile_alpaca_paper_options.lock",
+          "lock_kind": "flock",
+          "timeout_s": 1800,
+          "dry_run_arg": [
+            "--dry-run"
+          ],
+          "live_arg": null,
+          "market_gate": false,
+          "output_signal": "logs/alpaca_paper_options_reconcile.log",
+          "env_names": [],
+          "env_allowlist_mode": "enforce",
+          "source": "crontab cron:L704: 0 10-15 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && PROJECT_ROOT=/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT PY=$PY bash linux_launchers/reconcile_alpaca_paper_options.sh"
+        },
+        "activation_registry": {
+          "scheduler.stage": "shadow",
+          "scheduler.wave": "F09",
+          "dispatch.mode": "dry_run",
+          "canary_live_arg": []
+        },
+        "activation_needs": [
+          "APPROVE_AGENTS_POLICY_12_0_0 ratified, then a reviewed lane_dispatch admission for the named F09 lanes (the §23.14 code ceiling): dispatch_eligible refuses stay_on_cron today, and with the markers lifted the forbidden-token rule still hits ['alpaca', 'paper']",
+          "drop the stay_on_cron / KEEP_ON_CRON markers in the activation PR (the directive supersedes the STAY_HOST rationale)",
+          "move activation_allowlist_entry into config/n8n_run_allowlist.json lanes and set scheduler.stage shadow + dispatch.mode dry_run in the same registry PR (one registry PR at a time, §23.11)",
+          "live runs need the host child env: env_names is [] (dry run needs nothing); a live entry must name the lane's broker credential names, which R1 ruling 3 refuses today — an activation decision, never an agent's",
+          "the launcher takes /tmp/tradeai_alpaca_options_reconcile.lock itself: the entry lock must stay a different path or a live run would refuse itself; the outer cron flock added before canary carries the no-double-run proof",
+          "the cron line has no flock lock: a crontab edit (cron grant) must add `flock -n <lock>` before canary so the lock proves no double run (§23.12); the entry's lock is proposed",
+          "timeout_s 1800 is derived: class default 1800 s (the cron line has no timeout)",
+          "the lane writes no LaneRunReceipt@v1 (output_signal logs/alpaca_paper_options_reconcile.log is a log/file mtime); write_lane_receipt + produced_count before expected_output can be enforced (output_receipt v2)",
+          "cutover factory parse_lane_argv reports unmapped_wrapper:env:PROJECT_ROOT: the executor must reproduce that wrapper or the cron line must drop it before canary",
+          "cutover factory parse_lane_argv reports unmapped_wrapper:env:PY: the executor must reproduce that wrapper or the cron line must drop it before canary"
+        ]
+      }
     },
     {
       "lane_id": "symbol-news-curation-monitor",
@@ -6299,7 +6378,85 @@
         "event_driven_candidate": false,
         "f_evidence": "broker/stop/order/daemon class (E-plan bucket C)"
       },
-      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible).",
+      "dispatch": {
+        "mode": "off",
+        "cron": [
+          "15,45 9-15 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W5",
+        "class": "pipeline",
+        "priority": 1,
+        "retry_policy": "none"
+      },
+      "f09_staged": {
+        "policy": "operator N8N Cutover Decision 2026-10-15 (F09 approved for n8n cutover; grant execution-engineering: write-free --dry-run + onboarding, mocks only); AGENTS.md 12.0.0 §23.25 is PROPOSED (\"nothing here binds\" until APPROVE_AGENTS_POLICY_12_0_0), so ACTIVE §23.14 keeps this lane off the dispatcher until then",
+        "since": "2026-10-15",
+        "why_off": "Staged inert: dispatch.mode off and no entry in config/n8n_run_allowlist.json lanes (the only list the gateway and executor read). §23.14 (ACTIVE) says a broker / order / stop lane does not enter the registry as a dispatcher row and that only a new MAJOR can change it; 12.0.0 is that MAJOR and is not ratified. Everything activation needs is here and proven: the write-free, broker-call-free --dry-run, the activation allowlist entry (live cron argv, cron lock, live_arg null), the staged effect key and the REVIEWED health contract.",
+        "order_path": false,
+        "entry_script": "scripts/options_intent_matcher.py",
+        "cron_lines": [
+          {
+            "row_id": "cron:L1020",
+            "text": "15,45 9-15 * * 1-5 cd $PROJ && flock -n /tmp/options_intent_matcher.lock timeout 240 $PY scripts/options_intent_matcher.py --apply >> logs/options_intent_matcher.log 2>&1"
+          }
+        ],
+        "cron_argv": [
+          [
+            "--apply"
+          ]
+        ],
+        "cron_lock": "/tmp/options_intent_matcher.lock",
+        "effects": [
+          "append"
+        ],
+        "dry_run": {
+          "arg": [
+            "--dry-run"
+          ],
+          "empty_reason": "dry_run_requires_broker_read",
+          "lane_output_lane_id": "options-intent-matcher",
+          "would": "pull the Schwab option chain (read-only market data) for each active options intent and, with --apply, record the ranked contract matches",
+          "broker_calls": 0,
+          "writes": 0,
+          "proof": "tests/test_onboard_f09_b4_20261015.py"
+        },
+        "activation_allowlist_entry": {
+          "lane_id": "options-intent-matcher",
+          "command": [
+            "$PY",
+            "scripts/options_intent_matcher.py"
+          ],
+          "lock": "/tmp/options_intent_matcher.lock",
+          "lock_kind": "flock",
+          "timeout_s": 240,
+          "dry_run_arg": [
+            "--dry-run"
+          ],
+          "live_arg": null,
+          "market_gate": false,
+          "output_signal": "data/options_intent/latest.json",
+          "env_names": [],
+          "env_allowlist_mode": "enforce",
+          "source": "crontab cron:L1020: 15,45 9-15 * * 1-5 cd $PROJ && flock -n /tmp/options_intent_matcher.lock timeout 240 $PY scripts/options_intent_matcher.py --apply >> logs/options_intent_matcher.log 2>&1"
+        },
+        "activation_registry": {
+          "scheduler.stage": "shadow",
+          "scheduler.wave": "F09",
+          "dispatch.mode": "dry_run",
+          "canary_live_arg": [
+            "--apply"
+          ]
+        },
+        "activation_needs": [
+          "APPROVE_AGENTS_POLICY_12_0_0 ratified, then a reviewed lane_dispatch admission for the named F09 lanes (the §23.14 code ceiling): dispatch_eligible refuses keep_on_cron today, and with the markers lifted no forbidden token hits (the row's stay_on_cron / KEEP_ON_CRON marker is the only refusal)",
+          "drop the stay_on_cron / KEEP_ON_CRON markers in the activation PR (the directive supersedes the STAY_HOST rationale)",
+          "move activation_allowlist_entry into config/n8n_run_allowlist.json lanes and set scheduler.stage shadow + dispatch.mode dry_run in the same registry PR (one registry PR at a time, §23.11)",
+          "live runs need the host child env: env_names is [] (dry run needs nothing); a live entry must name the lane's broker credential names, which R1 ruling 3 refuses today — an activation decision, never an agent's",
+          "the lane writes no LaneRunReceipt@v1 (output_signal data/options_intent/latest.json is a log/file mtime); write_lane_receipt + produced_count before expected_output can be enforced (output_receipt v2)"
+        ]
+      }
     },
     {
       "lane_id": "active-trader-session-review",
@@ -18523,6 +18680,596 @@
       "adopted_reason": "F09 onboarding batch 3 2026-10-15 (operator N8N Cutover Decision): a row carrying a reviewed, staged (mode off) dispatch block and the f09_staged record is hand-maintained; reconcile_lane_registry.py re-derives generated rows and would drop both."
     },
     {
+      "lane_id": "paper-execution-sweep",
+      "owner": "execution",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/5 9-16 * * 1-5",
+        "match": "scripts/paper_execution_sweep.py"
+      },
+      "expected_cadence_hours": 64.08,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/paper_execution.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Business Critical",
+      "recommendation": "KEEP_ON_CRON",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L130",
+        "pipeline": "P09",
+        "value_class": "Business Critical",
+        "recommendation": "KEEP_ON_CRON",
+        "f_recommendation": "KEEP on cron/systemd; n8n watches heartbeat",
+        "event_driven_candidate": true,
+        "f_evidence": "broker/stop/order/daemon class (E-plan bucket C)"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "stay_on_cron": {
+        "class": "pipeline_excluded_gate",
+        "token": "market_day_gate.sh",
+        "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+      },
+      "dispatch": {
+        "mode": "off",
+        "cron": [
+          "*/5 9-16 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W5",
+        "class": "pipeline",
+        "priority": 1,
+        "retry_policy": "none"
+      },
+      "f09_staged": {
+        "policy": "operator N8N Cutover Decision 2026-10-15 (F09 approved for n8n cutover; grant execution-engineering: write-free --dry-run + onboarding, mocks only); AGENTS.md 12.0.0 §23.25 is PROPOSED (\"nothing here binds\" until APPROVE_AGENTS_POLICY_12_0_0), so ACTIVE §23.14 keeps this lane off the dispatcher until then",
+        "since": "2026-10-15",
+        "why_off": "Staged inert: dispatch.mode off and no entry in config/n8n_run_allowlist.json lanes (the only list the gateway and executor read). §23.14 (ACTIVE) says a broker / order / stop lane does not enter the registry as a dispatcher row and that only a new MAJOR can change it; 12.0.0 is that MAJOR and is not ratified. Everything activation needs is here and proven: the write-free, broker-call-free --dry-run, the activation allowlist entry (live cron argv, cron lock, live_arg null), the staged effect key and the REVIEWED health contract.",
+        "order_path": true,
+        "entry_script": "scripts/paper_execution_sweep.py",
+        "cron_lines": [
+          {
+            "row_id": "cron:L132",
+            "text": "*/5 9-16 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/paper_sweep.lock bash scripts/market_day_gate.sh $PY scripts/paper_execution_sweep.py >> logs/paper_execution.log 2>&1"
+          }
+        ],
+        "cron_argv": [
+          []
+        ],
+        "cron_lock": "/tmp/paper_sweep.lock",
+        "effects": [
+          "broker_order",
+          "append"
+        ],
+        "dry_run": {
+          "arg": [
+            "--dry-run"
+          ],
+          "empty_reason": "dry_run",
+          "lane_output_lane_id": "paper-execution-sweep",
+          "would": "find approved proposals that were not submitted and submit them to the Alpaca PAPER account (order path: trading lock applies)",
+          "broker_calls": 0,
+          "writes": 0,
+          "proof": "tests/test_onboard_f09_b4_20261015.py"
+        },
+        "activation_allowlist_entry": {
+          "lane_id": "paper-execution-sweep",
+          "command": [
+            "$PY",
+            "scripts/paper_execution_sweep.py"
+          ],
+          "lock": "/tmp/paper_sweep.lock",
+          "lock_kind": "safe_flock",
+          "timeout_s": 285,
+          "dry_run_arg": [
+            "--dry-run"
+          ],
+          "live_arg": null,
+          "market_gate": true,
+          "output_signal": "logs/paper_execution.log",
+          "env_names": [],
+          "env_allowlist_mode": "enforce",
+          "source": "crontab cron:L132: */5 9-16 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/paper_sweep.lock bash scripts/market_day_gate.sh $PY scripts/paper_execution_sweep.py >> logs/paper_execution.log 2>&1"
+        },
+        "activation_registry": {
+          "scheduler.stage": "shadow",
+          "scheduler.wave": "F09",
+          "dispatch.mode": "dry_run",
+          "canary_live_arg": []
+        },
+        "activation_needs": [
+          "APPROVE_AGENTS_POLICY_12_0_0 ratified, then a reviewed lane_dispatch admission for the named F09 lanes (the §23.14 code ceiling): dispatch_eligible refuses stay_on_cron today, and with the markers lifted the forbidden-token rule still hits ['paper']",
+          "drop the stay_on_cron / KEEP_ON_CRON markers in the activation PR (the directive supersedes the STAY_HOST rationale)",
+          "move activation_allowlist_entry into config/n8n_run_allowlist.json lanes and set scheduler.stage shadow + dispatch.mode dry_run in the same registry PR (one registry PR at a time, §23.11)",
+          "live runs need the host child env: env_names is [] (dry run needs nothing); a live entry must name the lane's broker credential names, which R1 ruling 3 refuses today — an activation decision, never an agent's",
+          "the cron line locks with safe_flock.sh /tmp/paper_sweep.lock: the factory canary check reads only `flock -n`, so canary needs the line on flock -n (crontab edit, cron grant)",
+          "timeout_s 285 is derived: cadence 5 min minus 15 s (the cron line has no timeout)",
+          "the lane writes no LaneRunReceipt@v1 (output_signal logs/paper_execution.log is a log/file mtime); write_lane_receipt + produced_count before expected_output can be enforced (output_receipt v2)",
+          "order path: onboarding is shadow only. A live n8n run of this order path stays refused by the trading lock (lib/trading_lock, LOCKED by default) and config/schwab_access_mode.yaml; its live proof comes from n8n's own schedule, never from an agent forcing a live broker run (§23.25)"
+        ]
+      },
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-10-15",
+      "adopted_reason": "F09 onboarding batch 4 2026-10-15 (operator N8N Cutover Decision): a row carrying a reviewed, staged (mode off) dispatch block and the f09_staged record is hand-maintained; reconcile_lane_registry.py re-derives generated rows and would drop both."
+    },
+    {
+      "lane_id": "alpaca-paper-reconciler",
+      "owner": "execution",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "35 9 * * 1-5",
+        "match": "scripts/alpaca_paper_reconciler.py"
+      },
+      "expected_cadence_hours": 72.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/alpaca_reconciler.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Business Critical",
+      "recommendation": "KEEP_ON_CRON",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L206",
+        "pipeline": "P09",
+        "value_class": "Business Critical",
+        "recommendation": "KEEP_ON_CRON",
+        "f_recommendation": "KEEP on cron/systemd; n8n watches heartbeat",
+        "event_driven_candidate": false,
+        "f_evidence": "broker/stop/order/daemon class (E-plan bucket C)"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "stay_on_cron": {
+        "class": "broker_order",
+        "token": "alpaca",
+        "source": "config/lane_stay_on_cron_tokens.json"
+      },
+      "dispatch": {
+        "mode": "off",
+        "cron": [
+          "35 9 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W5",
+        "class": "pipeline",
+        "priority": 1,
+        "retry_policy": "none"
+      },
+      "f09_staged": {
+        "policy": "operator N8N Cutover Decision 2026-10-15 (F09 approved for n8n cutover; grant execution-engineering: write-free --dry-run + onboarding, mocks only); AGENTS.md 12.0.0 §23.25 is PROPOSED (\"nothing here binds\" until APPROVE_AGENTS_POLICY_12_0_0), so ACTIVE §23.14 keeps this lane off the dispatcher until then",
+        "since": "2026-10-15",
+        "why_off": "Staged inert: dispatch.mode off and no entry in config/n8n_run_allowlist.json lanes (the only list the gateway and executor read). §23.14 (ACTIVE) says a broker / order / stop lane does not enter the registry as a dispatcher row and that only a new MAJOR can change it; 12.0.0 is that MAJOR and is not ratified. Everything activation needs is here and proven: the write-free, broker-call-free --dry-run, the activation allowlist entry (live cron argv, cron lock, live_arg null), the staged effect key and the REVIEWED health contract.",
+        "order_path": false,
+        "entry_script": "scripts/alpaca_paper_reconciler.py",
+        "cron_lines": [
+          {
+            "row_id": "cron:L208",
+            "text": "35 9 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/alpaca_paper_reconciler.py --fix >> logs/alpaca_reconciler.log 2>&1"
+          }
+        ],
+        "cron_argv": [
+          [
+            "--fix"
+          ]
+        ],
+        "cron_lock": null,
+        "effects": [
+          "overwrite"
+        ],
+        "dry_run": {
+          "arg": [
+            "--dry-run"
+          ],
+          "empty_reason": "dry_run_requires_broker_read",
+          "lane_output_lane_id": "alpaca-paper-reconciler",
+          "would": "audit paper_trades against Alpaca PAPER positions and, with --fix, overwrite DB metadata from the broker",
+          "broker_calls": 0,
+          "writes": 0,
+          "proof": "tests/test_onboard_f09_b4_20261015.py"
+        },
+        "activation_allowlist_entry": {
+          "lane_id": "alpaca-paper-reconciler",
+          "command": [
+            "$PY",
+            "scripts/alpaca_paper_reconciler.py"
+          ],
+          "lock": "/tmp/tradeai_f09_alpaca_paper_reconciler.lock",
+          "lock_kind": "flock",
+          "timeout_s": 1800,
+          "dry_run_arg": [
+            "--dry-run"
+          ],
+          "live_arg": null,
+          "market_gate": false,
+          "output_signal": "logs/alpaca_reconciler.log",
+          "env_names": [],
+          "env_allowlist_mode": "enforce",
+          "source": "crontab cron:L208: 35 9 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/alpaca_paper_reconciler.py --fix >> logs/alpaca_reconciler.log 2>&1"
+        },
+        "activation_registry": {
+          "scheduler.stage": "shadow",
+          "scheduler.wave": "F09",
+          "dispatch.mode": "dry_run",
+          "canary_live_arg": [
+            "--fix"
+          ]
+        },
+        "activation_needs": [
+          "APPROVE_AGENTS_POLICY_12_0_0 ratified, then a reviewed lane_dispatch admission for the named F09 lanes (the §23.14 code ceiling): dispatch_eligible refuses stay_on_cron today, and with the markers lifted the forbidden-token rule still hits ['alpaca', 'paper']",
+          "drop the stay_on_cron / KEEP_ON_CRON markers in the activation PR (the directive supersedes the STAY_HOST rationale)",
+          "move activation_allowlist_entry into config/n8n_run_allowlist.json lanes and set scheduler.stage shadow + dispatch.mode dry_run in the same registry PR (one registry PR at a time, §23.11)",
+          "live runs need the host child env: env_names is [] (dry run needs nothing); a live entry must name the lane's broker credential names, which R1 ruling 3 refuses today — an activation decision, never an agent's",
+          "the cron line has no flock lock: a crontab edit (cron grant) must add `flock -n <lock>` before canary so the lock proves no double run (§23.12); the entry's lock is proposed",
+          "timeout_s 1800 is derived: class default 1800 s (the cron line has no timeout)",
+          "the lane writes no LaneRunReceipt@v1 (output_signal logs/alpaca_reconciler.log is a log/file mtime); write_lane_receipt + produced_count before expected_output can be enforced (output_receipt v2)"
+        ]
+      },
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-10-15",
+      "adopted_reason": "F09 onboarding batch 4 2026-10-15 (operator N8N Cutover Decision): a row carrying a reviewed, staged (mode off) dispatch block and the f09_staged record is hand-maintained; reconcile_lane_registry.py re-derives generated rows and would drop both."
+    },
+    {
+      "lane_id": "atm-auto-approver",
+      "owner": "defense",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/15 4-19 * * 1-5",
+        "match": "scripts/atm_auto_approver.py"
+      },
+      "expected_cadence_hours": 56.25,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/atm.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Business Critical",
+      "recommendation": "KEEP_ON_CRON",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L236",
+        "pipeline": "P08",
+        "value_class": "Business Critical",
+        "recommendation": "KEEP_ON_CRON",
+        "f_recommendation": "KEEP on cron/systemd; n8n watches heartbeat",
+        "event_driven_candidate": false,
+        "f_evidence": "broker/stop/order/daemon class (E-plan bucket C)"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "stay_on_cron": {
+        "class": "pipeline_excluded_gate",
+        "token": "market_day_gate.sh",
+        "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+      },
+      "dispatch": {
+        "mode": "off",
+        "cron": [
+          "*/15 4-19 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W5",
+        "class": "pipeline",
+        "priority": 1,
+        "retry_policy": "none"
+      },
+      "f09_staged": {
+        "policy": "operator N8N Cutover Decision 2026-10-15 (F09 approved for n8n cutover; grant execution-engineering: write-free --dry-run + onboarding, mocks only); AGENTS.md 12.0.0 §23.25 is PROPOSED (\"nothing here binds\" until APPROVE_AGENTS_POLICY_12_0_0), so ACTIVE §23.14 keeps this lane off the dispatcher until then",
+        "since": "2026-10-15",
+        "why_off": "Staged inert: dispatch.mode off and no entry in config/n8n_run_allowlist.json lanes (the only list the gateway and executor read). §23.14 (ACTIVE) says a broker / order / stop lane does not enter the registry as a dispatcher row and that only a new MAJOR can change it; 12.0.0 is that MAJOR and is not ratified. Everything activation needs is here and proven: the write-free, broker-call-free --dry-run, the activation allowlist entry (live cron argv, cron lock, live_arg null), the staged effect key and the REVIEWED health contract.",
+        "order_path": true,
+        "entry_script": "scripts/atm_auto_approver.py",
+        "cron_lines": [
+          {
+            "row_id": "cron:L238",
+            "text": "*/15 4-19 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/tradeai_atm.lock bash scripts/market_day_gate.sh $PY scripts/atm_auto_approver.py >> logs/atm.log 2>&1"
+          }
+        ],
+        "cron_argv": [
+          []
+        ],
+        "cron_lock": "/tmp/tradeai_atm.lock",
+        "effects": [
+          "broker_order",
+          "append",
+          "send"
+        ],
+        "dry_run": {
+          "arg": [
+            "--dry-run"
+          ],
+          "empty_reason": "dry_run_requires_broker_read",
+          "lane_output_lane_id": "atm-auto-approver",
+          "would": "evaluate pending proposals against the ATM gates (account equity is a broker read) and, in active mode, approve and submit them to PAPER (order path: trading lock applies)",
+          "broker_calls": 0,
+          "writes": 0,
+          "proof": "tests/test_onboard_f09_b4_20261015.py"
+        },
+        "activation_allowlist_entry": {
+          "lane_id": "atm-auto-approver",
+          "command": [
+            "$PY",
+            "scripts/atm_auto_approver.py"
+          ],
+          "lock": "/tmp/tradeai_atm.lock",
+          "lock_kind": "safe_flock",
+          "timeout_s": 885,
+          "dry_run_arg": [
+            "--dry-run"
+          ],
+          "live_arg": null,
+          "market_gate": true,
+          "output_signal": "logs/atm.log",
+          "env_names": [],
+          "env_allowlist_mode": "enforce",
+          "source": "crontab cron:L238: */15 4-19 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/tradeai_atm.lock bash scripts/market_day_gate.sh $PY scripts/atm_auto_approver.py >> logs/atm.log 2>&1"
+        },
+        "activation_registry": {
+          "scheduler.stage": "shadow",
+          "scheduler.wave": "F09",
+          "dispatch.mode": "dry_run",
+          "canary_live_arg": []
+        },
+        "activation_needs": [
+          "APPROVE_AGENTS_POLICY_12_0_0 ratified, then a reviewed lane_dispatch admission for the named F09 lanes (the §23.14 code ceiling): dispatch_eligible refuses stay_on_cron today, and with the markers lifted the forbidden-token rule still hits ['approve']",
+          "drop the stay_on_cron / KEEP_ON_CRON markers in the activation PR (the directive supersedes the STAY_HOST rationale)",
+          "move activation_allowlist_entry into config/n8n_run_allowlist.json lanes and set scheduler.stage shadow + dispatch.mode dry_run in the same registry PR (one registry PR at a time, §23.11)",
+          "live runs need the host child env: env_names is [] (dry run needs nothing); a live entry must name the lane's broker credential names, which R1 ruling 3 refuses today — an activation decision, never an agent's",
+          "the cron line locks with safe_flock.sh /tmp/tradeai_atm.lock: the factory canary check reads only `flock -n`, so canary needs the line on flock -n (crontab edit, cron grant)",
+          "timeout_s 885 is derived: cadence 15 min minus 15 s (the cron line has no timeout)",
+          "the lane writes no LaneRunReceipt@v1 (output_signal logs/atm.log is a log/file mtime); write_lane_receipt + produced_count before expected_output can be enforced (output_receipt v2)",
+          "order path: onboarding is shadow only. A live n8n run of this order path stays refused by the trading lock (lib/trading_lock, LOCKED by default) and config/schwab_access_mode.yaml; its live proof comes from n8n's own schedule, never from an agent forcing a live broker run (§23.25)",
+          "sender: sends must stay on the send_telegram chokepoint (capability audit direct_sender must stay empty for this lane when it joins the allowlist)"
+        ]
+      },
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-10-15",
+      "adopted_reason": "F09 onboarding batch 4 2026-10-15 (operator N8N Cutover Decision): a row carrying a reviewed, staged (mode off) dispatch block and the f09_staged record is hand-maintained; reconcile_lane_registry.py re-derives generated rows and would drop both."
+    },
+    {
+      "lane_id": "watchlist-proposal-bridge",
+      "owner": "proposals",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/30 10-15 * * 1-5",
+        "match": "scripts/watchlist_proposal_bridge.py"
+      },
+      "expected_cadence_hours": 66.5,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/watchlist_proposal_bridge.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Operationally Important",
+      "recommendation": "KEEP_ON_CRON",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L615",
+        "pipeline": "P07",
+        "value_class": "Operationally Important",
+        "recommendation": "PIPELINE:P07",
+        "f_recommendation": "CONSOLIDATE-into P07",
+        "event_driven_candidate": false,
+        "f_evidence": "Unverified use: no consumer check run for this line"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "stay_on_cron": {
+        "class": "pipeline_excluded_gate",
+        "token": "market_day_gate.sh",
+        "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+      },
+      "dispatch": {
+        "mode": "off",
+        "cron": [
+          "*/30 10-15 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W5",
+        "class": "pipeline",
+        "priority": 1,
+        "retry_policy": "none"
+      },
+      "f09_staged": {
+        "policy": "operator N8N Cutover Decision 2026-10-15 (F09 approved for n8n cutover; grant execution-engineering: write-free --dry-run + onboarding, mocks only); AGENTS.md 12.0.0 §23.25 is PROPOSED (\"nothing here binds\" until APPROVE_AGENTS_POLICY_12_0_0), so ACTIVE §23.14 keeps this lane off the dispatcher until then",
+        "since": "2026-10-15",
+        "why_off": "Staged inert: dispatch.mode off and no entry in config/n8n_run_allowlist.json lanes (the only list the gateway and executor read). §23.14 (ACTIVE) says a broker / order / stop lane does not enter the registry as a dispatcher row and that only a new MAJOR can change it; 12.0.0 is that MAJOR and is not ratified. Everything activation needs is here and proven: the write-free, broker-call-free --dry-run, the activation allowlist entry (live cron argv, cron lock, live_arg null), the staged effect key and the REVIEWED health contract.",
+        "order_path": false,
+        "entry_script": "scripts/watchlist_proposal_bridge.py",
+        "cron_lines": [
+          {
+            "row_id": "cron:L617",
+            "text": "*/30 10-15 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/tradeai_wl_bridge.lock bash scripts/market_day_gate.sh $PY scripts/watchlist_proposal_bridge.py --apply --max-new 5 >> logs/watchlist_proposal_bridge.log 2>&1"
+          }
+        ],
+        "cron_argv": [
+          [
+            "--apply",
+            "--max-new",
+            "5"
+          ]
+        ],
+        "cron_lock": "/tmp/tradeai_wl_bridge.lock",
+        "effects": [
+          "append"
+        ],
+        "dry_run": {
+          "arg": [
+            "--dry-run"
+          ],
+          "empty_reason": "dry_run_requires_broker_read",
+          "lane_output_lane_id": "watchlist-proposal-bridge",
+          "would": "read BUY/STRONG_BUY watchlist rows and Schwab quotes and, with --apply, upsert up to --max-new tagged broker proposals",
+          "broker_calls": 0,
+          "writes": 0,
+          "proof": "tests/test_onboard_f09_b4_20261015.py"
+        },
+        "activation_allowlist_entry": {
+          "lane_id": "watchlist-proposal-bridge",
+          "command": [
+            "$PY",
+            "scripts/watchlist_proposal_bridge.py"
+          ],
+          "lock": "/tmp/tradeai_wl_bridge.lock",
+          "lock_kind": "safe_flock",
+          "timeout_s": 1785,
+          "dry_run_arg": [
+            "--dry-run"
+          ],
+          "live_arg": null,
+          "market_gate": true,
+          "output_signal": "logs/watchlist_proposal_bridge.log",
+          "env_names": [],
+          "env_allowlist_mode": "enforce",
+          "source": "crontab cron:L617: */30 10-15 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/tradeai_wl_bridge.lock bash scripts/market_day_gate.sh $PY scripts/watchlist_proposal_bridge.py --apply --max-new 5 >> logs/watchlist_proposal_bridge.log 2>&1"
+        },
+        "activation_registry": {
+          "scheduler.stage": "shadow",
+          "scheduler.wave": "F09",
+          "dispatch.mode": "dry_run",
+          "canary_live_arg": [
+            "--apply",
+            "--max-new",
+            "5"
+          ]
+        },
+        "activation_needs": [
+          "APPROVE_AGENTS_POLICY_12_0_0 ratified, then a reviewed lane_dispatch admission for the named F09 lanes (the §23.14 code ceiling): dispatch_eligible refuses stay_on_cron today, and with the markers lifted no forbidden token hits (the row's stay_on_cron / KEEP_ON_CRON marker is the only refusal)",
+          "drop the stay_on_cron / KEEP_ON_CRON markers in the activation PR (the directive supersedes the STAY_HOST rationale)",
+          "move activation_allowlist_entry into config/n8n_run_allowlist.json lanes and set scheduler.stage shadow + dispatch.mode dry_run in the same registry PR (one registry PR at a time, §23.11)",
+          "live runs need the host child env: env_names is [] (dry run needs nothing); a live entry must name the lane's broker credential names, which R1 ruling 3 refuses today — an activation decision, never an agent's",
+          "the cron line locks with safe_flock.sh /tmp/tradeai_wl_bridge.lock: the factory canary check reads only `flock -n`, so canary needs the line on flock -n (crontab edit, cron grant)",
+          "timeout_s 1785 is derived: cadence 30 min minus 15 s (the cron line has no timeout)",
+          "the lane writes no LaneRunReceipt@v1 (output_signal logs/watchlist_proposal_bridge.log is a log/file mtime); write_lane_receipt + produced_count before expected_output can be enforced (output_receipt v2)"
+        ]
+      },
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-10-15",
+      "adopted_reason": "F09 onboarding batch 4 2026-10-15 (operator N8N Cutover Decision): a row carrying a reviewed, staged (mode off) dispatch block and the f09_staged record is hand-maintained; reconcile_lane_registry.py re-derives generated rows and would drop both."
+    },
+    {
+      "lane_id": "run-options-paper-position-monitor",
+      "owner": "execution",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "10 17 * * 1-5",
+        "match": "run_options_paper_position_monitor.sh"
+      },
+      "expected_cadence_hours": 72.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/options_paper_monitor.log",
+        "evidence": "SCRIPT_RECEIPT",
+        "evidence_ref": "linux_launchers/run_options_paper_position_monitor.sh launcher redirect >> logs/options_paper_monitor.log in dev tree (script writes no file, DB only); host mtime 2026-10-08T17:10:03"
+      },
+      "value_class": "Business Critical",
+      "recommendation": "KEEP_ON_CRON",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L700",
+        "pipeline": "P09",
+        "value_class": "Business Critical",
+        "recommendation": "KEEP_ON_CRON",
+        "f_recommendation": "KEEP on cron/systemd; n8n watches heartbeat",
+        "event_driven_candidate": false,
+        "f_evidence": "broker/stop/order/daemon class (E-plan bucket C)"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "dispatch": {
+        "mode": "off",
+        "cron": [
+          "10 17 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W5",
+        "class": "pipeline",
+        "priority": 1,
+        "retry_policy": "none"
+      },
+      "f09_staged": {
+        "policy": "operator N8N Cutover Decision 2026-10-15 (F09 approved for n8n cutover; grant execution-engineering: write-free --dry-run + onboarding, mocks only); AGENTS.md 12.0.0 §23.25 is PROPOSED (\"nothing here binds\" until APPROVE_AGENTS_POLICY_12_0_0), so ACTIVE §23.14 keeps this lane off the dispatcher until then",
+        "since": "2026-10-15",
+        "why_off": "Staged inert: dispatch.mode off and no entry in config/n8n_run_allowlist.json lanes (the only list the gateway and executor read). §23.14 (ACTIVE) says a broker / order / stop lane does not enter the registry as a dispatcher row and that only a new MAJOR can change it; 12.0.0 is that MAJOR and is not ratified. Everything activation needs is here and proven: the write-free, broker-call-free --dry-run, the activation allowlist entry (live cron argv, cron lock, live_arg null), the staged effect key and the REVIEWED health contract.",
+        "order_path": false,
+        "entry_script": "linux_launchers/run_options_paper_position_monitor.sh",
+        "cron_lines": [
+          {
+            "row_id": "cron:L705",
+            "text": "10 17 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/linux_launchers/run_options_paper_position_monitor.sh"
+          }
+        ],
+        "cron_argv": [
+          []
+        ],
+        "cron_lock": null,
+        "effects": [
+          "append"
+        ],
+        "dry_run": {
+          "arg": [
+            "--dry-run"
+          ],
+          "empty_reason": "dry_run_requires_broker_read",
+          "lane_output_lane_id": "run-options-paper-position-monitor",
+          "would": "mark paper option positions to market and reconcile them against Alpaca PAPER (advisory only)",
+          "broker_calls": 0,
+          "writes": 0,
+          "proof": "tests/test_onboard_f09_b4_20261015.py"
+        },
+        "activation_allowlist_entry": {
+          "lane_id": "run-options-paper-position-monitor",
+          "command": [
+            "bash",
+            "linux_launchers/run_options_paper_position_monitor.sh"
+          ],
+          "lock": "/tmp/tradeai_f09_run_options_paper_position_monitor.lock",
+          "lock_kind": "flock",
+          "timeout_s": 1800,
+          "dry_run_arg": [
+            "--dry-run"
+          ],
+          "live_arg": null,
+          "market_gate": false,
+          "output_signal": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/options_paper_monitor.log",
+          "env_names": [],
+          "env_allowlist_mode": "enforce",
+          "source": "crontab cron:L705: 10 17 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/linux_launchers/run_options_paper_position_monitor.sh"
+        },
+        "activation_registry": {
+          "scheduler.stage": "shadow",
+          "scheduler.wave": "F09",
+          "dispatch.mode": "dry_run",
+          "canary_live_arg": []
+        },
+        "activation_needs": [
+          "APPROVE_AGENTS_POLICY_12_0_0 ratified, then a reviewed lane_dispatch admission for the named F09 lanes (the §23.14 code ceiling): dispatch_eligible refuses keep_on_cron today, and with the markers lifted the forbidden-token rule still hits ['paper', 'position']",
+          "drop the stay_on_cron / KEEP_ON_CRON markers in the activation PR (the directive supersedes the STAY_HOST rationale)",
+          "move activation_allowlist_entry into config/n8n_run_allowlist.json lanes and set scheduler.stage shadow + dispatch.mode dry_run in the same registry PR (one registry PR at a time, §23.11)",
+          "live runs need the host child env: env_names is [] (dry run needs nothing); a live entry must name the lane's broker credential names, which R1 ruling 3 refuses today — an activation decision, never an agent's",
+          "the launcher takes /tmp/tradeai_options_paper_monitor.lock itself: the entry lock must stay a different path or a live run would refuse itself; the outer cron flock added before canary carries the no-double-run proof",
+          "the cron line has no flock lock: a crontab edit (cron grant) must add `flock -n <lock>` before canary so the lock proves no double run (§23.12); the entry's lock is proposed",
+          "timeout_s 1800 is derived: class default 1800 s (the cron line has no timeout)",
+          "the lane writes no LaneRunReceipt@v1 (output_signal ~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/options_paper_monitor.log is a log/file mtime); write_lane_receipt + produced_count before expected_output can be enforced (output_receipt v2)"
+        ]
+      },
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-10-15",
+      "adopted_reason": "F09 onboarding batch 4 2026-10-15 (operator N8N Cutover Decision): a row carrying a reviewed, staged (mode off) dispatch block and the f09_staged record is hand-maintained; reconcile_lane_registry.py re-derives generated rows and would drop both."
+    },
+    {
       "lane_id": "run-scheduled-quote-refresh-incubator",
       "owner": "portfolio",
       "scheduler": {
@@ -18617,43 +19364,6 @@
       "reconciled_on": "2026-10-09",
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "paper-execution-sweep",
-      "owner": "execution",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "*/5 9-16 * * 1-5",
-        "match": "scripts/paper_execution_sweep.py"
-      },
-      "expected_cadence_hours": 64.08,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/paper_execution.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Business Critical",
-      "recommendation": "KEEP_ON_CRON",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L130",
-        "pipeline": "P09",
-        "value_class": "Business Critical",
-        "recommendation": "KEEP_ON_CRON",
-        "f_recommendation": "KEEP on cron/systemd; n8n watches heartbeat",
-        "event_driven_candidate": true,
-        "f_evidence": "broker/stop/order/daemon class (E-plan bucket C)"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
-      "stay_on_cron": {
-        "class": "pipeline_excluded_gate",
-        "token": "market_day_gate.sh",
-        "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
-      }
     },
     {
       "lane_id": "multi-tier-trade-reviewer-weekly",
@@ -19409,43 +20119,6 @@
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
     },
     {
-      "lane_id": "alpaca-paper-reconciler",
-      "owner": "execution",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "35 9 * * 1-5",
-        "match": "scripts/alpaca_paper_reconciler.py"
-      },
-      "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/alpaca_reconciler.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Business Critical",
-      "recommendation": "KEEP_ON_CRON",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L206",
-        "pipeline": "P09",
-        "value_class": "Business Critical",
-        "recommendation": "KEEP_ON_CRON",
-        "f_recommendation": "KEEP on cron/systemd; n8n watches heartbeat",
-        "event_driven_candidate": false,
-        "f_evidence": "broker/stop/order/daemon class (E-plan bucket C)"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
-      "stay_on_cron": {
-        "class": "broker_order",
-        "token": "alpaca",
-        "source": "config/lane_stay_on_cron_tokens.json"
-      }
-    },
-    {
       "lane_id": "intel-auto-discovery",
       "owner": "research",
       "scheduler": {
@@ -19614,43 +20287,6 @@
       "reconciled_on": "2026-10-09",
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "atm-auto-approver",
-      "owner": "defense",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "*/15 4-19 * * 1-5",
-        "match": "scripts/atm_auto_approver.py"
-      },
-      "expected_cadence_hours": 56.25,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/atm.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Business Critical",
-      "recommendation": "KEEP_ON_CRON",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L236",
-        "pipeline": "P08",
-        "value_class": "Business Critical",
-        "recommendation": "KEEP_ON_CRON",
-        "f_recommendation": "KEEP on cron/systemd; n8n watches heartbeat",
-        "event_driven_candidate": false,
-        "f_evidence": "broker/stop/order/daemon class (E-plan bucket C)"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
-      "stay_on_cron": {
-        "class": "pipeline_excluded_gate",
-        "token": "market_day_gate.sh",
-        "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
-      }
     },
     {
       "lane_id": "social-scalp-scanner",
@@ -21970,43 +22606,6 @@
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
     },
     {
-      "lane_id": "watchlist-proposal-bridge",
-      "owner": "proposals",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "*/30 10-15 * * 1-5",
-        "match": "scripts/watchlist_proposal_bridge.py"
-      },
-      "expected_cadence_hours": 66.5,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/watchlist_proposal_bridge.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Operationally Important",
-      "recommendation": "KEEP_ON_CRON",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L615",
-        "pipeline": "P07",
-        "value_class": "Operationally Important",
-        "recommendation": "PIPELINE:P07",
-        "f_recommendation": "CONSOLIDATE-into P07",
-        "event_driven_candidate": false,
-        "f_evidence": "Unverified use: no consumer check run for this line"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
-      "stay_on_cron": {
-        "class": "pipeline_excluded_gate",
-        "token": "market_day_gate.sh",
-        "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
-      }
-    },
-    {
       "lane_id": "run-pullback-macd-monitor",
       "owner": "platform",
       "scheduler": {
@@ -22308,39 +22907,6 @@
           "KEEP_ON_CRON",
           "KEEP_ON_CRON"
         ]
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "run-options-paper-position-monitor",
-      "owner": "execution",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "10 17 * * 1-5",
-        "match": "run_options_paper_position_monitor.sh"
-      },
-      "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/options_paper_monitor.log",
-        "evidence": "SCRIPT_RECEIPT",
-        "evidence_ref": "linux_launchers/run_options_paper_position_monitor.sh launcher redirect >> logs/options_paper_monitor.log in dev tree (script writes no file, DB only); host mtime 2026-10-08T17:10:03"
-      },
-      "value_class": "Business Critical",
-      "recommendation": "KEEP_ON_CRON",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L700",
-        "pipeline": "P09",
-        "value_class": "Business Critical",
-        "recommendation": "KEEP_ON_CRON",
-        "f_recommendation": "KEEP on cron/systemd; n8n watches heartbeat",
-        "event_driven_candidate": false,
-        "f_evidence": "broker/stop/order/daemon class (E-plan bucket C)"
       },
       "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",
