@@ -151,6 +151,116 @@ def _interval_gate_ok() -> bool:
         return True
 
 
+# ── Per-run work bound (lane repair 2026-10-15) ──────────────────────────
+# Measured 2026-10-14 (llm_consumption_log, process topic_ingestion, 20:45-21:30 ET): 331 serial OAuth
+# rating calls at a mean of ~11.4 s each (grok), one per search result, with no per-topic item cap -- about
+# 50 results x 11 s = ~10 min per topic, so `--max-topics 20` needed ~3 h against a `timeout 30m`. The run
+# was SIGTERMed (exit 124) every night and, block-buffered, left no output and no receipt. Every result was
+# also rated BEFORE the duplicate check, so a re-found article paid a model call to be discarded.
+#
+# The bound: --budget-s stops starting new items / searches when the wall-clock budget is spent (exits clean
+# well inside the outer `timeout`), --max-items-per-topic caps model calls per topic, and a result already
+# stored (news_articles dedupe rule) or blocked skips BEFORE any model call. A topic cut short keeps its old
+# last_searched, so the next run resumes it first (NULLS FIRST / oldest-first ordering) and its already-
+# stored items cost nothing -- the database is the checkpoint. 0 = unbounded (single-topic callers).
+BATCH_LOCK_PATH = os.environ.get("TOPIC_INGESTION_BATCH_LOCK", "/tmp/topic_ingestion_batch.lock")
+EXIT_LOCK_BUSY = 75  # same code the cron wrappers use for a held lock (flock -E 75 / SKIP_LOCK)
+
+
+class RunBudget:
+    """Wall-clock and per-topic item bound for one batch run. Pure; the clock is injectable for tests."""
+
+    def __init__(self, budget_s: float = 0.0, max_items_per_topic: int = 0, clock=time.monotonic):
+        self.budget_s = float(budget_s or 0.0)
+        self.max_items_per_topic = int(max_items_per_topic or 0)
+        self._clock = clock
+        self._t0 = clock()
+        self.attempted = 0
+        self.topic_items = 0
+        self.topic_cut = False
+        self.skipped: dict[str, int] = {}
+
+    def exhausted(self) -> bool:
+        return self.budget_s > 0 and (self._clock() - self._t0) >= self.budget_s
+
+    def start_topic(self) -> None:
+        self.topic_items = 0
+        self.topic_cut = False
+
+    def skip(self, reason: str, n: int = 1) -> None:
+        self.skipped[reason] = self.skipped.get(reason, 0) + int(n)
+
+    def admit(self) -> str | None:
+        """None = go (counted as attempted), else the typed skip reason."""
+        if self.exhausted():
+            self.topic_cut = True
+            return "budget_exhausted"
+        if self.max_items_per_topic and self.topic_items >= self.max_items_per_topic:
+            return "item_cap"
+        self.topic_items += 1
+        self.attempted += 1
+        return None
+
+
+_RUN = RunBudget()  # unbounded unless a batch run sets --budget-s / --max-items-per-topic
+
+
+def _skip_item(reason: str | None) -> bool:
+    """Record a typed skip; True when the item must be skipped."""
+    if reason:
+        _RUN.skip(reason)
+        return True
+    return False
+
+
+def _already_stored(conn, topic: dict, item: dict) -> bool:
+    """The news_articles dedupe rule, checked BEFORE the model call (the save re-checks it)."""
+    try:
+        from lib.writers.news_articles_writer import is_duplicate
+        cur = conn.cursor()
+        dup = is_duplicate(cur, topic["topic_id"], item["url"][:500], item["title"][:500])
+        conn.commit()  # end the read txn before slow work (idle_in_transaction timeout)
+        return dup
+    except Exception:  # noqa: BLE001 -- a failed pre-check falls through to the save's own check
+        try:
+            conn.rollback()
+        except Exception:  # noqa: BLE001
+            pass
+        return False
+
+
+def _article_skip_reason(conn, topic: dict, item: dict) -> str | None:
+    if conn is None:
+        return _RUN.admit()
+    if _is_blocked(conn, "article", item["url"][:500]):
+        return "blocked_before"
+    if _already_stored(conn, topic, item):
+        return "already_stored"
+    return _RUN.admit()
+
+
+def _search_or_skip(source: str, fn, *a, **kw) -> list:
+    """Run one search unless the budget is spent (a spent budget starts no new network work)."""
+    if _RUN.exhausted():
+        _RUN.topic_cut = True
+        _RUN.skip(f"search_skipped_budget:{source}")
+        return []
+    return fn(*a, **kw)
+
+
+def _acquire_batch_lock(path: str | None = None):
+    """Non-blocking exclusive lock so two batch runs (the 20:30 RI overnight ingest step and the 20:45
+    standalone line) never rate the same stale topics at once. Returns the open file, or None when held."""
+    import fcntl
+    fh = open(path or BATCH_LOCK_PATH, "a+", encoding="utf-8")
+    try:
+        fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        fh.close()
+        return None
+    return fh
+
+
 # ── Content scoring (reuse existing) ────────────────────────────────────
 try:
     from content_scoring import score_content, tag_content
@@ -1195,13 +1305,16 @@ def process_topic(conn, topic: dict, dry_run: bool = False,
     total_found = 0
     total_blocked = 0
     sources_used = []
+    _RUN.start_topic()
 
     # ── SOURCE 0: Saved Google search URLs ──
-    saved_videos = search_saved_urls(conn, topic)
+    saved_videos = _search_or_skip("saved_search_url", search_saved_urls, conn, topic)
     if saved_videos:
         sources_used.append("saved_search_url")
         total_found += len(saved_videos)
         for v in saved_videos:
+            if _skip_item(_RUN.admit()):
+                continue
             rating = _llm_rate_quality(
                 v["title"], v.get("transcript", v.get("description", ""))[:600],
                 display, personal_ctx
@@ -1236,13 +1349,15 @@ def process_topic(conn, topic: dict, dry_run: bool = False,
     # ── SOURCE 1: YouTube API (transcripts first — ALL results) ──
     print("\n  [1/4] YouTube Data API + Transcripts...")
     t0 = time.time()
-    videos = search_youtube(video_queries, max_per_query=10, conn=conn)
+    videos = _search_or_skip("youtube_api", search_youtube, video_queries, max_per_query=10, conn=conn)
     elapsed = int((time.time() - t0) * 1000)
     total_found += len(videos)
 
     src_transcripts = 0
     src_articles = 0
     for v in videos:
+        if _skip_item(_RUN.admit()):
+            continue
         if use_llm and v.get("transcript"):
             rating = _llm_rate_quality(v["title"], v["transcript"][:600],
                                        display, personal_ctx)
@@ -1292,14 +1407,14 @@ def process_topic(conn, topic: dict, dry_run: bool = False,
     # ── SOURCE 2: Google News RSS ──
     print("\n  [2/4] Google News RSS...")
     t0 = time.time()
-    news = search_google_news(search_queries, max_per_query=10)
+    news = _search_or_skip("google_news_rss", search_google_news, search_queries, max_per_query=10)
     elapsed = int((time.time() - t0) * 1000)
     total_found += len(news)
     src_articles = 0
 
     for item in news:
         url_hash = item["url"][:500]
-        if conn and _is_blocked(conn, "article", url_hash):
+        if _skip_item(_article_skip_reason(conn, topic, item)):
             continue
         if use_llm:
             rating = _llm_rate_quality(item["title"], item["description"],
@@ -1329,14 +1444,14 @@ def process_topic(conn, topic: dict, dry_run: bool = False,
     # ── SOURCE 3: Yahoo Finance search (free — replaced retired Brave lane) ──
     print("\n  [3/5] Yahoo Finance search...")
     t0 = time.time()
-    yahoo = search_yahoo_news(search_queries, max_per_query=10)
+    yahoo = _search_or_skip("yahoo_search", search_yahoo_news, search_queries, max_per_query=10)
     elapsed = int((time.time() - t0) * 1000)
     total_found += len(yahoo)
     src_articles = 0
 
     for item in yahoo:
         url_hash = item["url"][:500]
-        if conn and _is_blocked(conn, "article", url_hash):
+        if _skip_item(_article_skip_reason(conn, topic, item)):
             continue
         if use_llm:
             rating = _llm_rate_quality(item["title"], item["description"],
@@ -1365,14 +1480,14 @@ def process_topic(conn, topic: dict, dry_run: bool = False,
     # ── SOURCE 4: Brave Search News (retired — no-op unless TOPIC_BRAVE_ENABLED) ──
     print("\n  [4/5] Brave Search News API...")
     t0 = time.time()
-    brave = search_brave_news(search_queries, max_per_query=10)
+    brave = _search_or_skip("brave_news", search_brave_news, search_queries, max_per_query=10)
     elapsed = int((time.time() - t0) * 1000)
     total_found += len(brave)
     src_articles = 0
 
     for item in brave:
         url_hash = item["url"][:500]
-        if conn and _is_blocked(conn, "article", url_hash):
+        if _skip_item(_article_skip_reason(conn, topic, item)):
             continue
         if use_llm:
             rating = _llm_rate_quality(item["title"], item["description"],
@@ -1401,14 +1516,14 @@ def process_topic(conn, topic: dict, dry_run: bool = False,
     # ── SOURCE 5: DuckDuckGo (last resort) ──
     print("\n  [5/5] DuckDuckGo HTML...")
     t0 = time.time()
-    ddg = search_duckduckgo(search_queries[:2], max_per_query=10)
+    ddg = _search_or_skip("duckduckgo", search_duckduckgo, search_queries[:2], max_per_query=10)
     elapsed = int((time.time() - t0) * 1000)
     total_found += len(ddg)
     src_articles = 0
 
     for item in ddg:
         url_hash = item["url"][:500]
-        if conn and _is_blocked(conn, "article", url_hash):
+        if _skip_item(_article_skip_reason(conn, topic, item)):
             continue
         if use_llm:
             rating = _llm_rate_quality(item["title"], item["description"],
@@ -1436,13 +1551,13 @@ def process_topic(conn, topic: dict, dry_run: bool = False,
 
     return {"articles": total_articles, "transcripts": total_transcripts,
             "found": total_found, "blocked": total_blocked,
-            "sources_used": sources_used}
+            "sources_used": sources_used, "complete": not _RUN.topic_cut}
 
 
 # ════════════════════════════════════════════════════════════════════════
 # MAIN
 # ════════════════════════════════════════════════════════════════════════
-def main():
+def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Topic-based content ingestion")
     parser.add_argument("--topic", help="Single topic_id to process")
     parser.add_argument("--dry-run", action="store_true", help="Preview only")
@@ -1464,22 +1579,66 @@ def main():
     parser.add_argument("--no-auto-curate", action="store_true",
                         help="Do NOT auto-spawn topic_curator.py after ingestion. Used by the "
                              "curator's own re-ingest step to break the ingest<->curate loop.")
-    args = parser.parse_args()
+    parser.add_argument("--budget-s", type=float, default=0.0,
+                        help="Wall-clock budget in seconds (0=none). No new search or model call starts "
+                             "once it is spent; set it below the caller's outer timeout so the run exits "
+                             "clean with a receipt instead of being killed.")
+    parser.add_argument("--max-items-per-topic", type=int, default=0,
+                        help="Cap model-rated items per topic (0=none); the rest are skipped as item_cap.")
+    args = parser.parse_args(argv)
 
+    global _RUN
+    _RUN = RunBudget(args.budget_s, args.max_items_per_topic)
     lane_run = not args.dry_run and not args.topic
     receipt = {"schema": RUN_RECEIPT_SCHEMA, "started_at": datetime.now(timezone.utc).isoformat(),
                "status": "failed", "max_topics": args.max_topics, "owner": args.owner or "tradeai+shared",
                "topics_loaded": 0, "topics_processed": 0, "topics_skipped": 0, "articles": 0,
-               "transcripts": 0, "db_reconnects": 0, "db_retried_ops": 0, "db_dropped_ops": 0}
+               "transcripts": 0, "db_reconnects": 0, "db_retried_ops": 0, "db_dropped_ops": 0,
+               "budget_s": args.budget_s, "max_items_per_topic": args.max_items_per_topic}
+    lock = None
+    code = 0
     try:
+        if lane_run:
+            lock = _acquire_batch_lock()
+            if lock is None:
+                print(f"  [topic_ingestion] skipped -- another batch run holds {BATCH_LOCK_PATH}")
+                receipt["status"] = "skipped"
+                receipt["reason"] = "lock_busy"
+                code = EXIT_LOCK_BUSY
+                return code
         _run(args, receipt)
     except BaseException as e:
         receipt["error"] = f"{type(e).__name__}: {e}"[:300]
         raise
     finally:
         receipt["finished_at"] = datetime.now(timezone.utc).isoformat()
+        receipt.update(_output_fields(receipt))
         if lane_run:
             _write_run_receipt(receipt)
+        if lock is not None:
+            lock.close()
+    return code
+
+
+def _output_fields(receipt: dict) -> dict:
+    """LaneRunReceipt@v2-style output fields (N8N_CONTRACTS_DESIGN §5): what this run produced and tried."""
+    produced = int(receipt.get("articles") or 0) + int(receipt.get("transcripts") or 0)
+    out = {"produced_count": produced, "attempted_count": int(_RUN.attempted),
+           "skipped_reasons": dict(sorted(_RUN.skipped.items())),
+           "budget_exhausted": _RUN.exhausted()}
+    if produced == 0:
+        if receipt.get("reason") in ("lock_busy", "interval_gate", "no_enabled_topics"):
+            out["empty_reason"] = receipt["reason"]
+        elif _RUN.attempted == 0 and _RUN.skipped and set(_RUN.skipped) <= {"already_stored", "blocked_before"}:
+            out["empty_reason"] = "no_new_items"
+        else:
+            out["empty_reason"] = None
+    return out
+
+
+def _on_sigterm(signum, _frame):
+    """`timeout` sends SIGTERM: unwind through main()'s finally so the run receipt is still written."""
+    raise SystemExit(128 + int(signum))
 
 
 def _note_db(receipt: dict, conn) -> None:
@@ -1567,7 +1726,14 @@ def _run(args, receipt: dict) -> None:
     total_stats = {"articles": 0, "transcripts": 0, "topics_processed": 0,
                    "topics_skipped": 0}
 
-    for topic in topics:
+    for idx, topic in enumerate(topics):
+        if _RUN.exhausted():
+            deferred = len(topics) - idx
+            _RUN.skip("topic_deferred_budget", deferred)
+            receipt["topics_deferred"] = deferred
+            print(f"\n  [budget] {args.budget_s:.0f}s spent -- {deferred} topic(s) deferred to the next run "
+                  f"(oldest-first ordering resumes them)")
+            break
         topic_id = topic["topic_id"]
         max_age = topic.get("max_age_days", 30)
         min_articles = topic.get("min_articles", 3)
@@ -1587,8 +1753,11 @@ def _run(args, receipt: dict) -> None:
         result = process_topic(conn, topic, dry_run=args.dry_run,
                                use_llm=not args.no_llm, curate=args.curate)
 
-        # Update last_searched timestamp
-        if not args.dry_run:
+        # Update last_searched timestamp -- only for a topic searched to the end. A topic the budget cut short
+        # keeps its old timestamp so the next run resumes it first (its stored items then skip pre-model).
+        if not result.get("complete", True):
+            receipt["topics_cut"] = int(receipt.get("topics_cut") or 0) + 1
+        if not args.dry_run and result.get("complete", True):
             cur.execute("""
                 UPDATE topic_monitor
                 SET last_searched = NOW(),
@@ -1613,7 +1782,7 @@ def _run(args, receipt: dict) -> None:
 
     # Summary
     print(f"\n{'='*60}")
-    print(f"TOPIC INGESTION COMPLETE")
+    print("TOPIC INGESTION COMPLETE")
     print(f"  Topics processed: {total_stats['topics_processed']}")
     print(f"  Topics skipped: {total_stats['topics_skipped']}")
     print(f"  Articles saved: {total_stats['articles']}")
@@ -1654,5 +1823,11 @@ def _run(args, receipt: dict) -> None:
 
 
 if __name__ == "__main__":
+    import signal
+    try:
+        sys.stdout.reconfigure(line_buffering=True)  # a killed run must still leave its progress in the log
+    except Exception:  # noqa: BLE001
+        pass
+    signal.signal(signal.SIGTERM, _on_sigterm)
     os.chdir(str(PROJECT_ROOT))
-    main()
+    raise SystemExit(main())

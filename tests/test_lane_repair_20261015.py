@@ -43,7 +43,19 @@ from scripts.lib import lane_dispatch as LD  # noqa: E402
 
 REGISTRY = json.loads((ROOT / "config" / "lane_registry.json").read_text(encoding="utf-8"))
 ROWS = {r["lane_id"]: r for r in REGISTRY["lanes"]}
-ALLOW = {e["lane_id"]: e for e in json.loads((ROOT / "config" / "n8n_run_allowlist.json").read_text())["lanes"]}
+ALLOW_DOC = json.loads((ROOT / "config" / "n8n_run_allowlist.json").read_text())
+ALLOW = {e["lane_id"]: e for e in ALLOW_DOC["lanes"]}
+# Train 2026-10-15 d: the four lanes' n8n wiring is DEFERRED (not the repair): their import closure reaches
+# broker_module / order_placement through db_adapter -> holdings_guard -> schwab_position_sync, which the SHRINK-ONLY
+# capability baseline (tests/test_lane_transitive_capabilities_20261015.py) refuses without operator review. The
+# allowlist entry moved into blocked_reasons[lane] ("Deferred entry: {...}") and the registry dispatch is off.
+DEFERRED_MARK = "Deferred entry: "
+
+
+def _deferred_entry(lane: str) -> dict:
+    reason = ALLOW_DOC["blocked_reasons"][lane]
+    assert "DD01 capability audit" in reason and "holdings_guard" in reason, reason
+    return json.loads(reason.split(DEFERRED_MARK, 1)[1])
 CONTRACTS = {c["id"]: c for c in json.loads((ROOT / "config" / "n8n_health_contracts.json").read_text())["contracts"]}
 EFFECTS = json.loads((ROOT / "config" / "n8n_effect_keys.json").read_text())["lanes"]
 
@@ -488,34 +500,43 @@ def test_indicator_engine_cli_routes_universe_and_keeps_dry_run_out_of_pipeline_
 
 # ── n8n shadow wiring ───────────────────────────────────────────────────────────────────────────────────────────
 @pytest.mark.parametrize("lane", sorted(SHADOW))
-def test_shadow_rows_are_admitted_dry_run_only(lane):
+def test_shadow_rows_are_deferred_until_the_capability_review(lane):
     klass, cron, argv, receipt, wave = SHADOW[lane]
-    row, entry = ROWS[lane], ALLOW[lane]
+    row = ROWS[lane]
     s = row["scheduler"]
     assert s["kind"] == "cron" and s["stage"] == "shadow" and s["wave"] == wave and s["expression"] == cron
     assert row["state"] == "ACTIVE" and "generated_by" not in row
-    assert row["dispatch"] == {"mode": "dry_run", "cron": [cron], "tz": "America/New_York", "wave": "W4",
-                               "class": klass, "priority": 5, "retry_policy": "none"}
+    # dispatch OFF: no dispatch block (a shadow cron row with dispatch.mode off is refused by R1 shape admission);
+    # the reviewed block is parked as deferred_dispatch, so re-enabling = rename it back + restore the allowlist entry
+    assert "dispatch" not in row and LD.dispatch_mode(row) == "off" and LD.validate_dispatch_block(row) == []
+    assert row["deferred_dispatch"] == {"mode": "dry_run", "cron": [cron], "tz": "America/New_York", "wave": "W4",
+                                        "class": klass, "priority": 5, "retry_policy": "none"}
+    assert "DD01 capability audit" in row["dispatch_blocked_reason"]
+    parked = dict(row, dispatch=row["deferred_dispatch"])
+    # the ONLY thing between the parked block and admission is the missing (deferred) allowlist entry
+    assert [i.detail for i in LD.validate_dispatch_block(parked)] == [f"class {klass!r} (R1): not_allowlisted"]
+    assert lane not in ALLOW  # the n8n run route cannot start it
     sig = f"data/runtime/{receipt}_last.json"
     assert row["output_signal"] == {"kind": "json_key", "path": sig, "key": "ok_at"}
-    assert entry["command"] == ["$PY", *argv] and entry["live_arg"] is None and entry["dry_run_arg"] == ["--dry-run"]
+    entry = _deferred_entry(lane)
+    assert entry["command"] == ["$PY", *argv] and entry["dry_run_arg"] == ["--dry-run"]
     assert entry["output_signal"] == sig and entry["lock_kind"] == "flock"
-    assert LD.validate_dispatch_block(row) == [] and LD.dispatch_mode(row) == "dry_run"
-    assert LD.r1_class_admission(row) == (True, f"r1_admitted:{klass}")
     rep = G.scan_entry(argv[0])
-    assert not rep.is_sender and not rep.broker_modules and not rep.problems()
+    assert not rep.is_sender and not rep.broker_modules and not rep.problems()  # direct reach only (DD01 = transitive)
 
 
 @pytest.mark.parametrize("lane", sorted(STAGED))
 def test_planner_rows_are_staged_until_a_governed_bridge_route_exists(lane):
     cron, argv, receipt, lock = STAGED[lane]
-    row, entry = ROWS[lane], ALLOW[lane]
+    row, entry = ROWS[lane], _deferred_entry(lane)
+    assert lane not in ALLOW and "DD01 capability audit" in row["dispatch_blocked_reason"]
     assert "dispatch" not in row and row["scheduler"].get("stage") is None and LD.dispatch_mode(row) == "off"
     pend = row["r1_pending"]
     assert pend["scheduler"]["stage"] == "shadow" and pend["dispatch"]["class"] == "llm"
     assert pend["dispatch"]["mode"] == "dry_run" and pend["dispatch"]["cron"] == [cron]
     assert pend["output_signal"]["path"] == f"data/runtime/{receipt}_last.json" == entry["output_signal"]
-    assert entry["command"] == ["$PY", *argv] and entry["live_arg"] is None and entry["lock"] == lock
+    assert entry["command"] == ["$PY", *argv] and entry["lock"] == lock
+    entry = {**entry, "lane_id": lane, "live_arg": None, "market_gate": False}
     assert "llm_route" not in entry and not any("--lane" in t for t in entry["command"])
     activated = dict(row, scheduler={**row["scheduler"], **pend["scheduler"]}, output_signal=pend["output_signal"],
                      dispatch=pend["dispatch"])

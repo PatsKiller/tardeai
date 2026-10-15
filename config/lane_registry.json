@@ -3478,13 +3478,18 @@
       "owner": "platform",
       "scheduler": {
         "kind": "systemd",
-        "expression": "tradeai-source-litmus.timer"
+        "expression": "tradeai-source-litmus.timer",
+        "stage": "shadow",
+        "wave": "LR-20261015",
+        "match": "tradeai-source-litmus.timer",
+        "on_calendar": "Tue..Sat *-*-* 07:45:00"
       },
       "expected_cadence_hours": 24.0,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "data/runtime/source_litmus_last_run.json"
+        "kind": "json_key",
+        "path": "data/runtime/source-litmus-vs-yahoo_last.json",
+        "key": "ok_at"
       },
       "note": "Samples stored closes per source against Yahoo Finance's close for the same session. Operator-approved 2026-09-14 after the litmus found 29% of quote-derived closes off by >1%, sub-share position values written as closes, and a session-stale Alpaca previous close.",
       "value_class": "Duplicated",
@@ -3498,7 +3503,19 @@
         "f_recommendation": "CONSOLIDATE → P12 check registry",
         "event_driven_candidate": false,
         "f_evidence": "one of ~73 health/monitor mechanisms"
-      }
+      },
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "45 7 * * 2-6"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "monitor",
+        "priority": 5,
+        "retry_policy": "none"
+      },
+      "adopted_reason": "lane repair 2026-10-15 (docs/ops/packets/lane-repair-run-research-intelligence-overnight-20261015/): a row carrying a reviewed dispatch block is hand-maintained (AGENTS 23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop it. The systemd timer tradeai-source-litmus.timer keeps doing the real work; the dispatcher fires the offline dry run only (SHADOW). output_signal moved from the log/file mtime to the LaneRunReceipt@v1 (+ v2 output fields) the lane writes on a real run."
     },
     {
       "lane_id": "eod-consolidated-close-sync",
@@ -11081,7 +11098,8 @@
       "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-10-10",
       "adopted_reason": "dispatcher shadow wave D3: adopted unchanged to keep its lane_id stable. Once the same script's build-symbol-profiles-watchlist row is hand-maintained, the generator would re-derive this row as `build-symbol-profiles` (a rename with no change on the host). | lane repair 2026-10-15 (operator: 'turn these on and then re-engineer them for n8n'): the refactor shard 05 shadow proposal (REFACTOR_SHARD_05_20261011.md: SHADOW_READY, observed outer flock) is taken in SHADOW now that the OperationalError is fixed (read transaction ends before the Finviz/yfinance calls; one short transaction per symbol). The SW4 hold reason (shared build_symbol_profiles_last.json receipt) is gone: the lane writes its own build-symbol-profiles-at-0-19_last.json. Cron line L477 (crontab -l 2026-10-15, sha256 6a5c6768) keeps doing the real work; the dispatcher fires the offline --dry-run only.",
-      "dispatch": {
+      "dispatch_blocked_reason": "awaiting operator review of transitive broker reach (DD01 capability audit): the entrypoint's import closure reaches broker_module / order_placement through the shared lazy chain db_adapter -> holdings_guard -> schwab_position_sync (-> schwab_transport) (scripts/lib/lane_capability_audit via tests/test_lane_transitive_capabilities_20261015.py). The SHRINK-ONLY baseline (config/n8n_lane_capability_baseline.json + the frozen set in that test) may only grow by operator review, so train 2026-10-15 d (merging #1771) keeps the lane REPAIR (the code fixes run under cron today) and defers the n8n wiring: no allowlist entry, registry dispatch off. Re-enable = an operator-reviewed baseline entry (or cutting the lazy chain) plus restoring the #1771 allowlist entry (branch lane-repair/three-lanes-20261015, head 8c037b710) in one registry-train PR.",
+      "deferred_dispatch": {
         "mode": "dry_run",
         "cron": [
           "0 19 * * 0"
@@ -15729,7 +15747,8 @@
         "duplicate_of": "indicator-cache-refresh",
         "state_until_install": "ACTIVE (the line still runs; the registry flips only after the read-back verify)"
       },
-      "dispatch": {
+      "dispatch_blocked_reason": "awaiting operator review of transitive broker reach (DD01 capability audit): the entrypoint's import closure reaches broker_module / order_placement through the shared lazy chain db_adapter -> holdings_guard -> schwab_position_sync (-> schwab_transport) (scripts/lib/lane_capability_audit via tests/test_lane_transitive_capabilities_20261015.py). The SHRINK-ONLY baseline (config/n8n_lane_capability_baseline.json + the frozen set in that test) may only grow by operator review, so train 2026-10-15 d (merging #1771) keeps the lane REPAIR (the code fixes run under cron today) and defers the n8n wiring: no allowlist entry, registry dispatch off. Re-enable = an operator-reviewed baseline entry (or cutting the lazy chain) plus restoring the #1771 allowlist entry (branch lane-repair/three-lanes-20261015, head 8c037b710) in one registry-train PR.",
+      "deferred_dispatch": {
         "mode": "dry_run",
         "cron": [
           "0 8 * * 1-5"
@@ -15837,11 +15856,13 @@
           "class": "llm",
           "priority": 5,
           "retry_policy": "none"
-        }
+        },
+        "blocked_by": "lane_registry dispatch_blocked_reason (DD01 capability audit) + config/n8n_run_allowlist.json blocked_reasons[watchlist-entry-planner-limit]"
       },
       "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-10-15",
-      "adopted_reason": "lane repair 2026-10-15: InterfaceError fixed at its source (lib/comms/delivery.py closed db_adapter's thread-local connection after every send); n8n entry scripts/watchlist_entry_planner_lane.py plans only (no sender in its reach). Staged r1_pending, see its `requires`."
+      "adopted_reason": "lane repair 2026-10-15: InterfaceError fixed at its source (lib/comms/delivery.py closed db_adapter's thread-local connection after every send); n8n entry scripts/watchlist_entry_planner_lane.py plans only (no sender in its reach). Staged r1_pending, see its `requires`.",
+      "dispatch_blocked_reason": "awaiting operator review of transitive broker reach (DD01 capability audit): the entrypoint's import closure reaches broker_module / order_placement through the shared lazy chain db_adapter -> holdings_guard -> schwab_position_sync (-> schwab_transport) (scripts/lib/lane_capability_audit via tests/test_lane_transitive_capabilities_20261015.py). The SHRINK-ONLY baseline (config/n8n_lane_capability_baseline.json + the frozen set in that test) may only grow by operator review, so train 2026-10-15 d (merging #1771) keeps the lane REPAIR (the code fixes run under cron today) and defers the n8n wiring: no allowlist entry, registry dispatch off. Re-enable = an operator-reviewed baseline entry (or cutting the lazy chain) plus restoring the #1771 allowlist entry (branch lane-repair/three-lanes-20261015, head 8c037b710) in one registry-train PR."
     },
     {
       "lane_id": "watchlist-entry-planner-scope",
@@ -15896,11 +15917,76 @@
           "class": "llm",
           "priority": 5,
           "retry_policy": "none"
-        }
+        },
+        "blocked_by": "lane_registry dispatch_blocked_reason (DD01 capability audit) + config/n8n_run_allowlist.json blocked_reasons[watchlist-entry-planner-scope]"
       },
       "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-10-15",
-      "adopted_reason": "lane repair 2026-10-15: InterfaceError fixed at its source (lib/comms/delivery.py closed db_adapter's thread-local connection after every send); n8n entry scripts/watchlist_entry_planner_lane.py plans only (no sender in its reach). Staged r1_pending, see its `requires`."
+      "adopted_reason": "lane repair 2026-10-15: InterfaceError fixed at its source (lib/comms/delivery.py closed db_adapter's thread-local connection after every send); n8n entry scripts/watchlist_entry_planner_lane.py plans only (no sender in its reach). Staged r1_pending, see its `requires`.",
+      "dispatch_blocked_reason": "awaiting operator review of transitive broker reach (DD01 capability audit): the entrypoint's import closure reaches broker_module / order_placement through the shared lazy chain db_adapter -> holdings_guard -> schwab_position_sync (-> schwab_transport) (scripts/lib/lane_capability_audit via tests/test_lane_transitive_capabilities_20261015.py). The SHRINK-ONLY baseline (config/n8n_lane_capability_baseline.json + the frozen set in that test) may only grow by operator review, so train 2026-10-15 d (merging #1771) keeps the lane REPAIR (the code fixes run under cron today) and defers the n8n wiring: no allowlist entry, registry dispatch off. Re-enable = an operator-reviewed baseline entry (or cutting the lazy chain) plus restoring the #1771 allowlist entry (branch lane-repair/three-lanes-20261015, head 8c037b710) in one registry-train PR."
+    },
+    {
+      "lane_id": "run-research-intelligence-overnight",
+      "owner": "research",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "30 20 * * 1-5 + 15 2 * * *",
+        "match": "scripts/run_research_intelligence_overnight.sh --phase full",
+        "schedules": [
+          "30 20 * * 1-5",
+          "15 2 * * *"
+        ],
+        "command_text": "30 20 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/non_trading_hours_gate.sh bash /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/run_research_intelligence_overnight.sh --phase full >> /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/logs/ri_overnight.log 2>&1"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/run-research-intelligence-overnight_last.json",
+        "key": "ok_at"
+      },
+      "value_class": "Duplicated",
+      "recommendation": "MERGE_INTO:P10",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L725",
+        "pipeline": "P10",
+        "value_class": "Duplicated",
+        "recommendation": "MERGE_INTO:P10",
+        "f_recommendation": "CONSOLIDATE → one full run in P10",
+        "event_driven_candidate": false,
+        "f_evidence": "`--phase full` scheduled twice (20:30 + 02:15); log: \"SKIP/FAIL ingest (lock busy or exit non-zero)\" x14"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "scheduler_note": "2026-10-15 lane repair: both `--phase full` lines stay listed (expression/schedules). Only the 20:30 weekday line does work today: the 02:15 line is wrapped in run_with_deepseek_offpeak.sh --official and 02:15 ET = 06:15 UTC falls in the official DeepSeek peak (06:00-10:00 UTC), so it logs PEAK_SKIP every night under EDT (ri_overnight.log 2026-10-14/15); the lane-repair packet proposes 00:15 (C1). command_text is the 20:30 line, the one the staged r1_pending shadow row mirrors (dispatch.cron 30 20 * * 1-5); the activation PR updates expression/schedules to the installed crontab.",
+      "adopted_reason": "lane repair 2026-10-15 (docs/ops/packets/lane-repair-run-research-intelligence-overnight-20261015/): a row carrying a staged r1_pending block (shadow, activated by a later registry PR once the bridge route exists) is hand-maintained (AGENTS 23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop it. The host scheduler keeps doing the real work; the dispatcher fires the offline dry run only (SHADOW). output_signal moved from the log/file mtime to the LaneRunReceipt@v1 (+ v2 output fields) the lane writes on a real run.",
+      "r1_pending": {
+        "scheduler": {
+          "command_text": "30 20 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/non_trading_hours_gate.sh bash /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/run_research_intelligence_overnight.sh --phase full >> /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/logs/ri_overnight.log 2>&1",
+          "stage": "shadow",
+          "wave": "LR-20261015",
+          "expression": "30 20 * * 1-5"
+        },
+        "output_signal": {
+          "kind": "json_key",
+          "path": "data/runtime/run-research-intelligence-overnight_last.json",
+          "key": "ok_at"
+        },
+        "dispatch": {
+          "mode": "dry_run",
+          "cron": [
+            "30 20 * * 1-5"
+          ],
+          "tz": "America/New_York",
+          "wave": "W4",
+          "class": "llm",
+          "priority": 5,
+          "retry_policy": "none"
+        },
+        "blocked_by": "config/n8n_run_allowlist.json blocked_reasons[run-research-intelligence-overnight]"
+      }
     },
     {
       "lane_id": "run-scheduled-quote-refresh-incubator",
@@ -20468,51 +20554,7 @@
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
     },
     {
-      "lane_id": "run-research-intelligence-overnight",
-      "owner": "research",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "30 20 * * 1-5 + 15 2 * * *",
-        "match": "scripts/run_research_intelligence_overnight.sh --phase full",
-        "schedules": [
-          "30 20 * * 1-5",
-          "15 2 * * *"
-        ]
-      },
-      "expected_cadence_hours": 24.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/ri_overnight.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Duplicated",
-      "recommendation": "MERGE_INTO:P10",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L725",
-        "pipeline": "P10",
-        "value_class": "Duplicated",
-        "recommendation": "MERGE_INTO:P10",
-        "f_recommendation": "CONSOLIDATE → one full run in P10",
-        "event_driven_candidate": false,
-        "f_evidence": "`--phase full` scheduled twice (20:30 + 02:15); log: \"SKIP/FAIL ingest (lock busy or exit non-zero)\" x14",
-        "f_ids": [
-          "L725",
-          "L726"
-        ],
-        "f_recommendations": [
-          "MERGE_INTO:P10",
-          "MERGE_INTO:P10"
-        ]
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "run-research-intelligence-overnight-archive",
+      "lane_id": "run-research-intelligence-overnight-2",
       "owner": "research",
       "scheduler": {
         "kind": "cron",

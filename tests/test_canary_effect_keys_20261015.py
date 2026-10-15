@@ -165,6 +165,8 @@ def test_no_key_outside_scope_except_reviewed_process_steps():
         # each live run appends plans after an LLM call, so the key is staged with them (cron_claim/n8n_claim false).
         "watchlist-entry-planner-limit",
         "watchlist-entry-planner-scope",
+        # lane repair 2026-10-15 (tests/test_lane_repair_ri_hermes_litmus_20261015.py): staged, no claim.
+        "run-research-intelligence-overnight",
     }
 
 
