@@ -1,0 +1,42 @@
+{
+  "schema": "OffboxDeadman@v1",
+  "as_of": "2026-10-15",
+  "owner": "scripts/offbox_deadman.py",
+  "design": "~/n8n-maturity-verification/arch-review-20261014/designs/ALERT_FLOOD_AND_DEADMAN.md (WS3-18, WS3-20, WS8-06)",
+  "provider": "healthchecks.io-class pull-on-miss check (any service that alerts when a ping URL is not hit within period + grace, and on an explicit /fail ping)",
+  "ping_url_env": "TRADEAI_OFFBOX_DEADMAN_PING_URL",
+  "fail_suffix": "/fail",
+  "timeout_s": 10,
+  "retries": 2,
+  "body_max_bytes": 8000,
+  "checks": [
+    {
+      "name": "incident_notifier",
+      "path": "data/runtime/incident_notifier_last.json",
+      "ts_field": "as_of",
+      "max_age_min": 15,
+      "require_ok": true,
+      "fail_status": ["FAILED"],
+      "why": "the operator-facing sender ran within three of its */5 cycles and its last run delivered or had nothing to send"
+    },
+    {
+      "name": "incident_fanin",
+      "path": "data/runtime/n8n_incident_fanin_last.json",
+      "ts_field": "as_of",
+      "max_age_min": 30,
+      "require_ok": false,
+      "fail_status": [],
+      "why": "the notifier's input is current (the notifier itself goes NO_INPUT after 30 min)"
+    },
+    {
+      "name": "heartbeat_watch",
+      "path": "data/runtime/heartbeat-watch_last.json",
+      "ts_field": "finished_at",
+      "max_age_min": 30,
+      "require_ok": false,
+      "fail_status": ["failed", "error"],
+      "nonempty_fails": "summary.stale",
+      "why": "the health-plane dead-man (detector, fan-in, notifier, SIEM bridge, health tick past 2x cadence) is still looking"
+    }
+  ]
+}
