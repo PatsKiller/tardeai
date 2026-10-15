@@ -19,8 +19,8 @@ sys.path.insert(0, str(ROOT / "scripts"))
 # observed firing. Claiming it would be the exact overstatement this gate exists to
 # prevent.
 COVERS = [
-    "scripts/alpaca_stop_manager.py:65",
-    "scripts/alpaca_stop_manager.py:77",
+    "scripts/alpaca_stop_manager.py:107",  # was :65 before the F09 --dry-run guard (2026-10-15)
+    "scripts/alpaca_stop_manager.py:119",  # was :77
 ]
 
 
