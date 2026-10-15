@@ -4677,6 +4677,15 @@ GATES = [
         ["tests/test_hermes_tag_engine_cost_cap_20261015.py"],
     ),
     (
+        # Run-from-release P0 (2026-10-15): prepare builds or reuses a shared venv keyed by
+        # py<X.Y.Z>-sha12(requirements.lock.txt) and links <release>/.venv to it. Pins: hash keying; reuse runs
+        # no pip; a failed install/smoke leaves no partial venv and the previous one untouched; the link and
+        # RELEASE_VENV_PYTHON; refusals (interpreter minor, freeze drift, real .venv dir); the dry venv-plan
+        # writes nothing; prepare moves no cron/unit and keeps VENV_PYTHON. Hermetic: stub interpreter + pip.
+        "release_venv_p0_20261015",
+        ["tests/test_release_venv_p0_20261015.py"],
+    ),
+    (
         # The six generic n8n workflows (AGENTS.md §23.11) are declared by their committed INDEX, so activating
         # them under their `cron` grant does not turn check_lane_registry --n8n-live red with six
         # UNDECLARED_N8N_WORKFLOW; an unknown id still fails; a missing/foreign INDEX fails closed. Hermetic.

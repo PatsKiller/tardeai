@@ -7,6 +7,8 @@
 # rollback — restore PREV recorded in state
 # status
 # pins     — DRY RUN: list user units pinned to a release other than [dir] (default CURRENT); writes nothing
+# venv-plan — DRY RUN: the shared release venv prepare would build or reuse for [dir] (default: this
+#            checkout); writes nothing. See scripts/lib/release_venv.sh.
 # stamp    — (re)stamp provenance artifacts for a release dir: SOURCE_COMMIT, BUILD_SHA,
 #            GIT_SHA, BUILD_STAMP.json, and build-meta.json (no npm/network/systemd)
 #
@@ -33,6 +35,13 @@ MODE="${1:-status}"
 
 log() { echo "[phase2 $(date -u +%H:%M:%S)] $*"; }
 die() { echo "ERROR: $*" >&2; exit 1; }
+
+# Run-from-release P0 (2026-10-15): shared venv keyed by requirements.lock.txt hash, linked as
+# <release>/.venv at prepare. TRADEAI_RELEASE_VENV_MODE=link (default) | off (skip, loud).
+# VENV_PYTHON (the deploy's own checks and portfolio-server's ExecStart) is deliberately NOT changed here:
+# prepare must not move any unit. The release interpreter is exposed as RELEASE_VENV_PYTHON (state + receipt).
+# shellcheck source=scripts/lib/release_venv.sh
+source "${ROOT}/scripts/lib/release_venv.sh"
 
 # CI-provider outage emergency release (2026-10-05). TRADEAI_EMERGENCY_RELEASE_SHA names the ONE
 # commit an operator-approved emergency may release while GitHub cannot run CI. The variable grants
@@ -79,6 +88,10 @@ write_state() {
 PREV_RELEASE=${PREV_RELEASE:-}
 NEW_RELEASE=${NEW_RELEASE:-}
 CONTENT_SHA=${CONTENT_SHA:-}
+RELEASE_VENV_ID=${RELEASE_VENV_ID:-}
+RELEASE_VENV_LOCK_SHA256=${RELEASE_VENV_LOCK_SHA256:-}
+RELEASE_VENV_PY_VERSION=${RELEASE_VENV_PY_VERSION:-}
+RELEASE_VENV_PYTHON=${RELEASE_VENV_PYTHON:-}
 UPDATED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 EOF
 }
@@ -100,7 +113,9 @@ write_deploy_receipt() {
   local prev="${PREV_RELEASE:-}"
   local pr="${CIO_SOURCE_PR:-}"
   OK_FLAG="$ok_flag" MODE="$mode" HEALTH="$health" ROLLED="$rolled" EXTRA="$extra" \
-  SHA="$sha" DIR="$dir" PREV="$prev" PR="$pr" PIN_RECEIPT="${RELEASE_PIN_RECEIPT:-}" RECEIPT_FILE="$RECEIPT_FILE" CI_RECEIPT_FILE="$CI_RECEIPT_FILE" python3 - <<'PY'
+  SHA="$sha" DIR="$dir" PREV="$prev" PR="$pr" \
+  RV_ID="${RELEASE_VENV_ID:-}" RV_LOCK="${RELEASE_VENV_LOCK_SHA256:-}" RV_PYVER="${RELEASE_VENV_PY_VERSION:-}" \
+  RV_PY="${RELEASE_VENV_PYTHON:-}" RV_ACTION="${RELEASE_VENV_ACTION:-}" PIN_RECEIPT="${RELEASE_PIN_RECEIPT:-}" RECEIPT_FILE="$RECEIPT_FILE" CI_RECEIPT_FILE="$CI_RECEIPT_FILE" python3 - <<'PY'
 import json, os
 from datetime import datetime, timezone
 from pathlib import Path
@@ -121,6 +136,14 @@ rec = {
     "authority": "READ_ONLY_ADVISORY",
     "script": "cio_phase2_exact_main_deploy.sh",
 }
+if os.environ.get("RV_ID"):
+    rec["release_venv"] = {
+        "venv_id": os.environ["RV_ID"],
+        "lock_sha256": os.environ.get("RV_LOCK") or "",
+        "python_version": os.environ.get("RV_PYVER") or "",
+        "venv_python": os.environ.get("RV_PY") or "",
+        "action": os.environ.get("RV_ACTION") or "",
+    }
 ci_path = Path(os.environ["CI_RECEIPT_FILE"])
 if rec["mode"] == "promote" and ci_path.is_file():
     ci = json.loads(ci_path.read_text())
@@ -661,12 +684,20 @@ cmd_prepare() {
   stamp_build "$NEW_RELEASE" "$CONTENT_SHA"
   run_pin_check "$NEW_RELEASE"
   run_integrity_hook "$NEW_RELEASE"
+  local venv_paths=()
+  if [[ "${TRADEAI_RELEASE_VENV_MODE:-link}" == "off" ]]; then
+    log "WARN release venv OFF (TRADEAI_RELEASE_VENV_MODE=off) — ${NEW_RELEASE}/.venv NOT created"
+  else
+    ensure_release_venv "$NEW_RELEASE" || die "release venv failed for $NEW_RELEASE — prepare refused (previous venvs untouched)"
+    venv_paths=(".venv/bin/python")
+  fi
   for p in \
     "scripts/portfolio_server.py" \
     "scripts/api_v2.py" \
     "scripts/lib/cio_acceptance_v4.py" \
     "apps/command-center-v3/dist/index.html" \
-    "BUILD_SHA"
+    "BUILD_SHA" \
+    "${venv_paths[@]}"
   do
     [[ -e "${NEW_RELEASE}/${p}" ]] || die "missing critical path: $p"
   done
@@ -887,12 +918,13 @@ case "$MODE" in
   rollback) cmd_rollback "${2:-}" ;;
   status)   cmd_status ;;
   pins)     release_pin_step plan "${2:-$(current_release)}" ;;
+  venv-plan) release_venv_plan "${2:-$ROOT}" || die "release venv plan failed" ;;
   stamp)    [[ -n "${2:-}" && -n "${3:-}" ]] || die "usage: $0 stamp <release-dir> <full-40-char-sha>"
             stamp_build "$2" "$3"
             write_build_meta "$2" "$3"
             log "stamped provenance for $2 -> $3" ;;
   *)
-    echo "Usage: $0 {prepare|promote|rollback|status|pins|stamp} [path]"
+    echo "Usage: $0 {prepare|promote|rollback|status|pins|venv-plan|stamp} [path]"
     exit 2
     ;;
 esac
