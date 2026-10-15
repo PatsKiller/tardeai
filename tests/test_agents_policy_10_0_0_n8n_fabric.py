@@ -41,7 +41,7 @@ DIRECTIVE = (
 PLATFORM = "Do not tell me whether cron is a better scheduler. Tell me whether we are building the right platform."
 #: §22 ("# 22 · " up to "# 23 · "), measured on origin/main 07cf2e027 before this amendment.
 SECTION_22_SHA256 = "81f1646a64e38047882c7375ab18739111ba8349471fbaa0351fc1069f9717e9"
-SUPERSEDED_NOTE = "Superseded by §23.23 once ACTIVE (10.0.0, PROPOSED)"
+SUPERSEDED_NOTE = "Superseded by §23.23 (10.0.0, ACTIVE)"
 ADAPTERS = ("CLAUDE.md", ".cursor/rules/00-tradeai-work-policy.mdc", ".github/copilot-instructions.md", ".goosehints")
 
 
@@ -107,21 +107,21 @@ def test_banner_quotes_the_operator_and_states_the_class():
     start = AGENTS.index("**10.0.0 is ")
     end = AGENTS.index("\n\n**", start + 10)
     banner = _flat(AGENTS[start:end])
-    for frag in ("PROPOSED (MAJOR)", DIRECTIVE, PLATFORM, "Why MAJOR", "n8n owns flow",
+    for frag in ("ACTIVE (MAJOR)", DIRECTIVE, PLATFORM, "Why MAJOR", "n8n owns flow",
                  "The host keeps authority, execution and evidence", "an n8n approval is a request",
                  "byte-identical", "Ratification activates no node, workflow, route or credential", "#1697", "#1727",
-                 "n8nmat/schwab-read-lanes-20261014", "The header block stays at 7.0.0 ACTIVE",
-                 f"{TOKEN} <pr_number> <head_sha>"):
+                 "n8nmat/schwab-read-lanes-20261014", "set the header block to 10.0.0 ACTIVE",
+                 f"{TOKEN} 1736 7f275d279", "PatsKiller 2026-10-14T23:25:56Z", "`3e9dc5e14`"):
         assert frag in banner, frag
 
 
 # ------------------------------------------------------------------------------------------------- §23.23
 
 
-def test_23_23_is_proposed_and_names_what_it_supersedes():
+def test_23_23_is_active_and_names_what_it_supersedes():
     s = _flat(_sub23("23.23"))
-    assert s.startswith("## 23.23 n8n is the automation fabric — n8n owns flow, the host owns authority (10.0.0, PROPOSED)")
-    for frag in (DIRECTIVE, PLATFORM, "**PROPOSED: nothing here binds**", f"{TOKEN} <pr_number> <head_sha>",
+    assert s.startswith("## 23.23 n8n is the automation fabric — n8n owns flow, the host owns authority (10.0.0, ACTIVE)")
+    for frag in (DIRECTIVE, PLATFORM, "**ACTIVE:**", f"{TOKEN} 1736 7f275d279", "PatsKiller 2026-10-14T23:25:56Z",
                  "supersedes the restrictive parts of §23.1", "§23.11", "§24.1", "not deleted (§0 rail 6)",
                  "WS9_THREAT_MODEL.md", "WS1b_N8N_TARGET_ARCHITECTURE.md", "DECISIONS_FOR_OPERATOR.md"):
         assert frag in s, frag
@@ -228,7 +228,7 @@ def test_23_3_keeps_the_trigger_path_and_gains_one_route_note():
     s = _flat(_sub23("23.3"))
     assert "No other port, route, socket, SSH, `docker exec`, file drop or webhook is a trigger path." in s
     assert "**No sends from n8n.**" in s
-    assert s.count("**Route note for §23.23 once ACTIVE (10.0.0, PROPOSED).**") == 1
+    assert s.count("**Route note for §23.23 (10.0.0, ACTIVE).**") == 1
     for frag in ("a send-intent route", "an approval-request route", "the async run-outcome callback",
                  "None of them runs a command, and none is a broker or order route"):
         assert frag in s, frag

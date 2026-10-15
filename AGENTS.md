@@ -1,15 +1,15 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      7.0.0
+Policy-Version:      10.0.0
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
 Status:              ACTIVE
 Effective-Date:      2026-10-14
-Last-Reviewed:       2026-10-14T11:00:00-04:00
+Last-Reviewed:       2026-10-14T19:25:56-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
-Supersedes:          5.1.0
+Supersedes:          7.0.0
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
 
@@ -111,14 +111,14 @@ asks the operator to decide needs `dedupe_minutes=0`; #1685 sets it only for `ap
 operator classifies it before #1685 merges. **Numbering:** follows 5.0.0 (ACTIVE, PR #1686, merged `0ec320486`);
 `Supersedes` is 5.0.0. Operator approval phrase (§20): `APPROVE_AGENTS_POLICY_5_1_0 <pr_number> <head_sha>`.
 
-**10.0.0 is PROPOSED (MAJOR) — n8n becomes the automation fabric: n8n owns flow; the host owns authority,
+**10.0.0 is ACTIVE (MAJOR) — n8n becomes the automation fabric: n8n owns flow; the host owns authority,
 execution and evidence (§23.23; supersedes the restrictive parts of §23.1, §23.11 and §24.1, each marked in place,
 plus one route note in §23.3).** Operator-directed 2026-10-14, in session, verbatim: n8n is "a centralized,
 intelligent automation fabric that provides: Workflow orchestration, Dependency management, Observability, Alerting,
 Human approvals, Agent coordination, LLM integration, Event-driven automation, Operational visibility, Auditability,
 Governance, Centralized controls." and "Do not tell me whether cron is a better scheduler. Tell me whether we are
-building the right platform." Awaiting the operator's `APPROVE_AGENTS_POLICY_10_0_0 <pr_number> <head_sha>` (§20);
-until it is ratified and merged nothing here binds and §23.1, §23.3, §23.11 and §24.1 govern as written. The
+building the right platform." Ratified by the operator 2026-10-14 (`APPROVE_AGENTS_POLICY_10_0_0 1736 7f275d279`, §20; PR #1736 comment by PatsKiller 2026-10-14T23:25:56Z, verbatim: "APPROVE_AGENTS_POLICY_10_0_0 1736 7f275d279"); merged #1736 as `3e9dc5e14` while PROPOSED, ratified by this edit. §23.23 binds; the restrictive parts of §23.1, §23.11 and
+§24.1 are superseded as marked in place, and §23.3 carries its route note. The
 architecture review of 2026-10-14 (`~/n8n-maturity-verification/arch-review-20261014/`: `EXECUTIVE_SUMMARY.md`,
 `TARGET_ARCHITECTURE.md`, `DECISIONS_FOR_OPERATOR.md` decision 1) measured n8n as a one-minute clock — 16 active
 workflows, all schedule-started, no sub-workflow, approval wait or AI node, successful runs not saved — because §23.1,
@@ -135,8 +135,8 @@ guarantee). It grants no broker, order, stop, secret, grant or §17 authority to
 §7A, §17, §22 and §23.14 are byte-identical. Ratification activates no node, workflow, route or credential: each is
 its own reviewed PR and grant, behind the controls in §23.23. **Numbering:** 6.0.0 is claimed by PR #1697
 (PROPOSED), 8.0.0 by PR #1727 (PROPOSED, §23.21) and 9.0.0 by branch `n8nmat/schwab-read-lanes-20261014` (PROPOSED,
-§23.22); this takes 10.0.0 and §23.23. The header block stays at 7.0.0 ACTIVE until the ratifying edit sets it, and
-`Supersedes` is then the last ACTIVE version. If an earlier number is withdrawn the number is settled at ratification
+§23.22); this takes 10.0.0 and §23.23. The ratifying edit set the header block to 10.0.0 ACTIVE with `Supersedes` 7.0.0,
+the last ACTIVE version; 6.0.0, 8.0.0 and 9.0.0 remain PROPOSED, each with its own token. If an earlier number is withdrawn the number is settled at ratification
 (§20). Operator approval phrase (§20): `APPROVE_AGENTS_POLICY_10_0_0 <pr_number> <head_sha>`.
 
 **7.0.0 is ACTIVE (MAJOR) — advisory market-data lanes may run from the n8n dispatcher (§23.20; one exception
@@ -4278,11 +4278,12 @@ mandatory. *Cause (§20): operator 2026-10-10 ~16:35 ET, after the W0 rollback
 - **n8n is a scheduler and a requester, never an authority.** An n8n execution row is not a job
   receipt, a delivery receipt, broker truth, or evidence that a host job ran (§0 rail 8). Evidence is
   the `RunReceipt@v1` and the lane's `output_signal`, both written on the host.
-- **Superseded by §23.23 once ACTIVE (10.0.0, PROPOSED) — the restrictive part of the bullet above.** "A scheduler
+- **Superseded by §23.23 (10.0.0, ACTIVE) — the restrictive part of the bullet above.** "A scheduler
   and a requester" stops being the whole of n8n's role: n8n owns flow (sequencing, dependencies, event triggers,
   retries through the Run Lane sub-workflow, error workflows, approval timelines, escalation timers, LLM judgment
   steps). "Never an authority" and every evidence sentence above stay in force: the host owns authority, execution
-  and evidence (§23.23). Until 10.0.0 is ratified and merged, the bullet above governs as written. *Cause (§20):
+  and evidence (§23.23). ACTIVE since the ratifying edit of 2026-10-14 (`APPROVE_AGENTS_POLICY_10_0_0 1736 7f275d279`); the bullet above is kept and
+  binds except where this note supersedes it. *Cause (§20):
   operator directive 2026-10-14 (n8n is "a centralized, intelligent automation fabric"); the architecture review of
   the same day found this bullet among the rules that made the fabric impossible by construction (WS1b-01).*
 
@@ -4417,13 +4418,13 @@ mandatory. *Cause (§20): operator 2026-10-10 ~16:35 ET, after the W0 rollback
 - **No sends from n8n.** Nothing in n8n sends Telegram, email, Slack or any operator message;
   `send_telegram` on the host stays the single chokepoint (§9.1). The email-send nodes remain in
   `NODES_EXCLUDE`.
-- **Route note for §23.23 once ACTIVE (10.0.0, PROPOSED).** The trigger path and "No sends from n8n" above are
+- **Route note for §23.23 (10.0.0, ACTIVE).** The trigger path and "No sends from n8n" above are
   unchanged. §23.23 adds, each by its own reviewed PR and only behind the gateway HMAC claim on the relay, three
   host routes beside `coordination/run`: a send-intent route (n8n requests a send; the host comms chokepoint decides
   and sends, and n8n holds no bot token), an approval-request route (the host mints the `approval_ref`, records the
   request and sends the button; the decision is a host record), and the async run-outcome callback with its
-  `GET /runs/{run_id}` fallback. None of them runs a command, and none is a broker or order route. Until 10.0.0 is
-  ratified and merged, the first bullet of this section governs as written. *Cause (§20): approvals, sends and run
+  `GET /runs/{run_id}` fallback. None of them runs a command, and none is a broker or order route. Ratification adds
+  no route by itself: the first bullet of this section governs each route until that route's own PR merges. *Cause (§20): approvals, sends and run
   outcomes are fabric capabilities the operator named on 2026-10-14; `DECISIONS_FOR_OPERATOR.md` decision 1 asks
   for the send-intent and approval-request routes, and WS1b-04 found n8n never learns whether a run finished.*
 
@@ -4766,15 +4767,15 @@ CRITICAL or HIGH for Agent enablement maps to one item here.*
   approval router never mints, approves or extends a grant.** It relays an operator's reply to the
   host guard path, which decides. *Cause (§20): due-diligence audit A — any agent in the `docker` group can import
   or publish a workflow, so a router able to approve would make the grant check a workflow setting.*
-- **Superseded by §23.23 once ACTIVE (10.0.0, PROPOSED) — "decide nothing" above and the six-workflow ceiling in
+- **Superseded by §23.23 (10.0.0, ACTIVE) — "decide nothing" above and the six-workflow ceiling in
   the first bullet.** Workflows may make flow decisions: sequence and branch steps, retry and time out through the
   Run Lane sub-workflow, route failures through error workflows, run approval timelines and escalation timers, and
   branch on the enumerated fields of an LLM judgment step. Process, Run Lane, error, approval and agent-function
   workflows may exist beyond the six, each generated from git and activated under a `cron` grant naming its
   workflow id, as an edit of one of the six is today. "Send nothing" stays: a send is a request to the host intent
   route (§23.3 route note). The approval router still never mints, approves or extends a grant (§17), and an n8n
-  approval is a request whose authority is the host record. Until 10.0.0 is ratified and merged, the bullets above
-  govern as written. *Cause (§20): operator directive 2026-10-14; the review measured all 16 active workflows as
+  approval is a request whose authority is the host record. ACTIVE since the ratifying edit of 2026-10-14 (`APPROVE_AGENTS_POLICY_10_0_0 1736 7f275d279`); the bullets
+  above are kept and bind except where this note supersedes them. *Cause (§20): operator directive 2026-10-14; the review measured all 16 active workflows as
   schedule-started with no sub-workflow, approval wait or AI node (WS1-01, WS1b-01).*
 - **Editing or deactivating one of the six is still a `cron` grant naming its workflow id**, and the
   edited JSON lands in `docs/implementation/n8n-parallel/workflows/` by reviewed PR. *Cause (§20):
@@ -5072,16 +5073,15 @@ it holds. ACTIVE since the ratifying edit of 2026-10-14 (`APPROVE_AGENTS_POLICY_
   blocks the admitted lane: measured 2026-10-14), no relay route or credential is added, and an n8n Agent node never
   invokes a §23.20 lane.
 
-## 23.23 n8n is the automation fabric — n8n owns flow, the host owns authority (10.0.0, PROPOSED)
+## 23.23 n8n is the automation fabric — n8n owns flow, the host owns authority (10.0.0, ACTIVE)
 
 Operator directive 2026-10-14, in session, verbatim: n8n is "a centralized, intelligent automation fabric that
 provides: Workflow orchestration, Dependency management, Observability, Alerting, Human approvals, Agent coordination,
 LLM integration, Event-driven automation, Operational visibility, Auditability, Governance, Centralized controls." and
 "Do not tell me whether cron is a better scheduler. Tell me whether we are building the right platform." Numbered
 §23.23 because §23.21 is claimed by 8.0.0 (PR #1727) and §23.22 by 9.0.0 (branch
-`n8nmat/schwab-read-lanes-20261014`), both PROPOSED. **PROPOSED: nothing here binds** until
-`APPROVE_AGENTS_POLICY_10_0_0 <pr_number> <head_sha>` is given and merged (§20); until then §23.1, §23.3, §23.11 and
-§24.1 govern as written. Once ACTIVE this subsection supersedes the restrictive parts of §23.1 ("a scheduler and a
+`n8nmat/schwab-read-lanes-20261014`), both PROPOSED. **ACTIVE:** Ratified by the operator 2026-10-14 (`APPROVE_AGENTS_POLICY_10_0_0 1736 7f275d279`, §20; PR #1736 comment by PatsKiller 2026-10-14T23:25:56Z, verbatim: "APPROVE_AGENTS_POLICY_10_0_0 1736 7f275d279"); merged #1736 as `3e9dc5e14` while PROPOSED, ratified by this edit.
+This subsection supersedes the restrictive parts of §23.1 ("a scheduler and a
 requester"), §23.11 ("decide nothing" and the six-workflow ceiling) and §24.1 ("fires host lanes and decides
 nothing"), each marked in place with its text kept, not deleted (§0 rail 6), and §23.3 gains a route note. Evidence:
 the architecture review of 2026-10-14 in `~/n8n-maturity-verification/arch-review-20261014/`
@@ -5202,13 +5202,14 @@ and grants one operational authority, under its own guard scope and its own toke
   `scripts/incident_notifier.py` defaults) and are changed by reviewed PR, never by a workflow edit. *Cause (§20):
   §23.11 "the other five send nothing and decide nothing"; a routing rule held inside a workflow would be read by no
   registry check and reviewed by no PR.*
-- **Superseded by §23.23 once ACTIVE (10.0.0, PROPOSED) — "fires host lanes and decides nothing" above.** n8n decides
+- **Superseded by §23.23 (10.0.0, ACTIVE) — "fires host lanes and decides nothing" above.** n8n decides
   what to notify about and when: which finding or event becomes a notification request, when a digest batches, when
   an approval reminder fires and when it escalates or expires. It asks the host through the send-intent route (§23.3
   route note) and never holds a bot token. What stays host-side and is unchanged: the comms gateway is the only
   sender; delivery and suppression policy (category, severity, quiet hours, caps, dedupe windows) lives on the host
   and changes only by reviewed PR, never by a workflow edit; and the P1 path does not depend on n8n (next bullet).
-  Until 10.0.0 is ratified and merged, the bullet above governs as written. *Cause (§20): operator directive
+  ACTIVE since the ratifying edit of 2026-10-14 (`APPROVE_AGENTS_POLICY_10_0_0 1736 7f275d279`); the bullet above is kept and binds except where
+  this note supersedes it. *Cause (§20): operator directive
   2026-10-14 (alerting and human approvals are fabric capabilities); `TARGET_ARCHITECTURE.md` §3 gives n8n "what and
   when to batch" and the host comms gateway delivery and suppression policy.*
 - **The P1 path does not depend on n8n.** The incident notifier (cron L1052) and the SIEM bridge run from host cron,
@@ -5461,7 +5462,7 @@ needs `execution-engineering` (§22), and A4/A5 stay the operator's and the dete
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
-| 10.0.0 | 2026-10-14 | PROPOSED | MAJOR | Operator-directed 2026-10-14, verbatim: n8n is "a centralized, intelligent automation fabric that provides: Workflow orchestration, Dependency management, Observability, Alerting, Human approvals, Agent coordination, LLM integration, Event-driven automation, Operational visibility, Auditability, Governance, Centralized controls." and "Do not tell me whether cron is a better scheduler. Tell me whether we are building the right platform." §23.23 "n8n is the automation fabric" added. n8n owns FLOW: sequencing and dependencies, event triggers, retries/backoff/dead-letter decisions through a Run Lane sub-workflow, error workflows, approval timelines (Wait nodes), escalation timers, invoking LLM judgment steps. The host owns AUTHORITY, EXECUTION and EVIDENCE: allowlist, live/dry authority, idempotency keys, secrets, the ledger as audit of record, the comms chokepoint for every send (n8n requests sends through a host intent API and never holds bot tokens). Broker: n8n never holds broker credentials or calls broker/order routes; reads only through the broker gateway (§23.22); writes only through the execution service behind the trading lock plus a per-order operator hardware-key or TOTP assertion over the intent hash; an n8n approval is a request, authority is the host record. LLM steps: governed bridge only, closed schema, branch on enumerated fields only, host re-check, bounded (read-only by default) tools, prompt/response/decision in one audit row joined by run_id ↔ execution_id, never an unlisted action, ingested text is data. Agents are judgment functions invoked by workflows; no side-effect tool without an approval gate; long-running loops retired into event-triggered workflows. Workflow governance: generated from git, never edited in the UI, drift pages P1, successes saved with run_id, an error workflow on every workflow, refusals are data, community nodes off, n8n DB role not superuser. Node enablement: the NODES_EXCLUDE / N8N_DISABLED_MODULES relaxation only for Execute Workflow / sub-workflows, Wait, Form or webhook-resume, Switch/Merge/If, Error Trigger and the AI Agent node restricted to the bridge-backed credential, one reviewed PR each; messaging nodes with their own credentials stay excluded. P0/P1 dead-man and pages never depend on n8n. Migration: timer-only leaf-lane cutovers FROZEN until the Run Lane sub-workflow, the async run-outcome callback and this amendment ACTIVE; then progress = business processes owned and orchestration owners retired; consolidate before migrating (WS2 families); cutover keeps the §23.21 standard plus a fenced single-owner switch. Preconditions before any money-touching flow: CC auth, trading lock served, uid separation for execution, DB role split, signed grants and unlock. WS9 controls C1–C10 bind before each new power. Supersedes, with notes in place and no text deleted, the restrictive parts of §23.1 ("a scheduler and a requester"), §23.11 ("decide nothing", six-workflow ceiling) and §24.1 ("fires host lanes and decides nothing"); one route note added to §23.3 (send-intent, approval-request and run-outcome callback routes, each its own PR). §0, §2, §2A, §7A, §17, §22 and §23.14 byte-identical (§23.14's never-eligible list stands; invoking an agent is a workflow step, not a dispatcher lane). Tests: `tests/test_agents_policy_10_0_0_n8n_fabric.py`. Numbered 10.0.0 after PR #1697 (6.0.0), PR #1727 (8.0.0) and branch `n8nmat/schwab-read-lanes-20261014` (9.0.0), all PROPOSED; header stays 7.0.0 ACTIVE until ratification. | **PENDING** operator ratification `APPROVE_AGENTS_POLICY_10_0_0 <pr_number> <head_sha>` (§20); per-PR word, excluded from the §23.13 standing merge approval because it changes `AGENTS.md`. Until then §23.1, §23.3, §23.11 and §24.1 govern as written. |
+| 10.0.0 | 2026-10-14 | ACTIVE | MAJOR | Operator-directed 2026-10-14, verbatim: n8n is "a centralized, intelligent automation fabric that provides: Workflow orchestration, Dependency management, Observability, Alerting, Human approvals, Agent coordination, LLM integration, Event-driven automation, Operational visibility, Auditability, Governance, Centralized controls." and "Do not tell me whether cron is a better scheduler. Tell me whether we are building the right platform." §23.23 "n8n is the automation fabric" added. n8n owns FLOW: sequencing and dependencies, event triggers, retries/backoff/dead-letter decisions through a Run Lane sub-workflow, error workflows, approval timelines (Wait nodes), escalation timers, invoking LLM judgment steps. The host owns AUTHORITY, EXECUTION and EVIDENCE: allowlist, live/dry authority, idempotency keys, secrets, the ledger as audit of record, the comms chokepoint for every send (n8n requests sends through a host intent API and never holds bot tokens). Broker: n8n never holds broker credentials or calls broker/order routes; reads only through the broker gateway (§23.22); writes only through the execution service behind the trading lock plus a per-order operator hardware-key or TOTP assertion over the intent hash; an n8n approval is a request, authority is the host record. LLM steps: governed bridge only, closed schema, branch on enumerated fields only, host re-check, bounded (read-only by default) tools, prompt/response/decision in one audit row joined by run_id ↔ execution_id, never an unlisted action, ingested text is data. Agents are judgment functions invoked by workflows; no side-effect tool without an approval gate; long-running loops retired into event-triggered workflows. Workflow governance: generated from git, never edited in the UI, drift pages P1, successes saved with run_id, an error workflow on every workflow, refusals are data, community nodes off, n8n DB role not superuser. Node enablement: the NODES_EXCLUDE / N8N_DISABLED_MODULES relaxation only for Execute Workflow / sub-workflows, Wait, Form or webhook-resume, Switch/Merge/If, Error Trigger and the AI Agent node restricted to the bridge-backed credential, one reviewed PR each; messaging nodes with their own credentials stay excluded. P0/P1 dead-man and pages never depend on n8n. Migration: timer-only leaf-lane cutovers FROZEN until the Run Lane sub-workflow, the async run-outcome callback and this amendment ACTIVE; then progress = business processes owned and orchestration owners retired; consolidate before migrating (WS2 families); cutover keeps the §23.21 standard plus a fenced single-owner switch. Preconditions before any money-touching flow: CC auth, trading lock served, uid separation for execution, DB role split, signed grants and unlock. WS9 controls C1–C10 bind before each new power. Supersedes, with notes in place and no text deleted, the restrictive parts of §23.1 ("a scheduler and a requester"), §23.11 ("decide nothing", six-workflow ceiling) and §24.1 ("fires host lanes and decides nothing"); one route note added to §23.3 (send-intent, approval-request and run-outcome callback routes, each its own PR). §0, §2, §2A, §7A, §17, §22 and §23.14 byte-identical (§23.14's never-eligible list stands; invoking an agent is a workflow step, not a dispatcher lane). Tests: `tests/test_agents_policy_10_0_0_n8n_fabric.py`. Numbered 10.0.0 after PR #1697 (6.0.0), PR #1727 (8.0.0) and branch `n8nmat/schwab-read-lanes-20261014` (9.0.0), all PROPOSED; header stays 7.0.0 ACTIVE until ratification. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_10_0_0 1736 7f275d279` (operator, PR #1736 comment by PatsKiller 2026-10-14T23:25:56Z, verbatim: "APPROVE_AGENTS_POLICY_10_0_0 1736 7f275d279"); merged #1736 as `3e9dc5e14` while PROPOSED; per-PR word, excluded from the §23.13 standing merge approval because it changes `AGENTS.md`. |
 | 7.0.0 | 2026-10-14 | ACTIVE | MAJOR | Operator-directed 2026-10-14 ("move to n8n i approve if i need to make amendment propose its just looking at level 2 on moomoo no trading"): §23.20 "Advisory market-data lanes on the dispatcher" added and one exception bullet added to §23.3. A lane in the code ceiling `lane_dispatch.ADVISORY_MARKET_DATA_LANES` is dispatcher-eligible only when (a) its reach uses market data only (moomoo OpenD quote context; no trade context, order verb, account/position read or broker client module), (b) it writes advisory output only and carries no sandbox/broker submit switch, (c) it sends only through the host `send_telegram` chokepoint (`bypass_router=True` only at sites already on the 5.1.0 allowlist), (d) n8n carries no secret and its `env_names` name no broker credential; class `pipeline`, lock = the cron lock, §23.12 ladder. Enforced by `scripts/lib/advisory_lane_guard.py`, `lane_dispatch.advisory_md_admission` / `advisory_md_static_errors` and `tests/test_agents_policy_7_0_0_advisory_market_data.py`, which also closes the dispatcher sender gap with a shrink-only baseline. §0, §2, §2A, §7A, §17 and §23.14 byte-identical. Numbered 7.0.0 after PR #1697 (6.0.0, PROPOSED); `Supersedes` 5.1.0. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_7_0_0 1725 73eebc5c1` (operator, PR #1725 comment by PatsKiller 2026-10-14T14:54:21Z, verbatim: "APPROVE_AGENTS_POLICY_7_0_0 1725 73eebc5c1"; re-approved for the merged head after the chokepoint-exemption commit: `APPROVE_AGENTS_POLICY_7_0_0 1725 1cdcdc7e3`, PR #1725 comment by PatsKiller 2026-10-14T16:09:44Z); merged #1725 as `712478bea`; per-PR word, excluded from the §23.13 standing merge approval because it changes `AGENTS.md`. |
 | 5.2.0 | 2026-10-11 | PROPOSED | MINOR | §8.1 "Working means validated now — tests, dry run, forced run; natural schedules are monitored, never awaited" added: before an agent calls a build, change or install working it quotes (1) the unit/regression tests for what it touched under `TRADE_AI_CI=1`, (2) a dry run (§0 rule 7, §6), and (3) a forced run — the installed job, stage or workflow triggered on demand exactly as its schedule would (same command, environment, cwd rule, wrappers and locks; an n8n lane through `coordination/run` in the mode its stage allows), proven by a durable artifact dated after the trigger (§0 rule 8). Natural fires are then monitored, never the first proof and never awaited; the first natural fire still settles the separate on-schedule claim, and a failing one reopens the change. Gates already conditioned on natural evidence keep their condition (onboarding step 8, §23.12 last bullet, registry `PAUSED` → `ACTIVE` after natural-slot verification, §23.3 three clean market days, §15). No forced run for broker/order/stop/session/2FA paths (§0 rule 2, §2, §22, §24.10), operator-only surfaces (§17) or a double send to the operator (senders go through the router with dedupe on or use their dry run); clock-gated jobs pass through their wrapper with no override, and a deferral receipt is the proof. A forced run of an `--apply` job needs the grant the install needed; an overlapping natural fire must skip on its lock or run harmlessly; the forced run is recorded in the change record. One-line pointers in §6, §8, §9.3, §16, §23.12 and §23.19; `docs/implementation/n8n-maturity/N8N_ONBOARDING_STANDARD.md` proof steps restate it. §0, §2, §2A, §7A, §17 and §23.14 byte-identical; no adapter changes (a §0 rule 7/8 pointer is proposed in the PR body only). Tests: `tests/test_agents_policy_5_2_0_validation.py`. Cause: 2026-10-10/11 C1 stage-runner manifest flips — flip 1's proof deferred to its 10:50 ET natural fire, flip 2 waited, the grant expired first; operator request 2026-10-11 ~09:22 ET. MINOR: a new proof obligation that widens no authority — forced runs are bounded by existing grants and gates (read as MAJOR, it becomes 6.0.0 unchanged otherwise). | **PENDING** operator ratification `APPROVE_AGENTS_POLICY_5_2_0 <pr_number> <head_sha>` (§20); per-PR word, excluded from the §23.13 standing merge approval because it changes `AGENTS.md`. Until then the 5.1.0 text governs. |
 | 5.1.0 | 2026-10-11 | ACTIVE | MINOR | §9.1 "Anything the operator must act on bypasses the router" replaced: an operator-action message (asks the operator to approve, deny or decide, or carries a button that does) is sent as a P1 notification intent with dedupe off (`send_telegram(..., priority="P1", dedupe_minutes=0)`, `telegram_alert_router.route_intent`) — never text-classified, capped, quiet-held, archived or suppressed, with a `NotificationIntentRoute@v1` receipt per decision, and still reported *accepted for interrupt delivery*, never *sent*. Two bullets added: `bypass_router=True` is legacy, allowlisted and shrink-only (`BYPASS_ALLOWLIST`, `tests/test_notification_intents_20261010.py`), with the four broker-execution sender units (`alpaca_stop_manager.py` ×2, `defense_execution.py`, `moomoo/opend_health.py`) and `active_trader/momentum_alerts.py` keeping their bypass until an `execution-engineering` grant names them, and `guard_request_approval.py` allowlisted; a P2 intent is held 22:00–07:00 ET (the incident notifier's window) to the Reports archive (`notification_intent_p2`) and folded into the advice digest, delivered if the hold cannot be archived, and anything that must reach the operator in the quiet window is P1. One sentence each added to the §8 remote-approval paragraph and the §24.1 "Senders emit notification intents" bullet, pointing to §9.1. Cause: PR #1685 (`n8nmat/bypass-senders-to-intents`, head `1d9eba216`, held for this amendment) moves 25 of the 30 measured `bypass_router=True` senders to intents (operator 2026-10-10). Merge order: #1685 first. Open item for #1685: `stop_decision_brief.py` is P1 with the default 60-minute dedupe; the operator classifies it before #1685 merges. MINOR: it replaces a mechanism with an equal guarantee for operator-action messages plus a receipt, and adds a declared dedupe window and a never-dropped hold for the rest; no authority rail, operator-only boundary, role, broker reach or egress changes. §0, §2, §2A, §7A, §17 and §23.14 byte-identical; no adapter, `CLAUDE.md` or `AI_WORK_POLICY.md` change. Read as MAJOR, it becomes 6.0.0 unchanged otherwise. Tests: `tests/test_agents_policy_5_1_0_notification_intents.py`. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_5_1_0 1689 b0f0c6eeb` (operator, PR #1689 comment by PatsKiller 2026-10-11T13:12:31Z, verbatim: "APPROVE_AGENTS_POLICY_5_1_0 1689 b0f0c6eeb"); merged #1689 as `26cf80f606e5bb797d5a5b714b23acb3ff95a9c6` (auto-merged 2026-10-11T13:15:17Z); ratification edit on the operator's in-session word 2026-10-11 ("yes - ratify 5.1.0"); per-PR word, excluded from the §23.13 standing merge approval because it changes `AGENTS.md`. |
