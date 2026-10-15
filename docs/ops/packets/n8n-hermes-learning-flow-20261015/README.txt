@@ -13,7 +13,7 @@ WHAT THE BRANCH ADDS
   config/n8n_fabric_processes.json   process spec: workflow id, manifest, mode dry_run, per-step lane, depends_on,
                                      blocked reason. The single source the generator and the tests read.
   tradeai-fabric-hermes-learning     generated (build-fabric), INACTIVE, in docs/implementation/n8n-maturity/workflows/
-                                     fabric/ + INDEX.json (graph 573444e1e8f7..., policy hash unchanged, so the four
+                                     fabric/ + INDEX.json (graph 44c35ad3374f... after the 2026-10-15 unblock, was 573444e1e8f7; policy hash unchanged, so the four
                                      Build 1 imports still verify). Graph:
       Manual run -> Plan manual (stage all) --\
       Schedule learn 50 10 * * * -> Plan learn ---> Process context (slot, mode) -> Route stage (Switch)
@@ -28,8 +28,9 @@ WHAT THE BRANCH ADDS
       host intent). settings: errorWorkflow tradeai-fabric-error, saveDataSuccessExecution all, timeout 3600 s.
       Idempotency key per step: p:<lane>:<mode>:<slot>, slot = <YYYYMMDD>T<stage cron HHMM> for a scheduled stage
       (the same string the stage runner's effect-key claim uses), the current minute for a manual run.
-      Retries: Run Lane's budget (max_attempts 2 per step, outcome_timeout = step timeout + 120 s); the generator
-      refuses a spec whose worst case exceeds 3600 s.
+      Retries: Run Lane's budget (max_attempts 1 per step since the 2026-10-15 unblock, was 2; outcome_timeout =
+      step timeout + 120 s capped at 1000 s, autonomous_self_tune capped at 600 s by the spec's outcome_timeout_s);
+      the generator refuses a spec whose worst case exceeds 3600 s (six runnable steps: 3580 s).
       n8n v1 execution order runs branches one after another: "parallel" = a failure in one branch never stops a
       sibling. Concurrency would need waitForSubWorkflow false, which loses the per-step result: not used.
   Host side (inert until served):
@@ -50,19 +51,34 @@ WHAT THE BRANCH ADDS
 
 STEP MAP
 --------
-  step                     lane                                     depends_on        dry run            state
-  outcome_grader           hermes-learning-outcome-grader           -                 SAFE (SELECT only) shadow lane
-  tag_engine               hermes-learning-tag-engine               outcome_grader    NOT SAFE (LLM call) BLOCKED
-  outcome_feedback_agent   hermes-learning-outcome-feedback-agent   tag_engine        safe, but SENDER   BLOCKED
-  outcome_learning         hermes-learning-outcome-learning         outcome_grader    SAFE (no commit)   shadow lane
-  score_history_retention  hermes-learning-score-history-retention  outcome_grader    safe; DESTRUCTIVE  BLOCKED
-  config_governor          hermes-learning-config-governor          outcome_learning  SAFE (--dry-run,   shadow lane
+  (updated 2026-10-15 by the unblock branch n8nfab/hermes-learning-unblock-20261015)
+  step                     lane                                     depends_on        dry run              state
+  outcome_grader           hermes-learning-outcome-grader           -                 SAFE (SELECT only)   shadow lane
+  tag_engine               hermes-learning-tag-engine               outcome_grader    SAFE (--dry-run: no  shadow lane
+                                                                                      model call, r/o, no DDL)
+  outcome_feedback_agent   hermes-learning-outcome-feedback-agent   tag_engine        SAFE (--dry-run: r/o, shadow lane
+                                                                                      never notifies)
+  outcome_learning         hermes-learning-outcome-learning         outcome_grader    SAFE (no commit)     shadow lane
+  score_history_retention  hermes-learning-score-history-retention  outcome_grader    safe; DESTRUCTIVE    EXCLUDED
+                                                                                      (cron retention, operator decision)
+  config_governor          hermes-learning-config-governor          outcome_learning  SAFE (--dry-run,     shadow lane
                                                                                       read-only session)
-  autonomous_self_tune     hermes-learning-autonomous-self-tune     - (tune stage)    safe; DESTRUCTIVE  BLOCKED
+  autonomous_self_tune     hermes-learning-autonomous-self-tune     - (tune stage)    SAFE (--learn        shadow lane
+                           (lane runs --learn only)                                   --dry-run: r/o, no DDL, no file)
   Dependencies are data flow read from the scripts (ledger -> tags / calibration -> governor; retention after the
   grader freezes score components) and every one points to an EARLIER manifest step, so the shell runner's serial
   order stays a valid topological order and shadow parity is comparable.
-  Blocked reasons (also in config/n8n_fabric_processes.json and the allowlist blocked_reasons):
+  2026-10-15 UNBLOCK (code changes; the cron lines and their flags are unchanged):
+    tag_engine               scripts/hermes_tag_engine.py --dry-run: no model call (rows the live run would classify
+                             are counted in retag.llm_would_call), read-only session, tag_efficacy skips its DDL.
+    outcome_feedback_agent   lib/hermes_outcome_bus/alert_notifications.py: every send is a declared intent through the
+                             host chokepoint (send_telegram priority P2 critical/warning, P3 info, producer
+                             hermes_outcome_feedback_agent; bypass_router dropped, its BYPASS_ALLOWLIST entry removed).
+                             --dry-run (read-only, never notifies); --notify record calls no sender (intents returned).
+    autonomous_self_tune     --learn = auto-graft only; the purge helpers raise LearnOnlyViolation in that mode.
+                             --dry-run (read-only, no CREATE TABLE, no weights write). Historical flags byte-identical.
+    score_history_retention  NOT changed: stays on cron as retention, excluded from the fabric process.
+  Original blocked reasons (2026-10-15 flow branch; now resolved except score_history_retention):
     tag_engine               dry run still calls lib.governed_cloud_generation.generate_cloud (_llm_tags): needs a
                              --dry-run that skips the LLM + an llm_route (§23.18 llm class). Code PR.
     outcome_feedback_agent   --apply sends Telegram (alert_notifications -> send_telegram): never-list sender; the
@@ -105,8 +121,13 @@ STEPS
                       C3 --owner n8n --apply = the one recorded act; the live n8n run with cron still present (cron's
                       claim is refused, skipped_effect; n8n claims the same key; the step lock is shared);
                       C4 evidence; C5 comment the stage cron line `# RETIRED <date> n8n-process hermes-learning ...`.
-                      CANNOT MOVE YET (gates G2-G4):
-                        G2 four BLOCKED steps: retiring a stage line would stop them. Path A (recommended): the three
+                      CANNOT MOVE YET (gates G2-G5):
+                        G2 (after the 2026-10-15 unblock) ONE excluded step, score_history_retention, plus the purge half
+                           of autonomous_self_tune: both are destructive retention that stays on cron, so neither stage
+                           line can be commented out as is. Learn: the stage line must keep (or be replaced by) a cron
+                           line for score_history_retention. Tune: the cron line becomes `--purge --apply` when the
+                           fabric lane goes live with `--learn --apply`. Both are crontab edits under a cron grant.
+                           Original text: four BLOCKED steps: retiring a stage line would stop them. Path A (recommended): the three
                            code PRs + one operator decision above, then cut over whole stages. Path B (partial, not
                            recommended): owners of the three runnable steps -> n8n while the runner keeps the blocked
                            four; the runner skips the three at once (skipped_effect) and runs tag_engine while n8n may
@@ -118,6 +139,15 @@ STEPS
                            allowlist live_arg ["--apply"], registry stage cutover, cron_claim true, relay live-lanes.
                         G4 the cron steps run inside run_with_deepseek_offpeak.sh (a PEAK_SKIP gate); the executor does
                            not apply it. Reproduce it on the n8n path (a lane gate or the schedule window) first.
+                        G5 (2026-10-15 unblock) per-step live prerequisites: tag_engine needs an llm_route (process
+                           hermes_tag_engine has no governed_process_routes route and generate_cloud runs in-process, not
+                           via cio-governed-bridge; AGENTS.md §23.18 llm class) before a live_arg; outcome_feedback_agent
+                           live must run with --notify record and the intents reach the operator through the n8n
+                           send-intent route (needs a hermes route in config/n8n_comms_intent_routes.json, which moves the
+                           fabric policy hash: re-verify the imported fabric workflows) or the notify half stays on cron;
+                           autonomous_self_tune live is --learn --apply (a weights-file writer in the release tree, the
+                           checkout-survival trap in tests/test_runtime_state_survives_checkout.py) with its outcome
+                           wait capped at 600 s against an executor timeout of 1800 s.
   9 ROLLBACK          bash 09_rollback.sh [--apply]   unpublish (+1 restart), owners n8n -> cron (CAS); uncomment
                       a retired stage line (cron grant). Shadow rollback is unpublish only: cron never stopped.
                       Host: previous release under a release-write grant; ledger rows stay (rail 6).

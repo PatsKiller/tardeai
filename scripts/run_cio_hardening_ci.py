@@ -3753,6 +3753,10 @@ GATES = [
         "n8n_fabric_hermes_learning_20261015",
         [
             "tests/test_n8n_fabric_hermes_learning_20261015.py",
+            # 2026-10-15 unblock: tag_engine --dry-run (no model call), outcome_feedback_agent declared chokepoint
+            # intents (--notify record: no sender), autonomous_self_tune --learn (purge helpers refuse; historical
+            # flags byte-identical). Hermetic: recording DB fakes, stub chokepoint module, tmp_path files.
+            "tests/test_hermes_learning_unblock_20261015.py",
         ],
     ),
     (

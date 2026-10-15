@@ -13,8 +13,8 @@ and prints a parity verdict: a runnable step MATCHES when the n8n dry run ended 
     python3 04_evidence.py --date 20261016 --stage learn           # after a scheduled 10:50 ET shadow fire
     python3 04_evidence.py --since 2026-10-15T14:07:00+00:00 --manual   # after 02_verify.sh (manual slot)
 
-The 5-run shadow passes when five CONSECUTIVE daily learn slots each print "verdict": "PARITY" (tune has no runnable
-step while autonomous_self_tune is BLOCKED: it prints "verdict": "NO_RUNNABLE_STEP"). Writes nothing.
+The 5-run shadow passes when five CONSECUTIVE daily learn slots each print "verdict": "PARITY" (since the 2026-10-15
+unblock the tune stage has one runnable step, the --learn half of autonomous_self_tune, and is judged the same way). Writes nothing.
 """
 
 from __future__ import annotations

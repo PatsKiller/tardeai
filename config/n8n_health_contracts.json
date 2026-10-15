@@ -20650,6 +20650,471 @@
         "reviewed_by": "agent-reviewed 2026-10-15 against source; awaiting the operator's REVIEW pass (SW4 precedent)",
         "reviewed_on": "2026-10-15"
       }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "hermes-learning-tag-engine",
+      "kind": "lane",
+      "workflow_id": "tradeai-fabric-hermes-learning",
+      "status": "REVIEWED",
+      "target_reason": "n8n fabric process hermes-learning step tag_engine (2026-10-15; unblocked 2026-10-15 (n8nfab/hermes-learning-unblock-20261015)); stage shadow",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Hermes tagging owner: strategy_tags on the strategy-registry vocabulary (config synonyms first, a governed cloud classifier refines undecided symbol-linked rows, capped per run), quality_score v2 and per-tag efficacy vs base rate (hermes_tag_efficacy)",
+        "business_function": "learning",
+        "source": "scripts/hermes_tag_engine.py module docstring; config/pipelines/hermes_learning.json step tag_engine"
+      },
+      "owner": "learning",
+      "connects_to": [
+        {
+          "name": "n8n tradeai-fabric-hermes-learning -> Execute Workflow -> tradeai-fabric-run-lane -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md \u00a723.23; docs/implementation/n8n-maturity/workflows/fabric/INDEX.json"
+        },
+        {
+          "name": "$PY scripts/hermes_tag_engine.py --dry-run",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/hermes_tag_engine.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "config/n8n_run_allowlist.json lock (safe_flock) = the cron step's lock"
+        },
+        {
+          "name": "strategy_registry, hermes_research_intelligence, hermes_outcome_ledger, config/hermes_tag_engine.yaml",
+          "kind": "inventory_text",
+          "direction": "read",
+          "source": "scripts/hermes_tag_engine.py module docstring source reads (DRAFT: free text)"
+        },
+        {
+          "name": "hermes_research_intelligence strategy_tags + quality_score (lib.writers.hermes_research_writer), hermes_tag_efficacy (upsert + CREATE/ALTER TABLE)",
+          "kind": "inventory_text",
+          "direction": "write",
+          "source": "scripts/hermes_tag_engine.py module docstring source writes (live only; the dry run writes nothing) (DRAFT: free text)"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "shadow_dry_run_done",
+          "text": "every process fire of this step ends RUN_DONE in mode dry_run (coordination ledger runs, run_id p:<lane>:dry_run:<slot>); the stage clamp turns any live request into dry_run"
+        },
+        {
+          "check": "dry_run_writes_nothing",
+          "text": "the dry_run RunReceipt shows no durable write (output_signal mtime unchanged where the entry has one; ledger and table max timestamps unchanged by the dry run, AGENTS.md \u00a76)"
+        },
+        {
+          "check": "cron_twin_step_ok",
+          "text": "the cron stage hermes-learning-pipeline-learn step tag_engine ends rc=0 in data/runtime/pipeline_hermes_learning_learn_last.json for the same slot"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 720.0 s (80% of timeout_s 900)"
+        },
+        {
+          "check": "dry_run_no_model_call",
+          "text": "the dry run's stdout shows retag.llm_called 0 (retag.llm_would_call = rows the live run would classify); no llm_router / governed-generation spend row for process hermes_tag_engine at the dry run's time"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "slow",
+          "text": "duration above 720.0 s"
+        },
+        {
+          "check": "retried",
+          "text": "Run Lane needed attempt > 1, or the step ended skipped_lock (another run of the same lane held <lock>.dryrun)"
+        },
+        {
+          "check": "upstream_skipped",
+          "text": "the step was skipped_upstream because a dependency of the process did not end success (FabricProcessResult@v1 names it)"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger; the process execution then fails at Assert process and the fabric error workflow raises an intent)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "dry_run_wrote",
+          "text": "a dry_run changed its output_signal or any durable state"
+        },
+        {
+          "check": "parity_break",
+          "text": "over the 5-run shadow the dry run and the cron step disagree on outcome (one ok, the other failed) for the same slot"
+        },
+        {
+          "check": "dry_run_called_model",
+          "text": "a dry run spent a model call (retag.llm_called > 0, or a governed-generation spend row for hermes_tag_engine during the dry run)"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 48.0,
+        "freshness_failed_after_h": 72.0,
+        "freshness_rule": "daily process step: degraded beyond 2x cadence, failed beyond 3x",
+        "timeout_s": 900,
+        "class": "learn",
+        "computed_on": "2026-10-15",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "class default (80% of the executor timeout); the manifest's measured cron spans are context only, not a learned baseline; ledger NOT_MEASURED for the n8n path",
+        "runs_considered": null,
+        "duration_degraded_above_s": 720.0,
+        "calendar": "America/New_York; stage learn daily at 50 10 * * * (cron minute of the stage runner), all seven days"
+      },
+      "alerting": {
+        "lane_severity": "Medium",
+        "severity_basis": "learning writer, advisory only; the live leg spends governed LLM calls; no send, no broker",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "process execution error -> tradeai-fabric-error -> POST /intent (domain fabric, kind workflow_error, host-routed); SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through the host notifier",
+        "enforced": "not read at runtime yet (N8N_MONITORING_AND_REMEDIATION_STANDARD.md \u00a77)"
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue). Process remediation is the shell runner: rollback = unpublish tradeai-fabric-hermes-learning; the cron stage keeps running the step."
+      },
+      "evidence": {
+        "receipt": "data/runtime/n8n_runs/<run_id>.json (RunReceipt@v1)",
+        "verify": [
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT run_id, state, mode, started_at, duration_s FROM runs WHERE lane_id='hermes-learning-tag-engine' ORDER BY requested_at DESC LIMIT 10\"",
+          "jq '.steps[] | select(.id==\"tag_engine\")' $PROJ/data/runtime/pipeline_hermes_learning_learn_last.json",
+          "python3 docs/ops/packets/n8n-hermes-learning-flow-20261015/04_evidence.py --since <ISO-8601 UTC>"
+        ],
+        "never": "Do not infer host run or output success from an n8n execution status; the RunReceipt, the ledger row and the cron step receipt are the evidence."
+      },
+      "review_by": "2026-10-29",
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_evidence": "NOT_MEASURED",
+      "review": {
+        "prepared_by": "agent draft (n8n fabric hermes-learning unblock, Agent A)",
+        "status": "REVIEWED",
+        "reviewed_by": "agent-reviewed 2026-10-15 against source; awaiting the operator's REVIEW pass (SW4 precedent)",
+        "reviewed_on": "2026-10-15"
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "hermes-learning-outcome-feedback-agent",
+      "kind": "lane",
+      "workflow_id": "tradeai-fabric-hermes-learning",
+      "status": "REVIEWED",
+      "target_reason": "n8n fabric process hermes-learning step outcome_feedback_agent (2026-10-15; unblocked 2026-10-15 (n8nfab/hermes-learning-unblock-20261015)); stage shadow",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Outcome & Feedback Agent: turn graded ledger outcomes into the versioned outcome_bus.json the Scope Governor and Research Agent consume (by symbol, by tag, stop quality, resource efficiency, discovery health, maturity), and raise closed-loop alerts as notification intents",
+        "business_function": "learning",
+        "source": "scripts/hermes_outcome_feedback_agent.py module docstring; config/pipelines/hermes_learning.json step outcome_feedback_agent"
+      },
+      "owner": "learning",
+      "connects_to": [
+        {
+          "name": "n8n tradeai-fabric-hermes-learning -> Execute Workflow -> tradeai-fabric-run-lane -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md \u00a723.23; docs/implementation/n8n-maturity/workflows/fabric/INDEX.json"
+        },
+        {
+          "name": "$PY scripts/hermes_outcome_feedback_agent.py --dry-run",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/hermes_outcome_feedback.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "config/n8n_run_allowlist.json lock (safe_flock) = the cron step's lock"
+        },
+        {
+          "name": "hermes_outcome_ledger, hermes_tag_efficacy, hermes_research_intelligence, request logs, prior outcome_bus.json and its history, discovery scorecard",
+          "kind": "inventory_text",
+          "direction": "read",
+          "source": "scripts/hermes_outcome_feedback_agent.py module docstring source reads (DRAFT: free text)"
+        },
+        {
+          "name": "state/hermes/outcome_bus.json (+ history), maturity snapshot, data/runtime/hermes_outcome_feedback_heartbeat.json, alert notification state + audit; closed-loop alerts as host chokepoint intents (P2/P3, producer hermes_outcome_feedback_agent)",
+          "kind": "inventory_text",
+          "direction": "write",
+          "source": "scripts/hermes_outcome_feedback_agent.py module docstring source writes (live only; the dry run writes nothing) (DRAFT: free text)"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "shadow_dry_run_done",
+          "text": "every process fire of this step ends RUN_DONE in mode dry_run (coordination ledger runs, run_id p:<lane>:dry_run:<slot>); the stage clamp turns any live request into dry_run"
+        },
+        {
+          "check": "dry_run_writes_nothing",
+          "text": "the dry_run RunReceipt shows no durable write (output_signal mtime unchanged where the entry has one; ledger and table max timestamps unchanged by the dry run, AGENTS.md \u00a76)"
+        },
+        {
+          "check": "cron_twin_step_ok",
+          "text": "the cron stage hermes-learning-pipeline-learn step outcome_feedback_agent ends rc=0 in data/runtime/pipeline_hermes_learning_learn_last.json for the same slot"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 240.0 s (80% of timeout_s 300)"
+        },
+        {
+          "check": "dry_run_never_notifies",
+          "text": "the dry run's stdout shows notifications.skipped dry_run; no intent receipt or Telegram delivery-ledger row for producer hermes_outcome_feedback_agent at the dry run's time"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "slow",
+          "text": "duration above 240.0 s"
+        },
+        {
+          "check": "retried",
+          "text": "Run Lane needed attempt > 1, or the step ended skipped_lock (another run of the same lane held <lock>.dryrun)"
+        },
+        {
+          "check": "upstream_skipped",
+          "text": "the step was skipped_upstream because a dependency of the process did not end success (FabricProcessResult@v1 names it)"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger; the process execution then fails at Assert process and the fabric error workflow raises an intent)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "dry_run_wrote",
+          "text": "a dry_run changed its output_signal or any durable state"
+        },
+        {
+          "check": "parity_break",
+          "text": "over the 5-run shadow the dry run and the cron step disagree on outcome (one ok, the other failed) for the same slot"
+        },
+        {
+          "check": "dry_run_notified",
+          "text": "a dry run reached the notifier (an intent receipt or delivery row for producer hermes_outcome_feedback_agent during the dry run)"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 48.0,
+        "freshness_failed_after_h": 72.0,
+        "freshness_rule": "daily process step: degraded beyond 2x cadence, failed beyond 3x",
+        "timeout_s": 300,
+        "class": "learn",
+        "computed_on": "2026-10-15",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "class default (80% of the executor timeout); the manifest's measured cron spans are context only, not a learned baseline; ledger NOT_MEASURED for the n8n path",
+        "runs_considered": null,
+        "duration_degraded_above_s": 240.0,
+        "calendar": "America/New_York; stage learn daily at 50 10 * * * (cron minute of the stage runner), all seven days"
+      },
+      "alerting": {
+        "lane_severity": "Medium",
+        "severity_basis": "learning writer, advisory only; its live alerts are declared chokepoint intents, never a direct provider call; no broker",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "process execution error -> tradeai-fabric-error -> POST /intent (domain fabric, kind workflow_error, host-routed); SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through the host notifier",
+        "enforced": "not read at runtime yet (N8N_MONITORING_AND_REMEDIATION_STANDARD.md \u00a77)"
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue). Process remediation is the shell runner: rollback = unpublish tradeai-fabric-hermes-learning; the cron stage keeps running the step."
+      },
+      "evidence": {
+        "receipt": "data/runtime/n8n_runs/<run_id>.json (RunReceipt@v1)",
+        "verify": [
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT run_id, state, mode, started_at, duration_s FROM runs WHERE lane_id='hermes-learning-outcome-feedback-agent' ORDER BY requested_at DESC LIMIT 10\"",
+          "jq '.steps[] | select(.id==\"outcome_feedback_agent\")' $PROJ/data/runtime/pipeline_hermes_learning_learn_last.json",
+          "python3 docs/ops/packets/n8n-hermes-learning-flow-20261015/04_evidence.py --since <ISO-8601 UTC>"
+        ],
+        "never": "Do not infer host run or output success from an n8n execution status; the RunReceipt, the ledger row and the cron step receipt are the evidence."
+      },
+      "review_by": "2026-10-29",
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_evidence": "NOT_MEASURED",
+      "review": {
+        "prepared_by": "agent draft (n8n fabric hermes-learning unblock, Agent A)",
+        "status": "REVIEWED",
+        "reviewed_by": "agent-reviewed 2026-10-15 against source; awaiting the operator's REVIEW pass (SW4 precedent)",
+        "reviewed_on": "2026-10-15"
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "hermes-learning-autonomous-self-tune",
+      "kind": "lane",
+      "workflow_id": "tradeai-fabric-hermes-learning",
+      "status": "REVIEWED",
+      "target_reason": "n8n fabric process hermes-learning step autonomous_self_tune (2026-10-15; unblocked 2026-10-15 (n8nfab/hermes-learning-unblock-20261015)); stage shadow",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Hermes self-learning LEARN half: graft outcome-gated calibration suggestions (hermes_weight_calibration OUTCOME_LEDGER rows) into the live factor weights, clamped per step and capped by weekly drift, audited; the self-purge half is NOT this lane (host cron retention)",
+        "business_function": "learning",
+        "source": "scripts/hermes_autonomous_self_tune.py module docstring; config/pipelines/hermes_learning.json step autonomous_self_tune"
+      },
+      "owner": "learning",
+      "connects_to": [
+        {
+          "name": "n8n tradeai-fabric-hermes-learning -> Execute Workflow -> tradeai-fabric-run-lane -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md \u00a723.23; docs/implementation/n8n-maturity/workflows/fabric/INDEX.json"
+        },
+        {
+          "name": "$PY scripts/hermes_autonomous_self_tune.py --learn --dry-run",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/hermes_self_tune.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "config/n8n_run_allowlist.json lock (flock) = the cron step's lock"
+        },
+        {
+          "name": "hermes_weight_calibration, hermes_autotune_audit, config/hermes_score_weights.yaml",
+          "kind": "inventory_text",
+          "direction": "read",
+          "source": "scripts/hermes_autonomous_self_tune.py module docstring source reads (DRAFT: free text)"
+        },
+        {
+          "name": "config/hermes_score_weights.yaml (+ data/runtime/weight_grafts archive), one hermes_autotune_audit row per graft; never a DELETE (learn-only mode refuses every purge helper)",
+          "kind": "inventory_text",
+          "direction": "write",
+          "source": "scripts/hermes_autonomous_self_tune.py module docstring source writes (live only; the dry run writes nothing) (DRAFT: free text)"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "shadow_dry_run_done",
+          "text": "every process fire of this step ends RUN_DONE in mode dry_run (coordination ledger runs, run_id p:<lane>:dry_run:<slot>); the stage clamp turns any live request into dry_run"
+        },
+        {
+          "check": "dry_run_writes_nothing",
+          "text": "the dry_run RunReceipt shows no durable write (output_signal mtime unchanged where the entry has one; ledger and table max timestamps unchanged by the dry run, AGENTS.md \u00a76)"
+        },
+        {
+          "check": "cron_twin_step_ok",
+          "text": "the cron stage hermes-learning-pipeline-tune step autonomous_self_tune ends rc=0 in data/runtime/pipeline_hermes_learning_tune_last.json for the same slot"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 1440.0 s (80% of timeout_s 1800)"
+        },
+        {
+          "check": "learn_only_no_purge",
+          "text": "the dry run's stdout has auto_graft and NO self_purge key; never a DELETE or archive purge (the purge helpers raise LearnOnlyViolation in --learn mode)"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "slow",
+          "text": "duration above 1440.0 s"
+        },
+        {
+          "check": "retried",
+          "text": "Run Lane needed attempt > 1, or the step ended skipped_lock (another run of the same lane held <lock>.dryrun)"
+        },
+        {
+          "check": "upstream_skipped",
+          "text": "the step was skipped_upstream because a dependency of the process did not end success (FabricProcessResult@v1 names it)"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger; the process execution then fails at Assert process and the fabric error workflow raises an intent)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "dry_run_wrote",
+          "text": "a dry_run changed its output_signal or any durable state"
+        },
+        {
+          "check": "parity_break",
+          "text": "over the 5-run shadow the dry run and the cron step disagree on outcome (one ok, the other failed) for the same slot"
+        },
+        {
+          "check": "learn_ran_purge",
+          "text": "a run of this lane reported self_purge, raised LearnOnlyViolation, or a retention-archive manifest row names writer hermes_autonomous_self_tune at its time"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 48.0,
+        "freshness_failed_after_h": 72.0,
+        "freshness_rule": "daily process step: degraded beyond 2x cadence, failed beyond 3x",
+        "timeout_s": 1800,
+        "class": "learn",
+        "computed_on": "2026-10-15",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "class default (80% of the executor timeout); the manifest's measured cron spans are context only, not a learned baseline; ledger NOT_MEASURED for the n8n path",
+        "runs_considered": null,
+        "duration_degraded_above_s": 1440.0,
+        "calendar": "America/New_York; stage tune daily at 0 17 * * * (cron minute of the stage runner), all seven days"
+      },
+      "alerting": {
+        "lane_severity": "Medium",
+        "severity_basis": "learning writer, advisory only (scoring feeds watchlist ranking, not execution); no send, no broker, no delete in this lane",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "process execution error -> tradeai-fabric-error -> POST /intent (domain fabric, kind workflow_error, host-routed); SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through the host notifier",
+        "enforced": "not read at runtime yet (N8N_MONITORING_AND_REMEDIATION_STANDARD.md \u00a77)"
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue). Process remediation is the shell runner: rollback = unpublish tradeai-fabric-hermes-learning; the cron stage keeps running the step."
+      },
+      "evidence": {
+        "receipt": "data/runtime/n8n_runs/<run_id>.json (RunReceipt@v1)",
+        "verify": [
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT run_id, state, mode, started_at, duration_s FROM runs WHERE lane_id='hermes-learning-autonomous-self-tune' ORDER BY requested_at DESC LIMIT 10\"",
+          "jq '.steps[] | select(.id==\"autonomous_self_tune\")' $PROJ/data/runtime/pipeline_hermes_learning_tune_last.json",
+          "python3 docs/ops/packets/n8n-hermes-learning-flow-20261015/04_evidence.py --date <YYYYMMDD> --stage tune"
+        ],
+        "never": "Do not infer host run or output success from an n8n execution status; the RunReceipt, the ledger row and the cron step receipt are the evidence."
+      },
+      "review_by": "2026-10-29",
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_evidence": "NOT_MEASURED",
+      "review": {
+        "prepared_by": "agent draft (n8n fabric hermes-learning unblock, Agent A)",
+        "status": "REVIEWED",
+        "reviewed_by": "agent-reviewed 2026-10-15 against source; awaiting the operator's REVIEW pass (SW4 precedent)",
+        "reviewed_on": "2026-10-15"
+      }
     }
   ]
 }

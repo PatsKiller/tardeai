@@ -2783,6 +2783,18 @@ def process_plan(process_id: str, spec: dict, manifest: dict) -> dict:
                 raise ValueError(f"{process_id}: step {sid} blocked must be null or a reason")
             attempts = max(1, min(RUN_LANE_MAX_ATTEMPTS, int(ss.get("max_attempts") or default_attempts)))
             tmo = min(RUN_LANE_OUTCOME_TIMEOUT_MAX_S, timeout_seconds_of(st["timeout"]) + PROCESS_OUTCOME_MARGIN_S)
+            # Optional per-step cap on how long Run Lane waits (2026-10-15): only ever LOWERS the derived wait, so a
+            # spec can fit the manual all-stages run into the execution timeout. The executor's own timeout (the
+            # allowlist timeout_s = the manifest step timeout) is unchanged; a step that outlives the wait ends
+            # failed/outcome_timeout in Run Lane (the process fails), never success.
+            cap = ss.get("outcome_timeout_s")
+            if cap is not None:
+                if isinstance(cap, bool) or not isinstance(cap, int) or not PROCESS_OUTCOME_MARGIN_S <= cap <= tmo:
+                    raise ValueError(
+                        f"{process_id}: step {sid} outcome_timeout_s must be an int in"
+                        f" [{PROCESS_OUTCOME_MARGIN_S}, {tmo}] (it can only lower the derived wait)"
+                    )
+                tmo = cap
             steps.append(
                 {
                     "id": sid,

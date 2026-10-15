@@ -359,6 +359,10 @@ def test_native_monitor_rows_do_not_flip_a_host_scheduler():
         "hermes-learning-outcome-grader",
         "hermes-learning-outcome-learning",
         "hermes-learning-config-governor",
+        # 2026-10-15 unblock (n8nfab/hermes-learning-unblock-20261015): three more shadow step lanes.
+        "hermes-learning-tag-engine",
+        "hermes-learning-outcome-feedback-agent",
+        "hermes-learning-autonomous-self-tune",
     }
     for lane in process_steps:
         s = native[lane]["scheduler"]

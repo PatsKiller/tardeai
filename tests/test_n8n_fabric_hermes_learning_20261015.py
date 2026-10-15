@@ -48,7 +48,7 @@ RUNNABLE = [sid for sid, s in SPEC["steps"].items() if not s["blocked"]]
 BLOCKED = [sid for sid, s in SPEC["steps"].items() if s["blocked"]]
 #: Graph hash of the generated process workflow (INDEX.json). A change here is a reviewed graph change: the imported
 #: copy stops verifying and the packet re-imports it.
-PROCESS_GRAPH_PIN = "573444e1e8f7"
+PROCESS_GRAPH_PIN = "44c35ad3374f"
 #: The fabric policy hash Build 1 shipped (5aa61048d / 494adde71): adding a process workflow must not move it, or the
 #: four imported fabric workflows stop verifying.
 POLICY_PIN = "c6750b96ada49f816798bf3714ad390616b1b32769fdcbcc54e0635e32caf31f"
@@ -262,8 +262,11 @@ def test_runnable_step_is_a_shadow_lane_with_the_step_lock_and_timeout(sid):
     assert locks == [e["lock"]], (locks, e["lock"])
     assert e["lock_kind"] == ("safe_flock" if "safe_flock.sh" in st["command"] else "flock")
     assert e["timeout_s"] == PM.timeout_seconds(st["timeout"])
-    # the live argv later = the step's own argv: command + --apply (dry run = command + dry_run_arg, no --apply)
-    assert sorted(e["command"][1:] + ["--apply"]) == sorted(_step_argv(st["command"]))
+    # the live argv later = the step's own argv: command + --apply (dry run = command + dry_run_arg, no --apply). A
+    # split step's lane adds its declared lane_extra_args (autonomous_self_tune: --learn, the non-destructive half;
+    # the cron step keeps its own argv and the purge half).
+    extra = list(SPEC["steps"][sid].get("lane_extra_args") or [])
+    assert sorted(e["command"][1:] + ["--apply"]) == sorted(_step_argv(st["command"]) + extra)
     assert "--apply" not in e["command"] + e["dry_run_arg"]
     row = REG[lane]
     sched = row["scheduler"]
@@ -302,12 +305,17 @@ def test_blocked_step_has_a_reason_and_no_runnable_entry(sid):
 
 
 def test_blocked_reasons_match_the_scripts():
+    # 2026-10-15 unblock (tests/test_hermes_learning_unblock_20261015.py): tag_engine, outcome_feedback_agent and the
+    # learn half of autonomous_self_tune are shadow lanes now. score_history_retention stays EXCLUDED: destructive
+    # retention on cron, an operator decision.
     src = {sid: (ROOT / _step_argv(STEPS[sid][1]["command"])[0]).read_text(encoding="utf-8") for sid in BLOCKED}
-    assert "_llm_tags(" in src["tag_engine"] and "generate_cloud" in src["tag_engine"]
-    assert "dispatch_alert_notifications" in src["outcome_feedback_agent"]
     assert "DELETE FROM hermes_score_history" in src["score_history_retention"]
-    assert "managed_purge" in src["autonomous_self_tune"] and "self_purge" in src["autonomous_self_tune"]
-    assert set(BLOCKED) == {"tag_engine", "outcome_feedback_agent", "score_history_retention", "autonomous_self_tune"}
+    assert "OPERATOR DECISION" in SPEC["steps"]["score_history_retention"]["blocked"]
+    assert set(BLOCKED) == {"score_history_retention"}
+    assert set(RUNNABLE) == {
+        "outcome_grader", "tag_engine", "outcome_feedback_agent", "outcome_learning", "config_governor",
+        "autonomous_self_tune",
+    }
 
 
 # ── behaviour: the generated graph, interpreted (node.js runs the Code nodes) ───────────────────────────────────
@@ -448,7 +456,9 @@ def test_scheduled_learn_runs_the_runnable_steps_in_order_and_records_the_blocke
     r = simulate("Schedule learn")
     assert r["error"] is None, r["error"]
     called = [c["lane_id"] for c in r["calls"]]
-    assert called == [_lane("outcome_grader"), _lane("outcome_learning"), _lane("config_governor")]
+    # manifest order (n8n v1 runs branches one after another; the stage runner's serial order stays valid)
+    assert called == [_lane(s) for s in ("outcome_grader", "tag_engine", "outcome_feedback_agent", "outcome_learning",
+                                         "config_governor")]
     for c in r["calls"]:
         assert c["mode"] == "dry_run" and c["process_id"] == PROCESS
         assert c["idempotency_key"] == f"p:{c['lane_id']}:dry_run:20261015T1050"  # the stage slot, not the minute
@@ -458,10 +468,9 @@ def test_scheduled_learn_runs_the_runnable_steps_in_order_and_records_the_blocke
     assert res["overall"] == "partial" and res["failed_steps"] == []
     by = {s["step_id"]: s for s in res["steps"]}
     assert [s["step_id"] for s in res["steps"]] == [st["id"] for st in MANIFEST["stages"]["learn"]["steps"]]
-    for sid in ("outcome_grader", "outcome_learning", "config_governor"):
+    for sid in ("outcome_grader", "tag_engine", "outcome_feedback_agent", "outcome_learning", "config_governor"):
         assert by[sid]["status"] == "success" and by[sid]["run_id"].startswith("p:")
-    for sid in ("tag_engine", "outcome_feedback_agent", "score_history_retention"):
-        assert by[sid]["status"] == "blocked" and by[sid]["run_id"] is None
+    assert by["score_history_retention"]["status"] == "blocked" and by["score_history_retention"]["run_id"] is None
     assert r["custom"]["process_id"] == PROCESS and r["custom"]["overall"] == "partial"
     assert "Gate autonomous_self_tune" not in r["executed"]  # the tune stage is its own schedule
 
@@ -485,12 +494,15 @@ def test_a_failed_step_stops_its_downstream_and_fails_the_execution():
 @needs_node
 def test_a_failed_root_skips_every_dependent_but_not_independent_stages():
     r = simulate("Manual run", {_lane("outcome_grader"): "failed"})
-    assert [c["lane_id"] for c in r["calls"]] == [_lane("outcome_grader")]
+    # the independent tune stage still runs: autonomous_self_tune (learn half) depends on nothing in learn
+    assert [c["lane_id"] for c in r["calls"]] == [_lane("outcome_grader"), _lane("autonomous_self_tune")]
     res = r["out"][T.PN_RESULT]
     by = {s["step_id"]: s for s in res["steps"]}
     assert by["outcome_learning"]["status"] == "skipped_upstream"
+    assert by["tag_engine"]["status"] == "skipped_upstream"
+    assert by["outcome_feedback_agent"]["reason"] == "tag_engine:skipped_upstream"
     assert by["config_governor"]["reason"] == "outcome_learning:skipped_upstream"
-    assert by["autonomous_self_tune"]["status"] == "blocked"  # the manual run still covered the tune stage
+    assert by["autonomous_self_tune"]["status"] == "success"  # the manual run still covered the tune stage
     assert res["stage"] == "all" and res["overall"] == "failed" and r["error"][0] == T.PN_ASSERT
 
 
@@ -520,9 +532,11 @@ def test_manual_run_covers_both_stages_with_its_own_minute_slot():
 def test_scheduled_tune_covers_only_tune():
     r = simulate("Schedule tune")
     res = r["out"][T.PN_ASSERT]
-    assert res["stage"] == "tune" and res["slot"] == "20261015T1700" and r["calls"] == []
+    assert res["stage"] == "tune" and res["slot"] == "20261015T1700"
+    assert [c["lane_id"] for c in r["calls"]] == [_lane("autonomous_self_tune")]
+    assert r["calls"][0]["idempotency_key"] == f"p:{_lane('autonomous_self_tune')}:dry_run:20261015T1700"
     assert [s["step_id"] for s in res["steps"]] == ["autonomous_self_tune"]
-    assert res["steps"][0]["status"] == "blocked" and res["overall"] == "partial"
+    assert res["steps"][0]["status"] == "success" and res["overall"] == "ok"
 
 
 @needs_node

@@ -14,6 +14,19 @@ Operator chose full autonomy (minimal gates, audit-only). This closes the two op
 Advisory layer only — Hermes scoring feeds watchlist RANKING, not live execution (which is separately
 gated). Every action is logged to hermes_autotune_audit + stdout. Env-configurable retention.
 Kill anytime by removing the cron (no separate kill-switch, per operator choice).
+
+Modes (2026-10-15 split, n8n fabric process hermes-learning step autonomous_self_tune):
+
+  --learn          auto-graft ONLY (non-destructive: SELECTs, the weights yaml + its archive, one audit INSERT).
+                   self_purge is never called, and the purge helpers refuse to run while it is the mode
+                   (LearnOnlyViolation): a learn run cannot DELETE, UPDATE a queue or archive-purge a table.
+                   This is the half the fabric lane runs.
+  --purge          self-purge ONLY (destructive retention: archived DELETEs + queue UPDATEs). Stays a host cron
+                   concern; never a fabric lane (allowlist never-list: destructive retention).
+  neither / both   both legs, auto-graft first — the historical behaviour, unchanged (the cron line runs
+                   ``--apply`` with neither flag).
+  --apply          write; without it every leg previews (the purge leg counts what it would delete).
+  --dry-run        preview that wins over --apply: read-only DB session, no CREATE TABLE, no file write.
 """
 from __future__ import annotations
 
@@ -83,6 +96,26 @@ def _conn():
     return _get_conn()
 
 
+class LearnOnlyViolation(RuntimeError):
+    """A purge helper was reached while the run is --learn only (the non-destructive half)."""
+
+
+#: Set by main() for a --learn-only run. The purge helpers refuse while it is True (defence in depth: main never
+#: calls self_purge in that mode, so this only fires if a future edit routes a purge into the learn leg).
+_LEARN_ONLY = False
+
+
+def _refuse_if_learn_only(label: str) -> None:
+    if _LEARN_ONLY:
+        raise LearnOnlyViolation(f"purge step {label!r} refused: this run is --learn only (non-destructive)")
+
+
+def _audit_table_present(cur) -> bool:
+    cur.execute("SELECT to_regclass('hermes_autotune_audit')")
+    row = cur.fetchone()
+    return bool(row and row[0])
+
+
 def _ensure_audit(cur):
     cur.execute("""CREATE TABLE IF NOT EXISTS hermes_autotune_audit (
         id BIGSERIAL PRIMARY KEY, run_at TIMESTAMPTZ DEFAULT NOW(),
@@ -105,8 +138,11 @@ GRAFT_ELIGIBLE_DAYS = int(os.getenv("HERMES_GRAFT_ELIGIBLE_DAYS", "5"))
 GRAFT_ELIGIBLE_WINDOW_DAYS = int(os.getenv("HERMES_GRAFT_ELIGIBLE_WINDOW_DAYS", "14"))
 
 
-def auto_graft_weights(cur, apply: bool) -> dict:
-    """Graft outcome-gated calibration suggestions into the live weights yaml — clamped."""
+def auto_graft_weights(cur, apply: bool, *, audit_present: bool = True) -> dict:
+    """Graft outcome-gated calibration suggestions into the live weights yaml — clamped.
+
+    ``audit_present`` False (a dry run on a database that never had the audit table): the weekly drift reads 0
+    instead of querying a table the read-only session may not create."""
     import yaml
     # persistence gate: eligible outcome suggestions on >= N distinct days in the window
     cur.execute("""SELECT count(DISTINCT created_at::date) FROM hermes_weight_calibration
@@ -119,11 +155,14 @@ def auto_graft_weights(cur, apply: bool) -> dict:
                 "eligible_days": eligible_days, "required": GRAFT_ELIGIBLE_DAYS,
                 "note": "drift-ratchet frozen; grafts require sustained outcome-eligible suggestions"}
     # weekly drift cap from the audit trail
-    cur.execute("""SELECT COALESCE(SUM((c->>'to')::numeric - (c->>'from')::numeric), 0),
-                          COALESCE(SUM(ABS((c->>'to')::numeric - (c->>'from')::numeric)), 0)
-                   FROM hermes_autotune_audit, jsonb_array_elements(detail->'changes') c
-                   WHERE action='auto_graft_weights_outcome' AND run_at > NOW() - interval '7 days'""")
-    _net, drift_7d = cur.fetchone()
+    if audit_present:
+        cur.execute("""SELECT COALESCE(SUM((c->>'to')::numeric - (c->>'from')::numeric), 0),
+                              COALESCE(SUM(ABS((c->>'to')::numeric - (c->>'from')::numeric)), 0)
+                       FROM hermes_autotune_audit, jsonb_array_elements(detail->'changes') c
+                       WHERE action='auto_graft_weights_outcome' AND run_at > NOW() - interval '7 days'""")
+        _net, drift_7d = cur.fetchone()
+    else:
+        _net, drift_7d = 0, 0
     if float(drift_7d or 0) >= GRAFT_WEEKLY_DRIFT_CAP:
         return {"status": "gated_weekly_drift_cap", "drift_7d": float(drift_7d),
                 "cap": GRAFT_WEEKLY_DRIFT_CAP}
@@ -172,6 +211,7 @@ def auto_graft_weights(cur, apply: bool) -> dict:
 # ───────────────────── self-purge ─────────────────────
 def _purge(cur, label: str, sql: str, params=(), apply: bool = True, count_sql: str | None = None) -> int:
     """Execute a purge (UPDATE/DELETE). In dry mode run count_sql (the matching SELECT) instead."""
+    _refuse_if_learn_only(label)
     if not apply:
         if not count_sql:
             return -1  # not previewed
@@ -185,6 +225,7 @@ def _purge(cur, label: str, sql: str, params=(), apply: bool = True, count_sql: 
 def _archived_purge(cur, label: str, table: str, where_sql: str, params=(), apply: bool = True) -> int:
     """2026-10-11 (retention-all-managed): archive + manifest + tripwire before the DELETE
     (lib.retention_archive.managed_purge); a dry run counts. ``where_sql`` uses alias ``t``."""
+    _refuse_if_learn_only(label)
     try:
         from lib.retention_archive import managed_purge
     except ImportError:
@@ -196,6 +237,7 @@ def _archived_purge(cur, label: str, table: str, where_sql: str, params=(), appl
 
 
 def self_purge(cur, apply: bool) -> dict:
+    _refuse_if_learn_only("self_purge")
     out = {}
     # 1. jammed/stale queues
     n = _purge(cur, "advisory_queue", """UPDATE hermes_advisory_events SET event_status='skipped',
@@ -238,15 +280,34 @@ def self_purge(cur, apply: bool) -> dict:
     return out
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    global _LEARN_ONLY
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true", help="actually write (default dry-run)")
-    ap.add_argument("--learn", action="store_true", help="run auto-graft only")
-    ap.add_argument("--purge", action="store_true", help="run self-purge only")
-    a = ap.parse_args()
+    ap.add_argument("--learn", action="store_true",
+                    help="run auto-graft only (non-destructive; the purge helpers refuse in this mode)")
+    ap.add_argument("--purge", action="store_true", help="run self-purge only (destructive retention; host cron)")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="preview that wins over --apply: read-only DB session, no DDL, no file write")
+    a = ap.parse_args(argv)
     do_learn = a.learn or not a.purge
     do_purge = a.purge or not a.learn
-    conn = _conn(); cur = conn.cursor()
+    _LEARN_ONLY = do_learn and not do_purge
+    conn = _conn()
+    if a.dry_run:
+        from lib.lane_last_receipt import enforce_readonly
+        enforce_readonly(conn)  # dry run: the server refuses any write (AGENTS.md §6)
+        cur = conn.cursor()
+        audit_present = _audit_table_present(cur)
+        result = {"apply": False, "mode": "dry_run", "ts": datetime.now(timezone.utc).isoformat()}
+        if do_learn:
+            result["auto_graft"] = auto_graft_weights(cur, False, audit_present=audit_present)
+        if do_purge:
+            result["self_purge"] = self_purge(cur, False)
+        conn.close()
+        print(json.dumps(result, indent=2, default=str))
+        return 0
+    cur = conn.cursor()
     _ensure_audit(cur)
     result = {"apply": a.apply, "ts": datetime.now(timezone.utc).isoformat()}
     if do_learn:

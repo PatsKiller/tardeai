@@ -3259,6 +3259,103 @@
       "market_gate": false,
       "output_signal": "data/runtime/hermes_config_governor_last.json",
       "source": "n8n fabric process hermes-learning (2026-10-15, AGENTS.md §23.23; packet docs/ops/packets/n8n-hermes-learning-flow-20261015/): step config_governor of config/pipelines/hermes_learning.json stage learn (crontab line 705 as absorbed by the C1 flip; runs today inside run_hermes_pipeline.sh --stage learn --apply). Called only by the process workflow tradeai-fabric-hermes-learning through Run Lane, never by the generic dispatcher (no dispatch block). SHADOW ONLY: live_arg null; registry scheduler.stage shadow clamps any live request to dry_run. lock and lock_kind are the step command's own lock, so a later live run and the cron step cannot overlap; the dry run takes <lock>.dryrun. timeout_s = the manifest step timeout (10m). --dry-run wins over --apply; the dry run sets the session read-only (lane_last_receipt.enforce_readonly) and writes no receipt (scripts/hermes_config_governor.py main). The cron step's --apply is the live argument; it is NOT in this entry. Live writes config_change_proposals and one alert_events row (not a send: AGENTS.md §23.18 ruling 4 names this lane, L671)."
+    },
+    {
+      "lane_id": "hermes-learning-tag-engine",
+      "command": [
+        "$PY",
+        "scripts/hermes_tag_engine.py"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as catalyst-graph and job-coverage-monitor). The step's cron command runs under env -i with its crontab names today (config/pipelines/hermes_learning.json env block).",
+      "env_evidence": "Not inventoried per lane: the generic db_adapter + state-root names (the script's _conn is db_adapter._get_conn; no other os.environ read in the script). report mode records on each RunReceipt the names enforce would drop.",
+      "lock": "/tmp/hermes_tag_engine.lock",
+      "lock_kind": "safe_flock",
+      "timeout_s": 900,
+      "market_gate": false,
+      "output_signal": null,
+      "source": "n8n fabric process hermes-learning (2026-10-15, AGENTS.md §23.23; packets docs/ops/packets/n8n-hermes-learning-flow-20261015/ and the unblock branch n8nfab/hermes-learning-unblock-20261015): step tag_engine of config/pipelines/hermes_learning.json stage learn (crontab line 702 as absorbed by the C1 flip; runs today inside run_hermes_pipeline.sh --stage learn --apply). Called only by the process workflow tradeai-fabric-hermes-learning through Run Lane, never by the generic dispatcher (no dispatch block). SHADOW ONLY: live_arg null; registry scheduler.stage shadow clamps any live request to dry_run. lock and lock_kind are the step command's own lock; the dry run takes <lock>.dryrun. timeout_s = the manifest step timeout (15m). --dry-run (2026-10-15) makes NO model call: retag() counts the rows the live run would send to lib.governed_cloud_generation.generate_cloud (retag.llm_would_call) and never imports it; the DB session is read-only and tag_efficacy skips its CREATE/ALTER TABLE (scripts/hermes_tag_engine.py). The cron step's --apply is the live argument; it is NOT in this entry. A live entry needs an llm_route (AGENTS.md §23.18 llm class): process_id hermes_tag_engine is in config/llm_process_registry.json but has no governed_process_routes route and generate_cloud runs in-process, not through cio-governed-bridge (cutover prerequisite)."
+    },
+    {
+      "lane_id": "hermes-learning-outcome-feedback-agent",
+      "command": [
+        "$PY",
+        "scripts/hermes_outcome_feedback_agent.py"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as catalyst-graph and job-coverage-monitor). The step's cron command runs under env -i with its crontab names today (config/pipelines/hermes_learning.json env block).",
+      "env_evidence": "Not inventoried per lane: the generic db_adapter + state-root names (the script's _conn is db_adapter._get_conn; no other os.environ read in the script). report mode records on each RunReceipt the names enforce would drop.",
+      "lock": "/tmp/hermes_outcome_feedback.lock",
+      "lock_kind": "safe_flock",
+      "timeout_s": 300,
+      "market_gate": false,
+      "output_signal": null,
+      "source": "n8n fabric process hermes-learning (2026-10-15, AGENTS.md §23.23; packets docs/ops/packets/n8n-hermes-learning-flow-20261015/ and the unblock branch n8nfab/hermes-learning-unblock-20261015): step outcome_feedback_agent of config/pipelines/hermes_learning.json stage learn (crontab line 696 as absorbed by the C1 flip; runs today inside run_hermes_pipeline.sh --stage learn --apply). Called only by the process workflow tradeai-fabric-hermes-learning through Run Lane, never by the generic dispatcher (no dispatch block). SHADOW ONLY: live_arg null; registry scheduler.stage shadow clamps any live request to dry_run. lock and lock_kind are the step command's own lock; the dry run takes <lock>.dryrun. timeout_s = the manifest step timeout (5m). --dry-run wins over --apply, sets the DB session read-only, writes no file and never reaches the notifier (scripts/hermes_outcome_feedback_agent.py run). Not a sender in this entry: the dry run sends nothing. The live (cron) sends are declared notification intents through the host chokepoint (send_telegram priority P2/P3, producer hermes_outcome_feedback_agent; AGENTS.md §24.1, §9.1); a live fabric entry must add --notify record (no sender called; intents returned in the RunReceipt for n8n to request through the send-intent route) - cutover prerequisite. The cron step's --apply is the live argument; it is NOT in this entry."
+    },
+    {
+      "lane_id": "hermes-learning-autonomous-self-tune",
+      "command": [
+        "$PY",
+        "scripts/hermes_autonomous_self_tune.py",
+        "--learn"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as catalyst-graph and job-coverage-monitor). The step's cron command runs under env -i with its crontab names today (config/pipelines/hermes_learning.json env block).",
+      "env_evidence": "Not inventoried per lane: the generic db_adapter + state-root names (the script's _conn is db_adapter._get_conn). The script also reads optional HERMES_* tuning names with literal defaults (HERMES_WEIGHT_GRAFT_ARCHIVE, HERMES_*_RETENTION_DAYS, HERMES_EMBED_DROP_DAYS, HERMES_QUEUE_STALE_DAYS, HERMES_DEAD_TABLES, HERMES_GRAFT_*); none is set in the crontab today, so the defaults apply on both paths. report mode records on each RunReceipt the names enforce would drop.",
+      "lock": "/tmp/hermes_self_tune.lock",
+      "lock_kind": "flock",
+      "timeout_s": 1800,
+      "market_gate": false,
+      "output_signal": null,
+      "source": "n8n fabric process hermes-learning (2026-10-15, AGENTS.md §23.23; packets docs/ops/packets/n8n-hermes-learning-flow-20261015/ and the unblock branch n8nfab/hermes-learning-unblock-20261015): the LEARN half of step autonomous_self_tune of config/pipelines/hermes_learning.json stage tune (crontab line 610 as absorbed by the C1 flip; runs today inside run_hermes_pipeline.sh --stage tune --apply, both halves). Called only by the process workflow tradeai-fabric-hermes-learning through Run Lane, never by the generic dispatcher (no dispatch block). SHADOW ONLY: live_arg null; registry scheduler.stage shadow clamps any live request to dry_run. lock and lock_kind are the step command's own lock (flock -n /tmp/hermes_self_tune.lock); the dry run takes <lock>.dryrun. timeout_s = the manifest step timeout (30m). --learn: auto-graft only; self_purge is never called and the purge helpers raise LearnOnlyViolation in learn-only mode, so this lane cannot DELETE. --dry-run wins over --apply: read-only DB session, no CREATE TABLE, no weights-file write (scripts/hermes_autonomous_self_tune.py main). The purge half (--purge: archived DELETEs, queue UPDATEs) is destructive retention (never-list) and stays on host cron. The live argument would be --apply (cron line `--apply` runs both halves today; at cutover it becomes --purge --apply); it is NOT in this entry."
     }
   ],
   "blocked_reasons": {
@@ -3296,10 +3393,7 @@
     "commit-hermes-daily": "Git commit/push origin main and Drive sync are not relay authority.",
     "n8n-lab-backup": "Registry is RETIRED: already absorbed into platform-maintenance-nightly; do not add a second schedule.",
     "n8n-lab-restore-drill": "Registry is RETIRED: already absorbed into platform-maintenance-weekly; do not add a second schedule.",
-    "hermes-learning-tag-engine": "n8n fabric process hermes-learning (2026-10-15) step tag_engine of config/pipelines/hermes_learning.json: BLOCKED, no allowlist entry. NO SAFE DRY RUN: without --apply, scripts/hermes_tag_engine.py retag() still calls lib.governed_cloud_generation.generate_cloud (process_id hermes_tag_engine) for up to llm_batch rows (_llm_tags), so a dry run spends a model call. Needs a --dry-run that skips _llm_tags plus an llm_route declaration (AGENTS.md §23.18 llm class) in its own code PR. The process workflow tradeai-fabric-hermes-learning records this step as status 'blocked' and never calls Run Lane for it; the cron stage runner keeps running it until the block is resolved in its own PR.",
-    "hermes-learning-outcome-feedback-agent": "n8n fabric process hermes-learning (2026-10-15) step outcome_feedback_agent of config/pipelines/hermes_learning.json: BLOCKED, no allowlist entry. SENDER (never-list, AGENTS.md §23.14): --apply calls lib/hermes_outcome_bus/alert_notifications.dispatch_alert_notifications -> _send_telegram -> telegram_alert.send_telegram. Its dry run is write-free, but a sender is never on the run allowlist; the send must become a host comms intent (§24.1) in a code PR first. The process workflow tradeai-fabric-hermes-learning records this step as status 'blocked' and never calls Run Lane for it; the cron stage runner keeps running it until the block is resolved in its own PR.",
-    "hermes-learning-score-history-retention": "n8n fabric process hermes-learning (2026-10-15) step score_history_retention of config/pipelines/hermes_learning.json: BLOCKED, no allowlist entry. DESTRUCTIVE RETENTION (never-list): --apply runs DELETE FROM hermes_score_history (scripts/hermes_score_history_retention.py). The allowlist never-list names destructive retention stages under any class; moving retention into n8n at all is an operator decision. Ordered after outcome_grader because the grader freezes score components before retention can delete them. The process workflow tradeai-fabric-hermes-learning records this step as status 'blocked' and never calls Run Lane for it; the cron stage runner keeps running it until the block is resolved in its own PR.",
-    "hermes-learning-autonomous-self-tune": "n8n fabric process hermes-learning (2026-10-15) step autonomous_self_tune of config/pipelines/hermes_learning.json: BLOCKED, no allowlist entry. DESTRUCTIVE RETENTION (never-list): --apply runs self_purge (archived DELETEs through lib.retention_archive.managed_purge on hermes_embedding_queue, hermes_score_history, hermes_research_intelligence, hermes_external_research and the dead legacy tables, plus queue UPDATEs) together with the auto-graft. Split --learn (auto-graft, a learn-class writer) from --purge in a code PR before the learn half can be a lane; the purge half stays a host step. The process workflow tradeai-fabric-hermes-learning records this step as status 'blocked' and never calls Run Lane for it; the cron stage runner keeps running it until the block is resolved in its own PR."
+    "hermes-learning-score-history-retention": "n8n fabric process hermes-learning (2026-10-15) step score_history_retention of config/pipelines/hermes_learning.json: EXCLUDED, no allowlist entry. EXCLUDED, OPERATOR DECISION (destructive retention, never-list): --apply runs DELETE FROM hermes_score_history (scripts/hermes_score_history_retention.py --days 21). It stays on cron as a retention concern and is excluded from the fabric process: not changed by the 2026-10-15 unblock; moving retention into n8n at all is an operator decision (AGENTS.md §17, §23.14). Ordered after outcome_grader because the grader freezes score components before retention can delete them. The process workflow tradeai-fabric-hermes-learning records this step as status 'blocked' and never calls Run Lane for it; the cron stage runner keeps running it."
   },
   "proposed_external_contracts": {
     "dof-run-pipeline": {

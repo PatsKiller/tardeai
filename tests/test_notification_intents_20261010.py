@@ -302,7 +302,8 @@ BYPASS_ALLOWLIST = {
     "scripts/telegram_alert.py": 5,
     "scripts/send_operator_alert.py": 1,
     "scripts/lib/advisory/notification_broker.py": 1,
-    "scripts/lib/hermes_outcome_bus/alert_notifications.py": 1,
+    # scripts/lib/hermes_outcome_bus/alert_notifications.py: migrated 2026-10-15 (n8n fabric hermes-learning unblock)
+    # to declared intents P2/P3, producer hermes_outcome_feedback_agent -- removed from this list.
     # Outside the 30 measured scheduled senders: not yet migrated (cron inventory rows).
     "scripts/advisory_telegram_brief.py": 1,
     "scripts/ci_outage_emergency_release.py": 1,

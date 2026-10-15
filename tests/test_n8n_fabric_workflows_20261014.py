@@ -346,7 +346,9 @@ GRAPH_PINS = {
     T.FABRIC_PROBE_ID: "4dc071b31eaaa3788522ffae581a95be66918f3b6a4d24fff68931de484b9510",
     T.FABRIC_ERROR_PROBE_ID: "f92070400e85d42fc047dd6f0fade44d81174fe654d55f8bbb7e4d1bbdab116e",
     # 2026-10-15: the first process workflow (adding it moves none of the four pins above, nor the policy hash).
-    "tradeai-fabric-hermes-learning": "573444e1e8f718052a72b04746459bf13f404e019c3a0f762778a28ea7913f71",
+    # Re-pinned by the hermes-learning unblock (three steps runnable, default_max_attempts 1, tune wait 600 s);
+    # never imported yet, so no imported copy stops verifying.
+    "tradeai-fabric-hermes-learning": "44c35ad3374fe14f295b59825d20632d9266f1ab42d9ca3d8278fda8c21056dd",
 }
 
 

@@ -348,6 +348,10 @@ def test_committed_effect_config_changes_no_live_run_at_merge():
         "hermes-learning-outcome-grader",
         "hermes-learning-outcome-learning",
         "hermes-learning-config-governor",
+        # 2026-10-15 unblock (n8nfab/hermes-learning-unblock-20261015): three more shadow step lanes.
+        "hermes-learning-tag-engine",
+        "hermes-learning-outcome-feedback-agent",
+        "hermes-learning-autonomous-self-tune",
     }
     allow = {e["lane_id"]: e for e in json.loads((ROOT / "config" / "n8n_run_allowlist.json").read_text())["lanes"]}
     reg = {r["lane_id"]: r for r in json.loads((ROOT / "config" / "lane_registry.json").read_text())["lanes"]}

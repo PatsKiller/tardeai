@@ -4,8 +4,9 @@
 #   bash 02_verify.sh --apply    # needs TRADEAI_FABRIC_GRANT
 # `n8n execute --id` starts from the Manual Trigger ("Manual run"): Plan manual -> stage 'all' -> learn then tune, mode
 # dry_run, slot = the current America/New_York minute (never a scheduled slot). Expected (config/n8n_fabric_processes.json):
-# three Run Lane calls (outcome_grader -> outcome_learning -> config_governor), four steps recorded `blocked`, overall
-# `partial`, CLI exit 0. The CLI prints the last node's output (FabricProcessResult@v1: every step's run_id + status).
+# six Run Lane calls (outcome_grader -> tag_engine -> outcome_feedback_agent -> outcome_learning -> config_governor,
+# then autonomous_self_tune; unblocked 2026-10-15), score_history_retention recorded `blocked` (EXCLUDED: cron
+# retention, operator decision), overall `partial`, CLI exit 0. The CLI prints the last node's output (FabricProcessResult@v1: every step's run_id + status).
 # Manual executions are not saved (saveManualExecutions false), so the durable proof is the ledger (04_evidence.py).
 # Pick a minute away from 10:50 and 17:00 ET (the stage runner's slots) so the single executor worker is idle.
 set -euo pipefail
