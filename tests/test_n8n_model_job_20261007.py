@@ -271,4 +271,6 @@ def test_registry_declares_the_digest_draft_process_with_a_small_cap():
     reg = json.loads((ROOT / "config" / "llm_process_registry.json").read_text(encoding="utf-8"))
     p = next(x for x in reg["processes"] if x["id"] == "n8n_material_digest_draft")
     assert p["advisory_only"] is True and p["fallback_allowed"] is False and p["tools_allowed"] is False
-    assert p["daily_cost_cap_usd"] <= 0.10 and p["deepseek_allowed_policies"] == ["FAST"]
+    # FAST for the walk's DeepSeek fallback; PRO_THINK only for the reasoning lane / one escalation (operator
+    # decision 2026-10-15, n8n OAuth first), both inside this $0.10/day cap.
+    assert p["daily_cost_cap_usd"] <= 0.10 and p["deepseek_allowed_policies"] == ["FAST", "PRO_THINK"]

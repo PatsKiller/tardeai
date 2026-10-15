@@ -69,11 +69,13 @@ def test_registry_seed_pins_the_diagnosis_tier_critical():
     # what makes critical acceptable: OAuth first and hard-capped
     assert row["allowed_lanes"][:2] == ["grok", "chatgpt"]
     assert row["daily_cost_cap_usd"] <= 0.10 and D.PER_CALL_CAP_USD <= 0.05 and D.DAILY_CAP_USD <= 0.10
-    # the paid-only drafts in the same category are not time-sensitive and keep the default
+    # the drafts in the same category are not time-sensitive and keep the default tier. Since the operator's
+    # OAuth-first decision (2026-10-15) they route grok -> chatgpt -> deepseek too (lane_policy either), no longer
+    # deepseek_only (tests/test_n8n_oauth_first_routing_20261015.py).
     others = [p for p in procs.values() if p.get("category") == "N8nCoordination" and p["id"] != D.PROCESS_ID]
     assert others, "expected the other N8nCoordination processes"
     for p in others:
-        assert p.get("lane_policy") == "deepseek_only"
+        assert p.get("lane_policy") == "either" and p["allowed_lanes"][:2] == ["grok", "chatgpt"]
         assert LD._registry_tiers().get(p["id"], LD.DEFAULT_TIER) == LD.TIER_STANDARD
 
 

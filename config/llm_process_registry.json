@@ -334,7 +334,9 @@
       "daily_cost_cap_usd": 0.05,
       "tools_allowed": false,
       "advisory_only": true,
-      "notes": "2026-10-15 (n8n fabric cutover prerequisite G5): routed through cio_governed_model_bridge (8766) as caller advisory_desk task hermes_tag_engine when the n8n run executor binds the lane's llm_route; tools_allowed false (the classifier takes no tools; the bridge strips any) and advisory_only true, like every other bridge-mapped hermes_* row. | 2026-10-15: daily_cost_cap_usd added (was absent, so check_cost_cap logged llm_lane_unregistered and enforced no process cap). Sized from measured spend: llm_cost_reservations 0 rows ever; llm_consumption_log 2026-10-01..10-14 = 375 calls, all grok OAuth, $0.00 every day (max 48 calls on 10-14); no provider_cost events. 2 x max observed day = $0.00, so the floor applies: $0.05 = 2 x 48 calls x ~$0.0005 per call if the routing row's DeepSeek FAST primary were ever used at peak price (~700 in x $0.30/M + 256 out x $1.20/M), and equal to the smallest existing cap in this registry. Global LLM_GLOBAL_DAILY_USD_CAP still binds. No daily_soft_cap added: that would also bound OAuth call counts via over_daily_cap."
+      "notes": "2026-10-15 (n8n fabric cutover prerequisite G5): routed through cio_governed_model_bridge (8766) as caller advisory_desk task hermes_tag_engine when the n8n run executor binds the lane's llm_route; tools_allowed false (the classifier takes no tools; the bridge strips any) and advisory_only true, like every other bridge-mapped hermes_* row. | 2026-10-15: daily_cost_cap_usd added (was absent, so check_cost_cap logged llm_lane_unregistered and enforced no process cap). Sized from measured spend: llm_cost_reservations 0 rows ever; llm_consumption_log 2026-10-01..10-14 = 375 calls, all grok OAuth, $0.00 every day (max 48 calls on 10-14); no provider_cost events. 2 x max observed day = $0.00, so the floor applies: $0.05 = 2 x 48 calls x ~$0.0005 per call if the routing row's DeepSeek FAST primary were ever used at peak price (~700 in x $0.30/M + 256 out x $1.20/M), and equal to the smallest existing cap in this registry. Global LLM_GLOBAL_DAILY_USD_CAP still binds. No daily_soft_cap added: that would also bound OAuth call counts via over_daily_cap.",
+      "reasoning_tier": "standard",
+      "routing_decision_20261015": "Operator decision 2026-10-15 (verbatim): \"in terms of n8n, then, we should try OAuth first. And if OAuth fails or if the answer needs higher reasoning, then we go to DeepSeek.\" Routing: grok OAuth -> chatgpt OAuth -> deepseek FAST (llm_routing_policy route_profile n8n_oauth_first); an OAuth lane not enabled on the host (CIO_BRIDGE_OAUTH_TRANSPORTS) is skipped; an empty/invalid/schema-invalid OAuth answer falls through to the next lane; reasoning_tier high puts the routing row's reasoning_lane (DeepSeek PRO_THINK) first; a schema-valid OAuth answer below escalate_below_confidence (or carrying an escalate_on_values flag) is re-asked ONCE on the reasoning lane inside this row's caps, else returned flagged escalation_skipped_cap. hermes_tag_engine is on the n8n fabric path (allowlist llm_route, G5), so the same order applies; its free-text {\"tags\": [...]} output has no confidence field, so it never escalates."
     },
     {
       "id": "holding_protection_advisor",
@@ -1270,18 +1272,21 @@
     },
     {
       "id": "n8n_material_digest_draft",
-      "name": "n8n coordination: material-change digest DRAFT (Flash)",
+      "name": "n8n coordination: material-change digest DRAFT (OAuth first)",
       "category": "N8nCoordination",
-      "lane_policy": "deepseek_only",
+      "lane_policy": "either",
       "default_mode": "manual",
       "description": "Plan tranche D (2026-10-07): nonfinancial digest DRAFT of already-detected material changes, requested through the n8n coordination gateway and run by scripts/lib/n8n_model_job.py. Output validated against config/schemas/n8n_model_job_outputs.json (material_change_digest_draft/v1); recommendation must be NONE; never a send. READ_ONLY_ADVISORY. Must route through cio_governed_model_bridge (8766).",
       "allowed_lanes": [
+        "grok",
+        "chatgpt",
         "fast",
         "deepseek-flash"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
-        "FAST"
+        "FAST",
+        "PRO_THINK"
       ],
       "max_input_tokens": 16000,
       "max_output_tokens": 2048,
@@ -1295,22 +1300,33 @@
       "circuit_breaker": true,
       "registered_by": "n8n-parallel-tranche-D",
       "registered_at": "2026-10-07T04:30:00Z",
-      "notes": "Not called by any lane yet (CALLER_PROCESS_MAP entry 'n8n_model_job' lands with the gateway model_job operation). Cap $0.10/day, 24 calls/day soft cap; raise only with evidence from the job receipts."
+      "notes": "Not called by any lane yet (CALLER_PROCESS_MAP entry 'n8n_model_job' lands with the gateway model_job operation). Cap $0.10/day, 24 calls/day soft cap; raise only with evidence from the job receipts.",
+      "reasoning_tier": "standard",
+      "escalate_below_confidence": null,
+      "escalate_on_values": {
+        "needs_escalation": [
+          "higher_reasoning"
+        ]
+      },
+      "routing_decision_20261015": "Operator decision 2026-10-15 (verbatim): \"in terms of n8n, then, we should try OAuth first. And if OAuth fails or if the answer needs higher reasoning, then we go to DeepSeek.\" Routing: grok OAuth -> chatgpt OAuth -> deepseek FAST (llm_routing_policy route_profile n8n_oauth_first); an OAuth lane not enabled on the host (CIO_BRIDGE_OAUTH_TRANSPORTS) is skipped; an empty/invalid/schema-invalid OAuth answer falls through to the next lane; reasoning_tier high puts the routing row's reasoning_lane (DeepSeek PRO_THINK) first; a schema-valid OAuth answer below escalate_below_confidence (or carrying an escalate_on_values flag) is re-asked ONCE on the reasoning lane inside this row's caps, else returned flagged escalation_skipped_cap."
     },
     {
       "id": "n8n_ops_summary_draft",
-      "name": "n8n coordination: weekly ops summary DRAFT (Flash)",
+      "name": "n8n coordination: weekly ops summary DRAFT (OAuth first)",
       "category": "N8nCoordination",
-      "lane_policy": "deepseek_only",
+      "lane_policy": "either",
       "default_mode": "manual",
       "description": "Phase 2 PR-E/G1 (2026-10-08): nonfinancial weekly OPS SUMMARY DRAFT from the lane governance packet receipt (data/runtime/lane_governance_packet_last.json), run by scripts/report_lane_governance_packet.py --draft through scripts/lib/n8n_model_job.py. Output validated against config/schemas/n8n_model_job_outputs.json (ops_summary_draft/v1); recommendation must be NONE; never a send. READ_ONLY_ADVISORY. Must route through cio_governed_model_bridge (8766) with task type ops_summary.",
       "allowed_lanes": [
+        "grok",
+        "chatgpt",
         "fast",
         "deepseek-flash"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
-        "FAST"
+        "FAST",
+        "PRO_THINK"
       ],
       "max_input_tokens": 16000,
       "max_output_tokens": 2048,
@@ -1324,7 +1340,15 @@
       "circuit_breaker": true,
       "registered_by": "n8n-parallel-phase2-G1",
       "registered_at": "2026-10-08T02:00:00Z",
-      "notes": "One draft per week by design (soft cap 1/day). Caller n8n_model_job + task type ops_summary maps here server-side (CALLER_TASK_PROCESS_MAP); the plain model_job task type still maps to n8n_material_digest_draft. Cap $0.10/day; raise only with evidence from the job receipts."
+      "notes": "One draft per week by design (soft cap 1/day). Caller n8n_model_job + task type ops_summary maps here server-side (CALLER_TASK_PROCESS_MAP); the plain model_job task type still maps to n8n_material_digest_draft. Cap $0.10/day; raise only with evidence from the job receipts.",
+      "reasoning_tier": "standard",
+      "escalate_below_confidence": null,
+      "escalate_on_values": {
+        "needs_escalation": [
+          "higher_reasoning"
+        ]
+      },
+      "routing_decision_20261015": "Operator decision 2026-10-15 (verbatim): \"in terms of n8n, then, we should try OAuth first. And if OAuth fails or if the answer needs higher reasoning, then we go to DeepSeek.\" Routing: grok OAuth -> chatgpt OAuth -> deepseek FAST (llm_routing_policy route_profile n8n_oauth_first); an OAuth lane not enabled on the host (CIO_BRIDGE_OAUTH_TRANSPORTS) is skipped; an empty/invalid/schema-invalid OAuth answer falls through to the next lane; reasoning_tier high puts the routing row's reasoning_lane (DeepSeek PRO_THINK) first; a schema-valid OAuth answer below escalate_below_confidence (or carrying an escalate_on_values flag) is re-asked ONCE on the reasoning lane inside this row's caps, else returned flagged escalation_skipped_cap."
     },
     {
       "id": "n8n_lane_failure_diagnosis",
@@ -1341,7 +1365,8 @@
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
-        "FAST"
+        "FAST",
+        "PRO_THINK"
       ],
       "max_input_tokens": 12000,
       "max_output_tokens": 1024,
@@ -1357,7 +1382,16 @@
       "offpeak_tier": "critical",
       "registered_by": "n8nmat/llm-self-remediation",
       "registered_at": "2026-10-10T05:00:00Z",
-      "notes": "Per-call ceiling $0.05 (routing policy cost_ceiling_usd, enforced by the bridge, §23.10 P21) and re-checked by the caller; $0.10/day and 40 calls/day for this process inside LLM_GLOBAL_DAILY_USD_CAP 2.00. One call per incident, at most 3 per lane per day. A refused or deferred call escalates the incident without a diagnosis and says so. offpeak_tier critical (2026-10-15): a diagnosis is about a failure happening now and routes OAuth first (free); at 'standard' every failure outside the scheduled window escalated with no cause (2026-10-12..15: 8,662 deferred records vs 25 diagnoses). The $0.05/call and $0.10/day caps above still bound the paid DeepSeek fallback at peak; an operator row in llm_caller_priority overrides this seed. Routing truth (provider journal, 2026-10-15): 117 of 119 completed calls 2026-10-11T19:33Z..2026-10-15T00:34Z were DeepSeek-served because the bridge reaches an OAuth lane only when the host enables it (CIO_BRIDGE_OAUTH_TRANSPORTS; drop-in 60-oauth-transports added 2026-10-14 ~21:26 ET) and the transport_failover walk skipped grok/chatgpt as no_bridge_transport; since then the order is grok -> chatgpt -> deepseek as written, DeepSeek the working fallback (tests/test_n8n_diagnosis_deepseek_route_20261015.py). Claude is not a bridge provider today: the operator's 'DeepSeek or Claude' fallback is DeepSeek until a Claude lane is provisioned (§17)."
+      "notes": "Per-call ceiling $0.05 (routing policy cost_ceiling_usd, enforced by the bridge, §23.10 P21) and re-checked by the caller; $0.10/day and 40 calls/day for this process inside LLM_GLOBAL_DAILY_USD_CAP 2.00. One call per incident, at most 3 per lane per day. A refused or deferred call escalates the incident without a diagnosis and says so. offpeak_tier critical (2026-10-15): a diagnosis is about a failure happening now and routes OAuth first (free); at 'standard' every failure outside the scheduled window escalated with no cause (2026-10-12..15: 8,662 deferred records vs 25 diagnoses). The $0.05/call and $0.10/day caps above still bound the paid DeepSeek fallback at peak; an operator row in llm_caller_priority overrides this seed. Routing truth (provider journal, 2026-10-15): 117 of 119 completed calls 2026-10-11T19:33Z..2026-10-15T00:34Z were DeepSeek-served because the bridge reaches an OAuth lane only when the host enables it (CIO_BRIDGE_OAUTH_TRANSPORTS; drop-in 60-oauth-transports added 2026-10-14 ~21:26 ET) and the transport_failover walk skipped grok/chatgpt as no_bridge_transport; since then the order is grok -> chatgpt -> deepseek as written, DeepSeek the working fallback (tests/test_n8n_diagnosis_deepseek_route_20261015.py). Claude is not a bridge provider today: the operator's 'DeepSeek or Claude' fallback is DeepSeek until a Claude lane is provisioned (§17).",
+      "reasoning_tier": "standard",
+      "escalate_below_confidence": 0.7,
+      "escalate_on_values": {
+        "needs_escalation": [
+          "higher_reasoning"
+        ]
+      },
+      "routing_decision_20261015": "Operator decision 2026-10-15 (verbatim): \"in terms of n8n, then, we should try OAuth first. And if OAuth fails or if the answer needs higher reasoning, then we go to DeepSeek.\" Routing: grok OAuth -> chatgpt OAuth -> deepseek FAST (llm_routing_policy route_profile n8n_oauth_first); an OAuth lane not enabled on the host (CIO_BRIDGE_OAUTH_TRANSPORTS) is skipped; an empty/invalid/schema-invalid OAuth answer falls through to the next lane; reasoning_tier high puts the routing row's reasoning_lane (DeepSeek PRO_THINK) first; a schema-valid OAuth answer below escalate_below_confidence (or carrying an escalate_on_values flag) is re-asked ONCE on the reasoning lane inside this row's caps, else returned flagged escalation_skipped_cap.",
+      "escalation_confidence_field": "confidence"
     }
   ],
   "default_deepseek_policy": "FAST",
