@@ -308,13 +308,13 @@ on refusal. Both tables live in the coordination ledger, one `BEGIN IMMEDIATE`.
   `late_completion:<state>`, receipt `effect.incident = effect_late_completion` (no longer a silent DONE).
   Residual: `release` still trusts the operator's note (no reconciliation evidence is required by code), and no
   lane yet calls `assert_fence`, so ownership switches still need drain-before-switch.
-- **Effect-keyed lanes that do NOT call `assert_fence` (not late-write safe):** all 65 effect-keyed lanes in
+- **Effect-keyed lanes that do NOT call `assert_fence` (not late-write safe):** all 66 effect-keyed lanes in
   `config/n8n_effect_keys.json` (none declares `late_write_fenced`). The six whose executor side is armed
   (`n8n_claim` default true): `hermes-learning-outcome-grader`, `hermes-learning-outcome-learning`,
   `hermes-learning-config-governor`, `hermes-learning-tag-engine`, `hermes-learning-outcome-feedback-agent`,
-  `hermes-learning-autonomous-self-tune`; plus the 18 armed (`n8n_claim` + `cron_claim` true) by the n8n cutover waves (2026-10-15,
+  `hermes-learning-autonomous-self-tune`; plus the 27 armed (`n8n_claim` + `cron_claim` true) by the n8n cutover waves (2026-10-15,
   `scripts/n8n_cutover_wave.py`, packets `docs/ops/packets/n8n-cutover-wave-<n>-20261015/`):
-  `agent-outcome-linker`, `catalyst-symbol-impact`, `document-mentions-backfill`, `etf-analyst-enrich`, `etf-performance-enrich`, `feedback-loop-processor`, `finviz-proactive-research`, `finviz-screener-runner`, `hermes-analyst-signal-discovery`, `hermes-momentum-catalyst-scalp`, `hermes-news-bridge`, `journal-tilt-morning-hook`, `material-change-detector-stage1`, `proposal-backtest-engine`, `sec-data-ingest`, `source-attribution-monitor`, `update-agent-performance`, `watchlist-enrichment-sweep`; the other 41 are staged (`n8n_claim: false`; train 2026-10-15 d added the
+  `aegis-social-sentiment`, `aegis-transcript-discovery`, `agent-outcome-linker`, `agent-outcome-scorer`, `catalyst-symbol-impact`, `commitment-outcome-sweep`, `daily-incubator-refresh`, `document-mentions-backfill`, `etf-analyst-enrich`, `etf-performance-enrich`, `feedback-loop-processor`, `finviz-proactive-research`, `finviz-screener-runner`, `hermes-analyst-signal-discovery`, `hermes-momentum-catalyst-scalp`, `hermes-news-bridge`, `hermes-social-sentiment`, `instrument-belief-writer`, `journal-tilt-morning-hook`, `material-change-detector-stage1`, `proposal-backtest-engine`, `record-decision-outcome`, `sec-data-ingest`, `source-attribution-monitor`, `update-agent-performance`, `watchlist-enrichment-sweep`, `weekly-incubator-builder`; the other 33 are staged (`n8n_claim: false`; train 2026-10-15 d added the
   lane-repair keys `watchlist-entry-planner-limit`, `watchlist-entry-planner-scope`, `run-research-intelligence-overnight`;
   shadow wave LD-W1 (#1761, merged 2026-10-15 with the DD01 ruling PR) added `incubator-rolloff-engine`).
 

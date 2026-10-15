@@ -606,7 +606,7 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
     # + 1: lane repair 2026-10-15 takes the shard 05 proposal for build-symbol-profiles-at-0-19 (its SW4 exclusion
     # reason, the shared receipt, is gone; tests/test_lane_repair_20261015.py): 12.
     # (train 2026-10-15 d parked its wiring for DD01, 11; restored 2026-10-15 by the operator DD01 ruling: 12.)
-    assert len(refactor) == 12 and refactor - set(CANARY_WAVE_20261014) <= set(shadow), refactor
+    assert len(refactor) == 12 and refactor - set(CANARY_WAVE_20261014) - CW_NEW <= set(shadow), refactor
     # The reviewed momentum tranche adds two native shadow rows and the existing
     # named scalp exception at shadow; it adds no live dispatch row.
     # - 2: C1 hermes_overnight registry edit (train 6, 2026-10-12) absorbs hermes-tag-lift-discovery (SW4/W4) and

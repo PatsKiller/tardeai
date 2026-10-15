@@ -127,6 +127,11 @@ OVERWRITE_ONLY = {
     "hermes-governance-api": "CW: os.replace of the governance panel cache (scripts/hermes_governance_api.py:86)",
     "materialize-watchlist-strategy-cards": "CW: INSERT ... ON CONFLICT (symbol) DO UPDATE (:60-65)",
 }
+#: Lanes held off canary on purpose (verdict SKIP with this reason).
+HELD = {
+    "aegis-nightly-ingestion": "held: the n8n reference workflow's inert lane (scripts/build_n8n_reference_workflow.py "
+                               "LANE; its allowlist live_arg must stay null and its effect key unarmed)",
+}
 #: Lanes whose class reads as overwrite-only but whose live effect appends (keyed).
 APPEND_OVERRIDE = {
     "journal-tilt-morning-hook": "CW: INSERT INTO operator_review_queue (scripts/journal_tilt_morning_hook.py:44)",
@@ -456,6 +461,9 @@ def plan_lane(lane_id: str, disp: Mapping[str, str], *, reg_rows: Mapping[str, A
     reasons: list[str] = v["reasons"]
     if disp.get("family_id") in DEFERRED_FAMILIES or disp.get("source") in DEFERRED_SOURCES:
         reasons.append("deferred_by_directive (F07 / registry_systemd)")
+        return v
+    if lane_id in HELD:
+        reasons.append(HELD[lane_id])
         return v
     row = reg_rows.get(lane_id)
     if row is None:
