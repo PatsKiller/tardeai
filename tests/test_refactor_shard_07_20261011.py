@@ -305,3 +305,5 @@ def test_all_failed_valuation_fetches_preserve_cached_rows_and_success(tmp_path,
     assert receipt["summary"]["fetched"] == 0 and receipt["summary"]["errors"] == 1
 
 from tests.test_canary_wave_20261014 import CANARY_WAVE_20261014 as _CANARY_WAVE  # noqa: E402  canary-wave-20261014
+from tests.test_canary_wave_1b_20261014 import CANARY_WAVE_1B as _CANARY_WAVE_1B  # noqa: E402  canary-wave-1b-20261014
+_CANARY_WAVE = {**_CANARY_WAVE, **_CANARY_WAVE_1B}

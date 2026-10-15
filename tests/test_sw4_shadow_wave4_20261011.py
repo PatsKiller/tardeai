@@ -98,9 +98,12 @@ def test_row_is_a_w4_shadow_cron_row_admitted_by_the_r1_gate(lane):
     klass, cron, _argv, receipt, _lock = SW4[lane]
     row = ROWS[lane]
     s = row["scheduler"]
-    assert s["kind"] == "cron" and s["stage"] == "shadow" and s["wave"] == "W4" and s["expression"] == cron
+    # canary-wave-1b-20261014 moved identity-sweep-stage0 to canary (cron row, stage canary,
+    # dispatch.mode live; tests/test_canary_wave_1b_20261014.py pins the canary block and lock); every other field holds.
+    stage, mode = ("canary", "live") if lane in CANARY_WAVE_1B else ("shadow", "dry_run")
+    assert s["kind"] == "cron" and s["stage"] == stage and s["wave"] == "W4" and s["expression"] == cron
     assert row["state"] == "ACTIVE" and "generated_by" not in row
-    assert row["dispatch"] == {"mode": "dry_run", "cron": [cron], "tz": "America/New_York", "wave": "W4",
+    assert row["dispatch"] == {"mode": mode, "cron": [cron], "tz": "America/New_York", "wave": "W4",
                                "class": klass, "priority": 5, "retry_policy": "none"}
     assert row["output_signal"] == {"kind": "json_key", "path": f"data/runtime/{receipt}_last.json", "key": "ok_at"}
     assert LD.validate_dispatch_block(row) == []
@@ -115,7 +118,9 @@ def test_allowlist_entry_is_shadow_only_and_carries_no_broker_credential(lane):
     _klass, _cron, argv, receipt, cron_lock = SW4[lane]
     e = ALLOW[lane]
     assert e["command"] == ["$PY", *argv]
-    assert e["live_arg"] is None and e["dry_run_arg"][0] == "--dry-run"
+    # canary-wave-1b-20261014: a canary lane's live_arg is the cron argv suffix (identity-sweep-stage0 ["--apply"]).
+    assert (e["live_arg"] is None or e["live_arg"] == CANARY_WAVE_1B.get(lane, (0, 0, None))[2])
+    assert e["dry_run_arg"][0] == "--dry-run"
     assert not any(t.startswith("--apply") for t in e["command"] + e["dry_run_arg"])
     assert e["output_signal"] == ROWS[lane]["output_signal"]["path"] == f"data/runtime/{receipt}_last.json"
     assert LD.receipt_signal_path(ROWS[lane]) == e["output_signal"]
@@ -125,7 +130,9 @@ def test_allowlist_entry_is_shadow_only_and_carries_no_broker_credential(lane):
     assert LD.forbidden_text_hits(" ".join(e["command"] + e["dry_run_arg"])) == []
     assert e["market_gate"] is False and 0 < e["timeout_s"] <= 1200
     text = ROWS[lane]["scheduler"]["command_text"]
-    if cron_lock:
+    if lane in CANARY_WAVE_1B:  # canary: the (post cron-lock-wrappers) cron flock lock is the allowlist lock
+        assert e["lock"] == CANARY_WAVE_1B[lane][1] and LD.cron_flock_locks(text) == [e["lock"]]
+    elif cron_lock:
         assert e["lock"] == cron_lock and cron_lock in text
     else:
         assert "PROPOSED" in e["source"] and e["lock"] in e["source"] and e["lock"] not in text
@@ -138,7 +145,7 @@ def test_flock_lanes_are_canary_lock_equivalent_and_the_rest_stay_blocked():
         canary["scheduler"]["stage"] = "canary"
         canary["dispatch"]["mode"] = "live"
         ok, why = LD.r1_canary_lock_matches(canary, dict(e, live_arg=[]))
-        if cron_lock and e["lock_kind"] == "flock":
+        if (cron_lock or lane in CANARY_WAVE_1B) and e["lock_kind"] == "flock":
             assert ok, (lane, why)
         else:
             assert not ok, (lane, why)
@@ -186,14 +193,14 @@ def test_excluded_lanes_stay_off_the_dispatcher():
 START = datetime(2026, 10, 12, 4, 0, tzinfo=timezone.utc)  # Monday 00:00 America/New_York
 
 
-def _sweep(rows, start, days, step_min):
+def _sweep(rows, start, days, step_min, mode="dry_run"):
     slots: dict[str, set] = {}
     errors = set()
     t = start
     while t < start + timedelta(days=days):
         resp = D.compute_due(rows, ALLOW, POLICIES, None, t)
         for it in resp["items"]:
-            assert it["mode"] == "dry_run", it
+            assert it["mode"] == mode, it
             slots.setdefault(it["lane_id"], set()).add(it["slot_local"])
         errors |= {(e["lane_id"], e["code"]) for e in resp["errors"]}
         t += timedelta(minutes=step_min)
@@ -201,21 +208,26 @@ def _sweep(rows, start, days, step_min):
 
 
 def test_compute_due_week_sweep_emits_dry_run_on_the_natural_slots_only():
-    slots, errors = _sweep([ROWS[x] for x in SW4_LIVE if x != "identity-sweep-stage0"], START, 7, 5)
+    slots, errors = _sweep([ROWS[x] for x in SW4_LIVE if x not in CANARY_WAVE_1B], START, 7, 5)
     assert errors == set(), sorted(errors)
     want = {"record-decision-outcome": 5, "update-lockup-earnings-dates": 7, "etf-analyst-enrich": 1,
             "agent-outcome-scorer": 1, "feedback-loop-processor": 5,
             "aegis-social-sentiment": 10, "aegis-transcript-discovery": 5, "aegis-nightly-ingestion": 7,
             "hermes-social-sentiment": 10, "sync-social-to-intelligence": 10, "trade-backtest-engine": 5,
             "etf-performance-enrich": 1}
+    want = {k: v for k, v in want.items() if k not in CANARY_WAVE_1B}  # canary-wave-1b rows fire live
     assert {k: len(v) for k, v in slots.items()} == want
-    assert {s[-4:] for s in slots["aegis-social-sentiment"]} == {"1100", "1500"}
+    if "aegis-social-sentiment" in want:
+        assert {s[-4:] for s in slots["aegis-social-sentiment"]} == {"1100", "1500"}
     assert {s[:8] for s in slots["agent-outcome-scorer"]} == {"20261018"}  # Sunday
 
 
-def test_identity_sweep_fires_every_half_hour_dry_run_only():
-    slots, errors = _sweep([ROWS["identity-sweep-stage0"]], START, 1, 30)
+def test_identity_sweep_fires_every_half_hour_dry_run_only(monkeypatch):
+    # canary-wave-1b-20261014: identity-sweep-stage0 is canary, so its natural slots fire live (relay live-lanes list).
+    monkeypatch.setenv(D.LIVE_LANES_ENV, " ".join(CANARY_WAVE_1B))
+    slots, errors = _sweep([ROWS["identity-sweep-stage0"]], START, 1, 30, mode="live")
     assert errors == set() and len(slots["identity-sweep-stage0"]) == 48
+
 
 
 def test_monthly_lane_fires_on_the_first_only():
@@ -229,3 +241,5 @@ def test_absorbed_sw4_rows_left_the_dispatcher_for_their_c1_stage():
         assert r["state"] == "RETIRED" and r["superseded_by"] == stage_lane, lane
         assert "dispatch" not in r and r["dispatch_retired"]["wave"] == "W4", lane
         assert lane not in ALLOW, lane
+
+from tests.test_canary_wave_1b_20261014 import CANARY_WAVE_1B  # noqa: E402  canary-wave-1b-20261014

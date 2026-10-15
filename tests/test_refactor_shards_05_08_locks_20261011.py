@@ -63,6 +63,15 @@ def test_all_22_proposals_reuse_original_lock_kind_and_path(lane_id):
     if not _owned_here(ROWS.get(lane_id)):
         assert lane_id not in LANES, lane_id  # held: owner's row, no allowlist entry
         return
+    if lane_id in _CANARY_WAVE_1B:
+        # canary-wave-1b-20261014: packet cron-lock-wrappers-20261014 wraps the safe_flock.sh line in `flock -n <the
+        # same path>`; the allowlist takes lock_kind flock on that path (the cron flock), never a new path.
+        entry = LANES[lane_id]
+        assert entry["lock_kind"] == "flock", lane_id
+        assert_lock_identity(dict(entry, lock_kind="safe_flock"), PROOF["lanes"][lane_id])
+        assert observed_locks(ROWS[lane_id]["scheduler"]["command_text"]) == {
+            ("flock", entry["lock"]), ("safe_flock", entry["lock"])}, lane_id
+        return
     assert_lock_identity(LANES[lane_id], PROOF["lanes"][lane_id])
 
 
@@ -79,7 +88,9 @@ def test_governor_wrong_kind_or_path_is_rejected(kind, path):
 
 def test_governor_reuses_the_pid_guard_and_draft_lock_edge():
     lane = LANES["hermes-scope-governor"]
-    assert (lane["lock_kind"], lane["lock"]) == ("safe_flock", "/tmp/hermes_scope_governor.lock")
+    # canary-wave-1c-locks moves this to ("flock", same path) once the cron-lock-wrappers packet is installed.
+    want_kind = "flock" if "hermes-scope-governor" in _CANARY_WAVE_1B else "safe_flock"
+    assert (lane["lock_kind"], lane["lock"]) == (want_kind, "/tmp/hermes_scope_governor.lock")
     contracts = json.loads((ROOT / "config/n8n_health_contracts.json").read_text())["contracts"]
     contract = next(row for row in contracts if row["id"] == "hermes-scope-governor")
     assert _contract_ok(contract)
@@ -96,3 +107,5 @@ def test_only_eight_missing_locks_are_proposed_with_retired_states_preserved():
     rows = {row["lane_id"]: row for row in json.loads((ROOT / "config/lane_registry.json").read_text())["lanes"]}
     assert sum(rows[lane]["state"] == "ACTIVE" for lane in proposed) == 5
     assert sum(rows[lane]["state"] == "RETIRED" for lane in proposed) == 3
+
+from tests.test_canary_wave_1b_20261014 import CANARY_WAVE_1B as _CANARY_WAVE_1B  # noqa: E402  canary-wave-1b-20261014

@@ -33,6 +33,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 LANE_ID = "hermes-research-worker-pool"
+#: Lane skip reasons that mean "nothing was due this run" (worker_pool.run_lane), not a fault.
+IDLE_SKIP_REASONS = frozenset({"cadence", "no_runner", "disabled"})
 worker_pool = None
 
 # Stage-6 integration fix: the lane-runner modules register their runners at
@@ -161,7 +163,15 @@ def main(argv=None) -> int:
     summary = {"completed_lanes": completed, "failed_lanes": failures, "skipped_lanes": skips,
                "scanned": sum(int(r.get("scanned") or 0) for r in lanes),
                "upserted": sum(int(r.get("upserted") or 0) for r in lanes)}
-    healthy = rc == 0 and failures == 0 and completed > 0
+    # 2026-10-14: the cron line fires hourly but every lane cadence is >= 240 min, so most hours
+    # every runnable lane skips on cadence (nothing due). That idle hour is healthy, not
+    # pool_incomplete (8 of 12 cron runs on 2026-10-14 wrote a failed receipt with exit 0).
+    # A lock or pause skip, or no lane with a runner, stays incomplete.
+    reasons = [r.get("skipped") for r in lanes]
+    idle = (completed == 0 and "cadence" in reasons
+            and all(x in IDLE_SKIP_REASONS for x in reasons))
+    summary["idle_nothing_due"] = idle
+    healthy = rc == 0 and failures == 0 and (completed > 0 or idle)
     write_lane_receipt(LANE_ID, ok=healthy, exit_code=rc, started_at=started,
                        script="hermes_research_worker_pool.py", summary=summary,
                        error=None if healthy else "pool_incomplete")

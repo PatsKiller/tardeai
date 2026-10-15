@@ -609,6 +609,10 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
 CANARY_ROWS = frozenset({"research-insight-extractor"})
 #: canary-wave-20261014 (stage canary, mode live, cron flock lock == allowlist lock); single source in its own test.
 from tests.test_canary_wave_20261014 import CANARY_WAVE_20261014  # noqa: E402
+#: + canary-wave-1b-20261014 (stacked, same canary shape; tests/test_canary_wave_1b_20261014.py pins every field).
+from tests.test_canary_wave_1b_20261014 import CANARY_WAVE_1B  # noqa: E402
+
+CANARY_WAVE_20261014 = {**CANARY_WAVE_20261014, **CANARY_WAVE_1B}
 
 
 #: wave D2: allowlist entries that existed (with a live_arg) before the dispatcher row was added.

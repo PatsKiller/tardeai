@@ -1282,7 +1282,7 @@
       "dry_run_arg": [
         "--dry-run"
       ],
-      "live_arg": null,
+      "live_arg": [],
       "market_gate": false,
       "output_signal": "data/runtime/news-to-catalyst_last.json"
     },
@@ -2027,7 +2027,9 @@
       "dry_run_arg": [
         "--dry-run"
       ],
-      "live_arg": null,
+      "live_arg": [
+        "--apply"
+      ],
       "market_gate": false,
       "output_signal": "data/runtime/identity-sweep-stage0_last.json"
     },
@@ -2583,7 +2585,7 @@
       "dry_run_arg": [
         "--dry-run"
       ],
-      "live_arg": null,
+      "live_arg": [],
       "lock": "/tmp/hermes_worker_pool.lock",
       "lock_kind": "flock",
       "timeout_s": 900,
