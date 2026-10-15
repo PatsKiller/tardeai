@@ -19,6 +19,7 @@ outage also drained the daily request pools.
 
 Exit 0 = nothing to report (or alert sent). Exit 1 = CRITICAL finding under --strict.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -28,14 +29,27 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from datetime import datetime, timezone
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
-from lib.provider_health import evaluate, format_alert, pageable  # noqa: E402
+from lib.provider_health import (  # noqa: E402
+    STALL_CRITICAL,
+    evaluate,
+    evaluate_stalls,
+    format_alert,
+    format_stall_alert,
+    pageable,
+    stall_policy,
+)
 
 STATE_PATH = PROJECT_ROOT / "data/runtime/llm_provider_health_alert.json"
+# Stall thresholds and alert priorities (2026-10-15). The routing policy says which lanes each process may use,
+# which decides digest (another lane open) versus page (no lane left).
+CONFIG_PATH = PROJECT_ROOT / "config/llm_provider_health.json"
+ROUTING_POLICY_PATH = PROJECT_ROOT / "config/llm_routing_policy.json"
 # Durable proof the check itself ran, written every real run — a lane is verified by an
 # artifact, never by an exit code (config/lane_registry.json, lane `llm-provider-health`).
 # A monitor that can go silent unnoticed is the failure this whole change is about.
@@ -61,10 +75,16 @@ def _rows(hours: float) -> list[dict]:
         if isinstance(r, dict):
             rows.append(r)
         else:  # tuple cursor
-            rows.append({
-                "model_name": r[0], "model_lane": r[1], "process_id": r[2],
-                "success": r[3], "error_message": r[4], "created_at": r[5],
-            })
+            rows.append(
+                {
+                    "model_name": r[0],
+                    "model_lane": r[1],
+                    "process_id": r[2],
+                    "success": r[3],
+                    "error_message": r[4],
+                    "created_at": r[5],
+                }
+            )
     return rows
 
 
@@ -78,8 +98,10 @@ def _deepseek_balance() -> dict | None:
     key = None
     try:
         from lib.env_bootstrap import load_env
+
         load_env()
         from lib.llm_model_registry import get_deepseek_api_key
+
         key, _env_name, _alias = get_deepseek_api_key()
     except Exception:
         key = os.environ.get("deepseek_tradeai") or os.environ.get("DEEPSEEK_API_KEY")
@@ -97,6 +119,63 @@ def _deepseek_balance() -> dict | None:
         "is_available": data.get("is_available"),
         "total_balance": (usd or {}).get("total_balance"),
     }
+
+
+def _read_json(path: Path) -> dict:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _routing_doc() -> dict:
+    raw = os.environ.get("TRADEAI_LLM_ROUTING_POLICY")
+    return _read_json(Path(raw) if raw else ROUTING_POLICY_PATH)
+
+
+def _events_path() -> Path | None:
+    """The provider_cost event ledger the emitters write. Under pytest, only an explicit env path is read,
+    so a test never judges the host's live ledger."""
+    raw = os.environ.get("PROVIDER_COST_EVENT_LOG")
+    if raw:
+        return Path(raw)
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return None
+    from lib.provider_cost.emit import _dest
+
+    return _dest()
+
+
+def _provider_events(tail_bytes: int) -> list[dict]:
+    """The newest `tail_bytes` of the ledger, parsed. The file is append-only and large (84 MB on 10-15), and
+    the stall window is minutes wide, so only its tail is read; a torn first line is dropped."""
+    path = _events_path()
+    if path is None:
+        return []
+    try:
+        with path.open("rb") as fh:
+            fh.seek(0, os.SEEK_END)
+            size = fh.tell()
+            start = max(0, size - max(0, int(tail_bytes)))
+            fh.seek(start)
+            blob = fh.read()
+    except OSError:
+        return []
+    lines = blob.split(b"\n")
+    if start > 0 and lines:
+        lines = lines[1:]
+    out = []
+    for line in lines:
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(row, dict):
+            out.append(row)
+    return out
 
 
 def _write_heartbeat(payload: dict) -> None:
@@ -132,7 +211,7 @@ def _fresh(findings: list, state: dict, now: float) -> list:
     return out
 
 
-def _record_delivery_failure(heartbeat: dict, reason: str, undelivered: list) -> None:
+def _record_delivery_failure(heartbeat: dict, reason: str, undelivered: list[str]) -> None:
     """The alarm failing to deliver is the one failure nobody else would notice.
 
     A dead provider lane and an undeliverable alert look identical from the outside:
@@ -141,15 +220,38 @@ def _record_delivery_failure(heartbeat: dict, reason: str, undelivered: list) ->
     cron log nobody reads. Re-written rather than appended: the next run's outcome is
     what matters, and a heartbeat that only grows is its own problem.
     """
+    prior = heartbeat.get("alert_delivery") if isinstance(heartbeat.get("alert_delivery"), dict) else {}
     heartbeat["alert_delivery"] = {
         "ok": False,
         "reason": str(reason)[:300],
         "at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
-        "undelivered": [f"{f.lane}:{f.kind}" for f in undelivered],
+        # Two alerts (lane findings, stall findings) can fail in one run; neither may hide the other.
+        "undelivered": list(prior.get("undelivered") or []) + list(undelivered),
     }
     _write_heartbeat(heartbeat)
-    print(f"[provider-health] ALERT UNDELIVERED ({reason}) — recorded to "
-          f"{HEARTBEAT_PATH.name}", file=sys.stderr)
+    print(f"[provider-health] ALERT UNDELIVERED ({reason}) — recorded to {HEARTBEAT_PATH.name}", file=sys.stderr)
+
+
+def _deliver(message: str, priority: str, heartbeat: dict, labels: list[str]) -> bool:
+    """The one transport call. True when accepted; a failure is recorded on the heartbeat, never only logged."""
+    try:
+        from telegram_alert import send_telegram
+
+        # Declared priorities (tests/test_notification_intents_wave2_20261011.py): lane findings P2, stall
+        # DEGRADED P3 and stall CRITICAL P1 come from config/llm_provider_health.json; anything else is P2.
+        sent = send_telegram(
+            message,
+            priority=priority if priority in ("P1", "P2", "P3") else "P2",
+            producer="check_llm_provider_health",
+        )
+    except Exception as e:
+        _record_delivery_failure(heartbeat, f"{type(e).__name__}: {e}", labels)
+        return False
+    if not sent:
+        # send_telegram reports failure by return value as well as by raising.
+        _record_delivery_failure(heartbeat, "send_telegram returned falsy", labels)
+        return False
+    return True
 
 
 def main() -> int:
@@ -172,44 +274,103 @@ def main() -> int:
     # A lane that failed earlier in the window but is answering again is reported
     # everywhere below and paged nowhere: the operator already fixed it.
     live = pageable(findings)
-    balance = _deepseek_balance() if any(
-        f.kind == "BILLING" or "deepseek" in f.lane.lower() for f in findings
-    ) else None
+    balance = (
+        _deepseek_balance() if any(f.kind == "BILLING" or "deepseek" in f.lane.lower() for f in findings) else None
+    )
+
+    # Stalls (2026-10-15): judged from the provider_cost event ledger over a short window, because the bridge's
+    # failed attempts never reach llm_consumption_log and a 3 h aggregate hides a 30 minute outage.
+    spol = stall_policy(_read_json(CONFIG_PATH))
+    stalls = evaluate_stalls(
+        _provider_events(int(spol["tail_bytes"])),
+        now=datetime.now(timezone.utc),
+        policy=spol,
+        routing_doc=_routing_doc(),
+    )
+    live_stalls = [s for s in stalls if not s.recovered]
+    stall_rows = [
+        {
+            "provider": s.provider,
+            "severity": s.severity,
+            "consecutive_stalls": s.consecutive_stalls,
+            "window_minutes": s.window_minutes,
+            "window_events": s.window_events,
+            "window_stalls": s.window_stalls,
+            "stall_rate": round(s.stall_rate, 4),
+            "error_classes": s.error_classes,
+            "processes": s.processes,
+            "all_lanes_down_processes": s.all_lanes_down_processes,
+            "last_stall_at": s.last_stall_at,
+            "recovered": s.recovered,
+        }
+        for s in stalls
+    ]
 
     if args.json:
-        print(json.dumps({
-            "window_hours": args.hours,
-            "calls_examined": len(rows),
-            "balance": balance,
-            "findings": [
-                {"lane": f.lane, "kind": f.kind, "severity": f.severity, "calls": f.calls,
-                 "failures": f.failures, "fail_rate": round(f.fail_rate, 4),
-                 "processes": f.processes, "sample_error": f.sample_error,
-                 "recovered": f.recovered}
-                for f in findings
-            ],
-        }, indent=2))
+        print(
+            json.dumps(
+                {
+                    "window_hours": args.hours,
+                    "calls_examined": len(rows),
+                    "balance": balance,
+                    "findings": [
+                        {
+                            "lane": f.lane,
+                            "kind": f.kind,
+                            "severity": f.severity,
+                            "calls": f.calls,
+                            "failures": f.failures,
+                            "fail_rate": round(f.fail_rate, 4),
+                            "processes": f.processes,
+                            "sample_error": f.sample_error,
+                            "recovered": f.recovered,
+                        }
+                        for f in findings
+                    ],
+                    "stall_findings": stall_rows,
+                },
+                indent=2,
+            )
+        )
     else:
-        print(f"[provider-health] {len(rows)} calls in the last {args.hours:g}h, "
-              f"{len(findings)} finding(s)")
+        print(
+            f"[provider-health] {len(rows)} calls in the last {args.hours:g}h, "
+            f"{len(findings)} finding(s), {len(stalls)} stall finding(s)"
+        )
         for f in findings:
             note = "  [recovered — not paged]" if f.recovered else ""
-            print(f"  {f.severity:<8} {f.lane}: {f.failures}/{f.calls} failed "
-                  f"({f.fail_rate:.0%}) — {f.kind}{note}")
+            print(f"  {f.severity:<8} {f.lane}: {f.failures}/{f.calls} failed ({f.fail_rate:.0%}) — {f.kind}{note}")
+        for s in stalls:
+            note = "  [recovered — not paged]" if s.recovered else ""
+            print(
+                f"  {s.severity:<8} {s.provider}: {s.window_stalls}/{s.window_events} stalled in "
+                f"{s.window_minutes:g} min, {s.consecutive_stalls} in a row{note}"
+            )
 
-    critical = any(f.severity == "CRITICAL" for f in live)
+    stall_critical = any(s.severity == STALL_CRITICAL for s in live_stalls)
+    critical = any(f.severity == "CRITICAL" for f in live) or stall_critical
     heartbeat = {
         "checked_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         "window_hours": args.hours,
         "calls_examined": len(rows),
-        "worst_severity": ("CRITICAL" if critical else
-                           "WARN" if live else "OK"),
+        # Stays in OK / WARN / CRITICAL: the bridge's routing selector reads this word.
+        "worst_severity": ("CRITICAL" if critical else "WARN" if (live or live_stalls) else "OK"),
         "balance": balance,
         "findings": [
-            {"lane": f.lane, "kind": f.kind, "severity": f.severity,
-             "calls": f.calls, "failures": f.failures, "recovered": f.recovered}
+            {
+                "lane": f.lane,
+                "kind": f.kind,
+                "severity": f.severity,
+                "calls": f.calls,
+                "failures": f.failures,
+                "recovered": f.recovered,
+            }
             for f in findings
         ],
+        # Kept apart from `findings`, which the bridge's lane-health gate reads: a stall alerts, it does not
+        # by itself re-route (the bridge's per-provider breaker does that from what it sees).
+        "stall_findings": stall_rows,
+        "stall_worst": ("CRITICAL" if stall_critical else "DEGRADED" if live_stalls else "OK"),
     }
     if not args.dry_run:
         _write_heartbeat(heartbeat)
@@ -219,24 +380,33 @@ def main() -> int:
         fresh = _fresh(live, state, now)
         if fresh:
             message = format_alert(fresh, window_hours=args.hours, balance=balance)
-            recorded = False
-            try:
-                from telegram_alert import send_telegram
-                sent = send_telegram(message, priority="P2", producer="check_llm_provider_health")
-            except Exception as e:
-                _record_delivery_failure(heartbeat, f"{type(e).__name__}: {e}", fresh)
-                sent = False
-                recorded = True
-            if sent:
+            if _deliver(message, "P2", heartbeat, [f"{f.lane}:{f.kind}" for f in fresh]):
                 for f in fresh:
                     state[f"{f.lane}:{f.kind}"] = now
                 _save_state(state)
                 print(f"[provider-health] alerted on {len(fresh)} lane(s)")
-            elif not recorded:
-                # send_telegram reports failure by return value as well as by raising.
-                _record_delivery_failure(heartbeat, "send_telegram returned falsy", fresh)
         else:
             print("[provider-health] findings suppressed by dedupe window")
+    if live_stalls and not args.dry_run:
+        # A lane down while every caller still has another goes to the digest; a process with no lane left pages.
+        now = time.time()
+        state = _load_state()
+        dedupe_s = float(spol["dedupe_minutes"]) * 60
+        due = [s for s in live_stalls if now - float(state.get(f"stall:{s.provider}:{s.severity}", 0) or 0) >= dedupe_s]
+        if due:
+            priority = str(
+                spol["priority_all_lanes_down"]
+                if any(s.severity == STALL_CRITICAL for s in due)
+                else spol["priority_degraded"]
+            )
+            labels = [f"stall:{s.provider}:{s.severity}" for s in due]
+            if _deliver(format_stall_alert(due), priority, heartbeat, labels):
+                for label in labels:
+                    state[label] = now
+                _save_state(state)
+                print(f"[provider-health] stall alert ({priority}) on {len(due)} provider(s)")
+        else:
+            print("[provider-health] stall findings suppressed by dedupe window")
 
     return 1 if (critical and args.strict) else 0
 

@@ -334,7 +334,7 @@ MIGRATED_WAVE2 = {
     "scripts/rotation_autopilot.py": {"P3"},
     "scripts/check_data_source_health.py": {"P2"},
     "scripts/check_expected_services.py": {"P2"},
-    "scripts/check_llm_provider_health.py": {"P2"},
+    "scripts/check_llm_provider_health.py": {"P1", "P2", "P3"},  # stall alarm: CRITICAL P1, DEGRADED P3 (2026-10-15)
     "scripts/check_served_copy_split.py": {"P2"},
     "scripts/portfolio_live_monitor.py": {"P1", "P2"},
     "scripts/hermes_discovery_ingestors.py": {"P2"},
