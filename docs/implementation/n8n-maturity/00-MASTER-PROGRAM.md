@@ -11,6 +11,24 @@ rules live in AGENTS.md, the designs in the numbered docs below, and the scores 
 status (PR board, reviews, operator decisions) is kept outside the repo on the program board and is not
 mirrored here, so this file does not go stale with it.
 
+## Program status 2026-10-15 02:35Z (served 5aa61048d; AGENTS.md 10.0.0 ACTIVE)
+
+The day-to-day board stays outside the repo. This one dated pointer exists because 10.0.0 changed what the
+program measures:
+
+- **Tracker:** [`PROGRAM_TRACKER_20261015.md`](PROGRAM_TRACKER_20261015.md), "what's done / what's left", one
+  row per item with status, evidence, owner and next action.
+- **Success metric (§23.23 (2)):** business processes owned by n8n, and orchestration owners retired. **Lanes
+  moved do not count.** Processes owned today: **0**. The first is hermes learning, PR-OPEN #1746.
+- **Timer-only cutover freeze (§23.23 (1)):** all three exit conditions are met: Run Lane LIVE, the run-outcome
+  callback LIVE, and 10.0.0 ACTIVE. The freeze stays in force until the operator lifts it.
+- **Fabric primitives (Build 1, #1739) LIVE:** Run Lane + error workflow published. P1 passed 01:15Z, P2 passed
+  01:37Z. 18 active workflows.
+- **Governed `/v1/llm_step` (Build 2, #1738) LIVE:** grok + chatgpt. DeepSeek is unproven (upstream degraded).
+- **Framework compliance (§23.24, PROPOSED 11.0.0):** 40% (18 workflows; none compliant).
+- **Migration state doc:** `MIGRATION_STATE_20261014.md` exists only on PR #1727 (open, AGENTS 8.0.0). It is
+  not on main, and this tracker supersedes its status lines.
+
 ## Start here — configuration and procedures (2026-10-10)
 
 | Doc | What |
@@ -19,7 +37,9 @@ mirrored here, so this file does not go stale with it.
 | `docs/implementation/n8n-maturity/N8N_ONBOARDING_STANDARD.md` | **Mandatory** procedure for adding any lane, workflow, relay path or executor setting to n8n (AGENTS.md §23 pointer) |
 | `docs/implementation/n8n-maturity/N8N_MONITORING_AND_REMEDIATION_STANDARD.md` | Per-lane monitoring, SIEM, Telegram routing, LLM auto-remediation, R6 validation, workflow health contracts |
 | `config/n8n_health_contracts.json` | Workflow health contracts (gate `scripts/check_n8n_health_contracts.py`) |
-| `docs/implementation/n8n-maturity/N8N_GAP_ASSESSMENT_AND_MATURITY_REVIEW_20261014.md` | **2026-10-14 final gap assessment**: current vs target, per-workflow framework compliance matrix (16 workflows × 6 areas), maturity scores, next actions |
+| `docs/implementation/n8n-maturity/PROGRAM_TRACKER_20261015.md` | **2026-10-15 program tracker**: done / left, status label + evidence + owner + next action per item |
+| `docs/incidents/INCIDENT_20261014_SPCX_RESTING_STOPS.md` | Incident record INC-20261014-SPCX (timeline, root cause, containment, fixes, open items) |
+| `docs/implementation/n8n-maturity/N8N_GAP_ASSESSMENT_AND_MATURITY_REVIEW_20261014.md` | **2026-10-14 final gap assessment**: current vs target, per-workflow framework compliance matrix (18 workflows × 6 areas, re-scored 2026-10-15), maturity scores, next actions |
 | `N8N_CONFIGURATION.md` §0 | n8n operational standards and the mandatory workflow framework (AGENTS.md §23.24, PROPOSED 11.0.0) |
 
 ## Rules

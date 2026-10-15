@@ -11,7 +11,8 @@ Operator decision, 2026-10-09: "design and implement". Run it **log-only for the
 > **Measured 2026-10-14:** the hook is **not installed** — `agents_guard_pretooluse` appears in neither
 > `~/.claude/settings*.json` nor the repo `.claude/settings*.json`, and `config/agents_guard_hook_rules.json` still says
 > `"mode": "log"`. The "ACTIVE" status above describes the design, not the host; the log-only week has not started.
-> For Claude Code the guard scopes remain an honor system (WS4-07, HIGH).
+> For Claude Code the guard scopes remain an honor system (WS4-07, HIGH). Re-checked 2026-10-15 02:35Z: unchanged
+> (no `agents_guard_pretooluse` in `~/.claude/settings.json` or `settings.local.json`; rules `mode: log`).
 
 ## Why
 

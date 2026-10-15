@@ -9,7 +9,8 @@ Authority:   READ_ONLY_ADVISORY · MBI_BEHAVIOR = 0
 
 ## Alerting framework — as served 2026-10-14
 
-Refreshed 2026-10-14T18:45-04:00 at served `3e9dc5e14` (origin/main `a1b1c5c93`). Status labels: LIVE, MERGED-NOT-SERVED,
+Refreshed 2026-10-14T18:45-04:00 at served `3e9dc5e14`; re-measured 2026-10-15T02:35Z at served `5aa61048d` (origin/main
+`57d8fc3ff`). The SPCX incident record is `docs/incidents/INCIDENT_20261014_SPCX_RESTING_STOPS.md`. Status labels: LIVE, MERGED-NOT-SERVED,
 PR-OPEN, BRANCH-ONLY, PLANNED, POLICY-ONLY (defined in
 `docs/implementation/n8n-maturity/N8N_GAP_ASSESSMENT_AND_MATURITY_REVIEW_20261014.md` §0). The sections after this one
 are the 2026-09-21 record of the alert outbox and recovery chain and remain accurate for that plane.
@@ -24,6 +25,8 @@ producer ─► send_telegram(priority, dedupe_minutes, producer)        scripts
               ├─ intent        ─► telegram_alert_router.route_intent (P1/P2/P3; receipts notification_intent_receipts.jsonl)
               └─ owned class   ─► comms gateway (mode CANARY, owned_classes ['ops'])
 incidents: n8n fan-in (n8n, */5) ─► incident_notifier.py (cron */5) ─► send_system (ops bot)
+fabric:    tradeai-fabric-error (LIVE) ─► relay POST /intent ─► ledger comms_intents (QUEUED)
+             ─► comms-intent consumer → fan-in incident, P2 digest (#1744 MERGED-NOT-SERVED, not applied)
 SIEM: n8n_siem_bridge.py (cron 1-59/5) ─► system_health_events; siem-critical-notify (health tick, 15 min)
 ```
 
@@ -43,11 +46,11 @@ SIEM: n8n_siem_bridge.py (cron 1-59/5) ─► system_health_events; siem-critica
 
 | Class | Today | Status | Gap / finding |
 |---|---|---|---|
-| Failure | n8n Error Trigger → incident router → fan-in → notifier (6 of 16 workflows); ledger RUN_FAILED/TIMEOUT → DLQ/breach → fan-in; host producers via `send_telegram` | LIVE, partial | 10 workflows have no error workflow (WS1b-05); unit failures and OOM kills raise nothing (WS3-27) |
+| Failure | n8n Error Trigger → incident router → fan-in → notifier (6 of 16 legacy workflows); fabric pair → `tradeai-fabric-error` → comms intent (queued until #1744 is served and applied); ledger RUN_FAILED/TIMEOUT → DLQ/breach → fan-in; host producers via `send_telegram` | LIVE, partial | 10 of 18 workflows have no error workflow (WS1b-05); unit failures and OOM kills raise nothing (WS3-27) |
 | SLA breach | freshness contracts → breach detector STALE_OUTPUT; heartbeat-watch for 6 alert-path lanes; `pipeline_freshness_slo.py --telegram` | LIVE, partial | `report_alert_sla_status.py` is a report, not an alert; detection latency 1–8 days for weekday lanes (WS3-29) |
 | Performance degradation | none | **missing** | no p95/latency class; no metrics stack |
 | Integration failure | `platform_availability` / `data_integrity` sentinels; data-source health (hourly); `broker_auth_blocking`; relay `relay_gateway_unreachable` | LIVE, partial | Schwab auth failure did not page before #1733 (WS3-01); relay refusals are logged as n8n errors, not routed by class |
-| AI/LLM exception | `check_llm_provider_health.py` (BILLING/AUTH/TRANSPORT, hourly via health tick); health agent `collect_llm_spend_receipt` | LIVE, availability only | no exception class for bridge refusals, schema failures, cap hits; `check_llm_fleet_alerts.py` not scheduled |
+| AI/LLM exception | `check_llm_provider_health.py` (BILLING/AUTH/TRANSPORT, hourly via health tick); health agent `collect_llm_spend_receipt` | LIVE, availability only | missed the 10-15 DeepSeek stall (read timeout recorded as NETWORK_ERROR); #1742 (MERGED-NOT-SERVED) adds the stall alarm: P1 when a process has no lane left. No exception class yet for bridge refusals, schema failures or cap hits; `check_llm_fleet_alerts.py` not scheduled |
 
 ### Known defects that decide what reaches the phone (open)
 
@@ -56,7 +59,7 @@ SIEM: n8n_siem_bridge.py (cron 1-59/5) ─► system_health_events; siem-critica
 - `send_telegram` returns True when nothing was delivered; failed sends are not replayed (WS3-21, WS3-24).
 - One bot, one chat, no second channel; no off-box dead-man (WS3-20, WS3-18).
 - The dead-man (heartbeat-watch) runs inside n8n, whose failure it should report (WS1-15).
-- Fills and position changes appear only as suppressed info (WS3-09); the stop half is fixed by #1732.
+- Fills and position changes appear only as suppressed info (WS3-09); the stop half is fixed by #1732 (LIVE @5aa61048d).
 
 ### Target (PROPOSED)
 

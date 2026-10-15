@@ -12,11 +12,14 @@
 
 ## Platform documentation refresh (2026-10-14) — read first for the current state
 
-Reconciled against served `3e9dc5e14`; every capability carries LIVE / MERGED-NOT-SERVED / PR-OPEN / BRANCH-ONLY /
-PLANNED / POLICY-ONLY. AGENTS.md 7.0.0 ACTIVE; 10.0.0 (§23.23) and 11.0.0 (§23.24) PROPOSED.
+Reconciled against served `5aa61048d` (2026-10-15 02:35Z; first pass at `3e9dc5e14`). Every capability carries a
+status: LIVE / MERGED-NOT-SERVED / PR-OPEN / BRANCH-ONLY / PLANNED / POLICY-ONLY. AGENTS.md 10.0.0 (§23.23) is
+ACTIVE; 11.0.0 (§23.24) is PROPOSED.
 
 | Deliverable | Document | Status |
 |----------|---------|--------|
+| Program tracker (what's done / what's left) | `docs/implementation/n8n-maturity/PROGRAM_TRACKER_20261015.md` | Active (dated) |
+| Incident record INC-20261014-SPCX | `docs/incidents/INCIDENT_20261014_SPCX_RESTING_STOPS.md` | CONTAINED |
 | Final gap assessment and maturity review | `docs/implementation/n8n-maturity/N8N_GAP_ASSESSMENT_AND_MATURITY_REVIEW_20261014.md` | Active (dated) |
 | Architecture (as deployed + target) | `docs/implementation/n8n-maturity/02-six-workflow-architecture.md` §A | Active |
 | N8N operational standards + mandatory workflow framework | `docs/implementation/n8n-maturity/N8N_CONFIGURATION.md` §0 | Active (framework PROPOSED) |

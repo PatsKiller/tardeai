@@ -2,13 +2,16 @@
 
 ```
 Status:      ACTIVE (dated snapshot; re-measure after each MUST item in §9 lands)
-as_of:       2026-10-14T18:45:00-04:00
-Measured at: served 3e9dc5e14 (GET 127.0.0.1:7777/v3/build-meta.json, release 3e9dc5e14-main-exact-phase2-20261014-171809);
-             origin/main a1b1c5c93; n8n 2.43.0 DB (SELECT only); coordination ledger (sqlite mode=ro); host ms01-openclaw
+as_of:       2026-10-15T02:35:00Z (re-measured; first measured 2026-10-14T18:45-04:00 at served 3e9dc5e14)
+Measured at: served 5aa61048d (GET 127.0.0.1:7777/v3/build-meta.json, release 5aa61048d-main-exact-phase2-20261014-191424,
+             live since 00:24Z 10-15); origin/main 57d8fc3ff; n8n 2.43.0 DB (SELECT only); coordination ledger
+             (sqlite mode=ro); host ms01-openclaw
 Owner:       platform (n8n maturity program)
-Policy:      AGENTS.md 7.0.0 ACTIVE. 10.0.0 (§23.23, n8n = automation fabric) MERGED AS PROPOSED, NOT ratified.
+Policy:      AGENTS.md 10.0.0 ACTIVE (§23.23, n8n = automation fabric; #1740, ratified by PR comment 2026-10-14T23:25:56Z).
              11.0.0 (§23.24, the mandatory n8n workflow framework) PROPOSED by the PR carrying this file.
-Evidence:    ~/n8n-maturity-verification/arch-review-20261014/ (FINDINGS.csv ids cited as WSn-mm; CANARY_DOUBLE_EFFECT_AUDIT.md)
+Evidence:    ~/n8n-maturity-verification/arch-review-20261014/ (ARCHITECTURE_REVIEW_20261014/FINDINGS.csv ids cited as
+             WSn-mm; CANARY_DOUBLE_EFFECT_AUDIT.md and DEEPSEEK_LLM_STEP_STALL.md sit beside the package directory)
+Tracker:     PROGRAM_TRACKER_20261015.md (what's done / what's left, one row per item)
 ```
 
 This is the closing assessment the operator asked for on 2026-10-14: current state, target state, remaining work,
@@ -29,44 +32,55 @@ framework it scores against is §23.24 (PROPOSED) and
 
 A capability that is LIVE in code but switched off at runtime is written "LIVE (code), OFF (runtime)".
 
-## 1. The state of the platform on 2026-10-14 18:45 ET
+## 1. The state of the platform on 2026-10-15 02:35Z (2026-10-14 22:35 ET)
 
 | Item | Status | Evidence |
 |---|---|---|
-| Served release | **LIVE 3e9dc5e14** | build-meta `git_sha 3e9dc5e148ee…`; CURRENT → `3e9dc5e14-main-exact-phase2-20261014-171809` |
-| #1732 stop alerts never digest | **LIVE** | `scripts/telegram_alert_router.py` `_STOP_FIRING_PATTERN` → P0_INTERRUPT before the v2 router; `tests/test_stop_alert_never_digest_20261014.py` |
-| #1733 Schwab paused → fail loud | **LIVE** | `config/schwab_access_mode.yaml` (`mode: forbidden`), `scripts/lib/schwab_access_mode.py`, `stop_health_check._schwab_unavailable_alert` (P1), health agent `schwab_token_revoked` |
-| #1735 CC Tailscale identity auth | **LIVE (code), report_only (runtime)** | `config/cc_auth.yaml` `enforce: true, report_only: true`. Enforced in every mode: secret writes 403 (`/api/v2/admin/secrets`), CSRF hard routes, 42 step-up method+path pairs refused ("TOTP unlock not yet enabled"). Not done: operator packet `docs/ops/packets/cc-tailscale-identity-20261014/` (service token file absent; `tailscale serve` still proxies to `localhost:7777`, not the unix socket); 1,681 `would_deny` rows in `~/.local/state/tradeai/cc_auth_decisions.jsonl` |
-| #1734 trading read-only lock | **MERGED-NOT-SERVED** (`21692c038`) | `scripts/lib/trading_lock.py` absent from CURRENT; release `a1b1c5c93-…-183100` prepared 18:32, not promoted. Default once served: LOCKED (no unlock file) |
-| #1737 health agent: no broker remediation | **MERGED-NOT-SERVED as a release; effect LIVE by operator containment** | As incident containment, the operator ran a `config-write` grant script (grants `96a0ab8c`, `d3a80ca0`) that edited CURRENT's `config/health_agent_policy.json` in place, on purpose (mtime 18:11 ET, after the 17:18 build; content now equals `a1b1c5c93`; the `git show 3e9dc5e14:` copy still has the `unified_stop_supervisor.py --apply` map entries). #1737 makes the change durable once released. The release-immutability concern stays a finding — §6 item 1 |
-| AGENTS policy | **7.0.0 ACTIVE**; 10.0.0 MERGED-AS-PROPOSED (#1736, `3e9dc5e14`), not ratified | AGENTS.md header; 10.0.0 version row PENDING |
-| Build 2 — governed bridge OAuth transports + `/v1/llm_step` | **PR-OPEN #1738** (head `3c67b55d0`), OFF by default (`CIO_BRIDGE_OAUTH_TRANSPORTS` unset) | `gh pr view 1738` |
-| Build 1 — fabric phase-1 primitives | **PR-OPEN #1739** (head `25e19cef9`, branch `n8nfab/phase1-primitives-20261014`) | `gh pr view 1739`. Contains: the `run_outcomes` contract with gateway op `coordination/run_outcome` and relay `GET /run_outcome`; `effect_claim.py` (owner-epoch fence, empty lane list, CLI); the Run Lane sub-workflow and the error workflow → comms/intent (queued only, DIGEST-only routes, deduped and capped); the fabric generator allowlist plus an `INDEX.json` graph-hash manifest with `--verify`; operator packet `docs/ops/packets/n8n-fabric-phase1-20261014/`. Nothing of it is merged or served |
+| Served release | **LIVE 5aa61048d** (since 00:24Z 10-15) | build-meta `git_sha 5aa61048de4a…`; CURRENT → `5aa61048d-main-exact-phase2-20261014-191424` |
+| #1732 stop alerts never digest | **LIVE @5aa61048d** | `scripts/telegram_alert_router.py` `_STOP_FIRING_PATTERN` → P0_INTERRUPT before the v2 router; `tests/test_stop_alert_never_digest_20261014.py` |
+| #1733 Schwab paused → fail loud | **LIVE @5aa61048d** | `config/schwab_access_mode.yaml` (`mode: forbidden`), `scripts/lib/schwab_access_mode.py`, `stop_health_check._schwab_unavailable_alert` (P1), health agent `schwab_token_revoked` |
+| #1734 trading read-only lock | **LIVE @5aa61048d, LOCKED** | `scripts/lib/trading_lock.py` in CURRENT; `status()` → `locked: true` ("no operator unlock file (default: locked)") |
+| #1735 CC Tailscale identity auth | **LIVE (code), report_only (runtime)** | `config/cc_auth.yaml` `enforce: true, report_only: true`. Enforced in every mode: secret writes 403 (`/api/v2/admin/secrets`), CSRF hard routes, 42 step-up method+path pairs refused ("TOTP unlock not yet enabled"). Not done: operator packet `docs/ops/packets/cc-tailscale-identity-20261014/` (no service token file; `tailscale serve` still proxies to `localhost:7777`, not the unix socket); 18,208 `would_deny` lines in `~/.local/state/tradeai/cc_auth_decisions.jsonl` |
+| #1737 health agent: no broker remediation | **LIVE @5aa61048d** | served `config/health_agent_policy.json` sha256 = origin/main's (`5ba1ddd7…`); the 18:11 ET in-place containment edit is superseded by a release (§6 item 1 stays a finding about the mechanism) |
+| AGENTS policy | **10.0.0 ACTIVE** (#1740, `543c39a9e`; ratified by PR comment 2026-10-14T23:25:56Z); 11.0.0 PROPOSED on this branch | AGENTS.md header `Policy-Version: 10.0.0`, `Status: ACTIVE` |
+| Build 2 — governed bridge OAuth transports + `/v1/llm_step` (#1738) | **LIVE @5aa61048d, ON for grok + chatgpt** | drop-in `~/.config/systemd/user/cio-governed-bridge.service.d/60-oauth-transports-20261014.conf` `CIO_BRIDGE_OAUTH_TRANSPORTS=grok,chatgpt`. Probes PASS: grok `grok-3-mini` 8.8 s, chatgpt `gpt-6.1-sol` 5.5 s, each with an `LlmStepAudit` row. **DeepSeek proof UNPROVEN**: upstream degraded since ~00:33Z (timeouts, 503s; balance $75; `DEEPSEEK_LLM_STEP_STALL.md`) |
+| Build 1 — fabric phase-1 primitives (#1739) | **LIVE @5aa61048d** | 4 fabric workflows imported: `tradeai-fabric-run-lane` and `tradeai-fabric-error` active + published; both probes inactive. **P1 PASS 01:15Z** (Run Lane end to end, `run_outcomes` `fabric-probe-25869-20261014211506` `RUN_DONE`); **P2 PASS 01:37Z** (automatic probe failure → error workflow → `comms_intents` `ci-2a845bc6aa846e66525eb957` `QUEUED`) |
+| #1741 Run Lane probe CLI-executable | **MERGED-NOT-SERVED** (`6182aa824`) | Manual Trigger on the probe; packet `--reimport`; every CLI call with `N8N_RUNNERS_BROKER_PORT=5690` |
+| #1742 bridge hard deadline, typed read timeouts, stall breaker, provider-health stall alarm | **MERGED-NOT-SERVED** (`5af2f4098`) | P1 when a process has no lane left |
+| #1743 provider-journal OOM fix + rotation CLI | **MERGED-NOT-SERVED** (`bff79bbad`) | `latest()` reverse scan, peak 449.6 MB → 3.3 MB; rotation CLI declared unscheduled |
+| #1744 comms-intent consumer → incident fan-in, P2 digest | **MERGED-NOT-SERVED** (`57d8fc3ff`), not applied | the one intent above is still `QUEUED` |
+| #1745 OAuth fallback (deepseek → grok → chatgpt) for 3 DeepSeek-only processes | **PR-OPEN #1745** (head `67168ec39`, CI green); operator "yes" ~02:10Z | `gh pr view 1745` |
+| Hermes learning flow — first business process on the fabric | **PR-OPEN #1746** (head `732309942`, opened 02:36Z; inactive; 3 of 7 steps shadow-ready) | `gh pr view 1746` |
 
 ## 2. n8n: what it is today vs the target
 
-**Target (10.0.0 §23.23, PROPOSED):** n8n owns FLOW — sequencing, dependencies, event triggers, retries/backoff/
+**Target (10.0.0 §23.23, ACTIVE since 2026-10-14T23:25:56Z):** n8n owns FLOW — sequencing, dependencies, event triggers, retries/backoff/
 dead-letter through one Run Lane sub-workflow, error workflows, approval timelines, escalation timers, LLM
 judgment steps. The host owns AUTHORITY, EXECUTION and EVIDENCE.
 
-**Today (7.0.0 §23.1, ACTIVE):** n8n is "a scheduler and a requester, never an authority". Measured:
+**Today:** the policy is ACTIVE, the primitives are LIVE (Run Lane, error workflow, run outcomes, `/v1/llm_step`), and
+**0 business processes are owned by n8n**: the 16 legacy workflows still schedule and request. The timer-only
+cutover freeze (§23.23 migration rule (1)) has all three exit conditions met (Run Lane, run-outcome callback, 10.0.0
+ACTIVE); it stays in force until the operator lifts it, and progress is counted as processes owned, not lanes
+moved (`PROGRAM_TRACKER_20261015.md` §1). Measured at 02:35Z:
 
 | Fact | Value | Evidence |
 |---|---|---|
-| Active workflows | **16** (6 generic `tradeai-*` + 10 per-lane) of 43 stored | `SELECT … FROM workflow_entity WHERE active` |
-| Trigger | 16/16 schedule-started; one `webhook` node (event-router `tradeai-nudge`, header auth) only nudges a poll | node types per workflow |
-| Node types in use | code, httpRequest, scheduleTrigger, set, if, wait (1 s backoff), splitInBatches, stopAndError, errorTrigger, webhook | same; no Execute Workflow, no approval Wait, no AI node |
-| Sub-workflows / approval waits / AI nodes | 0 / 0 / 0 | WS1-01, WS1b-02 |
-| Error workflow set | 6 of 16 (the generic set except `tradeai-incident-router`, which is the error workflow) | `settings.errorWorkflow` |
-| Successful executions saved | **none** (`EXECUTIONS_DATA_SAVE_ON_SUCCESS=none`; successes are soft-deleted, status left `running`) | 53 `running` rows all with `deletedAt` set |
+| Active workflows | **18** (6 generic `tradeai-*` + 10 per-lane + 2 fabric: `tradeai-fabric-run-lane`, `tradeai-fabric-error`) of 48 stored; the 2 fabric probes are inactive | `SELECT … FROM workflow_entity WHERE active` |
+| Trigger | 16/18 schedule-started; one `webhook` node (event-router `tradeai-nudge`, header auth) only nudges a poll; run-lane starts from `executeWorkflowTrigger`, error from `errorTrigger` | node types per workflow |
+| Node types in use | code, httpRequest, scheduleTrigger, set, if, switch, wait, splitInBatches, stopAndError, errorTrigger, webhook, executeWorkflowTrigger (+ manualTrigger / executeWorkflow on the inactive probe) | same; no approval Wait, no AI node |
+| Sub-workflows / approval waits / AI nodes | **1** (Run Lane, `callerPolicy: workflowsFromSameOwner`) / 0 / 0 | WS1-01, WS1b-02 |
+| Error workflow set | 6 of 16 legacy (`tradeai-incident-router`) + both fabric workflows (`tradeai-fabric-error`, self-referencing on the error workflow) = 8 of 18 | `settings.errorWorkflow` |
+| Successful executions saved | **only the 4 fabric workflows** (`saveDataSuccessExecution: all` per workflow; 6 `success` rows). Instance default `EXECUTIONS_DATA_SAVE_ON_SUCCESS=none`, so the 16 legacy workflows' successes are soft-deleted | 46 `running` rows all with `deletedAt` set |
 | Errors saved | all (`EXECUTIONS_DATA_SAVE_ON_ERROR=all`, prune 168 h) | container env |
-| n8n error executions | 763 on 10-14, 419 on 10-13; 836 in the last 24 h are `tradeai-dispatcher` policy refusals (`=RUNNING`, `=REFUSED`) recorded as errors | WS1b-07 |
-| Workflow drift git vs live | **16/16 OK** | `python3 scripts/check_n8n_workflow_drift.py --dry-run` 18:38 ET |
+| n8n error executions | 1,264 stored; 611 in the last 24 h, of which 599 are `tradeai-dispatcher` policy refusals (`=RUNNING`, `=REFUSED`) recorded as errors | WS1b-07 |
+| Workflow drift git vs live | **18/18 OK** | `python3 scripts/check_n8n_workflow_drift.py --dry-run` 02:35Z |
 | Drift check scheduled? | **No** — no receipt `n8n_workflow_drift_last.json`, no cron/timer | the "drift pages P1" rule of §23.23 is POLICY-ONLY |
 | n8n DB role | `n8n` **superuser** | `pg_roles`; WS1b-12 |
-| Ledger runs (24 h) | live 1,628 RUN_DONE / 8 RUN_TIMEOUT / 1 RUN_FAILED; dry_run 2,296 RUN_DONE | coordination ledger `runs` |
+| Ledger runs (24 h) | live 933 RUN_DONE / 1 RUN_FAILED / 1 RUNNING; dry_run 1,370 RUN_DONE (lower than 10-14: 15 Schwab cron lines paused) | coordination ledger `runs` |
+| Run outcomes / comms intents | `run_outcomes` 189 rows since 00:25Z (new in #1739); `comms_intents` 1 row, `QUEUED` (consumer #1744 not served) | ledger |
 | Dead letters / breakers | 48 DLQ rows; 6 breaker rows (5 opened by the 10-12 `/tmp` ENOSPC incident) | ledger `dead_letters`, `breakers` |
-| Live-capable lanes | relay live list = 7 lanes; registry `dispatch.mode: live` = 13 rows (12 canary + 1 cutover) | `~/.config/tradeai/n8n-live-lanes.env`; registry |
+| Live-capable lanes | relay live list = 7 lanes (pilot-dispatch, incident-fanin, research-intake-consumer, crontab-snapshot, maturity-remeasure, research-insight-extractor, heartbeat-watch); registry `dispatch.mode: live` = 13 rows (12 canary + 1 cutover) | `~/.config/tradeai/n8n-live-lanes.env`; registry |
 
 **The live/dry gap (surprise, high risk):** of the 13 registry rows that say `live`, only `heartbeat-watch` and
 `research-insight-extractor` are on the relay live list. The other 11 canary rows (including
@@ -75,7 +89,7 @@ judgment steps. The host owns AUTHORITY, EXECUTION and EVIDENCE.
 400 refusals). The registry, the program trackers and the canary-wave reports read "canary live"; the runtime is
 dry. This is WS1-07 (six independent live gates, no reconciler) in production.
 
-## 3. Workflow classification (the 16 active)
+## 3. Workflow classification (the 18 active)
 
 Classes from §23.24 (PROPOSED): **BC** business-critical (output the operator or a trading surface acts on),
 **RS** resilience (keeps the platform running or recovering), **AI** AI/LLM (an LLM step inside the
@@ -99,9 +113,15 @@ workflow), **MC** monitoring/compliance.
 | 14 | `finviz-view-contracts-shadow` (`2c725c7dfd4ac62f`) | MC | shadow (dry_run) | `5 6 * * 1-5` | 2 RUN_TIMEOUT (300 s) on 10-10 |
 | 15 | `generate-analyst-daily-digest-shadow` (`ffa6bbfa93ad4056`) | BC | shadow (dry_run) | `30 7 * * 1-5` | 1 RUN_FAILED 10-12 |
 | 16 | `lane-governance-packet-weekly-shadow` (`e6f62397d5ae2aa2`) | MC | shadow (dry_run) | `20 6 * * 1` | weekly governance packet |
+| 17 | `tradeai-fabric-run-lane` | RS | live (published 01:14Z 10-15) | called (Execute Workflow; published sub-workflows only) | manages: one lane run — `POST /run` → poll `GET /run_outcome` with a retry budget and backoff waits → result. Escalates: errors → `tradeai-fabric-error` |
+| 18 | `tradeai-fabric-error` | RS | live (published 01:14Z 10-15) | Error Trigger | reports: shapes a workflow failure into `POST /intent` (comms intent, DIGEST tier, deduped, `runbook_id n8n-workflow-error`); the intent is queued until the consumer (#1744) is served and applied |
 
-**AI/LLM class: 0 workflows.** No n8n workflow contains an LLM step; the LLM work the dispatcher fires
-(`llm`-class rows, all dry_run) is host-side, through the governed bridge.
+Not scored (inactive): `tradeai-fabric-run-lane-probe` (Manual Trigger, CLI-only) and `tradeai-fabric-error-probe`
+(fails on purpose; published once for P2, then unpublished).
+
+**AI/LLM class: 0 workflows.** No n8n workflow contains an LLM step yet. `/v1/llm_step` is LIVE on the bridge
+(Build 2), and the first workflow to use it is the hermes learning process (PR-OPEN #1746, inactive). The LLM work
+the dispatcher fires (`llm`-class rows, all dry_run) is host-side, through the governed bridge.
 
 ## 4. Per-workflow framework compliance matrix (the core of this assessment)
 
@@ -126,11 +146,24 @@ Scored against the six areas of §23.24 (PROPOSED). **Y** = every check of the a
 | 14 | finviz-view-contracts-shadow | **N** (no contract) | **N** | P | **N** | P | n/a | 1.0 / 5 |
 | 15 | generate-analyst-daily-digest-shadow | **N** (no contract) | **N** | P | **N** | P | n/a | 1.0 / 5 |
 | 16 | lane-governance-packet-weekly-shadow | **N** (no contract) | **N** | P | **N** | P | n/a | 1.0 / 5 |
-| | **Fleet** | 0 Y / 11 P / 5 N | 0 Y / 9 P / 7 N | 0 Y / 16 P | 0 Y / 10 P / 6 N | 0 Y / 16 P | 0 Y / 1 P / 15 n/a | **31.5 / 81 = 39%** |
+| 17 | tradeai-fabric-run-lane | P (m1 run outcome by `run_id` + successes saved; m3 3600 s; no health contract) | P (a1 → fabric-error; its intents are queued, not delivered) | P (l1 l2 l5: successes saved, INDEX.json graph hash `--verify`; verify not scheduled) | P (r1 retry budget + backoff, `retryOnFail` ×2; no breaker in-workflow; no runbook id) | P (s1 relay bearer, s2 allowlist, `callerPolicy` same owner; S5 fails) | n/a | 2.5 / 5 |
+| 18 | tradeai-fabric-error | P (successes saved; m3 60 s; no contract) | **N** (self-referencing error workflow: its own failure alerts nothing; output queued only) | P (l1 l2; intent row with `routes_sha256`) | P (dedupe key + count; **R5 runbook id `n8n-workflow-error` — the first in the fleet**; `retryOnFail` ×2) | P (S5 fails) | n/a | 2.0 / 5 |
+| | **Fleet (18)** | 0 Y / 13 P / 5 N | 0 Y / 10 P / 8 N | 0 Y / 18 P | 0 Y / 12 P / 6 N | 0 Y / 18 P | 0 Y / 1 P / 17 n/a | **36.0 / 91 = 40%** |
 
-**No workflow is fully compliant in any area.** The ceiling today is P everywhere because three framework checks
-fail fleet-wide: successes are not saved (L1), the n8n DB role is superuser (S5), and no workflow has a runbook id
-(R5).
+**Re-scored 2026-10-15 02:35Z (16 + 2 workflows, SELECT-only).** Rows 1–16 are unchanged against the new
+measurement: settings, error-workflow wiring and executionTimeout are byte-for-byte what they were, and shadows 11
+and 12 still fail on every fire (1 error each in 24 h). The 16-workflow score stays 31.5 / 81 = 39%. The two fabric
+workflows add 4.5 / 10, and the fleet becomes **36.0 / 91 = 40%**. **No workflow is fully compliant in any area.**
+What moved is the ceiling, not the score:
+
+- **L1 (successes saved) passes for the first time**, on the 4 fabric workflows (per-workflow
+  `saveDataSuccessExecution: all`). It still fails on the 16 legacy workflows (instance default `none`).
+- **R5 (runbook id) passes for the first time**, on `tradeai-fabric-error`.
+- **S5 (n8n DB role not superuser) still fails fleet-wide.** `pg_roles.rolsuper = t` for `n8n`, so Security is P
+  everywhere.
+- The Run Lane and error workflow now exist. Wiring the 16 legacy workflows to `tradeai-fabric-error` and calling
+  Run Lane from the dispatcher is the largest single lift available: Alerting N→P on 6 rows and Recovery N→P on
+  the 6 per-lane shadow rows (+6.0), about 40% → 46%.
 
 **Evidence keys** (each is a §23.24 check; "E" exists, "P" proposed):
 
@@ -147,7 +180,7 @@ fail fleet-wide: successes are not saved (L1), the n8n DB role is superuser (S5)
 - **r1** retry — E on generic HTTP nodes (`retryOnFail`) plus the host `config/n8n_retry_policies.json`; per-lane
   workflows have none. **r2** breaker — E (ledger `breakers`; no half-open, WS1-05). **r4** DLQ — E (ledger
   `dead_letters`, `scripts/n8n_dlq.py`). No workflow names a manual-recovery runbook. The Run Lane sub-workflow
-  and the async run-outcome callback are PR-OPEN (Build 1, #1739).
+  and the async run-outcome callback are LIVE (Build 1, #1739, served 5aa61048d; P1 proof 01:15Z).
 - **s1** authN — E: relay bearer (`httpHeaderAuth` credential `tradeai-run-relay`, previous-bearer rotation), gateway
   HMAC claim. **s2** authZ — E: `config/n8n_run_allowlist.json` (96 lanes, never-list) + relay live list. **s3**
   secrets — E: one credential; `N8N_BLOCK_ENV_ACCESS_IN_NODE=true`; no broker or messaging credential; community
@@ -206,8 +239,8 @@ Risk = likelihood × impact for money or for the operator being told: **CRITICAL
 | One uid for every actor; docker group = root | CRITICAL | WS4-01 |
 | A Schwab "read" credential is a trading credential | CRITICAL | WS9-04 |
 | Per-order "2FA" proves a database write | CRITICAL | WS4-10 |
-| Trading lock merged, not served | CRITICAL until promoted | #1734 |
-| CC auth report_only; operator packet not executed; `:8443` DOF still tailnet-served | HIGH | #1735 runtime |
+| ~~Trading lock merged, not served~~ — **closed**: #1734 LIVE @5aa61048d, LOCKED | was CRITICAL | #1734 |
+| CC auth report_only; operator packet not executed; `:8443` DOF still tailnet-served (→ `localhost:7776`, no auth) | HIGH | #1735 runtime; `tailscale serve status` 02:35Z |
 | No DB role separation (`trade_ai` owns everything; `n8n` superuser) | HIGH | WS4-11, WS1b-12 |
 | Guard PreToolUse hook documented ACTIVE, not installed | HIGH | `docs/ops/AGENTS_GUARD_HOOK.md`; WS4-07 |
 | Self-authorisation stores writable by the agents they constrain | HIGH | WS4-08 |
@@ -230,11 +263,12 @@ Risk = likelihood × impact for money or for the operator being told: **CRITICAL
 1. **Release immutability.** The deploy runbook treats a release directory as immutable. On 10-14 at 18:11 ET, as
    deliberate incident containment, the operator ran a `config-write` grant script (grants `96a0ab8c`, `d3a80ca0`)
    that edited the served release's `config/health_agent_policy.json` in place to the #1737 content. The effect (no
-   stop supervisor via remediation) is live, and #1737 makes it durable once released; but until then the served
-   release identity (3e9dc5e14) does not describe the file that runs. The finding is the mechanism, not the decision:
-   there is no recorded, release-identity-preserving way to apply a containment change.
+   stop supervisor via remediation) went live at once. From 18:11 ET to 00:24Z, the served release identity
+   (3e9dc5e14) did not describe the file that ran. Since 5aa61048d, served #1737 matches the file again (sha256
+   equal to origin/main's). The finding is the mechanism, not the decision: there is no recorded,
+   release-identity-preserving way to apply a containment change.
 2. **Canary-live lanes** — 11 registry rows say `live`; they run `dry_run` (§2).
-3. **Drift pages P1** (§23.23, PROPOSED) and **the drift check** — the checker exists, is not scheduled, writes no
+3. **Drift pages P1** (§23.23, ACTIVE since 10.0.0) and **the drift check** — the checker exists, is not scheduled, writes no
    receipt.
 4. **The Claude Code guard hook** — `docs/ops/AGENTS_GUARD_HOOK.md` says ACTIVE; not installed; rules file `mode: log`.
 5. **CC auth enforcement** — designed enforce; runtime report_only; the service token file does not exist.
@@ -274,34 +308,40 @@ Risk = likelihood × impact for money or for the operator being told: **CRITICAL
 ## 8. Maturity scores — current vs target
 
 The architecture review's scores (0–10, `SCORES.md`, arithmetic reproducible from FINDINGS.csv) are the baseline;
-this refresh changes no finding status, so they stand. The framework compliance score is new.
+this refresh changes no finding status in FINDINGS.csv, so the baseline stands. The 02:35Z column is an estimate
+from what is now served; it becomes a score when the review's findings are re-marked. The framework compliance
+score is measured (§4).
 
-| Dimension | 2026-10-14 | When in-flight fixes are served (#1734, packet for #1735, #1737 released) | Target for the first n8n-owned process (§9 MUST done) |
+| Dimension | 2026-10-14 (review baseline) | 2026-10-15 02:35Z (#1734, #1737, Builds 1+2 served; #1735 packet not run) | Target for the first n8n-owned process (§9 MUST done) |
 |---|---:|---:|---:|
 | Security | 2.9 | ~3.0 | ≥ 5.0 |
-| Architecture (fitness to the n8n target) | 2.1 | 2.1 (capped at ~5.4 until 10.0.0 is ratified) | ≥ 5.0 |
+| Architecture (fitness to the n8n target) | 2.1 | ~2.4 (10.0.0 ratified, so the ~5.4 cap is lifted; Run Lane + error workflow + run outcomes + `/v1/llm_step` LIVE; 0 processes owned) | ≥ 5.0 |
 | Operational readiness | 2.2 | ~2.3 | ≥ 5.0 |
 | Technical debt (higher = less) | 5.9 | 5.9 | ≥ 6.5 |
-| **Overall** | **2.9** | **~3.0** | **≥ 5.0** |
-| Framework compliance, 16 workflows (§4) | **39%** (0 workflows compliant) | 39% | 100% of active workflows, or archived |
+| **Overall** | **2.9** | **~3.1** (0.30·3.0 + 0.25·2.4 + 0.30·2.3 + 0.15·5.9) | **≥ 5.0** |
+| Framework compliance (§4) | **39%** (16 workflows, 0 compliant) | **40%** (18 workflows, 0 compliant) | 100% of active workflows, or archived |
 
 ## 9. Remaining work and next actions
 
-**MUST, before any further migration (ordered):**
+**MUST, before any further migration (ordered; status 2026-10-15 02:35Z):**
 
-1. Promote `a1b1c5c93` (serves #1734 and #1737) and record the 18:11 containment edit in the release log — owner:
-   operator (release grant naming the SHA).
-2. Execute the CC auth packet (`docs/ops/packets/cc-tailscale-identity-20261014/`) and flip `report_only` off.
+1. ~~Promote `a1b1c5c93` (serves #1734 and #1737)~~ — **DONE**: 5aa61048d served at 00:24Z. Still to do: record
+   the 18:11 containment edit in the release log. Next: promote #1741–#1744 (MERGED-NOT-SERVED) — owner: operator
+   (release grant naming the SHA).
+2. Execute the CC auth packet (`docs/ops/packets/cc-tailscale-identity-20261014/`) and flip `report_only` off —
+   **NOT DONE**.
 3. Reconcile live authority: one source for "live" (registry vs relay list vs allowlist `live_arg`); until then the
-   registry rows of the 11 dry-running canary lanes say what they do (WS1-07).
-4. Archive the three superseded shadow workflows (approved 10-10; one `cron` grant).
-5. Ratify or reject 10.0.0 (§23.23) and 11.0.0 (§23.24); review and land Build 1 (PR #1739: Run Lane, run-outcome
-   contract, error workflow, effect claim) and Build 2 (PR #1738), then put an error workflow on every workflow and
-   build the framework check `scripts/check_n8n_workflow_framework.py`
-   (PROPOSED in §23.24).
+   registry rows of the 11 dry-running canary lanes say what they do (WS1-07) — **NOT DONE**.
+4. Archive the three superseded shadow workflows (approved 10-10; one `cron` grant) — **NOT DONE**.
+5. ~~Ratify 10.0.0~~ **DONE** (#1740). ~~Land Build 1 and Build 2~~ **DONE** (LIVE). Remaining: ratify or reject
+   11.0.0 (§23.24); put `tradeai-fabric-error` on every workflow; apply the comms-intent consumer (#1744) so error
+   intents reach the operator; build the framework check `scripts/check_n8n_workflow_framework.py` (PROPOSED in
+   §23.24).
 6. Host dead-man outside n8n and an off-box dead-man + second channel (WS1-15, WS3-18, WS3-20).
 7. UPS and a cold-boot drill; first `trade_ai` restore drill (WS8-06, WS6-07).
-8. Save successes with `run_id` custom data; schedule the drift check with P1 on drift; n8n DB role non-superuser.
+8. Save successes with `run_id` custom data on the legacy 16 (the fabric pair already save); schedule the drift
+   check with P1 on drift; n8n DB role non-superuser.
+9. DeepSeek `/v1/llm_step` proof once upstream recovers and #1742 is served; #1745 OAuth fallback merged.
 
 **SHOULD:** alert classes for SLA breach, performance degradation, integration failure and LLM exception with a
 `runbook_id` per PAGE row (ALERT_TAXONOMY §3); bridge caller auth to `enforce`; egress sanitiser to `enforce`;

@@ -297,12 +297,13 @@ Answer every line with evidence (a command output, a receipt path, a PR link) be
 - [ ] After promote, `curl -s 127.0.0.1:7777/v3/build-meta.json` names the SHA (step 6); the change is **LIVE**, not
       MERGED-NOT-SERVED. Nothing was edited inside a release directory; if an operator containment edit was made
       there (2026-10-14 18:11, `config/health_agent_policy.json`, `config-write` grants `96a0ab8c`/`d3a80ca0`), this
-      release must carry the same content so served identity and running files agree again.
+      release must carry the same content so served identity and running files agree again (done for that edit by
+      5aa61048d, which serves #1737).
 - [ ] Bound units restarted onto CURRENT (step 7); `systemctl --user --failed` empty.
 
 **B. Safety rails**
 - [ ] No broker, order, stop, credential, live-flag or 2FA path touched without the named grant (AGENTS.md §0, §22).
-- [ ] If the change can reach a broker write: the trading lock is served and the change calls `assert_trading_unlocked`
+- [ ] If the change can reach a broker write: the change calls `assert_trading_unlocked` (the lock is LIVE @5aa61048d)
       (`tests/test_trading_lock_coverage_20261014.py`).
 - [ ] New HTTP routes are classified in `config/cc_auth.yaml` (service, CSRF, step-up) and covered by its tests.
 - [ ] No secret value in code, config, logs or docs (`scripts/check_no_secrets.py`).
@@ -316,6 +317,8 @@ Answer every line with evidence (a command output, a receipt path, a PR link) be
 - [ ] Sends go through `send_telegram` / notification intents only (`scripts/check_comms_gateway_enforcement.py` green).
 
 **D. n8n workflows (in addition)**
+- [ ] The workflow is a business process (AGENTS.md 10.0.0 §23.23 (2)), not a timer-only leaf lane while the freeze is in
+      force; it uses the fabric Run Lane and `tradeai-fabric-error`, and any sub-workflow it calls is published.
 - [ ] The framework card of `N8N_ONBOARDING_STANDARD.md` §0 is in the PR; every element of the six areas
       (`N8N_CONFIGURATION.md` §0.4) is met or has an accepted exception.
 - [ ] Drift check OK after import; activation grant names the workflow ids (`scripts/check_n8n_activation_grants.py`).

@@ -23,7 +23,8 @@ proves it. Sources: REMEDIATION_PLAN §5 (L1–L8), §6 (R1–R7), §8; `V9-llm-
 
 ## 0. Monitoring and observability — the platform as measured 2026-10-14
 
-Refreshed 2026-10-14T18:45-04:00 at served `3e9dc5e14` (origin/main `a1b1c5c93`). §1–§7 below remain the per-lane
+Refreshed 2026-10-14T18:45-04:00 at served `3e9dc5e14` and re-measured 2026-10-15T02:35Z at served `5aa61048d`
+(origin/main `57d8fc3ff`; see §0.4 for what changed). §1–§7 below remain the per-lane
 standard; §8 is the 2026-10-10 snapshot and is superseded by this section. Framework checks (Monitoring and
 Logging areas) are listed in [`N8N_CONFIGURATION.md`](N8N_CONFIGURATION.md) §0.4; per-workflow results in the
 [gap assessment](N8N_GAP_ASSESSMENT_AND_MATURITY_REVIEW_20261014.md) §4.
@@ -49,7 +50,8 @@ Logging areas) are listed in [`N8N_CONFIGURATION.md`](N8N_CONFIGURATION.md) §0.
   are visible only as receipts, ledger `duration_s` and logs (WS8-10).
 - **No single ops view.** About ten health surfaces disagree: `/api/v2/health` says 82/degraded while the fan-in
   holds 18 open P1 (WS8-10).
-- **No n8n process view.** Successful executions are not saved; n8n shows errors only (WS1-14, WS1b-06).
+- **No n8n process view for the legacy 16.** Their successful executions are not saved, so n8n shows only their
+  errors (WS1-14, WS1b-06). The 4 fabric workflows save successes (per-workflow `saveDataSuccessExecution: all`).
 - **No off-box liveness.** `heartbeat-receiver.service` (:18798) is on this host (WS3-18); the host dead-man of
   §4.2.1 is a design, not built.
 - **No unit-failure / OOM alert** (WS3-27); **no `/tmp` inode monitor** (WS3-31).
@@ -72,6 +74,24 @@ python3 scripts/check_n8n_workflow_drift.py --dry-run
 Measured 2026-10-14 ~18:40 ET: n8n errors 419 (10-13), 763 (10-14), 836 of the last 24 h from `tradeai-dispatcher`
 policy refusals; ledger 24 h live 1,628 RUN_DONE / 8 RUN_TIMEOUT / 1 RUN_FAILED; relay refusals (last 400)
 `relay_live_not_enabled` 227, `momentum_monitor_admission_unproven` 168; drift 16/16 OK.
+
+### 0.4 Re-measured 2026-10-15 02:35Z (served 5aa61048d)
+
+- n8n: **18 active** (16 + `tradeai-fabric-run-lane`, `tradeai-fabric-error`). Error rows: 1,264 stored, 611 in
+  24 h, of which 599 are `tradeai-dispatcher` policy refusals. Drift 18/18 OK. The drift check is still
+  unscheduled.
+- Ledger, 24 h: live 933 RUN_DONE, 1 RUN_FAILED, 1 RUNNING; dry_run 1,370 RUN_DONE. The drop from 10-14 is the 15
+  paused Schwab cron lines. New tables from Build 1: `run_outcomes` (189 rows since 00:25Z) and `comms_intents`
+  (1 row, `QUEUED`).
+- **Provider health** (LLM dependency monitoring): `check_llm_provider_health` did not catch the DeepSeek stall
+  from ~00:33Z, because a socket read timeout surfaced as `NETWORK_ERROR`, not `TIMEOUT`
+  (`~/n8n-maturity-verification/arch-review-20261014/DEEPSEEK_LLM_STEP_STALL.md`). #1742 (MERGED-NOT-SERVED)
+  adds typed read timeouts, a stall breaker and a provider-health stall alarm: P1 when a process has no lane
+  left, P2 per lane, P3 stall digest.
+- **Provider journal memory**: `latest()` peaked at 449.6 MB. #1743 (MERGED-NOT-SERVED) brings it to 3.3 MB. Its
+  rotation CLI is unscheduled.
+- The error-workflow → operator path is not end to end yet. `tradeai-fabric-error` writes a queued intent. The
+  consumer that turns it into a fan-in incident (P2 digest) is #1744, MERGED-NOT-SERVED and not applied.
 
 ---
 

@@ -2,16 +2,17 @@
 
 ```
 Status:      ACTIVE (procedure; the incident store and CC incident view it would write to are PLANNED)
-as_of:       2026-10-14T18:45:00-04:00
-Measured at: served 3e9dc5e14 / origin/main a1b1c5c93; host ms01-openclaw
+as_of:       2026-10-15T02:35:00Z (first written 2026-10-14T18:45-04:00 at served 3e9dc5e14)
+Measured at: served 5aa61048d / origin/main 57d8fc3ff; host ms01-openclaw
 Owner:       operator (incident commander); agents assist read-only
-Policy:      AGENTS.md 7.0.0 §0, §10 "Incident and rollback", §17, §24.10 (execution-ops grant)
+Policy:      AGENTS.md 10.0.0 §0, §10 "Incident and rollback", §17, §24.10 (execution-ops grant)
 ```
 
 Written after the SPCX incident of 2026-10-14, which had no incident record, owner, severity or exit criteria
 (WS8-01): resting broker stops filled at 14:24–14:39 ET, 48 stop alerts were suppressed, the first page came from
 the SIEM backstop at 14:45 ET, after the fills (WS3-03, WS3-09). This runbook is the procedure. There is **no
-incident store and no CC incident view yet** (WS5-20, PLANNED); until there is, the record is a file (§3).
+incident store and no CC incident view yet** (WS5-20, PLANNED); until there is, the record is a file (§3). The SPCX
+record is [`docs/incidents/INCIDENT_20261014_SPCX_RESTING_STOPS.md`](../incidents/INCIDENT_20261014_SPCX_RESTING_STOPS.md).
 
 ## 1. Severity — set by what is at risk, not by who reported it
 
@@ -34,7 +35,9 @@ When unsure, take the higher severity.
 
 ## 3. The incident record (until the incident store exists)
 
-Create `~/n8n-maturity-verification/incidents/<YYYYMMDD>-<slug>/INCIDENT.md` (host, not git) with:
+Create `~/n8n-maturity-verification/incidents/<YYYYMMDD>-<slug>/INCIDENT.md` (host, not git) for the working
+record. A SEV1 also gets a reviewed copy in git, `docs/incidents/INCIDENT_<YYYYMMDD>_<SLUG>.md`, once it is
+CONTAINED. Both use this header:
 
 ```
 id: <YYYYMMDD>-<slug>     sev: SEV1|SEV2|SEV3     ic: operator     opened: <ET timestamp>
@@ -52,7 +55,8 @@ within 3 days of RESOLVED (§7).
 | Class | Contain (operator unless stated) | Never |
 |---|---|---|
 | Unexpected broker activity | check the broker app directly; deactivate the API app if needed (done 2026-10-14, `config/schwab_access_mode.yaml` `forbidden`); kill switch (CC stop routes need same-origin only, no step-up) | an agent placing, cancelling or changing an order or stop |
-| Trading code misbehaving | once #1734 is served: create the PANIC file `~/.local/state/tradeai/TRADING_LOCKED` (locks every broker write; `docs/runbooks/TRADING_LOCK.md`) | writing the unlock file for anyone |
+| Trading code misbehaving | the trading lock is LIVE (#1734 @5aa61048d) and LOCKED by default (no unlock file). If an unlock file exists, create the PANIC file `~/.local/state/tradeai/TRADING_LOCKED` (locks every broker write; `docs/runbooks/TRADING_LOCK.md`); also `GET /api/v2/execution/kill-switches` | writing the unlock file for anyone |
+| n8n fabric error intents piling up | read ledger `comms_intents` (`mode=ro`); until the consumer (#1744) is served and applied, `QUEUED` intents reach no one | applying the consumer without its dry run |
 | Alert plane down | verify on the phone; read `incident_notifier_last.json`, `notification_intent_receipts.jsonl`; restart the notifier's dependency, not the notifier's rules | raising caps or muting categories to "make it quiet" |
 | n8n stalled or wrong | deactivate the workflow (packet, `cron` grant); uncomment the lane's `# RETIRED … n8n-cutover` cron line (`docs/ops/ROLLBACK_COMMANDS.md`) | editing a workflow in the n8n UI |
 | Bad release | `bash scripts/cio_phase2_exact_main_deploy.sh rollback` (release grant) | an agent editing files inside a release directory. A containment edit there is an operator decision under a `config-write` grant, recorded in the incident timeline and followed by a release that makes it durable (2026-10-14 18:11, grants `96a0ab8c`/`d3a80ca0`, made durable by #1737; gap assessment §6) |
@@ -87,5 +91,5 @@ incident record are the source for any later summary.
 
 No incident store or CC view (WS5-20); no off-box dead-man or second channel (WS3-18, WS3-20); broker orders the
 host did not place are invisible (WS8-02); one human on call with ~44 approvals a day (WS8-12); no runbook link
-on any alert (WS8-16 — the `runbook_id` check in AGENTS.md §23.24, PROPOSED). Tracking:
+on any alert (WS8-16 — the `runbook_id` check in AGENTS.md §23.24, PROPOSED; the first workflow that carries one is `tradeai-fabric-error`). Tracking:
 `docs/implementation/n8n-maturity/N8N_GAP_ASSESSMENT_AND_MATURITY_REVIEW_20261014.md` §9.

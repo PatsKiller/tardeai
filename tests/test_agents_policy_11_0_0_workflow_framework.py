@@ -4,12 +4,13 @@ Operator 2026-10-14: n8n is the primary orchestration and automation layer, with
 every n8n workflow, contract, integration and automation" covering monitoring, alerting, logging, recovery, security
 and AI/LLM governance. Pins, all hermetic (source text only; nothing imports or runs a lane, a workflow or n8n):
 
-* the policy record: the header stays 7.0.0 ACTIVE until a ratifying edit (or, once it says 11.0.0, agrees with the
+* the policy record: the header stays 10.0.0 ACTIVE until a ratifying edit (or, once it says 11.0.0, agrees with the
   row); one 11.0.0 version row awaiting APPROVE_AGENTS_POLICY_11_0_0; the banner; the state checker passes;
 * §23.24: scope and class, every element the operator named in each of the six areas, each with a check marked
   existing (E) or proposed (P), the activation bar, and the pointers to the documents;
 * §0, §2, §2A, §7A, §17, §22, §23.14 and §23.23 are byte-identical; the tool adapters carry nothing from 11.0.0;
-* the documents §23.24 points at exist, and the gap assessment carries the 16-workflow compliance matrix.
+* the documents §23.24 points at exist, and the gap assessment carries the 18-workflow compliance matrix
+  (16 legacy + the 2 fabric workflows served in 5aa61048d, re-scored 2026-10-15).
 """
 from __future__ import annotations
 
@@ -29,8 +30,9 @@ from tests import test_agents_policy_10_0_0_n8n_fabric as T10  # noqa: E402
 AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
 TOKEN = "APPROVE_AGENTS_POLICY_11_0_0"
 DIRECTIVE = "a mandatory standard framework for every n8n workflow, contract, integration and automation"
-#: §23.23 (heading up to the next "## ", rstripped), measured on origin/main a1b1c5c93 before this amendment.
-SECTION_23_23_SHA256 = "12d4df6d4410fbb2f938e9e711cff1971ddfd2c9c7a978a8607a20be36df72ef"
+#: §23.23 (heading up to the next "## ", rstripped), measured on origin/main 57d8fc3ff before this amendment
+#: (after the 10.0.0 ratifying edit, #1740, which changed §23.23's status lines; the a1b1c5c93 value was 12d4df6d…).
+SECTION_23_23_SHA256 = "f5770e9bc578b1e96b1380f380b5b64821b9ee8965b7468b03d7e7347e469d4d"
 DOCS = (
     "docs/implementation/n8n-maturity/N8N_CONFIGURATION.md",
     "docs/implementation/n8n-maturity/N8N_ONBOARDING_STANDARD.md",
@@ -48,6 +50,7 @@ ACTIVE_WORKFLOWS = (
     "n8n-research-intake-consumer", "crontab-snapshot-for-health-agent", "catalyst-calibration-monitor-shadow",
     "watch-directives-monitor-shadow", "source-attribution-monitor-shadow", "finviz-view-contracts-shadow",
     "generate-analyst-daily-digest-shadow", "lane-governance-packet-weekly-shadow",
+    "tradeai-fabric-run-lane", "tradeai-fabric-error",
 )
 
 
@@ -100,7 +103,7 @@ def test_banner_quotes_the_operator_and_states_the_class():
     end = AGENTS.index("\n\n**", start + 10)
     banner = _flat(AGENTS[start:end])
     for frag in ("PROPOSED (MAJOR)", DIRECTIVE, "Why MAJOR", "It grants nothing", "byte-identical",
-                 "header block stays at 7.0.0 ACTIVE",
+                 "header block stays at 10.0.0 ACTIVE",
                  f"{TOKEN} <pr_number> <head_sha>", "renumbers to 10.1.0"):
         assert frag in banner, frag
 

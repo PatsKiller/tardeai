@@ -8,7 +8,7 @@ Measured at: base 1c60ecb42 / served 1c60ecb42-main-exact-phase2-20260925-091436
 This index is short on purpose. It does **not** own any roster. Each row names the
 registry that does, so there is exactly one place to change each fact.
 
-> **2026-10-14:** the platform architecture as deployed (and the n8n target) is in
+> **2026-10-14 (re-measured 2026-10-15 at served `5aa61048d`):** the platform architecture as deployed (and the n8n target) is in
 > [`docs/implementation/n8n-maturity/02-six-workflow-architecture.md`](../implementation/n8n-maturity/02-six-workflow-architecture.md) §A;
 > the gap assessment is
 > [`N8N_GAP_ASSESSMENT_AND_MATURITY_REVIEW_20261014.md`](../implementation/n8n-maturity/N8N_GAP_ASSESSMENT_AND_MATURITY_REVIEW_20261014.md).

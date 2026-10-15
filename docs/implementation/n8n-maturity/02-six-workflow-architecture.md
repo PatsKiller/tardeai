@@ -15,11 +15,12 @@ Path convention: `$CODE_ROOT` is the pinned CURRENT release and `$STATE_ROOT` is
 
 ---
 
-## A. Platform architecture as deployed, and the target (refreshed 2026-10-14)
+## A. Platform architecture as deployed, and the target (refreshed 2026-10-15)
 
-Measured 2026-10-14T18:45-04:00 at served `3e9dc5e14` (origin/main `a1b1c5c93`). Status labels as in the
-[gap assessment](N8N_GAP_ASSESSMENT_AND_MATURITY_REVIEW_20261014.md) §0. AGENTS.md **7.0.0** is ACTIVE; the target
-below is **10.0.0 §23.23, MERGED AS PROPOSED, not ratified**. The sections from §0 on are the 2026-10-09 design
+Measured 2026-10-15T02:35Z at served `5aa61048d` (origin/main `57d8fc3ff`). First written 2026-10-14 18:45 ET at
+`3e9dc5e14`. Status labels as in the [gap assessment](N8N_GAP_ASSESSMENT_AND_MATURITY_REVIEW_20261014.md) §0.
+AGENTS.md **10.0.0** is ACTIVE (#1740), so the target below, **§23.23**, is now the binding policy. Status:
+[`PROGRAM_TRACKER_20261015.md`](PROGRAM_TRACKER_20261015.md). The sections from §0 on are the 2026-10-09 design
 record of the six generic workflows; what was built from it is in [`N8N_CONFIGURATION.md`](N8N_CONFIGURATION.md) §3.
 
 ### A.1 Components and trust boundaries today
@@ -35,11 +36,12 @@ record of the six generic workflows; what was built from it is in [`N8N_CONFIGUR
   │  ledger (sqlite: runs, receipts, effects, breakers, dead_letters) ◄── executor v2 (systemd) ── lane scripts│
   │        ▲                                                                   │ LLM: governed bridge :8766   │
   │  coordination gateway 127.0.0.1:18091 (HMAC claim, allowlist, stage clamp) │ broker: Schwab paused        │
-  │        ▲                                                                   │ (trading lock #1734 not served)
+  │        ▲                                                                   │ (trading lock #1734 LIVE, LOCKED)
   │  run relay 172.19.0.1:18092 (bearer; never spawns)                                                       │
   │        ▲ docker bridge                                                                                   │
   │  ┌─ m8m-n8n (n8nio/n8n:2.43.0, 127.0.0.1:5678) ─ m8m-n8n-db (postgres 16, internal) ─┐                    │
-  │  │ 16 active workflows: schedule → GET /due → POST /run; Error Trigger → POST /event │                    │
+  │  │ 18 active: 16 legacy (schedule → GET /due → POST /run; Error Trigger → POST /event)│                    │
+  │  │  + fabric Run Lane (POST /run → GET /run_outcome) + fabric error (→ POST /intent)  │                    │
   │  └───────────────────────────────────────────────────────────────────────────────────┘                   │
   └──────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -48,21 +50,21 @@ record of the six generic workflows; what was built from it is in [`N8N_CONFIGUR
 |---|---|---|
 | When a lane runs | 453 cron lines, 142 systemd units, 81 registry dispatch rows ticked by n8n (`* * * * *`), 10 n8n per-lane schedules | LIVE |
 | Whether it runs, live or dry | host: allowlist (96 lanes), registry `dispatch.mode`, relay live list (7 lanes), gateway stage clamp — **four gates that disagree** (13 registry-live rows, 2 actually live) | LIVE (WS1-07 open) |
-| Retries, DLQ, breakers | host `n8n_due.py` + ledger | LIVE |
+| Retries, DLQ, breakers | host `n8n_due.py` + ledger; n8n Run Lane sub-workflow LIVE but no legacy lane calls it yet | LIVE |
 | Execution | executor v2 (class caps global 4) | LIVE |
-| Evidence | ledger `RunReceipt@v2`, lane receipts, `output_signal` | LIVE |
+| Evidence | ledger `RunReceipt@v2`, lane receipts, `output_signal`; `run_outcomes` (Build 1) | LIVE |
 | Alerts to the operator | host comms gateway (CANARY, `owned_classes: ['ops']`) and `send_telegram` | LIVE |
-| LLM calls | governed bridge :8766 (DeepSeek in canary; OAuth transports PR-OPEN #1738) | LIVE / PR-OPEN |
-| Broker | Schwab app deactivated 10-14 (`config/schwab_access_mode.yaml` `forbidden`); read-only lock #1734 MERGED-NOT-SERVED | — |
+| LLM calls | governed bridge :8766. OAuth transports grok + chatgpt ON (#1738, drop-in `60-oauth-transports`); `/v1/llm_step` LIVE; DeepSeek degraded upstream since ~00:33Z; #1742 (hard deadline, stall breaker) MERGED-NOT-SERVED; #1745 OAuth fallback for 3 DeepSeek-only processes PR-OPEN | LIVE |
+| Broker | Schwab app deactivated 10-14 (`config/schwab_access_mode.yaml` `forbidden`); read-only lock #1734 **LIVE, LOCKED**; global kill switch ON; pilot disarmed | — |
 
-### A.2 Target (10.0.0 §23.23, PROPOSED) and the distance
+### A.2 Target (10.0.0 §23.23, ACTIVE) and the distance
 
 | Layer | Target owner | Distance today |
 |---|---|---|
-| Flow (sequence, dependencies, events, retries, approvals, escalation timers, LLM judgment steps) | n8n | 0 sub-workflows, 0 approval waits, 0 AI nodes; Run Lane, run-outcome contract, error workflow and effect claim PR-OPEN (Build 1, #1739) |
+| Flow (sequence, dependencies, events, retries, approvals, escalation timers, LLM judgment steps) | n8n | Run Lane, run-outcome contract, error workflow and effect claim **LIVE** (Build 1, #1739; P1 01:15Z, P2 01:37Z). 1 sub-workflow, 0 approval waits, 0 AI nodes; **0 business processes owned** (first: hermes learning, PR-OPEN #1746) |
 | Authority, execution, evidence | host | in place (the part to keep) |
-| LLM judgment | governed bridge `/v1/llm_step`, closed schema | PR-OPEN #1738, OFF by default |
-| Money | broker gateway (read projections) + execution service behind the trading lock and a per-order operator assertion | gateway PLANNED (9.0.0 §23.22, branch-only); lock MERGED-NOT-SERVED |
+| LLM judgment | governed bridge `/v1/llm_step`, closed schema | **LIVE** (#1738; grok + chatgpt probes passed with `LlmStepAudit` rows; DeepSeek unproven) |
+| Money | broker gateway (read projections) + execution service behind the trading lock and a per-order operator assertion | gateway PLANNED (9.0.0 §23.22, branch-only); lock **LIVE, LOCKED** |
 | Independence | P0/P1 pages and dead-man never depend on n8n | heartbeat-watch runs in n8n (WS1-15); off-box dead-man absent (WS3-18) |
 
 Every workflow on the target is built to the mandatory framework of AGENTS.md §23.24 (PROPOSED 11.0.0;

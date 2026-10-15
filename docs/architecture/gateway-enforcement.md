@@ -9,7 +9,7 @@
 > `scripts/check_comms_gateway_enforcement.py`: `scripts/check_notification_intents.py` against
 > `config/notification_intent_baseline.json` (49 sends without a declared priority). Runtime:
 > `GET /api/v2/communications/health` reports `mode: CANARY`, `phase: 7`, `owned_classes: ['ops']`
-> (`COMMS_GATEWAY_CANARY_CLASSES`). Framework context: `docs/ALERT_INCIDENT_RESOLUTION.md` "Alerting framework".
+> (`COMMS_GATEWAY_CANARY_CLASSES`); unchanged when re-read 2026-10-15 02:35Z at served `5aa61048d`. Framework context: `docs/ALERT_INCIDENT_RESOLUTION.md` "Alerting framework".
 
 ---
 
