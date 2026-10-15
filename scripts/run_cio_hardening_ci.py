@@ -3763,6 +3763,18 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: N8N_WORKFLOW_FRAMEWORK_20261015 — AGENTS.md §23.24 framework checker
+        # (scripts/check_n8n_workflow_framework.py: every workflow scored per element, pass/partial/fail with a
+        # reason; FW-M6 fails a contract with no expected_output rule — exit 0 with nothing produced is a FAILURE),
+        # the INERT reference mature workflow (scripts/build_n8n_reference_workflow.py --check, 100% on the checker),
+        # the scorecard and the contracts design kept true by grep. Hermetic: committed repo files, synthetic
+        # workflows, node.js for the reference Code nodes; no n8n, relay, gateway, ledger or DB.
+        "n8n_workflow_framework_20261015",
+        [
+            "tests/test_check_n8n_workflow_framework.py",
+        ],
+    ),
+    (
         # ANCHOR: CANARY_EFFECT_KEYS — 2026-10-15 canary double-effect audit (arch-review-20261014): every live, canary
         # or canary-wave lane that appends, sends or calls an LLM carries a STAGED effect key (cron_claim false,
         # n8n_claim false: neither side claims, executor view unchanged); the cron-side wrapper

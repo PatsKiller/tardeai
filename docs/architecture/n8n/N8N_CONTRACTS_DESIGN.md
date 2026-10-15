@@ -38,7 +38,7 @@ expected-output rule.
 | # | Contract | Schema id(s) | Owner file | Producer → consumer | Status |
 |---|---|---|---|---|---|
 | 3 | Workflow contract | `N8nWorkflowSet@v1`, `N8nGenericWorkflowSet@v1`, `N8nFabricManifest@v1`; metadata `N8nWorkflowFrameworkMeta@v1` | `scripts/n8n_workflow_templates.py` | generator → n8n import packet, drift check, framework checker | (E) sets; (P) metadata block |
-| 4 | Run Lane request / result | `RunRequested@v1`, `RunOutcome@v1`, `FabricStepResult@v1`, `FabricProcessResult@v1`, `DueResponse@v1`, `N8nRunRelayLast@v1`, `N8nRunRelayRoutes@v1` | `scripts/lib/n8n_coordination_gateway.py`, `scripts/lib/n8n_fabric_store.py`, `scripts/n8n_run_relay.py`, generator | n8n ↔ relay ↔ gateway | (E) |
+| 4 | Run Lane request / result | `RunRequested@v1`, `RunOutcome@v1`, `RunLaneResult@v1`, `FabricStepResult@v1`, `FabricProcessResult@v1`, `DueResponse@v1`, `N8nRunRelayLast@v1`, `N8nRunRelayRoutes@v1` | `scripts/lib/n8n_coordination_gateway.py`, `scripts/lib/n8n_fabric_store.py`, `scripts/n8n_run_relay.py`, generator | n8n ↔ relay ↔ gateway | (E) |
 | 4 | Run keys | `d:` / `e:` / `g:` (`KEY_RE`), `p:` (`PROCESS_KEY_PREFIX`) | `scripts/lib/n8n_due.py`; generator | gateway / process workflow → ledger, executor | (E) d/e/g; (P) `p:` validation |
 | 5 | Run receipt | `RunReceipt@v1`, `RunReceipt@v2`, `ExecutorStatus@v1`, `LaneRunReceipt@v1`; (P) `LaneRunReceipt@v2` | `scripts/n8n_run_executor.py`, `scripts/lib/lane_last_receipt.py` | executor / lane → ledger, fan-in, health monitors | (E); (P) output fields |
 | 6 | Health contract | `N8nHealthContracts@v1` / `N8nHealthContract@v1`; (P) `expected_output` block `N8nExpectedOutput@v1` | `scripts/build_n8n_health_contracts.py`, `scripts/lib/n8n_health_contracts.py`, `config/n8n_health_contracts.json` | owner → checker, SIEM bridge, fan-in, framework checker | (E); (P) expected_output |
@@ -112,7 +112,7 @@ workflow_id, execution_id` (`scripts/n8n_workflow_templates.py`); relay bounds: 
 `exit_code`, `receipt_path`, `duration_s`, `effect_key`, `reason`, `attempt`, `finished_at`.
 
 **Run Lane I/O** (`tradeai-fabric-run-lane`; generator `build_run_lane`): inputs `lane_id, mode, idempotency_key,
-max_attempts (≤ 3), outcome_timeout_s (≤ 1000), process_id`; output one result with `status` from
+max_attempts (≤ 3), outcome_timeout_s (≤ 1000), process_id`; output one `RunLaneResult@v1` with `status` from
 `RUN_LANE_TERMINAL = (success, failed, refused_policy, skipped_lock)`; process workflows wrap each step's result as
 `FabricStepResult@v1` and the run as `FabricProcessResult@v1`, adding `blocked` and `skipped_upstream`.
 
@@ -358,7 +358,7 @@ reported once and not counted in a workflow's score (they cannot be fixed per wo
 | | FW-S3 | secrets | no credential other than the relay's; no secret-like literal in parameters |
 | | FW-S4 | node types | node types ⊆ the fabric allowlist, none forbidden |
 | AI/LLM | FW-G1..G7 | template, process, caps, schema, host re-check, deferral tier, HITL | (AI only) each `llm_steps[]` entry against the registries |
-| Platform | FW-P1..P5 | instance success saving, n8n DB role not superuser, drift check scheduled with P1, firewall for the relay bind, pinned image + env hardening | platform facts file (measured values, cited) |
+| Platform | FW-P1..P6 | instance success saving, n8n DB role not superuser, drift check scheduled with P1, firewall for the relay bind, pinned image + env hardening, a dead-man outside n8n | platform facts file (measured values, cited) |
 
 `--strict` exits non-zero when any workflow element is `fail`; the default is a report (exit 0).
 
@@ -407,8 +407,8 @@ workflow element the checker can evaluate offline.
 ## 15. Verification of schema ids (grep on 94601ff69)
 
 Each id below appears as a literal in the named owner file: `N8nWorkflowSet@v1`, `N8nGenericWorkflowSet@v1`,
-`N8nFabricManifest@v1`, `FabricStepResult@v1`, `FabricProcessResult@v1`, `N8nFabricProcesses@v1`
-(`scripts/n8n_workflow_templates.py`); `RunRequested@v1`, `N8nCoordinationReceipt@v1`
+`N8nFabricManifest@v1`, `RunLaneResult@v1`, `FabricStepResult@v1`, `FabricProcessResult@v1`,
+`N8nFabricProcesses@v1` (`scripts/n8n_workflow_templates.py`); `RunRequested@v1`, `N8nCoordinationReceipt@v1`
 (`scripts/lib/n8n_coordination_gateway.py`); `RunReceipt@v1`, `RunReceipt@v2`, `ExecutorStatus@v1`,
 `N8nExecutorConfig@v1` (`scripts/n8n_run_executor.py`); `RunOutcome@v1`, `CommsIntentReceipt@v1`,
 `N8nCommsIntentRoutes@v1` (`scripts/lib/n8n_fabric_store.py`); `N8nRunRelayLast@v1`, `N8nRunRelayRoutes@v1`

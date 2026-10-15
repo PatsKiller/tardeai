@@ -190,6 +190,7 @@ The relay's route table is the complete list of host calls a workflow can make. 
 | `GET /run_outcome?run_id=` | `coordination/run_outcome` (read) | nothing | `RunOutcome@v1` | Run Lane | (E) |
 | `POST /event` | `coordination/event` (read scope, `accept_event`) | ledger event row, lane `n8n-workflow-error` only | `N8nCoordinationReceipt@v1` | `tradeai-incident-router` (legacy) | (E) |
 | `POST /intent` | `comms/intent` (comms_intent) | ledger `comms_intents` row QUEUED | `CommsIntentReceipt@v1` | `tradeai-fabric-error` | (E) |
+| `GET /momentum-lifecycle` | momentum lifecycle projection (read) | nothing | candidate status | `tradeai-momentum-lifecycle-candidate` | (E) served by the handler **but missing from `ROUTES`**, so `--routes` and the relay contract check do not see it (scorecard FW-S2 finding) |
 | `POST /llm_step` | bridge `/v1/llm_step` via relay | bridge audit row | `LlmStepResult@v1` | process workflows with an AI step | **(P)** — the bridge listens on loopback; no relay route exists (RP-B, TARGET_ARCHITECTURE §4; FW-G*) |
 | `POST /approval/request` | approval service | approval request row | `approval_ref` | approval workflows | **(P)** — TARGET_ARCHITECTURE §5; GAP §5.3 (WS7-07) |
 | webhook resume (event-driven start) | gateway-signed `Event@v1` push | n8n execution | — | event workflows | **(P)** — C4 must hold first (§23.23 "Controls") |
@@ -385,6 +386,10 @@ state, decided on the host from the lane's receipt against a declared `expected_
 | Q7 | `p:` keys not validated by the gateway | live process steps impossible (fail-closed today) | Agent A | TRK-21/33 |
 | Q8 | `expected_output` rule absent from all 126 contracts | empty successes stay green | contract owners | FW-M6 (this PR measures it) |
 | R1 | Legacy per-lane workflows lack errorWorkflow/timeout | failures unrouted | Agent A | scorecard remediation order |
+| R2 | The relay serves `GET /momentum-lifecycle` outside its `ROUTES` table | an unreviewed route surface | Agent A | scorecard wave 3 |
+
+Measured compliance (this PR): **0 of 18 active workflows fully compliant, 46.9% by element**; the reference
+mature workflow scores 100% — `docs/implementation/n8n-maturity/N8N_FRAMEWORK_SCORECARD_20261015.md`.
 
 ## 13. Evidence index
 

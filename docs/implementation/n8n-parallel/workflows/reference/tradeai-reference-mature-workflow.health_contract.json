@@ -1,0 +1,94 @@
+{
+  "_note": "REVIEWED-style DRAFT for the INERT reference workflow (docs/architecture/n8n/N8N_CONTRACTS_DESIGN.md §6, §13). It is NOT in config/n8n_health_contracts.json and governs nothing at runtime: it shows the shape every contract takes under AGENTS.md §23.24, including the expected_output rule (operator 2026-10-15: a run that exits 0 but produces nothing is a FAILURE). Lane facts are copied from the REVIEWED contract aegis-nightly-ingestion in config/n8n_health_contracts.json and config/n8n_run_allowlist.json.",
+  "contract": {
+    "schema": "N8nHealthContract@v1",
+    "id": "tradeai-reference-mature-workflow",
+    "kind": "workflow",
+    "workflow_id": "tradeai-reference-mature-workflow",
+    "status": "REVIEWED",
+    "target_reason": "reference: shape only (stage shadow, dry_run; never imported)",
+    "stage": "shadow",
+    "purpose": {
+      "text": "Daily 19:00 ET: run the Aegis nightly delta (snapshot each tracked symbol into aegis_symbol_snapshot_nightly) as one fabric step through Run Lane.",
+      "business_function": "research",
+      "source": "scripts/build_n8n_reference_workflow.py; lane facts: config/n8n_health_contracts.json id=aegis-nightly-ingestion (REVIEWED 2026-10-11)"
+    },
+    "owner": "research",
+    "connects_to": [
+      {"name": "n8n workflow tradeai-fabric-run-lane (Execute Workflow, waits)", "kind": "service", "direction": "calls", "source": "scripts/n8n_workflow_templates.py build_run_lane"},
+      {"name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run + coordination/run_outcome -> tradeai-n8n-run-executor", "kind": "service", "direction": "calls", "source": "AGENTS.md §23.3; scripts/n8n_run_relay.py ROUTES"},
+      {"name": "$PY scripts/aegis_nightly_ingestion.py --dry-run", "kind": "runner", "direction": "calls", "source": "config/n8n_run_allowlist.json command + dry_run_arg (live_arg null)"},
+      {"name": "/tmp/aegis_nightly_ingestion.lock(.dryrun)", "kind": "lock", "direction": "read_write", "source": "config/n8n_run_allowlist.json lock; executor uses <lock>.dryrun for dry runs"},
+      {"name": "data/runtime/aegis-nightly-ingestion_last.json", "kind": "receipt", "direction": "write", "source": "LaneRunReceipt@v1 (P: @v2 output fields) at the allowlist output_signal"},
+      {"name": "Postgres aegis_symbol_snapshot_nightly INSERT (live run only)", "kind": "store", "direction": "write", "source": "scripts/aegis_nightly_ingestion.py"},
+      {"name": "n8n workflow tradeai-fabric-error -> relay POST /intent -> comms_intents", "kind": "service", "direction": "calls", "source": "settings.errorWorkflow; config/n8n_comms_intent_routes.json"}
+    ],
+    "healthy": [
+      {"check": "run_lane_success", "text": "the Run Lane result is status success (RunOutcome@v1 via GET /run_outcome)"},
+      {"check": "output_produced", "text": "the lane receipt shows produced_count >= expected_output.min_produced and no fatal skip reason (LaneRunReceipt@v2, P)"},
+      {"check": "dry_run_writes_nothing", "text": "a dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before"},
+      {"check": "duration_within_baseline", "text": "duration <= 480.0 s (80% of timeout_s 600)"}
+    ],
+    "degraded": [
+      {"check": "late", "text": "receipt ok_at older than 26.0 h but younger than 50.0 h"},
+      {"check": "slow", "text": "duration above 480.0 s"},
+      {"check": "retried", "text": "Run Lane needed more than one attempt, or a run ended skipped_lock"}
+    ],
+    "failed": [
+      {"check": "run_failed", "text": "Run Lane result failed (after its retry budget) or the outcome was lost"},
+      {"check": "empty_output", "text": "exit 0 but produced_count < min_produced, or a fatal skip reason (e.g. no_runner) — an empty success is a FAILURE"},
+      {"check": "output_unverifiable", "text": "the receipt lacks produced_count while the rule is declared"},
+      {"check": "no_receipt", "text": "a finished run left no RunReceipt (exit 0 is not evidence)"},
+      {"check": "stale", "text": "receipt ok_at older than 50.0 h"},
+      {"check": "breaker_or_dlq", "text": "a dead letter was written or the lane's breaker opened (3 failures)"},
+      {"check": "dry_run_wrote", "text": "a dry_run changed its output_signal or any durable state"}
+    ],
+    "expected_output": {
+      "schema": "N8nExpectedOutput@v1",
+      "unit": "tracked symbols snapshotted into aegis_symbol_snapshot_nightly",
+      "rule": "min_produced",
+      "min_produced": 1,
+      "window_h": null,
+      "produced_field": "produced_count",
+      "fatal_skip_reasons": ["no_runner", "no_credentials", "disabled", "unconfigured", "universe_empty_unexpected"],
+      "empty_allowed_reasons": [],
+      "evidence": [
+        {"kind": "store_rows", "ref": "Postgres aegis_symbol_snapshot_nightly rows with snapshot_date = the run's ET date"},
+        {"kind": "receipt_field", "ref": "data/runtime/aegis-nightly-ingestion_last.json produced_count / skipped_reasons"}
+      ],
+      "applies_to": "live runs; a dry run is checked for attempted_count >= 1 instead (it must write nothing)",
+      "on_violation": {"run_state": "RUN_FAILED", "reason": "empty_output", "notifier_priority": "P2"}
+    },
+    "baseline": {
+      "freshness_degraded_after_h": 26.0,
+      "freshness_failed_after_h": 50.0,
+      "freshness_rule": "daily 0 19 * * * America/New_York; degraded = one slot missed + 2 h, failed = two slots missed + 2 h",
+      "timeout_s": 600,
+      "class": "ingest",
+      "basis": "CLASS_DEFAULT_PROVISIONAL",
+      "duration_degraded_above_s": 480.0,
+      "p95_duration_bound_s": 480.0,
+      "source": "copied from config/n8n_health_contracts.json id=aegis-nightly-ingestion"
+    },
+    "alerting": {
+      "lane_severity": "Medium",
+      "failed": {"siem_severity": "WARN", "notifier_priority": "P2"},
+      "degraded": {"siem_severity": "INFO", "notifier_priority": "P3"},
+      "routing": "errorWorkflow tradeai-fabric-error -> POST /intent (fabric:workflow_error, DIGEST, runbook n8n-workflow-error) -> comms-intent consumer -> incident fan-in -> incident_notifier; never a direct send"
+    },
+    "remediation": {
+      "runbook_id": "n8n-reference-mature-workflow",
+      "runbook": "docs/implementation/n8n-parallel/workflows/reference/RUNBOOK_tradeai-reference-mature-workflow.md"
+    },
+    "evidence": {
+      "receipt": "data/runtime/aegis-nightly-ingestion_last.json",
+      "verify": [
+        "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT run_id, status, reason, duration_s FROM run_outcomes WHERE lane_id='aegis-nightly-ingestion' ORDER BY recorded_at DESC LIMIT 10\"",
+        "jq '{status, ok_at, produced_count, skipped_reasons}' $STATE_ROOT/data/runtime/aegis-nightly-ingestion_last.json"
+      ],
+      "never": "an n8n execution status alone; the ledger outcome and the receipt's produced_count are the evidence"
+    },
+    "review_by": "2026-11-15",
+    "review": {"reviewed_on": "2026-10-15", "reviewed_by": "reference shape (Agent A sub-agent); not an operator review", "status": "REVIEWED"}
+  }
+}

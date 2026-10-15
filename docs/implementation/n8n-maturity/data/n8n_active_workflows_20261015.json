@@ -1,0 +1,27 @@
+{
+  "schema": "N8nActiveWorkflowSet@v1",
+  "as_of": "2026-10-15T02:35:00Z",
+  "authority": "READ_ONLY_ADVISORY",
+  "source": "docs/implementation/n8n-maturity/N8N_GAP_ASSESSMENT_AND_MATURITY_REVIEW_20261014.md §2-§3 (n8n 2.43.0 DB, SELECT id, name, active FROM workflow_entity WHERE active; re-measured 2026-10-15 02:35Z). Not re-queried for this file: a live read was refused to the authoring agent on 2026-10-15; refresh it from a host read-only query before the next scorecard.",
+  "note": "class and mode are the gap assessment's (§3); they are NOT generator metadata, so the framework checker still scores FW-C1/FW-C2 from the workflow JSON alone. file = the committed generated copy the drift check compares with the live graph.",
+  "workflows": [
+    {"id": "tradeai-dispatcher", "live_id": "tradeai-dispatcher", "class": "business-critical", "mode": "live", "stage": "cutover", "file": "docs/implementation/n8n-maturity/workflows/tradeai-dispatcher.json"},
+    {"id": "tradeai-event-router", "live_id": "tradeai-event-router", "class": "business-critical", "mode": "live", "stage": "cutover", "file": "docs/implementation/n8n-maturity/workflows/tradeai-event-router.json"},
+    {"id": "tradeai-digest-scheduler", "live_id": "tradeai-digest-scheduler", "class": "business-critical", "mode": "live", "stage": "cutover", "file": "docs/implementation/n8n-maturity/workflows/tradeai-digest-scheduler.json"},
+    {"id": "tradeai-heartbeat-watcher", "live_id": "tradeai-heartbeat-watcher", "class": "resilience", "mode": "live", "stage": "cutover", "file": "docs/implementation/n8n-maturity/workflows/tradeai-heartbeat-watcher.json"},
+    {"id": "tradeai-incident-router", "live_id": "tradeai-incident-router", "class": "resilience", "mode": "live", "stage": "cutover", "file": "docs/implementation/n8n-maturity/workflows/tradeai-incident-router.json"},
+    {"id": "tradeai-momentum-lifecycle-candidate", "live_id": "tradeai-momentum-lifecycle-candidate", "class": "monitoring-compliance", "mode": "dry_run", "stage": "shadow", "file": "docs/implementation/n8n-maturity/workflows/tradeai-momentum-lifecycle-candidate.json"},
+    {"id": "n8n-incident-fanin", "live_id": "722fac0e043ea5c4", "class": "resilience", "mode": "live", "stage": "cutover", "file": "docs/implementation/n8n-parallel/workflows/generated/n8n-incident-fanin.json"},
+    {"id": "n8n-pilot-dispatch", "live_id": "078e8fcbea0c5020", "class": "monitoring-compliance", "mode": "live", "stage": "cutover", "file": "docs/implementation/n8n-parallel/workflows/generated/n8n-pilot-dispatch.json"},
+    {"id": "n8n-research-intake-consumer", "live_id": "21fd15d5f8a4c4da", "class": "business-critical", "mode": "live", "stage": "cutover", "file": "docs/implementation/n8n-parallel/workflows/generated/n8n-research-intake-consumer.json"},
+    {"id": "crontab-snapshot-for-health-agent", "live_id": "c0d4c7845e5c4fcc", "class": "resilience", "mode": "live", "stage": "cutover", "file": "docs/implementation/n8n-parallel/workflows/generated/crontab-snapshot-for-health-agent.json"},
+    {"id": "catalyst-calibration-monitor-shadow", "live_id": "283ceeb030de5e66", "class": "monitoring-compliance", "mode": "dry_run", "stage": "shadow", "file": "docs/implementation/n8n-parallel/workflows/generated/pending/catalyst-calibration-monitor-shadow.json"},
+    {"id": "watch-directives-monitor-shadow", "live_id": "5966437c872aa18b", "class": "monitoring-compliance", "mode": "dry_run", "stage": "shadow", "file": "docs/implementation/n8n-parallel/workflows/generated/pending/watch-directives-monitor-shadow.json"},
+    {"id": "source-attribution-monitor-shadow", "live_id": "498d749165a93ff9", "class": "monitoring-compliance", "mode": "dry_run", "stage": "shadow", "file": "docs/implementation/n8n-parallel/workflows/generated/pending/source-attribution-monitor-shadow.json"},
+    {"id": "finviz-view-contracts-shadow", "live_id": "2c725c7dfd4ac62f", "class": "monitoring-compliance", "mode": "dry_run", "stage": "shadow", "file": "docs/implementation/n8n-parallel/workflows/generated/pending/finviz-view-contracts-shadow.json"},
+    {"id": "generate-analyst-daily-digest-shadow", "live_id": "ffa6bbfa93ad4056", "class": "business-critical", "mode": "dry_run", "stage": "shadow", "file": "docs/implementation/n8n-parallel/workflows/generated/pending/generate-analyst-daily-digest-shadow.json"},
+    {"id": "lane-governance-packet-weekly-shadow", "live_id": "e6f62397d5ae2aa2", "class": "monitoring-compliance", "mode": "dry_run", "stage": "shadow", "file": "docs/implementation/n8n-parallel/workflows/generated/lane-governance-packet-weekly-shadow.json"},
+    {"id": "tradeai-fabric-run-lane", "live_id": "tradeai-fabric-run-lane", "class": "resilience", "mode": "live", "stage": "cutover", "file": "docs/implementation/n8n-maturity/workflows/fabric/tradeai-fabric-run-lane.json"},
+    {"id": "tradeai-fabric-error", "live_id": "tradeai-fabric-error", "class": "resilience", "mode": "live", "stage": "cutover", "file": "docs/implementation/n8n-maturity/workflows/fabric/tradeai-fabric-error.json"}
+  ]
+}
