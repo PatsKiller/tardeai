@@ -1280,6 +1280,17 @@ def analyze_confluence(symbol: str, profile: str = 'swing') -> dict:
 # ── CLI Test Mode ─────────────────────────────────────────────────────────────
 
 if __name__ == '__main__':
+    import sys as _sys
+    if "--universe" in _sys.argv[1:]:
+        # Lane indicator-engine (lane repair 2026-10-15): the real job — gap-fill indicator_confluence_cache over the
+        # cache's own universe (scripts/lib/indicator_universe_lane.py). The bare line below stays the CLI test mode.
+        # A --dry-run never enters PipelineRun (its telemetry is a write).
+        from lib import indicator_universe_lane as _lane
+        if "--dry-run" in _sys.argv[1:]:
+            _sys.exit(_lane.main(_sys.argv[1:]))
+        with PipelineRun("indicator_engine") as _run:
+            _code = _lane.main(_sys.argv[1:])
+        _sys.exit(_code)
     with PipelineRun("indicator_engine") as _run:
         import sys
         logging.basicConfig(level=logging.INFO)

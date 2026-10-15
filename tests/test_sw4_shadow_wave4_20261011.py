@@ -12,7 +12,9 @@ Pinned so a later PR cannot slip them in unreviewed (one reason each):
   market-regime-collector;
 * agent-recommendation-normalizer: P0 duplicate rows (random recommendation_id per run);
 * rag-indexer, journal-review-builder: llm class with an in-process model call (not the governed bridge);
-* build-symbol-profiles-at-0-19: its receipt is build_symbol_profiles_last.json, shared with refresh_symbol_cards;
+* (released 2026-10-15) build-symbol-profiles-at-0-19: was held because its receipt was build_symbol_profiles_last.json,
+  shared with refresh_symbol_cards; it now writes its own build-symbol-profiles-at-0-19_last.json and the lane repair
+  of 2026-10-15 took its refactor shard 05 proposal into SHADOW (tests/test_lane_repair_20261015.py pins it);
 * social-ingest-stocktwits: consolidation merges it into the social owner (CONSOLIDATION_PLAN §B.2), and its match
   also hits L639;
 * cio-stance-classification-drain, siem-to-hermes-backlog, desk-suggestions-digest, build-hermes-canonical-status,
@@ -81,7 +83,7 @@ SW4_LIVE = {k: v for k, v in SW4.items() if k not in SW4_ABSORBED}
 EXCLUDED = (
     "fred-data-ingest", "sync-dividend-data", "build-lesson-candidates", "candidate-discovery-orchestrator",
     "research-watchlist-discovery", "market-regime-collector", "agent-recommendation-normalizer", "rag-indexer",
-    "journal-review-builder", "build-symbol-profiles-at-0-19", "social-ingest-stocktwits",
+    "journal-review-builder", "social-ingest-stocktwits",
     "cio-stance-classification-drain", "siem-to-hermes-backlog", "desk-suggestions-digest",
     "build-hermes-canonical-status", "hermes-discovery-scorecard", "drain-discovery-backlog",
 )

@@ -502,12 +502,11 @@ def _persist_event_settlement_pg(
                 conn.rollback()
         except Exception:
             pass
-    finally:
-        try:
-            if conn is not None:
-                conn.close()
-        except Exception:
-            pass
+    # No conn.close() here (removed 2026-10-15, lane repair watchlist_entry_planner). _get_conn() returns
+    # db_adapter's THREAD-LOCAL connection — the same one the calling lane is using. Closing it after a send left the
+    # caller's cursor dead: watchlist_entry_planner died with "InterfaceError: cursor already closed" on its
+    # alerted_at UPDATE right after every successful entry alert (entry_planner.log, 09-25 .. 10-14). The thread's
+    # owner closes it (db_adapter.close_thread_conn); every other comms helper already leaves it open.
 
 
 def _mirror_event_settlement(
