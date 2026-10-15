@@ -6,6 +6,9 @@ the probe's ledger runs row(s) and run_outcomes row(s) (P1), the error probe's c
 log lines for op run_outcome / intent / POST /run since --since, and the shadow crontab snapshot mtime.
 
     python3 03_evidence.py --since 2026-10-15T14:07:00+00:00
+    python3 03_evidence.py --since 2026-10-15T14:07:00+00:00 --ledger /path/to/n8n_coordination_ledger.sqlite
+
+02_proofs.sh passes --since itself (the instant it started). Run alone, use the UTC instant just before the proof.
 """
 
 from __future__ import annotations
@@ -14,6 +17,7 @@ import argparse
 import json
 import os
 import sqlite3
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -29,11 +33,27 @@ def _rows(conn: sqlite3.Connection, sql: str, args: tuple) -> list[dict]:
         return [{"error": str(exc)}]
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--since", required=True, help="ISO-8601 UTC instant the proof started")
-    ap.add_argument("--ledger", default=None)
-    a = ap.parse_args()
+def main(argv: list[str] | None = None) -> int:
+    argv = sys.argv[1:] if argv is None else argv
+    ap = argparse.ArgumentParser(
+        prog="03_evidence.py",
+        usage="%(prog)s --since ISO8601_UTC [--ledger PATH]",
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    ap.add_argument(
+        "--since",
+        required=True,
+        metavar="ISO8601_UTC",
+        help="UTC instant the proof started, e.g. 2026-10-15T14:07:00+00:00 (rows and log lines at or after it)",
+    )
+    ap.add_argument(
+        "--ledger", default=None, metavar="PATH", help="coordination ledger (default: under the state root)"
+    )
+    if not argv:
+        ap.print_help()
+        return 2
+    a = ap.parse_args(argv)
     state = _state_root()
     ledger = Path(a.ledger) if a.ledger else state / "data" / "governance" / "n8n_coordination_ledger.sqlite"
     conn = sqlite3.connect(f"{ledger.resolve().as_uri()}?mode=ro", uri=True, timeout=5)

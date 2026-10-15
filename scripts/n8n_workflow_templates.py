@@ -1958,6 +1958,10 @@ FABRIC_RELAXED_NODE_TYPES = frozenset(
         "n8n-nodes-base.if",
         "n8n-nodes-base.merge",
         "n8n-nodes-base.errorTrigger",
+        # The Run Lane probe's start node (2026-10-15). A Manual Trigger runs ONLY on an explicit execution (the
+        # `n8n execute --id` CLI or the editor's Execute button); it never fires on its own, and a workflow whose only
+        # trigger is manual has nothing a publish could schedule. Nothing timed or external can start from it.
+        "n8n-nodes-base.manualTrigger",
     }
 )
 FABRIC_ALLOWED_NODE_TYPES = GENERIC_ALLOWED_NODE_TYPES | FABRIC_RELAXED_NODE_TYPES
@@ -2078,7 +2082,9 @@ FE_SHAPE = "Shape intent"
 FE_SET = "Relay"
 FE_POST = "POST relay /intent"
 FE_ASSERT = "Assert intent"
-FP_SCHED = "Schedule"
+#: The probe's start node. `n8n execute --id` needs a Manual Trigger (or Execute Workflow Trigger) to start from; a
+#: Schedule Trigger is not a CLI start node ("Missing node to start execution", operator live run 2026-10-15).
+FP_MANUAL = "Manual run"
 FP_INPUT = "Probe input"
 FP_CALL = "Call Run Lane"
 FP_ASSERT = "Assert probe result"
@@ -2562,18 +2568,18 @@ def _fabric_probe_assert_js() -> str:
 
 
 def build_fabric_probe() -> dict:
-    """Inactive; for the operator's one-off dry-run proof (`n8n execute --id`). Its schedule (04:00 on 1 January)
-    never matters while inactive. It calls Run Lane once, in dry_run, for FABRIC_PROBE_LANE."""
+    """Inactive; for the operator's one-off dry-run proof (`n8n execute --id`). It starts from a Manual Trigger only
+    (no schedule: it can never fire on its own) and calls Run Lane once, in dry_run, for FABRIC_PROBE_LANE."""
     wid = FABRIC_PROBE_ID
     key_expr = "={{ 'fabric-probe-' + String($execution.id) + '-' + $now.toFormat('yyyyLLddHHmmss') }}"
     nodes = [
         {
-            "id": _f_node_id(wid, FP_SCHED),
-            "name": FP_SCHED,
-            "type": "n8n-nodes-base.scheduleTrigger",
-            "typeVersion": 1.2,
+            "id": _f_node_id(wid, FP_MANUAL),
+            "name": FP_MANUAL,
+            "type": "n8n-nodes-base.manualTrigger",
+            "typeVersion": 1,
             "position": [0, 300],
-            "parameters": {"rule": {"interval": [{"field": "cronExpression", "expression": "0 4 1 1 *"}]}},
+            "parameters": {},
         },
         {
             "id": _f_node_id(wid, FP_INPUT),
@@ -2627,7 +2633,7 @@ def build_fabric_probe() -> dict:
         _f_code(wid, FP_ASSERT, _fabric_probe_assert_js(), [720, 300]),
     ]
     conns: dict = {}
-    _g_main(conns, FP_SCHED, [FP_INPUT])
+    _g_main(conns, FP_MANUAL, [FP_INPUT])
     _g_main(conns, FP_INPUT, [FP_CALL])
     _g_main(conns, FP_CALL, [FP_ASSERT])
     return _fabric_doc(wid, "probe", nodes, conns, _fabric_settings(wid, FABRIC_PROBE_TIMEOUT_S))
