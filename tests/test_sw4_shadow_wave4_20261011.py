@@ -17,7 +17,7 @@ Pinned so a later PR cannot slip them in unreviewed (one reason each):
   of 2026-10-15 took its refactor shard 05 proposal into SHADOW (tests/test_lane_repair_20261015.py pins it);
 * social-ingest-stocktwits: consolidation merges it into the social owner (CONSOLIDATION_PLAN §B.2), and its match
   also hits L639;
-* cio-stance-classification-drain, siem-to-hermes-backlog, desk-suggestions-digest, build-hermes-canonical-status,
+* siem-to-hermes-backlog, desk-suggestions-digest, build-hermes-canonical-status,
   hermes-discovery-scorecard, drain-discovery-backlog: class is not ingest/llm/learn.
 Hermetic: repo config read only.
 """
@@ -90,12 +90,15 @@ EXCLUDED = (
     "fred-data-ingest", "sync-dividend-data", "build-lesson-candidates", "candidate-discovery-orchestrator",
     "research-watchlist-discovery", "market-regime-collector", "agent-recommendation-normalizer", "rag-indexer",
     "journal-review-builder", "social-ingest-stocktwits",
-    "cio-stance-classification-drain", "siem-to-hermes-backlog", "desk-suggestions-digest",
+    "siem-to-hermes-backlog", "desk-suggestions-digest",
     "build-hermes-canonical-status", "drain-discovery-backlog",
 )
 #: Released from EXCLUDED by shadow wave LD-W1 (2026-10-15, tests/test_shadow_wave_ld_w1_20261015.py):
 #: hermes-discovery-scorecard (class report) was out of SW4 only because SW4 was an R1-class wave.
 RELEASED_LD_W1 = ("hermes-discovery-scorecard",)
+#: Released from EXCLUDED by n8n onboarding ONB-1 (2026-10-15, tests/test_n8n_onboard_dryrun_proven_1_20261015.py):
+#: cio-stance-classification-drain (class pipeline) was out of SW4 only because SW4 was an R1-class wave.
+RELEASED_ONB_1 = ("cio-stance-classification-drain",)
 
 
 def test_counts():

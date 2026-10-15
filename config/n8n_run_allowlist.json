@@ -3746,6 +3746,209 @@
       "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as the SW4 / LD-W1 rows). A live run also needs the governed bridge names (TRADEAI_LLM_VIA_BRIDGE / the bridge process env the executor binds from llm_route).",
       "env_evidence": "watchlist_entry_planner_lane.py imports preview / plan_run / receipt_name from watchlist_entry_planner.py (db_adapter DB_* names; llm_lane only on a live run). The dry run reaches no LLM, bars provider or send. No broker credential name.",
       "source": "lane repair 2026-10-15, cron:L476 (crontab -l 2026-10-15, sha256 6a5c6768: `45 17 * * 1-5 cd $PROJ && flock -n /tmp/entry_planner_prop.lock $PY scripts/watchlist_entry_planner.py --scope proposals >> logs/entry_planner.log 2>&1  # daily proposal entry validation (advisory)`). STAGED (registry r1_pending, no dispatch block): the llm class needs llm_route via cio-governed-bridge and process watchlist_entry_planner has no governed route yet; llm_route is therefore absent here and the lane is inert. live_arg null. The command is the plan-only n8n entry (no sender in its static reach; `--lane` dropped: a provider-selecting token is refused on a dispatched argv); entry alerts stay on the cron line until a host notification-intent consumer delivers them. lock /tmp/entry_planner_prop.lock (flock) is the live cron line's lock. Dry run: --dry-run is the planner's READ ONLY candidate preview; proof in docs/ops/packets/lane-repair-indicator-engine-20261015/."
+    },
+    {
+      "lane_id": "hermes-discovery-ingestors",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "Script reads db_adapter / psycopg2 DB names and the state-root names (no broker credential name, AGENTS 23.18 ruling 3); not inventoried per literal read.",
+      "env_report_reason": "the live path loads the rendered env file (load_dotenv / db_adapter -> lib/env_bootstrap.load_env) into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as the SW4 / LD-W1 rows).",
+      "source": "n8n onboarding ONB-1 (lane disposition 2026-10-15 MIGRATE_N8N, class ingest), cron:L687 (crontab -l 2026-10-15: `0 */2 * * * cd $PROJ && flock -n /tmp/hermes_discovery_ingest.lock $PY scripts/hermes_discovery_ingestors.py --scheduled --json >> logs/hermes_discovery_ingest.log 2>&1  # URDL observe-only intake, do-no-harm governed (2026-07-05); entity-spike/tag-lift/llm-review stay config-disabled pending operator`). SHADOW ONLY: live_arg null, registry dispatch.mode dry_run, scheduler.stage shadow; the cron line keeps doing the real work. The live argument would be ['--scheduled', '--json']; it is NOT in this entry. lock /tmp/hermes_discovery_ingest.lock is the cron line's flock lock. Dry run: an explicit --dry-run now returns an offline plan before db_adapter is imported (no env load, DB connection, Telegram, throttle file or receipt); the old DB-reading preview is --preview. Proof in docs/ops/packets/n8n-onboard-dryrun-proven-1-20261015/.",
+      "command": [
+        "$PY",
+        "scripts/hermes_discovery_ingestors.py"
+      ],
+      "lock": "/tmp/hermes_discovery_ingest.lock",
+      "lock_kind": "flock",
+      "timeout_s": 900,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/hermes-discovery-ingestors_last.json"
+    },
+    {
+      "lane_id": "youtube-cookie-health-check",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "TELEGRAM_BOT_TOKEN",
+        "TELEGRAM_CHAT_ID",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT",
+        "TRADEAI_YOUTUBE_COOKIE_FILE"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "Script reads TRADEAI_YOUTUBE_COOKIE_FILE (jar path, never its values), the db_adapter DB names, the state-root names and the chokepoint's TELEGRAM_* names; no broker credential name (AGENTS 23.18 ruling 3).",
+      "env_report_reason": "main() copies the whole release .env into os.environ (missing keys only) and db_adapter -> lib/env_bootstrap.load_env re-reads the rendered env file, so the closure is not bounded by literal reads; report until that loader is bounded.",
+      "source": "n8n onboarding ONB-1 (lane disposition 2026-10-15 MIGRATE_N8N, class monitor), cron:L397 (crontab -l 2026-10-15: `45 19 * * * cd $PROJ && flock -n /tmp/youtube_cookie_health_check.lock $PY scripts/youtube_cookie_health_check.py >> logs/youtube_cookie_health.log 2>&1`). SHADOW ONLY: live_arg null, registry dispatch.mode dry_run, scheduler.stage shadow; the cron line keeps doing the real work. The live argument would be (none); it is NOT in this entry. lock /tmp/youtube_cookie_health_check.lock is the cron line's flock lock. Dry run: an explicit --dry-run now returns an offline plan before .env, the cookie jar (operator-only credential file, AGENTS 24.7), the DB, Telegram or any receipt; the old jar+DB preview is --preview. Proof in docs/ops/packets/n8n-onboard-dryrun-proven-1-20261015/.",
+      "command": [
+        "$PY",
+        "scripts/youtube_cookie_health_check.py"
+      ],
+      "lock": "/tmp/youtube_cookie_health_check.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/youtube-cookie-health-check_last.json"
+    },
+    {
+      "lane_id": "generate-weekly-docx",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "TELEGRAM_BOT_TOKEN",
+        "TELEGRAM_CHAT_ID",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_PORTFOLIO_REPORTS_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "Script reads db_adapter / psycopg2 DB names and the state-root names (no broker credential name, AGENTS 23.18 ruling 3); not inventoried per literal read.",
+      "env_report_reason": "the live path loads the rendered env file (load_dotenv / db_adapter -> lib/env_bootstrap.load_env) into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as the SW4 / LD-W1 rows).",
+      "source": "n8n onboarding ONB-1 (lane disposition 2026-10-15 MIGRATE_N8N, class report), cron:L155 (crontab -l 2026-10-15: `0 21 * * 0 cd $PROJ && flock -n /tmp/weekly_docx.lock $PY scripts/generate_weekly_docx.py >> logs/weekly_docx.log 2>&1`). SHADOW ONLY: live_arg null, registry dispatch.mode dry_run, scheduler.stage shadow; the cron line keeps doing the real work. The live argument would be (none); it is NOT in this entry. lock /tmp/weekly_docx.lock is the cron line's flock lock. Dry run: an explicit --dry-run now returns an offline plan before .env, the DB, the chart renderer, any file or Telegram (the old JSON print rendered up to three chart PNGs; it is --preview). Proof in docs/ops/packets/n8n-onboard-dryrun-proven-1-20261015/.",
+      "command": [
+        "$PY",
+        "scripts/generate_weekly_docx.py"
+      ],
+      "lock": "/tmp/weekly_docx.lock",
+      "lock_kind": "flock",
+      "timeout_s": 900,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/generate-weekly-docx_last.json"
+    },
+    {
+      "lane_id": "strategy-weekly-review",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "TELEGRAM_BOT_TOKEN",
+        "TELEGRAM_CHAT_ID",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "Script reads db_adapter / psycopg2 DB names and the state-root names (no broker credential name, AGENTS 23.18 ruling 3); not inventoried per literal read.",
+      "env_report_reason": "the live path loads the rendered env file (load_dotenv / db_adapter -> lib/env_bootstrap.load_env) into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as the SW4 / LD-W1 rows).",
+      "source": "n8n onboarding ONB-1 (lane disposition 2026-10-15 MIGRATE_N8N, class learn), cron:L279 (crontab -l 2026-10-15: `30 10 * * 0 cd $PROJ && $PY scripts/strategy_weekly_review.py >> logs/strategy_weekly_review.log 2>&1`). SHADOW ONLY: live_arg null, registry dispatch.mode dry_run, scheduler.stage shadow; the cron line keeps doing the real work. The live argument would be (none); it is NOT in this entry. lock /tmp/strategy_weekly_review.lock is PROPOSED: the cron line holds no flock today, so canary stays blocked until a cron packet adds `flock -n` with this path. Dry run: an explicit --dry-run now returns an offline plan before the module-level .env load, the logs/ mkdir and file handler, the pipeline_runs telemetry and any DB connection, snapshot or send; the old DB preview is --preview and no longer rewrites the snapshot or sends. Proof in docs/ops/packets/n8n-onboard-dryrun-proven-1-20261015/.",
+      "command": [
+        "$PY",
+        "scripts/strategy_weekly_review.py"
+      ],
+      "lock": "/tmp/strategy_weekly_review.lock",
+      "lock_kind": "flock",
+      "timeout_s": 600,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/strategy-weekly-review_last.json"
+    },
+    {
+      "lane_id": "premarket-watcher",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "TELEGRAM_BOT_TOKEN",
+        "TELEGRAM_CHAT_ID",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "Script reads db_adapter / psycopg2 DB names and the state-root names (no broker credential name, AGENTS 23.18 ruling 3); not inventoried per literal read.",
+      "env_report_reason": "the live path loads the rendered env file (load_dotenv / db_adapter -> lib/env_bootstrap.load_env) into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as the SW4 / LD-W1 rows).",
+      "source": "n8n onboarding ONB-1 (lane disposition 2026-10-15 MIGRATE_N8N, class ingest), cron:L264 (crontab -l 2026-10-15: `*/15 7-9 * * 1-5 cd $PROJ && $PY scripts/premarket_watcher.py >> logs/premarket_watcher.log 2>&1`). SHADOW ONLY: live_arg null, registry dispatch.mode dry_run, scheduler.stage shadow; the cron line keeps doing the real work. The live argument would be (none); it is NOT in this entry. lock /tmp/premarket_watcher.lock is PROPOSED: the cron line holds no flock today, so canary stays blocked until a cron packet adds `flock -n` with this path. Dry run: an explicit --dry-run now returns an offline plan before the module-level .env load, the logs/ file handler, the pipeline_runs telemetry, the DB connection and every EDGAR / StockTwits / Yahoo request; the old preview is --preview. Proof in docs/ops/packets/n8n-onboard-dryrun-proven-1-20261015/.",
+      "command": [
+        "$PY",
+        "scripts/premarket_watcher.py"
+      ],
+      "lock": "/tmp/premarket_watcher.lock",
+      "lock_kind": "flock",
+      "timeout_s": 840,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/premarket-watcher_last.json"
+    },
+    {
+      "lane_id": "cio-stance-classification-drain",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "Script reads db_adapter / psycopg2 DB names and the state-root names (no broker credential name, AGENTS 23.18 ruling 3); not inventoried per literal read.",
+      "env_report_reason": "the live path loads the rendered env file (load_dotenv / db_adapter -> lib/env_bootstrap.load_env) into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as the SW4 / LD-W1 rows).",
+      "source": "n8n onboarding ONB-1 (lane disposition 2026-10-15 MIGRATE_N8N, class pipeline), cron:L987 (crontab -l 2026-10-15: `20 7,19 * * 1-5 cd $PROJ && bash -c 'set -a; . \"/run/user/$(id -u)/tradeai/env\" 2>/dev/null; set +a; exec flock -n /tmp/cio_stance_classify.lock \"$PY\" scripts/drain_cio_stance_classification.py --apply' >> logs/cio_stance_classification_drain.log 2>&1  # lane cio-stance-classification-drain (M5, deterministic classification for missing-CIO-stance holds; no LLM)`). SHADOW ONLY: live_arg null, registry dispatch.mode dry_run, scheduler.stage shadow; the cron line keeps doing the real work. The command is the refactor shard 05 frozen cron argv (--apply included, tests/fixtures/refactor_shard_05/cron_argv.json); dry_run_arg --dry-run wins over --apply (drain_cio_stance_classification.py main), proven by the write recorder. lock /tmp/cio_stance_classify.lock is the cron line's flock lock. Dry run: an explicit --dry-run wins over --apply and returns an offline plan before the request ledger, the DB or any write (unchanged source; refactor M5). Proof in docs/ops/packets/n8n-onboard-dryrun-proven-1-20261015/.",
+      "command": [
+        "$PY",
+        "scripts/drain_cio_stance_classification.py",
+        "--apply"
+      ],
+      "lock": "/tmp/cio_stance_classify.lock",
+      "lock_kind": "flock",
+      "timeout_s": 900,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/cio-stance-classification-drain_last.json"
     }
   ],
   "blocked_reasons": {
@@ -3764,7 +3967,7 @@
     "ops-daily-digest": "External OpenClaw script sends Telegram and has no durable receipt; no external source edited.",
     "ops-weekly-learning-report": "External OpenClaw script sends Telegram and has no durable receipt.",
     "system-rollup-snapshot": "Default action sends Telegram and refreshes reporting catalog. 2026-10-09 ops lanes: still blocked — scripts/system_rollup_snapshot.py has no --dry-run and its default run sends Telegram (:114-115), so no allowlist entry can be added without changing its code, which the rollup + embedding fix PR owns. The shadow workflow pair already exists under generated/pending/ (N3); add the entry (dry_run_arg once the script has one; send moved out) in or after that PR.",
-    "generate-weekly-docx": "Default action sends Telegram; dated report has no stable per-run receipt.",
+    "generate-weekly-docx": "Default action sends Telegram; dated report has no stable per-run receipt. 2026-10-15 n8n onboarding ONB-1: entry added at SHADOW only (live_arg null). The receipt gap is fixed (LaneRunReceipt@v1 data/runtime/generate-weekly-docx_last.json, produced_count = exports); --dry-run is an offline plan (proof docs/ops/packets/n8n-onboard-dryrun-proven-1-20261015/). The live send is one P2 notice through the telegram_alert chokepoint only (capability audit chokepoint_send, no direct_sender); canary still needs the AGENTS 23.21 standard and the effect key armed (send).",
     "rotation-rebalance-digest": "Default action seeds research and sends Telegram; no stable receipt.",
     "expected-services-audit": "Live service includes --alert; do not silently remove the sender from the existing lane.",
     "data-source-health-audit": "Live audit is an alerting lane; command and shared lock require a separate sender-free contract.",
@@ -3774,7 +3977,7 @@
     "operator-answer-quality-audit": "Live audit is an alerting lane; needs verified sender-free command and lock contract.",
     "research-lane-health": "Existing monitor can notify; needs a verified sender-free command and shared lock.",
     "agent-runtime-health": "External runtime-health output is outside STATE_ROOT; no executor cwd/output contract yet.",
-    "youtube-cookie-health-check": "Default action sends Telegram on red/amber.",
+    "youtube-cookie-health-check": "Default action sends Telegram on red/amber. 2026-10-15 n8n onboarding ONB-1: entry added at SHADOW only (live_arg null); --dry-run is an offline plan that never opens the cookie jar (proof docs/ops/packets/n8n-onboard-dryrun-proven-1-20261015/). The live send is P1 red / P2 amber through the telegram_alert chokepoint only (no direct_sender); canary still needs the AGENTS 23.21 standard and the effect key armed (send).",
     "alert-missing-conditions": "Default action sends alerts and performs a paid credit probe.",
     "drive-syncs-hourly": "Step scripts delete existing Drive objects and perform remote cleanup; destructive retention is forbidden.",
     "backup-generated-docs": "Git commit-tree/update-ref/push and Telegram failure alerts are not relay authority.",
@@ -3844,7 +4047,6 @@
       "ops-daily-digest",
       "ops-weekly-learning-report",
       "system-rollup-snapshot",
-      "generate-weekly-docx",
       "rotation-rebalance-digest"
     ],
     "N4": [
@@ -3856,7 +4058,6 @@
       "operator-answer-quality-audit",
       "research-lane-health",
       "agent-runtime-health",
-      "youtube-cookie-health-check",
       "alert-missing-conditions"
     ],
     "N5": [

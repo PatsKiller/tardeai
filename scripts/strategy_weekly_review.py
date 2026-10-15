@@ -18,7 +18,8 @@ Sends a Telegram summary and logs all transitions to strategy_state_transitions.
 
 Usage:
     python scripts/strategy_weekly_review.py                    # normal
-    python scripts/strategy_weekly_review.py --dry-run          # preview
+    python scripts/strategy_weekly_review.py --dry-run          # offline plan (no env, DB, log, file or send)
+    python scripts/strategy_weekly_review.py --preview          # DB preview: no DB write, no snapshot, no send
     python scripts/strategy_weekly_review.py --no-telegram      # skip Telegram
 """
 from __future__ import annotations
@@ -28,6 +29,18 @@ import json
 import logging
 import os
 import sys
+
+LANE_ID = "strategy-weekly-review"
+
+if __name__ == "__main__" and "--dry-run" in sys.argv[1:]:
+    # n8n onboarding (2026-10-15): an explicit --dry-run is an offline plan. It returns before the module-level .env
+    # load, the logs/ mkdir + file handler, the pipeline_runs telemetry and any DB connection, snapshot or send. The
+    # old DB-reading dry run is --preview.
+    print(f"DRY-RUN {LANE_ID}: would review strategy_registry against strategy_signals / trade_closed, log lifecycle "
+          "transitions (strategy_state_transitions, strategy_registry.status), rewrite "
+          "data/portfolios/state/strategy_weekly_review_latest.json, send one P2 report through the telegram_alert "
+          "chokepoint and write the lane receipt; no env, DB, log-file, snapshot, send or receipt; inputs NOT_MEASURED")
+    raise SystemExit(0)
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -277,7 +290,7 @@ def run(dry_run: bool = False, send_tg: bool = True) -> dict:
         if not strategies:
             logger.info('No strategies in registry -- nothing to review.')
             report_lines.append('_No strategies registered._')
-            if send_tg:
+            if send_tg and not dry_run:
                 send_telegram('\n'.join(report_lines), priority="P2", producer="strategy_weekly_review")
             return stats
 
@@ -444,8 +457,9 @@ def run(dry_run: bool = False, send_tg: bool = True) -> dict:
                 'transitions': stats['transitions'],
                 'strategies': per_strategy,
             }
-            STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
-            STATE_FILE.write_text(json.dumps(snapshot, indent=2, default=str))
+            if not dry_run:  # a preview never rewrites the health_agent snapshot (2026-10-15)
+                STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+                STATE_FILE.write_text(json.dumps(snapshot, indent=2, default=str))
         except Exception as exc:
             logger.warning('state snapshot write failed: %s', exc)
 
@@ -466,18 +480,22 @@ def run(dry_run: bool = False, send_tg: bool = True) -> dict:
     return stats
 
 
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser(description='Strategy weekly review')
-    parser.add_argument('--dry-run', action='store_true', help='Preview only, no DB writes')
+    parser.add_argument('--dry-run', action='store_true', help='offline plan (handled before any import)')
+    parser.add_argument('--preview', action='store_true',
+                        help='DB preview: no DB write, no snapshot, no Telegram (the old --dry-run)')
     parser.add_argument('--no-telegram', action='store_true', help='Skip Telegram report')
     args = parser.parse_args()
+    dry_run = bool(args.dry_run or args.preview)
 
-    logger.info('=== Strategy Weekly Review %s ===', '(DRY-RUN)' if args.dry_run else '')
-    stats = run(dry_run=args.dry_run, send_tg=not args.no_telegram)
+    started = datetime.now().astimezone().isoformat()
+    logger.info('=== Strategy Weekly Review %s ===', '(PREVIEW)' if dry_run else '')
+    stats = run(dry_run=dry_run, send_tg=not args.no_telegram)
 
     summary = (
         f"\n{'='*50}\n"
-        f"Weekly Review Summary {'(DRY-RUN)' if args.dry_run else ''}\n"
+        f"Weekly Review Summary {'(PREVIEW)' if dry_run else ''}\n"
         f"  Strategies reviewed : {stats['strategies']}\n"
         f"  Transitions         : {stats['transitions']}\n"
         f"  Errors              : {stats['errors']}\n"
@@ -485,9 +503,23 @@ def main():
     )
     logger.info(summary)
     print(summary)
+    ok = stats['errors'] == 0
+    if not dry_run:
+        # LaneRunReceipt@v1 (data/runtime/strategy-weekly-review_last.json): ok_at advances only on a clean run;
+        # produced_count = strategies reviewed (the snapshot covers each one).
+        try:
+            from lib.lane_last_receipt import write_lane_receipt
+        except ImportError:  # pragma: no cover - imported as scripts.<module>
+            from scripts.lib.lane_last_receipt import write_lane_receipt
+        write_lane_receipt(LANE_ID, ok=ok, exit_code=0 if ok else 1, started_at=started,
+                           script='strategy_weekly_review.py', summary=dict(stats),
+                           output={'produced_count': int(stats['strategies']) if ok else 0,
+                                   'empty_reason': 'no_new_input' if ok and not stats['strategies'] else None},
+                           error=None if ok else f"{stats['errors']} review error(s)")
+    return 0 if ok else 1
 
 
 if __name__ == '__main__':
     with PipelineRun("strategy_weekly_review") as _run:
-        main()
-
+        _rc = main()
+    sys.exit(_rc)

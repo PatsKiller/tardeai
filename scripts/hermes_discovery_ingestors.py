@@ -592,9 +592,22 @@ def main() -> int:
                         help=f"run the {name} ingestor (default: all)")
     ap.add_argument("--limit", type=int, default=25, help="max candidates per ingestor")
     ap.add_argument("--dry-run", action="store_true",
-                    help="list would-be candidates without writing the inbox")
+                    help="offline plan: no env, DB, Telegram or write; wins over --scheduled/--run")
+    ap.add_argument("--preview", action="store_true",
+                    help="READ-ONLY preview: list would-be candidates without writing the inbox (reads the DB)")
     ap.add_argument("--json", action="store_true", help="JSON output")
     args = ap.parse_args()
+
+    if args.dry_run:
+        # n8n onboarding (2026-10-15): the dispatcher's shadow fire. Returns before db_adapter is imported, so no
+        # env load, DB connection, Telegram, throttle file or receipt (AGENTS.md §6; the old DB-reading preview is
+        # --preview).
+        mode = "scheduled (--scheduled)" if args.scheduled else "selected (--run)"
+        print(f"DRY-RUN hermes-discovery-ingestors: would run the {mode} source/trend/ticker/topic ingestors (caps from "
+              "config/hermes_discovery_schedule.json, scorecard do-no-harm), upsert hermes_discovery_candidates and "
+              "write the lane receipt; no env, DB, Telegram or write; inputs NOT_MEASURED")
+        return 0
+    args.dry_run = args.preview
 
     if args.scheduled:
         started_at = datetime.now(timezone.utc).isoformat()
@@ -607,7 +620,12 @@ def main() -> int:
         # latter); a pause, caps or one broken producer are findings in the report, not failure.
         failed = bool(report.get("error") or report.get("all_enabled_failed"))
         if not args.dry_run:  # dry runs never write the receipt (AGENTS.md §6)
+            counts = [c for c in (report.get("by_type_counts") or {}).values() if isinstance(c, dict)]
+            produced = sum(int(c.get("upserted") or 0) for c in counts)
             _receipt(ok=not failed, started_at=started_at,
+                     output={"produced_count": produced,
+                             "attempted_count": sum(int(c.get("scanned") or 0) for c in counts),
+                             "empty_reason": "no_new_input" if not failed and not produced else None},
                      error=report.get("error") or ("all enabled ingestors failed" if failed else None),
                      summary={"do_no_harm": report.get("do_no_harm"),
                               "by_type_counts": report.get("by_type_counts"),

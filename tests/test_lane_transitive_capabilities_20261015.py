@@ -41,6 +41,12 @@ OPERATOR_RULING_DD01_20261015 = frozenset(
         "watchlist-entry-planner-scope",
         "hermes-discovery-scorecard",
         "wire-advisory-lessons",
+        # ONB-1 (n8n onboarding of dry-run-proven MIGRATE_N8N lanes, 2026-10-15): same lazy chain, not at import.
+        "cio-stance-classification-drain",
+        "generate-weekly-docx",
+        "hermes-discovery-ingestors",
+        "premarket-watcher",
+        "youtube-cookie-health-check",
     }
 )
 OPERATOR_RULING_DD01_REASON = (

@@ -344,7 +344,7 @@ def _ingestors(mod, fn):
 def test_hermes_dry_run_all_failed_is_exit_1_without_send_or_receipt(hdi, state, monkeypatch):
     mod, send, upsert, tmp_path = hdi
     monkeypatch.setattr(mod, "INGESTORS", _ingestors(mod, mock.Mock(side_effect=RuntimeError("db"))))
-    monkeypatch.setattr(sys, "argv", ["x", "--scheduled", "--dry-run", "--json"])
+    monkeypatch.setattr(sys, "argv", ["x", "--scheduled", "--preview", "--json"])
     assert mod.main() == 1
     assert not send.called and not upsert.called and not (tmp_path / "throttle.json").exists()
     assert _receipt(state, "hermes-discovery-ingestors") is None
@@ -359,7 +359,7 @@ def test_hermes_dry_run_passes_dry_run_to_ingestors(hdi, state, monkeypatch):
         return {"scanned": 1, "upserted": 0, "skipped": 0}
 
     monkeypatch.setattr(mod, "INGESTORS", _ingestors(mod, fake))
-    monkeypatch.setattr(sys, "argv", ["x", "--scheduled", "--dry-run"])
+    monkeypatch.setattr(sys, "argv", ["x", "--scheduled", "--preview"])
     assert mod.main() == 0
     assert seen and all(seen) and not send.called
 

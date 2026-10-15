@@ -4,6 +4,18 @@ Runs every 15 min 5:30-9:30 AM weekdays. Watches for overnight catalysts
 on known GO/WAIT symbols. Sends Telegram alerts on discovery.
 """
 import json, logging, os, sys, time, argparse
+
+LANE_ID = "premarket-watcher"
+
+if __name__ == "__main__" and "--dry-run" in sys.argv[1:]:
+    # n8n onboarding (2026-10-15): an explicit --dry-run is an offline plan. It returns before the module-level .env
+    # load, the logs/ file handler, the pipeline_runs telemetry, the DB connection and every provider request
+    # (EDGAR / StockTwits / Yahoo). The old DB-reading, network-calling preview is --preview.
+    print(f"DRY-RUN {LANE_ID}: would scan up to 50 GO/WAIT symbols (EDGAR, StockTwits, Yahoo RSS), upsert "
+          "news_articles / social_posts / trade_ai_scans / scalp_scan_results, send one P2 catalyst alert through the "
+          "telegram_alert chokepoint and write the lane receipt; no env, DB, network, log-file, send or receipt; "
+          "inputs NOT_MEASURED")
+    raise SystemExit(0)
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
@@ -13,7 +25,10 @@ log = logging.getLogger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 def _load_env():
-    for line in (PROJECT_ROOT / '.env').read_text().splitlines():
+    envf = PROJECT_ROOT / '.env'
+    if not envf.is_file():  # 2026-10-15: a checkout without .env (CI, n8n child with a rendered env) still imports
+        return
+    for line in envf.read_text().splitlines():
         line = line.strip()
         if line and not line.startswith('#') and '=' in line:
             k, v = line.split('=', 1)
@@ -410,9 +425,12 @@ def send_telegram(message):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--symbols', help='Comma-separated symbols')
-    parser.add_argument('--dry-run', action='store_true')
+    parser.add_argument('--dry-run', action='store_true', help='offline plan (handled before any import)')
+    parser.add_argument('--preview', action='store_true',
+                        help='scan without DB writes or Telegram (reads the DB, calls the providers; the old --dry-run)')
     parser.add_argument('--force', action='store_true')
     args = parser.parse_args()
+    args.dry_run = bool(args.dry_run or args.preview)
 
     conn = psycopg2.connect(**DB_CONFIG)
     try:
@@ -421,7 +439,7 @@ def main():
 
         results = run_premarket_scan(symbols, conn, dry_run=args.dry_run)
 
-        print(f"\n=== PRE-MARKET SCAN ===")
+        print("\n=== PRE-MARKET SCAN ===")
         print(f"Checked: {results['symbols_checked']} | Activity: {results['symbols_with_activity']}")
         for sym, f in results['findings'].items():
             print(f"  {sym}: edgar={len(f['edgar'])} social_surge={f['social'].get('is_surging',False)} news={len(f['news'])}")
@@ -430,29 +448,57 @@ def main():
             header = f"PRE-MARKET CATALYST ({datetime.now().strftime('%H:%M')})"
             msg = header + '\n\n' + '\n\n'.join(results['alerts'])
             send_telegram(msg)
+        return results, args.dry_run
     finally:
         conn.close()
 
 
-if __name__ == '__main__':
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s',
-                       handlers=[logging.FileHandler(str(PROJECT_ROOT/'logs/premarket_watcher.log')),
-                                 logging.StreamHandler()])
+def _receipt(**kw):
+    """LaneRunReceipt@v1 (data/runtime/premarket-watcher_last.json) for a real run; ok_at only on success."""
+    try:
+        from lib.lane_last_receipt import write_lane_receipt
+    except ImportError:  # pragma: no cover - imported as scripts.<module>
+        from scripts.lib.lane_last_receipt import write_lane_receipt
+    write_lane_receipt(LANE_ID, script="premarket_watcher.py", **kw)
+
+
+def _run_with_receipt() -> int:
+    """The scheduled entry point: pipeline_runs telemetry + the lane receipt around main() (a --preview writes neither)."""
+    _preview = "--preview" in sys.argv[1:]
+    _started = datetime.now(timezone.utc).isoformat()
     _run_id = None
     try:
-        from pipeline_registry import run_start, run_complete, run_fail
-        _run_id = run_start('premarket_watcher')
+        if not _preview:
+            from pipeline_registry import run_start, run_complete, run_fail
+            _run_id = run_start('premarket_watcher')
     except Exception:
         pass
     try:
-        main()
+        _results, _was_preview = main()
         try:
             if _run_id: run_complete(_run_id)
         except Exception:
             pass
+        if not _was_preview:
+            _n = int(_results['symbols_with_activity'])
+            _receipt(ok=True, exit_code=0, started_at=_started, output={'produced_count': _n, 'attempted_count': int(_results['symbols_checked']),
+                             'empty_reason': None if _n else 'no_new_input'},
+                     summary={'symbols_checked': _results['symbols_checked'], 'symbols_with_activity': _n,
+                              'alerts': len(_results['alerts'])})
     except Exception as _e:
         try:
             if _run_id: run_fail(_run_id, str(_e))
         except Exception:
             pass
+        if not _preview:
+            _receipt(ok=False, exit_code=1, started_at=_started, output={'produced_count': 0}, error=str(_e)[:300])
         raise
+    return 0
+
+
+if __name__ == '__main__':
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s',
+                       handlers=[logging.FileHandler(str(PROJECT_ROOT/'logs/premarket_watcher.log')),
+                                 logging.StreamHandler()])
+    sys.exit(_run_with_receipt())

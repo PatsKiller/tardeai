@@ -308,15 +308,17 @@ on refusal. Both tables live in the coordination ledger, one `BEGIN IMMEDIATE`.
   `late_completion:<state>`, receipt `effect.incident = effect_late_completion` (no longer a silent DONE).
   Residual: `release` still trusts the operator's note (no reconciliation evidence is required by code), and no
   lane yet calls `assert_fence`, so ownership switches still need drain-before-switch.
-- **Effect-keyed lanes that do NOT call `assert_fence` (not late-write safe):** all 69 effect-keyed lanes in
+- **Effect-keyed lanes that do NOT call `assert_fence` (not late-write safe):** all 75 effect-keyed lanes in
   `config/n8n_effect_keys.json` (none declares `late_write_fenced`). The six whose executor side is armed
   (`n8n_claim` default true): `hermes-learning-outcome-grader`, `hermes-learning-outcome-learning`,
   `hermes-learning-config-governor`, `hermes-learning-tag-engine`, `hermes-learning-outcome-feedback-agent`,
   `hermes-learning-autonomous-self-tune`; plus the 31 armed (`n8n_claim` + `cron_claim` true) by the n8n cutover waves (2026-10-15,
   `scripts/n8n_cutover_wave.py`, packets `docs/ops/packets/n8n-cutover-wave-<n>-20261015/`):
-  `aegis-social-sentiment`, `aegis-transcript-discovery`, `agent-outcome-linker`, `agent-outcome-scorer`, `build-symbol-profiles-at-0-19`, `catalyst-symbol-impact`, `commitment-outcome-sweep`, `daily-incubator-refresh`, `document-mentions-backfill`, `etf-analyst-enrich`, `etf-performance-enrich`, `feedback-loop-processor`, `finviz-proactive-research`, `finviz-screener-runner`, `hermes-analyst-signal-discovery`, `hermes-momentum-catalyst-scalp`, `hermes-news-bridge`, `hermes-social-sentiment`, `incubator-rolloff-engine`, `instrument-belief-writer`, `journal-tilt-morning-hook`, `material-change-detector-stage1`, `pattern-extractor`, `proposal-backtest-engine`, `record-decision-outcome`, `sec-data-ingest`, `source-attribution-monitor`, `update-agent-performance`, `watchlist-enrichment-sweep`, `weekly-incubator-builder`, `wire-advisory-lessons`; the other 32 are staged (`n8n_claim: false`; train 2026-10-15 d added the
+  `aegis-social-sentiment`, `aegis-transcript-discovery`, `agent-outcome-linker`, `agent-outcome-scorer`, `build-symbol-profiles-at-0-19`, `catalyst-symbol-impact`, `commitment-outcome-sweep`, `daily-incubator-refresh`, `document-mentions-backfill`, `etf-analyst-enrich`, `etf-performance-enrich`, `feedback-loop-processor`, `finviz-proactive-research`, `finviz-screener-runner`, `hermes-analyst-signal-discovery`, `hermes-momentum-catalyst-scalp`, `hermes-news-bridge`, `hermes-social-sentiment`, `incubator-rolloff-engine`, `instrument-belief-writer`, `journal-tilt-morning-hook`, `material-change-detector-stage1`, `pattern-extractor`, `proposal-backtest-engine`, `record-decision-outcome`, `sec-data-ingest`, `source-attribution-monitor`, `update-agent-performance`, `watchlist-enrichment-sweep`, `weekly-incubator-builder`, `wire-advisory-lessons`; the other 38 are staged (`n8n_claim: false`; train 2026-10-15 d added the
   lane-repair keys `watchlist-entry-planner-limit`, `watchlist-entry-planner-scope`, `run-research-intelligence-overnight`;
-  shadow wave LD-W1 (#1761, merged 2026-10-15 with the DD01 ruling PR) added `incubator-rolloff-engine`).
+  shadow wave LD-W1 (#1761, merged 2026-10-15 with the DD01 ruling PR) added `incubator-rolloff-engine`; n8n onboarding
+  ONB-1 (2026-10-15) added `hermes-discovery-ingestors`, `youtube-cookie-health-check`, `generate-weekly-docx`,
+  `strategy-weekly-review`, `premarket-watcher`, `cio-stance-classification-drain`).
 
 ## 8. Error workflow → incident contract
 

@@ -12,7 +12,8 @@ Status mirrors the v3 Pipeline stoplight: red=logged-out, amber=authed-but-stale
     python3 scripts/youtube_cookie_health_check.py            # alert only if red/amber
     python3 scripts/youtube_cookie_health_check.py --always   # always send (test)
     python3 scripts/youtube_cookie_health_check.py --no-send  # report only: receipt, no Telegram
-    python3 scripts/youtube_cookie_health_check.py --dry-run  # report only: no Telegram, no receipt
+    python3 scripts/youtube_cookie_health_check.py --preview  # report only: no Telegram, no receipt (reads jar + DB)
+    python3 scripts/youtube_cookie_health_check.py --dry-run  # offline plan: opens no jar, no DB, no env, no write
 Cron: daily ~19:45 (after the 19:00 ingest).
 
 Cookie location (2026-10-14): the jar lives outside any release, at the canonical path
@@ -187,7 +188,7 @@ def main():
     print(f"[cookie-health] {status.upper()}: {detail}")
     print(f"[cookie-health] cookie path: {res.path} ({res.location})")
     always = "--always" in sys.argv
-    dry_run = "--dry-run" in sys.argv
+    dry_run = "--preview" in sys.argv
     no_send = dry_run or "--no-send" in sys.argv or "--report" in sys.argv
     would_send = status in ("red", "amber") or always
     _LAST.clear()
@@ -211,25 +212,63 @@ def main():
             )
         )
     elif would_send:
-        print(f"[cookie-health] send suppressed ({'--dry-run' if dry_run else '--no-send'})")
+        print(f"[cookie-health] send suppressed ({'--preview' if dry_run else '--no-send'})")
     # Red/amber are findings, not a failed run (2026-10-10; was `0 if green else 1`).
     return 0
 
 
+LANE_ID = "youtube-cookie-health-check"
+
+
+def _live_with_lane_receipt() -> int:
+    """The scheduled run: ScheduledJobReceipt (legacy, youtube_cookie_health_check_last.json) as before, plus the
+    LaneRunReceipt@v1 the n8n row names (data/runtime/youtube-cookie-health-check_last.json; ok_at advances only
+    on exit 0; produced_count 1 = one status classified)."""
+    from lib.lane_last_receipt import now_iso, write_lane_receipt
+    from lib.scheduled_job_receipt import run_with_receipt
+
+    started = now_iso()
+    try:
+        code = run_with_receipt(main, script="youtube_cookie_health_check", root=PROJECT_ROOT, summary_from=_summary)
+    except BaseException:
+        write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started, script="youtube_cookie_health_check.py",
+                           output={"produced_count": 0, "attempted_count": 1}, error="cookie health check raised")
+        raise
+    ok = code == 0 and bool(_LAST.get("status"))
+    write_lane_receipt(
+        LANE_ID,
+        ok=ok,
+        exit_code=code,
+        started_at=started,
+        script="youtube_cookie_health_check.py",
+        summary={k: _LAST.get(k) for k in ("status", "cookie_location", "transcript_age_h", "would_send", "sent")},
+        output={"produced_count": 1 if ok else 0, "attempted_count": 1},
+        error=None if ok else "cookie health check raised",
+    )
+    return code
+
+
 if __name__ == "__main__":
     if "--dry-run" in sys.argv:
-        # A dry run is not evidence the scheduled job ran: no receipt, no send (AGENTS.md §6).
+        # n8n onboarding (2026-10-15): the dispatcher's shadow fire. An offline plan before .env, the cookie jar
+        # (operator-only credential file, AGENTS §24.7), the DB, Telegram or any receipt. Wins over --always.
+        print(
+            f"DRY-RUN {LANE_ID}: would classify the YouTube cookie jar (auth-cookie count only, never values) and "
+            "transcript ingestion age, alert P1 red / P2 amber through the telegram_alert chokepoint, and write the "
+            "lane receipt; no env, jar, DB, Telegram or write; inputs NOT_MEASURED"
+        )
+        sys.exit(0)
+    if "--preview" in sys.argv:
+        # A preview is not evidence the scheduled job ran: no receipt, no send (AGENTS.md §6).
         from lib.lane_last_receipt import dry_run_report
         from lib.scheduled_job_receipt import default_receipt
 
         _code = main()
         dry_run_report(
-            "youtube-cookie-health-check",
+            LANE_ID,
             _summary(),
             receipt=default_receipt("youtube_cookie_health_check", PROJECT_ROOT),
             would_write=["send_telegram(cookie refresh steps)"] if _LAST.get("would_send") else [],
         )
         sys.exit(_code)
-    from lib.scheduled_job_receipt import run_with_receipt
-
-    sys.exit(run_with_receipt(main, script="youtube_cookie_health_check", root=PROJECT_ROOT, summary_from=_summary))
+    sys.exit(_live_with_lane_receipt())

@@ -207,7 +207,12 @@ def test_n4_monitors_reuse_cron_locks_and_do_not_allow_destructive_retry_trim():
     # (2026-10-10 D1b: llm-retry-monitor was runnable only as --no-trim, never --trim-only, no live mode.)
     for lane in ("catalyst-calibration-monitor", "watch-directives-monitor", "llm-retry-monitor"):
         assert lane not in LANES, lane
-    assert "youtube-cookie-health-check" not in LANES
+    # 2026-10-15 n8n onboarding ONB-1 (operator "N8N Cutover Decision": disposition MIGRATE_N8N): the red/amber sender
+    # is allowlisted at SHADOW only. No live argv exists (live_arg null), and the --dry-run is an offline plan that
+    # opens no cookie jar and sends nothing (tests/test_n8n_onboard_dryrun_proven_1_20261015.py write recorder).
+    yt = LANES["youtube-cookie-health-check"]
+    assert yt["live_arg"] is None and yt["dry_run_arg"] == ["--dry-run"]
+    assert yt["lock"] == "/tmp/youtube_cookie_health_check.lock" and yt["lock_kind"] == "flock"
 
 
 def test_n5_git_destructive_drive_sync_and_retired_duplicate_schedules_stay_blocked():

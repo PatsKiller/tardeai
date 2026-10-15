@@ -4023,6 +4023,14 @@ GATES = [
             # a live request per hermetic lane, the stage clamp runs it dry, RUN_DONE; receipts on the real path of
             # the three scripts this wave changed. Hermetic: tmp_path ledger/state/locks, no DB variables.
             "tests/test_shadow_wave_ld_w1_20261015.py",
+            # n8n onboarding ONB-1 (operator "N8N Cutover Decision" 2026-10-15): 6 MIGRATE_N8N lanes at the cron-row
+            # shadow shape; five --dry-run paths that wrote (log file, pipeline_runs, chart PNGs, snapshot, cookie jar,
+            # provider calls) became offline plans; the audit-hook write recorder (tests/support/
+            # dry_run_write_recorder.py) records zero file writes / fs mutations / network / subprocess / sqlite for each
+            # with the cron line's live switches added; the REAL executor clamps a live request to RUN_DONE dry_run;
+            # LaneRunReceipt@v1 + produced_count on the real path; REVIEWED contracts with N8nExpectedOutput@v1;
+            # staged effect keys. Hermetic: tmp_path ledger/state/locks, no DB variables, fake DB/send modules.
+            "tests/test_n8n_onboard_dryrun_proven_1_20261015.py",
             # SW4 env narrowing: nine lane scripts copy only named keys from <checkout>/.env (no broker credential
             # reaches os.environ); etf_performance_enrich strict argparse. Hermetic: scratch .env, monkeypatched env.
             "tests/test_sw4_env_narrowing_20261011.py",

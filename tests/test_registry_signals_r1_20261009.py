@@ -19,7 +19,9 @@ ROWS = {r["lane_id"]: r for r in REG["lanes"]}
 
 def test_cio_stance_drain_signal_is_run_log_and_script_prints_every_run():
     sig = ROWS["cio-stance-classification-drain"]["output_signal"]
-    assert sig == {"kind": "file_mtime", "path": "logs/cio_stance_classification_drain.log"}
+    # n8n onboarding ONB-1 (2026-10-15): the signal is now the LaneRunReceipt@v1 the script writes on every --apply run
+    # (0 pending included), which ok_at proves better than a log mtime.
+    assert sig == {"kind": "json_key", "path": "data/runtime/cio-stance-classification-drain_last.json", "key": "ok_at"}
     src = (ROOT / "scripts" / "drain_cio_stance_classification.py").read_text(encoding="utf-8")
     assert "pending={report['pending']}" in src
 
