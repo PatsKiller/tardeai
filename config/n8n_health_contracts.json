@@ -493,7 +493,7 @@
         "evidence": [
           {
             "kind": "receipt_field",
-            "ref": "data/runtime/aegis-social-sentiment_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/aegis-social-sentiment/<run_id>.json); today the v1 receipt reports this unit as summary.written"
+            "ref": "data/runtime/aegis-social-sentiment_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/aegis-social-sentiment/<run_id>.json); the lane writes it via write_lane_receipt(output=...) since 2026-10-15 (summary.written carries the same count)"
           },
           {
             "kind": "store_rows",
@@ -706,7 +706,7 @@
         "evidence": [
           {
             "kind": "receipt_field",
-            "ref": "data/runtime/aegis-transcript-discovery_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/aegis-transcript-discovery/<run_id>.json); today the v1 receipt reports this unit as summary.transcripts"
+            "ref": "data/runtime/aegis-transcript-discovery_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/aegis-transcript-discovery/<run_id>.json); the lane writes it via write_lane_receipt(output=...) since 2026-10-15 (summary.transcripts carries the same count)"
           },
           {
             "kind": "store_rows",
@@ -1555,7 +1555,7 @@
         "evidence": [
           {
             "kind": "receipt_field",
-            "ref": "data/runtime/agent-outcome-scorer_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/agent-outcome-scorer/<run_id>.json); today the v1 receipt reports this unit as summary.saved"
+            "ref": "data/runtime/agent-outcome-scorer_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/agent-outcome-scorer/<run_id>.json); the lane writes it via write_lane_receipt(output=...) since 2026-10-15 (summary.saved carries the same count)"
           },
           {
             "kind": "store_rows",
@@ -8580,7 +8580,7 @@
         "evidence": [
           {
             "kind": "receipt_field",
-            "ref": "data/runtime/hermes-social-sentiment_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/hermes-social-sentiment/<run_id>.json); today the v1 receipt reports this unit as summary.written"
+            "ref": "data/runtime/hermes-social-sentiment_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/hermes-social-sentiment/<run_id>.json); the lane writes it via write_lane_receipt(output=...) since 2026-10-15 (summary.written carries the same count)"
           },
           {
             "kind": "store_rows",
@@ -15454,7 +15454,7 @@
         "evidence": [
           {
             "kind": "receipt_field",
-            "ref": "data/runtime/watchlist-enrichment-sweep_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/watchlist-enrichment-sweep/<run_id>.json); today the v1 receipt reports this unit as summary.enriched"
+            "ref": "data/runtime/watchlist-enrichment-sweep_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/watchlist-enrichment-sweep/<run_id>.json); the lane writes it via write_lane_receipt(output=...) since 2026-10-15 (summary.enriched carries the same count)"
           },
           {
             "kind": "store_rows",
@@ -21605,7 +21605,8 @@
         "fatal_skip_reasons": [
           "no_runner",
           "no_input_unexpected",
-          "unconfigured"
+          "unconfigured",
+          "dependency_unavailable"
         ],
         "empty_allowed_reasons": [
           "nothing_due"
@@ -21613,7 +21614,7 @@
         "evidence": [
           {
             "kind": "receipt_field",
-            "ref": "data/runtime/commitment-outcome-sweep_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/commitment-outcome-sweep/<run_id>.json); today the v1 receipt reports this unit as summary.outcomes"
+            "ref": "data/runtime/commitment-outcome-sweep_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/commitment-outcome-sweep/<run_id>.json); the lane writes it via write_lane_receipt(output=...) since 2026-10-15 (summary.outcomes carries the same count)"
           },
           {
             "kind": "ledger_row",
@@ -22649,7 +22650,7 @@
         "evidence": [
           {
             "kind": "receipt_field",
-            "ref": "data/runtime/instrument-belief-writer_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/instrument-belief-writer/<run_id>.json); today the v1 receipt reports this unit as summary.written_beliefs"
+            "ref": "data/runtime/instrument-belief-writer_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/instrument-belief-writer/<run_id>.json); the lane writes it via write_lane_receipt(output=...) since 2026-10-15 (summary.written_beliefs carries the same count)"
           },
           {
             "kind": "ledger_row",

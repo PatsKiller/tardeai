@@ -251,14 +251,28 @@ def main(argv=None) -> int:
     except Exception as exc:
         _receipt_lib().write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
                                           script="watchlist_enrichment_sweep.py",
-                                          error=f"{type(exc).__name__}: {exc}")
+                                          error=f"{type(exc).__name__}: {exc}",
+                                          output={"produced_count": 0, "attempted_count": 0, "skipped_reasons": {"dependency_unavailable": 1}})
         raise
     # selected symbols but none updated = every per-symbol step failed; an empty watchlist is not a failure
     rc = 1 if res["total"] and not res["enriched"] else 0
     _receipt_lib().write_lane_receipt(LANE_ID, ok=(rc == 0), exit_code=rc, started_at=started,
                                       script="watchlist_enrichment_sweep.py",
-                                      summary={"selected": res["total"], "enriched": res["enriched"]})
+                                      summary={"selected": res["total"], "enriched": res["enriched"]},
+                                      output=lane_output(res))
     return rc
+
+
+def lane_output(res: dict) -> dict:
+    """LaneRunReceipt@v2 output fields (n8n expected_output, unit: watchlist_items rows updated with
+    rsi/trend/score/price). attempted = symbols selected (stalest first, capped). The selection is never empty
+    while the watchlist has active/researched items, so an empty selection is ``universe_empty_unexpected``."""
+    total, enriched = int(res.get("total") or 0), int(res.get("enriched") or 0)
+    skipped = {"not_enriched": max(total - enriched, 0)}
+    if total == 0:
+        skipped["universe_empty_unexpected"] = 1
+    return {"produced_count": enriched, "attempted_count": max(total, enriched), "skipped_reasons": skipped,
+            "empty_reason": None}
 
 
 if __name__ == "__main__":
