@@ -70,6 +70,13 @@
       "owner_hint": "scripts/lib/cio_governed_model_bridge.py"
     },
     {
+      "name": "schema:BridgeEscalation@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Routing telemetry for the n8n OAuth-first profile (operator decision 2026-10-15): whether a low-confidence OAuth answer was re-asked once on DeepSeek, why, and at what cost; carried in _tradeai.escalation, LlmStepAudit route blocks and model-job receipts. Diagnoses LLM routing, not CIO reasoning, policy, decisions or evidence.",
+      "owner_hint": "scripts/lib/cio_governed_model_bridge.py"
+    },
+    {
       "name": "schema:BitemporalEvaluation@v1",
       "kind": "schema",
       "classification": "RETIRE_CANDIDATE",
