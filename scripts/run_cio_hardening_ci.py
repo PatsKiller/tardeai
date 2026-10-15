@@ -4809,6 +4809,16 @@ GATES = [
         ["tests/test_n8n_llm_bridge_routes_b1_20261015.py"],
     ),
     (
+        # n8n llm lanes on the governed bridge, batch 2 (2026-10-15): portfolio-lookthrough-themes,
+        # hermes-analyst-coverage, hermes-usefulness-backfill (own n8n process; the cron line's DeepSeek-only bridge
+        # row is pinned unchanged), proposal-llm-review-worker (refusal = no deterministic stand-in, row stays queued),
+        # defense-weekly-paid-review (paid seat refused on the bridge path), generate-analyst-reports-autonomous
+        # weekly/full (process set editorial + critique; the metered Claude arbiter never runs on the n8n path).
+        # Same pins as batch 1; hermetic (fake _call_bridge, poison provider modules, fake DB).
+        "n8n_llm_bridge_routes_b2_20261015",
+        ["tests/test_n8n_llm_bridge_routes_b2_20261015.py"],
+    ),
+    (
         # Run-from-release P0 (2026-10-15): prepare builds or reuses a shared venv keyed by
         # py<X.Y.Z>-sha12(requirements.lock.txt) and links <release>/.venv to it. Pins: hash keying; reuse runs
         # no pip; a failed install/smoke leaves no partial venv and the previous one untouched; the link and

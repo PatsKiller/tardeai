@@ -285,7 +285,14 @@
       "name": "Hermes Analyst Coverage",
       "category": "Hermes",
       "lane_policy": "either",
-      "description": "Coverage gap analysis"
+      "description": "Coverage gap analysis",
+      "notes": "2026-10-15 (n8n LLM bridge routes batch 2): routed through cio_governed_model_bridge (8766) as caller advisory_desk task hermes_analyst_coverage when the n8n run executor binds the llm_route of lane hermes-analyst-coverage (TRADEAI_LLM_VIA_BRIDGE=1); the lane then calls ONLY lib.llm_bridge_route (a refusal is no output, never an in-process provider call). tools_allowed false and advisory_only true like every bridge-mapped row. Caps: daily_soft_cap 40 / daily_cost_cap_usd 0.10 added (none before; the bridge requires both). The cron line is --limit 8 once per weekday and calls llm_lane.generate with NO process id (ungated grok/chatgpt), so these caps bind only the n8n path. Note: the lane asks for web-grounded coverage; a DeepSeek fallback answer is not web-grounded (the prompt already requires coverage_found false rather than invented firms).",
+      "daily_soft_cap": 40,
+      "daily_cost_cap_usd": 0.1,
+      "tools_allowed": false,
+      "advisory_only": true,
+      "reasoning_tier": "standard",
+      "routing_decision_20261015": "Operator decision 2026-10-15 (verbatim): \"in terms of n8n, then, we should try OAuth first. And if OAuth fails or if the answer needs higher reasoning, then we go to DeepSeek.\" Routing: grok OAuth -> chatgpt OAuth -> deepseek FAST (llm_routing_policy route_profile n8n_oauth_first); an OAuth lane not enabled on the host (CIO_BRIDGE_OAUTH_TRANSPORTS) is skipped; an empty/invalid OAuth answer falls through to the next lane; reasoning_tier high puts the routing row's reasoning_lane (DeepSeek PRO_THINK) first. The routing row is read only by cio_governed_model_bridge, so the cron line's in-process path is unchanged."
     },
     {
       "id": "hermes_cross_source_synthesizer",
@@ -1534,6 +1541,192 @@
       "registered_by": "n8n/llm-bridge-routes-1-20261015",
       "registered_at": "2026-10-15T20:00:00Z",
       "notes": "2026-10-15 (n8n LLM bridge routes batch 1): routed through cio_governed_model_bridge (8766) as caller advisory_desk task journal_review_builder when the n8n run executor binds the llm_route of lane journal-review-builder (TRADEAI_LLM_VIA_BRIDGE=1); the lane then calls ONLY lib.llm_bridge_route (a refusal is no output, never an in-process provider call). tools_allowed false and advisory_only true like every bridge-mapped row. Caps: NEW row (bridge path only; the cron call names no process id, so this row does not touch it). Not measured: one call per unreviewed closed paper trade, no --limit on the cron line; 200/day covers a backlog drain, $0.20 bounds the DeepSeek fallback.",
+      "tools_allowed": false,
+      "advisory_only": true,
+      "reasoning_tier": "standard",
+      "routing_decision_20261015": "Operator decision 2026-10-15 (verbatim): \"in terms of n8n, then, we should try OAuth first. And if OAuth fails or if the answer needs higher reasoning, then we go to DeepSeek.\" Routing: grok OAuth -> chatgpt OAuth -> deepseek FAST (llm_routing_policy route_profile n8n_oauth_first); an OAuth lane not enabled on the host (CIO_BRIDGE_OAUTH_TRANSPORTS) is skipped; an empty/invalid OAuth answer falls through to the next lane; reasoning_tier high puts the routing row's reasoning_lane (DeepSeek PRO_THINK) first. The routing row is read only by cio_governed_model_bridge, so the cron line's in-process path is unchanged."
+    },
+    {
+      "name": "Portfolio look-through themes narrative (governed bridge)",
+      "category": "Portfolio",
+      "lane_policy": "either",
+      "default_mode": "automated",
+      "description": "scripts/portfolio_lookthrough_themes.py --grok: one look-through narrative + three agent reads (CIO / Risk / Allocation) per run (weekdays 07:40 ET), stored in lookthrough_themes.json. The cron line calls llm_lane.generate with no process id (grok OAuth, ungated); this id exists for the n8n path. On the n8n path it routes through cio_governed_model_bridge (8766) only. READ_ONLY_ADVISORY.",
+      "allowed_lanes": [
+        "grok",
+        "chatgpt",
+        "fast",
+        "deepseek-flash"
+      ],
+      "deepseek_default_policy": "FAST",
+      "deepseek_allowed_policies": [
+        "FAST",
+        "PRO_THINK"
+      ],
+      "max_input_tokens": 8000,
+      "max_output_tokens": 1024,
+      "daily_soft_cap": 20,
+      "daily_cost_cap_usd": 0.05,
+      "fallback_allowed": false,
+      "id": "portfolio_lookthrough_themes",
+      "registered_by": "n8n/llm-bridge-routes-2-20261015",
+      "registered_at": "2026-10-15T22:00:00Z",
+      "notes": "2026-10-15 (n8n LLM bridge routes batch 2): routed through cio_governed_model_bridge (8766) as caller advisory_desk task portfolio_lookthrough_themes when the n8n run executor binds the llm_route of lane portfolio-lookthrough-themes (TRADEAI_LLM_VIA_BRIDGE=1); the lane then calls ONLY lib.llm_bridge_route (a refusal is no output, never an in-process provider call). tools_allowed false and advisory_only true like every bridge-mapped row. Caps: NEW row (bridge path only; the cron call names no process id). 4 calls per run, one run per weekday: 20/day covers reruns; $0.05 bounds the DeepSeek fallback.",
+      "tools_allowed": false,
+      "advisory_only": true,
+      "reasoning_tier": "standard",
+      "routing_decision_20261015": "Operator decision 2026-10-15 (verbatim): \"in terms of n8n, then, we should try OAuth first. And if OAuth fails or if the answer needs higher reasoning, then we go to DeepSeek.\" Routing: grok OAuth -> chatgpt OAuth -> deepseek FAST (llm_routing_policy route_profile n8n_oauth_first); an OAuth lane not enabled on the host (CIO_BRIDGE_OAUTH_TRANSPORTS) is skipped; an empty/invalid OAuth answer falls through to the next lane; reasoning_tier high puts the routing row's reasoning_lane (DeepSeek PRO_THINK) first. The routing row is read only by cio_governed_model_bridge, so the cron line's in-process path is unchanged."
+    },
+    {
+      "name": "Hermes usefulness score - n8n path (governed bridge)",
+      "category": "Hermes",
+      "lane_policy": "either",
+      "default_mode": "automated",
+      "description": "scripts/hermes_external_feedback_loop.py _rate on the n8n path: usefulness 0..1 + rationale per sent hermes_external_research row. Its own id so the n8n route (OAuth first, operator D10) and caps never move the cron line's hermes_usefulness_score row (DeepSeek-only, called through the bridge as advisory_desk/usefulness_score). On the n8n path it routes through cio_governed_model_bridge (8766) only. READ_ONLY_ADVISORY.",
+      "allowed_lanes": [
+        "grok",
+        "chatgpt",
+        "fast",
+        "deepseek-flash"
+      ],
+      "deepseek_default_policy": "FAST",
+      "deepseek_allowed_policies": [
+        "FAST",
+        "PRO_THINK"
+      ],
+      "max_input_tokens": 4000,
+      "max_output_tokens": 512,
+      "daily_soft_cap": 600,
+      "daily_cost_cap_usd": 0.3,
+      "fallback_allowed": false,
+      "id": "hermes_usefulness_score_n8n",
+      "registered_by": "n8n/llm-bridge-routes-2-20261015",
+      "registered_at": "2026-10-15T22:00:00Z",
+      "notes": "2026-10-15 (n8n LLM bridge routes batch 2): routed through cio_governed_model_bridge (8766) as caller advisory_desk task hermes_usefulness_score_n8n when the n8n run executor binds the llm_route of lane hermes-usefulness-backfill (TRADEAI_LLM_VIA_BRIDGE=1); the lane then calls ONLY lib.llm_bridge_route (a refusal is no output, never an in-process provider call). tools_allowed false and advisory_only true like every bridge-mapped row. Caps: NEW row. Mirrors hermes_usefulness_score's $0.30 / 600 per day (sync_cio_process_caps) for the same work on the n8n path; the cron line keeps its own row.",
+      "tools_allowed": false,
+      "advisory_only": true,
+      "reasoning_tier": "standard",
+      "routing_decision_20261015": "Operator decision 2026-10-15 (verbatim): \"in terms of n8n, then, we should try OAuth first. And if OAuth fails or if the answer needs higher reasoning, then we go to DeepSeek.\" Routing: grok OAuth -> chatgpt OAuth -> deepseek FAST (llm_routing_policy route_profile n8n_oauth_first); an OAuth lane not enabled on the host (CIO_BRIDGE_OAUTH_TRANSPORTS) is skipped; an empty/invalid OAuth answer falls through to the next lane; reasoning_tier high puts the routing row's reasoning_lane (DeepSeek PRO_THINK) first. The routing row is read only by cio_governed_model_bridge, so the cron line's in-process path is unchanged."
+    },
+    {
+      "name": "Proposal LLM review chunks (governed bridge)",
+      "category": "Proposals",
+      "lane_policy": "either",
+      "default_mode": "automated",
+      "description": "scripts/proposal_llm_reviewer.py review_proposal on the n8n path: four JSON chunks (analysis, decision, risk, catalyst) per queued proposal. The cron line goes through local_llm.generate -> llm_lane deepseek-flash as process local_llm_compat; this id exists for the n8n path. A refusal writes no deterministic stand-in; the queue row stays PENDING. On the n8n path it routes through cio_governed_model_bridge (8766) only. READ_ONLY_ADVISORY.",
+      "allowed_lanes": [
+        "grok",
+        "chatgpt",
+        "fast",
+        "deepseek-flash"
+      ],
+      "deepseek_default_policy": "FAST",
+      "deepseek_allowed_policies": [
+        "FAST",
+        "PRO_THINK"
+      ],
+      "max_input_tokens": 16000,
+      "max_output_tokens": 2048,
+      "daily_soft_cap": 500,
+      "daily_cost_cap_usd": 0.5,
+      "fallback_allowed": false,
+      "id": "proposal_llm_review",
+      "registered_by": "n8n/llm-bridge-routes-2-20261015",
+      "registered_at": "2026-10-15T22:00:00Z",
+      "notes": "2026-10-15 (n8n LLM bridge routes batch 2): routed through cio_governed_model_bridge (8766) as caller advisory_desk task proposal_llm_review when the n8n run executor binds the llm_route of lane proposal-llm-review-worker (TRADEAI_LLM_VIA_BRIDGE=1); the lane then calls ONLY lib.llm_bridge_route (a refusal is no output, never an in-process provider call). tools_allowed false and advisory_only true like every bridge-mapped row. Caps: NEW row. Not measured: the cron line drains --limit 4 every 30 min 06:00-19:30 ET (28 runs) x up to 4 chunks = 448 calls on a full queue; 500/day. $0.50 bounds the DeepSeek fallback (~$0.01 worst case per call).",
+      "tools_allowed": false,
+      "advisory_only": true,
+      "reasoning_tier": "standard",
+      "routing_decision_20261015": "Operator decision 2026-10-15 (verbatim): \"in terms of n8n, then, we should try OAuth first. And if OAuth fails or if the answer needs higher reasoning, then we go to DeepSeek.\" Routing: grok OAuth -> chatgpt OAuth -> deepseek FAST (llm_routing_policy route_profile n8n_oauth_first); an OAuth lane not enabled on the host (CIO_BRIDGE_OAUTH_TRANSPORTS) is skipped; an empty/invalid OAuth answer falls through to the next lane; reasoning_tier high puts the routing row's reasoning_lane (DeepSeek PRO_THINK) first. The routing row is read only by cio_governed_model_bridge, so the cron line's in-process path is unchanged."
+    },
+    {
+      "name": "Defense weekly free-seat oversight (governed bridge)",
+      "category": "Defense",
+      "lane_policy": "either",
+      "default_mode": "automated",
+      "description": "scripts/defense_oversight.py run_free_critiques for the Friday week-final review (scripts/defense_weekly_paid_review.py, no --apply-paid): one schema-strict critique of the curated brief. The cron line calls llm_lane.generate (chatgpt OAuth) with no process id; this id exists for the n8n path. The paid tier is never reachable there. On the n8n path it routes through cio_governed_model_bridge (8766) only. READ_ONLY_ADVISORY.",
+      "allowed_lanes": [
+        "grok",
+        "chatgpt",
+        "fast",
+        "deepseek-flash"
+      ],
+      "deepseek_default_policy": "FAST",
+      "deepseek_allowed_policies": [
+        "FAST",
+        "PRO_THINK"
+      ],
+      "max_input_tokens": 32000,
+      "max_output_tokens": 4096,
+      "daily_soft_cap": 5,
+      "daily_cost_cap_usd": 0.1,
+      "fallback_allowed": false,
+      "id": "defense_weekly_oversight",
+      "registered_by": "n8n/llm-bridge-routes-2-20261015",
+      "registered_at": "2026-10-15T22:00:00Z",
+      "notes": "2026-10-15 (n8n LLM bridge routes batch 2): routed through cio_governed_model_bridge (8766) as caller advisory_desk task defense_weekly_oversight when the n8n run executor binds the llm_route of lane defense-weekly-paid-review (TRADEAI_LLM_VIA_BRIDGE=1); the lane then calls ONLY lib.llm_bridge_route (a refusal is no output, never an in-process provider call). tools_allowed false and advisory_only true like every bridge-mapped row. Caps: NEW row. One call per Friday run: 5/day covers reruns. max_output_tokens 4096 = the cron call's max_tokens.",
+      "tools_allowed": false,
+      "advisory_only": true,
+      "reasoning_tier": "standard",
+      "routing_decision_20261015": "Operator decision 2026-10-15 (verbatim): \"in terms of n8n, then, we should try OAuth first. And if OAuth fails or if the answer needs higher reasoning, then we go to DeepSeek.\" Routing: grok OAuth -> chatgpt OAuth -> deepseek FAST (llm_routing_policy route_profile n8n_oauth_first); an OAuth lane not enabled on the host (CIO_BRIDGE_OAUTH_TRANSPORTS) is skipped; an empty/invalid OAuth answer falls through to the next lane; reasoning_tier high puts the routing row's reasoning_lane (DeepSeek PRO_THINK) first. The routing row is read only by cio_governed_model_bridge, so the cron line's in-process path is unchanged."
+    },
+    {
+      "name": "Analyst prospectus editorial pass (governed bridge)",
+      "category": "Reports",
+      "lane_policy": "either",
+      "default_mode": "automated",
+      "description": "scripts/reporting_engine.py apply_grok_editorial on the n8n path: one JSON polish of executive summary / recommendation / intelligence view per regenerated holding prospectus (guarded by _grok_safe). The cron line calls llm_lane.generate (grok) with no process id; this id exists for the n8n path. On the n8n path it routes through cio_governed_model_bridge (8766) only. READ_ONLY_ADVISORY.",
+      "allowed_lanes": [
+        "grok",
+        "chatgpt",
+        "fast",
+        "deepseek-flash"
+      ],
+      "deepseek_default_policy": "FAST",
+      "deepseek_allowed_policies": [
+        "FAST",
+        "PRO_THINK"
+      ],
+      "max_input_tokens": 8000,
+      "max_output_tokens": 2048,
+      "daily_soft_cap": 450,
+      "daily_cost_cap_usd": 0.5,
+      "fallback_allowed": false,
+      "id": "analyst_report_editorial",
+      "registered_by": "n8n/llm-bridge-routes-2-20261015",
+      "registered_at": "2026-10-15T22:00:00Z",
+      "notes": "2026-10-15 (n8n LLM bridge routes batch 2): routed through cio_governed_model_bridge (8766) as caller advisory_desk task analyst_report_editorial when the n8n run executor binds the llm_route of lane generate-analyst-reports-autonomous-weekly / -full (process set) (TRADEAI_LLM_VIA_BRIDGE=1); the lane then calls ONLY lib.llm_bridge_route (a refusal is no output, never an in-process provider call). tools_allowed false and advisory_only true like every bridge-mapped row. Caps: NEW row. Not measured: --limit 200 symbols, weekly (Sun) and monthly full; 450/day = 2x + headroom; $0.50 bounds the DeepSeek fallback.",
+      "tools_allowed": false,
+      "advisory_only": true,
+      "reasoning_tier": "standard",
+      "routing_decision_20261015": "Operator decision 2026-10-15 (verbatim): \"in terms of n8n, then, we should try OAuth first. And if OAuth fails or if the answer needs higher reasoning, then we go to DeepSeek.\" Routing: grok OAuth -> chatgpt OAuth -> deepseek FAST (llm_routing_policy route_profile n8n_oauth_first); an OAuth lane not enabled on the host (CIO_BRIDGE_OAUTH_TRANSPORTS) is skipped; an empty/invalid OAuth answer falls through to the next lane; reasoning_tier high puts the routing row's reasoning_lane (DeepSeek PRO_THINK) first. The routing row is read only by cio_governed_model_bridge, so the cron line's in-process path is unchanged."
+    },
+    {
+      "name": "Analyst prospectus free-lane critique (governed bridge)",
+      "category": "Reports",
+      "lane_policy": "either",
+      "default_mode": "automated",
+      "description": "scripts/report_oversight.py free_lane_critique on the n8n path: ONE structured critique of the assembled report against the live data packet (the cron line asks grok AND chatgpt through hermes_external_researcher / llm_lane). The metered Claude arbiter is never reachable on the n8n path. On the n8n path it routes through cio_governed_model_bridge (8766) only. READ_ONLY_ADVISORY.",
+      "allowed_lanes": [
+        "grok",
+        "chatgpt",
+        "fast",
+        "deepseek-flash"
+      ],
+      "deepseek_default_policy": "FAST",
+      "deepseek_allowed_policies": [
+        "FAST",
+        "PRO_THINK"
+      ],
+      "max_input_tokens": 8000,
+      "max_output_tokens": 1600,
+      "daily_soft_cap": 450,
+      "daily_cost_cap_usd": 0.5,
+      "fallback_allowed": false,
+      "id": "analyst_report_critique",
+      "registered_by": "n8n/llm-bridge-routes-2-20261015",
+      "registered_at": "2026-10-15T22:00:00Z",
+      "notes": "2026-10-15 (n8n LLM bridge routes batch 2): routed through cio_governed_model_bridge (8766) as caller advisory_desk task analyst_report_critique when the n8n run executor binds the llm_route of lane generate-analyst-reports-autonomous-weekly / -full (process set) (TRADEAI_LLM_VIA_BRIDGE=1); the lane then calls ONLY lib.llm_bridge_route (a refusal is no output, never an in-process provider call). tools_allowed false and advisory_only true like every bridge-mapped row. Caps: NEW row. Same bound as analyst_report_editorial (one critique per regenerated report).",
       "tools_allowed": false,
       "advisory_only": true,
       "reasoning_tier": "standard",

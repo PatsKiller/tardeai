@@ -22,6 +22,7 @@ import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -513,14 +514,30 @@ def report_links_map(*, symbols: list[str] | None = None, limit: int = 300) -> d
     return {"links": out, "count": len(out), "updated_at": reg.get("updated_at")}
 
 
-def apply_grok_editorial(report: dict, *, lane: str = "grok", timeout: int = 120) -> dict:
-    """Polish executive summary and recommendation via Grok OAuth (free llm_lane)."""
-    try:
-        import llm_lane
-    except Exception:
-        return report
+#: The n8n path's editorial process + governed-bridge route (advisory_desk / analyst_report_editorial).
+BRIDGE_EDITORIAL_PROCESS = "analyst_report_editorial"
 
-    if not llm_lane.available(lane):
+
+def apply_grok_editorial(report: dict, *, lane: str = "grok", timeout: int = 120) -> dict:
+    """Polish executive summary and recommendation via Grok OAuth (free llm_lane).
+
+    Governed bridge (2026-10-15, n8n llm lane batch 2): with TRADEAI_LLM_VIA_BRIDGE=1 the edit is ONE governed-bridge
+    request as process ``analyst_report_editorial`` (lane label ``bridge``); llm_lane is never imported and a refusal
+    leaves the draft unedited (grok_editorial.applied false)."""
+    via_bridge = os.environ.get("TRADEAI_LLM_VIA_BRIDGE", "off").strip().lower() in {"1", "on", "bridge"}
+    if via_bridge:
+        from lib.llm_bridge_route import require_text_via_bridge
+
+        lane = "bridge"
+        llm_lane = SimpleNamespace(generate=lambda prompt, lane=None, timeout=120: require_text_via_bridge(
+            BRIDGE_EDITORIAL_PROCESS, prompt, timeout_s=timeout))
+    else:
+        try:
+            import llm_lane
+        except Exception:
+            return report
+
+    if not via_bridge and not llm_lane.available(lane):
         report.setdefault("meta", {})["grok_editorial"] = {"applied": False, "reason": f"{lane} unavailable"}
         return report
 

@@ -7,10 +7,17 @@ LLM is ANALYSIS ONLY — cannot approve or override risk gate.
 Usage:
     .venv/bin/python scripts/proposal_llm_reviewer.py --proposal-id 2
     .venv/bin/python scripts/proposal_llm_reviewer.py --all-pending
+
+Governed bridge (2026-10-15, n8n llm lane batch 2): with TRADEAI_LLM_VIA_BRIDGE=1 (bound by the n8n run executor from
+the allowlist ``llm_route`` of lane proposal-llm-review-worker) every review chunk is ONE governed-bridge request as
+process ``proposal_llm_review`` (grok -> chatgpt -> DeepSeek server-side); local_llm / llm_lane are never imported.
+A refusal is NOT turned into a deterministic review on that path: review_proposal returns an error, writes nothing,
+and the worker leaves the queue row PENDING for the next run. The cron line is unchanged.
 """
 import argparse
 import json
 import logging
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -31,7 +38,27 @@ log = logging.getLogger("llm_reviewer")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s")
 
 
+#: Registered process + governed-bridge route (advisory_desk / proposal_llm_review); the n8n path only.
+LLM_PROCESS_ID = "proposal_llm_review"
+#: The flag the n8n run executor binds from the allowlist llm_route; read directly.
+VIA_BRIDGE_ENV = "TRADEAI_LLM_VIA_BRIDGE"
+BRIDGE_MODEL = "governed-bridge"
+
+
+def _via_bridge():
+    return os.environ.get(VIA_BRIDGE_ENV, "off").strip().lower() in {"1", "on", "bridge"}
+
+
+def _bridge_generate(prompt, timeout=300, **_ignored):
+    """ONE governed-bridge request; raises BridgeRouteRefused (never a local or in-process provider)."""
+    from lib.llm_bridge_route import require_text_via_bridge
+
+    return require_text_via_bridge(LLM_PROCESS_ID, prompt, timeout_s=min(float(timeout), 300.0))
+
+
 def _get_llm():
+    if _via_bridge():
+        return _bridge_generate
     try:
         from local_llm import generate, model_used
         return generate
@@ -40,6 +67,8 @@ def _get_llm():
 
 
 def _get_model_name():
+    if _via_bridge():
+        return BRIDGE_MODEL
     try:
         from local_llm import model_used
         return model_used
@@ -221,7 +250,7 @@ def _deterministic_review(proposal, technical, backtest, stock_history):
         "bull_case": f"{'Verified catalyst' if catalyst_verified else 'Potential catalyst'} with {strategy} setup. RVOL {proposal.get('rvol', 'N/A')}x.",
         "bear_case": f"{'Critic ' + critic + '. ' if critic and critic != 'PASS' else ''}{'Sector weakness. ' if vs_sector < -5 else ''}{'Missing technical data. ' if not technical or not technical.get('rsi') else ''}",
         "risk_reward_quality": rr_quality,
-        "approval_conditions": f"Verify catalyst, confirm technical levels, ensure data freshness.",
+        "approval_conditions": "Verify catalyst, confirm technical levels, ensure data freshness.",
         "invalidation_conditions": f"Price below stop ${proposal.get('proposed_stop', 0)} or catalyst reversed.",
         "confidence_score": confidence,
         "decision": decision,
@@ -372,6 +401,9 @@ def review_proposal(conn, proposal_id):
 
         except Exception as e:
             log.warning(f"LLM review failed for {symbol}: {e}")
+            if _via_bridge():
+                # Governed bridge refused: no output. No deterministic stand-in, no write; the row stays queued.
+                return {"error": f"BRIDGE_ROUTE_REFUSED: {str(e)[:200]}", "proposal_id": proposal_id}
 
     if not review:
         review = _deterministic_review(proposal, technical, backtest, stock_history)

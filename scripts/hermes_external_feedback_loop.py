@@ -10,6 +10,14 @@ the per-lane usefulness aggregate is advisory input to lane routing only.
 
   python3 scripts/hermes_external_feedback_loop.py            # dry-run
   python3 scripts/hermes_external_feedback_loop.py --apply
+
+Governed bridge, n8n path (2026-10-15, n8n llm lane batch 2): the cron line already rates through the bridge
+(hermes_llm_failover.chat_json, caller advisory_desk / task usefulness_score -> process hermes_usefulness_score, a
+DeepSeek-only routing row the cron line keeps). With TRADEAI_LLM_VIA_BRIDGE=1 (bound by the n8n run executor from the
+allowlist ``llm_route`` of lane hermes-usefulness-backfill) each rating is ONE request through lib.llm_bridge_route as
+its own process ``hermes_usefulness_score_n8n`` (routing row n8n_oauth_first: grok -> chatgpt -> DeepSeek, operator
+D10), so the n8n route and caps never move the cron line's row. A refusal is terminal for the run (BRIDGE_ROUTE_REFUSED,
+rows stay unscored and eligible). --dry-run makes no model call.
 """
 import os, sys, json, argparse
 from datetime import datetime
@@ -19,6 +27,14 @@ ROOT = Path(__file__).resolve().parent.parent
 KILL = ROOT / "data" / "runtime" / "HERMES_DISABLED"
 sys.path.insert(0, str(ROOT / "scripts"))
 _ENV_KEYS = ("DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD")
+#: The n8n path's own process (advisory_desk / hermes_usefulness_score_n8n); the cron line keeps hermes_usefulness_score.
+N8N_PROCESS_ID = "hermes_usefulness_score_n8n"
+#: The flag the n8n run executor binds from the allowlist llm_route; read directly.
+VIA_BRIDGE_ENV = "TRADEAI_LLM_VIA_BRIDGE"
+
+
+def _via_bridge():
+    return os.environ.get(VIA_BRIDGE_ENV, "off").strip().lower() in {"1", "on", "bridge"}
 
 
 def _load_env():
@@ -53,8 +69,15 @@ def _rate(question, recommendation, dissent, outcome):
               f"Question: {question}\nRecommendation: {recommendation}\nDissent: {dissent}\n"
               f"Realized outcome since (if any): {json.dumps(outcome)}\n"
               f'Return ONLY JSON: {{"usefulness": 0.0-1.0, "rationale": "one sentence"}}')
-    from hermes_llm_failover import chat_json
-    pack = chat_json(prompt, cloud_timeout_s=120, task_type="usefulness_score")
+    if _via_bridge():
+        from lib.llm_bridge_route import require_text_via_bridge
+        from hermes_llm_failover import _extract_json_text
+
+        content = _extract_json_text(require_text_via_bridge(N8N_PROCESS_ID, prompt, timeout_s=120))
+        pack = {"content": content, "provider": "governed_bridge", "model": N8N_PROCESS_ID}
+    else:
+        from hermes_llm_failover import chat_json
+        pack = chat_json(prompt, cloud_timeout_s=120, task_type="usefulness_score")
     data = json.loads(pack["content"])
     usefulness = max(0.0, min(1.0, float(data["usefulness"])))
     return usefulness, str(data.get("rationale", ""))[:240], pack
@@ -71,6 +94,8 @@ TERMINAL_MARKERS = (
     "PROCESS_NOT_REGISTERED",
     "HTTP Error 429",
     "HTTP Error 403",
+    # the n8n path (lib.llm_bridge_route): refused or unreachable -- stop, never another provider
+    "BRIDGE_ROUTE_REFUSED",
 )
 
 #: Stop after this many consecutive provider failures. Defence in depth: on
