@@ -420,7 +420,7 @@
           "cron_line": 367,
           "cron_schedule": "0 6 * * 1-5",
           "cron_time": "06:00",
-          "command": "bash $PROJ/scripts/safe_flock.sh /tmp/strategy_backtester.lock $PY scripts/strategy_backtester.py --all-strategies --apply",
+          "command": "flock -n /tmp/strategy_backtester.lock bash $PROJ/scripts/safe_flock.sh /tmp/strategy_backtester.lock $PY scripts/strategy_backtester.py --all-strategies --apply",
           "log": "logs/strategy_backtester.log",
           "timeout": "5m",
           "continue_on_error": true,
@@ -431,7 +431,7 @@
             4,
             5
           ],
-          "cron_line_verbatim": "0 6 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/strategy_backtester.lock $PY scripts/strategy_backtester.py --all-strategies --apply >> logs/strategy_backtester.log 2>&1",
+          "cron_line_verbatim": "0 6 * * 1-5 cd $PROJ && flock -n /tmp/strategy_backtester.lock bash $PROJ/scripts/safe_flock.sh /tmp/strategy_backtester.lock $PY scripts/strategy_backtester.py --all-strategies --apply >> logs/strategy_backtester.log 2>&1",
           "measured": {
             "verified": true,
             "source": "safe_flock",
@@ -476,7 +476,7 @@
           "cron_line": 379,
           "cron_schedule": "10 6 * * 1-5",
           "cron_time": "06:10",
-          "command": "bash $PROJ/scripts/safe_flock.sh /tmp/bt_history_snapshot.lock $PY scripts/backtest_history_snapshot.py",
+          "command": "flock -n /tmp/bt_history_snapshot.lock bash $PROJ/scripts/safe_flock.sh /tmp/bt_history_snapshot.lock $PY scripts/backtest_history_snapshot.py",
           "log": "logs/backtest_history_snapshot.log",
           "timeout": "5m",
           "continue_on_error": true,
@@ -487,7 +487,7 @@
             4,
             5
           ],
-          "cron_line_verbatim": "10 6 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/bt_history_snapshot.lock $PY scripts/backtest_history_snapshot.py >> logs/backtest_history_snapshot.log 2>&1",
+          "cron_line_verbatim": "10 6 * * 1-5 cd $PROJ && flock -n /tmp/bt_history_snapshot.lock bash $PROJ/scripts/safe_flock.sh /tmp/bt_history_snapshot.lock $PY scripts/backtest_history_snapshot.py >> logs/backtest_history_snapshot.log 2>&1",
           "measured": {
             "verified": false,
             "source": "safe_flock",
