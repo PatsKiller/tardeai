@@ -8,6 +8,12 @@ Measured at: origin/main 377e9b536 (hook not yet installed on ms01)
 
 Operator decision, 2026-10-09: "design and implement". Run it **log-only for the first week**, then switch it to deny.
 
+> **Measured 2026-10-14:** the hook is **not installed** — `agents_guard_pretooluse` appears in neither
+> `~/.claude/settings*.json` nor the repo `.claude/settings*.json`, and `config/agents_guard_hook_rules.json` still says
+> `"mode": "log"`. The "ACTIVE" status above describes the design, not the host; the log-only week has not started.
+> For Claude Code the guard scopes remain an honor system (WS4-07, HIGH). Re-checked 2026-10-15 02:35Z: unchanged
+> (no `agents_guard_pretooluse` in `~/.claude/settings.json` or `settings.local.json`; rules `mode: log`).
+
 ## Why
 
 `bin/guard` is wired only through `.cursor/hooks.json`, so for Claude Code the guard scopes are an honor system

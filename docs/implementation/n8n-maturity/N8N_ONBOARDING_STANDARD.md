@@ -33,6 +33,52 @@ approval (`Expires-At: 2026-10-11T17:30:03-04:00`; AGENTS.md changes keep the op
 
 ---
 
+## 0. Workflow development standards — building to the mandatory framework (added 2026-10-14)
+
+Measured at served `5aa61048d` / origin/main `57d8fc3ff` (2026-10-15 02:35Z; first written at `3e9dc5e14`). AGENTS.md
+10.0.0 is ACTIVE (§23.23); the framework below is
+**AGENTS.md §23.24, PROPOSED in 11.0.0** — until it is ratified, steps §1–§13 of this file are what binds, and this
+section is the target every new workflow PR should already meet. The element-by-element checks are in
+[`N8N_CONFIGURATION.md`](N8N_CONFIGURATION.md) §0.4; the current fleet's scores in the
+[gap assessment](N8N_GAP_ASSESSMENT_AND_MATURITY_REVIEW_20261014.md) §4.
+
+**Timer-only leaf-lane cutovers are frozen** under the §23.23 migration rule (ACTIVE). Its three exit conditions
+are now met: the Run Lane sub-workflow is LIVE, the async run-outcome callback is LIVE (Build 1, #1739, served
+`5aa61048d`; packet `docs/ops/packets/n8n-fabric-phase1-20261014/`; P1 passed 01:15Z, P2 01:37Z), and 10.0.0 is
+ACTIVE. The freeze stays in force until the operator lifts it. **Progress is counted as business processes owned
+by n8n, not lanes moved** (§23.23 (2)). New work is a business process, consolidated on the host first (WS2
+families). The first is hermes learning (PR-OPEN #1746). CLI facts for any packet: `n8n execute` needs a Manual
+Trigger or an Execute Workflow Trigger; every CLI call runs with `-e N8N_RUNNERS_BROKER_PORT=5690`; Execute
+Workflow calls only published sub-workflows (`N8N_CONFIGURATION.md` §3.4).
+
+Every new or changed workflow PR carries, in its description, a filled framework card:
+
+```
+workflow: <id>            class: BC | RS | AI | MC            owner: <role>
+manages/monitors/validates/reports/escalates: <one line each that applies>
+monitoring:  health contract id + status (REVIEWED required for BC/RS/AI); executionTimeout; p95 baseline; connects_to
+alerting:    errorWorkflow = tradeai-fabric-error (new work; legacy: tradeai-incident-router); SLA bound; performance bound; integration-failure class; LLM-exception class (AI)
+logging:     run_id carried to the ledger; success saved with run_id custom data; refusals recorded as data
+recovery:    retry owner (Run Lane, LIVE: call tradeai-fabric-run-lane; else retry policy name); breaker; DLQ; fallback (cron line / rollback command); runbook_id; effect key
+security:    credential = tradeai-run-relay only; routes = relay/gateway only; allowlist row; never-list unaffected; no secrets in parameters
+ai/llm:      (AI class only) process id, template id, output schema id, enumerated branch fields, host re-check, HITL gate, cost cap
+evidence:    generator diff; drift check OK; dry run quoted; forced run receipt (AGENTS.md §8.1)
+```
+
+Rules that follow from the framework and already hold in the generator (`scripts/n8n_workflow_templates.py`):
+
+1. Generate, never hand-build: every workflow comes from the generator and is imported by packet; the drift check
+   must report it OK (`scripts/check_n8n_workflow_drift.py --dry-run`).
+2. Node types stay inside the generator allowlist (`ALLOWED_NODE_TYPES` per-lane; `GENERIC_ALLOWED_NODE_TYPES` for
+   the generic set). Widening it is its own reviewed PR (§23.23 node-enablement rule, PROPOSED).
+3. The generic generator already sets `errorWorkflow`, `executionTimeout`, `saveDataErrorExecution: all` and
+   `saveManualExecutions: false`. The per-lane (2.0.0) shape sets none of them — **do not add new per-lane
+   workflows**; add a dispatcher row instead.
+4. No workflow names a model, provider, key, bot token or broker route (§23.3–§23.5).
+5. A workflow without a REVIEWED health contract does not leave shadow.
+
+---
+
 ## 1. The checklist
 
 Do the steps in order. Each row: what to do, what proves it, and what authority it needs.

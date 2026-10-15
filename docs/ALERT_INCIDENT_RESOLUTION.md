@@ -7,6 +7,69 @@ Authority:   READ_ONLY_ADVISORY · MBI_BEHAVIOR = 0
 **Related:** `scripts/alert_outbox.py` · `scripts/alert_occurrence_store.py` ·
 `scripts/alert_dedupe.py` · `scripts/lib/alert_transition.py` · `scripts/telegram_alert.py`
 
+## Alerting framework — as served 2026-10-14
+
+Refreshed 2026-10-14T18:45-04:00 at served `3e9dc5e14`; re-measured 2026-10-15T02:35Z at served `5aa61048d` (origin/main
+`57d8fc3ff`). The SPCX incident record is `docs/incidents/INCIDENT_20261014_SPCX_RESTING_STOPS.md`. Status labels: LIVE, MERGED-NOT-SERVED,
+PR-OPEN, BRANCH-ONLY, PLANNED, POLICY-ONLY (defined in
+`docs/implementation/n8n-maturity/N8N_GAP_ASSESSMENT_AND_MATURITY_REVIEW_20261014.md` §0). The sections after this one
+are the 2026-09-21 record of the alert outbox and recovery chain and remain accurate for that plane.
+
+### Routing path (LIVE)
+
+```
+producer ─► send_telegram(priority, dedupe_minutes, producer)        scripts/telegram_alert.py:706 (the chokepoint)
+              ├─ legacy text  ─► telegram_alert_router.classify_alert ─► operator_alert_policy_v2.route_event
+              │                     #1732: STOP HEALTH/WARNING/CRITICAL STOP ALERT + NEAR_TRIGGER/TRIGGERED/FILLED
+              │                     → P0_INTERRUPT before the v2 router; exempt from the daily budget
+              ├─ intent        ─► telegram_alert_router.route_intent (P1/P2/P3; receipts notification_intent_receipts.jsonl)
+              └─ owned class   ─► comms gateway (mode CANARY, owned_classes ['ops'])
+incidents: n8n fan-in (n8n, */5) ─► incident_notifier.py (cron */5) ─► send_system (ops bot)
+fabric:    tradeai-fabric-error (LIVE) ─► relay POST /intent ─► ledger comms_intents (QUEUED)
+             ─► comms-intent consumer → fan-in incident, P2 digest (#1744 MERGED-NOT-SERVED, not applied)
+SIEM: n8n_siem_bridge.py (cron 1-59/5) ─► system_health_events; siem-critical-notify (health tick, 15 min)
+```
+
+| Rule | Value (code default) | Where |
+|---|---|---|
+| Policy levels | P0_INTERRUPT, P1_DIGEST, P2_DASHBOARD_ONLY, P3_LOG_ONLY; `telegram_mode: actionable_only` | `config/operator_alert_policy.yaml` |
+| Immediate types | orphaned_stop, position_unprotected, protection_failure/uncertain, broker_auth_blocking, partial_fill_protection_uncertain, flatten_failed_or_uncertain, emergency_kill_or_revoke, trading_impact_outage, market_hours_stop_unresolved; `platform_availability` / `data_integrity` (sentinel-tagged, hourly dedupe) | `scripts/operator_alert_policy_v2.py` `CRITICAL_IMMEDIATE_TYPES` |
+| Intent P1 | never capped or quiet-held; exact-body dedupe 60 min unless `dedupe_minutes=0` (operator-action messages) | `route_intent`; AGENTS.md §9.1 (5.1.0) |
+| Intent P2 | held 22:00–07:00 ET to the Reports archive, folded into the advice digest; delivered if the archive write fails | `route_intent`, `_intent_send` |
+| Legacy P0 daily budget | 30 non-ops sends | `telegram_alert_router.DAILY_SEND_BUDGET` |
+| Incident notifier | P1 immediate, uncapped; P2 batched every 30 min, quiet-held; daily cap 24 messages; dedupe 24 h; flap cooldown 60 min; P3 never sends | `scripts/incident_notifier.py` |
+| Digests | advice digest 10:00 / 15:00 / 17:00 ET weekdays (P2 intent); `alert_daily_digest.py` 17:55 | crontab; `config/advice_digest.yaml` |
+| Schwab paused | `STOP HEALTH — DEGRADED` P1 once per ET day while `config/schwab_access_mode.yaml` says `forbidden`; health agent `schwab_token_revoked` (#1733) | LIVE |
+| Ratchets | `config/telegram_chokepoint_baseline.json` (files empty), `config/provider_chokepoint_baseline.json` (empty), `config/notification_intent_baseline.json` (49 sends without a declared priority) | `scripts/check_comms_gateway_enforcement.py` |
+
+### The operator's five alert classes — coverage
+
+| Class | Today | Status | Gap / finding |
+|---|---|---|---|
+| Failure | n8n Error Trigger → incident router → fan-in → notifier (6 of 16 legacy workflows); fabric pair → `tradeai-fabric-error` → comms intent (queued until #1744 is served and applied); ledger RUN_FAILED/TIMEOUT → DLQ/breach → fan-in; host producers via `send_telegram` | LIVE, partial | 10 of 18 workflows have no error workflow (WS1b-05); unit failures and OOM kills raise nothing (WS3-27) |
+| SLA breach | freshness contracts → breach detector STALE_OUTPUT; heartbeat-watch for 6 alert-path lanes; `pipeline_freshness_slo.py --telegram` | LIVE, partial | `report_alert_sla_status.py` is a report, not an alert; detection latency 1–8 days for weekday lanes (WS3-29) |
+| Performance degradation | none | **missing** | no p95/latency class; no metrics stack |
+| Integration failure | `platform_availability` / `data_integrity` sentinels; data-source health (hourly); `broker_auth_blocking`; relay `relay_gateway_unreachable` | LIVE, partial | Schwab auth failure did not page before #1733 (WS3-01); relay refusals are logged as n8n errors, not routed by class |
+| AI/LLM exception | `check_llm_provider_health.py` (BILLING/AUTH/TRANSPORT, hourly via health tick); health agent `collect_llm_spend_receipt` | LIVE, availability only | missed the 10-15 DeepSeek stall (read timeout recorded as NETWORK_ERROR); #1742 (MERGED-NOT-SERVED) adds the stall alarm: P1 when a process has no lane left. No exception class yet for bridge refusals, schema failures or cap hits; `check_llm_fleet_alerts.py` not scheduled |
+
+### Known defects that decide what reaches the phone (open)
+
+- The P2 channel is saturated by the platform's own incidents: 943 open P2 at 18:35 ET, 798 from the failure
+  diagnoser (WS1-09, CRITICAL).
+- `send_telegram` returns True when nothing was delivered; failed sends are not replayed (WS3-21, WS3-24).
+- One bot, one chat, no second channel; no off-box dead-man (WS3-20, WS3-18).
+- The dead-man (heartbeat-watch) runs inside n8n, whose failure it should report (WS1-15).
+- Fills and position changes appear only as suppressed info (WS3-09); the stop half is fixed by #1732 (LIVE @5aa61048d).
+
+### Target (PROPOSED)
+
+The four-tier taxonomy — PAGE, DIGEST, DASHBOARD, LOG — keyed on `(domain, kind)` with no default row, a
+`runbook_id` on every PAGE row, delivery receipts as the liveness signal, and an independent dead-man chain with an
+exit off the box: `~/n8n-maturity-verification/arch-review-20261014/ARCHITECTURE_REVIEW_20261014/ALERT_TAXONOMY.md`
+(PROPOSED; not built). The alerting checks every n8n workflow must meet are in AGENTS.md §23.24 (PROPOSED 11.0.0)
+and `docs/implementation/n8n-maturity/N8N_CONFIGURATION.md` §0.4. Incident handling:
+`docs/runbooks/INCIDENT_RESPONSE.md`.
+
 ## Two planes, one recovery signal
 
 There are **two** alert records, and until 2026-09-21 only one of them could close.

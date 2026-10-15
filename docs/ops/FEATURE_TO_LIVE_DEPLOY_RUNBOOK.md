@@ -286,6 +286,56 @@ Two things it does not do (`AGENTS.md` §9.3, §10):
 6. **Scheduled jobs never push.** Since #1672 `coder_dispatch` (L556) and `backup_generated_docs.sh` (L541) commit
    locally only; a release does not add a push path to any cron line, timer or n8n lane.
 
+## Production readiness checklist (added 2026-10-14)
+
+Answer every line with evidence (a command output, a receipt path, a PR link) before asking for the approval above.
+"n/a" needs a reason. Status words as in
+`docs/implementation/n8n-maturity/N8N_GAP_ASSESSMENT_AND_MATURITY_REVIEW_20261014.md` §0.
+
+**A. Identity and release**
+- [ ] The change is merged on `main`; the candidate SHA has green push-to-main CI (step 4).
+- [ ] After promote, `curl -s 127.0.0.1:7777/v3/build-meta.json` names the SHA (step 6); the change is **LIVE**, not
+      MERGED-NOT-SERVED. Nothing was edited inside a release directory; if an operator containment edit was made
+      there (2026-10-14 18:11, `config/health_agent_policy.json`, `config-write` grants `96a0ab8c`/`d3a80ca0`), this
+      release must carry the same content so served identity and running files agree again (done for that edit by
+      5aa61048d, which serves #1737).
+- [ ] Bound units restarted onto CURRENT (step 7); `systemctl --user --failed` empty.
+
+**B. Safety rails**
+- [ ] No broker, order, stop, credential, live-flag or 2FA path touched without the named grant (AGENTS.md §0, §22).
+- [ ] If the change can reach a broker write: the change calls `assert_trading_unlocked` (the lock is LIVE @5aa61048d)
+      (`tests/test_trading_lock_coverage_20261014.py`).
+- [ ] New HTTP routes are classified in `config/cc_auth.yaml` (service, CSRF, step-up) and covered by its tests.
+- [ ] No secret value in code, config, logs or docs (`scripts/check_no_secrets.py`).
+
+**C. Observability and alerting**
+- [ ] Every new scheduled job has a registry row with `output_signal` and a receipt (AGENTS.md §9.3).
+- [ ] It has a health contract (REVIEWED for business-critical work) and appears in a monitor (breach detector or a
+      health-tick step).
+- [ ] Its failure reaches the operator through the chokepoint at the right priority (P1 if money or notification is at
+      risk); quoted dry run of the alert path.
+- [ ] Sends go through `send_telegram` / notification intents only (`scripts/check_comms_gateway_enforcement.py` green).
+
+**D. n8n workflows (in addition)**
+- [ ] The workflow is a business process (AGENTS.md 10.0.0 §23.23 (2)), not a timer-only leaf lane while the freeze is in
+      force; it uses the fabric Run Lane and `tradeai-fabric-error`, and any sub-workflow it calls is published.
+- [ ] The framework card of `N8N_ONBOARDING_STANDARD.md` §0 is in the PR; every element of the six areas
+      (`N8N_CONFIGURATION.md` §0.4) is met or has an accepted exception.
+- [ ] Drift check OK after import; activation grant names the workflow ids (`scripts/check_n8n_activation_grants.py`).
+- [ ] No double run with a live cron line: cron commented in the same step, or the lane is idempotent by a semantic
+      effect key (`CANARY_DOUBLE_EFFECT_AUDIT.md` §4).
+- [ ] Live authority agrees in all gates: registry `dispatch.mode`, allowlist `live_arg`, relay live list (on 2026-10-14
+      eleven registry-live canary rows ran dry because the relay list did not include them).
+
+**E. AI / LLM**
+- [ ] Model calls go through the governed bridge with a registered process id and caps; outputs have a schema; no
+      LLM output can select an action outside the allowlist; a human gate precedes any side effect.
+
+**F. Recovery**
+- [ ] Rollback is one command and was dry-run (`ROLLBACK_COMMANDS.md`); data written by the change can be re-derived
+      or is backed up (`config/backup_coverage_manifest.json`).
+- [ ] The incident path for its failure is named (`docs/runbooks/INCIDENT_RESPONSE.md` class).
+
 ## Failure / rollback
 
 A `prepare` refused with `CURRENT pin check tree_diff:N` means the release overlay and the commit differ.

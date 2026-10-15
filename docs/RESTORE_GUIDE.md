@@ -1,14 +1,80 @@
 # Trade AI v12 — Restore Guide
 
 Status:      ACTIVE
-as_of:       2026-08-11T08:38:52-04:00
-Measured at: efcc51365 / not measured
+as_of:       2026-10-15T02:35:00Z (§0, re-measured); 2026-08-11T08:38:52-04:00 (§1–§11)
+Measured at: §0 served 5aa61048d / origin/main 57d8fc3ff (first written at 3e9dc5e14), host ms01-openclaw;
+             §1–§11 efcc51365 / not measured
 
-> **⚠️ Model policy (validated 2026-06-02):** gemma3:12b = primary chat, gemma3:4b = fallback, gemma3:27b = overnight; **qwen3-embedding:8b = embeddings (active)**; **qwen3:14b (chat) is DISABLED + uninstalled.** Any reference below to qwen3:14b as an active chat/generation model is superseded — see `MASTER_SYSTEM_DOCUMENTATION.md` §12.
-
+> **Superseded 2026-10-14:** the model-policy banner that stood here (gemma3 = primary chat) no longer holds — local
+> generative models are policy-barred (`scripts/lib/llm_task_policy.py`; AGENTS.md §12); only embeddings run locally.
+> "All backup files are in the git repo" is also wrong: backups are dumps and encrypted archives under `~/db_backups`,
+> `persistent-state/backups/` and Drive `Trade_AI_Backups` (§0.2). Read §0 first; §1–§11 are the 2026-08 guide.
 
 **If you need to rebuild the system from scratch, follow this guide.**
-**All backup files are in the git repo under the project root.**
+
+---
+
+## 0. Disaster recovery and failover — as of 2026-10-14
+
+Status labels: LIVE, MERGED-NOT-SERVED, PR-OPEN, BRANCH-ONLY, PLANNED, POLICY-ONLY
+(`docs/implementation/n8n-maturity/N8N_GAP_ASSESSMENT_AND_MATURITY_REVIEW_20261014.md` §0).
+
+### 0.1 The honest position
+
+- **One host, no failover, no UPS.** ms01-openclaw runs everything (API, n8n, Postgres, executors, bridge). There is
+  no standby host and no replica. `~/power-watch/README.md` records four hard power cuts (2026-08-21, 09-10, 09-11 ×2)
+  attributed to the failing 19 V DC supply; uptime since 2026-09-12 17:02. The n8n stack has never been shown to
+  come back after a cold boot (WS8-06, CRITICAL). **RTO and RPO have never been stated or measured** (WS8-07).
+- **Money is protected outside the host.** Resting broker stops work with the host dead (they did on 10-14, SPCX).
+  The host's job in a disaster is to tell the operator and to stay out of the way; nothing in this guide places,
+  changes or cancels an order (AGENTS.md §0 rules 1–2).
+- **No `trade_ai` database restore has ever been drilled** (`config/backup_coverage_manifest.json` "NEVER DRILLED";
+  `scripts/trade_ai_restore_drill.py` exists, NEVER_SCHEDULED; WS6-07). The n8n database restore is drilled weekly.
+
+### 0.2 Backups (LIVE)
+
+| What | How / when | Where | Latest receipt (2026-10-14) |
+|---|---|---|---|
+| `trade_ai` Postgres | `tradeai-portfolio-backup-cadence.timer` 02:30 daily → `scripts/pipelines/run_portfolio_maintenance_pipeline.sh --cadence backup` → `linux_launchers/run_pg_backup.sh` | `~/db_backups/trade_ai_<ts>.sql.gz` (one kept by `tradeai-backup-enforcer.timer`; older in `archive/`) | `trade_ai_20261014_023000.sql.gz` 2.89 GB, 02:49; receipt `persistent-state/data/runtime/portfolio_maintenance_backup_last_run.json` ok |
+| Secrets/state archives | same cadence: `backup_secrets_state.sh env|memory|ops`, gpg AES-256 | Drive `Trade_AI_Backups` via `gog` | same receipt |
+| Offsite DB, data, apps | same pipeline, weekly-gated | Drive | `last_db_offsite_backup.stamp` 2026-10-08 (offsite RPO ≈ 7 days, WS6-06) |
+| n8n database | `tradeai-platform-maintenance-nightly.timer` 01:15 → `scripts/n8n_lab_backup.sh` (keeps 14) | `persistent-state/backups/n8n/n8n-lab-<ts>.dump` | `n8n-lab-20261014T051506Z.dump`; `n8n_lab_backup_last.json` |
+| n8n restore drill | weekly timer (Sun 03:00) → `scripts/n8n_lab_restore_drill.sh` | scratch DB | `n8n_lab_restore_drill_last.json` 2026-10-11: 157/157 tables, 43 workflows, ok |
+| Workflows (source of truth) | generated from git | `docs/implementation/n8n-maturity/workflows/`, `docs/implementation/n8n-parallel/workflows/generated/` | drift 18/18 OK (manual check, 02:35Z 10-15; 16 legacy + 2 fabric) |
+| Releases | `scripts/cio_phase2_exact_main_deploy.sh`; disk hygiene keeps 10 | `~/trade-ai-releases/portfolio-server/<sha>-…` | CURRENT = `5aa61048d-main-exact-phase2-20261014-191424` (since 00:24Z 10-15) |
+| Generated docs, memory | cron `50 23` `backup_generated_docs.sh`; `10 3` memory sync; `5 *` `run_drive_syncs.sh --apply` | Drive | never drilled |
+| Inventory | `config/backup_coverage_manifest.json` (as_of 2026-10-09) | repo | holes in governance and audit state (WS6-06) |
+
+### 0.3 Failure scenarios and the recovery path
+
+| Scenario | Detect | Recover | Proven? |
+|---|---|---|---|
+| Bad release | `curl -s 127.0.0.1:7777/v3/build-meta.json`; health check in `promote` | `bash scripts/cio_phase2_exact_main_deploy.sh rollback` (restores `PREV_RELEASE`, drop-ins, pins); `docs/ops/ROLLBACK_COMMANDS.md` | yes (auto-rollback on failed promote) |
+| n8n down | `tradeai-n8n-lab-watchdog.timer` (`/healthz`); heartbeat-watch stops (it runs in n8n — the notifier's fan-in age check then pages) | `docker compose` restart of `m8m-n8n` (operator, `service`/`cron` grant); cut-over lanes fall back by uncommenting their `# RETIRED … n8n-cutover` cron lines (`ROLLBACK_COMMANDS.md`); approvals fail closed | partial — restart yes, cron fallback per lane documented, never rehearsed as a set |
+| n8n DB lost | restore drill receipt | `pg_restore` the newest `n8n-lab-*.dump` (drill script is the procedure); re-import workflows from git if needed | yes (weekly drill) |
+| `trade_ai` DB lost or corrupt | `postgres-main-watchdog` timer; CC false-green risk (AGENTS.md 2026-09-18 ENOSPC lesson) | §3 "Restore the database from the latest dump" | **no — never drilled** |
+| Disk full (`/` or `/tmp` inodes) | root-disk checks in health agent; `/tmp` inodes unmonitored (WS3-31) | `docs/runbooks/DB_RETENTION.md`, hygiene enforcer; breakers opened by ENOSPC need operator release (`scripts/n8n_dlq.py`, ledger `breakers`) | partial |
+| Power loss / host death | **nothing off-box notices** (WS3-18) | power on; systemd user units and docker restart policies; then §0.4 checklist | **no — never cold-booted** |
+| Broker credential compromise | — | Schwab app deactivation (done 2026-10-14); `docs/runbooks/KEY_ROTATION.md` (rotation declined by the operator for now); trading lock **LIVE, LOCKED** (#1734, `docs/runbooks/TRADING_LOCK.md`); global kill switch ON | partial |
+| Full rebuild | — | `docs/runbooks/BARE_METAL_RECOVERY.md` (Drive + gpg + Bitwarden SM), then §11 below | **no — offsite decrypt has no receipt** |
+
+### 0.4 After any restart or restore — verify, in order
+
+1. `curl -s 127.0.0.1:7777/v3/build-meta.json` names the expected SHA; `readlink -f ~/trade-ai-releases/portfolio-server/CURRENT`.
+2. `systemctl --user --failed` is empty; `docker ps` shows `m8m-n8n` and `m8m-n8n-db`; `curl -s 127.0.0.1:5678/healthz`.
+3. Ledger runs resume (query in `N8N_MONITORING_AND_REMEDIATION_STANDARD.md` §0.3); fan-in and notifier receipts
+   fresh (`n8n_incident_fanin_last.json`, `incident_notifier_last.json` < 10 min).
+4. `python3 scripts/check_n8n_workflow_drift.py --dry-run` → 18/18 OK (or the then-current count); the fabric pair
+   (`tradeai-fabric-run-lane`, `tradeai-fabric-error`) is active and published. A sub-workflow that comes back
+   unpublished breaks Execute Workflow callers (n8n calls only published sub-workflows).
+5. The trading lock state is what the operator expects (#1734 LIVE: locked unless a valid unlock file exists;
+   `GET /api/v2/execution/kill-switches` shows the expected switches).
+6. Send nothing, place nothing, change no flag; report to the operator (`docs/runbooks/INCIDENT_RESPONSE.md`).
+
+### 0.5 Gaps (owner: operator decisions in `DECISIONS_FOR_OPERATOR.md` 8; REFACTOR_PLAN E1)
+
+UPS; a cold-boot drill with a receipt; the first `trade_ai` restore drill; an offsite decrypt drill; a stated RTO/RPO;
+an off-box dead-man so host death is noticed.
 
 ---
 
