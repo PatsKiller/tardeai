@@ -3430,7 +3430,7 @@
       "env_allowlist_mode": "report",
       "env_evidence": "Script reads only db_adapter / psycopg2 DB names and the state-root names (no broker credential name, AGENTS 23.18 ruling 3); not inventoried per literal read.",
       "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env (or a module-level load_dotenv) re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as the SW4 rows).",
-      "source": "shadow wave LD-W1 (lane disposition 2026-10-15, class report), cron:L796 (crontab -l 2026-10-15: `15 9 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/opening_intel.lock $PY scripts/opening_intelligence.py --persist --render >> logs/opening_intelligence.log 2>&1`). SHADOW ONLY: live_arg null, registry dispatch.mode dry_run, scheduler.stage shadow; the cron line keeps doing the real work. The live argument would be ['--persist', '--render']; it is NOT in this entry. lock /tmp/opening_intel.lock (flock) is the live cron line's lock. Dry run: an explicit --dry-run returns an offline plan before env loading, DB connection, telemetry or any write; proof in docs/ops/packets/n8n-shadow-wave-ld-w1-20261015/.",
+      "source": "shadow wave LD-W1 (lane disposition 2026-10-15, class report), cron:L796 (crontab -l 2026-10-15: `15 9 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/opening_intel.lock $PY scripts/opening_intelligence.py --persist --render >> logs/opening_intelligence.log 2>&1`). SHADOW ONLY: live_arg null, registry dispatch.mode dry_run, scheduler.stage shadow; the cron line keeps doing the real work. The live argument would be ['--persist', '--render']; it is NOT in this entry. lock /tmp/opening_intel.lock (flock) is the live cron line's lock. Dry run: an explicit --dry-run returns an offline plan before env loading, DB connection, telemetry or any write; proof in docs/ops/packets/n8n-shadow-wave-ld-w1-20261015/. | CW3 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv ['--persist', '--render'], lock = the cron flock lock /tmp/opening_intel.lock (shared: the lock proves no double run).",
       "command": [
         "$PY",
         "scripts/opening_intelligence.py"
@@ -3441,7 +3441,10 @@
       "dry_run_arg": [
         "--dry-run"
       ],
-      "live_arg": null,
+      "live_arg": [
+        "--persist",
+        "--render"
+      ],
       "market_gate": false,
       "output_signal": "data/runtime/opening-intelligence-render_last.json"
     },
@@ -3462,7 +3465,7 @@
       "env_allowlist_mode": "report",
       "env_evidence": "Script reads only db_adapter / psycopg2 DB names and the state-root names (no broker credential name, AGENTS 23.18 ruling 3); not inventoried per literal read.",
       "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env (or a module-level load_dotenv) re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as the SW4 rows).",
-      "source": "shadow wave LD-W1 (lane disposition 2026-10-15, class report), cron:L837 (crontab -l 2026-10-15: `30 5 * * * cd $PROJ && $PY scripts/hermes_discovery_scorecard.py >> logs/hermes_discovery_scorecard.log 2>&1`). SHADOW ONLY: live_arg null, registry dispatch.mode dry_run, scheduler.stage shadow; the cron line keeps doing the real work. The live argument would be (none); it is NOT in this entry. lock /tmp/hermes_discovery_scorecard.lock is PROPOSED: the cron line holds no flock today, so canary stays blocked until a cron packet adds `flock -n` with this path. Dry run: an explicit --dry-run returns an offline plan before env loading, DB connection, telemetry or any write; proof in docs/ops/packets/n8n-shadow-wave-ld-w1-20261015/.",
+      "source": "shadow wave LD-W1 (lane disposition 2026-10-15, class report), cron:L837 (crontab -l 2026-10-15: `30 5 * * * cd $PROJ && $PY scripts/hermes_discovery_scorecard.py >> logs/hermes_discovery_scorecard.log 2>&1`). SHADOW ONLY: live_arg null, registry dispatch.mode dry_run, scheduler.stage shadow; the cron line keeps doing the real work. The live argument would be (none); it is NOT in this entry. lock /tmp/hermes_discovery_scorecard.lock is PROPOSED: the cron line holds no flock today, so canary stays blocked until a cron packet adds `flock -n` with this path. Dry run: an explicit --dry-run returns an offline plan before env loading, DB connection, telemetry or any write; proof in docs/ops/packets/n8n-shadow-wave-ld-w1-20261015/. | CW3 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv [], lock = the cron flock lock /tmp/hermes_discovery_scorecard.lock (shared: the lock proves no double run).",
       "command": [
         "$PY",
         "scripts/hermes_discovery_scorecard.py"
@@ -3473,7 +3476,7 @@
       "dry_run_arg": [
         "--dry-run"
       ],
-      "live_arg": null,
+      "live_arg": [],
       "market_gate": false,
       "output_signal": "data/runtime/hermes-discovery-scorecard_last.json"
     },
@@ -3494,7 +3497,7 @@
       "env_allowlist_mode": "report",
       "env_evidence": "Script reads only db_adapter / psycopg2 DB names and the state-root names (no broker credential name, AGENTS 23.18 ruling 3); not inventoried per literal read.",
       "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env (or a module-level load_dotenv) re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as the SW4 rows).",
-      "source": "shadow wave LD-W1 (lane disposition 2026-10-15, class learn), cron:L606 (crontab -l 2026-10-15: `30 */6 * * * cd $PROJ && flock -n /tmp/wire_lessons.lock $PY scripts/wire_advisory_lessons.py >> logs/wire_advisory_lessons.log 2>&1  # wire external advisory lessons → trade_lesson_memory → strategy_lesson_rollup (learning loop)`). SHADOW ONLY: live_arg null, registry dispatch.mode dry_run, scheduler.stage shadow; the cron line keeps doing the real work. The live argument would be (none); it is NOT in this entry. lock /tmp/wire_lessons.lock (flock) is the live cron line's lock. Dry run: an explicit --dry-run returns an offline plan before env loading, DB connection, telemetry or any write; proof in docs/ops/packets/n8n-shadow-wave-ld-w1-20261015/.",
+      "source": "shadow wave LD-W1 (lane disposition 2026-10-15, class learn), cron:L606 (crontab -l 2026-10-15: `30 */6 * * * cd $PROJ && flock -n /tmp/wire_lessons.lock $PY scripts/wire_advisory_lessons.py >> logs/wire_advisory_lessons.log 2>&1  # wire external advisory lessons → trade_lesson_memory → strategy_lesson_rollup (learning loop)`). SHADOW ONLY: live_arg null, registry dispatch.mode dry_run, scheduler.stage shadow; the cron line keeps doing the real work. The live argument would be (none); it is NOT in this entry. lock /tmp/wire_lessons.lock (flock) is the live cron line's lock. Dry run: an explicit --dry-run returns an offline plan before env loading, DB connection, telemetry or any write; proof in docs/ops/packets/n8n-shadow-wave-ld-w1-20261015/. | CW3 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv [], lock = the cron flock lock /tmp/wire_lessons.lock (shared: the lock proves no double run).",
       "command": [
         "$PY",
         "scripts/wire_advisory_lessons.py"
@@ -3505,7 +3508,7 @@
       "dry_run_arg": [
         "--dry-run"
       ],
-      "live_arg": null,
+      "live_arg": [],
       "market_gate": false,
       "output_signal": "data/runtime/wire-advisory-lessons_last.json"
     },
@@ -3526,7 +3529,7 @@
       "env_allowlist_mode": "report",
       "env_evidence": "Script reads only db_adapter / psycopg2 DB names and the state-root names (no broker credential name, AGENTS 23.18 ruling 3); not inventoried per literal read.",
       "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env (or a module-level load_dotenv) re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as the SW4 rows).",
-      "source": "shadow wave LD-W1 (lane disposition 2026-10-15, class hygiene), cron:L269 (crontab -l 2026-10-15: `0 10 * * 1-5 cd $PROJ && $PY scripts/incubator_rolloff_engine.py --apply >> logs/incubator_rolloff.log 2>&1`). SHADOW ONLY: live_arg null, registry dispatch.mode dry_run, scheduler.stage shadow; the cron line keeps doing the real work. The live argument would be ['--apply']; it is NOT in this entry. lock /tmp/incubator_rolloff.lock is PROPOSED: the cron line holds no flock today, so canary stays blocked until a cron packet adds `flock -n` with this path. Dry run: an explicit --dry-run returns an offline plan before env loading, DB connection, telemetry or any write; proof in docs/ops/packets/n8n-shadow-wave-ld-w1-20261015/.",
+      "source": "shadow wave LD-W1 (lane disposition 2026-10-15, class hygiene), cron:L269 (crontab -l 2026-10-15: `0 10 * * 1-5 cd $PROJ && $PY scripts/incubator_rolloff_engine.py --apply >> logs/incubator_rolloff.log 2>&1`). SHADOW ONLY: live_arg null, registry dispatch.mode dry_run, scheduler.stage shadow; the cron line keeps doing the real work. The live argument would be ['--apply']; it is NOT in this entry. lock /tmp/incubator_rolloff.lock is PROPOSED: the cron line holds no flock today, so canary stays blocked until a cron packet adds `flock -n` with this path. Dry run: an explicit --dry-run returns an offline plan before env loading, DB connection, telemetry or any write; proof in docs/ops/packets/n8n-shadow-wave-ld-w1-20261015/. | CW3 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv ['--apply'], lock = the cron flock lock /tmp/incubator_rolloff.lock (shared: the lock proves no double run).",
       "command": [
         "$PY",
         "scripts/incubator_rolloff_engine.py"
@@ -3537,7 +3540,9 @@
       "dry_run_arg": [
         "--dry-run"
       ],
-      "live_arg": null,
+      "live_arg": [
+        "--apply"
+      ],
       "market_gate": false,
       "output_signal": "data/runtime/incubator-rolloff-engine_last.json"
     },
@@ -3558,7 +3563,7 @@
       "env_allowlist_mode": "report",
       "env_evidence": "Script reads only db_adapter / psycopg2 DB names and the state-root names (no broker credential name, AGENTS 23.18 ruling 3); not inventoried per literal read.",
       "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env (or a module-level load_dotenv) re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as the SW4 rows).",
-      "source": "shadow wave LD-W1 (lane disposition 2026-10-15, class learn), cron:L790 (crontab -l 2026-10-15: `0 9 1 * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/pattern_extractor.lock $PY scripts/pattern_extractor.py >> logs/pattern_extractor.log 2>&1`). SHADOW ONLY: live_arg null, registry dispatch.mode dry_run, scheduler.stage shadow; the cron line keeps doing the real work. The live argument would be (none); it is NOT in this entry. lock /tmp/pattern_extractor.lock (flock) is the live cron line's lock. Dry run: an explicit --dry-run returns an offline plan before env loading, DB connection, telemetry or any write; proof in docs/ops/packets/n8n-shadow-wave-ld-w1-20261015/.",
+      "source": "shadow wave LD-W1 (lane disposition 2026-10-15, class learn), cron:L790 (crontab -l 2026-10-15: `0 9 1 * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/pattern_extractor.lock $PY scripts/pattern_extractor.py >> logs/pattern_extractor.log 2>&1`). SHADOW ONLY: live_arg null, registry dispatch.mode dry_run, scheduler.stage shadow; the cron line keeps doing the real work. The live argument would be (none); it is NOT in this entry. lock /tmp/pattern_extractor.lock (flock) is the live cron line's lock. Dry run: an explicit --dry-run returns an offline plan before env loading, DB connection, telemetry or any write; proof in docs/ops/packets/n8n-shadow-wave-ld-w1-20261015/. | CW3 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv [], lock = the cron flock lock /tmp/pattern_extractor.lock (shared: the lock proves no double run).",
       "command": [
         "$PY",
         "scripts/pattern_extractor.py"
@@ -3569,7 +3574,7 @@
       "dry_run_arg": [
         "--dry-run"
       ],
-      "live_arg": null,
+      "live_arg": [],
       "market_gate": false,
       "output_signal": "data/runtime/pattern-extractor_last.json"
     },
@@ -3614,7 +3619,7 @@
       "dry_run_arg": [
         "--dry-run"
       ],
-      "live_arg": null,
+      "live_arg": [],
       "lock": "/tmp/symbol_profiles.lock",
       "lock_kind": "flock",
       "timeout_s": 5400,
@@ -3637,7 +3642,7 @@
       "env_allowlist_mode": "report",
       "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as the SW4 / LD-W1 rows). finviz_enrichment (the Finviz fallback) reads FINVIZ_API_TOKEN / FINVIZ_COOKIE; yfinance needs no credential.",
       "env_evidence": "build_symbol_profiles.py imports db_adapter (DB_* names), finviz_enrichment (FINVIZ_* names) and yfinance (no credential); lib/lane_last_receipt.py and lib/persistent_state_root.py read TRADEAI_STATE_ROOT / TRADEAI_PERSISTENT_STATE_ROOT. No broker credential name.",
-      "source": "lane repair 2026-10-15 (taking the refactor shard 05 proposal, wave R2-05), cron:L477 (crontab -l 2026-10-15, sha256 6a5c6768: `0 19 * * 0 cd $PROJ && flock -n /tmp/symbol_profiles.lock $PY scripts/build_symbol_profiles.py >> logs/symbol_profiles.log 2>&1  # weekly company-profile refresh (operator 2026-06-12)`). SHADOW ONLY: live_arg null, registry dispatch.mode dry_run, scheduler.stage shadow; the cron line keeps doing the real work. The live argument would be [] (the bare command); it is NOT in this entry. lock /tmp/symbol_profiles.lock (flock) is the live cron line's lock. Dry run: an explicit --dry-run prints an offline plan before env loading, DB connection, provider call or any write (refactor shard 05 contract) plus one LANE_OUTPUT stderr line; the measured READ ONLY preview is --watchlist-top N --dry-run. Proof in docs/ops/packets/lane-repair-indicator-engine-20261015/."
+      "source": "lane repair 2026-10-15 (taking the refactor shard 05 proposal, wave R2-05), cron:L477 (crontab -l 2026-10-15, sha256 6a5c6768: `0 19 * * 0 cd $PROJ && flock -n /tmp/symbol_profiles.lock $PY scripts/build_symbol_profiles.py >> logs/symbol_profiles.log 2>&1  # weekly company-profile refresh (operator 2026-06-12)`). SHADOW ONLY: live_arg null, registry dispatch.mode dry_run, scheduler.stage shadow; the cron line keeps doing the real work. The live argument would be [] (the bare command); it is NOT in this entry. lock /tmp/symbol_profiles.lock (flock) is the live cron line's lock. Dry run: an explicit --dry-run prints an offline plan before env loading, DB connection, provider call or any write (refactor shard 05 contract) plus one LANE_OUTPUT stderr line; the measured READ ONLY preview is --watchlist-top N --dry-run. Proof in docs/ops/packets/lane-repair-indicator-engine-20261015/. | CW3 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv [], lock = the cron flock lock /tmp/symbol_profiles.lock (shared: the lock proves no double run)."
     },
     {
       "lane_id": "indicator-engine",

@@ -814,8 +814,8 @@
       ],
       "idempotent_today": "guarded:a rolled-off row leaves the ACTIVE selection, so a second run in the slot appends no incubator_events row",
       "wave": "LD-W1 shadow",
-      "cron_claim": false,
-      "n8n_claim": false
+      "cron_claim": true,
+      "n8n_claim": true
     },
     "etf-analyst-enrich": {
       "process": "etf-analyst-enrich",
@@ -898,6 +898,48 @@
       ],
       "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key",
       "wave": "CW2",
+      "n8n_claim": true,
+      "cron_claim": true
+    },
+    "pattern-extractor": {
+      "process": "pattern-extractor",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "0 9 1 * *",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key",
+      "wave": "CW3",
+      "n8n_claim": true,
+      "cron_claim": true
+    },
+    "wire-advisory-lessons": {
+      "process": "wire-advisory-lessons",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "30 */6 * * *",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key",
+      "wave": "CW3",
+      "n8n_claim": true,
+      "cron_claim": true
+    },
+    "build-symbol-profiles-at-0-19": {
+      "process": "build-symbol-profiles-at-0-19",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "0 19 * * 0",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key",
+      "wave": "CW3",
       "n8n_claim": true,
       "cron_claim": true
     }
