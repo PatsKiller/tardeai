@@ -356,7 +356,7 @@ state, decided on the host from the lane's receipt against a declared `expected_
 | Intents | `intent_id`, `dedupe_key`, `runbook_id` | ledger `comms_intents` | (E) |
 | Health contracts | lane / workflow id | `config/n8n_health_contracts.json` | (E) 126 contracts (65 REVIEWED, 61 DRAFT) |
 | Breaches | lane | `Breach@v1` (`scripts/supervisor_breach_detector.py`) | (E) |
-| Framework score | workflow id | `scripts/check_n8n_workflow_framework.py` (`N8nWorkflowFrameworkReport@v1`) | (E) this PR (offline); (P) live mode on a host schedule |
+| Framework score | workflow id | `scripts/check_n8n_workflow_framework.py` (`N8nWorkflowFrameworkReport@v2`) | (E) this PR (offline); (P) live mode on a host schedule |
 | Metrics stack | — | none (`/metrics` 404) | (P) WS8-10 |
 
 ## 11. Decisions and rationale

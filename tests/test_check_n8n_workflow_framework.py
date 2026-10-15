@@ -76,13 +76,25 @@ def _direct_run_wf(error_workflow: str | None = T.FABRIC_ERROR_ID) -> dict:
                 "retryOnFail": True,
                 "parameters": {
                     "method": "POST",
+                    "authentication": "genericCredentialType",
                     "genericAuthType": "httpHeaderAuth",
                     "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
                     "jsonBody": '={{ JSON.stringify({ lane_id: "lane-a", mode: "live", workflow_id: String($workflow.id), '
                     "execution_id: String($execution.id) }) }}",
                 },
             },
+            {
+                "name": "Relay",
+                "type": "n8n-nodes-base.set",
+                "parameters": {
+                    "assignments": {"assignments": [{"name": "TRADEAI_N8N_RUN_URL", "value": T.GENERIC_RELAY_URL}]}
+                },
+            },
         ],
+        "connections": {
+            "Schedule": {"main": [[{"node": "Relay", "type": "main", "index": 0}]]},
+            "Relay": {"main": [[{"node": "POST relay /run", "type": "main", "index": 0}]]},
+        },
     }
 
 
@@ -246,23 +258,24 @@ def test_ai_workflow_must_declare_its_llm_steps(ctx):
     wf["meta"]["framework"]["class"] = "ai-llm"
     r = F.score_workflow(wf, ctx)
     assert all(r["elements"][k]["status"] == F.FAIL for k in ("FW-G1", "FW-G2", "FW-G4"))
+    # Audit 2026-10-15 (DD15): metadata for a node that does not exist used to satisfy every AI element. It fails
+    # now; the positive case (a real, reachable POST /llm_step node) is in the adversarial test file.
     wf["meta"]["framework"]["llm_steps"] = [
         {
             "node": "Judge",
             "process_id": "n8n_lane_failure_diagnosis",
             "template_id": "lane_failure_diagnosis.v1",
             "output_schema_id": "lane_failure_decision/v1",
-            "branch_fields": ["decision"],
+            "branch_fields": ["action_id"],
             "offpeak_tier": "standard",
             "hitl": "none",
             "exception_branch": "Judge refused",
         }
     ]
     r = F.score_workflow(wf, ctx)
-    assert all(
-        r["elements"][k]["status"] == F.PASS
-        for k in ("FW-A5", "FW-G1", "FW-G2", "FW-G3", "FW-G4", "FW-G5", "FW-G6", "FW-G7")
-    ), r["elements"]
+    assert all(r["elements"][k]["status"] == F.FAIL for k in ("FW-W4", "FW-A5", "FW-G1", "FW-G2", "FW-G4", "FW-G5")), r[
+        "elements"
+    ]
 
 
 def test_platform_elements_are_reported_not_scored(ctx):
@@ -340,7 +353,7 @@ _E_IDS = {
     "config/lane_registry.json": ["LaneRegistry@v1"],
     "config/n8n_retry_policies.json": ["N8nRetryPolicies@v1"],
     "scripts/lib/approval_package.py": ["ApprovalPackage@v1"],
-    "scripts/check_n8n_workflow_framework.py": ["N8nWorkflowFrameworkReport@v1"],
+    "scripts/check_n8n_workflow_framework.py": ["N8nWorkflowFrameworkReport@v2"],
 }
 
 
