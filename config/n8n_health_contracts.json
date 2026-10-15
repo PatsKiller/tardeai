@@ -6489,22 +6489,28 @@
           "source": "LaneRunReceipt / allowlist output_signal"
         },
         {
-          "name": "Declared research worker lanes and internal research corpus",
-          "kind": "inventory_text",
+          "name": "config/hermes_research_worker_lanes.yaml (lanes, expected_output_hours, disabled_reason)",
+          "kind": "config",
           "direction": "read",
-          "source": "inventory refactor-shard04:hermes-research-worker-pool dependencies (DRAFT: free text)"
+          "source": "PR hermes-worker-pool-wire-20261015 (scripts/lib/hermes_discovery/worker_pool.py lane_outcome)"
         },
         {
-          "name": "Declared research worker lanes and internal research corpus",
-          "kind": "inventory_text",
-          "direction": "read",
-          "source": "inventory refactor-shard04:hermes-research-worker-pool triggers_inputs (DRAFT: free text)"
+          "name": "data/runtime/hermes_worker_pool_state.json (per-lane last_run_at, last_output_at, tracking_since)",
+          "kind": "store",
+          "direction": "read_write",
+          "source": "PR hermes-worker-pool-wire-20261015 (scripts/lib/hermes_discovery/worker_pool.py lane_outcome)"
         },
         {
-          "name": "Hermes discovery inbox candidates consumed by research reviewers",
-          "kind": "inventory_text",
+          "name": "news_articles, hermes_research_intelligence, system_health_checks, holdings/watchlist coverage reads (PostgreSQL, SELECT only in runners)",
+          "kind": "store",
+          "direction": "read",
+          "source": "scripts/lib/hermes_discovery/coverage.py, coverage_lanes.py, white_space.py, strategy_discovery.py, private_proxy.py, loft_law.py"
+        },
+        {
+          "name": "hermes_discovery_candidates via inbox.upsert_candidate (candidates only, promotion impossible) + hermes_discovery_audit WORKER_LANE_RUN rows",
+          "kind": "store",
           "direction": "write",
-          "source": "inventory refactor-shard04:hermes-research-worker-pool outputs_downstream (DRAFT: free text)"
+          "source": "scripts/lib/hermes_discovery/worker_pool.py run_lane; config/n8n_effect_keys.json effects append"
         }
       ],
       "healthy": [
@@ -6527,6 +6533,14 @@
         {
           "check": "cron_receipt_status_ok",
           "text": "The host lane receipt has status ok. A preserved recent ok_at does not make a subsequent failed receipt healthy."
+        },
+        {
+          "check": "lane_outcomes_ok",
+          "text": "the host lane receipt summary.failures is empty and every summary.lane_outcomes value is a healthy outcome (produced, not_due, empty_within_window, zero_output_ok, disabled, paused, locked, untracked): every enabled lane has a registered runner, no runner error, and returned >= 1 payload within its declared expected_output_hours (config/hermes_research_worker_lanes.yaml; durable clock last_output_at in data/runtime/hermes_worker_pool_state.json)"
+        },
+        {
+          "check": "dry_run_plan_clean",
+          "text": "the dry_run (--dry-run) plan exits 0: it imports the lane config and runner modules (no DB, no writes, no model call) and finds no enabled lane without a runner and no output clock past its window"
         }
       ],
       "degraded": [
@@ -6570,7 +6584,11 @@
         },
         {
           "check": "cron_receipt_failed",
-          "text": "The host lane receipt has status failed, including established soft failures with exit 0. Skipped gates and entirely skipped pools must not advance ok_at."
+          "text": "The host lane receipt has status failed, including established soft failures. Skipped gates must not advance ok_at. Since 2026-10-15 a run where every lane is merely not_due is ok only because each enabled lane's durable output clock was checked inside its expected_output_hours; an entirely no_runner or overdue pool exits 3 and is failed."
+        },
+        {
+          "check": "lane_zero_output",
+          "text": "expected-output rule: a lane is enabled but has no runner (no_runner), raised or timed out (runner_error), or returned zero payloads for longer than its expected_output_hours (output_overdue). The live run exits 3, the receipt is status failed with summary.failures naming each lane and outcome, and ok_at stops advancing (breach detector NO_OUTPUT after 3x cadence). The dry_run plan exits 3 on no_runner and output_overdue too, so a shadow dry_run fire ends RUN_FAILED. Exit 0 with every lane no_runner is impossible."
         }
       ],
       "baseline": {
@@ -6617,7 +6635,9 @@
         "verify": [
           "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='hermes-research-worker-pool' ORDER BY requested_at DESC LIMIT 10\"",
           "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:hermes-research-worker-pool' ORDER BY created_at DESC LIMIT 10",
-          "stat / jq the receipt: data/runtime/hermes-research-worker-pool_last.json"
+          "stat / jq the receipt: data/runtime/hermes-research-worker-pool_last.json",
+          "jq '.summary.failures, .summary.lane_outcomes' data/runtime/hermes-research-worker-pool_last.json",
+          "jq '.lanes' data/runtime/hermes_worker_pool_state.json  (last_output_at per lane)"
         ],
         "never": "Host receipts and output signals are authoritative; n8n execution color is not business completion proof. Runtime is not measured by this source refactor."
       },
@@ -6627,7 +6647,15 @@
         "prepared_by": "agent draft (Codex shards 01-04)",
         "status": "REVIEWED",
         "reviewed_by": "operator PatsKiller 2026-10-11",
-        "reviewed_on": "2026-10-11"
+        "reviewed_on": "2026-10-11",
+        "amendments": [
+          {
+            "on": "2026-10-15",
+            "by": "agent (hermes-worker-pool-wire-20261015)",
+            "change": "added lane_outcomes_ok, dry_run_plan_clean, lane_zero_output; cron_receipt_failed text re-stated for not_due pools; connects_to inventory_text replaced by concrete config/store edges",
+            "status": "agent-reviewed against source; awaiting the operator's REVIEW pass of the amendment"
+          }
+        ]
       }
     },
     {

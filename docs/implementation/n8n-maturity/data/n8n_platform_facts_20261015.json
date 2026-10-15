@@ -1,0 +1,17 @@
+{
+  "schema": "N8nPlatformFacts@v1",
+  "as_of": "2026-10-15T02:35:00Z",
+  "authority": "READ_ONLY_ADVISORY",
+  "source": "docs/implementation/n8n-maturity/N8N_GAP_ASSESSMENT_AND_MATURITY_REVIEW_20261014.md §2 and §4 evidence keys (container env, pg_roles, drift-check receipt search). Measured values, cited; the framework checker reports them as platform elements and does not count them in a workflow's score.",
+  "facts": {
+    "executions_save_on_success_default": {"value": "none", "evidence": "EXECUTIONS_DATA_SAVE_ON_SUCCESS=none (container env); GAP §2 row 'Successful executions saved'"},
+    "executions_save_on_error_default": {"value": "all", "evidence": "EXECUTIONS_DATA_SAVE_ON_ERROR=all, prune 168 h; GAP §2"},
+    "n8n_db_role_superuser": {"value": true, "evidence": "pg_roles.rolsuper = t for n8n; GAP §2, WS1b-12"},
+    "drift_check_scheduled": {"value": false, "evidence": "no n8n_workflow_drift_last.json receipt, no cron/timer; GAP §2; PROGRAM_TRACKER row 40"},
+    "relay_bind_firewall_verified": {"value": false, "evidence": "relay on docker bridge 172.19.0.1:18092, ufw rule not verified; GAP §4 s3"},
+    "image_pinned": {"value": "n8nio/n8n:2.43.0", "evidence": "GAP §4 s3 (tag pin, not digest)"},
+    "block_env_access_in_node": {"value": true, "evidence": "N8N_BLOCK_ENV_ACCESS_IN_NODE=true; GAP §4 s3"},
+    "community_packages_disabled": {"value": true, "evidence": "N8N_COMMUNITY_PACKAGES_ENABLED=false; GAP §4 s3"},
+    "host_dead_man_outside_n8n": {"value": false, "evidence": "heartbeat-watch runs in n8n and reports through the fan-in; GAP §5.2, WS1-15"}
+  }
+}

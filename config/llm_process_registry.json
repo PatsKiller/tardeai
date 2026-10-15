@@ -332,7 +332,9 @@
       "default_mode": "automated",
       "description": "Controlled-vocabulary judgment tags through governed OAuth; no local generation",
       "daily_cost_cap_usd": 0.05,
-      "notes": "2026-10-15: daily_cost_cap_usd added (was absent, so check_cost_cap logged llm_lane_unregistered and enforced no process cap). Sized from measured spend: llm_cost_reservations 0 rows ever; llm_consumption_log 2026-10-01..10-14 = 375 calls, all grok OAuth, $0.00 every day (max 48 calls on 10-14); no provider_cost events. 2 x max observed day = $0.00, so the floor applies: $0.05 = 2 x 48 calls x ~$0.0005 per call if the routing row's DeepSeek FAST primary were ever used at peak price (~700 in x $0.30/M + 256 out x $1.20/M), and equal to the smallest existing cap in this registry. Global LLM_GLOBAL_DAILY_USD_CAP still binds. No daily_soft_cap added: that would also bound OAuth call counts via over_daily_cap."
+      "tools_allowed": false,
+      "advisory_only": true,
+      "notes": "2026-10-15 (n8n fabric cutover prerequisite G5): routed through cio_governed_model_bridge (8766) as caller advisory_desk task hermes_tag_engine when the n8n run executor binds the lane's llm_route; tools_allowed false (the classifier takes no tools; the bridge strips any) and advisory_only true, like every other bridge-mapped hermes_* row. | 2026-10-15: daily_cost_cap_usd added (was absent, so check_cost_cap logged llm_lane_unregistered and enforced no process cap). Sized from measured spend: llm_cost_reservations 0 rows ever; llm_consumption_log 2026-10-01..10-14 = 375 calls, all grok OAuth, $0.00 every day (max 48 calls on 10-14); no provider_cost events. 2 x max observed day = $0.00, so the floor applies: $0.05 = 2 x 48 calls x ~$0.0005 per call if the routing row's DeepSeek FAST primary were ever used at peak price (~700 in x $0.30/M + 256 out x $1.20/M), and equal to the smallest existing cap in this registry. Global LLM_GLOBAL_DAILY_USD_CAP still binds. No daily_soft_cap added: that would also bound OAuth call counts via over_daily_cap."
     },
     {
       "id": "holding_protection_advisor",
@@ -1352,10 +1354,10 @@
       "advisory_only": true,
       "dedupe_policy": "request_id_only",
       "circuit_breaker": true,
-      "offpeak_tier": "standard",
+      "offpeak_tier": "critical",
       "registered_by": "n8nmat/llm-self-remediation",
       "registered_at": "2026-10-10T05:00:00Z",
-      "notes": "Per-call ceiling $0.05 (routing policy cost_ceiling_usd, enforced by the bridge, §23.10 P21) and re-checked by the caller; $0.10/day and 40 calls/day for this process inside LLM_GLOBAL_DAILY_USD_CAP 2.00. One call per incident, at most 3 per lane per day. A refused or deferred call escalates the incident without a diagnosis and says so. Claude is not a bridge provider today: the operator's 'DeepSeek or Claude' fallback is DeepSeek until a Claude lane is provisioned (§17)."
+      "notes": "Per-call ceiling $0.05 (routing policy cost_ceiling_usd, enforced by the bridge, §23.10 P21) and re-checked by the caller; $0.10/day and 40 calls/day for this process inside LLM_GLOBAL_DAILY_USD_CAP 2.00. One call per incident, at most 3 per lane per day. A refused or deferred call escalates the incident without a diagnosis and says so. offpeak_tier critical (2026-10-15): a diagnosis is about a failure happening now and routes OAuth first (free); at 'standard' every failure outside the scheduled window escalated with no cause (2026-10-12..15: 8,662 deferred records vs 25 diagnoses). The $0.05/call and $0.10/day caps above still bound the paid DeepSeek fallback at peak; an operator row in llm_caller_priority overrides this seed. Routing truth (provider journal, 2026-10-15): 117 of 119 completed calls 2026-10-11T19:33Z..2026-10-15T00:34Z were DeepSeek-served because the bridge reaches an OAuth lane only when the host enables it (CIO_BRIDGE_OAUTH_TRANSPORTS; drop-in 60-oauth-transports added 2026-10-14 ~21:26 ET) and the transport_failover walk skipped grok/chatgpt as no_bridge_transport; since then the order is grok -> chatgpt -> deepseek as written, DeepSeek the working fallback (tests/test_n8n_diagnosis_deepseek_route_20261015.py). Claude is not a bridge provider today: the operator's 'DeepSeek or Claude' fallback is DeepSeek until a Claude lane is provisioned (§17)."
     }
   ],
   "default_deepseek_policy": "FAST",

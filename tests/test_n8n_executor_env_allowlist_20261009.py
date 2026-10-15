@@ -58,6 +58,10 @@ _REVIEWED_NEW_COMMON_MODULES = frozenset(
         "scripts/lib/n8n_health_contracts.py",
         "scripts/lib/n8n_model_job.py",
         "scripts/lib/n8n_momentum_lifecycle.py",
+        # 2026-10-15 (hermes-learning cutover prerequisite G3): imported lazily by the gateway's coordination/run to
+        # validate p: process-step keys; stdlib only (json, re, dataclasses, datetime, zoneinfo, pathlib) plus the
+        # already-reviewed pipelines/pipeline_manifest.py, no environment read, no network.
+        "scripts/lib/n8n_process_keys.py",
         "scripts/lib/n8n_remediation_catalogue.py",
         "scripts/lib/n8n_retry_policy.py",
         "scripts/lib/scanner_candidate_projection.py",

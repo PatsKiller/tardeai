@@ -100,7 +100,9 @@ All five ran on READ ONLY sessions against production. Receipts and DB counts we
   | planners | `min_produced 1` | `no_candidates` | `llm_lane_error`, `db_connection_lost` |
 
   `failed[]` gains `empty_output` and `healthy[]` gains `output_produced`.
-- The remediation catalogue was regenerated: 119 → 130 lanes. Main was already 7 lanes stale.
+- The remediation catalogue is not regenerated here. Main's catalogue is already 7 lanes behind the contracts, and
+  `tests/test_n8n_onboarding_standard_20261010.py` pins it at 119. Each contract records `catalogue_entry false`, so
+  the diagnoser skips these lanes until a catalogue PR regenerates it with `build_remediation_catalogue.py --write`.
 - Gates run on the branch: `check_lane_registry --fail-on-new --state-drift --no-exemptions` is clean, and
   `check_n8n_health_contracts` is clean.
 

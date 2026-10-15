@@ -1,4 +1,4 @@
-"""AGENTS.md 11.0.0 (PROPOSED, MAJOR) — §23.24 mandatory n8n workflow framework.
+"""AGENTS.md 11.0.0 (ACTIVE since 2026-10-15, MAJOR) — §23.24 mandatory n8n workflow framework.
 
 Operator 2026-10-14: n8n is the primary orchestration and automation layer, with "a mandatory standard framework for
 every n8n workflow, contract, integration and automation" covering monitoring, alerting, logging, recovery, security
@@ -102,19 +102,21 @@ def test_banner_quotes_the_operator_and_states_the_class():
     start = AGENTS.index("**11.0.0 is ")
     end = AGENTS.index("\n\n**", start + 10)
     banner = _flat(AGENTS[start:end])
-    for frag in ("PROPOSED (MAJOR)", DIRECTIVE, "Why MAJOR", "It grants nothing", "byte-identical",
-                 "header block stays at 10.0.0 ACTIVE",
-                 f"{TOKEN} <pr_number> <head_sha>", "renumbers to 10.1.0"):
+    # 2026-10-15 ratifying edit: ACTIVE, the operator's verbatim token, the header set to 11.0.0.
+    for frag in ("ACTIVE (MAJOR)", DIRECTIVE, "Why MAJOR", "It grants nothing", "byte-identical",
+                 "set the header block to 11.0.0 ACTIVE", f"{TOKEN} 1747 89fb642cd",
+                 "PatsKiller 2026-10-15T11:51:39Z", "renumbers to 10.1.0"):
         assert frag in banner, frag
 
 
 # ------------------------------------------------------------------------------------------------- §23.24
 
 
-def test_23_24_is_proposed_and_scoped():
+def test_23_24_is_active_and_scoped():
     s = _s()
-    assert s.startswith("## 23.24 Mandatory n8n workflow framework (11.0.0, PROPOSED)")
-    for frag in (DIRECTIVE, "**PROPOSED: nothing here binds**", f"{TOKEN} <pr_number> <head_sha>",
+    assert s.startswith("## 23.24 Mandatory n8n workflow framework (11.0.0, ACTIVE)")
+    assert "PROPOSED: nothing here binds" not in s
+    for frag in (DIRECTIVE, "**ACTIVE since 2026-10-15**", f"{TOKEN} 1747 89fb642cd",
                  "**Scope and class.**", "**business-critical**", "**resilience**", "**AI/LLM**",
                  "**monitoring/compliance**", "(E)", "(P)", "It adds obligations and grants nothing"):
         assert frag in s, frag

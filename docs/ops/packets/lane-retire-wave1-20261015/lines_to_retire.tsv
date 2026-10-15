@@ -1,0 +1,5 @@
+line	lane_id	reason	original
+162	agent-intelligence-cron-deep	no-venv-in-CURRENT-0-steps	0 8 * * 0 $PROJ/scripts/agent_intelligence_cron.sh deep
+189	agent-intelligence-cron-daily	no-venv-in-CURRENT-0-steps	25 6 * * 1-5 $PROJ/scripts/agent_intelligence_cron.sh daily
+194	agent-intelligence-cron-intraday	no-venv-in-CURRENT-0-steps	30 11,14 * * 1-5 $PROJ/scripts/agent_intelligence_cron.sh intraday
+252	symbol-enrichment	argv-rejected-exit2-every-run	30 7 * * 1-5 cd $PROJ && $PY scripts/symbol_enrichment.py --limit 50 >> logs/symbol_enrichment.log 2>&1

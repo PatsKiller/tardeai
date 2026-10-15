@@ -32,8 +32,24 @@ Lane-registration API (Stages 2-4 register their runners):
         Runners NEVER write anything themselves.'''
 
 Stage 1 ships runners for the holdings + watchlist lanes, wired to the
-existing coverage adapters (lib/hermes_discovery/coverage.py). Lanes without
-a registered runner are reported skipped ("no_runner") — never an error.
+existing coverage adapters (lib/hermes_discovery/coverage.py); the lane
+modules in RUNNER_MODULES register the rest at import time.
+
+Fail closed on "ran but produced nothing" (2026-10-15): the no_runner skip
+was silent for three lanes from 2026-07-05 to 2026-10-15 (exit 0, every hour).
+Now:
+
+  * an ENABLED lane must declare expected_output_hours (> 0: the lane must
+    return at least one payload within that many hours; 0: zero output is a
+    healthy result, and zero_output_reason must say why). A DISABLED lane must
+    carry a disabled_reason. Both are validated at load (LaneConfigError).
+  * run_pool adds lane_outcomes (one per selected lane) and failures: an
+    enabled lane with no runner, a runner error/timeout, or no payload for
+    longer than expected_output_hours is a failure, and report["ok"] is false.
+    The CLI turns failures into a non-zero exit and a failed lane receipt.
+  * the expectation clock is durable: the state file records last_output_at
+    (live runs that returned >= 1 payload) and tracking_since (first live
+    evaluation), so a cadence-skipped hour still sees an overdue lane.
 
 Every live lane run appends a WORKER_LANE_RUN row to hermes_discovery_audit.
 Dry runs write NOTHING (no candidates, no audit, no state).
@@ -52,7 +68,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-from . import coverage, domains
+from . import domains
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 LANES_PATH = Path(os.getenv("HERMES_WORKER_LANES_YAML")
@@ -78,6 +94,16 @@ _DO_NO_HARM_POLICY = "respect"
 
 _INT_FIELDS = ("cadence_minutes", "max_candidates_per_run",
                "max_llm_reviews_per_run", "timeout_seconds")
+
+# Lane-runner modules: each registers its lane runner(s) at import time
+# (worker_pool.register_lane_runner in the module body). Imports are pure
+# (no DB, no network, no file writes) — every DB read is lazy inside a runner.
+RUNNER_MODULES = ("white_space", "strategy_discovery", "private_proxy",
+                  "loft_law", "coverage_lanes")
+
+# per-lane outcome vocabulary (run_pool lane_outcomes[*].outcome)
+OUTCOME_FAILURES = frozenset({"no_runner", "runner_error", "output_overdue",
+                              "unknown_lane"})
 _BOOL_FIELDS = ("enabled", "sensitive_domain", "requires_citations",
                 "requires_operator_review", "cloud_allowed", "local_llm_allowed",
                 "promotion_allowed", "promotion_requires_operator")
@@ -137,6 +163,41 @@ def _validate_lane(lane_id: str, spec: dict[str, Any],
             f"lane {lane_id!r}: do_no_harm_policy must be "
             f"{_DO_NO_HARM_POLICY!r} (hard rule), got {policy!r}")
     lane["do_no_harm_policy"] = policy
+
+    # expected-output rule (fail closed): an enabled lane must say how long it
+    # may go without producing a payload; a disabled lane must say why.
+    disabled_reason = str(merged.get("disabled_reason") or "").strip()
+    zero_reason = str(merged.get("zero_output_reason") or "").strip()
+    if not lane["enabled"] and not disabled_reason:
+        raise LaneConfigError(
+            f"lane {lane_id!r}: enabled: false requires a disabled_reason "
+            f"(a lane is never silently off)")
+    raw_hours = merged.get("expected_output_hours")
+    if raw_hours is None or isinstance(raw_hours, bool):
+        if lane["enabled"]:
+            raise LaneConfigError(
+                f"lane {lane_id!r}: expected_output_hours is required for an "
+                f"enabled lane (0 = zero output is healthy, with zero_output_reason)")
+        hours = None
+    else:
+        try:
+            hours = int(raw_hours)
+        except (TypeError, ValueError):
+            raise LaneConfigError(f"lane {lane_id!r}: expected_output_hours must be "
+                                  f"an integer (got {raw_hours!r})")
+        if hours < 0:
+            raise LaneConfigError(f"lane {lane_id!r}: expected_output_hours must be >= 0")
+        if hours == 0 and not zero_reason:
+            raise LaneConfigError(
+                f"lane {lane_id!r}: expected_output_hours 0 requires a "
+                f"zero_output_reason")
+        if hours and hours * 60 < lane["cadence_minutes"]:
+            raise LaneConfigError(
+                f"lane {lane_id!r}: expected_output_hours ({hours}) is shorter "
+                f"than one cadence ({lane['cadence_minutes']} min)")
+    lane["expected_output_hours"] = hours
+    lane["zero_output_reason"] = zero_reason or None
+    lane["disabled_reason"] = disabled_reason or None
     return lane
 
 
@@ -207,13 +268,30 @@ def registered_lanes() -> list[str]:
     return sorted(_RUNNERS)
 
 
+def load_runner_modules() -> dict[str, str]:
+    """Import every lane-runner module so its runners register. Tolerant on
+    purpose: one broken module never takes down the pool — its lanes stay
+    unregistered, which run_pool reports as a no_runner FAILURE (not a
+    silent skip). Returns {module: "ExcType: message"} for failed imports."""
+    import importlib
+    errors: dict[str, str] = {}
+    for mod in RUNNER_MODULES:
+        try:
+            importlib.import_module(f"{__package__}.{mod}")
+        except Exception as exc:  # noqa: BLE001 — isolate a failed runner import
+            errors[mod] = f"{type(exc).__name__}: {exc}"
+    return errors
+
+
 def _holdings_runner(lane_cfg: dict[str, Any], *, dry_run: bool) -> list[dict[str, Any]]:
     """Stage-1 holdings lane → existing coverage adapter (read-only)."""
+    from . import coverage
     return coverage.holdings_findings()
 
 
 def _watchlist_runner(lane_cfg: dict[str, Any], *, dry_run: bool) -> list[dict[str, Any]]:
     """Stage-1 watchlist lane → existing coverage adapter (read-only)."""
+    from . import coverage
     return coverage.watchlist_findings()
 
 
@@ -264,14 +342,140 @@ def _load_state(state_path: Path | None = None) -> dict[str, Any]:
         return {}
 
 
-def _mark_lane_run(lane_id: str, state_path: Path | None = None) -> None:
+def _write_state(p: Path, state: dict[str, Any]) -> None:
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.with_name(p.name + ".tmp")
+    tmp.write_text(json.dumps(state, indent=2), encoding="utf-8")
+    os.replace(tmp, p)
+
+
+def _mark_lane_run(lane_id: str, state_path: Path | None = None, *,
+                   produced: bool = False) -> None:
+    """Record a LIVE lane run. last_output_at advances only when the runner
+    returned at least one payload — the expected-output clock."""
     p = state_path or STATE_PATH
+    now = datetime.now(timezone.utc).isoformat()
     with _state_lock:
         state = _load_state(p)
-        state.setdefault("lanes", {})[lane_id] = {
-            "last_run_at": datetime.now(timezone.utc).isoformat()}
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(json.dumps(state, indent=2), encoding="utf-8")
+        entry = dict(state.setdefault("lanes", {}).get(lane_id) or {})
+        entry["last_run_at"] = now
+        entry.setdefault("tracking_since", now)
+        if produced:
+            entry["last_output_at"] = now
+        state["lanes"][lane_id] = entry
+        _write_state(p, state)
+
+
+def _parse_ts(value: Any) -> datetime | None:
+    if not value:
+        return None
+    try:
+        ts = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return ts if ts.tzinfo else ts.replace(tzinfo=timezone.utc)
+
+
+def lane_outcome(lane: dict[str, Any] | None, result: dict[str, Any],
+                 state_entry: dict[str, Any] | None,
+                 now: datetime | None = None) -> dict[str, Any]:
+    """Classify one lane's run against its expected-output rule.
+
+    Pure: no I/O. Failure outcomes (OUTCOME_FAILURES) make the pool not ok:
+      no_runner       enabled lane with no registered runner
+      runner_error    runner raised / timed out / lane-local error
+      output_overdue  no payload for longer than expected_output_hours
+                      (measured from last_output_at, else tracking_since)
+    Healthy outcomes: produced, disabled, paused, not_due, locked,
+    empty_within_window, within_window (dry-run plan), zero_output_ok,
+    untracked (no durable clock yet —
+    only possible before the lane's first live evaluation)."""
+    now = now or datetime.now(timezone.utc)
+    lane_id = result.get("lane")
+    if lane is None:
+        return {"lane": lane_id, "outcome": "unknown_lane", "ok": False,
+                "reason": result.get("error") or "lane not in registry"}
+    out: dict[str, Any] = {"lane": lane["lane_id"],
+                           "expected_output_hours": lane["expected_output_hours"],
+                           "scanned": int(result.get("scanned") or 0)}
+    entry = state_entry or {}
+    last_output = _parse_ts(entry.get("last_output_at"))
+    out["last_output_at"] = last_output.isoformat() if last_output else None
+
+    def done(outcome: str, reason: str | None = None) -> dict[str, Any]:
+        out["outcome"] = outcome
+        out["ok"] = outcome not in OUTCOME_FAILURES
+        if reason:
+            out["reason"] = reason
+        return out
+
+    skipped = result.get("skipped")
+    if skipped == "disabled":
+        return done("disabled", lane["disabled_reason"])
+    if result.get("error"):
+        return done("runner_error", str(result["error"])[:200])
+    if skipped == "no_runner":
+        return done("no_runner", "enabled lane has no registered runner "
+                    "(worker_pool.RUNNER_MODULES import or registration missing)")
+    if skipped == "paused":
+        return done("paused", "do-no-harm pause (scorecard/schedule) - intake held")
+    if not skipped and out["scanned"] > 0:
+        return done("produced")
+
+    hours = lane["expected_output_hours"]
+    if hours == 0:
+        return done({"cadence": "not_due", "locked": "locked",
+                     "planned": "within_window"}.get(str(skipped), "zero_output_ok"),
+                    lane["zero_output_reason"])
+    ref = last_output or _parse_ts(entry.get("tracking_since"))
+    if ref is None:
+        return done("untracked", "no live evaluation recorded yet - the "
+                    "expectation clock starts at the first live run")
+    age_h = (now - ref).total_seconds() / 3600.0
+    out["hours_without_output"] = round(age_h, 1)
+    if age_h > hours:
+        basis = "last_output_at" if last_output else "tracking_since (never produced)"
+        return done("output_overdue",
+                    f"no payload for {age_h:.1f} h > expected_output_hours {hours} "
+                    f"(basis {basis})")
+    if skipped in ("cadence", "planned", "locked"):
+        return done({"cadence": "not_due", "planned": "within_window"}.get(
+            skipped, skipped))
+    return done("empty_within_window")
+
+
+def evaluate_outcomes(all_lanes: dict[str, dict[str, Any]],
+                      lane_results: dict[str, dict[str, Any]], *,
+                      dry_run: bool, state_path: Path | None = None,
+                      now: datetime | None = None) -> tuple[list[dict], list[dict]]:
+    """Outcome per selected lane + the failure list. A LIVE evaluation starts
+    the expectation clock (tracking_since) for an enabled lane that has none,
+    so a lane that never runs or never produces cannot stay untracked. A dry
+    evaluation reads the state file and writes nothing."""
+    now = now or datetime.now(timezone.utc)
+    p = state_path or STATE_PATH
+    if not dry_run:
+        with _state_lock:
+            state = _load_state(p)
+            lanes_state = state.setdefault("lanes", {})
+            changed = False
+            for lane_id in lane_results:
+                lane = all_lanes.get(lane_id)
+                if lane and lane["enabled"]:
+                    entry = lanes_state.setdefault(lane_id, {})
+                    if not entry.get("tracking_since"):
+                        entry["tracking_since"] = now.isoformat()
+                        changed = True
+            if changed:
+                _write_state(p, state)
+    else:
+        lanes_state = _load_state(p).get("lanes") or {}
+    outcomes = [lane_outcome(all_lanes.get(lane_id), {"lane": lane_id, **res},
+                             lanes_state.get(lane_id), now)
+                for lane_id, res in lane_results.items()]
+    failures = [{"lane": o["lane"], "outcome": o["outcome"],
+                 "reason": o.get("reason")} for o in outcomes if not o["ok"]]
+    return outcomes, failures
 
 
 def _cadence_due(lane_id: str, cadence_minutes: int,
@@ -422,7 +626,7 @@ def run_lane(lane_id: str, *, dry_run: bool = False, force: bool = False,
             for c in (res.get("candidates") or [])[:10]]
 
         if not dry_run:
-            _mark_lane_run(lane_id, state_path)
+            _mark_lane_run(lane_id, state_path, produced=report["scanned"] > 0)
             try:  # audit trail: one WORKER_LANE_RUN row per live run
                 from . import inbox
                 inbox._audit(None, "WORKER_LANE_RUN", f"worker:{lane_id}", None,
@@ -500,7 +704,7 @@ def run_pool(lane_ids: list[str] | None = None, *, dry_run: bool = False,
         for lane_id in selected:
             report["lanes"][lane_id] = {"lane": lane_id, "skipped": "paused"}
         report["skipped_reasons"] = {"paused": len(selected)}
-        return report
+        return _finish(report, all_lanes, dry_run=dry_run, state_path=state_path)
 
     shared_skipped: dict[str, int] = {}
     raw_gate = make_intake_gate(caps, _domain_counts_today(), shared_skipped)
@@ -525,6 +729,22 @@ def run_pool(lane_ids: list[str] | None = None, *, dry_run: bool = False,
                 report["lanes"][lane_id] = {"lane": lane_id,
                                             "error": str(e)[:200]}
     report["skipped_reasons"] = shared_skipped
+    return _finish(report, all_lanes, dry_run=dry_run, state_path=state_path)
+
+
+def _finish(report: dict[str, Any], all_lanes: dict[str, dict[str, Any]], *,
+            dry_run: bool, state_path: Path | None) -> dict[str, Any]:
+    """Attach lane_outcomes / failures / ok. Fail closed: a pool where no
+    selected lane is enabled is itself a failure (nothing can ever run)."""
+    outcomes, failures = evaluate_outcomes(all_lanes, report["lanes"],
+                                           dry_run=dry_run, state_path=state_path)
+    if report["lanes"] and not any(
+            (all_lanes.get(x) or {}).get("enabled") for x in report["lanes"]):
+        failures.append({"lane": None, "outcome": "no_enabled_lanes",
+                         "reason": "every selected lane is disabled"})
+    report["lane_outcomes"] = {o["lane"]: o for o in outcomes}
+    report["failures"] = failures
+    report["ok"] = not failures and not report.get("error")
     return report
 
 

@@ -315,7 +315,10 @@ def diagnose(rows: list[dict], *, catalogue: dict, registry: dict, state: dict, 
                        decision={"kind": "escalate", "priority": "P2", "reason": "process_daily_cap"})
             continue
         dec = deferral(D.PROCESS_ID)
-        res["deferral"] = {"defer": bool(getattr(dec, "defer", False)), "reason": getattr(dec, "reason", None)}
+        run_after = getattr(dec, "run_after", None)
+        res["deferral"] = {"defer": bool(getattr(dec, "defer", False)), "reason": getattr(dec, "reason", None),
+                           "tier": getattr(dec, "tier", None),
+                           "run_after": run_after.isoformat() if hasattr(run_after, "isoformat") else run_after}
         if getattr(dec, "defer", False):
             res.update(outcome="no_diagnosis", reason="deferred_offpeak",
                        decision={"kind": "escalate", "priority": "P2", "reason": "deferred_offpeak"})
@@ -493,9 +496,31 @@ def advance_pending(state: dict, *, ledger: Path, store_factory, allowlist: dict
     return events
 
 
+def _no_verdict_detail(res_or_ev: dict, reason: str) -> str:
+    """What the operator reads when there is no model verdict: why, and whether the next cycle retries.
+    (Before 2026-10-15 this printed `conf=None; cause=` — an escalation that looked like a broken diagnosis.)"""
+    if res_or_ev.get("run_id"):                 # a remediation event (advance_pending), not a diagnosis
+        return f"{reason}; remediation run={res_or_ev.get('run_id')} state={res_or_ev.get('run_state')}"
+    if str(reason).startswith("model_refused"):
+        why = "model call refused"
+    elif res_or_ev.get("model_called"):
+        why = "model answered nothing usable"
+    elif reason == "deferred_offpeak":
+        d = res_or_ev.get("deferral") or {}
+        why = f"model not called: off-peak deferral (tier={d.get('tier')}, {d.get('reason')})"
+    else:
+        why = "model not called"
+    retry = "not retried" if str(reason).startswith(D.FINAL_NO_DIAGNOSIS) else "retried next cycle"
+    return f"{reason}; no diagnosis yet: {why}; {retry}"
+
+
 def _escalation(res_or_ev: dict, priority: str, reason: str, now: datetime) -> dict[str, Any]:
     v = res_or_ev.get("verdict") or {}
-    detail = f"{reason}; conf={v.get('confidence')}; cause={(v.get('cause') or '')[:70]}; siem={res_or_ev.get('siem_id')}"
+    if v:
+        body = f"{reason}; conf={v.get('confidence')}; cause={(v.get('cause') or '')[:70]}"
+    else:
+        body = _no_verdict_detail(res_or_ev, reason)
+    detail = f"{body}; siem={res_or_ev.get('siem_id')}"
     return {"key": res_or_ev.get("incident_key"), "lane": res_or_ev.get("lane"), "event_type": res_or_ev.get("event_type"),
             "siem_id": res_or_ev.get("siem_id"), "priority": priority, "reason": reason, "detail": detail[:150],
             "at": now.isoformat()}
@@ -543,6 +568,10 @@ def apply_results(diag: dict, pending_events: list[dict], state: dict, rows_by_i
             esc = _escalation(res, dec["priority"], dec["reason"], now)
             state.setdefault("escalations", {})[res["incident_key"]] = esc
             res["escalation"] = f"{dec['priority']}:{dec['reason']}"
+        elif dec:
+            # A later cycle reached a decision that needs no human (e.g. a catalogue action ran): the escalation an
+            # earlier cycle left for this incident (deferred, capped, refused) is stale and must stop paging.
+            (state.get("escalations") or {}).pop(res["incident_key"], None)
         res["outcome"] = outcome
         retry = outcome == "no_diagnosis" and not str(res.get("reason")).startswith(D.FINAL_NO_DIAGNOSIS)
         if (res.get("model_called") or res.get("decision")) and not retry:

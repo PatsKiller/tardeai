@@ -802,7 +802,7 @@ def run(apply: bool = False, *, dry_run: bool = False, notify: str = "chokepoint
         notify_cfg = cfg.get("notifications") or {}
         if notify_cfg.get("enabled", True) and (bus.get("alerts") or {}).get("active_count", 0) > 0:
             out["notifications"] = dispatch_alert_notifications(bus.get("alerts") or {}, cfg=notify_cfg,
-                                                                notify=notify)
+                                                                notify=notify, run_id=run_id)
         else:
             out["notifications"] = {"ok": True, "sent": 0, "skipped": "no_active_alerts_or_disabled"}
         _write_heartbeat(out)
@@ -836,9 +836,10 @@ def main():
     ap.add_argument("--apply", action="store_true", help="Write state/hermes/outcome_bus.json")
     ap.add_argument("--dry-run", action="store_true",
                     help="write-free preview; wins over --apply; read-only DB session; never notifies")
-    ap.add_argument("--notify", choices=("chokepoint", "record"), default="chokepoint",
+    ap.add_argument("--notify", choices=("chokepoint", "record", "queue"), default="chokepoint",
                     help="chokepoint: intents through the host send_telegram chokepoint (default, cron); "
-                         "record: return the intents in the summary and call no sender (fabric-run step)")
+                         "record: return the intents in the summary and call no sender; "
+                         "queue: queue each intent for the host comms-intent consumer, no sender (fabric live step)")
     a = ap.parse_args()
     run(apply=a.apply and not a.dry_run, dry_run=a.dry_run, notify=a.notify)
 

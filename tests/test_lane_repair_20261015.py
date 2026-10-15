@@ -538,6 +538,9 @@ def test_contracts_are_reviewed_with_an_expected_output_rule(lane):
     assert {"empty_output"} <= {f["check"] for f in c["failed"]}
     assert {"output_produced"} <= {h["check"] for h in c["healthy"]}
     assert not set(exp["fatal_skip_reasons"]) & set(exp["empty_allowed_reasons"])
+    import check_n8n_workflow_framework as FW  # the §23.24 FW-M6 rule, on main since train 2026-10-15 b
+
+    assert FW._check_expected_output(c)["status"] == FW.PASS
 
 
 def test_packet_holds_the_exact_candidate_cron_diff_and_rollback():

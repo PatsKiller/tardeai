@@ -1,0 +1,13 @@
+{
+  "schema": "HostCommsIntentRoutes@v1",
+  "_comment": "Host-lane notification intents (2026-10-15; AGENTS.md §23.23 'n8n requests a send through a host intent API, and the host decides delivery', §24.1, §9.1). A HOST lane fired from the n8n fabric may not call a sender (allowlist never-list), so it queues its operator notification as a comms intent in the coordination ledger's comms_intents table through scripts/lib/host_comms_intents.py; the host comms-intent consumer (scripts/n8n_comms_intent_consumer.py) turns it into an incident and the incident notifier sends it (DIGEST -> P2). Each row names the ONE producer allowed to queue that (domain, kind). Kept OUT of config/n8n_comms_intent_routes.json on purpose: (1) n8n's comms/intent route reads only that file, so n8n can never post a host-lane intent (it cannot impersonate a producer), and (2) that file's sha256 is part of the fabric policy hash, so a host route never moves the imported fabric workflows' policy. Dedupe window and hourly cap are the n8n table's (one shared budget). Changed only by reviewed PR. No PAGE row: a P1 never depends on this path.",
+  "routes": [
+    {
+      "domain": "research",
+      "kind": "hermes_closed_loop_alert",
+      "tier": "DIGEST",
+      "runbook_id": "hermes-closed-loop-alert",
+      "producer": "hermes_outcome_feedback_agent"
+    }
+  ]
+}
