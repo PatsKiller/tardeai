@@ -294,6 +294,56 @@ def load_intent_routes(path: Path | None = None) -> dict[str, Any]:
     return {"dedupe_window_s": window, "max_per_hour": cap, "routes": routes, "sha256": hashlib.sha256(raw).hexdigest()}
 
 
+HOST_INTENT_ROUTES_SCHEMA = "HostCommsIntentRoutes@v1"
+HOST_INTENT_ROUTES_REL = Path("config") / "host_comms_intent_routes.json"
+PRODUCER_RE = re.compile(r"^[a-z][a-z0-9_]{1,63}$")
+
+
+def load_host_intent_routes(path: Path | None = None) -> dict[str, Any]:
+    """(2026-10-15) The closed (domain, kind) -> {tier, runbook_id, producer} table for HOST-lane intents
+    (config/host_comms_intent_routes.json; scripts/lib/host_comms_intents.py). Never read by the gateway's n8n
+    ``comms/intent`` operation. Raises FabricStoreError("intent_routes_unreadable"); a pair that is also an n8n route
+    is refused (one owner per route)."""
+    p = path or (ROOT / HOST_INTENT_ROUTES_REL)
+    try:
+        doc = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise FabricStoreError("intent_routes_unreadable") from exc
+    if not isinstance(doc, dict) or doc.get("schema") != HOST_INTENT_ROUTES_SCHEMA or not isinstance(doc.get("routes"), list):
+        raise FabricStoreError("intent_routes_unreadable")
+    routes: dict[tuple[str, str], dict[str, Any]] = {}
+    for r in doc["routes"]:
+        if not isinstance(r, dict):
+            raise FabricStoreError("intent_routes_unreadable")
+        domain, kind, tier, producer = r.get("domain"), r.get("kind"), r.get("tier"), r.get("producer")
+        if domain not in DOMAINS or not isinstance(kind, str) or not KIND_RE.fullmatch(kind) or tier not in TIERS:
+            raise FabricStoreError("intent_routes_unreadable")
+        if tier == "PAGE" or not isinstance(producer, str) or not PRODUCER_RE.fullmatch(producer):
+            raise FabricStoreError("intent_routes_unreadable")
+        if (domain, kind) in routes:
+            raise FabricStoreError("intent_routes_unreadable")
+        routes[(domain, kind)] = {"tier": tier, "runbook_id": r.get("runbook_id"), "producer": producer}
+    raw = json.dumps(doc, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return {"routes": routes, "sha256": hashlib.sha256(raw).hexdigest()}
+
+
+def merged_intent_routes(n8n_routes: Mapping[str, Any], host_routes: Mapping[str, Any]) -> dict[str, Any]:
+    """The n8n table plus the host table, for the HOST side only (host_comms_intents queueing and the comms-intent
+    consumer's tier mapping). Window and cap stay the n8n table's; a pair in both tables is refused."""
+    both = set(n8n_routes["routes"]) & set(host_routes["routes"])
+    if both:
+        raise FabricStoreError("intent_routes_unreadable")
+    routes = dict(n8n_routes["routes"])
+    routes.update(host_routes["routes"])
+    sha = hashlib.sha256(f"{n8n_routes.get('sha256')}|{host_routes.get('sha256')}".encode("utf-8")).hexdigest()
+    return {
+        "dedupe_window_s": n8n_routes["dedupe_window_s"],
+        "max_per_hour": n8n_routes["max_per_hour"],
+        "routes": routes,
+        "sha256": sha,
+    }
+
+
 def validate_intent(request: Mapping[str, Any]) -> dict[str, str]:
     """The seven intent fields, exact and bounded, or FabricStoreError(<reason>)."""
     body = {k: request.get(k) for k in INTENT_FIELDS}
