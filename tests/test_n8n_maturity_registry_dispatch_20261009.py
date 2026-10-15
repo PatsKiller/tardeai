@@ -591,14 +591,18 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
     refactor = {
         r["lane_id"] for r in rows if (r.get("scheduler") or {}).get("wave") in {"R2-05", "R2-06", "R2-07", "R2-08"}
     }
-    assert len(refactor) == 11 and refactor - set(CANARY_WAVE_20261014) <= set(shadow), refactor
+    # + 1: lane repair 2026-10-15 takes the shard 05 proposal for build-symbol-profiles-at-0-19 (its SW4 exclusion
+    # reason, the shared receipt, is gone; tests/test_lane_repair_20261015.py): 12.
+    assert len(refactor) == 12 and refactor - set(CANARY_WAVE_20261014) <= set(shadow), refactor
     # The reviewed momentum tranche adds two native shadow rows and the existing
     # named scalp exception at shadow; it adds no live dispatch row.
     # - 2: C1 hermes_overnight registry edit (train 6, 2026-10-12) absorbs hermes-tag-lift-discovery (SW4/W4) and
     # hermes-industry-novelty-discovery (D2) into hermes-overnight-pipeline-night (dispatch_retired, allowlist removed).
     # + 2: scalp/premarket onboarding (2026-10-14, tests/test_scalp_premarket_onboard_20261014.py): the scalp hot-tier
     # R1 ingest rows finviz-enrichment-scalp-hot and scalp-hot-list at shadow (dry_run, live_arg null).
-    assert len(shadow) == 54 + 3 + 15 - len(CANARY_ROWS) - 17 + 10 + 11 + len(N8N_NATIVE_SHADOW) + 1 - 2 + 2 - len(CANARY_WAVE_20261014), shadow
+    # + 2: lane repair 2026-10-15 (tests/test_lane_repair_20261015.py): build-symbol-profiles-at-0-19 (shard 05
+    # proposal taken) and indicator-engine (--universe), both R1 ingest at shadow (dry_run, live_arg null).
+    assert len(shadow) == 54 + 3 + 15 - len(CANARY_ROWS) - 17 + 10 + 11 + len(N8N_NATIVE_SHADOW) + 1 - 2 + 2 - len(CANARY_WAVE_20261014) + 2, shadow
     # heartbeat-watch moved shadow → canary (N8N_NATIVE_CANARY) 2026-10-11.
     assert sorted(r["lane_id"] for r in rows if LD.dispatch_mode(r) == "live") == sorted(
         CANARY_ROWS | N8N_NATIVE_CANARY | set(CANARY_WAVE_20261014)

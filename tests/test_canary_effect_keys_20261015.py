@@ -161,6 +161,10 @@ def test_no_key_outside_scope_except_reviewed_process_steps():
         "hermes-learning-tag-engine",
         "hermes-learning-outcome-feedback-agent",
         "hermes-learning-autonomous-self-tune",
+        # Lane repair 2026-10-15 (tests/test_lane_repair_20261015.py): the entry planner rows are staged r1_pending;
+        # each live run appends plans after an LLM call, so the key is staged with them (cron_claim/n8n_claim false).
+        "watchlist-entry-planner-limit",
+        "watchlist-entry-planner-scope",
     }
 
 

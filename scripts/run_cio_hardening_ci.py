@@ -3995,6 +3995,13 @@ GATES = [
             # excluded lanes pinned (premarket C1 steps, P0, llm in-process, shared receipt, non-R1 class); compute_due
             # week / half-hour / monthly sweeps. Hermetic: repo config read only.
             "tests/test_sw4_shadow_wave4_20261011.py",
+            # Lane repair 2026-10-15 (build-symbol-profiles OperationalError, entry planner InterfaceError,
+            # indicator-engine demo line): per-symbol transactions + reconnect/lock retry; comms settlement no longer
+            # closes the thread-local connection; plan-only n8n entry with no sender in reach; --universe gap-fill over
+            # the indicator_cache_refresh universe (idempotent, bounded); LaneOutput@v1 counts; shadow rows, staged
+            # planner rows, REVIEWED contracts with N8nExpectedOutput@v1; cron packet diff. Hermetic: fake DB modules,
+            # TRADEAI_STATE_ROOT = tmp, repo config read only.
+            "tests/test_lane_repair_20261015.py",
             # SW4 env narrowing: nine lane scripts copy only named keys from <checkout>/.env (no broker credential
             # reaches os.environ); etf_performance_enrich strict argparse. Hermetic: scratch .env, monkeypatched env.
             "tests/test_sw4_env_narrowing_20261011.py",

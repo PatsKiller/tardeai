@@ -397,7 +397,10 @@ def test_generated_rows_have_evidence_or_are_flagged_unverified(committed):
     # Lane retire wave 1 (2026-10-15) hand-curates the 7 generated rows that carry a retire_pending block
     # (agent-intelligence-cron x3, symbol-enrichment, cleanup-stale-locks, risk-gate, indicator-engine):
     # 225 - 7 = 218 generated rows left.
-    assert len(gen) >= 218
+    # Lane repair 2026-10-15 (tests/test_lane_repair_20261015.py) adopts 2 more generated rows with an r1_pending block
+    # (watchlist-entry-planner-limit, watchlist-entry-planner-scope); indicator-engine was already hand-curated above:
+    # 218 - 2 = 216.
+    assert len(gen) >= 216
     adopted = [r for r in committed["lanes"] if r.get("adopted_from_generator") == R.GENERATOR_VERSION]
     # D3 rows carry an r1_pending block (inert until AGENTS 4.4.0 is ACTIVE) instead of a dispatch block;
     # build-symbol-profiles-at-0-19, social-ingest-stocktwits and overnight-batch-tax are adopted unchanged only to keep

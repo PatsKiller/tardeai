@@ -116,7 +116,10 @@ def _admit(row: dict, shape: str) -> tuple[bool, str]:
 def test_wave3_is_19_lanes_and_only_r1_classes():
     assert len(WAVE3) == 19
     assert {k for _l, k in WAVE3.values()} == {"ingest", "learn"}
-    assert [r["lane_id"] for r in REGISTRY["lanes"] if "r1_pending" in r] == []  # activated 2026-10-10
+    # activated 2026-10-10; the only r1_pending rows since are the lane repair 2026-10-15 entry planner rows, staged
+    # until a governed bridge route exists for their llm class (tests/test_lane_repair_20261015.py).
+    assert [r["lane_id"] for r in REGISTRY["lanes"] if "r1_pending" in r] == [
+        "watchlist-entry-planner-limit", "watchlist-entry-planner-scope"]
     d3 = sorted(r["lane_id"] for r in REGISTRY["lanes"] if (r.get("scheduler") or {}).get("wave") == "D3")
     assert d3 == sorted(WAVE3_LIVE) and len(WAVE3_LIVE) == 13
 
@@ -239,10 +242,17 @@ def test_activated_registry_has_no_dispatch_issue_once_active(monkeypatch):
     # - 1: C1 hermes_overnight registry edit (train 6, 2026-10-12) absorbs SW4 hermes-tag-lift-discovery (dispatch_retired).
     # (WAVE3_ON_CRON: research-insight-extractor left cron at cutover, 2026-10-13.)
     # + 2 scalp hot-tier ingest rows (2026-10-14; tests/test_scalp_premarket_onboard_20261014.py).
-    assert len(r1_cron_shadow) == len(WAVE3_ON_CRON) + 3 + 15 + 10 + 11 - 1 + 2
+    # + 4 lane repair rows (2026-10-15; tests/test_lane_repair_20261015.py): build-symbol-profiles-at-0-19 and
+    # indicator-engine (R1 ingest, cron shadow, dry_run, live_arg null), plus the two entry planner rows this fixture
+    # activates from their r1_pending block (R1 llm; staged on the registry until a governed bridge route exists).
+    assert len(r1_cron_shadow) == len(WAVE3_ON_CRON) + 3 + 15 + 10 + 11 - 1 + 2 + 4
     assert len(errs) == len(r1_cron_shadow) and all("shadow_on_cron_not_ratified" in x for x in errs), errs[:3]
     monkeypatch.setattr(LD, "R1_SHADOW_SHAPE_STATUS", "ACTIVE")
-    assert LD.registry_dispatch_errors(doc) == []
+    # The staged entry planner rows (lane repair 2026-10-15) stay refused for exactly the reason they are staged: no
+    # llm_route via cio-governed-bridge until a governed route exists for process watchlist_entry_planner.
+    assert sorted(LD.registry_dispatch_errors(doc)) == [
+        f"{lane}: dispatch class_not_permitted: class 'llm' (R1): llm_route_not_governed_bridge:None"
+        for lane in ("watchlist-entry-planner-limit", "watchlist-entry-planner-scope")]
 
 
 # ---------------------------------------------------------------------------------- compute_due week sweep

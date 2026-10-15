@@ -136,7 +136,11 @@ def test_bsp_dry_run_report_tracks_state(bsp_env, monkeypatch, capsys):
 def test_bsp_source_order_dry_run_returns_before_fetch_and_upsert():
     src = inspect.getsource(bsp.run)
     cut = src.index("conn.rollback()  # end the read transaction")
-    assert cut < src.index("import yfinance as yf") < src.index("upsert_profile(cur, sym")
+    # 2026-10-15 lane repair: the upsert moved into _upsert_one (one short transaction per symbol), and the read
+    # transaction ends before any provider call (idle_in_transaction_session_timeout killed the session).
+    assert cut < src.index("import yfinance as yf") < src.index("_upsert_one(sym, fields")
+    real = src.index("# ── Real run")
+    assert real < src.index("conn.rollback()", real) < src.index("_finviz_map(uni)")
 
 
 def _fake_yf(monkeypatch):
