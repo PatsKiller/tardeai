@@ -276,6 +276,16 @@ def test_incubator_apply_writes_the_receipt_ok_and_failed(tmp_path, monkeypatch)
 def test_pattern_extractor_receipt_follows_errors(tmp_path, monkeypatch):
     monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
     monkeypatch.setattr(logging, "FileHandler", lambda *a, **k: logging.NullHandler())  # no repo logs/ write
+    # CI shards without the DB driver / dotenv: the module imports them at top level; run() is replaced below.
+    import types
+
+    fake_pg = types.ModuleType("psycopg2")
+    fake_pg.extras = types.ModuleType("psycopg2.extras")
+    fake_dotenv = types.ModuleType("dotenv")
+    fake_dotenv.load_dotenv = lambda *a, **k: False
+    monkeypatch.setitem(sys.modules, "psycopg2", fake_pg)
+    monkeypatch.setitem(sys.modules, "psycopg2.extras", fake_pg.extras)
+    monkeypatch.setitem(sys.modules, "dotenv", fake_dotenv)
     mod = _load("pattern_extractor_ldw1", ROOT / "scripts/pattern_extractor.py")
     monkeypatch.setattr(
         mod,
