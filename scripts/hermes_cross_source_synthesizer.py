@@ -10,6 +10,11 @@ Safety:
   - all claims grounded in bundle items (universe_guard reused)
   - optional free Grok second opinion on top-3 briefs (hermes_external_researcher)
 
+Governed bridge (2026-10-15, n8n llm lane batch 1): with TRADEAI_LLM_VIA_BRIDGE=1 (bound by the n8n run executor from
+the allowlist ``llm_route`` of lane hermes-cross-source-synthesizer) ``generate_cloud`` makes ONE governed-bridge
+request as process ``hermes_cross_source_synthesizer`` and never imports llm_lane; a refusal is "no briefs" (exit 1,
+nothing staged). --dry-run makes no model call. The cron line is unchanged.
+
 Usage:
   python scripts/hermes_cross_source_synthesizer.py [--apply] [--dry-run]
 """

@@ -38,6 +38,17 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 PROMPT_VERSION = "entry_planner_v1"
+#: Registered process (config/llm_process_registry.json) and its governed-bridge route (scripts/lib/
+#: governed_process_routes.py advisory_desk / watchlist_entry_planner). 2026-10-15 n8n llm lane batch 1.
+LLM_PROCESS_ID = "watchlist_entry_planner"
+#: The flag the n8n run executor binds from the allowlist llm_route (scripts/n8n_run_executor.py LLM_BRIDGE_ENV).
+#: Read directly so a failed import with the flag ON can never fall through to the in-process provider path.
+VIA_BRIDGE_ENV = "TRADEAI_LLM_VIA_BRIDGE"
+BRIDGE_LANE = "bridge"
+
+
+def _via_bridge() -> bool:
+    return os.environ.get(VIA_BRIDGE_ENV, "off").strip().lower() in {"1", "on", "bridge"}
 CLOUD_LANES = ("grok", "chatgpt")
 
 # ── CURATED PROMPT — same discipline as protection_advisor_v1: role → hard rules → labeled
@@ -449,18 +460,30 @@ def plan_run(lane="grok", symbols=None, limit=25, scope="watchlist", buy_rated_c
 
     ``alerter`` (``run`` passes ``_alert``) is called for an alert-eligible plan; with None the plan is written and the
     alert is counted as ``alerts_not_sent``. The n8n entry ``watchlist_entry_planner_lane.py`` plans only: a lane never
-    sends (AGENTS.md §23.23; onboarding standard §2.7), and the dispatcher sender gate scans its static reach."""
-    import llm_lane
+    sends (AGENTS.md §23.23; onboarding standard §2.7), and the dispatcher sender gate scans its static reach.
+
+    Governed bridge (2026-10-15): with TRADEAI_LLM_VIA_BRIDGE=1 (bound by the n8n run executor from the allowlist
+    ``llm_route`` of lanes watchlist-entry-planner-limit / -scope) each plan is ONE request to the governed bridge as
+    process ``watchlist_entry_planner`` (it walks grok -> chatgpt -> DeepSeek server-side); ``llm_lane`` is never
+    imported, so no provider client or credential is reachable, and there is no second (fallback) lane. A refusal
+    counts the symbol as failed (``bridge_refused``), nothing is written for it."""
     from db_adapter import _get_conn
-    conn = _get_conn(); cur = conn.cursor()
+    via_bridge = _via_bridge()
     requested = str(lane or "grok").lower()
     if requested not in CLOUD_LANES:
         raise RuntimeError("POLICY_LOCAL_GENERATIVE_FORBIDDEN: use grok or chatgpt")
-    available = [name for name in CLOUD_LANES if llm_lane.available(name)]
-    if not available:
-        raise RuntimeError("CLOUD_LANES_UNAVAILABLE: entry planning failed closed")
-    base_lane = requested if requested in available else available[0]
-    fallback_lane = next((name for name in available if name != base_lane), None)
+    if via_bridge:
+        from lib.llm_bridge_route import require_text_via_bridge
+        llm_lane = None
+        base_lane, fallback_lane = BRIDGE_LANE, None
+    else:
+        import llm_lane
+        available = [name for name in CLOUD_LANES if llm_lane.available(name)]
+        if not available:
+            raise RuntimeError("CLOUD_LANES_UNAVAILABLE: entry planning failed closed")
+        base_lane = requested if requested in available else available[0]
+        fallback_lane = next((name for name in available if name != base_lane), None)
+    conn = _get_conn(); cur = conn.cursor()
     done = failed = alerts = cloud_used = not_sent = 0
     skipped: dict = {}
 
@@ -491,30 +514,37 @@ def plan_run(lane="grok", symbols=None, limit=25, scope="watchlist", buy_rated_c
                        f"target ${c.get('proposed_target1')}. VALIDATE this entry against live structure: "
                        "your zone/limit may agree or amend it — say which in entry_thesis. The proposal "
                        "stays untouched; this is advisory.")
-        try:
-            out = llm_lane.generate(
-                prompt, lane=eff_lane, timeout=120,
-                process_id="watchlist_entry_planner",
-                task_summary=f"entry plan {sym}",
-            )
-        except Exception as e:
-            # One explicitly governed cloud fallback is allowed. Local generation is not.
-            if fallback_lane:
-                try:
-                    out = llm_lane.generate(
-                        prompt, lane=fallback_lane, timeout=120,
-                        process_id="watchlist_entry_planner",
-                        task_summary=f"entry plan {sym} cloud fallback",
-                    )
-                    eff_lane = fallback_lane
-                except Exception as e2:
-                    print(f"  {sym}: lane error {str(e2)[:60]}"); failed += 1; _skip("llm_lane_error"); continue
-            else:
-                print(f"  {sym}: lane error {str(e)[:60]}"); failed += 1; _skip("llm_lane_error"); continue
+        if via_bridge:
+            try:
+                out = require_text_via_bridge(LLM_PROCESS_ID, prompt, timeout_s=120)
+            except Exception as e:  # noqa: BLE001 -- a refusal is a failed symbol, never another provider
+                print(f"  {sym}: bridge refused {str(e)[:80]}"); failed += 1; _skip("bridge_refused"); continue
+        else:
+            try:
+                out = llm_lane.generate(
+                    prompt, lane=eff_lane, timeout=120,
+                    process_id=LLM_PROCESS_ID,
+                    task_summary=f"entry plan {sym}",
+                )
+            except Exception as e:
+                # One explicitly governed cloud fallback is allowed. Local generation is not.
+                if fallback_lane:
+                    try:
+                        out = llm_lane.generate(
+                            prompt, lane=fallback_lane, timeout=120,
+                            process_id="watchlist_entry_planner",
+                            task_summary=f"entry plan {sym} cloud fallback",
+                        )
+                        eff_lane = fallback_lane
+                    except Exception as e2:
+                        print(f"  {sym}: lane error {str(e2)[:60]}"); failed += 1; _skip("llm_lane_error"); continue
+                else:
+                    print(f"  {sym}: lane error {str(e)[:60]}"); failed += 1; _skip("llm_lane_error"); continue
         p = _parse(out)
         if not p:
             print(f"  {sym}: unparseable"); failed += 1; _skip("llm_unparseable"); continue
-        model = "grok-3-mini" if eff_lane == "grok" else "gpt-5.4"
+        model = ("governed-bridge" if eff_lane == BRIDGE_LANE
+                 else "grok-3-mini" if eff_lane == "grok" else "gpt-5.4")
         cloud_used += 1
         # ── DETERMINISTIC R:R AND URGENCY (2026-07-20) ──────────────────────────
         # Both were taken from the model. Neither survived checking.

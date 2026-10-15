@@ -12,6 +12,12 @@ This script:
   - Robust JSON extract/repair
   - Lane order: --lane auto → local, then OAuth grok, then chatgpt
 
+Governed bridge (2026-10-15, n8n llm lane batch 1): with TRADEAI_LLM_VIA_BRIDGE=1 (bound by the n8n run executor from
+the allowlist ``llm_route`` of lane run-research-intelligence-overnight, process SET) each row is ONE governed-bridge
+request as process ``ri_narrative_enrich`` (grok -> chatgpt -> DeepSeek server-side); llm_lane is never imported and
+``--lane`` is ignored. A bridge refusal stops the run like a governance refusal (``governance_refused``); nothing is
+written for the row. Without --apply no model is called. The cron line is unchanged.
+
 Usage:
   python scripts/research_intelligence_narrative_enrich.py --dry-run --retirement-only
   python scripts/research_intelligence_narrative_enrich.py --apply --retirement-only --limit 5
@@ -147,8 +153,32 @@ class GovernanceRefused(RuntimeError):
     """The governed gate refused this process; no further row or lane can succeed this run."""
 
 
+#: The flag the n8n run executor binds from the allowlist llm_route; read directly (a failed import with the flag ON
+#: raises, it never falls through to llm_lane).
+VIA_BRIDGE_ENV = "TRADEAI_LLM_VIA_BRIDGE"
+BRIDGE_LANE = "bridge"
+
+
+def _via_bridge() -> bool:
+    return os.environ.get(VIA_BRIDGE_ENV, "off").strip().lower() in {"1", "on", "bridge"}
+
+
+def _generate_via_bridge(prompt: str, timeout: int) -> tuple[dict | None, str | None]:
+    """ONE governed-bridge request. A refusal is GovernanceRefused (not retryable on another lane or row)."""
+    from lib.llm_bridge_route import require_text_via_bridge
+
+    try:
+        text = require_text_via_bridge(PROCESS_ID, prompt, timeout_s=float(timeout))
+    except Exception as e:  # noqa: BLE001 -- refused / unreachable: stop, never another provider
+        raise GovernanceRefused(f"BRIDGE_ROUTE_REFUSED: {str(e)[:160]}") from e
+    nar = _normalize_narrative(_extract_json(text.strip()) or {})
+    return (nar, BRIDGE_LANE) if nar else (None, None)
+
+
 def _generate_parsed(prompt: str, lanes: list[str], timeout: int = 180) -> tuple[dict | None, str | None]:
     """Try each lane until JSON narrative parses. OAuth after local failure."""
+    if _via_bridge():
+        return _generate_via_bridge(prompt, timeout)
     import llm_lane
     last_err = None
     for lane in lanes:

@@ -101,6 +101,18 @@ CALLER_TASK_PROCESS_MAP: dict[str, dict[str, str]] = {
         # classifier on the n8n fabric path (allowlist llm_route via cio-governed-bridge). Its own process id, so the
         # registry's $0.05/day daily_cost_cap_usd binds it here, server-side; a caller cannot relabel into it.
         "hermes_tag_engine": "hermes_tag_engine",
+        # 2026-10-15 (n8n LLM bridge routes batch 1): n8n llm lanes on the governed bridge (allowlist
+        # llm_route). Each its own process id, so the registry caps bind server-side and a caller cannot
+        # relabel into another process.
+        "watchlist_entry_planner": "watchlist_entry_planner",
+        "holdings_llm_refresh": "holdings_llm_refresh",
+        "hermes_cross_source_synthesizer": "hermes_cross_source_synthesizer",
+        "directive_keyword_enhancer": "directive_keyword_enhancer",
+        "incubator_llm_screener": "incubator_llm_screener",
+        "journal_review_builder": "journal_review_builder",
+        "topic_ingestion": "topic_ingestion",
+        "ri_narrative_enrich": "ri_narrative_enrich",
+        "topic_research_synthesizer": "topic_research_synthesizer",
     },
 }
 
