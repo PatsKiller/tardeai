@@ -47,6 +47,10 @@ from pathlib import Path
 from typing import Any
 
 SCHEMA = "N8nLabRestoreDrill@v2"
+# Invoked by a shell script, not imported: scripts/n8n_lab_restore_drill.sh runs it as a CLI (platform-maintenance-weekly
+# step n8n_lab_restore_drill), and scripts/n8n_incident_fanin.py + scripts/lib/n8n_maturity/dims_healing.py read the
+# receipt it writes.
+SCHEDULED_ENTRYPOINT = "systemd: tradeai-platform-maintenance-weekly.timer -> n8n_lab_restore_drill.sh -> this CLI"
 ERROR_RE = re.compile(r"(pg_restore: error|errors ignored on restore|^ERROR:|FATAL:)", re.IGNORECASE | re.MULTILINE)
 
 
