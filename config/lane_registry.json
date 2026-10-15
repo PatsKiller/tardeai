@@ -6954,7 +6954,7 @@
       "owner": "hermes",
       "scheduler": {
         "kind": "cron",
-        "expression": "50 10 * * *",
+        "expression": "20 11 * * *",
         "command_text": "run_hermes_pipeline.sh --stage learn --apply",
         "match": "run_hermes_pipeline.sh --stage learn"
       },

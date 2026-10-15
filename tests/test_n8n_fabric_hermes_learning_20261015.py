@@ -164,8 +164,12 @@ def test_triggers_are_the_stage_cron_slots_plus_one_manual_trigger():
     for stage, sdoc in MANIFEST["stages"].items():
         expr = scheds[f"Schedule {stage}"]["parameters"]["rule"]["interval"][0]["expression"]
         runner_lane = SPEC["runner_lanes"][stage]
-        # identical to the stage runner's cron slot (registry row of the live crontab line) and the manifest
-        assert expr == sdoc["proposed_schedule"] == REG[runner_lane]["scheduler"]["expression"]
+        # identical to the manifest slot (the effect-key slot <date>T<HHMM>); the stage runner's cron line equals it,
+        # except the learn line moved to 11:20 by operator decision D1 (2026-10-15 cutover README: retention runs
+        # after n8n's grader; the effect slot stays the manifest minute)
+        assert expr == sdoc["proposed_schedule"]
+        cron_expr = REG[runner_lane]["scheduler"]["expression"]
+        assert cron_expr == ("20 11 * * *" if stage == "learn" else sdoc["proposed_schedule"])
         assert f"--stage {stage}" in REG[runner_lane]["scheduler"]["command_text"]
     assert wf["settings"]["timezone"] == "America/New_York"
     manual = [n for n in wf["nodes"] if n["type"] == "n8n-nodes-base.manualTrigger"]
@@ -285,15 +289,20 @@ def test_runnable_step_is_a_shadow_lane_with_the_step_lock_and_timeout(sid):
         "pipeline": MANIFEST["pipeline"],
         "stage": stage,
         "step_id": sid,
-        "cron_claim": False,
+        # hermes-learning cutover PR-1 (2026-10-15): cron_claim true for the five LEARN step lanes; tune stays false
+        "cron_claim": stage == "learn",
     }
 
 
-def test_effect_config_loads_for_the_executor_and_the_runner_claims_nothing_yet():
+def test_effect_config_loads_for_the_executor_and_the_runner_claims_only_the_learn_steps():
     cfg = E.load_effect_config(ROOT / "config" / "n8n_effect_keys.json")
     assert set(cfg) == {SPEC["steps"][s]["lane_id"] for s in RUNNABLE}
-    for stage in MANIFEST["stages"]:
-        assert PM.effect_spec(MANIFEST, stage, EFFECTS) == []  # cron_claim false everywhere: OFF until cutover
+    # cutover PR-1 (2026-10-15): the learn stage claims its five runnable steps (only when the cron line also sets
+    # PIPELINE_EFFECT_CLAIM=1); tune claims nothing (autonomous_self_tune stays shadow until the manifest split)
+    learn = {SPEC["steps"][s]["lane_id"] for s in RUNNABLE if STEPS[s][0] == "learn"}
+    assert len(learn) == 5
+    assert len(PM.effect_spec(MANIFEST, "learn", EFFECTS)) == 5
+    assert PM.effect_spec(MANIFEST, "tune", EFFECTS) == []
 
 
 @pytest.mark.parametrize("sid", BLOCKED)

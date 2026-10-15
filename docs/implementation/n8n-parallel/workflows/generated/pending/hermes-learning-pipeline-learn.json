@@ -41,7 +41,7 @@
     "lane_id": "hermes-learning-pipeline-learn",
     "mode": "live",
     "schedule_fidelity": "EXACT",
-    "schedule_source": "crontab: 50 10 * * * run_hermes_pipeline.sh --stage learn (registry kind cron)",
+    "schedule_source": "crontab: 20 11 * * * run_hermes_pipeline.sh --stage learn (registry kind cron; moved from 50 10 by cutover decision D1 2026-10-15)",
     "tranche": "N2"
   },
   "name": "hermes-learning-pipeline-learn",
@@ -53,7 +53,7 @@
         "rule": {
           "interval": [
             {
-              "expression": "50 10 * * *",
+              "expression": "20 11 * * *",
               "field": "cronExpression"
             }
           ]
