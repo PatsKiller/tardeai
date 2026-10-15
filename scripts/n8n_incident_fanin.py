@@ -462,7 +462,54 @@ def collect(root: Path, now: datetime, prev: dict[str, Any] | None = None) -> li
                     "detected_at": doc.get("as_of"),
                 }
             )
+    out.extend(_restore_drill_findings(root, now))
     return out
+
+
+# DR audit finding A (2026-10-15): nothing read the n8n lab restore-drill receipt, so a failed drill paged no one.
+# state FAILED (or ok:false on a v1 receipt) is a P1: scripts/incident_notifier.py sends P1 at once, uncapped,
+# outside quiet hours. A receipt older than RESTORE_DRILL_STALE_H (weekly drill + 1 day) is a P2.
+RESTORE_DRILL_REL = "backups/n8n/n8n_lab_restore_drill_last.json"
+RESTORE_DRILL_STALE_H = 8 * 24
+
+
+def _restore_drill_findings(root: Path, now: datetime) -> list[dict[str, Any]]:
+    doc = _load(root / RESTORE_DRILL_REL)
+    if not doc:
+        NOTES["n8n_lab_restore_drill_source"] = "no_receipt"
+        return []
+    stamp = doc.get("finished") or doc.get("started")
+    try:
+        age_h = (now - datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))).total_seconds() / 3600
+    except Exception:
+        age_h = None
+    failed = doc.get("state") == "FAILED" or doc.get("ok") is not True
+    NOTES["n8n_lab_restore_drill_source"] = f"ok:state={doc.get('state') or ('PASSED' if doc.get('ok') else 'FAILED')}"
+    if failed:
+        return [
+            {
+                "source": "n8n_lab_restore_drill",
+                "item": "failed",
+                "severity": "P1",
+                "detail": f"n8n lab restore drill FAILED: {','.join(doc.get('failures') or ['ok=false'])}"[:160],
+                "artifact_rel": RESTORE_DRILL_REL,
+                "store": "persistent-state",
+                "detected_at": stamp,
+            }
+        ]
+    if age_h is None or age_h > RESTORE_DRILL_STALE_H:
+        return [
+            {
+                "source": "n8n_lab_restore_drill",
+                "item": "stale",
+                "severity": "P2",
+                "detail": f"n8n lab restore drill receipt age_h={None if age_h is None else round(age_h, 1)} > {RESTORE_DRILL_STALE_H}",
+                "artifact_rel": RESTORE_DRILL_REL,
+                "store": "persistent-state",
+                "detected_at": stamp,
+            }
+        ]
+    return []
 
 
 OUTBOX_SOURCE_STATUS: dict[str, Any] = {"status": "not_run"}

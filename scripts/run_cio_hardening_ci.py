@@ -4098,6 +4098,21 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: DD_AUDIT_DR_AND_LANE_CAPABILITIES_20261015 — third-party n8n audit DD10/DD12/DD01: the n8n lab
+        # restore drill fails closed (restore errors, zero/missing workflow or credential rows, bad key, manifest
+        # mismatch -> FAILED + exit 1 + fan-in P1), the backup writes a per-dump manifest, a separate off-box
+        # business-output heartbeat config, the static transitive-capability audit of every allowlisted lane
+        # (shrink-only baseline) and the scalp GO delivery path under intercepted raw transports. Hermetic: fake
+        # docker/pg_restore on PATH, tmp state roots, stub requester/chokepoint, every raw transport patched.
+        "dd_audit_dr_and_lane_capabilities_20261015",
+        [
+            "tests/test_n8n_lab_restore_drill_verdict_20261015.py",
+            "tests/test_offbox_business_heartbeat_20261015.py",
+            "tests/test_lane_transitive_capabilities_20261015.py",
+            "tests/test_scalp_go_delivery_transports_20261015.py",
+        ],
+    ),
+    (
         # ANCHOR: GROK_G10_G12_20261011 — honest non-zero exits, lockup and hermes weights off the
         # release tree, and --alert/--send/--telegram as sender tokens. The n8n: SIEM skip is the
         # g11 implementation; its own test is on the n8n_siem_bridge gate. Hermetic: tmp paths,

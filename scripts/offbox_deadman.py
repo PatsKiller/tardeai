@@ -19,6 +19,13 @@ n8n or health_tick. Ping URL: env TRADEAI_OFFBOX_DEADMAN_PING_URL (a secret NAME
 
     python3 scripts/offbox_deadman.py              # dry run (default): prints the would-be request, no network
     python3 scripts/offbox_deadman.py --live       # one real request; operator activation only
+    python3 scripts/offbox_deadman.py --config config/offbox_business_heartbeat.json   # business-output heartbeat
+
+Two independent external checks (DD12, 2026-10-15): this file's default config watches the ALERT PATH (is the host
+able to tell the operator anything); config/offbox_business_heartbeat.json watches BUSINESS OUTPUT (is the
+scheduler producing useful work: scalp cycles in RTH, nightly n8n backup, weekly restore drill PASSED). Each has its
+own ping URL env, so one running scheduler that produces nothing cannot keep the other check green. A check may
+carry a ``window`` (days/start/end/tz) outside which it is not evaluated, and a ``status_field`` (default status).
 
 Dry run never opens a socket, whether or not the URL is set; with no URL it prints the request it would make
 against a placeholder. Live writes data/runtime/offbox_deadman_last.json (OffboxDeadmanPing@v1).
@@ -39,6 +46,7 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 from typing import Any, Callable, Optional
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -88,6 +96,23 @@ def _dig(doc: Any, dotted: str) -> Any:
     return doc
 
 
+DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+
+
+def in_window(now: datetime, window: dict[str, Any]) -> bool:
+    """True when ``now`` is inside {days: ["mon",...], start: "HH:MM", end: "HH:MM", tz}. A malformed window is
+    treated as always-on (fail loud: a broken window must not silence a business heartbeat)."""
+    try:
+        local = now.astimezone(ZoneInfo(str(window.get("tz") or "America/New_York")))
+        days = [str(d).lower()[:3] for d in (window.get("days") or DAYS)]
+        sh, sm = (int(x) for x in str(window.get("start") or "00:00").split(":"))
+        eh, em = (int(x) for x in str(window.get("end") or "23:59").split(":"))
+    except (ValueError, KeyError, TypeError):
+        return True
+    minute = local.hour * 60 + local.minute
+    return DAYS[local.weekday()] in days and sh * 60 + sm <= minute <= eh * 60 + em
+
+
 def evaluate(root: Path, now: datetime, cfg: dict[str, Any]) -> list[dict[str, Any]]:
     """One row per configured check: {name, ok, reason, age_min}. Pure apart from reading the receipts.
 
@@ -99,6 +124,9 @@ def evaluate(root: Path, now: datetime, cfg: dict[str, Any]) -> list[dict[str, A
     for c in checks:
         name = str(c.get("name") or c.get("path"))
         row: dict[str, Any] = {"name": name, "ok": True, "reason": "ok", "age_min": None}
+        if c.get("window") and not in_window(now, c["window"]):
+            out.append({**row, "reason": "outside_window"})
+            continue
         try:
             doc = json.loads((root / str(c["path"])).read_text(encoding="utf-8"))
         except (OSError, ValueError, KeyError) as exc:
@@ -114,8 +142,8 @@ def evaluate(root: Path, now: datetime, cfg: dict[str, Any]) -> list[dict[str, A
             row.update(ok=False, reason=f"stale:{age}m>{c.get('max_age_min')}m")
         elif c.get("require_ok") and doc.get("ok") is not True:
             row.update(ok=False, reason=f"not_ok:status={doc.get('status')}")
-        elif str(doc.get("status") or "") in (c.get("fail_status") or []):
-            row.update(ok=False, reason=f"status:{doc.get('status')}")
+        elif str(_dig(doc, str(c.get("status_field") or "status")) or "") in (c.get("fail_status") or []):
+            row.update(ok=False, reason=f"status:{_dig(doc, str(c.get('status_field') or 'status'))}")
         elif c.get("nonempty_fails") and _dig(doc, str(c["nonempty_fails"])):
             row.update(
                 ok=False, reason=f"{c['nonempty_fails']}={json.dumps(_dig(doc, str(c['nonempty_fails'])))[:120]}"
@@ -142,9 +170,15 @@ def build_request(url: Optional[str], checks: list[dict[str, Any]], now: datetim
     host = socket.gethostname()
     if not failed:
         return {"kind": "success", "method": "GET", "url": base, "body": None}
-    lines = [f"TRADE AI off-box dead-man: {len(failed)} local check(s) failed on {host} at {now.isoformat()}"]
+    label = str(cfg.get("label") or "off-box dead-man")
+    lines = [f"TRADE AI {label}: {len(failed)} local check(s) failed on {host} at {now.isoformat()}"]
     lines += [f"- {c['name']}: {c['reason']}" for c in failed]
-    lines.append("The alert path on the host may be silent. Check Telegram delivery and the Command Center.")
+    lines.append(
+        str(
+            cfg.get("fail_hint")
+            or "The alert path on the host may be silent. Check Telegram delivery and the Command Center."
+        )
+    )
     body = "\n".join(lines).encode("utf-8")[: int(cfg.get("body_max_bytes") or 8000)]
     return {"kind": "fail", "method": "POST", "url": base + str(cfg.get("fail_suffix") or "/fail"), "body": body}
 
@@ -222,8 +256,8 @@ def run(
     return receipt
 
 
-def write_receipt(root: Path, receipt: dict[str, Any]) -> Path:
-    path = root / RECEIPT_REL
+def write_receipt(root: Path, receipt: dict[str, Any], rel: Optional[str] = None) -> Path:
+    path = root / (rel or RECEIPT_REL)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(receipt, indent=1, default=str) + "\n", encoding="utf-8")
@@ -236,11 +270,19 @@ def main(argv: Optional[list[str]] = None) -> int:
     g = ap.add_mutually_exclusive_group()
     g.add_argument("--dry-run", action="store_true", help="default: print the would-be request; no network")
     g.add_argument("--live", action="store_true", help="make the one request (operator activation only)")
+    ap.add_argument(
+        "--config",
+        type=Path,
+        default=None,
+        help="check set (default config/offbox_deadman.json; config/offbox_business_heartbeat.json is the "
+        "separate business-output heartbeat with its own ping URL env and receipt)",
+    )
     args = ap.parse_args(argv)
     env = dict(os.environ)
-    receipt = run(live=bool(args.live), env=env)
+    cfg = load_config(args.config)
+    receipt = run(live=bool(args.live), env=env, cfg=cfg)
     if args.live:
-        write_receipt(state_root(env), receipt)
+        write_receipt(state_root(env), receipt, cfg.get("receipt_rel"))
     print(json.dumps(receipt, indent=1, default=str))
     return 0 if receipt["ok"] else 1
 
