@@ -4638,6 +4638,15 @@ GATES = [
         ["tests/test_scalp_premarket_onboard_20261014.py"],
     ),
     (
+        # ANCHOR: ONBOARD_DRYRUN_B1_20261015 — n8n onboarding batch B1 (lane disposition 2026-10-15, MIGRATE_N8N lanes
+        # with no allowlist entry and no --dry-run): an offline --dry-run that wins over --apply for 8 read-
+        # only/overwrite lanes (deploy-detect/recompute/monitor, three outcome reconcilers, trade-integrity-audit,
+        # tmp-scratch-cleanup). Hermetic in-process proof: every write/send/network/subprocess primitive recorded,
+        # zero calls, one LaneOutput@v1 line. Listing it schedules nothing.
+        "onboard_dryrun_b1_20261015",
+        ["tests/test_onboard_dryrun_b1_20261015.py"],
+    ),
+    (
         # ANCHOR: CONSOLIDATION_STEP1_FINVIZ_BROKER — 2026-10-10 provider consolidation step 1 (cron L442 watch
         # directives servicer, cron L142 finviz-enrichment owner): the Finviz enrichment cache's single writer saves
         # locked + merged + atomic; consumers read lib.data_broker.finviz_enrichment_snapshot (as_of/age/stale,
