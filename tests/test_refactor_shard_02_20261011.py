@@ -230,6 +230,8 @@ def test_registry_admission_is_shadow_only_and_contracts_are_draft():
         name = lane["lane_id"]
         if name not in allow or not _owned_here(registry.get(name), "R2-02"):
             continue
+        if name in _CW_PROMOTED:
+            continue  # 2026-10-15: promoted to canary by a cutover wave (tests/test_n8n_cutover_wave_20261015.py pins it)
         row, entry, contract = registry[name], allow[name], contracts[name]
         assert row["dispatch"]["retry_policy"] == "none"
         assert validate_dispatch_block(row, known_lane_ids=registry, retry_policy_names={"none"}) == []
@@ -330,3 +332,6 @@ def test_sec_named_loader_rejects_unrelated_secret_names(monkeypatch):
     monkeypatch.delenv("DB_HOST", raising=False)
     module._load_env()
     assert os.environ["DB_HOST"] == "synthetic-host" and "UNRELATED_SECRET_TOKEN" not in os.environ
+
+
+from tests.support.n8n_cutover_waves import PROMOTED as _CW_PROMOTED  # noqa: E402  2026-10-15 cutover waves

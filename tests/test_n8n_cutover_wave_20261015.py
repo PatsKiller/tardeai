@@ -249,3 +249,11 @@ def test_cw1_rows_are_admitted_canaries():
         assert row["scheduler"]["stage"] == "canary" and row["dispatch"]["mode"] == "live", lid
         assert LD.r1_canary_lock_matches(row, e)[0], lid
         assert LD.r1_class_admission(row, e)[0], (lid, LD.r1_class_admission(row, e))
+
+
+def test_held_lanes_are_skipped_with_their_reason(code_root):
+    rows = W.scope_rows(W.load_disposition(code_root))
+    disp = dict(rows[0], lane_id="aegis-nightly-ingestion")
+    v = W.plan_lane("aegis-nightly-ingestion", disp, reg_rows={}, entries={}, contracts={}, effect_keys={},
+                    crontab=CRONTAB, wave="CWT")
+    assert v["status"] == "SKIP" and v["reasons"] == [W.HELD["aegis-nightly-ingestion"]]

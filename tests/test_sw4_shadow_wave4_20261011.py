@@ -149,7 +149,7 @@ def test_flock_lanes_are_canary_lock_equivalent_and_the_rest_stay_blocked():
         canary["scheduler"]["stage"] = "canary"
         canary["dispatch"]["mode"] = "live"
         ok, why = LD.r1_canary_lock_matches(canary, dict(e, live_arg=[]))
-        if cron_lock and e["lock_kind"] == "flock":
+        if (cron_lock or lane in CW.PROMOTED) and e["lock_kind"] == "flock":  # CW: flock added by the cutover wave
             assert ok, (lane, why)
         else:
             assert not ok, (lane, why)
@@ -221,8 +221,10 @@ def test_compute_due_week_sweep_emits_dry_run_on_the_natural_slots_only():
             "etf-performance-enrich": 1}
     want = {k: n for k, n in want.items() if k not in CW.PROMOTED}
     assert {k: len(v) for k, v in slots.items()} == want
-    assert {s[-4:] for s in slots["aegis-social-sentiment"]} == {"1100", "1500"}
-    assert {s[:8] for s in slots["agent-outcome-scorer"]} == {"20261018"}  # Sunday
+    if "aegis-social-sentiment" in slots:
+        assert {s[-4:] for s in slots["aegis-social-sentiment"]} == {"1100", "1500"}
+    if "agent-outcome-scorer" in slots:
+        assert {s[:8] for s in slots["agent-outcome-scorer"]} == {"20261018"}  # Sunday
 
 
 @pytest.mark.skipif("identity-sweep-stage0" in CW.PROMOTED, reason="promoted to canary by a 2026-10-15 cutover wave")

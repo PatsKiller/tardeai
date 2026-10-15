@@ -1859,7 +1859,7 @@
       "env_allowlist_mode": "report",
       "env_evidence": "scripts/record_decision_outcome.py _get_conn line-scans <checkout>/.env for DB_PASSWORD only (:84-89); no other secret, no provider. No broker credential name (AGENTS §23.18 ruling 3).",
       "env_report_reason": "DB_PASSWORD is read from the checkout-relative .env (one key, never copied wholesale), not from the environment, so the inventory cannot be enforced until the script resolves it through the env (N8N_ONBOARDING_STANDARD §2 rules 5-6, open finding); report until then.",
-      "source": "shadow wave 4 (SW4, n8n maturity, R1 class learn), cron:L218 (crontab -l 2026-10-11: `50 7 * * 1-5 cd $PROJ && $PY scripts/record_decision_outcome.py >> logs/decision_outcomes.log 2>&1`). SHADOW ONLY: live_arg null, registry dispatch.mode dry_run, scheduler.stage shadow (4.4.0 cron-row shape); the cron line keeps doing the real work. The live cron line has NO flock: lock is the PROPOSED `flock -n /tmp/record_decision_outcome.lock` that a cron-granted packet must add to L218 before canary (r1_canary_lock_matches; wave23-flock precedent). The cron line's live argument is (none); it is NOT in this entry. Dry run 2026-10-11 under TRADE_AI_CI=1 with a scratch TRADEAI_STATE_ROOT: dry run from served CURRENT 464524b1b (byte-identical script; the worktree has no .env, so the worktree run exits 1 at connect before any write): exit 0, `DRY-RUN would record 14 new decision outcomes`. 0 tracked, scratch-state or persistent receipt files changed (~/n8n-maturity-verification/dispatch-shadow-wave4/).",
+      "source": "shadow wave 4 (SW4, n8n maturity, R1 class learn), cron:L218 (crontab -l 2026-10-11: `50 7 * * 1-5 cd $PROJ && $PY scripts/record_decision_outcome.py >> logs/decision_outcomes.log 2>&1`). SHADOW ONLY: live_arg null, registry dispatch.mode dry_run, scheduler.stage shadow (4.4.0 cron-row shape); the cron line keeps doing the real work. The live cron line has NO flock: lock is the PROPOSED `flock -n /tmp/record_decision_outcome.lock` that a cron-granted packet must add to L218 before canary (r1_canary_lock_matches; wave23-flock precedent). The cron line's live argument is (none); it is NOT in this entry. Dry run 2026-10-11 under TRADE_AI_CI=1 with a scratch TRADEAI_STATE_ROOT: dry run from served CURRENT 464524b1b (byte-identical script; the worktree has no .env, so the worktree run exits 1 at connect before any write): exit 0, `DRY-RUN would record 14 new decision outcomes`. 0 tracked, scratch-state or persistent receipt files changed (~/n8n-maturity-verification/dispatch-shadow-wave4/). | CW2 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv [], lock = the cron flock lock /tmp/record_decision_outcome.lock (shared: the lock proves no double run).",
       "command": [
         "$PY",
         "scripts/record_decision_outcome.py"
@@ -1870,7 +1870,7 @@
       "dry_run_arg": [
         "--dry-run"
       ],
-      "live_arg": null,
+      "live_arg": [],
       "market_gate": false,
       "output_signal": "data/runtime/record-decision-outcome_last.json"
     },
@@ -1955,7 +1955,7 @@
       "env_allowlist_mode": "report",
       "env_evidence": "_get_conn (:72-76) reads only DB_PASSWORD= from <checkout>/.env into a local; pipeline_registry copies DB_PASSWORD only (:14-19). No broker credential name (AGENTS §23.18 ruling 3).",
       "env_report_reason": "DB_PASSWORD is read from the checkout-relative .env (one key, never copied wholesale), not from the environment, so the inventory cannot be enforced until the script resolves it through the env (N8N_ONBOARDING_STANDARD §2 rules 5-6, open finding); report until then.",
-      "source": "shadow wave 4 (SW4, n8n maturity, R1 class learn), cron:L275 (crontab -l 2026-10-11: `0 11 * * 0 cd $PROJ && $PY scripts/agent_outcome_scorer.py --apply >> logs/agent_outcome_scorer.log 2>&1`). SHADOW ONLY: live_arg null, registry dispatch.mode dry_run, scheduler.stage shadow (4.4.0 cron-row shape); the cron line keeps doing the real work. The live cron line has NO flock: lock is the PROPOSED `flock -n /tmp/agent_outcome_scorer.lock` that a cron-granted packet must add to L275 before canary (r1_canary_lock_matches; wave23-flock precedent). The cron line's live argument is --apply; it is NOT in this entry. Dry run 2026-10-11 under TRADE_AI_CI=1 with a scratch TRADEAI_STATE_ROOT: dry run from served CURRENT 464524b1b (byte-identical script; worktree has no .env): exit 0, DRY-RUN unscored_pairs 154, would_save 154. 0 tracked, scratch-state or persistent receipt files changed (~/n8n-maturity-verification/dispatch-shadow-wave4/).",
+      "source": "shadow wave 4 (SW4, n8n maturity, R1 class learn), cron:L275 (crontab -l 2026-10-11: `0 11 * * 0 cd $PROJ && $PY scripts/agent_outcome_scorer.py --apply >> logs/agent_outcome_scorer.log 2>&1`). SHADOW ONLY: live_arg null, registry dispatch.mode dry_run, scheduler.stage shadow (4.4.0 cron-row shape); the cron line keeps doing the real work. The live cron line has NO flock: lock is the PROPOSED `flock -n /tmp/agent_outcome_scorer.lock` that a cron-granted packet must add to L275 before canary (r1_canary_lock_matches; wave23-flock precedent). The cron line's live argument is --apply; it is NOT in this entry. Dry run 2026-10-11 under TRADE_AI_CI=1 with a scratch TRADEAI_STATE_ROOT: dry run from served CURRENT 464524b1b (byte-identical script; worktree has no .env): exit 0, DRY-RUN unscored_pairs 154, would_save 154. 0 tracked, scratch-state or persistent receipt files changed (~/n8n-maturity-verification/dispatch-shadow-wave4/). | CW2 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv ['--apply'], lock = the cron flock lock /tmp/agent_outcome_scorer.lock (shared: the lock proves no double run).",
       "command": [
         "$PY",
         "scripts/agent_outcome_scorer.py"
@@ -1966,7 +1966,9 @@
       "dry_run_arg": [
         "--dry-run"
       ],
-      "live_arg": null,
+      "live_arg": [
+        "--apply"
+      ],
       "market_gate": false,
       "output_signal": "data/runtime/agent-outcome-scorer_last.json"
     },
@@ -2092,7 +2094,7 @@
       "env_allowlist_mode": "report",
       "env_evidence": "SW4 commit: the module-level loader copies only DB_* + the 4 Brave switches (was the whole .env, :44-53); with DB_PASSWORD set first, db_adapter skips env_bootstrap. No broker credential name (AGENTS §23.18 ruling 3).",
       "env_report_reason": "DB_* and the Brave switches are read from the checkout-relative .env (one key, never copied wholesale), not from the environment, so the inventory cannot be enforced until the script resolves it through the env (N8N_ONBOARDING_STANDARD §2 rules 5-6, open finding); report until then.",
-      "source": "shadow wave 4 (SW4, n8n maturity, R1 class ingest), cron:L289 (crontab -l 2026-10-11: `0 11,15 * * 1-5 cd $PROJ && timeout 10m $PY scripts/aegis_social_sentiment.py >> logs/aegis_social.log 2>&1`). SHADOW ONLY: live_arg null, registry dispatch.mode dry_run, scheduler.stage shadow (4.4.0 cron-row shape); the cron line keeps doing the real work. The live cron line has NO flock: lock is the PROPOSED `flock -n /tmp/aegis_social_sentiment.lock` that a cron-granted packet must add to L289 before canary (r1_canary_lock_matches; wave23-flock precedent). The cron line's live argument is (none); it is NOT in this entry. Dry run 2026-10-11 under TRADE_AI_CI=1 with a scratch TRADEAI_STATE_ROOT: dry run from the worktree (SW4 loader): exit 0, DRY-RUN universe 15, would_fetch_stocktwits_streams 15, would_fetch_reddit_pages 4, would_query_brave 0. 0 tracked, scratch-state or persistent receipt files changed (~/n8n-maturity-verification/dispatch-shadow-wave4/).",
+      "source": "shadow wave 4 (SW4, n8n maturity, R1 class ingest), cron:L289 (crontab -l 2026-10-11: `0 11,15 * * 1-5 cd $PROJ && timeout 10m $PY scripts/aegis_social_sentiment.py >> logs/aegis_social.log 2>&1`). SHADOW ONLY: live_arg null, registry dispatch.mode dry_run, scheduler.stage shadow (4.4.0 cron-row shape); the cron line keeps doing the real work. The live cron line has NO flock: lock is the PROPOSED `flock -n /tmp/aegis_social_sentiment.lock` that a cron-granted packet must add to L289 before canary (r1_canary_lock_matches; wave23-flock precedent). The cron line's live argument is (none); it is NOT in this entry. Dry run 2026-10-11 under TRADE_AI_CI=1 with a scratch TRADEAI_STATE_ROOT: dry run from the worktree (SW4 loader): exit 0, DRY-RUN universe 15, would_fetch_stocktwits_streams 15, would_fetch_reddit_pages 4, would_query_brave 0. 0 tracked, scratch-state or persistent receipt files changed (~/n8n-maturity-verification/dispatch-shadow-wave4/). | CW2 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv [], lock = the cron flock lock /tmp/aegis_social_sentiment.lock (shared: the lock proves no double run).",
       "command": [
         "$PY",
         "scripts/aegis_social_sentiment.py"
@@ -2103,7 +2105,7 @@
       "dry_run_arg": [
         "--dry-run"
       ],
-      "live_arg": null,
+      "live_arg": [],
       "market_gate": false,
       "output_signal": "data/runtime/aegis-social-sentiment_last.json"
     },
@@ -2128,7 +2130,7 @@
       "env_allowlist_mode": "report",
       "env_evidence": "SW4 commit: module-level loader copies only DB_* + the 4 Brave switches (was the whole .env, :41-50). No broker credential name (AGENTS §23.18 ruling 3).",
       "env_report_reason": "DB_* and the Brave switches are read from the checkout-relative .env (one key, never copied wholesale), not from the environment, so the inventory cannot be enforced until the script resolves it through the env (N8N_ONBOARDING_STANDARD §2 rules 5-6, open finding); report until then.",
-      "source": "shadow wave 4 (SW4, n8n maturity, R1 class ingest), cron:L291 (crontab -l 2026-10-11: `0 9 * * 1-5 cd $PROJ && timeout 5m $PY scripts/aegis_transcript_discovery.py >> logs/aegis_transcript.log 2>&1`). SHADOW ONLY: live_arg null, registry dispatch.mode dry_run, scheduler.stage shadow (4.4.0 cron-row shape); the cron line keeps doing the real work. The live cron line has NO flock: lock is the PROPOSED `flock -n /tmp/aegis_transcript_discovery.lock` that a cron-granted packet must add to L291 before canary (r1_canary_lock_matches; wave23-flock precedent). The cron line's live argument is (none); it is NOT in this entry. Dry run 2026-10-11 under TRADE_AI_CI=1 with a scratch TRADEAI_STATE_ROOT: dry run from the worktree (SW4 loader): exit 0, DRY-RUN universe 15, youtube_db 9, would_write_transcripts 9, would_query_brave 0. 0 tracked, scratch-state or persistent receipt files changed (~/n8n-maturity-verification/dispatch-shadow-wave4/).",
+      "source": "shadow wave 4 (SW4, n8n maturity, R1 class ingest), cron:L291 (crontab -l 2026-10-11: `0 9 * * 1-5 cd $PROJ && timeout 5m $PY scripts/aegis_transcript_discovery.py >> logs/aegis_transcript.log 2>&1`). SHADOW ONLY: live_arg null, registry dispatch.mode dry_run, scheduler.stage shadow (4.4.0 cron-row shape); the cron line keeps doing the real work. The live cron line has NO flock: lock is the PROPOSED `flock -n /tmp/aegis_transcript_discovery.lock` that a cron-granted packet must add to L291 before canary (r1_canary_lock_matches; wave23-flock precedent). The cron line's live argument is (none); it is NOT in this entry. Dry run 2026-10-11 under TRADE_AI_CI=1 with a scratch TRADEAI_STATE_ROOT: dry run from the worktree (SW4 loader): exit 0, DRY-RUN universe 15, youtube_db 9, would_write_transcripts 9, would_query_brave 0. 0 tracked, scratch-state or persistent receipt files changed (~/n8n-maturity-verification/dispatch-shadow-wave4/). | CW2 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv [], lock = the cron flock lock /tmp/aegis_transcript_discovery.lock (shared: the lock proves no double run).",
       "command": [
         "$PY",
         "scripts/aegis_transcript_discovery.py"
@@ -2139,7 +2141,7 @@
       "dry_run_arg": [
         "--dry-run"
       ],
-      "live_arg": null,
+      "live_arg": [],
       "market_gate": false,
       "output_signal": "data/runtime/aegis-transcript-discovery_last.json"
     },
@@ -2193,7 +2195,7 @@
       "env_allowlist_mode": "report",
       "env_evidence": "SW4 commit: module-level loader copies only DB_* + SEARXNG_URL (was the whole .env, :50-59). Open: SearXNG is called directly, not through scripts/lib/search_router.py (onboarding §2 rule 10) — a canary blocker. No broker credential name (AGENTS §23.18 ruling 3).",
       "env_report_reason": "DB_* are read from the checkout-relative .env (one key, never copied wholesale), not from the environment, so the inventory cannot be enforced until the script resolves it through the env (N8N_ONBOARDING_STANDARD §2 rules 5-6, open finding); report until then.",
-      "source": "shadow wave 4 (SW4, n8n maturity, R1 class ingest), cron:L863 (crontab -l 2026-10-11: `15 11,15 * * 1-5 cd $PROJ && $PY scripts/hermes_social_sentiment.py --apply >> logs/hermes_social_sentiment.log 2>&1`). SHADOW ONLY: live_arg null, registry dispatch.mode dry_run, scheduler.stage shadow (4.4.0 cron-row shape); the cron line keeps doing the real work. The live cron line has NO flock: lock is the PROPOSED `flock -n /tmp/hermes_social_sentiment.lock` that a cron-granted packet must add to L863 before canary (r1_canary_lock_matches; wave23-flock precedent). The cron line's live argument is --apply; it is NOT in this entry. Dry run 2026-10-11 under TRADE_AI_CI=1 with a scratch TRADEAI_STATE_ROOT: dry run from the worktree (SW4 loader): exit 0, `Would send 45 SearXNG queries ... not sent in a dry run`, universe 15. 0 tracked, scratch-state or persistent receipt files changed (~/n8n-maturity-verification/dispatch-shadow-wave4/).",
+      "source": "shadow wave 4 (SW4, n8n maturity, R1 class ingest), cron:L863 (crontab -l 2026-10-11: `15 11,15 * * 1-5 cd $PROJ && $PY scripts/hermes_social_sentiment.py --apply >> logs/hermes_social_sentiment.log 2>&1`). SHADOW ONLY: live_arg null, registry dispatch.mode dry_run, scheduler.stage shadow (4.4.0 cron-row shape); the cron line keeps doing the real work. The live cron line has NO flock: lock is the PROPOSED `flock -n /tmp/hermes_social_sentiment.lock` that a cron-granted packet must add to L863 before canary (r1_canary_lock_matches; wave23-flock precedent). The cron line's live argument is --apply; it is NOT in this entry. Dry run 2026-10-11 under TRADE_AI_CI=1 with a scratch TRADEAI_STATE_ROOT: dry run from the worktree (SW4 loader): exit 0, `Would send 45 SearXNG queries ... not sent in a dry run`, universe 15. 0 tracked, scratch-state or persistent receipt files changed (~/n8n-maturity-verification/dispatch-shadow-wave4/). | CW2 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv ['--apply'], lock = the cron flock lock /tmp/hermes_social_sentiment.lock (shared: the lock proves no double run).",
       "command": [
         "$PY",
         "scripts/hermes_social_sentiment.py"
@@ -2204,7 +2206,9 @@
       "dry_run_arg": [
         "--dry-run"
       ],
-      "live_arg": null,
+      "live_arg": [
+        "--apply"
+      ],
       "market_gate": false,
       "output_signal": "data/runtime/hermes-social-sentiment_last.json"
     },
@@ -2226,7 +2230,7 @@
       "env_allowlist_mode": "report",
       "env_evidence": "SW4 commit: module-level loader copies only DB_* + SOCIAL_FOLD_MAX_AGE_HOURS (was the whole .env, :46-55), and it no longer inherits aegis_nightly_ingestion's whole-file copy. No broker credential name (AGENTS §23.18 ruling 3).",
       "env_report_reason": "DB_* are read from the checkout-relative .env (one key, never copied wholesale), not from the environment, so the inventory cannot be enforced until the script resolves it through the env (N8N_ONBOARDING_STANDARD §2 rules 5-6, open finding); report until then.",
-      "source": "shadow wave 4 (SW4, n8n maturity, R1 class ingest), cron:L862 (crontab -l 2026-10-11: `30 11,15 * * 1-5 cd $PROJ && $PY scripts/sync_social_to_intelligence.py --apply >> logs/sync_social_to_intelligence.log 2>&1`). SHADOW ONLY: live_arg null, registry dispatch.mode dry_run, scheduler.stage shadow (4.4.0 cron-row shape); the cron line keeps doing the real work. The live cron line has NO flock: lock is the PROPOSED `flock -n /tmp/sync_social_to_intelligence.lock` that a cron-granted packet must add to L862 before canary (r1_canary_lock_matches; wave23-flock precedent). The cron line's live argument is --apply; it is NOT in this entry. Dry run 2026-10-11 under TRADE_AI_CI=1 with a scratch TRADEAI_STATE_ROOT: dry run from the worktree (SW4 loader): exit 0, DRY-RUN universe 15, would_fold 15. 0 tracked, scratch-state or persistent receipt files changed (~/n8n-maturity-verification/dispatch-shadow-wave4/).",
+      "source": "shadow wave 4 (SW4, n8n maturity, R1 class ingest), cron:L862 (crontab -l 2026-10-11: `30 11,15 * * 1-5 cd $PROJ && $PY scripts/sync_social_to_intelligence.py --apply >> logs/sync_social_to_intelligence.log 2>&1`). SHADOW ONLY: live_arg null, registry dispatch.mode dry_run, scheduler.stage shadow (4.4.0 cron-row shape); the cron line keeps doing the real work. The live cron line has NO flock: lock is the PROPOSED `flock -n /tmp/sync_social_to_intelligence.lock` that a cron-granted packet must add to L862 before canary (r1_canary_lock_matches; wave23-flock precedent). The cron line's live argument is --apply; it is NOT in this entry. Dry run 2026-10-11 under TRADE_AI_CI=1 with a scratch TRADEAI_STATE_ROOT: dry run from the worktree (SW4 loader): exit 0, DRY-RUN universe 15, would_fold 15. 0 tracked, scratch-state or persistent receipt files changed (~/n8n-maturity-verification/dispatch-shadow-wave4/). | CW2 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv ['--apply'], lock = the cron flock lock /tmp/sync_social_to_intelligence.lock (shared: the lock proves no double run).",
       "command": [
         "$PY",
         "scripts/sync_social_to_intelligence.py"
@@ -2237,7 +2241,9 @@
       "dry_run_arg": [
         "--dry-run"
       ],
-      "live_arg": null,
+      "live_arg": [
+        "--apply"
+      ],
       "market_gate": false,
       "output_signal": "data/runtime/sync-social-to-intelligence_last.json"
     },
@@ -2381,7 +2387,7 @@
       "dry_run_arg": [
         "--dry-run"
       ],
-      "live_arg": null,
+      "live_arg": [],
       "env_names": [
         "DB_HOST",
         "DB_NAME",
@@ -2397,7 +2403,7 @@
       "timeout_s": 1800,
       "market_gate": false,
       "output_signal": "data/runtime/daily-incubator-refresh_last.json",
-      "source": "Exact native-approved crontab -l snapshot 2026-10-11T14:57:08.697196+00:00; cron remains unchanged."
+      "source": "Exact native-approved crontab -l snapshot 2026-10-11T14:57:08.697196+00:00; cron remains unchanged. | CW2 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv [], lock = the cron flock lock /tmp/daily-incubator-refresh.lock (shared: the lock proves no double run)."
     },
     {
       "lane_id": "resolve-due-checkpoints",
@@ -2444,7 +2450,7 @@
       "env_allowlist_mode": "report",
       "env_evidence": "scripts/weekly_incubator_builder.py named settings and import-closure source inspection; no broker or model credential names admitted.",
       "env_report_reason": "session13_db, multi_strategy_classifier and pipeline_registry load checkout environment in the real-run closure. Their narrowing is integrator work; optional --llm is absent from this exact allowlist command and is not admitted.",
-      "source": "R2-02 source shadow candidate, approved read-only crontab snapshot 2026-10-11T14:57:08.697196+00:00. Exact cron argv retained; --dry-run wins over mutation flags. Cron remains the real scheduler; health contract DRAFT, no runtime activation or natural acceptance. No legacy flock; lock is proposed for n8n only, canary blocked until operator adds the same cron lock.",
+      "source": "R2-02 source shadow candidate, approved read-only crontab snapshot 2026-10-11T14:57:08.697196+00:00. Exact cron argv retained; --dry-run wins over mutation flags. Cron remains the real scheduler; health contract DRAFT, no runtime activation or natural acceptance. No legacy flock; lock is proposed for n8n only, canary blocked until operator adds the same cron lock. | CW2 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv [], lock = the cron flock lock /tmp/weekly-incubator-builder.lock (shared: the lock proves no double run).",
       "command": [
         "$PY",
         "scripts/weekly_incubator_builder.py",
@@ -2458,7 +2464,7 @@
       "dry_run_arg": [
         "--dry-run"
       ],
-      "live_arg": null,
+      "live_arg": [],
       "market_gate": false,
       "output_signal": "data/runtime/weekly-incubator-builder_last.json"
     },
@@ -2729,7 +2735,7 @@
       "dry_run_arg": [
         "--dry-run"
       ],
-      "live_arg": null,
+      "live_arg": [],
       "lock": "/tmp/commitment-outcome-sweep.lock",
       "lock_kind": "flock",
       "timeout_s": 300,
@@ -2750,7 +2756,7 @@
       "env_allowlist_mode": "report",
       "env_report_reason": "Real price-observation factory is shared and not narrowed by this shard. Preserve the observed explicit --state-root parameter. Tests fake all store/provider boundaries; no production store is opened.",
       "env_evidence": "Own source named dependencies; shared import-closure debt recorded in SHARED_CHANGES_NEEDED.md. Executor base names supply TRADEAI_STATE_ROOT, PATH, HOME and XDG_RUNTIME_DIR.",
-      "source": "Shard05 SOURCE_ONLY, approved exact selected cron snapshot 2026-10-11T17:05:28.513179+00:00. Original line: 20 18 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/sweep_commitment_outcomes.py --apply --state-root /home/johnclaw/trade-ai-state/persistent_wake/state >> logs/sweep_commitment_outcomes.log 2>&1. Original business argv preserved; shell prerequisites and source environment remain recorded in scheduler.command_text. Explicit dry-run returns before env, data and provider work. live_arg null; no scheduling or deployment. NO outer flock in observed cron: allowlist lock is PROPOSED ONLY; operator packet required before canary."
+      "source": "Shard05 SOURCE_ONLY, approved exact selected cron snapshot 2026-10-11T17:05:28.513179+00:00. Original line: 20 18 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/sweep_commitment_outcomes.py --apply --state-root /home/johnclaw/trade-ai-state/persistent_wake/state >> logs/sweep_commitment_outcomes.log 2>&1. Original business argv preserved; shell prerequisites and source environment remain recorded in scheduler.command_text. Explicit dry-run returns before env, data and provider work. live_arg null; no scheduling or deployment. NO outer flock in observed cron: allowlist lock is PROPOSED ONLY; operator packet required before canary. | CW2 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv [], lock = the cron flock lock /tmp/commitment-outcome-sweep.lock (shared: the lock proves no double run)."
     },
     {
       "lane_id": "finviz-market-movers",
@@ -2831,7 +2837,7 @@
       "dry_run_arg": [
         "--dry-run"
       ],
-      "live_arg": null,
+      "live_arg": [],
       "lock": "/tmp/instrument-belief-writer.lock",
       "lock_kind": "flock",
       "timeout_s": 600,
@@ -2853,7 +2859,7 @@
       "env_allowlist_mode": "report",
       "env_report_reason": "SOURCE_ONLY: lazy DB, provider, telemetry and cognition import closure not fully inventoried; shared loader/optional driver work belongs to the integrator. No canary until closure proof and bound enforcement.",
       "env_evidence": "Selected source names only; own CLI preview returns before DB, auth, provider, model or mutation",
-      "source": "SOURCE_ONLY exact approved cron 2026-10-11T17:05:28.513179+00:00: 50 18 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/write_instrument_beliefs.py --apply >> logs/write_instrument_beliefs.log 2>&1"
+      "source": "SOURCE_ONLY exact approved cron 2026-10-11T17:05:28.513179+00:00: 50 18 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/write_instrument_beliefs.py --apply >> logs/write_instrument_beliefs.log 2>&1 | CW2 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv [], lock = the cron flock lock /tmp/instrument-belief-writer.lock (shared: the lock proves no double run)."
     },
     {
       "lane_id": "trade-thesis-review-engine",

@@ -1,0 +1,238 @@
+{
+  "wave": "CW2",
+  "ready": [
+    "aegis-social-sentiment",
+    "aegis-transcript-discovery",
+    "agent-outcome-scorer",
+    "commitment-outcome-sweep",
+    "daily-incubator-refresh",
+    "hermes-social-sentiment",
+    "instrument-belief-writer",
+    "record-decision-outcome",
+    "sync-social-to-intelligence",
+    "weekly-incubator-builder"
+  ],
+  "effect_keyed": [
+    "aegis-social-sentiment",
+    "aegis-transcript-discovery",
+    "agent-outcome-scorer",
+    "commitment-outcome-sweep",
+    "daily-incubator-refresh",
+    "hermes-social-sentiment",
+    "instrument-belief-writer",
+    "record-decision-outcome",
+    "weekly-incubator-builder"
+  ],
+  "plan": [
+    {
+      "lane_id": "aegis-social-sentiment",
+      "row_id": "cron:L291",
+      "family_id": "F44",
+      "tier_name": "append",
+      "status": "READY_CANARY",
+      "lock": "/tmp/aegis_social_sentiment.lock",
+      "live_arg": [],
+      "slots": [
+        "0 11,15 * * 1-5"
+      ],
+      "cron_lines": [
+        {
+          "line": 291,
+          "text": "0 11,15 * * 1-5 cd $PROJ && flock -n /tmp/aegis_social_sentiment.lock timeout 10m $PY scripts/aegis_social_sentiment.py >> logs/aegis_social.log 2>&1"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "aegis-transcript-discovery",
+      "row_id": "cron:L293",
+      "family_id": "F44",
+      "tier_name": "append",
+      "status": "READY_CANARY",
+      "lock": "/tmp/aegis_transcript_discovery.lock",
+      "live_arg": [],
+      "slots": [
+        "0 9 * * 1-5"
+      ],
+      "cron_lines": [
+        {
+          "line": 293,
+          "text": "0 9 * * 1-5 cd $PROJ && flock -n /tmp/aegis_transcript_discovery.lock timeout 5m $PY scripts/aegis_transcript_discovery.py >> logs/aegis_transcript.log 2>&1"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "agent-outcome-scorer",
+      "row_id": "cron:L277",
+      "family_id": "F50",
+      "tier_name": "append",
+      "status": "READY_CANARY",
+      "lock": "/tmp/agent_outcome_scorer.lock",
+      "live_arg": [
+        "--apply"
+      ],
+      "slots": [
+        "0 11 * * 0"
+      ],
+      "cron_lines": [
+        {
+          "line": 277,
+          "text": "0 11 * * 0 cd $PROJ && flock -n /tmp/agent_outcome_scorer.lock $PY scripts/agent_outcome_scorer.py --apply >> logs/agent_outcome_scorer.log 2>&1"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "commitment-outcome-sweep",
+      "row_id": "cron:L992",
+      "family_id": "F50",
+      "tier_name": "append",
+      "status": "READY_CANARY",
+      "lock": "/tmp/commitment-outcome-sweep.lock",
+      "live_arg": [],
+      "slots": [
+        "20 18 * * *"
+      ],
+      "cron_lines": [
+        {
+          "line": 1003,
+          "text": "20 18 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/commitment-outcome-sweep.lock $PY scripts/sweep_commitment_outcomes.py --apply --state-root /home/johnclaw/trade-ai-state/persistent_wake/state >> logs/sweep_commitment_outcomes.log 2>&1"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "daily-incubator-refresh",
+      "row_id": "cron:L226",
+      "family_id": "F45",
+      "tier_name": "append",
+      "status": "READY_CANARY",
+      "lock": "/tmp/daily-incubator-refresh.lock",
+      "live_arg": [],
+      "slots": [
+        "15 8 * * 1-5"
+      ],
+      "cron_lines": [
+        {
+          "line": 226,
+          "text": "15 8 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/daily-incubator-refresh.lock $PY scripts/daily_incubator_refresh.py --apply >> logs/incubator_refresh.log 2>&1"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "hermes-social-sentiment",
+      "row_id": "cron:L865",
+      "family_id": "F44",
+      "tier_name": "append",
+      "status": "READY_CANARY",
+      "lock": "/tmp/hermes_social_sentiment.lock",
+      "live_arg": [
+        "--apply"
+      ],
+      "slots": [
+        "15 11,15 * * 1-5"
+      ],
+      "cron_lines": [
+        {
+          "line": 876,
+          "text": "15 11,15 * * 1-5 cd $PROJ && flock -n /tmp/hermes_social_sentiment.lock $PY scripts/hermes_social_sentiment.py --apply >> logs/hermes_social_sentiment.log 2>&1"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "instrument-belief-writer",
+      "row_id": "cron:L994",
+      "family_id": "F51",
+      "tier_name": "append",
+      "status": "READY_CANARY",
+      "lock": "/tmp/instrument-belief-writer.lock",
+      "live_arg": [],
+      "slots": [
+        "50 18 * * *"
+      ],
+      "cron_lines": [
+        {
+          "line": 1005,
+          "text": "50 18 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/instrument-belief-writer.lock $PY scripts/write_instrument_beliefs.py --apply >> logs/write_instrument_beliefs.log 2>&1"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "record-decision-outcome",
+      "row_id": "cron:L220",
+      "family_id": "F50",
+      "tier_name": "append",
+      "status": "READY_CANARY",
+      "lock": "/tmp/record_decision_outcome.lock",
+      "live_arg": [],
+      "slots": [
+        "50 7 * * 1-5"
+      ],
+      "cron_lines": [
+        {
+          "line": 220,
+          "text": "50 7 * * 1-5 cd $PROJ && flock -n /tmp/record_decision_outcome.lock $PY scripts/record_decision_outcome.py >> logs/decision_outcomes.log 2>&1"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "sync-social-to-intelligence",
+      "row_id": "cron:L864",
+      "family_id": "F44",
+      "tier_name": "read/overwrite",
+      "status": "READY_CANARY",
+      "lock": "/tmp/sync_social_to_intelligence.lock",
+      "live_arg": [
+        "--apply"
+      ],
+      "slots": [
+        "30 11,15 * * 1-5"
+      ],
+      "cron_lines": [
+        {
+          "line": 875,
+          "text": "30 11,15 * * 1-5 cd $PROJ && flock -n /tmp/sync_social_to_intelligence.lock $PY scripts/sync_social_to_intelligence.py --apply >> logs/sync_social_to_intelligence.log 2>&1"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "weekly-incubator-builder",
+      "row_id": "cron:L227",
+      "family_id": "F45",
+      "tier_name": "append",
+      "status": "READY_CANARY",
+      "lock": "/tmp/weekly-incubator-builder.lock",
+      "live_arg": [],
+      "slots": [
+        "0 19 * * 0"
+      ],
+      "cron_lines": [
+        {
+          "line": 227,
+          "text": "0 19 * * 0 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/weekly-incubator-builder.lock $PY scripts/weekly_incubator_builder.py --run-label 1900 --apply >> logs/incubator_builder.log 2>&1"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "aegis-nightly-ingestion",
+      "row_id": "cron:L310",
+      "family_id": "F44",
+      "tier_name": null,
+      "status": "SKIP",
+      "lock": null,
+      "live_arg": null,
+      "slots": null,
+      "cron_lines": null,
+      "reasons": [
+        "held: the n8n reference workflow's inert lane (scripts/build_n8n_reference_workflow.py LANE; its allowlist live_arg must stay null and its effect key unarmed)"
+      ]
+    }
+  ]
+}
