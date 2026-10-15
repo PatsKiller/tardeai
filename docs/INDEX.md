@@ -1435,6 +1435,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-maturity/BROKER_ENV_AUDIT.md` | Broker env-name read audit — which jobs truly need broker names | review_required | OK | `76aa7605bcfb` |
 | `docs/implementation/n8n-maturity/B_FAMILIES_TOP5.md` | B families top 5 — one parameterised job per same-script cron family | review_required | OK | `e1f607cfa001` |
 | `docs/implementation/n8n-maturity/DD12_OUTSIDE_DEADMAN_AND_DR_PLAN_20261015.md` | DD12 / DD10 — outside dead-man, business heartbeat and coordinated-state restore (2026-10-15) | review_required | MISSING HEADER | `b62a479abd31` |
+| `docs/implementation/n8n-maturity/LANE_DISPOSITION_20261015.md` | Lane disposition, 2026-10-15 | review_required | MISSING HEADER | `8e558186f068` |
 | `docs/implementation/n8n-maturity/LANE_TRANSITIVE_CAPABILITIES_20261015.md` | Lane transitive capabilities (2026-10-15) | review_required | MISSING HEADER | `19ceab290a01` |
 | `docs/implementation/n8n-maturity/MIGRATION_RECONCILIATION_20261012.md` | TradeAI migration reconciliation | review_required | OK | `b6e056759869` |
 | `docs/implementation/n8n-maturity/MOMENTUM_LINEAGE_IMPLEMENTATION_20261013.md` | Momentum lineage and lifecycle implementation | review_required | OK | `a8a7fb2c8c0c` |
@@ -2016,6 +2017,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/openclaw_stage2_soul_patch_20260923.md` | OpenClaw Maria SOUL / skill patch — Stage 2 (specialist honesty) | review_required | OK | `d0a83ec99d47` |
 | `docs/ops/packets/hermes-learning-cutover-20261015/README.md` | hermes-learning on the n8n fabric: cutover packet (learn stage) | review_required | OK | `f332e5a5f082` |
 | `docs/ops/packets/hermes-worker-pool-wire-20261015/README.md` | hermes-research-worker-pool — real lane runners + fail closed on zero output (2026-10-15) | review_required | MISSING HEADER | `1232e0f775a0` |
+| `docs/ops/packets/lane-retire-wave1-20261015/README.md` | lane-retire-wave1-20261015: RETIRE wave 1, operator packet | review_required | MISSING HEADER | `3820bc394e43` |
 | `docs/ops/packets/maturity-remeasure-relay-live-removal-20261015/README.md` | Packet: take maturity-remeasure off the relay live list (config-write, NOT APPLIED) | review_required | MISSING HEADER | `59b9f653cd6a` |
 | `docs/ops/packets/n8n-comms-intent-consumer-20261015/03_apply.md` | Apply once (operator) | review_required | MISSING HEADER | `498d580f4571` |
 | `docs/ops/packets/n8n-comms-intent-consumer-20261015/04_rollback.md` | Rollback | review_required | MISSING HEADER | `12e007b5b1d1` |
