@@ -1532,6 +1532,130 @@ def row_walks_routes(process_id: str, policy_id: str | None) -> bool:
     return bool(row and row.get("transport_failover") is True)
 
 
+# ── n8n OAuth-first profile (operator decision 2026-10-15) ─────────────────────────────────────────
+# Operator, 2026-10-15, verbatim: "in terms of n8n, then, we should try OAuth first. And if OAuth fails or if the
+# answer needs higher reasoning, then we go to DeepSeek."
+# A walking row with `"route_profile": "n8n_oauth_first"` gets, on top of the walk above:
+#   * output fallback: an empty, non-JSON or schema-invalid answer is a failed lane (receipt outcome
+#     output_invalid) and the walk moves to the next lane, exactly like a transport failure;
+#   * reasoning tier: registry `reasoning_tier` (or a template's, passed in-process by llm_step) "high" puts the
+#     row's `reasoning_lane` (DeepSeek, the bridge's PRO_THINK policy) first, the OAuth lanes after it;
+#   * escalation: a schema-valid OAuth answer whose closed output declares low confidence (registry
+#     `escalate_below_confidence` on `escalation_confidence_field`) or a typed flag (registry
+#     `escalate_on_values`) is re-asked ONCE on the reasoning lane, inside the per-process caps and per-call
+#     ceiling; when it does not fit, the OAuth answer returns flagged escalation_skipped_cap.
+OAUTH_FIRST_PROFILE = "n8n_oauth_first"
+REASONING_TIERS = ("standard", "high")
+ESCALATION_SCHEMA = "BridgeEscalation@v1"
+ESCALATION_ATTEMPT_MARKER = "esc1"
+
+
+def row_profile(process_id: str, policy_id: str | None) -> str | None:
+    row = _policy_row(process_id, policy_id)
+    if not row or row.get("transport_failover") is not True:
+        return None
+    profile = row.get("route_profile")
+    return str(profile) if profile else None
+
+
+def effective_reasoning_tier(reg_row: dict[str, Any] | None, template_tier: str | None = None) -> str:
+    """A valid template tier wins; else the registry row's; anything else is standard."""
+    if template_tier in REASONING_TIERS:
+        return str(template_tier)
+    tier = (reg_row or {}).get("reasoning_tier")
+    return str(tier) if tier in REASONING_TIERS else "standard"
+
+
+def reasoning_lane_candidate(
+    process_id: str, policy_id: str | None, allowed_policies: list[str] | None = None
+) -> tuple[dict[str, Any] | None, str | None]:
+    """(candidate, None) for the row's reasoning lane, or (None, why) when it cannot be used."""
+    row = _policy_row(process_id, policy_id) or {}
+    spec = row.get("reasoning_lane")
+    if not isinstance(spec, dict) or not spec.get("provider"):
+        return None, "no_reasoning_lane"
+    provider = str(spec["provider"])
+    policy_name = _lane_policy_name(spec)
+    if provider not in enabled_transport_providers():
+        return None, "no_transport"
+    if allowed_policies and policy_name not in allowed_policies:
+        return None, "policy_not_allowed"
+    resolved = POLICY_RESOLUTION.get(policy_name, POLICY_RESOLUTION["FAST"])
+    return {
+        "lane": "reasoning",
+        "provider": provider,
+        "policy_name": policy_name,
+        "model_id": _lane_model_id(provider, policy_name),
+        "thinking": resolved.get("thinking", "disabled"),
+        "reasoning_effort": resolved.get("reasoning_effort"),
+        "skip": None,
+    }, None
+
+
+def _answer_object(response: dict[str, Any]) -> Any:
+    try:
+        content = response["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, TypeError):
+        return None
+    if isinstance(content, dict):
+        return content
+    if not isinstance(content, str) or not content.strip():
+        return None
+    try:
+        return json.loads(content)
+    except ValueError:
+        return None
+
+
+def walk_output_refusal(process_id: str, response: dict[str, Any], reg_row: dict[str, Any] | None) -> dict | None:
+    """The same output checks Step 9b applies, run per lane so an invalid OAuth answer falls through."""
+    try:
+        msg = response["choices"][0]["message"]
+    except (KeyError, IndexError, TypeError):
+        msg = None
+    if not isinstance(msg, dict) or (not msg.get("content") and not msg.get("tool_calls")):
+        return {"code": "OUTPUT_EMPTY", "status": 422, "message": "model output is empty", "extra": {}}
+    return agent_gate.output_refusal(process_id, response, reg_row)
+
+
+def escalation_reason(response: dict[str, Any], reg_row: dict[str, Any] | None) -> str | None:
+    """Why a schema-valid answer needs the reasoning lane, from its closed output only; None when it does not."""
+    row = reg_row or {}
+    answer = _answer_object(response)
+    if not isinstance(answer, dict):
+        return None
+    threshold = row.get("escalate_below_confidence")
+    field = str(row.get("escalation_confidence_field") or "confidence")
+    value = answer.get(field)
+    if (
+        isinstance(threshold, (int, float))
+        and not isinstance(threshold, bool)
+        and isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and float(value) < float(threshold)
+    ):
+        return f"low_confidence:{field}={value}<{threshold}"
+    flags = row.get("escalate_on_values")
+    if isinstance(flags, dict):
+        for flag_field, values in sorted(flags.items()):
+            if isinstance(values, list) and answer.get(flag_field) in values:
+                return f"flag:{flag_field}={answer.get(flag_field)}"
+    return None
+
+
+def _metered_cost_usd(model_id: str | None, usage: dict[str, Any] | None) -> float | None:
+    try:
+        import lib.llm_model_registry as lmr2
+
+        return lmr2.estimate_usd_cost(
+            model_id=model_id,
+            prompt_tokens=(usage or {}).get("prompt_tokens"),
+            completion_tokens=(usage or {}).get("completion_tokens"),
+        ).get("estimated_cost_usd")
+    except Exception:  # noqa: BLE001 -- an unpriced attempt stays "unknown", the reservation keeps its projection
+        return None
+
+
 def _lane_model_id(provider: str, policy_name: str) -> str | None:
     if provider in oauth_transport.OAUTH_PROVIDERS:
         return oauth_transport.pinned_model(provider)
@@ -1555,8 +1679,12 @@ def route_plan(
     allowed_policies: list[str] | None = None,
     cfg: dict[str, Any] | None = None,
     tools: list[dict] | None = None,
+    reasoning_tier: str = "standard",
 ) -> list[dict[str, Any]]:
-    """Ordered candidate lanes, each with `skip` (a receipt outcome) when it must not be attempted."""
+    """Ordered candidate lanes, each with `skip` (a receipt outcome) when it must not be attempted.
+
+    reasoning_tier "high" on an n8n_oauth_first row puts the row's reasoning_lane first (DeepSeek reasoning), the
+    row's own lanes (OAuth first) after it as the fallback."""
     decision = policy.get("routing_decision") if isinstance(policy.get("routing_decision"), dict) else {}
     start = str(decision.get("lane_chosen") or "primary")
     first_provider = str(policy.get("provider") or "deepseek")
@@ -1578,9 +1706,16 @@ def route_plan(
     snapshot = decision.get("health_snapshot") if isinstance(decision.get("health_snapshot"), dict) else {}
     lanes_health = snapshot.get("lanes") if isinstance(snapshot.get("lanes"), dict) else {}
     plan: list[dict[str, Any]] = []
+    lane_names: tuple[str, ...] = _LANE_ORDER
+    if (
+        reasoning_tier == "high"
+        and row.get("route_profile") == OAUTH_FIRST_PROFILE
+        and isinstance(row.get("reasoning_lane"), dict)
+    ):
+        lane_names = ("reasoning_lane",) + _LANE_ORDER
     # Every lane of the row gets a receipt, from primary: a lane the selector or the transport walk passed over
     # is recorded with its reason (no_transport, lane_unhealthy, ...), never silently dropped.
-    for lane_name in _LANE_ORDER:
+    for lane_name in lane_names:
         spec = row.get(lane_name)
         if not isinstance(spec, dict):
             continue
@@ -1597,12 +1732,15 @@ def route_plan(
             skip = "registry_lane_not_allowed"
         elif tools and provider in oauth_transport.OAUTH_PROVIDERS:
             skip = "tools_unsupported"
+        resolved = POLICY_RESOLUTION.get(policy_name, POLICY_RESOLUTION["FAST"])
         plan.append(
             {
-                "lane": lane_name,
+                "lane": "reasoning" if lane_name == "reasoning_lane" else lane_name,
                 "provider": provider,
                 "policy_name": policy_name,
                 "model_id": _lane_model_id(provider, policy_name),
+                "thinking": resolved.get("thinking", "disabled"),
+                "reasoning_effort": resolved.get("reasoning_effort"),
                 "skip": skip,
             }
         )
@@ -1660,15 +1798,21 @@ def walk_routes(
     reasoning_effort: str | None,
     request_id: str,
     use_circuits: bool = True,
+    output_check: Any = None,
 ) -> dict[str, Any]:
     """Try each lane in order until one serves. Never retries a lane inside one call; a 429 holds that provider
     until its Retry-After; the whole walk shares one wall-clock budget. Returns response / served / receipts /
     last_error (the last attempt's exception, None when nothing was attempted). use_circuits=False (a single-lane
-    row) still skips an open provider and feeds the breaker its stalls (timeout / 5xx overload), nothing else."""
+    row) still skips an open provider and feeds the breaker its stalls (timeout / 5xx overload), nothing else.
+
+    output_check (n8n_oauth_first rows): called on each served answer; a refusal makes that lane a failed attempt
+    (outcome output_invalid) and the walk moves on. When no lane serves a valid answer, the last invalid one is
+    returned with output_rejected true, so the caller's output gate refuses it (and settles it) as before."""
     started = _monotonic()
     receipts: list[dict[str, Any]] = []
     last_error: BaseException | None = None
     billable_seen = False
+    last_invalid: tuple[dict[str, Any], dict[str, Any]] | None = None
     try:
         for cand in plan:
             provider = cand["provider"]
@@ -1697,8 +1841,8 @@ def walk_routes(
                 "response_format": response_format,
                 "stream": False,
                 "max_tokens": max_tokens,
-                "thinking": thinking,
-                "reasoning_effort": reasoning_effort,
+                "thinking": cand.get("thinking", thinking),
+                "reasoning_effort": cand.get("reasoning_effort", reasoning_effort),
                 "client_request_id": request_id,
             }
             if isinstance(transport, oauth_transport.OAuthProxyTransport):
@@ -1738,6 +1882,27 @@ def walk_routes(
                 slot.release()
             PROVIDER_CIRCUITS.success(provider)
             served_model = str(response.get("model") or cand.get("model_id") or "")
+            refused = output_check(response) if output_check is not None else None
+            if refused is not None:
+                oauth = provider in oauth_transport.OAUTH_PROVIDERS
+                billable_seen = billable_seen or not oauth
+                receipts.append(
+                    _receipt(
+                        cand,
+                        "output_invalid",
+                        attempted=True,
+                        model=served_model or cand.get("model_id"),
+                        latency_ms=int((_monotonic() - t_attempt) * 1000),
+                        http_status=200,
+                        request_sent=True,
+                        possibly_billable=not oauth,
+                        cost_basis="free_oauth_unmetered" if oauth else "billed_output_rejected",
+                        usage=None if oauth else response.get("usage"),
+                        detail=f"{refused.get('code')}: {str(refused.get('message') or '')[:160]}",
+                    )
+                )
+                last_invalid = (response, dict(cand, model_id=served_model or cand.get("model_id")))
+                continue
             receipts.append(
                 _receipt(
                     cand,
@@ -1757,9 +1922,19 @@ def walk_routes(
                 "receipts": receipts,
                 "last_error": last_error,
                 "billable_seen": billable_seen,
+                "output_rejected": False,
             }
     finally:
         _CALL_LATENCY_BUDGET_S.set(budget_s)
+    if last_invalid is not None:
+        return {
+            "response": last_invalid[0],
+            "served": last_invalid[1],
+            "receipts": receipts,
+            "last_error": last_error,
+            "billable_seen": billable_seen,
+            "output_rejected": True,
+        }
     return {
         "response": None,
         "served": None,
@@ -1767,6 +1942,192 @@ def walk_routes(
         "last_error": last_error,
         "billable_seen": billable_seen,
     }
+
+
+def escalate_once(
+    messages: list[dict],
+    *,
+    process_id: str,
+    reason: str,
+    rid: str,
+    cfg: dict[str, Any],
+    policy: dict[str, Any],
+    policy_id: str | None,
+    allowed_policies: list[str] | None,
+    global_cap: float | None,
+    response_format: dict | None,
+    max_tokens: int,
+    reg_row: dict[str, Any] | None,
+    oauth_response: dict[str, Any],
+    oauth_provider: str,
+) -> dict[str, Any]:
+    """Re-ask the reasoning lane ONCE for an OAuth answer that needs higher reasoning (BridgeEscalation@v1).
+
+    Same request lineage (request_id `<rid>:esc1`), its own reservation inside the per-process daily caps and the
+    row's per-call ceiling, its own provider-journal identity. Never loops: one walk over one lane. Returns the
+    escalation record; `response` is set only when the reasoning lane served a valid answer, else the caller keeps
+    the OAuth answer (outcome escalation_skipped_cap / escalation_skipped / escalation_failed says why)."""
+    import lib.consumption_run_manual as crm
+    import lib.llm_consumption as lc
+
+    esc_rid = f"{rid}:{ESCALATION_ATTEMPT_MARKER}"
+    try:
+        _oauth_content = oauth_response["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, TypeError):
+        _oauth_content = ""
+    info: dict[str, Any] = {
+        "schema": ESCALATION_SCHEMA,
+        "reason": reason,
+        "request_id": esc_rid,
+        "parent_request_id": rid,
+        "attempt": ESCALATION_ATTEMPT_MARKER,
+        "outcome": None,
+        "detail": None,
+        "provider": None,
+        "model": None,
+        "policy": None,
+        "projected_usd": None,
+        "cost_usd": None,
+        "reservation_id": None,
+        "oauth_answer": {
+            "provider": oauth_provider,
+            "model": oauth_response.get("model"),
+            "response_sha256": hash_content(json.dumps(_oauth_content, sort_keys=True, default=str)),
+        },
+        "route_receipts_out": [],
+        "response": None,
+    }
+    cand, why = reasoning_lane_candidate(process_id, policy_id, allowed_policies)
+    if cand is None:
+        info.update(outcome="escalation_skipped", detail=why)
+        return info
+    info.update(provider=cand["provider"], model=cand["model_id"], policy=cand["policy_name"])
+    try:
+        worst = crm.projected_max_cost_usd(
+            model_id=cand["model_id"],
+            max_input_tokens=cfg.get("max_input_tokens") or 32000,
+            max_output_tokens=max_tokens,
+        )
+        try:
+            projected = float(lc.calibrated_projected_usd(process_id, worst)["projected_usd"])
+        except Exception:  # noqa: BLE001 -- an unmeasurable process stays on the worst case
+            projected = float(worst)
+    except Exception as exc:  # noqa: BLE001 -- an unprojectable escalation is not attempted
+        info.update(outcome="escalation_skipped_cap", detail=f"projection_failed:{type(exc).__name__}")
+        return info
+    info["projected_usd"] = projected
+    if agent_gate.cost_ceiling_refusal(policy, projected) is not None:
+        info.update(outcome="escalation_skipped_cap", detail="per_call_ceiling")
+        return info
+    cap = lc.check_cost_cap(process_id, projected_usd=projected, global_cap=global_cap)
+    if not cap.get("allow"):
+        info.update(outcome="escalation_skipped_cap", detail=f"daily_cap:{str(cap.get('reason') or '')[:80]}")
+        return info
+    try:
+        reservation_id = lc.reserve_projected_cost(
+            process_id,
+            projected,
+            model_id=cand["model_id"],
+            process_config=cfg,
+            global_cap=global_cap,
+            metadata={
+                "bridge": "cio_governed",
+                "request_id": esc_rid,
+                "parent_request_id": rid,
+                "policy": cand["policy_name"],
+                "attempt": ESCALATION_ATTEMPT_MARKER,
+                "escalation_reason": reason,
+            },
+        )
+    except RuntimeError as exc:
+        code = str(exc).partition(":")[0].strip().upper()
+        if code == "COST_CAP_EXCEEDED":
+            info.update(outcome="escalation_skipped_cap", detail=f"reservation:{code}")
+        else:
+            info.update(outcome="escalation_failed", detail=f"reservation:{code or type(exc).__name__}")
+        return info
+    except Exception as exc:  # noqa: BLE001
+        info.update(outcome="escalation_failed", detail=f"reservation:{type(exc).__name__}")
+        return info
+    info["reservation_id"] = reservation_id
+    journal = None
+    semantic_key: str | None = None
+    if BIND_MODE == "canary":
+        from scripts.lib.cio_provider_retry_v1 import ProviderRequestJournal, semantic_request_key
+
+        journal = ProviderRequestJournal()
+        semantic_key = semantic_request_key(request_id=esc_rid, process_id=process_id, model_id=cand["model_id"])
+        held = journal.reserve(
+            semantic_key=semantic_key,
+            request_id=esc_rid,
+            process_id=process_id,
+            provider=cand["provider"],
+            model_id=cand["model_id"],
+            task=cand["policy_name"],
+            projected_cost_usd=projected,
+        )
+        if not held.get("allowed"):
+            lc.settle_reservation(reservation_id, None, ok=False, billable_attempt=False)
+            info.update(outcome="escalation_skipped", detail="replay_blocked")
+            return info
+        journal.record(semantic_key, state="DISPATCHED")
+    walk = walk_routes(
+        [cand],
+        messages,
+        policy_id=policy_id,
+        budget_s=effective_upstream_deadline_s(),
+        tools=None,
+        tool_choice=None,
+        response_format=response_format,
+        max_tokens=max_tokens,
+        thinking=cand["thinking"],
+        reasoning_effort=cand["reasoning_effort"],
+        request_id=esc_rid,
+        use_circuits=True,
+        output_check=lambda resp: walk_output_refusal(process_id, resp, reg_row),
+    )
+    receipts = [dict(r, attempt="escalation", request_id=esc_rid) for r in walk.get("receipts") or []]
+    response = walk.get("response")
+    if response is not None:
+        cost = _metered_cost_usd(cand["model_id"], response.get("usage"))
+        info["cost_usd"] = cost
+        for r in receipts:
+            if r.get("outcome") in ("ok", "output_invalid"):
+                r["cost_usd"] = cost if cost is not None else "unknown"
+    returned = (response or {}).get("model")
+    mismatch = bool(response is not None and returned and returned != cand["model_id"])
+    if response is None or walk.get("output_rejected") or mismatch:
+        billed = response is not None or bool(walk.get("billable_seen"))
+        lc.settle_reservation(
+            reservation_id,
+            info.get("cost_usd"),
+            ok=response is not None,
+            billable_attempt=billed,
+            projected_fallback=projected,
+        )
+        if journal is not None and semantic_key is not None:
+            journal.record(
+                semantic_key,
+                state="COMPLETED" if response is not None else ("AMBIGUOUS" if billed else "NON_RETRYABLE"),
+                error_class="ESCALATION_OUTPUT_REJECTED" if response is not None else "ESCALATION_PROVIDER_FAILURE",
+            )
+        detail = "model_mismatch" if mismatch else ("output_invalid" if response is not None else "no_lane_served")
+        info.update(outcome="escalation_failed", detail=detail, route_receipts_out=receipts)
+        return info
+    lc.settle_reservation(
+        reservation_id, info.get("cost_usd"), ok=True, billable_attempt=True, projected_fallback=projected
+    )
+    if journal is not None and semantic_key is not None:
+        usage = response.get("usage") or {}
+        journal.record(
+            semantic_key,
+            state="COMPLETED",
+            provider_request_id=(response.get("_tradeai") or {}).get("provider_request_id"),
+            usage={k: usage.get(k) for k in ("prompt_tokens", "completion_tokens", "total_tokens")},
+            actual_cost_usd=info.get("cost_usd"),
+        )
+    info.update(outcome="escalated", route_receipts_out=receipts, response=response)
+    return info
 
 
 def execute_governed_call(
@@ -1781,8 +2142,12 @@ def execute_governed_call(
     request_id: str | None = None,
     routing_policy: str | None = None,
     budget: dict[str, Any] | None = None,
+    reasoning_tier: str | None = None,
 ) -> dict[str, Any]:
     """Governed CIO model call pipeline — fail-closed, no silent fallback.
+
+    `reasoning_tier` ("standard" | "high", in-process callers only: llm_step passes a template's declared tier)
+    overrides the registry row's reasoning_tier on n8n_oauth_first rows; anything else is ignored.
 
     `budget` (llm_step, 2026-10-14) may only NARROW the routing row: latency_budget_ms and cost_ceiling_usd
     below the row's values replace them; larger values are ignored.
@@ -1908,6 +2273,39 @@ def execute_governed_call(
         routing_box["decision"] = policy["routing_decision"]
 
     _walks = row_walks_routes(process_id, selected_policy_id)
+    # n8n OAuth-first profile (operator decision 2026-10-15): output fallback, reasoning tier, one escalation.
+    _oauth_first = _walks and row_profile(process_id, selected_policy_id) == OAUTH_FIRST_PROFILE
+    _reg_row = agent_gate.registry_row(process_id) if _oauth_first else None
+    _tier = effective_reasoning_tier(_reg_row, reasoning_tier) if _oauth_first else "standard"
+    if _oauth_first and isinstance(routing_box.get("decision"), dict):
+        routing_box["decision"]["route_profile"] = OAUTH_FIRST_PROFILE
+        routing_box["decision"]["reasoning_tier"] = _tier
+    if _tier == "high":
+        _rcand, _rwhy = reasoning_lane_candidate(process_id, selected_policy_id, ds_pols)
+        if _rcand is not None:
+            # The reasoning lane is the projected (and cap-checked) lane; the OAuth lanes follow it as fallback.
+            _resolved = dict(POLICY_RESOLUTION.get(_rcand["policy_name"], POLICY_RESOLUTION["FAST"]))
+            _resolved.update(
+                {k: policy[k] for k in ("health_gate", "latency_budget_ms", "cost_ceiling_usd") if k in policy}
+            )
+            _resolved["provider"] = _rcand["provider"]
+            _resolved["requested_policy"] = _rcand["policy_name"]
+            _decision = dict(routing_box.get("decision") or {})
+            _decision.update(
+                {
+                    "lane_chosen": "reasoning",
+                    "reason": "reasoning_tier_high",
+                    "provider": _rcand["provider"],
+                    "requested_policy": _rcand["policy_name"],
+                }
+            )
+            _resolved["routing_decision"] = _decision
+            policy = _resolved
+            model_id = policy["model_id"]
+            requested_policy = policy["requested_policy"]
+            routing_box["decision"] = _decision
+        elif isinstance(routing_box.get("decision"), dict):
+            routing_box["decision"]["reasoning_lane_unusable"] = _rwhy
     _lane_provider = str(policy.get("provider") or "deepseek")
     if (
         BIND_MODE == "canary"
@@ -2082,7 +2480,11 @@ def execute_governed_call(
         log.info("RealProvider route walk for canary: model=%s policy=%s", model_id, requested_policy)
         assert provider_journal is not None and provider_semantic_key is not None
         provider_journal.record(provider_semantic_key, state="DISPATCHED")
-    plan = route_plan(process_id, selected_policy_id, policy, ds_pols, cfg, tools)
+    plan = route_plan(process_id, selected_policy_id, policy, ds_pols, cfg, tools, reasoning_tier=_tier)
+
+    def _output_check(resp: dict[str, Any]) -> dict[str, Any] | None:
+        return walk_output_refusal(process_id, resp, _reg_row)
+
     walk: dict[str, Any] = {
         "response": None,
         "served": None,
@@ -2120,6 +2522,7 @@ def execute_governed_call(
                 reasoning_effort=policy.get("reasoning_effort"),
                 request_id=rid,
                 use_circuits=_walks,
+                output_check=_output_check if _oauth_first else None,
             )
     except Exception as exc:  # noqa: BLE001 -- the walk itself failing is a provider failure, typed below
         walk["last_error"] = exc
@@ -2240,6 +2643,20 @@ def execute_governed_call(
         if _r.get("outcome") == "ok":
             _r["cost_usd"] = actual_cost if actual_cost is not None else "unknown"
             _r["cost_basis"] = cost_basis
+    # A paid lane whose answer was rejected (output_invalid) was still billed: meter it on its receipt, and when an
+    # OAuth lane then served, settle at that metered cost (OAuth stays $0) instead of leaving it unknown.
+    _rejected_paid = 0.0
+    _rejected_seen = False
+    for _r in route_receipts:
+        if _r.get("outcome") == "output_invalid" and _r.get("cost_basis") == "billed_output_rejected":
+            _c = _metered_cost_usd(_r.get("model"), _r.get("usage"))
+            _r["cost_usd"] = _c if _c is not None else "unknown"
+            if _c is not None:
+                _rejected_paid += float(_c)
+                _rejected_seen = True
+    if _oauth_served and _rejected_seen:
+        actual_cost = _rejected_paid
+        cost_basis = "metered_rejected_paid_attempt_plus_free_oauth"
 
     try:
         lc.settle_reservation(
@@ -2326,6 +2743,49 @@ def execute_governed_call(
             **_out["extra"],
         )
 
+    # ── Step 9c: one escalation (n8n OAuth-first, operator decision 2026-10-15) ──
+    # A schema-valid OAuth answer that declares low confidence / a typed escalation flag is re-asked ONCE on the
+    # reasoning lane (DeepSeek), inside the caps; otherwise the OAuth answer stands, flagged why.
+    escalation: dict[str, Any] | None = None
+    if _oauth_first and served_provider in oauth_transport.OAUTH_PROVIDERS:
+        _why = escalation_reason(response, _reg_row)
+        if _why:
+            escalation = escalate_once(
+                messages,
+                process_id=process_id,
+                reason=_why,
+                rid=rid,
+                cfg=cfg,
+                policy=policy,
+                policy_id=selected_policy_id,
+                allowed_policies=ds_pols,
+                global_cap=gcap,
+                response_format=response_format,
+                max_tokens=max_tokens,
+                reg_row=_reg_row,
+                oauth_response=response,
+                oauth_provider=served_provider,
+            )
+            route_receipts.extend(escalation.pop("route_receipts_out", []))
+            _esc_response = escalation.pop("response", None)
+            if _esc_response is not None:
+                response = _esc_response
+                model_id = str(escalation.get("model") or model_id)
+                returned_model = response.get("model")
+                requested_policy = str(escalation.get("policy") or requested_policy)
+                policy = dict(policy)
+                policy["provider"] = str(escalation.get("provider") or "deepseek")
+                actual_cost = escalation.get("cost_usd") if isinstance(escalation.get("cost_usd"), float) else None
+                cost_basis = "provider_usage_x_registry_snapshot"
+                usage = response.get("usage") or {}
+            if isinstance(routing_box.get("decision"), dict):
+                routing_box["decision"]["escalation"] = {
+                    k: escalation.get(k) for k in ("outcome", "reason", "request_id", "provider", "model")
+                }
+                if escalation.get("outcome") == "escalated":
+                    routing_box["decision"]["served_lane"] = "reasoning"
+                    routing_box["decision"]["served_provider"] = policy["provider"]
+
     # ── Step 10: Assemble response with provenance ─────────────────────
     latency_ms = int((time.time() - t0) * 1000)
     is_mock = BIND_MODE != "canary"
@@ -2346,6 +2806,9 @@ def execute_governed_call(
         "cost_estimate": actual_cost,
         "cost_basis": cost_basis,
         "route_receipts": route_receipts,
+        "reasoning_tier": _tier if _oauth_first else None,
+        "escalation": escalation,
+        "escalation_skipped_cap": bool(escalation and escalation.get("outcome") == "escalation_skipped_cap"),
         "legacy_model_ids_rejected": True,
         "client_model_ignored": True,
         "routing_decision": routing_box["decision"],

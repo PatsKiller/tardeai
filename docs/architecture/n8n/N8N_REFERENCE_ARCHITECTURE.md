@@ -5,6 +5,14 @@ Status:      PROPOSED reference architecture (informational; AGENTS.md is normat
 as_of:       2026-10-15
 Measured at: origin/main 94601ff69; served release 5aa61048d (gap assessment 2026-10-15 02:35Z); n8n 2.43.0
 Owner:       platform (n8n maturity program); Chief Architect: Agent A
+Maturity:    Level 2 of 5 (independent audit 2026-10-15): partial implemented foundation supported by source and
+             offline tests; not certified for live deployment. Acceptance path: threat model → enforced identity and
+             revocation → reliable output/effect semantics → independent delivery and recovery tests → acceptance of
+             one bounded business process with superseded orchestration retired or fenced
+             (AUDIT_20261015_FINDINGS.md §6)
+Audit:       AUDIT_20261015_FINDINGS.md (DD01-DD18 tracker); N8N_THREAT_MODEL.md; N8N_DECISION_LEDGER.md (D1-D9)
+Canonical:   this file on GitHub is canonical; Drive copies are regenerated from the merged text and carry its SHA and
+             normalized-text SHA-256 (AUDIT_20261015_FINDINGS.md §4)
 Policy:      AGENTS.md §23.23 (10.0.0, ACTIVE: n8n owns flow, the host owns authority) and §23.24 (11.0.0, the
              mandatory workflow framework, operator-approved for ratification 2026-10-15)
 Companion:   N8N_CONTRACTS_DESIGN.md (every contract named here: schema id, owner file, versioning, failure)
@@ -29,7 +37,8 @@ Trade AI runs a single host (`ms01-openclaw`) with ~524 scheduled jobs, a tradin
 bridge and a host-side communications gateway. In October 2026 the operator made n8n the **automation fabric**:
 n8n owns *flow* (when, in what order, retry, approval timeline, escalation, when an LLM is asked), and the host keeps
 *authority, execution and evidence* (allowlist, live/dry authority, idempotency keys, secrets, the audit ledger, the
-only sender). This document is the reference architecture for that split.
+only sender for n8n-originated intents; lanes' own transitive senders are listed in
+`docs/implementation/n8n-maturity/LANE_TRANSITIVE_CAPABILITIES_20261015.md`). This document is the reference architecture for that split.
 
 The design in one paragraph: **n8n talks to the host through exactly one door** — a bearer-authenticated relay
 (`scripts/n8n_run_relay.py`, `172.19.0.1:18092`) that re-signs each request as a short-lived HMAC claim to the
@@ -47,6 +56,16 @@ intents, effect-claim library, `/v1/llm_step` on the bridge). **Zero business pr
 GAP §4). The largest structural gaps: no approval/HITL route, no n8n → bridge route for LLM steps, success
 executions not saved on legacy workflows, drift check unscheduled, n8n DB role is superuser, the dead-man runs inside
 n8n, and "exit 0 with no output" is not yet a failure state in any contract.
+
+**Maturity and acceptance (independent audit 2026-10-15).** Level 2 of 5. The design direction is accepted as
+coherent; implementation assurance needs changes (DD01–DD18 in `AUDIT_20261015_FINDINGS.md`). The audit
+demonstrated contradictions to several statements in this document — process-key fail-closed scope and duplicate
+identity (§7, DD03), startup-cached policy versus "re-read per request" (DD08), a transitive raw-sender path in an
+allowlisted lane versus "never, under any route" (§6, DD01), effect reclaim after a possible effect (DD05/DD06) and
+checker false green (DD09) — and these statements are to be read as **targets**, not guarantees, until their closure
+evidence is attached. Report-mode controls (bridge caller auth, CC auth, 91 of 103 executor lanes' env allowlist)
+measure exposure; they are not confinement (`N8N_THREAT_MODEL.md` §5). A 46.9% framework score is static coverage,
+not 46.9% maturity. Documentation approval and green CI do not authorize live activation.
 
 ## 2. Scope
 
@@ -99,7 +118,7 @@ flowchart LR
     LED[("Coordination ledger (SQLite)<br/>runs, run_outcomes, comms_intents,<br/>dead_letters, breakers, effect_claims (E)")]
     REC[("Receipts<br/>data/runtime/n8n_runs/&lt;run_id&gt;.json,<br/>&lt;lane&gt;_last.json (E)")]
   end
-  subgraph COMMS["Comms gateway (host; only sender)"]
+  subgraph COMMS["Comms gateway (host; only sender for n8n intents)"]
     CONS["Comms-intent consumer → fan-in (E merged, not applied: TRK-16/25)"]
     FAN["Incident fan-in (E)"]
     NOTI["incident_notifier → send_telegram (E)"]
@@ -133,7 +152,7 @@ flowchart LR
 | **n8n flow plane** | n8n 2.43.0 container `m8m-n8n` + `m8m-n8n-db`; generated workflows; one credential `tradeai-run-relay` (`httpHeaderAuth`) | sequencing, triggers, retry/backoff (Run Lane), error routing, approval *timelines* (P), when an LLM is asked | holds a broker / messaging / provider / DB credential; sends; decides live vs dry; mints idempotency keys for a `d:` slot; is the only watcher of itself |
 | **Host authority, execution, evidence** | relay, gateway, executor, coordination ledger, receipts, effect claims, lane registry, run allowlist | live/dry authority, the allowlist and never-list, idempotency, lane execution, the audit of record | runs a command not in the allowlist; trusts an n8n execution status as evidence |
 | **Comms gateway** | `send_telegram` chokepoint, delivery ledger, `scripts/incident_notifier.py`, `scripts/n8n_incident_fanin.py`, `scripts/n8n_comms_intent_consumer.py` | delivery, suppression, caps, quiet hours, dedupe | depends on n8n for a P0/P1 page (§24.1) |
-| **LLM bridge** | `scripts/lib/cio_governed_model_bridge.py` (`:8766` loopback), `scripts/lib/bridge_llm_step.py` | model selection, fallback, caps, schema validation, audit | lets a workflow name a model, provider or key |
+| **LLM bridge** | `scripts/lib/cio_governed_model_bridge.py` (`:8766` loopback), `scripts/lib/bridge_llm_step.py`, OAuth transports `scripts/lib/bridge_oauth_transport.py` (Grok `:8645`, ChatGPT `:8646`, opt-in `CIO_BRIDGE_OAUTH_TRANSPORTS`; measured ON 2026-10-15) | model selection, fallback (n8n: OAuth first, then DeepSeek — D10), caps, schema validation, audit | lets a workflow name a model, provider or key |
 | **Data / state** | n8n Postgres (flow state, executions), coordination ledger (SQLite, `persistent-state/data/governance/`), `trade_ai` Postgres | flow state (n8n); evidence (ledger) | n8n reading or writing `trade_ai` (no DB credential in n8n) |
 
 ## 5. Trust boundaries
@@ -159,7 +178,7 @@ flowchart TB
   N8N -- "B1: bearer over docker bridge 172.19.0.1:18092" --> R
   G -. "B2: HMAC claim, 18091 loopback" .- R
   X -- "B3: spawn allowlisted argv, env allowlist" --> LANES["Lane processes"]
-  C -- "B4: only sender" --> OP
+  C -- "B4: only sender for n8n intents" --> OP
   OP -- "B5: assertion over H(intent) (P)" --> XS
   N8N -. "never" .-x BG
   N8N -. "never" .-x XS
@@ -171,8 +190,8 @@ flowchart TB
 | **B1** network | relay on the docker bridge only; n8n UI 5678 loopback | ADR_COORDINATION_SECRETS.md; `N8N_CONFIGURATION.md` §1 | (E) binds; (P) firewall check for `172.19.0.1:18092` (GAP §4 s3, FW-S4) |
 | **B2** relay → gateway | short-lived HMAC claim (`v, caller_id, project, iat, exp, nonce, scope`), caller `n8n-relay`, scopes `coordination_read` / `coordination_run` / `comms_intent`; the HMAC key never enters n8n | `scripts/lib/n8n_coordination_gateway.py` `CLAIM_FIELDS`, `SCOPES`, `RELAY_CALLER`, `sign_claim` | (E) |
 | **B2** route policy | `ALLOWED_ROUTES` (6) and `FORBIDDEN_ROUTE_TOKENS` (broker, order, approve, grant, 2fa, totp, promote, rollback, telegram, send, sql, postgres, …) | same file | (E) |
-| **B3** executor → lane | argv only from the allowlist; per-lane lock; `timeout -k`; stage clamp; per-lane env allowlist (`report` default, `enforce` opt-in) | `scripts/n8n_run_executor.py`, `scripts/lib/lane_stage_clamp.py` | (E); env `enforce` not global (P, `_env_policy`) |
-| **B4** comms | n8n holds no bot token; intents are queued, deduped, capped, routed by a closed table | `config/n8n_comms_intent_routes.json`, `scripts/lib/n8n_fabric_store.py` | (E) |
+| **B3** executor → lane | argv only from the allowlist; per-lane lock; `timeout -k`; stage clamp; per-lane env allowlist (`report` default, `enforce` opt-in) | `scripts/n8n_run_executor.py`, `scripts/lib/lane_stage_clamp.py` | (E); global `TRADEAI_EXECUTOR_ENV_ALLOWLIST=enforce` measured on the unit 2026-10-15, but 91 of 103 lanes are pinned `env_allowlist_mode: report` and keep the full pre-P7 env — **report mode is not confinement**, and every lane runs as the same uid as the relay, gateway and ledger (`N8N_THREAT_MODEL.md` B3, RR1; `ENV_ENFORCE_READINESS_20261015.md`) |
+| **B4** comms | The host comms gateway is the only sender **for n8n-originated intents**: n8n holds no bot token; intents are queued, deduped, capped, routed by a closed table. It is **not** the only sender a lane can reach: an allowlisted lane runs its own code, and that code's transitive senders are listed per lane in `docs/implementation/n8n-maturity/LANE_TRANSITIVE_CAPABILITIES_20261015.{json,md}` (today none: the one found, `trade-ai-scalp-live` `continuous_runner._deliver_live_alert` -> `alerting.send_slack` / `send_whatsapp`, third-party audit DD01, was removed 2026-10-15 and the lane delivers only through `send_telegram`). A new lane or a new transitive sender fails CI (`tests/test_lane_transitive_capabilities_20261015.py`, baseline `config/n8n_lane_capability_baseline.json`, shrink-only) | `config/n8n_comms_intent_routes.json`, `scripts/lib/n8n_fabric_store.py`; `scripts/audit_lane_transitive_capabilities.py` | (E) for n8n intents; (E) lane closures audited, zero direct senders (DD01 closed) |
 | **B5** money | n8n can notify about an order intent, never confirm one; per-order operator assertion | AGENTS.md §23.23 "Broker"; TARGET_ARCHITECTURE §5 | (P) (trading lock LIVE, LOCKED: TRK-4; uid split TRK-31) |
 
 ## 6. Routes n8n may call, and what it may never touch (§23.23, §23.3)
@@ -199,8 +218,12 @@ The relay's route table is the complete list of host calls a workflow can make. 
 list, the allowlist never-list and the generator's forbidden node list):
 
 - any broker route, order verb, position/account read, stop, arm, unlock, 2FA/TOTP, or broker credential;
-- any send (Telegram, email, Slack, Discord nodes are forbidden node types; `FABRIC_FORBIDDEN_NODE_TYPES` in
-  `scripts/n8n_workflow_templates.py`);
+- any send from n8n itself (Telegram, email, Slack, Discord nodes are forbidden node types;
+  `FABRIC_FORBIDDEN_NODE_TYPES` in `scripts/n8n_workflow_templates.py`). This is a rule about workflow nodes and
+  routes. It does not certify what an allowlisted lane's own code can reach: the allowlist `never` text admits
+  `trade-ai-scalp-live` (AGENTS.md 4.0.0 §23.3) and the advisory market-data class (7.0.0 §23.20) as sender
+  exceptions. Each lane's transitive senders, broker modules and order functions are listed in
+  `docs/implementation/n8n-maturity/LANE_TRANSITIVE_CAPABILITIES_20261015.md`;
 - SQL, Postgres, MySQL, Redis, file, SSH, `executeCommand` nodes (same list);
 - guard grants, promote/rollback of a release, lane registry or allowlist edits;
 - the `trade_ai` database, any secret file, the n8n API key;
@@ -260,19 +283,35 @@ Step-by-step, with the implementing file:
    `scripts/n8n_run_relay.py`.
 3. **Run key.** `d:<lane>:<mode>:<YYYYMMDDTHHMM>` (server-minted by `/due`), `:a<n>` per retry attempt
    (`scripts/lib/n8n_due.py` `slot_key`, `KEY_RE`). Process steps use `p:<lane>:<mode>:<slot>`
-   (`scripts/n8n_workflow_templates.py` `PROCESS_KEY_PREFIX`): accepted as a caller key today; **a live `p:` run is
-   refused by the executor's effect gate (`effect_slot_unknown`) until the gateway validates `p:` keys against the
-   process manifest (P, packet `docs/ops/packets/n8n-hermes-learning-flow-*`, TRK-21/33)**.
-4. **Gateway.** HMAC, scope, allowlist (`config/n8n_run_allowlist.json`), never-list, mode; records REQUESTED;
-   repeated `idempotency_key` returns the original (no second row). — `scripts/lib/n8n_coordination_gateway.py`.
+   (`scripts/n8n_workflow_templates.py` `PROCESS_KEY_PREFIX`), validated by the gateway against the process spec and
+   manifest (`scripts/lib/n8n_process_keys.py`, #1760) and stored with a base-key `slot_key` marker. **Correction
+   (2026-10-15 audit DD03):** this document previously said a live `p:` run was universally refused; that was false
+   — only an EFFECT-KEYED lane checked the marker, so a `p:` row of an unkeyed lane written by any other path ran.
+   Now every executor path (v1 drain, v2 workers, `:a<n>` retries) refuses a `p:` row without the validated marker
+   (`RUN_REFUSED process_key_unvalidated`), `host_run_request` refuses `p:` keys, an `:a<n>` key is admitted only
+   after attempt n-1 finished `retryable`, and a LIVE relay request whose key is in no validated namespace
+   (`d:`/`e:`/`g:`/`p:`, or the relay-minted `n8n-wf-<workflow>-<execution>` key the generated per-lane workflows
+   get because they send none) is refused (`run_key_namespace_refused`). (E)
+4. **Gateway.** HMAC, scope, allowlist (`config/n8n_run_allowlist.json`, re-validated per request: a revoked lane
+   is refused on the next request, an unreadable file refuses every run — 2026-10-15 audit DD08), never-list, mode;
+   records REQUESTED. A repeated `idempotency_key` returns the original row ONLY for the same request identity
+   (lane, mode, requesting workflow); any other identity is `run_idempotency_conflict` (audit DD03: it used to
+   return another lane's row as a duplicate success). The relay also refuses a gateway reply naming another
+   lane/mode/run (`relay_identity_mismatch`). — `scripts/lib/n8n_coordination_gateway.py`.
 5. **Executor.** Claims the row, applies the stage clamp, builds the child env, takes the lane's lock
    (`<lock>.dryrun` for dry runs), runs `safe_flock.sh <lock> timeout -k 30 <timeout_s> <argv>`. Class caps,
    reaper and DLQ/breaker on v2 (`config/n8n_executor.json`, `config/n8n_retry_policies.json`). —
    `scripts/n8n_run_executor.py`.
-6. **Effect claim.** Only for a LIVE run of a lane listed in `config/n8n_effect_keys.json`; owner-epoch fence;
-   refused claim = `RUN_REFUSED effect:<reason>`, nothing runs. — `scripts/lib/effect_claim.py`.
-7. **Receipts.** `RunReceipt@v1` (serial) or `@v2` (workers) at `data/runtime/n8n_runs/<run_id>.json`; the lane's own
-   `LaneRunReceipt@v1` at its `output_signal`. — executor; `scripts/lib/lane_last_receipt.py`.
+6. **Effect claim.** Only for a LIVE run of a lane listed in `config/n8n_effect_keys.json`; owner-epoch fence at
+   ADMISSION; refused claim = `RUN_REFUSED effect:<reason>`, nothing runs. A non-zero exit holds the key for
+   operator reconciliation unless proven pre-effect; late writes are fenced only for lanes that call
+   `assert_fence()` (none today; contracts §7). — `scripts/lib/effect_claim.py`.
+7. **Receipts.** `RunReceipt@v1` (serial) or `@v2`/`@v3` (workers; v3 = an output rule was evaluated) at
+   `data/runtime/n8n_runs/<run_id>.json`; the lane's own `LaneRunReceipt@v1/@v2` at its `output_signal`, and a v2
+   receipt bound to the attempt (`TRADEAI_RUN_ID`) written once, immutably, under `data/runtime/lane_attempts/`;
+   the executor's `output_verdict` turns an exit-0 run that produced nothing into `RUN_FAILED empty_output` for a
+   lane whose contract declares `expected_output` (none yet). — executor; `scripts/lib/lane_last_receipt.py`,
+   `scripts/lib/n8n_output_verdict.py`.
 8. **Run outcome.** `run_outcomes` row: `success | failed | refused_policy | skipped_lock` (`pending | unknown`
    while not terminal). — `scripts/lib/n8n_fabric_store.py`.
 9. **Run Lane.** Polls `GET /run_outcome` (first 5 s, max 60 s), retries up to `max_attempts` (≤ 3) with backoff
@@ -297,16 +336,28 @@ Step-by-step, with the implementing file:
 | Lock skip | another scheduler holds the lock | executor (exit 75) | outcome `skipped_lock` | (E) |
 | **Empty success** | exit 0, nothing produced (every item `skipped: no_runner`) | **nowhere today** — only `supervisor_breach_detector.py` `NO_OUTPUT` after 3× cadence on the output-signal mtime | must be outcome `failed` / `empty_output` with the contract's `expected_output` rule | **(P)** FW-M6; contracts design §5–§6 |
 | Lost outcome | no terminal outcome within the Run Lane budget | Run Lane | intent `run_lane_outcome_lost` (`runbook_id n8n-run-lost`) | (E) route; (P) RUN_LOST state in the receipt |
-| Effect conflict | second claim of a held `fx:` key | executor effect gate | `RUN_REFUSED effect:effect_already_claimed` | (E), inert (lane list empty for live) |
+| Effect conflict | second claim of a held `fx:` key | executor effect gate | `RUN_REFUSED effect:effect_already_claimed` | (E), opt-in and not general: the config has 56 rows (50 `n8n_claim=false`, six learning rows default true, all `cron_claim=false`) — membership is not arming (audit DD05) |
 | Workflow drift | live graph ≠ git | `scripts/check_n8n_workflow_drift.py` | P1 | (E) checker; (P) schedule + P1 (TRK-40) |
 | n8n down | container, DB or runner failure | host watchers | host dead-man → notifier | (P) host dead-man outside n8n (GAP §9 item 6; WS1-15) |
+
+### 8.1a Policy revocation semantics (2026-10-15, audit DD08 — corrects earlier "re-read per request" claims)
+
+| Policy | Where it is read | Revocation takes effect |
+|---|---|---|
+| Run allowlist (`config/n8n_run_allowlist.json`) | gateway per request; relay per request; executor per claimed run, before the spawn (stat-cached `PolicyFile`, `scripts/lib/n8n_policy_reload.py`) | next request / next claimed run, no restart; an unreadable replacement refuses everything (fail safe); receipts record `policy.allowlist_version` |
+| Effect keys (`config/n8n_effect_keys.json`) | executor per live run (stat signature) | next live run; unreadable = every live run refused |
+| Expected-output rules (`config/n8n_health_contracts.json`) | executor per run | next run; unreadable = `output_verdict: rules_unreadable`, state unchanged (residual) |
+| Registry stage / due inputs / retry policies (due) | per call / per drain pass | next call |
+| Relay live-lane list (`TRADEAI_N8N_RELAY_LIVE_LANES`), relay bearer, gateway HMAC keys | process environment at START (EnvironmentFile) | **only after a restart** of that unit (operator `systemctl --user restart`); the allowlist and stage clamp still refuse a revoked lane meanwhile |
+| Never-list | static: CI tests over the allowlist + gateway `FORBIDDEN_ROUTE_TOKENS` (code) | at release |
+| A run already SPAWNED | — | not cancelled (P); a lane that calls `assert_fence()` is refused at its write after an operator release |
 
 ### 8.2 Recovery mechanisms
 
 | Mechanism | Implementation | Status |
 |---|---|---|
-| Retry (one owner) | Run Lane retry budget + backoff; legacy: `retryOnFail` on generic HTTP nodes + `config/n8n_retry_policies.json` via `scripts/lib/n8n_due.py` | (E); legacy callers not on Run Lane (P) |
-| Dead letter | ledger `dead_letters`; `scripts/n8n_dlq.py` (list, release) | (E) |
+| Retry (one owner per key namespace) | `p:` (fabric Run Lane): Run Lane schedules, the host never re-runs and admits `:a<n>` only after a `retryable` verdict; `d:`/`e:`/`g:`: `config/n8n_retry_policies.json` via `scripts/lib/n8n_due.py` RETRY_DUE (the allowlist `retry` loop no longer runs for them); other keys: the executor's allowlist loop (v1). Every receipt carries the typed `retry` block (`owner, attempts_remaining, retryable, next_attempt_at, terminal_reason, dlq_ref`), surfaced on `RunOutcome@v1` | (E) 2026-10-15 (audit DD04); Run Lane does not yet read `retry.retryable` (P: generator change + import) |
+| Dead letter | ledger `dead_letters` written on v1 AND v2 (v1 opens no breaker); `retry.dlq_ref` names the row; `scripts/n8n_dlq.py` (list, release) | (E) |
 | Circuit breaker | ledger `breakers` (`breaker_threshold: 3`) | (E); half-open (P, WS1-05) |
 | Fallback | commented cron line; `docs/ops/ROLLBACK_COMMANDS.md` | (E) |
 | Fenced single-owner switch | `effect_claim.py set-owner` (compare-and-swap on epoch) | (E) code; first use with hermes learning (P, TRK-33) |
@@ -342,6 +393,9 @@ state, decided on the host from the lane's receipt against a declared `expected_
 | C10 supply chain | community packages off; image pinned `n8nio/n8n:2.43.0`; node-type allowlist | generator `*_ALLOWED_NODE_TYPES` / `*_FORBIDDEN_NODE_TYPES` | (E); (P) pin by digest |
 | DB role | n8n DB role not superuser | — | **fails** (WS1b-12; FW-S5) |
 | Secrets in logs | relay redacts bearer/DSN/`sk-`/long tokens from intent text | `scripts/n8n_run_relay.py` `_REDACT_RES` | (E) |
+| Bridge caller identity | `TRADEAI_BRIDGE_CALLER_AUTH` checks a per-caller bearer; `X-TradeAI-Agent` alone is self-asserted | `scripts/lib/cio_governed_model_bridge.py` `caller_auth_mode` | **report** (default; an invalid value also falls back to report); measured 2026-10-15: 17/17 calls `no_key_configured` — not confinement (DD02) |
+| CC service/serve-proxy auth | service token on `:7777`, tailnet identity on the serve listener | `scripts/lib/cc_auth.py`, `config/cc_auth.yaml` | **report_only** in the served release; service token file not yet generated (operator packet); hard routes refuse regardless |
+| Threat model | STRIDE per B1–B5, assets, adversaries (compromised n8n container, local uid-`johnclaw` agent), residual risks | `N8N_THREAT_MODEL.md` | (E) document; mitigations as marked there |
 
 ## 10. Observability
 
@@ -356,10 +410,14 @@ state, decided on the host from the lane's receipt against a declared `expected_
 | Intents | `intent_id`, `dedupe_key`, `runbook_id` | ledger `comms_intents` | (E) |
 | Health contracts | lane / workflow id | `config/n8n_health_contracts.json` | (E) 126 contracts (65 REVIEWED, 61 DRAFT) |
 | Breaches | lane | `Breach@v1` (`scripts/supervisor_breach_detector.py`) | (E) |
-| Framework score | workflow id | `scripts/check_n8n_workflow_framework.py` (`N8nWorkflowFrameworkReport@v1`) | (E) this PR (offline); (P) live mode on a host schedule |
+| Framework score | workflow id | `scripts/check_n8n_workflow_framework.py` (`N8nWorkflowFrameworkReport@v2`) | (E) this PR (offline); (P) live mode on a host schedule |
 | Metrics stack | — | none (`/metrics` 404) | (P) WS8-10 |
 
 ## 11. Decisions and rationale
+
+Per-decision status, accountable owner role, ratification, implementing files, dependencies, acceptance criteria,
+test ids and dated runtime evidence: `N8N_DECISION_LEDGER.md` / `.json` (8 partially realized, 1 specified not
+enforced, 0 accepted at 2026-10-15). Policy ratification accepts the direction; it does not mark a decision realized.
 
 | # | Decision | Rationale | Alternatives rejected |
 |---|---|---|---|
@@ -372,21 +430,22 @@ state, decided on the host from the lane's receipt against a declared `expected_
 | D7 | send-intents, never sends | one sender keeps caps/quiet hours/dedupe in one reviewed table (§24.1) | Telegram node in n8n |
 | D8 | LLM steps name a process + template, closed schema, host re-check | prompt injection and model drift are contained at the bridge (WS9 C3) | AI Agent node with a provider credential |
 | D9 | empty success is a failure | exit 0 is not evidence (§0 rule 8); a pool ran for months producing nothing | mtime-only freshness |
+| D10 | n8n LLM processes route OAuth first, DeepSeek on failure or for higher reasoning. Operator decision 2026-10-15, verbatim: "in terms of n8n, then, we should try OAuth first. And if OAuth fails or if the answer needs higher reasoning, then we go to DeepSeek." | OAuth lanes are $0 (subscription); DeepSeek is metered and is the working fallback and the reasoning lane. Routing policy rows `route_profile: n8n_oauth_first` (the three `N8nCoordination` processes and `hermes_tag_engine`, the one process an n8n fabric step calls): grok OAuth → chatgpt OAuth → DeepSeek FAST; an OAuth lane not enabled on the host is skipped; an OAuth transport error, timeout, 401/403/429, outage or empty / invalid / schema-invalid answer moves to the next lane; `reasoning_tier: high` (registry or template) puts the row's `reasoning_lane` (DeepSeek `PRO_THINK`) first, OAuth after it; a schema-valid OAuth answer below `escalate_below_confidence` (or carrying an `escalate_on_values` flag) is re-asked ONCE on DeepSeek inside the caps, else returned flagged `escalation_skipped_cap`. Contract: N8N_CONTRACTS_DESIGN §10 | DeepSeek first (pays for answers OAuth gives free); OAuth only (no fallback for an OAuth outage or a hard question) |
 
 ## 12. Open questions and risks
 
 | # | Question / risk | Impact | Owner | Tracker |
 |---|---|---|---|---|
-| Q1 | How does n8n reach `/v1/llm_step`? A relay route (`POST /llm_step`, scope `llm_step`) vs a scoped bridge token in n8n | blocks the AI/LLM class | Agent A + operator (credential = §17) | (P) RP-B; FW-G* |
-| Q2 | Approval service design (operational vs money classes), single-use resume token | blocks HITL | operator | (P) TARGET_ARCHITECTURE §5 |
+| Q1 | How does n8n reach `/v1/llm_step`? A relay route (`POST /llm_step`, scope `llm_step`) vs a scoped bridge token in n8n — proposed: relay route (`N8N_LLM_STEP_ROUTE_SPEC.md`) | blocks the AI/LLM class | Agent A + operator (credential = §17) | (P) RP-B; FW-G*; DD17 |
+| Q2 | Approval service design (operational vs money classes), single-use resume token — specified (Level 1) in `N8N_HITL_CONTRACT_SPEC.md`; route stays closed until its tests H1–H12 pass | blocks HITL | operator | (P) TARGET_ARCHITECTURE §5; DD13 |
 | Q3 | Live authority is in three places (registry, relay live list, allowlist `live_arg`): 11 "live" canary rows run dry | wrong belief about what runs | Agent A | GAP §2; WS1-07 (P reconciler) |
 | Q4 | n8n DB role superuser | an n8n compromise is a DB compromise | operator | WS1b-12 |
 | Q5 | Dead-man inside n8n | silent total failure | operator + agent | GAP §9 item 6 |
 | Q6 | Single host, no UPS, never cold-booted | total outage | operator | TRK-30 |
-| Q7 | `p:` keys not validated by the gateway | live process steps impossible (fail-closed today) | Agent A | TRK-21/33 |
+| Q7 | `p:` keys: gateway validation (#1760) + executor marker check + retry admission (audit DD03/DD04) | closed in code; a live process step still needs spec mode live + owner rows | Agent A | TRK-21/33 |
 | Q8 | `expected_output` rule absent from all 126 contracts | empty successes stay green | contract owners | FW-M6 (this PR measures it) |
 | R1 | Legacy per-lane workflows lack errorWorkflow/timeout | failures unrouted | Agent A | scorecard remediation order |
-| R2 | The relay serves `GET /momentum-lifecycle` outside its `ROUTES` table | an unreviewed route surface | Agent A | scorecard wave 3 |
+| R2 | ~~The relay serves `GET /momentum-lifecycle` outside its `ROUTES` table~~ — fixed 2026-10-15 (audit DD14: `ROUTES` = `ROUTE_HANDLERS`, the only dispatch path) | — | Agent A | done |
 
 Measured compliance (this PR): **0 of 18 active workflows fully compliant, 46.9% by element**; the reference
 mature workflow scores 100% — `docs/implementation/n8n-maturity/N8N_FRAMEWORK_SCORECARD_20261015.md`.

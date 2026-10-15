@@ -10,9 +10,23 @@ in one durable table before the effect, and the second claim of a live key is re
 Two guards, both in one ``BEGIN IMMEDIATE`` on the coordination ledger file:
 
 * **Key claim** (``effect_claims``). ``effect_key(process, slot, input_version)`` is ``fx:<process>:<slot>:<ver>``.
-  A key held CLAIMED, DONE or UNKNOWN refuses every further claim (``effect_already_claimed``). FAILED and
-  RELEASED keys may be claimed again (a retry of an effect that did not happen). UNKNOWN (a timeout, a lost run)
-  is never re-claimed automatically: the effect may have happened, so only ``release`` by an operator re-opens it.
+  A key held CLAIMED, DONE or UNKNOWN refuses every further claim (``effect_already_claimed``). RELEASED keys may
+  be claimed again. A FAILED key may be claimed again ONLY when the failure is PROVEN pre-effect (``pre_effect = 1``:
+  the spawn failed, or a fence-calling lane exited before passing ``assert_fence``); any other FAILED key is held
+  exactly like UNKNOWN (2026-10-15 third-party audit DD05: "FAILED claims can be reclaimed without proving that no
+  external effect occurred" - a target write followed by a non-zero exit used to reopen the key). UNKNOWN (a
+  timeout, a lost run, an unproven failure) is never re-claimed automatically: the effect may have happened, so only
+  ``release`` by an operator re-opens it.
+* **Late-write fence** (2026-10-15, audit DD06). The owner-epoch fence below acts at ADMISSION; it cannot stop a
+  worker that is already running. Every claim therefore hands the lane a fencing token
+  ``TRADEAI_EFFECT_FENCE=<key>:<epoch>:<attempt>`` (the executor and ``run`` both set it), and a lane calls
+  ``assert_fence()`` immediately before its target write: it refuses (``EffectFenceError``) when the claim was
+  released, re-claimed (attempt moved), re-owned (epoch moved) or finished. ONLY a lane that calls it is late-write
+  safe; ``late_write_fenced: true`` in config/n8n_effect_keys.json declares that it does (a test checks the
+  declaration against the lane's source). Today NO keyed lane calls it (N8N_CONTRACTS_DESIGN.md section 7 lists
+  them). A finish that arrives after the owner epoch moved is a LATE COMPLETION: the key becomes UNKNOWN with
+  ``fenced_late = 1`` and detail ``late_completion:<state>`` (an actionable incident for the operator), never a
+  silent DONE.
 * **Owner-epoch fence** (``effect_owners``). Each process has exactly one owner (``cron``, ``n8n`` or ``none`` =
   admission fenced) and an epoch. A claim from a scheduler that is not the owner is refused
   (``effect_fenced_owner``); a claim that names an epoch other than the current one is refused
@@ -67,7 +81,7 @@ STATE_UNKNOWN = "UNKNOWN"
 STATE_RELEASED = "RELEASED"
 #: A key in one of these states refuses a new claim.
 HELD_STATES = frozenset({STATE_CLAIMED, STATE_DONE, STATE_UNKNOWN})
-#: A key in one of these states may be claimed again.
+#: A key in one of these states may be claimed again (FAILED only with ``pre_effect = 1``: see ``_is_held``).
 RECLAIMABLE_STATES = frozenset({STATE_FAILED, STATE_RELEASED})
 FINISH_STATES = frozenset({STATE_DONE, STATE_FAILED, STATE_UNKNOWN, STATE_RELEASED})
 REFUSALS = frozenset(
@@ -80,6 +94,22 @@ REFUSALS = frozenset(
         "effect_bad_key",
     }
 )
+#: assert_fence refusals (EffectFenceError.reason).
+FENCE_REFUSALS = frozenset(
+    {
+        "fence_missing",
+        "fence_malformed",
+        "fence_store_unavailable",
+        "fence_claim_missing",
+        "fence_claim_not_held",
+        "fence_attempt_moved",
+        "fence_epoch_moved",
+        "fence_no_owner",
+    }
+)
+FENCE_ENV = "TRADEAI_EFFECT_FENCE"
+#: The coordination ledger the fence is checked against (the executor sets it next to the token).
+FENCE_LEDGER_ENV = "TRADEAI_EFFECT_FENCE_LEDGER"
 PROCESS_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{1,63}$")
 SLOT_RE = re.compile(r"^[0-9A-Za-z][0-9A-Za-z._-]{0,39}$")
 VERSION_RE = re.compile(r"^[0-9A-Za-z][0-9A-Za-z._-]{0,63}$")
@@ -96,6 +126,27 @@ SLOT_TZ = "America/New_York"
 
 class EffectKeyError(ValueError):
     pass
+
+
+class EffectFenceError(RuntimeError):
+    """``assert_fence`` refused: the lane must NOT perform its target write."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+def fence_token(key: str, epoch: int, attempt: int) -> str:
+    return f"{key}:{int(epoch)}:{int(attempt)}"
+
+
+def parse_fence_token(token: Any) -> tuple[str, int, int] | None:
+    try:
+        key, epoch, attempt = str(token).rsplit(":", 2)
+        parsed = (key, int(epoch), int(attempt))
+    except (ValueError, TypeError):
+        return None
+    return parsed if parse_effect_key(parsed[0]) else None
 
 
 def effect_key(process: str, slot: str, input_version: str) -> str:
@@ -161,6 +212,38 @@ class ClaimResult:
         }
 
 
+def _is_held(row: Any) -> bool:
+    """A claim row refuses a new claim: CLAIMED / DONE / UNKNOWN, or FAILED without proof it preceded the effect."""
+    state = str(row["state"])
+    if state in HELD_STATES:
+        return True
+    if state == STATE_FAILED:
+        try:
+            return not bool(row["pre_effect"])
+        except (IndexError, KeyError):
+            return True
+    return False
+
+
+def assert_fence(token: str | None = None, *, ledger: str | Path | None = None, now: float | None = None) -> dict:
+    """The lane-side late-write fence (DD06). Call it immediately before the target write::
+
+        from scripts.lib.effect_claim import assert_fence
+        assert_fence()          # raises EffectFenceError -> do not write
+
+    ``token`` defaults to $TRADEAI_EFFECT_FENCE; ``ledger`` to $TRADEAI_EFFECT_FENCE_LEDGER, else the gateway's
+    default ledger. No token = ``fence_missing`` (a lane that declares ``late_write_fenced`` must never write
+    unfenced). The store being unreadable = ``fence_store_unavailable`` (fail closed)."""
+    tok = token if token is not None else os.environ.get(FENCE_ENV)
+    if not tok:
+        raise EffectFenceError("fence_missing")
+    try:
+        store = _open_store(str(ledger) if ledger else (os.environ.get(FENCE_LEDGER_ENV) or None))
+        return store.assert_fence(tok, now=now if now is not None else datetime.now(timezone.utc).timestamp())
+    except (sqlite3.Error, OSError) as exc:
+        raise EffectFenceError("fence_store_unavailable") from exc
+
+
 class EffectClaimStore:
     """``effect_claims`` + ``effect_owners`` on the coordination ledger's connection and lock.
 
@@ -201,6 +284,12 @@ class EffectClaimStore:
                     CREATE INDEX IF NOT EXISTS effect_claims_run ON effect_claims (run_id);
                     """
                 )
+                # 2026-10-15 (audit DD05/DD06): additive columns. pre_effect = the FAILED finish is proven to precede
+                # any target effect (only then is FAILED reclaimable); fence_passed_at = the lane passed assert_fence.
+                cols = {r[1] for r in self._l._conn.execute("PRAGMA table_info(effect_claims)").fetchall()}
+                for name, decl in (("pre_effect", "INTEGER NOT NULL DEFAULT 0"), ("fence_passed_at", "TEXT")):
+                    if name not in cols:
+                        self._l._conn.execute(f"ALTER TABLE effect_claims ADD COLUMN {name} {decl}")
 
     # -- owners --
     def owner(self, process: str) -> dict[str, Any] | None:
@@ -285,7 +374,7 @@ class EffectClaimStore:
                     conn.execute("ROLLBACK")
                     return ClaimResult(False, key, reason, owner, epoch, 0)
                 held = conn.execute("SELECT * FROM effect_claims WHERE effect_key = ?", (key,)).fetchone()
-                if held is not None and str(held["state"]) in HELD_STATES:
+                if held is not None and _is_held(held):
                     conn.execute("ROLLBACK")
                     holder = {k: held[k] for k in ("state", "scheduler", "epoch", "run_id", "attempt", "claimed_at")}
                     return ClaimResult(False, key, "effect_already_claimed", owner, epoch, int(held["attempt"]), holder)
@@ -296,7 +385,8 @@ class EffectClaimStore:
                     " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, NULL)"
                     " ON CONFLICT(effect_key) DO UPDATE SET state=excluded.state, scheduler=excluded.scheduler,"
                     " epoch=excluded.epoch, run_id=excluded.run_id, attempt=excluded.attempt,"
-                    " claimed_at=excluded.claimed_at, finished_at=NULL, fenced_late=0, detail=NULL",
+                    " claimed_at=excluded.claimed_at, finished_at=NULL, fenced_late=0, detail=NULL, pre_effect=0,"
+                    " fence_passed_at=NULL",
                     (key, process, slot, version, STATE_CLAIMED, scheduler, epoch, run_id, attempt, _iso(now)),
                 )
                 conn.execute("COMMIT")
@@ -306,10 +396,22 @@ class EffectClaimStore:
         return ClaimResult(True, key, None, owner, epoch, attempt)
 
     def finish(
-        self, key: str, *, state: str, now: float, run_id: str | None = None, detail: str | None = None
+        self,
+        key: str,
+        *,
+        state: str,
+        now: float,
+        run_id: str | None = None,
+        detail: str | None = None,
+        pre_effect: bool = False,
     ) -> dict[str, Any] | None:
         """CLAIMED -> ``state``. Only the holder (same run_id when one was claimed) finishes; returns the row, or
-        None when the key is not CLAIMED by that run. ``fenced_late`` = the owner epoch moved while it ran."""
+        None when the key is not CLAIMED by that run.
+
+        ``pre_effect`` (FAILED only) records that the failure is PROVEN to precede any target effect; only such a
+        FAILED key is reclaimable (DD05). A finish after the owner epoch moved (``fenced_late``) is a LATE COMPLETION:
+        DONE / FAILED become UNKNOWN (held for operator reconciliation) with detail ``late_completion:<state>``
+        (DD06); the returned row carries ``late_completion: True``."""
         if state not in FINISH_STATES:
             raise EffectKeyError("bad_state")
         with self.lock:
@@ -322,27 +424,86 @@ class EffectClaimStore:
                     return None
                 own = conn.execute("SELECT epoch FROM effect_owners WHERE process = ?", (row["process"],)).fetchone()
                 late = 1 if own is None or int(own["epoch"]) != int(row["epoch"]) else 0
+                final, note = state, (str(detail)[:200] if detail else None)
+                if late and state in (STATE_DONE, STATE_FAILED):
+                    final = STATE_UNKNOWN
+                    note = (f"late_completion:{state}" + (f" {detail}" if detail else ""))[:200]
+                proven = 1 if (final == STATE_FAILED and pre_effect) else 0
                 conn.execute(
-                    "UPDATE effect_claims SET state = ?, finished_at = ?, fenced_late = ?, detail = ?"
+                    "UPDATE effect_claims SET state = ?, finished_at = ?, fenced_late = ?, detail = ?, pre_effect = ?"
                     " WHERE effect_key = ?",
-                    (state, _iso(now), late, (detail or None) and str(detail)[:200], key),
+                    (final, _iso(now), late, note, proven, key),
                 )
                 conn.execute("COMMIT")
             except Exception:
                 conn.execute("ROLLBACK")
                 raise
-        return self.get(key)
+        out = self.get(key)
+        if out is not None:
+            out["late_completion"] = bool(late and state in (STATE_DONE, STATE_FAILED))
+        return out
+
+    def fence_passed(self, key: str) -> bool:
+        row = self.get(key)
+        return bool(row and row.get("fence_passed_at"))
+
+    def assert_fence(self, token: str, *, now: float) -> dict[str, Any]:
+        """Refuse (EffectFenceError) unless the claim named by ``token`` is still CLAIMED at that attempt and the
+        process owner epoch is unchanged; on success records ``fence_passed_at`` (first pass) and returns the row.
+        A lane calls this IMMEDIATELY before its target write (late-write fence, DD06)."""
+        parsed = parse_fence_token(token)
+        if parsed is None:
+            raise EffectFenceError("fence_malformed")
+        key, epoch, attempt = parsed
+        with self.lock:
+            conn = self._l._conn
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                row = conn.execute("SELECT * FROM effect_claims WHERE effect_key = ?", (key,)).fetchone()
+                reason = None
+                if row is None:
+                    reason = "fence_claim_missing"
+                elif row["state"] != STATE_CLAIMED:
+                    reason = "fence_claim_not_held"
+                elif int(row["attempt"]) != attempt:
+                    reason = "fence_attempt_moved"
+                elif int(row["epoch"]) != epoch:
+                    reason = "fence_epoch_moved"
+                else:
+                    own = conn.execute(
+                        "SELECT epoch FROM effect_owners WHERE process = ?", (row["process"],)
+                    ).fetchone()
+                    if own is None:
+                        reason = "fence_no_owner"
+                    elif int(own["epoch"]) != epoch:
+                        reason = "fence_epoch_moved"
+                if reason is None:
+                    conn.execute(
+                        "UPDATE effect_claims SET fence_passed_at = COALESCE(fence_passed_at, ?) WHERE effect_key = ?",
+                        (_iso(now), key),
+                    )
+                    conn.execute("COMMIT")
+                else:
+                    conn.execute("ROLLBACK")
+            except Exception:
+                conn.execute("ROLLBACK")
+                raise
+        if reason is not None:
+            raise EffectFenceError(reason)
+        out = self.get(key)
+        assert out is not None
+        return out
 
     def release(self, key: str, *, by: str, now: float, note: str) -> dict[str, Any] | None:
-        """Operator release of a held key (UNKNOWN after a lost run, or a stuck CLAIMED): -> RELEASED."""
+        """Operator release of a held key (UNKNOWN after a lost run, a FAILED not proven pre-effect, or a stuck CLAIMED): -> RELEASED."""
         with self.lock:
             conn = self._l._conn
             conn.execute("BEGIN IMMEDIATE")
             try:
                 cur = conn.execute(
                     "UPDATE effect_claims SET state = ?, finished_at = ?, detail = ? WHERE effect_key = ?"
-                    " AND state IN (?, ?)",
-                    (STATE_RELEASED, _iso(now), f"released by {by}: {note}"[:200], key, STATE_UNKNOWN, STATE_CLAIMED),
+                    " AND state IN (?, ?, ?)",
+                    (STATE_RELEASED, _iso(now), f"released by {by}: {note}"[:200], key, STATE_UNKNOWN, STATE_CLAIMED, STATE_FAILED),
                 )
                 conn.execute("COMMIT")
             except Exception:
@@ -382,6 +543,8 @@ def load_effect_lanes(path: Path | None = None) -> dict[str, dict[str, Any]]:
         cron_claim, n8n_claim = spec.get("cron_claim", False), spec.get("n8n_claim", True)
         if not isinstance(cron_claim, bool) or not isinstance(n8n_claim, bool):
             raise EffectKeyError("effect_config_unreadable")
+        if not isinstance(spec.get("late_write_fenced", False), bool):
+            raise EffectKeyError("effect_config_unreadable")
         out[str(lane)] = {
             "process": process,
             "input_version": version,
@@ -389,6 +552,23 @@ def load_effect_lanes(path: Path | None = None) -> dict[str, dict[str, Any]]:
             "n8n_claim": n8n_claim,
         }
     return out
+
+
+def load_fenced_lanes(path: Path | None = None) -> frozenset[str]:
+    """Lanes whose config entry declares ``late_write_fenced: true``: their command calls ``assert_fence()`` before
+    the target write (2026-10-15, audit DD06), so a non-zero exit BEFORE the fence passed is proven pre-effect.
+    tests/test_n8n_audit_findings_20261015.py checks each declaration against the lane's source. Empty today."""
+    p = path or (ROOT / EFFECT_CONFIG_REL)
+    try:
+        doc = json.loads(p.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return frozenset()
+    except (OSError, json.JSONDecodeError) as exc:
+        raise EffectKeyError("effect_config_unreadable") from exc
+    lanes = doc.get("lanes") if isinstance(doc, dict) else None
+    if not isinstance(lanes, dict):
+        raise EffectKeyError("effect_config_unreadable")
+    return frozenset(str(k) for k, v in lanes.items() if isinstance(v, dict) and v.get("late_write_fenced") is True)
 
 
 def load_effect_config(path: Path | None = None) -> dict[str, dict[str, str]]:
@@ -450,6 +630,12 @@ def main(argv: list[str] | None = None) -> int:
     keyed(p_run)
     p_run.add_argument("--scheduler", choices=SCHEDULERS, required=True)
     p_run.add_argument("--expect-epoch", type=int, default=None)
+    p_run.add_argument(
+        "--fenced",
+        action="store_true",
+        help="the command calls assert_fence() before its target write: a non-zero exit before the fence passed is "
+        "proven pre-effect (FAILED, reclaimable); without it every non-zero exit is held (DD05)",
+    )
     p_run.add_argument("command", nargs=argparse.REMAINDER)
     p_own = sub.add_parser("set-owner", help="move ownership (epoch + 1, compare-and-swap)")
     p_own.add_argument("--process", required=True)
@@ -507,8 +693,10 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(res.as_dict(), sort_keys=True), file=sys.stderr, flush=True)
             if not res.ok:
                 return REFUSED_EXIT
+            child_env = dict(os.environ)
+            child_env[FENCE_ENV] = fence_token(key, int(res.epoch or 0), res.attempt)
             try:
-                rc = subprocess.call(cmd)
+                rc = subprocess.call(cmd, env=child_env)
             except OSError as exc:
                 store.finish(
                     key,
@@ -516,11 +704,18 @@ def main(argv: list[str] | None = None) -> int:
                     now=datetime.now(timezone.utc).timestamp(),
                     run_id=run_id,
                     detail=f"spawn:{type(exc).__name__}",
+                    pre_effect=True,  # nothing was spawned: proven no effect
                 )
                 return 127
             state = STATE_DONE if rc == 0 else (STATE_UNKNOWN if rc < 0 else STATE_FAILED)
+            proven = state == STATE_FAILED and bool(a.fenced) and not store.fence_passed(key)
             store.finish(
-                key, state=state, now=datetime.now(timezone.utc).timestamp(), run_id=run_id, detail=f"exit_{rc}"
+                key,
+                state=state,
+                now=datetime.now(timezone.utc).timestamp(),
+                run_id=run_id,
+                detail=f"exit_{rc}",
+                pre_effect=proven,
             )
             return rc if rc >= 0 else 128 - rc
         if a.cmd == "set-owner":

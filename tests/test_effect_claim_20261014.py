@@ -159,6 +159,10 @@ def test_failed_is_reclaimable_unknown_and_done_are_not(led):
     assert led.fx.claim(KEY, scheduler="cron", now=T0, run_id="r2").reason == "effect_already_claimed"
     assert led.fx.finish(KEY, state="FAILED", now=T0 + 1, run_id="other") is None  # only the holder finishes
     assert led.fx.finish(KEY, state="FAILED", now=T0 + 1, run_id="r1")["state"] == "FAILED"
+    # 2026-10-15 (audit DD05): a FAILED finish WITHOUT proof that it preceded the effect is held like UNKNOWN.
+    unproven = led.fx.claim(KEY, scheduler="cron", now=T0 + 2, run_id="r2")
+    assert unproven.reason == "effect_already_claimed" and unproven.holder["state"] == "FAILED"
+    assert led.fx.release(KEY, by="op", now=T0 + 2, note="checked: no digest went out")["state"] == "RELEASED"
     second = led.fx.claim(KEY, scheduler="cron", now=T0 + 2, run_id="r2")
     assert second.ok and second.attempt == 2
     led.fx.finish(KEY, state="UNKNOWN", now=T0 + 3, run_id="r2")
@@ -277,10 +281,18 @@ def test_sequential_n8n_then_cron_duplicate_is_refused(led, tmp_path):
 def test_cli_run_finishes_failed_and_a_retry_may_claim_again(led, tmp_path):
     led.fx.set_owner(PROCESS, "cron", expect_epoch=None, by="op", now=T0)
     args = ["run", "--process", PROCESS, "--slot", SLOT, "--input-version", "v1", "--scheduler", "cron", "--"]
+    # 2026-10-15 (audit DD05): an unfenced command's non-zero exit is NOT proof of no effect: the key is held.
     assert _cli(led, *args, sys.executable, "-c", "raise SystemExit(3)") == 3
-    assert led.fx.get(KEY)["state"] == "FAILED"
+    assert led.fx.get(KEY)["state"] == "FAILED" and led.fx.get(KEY)["pre_effect"] == 0
+    assert _cli(led, *args, sys.executable, "-c", "pass") == 75  # held: operator release required
+    led.fx.release(KEY, by="op", now=T0 + 1, note="checked the target: nothing written")
+    # A --fenced command that exits before passing assert_fence() is proven pre-effect: FAILED stays reclaimable.
+    fenced = ["run", "--process", PROCESS, "--slot", SLOT, "--input-version", "v1", "--scheduler", "cron", "--fenced",
+              "--"]
+    assert _cli(led, *fenced, sys.executable, "-c", "raise SystemExit(3)") == 3
+    assert led.fx.get(KEY)["state"] == "FAILED" and led.fx.get(KEY)["pre_effect"] == 1
     assert _cli(led, *args, sys.executable, "-c", "pass") == 0
-    assert led.fx.get(KEY)["state"] == "DONE" and led.fx.get(KEY)["attempt"] == 2
+    assert led.fx.get(KEY)["state"] == "DONE" and led.fx.get(KEY)["attempt"] == 3
 
 
 def test_cli_as_a_child_process_like_a_cron_line(led, tmp_path):

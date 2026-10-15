@@ -130,6 +130,27 @@ def load_n8n_previous_key(environ: dict[str, str] | None = None) -> bytes | None
     return key
 
 
+def parse_run_allowlist(raw: bytes) -> frozenset[str]:
+    """lane_ids with a command in one N8nRunAllowlist@v1 document. Raises ValueError on a malformed document."""
+    doc = json.loads(raw.decode("utf-8"))
+    if not isinstance(doc, dict) or doc.get("schema") != RUN_ALLOWLIST_SCHEMA:
+        raise ValueError("bad_allowlist_schema")
+    out = set()
+    for entry in doc.get("lanes") or []:
+        if isinstance(entry, dict) and isinstance(entry.get("lane_id"), str) and isinstance(entry.get("command"), list):
+            out.add(entry["lane_id"])
+    return frozenset(out)
+
+
+def run_allowlist_source(path: Path | None):
+    """2026-10-15 (audit DD08): the run allowlist as a per-request, stat-cached PolicyFile (fail safe: an unreadable
+    or malformed replacement is an EMPTY allowlist, so every run is refused; a revoked lane is refused on the next
+    request without a restart). Callable; ``.version`` is the effective policy version."""
+    from scripts.lib.n8n_policy_reload import PolicyFile
+
+    return PolicyFile(path or DEFAULT_RUN_ALLOWLIST, parse_run_allowlist, fail_value=frozenset())
+
+
 def load_run_allowlist(path: Path | None) -> frozenset[str]:
     """lane_ids with a command in config/n8n_run_allowlist.json. A missing or malformed file yields an
     empty set (every run refused as run_lane_not_allowlisted) rather than a bind refusal."""
@@ -206,7 +227,8 @@ def dispatch_http(
             "durable": durable,
             "ledger": str(ledger_path) if ledger_path else None,
             "run_scope": run_scope,
-            "run_lanes": len(run_allowlist or ()),
+            "run_lanes": len((run_allowlist() if callable(run_allowlist) else run_allowlist) or ()),
+            "run_allowlist_version": getattr(run_allowlist, "version", None),
         }
     if method != "POST" or path != "/v1/coordination":
         if method not in {"GET", "POST"}:
@@ -364,8 +386,10 @@ def serve(
     # 2026-10-07 roadmap: non-pilot lanes (incident-fanin) are allowed ONLY when named on the
     # command line; the five pilot lanes stay allowed. Nothing widens the forbidden-route list.
     allow = frozenset(PILOT_LANES) | frozenset(extra_lanes or ())
-    # 2026-10-08: the run allowlist is read once at serve time; a change needs a restart (promote restarts the unit).
-    run_allow = load_run_allowlist(run_allowlist_path)
+    # 2026-10-15 (audit DD08; was "read once at serve time" since 2026-10-08): the run allowlist is re-validated on
+    # every request (stat-cached PolicyFile); an edit or a revocation applies on the next request, an unreadable
+    # replacement refuses every run.
+    run_allow = run_allowlist_source(run_allowlist_path)
     # 2026-10-09 (B5.3): due inputs are re-read per call; the allowlist is narrowed to run_allow in the gateway.
     due = file_sources(
         registry_path or DEFAULT_REGISTRY_PATH,
@@ -400,7 +424,7 @@ def serve(
         ),
     )
     httpd.coordination_ledger = ledger  # type: ignore[attr-defined]
-    httpd.run_allowlist = run_allow  # type: ignore[attr-defined]
+    httpd.run_allowlist = run_allow  # type: ignore[attr-defined]  (callable PolicyFile)
     return httpd
 
 
@@ -422,7 +446,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--run-allowlist",
         default=str(DEFAULT_RUN_ALLOWLIST),
-        help="N8nRunAllowlist@v1 naming the lanes the run operation may request (read at start)",
+        help="N8nRunAllowlist@v1 naming the lanes the run operation may request (re-validated per request)",
     )
     parser.add_argument(
         "--registry",
@@ -463,7 +487,8 @@ def main(argv: list[str] | None = None) -> int:
                     "ledger": str(ledger_path) if ledger_path else None,
                     "run_scope": n8n_key is not None and ledger_path is not None,
                     "n8n_key_previous": n8n_previous is not None,
-                    "run_lanes": sorted(httpd.run_allowlist),
+                    "run_lanes": sorted(httpd.run_allowlist()),
+                    "run_allowlist_version": httpd.run_allowlist.version,
                 }
             ),
             flush=True,

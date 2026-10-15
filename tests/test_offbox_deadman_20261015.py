@@ -161,5 +161,6 @@ def test_independent_of_n8n_the_main_bot_and_postgres():
         "datetime",
         "pathlib",
         "typing",
+        "zoneinfo",  # 2026-10-15 business-heartbeat windows (stdlib)
     }
     assert {m.split(".")[0] for m in mods} <= stdlib, mods  # nothing local: no n8n, gateway, bot, editor or DB

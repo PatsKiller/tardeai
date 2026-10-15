@@ -69,7 +69,12 @@ from scripts.lib.n8n_due import MAX_LANE_FILTER as DUE_MAX_LANES  # noqa: E402
 from scripts.lib.n8n_due import MAX_LIMIT as DUE_MAX_LIMIT  # noqa: E402
 from scripts.lib.n8n_due import SOURCES as DUE_SOURCES  # noqa: E402
 from scripts.lib.n8n_due import LIVE_LANES_ENV, RelayLiveLanesMissing, parse_relay_live_lanes  # noqa: E402
-from scripts.n8n_coordination_gateway import BLOCKED_PORTS, DEFAULT_RUN_ALLOWLIST, load_run_allowlist
+from scripts.n8n_coordination_gateway import (  # noqa: E402
+    BLOCKED_PORTS,
+    DEFAULT_RUN_ALLOWLIST,
+    load_run_allowlist,  # noqa: F401  (re-export for callers that want a snapshot)
+    run_allowlist_source,
+)
 
 NO_CONSUMER_REASON = (
     "Entrypoint of config/systemd/user/tradeai-n8n-run-relay.service; installed by the operator only "
@@ -112,7 +117,36 @@ ROUTES: tuple[tuple[str, str], ...] = (
     ("POST", "/event"),
     ("GET", "/run_outcome"),
     ("POST", "/intent"),
+    ("GET", "/momentum-lifecycle"),
 )
+#: 2026-10-15 (audit DD14): the handler dispatches ONLY through this map, keyed by the ROUTES entries, and the
+#: import-time check below makes them one definition (eight served handlers = eight ROUTES rows; before, GET
+#: /momentum-lifecycle was served but absent from ROUTES, so scripts/check_n8n_relay_contract.py could not see it).
+#: ROUTES stays a literal tuple because the checker reads it with ast.
+ROUTE_HANDLERS: dict[tuple[str, str], str] = {
+    ("GET", "/status"): "status",
+    ("GET", "/due"): "due",
+    ("GET", "/runs/<lane_id>/last"): "last_run",
+    ("POST", "/run"): "run",
+    ("POST", "/event"): "event",
+    ("GET", "/run_outcome"): "run_outcome",
+    ("POST", "/intent"): "intent",
+    ("GET", "/momentum-lifecycle"): "momentum_lifecycle",
+}
+if set(ROUTE_HANDLERS) != set(ROUTES) or len(ROUTES) != len(set(ROUTES)):  # pragma: no cover - import-time guard
+    raise RuntimeError("relay ROUTES and ROUTE_HANDLERS disagree")
+#: POST /run: the exact body keys. An extra key is refused (audit DD14: it was silently discarded), as is a JSON
+#: object with a duplicated key. The set is the union of what the ACTIVE workflows send (replayed byte-for-byte by
+#: tests/test_n8n_audit_findings_20261015.py::test_active_workflow_run_bodies_*): the generic/fabric workflows send
+#: scripts/n8n_workflow_templates.py RUN_BODY_KEYS; the ten generated per-lane workflows
+#: (docs/implementation/n8n-parallel/workflows/generated/*.json) send ``requested_by`` and NO idempotency_key.
+#: ``requested_by`` is accepted and IGNORED: the relay derives it from ``workflow_id`` (_requested_by).
+RUN_BODY_KEYS = frozenset({"lane_id", "mode", "idempotency_key", "workflow_id", "execution_id", "requested_by"})
+#: The run key the RELAY mints when the body carries none: n8n-wf-<workflow_id>-<execution_id> (_derived_run_id), one
+#: per n8n execution. n8n cannot choose it: a caller-supplied idempotency_key in this namespace is refused
+#: (relay_bad_run_id), so the gateway can treat it as relay-minted (scripts/lib/n8n_coordination_gateway.py
+#: RELAY_DERIVED_KEY_PREFIX) and admit it for LIVE runs.
+RELAY_DERIVED_PREFIX = "n8n-wf-"
 ROUTES_SCHEMA = "N8nRunRelayRoutes@v1"
 #: POST /event (design 02 §8): the only lane, the exact body keys, and the bounds.
 EVENT_LANE = "n8n-workflow-error"
@@ -157,8 +191,31 @@ REFUSALS = frozenset(
         "relay_bad_bind",
         "relay_bad_query",
         "relay_bad_intent",
+        # 2026-10-15 (audit DD14 / DD03): an unknown or duplicated body key on POST /run; a gateway reply whose run
+        # identity (lane_id / mode / run_id) is not the request's.
+        "relay_unexpected_field",
+        "relay_identity_mismatch",
     }
 )
+
+
+class _DuplicateKey(ValueError):
+    pass
+
+
+def _no_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for k, v in pairs:
+        if k in out:
+            raise _DuplicateKey(k)
+        out[k] = v
+    return out
+
+
+def strict_json(body: bytes) -> Any:
+    """json.loads that refuses a duplicated object key anywhere (the last-wins default let a second ``mode`` or
+    ``lane_id`` silently replace the first). Raises ValueError (UnicodeDecodeError / JSONDecodeError subclass it)."""
+    return json.loads(body.decode(), object_pairs_hook=_no_duplicates)
 
 
 def guard_bind(host: str, port: int) -> None:
@@ -286,15 +343,20 @@ def _origin_sha(environ: dict[str, str]) -> str | None:
     return raw if re.fullmatch(r"[0-9a-f]{40}", raw) else None
 
 
-def route_supported(method: str, path: str) -> bool:
-    """True when the handler serves ``method path`` (query ignored), from ROUTES."""
+def resolve_route(method: str, path: str) -> tuple[str, str] | None:
+    """The ROUTES entry serving ``method path`` (query ignored), or None."""
     bare = path.partition("?")[0]
     for m, pattern in ROUTES:
         if m != method:
             continue
         if pattern == bare or (pattern == "/runs/<lane_id>/last" and parse_last_path(bare) is not None):
-            return True
-    return False
+            return (m, pattern)
+    return None
+
+
+def route_supported(method: str, path: str) -> bool:
+    """True when the handler serves ``method path`` (query ignored), from ROUTES."""
+    return resolve_route(method, path) is not None
 
 
 def _json_response(handler: BaseHTTPRequestHandler, status: int, payload: dict[str, Any]) -> None:
@@ -319,7 +381,10 @@ class Relay:
         self.bearer = _secret(self.environ, BEARER_ENV)
         self.bearer_previous = _optional_secret(self.environ, BEARER_PREVIOUS_ENV)
         self.key = _secret(self.environ, N8N_KEY_ENV)
-        self.allowlist = allowlist if allowlist is not None else load_run_allowlist(DEFAULT_RUN_ALLOWLIST)
+        # 2026-10-15 (audit DD08): None = the run allowlist file as a per-request, stat-cached PolicyFile (a revoked
+        # lane is refused on the next request; an unreadable file refuses every lane). A frozenset (tests, or an
+        # explicit --run-allowlist snapshot) is used as given.
+        self.allowlist = allowlist if allowlist is not None else run_allowlist_source(DEFAULT_RUN_ALLOWLIST)
         try:
             self.live_lanes = parse_relay_live_lanes(self.environ)
             self.live_lanes_missing = False
@@ -402,6 +467,8 @@ class Relay:
             "authority": "READ_ONLY_ADVISORY",
             "started_at": self.started_at,
             "allowlisted_lanes": len(self.allowlist),
+            "allowlist_version": getattr(self.allowlist, "version", None),
+            "allowlist_error": getattr(self.allowlist, "error", None),
             "live_lanes": sorted(self.live_lanes),
             "gateway_url": self.gateway_url,
             "counts": dict(self.counts),
@@ -415,11 +482,15 @@ class Relay:
         if len(body) > MAX_BODY:
             return self._refuse("relay_body_too_large", 413)
         try:
-            data = json.loads(body.decode())
-        except (UnicodeDecodeError, json.JSONDecodeError):
+            data = strict_json(body)
+        except _DuplicateKey:
+            return self._refuse("relay_unexpected_field", 400)
+        except ValueError:
             return self._refuse("relay_malformed_body", 400)
         if not isinstance(data, dict):
             return self._refuse("relay_malformed_body", 400)
+        if set(data) - RUN_BODY_KEYS:
+            return self._refuse("relay_unexpected_field", 400)
         lane = data.get("lane_id")
         mode = data.get("mode")
         if lane not in self.allowlist:
@@ -430,9 +501,10 @@ class Relay:
             return self._refuse("relay_live_lanes_missing", 503, lane_id=lane)
         if mode == "live" and lane not in self.live_lanes:
             return self._refuse("relay_live_not_enabled", 403, lane_id=lane)
-        run_id = _safe_run_id(data.get("idempotency_key")) or _derived_run_id(
-            data.get("workflow_id"), data.get("execution_id")
-        )
+        supplied = data.get("idempotency_key")
+        if isinstance(supplied, str) and supplied[: len(RELAY_DERIVED_PREFIX)].lower() == RELAY_DERIVED_PREFIX:
+            return self._refuse("relay_bad_run_id", 403, lane_id=lane)  # relay-minted namespace, never caller-chosen
+        run_id = _safe_run_id(supplied) or _derived_run_id(data.get("workflow_id"), data.get("execution_id"))
         if not run_id:
             return self._refuse("relay_bad_run_id", 403, lane_id=lane)
         now = self.clock()
@@ -460,6 +532,13 @@ class Relay:
         except (OSError, urllib.error.URLError, TimeoutError):
             self.counts["gateway_unreachable"] += 1
             return self._refuse("relay_gateway_unreachable", 502, lane_id=lane)
+        requested_identity = {"lane_id": lane, "mode": mode, "run_id": run_id}
+        if reply.get("state") != "REFUSED" and any(
+            k in reply and reply[k] != v for k, v in requested_identity.items()
+        ):
+            # 2026-10-15 (audit DD03): a gateway reply is accepted only for the identity that was requested; a reply
+            # naming another lane/mode/run is never passed to n8n as this request's success.
+            return self._refuse("relay_identity_mismatch", 502, lane_id=lane)
         status = 200 if reply.get("state") == "REQUESTED" else 403
         if status == 200:
             self.counts["requested"] += 1
@@ -488,8 +567,8 @@ class Relay:
         if len(body) > MAX_BODY:
             return self._refuse("relay_body_too_large", 413, op="event")
         try:
-            data = json.loads(body.decode())
-        except (UnicodeDecodeError, json.JSONDecodeError):
+            data = strict_json(body)
+        except ValueError:  # includes a duplicated key
             return self._refuse("relay_malformed_body", 400, op="event")
         if not isinstance(data, dict) or set(data) != EVENT_BODY_KEYS:
             return self._refuse("relay_bad_event", 400, op="event")
@@ -648,8 +727,8 @@ class Relay:
         if len(body) > MAX_BODY:
             return self._refuse("relay_body_too_large", 413, op="intent")
         try:
-            data = json.loads(body.decode())
-        except (UnicodeDecodeError, json.JSONDecodeError):
+            data = strict_json(body)
+        except ValueError:  # includes a duplicated key
             return self._refuse("relay_malformed_body", 400, op="intent")
         if (
             not isinstance(data, dict)
@@ -863,43 +942,34 @@ def handler_for(relay: Relay) -> type[BaseHTTPRequestHandler]:
         def log_message(self, *_: Any) -> None:
             return
 
-        def do_GET(self) -> None:  # noqa: N802
+        def _serve(self, method: str) -> None:
             path, _, query = self.path.partition("?")
-            lane_id = parse_last_path(path)
-            if self.path == "/status":
-                status, payload = relay.status(self.headers.get("Authorization"))
-            elif path == "/momentum-lifecycle":
-                status, payload = relay.momentum_lifecycle(self.headers.get("Authorization"), query)
-            elif path == "/due":
-                status, payload = relay.due(self.headers.get("Authorization"), query)
-            elif path == "/run_outcome":
-                status, payload = relay.run_outcome(self.headers.get("Authorization"), query)
-            elif lane_id is not None:
-                status, payload = relay.last_run(self.headers.get("Authorization"), lane_id, query)
-            else:
+            route = resolve_route(method, self.path)
+            if route is None or (route == ("GET", "/status") and query):
                 _json_response(self, 404, {"state": "REFUSED", "reason": "relay_bad_path"})
                 return
+            op = getattr(relay, ROUTE_HANDLERS[route])
+            auth = self.headers.get("Authorization")
+            if method == "POST":
+                try:
+                    length = int(self.headers.get("Content-Length", "0"))
+                except ValueError:
+                    length = MAX_BODY + 1
+                body = self.rfile.read(min(max(length, 0), MAX_BODY + 1))
+                status, payload = op(auth, body if length <= MAX_BODY + 1 else b"x" * (MAX_BODY + 1))
+            elif route == ("GET", "/status"):
+                status, payload = op(auth)
+            elif route == ("GET", "/runs/<lane_id>/last"):
+                status, payload = op(auth, parse_last_path(path), query)
+            else:
+                status, payload = op(auth, query)
             _json_response(self, status, payload)
 
+        def do_GET(self) -> None:  # noqa: N802
+            self._serve("GET")
+
         def do_POST(self) -> None:  # noqa: N802
-            if self.path == "/run":
-                op = relay.run
-            elif self.path == "/event":
-                op = relay.event
-            elif self.path == "/intent":
-                op = relay.intent
-            else:
-                _json_response(self, 404, {"state": "REFUSED", "reason": "relay_bad_path"})
-                return
-            try:
-                length = int(self.headers.get("Content-Length", "0"))
-            except ValueError:
-                length = MAX_BODY + 1
-            body = self.rfile.read(min(max(length, 0), MAX_BODY + 1))
-            status, payload = op(
-                self.headers.get("Authorization"), body if length <= MAX_BODY + 1 else b"x" * (MAX_BODY + 1)
-            )
-            _json_response(self, status, payload)
+            self._serve("POST")
 
         def do_PUT(self) -> None:  # noqa: N802
             _json_response(self, 405, {"state": "REFUSED", "reason": "relay_bad_path"})
@@ -929,7 +999,7 @@ def main() -> int:
         return 0
     try:
         guard_bind(args.host, args.port)
-        relay = Relay(allowlist=load_run_allowlist(args.run_allowlist))
+        relay = Relay(allowlist=run_allowlist_source(args.run_allowlist))
         serve(args.host, args.port, relay)
     except (ValueError, OSError) as exc:
         print(json.dumps({"ok": False, "reason": str(exc)}))

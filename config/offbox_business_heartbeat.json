@@ -1,0 +1,47 @@
+{
+  "schema": "OffboxDeadman@v1",
+  "as_of": "2026-10-15",
+  "owner": "scripts/offbox_deadman.py --config config/offbox_business_heartbeat.json",
+  "design": "docs/implementation/n8n-maturity/DD12_OUTSIDE_DEADMAN_AND_DR_PLAN_20261015.md",
+  "label": "business-output heartbeat",
+  "fail_hint": "A scheduler may be running but producing no useful output. Check the named lanes in the Command Center.",
+  "_why": "DD12 (third-party audit 2026-10-15): the off-box dead-man (config/offbox_deadman.json) proves the ALERT PATH is alive; it cannot see a running scheduler that produces nothing. This SECOND external check watches business output with its own ping URL, so a healthy alert path cannot keep it green. Activation (timer + provider check + secret) is operator-only: docs/ops/packets/n8n-dd12-outside-deadman-20261015/.",
+  "provider": "the same healthchecks.io-class service as config/offbox_deadman.json, a separate check (its own UUID)",
+  "ping_url_env": "TRADEAI_OFFBOX_BUSINESS_HEARTBEAT_PING_URL",
+  "receipt_rel": "data/runtime/offbox_business_heartbeat_last.json",
+  "fail_suffix": "/fail",
+  "timeout_s": 10,
+  "retries": 2,
+  "body_max_bytes": 8000,
+  "checks": [
+    {
+      "name": "scalp_cycle_rth",
+      "path": "data/runtime/trade_ai_scalp_live_last.json",
+      "ts_field": "last_ok_at",
+      "max_age_min": 15,
+      "require_ok": false,
+      "fail_status": [],
+      "window": {"days": ["mon", "tue", "wed", "thu", "fri"], "start": "09:50", "end": "15:55", "tz": "America/New_York"},
+      "why": "the scalp lane (*/5 in RTH) completed a cycle within three cycles. Known false positive: exchange holidays (market_day_gate skips the run); the operator pauses the provider check on those days or accepts one email."
+    },
+    {
+      "name": "n8n_lab_backup_nightly",
+      "path": "backups/n8n/n8n_lab_backup_last.json",
+      "ts_field": "as_of",
+      "max_age_min": 2160,
+      "require_ok": true,
+      "fail_status": [],
+      "why": "the nightly n8n lab dump (platform-maintenance-nightly) ran and produced a non-empty dump + manifest within 36 h"
+    },
+    {
+      "name": "n8n_lab_restore_drill_weekly",
+      "path": "backups/n8n/n8n_lab_restore_drill_last.json",
+      "ts_field": "finished",
+      "max_age_min": 11520,
+      "require_ok": true,
+      "status_field": "state",
+      "fail_status": ["FAILED"],
+      "why": "the weekly restore drill PASSED within 8 days (N8nLabRestoreDrill@v2 state); a FAILED drill also pages P1 on-host via the incident fan-in"
+    }
+  ]
+}

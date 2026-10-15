@@ -122,6 +122,11 @@ APPROVED_TOOLING = {
     # (ast); neither file sends. Named individually, per this file's convention.
     "scripts/lib/advisory_lane_guard.py",
     "tests/test_agents_policy_7_0_0_advisory_market_data.py",
+    # 2026-10-15 (third-party n8n audit DD01): the lane transitive-capability audit DETECTS raw senders (smtplib,
+    # twilio, Slack/Bot API hosts) in each allowlisted lane's import closure by ast; its test plants them in tmp
+    # fixtures. The scalp GO-delivery test patches every raw transport (fake twilio module, fake SMTP, fake creds)
+    # to prove none is reached through the chokepoint path. None of these files sends. Named individually.
+    "tests/test_lane_transitive_capabilities_20261015.py",
 }
 APPROVED = APPROVED_OUTBOUND | APPROVED_DELIVERY | APPROVED_INBOUND | APPROVED_TOOLING
 

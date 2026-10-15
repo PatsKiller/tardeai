@@ -3792,9 +3792,28 @@ GATES = [
         # the INERT reference mature workflow (scripts/build_n8n_reference_workflow.py --check, 100% on the checker),
         # the scorecard and the contracts design kept true by grep. Hermetic: committed repo files, synthetic
         # workflows, node.js for the reference Code nodes; no n8n, relay, gateway, ledger or DB.
+        # 2026-10-15 third-party audit fix (DD09/DD15/DD16): the score is STATIC CONFORMANCE, not maturity;
+        # graph-structural elements FW-W1..W4 stand on the graph alone (a re-stamped manifest / graph hash never
+        # carries the verdict); every §23.24 obligation mapped (static / platform / not_checkable_offline = UNPROVEN);
+        # fail-closed `--gate activation`; the auditor's mutations are failing regression fixtures.
         "n8n_workflow_framework_20261015",
         [
             "tests/test_check_n8n_workflow_framework.py",
+            "tests/test_check_n8n_workflow_framework_adversarial.py",
+        ],
+    ),
+    (
+        # ANCHOR: N8N_AUDIT_FINDINGS_20261015 — third-party n8n architecture audit (pinned e355be188), gap register
+        # DD03-DD08 + DD14, each reproduced from the auditor's probes and fixed: request identity (a replayed key never
+        # returns another lane/mode/workflow's row; live relay runs need a validated namespace; every executor path
+        # refuses an unvalidated p: row), one retry owner per key namespace with a typed retry block and a durable
+        # dead letter on v1 and v2, FAILED effect claims held unless proven pre-effect, the assert_fence late-write
+        # fence and late-completion incident, the attempt-bound output verdict (immutable LaneRunReceipt@v2), per-
+        # request policy reload, and the relay route table/body strictness. Hermetic: tmp_path ledgers and files,
+        # fake runners; no lane process, network, secret or broker.
+        "n8n_audit_findings_20261015",
+        [
+            "tests/test_n8n_audit_findings_20261015.py",
         ],
     ),
     (
@@ -4109,6 +4128,21 @@ GATES = [
             "tests/test_incident_flood_policy_20261015.py",
             "tests/test_offbox_deadman_20261015.py",
             "tests/test_telegram_delivery_outcome_20261015.py",
+        ],
+    ),
+    (
+        # ANCHOR: DD_AUDIT_DR_AND_LANE_CAPABILITIES_20261015 — third-party n8n audit DD10/DD12/DD01: the n8n lab
+        # restore drill fails closed (restore errors, zero/missing workflow or credential rows, bad key, manifest
+        # mismatch -> FAILED + exit 1 + fan-in P1), the backup writes a per-dump manifest, a separate off-box
+        # business-output heartbeat config, the static transitive-capability audit of every allowlisted lane
+        # (shrink-only baseline) and the scalp GO delivery path under intercepted raw transports. Hermetic: fake
+        # docker/pg_restore on PATH, tmp state roots, stub requester/chokepoint, every raw transport patched.
+        "dd_audit_dr_and_lane_capabilities_20261015",
+        [
+            "tests/test_n8n_lab_restore_drill_verdict_20261015.py",
+            "tests/test_offbox_business_heartbeat_20261015.py",
+            "tests/test_lane_transitive_capabilities_20261015.py",
+            "tests/test_scalp_go_delivery_transports_20261015.py",
         ],
     ),
     (
@@ -4721,6 +4755,17 @@ GATES = [
         ["tests/test_hermes_tag_engine_cost_cap_20261015.py"],
     ),
     (
+        # n8n OAuth-first routing (operator decision 2026-10-15: "in terms of n8n, then, we should try OAuth first.
+        # And if OAuth fails or if the answer needs higher reasoning, then we go to DeepSeek."). Pins, through the
+        # real bridge with fake transports: OAuth success makes no DeepSeek call; grok fails -> chatgpt; both fail
+        # (or not enabled) -> DeepSeek; a schema-invalid / empty OAuth answer falls through; reasoning_tier high ->
+        # DeepSeek PRO_THINK first, OAuth as fallback; a low-confidence OAuth answer escalates exactly once
+        # (<rid>:esc1, own reservation), over cap / ceiling -> escalation_skipped_cap; route decision in the
+        # llm_step audit and the model-job receipt; registry and routing policy agree. No network, no paid call.
+        "n8n_oauth_first_routing_20261015",
+        ["tests/test_n8n_oauth_first_routing_20261015.py"],
+    ),
+    (
         # Run-from-release P0 (2026-10-15): prepare builds or reuses a shared venv keyed by
         # py<X.Y.Z>-sha12(requirements.lock.txt) and links <release>/.venv to it. Pins: hash keying; reuse runs
         # no pip; a failed install/smoke leaves no partial venv and the previous one untouched; the link and
@@ -4911,6 +4956,17 @@ GATES = [
         [
             "tests/test_hermes_worker_pool_wire_20261015.py",
             "tests/test_hermes_research_worker_pool.py",
+        ],
+    ),
+    (
+        # ANCHOR: N8N_AUDIT_20261015_THREAT_LEDGER — independent audit 2026-10-15 (Level 2 of 5): DD02 threat model +
+        # report-mode confinement packet (static env-allowlist enforce readiness per lane, names only, flips nothing),
+        # DD18 D1-D9 decision ledger (every §11 decision has a complete row; JSON/MD parity), DD01-DD18 findings
+        # tracker completeness, DD13/DD17 specs. Hermetic: tmp_path fake repos and committed docs only.
+        "n8n_audit_20261015_threat_ledger",
+        [
+            "tests/test_n8n_decision_ledger_20261015.py",
+            "tests/test_n8n_env_enforce_readiness_20261015.py",
         ],
     ),
 ]

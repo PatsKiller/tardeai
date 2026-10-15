@@ -632,11 +632,10 @@ def _deliver_live_alert(state: "CycleState", triggers: List[Dict], time_str: str
         return 0
     _set_trigger_marks(state, good, alerted=True)
     _save_state_quietly(state_saver, state, cs, "pre_send")
-    try:
-        from alerting import send_whatsapp, send_slack
-        send_whatsapp(msg); send_slack(msg)
-    except Exception:
-        pass
+    # DD01 (third-party n8n audit 2026-10-15; operator approved "yes apply the scalp fix in train 3"): delivery goes
+    # ONLY through the send_telegram chokepoint. The direct alerting.send_whatsapp / send_slack calls that ran here
+    # before the chokepoint (once per attempt, retries included) are removed. Any other channel belongs behind the
+    # comms gateway, never per attempt. tests/test_scalp_go_delivery_transports_20261015.py pins zero raw sends.
     accepted = False
     _reset_telegram_message_ids()
     try:

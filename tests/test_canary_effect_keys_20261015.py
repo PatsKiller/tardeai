@@ -375,7 +375,12 @@ def test_wrapper_failed_run_may_be_retried_in_the_same_slot(wrap, tmp_path):
     cfg = _armed(tmp_path)
     wrap.store().set_owner("x-lane", "cron", expect_epoch=None, by="t", now=1.0)
     assert wrap.run(on="x-lane", config=cfg, code=4).returncode == 4
-    assert wrap.store().get(f"fx:x-lane:{SLOT}:v1")["state"] == "FAILED"
+    key = f"fx:x-lane:{SLOT}:v1"
+    assert wrap.store().get(key)["state"] == "FAILED"
+    # 2026-10-15 (audit DD05): the failed run may have written before exiting non-zero, so the slot is held until an
+    # operator release (after checking the target); then the retry runs.
+    assert wrap.run(on="x-lane", config=cfg).returncode == 75 and wrap.runs() == 1
+    wrap.store().release(key, by="t", now=2.0, note="target checked: no row for the slot")
     assert wrap.run(on="x-lane", config=cfg).returncode == 0 and wrap.runs() == 2
 
 

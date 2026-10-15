@@ -26,6 +26,16 @@ RECEIPT_SCHEMA = "N8nCoordinationReceipt@v1"
 RUN_REQUESTED_SCHEMA = "RunRequested@v1"
 RUN_MODES = frozenset({"dry_run", "live"})
 RUN_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{16,128}$")
+#: Run-key namespaces the host validates before queueing (d:/e:/g: by n8n_due.check_slot_key, p: by
+#: n8n_process_keys.check_process_key). Compared lower-case, so a case variant cannot pass as free-form.
+VALIDATED_KEY_PREFIXES = frozenset({"d:", "e:", "g:", "p:"})
+#: 2026-10-15 (#1767 follow-up): the key the relay MINTS for a body without idempotency_key,
+#: n8n-wf-<workflow_id>-<execution_id> (scripts/n8n_run_relay.py _derived_run_id). One per n8n execution, bound to
+#: the execution, and never caller-chosen (the relay refuses a supplied key in this namespace). The ten generated
+#: per-lane workflows (four of them LIVE: crontab-snapshot-for-health-agent, n8n-pilot-dispatch, n8n-incident-fanin,
+#: n8n-research-intake-consumer) send no key, so a live run from them carries this key. It is a host-minted
+#: namespace, not a free-form one, and a LIVE relay run may use it.
+RELAY_DERIVED_KEY_PREFIX = "n8n-wf-"
 MAX_REQUESTED_BY = 128
 SCOPE_READ = "coordination_read"
 SCOPE_RUN = "coordination_run"
@@ -236,6 +246,12 @@ REFUSAL_REASONS = frozenset(
         # 2026-10-15 (hermes-learning cutover prerequisite G3): a p:<lane>:<mode>:<slot> process-step key that
         # scripts/lib/n8n_process_keys.check_process_key refuses (``key_state`` on the refusal names why).
         "run_process_key_invalid",
+        # 2026-10-15 (third-party audit, finding 1): a repeated idempotency_key whose stored row names another lane,
+        # mode or requesting workflow. The original row is never returned to a different request.
+        "run_idempotency_conflict",
+        # 2026-10-15 (audit DD03): a LIVE run from the n8n relay caller whose key is in no host-validated namespace
+        # (d:/e:/g: server-minted, p: manifest-validated). Free-form keys stay available to dry runs and to host callers.
+        "run_key_namespace_refused",
     }
 )
 REFUSAL_PREFIXES = ("illegal_transition:", "typed_refusal:", "forbidden_route:")
@@ -371,6 +387,10 @@ def handle_request(
     ``run``; None means neither is configured (``due`` refuses registry_unreadable, server-minted run keys refuse
     run_slot_not_due)."""
     peer = request.get("peer")
+    if callable(run_allowlist):
+        # 2026-10-15 (audit DD08): a PolicyFile / loader is resolved per request, so a revoked lane is refused on
+        # the next request without a restart (scripts/lib/n8n_policy_reload.py; unreadable = empty = refuse all).
+        run_allowlist = run_allowlist()
     route = str(request.get("route") or "")
     blocked = route_forbidden(route)
     if blocked:
@@ -567,6 +587,36 @@ def _run_envelope(row, duplicate: bool, run_store) -> dict[str, Any]:
     }
 
 
+def _norm_requested_by(value: Any) -> str:
+    return value if isinstance(value, str) else ""
+
+
+def _identity_conflict(row: Mapping[str, Any], lane_id: str, mode: str, requested_by: Any) -> list[str]:
+    """Which of (lane_id, mode, requested_by) a stored ``runs`` row disagrees on. Empty = same request identity."""
+    out = []
+    if row.get("lane_id") != lane_id:
+        out.append("lane_id")
+    if row.get("mode") != mode:
+        out.append("mode")
+    if _norm_requested_by(row.get("requested_by")) != _norm_requested_by(requested_by):
+        out.append("requested_by")
+    return out
+
+
+def _replay_or_conflict(row, duplicate: bool, run_store, *, lane_id: str, mode: str, requested_by, peer):
+    """2026-10-15 (audit finding 1, REQUEST IDENTITY): the ONE place a run reply is built. A duplicate whose stored
+    row names another lane, mode or requesting workflow is ``run_idempotency_conflict`` (``conflict_fields`` names
+    which), never the other request's row. Applied to the row ``run_store.request`` returned, so the check sees
+    the row the atomic insert-or-return-existing settled on (no get-then-insert race)."""
+    if duplicate:
+        fields = _identity_conflict(row, lane_id, mode, requested_by)
+        if fields:
+            out = _refused(None, "run_idempotency_conflict", peer_ignored=peer)
+            out["conflict_fields"] = fields
+            return out
+    return _run_envelope(row, duplicate, run_store)
+
+
 def _process_sources(process_sources: Any):
     """The p: key validation sources, or None when unreadable (the check then fails closed)."""
     from scripts.lib import n8n_process_keys as PK
@@ -611,12 +661,26 @@ def _run_process_key(
             out = _refused(None, "run_process_key_invalid", peer_ignored=peer)
             out["key_state"] = "KEY_MISMATCH"
             return out
-        return _run_envelope(existing, True, run_store)
+        return _replay_or_conflict(
+            existing, True, run_store, lane_id=lane_id, mode=mode, requested_by=requested_by, peer=peer
+        )
     check = PK.check_process_key(run_id, lane_id, mode, sources=_process_sources(process_sources), now=now)
     if not check.ok:
         out = _refused(None, "run_process_key_invalid", peer_ignored=peer)
         out["key_state"] = check.state
         return out
+    if check.attempt > 1:
+        # 2026-10-15 (audit DD04, one retry owner): Run Lane owns p: retries, but the HOST decides whether there is
+        # one. Attempt n is admitted only after attempt n-1 of the same base key FINISHED with executor verdict
+        # ``retryable`` (send/learn and terminal failures never are). A missing / running / terminal / ok
+        # predecessor refuses, so a retry can never run beside, or after the success of, its predecessor.
+        prev_key = check.slot_key if check.attempt == 2 else f"{check.slot_key}:a{check.attempt - 1}"
+        prev = run_store.get(prev_key)
+        if prev is None or prev.get("verdict") != "retryable":
+            out = _refused(None, "run_process_key_invalid", peer_ignored=peer)
+            out["key_state"] = "ATTEMPT_NOT_RETRYABLE"
+            out["previous_verdict"] = None if prev is None else prev.get("verdict")
+            return out
     row, duplicate = run_store.request(
         run_id=run_id,
         lane_id=lane_id,
@@ -627,7 +691,9 @@ def _run_process_key(
         slot_key=check.slot_key,
         attempt=check.attempt,
     )
-    out = _run_envelope(row, duplicate, run_store)
+    out = _replay_or_conflict(row, duplicate, run_store, lane_id=lane_id, mode=mode, requested_by=requested_by, peer=peer)
+    if out.get("state") == "REFUSED":
+        return out
     out["process_key"] = {
         "process_id": check.process_id,
         "step_id": check.step_id,
@@ -642,8 +708,10 @@ def _run(
     request, claim, *, run_store, run_allowlist, now: float, peer, due_sources=None, process_sources: Any = None
 ) -> dict[str, Any]:
     """Record a run REQUEST for an allowlisted lane. The gateway writes one ``runs`` row (state REQUESTED) and
-    returns RunRequested@v1; scripts/n8n_run_executor.py claims it from the ledger. A repeated idempotency_key
-    returns the existing row with ``duplicate: true`` whatever state it has reached. Nothing is spawned here."""
+    returns RunRequested@v1; scripts/n8n_run_executor.py claims it from the ledger. A repeated idempotency_key from the
+    SAME request identity (lane_id, mode, requested_by) returns the existing row with ``duplicate: true`` whatever
+    state it has reached; from any other identity it is ``run_idempotency_conflict`` (2026-10-15 audit finding 1:
+    before, a free-form key replayed by another lane/mode got the first request's row back). Nothing is spawned."""
     if run_store is None:
         return _refused(None, "run_scope_unavailable", peer_ignored=peer)
     try:
@@ -664,7 +732,20 @@ def _run(
     requested_by = request.get("requested_by")
     if requested_by is not None and (not isinstance(requested_by, str) or len(requested_by) > MAX_REQUESTED_BY):
         return _refused(None, "malformed_event", peer_ignored=peer)
-    if run_id[:2].lower() == "p:":
+    prefix = run_id[:2].lower()
+    relay_minted = run_id[: len(RELAY_DERIVED_KEY_PREFIX)].lower() == RELAY_DERIVED_KEY_PREFIX
+    if (
+        mode == "live"
+        and claim.get("caller_id") == RELAY_CALLER
+        and prefix not in VALIDATED_KEY_PREFIXES
+        and not relay_minted
+    ):
+        # 2026-10-15 (audit DD03 "reject unknown/unvalidated namespaces before queueing"): n8n may not name the
+        # identity of a LIVE run with a free-form string; it must carry a server-minted or manifest-validated key.
+        out = _refused(None, "run_key_namespace_refused", peer_ignored=peer)
+        out["key_state"] = "UNVALIDATED_NAMESPACE"
+        return out
+    if prefix == "p:":
         return _run_process_key(
             request,
             claim,
@@ -700,7 +781,9 @@ def _run(
                 out = _refused(None, "run_slot_not_due", peer_ignored=peer)
                 out["slot_state"] = "KEY_MISMATCH"
                 return out
-            return _run_envelope(existing, True, run_store)
+            return _replay_or_conflict(
+                existing, True, run_store, lane_id=lane_id, mode=mode, requested_by=requested_by, peer=peer
+            )
         try:
             rows, _rsha, entries, _asha, policies, _psha = _load_due_inputs(due_sources, run_allowlist)
         except GatewayError:
@@ -733,11 +816,13 @@ def _run(
             klass=check.klass,
             priority=check.priority,
         )
-        return _run_envelope(row, duplicate, run_store)
+        return _replay_or_conflict(
+            row, duplicate, run_store, lane_id=lane_id, mode=mode, requested_by=requested_by, peer=peer
+        )
     row, duplicate = run_store.request(
         run_id=run_id, lane_id=lane_id, mode=mode, requested_by=requested_by, caller_id=claim["caller_id"], now=now
     )
-    return _run_envelope(row, duplicate, run_store)
+    return _replay_or_conflict(row, duplicate, run_store, lane_id=lane_id, mode=mode, requested_by=requested_by, peer=peer)
 
 
 RUN_OUTCOME_FIELDS = frozenset({"route", "operation", "claim", "signature", "peer", "run_id"})

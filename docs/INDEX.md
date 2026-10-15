@@ -621,8 +621,14 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/maturity_reconciliation_20260917/HONEST_MATURITY_ASSESSMENT_2026-09-17-rev8.md` | Honest maturity assessment — Revision 8 (2026-09-17) | review_required | OK | `ede40d194307` |
 | `docs/architecture/maturity_reconciliation_20260917/REVISION_LEDGER_2026-09-17-rev8.md` | Revision ledger — which revision is canonical, and what is still published | review_required | OK | `2abe45079289` |
 | `docs/architecture/n8n/ADR_COORDINATION_SECRETS.md` | ADR: coordination secrets for the n8n lab | review_required | OK | `7d29625fd708` |
-| `docs/architecture/n8n/N8N_CONTRACTS_DESIGN.md` | n8n contracts — design architecture | review_required | OK | `f602daf6aaf1` |
-| `docs/architecture/n8n/N8N_REFERENCE_ARCHITECTURE.md` | n8n reference architecture — Trade AI automation fabric | review_required | OK | `4078d803f31f` |
+| `docs/architecture/n8n/AUDIT_20261015_FINDINGS.md` | Independent n8n architecture audit 2026-10-15 — findings tracker | review_required | OK | `f5bfe5bbb4d8` |
+| `docs/architecture/n8n/ENV_ENFORCE_READINESS_20261015.md` | n8n executor env-allowlist enforce readiness (generated) | review_required | MISSING HEADER | `1b6ea3934bc0` |
+| `docs/architecture/n8n/N8N_CONTRACTS_DESIGN.md` | n8n contracts — design architecture | review_required | OK | `3ad31dded370` |
+| `docs/architecture/n8n/N8N_DECISION_LEDGER.md` | n8n decision ledger — D1–D10 | review_required | OK | `9c14c7efa4ab` |
+| `docs/architecture/n8n/N8N_HITL_CONTRACT_SPEC.md` | Approval / HITL authority contract — specification | review_required | OK | `e9c14b9f23c1` |
+| `docs/architecture/n8n/N8N_LLM_STEP_ROUTE_SPEC.md` | n8n → LLM step route — specification and proof list | review_required | OK | `6b7f8e1ee9e8` |
+| `docs/architecture/n8n/N8N_REFERENCE_ARCHITECTURE.md` | n8n reference architecture — Trade AI automation fabric | review_required | OK | `a540c48d3590` |
+| `docs/architecture/n8n/N8N_THREAT_MODEL.md` | n8n automation fabric — threat model | review_required | OK | `3f22447af489` |
 | `docs/architecture/narrative-subject-identity.md` | NarrativeSubjectLink@v1 — Architecture | review_required | OK | `3ee93de9443e` |
 | `docs/architecture/retention.md` | Librarian Retention — RetentionDecision@v1 (Phase 6) | review_required | OK | `ca8630975a92` |
 | `docs/architecture/subject-memory.md` | Subject Memory / SubjectThread@v1 — Architecture | review_required | OK | `1cbdf5ccdf27` |
@@ -1434,12 +1440,14 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-maturity/03-momentum-scalp-lanes.md` | 03 — Momentum-scalp lanes under n8n: inventory, root cause, dispatch design, monitoring | review_required | OK | `3ea31aa32eee` |
 | `docs/implementation/n8n-maturity/BROKER_ENV_AUDIT.md` | Broker env-name read audit — which jobs truly need broker names | review_required | OK | `76aa7605bcfb` |
 | `docs/implementation/n8n-maturity/B_FAMILIES_TOP5.md` | B families top 5 — one parameterised job per same-script cron family | review_required | OK | `e1f607cfa001` |
+| `docs/implementation/n8n-maturity/DD12_OUTSIDE_DEADMAN_AND_DR_PLAN_20261015.md` | DD12 / DD10 — outside dead-man, business heartbeat and coordinated-state restore (2026-10-15) | review_required | MISSING HEADER | `b62a479abd31` |
 | `docs/implementation/n8n-maturity/LANE_DISPOSITION_20261015.md` | Lane disposition, 2026-10-15 | review_required | MISSING HEADER | `8e558186f068` |
+| `docs/implementation/n8n-maturity/LANE_TRANSITIVE_CAPABILITIES_20261015.md` | Lane transitive capabilities (2026-10-15) | review_required | MISSING HEADER | `2241cd082ec0` |
 | `docs/implementation/n8n-maturity/MIGRATION_RECONCILIATION_20261012.md` | TradeAI migration reconciliation | review_required | OK | `b6e056759869` |
 | `docs/implementation/n8n-maturity/MOMENTUM_LINEAGE_IMPLEMENTATION_20261013.md` | Momentum lineage and lifecycle implementation | review_required | OK | `a8a7fb2c8c0c` |
 | `docs/implementation/n8n-maturity/MONITOR_FOLD_COVERAGE_W1-9.md` | Monitor fold coverage (W1-9): freshness contracts, input starvation and design notes for the rest | review_required | OK | `527bdf9c7d0f` |
-| `docs/implementation/n8n-maturity/N8N_CONFIGURATION.md` | N8N configuration — ms01-openclaw (the entry point) | review_required | OK | `f641fa554902` |
-| `docs/implementation/n8n-maturity/N8N_FRAMEWORK_SCORECARD_20261015.md` | n8n workflow framework scorecard — measured by `scripts/check_n8n_workflow_framework.py` (2026-10-15) | review_required | OK | `72546370c65c` |
+| `docs/implementation/n8n-maturity/N8N_CONFIGURATION.md` | N8N configuration — ms01-openclaw (the entry point) | review_required | OK | `78e58aff89f8` |
+| `docs/implementation/n8n-maturity/N8N_FRAMEWORK_SCORECARD_20261015.md` | n8n workflow framework scorecard — STATIC CONFORMANCE measured by `scripts/check_n8n_workflow_framework.py` (2026-10-15) | review_required | OK | `d4c496d3a851` |
 | `docs/implementation/n8n-maturity/N8N_GAP_ASSESSMENT_AND_MATURITY_REVIEW_20261014.md` | Final gap assessment and maturity review — platform, n8n and the mandatory workflow framework (2026-10-14) | review_required | OK | `2463bbcc784d` |
 | `docs/implementation/n8n-maturity/N8N_MONITORING_AND_REMEDIATION_STANDARD.md` | N8N monitoring, SIEM, Telegram and LLM auto-remediation standard — per lane | review_required | OK | `fb93127b9fe6` |
 | `docs/implementation/n8n-maturity/N8N_ONBOARDING_STANDARD.md` | N8N onboarding standard — the mandatory procedure for adding anything to n8n | review_required | OK | `b082eeb784ef` |
@@ -2020,6 +2028,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/packets/n8n-comms-intent-consumer-20261015/03_apply.md` | Apply once (operator) | review_required | MISSING HEADER | `498d580f4571` |
 | `docs/ops/packets/n8n-comms-intent-consumer-20261015/04_rollback.md` | Rollback | review_required | MISSING HEADER | `12e007b5b1d1` |
 | `docs/ops/packets/n8n-comms-intent-consumer-20261015/README.md` | n8n comms-intent consumer — operator packet (2026-10-15) | review_required | MISSING HEADER | `801391d629ff` |
+| `docs/ops/packets/n8n-dd12-outside-deadman-20261015/README.md` | DD12 outside dead-man + business heartbeat — operator packet (2026-10-15) | review_required | MISSING HEADER | `e4fcc98a618b` |
 | `docs/ops/packets/research-insights-unique-index-20261015/README.md` | Packet: UNIQUE index on research_insights(source_reference) (DDL, NOT APPLIED) | review_required | MISSING HEADER | `f53f51854f25` |
 | `docs/ops/packets/run-from-release-cohort1-20261015/03_apply.md` | Apply cohort 1 (operator) | review_required | MISSING HEADER | `dc911f2436e6` |
 | `docs/ops/packets/run-from-release-cohort1-20261015/04_rollback.md` | Roll back cohort 1 (operator) | review_required | MISSING HEADER | `f3d25844a007` |

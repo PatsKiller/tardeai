@@ -502,12 +502,15 @@ def test_todays_latency_budgets_do_not_move_any_deadline():
 #: Operator decision 2026-10-15 ~02:10Z ("yes"): these were DeepSeek-only and fall back to Grok OAuth then
 #: ChatGPT OAuth, DeepSeek staying primary (DeepSeek degraded from ~00:33Z).
 DEEPSEEK_FIRST_OAUTH_FALLBACK = {"cio_hermes_research", "cio_plan_enrichment", "hermes_cloud_json"}
+#: Operator decision 2026-10-15 ("in terms of n8n, then, we should try OAuth first ..."): processes an n8n fabric step
+#: calls through the bridge (allowlist llm_route) route like the n8n_* rows.
+N8N_FABRIC_OAUTH_FIRST = {"hermes_tag_engine"}
 
 
 def test_only_n8n_rows_route_grok_chatgpt_deepseek_with_transport_failover():
     rows = json.loads((ROOT / "config" / "llm_routing_policy.json").read_text())["policies"]["default"]["processes"]
     for pid, row in rows.items():
-        if pid.startswith("n8n_"):
+        if pid.startswith("n8n_") or pid in N8N_FABRIC_OAUTH_FIRST:
             assert [row[k]["provider"] for k in ("primary", "secondary", "fallback")] == ["grok", "chatgpt", "deepseek"]
             assert row["transport_failover"] is True
         elif pid in DEEPSEEK_FIRST_OAUTH_FALLBACK:

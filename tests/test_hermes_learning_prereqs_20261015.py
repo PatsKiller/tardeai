@@ -340,7 +340,8 @@ def test_live_p_row_without_the_gateway_marker_is_refused_and_runs_nothing(gw, t
     receipt = X.execute(
         row, _live_entry(tmp_path), env={}, state_root=tmp_path, code_root=tmp_path, runner=runner, effects=gate
     )
-    assert receipt["state"] == "RUN_REFUSED" and receipt["reason"] == "effect:effect_process_key_unvalidated"
+    # 2026-10-15 (audit DD03): refused before the effect gate, for keyed and unkeyed lanes alike
+    assert receipt["state"] == "RUN_REFUSED" and receipt["reason"] == "process_key_unvalidated"
     assert runner.calls == []
 
 

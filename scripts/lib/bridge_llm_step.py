@@ -251,6 +251,8 @@ def execute_llm_step(
         "facts_sha256": None,
         "response_sha256": None,
         "audit": None,
+        # Route decision (operator decision 2026-10-15, n8n OAuth first): reasoning tier, served lane, escalation.
+        "route": None,
     }
     try:
         if not isinstance(request, Mapping):
@@ -317,6 +319,11 @@ def execute_llm_step(
         if budget.get("max_tokens"):
             max_tokens = min(max_tokens, int(budget["max_tokens"]))
         request_id = "llmstep-" + _sha(f"{run_id}|{execution_id}|{process_id}")[:24]
+        # A template may declare its own reasoning tier (standard | high); passed only when declared, so a
+        # governed_call without the keyword (tests, older fakes) is unchanged.
+        tier_kw: dict[str, Any] = {}
+        if tpl.get("reasoning_tier") in ("standard", "high"):
+            tier_kw["reasoning_tier"] = tpl["reasoning_tier"]
         out = governed_call(
             messages,
             process_id=process_id,
@@ -325,15 +332,20 @@ def execute_llm_step(
             request_id=request_id,
             routing_policy=routing_policy,
             budget={k: budget[k] for k in ("latency_budget_ms", "cost_ceiling_usd") if k in budget},
+            **tier_kw,
         )
         if not isinstance(out, Mapping):
             raise StepRefused("governance_refused", "no result")
         err = out.get("error")
         if err:
             result["route_receipts"] = list(err.get("route_receipts") or [])
+            result["route"] = mj.route_summary(
+                {"routing_decision": out.get("routing_decision"), "route_receipts": result["route_receipts"]}
+            )
             raise _governed_refusal(err)
         gov = mj.governance_envelope(out)
         result["route_receipts"] = list(gov.get("route_receipts") or [])
+        result["route"] = mj.route_summary(gov)
         result["provider"], result["model_id"] = gov.get("provider"), gov.get("model_id")
         result["cost"] = {
             "cost_estimate_usd": gov.get("cost_estimate") if gov.get("cost_estimate") is not None else "unknown",
@@ -380,6 +392,7 @@ def execute_llm_step(
         "facts_sha256": result["facts_sha256"],
         "response_sha256": result["response_sha256"],
         "route_receipts": result["route_receipts"],
+        "route": result["route"],
         "provider": result["provider"],
         "model_id": result["model_id"],
         "cost": result["cost"],

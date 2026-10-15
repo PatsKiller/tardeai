@@ -19,6 +19,12 @@ Read-only. Takes files or directories; a directory is scanned the way `n8n impor
 
 and warned (not refused) for save_manual_executions_true (overrides EXECUTIONS_DATA_SAVE_MANUAL_EXECUTIONS=false).
 
+``--framework-gate activation`` (opt-in, 2026-10-15 audit DD16) also runs the fail-closed §23.24 promotion gate
+(``scripts/check_n8n_workflow_framework.py --gate activation``) on every file and refuses each one that is not
+activation-eligible (``framework_gate``): any element FAIL, PARTIAL on a critical element, platform element not
+PASS, or a runtime obligation without evidence (``--runtime-evidence``), unless an operator exception names it
+(``--exceptions``). Off by default so existing packets keep their behaviour; a packet adopts it explicitly.
+
     python3 scripts/check_n8n_import_ready.py "$STAGE" --relay-url http://172.19.0.1:18092
     python3 scripts/check_n8n_import_ready.py "$STAGE" --relay-url http://172.19.0.1:18092 --json
 
@@ -127,6 +133,37 @@ def check_paths(
     return results
 
 
+def apply_framework_gate(
+    results: list[dict], *, runtime_evidence: Optional[str] = None, exceptions: Optional[str] = None
+) -> None:
+    """Refuse (``framework_gate``) every file the §23.24 activation gate does not pass. Any error is CannotRun."""
+    sys.path.insert(0, str(ROOT / "scripts"))
+    try:
+        import check_n8n_workflow_framework as F  # noqa: PLC0415
+
+        ctx = F.build_context(ROOT)
+        platform = F._load(ROOT / F.DEFAULT_PLATFORM) if (ROOT / F.DEFAULT_PLATFORM).exists() else None
+        ev = F._load_optional(runtime_evidence, F.RUNTIME_EVIDENCE_SCHEMA)
+        exc = F._load_optional(exceptions, F.EXCEPTIONS_SCHEMA).get("exceptions") or []
+        report = F.build_report(
+            [(Path(r["file"]), None) for r in results],
+            ctx,
+            platform,
+            source="import guard",
+            gate="activation",
+            runtime_evidence=ev,
+            exceptions=exc,
+        )
+    except Exception as exc_:  # noqa: BLE001 — fail closed: a gate that cannot run refuses the import
+        raise CannotRun(f"framework gate cannot run: {type(exc_).__name__}: {exc_}") from exc_
+    for r, row in zip(results, report["workflows"]):
+        gate = row["activation_eligibility"]
+        r["framework_gate"] = gate
+        if not gate["eligible"]:
+            r["refusals"] = sorted(set(r["refusals"]) | {"framework_gate"})
+            r["ok"] = False
+
+
 def exit_code(results: list[dict]) -> int:
     return 0 if all(r["ok"] for r in results) else 1
 
@@ -138,6 +175,14 @@ def main(argv: Optional[list[str]] = None) -> int:
     ap.add_argument("--allowlist", default=str(ALLOWLIST))
     ap.add_argument("--known-id", action="append", default=[], help="workflow id already in n8n (errorWorkflow)")
     ap.add_argument("--json", action="store_true")
+    ap.add_argument(
+        "--framework-gate",
+        choices=("activation",),
+        default=None,
+        help="also refuse files the §23.24 activation gate does not pass (fail closed)",
+    )
+    ap.add_argument("--runtime-evidence", default=None, help="N8nFrameworkRuntimeEvidence@v1 for the gate")
+    ap.add_argument("--exceptions", default=None, help="N8nFrameworkExceptions@v1 for the gate")
     a = ap.parse_args(argv)
     try:
         results = check_paths(
@@ -146,6 +191,8 @@ def main(argv: Optional[list[str]] = None) -> int:
             allowlisted=load_allowlisted_lanes(Path(a.allowlist)),
             known_ids=set(a.known_id),
         )
+        if a.framework_gate:
+            apply_framework_gate(results, runtime_evidence=a.runtime_evidence, exceptions=a.exceptions)
     except CannotRun as exc:
         print(f"n8n import guard CANNOT RUN: {exc}", file=sys.stderr)
         return 2
