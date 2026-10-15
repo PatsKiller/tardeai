@@ -121,8 +121,8 @@
       "validate-expense-ratios": "e476bcf5172702fb08322a2dfc5880ef400d096f0e5d247daad1c4c52ce1efae"
     },
     "config/n8n_health_contracts.json": {
-      "aegis-nightly-ingestion": "133f7e242551de0b309e7ab36b06878610f756697acc01cadba795da0e0be9ec",
-      "validate-expense-ratios": "07b9c5f91ad70de71f01d06b5376fa4b2077cee8fe0cc6b191c7dec65ab3acac"
+      "aegis-nightly-ingestion": "83678d37f95a4574d28331ddcdd90e4fc0987109e13a0d72338479fd07333957",
+      "validate-expense-ratios": "e6e6ad54e7c77c2c2b347609cd58dfa962a2ee92e7aefd2896923f79eb0f8048"
     }
   },
   "visibility_declaration": {

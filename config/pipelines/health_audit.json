@@ -1,0 +1,387 @@
+{
+  "schema": "PipelineManifest@v1",
+  "pipeline": "health_audit",
+  "generated": "2026-10-15",
+  "source": "docs/implementation/n8n-maturity/LANE_DISPOSITION_20261015.md (wave C3; WS2 family F36 health/audit plane)",
+  "note": "Consolidation C3 (lane disposition 2026-10-15): F36, the health/audit plane, is the largest WS2 family without a manifest (premarket F11 and after-close F12 already have theirs). The host can serialise only its single-slot weekday-morning checks without changing a cadence; those four lines become stage `morning`. Every other live F36 line is listed under deferred (multi-slot or already a fabric lane) or excluded (STAY_HOST: sender, keep-on-cron, n8n monitors) with its reason. Commands are VERBATIM crontab commands (line numbers: crontab -l 2026-10-15, sha256 6a5c6768); each step keeps its own flock and log. NEVER_SCHEDULED: no crontab line runs the runner until the operator flip packet (docs/ops/packets/consolidation-health-audit-c3-20261015/).",
+  "runner": "scripts/pipelines/run_health_audit_pipeline.sh --stage <stage>",
+  "stages": {
+    "morning": {
+      "proposed_schedule": "30 7 * * 1-5",
+      "window": "07:30-07:55 (four weekday checks, serial)",
+      "must_finish_before": "08:30 job_coverage_monitor (reads the morning receipts; not a step)",
+      "steps": [
+        {
+          "id": "alert_missing_conditions",
+          "cron_line": 204,
+          "cron_schedule": "30 7 * * 1-5",
+          "cron_time": "07:30",
+          "command": "flock -n /tmp/alert_missing.lock $PY scripts/alert_missing_conditions.py",
+          "log": "logs/alert_missing.log",
+          "timeout": "10m",
+          "continue_on_error": true,
+          "cron_line_verbatim": "30 7 * * 1-5 cd $PROJ && flock -n /tmp/alert_missing.lock $PY scripts/alert_missing_conditions.py >> logs/alert_missing.log 2>&1",
+          "measured": {
+            "verified": false,
+            "source": "NOT_MEASURED (no safe_flock/pam timing for these lines; the stage summary PipelineRun@v1 measures each step on the parallel dry-run week)",
+            "runs": 0,
+            "median_s": null,
+            "p95_s": null,
+            "max_s": null
+          },
+          "note": "07:30 today; first step, so it keeps its 07:30 start",
+          "inv_id": "cron:L204",
+          "dow": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "TRADEAI_BROKER_ENV_AUDIT",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES"
+            ],
+            "inline": [],
+            "sources": [],
+            "wrappers": [],
+            "derived_from": "crontab line 204 (names only; values are the runner's cron environment)"
+          }
+        },
+        {
+          "id": "write_state_freshness_history",
+          "cron_line": 177,
+          "cron_schedule": "15 7 * * 1-5",
+          "cron_time": "07:15",
+          "command": "flock -n /tmp/tradeai_state_freshness_history.lock $PY scripts/write_state_freshness_history.py",
+          "log": "logs/state_freshness_db_cron.log",
+          "timeout": "10m",
+          "continue_on_error": true,
+          "cron_line_verbatim": "15 7 * * 1-5 cd $PROJ && flock -n /tmp/tradeai_state_freshness_history.lock $PY scripts/write_state_freshness_history.py >> logs/state_freshness_db_cron.log 2>&1",
+          "measured": {
+            "verified": false,
+            "source": "NOT_MEASURED (no safe_flock/pam timing for these lines; the stage summary PipelineRun@v1 measures each step on the parallel dry-run week)",
+            "runs": 0,
+            "median_s": null,
+            "p95_s": null,
+            "max_s": null
+          },
+          "note": "07:15 today; moves ~15 min later (after alert_missing_conditions)",
+          "inv_id": "cron:L177",
+          "dow": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "TRADEAI_BROKER_ENV_AUDIT",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES"
+            ],
+            "inline": [],
+            "sources": [],
+            "wrappers": [],
+            "derived_from": "crontab line 177 (names only; values are the runner's cron environment)"
+          }
+        },
+        {
+          "id": "portfolio_level_qa",
+          "cron_line": 210,
+          "cron_schedule": "40 7 * * 1-5",
+          "cron_time": "07:40",
+          "command": "$PY scripts/portfolio_level_qa.py",
+          "log": "logs/portfolio_qa.log",
+          "timeout": "10m",
+          "continue_on_error": true,
+          "cron_line_verbatim": "40 7 * * 1-5 cd $PROJ && $PY scripts/portfolio_level_qa.py >> logs/portfolio_qa.log 2>&1",
+          "measured": {
+            "verified": false,
+            "source": "NOT_MEASURED (no safe_flock/pam timing for these lines; the stage summary PipelineRun@v1 measures each step on the parallel dry-run week)",
+            "runs": 0,
+            "median_s": null,
+            "p95_s": null,
+            "max_s": null
+          },
+          "note": "07:40 today; starts when the steps above end (earlier or later by their runtime)",
+          "inv_id": "cron:L210",
+          "dow": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "TRADEAI_BROKER_ENV_AUDIT",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES"
+            ],
+            "inline": [],
+            "sources": [],
+            "wrappers": [],
+            "derived_from": "crontab line 210 (names only; values are the runner's cron environment)"
+          }
+        },
+        {
+          "id": "classifier_health_check",
+          "cron_line": 224,
+          "cron_schedule": "55 7 * * 1-5",
+          "cron_time": "07:55",
+          "command": "flock -n /tmp/classifier_health_check.lock $PY scripts/monitoring/classifier_health_check.py",
+          "log": "logs/classifier_health.log",
+          "timeout": "10m",
+          "continue_on_error": true,
+          "cron_line_verbatim": "55 7 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/classifier_health_check.lock $PY scripts/monitoring/classifier_health_check.py >> logs/classifier_health.log 2>&1",
+          "measured": {
+            "verified": false,
+            "source": "NOT_MEASURED (no safe_flock/pam timing for these lines; the stage summary PipelineRun@v1 measures each step on the parallel dry-run week)",
+            "runs": 0,
+            "median_s": null,
+            "p95_s": null,
+            "max_s": null
+          },
+          "note": "07:55 today; moves earlier, to the end of the chain",
+          "inv_id": "cron:L224",
+          "dow": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "TRADEAI_BROKER_ENV_AUDIT",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES"
+            ],
+            "inline": [],
+            "sources": [],
+            "wrappers": [],
+            "derived_from": "crontab line 224 (names only; values are the runner's cron environment)"
+          }
+        }
+      ]
+    }
+  },
+  "deferred": [
+    {
+      "cron_line": 339,
+      "cron_schedule": "30 20 * * 1-5",
+      "lane_id": "health-agent-llm-review",
+      "basename": "health_agent_llm_review.py",
+      "disposition_20261015": "CONSOLIDATE",
+      "category": "DEFERRED_MULTI_SLOT_OR_FABRIC",
+      "reason": "not a single weekday-morning slot: a host serial stage would change its cadence. Target: the F36 fabric workflows (MIGRATION_TARGET 3.2: breach detector, hourly audit, daily audit), one Run Lane node per check, after the incident flood is fixed (WS1-09)"
+    },
+    {
+      "cron_line": 391,
+      "cron_schedule": "30 8,20 * * *",
+      "lane_id": "job-coverage-monitor",
+      "basename": "job_coverage_monitor.py",
+      "disposition_20261015": "CONSOLIDATE",
+      "category": "DEFERRED_MULTI_SLOT_OR_FABRIC",
+      "reason": "already on the fabric as a leaf lane at stage canary; it joins the F36 process workflow, not a host stage"
+    },
+    {
+      "cron_line": 503,
+      "cron_schedule": "*/30 * * * *",
+      "lane_id": "oauth-lane-keepalive",
+      "basename": "oauth_lane_keepalive.py",
+      "disposition_20261015": "CONSOLIDATE",
+      "category": "DEFERRED_MULTI_SLOT_OR_FABRIC",
+      "reason": "not a single weekday-morning slot: a host serial stage would change its cadence. Target: the F36 fabric workflows (MIGRATION_TARGET 3.2: breach detector, hourly audit, daily audit), one Run Lane node per check, after the incident flood is fixed (WS1-09)"
+    },
+    {
+      "cron_line": 578,
+      "cron_schedule": "45 7,15 * * *",
+      "lane_id": "hermes-pipeline-health",
+      "basename": "hermes_pipeline_health.py",
+      "disposition_20261015": "CONSOLIDATE",
+      "category": "DEFERRED_MULTI_SLOT_OR_FABRIC",
+      "reason": "already on the fabric as a leaf lane at stage shadow; it joins the F36 process workflow, not a host stage"
+    },
+    {
+      "cron_line": 619,
+      "cron_schedule": "35 9-15 * * 1-5",
+      "lane_id": "run-pullback-macd-monitor",
+      "basename": "",
+      "disposition_20261015": "CONSOLIDATE",
+      "category": "DEFERRED_MULTI_SLOT_OR_FABRIC",
+      "reason": "not a single weekday-morning slot: a host serial stage would change its cadence. Target: the F36 fabric workflows (MIGRATION_TARGET 3.2: breach detector, hourly audit, daily audit), one Run Lane node per check, after the incident flood is fixed (WS1-09)"
+    },
+    {
+      "cron_line": 708,
+      "cron_schedule": "25 6-18/3 * * 1-5",
+      "lane_id": "finviz-health-check",
+      "basename": "finviz_health_check.py",
+      "disposition_20261015": "CONSOLIDATE",
+      "category": "DEFERRED_MULTI_SLOT_OR_FABRIC",
+      "reason": "already on the fabric as a leaf lane at stage shadow; it joins the F36 process workflow, not a host stage"
+    },
+    {
+      "cron_line": 876,
+      "cron_schedule": "15 */4 * * *",
+      "lane_id": "cio-lineage-completion-report",
+      "basename": "cio_lineage_completion_report.py",
+      "disposition_20261015": "CONSOLIDATE",
+      "category": "DEFERRED_MULTI_SLOT_OR_FABRIC",
+      "reason": "not a single weekday-morning slot: a host serial stage would change its cadence. Target: the F36 fabric workflows (MIGRATION_TARGET 3.2: breach detector, hourly audit, daily audit), one Run Lane node per check, after the incident flood is fixed (WS1-09)"
+    },
+    {
+      "cron_line": 976,
+      "cron_schedule": "40 8,12,16 * * 1-5",
+      "lane_id": "watch-goods-consistency",
+      "basename": "watch_goods_consistency_check.py",
+      "disposition_20261015": "CONSOLIDATE",
+      "category": "DEFERRED_MULTI_SLOT_OR_FABRIC",
+      "reason": "already on the fabric as a leaf lane at stage shadow; it joins the F36 process workflow, not a host stage"
+    },
+    {
+      "cron_line": 982,
+      "cron_schedule": "20 * * * *",
+      "lane_id": "goal-loop-baseline",
+      "basename": "report_goal_loop_baseline.py",
+      "disposition_20261015": "CONSOLIDATE",
+      "category": "DEFERRED_MULTI_SLOT_OR_FABRIC",
+      "reason": "not a single weekday-morning slot: a host serial stage would change its cadence. Target: the F36 fabric workflows (MIGRATION_TARGET 3.2: breach detector, hourly audit, daily audit), one Run Lane node per check, after the incident flood is fixed (WS1-09)"
+    },
+    {
+      "cron_line": 1005,
+      "cron_schedule": "40 6 * * 1",
+      "lane_id": "maturity-remeasure",
+      "basename": "maturity_remeasure.py",
+      "disposition_20261015": "CONSOLIDATE",
+      "category": "DEFERRED_MULTI_SLOT_OR_FABRIC",
+      "reason": "already on the fabric as a leaf lane at stage shadow; it joins the F36 process workflow, not a host stage"
+    },
+    {
+      "cron_line": 1007,
+      "cron_schedule": "40 18 * * *",
+      "lane_id": "agent-number-grounding-slo",
+      "basename": "report_agent_number_grounding.py",
+      "disposition_20261015": "CONSOLIDATE",
+      "category": "DEFERRED_MULTI_SLOT_OR_FABRIC",
+      "reason": "already on the fabric as a leaf lane at stage shadow; it joins the F36 process workflow, not a host stage"
+    }
+  ],
+  "excluded": [
+    {
+      "cron_line": 170,
+      "cron_schedule": "0 8,20 * * 1-5",
+      "lane_id": "paper-performance-governance",
+      "basename": "paper_performance_governance.py",
+      "disposition_20261015": "STAY_HOST",
+      "category": "STAY_HOST",
+      "reason": "inventory 2026-10-14: not eligible for n8n (High (§23.14/keep-on-cron class: keep_on_cron(broker/stop/order/daemon class (E-plan bucket C)))); WS2 F36"
+    },
+    {
+      "cron_line": 397,
+      "cron_schedule": "45 19 * * *",
+      "lane_id": "youtube-cookie-health-check",
+      "basename": "youtube_cookie_health_check.py",
+      "disposition_20261015": "STAY_HOST",
+      "category": "STAY_HOST",
+      "reason": "allowlist blocked_reasons: Default action sends Telegram on red/amber."
+    },
+    {
+      "cron_line": 402,
+      "cron_schedule": "*/15 9-16 * * 1-5",
+      "lane_id": "trade-integrity-audit",
+      "basename": "safe_flock.sh",
+      "disposition_20261015": "STAY_HOST",
+      "category": "STAY_HOST",
+      "reason": "inventory 2026-10-14: not eligible for n8n (High (§23.14/keep-on-cron class: keep_on_cron(broker/stop/order/daemon class (E-plan bucket C)))); WS2 F36"
+    },
+    {
+      "cron_line": 759,
+      "cron_schedule": "40 20 * * *",
+      "lane_id": "system-rollup-snapshot",
+      "basename": "system_rollup_snapshot.py",
+      "disposition_20261015": "STAY_HOST",
+      "category": "STAY_HOST",
+      "reason": "allowlist blocked_reasons: Default action sends Telegram and refreshes reporting catalog. 2026-10-09 ops lanes: still blocked — scripts/system_rollup_snapshot.py has no --dry-run and its default run sends Telegram (:114-115), s"
+    },
+    {
+      "cron_line": 971,
+      "cron_schedule": "50 * * * *",
+      "lane_id": "deepseek-balance-snapshot",
+      "basename": "deepseek_balance_snapshot.py",
+      "disposition_20261015": "STAY_HOST",
+      "category": "STAY_HOST",
+      "reason": "inventory 2026-10-14: not eligible for n8n (High (§23.14/keep-on-cron class: keep_on_cron(broker/stop/order/daemon class (E-plan bucket C)))); WS2 F36"
+    },
+    {
+      "cron_line": 1060,
+      "cron_schedule": "1-59/5 * * * *",
+      "lane_id": "n8n-siem-bridge",
+      "basename": "safe_flock.sh",
+      "disposition_20261015": "STAY_HOST",
+      "category": "STAY_HOST",
+      "reason": "inventory 2026-10-14: not eligible for n8n (High (§23.14/keep-on-cron class: keep_on_cron(2026-10-10 siem-diagnoser-schedule: hand-set (new line, no rationalization); WS2 F36"
+    },
+    {
+      "cron_line": 1063,
+      "cron_schedule": "3-59/15 * * * *",
+      "lane_id": "n8n-failure-diagnosis",
+      "basename": "run_with_deepseek_offpeak.sh",
+      "disposition_20261015": "STAY_HOST",
+      "category": "STAY_HOST",
+      "reason": "inventory 2026-10-14: not eligible for n8n (High (§23.14/keep-on-cron class: keep_on_cron(2026-10-10 siem-diagnoser-schedule: hand-set (new line); governed-LLM clas); WS2 F36"
+    }
+  ]
+}

@@ -614,7 +614,34 @@ def main(argv: list[str] | None = None) -> int:
                              "(default: data/cio/agent_gate_measurements.json)")
     parser.add_argument("--update-catalog", action="store_true",
                         help="Write gate measurements into config/agent_maturity_catalog.json")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="offline plan: no measurement read, no file or receipt write; wins over every write flag")
     args = parser.parse_args(argv)
+
+    if args.dry_run:
+        # n8n shadow wave LD-W1 (2026-10-15): lane goal-gate-bridge fires this from the dispatcher in shadow.
+        print("DRY-RUN goal-gate-bridge: would measure the alex maturity gates from data/cio and write "
+              "data/cio/agent_gate_measurements.json (--write-measurements) and a LaneRunReceipt; nothing read or written")
+        return 0
+    if args.write_measurements is not None:
+        try:
+            from scripts.lib.lane_last_receipt import now_iso, write_lane_receipt
+        except ImportError:
+            from lib.lane_last_receipt import now_iso, write_lane_receipt
+        started = now_iso()
+        try:
+            rc = _run(args)
+        except Exception as exc:
+            write_lane_receipt("goal-gate-bridge", ok=False, exit_code=1, started_at=started,
+                               script="cio_gate_measurement_bridge.py", error=type(exc).__name__)
+            raise
+        write_lane_receipt("goal-gate-bridge", ok=rc == 0, exit_code=rc, started_at=started,
+                           script="cio_gate_measurement_bridge.py", summary={"completed": rc == 0})
+        return rc
+    return _run(args)
+
+
+def _run(args) -> int:
 
     if args.agent != "alex":
         print(f"Only 'alex' is supported currently (got: {args.agent})", file=sys.stderr)

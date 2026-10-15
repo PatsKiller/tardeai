@@ -4,6 +4,18 @@ Measured at: main c4782f219 / live b7dbe6e60-main-exact-phase2-20261009-210323
 
 # Schedule and dependency governance — overlaps, duplicates, consolidation
 
+> **Superseded in part — operator directive 2026-10-15 "N8N Cutover Decision" (decision D11).** All lane families are
+> approved for n8n cutover except F07 (long-running daemons and `@reboot` services) and all `registry_systemd` assets,
+> which stay on the server unchanged (revisit at the next architecture review). Verbatim: "The rationale that these
+> workflows should remain host-side, cron-based, or external due to maturity, reliability, operational risk,
+> monitoring requirements, or similar concerns is not accepted as a blocker." "If any existing documentation,
+> standards, inventory notes, exception records, or implementation guidance state otherwise, consider that guidance
+> superseded." Every keep-on-cron / stay-on-cron / §23.14 / `pipeline_excluded_gate` / STAY_HOST / STAY EXTERNAL /
+> "not eligible for n8n" statement in this document is kept as history and is superseded for every non-F07,
+> non-`registry_systemd` lane. Current dispositions: `docs/implementation/n8n-maturity/LANE_DISPOSITION_20261015.csv`
+> (waves CD1-CD6); n8n schedules broker-family lanes but never holds a broker credential or calls an order route
+> itself (`docs/architecture/n8n/N8N_REFERENCE_ARCHITECTURE.md` §2a).
+
 Generated 2026-10-09 (read-only). Scope: **560 live scheduled units**: 438 crontab lines, 92 user timers, 1 system timer, 17 health-tick steps and 12 n8n workflows (the n8n active flags come from the 16:00Z committed snapshot). Representative week: **Mon 2026-10-12 to Sun 10-18, America/New_York (EDT)**. It has no NYSE holiday, so `market_day_gate` passes Mon–Fri. Wrappers are modelled per fire. `run_with_deepseek_offpeak.sh` (bulk: 10:00–21:00 ET and not the UTC peak; `--official`: not in UTC 01–04/06–10 on weekdays) and `llm_priority_guard.sh` (DEFER weekdays 06:00–11:59) use the logic in `scripts/lib/deepseek_offpeak.py` and the guard script. Monotonic timers (`OnUnitActiveSec`) are phased from `systemctl --user list-timers` `last`. Monthly lines (day-of-month 1) do not fire in this week.
 
 Files: `overlaps.csv` (every minute where 2 or more jobs start), `overlaps_top20.csv`, `duplicates.csv`, `consolidation.csv`, `dependencies.csv`, `critical_paths.csv`, `DEPENDENCY_MAP.md`. Generators: `gov_sched.py`, `gov_evidence.py`, `gov_stage1-3.py` (rerunnable; about 15 s, about 60 MB RSS).

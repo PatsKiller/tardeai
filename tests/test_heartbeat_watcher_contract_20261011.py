@@ -81,7 +81,14 @@ def test_committed_generic_contracts_match_the_builder():
         assert contract_review_proven(rebuilt) is False, wid
         generated = B.generic_contract(wf, as_of)
         generated_fields = set(generated) - {"baseline", "owner", "ownership_confirmation", "review"}
-        assert {k: rebuilt[k] for k in generated_fields} == {k: generated[k] for k in generated_fields}, wid
+        # 2026-10-15 (FW-M6): the authored expected_output rule, its healthy/failed checks and its basis note are
+        # preserved on top of the generated body; everything else is the generator's.
+        authored = copy.deepcopy(rebuilt)
+        assert authored.pop("expected_output", None) == c.get("expected_output"), wid
+        for section in ("healthy", "failed"):
+            authored[section] = [x for x in authored[section] if x["check"] not in B.OUTPUT_CHECKS]
+        authored["evidence"].pop("expected_output_basis", None)
+        assert {k: authored[k] for k in generated_fields} == {k: generated[k] for k in generated_fields}, wid
 
 
 def test_authored_draft_limits_survive_without_manufacturing_review():
