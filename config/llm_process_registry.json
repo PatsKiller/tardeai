@@ -1352,10 +1352,10 @@
       "advisory_only": true,
       "dedupe_policy": "request_id_only",
       "circuit_breaker": true,
-      "offpeak_tier": "standard",
+      "offpeak_tier": "critical",
       "registered_by": "n8nmat/llm-self-remediation",
       "registered_at": "2026-10-10T05:00:00Z",
-      "notes": "Per-call ceiling $0.05 (routing policy cost_ceiling_usd, enforced by the bridge, §23.10 P21) and re-checked by the caller; $0.10/day and 40 calls/day for this process inside LLM_GLOBAL_DAILY_USD_CAP 2.00. One call per incident, at most 3 per lane per day. A refused or deferred call escalates the incident without a diagnosis and says so. Claude is not a bridge provider today: the operator's 'DeepSeek or Claude' fallback is DeepSeek until a Claude lane is provisioned (§17)."
+      "notes": "Per-call ceiling $0.05 (routing policy cost_ceiling_usd, enforced by the bridge, §23.10 P21) and re-checked by the caller; $0.10/day and 40 calls/day for this process inside LLM_GLOBAL_DAILY_USD_CAP 2.00. One call per incident, at most 3 per lane per day. A refused or deferred call escalates the incident without a diagnosis and says so. offpeak_tier critical (2026-10-15): a diagnosis is about a failure happening now and routes OAuth first (free); at 'standard' every failure outside the scheduled window escalated with no cause (2026-10-12..15: 8,662 deferred records vs 25 diagnoses). The $0.05/call and $0.10/day caps above still bound the paid DeepSeek fallback at peak; an operator row in llm_caller_priority overrides this seed. Routing truth (provider journal, 2026-10-15): 117 of 119 completed calls 2026-10-11T19:33Z..2026-10-15T00:34Z were DeepSeek-served because the bridge reaches an OAuth lane only when the host enables it (CIO_BRIDGE_OAUTH_TRANSPORTS; drop-in 60-oauth-transports added 2026-10-14 ~21:26 ET) and the transport_failover walk skipped grok/chatgpt as no_bridge_transport; since then the order is grok -> chatgpt -> deepseek as written, DeepSeek the working fallback (tests/test_n8n_diagnosis_deepseek_route_20261015.py). Claude is not a bridge provider today: the operator's 'DeepSeek or Claude' fallback is DeepSeek until a Claude lane is provisioned (§17)."
     }
   ],
   "default_deepseek_policy": "FAST",
