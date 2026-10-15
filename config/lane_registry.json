@@ -11024,14 +11024,17 @@
       "scheduler": {
         "kind": "cron",
         "expression": "0 19 * * 0",
-        "match": "scripts/build_symbol_profiles.py >>"
+        "match": "scripts/build_symbol_profiles.py >>",
+        "stage": "shadow",
+        "wave": "R2-05",
+        "command_text": "0 19 * * 0 cd $PROJ && flock -n /tmp/symbol_profiles.lock $PY scripts/build_symbol_profiles.py >> logs/symbol_profiles.log 2>&1  # weekly company-profile refresh (operator 2026-06-12)"
       },
       "expected_cadence_hours": 168.0,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/symbol_profiles.log",
-        "evidence": "CRON_LOG_REDIRECT"
+        "kind": "json_key",
+        "path": "data/runtime/build-symbol-profiles-at-0-19_last.json",
+        "key": "ok_at"
       },
       "value_class": "Operationally Important",
       "recommendation": "PIPELINE:P01",
@@ -11050,7 +11053,18 @@
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
       "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-10-10",
-      "adopted_reason": "dispatcher shadow wave D3: adopted unchanged to keep its lane_id stable. Once the same script's build-symbol-profiles-watchlist row is hand-maintained, the generator would re-derive this row as `build-symbol-profiles` (a rename with no change on the host)."
+      "adopted_reason": "dispatcher shadow wave D3: adopted unchanged to keep its lane_id stable. Once the same script's build-symbol-profiles-watchlist row is hand-maintained, the generator would re-derive this row as `build-symbol-profiles` (a rename with no change on the host). | lane repair 2026-10-15 (operator: 'turn these on and then re-engineer them for n8n'): the refactor shard 05 shadow proposal (REFACTOR_SHARD_05_20261011.md: SHADOW_READY, observed outer flock) is taken in SHADOW now that the OperationalError is fixed (read transaction ends before the Finviz/yfinance calls; one short transaction per symbol). The SW4 hold reason (shared build_symbol_profiles_last.json receipt) is gone: the lane writes its own build-symbol-profiles-at-0-19_last.json. Cron line L477 (crontab -l 2026-10-15, sha256 6a5c6768) keeps doing the real work; the dispatcher fires the offline --dry-run only.",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "0 19 * * 0"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "ingest",
+        "priority": 5,
+        "retry_policy": "none"
+      }
     },
     {
       "lane_id": "classify-instruments",
@@ -15417,6 +15431,172 @@
       "note": "Fired only by the process workflow tradeai-fabric-hermes-learning through Run Lane (process_step autonomous_self_tune); no dispatch block, so the generic dispatcher never emits it. Class learn (AGENTS.md §23.18). Its RETIRED cron-era row (superseded by hermes-learning-pipeline-tune) is unchanged. The LEARN half only (--learn: auto-graft; the purge helpers refuse in that mode). Output is event-driven: an audit row exists only when a graft clears its persistence and drift gates, so the RunReceipt is the per-run evidence. The purge half (--purge) stays on host cron as destructive retention."
     },
     {
+      "lane_id": "indicator-engine",
+      "owner": "portfolio",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 8 * * 1-5",
+        "match": "scripts/indicator_engine.py",
+        "stage": "shadow",
+        "wave": "LR-W1",
+        "command_text": "0 8 * * 1-5 cd $PROJ && $PY scripts/indicator_engine.py >> logs/indicator_engine.log 2>&1"
+      },
+      "expected_cadence_hours": 72.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/indicator-engine_last.json",
+        "key": "ok_at"
+      },
+      "value_class": "Operationally Important",
+      "recommendation": "PIPELINE:P01",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L260",
+        "pipeline": "P01",
+        "value_class": "Operationally Important",
+        "recommendation": "PIPELINE:P01",
+        "f_recommendation": "CONSOLIDATE-into P01",
+        "event_driven_candidate": false,
+        "f_evidence": "Unverified use: no consumer check run for this line"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "0 8 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "ingest",
+        "priority": 5,
+        "retry_policy": "none"
+      },
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-10-15",
+      "adopted_reason": "lane repair 2026-10-15 (operator: 'turn these on and then re-engineer them for n8n'): the cron line L262 (crontab -l 2026-10-15, sha256 6a5c6768) ran only the module's CLI test mode (analyze_confluence('AMD','scalp') printed to the log; no universe, no write). `indicator_engine.py --universe` gap-fills indicator_confluence_cache (profile swing) over the indicator_cache_refresh universe (scripts/lib/indicator_universe_lane.py). output_signal moved from the cron log mtime (proof only that cron opened a file) to the LaneRunReceipt@v1 the --universe run writes; it stays stale until the operator applies docs/ops/packets/lane-repair-indicator-engine-20261015 (cron grant), which adds --universe and the flock lock. The dispatcher fires only the READ ONLY --dry-run."
+    },
+    {
+      "lane_id": "watchlist-entry-planner-limit",
+      "owner": "proposals",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "35 17 * * 1-5",
+        "match": "scripts/watchlist_entry_planner.py --limit"
+      },
+      "expected_cadence_hours": 72.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/entry_planner.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Duplicated",
+      "recommendation": "MERGE_INTO:P07",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L473",
+        "pipeline": "P07",
+        "value_class": "Duplicated",
+        "recommendation": "MERGE_INTO:P07",
+        "f_recommendation": "CONSOLIDATE into P07 (already a pipeline step or quiet prewarm)",
+        "event_driven_candidate": false,
+        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "r1_pending": {
+        "requires": "A governed bridge route for LLM process watchlist_entry_planner (scripts/lib/governed_process_routes.py has none; the process is registered in config/llm_process_registry.json and llm_lane.generate already routes through cio-governed-bridge under TRADEAI_LLM_VIA_BRIDGE). The R1 llm class admits a lane only with llm_route via cio-governed-bridge and a routed process (lane_dispatch.r1_class_admission; n8n_run_executor refuses llm_process_route_not_registered). Adding the route is a bridge-server change (operator decision). Until then this block is inert: no dispatch block, the dispatcher never emits the lane, the cron line keeps doing the real work. Activation (one registry-train PR): scheduler.update(scheduler), output_signal = output_signal, dispatch = dispatch, allowlist llm_route = {via: cio-governed-bridge, process_id: watchlist_entry_planner}, drop r1_pending.",
+        "inventory": "cron:L475",
+        "scheduler": {
+          "stage": "shadow",
+          "wave": "LR-W1",
+          "command_text": "35 17 * * 1-5 cd $PROJ && flock -n /tmp/entry_planner.lock $PY scripts/watchlist_entry_planner.py --limit 60 --buy-rated-cap 400 >> logs/entry_planner.log 2>&1  # daily watchlist entry plans: ALL operator-entered + buy/strong-buy/add/wait, drains resumably (operator 2026-06-18)"
+        },
+        "output_signal": {
+          "kind": "json_key",
+          "path": "data/runtime/watchlist_entry_planner_last.json",
+          "key": "ok_at"
+        },
+        "dispatch": {
+          "mode": "dry_run",
+          "cron": [
+            "35 17 * * 1-5"
+          ],
+          "tz": "America/New_York",
+          "wave": "W4",
+          "class": "llm",
+          "priority": 5,
+          "retry_policy": "none"
+        }
+      },
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-10-15",
+      "adopted_reason": "lane repair 2026-10-15: InterfaceError fixed at its source (lib/comms/delivery.py closed db_adapter's thread-local connection after every send); n8n entry scripts/watchlist_entry_planner_lane.py plans only (no sender in its reach). Staged r1_pending, see its `requires`."
+    },
+    {
+      "lane_id": "watchlist-entry-planner-scope",
+      "owner": "proposals",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "45 17 * * 1-5",
+        "match": "scripts/watchlist_entry_planner.py --scope"
+      },
+      "expected_cadence_hours": 72.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/entry_planner.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Duplicated",
+      "recommendation": "MERGE_INTO:P07",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L474",
+        "pipeline": "P07",
+        "value_class": "Duplicated",
+        "recommendation": "MERGE_INTO:P07",
+        "f_recommendation": "CONSOLIDATE into P07 (already a pipeline step or quiet prewarm)",
+        "event_driven_candidate": false,
+        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "r1_pending": {
+        "requires": "A governed bridge route for LLM process watchlist_entry_planner (scripts/lib/governed_process_routes.py has none; the process is registered in config/llm_process_registry.json and llm_lane.generate already routes through cio-governed-bridge under TRADEAI_LLM_VIA_BRIDGE). The R1 llm class admits a lane only with llm_route via cio-governed-bridge and a routed process (lane_dispatch.r1_class_admission; n8n_run_executor refuses llm_process_route_not_registered). Adding the route is a bridge-server change (operator decision). Until then this block is inert: no dispatch block, the dispatcher never emits the lane, the cron line keeps doing the real work. Activation (one registry-train PR): scheduler.update(scheduler), output_signal = output_signal, dispatch = dispatch, allowlist llm_route = {via: cio-governed-bridge, process_id: watchlist_entry_planner}, drop r1_pending.",
+        "inventory": "cron:L476",
+        "scheduler": {
+          "stage": "shadow",
+          "wave": "LR-W1",
+          "command_text": "45 17 * * 1-5 cd $PROJ && flock -n /tmp/entry_planner_prop.lock $PY scripts/watchlist_entry_planner.py --scope proposals >> logs/entry_planner.log 2>&1  # daily proposal entry validation (advisory)"
+        },
+        "output_signal": {
+          "kind": "json_key",
+          "path": "data/runtime/watchlist_entry_planner_proposals_last.json",
+          "key": "ok_at"
+        },
+        "dispatch": {
+          "mode": "dry_run",
+          "cron": [
+            "45 17 * * 1-5"
+          ],
+          "tz": "America/New_York",
+          "wave": "W4",
+          "class": "llm",
+          "priority": 5,
+          "retry_policy": "none"
+        }
+      },
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-10-15",
+      "adopted_reason": "lane repair 2026-10-15: InterfaceError fixed at its source (lib/comms/delivery.py closed db_adapter's thread-local connection after every send); n8n entry scripts/watchlist_entry_planner_lane.py plans only (no sender in its reach). Staged r1_pending, see its `requires`."
+    },
+    {
       "lane_id": "run-scheduled-quote-refresh-incubator",
       "owner": "portfolio",
       "scheduler": {
@@ -16848,38 +17028,6 @@
         "value_class": "Nice to Have",
         "recommendation": "PIPELINE:P10",
         "f_recommendation": "CONSOLIDATE-into P10",
-        "event_driven_candidate": false,
-        "f_evidence": "Unverified use: no consumer check run for this line"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "indicator-engine",
-      "owner": "portfolio",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "0 8 * * 1-5",
-        "match": "scripts/indicator_engine.py"
-      },
-      "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/indicator_engine.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Operationally Important",
-      "recommendation": "PIPELINE:P01",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L260",
-        "pipeline": "P01",
-        "value_class": "Operationally Important",
-        "recommendation": "PIPELINE:P01",
-        "f_recommendation": "CONSOLIDATE-into P01",
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
       },
@@ -18451,70 +18599,6 @@
         "token": "holding_protection_advisor.py",
         "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
       }
-    },
-    {
-      "lane_id": "watchlist-entry-planner-limit",
-      "owner": "proposals",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "35 17 * * 1-5",
-        "match": "scripts/watchlist_entry_planner.py --limit"
-      },
-      "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/entry_planner.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Duplicated",
-      "recommendation": "MERGE_INTO:P07",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L473",
-        "pipeline": "P07",
-        "value_class": "Duplicated",
-        "recommendation": "MERGE_INTO:P07",
-        "f_recommendation": "CONSOLIDATE into P07 (already a pipeline step or quiet prewarm)",
-        "event_driven_candidate": false,
-        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "watchlist-entry-planner-scope",
-      "owner": "proposals",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "45 17 * * 1-5",
-        "match": "scripts/watchlist_entry_planner.py --scope"
-      },
-      "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/entry_planner.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Duplicated",
-      "recommendation": "MERGE_INTO:P07",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L474",
-        "pipeline": "P07",
-        "value_class": "Duplicated",
-        "recommendation": "MERGE_INTO:P07",
-        "f_recommendation": "CONSOLIDATE into P07 (already a pipeline step or quiet prewarm)",
-        "event_driven_candidate": false,
-        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
     },
     {
       "lane_id": "snaptrade-sync",

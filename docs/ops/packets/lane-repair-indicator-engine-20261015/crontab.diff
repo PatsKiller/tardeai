@@ -1,0 +1,5 @@
+--- crontab -l (2026-10-15, sha256 6a5c6768), line 262
++++ candidate (lane repair 2026-10-15: indicator-engine does universe work, under its own flock lock)
+@@ -262 +262 @@
+-0 8 * * 1-5 cd $PROJ && $PY scripts/indicator_engine.py >> logs/indicator_engine.log 2>&1
++0 8 * * 1-5 cd $PROJ && flock -n /tmp/indicator_engine.lock $PY scripts/indicator_engine.py --universe >> logs/indicator_engine.log 2>&1  # lane indicator-engine: gap-fill indicator_confluence_cache over the indicator_cache_refresh universe (lane repair 2026-10-15)

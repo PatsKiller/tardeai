@@ -3356,6 +3356,143 @@
       "market_gate": false,
       "output_signal": null,
       "source": "n8n fabric process hermes-learning (2026-10-15, AGENTS.md §23.23; packets docs/ops/packets/n8n-hermes-learning-flow-20261015/ and the unblock branch n8nfab/hermes-learning-unblock-20261015): the LEARN half of step autonomous_self_tune of config/pipelines/hermes_learning.json stage tune (crontab line 610 as absorbed by the C1 flip; runs today inside run_hermes_pipeline.sh --stage tune --apply, both halves). Called only by the process workflow tradeai-fabric-hermes-learning through Run Lane, never by the generic dispatcher (no dispatch block). SHADOW ONLY: live_arg null; registry scheduler.stage shadow clamps any live request to dry_run. lock and lock_kind are the step command's own lock (flock -n /tmp/hermes_self_tune.lock); the dry run takes <lock>.dryrun. timeout_s = the manifest step timeout (30m). --learn: auto-graft only; self_purge is never called and the purge helpers raise LearnOnlyViolation in learn-only mode, so this lane cannot DELETE. --dry-run wins over --apply: read-only DB session, no CREATE TABLE, no weights-file write (scripts/hermes_autonomous_self_tune.py main). The purge half (--purge: archived DELETEs, queue UPDATEs) is destructive retention (never-list) and stays on host cron. The live argument would be --apply (cron line `--apply` runs both halves today; at cutover it becomes --purge --apply); it is NOT in this entry."
+    },
+    {
+      "lane_id": "build-symbol-profiles-at-0-19",
+      "command": [
+        "$PY",
+        "scripts/build_symbol_profiles.py"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "lock": "/tmp/symbol_profiles.lock",
+      "lock_kind": "flock",
+      "timeout_s": 5400,
+      "market_gate": false,
+      "output_signal": "data/runtime/build-symbol-profiles-at-0-19_last.json",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "FINVIZ_API_TOKEN",
+        "FINVIZ_COOKIE",
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as the SW4 / LD-W1 rows). finviz_enrichment (the Finviz fallback) reads FINVIZ_API_TOKEN / FINVIZ_COOKIE; yfinance needs no credential.",
+      "env_evidence": "build_symbol_profiles.py imports db_adapter (DB_* names), finviz_enrichment (FINVIZ_* names) and yfinance (no credential); lib/lane_last_receipt.py and lib/persistent_state_root.py read TRADEAI_STATE_ROOT / TRADEAI_PERSISTENT_STATE_ROOT. No broker credential name.",
+      "source": "lane repair 2026-10-15 (taking the refactor shard 05 proposal, wave R2-05), cron:L477 (crontab -l 2026-10-15, sha256 6a5c6768: `0 19 * * 0 cd $PROJ && flock -n /tmp/symbol_profiles.lock $PY scripts/build_symbol_profiles.py >> logs/symbol_profiles.log 2>&1  # weekly company-profile refresh (operator 2026-06-12)`). SHADOW ONLY: live_arg null, registry dispatch.mode dry_run, scheduler.stage shadow; the cron line keeps doing the real work. The live argument would be [] (the bare command); it is NOT in this entry. lock /tmp/symbol_profiles.lock (flock) is the live cron line's lock. Dry run: an explicit --dry-run prints an offline plan before env loading, DB connection, provider call or any write (refactor shard 05 contract) plus one LANE_OUTPUT stderr line; the measured READ ONLY preview is --watchlist-top N --dry-run. Proof in docs/ops/packets/lane-repair-indicator-engine-20261015/."
+    },
+    {
+      "lane_id": "indicator-engine",
+      "command": [
+        "$PY",
+        "scripts/indicator_engine.py",
+        "--universe"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "lock": "/tmp/indicator_engine.lock",
+      "lock_kind": "flock",
+      "timeout_s": 1800,
+      "market_gate": false,
+      "output_signal": "data/runtime/indicator-engine_last.json",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as the SW4 / LD-W1 rows).",
+      "env_evidence": "indicator_engine.py + lib/indicator_universe_lane.py read DB_* through db_adapter; yfinance needs no credential; TRADEAI_YF_* throttle names are optional tuning with defaults; the receipt helper reads the state-root names. No broker credential name.",
+      "source": "lane repair 2026-10-15, cron:L262 (crontab -l 2026-10-15, sha256 6a5c6768: `0 8 * * 1-5 cd $PROJ && $PY scripts/indicator_engine.py >> logs/indicator_engine.log 2>&1`, the AMD CLI test mode). The command here is the repaired argv `--universe`; the cron line gains it, and the flock lock, only through the operator packet docs/ops/packets/lane-repair-indicator-engine-20261015 (cron grant). SHADOW ONLY: live_arg null, registry dispatch.mode dry_run, scheduler.stage shadow. lock /tmp/indicator_engine.lock is PROPOSED: the cron line holds no flock today, so canary stays blocked until the packet is applied. Dry run: --universe --dry-run selects on a READ ONLY session (enforce_readonly) and returns before any provider call, PipelineRun telemetry or write; proof in docs/ops/packets/lane-repair-indicator-engine-20261015/."
+    },
+    {
+      "lane_id": "watchlist-entry-planner-limit",
+      "command": [
+        "$PY",
+        "scripts/watchlist_entry_planner_lane.py",
+        "--limit",
+        "60",
+        "--buy-rated-cap",
+        "400"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "lock": "/tmp/entry_planner.lock",
+      "lock_kind": "flock",
+      "timeout_s": 5400,
+      "market_gate": false,
+      "output_signal": "data/runtime/watchlist_entry_planner_last.json",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as the SW4 / LD-W1 rows). A live run also needs the governed bridge names (TRADEAI_LLM_VIA_BRIDGE / the bridge process env the executor binds from llm_route).",
+      "env_evidence": "watchlist_entry_planner_lane.py imports preview / plan_run / receipt_name from watchlist_entry_planner.py (db_adapter DB_* names; llm_lane only on a live run). The dry run reaches no LLM, bars provider or send. No broker credential name.",
+      "source": "lane repair 2026-10-15, cron:L475 (crontab -l 2026-10-15, sha256 6a5c6768: `35 17 * * 1-5 cd $PROJ && flock -n /tmp/entry_planner.lock $PY scripts/watchlist_entry_planner.py --limit 60 --buy-rated-cap 400 >> logs/entry_planner.log 2>&1  # daily watchlist entry plans: ALL operator-entered + buy/strong-buy/add/wait, drains resumably (operator 2026-06-18)`). STAGED (registry r1_pending, no dispatch block): the llm class needs llm_route via cio-governed-bridge and process watchlist_entry_planner has no governed route yet; llm_route is therefore absent here and the lane is inert. live_arg null. The command is the plan-only n8n entry (no sender in its static reach; `--lane` dropped: a provider-selecting token is refused on a dispatched argv); entry alerts stay on the cron line until a host notification-intent consumer delivers them. lock /tmp/entry_planner.lock (flock) is the live cron line's lock. Dry run: --dry-run is the planner's READ ONLY candidate preview; proof in docs/ops/packets/lane-repair-indicator-engine-20261015/."
+    },
+    {
+      "lane_id": "watchlist-entry-planner-scope",
+      "command": [
+        "$PY",
+        "scripts/watchlist_entry_planner_lane.py",
+        "--scope",
+        "proposals"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "lock": "/tmp/entry_planner_prop.lock",
+      "lock_kind": "flock",
+      "timeout_s": 5400,
+      "market_gate": false,
+      "output_signal": "data/runtime/watchlist_entry_planner_proposals_last.json",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as the SW4 / LD-W1 rows). A live run also needs the governed bridge names (TRADEAI_LLM_VIA_BRIDGE / the bridge process env the executor binds from llm_route).",
+      "env_evidence": "watchlist_entry_planner_lane.py imports preview / plan_run / receipt_name from watchlist_entry_planner.py (db_adapter DB_* names; llm_lane only on a live run). The dry run reaches no LLM, bars provider or send. No broker credential name.",
+      "source": "lane repair 2026-10-15, cron:L476 (crontab -l 2026-10-15, sha256 6a5c6768: `45 17 * * 1-5 cd $PROJ && flock -n /tmp/entry_planner_prop.lock $PY scripts/watchlist_entry_planner.py --scope proposals >> logs/entry_planner.log 2>&1  # daily proposal entry validation (advisory)`). STAGED (registry r1_pending, no dispatch block): the llm class needs llm_route via cio-governed-bridge and process watchlist_entry_planner has no governed route yet; llm_route is therefore absent here and the lane is inert. live_arg null. The command is the plan-only n8n entry (no sender in its static reach; `--lane` dropped: a provider-selecting token is refused on a dispatched argv); entry alerts stay on the cron line until a host notification-intent consumer delivers them. lock /tmp/entry_planner_prop.lock (flock) is the live cron line's lock. Dry run: --dry-run is the planner's READ ONLY candidate preview; proof in docs/ops/packets/lane-repair-indicator-engine-20261015/."
     }
   ],
   "blocked_reasons": {
