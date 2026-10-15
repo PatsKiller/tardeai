@@ -507,10 +507,18 @@ DEEPSEEK_FIRST_OAUTH_FALLBACK = {"cio_hermes_research", "cio_plan_enrichment", "
 N8N_FABRIC_OAUTH_FIRST = {"hermes_tag_engine"}
 
 
+def _n8n_lane_oauth_first(pid: str, row: dict) -> bool:
+    """2026-10-15 (n8n llm lane bridge routes): a process an n8n lane calls through the bridge (allowlist llm_route)
+    has a governed caller/task route; such a row routes OAuth first per the same operator decision."""
+    from scripts.lib.governed_process_routes import route_for_process
+
+    return route_for_process(pid) is not None and row.get("route_profile") == "n8n_oauth_first"
+
+
 def test_only_n8n_rows_route_grok_chatgpt_deepseek_with_transport_failover():
     rows = json.loads((ROOT / "config" / "llm_routing_policy.json").read_text())["policies"]["default"]["processes"]
     for pid, row in rows.items():
-        if pid.startswith("n8n_") or pid in N8N_FABRIC_OAUTH_FIRST:
+        if pid.startswith("n8n_") or pid in N8N_FABRIC_OAUTH_FIRST or _n8n_lane_oauth_first(pid, row):
             assert [row[k]["provider"] for k in ("primary", "secondary", "fallback")] == ["grok", "chatgpt", "deepseek"]
             assert row["transport_failover"] is True
         elif pid in DEEPSEEK_FIRST_OAUTH_FALLBACK:

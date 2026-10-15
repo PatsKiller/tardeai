@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -70,6 +71,11 @@ def main(argv=None, *, do=None, get_conn=None, send_telegram=None) -> int:
     cfg = _cfg()
     mode = intended_mode(args, cfg)
     seat_auto = auto_seat(cfg)
+
+    if args.apply_paid and os.environ.get("TRADEAI_LLM_VIA_BRIDGE", "off").strip().lower() in {"1", "on", "bridge"}:
+        # 2026-10-15: the governed-bridge (n8n) path never reaches a paid seat's in-process provider client.
+        print("[weekly-oversight] --apply-paid refused on the governed-bridge path (operator-only, host)")
+        return 2
 
     if args.dry_run:
         print(f"[weekly-oversight] dry-run mode={mode} apply_paid={bool(args.apply_paid)} "

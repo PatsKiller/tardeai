@@ -304,20 +304,26 @@
         },
         "directive_keyword_enhancer": {
           "primary": {
-            "provider": "deepseek",
-            "policy": "FAST"
-          },
-          "secondary": {
             "provider": "grok",
             "policy": "FAST"
           },
-          "fallback": {
+          "secondary": {
             "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
             "policy": "FAST"
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 2.0
+          "cost_ceiling_usd": 2.0,
+          "transport_failover": true,
+          "route_profile": "n8n_oauth_first",
+          "reasoning_lane": {
+            "provider": "deepseek",
+            "policy": "PRO_THINK"
+          }
         },
         "grok_execution_review": {
           "primary": {
@@ -355,20 +361,26 @@
         },
         "hermes_analyst_coverage": {
           "primary": {
-            "provider": "deepseek",
-            "policy": "FAST"
-          },
-          "secondary": {
             "provider": "grok",
             "policy": "FAST"
           },
-          "fallback": {
+          "secondary": {
             "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
             "policy": "FAST"
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 2.0
+          "cost_ceiling_usd": 2.0,
+          "transport_failover": true,
+          "route_profile": "n8n_oauth_first",
+          "reasoning_lane": {
+            "provider": "deepseek",
+            "policy": "PRO_THINK"
+          }
         },
         "hermes_cloud_json": {
           "primary": {
@@ -390,28 +402,34 @@
         },
         "hermes_cross_source_synthesizer": {
           "primary": {
-            "provider": "deepseek",
-            "policy": "FAST"
-          },
-          "secondary": {
             "provider": "grok",
             "policy": "FAST"
           },
-          "fallback": {
+          "secondary": {
             "provider": "chatgpt",
             "policy": "FAST"
           },
-          "health_gate": true,
-          "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 2.0
-        },
-        "hermes_external_research": {
-          "primary": {
+          "fallback": {
             "provider": "deepseek",
             "policy": "FAST"
           },
-          "secondary": {
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 2.0,
+          "transport_failover": true,
+          "route_profile": "n8n_oauth_first",
+          "reasoning_lane": {
             "provider": "deepseek",
+            "policy": "PRO_THINK"
+          }
+        },
+        "hermes_external_research": {
+          "primary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "chatgpt",
             "policy": "FAST"
           },
           "fallback": {
@@ -420,7 +438,13 @@
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 0.3
+          "cost_ceiling_usd": 0.3,
+          "transport_failover": true,
+          "route_profile": "n8n_oauth_first",
+          "reasoning_lane": {
+            "provider": "deepseek",
+            "policy": "PRO_THINK"
+          }
         },
         "hermes_golden_judge": {
           "primary": {
@@ -532,20 +556,26 @@
         },
         "holdings_llm_refresh": {
           "primary": {
-            "provider": "deepseek",
-            "policy": "FAST"
-          },
-          "secondary": {
             "provider": "grok",
             "policy": "FAST"
           },
-          "fallback": {
+          "secondary": {
             "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
             "policy": "FAST"
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 2.0
+          "cost_ceiling_usd": 2.0,
+          "transport_failover": true,
+          "route_profile": "n8n_oauth_first",
+          "reasoning_lane": {
+            "provider": "deepseek",
+            "policy": "PRO_THINK"
+          }
         },
         "iris_taxonomy_agent": {
           "primary": {
@@ -1005,7 +1035,13 @@
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 0.05
+          "cost_ceiling_usd": 0.05,
+          "transport_failover": true,
+          "route_profile": "n8n_oauth_first",
+          "reasoning_lane": {
+            "provider": "deepseek",
+            "policy": "PRO_THINK"
+          }
         },
         "rotation_grok_review": {
           "primary": {
@@ -1128,20 +1164,26 @@
         },
         "topic_ingestion": {
           "primary": {
-            "provider": "deepseek",
-            "policy": "FAST"
-          },
-          "secondary": {
             "provider": "grok",
             "policy": "FAST"
           },
-          "fallback": {
+          "secondary": {
             "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
             "policy": "FAST"
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 2.0
+          "cost_ceiling_usd": 2.0,
+          "transport_failover": true,
+          "route_profile": "n8n_oauth_first",
+          "reasoning_lane": {
+            "provider": "deepseek",
+            "policy": "PRO_THINK"
+          }
         },
         "topic_research_synthesizer": {
           "primary": {
@@ -1158,7 +1200,13 @@
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 0.05
+          "cost_ceiling_usd": 0.05,
+          "transport_failover": true,
+          "route_profile": "n8n_oauth_first",
+          "reasoning_lane": {
+            "provider": "deepseek",
+            "policy": "PRO_THINK"
+          }
         },
         "unregistered": {
           "primary": {
@@ -1264,20 +1312,26 @@
         },
         "watchlist_entry_planner": {
           "primary": {
-            "provider": "deepseek",
-            "policy": "FAST"
-          },
-          "secondary": {
             "provider": "grok",
             "policy": "FAST"
           },
-          "fallback": {
+          "secondary": {
             "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
             "policy": "FAST"
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 2.0
+          "cost_ceiling_usd": 2.0,
+          "transport_failover": true,
+          "route_profile": "n8n_oauth_first",
+          "reasoning_lane": {
+            "provider": "deepseek",
+            "policy": "PRO_THINK"
+          }
         },
         "watchlist_maria_flash_narrative": {
           "primary": {
@@ -1346,6 +1400,236 @@
           "health_gate": true,
           "latency_budget_ms": 150000,
           "cost_ceiling_usd": 1.0
+        },
+        "incubator_llm_screener": {
+          "primary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.05,
+          "transport_failover": true,
+          "route_profile": "n8n_oauth_first",
+          "reasoning_lane": {
+            "provider": "deepseek",
+            "policy": "PRO_THINK"
+          }
+        },
+        "journal_review_builder": {
+          "primary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.05,
+          "transport_failover": true,
+          "route_profile": "n8n_oauth_first",
+          "reasoning_lane": {
+            "provider": "deepseek",
+            "policy": "PRO_THINK"
+          }
+        },
+        "portfolio_lookthrough_themes": {
+          "primary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.05,
+          "transport_failover": true,
+          "route_profile": "n8n_oauth_first",
+          "reasoning_lane": {
+            "provider": "deepseek",
+            "policy": "PRO_THINK"
+          }
+        },
+        "hermes_usefulness_score_n8n": {
+          "primary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.05,
+          "transport_failover": true,
+          "route_profile": "n8n_oauth_first",
+          "reasoning_lane": {
+            "provider": "deepseek",
+            "policy": "PRO_THINK"
+          }
+        },
+        "proposal_llm_review": {
+          "primary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.05,
+          "transport_failover": true,
+          "route_profile": "n8n_oauth_first",
+          "reasoning_lane": {
+            "provider": "deepseek",
+            "policy": "PRO_THINK"
+          }
+        },
+        "defense_weekly_oversight": {
+          "primary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.05,
+          "transport_failover": true,
+          "route_profile": "n8n_oauth_first",
+          "reasoning_lane": {
+            "provider": "deepseek",
+            "policy": "PRO_THINK"
+          }
+        },
+        "analyst_report_editorial": {
+          "primary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.05,
+          "transport_failover": true,
+          "route_profile": "n8n_oauth_first",
+          "reasoning_lane": {
+            "provider": "deepseek",
+            "policy": "PRO_THINK"
+          }
+        },
+        "analyst_report_critique": {
+          "primary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.05,
+          "transport_failover": true,
+          "route_profile": "n8n_oauth_first",
+          "reasoning_lane": {
+            "provider": "deepseek",
+            "policy": "PRO_THINK"
+          }
+        },
+        "due_diligence_questions": {
+          "primary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.05,
+          "transport_failover": true,
+          "route_profile": "n8n_oauth_first",
+          "reasoning_lane": {
+            "provider": "deepseek",
+            "policy": "PRO_THINK"
+          }
+        },
+        "blind_review_runner": {
+          "primary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.05,
+          "transport_failover": true,
+          "route_profile": "n8n_oauth_first",
+          "reasoning_lane": {
+            "provider": "deepseek",
+            "policy": "PRO_THINK"
+          }
         }
       }
     }

@@ -14,15 +14,29 @@ is missing, stale (>30d) or thin (<= --thin analysts). Dedup: skip names with a 
 row < FRESH_DAYS old. ADVISORY ONLY — research storage, no trading surface.
 
   python3 scripts/hermes_analyst_coverage.py [--limit 8] [--thin 3] [--symbols MRLN,FTH] [--apply]
+
+Governed bridge (2026-10-15, n8n llm lane batch 2): with TRADEAI_LLM_VIA_BRIDGE=1 (bound by the n8n run executor from
+the allowlist ``llm_route`` of lane hermes-analyst-coverage) each symbol is ONE governed-bridge request as process
+``hermes_analyst_coverage`` (grok -> chatgpt -> DeepSeek server-side); llm_lane is never imported, there is no
+alternate-lane retry, and a refusal is a failed symbol with no INSERT. Without --apply no model is called. The cron
+line is unchanged.
 """
 from __future__ import annotations
-import argparse, json, re, sys
+import argparse, json, os, re, sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 FRESH_DAYS = 7
+#: Registered process + governed-bridge route (advisory_desk / hermes_analyst_coverage).
+LLM_PROCESS_ID = "hermes_analyst_coverage"
+#: The flag the n8n run executor binds from the allowlist llm_route; read directly.
+VIA_BRIDGE_ENV = "TRADEAI_LLM_VIA_BRIDGE"
+
+
+def _via_bridge():
+    return os.environ.get(VIA_BRIDGE_ENV, "off").strip().lower() in {"1", "on", "bridge"}
 RECOM_SCORE = {"strong_buy": 1.0, "buy": 2.0, "hold": 3.0, "underperform": 4.0, "sell": 5.0}
 
 PROMPT = """You are a sell-side research librarian. Report the CURRENT professional analyst coverage
@@ -93,11 +107,17 @@ def _parse(text):
 
 
 def run(limit=8, thin=3, symbols=None, apply=False):
-    import llm_lane
     import psycopg2.extras
+    via_bridge = _via_bridge()
+    if via_bridge:
+        from lib.llm_bridge_route import require_text_via_bridge
+        llm_lane, lane = None, "bridge"
+    else:
+        import llm_lane
     conn = _conn()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    lane = "grok" if llm_lane.available("grok") else ("chatgpt" if llm_lane.available("chatgpt") else None)
+    if not via_bridge:
+        lane = "grok" if llm_lane.available("grok") else ("chatgpt" if llm_lane.available("chatgpt") else None)
     if lane is None:
         print(json.dumps({"error": "no OAuth lane available — coverage research needs web-grounded models"}))
         return 1
@@ -109,14 +129,20 @@ def run(limit=8, thin=3, symbols=None, apply=False):
         prompt = PROMPT.format(symbol=sym, company=company, industry=r.get("industry") or "unknown-industry")
         if not apply:
             print(f"  {sym}: dry-run (company={company})"); skipped += 1; continue
-        try:
-            out = llm_lane.generate(prompt, lane=lane, timeout=120)
-        except Exception:
-            alt = "chatgpt" if lane == "grok" else "grok"
+        if via_bridge:
             try:
-                out = llm_lane.generate(prompt, lane=alt, timeout=120) if llm_lane.available(alt) else None
-            except Exception:
+                out = require_text_via_bridge(LLM_PROCESS_ID, prompt, timeout_s=120)
+            except Exception:  # noqa: BLE001 -- a refusal is a failed symbol, never another lane
                 out = None
+        else:
+            try:
+                out = llm_lane.generate(prompt, lane=lane, timeout=120)
+            except Exception:
+                alt = "chatgpt" if lane == "grok" else "grok"
+                try:
+                    out = llm_lane.generate(prompt, lane=alt, timeout=120) if llm_lane.available(alt) else None
+                except Exception:
+                    out = None
         p = _parse(out) if out else None
         if not p:
             print(f"  {sym}: unparseable/lane error"); failed += 1; continue
