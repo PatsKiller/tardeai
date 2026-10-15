@@ -477,33 +477,172 @@ def _recover_current_scan(scan: dict, started_at) -> dict:
 SCHWAB_UNAVAILABLE_CONDITION = "SCHWAB_STOPS_UNAVAILABLE"
 
 
-def _schwab_unavailable_alert(res: dict) -> dict | None:
+def _et_day_start(now=None):
+    """Start of the current America/New_York day, as an aware datetime (the operator's 'once per day')."""
+    from datetime import datetime, timezone
+    from zoneinfo import ZoneInfo
+    et = (now or datetime.now(timezone.utc)).astimezone(ZoneInfo("America/New_York"))
+    return et.replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+def _alerted_since(symbol: str, since, *, condition_key: str | None = None, needle: str | None = None) -> bool:
+    """True when this check already wrote an alert_events row for the key/needle at or after ``since``.
+    Fails open (False ⇒ we alert): a duplicate beats a missed stop warning."""
+    try:
+        from db_adapter import _get_conn
+        cur = _get_conn().cursor()
+        if condition_key:
+            cur.execute("""SELECT 1 FROM alert_events WHERE source_script=%s
+                             AND parsed_payload->>'condition_key'=%s AND created_at >= %s LIMIT 1""",
+                        (_COMPONENT, condition_key, since))
+        else:
+            cur.execute("""SELECT 1 FROM alert_events WHERE source_script=%s AND symbol=%s
+                             AND raw_text LIKE %s AND created_at >= %s LIMIT 1""",
+                        (_COMPONENT, symbol, f"%{needle}%", since))
+        return cur.fetchone() is not None
+    except Exception:  # noqa: BLE001
+        return False
+
+
+LAST_KNOWN_LABEL = "based on last-known stop levels captured {ts}; Schwab not monitored — verify at Schwab"
+
+
+def _fmt_et(value) -> str:
+    from datetime import datetime, timezone
+    from zoneinfo import ZoneInfo
+    try:
+        d = value if isinstance(value, datetime) else datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        if d.tzinfo is None:
+            d = d.replace(tzinfo=timezone.utc)
+        return d.astimezone(ZoneInfo("America/New_York")).strftime("%Y-%m-%d %H:%M ET")
+    except Exception:  # noqa: BLE001
+        return str(value or "unknown")
+
+
+def _blind_accounts(res: dict) -> list[str] | None:
+    """Accounts whose live stops were NOT read this run: None = all (paused/total failure), else the list."""
+    info = (res.get("summary") or {}).get("schwab_stops") or {}
+    failed = [a for a in (info.get("failed_accounts") or []) if a]
+    return None if info.get("paused") or not failed else failed
+
+
+def _last_known_blind_alerts(res: dict, *, now=None) -> dict:
+    """While Schwab is blind: warn from the LAST-KNOWN stop levels priced on the non-Schwab canonical mark.
+
+    ZETA 2026-10-15: a resting Schwab stop filled with no warning because the blind scan held zero Schwab stops.
+    NEAR_TRIGGER / TRIGGERED_LIKELY go out as ONE immediate P1 (never digested, never flood-capped) per run;
+    dedupe per (condition, account, order): NEAR every ``near_trigger_realert_hours``, TRIGGERED_LIKELY once per
+    ET day. Returns {stops, findings, sent, telegram_message_id, error?}."""
+    from datetime import datetime, timedelta, timezone
+    from lib import last_known_stops as lks
+    now = now or datetime.now(timezone.utc)
+    out: dict = {"stops": [], "findings": [], "sent": [], "telegram_message_id": None}
+    if res.get("schwab_stops_status") != "UNAVAILABLE":
+        return out
+    cfg = lks.load_config()
+    if not cfg.get("enabled", True):
+        out["disabled"] = True
+        return out
+    try:
+        stops = lks.load_last_known(brokers=cfg.get("brokers") or ["schwab"], accounts=_blind_accounts(res),
+                                    lookback_days=float(cfg.get("lookback_days") or 10), now=now)
+    except Exception as exc:  # noqa: BLE001 — reported in the DEGRADED page, never silent
+        out["error"] = f"{type(exc).__name__}: {str(exc)[:160]}"
+        return out
+    try:
+        from schwab_position_sync import _HOLDINGS_ACCT
+    except Exception:  # noqa: BLE001
+        _HOLDINGS_ACCT = {"schwab_roth_ira": "schwab_roth"}
+    quotes = lks.holdings_quotes()
+    out["stops"] = stops
+    findings = lks.evaluate(stops, quotes, near_pct=float(cfg.get("near_trigger_pct") or 2.0),
+                            label=lambda a: _HOLDINGS_ACCT.get(a, a))
+    out["findings"] = findings
+    near_since = now - timedelta(hours=float(cfg.get("near_trigger_realert_hours") or 2))
+    day_since = _et_day_start(now)
+    lines, ids = [], []
+    for f in findings:
+        cond = f["condition"]
+        key = f"lkstop:v1:{cond}:{f['account']}:{f['order_id']}"
+        if _alerted_since(f["symbol"], day_since if cond == lks.TRIGGERED_LIKELY else near_since, condition_key=key):
+            continue
+        captured = _fmt_et(f.get("captured_at"))
+        quote = f"${f['current_price']:.2f} ({f.get('price_source') or 'canonical mark'} {_fmt_et(f.get('price_at'))})"
+        qty = f" {f['qty']:g} sh" if isinstance(f.get("qty"), (int, float)) else ""
+        if cond == lks.TRIGGERED_LIKELY:
+            line = (f"🚨 TRIGGERED-LIKELY: *{f['symbol']}* ({f['account']}) — price {quote} is AT/BELOW last-known "
+                    f"stop ${f['stop_price']:.2f} (#{f['order_id']}{qty}) — the stop has likely FILLED; "
+                    "position may be flat.")
+            sev = "urgent"
+        else:
+            line = (f"⚠️ NEAR_TRIGGER: *{f['symbol']}* ({f['account']}) — price {quote} within "
+                    f"{f['proximity_pct']}% of last-known stop ${f['stop_price']:.2f} (#{f['order_id']}{qty}) — "
+                    "about to fire.")
+            sev = "warning"
+        label = LAST_KNOWN_LABEL.format(ts=captured)
+        payload = {"kind": "stop_health", "condition": cond, "condition_key": key, "basis": "last_known_stop",
+                   "last_known_captured_at": str(f.get("captured_at")), "last_known_source": f.get("source"),
+                   "price_source": f.get("price_source"), "price_at": str(f.get("price_at")),
+                   **{k: f.get(k) for k in ("account", "symbol", "broker", "order_id", "order_type", "stop_price",
+                                            "qty", "held_qty", "current_price", "proximity_pct")}}
+        ids.append(_siem(f["symbol"], sev, f"[stop-health] {cond} (last-known) · {f['symbol']}@{f['account']} · "
+                                           f"{line} · {label}", payload))
+        lines.append(f"{line}\n_{label}_")
+        out["sent"].append(f"{f['symbol']}:{cond}:last_known")
+    if lines:
+        n_trig = sum(1 for s in out["sent"] if lks.TRIGGERED_LIKELY in s)
+        head = (f"🚨 STOP HEALTH — LAST-KNOWN STOPS ({'TRIGGERED-LIKELY' if n_trig else 'NEAR_TRIGGER'}): "
+                f"{len(lines)} alert(s) — Schwab is NOT monitored; verify at Schwab now")
+        mid = _send_telegram(head + "\n\n" + "\n\n".join(lines), priority="P1")
+        _attach_telegram_id(ids, mid)
+        out["telegram_message_id"] = mid
+    return out
+
+
+def _schwab_unavailable_alert(res: dict, blind: dict | None = None) -> dict | None:
     """DEGRADED, routed P1 (never digested): the Schwab stop read failed or Schwab is paused (2026-10-14).
 
     Before: _schwab_stops() swallowed every error into [], the scan held 0 Schwab stops, and this check logged
-    ok=True — a blind monitor reporting healthy. Returns the degraded record (None when Schwab stops were read)."""
+    ok=True — a blind monitor reporting healthy. Returns the degraded record (None when Schwab stops were read).
+    ZETA 2026-10-15: paged at most once per ET day, naming the held symbols whose stops cannot be verified and
+    the last-known stop levels still being watched in their place."""
     if res.get("schwab_stops_status") != "UNAVAILABLE":
         return None
     info = (res.get("summary") or {}).get("schwab_stops") or {}
     reason = str(info.get("reason") or "unknown")
     line = ("🚨 STOP HEALTH — DEGRADED: Schwab stop data unavailable — stops at Schwab are NOT being monitored. "
             f"Reason: {reason[:240]}")
-    try:
-        from lib import schwab_access_mode as _sam
-        hours = int(_sam.setting("alerts.stop_data_unavailable_realert_hours", 4) or 4)
-    except Exception:  # noqa: BLE001
-        hours = 4
+    blind = blind or {}
     out = {"status": "DEGRADED", "condition": SCHWAB_UNAVAILABLE_CONDITION, "reason": reason, "line": line,
-           "sent": False, "telegram_message_id": None, "realert_hours": hours}
-    if _recently_alerted("SCHWAB", SCHWAB_UNAVAILABLE_CONDITION, hours=hours):
+           "sent": False, "telegram_message_id": None, "realert": "once_per_et_day"}
+    if _alerted_since("SCHWAB", _et_day_start(), needle=SCHWAB_UNAVAILABLE_CONDITION):
         out["deduped"] = True
         return out
+    try:
+        from lib import last_known_stops as lks
+        held = lks.held_symbols(lks.holdings_quotes())
+    except Exception:  # noqa: BLE001
+        held = []
+    stops = blind.get("stops") or []
+    watched = sorted({f"{s['symbol']}@{s['account']}" for s in stops})
+    body = line
+    if held:
+        body += f"\nStops NOT verifiable ({len(held)}): " + ", ".join(held)[:1500]
+    if watched:
+        oldest = min((s.get("captured_at") for s in stops if s.get("captured_at")), default=None)
+        body += (f"\nStill warning from {len(stops)} last-known stop level(s) on: " + ", ".join(watched)[:800]
+                 + f" (captured since {_fmt_et(oldest)}; near-trigger / likely-filled pages continue).")
+    elif blind.get("error"):
+        body += f"\nLast-known stop levels could not be loaded ({blind['error']}) — NO stop warnings are possible."
+    else:
+        body += "\nNo last-known stop levels are stored — NO stop warnings are possible until Schwab is read."
     payload = {"kind": "stop_health", "condition": SCHWAB_UNAVAILABLE_CONDITION, "broker": "schwab",
-               "status": "DEGRADED", **{k: info.get(k) for k in ("reason", "failed_accounts", "paused")}}
+               "status": "DEGRADED", "unverifiable": held, "last_known_watched": watched,
+               **{k: info.get(k) for k in ("reason", "failed_accounts", "paused")}}
     aid = _siem("SCHWAB", "critical", f"[stop-health] {SCHWAB_UNAVAILABLE_CONDITION} · {line}", payload)
-    mid = _send_telegram(line, priority="P1", dedupe_minutes=hours * 60)
+    mid = _send_telegram(body, priority="P1", dedupe_minutes=24 * 60)
     _attach_telegram_id([aid], mid)
-    out.update(sent=True, telegram_message_id=mid)
+    out.update(sent=True, telegram_message_id=mid, unverifiable=held, last_known_watched=watched)
     return out
 
 
@@ -681,7 +820,15 @@ def run(quiet: bool = False) -> dict:
     summary["incident_recovery"] = _recover_current_scan(res, scan_started_at)
     if not summary["incident_recovery"].get("ok"):
         print("stop_health: incident recovery unverified; alerts remain open", file=sys.stderr)
-    degraded = _schwab_unavailable_alert(res)
+    try:
+        blind = _last_known_blind_alerts(res)
+    except Exception as exc:  # noqa: BLE001 — the DEGRADED page below still goes out and says so
+        blind = {"stops": [], "findings": [], "sent": [], "error": f"{type(exc).__name__}: {str(exc)[:160]}"}
+    summary["last_known"] = {"stops": len(blind.get("stops") or []), "findings": len(blind.get("findings") or []),
+                             "sent": blind.get("sent") or [], "telegram_message_id": blind.get("telegram_message_id"),
+                             "error": blind.get("error")}
+    fired.extend(blind.get("sent") or [])
+    degraded = _schwab_unavailable_alert(res, blind)
     summary["degraded"] = degraded
     if degraded:
         fired.append(f"SCHWAB:{SCHWAB_UNAVAILABLE_CONDITION}" + (":deduped" if degraded.get("deduped") else ""))

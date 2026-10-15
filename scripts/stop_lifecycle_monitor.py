@@ -399,6 +399,14 @@ def scan(persist: bool = True) -> dict:
     alerts = [r for r in records if r["health"] == "alert"]
     if persist:
         _persist(records)
+        # Durable last-known Schwab stop levels (ZETA 2026-10-15): stop_lifecycle above is rebuilt every run, so
+        # once Schwab goes blind nothing remembered where the stops rest. Only what this scan already read.
+        if schwab_rows or not schwab_unavailable:
+            try:
+                from lib import last_known_stops as _lks
+                _lks.record_snapshot(schwab_rows, complete=not schwab_unavailable)
+            except Exception:  # noqa: BLE001 — never break the scan over the snapshot
+                pass
     return {"generated_at": _dt.datetime.now(_dt.timezone.utc).isoformat(),
             "stops": records, "summary": summary, "alerts": alerts,
             "schwab_stops_status": "UNAVAILABLE" if schwab_unavailable else "ok"}

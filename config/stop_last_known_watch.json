@@ -1,0 +1,13 @@
+{
+  "schema": "StopLastKnownWatch@v1",
+  "as_of": "2026-10-15",
+  "owner": "scripts/lib/last_known_stops.py (read by scripts/stop_health_check.py)",
+  "why": "ZETA 2026-10-15: a resting Schwab stop filled with no near-trigger warning while Schwab was blind (config/schwab_access_mode.yaml mode=forbidden). While the live stop read is UNAVAILABLE, stop_health warns from the last-known stop levels priced on the non-Schwab canonical mark.",
+  "enabled": true,
+  "near_trigger_pct": 2.0,
+  "lookback_days": 10,
+  "near_trigger_realert_hours": 2,
+  "triggered_likely_realert": "once_per_et_day",
+  "degraded_page": "once_per_et_day",
+  "brokers": ["schwab"]
+}
