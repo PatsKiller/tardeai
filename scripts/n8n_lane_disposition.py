@@ -13,7 +13,9 @@ and writes ``LANE_DISPOSITION_<date>.csv``. Every row gets exactly one dispositi
 
     RETIRE        dead / duplicate / obsolete; evidence column says why (output age, duplicate-of id)
     CONSOLIDATE   folded on the host into one stage runner first (target pipeline named)
-    STAY_HOST     daemons, watchdogs, broker/order/stop/protection/secret, senders, OS/other apps (§23.14, §23.23)
+    STAY_HOST     2026-10-14 rule: daemons, watchdogs, broker, senders, OS/other apps (§23.14, §23.23). SUPERSEDED by
+                  the operator directive 2026-10-15: only F07 and (all) registry_systemd rows stay (DEFERRED-I2);
+                  every other STAY_HOST row becomes MIGRATE_N8N, waves CD1-CD6 (``apply_cutover_directive``).
     MIGRATE_N8N   timer -> fabric Run Lane (leaf lane, agent workflow or event subscription; wave named)
 
 Registry ACTIVE lanes with no crontab line (systemd timers/services, n8n, event, none) are appended as
@@ -350,6 +352,86 @@ def classify(
     }
 
 
+# ── operator directive 2026-10-15 "N8N Cutover Decision" ─────────────────────────────────────────────────────────────
+#: Applied after ``classify`` (which keeps the 2026-10-14 rules for the record). Every registry_systemd row, whatever
+#: its disposition, becomes STAY_HOST / DEFERRED-I2 ("not to be migrated, refactored, or reclassified as part of the
+#: current cutover effort"); F07 STAY_HOST rows stay too; every other STAY_HOST row becomes MIGRATE_N8N. Waves CD1-CD6 run in this order: read-only, appenders,
+#: senders, LLM agents, watchdogs, broker last.
+DIRECTIVE_ID = "operator directive 2026-10-15 (N8N Cutover Decision)"
+DIRECTIVE_DEFERRED_FAMILIES = {"F07"}
+DIRECTIVE_DEFERRED_SOURCES = {"registry_systemd"}
+DIRECTIVE_WAVES = ("CD1", "CD2", "CD3", "CD4", "CD5", "CD6")
+DIRECTIVE_DEFERRED_WAVE = "DEFERRED-I2"
+_READ_ONLY_FAMILIES = {"F36", "F49"}
+_SENDER_FAMILIES = {"F10", "F37", "F22"}
+_LLM_FAMILIES = {"F40", "F29"}
+_WATCHDOG_FAMILIES = {"F07w"}
+_BROKER_FAMILIES = {"F09"}
+
+
+def directive_wave(fid: str, prior_target: str) -> tuple[str, str, str]:
+    """(wave, target, target_shape) for a STAY_HOST row the directive moves to n8n."""
+    if fid in _BROKER_FAMILIES:
+        return (
+            "CD6",
+            "n8n schedules the host broker lane; host executes under the trading lock "
+            "(n8n holds no broker credential and calls no order route)",
+            "host_executed_lane",
+        )
+    if fid in _WATCHDOG_FAMILIES:
+        return (
+            "CD5",
+            "n8n-orchestrated watchdog; monitoring independence kept by the outside deadman (DD12)",
+            "leaf_lane",
+        )
+    if fid in _LLM_FAMILIES:
+        return "CD4", "agent workflow (judgment via governed bridge)", "agent_workflow"
+    if fid in _SENDER_FAMILIES or prior_target.startswith("host sender"):
+        tgt = "n8n-orchestrated sender -> host send chokepoint (send-intent)"
+        if fid == "F10":
+            tgt = "n8n-orchestrated primary + independent host P1 backstop (send chokepoint)"
+        return "CD3", tgt, "leaf_lane"
+    if fid in _READ_ONLY_FAMILIES:
+        return "CD1", "fabric Run Lane (registry leaf dispatcher)", "leaf_lane"
+    return "CD2", "fabric Run Lane (registry leaf dispatcher)", "leaf_lane"
+
+
+def apply_cutover_directive(d: dict[str, str], fid: str, source: str) -> dict[str, str]:
+    """Re-disposition one classified row under the 2026-10-15 directive.
+
+    Every registry_systemd row (whatever its 2026-10-14 disposition) and every F07 STAY_HOST row stays on the host,
+    wave DEFERRED-I2; every other STAY_HOST row becomes MIGRATE_N8N; other rows are unchanged."""
+    if source in DIRECTIVE_DEFERRED_SOURCES:
+        return {
+            **d,
+            "disposition": "STAY_HOST",
+            "target": "host systemd (unchanged this iteration)",
+            "target_shape": "host",
+            "wave": DIRECTIVE_DEFERRED_WAVE,
+            "evidence": f"operator directive 2026-10-15: registry_systemd deferred this iteration "
+            f"(was: {d.get('disposition', '')}/{d.get('wave', '')}; {d.get('evidence', '')})",
+        }
+    if d.get("disposition") != "STAY_HOST":
+        return d
+    prior = d.get("evidence", "")
+    if fid in DIRECTIVE_DEFERRED_FAMILIES:
+        return {
+            **d,
+            "wave": DIRECTIVE_DEFERRED_WAVE,
+            "evidence": f"{DIRECTIVE_ID}: deferred this iteration (F07 daemon/@reboot stays outside n8n; revisit "
+            f"next architecture review); was: {prior}",
+        }
+    wave, tgt, shape = directive_wave(fid, d.get("target", ""))
+    return {
+        **d,
+        "disposition": "MIGRATE_N8N",
+        "target": tgt,
+        "target_shape": shape,
+        "wave": wave,
+        "evidence": f"{DIRECTIVE_ID}: STAY_HOST rationale not accepted as a blocker; superseded (was: {prior})",
+    }
+
+
 def migrate_wave(row: Optional[dict[str, Any]], inv: Optional[dict[str, str]]) -> str:
     """M1 = this PR's shadow wave (overrides); M2 = already shadow, needs canary + live fire; M3 = needs only an
     allowlist + dispatch row (clean dry run exists); M4 = needs refactor (dry-run flag / flock / sender reach)."""
@@ -398,7 +480,9 @@ def build(
             matched_lanes.add(r["lane_id"])
         inv = inventory_for(lane, job["schedule"], inv_by_lane)
         fam = fam_of.get(inv["job_name"]) if inv else None
-        d = classify(lane, row, inv, fam, overrides, registry)
+        d = apply_cutover_directive(
+            classify(lane, row, inv, fam, overrides, registry), (fam or {}).get("family_id", ""), "crontab"
+        )
         log, age = output_age_hours(job["command"], env, now) if measure_logs else ("", "")
         skind, sage = signal_age_hours(row, sroot, now) if measure_logs else ("", "")
         out.append(
@@ -433,7 +517,9 @@ def build(
             src = f"registry_{sched.get('kind') or 'none'}"
         inv = inventory_for(lane, str(sched.get("expression") or ""), inv_by_lane)
         fam = fam_of.get(inv["job_name"]) if inv else None
-        d = classify(lane, row, inv, fam, overrides, registry)
+        d = apply_cutover_directive(
+            classify(lane, row, inv, fam, overrides, registry), (fam or {}).get("family_id", ""), src
+        )
         skind, sage = signal_age_hours(row, sroot, now) if measure_logs else ("", "")
         out.append(
             {

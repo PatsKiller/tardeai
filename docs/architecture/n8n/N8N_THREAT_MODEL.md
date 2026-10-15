@@ -6,7 +6,7 @@ as_of:       2026-10-15 (runtime facts measured 2026-10-15 ~13:03Z on ms01-openc
 Basis:       N8N_REFERENCE_ARCHITECTURE.md §4-§6, §9 (planes, B1-B5, routes, controls)
 Audit:       independent due diligence 2026-10-15 (pinned e355be188), §2, §4, §11 and DD01/DD02/DD08/DD11/DD13/DD17
 Owner:       platform security (ROLE to confirm); Chief Architect: Agent A
-Companions:  AUDIT_20261015_FINDINGS.md (tracker), N8N_DECISION_LEDGER.md (D1-D9),
+Companions:  AUDIT_20261015_FINDINGS.md (tracker), N8N_DECISION_LEDGER.md (D1-D11),
              ENV_ENFORCE_READINESS_20261015.md (executor env measurement), N8N_HITL_CONTRACT_SPEC.md,
              N8N_LLM_STEP_ROUTE_SPEC.md
 ```
