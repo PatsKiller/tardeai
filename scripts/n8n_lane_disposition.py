@@ -14,7 +14,7 @@ and writes ``LANE_DISPOSITION_<date>.csv``. Every row gets exactly one dispositi
     RETIRE        dead / duplicate / obsolete; evidence column says why (output age, duplicate-of id)
     CONSOLIDATE   folded on the host into one stage runner first (target pipeline named)
     STAY_HOST     2026-10-14 rule: daemons, watchdogs, broker, senders, OS/other apps (§23.14, §23.23). SUPERSEDED by
-                  the operator directive 2026-10-15: only F07 and registry_systemd rows stay (wave DEFERRED-I2);
+                  the operator directive 2026-10-15: only F07 and (all) registry_systemd rows stay (DEFERRED-I2);
                   every other STAY_HOST row becomes MIGRATE_N8N, waves CD1-CD6 (``apply_cutover_directive``).
     MIGRATE_N8N   timer -> fabric Run Lane (leaf lane, agent workflow or event subscription; wave named)
 
@@ -353,9 +353,9 @@ def classify(
 
 
 # ── operator directive 2026-10-15 "N8N Cutover Decision" ─────────────────────────────────────────────────────────────
-#: Applied after ``classify`` (which keeps the 2026-10-14 rules for the record). Every STAY_HOST row whose family is not
-#: F07 and whose source is not a registry systemd unit becomes MIGRATE_N8N; F07 and registry_systemd rows stay on the
-#: host unchanged, deferred to the next architecture review. Waves CD1-CD6 run in this order: read-only, appenders,
+#: Applied after ``classify`` (which keeps the 2026-10-14 rules for the record). Every registry_systemd row, whatever
+#: its disposition, becomes STAY_HOST / DEFERRED-I2 ("not to be migrated, refactored, or reclassified as part of the
+#: current cutover effort"); F07 STAY_HOST rows stay too; every other STAY_HOST row becomes MIGRATE_N8N. Waves CD1-CD6 run in this order: read-only, appenders,
 #: senders, LLM agents, watchdogs, broker last.
 DIRECTIVE_ID = "operator directive 2026-10-15 (N8N Cutover Decision)"
 DIRECTIVE_DEFERRED_FAMILIES = {"F07"}
@@ -397,17 +397,29 @@ def directive_wave(fid: str, prior_target: str) -> tuple[str, str, str]:
 
 
 def apply_cutover_directive(d: dict[str, str], fid: str, source: str) -> dict[str, str]:
-    """Re-disposition one classified row under the 2026-10-15 directive. Only STAY_HOST rows change."""
+    """Re-disposition one classified row under the 2026-10-15 directive.
+
+    Every registry_systemd row (whatever its 2026-10-14 disposition) and every F07 STAY_HOST row stays on the host,
+    wave DEFERRED-I2; every other STAY_HOST row becomes MIGRATE_N8N; other rows are unchanged."""
+    if source in DIRECTIVE_DEFERRED_SOURCES:
+        return {
+            **d,
+            "disposition": "STAY_HOST",
+            "target": "host systemd (unchanged this iteration)",
+            "target_shape": "host",
+            "wave": DIRECTIVE_DEFERRED_WAVE,
+            "evidence": f"operator directive 2026-10-15: registry_systemd deferred this iteration "
+            f"(was: {d.get('disposition', '')}/{d.get('wave', '')}; {d.get('evidence', '')})",
+        }
     if d.get("disposition") != "STAY_HOST":
         return d
     prior = d.get("evidence", "")
-    if fid in DIRECTIVE_DEFERRED_FAMILIES or source in DIRECTIVE_DEFERRED_SOURCES:
-        why = "F07 daemon/@reboot" if fid in DIRECTIVE_DEFERRED_FAMILIES else "registry_systemd asset"
+    if fid in DIRECTIVE_DEFERRED_FAMILIES:
         return {
             **d,
             "wave": DIRECTIVE_DEFERRED_WAVE,
-            "evidence": f"{DIRECTIVE_ID}: deferred this iteration ({why} stays on server unchanged; revisit next "
-            f"architecture review); was: {prior}",
+            "evidence": f"{DIRECTIVE_ID}: deferred this iteration (F07 daemon/@reboot stays outside n8n; revisit "
+            f"next architecture review); was: {prior}",
         }
     wave, tgt, shape = directive_wave(fid, d.get("target", ""))
     return {

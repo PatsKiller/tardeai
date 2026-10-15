@@ -211,7 +211,7 @@
     {
       "id": "D11",
       "statement": "n8n cutover directive: every lane family except F07 (long-running daemons and @reboot services) and every registry_systemd asset is approved for n8n cutover; host-side/cron/external rationales (maturity, reliability, operational risk, monitoring) are not accepted as blockers, and conflicting guidance is superseded.",
-      "scope": "every lane in docs/implementation/n8n-maturity/LANE_DISPOSITION_20261015.csv; F07 and registry_systemd rows deferred to the next architecture review",
+      "scope": "every lane in docs/implementation/n8n-maturity/LANE_DISPOSITION_20261015.csv; F07 and every registry_systemd row (not migrated, refactored or reclassified this iteration) deferred to the next architecture review",
       "status": "partially_realized",
       "accountable_owner_role": "program owner (n8n maturity) + operator (ROLE to confirm)",
       "alternatives_rejected": ["keep STAY_HOST families (F09, F10, F36, F40, F07w, ...) on cron for maturity/reliability/monitoring reasons (rejected by the operator as a blocker)", "migrate F07 daemons and registry_systemd assets in this iteration (deferred)"],

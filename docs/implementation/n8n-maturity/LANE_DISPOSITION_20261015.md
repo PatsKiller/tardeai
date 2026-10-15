@@ -1,18 +1,68 @@
 # Lane disposition, 2026-10-15
 
-> **Operator directive 2026-10-15 "N8N Cutover Decision" (decision D11) — applied to this table.** All lane families
-> are approved for n8n cutover except F07 (long-running daemons and `@reboot` services) and all `registry_systemd`
-> assets, which stay on the server unchanged (revisit at the next architecture review). Approved list as given: F09,
-> F36, F41, F06, F40, F10, F07w (monitoring independence preserved through architecture), F37, F49, F08, F23, F33, F22
-> — and every other non-F07 family. Verbatim: "The rationale that these workflows should remain host-side, cron-based,
-> or external due to maturity, reliability, operational risk, monitoring requirements, or similar concerns is not
-> accepted as a blocker." "If any existing documentation, standards, inventory notes, exception records, or
-> implementation guidance state otherwise, consider that guidance superseded."
+**Operator directive 2026-10-15 (decision D11) — applied to this table.** Verbatim, authoritative wording:
+
+> **Agent Instruction: N8N Cutover Decision**
 >
-> The builder applies it after the 2026-10-14 rules (`apply_cutover_directive`): every STAY_HOST row with
-> `family_id != F07` and `source != registry_systemd` is now **MIGRATE_N8N**, with the directive cited in `evidence`
-> (`was: <old reason>` kept). F07 and `registry_systemd` rows stay **STAY_HOST**, wave **`DEFERRED-I2`** (deferred this
-> iteration). The old totals below are struck, not deleted.
+> I reviewed the entire assessment and disagree with the conclusions for every category except F07 (Long-Running
+> Daemons and @reboot).
+>
+> **Decision**
+>
+> F07 remains outside of N8N for this iteration. Long-running services, daemons, watchdog-dependent processes, OAuth
+> proxy services, and other continuously running infrastructure are not cutover candidates at this time.
+>
+> All other categories listed below are approved for cutover to N8N.
+>
+> registry_systemd files are to remain on the server for this iteration. They are not to be migrated, refactored, or
+> reclassified as part of the current cutover effort. Once the broader N8N migration is complete and operating
+> successfully, we will evaluate these assets during the next iteration and determine whether any additional
+> consolidation into N8N is appropriate.
+>
+> The rationale that these workflows should remain host-side, cron-based, or external due to maturity, reliability,
+> operational risk, monitoring requirements, or similar concerns is not accepted as a blocker. Our target architecture
+> requires these capabilities to be implemented as: Matured within N8N; Automated end-to-end; Self-healing and
+> self-fixing where applicable; Operationally resilient without requiring manual intervention; Fully documented,
+> monitored, and auditable.
+>
+> If any existing documentation, standards, inventory notes, exception records, or implementation guidance state
+> otherwise, consider that guidance superseded. I will either: Approve an exception directly, or Require the language,
+> classification, architecture, and documentation to be updated to align with this directive.
+>
+> This is not a discussion item, not a recommendation, and not a request for further analysis. It is a direct
+> architectural decision and implementation directive.
+>
+> Approved for N8N Cutover: F09 Broker / Order / Stop / Protection / Secret; F36 Health / Audit / Monitor Plane; F41
+> Retention, Backup, Hygiene Timers; F06 Other Applications and OS Units; F40 LLM-Judgment Agents on Clocks (CIO /
+> Hermes / Aegis); F10 Operator Senders (P1 Paths); F07w Host Watchdogs and Guards (provided monitoring independence is
+> preserved through architecture and implementation); F37 Digests and Reminders; F49 Already on N8N (Platform Lanes);
+> F08 Automation-Fabric Infrastructure; F23 News Ingestion; F33 Deploy Chain; F22 LLM Spend Reports.
+>
+> Deferred for This Iteration: F07 Long-Running Daemons and @reboot Services; registry_systemd files and associated
+> service definitions.
+>
+> Implementation Guidance: Proceed under the assumption that all approved categories are expected to be migrated,
+> engineered, tested, documented, and operationalized within N8N unless I explicitly authorize an exception. Do not
+> spend additional cycles defending legacy placement decisions. Instead, focus on designing the required controls,
+> redundancy, monitoring, recovery, alerting, and self-healing capabilities necessary to make these workflows
+> production-grade within N8N. For the current phase, keep the registry_systemd assets on the server unchanged.
+> Complete the N8N cutover first, stabilize operations, validate production readiness, and revisit the
+> registry_systemd strategy during the next architecture review cycle. The default assumption should be that they
+> remain in place until a future review explicitly determines otherwise.
+
+The builder applies it after the 2026-10-14 rules (`apply_cutover_directive`):
+
+- every STAY_HOST row with `family_id != F07` and `source != registry_systemd` is now **MIGRATE_N8N**, with the
+  directive cited in `evidence` (`was: <old reason>` kept);
+- F07 STAY_HOST rows stay **STAY_HOST**, wave **`DEFERRED-I2`**;
+- **every `registry_systemd` row** (101), whatever its 2026-10-14 disposition, is **STAY_HOST / `DEFERRED-I2`** with
+  evidence `operator directive 2026-10-15: registry_systemd deferred this iteration (was: <disposition>/<wave>; …)`.
+  That includes 25 rows that were MIGRATE_N8N, 12 CONSOLIDATE and 12 RETIRE (the R1-timer `hermes-shadow-scorer` and
+  11 of the 12 R2 rows below are therefore deferred, not retired, this iteration).
+- **F41 and F08 have nothing to move this iteration.** Every F41 and F08 row is `registry_systemd`, so although both
+  families are approved, all their rows are deferred by the same directive.
+
+The old totals below are struck, not deleted.
 
 One row per active crontab job line, plus one row per ACTIVE registry lane that no crontab line schedules. Every row
 has exactly one disposition. The table is `LANE_DISPOSITION_20261015.csv` (beside this file).
@@ -47,14 +97,10 @@ There are also 140 registry-only rows: 101 systemd units, 23 cron rows with no l
 
 | Disposition | Rows |
 |---|---:|
-| RETIRE | 13 (R1-timer 1, `hermes-shadow-scorer`; R2 12) |
-| CONSOLIDATE | 17 |
-| STAY_HOST | **53** (~~73~~): 52 `registry_systemd` + 1 F07 cron row with no line, all wave `DEFERRED-I2` |
-| MIGRATE_N8N | **57** (~~37~~): +20 by the directive — CD1 5 · CD2 1 · CD3 1 · CD6 13 (F09 cron rows with no live line) |
-
-Note: 25 `registry_systemd` rows were already MIGRATE_N8N (and 12 CONSOLIDATE, 12 RETIRE) under the 2026-10-14 rules;
-this PR changes only STAY_HOST rows. Whether the directive's "all `registry_systemd` assets stay on the server
-unchanged" also defers those 25 is an open question for the operator / Agent A.
+| RETIRE | **1** (~~13~~ R1-timer 1, `hermes-shadow-scorer`; R2 12 — 12 of them are `registry_systemd`, now deferred) |
+| CONSOLIDATE | **5** (~~17~~): C1 4 · C5 1 |
+| STAY_HOST | **102** (~~73~~): all 101 `registry_systemd` rows + 1 F07 cron row with no line, all wave `DEFERRED-I2` |
+| MIGRATE_N8N | **32** (~~37~~): M0 1 · M3 5 · M5 3 · M6 3 · CD1 5 · CD2 1 · CD3 1 · CD6 13 (F09 cron rows with no live line) |
 
 ## Directive cutover waves (CD1-CD6), in order
 
@@ -70,7 +116,7 @@ not an activation grant.
 | CD4 LLM agents | 9 | 0 | F40, F29 | agent workflow via the governed bridge |
 | CD5 watchdogs | 2 | 0 | F07w (crontab only; F07w systemd units are deferred) | n8n-orchestrated; independence from the outside dead-man (DD12) |
 | CD6 broker | 45 | 13 | F09 | n8n **schedules** the host lane; the host executes under the trading lock; n8n holds no broker credential and calls no order route |
-| DEFERRED-I2 | 1 | 53 | F07 (any source), every STAY_HOST `registry_systemd` row (F41, F36, F06, F07, F07w, F08, F09, F40) | stays on the server unchanged; next architecture review |
+| DEFERRED-I2 | 1 | 102 | F07 STAY_HOST rows (any source) and every `registry_systemd` row (F36 18, F41 15, F07 12, F40 12, F03 7, F06 7, F51 5, F07w 5, F08 4, F38 4, F39 4, F04 2, F05 2, F02 1, F09 1, F15 1, unfamilied 1) | stays on the server unchanged; next architecture review |
 
 ## What changed against the 2026-10-14 status pass
 
@@ -106,6 +152,9 @@ not an activation grant.
 ## Waves
 
 ### RETIRE
+
+*Operator directive 2026-10-15: R1-timer and the 11 `registry_systemd` R2 rows are deferred (STAY_HOST /
+`DEFERRED-I2`), not retired, this iteration; the crontab R1/R1b lines are unaffected.*
 
 - **R1, this PR, `docs/ops/packets/lane-retire-wave1-20261015`, tier A, 4 lines:**
   - `agent-intelligence-cron-deep`, `-daily` and `-intraday`: CURRENT has no `.venv`, every run logs "No such file",
