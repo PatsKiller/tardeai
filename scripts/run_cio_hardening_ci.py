@@ -4623,6 +4623,14 @@ GATES = [
         ["tests/test_llm_process_seed_sync_20261010.py"],
     ),
     (
+        # hermes_tag_engine dollar cap (2026-10-15): the registry row had no daily_cost_cap_usd, so check_cost_cap
+        # logged llm_lane_unregistered and enforced no process cap. Pins: the row declares $0.05; the warning no
+        # longer fires; with mocked ledger spend, spend + projection over the cap is refused COST_CAP_EXCEEDED
+        # scope=process; an uncapped control id still warns. Hermetic: no DB, ledger replaced.
+        "hermes_tag_engine_cost_cap_20261015",
+        ["tests/test_hermes_tag_engine_cost_cap_20261015.py"],
+    ),
+    (
         # The six generic n8n workflows (AGENTS.md §23.11) are declared by their committed INDEX, so activating
         # them under their `cron` grant does not turn check_lane_registry --n8n-live red with six
         # UNDECLARED_N8N_WORKFLOW; an unknown id still fails; a missing/foreign INDEX fails closed. Hermetic.
