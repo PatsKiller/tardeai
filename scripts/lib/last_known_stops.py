@@ -8,7 +8,7 @@ A resting ZETA stop then filled with no near-trigger warning. This module keeps 
     (stop_lifecycle is rebuilt each run, so it cannot hold a last-known level).
   * ``load_last_known`` returns the newest known level per (account, order) from that table, falling back to
     the stop_health SIEM payloads (alert_events), which carry account/order/stop/qty from the last Schwab read.
-  * ``holdings_quotes`` prices them from canonical holdings.json (finviz canonical mark, repriced every 15 min);
+  * ``holdings_quotes`` prices them from the position store canonical mark (finviz, repriced every 15 min);
     no broker call is made anywhere here.
   * ``evaluate`` (pure) flags NEAR_TRIGGER (within near_pct) and TRIGGERED_LIKELY (price at/below the stop).
 
@@ -23,7 +23,6 @@ from typing import Any, Callable, Iterable
 
 ROOT = Path(__file__).resolve().parents[2]
 CONFIG_PATH = ROOT / "config" / "stop_last_known_watch.json"
-HOLDINGS_PATH = ROOT / "data" / "portfolios" / "state" / "holdings.json"
 
 DEFAULTS: dict[str, Any] = {
     "enabled": True,
@@ -261,12 +260,13 @@ def record_operator_stop(*, account: str, symbol: str, stop_price: float | None,
 
 
 def holdings_quotes(path: Path | None = None) -> dict:
-    """(holdings account label, SYMBOL) -> shares, price, price_source, price_at from canonical holdings.json.
-
-    current_price there is the finviz canonical mark (finviz-intraday-repricer, every 15 min): no Schwab call."""
+    """(holdings account label, SYMBOL) -> shares, price, price_source, price_at, via the position store API
+    (lib/portfolio_positions: load_store + resolve_mark). The canonical mark (finviz-intraday-repricer, every
+    15 min) is passed as the finviz quote so it wins over a stored broker price: no Schwab call."""
+    from lib import portfolio_positions as pp
     out: dict = {}
     try:
-        doc = json.loads((path or HOLDINGS_PATH).read_text(encoding="utf-8"))
+        doc = pp.load_store(path) or {}
     except Exception:  # noqa: BLE001
         return out
     for r in doc.get("holdings", []) or []:
@@ -275,11 +275,16 @@ def holdings_quotes(path: Path | None = None) -> dict:
         sym = str(r.get("symbol") or r.get("ticker") or "").upper()
         if not sym:
             continue
+        cm = _num(r.get("canonical_mark"))
+        fv = ({"price": cm, "as_of": r.get("canonical_mark_ingested_at")}
+              if cm and str(r.get("canonical_mark_source") or "").startswith("finviz") else None)
+        mark = pp.resolve_mark(r, finviz=fv)
         out[(str(r.get("account") or ""), sym)] = {
             "shares": _num(r.get("shares", r.get("qty"))),
-            "price": _num(r.get("current_price", r.get("price"))),
-            "price_source": r.get("price_source") or r.get("canonical_mark_source"),
-            "price_at": r.get("canonical_mark_ingested_at") or doc.get("last_repriced"),
+            "price": _num(mark.get("price")),
+            "price_source": (r.get("canonical_mark_source") if fv else mark.get("source")),
+            "price_at": mark.get("as_of"),
+            "price_stale": mark.get("stale"),
         }
     return out
 
