@@ -30,6 +30,9 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT / "tests") not in sys.path:
+    sys.path.append(str(ROOT / "tests"))
+from support.n8n_cutover_waves import PROMOTED as _CW_PROMOTED  # noqa: E402  2026-10-15 cutover waves
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
@@ -487,7 +490,7 @@ def test_indicator_engine_cli_routes_universe_and_keeps_dry_run_out_of_pipeline_
 
 
 # ── n8n shadow wiring ───────────────────────────────────────────────────────────────────────────────────────────
-@pytest.mark.parametrize("lane", sorted(SHADOW))
+@pytest.mark.parametrize("lane", sorted(set(SHADOW) - set(_CW_PROMOTED)))  # CW-promoted lanes: canary (cutover-wave test)
 def test_shadow_rows_are_admitted_dry_run_only(lane):
     klass, cron, argv, receipt, wave = SHADOW[lane]
     row, entry = ROWS[lane], ALLOW[lane]

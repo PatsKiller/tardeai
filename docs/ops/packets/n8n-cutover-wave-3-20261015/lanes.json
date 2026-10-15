@@ -1,0 +1,138 @@
+{
+  "wave": "CW3",
+  "ready": [
+    "opening-intelligence-render",
+    "pattern-extractor",
+    "wire-advisory-lessons",
+    "build-symbol-profiles-at-0-19",
+    "hermes-discovery-scorecard",
+    "incubator-rolloff-engine"
+  ],
+  "effect_keyed": [
+    "pattern-extractor",
+    "wire-advisory-lessons",
+    "build-symbol-profiles-at-0-19",
+    "incubator-rolloff-engine"
+  ],
+  "plan": [
+    {
+      "lane_id": "opening-intelligence-render",
+      "row_id": "cron:L796",
+      "family_id": "F35",
+      "tier_name": "read/overwrite",
+      "status": "READY_CANARY",
+      "lock": "/tmp/opening_intel.lock",
+      "live_arg": [
+        "--persist",
+        "--render"
+      ],
+      "slots": [
+        "15 9 * * 1-5"
+      ],
+      "cron_lines": [
+        {
+          "line": 804,
+          "text": "15 9 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/opening_intel.lock $PY scripts/opening_intelligence.py --persist --render >> logs/opening_intelligence.log 2>&1"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "pattern-extractor",
+      "row_id": "cron:L790",
+      "family_id": "F50",
+      "tier_name": "append",
+      "status": "READY_CANARY",
+      "lock": "/tmp/pattern_extractor.lock",
+      "live_arg": [],
+      "slots": [
+        "0 9 1 * *"
+      ],
+      "cron_lines": [
+        {
+          "line": 798,
+          "text": "0 9 1 * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/pattern_extractor.lock $PY scripts/pattern_extractor.py >> logs/pattern_extractor.log 2>&1"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "wire-advisory-lessons",
+      "row_id": "cron:L606",
+      "family_id": "F50",
+      "tier_name": "append",
+      "status": "READY_CANARY",
+      "lock": "/tmp/wire_lessons.lock",
+      "live_arg": [],
+      "slots": [
+        "30 */6 * * *"
+      ],
+      "cron_lines": [
+        {
+          "line": 610,
+          "text": "30 */6 * * * cd $PROJ && flock -n /tmp/wire_lessons.lock $PY scripts/wire_advisory_lessons.py >> logs/wire_advisory_lessons.log 2>&1  # wire external advisory lessons \u2192 trade_lesson_memory \u2192 strategy_lesson_rollup (learning loop)"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "build-symbol-profiles-at-0-19",
+      "row_id": "cron:L477",
+      "family_id": "F42",
+      "tier_name": "append",
+      "status": "READY_CANARY",
+      "lock": "/tmp/symbol_profiles.lock",
+      "live_arg": [],
+      "slots": [
+        "0 19 * * 0"
+      ],
+      "cron_lines": [
+        {
+          "line": 477,
+          "text": "0 19 * * 0 cd $PROJ && flock -n /tmp/symbol_profiles.lock $PY scripts/build_symbol_profiles.py >> logs/symbol_profiles.log 2>&1  # weekly company-profile refresh (operator 2026-06-12)"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "hermes-discovery-scorecard",
+      "row_id": "cron:L837",
+      "family_id": "F50",
+      "tier_name": "read/overwrite",
+      "status": "READY_CANARY",
+      "lock": "/tmp/hermes_discovery_scorecard.lock",
+      "live_arg": [],
+      "slots": [
+        "30 5 * * *"
+      ],
+      "cron_lines": [
+        {
+          "line": 845,
+          "text": "30 5 * * * cd $PROJ && flock -n /tmp/hermes_discovery_scorecard.lock $PY scripts/hermes_discovery_scorecard.py >> logs/hermes_discovery_scorecard.log 2>&1"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "incubator-rolloff-engine",
+      "row_id": "cron:L269",
+      "family_id": "F45",
+      "tier_name": "append",
+      "status": "READY_CANARY",
+      "lock": "/tmp/incubator_rolloff.lock",
+      "live_arg": [
+        "--apply"
+      ],
+      "slots": [
+        "0 10 * * 1-5"
+      ],
+      "cron_lines": [
+        {
+          "line": 269,
+          "text": "0 10 * * 1-5 cd $PROJ && flock -n /tmp/incubator_rolloff.lock $PY scripts/incubator_rolloff_engine.py --apply >> logs/incubator_rolloff.log 2>&1"
+        }
+      ],
+      "reasons": []
+    }
+  ]
+}

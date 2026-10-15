@@ -8402,9 +8402,10 @@
         "kind": "cron",
         "expression": "15 9 * * 1-5",
         "match": "scripts/opening_intelligence.py --persist --render",
-        "stage": "shadow",
+        "stage": "canary",
         "wave": "LD-W1",
-        "command_text": "15 9 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/opening_intel.lock $PY scripts/opening_intelligence.py --persist --render >> logs/opening_intelligence.log 2>&1"
+        "command_text": "15 9 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/opening_intel.lock $PY scripts/opening_intelligence.py --persist --render >> logs/opening_intelligence.log 2>&1",
+        "cutover_wave": "CW3"
       },
       "expected_cadence_hours": 72.0,
       "state": "ACTIVE",
@@ -8434,7 +8435,7 @@
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
           "15 9 * * 1-5"
         ],
@@ -11104,8 +11105,9 @@
         "expression": "0 19 * * 0",
         "match": "scripts/build_symbol_profiles.py >>",
         "command_text": "0 19 * * 0 cd $PROJ && flock -n /tmp/symbol_profiles.lock $PY scripts/build_symbol_profiles.py >> logs/symbol_profiles.log 2>&1  # weekly company-profile refresh (operator 2026-06-12)",
-        "stage": "shadow",
-        "wave": "R2-05"
+        "stage": "canary",
+        "wave": "R2-05",
+        "cutover_wave": "CW3"
       },
       "expected_cadence_hours": 168.0,
       "state": "ACTIVE",
@@ -11133,7 +11135,7 @@
       "adopted_on": "2026-10-10",
       "adopted_reason": "dispatcher shadow wave D3: adopted unchanged to keep its lane_id stable. Once the same script's build-symbol-profiles-watchlist row is hand-maintained, the generator would re-derive this row as `build-symbol-profiles` (a rename with no change on the host). | lane repair 2026-10-15 (operator: 'turn these on and then re-engineer them for n8n'): the refactor shard 05 shadow proposal (REFACTOR_SHARD_05_20261011.md: SHADOW_READY, observed outer flock) is taken in SHADOW now that the OperationalError is fixed (read transaction ends before the Finviz/yfinance calls; one short transaction per symbol). The SW4 hold reason (shared build_symbol_profiles_last.json receipt) is gone: the lane writes its own build-symbol-profiles-at-0-19_last.json. Cron line L477 (crontab -l 2026-10-15, sha256 6a5c6768) keeps doing the real work; the dispatcher fires the offline --dry-run only.",
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
           "0 19 * * 0"
         ],
@@ -16049,9 +16051,10 @@
         "kind": "cron",
         "expression": "0 10 * * 1-5",
         "match": "scripts/incubator_rolloff_engine.py",
-        "stage": "shadow",
+        "stage": "canary",
         "wave": "LD-W1",
-        "command_text": "0 10 * * 1-5 cd $PROJ && $PY scripts/incubator_rolloff_engine.py --apply >> logs/incubator_rolloff.log 2>&1"
+        "command_text": "cd $PROJ && flock -n /tmp/incubator_rolloff.lock $PY scripts/incubator_rolloff_engine.py --apply >> logs/incubator_rolloff.log 2>&1",
+        "cutover_wave": "CW3"
       },
       "expected_cadence_hours": 72.0,
       "state": "ACTIVE",
@@ -16076,7 +16079,7 @@
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
           "0 10 * * 1-5"
         ],
@@ -16097,9 +16100,10 @@
         "kind": "cron",
         "expression": "30 */6 * * *",
         "match": "scripts/wire_advisory_lessons.py",
-        "stage": "shadow",
+        "stage": "canary",
         "wave": "LD-W1",
-        "command_text": "30 */6 * * * cd $PROJ && flock -n /tmp/wire_lessons.lock $PY scripts/wire_advisory_lessons.py >> logs/wire_advisory_lessons.log 2>&1  # wire external advisory lessons → trade_lesson_memory → strategy_lesson_rollup (learning loop)"
+        "command_text": "30 */6 * * * cd $PROJ && flock -n /tmp/wire_lessons.lock $PY scripts/wire_advisory_lessons.py >> logs/wire_advisory_lessons.log 2>&1  # wire external advisory lessons → trade_lesson_memory → strategy_lesson_rollup (learning loop)",
+        "cutover_wave": "CW3"
       },
       "expected_cadence_hours": 6.0,
       "state": "ACTIVE",
@@ -16124,7 +16128,7 @@
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
           "30 */6 * * *"
         ],
@@ -16145,9 +16149,10 @@
         "kind": "cron",
         "expression": "0 9 1 * *",
         "match": "scripts/pattern_extractor.py",
-        "stage": "shadow",
+        "stage": "canary",
         "wave": "LD-W1",
-        "command_text": "0 9 1 * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/pattern_extractor.lock $PY scripts/pattern_extractor.py >> logs/pattern_extractor.log 2>&1"
+        "command_text": "0 9 1 * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/pattern_extractor.lock $PY scripts/pattern_extractor.py >> logs/pattern_extractor.log 2>&1",
+        "cutover_wave": "CW3"
       },
       "expected_cadence_hours": 744.0,
       "state": "ACTIVE",
@@ -16172,7 +16177,7 @@
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
           "0 9 1 * *"
         ],
@@ -16193,9 +16198,10 @@
         "kind": "cron",
         "expression": "30 5 * * *",
         "match": "scripts/hermes_discovery_scorecard.py",
-        "stage": "shadow",
+        "stage": "canary",
         "wave": "LD-W1",
-        "command_text": "30 5 * * * cd $PROJ && $PY scripts/hermes_discovery_scorecard.py >> logs/hermes_discovery_scorecard.log 2>&1"
+        "command_text": "cd $PROJ && flock -n /tmp/hermes_discovery_scorecard.lock $PY scripts/hermes_discovery_scorecard.py >> logs/hermes_discovery_scorecard.log 2>&1",
+        "cutover_wave": "CW3"
       },
       "expected_cadence_hours": 24.0,
       "state": "ACTIVE",
@@ -16220,7 +16226,7 @@
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
           "30 5 * * *"
         ],
