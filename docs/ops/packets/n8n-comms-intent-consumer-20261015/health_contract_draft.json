@@ -1,0 +1,120 @@
+{
+  "_note": "DRAFT N8nHealthContract@v1 for lane n8n-comms-intent-consumer (2026-10-15). Not in config/n8n_health_contracts.json on purpose: the gate refuses a DRAFT for a lane that was not grandfathered (DRAFT_NOT_GRANDFATHERED), and the lane is NEVER_SCHEDULED, so no contract is required yet (MISSING_CONTRACT applies from stage shadow). The owner reviews this body, sets status REVIEWED with a review block, and moves it into config/n8n_health_contracts.json in the registry PR that stages the lane at shadow. tests/test_n8n_comms_intent_consumer_20261015.py validates it with scripts/lib/n8n_health_contracts.validate_contract.",
+  "schema": "N8nHealthContract@v1",
+  "id": "n8n-comms-intent-consumer",
+  "kind": "lane",
+  "workflow_id": "tradeai-dispatcher",
+  "status": "DRAFT",
+  "stage": "shadow",
+  "target_reason": "Proposed n8n-native host lane fired through Run Lane; staged NEVER_SCHEDULED with an allowlist entry at shadow (live_arg null).",
+  "purpose": {
+    "text": "Turn QUEUED n8n comms intents (gateway comms/intent) into incident fan-in incidents at the route's tier, deduped per workflow and kind, so they reach the operator only through the incident notifier's existing P2 batch. Claims QUEUED -> CLAIMED -> DONE/FAILED; sends nothing.",
+    "business_function": "monitoring",
+    "source": "scripts/n8n_comms_intent_consumer.py; scripts/lib/n8n_comms_intent_consumption.py; operator 2026-10-15 (incident fan-in route)"
+  },
+  "owner": "platform",
+  "ownership_confirmation": "UNKNOWN — needs owner",
+  "connects_to": [
+    {
+      "name": "data/governance/n8n_coordination_ledger.sqlite comms_intents",
+      "kind": "store",
+      "direction": "read_write",
+      "source": "SELECT QUEUED/FAILED/expired-CLAIMED rows; UPDATE state only (compare-and-set inside BEGIN IMMEDIATE)"
+    },
+    {
+      "name": "data/governance/n8n_coordination_ledger.sqlite comms_intent_consumption, comms_intent_incidents",
+      "kind": "store",
+      "direction": "read_write",
+      "source": "Additive tables owned by this lane (CREATE TABLE IF NOT EXISTS on --apply only)"
+    },
+    {
+      "name": "config/n8n_comms_intent_routes.json",
+      "kind": "config",
+      "direction": "read",
+      "source": "Closed (domain, kind) -> tier table, re-read every run"
+    },
+    {
+      "name": "scripts/n8n_incident_fanin.py",
+      "kind": "consumer",
+      "direction": "read",
+      "source": "_comms_intent_findings reads the open incidents and dead letters mode=ro"
+    },
+    {
+      "name": "data/runtime/n8n-comms-intent-consumer_last.json",
+      "kind": "receipt",
+      "direction": "write",
+      "source": "LaneRunReceipt@v1 on --apply only; ok_at advances only on success; dry run writes nothing"
+    }
+  ],
+  "healthy": [
+    {
+      "check": "drained",
+      "text": "Every apply run exits 0 with ok_at advanced; no comms intent stays QUEUED longer than one cadence plus the 10 min claim lease."
+    },
+    {
+      "check": "no_duplicate_incidents",
+      "text": "At most one OPEN comms_intent_incidents row per (workflow, kind); every DONE intent names its incident_key and fanin_event_key."
+    }
+  ],
+  "degraded": [
+    {
+      "check": "transient_failure",
+      "text": "An intent FAILED transiently (attempts < 3) and waits for the next run; or the run deferred intents beyond the per-run cap."
+    }
+  ],
+  "failed": [
+    {
+      "check": "dead_letter",
+      "text": "An intent FAILED 3 times or refused (no route, PAGE tier): fan-in finding n8n_comms_intent_dlq/dead_letter (P2)."
+    },
+    {
+      "check": "backlog",
+      "text": "An intent QUEUED for more than 2 h: fan-in finding n8n_comms_intent_dlq/queued_stale (P2); the lane is not running."
+    },
+    {
+      "check": "receipt",
+      "text": "The LaneRunReceipt is missing, failed or older than freshness_failed_after_h."
+    }
+  ],
+  "baseline": {
+    "basis": "CLASS_DEFAULT_PROVISIONAL",
+    "source": "Proposed */5 cadence through Run Lane; owner review pending",
+    "calendar": "all days",
+    "completion_allowance_s": 60,
+    "business_volume_baseline": "NOT_MEASURED",
+    "zero_go_or_proposals_valid": true,
+    "timeout_s": 60,
+    "freshness_degraded_after_h": 0.25,
+    "freshness_failed_after_h": 2.0
+  },
+  "alerting": {
+    "lane_severity": "Medium",
+    "severity_basis": "ALERT_TAXONOMY.md §2: a stuck intent delays a DIGEST line; no money at risk in the next hour",
+    "failed": {
+      "siem_severity": "WARN",
+      "notifier_priority": "P2"
+    },
+    "degraded": {
+      "siem_severity": "INFO",
+      "notifier_priority": "P3"
+    },
+    "routing": "Existing host fan-in -> incident notifier P2 batch. Never PAGE: the P1 path does not depend on n8n (AGENTS.md §24.1)."
+  },
+  "remediation": {
+    "catalogue_entry": false,
+    "diagnosis_excluded": true,
+    "mode": "MONITOR_ONLY_NO_REPAIR_SUBMISSION",
+    "note": "Manual: read the receipt and comms_intent_consumption.last_error; fix the cause; a dead-lettered intent is re-queued only by an operator (packet 04_rollback.md)."
+  },
+  "evidence": {
+    "receipt": "data/runtime/n8n-comms-intent-consumer_last.json",
+    "monitor": "scripts/n8n_incident_fanin.py source comms_intent_source note",
+    "verify": [
+      "tests/test_n8n_comms_intent_consumer_20261015.py under TRADE_AI_CI=1",
+      "--dry-run against the live ledger (packet 02_dry_run_live.txt)",
+      "one operator --apply (packet 03_apply.md) and the fan-in note showing the incident"
+    ],
+    "acceptance": "NOT_MEASURED"
+  },
+  "review_by": "2026-10-22"
+}

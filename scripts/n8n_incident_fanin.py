@@ -4,7 +4,8 @@
 Roadmap Phase 1 (2026-10-07). Reads, never checks: the breach detector's per-lane rows,
 the five `--alert` timer receipts, the bridge watchdog, the n8n lab watchdog, the lab
 backup receipt, (2026-10-09) the P16 activation-attribution and P18 workflow-drift receipts, and (2026-10-10)
-the gateway's n8n workflow-error events (lane n8n-workflow-error, one incident per workflow). Every open finding becomes ONE coordination event on lane `incident-fanin`
+the gateway's n8n workflow-error events (lane n8n-workflow-error, one incident per workflow), and (2026-10-15) the
+comms-intent consumer's open incidents and dead letters (scripts/n8n_comms_intent_consumer.py). Every open finding becomes ONE coordination event on lane `incident-fanin`
 (idempotent per source+item+UTC day), walked to ARTIFACT_WRITTEN with a reference to the
 source receipt. A finding that disappears is closed with a `consumer_ack` from
 `recovery-observer`. Operator acks (Telegram) are a separate, later hook.
@@ -434,6 +435,11 @@ def collect(root: Path, now: datetime, prev: dict[str, Any] | None = None) -> li
     # dispatcher / incident router / heartbeat watcher, else P2/WARN or a higher health contract) while an error is
     # inside the window. See _workflow_error_findings.
     out.extend(_workflow_error_findings(root, now))
+    # 3l'. n8n comms intents (2026-10-15, operator: the incident fan-in route): scripts/n8n_comms_intent_consumer.py
+    # turns QUEUED comms/intent rows into comms_intent_incidents rows; an OPEN one joins the incident above for the same
+    # workflow (wferr:<workflow_id>) or opens its own at the route's tier (DIGEST -> P2), plus the dead-letter rule
+    # (FAILED 3x / refused, QUEUED > 2 h: one aggregated P2 each). See _comms_intent_findings.
+    _comms_intent_findings(root, now, out)
     # 3m. the alerting path itself (operator 2026-10-10): incident-router errors / stall and n8n schedule stall from the
     # relay log (scripts/lib/n8n_alert_path_watch.py). The notifier runs the same check from host cron, so the P1 does
     # not depend on this n8n-dispatched fan-in; here it feeds the SIEM row.
@@ -1225,6 +1231,51 @@ def _workflow_error_findings(root: Path, now: datetime) -> list[dict[str, Any]]:
     return found
 
 
+SEV_ORDER = {"P1": 1, "P2": 2, "P3": 3}
+
+
+def _comms_intent_findings(root: Path, now: datetime, out: list[dict[str, Any]]) -> None:
+    """Fold the comms-intent consumer's OPEN incidents into ``out`` (in place) and append its dead-letter findings.
+
+    Source of truth: ``comms_intent_incidents`` / ``comms_intent_consumption`` in the coordination ledger (mode=ro;
+    scripts/lib/n8n_comms_intent_consumption.py). An incident whose (source, item) is already in ``out`` (the relay's
+    ``wferr:<workflow_id>`` for the same workflow) is merged into it, never duplicated: the count and intent ids are
+    added, the detail notes the intents, and the severity is the higher of the two. Otherwise it is its own finding at
+    the route's tier. Read-only; sends nothing. TRADEAI_FANIN_COMMS_INTENT=0 opts out."""
+    key = "comms_intent_source"
+    NOTES.pop(key, None)
+    if os.environ.get("TRADEAI_FANIN_COMMS_INTENT", "1") == "0":
+        NOTES[key] = "unavailable:RuntimeError:disabled_by_env"
+        return
+    explicit = os.environ.get("TRADEAI_N8N_COORDINATION_LEDGER")
+    ledger = Path(explicit) if explicit else root / LEDGER_REL
+    try:
+        from scripts.lib import n8n_comms_intent_consumption as CI
+
+        incidents, inc_note = CI.open_incident_findings(ledger, now)
+        dead, dlq_note = CI.dead_letter_findings(ledger, now)
+    except Exception as exc:  # noqa: BLE001 — a broken source is a note on the receipt, not a crash
+        NOTES[key] = f"unavailable:{type(exc).__name__}:{str(exc)[:80]}"
+        return
+    index = {(f.get("source"), f.get("item")): f for f in out}
+    merged = 0
+    for f in incidents:
+        prior = index.get((f["source"], f["item"]))
+        if prior is None:
+            out.append(f)
+            index[(f["source"], f["item"])] = f
+            continue
+        merged += 1
+        prior["count"] = int(prior.get("count") or 0) + int(f.get("count") or 0)
+        prior["event_keys"] = list(prior.get("event_keys") or []) + list(f.get("event_keys") or [])
+        prior["detail"] = (str(prior.get("detail") or "") + f" +{f.get('count')} intent(s)")[:160]
+        prior["comms_intent_incident_key"] = f.get("comms_intent_incident_key")
+        if SEV_ORDER.get(f["severity"], 9) < SEV_ORDER.get(str(prior.get("severity")), 9):
+            prior["severity"] = f["severity"]
+    out.extend(dead)
+    NOTES[key] = f"incidents:{inc_note}:merged={merged}:dlq:{dlq_note}"
+
+
 def _alert_path_findings(root: Path, now: datetime) -> list[dict[str, Any]]:
     try:
         from scripts.lib.n8n_alert_path_watch import findings
@@ -1347,7 +1398,7 @@ def main(argv: list[str] | None = None) -> int:
             "event_id": ev["event_id"],
             "ops": [],
         }
-        for extra in ("workflow_id", "count", "event_keys"):  # workflow-error grouping evidence (gap 11)
+        for extra in ("workflow_id", "count", "event_keys", "comms_intent_incident_key"):  # grouping evidence (gap 11)
             if extra in f:
                 row[extra] = f[extra]
         if client is None:
