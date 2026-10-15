@@ -15241,6 +15241,84 @@
       "recommendation": "KEEP_ON_CRON"
     },
     {
+      "lane_id": "hermes-learning-outcome-grader",
+      "owner": "learning",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "tradeai-fabric-hermes-learning",
+        "match": "tradeai-fabric-hermes-learning:outcome_grader",
+        "cadence": "50 10 * * *",
+        "stage": "shadow",
+        "process": "hermes-learning",
+        "process_step": "outcome_grader"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-15",
+      "state_reason": "Step lane of the n8n fabric process hermes-learning (2026-10-15, AGENTS.md §23.23; packet docs/ops/packets/n8n-hermes-learning-flow-20261015/). Generated inactive: workflow tradeai-fabric-hermes-learning is not imported. The real work still runs as step outcome_grader of hermes-learning-pipeline-learn (cron, --apply). Becomes ACTIVE at stage shadow when the operator publishes tradeai-fabric-hermes-learning for the 5-run dry-run shadow (packet step 03); its cutover is a separate act under the §23.21 standard with the effect-key owner switch.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "config/pipelines/hermes_learning.json step outcome_grader (command, lock, timeout); config/n8n_fabric_processes.json; generated docs/implementation/n8n-maturity/workflows/fabric/tradeai-fabric-hermes-learning.json (INDEX.json graph hash).",
+      "output_signal": {
+        "kind": "db_max",
+        "table": "hermes_outcome_ledger",
+        "column": "graded_at"
+      },
+      "severity": "Medium",
+      "note": "Fired only by the process workflow tradeai-fabric-hermes-learning through Run Lane (process_step outcome_grader); no dispatch block, so the generic dispatcher never emits it. Class learn (AGENTS.md §23.18). Its RETIRED cron-era row (superseded by hermes-learning-pipeline-learn) is unchanged."
+    },
+    {
+      "lane_id": "hermes-learning-outcome-learning",
+      "owner": "learning",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "tradeai-fabric-hermes-learning",
+        "match": "tradeai-fabric-hermes-learning:outcome_learning",
+        "cadence": "50 10 * * *",
+        "stage": "shadow",
+        "process": "hermes-learning",
+        "process_step": "outcome_learning"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-15",
+      "state_reason": "Step lane of the n8n fabric process hermes-learning (2026-10-15, AGENTS.md §23.23; packet docs/ops/packets/n8n-hermes-learning-flow-20261015/). Generated inactive: workflow tradeai-fabric-hermes-learning is not imported. The real work still runs as step outcome_learning of hermes-learning-pipeline-learn (cron, --apply). Becomes ACTIVE at stage shadow when the operator publishes tradeai-fabric-hermes-learning for the 5-run dry-run shadow (packet step 03); its cutover is a separate act under the §23.21 standard with the effect-key owner switch.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "config/pipelines/hermes_learning.json step outcome_learning (command, lock, timeout); config/n8n_fabric_processes.json; generated docs/implementation/n8n-maturity/workflows/fabric/tradeai-fabric-hermes-learning.json (INDEX.json graph hash).",
+      "output_signal": {
+        "kind": "db_max",
+        "table": "hermes_weight_calibration",
+        "column": "created_at"
+      },
+      "severity": "Medium",
+      "note": "Fired only by the process workflow tradeai-fabric-hermes-learning through Run Lane (process_step outcome_learning); no dispatch block, so the generic dispatcher never emits it. Class learn (AGENTS.md §23.18). Its RETIRED cron-era row (superseded by hermes-learning-pipeline-learn) is unchanged."
+    },
+    {
+      "lane_id": "hermes-learning-config-governor",
+      "owner": "learning",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "tradeai-fabric-hermes-learning",
+        "match": "tradeai-fabric-hermes-learning:config_governor",
+        "cadence": "50 10 * * *",
+        "stage": "shadow",
+        "process": "hermes-learning",
+        "process_step": "config_governor"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-15",
+      "state_reason": "Step lane of the n8n fabric process hermes-learning (2026-10-15, AGENTS.md §23.23; packet docs/ops/packets/n8n-hermes-learning-flow-20261015/). Generated inactive: workflow tradeai-fabric-hermes-learning is not imported. The real work still runs as step config_governor of hermes-learning-pipeline-learn (cron, --apply). Becomes ACTIVE at stage shadow when the operator publishes tradeai-fabric-hermes-learning for the 5-run dry-run shadow (packet step 03); its cutover is a separate act under the §23.21 standard with the effect-key owner switch.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "config/pipelines/hermes_learning.json step config_governor (command, lock, timeout); config/n8n_fabric_processes.json; generated docs/implementation/n8n-maturity/workflows/fabric/tradeai-fabric-hermes-learning.json (INDEX.json graph hash).",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/hermes_config_governor_last.json",
+        "key": "ok_at"
+      },
+      "severity": "Medium",
+      "note": "Fired only by the process workflow tradeai-fabric-hermes-learning through Run Lane (process_step config_governor); no dispatch block, so the generic dispatcher never emits it. Class report (AGENTS.md §23.18). Its RETIRED cron-era row (superseded by hermes-learning-pipeline-learn) is unchanged."
+    },
+    {
       "lane_id": "run-scheduled-quote-refresh-incubator",
       "owner": "portfolio",
       "scheduler": {

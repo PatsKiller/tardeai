@@ -82,7 +82,7 @@ _mr_load_safety_env() {
 # Serial stages call it inline; parallel stages call it in a background subshell.
 # Business failures are receipt statuses; receipt-writer failures return nonzero for stage accounting.
 _mr_step() {
-  local status rc ms start end
+  local status rc ms start end fx_key=""
   start=${EPOCHREALTIME/./}
   if [ "$dow" != "*" ] && ! grep -qw -- "$TODAY_DOW" <<<"${dow//,/ }"; then
     status="skipped_dow"; rc=0
@@ -99,6 +99,24 @@ _mr_step() {
       steplog="${steplog//\$HOME/$HOME}"; steplog="${steplog//\$PROJ/$PROJ}"
       mkdir -p "$(dirname "$steplog")" 2>/dev/null || steplog="$RUN_LOG"
     fi
+    # Effect key (2026-10-15; OFF unless PIPELINE_EFFECT_CLAIM=1 and the step's lane has cron_claim true): claim
+    # fx:<process>:<slot>:<ver> as scheduler cron before the step runs; a refused claim (75: n8n owns the process,
+    # or the slot's effect already happened) or an unreadable ledger runs NOTHING and records skipped_effect.
+    local fx="${_MR_FX[$id]:-}" fx_proc="" fx_ver="" fx_run="" claim_rc=0
+    if [ -n "$fx" ]; then
+      IFS=$'\x1f' read -r fx_proc fx_ver <<<"$fx"
+      fx_key="fx:${fx_proc}:${FX_SLOT}:${fx_ver}"
+      fx_run="cron:${PIPELINE}:${STAGE}:${id}:${FX_SLOT}:$$"
+      set +e
+      "$PY3" "$EFFECT_PY" "${_MR_FX_LEDGER[@]}" claim --process "$fx_proc" --slot "$FX_SLOT" \
+        --input-version "$fx_ver" --scheduler cron --run-id "$fx_run" >> "$steplog" 2>&1
+      claim_rc=$?
+      set -e
+    fi
+    if [ "$claim_rc" != 0 ]; then
+      status="skipped_effect"; rc=$claim_rc
+      echo "  ---- step $id SKIP effect key $fx_key not claimed (rc=$claim_rc; 75 = refused) — nothing run ----"
+    else
     set +e
     local -a stepenv=()
     _mr_step_env "$envnames"
@@ -111,15 +129,25 @@ _mr_step() {
       124|137) status="timeout" ;;
       *) status="failed" ;;
     esac
+    if [ -n "$fx" ]; then
+      local fx_state=FAILED
+      case "$status" in ok) fx_state=DONE ;; timeout) fx_state=UNKNOWN ;; esac   # a timeout may have had its effect
+      "$PY3" "$EFFECT_PY" "${_MR_FX_LEDGER[@]}" finish --process "$fx_proc" --slot "$FX_SLOT" \
+        --input-version "$fx_ver" --state "$fx_state" --run-id "$fx_run" >> "$steplog" 2>&1 \
+        || echo "  ---- step $id effect key $fx_key finish FAILED: the claim stays CLAIMED (held); operator release ----"
+    fi
     echo "  ---- step $id END status=$status rc=$rc log=$steplog ----"
+    fi
   fi
   end=${EPOCHREALTIME/./}; ms=$(( (end - start) / 1000 ))
-  "$PY3" - "$RESULTS" "$STEPS_JSONL" "$PIPELINE" "$STAGE" "$id" "$cron_line" "$status" "$rc" "$ms" "$tmo" "$DRY_RUN" <<'PY' || return $?
+  "$PY3" - "$RESULTS" "$STEPS_JSONL" "$PIPELINE" "$STAGE" "$id" "$cron_line" "$status" "$rc" "$ms" "$tmo" "$DRY_RUN" "$fx_key" <<'PY' || return $?
 import json, sys, datetime
-res, jsonl, pipeline, stage, sid, cron_line, status, rc, ms, tmo, dry = sys.argv[1:]
+res, jsonl, pipeline, stage, sid, cron_line, status, rc, ms, tmo, dry, fx_key = sys.argv[1:]
 rec = {"schema": "PipelineStepReceipt@v1", "ts": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
        "pipeline": pipeline, "stage": stage, "id": sid, "cron_line": int(cron_line), "status": status,
        "rc": int(rc), "ms": int(ms), "timeout_s": int(tmo), "dry_run": dry == "1"}
+if fx_key:
+    rec["effect_key"] = fx_key
 line = json.dumps(rec) + "\n"
 open(res, "a").write(line)
 open(jsonl, "a").write(line)
@@ -199,6 +227,36 @@ manifest_pipeline_main() {
 
   if [ "$n_steps" = 0 ]; then
     echo "[plan] manifest has no steps for stage=$STAGE — nothing to execute (apply_requested=$APPLY_REQUESTED)"
+  fi
+
+  # Effect-key claims (2026-10-15, n8n fabric process cutover, AGENTS.md §23.23 rule (4)). OFF unless the cron line
+  # sets PIPELINE_EFFECT_CLAIM=1: without it this block reads nothing and every step runs exactly as before. With it,
+  # each step whose lane in config/n8n_effect_keys.json has cron_claim true (pipeline_manifest.py --effect-spec) is
+  # claimed as scheduler cron for the stage's business slot (--effect-slot) through scripts/lib/effect_claim.py, the
+  # same key the n8n process workflow's run claims. A dry run never claims (it has no effect). Unreadable config with
+  # the switch on refuses the stage (fail closed: either scheduler might own a step).
+  declare -A _MR_FX=()
+  local FX_SLOT="" _fx_spec="" _fx_sid _fx_proc _fx_ver
+  local EFFECT_PY="$_MR_DIR/../lib/effect_claim.py"
+  local -a _MR_FX_LEDGER=()
+  [ -n "${PIPELINE_EFFECT_LEDGER:-}" ] && _MR_FX_LEDGER=(--ledger "$PIPELINE_EFFECT_LEDGER")
+  if [ "${PIPELINE_EFFECT_CLAIM:-0}" = "1" ] && [ "$DRY_RUN" != "1" ]; then
+    if ! _fx_spec="$("$PY3" "$MANIFEST_PY" "$MANIFEST" --effect-spec "$STAGE" \
+        --effect-config "${PIPELINE_EFFECT_CONFIG:-$PROJ/config/n8n_effect_keys.json}")"; then
+      echo "[ERROR] effect-key config unreadable with PIPELINE_EFFECT_CLAIM=1 — refusing the stage (fail closed)" >&2
+      return 65
+    fi
+    if [ -n "$_fx_spec" ]; then
+      local -a _fx_date=()
+      [ -n "${PIPELINE_EFFECT_DATE:-}" ] && _fx_date=(--date "$PIPELINE_EFFECT_DATE")
+      FX_SLOT="$("$PY3" "$MANIFEST_PY" "$MANIFEST" --effect-slot "$STAGE" "${_fx_date[@]}")" || {
+        echo "[ERROR] no effect-key slot for stage=$STAGE — refusing the stage (fail closed)" >&2; return 65; }
+      while IFS=$'\x1f' read -r _fx_sid _fx_proc _fx_ver; do
+        [ -n "$_fx_sid" ] && _MR_FX[$_fx_sid]="${_fx_proc}"$'\x1f'"${_fx_ver}"
+      done <<<"$_fx_spec"
+    fi
+    local _fx_ids="${!_MR_FX[*]}"
+    echo "[effect] PIPELINE_EFFECT_CLAIM=1 slot=${FX_SLOT:-none} claiming steps: ${_fx_ids:-none}"
   fi
 
   # Bounded concurrency (2026-10-10): a stage with `parallel.max_concurrency` N > 1 runs its steps in
