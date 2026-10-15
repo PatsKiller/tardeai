@@ -4630,6 +4630,16 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: ONBOARD_DRYRUN_B3_20261015 — n8n onboarding batch B3 (lane disposition 2026-10-15, MIGRATE_N8N, no
+        # allowlist entry, no --dry-run before): offline --dry-run that wins over live flags for news-ingestion
+        # (+tail), hermes-youtube-discovery, youtube-transcript-ingest (in-process record-and-raise proof) and three
+        # shell lanes: drive-syncs-hourly (precedence fix: --dry-run now wins over --apply), run-profit-capture-
+        # refresh, portfolio-server-watchdog (out-of-process proof: PATH holds only recording stubs, roots in
+        # tmp_path). Listing it schedules nothing.
+        "onboard_dryrun_b3_20261015",
+        ["tests/test_onboard_dryrun_b3_20261015.py"],
+    ),
+    (
         # ANCHOR: SCALP_PREMARKET_ONBOARD_20261014 — operator directive 2026-10-14: the two scalp hot-tier R1 ingest
         # lanes (finviz-enrichment-scalp-hot, scalp-hot-list) enter the dispatcher at shadow (cron-exact lock,
         # market_gate, receipt, no broker env), the market_day_gate.sh exception stays bounded to three lanes, the
