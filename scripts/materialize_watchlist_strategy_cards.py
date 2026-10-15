@@ -491,6 +491,18 @@ def materialize(symbols: list[str] | None = None, *, dry_run: bool = False):
     return results
 
 
+LANE_ID = "materialize-watchlist-strategy-cards"
+
+
+def lane_output(results: list) -> dict:
+    """LaneRunReceipt@v2 output fields (n8n expected_output, unit: cards upserted into watchlist_strategy_cards).
+    Every queued card is upserted in one transaction (attempted = produced); no card at all is fatal
+    (``universe_empty_unexpected``: the active watchlist is never empty)."""
+    n = len(results or [])
+    return {"produced_count": n, "attempted_count": n,
+            "skipped_reasons": {} if n else {"universe_empty_unexpected": 1}, "empty_reason": None}
+
+
 def cli():
     syms = None
     if "--symbols" in sys.argv:
@@ -504,16 +516,24 @@ def cli():
         results = materialize(syms, dry_run=True)
     else:
         sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
-        from lib.lane_last_receipt import now_iso, write_lane_receipt
+        from lib.lane_last_receipt import now_iso, receipt_path
+        from lib.lane_last_receipt import write_lane_receipt as _write
+
+        # Established receipt path (data/runtime/materialize_watchlist_strategy_cards_last.json); lane id = the n8n
+        # lane's, so the per-attempt copy lands in lane_attempts/materialize-watchlist-strategy-cards/<run_id>.
+        def write_lane_receipt(name, **kw):
+            return _write(LANE_ID, path=receipt_path(name), script=name, **kw)
+
         started = now_iso()
         try:
             results = materialize(syms)
         except BaseException as exc:
             write_lane_receipt("materialize_watchlist_strategy_cards", ok=False, exit_code=1, started_at=started,
-                               summary={"error": type(exc).__name__})
+                               summary={"error": type(exc).__name__},
+                               output={"produced_count": 0, "attempted_count": 0, "skipped_reasons": {"dependency_unavailable": 1}})
             raise
         write_lane_receipt("materialize_watchlist_strategy_cards", ok=True, exit_code=0, started_at=started,
-                           summary={"cards": len(results), "symbols_arg": syms})
+                           summary={"cards": len(results), "symbols_arg": syms}, output=lane_output(results))
     if "--json" in sys.argv:
         print(json.dumps(results, indent=2, default=str))
     else:

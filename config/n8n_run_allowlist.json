@@ -117,10 +117,11 @@
         "DB_NAME",
         "DB_PASSWORD",
         "DB_PORT",
-        "DB_USER"
+        "DB_USER",
+        "TRADEAI_PERSISTENT_STATE_ROOT"
       ],
       "env_allowlist_mode": "enforce",
-      "env_evidence": "source_attribution_monitor.py: single file, no local imports; _db reads exactly DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD (os.getenv literals). Its module-scope code-root .env loader copies only _ENV_KEYS (those five DB names; 2026-10-11 — before, its setdefault loop ADDED every .env name, broker credentials included, to the enforced child). flock wrapper.",
+      "env_evidence": "source_attribution_monitor.py: single file, no local imports; _db reads exactly DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD (os.getenv literals). Its module-scope code-root .env loader copies only _ENV_KEYS (those five DB names; 2026-10-11 — before, its setdefault loop ADDED every .env name, broker credentials included, to the enforced child). flock wrapper. | 2026-10-15 produced_count: + TRADEAI_PERSISTENT_STATE_ROOT (lib.lane_last_receipt -> persistent_state_root resolves the lane receipt dir; TRADEAI_STATE_ROOT is a child base name).",
       "source": "0 6 * * *; flock -n /tmp/source_attribution_monitor.lock $PY scripts/source_attribution_monitor.py | CW1 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv [], lock = the cron flock lock /tmp/source_attribution_monitor.lock (shared: the lock proves no double run).",
       "command": [
         "$PY",
@@ -134,7 +135,8 @@
       ],
       "live_arg": [],
       "market_gate": false,
-      "output_signal": "data/runtime/source_attribution_history.json"
+      "output_signal": "data/runtime/source_attribution_history.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "finviz-view-contracts",
@@ -730,7 +732,8 @@
       ],
       "live_arg": [],
       "market_gate": false,
-      "output_signal": "data/runtime/materialize_watchlist_strategy_cards_last.json"
+      "output_signal": "data/runtime/materialize_watchlist_strategy_cards_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "audit-enrichment-coverage",
@@ -859,7 +862,8 @@
       ],
       "live_arg": [],
       "market_gate": false,
-      "output_signal": "data/runtime/journal_tilt_morning_hook_last.json"
+      "output_signal": "data/runtime/journal_tilt_morning_hook_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "enterprise-backtester",
@@ -1646,7 +1650,8 @@
       ],
       "live_arg": [],
       "market_gate": false,
-      "output_signal": "data/runtime/update_agent_performance_last.json"
+      "output_signal": "data/runtime/update_agent_performance_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "finviz-enrichment",
@@ -1804,7 +1809,8 @@
       ],
       "live_arg": [],
       "market_gate": false,
-      "output_signal": "data/runtime/sec-data-ingest_last.json"
+      "output_signal": "data/runtime/sec-data-ingest_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "social-ingest-all",
@@ -2039,7 +2045,8 @@
         "--apply"
       ],
       "market_gate": false,
-      "output_signal": "data/runtime/identity-sweep-stage0_last.json"
+      "output_signal": "data/runtime/identity-sweep-stage0_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "feedback-loop-processor",
@@ -2687,7 +2694,8 @@
       "env_allowlist_mode": "report",
       "env_report_reason": "Own DB loader now selects DB names. Shared narrative/identity/oscillator helpers and legacy DB import closure are not admitted as an enforce-mode closure by this shard.",
       "env_evidence": "Own source named dependencies; shared import-closure debt recorded in SHARED_CHANGES_NEEDED.md. Executor base names supply TRADEAI_STATE_ROOT, PATH, HOME and XDG_RUNTIME_DIR.",
-      "source": "Shard05 SOURCE_ONLY, approved exact selected cron snapshot 2026-10-11T17:05:28.513179+00:00. Original line: */30 * * * * cd $PROJ && flock -n /tmp/material_change_detect.lock $PY scripts/material_change_detector.py --apply >> logs/material_change_detect.log 2>&1  # stage-1 detector. Original business argv preserved; shell prerequisites and source environment remain recorded in scheduler.command_text. Explicit dry-run returns before env, data and provider work. live_arg null; no scheduling or deployment. | CW1 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv [], lock = the cron flock lock /tmp/material_change_detect.lock (shared: the lock proves no double run)."
+      "source": "Shard05 SOURCE_ONLY, approved exact selected cron snapshot 2026-10-11T17:05:28.513179+00:00. Original line: */30 * * * * cd $PROJ && flock -n /tmp/material_change_detect.lock $PY scripts/material_change_detector.py --apply >> logs/material_change_detect.log 2>&1  # stage-1 detector. Original business argv preserved; shell prerequisites and source environment remain recorded in scheduler.command_text. Explicit dry-run returns before env, data and provider work. live_arg null; no scheduling or deployment. | CW1 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv [], lock = the cron flock lock /tmp/material_change_detect.lock (shared: the lock proves no double run).",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "finviz-sector-research",
@@ -2825,7 +2833,8 @@
       "env_allowlist_mode": "report",
       "env_report_reason": "SOURCE_ONLY: lazy DB, provider, telemetry and cognition import closure not fully inventoried; shared loader/optional driver work belongs to the integrator. No canary until closure proof and bound enforcement.",
       "env_evidence": "Selected source names only; own CLI preview returns before DB, auth, provider, model or mutation",
-      "source": "SOURCE_ONLY exact approved cron 2026-10-11T17:05:28.513179+00:00: 5 10-15/2 * * 1-5 cd $PROJ && flock -n /tmp/proposal_backtest.lock $PY scripts/proposal_backtest_engine.py --all-pending --apply >> logs/proposal_backtest_engine.log 2>&1  # backtest active proposals → proposal_backtest_snapshots (Backtest field on cards) | CW1 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv [], lock = the cron flock lock /tmp/proposal_backtest.lock (shared: the lock proves no double run)."
+      "source": "SOURCE_ONLY exact approved cron 2026-10-11T17:05:28.513179+00:00: 5 10-15/2 * * 1-5 cd $PROJ && flock -n /tmp/proposal_backtest.lock $PY scripts/proposal_backtest_engine.py --all-pending --apply >> logs/proposal_backtest_engine.log 2>&1  # backtest active proposals → proposal_backtest_snapshots (Backtest field on cards) | CW1 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv [], lock = the cron flock lock /tmp/proposal_backtest.lock (shared: the lock proves no double run).",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "instrument-belief-writer",

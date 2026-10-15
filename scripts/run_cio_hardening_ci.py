@@ -3806,6 +3806,17 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: LANE_PRODUCED_COUNT_CW_3_20261015 — cutover wave 1 lanes (batch 3: identity sweep, journal tilt,
+        # material change, strategy cards, proposal backtest, SEC Form 4, source attribution, agent performance) write
+        # LaneRunReceipt@v2 produced_count and opt into the executor output verdict (allowlist output_receipt v2). Real
+        # entry point per lane in a fake n8n attempt, DB/provider stubbed: produced / empty_allowed / RUN_FAILED
+        # empty_output on a fatal skip; established receipt paths pinned. Hermetic: TRADEAI_STATE_ROOT = tmp.
+        "lane_produced_count_cw_3_20261015",
+        [
+            "tests/test_lane_produced_count_cw_3_20261015.py",
+        ],
+    ),
+    (
         # ANCHOR: N8N_AUDIT_FINDINGS_20261015 — third-party n8n architecture audit (pinned e355be188), gap register
         # DD03-DD08 + DD14, each reproduced from the auditor's probes and fixed: request identity (a replayed key never
         # returns another lane/mode/workflow's row; live relay runs need a validated namespace; every executor path
