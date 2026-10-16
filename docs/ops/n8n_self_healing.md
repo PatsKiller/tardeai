@@ -1,5 +1,8 @@
 # n8n self-healing: how a lane failure is handled, end to end (2026-10-16)
 
+**Status:** PROPOSED (open PR; not released)
+**Created:** 2026-10-16
+
 This page answers the operator's "yes make self healing now". The code is in
 `scripts/n8n_failure_diagnosis.py` (lane `n8n-failure-diagnosis`) and `scripts/lib/n8n_self_heal.py`.
 
