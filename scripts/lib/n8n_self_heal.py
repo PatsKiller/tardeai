@@ -225,6 +225,26 @@ def _orphan(run: Mapping[str, Any], now: float, timeout_s: float = 0.0) -> bool:
     return hb is not None and now - hb > max(7200.0, 2 * timeout_s)
 
 
+_SLOT_KEY_RE = re.compile(r"^[de]:([a-z0-9][a-z0-9._-]{1,63}):live:[0-9]{8}T[0-9]{4}(?::a[2-9])?$")
+
+
+def slot_parent(lane: str, fields: Mapping[str, Any], runs: Iterable[Mapping[str, Any]]) -> Optional[str]:
+    """The FAILED live d:/e: run a live heal retries (its effect slot is the one re-claimed): the incident's own run
+    when it is one, else the lane's newest RUN_FAILED live slot run. None = nothing to bind to (no live heal)."""
+    runs = list(runs)
+    rid = str(fields.get("run") or "")
+    m = _SLOT_KEY_RE.match(rid)
+    if m and m.group(1) == lane:
+        row = next((r for r in runs if r.get("run_id") == rid), None)
+        if row is None or row.get("state") == "RUN_FAILED":
+            return rid
+    for r in runs:
+        m = _SLOT_KEY_RE.match(str(r.get("run_id") or ""))
+        if m and m.group(1) == lane and r.get("state") == "RUN_FAILED" and r.get("mode") == "live":
+            return str(r["run_id"])
+    return None
+
+
 # ---------------------------------------------------------------- live heal gate
 
 

@@ -362,9 +362,37 @@ def collect_other(since_hours: int = 6) -> dict[str, Any]:
     except ImportError:  # pragma: no cover
         from scripts import p1_digest_sender as p1  # type: ignore
     try:
-        return p1.collect(since_hours)
+        out = p1.collect(since_hours)
     except Exception:
-        return {"rows": [], "watermark": None}
+        out = {"rows": [], "watermark": None}
+    if isinstance(out, dict):
+        out = {**out, "lane_health": collect_lane_health()}
+    return out
+
+
+#: n8n self-healing (2026-10-16, follow-up to #1819): P2 lane-failure escalations ride the digest, never their own
+#: Telegram message. They are read from the diagnoser's receipt ``digest[]``, one row per (lane, failure signature).
+DIAGNOSER_RECEIPT_REL = "data/runtime/n8n_failure_diagnosis_last.json"
+LANE_HEALTH_MAX_AGE_H = 24
+LANE_HEALTH_MAX_ROWS = 8
+
+
+def collect_lane_health(state_root: Optional[Path] = None, now: Optional[datetime] = None) -> list[dict[str, Any]]:
+    """The diagnoser's P2 digest rows (read-only). Empty when the receipt is missing, unreadable or older than 24 h."""
+    import os
+
+    root = Path(state_root or os.environ.get("TRADEAI_STATE_ROOT")
+                or (Path.home() / "trade-ai-releases" / "persistent-state"))
+    try:
+        doc = json.loads((root / DIAGNOSER_RECEIPT_REL).read_text(encoding="utf-8"))
+        as_of = datetime.fromisoformat(str(doc.get("as_of")).replace("Z", "+00:00"))
+    except (OSError, ValueError, TypeError, AttributeError):
+        return []
+    now = now or datetime.now(timezone.utc)
+    if as_of.tzinfo is None or (now - as_of).total_seconds() > LANE_HEALTH_MAX_AGE_H * 3600:
+        return []
+    rows = [e for e in doc.get("digest") or [] if isinstance(e, dict) and e.get("priority") != "P1"]
+    return sorted(rows, key=lambda e: (str(e.get("lane")), str(e.get("key"))))
 
 
 # ── rendering ───────────────────────────────────────────────────────────────
@@ -523,6 +551,17 @@ def render(slot: str, sections: dict[str, list[dict]], held: list[dict], facts: 
         if mv:
             blocks.append("━━━━━━━━━━━━━━━━━━\n📊 <b>MOVED TODAY</b>")
             blocks.extend(mv)
+    health = other.get("lane_health") or []
+    if health:
+        lines = []
+        for e in health[:LANE_HEALTH_MAX_ROWS]:
+            n = len([s for s in e.get("siem_ids") or [] if s is not None]) or 1
+            lines.append(f"• <b>{esc(str(e.get('lane')))}</b> {esc(str(e.get('event_type') or ''))} · "
+                         f"{esc(str(e.get('reason') or '')[:60])}" + (f" · ×{n}" if n > 1 else "")
+                         + (f" · tried {esc(str(e.get('tried'))[:60])}" if e.get("tried") else ""))
+        if len(health) > LANE_HEALTH_MAX_ROWS:
+            lines.append(f"<i>+{len(health) - LANE_HEALTH_MAX_ROWS} more in {esc(DIAGNOSER_RECEIPT_REL)}</i>")
+        blocks.append("━━━━━━━━━━━━━━━━━━\n🛠 <b>LANE HEALTH (P2)</b> · " + str(len(health)) + "\n" + "\n".join(lines))
     rows = other.get("rows") or []
     if rows:
         kinds = Counter((r[2] or "other") for r in rows)

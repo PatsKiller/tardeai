@@ -66,14 +66,32 @@ is made:
   message of its own.
 - An auto-close or an executed action clears the signature's open escalation.
 
+## Slot-bound retry (follow-up, 2026-10-16)
+
+`rerun_live_once` names the FAILED live `d:`/`e:` run it retries, as `parent_run_id`:
+
+1. **Diagnoser.** It picks the parent with `n8n_self_heal.slot_parent`: the incident's own run, or the lane's newest
+   RUN_FAILED live slot run. When there is no such run, the gate reason is `no_failed_live_slot_parent` and nothing
+   is requested.
+2. **Gateway** (`host_run_request` → `check_retry_parent`). It refuses with `run_retry_parent_invalid`, giving
+   `retry_parent_missing`, `_lane_mismatch`, `_mode_mismatch`, `_not_failed` or `_not_slot_key`. Otherwise it queues
+   the retry with `parent_run_id` set.
+3. **Executor** (`EffectGate.begin`). It derives the effect slot from the parent, so the retry claims the **same**
+   key, `fx:<process>:<slot>:<ver>`.
+4. **Effect ledger.** A FAILED claim that is proven pre-effect is re-claimed at `attempt + 1`. This is the attempt
+   counter; the owner epoch does not move. A slot that is DONE, CLAIMED (a second retry), UNKNOWN or an unproven
+   FAILED is refused with `effect_already_claimed`. One effect per slot.
+
 ## Known limits (operator decisions)
 
-1. **No live heal for an effect-keyed lane yet.** The executor parses the effect slot from a `d:`/`e:` run id.
-   A free-form `rem-…-live` request from `host_run_request` therefore ends `RUN_REFUSED effect_slot_unknown`,
-   which is fail-closed: nothing runs twice. The diagnoser records that refusal and escalates it once at P1. To
-   make the heal actually run, a follow-up gateway and executor PR must let the diagnoser bind its rerun to the
-   failed run's slot. The effect claim would then refuse it unless that slot's claim is provably pre-effect.
-2. **Nothing reads `digest[]` yet.** P2 items are visible in the receipt and in `diagnoses.jsonl`, but the
-   comprehensive digest still has to be wired to read the receipt's `digest[]`.
+1. **Most live failures are not reclaimable today.** A RUN_FAILED claim is pre-effect only when the spawn failed,
+   or when the lane is `late_write_fenced` and exited before `assert_fence`. Today no keyed lane calls
+   `assert_fence`, so a lane that ran and then failed is held as unproven: its retry is refused, and the refusal
+   escalates once at P1.
+2. **The digest is wired.** `scripts/lib/advice_digest.py` reads the receipt's `digest[]` (P2 only, receipt no more
+   than 24 h old) into a LANE HEALTH section of the 10/15/17 ET advice digest.
 3. **NO_OUTPUT from a shadow lane does not self-recover.** That lane's dry runs never advance the output, so a
    human or the cutover itself has to close it.
+4. **The SLA seed file is stale (2026-10-09).** The breach detector now derives a registry SLA row for any lane
+   newer than the seed (`seed_supervisor_sla.merged_sla_rows`). Re-seeding stays an operator command:
+   `python3 scripts/seed_supervisor_sla.py --json-out data/runtime/supervisor_sla_seed.json`.
