@@ -167,8 +167,11 @@ def fake_hermes_work(mod):
         calls.append((tuple(candidates), kwargs))
         return [{"source_count": 2, "catalyst_type": "earnings"}]
 
+    # 2026-10-16: the scalp run also unions the Active Trader hot symbols (data broker); none here, so the
+    # candidate set is the legacy one.
     replacements = {"_load_env": lambda: None, "_hot_research_on": lambda: False,
-                    "get_scalp_candidates": candidates, "run": research}
+                    "get_scalp_candidates": candidates, "run": research,
+                    "active_trader_hot_symbols": lambda **kw: []}
     for name, value in replacements.items():
         setattr(mod, name, value)
     return replacements, calls
@@ -213,7 +216,19 @@ def test_hermes_cron_argv_matches_old_entrypoint_and_receipts(state, capsys):
     old_calls, old_stdout = list(calls), capsys.readouterr().out
     calls.clear()
     assert mod.main(["--source", "scalp", "--apply"]) == 0
-    assert calls == old_calls and capsys.readouterr().out == old_stdout
+    # 2026-10-16 intended deltas only: the day file moved to persistent state (lib/hermes_catalyst_store) with a
+    # compat mirror at the legacy path, and a research deadline inside the lane's `timeout 5m`.
+    new_calls = list(calls)
+    new_run = next(c for c in new_calls if isinstance(c[0], tuple))[1]
+    old_run = next(c for c in old_calls if isinstance(c[0], tuple))[1]
+    assert new_run["mirror_path"] == old_run["output_path"]
+    assert new_run["deadline_s"] == mod.RESEARCH_DEADLINE_S
+
+    def strip(cs):
+        return [(c[0], {k: v for k, v in c[1].items() if k not in ("output_path", "mirror_path", "deadline_s")})
+                if isinstance(c[0], tuple) else c for c in cs]
+
+    assert strip(new_calls) == strip(old_calls) and capsys.readouterr().out == old_stdout
     path = state / "data/runtime/hermes-momentum-catalyst-scalp_last.json"
     receipt = json.loads(path.read_text())
     assert receipt["status"] == "ok" and receipt["ok_at"]
@@ -635,9 +650,10 @@ def test_shard04_dispatch_rows_obey_current_policy_and_lock_proof():
         assert validate_dispatch_block(row) == []
         assert row["dispatch"]["retry_policy"] == "none"
         assert row["output_signal"]["path"] == allow[row["lane_id"]]["output_signal"]
-        assert (row["scheduler"]["stage"], row["dispatch"]["mode"]) in (
-            {("shadow", "dry_run"), ("canary", "live")} if row["lane_id"] in _CANARY_WAVE else {("shadow", "dry_run")}
-        )
+        allowed = {("shadow", "dry_run"), ("canary", "live")} if row["lane_id"] in _CANARY_WAVE else {("shadow", "dry_run")}
+        if row["lane_id"] in _CW_CUT_OVER:  # 2026-10-16 hermes-momentum-catalyst-scalp: n8n-only (cron commented)
+            allowed = {("cutover", "live")}
+        assert (row["scheduler"]["stage"], row["dispatch"]["mode"]) in allowed
 
 
 @pytest.mark.parametrize("script,args", [
@@ -738,5 +754,6 @@ def test_allowlist_preserves_exact_observed_cron_script_arguments():
 
 from tests.test_canary_wave_20261014 import CANARY_WAVE_20261014 as _CANARY_WAVE_1014  # noqa: E402  canary-wave-20261014
 from tests.support.n8n_cutover_waves import PROMOTED as _CW_PROMOTED  # noqa: E402  2026-10-15 cutover waves
+from tests.support.n8n_cutover_waves import CUT_OVER as _CW_CUT_OVER  # noqa: E402  registry rows at stage cutover
 
 _CANARY_WAVE = set(_CANARY_WAVE_1014) | set(_CW_PROMOTED)

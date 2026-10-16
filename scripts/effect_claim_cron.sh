@@ -21,8 +21,9 @@
 #   * a keyed lane with cron_claim false runs unchanged (the config has not armed its cron side yet; the cutover
 #     packet flips cron_claim after `effect_claim.py set-owner --owner cron` has created the owner row);
 #   * a lane with cron_claim true runs through `effect_claim.py run --scheduler cron --slot now`: a refused claim
-#     (no owner row, n8n owns it, or the slot's effect already happened) exits 75, as `flock -n` does, and runs
-#     nothing. An unreadable ledger exits 2 and runs nothing.
+#     (no owner row, or the slot's effect already happened) exits 75, as `flock -n` does, and runs nothing.
+#   * 2026-10-16: whatever cron_claim says, owner n8n exits 0 (event skipped_effect) and runs nothing, and an
+#     unreachable ledger FAILS OPEN (the command runs unclaimed; event run_unclaimed_ledger_unreachable).
 # --slot now is the America/New_York minute, the slot of the dispatcher's d: key for the same scheduled minute.
 # TRADEAI_EFFECT_SLOT overrides it (a manual re-fire of a named slot, and tests).
 #
@@ -83,19 +84,60 @@ fi
 IFS=$'\t' read -r PROCESS VERSION CRON_CLAIM <<<"$SPEC"
 set +e
 
+# 2026-10-16 (cron effect-claim wrap, docs/ops/packets/cron-effect-claim-wrap-20261016/): the owner decides.
+#   owner n8n      -> exit 0, event skipped_effect, the command does not run and no claim row is written;
+#   owner cron     -> the command runs (claimed when cron_claim is true, unclaimed otherwise);
+#   ledger unreachable -> FAIL OPEN: the command runs unclaimed, event run_unclaimed_ledger_unreachable (the shared
+#                     flock still refuses an overlap, which is today's behaviour).
 if [ "$CRON_CLAIM" != "1" ]; then
-  log_event run_unclaimed_cron_claim_false 0 "process=$PROCESS"
+  OWNER="$("$PY3" "$EFFECT_PY" owner --process "$PROCESS" 2>/dev/null)"
+  owner_rc=$?
+  if [ "$owner_rc" = 0 ] && [ "$OWNER" = "n8n" ]; then
+    log_event skipped_effect 0 "process=$PROCESS owner=n8n cron_claim=false"
+    echo "effect_claim_cron: $PROCESS is owned by n8n; cron copy skipped (nothing run)" >&2
+    exit 0
+  fi
+  if [ "$owner_rc" != 0 ]; then
+    OWNER="ledger_unreachable"
+  fi
+  log_event run_unclaimed_cron_claim_false 0 "process=$PROCESS owner=${OWNER:-none}"
   "$@"
   rc=$?
   log_event completed_unclaimed "$rc" "process=$PROCESS"
   exit "$rc"
 fi
 
-"$PY3" "$EFFECT_PY" run --process "$PROCESS" --slot "$SLOT" --input-version "$VERSION" --scheduler cron -- "$@"
+DECISION="$(mktemp "${TMPDIR:-/tmp}/effect_claim_decision.XXXXXX" 2>/dev/null)"
+if [ -z "$DECISION" ]; then
+  log_event run_unclaimed_ledger_unreachable 0 "process=$PROCESS (mktemp failed; fail open)"
+  "$@"
+  rc=$?
+  log_event completed_unclaimed "$rc" "process=$PROCESS"
+  exit "$rc"
+fi
+: > "$DECISION"
+"$PY3" "$EFFECT_PY" run --process "$PROCESS" --slot "$SLOT" --input-version "$VERSION" --scheduler cron \
+  --decision-out "$DECISION" -- "$@"
 rc=$?
-case "$rc" in
-  75) log_event refused_claim 75 "process=$PROCESS (effect_claim.py run refused; claim JSON on stderr)" ;;
-  2) log_event exit_2_ledger_error_or_child 2 "process=$PROCESS (exit 2 = ledger/key error before the run, or the child's own exit 2; stderr says which)" ;;
-  *) log_event completed_claimed "$rc" "process=$PROCESS" ;;
+DECIDED="$(cat "$DECISION" 2>/dev/null)"
+rm -f "$DECISION"
+if [ -z "$DECIDED" ]; then
+  # The claim was never decided (ledger unreachable, interpreter or import failure): the command did NOT run.
+  log_event run_unclaimed_ledger_unreachable "$rc" "process=$PROCESS (effect_claim.py rc=$rc before any claim; fail open)"
+  echo "effect_claim_cron: effect ledger unreachable (rc=$rc); running $PROCESS unclaimed (fail open)" >&2
+  "$@"
+  rc=$?
+  log_event completed_unclaimed "$rc" "process=$PROCESS"
+  exit "$rc"
+fi
+REASON="$(printf '%s' "$DECIDED" | "$PY3" -c 'import json,sys
+d=json.load(sys.stdin); print("ok" if d.get("ok") else "%s %s" % (d.get("reason") or "", d.get("owner") or ""))' 2>/dev/null)"
+case "$REASON" in
+  ok) log_event completed_claimed "$rc" "process=$PROCESS" ;;
+  "effect_fenced_owner n8n")
+    log_event skipped_effect 0 "process=$PROCESS owner=n8n cron_claim=true"
+    echo "effect_claim_cron: $PROCESS is owned by n8n; cron copy skipped (nothing run)" >&2
+    exit 0 ;;
+  *) log_event refused_claim 75 "process=$PROCESS reason=${REASON:-unparsed} (claim JSON on stderr)" ;;
 esac
 exit "$rc"
