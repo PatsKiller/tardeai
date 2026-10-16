@@ -12,7 +12,9 @@ SRC=$REPO/docs/implementation/n8n-maturity/workflows/fabric
 SERVED=${SERVED:-$(readlink -f "$HOME/trade-ai-releases/portfolio-server/CURRENT")}
 WF=tradeai-fabric-hermes-learning
 SUBS=(tradeai-fabric-run-lane tradeai-fabric-error)
-LANES=(hermes-learning-outcome-grader hermes-learning-outcome-learning hermes-learning-config-governor)
+# 2026-10-16: every runnable step lane (the 10-15 unblock added three)
+LANES=(hermes-learning-outcome-grader hermes-learning-outcome-learning hermes-learning-config-governor
+       hermes-learning-tag-engine hermes-learning-outcome-feedback-agent hermes-learning-autonomous-self-tune)
 PSQL=(docker exec m8m-n8n-db psql -U n8n -d n8n -tA)
 fail(){ echo "REFUSED: $*"; exit 1; }
 REIMPORT=0
@@ -48,10 +50,21 @@ allow = {e["lane_id"]: e for e in json.load(open(f"{root}/config/n8n_run_allowli
 reg = {r["lane_id"]: r for r in json.load(open(f"{root}/config/lane_registry.json"))["lanes"]}
 eff = json.load(open(f"{root}/config/n8n_effect_keys.json"))["lanes"]
 e, r = allow[lane], reg[lane]
-assert e["live_arg"] is None and e["dry_run_arg"] is not None, "allowlist entry must be dry-run only"
-assert r["scheduler"]["stage"] == "shadow" and "dispatch" not in r, "registry row must be stage shadow, no dispatch"
-assert eff[lane]["cron_claim"] is False, "cron_claim must stay false until the cutover"
-print(f"  {lane}: allowlisted (dry_run_arg {e['dry_run_arg']}, lock {e['lock']}), stage shadow, effect key ok")
+procs = json.load(open(f"{root}/config/n8n_fabric_processes.json"))["processes"]
+spec = procs["hermes-learning"] if isinstance(procs, dict) else next(p for p in procs if p.get("id") == "hermes-learning")
+step = next(s for s in spec["steps"].values() if s.get("lane_id") == lane)
+assert e["dry_run_arg"] is not None and "dispatch" not in r, "allowlist dry_run_arg + no registry dispatch block"
+if r["scheduler"]["stage"] == "canary":
+    # hermes-learning cutover PR-2 (2026-10-16): a LIVE learn step carries its cutover argv; PR-1 armed cron_claim
+    assert spec["mode"] == "live" and e["live_arg"] == step["cutover_live_arg"], "canary step needs the cutover argv"
+    assert eff[lane]["cron_claim"] is True, "canary step needs cron_claim true (PR-1)"
+    print(f"  {lane}: allowlisted, stage canary, live_arg {e['live_arg']}, cron_claim true")
+else:
+    assert e["live_arg"] is None, "a shadow step must be dry-run only"
+    assert r["scheduler"]["stage"] == "shadow", "registry row must be stage shadow or canary"
+    if lane == "hermes-learning-autonomous-self-tune":
+        assert eff[lane]["cron_claim"] is False, "the tune step claims nothing until the manifest split"
+    print(f"  {lane}: allowlisted (dry_run_arg {e['dry_run_arg']}, lock {e['lock']}), stage shadow, effect key ok")
 PY
 done
 [[ -f "$SERVED/config/n8n_fabric_processes.json" ]] || fail "served release lacks config/n8n_fabric_processes.json"

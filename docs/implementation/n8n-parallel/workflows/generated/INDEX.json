@@ -1,7 +1,7 @@
 {
-  "code_sha": "5b5a902111a1",
+  "code_sha": "d51547a7d40a",
   "credential_name": "tradeai-run-relay",
-  "generated_at": "2026-10-15T02:46:23+00:00",
+  "generated_at": "2026-10-15T16:48:40+00:00",
   "generator": "scripts/n8n_workflow_templates.py",
   "lane_count": 75,
   "lanes": [
@@ -205,10 +205,10 @@
       "live_workflow_id": "2706b09e7b38661a",
       "pipeline": "hermes_learning",
       "schedule": [
-        "50 10 * * *"
+        "20 11 * * *"
       ],
       "schedule_fidelity": "EXACT",
-      "schedule_source": "crontab: 50 10 * * * run_hermes_pipeline.sh --stage learn (registry kind cron)",
+      "schedule_source": "crontab: 20 11 * * * run_hermes_pipeline.sh --stage learn (registry kind cron; moved from 50 10 by cutover decision D1 2026-10-15)",
       "shadow_file": "pending/hermes-learning-pipeline-learn-shadow.json",
       "shadow_workflow_id": "a33cd415e30d6f01",
       "stage_order": 1,

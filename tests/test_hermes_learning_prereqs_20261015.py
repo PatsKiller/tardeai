@@ -76,10 +76,23 @@ LEARN_NOW = datetime(2026, 10, 15, 10, 57, tzinfo=ET)
 POLICY_PIN = "c6750b96ada49f816798bf3714ad390616b1b32769fdcbcc54e0635e32caf31f"
 
 
+#: cutover PR-2 (2026-10-15): steps with no live argv. The tune lane waits for the manifest split; outcome_feedback_agent
+#: is HELD at shadow (owner stays cron, so cron keeps running it live) because its `--notify queue` argv trips the
+#: allowlist sender token gate; it moves in a follow-up once the operator-approved gate alignment is served.
+HELD_INERT = {"autonomous_self_tune", "outcome_feedback_agent"}
+
+
 def _live_sources(**proc_overrides) -> dict:
     src = copy.deepcopy(SOURCES)
     src["processes"][PROCESS].update({"mode": "live", **proc_overrides})
     return src
+
+
+#: The committed spec with the one-day manual-slots flag OFF (2026-10-16 manual-slots PR): the tests of the
+#: unflagged gateway behaviour run against this, whatever the committed flag says on a given day.
+UNFLAGGED = copy.deepcopy(SOURCES)
+UNFLAGGED["processes"][PROCESS]["live_manual_slots"] = False
+UNFLAGGED["processes"][PROCESS].pop("live_manual_slots_until", None)
 
 
 def _key(lane: str, mode: str, slot: str, attempt: int = 1) -> str:
@@ -116,13 +129,17 @@ def test_manual_dry_run_minute_is_accepted_and_the_tune_stage_slot_is_scheduled(
 
 
 def test_live_key_is_refused_while_the_spec_is_dry_run():
-    c = PK.check_process_key(_key(GRADER, "live", "20261015T1050"), GRADER, "live", sources=SOURCES, now=LEARN_NOW)
+    dry = copy.deepcopy(SOURCES)
+    dry["processes"][PROCESS].update({"mode": "dry_run", "live_manual_slots": False})
+    c = PK.check_process_key(_key(GRADER, "live", "20261015T1050"), GRADER, "live", sources=dry, now=LEARN_NOW)
     assert not c.ok and c.state == "MODE_NOT_LIVE"
-    assert SPEC["mode"] == "dry_run" and SPEC["live_manual_slots"] is False  # inert at merge
+    # hermes-learning cutover PR-2 (2026-10-15): the committed spec is live (four learn lanes at canary)
+    assert SPEC["mode"] == "live"
 
 
 def test_live_spec_accepts_the_scheduled_slot_and_refuses_a_manual_minute_unless_flagged():
-    live = _live_sources()
+    live = _live_sources(live_manual_slots=False)
+    live["processes"][PROCESS].pop("live_manual_slots_until", None)
     ok = PK.check_process_key(_key(GRADER, "live", "20261015T1050"), GRADER, "live", sources=live, now=LEARN_NOW)
     assert ok.ok and ok.slot_kind == "scheduled"
     manual = PK.check_process_key(_key(GRADER, "live", "20261015T1056"), GRADER, "live", sources=live, now=LEARN_NOW)
@@ -131,6 +148,29 @@ def test_live_spec_accepts_the_scheduled_slot_and_refuses_a_manual_minute_unless
     assert PK.check_process_key(
         _key(GRADER, "live", "20261015T1056"), GRADER, "live", sources=flagged, now=LEARN_NOW
     ).ok
+
+
+@pytest.mark.parametrize(
+    "until,ok,state",
+    [
+        (None, True, "OK"),  # no bound: the flag alone decides (unchanged behaviour)
+        ("2026-10-15T23:59:00-04:00", True, "OK"),  # one-day window still open
+        ("2026-10-15T10:55:00-04:00", False, "MANUAL_LIVE_EXPIRED"),  # bound passed (LEARN_NOW is after it)
+        ("2026-10-15T23:59:00", False, "MANUAL_LIVE_EXPIRED"),  # naive time: fail closed
+        ("tomorrow", False, "MANUAL_LIVE_EXPIRED"),  # unparseable: fail closed
+    ],
+)
+def test_live_manual_slots_until_bounds_the_flag_and_fails_closed(until, ok, state):
+    # 2026-10-16 one-day manual-slots PR: the flag cannot outlive its day, whatever the next PR does.
+    over = {"live_manual_slots": True} | ({} if until is None else {"live_manual_slots_until": until})
+    c = PK.check_process_key(_key(GRADER, "live", "20261015T1056"), GRADER, "live", sources=_live_sources(**over),
+                             now=LEARN_NOW)
+    assert c.ok is ok and c.state == state
+    # the bound never touches a scheduled slot or a dry run
+    sched = PK.check_process_key(_key(GRADER, "live", "20261015T1050"), GRADER, "live", sources=_live_sources(**over),
+                                 now=LEARN_NOW)
+    assert sched.ok and sched.slot_kind == "scheduled"
+    assert "MANUAL_LIVE_EXPIRED" in PK.STATES
 
 
 @pytest.mark.parametrize(
@@ -240,14 +280,14 @@ def test_gateway_accepts_a_valid_p_key_and_stores_the_validated_marker(gw):
 @pytest.mark.parametrize(
     "key,mode,state",
     [
-        ("p:hermes-learning-outcome-grader:live:20261015T1050", "live", "MODE_NOT_LIVE"),
+        ("p:hermes-learning-outcome-grader:live:20261015T1055", "live", "MANUAL_LIVE_REFUSED"),
         ("p:hermes-learning-outcome-grader:dry_run:20261014T1050", "dry_run", "SLOT_EXPIRED"),
         ("p:hermes-learning-tag-engine:dry_run:20261015T1050", "dry_run", "KEY_MISMATCH"),
         ("P:hermes-learning-outcome-grader:dry_run:20261015T1050", "dry_run", "MALFORMED_KEY"),
     ],
 )
 def test_gateway_refuses_forged_p_keys_typed_and_writes_no_row(gw, key, mode, state):
-    out = _gw_run(gw, key, mode=mode)
+    out = _gw_run(gw, key, mode=mode, sources=UNFLAGGED)
     assert out["state"] == "REFUSED" and out["reason"] == "run_process_key_invalid" and out["key_state"] == state
     assert gw.ledger._conn.execute("SELECT count(*) AS n FROM runs").fetchone()["n"] == 0
 
@@ -432,7 +472,10 @@ def test_every_runnable_step_reproduces_its_cron_wrapper(sid):
         )
     else:
         assert "offpeak_exempt" not in entry
-    assert X.validate_entry(entry) is None and entry["live_arg"] is None  # still inert
+    # cutover PR-2 (2026-10-15): four learn lanes carry the spec's cutover_live_arg; the tune lane and the HELD
+    # outcome_feedback_agent (its `--notify` argv trips the sender token gate until gate alignment lands) stay inert
+    want_live = None if sid in HELD_INERT else RUNNABLE[sid]["cutover_live_arg"]
+    assert X.validate_entry(entry) is None and entry["live_arg"] == want_live
 
 
 # ── G5a: tag engine through the governed bridge ───────────────────────────────────────────────────────────────────
@@ -450,7 +493,7 @@ def test_route_is_registered_on_both_sides_and_bounded():
 def test_allowlist_llm_route_binds_the_bridge_env_for_the_tag_engine_lane():
     entry = ALLOW["hermes-learning-tag-engine"]
     assert entry["llm_route"] == {"via": "cio-governed-bridge", "process_id": "hermes_tag_engine"}
-    assert X.validate_entry(entry) is None and entry["live_arg"] is None
+    assert X.validate_entry(entry) is None and entry["live_arg"] == ["--apply"]  # cutover PR-2
     env, block = X.build_child_env({"PATH": "/usr/bin"}, entry["lane_id"], entry)
     assert env[X.LLM_BRIDGE_ENV] == "1" and env[X.LLM_PROCESS_ENV] == "hermes_tag_engine"
 
@@ -638,14 +681,26 @@ def test_a_refused_queue_is_failed_and_leaves_the_cooldown(no_sender, monkeypatc
     assert [x["reason"] for x in r["results"]] == ["queue:ledger_absent"] * 2 and not AN.STATE_PATH.exists()
 
 
-def test_cutover_live_args_are_declared_and_still_inert():
+def test_cutover_live_args_are_declared_and_applied():
     want = {sid: ["--apply"] for sid in RUNNABLE}
     want["outcome_feedback_agent"] = ["--apply", "--notify", "queue"]
     assert {sid: s["cutover_live_arg"] for sid, s in RUNNABLE.items()} == want
-    for sid, s in RUNNABLE.items():
-        assert ALLOW[s["lane_id"]]["live_arg"] is None
+    for sid, s in RUNNABLE.items():  # cutover PR-2 (2026-10-15): four learn lanes carry the cutover argv; tune + held inert
+        assert ALLOW[s["lane_id"]]["live_arg"] == (None if sid in HELD_INERT else want[sid])
 
 
 def test_registered_in_the_cio_hardening_gates():
     text = (ROOT / "scripts" / "run_cio_hardening_ci.py").read_text(encoding="utf-8")
     assert "tests/test_hermes_learning_prereqs_20261015.py" in text
+
+
+def test_committed_manual_slots_flag_is_the_one_day_bound():
+    # 2026-10-16 one-day manual-slots PR (operator-approved): on for 2026-10-16 ET only. The validator refuses a manual
+    # live minute at/after the bound even if no PR turns the flag off (MANUAL_LIVE_EXPIRED).
+    assert SPEC["live_manual_slots"] is True and SPEC["live_manual_slots_until"] == "2026-10-16T23:59:00-04:00"
+    day = datetime(2026, 10, 16, 12, 5, tzinfo=ET)
+    ok = PK.check_process_key(_key(GRADER, "live", "20261016T1201"), GRADER, "live", sources=SOURCES, now=day)
+    assert ok.ok and ok.slot_kind == "manual"
+    late = datetime(2026, 10, 16, 23, 59, 30, tzinfo=ET)
+    over = PK.check_process_key(_key(GRADER, "live", "20261016T2358"), GRADER, "live", sources=SOURCES, now=late)
+    assert not over.ok and over.state == "MANUAL_LIVE_EXPIRED"
