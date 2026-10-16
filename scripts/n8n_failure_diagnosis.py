@@ -892,7 +892,10 @@ def main(argv: Optional[list[str]] = None, *, conn_factory=None, governed_call=N
     c = counts(diag, pending_events)
     ok = sources_ok and not done["errors"]
     prev = _load_json(root / RECEIPT_REL) or {}
-    blind = int(prev.get("consecutive_blind") or 0) + 1 if (c["eligible"] and not c["model_called"]
+    # 2026-10-16: attached, auto-closed and deterministic incidents need no model call; a cycle that settled
+    # everything that way is not blind.
+    needs_model = c["eligible"] - c["attached"] - c["auto_closed"] - c["deterministic_execute"]
+    blind = int(prev.get("consecutive_blind") or 0) + 1 if (needs_model > 0 and not c["model_called"]
                                                             and not c["deferred"]) else 0
     receipt = {
         "schema": SCHEMA, "lane_id": D.LANE_ID, "authority": "READ_ONLY_ADVISORY", "mode": "apply",

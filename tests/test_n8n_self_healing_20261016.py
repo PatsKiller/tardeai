@@ -231,6 +231,7 @@ def test_later_success_auto_closes_without_a_model_call(env):
     assert res["outcome"] == "auto_closed:self_recovered" and res["deterministic"]["evidence"] == ["run:n8n-wf-abc-43"]
     assert rec["escalations"] == [] and rec["digest"] == [] and store.requests == []
     assert rec["counts"]["auto_closed"] == 1 and rec["counts"]["model_called"] == 0
+    assert rec["consecutive_blind"] == 0, "a cycle settled deterministically is not a blind diagnoser"
     recs = _records(env)
     assert recs[-1]["outcome"] == "auto_closed:self_recovered" and recs[-1]["deterministic"]["outcome"] == "self_recovered"
 
