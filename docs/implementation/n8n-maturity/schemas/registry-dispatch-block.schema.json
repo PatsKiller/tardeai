@@ -52,7 +52,8 @@
               "lane_id": {"type": "string", "description": "run_done (required): upstream lane. A live lane counts the upstream's live RUN_DONE only; a dry_run (shadow) lane counts dry_run or live, as an `after` edge does (W5, 2026-10-11)."},
               "receipt_rel": {"type": "string", "pattern": "^data/[A-Za-z0-9._/-]+$", "description": "receipt: path relative to $STATE_ROOT."},
               "event_type": {"type": "string", "maxLength": 80, "description": "cio_bus / ledger_event / outbox type."},
-              "domain": {"type": "string", "pattern": "^[a-z][a-z0-9_]{1,63}$", "description": "broker_as_of (required, and only there): the Data Broker domain whose as_of advance fires the lane; one of scripts/lib/data_broker/as_of_signal.py DOMAINS (W5, CONSOLIDATION_PLAN §E.4)."}
+              "domain": {"type": "string", "pattern": "^[a-z][a-z0-9_]{1,63}$", "description": "broker_as_of (required, and only there): the Data Broker domain whose as_of advance fires the lane; one of scripts/lib/data_broker/as_of_signal.py DOMAINS (W5, CONSOLIDATION_PLAN §E.4)."},
+              "require_verdict": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["produced", "empty_allowed"]}, "description": "run_done only (2026-10-16, process consolidation cohort 1): the upstream RUN_DONE fires this lane only when its receipt output_verdict.verdict is listed (scripts/lib/n8n_output_verdict.py). Absent = any RUN_DONE."}
             }
           }
         },
