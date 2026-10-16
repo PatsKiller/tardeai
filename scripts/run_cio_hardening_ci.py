@@ -1261,6 +1261,13 @@ GATES = [
             "tests/test_n8n_diagnosis_deepseek_route_20261015.py",
         ],
     ),
+    # 2026-10-16 (operator "yes make self healing now"): deterministic tier before the model (covered lock skip,
+    # later success, executor_lost reaper), per-signature dedupe + call cap, one gated live heal per lane per day
+    # (rerun_live_once: n8n owner, canary/cutover, transient, effect key), P1 once per signature, P2 digest-only.
+    (
+        "n8n_self_healing_20261016",
+        ["tests/test_n8n_self_healing_20261016.py"],
+    ),
     # 2026-10-16: daily-incubator-refresh live 08:15 ET died on a closed connection and the except handler's rollback()
     # masked the real error; guarded rollback/close, original exception logged, reconnect before the scan commit.
     (

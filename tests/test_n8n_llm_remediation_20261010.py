@@ -269,7 +269,9 @@ def test_catalogue_generation_from_inventory(tmp_path):
     assert lanes["lane-low"]["severity"] == "Low" and ids("lane-low") == {"rerun_dry_run": True, "reap_orphan_run": True}
     assert lanes["lane-low"]["known_issues"][0]["known_issues"] == "flaky dns"
     # registry stage cutover -> dry then live is offered; an n8n lane with no stage never gets a live rerun
-    assert ids("lane-cut") == {"rerun_dry_run": True, "rerun_dry_then_live": True, "reap_orphan_run": True}
+    # 2026-10-16: a canary/cutover lane with a live_arg is also offered rerun_live_once (gated at request time)
+    assert ids("lane-cut") == {"rerun_dry_run": True, "rerun_dry_then_live": True, "rerun_live_once": True,
+                               "reap_orphan_run": True}
     assert lanes["lane-cut"]["actions"][1]["argv"]["live"][-1] == "--write"
     assert "rerun_dry_then_live" not in ids("lane-n8n")
     bad = json.loads(json.dumps(doc))

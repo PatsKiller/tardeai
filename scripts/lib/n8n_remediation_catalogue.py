@@ -18,6 +18,12 @@ Allowed actions are drawn ONLY from safe, idempotent operations that already exi
                            2026-10-10 ~00:35 ET): a shadow/canary lane, or one with no stage, never gets a live rerun
                            from the diagnoser — the diagnoser re-checks the stage at request time and the executor's
                            stage clamp runs a shadow lane dry whatever was requested.
+* ``rerun_live_once``      ONE ``live`` request (no dry phase), at most one per lane per day, for a lane at stage
+                           ``canary`` or ``cutover`` (operator 2026-10-16 "yes make self healing now"). Offered here
+                           only; the diagnoser runs it only when ``n8n_self_heal.live_heal_gate`` passes at request
+                           time: effect owner n8n, not a sender / P1 / broker-order-stop-options lane, a transient
+                           failure (never a code error), and a semantic effect key so the executor's effect-claim
+                           gate stands between the rerun and a duplicate effect.
 * ``reap_orphan_run``      a RUNNING row with no live owner, overdue by 2x its timeout, finishes ``RUN_TIMEOUT``
                            ``executor_lost`` through ``LedgerRunStore.finish`` — the executor v2 reaper's own receipt
                            shape (``n8n_run_executor.ExecutorV2.reap``); the installed v1 executor has no reaper.
@@ -47,7 +53,13 @@ SUGGEST_ONLY = "suggest_only"
 SEVERITIES = ("Critical", "High", "Medium", "Low")
 AUTO_SEVERITIES = frozenset({"Medium", "Low"})          # V9 §6.4: Critical/High -> human approval, never an action
 HANDLERS = frozenset({"ledger_request_run", "ledger_reap_orphan"})
-ACTION_IDS = ("rerun_dry_run", "rerun_dry_then_live", "reap_orphan_run")
+ACTION_IDS = ("rerun_dry_run", "rerun_dry_then_live", "rerun_live_once", "reap_orphan_run")
+#: 2026-10-16 (operator "yes make self healing now"): ONE live rerun per lane per day for an n8n-owned canary or
+#: cutover lane after a TRANSIENT failure. The catalogue only offers it; scripts/lib/n8n_self_heal.live_heal_gate
+#: re-checks every condition (effect owner n8n, stage, not sender/P1/broker-order-stop-options, transient failure,
+#: a semantic effect key so the executor's effect claim refuses a duplicate effect) at request time.
+LIVE_HEAL_STAGES = frozenset({"canary", "cutover"})
+MAX_LIVE_HEAL_PER_LANE_PER_DAY = 1
 MAX_PER_INCIDENT = 1
 MAX_PER_LANE_PER_DAY = 3
 ORPHAN_TIMEOUT_FACTOR = 2.0
@@ -300,6 +312,21 @@ def build_entry(lane_id: str, inv_rows: list[Mapping[str, str]], *, allow: Optio
                               "per-incident and per-lane-day caps not reached"],
             **common,
         })
+    stage_live = sched.get("stage") in LIVE_HEAL_STAGES and (registry_row or {}).get("state") == "ACTIVE"
+    if live is not None and stage_live:
+        entry["actions"].append({
+            "action_id": "rerun_live_once", "handler": "ledger_request_run", "mode_sequence": ["live"],
+            "argv": {"live": live}, "auto": auto, "approval_reason": approval,
+            "via": "coordination/run (host_run_request, mode=live) once; the executor's effect-claim gate refuses a "
+                   "duplicate effect; the stage clamp still applies",
+            "preconditions": ["registry scheduler.stage canary or cutover and state ACTIVE (re-checked at request time)",
+                              "effect owner n8n and a config/n8n_effect_keys.json entry (n8n_self_heal.live_heal_gate)",
+                              "failure classified transient, not a code error",
+                              "not a sender, P1 or broker/order/stop/options-execution lane",
+                              "no REQUESTED/RUNNING row for the lane",
+                              f"at most {MAX_LIVE_HEAL_PER_LANE_PER_DAY} live heal per lane per day"],
+            **{**common, "max_per_lane_per_day": MAX_LIVE_HEAL_PER_LANE_PER_DAY},
+        })
     entry["actions"].append({
         "action_id": "reap_orphan_run", "handler": "ledger_reap_orphan", "mode_sequence": [],
         "argv": {}, "auto": True, "approval_reason": None,
@@ -341,6 +368,9 @@ def build_catalogue(*, inventory_dir: Path, registry: Mapping[str, Any], allowli
             "auto_severities": sorted(AUTO_SEVERITIES), "max_per_incident": MAX_PER_INCIDENT,
             "max_per_lane_per_day": MAX_PER_LANE_PER_DAY, "orphan_timeout_factor": ORPHAN_TIMEOUT_FACTOR,
             "max_auto_timeout_s": MAX_AUTO_TIMEOUT_S,
+            "live_heal": {"action_id": "rerun_live_once", "stages": sorted(LIVE_HEAL_STAGES),
+                          "max_per_lane_per_day": MAX_LIVE_HEAL_PER_LANE_PER_DAY,
+                          "gate": "scripts/lib/n8n_self_heal.py live_heal_gate (re-checked at request time)"},
             "never": "broker/order/stop/secret actions, sends, deletes, crontab/systemd edits, unit restarts, DLQ releases",
             "not_offered": LOCK_CLEAR_NOTE,
             "severity_rule": "most severe over the lane's active inventory rows of FUNCTION_SEVERITY[business_function], the migration_risk floor (High/Medium) and critical-path membership (CP1/CP2 Critical, CP3/CP4 High)",
@@ -394,6 +424,13 @@ def validate_catalogue(doc: Mapping[str, Any]) -> list[str]:
                 errs.append(f"{lane}: never-list lane carries {aid}")
             if aid == "rerun_dry_then_live" and (e.get("registry") or {}).get("stage") != "cutover":
                 errs.append(f"{lane}: rerun_dry_then_live needs registry stage cutover")
+            if aid == "rerun_live_once":
+                if (e.get("registry") or {}).get("stage") not in LIVE_HEAL_STAGES:
+                    errs.append(f"{lane}: rerun_live_once needs registry stage canary or cutover")
+                if list(a.get("mode_sequence") or []) != ["live"]:
+                    errs.append(f"{lane}: rerun_live_once mode_sequence must be ['live']")
+                if int(a.get("max_per_lane_per_day") or 0) != MAX_LIVE_HEAL_PER_LANE_PER_DAY:
+                    errs.append(f"{lane}: rerun_live_once max_per_lane_per_day must be {MAX_LIVE_HEAL_PER_LANE_PER_DAY}")
             for mode, argv in (a.get("argv") or {}).items():
                 if mode not in ("dry_run", "live") or not isinstance(argv, list):
                     errs.append(f"{lane}/{aid}: argv[{mode}] malformed")
