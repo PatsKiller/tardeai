@@ -88,6 +88,13 @@ def _live_sources(**proc_overrides) -> dict:
     return src
 
 
+#: The committed spec with the one-day manual-slots flag OFF (2026-10-16 manual-slots PR): the tests of the
+#: unflagged gateway behaviour run against this, whatever the committed flag says on a given day.
+UNFLAGGED = copy.deepcopy(SOURCES)
+UNFLAGGED["processes"][PROCESS]["live_manual_slots"] = False
+UNFLAGGED["processes"][PROCESS].pop("live_manual_slots_until", None)
+
+
 def _key(lane: str, mode: str, slot: str, attempt: int = 1) -> str:
     return f"p:{lane}:{mode}:{slot}" + (f":a{attempt}" if attempt > 1 else "")
 
@@ -131,7 +138,8 @@ def test_live_key_is_refused_while_the_spec_is_dry_run():
 
 
 def test_live_spec_accepts_the_scheduled_slot_and_refuses_a_manual_minute_unless_flagged():
-    live = _live_sources()
+    live = _live_sources(live_manual_slots=False)
+    live["processes"][PROCESS].pop("live_manual_slots_until", None)
     ok = PK.check_process_key(_key(GRADER, "live", "20261015T1050"), GRADER, "live", sources=live, now=LEARN_NOW)
     assert ok.ok and ok.slot_kind == "scheduled"
     manual = PK.check_process_key(_key(GRADER, "live", "20261015T1056"), GRADER, "live", sources=live, now=LEARN_NOW)
@@ -279,7 +287,7 @@ def test_gateway_accepts_a_valid_p_key_and_stores_the_validated_marker(gw):
     ],
 )
 def test_gateway_refuses_forged_p_keys_typed_and_writes_no_row(gw, key, mode, state):
-    out = _gw_run(gw, key, mode=mode)
+    out = _gw_run(gw, key, mode=mode, sources=UNFLAGGED)
     assert out["state"] == "REFUSED" and out["reason"] == "run_process_key_invalid" and out["key_state"] == state
     assert gw.ledger._conn.execute("SELECT count(*) AS n FROM runs").fetchone()["n"] == 0
 
@@ -684,3 +692,15 @@ def test_cutover_live_args_are_declared_and_applied():
 def test_registered_in_the_cio_hardening_gates():
     text = (ROOT / "scripts" / "run_cio_hardening_ci.py").read_text(encoding="utf-8")
     assert "tests/test_hermes_learning_prereqs_20261015.py" in text
+
+
+def test_committed_manual_slots_flag_is_the_one_day_bound():
+    # 2026-10-16 one-day manual-slots PR (operator-approved): on for 2026-10-16 ET only. The validator refuses a manual
+    # live minute at/after the bound even if no PR turns the flag off (MANUAL_LIVE_EXPIRED).
+    assert SPEC["live_manual_slots"] is True and SPEC["live_manual_slots_until"] == "2026-10-16T23:59:00-04:00"
+    day = datetime(2026, 10, 16, 12, 5, tzinfo=ET)
+    ok = PK.check_process_key(_key(GRADER, "live", "20261016T1201"), GRADER, "live", sources=SOURCES, now=day)
+    assert ok.ok and ok.slot_kind == "manual"
+    late = datetime(2026, 10, 16, 23, 59, 30, tzinfo=ET)
+    over = PK.check_process_key(_key(GRADER, "live", "20261016T2358"), GRADER, "live", sources=SOURCES, now=late)
+    assert not over.ok and over.state == "MANUAL_LIVE_EXPIRED"
