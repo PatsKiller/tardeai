@@ -25,6 +25,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from scripts.lib import lane_registry as lr  # noqa: E402
+from tests.support import hermes_learning_cutover as HL  # noqa: E402
 from scripts.lib import lane_state_drift as LD  # noqa: E402
 from scripts.lib import n8n_lane_host_conflict as HC  # noqa: E402
 
@@ -366,7 +367,9 @@ def test_native_monitor_rows_do_not_flip_a_host_scheduler():
     }
     for lane in process_steps:
         s = native[lane]["scheduler"]
-        assert s["expression"] == "tradeai-fabric-hermes-learning" and s["stage"] == "shadow"
+        # hermes-learning cutover PR-2 (tests/support/hermes_learning_cutover.py): four learn steps at canary
+        assert s["expression"] == "tradeai-fabric-hermes-learning"
+        assert s["stage"] == ("canary" if lane in HL.LIVE else "shadow")
         assert s["match"] == f"tradeai-fabric-hermes-learning:{s['process_step']}"
         assert native[lane]["state"] == "NEVER_SCHEDULED"
     assert set(native) == monitors | cutover | n8n_native_lanes | process_steps

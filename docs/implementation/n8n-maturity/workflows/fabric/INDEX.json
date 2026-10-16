@@ -175,7 +175,7 @@
       "active": false,
       "error_workflow": "tradeai-fabric-error",
       "file": "tradeai-fabric-hermes-learning.json",
-      "graph_sha256": "44c35ad3374fe14f295b59825d20632d9266f1ab42d9ca3d8278fda8c21056dd",
+      "graph_sha256": "f1d0984c64b06191020008af6d09f8b26a9c5a0ba5789f8e97ddb0e45215ebe4",
       "id": "tradeai-fabric-hermes-learning",
       "kind": "process",
       "node_types": [
@@ -188,7 +188,7 @@
         "n8n-nodes-base.switch"
       ],
       "relay_calls": [],
-      "sha256": "3b37efe0ba85b78bccc67f1df7db7040542a717a826aefa8656d9bb0ea85c6f2"
+      "sha256": "50277f7ed7e4d6b790c03c0d9bb1cbb73c407827267a589fe42e1b56b2c5d4b0"
     }
   ]
 }
