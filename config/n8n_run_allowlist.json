@@ -798,7 +798,8 @@
       ],
       "live_arg": [],
       "market_gate": false,
-      "output_signal": "data/runtime/hermes_governance_cache.json"
+      "output_signal": "data/runtime/hermes_governance_cache.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "write-state-freshness-history",
@@ -1228,7 +1229,8 @@
       ],
       "live_arg": [],
       "market_gate": false,
-      "output_signal": "data/runtime/hermes-analyst-signal-discovery_last.json"
+      "output_signal": "data/runtime/hermes-analyst-signal-discovery_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "catalyst-momentum-engine-overnight",
@@ -1426,7 +1428,8 @@
       ],
       "live_arg": [],
       "market_gate": false,
-      "output_signal": "data/runtime/hermes_news_bridge_last.json"
+      "output_signal": "data/runtime/hermes_news_bridge_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "classify-instruments",
@@ -1694,7 +1697,8 @@
       ],
       "live_arg": [],
       "market_gate": false,
-      "output_signal": "data/runtime/finviz-enrichment_last.json"
+      "output_signal": "data/runtime/finviz-enrichment_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "finviz-enrichment-scalp-hot",
@@ -2396,7 +2400,8 @@
       "timeout_s": 1800,
       "market_gate": false,
       "output_signal": "data/runtime/finviz-screener-runner_last.json",
-      "source": "Exact native-approved crontab -l snapshot 2026-10-11T14:57:08.697196+00:00; cron remains unchanged. | CW1 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv [], lock = the cron flock lock /tmp/finviz_screener.lock (shared: the lock proves no double run)."
+      "source": "Exact native-approved crontab -l snapshot 2026-10-11T14:57:08.697196+00:00; cron remains unchanged. | CW1 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv [], lock = the cron flock lock /tmp/finviz_screener.lock (shared: the lock proves no double run).",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "daily-incubator-refresh",
@@ -2551,7 +2556,8 @@
       "env_allowlist_mode": "report",
       "env_report_reason": "Real work imports shared DB/search or research helpers whose secret-render closure is owned by the integrator. This script loads only declared names, and explicit preview returns before those dependencies.",
       "env_evidence": "Shard04 source audit and offline CLI tests; no credential values read.",
-      "source": "Authorized read-only crontab snapshot 2026-10-11T14:57:08.697196+00:00 | CW1 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv ['--apply'], lock = the cron flock lock /tmp/hermes_scalp_catalyst.lock (shared: the lock proves no double run)."
+      "source": "Authorized read-only crontab snapshot 2026-10-11T14:57:08.697196+00:00 | CW1 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv ['--apply'], lock = the cron flock lock /tmp/hermes_scalp_catalyst.lock (shared: the lock proves no double run).",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "finviz-proactive-research",
@@ -2584,7 +2590,8 @@
       "env_allowlist_mode": "report",
       "env_report_reason": "Real work imports shared DB/search or research helpers whose secret-render closure is owned by the integrator. This script loads only declared names, and explicit preview returns before those dependencies.",
       "env_evidence": "Shard04 source audit and offline CLI tests; no credential values read.",
-      "source": "Authorized read-only crontab snapshot 2026-10-11T14:57:08.697196+00:00 | CW1 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv [], lock = the cron flock lock /tmp/finviz_proactive.lock (shared: the lock proves no double run)."
+      "source": "Authorized read-only crontab snapshot 2026-10-11T14:57:08.697196+00:00 | CW1 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv [], lock = the cron flock lock /tmp/finviz_proactive.lock (shared: the lock proves no double run).",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "hermes-research-agenda-at-45-7",
@@ -2745,7 +2752,8 @@
       "env_allowlist_mode": "report",
       "env_report_reason": "Own loader selects DB names and FINVIZ_API_TOKEN. Shared db_adapter and finviz_throttle still have legacy dotenv behavior, so the live closure is report mode until a shared change is reconciled.",
       "env_evidence": "Own source named dependencies; shared import-closure debt recorded in SHARED_CHANGES_NEEDED.md. Executor base names supply TRADEAI_STATE_ROOT, PATH, HOME and XDG_RUNTIME_DIR.",
-      "source": "Shard05 SOURCE_ONLY, approved exact selected cron snapshot 2026-10-11T17:05:28.513179+00:00. Original line: 15 10,16 * * 1-5 cd $PROJ && flock -n /tmp/finviz_sector.lock $PY scripts/finviz_sector_research.py >> logs/finviz_sector.log 2>&1. Original business argv preserved; shell prerequisites and source environment remain recorded in scheduler.command_text. Explicit dry-run returns before env, data and provider work. live_arg null; no scheduling or deployment. | CW1 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv [], lock = the cron flock lock /tmp/finviz_sector.lock (shared: the lock proves no double run)."
+      "source": "Shard05 SOURCE_ONLY, approved exact selected cron snapshot 2026-10-11T17:05:28.513179+00:00. Original line: 15 10,16 * * 1-5 cd $PROJ && flock -n /tmp/finviz_sector.lock $PY scripts/finviz_sector_research.py >> logs/finviz_sector.log 2>&1. Original business argv preserved; shell prerequisites and source environment remain recorded in scheduler.command_text. Explicit dry-run returns before env, data and provider work. live_arg null; no scheduling or deployment. | CW1 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv [], lock = the cron flock lock /tmp/finviz_sector.lock (shared: the lock proves no double run).",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "commitment-outcome-sweep",

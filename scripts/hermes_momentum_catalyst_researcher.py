@@ -362,14 +362,30 @@ def main(argv=None):
     except Exception as exc:
         if record:
             write_lane_receipt("hermes-momentum-catalyst-scalp", ok=False, exit_code=1,
-                               started_at=started, summary={}, error=type(exc).__name__)
+                               started_at=started, summary={}, error=type(exc).__name__,
+                               output={"produced_count": 0, "attempted_count": 0, "skipped_reasons": {"dependency_unavailable": 1}})
         raise
     if record:
         failed = bool(counts.get("gate_skipped") or counts.get("candidate_read_failures"))
         write_lane_receipt("hermes-momentum-catalyst-scalp", ok=not failed, exit_code=0,
                            started_at=started, summary=counts,
-                           error="gate_skipped" if counts.get("gate_skipped") else ("candidate_read_failed" if failed else None))
+                           error="gate_skipped" if counts.get("gate_skipped") else ("candidate_read_failed" if failed else None),
+                           output=lane_output(counts))
     return 0
+
+
+def lane_output(counts: dict) -> dict:
+    """LaneRunReceipt@v2 output fields (n8n expected_output, unit: ticker catalyst records written to the day's
+    momentum_catalysts JSONL). attempted = candidates selected; a candidate read failure is ``dependency_unavailable``;
+    no candidate = ``no_new_input``; a list-trigger gate skip = ``nothing_due``."""
+    tickers = int(counts.get("tickers") or 0)
+    skipped = {"dependency_unavailable": int(counts.get("candidate_read_failures") or 0),
+               "source_cap_reached": max(int(counts.get("candidates") or 0) - tickers, 0)}
+    reason = None
+    if tickers == 0:
+        reason = "nothing_due" if counts.get("gate_skipped") else "no_new_input"
+    return {"produced_count": tickers, "attempted_count": max(int(counts.get("candidates") or 0), tickers),
+            "skipped_reasons": skipped, "empty_reason": reason}
 
 
 def _execute(args):
@@ -435,7 +451,7 @@ def _execute(args):
 
     return {"tickers": len(results), "with_catalyst": with_catalyst,
             "sources": sum(r["source_count"] for r in results),
-            "candidate_read_failures": len(read_errors)}
+            "candidate_read_failures": len(read_errors), "candidates": len(candidates)}
 
 
 if __name__ == "__main__":

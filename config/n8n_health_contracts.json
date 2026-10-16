@@ -5500,7 +5500,7 @@
         "evidence": [
           {
             "kind": "receipt_field",
-            "ref": "data/runtime/finviz-enrichment_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/finviz-enrichment/<run_id>.json); today the v1 receipt reports this unit as summary.stale"
+            "ref": "data/runtime/finviz-enrichment_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/finviz-enrichment/<run_id>.json); the lane writes it via write_lane_receipt(output=...) since 2026-10-15 (summary.stale carries the same count)"
           },
           {
             "kind": "store_rows",
@@ -5936,7 +5936,7 @@
         "evidence": [
           {
             "kind": "receipt_field",
-            "ref": "data/runtime/finviz-proactive-research_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/finviz-proactive-research/<run_id>.json); today the v1 receipt reports this unit as summary.saved"
+            "ref": "data/runtime/finviz-proactive-research_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/finviz-proactive-research/<run_id>.json); the lane writes it via write_lane_receipt(output=...) since 2026-10-15 (summary.saved carries the same count)"
           },
           {
             "kind": "store_rows",
@@ -6146,7 +6146,7 @@
         "evidence": [
           {
             "kind": "receipt_field",
-            "ref": "data/runtime/finviz-screener-runner_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/finviz-screener-runner/<run_id>.json); today the v1 receipt reports this unit as summary.screeners_run"
+            "ref": "data/runtime/finviz-screener-runner_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/finviz-screener-runner/<run_id>.json); the lane writes it via write_lane_receipt(output=...) since 2026-10-15 (summary.screeners_run carries the same count)"
           },
           {
             "kind": "store_rows",
@@ -6563,7 +6563,7 @@
         "evidence": [
           {
             "kind": "receipt_field",
-            "ref": "data/runtime/hermes-analyst-signal-discovery_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/hermes-analyst-signal-discovery/<run_id>.json); today the v1 receipt reports this unit as summary.upserted"
+            "ref": "data/runtime/hermes-analyst-signal-discovery_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/hermes-analyst-signal-discovery/<run_id>.json); the lane writes it via write_lane_receipt(output=...) since 2026-10-15 (summary.upserted carries the same count)"
           },
           {
             "kind": "store_rows",
@@ -7004,7 +7004,7 @@
         "evidence": [
           {
             "kind": "receipt_field",
-            "ref": "data/runtime/hermes_governance_cache.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/hermes-governance-api/<run_id>.json)"
+            "ref": "data/runtime/hermes-governance-api_last.json produced_count (LaneRunReceipt@v2 output fields written by scripts/hermes_governance_api.py --warm after the cache data/runtime/hermes_governance_cache.json is rewritten; 1 = cache rewritten; the executor reads the immutable attempt copy data/runtime/lane_attempts/hermes-governance-api/<run_id>.json)"
           }
         ],
         "on_violation": {
@@ -7453,7 +7453,7 @@
         "evidence": [
           {
             "kind": "receipt_field",
-            "ref": "data/runtime/hermes-momentum-catalyst-scalp_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/hermes-momentum-catalyst-scalp/<run_id>.json); today the v1 receipt reports this unit as summary.tickers"
+            "ref": "data/runtime/hermes-momentum-catalyst-scalp_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/hermes-momentum-catalyst-scalp/<run_id>.json); the lane writes it via write_lane_receipt(output=...) since 2026-10-15 (summary.tickers carries the same count)"
           },
           {
             "kind": "ledger_row",
@@ -7671,7 +7671,7 @@
         "evidence": [
           {
             "kind": "receipt_field",
-            "ref": "data/runtime/hermes_news_bridge_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/hermes-news-bridge/<run_id>.json); today the v1 receipt reports this unit as summary.bridged"
+            "ref": "data/runtime/hermes_news_bridge_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/hermes-news-bridge/<run_id>.json); the lane writes it via write_lane_receipt(output=...) since 2026-10-15 (summary.bridged carries the same count)"
           },
           {
             "kind": "store_rows",
@@ -21830,7 +21830,7 @@
         "evidence": [
           {
             "kind": "receipt_field",
-            "ref": "data/runtime/finviz-sector-research_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/finviz-sector-research/<run_id>.json); today the v1 receipt reports this unit as summary.rows"
+            "ref": "data/runtime/finviz-sector-research_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/finviz-sector-research/<run_id>.json); the lane writes it via write_lane_receipt(output=...) since 2026-10-15 (summary.rows carries the same count)"
           },
           {
             "kind": "store_rows",

@@ -3851,6 +3851,16 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: LANE_PRODUCED_COUNT_CW_2_20261015 — cutover wave 1 lanes (batch 2: finviz x4, hermes x4) write
+        # LaneRunReceipt@v2 produced_count via write_lane_receipt(output=...) and opt into the executor output verdict
+        # (allowlist output_receipt v2). Real main() per lane in a fake n8n attempt, DB/provider/network stubbed:
+        # produced / empty_allowed / RUN_FAILED empty_output on a fatal skip. Hermetic: TRADEAI_STATE_ROOT = tmp.
+        "lane_produced_count_cw_2_20261015",
+        [
+            "tests/test_lane_produced_count_cw_2_20261015.py",
+        ],
+    ),
+    (
         # ANCHOR: CANARY_EFFECT_KEYS — 2026-10-15 canary double-effect audit (arch-review-20261014): every live, canary
         # or canary-wave lane that appends, sends or calls an LLM carries a STAGED effect key (cron_claim false,
         # n8n_claim false: neither side claims, executor view unchanged); the cron-side wrapper
