@@ -33,6 +33,7 @@ const SECTIONS: { label: string; hubs: Hub[] }[] = [
       // way to reach LLM spend and its off-peak routing control was to know the URL.
       { to: '/consumption', label: 'LLM Spend' },
       { to: '/coordination', label: 'Coordination' },
+      { to: '/system/broker-access', label: 'Broker Access' },
       { to: '/system', label: 'System', exact: true },
     ],
   },

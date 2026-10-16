@@ -1130,6 +1130,13 @@ GATES = [
         "hermes_at_research_n8n_today_20261016",
         ["tests/test_hermes_at_research_premarket_dedupe_20261016.py", "tests/test_n8n_today_page_20261016.py"],
     ),
+    # Broker Access & Sync CC page (operator 2026-10-16): access mode + trading lock, Schwab token state (metadata
+    # only), per-broker sync freshness OK/STALE/DEGRADED/PAUSED/NEEDS_REAUTH from receipts/logs, stop health,
+    # re-login steps, operator-run sync command with no run control (GET /api/v2/system/broker-access).
+    (
+        "broker_access_page_20261016",
+        ["tests/test_broker_access_page_20261016.py"],
+    ),
     # Telegram provenance footer ("· via n8n <lane> <HH:MM>" / "· via cron <lane>") + an explicit catalyst line on
     # every Active Trader alert via the data broker (operator 2026-10-16: "how do i know whats n8n did", "some
     # scalp and active traders didn't have catalyst").

@@ -54744,6 +54744,19 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
 
+    # Broker Access & Sync (operator 2026-10-16): Schwab access mode + trading lock, Schwab token state (DB metadata
+    # only, no decrypt, no live probe), per-broker sync freshness from receipts/logs, stop health, re-login steps and
+    # the operator-run sync command. lib/data_broker/broker_access.py, cached 45 s. No broker call, no secrets.
+    if base_path == "/api/v2/system/broker-access":
+        if method != "GET":
+            return 405, {"ok": False, "error": "read_only"}
+        try:
+            from lib.data_broker.broker_access import get_broker_access as _broker_access
+
+            return 200, {"ok": True, "data": _broker_access(db_query=_db_query)}
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
+
     # BUY_READY institutional packet (M5 09-24): equity plan, chain-ranked options
     # alternatives (per unit), portfolio facts and the CIO review — read-only.
     if base_path.startswith("/api/v2/symbol/") and base_path.endswith("/buy-ready-packet"):
