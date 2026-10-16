@@ -1,0 +1,1282 @@
+{
+ "authority": "READ_ONLY_ADVISORY",
+ "backstops": [
+  {
+   "active_cron_lines": 1,
+   "lane_id": "incident-notifier",
+   "owner": "platform",
+   "purpose": "On-host P1 path: sends every fan-in P1 at once (uncapped, through quiet hours).",
+   "registry_state": "ACTIVE",
+   "relay_live": false,
+   "scheduler": "cron:*/5 * * * *",
+   "status": "CRON_PRIMARY"
+  },
+  {
+   "active_cron_lines": 0,
+   "lane_id": "autonomy-watchdog",
+   "owner": "platform",
+   "purpose": "Host watchdog: autonomy loop liveness (own systemd timer).",
+   "registry_state": "ACTIVE",
+   "relay_live": false,
+   "scheduler": "systemd:tradeai-autonomy-watchdog.timer",
+   "status": "RETAINED_SYSTEMD"
+  },
+  {
+   "active_cron_lines": 1,
+   "lane_id": "portfolio-server-watchdog",
+   "owner": "platform",
+   "purpose": "Restarts the :7777 API when it stops answering (F07).",
+   "registry_state": "ACTIVE",
+   "relay_live": false,
+   "scheduler": "cron:*/2 * * * *",
+   "status": "RETAINED_F07"
+  },
+  {
+   "active_cron_lines": 0,
+   "lane_id": "postgres-main-watchdog",
+   "owner": "platform",
+   "purpose": "Detects/recovers postgres-main down (installed after the 09-18 ENOSPC crash).",
+   "registry_state": "ACTIVE",
+   "relay_live": false,
+   "scheduler": "systemd:tradeai-postgres-main-watchdog.timer",
+   "status": "RETAINED_F07"
+  },
+  {
+   "active_cron_lines": 0,
+   "lane_id": "n8n-lab-watchdog",
+   "owner": "platform",
+   "purpose": "Host-side probe of the n8n lab /healthz every 5 min: watches the watcher.",
+   "registry_state": "ACTIVE",
+   "relay_live": false,
+   "scheduler": "systemd:tradeai-n8n-lab-watchdog.timer (5m)",
+   "status": "RETAINED_SYSTEMD"
+  },
+  {
+   "active_cron_lines": 0,
+   "lane_id": "supervisor-breach-detector",
+   "owner": "platform",
+   "purpose": "Writes supervisor_breaches.jsonl (NO_OUTPUT/STALE) independent of n8n.",
+   "registry_state": "ACTIVE",
+   "relay_live": false,
+   "scheduler": "systemd:tradeai-supervisor-breach-detector.timer",
+   "status": "RETAINED_SYSTEMD"
+  },
+  {
+   "active_cron_lines": 0,
+   "lane_id": "health-tick",
+   "owner": "platform",
+   "purpose": "One systemd 5-min timer running the host health/monitor cadence table (F07).",
+   "registry_state": "ACTIVE",
+   "relay_live": false,
+   "scheduler": "systemd:tradeai-health-tick.timer (*:0/5)",
+   "status": "RETAINED_F07"
+  },
+  {
+   "active_cron_lines": 1,
+   "lane_id": "process-reaper",
+   "owner": "platform",
+   "purpose": "Kills hung / piled-up batch jobs (F07).",
+   "registry_state": "ACTIVE",
+   "relay_live": false,
+   "scheduler": "cron:*/3 * * * *",
+   "status": "RETAINED_F07"
+  },
+  {
+   "active_cron_lines": 0,
+   "lane_id": "offbox-deadman",
+   "owner": "operator",
+   "purpose": "DD12 outside dead-man (scripts/offbox_deadman.py): built, NOT activated (operator packet).",
+   "registry_state": "UNREGISTERED",
+   "relay_live": false,
+   "scheduler": "-:",
+   "status": "UNREGISTERED"
+  }
+ ],
+ "burn_down": {
+  "assumptions": [
+   "rate = mean of n8n-cutover/N8N-ONLY tagged cron retirements over the last 3 dates that had any (a calendar date with zero retirements is not in the denominator), so the rate is optimistic",
+   "one migrating lane needs: allowlist + dry run + live canary + effect key/owner + cron retirement",
+   "trading days only (5 of 7); holds, F07 and registry_systemd are excluded (retained by directive)",
+   "no new lanes are added; open PRs #1818-#1823 merge and deploy without rework"
+  ],
+  "cohort_sizes": {
+   "C1_parallel_retire_cron_copy": 17,
+   "C2_live_listed_unproven": 19,
+   "C3_shadow_proven_ready_for_live": 37,
+   "C4a_allowlisted_no_shadow_run": 8,
+   "C4b_not_onboarded": 223,
+   "C5_p1_last": 14,
+   "C6_operator_hold": 4,
+   "C7_retire_pending": 1
+  },
+  "cohorts": {
+   "C1_parallel_retire_cron_copy": [
+    "aegis-social-sentiment",
+    "aegis-transcript-discovery",
+    "agent-outcome-linker",
+    "daily-incubator-refresh",
+    "finviz-enrichment",
+    "finviz-proactive-research",
+    "finviz-screener-runner",
+    "finviz-sector-research",
+    "hermes-discovery-scorecard",
+    "hermes-social-sentiment",
+    "incubator-rolloff-engine",
+    "journal-tilt-morning-hook",
+    "materialize-watchlist-strategy-cards",
+    "opening-intelligence-render",
+    "proposal-backtest-engine",
+    "sync-social-to-intelligence",
+    "watchlist-enrichment-sweep"
+   ],
+   "C2_live_listed_unproven": [
+    "agent-outcome-scorer",
+    "build-symbol-profiles-at-0-19",
+    "classify-instruments",
+    "commitment-outcome-sweep",
+    "etf-analyst-enrich",
+    "etf-performance-enrich",
+    "feedback-loop-processor",
+    "hermes-learning-config-governor",
+    "hermes-learning-outcome-grader",
+    "hermes-learning-outcome-learning",
+    "hermes-learning-tag-engine",
+    "instrument-belief-writer",
+    "maturity-remeasure",
+    "momentum-cache-reconcile",
+    "momentum-lifecycle-monitor",
+    "pattern-extractor",
+    "sec-data-ingest",
+    "update-agent-performance",
+    "weekly-incubator-builder"
+   ],
+   "C3_shadow_proven_ready_for_live": [
+    "aegis-evening-packet",
+    "aegis-nightly-ingestion",
+    "agent-number-grounding-slo",
+    "audit-enrichment-coverage",
+    "catalyst-momentum-engine-overnight",
+    "classifier-health-check",
+    "crawl-v3-dashboard",
+    "data-gap-resolver-at-0-10-16",
+    "data-gap-resolver-pre",
+    "finviz-enrichment-scalp-hot",
+    "finviz-health-check",
+    "finviz-market-movers",
+    "generate-analyst-daily-digest",
+    "goal-gate-bridge",
+    "hermes-entity-spike-discovery",
+    "hermes-pipeline-health",
+    "hermes-research-agenda-at-45-7",
+    "hermes-research-worker-pool",
+    "hermes-scope-governor",
+    "hermes-score-event-feeder",
+    "hermes-topic-monitor-bridge",
+    "investment-costs",
+    "job-coverage-monitor",
+    "news-to-catalyst",
+    "resolve-due-checkpoints",
+    "scalp-hot-list",
+    "sector-rs-daily",
+    "setup-quality-prior",
+    "signal-fusion-active",
+    "signal-fusion-full",
+    "social-ingest-all",
+    "trade-ai-scalp-live",
+    "trade-backtest-engine",
+    "trade-thesis-review-engine",
+    "update-lockup-earnings-dates",
+    "watch-goods-consistency",
+    "write-state-freshness-history"
+   ],
+   "C4a_allowlisted_no_shadow_run": [
+    "agent-calibration-engine",
+    "data-gap-resolver-weekly",
+    "desk-suggestions-digest",
+    "enterprise-backtester",
+    "fee-efficiency-analyzer",
+    "validate-expense-ratios",
+    "watchlist-entry-planner-limit",
+    "watchlist-entry-planner-scope"
+   ],
+   "C4b_not_onboarded": [
+    "active-trader-premarket-watch",
+    "active-trader-session-review",
+    "active-trader-session-review-close",
+    "active-trader-signal-calibration",
+    "aegis-synthesis",
+    "after-close-pipeline-broker-truth",
+    "after-close-pipeline-close-capture",
+    "after-close-pipeline-planning",
+    "agent-event-router",
+    "agent-recommendation-normalizer",
+    "agent-router-cron-deep",
+    "agent-router-cron-full",
+    "agent-router-cron-light",
+    "agent-watchlist-engine",
+    "alert-daily-digest",
+    "alert-dispatcher-unified",
+    "alert-missing-conditions",
+    "alpaca-live-read-sync",
+    "alpaca-paper-adapter",
+    "alpaca-paper-reconciler",
+    "alpaca-stop-manager-oco-repair",
+    "alpaca-stop-manager-rth",
+    "analyst-urgent-refresh",
+    "approval-package-reminder",
+    "approval-reminder-reconcile",
+    "ask-alerts",
+    "atm-auto-approver",
+    "auto-enrichment-runner",
+    "auto-proposal-general",
+    "auto-research",
+    "build-hermes-canonical-status",
+    "catalyst-momentum-engine-market",
+    "catalyst-momentum-engine-premarket",
+    "cio-entry-state",
+    "cio-event-detector",
+    "cio-lineage-completion-report",
+    "cio-opportunity-curator",
+    "cio-stance-classification-drain",
+    "cio-wake-dispatch",
+    "claude-escalation-handler",
+    "cleanup-stale-proposals",
+    "comms-lifecycle",
+    "compute-intraday-vwap",
+    "compute-source-weights",
+    "deepseek-balance-snapshot",
+    "defense-inverse-stoplights",
+    "defense-recommendations",
+    "defense-weekly-paid-review",
+    "deploy-detect",
+    "deploy-monitor",
+    "deploy-recompute",
+    "directive-keyword-enhancer",
+    "dof-rescan-tickets",
+    "dof-run-pipeline",
+    "drain-discovery-backlog",
+    "drive-syncs-hourly",
+    "due-diligence-questions",
+    "enrich-proposal-technicals",
+    "event-detector",
+    "external-market-data-ingest",
+    "external-market-data-ingest-fundamentals",
+    "fidelity-stop-sync",
+    "finviz-momentum-scalp-early-lane",
+    "generate-analyst-reports-autonomous-full",
+    "generate-analyst-reports-autonomous-weekly",
+    "generate-weekly-docx",
+    "goal-loop-baseline",
+    "governed-research-producer",
+    "health-agent-llm-review",
+    "hermes-analyst-coverage",
+    "hermes-coordinator",
+    "hermes-cross-source-synthesizer",
+    "hermes-directive-discovery",
+    "hermes-discovery-ingestors",
+    "hermes-learning-pipeline-learn",
+    "hermes-learning-pipeline-tune",
+    "hermes-overnight-pipeline-close",
+    "hermes-overnight-pipeline-night",
+    "hermes-score-alerts",
+    "hermes-subject-enhance-dispatch",
+    "hermes-think-tank",
+    "hermes-top20-external-intel",
+    "hermes-usefulness-backfill",
+    "hermes-watchlist-scorer",
+    "hermes-youtube-discovery",
+    "holding-protection-advisor-at-5-17",
+    "holding-protection-advisor-lane",
+    "holdings-gain-guardian",
+    "holdings-llm-refresh",
+    "incubator-llm-screener",
+    "incubator-proposal-promoter",
+    "industry-momentum-groups",
+    "ingest-tos-watchlists",
+    "intel-auto-discovery",
+    "ipo-lockup-alert",
+    "iris-taxonomy-agent-at-0-10",
+    "iris-taxonomy-agent-freshness",
+    "iterate-research-topics",
+    "journal-annotation-reminder",
+    "journal-review-builder",
+    "llm-deferred-drain",
+    "llm-intelligence-enrichment",
+    "llm-intelligence-enrichment-section",
+    "llm-spend-report-daily",
+    "llm-spend-report-monthly",
+    "llm-spend-report-weekly",
+    "market-regime-collector",
+    "material-change-notifier-stage2",
+    "momentum-scalp-advisory-alerts",
+    "monthly-protection-meta-review",
+    "moomoo-live-read-sync",
+    "multi-tier-trade-reviewer-monthly",
+    "multi-tier-trade-reviewer-overnight",
+    "multi-tier-trade-reviewer-weekly",
+    "n8n-failure-diagnosis",
+    "n8n-siem-bridge",
+    "news-ingestion",
+    "news-ingestion-tail",
+    "oauth-lane-keepalive",
+    "ops-daily-digest",
+    "ops-weekly-learning-report",
+    "options-iv-snapshot",
+    "orchestrator-slot",
+    "overnight-batch-tax",
+    "oversight-weekly-digest",
+    "paper-execution-quality",
+    "paper-execution-quality-analyzer",
+    "paper-execution-sweep",
+    "paper-performance-governance",
+    "paper-trade-advisory",
+    "persistent-wake-hourly",
+    "plan-drift-revalidator",
+    "portfolio-ai-analyst",
+    "portfolio-broker-reconciliation",
+    "portfolio-level-qa",
+    "portfolio-lookthrough-themes",
+    "portfolio-repricer",
+    "positions-sync",
+    "premarket-data-pipeline",
+    "premarket-watcher",
+    "prewarm-finviz-strip-map",
+    "prewarm-trade-ai",
+    "pro-analyst-fetch",
+    "proposal-enrichment-loop",
+    "proposal-lifecycle",
+    "proposal-llm-review-worker",
+    "proposal-monitor",
+    "protection-atm-pass",
+    "rag-indexer",
+    "reclassify-momentum-proposals",
+    "reconcile-alpaca-paper-options",
+    "reconcile-exit-advisory-outcomes",
+    "reconcile-pullback-outcomes",
+    "reconcile-watch-outcomes",
+    "refresh-operator-product",
+    "reporting-engine",
+    "research-intelligence-queue",
+    "research-scheduler",
+    "rotation-rebalance-digest",
+    "run-afterhours-candidate-preparation",
+    "run-broker-proposal-curator",
+    "run-broker-queue-autocal",
+    "run-ensemble-worker",
+    "run-governed-symbol-thesis-acquisition",
+    "run-inference-cycle-midday",
+    "run-inference-cycle-postclose",
+    "run-inference-cycle-preopen",
+    "run-options-paper-position-monitor",
+    "run-profit-capture-refresh",
+    "run-protection-pipeline-at-30-20",
+    "run-protection-pipeline-at-x-30-9-16",
+    "run-pullback-macd-monitor",
+    "run-pullback-macd-screener",
+    "run-research-intelligence-overnight",
+    "run-research-intelligence-overnight-archive",
+    "run-scalp-shadow-logger",
+    "run-scalp-volume-profile-refresh",
+    "run-scheduled-quote-refresh-incubator",
+    "run-scheduled-quote-refresh-pending",
+    "run-scheduled-stale-proposal-sweeper-at-25-8",
+    "run-scheduled-strategy-audits",
+    "run-scheduled-two-way-curation-desk",
+    "run-scheduled-two-way-curation-options",
+    "run-scheduled-watchpool-alerts-diagnostic",
+    "run-scheduled-watchpool-alerts-maturity",
+    "run-warrior-weekly-audit",
+    "run-watchlist-agent-jobs-offpeak",
+    "screener-go-alerts",
+    "sec-filings-feed",
+    "sec-fundamentals-ingest",
+    "sector-momentum-engine",
+    "set-purge-dates",
+    "shadow-batch-generator-at-15-10",
+    "snaptrade-activity-ingest",
+    "snaptrade-sync",
+    "social-ingest-stocktwits",
+    "social-scalp-scanner",
+    "stop-health-check",
+    "strategy-tilt",
+    "strategy-weekly-review",
+    "sync-memory-to-drive",
+    "system-rollup-snapshot",
+    "technicals-gap-backfill",
+    "tmp-scratch-cleanup",
+    "topic-curator-at-30-9-13",
+    "topic-curator-ensemble",
+    "topic-ingestion",
+    "topic-research-synthesizer",
+    "trade-close-llm-analyzer-source",
+    "trade-close-llm-analyzer-structured",
+    "trade-integrity-audit",
+    "unified-stop-supervisor",
+    "wake-selection-feed",
+    "warm-caches",
+    "watch-alerts-eval",
+    "watch-directive-hygiene",
+    "watch-directives-service",
+    "watch-review-workers",
+    "watch-review-workers-cio",
+    "watchlist-hygiene",
+    "youtube-channel-discovery",
+    "youtube-cookie-health-check",
+    "youtube-transcript-ingest"
+   ],
+   "C5_p1_last": [
+    "active-trader-micro-recorder",
+    "active-trader-micro-recorder-premarket",
+    "advice-digest",
+    "eod-open-trade-alert",
+    "generate-max-hold-exit-proposals",
+    "incident-notifier",
+    "morning-brief-0730",
+    "options-intent-matcher",
+    "options-tick",
+    "rotation-autopilot",
+    "run-options-monitor",
+    "send-telegram-proposal-alert",
+    "telegram-smart-alerts",
+    "watchlist-proposal-bridge"
+   ],
+   "C6_operator_hold": [
+    "coder-dispatch",
+    "defense-execution",
+    "n8n-workflow-drift-check",
+    "options-lifecycle-run"
+   ],
+   "C7_retire_pending": [
+    "indicator-engine"
+   ]
+  },
+  "holds": {
+   "coder-dispatch": "operator_hold_20261016: disposition RETIRE; cron already commented",
+   "defense-execution": "operator_hold_20261016: cron paused for the SPCX incident (Schwab deactivated); reads broker credentials",
+   "n8n-workflow-drift-check": "operator_hold_20261016: registry state PAUSED, no cron line",
+   "options-lifecycle-run": "operator_hold_20261016: cron paused for the SPCX incident (Schwab deactivated); reads broker credentials"
+  },
+  "observed_migrations_by_date": {
+   "2026-10-09": 4,
+   "2026-10-13": 1,
+   "2026-10-16": 12
+  },
+  "owners": {
+   "C1_parallel_retire_cron_copy": "operator (crontab edit under config-write grant; cutover packet by Agent A)",
+   "C1p_parallel_p1_last": "operator, after cron_overlap_trading_days=1 post first live RUN_DONE (policy p1_last)",
+   "C2_live_listed_unproven": "Agent A (relay-live but no live RUN_DONE in window: find why; fix or delist)",
+   "C3_shadow_proven_ready_for_live": "Agent A (canary packet + effect key) -> operator (relay live list + crontab)",
+   "C4a_allowlisted_no_shadow_run": "Agent A (dispatch block / shadow wave so a dry run exists)",
+   "C4b_not_onboarded": "Agent A (allowlist + health contract PR per lane)",
+   "C5_p1_last": "operator (policy p1_last: last cohort, cron kept one trading day after proof)",
+   "C6_operator_hold": "operator (holds in config/lane_cutover_policy.json)",
+   "C7_retire_pending": "operator (disposition RETIRE but the cron line is still active: retire packet)"
+  },
+  "projected_completion": "2027-01-03",
+  "rate_lanes_per_trading_day": 5.67,
+  "remaining_lanes_excluding_holds": 319
+ },
+ "crontab_sha256": "c63ed64d7a182ff20d32e0835a8307634c13edaacf5e7863fd4e6b7c7163349d",
+ "definitions": {
+  "active_cron_line": "An uncommented, non-assignment line of the CURRENT `crontab -l` (same rule as lane_registry.discover_cron). A commented line is not a job.",
+  "ambiguous_effect": "An effect_claims row in CLAIMED or UNKNOWN (the effect may or may not have happened).",
+  "business_process": "Two levels, reported separately: (a) a WS2 family (disposition family_id, e.g. F44) = one business function implemented by one or more lanes; (b) a fabric process (config/n8n_fabric_processes.json, e.g. hermes-learning) = an ordered set of step lanes run as one n8n workflow.",
+  "deployed": "The PR's merge commit is an ancestor of the served SHA (git merge-base --is-ancestor).",
+  "disposition_row": "One row of LANE_DISPOSITION_20261015.csv: one active crontab line at build time (source=crontab) or one registry lane with no crontab line (source=registry_*). The 267 MIGRATE_N8N rows are 267 rows, not 267 jobs: several rows can name one lane, and one lane can be a family slot runner for many rows.",
+  "failure": "A receipt in RUN_FAILED or RUN_TIMEOUT, or a live RUN_DONE with output verdict empty_violation/unverifiable.",
+  "incident_episode": "A distinct (lane, failure class) with >=1 event in the window, failure class = breach kind / diagnosis event_type (NO_OUTPUT, UNGOVERNED, STALE_2X, ...) or run:<reason> for failed receipts. Every further event of the same episode is a DUPLICATE event.",
+  "lock_skip": "A receipt in RUN_SKIPPED_LOCK (another holder had the lane's flock).",
+  "n8n_primary": "The lane is on the relay live list (or is a registry scheduler.kind=n8n ACTIVE lane) AND it has no active cron line. MIGRATED_PROVEN additionally needs a commented cron line tagged `RETIRED <date> n8n-cutover` or `N8N-ONLY TEST` (or a native n8n row) AND >=1 live RUN_DONE receipt in the window.",
+  "parallel": "Relay-live AND >=1 live n8n receipt in the window AND an active cron line still fires the same lane. LIVE_LISTED_IDLE = relay-live + active cron line but ZERO live n8n receipts in the window (n8n is permitted, not firing: cron is the only primary that ran).",
+  "proven": "A qualifying LIVE receipt exists: for a lane associated with the PR (a changed script is the lane's registry match, or the PR changed the lane's row in lane_registry/n8n_effect_keys/n8n_run_allowlist), a live RUN_DONE whose code_sha contains the merge commit and whose output verdict is produced/empty_allowed. PR #1817 is proven by a communication_events row carrying an `\u00b7 via n8n` footer.",
+  "provenance": "Scheduler + lane named by the Telegram provenance footer `\u00b7 via <n8n|cron|systemd> <lane>` (PR #1817) or run_id / source_job on the communication_events row. Anything else is UNKNOWN, never guessed.",
+  "refusal": "A relay_log.jsonl row with state REFUSED for the lane (the run never started).",
+  "unique_lane": "A distinct lane_id (config/lane_registry.json, plus relay live-list names). A crontab line is attributed to the single best-ranked registry match (n8n_lane_disposition.match_rows); lines with no match are UNMAPPED.",
+  "unverified_ok": "A live RUN_DONE receipt with exit 0 but no evaluated output verdict (missing, no_rule or declared_not_enforced). Exit 0 is NOT evidence of work (AGENTS \u00a70 rule 8); counted, never called useful.",
+  "useful_live_output": "A live RUN_DONE receipt whose output_verdict.verdict == 'produced'.",
+  "verified_empty": "A live RUN_DONE receipt whose output_verdict.verdict == 'empty_allowed' (declared, reasoned empty).",
+  "verified_recovery": "The OUTPUT condition recovered: a CLEARED breach row after the last OPEN one, or the lane's declared output signal (file mtime / JSON key) is now newer than the last breach's detection, or (run failures) a later receipt of the same lane+mode is RUN_DONE with output verdict produced/empty_allowed (dry_run: RUN_DONE). A REQUESTED / shadow remediation row is NOT a heal; a lower alert count is NOT recovery.",
+  "worker_seconds": "Sum of receipt duration_s."
+ },
+ "disposition": {
+  "by_disposition": {
+   "CONSOLIDATE": 153,
+   "MIGRATE_N8N": 267,
+   "RETIRE": 11,
+   "STAY_HOST": 103
+  },
+  "by_source": {
+   "crontab": 394,
+   "registry_cron_no_line": 23,
+   "registry_event": 5,
+   "registry_n8n": 8,
+   "registry_none": 3,
+   "registry_systemd": 101
+  },
+  "rows": 534,
+  "unique_lanes": 519,
+  "unique_lanes_by_disposition": {
+   "CONSOLIDATE": 145,
+   "MIGRATE_N8N": 264,
+   "RETIRE": 11,
+   "STAY_HOST": 103
+  }
+ },
+ "fabric_processes": [
+  {
+   "fully_n8n_owned": false,
+   "mode": "live",
+   "process": "hermes-learning",
+   "runner_lanes": [
+    "hermes-learning-pipeline-learn",
+    "hermes-learning-pipeline-tune"
+   ],
+   "runner_lanes_with_active_cron": [
+    "hermes-learning-pipeline-learn",
+    "hermes-learning-pipeline-tune"
+   ],
+   "steps": [
+    {
+     "blocked": null,
+     "dry_runs": 0,
+     "lane_id": "hermes-learning-outcome-grader",
+     "live_runs": 0,
+     "step": "outcome_grader",
+     "useful_or_empty_live": 0
+    },
+    {
+     "blocked": null,
+     "dry_runs": 0,
+     "lane_id": "hermes-learning-tag-engine",
+     "live_runs": 0,
+     "step": "tag_engine",
+     "useful_or_empty_live": 0
+    },
+    {
+     "blocked": null,
+     "dry_runs": 0,
+     "lane_id": "hermes-learning-outcome-feedback-agent",
+     "live_runs": 0,
+     "step": "outcome_feedback_agent",
+     "useful_or_empty_live": 0
+    },
+    {
+     "blocked": null,
+     "dry_runs": 0,
+     "lane_id": "hermes-learning-outcome-learning",
+     "live_runs": 0,
+     "step": "outcome_learning",
+     "useful_or_empty_live": 0
+    },
+    {
+     "blocked": "EXCLUDED, OPERATOR DECISION (destructive retention, never-list): --apply runs DELETE FROM hermes_score_history (scripts/hermes_score_history_retention.py --days 21). It stays on cron as a retention concern and is excluded from the fabric process: not changed by the 2026-10-15 unblock; moving retention into n8n at all is an operator decision (AGENTS.md \u00a717, \u00a723.14). Ordered after outcome_grader because the grader freezes score components before retention can delete them.",
+     "dry_runs": 0,
+     "lane_id": "hermes-learning-score-history-retention",
+     "live_runs": 0,
+     "step": "score_history_retention",
+     "useful_or_empty_live": 0
+    },
+    {
+     "blocked": null,
+     "dry_runs": 0,
+     "lane_id": "hermes-learning-config-governor",
+     "live_runs": 0,
+     "step": "config_governor",
+     "useful_or_empty_live": 0
+    },
+    {
+     "blocked": null,
+     "dry_runs": 0,
+     "lane_id": "hermes-learning-autonomous-self-tune",
+     "live_runs": 0,
+     "step": "autonomous_self_tune",
+     "useful_or_empty_live": 0
+    }
+   ],
+   "why_not": "cron stage runner still active: hermes-learning-pipeline-learn, hermes-learning-pipeline-tune; step(s) without a live run in window: outcome_grader, tag_engine, outcome_feedback_agent, outcome_learning, config_governor, autonomous_self_tune",
+   "workflow_id": "tradeai-fabric-hermes-learning"
+  }
+ ],
+ "generated_at": "2026-10-16T17:24:25+00:00",
+ "incidents": {
+  "by_class": {
+   "NO_OUTPUT": 64,
+   "RUN_FAILED": 3,
+   "SILENT": 1,
+   "STALE_OUTPUT": 2,
+   "UNGOVERNED": 16,
+   "run_receipt_failure": 1
+  },
+  "by_recovery": {
+   "UNRESOLVED": 66,
+   "VERIFIED_RECOVERED": 21
+  },
+  "dead_letters_unreleased_in_window": [
+   {
+    "dead_at": "2026-10-16T12:19:12.643677+00:00",
+    "lane_id": "daily-incubator-refresh",
+    "last_reason": "exit_1",
+    "mode": "live",
+    "slot_key": "d:daily-incubator-refresh:live:20261016T0815"
+   }
+  ],
+  "diagnoses_in_window_by_outcome": {
+   "diagnosed": 39,
+   "no_diagnosis": 1767
+  },
+  "duplicate_events": 1819,
+  "episodes": 87,
+  "events": 1906,
+  "failure_diagnosis_state": {
+   "diagnosed_by_action": {
+    "suggest_only": 39
+   },
+   "diagnosed_in_window": 39,
+   "lane_last_remediation": 0,
+   "pending": 0
+  },
+  "remediation_rows_requested_not_heals": {
+   "diagnoses_with_remediation_run_id": 0,
+   "executed_true": 0,
+   "modes": {
+    "shadow": 3787
+   },
+   "supervisor_recoveries_in_window": 3787
+  }
+ },
+ "migration": {
+  "active_cron_lines": 336,
+  "active_cron_lines_mapped_to_a_lane": 336,
+  "active_cron_lines_unmapped": 0,
+  "commented_lines_by_kind": {
+   "CONSOLIDATED": 65,
+   "N8N_CUTOVER": 16,
+   "N8N_ONLY_TEST": 1,
+   "RETIRED_OTHER": 34
+  },
+  "consolidated": [
+   "backtest-history-snapshot",
+   "backtest-results-aggregator",
+   "build-lesson-candidates",
+   "build-symbol-profiles-watchlist",
+   "candidate-discovery-orchestrator",
+   "catalyst-calibration",
+   "catalyst-calibration-monitor",
+   "cio-draft-plan-hygiene",
+   "classify-candidates",
+   "distributions-enrich",
+   "earnings-enrich",
+   "fred-data-ingest",
+   "fund-technicals-enrich",
+   "hermes-autonomous-self-tune",
+   "hermes-config-governor",
+   "hermes-discovery-yield-builder",
+   "hermes-industry-novelty-discovery",
+   "hermes-outcome-feedback-agent",
+   "hermes-outcome-grader",
+   "hermes-outcome-learning",
+   "hermes-score-history-retention",
+   "hermes-source-curation",
+   "hermes-tag-engine",
+   "hermes-tag-lift-discovery",
+   "indicator-cache-refresh",
+   "iris-proposal-curator",
+   "iris-taxonomy-agent-gaps",
+   "llm-retry-monitor",
+   "market-regime-classifier",
+   "material-change-digest",
+   "materialize-income-engine",
+   "mint-identity-registry",
+   "opening-intelligence",
+   "overnight-batch-outcomes",
+   "p1-digest-delivery",
+   "price-db-sync",
+   "recommendation-intelligence-engine",
+   "refresh-symbol-cards",
+   "register-analyst-sources",
+   "research-intelligence-materialize",
+   "research-scheduler-holdings",
+   "research-scheduler-incubator-sun-1900",
+   "research-scheduler-priority-hourly",
+   "research-scheduler-watchlist-2030",
+   "research-watchlist-discovery",
+   "run-cio-event-detector-once-at-0-5",
+   "run-cio-event-detector-once-at-0-8",
+   "run-cio-event-detector-once-at-0-9",
+   "run-sec-form4-momentum-context",
+   "siem-to-hermes-backlog",
+   "source-outcome-attribution",
+   "strategy-backtester",
+   "sync-dividend-data",
+   "sync-watchlist-items-to-db",
+   "topic-ingestion-cron-lines",
+   "topic-research-synthesizer-at-20-x",
+   "topic-research-synthesizer-reground",
+   "volatility-tier-refresh",
+   "watch-directives-monitor",
+   "watch-valuation-backfill"
+  ],
+  "live_listed_idle": [
+   "agent-outcome-scorer",
+   "build-symbol-profiles-at-0-19",
+   "classify-instruments",
+   "commitment-outcome-sweep",
+   "etf-analyst-enrich",
+   "etf-performance-enrich",
+   "feedback-loop-processor",
+   "instrument-belief-writer",
+   "maturity-remeasure",
+   "pattern-extractor",
+   "sec-data-ingest",
+   "update-agent-performance",
+   "weekly-incubator-builder"
+  ],
+  "migrated_proven": [
+   "catalyst-graph",
+   "catalyst-symbol-impact",
+   "crontab-snapshot-for-health-agent",
+   "document-mentions-backfill",
+   "hermes-analyst-signal-discovery",
+   "hermes-governance-api",
+   "hermes-momentum-catalyst-scalp",
+   "hermes-news-bridge",
+   "identity-sweep-stage0",
+   "material-change-detector-stage1",
+   "n8n-incident-fanin",
+   "n8n-pilot-dispatch",
+   "n8n-research-intake-consumer",
+   "record-decision-outcome",
+   "research-insight-extractor",
+   "source-attribution-monitor",
+   "wire-advisory-lessons"
+  ],
+  "n8n_native": [
+   "heartbeat-watch"
+  ],
+  "n8n_primary_unproven": [
+   "hermes-learning-config-governor",
+   "hermes-learning-outcome-grader",
+   "hermes-learning-outcome-learning",
+   "hermes-learning-tag-engine",
+   "momentum-cache-reconcile",
+   "momentum-lifecycle-monitor"
+  ],
+  "parallel": [
+   "aegis-social-sentiment",
+   "aegis-transcript-discovery",
+   "agent-outcome-linker",
+   "daily-incubator-refresh",
+   "finviz-enrichment",
+   "finviz-proactive-research",
+   "finviz-screener-runner",
+   "finviz-sector-research",
+   "hermes-discovery-scorecard",
+   "hermes-social-sentiment",
+   "incubator-rolloff-engine",
+   "journal-tilt-morning-hook",
+   "materialize-watchlist-strategy-cards",
+   "opening-intelligence-render",
+   "proposal-backtest-engine",
+   "sync-social-to-intelligence",
+   "watchlist-enrichment-sweep"
+  ],
+  "relay_live_lanes": [
+   "n8n-pilot-dispatch",
+   "n8n-incident-fanin",
+   "n8n-research-intake-consumer",
+   "crontab-snapshot-for-health-agent",
+   "maturity-remeasure",
+   "research-insight-extractor",
+   "heartbeat-watch",
+   "agent-outcome-linker",
+   "catalyst-graph",
+   "catalyst-symbol-impact",
+   "classify-instruments",
+   "document-mentions-backfill",
+   "etf-analyst-enrich",
+   "etf-performance-enrich",
+   "feedback-loop-processor",
+   "finviz-enrichment",
+   "finviz-proactive-research",
+   "finviz-screener-runner",
+   "finviz-sector-research",
+   "hermes-analyst-signal-discovery",
+   "hermes-governance-api",
+   "hermes-momentum-catalyst-scalp",
+   "hermes-news-bridge",
+   "identity-sweep-stage0",
+   "journal-tilt-morning-hook",
+   "material-change-detector-stage1",
+   "materialize-watchlist-strategy-cards",
+   "proposal-backtest-engine",
+   "sec-data-ingest",
+   "source-attribution-monitor",
+   "update-agent-performance",
+   "watchlist-enrichment-sweep",
+   "aegis-social-sentiment",
+   "aegis-transcript-discovery",
+   "agent-outcome-scorer",
+   "commitment-outcome-sweep",
+   "daily-incubator-refresh",
+   "hermes-social-sentiment",
+   "instrument-belief-writer",
+   "record-decision-outcome",
+   "sync-social-to-intelligence",
+   "weekly-incubator-builder",
+   "opening-intelligence-render",
+   "pattern-extractor",
+   "wire-advisory-lessons",
+   "build-symbol-profiles-at-0-19",
+   "hermes-discovery-scorecard",
+   "incubator-rolloff-engine",
+   "hermes-learning-outcome-grader",
+   "hermes-learning-tag-engine",
+   "hermes-learning-outcome-learning",
+   "hermes-learning-config-governor"
+  ],
+  "relay_live_list_size": 52,
+  "unique_lanes_by_status": {
+   "CONSOLIDATED": 60,
+   "CRON_PRIMARY": 283,
+   "HELD": 4,
+   "LIVE_LISTED_IDLE": 13,
+   "MIGRATED_PROVEN": 17,
+   "N8N_NATIVE": 1,
+   "N8N_PRIMARY_UNPROVEN": 6,
+   "OTHER": 42,
+   "PARALLEL": 17,
+   "RETAINED_F07": 21,
+   "RETAINED_SYSTEMD": 125,
+   "RETIRED": 52
+  },
+  "unique_lanes_with_active_cron": 316
+ },
+ "notifications": {
+  "attribution": {
+   "attributed": 14,
+   "by_source": {
+    "UNKNOWN": 265,
+    "cron:cio-entry-state-runner": 1,
+    "cron:claude-escalation-handler": 2,
+    "cron:hermes-score-alerts": 2,
+    "cron:incident-notifier": 1,
+    "cron:inference-layer-engine": 1,
+    "cron:process-reaper": 1,
+    "cron:scalp-shadow-logger": 1,
+    "cron:stop-health-check": 1,
+    "systemd:autonomy-watchdog": 1,
+    "systemd:claude-escalation-handler": 2,
+    "systemd:system-health-agent": 1
+   },
+   "unknown": 265
+  },
+  "by_producer_class_delivery": {
+   "autonomy_watchdog.telegram_system|ops": {
+    "LEGACY_DELIVERED": 20,
+    "SUPPRESSED": 1
+   },
+   "telegram_alert.send_telegram|active_trader_scalp_alert": {
+    "SENT": 26
+   },
+   "telegram_alert.send_telegram|ops": {
+    "LEGACY_DELIVERED": 17,
+    "SENT": 41,
+    "SUPPRESSED": 171
+   },
+   "telegram_alert.send_telegram|report": {
+    "SENT": 3
+   }
+  },
+  "by_scheduler_and_delivery": {
+   "UNKNOWN|LEGACY_DELIVERED": 35,
+   "UNKNOWN|SENT": 68,
+   "UNKNOWN|SUPPRESSED": 162,
+   "cron|LEGACY_DELIVERED": 1,
+   "cron|SENT": 2,
+   "cron|SUPPRESSED": 7,
+   "systemd|LEGACY_DELIVERED": 1,
+   "systemd|SUPPRESSED": 3
+  },
+  "communication_events_outbound": 279,
+  "day_start_utc": "2026-10-16T04:00:00+00:00",
+  "join_note": "No shared key joins a router receipt to a communication_events row (router rows carry producer + decision, events carry one generic chokepoint producer name); the chain is reported as per-stage counts. Per-message intent->delivery linkage is UNKNOWN except where the provenance footer names the lane.",
+  "n8n_comms_intents_by_tier_state": {
+   "DIGEST|QUEUED": 1
+  },
+  "router_by_producer": {
+   "alert_dispatcher": {
+    "DELIVER": 3
+   },
+   "check_data_source_health": {
+    "DELIVER": 1,
+    "HELD_QUIET_HOURS": 2
+   },
+   "check_expected_services": {
+    "DELIVER": 1,
+    "HELD_QUIET_HOURS": 1
+   },
+   "claude_escalation_handler": {
+    "DIGEST": 29
+   },
+   "continuous_runner": {
+    "DELIVER": 7
+   },
+   "data_plausibility_monitor": {
+    "DELIVER": 1
+   },
+   "disk_pressure_guard": {
+    "DELIVER": 2
+   },
+   "finviz_ingestion": {
+    "DEDUPED": 2,
+    "DELIVER": 2
+   },
+   "health_agent": {
+    "DELIVER": 2,
+    "DIGEST": 1
+   },
+   "hermes_outcome_feedback_agent": {
+    "DELIVER": 1
+   },
+   "hermes_score_alerts": {
+    "DIGEST": 3
+   },
+   "llm_spend_report": {
+    "DELIVER": 1
+   },
+   "morning_digest": {
+    "HELD_QUIET_HOURS": 1
+   },
+   "pipeline_freshness_slo": {
+    "DELIVER": 2
+   },
+   "premarket_watcher": {
+    "DELIVER": 12
+   },
+   "pro_analyst_monitor": {
+    "HELD_QUIET_HOURS": 1
+   },
+   "process_reaper": {
+    "DIGEST": 10
+   },
+   "process_watchlist_agent_jobs": {
+    "DELIVER": 2
+   },
+   "pullback_macd_screener": {
+    "DELIVER": 1
+   },
+   "recovery_watch_daily": {
+    "DELIVER": 1
+   },
+   "research_lane_health": {
+    "DIGEST": 6
+   },
+   "rotation_autopilot": {
+    "DIGEST": 6
+   },
+   "run_proactive_quote_refresh": {
+    "DIGEST": 48
+   },
+   "send_advice_digest": {
+    "DELIVER": 3
+   },
+   "siem_critical_notify": {
+    "DELIVER": 2
+   },
+   "social_scalp_scanner": {
+    "DELIVER": 8,
+    "HELD_QUIET_HOURS": 3
+   },
+   "stop_health": {
+    "DELIVER": 7
+   },
+   "system_health_agent": {
+    "DELIVER": 1,
+    "DIGEST": 3
+   },
+   "telegram_smart_alerts": {
+    "DIGEST": 1,
+    "HELD_QUIET_HOURS": 1
+   },
+   "watch_directives_service": {
+    "DIGEST": 1
+   }
+  },
+  "router_decisions": {
+   "DEDUPED": 2,
+   "DELIVER": 60,
+   "DIGEST": 108,
+   "HELD_QUIET_HOURS": 9
+  },
+  "router_ledger": "data/runtime/notification_intent_receipts.jsonl (NotificationIntentRoute@v1)",
+  "telegram_daily_send_budget_today": "UNKNOWN",
+  "telegram_send_idempotency_today_by_prefix": {}
+ },
+ "prs": [
+  {
+   "associated_lanes": "agent-outcome-linker catalyst-graph catalyst-symbol-impact classify-instruments document-mentions-backfill etf-analyst-enrich etf-performance-enrich feedback-loop-processor",
+   "deployed": true,
+   "evidence": "3/8 lanes proven; missing: agent-outcome-linker, classify-instruments, etf-analyst-enrich, etf-performance-enrich, feedback-loop-processor",
+   "merge_sha": "c1e88d79bd",
+   "merged": true,
+   "merged_at": "2026-10-16T02:22:19Z",
+   "pr": 1808,
+   "proven": "PARTIAL",
+   "state": "MERGED",
+   "title": "n8n CW1 batch 1: 8 lanes write produced_count + opt into output verdict"
+  },
+  {
+   "associated_lanes": "finviz-enrichment finviz-enrichment-scalp-hot finviz-proactive-research finviz-screener-runner finviz-sector-research hermes-analyst-signal-discovery hermes-governance-api hermes-momentum-catalyst-scalp hermes-news-bridge",
+   "deployed": true,
+   "evidence": "6/9 lanes proven; missing: finviz-enrichment, finviz-enrichment-scalp-hot, finviz-sector-research",
+   "merge_sha": "94ee3770a6",
+   "merged": true,
+   "merged_at": "2026-10-16T02:55:53Z",
+   "pr": 1809,
+   "proven": "PARTIAL",
+   "state": "MERGED",
+   "title": "n8n CW1 batch 2: finviz x4 + hermes x4 write produced_count + opt into output verdict"
+  },
+  {
+   "associated_lanes": "identity-sweep-stage0 journal-tilt-morning-hook material-change-detector-stage1 materialize-watchlist-strategy-cards proposal-backtest-engine sec-data-ingest source-attribution-monitor update-agent-performance",
+   "deployed": true,
+   "evidence": "6/8 lanes proven; missing: sec-data-ingest, update-agent-performance",
+   "merge_sha": "ba610ba510",
+   "merged": true,
+   "merged_at": "2026-10-16T02:22:31Z",
+   "pr": 1810,
+   "proven": "PARTIAL",
+   "state": "MERGED",
+   "title": "n8n CW1 batch 3: 8 lanes write produced_count + opt into output verdict"
+  },
+  {
+   "associated_lanes": "aegis-social-sentiment aegis-transcript-discovery agent-outcome-scorer commitment-outcome-sweep daily-incubator-refresh hermes-social-sentiment instrument-belief-writer watchlist-enrichment-sweep",
+   "deployed": true,
+   "evidence": "0/8 lanes have a live produced/empty_allowed receipt at a SHA containing the merge",
+   "merge_sha": "bdc61c92ff",
+   "merged": true,
+   "merged_at": "2026-10-16T02:22:40Z",
+   "pr": 1811,
+   "proven": "UNPROVEN",
+   "state": "MERGED",
+   "title": "n8n CW1/CW2 batch 4: 8 lanes write produced_count + opt into output verdict"
+  },
+  {
+   "associated_lanes": "build-symbol-profiles-at-0-19 hermes-discovery-scorecard incubator-rolloff-engine opening-intelligence-render pattern-extractor record-decision-outcome sync-social-to-intelligence weekly-incubator-builder wire-advisory-lessons",
+   "deployed": true,
+   "evidence": "4/9 lanes proven; missing: build-symbol-profiles-at-0-19, hermes-discovery-scorecard, opening-intelligence-render, pattern-extractor, weekly-incubator-builder",
+   "merge_sha": "3b8b89116f",
+   "merged": true,
+   "merged_at": "2026-10-16T02:22:49Z",
+   "pr": 1812,
+   "proven": "PARTIAL",
+   "state": "MERGED",
+   "title": "n8n CW2/CW3 batch 5: 9 lanes write produced_count + opt into output verdict"
+  },
+  {
+   "associated_lanes": "document-mentions-backfill hermes-analyst-signal-discovery hermes-governance-api identity-sweep-stage0 material-change-detector-stage1",
+   "deployed": true,
+   "evidence": "5/5 lanes have a qualifying live receipt",
+   "merge_sha": "a7fc2175b8",
+   "merged": true,
+   "merged_at": "2026-10-16T02:22:57Z",
+   "pr": 1813,
+   "proven": "PROVEN",
+   "state": "MERGED",
+   "title": "n8n cutover: 5 CW1 lanes canary -> cutover (cron retired 2026-10-16)"
+  },
+  {
+   "associated_lanes": "",
+   "deployed": false,
+   "evidence": "NOT DEPLOYED (merge commit not in served SHA); no lane associated with the PR's changes",
+   "merge_sha": "5f0ea5b8c2",
+   "merged": true,
+   "merged_at": "2026-10-16T17:07:28Z",
+   "pr": 1814,
+   "proven": "UNPROVEN",
+   "state": "MERGED",
+   "title": "\u00a723.25 gate alignment: lift cron markers + soft tokens for approved families; 4 holds; P1 last"
+  },
+  {
+   "associated_lanes": "hermes-learning-autonomous-self-tune hermes-learning-config-governor hermes-learning-outcome-feedback-agent hermes-learning-outcome-grader hermes-learning-outcome-learning hermes-learning-pipeline-learn hermes-learning-pipeline-tune hermes-learning-score-history-retention hermes-learning-tag-engine",
+   "deployed": true,
+   "evidence": "0/9 lanes have a live produced/empty_allowed receipt at a SHA containing the merge",
+   "merge_sha": "06d5ba3e46",
+   "merged": true,
+   "merged_at": "2026-10-16T15:38:10Z",
+   "pr": 1815,
+   "proven": "UNPROVEN",
+   "state": "MERGED",
+   "title": "hermes-learning cutover PR-2: 4 learn steps live at canary (feedback agent held), same-morning packe"
+  },
+  {
+   "associated_lanes": "hermes-learning-autonomous-self-tune hermes-learning-config-governor hermes-learning-outcome-feedback-agent hermes-learning-outcome-grader hermes-learning-outcome-learning hermes-learning-pipeline-learn hermes-learning-pipeline-tune hermes-learning-score-history-retention hermes-learning-tag-engine",
+   "deployed": true,
+   "evidence": "0/9 lanes have a live produced/empty_allowed receipt at a SHA containing the merge",
+   "merge_sha": "447329e8cd",
+   "merged": true,
+   "merged_at": "2026-10-16T15:38:14Z",
+   "pr": 1816,
+   "proven": "UNPROVEN",
+   "state": "MERGED",
+   "title": "hermes-learning: one-day live_manual_slots (until 2026-10-16 23:59 ET) + guarded manual fallback"
+  },
+  {
+   "associated_lanes": "active-trader-premarket-watch",
+   "deployed": true,
+   "evidence": "14 outbound rows today carry a footer, 0 name n8n",
+   "merge_sha": "b120849ed4",
+   "merged": true,
+   "merged_at": "2026-10-16T15:38:18Z",
+   "pr": 1817,
+   "proven": "PARTIAL",
+   "state": "MERGED",
+   "title": "comms: Telegram provenance footer (n8n/cron lane) + explicit catalyst line on Active Trader alerts"
+  },
+  {
+   "associated_lanes": "hermes-learning-config-governor hermes-learning-outcome-grader hermes-learning-outcome-learning hermes-learning-pipeline-learn hermes-learning-tag-engine hermes-momentum-catalyst-scalp premarket-watcher social-scalp-scanner",
+   "deployed": false,
+   "evidence": "NOT DEPLOYED (merge commit not in served SHA); 0/8 lanes have a live produced/empty_allowed receipt at a SHA containing the merge",
+   "merge_sha": "369dd9c453",
+   "merged": true,
+   "merged_at": "2026-10-16T17:24:01Z",
+   "pr": 1818,
+   "proven": "UNPROVEN",
+   "state": "MERGED",
+   "title": "n8n/comms follow-ups: AT catalyst research + persistent store, n8n-today CC tab, premarket dedupe, n"
+  },
+  {
+   "associated_lanes": "",
+   "deployed": false,
+   "evidence": "not merged",
+   "merge_sha": "",
+   "merged": false,
+   "merged_at": null,
+   "pr": 1819,
+   "proven": "UNPROVEN",
+   "state": "OPEN",
+   "title": "n8n self-healing: dedupe by signature, deterministic closes, gated live heal, P1-once / P2-digest (+"
+  },
+  {
+   "associated_lanes": "",
+   "deployed": false,
+   "evidence": "not merged",
+   "merge_sha": "",
+   "merged": false,
+   "merged_at": null,
+   "pr": 1820,
+   "proven": "UNPROVEN",
+   "state": "OPEN",
+   "title": "n8n self-healing follow-ups (stacked on #1819): slot-bound live retry, P2 digest, catalogue approval"
+  },
+  {
+   "associated_lanes": "",
+   "deployed": false,
+   "evidence": "not merged",
+   "merge_sha": "",
+   "merged": false,
+   "merged_at": null,
+   "pr": 1821,
+   "proven": "UNPROVEN",
+   "state": "OPEN",
+   "title": "assert_fence wave 1 (stacked on #1820): social sentiment x2 + finviz screener runner; market movers "
+  },
+  {
+   "associated_lanes": "",
+   "deployed": false,
+   "evidence": "NOT DEPLOYED (merge commit not in served SHA); no lane associated with the PR's changes",
+   "merge_sha": "68d58385aa",
+   "merged": true,
+   "merged_at": "2026-10-16T17:21:15Z",
+   "pr": 1822,
+   "proven": "UNPROVEN",
+   "state": "MERGED",
+   "title": "n8n: dry-run load measured (0 parallel dry runs on live lanes); pin invariant + read-only report"
+  },
+  {
+   "associated_lanes": "",
+   "deployed": false,
+   "evidence": "NOT DEPLOYED (merge commit not in served SHA); no lane associated with the PR's changes",
+   "merge_sha": "f0145e6127",
+   "merged": true,
+   "merged_at": "2026-10-16T17:21:11Z",
+   "pr": 1823,
+   "proven": "UNPROVEN",
+   "state": "MERGED",
+   "title": "ops: cron copy respects effect ownership (effect_claim_cron wrap packet)"
+  }
+ ],
+ "run_summary": {
+  "ambiguous_effects": 0,
+  "dry_runs": 2645,
+  "dry_worker_s": 2860.4,
+  "effect_claims_by_state": {
+   "DONE": 72,
+   "FAILED": 1,
+   "RELEASED": 19
+  },
+  "failures": 1,
+  "lanes_with_live_receipts": 35,
+  "lanes_with_receipts": 82,
+  "ledger_runs_by_state_mode": [
+   {
+    "mode": "dry_run",
+    "n": 2645,
+    "state": "RUN_DONE"
+   },
+   {
+    "mode": "live",
+    "n": 1472,
+    "state": "RUN_DONE"
+   },
+   {
+    "mode": "live",
+    "n": 1,
+    "state": "RUN_FAILED"
+   },
+   {
+    "mode": "live",
+    "n": 35,
+    "state": "RUN_SKIPPED_LOCK"
+   }
+  ],
+  "live_runs": 1508,
+  "live_worker_s": 13387.5,
+  "lock_skips": 35,
+  "receipts_in_window": 4153,
+  "refusals": 504,
+  "refusals_by_reason": {
+   "momentum_monitor_admission_unproven": 449,
+   "relay_lane_not_allowlisted": 4,
+   "relay_live_not_enabled": 2,
+   "run_idempotency_conflict": 34,
+   "run_slot_not_due": 15
+  },
+  "unverified_ok": 1333,
+  "useful_live_output": 108,
+  "verified_empty": 31
+ },
+ "schema": "N8nCutoverOutcomes@v1",
+ "served": {
+  "release_dir": "/home/johnclaw/trade-ai-releases/portfolio-server/b120849ed-main-exact-phase2-20261016-123446",
+  "sha": "b120849ed435c20f443f36c2ddc2c9c597e92855",
+  "short": "b120849ed"
+ },
+ "sources": {
+  "disposition_csv": "docs/implementation/n8n-maturity/LANE_DISPOSITION_20261015.csv",
+  "ledger": "<state>/data/governance/n8n_coordination_ledger.sqlite (mode=ro)",
+  "live_lanes": "~/.config/tradeai/n8n-live-lanes.env (TRADEAI_N8N_RELAY_LIVE_LANES names only)",
+  "policy": "config/lane_cutover_policy.json",
+  "receipts": "<state>/data/runtime/n8n_runs/*.json",
+  "registry": "config/lane_registry.json",
+  "relay_log": "<state>/data/runtime/n8n_relay/relay_log.jsonl"
+ },
+ "unmeasured": [
+  "config/lane_cutover_policy.json is read from this checkout (main); the served release does not contain it, so its holds / p1_last are merged policy, not yet the enforced dispatch gate"
+ ],
+ "window": {
+  "notifications_day_start": "2026-10-16T04:00:00+00:00",
+  "since": "2026-10-15T04:00:00+00:00",
+  "until": "2026-10-16T17:24:25+00:00"
+ }
+}
