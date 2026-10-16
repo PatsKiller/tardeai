@@ -558,7 +558,10 @@ def main() -> int:
     from approval_package import governance_dir  # type: ignore
     runtime_dir = governance_dir(root, env).parent / "runtime"   # state root's data/runtime (a persistent symlink in releases)
     seed_p = runtime_dir / "supervisor_sla_seed.json"
-    sla_by_lane = {r["lane_id"]: r for r in (json.loads(seed_p.read_text()).get("rows", []) if seed_p.exists() else [])}
+    seed_rows = json.loads(seed_p.read_text()).get("rows", []) if seed_p.exists() else []
+    # 2026-10-16: lanes registered after the seed was written get their registry-derived SLA row (was: UNGOVERNED).
+    from seed_supervisor_sla import merged_sla_rows  # type: ignore
+    sla_by_lane = merged_sla_rows(seed_rows, reg.get("lanes", []))
     heartbeats = {h.get("lane_id"): h for h in hbmod.read_all(root=root, env=env)}
     state_root = Path(a.state_root) if a.state_root else None
     db_query = _read_only_db_query()

@@ -2,6 +2,14 @@
  "schema": "N8nRemediationCatalogue@v1",
  "as_of": "2026-10-16",
  "status": "PROPOSED — operator review before activation (decision 4)",
+ "approvals": [
+  {
+   "date": "2026-10-16",
+   "by": "operator (relayed by Agent A, Chief Architect)",
+   "scope": "catalogue rebuild 119 -> 137 lanes (registry/allowlist drift since 2026-10-14) and the rerun_live_once action (PR #1819)",
+   "ref": "PR #1819 follow-up 3"
+  }
+ ],
  "generated_by": "scripts/build_remediation_catalogue.py",
  "sources": {
   "inventory_dir": "~/n8n-maturity-verification/cron-inventory",

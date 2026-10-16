@@ -1266,7 +1266,14 @@ GATES = [
     # (rerun_live_once: n8n owner, canary/cutover, transient, effect key), P1 once per signature, P2 digest-only.
     (
         "n8n_self_healing_20261016",
-        ["tests/test_n8n_self_healing_20261016.py"],
+        [
+            "tests/test_n8n_self_healing_20261016.py",
+            # #1819 follow-ups (operator-approved 2026-10-16): slot-bound live retry (gateway parent check, executor
+            # derives the effect slot from the FAILED parent; DONE refused), P2 digest wired into advice_digest,
+            # catalogue approval provenance, registry SLA fallback for lanes newer than the seed.
+            "tests/test_n8n_slot_bound_retry_20261016.py",
+            "tests/test_n8n_self_healing_followups_20261016.py",
+        ],
     ),
     # 2026-10-16: daily-incubator-refresh live 08:15 ET died on a closed connection and the except handler's rollback()
     # masked the real error; guarded rollback/close, original exception logged, reconnect before the scan commit.

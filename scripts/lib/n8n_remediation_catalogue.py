@@ -59,6 +59,13 @@ ACTION_IDS = ("rerun_dry_run", "rerun_dry_then_live", "rerun_live_once", "reap_o
 #: re-checks every condition (effect owner n8n, stage, not sender/P1/broker-order-stop-options, transient failure,
 #: a semantic effect key so the executor's effect claim refuses a duplicate effect) at request time.
 LIVE_HEAL_STAGES = frozenset({"canary", "cutover"})
+#: Operator approvals of a generated catalogue (provenance; carried into the file by build_catalogue).
+APPROVALS = (
+    {"date": "2026-10-16", "by": "operator (relayed by Agent A, Chief Architect)",
+     "scope": "catalogue rebuild 119 -> 137 lanes (registry/allowlist drift since 2026-10-14) and the "
+              "rerun_live_once action (PR #1819)",
+     "ref": "PR #1819 follow-up 3"},
+)
 MAX_LIVE_HEAL_PER_LANE_PER_DAY = 1
 MAX_PER_INCIDENT = 1
 MAX_PER_LANE_PER_DAY = 3
@@ -361,6 +368,7 @@ def build_catalogue(*, inventory_dir: Path, registry: Mapping[str, Any], allowli
             digests[name] = "MISSING"
     return {
         "schema": SCHEMA, "as_of": as_of, "status": "PROPOSED — operator review before activation (decision 4)",
+        "approvals": [dict(a) for a in APPROVALS],
         "generated_by": "scripts/build_remediation_catalogue.py",
         "sources": {"inventory_dir": str(src).replace(str(Path.home()), "~", 1), "sha256_16": digests},
         "rules": {
