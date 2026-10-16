@@ -28245,6 +28245,10 @@
         {
           "check": "event_fire_dry_run_done",
           "text": "each input as_of advance past the lane's receipt watermark yields at most one e:<lane>:dry_run:<as_of minute> run, which ends RUN_DONE or RUN_SKIPPED_LOCK (cron line held the lock) in the coordination ledger"
+        },
+        {
+          "check": "output_produced",
+          "text": "a live run reports produced_count (yield map entries written); zero is normal only with an allowed empty_reason ['no_new_input']; a learning-watermark no-op is a recorded reason and writes no receipt"
         }
       ],
       "degraded": [
@@ -28293,6 +28297,10 @@
         {
           "check": "dry_run_wrote",
           "text": "a dry_run changed its output_signal or any durable state"
+        },
+        {
+          "check": "empty_output",
+          "text": "a live run that consumed a new learning watermark reports produced_count 0 without an allowed empty_reason (expected_output.on_violation: RUN_FAILED, P2)"
         }
       ],
       "baseline": {
@@ -28372,7 +28380,8 @@
           "reason": "empty_output",
           "notifier_priority": "P2"
         }
-      }
+      },
+      "expected_output_basis": "expected_output derived 2026-10-16 from hermes_discovery_yield_builder.py compute_yield_file (entries = sample-gated yield keys, n >= MIN_SAMPLES 10, so zero is a valid finding on thin data) and its receipt summary.entries; produced_count emission: NOT YET - the lane writes LaneRunReceipt@v1 without produced_count; until it does, a live run is output_unverifiable"
     },
     {
       "schema": "N8nHealthContract@v1",

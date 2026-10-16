@@ -19,6 +19,11 @@ Usage: report_learning_watermark.py [--project-root DIR] [--ledger PATH] [--stat
 """
 from __future__ import annotations
 
+NO_CONSUMER_REASON = (
+    "Operator/agent read-only report (LearningWatermarkReport@v1 printed to stdout with --json); quoted in "
+    "docs/ops/packets/n8n-process-consolidation-cohort2-20261016/README.md; no lane consumes it."
+)
+
 import argparse
 import json
 import sqlite3

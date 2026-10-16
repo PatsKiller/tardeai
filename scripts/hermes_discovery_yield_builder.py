@@ -274,6 +274,7 @@ def main(argv=None):
                              "fallback, a recorded no-op when this learning watermark was already consumed")
     args = parser.parse_args(argv)
 
+    import lib  # noqa: F401  scripts/lib/__init__ puts the repo root on sys.path (a by-path cron run has only scripts/)
     from scripts.lib import learning_watermark as lw
     guard, problem = lw.guard_for(LANE_ID, args.learning_watermark)
     if problem:
