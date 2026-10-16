@@ -5117,6 +5117,15 @@ GATES = [
         "n8n_cutover_wave_20261015",
         ["tests/test_n8n_cutover_wave_20261015.py"],
     ),
+    (
+        # ANCHOR: RELEASE_WINDOWS_20261016 — operator decision 2026-10-16: daily release windows 12:00 and 17:30 ET.
+        # scripts/release_window.py selects the origin/main head only when exact-SHA push/main CI is green, prepares,
+        # promotes THAT artifact, verifies and rolls back; authorized only by a per-window release-write grant
+        # (RELEASE_WINDOW token, ReleaseGrantBinding campaign match). Replays the 2026-10-16 main-moved refusal.
+        # Hermetic: fake host, tmp_path state; no git/gh/systemctl/guard ledger.
+        "release_windows_20261016",
+        ["tests/test_release_window_20261016.py"],
+    ),
 ]
 
 
