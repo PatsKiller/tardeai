@@ -16291,6 +16291,28 @@
       "adopted_reason": "shadow wave LD-W1 (lane disposition 2026-10-15, M1): a row carrying a reviewed dispatch block is hand-maintained (AGENTS 23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop it. Cron line L837 (crontab -l 2026-10-15, sha256 6a5c6768) keeps doing the real work; the dispatcher fires the offline dry run only. output_signal moved from the cron log / file mtime to the LaneRunReceipt@v1 the script writes on a real run."
     },
     {
+      "lane_id": "nightly-cutover-controller",
+      "owner": "platform",
+      "owner_note": "Agent A (Chief Architect), operator-approved in writing 2026-10-16: 'building, testing and operating a bounded nightly automatic cutover process for the already approved migration scope, including the necessary controlled crontab edits'.",
+      "scheduler": {
+        "kind": "none",
+        "install_note": "DISARMED. No cron line, no timer, no workflow. When Agent A arms it, n8n may only TRIGGER this host lane through the run allowlist (dispatch block in a registry PR); the crontab edit is the controller's own narrow host capability (scripts/nightly_cutover_cron_edit.py), never an n8n node."
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "PAUSED",
+      "state_since": "2026-10-16",
+      "state_reason": "DISARMED until Agent A arms it after review: apply refuses unless an active guard grant of tier cron names nightly-cutover-controller (read-only check). PAUSED is green before and after install (check_lane_registry --state-drift: PAUSED+line-absent ALIGNED).",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/nightly_cutover/nightly_cutover_last.json"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_nightly_cutover_controller_20261016.py; docs/ops/packets/nightly-cutover-controller-20261016/README.md",
+      "note": "Enforced state machine (candidate -> evidence_ok -> protected -> drained -> applied -> reconciled; failure = held:<reason>; shared control failure stops the cohort). Retires (comments, never deletes) the primary cron line of at most max_lanes_per_night approved 23.25 lanes per night. config/nightly_cutover_controller.json.",
+      "value_class": "Operationally Important",
+      "review_by": "2026-10-23"
+    },
+    {
       "lane_id": "run-scheduled-quote-refresh-incubator",
       "owner": "portfolio",
       "scheduler": {

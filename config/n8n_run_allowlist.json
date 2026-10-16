@@ -3796,6 +3796,29 @@
       "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as the SW4 / LD-W1 rows). A live run also needs the governed bridge names (TRADEAI_LLM_VIA_BRIDGE / the bridge process env the executor binds from llm_route).",
       "env_evidence": "watchlist_entry_planner_lane.py imports preview / plan_run / receipt_name from watchlist_entry_planner.py (db_adapter DB_* names; llm_lane only on a live run). The dry run reaches no LLM, bars provider or send. No broker credential name.",
       "source": "lane repair 2026-10-15, cron:L476 (crontab -l 2026-10-15, sha256 6a5c6768: `45 17 * * 1-5 cd $PROJ && flock -n /tmp/entry_planner_prop.lock $PY scripts/watchlist_entry_planner.py --scope proposals >> logs/entry_planner.log 2>&1  # daily proposal entry validation (advisory)`). STAGED (registry r1_pending, no dispatch block): the llm class needs llm_route via cio-governed-bridge and process watchlist_entry_planner has no governed route yet; llm_route is therefore absent here and the lane is inert. live_arg null. The command is the plan-only n8n entry (no sender in its static reach; `--lane` dropped: a provider-selecting token is refused on a dispatched argv); entry alerts stay on the cron line until a host notification-intent consumer delivers them. lock /tmp/entry_planner_prop.lock (flock) is the live cron line's lock. Dry run: --dry-run is the planner's READ ONLY candidate preview; proof in docs/ops/packets/lane-repair-indicator-engine-20261015/."
+    },
+    {
+      "lane_id": "nightly-cutover-controller",
+      "env_names": [],
+      "env_allowlist_mode": "report",
+      "env_evidence": "scripts/nightly_cutover_controller.py + scripts/lib/nightly_cutover.py read TRADEAI_STATE_ROOT / TRADEAI_GUARD_GRANTS_PATH / CRONTAB_CMD / N8N_CUTOVER_LOCK by literal name only; no credential name. lib/n8n_live_inventory shells `docker exec <n8n db> psql` SELECT (HOME/PATH from the base set).",
+      "source": "PROPOSED 2026-10-16 (operator written approval of the bounded nightly cutover process; AGENTS.md 23.25). DISARMED: registry row PAUSED, no dispatch block, no workflow imported. n8n may only trigger this host lane; the crontab edit capability (scripts/nightly_cutover_cron_edit.py) is called by the controller itself, and --apply refuses without an active cron grant naming nightly-cutover-controller. --dry-run evaluates and writes its receipt only.",
+      "command": [
+        "$PY",
+        "scripts/nightly_cutover_controller.py"
+      ],
+      "lock": "/tmp/tradeai_nightly_cutover_controller.lock",
+      "lock_kind": "safe_flock",
+      "timeout_s": 3600,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": [
+        "--apply"
+      ],
+      "market_gate": false,
+      "output_signal": "data/runtime/nightly_cutover/nightly_cutover_last.json",
+      "env_report_reason": "the import closure (lane_dispatch, n8n_cutover_wave, effect_claim, gateway/ledger for forced canaries) reaches env reads that are not bounded by literal names; report until a closure inventory is written for this lane."
     }
   ],
   "blocked_reasons": {

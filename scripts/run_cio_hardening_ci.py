@@ -3897,6 +3897,17 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: NIGHTLY_CUTOVER_CONTROLLER — 2026-10-16 operator-approved bounded nightly n8n cutover: ONE evaluator
+        # (scripts/lib/nightly_cutover.py) for plan/dry-run/apply; per-lane states candidate -> evidence_ok -> protected
+        # -> drained -> applied -> reconciled, held:<reason> on any failed check, cohort STOP on a shared control failure;
+        # the narrow crontab edit capability (lock, hash, backup, byte-exact read-back, rollback); arming = a cron grant
+        # naming the controller (read-only); P1 = one COMPLETED NYSE session after proof (also fixes n8n_cutover_wave).
+        "nightly_cutover_controller_20261016",
+        [
+            "tests/test_nightly_cutover_controller_20261016.py",
+        ],
+    ),
+    (
         # ANCHOR: LANE_REPAIR_RI_HERMES_LITMUS — 2026-10-15 lane repair of three lanes the lane-disposition audit found
         # broken: run-research-intelligence-overnight (ingest bounded by --budget-s / --max-items-per-topic, stored
         # results skip pre-model, SIGTERM still writes the receipt, batch lock; narrative + synthesizer registered and
