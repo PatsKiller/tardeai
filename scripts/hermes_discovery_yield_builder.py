@@ -16,8 +16,14 @@ Real runs leave a LaneRunReceipt@v1 under TRADEAI_STATE_ROOT; failures preserve 
 ok_at. A kill-switch skip does not refresh ok_at. This lane already belongs to C1 learning;
 this source change does not create a second scheduler.
 
+Cohort 2 (2026-10-16, n8n process consolidation): the lane consumes the VERIFIED Hermes learning completion once
+(scripts/lib/learning_watermark.py, config/learning_watermark.json). --learning-watermark event is the n8n event lane
+hermes-discovery-yield-on-learning (registry run_done trigger on hermes-learning-outcome-learning, require_verdict
+produced/empty_allowed); no flag = the overnight clock fallback, which no-ops (recorded reason) when that learning
+watermark was already consumed. A dry run reports the decision and records nothing.
+
 Usage:
-  python scripts/hermes_discovery_yield_builder.py [--apply] [--dry-run]
+  python scripts/hermes_discovery_yield_builder.py [--apply] [--dry-run] [--learning-watermark event|clock]
 """
 import argparse
 import json
@@ -33,6 +39,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 OUTPUT_PATH = PROJECT_ROOT / "data" / "runtime" / "hermes_discovery_yield.json"
 KILL_FILE = PROJECT_ROOT / "data" / "runtime" / "HERMES_DISABLED"
 MIN_SAMPLES = 10
+LANE_ID = "hermes-discovery-yield-builder"
 LOOKBACK_DAYS = 90  # outcome window
 
 # ── DB ────────────────────────────────────────────────────────────────────────
@@ -261,16 +268,40 @@ def main(argv=None):
     parser.add_argument("--apply", action="store_true", help="Write yield file (default: dry-run)")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--json", action="store_true", help="Output JSON")
+    parser.add_argument("--learning-watermark", choices=("event", "clock"), default=None,
+                        help="learning watermark guard (config/learning_watermark.json): event = fired by the "
+                             "verified learning completion; clock (the default when omitted) = the overnight "
+                             "fallback, a recorded no-op when this learning watermark was already consumed")
     args = parser.parse_args(argv)
+
+    from scripts.lib import learning_watermark as lw
+    guard, problem = lw.guard_for(LANE_ID, args.learning_watermark)
+    if problem:
+        print(f"[learning-watermark] {LANE_ID}: {problem}", file=sys.stderr)
+        if args.learning_watermark == "event":
+            return 1                        # the event trigger never runs unguarded
+    if guard is not None:
+        guard.evaluate()
 
     if args.dry_run:
         print("DRY-RUN hermes-discovery-yield-builder: would compute discovery/outcome yield "
               f"over {LOOKBACK_DAYS} days (min samples {MIN_SAMPLES}); "
               "write hermes_discovery_yield.json only with --apply and record the live receipt; "
               "no DB or credential file opened")
+        if guard is not None:
+            print(guard.line(dry_run=True), file=sys.stderr)
         return 0
 
     apply = args.apply and not args.dry_run
+    if guard is not None:
+        print(guard.line(dry_run=not apply), file=sys.stderr)
+        if not guard.decision.run:
+            if apply:
+                guard.record_skip()         # the no-op and its reason are recorded; no lane receipt (no output)
+            if args.json:
+                print(json.dumps({"status": "watermark_noop", "reason": guard.decision.reason,
+                                  "watermark": guard.decision.watermark}, indent=2, default=str))
+            return 0
     from lib.lane_last_receipt import now_iso, write_lane_receipt
     started = now_iso()
     try:
@@ -279,6 +310,8 @@ def main(argv=None):
         write_lane_receipt("hermes-discovery-yield-builder", ok=False, exit_code=1,
                            started_at=started, error=type(exc).__name__)
         raise
+    if guard is not None and apply and result.get("status") != "kill_switch":
+        guard.record_consumed()
     write_lane_receipt("hermes-discovery-yield-builder", ok=result.get("status") != "kill_switch",
                        exit_code=0, started_at=started,
                        summary={"entries": result.get("entries", 0), "apply": apply,

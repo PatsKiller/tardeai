@@ -3819,6 +3819,41 @@
       "market_gate": false,
       "output_signal": "data/runtime/nightly_cutover/nightly_cutover_last.json",
       "env_report_reason": "the import closure (lane_dispatch, n8n_cutover_wave, effect_claim, gateway/ledger for forced canaries) reaches env reads that are not bounded by literal names; report until a closure inventory is written for this lane."
+    },
+    {
+      "lane_id": "hermes-discovery-yield-on-learning",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PROJECT_ROOT",
+        "TRADEAI_N8N_COORDINATION_LEDGER",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "hermes_discovery_yield_builder.py get_db :40 (DB_PASSWORD from the env first, the checkout .env line only as the cron fallback; a dry run returns before it); lib/learning_watermark.py default_ledger_path (TRADEAI_N8N_COORDINATION_LEDGER, TRADEAI_STATE_ROOT); lib/lane_last_receipt.py (TRADEAI_STATE_ROOT). No broker credential name (AGENTS §23.18 ruling 3).",
+      "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env (tag-lift) / the yield builder's .env fallback re-read credentials when DB_PASSWORD is not already set, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as the SW4 hermes rows). A dry run opens no DB in the yield builder and a READ ONLY session in tag-lift.",
+      "source": "n8n process consolidation cohort 2 (2026-10-16, packet docs/ops/packets/n8n-process-consolidation-cohort2-20261016/): event trigger of hermes-discovery-yield-builder on the verified completion of hermes-learning-outcome-learning. SHADOW ONLY: live_arg null, registry dispatch.mode dry_run, scheduler.stage shadow. lock is the consumer's own flock lock (the night-stage step and the retired cron line used it); a dry run takes <lock>.dryrun. The command carries --learning-watermark event: the script re-reads the verified learning watermark and its consumer state (config/learning_watermark.json) and refuses a missing/unverified upstream or an already-consumed watermark with a reason. Cutover live_arg (separate PR): ['--apply'].",
+      "command": [
+        "$PY",
+        "scripts/hermes_discovery_yield_builder.py",
+        "--json",
+        "--learning-watermark",
+        "event"
+      ],
+      "lock": "/tmp/hermes_yield_builder.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/hermes-discovery-yield-builder_last.json"
     }
   ],
   "blocked_reasons": {

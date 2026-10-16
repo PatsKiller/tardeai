@@ -351,7 +351,9 @@ def test_native_monitor_rows_do_not_flip_a_host_scheduler():
     # fired by tradeai-heartbeat-watcher and tradeai-dispatcher; it flips no host scheduler (match names its script only).
     # The operator's2026-10-12 admission adds two new native metadata lanes;
     # neither retires or impersonates a legacy host trigger.
-    n8n_native_lanes = {"heartbeat-watch", "momentum-lifecycle-monitor", "momentum-cache-reconcile"}
+    n8n_native_lanes = {"heartbeat-watch", "momentum-lifecycle-monitor", "momentum-cache-reconcile",
+                        # 2026-10-16 cohort 2: event-trigger lane of the Hermes discovery yield builder (shadow).
+                        "hermes-discovery-yield-on-learning"}
     assert all(native[lane]["scheduler"]["expression"] == "dispatcher" for lane in n8n_native_lanes)
     # 2026-10-15: the step lanes of the n8n fabric process hermes-learning (AGENTS.md §23.23). Fired only by the
     # process workflow, NEVER_SCHEDULED until it is published for shadow; `match` names the process step, so no

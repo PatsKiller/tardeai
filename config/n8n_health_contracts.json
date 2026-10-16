@@ -28175,6 +28175,207 @@
     },
     {
       "schema": "N8nHealthContract@v1",
+      "id": "hermes-discovery-yield-on-learning",
+      "kind": "lane",
+      "workflow_id": "dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "stage:shadow",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Event trigger of the Hermes discovery yield builder: on the VERIFIED completion of Hermes outcome learning (ledger RUN_DONE of hermes-learning-outcome-learning, output verdict produced/empty_allowed) rebuild data/runtime/hermes_discovery_yield.json (per-type/domain discovery yield from the graded outcome ledger) once per learning watermark. Shadow: dry run only; the 02:20 ET hermes_overnight night stage step stays the watermark-aware clock fallback.",
+        "business_function": "learning",
+        "source": "scripts/hermes_discovery_yield_builder.py docstring; config/learning_watermark.json; docs/ops/packets/n8n-process-consolidation-cohort2-20261016/README.md"
+      },
+      "owner": "learning",
+      "connects_to": [
+        {
+          "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md \u00a723.3"
+        },
+        {
+          "name": "$PY scripts/hermes_discovery_yield_builder.py --json --learning-watermark event",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/hermes_yield_builder.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "config/n8n_run_allowlist.json lock (flock)"
+        },
+        {
+          "name": "data/runtime/hermes-discovery-yield-builder_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt / allowlist output_signal"
+        },
+        {
+          "name": "RUN_DONE of lane hermes-learning-outcome-learning in the coordination ledger -> coordination/due source event -> tradeai-event-router",
+          "kind": "event_trigger",
+          "direction": "read",
+          "source": "config/lane_registry.json dispatch.triggers (run_done)"
+        },
+        {
+          "name": "data/runtime/learning_watermark/hermes-discovery-yield-builder.json",
+          "kind": "store",
+          "direction": "read_write",
+          "source": "scripts/lib/learning_watermark.py consumer state (live runs only)"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "shadow_dry_run_done",
+          "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+        },
+        {
+          "check": "dry_run_writes_nothing",
+          "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md \u00a76)"
+        },
+        {
+          "check": "cron_twin_output_fresh",
+          "text": "the live cron line keeps the registry output_signal data/runtime/hermes-discovery-yield-builder_last.json fresh within 48.0 h (2x cadence)"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 240.0 s (80% of timeout_s 300)"
+        },
+        {
+          "check": "event_fire_dry_run_done",
+          "text": "each input as_of advance past the lane's receipt watermark yields at most one e:<lane>:dry_run:<as_of minute> run, which ends RUN_DONE or RUN_SKIPPED_LOCK (cron line held the lock) in the coordination ledger"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "output_signal older than 48.0 h but younger than 72.0 h (2x-3x cadence)"
+        },
+        {
+          "check": "slow",
+          "text": "duration above 240.0 s"
+        },
+        {
+          "check": "retried",
+          "text": "a run needed attempt > 1 (retry_policy) or ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
+        },
+        {
+          "check": "upstream_stale",
+          "text": "no verified learning completion (learning_watermark reason upstream_missing / upstream_unverified) or the watermark was already consumed (watermark_already_consumed_* / watermark_not_newer): recorded reason, no fire; investigate when a trading day passes with no consumption"
+        },
+        {
+          "check": "event_debounced_or_coalesced",
+          "text": "advances arrive faster than min_interval_s 3600 s or while a schedule run of the lane is due or in flight, so they coalesce into one later fire (expected under bursts; investigate if no e: run lands in a trading day with input advances)"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "stale",
+          "text": "output_signal older than 72.0 h (3x cadence)"
+        },
+        {
+          "check": "breaker_or_dlq",
+          "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+        },
+        {
+          "check": "trigger_source_unreadable",
+          "text": "coordination/due reports errors[] trigger_source_unreadable for this lane (the domain as_of file is missing or malformed, or the as_of is in the future) for more than one input cadence"
+        },
+        {
+          "check": "dry_run_wrote",
+          "text": "a dry_run changed its output_signal or any durable state"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 48.0,
+        "freshness_failed_after_h": 72.0,
+        "freshness_rule": "degraded beyond 2x cadence (lane_registry.evaluate_lane SLOW), failed beyond 3x (incident fan-in stale threshold)",
+        "timeout_s": 300,
+        "class": "learn",
+        "computed_on": "2026-10-11",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "fewer than 14 finished live runs in the coordination ledger (0); class defaults: duration degraded above 80% of timeout_s, freshness 2x/3x cadence, any RUN_FAILED/RUN_TIMEOUT/RUN_REFUSED failed",
+        "runs_considered": 0,
+        "duration_degraded_above_s": 240.0
+      },
+      "alerting": {
+        "lane_severity": "Medium",
+        "severity_basis": "lane_registry.json row severity",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+        "enforced": "partial source integration: scripts/n8n_incident_fanin.py _wferr_severity() consumes a workflow contract's failed.notifier_priority to raise the workflow-error priority floor. scripts/lib/n8n_siem_bridge.py severity_for() uses registry severity, else the fan-in priority. Full per-lane baseline, notification and diagnosis enforcement is not established by these declarations; runtime coverage remains NOT_MEASURED (N8N_MONITORING_AND_REMEDIATION_STANDARD.md \u00a77)."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
+      },
+      "evidence": {
+        "receipt": "data/runtime/hermes-discovery-yield-builder_last.json",
+        "verify": [
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='hermes-discovery-yield-on-learning' ORDER BY requested_at DESC LIMIT 10\"",
+          "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:hermes-discovery-yield-on-learning' ORDER BY created_at DESC LIMIT 10",
+          "stat / jq the receipt: data/runtime/hermes-discovery-yield-builder_last.json"
+        ],
+        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger"
+      },
+      "review_by": "2026-10-30",
+      "review": {
+        "prepared_by": "agent draft (build_n8n_health_contracts.py --no-ledger --as-of 2026-10-11; process consolidation cohort 2, 2026-10-16)",
+        "status": "REVIEWED",
+        "reviewed_by": "agent-reviewed 2026-10-16 against source (dry-run branch returns before get_db, learning_watermark guard records nothing on a dry run, LaneRunReceipt writer, run_done trigger + require_verdict); awaiting the operator's REVIEW pass (SW4 precedent)",
+        "reviewed_on": "2026-10-16"
+      },
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "yield map entries written to data/runtime/hermes_discovery_yield.json",
+        "rule": "empty_allowed",
+        "min_produced": null,
+        "window_h": null,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "disabled",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [
+          "no_new_input"
+        ],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/hermes-discovery-yield-builder_last.json produced_count (LaneRunReceipt@v2 field); today the v1 receipt reports this unit as summary.entries"
+          },
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/learning_watermark/hermes-discovery-yield-builder.json consumed.id / last_decision.reason (a no-op is a recorded reason, not output)"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
       "id": "wire-advisory-lessons",
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",

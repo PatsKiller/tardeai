@@ -66,6 +66,12 @@ GATES = [
     # worker-seconds, executor concurrency); n8n_shadow_policy (no continuous dry run on accepted lanes, regression
     # canary only on a config or entry-script change, shadow cadence proposals report-only). Hermetic: tmp ledger.
     ("n8n_consolidation_cohort1_20261016", ["tests/test_n8n_consolidation_cohort1_20261016.py"]),
+    # ANCHOR: N8N_CONSOLIDATION_COHORT2_20261016 — process consolidation cohort 2 (operator 2026-10-16): the Hermes
+    # learning consumers (discovery yield builder, tag-lift discovery) fire on the VERIFIED completion of outcome
+    # learning (event lanes, run_done + require_verdict, shadow) and consume each learning watermark once
+    # (scripts/lib/learning_watermark.py): no fire on an unverified or missing upstream (with a reason), no double
+    # consumption across event plus clock, the clock fallback runs on a stale watermark. Hermetic: tmp ledger/state.
+    ("n8n_consolidation_cohort2_20261016", ["tests/test_n8n_consolidation_cohort2_20261016.py"]),
     (
         "options_workflow",
         [
