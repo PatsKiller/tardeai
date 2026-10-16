@@ -54731,6 +54731,19 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
 
+    # What n8n did today (operator 2026-10-16): runs by state (live / dry_run), failures with reason, lock skips,
+    # heals and diagnoses, lanes cut over today. Receipts only (lib/data_broker/n8n_today.py), cached 60 s.
+    if base_path == "/api/v2/coordination/n8n-today":
+        if method != "GET":
+            return 405, {"ok": False, "error": "read_only"}
+        try:
+            from lib.data_broker.n8n_today import get_n8n_today as _n8n_today
+            from lib.n8n_pilot_observations import state_root as _n8n_today_root
+
+            return 200, {"ok": True, "data": _n8n_today(_n8n_today_root())}
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
+
     # BUY_READY institutional packet (M5 09-24): equity plan, chain-ranked options
     # alternatives (per unit), portfolio facts and the CIO review — read-only.
     if base_path.startswith("/api/v2/symbol/") and base_path.endswith("/buy-ready-packet"):
