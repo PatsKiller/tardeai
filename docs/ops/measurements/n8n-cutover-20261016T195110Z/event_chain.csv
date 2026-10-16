@@ -1,0 +1,5 @@
+lane_id,trigger_source,upstream,require_verdict,dispatch_mode,trigger_state,e_live_receipts,e_dry_receipts,last_e_receipt_at,upstream_live_useful,clock_fallback,has_clock_fallback
+news-to-catalyst,broker_as_of,catalyst_news,,dry_run,SHADOW_FIRING,0,12,2026-10-16T16:33:01+00:00,,"dispatch.cron 45 6,12,18 * * *; crontab L408 (wrapped)",True
+news-to-catalyst,run_done,hermes-news-bridge,produced,dry_run,SHADOW_FIRING,0,12,2026-10-16T16:33:01+00:00,2,"dispatch.cron 45 6,12,18 * * *; crontab L408 (wrapped)",True
+research-insight-extractor,run_done,news-to-catalyst,produced,live,LIVE_ARMED_NOT_FIRED,0,0,,0,"dispatch.cron 50 6,12,18 * * *",True
+signal-fusion-active,broker_as_of,scalp_list,,dry_run,SHADOW_FIRING,0,39,2026-10-16T19:25:02+00:00,,dispatch.cron */30 4-16 * * 1-5; crontab L413,True

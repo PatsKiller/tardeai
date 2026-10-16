@@ -5,6 +5,13 @@ jobs; a lane has exactly one status; PARALLEL needs a live n8n run (else LIVE_LI
 tagged commented cron line AND a live RUN_DONE; exit 0 without an output verdict is unverified, not useful; a REQUESTED
 / shadow remediation is not a heal; a recovery needs the output condition; unknown provenance stays UNKNOWN; an
 unwrapped active cron line is not effect-fenced; the live-lanes env parser returns lane names and nothing else.
+
+2026-10-16 architect review (second half of this file): MIGRATED_PROVEN = scheduler ownership AND execution AND
+useful output (a completed live run alone is not proof); a wrapped cron line counts as stood down only when the
+wrapper's last event is a skip; effect protection is split into FAIL_CLOSED vs LEDGER_HEALTHY_ONLY by the served
+wrapper's policy and the handover manifest, and a manifest/ledger disagreement is reported, never reconciled; the
+event-driven chain marks live vs inactive triggers and every clock fallback; a packet diff names why a lane left
+MIGRATED_PROVEN.
 """
 from __future__ import annotations
 
@@ -145,7 +152,7 @@ def _states(**over):
                       {"line_no": 22, "kind": "CONSOLIDATED", "date": "2026-10-15", "lane_id": "folded", "token": "c1-manifest"}],
     }
     outcomes = {"migrated": {"live_runs": 1, "useful_live_output": 1}, "parallel": {"live_runs": 2, "lock_skips": 2},
-                "native": {"live_runs": 3, "unverified_ok": 3}}
+                "native": {"live_runs": 3, "useful_live_output": 3}}
     kw = dict(registry_rows=reg, live_lanes=["migrated", "tag-no-run", "parallel", "idle"], cron=cron,
               families={"daemon": "F07"}, dispositions={}, holds={"held": "operator"}, outcomes=outcomes)
     kw.update(over)
@@ -290,3 +297,207 @@ def test_burn_down_cohorts_and_projection():
     # 7 lanes / 2 per trading day = 3.5 trading days -> 5 calendar days
     assert bd["projected_completion"] == "2026-10-21"
     assert R.burn_down({}, {}, today="2026-10-16", allowlisted=set(), p1_last=[], holds={})["projected_completion"] is None
+
+
+# ── 2026-10-16 architect review: S / E / U measures, qualified protection, stood-down evidence, event chain ──────
+def test_wrapped_lane_parsed_only_when_switched_on_for_that_lane():
+    on = "0 1 * * * cd $PROJ && flock -n /tmp/x.lock env TRADEAI_EFFECT_CLAIM=lane-x bash scripts/effect_claim_cron.sh lane-x $PY x.py"
+    assert R.wrapped_lane_of(on) == "lane-x"
+    # wrapper present but switched on for another lane = a pass-through, not wrapped
+    assert R.wrapped_lane_of(on.replace("TRADEAI_EFFECT_CLAIM=lane-x", "TRADEAI_EFFECT_CLAIM=other")) == ""
+    assert R.wrapped_lane_of("0 1 * * * cd $PROJ && bash scripts/effect_claim_cron.sh lane-x $PY x.py") == ""
+    assert R.wrapped_lane_of("0 1 * * * cd $PROJ && $PY x.py") == ""
+
+
+def _ev(lane, event, at):
+    return {"ts": at, "lane": lane, "event": event, "exit_code": 0, "slot": "x", "detail": ""}
+
+
+def test_effect_events_last_event_decides_stand_down():
+    rows = [_ev("skip", "skipped_effect", "2026-10-16T19:20:00+00:00"),
+            _ev("ran", "skipped_effect", "2026-10-16T19:20:00+00:00"),
+            _ev("ran", "run_unclaimed_cron_claim_false", "2026-10-16T19:30:00+00:00"),
+            _ev("fc", "skipped_ownership_unknown", "2026-10-16T19:30:00+00:00"),
+            _ev("old", "skipped_effect", "2026-10-01T19:30:00+00:00")]
+    ev = R.count_effect_events(rows, SINCE, UNTIL)
+    assert "old" not in ev and ev["ran"]["last_event"] == "run_unclaimed_cron_claim_false"
+    assert R.cron_copy_standing_down([{"wrapped_lane": "skip"}], ev) is True
+    assert R.cron_copy_standing_down([{"wrapped_lane": "fc"}], ev) is True
+    assert R.cron_copy_standing_down([{"wrapped_lane": "ran"}], ev) is False
+    assert R.cron_copy_standing_down([{"wrapped_lane": "skip"}, {"wrapped_lane": ""}], ev) is False  # one unwrapped
+    assert R.cron_copy_standing_down([{"wrapped_lane": "noevent"}], ev) is False  # wrapped, never fired
+    assert R.cron_copy_standing_down([], ev) is False
+
+
+def _sem_states():
+    reg = {k: {"scheduler": {"kind": "cron"}, "state": "ACTIVE"} for k in
+           ("proven", "owns-unverified", "owns-norun", "wrap-ran", "wrap-skip-useful", "tag-unverified")}
+    cron = {
+        "active": [{"line_no": 1, "lane_id": "wrap-ran", "wrapped_lane": "wrap-ran"},
+                   {"line_no": 2, "lane_id": "wrap-skip-useful", "wrapped_lane": "wrap-skip-useful"},
+                   {"line_no": 3, "lane_id": "owns-unverified", "wrapped_lane": "owns-unverified"}],
+        "commented": [{"line_no": 9, "kind": "N8N_CUTOVER", "date": "2026-10-16", "lane_id": "proven"},
+                      {"line_no": 10, "kind": "N8N_CUTOVER", "date": "2026-10-16", "lane_id": "owns-norun"},
+                      {"line_no": 11, "kind": "N8N_CUTOVER", "date": "2026-10-16", "lane_id": "tag-unverified"}],
+    }
+    outcomes = {"proven": {"live_runs": 1, "useful_live_output": 1},
+                "owns-unverified": {"live_runs": 2, "unverified_ok": 2},
+                "wrap-ran": {"live_runs": 1, "useful_live_output": 1},
+                "wrap-skip-useful": {"live_runs": 1, "verified_empty": 1},
+                "tag-unverified": {"live_runs": 1, "unverified_ok": 1}}
+    events = R.count_effect_events([
+        _ev("wrap-ran", "completed_unclaimed", "2026-10-16T19:30:00+00:00"),
+        _ev("wrap-skip-useful", "skipped_effect", "2026-10-16T19:30:00+00:00"),
+        _ev("owns-unverified", "skipped_ownership_unknown", "2026-10-16T19:30:00+00:00"),
+    ], SINCE, UNTIL)
+    return R.lane_states(registry_rows=reg, live_lanes=list(reg), cron=cron, families={}, dispositions={}, holds={},
+                         outcomes=outcomes, effect_events=events)
+
+
+def test_proven_requires_scheduler_ownership_execution_and_useful_output():
+    st = _sem_states()
+    s = {k: (v["status"], v["measure_combo"]) for k, v in st.items()}
+    assert s["proven"] == ("MIGRATED_PROVEN", "S1E1U1")
+    # wrapped + stood down + useful output = proven; the cron line is NOT parallel any more
+    assert s["wrap-skip-useful"] == ("MIGRATED_PROVEN", "S1E1U1")
+    assert st["wrap-skip-useful"]["sched_evidence"] == "cron_wrapped_skipping"
+    # a completed live run with no useful verdict is NOT proven (the #1827 definition said it was)
+    assert s["tag-unverified"] == ("N8N_PRIMARY_UNPROVEN", "S1E1U0")
+    assert "no useful output verdict" in st["tag-unverified"]["unproven_reason"]
+    assert s["owns-unverified"] == ("N8N_PRIMARY_UNPROVEN", "S1E1U0")
+    assert s["owns-norun"] == ("N8N_PRIMARY_UNPROVEN", "S1E0U0")
+    # wrapped but the wrapper RAN the command: still parallel, no ownership
+    assert s["wrap-ran"] == ("PARALLEL", "S0E1U1")
+    combos = R.measure_combinations(st)
+    assert combos["S1E1U1"] == ["proven", "wrap-skip-useful"]
+    assert combos["S1E1U0"] == ["owns-unverified", "tag-unverified"]
+
+
+def test_native_row_needs_useful_output_and_cron_history_wins_over_native():
+    reg = {"born": {"scheduler": {"kind": "n8n"}, "state": "ACTIVE"},
+           "born-unverified": {"scheduler": {"kind": "n8n"}, "state": "ACTIVE"},
+           "moved": {"scheduler": {"kind": "n8n"}, "state": "ACTIVE"}}
+    cron = {"active": [], "commented": [{"line_no": 5, "kind": "N8N_CUTOVER", "date": "2026-10-16", "lane_id": "moved"}]}
+    outcomes = {"born": {"live_runs": 1, "useful_live_output": 1}, "born-unverified": {"live_runs": 4, "unverified_ok": 4},
+                "moved": {"live_runs": 1, "useful_live_output": 1}}
+    st = R.lane_states(registry_rows=reg, live_lanes=[], cron=cron, families={}, dispositions={}, holds={},
+                       outcomes=outcomes)
+    assert st["born"]["status"] == "N8N_NATIVE" and st["born"]["measure_combo"] == "S1E1U1"
+    assert st["born-unverified"]["status"] == "N8N_PRIMARY_UNPROVEN"
+    # a registry row flipped to kind n8n by a cutover is a MIGRATION (its retirement tag is the evidence)
+    assert st["moved"]["status"] == "MIGRATED_PROVEN" and st["moved"]["sched_evidence"] == "cron_retired_tag"
+
+
+def test_skip_on_a_scheduled_fire_is_told_apart_from_a_verification_probe():
+    rows = [_ev("w", "skipped_effect", "2026-10-16T14:00:41+00:00"),   # 10:00 ET: the line's slot
+            _ev("w", "skipped_effect", "2026-10-16T19:23:50+00:00")]   # 15:23 ET: a manual probe
+    ev = R.count_effect_events(rows, SINCE, UNTIL, schedules={"w": ["0 10 * * 1-5"]})["w"]
+    assert (ev["scheduled_skips"], ev["offschedule_skips"]) == (1, 1)
+    assert R.cron_fires_at("0 19 * * 0", datetime(2026, 10, 16, 23, 0, tzinfo=timezone.utc)) is False  # Friday
+    assert R.cron_fires_at("@reboot", datetime(2026, 10, 16, 23, 0, tzinfo=timezone.utc)) is None
+
+
+def test_effect_protection_qualified_by_ledger_health_and_wrapper_policy():
+    keys = {k: {"process": k, "n8n_claim": True, "cron_claim": False}
+            for k in ("fc", "healthy", "nomanifest", "disagree", "unwrapped", "nocron", "cronown")}
+    owners = {k: {"owner": "n8n", "epoch": 2} for k in keys if k != "cronown"}
+    owners["cronown"] = {"owner": "cron", "epoch": 1}
+    manifest = {k: {"owner": "n8n", "epoch": 2} for k in ("fc", "healthy", "unwrapped", "nocron")}
+    manifest["disagree"] = {"owner": "cron", "epoch": 1}
+    wrap = "0 1 * * * cd /x && env TRADEAI_EFFECT_CLAIM={0} bash scripts/effect_claim_cron.sh {0} $PY {0}.py"
+    names = ("fc", "healthy", "nomanifest", "disagree", "unwrapped", "cronown")
+    cron_text = "\n".join(wrap.format(n) if n != "unwrapped" else "0 1 * * * cd /x && unwrapped.py" for n in names) + "\n"
+
+    def best(line, schedule="", tag=""):
+        return next(n for n in names if f" {n}.py" in line)
+
+    cron = R.parse_cron(cron_text, best)
+
+    def modes(fail_closed):
+        rows = R.effect_protection(keys, owners, cron_text, cron, {}, manifest=manifest,
+                                   served_wrapper_fail_closed=fail_closed)
+        return {r["lane_id"]: r for r in rows}
+
+    on = modes(True)
+    assert on["fc"]["protection_mode"] == "FAIL_CLOSED"
+    assert on["nomanifest"]["protection_mode"] == "LEDGER_HEALTHY_ONLY"  # manifest lacks it: an outage runs it
+    assert on["nomanifest"]["manifest_ledger"] == "MANIFEST_MISSING"
+    assert on["disagree"]["protection_mode"] == "LEDGER_HEALTHY_ONLY"
+    assert on["disagree"]["manifest_ledger"] == "DISAGREE" and "DISAGREE" in on["disagree"]["protection_mode_why"]
+    assert on["unwrapped"]["protection_mode"] == "UNPROTECTED_CRON_UNWRAPPED"
+    assert on["nocron"]["protection_mode"] == "NO_CRON_COPY"
+    assert on["cronown"]["protection_mode"] == "NOT_HANDED_OVER"
+    # the SAME stores behind a fail-open served wrapper: nothing is fail-closed
+    off = modes(False)
+    assert off["fc"]["protection_mode"] == "LEDGER_HEALTHY_ONLY" and "fails OPEN" in off["fc"]["protection_mode_why"]
+    assert not [r for r in off.values() if r["protection_mode"] == "FAIL_CLOSED"]
+
+
+def test_handover_manifest_loader_reports_never_repairs(tmp_path):
+    absent = R.load_handover_manifest(tmp_path / "absent.json")
+    assert absent["present"] is False and absent["processes"] == {}
+    bad = tmp_path / "bad.json"
+    bad.write_text("{not json")
+    assert R.load_handover_manifest(bad)["error"] == "JSONDecodeError" and bad.read_text() == "{not json"
+    ok = tmp_path / "ok.json"
+    ok.write_text('{"schema": "N8nHandoverManifest@v1", "updated_at": "x", "processes": {"p": {"owner": "n8n"}}}')
+    assert R.load_handover_manifest(ok)["processes"] == {"p": {"owner": "n8n"}}
+
+
+def test_served_wrapper_policy_greps_the_served_copy(tmp_path):
+    (tmp_path / "scripts").mkdir()
+    w = tmp_path / "scripts" / "effect_claim_cron.sh"
+    w.write_text("log_event run_unclaimed_ledger_unreachable 0 x\n")
+    assert R.served_wrapper_policy(tmp_path)["fail_closed"] is False
+    w.write_text("log_event skipped_ownership_unknown 0 x\n")
+    assert R.served_wrapper_policy(tmp_path)["fail_closed"] is True
+    assert R.served_wrapper_policy(tmp_path / "nope")["readable"] is False
+
+
+def test_event_chain_marks_live_inactive_and_clock_fallback():
+    reg = {
+        "shadow": {"state": "ACTIVE", "dispatch": {"mode": "dry_run", "cron": ["45 6 * * *"],
+                                                   "triggers": [{"source": "broker_as_of", "domain": "news"},
+                                                                {"source": "run_done", "lane_id": "up"}]}},
+        "live": {"state": "ACTIVE", "dispatch": {"mode": "live", "triggers": [{"source": "run_done", "lane_id": "shadow"}]}},
+        "armed": {"state": "ACTIVE", "dispatch": {"mode": "live", "cron": ["0 7 * * *"],
+                                                  "triggers": [{"source": "run_done", "lane_id": "x"}]}},
+        "off": {"state": "PAUSED", "dispatch": {"mode": "live", "triggers": [{"source": "broker_as_of", "domain": "d"}]}},
+        "plain": {"state": "ACTIVE", "dispatch": {"mode": "live"}},
+    }
+    receipts = [_r("shadow", mode="dry_run", run_id="e:shadow:dry_run:20261016T1000"),
+                _r("live", run_id="e:live:live:20261016T1000", verdict="produced"),
+                _r("armed", run_id="d:armed:live:20261016T1000", verdict="produced")]
+    cron = {"active": [{"line_no": 7, "lane_id": "shadow", "wrapped_lane": "shadow"}]}
+    rows = R.event_chain(reg, receipts, cron, {"up": {"useful_live_output": 2}}, SINCE, UNTIL)
+    by = {(r["lane_id"], r["upstream"]): r for r in rows}
+    assert {r["lane_id"] for r in rows} == {"shadow", "live", "armed", "off"}
+    assert by[("shadow", "news")]["trigger_state"] == "SHADOW_FIRING"
+    assert by[("shadow", "up")]["upstream_live_useful"] == 2
+    assert by[("shadow", "news")]["clock_fallback"] == "dispatch.cron 45 6 * * *; crontab L7 (wrapped)"
+    assert by[("live", "shadow")]["trigger_state"] == "LIVE_FIRING"
+    assert by[("live", "shadow")]["has_clock_fallback"] is False
+    # a d: (clock) receipt is not evidence that the event trigger fired
+    assert by[("armed", "x")]["trigger_state"] == "LIVE_ARMED_NOT_FIRED"
+    assert by[("off", "d")]["trigger_state"] == "INACTIVE"
+
+
+def test_compare_packets_lists_dropped_proven_with_current_reason(tmp_path):
+    import json as _json
+
+    (tmp_path / "summary.json").write_text(_json.dumps({
+        "generated_at": "2026-10-16T17:24:25+00:00", "served": {"short": "old"}, "crontab_sha256": "a",
+        "migration": {"unique_lanes_by_status": {"MIGRATED_PROVEN": 2, "PARALLEL": 1}, "active_cron_lines": 5},
+        "run_summary": {"live_runs": 3}}))
+    (tmp_path / "lanes.csv").write_text("lane_id,status\nproven,MIGRATED_PROVEN\ntag-unverified,MIGRATED_PROVEN\n"
+                                        "wrap-skip-useful,PARALLEL\n")
+    st = _sem_states()
+    cur = {"served": {"short": "new"}, "crontab_sha256": "b", "lanes": st,
+           "migration": {"unique_lanes_by_status": Counter(r["status"] for r in st.values()), "active_cron_lines": 3},
+           "run_summary": {"live_runs": 6}}
+    c = R.compare_packets(tmp_path, cur)
+    assert c["proven_kept"] == ["proven"] and c["proven_added"] == ["wrap-skip-useful"]
+    assert c["proven_dropped"][0]["lane_id"] == "tag-unverified"
+    assert "no useful output verdict" in c["proven_dropped"][0]["why_now"]
+    assert c["status"]["MIGRATED_PROVEN"] == {"prev": 2, "now": 2} and c["crontab_changed"] is True
+    assert R.compare_packets(tmp_path / "missing", cur)["error"].startswith("FileNotFoundError")
