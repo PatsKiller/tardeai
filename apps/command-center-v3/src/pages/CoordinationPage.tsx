@@ -2,6 +2,7 @@
 // coordination ledger (GET /api/v2/coordination/events). Read-only. 2026-10-07 roadmap Phase 1.
 import { useMemo, useState, type CSSProperties } from 'react'
 import SchedulerOperations from './SchedulerOperations'
+import N8nToday from './N8nToday'
 import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { Chip, ChipRow, SortHeader, useSort } from '../components/primitives'
@@ -26,9 +27,9 @@ const PHASES: Array<[CoordinationRow['phase'], string]> = [
 ]
 
 // Tabs: the events ledger (events + outbox + approvals) and the n8n migration board (stream G, 2026-10-08).
-const TABS = ['operations', 'events', 'migration'] as const
+const TABS = ['operations', 'today', 'events', 'migration'] as const
 type CoordinationTab = (typeof TABS)[number]
-const TAB_LABEL: Record<CoordinationTab, string> = { operations: 'Automation', events: 'Events', migration: 'Migration board' }
+const TAB_LABEL: Record<CoordinationTab, string> = { operations: 'Automation', today: 'n8n today', events: 'Events', migration: 'Migration board' }
 const tabButton = (active: boolean): CSSProperties => ({
   padding: '7px 14px', borderRadius: RADIUS.md, border: `1px solid ${TOKENS.border}`,
   background: active ? TOKENS.bg[2] : TOKENS.bg[1], color: active ? TOKENS.text[0] : TOKENS.text[2],
@@ -80,7 +81,7 @@ export default function CoordinationPage() {
   const approvalsApi = useApi<ApprovalBoardPayload>('/api/v2/coordination/approvals', 60_000)
   const approvals = useMemo(() => projectApprovalBoard(approvalsApi.loading && !approvalsApi.data ? null : approvalsApi.data), [approvalsApi.data, approvalsApi.loading])
   const [searchParams, setSearchParams] = useSearchParams()
-  const [tab, setTab] = useState<CoordinationTab>(() => (searchParams.get('tab') === 'migration' ? 'migration' : searchParams.get('tab') === 'events' ? 'events' : 'operations'))
+  const [tab, setTab] = useState<CoordinationTab>(() => (searchParams.get('tab') === 'migration' ? 'migration' : searchParams.get('tab') === 'events' ? 'events' : searchParams.get('tab') === 'today' ? 'today' : 'operations'))
   const boardApi = useApi<MigrationBoardPayload>('/api/v2/coordination/migration-board', 60_000, { enabled: tab === 'migration' })
   const board = useMemo(() => projectMigrationBoard(boardApi.loading && !boardApi.data ? null : boardApi.data), [boardApi.data, boardApi.loading])
   const boardSort = useSort(board.rows, { key: 'tranche', dir: 'asc' }, boardGetter)
@@ -99,7 +100,7 @@ export default function CoordinationPage() {
           </button>
         ))}
       </nav>
-      {tab === 'operations' ? <SchedulerOperations /> : tab === 'migration' ? (
+      {tab === 'operations' ? <SchedulerOperations /> : tab === 'today' ? <N8nToday /> : tab === 'migration' ? (
       <div style={panel} data-testid="coordination-migration-board">
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
           <div style={{ fontSize: TYPE.lg, fontWeight: 800, color: TOKENS.text[0] }}>Migration board</div>

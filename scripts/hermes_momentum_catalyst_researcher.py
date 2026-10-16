@@ -27,6 +27,12 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 SEARXNG_URL = os.getenv("SEARXNG_URL", "http://127.0.0.1:18888/search")
 MAX_SOURCES_PER_TICKER = 3
 MAX_TOTAL_SOURCES = 15
+#: 2026-10-16 (operator: AT alerts "should have the same source data"): at most this many Active Trader hot symbols
+#: (data broker lib.data_broker.microstructure.live_symbols) are added to a scalp run, after the scalp names.
+AT_RESEARCH_SYMBOL_CAP = 8
+#: The lane runs under `timeout 5m`; stop starting new tickers after this many seconds so the merge+write always
+#: happens inside the timeout (a ticker is <= 3 searches x 10 s + 1.5 s sleep).
+RESEARCH_DEADLINE_S = 240.0
 
 _ENV_KEYS = frozenset({"DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD", "SEARXNG_URL"})
 
@@ -207,15 +213,20 @@ def research_ticker(symbol, *, dry_run=False, priority=False, caller=None):
     }
 
 
-def run(candidates, dry_run=True, output_path=None, merge=True, max_total_sources=None, priority=None):
+def run(candidates, dry_run=True, output_path=None, merge=True, max_total_sources=None, priority=None,
+        mirror_path=None, deadline_s=None):
     """Research all candidates. merge=True updates the day's JSONL by symbol instead of clobbering it,
     so the momentum and scalp lanes can share one file without overwriting each other."""
     cap = MAX_TOTAL_SOURCES if max_total_sources is None else max_total_sources
     results = []
     total_sources = 0
+    t0 = time.monotonic()
 
     for c in candidates:
         if total_sources >= cap:
+            break
+        if deadline_s is not None and time.monotonic() - t0 >= deadline_s:
+            print(f"  research deadline {deadline_s:g}s reached; {len(results)} researched, rest deferred")
             break
         sym = c["symbol"] if isinstance(c, dict) else c
         print(f"  Researching {sym}...", end=" ", flush=True)
@@ -230,8 +241,10 @@ def run(candidates, dry_run=True, output_path=None, merge=True, max_total_source
     if not dry_run and output_path:
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         by_symbol = {}
-        if merge and Path(output_path).exists():
-            for line in Path(output_path).read_text().splitlines():
+        # First run after the 2026-10-16 move: seed today's merge from the legacy code-root copy.
+        seed = output_path if Path(output_path).exists() else mirror_path
+        if merge and seed and Path(seed).exists():
+            for line in Path(seed).read_text().splitlines():
                 line = line.strip()
                 if not line:
                     continue
@@ -242,9 +255,19 @@ def run(candidates, dry_run=True, output_path=None, merge=True, max_total_source
                     continue
         for r in results:
             by_symbol[str(r["symbol"]).upper()] = r
-        with open(output_path, "w") as f:
-            for rec in by_symbol.values():
-                f.write(json.dumps(rec, default=str) + "\n")
+        body = "".join(json.dumps(rec, default=str) + "\n" for rec in by_symbol.values())
+        tmp = Path(str(output_path) + ".tmp")
+        tmp.write_text(body)
+        os.replace(tmp, output_path)
+        if mirror_path and Path(mirror_path) != Path(output_path):
+            # Compat mirror for readers still on ROOT/data/hermes/momentum_catalysts (lib/hermes_catalyst_store).
+            try:
+                Path(mirror_path).parent.mkdir(parents=True, exist_ok=True)
+                mtmp = Path(str(mirror_path) + ".tmp")
+                mtmp.write_text(body)
+                os.replace(mtmp, mirror_path)
+            except OSError as e:
+                print(f"  compat mirror write failed: {e}")
 
     return results
 
@@ -313,6 +336,33 @@ def select_hot_candidates(awaiting, scalp_candidates, list_symbols, researched, 
     keep = [s for s in ordered
             if s not in researched or (ref - researched[s]).total_seconds() / 60.0 > stale_min]
     return keep[:cap]
+
+
+def active_trader_hot_symbols(*, now=None, read_errors=None):
+    """The Active Trader recorder's live symbols through the Command Center data broker
+    (lib.data_broker.microstructure.live_symbols: a published store, zero provider calls). [] when stale/absent."""
+    try:
+        from lib.data_broker import microstructure as micro
+        return [str(s).upper() for s in micro.live_symbols(now=time.time() if now is None else now) if s]
+    except Exception as e:  # noqa: BLE001
+        if read_errors is not None:
+            read_errors.append(f"at_live_symbols:{type(e).__name__}")
+        return []
+
+
+def union_with_at_symbols(candidates, at_symbols, *, cap=AT_RESEARCH_SYMBOL_CAP):
+    """Scalp candidates first (unchanged order), then up to ``cap`` AT hot symbols not already present. Pure."""
+    out = list(candidates or [])
+    seen = {str(c["symbol"] if isinstance(c, dict) else c).upper() for c in out}
+    added = 0
+    for s in at_symbols or []:
+        s = str(s).upper()
+        if not s or s in seen or added >= cap:
+            continue
+        out.append(s)
+        seen.add(s)
+        added += 1
+    return out
 
 
 def get_awaiting_catalyst(max_tickers=15, *, read_errors=None):
@@ -391,7 +441,9 @@ def lane_output(counts: dict) -> dict:
 def _execute(args):
     read_errors = []
     today = datetime.now().strftime("%Y-%m-%d")
-    out = str(PROJECT_ROOT / f"data/hermes/momentum_catalysts/{today}_catalysts.jsonl")
+    from lib import hermes_catalyst_store as store
+    out = str(store.day_file(today))
+    legacy = str(store.legacy_day_file(today, PROJECT_ROOT))
     hot_research = args.source == "scalp" and _hot_research_on()
     gate = None
     priority = []
@@ -428,6 +480,13 @@ def _execute(args):
         from hermes_momentum_candidate_reader import get_momentum_candidates
         candidates = get_momentum_candidates(max_tickers=args.max_tickers)
         _cap = None
+    if args.source == "scalp":
+        at_syms = active_trader_hot_symbols(read_errors=read_errors)
+        before = len(candidates)
+        candidates = union_with_at_symbols(candidates, at_syms, cap=AT_RESEARCH_SYMBOL_CAP)
+        if at_syms:
+            print(f"[at] +{len(candidates) - before} Active Trader hot symbols (of {len(at_syms)}, "
+                  f"cap {AT_RESEARCH_SYMBOL_CAP}) via data broker")
     if not candidates:
         print(f"No {args.source} candidates found.")
         if gate is not None and args.apply:
@@ -437,7 +496,7 @@ def _execute(args):
     print(f"Researching {len(candidates)} {args.source} candidates...")
 
     results = run(candidates, dry_run=not args.apply, output_path=out, merge=True, max_total_sources=_cap,
-                  priority=set(priority))
+                  priority=set(priority), mirror_path=legacy, deadline_s=RESEARCH_DEADLINE_S)
     if gate is not None and args.apply:
         trig.commit("hermes-scalp-catalyst", gate["list_env"], decision=gate["decision"]["decision"])
 
