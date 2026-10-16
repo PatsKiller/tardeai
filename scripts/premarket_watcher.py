@@ -74,7 +74,10 @@ def check_edgar_overnight(symbol, conn, dry_run=False):
             form_type = src.get('form_type', '8-K')
             filed = src.get('file_date', today)
             title = f"{symbol} {form_type} Filed Pre-Market: {filed}"
-            findings.append({'symbol': symbol, 'title': title, 'type': form_type, 'source': 'sec_edgar'})
+            # Filing identity for the per-day dedupe: the EDGAR accession number when present.
+            adsh = src.get('adsh') or str(hit.get('_id') or '').split(':', 1)[0]
+            findings.append({'symbol': symbol, 'title': title, 'type': form_type, 'source': 'sec_edgar',
+                             'event_id': f"{form_type}:{adsh or filed}"})
             if not dry_run and cur:
                 url = f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={symbol}&type={form_type}"
                 try:
@@ -349,6 +352,7 @@ def check_news_rss(symbol, conn, dry_run=False):
 def run_premarket_scan(symbols, conn, dry_run=False):
     all_findings = {}
     alerts = []
+    items = []
     for symbol in symbols:
         edgar = check_edgar_overnight(symbol, conn, dry_run)
         time.sleep(0.3)
@@ -377,11 +381,21 @@ def run_premarket_scan(symbols, conn, dry_run=False):
             if social and social.get('is_surging'):
                 parts.append(f"  StockTwits: {social['recent_count']} posts/2hr")
             alerts.append('\n'.join(parts))
+            items.append({'symbol': symbol, 'filings': list(edgar),
+                          'surge_count': int(social.get('recent_count') or 0)
+                          if social and social.get('is_surging') else None})
 
         time.sleep(0.5)
 
-    return {'findings': all_findings, 'alerts': alerts,
+    return {'findings': all_findings, 'alerts': alerts, 'items': items,
             'symbols_checked': len(symbols), 'symbols_with_activity': len(all_findings)}
+
+
+# Per-day dedupe lives in scripts/lib/premarket_dedupe.py (pure, importable without this module's .env load).
+sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+from lib.premarket_dedupe import (  # noqa: E402
+    dedupe_state_path, load_dedupe_state, render_items, save_dedupe_state, select_material,
+)
 
 
 def send_telegram(message):
@@ -421,15 +435,26 @@ def main():
 
         results = run_premarket_scan(symbols, conn, dry_run=args.dry_run)
 
-        print(f"\n=== PRE-MARKET SCAN ===")
+        print("\n=== PRE-MARKET SCAN ===")
         print(f"Checked: {results['symbols_checked']} | Activity: {results['symbols_with_activity']}")
         for sym, f in results['findings'].items():
             print(f"  {sym}: edgar={len(f['edgar'])} social_surge={f['social'].get('is_surging',False)} news={len(f['news'])}")
 
         if not args.dry_run and results['alerts']:
-            header = f"PRE-MARKET CATALYST ({datetime.now().strftime('%H:%M')})"
-            msg = header + '\n\n' + '\n\n'.join(results['alerts'])
-            send_telegram(msg)
+            day = datetime.now().strftime('%Y-%m-%d')
+            spath = dedupe_state_path()
+            material, new_state = select_material(results.get('items') or [], load_dedupe_state(spath, day))
+            dropped = len(results.get('items') or []) - len(material)
+            if dropped:
+                log.info(f"dedupe: {dropped} symbol block(s) not material since the last alert today")
+            if material:
+                header = f"PRE-MARKET CATALYST ({datetime.now().strftime('%H:%M')})"
+                msg = header + '\n\n' + '\n\n'.join(render_items(material))
+                send_telegram(msg)
+                try:
+                    save_dedupe_state(spath, new_state)
+                except OSError as e:
+                    log.warning(f"dedupe state write failed: {e}")
     finally:
         conn.close()
 

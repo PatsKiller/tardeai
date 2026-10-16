@@ -1106,6 +1106,13 @@ GATES = [
         "active_trader_momentum_alerts_20261004",
         ["tests/test_active_trader_momentum_alerts_20261004.py"],
     ),
+    # Operator follow-ups 2026-10-16: Hermes scalp catalyst research also covers the Active Trader hot symbols
+    # (data broker, capped) and lands in persistent state; premarket_watcher per-day dedupe; n8n-only registry row;
+    # "what n8n did today" Command Center tab (/v3/coordination?tab=today, GET /api/v2/coordination/n8n-today).
+    (
+        "hermes_at_research_n8n_today_20261016",
+        ["tests/test_hermes_at_research_premarket_dedupe_20261016.py", "tests/test_n8n_today_page_20261016.py"],
+    ),
     # Telegram provenance footer ("· via n8n <lane> <HH:MM>" / "· via cron <lane>") + an explicit catalyst line on
     # every Active Trader alert via the data broker (operator 2026-10-16: "how do i know whats n8n did", "some
     # scalp and active traders didn't have catalyst").
@@ -3882,12 +3889,24 @@ GATES = [
         # ANCHOR: CANARY_EFFECT_KEYS — 2026-10-15 canary double-effect audit (arch-review-20261014): every live, canary
         # or canary-wave lane that appends, sends or calls an LLM carries a STAGED effect key (cron_claim false,
         # n8n_claim false: neither side claims, executor view unchanged); the cron-side wrapper
-        # scripts/effect_claim_cron.sh (off unless TRADEAI_EFFECT_CLAIM=<lane>; refusals exit 75/65 and run nothing);
+        # scripts/effect_claim_cron.sh (off unless TRADEAI_EFFECT_CLAIM=<lane>; refusals exit 75/65 and run nothing; 10-16: owner n8n exits 0);
         # the maturity-remeasure live-list packet; the research_insights(source_reference) unique-index migration,
         # parsed and applied twice on a disposable PostgreSQL cluster. Hermetic: tmp_path ledgers and files.
         "canary_effect_keys_20261015",
         [
             "tests/test_canary_effect_keys_20261015.py",
+        ],
+    ),
+    (
+        # ANCHOR: CRON_EFFECT_CLAIM_WRAP — 2026-10-16 the cron copy of a lane respects effect ownership: the wrapper
+        # scripts/effect_claim_cron.sh exits 0 (event skipped_effect, no claim row) when n8n owns the process, runs the
+        # command when cron owns it, and FAILS OPEN when the ledger is unreachable (effect_claim.py owner, read-only;
+        # run --decision-out); the packet docs/ops/packets/cron-effect-claim-wrap-20261016/ plan (fixture crontab:
+        # every wrap and skip reason, byte preservation, unwrap = rollback, a wrapped line run end to end) and its
+        # apply/rollback against a fake crontab (dry run default, diff count = planned, cmp read-back). Hermetic.
+        "cron_effect_claim_wrap_20261016",
+        [
+            "tests/test_cron_effect_claim_wrap_20261016.py",
         ],
     ),
     (
@@ -4276,6 +4295,12 @@ GATES = [
             "tests/test_n8n_maturity_due_20261009.py",
             "tests/test_n8n_maturity_gateway_due_20261009.py",
         ],
+    ),
+    (
+        # N8N_DRY_RUN_LIVE_INVARIANT — 2026-10-16: a listed live (canary/cutover) lane never also gets a dry_run slot
+        # over a whole day; read-only dry-run load report (scripts/report_n8n_dry_run_load.py). Hermetic.
+        "n8n_dry_run_live_invariant_20261016",
+        ["tests/test_n8n_dry_run_live_invariant_20261016.py"],
     ),
     (
         # PHONE_STATUS — 2026-10-09: read-only Tailscale-only phone status endpoint; hermetic tests only
