@@ -2319,6 +2319,9 @@ GATES = [
             # AGENTS.md 12.0.0 (PROPOSED 2026-10-15): §23.25 n8n cutover directive (all families except F07 and
             # registry_systemd); §0/§2/§2A/§7A/§17/§22 pinned.
             "tests/test_agents_policy_12_0_0_cutover_directive.py",
+            # AGENTS.md 14.0.0 (PROPOSED 2026-10-16): §24.11 read-only broker sync under a broker-read grant; §0 and
+            # the adapters byte-identical until ratified; the proposed §0 sentence and its digest pinned.
+            "tests/test_agents_policy_14_0_0_broker_read.py",
             "tests/test_trading_session_grant_20260925.py",
             "tests/test_operator_approval_workflow_docs.py",
         ],
@@ -3960,6 +3963,18 @@ GATES = [
         "cron_effect_claim_wrap_20261016",
         [
             "tests/test_cron_effect_claim_wrap_20261016.py",
+        ],
+    ),
+    (
+        # ANCHOR: BROKER_READ_SYNC_20261016 — operator 2026-10-16 "make that bash so agents can run ... not trading just
+        # reading": scripts/ops/broker_read_sync.sh, a closed 8-step allowlist (dry run default, --apply, --plan); refuses
+        # without a broker-read grant, with the trading lock unlocked, with Schwab mode != read_only, outside the served
+        # release, or when the static capability audit of any step's effective closure finds an order write, order
+        # route, stop writer, re-auth/refresh or direct sender; runtime guards in each step process; output scrubbed;
+        # needs_operator_reauth stops. Never calls a broker.
+        "broker_read_sync_20261016",
+        [
+            "tests/test_broker_read_sync_20261016.py",
         ],
     ),
     (

@@ -19,6 +19,7 @@ tier_scope() {
     sudo)          echo "Any command run as root." ;;
     state-write)   echo "Writes to data/portfolios/state/ — live holdings, risk_management, personal_situation." ;;
     execution-ops) echo "Per-incident operation of a broker-execution user unit (tradeai-active-trader-*), naming the unit in the reason: status/journal, code-root drop-in to portfolio-server/CURRENT, daemon-reload, restart; markets CLOSED, preflight, rollback by restoring the archived drop-in; max 6h. Never code, credentials, live/paper flags, orders or stops (AGENTS.md 5.0.0 §24.10)." ;;
+    broker-read)   echo "Read-only broker sync: an agent may run ONLY scripts/ops/broker_read_sync.sh (closed 8-step allowlist: Schwab/Alpaca/moomoo/SnapTrade position + transaction reads into our own stores). Refuses unless the trading lock is LOCKED, Schwab access mode is read_only and the capability audit is clean; .env stays in the step process; one use per run; max 4h. Never orders, stops, credentials, re-auth/2FA or flags (AGENTS.md 14.0.0 §24.11, PROPOSED)." ;;
     execution-engineering) echo "Per-task A1/A2 work on broker-adjacent code (scripts/active_trader/**, scripts/brokers/**, trading_session_grant.py): mocks, fixtures, simulated broker, replay. Never live credentials, endpoints, 2FA, live flags or orders (AGENTS.md 1.3.0 §22)." ;;
     release-write) echo "Writes to ~/trade-ai-releases/ or ~/trade-ai-deployments/ — immutable artifacts that are CURRENTLY RUNNING." ;;
     openclaw)      echo "OpenClaw gateway and ClawHub skill operations. Skills inherit full disk/terminal/network permissions." ;;
@@ -49,6 +50,9 @@ classify_cmd() {
   [[ "$cmd" =~ (win_rate|profit_factor|closed_trades|interlock|gate_status) ]] && \
     { [[ "$U" =~ (UPDATE|DELETE|INSERT) ]] || [[ "$cmd" =~ (sed[[:space:]]+-i|tee|\>) ]]; } && { echo gate; return; }
   [[ "$cmd" =~ ALLOW_MAINTREE_GIT ]] && { echo maintree; return; }
+  # AGENTS.md 14.0.0 §24.11 (PROPOSED): the read-only broker sync needs a broker-read grant; --plan reads nothing.
+  [[ "$cmd" =~ scripts/ops/broker_read_sync(_child)?\.(sh|py) ]] && \
+    ! [[ "$cmd" =~ broker_read_sync\.(sh|py)[[:space:]]+--plan([[:space:]]*$) ]] && { echo broker-read; return; }
   [[ "$cmd" =~ (^|[[:space:];&|])crontab([[:space:]]|$) ]] && { echo cron; return; }
   [[ "$cmd" =~ git[[:space:]]+(push|reset[[:space:]]+--hard|rebase|filter-branch) ]] && { echo git-push; return; }
   [[ "$cmd" =~ (psql|psycopg2|sqlalchemy|pg_restore) ]] && [[ "$U" =~ (INSERT|UPDATE|DELETE|ALTER|CREATE|TRUNCATE|GRANT|REVOKE) ]] && { echo db-write; return; }
