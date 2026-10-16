@@ -18,6 +18,9 @@ Subcommands (all offline unless named; none of them calls a broker, reads a secr
   cutover  --lanes a,b                 registry rows -> the §23.11 dispatcher row (kind n8n, expression dispatcher,
                                         stage cutover, match kept, cadence = dispatch.cron). For the PR after the
                                         wave's cron lines were commented (the host act below).
+  contract-canary --lanes a,b [--apply]  REVIEWED health contract stage shadow -> canary for lanes already at
+                                        canary (registry cron canary + dispatch live + a live n8n fire);
+                                        agent-reviewed contracts only, unless --operator-rereview "<words>".
   packet   --lanes a,b --wave N --out  the operator packet: README, live_lanes.txt, 01_relay_live_lanes.sh,
                                         02_effect_owners.sh, 04_comment_cron.sh, 09_rollback.sh.
   comment-cron --lanes a,b [--apply]   HOST act (cron grant): ONE crontab write commenting every live line of the
@@ -57,98 +60,52 @@ for _p in (str(ROOT), str(ROOT / "scripts")):
         sys.path.insert(0, _p)
 
 from scripts.lib import lane_dispatch as LD  # noqa: E402
+from scripts.lib.cutover_lane_facts import (  # noqa: E402,F401  (moved 2026-10-16; re-exported)
+    ALLOWLIST,
+    APPEND_CLASSES,
+    APPEND_OVERRIDE,
+    BROKER_FAMILIES,
+    CONTRACTS,
+    DEFERRED_FAMILIES,
+    DEFERRED_SOURCES,
+    DISPOSITION_CSV,
+    EFFECT_CLAIM_WRAPPER,
+    EFFECT_KEYS,
+    HELD,
+    LLM_FAMILIES,
+    OVERWRITE_ONLY,
+    REGISTRY,
+    RETRY_POLICIES,
+    SCOPE_DISPOSITIONS,
+    SEND_FAMILIES,
+    TAG,
+    TIER_APPEND,
+    TIER_BROKER,
+    TIER_LLM,
+    TIER_NAMES,
+    TIER_READ,
+    TIER_SEND,
+    TIER_WATCHDOG,
+    WATCHDOG_FAMILIES,
+    _ARGV_STOP,
+    _MARKET_GATE,
+    _OFFPEAK_FLAGS,
+    _OFFPEAK_WRAPPER,
+    _PREFIX_OK,
+    _SENDER,
+    is_sender_lane,
+    live_lines,
+    load_disposition,
+    matches_of,
+    scope_rows,
+    tier_of,
+)
 
 NO_CONSUMER_REASON = (
     "Operator/agent CLI for the 2026-10-15 n8n cutover waves; it writes config files in a worktree and the wave "
     "packets under docs/ops/packets/n8n-cutover-wave-*-20261015/. Nothing imports it at runtime."
 )
 
-DISPOSITION_CSV = Path("docs/implementation/n8n-maturity/LANE_DISPOSITION_20261015.csv")
-REGISTRY = Path("config/lane_registry.json")
-ALLOWLIST = Path("config/n8n_run_allowlist.json")
-CONTRACTS = Path("config/n8n_health_contracts.json")
-EFFECT_KEYS = Path("config/n8n_effect_keys.json")
-RETRY_POLICIES = Path("config/n8n_retry_policies.json")
-
-#: Families the 2026-10-15 directive approved (F07 and registry_systemd are deferred; CONSOLIDATE rows are elsewhere).
-DEFERRED_FAMILIES = frozenset({"F07"})
-DEFERRED_SOURCES = frozenset({"registry_systemd"})
-SCOPE_DISPOSITIONS = ("MIGRATE_N8N", "STAY_HOST")
-
-TIER_READ = 1
-TIER_APPEND = 2
-TIER_SEND = 3
-TIER_LLM = 4
-TIER_WATCHDOG = 5
-TIER_BROKER = 6
-TIER_NAMES = {1: "read/overwrite", 2: "append", 3: "send", 4: "llm", 5: "watchdog", 6: "broker"}
-SEND_FAMILIES = frozenset({"F10", "F37", "F22"})
-LLM_FAMILIES = frozenset({"F40"})
-WATCHDOG_FAMILIES = frozenset({"F07w"})
-BROKER_FAMILIES = frozenset({"F09"})
-#: Classes whose live run writes rows (append) unless the lane is known overwrite-only. Conservative: pipeline/heavy
-#: are treated as appenders; monitor/report/hygiene as overwrite-only.
-APPEND_CLASSES = frozenset({"ingest", "learn", "pipeline", "heavy"})
-
-#: Shell operators that end the lane's argv on a cron line.
-_ARGV_STOP = frozenset({">>", ">", "2>&1", "2>>", "2>", "|", "||", "&&", ";", "&", "1>", "1>>", "<"})
-#: Tokens allowed BEFORE the lane command on a cron line (the executor reproduces each one or it is inert).
-_PREFIX_OK = re.compile(
-    r"^(cd|&&|\$PROJ|\$PY|python3?|/usr/bin/python3|bash|/usr/bin/bash|/bin/bash|sh|exec|nice|-n|\d+|"
-    r"CUR=.*|\"\$CUR\"|\$CUR|/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT|"
-    r"/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/\.venv/bin/python|"
-    r"/usr/bin/flock|flock|-[nxwE]|--nonblock|timeout|-k|\d+[smh]?)$"
-)
-_MARKET_GATE = "scripts/market_day_gate.sh"
-_OFFPEAK_WRAPPER = "scripts/run_with_deepseek_offpeak.sh"
-_OFFPEAK_FLAGS = {"--gate": "bulk", "--official": "official", "--scheduled": "scheduled"}
-#: Lanes whose LIVE effect only overwrites or reads (no effect key). Source: the read-only code trace of
-#: CANARY_DOUBLE_EFFECT_AUDIT.md (2026-10-15; tests/test_canary_effect_keys_20261015.py NOT_KEYED_OVERWRITE_ONLY),
-#: plus this factory's own trace (marked CW).
-OVERWRITE_ONLY = {
-    "crontab-snapshot-for-health-agent": "tmp + mv of the crontab snapshot",
-    "job-coverage-monitor": "read-only check; receipt only",
-    "identity-sweep-stage0": "UPDATE ... WHERE subject_guid IS NULL",
-    "agent-number-grounding-slo": "SELECT-only report; --out JSON receipt",
-    "finviz-sector-research": "ON CONFLICT (snapshot_date, group_type, name) DO UPDATE",
-    "momentum-cache-reconcile": "atomic projection rewrite",
-    "watch-goods-consistency": "UPDATE ... COALESCE fills empty fields",
-    "catalyst-graph": "atomic projection rewrite",
-    "classifier-health-check": "read-only session; atomic JSON",
-    "enterprise-backtester": "no --apply on the line: OHLC cache overwrite only",
-    "setup-quality-prior": "TRUNCATE + rebuild",
-    "classify-instruments": "symbol_profiles ON CONFLICT (symbol) DO UPDATE",
-    "sector-rs-daily": "ON CONFLICT (rs_date, symbol) DO UPDATE",
-    "finviz-enrichment": "atomic cache replace + entity upsert",
-    "trade-backtest-engine": "ON CONFLICT (trade_key) DO UPDATE",
-    "sync-social-to-intelligence": "entity UPDATE (signal_count counter, no new row)",
-    "aegis-brief-regenerate": "rewrites the day's brief export; no send",
-    "momentum-lifecycle-monitor": "read-only evaluate (no --write-monitor)",
-    "hermes-governance-api": "CW: os.replace of the governance panel cache (scripts/hermes_governance_api.py:86)",
-    "materialize-watchlist-strategy-cards": "CW: INSERT ... ON CONFLICT (symbol) DO UPDATE (:60-65)",
-}
-#: Lanes held off canary on purpose (verdict SKIP with this reason).
-HELD = {
-    "aegis-nightly-ingestion": "held: the n8n reference workflow's inert lane (scripts/build_n8n_reference_workflow.py "
-                               "LANE; its allowlist live_arg must stay null and its effect key unarmed)",
-}
-#: Lanes whose class reads as overwrite-only but whose live effect appends (keyed).
-APPEND_OVERRIDE = {
-    "journal-tilt-morning-hook": "CW: INSERT INTO operator_review_queue (scripts/journal_tilt_morning_hook.py:44)",
-}
-_SENDER = re.compile(r"(?<![a-z0-9])--(alert|send|telegram|notify|email)(?![a-z0-9])")
-#: The cron-side effect-claim wrapper (scripts/effect_claim_cron.sh, #1767 canary effect keys).
-EFFECT_CLAIM_WRAPPER = "effect_claim_cron.sh"
-
-
-def is_sender_lane(disp: Mapping[str, str], row: Mapping[str, Any], effect_keys: Mapping[str, Any],
-                   line_text: str) -> bool:
-    """A lane whose run can message the operator: a send family, a sender flag on the cron line, a `send` effect
-    key, or a lifted sender token (§23.25 send/telegram/sender). Pure."""
-    effects = set((effect_keys.get(row.get("lane_id")) or {}).get("effects") or [])
-    if (disp.get("family_id") or "") in SEND_FAMILIES or _SENDER.search(line_text or "") or "send" in effects:
-        return True
-    return bool({t for t, _ in LD.forbidden_hits(row)} & LD.CUTOVER_SENDER_TOKENS)
 
 
 # ── loading ────────────────────────────────────────────────────────────────────────────────────
@@ -167,24 +124,6 @@ def _dump_like(path: Path, doc: Any) -> None:
     os.replace(tmp, path)
 
 
-def load_disposition(code_root: Path) -> list[dict[str, str]]:
-    with open(code_root / DISPOSITION_CSV, newline="", encoding="utf-8") as fh:
-        return list(csv.DictReader(fh))
-
-
-def scope_rows(rows: Iterable[Mapping[str, str]]) -> list[Mapping[str, str]]:
-    """The directive's scope: MIGRATE_N8N + STAY_HOST, minus F07 and registry_systemd. One row per lane id (the first
-    crontab row wins; a lane with several lines is one lane)."""
-    seen: dict[str, Mapping[str, str]] = {}
-    for r in rows:
-        if r.get("disposition") not in SCOPE_DISPOSITIONS:
-            continue
-        if r.get("family_id") in DEFERRED_FAMILIES or r.get("source") in DEFERRED_SOURCES:
-            continue
-        lid = r.get("lane_id") or ""
-        if lid and lid not in seen:
-            seen[lid] = r
-    return list(seen.values())
 
 
 def read_crontab(path: Optional[str]) -> str:
@@ -198,30 +137,6 @@ def read_crontab(path: Optional[str]) -> str:
 
 # ── cron line parsing ──────────────────────────────────────────────────────────────────────────
 
-def matches_of(sched: Mapping[str, Any]) -> list[str]:
-    raw = sched.get("match") or ""
-    if isinstance(raw, list):
-        return [str(x) for x in raw if str(x)]
-    return [str(raw)] if str(raw) else []
-
-
-def live_lines(crontab: str, sched: Mapping[str, Any]) -> tuple[list[tuple[int, str]], list[str]]:
-    """((index, line) of every uncommented crontab line the row's match names, problems)."""
-    lines = crontab.splitlines()
-    out: list[tuple[int, str]] = []
-    problems: list[str] = []
-    ms = matches_of(sched)
-    if not ms:
-        return [], ["registry_row_has_no_scheduler_match"]
-    for m in ms:
-        hit = [(i, ln) for i, ln in enumerate(lines) if m in ln and not ln.lstrip().startswith("#")
-               and not re.match(r"^\s*[A-Za-z_][A-Za-z0-9_]*=", ln)]
-        if not hit:
-            problems.append(f"no_live_cron_line_for_match:{m!r}")
-        out.extend(h for h in hit if h not in out)
-    if len(ms) == 1 and len(out) > 1:
-        problems.append(f"match_hits_{len(out)}_lines:{ms[0]!r} (needs a list match, one item per line)")
-    return out, problems
 
 
 def schedule_of(line: str) -> str:
@@ -313,32 +228,6 @@ def parse_lane_argv(cmd: str, entry_command: list[str]) -> dict[str, Any]:
         problems.append("cron_line_uses_safe_flock (executor live lock is flock; needs a flock -n line first)")
     return {"problems": problems, "live_arg": live, "cron_args": args, "market_gate": market_gate,
             "offpeak_gate": offpeak, "script": script}
-
-
-# ── classification ─────────────────────────────────────────────────────────────────────────────
-
-def tier_of(disp: Mapping[str, str], row: Mapping[str, Any], entry: Optional[Mapping[str, Any]],
-            effect_keys: Mapping[str, Any], line_text: str) -> int:
-    fam = disp.get("family_id") or ""
-    if fam in BROKER_FAMILIES:
-        return TIER_BROKER
-    if fam in WATCHDOG_FAMILIES:
-        return TIER_WATCHDOG
-    klass = (row.get("dispatch") or {}).get("class") if isinstance(row.get("dispatch"), dict) else None
-    if fam in LLM_FAMILIES or klass == "llm" or (entry or {}).get("llm_route"):
-        return TIER_LLM
-    effects = set((effect_keys.get(row.get("lane_id")) or {}).get("effects") or [])
-    if "llm" in effects:
-        return TIER_LLM
-    if fam in SEND_FAMILIES or _SENDER.search(line_text or "") or "send" in effects:
-        return TIER_SEND
-    if row.get("lane_id") in APPEND_OVERRIDE:
-        return TIER_APPEND
-    if row.get("lane_id") in OVERWRITE_ONLY:
-        return TIER_READ
-    if row.get("lane_id") in effect_keys or klass in APPEND_CLASSES:
-        return TIER_APPEND
-    return TIER_READ
 
 
 # ── per-lane builders ──────────────────────────────────────────────────────────────────────────
@@ -447,7 +336,7 @@ def agent_review(contract: Mapping[str, Any], entry: Mapping[str, Any], lock: Op
     return new, ""
 
 
-def canary_contract(contract: Mapping[str, Any], wave: str) -> dict[str, Any]:
+def canary_contract(contract: Mapping[str, Any], wave: str, date: str = "2026-10-15") -> dict[str, Any]:
     new = json.loads(json.dumps(contract))
     new["stage"] = "canary"
     healthy = [h for h in new.get("healthy") or [] if h.get("check") not in ("shadow_dry_run_done",)]
@@ -456,7 +345,7 @@ def canary_contract(contract: Mapping[str, Any], wave: str) -> dict[str, Any]:
                            "text": "every dispatcher fire of this lane ends RUN_DONE in mode live, or "
                                    "RUN_SKIPPED_LOCK while the cron twin holds the shared flock (coordination ledger)"})
     new["healthy"] = healthy
-    note = f"{wave} 2026-10-15: stage canary (n8n_cutover_wave.py); cron twin present until the wave's cron act."
+    note = f"{wave} {date}: stage canary (n8n_cutover_wave.py); cron twin present until the wave's cron act."
     new["state_note"] = (str(new.get("state_note") or "") + " | " + note).lstrip(" |")
     return new
 
@@ -683,9 +572,89 @@ def cutover_rows(code_root: Path, lanes: list[str], wave: str) -> list[str]:
     return done
 
 
+RUNS_DIR = Path.home() / "trade-ai-releases/persistent-state/data/runtime/n8n_runs"
+
+
+def live_fires(lane_id: str, runs_dir: Path = RUNS_DIR) -> list[str]:
+    """Run ids of the dispatcher's LIVE fires of `lane_id` (n8n_runs/d:<lane>:live:<slot>.json), oldest first."""
+    try:
+        return sorted(p.stem for p in Path(runs_dir).glob(f"d:{lane_id}:live:*.json"))
+    except OSError:
+        return []
+
+
+def contract_canary(code_root: Path, lanes: list[str], wave: str, *, date: str, apply: bool,
+                    runs_dir: Path = RUNS_DIR, operator_rereview: Optional[str] = None) -> dict[str, Any]:
+    """Health contract stage shadow -> canary for REVIEWED contracts whose lane is already at canary (2026-10-16).
+
+    The nightly cutover controller holds a lane whose registry row is cron canary (dispatch.mode live) while its
+    REVIEWED contract still records stage shadow. This is the one tool path that refreshes such a contract:
+    canary_contract() (what `apply` writes for a contract it agent-reviews), nothing hand-edited. A lane moves only when
+      * the registry row is kind cron, stage canary, dispatch.mode live;
+      * the contract is REVIEWED, at stage shadow, with no UNKNOWN field;
+      * the dispatcher has fired the lane LIVE at least once (an n8n_runs d:<lane>:live:* receipt);
+      * the review was an AGENT review. An operator-REVIEWED contract is kept byte for byte: its stage refresh is an
+        operator re-review (tests/test_canary_wave_20261014.py), so it is SKIP unless `operator_rereview` carries the
+        operator's own words, which are recorded verbatim in review.stage_rereview.
+    The review body is not re-reviewed here; only stage, the canary healthy check and state_note change."""
+    cpath = code_root / CONTRACTS
+    cdoc = json.loads(cpath.read_text(encoding="utf-8"))
+    reg_rows = {r["lane_id"]: r for r in _load(code_root, REGISTRY).get("lanes") or [] if isinstance(r, dict)}
+    by_id = {c.get("id"): i for i, c in enumerate(cdoc.get("contracts") or [])
+             if isinstance(c, dict) and c.get("kind") == "lane"}
+    out: list[dict[str, Any]] = []
+    for lane in lanes:
+        v: dict[str, Any] = {"lane_id": lane, "status": "SKIP", "reasons": []}
+        out.append(v)
+        row = reg_rows.get(lane) or {}
+        sched = row.get("scheduler") or {}
+        if sched.get("kind") != "cron" or sched.get("stage") != "canary":
+            v["reasons"].append(f"registry_not_cron_canary:{sched.get('kind')}/{sched.get('stage')}")
+        if (row.get("dispatch") or {}).get("mode") != "live":
+            v["reasons"].append(f"dispatch_mode_{(row.get('dispatch') or {}).get('mode')}")
+        idx = by_id.get(lane)
+        c = cdoc["contracts"][idx] if idx is not None else None
+        if c is None:
+            v["reasons"].append("no_health_contract")
+        else:
+            if c.get("status") != "REVIEWED":
+                v["reasons"].append(f"health_contract_status:{c.get('status')}")
+            if c.get("stage") != "shadow":
+                v["reasons"].append(f"health_contract_stage:{c.get('stage')} (only shadow -> canary)")
+            if "UNKNOWN" in json.dumps(c):
+                v["reasons"].append("health_contract_has_UNKNOWN_fields")
+            by = str((c.get("review") or {}).get("reviewed_by") or "")
+            v["reviewed_by"] = by
+            if not by.lower().startswith("agent") and not operator_rereview:
+                v["reasons"].append("operator_reviewed: the stage refresh is an operator re-review (pass the operator's "
+                                    "words with --operator-rereview); an agent never edits it")
+        fires = live_fires(lane, runs_dir)
+        v["live_fires"] = fires[-3:]
+        if not fires:
+            v["reasons"].append("no_live_fire: the dispatcher has not fired this lane live yet (n8n_runs has no "
+                                "d:<lane>:live:* receipt); wait for its next live slot")
+        if v["reasons"]:
+            continue
+        new = canary_contract(c, wave, date)
+        rev = dict(new.get("review") or {})
+        rr = {"on": date, "by": "n8n_cutover_wave.py contract-canary",
+              "evidence": f"registry cron canary, dispatch.mode live; live fire {fires[-1]}"}
+        if operator_rereview:
+            rr["operator_words"] = operator_rereview
+        rev["stage_rereview"] = rr
+        new["review"] = rev
+        cdoc["contracts"][idx] = new
+        v["status"] = "CANARY"
+    if apply and any(v["status"] == "CANARY" for v in out):
+        _dump_like(cpath, cdoc)
+    counts: dict[str, int] = {}
+    for v in out:
+        counts[v["status"]] = counts.get(v["status"], 0) + 1
+    return {"schema": "N8nContractCanary@v1", "wave": wave, "apply": apply, "counts": counts, "lanes": out}
+
+
 # ── host act: comment the wave's cron lines in one write ───────────────────────────────────────
 
-TAG = "# RETIRED {date} n8n-cutover {lane} "
 
 
 def comment_plan(crontab: str, reg_rows: Mapping[str, Any], lanes: list[str], date: str
@@ -710,38 +679,45 @@ def comment_plan(crontab: str, reg_rows: Mapping[str, Any], lanes: list[str], da
 
 
 def trading_days_between(first: "datetime", today: "dt_date") -> int:
-    """US trading days after the day of `first` (America/New_York) up to and including `today`."""
+    """DEPRECATED 2026-10-16 (kept for callers): counted every US trading DATE after `first` up to `today`, so crossing
+    midnight into a session that had not happened yet counted, and the federal-holiday fallback calendar closed on
+    Columbus/Veterans Day and opened on Good Friday. Now: completed NYSE sessions after `first` by the end of `today`
+    (scripts/lib/nightly_cutover.completed_sessions_after)."""
     from zoneinfo import ZoneInfo  # noqa: PLC0415
-    from scripts.lib.cio_market_calendar import is_us_trading_day  # noqa: PLC0415
-    d = first.astimezone(ZoneInfo("America/New_York")).date()
-    n = 0
-    while d < today:
-        d += timedelta(days=1)
-        n += is_us_trading_day(d)
-    return n
+    from scripts.lib.nightly_cutover import completed_sessions_after  # noqa: PLC0415
+    end = datetime.combine(today, datetime.max.time(), tzinfo=ZoneInfo("America/New_York"))
+    return completed_sessions_after(first, end)
 
 
 def p1_overlap_problems(lanes: list[str], policy: Mapping[str, Any], *, ledger: Optional[Path] = None,
-                        today: Optional["dt_date"] = None) -> list[str]:
-    """A p1_last lane keeps its cron line for cron_overlap_trading_days full US trading days after its FIRST live n8n
-    RUN_DONE (operator 2026-10-16). One problem line per lane that is not yet due (or has no live RUN_DONE)."""
+                        today: Optional["dt_date"] = None, now: Optional["datetime"] = None) -> list[str]:
+    """A p1_last lane keeps its cron line until cron_overlap_trading_days COMPLETED NYSE sessions have passed after its
+    FIRST live n8n RUN_DONE with exit 0 (operator 2026-10-16: "ONE COMPLETED TRADING SESSION after valid proof").
+    A session counts only if it opened after the proof and has closed by `now` (default: now; `today` = the end of
+    that ET day). One problem line per lane that is not yet due (or has no valid live RUN_DONE)."""
     p1 = [lid for lid in lanes if lid in (policy.get("p1_last") or ())]
     if not p1:
         return []
     from zoneinfo import ZoneInfo  # noqa: PLC0415
+    from scripts.lib.nightly_cutover import completed_sessions_after  # noqa: PLC0415
     need = int(policy.get("cron_overlap_trading_days") or 1)
-    today = today or datetime.now(ZoneInfo("America/New_York")).date()
+    et = ZoneInfo("America/New_York")
+    if now is None:
+        now = (datetime.combine(today, datetime.max.time(), tzinfo=et) if today is not None
+               else datetime.now(timezone.utc))
     out = []
     for ev in evidence(p1, "2026-01-01", ledger or LEDGER):
-        done = [r for r in ev["live_runs"] if r["state"] == "RUN_DONE"]
+        done = [r for r in ev["live_runs"] if r["state"] == "RUN_DONE" and r.get("exit") == 0]
         if not done:
-            out.append(f"{ev['lane_id']}: p1_last, no live n8n RUN_DONE yet")
+            out.append(f"{ev['lane_id']}: p1_last, no live n8n RUN_DONE (exit 0) yet")
             continue
-        first = datetime.fromisoformat(done[0]["requested_at"])
-        got = trading_days_between(first, today)
+        first = datetime.fromisoformat(done[0]["finished_at"] or done[0]["requested_at"])
+        if first.tzinfo is None:
+            first = first.replace(tzinfo=timezone.utc)
+        got = completed_sessions_after(first, now)
         if got < need:
-            out.append(f"{ev['lane_id']}: p1_last, cron stays {need} trading day(s) after the first live RUN_DONE "
-                       f"({done[0]['requested_at']}); {got} so far")
+            out.append(f"{ev['lane_id']}: p1_last, cron stays until {need} completed NYSE session(s) after the first "
+                       f"live RUN_DONE ({done[0]['finished_at'] or done[0]['requested_at']}); {got} so far")
     return out
 
 
@@ -1060,6 +1036,15 @@ def main(argv: Optional[list[str]] = None) -> int:
     p.add_argument("--code-root", default=str(ROOT))
     p.add_argument("--lanes", required=True)
     p.add_argument("--wave", default="CW0")
+    p = sub.add_parser("contract-canary")
+    p.add_argument("--code-root", default=str(ROOT))
+    p.add_argument("--lanes", required=True)
+    p.add_argument("--wave", default="CH0")
+    p.add_argument("--date", default=datetime.now(timezone.utc).strftime("%Y-%m-%d"))
+    p.add_argument("--runs-dir", default=str(RUNS_DIR))
+    p.add_argument("--operator-rereview", default=None,
+                   help="the operator's own words authorising the stage refresh of operator-REVIEWED contracts")
+    p.add_argument("--apply", action="store_true")
     p = sub.add_parser("comment-cron")
     p.add_argument("--code-root", default=str(ROOT))
     p.add_argument("--lanes", required=True)
@@ -1086,6 +1071,13 @@ def main(argv: Optional[list[str]] = None) -> int:
     if a.cmd == "cutover":
         done = cutover_rows(code_root, _lanes_arg(a.lanes) or [], a.wave)
         print(f"cutover rows written: {len(done)} {done}")
+        return 0
+    if a.cmd == "contract-canary":
+        rc = contract_canary(code_root, _lanes_arg(a.lanes) or [], a.wave, date=a.date, apply=a.apply,
+                             runs_dir=Path(a.runs_dir), operator_rereview=a.operator_rereview)
+        for v in rc["lanes"]:
+            print(f"{v['status']:<7} {v['lane_id']:<40} {'; '.join(v['reasons'])[:200] or (v.get('live_fires') or [''])[-1]}")
+        print(json.dumps(rc["counts"]))
         return 0
     if a.cmd == "add-flock":
         rc = add_flock(_lanes_arg(a.lanes) or [], code_root, apply=a.apply, backup_dir=Path(a.backup_dir),

@@ -11,6 +11,18 @@ MODE="${1:-dry-run}"
 case "$MODE" in dry-run|--dry-run) MODE=dry-run ;; --apply) MODE=apply ;; *) echo "usage: apply.sh [--apply]" >&2; exit 2 ;; esac
 
 PK="$(cd "$(dirname "$0")" && pwd)"
+
+# Grant check (fixed 2026-10-16: the operator's --apply failed twice). `guard` is not on PATH, so use the repo's
+# bin/guard; and `guard show` exits 1 even when it prints the active grants, so under pipefail the old
+# `guard show | sed | grep` false-failed. Capture the output first, then grep the stripped text.
+REPO_ROOT="${REPO_ROOT:-$(git -C "$PK" rev-parse --show-toplevel 2>/dev/null || (cd "$PK/../../../.." && pwd))}"
+GUARD_BIN="${GUARD_BIN:-$REPO_ROOT/bin/guard}"
+cron_grant_active() {
+  local out
+  [ -x "$GUARD_BIN" ] || { echo "guard not found at $GUARD_BIN (set GUARD_BIN)" >&2; return 1; }
+  out="$("$GUARD_BIN" show 2>&1)" || true
+  printf '%s\n' "$out" | sed 's/\x1b\[[0-9;]*m//g' | grep -iE '^[[:space:]]*cron[[:space:]]'
+}
 PY3="${PY3:-python3}"
 SERVED="${SERVED:-$HOME/trade-ai-releases/portfolio-server/CURRENT}"
 W="${BACKUP_ROOT:-$HOME/.local/state/tradeai/backups}/cron-effect-claim-wrap-$(date -u +%Y%m%dT%H%M%SZ)"
@@ -58,7 +70,7 @@ grep -q 'skipped_effect' "$SERVED/scripts/effect_claim_cron.sh" \
   && grep -q 'run_unclaimed_ledger_unreachable' "$SERVED/scripts/effect_claim_cron.sh" \
   && grep -q 'decision-out' "$SERVED/scripts/lib/effect_claim.py" && echo "P1 OK served wrapper has the 10-16 semantics" \
   || { echo "P1 FAIL: $SERVED does not serve the 10-16 wrapper (promote the PR first)"; exit 3; }
-guard show | sed 's/\x1b\[[0-9;]*m//g' | grep -i cron || { echo "P2 FAIL: no active cron grant"; exit 3; }
+cron_grant_active || { echo "P2 FAIL: no active cron grant"; exit 3; }
 crontab -l | cmp - "$W/crontab.live" && echo "P3 OK crontab unchanged since the plan" \
   || { echo "P3 FAIL: the crontab changed while planning; re-run"; exit 3; }
 

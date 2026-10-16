@@ -15,6 +15,7 @@ sys.path.insert(0, str(ROOT))
 from scripts.lib import scheduled_job_receipt as R  # noqa: E402
 from scripts.lib.lane_registry import load_registry, validate_registry  # noqa: E402
 from scripts.pipelines.cutover._cutover import load_registry_exact  # noqa: E402
+from tests.support import n8n_cutover_waves as CW  # noqa: E402
 
 NEW = {
     "alert-daily-digest",
@@ -54,6 +55,13 @@ def test_registry_has_all_21_observed_cron_lanes_without_serialisation_churn():
     assert NEW <= rows.keys()
     for lane in NEW:
         row = rows[lane]
+        if lane in CW.CUT_OVER:
+            # 2026-10-16: moved on to the n8n dispatcher cutover row; the cron schedule lives on as scheduler.cadence
+            # and scheduler_before_cutover keeps the original cron row (tests/test_n8n_cutover_wave_20261015.py).
+            assert row["scheduler_before_cutover"]["kind"] == "cron", lane
+            assert len(row["scheduler"]["cadence"].split()) == 5 and row["scheduler"]["match"], lane
+            assert row["state"] == "ACTIVE", lane
+            continue
         assert row["scheduler"]["kind"] == "cron"
         assert len(row["scheduler"]["expression"].split()) == 5
         assert row["scheduler"]["match"]

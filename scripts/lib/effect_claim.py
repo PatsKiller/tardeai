@@ -635,6 +635,236 @@ def owner_read_only(process: str, ledger: str | None = None) -> str:
         conn.close()
 
 
+# ── durable handover manifest (2026-10-16, architect review: fail CLOSED for handed-over lanes) ──────────────────
+#
+# The cron wrapper (scripts/effect_claim_cron.sh) used to FAIL OPEN whenever the ledger could not be read: the cron
+# copy ran unclaimed. The shared flock stops an overlap but not a second run after the first finished, so for a lane
+# already HANDED OVER to n8n an unreadable ledger re-opened the double effect. The wrapper must therefore know, without
+# the ledger, whether a process was handed over. That is this manifest:
+#
+# * path: $TRADEAI_N8N_HANDOVER_MANIFEST, else ``n8n_handover_manifest.json`` beside the coordination ledger
+#   (default <state>/data/governance/n8n_handover_manifest.json). A plain JSON file, not sqlite: a locked, corrupt or
+#   missing ledger does not make it unreadable.
+# * schema ``N8nHandoverManifest@v1``: {"schema", "updated_at", "processes": {process: {"owner", "epoch",
+#   "switched_at", "by"}}}. ``owner`` is the LAST owner ``set-owner`` recorded.
+# * writer: ONLY ``effect_claim.py set-owner`` (and the one-time bootstrap ``handover-seed``), under an exclusive
+#   flock on ``<manifest>.lock``, by write-to-temp + fsync + rename + directory fsync (atomic: a reader sees the old or
+#   the new file, never a torn one). The wrapper and every reporter open it read-only.
+# * ordering (so a crash leaves the two stores disagreeing only in the SAFE direction): a switch TO n8n writes the
+#   manifest first, then the ledger (a refused compare-and-swap restores the prior manifest entry under the same lock);
+#   a switch AWAY from n8n writes the ledger first, then the manifest. Either crash leaves "manifest n8n / ledger not",
+#   which the wrapper treats as ownership unknown: fail closed + P1.
+# * the controller (scripts/nightly_cutover_controller.py) holds the same lock across each lane's re-check and
+#   mutation (the fenced handover), so no owner switch can land between its check and its edit.
+#
+# Never auto-reconciled (AGENTS.md §0 rule 5): a disagreement is reported with both values and the run is skipped.
+
+HANDOVER_SCHEMA = "N8nHandoverManifest@v1"
+HANDOVER_ENV = "TRADEAI_N8N_HANDOVER_MANIFEST"
+HANDOVER_NAME = "n8n_handover_manifest.json"
+HANDOVER_LOCK_TIMEOUT_S = 30.0
+#: ``ownership`` decisions (the wrapper reads the first tab-separated field).
+DECIDE_RUN = "run"
+DECIDE_SKIP_N8N = "skip_owner_n8n"
+DECIDE_SKIP_UNKNOWN = "skip_ownership_unknown"
+
+
+class HandoverLockTimeout(RuntimeError):
+    pass
+
+
+def handover_manifest_path(ledger: str | Path | None = None) -> Path:
+    explicit = os.environ.get(HANDOVER_ENV)
+    if explicit:
+        return Path(explicit)
+    return _ledger_path(str(ledger) if ledger else None).parent / HANDOVER_NAME
+
+
+def read_handover_manifest(path: Path) -> dict[str, Any] | None:
+    """The manifest document, or None when the file does not exist (no process was ever handed over through
+    set-owner on this host). Unreadable / malformed -> EffectKeyError("handover_manifest_unreadable")."""
+    try:
+        raw = Path(path).read_text(encoding="utf-8")
+    except (FileNotFoundError, NotADirectoryError):
+        return None
+    except OSError as exc:
+        raise EffectKeyError("handover_manifest_unreadable") from exc
+    try:
+        doc = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise EffectKeyError("handover_manifest_unreadable") from exc
+    if not isinstance(doc, dict) or doc.get("schema") != HANDOVER_SCHEMA or not isinstance(doc.get("processes"), dict):
+        raise EffectKeyError("handover_manifest_unreadable")
+    for proc, ent in doc["processes"].items():
+        if not isinstance(ent, dict) or ent.get("owner") not in OWNERS or not PROCESS_RE.fullmatch(str(proc)):
+            raise EffectKeyError("handover_manifest_unreadable")
+    return doc
+
+
+class handover_lock:  # noqa: N801 - used as a context manager
+    """Exclusive flock on ``<manifest>.lock`` (blocking up to ``timeout`` seconds, then HandoverLockTimeout)."""
+
+    def __init__(self, manifest: Path, timeout: float = HANDOVER_LOCK_TIMEOUT_S) -> None:
+        self.path = Path(str(manifest) + ".lock")
+        self.timeout = timeout
+        self.fd: int | None = None
+
+    def __enter__(self) -> "handover_lock":
+        import fcntl
+        import time as _time
+
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.fd = os.open(self.path, os.O_CREAT | os.O_RDWR, 0o600)
+        end = _time.monotonic() + self.timeout
+        while True:
+            try:
+                fcntl.flock(self.fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                return self
+            except OSError:
+                if _time.monotonic() >= end:
+                    os.close(self.fd)
+                    self.fd = None
+                    raise HandoverLockTimeout(str(self.path))
+                _time.sleep(0.05)
+
+    def __exit__(self, *exc: Any) -> None:
+        if self.fd is not None:
+            os.close(self.fd)  # closing the descriptor drops the flock
+            self.fd = None
+
+
+def _write_manifest_atomic(path: Path, doc: Mapping[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    data = (json.dumps(doc, indent=2, sort_keys=True) + "\n").encode("utf-8")
+    fd = os.open(tmp, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o644)
+    try:
+        os.write(fd, data)
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+    os.replace(tmp, path)
+    try:
+        dfd = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(dfd)
+        finally:
+            os.close(dfd)
+    except OSError:
+        pass
+
+
+def _manifest_put(path: Path, process: str, entry: Mapping[str, Any] | None, now: float) -> None:
+    """Set (or, with entry None, remove) one process entry. Caller holds handover_lock."""
+    doc = read_handover_manifest(path) or {"schema": HANDOVER_SCHEMA, "processes": {}}
+    procs = dict(doc["processes"])
+    if entry is None:
+        procs.pop(process, None)
+    else:
+        procs[process] = dict(entry)
+    _write_manifest_atomic(path, {"schema": HANDOVER_SCHEMA, "updated_at": _iso(now), "processes": procs})
+
+
+def set_owner_with_manifest(
+    store: "EffectClaimStore", manifest: Path, process: str, owner: str, *, expect_epoch: int | None, by: str,
+    now: float, note: str | None = None,
+) -> dict[str, Any]:
+    """``set-owner`` with the manifest kept in the safe order (see the block comment above). Under handover_lock."""
+    if not PROCESS_RE.fullmatch(process or ""):
+        raise EffectKeyError("bad_process")
+    if owner not in OWNERS:
+        raise EffectKeyError("bad_owner")
+    with handover_lock(manifest):
+        prior_doc = read_handover_manifest(manifest)
+        prior = (prior_doc or {}).get("processes", {}).get(process)
+        planned_epoch = 1 if expect_epoch is None else int(expect_epoch) + 1
+        entry = {"owner": owner, "epoch": planned_epoch, "switched_at": _iso(now), "by": by}
+        if owner == "n8n":
+            _manifest_put(manifest, process, entry, now)          # 1. intent: handed over (safe direction)
+            try:
+                row = store.set_owner(process, owner, expect_epoch=expect_epoch, by=by, now=now, note=note)
+            except Exception:
+                _manifest_put(manifest, process, prior, now)      # the switch did not happen: restore our own entry
+                raise
+            if int(row["epoch"]) != planned_epoch:
+                _manifest_put(manifest, process, dict(entry, epoch=int(row["epoch"])), now)
+            return row
+        row = store.set_owner(process, owner, expect_epoch=expect_epoch, by=by, now=now, note=note)
+        _manifest_put(manifest, process, dict(entry, epoch=int(row["epoch"])), now)   # 2. after the ledger
+        return row
+
+
+def ownership_decision(process: str, *, ledger: str | None = None, manifest: Path | None = None) -> dict[str, Any]:
+    """Whether a cron copy of ``process`` may run, from the ledger (read-only) AND the handover manifest.
+
+    decision ``run`` / ``skip_owner_n8n`` / ``skip_ownership_unknown``; ``p1`` True when the operator must be told
+    (ownership could not be established for a handed-over process, or the two stores disagree). Never writes."""
+    mpath = manifest or handover_manifest_path(ledger)
+    try:
+        ledger_owner = owner_read_only(process, ledger)
+    except (sqlite3.Error, OSError):
+        ledger_owner = "unreachable"
+    try:
+        doc = read_handover_manifest(mpath)
+        if doc is None:
+            manifest_owner = "file_absent"
+        else:
+            ent = doc["processes"].get(process)
+            manifest_owner = "not_listed" if ent is None else str(ent["owner"])
+    except EffectKeyError:
+        manifest_owner = "unreadable"
+    out = {"process": process, "ledger_owner": ledger_owner, "manifest_owner": manifest_owner,
+           "manifest": str(mpath), "decision": DECIDE_RUN, "reason": "", "p1": False}
+
+    def skip_unknown(reason: str) -> dict[str, Any]:
+        out.update(decision=DECIDE_SKIP_UNKNOWN, reason=reason, p1=True)
+        return out
+
+    if manifest_owner == "unreadable":
+        return skip_unknown("handover_manifest_unreadable")
+    if ledger_owner == "unreachable":
+        if manifest_owner in ("n8n", "none"):
+            return skip_unknown(f"ledger_unreachable_handed_over:manifest={manifest_owner}")
+        out["reason"] = f"ledger_unreachable_never_handed_over:manifest={manifest_owner}"
+        return out                                                # fail OPEN: this process was never handed over
+    if manifest_owner in ("n8n", "cron", "none") and manifest_owner != ledger_owner:
+        return skip_unknown(f"manifest_ledger_disagree:manifest={manifest_owner},ledger={ledger_owner}")
+    if ledger_owner == "n8n" and manifest_owner in ("file_absent", "not_listed"):
+        return skip_unknown(f"manifest_ledger_disagree:manifest={manifest_owner},ledger=n8n")
+    if ledger_owner == "n8n":
+        out.update(decision=DECIDE_SKIP_N8N, reason="owner_n8n")
+        return out
+    out["reason"] = f"owner_{ledger_owner}"
+    return out
+
+
+def handover_seed(ledger: str | None, manifest: Path, *, apply: bool, by: str, now: float) -> dict[str, Any]:
+    """One-time bootstrap: create the manifest from the ledger's owner rows. Refuses when the manifest already exists
+    (never a reconcile of two divergent stores). Dry run unless ``apply``."""
+    path = _ledger_path(ledger)
+    if not path.exists():
+        raise sqlite3.OperationalError("ledger_missing")
+    conn = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True, timeout=5)
+    try:
+        has = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='effect_owners'").fetchone()
+        rows = [] if has is None else conn.execute(
+            "SELECT process, owner, epoch, switched_at FROM effect_owners ORDER BY process").fetchall()
+    finally:
+        conn.close()
+    procs = {str(p): {"owner": str(o), "epoch": int(e), "switched_at": str(s), "by": f"handover-seed:{by}"}
+             for p, o, e, s in rows}
+    out = {"manifest": str(manifest), "apply": apply, "processes": procs, "written": False}
+    with handover_lock(manifest):
+        if Path(manifest).exists():
+            out["refused"] = "manifest_exists: seed is a one-time bootstrap; compare with `ownership` instead"
+            return out
+        if apply:
+            _write_manifest_atomic(Path(manifest), {"schema": HANDOVER_SCHEMA, "updated_at": _iso(now),
+                                                    "processes": procs})
+            out["written"] = True
+    return out
+
+
 def _key_from_args(a: argparse.Namespace) -> str:
     slot = slot_now() if a.slot == "now" else a.slot
     return effect_key(a.process, slot, a.input_version)
@@ -697,6 +927,19 @@ def main(argv: list[str] | None = None) -> int:
         help="print the process's owner (cron, n8n or none) from a READ-ONLY ledger open; exit 2 = ledger unreachable",
     )
     p_owner.add_argument("--process", required=True)
+    p_own.add_argument("--manifest", default=None, help="handover manifest (default: beside the ledger)")
+    p_dec = sub.add_parser(
+        "ownership",
+        help="may the cron copy run? prints decision<TAB>ledger_owner<TAB>manifest_owner<TAB>p1<TAB>reason from a "
+        "read-only ledger open AND the handover manifest (never writes); exit 0 whenever a decision was made",
+    )
+    p_dec.add_argument("--process", required=True)
+    p_dec.add_argument("--manifest", default=None)
+    p_dec.add_argument("--json", action="store_true")
+    p_seed = sub.add_parser("handover-seed", help="one-time: create the handover manifest from the ledger owner rows")
+    p_seed.add_argument("--manifest", default=None)
+    p_seed.add_argument("--by", required=True)
+    p_seed.add_argument("--apply", action="store_true", help="write it (default: dry run)")
     p_spec = sub.add_parser(
         "lane-spec",
         help="print a keyed lane's process, input_version and cron_claim (tab-separated; exit 3 = lane not keyed)",
@@ -719,6 +962,19 @@ def main(argv: list[str] | None = None) -> int:
         if a.cmd == "owner":
             print(owner_read_only(a.process, a.ledger))
             return 0
+        if a.cmd == "ownership":
+            d = ownership_decision(a.process, ledger=a.ledger, manifest=Path(a.manifest) if a.manifest else None)
+            if a.json:
+                print(json.dumps(d, sort_keys=True))
+            else:
+                print("\t".join([d["decision"], d["ledger_owner"], d["manifest_owner"], "1" if d["p1"] else "0",
+                                 d["reason"]]))
+            return 0
+        if a.cmd == "handover-seed":
+            mpath = Path(a.manifest) if a.manifest else handover_manifest_path(a.ledger)
+            out = handover_seed(a.ledger, mpath, apply=a.apply, by=a.by, now=now)
+            print(json.dumps(out, sort_keys=True))
+            return 1 if out.get("refused") else 0
         store = _open_store(a.ledger)
         if a.cmd == "claim":
             res = store.claim(
@@ -778,7 +1034,17 @@ def main(argv: list[str] | None = None) -> int:
             )
             return rc if rc >= 0 else 128 - rc
         if a.cmd == "set-owner":
-            row = store.set_owner(a.process, a.owner, expect_epoch=a.expect_epoch, by=a.by, now=now, note=a.note)
+            mpath = Path(a.manifest) if a.manifest else handover_manifest_path(a.ledger)
+            try:
+                row = set_owner_with_manifest(store, mpath, a.process, a.owner, expect_epoch=a.expect_epoch,
+                                              by=a.by, now=now, note=a.note)
+            except HandoverLockTimeout as exc:
+                print(json.dumps({"error": f"handover_lock_timeout:{exc}"}), file=sys.stderr)
+                return 2
+            except OSError as exc:  # the manifest write failed: the stores may disagree (safe direction) - say so
+                print(json.dumps({"error": f"handover_manifest_write:{type(exc).__name__}",
+                                  "manifest": str(mpath)}), file=sys.stderr)
+                return 2
             print(json.dumps(row, sort_keys=True))
             return 0
         if a.cmd == "show":

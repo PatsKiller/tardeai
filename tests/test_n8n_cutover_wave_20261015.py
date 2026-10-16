@@ -257,3 +257,128 @@ def test_held_lanes_are_skipped_with_their_reason(code_root):
     v = W.plan_lane("aegis-nightly-ingestion", disp, reg_rows={}, entries={}, contracts={}, effect_keys={},
                     crontab=CRONTAB, wave="CWT")
     assert v["status"] == "SKIP" and v["reasons"] == [W.HELD["aegis-nightly-ingestion"]]
+
+
+# ── contract-canary (2026-10-16): REVIEWED contract stage shadow -> canary for lanes already at canary ─────────────
+
+CC_LANES = ("agent-ok", "op-reviewed", "no-fire", "not-canary", "draft")
+
+
+@pytest.fixture()
+def cc_root(tmp_path: Path):
+    """A scratch code root: 4 canary lanes (dispatch live) + 1 shadow lane, and an n8n_runs dir."""
+    (tmp_path / "config").mkdir()
+    rows = []
+    for lane in CC_LANES:
+        r = _row(lane, f"scripts/{lane}.py", stage="shadow" if lane == "not-canary" else "canary")
+        r["dispatch"]["mode"] = "dry_run" if lane == "not-canary" else "live"
+        rows.append(r)
+    (tmp_path / "config" / "lane_registry.json").write_text(json.dumps({"lanes": rows}, indent=2) + "\n")
+    contracts = []
+    for lane in CC_LANES:
+        c = _contract(lane, f"scripts/{lane}.py", f"/tmp/{lane}.lock", status="DRAFT" if lane == "draft" else "REVIEWED")
+        c["review"] = {"status": c["status"], "reviewed_by": ("operator PatsKiller 2026-10-11" if lane == "op-reviewed"
+                                                             else "agent-reviewed 2026-10-15 against source")}
+        contracts.append(c)
+    (tmp_path / "config" / "n8n_health_contracts.json").write_text(json.dumps({"contracts": contracts}, indent=2) + "\n")
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    for lane in ("agent-ok", "op-reviewed", "not-canary", "draft"):
+        (runs / f"d:{lane}:live:20261016T1000.json").write_text("{}")
+    (runs / "d:no-fire:dry_run:20261015T1000.json").write_text("{}")
+    return tmp_path, runs
+
+
+def _cc(root, runs, lanes, **kw):
+    kw.setdefault("apply", True)
+    return W.contract_canary(root, lanes, "CH1", date="2026-10-16", runs_dir=runs, **kw)
+
+
+def _contracts(root):
+    return {c["id"]: c for c in json.loads((root / "config" / "n8n_health_contracts.json").read_text())["contracts"]}
+
+
+def test_contract_canary_moves_only_an_agent_reviewed_contract_with_a_live_fire(cc_root):
+    root, runs = cc_root
+    before = _contracts(root)
+    rc = _cc(root, runs, list(CC_LANES))
+    st = {v["lane_id"]: v for v in rc["lanes"]}
+    assert st["agent-ok"]["status"] == "CANARY"
+    assert any(r.startswith("operator_reviewed") for r in st["op-reviewed"]["reasons"])
+    assert any(r.startswith("no_live_fire") for r in st["no-fire"]["reasons"])
+    assert any(r.startswith("registry_not_cron_canary") for r in st["not-canary"]["reasons"])
+    assert any(r.startswith("dispatch_mode_dry_run") for r in st["not-canary"]["reasons"])
+    assert any(r.startswith("health_contract_status:DRAFT") for r in st["draft"]["reasons"])
+    after = _contracts(root)
+    ok = after["agent-ok"]
+    assert ok["stage"] == "canary" and ok["status"] == "REVIEWED"
+    assert ok["healthy"][0]["check"] == "canary_live_done"
+    assert not any(h["check"] == "shadow_dry_run_done" for h in ok["healthy"])
+    assert ok["review"]["reviewed_by"] == before["agent-ok"]["review"]["reviewed_by"]   # the review is not rewritten
+    assert ok["review"]["stage_rereview"]["evidence"].endswith("d:agent-ok:live:20261016T1000")
+    assert "CH1 2026-10-16: stage canary" in ok["state_note"]
+    for lane in ("op-reviewed", "no-fire", "not-canary", "draft"):
+        assert after[lane] == before[lane], lane   # untouched
+
+
+def test_contract_canary_dry_run_writes_nothing(cc_root):
+    root, runs = cc_root
+    raw = (root / "config" / "n8n_health_contracts.json").read_bytes()
+    rc = _cc(root, runs, ["agent-ok"], apply=False)
+    assert rc["counts"] == {"CANARY": 1}
+    assert (root / "config" / "n8n_health_contracts.json").read_bytes() == raw
+
+
+def test_contract_canary_operator_reviewed_moves_only_with_the_operators_words(cc_root):
+    root, runs = cc_root
+    rc = _cc(root, runs, ["op-reviewed"], operator_rereview="PatsKiller 2026-10-16: re-reviewed, move to canary")
+    assert rc["counts"] == {"CANARY": 1}
+    c = _contracts(root)["op-reviewed"]
+    assert c["stage"] == "canary"
+    assert c["review"]["reviewed_by"] == "operator PatsKiller 2026-10-11"
+    assert c["review"]["stage_rereview"]["operator_words"] == "PatsKiller 2026-10-16: re-reviewed, move to canary"
+
+
+def test_contract_canary_refuses_a_contract_not_at_shadow(cc_root):
+    root, runs = cc_root
+    assert _cc(root, runs, ["agent-ok"])["counts"] == {"CANARY": 1}
+    rc = _cc(root, runs, ["agent-ok"])
+    assert rc["counts"] == {"SKIP": 1}
+    assert any(r.startswith("health_contract_stage:canary") for r in rc["lanes"][0]["reasons"])
+
+
+# ── repo state after the 2026-10-16 hold-clearing PR ────────────────────────────────────────────────────────────
+
+CUTOVER_20261016 = {"catalyst-graph": "CW1", "catalyst-symbol-impact": "CW1", "hermes-news-bridge": "CW1",
+                    "source-attribution-monitor": "CW1", "record-decision-outcome": "CW2",
+                    "wire-advisory-lessons": "CW3", "hermes-momentum-catalyst-scalp": "CW1"}
+CONTRACT_CANARY_20261016 = ("hermes-discovery-scorecard", "incubator-rolloff-engine", "opening-intelligence-render")
+
+
+def _repo_rows():
+    return {r["lane_id"]: r for r in json.loads((ROOT / "config" / "lane_registry.json").read_text())["lanes"]
+            if isinstance(r, dict)}
+
+
+@pytest.mark.parametrize("lane", sorted(CUTOVER_20261016))
+def test_retired_lanes_are_dispatcher_cutover_rows(lane):
+    """Their cron lines are commented `# RETIRED 2026-10-16 n8n-cutover <lane>` (hermes-momentum-catalyst-scalp:
+    `# N8N-ONLY TEST 2026-10-16`, row from #1818) and each has a live RUN_DONE (produced / empty_allowed) cited in
+    the PR."""
+    row = _repo_rows()[lane]
+    s = row["scheduler"]
+    assert (s["kind"], s["expression"], s["stage"]) == ("n8n", LD.DISPATCHER_EXPRESSION, "cutover")
+    assert s["cutover_wave"] == CUTOVER_20261016[lane]
+    assert row["scheduler_before_cutover"]["kind"] == "cron"
+    assert s["match"] == row["scheduler_before_cutover"]["match"]
+    assert row["dispatch"]["mode"] == "live"
+
+
+@pytest.mark.parametrize("lane", CONTRACT_CANARY_20261016)
+def test_agent_reviewed_contracts_follow_the_registry_to_canary(lane):
+    c = {x["id"]: x for x in json.loads((ROOT / "config" / "n8n_health_contracts.json").read_text())["contracts"]
+         if isinstance(x, dict)}[lane]
+    assert c["status"] == "REVIEWED" and c["stage"] == "canary"
+    assert c["review"]["reviewed_by"].startswith("agent")
+    assert c["review"]["stage_rereview"]["by"] == "n8n_cutover_wave.py contract-canary"
+    assert _repo_rows()[lane]["scheduler"]["stage"] == "canary"

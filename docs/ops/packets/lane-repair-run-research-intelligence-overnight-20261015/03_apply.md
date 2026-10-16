@@ -17,7 +17,7 @@ mkdir -p "$W" && cd "$CODE"
 # 0. Preconditions. Each must print OK.
 grep -q -- '--budget-s' scripts/topic_ingestion.py && echo "P1 OK (served code has the bound)"
 grep -q 'ri_narrative_enrich' config/llm_process_registry.json && echo "P2 OK (process registered in CURRENT)"
-guard show | sed 's/\x1b\[[0-9;]*m//g' | grep -i cron          # P3: an active cron grant (strip colours first)
+~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/bin/guard show 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -iE '^[[:space:]]*cron[[:space:]]'          # P3: an active cron grant (strip colours first)
 
 # 1. Build the candidate from the LIVE crontab. Never install one generated earlier.
 crontab -l > "$W/crontab.live"
