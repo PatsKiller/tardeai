@@ -139,5 +139,8 @@ def test_deferred_incident_is_rediagnosed_and_its_stale_escalation_cleared(env):
     assert _run(env, ["--apply"], db=db, call=call, store=store) == 0
     assert len(call.seen) == 1 and len(store.requests) == 1
     state = json.loads((env["state"] / cli.STATE_REL).read_text())
-    assert state["escalations"] == {}, "the deferred escalation must stop paging once the incident is handled"
+    # 2026-10-16 (defect fix 6): a REQUESTED rerun is recovery_requested, never healed: the P2 escalation stays
+    # (digest only, never paging) and says a recovery is in flight; it closes only when the output recovers.
+    (esc,) = state["escalations"].values()
+    assert esc["priority"] == "P2" and esc["heal_state"] == "recovery_requested" and esc["recovery_run_id"]
     assert _receipt(env)["escalations"] == []

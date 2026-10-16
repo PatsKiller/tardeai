@@ -388,7 +388,10 @@ def _fence_before_first_write() -> None:
     global _FENCE_PASSED
     if _FENCE_PASSED:
         return
-    from lib.effect_claim import fence_before_write
+    try:   # one import identity (scripts/lib/__init__.py DualImportIdentityError): scripts.lib first
+        from scripts.lib.effect_claim import fence_before_write
+    except ImportError:   # cron: only scripts/ on sys.path
+        from lib.effect_claim import fence_before_write
 
     fence_before_write()
     _FENCE_PASSED = True

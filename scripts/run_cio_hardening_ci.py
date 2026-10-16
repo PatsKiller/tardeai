@@ -1289,6 +1289,11 @@ GATES = [
             # (late_write_fenced) + finviz market movers (fence wired, no key): fence before the first write,
             # pre-fence failure retryable, post-fence failure refused, no-op without the effect-claim env.
             "tests/test_assert_fence_wave1_20261016.py",
+            # Self-heal tranche defect fixes (operator directive 2026-10-16): NO_OUTPUT closes only on contract-fresh
+            # output; lock-skip cover = verified same mode + slot; codes/classes kept in fingerprints; severity and
+            # episodes re-evaluated per occurrence; cache != closure; explicit heal states; live heal re-authorized,
+            # held on ambiguous/post-effect claims, coordinated with the retry owner; code defects -> fix path.
+            "tests/test_n8n_self_heal_tranche_defects_20261016.py",
         ],
     ),
     # 2026-10-16: daily-incubator-refresh live 08:15 ET died on a closed connection and the except handler's rollback()

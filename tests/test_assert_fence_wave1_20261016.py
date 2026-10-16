@@ -31,7 +31,6 @@ from scripts import n8n_run_executor as X  # noqa: E402
 from scripts.lib import effect_claim as E  # noqa: E402
 from scripts.lib.n8n_coordination_ledger import CoordinationLedger, LedgerRunStore  # noqa: E402
 
-import lib.effect_claim as LE  # noqa: E402  (the import path the lane scripts use)
 
 T0 = 1_760_616_000.0
 SLOT = "20261016T1100"
@@ -64,7 +63,6 @@ def test_wave_lanes_are_keyed_fenced_and_in_the_catalogue():
 
 def test_without_the_effect_claim_env_the_fence_is_a_noop(monkeypatch):
     monkeypatch.delenv(E.FENCE_ENV, raising=False)
-    assert LE.fence_before_write() is None
     assert E.fence_before_write() is None
 
 
@@ -88,8 +86,9 @@ SENT = {"mention_count": 3, "bullish_count": 2, "bearish_count": 0, "neutral_cou
 def test_persist_calls_the_fence_before_the_write(modname, call, monkeypatch):
     mod = _lane_module(modname, monkeypatch)
     order: list[str] = []
-    # patch the module object the lane's lazy import resolves NOW (other suites may reload lib.effect_claim)
-    monkeypatch.setattr(importlib.import_module("lib.effect_claim"), "fence_before_write",
+    # patch the module object the lane's lazy import resolves NOW: scripts.lib.effect_claim (one import identity,
+    # scripts/lib/__init__.py DualImportIdentityError); other suites may reload it
+    monkeypatch.setattr(importlib.import_module("scripts.lib.effect_claim"), "fence_before_write",
                         lambda **kw: order.append("fence"))
     monkeypatch.setattr(mod, "_db_write", lambda *a, **k: order.append("write") or True)
     assert call(mod) is True

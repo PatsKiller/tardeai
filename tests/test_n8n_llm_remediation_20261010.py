@@ -492,7 +492,10 @@ def test_successful_diagnosis_goes_to_its_own_store_and_the_bridge_folds_it(env)
     assert _bridge_plan([folded], diags)["skip"][0]["id"] == 7          # idempotent: second pass is a skip
     call2 = GovernedCall(_answer(), raise_on_call=True)
     assert _run(env, ["--apply"], db=FakeDB([folded]), call=call2, store=store) == 0
-    assert len(store.requests) == 1 and _receipt(env)["skipped_reasons"] == {"already_diagnosed": 1}
+    # 2026-10-16 (defect fix 5): a diagnosed incident is CARRIED (cached diagnosis, no call, no new action), not
+    # skipped out of its lifecycle: it still gets its own closure check every cycle.
+    rec2 = _receipt(env)
+    assert len(store.requests) == 1 and rec2["counts"]["carried"] == 1 and rec2["results"][0]["outcome"] == "carried"
     assert [r["kind"] for r in _records(env)].count("diagnosis") == 1     # (FakeStore: the rerun row is "missing")
 
 

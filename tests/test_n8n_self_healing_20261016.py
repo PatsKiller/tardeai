@@ -85,23 +85,66 @@ def _r(run_id, state, mode="live", req="2026-10-16T12:15:00+00:00", fin="2026-10
 T = NOW.timestamp()
 
 
-def test_lock_skip_covered_by_the_slots_other_run_auto_closes():
-    runs = [_r("other", "RUN_DONE", req="2026-10-16T12:15:01+00:00"),
-            _r("skip", "RUN_SKIPPED_LOCK", req="2026-10-16T12:15:00+00:00", reason="flock_held")]
-    v = H.deterministic_verdict({"event_type": "RUN_SKIPPED_LOCK"}, fields={"run": "skip", "error": "flock_held"},
+SKIP = "d:lane-x:live:20261016T1215"
+COVER = "e:lane-x:live:20261016T1215"
+
+
+def test_lock_skip_covered_by_a_verified_run_of_the_same_mode_and_slot_auto_closes():
+    runs = [_r(COVER, "RUN_DONE", req="2026-10-16T12:15:01+00:00", output_verdict={"verdict": "produced"}),
+            _r(SKIP, "RUN_SKIPPED_LOCK", req="2026-10-16T12:15:00+00:00", reason="flock_held")]
+    v = H.deterministic_verdict({"event_type": "RUN_SKIPPED_LOCK"}, fields={"run": SKIP, "error": "flock_held"},
                                 runs=runs, now=T)
-    assert v["kind"] == "auto_close" and v["outcome"] == "covered" and v["evidence"] == ["run:other"]
+    assert v["kind"] == "auto_close" and v["outcome"] == "covered" and v["evidence"] == [f"run:{COVER}"]
+    assert v["heal_state"] == H.OUTPUT_RECOVERED
 
 
 def test_lock_skip_without_a_covering_run_is_not_closed():
-    runs = [_r("skip", "RUN_SKIPPED_LOCK", reason="flock_held"),
-            _r("old", "RUN_DONE", req="2026-10-16T09:00:00+00:00", fin="2026-10-16T09:01:00+00:00")]
-    assert H.deterministic_verdict({"event_type": "RUN_SKIPPED_LOCK"}, fields={"run": "skip"}, runs=runs,
+    runs = [_r(SKIP, "RUN_SKIPPED_LOCK", reason="flock_held"),
+            _r("d:lane-x:live:20261016T0900", "RUN_DONE", req="2026-10-16T09:00:00+00:00",
+               fin="2026-10-16T09:01:00+00:00", output_verdict={"verdict": "produced"})]
+    assert H.deterministic_verdict({"event_type": "RUN_SKIPPED_LOCK"}, fields={"run": SKIP}, runs=runs,
                                    now=T) is None
 
 
+# ---- defect fix 2: a lock skip is covered only by verified work in the SAME mode and SAME semantic slot
+
+
+@pytest.mark.parametrize("cover,why", [
+    # a nearby DRY run (same slot time, seconds apart) never covers a live skip
+    (_r("e:lane-x:dry_run:20261016T1215", "RUN_DONE", mode="dry_run", req="2026-10-16T12:15:01+00:00"),
+     "dry_never_covers_live"),
+    # a live run of a NEIGHBOURING slot (inside the old 10-minute window) does not cover this slot
+    (_r("e:lane-x:live:20261016T1220", "RUN_DONE", req="2026-10-16T12:16:00+00:00",
+        output_verdict={"verdict": "produced"}), "other_slot"),
+    # a free-form run id has no semantic slot: nothing proves it did this slot's work
+    (_r("n8n-wf-abc-99", "RUN_DONE", req="2026-10-16T12:15:01+00:00", output_verdict={"verdict": "produced"}),
+     "no_semantic_slot"),
+    # same slot and mode, RUN_DONE, but nothing verifies the live output (no output verdict, no signal advance)
+    (_r(COVER, "RUN_DONE", req="2026-10-16T12:15:01+00:00"), "unverified_live"),
+    # same slot and mode, but the output verdict failed
+    (_r(COVER, "RUN_DONE", req="2026-10-16T12:15:01+00:00", output_verdict={"verdict": "empty_violation"}),
+     "failed_output_verdict"),
+    # another lane's run in the same slot
+    (_r("e:lane-y:live:20261016T1215", "RUN_DONE", req="2026-10-16T12:15:01+00:00",
+        output_verdict={"verdict": "produced"}), "other_lane"),
+])
+def test_lock_skip_is_not_covered_by_the_wrong_run(cover, why):
+    runs = [cover, _r(SKIP, "RUN_SKIPPED_LOCK", req="2026-10-16T12:15:00+00:00", reason="flock_held")]
+    assert H.deterministic_verdict({"event_type": "RUN_SKIPPED_LOCK"}, fields={"run": SKIP, "error": "flock_held"},
+                                   runs=runs, now=T) is None, why
+
+
+def test_dry_lock_skip_is_covered_by_a_dry_run_of_the_same_slot():
+    skip = "d:lane-x:dry_run:20261016T1215"
+    runs = [_r("e:lane-x:dry_run:20261016T1215", "RUN_DONE", mode="dry_run", req="2026-10-16T12:15:01+00:00"),
+            _r(skip, "RUN_SKIPPED_LOCK", mode="dry_run", reason="flock_held")]
+    v = H.deterministic_verdict({"event_type": "RUN_SKIPPED_LOCK"}, fields={"run": skip}, runs=runs, now=T)
+    assert v["outcome"] == "covered"
+
+
 def test_failure_followed_by_a_later_success_of_the_same_mode_self_recovers():
-    runs = [_r("later", "RUN_DONE", mode="live", fin="2026-10-16T13:16:00+00:00"),
+    runs = [_r("later", "RUN_DONE", mode="live", fin="2026-10-16T13:16:00+00:00",
+               output_verdict={"verdict": "produced"}),
             _r("bad", "RUN_FAILED", mode="live", fin="2026-10-16T12:16:00+00:00")]
     v = H.deterministic_verdict({"event_type": "RUN_FAILED"}, fields={"run": "bad", "error": "mode=live exit=1"},
                                 runs=runs, now=T)
@@ -112,15 +155,52 @@ def test_failure_followed_by_a_later_success_of_the_same_mode_self_recovers():
                                    runs=runs, now=T) is None
 
 
-def test_no_output_recovers_only_on_a_live_run_or_an_advanced_signal():
-    row = {"event_type": "NO_OUTPUT", "created_at": "2026-10-16T12:00:00+00:00"}
-    dry = [_r("d1", "RUN_DONE", mode="dry_run", fin="2026-10-16T12:30:00+00:00")]
-    assert H.deterministic_verdict(row, fields={}, runs=dry, now=T) is None
-    sig = [_r("d2", "RUN_DONE", mode="dry_run", fin="2026-10-16T12:30:00+00:00",
-              output_signal_mtime_before=1.0, output_signal_mtime_after=2.0)]
-    assert H.deterministic_verdict(row, fields={}, runs=sig, now=T)["outcome"] == "self_recovered"
+# ---- defect fix 1: NO_OUTPUT stays open until the OUTPUT recovered by the lane's contract
+
+NO_OUT = {"event_type": "NO_OUTPUT", "created_at": "2026-10-16T12:00:00+00:00"}
+FRESH = {"verdict": "FRESH", "last_output_at": "2026-10-16T12:40:00+00:00", "basis": "cron:*/15 x2"}
+
+
+def test_no_output_is_not_closed_by_a_later_live_run_done_alone():
     live = [_r("l1", "RUN_DONE", mode="live", fin="2026-10-16T12:30:00+00:00")]
-    assert H.deterministic_verdict(row, fields={}, runs=live, now=T)["outcome"] == "self_recovered"
+    assert H.deterministic_verdict(NO_OUT, fields={}, runs=live, now=T) is None
+    stale = {"verdict": "STALE", "last_output_at": "2026-10-15T12:00:00+00:00"}
+    assert H.deterministic_verdict(NO_OUT, fields={}, runs=live, now=T, output_state=stale) is None
+
+
+def test_no_output_is_not_closed_by_an_advancing_mtime_alone():
+    sig = [_r("d2", "RUN_DONE", mode="dry_run", fin="2026-10-16T12:30:00+00:00",
+              output_signal_mtime_before=1.0, output_signal_mtime_after=2.0),
+           _r("l2", "RUN_DONE", mode="live", fin="2026-10-16T12:31:00+00:00",
+              output_signal_mtime_before=1.0, output_signal_mtime_after=2.0)]
+    assert H.deterministic_verdict(NO_OUT, fields={}, runs=sig, now=T) is None
+    late = {"verdict": "LATE", "last_output_at": "2026-10-16T12:31:00+00:00"}       # advanced, but not fresh
+    assert H.deterministic_verdict(NO_OUT, fields={}, runs=sig, now=T, output_state=late) is None
+
+
+def test_no_output_is_not_closed_by_a_fresh_signal_that_predates_the_breach():
+    old = {"verdict": "FRESH", "last_output_at": "2026-10-16T11:59:00+00:00"}
+    assert H.deterministic_verdict(NO_OUT, fields={}, runs=[], now=T, output_state=old) is None
+
+
+def test_no_output_closes_when_the_output_is_fresh_by_contract():
+    v = H.deterministic_verdict(NO_OUT, fields={}, runs=[], now=T, output_state=FRESH)
+    assert v["outcome"] == "output_recovered" and v["basis"] == "output_contract_fresh"
+    assert v["heal_state"] == H.OUTPUT_RECOVERED
+
+
+def test_no_output_closes_when_a_later_live_run_produced_its_expected_output():
+    live = [_r("l3", "RUN_DONE", mode="live", fin="2026-10-16T12:30:00+00:00", output_verdict={"verdict": "produced"})]
+    v = H.deterministic_verdict(NO_OUT, fields={}, runs=live, now=T)
+    assert v["outcome"] == "output_recovered" and v["basis"] == "expected_output_produced"
+    dry = [_r("d3", "RUN_DONE", mode="dry_run", fin="2026-10-16T12:30:00+00:00", output_verdict={"verdict": "produced"})]
+    assert H.deterministic_verdict(NO_OUT, fields={}, runs=dry, now=T) is None
+
+
+def test_failure_with_unknown_mode_is_not_closed_by_any_run():
+    runs = [_r("later", "RUN_DONE", mode="dry_run", fin="2026-10-16T13:16:00+00:00")]
+    assert H.deterministic_verdict({"event_type": "RUN_FAILED", "created_at": "2026-10-16T12:00:00+00:00"},
+                                   fields={"error": "exit=1"}, runs=runs, now=T) is None
 
 
 def test_executor_lost_goes_to_the_reaper():
@@ -140,7 +220,8 @@ ENTRY = {"severity": "Low"}
 
 def _gate(lane="lane-x", **kw):
     args = {"registry_row": REG, "effect_spec": SPEC, "effect_owner": "n8n", "failure_class": H.TRANSIENT,
-            "catalogue_entry": ENTRY, "cutover_policy": None, "live_heals_today": 0}
+            "catalogue_entry": ENTRY, "cutover_policy": None, "live_heals_today": 0,
+            "live_lanes": frozenset({lane})}
     args.update(kw)
     return H.live_heal_gate(lane, **args)
 
@@ -164,6 +245,13 @@ def test_live_heal_gate_allows_the_happy_path():
     ({"failure_class": H.CODE_ERROR}, "lane-x", "failure_not_transient"),
     ({"effect_spec": None}, "lane-x", "no_effect_key"),
     ({"live_heals_today": 1}, "lane-x", "live_heal_daily_cap"),
+    ({"failure_class": H.AUTH}, "lane-x", "failure_not_transient:auth"),
+    ({"live_lanes": None}, "lane-x", "live_list_unavailable"),
+    ({"live_lanes": frozenset({"other"})}, "lane-x", "not_on_live_list"),
+    ({"cutover_policy": {"holds": {"lane-x": "operator_hold"}}}, "lane-x", "cutover_policy_hold"),
+    ({"cutover_policy": {"p1_last": ["lane-x"]}}, "lane-x", "p1_lane"),
+    ({"cutover_policy": {"families": {"lane-x": "F09"}}}, "lane-x", "broker_order_stop_options_lane"),
+    ({"cutover_policy": {"families": {"lane-x": "F07"}}}, "lane-x", "broker_order_stop_options_lane"),
 ])
 def test_live_heal_gate_refusals(kw, lane, reason):
     ok, why = _gate(lane=lane, **kw)
@@ -202,10 +290,12 @@ def test_duplicate_signature_is_diagnosed_once_and_attached(env):
     assert rec["escalations"] == [] and len(rec["digest"]) == 1
     assert rec["digest"][0]["siem_ids"] == [7, 8] and rec["digest"][0]["attached"] == 1
     assert rec["digest"][0]["route"] == "digest"
-    # next cycle: both are done; nothing is re-diagnosed
+    # next cycle: both are CARRIED (cached diagnosis, no call) and stay open; the escalation is not suppressed
     call2 = GovernedCall(_answer(), raise_on_call=True)
     assert _run(env, ["--apply"], db=FakeDB(rows), call=call2, store=FakeStore()) == 0
-    assert _receipt(env)["counts"]["eligible"] == 0
+    rec2 = _receipt(env)
+    assert rec2["counts"]["carried"] == 2 and rec2["counts"]["model_called"] == 0
+    assert rec2["digest"][0]["siem_ids"] == [7, 8]
 
 
 def test_signature_cap_is_per_signature_not_per_lane(env):
@@ -249,6 +339,7 @@ def _live_heal_env(env, tmp_path, monkeypatch, stage="canary"):
     fx.write_text(json.dumps({"lanes": {LOW_LANE: {"process": LOW_LANE, "input_version": "v1"}}}))
     monkeypatch.setattr(cli, "EFFECT_KEYS", fx)
     monkeypatch.setattr(cli, "_effect_owner_ro", lambda ledger, process: "n8n")
+    monkeypatch.setenv(H.LIVE_LIST_ENV, LOW_LANE)          # the relay's live list (re-read before execution)
     return {**env, "catalogue": cat, "registry": reg}
 
 
@@ -337,7 +428,8 @@ def test_dry_run_still_writes_nothing_with_the_new_tier(env, capsys):
     _add_run(env["ledger"], "n8n-wf-abc-43", "RUN_DONE", mode="dry_run")
     assert _run(env, ["--dry-run"], db=FakeDB([_siem_row(rid=7), _siem_row(rid=8)])) == 0
     out = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
-    assert out["counts"]["auto_closed"] == 1 and out["counts"]["attached"] == 1
+    # each occurrence is closed on its OWN evidence (lifecycle first), not by riding the lead
+    assert out["counts"]["auto_closed"] == 2 and out["counts"]["attached"] == 0
     assert not (env["state"] / cli.STATE_REL).exists() and not (env["state"] / cli.RECEIPT_REL).exists()
 
 
