@@ -1273,6 +1273,10 @@ GATES = [
             # catalogue approval provenance, registry SLA fallback for lanes newer than the seed.
             "tests/test_n8n_slot_bound_retry_20261016.py",
             "tests/test_n8n_self_healing_followups_20261016.py",
+            # First assert_fence wave (operator OK 2026-10-16): aegis/hermes social sentiment, finviz screener runner
+            # (late_write_fenced) + finviz market movers (fence wired, no key): fence before the first write,
+            # pre-fence failure retryable, post-fence failure refused, no-op without the effect-claim env.
+            "tests/test_assert_fence_wave1_20261016.py",
         ],
     ),
     # 2026-10-16: daily-incubator-refresh live 08:15 ET died on a closed connection and the except handler's rollback()

@@ -309,10 +309,15 @@ on refusal. Both tables live in the coordination ledger, one `BEGIN IMMEDIATE`.
   switch. **Only lanes that call it are late-write safe**; `late_write_fenced: true` declares it and a test checks
   the lane source. A finish after the epoch moved is a late completion: `UNKNOWN`, `fenced_late = 1`, detail
   `late_completion:<state>`, receipt `effect.incident = effect_late_completion` (no longer a silent DONE).
-  Residual: `release` still trusts the operator's note (no reconciliation evidence is required by code), and no
-  lane yet calls `assert_fence`, so ownership switches still need drain-before-switch.
-- **Effect-keyed lanes that do NOT call `assert_fence` (not late-write safe):** all 69 effect-keyed lanes in
-  `config/n8n_effect_keys.json` (none declares `late_write_fenced`). The six whose executor side is armed
+  Residual: `release` still trusts the operator's note (no reconciliation evidence is required by code), and only
+  the three first-wave lanes below call `assert_fence`, so ownership switches of every other lane still need
+  drain-before-switch.
+- **Late-write fenced (first `assert_fence` wave, 2026-10-16):** `aegis-social-sentiment`, `hermes-social-sentiment`,
+  `finviz-screener-runner` declare `late_write_fenced: true` and call `effect_claim.fence_before_write()` right before
+  their first target write (a no-op without `TRADEAI_EFFECT_FENCE`, so cron runs are unchanged). A failure before
+  the fence is a proven pre-effect FAILED and a slot-bound retry may re-claim it.
+- **Effect-keyed lanes that do NOT call `assert_fence` (not late-write safe):** the other 66 effect-keyed lanes in
+  `config/n8n_effect_keys.json`. The six whose executor side is armed
   (`n8n_claim` default true): `hermes-learning-outcome-grader`, `hermes-learning-outcome-learning`,
   `hermes-learning-config-governor`, `hermes-learning-tag-engine`, `hermes-learning-outcome-feedback-agent`,
   `hermes-learning-autonomous-self-tune`; plus the 31 armed (`n8n_claim` + `cron_claim` true) by the n8n cutover waves (2026-10-15,

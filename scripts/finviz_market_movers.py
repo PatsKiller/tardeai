@@ -115,6 +115,23 @@ def _parse_rows(content: str) -> list[dict]:
     return rows
 
 
+# ── late-write fence (first assert_fence wave, 2026-10-16) ──────────────────
+_FENCE_PASSED = False
+
+
+def _fence_before_first_write() -> None:
+    """Call immediately before the lane's FIRST target write. Without an effect-claim token (a plain cron or manual
+    run) this is a no-op; with one, ``assert_fence()`` either passes (recorded once) or raises EffectFenceError and
+    nothing is written. A failure before this point is proven pre-effect, so a slot-bound retry may re-claim it."""
+    global _FENCE_PASSED
+    if _FENCE_PASSED:
+        return
+    from lib.effect_claim import fence_before_write
+
+    fence_before_write()
+    _FENCE_PASSED = True
+
+
 def _execute() -> int:
     from db_adapter import _get_conn
     from finviz_auth import finviz_secret, redact
@@ -138,6 +155,9 @@ def _execute() -> int:
         try:
             rows = _fetch_signal(param, cookie, token)
             snap["signals"][key] = {"label": label, "rows": rows}
+            if rows:
+                # Before the first INSERT; CREATE TABLE IF NOT EXISTS above is repeat-safe DDL (2026-10-16).
+                _fence_before_first_write()
             for r in rows:
                 cur.execute(
                     """INSERT INTO market_movers (signal, symbol, company, sector, last, change_pct, volume, captured_at)
@@ -146,6 +166,9 @@ def _execute() -> int:
             conn.commit()
             print(f"[movers] {key}: {len(rows)} rows")
         except Exception as e:
+            if type(e).__name__ == "EffectFenceError":
+                conn.rollback()
+                raise           # the fence refused: write nothing more (no snapshot either)
             conn.rollback()
             # flag-back contract: a signal the export can't serve is REPORTED, never synthesized
             msg = redact(e, cookie, token)[:120]

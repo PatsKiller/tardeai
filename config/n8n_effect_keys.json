@@ -273,7 +273,8 @@
       "idempotent_today": "no:run_id is a timestamp",
       "wave": "tierA",
       "cron_claim": true,
-      "n8n_claim": true
+      "n8n_claim": true,
+      "late_write_fenced": true
     },
     "hermes-pipeline-health": {
       "process": "hermes-pipeline-health",
@@ -545,7 +546,8 @@
       "idempotent_today": "guarded:new tickers only",
       "wave": "tierB",
       "cron_claim": true,
-      "n8n_claim": true
+      "n8n_claim": true,
+      "late_write_fenced": true
     },
     "hermes-research-agenda-at-45-7": {
       "process": "hermes-research-agenda-at-45-7",
@@ -573,7 +575,8 @@
       "idempotent_today": "no:run_id is a timestamp",
       "wave": "tierB",
       "cron_claim": true,
-      "n8n_claim": true
+      "n8n_claim": true,
+      "late_write_fenced": true
     },
     "hermes-topic-monitor-bridge": {
       "process": "hermes-topic-monitor-bridge",
