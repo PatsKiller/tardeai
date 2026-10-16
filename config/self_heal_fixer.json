@@ -1,0 +1,265 @@
+{
+  "schema": "SelfHealFixerConfig@v1",
+  "_why": "Operator 2026-10-16: \"with the self-fixing in some of these procedures, I just don't want the regular LLM routing. I want it to connect into Claude Code to fix it in iterations.\" A self-heal diagnosis with failure_class code_error becomes ONE fix job per failure signature. scripts/self_heal_fixer.py runs headless Claude Code in an isolated worktree off origin/main, iterates (failing test first -> fix -> targeted tests + run_cio_hardening_ci.py --profile pr), and on success opens a PR labelled self-heal-fix. A fix PR is not a heal: the job closes only at incident_resolved (deployed code + recovered output). Design: docs/ops/self_heal_claude_fixer.md.",
+  "arming": {
+    "_why": "DISARMED by default. --apply needs ALL of: an ACTIVE guard grant of grant_tier whose reason names grant_reason_token (peek only, never consumed: bin/guard grant git-push --for 8h --uses 4 --reason 'self-heal-fixer ...'), and fewer than daily_job_cap jobs started today (ET). The model's output never arms anything.",
+    "grant_tier": "git-push",
+    "grant_reason_token": "self-heal-fixer",
+    "daily_job_cap": 3,
+    "max_jobs_per_cycle": 1
+  },
+  "selector": {
+    "_why": "STATIC. The adaptive router (lib/self_heal_fixer.shadow_route over repair memory) runs in SHADOW only: its recommendation is recorded on each job and in repair memory, never used to choose.",
+    "mode": "static",
+    "backend": "claude_code",
+    "shadow_router": "laplace_local_acceptance_by_failure_kind"
+  },
+  "backends": {
+    "_why": "SelfHealFixBackend@v1: cwd = fix worktree, prompt on stdin, credential-free env, tests only via the sandboxed pytest wrapper. Acceptance is never the backend's claim: scripts/lib/self_heal_fix_evaluator.py judges harness-run tests and CI on the PR head. A backend is selectable only when enabled AND qualified; qualifying one (e.g. codex_cli) = it passes the same acceptance suite (tests/test_self_heal_fixer_20261016.py backend-parametrized scenarios) and a live seeded-defect job judged by the evaluator, then an operator config PR flips qualified. coder-dispatch stays retired (operator hold 2026-10-16); its registry entries are not used.",
+    "claude_code": {
+      "kind": "claude_cli",
+      "config_section": "claude",
+      "enabled": true,
+      "qualified": true,
+      "qualified_basis": "contract + acceptance suite with a mocked CLI (2026-10-16); first live job is its live qualification"
+    },
+    "codex_cli": {
+      "kind": "cli_stdin",
+      "bin": "/home/johnclaw/.local/bin/codex",
+      "argv_template": [
+        "{bin}",
+        "exec",
+        "--sandbox",
+        "workspace-write",
+        "--skip-git-repo-check",
+        "-"
+      ],
+      "enabled": false,
+      "qualified": false,
+      "qualified_basis": "NOT qualified. Install, verify the argv against the installed codex CLI, run the acceptance suite with backend=codex_cli, one live seeded-defect job, then an operator PR."
+    }
+  },
+  "policy_gate": {
+    "_why": "AGENTS.md 12.0.0 section 24.5 forbids a scheduled job from pushing or opening a PR. Until the operator ratifies the amendment (docs/ops/self_heal_claude_fixer.md section 9) the fixer stops at fix_ready_local: the fix is committed on a local branch and the PR body is written as an artifact. The push/PR step runs only when AGENTS.md at the job's base commit carries this heading marker with the word ACTIVE on the same line.",
+    "amendment_heading_marker": "## 24.11 Self-heal fix PRs from the self-heal-fixer lane",
+    "required_status_word": "ACTIVE"
+  },
+  "repo": {
+    "repo_root": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild",
+    "remote": "origin",
+    "base_branch": "main",
+    "worktree_root": "/tmp/tradeai_self_heal_worktrees",
+    "branch_prefix": "self-heal-fix/",
+    "python": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python",
+    "pr_label": "self-heal-fix",
+    "commit_trailers": [
+      "Co-Authored-By: Claude <noreply@anthropic.com>",
+      "Self-Heal-Fixer: self-heal-fixer lane (config/self_heal_fixer.json)"
+    ]
+  },
+  "claude": {
+    "_why": "Headless Claude Code, the same binary coder_dispatch.py's claude_code backend names (config/coder_backends.json). dontAsk denies every tool call not pre-approved below; the harness re-checks the resulting diff anyway (the AGENTS guard hook is not installed for Claude Code, docs/ops/AGENTS_GUARD_HOOK.md). The prompt goes on stdin. --setting-sources project: the user's interactive allow rules (gh pr merge, the deploy script) are not loaded. The model runs tests only through the harness-written pytest wrapper {pytest}, which runs pytest inside the bwrap sandbox below. The child env is built from env_names only: no DB, broker or provider credential reaches the model or its Bash.",
+    "bin": "/home/johnclaw/.local/bin/claude",
+    "model": null,
+    "permission_mode": "dontAsk",
+    "tools": [
+      "Read",
+      "Edit",
+      "Write",
+      "Glob",
+      "Grep",
+      "Bash"
+    ],
+    "allowed_tools": [
+      "Read",
+      "Edit",
+      "Write",
+      "Glob",
+      "Grep",
+      "Bash({pytest}:*)",
+      "Bash(git diff:*)",
+      "Bash(git status:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)"
+    ],
+    "disallowed_tools": [
+      "WebFetch",
+      "WebSearch",
+      "Bash(git push:*)",
+      "Bash(git commit:*)",
+      "Bash(git reset:*)",
+      "Bash(git checkout:*)",
+      "Bash(gh:*)",
+      "Bash(crontab:*)",
+      "Bash(systemctl:*)",
+      "Bash(psql:*)",
+      "Bash(curl:*)",
+      "Bash(bash:*)",
+      "Bash(sh:*)",
+      "Bash(python:*)",
+      "Bash(python3:*)",
+      "Bash(rm:*)",
+      "Bash(git config:*)",
+      "Read(**/.env)",
+      "Read(**/.env.*)",
+      "Read(~/.cursor/**)",
+      "Read(~/.claude/**)",
+      "Read(~/trade-ai-releases/**)"
+    ],
+    "env_names": [
+      "HOME",
+      "PATH",
+      "USER",
+      "LOGNAME",
+      "LANG",
+      "LC_ALL",
+      "TERM",
+      "TMPDIR"
+    ],
+    "timeout_s": 1500,
+    "setting_sources": "project"
+  },
+  "sandbox": {
+    "_why": "pytest executes model-written code. Every test run (the model's, red-first, targeted, the PR-profile CI) runs under bwrap: own network namespace (no localhost Postgres, no n8n, no Telegram, no provider), /run and /tmp replaced, the filesystem read-only except the job's worktrees, the repo's git admin dir and its scratch state; release trees, persistent state, guard ledgers, Claude/gh/ssh credentials and .env files hidden. enabled=true with bwrap missing fails the job (sandbox_unavailable); it never runs unsandboxed.",
+    "enabled": true,
+    "bwrap": "/usr/bin/bwrap",
+    "hide_paths": [
+      "{home}/trade-ai-releases",
+      "{home}/.cursor",
+      "{home}/.claude",
+      "{home}/.config/gh",
+      "{home}/.ssh",
+      "{home}/.git-credentials",
+      "{home}/.pgpass",
+      "{home}/.n8n",
+      "{repo_root}/.env",
+      "{repo_root}/.env.local",
+      "{repo_root}/data",
+      "{repo_root}/logs"
+    ]
+  },
+  "iteration": {
+    "max_iterations": 4,
+    "max_minutes": 90,
+    "max_cost_usd": 12.0,
+    "per_iteration_budget_usd": 4.0,
+    "stop_on_same_failing_set": 2,
+    "test_timeout_s": 900,
+    "ci_timeout_s": 1800,
+    "ci_argv": [
+      "{python}",
+      "scripts/run_cio_hardening_ci.py",
+      "--profile",
+      "pr",
+      "--base",
+      "{base_sha}",
+      "--include-worktree",
+      "--no-tail"
+    ],
+    "previous_output_tail_chars": 6000
+  },
+  "diff_guard": {
+    "_why": "A diff matching any refuse pattern is refused by code before anything is committed (AGENTS.md section 0, section 17, section 24.5-24.7). Model text cannot widen this list: the fixer refuses any diff touching this file or its own code.",
+    "max_files_changed": 8,
+    "max_lines_changed": 600,
+    "refuse_paths": [
+      "AGENTS.md",
+      "CLAUDE.md",
+      "AI_WORK_POLICY.md",
+      "GEMINI.md",
+      ".cursorrules",
+      ".cursor/*",
+      ".claude/*",
+      ".githooks/*",
+      ".github/*",
+      "bin/*",
+      "config/self_heal_fixer.json",
+      "scripts/self_heal_fixer.py",
+      "scripts/lib/self_heal_fixer.py",
+      "tests/fixtures/self_heal_fixer/*",
+      "tests/test_self_heal_fixer_*",
+      "scripts/check_*.py",
+      "scripts/lib/guard_*.py",
+      "scripts/lib/tradeai_push_budget.py",
+      "scripts/lib/test_impact.py",
+      "config/test_impact*",
+      "config/ci_*",
+      "*allowlist*",
+      "*baseline*",
+      "*chokepoint*",
+      "*ratchet*",
+      "*permission*",
+      "*approval*",
+      "config/lane_registry.json",
+      "config/lane_cutover_policy.json",
+      "config/n8n_*",
+      "*crontab*",
+      "config/systemd/*",
+      "*.service",
+      "*.timer",
+      "*.env",
+      "*.env.*",
+      ".env*",
+      "*credential*",
+      "*secret*",
+      "*token_store*",
+      "*cookies*",
+      "*schwab*",
+      "*alpaca*",
+      "*moomoo*",
+      "*broker*",
+      "*order*",
+      "*execution*",
+      "*2fa*",
+      "scripts/lib/cio_instrument_record.py",
+      "sql/*",
+      "*migration*",
+      "tests/conftest.py",
+      "conftest.py",
+      "pytest.ini",
+      "pyproject.toml",
+      "setup.cfg",
+      "tox.ini"
+    ],
+    "append_only_paths": [
+      "scripts/run_cio_hardening_ci.py"
+    ],
+    "append_only_line_re": "^\\s*(?:\"[^\"\\\\]*\"|[()\\[\\],\\s])*(#.*)?$",
+    "test_path_re": "^tests/.*\\.py$",
+    "weakening_added_re": "(pytest\\.mark\\.(skip|skipif|xfail)|pytest\\.skip\\(|pytest\\.xfail\\(|unittest\\.skip|@skip|importorskip|--deselect|-k\\s+not\\b)",
+    "require_new_or_changed_test": true
+  },
+  "intake": {
+    "_why": "This lane is the CONSUMER of the N8nCodeDefect@v1 contract published by the self-heal diagnoser (scripts/n8n_failure_diagnosis.py code_defect_hook, PR #1828): each diagnosis record's code_defect field in diagnoses_rel and each escalation's fix_path, consumer claude_code_iterative_fix. One job per defect_id (lane + signature + episode); the producer's store is read-only to the consumer and the consumption is recorded in this lane's own state. Evidence: the failed run named by evidence.failed_run_id, from the coordination ledger opened read-only.",
+    "diagnosis_state_rel": "data/runtime/n8n_failure_diagnosis_state.json",
+    "ledger_rel": "data/governance/n8n_coordination_ledger.sqlite",
+    "failure_class": "code_error",
+    "stderr_tail_chars": 4000,
+    "refuse_lane_patterns": [
+      "*schwab*",
+      "*alpaca*",
+      "*moomoo*",
+      "*broker*",
+      "*order*",
+      "*stop*",
+      "*execution*",
+      "*options-lifecycle*",
+      "*defense-execution*"
+    ],
+    "retry_cooldown_hours": 72,
+    "contract_schema": "N8nCodeDefect@v1",
+    "consumer": "claude_code_iterative_fix",
+    "diagnoses_rel": "data/runtime/n8n_diagnoses/diagnoses.jsonl",
+    "diagnoses_tail_lines": 5000
+  },
+  "state": {
+    "state_rel": "data/runtime/self_heal_fixer_state.json",
+    "receipt_rel": "data/runtime/self_heal_fixer_last.json",
+    "evidence_rel": "data/runtime/self_heal_fixer",
+    "escalations_rel": "data/runtime/self_heal_fixer_escalations.jsonl",
+    "repair_memory_rel": "data/runtime/self_heal_fixer/repair_memory.jsonl"
+  },
+  "lifecycle": {
+    "release_current_sha_file": "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/GIT_SHA"
+  }
+}
