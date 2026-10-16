@@ -1095,6 +1095,13 @@ GATES = [
         "active_trader_momentum_alerts_20261004",
         ["tests/test_active_trader_momentum_alerts_20261004.py"],
     ),
+    # Telegram provenance footer ("· via n8n <lane> <HH:MM>" / "· via cron <lane>") + an explicit catalyst line on
+    # every Active Trader alert via the data broker (operator 2026-10-16: "how do i know whats n8n did", "some
+    # scalp and active traders didn't have catalyst").
+    (
+        "telegram_provenance_at_catalyst_20261016",
+        ["tests/test_telegram_provenance_and_at_catalyst_20261016.py"],
+    ),
     # Active Trader ARMED quality + stand-down + Trade-AI verdict + recorder reconnect (operator 2026-10-09:
     # 18 of 19 ARMED alerts never fired; ARMED printed last price as entry; dedupe keyed on price).
     (

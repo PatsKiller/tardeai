@@ -443,6 +443,7 @@ def build_message(c: Candidate, kind: str, l2: dict, tape: dict, decision: dict)
     if tape:
         lines.append(f"tape {tape.get('source')}: {_pct(tape.get('buy_ratio'))} buys of {tape.get('prints', 0)} prints")
     lines.append(trade_ai_line(c.trade_ai))
+    lines.append(catalyst_line(c.symbol, c.trade_ai, c.session_date))
     lines.append(f"data age: quote {_u(decision.get('quote_age_s'), 0, 's')} · book {_u(l2.get('age_s'), 0, 's')}"
                  + (f" · tape {_u(tape.get('age_s'), 0, 's')}" if tape else ""))
     base = _cc_base()
@@ -471,6 +472,66 @@ def trade_ai_line(t: Optional[Mapping[str, Any]]) -> str:
     return (f"Trade-AI today: {decision}" + (f" {hhmm}" if hhmm else "")
             + (" · not tradeable" if t.get("not_tradeable") else "")
             + facts_bit)
+
+
+def _trade_ai_catalyst(t: Optional[Mapping[str, Any]]) -> tuple[Optional[str], Optional[str]]:
+    """(text, source) from today's Trade-AI scan row: setup_evidence.catalyst first, then the raw column."""
+    if not t:
+        return None, None
+    facts = t.get("setup_evidence") if isinstance(t.get("setup_evidence"), Mapping) else None
+    cat = facts.get("catalyst") if facts is not None and isinstance(facts.get("catalyst"), Mapping) else {}
+    day_cat = t.get("day_catalyst") if isinstance(t.get("day_catalyst"), Mapping) else {}
+    text = cat.get("text") or t.get("catalyst") or day_cat.get("text")
+    source = cat.get("source") or t.get("catalyst_source") or day_cat.get("source")
+    text = str(text).strip() if text else None
+    return (text or None), (str(source).strip() if source else None)
+
+
+def _broker_catalyst(symbol: str, day: Optional[str]) -> Optional[dict]:
+    """Hermes scalp-catalyst research through the Command Center data broker (lib.data_broker.scalp_list).
+    Zero provider calls: the broker reads the researcher's published store. None when unavailable."""
+    if not symbol or not day:
+        return None
+    try:
+        try:
+            from lib.data_broker.scalp_list import get_scalp_catalyst  # type: ignore
+        except ModuleNotFoundError:
+            from scripts.lib.data_broker.scalp_list import get_scalp_catalyst  # type: ignore
+        return get_scalp_catalyst(symbol, day)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def catalyst_line(symbol: str, trade_ai: Optional[Mapping[str, Any]], day: Optional[str], *,
+                  broker_fn=None) -> str:
+    """One explicit catalyst line on every Active Trader alert (operator 2026-10-16: "some scalp and active
+    traders didn't have catalyst"). Before this the catalyst rode inside trade_ai_line only, so the fast loop's
+    alerts (no same-day scan attached) and scans with an empty catalyst said nothing at all.
+
+    Order: today's Trade-AI scan catalyst -> Hermes scalp research via the data broker -> an explicit
+    "catalyst: none found (<reason>)". The line starts with "catalyst:" so the transport's evidence appendix
+    does not repeat an UNKNOWN catalyst block (lib/momentum_setup_evidence.enrich_active_trader_notification)."""
+    text, source = _trade_ai_catalyst(trade_ai)
+    if text:
+        return f"catalyst: {text[:120]}" + (f" · {str(source)[:30]}" if source else " · Trade-AI scan")
+    rec = (broker_fn or _broker_catalyst)(symbol, day)
+    status = (rec or {}).get("status")
+    at = str((rec or {}).get("researched_at") or "")
+    hhmm = at[11:16] if len(at) >= 16 else ""
+    if status == "FOUND":
+        summary = (rec.get("summary") or rec.get("catalyst_type") or "").strip()
+        return (f"catalyst: {summary[:120]} · Hermes {rec.get('catalyst_type')}"
+                + (f" {hhmm}" if hhmm else ""))
+    scan_bit = "scan had no catalyst" if trade_ai else "no same-day Trade-AI scan"
+    if status == "NONE_FOUND":
+        reason = f"Hermes researched {hhmm} — no clear catalyst".replace("  ", " ")
+    elif status == "NOT_RESEARCHED":
+        reason = f"not in today's Hermes scalp research; {scan_bit}"
+    elif status == "STORE_MISSING":
+        reason = f"no Hermes scalp research today; {scan_bit}"
+    else:
+        reason = f"catalyst lookup unavailable; {scan_bit}"
+    return f"catalyst: none found ({reason})"
 
 
 def _cc_base() -> str:
