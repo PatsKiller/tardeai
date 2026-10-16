@@ -177,12 +177,58 @@ def run(*, apply: bool, client: GatewayClient | None, enqueue: Enqueue, root: Pa
                "mode": "apply" if apply else "dry-run", "served_sha": sha, "state_root": str(root), "gateway": gateway,
                "cap": cap, "enqueued_today": already + enqueued, "listed": len(items), "requests": rows,
                "ok": (not apply) or all(r.get("state") not in {"UNREACHABLE", "UNKNOWN"} for r in rows)}
+    output = lane_output(rows, enqueued=enqueued, apply=apply, has_client=client is not None,
+                         list_state=(gateway.get("list") or {}).get("state"))
     if apply:
         receipt_path.parent.mkdir(parents=True, exist_ok=True)
         tmp = receipt_path.with_suffix(".json.tmp")
         tmp.write_text(json.dumps(receipt, indent=1, default=str) + "\n", encoding="utf-8")
         os.replace(tmp, receipt_path)
+        _write_lane_receipt(receipt, output, root=root, started_at=now)
+    else:  # dry run: no receipt (AGENTS.md §6); the fields a real run would record, on stderr
+        print("LANE_OUTPUT " + json.dumps(output, sort_keys=True), file=sys.stderr)
     return receipt
+
+
+#: LaneRunReceipt@v2 lane id (the executor reads data/runtime/lane_attempts/<LANE_RECEIPT_ID>/<run_id>.json).
+LANE_RECEIPT_ID = "n8n-research-intake-consumer"
+
+
+def lane_output(rows: list[dict[str, Any]], *, enqueued: int, apply: bool, has_client: bool,
+                list_state: str | None) -> dict[str, Any]:
+    """LaneRunReceipt@v2 output fields (n8n expected_output, unit: research_request events enqueued into
+    ri_research_queue). produced = rows newly queued this run; attempted = open events listed. Nothing to enqueue
+    (no open event, or every one refused with its typed reason / already queued) = ``no_new_input``. An apply run
+    with no gateway key is ``no_credentials``; a gateway list that failed is ``dependency_unavailable`` (fatal)."""
+    skipped: dict[str, int] = {}
+    for r in rows:
+        if r.get("action") == "refuse":
+            parts = str(r.get("reason") or "unknown").split(":")  # typed_refusal:<code>[:detail]
+            key = ("refused_" + (parts[1] if len(parts) > 1 else parts[0]))[:48]
+            skipped[key] = skipped.get(key, 0) + 1
+        elif (r.get("enqueue_result") or {}).get("already"):
+            skipped["already_queued"] = skipped.get("already_queued", 0) + 1
+    lost = sum(1 for r in rows if r.get("state") in {"UNREACHABLE", "UNKNOWN"})
+    if lost or list_state in {"UNREACHABLE", "REFUSED"}:
+        skipped["dependency_unavailable"] = max(lost, 1)
+    if apply and not has_client:
+        skipped["no_credentials"] = 1
+    if not apply:
+        skipped["dry_run"] = len(rows)
+    return {"produced_count": int(enqueued), "attempted_count": max(len(rows), int(enqueued)),
+            "skipped_reasons": skipped, "empty_reason": None if enqueued else "no_new_input"}
+
+
+def _write_lane_receipt(receipt: dict[str, Any], output: dict[str, Any], *, root: Path, started_at: datetime) -> None:
+    """The LaneRunReceipt (v1 + v2 output fields; immutable v2 attempt copy under n8n) next to the consumer's own
+    N8nResearchIntake@v1 receipt. Never raises."""
+    from scripts.lib.lane_last_receipt import write_lane_receipt
+
+    write_lane_receipt(LANE_RECEIPT_ID, ok=bool(receipt.get("ok")), exit_code=0 if receipt.get("ok") else 1,
+                       started_at=started_at, script="n8n_research_intake_consumer.py",
+                       path=root / "data" / "runtime" / f"{LANE_RECEIPT_ID}_last.json",
+                       summary={"listed": receipt.get("listed"), "enqueued_today": receipt.get("enqueued_today")},
+                       output=output)
 
 
 def main(argv: list[str] | None = None, *, client: GatewayClient | None = None, enqueue: Enqueue | None = None) -> int:

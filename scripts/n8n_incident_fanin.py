@@ -1443,6 +1443,47 @@ def _flood_policy(root: Path, findings: list[dict[str, Any]]) -> dict[str, Any]:
         return {"applied": False, "mode": "error", "error": f"{type(exc).__name__}: {str(exc)[:120]}"}
 
 
+#: LaneRunReceipt@v2 lane id (the executor reads data/runtime/lane_attempts/<LANE_RECEIPT_ID>/<run_id>.json).
+LANE_RECEIPT_ID = "n8n-incident-fanin"
+#: Row states that mean the incident did NOT land on the gateway ledger this run.
+_NOT_LANDED = frozenset({"UNREACHABLE", "REFUSED", "UNKNOWN", "DRY_RUN"})
+
+
+def lane_output(rows: list[dict[str, Any]], *, apply: bool, has_key: bool) -> dict[str, Any]:
+    """LaneRunReceipt@v2 output fields (n8n expected_output, unit: open incidents posted/walked on the gateway).
+
+    produced = incidents the ledger holds after this run (accepted and walked, or already held / consumed);
+    attempted = open incidents found. No open incident = ``no_new_input`` (the contract's allowed empty reason).
+    An apply run without the gateway key, or an incident the gateway could not take, is ``no_credentials`` /
+    ``dependency_unavailable`` (fatal). A dry run reports what it would attempt (produced 0, nothing posted)."""
+    landed = sum(1 for r in rows if r.get("state") not in _NOT_LANDED)
+    skipped: dict[str, int] = {}
+    lost = sum(1 for r in rows if r.get("state") in {"UNREACHABLE", "UNKNOWN"})
+    refused = sum(1 for r in rows if r.get("state") == "REFUSED")
+    if lost:
+        skipped["dependency_unavailable"] = lost
+    if refused:
+        skipped["gateway_refused"] = refused
+    if apply and not has_key:
+        skipped["no_credentials"] = 1
+    if not apply:
+        skipped["dry_run"] = len(rows)
+    return {"produced_count": landed, "attempted_count": len(rows), "skipped_reasons": skipped,
+            "empty_reason": "no_new_input" if not rows else None}
+
+
+def _write_lane_receipt(receipt: dict[str, Any], output: dict[str, Any], *, started_at: datetime) -> None:
+    """The LaneRunReceipt (v1 + v2 output fields; immutable v2 attempt copy under n8n) next to the fan-in's own
+    N8nIncidentFanin@v1 receipt, which stays the artifact the notifier reads. Never raises."""
+    from scripts.lib.lane_last_receipt import write_lane_receipt
+
+    write_lane_receipt(LANE_RECEIPT_ID, ok=bool(receipt.get("ok")), exit_code=0 if receipt.get("ok") else 1,
+                       started_at=started_at, script="n8n_incident_fanin.py",
+                       path=Path(receipt["state_root"]) / "data" / "runtime" / f"{LANE_RECEIPT_ID}_last.json",
+                       summary={"open": receipt.get("open"), "recovered": len(receipt.get("recovered") or [])},
+                       output=output)
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
     g = ap.add_mutually_exclusive_group(required=True)
@@ -1566,11 +1607,15 @@ def main(argv: list[str] | None = None) -> int:
         "relay_counts": dict(RELAY_COUNTS) or prev.get("relay_counts") or None,
         "ok": (not args.apply) or all(r.get("state") not in {"UNREACHABLE", "REFUSED", "UNKNOWN"} for r in rows),
     }
+    output = lane_output(rows, apply=bool(args.apply), has_key=bool(gateway.get("has_key")))
     if args.apply:
         out.parent.mkdir(parents=True, exist_ok=True)
         tmp = out.with_suffix(".json.tmp")
         tmp.write_text(json.dumps(receipt, indent=1, default=str) + "\n", encoding="utf-8")
         os.replace(tmp, out)
+        _write_lane_receipt(receipt, output, started_at=now)
+    else:  # dry run: no receipt (AGENTS.md §6); the fields a real run would record, on stderr
+        print("LANE_OUTPUT " + json.dumps(output, sort_keys=True), file=sys.stderr)
     print(
         json.dumps(
             {
