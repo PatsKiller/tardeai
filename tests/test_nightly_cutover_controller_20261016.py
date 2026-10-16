@@ -29,6 +29,8 @@ from scripts import nightly_cutover_controller as CTL  # noqa: E402
 from scripts import nightly_cutover_cron_edit as EDIT  # noqa: E402
 from scripts import n8n_cutover_wave as W  # noqa: E402
 
+#: alarm_firing_coverage: the controller's one summary send is exercised through the real chokepoint below.
+COVERS = ["scripts/nightly_cutover_controller.py"]
 ET = ZoneInfo("America/New_York")
 SHA = "a" * 40
 NOW = datetime(2026, 10, 16, 23, 30, tzinfo=timezone.utc)      # Fri 19:30 ET
@@ -780,3 +782,19 @@ def test_controller_lane_is_registered_disarmed():
     assert e["command"] == ["$PY", "scripts/nightly_cutover_controller.py"]
     assert e["dry_run_arg"] == ["--dry-run"] and e["live_arg"] == ["--apply"]
     assert not any("cron_edit" in str(t) for t in e["command"] + e["live_arg"])   # n8n never calls the edit capability
+
+
+# ── the one summary line reaches the transport (alarm firing coverage) ─────────────────────────────────────────────
+
+def test_summary_line_fires_through_the_chokepoint(alarm_capture):
+    rc = {"mode": "apply", "date": "2026-10-16", "applied": [{"lane_id": "alpha-lane"}],
+          "plan": {"lanes": [{"lane_id": "beta-lane", "held": "no_live_n8n_run"}]}, "cohort_stop": None,
+          "receipt_path": "/x/run-20261016T230000Z-apply.json"}
+    line = CTL.summary_line(rc)
+    assert line == ("nightly-cutover apply 2026-10-16: cut over 1 (alpha-lane); held 1; stop none; "
+                    "receipt run-20261016T230000Z-apply.json")
+    # Production config routes it P3 (digest, archived: never the transport). The priority is config, so the firing
+    # test drives the same call site with a deliverable priority and proves the line reaches the transport.
+    cfg = dict(NC.DEFAULT_CONFIG, summary={"priority": "P1", "producer": NC.LANE_ID})
+    CTL.notify(line, cfg)
+    alarm_capture.assert_fired(contains="nightly-cutover apply 2026-10-16: cut over 1")

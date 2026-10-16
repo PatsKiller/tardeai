@@ -292,10 +292,10 @@ def summary_line(rc: Mapping[str, Any]) -> str:
 
 def notify(line: str, config: Mapping[str, Any]) -> bool:
     """At most ONE line per run, through the host chokepoint as a notification intent (P3 = digest)."""
-    from scripts.telegram_alert import send_telegram
+    from telegram_alert import send_telegram  # type: ignore  # the one chokepoint module (scripts/ on sys.path)
 
     s = config.get("summary") or {}
-    return bool(send_telegram(line, priority=str(s.get("priority") or "P3"),
+    return bool(send_telegram(line, message_class="report", priority=str(s.get("priority") or "P3"),
                               producer=str(s.get("producer") or NC.LANE_ID)))
 
 
