@@ -50,6 +50,10 @@ GATES = [
     # entry point per lane in a fake n8n attempt, DB/provider/network stubbed: produced / empty_allowed / RUN_FAILED
     # empty_output on a fatal skip. Hermetic: TRADEAI_STATE_ROOT = tmp.
     ("lane_produced_count_cw_5_20261015", ["tests/test_lane_produced_count_cw_5_20261015.py"]),
+    # ANCHOR: LANE_USEFUL_OUTPUT_PROOF_20261016 — the 5 lanes #1831 dropped from "proven" (crontab snapshot, incident
+    # fan-in, pilot dispatch, research intake, insight extractor) write LaneRunReceipt@v2 produced_count and opt in;
+    # watchlist-enrichment-sweep starts no batch after its budget (deadline_deferred). Hermetic: state root = tmp.
+    ("lane_useful_output_proof_20261016", ["tests/test_lane_useful_output_proof_20261016.py"]),
     ("refactor_shard_07_20261011", ["tests/test_refactor_shard_07_20261011.py"]),
     # ANCHOR: LANE_CUTOVER_POLICY_20261016 — AGENTS 12.0.0 §23.25 gate alignment (operator approval 2026-10-16):
     # config/lane_cutover_policy.json lifts stay_on_cron / KEEP_ON_CRON / soft wrapper+sender tokens for approved
@@ -66,6 +70,15 @@ GATES = [
     # worker-seconds, executor concurrency); n8n_shadow_policy (no continuous dry run on accepted lanes, regression
     # canary only on a config or entry-script change, shadow cadence proposals report-only). Hermetic: tmp ledger.
     ("n8n_consolidation_cohort1_20261016", ["tests/test_n8n_consolidation_cohort1_20261016.py"]),
+    # ANCHOR: SELF_HEAL_CLAUDE_FIXER_20261016 — operator 2026-10-16: self-heal CODE DEFECTS go to an iterative
+    # headless Claude Code fixer (scripts/self_heal_fixer.py), not the governed LLM bridge. Lifecycle (a PR is not a
+    # heal), intake dedupe/cooldown/refused lanes, diff guard (protected paths, test weakening, append-only CI
+    # registration), dontAsk tool allowlist + credential-free env, the iteration loop against tmp git repos with a
+    # mocked claude CLI (red-first, feedback, no-progress stop, refusal, push only behind the 24.11 policy gate),
+    # lifecycle advance, and the daily-incubator-refresh dry run. Consumer of N8nCodeDefect@v1 (#1828) built with the
+    # producer's own code_defect_hook; independent evaluator (backend claims never read; PR-head CI); static selector,
+    # repair memory + shadow router; a second backend kind through the same acceptance scenario. Never a real model.
+    ("self_heal_claude_fixer_20261016", ["tests/test_self_heal_fixer_20261016.py"]),
     (
         "options_workflow",
         [

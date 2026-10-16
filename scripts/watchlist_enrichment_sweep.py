@@ -13,7 +13,11 @@ computations (no new indicators):
 HARD: never reads/writes scalp screeners; never writes holdings.json; idempotent; fail-closed
 (enrichment failure → leave prior values, mark nothing fake, log). Runs under the app role.
 
-  python3 scripts/watchlist_enrichment_sweep.py --once [--limit N] [--dry-run]
+  python3 scripts/watchlist_enrichment_sweep.py --once [--limit N] [--budget-s S] [--dry-run]
+
+Bounded (2026-10-16): a run starts no new batch once ``--budget-s`` seconds (DEFAULT_BUDGET_S) have passed. The
+symbols it did not reach are reported as ``deadline_deferred`` and stay stalest-first, so the next run picks them up
+first (each batch commits on its own; re-enriching a row overwrites it, so a partial or repeated run is idempotent).
 
 --dry-run reads the selection and the CACHED enrichment only: no Finviz fetch (enrich_tickers), no yfinance
 price fallback and its market_quotes backfill, no watchlist_items UPDATE, no ticker_prices sync, no receipt.
@@ -21,7 +25,7 @@ A real run writes <state_root>/data/runtime/watchlist-enrichment-sweep_last.json
 exits 1 when symbols were selected but none could be updated.
 """
 from __future__ import annotations
-import argparse, sys
+import argparse, sys, time
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -33,6 +37,11 @@ from watchlist_priority import (
 )
 
 BATCH = 15  # Finviz-Elite rate-limit aware
+#: Wall-clock budget for one sweep (seconds): no new batch starts after it. Measured 2026-10-16 (logs/watchlist_sweep.log,
+#: 45 runs 10-14..10-16): a run takes 150-985 s and one batch's Finviz refresh alone takes up to 186 s, while the n8n
+#: lane's timeout_s is 900 (`timeout -k 30 900`). 600 s + one worst batch + the ticker_prices sync ends inside 900 s;
+#: the 15:30 ET 10-16 live run hit the 900 s kill mid-batch (RUN_TIMEOUT, effect UNKNOWN) without this bound.
+DEFAULT_BUDGET_S = 600
 
 
 def _conn():
@@ -95,8 +104,12 @@ def _num(v):
         return None
 
 
-def enrich_symbols(symbols: list[str], *, dry: bool = False) -> dict:
-    """Enrich explicit symbols (used by manual watchlist refresh in CC v3)."""
+def enrich_symbols(symbols: list[str], *, dry: bool = False, deadline: float | None = None,
+                   clock=time.monotonic) -> dict:
+    """Enrich explicit symbols (used by manual watchlist refresh in CC v3).
+
+    ``deadline`` (a ``clock()`` value): no new batch starts at or after it (the first batch always runs); the symbols
+    not reached are returned as ``deferred`` and nothing is written for them. None = no bound (manual refresh path)."""
     from finviz_enrichment import enrich_tickers, get_enriched
     from open_trades_intelligence import _trend_label
     from setup_quality_prior import rsi_band
@@ -112,8 +125,15 @@ def enrich_symbols(symbols: list[str], *, dry: bool = False) -> dict:
         _receipt_lib().enforce_readonly(conn)
     cur = conn.cursor()
     enriched = 0
+    reached: list[str] = []
+    deferred = 0
     for i in range(0, len(syms), BATCH):
+        if deadline is not None and i and clock() >= deadline:
+            deferred = len(syms) - i
+            print(f"  [sweep] budget reached: {deferred} symbol(s) deferred to the next run (stalest-first)")
+            break
         batch = syms[i:i + BATCH]
+        reached.extend(batch)
         if not dry:  # a dry run reads the cache only: no Finviz Elite fetch, no cache write
             try:
                 enrich_tickers(batch, project_root=str(PROJECT_ROOT))
@@ -163,17 +183,21 @@ def enrich_symbols(symbols: list[str], *, dry: bool = False) -> dict:
         if not dry:
             conn.commit()
     # Persist intraday quotes into ticker_prices so strategy cards / agents see close history.
-    if not dry and syms:
+    if not dry and reached:
         try:
             from price_db_sync import sync_quotes_to_ticker_prices
-            sync_quotes_to_ticker_prices(syms)
+            sync_quotes_to_ticker_prices(reached)
         except Exception as e:
             print(f"  [sweep] ticker_prices sync failed (non-fatal): {str(e)[:80]}")
     conn.close()
-    return {"total": len(syms), "enriched": enriched, "symbols": syms}
+    return {"total": len(syms), "enriched": enriched, "symbols": syms, "deferred": deferred}
 
 
-def sweep(limit=None, dry=False):
+def sweep(limit=None, dry=False, budget_s=None, clock=time.monotonic):
+    """``budget_s``: wall-clock bound for this sweep (None = DEFAULT_BUDGET_S; <= 0 = unbounded)."""
+    started = clock()
+    budget = DEFAULT_BUDGET_S if budget_s is None else budget_s
+    deadline = started + budget if budget and budget > 0 else None
     conn = _conn()
     if dry:
         _receipt_lib().enforce_readonly(conn)
@@ -223,22 +247,26 @@ def sweep(limit=None, dry=False):
           + (f" + {len(tail)} tail rotation" if tail else ""))
     conn.close()
     if not symbols:
-        print("[sweep] no active watchlist items"); return {"total": 0, "enriched": 0}
+        print("[sweep] no active watchlist items"); return {"total": 0, "enriched": 0, "deferred": 0}
 
-    result = enrich_symbols(symbols, dry=dry)
-    enriched = result["enriched"]
-    print(f"[sweep] {'would enrich' if dry else 'enriched'} {enriched}/{len(symbols)} active watchlist items")
-    return {"total": len(symbols), "enriched": enriched}
+    result = enrich_symbols(symbols, dry=dry, deadline=deadline, clock=clock)
+    enriched, deferred = result["enriched"], result.get("deferred", 0)
+    print(f"[sweep] {'would enrich' if dry else 'enriched'} {enriched}/{len(symbols)} active watchlist items"
+          + (f" ({deferred} deferred: budget {budget:g}s)" if deferred else "")
+          + f" in {clock() - started:.0f}s")
+    return {"total": len(symbols), "enriched": enriched, "deferred": deferred}
 
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--once", action="store_true")
     ap.add_argument("--limit", type=int)
+    ap.add_argument("--budget-s", type=float, default=DEFAULT_BUDGET_S,
+                    help=f"start no new batch after this many seconds (default {DEFAULT_BUDGET_S}; 0 = unbounded)")
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args(argv)
     if a.dry_run:
-        res = sweep(limit=a.limit, dry=True)
+        res = sweep(limit=a.limit, dry=True, budget_s=a.budget_s)
         _receipt_lib().dry_run_report(LANE_ID, {"selected": res["total"], "would_update": res["enriched"]},
                                       would_write=["watchlist_items (rsi/trend/score/price...)",
                                                    "data/state/ticker_enrichment_cache.json (Finviz fetch)",
@@ -247,7 +275,7 @@ def main(argv=None) -> int:
     from datetime import datetime, timezone
     started = datetime.now(timezone.utc).isoformat()
     try:
-        res = sweep(limit=a.limit, dry=False)
+        res = sweep(limit=a.limit, dry=False, budget_s=a.budget_s)
     except Exception as exc:
         _receipt_lib().write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
                                           script="watchlist_enrichment_sweep.py",
@@ -258,7 +286,8 @@ def main(argv=None) -> int:
     rc = 1 if res["total"] and not res["enriched"] else 0
     _receipt_lib().write_lane_receipt(LANE_ID, ok=(rc == 0), exit_code=rc, started_at=started,
                                       script="watchlist_enrichment_sweep.py",
-                                      summary={"selected": res["total"], "enriched": res["enriched"]},
+                                      summary={"selected": res["total"], "enriched": res["enriched"],
+                                               **({"deferred": res["deferred"]} if res.get("deferred") else {})},
                                       output=lane_output(res))
     return rc
 
@@ -268,7 +297,10 @@ def lane_output(res: dict) -> dict:
     rsi/trend/score/price). attempted = symbols selected (stalest first, capped). The selection is never empty
     while the watchlist has active/researched items, so an empty selection is ``universe_empty_unexpected``."""
     total, enriched = int(res.get("total") or 0), int(res.get("enriched") or 0)
-    skipped = {"not_enriched": max(total - enriched, 0)}
+    deferred = int(res.get("deferred") or 0)
+    skipped = {"not_enriched": max(total - enriched - deferred, 0)}
+    if deferred:
+        skipped["deadline_deferred"] = deferred  # budget reached; the next run takes them first (not fatal)
     if total == 0:
         skipped["universe_empty_unexpected"] = 1
     return {"produced_count": enriched, "attempted_count": max(total, enriched), "skipped_reasons": skipped,
