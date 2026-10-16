@@ -371,10 +371,23 @@ def main(argv=None):
             summary.update(evidence=len(s.get("evidence", [])), conflicts=len(s.get("conflicts", [])),
                            source_kind=s.get("source_kind"), opening_bias=s.get("opening_bias"))
     except Exception as exc:
-        write_lane_receipt(lane, ok=False, exit_code=1, started_at=started, error=type(exc).__name__)
+        write_lane_receipt(lane, ok=False, exit_code=1, started_at=started, error=type(exc).__name__,
+                           output={"produced_count": 0, "attempted_count": 0, "skipped_reasons": {"dependency_unavailable": 1}})
         raise
-    write_lane_receipt(lane, ok=True, exit_code=0, started_at=started, summary=summary)
+    write_lane_receipt(lane, ok=True, exit_code=0, started_at=started, summary=summary, output=lane_output(summary))
     return 0
+
+
+def lane_output(summary: dict) -> dict:
+    """LaneRunReceipt@v2 output fields (n8n expected_output, unit: opening-intelligence snapshot appended to the
+    day's jsonl + latest.json, i.e. a --persist run). A DATA_INSUFFICIENT snapshot (no usable overnight source) is
+    persisted but not counted: ``no_new_input`` with a typed skip; the per-window monitor catches a run of them."""
+    persisted = bool(summary.get("persist")) and not summary.get("capability")
+    insufficient = summary.get("opening_bias") == DATA_INSUFFICIENT
+    produced = 1 if persisted and not insufficient else 0
+    return {"produced_count": produced, "attempted_count": 1 if persisted else 0,
+            "skipped_reasons": {"data_insufficient": int(persisted and insufficient)},
+            "empty_reason": None if produced else "no_new_input"}
 
 
 if __name__ == "__main__":

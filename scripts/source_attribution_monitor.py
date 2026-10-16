@@ -24,7 +24,9 @@ RAMP_DAYS = 5              # after this many healthy-overlap days, expect attrib
 # Copy only _ENV_KEYS: every env name this process reads (its local import closure; tests/
 # test_env_bootstrap_narrow_20261011.py pins it). The file also carries broker credentials (ALPACA_*, SCHWAB_*:
 # config/secret_registry.yaml), which this process must never hold (AGENTS §23.18, N8N_ONBOARDING_STANDARD §2.6).
-_ENV_KEYS = frozenset({"DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD"})
+# 2026-10-15: + the two state-root names lib.lane_last_receipt (the n8n LaneRunReceipt) resolves the receipt dir from.
+_ENV_KEYS = frozenset({"DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD",
+                       "TRADEAI_STATE_ROOT", "TRADEAI_PERSISTENT_STATE_ROOT"})
 for ln in (ROOT / ".env").read_text().splitlines():
     if "=" in ln and not ln.strip().startswith("#"):
         k, _, v = ln.partition("=")
@@ -39,8 +41,23 @@ def _db():
                             password=os.getenv("DB_PASSWORD"))
 
 
+LANE_ID = "source-attribution-monitor"
+
+
+def _write_lane_receipt(started: str, snap: dict) -> None:
+    """Real run only: data/runtime/source-attribution-monitor_last.json with LaneRunReceipt@v2 output fields
+    (n8n expected_output, unit: the snapshot appended to source_attribution_history.json -> produced_count 1)."""
+    sys.path.insert(0, str(ROOT / "scripts"))
+    from lib.lane_last_receipt import write_lane_receipt
+
+    write_lane_receipt(LANE_ID, ok=True, exit_code=0, started_at=started, script="source_attribution_monitor.py",
+                       summary={k: snap.get(k) for k in ("date", "overlap_pct", "status", "total_attributions")},
+                       output={"produced_count": 1, "attempted_count": 1, "skipped_reasons": {}})
+
+
 def main():
     dry = "--dry-run" in sys.argv
+    started = datetime.now(timezone.utc).isoformat()
     c = _db(); cur = c.cursor()
     cur.execute("""
         WITH traded AS (SELECT DISTINCT symbol FROM paper_trades WHERE entry_time>now()-interval '30 days')
@@ -118,6 +135,7 @@ def main():
         hist.append(snap); hist = hist[-90:]
         HIST.parent.mkdir(parents=True, exist_ok=True)
         HIST.write_text(json.dumps({"updated_at": snap["ts"], "snapshots": hist}, indent=2))
+        _write_lane_receipt(started, snap)
     out = {k: snap[k] for k in ("date", "overlap_pct", "traded_with_news_7d", "traded_30d",
           "sources_with_trades", "total_attributions", "healthy_overlap_streak_days", "status", "notes")}
     out["tier_counts"] = snap.get("tier_counts", {})

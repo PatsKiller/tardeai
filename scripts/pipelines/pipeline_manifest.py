@@ -208,7 +208,9 @@ def _validate_parallel(stage_name: str, stage: dict, steps: list) -> list[str]:
             errs.append(f"{where}: group {g} is not contiguous (step {st.get('id')})")
         if not order or order[-1] != g:
             order.append(g)
-        for lk in lock_paths(str(st.get("command") or "")):
+        # A step may name its own lock twice (an outer `flock -n L` around `safe_flock.sh L`, as cron runs it since
+        # cron-lock-wrappers-20261014); that is one step, not two steps sharing a lock.
+        for lk in dict.fromkeys(lock_paths(str(st.get("command") or ""))):
             other = locks.setdefault(g, {}).get(lk)
             if other:
                 errs.append(f"{where}: group {g} steps {other} and {st.get('id')} share lock {lk}")

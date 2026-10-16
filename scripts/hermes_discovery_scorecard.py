@@ -426,7 +426,7 @@ def main(argv=None) -> int:
     if not _db_available():
         print(f"[{LANE_ID}] Postgres unavailable — scorecard NOT written (an all-zero card would read 'steady')")
         write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started, script="hermes_discovery_scorecard.py",
-                           error="db_unavailable")
+                           error="db_unavailable", output={"produced_count": 0, "attempted_count": 0, "skipped_reasons": {"dependency_unavailable": 1}})
         return 1
     try:
         card = build_scorecard()
@@ -434,10 +434,13 @@ def main(argv=None) -> int:
         feed = write_outcome_feed(card)
     except Exception as exc:
         write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started, script="hermes_discovery_scorecard.py",
-                           error=f"{type(exc).__name__}: {exc}")
+                           error=f"{type(exc).__name__}: {exc}", output={"produced_count": 0, "attempted_count": 0, "skipped_reasons": {"dependency_unavailable": 1}})
         raise
+    # LaneRunReceipt@v2 output (n8n expected_output, unit: discovery scorecard documents written = the scorecard
+    # and the outcome feed; both are written or the run raises).
     write_lane_receipt(LANE_ID, ok=True, exit_code=0, started_at=started, script="hermes_discovery_scorecard.py",
-                       summary=_receipt_summary(card))
+                       summary=_receipt_summary(card),
+                       output={"produced_count": 2, "attempted_count": 2, "skipped_reasons": {}})
     if args.json:
         print(json.dumps(card, indent=2, default=str))
     else:

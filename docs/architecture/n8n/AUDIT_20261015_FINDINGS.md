@@ -1,5 +1,17 @@
 # Independent n8n architecture audit 2026-10-15 — findings tracker
 
+> **Superseded in part — operator directive 2026-10-15 "N8N Cutover Decision" (decision D11).** All lane families are
+> approved for n8n cutover except F07 (long-running daemons and `@reboot` services) and all `registry_systemd` assets,
+> which stay on the server unchanged (revisit at the next architecture review). Verbatim: "The rationale that these
+> workflows should remain host-side, cron-based, or external due to maturity, reliability, operational risk,
+> monitoring requirements, or similar concerns is not accepted as a blocker." "If any existing documentation,
+> standards, inventory notes, exception records, or implementation guidance state otherwise, consider that guidance
+> superseded." Every keep-on-cron / stay-on-cron / §23.14 / `pipeline_excluded_gate` / STAY_HOST / STAY EXTERNAL /
+> "not eligible for n8n" statement in this document is kept as history and is superseded for every non-F07,
+> non-`registry_systemd` lane. Current dispositions: `docs/implementation/n8n-maturity/LANE_DISPOSITION_20261015.csv`
+> (waves CD1-CD6); n8n schedules broker-family lanes but never holds a broker credential or calls an order route
+> itself (`docs/architecture/n8n/N8N_REFERENCE_ARCHITECTURE.md` §2a).
+
 ```
 Status:      LIVE tracker (informational; AGENTS.md is normative)
 as_of:       2026-10-15
@@ -34,7 +46,7 @@ built) · `FIX MERGED` (code merged, closure evidence not yet produced) · `CLOS
 
 | ID | Class | Evidence | Finding | Closure evidence (verbatim) | Owner role (to confirm) | Assignee | PR | Status |
 |---|---|---|---|---|---|---|---|---|
-| DD01 | P1 | New | Transitive sender/never contradiction: `trade-ai-scalp-live` → `continuous_runner` reaches raw Slack/WhatsApp-Twilio transports | "Mocked GO flow: no raw lane sends, one permitted intent, one owner delivery and failure/retry receipts." | communications | agent 3 (sender / restore / dead-man) | pending | IN PROGRESS |
+| DD01 | P1 | New | Transitive sender/never contradiction: `trade-ai-scalp-live` → `continuous_runner` reaches raw Slack/WhatsApp-Twilio transports | "Mocked GO flow: no raw lane sends, one permitted intent, one owner delivery and failure/retry receipts." | communications | agent 3 (sender / restore / dead-man) | pending (sender closure); ruling recorded in the DD01 ruling PR (n8n/dd01-operator-ruling-admit-lanes-20261015) | IN PROGRESS — scalp-lane raw senders removed 2026-10-15 (no allowlisted lane reaches a direct_sender); transitive lazy broker_module/order_placement reach ACCEPTED by operator ruling 2026-10-15 (see below) |
 | DD02 | P1 | New/Known | Caller identity and environment modes are not confinement: bridge caller auth `report` on self-asserted `X-TradeAI-Agent` (invalid mode → report); executor 91/103 lanes env `report`, 12 `enforce`; single uid | "No forged caller, key read, control/ledger write or privileged service manipulation under actual worker identity." | platform + bridge + operator (keys, uid split) | this PR (threat model + confinement packet) | this PR | SPEC — threat model, report-mode flip packet and env readiness measured; nothing flipped; implementation open |
 | DD03 | P1 | New | `p:`/legacy key admission and cross-scope duplicate false success | "Reject cross-lane/mode/process/step replay and forged slot before queue; outcomes match requested identity." | platform (identity) | agent 1 (identity / effects / relay) | pending | IN PROGRESS |
 | DD04 | P1 | New | Run Lane and host still decide retries | "No send/learn retry, long backoff honored, no parallel legacy work; real durable DLQ reference." | execution / flow | agent 1 | pending | IN PROGRESS |
@@ -52,6 +64,19 @@ built) · `FIX MERGED` (code merged, closure evidence not yet produced) · `CLOS
 | DD16 | P1 | Known/New | Framework not a fail-closed import gate; platform FAIL/partial can return zero | "Promotion gate independently requires critical platform, deployed manifest and semantic/runtime evidence." | trusted deployment + platform | agent 2 | pending | IN PROGRESS |
 | DD17 | P2 | Known | LLM route/action recheck/deferral missing; OAuth adapters exist but enablement unknown | "Permitted one-door route, enforced caller, serving/fallback/cost receipts and action refusal proof." | bridge + action owner | this PR (`N8N_LLM_STEP_ROUTE_SPEC.md`; enablement measured) | this PR (spec + doc correction) | SPEC — route not built |
 | DD18 | P2 | New/Known | Source copy drift and decision provenance incomplete | "Approved canonical text/version, normalized fingerprints and per-decision owner/ratification/test evidence." | Chief Architect + operator | this PR (decision ledger, canonical-copy rule §4); Agent A re-uploads Drive copies | this PR | IN PROGRESS — ledger done; Drive re-upload from final merged text pending |
+
+**DD01 operator ruling 2026-10-15 (operator-reviewed baseline entry).** Verbatim: "n8n ignor broker code it can't trade live ccontinue". Interpretation
+agreed with the Chief Architect: *transitive* reach to `broker_module` / `order_placement` — the lazy (function-level,
+`at_import=false`) chain `db_adapter -> holdings_guard -> schwab_position_sync -> schwab_transport` — is **accepted** for
+n8n-allowlisted lanes, because the trading lock (`scripts/lib/trading_lock.py` `assert_trading_unlocked`, the first
+statement of `schwab_transport.place_order`; LOCKED by default, unlock only by the operator unlock file) refuses every
+order placement regardless of caller. `direct_sender` stays forbidden with no exception (the frozen set stays empty).
+Recorded as entries in `config/n8n_lane_capability_baseline.json` **and** the reviewed frozen set
+`OPERATOR_RULING_DD01_20261015` in `tests/test_lane_transitive_capabilities_20261015.py` for six lanes:
+`build-symbol-profiles-at-0-19`, `indicator-engine`, `watchlist-entry-planner-limit`, `watchlist-entry-planner-scope`
+(deferred by train 2026-10-15 d, wiring restored) and `hermes-discovery-scorecard`, `wire-advisory-lessons` (#1761).
+The baseline stays shrink-only: any other new pair, and any stale entry, still fails the test. This does **not**
+close DD01 (its closure evidence is the mocked GO delivery flow); it is accepted residual risk (threat model RR11).
 
 The audit also notes (§17 last paragraph) that **DD02, DD11, DD12 and DD16 cover the already disclosed DB superuser,
 log-retention, drift-schedule and platform-hardening prerequisites**; their *effective* state must be verified on the
@@ -106,6 +131,11 @@ host rather than inferred from a workflow percentage.
 5. Never auto-reconcile in the other direction (AGENTS.md §0 rule 5): a Drive edit is reported, not merged back.
 
 ## 5. DD11 — critical delivery: required trace and current evidence
+
+*Operator directive 2026-10-15 "N8N Cutover Decision" (D11): F10 operator senders are approved for n8n cutover as
+"independent host P1 backstop + n8n-orchestrated primary"; DD11's trace requirement now applies to both paths, and
+the backstop must page without n8n. DD01 (never-list vs allowlisted lane) and DD12 (outside dead-man) are dependencies
+of the directive's broker (F09) and watchdog (F07w) waves.*
 
 Required chain (audit §12), each hop with a durable record joined by one id:
 

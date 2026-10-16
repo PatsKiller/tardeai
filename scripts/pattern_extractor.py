@@ -29,6 +29,15 @@ import logging
 import os
 import sys
 from collections import defaultdict
+
+LANE_ID = "pattern-extractor"
+
+if __name__ == "__main__" and "--dry-run" in sys.argv[1:]:
+    # n8n shadow wave LD-W1 (2026-10-15): an explicit --dry-run is an offline plan. It returns before the module-level
+    # .env load, the logs/ file handler and any DB connection. The old DB-reading dry run is --preview.
+    print(f"DRY-RUN {LANE_ID}: would group closed paper trades into patterns, upsert pattern_library rows and write a "
+          "LaneRunReceipt; no env, DB, log-file or receipt writes")
+    raise SystemExit(0)
 from datetime import datetime
 from pathlib import Path
 
@@ -407,8 +416,15 @@ def main():
     parser = argparse.ArgumentParser(description='Pattern extractor (monthly)')
     parser.add_argument('--min-trades', type=int, default=DEFAULT_MIN_TRADES,
                         help=f'Minimum trades per pattern (default {DEFAULT_MIN_TRADES})')
-    parser.add_argument('--dry-run', action='store_true', help='Preview only, no DB writes')
+    parser.add_argument('--dry-run', action='store_true', help='offline plan (handled before any import)')
+    parser.add_argument('--preview', action='store_true', help='DB preview, no DB writes (the old --dry-run)')
     args = parser.parse_args()
+    args.dry_run = bool(args.dry_run or args.preview)
+    started = None
+    if not args.dry_run:
+        from lib.lane_last_receipt import now_iso
+
+        started = now_iso()
 
     logger.info('=== Pattern Extractor %s (min-trades=%d) ===',
                 '(DRY-RUN)' if args.dry_run else '', args.min_trades)
@@ -427,6 +443,22 @@ def main():
     )
     logger.info(summary)
     print(summary)
+    if not args.dry_run:
+        # LaneRunReceipt@v1 for the scheduled real run; a DB or upsert error keeps the previous ok_at (exit stays 0,
+        # as before, so cron behaviour is unchanged).
+        from lib.lane_last_receipt import write_lane_receipt
+
+        write_lane_receipt(LANE_ID, ok=not result['errors'], exit_code=0, started_at=started,
+                           script='pattern_extractor.py', summary=result, output=lane_output(result))
+
+
+def lane_output(result: dict) -> dict:
+    """LaneRunReceipt@v2 output fields (n8n expected_output, unit: pattern_library rows upserted). attempted =
+    patterns found at >= min-trades; an upsert or DB error is a failed receipt (status failed) already."""
+    upserted, found = int(result.get('upserted') or 0), int(result.get('patterns_found') or 0)
+    return {'produced_count': upserted, 'attempted_count': max(found, upserted),
+            'skipped_reasons': {'upsert_error': int(result.get('errors') or 0)},
+            'empty_reason': None if upserted else 'no_new_input'}
 
 
 if __name__ == '__main__':

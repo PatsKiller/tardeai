@@ -498,11 +498,21 @@ def main(argv=None) -> int:
     except Exception as exc:
         lr.write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
                               script="agent_outcome_scorer.py", summary=summary,
-                              error=f"{type(exc).__name__}: {exc}")
+                              error=f"{type(exc).__name__}: {exc}",
+                              output={"produced_count": 0, "attempted_count": 0, "skipped_reasons": {"dependency_unavailable": 1}})
         raise
     lr.write_lane_receipt(LANE_ID, ok=True, exit_code=0, started_at=started,
-                          script="agent_outcome_scorer.py", summary=summary)
+                          script="agent_outcome_scorer.py", summary=summary, output=lane_output(summary))
     return 0
+
+
+def lane_output(summary: dict) -> dict:
+    """LaneRunReceipt@v2 output fields (n8n expected_output, unit: rows saved to agent_recommendation_outcomes).
+    attempted = unscored (recommendation, closed trade) pairs; none = ``no_new_input``."""
+    saved, pairs = int(summary.get("saved") or 0), int(summary.get("unscored_pairs") or 0)
+    return {"produced_count": saved, "attempted_count": max(pairs, saved),
+            "skipped_reasons": {"save_failed": int(summary.get("save_failed") or 0)},
+            "empty_reason": "no_new_input" if saved == 0 else None}
 
 
 if __name__ == '__main__':

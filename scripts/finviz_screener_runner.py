@@ -445,6 +445,20 @@ def run_screener(screener_id: str = None, dry_run: bool = False) -> dict:
     return summary
 
 
+def lane_output(result: dict) -> dict:
+    """LaneRunReceipt@v2 output fields (n8n expected_output, unit: screeners run whose screener_symbol_membership was
+    refreshed). attempted = active screeners run; no active screener is fatal (``unconfigured``)."""
+    rows = list(result.get("results") or [])
+    produced = sum(1 for r in rows if r.get("membership_updated") is not None and r.get("db_ok"))
+    skipped = {"no_tickers": sum(1 for r in rows if not r.get("total_found")),
+               "membership_failed": int(result.get("membership_failures") or 0),
+               "db_write_failed": int(result.get("db_write_failures") or 0)}
+    if not rows:
+        skipped["unconfigured"] = 1
+    return {"produced_count": produced, "attempted_count": len(rows), "skipped_reasons": skipped,
+            "empty_reason": None}
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(allow_abbrev=False)
     parser.add_argument("--dry-run", action="store_true")
@@ -486,12 +500,14 @@ def main(argv=None) -> int:
         write_lane_receipt("finviz-screener-runner", ok=complete, exit_code=0,
                            started_at=started, script="finviz_screener_runner.py",
                            summary={key: result.get(key) for key in
-                                    ("screeners_run", "total_new_tickers", "membership_failures", "db_write_failures")})
+                                    ("screeners_run", "total_new_tickers", "membership_failures", "db_write_failures")},
+                           output=lane_output(result))
         return 0
     except Exception as _e:
         write_lane_receipt("finviz-screener-runner", ok=False, exit_code=1,
                            started_at=started, script="finviz_screener_runner.py",
-                           error=type(_e).__name__)
+                           error=type(_e).__name__,
+                           output={"produced_count": 0, "attempted_count": 0, "skipped_reasons": {"dependency_unavailable": 1}})
         try:
             if _run_id: run_fail(_run_id, str(_e))
         except Exception:

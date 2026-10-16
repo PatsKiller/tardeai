@@ -67,7 +67,12 @@ def test_source_admission_retains_observed_cron_parameters_and_draft_evidence(la
     assert entry["env_allowlist_mode"] == "report" and entry["env_report_reason"]
     assert not any(any(word in name.upper() for word in ("MOOMOO", "ALPACA", "BROKER", "IBKR"))
                    for name in entry["env_names"])
-    assert row["scheduler"]["command_text"] == observed["cron_line"]
+    # 2026-10-15 cutover waves: a promoted lane's command_text is the LIVE line (n8n_cutover_wave add-flock gave it the
+    # allowlist lock as `flock -n`), so it differs from the frozen pre-flock observation by that flock only.
+    if lane in set(_CW_PROMOTED) - set(_CANARY_WAVE_1014):
+        assert row["scheduler"]["command_text"].replace(f"flock -n {entry['lock']} ", "") in observed["cron_line"]
+    else:
+        assert row["scheduler"]["command_text"] == observed["cron_line"]
     # canary-wave-20261014: proposal-backtest-engine is canary (live under the cron flock lock).
     assert row["scheduler"]["stage"] == ("canary" if row["lane_id"] in _CANARY_WAVE else "shadow")
     assert row["scheduler"]["wave"] == "R2-06"
@@ -93,6 +98,8 @@ def test_existing_reviewed_shard_rows_remain_unchanged():
                              ("config/n8n_health_contracts.json", "contracts", "id")):
         rows = json.loads((ROOT / path).read_text())[key]
         for lane, digest in frozen["preserved_main_hashes"][path].items():
+            if lane in _CW_PROMOTED and path == "config/lane_registry.json":
+                continue  # 2026-10-15: promoted to canary by a cutover wave (tests/test_n8n_cutover_wave_20261015.py)
             row = next(row for row in rows if row[id_key] == lane)
             encoded = json.dumps(row, sort_keys=True, ensure_ascii=False).encode()
             assert hashlib.sha256(encoded).hexdigest() == digest
@@ -513,4 +520,7 @@ def test_thesis_frozen_exact_cron_argv_and_receipt(state, capsys):
     failed = json.loads(path.read_text())
     assert failed["status"] == "failed" and failed["ok_at"] == receipt["ok_at"] and failed["exit"] == 1
 
-from tests.test_canary_wave_20261014 import CANARY_WAVE_20261014 as _CANARY_WAVE  # noqa: E402  canary-wave-20261014
+from tests.test_canary_wave_20261014 import CANARY_WAVE_20261014 as _CANARY_WAVE_1014  # noqa: E402  canary-wave-20261014
+from tests.support.n8n_cutover_waves import PROMOTED as _CW_PROMOTED  # noqa: E402  2026-10-15 cutover waves
+
+_CANARY_WAVE = set(_CANARY_WAVE_1014) | set(_CW_PROMOTED)

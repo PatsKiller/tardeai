@@ -487,15 +487,30 @@ def cli(argv=None) -> int:
         result = main()
     except Exception as exc:
         write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started, script="aegis_social_sentiment.py",
-                           error=f"{type(exc).__name__}: {exc}")
+                           error=f"{type(exc).__name__}: {exc}",
+                           output={"produced_count": 0, "attempted_count": 0, "skipped_reasons": {"dependency_unavailable": 1}})
         raise
     failed = bool(result.get("error"))
     write_lane_receipt(LANE_ID, ok=not failed, exit_code=1 if failed else 0, started_at=started,
                        script="aegis_social_sentiment.py",
                        summary={k: result.get(k) for k in ("universe", "reddit_hits", "stocktwits_hits", "brave_hits",
                                                            "to_write", "written", "run_id", "error")},
-                       error=result.get("error"))
+                       error=result.get("error"), output=lane_output(result))
     return 1 if failed else 0
+
+
+def lane_output(result: dict) -> dict:
+    """LaneRunReceipt@v2 output fields (n8n expected_output, unit: social_sentiment_history rows upserted).
+    attempted = symbols with mentions to persist; Postgres down or no source fetched = ``dependency_unavailable``;
+    an empty universe is fatal (``universe_empty_unexpected``); no mention anywhere = ``no_new_input``."""
+    universe, to_write, written = (int(result.get(k) or 0) for k in ("universe", "to_write", "written"))
+    skipped = {"write_failed": max(to_write - written, 0), "no_mentions": max(universe - to_write, 0)}
+    if result.get("error") in ("db_unavailable", "no_source_fetched"):
+        skipped["dependency_unavailable"] = 1
+    elif universe == 0:
+        skipped["universe_empty_unexpected"] = 1
+    return {"produced_count": written, "attempted_count": max(to_write, written), "skipped_reasons": skipped,
+            "empty_reason": "no_new_input" if written == 0 else None}
 
 
 if __name__ == "__main__":

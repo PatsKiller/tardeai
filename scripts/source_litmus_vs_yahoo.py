@@ -53,6 +53,21 @@ BLOCK_SHARE = {"default": 0.02}
 SAMPLE_PER_SOURCE = {"default": 40, "market_quotes": 120}
 #: Closes written from Yahoo itself (the EOD consolidated sync, the yfinance backfill).
 SELF_REFERENCED_SOURCES = frozenset({"yfinance_eod", "yfinance"})
+#: One minimum quote increment (SEC Rule 612: $0.0001 below $1.00, $0.01 at or above). A difference of at
+#: most one tick is a rounding difference, not a wrong price: on 2026-10-14 SRNE stored 0.0003 against Yahoo's
+#: 0.0002 -- "50% off" -- and that single row BLOCKed the holdings source.
+SUB_DOLLAR_TICK = 0.0001
+DOLLAR_TICK = 0.01
+#: A source BLOCKs only on evidence that is not one noisy row: at least MIN_BADLY_OFF_FOR_BLOCK badly-off rows,
+#: or a single row off by more than GROSS_DEVIATION (a wrong-unit price such as the 2026-09-14 sub-share
+#: position value written as a close, 95% off). One micro-cap 13% off in a 40-row sample (finviz XCUR,
+#: 2026-10-14) is reported as a WARN and listed in `worst`, not a BLOCK.
+MIN_BADLY_OFF_FOR_BLOCK = 2
+GROSS_DEVIATION = 0.50
+
+
+def tick_for(price: float) -> float:
+    return SUB_DOLLAR_TICK if price < 1.0 else DOLLAR_TICK
 
 
 def evaluate(samples: Iterable[tuple[str, str, float]], reference: dict[str, Optional[float]]) -> dict:
@@ -70,8 +85,9 @@ def evaluate(samples: Iterable[tuple[str, str, float]], reference: dict[str, Opt
             st["no_reference"] += 1
             continue
         st["compared"] += 1
-        dev = abs(float(stored) - ref) / ref
-        if dev <= TOLERANCE:
+        diff = abs(float(stored) - ref)
+        dev = diff / ref
+        if dev <= TOLERANCE or diff <= tick_for(ref) * (1 + 1e-9):
             st["within"] += 1
             continue
         st["off"] += 1
@@ -80,15 +96,22 @@ def evaluate(samples: Iterable[tuple[str, str, float]], reference: dict[str, Opt
         st["worst"].append({"symbol": sym, "stored": float(stored), "reference": round(ref, 4),
                             "deviation_pct": round(dev * 100, 1)})
     block: list[str] = []
+    warn: list[str] = []
     for src, st in per.items():
         st["worst"] = sorted(st["worst"], key=lambda w: -w["deviation_pct"])[:15]
         limit = BLOCK_SHARE.get(src, BLOCK_SHARE["default"])
         share = (st["badly_off"] / st["compared"]) if st["compared"] else 0.0
         st["badly_off_share"] = round(share, 4)
-        if st["compared"] and share > limit:
-            block.append(f"{src}: {st['badly_off']}/{st['compared']} closes off by >{int(BADLY_OFF * 100)}% "
-                         f"(limit {limit:.0%})")
-    return {"sources": dict(per), "block": block}
+        if not (st["compared"] and share > limit):
+            continue
+        gross = bool(st["worst"]) and st["worst"][0]["deviation_pct"] > GROSS_DEVIATION * 100
+        line = (f"{src}: {st['badly_off']}/{st['compared']} closes off by >{int(BADLY_OFF * 100)}% "
+                f"(limit {limit:.0%})")
+        if st["badly_off"] >= MIN_BADLY_OFF_FOR_BLOCK or gross:
+            block.append(line)
+        else:
+            warn.append(line + f" -- one row under {int(GROSS_DEVIATION * 100)}% off, reported not blocked")
+    return {"sources": dict(per), "block": block, "warn": warn}
 
 
 def _db():
@@ -167,6 +190,9 @@ def main(argv=None) -> int:
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--dry-run", action="store_true", help="offline plan; no DB, reference network, writes or receipt")
     ap.add_argument("--seed", type=int, default=int(datetime.now(timezone.utc).strftime("%Y%m%d")))
+    ap.add_argument("--exit-zero-on-block", action="store_true",
+                    help="exit 0 when the check ran and found BLOCKs (the verdict is in the receipt); for a "
+                         "scheduler that reads any non-zero exit as a run failure")
     args = ap.parse_args(argv)
     if args.dry_run:
         print(f"DRY-RUN source-litmus-vs-yahoo: would sample stored closes with seed={args.seed}, compare an independent Yahoo reference and persist a report; no DB, network or writes")
@@ -174,9 +200,9 @@ def main(argv=None) -> int:
     from lib.lane_last_receipt import now_iso, write_lane_receipt
     started = now_iso()
 
-    def finish(code, *, ok, error=None, summary=None):
+    def finish(code, *, ok, error=None, summary=None, output=None):
         write_lane_receipt("source-litmus-vs-yahoo", ok=ok, exit_code=code,
-                           started_at=started, error=error, summary=summary)
+                           started_at=started, error=error, summary=summary, output=output)
         return code
 
     try:
@@ -218,8 +244,12 @@ def main(argv=None) -> int:
         ref_empty = not reference or all(v in (None, 0) for v in (reference or {}).values())
         if ref_empty:
             print("SOFT_SKIP: independent reference empty/rate-limited — exit 0 (no flap)", file=sys.stderr)
-            return finish(0, ok=False, error="REFERENCE_UNAVAILABLE", summary={"compared": 0})
-        return finish(2, ok=False, error="NO_COMPARISONS", summary={"compared": 0})
+            return finish(0, ok=False, error="REFERENCE_UNAVAILABLE", summary={"compared": 0},
+                          output={"produced_count": 0, "attempted_count": len(samples),
+                                  "skipped_reasons": {"reference_unavailable": len(samples)},
+                                  "empty_reason": "reference_unavailable"})
+        return finish(2, ok=False, error="NO_COMPARISONS", summary={"compared": 0},
+                      output={"produced_count": 0, "attempted_count": len(samples), "empty_reason": None})
     if args.json:
         print(json.dumps(report, indent=2, default=str))
     else:
@@ -227,13 +257,30 @@ def main(argv=None) -> int:
         print(f"{'source':20} {'compared':>8} {'within1%':>9} {'off':>5} {'>10%':>5} {'no_ref':>7}")
         for src, st in sorted(result["sources"].items()):
             print(f"{src:20} {st['compared']:>8} {st['within']:>9} {st['off']:>5} {st['badly_off']:>5} {st['no_reference']:>7}")
+        for w in result["warn"]:
+            print(f"WARN {w}")
         for b in result["block"]:
             print(f"BLOCK {b}")
     if not args.dry_run:
         RECEIPT.parent.mkdir(parents=True, exist_ok=True)
         RECEIPT.write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
-    code = 1 if result["block"] else 0
-    return finish(code, ok=code == 0, summary={"compared": compared, "blocked_sources": len(result["block"])})
+    # The lane's job is the check. A BLOCK is a data-integrity FINDING the check exists to produce, not a lane
+    # failure: the receipt is ok (ok_at advances) and carries the verdict; exit 1 keeps the systemd contract
+    # (SuccessExitStatus=0 1) unless --exit-zero-on-block. Before 2026-10-15 a BLOCK wrote status "failed", so
+    # the lane read as broken on the scheduler board whenever it found what it is for.
+    verdict = "BLOCK" if result["block"] else ("WARN" if result["warn"] else "PASS")
+    code = 1 if result["block"] and not args.exit_zero_on_block else 0
+    skipped: dict = {}
+    for st in result["sources"].values():
+        for key in ("no_reference", "not_independent"):
+            if st.get(key):
+                skipped[key] = skipped.get(key, 0) + int(st[key])
+    return finish(code, ok=True,
+                  summary={"compared": compared, "verdict": verdict, "blocked_sources": len(result["block"]),
+                           "warned_sources": len(result["warn"]), "session": session.isoformat()},
+                  output={"produced_count": compared, "attempted_count": len(samples), "skipped_reasons": skipped,
+                          "output_evidence": [{"kind": "file", "ref": "data/runtime/source_litmus_last_run.json",
+                                               "count": compared}]})
 
 
 if __name__ == "__main__":

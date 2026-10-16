@@ -353,7 +353,8 @@ def main(argv=None) -> int:
                 pass
     except Exception as exc:
         lr.write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
-                              script="hermes_social_sentiment.py", error=f"{type(exc).__name__}: {exc}")
+                              script="hermes_social_sentiment.py", error=f"{type(exc).__name__}: {exc}",
+                              output={"produced_count": 0, "attempted_count": 0, "skipped_reasons": {"dependency_unavailable": 1}})
         raise
 
     print(f"  Forum hits: {hits} symbols | Persisted: {written} sentiment records")
@@ -365,8 +366,22 @@ def main(argv=None) -> int:
                           script="hermes_social_sentiment.py",
                           summary={"universe_kind": args.universe, "universe": len(symbols), "hits": hits,
                                    "written": written, "searxng_ok": _FETCH_STATS["ok"],
-                                   "searxng_errors": _FETCH_STATS["error"]})
+                                   "searxng_errors": _FETCH_STATS["error"]},
+                          output=lane_output(len(symbols), hits, written, all_fetch_failed))
     return rc
+
+
+def lane_output(universe: int, hits: int, written: int, all_fetch_failed: bool = False) -> dict:
+    """LaneRunReceipt@v2 output fields (n8n expected_output, unit: social_sentiment_history rows upserted).
+    attempted = symbols with forum mentions; an empty universe is fatal (``universe_empty_unexpected``), every
+    SearXNG call failing is ``dependency_unavailable``; no mention anywhere = ``no_new_input``."""
+    skipped = {"no_mentions": max(universe - hits, 0), "persist_failed": max(hits - written, 0)}
+    if universe == 0:
+        skipped["universe_empty_unexpected"] = 1
+    elif all_fetch_failed:
+        skipped["dependency_unavailable"] = 1
+    return {"produced_count": written, "attempted_count": max(hits, written), "skipped_reasons": skipped,
+            "empty_reason": "no_new_input" if written == 0 else None}
 
 
 if __name__ == "__main__":

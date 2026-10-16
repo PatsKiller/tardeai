@@ -108,11 +108,38 @@ def plan_rows(cur, days: int, weights: dict[str, float]) -> list[dict]:
     return out
 
 
+LANE_ID = "catalyst-symbol-impact"
+
+
+def lane_output(candidates: int, written: int) -> dict:
+    """LaneRunReceipt@v2 output fields (n8n expected_output, unit: rows inserted into catalyst_symbol_impact).
+    ``candidates`` are the (event, symbol) pairs not yet present; none = ``no_new_input``."""
+    return {"produced_count": written, "attempted_count": max(candidates, written), "skipped_reasons": {},
+            "empty_reason": "no_new_input" if written == 0 else None}
+
+
 def main() -> int:
+    if "--apply" not in sys.argv[1:]:
+        return _main()
+    from datetime import datetime as _dt, timezone as _tz
+    started = _dt.now(_tz.utc).isoformat()
+    try:
+        return _main()
+    except Exception as exc:  # the real run's own failure first; the receipt never masks it
+        from lib.lane_last_receipt import write_lane_receipt
+        write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
+                           script="catalyst_symbol_impact_writer.py", error=f"{type(exc).__name__}: {exc}",
+                           output={"produced_count": 0, "attempted_count": 0, "skipped_reasons": {"dependency_unavailable": 1}})
+        raise
+
+
+def _main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--days", type=int, default=30)
     a = ap.parse_args()
+    from datetime import datetime as _dt, timezone as _tz
+    started = _dt.now(_tz.utc).isoformat()
     try:
         holdings = json.loads((STATE_DIR / "holdings.json").read_text())
     except Exception:
@@ -141,6 +168,11 @@ def main() -> int:
         from datetime import datetime, timezone
         receipt.write_text(json.dumps({"as_of": datetime.now(timezone.utc).isoformat(), "days": a.days,
                                        "candidates": len(rows), "written": written}, indent=2))
+        from lib.lane_last_receipt import write_lane_receipt
+        write_lane_receipt(LANE_ID, ok=True, exit_code=0, started_at=started,
+                           script="catalyst_symbol_impact_writer.py",
+                           summary={"days": a.days, "candidates": len(rows), "written": written},
+                           output=lane_output(len(rows), written))
     by_dir: dict[str, int] = {}
     for r in rows:
         by_dir[r["expected_direction"]] = by_dir.get(r["expected_direction"], 0) + 1

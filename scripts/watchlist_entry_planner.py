@@ -439,6 +439,17 @@ def preview(lane="grok", symbols=None, limit=25, alert=True, scope="watchlist", 
 
 
 def run(lane="grok", symbols=None, limit=25, alert=True, scope="watchlist", buy_rated_cap=20):
+    """The cron entrypoint: plan, then send the advisory entry alert through the host chokepoint."""
+    return plan_run(lane=lane, symbols=symbols, limit=limit, scope=scope, buy_rated_cap=buy_rated_cap,
+                    alerter=_alert if alert else None)
+
+
+def plan_run(lane="grok", symbols=None, limit=25, scope="watchlist", buy_rated_cap=20, alerter=None):
+    """Plan every candidate and INSERT one watchlist_entry_plans row each. Sends nothing by itself.
+
+    ``alerter`` (``run`` passes ``_alert``) is called for an alert-eligible plan; with None the plan is written and the
+    alert is counted as ``alerts_not_sent``. The n8n entry ``watchlist_entry_planner_lane.py`` plans only: a lane never
+    sends (AGENTS.md §23.23; onboarding standard §2.7), and the dispatcher sender gate scans its static reach."""
     import llm_lane
     from db_adapter import _get_conn
     conn = _get_conn(); cur = conn.cursor()
@@ -450,17 +461,24 @@ def run(lane="grok", symbols=None, limit=25, alert=True, scope="watchlist", buy_
         raise RuntimeError("CLOUD_LANES_UNAVAILABLE: entry planning failed closed")
     base_lane = requested if requested in available else available[0]
     fallback_lane = next((name for name in available if name != base_lane), None)
-    done = failed = alerts = cloud_used = 0
+    done = failed = alerts = cloud_used = not_sent = 0
+    skipped: dict = {}
+
+    def _skip(reason):
+        skipped[reason] = skipped.get(reason, 0) + 1
+
     cands = _candidates(cur, limit, symbols, scope, buy_rated_cap)
+    conn.commit()  # end the candidate-read transaction before the first bars/LLM call (idle-in-transaction 120s)
     for c in cands:
         sym = c["symbol"]
         eff_lane = base_lane
         bars = _bars(sym)
         if not bars:
-            failed += 1; continue
+            failed += 1; _skip("no_bars"); continue
         t = _tech(bars)
         conn, cur = _live(conn, cur)   # _bars can stall long enough for the server to drop us
         an = _analyst(cur, sym)
+        conn.commit()  # end the read before the 30-120 s LLM call
         prompt = PROMPT_V1.format(symbol=sym, hermes=c.get("hermes_composite_score"),
                                   rank=c.get("hermes_rank"), trend=c.get("trend"),
                                   atr_pct=t["atr"] / t["price"] * 100,
@@ -490,12 +508,12 @@ def run(lane="grok", symbols=None, limit=25, alert=True, scope="watchlist", buy_
                     )
                     eff_lane = fallback_lane
                 except Exception as e2:
-                    print(f"  {sym}: lane error {str(e2)[:60]}"); failed += 1; continue
+                    print(f"  {sym}: lane error {str(e2)[:60]}"); failed += 1; _skip("llm_lane_error"); continue
             else:
-                print(f"  {sym}: lane error {str(e)[:60]}"); failed += 1; continue
+                print(f"  {sym}: lane error {str(e)[:60]}"); failed += 1; _skip("llm_lane_error"); continue
         p = _parse(out)
         if not p:
-            print(f"  {sym}: unparseable"); failed += 1; continue
+            print(f"  {sym}: unparseable"); failed += 1; _skip("llm_unparseable"); continue
         model = "grok-3-mini" if eff_lane == "grok" else "gpt-5.4"
         cloud_used += 1
         # ── DETERMINISTIC R:R AND URGENCY (2026-07-20) ──────────────────────────
@@ -593,17 +611,37 @@ def run(lane="grok", symbols=None, limit=25, alert=True, scope="watchlist", buy_
         done += 1
         # pre-promotion buy-rated names are NOT active watches — plan them, but don't Telegram-alert
         # (operator no-noise rule); they alert once you promote them to an active watch/directive.
-        if alert and urg in ("near_entry", "ready") and not c.get("_buy_rated"):
+        if urg in ("near_entry", "ready") and not c.get("_buy_rated"):
             cur.execute("""SELECT 1 FROM watchlist_entry_plans WHERE symbol=%s AND alerted_at > now()-interval '20 hours'""", (sym,))
-            if not cur.fetchone():
-                if _alert(sym, p, urg, t["price"]):
-                    cur.execute("UPDATE watchlist_entry_plans SET alerted_at=now() WHERE id=%s", (plan_id,))
-                    conn.commit(); alerts += 1
+            already = cur.fetchone()
+            conn.commit()  # no transaction stays open across the send
+            if already:
+                pass
+            elif alerter is None:
+                not_sent += 1
+            elif alerter(sym, p, urg, t["price"]):
+                # 2026-10-15 lane repair: every failed run since 09-25 died HERE with "InterfaceError: cursor
+                # already closed", right after an alert was SENT. The send path (telegram_alert -> comms delivery
+                # settlement, lib/comms/delivery.py _persist_event_settlement_pg) closed db_adapter's thread-local
+                # connection, which is this cursor's connection: alerted_at was never stamped (so the 20 h dedup
+                # could re-alert) and the drain stopped at the first alert. The close is removed at its source;
+                # re-check the connection here anyway, because the send path is not this lane's code.
+                conn, cur = _live(conn, cur)
+                cur.execute("UPDATE watchlist_entry_plans SET alerted_at=now() WHERE id=%s", (plan_id,))
+                conn.commit(); alerts += 1
+    output = _output(produced=done, attempted=len(cands), skipped=skipped,
+                     empty_reason=None if done else ("no_candidates" if not cands else "all_skipped"))
     summary = {"lane": base_lane, "fallback_lane": fallback_lane, "planned": done,
-               "via_cloud": cloud_used, "failed": failed, "alerts": alerts,
+               "via_cloud": cloud_used, "failed": failed, "alerts": alerts, "alerts_not_sent": not_sent,
                "note": "ADVISORY ONLY — no orders, no proposal-state changes, no execution"}
     print(json.dumps(summary))
-    return {**summary, "candidates": len(cands)}
+    return {**summary, "candidates": len(cands), "output": output}
+
+
+def _output(**kw):
+    from lib.lane_output import output_block
+
+    return output_block(unit="watchlist_entry_plans rows inserted", **kw)
 
 
 def receipt_name(scope: str) -> str:
@@ -625,8 +663,13 @@ def _scheduled_run(kw: dict) -> int:
     # empty queue are findings, not a failed run.
     failed = res["candidates"] > 0 and res["planned"] == 0
     write_receipt(name, ok=not failed, started_at=started,
-                  summary={k: res[k] for k in ("candidates", "planned", "failed", "alerts", "lane")},
+                  summary={**{k: res[k] for k in ("candidates", "planned", "failed", "alerts", "lane")},
+                           "alerts_not_sent": res.get("alerts_not_sent", 0), "output": res.get("output")},
                   error="every candidate failed" if failed else None)
+    if res.get("output"):
+        from lib.lane_output import emit
+
+        emit(name, "live", res["output"], started_at=started)
     return 1 if failed else 0
 
 

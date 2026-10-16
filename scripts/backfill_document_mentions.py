@@ -115,7 +115,7 @@ def run(table: str, limit: int, apply: bool, mark=None, deadline: float | None =
 
     stat = {"table": table, "documents": len(rows), "subject": 0, "mentioned": 0,
             "undecided_docs": 0, "no_mention": 0, "written": 0, "multi": 0,
-            "scanned": 0, "max_id": None, "budget_hit": False}
+            "scanned": 0, "max_id": None, "budget_hit": False, "offered": 0}
 
     for doc_id, own_symbol, text in rows:
         if deadline is not None and time.monotonic() >= deadline:
@@ -142,6 +142,7 @@ def run(table: str, limit: int, apply: bool, mark=None, deadline: float | None =
             continue
         stat["subject"] += sum(1 for r in found if r["role"] == "subject")
         stat["mentioned"] += sum(1 for r in found if r["role"] == "mentioned")
+        stat["offered"] += len(found)
         if apply:
             stat["written"] += persist(conn, source_table=table,
                                        source_id=doc_id, rows=found)
@@ -175,16 +176,31 @@ def main(argv=None) -> int:
         return 0
     lr = _receipt_lib()
     started = lr.now_iso()
-    stats = {"tables": len(targets), "scanned": 0, "written": 0}
+    stats = {"tables": len(targets), "scanned": 0, "written": 0, "offered": 0, "no_mention": 0, "undecided": 0}
     try:
         rc = _run(a, targets, stats)
     except BaseException as exc:
         lr.write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
-                              script="backfill_document_mentions.py", summary=stats, error=type(exc).__name__)
+                              script="backfill_document_mentions.py", summary=stats, error=type(exc).__name__,
+                              output={"produced_count": 0, "attempted_count": 0, "skipped_reasons": {"dependency_unavailable": 1}})
         raise
     lr.write_lane_receipt(LANE_ID, ok=rc == 0, exit_code=rc, started_at=started,
-                          script="backfill_document_mentions.py", summary=stats)
+                          script="backfill_document_mentions.py", summary=stats, output=lane_output(stats))
     return rc
+
+
+def lane_output(stats: dict) -> dict:
+    """LaneRunReceipt@v2 output fields (n8n expected_output, unit: document_mentions rows written). attempted = the
+    decided mention rows offered to persist(); a row not written was already present (ON CONFLICT DO NOTHING)."""
+    written, offered = int(stats.get("written") or 0), int(stats.get("offered") or 0)
+    return {
+        "produced_count": written,
+        "attempted_count": max(offered, written),
+        "skipped_reasons": {"already_written": max(offered - written, 0),
+                            "no_mention_docs": int(stats.get("no_mention") or 0),
+                            "undecided_docs": int(stats.get("undecided") or 0)},
+        "empty_reason": "no_new_input" if written == 0 else None,
+    }
 
 
 def _run(a, targets, stats) -> int:
@@ -200,6 +216,9 @@ def _run(a, targets, stats) -> int:
         s = run(t, a.limit, a.apply, mark=marks.get(t), deadline=deadline, seed=not a.rescan)
         stats["scanned"] += s["scanned"]
         stats["written"] += s["written"]
+        stats["offered"] += s.get("offered", 0)
+        stats["no_mention"] += s.get("no_mention", 0)
+        stats["undecided"] += s.get("undecided_docs", 0)
         # The mark only moves on --apply runs that scanned forward, so a dry run never hides documents.
         if a.apply and s["max_id"] is not None:
             marks[t] = max(int(s["max_id"]), int(marks.get(t) or 0))

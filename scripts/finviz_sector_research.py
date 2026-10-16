@@ -149,12 +149,23 @@ def main(argv=None):
         rc = run(dry_run=False)
     except Exception as exc:
         write_lane_receipt("finviz-sector-research", ok=False, exit_code=1, started_at=started,
-                           script="finviz_sector_research.py", error=type(exc).__name__)
+                           script="finviz_sector_research.py", error=type(exc).__name__,
+                           output={"produced_count": 0, "attempted_count": 0, "skipped_reasons": {"dependency_unavailable": 1}})
         raise
     ok = rc == 0 and not LAST_COUNTS.get("failed_groups") and LAST_COUNTS.get("rows", 0) > 0
     write_lane_receipt("finviz-sector-research", ok=ok, exit_code=rc, started_at=started,
-                       script="finviz_sector_research.py", summary=LAST_COUNTS)
+                       script="finviz_sector_research.py", summary=LAST_COUNTS, output=lane_output(LAST_COUNTS, rc))
     return rc
+
+
+def lane_output(counts: dict, rc: int) -> dict:
+    """LaneRunReceipt@v2 output fields (n8n expected_output, unit: finviz_group_performance rows upserted, sector +
+    industry). A run with no FINVIZ_API_TOKEN (run() returns 1 before any request) is ``no_credentials``."""
+    rows = int(counts.get("rows") or 0)
+    skipped = {"group_fetch_failed": int(counts.get("failed_groups") or 0)}
+    if rc:
+        skipped["no_credentials"] = 1
+    return {"produced_count": rows, "attempted_count": rows, "skipped_reasons": skipped, "empty_reason": None}
 
 
 if __name__ == "__main__":

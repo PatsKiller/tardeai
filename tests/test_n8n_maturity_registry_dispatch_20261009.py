@@ -500,6 +500,9 @@ def test_registry_dispatch_errors_hook():
 # (relay refused live, failing every dispatcher run).
 N8N_NATIVE_SHADOW = frozenset({"momentum-lifecycle-monitor", "momentum-cache-reconcile"})
 N8N_NATIVE_CANARY = frozenset({"heartbeat-watch"})
+#: lane repair 2026-10-15: a systemd-timer lane at shadow (its timer keeps the real work; dispatch.cron mirrors the
+#: timer's OnCalendar). tests/test_lane_repair_ri_hermes_litmus_20261015.py pins the row and its allowlist entry.
+SYSTEMD_TIMER_SHADOW = frozenset({"source-litmus-vs-yahoo"})
 
 
 def _live_rows():
@@ -550,9 +553,17 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
         if lane in CANARY_WAVE_20261014:
             # canary-wave-20261014: cron rows at stage canary, mode live, live_arg = the cron argv suffix, allowlist
             # lock == the cron flock lock (tests/test_canary_wave_20261014.py pins every field).
-            assert mode == "live" and row["scheduler"].get("stage") == "canary", lane
-            assert row["scheduler"]["kind"] == "cron" and isinstance(allow[lane]["live_arg"], list), lane
+            # 2026-10-16: or the dispatcher cutover row an n8n cutover wave wrote (cron line `# RETIRED`).
+            assert mode == "live" and row["scheduler"].get("stage") == ("cutover" if lane in _CW.CUT_OVER else "canary"), lane
+            assert row["scheduler"]["kind"] == ("n8n" if lane in _CW.CUT_OVER else "cron"), lane
+            assert isinstance(allow[lane]["live_arg"], list), lane
             assert clamp_mode(lane, "live", rows)["effective_mode"] == "live", lane
+            continue
+        if lane in CW_NEW:
+            # 2026-10-15 cutover waves (scripts/n8n_cutover_wave.py): cron canary (or its later dispatcher cutover row)
+            # with the cron line's flock lock; tests/test_n8n_cutover_wave_20261015.py pins every field.
+            assert mode == "live" and row["scheduler"].get("stage") in ("canary", "cutover"), lane
+            assert row["scheduler"]["kind"] == "n8n" or LD.r1_canary_lock_matches(row, allow[lane])[0], lane
             continue
         assert mode in ("off", "dry_run"), lane
         if mode == "off":
@@ -563,6 +574,9 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
             # an n8n-native lane has no cron line to stay on; its shadow row is the dispatcher shape at
             # stage shadow (the clamp still runs it dry), and its allowlist entry has no live mode.
             assert (sched["kind"], sched["expression"], sched.get("stage")) == ("n8n", "dispatcher", "shadow"), lane
+        elif lane in SYSTEMD_TIMER_SHADOW:
+            assert sched["kind"] == "systemd" and sched.get("stage") == "shadow", lane
+            assert sched["expression"].endswith(".timer"), lane
         else:
             assert sched["kind"] == "cron" and sched.get("stage") == "shadow", lane
         assert LD.dispatchable(row), lane
@@ -591,17 +605,24 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
     refactor = {
         r["lane_id"] for r in rows if (r.get("scheduler") or {}).get("wave") in {"R2-05", "R2-06", "R2-07", "R2-08"}
     }
-    assert len(refactor) == 11 and refactor - set(CANARY_WAVE_20261014) <= set(shadow), refactor
+    # + 1: lane repair 2026-10-15 takes the shard 05 proposal for build-symbol-profiles-at-0-19 (its SW4 exclusion
+    # reason, the shared receipt, is gone; tests/test_lane_repair_20261015.py): 12.
+    # (train 2026-10-15 d parked its wiring for DD01, 11; restored 2026-10-15 by the operator DD01 ruling: 12.)
+    assert len(refactor) == 12 and refactor - set(CANARY_WAVE_20261014) - CW_NEW <= set(shadow), refactor
     # The reviewed momentum tranche adds two native shadow rows and the existing
     # named scalp exception at shadow; it adds no live dispatch row.
     # - 2: C1 hermes_overnight registry edit (train 6, 2026-10-12) absorbs hermes-tag-lift-discovery (SW4/W4) and
     # hermes-industry-novelty-discovery (D2) into hermes-overnight-pipeline-night (dispatch_retired, allowlist removed).
     # + 2: scalp/premarket onboarding (2026-10-14, tests/test_scalp_premarket_onboard_20261014.py): the scalp hot-tier
     # R1 ingest rows finviz-enrichment-scalp-hot and scalp-hot-list at shadow (dry_run, live_arg null).
-    assert len(shadow) == 54 + 3 + 15 - len(CANARY_ROWS) - 17 + 10 + 11 + len(N8N_NATIVE_SHADOW) + 1 - 2 + 2 - len(CANARY_WAVE_20261014), shadow
+    # + len(SYSTEMD_TIMER_SHADOW): lane repair 2026-10-15 (tests/test_lane_repair_ri_hermes_litmus_20261015.py);
+    # train 2026-10-15 d merged both sets. (Train d had deferred build-symbol-profiles-at-0-19 / indicator-engine for
+    # DD01; restored 2026-10-15 by the operator DD01 ruling: transitive lazy broker reach accepted, trading lock.)
+    # + 6: shadow wave LD-W1 (lane disposition 2026-10-15; tests/test_shadow_wave_ld_w1_20261015.py).
+    assert len(shadow) == 54 + 3 + 15 - len(CANARY_ROWS) - 17 + 10 + 11 + len(N8N_NATIVE_SHADOW) + 1 - 2 + 2 - len(CANARY_WAVE_20261014) + 2 + len(SYSTEMD_TIMER_SHADOW) + 6 - len(CW_NEW), shadow
     # heartbeat-watch moved shadow → canary (N8N_NATIVE_CANARY) 2026-10-11.
     assert sorted(r["lane_id"] for r in rows if LD.dispatch_mode(r) == "live") == sorted(
-        CANARY_ROWS | N8N_NATIVE_CANARY | set(CANARY_WAVE_20261014)
+        CANARY_ROWS | N8N_NATIVE_CANARY | set(CANARY_WAVE_20261014) | CW_NEW
     )
 
 
@@ -609,6 +630,10 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
 CANARY_ROWS = frozenset({"research-insight-extractor"})
 #: canary-wave-20261014 (stage canary, mode live, cron flock lock == allowlist lock); single source in its own test.
 from tests.test_canary_wave_20261014 import CANARY_WAVE_20261014  # noqa: E402
+from tests.support import n8n_cutover_waves as _CW  # noqa: E402
+
+#: 2026-10-15 cutover waves: lanes promoted to canary that no earlier wave set already counts.
+CW_NEW = frozenset(_CW.PROMOTED) - set(CANARY_WAVE_20261014) - CANARY_ROWS
 
 
 #: wave D2: allowlist entries that existed (with a live_arg) before the dispatcher row was added.
@@ -656,7 +681,9 @@ def test_wave_d2_dispatch_cron_equals_the_row_schedule_and_locks_match_cron():
     assert len(rows) == 9
     allow = {e["lane_id"]: e for e in json.loads((ROOT / "config" / "n8n_run_allowlist.json").read_text())["lanes"]}
     for r in rows:
-        assert r["dispatch"]["cron"] == [r["scheduler"]["expression"]], r["lane_id"]
+        # a cut-over row (n8n cutover waves) keeps its cron schedule as scheduler.cadence
+        sched_expr = r["scheduler"]["cadence"] if r["lane_id"] in _CW.CUT_OVER else r["scheduler"]["expression"]
+        assert r["dispatch"]["cron"] == [sched_expr], r["lane_id"]
         assert r["dispatch"]["class"] in ("monitor", "report", "pipeline", "hygiene"), r["lane_id"]
         assert LD.r1_class_admission(r)[1] == "pre_r1_class", r["lane_id"]
     locks = {

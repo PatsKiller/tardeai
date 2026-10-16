@@ -33,6 +33,9 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT / "tests") not in sys.path:
+    sys.path.append(str(ROOT / "tests"))
+from support import n8n_cutover_waves as CW  # noqa: E402
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
@@ -84,6 +87,8 @@ FLOCK_ADDED = {"agent-outcome-linker", "agent-calibration-engine", "update-agent
 #: n8n_cutover/research-insight-extractor-20261013T215647Z-cutover.json): its cron line is `# RETIRED`, its row is an
 #: n8n dispatcher row, so it leaves the cron-row checks below and is pinned by test_cutover_row_is_the_dispatcher_row.
 CANARY: set[str] = {"hermes-news-bridge"}  # canary-wave-20261014 (news-to-catalyst held at shadow)
+#: 2026-10-15 cutover waves (scripts/n8n_cutover_wave.py; tests/support/n8n_cutover_waves.py): promoted to canary.
+CANARY |= set(WAVE3) & set(CW.PROMOTED)
 CUTOVER = frozenset({"research-insight-extractor"})
 #: The wave-3 rows still scheduled by cron (shadow or canary).
 WAVE3_ON_CRON = {k: v for k, v in WAVE3_LIVE.items() if k not in CUTOVER}
@@ -92,6 +97,10 @@ STAGE = {
     lane: ("cutover", "live") if lane in CUTOVER else ("canary", "live") if lane in CANARY else ("shadow", "dry_run")
     for lane in WAVE3
 }
+
+
+#: Staged r1_pending rows that are NOT activated by the wave-3 simulation (held for a named prerequisite).
+HELD_PENDING = frozenset({"run-research-intelligence-overnight"})  # bridge route (lane repair 2026-10-15)
 
 
 def _activate(row: dict) -> dict:
@@ -116,7 +125,11 @@ def _admit(row: dict, shape: str) -> tuple[bool, str]:
 def test_wave3_is_19_lanes_and_only_r1_classes():
     assert len(WAVE3) == 19
     assert {k for _l, k in WAVE3.values()} == {"ingest", "learn"}
-    assert [r["lane_id"] for r in REGISTRY["lanes"] if "r1_pending" in r] == []  # activated 2026-10-10
+    # activated 2026-10-10; the only r1_pending rows since are the lane repair 2026-10-15 llm rows, staged until a
+    # governed bridge route exists for their llm class: the entry planner rows (tests/test_lane_repair_20261015.py)
+    # and run-research-intelligence-overnight (tests/test_lane_repair_ri_hermes_litmus_20261015.py); train 2026-10-15 d.
+    assert sorted(r["lane_id"] for r in REGISTRY["lanes"] if "r1_pending" in r) == [
+        "run-research-intelligence-overnight", "watchlist-entry-planner-limit", "watchlist-entry-planner-scope"]
     d3 = sorted(r["lane_id"] for r in REGISTRY["lanes"] if (r.get("scheduler") or {}).get("wave") == "D3")
     assert d3 == sorted(WAVE3_LIVE) and len(WAVE3_LIVE) == 13
 
@@ -159,7 +172,7 @@ def test_dispatch_block_shape(lane):
 @pytest.mark.parametrize("lane", sorted(WAVE3_LIVE))
 def test_allowlist_entry_is_shadow_only_and_carries_no_broker_credential(lane):
     e = ALLOW[lane]
-    assert e["live_arg"] is None if lane not in CANARY | CUTOVER else e["live_arg"] == []
+    assert e["live_arg"] is None if lane not in CANARY | CUTOVER else e["live_arg"] == CW.live_arg(lane, [])
     assert e["dry_run_arg"] == ["--dry-run"]
     assert not any(t.startswith("--apply") for t in e["command"])
     assert e["output_signal"] == ROWS[lane]["output_signal"]["path"]
@@ -221,7 +234,9 @@ def test_activated_row_is_admitted_once_4_4_0_is_active(lane, monkeypatch):
 
 
 def test_activated_registry_has_no_dispatch_issue_once_active(monkeypatch):
-    doc = dict(REGISTRY, lanes=[_activate(r) if "r1_pending" in r else r for r in REGISTRY["lanes"]])
+    # The lane repair llm row stays staged (not allowlisted until its bridge route exists): not activated here.
+    doc = dict(REGISTRY, lanes=[_activate(r) if "r1_pending" in r and r["lane_id"] not in HELD_PENDING else r
+                                for r in REGISTRY["lanes"]])
     monkeypatch.setattr(LD, "R1_SHADOW_SHAPE_STATUS", "PROPOSED")
     errs = LD.registry_dispatch_errors(doc)
     # 19 wave-3 rows + the 3 W4 provider-owner rows (tests/test_w4_provider_owners_shadow_20261011.py) - the 6 D3 rows
@@ -239,10 +254,23 @@ def test_activated_registry_has_no_dispatch_issue_once_active(monkeypatch):
     # - 1: C1 hermes_overnight registry edit (train 6, 2026-10-12) absorbs SW4 hermes-tag-lift-discovery (dispatch_retired).
     # (WAVE3_ON_CRON: research-insight-extractor left cron at cutover, 2026-10-13.)
     # + 2 scalp hot-tier ingest rows (2026-10-14; tests/test_scalp_premarket_onboard_20261014.py).
-    assert len(r1_cron_shadow) == len(WAVE3_ON_CRON) + 3 + 15 + 10 + 11 - 1 + 2
+    # activates from their r1_pending block (R1 llm; staged on the registry until a governed bridge route exists).
+    # + 2 learn rows of shadow wave LD-W1 (2026-10-15; wire-advisory-lessons, pattern-extractor;
+    # tests/test_shadow_wave_ld_w1_20261015.py).
+    # (train 2026-10-15 d deferred build-symbol-profiles-at-0-19 / indicator-engine, -2; restored 2026-10-15 by the
+    # operator DD01 ruling "n8n ignor broker code it can't trade live ccontinue": transitive lazy broker reach accepted.)
+    # - the R1 rows the n8n cutover waves moved to the dispatcher cutover row (no longer kind cron).
+    cut_r1 = [r for r in REGISTRY["lanes"] if r["lane_id"] in CW.CUT_OVER
+              and (r.get("dispatch") or {}).get("class") in LD.R1_ADMITTED_CLASSES]
+    assert len(r1_cron_shadow) == len(WAVE3_ON_CRON) + 3 + 15 + 10 + 11 - 1 + 2 + 4 + 2 - len(cut_r1)
     assert len(errs) == len(r1_cron_shadow) and all("shadow_on_cron_not_ratified" in x for x in errs), errs[:3]
     monkeypatch.setattr(LD, "R1_SHADOW_SHAPE_STATUS", "ACTIVE")
-    assert LD.registry_dispatch_errors(doc) == []
+    # The staged entry planner rows (lane repair 2026-10-15) stay refused for exactly the reason they are staged: no
+    # llm_route via cio-governed-bridge until a governed route exists for process watchlist_entry_planner. (Their
+    # allowlist entries, deferred by train 2026-10-15 d for DD01, are restored by the operator DD01 ruling 2026-10-15.)
+    assert sorted(LD.registry_dispatch_errors(doc)) == [
+        f"{lane}: dispatch class_not_permitted: class 'llm' (R1): llm_route_not_governed_bridge:None"
+        for lane in ("watchlist-entry-planner-limit", "watchlist-entry-planner-scope")]
 
 
 # ---------------------------------------------------------------------------------- compute_due week sweep

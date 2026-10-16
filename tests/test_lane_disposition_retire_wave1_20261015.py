@@ -45,8 +45,10 @@ TIER_B = {
     "backup-generated-docs",
     "goal-pilot-material-change",
     "dormant-lane-consumers",
-    "indicator-engine",
 }
+# The disposition table proposed indicator-engine for R1b; the operator answered NO on 2026-10-15 (keep it and turn it
+# ON, repair in train 4). Its row was dropped from the tier-B TSV and its registry retire_pending block removed.
+DECLINED = {"indicator-engine"}
 
 
 def _load(name: str, path: Path):
@@ -89,7 +91,7 @@ def test_retire_rows_carry_evidence_and_the_packet_lines_are_exactly_the_r1_rows
             assert len(r["evidence"]) > 40, r["row_id"]
     r1 = {r["lane_id"] for r in rows if r["source"] == "crontab" and r["wave"] == "R1"}
     r1b = {r["lane_id"] for r in rows if r["source"] == "crontab" and r["wave"] == "R1b"}
-    assert r1 == TIER_A and r1b == TIER_B
+    assert r1 == TIER_A and r1b == TIER_B | DECLINED
     assert {x["lane_id"] for x in RP.rows(tier_b=False)} == TIER_A
     assert {x["lane_id"] for x in RP.rows(tier_b=True)} == TIER_A | TIER_B
 
@@ -133,6 +135,42 @@ def test_classify_rules():
     assert D.classify("z", {"state": "ACTIVE"}, None, single, ov, {})["disposition"] == "RETIRE"
 
 
+def test_cutover_directive_2026_10_15():
+    """Operator directive 2026-10-15 "N8N Cutover Decision": STAY_HOST only for F07 and every registry_systemd row."""
+    stay = {"disposition": "STAY_HOST", "target": "host cron/systemd", "target_shape": "host", "wave": "-",
+            "evidence": "inventory 2026-10-14: not eligible for n8n", "duplicate_of": ""}
+    b = D.apply_cutover_directive(stay, "F09", "crontab")
+    assert b["disposition"] == "MIGRATE_N8N" and b["wave"] == "CD6" and "no broker credential" in b["target"]
+    assert D.apply_cutover_directive(stay, "F10", "crontab")["target"].startswith("n8n-orchestrated primary")
+    assert D.apply_cutover_directive(stay, "F40", "crontab")["wave"] == "CD4"
+    assert D.apply_cutover_directive(stay, "F07w", "crontab")["wave"] == "CD5"
+    assert D.apply_cutover_directive(stay, "F36", "crontab")["wave"] == "CD1"
+    assert D.apply_cutover_directive(dict(stay, target="host sender (comms chokepoint)"), "F36", "crontab")["wave"] == "CD3"
+    for fid, src in (("F07", "crontab"), ("F41", "registry_systemd"), ("F07w", "registry_systemd")):
+        d = D.apply_cutover_directive(stay, fid, src)
+        assert d["disposition"] == "STAY_HOST" and d["wave"] == "DEFERRED-I2" and "2026-10-15" in d["evidence"]
+    mig = dict(stay, disposition="MIGRATE_N8N", wave="M3")
+    assert D.apply_cutover_directive(mig, "F09", "crontab") == mig
+    # registry_systemd: "not to be migrated, refactored, or reclassified" -> every disposition is held on the host.
+    for disp in ("MIGRATE_N8N", "CONSOLIDATE", "RETIRE"):
+        d = D.apply_cutover_directive(dict(stay, disposition=disp, wave="M5"), "F40", "registry_systemd")
+        assert d["disposition"] == "STAY_HOST" and d["wave"] == "DEFERRED-I2"
+        assert d["evidence"].startswith("operator directive 2026-10-15: registry_systemd deferred this iteration (was: ")
+        assert f"(was: {disp}/M5" in d["evidence"]
+    # The committed table: STAY_HOST only for F07 / registry_systemd, every converted row cites the directive.
+    for r in _rows():
+        if r["disposition"] == "STAY_HOST":
+            assert r["family_id"] == "F07" or r["source"] == "registry_systemd", r["row_id"]
+            assert r["wave"] == "DEFERRED-I2", r["row_id"]
+        if r["source"] == "registry_systemd":
+            assert r["disposition"] == "STAY_HOST" and r["wave"] == "DEFERRED-I2", r["row_id"]
+        if r["wave"] in D.DIRECTIVE_WAVES:
+            assert r["disposition"] == "MIGRATE_N8N" and D.DIRECTIVE_ID in r["evidence"], r["row_id"]
+    t = D.totals(_rows())
+    assert t["crontab"] == {"RETIRE": 10, "CONSOLIDATE": 148, "STAY_HOST": 1, "MIGRATE_N8N": 235}
+    assert t["registry_only"] == {"RETIRE": 1, "CONSOLIDATE": 5, "STAY_HOST": 102, "MIGRATE_N8N": 32}
+
+
 def test_parse_crontab_skips_env_and_comments():
     env, jobs = D.parse_crontab(
         "SHELL=/bin/bash\nPY=/x\n# 1 2 * * * old\n\n*/5 * * * * cd $PROJ && x  # TRADEAI_LANE l1\n"
@@ -146,7 +184,7 @@ def test_parse_crontab_skips_env_and_comments():
 
 def test_build_comments_in_place_and_rolls_back_exactly():
     text = SNAP.read_text(encoding="utf-8")
-    for tier_b, n in ((False, 4), (True, 10)):
+    for tier_b, n in ((False, 4), (True, 9)):
         cand, problems = RP.build(text, "2026-10-15", tier_b)
         assert problems == []
         before, after = text.splitlines(), cand.splitlines()
@@ -168,7 +206,7 @@ def test_build_refuses_a_drifted_or_already_retired_table():
     assert problems == ["nothing to retire: every packet line is already retired"]
     # tier B on top of an installed tier A retires only the tier-B lines
     both, problems = RP.build(cand, "2026-10-16", True)
-    assert problems == [] and RP.active_count(both.splitlines()) == 384 and RP.verify(both, True, False) == []
+    assert problems == [] and RP.active_count(both.splitlines()) == 385 and RP.verify(both, True, False) == []
     dup = text + RP.rows(False)[0]["original"] + "\n"
     _c, problems = RP.build(dup, "2026-10-15", False)
     assert any("found 2 times" in p for p in problems)
@@ -228,35 +266,39 @@ def test_install_and_rollback_round_trip_on_a_fake_crontab(tmp_path, fake_cronta
 # ── registry ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 
-def test_registry_rows_stay_active_with_a_retire_pending_block():
+def test_registry_rows_are_retired_after_the_2026_10_15_install():
+    """Installed 2026-10-15 under cron grant 1aa15633…: tier A + the 5 tier-B YES rows; apply_registry.py --write."""
     reg = json.loads((ROOT / "config/lane_registry.json").read_text(encoding="utf-8"))
-    pend = {r["lane_id"]: r for r in reg["lanes"] if r.get("retire_pending")}
-    assert set(pend) == TIER_A | TIER_B
-    tsv = {x["lane_id"]: x for x in RP.rows(tier_b=True)}
-    for lane, r in pend.items():
-        assert r["state"] == "ACTIVE" and "generated_by" not in r
-        p = r["retire_pending"]
-        assert p["packet"] == "docs/ops/packets/lane-retire-wave1-20261015"
-        assert p["reason"] == tsv[lane]["reason"] and p["cron_line_20261015"] == int(tsv[lane]["line"])
-        assert ("tier A" if lane in TIER_A else "tier B") in p["tier"]
-        marker = str(r["scheduler"].get("match") or r["scheduler"]["expression"])
-        assert marker in tsv[lane]["original"], lane  # the row really declares the line being retired
+    rows = {r["lane_id"]: r for r in reg["lanes"]}
+    assert not [r["lane_id"] for r in reg["lanes"] if r.get("retire_pending")]
+    from scripts.lib import lane_registry as LR
+
+    for lane in TIER_A | TIER_B:
+        r = rows[lane]
+        assert r["state"] == "RETIRED" and r["retire_batch"] == "retire-ld-w1" and "retire_pending" not in r
+        assert LR.validate_row(r) == []
+    for lane in DECLINED:
+        r = rows[lane]
+        assert r["state"] == "ACTIVE" and "retire_pending" not in r and r["retire_declined"]["decided"] == "2026-10-15"
 
 
 def test_apply_registry_flips_only_rows_whose_line_is_retired():
-    reg = json.loads((ROOT / "config/lane_registry.json").read_text(encoding="utf-8"))
+    tsv = {x["lane_id"]: x for x in RP.rows(tier_b=True)}
+    reg = {
+        "lanes": [
+            {"lane_id": lane, "state": "ACTIVE", "retire_pending": {"tier": "t", "reason": tsv[lane]["reason"],
+                                                                    "evidence": "e"}}
+            for lane in TIER_A | TIER_B
+        ]
+    }
     cand, _ = RP.build(SNAP.read_text(encoding="utf-8"), "2026-10-15", False)
     flip, keep = AR.plan(reg, cand)
     assert set(flip) == TIER_A and set(keep) == TIER_B
     AR.apply(reg, flip, "2026-10-15", "g-test")
     rows = {r["lane_id"]: r for r in reg["lanes"]}
-    from scripts.lib import lane_registry as LR
-
     for lane in TIER_A:
-        r = rows[lane]
-        assert r["state"] == "RETIRED" and "retire_pending" not in r and r["retire_batch"] == "retire-ld-w1"
-        assert LR.validate_row(r) == []
+        assert rows[lane]["state"] == "RETIRED" and rows[lane]["retire_batch"] == "retire-ld-w1"
     for lane in TIER_B:
         assert rows[lane]["state"] == "ACTIVE" and rows[lane]["retire_pending"]
-    flip0, _ = AR.plan(json.loads((ROOT / "config/lane_registry.json").read_text()), SNAP.read_text())
+    flip0, _ = AR.plan(reg, SNAP.read_text())
     assert flip0 == []  # nothing flips while the lines are live

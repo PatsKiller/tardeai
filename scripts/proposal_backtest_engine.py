@@ -496,7 +496,8 @@ def main(argv=None) -> int:
         if lane_run:
             _receipt_lib().write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
                                               script="proposal_backtest_engine.py", summary=stats,
-                                              error=f"{type(exc).__name__}: {exc}")
+                                              error=f"{type(exc).__name__}: {exc}",
+                                              output={"produced_count": 0, "attempted_count": 0, "skipped_reasons": {"dependency_unavailable": 1}})
         raise
 
     rc = 1 if (stats["load_errors"] or stats["persist_failures"]) else 0
@@ -508,8 +509,20 @@ def main(argv=None) -> int:
             json_stdout=True)
     elif lane_run:
         _receipt_lib().write_lane_receipt(LANE_ID, ok=(rc == 0), exit_code=rc, started_at=started,
-                                          script="proposal_backtest_engine.py", summary=stats)
+                                          script="proposal_backtest_engine.py", summary=stats,
+                                          output=lane_output(stats))
     return rc
+
+
+def lane_output(stats: dict) -> dict:
+    """LaneRunReceipt@v2 output fields (n8n expected_output, unit: active proposals backtested and persisted).
+    attempted = proposals selected; no active proposal = ``no_new_input``."""
+    processed, load_err, persist_fail = (int(stats.get(k) or 0) for k in ("processed", "load_errors",
+                                                                          "persist_failures"))
+    produced = max(processed - persist_fail, 0)
+    return {"produced_count": produced, "attempted_count": processed + load_err,
+            "skipped_reasons": {"load_error": load_err, "persist_failed": persist_fail},
+            "empty_reason": "no_new_input" if processed + load_err == 0 else None}
 
 
 def cli(argv=None) -> int:

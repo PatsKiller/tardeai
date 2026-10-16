@@ -180,6 +180,11 @@ def _write_rows(cur, scored: dict) -> list:
     return written
 
 
+#: n8n lane id; the real run's receipt carries LaneRunReceipt@v2 output fields (produced_count = rows inserted into
+#: agent_performance_history, one per scored agent).
+LANE_ID = "update-agent-performance"
+
+
 def run(as_json: bool = False, dry_run: bool = False) -> int:
     conn = _get_conn()
     if dry_run:
@@ -198,7 +203,12 @@ def run(as_json: bool = False, dry_run: bool = False) -> int:
         }, default=str, indent=2))
         return 0
 
-    from lib.lane_last_receipt import now_iso, write_receipt
+    from lib.lane_last_receipt import now_iso, receipt_path, write_lane_receipt
+
+    # Established receipt path (data/runtime/update_agent_performance_last.json); lane id = the n8n lane's, so the
+    # per-attempt copy lands in lane_attempts/update-agent-performance/<run_id>.
+    def write_receipt(name, **kw):
+        return write_lane_receipt(LANE_ID, path=receipt_path(name), script=name, **kw)
 
     started_at = now_iso()
     try:
@@ -210,11 +220,16 @@ def run(as_json: bool = False, dry_run: bool = False) -> int:
         conn.close()
     except Exception as exc:
         write_receipt("update_agent_performance", ok=False, started_at=started_at,
-                      error=f"{type(exc).__name__}: {exc}")
+                      error=f"{type(exc).__name__}: {exc}",
+                      output={"produced_count": 0, "attempted_count": 0, "skipped_reasons": {"dependency_unavailable": 1}})
         raise
     outcomes, matched_count = scored["outcomes"], scored["matched"]
     write_receipt("update_agent_performance", ok=True, started_at=started_at,
-                  summary={"outcomes": outcomes, "matched": matched_count, "agents_scored": len(written)})
+                  summary={"outcomes": outcomes, "matched": matched_count, "agents_scored": len(written)},
+                  output={"produced_count": len(written), "attempted_count": len(scored["rows"]),
+                          "skipped_reasons": {},
+                          # no recommendation matched an outcome with price data
+                          "empty_reason": None if written else "no_new_input"})
 
     if as_json:
         print(json.dumps({

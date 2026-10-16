@@ -203,11 +203,22 @@ def main(argv=None):
     except (Exception, SystemExit) as exc:
         rc = exc.code if isinstance(exc, SystemExit) and isinstance(exc.code, int) else 1
         write_lane_receipt("daily-incubator-refresh", ok=False, exit_code=rc,
-                           started_at=started, script="daily_incubator_refresh.py", error=type(exc).__name__)
+                           started_at=started, script="daily_incubator_refresh.py", error=type(exc).__name__,
+                           output={"produced_count": 0, "attempted_count": 0, "skipped_reasons": {"dependency_unavailable": 1}})
         raise
     write_lane_receipt("daily-incubator-refresh", ok=True, exit_code=0, started_at=started,
-                       script="daily_incubator_refresh.py", summary=counts)
+                       script="daily_incubator_refresh.py", summary=counts, output=lane_output(counts))
     return 0
+
+
+def lane_output(counts: dict) -> dict:
+    """LaneRunReceipt@v2 output fields (n8n expected_output, unit: incubator_events rows, one per active entry with
+    fresh scan data). attempted = active entries; an entry without recent scan data is a typed skip; nothing to
+    refresh = ``no_new_input``."""
+    processed, no_data = int(counts.get("processed") or 0), int(counts.get("no_data") or 0)
+    produced = max(processed - no_data, 0)
+    return {"produced_count": produced, "attempted_count": processed, "skipped_reasons": {"no_scan_data": no_data},
+            "empty_reason": "no_new_input" if produced == 0 else None}
 
 
 def _run(args):
