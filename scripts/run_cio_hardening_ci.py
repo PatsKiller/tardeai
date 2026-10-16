@@ -1261,6 +1261,12 @@ GATES = [
             "tests/test_n8n_diagnosis_deepseek_route_20261015.py",
         ],
     ),
+    # 2026-10-16: daily-incubator-refresh live 08:15 ET died on a closed connection and the except handler's rollback()
+    # masked the real error; guarded rollback/close, original exception logged, reconnect before the scan commit.
+    (
+        "daily_incubator_conn_closed_20261016",
+        ["tests/test_daily_incubator_refresh_conn_closed_20261016.py"],
+    ),
     # Paper/broker-adjacent child steps use the same resolver; telegram run_promoter no longer shadows os (F823).
     # Code-only, under execution-engineering grant dc66eb4b6db5107e (operator 2026-10-09).
     (
