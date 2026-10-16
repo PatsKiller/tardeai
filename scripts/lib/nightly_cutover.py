@@ -57,7 +57,9 @@ STATES = ("candidate", "evidence_ok", "protected", "drained", "applied", "reconc
 #: The served wrapper must carry the 2026-10-16 semantics (PR #1823): owner n8n exits 0 skipped_effect, fail-open
 #: ledger, decision file. A filename alone is not protection.
 WRAPPER_REL = "scripts/effect_claim_cron.sh"
-WRAPPER_MARKERS = ("skipped_effect", "owner --process", "--decision-out", "effect_fenced_owner n8n")
+WRAPPER_MARKERS = ("skipped_effect", "--decision-out", "effect_fenced_owner n8n",
+                   # 2026-10-16 (architect review): the served wrapper must FAIL CLOSED for handed-over lanes
+                   "skipped_ownership_unknown", "ownership --process")
 VERDICTS_OK = frozenset({"produced", "empty_allowed"})
 IN_FLIGHT_STATES = frozenset({"REQUESTED", "RUNNING", "QUEUED", "CLAIMED", "STARTED"})
 FAILED_RUN_STATES = frozenset({"RUN_FAILED", "RUN_TIMEOUT"})
@@ -193,6 +195,12 @@ class World:
     workflow_git: Mapping[str, str]                 # workflow id -> graph hash (served release, reviewed set)
     lane_workflows: Mapping[str, str] = field(default_factory=dict)   # lane -> its own generated live workflow id
     downstream_mtimes: Mapping[str, float] = field(default_factory=dict)  # configured downstream path -> mtime
+    #: 2026-10-16 (architect review): the durable handover manifest (scripts/lib/effect_claim.py). status ok / absent /
+    #: unreadable; owners = process -> last owner set-owner recorded. Default absent: an append/send lane is held.
+    manifest_status: str = "absent"
+    manifest_owners: Mapping[str, str] = field(default_factory=dict)
+    #: lanes already reserved/applied tonight in the durable per-ET-night quota ledger (scripts/lib/nightly_cutover_txn)
+    quota_used: int = 0
 
     @property
     def crontab_sha(self) -> str:
@@ -439,6 +447,15 @@ def check_protected(world: World, lane: str, v: dict[str, Any], *, tier: int, re
     owner = world.owners.get(spec["process"], "none")
     if owner != "n8n":
         return f"effect_owner_{owner}: effect_claim.py set-owner --process {spec['process']} --owner n8n first"
+    # 2026-10-16 (architect review): after the retire, the remaining protection (the wrapper failing CLOSED when the
+    # ledger is unreadable) depends on the handover manifest naming this process as n8n's. Never reconciled here.
+    if world.manifest_status != "ok":
+        return (f"handover_manifest_{world.manifest_status}: the cron wrapper cannot fail closed for {spec['process']}"
+                " without it (effect_claim.py handover-seed, or set-owner)")
+    m_owner = world.manifest_owners.get(spec["process"], "not_listed")
+    if m_owner != "n8n":
+        return (f"handover_manifest_disagrees: manifest {m_owner} vs ledger n8n for {spec['process']} "
+                "(report both; never auto-reconciled)")
     for i, ln in rest:
         if not world.served_wrapper_ok:
             return f"served_wrapper_lacks_1016_semantics: L{i + 1} remains ({world.served_wrapper_why})"
@@ -466,81 +483,112 @@ def check_drained(world: World, lane: str, v: dict[str, Any]) -> Optional[str]:
     return None
 
 
-def evaluate(world: World, *, date_s: Optional[str] = None) -> dict[str, Any]:
-    """The plan: one verdict per cohort lane. Pure."""
+def evaluate_lane(world: World, lane: str, date_s: str, used_lines: Optional[dict[int, str]] = None
+                  ) -> dict[str, Any]:
+    """One lane's verdict (status ``ready`` at state ``drained``, or ``held:<reason>``). Pure. Shared by ``evaluate``
+    and by apply's fresh per-lane re-check at mutation time."""
     from scripts.lib import cutover_lane_facts as W
 
+    used_lines = {} if used_lines is None else used_lines
+    v: dict[str, Any] = {"lane_id": lane, "state": None, "status": None, "held": None}
+    why = check_cohort(world, lane, v)
+    if why:
+        return _hold(v, why)
+    edits, why = retire_edits(world, lane, date_s)
+    if why:
+        return _hold(v, why)
+    clash = [e["line"] for e in edits if e["index"] in used_lines]
+    if clash:
+        return _hold(v, f"cron_line_shared_with:{used_lines[edits[0]['index']]}")
+    v["edits"] = edits
+    v["state"] = "candidate"
+    row, entry = world.registry[lane], world.allowlist.get(lane)
+    if entry is None or entry.get("live_arg") is None:
+        return _hold(v, "allowlist_no_live_arg: the lane has no live argv in config/n8n_run_allowlist.json")
+    root_row = world.registry_root_rows.get(lane)
+    if root_row != row:
+        return _hold(v, "registry_root_row_differs_from_served: reconcile the registry root with CURRENT first")
+    if lane not in world.relay_live:
+        return _hold(v, "not_relay_live: add the lane to TRADEAI_N8N_RELAY_LIVE_LANES (n8n live fires are refused)")
+    c = world.contracts.get(lane)
+    if not c or c.get("status") != "REVIEWED" or c.get("stage") != "canary":
+        return _hold(v, f"contract_disagrees_with_registry: health contract {(c or {}).get('status')}/stage "
+                        f"{(c or {}).get('stage')} vs registry canary; promote the REVIEWED contract to canary first")
+    disp = dict(world.disposition.get(lane) or {})
+    line_text = " ".join(e["before"] for e in edits)
+    tier = W.tier_of(disp, row, entry, world.effect_raw, line_text)
+    sender = W.is_sender_lane(disp, row, world.effect_raw, line_text)
+    v["tier"], v["sender"] = tier, sender
+    why = check_evidence(world, lane, v, tier=tier, sender=sender)
+    if why:
+        return _hold(v, why)
+    v["state"] = "evidence_ok"
+    why = check_protected(world, lane, v, tier=tier, retire_idx=[e["index"] for e in edits])
+    if why:
+        return _hold(v, why)
+    v["state"] = "protected"
+    why = check_drained(world, lane, v)
+    if why:
+        return _hold(v, why)
+    v["state"] = "drained"
+    v["status"] = "ready"
+    v["owner_at_eval"] = lane_owner(world, lane)
+    v["workflow_at_eval"] = lane_workflow_hash(world, lane)
+    return v
+
+
+def lane_owner(world: World, lane: str) -> Optional[dict[str, str]]:
+    """The lane's effect process with its live ledger owner and manifest owner (None for an unkeyed lane)."""
+    spec = world.effect_lanes.get(lane)
+    if spec is None:
+        return None
+    p = spec["process"]
+    return {"process": p, "ledger": world.owners.get(p, "none"),
+            "manifest": world.manifest_owners.get(p, "not_listed") if world.manifest_status == "ok"
+            else world.manifest_status}
+
+
+def lane_workflow_hash(world: World, lane: str) -> Optional[str]:
+    wid = world.lane_workflows.get(lane)
+    return None if wid is None else world.workflow_live.get(wid)
+
+
+def shared_fingerprint(world: World) -> dict[str, Any]:
+    """What every lane's verdict shares: the release, the allowlist and contract versions, and the graph hashes of
+    the approved workflows (live and git). A change between evaluation and mutation stops the whole cohort."""
+    wf = sorted(set(world.config.get("approved_workflows") or []))
+    return {"current_sha": world.current_sha, "allowlist_version": world.allowlist_version,
+            "contracts_version": world.contracts_version,
+            "workflow_live": {w: world.workflow_live.get(w) for w in wf},
+            "workflow_git": {w: world.workflow_git.get(w) for w in wf}}
+
+
+def evaluate(world: World, *, date_s: Optional[str] = None) -> dict[str, Any]:
+    """The plan: one verdict per cohort lane. Pure. The nightly cap counts the lanes ALREADY reserved or applied
+    tonight in the durable quota ledger (world.quota_used), not just this evaluation."""
     date_s = date_s or world.now.astimezone(timezone.utc).strftime("%Y-%m-%d")
     lanes_out: list[dict[str, Any]] = []
     ready: list[dict[str, Any]] = []
     used_lines: dict[int, str] = {}
     for lane in cohort(world):
-        v: dict[str, Any] = {"lane_id": lane, "state": None, "status": None, "held": None}
+        v = evaluate_lane(world, lane, date_s, used_lines)
         lanes_out.append(v)
-        why = check_cohort(world, lane, v)
-        if why:
-            _hold(v, why)
-            continue
-        edits, why = retire_edits(world, lane, date_s)
-        if why:
-            _hold(v, why)
-            continue
-        clash = [e["line"] for e in edits if e["index"] in used_lines]
-        if clash:
-            _hold(v, f"cron_line_shared_with:{used_lines[edits[0]['index']]}")
-            continue
-        v["edits"] = edits
-        v["state"] = "candidate"
-        row, entry = world.registry[lane], world.allowlist.get(lane)
-        if entry is None or entry.get("live_arg") is None:
-            _hold(v, "allowlist_no_live_arg: the lane has no live argv in config/n8n_run_allowlist.json")
-            continue
-        root_row = world.registry_root_rows.get(lane)
-        if root_row != row:
-            _hold(v, "registry_root_row_differs_from_served: reconcile the registry root with CURRENT first")
-            continue
-        if lane not in world.relay_live:
-            _hold(v, "not_relay_live: add the lane to TRADEAI_N8N_RELAY_LIVE_LANES (n8n live fires are refused)")
-            continue
-        c = world.contracts.get(lane)
-        if not c or c.get("status") != "REVIEWED" or c.get("stage") != "canary":
-            _hold(v, f"contract_disagrees_with_registry: health contract {(c or {}).get('status')}/stage "
-                     f"{(c or {}).get('stage')} vs registry canary; promote the REVIEWED contract to canary first")
-            continue
-        disp = dict(world.disposition.get(lane) or {})
-        line_text = " ".join(e["before"] for e in edits)
-        tier = W.tier_of(disp, row, entry, world.effect_raw, line_text)
-        sender = W.is_sender_lane(disp, row, world.effect_raw, line_text)
-        v["tier"], v["sender"] = tier, sender
-        why = check_evidence(world, lane, v, tier=tier, sender=sender)
-        if why:
-            _hold(v, why)
-            continue
-        v["state"] = "evidence_ok"
-        why = check_protected(world, lane, v, tier=tier, retire_idx=[e["index"] for e in edits])
-        if why:
-            _hold(v, why)
-            continue
-        v["state"] = "protected"
-        why = check_drained(world, lane, v)
-        if why:
-            _hold(v, why)
-            continue
-        v["state"] = "drained"
-        v["status"] = "ready"
-        for e in edits:
-            used_lines[e["index"]] = lane
-        ready.append(v)
+        if v["status"] == "ready":
+            for e in v["edits"]:
+                used_lines[e["index"]] = lane
+            ready.append(v)
     cap = int(world.config.get("max_lanes_per_night") or 0)
-    for v in ready[cap:]:
-        _hold(v, f"nightly_cap_reached: max_lanes_per_night={cap}")
+    used = int(world.quota_used or 0)
+    left = max(0, cap - used)
+    for v in ready[left:]:
+        _hold(v, f"nightly_cap_reached: max_lanes_per_night={cap}, already used tonight={used}")
     counts: dict[str, int] = {}
     for v in lanes_out:
         k = "ready" if v["status"] == "ready" else "held"
         counts[k] = counts.get(k, 0) + 1
     return {"schema": PLAN_SCHEMA, "evaluated_at": world.now.isoformat(), "current_sha": world.current_sha,
             "crontab_sha": world.crontab_sha, "allowlist_version": world.allowlist_version,
-            "contracts_version": world.contracts_version, "date": date_s, "cap": cap,
+            "contracts_version": world.contracts_version, "date": date_s, "cap": cap, "quota_used_before": used,
             "counts": counts, "lanes": lanes_out}
 
 
@@ -621,7 +669,7 @@ def read_ledger(ledger: Path, lanes: list[str], processes: list[str], since: dat
 def gather_world(*, served_root: Path, current_sha: str, registry_root: Path, crontab: str, ledger: Path,
                  relay_live_path: Path, config: Mapping[str, Any], now: datetime,
                  workflow_reader: Callable[[], list[dict]], state_root: Optional[Path] = None,
-                 policy_path: Optional[Path] = None) -> World:
+                 policy_path: Optional[Path] = None, manifest_path: Optional[Path] = None) -> World:
     """Read-only snapshot. Everything config-shaped comes from the SERVED release (what actually runs)."""
     from scripts.lib import cutover_lane_facts as W
     from scripts.lib import lane_dispatch as LD
@@ -689,13 +737,23 @@ def gather_world(*, served_root: Path, current_sha: str, registry_root: Path, cr
                 mtimes[str(spec.get("path"))] = (Path(state_root) / str(spec.get("path"))).stat().st_mtime
             except OSError:
                 pass
+    from scripts.lib import effect_claim as EC
+
+    mpath = manifest_path or EC.handover_manifest_path(ledger)
+    try:
+        mdoc = EC.read_handover_manifest(Path(mpath))
+        m_status = "absent" if mdoc is None else "ok"
+        m_owners = {} if mdoc is None else {p: str(e["owner"]) for p, e in mdoc["processes"].items()}
+    except EffectKeyError:
+        m_status, m_owners = "unreadable", {}
     return World(now=now, config=config, policy=policy, disposition=disp, current_sha=current_sha,
                  registry=registry, registry_root_rows=root_rows, allowlist=allowlist,
                  allowlist_version=sha16(al_raw), contracts=contracts, contracts_version=sha16(c_raw),
                  effect_raw=effect_raw, effect_lanes=effect_lanes, relay_live=load_relay_live(relay_live_path),
                  crontab=crontab, runs=runs, in_flight=fl, owners=owners, ambiguous_claims=amb,
                  served_wrapper_ok=wok, served_wrapper_why=wwhy, workflow_live=live, workflow_git=git_h,
-                 lane_workflows=lane_wf, downstream_mtimes=mtimes)
+                 lane_workflows=lane_wf, downstream_mtimes=mtimes, manifest_status=m_status,
+                 manifest_owners=m_owners)
 
 
 # ── registry reconciliation (apply; writes only the registry root) ─────────────────────────────────────────────────
@@ -788,6 +846,73 @@ def reconcile_registry(registry_root: Path, lane: str, wave: str, expect_row: Ma
             "row_after": reg["lanes"][idx], "contract_before": before_c,
             "contract_after": con["contracts"][cidx] if cidx is not None else None,
             "registry_sha_before": sha256_text(reg_raw), "contracts_sha_before": sha256_text(con_raw)}
+
+
+def plan_reconcile(registry_root: Path, lane: str, wave: str, expect_row: Mapping[str, Any]) -> dict[str, Any]:
+    """The registry-row and health-contract edits for one lane as before/after images, WITHOUT writing (the
+    write-ahead transaction record carries them; json_step applies them one at a time). CohortStop on any problem."""
+    reg_p = registry_root / "config/lane_registry.json"
+    con_p = registry_root / "config/n8n_health_contracts.json"
+    try:
+        reg, reg_raw, _ = _load_exact(reg_p)
+        con, con_raw, _ = _load_exact(con_p)
+        row = next((r for r in reg["lanes"] if isinstance(r, dict) and r.get("lane_id") == lane), None)
+        if row is None or row != expect_row:
+            raise CohortStop(f"registry_write_failure:{lane} row changed since evaluation")
+        c = next((x for x in con["contracts"] if isinstance(x, dict) and x.get("kind") == "lane"
+                  and x.get("id") == lane), None)
+    except CohortStop:
+        raise
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise CohortStop(f"registry_write_failure:{type(exc).__name__}:{exc}") from exc
+    return {"registry": {"path": str(reg_p), "coll": "lanes", "key": "lane_id", "id": lane, "before": row,
+                         "after": dispatcher_row(row, wave), "sha_before": sha256_text(reg_raw)},
+            "contracts": None if c is None else
+            {"path": str(con_p), "coll": "contracts", "key": "id", "id": lane, "before": c,
+             "after": cutover_contract(c, wave), "sha_before": sha256_text(con_raw)}}
+
+
+def json_step_state(step: Mapping[str, Any]) -> str:
+    """``applied`` (the item equals its after-image), ``not_applied`` (equals its before-image) or ``conflict``
+    (anything else: someone else changed it; never auto-reconciled)."""
+    try:
+        doc, _, _ = _load_exact(Path(step["path"]))
+        cur = next((r for r in doc[step["coll"]] if isinstance(r, dict) and r.get(step["key"]) == step["id"]), None)
+    except (OSError, ValueError, KeyError, TypeError, CohortStop):
+        return "conflict"
+    if cur == step["after"]:
+        return "applied"
+    if cur == step["before"]:
+        return "not_applied"
+    return "conflict"
+
+
+def json_step(step: Mapping[str, Any], *, undo: bool = False) -> str:
+    """Idempotently move one item to its after-image (or, with undo, back to its before-image). Returns ``written`` or
+    ``already``; CohortStop("registry_write_failure:...") on a conflict or a failed read-back."""
+    want, other = ("before", "after") if undo else ("after", "before")
+    p = Path(step["path"])
+    try:
+        doc, _, ea = _load_exact(p)
+        i = next((i for i, r in enumerate(doc[step["coll"]]) if isinstance(r, dict)
+                  and r.get(step["key"]) == step["id"]), None)
+        if i is None:
+            raise CohortStop(f"registry_write_failure:{p.name}:{step['id']} missing")
+        if doc[step["coll"]][i] == step[want]:
+            return "already"
+        if doc[step["coll"]][i] != step[other]:
+            raise CohortStop(f"registry_write_failure:{p.name}:{step['id']} changed by someone else "
+                             "(neither the before nor the after image; never auto-reconciled)")
+        doc[step["coll"]][i] = step[want]
+        _write_atomic(p, _serialise(doc, ea))
+        back = json.loads(p.read_text(encoding="utf-8"))
+        if back[step["coll"]][i] != step[want]:
+            raise CohortStop(f"registry_write_failure:{p.name}:{step['id']} read-back differs")
+    except CohortStop:
+        raise
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise CohortStop(f"registry_write_failure:{type(exc).__name__}:{exc}") from exc
+    return "written"
 
 
 def restore_registry(registry_root: Path, lane: str, rec: Mapping[str, Any]) -> list[str]:

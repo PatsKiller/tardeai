@@ -63,8 +63,11 @@ def wrap(tmp_path):
         return p
 
     def run(*, cron_claim=True, code=0, ledger_path=None):
-        env = {k: v for k, v in os.environ.items() if not k.startswith("TRADEAI_EFFECT")}
+        env = {k: v for k, v in os.environ.items()
+               if not k.startswith("TRADEAI_EFFECT") and k != E.HANDOVER_ENV}
         env.update({
+            "TRADEAI_STATE_ROOT": str(tmp_path / "state"),
+            "EFFECT_OWNERSHIP_INCIDENT_LOG": str(tmp_path / "incidents.jsonl"),
             "EFFECT_CLAIM_PY": sys.executable,
             "TRADEAI_N8N_COORDINATION_LEDGER": str(ledger_path or ledger),
             "EFFECT_CLAIM_LOG_DIR": str(logs),
@@ -89,7 +92,12 @@ def wrap(tmp_path):
         pass
 
     w = W()
-    w.run, w.runs, w.events, w.store, w.ledger, w.tmp = run, runs, events, store, ledger, tmp_path
+    def own(owner, expect_epoch=None):
+        """The production owner switch (effect_claim.py set-owner): ledger row AND handover manifest."""
+        return E.set_owner_with_manifest(store(), ledger.parent / E.HANDOVER_NAME, "x-lane", owner,
+                                         expect_epoch=expect_epoch, by="t", now=1.0)
+
+    w.run, w.runs, w.events, w.store, w.ledger, w.tmp, w.own = run, runs, events, store, ledger, tmp_path, own
     return w
 
 
@@ -107,7 +115,7 @@ def test_owner_cron_runs_the_command(wrap, cron_claim):
 
 @pytest.mark.parametrize("cron_claim", [True, False])
 def test_owner_n8n_exits_0_logs_skipped_effect_and_writes_nothing(wrap, cron_claim):
-    wrap.store().set_owner("x-lane", "n8n", expect_epoch=None, by="t", now=1.0)
+    wrap.own("n8n")
     r = wrap.run(cron_claim=cron_claim)
     assert r.returncode == 0 and wrap.runs() == 0
     assert wrap.events() == ["skipped_effect"]
@@ -390,8 +398,10 @@ def test_wrapped_line_runs_end_to_end_under_bash(tmp_path):
     cmd = new[P.command_offset(new):]
     led = tmp_path / "l.sqlite"
     st = E.EffectClaimStore(CoordinationLedger(led))
-    st.set_owner("alpha", "n8n", expect_epoch=None, by="t", now=1.0)
-    env = {k: v for k, v in os.environ.items() if not k.startswith("TRADEAI_EFFECT")}
+    man = tmp_path / E.HANDOVER_NAME
+    E.set_owner_with_manifest(st, man, "alpha", "n8n", expect_epoch=None, by="t", now=1.0)
+    env = {k: v for k, v in os.environ.items() if not k.startswith("TRADEAI_EFFECT") and k != E.HANDOVER_ENV}
+    env.update({"TRADEAI_STATE_ROOT": str(tmp_path / "state")})
     cfg = tmp_path / "keys.json"
     cfg.write_text(json.dumps({"schema": E.EFFECT_CONFIG_SCHEMA, "lanes": {
         "alpha": {"process": "alpha", "input_version": "v1", "cron_claim": True}}}))
@@ -401,7 +411,7 @@ def test_wrapped_line_runs_end_to_end_under_bash(tmp_path):
     r = subprocess.run(["bash", "-c", cmd], env=env, capture_output=True, text=True, timeout=60)
     assert r.returncode == 0 and not (tmp_path / "ran").exists()
     assert "skipped_effect" in (tmp_path / "logs" / "effect_claim_events.jsonl").read_text()
-    st.set_owner("alpha", "cron", expect_epoch=1, by="t", now=2.0)
+    E.set_owner_with_manifest(st, man, "alpha", "cron", expect_epoch=1, by="t", now=2.0)
     r = subprocess.run(["bash", "-c", cmd], env=env, capture_output=True, text=True, timeout=60)
     assert r.returncode == 0 and (tmp_path / "ran").read_text() == "x"
 

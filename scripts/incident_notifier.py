@@ -226,7 +226,8 @@ def open_incidents(fanin: dict[str, Any], acked_event_ids: set[str]) -> tuple[di
             acked.append(key)
             continue
         prev = out.get(key)
-        if prev is None or SEV_RANK[sev] < SEV_RANK[prev["severity"]] or r.get("momentum_host_watch"):
+        if prev is None or SEV_RANK[sev] < SEV_RANK[prev["severity"]] or r.get("momentum_host_watch") \
+                or r.get("host_watch"):
             out[key] = {
                 "key": key,
                 "source": str(r.get("source")),
@@ -237,6 +238,7 @@ def open_incidents(fanin: dict[str, Any], acked_event_ids: set[str]) -> tuple[di
                 "event_id": r.get("event_id"),
                 "operator_action": r.get("operator_action") is True,
                 "momentum_host_watch": r.get("momentum_host_watch") is True,
+                "host_watch": r.get("host_watch") is True,
                 # flood-policy protection reads these (scripts/lib/incident_flood_policy.is_protected)
                 "lane": r.get("lane"),
                 "event_type": r.get("event_type"),
@@ -571,6 +573,7 @@ def apply_result(state: dict, msg: dict, now: datetime) -> None:
             "severity": inc["severity"],
             "open": True,
             "momentum_host_watch": inc.get("momentum_host_watch") is True,
+            "host_watch": inc.get("host_watch") is True,
             "flapping": bool(prior.get("flapping")) if prior.get("open", True) else False,
             "first_notified_at": prior.get("first_notified_at") or iso,
             "last_notified_at": iso,
@@ -637,7 +640,7 @@ def run(
         host_records = {
             k: v
             for k, v in state["notified"].items()
-            if v.get("source") == ALERT_PATH_SOURCE or v.get("momentum_host_watch")
+            if v.get("source") == ALERT_PATH_SOURCE or v.get("momentum_host_watch") or v.get("host_watch")
         }
         if not host_rows and not any(v.get("open", True) for v in host_records.values()):
             receipt["status"] = (
@@ -722,7 +725,7 @@ def run(
         for k in [
             k
             for k, v in state["notified"].items()
-            if v.get("source") == ALERT_PATH_SOURCE or v.get("momentum_host_watch")
+            if v.get("source") == ALERT_PATH_SOURCE or v.get("momentum_host_watch") or v.get("host_watch")
         ]:
             if k not in work["notified"]:
                 state["notified"].pop(k)  # dropped by the record TTL in reconcile
@@ -783,6 +786,18 @@ def alert_path_rows(root: Path, now: datetime, env: Optional[dict] = None) -> tu
         )
     except Exception as exc:  # fail-soft availability is retained in the host receipt
         note += f";momentum_unavailable:{type(exc).__name__}"
+    # 2026-10-16 (architect review): a cron copy of a HANDED-OVER lane that failed closed because its ownership could
+    # not be established (scripts/effect_claim_cron.sh skipped_ownership_unknown). Read here, on host cron, because the
+    # ledger (and so the n8n-dispatched fan-in) may be exactly what is down. Same source/item keys as the fan-in.
+    try:
+        from scripts.lib.effect_ownership_watch import findings as ownership_findings
+
+        found_own, own_note = ownership_findings(root, now, env=None if env is None else {**os.environ, **env})
+        rows.extend({**f, "state": "HOST_WATCH", "host_watch": True} for f in found_own)
+        if own_note != "effect_ownership:absent":   # absent = no cron copy ever failed closed on this host
+            note += ";" + own_note
+    except Exception as exc:  # noqa: BLE001 - fail-soft, recorded on the receipt
+        note += f";effect_ownership_unavailable:{type(exc).__name__}"
     return rows, note
 
 
