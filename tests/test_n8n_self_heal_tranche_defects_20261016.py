@@ -362,6 +362,16 @@ def test_code_defect_goes_to_the_fix_path_never_a_rerun(env):
     assert store.requests == [] and res["decision"]["reason"] == "code_defect:fix_pr_release"
     assert res["fix_path"]["route"] == "fix_pr_release" and res["fix_path"]["failure_kind"] == "code_error:TypeError"
     assert rec["digest"][0]["route"] == "fix_pr_release"
+    # the hook for the code-defect fixer (Claude Code iterative fixing, built separately): a stable id + evidence
+    (d,) = [r for r in _records(env) if r["kind"] == "diagnosis"]
+    cd = d["code_defect"]
+    assert cd["schema"] == cli.CODE_DEFECT_SCHEMA and cd["consumer"] == "claude_code_iterative_fix"
+    assert cd["defect_id"] == f"cd-{LOW_LANE}-{res['signature'].removeprefix('sig-')}-ep1"
+    ev = cd["evidence"]
+    assert ev["siem_id"] == 7 and ev["incident_key"] == res["incident_key"] and ev["failed_run_id"] == "n8n-wf-abc-42"
+    assert ev["diagnoses_store"] == str(cli.DIAGNOSES_REL) and ev["receipt"] == cli.RECEIPT_REL
+    assert ev["evidence_pack"]["ref"] and (env["state"] / "data" / "runtime" / ev["evidence_pack"]["ref"]).is_file()
+    assert rec["digest"][0]["fix_path"]["defect_id"] == cd["defect_id"]       # the escalation carries the same id
 
 
 def test_the_diagnoser_never_releases_an_effect_claim():

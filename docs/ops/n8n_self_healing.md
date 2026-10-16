@@ -83,7 +83,12 @@ Every row is read again from disk (and the ledger, and the environment) immediat
 - An auto-close (this incident's own recovery evidence) or `incident_resolved` removes **that incident's** SIEM id
   from the episode's escalation; the escalation closes only when no open incident is left on it. A request
   (`recovery_requested`) never clears it.
-- A code defect routes `fix_pr_release` (P2 digest unless already P1) and carries `fix_path`.
+- A code defect routes `fix_pr_release` (P2 digest unless already P1) and carries `fix_path`. The diagnosis
+  record's `code_defect` (schema `N8nCodeDefect@v1`) is the hook for the code-defect fixer (Claude Code iterative
+  fixing, built separately; `consumer_status: pending_consumer`): a stable `defect_id`
+  (`cd-<lane>-<signature>-ep<N>`, one per lane, signature and episode) and `evidence` pointers (SIEM id, incident key,
+  failed run id in the coordination ledger, the diagnoses store, the receipt, the evidence pack). The diagnoser only
+  publishes it; it never edits code or opens a PR.
 
 ## Tranche defect fixes (operator directive 2026-10-16)
 

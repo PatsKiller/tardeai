@@ -376,6 +376,25 @@ _FROM_ENV = object()
 #: The normal fix path for a code defect (defect fix 7): never a rerun, always a code change through the release path.
 FIX_PATH = {"kind": "code_defect", "route": "fix_pr_release",
             "next": "fix branch -> PR -> CI green -> merge -> prepare/promote release (AGENTS.md deploy protocol)"}
+CODE_DEFECT_SCHEMA = "N8nCodeDefect@v1"
+#: Hook for the code-defect fixer (operator 2026-10-16: Claude Code iterative fixing, built separately). This lane
+#: only PUBLISHES the defect (id + evidence pointers); it never edits code, opens a PR or runs the fixer.
+CODE_DEFECT_CONSUMER = "claude_code_iterative_fix"
+
+
+def code_defect_hook(res: dict, fields: dict) -> dict[str, Any]:
+    """A stable, consumable code-defect record: one id per (lane, signature, episode), plus pointers to the evidence a
+    fixer reads (SIEM row, failed run, the diagnoser's own store and receipt, the evidence pack when one was built)."""
+    sig = str(res.get("signature") or "")
+    ep = int(res.get("episode") or 1)
+    defect_id = f"cd-{res.get('lane')}-{sig.removeprefix('sig-')}-ep{ep}"[:128]
+    return {**FIX_PATH, "schema": CODE_DEFECT_SCHEMA, "defect_id": defect_id, "consumer": CODE_DEFECT_CONSUMER,
+            "consumer_status": "pending_consumer", "lane": res.get("lane"), "signature": sig, "episode": ep,
+            "failure_kind": res.get("failure_kind"), "failure_class": res.get("failure_class"),
+            "evidence": {"siem_id": res.get("siem_id"), "incident_key": res.get("incident_key"),
+                         "event_type": res.get("event_type"), "failed_run_id": fields.get("run"),
+                         "coordination_ledger": f"{B.LEDGER_REL} (runs.run_id = failed_run_id)",
+                         "diagnoses_store": str(DIAGNOSES_REL), "receipt": RECEIPT_REL, "evidence_pack": None}}
 
 
 def _llm_evidence(rcpt: dict[str, Any], *, projected: float, spend_before: float, calls_before: int,
@@ -495,6 +514,8 @@ def diagnose(rows: list[dict], *, catalogue: dict, registry: dict, state: dict, 
             ep = _new_episode(ep, key=key, severity=row.get("severity"), now=now)
         episodes[sig] = ep
         res["episode"] = int(ep.get("n") or 1)
+        if res["failure_class"] == H.CODE_ERROR:
+            res["fix_path"] = code_defect_hook(res, fields)
         res["_episode"] = ep
         if len([r for r in out["results"] if r.get("model_called")]) >= max_incidents or stop_reason:
             res.update(outcome="not_this_cycle", reason=stop_reason or "max_incidents")
@@ -637,7 +658,9 @@ def _decide_into(res: dict, verdict: dict, entry: dict, *, state: dict, today: d
         decision = {"kind": "escalate", "priority": "P1", "reason": "per_call_cost_cap_breached",
                     "action_id": decision.get("action_id")}
     if res.get("failure_class") == H.CODE_ERROR:
-        res["fix_path"] = dict(FIX_PATH, failure_kind=res.get("failure_kind"))
+        res.setdefault("fix_path", dict(FIX_PATH, failure_kind=res.get("failure_kind")))
+        if isinstance(res["fix_path"].get("evidence"), dict) and res.get("evidence_artifact"):
+            res["fix_path"]["evidence"]["evidence_pack"] = res["evidence_artifact"]
         if decision.get("kind") == "execute" and decision.get("action_id") != "reap_orphan_run":
             decision = {"kind": "escalate", "priority": "P2", "reason": "code_defect:fix_pr_release",
                         "action_id": decision.get("action_id")}
@@ -1058,6 +1081,8 @@ def apply_results(diag: dict, pending_events: list[dict], state: dict, rows_by_i
                 "episode_check", "severity_upgrade", "live_heal_gate", "retry_coordination", "effect_hold",
                 "reauthorization", "retry_parent_run_id", "heal_state", "output_recovered", "output_state",
                 "diagnosis_source", "cached_from", "fix_path", "llm") if res.get(k) is not None})
+            if res.get("fix_path"):
+                rec["code_defect"] = res["fix_path"]      # the fixer's hook: defect_id + evidence pointers
             records.append(rec)
     for ev in pending_events:
         if ev.get("escalate"):
