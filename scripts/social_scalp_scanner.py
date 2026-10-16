@@ -388,7 +388,19 @@ def load_hermes_catalysts() -> dict:
     import glob as _glob
 
     try:
-        files = sorted(_glob.glob(str(ROOT / "data" / "hermes" / "momentum_catalysts" / "*_catalysts.jsonl")))
+        files = []
+        try:  # 2026-10-16: persistent-state store first, legacy code-root copy as fallback
+            sys.path.insert(0, str(ROOT / "scripts"))
+            from lib import hermes_catalyst_store as _store
+
+            for d in _store.read_dirs(ROOT):
+                files = sorted(_glob.glob(str(d / "*_catalysts.jsonl")))
+                if files:
+                    break
+        except Exception:  # noqa: BLE001
+            files = []
+        if not files:
+            files = sorted(_glob.glob(str(ROOT / "data" / "hermes" / "momentum_catalysts" / "*_catalysts.jsonl")))
         if not files:
             return {}
         latest = files[-1]

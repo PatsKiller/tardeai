@@ -1095,6 +1095,13 @@ GATES = [
         "active_trader_momentum_alerts_20261004",
         ["tests/test_active_trader_momentum_alerts_20261004.py"],
     ),
+    # Operator follow-ups 2026-10-16: Hermes scalp catalyst research also covers the Active Trader hot symbols
+    # (data broker, capped) and lands in persistent state; premarket_watcher per-day dedupe; n8n-only registry row;
+    # "what n8n did today" Command Center tab (/v3/coordination?tab=today, GET /api/v2/coordination/n8n-today).
+    (
+        "hermes_at_research_n8n_today_20261016",
+        ["tests/test_hermes_at_research_premarket_dedupe_20261016.py", "tests/test_n8n_today_page_20261016.py"],
+    ),
     # Active Trader ARMED quality + stand-down + Trade-AI verdict + recorder reconnect (operator 2026-10-09:
     # 18 of 19 ARMED alerts never fired; ARMED printed last price as entry; dedupe keyed on price).
     (

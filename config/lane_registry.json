@@ -6784,13 +6784,14 @@
       "lane_id": "hermes-momentum-catalyst-scalp",
       "owner": "hermes",
       "scheduler": {
-        "kind": "cron",
-        "expression": "25 6-15 * * 1-5",
-        "command_text": "25 6-15 * * 1-5 cd $PROJ && flock -n /tmp/hermes_scalp_catalyst.lock timeout 5m $PY scripts/hermes_momentum_catalyst_researcher.py --source scalp --apply >> logs/hermes_scalp_catalyst.log 2>&1  # Hermes catalyst research on the day scalp candidates (feeds social_scalp_scanner GO gate)",
+        "kind": "n8n",
+        "expression": "dispatcher",
         "match": "scripts/hermes_momentum_catalyst_researcher.py",
-        "stage": "canary",
+        "cadence": "25 6-15 * * 1-5",
+        "stage": "cutover",
         "wave": "R2-04",
-        "cutover_wave": "CW1"
+        "cutover_wave": "CW1",
+        "command_text": "25 6-15 * * 1-5 cd $PROJ && flock -n /tmp/hermes_scalp_catalyst.lock timeout 5m $PY scripts/hermes_momentum_catalyst_researcher.py --source scalp --apply >> logs/hermes_scalp_catalyst.log 2>&1  # Hermes catalyst research on the day scalp candidates (feeds social_scalp_scanner GO gate)"
       },
       "expected_cadence_hours": 1.0,
       "state": "ACTIVE",
@@ -6831,7 +6832,17 @@
         "class": "ingest",
         "priority": 4,
         "retry_policy": "none"
-      }
+      },
+      "scheduler_before_cutover": {
+        "kind": "cron",
+        "expression": "25 6-15 * * 1-5",
+        "command_text": "25 6-15 * * 1-5 cd $PROJ && flock -n /tmp/hermes_scalp_catalyst.lock timeout 5m $PY scripts/hermes_momentum_catalyst_researcher.py --source scalp --apply >> logs/hermes_scalp_catalyst.log 2>&1  # Hermes catalyst research on the day scalp candidates (feeds social_scalp_scanner GO gate)",
+        "match": "scripts/hermes_momentum_catalyst_researcher.py",
+        "stage": "canary",
+        "wave": "R2-04",
+        "cutover_wave": "CW1"
+      },
+      "cutover_note": "2026-10-16 ~15:03Z: operator-approved N8N-ONLY TEST. Agent A commented the crontab line (was L717, now prefixed `# N8N-ONLY TEST 2026-10-16`); n8n dispatcher is the single scheduler. Why: the cron line held /tmp/hermes_scalp_catalyst.lock at the same minute, so all 5 live n8n slots 06:25-10:25 ET were RUN_SKIPPED_LOCK flock_held. Rollback: uncomment the crontab line and restore scheduler_before_cutover."
     },
     {
       "lane_id": "hermes-external-feedback-nightly",

@@ -311,7 +311,13 @@ def get_scalp_enrichment(
 
 
 def _research_records(day: str, root: Path | str | None = None) -> dict[str, datetime]:
-    path = Path(root or PROJECT_ROOT) / "data" / "hermes" / "momentum_catalysts" / f"{day}_catalysts.jsonl"
+    if root is not None:
+        path = Path(root) / "data" / "hermes" / "momentum_catalysts" / f"{day}_catalysts.jsonl"
+    else:
+        # 2026-10-16: persistent-state store first, legacy code-root copy as fallback (lib/hermes_catalyst_store).
+        from lib import hermes_catalyst_store as _store
+
+        path = _store.day_file_for_read(day, PROJECT_ROOT)
     out: dict[str, datetime] = {}
     try:
         lines = path.read_text().splitlines()
