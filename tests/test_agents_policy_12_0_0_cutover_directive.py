@@ -1,4 +1,4 @@
-"""AGENTS.md 12.0.0 (PROPOSED, MAJOR) — §23.25 n8n cutover directive (operator 2026-10-15).
+"""AGENTS.md 12.0.0 (ACTIVE since 2026-10-15, MAJOR) — §23.25 n8n cutover directive (operator 2026-10-15).
 
 Pins the record: header stays 11.0.0 ACTIVE until a ratifying edit; one 12.0.0 history row; the banner and §23.25
 quote the operator; F07 and registry_systemd are deferred; §0/§2/§2A/§7A/§17/§22 are named unchanged; the state
@@ -47,5 +47,7 @@ def test_banner_and_section_quote_the_directive_and_scope():
         assert frag in s, frag
     start = AGENTS.index("**12.0.0 is ")
     banner = " ".join(AGENTS[start:AGENTS.index("\n\n**", start + 10)].split())
-    for frag in ("PROPOSED (MAJOR)", "not a discussion item", "F09", "F07w", f"{TOKEN} <pr_number> <head_sha>"):
+    # 2026-10-15 ratifying edit: ACTIVE, the operator's verbatim token (PR #1779 comment by PatsKiller).
+    for frag in ("ACTIVE (MAJOR)", "not a discussion item", "F09", "F07w", f"{TOKEN} 1779 4aeb8cf4e",
+                 "PatsKiller 2026-10-15T21:12:48Z", "set the header block to 12.0.0 ACTIVE"):
         assert frag in banner, frag
