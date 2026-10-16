@@ -146,8 +146,8 @@ def test_no_other_shadow_row_gained_a_live_argv():
     from tests.test_canary_wave_20261014 import CANARY_WAVE_20261014
 
     # 2026-10-15 cutover waves (scripts/n8n_cutover_wave.py) add their promoted lanes (tests/support/n8n_cutover_waves.py).
-    assert canary == sorted({"heartbeat-watch", *CANARY_WAVE_20261014} | {
-        lane for lane in CW.PROMOTED if (ROWS[lane].get("scheduler") or {}).get("stage") == "canary"})
+    assert canary == sorted(({"heartbeat-watch", *CANARY_WAVE_20261014} | {
+        lane for lane in CW.PROMOTED if (ROWS[lane].get("scheduler") or {}).get("stage") == "canary"}) - set(CW.CUT_OVER))
     cut = sorted(r for r, row in ROWS.items() if (row.get("scheduler") or {}).get("stage") == "cutover")
     assert set(CUTOVER) <= set(cut), cut
 

@@ -259,7 +259,10 @@ def test_activated_registry_has_no_dispatch_issue_once_active(monkeypatch):
     # tests/test_shadow_wave_ld_w1_20261015.py).
     # (train 2026-10-15 d deferred build-symbol-profiles-at-0-19 / indicator-engine, -2; restored 2026-10-15 by the
     # operator DD01 ruling "n8n ignor broker code it can't trade live ccontinue": transitive lazy broker reach accepted.)
-    assert len(r1_cron_shadow) == len(WAVE3_ON_CRON) + 3 + 15 + 10 + 11 - 1 + 2 + 4 + 2
+    # - the R1 rows the n8n cutover waves moved to the dispatcher cutover row (no longer kind cron).
+    cut_r1 = [r for r in REGISTRY["lanes"] if r["lane_id"] in CW.CUT_OVER
+              and (r.get("dispatch") or {}).get("class") in LD.R1_ADMITTED_CLASSES]
+    assert len(r1_cron_shadow) == len(WAVE3_ON_CRON) + 3 + 15 + 10 + 11 - 1 + 2 + 4 + 2 - len(cut_r1)
     assert len(errs) == len(r1_cron_shadow) and all("shadow_on_cron_not_ratified" in x for x in errs), errs[:3]
     monkeypatch.setattr(LD, "R1_SHADOW_SHAPE_STATUS", "ACTIVE")
     # The staged entry planner rows (lane repair 2026-10-15) stay refused for exactly the reason they are staged: no
