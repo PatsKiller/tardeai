@@ -255,6 +255,23 @@ def _update_screener_membership(cur, screener_id, present, run_id):
     return len(present)
 
 
+# ── late-write fence (first assert_fence wave, 2026-10-16) ──────────────────
+_FENCE_PASSED = False
+
+
+def _fence_before_first_write() -> None:
+    """Call immediately before the lane's FIRST target write. Without an effect-claim token (a plain cron or manual
+    run) this is a no-op; with one, ``assert_fence()`` either passes (recorded once) or raises EffectFenceError and
+    nothing is written. A failure before this point is proven pre-effect, so a slot-bound retry may re-claim it."""
+    global _FENCE_PASSED
+    if _FENCE_PASSED:
+        return
+    from lib.effect_claim import fence_before_write
+
+    fence_before_write()
+    _FENCE_PASSED = True
+
+
 def run_screener(screener_id: str = None, dry_run: bool = False) -> dict:
     """Run one or all screeners. Returns discovery summary."""
     # The former dry run fetched paid Finviz data and read credentials before
@@ -337,6 +354,7 @@ def run_screener(screener_id: str = None, dry_run: bool = False) -> dict:
             if _ensure_txn_usable(conn):
                 print(f"  [screener] recovered aborted transaction before {sid}")
             sp = _sp_name("sp_scr", sid)
+            _fence_before_first_write()   # first membership/classification write of the run (2026-10-16)
             try:
                 cur.execute(f"SAVEPOINT {sp}")
 

@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT / "tests") not in sys.path:
     sys.path.append(str(ROOT / "tests"))
 from support import n8n_cutover_waves as CW  # noqa: E402
+from tests.support import hermes_learning_cutover as HL  # noqa: E402
 sys.path.insert(0, str(ROOT))
 
 from scripts import n8n_run_executor as X  # noqa: E402
@@ -376,8 +377,15 @@ def test_committed_effect_config_changes_no_live_run_at_merge():
             assert spec["process"] == lane and isinstance(allow[lane]["live_arg"], list)
             assert reg[lane]["scheduler"]["stage"] in ("canary", "cutover") and raw[lane]["cron_claim"] is True
             continue
+        if lane in HL.LIVE:  # hermes-learning cutover PR-2: learn step at canary with its cutover argv
+            assert spec["process"] == lane and isinstance(allow[lane]["live_arg"], list)
+            assert reg[lane]["scheduler"]["stage"] == "canary" and raw[lane]["cron_claim"] is True
+            continue
         assert spec["process"] == lane and allow[lane]["live_arg"] is None
-        assert reg[lane]["scheduler"]["stage"] == "shadow" and raw[lane]["cron_claim"] is False
+        assert reg[lane]["scheduler"]["stage"] == "shadow"
+        # hermes-learning cutover PR-1 (2026-10-15): the five learn step lanes set cron_claim true (the runner claims
+        # only when its cron line also sets PIPELINE_EFFECT_CLAIM=1); the tune lane stays false
+        assert raw[lane]["cron_claim"] is (lane != "hermes-learning-autonomous-self-tune")
 
 
 def test_missing_effect_config_is_an_empty_map(tmp_path):

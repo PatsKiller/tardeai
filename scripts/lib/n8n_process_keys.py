@@ -18,7 +18,8 @@ validation:
   effect-key claim uses: ``pipeline_manifest.effect_slot``) = ``scheduled``; any other minute is a ``manual`` slot.
   A manual slot is accepted for ``dry_run``; for ``live`` only when the process spec sets
   ``live_manual_slots: true`` (an operator flag, false at merge), because a manual live slot's effect key differs
-  from the cron runner's and the two could each claim their own key (``MANUAL_LIVE_REFUSED``);
+  from the cron runner's and the two could each claim their own key (``MANUAL_LIVE_REFUSED``); an optional
+  ``live_manual_slots_until`` (ISO-8601 with offset) bounds that flag, refusing at or after it (``MANUAL_LIVE_EXPIRED``);
 * the attempt suffix ``:aN`` is at most the step's Run Lane budget (``ATTEMPT_OVER_BUDGET``).
 
 The gateway stores the base key (no attempt suffix) as the run row's ``slot_key``; the executor's effect gate
@@ -59,6 +60,7 @@ STATES = (
     "SLOT_IN_FUTURE",
     "SLOT_EXPIRED",
     "MANUAL_LIVE_REFUSED",
+    "MANUAL_LIVE_EXPIRED",
     "ATTEMPT_OVER_BUDGET",
     "PROCESS_SPEC_UNREADABLE",
 )
@@ -165,6 +167,22 @@ def _now_utc(now: datetime | float) -> datetime:
     return datetime.fromtimestamp(float(now), timezone.utc)
 
 
+def _manual_live_window_open(spec: Mapping[str, Any], now: datetime | float) -> bool:
+    """2026-10-16 (hermes-learning cutover, one-day manual-slots PR): ``live_manual_slots_until`` bounds the operator
+    flag. Absent = the flag alone decides (unchanged). Present = an ISO-8601 time WITH an offset; at or after it, or
+    unparseable / naive, a manual live slot is refused (fail closed), so a one-day flag cannot outlive its day."""
+    until = spec.get("live_manual_slots_until")
+    if until is None:
+        return True
+    try:
+        end = datetime.fromisoformat(str(until))
+    except ValueError:
+        return False
+    if end.tzinfo is None or end.utcoffset() is None:
+        return False
+    return _now_utc(now) < end.astimezone(timezone.utc)
+
+
 def check_process_key(
     key: Any,
     lane_id: str,
@@ -210,6 +228,9 @@ def check_process_key(
     except ValueError:
         return ProcessKeyCheck(False, "PROCESS_SPEC_UNREADABLE", **ctx)
     kind = "scheduled" if slot[-4:] == stage_hhmm else "manual"
-    if kind == "manual" and mode == "live" and spec.get("live_manual_slots") is not True:
-        return ProcessKeyCheck(False, "MANUAL_LIVE_REFUSED", attempt=attempt, slot_kind=kind, **ctx)
+    if kind == "manual" and mode == "live":
+        if spec.get("live_manual_slots") is not True:
+            return ProcessKeyCheck(False, "MANUAL_LIVE_REFUSED", attempt=attempt, slot_kind=kind, **ctx)
+        if not _manual_live_window_open(spec, now):
+            return ProcessKeyCheck(False, "MANUAL_LIVE_EXPIRED", attempt=attempt, slot_kind=kind, **ctx)
     return ProcessKeyCheck(True, "OK", slot_key=base_key(lane_id, mode, slot), attempt=attempt, slot_kind=kind, **ctx)

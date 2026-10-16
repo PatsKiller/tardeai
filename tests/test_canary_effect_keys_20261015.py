@@ -30,6 +30,7 @@ sys.path.insert(0, str(ROOT))
 if str(ROOT / "tests") not in sys.path:
     sys.path.append(str(ROOT / "tests"))
 from support import n8n_cutover_waves as CW  # noqa: E402
+from tests.support import hermes_learning_cutover as HL  # noqa: E402
 
 from scripts import n8n_run_executor as X  # noqa: E402
 from scripts.lib import effect_claim as E  # noqa: E402
@@ -117,6 +118,9 @@ def _scope() -> set[str]:
     # 2026-10-15 cutover waves (scripts/n8n_cutover_wave.py) promote lanes outside this audit's scope; their keys are
     # that wave's review (tests/support/n8n_cutover_waves.py ARMED), not this audit's.
     canary -= set(CW.PROMOTED) - set(RELAY_LIVE) - set(TIER_A) - set(TIER_B)
+    # hermes-learning cutover PR-2: its process step lanes are reviewed by that cutover's pins
+    # (tests/support/hermes_learning_cutover.py, tests/test_n8n_fabric_hermes_learning_20261015.py), not this audit.
+    canary -= set(HL.LIVE)
     return set(RELAY_LIVE) | set(TIER_A) | set(TIER_B) | canary
 
 

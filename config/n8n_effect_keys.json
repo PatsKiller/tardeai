@@ -8,7 +8,7 @@
       "pipeline": "hermes_learning",
       "stage": "learn",
       "step_id": "outcome_grader",
-      "cron_claim": false
+      "cron_claim": true
     },
     "hermes-learning-outcome-learning": {
       "process": "hermes-learning-outcome-learning",
@@ -16,7 +16,7 @@
       "pipeline": "hermes_learning",
       "stage": "learn",
       "step_id": "outcome_learning",
-      "cron_claim": false
+      "cron_claim": true
     },
     "hermes-learning-config-governor": {
       "process": "hermes-learning-config-governor",
@@ -24,7 +24,7 @@
       "pipeline": "hermes_learning",
       "stage": "learn",
       "step_id": "config_governor",
-      "cron_claim": false
+      "cron_claim": true
     },
     "hermes-learning-tag-engine": {
       "process": "hermes-learning-tag-engine",
@@ -32,7 +32,7 @@
       "pipeline": "hermes_learning",
       "stage": "learn",
       "step_id": "tag_engine",
-      "cron_claim": false
+      "cron_claim": true
     },
     "hermes-learning-outcome-feedback-agent": {
       "process": "hermes-learning-outcome-feedback-agent",
@@ -40,7 +40,7 @@
       "pipeline": "hermes_learning",
       "stage": "learn",
       "step_id": "outcome_feedback_agent",
-      "cron_claim": false
+      "cron_claim": true
     },
     "hermes-learning-autonomous-self-tune": {
       "process": "hermes-learning-autonomous-self-tune",
@@ -273,7 +273,8 @@
       "idempotent_today": "no:run_id is a timestamp",
       "wave": "tierA",
       "cron_claim": true,
-      "n8n_claim": true
+      "n8n_claim": true,
+      "late_write_fenced": true
     },
     "hermes-pipeline-health": {
       "process": "hermes-pipeline-health",
@@ -545,7 +546,8 @@
       "idempotent_today": "guarded:new tickers only",
       "wave": "tierB",
       "cron_claim": true,
-      "n8n_claim": true
+      "n8n_claim": true,
+      "late_write_fenced": true
     },
     "hermes-research-agenda-at-45-7": {
       "process": "hermes-research-agenda-at-45-7",
@@ -573,7 +575,8 @@
       "idempotent_today": "no:run_id is a timestamp",
       "wave": "tierB",
       "cron_claim": true,
-      "n8n_claim": true
+      "n8n_claim": true,
+      "late_write_fenced": true
     },
     "hermes-topic-monitor-bridge": {
       "process": "hermes-topic-monitor-bridge",

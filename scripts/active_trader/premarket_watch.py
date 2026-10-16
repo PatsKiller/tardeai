@@ -249,7 +249,8 @@ def _gate_reason(gate: Mapping[str, Any]) -> str:
 
 
 def build_message(sym: str, feat: Mapping[str, Any], l2: Mapping[str, Any], tape: Mapping[str, Any],
-                  near: Mapping[str, Any], gate: Optional[Mapping[str, Any]] = None) -> tuple[str, str]:
+                  near: Mapping[str, Any], gate: Optional[Mapping[str, Any]] = None, *,
+                  day: Optional[str] = None) -> tuple[str, str]:
     """(title, body). First line is the fixed AT header the comms editor recognises.
 
     gate None or VALIDATED: the normal heads-up (the transport adds the evidence footer). UNVALIDATED:
@@ -278,6 +279,9 @@ def build_message(sym: str, feat: Mapping[str, Any], l2: Mapping[str, Any], tape
         lines.append(f"supply near PM high: {int(near['ask_shares_near_level']):,} sh{wall}")
     if tape.get("buy_ratio") is not None:
         lines.append(f"tape {tape.get('source')}: {ma._pct(tape.get('buy_ratio'))} buys of {tape.get('prints', 0)} prints")
+    # 2026-10-16: an explicit catalyst line (Hermes scalp research via the data broker, or "none found (why)");
+    # include_catalyst=False below and the transport appendix both defer to it.
+    lines.append(ma.catalyst_line(sym, None, day or datetime.now(ET).date().isoformat()))
     lines.append("Heads-up only: wait for the open; the regular engine confirms after 09:30.")
     base = ma._cc_base()
     if base:
@@ -482,7 +486,7 @@ def evaluate(universe: Sequence[Mapping[str, Any]], *, data, cfg: PremarketConfi
         if gate is not None:
             row["momentum_evidence"] = {k: v for k, v in gate.items() if k != "evidence"}
         if d["verdict"] == ma.ALERT:
-            title, body = build_message(sym, feat, l2, tape, near, gate)
+            title, body = build_message(sym, feat, l2, tape, near, gate, day=day)
             row["message"] = {"title": title, "body": body}
             if send_fn is not None and cfg.mode == "send":
                 try:

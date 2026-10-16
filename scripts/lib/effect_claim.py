@@ -244,6 +244,22 @@ def assert_fence(token: str | None = None, *, ledger: str | Path | None = None, 
         raise EffectFenceError("fence_store_unavailable") from exc
 
 
+def fence_before_write(*, now: float | None = None) -> dict | None:
+    """The lane-side call for a ``late_write_fenced`` lane, made once, immediately before its first target write.
+
+    * No ``$TRADEAI_EFFECT_FENCE`` (a plain cron line, a manual run, any run without an effect claim): returns
+      None and the write goes ahead exactly as before. The lane's behaviour is unchanged off the claim path.
+    * A token present: ``assert_fence()``. It raises ``EffectFenceError`` (do NOT write) when the claim was
+      released, re-claimed, re-owned or finished, and on success records ``fence_passed_at``. That is how the
+      executor proves a later failure happened AFTER the fence (held), while a failure before this call is
+      pre-effect (re-claimable by a slot-bound retry).
+
+    First assert_fence wave, 2026-10-16: aegis-social-sentiment, hermes-social-sentiment, finviz-screener-runner."""
+    if not os.environ.get(FENCE_ENV):
+        return None
+    return assert_fence(now=now)
+
+
 class EffectClaimStore:
     """``effect_claims`` + ``effect_owners`` on the coordination ledger's connection and lock.
 
