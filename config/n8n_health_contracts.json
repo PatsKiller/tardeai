@@ -3103,7 +3103,7 @@
           "source": "AGENTS.md \u00a723.3"
         },
         {
-          "name": "bash -c crontab -l > \"${1}.tmp\" && mv -f \"${1}.tmp\" \"${1}\" crontab_snapshot",
+          "name": "$PY scripts/crontab_snapshot_lane.py",
           "kind": "runner",
           "direction": "calls",
           "source": "config/n8n_run_allowlist.json command"
@@ -3286,7 +3286,7 @@
         "evidence": [
           {
             "kind": "receipt_field",
-            "ref": "data/runtime/crontab_snapshot.txt produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/crontab-snapshot-for-health-agent/<run_id>.json)"
+            "ref": "data/runtime/crontab-snapshot-for-health-agent_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/crontab-snapshot-for-health-agent/<run_id>.json); scripts/crontab_snapshot_lane.py writes it via write_lane_receipt(output=...) since 2026-10-16 (1 = data/runtime/crontab_snapshot.txt rewritten from a non-empty `crontab -l`)"
           }
         ],
         "on_violation": {
@@ -10892,7 +10892,7 @@
         "evidence": [
           {
             "kind": "receipt_field",
-            "ref": "data/runtime/n8n_incident_fanin_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/n8n-incident-fanin/<run_id>.json); today the v1 receipt reports this unit as summary.open"
+            "ref": "data/runtime/n8n-incident-fanin_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/n8n-incident-fanin/<run_id>.json); the lane writes it via write_lane_receipt(output=...) since 2026-10-16 next to its N8nIncidentFanin@v1 receipt data/runtime/n8n_incident_fanin_last.json (open = attempted_count)"
           }
         ],
         "on_violation": {
@@ -11104,7 +11104,7 @@
         "evidence": [
           {
             "kind": "receipt_field",
-            "ref": "data/runtime/n8n_pilot_dispatch_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/n8n-pilot-dispatch/<run_id>.json); today the v1 receipt reports this unit as summary.fired"
+            "ref": "data/runtime/n8n-pilot-dispatch_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/n8n-pilot-dispatch/<run_id>.json); the lane writes it via write_lane_receipt(output=...) since 2026-10-16 (NEW events only; a fired event the ledger already holds is skipped_reasons.duplicate_in_ledger) next to its N8nPilotDispatchRun@v1 receipt data/runtime/n8n_pilot_dispatch_last.json"
           }
         ],
         "on_violation": {
@@ -11316,7 +11316,7 @@
         "evidence": [
           {
             "kind": "receipt_field",
-            "ref": "data/runtime/n8n_research_intake_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/n8n-research-intake-consumer/<run_id>.json)"
+            "ref": "data/runtime/n8n-research-intake-consumer_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/n8n-research-intake-consumer/<run_id>.json); the lane writes it via write_lane_receipt(output=...) since 2026-10-16 next to its N8nResearchIntake@v1 receipt data/runtime/n8n_research_intake_last.json"
           },
           {
             "kind": "store_rows",
@@ -12188,7 +12188,7 @@
         "evidence": [
           {
             "kind": "receipt_field",
-            "ref": "data/runtime/research-insight-extractor_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/research-insight-extractor/<run_id>.json)"
+            "ref": "data/runtime/research-insight-extractor_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/research-insight-extractor/<run_id>.json); the lane writes it via write_lane_receipt(output=...) since 2026-10-16 (rows with a RETURNING id)"
           },
           {
             "kind": "store_rows",

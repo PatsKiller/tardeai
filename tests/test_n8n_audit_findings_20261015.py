@@ -743,7 +743,7 @@ def test_dd07_output_receipt_v2_with_no_attempt_receipt_fails_unverifiable(gw, t
     assert receipt["output_verdict"]["why"] == "attempt_receipt_missing"
 
 
-#: lanes already running LIVE through n8n on 2026-10-15 (coordinator list); none emits produced_count yet.
+#: lanes already running LIVE through n8n on 2026-10-15 (coordinator list); five opt in to the output verdict on 2026-10-16.
 LIVE_N8N_LANES = (
     "n8n-incident-fanin",
     "n8n-pilot-dispatch",
@@ -756,12 +756,14 @@ LIVE_N8N_LANES = (
 
 @pytest.mark.parametrize("lane", LIVE_N8N_LANES)
 def test_dd07_replay_live_run_of_each_already_live_lane_does_not_fail(gw, tmp_path, lane):
-    """The committed contracts declare rules for these lanes; their committed allowlist entries do not opt in, so a
-    live exit-0 run (writing only its v1 receipt, as today) stays RUN_DONE."""
+    """The committed contracts declare rules for these lanes. A lane whose committed allowlist entry does not opt in
+    stays RUN_DONE on a live exit-0 run (writing only its v1 receipt). A lane that opts in (2026-10-16: the five
+    lanes of tests/test_lane_useful_output_proof_20261016.py now write produced_count) fails ``output_unverifiable``
+    when the run left no attempt receipt: exit 0 alone is never evidence."""
     contracts = X.parse_expected_outputs((ROOT / "config" / "n8n_health_contracts.json").read_bytes())
     assert lane in contracts  # the rule is declared ...
     entry = copy.deepcopy(ALLOW[lane])
-    assert entry.get("output_receipt") != "v2"  # ... and not enforced until the lane emits produced_count
+    opted_in = entry.get("output_receipt") == "v2"
     entry["lock"] = str(tmp_path / f"{lane}.lock")
     gw.runs.request(
         run_id=f"d:{lane}:live:20261015T1050",
@@ -774,6 +776,10 @@ def test_dd07_replay_live_run_of_each_already_live_lane_does_not_fail(gw, tmp_pa
     )
     row = gw.runs.claim_next(now=151)
     receipt = X.execute(row, entry, env={}, state_root=tmp_path, code_root=tmp_path, runner=Runner(), outputs=contracts)
+    if opted_in:
+        assert receipt["state"] == "RUN_FAILED" and receipt["reason"] == "output_unverifiable", receipt
+        assert receipt["output_verdict"]["why"] == "attempt_receipt_missing"
+        return
     assert receipt["state"] == "RUN_DONE", receipt
     assert receipt["output_verdict"]["verdict"] == "declared_not_enforced"
 
