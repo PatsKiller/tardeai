@@ -64,7 +64,7 @@ LIVE_LANES_KEY = "TRADEAI_N8N_RELAY_LIVE_LANES"
 #: The operator N8N Cutover Decision (AGENTS.md §23.25) was taken 2026-10-15; the default window starts at that
 #: day's America/New_York midnight.
 DEFAULT_SINCE = "2026-10-15T04:00:00+00:00"
-PR_RANGE = tuple(range(1808, 1824))
+PR_RANGE = tuple(range(1808, 1830))
 UNKNOWN = "UNKNOWN"
 
 # ── counting definitions (printed verbatim in REPORT.md) ──────────────────────────────────────────────────────────
@@ -88,14 +88,48 @@ DEFINITIONS = {
         "hermes-learning) = an ordered set of step lanes run as one n8n workflow."
     ),
     "n8n_primary": (
-        "The lane is on the relay live list (or is a registry scheduler.kind=n8n ACTIVE lane) AND it has no active "
-        "cron line. MIGRATED_PROVEN additionally needs a commented cron line tagged `RETIRED <date> n8n-cutover` or "
-        "`N8N-ONLY TEST` (or a native n8n row) AND >=1 live RUN_DONE receipt in the window."
+        "The lane is on the relay live list (or is a registry scheduler.kind=n8n ACTIVE lane) AND no active cron "
+        "line RUNS it (no active line, or every active line is effect-claim wrapped and stood down)."
+    ),
+    "scheduler_ownership (S)": (
+        "n8n primary AND the cron copy is gone: either no active cron line plus a commented line tagged "
+        "`RETIRED <date> n8n-cutover` / `N8N-ONLY TEST` (or a native n8n row), or EVERY active cron line runs "
+        "scripts/effect_claim_cron.sh switched on for the lane (TRADEAI_EFFECT_CLAIM=<lane>) and the wrapper's LAST "
+        "event for it in the window is skipped_effect / skipped_ownership_unknown (logs/effect_claim_events.jsonl: "
+        "the cron copy fired and ran nothing). A wrapped line with no event yet, or whose last event ran the "
+        "command, is NOT ownership."
+    ),
+    "execution (E)": ">=1 live RUN_DONE receipt for the lane in the window.",
+    "useful_output (U)": ">=1 live RUN_DONE whose output verdict is produced or empty_allowed.",
+    "MIGRATED_PROVEN": (
+        "S AND E AND U (2026-10-16 architect review: a completed live run alone is not proof). N8N_NATIVE is the "
+        "same bar for a lane with no cron history (registry kind n8n, no retirement tag, no cron line); a native row "
+        "WITH a retirement tag is a migration. n8n-live lanes are also reported by S/E/U combination (e.g. S1E1U0 = "
+        "owns + ran, output unverified). A skip on a scheduled fire of the line is told apart from an off-schedule "
+        "(manual / install verification) skip."
     ),
     "parallel": (
-        "Relay-live AND >=1 live n8n receipt in the window AND an active cron line still fires the same lane. "
-        "LIVE_LISTED_IDLE = relay-live + active cron line but ZERO live n8n receipts in the window (n8n is "
-        "permitted, not firing: cron is the only primary that ran)."
+        "Relay-live AND >=1 live n8n receipt in the window AND an active cron line still RUNS the lane (unwrapped, "
+        "or wrapped but its last wrapper event ran the command / no event yet). LIVE_LISTED_IDLE = the same with "
+        "ZERO live n8n receipts in the window (n8n is permitted, not firing)."
+    ),
+    "protection_mode": (
+        "Effect protection qualified by ledger health and wrapper policy. FAIL_CLOSED = handover manifest names n8n, "
+        "every active cron line is wrapped, and the SERVED wrapper fails closed (knows skipped_ownership_unknown): "
+        "the cron copy cannot take effect even with the ledger unreadable. LEDGER_HEALTHY_ONLY = owner n8n and every "
+        "line wrapped, but the served wrapper fails OPEN on an unreadable ledger (or the manifest lacks the "
+        "process): protected only while the ledger answers. NO_CRON_COPY = handed over, no active cron line. "
+        "UNPROTECTED_CRON_UNWRAPPED = handed over, >=1 active line unwrapped. NOT_HANDED_OVER = neither store says "
+        "n8n. A manifest/ledger disagreement is reported, never reconciled (AGENTS §0 rule 5)."
+    ),
+    "cron_stood_down": (
+        "A skipped_effect (owner n8n) or skipped_ownership_unknown (fail-closed) event in "
+        "logs/effect_claim_events.jsonl: the wrapped cron line fired and ran nothing."
+    ),
+    "event_trigger_state": (
+        "Per config/lane_registry.json dispatch.triggers entry: LIVE_FIRING (>=1 live `e:` receipt in window), "
+        "LIVE_ARMED_NOT_FIRED, SHADOW_FIRING (dispatch dry_run, >=1 dry `e:` receipt), SHADOW_NOT_FIRED, INACTIVE. "
+        "clock_fallback = every clock that still fires the lane (dispatch.cron d: slots, active crontab lines)."
     ),
     "useful_live_output": "A live RUN_DONE receipt whose output_verdict.verdict == 'produced'.",
     "verified_empty": "A live RUN_DONE receipt whose output_verdict.verdict == 'empty_allowed' (declared, reasoned empty).",
@@ -240,6 +274,19 @@ def lane_matcher(registry: Mapping[str, Any]):
     return best
 
 
+_WRAP_RE = re.compile(r"TRADEAI_EFFECT_CLAIM=([A-Za-z0-9._:-]+)\s+bash\s+\S*effect_claim_cron\.sh\s+([A-Za-z0-9._:-]+)")
+
+
+def wrapped_lane_of(line: str) -> str:
+    """The lane an active cron line is effect-claim WRAPPED for, else ''.
+
+    Wrapped = the line runs scripts/effect_claim_cron.sh AND switches it on for that lane with
+    ``TRADEAI_EFFECT_CLAIM=<lane>`` (the wrapper is a byte-for-byte pass-through otherwise). Only the lane name is
+    returned; command text never leaves this function."""
+    m = _WRAP_RE.search(line or "")
+    return m.group(2) if m and m.group(1) == m.group(2) else ""
+
+
 def parse_cron(text: str, best_lane) -> dict[str, Any]:
     """Active lines (attributed to one lane each) and tagged commented lines (attributed to a lane)."""
     from n8n_lane_disposition import parse_crontab  # noqa: PLC0415
@@ -248,7 +295,8 @@ def parse_cron(text: str, best_lane) -> dict[str, Any]:
     active = []
     for j in jobs:
         active.append({"line_no": j["line_no"], "schedule": j["schedule"],
-                       "lane_id": best_lane(j["line"], j["schedule"], j["tag"]) or ""})
+                       "lane_id": best_lane(j["line"], j["schedule"], j["tag"]) or "",
+                       "wrapped_lane": wrapped_lane_of(j["line"])})
     commented = []
     for n, line in enumerate((text or "").splitlines(), 1):
         c = classify_commented_line(line)
@@ -356,6 +404,93 @@ def disposition_totals(rows: list[Mapping[str, Any]]) -> dict[str, Any]:
     }
 
 
+# ── cron-side effect-claim wrapper events (logs/effect_claim_events.jsonl) ────────────────────────────────────────
+#: The wrapper stood the cron copy down: nothing ran. skipped_effect = owner n8n; skipped_ownership_unknown = a
+#: handed-over lane whose ownership could not be established (fail closed, PR 1 of the 2026-10-16 architect review).
+SKIP_EVENTS = ("skipped_effect", "skipped_ownership_unknown")
+#: The wrapper ran the command (claimed or not).
+RAN_EVENTS = ("run_unclaimed_cron_claim_false", "run_unclaimed_ledger_unreachable", "completed_unclaimed",
+              "completed_claimed")
+
+
+#: Minutes after a scheduled fire within which a wrapper event still counts as that fire (cron start + python).
+SCHEDULED_SLACK_MIN = 2
+CRON_TZ = "America/New_York"
+
+
+def cron_fires_at(expr: str, t: datetime, tz: str = CRON_TZ) -> Optional[bool]:
+    """Did the 5-field cron ``expr`` fire within SCHEDULED_SLACK_MIN minutes before ``t`` (host wall clock ``tz``,
+    Vixie DOM/DOW OR rule)? None when the expression is not a parseable 5-field schedule (e.g. @reboot)."""
+    from scripts.lib import cron_schedule  # noqa: PLC0415
+
+    try:
+        minutes, hours, doms, months, dows, dom_r, dow_r = cron_schedule.parse(expr)
+        from zoneinfo import ZoneInfo  # noqa: PLC0415
+
+        local = t.astimezone(ZoneInfo(tz)).replace(second=0, microsecond=0)
+    except Exception:  # noqa: BLE001
+        return None
+    for back in range(SCHEDULED_SLACK_MIN + 1):
+        x = local - timedelta(minutes=back)
+        cron_dow = (x.weekday() + 1) % 7
+        day_ok = (x.day in doms or cron_dow in dows) if (dom_r and dow_r) else (x.day in doms and cron_dow in dows)
+        if x.minute in minutes and x.hour in hours and x.month in months and day_ok:
+            return True
+    return False
+
+
+def count_effect_events(
+    rows: Iterable[Mapping[str, Any]], since: datetime, until: datetime,
+    schedules: Optional[Mapping[str, Iterable[str]]] = None,
+) -> dict[str, dict[str, Any]]:
+    """Per wrapper lane: event counts in the window and the LAST event (by ts). Only lane/event/ts/detail-flag are
+    kept; the detail text is not copied into the packet.
+
+    With ``schedules`` (wrapper lane -> cron expressions of its active lines), each skip is also classed
+    ``scheduled_skips`` (the event falls on a fire of the line's schedule: the cron copy stood down AT ITS SLOT) or
+    ``offschedule_skips`` (a manual / verification invocation: the wrapper skipped when run, not a scheduled
+    stand-down)."""
+    out: dict[str, dict[str, Any]] = {}
+    for r in rows:
+        t = parse_ts(r.get("ts"))
+        if not t or not (since <= t <= until):
+            continue
+        lane = str(r.get("lane") or "")
+        if not lane:
+            continue
+        ev = str(r.get("event") or UNKNOWN)
+        e = out.setdefault(lane, {"counts": Counter(), "last_event": None, "last_at": None,
+                                  "manifest_ledger_disagree": 0, "scheduled_skips": 0, "offschedule_skips": 0})
+        e["counts"][ev] += 1
+        if ev in SKIP_EVENTS and schedules is not None:
+            fired = [cron_fires_at(x, t) for x in (schedules.get(lane) or [])]
+            if any(f is True for f in fired):
+                e["scheduled_skips"] += 1
+            else:
+                e["offschedule_skips"] += 1
+        if "manifest_ledger_disagree" in str(r.get("detail") or ""):
+            e["manifest_ledger_disagree"] += 1
+        if e["last_at"] is None or t >= e["last_at"]:
+            e["last_at"], e["last_event"] = t, ev
+    return out
+
+
+def cron_copy_standing_down(lines: Iterable[Mapping[str, Any]], events: Mapping[str, Mapping[str, Any]]) -> bool:
+    """True when EVERY given active cron line is wrapped and the wrapper's last event in the window for that line's
+    lane is a skip (the cron copy fired and ran nothing). No lines -> False (nothing to stand down)."""
+    lines = list(lines)
+    if not lines:
+        return False
+    for a in lines:
+        w = a.get("wrapped_lane") or ""
+        if not w:
+            return False
+        e = events.get(w) or {}
+        if e.get("last_event") not in SKIP_EVENTS:
+            return False
+    return True
+
+
 # ── migration state per lane ──────────────────────────────────────────────────────────────────────────────────────
 STATUSES = (
     "MIGRATED_PROVEN", "N8N_NATIVE", "N8N_PRIMARY_UNPROVEN", "PARALLEL", "LIVE_LISTED_IDLE", "CRON_PRIMARY",
@@ -372,13 +507,26 @@ def lane_states(
     dispositions: Mapping[str, str],
     holds: Mapping[str, str],
     outcomes: Mapping[str, Mapping[str, Any]],
+    effect_events: Optional[Mapping[str, Mapping[str, Any]]] = None,
 ) -> dict[str, dict[str, Any]]:
-    """One row per unique lane with exactly one status (see STATUSES / DEFINITIONS)."""
+    """One row per unique lane with exactly one status (see STATUSES / DEFINITIONS), plus the three SEPARATE
+    measures (2026-10-16 architect review): scheduler ownership, execution, useful output.
+
+    * ``sched_n8n`` - n8n is primary (relay live list or a native n8n row) AND the cron copy is gone: no active cron
+      line plus a retirement tag (``RETIRED <date> n8n-cutover`` / ``N8N-ONLY TEST``) or a native row, OR every
+      active cron line is effect-claim wrapped and the wrapper's last event for it in the window is a skip
+      (``skipped_effect`` / ``skipped_ownership_unknown``: the cron copy fired and ran nothing).
+    * ``executed`` - >=1 live RUN_DONE receipt in the window.
+    * ``useful`` - >=1 live RUN_DONE with output verdict produced or empty_allowed.
+
+    MIGRATED_PROVEN needs all three. A wrapped cron line that stands down is not PARALLEL (the cron copy runs
+    nothing); a wrapped line that still RUNS the command (owner not n8n, ledger unreachable) is."""
     live = set(live_lanes)
-    active_by_lane: dict[str, list[int]] = defaultdict(list)
+    events = effect_events or {}
+    active_by_lane: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
     for a in cron.get("active") or []:
         if a.get("lane_id"):
-            active_by_lane[a["lane_id"]].append(int(a["line_no"]))
+            active_by_lane[a["lane_id"]].append(a)
     commented_by_lane: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for c in cron.get("commented") or []:
         if c.get("lane_id"):
@@ -392,7 +540,11 @@ def lane_states(
         state = str(reg.get("state") or ("UNREGISTERED" if not reg else ""))
         fam = str(families.get(lane) or "")
         o = outcomes.get(lane) or {}
-        active = sorted(active_by_lane.get(lane, []))
+        active_rows = active_by_lane.get(lane, [])
+        active = sorted(int(a["line_no"]) for a in active_rows)
+        wrapped = [a for a in active_rows if a.get("wrapped_lane")]
+        wrapped_lanes = sorted({str(a["wrapped_lane"]) for a in wrapped})
+        standing_down = cron_copy_standing_down(active_rows, events)
         tags = commented_by_lane.get(lane, [])
         n8n_tag = [t for t in tags if t["kind"] in ("N8N_CUTOVER", "N8N_ONLY_TEST")]
         consolidated = [t for t in tags if t["kind"] == "CONSOLIDATED"]
@@ -400,19 +552,33 @@ def lane_states(
         relay_live = lane in live
         n8n_live = relay_live or native
         live_done = int(o.get("useful_live_output", 0)) + int(o.get("verified_empty", 0)) + int(o.get("unverified_ok", 0))
+        useful_n = int(o.get("useful_live_output", 0)) + int(o.get("verified_empty", 0))
+        if not n8n_live:
+            sched_n8n, sched_how = False, ""
+        elif active:
+            sched_n8n = standing_down
+            sched_how = "cron_wrapped_skipping" if standing_down else ""
+        elif n8n_tag:
+            sched_n8n, sched_how = True, "cron_retired_tag"
+        elif native:
+            sched_n8n, sched_how = True, "n8n_native_row"
+        else:
+            sched_n8n, sched_how = False, ""
+        executed, useful = live_done > 0, useful_n > 0
+        combo = f"S{int(sched_n8n)}E{int(executed)}U{int(useful)}"
+        cron_runs = bool(active) and not standing_down
         if lane in holds:
             status = "HELD"
         elif fam.startswith("F07"):
             status = "RETAINED_F07"
         elif kind == "systemd" and not n8n_live:
             status = "RETAINED_SYSTEMD"
-        elif n8n_live and active:
+        elif n8n_live and cron_runs:
             status = "PARALLEL" if int(o.get("live_runs", 0)) else "LIVE_LISTED_IDLE"
         elif n8n_live:
-            if n8n_tag and live_done:
-                status = "MIGRATED_PROVEN"
-            elif native and live_done:
-                status = "N8N_NATIVE"
+            if sched_n8n and executed and useful:
+                # proven either way; N8N_NATIVE only when the lane has no cron history (born on n8n)
+                status = "N8N_NATIVE" if sched_how == "n8n_native_row" else "MIGRATED_PROVEN"
             else:
                 status = "N8N_PRIMARY_UNPROVEN"
         elif active:
@@ -423,6 +589,15 @@ def lane_states(
             status = "RETIRED"
         else:
             status = "OTHER"
+        why: list[str] = []
+        if status == "N8N_PRIMARY_UNPROVEN":
+            if not sched_n8n:
+                why.append("no scheduler-ownership evidence (no n8n-cutover / N8N-ONLY tag and no wrapped cron line "
+                           "that stood down)")
+            if not executed:
+                why.append("no live RUN_DONE in window")
+            elif not useful:
+                why.append("live RUN_DONE but no useful output verdict (produced / empty_allowed)")
         out[lane] = {
             "lane_id": lane,
             "status": status,
@@ -433,16 +608,47 @@ def lane_states(
             "relay_live": relay_live,
             "active_cron_lines": len(active),
             "active_cron_line_nos": " ".join(str(n) for n in active),
+            "active_cron_lines_wrapped": len(wrapped),
+            "cron_copy_standing_down": standing_down,
+            "wrapper_skip_events": sum(int((events.get(w) or {}).get("counts", {}).get(k, 0))
+                                       for w in wrapped_lanes for k in SKIP_EVENTS),
+            "wrapper_last_event": " ".join(str((events.get(w) or {}).get("last_event") or "-") for w in wrapped_lanes),
+            "wrapper_scheduled_skips": sum(int((events.get(w) or {}).get("scheduled_skips", 0)) for w in wrapped_lanes),
+            "wrapper_offschedule_skips": sum(int((events.get(w) or {}).get("offschedule_skips", 0))
+                                             for w in wrapped_lanes),
             "n8n_cutover_tags": " ".join(f"{t['kind']}@{t['date']}:L{t['line_no']}" for t in n8n_tag),
             "consolidation_tags": " ".join(f"{t.get('token')}@{t['date']}" for t in consolidated),
             "live_run_done": live_done,
+            "live_useful_or_empty": useful_n,
+            "sched_n8n": sched_n8n,
+            "sched_evidence": sched_how,
+            "executed": executed,
+            "useful": useful,
+            "measure_combo": combo if n8n_live else "",
             "dry_runs": int(o.get("dry_runs", 0)),
-            "unproven_reason": (
-                "" if status != "N8N_PRIMARY_UNPROVEN" else
-                ("no live RUN_DONE in window" if not live_done else "no tagged commented cron line (n8n-cutover / N8N-ONLY)")
-            ),
+            "unproven_reason": "; ".join(why),
         }
     return out
+
+
+#: Human labels for the S/E/U combinations (scheduler ownership / execution / useful output).
+COMBO_LABELS = {
+    "S1E1U1": "PROVEN: n8n owns the schedule, ran live, produced useful output",
+    "S1E1U0": "n8n owns + ran live, output unverified (exit 0 is not evidence)",
+    "S1E0U0": "n8n owns the schedule, no live RUN_DONE in window",
+    "S0E1U1": "ran live with useful output, but the cron copy still runs / is not retired",
+    "S0E1U0": "ran live (unverified output), the cron copy still runs / is not retired",
+    "S0E0U0": "relay-live only: no ownership evidence, no live run",
+}
+
+
+def measure_combinations(lanes: Mapping[str, Mapping[str, Any]]) -> dict[str, list[str]]:
+    """n8n-live lanes (relay live list or native; HELD / F07 / systemd-retained excluded) by S/E/U combination."""
+    out: dict[str, list[str]] = defaultdict(list)
+    for lane, r in lanes.items():
+        if r.get("measure_combo") and r["status"] not in ("HELD", "RETAINED_F07", "RETAINED_SYSTEMD"):
+            out[r["measure_combo"]].append(lane)
+    return {k: sorted(v) for k, v in sorted(out.items(), key=lambda kv: kv[0], reverse=True)}
 
 
 def family_ownership(lanes: Mapping[str, Mapping[str, Any]]) -> list[dict[str, Any]]:
@@ -656,26 +862,66 @@ def summarize_notifications(events: Iterable[Mapping[str, Any]], router_rows: It
 
 
 # ── effect protection ─────────────────────────────────────────────────────────────────────────────────────────────
+#: Qualified effect-protection modes (2026-10-16 architect review). Counted separately in the packet.
+PROTECTION_MODES = (
+    "FAIL_CLOSED", "LEDGER_HEALTHY_ONLY", "NO_CRON_COPY", "UNPROTECTED_CRON_UNWRAPPED", "NOT_HANDED_OVER",
+)
+
+
+def manifest_ledger_agreement(ledger_owner: str, manifest_owner: str) -> str:
+    """AGREE / DISAGREE (both name a different owner) / MANIFEST_MISSING / LEDGER_MISSING / NEITHER.
+    Reported, never reconciled (AGENTS §0 rule 5)."""
+    if ledger_owner and manifest_owner:
+        return "AGREE" if ledger_owner == manifest_owner else "DISAGREE"
+    if ledger_owner:
+        return "MANIFEST_MISSING"
+    if manifest_owner:
+        return "LEDGER_MISSING"
+    return "NEITHER"
+
+
 def effect_protection(
     keys: Mapping[str, Mapping[str, Any]], owners: Mapping[str, Mapping[str, Any]], cron_text: str,
-    cron: Mapping[str, Any], claims: Mapping[str, Counter],
+    cron: Mapping[str, Any], claims: Mapping[str, Counter], *,
+    manifest: Optional[Mapping[str, Mapping[str, Any]]] = None,
+    served_wrapper_fail_closed: bool = False,
+    ledger_ok: bool = True,
+    effect_events: Optional[Mapping[str, Mapping[str, Any]]] = None,
 ) -> list[dict[str, Any]]:
+    """One row per keyed lane. ``protection`` is the claim-level view (unchanged since #1827); ``protection_mode``
+    qualifies it with ledger health and the wrapper policy:
+
+    * FAIL_CLOSED - handed over (manifest owner n8n), EVERY active cron line of the lane runs the effect-claim
+      wrapper switched on for the lane, and the SERVED wrapper is the fail-closed version (it knows
+      ``skipped_ownership_unknown``): the cron copy cannot run the effect even when the ledger is unreadable.
+    * LEDGER_HEALTHY_ONLY - handed over (ledger owner n8n) and every active line is wrapped, but the served wrapper
+      fails OPEN when the ledger is unreadable, or the manifest does not name the process n8n: the cron copy stands
+      down only while the ledger answers.
+    * NO_CRON_COPY - handed over and no active cron line fires the lane (nothing on cron to double-fire).
+    * UNPROTECTED_CRON_UNWRAPPED - handed over but >=1 active cron line is not wrapped: both can take effect.
+    * NOT_HANDED_OVER - neither the ledger nor the manifest names n8n as owner."""
     from n8n_lane_disposition import parse_crontab  # noqa: PLC0415
 
     _env, jobs = parse_crontab(cron_text or "")
     line_by_no = {j["line_no"]: j["line"] for j in jobs}
+    manifest = manifest or {}
+    events = effect_events or {}
     active_by_lane: dict[str, list[int]] = defaultdict(list)
     for a in cron.get("active") or []:
         if a.get("lane_id"):
             active_by_lane[a["lane_id"]].append(a["line_no"])
+        w = a.get("wrapped_lane") or wrapped_lane_of(line_by_no.get(a.get("line_no"), ""))
+        if w and w != a.get("lane_id") and a["line_no"] not in active_by_lane[w]:
+            active_by_lane[w].append(a["line_no"])
     out = []
     for lane, k in sorted(keys.items()):
         process = k.get("process") or lane
         own = owners.get(process) or {}
-        lines = active_by_lane.get(lane, [])
+        lines = sorted(active_by_lane.get(lane, []))
         armed = [n for n in lines if "effect_claim" in line_by_no.get(n, "")
                  or f"TRADEAI_EFFECT_CLAIM={lane}" in line_by_no.get(n, "")
                  or "PIPELINE_EFFECT_CLAIM=1" in line_by_no.get(n, "")]
+        cron_wrapped = [n for n in lines if wrapped_lane_of(line_by_no.get(n, ""))]
         n8n_claim = bool(k.get("n8n_claim"))
         cron_claim_cfg = bool(k.get("cron_claim"))
         c = claims.get(process) or Counter()
@@ -687,14 +933,144 @@ def effect_protection(
             level = "N8N_SIDE_ONLY (active cron line not wrapped: cron copy can still run the effect)"
         else:
             level = "OWNER_ROW_ONLY"
+        ledger_owner = str(own.get("owner") or "")
+        m = manifest.get(process) or {}
+        manifest_owner = str(m.get("owner") or "") if isinstance(m, Mapping) else ""
+        handed_over = ledger_owner == "n8n" or manifest_owner == "n8n"
+        agreement = manifest_ledger_agreement(ledger_owner, manifest_owner)
+        if not handed_over:
+            mode, why = "NOT_HANDED_OVER", f"ledger owner {ledger_owner or 'none'}, manifest {manifest_owner or 'absent'}"
+        elif not lines:
+            mode, why = "NO_CRON_COPY", "no active cron line fires the lane"
+        elif len(cron_wrapped) < len(lines):
+            mode, why = "UNPROTECTED_CRON_UNWRAPPED", f"{len(lines) - len(cron_wrapped)} of {len(lines)} active cron lines not effect_claim_cron.sh-wrapped"
+        elif served_wrapper_fail_closed and manifest_owner == "n8n" and agreement != "DISAGREE":
+            mode, why = "FAIL_CLOSED", "served wrapper fails closed; manifest names n8n"
+        else:
+            reasons = []
+            if not served_wrapper_fail_closed:
+                reasons.append("served wrapper fails OPEN on an unreadable ledger")
+            if manifest_owner != "n8n":
+                reasons.append("handover manifest does not name n8n")
+            if agreement == "DISAGREE":
+                reasons.append("manifest and ledger DISAGREE")
+            mode, why = "LEDGER_HEALTHY_ONLY", "; ".join(reasons)
+        ev = events.get(lane) or {}
+        evc = ev.get("counts") or {}
         out.append({
             "lane_id": lane, "process": process, "owner": own.get("owner", ""), "epoch": own.get("epoch", ""),
+            "manifest_owner": manifest_owner, "manifest_ledger": agreement, "handed_over": handed_over,
             "n8n_claim": n8n_claim, "cron_claim_config": cron_claim_cfg,
             "active_cron_lines": len(lines), "active_cron_lines_wrapped": len(armed),
+            "active_cron_lines_cron_wrapped": len(cron_wrapped),
             "claims_done": c.get("DONE", 0), "claims_released": c.get("RELEASED", 0), "claims_failed": c.get("FAILED", 0),
             "claims_ambiguous": c.get("CLAIMED", 0) + c.get("UNKNOWN", 0),
             "late_write_fenced": bool(k.get("late_write_fenced")), "protection": level,
+            "protection_mode": mode, "protection_mode_why": why,
+            "ledger_readable_at_capture": bool(ledger_ok),
+            "skipped_effect": int(evc.get("skipped_effect", 0)),
+            "skipped_ownership_unknown": int(evc.get("skipped_ownership_unknown", 0)),
+            "wrapper_ran": sum(int(evc.get(x, 0)) for x in ("run_unclaimed_cron_claim_false",
+                                                              "run_unclaimed_ledger_unreachable", "completed_claimed")),
+            "manifest_ledger_disagree_events": int(ev.get("manifest_ledger_disagree", 0)),
         })
+    return out
+
+
+def served_wrapper_policy(current: Path) -> dict[str, Any]:
+    """Whether the SERVED release's scripts/effect_claim_cron.sh fails closed for a handed-over lane (it names the
+    ``skipped_ownership_unknown`` event). Read-only: the file is grepped for the event name, never executed."""
+    path = Path(os.path.realpath(current)) / "scripts" / "effect_claim_cron.sh"
+    try:
+        text = path.read_text()
+    except OSError as e:
+        return {"path": str(path), "readable": False, "fail_closed": False, "error": type(e).__name__}
+    return {"path": str(path), "readable": True, "fail_closed": "skipped_ownership_unknown" in text,
+            "sha256": hashlib.sha256(text.encode()).hexdigest()}
+
+
+def load_handover_manifest(path: Path) -> dict[str, Any]:
+    """The durable handover manifest (N8nHandoverManifest@v1) the owner-switch path writes. Absent = {} + present
+    False; malformed = error (reported, never repaired)."""
+    res: dict[str, Any] = {"path": str(path), "present": False, "processes": {}}
+    try:
+        doc = json.loads(path.read_text())
+    except FileNotFoundError:
+        return res
+    except Exception as e:  # noqa: BLE001
+        res.update(present=True, error=f"{type(e).__name__}")
+        return res
+    res["present"] = True
+    if not isinstance(doc, dict) or doc.get("schema") != "N8nHandoverManifest@v1" or not isinstance(doc.get("processes"), dict):
+        res["error"] = "schema_mismatch"
+        return res
+    res["updated_at"] = doc.get("updated_at")
+    res["processes"] = {str(k): v for k, v in doc["processes"].items() if isinstance(v, dict)}
+    return res
+
+
+# ── event-driven chain ────────────────────────────────────────────────────────────────────────────────────────────
+def event_chain(
+    registry_rows: Mapping[str, Mapping[str, Any]], receipts: Iterable[Mapping[str, Any]], cron: Mapping[str, Any],
+    outcomes: Mapping[str, Mapping[str, Any]], since: datetime, until: datetime,
+) -> list[dict[str, Any]]:
+    """One row per ``dispatch.triggers`` entry in config/lane_registry.json (the only declared n8n event triggers).
+
+    ``trigger_state``: LIVE_FIRING (>=1 live ``e:`` receipt in window), LIVE_ARMED_NOT_FIRED (dispatch mode live,
+    no live e: receipt), SHADOW_FIRING (dispatch mode dry_run, >=1 dry e: receipt), SHADOW_NOT_FIRED, INACTIVE (lane
+    not ACTIVE or dispatch off). A receipt cannot say WHICH of a lane's triggers fired, so e: counts are per lane.
+    ``clock_fallback`` lists every clock that still fires the lane: the dispatch cron (d: slots) and active cron
+    lines (wrapped lines are marked)."""
+    e_counts: dict[str, Counter] = defaultdict(Counter)
+    last_e: dict[str, datetime] = {}
+    for r in receipts:
+        if not str(r.get("run_id") or "").startswith("e:") or not in_window(r, since, until):
+            continue
+        lane = str(r.get("lane_id") or "")
+        e_counts[lane][str(r.get("mode"))] += 1
+        t = parse_ts(r.get("started_at")) or parse_ts(r.get("finished_at"))
+        if t and (lane not in last_e or t > last_e[lane]):
+            last_e[lane] = t
+    active_by_lane: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
+    for a in cron.get("active") or []:
+        if a.get("lane_id"):
+            active_by_lane[a["lane_id"]].append(a)
+    out = []
+    for lane, row in sorted(registry_rows.items()):
+        d = row.get("dispatch") or {}
+        trig = d.get("triggers") or []
+        if not trig:
+            continue
+        mode = str(d.get("mode") or "off")
+        ec = e_counts.get(lane) or Counter()
+        if row.get("state") != "ACTIVE" or mode not in ("live", "dry_run"):
+            st = "INACTIVE"
+        elif ec.get("live"):
+            st = "LIVE_FIRING"
+        elif mode == "live":
+            st = "LIVE_ARMED_NOT_FIRED"
+        elif ec.get("dry_run"):
+            st = "SHADOW_FIRING"
+        else:
+            st = "SHADOW_NOT_FIRED"
+        fallback = [f"dispatch.cron {c}" for c in (d.get("cron") or [])]
+        for a in active_by_lane.get(lane, []):
+            fallback.append(f"crontab L{a['line_no']}" + (" (wrapped)" if a.get("wrapped_lane") else ""))
+        for t in trig:
+            src = str(t.get("source") or "")
+            upstream = str(t.get("lane_id") or t.get("domain") or "")
+            uo = (outcomes.get(upstream) or {}) if src == "run_done" else {}
+            out.append({
+                "lane_id": lane, "trigger_source": src, "upstream": upstream,
+                "require_verdict": ",".join(t.get("require_verdict") or []),
+                "dispatch_mode": mode, "trigger_state": st,
+                "e_live_receipts": ec.get("live", 0), "e_dry_receipts": ec.get("dry_run", 0),
+                "last_e_receipt_at": _iso(last_e.get(lane)),
+                "upstream_live_useful": (int(uo.get("useful_live_output", 0)) + int(uo.get("verified_empty", 0))
+                                         if src == "run_done" else ""),
+                "clock_fallback": "; ".join(fallback) or "none",
+                "has_clock_fallback": bool(fallback),
+            })
     return out
 
 
@@ -779,7 +1155,7 @@ def burn_down(lanes: Mapping[str, Mapping[str, Any]], migrations_by_date: Mappin
             "(a calendar date with zero retirements is not in the denominator), so the rate is optimistic",
             "one migrating lane needs: allowlist + dry run + live canary + effect key/owner + cron retirement",
             "trading days only (5 of 7); holds, F07 and registry_systemd are excluded (retained by directive)",
-            "no new lanes are added; open PRs #1818-#1823 merge and deploy without rework",
+            "no new lanes are added; open PRs in the section 9 table merge and deploy without rework",
         ],
         "holds": dict(holds),
     }
@@ -986,6 +1362,8 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
         cron_text = ""
     cron_sha = hashlib.sha256(cron_text.encode()).hexdigest()
     served = served_sha(Path(args.current))
+    _rc, head, _ = _run(["git", "rev-parse", "HEAD"])
+    checkout_sha = head.strip() or UNKNOWN
 
     registry = json.loads((ROOT / "config" / "lane_registry.json").read_text())
     registry_rows = {r["lane_id"]: r for r in registry.get("lanes", [])}
@@ -1030,9 +1408,25 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
     if not led.get("ok"):
         unmeasured.append(f"coordination ledger unreadable: {led.get('error')}")
     claims = count_effect_claims(led.get("effect_claims") or [], since, until)
+    events_path = Path(args.effect_events) if getattr(args, "effect_events", "") else state_root / "logs" / "effect_claim_events.jsonl"
+    effect_event_rows = load_jsonl(events_path)
+    if not events_path.exists():
+        unmeasured.append(f"{events_path} absent: no wrapper events (no cron line can count as stood down)")
+    wrap_schedules: dict[str, list[str]] = defaultdict(list)
+    for a in cron["active"]:
+        if a.get("wrapped_lane"):
+            wrap_schedules[a["wrapped_lane"]].append(a["schedule"])
+    effect_events = count_effect_events(effect_event_rows, since, until, schedules=wrap_schedules)
+    wrapper_times = sorted(t for t in (parse_ts(r.get("ts")) for r in effect_event_rows) if t)
+    manifest_path = Path(getattr(args, "handover_manifest", "") or os.environ.get("TRADEAI_N8N_HANDOVER_MANIFEST")
+                         or state_root / "data" / "governance" / "n8n_handover_manifest.json")
+    manifest = load_handover_manifest(manifest_path)
+    if manifest.get("error"):
+        unmeasured.append(f"handover manifest unreadable ({manifest['error']}): reported, not repaired")
+    wrapper_policy = served_wrapper_policy(Path(args.current))
 
     lanes = lane_states(registry_rows=registry_rows, live_lanes=live_lanes, cron=cron, families=families,
-                        dispositions=dispositions, holds=holds, outcomes=outcomes)
+                        dispositions=dispositions, holds=holds, outcomes=outcomes, effect_events=effect_events)
     for lane, row in lanes.items():
         o = outcomes.get(lane) or {}
         for k in OUTCOME_KEYS:
@@ -1064,6 +1458,27 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
         "parallel": sorted(l for l, r in lanes.items() if r["status"] == "PARALLEL"),
         "live_listed_idle": sorted(l for l, r in lanes.items() if r["status"] == "LIVE_LISTED_IDLE"),
         "consolidated": sorted(l for l, r in lanes.items() if r["status"] == "CONSOLIDATED"),
+        "measure_combinations": measure_combinations(lanes),
+        "measures": {
+            "n8n_live_lanes_measured": sum(len(v) for v in measure_combinations(lanes).values()),
+            "scheduler_ownership_n8n": sum(1 for r in lanes.values() if r.get("sched_n8n")),
+            "  via_cron_retired_tag": sum(1 for r in lanes.values() if r.get("sched_evidence") == "cron_retired_tag"),
+            "  via_cron_wrapped_skipping": sum(1 for r in lanes.values()
+                                                if r.get("sched_evidence") == "cron_wrapped_skipping"),
+            "  via_n8n_native_row": sum(1 for r in lanes.values() if r.get("sched_evidence") == "n8n_native_row"),
+            "execution_live_run_done": sum(1 for r in lanes.values() if r.get("measure_combo") and r.get("executed")),
+            "useful_output": sum(1 for r in lanes.values() if r.get("measure_combo") and r.get("useful")),
+            "proven_S_E_U": sum(1 for r in lanes.values() if r.get("measure_combo") == "S1E1U1"
+                                and r["status"] in ("MIGRATED_PROVEN", "N8N_NATIVE")),
+            "owned_but_no_live_run_S1E0": sum(1 for r in lanes.values() if str(r.get("measure_combo")).startswith("S1E0")
+                                              and r["status"] not in ("HELD", "RETAINED_F07", "RETAINED_SYSTEMD")),
+        },
+        "wrapped_cron_lines": sum(1 for a in active_lines if a.get("wrapped_lane")),
+        "stood_down_skips_scheduled": sum(int(e.get("scheduled_skips", 0)) for e in effect_events.values()),
+        "stood_down_skips_offschedule": sum(int(e.get("offschedule_skips", 0)) for e in effect_events.values()),
+        "wrapped_cron_lines_standing_down": sum(
+            1 for a in active_lines if a.get("wrapped_lane")
+            and (effect_events.get(a["wrapped_lane"]) or {}).get("last_event") in SKIP_EVENTS),
     }
 
     # retained exceptions
@@ -1162,7 +1577,34 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
         notif["telegram_send_idempotency_today_by_prefix"] = UNKNOWN
 
     # effect protection
-    effect_rows = effect_protection(effect_cfg, led.get("effect_owners") or {}, cron_text, cron, claims)
+    effect_rows = effect_protection(effect_cfg, led.get("effect_owners") or {}, cron_text, cron, claims,
+                                    manifest=manifest.get("processes") or {},
+                                    served_wrapper_fail_closed=bool(wrapper_policy.get("fail_closed")),
+                                    ledger_ok=bool(led.get("ok")), effect_events=effect_events)
+    ev_totals: Counter = Counter()
+    for e in effect_events.values():
+        ev_totals.update(e["counts"])
+    effect_summary = {
+        "by_protection_mode": {m: sum(1 for r in effect_rows if r["protection_mode"] == m) for m in PROTECTION_MODES},
+        "protected_fail_closed": sorted(r["lane_id"] for r in effect_rows if r["protection_mode"] == "FAIL_CLOSED"),
+        "protected_only_while_ledger_healthy": sorted(
+            r["lane_id"] for r in effect_rows if r["protection_mode"] == "LEDGER_HEALTHY_ONLY"),
+        "manifest_ledger": dict(Counter(r["manifest_ledger"] for r in effect_rows)),
+        "manifest_ledger_disagree": sorted(r["lane_id"] for r in effect_rows if r["manifest_ledger"] == "DISAGREE"),
+        "ledger_readable_at_capture": bool(led.get("ok")),
+        "served_wrapper": wrapper_policy,
+        "handover_manifest": {k: v for k, v in manifest.items() if k != "processes"}
+        | {"processes": len(manifest.get("processes") or {})},
+        "wrapper_events_path": str(events_path),
+        "wrapper_events_in_window": dict(ev_totals),
+        "wrapper_first_event_at": _iso(wrapper_times[0]) if wrapper_times else None,
+        "wrapper_last_event_at": _iso(wrapper_times[-1]) if wrapper_times else None,
+        "lanes_stood_down": sorted(l for l, e in effect_events.items()
+                                   if any(e["counts"].get(k) for k in SKIP_EVENTS)),
+        "lanes_wrapper_ran_command": sorted(l for l, e in effect_events.items()
+                                            if any(e["counts"].get(k) for k in RAN_EVENTS)),
+    }
+    chain = event_chain(registry_rows, receipts, cron, outcomes, since, until)
 
     # PRs
     pr_rows = []
@@ -1224,13 +1666,16 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
         "ledger_runs_by_state_mode": led.get("runs_by_state_mode"),
     }
 
-    return {
+    packet = {
         "schema": SCHEMA, "authority": AUTHORITY, "generated_at": _iso(now),
         "window": {"since": _iso(since), "until": _iso(until), "notifications_day_start": _iso(day_start)},
-        "served": served, "crontab_sha256": cron_sha, "definitions": DEFINITIONS,
+        "served": served, "checkout_sha": checkout_sha, "crontab_sha256": cron_sha, "definitions": DEFINITIONS,
         "disposition": disp_totals, "migration": migration, "retained": retained, "backstops": backstops,
         "families": fam_rows, "fabric_processes": fabric_rows, "lanes": lanes, "run_summary": run_summary,
         "incidents": incidents, "episodes": episodes, "notifications": notif, "effect_protection": effect_rows,
+        "effect_summary": effect_summary, "event_chain": chain,
+        "capture": {"captured_at_utc": _iso(now), "captured_at_et": _et(now),
+                    "context": list(getattr(args, "context", None) or [])},
         "prs": pr_rows, "burn_down": bd, "unmeasured": unmeasured,
         "sources": {
             "registry": "config/lane_registry.json", "policy": "config/lane_cutover_policy.json" if policy else None,
@@ -1240,20 +1685,96 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
             "live_lanes": "~/.config/tradeai/n8n-live-lanes.env (TRADEAI_N8N_RELAY_LIVE_LANES names only)",
         },
     }
+    packet["comparison"] = compare_packets(Path(args.compare), packet) if getattr(args, "compare", "") else None
+    return packet
+
+
+def _et(d: datetime) -> str:
+    try:
+        from zoneinfo import ZoneInfo  # noqa: PLC0415
+
+        return d.astimezone(ZoneInfo("America/New_York")).strftime("%Y-%m-%d %H:%M:%S %Z")
+    except Exception:  # noqa: BLE001
+        return UNKNOWN
+
+
+COMPARE_RUN_KEYS = ("live_runs", "dry_runs", "useful_live_output", "verified_empty", "unverified_ok", "failures",
+                    "lock_skips", "refusals", "ambiguous_effects")
+COMPARE_MIGRATION_KEYS = ("active_cron_lines", "unique_lanes_with_active_cron", "relay_live_list_size")
+
+
+def compare_packets(prev_dir: Path, cur: Mapping[str, Any]) -> dict[str, Any]:
+    """What changed against an earlier packet (its summary.json + lanes.csv). Definitions may differ between the two
+    packets: a lane that left MIGRATED_PROVEN is listed with its CURRENT status and reason, so a definition change is
+    never read as a regression of the lane."""
+    try:
+        prev = json.loads((prev_dir / "summary.json").read_text())
+        prev_lanes = {r["lane_id"]: r for r in csv.DictReader((prev_dir / "lanes.csv").open())}
+    except Exception as e:  # noqa: BLE001
+        return {"prev_dir": str(prev_dir), "error": f"{type(e).__name__}: {str(e)[:120]}"}
+    pm, cm = prev.get("migration") or {}, cur["migration"]
+    ps, cs = pm.get("unique_lanes_by_status") or {}, cm["unique_lanes_by_status"]
+    prs, crs = prev.get("run_summary") or {}, cur["run_summary"]
+    cur_lanes = cur["lanes"]
+    prev_proven = {l for l, r in prev_lanes.items() if r.get("status") == "MIGRATED_PROVEN"}
+    now_proven = {l for l, r in cur_lanes.items() if r["status"] == "MIGRATED_PROVEN"}
+    moved = []
+    for lane in sorted(set(prev_lanes) | set(cur_lanes)):
+        a = (prev_lanes.get(lane) or {}).get("status", "")
+        b = (cur_lanes.get(lane) or {}).get("status", "")
+        if a != b:
+            moved.append({"lane_id": lane, "prev_status": a or "(absent)", "status": b or "(absent)",
+                          "why_now": (cur_lanes.get(lane) or {}).get("unproven_reason", "")})
+    return {
+        "prev_dir": (str(prev_dir.resolve().relative_to(ROOT)) if prev_dir.resolve().is_relative_to(ROOT)
+                     else str(prev_dir)),
+        "prev_generated_at": prev.get("generated_at"),
+        "prev_served": (prev.get("served") or {}).get("short"),
+        "cur_served": cur["served"].get("short"),
+        "prev_crontab_sha256": prev.get("crontab_sha256"),
+        "crontab_changed": prev.get("crontab_sha256") != cur.get("crontab_sha256"),
+        "status": {s: {"prev": int(ps.get(s, 0)), "now": int(cs.get(s, 0))} for s in STATUSES
+                   if int(ps.get(s, 0)) or int(cs.get(s, 0))},
+        "migration": {k: {"prev": pm.get(k), "now": cm.get(k)} for k in COMPARE_MIGRATION_KEYS},
+        "run_summary": {k: {"prev": prs.get(k), "now": crs.get(k)} for k in COMPARE_RUN_KEYS},
+        "proven_kept": sorted(prev_proven & now_proven),
+        "proven_added": sorted(now_proven - prev_proven),
+        "proven_dropped": [{"lane_id": l, "status": (cur_lanes.get(l) or {}).get("status", "(absent)"),
+                            "why_now": (cur_lanes.get(l) or {}).get("unproven_reason", "")}
+                           for l in sorted(prev_proven - now_proven)],
+        "status_moves": moved,
+    }
 
 
 def render(p: Mapping[str, Any]) -> str:
     m, rs, inc, n, bd = p["migration"], p["run_summary"], p["incidents"], p["notifications"], p["burn_down"]
+    es = p["effect_summary"]
     L: list[str] = []
     L.append(f"# n8n cutover outcomes — {p['generated_at']}\n")
+    L.append(f"**Status:** MEASUREMENT (read-only snapshot; a later packet supersedes it)  \n"
+             f"**Date:** {p['generated_at']}  \n**Authority:** {p['authority']}\n")
     L.append(f"Schema `{p['schema']}` · authority `{p['authority']}` · generator `scripts/report_n8n_cutover_outcomes.py` (read-only).\n")
     L.append("## 1. Header\n")
     L.append(md_table([
         {"item": "served SHA", "value": f"`{p['served']['sha']}` ({os.path.basename(p['served']['release_dir'])})"},
+        {"item": "config / registry read from checkout", "value": f"`{p.get('checkout_sha', UNKNOWN)}` (not the served release)"},
         {"item": "measurement window (UTC)", "value": f"{p['window']['since']} → {p['window']['until']}"},
         {"item": "notifications window (today, ET midnight)", "value": p["window"]["notifications_day_start"]},
         {"item": "sha256(crontab -l)", "value": f"`{p['crontab_sha256']}`"},
+        {"item": "captured at", "value": f"{p['capture']['captured_at_utc']} ({p['capture']['captured_at_et']})"},
+        {"item": "served effect-claim wrapper", "value": (
+            f"{'FAIL-CLOSED' if es['served_wrapper'].get('fail_closed') else 'FAIL-OPEN on an unreadable ledger'} "
+            f"(`{es['served_wrapper'].get('path')}`)")},
+        {"item": "wrapper events (window)", "value": (
+            f"{es['wrapper_events_in_window'] or 'none'}; first event {es['wrapper_first_event_at'] or '-'}, "
+            f"last {es['wrapper_last_event_at'] or '-'}")},
+        {"item": "handover manifest", "value": (
+            f"{'present' if es['handover_manifest'].get('present') else 'ABSENT'} "
+            f"({es['handover_manifest'].get('processes', 0)} processes) `{es['handover_manifest'].get('path')}`")},
+        {"item": "coordination ledger readable at capture", "value": es["ledger_readable_at_capture"]},
     ], ["item", "value"]))
+    for c in p["capture"].get("context") or []:
+        L.append(f"- Context (operator-supplied): {c}")
     L.append("\n### Counting definitions\n")
     for k, v in p["definitions"].items():
         L.append(f"- **{k}** — {v}")
@@ -1274,14 +1795,30 @@ def render(p: Mapping[str, Any]) -> str:
     ], ["measure", "n"]))
     L.append("\nUnique lanes by status (each lane exactly once):\n")
     L.append(md_table([{"status": k, "lanes": v} for k, v in m["unique_lanes_by_status"].items()], ["status", "lanes"]))
-    L.append(f"\n**Migrated (proven)** ({len(m['migrated_proven'])}): {', '.join(m['migrated_proven']) or '—'}\n")
+    L.append("\n### Three separate measures (n8n-live lanes)\n")
+    L.append("S = scheduler ownership, E = execution (live RUN_DONE), U = useful output (produced / empty_allowed). "
+             "Proven = S and E and U.\n")
+    L.append(md_table([{"measure": k, "lanes": v} for k, v in m["measures"].items()], ["measure", "lanes"]))
+    L.append(f"\nWrapped active cron lines: {m['wrapped_cron_lines']}; of those, last wrapper event is a skip "
+             f"(stood down): {m['wrapped_cron_lines_standing_down']}. Skip events on a scheduled fire of the line: "
+             f"{m['stood_down_skips_scheduled']}; off-schedule (manual / install verification, not a slot): "
+             f"{m['stood_down_skips_offschedule']}. S1E0 lanes (n8n owns the schedule, no live n8n RUN_DONE in the "
+             f"window): {m['measures']['owned_but_no_live_run_S1E0']}. For these the wrapped cron copy stands down at "
+             "its next slot, so the effect now depends on n8n firing it, and there is no live n8n RUN_DONE in the "
+             "window yet to show that it does.\n")
+    L.append("\nLanes by combination:\n")
+    L.append(md_table([{"combo": k, "meaning": COMBO_LABELS.get(k, ""), "lanes": len(v), "lane_ids": ", ".join(v)}
+                       for k, v in m["measure_combinations"].items()], ["combo", "meaning", "lanes", "lane_ids"]))
+    L.append(f"\n**Migrated (proven: S+E+U)** ({len(m['migrated_proven'])}): {', '.join(m['migrated_proven']) or '—'}\n")
     L.append(f"\n**n8n-native** ({len(m['n8n_native'])}): {', '.join(m['n8n_native']) or '—'}\n")
     L.append(f"\n**PARALLEL — cron + n8n live both firing** ({len(m['parallel'])}): {', '.join(m['parallel']) or '—'}\n")
     L.append(f"\n**LIVE_LISTED_IDLE — relay-live, cron line active, 0 live n8n runs in window** "
              f"({len(m['live_listed_idle'])}): {', '.join(m['live_listed_idle']) or '—'}\n")
     unp = [p["lanes"][l] for l in m["n8n_primary_unproven"]]
     L.append(f"\n**n8n primary but UNPROVEN** ({len(unp)}):\n")
-    L.append(md_table(unp, ["lane_id", "unproven_reason", "n8n_cutover_tags", "live_run_done", "refusals"]))
+    L.append(md_table(unp, ["lane_id", "measure_combo", "unproven_reason", "sched_evidence", "n8n_cutover_tags",
+                            "wrapper_scheduled_skips", "wrapper_offschedule_skips", "live_run_done",
+                            "live_useful_or_empty", "refusals"]))
     L.append(f"\n**Consolidated on host (stage runner, still cron)** ({len(m['consolidated'])}) — listed in lanes.csv.\n")
     L.append("\n### Retained exceptions\n")
     rc = Counter(r["class"] for r in p["retained"])
@@ -1346,20 +1883,40 @@ def render(p: Mapping[str, Any]) -> str:
     ], ["stage", "counts"]))
     L.append(f"\nAttribution by source: {n['attribution']['by_source']}\n\n{n['join_note']}\n")
 
-    L.append("\n## 7. Effect protection (qualified)\n")
+    L.append("\n## 7. Effect protection (qualified by ledger health and wrapper policy)\n")
+    L.append(md_table([{"protection_mode": k, "keyed lanes": v} for k, v in es["by_protection_mode"].items()],
+                      ["protection_mode", "keyed lanes"]))
+    L.append(f"\n**Protected fail-closed** ({len(es['protected_fail_closed'])}): "
+             f"{', '.join(es['protected_fail_closed']) or '—'}\n")
+    L.append(f"\n**Protected only while the ledger is healthy** ({len(es['protected_only_while_ledger_healthy'])}): "
+             f"{', '.join(es['protected_only_while_ledger_healthy']) or '—'}\n")
+    L.append(f"\nManifest vs ledger owner: {es['manifest_ledger']}. Disagreements (reported, never reconciled): "
+             f"{', '.join(es['manifest_ledger_disagree']) or 'none'}.\n")
+    L.append(f"\nCron copy stood down (skipped_effect / skipped_ownership_unknown in window): "
+             f"{len(es['lanes_stood_down'])} lanes: {', '.join(es['lanes_stood_down']) or '—'}\n")
+    L.append(f"\nWrapper RAN the command (owner not n8n, or ledger unreachable): "
+             f"{len(es['lanes_wrapper_ran_command'])} lanes: {', '.join(es['lanes_wrapper_ran_command']) or '—'}\n")
     lv = Counter(r["protection"].split(" ")[0] for r in p["effect_protection"])
-    L.append(f"Keys in config/n8n_effect_keys.json: {len(p['effect_protection'])}; by protection level: {dict(lv)}. "
-             "SINGLE_OWNER_CLAIMING = owner row is n8n, the executor claimed DONE keys in the window and no active "
-             "cron line fires the lane. That is the ONLY class where \"cannot run twice\" is supported, and only for "
-             "runs through the n8n executor (a manual run outside it is not fenced); a refused duplicate claim is not "
-             "itself recorded (refused claims write no row). Relay-level duplicate refusals "
-             "(run_idempotency_conflict) are in lanes.csv refusal_reasons. N8N_SIDE_ONLY = the cron copy is not "
-             "wrapped (no effect_claim_cron.sh / TRADEAI_EFFECT_CLAIM on the line; PR #1823 open), so a cron run and "
-             "an n8n run of the same slot CAN both take effect. late_write_fenced is false for every key "
-             "(no lane calls assert_fence yet; PR #1821 open).\n")
-    L.append(md_table([r for r in p["effect_protection"] if r["owner"] or r["n8n_claim"]],
-                      ["lane_id", "owner", "epoch", "n8n_claim", "active_cron_lines", "active_cron_lines_wrapped",
-                       "claims_done", "claims_ambiguous", "late_write_fenced", "protection"]))
+    L.append(f"\nClaim-level view (unchanged since #1827): {dict(lv)}. SINGLE_OWNER_CLAIMING = owner n8n, the "
+             "executor claimed DONE keys in the window, every active cron line wrapped; \"cannot run twice\" holds "
+             "only for runs through the n8n executor or the wrapper (a manual run outside both is not fenced). "
+             "late_write_fenced is false for every key (no lane calls assert_fence yet).\n")
+    L.append(md_table([r for r in p["effect_protection"] if r["owner"] or r["n8n_claim"] or r["manifest_owner"]],
+                      ["lane_id", "owner", "manifest_owner", "manifest_ledger", "active_cron_lines",
+                       "active_cron_lines_cron_wrapped", "skipped_effect", "skipped_ownership_unknown", "wrapper_ran",
+                       "claims_done", "claims_ambiguous", "protection_mode", "protection_mode_why"]))
+
+    L.append("\n### Event-driven chain (config/lane_registry.json dispatch.triggers)\n")
+    ch = p["event_chain"]
+    L.append(f"{len(ch)} declared triggers on {len({r['lane_id'] for r in ch})} lanes; by state "
+             f"{dict(Counter(r['trigger_state'] for r in ch))}; with a clock fallback still firing: "
+             f"{sum(1 for r in ch if r['has_clock_fallback'])}. Whether the tradeai-event-router workflow is active in "
+             "n8n is not read here (no n8n API call); the e: receipts are the evidence that a trigger fired. The five "
+             "registry scheduler.kind=event rows (openclaw reminders, cio-situation-detector) are emitted outside n8n "
+             "and are not part of this chain.\n")
+    L.append(md_table(ch, ["lane_id", "trigger_source", "upstream", "dispatch_mode", "trigger_state",
+                           "e_live_receipts", "e_dry_receipts", "last_e_receipt_at", "upstream_live_useful",
+                           "clock_fallback"]))
 
     L.append("\n## 8. Next cohorts and burn-down\n")
     L.append(md_table([{"cohort": k, "lanes": v, "owner": bd["owners"].get(k, "")} for k, v in bd["cohort_sizes"].items()],
@@ -1371,8 +1928,29 @@ def render(p: Mapping[str, Any]) -> str:
         L.append(f"- {a}")
     L.append("\nOpen PRs carrying blockers: see section 9 (state OPEN).\n")
 
-    L.append("\n## 9. PRs #1808–#1823: merged / deployed / proven\n")
+    L.append(f"\n## 9. PRs #{PR_RANGE[0]}–#{PR_RANGE[-1]}: merged / deployed / proven\n")
     L.append(md_table(p["prs"], ["pr", "state", "merged", "deployed", "proven", "evidence", "title"]))
+
+    cmp_ = p.get("comparison")
+    if cmp_:
+        L.append(f"\n## 10. Changes since {cmp_.get('prev_dir')}\n")
+        if cmp_.get("error"):
+            L.append(f"Comparison unavailable: {cmp_['error']}\n")
+        else:
+            L.append(f"Previous packet {cmp_['prev_generated_at']} (served {cmp_['prev_served']}) -> this packet "
+                     f"(served {cmp_['cur_served']}); crontab changed: {cmp_['crontab_changed']}. The definition of "
+                     "MIGRATED_PROVEN changed between the two (now S+E+U; then tag + any live RUN_DONE), and wrapped "
+                     "cron lines that stood down no longer count as PARALLEL.\n")
+            L.append(md_table([{"status": k, "prev": v["prev"], "now": v["now"], "delta": v["now"] - v["prev"]}
+                               for k, v in cmp_["status"].items()], ["status", "prev", "now", "delta"]))
+            L.append("\n" + md_table([{"measure": k, **v} for k, v in {**cmp_["migration"], **cmp_["run_summary"]}.items()],
+                                     ["measure", "prev", "now"]))
+            L.append(f"\nProven kept ({len(cmp_['proven_kept'])}): {', '.join(cmp_['proven_kept']) or '—'}\n")
+            L.append(f"\nProven added ({len(cmp_['proven_added'])}): {', '.join(cmp_['proven_added']) or '—'}\n")
+            L.append(f"\nProven dropped ({len(cmp_['proven_dropped'])}):\n")
+            L.append(md_table(cmp_["proven_dropped"], ["lane_id", "status", "why_now"]))
+            L.append(f"\nAll status moves ({len(cmp_['status_moves'])}):\n")
+            L.append(md_table(cmp_["status_moves"], ["lane_id", "prev_status", "status", "why_now"]))
 
     L.append("\n## Not measured / caveats\n")
     for u in p["unmeasured"] or ["(none)"]:
@@ -1382,17 +1960,21 @@ def render(p: Mapping[str, Any]) -> str:
     L.append("- Receipts carry no output verdict until a lane emits produced_count and opts in (output_receipt v2); "
              "those live runs are `unverified_ok`, not useful output.")
     L.append("\nFiles: summary.json, lanes.csv, families.csv, retained.csv, episodes.csv, effect_protection.csv, "
-             "prs.csv, notifications.json, burn_down.json.\n")
+             "event_chain.csv, prs.csv, notifications.json, burn_down.json.\n")
     return "\n".join(L) + "\n"
 
 
 def write_packet(p: Mapping[str, Any], out: Path) -> None:
     out.mkdir(parents=True, exist_ok=True)
     (out / "REPORT.md").write_text(render(p))
-    summary = {k: v for k, v in p.items() if k not in ("lanes", "episodes", "effect_protection", "families", "retained")}
+    summary = {k: v for k, v in p.items()
+               if k not in ("lanes", "episodes", "effect_protection", "families", "retained", "event_chain")}
     (out / "summary.json").write_text(json.dumps(summary, indent=1, sort_keys=True, default=str) + "\n")
     lane_cols = ["lane_id", "status", "registry_state", "scheduler_kind", "family_id", "disposition", "relay_live",
                  "on_p1_last", "active_cron_lines", "active_cron_line_nos", "n8n_cutover_tags", "consolidation_tags",
+                 "active_cron_lines_wrapped", "cron_copy_standing_down", "wrapper_skip_events", "wrapper_last_event",
+                 "wrapper_scheduled_skips", "wrapper_offschedule_skips",
+                 "measure_combo", "sched_n8n", "sched_evidence", "executed", "useful", "live_useful_or_empty",
                  *OUTCOME_KEYS, "refusals", "refusal_reasons", "ambiguous_effects", "unproven_reason"]
     write_csv(out / "lanes.csv", list(p["lanes"].values()), lane_cols)
     write_csv(out / "families.csv", list(p["families"]))
@@ -1400,6 +1982,7 @@ def write_packet(p: Mapping[str, Any], out: Path) -> None:
               ["lane_id", "class", "reason", "owner", "purpose", "registry_state", "scheduler", "status"])
     write_csv(out / "episodes.csv", list(p["episodes"]))
     write_csv(out / "effect_protection.csv", list(p["effect_protection"]))
+    write_csv(out / "event_chain.csv", list(p["event_chain"]))
     write_csv(out / "prs.csv", list(p["prs"]))
     (out / "notifications.json").write_text(json.dumps(p["notifications"], indent=1, sort_keys=True, default=str) + "\n")
     (out / "burn_down.json").write_text(json.dumps(p["burn_down"], indent=1, sort_keys=True, default=str) + "\n")
@@ -1412,6 +1995,13 @@ def main(argv: Optional[list[str]] = None) -> int:
     ap.add_argument("--state-root", default=os.environ.get("TRADEAI_STATE_ROOT") or str(DEFAULT_STATE_ROOT))
     ap.add_argument("--current", default=str(DEFAULT_CURRENT))
     ap.add_argument("--live-lanes-env", default=str(DEFAULT_LIVE_LANES_ENV))
+    ap.add_argument("--effect-events", default="", help="wrapper event log (default <state>/logs/effect_claim_events.jsonl)")
+    ap.add_argument("--handover-manifest", default="",
+                    help="handover manifest (default $TRADEAI_N8N_HANDOVER_MANIFEST or "
+                         "<state>/data/governance/n8n_handover_manifest.json)")
+    ap.add_argument("--compare", default="", help="an earlier packet dir to diff against (summary.json + lanes.csv)")
+    ap.add_argument("--context", action="append", default=[],
+                    help="operator-supplied context line printed in the header (repeatable), e.g. the wrapper install time")
     a = ap.parse_args(argv)
     p = build(a)
     out = Path(a.out) if a.out else ROOT / "docs" / "ops" / "measurements" / (

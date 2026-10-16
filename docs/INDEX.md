@@ -2021,6 +2021,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/live_proof_20260928/06-changes-and-promotion.md` | 06 — Changes and promotion | review_required | OK | `6ed3b5907f66` |
 | `docs/ops/live_proof_20260928/07-operator-summary.md` | 07 — Operator summary (redacted) | review_required | OK | `e4e6a058cde6` |
 | `docs/ops/measurements/n8n-cutover-20261016T172425Z/REPORT.md` | n8n cutover outcomes — 2026-10-16T17:24:25+00:00 | review_required | MISSING HEADER | `e02ee59902ba` |
+| `docs/ops/measurements/n8n-cutover-20261016T195110Z/REPORT.md` | n8n cutover outcomes — 2026-10-16T19:51:10+00:00 | review_required | OK | `04c9f08bfc36` |
 | `docs/ops/openclaw_stage2_soul_patch_20260923.md` | OpenClaw Maria SOUL / skill patch — Stage 2 (specialist honesty) | review_required | OK | `d0a83ec99d47` |
 | `docs/ops/packets/consolidation-health-audit-c3-20261015/README.md` | consolidation-health-audit-c3-20261015: CONSOLIDATE wave C3, operator packet | review_required | MISSING HEADER | `32436806ff21` |
 | `docs/ops/packets/cron-effect-claim-wrap-20261016/README.md` | Cron effect-claim wrap 2026-10-16: the cron copy refuses itself when n8n owns the lane | review_required | OK | `92fe7e6c08fc` |
