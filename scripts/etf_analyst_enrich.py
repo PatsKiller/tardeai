@@ -200,13 +200,29 @@ def main(argv=None) -> int:
         res = enrich()
     except Exception as exc:
         lr.write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started, script="etf_analyst_enrich.py",
-                              error=f"{type(exc).__name__}: {exc}")
+                              error=f"{type(exc).__name__}: {exc}",
+                              output={"produced_count": 0, "attempted_count": 0, "skipped_reasons": {"dependency_unavailable": 1}})
         raise
     failed = run_failed(res)
     rc = 1 if failed else 0
     lr.write_lane_receipt(LANE_ID, ok=not failed, exit_code=rc, started_at=started, script="etf_analyst_enrich.py",
-                          summary={k: v for k, v in res.items() if k != "ok"})
+                          summary={k: v for k, v in res.items() if k != "ok"}, output=lane_output(res))
     return rc
+
+
+def lane_output(res: dict) -> dict:
+    """LaneRunReceipt@v2 output fields (n8n expected_output, unit: ETFs/funds upserted onto symbol_profiles WITH an
+    analyst view). attempted = ETFs whose holdings were read (each is upserted); no ETF/fund in the universe is
+    fatal (``universe_empty_unexpected``)."""
+    produced = int(res.get("with_analyst_view") or 0)
+    attempted = int(res.get("etfs_with_holdings") or 0)
+    skipped = {"no_analyst_view": max(attempted - produced, 0)}
+    if not res.get("ok", True):
+        skipped["dependency_unavailable"] = 1  # yfinance import failed (the run also exits 1)
+    elif not int(res.get("etfs_funds") or 0):
+        skipped["universe_empty_unexpected"] = 1
+    return {"produced_count": produced, "attempted_count": max(attempted, produced), "skipped_reasons": skipped,
+            "empty_reason": None}
 
 
 if __name__ == "__main__":

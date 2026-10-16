@@ -1344,7 +1344,7 @@
         "evidence": [
           {
             "kind": "receipt_field",
-            "ref": "data/runtime/agent-outcome-linker_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/agent-outcome-linker/<run_id>.json); today the v1 receipt reports this unit as summary.inserted"
+            "ref": "data/runtime/agent-outcome-linker_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/agent-outcome-linker/<run_id>.json); the lane writes it via write_lane_receipt(output=...) since 2026-10-15 (summary.inserted carries the same count)"
           },
           {
             "kind": "store_rows",
@@ -1992,7 +1992,7 @@
         "evidence": [
           {
             "kind": "receipt_field",
-            "ref": "data/cio/catalyst_graph_latest.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/catalyst-graph/<run_id>.json)"
+            "ref": "data/runtime/catalyst-graph_last.json produced_count (LaneRunReceipt@v2 output fields, written by scripts/build_catalyst_graph.py --apply after the projection data/cio/catalyst_graph_latest.json; 1 = a projection with >= 1 lifecycle node; the executor reads the immutable attempt copy data/runtime/lane_attempts/catalyst-graph/<run_id>.json)"
           }
         ],
         "on_violation": {
@@ -2421,7 +2421,7 @@
         "evidence": [
           {
             "kind": "receipt_field",
-            "ref": "data/runtime/catalyst_symbol_impact_last_run.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/catalyst-symbol-impact/<run_id>.json); today the v1 receipt reports this unit as summary.written"
+            "ref": "data/runtime/catalyst-symbol-impact_last.json produced_count (LaneRunReceipt@v2 output fields, written by scripts/catalyst_symbol_impact_writer.py --apply beside its legacy data/runtime/catalyst_symbol_impact_last_run.json, which keeps summary.written; the executor reads the immutable attempt copy data/runtime/lane_attempts/catalyst-symbol-impact/<run_id>.json)"
           },
           {
             "kind": "store_rows",
@@ -2852,7 +2852,7 @@
         "evidence": [
           {
             "kind": "receipt_field",
-            "ref": "data/runtime/classify-instruments_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/classify-instruments/<run_id>.json); today the v1 receipt reports this unit as summary.profile_rows_updated"
+            "ref": "data/runtime/classify-instruments_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/classify-instruments/<run_id>.json); the lane writes it via write_lane_receipt(output=...) since 2026-10-15 (summary.profile_rows_updated carries the same count)"
           },
           {
             "kind": "store_rows",
@@ -4599,7 +4599,7 @@
         "evidence": [
           {
             "kind": "receipt_field",
-            "ref": "data/runtime/etf-analyst-enrich_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/etf-analyst-enrich/<run_id>.json); today the v1 receipt reports this unit as summary.with_analyst_view"
+            "ref": "data/runtime/etf-analyst-enrich_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/etf-analyst-enrich/<run_id>.json); the lane writes it via write_lane_receipt(output=...) since 2026-10-15 (summary.with_analyst_view carries the same count)"
           },
           {
             "kind": "store_rows",
@@ -4812,7 +4812,7 @@
         "evidence": [
           {
             "kind": "receipt_field",
-            "ref": "data/runtime/etf-performance-enrich_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/etf-performance-enrich/<run_id>.json); today the v1 receipt reports this unit as summary.updated"
+            "ref": "data/runtime/etf-performance-enrich_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/etf-performance-enrich/<run_id>.json); the lane writes it via write_lane_receipt(output=...) since 2026-10-15 (summary.updated carries the same count)"
           },
           {
             "kind": "store_rows",
@@ -23031,7 +23031,7 @@
         "evidence": [
           {
             "kind": "receipt_field",
-            "ref": "data/runtime/document-mentions-backfill_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/document-mentions-backfill/<run_id>.json); today the v1 receipt reports this unit as summary.written"
+            "ref": "data/runtime/document-mentions-backfill_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/document-mentions-backfill/<run_id>.json); the lane writes it via write_lane_receipt(output=...) since 2026-10-15 (summary.written carries the same count)"
           },
           {
             "kind": "store_rows",

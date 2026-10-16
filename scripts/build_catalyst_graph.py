@@ -137,6 +137,29 @@ def fetch_catalysts(limit: int) -> list[dict]:
             pass
 
 
+LANE_ID = "catalyst-graph"
+
+
+def lane_output(catalysts: int, graph: dict) -> dict:
+    """LaneRunReceipt@v2 output fields (n8n expected_output, unit: the projection file rewritten). The file counts
+    as produced only when it carries at least one lifecycle node: an empty catalyst read is fatal
+    (``no_input_unexpected``), catalysts that bound to no entity are ``nothing_bound``."""
+    produced = 1 if int(graph.get("node_count") or 0) > 0 else 0
+    skipped = {} if produced else ({"no_input_unexpected": 1} if catalysts == 0 else {"nothing_bound": 1})
+    return {"produced_count": produced, "attempted_count": 1, "skipped_reasons": skipped,
+            "empty_reason": None}
+
+
+def write_lane_receipt(started: str, catalysts: int, graph: dict) -> None:
+    """Real (--apply) run only: data/runtime/catalyst-graph_last.json (+ the per-attempt copy under n8n)."""
+    from scripts.lib.lane_last_receipt import write_lane_receipt as write
+
+    write(LANE_ID, ok=True, exit_code=0, started_at=started, script="build_catalyst_graph.py",
+          summary={"catalysts": catalysts, "node_count": graph.get("node_count"),
+                   "trace_count": graph.get("trace_count")},
+          output=lane_output(catalysts, graph))
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Build the catalyst→entity graph (Phase C)")
     ap.add_argument("--apply", action="store_true", help="write the projection")
@@ -166,8 +189,10 @@ def main() -> int:
             print(f"       {m['served_path_split']}")
         return 0
 
+    started = datetime.now(timezone.utc).isoformat()
     registry = load_registry()
-    graph = build_graph(fetch_catalysts(args.limit), registry)
+    catalysts = fetch_catalysts(args.limit)
+    graph = build_graph(catalysts, registry)
 
     if args.symbol:
         entity = lookup_symbol(registry, args.symbol)
@@ -220,6 +245,7 @@ def main() -> int:
         stmp.replace(status_path)
         print(f"\n  wrote {path}")
         print(f"  wrote {status_path}")
+        write_lane_receipt(started, len(catalysts), graph)
     elif not args.json:
         print(f"\nprojection path (served): {projection_path()}")
         print("nothing written. re-run with --apply.")

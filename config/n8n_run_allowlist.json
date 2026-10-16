@@ -1058,7 +1058,8 @@
         "--apply"
       ],
       "market_gate": false,
-      "output_signal": "data/runtime/catalyst_symbol_impact_last_run.json"
+      "output_signal": "data/runtime/catalyst_symbol_impact_last_run.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "catalyst-graph",
@@ -1090,7 +1091,8 @@
         "--apply"
       ],
       "market_gate": false,
-      "output_signal": "data/cio/catalyst_graph_latest.json"
+      "output_signal": "data/cio/catalyst_graph_latest.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "data-gap-resolver-at-0-10-16",
@@ -1451,7 +1453,8 @@
       ],
       "live_arg": [],
       "market_gate": false,
-      "output_signal": "data/runtime/classify-instruments_last.json"
+      "output_signal": "data/runtime/classify-instruments_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "research-insight-extractor",
@@ -1582,7 +1585,8 @@
         "--apply"
       ],
       "market_gate": false,
-      "output_signal": "data/runtime/agent-outcome-linker_last.json"
+      "output_signal": "data/runtime/agent-outcome-linker_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "agent-calibration-engine",
@@ -1936,7 +1940,8 @@
       ],
       "live_arg": [],
       "market_gate": false,
-      "output_signal": "data/runtime/etf-analyst-enrich_last.json"
+      "output_signal": "data/runtime/etf-analyst-enrich_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "agent-outcome-scorer",
@@ -2071,7 +2076,8 @@
       ],
       "live_arg": [],
       "market_gate": false,
-      "output_signal": "data/runtime/feedback-loop-processor_last.json"
+      "output_signal": "data/runtime/feedback-loop-processor_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "aegis-social-sentiment",
@@ -2311,7 +2317,8 @@
       ],
       "live_arg": [],
       "market_gate": false,
-      "output_signal": "data/runtime/etf-performance-enrich_last.json"
+      "output_signal": "data/runtime/etf-performance-enrich_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "watch-goods-consistency",
@@ -2928,7 +2935,8 @@
       "env_allowlist_mode": "report",
       "env_report_reason": "Shared runtime DB/identity/store loaders have not been proven bounded for this whole import closure. Keep report mode until reviewed closure proof; no broker env name is admitted.",
       "env_evidence": "SOURCE_ONLY: source-local DB loaders use explicit names; full real-run import closure NOT_MEASURED.",
-      "source": "Shard07 source proposal; exact native-approved cron snapshot 2026-10-11T17:05:28.513179+00:00: 25 * * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/document_mentions_backfill.lock timeout 25m $PY scripts/backfill_document_mentions.py --all --limit 4000 --apply >> /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/logs/document_mentions.log 2>&1; no scheduler mutation. | CW1 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv [], lock = the cron flock lock /tmp/document_mentions_backfill.lock (shared: the lock proves no double run)."
+      "source": "Shard07 source proposal; exact native-approved cron snapshot 2026-10-11T17:05:28.513179+00:00: 25 * * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/document_mentions_backfill.lock timeout 25m $PY scripts/backfill_document_mentions.py --all --limit 4000 --apply >> /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/logs/document_mentions.log 2>&1; no scheduler mutation. | CW1 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv [], lock = the cron flock lock /tmp/document_mentions_backfill.lock (shared: the lock proves no double run).",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "aegis-evening-packet",
