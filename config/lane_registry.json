@@ -23637,6 +23637,23 @@
       "flags": [
         "UNVERIFIED_OUTPUT"
       ]
+    },
+    {
+      "lane_id": "release-window",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "none"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-16",
+      "state_reason": "DISARMED host lane (operator 2026-10-16: daily release windows at 12:00 and 17:30 America/New_York; packet docs/ops/packets/release-windows-20261016/). scripts/release_window.py run selects the origin/main head only when every push/main workflow on that exact SHA is green, prepares it, promotes THAT artifact, verifies (CURRENT, units, /api/health 200, served copy) and rolls back with the deploy script's own rollback on failure. Armed per window by an operator release-write grant carrying the RELEASE_WINDOW token; no cron line, no unit, no allowlist entry. n8n may trigger it only after the proposed AGENTS §23.3 release-window clause is ratified (the allowlist never-list forbids release-deploy commands, and promote restarts the n8n executor, gateway and relay, so the run cannot be an executor child).",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/release_window/last.json"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_release_window_20261016.py; scripts/release_window.py plan --window 1730 (2026-10-16 13:14 ET): DISARMED, candidate 5f0ea5b8c (#1814), ci STOP_CI_PENDING (cio-production-hardening-ci in_progress)."
     }
   ],
   "freshness_contracts": [
