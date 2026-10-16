@@ -7748,6 +7748,31 @@
       "recommendation_note": "2026-10-09 registry-ops-crons: hand-set (no rationalization item exists for this new line, so reconcile_lane_registry leaves it untouched); KEEP_ON_CRON makes the row never dispatch-eligible (lane_dispatch._keep_on_cron) because its command carries the gateway FORBIDDEN_ROUTE_TOKENS token 'grant' and it audits n8n activations."
     },
     {
+      "lane_id": "self-heal-fixer",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "40 9-18 * * 1-5",
+        "match": "scripts/self_heal_fixer.py --cycle --apply",
+        "install_line": "40 9-18 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/tradeai_self_heal_fixer.lock timeout 10800 $PY scripts/self_heal_fixer.py --cycle --apply >> logs/self_heal_fixer.log 2>&1  # TRADEAI_LANE self-heal-fixer"
+      },
+      "expected_cadence_hours": 1.0,
+      "state": "PAUSED",
+      "state_since": "2026-10-16",
+      "state_reason": "PROPOSED, NOT INSTALLED (2026-10-16, operator directive: self-heal code defects go to an iterative Claude Code fixer, not the governed LLM bridge). Declared PAUSED so the row exists before any line does (PAUSED+line-absent is ALIGNED for check_lane_registry --state-drift; the lane monitor treats PAUSED as EXPECTED_SILENT). Installing the line is a section 17 operator decision (new production cron entry) and needs a cron grant; the lane also stays DISARMED until a guard git-push grant names self-heal-fixer, and it pushes/opens PRs only after the AGENTS.md 24.11 amendment (docs/ops/self_heal_claude_fixer.md section 9) is ACTIVE. Host cron, never n8n: it runs a coding agent and may push a branch, so it is not in config/n8n_run_allowlist.json (blocked_reasons names why).",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/self_heal_fixer_last.json"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_self_heal_fixer_20261016.py; docs/ops/self_heal_claude_fixer.md; config/self_heal_fixer.json (arming.grant_reason_token self-heal-fixer, policy_gate.amendment_heading_marker).",
+      "note": "Consumer of the N8nCodeDefect@v1 contract published by the self-heal diagnoser (PR #1828; diagnoses store + escalations) and the coordination ledger (read-only). Static backend selector (claude_code); independent evaluator; append-only repair memory. Writes only its own state/receipt/evidence under data/runtime/self_heal_fixer* and a P1 escalation outbox (no send). Never merges, releases, edits crontab/systemd, or writes the production DB.",
+      "review_by": "2026-10-23",
+      "value_class": "Operationally Important",
+      "recommendation": "KEEP_ON_CRON",
+      "recommendation_note": "2026-10-16 self-heal-fixer: hand-set; KEEP_ON_CRON keeps the row never dispatch-eligible (lane_dispatch._keep_on_cron): model output never grants execution authority, so the fixer runs from the host, not from an n8n-fired shell."
+    },
+    {
       "lane_id": "run-automated-trade-proposal-revalidation",
       "owner": "proposals",
       "scheduler": {

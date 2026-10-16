@@ -66,6 +66,15 @@ GATES = [
     # worker-seconds, executor concurrency); n8n_shadow_policy (no continuous dry run on accepted lanes, regression
     # canary only on a config or entry-script change, shadow cadence proposals report-only). Hermetic: tmp ledger.
     ("n8n_consolidation_cohort1_20261016", ["tests/test_n8n_consolidation_cohort1_20261016.py"]),
+    # ANCHOR: SELF_HEAL_CLAUDE_FIXER_20261016 — operator 2026-10-16: self-heal CODE DEFECTS go to an iterative
+    # headless Claude Code fixer (scripts/self_heal_fixer.py), not the governed LLM bridge. Lifecycle (a PR is not a
+    # heal), intake dedupe/cooldown/refused lanes, diff guard (protected paths, test weakening, append-only CI
+    # registration), dontAsk tool allowlist + credential-free env, the iteration loop against tmp git repos with a
+    # mocked claude CLI (red-first, feedback, no-progress stop, refusal, push only behind the 24.11 policy gate),
+    # lifecycle advance, and the daily-incubator-refresh dry run. Consumer of N8nCodeDefect@v1 (#1828) built with the
+    # producer's own code_defect_hook; independent evaluator (backend claims never read; PR-head CI); static selector,
+    # repair memory + shadow router; a second backend kind through the same acceptance scenario. Never a real model.
+    ("self_heal_claude_fixer_20261016", ["tests/test_self_heal_fixer_20261016.py"]),
     (
         "options_workflow",
         [
