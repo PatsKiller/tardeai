@@ -44,6 +44,7 @@ PROJ_INPUT_USD_PER_M = 0.30
 PROJ_OUTPUT_USD_PER_M = 1.20
 PROJ_MAX_OUTPUT_TOKENS = 1024
 SEVERITY_ORDER = {"CRITICAL": 0, "URGENT": 1, "WARN": 2, "INFO": 3}
+LIVE_HEAL_ACTION_ID = "rerun_live_once"   # n8n_self_heal.LIVE_HEAL_ACTION; never executed on a model's choice
 
 # ---------------------------------------------------------------- §2A scrub
 
@@ -324,6 +325,10 @@ def decide(verdict: Mapping[str, Any], entry: Mapping[str, Any], *, lane_remedia
         return {"kind": "escalate", "priority": "P1", "reason": why, "action_id": SUGGEST_ONLY}
     if aid == SUGGEST_ONLY:
         return {"kind": "escalate", "priority": "P2", "reason": "suggest_only", "action_id": SUGGEST_ONLY}
+    if aid == LIVE_HEAL_ACTION_ID:
+        # 2026-10-16: the live heal is deterministic only (n8n_self_heal.live_heal_gate + a FAILED slot parent).
+        # A model choosing it never runs it: it is a suggestion for a human.
+        return {"kind": "escalate", "priority": "P2", "reason": "live_heal_not_model_selectable", "action_id": aid}
     action = lane_action(entry, aid) or {}
     if not action.get("auto"):
         return {"kind": "escalate", "priority": "P2", "reason": f"approval_required:{action.get('approval_reason')}",

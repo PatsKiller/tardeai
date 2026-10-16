@@ -154,6 +154,18 @@ def test_executor_refuses_a_parent_naming_another_lane(led):
     assert refusal == "effect:effect_retry_parent_invalid"
 
 
+def test_a_model_choosing_rerun_live_once_never_executes_it():
+    from scripts.lib import n8n_failure_diagnosis as D
+    from scripts.lib import n8n_self_heal as H
+
+    assert D.LIVE_HEAL_ACTION_ID == H.LIVE_HEAL_ACTION
+    entry = {"severity": "Low", "actions": [{"action_id": "rerun_live_once", "auto": True, "max_per_lane_per_day": 1,
+                                              "handler": "ledger_request_run", "mode_sequence": ["live"]}]}
+    verdict = {"action_id": "rerun_live_once", "confidence": 0.99, "grounded": True, "problems": []}
+    dec = D.decide(verdict, entry, lane_remediations_today=0, lane_recent_remediation=False)
+    assert dec["kind"] == "escalate" and dec["reason"] == "live_heal_not_model_selectable"
+
+
 def test_executor_without_parent_still_fails_closed(led):
     _, _, fx = led
     row = {"run_id": RETRY, "lane_id": LANE, "mode": "live", "requested_at": "2026-10-16T12:01:40+00:00"}
