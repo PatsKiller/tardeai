@@ -37,7 +37,7 @@ _ledger_require_valid() {
 # Every tier classify_cmd/classify_path can return, except the never-grantable
 # ones. A tier missing here is unreachable: guarded paths now deny without a
 # grant, so an ungrantable tier would be a permanent lockout.
-ALL_TIERS="db-write cron git-push maintree service deps sudo state-write release-write openclaw telegram llm destructive config-write frozen-v2 guard-config file-delete execution-engineering execution-ops"
+ALL_TIERS="db-write cron git-push maintree service deps sudo state-write release-write openclaw telegram llm destructive config-write frozen-v2 guard-config file-delete execution-engineering execution-ops broker-read"
 BOLD=$'\e[1m'; RED=$'\e[31m'; YEL=$'\e[33m'; GRN=$'\e[32m'; OFF=$'\e[0m'
 
 # Accepts 30m / 2h / 45s / a bare number of seconds. An unparseable duration
@@ -102,6 +102,11 @@ cmd_grant() {
   # AGENTS.md 5.0.0 §24.10: execution-ops is per incident and at most 6 h, at the keyboard or by Telegram.
   if [[ "$tier" == "execution-ops" && "$dur" -gt 21600 ]]; then
     echo "${RED}execution-ops grants are capped at 6h (21600s) — AGENTS.md 5.0.0 §24.10.${OFF}"; exit 1
+  fi
+
+  # AGENTS.md 14.0.0 §24.11 (PROPOSED): broker-read runs only scripts/ops/broker_read_sync.sh, at most 4 h.
+  if [[ "$tier" == "broker-read" && "$dur" -gt 14400 ]]; then
+    echo "${RED}broker-read grants are capped at 4h (14400s) — AGENTS.md 14.0.0 §24.11.${OFF}"; exit 1
   fi
 
   echo

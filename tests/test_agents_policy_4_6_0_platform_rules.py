@@ -168,8 +168,9 @@ def test_claude_md_adapter_restates_no_new_rule():
 def test_24_has_nine_subsections_each_citing_its_cause():
     s = _s24()
     nums = re.findall(r"^## (24\.\d+) ", s, re.M)
-    # 5.0.0 (PROPOSED, operator-requested 2026-10-10) appends §24.10; 4.6.0 still owns exactly 24.1–24.9.
-    assert nums in ([f"24.{i}" for i in range(1, 10)], [f"24.{i}" for i in range(1, 11)]), nums
+    # 5.0.0 (PROPOSED, operator-requested 2026-10-10) appends §24.10; 14.0.0 (PROPOSED, operator-requested
+    # 2026-10-16) appends §24.11; 4.6.0 still owns exactly 24.1–24.9.
+    assert nums in [[f"24.{i}" for i in range(1, n)] for n in (10, 11, 12)], nums
     for part in re.split(r"^## 24\.\d+ ", s, flags=re.M)[1:]:
         bullets = re.split(r"\n- ", part)[1:]
         assert bullets, part[:80]
