@@ -1,7 +1,15 @@
 {
  "schema": "N8nRemediationCatalogue@v1",
- "as_of": "2026-10-14",
+ "as_of": "2026-10-16",
  "status": "PROPOSED — operator review before activation (decision 4)",
+ "approvals": [
+  {
+   "date": "2026-10-16",
+   "by": "operator (relayed by Agent A, Chief Architect)",
+   "scope": "catalogue rebuild 119 -> 137 lanes (registry/allowlist drift since 2026-10-14) and the rerun_live_once action (PR #1819)",
+   "ref": "PR #1819 follow-up 3"
+  }
+ ],
  "generated_by": "scripts/build_remediation_catalogue.py",
  "sources": {
   "inventory_dir": "~/n8n-maturity-verification/cron-inventory",
@@ -20,6 +28,7 @@
   "action_ids": [
    "rerun_dry_run",
    "rerun_dry_then_live",
+   "rerun_live_once",
    "reap_orphan_run"
   ],
   "default_action": "suggest_only",
@@ -35,6 +44,15 @@
   "max_per_lane_per_day": 3,
   "orphan_timeout_factor": 2.0,
   "max_auto_timeout_s": 600,
+  "live_heal": {
+   "action_id": "rerun_live_once",
+   "stages": [
+    "canary",
+    "cutover"
+   ],
+   "max_per_lane_per_day": 1,
+   "gate": "scripts/lib/n8n_self_heal.py live_heal_gate (re-checked at request time)"
+  },
   "never": "broker/order/stop/secret actions, sends, deletes, crontab/systemd edits, unit restarts, DLQ releases",
   "not_offered": "clear_stale_lock is not offered: scripts/cleanup_stale_locks.sh is report-only since 2026-10-09 (audit B_self_healing #7) — flock(2) files never block once the holder exits, and deleting the path opened a double-run race. A lock problem is a suggestion for a human.",
   "severity_rule": "most severe over the lane's active inventory rows of FUNCTION_SEVERITY[business_function], the migration_risk floor (High/Medium) and critical-path membership (CP1/CP2 Critical, CP3/CP4 High)",
@@ -51,15 +69,15 @@
   }
  },
  "summary": {
-  "lanes": 119,
-  "actions": 178,
-  "lanes_with_auto_rerun": 56,
-  "lanes_suggest_only": 63,
+  "lanes": 137,
+  "actions": 258,
+  "lanes_with_auto_rerun": 63,
+  "lanes_suggest_only": 74,
   "by_severity": {
-   "Critical": 19,
-   "High": 19,
-   "Medium": 55,
-   "Low": 26
+   "Critical": 21,
+   "High": 23,
+   "Medium": 58,
+   "Low": 35
   }
  },
  "lanes": [
@@ -392,7 +410,7 @@
     "present": true,
     "state": "ACTIVE",
     "scheduler_kind": "cron",
-    "stage": "shadow"
+    "stage": "canary"
    },
    "allowlisted": true,
    "allowlist_source": "config/n8n_run_allowlist.json",
@@ -423,6 +441,35 @@
      "output_signal": "data/runtime/aegis-social-sentiment_last.json",
      "max_per_incident": 1,
      "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "rerun_live_once",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "live"
+     ],
+     "argv": {
+      "live": [
+       "$PY",
+       "scripts/aegis_social_sentiment.py"
+      ]
+     },
+     "auto": true,
+     "approval_reason": null,
+     "via": "coordination/run (host_run_request, mode=live) once; the executor's effect-claim gate refuses a duplicate effect; the stage clamp still applies",
+     "preconditions": [
+      "registry scheduler.stage canary or cutover and state ACTIVE (re-checked at request time)",
+      "effect owner n8n and a config/n8n_effect_keys.json entry (n8n_self_heal.live_heal_gate)",
+      "failure classified transient, not a code error",
+      "not a sender, P1 or broker/order/stop/options-execution lane",
+      "no REQUESTED/RUNNING row for the lane",
+      "at most 1 live heal per lane per day"
+     ],
+     "lock": "/tmp/aegis_social_sentiment.lock",
+     "timeout_s": 600,
+     "output_signal": "data/runtime/aegis-social-sentiment_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 1
     },
     {
      "action_id": "reap_orphan_run",
@@ -472,7 +519,7 @@
     "present": true,
     "state": "ACTIVE",
     "scheduler_kind": "cron",
-    "stage": "shadow"
+    "stage": "canary"
    },
    "allowlisted": true,
    "allowlist_source": "config/n8n_run_allowlist.json",
@@ -503,6 +550,35 @@
      "output_signal": "data/runtime/aegis-transcript-discovery_last.json",
      "max_per_incident": 1,
      "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "rerun_live_once",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "live"
+     ],
+     "argv": {
+      "live": [
+       "$PY",
+       "scripts/aegis_transcript_discovery.py"
+      ]
+     },
+     "auto": true,
+     "approval_reason": null,
+     "via": "coordination/run (host_run_request, mode=live) once; the executor's effect-claim gate refuses a duplicate effect; the stage clamp still applies",
+     "preconditions": [
+      "registry scheduler.stage canary or cutover and state ACTIVE (re-checked at request time)",
+      "effect owner n8n and a config/n8n_effect_keys.json entry (n8n_self_heal.live_heal_gate)",
+      "failure classified transient, not a code error",
+      "not a sender, P1 or broker/order/stop/options-execution lane",
+      "no REQUESTED/RUNNING row for the lane",
+      "at most 1 live heal per lane per day"
+     ],
+     "lock": "/tmp/aegis_transcript_discovery.lock",
+     "timeout_s": 300,
+     "output_signal": "data/runtime/aegis-transcript-discovery_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 1
     },
     {
      "action_id": "reap_orphan_run",
@@ -717,7 +793,7 @@
     "present": true,
     "state": "ACTIVE",
     "scheduler_kind": "cron",
-    "stage": "shadow"
+    "stage": "canary"
    },
    "allowlisted": true,
    "allowlist_source": "config/n8n_run_allowlist.json",
@@ -748,6 +824,36 @@
      "output_signal": "data/runtime/agent-outcome-linker_last.json",
      "max_per_incident": 1,
      "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "rerun_live_once",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "live"
+     ],
+     "argv": {
+      "live": [
+       "$PY",
+       "scripts/agent_outcome_linker.py",
+       "--apply"
+      ]
+     },
+     "auto": true,
+     "approval_reason": null,
+     "via": "coordination/run (host_run_request, mode=live) once; the executor's effect-claim gate refuses a duplicate effect; the stage clamp still applies",
+     "preconditions": [
+      "registry scheduler.stage canary or cutover and state ACTIVE (re-checked at request time)",
+      "effect owner n8n and a config/n8n_effect_keys.json entry (n8n_self_heal.live_heal_gate)",
+      "failure classified transient, not a code error",
+      "not a sender, P1 or broker/order/stop/options-execution lane",
+      "no REQUESTED/RUNNING row for the lane",
+      "at most 1 live heal per lane per day"
+     ],
+     "lock": "/tmp/agent_outcome_linker.lock",
+     "timeout_s": 180,
+     "output_signal": "data/runtime/agent-outcome-linker_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 1
     },
     {
      "action_id": "reap_orphan_run",
@@ -797,7 +903,7 @@
     "present": true,
     "state": "ACTIVE",
     "scheduler_kind": "cron",
-    "stage": "shadow"
+    "stage": "canary"
    },
    "allowlisted": true,
    "allowlist_source": "config/n8n_run_allowlist.json",
@@ -828,6 +934,36 @@
      "output_signal": "data/runtime/agent-outcome-scorer_last.json",
      "max_per_incident": 1,
      "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "rerun_live_once",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "live"
+     ],
+     "argv": {
+      "live": [
+       "$PY",
+       "scripts/agent_outcome_scorer.py",
+       "--apply"
+      ]
+     },
+     "auto": true,
+     "approval_reason": null,
+     "via": "coordination/run (host_run_request, mode=live) once; the executor's effect-claim gate refuses a duplicate effect; the stage clamp still applies",
+     "preconditions": [
+      "registry scheduler.stage canary or cutover and state ACTIVE (re-checked at request time)",
+      "effect owner n8n and a config/n8n_effect_keys.json entry (n8n_self_heal.live_heal_gate)",
+      "failure classified transient, not a code error",
+      "not a sender, P1 or broker/order/stop/options-execution lane",
+      "no REQUESTED/RUNNING row for the lane",
+      "at most 1 live heal per lane per day"
+     ],
+     "lock": "/tmp/agent_outcome_scorer.lock",
+     "timeout_s": 300,
+     "output_signal": "data/runtime/agent-outcome-scorer_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 1
     },
     {
      "action_id": "reap_orphan_run",
@@ -1111,6 +1247,115 @@
   },
   {
    "schema": "N8nLaneRemediation@v1",
+   "lane_id": "build-symbol-profiles-at-0-19",
+   "severity": "High",
+   "severity_basis": "cron:L475: business_function=portfolio data",
+   "inv_ids": [
+    "cron:L475"
+   ],
+   "classification": [
+    "Requires Refactoring Before Migration"
+   ],
+   "migration_risk": [
+    "Low"
+   ],
+   "known_issues": [
+    {
+     "inv_id": "cron:L475",
+     "known_issues": "Overlaps the premarket pipeline step build_symbol_profiles --watchlist-top 300 (daily, dry-run today); 10-04: 48 updated, 27 no_profile",
+     "custom_work_required": "add --receipt (SCRIPT_RECEIPT under data/runtime) and a --dry-run path; return non-zero on step failure; registry dispatch block + config/n8n_run_allowlist.json entry whose lock = the cron line's lock"
+    }
+   ],
+   "registry": {
+    "present": true,
+    "state": "ACTIVE",
+    "scheduler_kind": "cron",
+    "stage": "canary"
+   },
+   "allowlisted": true,
+   "allowlist_source": "config/n8n_run_allowlist.json",
+   "actions": [
+    {
+     "action_id": "rerun_dry_run",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "dry_run"
+     ],
+     "argv": {
+      "dry_run": [
+       "$PY",
+       "scripts/build_symbol_profiles.py",
+       "--dry-run"
+      ]
+     },
+     "auto": false,
+     "approval_reason": "severity High: human approval (V9 §6.4)",
+     "via": "coordination/run (host_run_request, mode=dry_run) -> tradeai-n8n-run-executor runs the allowlist argv under the lane lock, stage-clamped",
+     "preconditions": [
+      "lane in config/n8n_run_allowlist.json with dry_run_arg",
+      "no REQUESTED/RUNNING row for the lane",
+      "per-incident and per-lane-day caps not reached"
+     ],
+     "lock": "/tmp/symbol_profiles.lock",
+     "timeout_s": 5400,
+     "output_signal": "data/runtime/build-symbol-profiles-at-0-19_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "rerun_live_once",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "live"
+     ],
+     "argv": {
+      "live": [
+       "$PY",
+       "scripts/build_symbol_profiles.py"
+      ]
+     },
+     "auto": false,
+     "approval_reason": "severity High: human approval (V9 §6.4)",
+     "via": "coordination/run (host_run_request, mode=live) once; the executor's effect-claim gate refuses a duplicate effect; the stage clamp still applies",
+     "preconditions": [
+      "registry scheduler.stage canary or cutover and state ACTIVE (re-checked at request time)",
+      "effect owner n8n and a config/n8n_effect_keys.json entry (n8n_self_heal.live_heal_gate)",
+      "failure classified transient, not a code error",
+      "not a sender, P1 or broker/order/stop/options-execution lane",
+      "no REQUESTED/RUNNING row for the lane",
+      "at most 1 live heal per lane per day"
+     ],
+     "lock": "/tmp/symbol_profiles.lock",
+     "timeout_s": 5400,
+     "output_signal": "data/runtime/build-symbol-profiles-at-0-19_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 1
+    },
+    {
+     "action_id": "reap_orphan_run",
+     "handler": "ledger_reap_orphan",
+     "mode_sequence": [],
+     "argv": {},
+     "auto": true,
+     "approval_reason": null,
+     "via": "LedgerRunStore.finish(run_id, state=RUN_TIMEOUT, receipt.reason=executor_lost) — the executor v2 reaper's receipt",
+     "preconditions": [
+      "row RUNNING and started_at + 2 x timeout_s < now",
+      "heartbeat_at older than timeout_s (or absent)",
+      "row pid not alive on this host"
+     ],
+     "lock": "/tmp/symbol_profiles.lock",
+     "timeout_s": 5400,
+     "output_signal": "data/runtime/build-symbol-profiles-at-0-19_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    }
+   ],
+   "default_action": "suggest_only",
+   "suggest_only_reason": "severity High: human approval (V9 §6.4)"
+  },
+  {
+   "schema": "N8nLaneRemediation@v1",
    "lane_id": "build-symbol-profiles-watchlist",
    "severity": "Critical",
    "severity_basis": "cron:L508: business_function=portfolio data; critical path CP1 -> Critical",
@@ -1207,7 +1452,7 @@
     "present": true,
     "state": "ACTIVE",
     "scheduler_kind": "cron",
-    "stage": "shadow"
+    "stage": "canary"
    },
    "allowlisted": true,
    "allowlist_source": "config/n8n_run_allowlist.json",
@@ -1237,6 +1482,36 @@
      "output_signal": "data/cio/catalyst_graph_latest.json",
      "max_per_incident": 1,
      "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "rerun_live_once",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "live"
+     ],
+     "argv": {
+      "live": [
+       "$PY",
+       "scripts/build_catalyst_graph.py",
+       "--apply"
+      ]
+     },
+     "auto": true,
+     "approval_reason": null,
+     "via": "coordination/run (host_run_request, mode=live) once; the executor's effect-claim gate refuses a duplicate effect; the stage clamp still applies",
+     "preconditions": [
+      "registry scheduler.stage canary or cutover and state ACTIVE (re-checked at request time)",
+      "effect owner n8n and a config/n8n_effect_keys.json entry (n8n_self_heal.live_heal_gate)",
+      "failure classified transient, not a code error",
+      "not a sender, P1 or broker/order/stop/options-execution lane",
+      "no REQUESTED/RUNNING row for the lane",
+      "at most 1 live heal per lane per day"
+     ],
+     "lock": "/tmp/build_catalyst_graph.lock",
+     "timeout_s": 600,
+     "output_signal": "data/cio/catalyst_graph_latest.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 1
     },
     {
      "action_id": "reap_orphan_run",
@@ -1368,7 +1643,7 @@
     "present": true,
     "state": "ACTIVE",
     "scheduler_kind": "cron",
-    "stage": "shadow"
+    "stage": "canary"
    },
    "allowlisted": true,
    "allowlist_source": "config/n8n_run_allowlist.json",
@@ -1398,6 +1673,36 @@
      "output_signal": "data/runtime/catalyst_symbol_impact_last_run.json",
      "max_per_incident": 1,
      "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "rerun_live_once",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "live"
+     ],
+     "argv": {
+      "live": [
+       "$PY",
+       "scripts/catalyst_symbol_impact_writer.py",
+       "--apply"
+      ]
+     },
+     "auto": true,
+     "approval_reason": null,
+     "via": "coordination/run (host_run_request, mode=live) once; the executor's effect-claim gate refuses a duplicate effect; the stage clamp still applies",
+     "preconditions": [
+      "registry scheduler.stage canary or cutover and state ACTIVE (re-checked at request time)",
+      "effect owner n8n and a config/n8n_effect_keys.json entry (n8n_self_heal.live_heal_gate)",
+      "failure classified transient, not a code error",
+      "not a sender, P1 or broker/order/stop/options-execution lane",
+      "no REQUESTED/RUNNING row for the lane",
+      "at most 1 live heal per lane per day"
+     ],
+     "lock": "/tmp/catalyst_symbol_impact.lock",
+     "timeout_s": 300,
+     "output_signal": "data/runtime/catalyst_symbol_impact_last_run.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 1
     },
     {
      "action_id": "reap_orphan_run",
@@ -1560,7 +1865,7 @@
     "present": true,
     "state": "ACTIVE",
     "scheduler_kind": "cron",
-    "stage": "shadow"
+    "stage": "canary"
    },
    "allowlisted": true,
    "allowlist_source": "config/n8n_run_allowlist.json",
@@ -1591,6 +1896,35 @@
      "output_signal": "data/runtime/classify-instruments_last.json",
      "max_per_incident": 1,
      "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "rerun_live_once",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "live"
+     ],
+     "argv": {
+      "live": [
+       "$PY",
+       "scripts/classify_instruments.py"
+      ]
+     },
+     "auto": false,
+     "approval_reason": "severity High: human approval (V9 §6.4)",
+     "via": "coordination/run (host_run_request, mode=live) once; the executor's effect-claim gate refuses a duplicate effect; the stage clamp still applies",
+     "preconditions": [
+      "registry scheduler.stage canary or cutover and state ACTIVE (re-checked at request time)",
+      "effect owner n8n and a config/n8n_effect_keys.json entry (n8n_self_heal.live_heal_gate)",
+      "failure classified transient, not a code error",
+      "not a sender, P1 or broker/order/stop/options-execution lane",
+      "no REQUESTED/RUNNING row for the lane",
+      "at most 1 live heal per lane per day"
+     ],
+     "lock": "/tmp/classify_instr.lock",
+     "timeout_s": 300,
+     "output_signal": "data/runtime/classify-instruments_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 1
     },
     {
      "action_id": "reap_orphan_run",
@@ -1640,7 +1974,7 @@
     "present": true,
     "state": "ACTIVE",
     "scheduler_kind": "cron",
-    "stage": "shadow"
+    "stage": "canary"
    },
    "allowlisted": true,
    "allowlist_source": "config/n8n_run_allowlist.json",
@@ -1848,7 +2182,7 @@
     "present": true,
     "state": "ACTIVE",
     "scheduler_kind": "cron",
-    "stage": "shadow"
+    "stage": "canary"
    },
    "allowlisted": true,
    "allowlist_source": "config/n8n_run_allowlist.json",
@@ -1880,6 +2214,36 @@
      "output_signal": "data/runtime/daily-incubator-refresh_last.json",
      "max_per_incident": 1,
      "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "rerun_live_once",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "live"
+     ],
+     "argv": {
+      "live": [
+       "$PY",
+       "scripts/daily_incubator_refresh.py",
+       "--apply"
+      ]
+     },
+     "auto": false,
+     "approval_reason": "severity Critical: human approval (V9 §6.4)",
+     "via": "coordination/run (host_run_request, mode=live) once; the executor's effect-claim gate refuses a duplicate effect; the stage clamp still applies",
+     "preconditions": [
+      "registry scheduler.stage canary or cutover and state ACTIVE (re-checked at request time)",
+      "effect owner n8n and a config/n8n_effect_keys.json entry (n8n_self_heal.live_heal_gate)",
+      "failure classified transient, not a code error",
+      "not a sender, P1 or broker/order/stop/options-execution lane",
+      "no REQUESTED/RUNNING row for the lane",
+      "at most 1 live heal per lane per day"
+     ],
+     "lock": "/tmp/daily-incubator-refresh.lock",
+     "timeout_s": 1800,
+     "output_signal": "data/runtime/daily-incubator-refresh_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 1
     },
     {
      "action_id": "reap_orphan_run",
@@ -1929,7 +2293,7 @@
     "present": true,
     "state": "ACTIVE",
     "scheduler_kind": "cron",
-    "stage": "shadow"
+    "stage": "canary"
    },
    "allowlisted": true,
    "allowlist_source": "config/n8n_run_allowlist.json",
@@ -1960,6 +2324,35 @@
      "output_signal": "data/runtime/data-gap-resolver-at-0-10-16_last.json",
      "max_per_incident": 1,
      "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "rerun_live_once",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "live"
+     ],
+     "argv": {
+      "live": [
+       "$PY",
+       "scripts/data_gap_resolver.py"
+      ]
+     },
+     "auto": true,
+     "approval_reason": null,
+     "via": "coordination/run (host_run_request, mode=live) once; the executor's effect-claim gate refuses a duplicate effect; the stage clamp still applies",
+     "preconditions": [
+      "registry scheduler.stage canary or cutover and state ACTIVE (re-checked at request time)",
+      "effect owner n8n and a config/n8n_effect_keys.json entry (n8n_self_heal.live_heal_gate)",
+      "failure classified transient, not a code error",
+      "not a sender, P1 or broker/order/stop/options-execution lane",
+      "no REQUESTED/RUNNING row for the lane",
+      "at most 1 live heal per lane per day"
+     ],
+     "lock": "/tmp/data_gap_resolver.lock",
+     "timeout_s": 600,
+     "output_signal": "data/runtime/data-gap-resolver-at-0-10-16_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 1
     },
     {
      "action_id": "reap_orphan_run",
@@ -2256,8 +2649,8 @@
    "registry": {
     "present": true,
     "state": "ACTIVE",
-    "scheduler_kind": "cron",
-    "stage": "shadow"
+    "scheduler_kind": "n8n",
+    "stage": "cutover"
    },
    "allowlisted": true,
    "allowlist_source": "config/n8n_run_allowlist.json",
@@ -2292,6 +2685,80 @@
      "output_signal": "data/runtime/document-mentions-backfill_last.json",
      "max_per_incident": 1,
      "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "rerun_dry_then_live",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "dry_run",
+      "live"
+     ],
+     "argv": {
+      "dry_run": [
+       "$PY",
+       "scripts/backfill_document_mentions.py",
+       "--all",
+       "--limit",
+       "4000",
+       "--apply",
+       "--dry-run"
+      ],
+      "live": [
+       "$PY",
+       "scripts/backfill_document_mentions.py",
+       "--all",
+       "--limit",
+       "4000",
+       "--apply"
+      ]
+     },
+     "auto": false,
+     "approval_reason": "timeout_s 1500 > 600: a rerun would hold the single executor worker; human approval",
+     "via": "coordination/run dry_run request; live request only after that run is RUN_DONE and only while the registry stage is cutover; executor runs the allowlist argv, stage-clamped",
+     "preconditions": [
+      "registry scheduler.stage == cutover and state ACTIVE (re-checked at request time)",
+      "dry_run phase RUN_DONE",
+      "no REQUESTED/RUNNING row for the lane",
+      "per-incident and per-lane-day caps not reached"
+     ],
+     "lock": "/tmp/document_mentions_backfill.lock",
+     "timeout_s": 1500,
+     "output_signal": "data/runtime/document-mentions-backfill_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "rerun_live_once",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "live"
+     ],
+     "argv": {
+      "live": [
+       "$PY",
+       "scripts/backfill_document_mentions.py",
+       "--all",
+       "--limit",
+       "4000",
+       "--apply"
+      ]
+     },
+     "auto": false,
+     "approval_reason": "timeout_s 1500 > 600: a rerun would hold the single executor worker; human approval",
+     "via": "coordination/run (host_run_request, mode=live) once; the executor's effect-claim gate refuses a duplicate effect; the stage clamp still applies",
+     "preconditions": [
+      "registry scheduler.stage canary or cutover and state ACTIVE (re-checked at request time)",
+      "effect owner n8n and a config/n8n_effect_keys.json entry (n8n_self_heal.live_heal_gate)",
+      "failure classified transient, not a code error",
+      "not a sender, P1 or broker/order/stop/options-execution lane",
+      "no REQUESTED/RUNNING row for the lane",
+      "at most 1 live heal per lane per day"
+     ],
+     "lock": "/tmp/document_mentions_backfill.lock",
+     "timeout_s": 1500,
+     "output_signal": "data/runtime/document-mentions-backfill_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 1
     },
     {
      "action_id": "reap_orphan_run",
@@ -2422,7 +2889,7 @@
     "present": true,
     "state": "ACTIVE",
     "scheduler_kind": "cron",
-    "stage": "shadow"
+    "stage": "canary"
    },
    "allowlisted": true,
    "allowlist_source": "config/n8n_run_allowlist.json",
@@ -2453,6 +2920,35 @@
      "output_signal": "data/runtime/etf-analyst-enrich_last.json",
      "max_per_incident": 1,
      "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "rerun_live_once",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "live"
+     ],
+     "argv": {
+      "live": [
+       "$PY",
+       "scripts/etf_analyst_enrich.py"
+      ]
+     },
+     "auto": false,
+     "approval_reason": "severity High: human approval (V9 §6.4)",
+     "via": "coordination/run (host_run_request, mode=live) once; the executor's effect-claim gate refuses a duplicate effect; the stage clamp still applies",
+     "preconditions": [
+      "registry scheduler.stage canary or cutover and state ACTIVE (re-checked at request time)",
+      "effect owner n8n and a config/n8n_effect_keys.json entry (n8n_self_heal.live_heal_gate)",
+      "failure classified transient, not a code error",
+      "not a sender, P1 or broker/order/stop/options-execution lane",
+      "no REQUESTED/RUNNING row for the lane",
+      "at most 1 live heal per lane per day"
+     ],
+     "lock": "/tmp/etf_analyst.lock",
+     "timeout_s": 600,
+     "output_signal": "data/runtime/etf-analyst-enrich_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 1
     },
     {
      "action_id": "reap_orphan_run",
@@ -2502,7 +2998,7 @@
     "present": true,
     "state": "ACTIVE",
     "scheduler_kind": "cron",
-    "stage": "shadow"
+    "stage": "canary"
    },
    "allowlisted": true,
    "allowlist_source": "config/n8n_run_allowlist.json",
@@ -2533,6 +3029,35 @@
      "output_signal": "data/runtime/etf-performance-enrich_last.json",
      "max_per_incident": 1,
      "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "rerun_live_once",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "live"
+     ],
+     "argv": {
+      "live": [
+       "$PY",
+       "scripts/etf_performance_enrich.py"
+      ]
+     },
+     "auto": false,
+     "approval_reason": "severity High: human approval (V9 §6.4)",
+     "via": "coordination/run (host_run_request, mode=live) once; the executor's effect-claim gate refuses a duplicate effect; the stage clamp still applies",
+     "preconditions": [
+      "registry scheduler.stage canary or cutover and state ACTIVE (re-checked at request time)",
+      "effect owner n8n and a config/n8n_effect_keys.json entry (n8n_self_heal.live_heal_gate)",
+      "failure classified transient, not a code error",
+      "not a sender, P1 or broker/order/stop/options-execution lane",
+      "no REQUESTED/RUNNING row for the lane",
+      "at most 1 live heal per lane per day"
+     ],
+     "lock": "/tmp/etf_perf.lock",
+     "timeout_s": 900,
+     "output_signal": "data/runtime/etf-performance-enrich_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 1
     },
     {
      "action_id": "reap_orphan_run",
@@ -2662,7 +3187,7 @@
     "present": true,
     "state": "ACTIVE",
     "scheduler_kind": "cron",
-    "stage": "shadow"
+    "stage": "canary"
    },
    "allowlisted": true,
    "allowlist_source": "config/n8n_run_allowlist.json",
@@ -2693,6 +3218,35 @@
      "output_signal": "data/runtime/feedback-loop-processor_last.json",
      "max_per_incident": 1,
      "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "rerun_live_once",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "live"
+     ],
+     "argv": {
+      "live": [
+       "$PY",
+       "scripts/feedback_loop_processor.py"
+      ]
+     },
+     "auto": true,
+     "approval_reason": null,
+     "via": "coordination/run (host_run_request, mode=live) once; the executor's effect-claim gate refuses a duplicate effect; the stage clamp still applies",
+     "preconditions": [
+      "registry scheduler.stage canary or cutover and state ACTIVE (re-checked at request time)",
+      "effect owner n8n and a config/n8n_effect_keys.json entry (n8n_self_heal.live_heal_gate)",
+      "failure classified transient, not a code error",
+      "not a sender, P1 or broker/order/stop/options-execution lane",
+      "no REQUESTED/RUNNING row for the lane",
+      "at most 1 live heal per lane per day"
+     ],
+     "lock": "/tmp/feedback_loop.lock",
+     "timeout_s": 600,
+     "output_signal": "data/runtime/feedback-loop-processor_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 1
     },
     {
      "action_id": "reap_orphan_run",
@@ -2742,7 +3296,7 @@
     "present": true,
     "state": "ACTIVE",
     "scheduler_kind": "cron",
-    "stage": "shadow"
+    "stage": "canary"
    },
    "allowlisted": true,
    "allowlist_source": "config/n8n_run_allowlist.json",
@@ -2773,6 +3327,35 @@
      "output_signal": "data/runtime/finviz-enrichment_last.json",
      "max_per_incident": 1,
      "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "rerun_live_once",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "live"
+     ],
+     "argv": {
+      "live": [
+       "$PY",
+       "scripts/finviz_enrichment.py"
+      ]
+     },
+     "auto": false,
+     "approval_reason": "timeout_s 900 > 600: a rerun would hold the single executor worker; human approval",
+     "via": "coordination/run (host_run_request, mode=live) once; the executor's effect-claim gate refuses a duplicate effect; the stage clamp still applies",
+     "preconditions": [
+      "registry scheduler.stage canary or cutover and state ACTIVE (re-checked at request time)",
+      "effect owner n8n and a config/n8n_effect_keys.json entry (n8n_self_heal.live_heal_gate)",
+      "failure classified transient, not a code error",
+      "not a sender, P1 or broker/order/stop/options-execution lane",
+      "no REQUESTED/RUNNING row for the lane",
+      "at most 1 live heal per lane per day"
+     ],
+     "lock": "/tmp/finviz_enrichment.lock",
+     "timeout_s": 900,
+     "output_signal": "data/runtime/finviz-enrichment_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 1
     },
     {
      "action_id": "reap_orphan_run",
@@ -3057,7 +3640,7 @@
     "present": true,
     "state": "ACTIVE",
     "scheduler_kind": "cron",
-    "stage": "shadow"
+    "stage": "canary"
    },
    "allowlisted": true,
    "allowlist_source": "config/n8n_run_allowlist.json",
@@ -3090,7 +3673,7 @@
     "present": true,
     "state": "ACTIVE",
     "scheduler_kind": "cron",
-    "stage": "shadow"
+    "stage": "canary"
    },
    "allowlisted": true,
    "allowlist_source": "config/n8n_run_allowlist.json",
@@ -3122,6 +3705,36 @@
      "output_signal": "data/runtime/finviz-screener-runner_last.json",
      "max_per_incident": 1,
      "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "rerun_live_once",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "live"
+     ],
+     "argv": {
+      "live": [
+       "$PY",
+       "scripts/finviz_screener_runner.py",
+       "--run"
+      ]
+     },
+     "auto": false,
+     "approval_reason": "timeout_s 1800 > 600: a rerun would hold the single executor worker; human approval",
+     "via": "coordination/run (host_run_request, mode=live) once; the executor's effect-claim gate refuses a duplicate effect; the stage clamp still applies",
+     "preconditions": [
+      "registry scheduler.stage canary or cutover and state ACTIVE (re-checked at request time)",
+      "effect owner n8n and a config/n8n_effect_keys.json entry (n8n_self_heal.live_heal_gate)",
+      "failure classified transient, not a code error",
+      "not a sender, P1 or broker/order/stop/options-execution lane",
+      "no REQUESTED/RUNNING row for the lane",
+      "at most 1 live heal per lane per day"
+     ],
+     "lock": "/tmp/finviz_screener.lock",
+     "timeout_s": 1800,
+     "output_signal": "data/runtime/finviz-screener-runner_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 1
     },
     {
      "action_id": "reap_orphan_run",
@@ -3171,7 +3784,7 @@
     "present": true,
     "state": "ACTIVE",
     "scheduler_kind": "cron",
-    "stage": "shadow"
+    "stage": "canary"
    },
    "allowlisted": true,
    "allowlist_source": "config/n8n_run_allowlist.json",
@@ -3388,6 +4001,86 @@
   },
   {
    "schema": "N8nLaneRemediation@v1",
+   "lane_id": "goal-gate-bridge",
+   "severity": "Medium",
+   "severity_basis": "cron:L978: business_function=governance",
+   "inv_ids": [
+    "cron:L978"
+   ],
+   "classification": [
+    "Requires Refactoring Before Migration"
+   ],
+   "migration_risk": [
+    "Low"
+   ],
+   "known_issues": [
+    {
+     "inv_id": "cron:L978",
+     "known_issues": "Gates near zero (independent_review_coverage 0/66,013; provenance 0/66,013) — measures correctly, value is the finding. No lock.",
+     "custom_work_required": "Add flock; allowlist entry (dry run = no --write-measurements)"
+    }
+   ],
+   "registry": {
+    "present": true,
+    "state": "ACTIVE",
+    "scheduler_kind": "cron",
+    "stage": "shadow"
+   },
+   "allowlisted": true,
+   "allowlist_source": "config/n8n_run_allowlist.json",
+   "actions": [
+    {
+     "action_id": "rerun_dry_run",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "dry_run"
+     ],
+     "argv": {
+      "dry_run": [
+       "$PY",
+       "scripts/cio_gate_measurement_bridge.py",
+       "--dry-run"
+      ]
+     },
+     "auto": true,
+     "approval_reason": null,
+     "via": "coordination/run (host_run_request, mode=dry_run) -> tradeai-n8n-run-executor runs the allowlist argv under the lane lock, stage-clamped",
+     "preconditions": [
+      "lane in config/n8n_run_allowlist.json with dry_run_arg",
+      "no REQUESTED/RUNNING row for the lane",
+      "per-incident and per-lane-day caps not reached"
+     ],
+     "lock": "/tmp/goal_gate_bridge.lock",
+     "timeout_s": 300,
+     "output_signal": "data/runtime/goal-gate-bridge_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "reap_orphan_run",
+     "handler": "ledger_reap_orphan",
+     "mode_sequence": [],
+     "argv": {},
+     "auto": true,
+     "approval_reason": null,
+     "via": "LedgerRunStore.finish(run_id, state=RUN_TIMEOUT, receipt.reason=executor_lost) — the executor v2 reaper's receipt",
+     "preconditions": [
+      "row RUNNING and started_at + 2 x timeout_s < now",
+      "heartbeat_at older than timeout_s (or absent)",
+      "row pid not alive on this host"
+     ],
+     "lock": "/tmp/goal_gate_bridge.lock",
+     "timeout_s": 300,
+     "output_signal": "data/runtime/goal-gate-bridge_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    }
+   ],
+   "default_action": "suggest_only",
+   "suggest_only_reason": null
+  },
+  {
+   "schema": "N8nLaneRemediation@v1",
    "lane_id": "heartbeat-watch",
    "severity": "Low",
    "severity_basis": "default Low (no inventory row)",
@@ -3436,6 +4129,35 @@
      "max_per_lane_per_day": 3
     },
     {
+     "action_id": "rerun_live_once",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "live"
+     ],
+     "argv": {
+      "live": [
+       "$PY",
+       "scripts/heartbeat_watch.py"
+      ]
+     },
+     "auto": true,
+     "approval_reason": null,
+     "via": "coordination/run (host_run_request, mode=live) once; the executor's effect-claim gate refuses a duplicate effect; the stage clamp still applies",
+     "preconditions": [
+      "registry scheduler.stage canary or cutover and state ACTIVE (re-checked at request time)",
+      "effect owner n8n and a config/n8n_effect_keys.json entry (n8n_self_heal.live_heal_gate)",
+      "failure classified transient, not a code error",
+      "not a sender, P1 or broker/order/stop/options-execution lane",
+      "no REQUESTED/RUNNING row for the lane",
+      "at most 1 live heal per lane per day"
+     ],
+     "lock": "/tmp/tradeai_heartbeat_watch.lock",
+     "timeout_s": 60,
+     "output_signal": "data/runtime/heartbeat-watch_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 1
+    },
+    {
      "action_id": "reap_orphan_run",
      "handler": "ledger_reap_orphan",
      "mode_sequence": [],
@@ -3482,8 +4204,8 @@
    "registry": {
     "present": true,
     "state": "ACTIVE",
-    "scheduler_kind": "cron",
-    "stage": "shadow"
+    "scheduler_kind": "n8n",
+    "stage": "cutover"
    },
    "allowlisted": true,
    "allowlist_source": "config/n8n_run_allowlist.json",
@@ -3516,6 +4238,74 @@
      "output_signal": "data/runtime/hermes-analyst-signal-discovery_last.json",
      "max_per_incident": 1,
      "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "rerun_dry_then_live",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "dry_run",
+      "live"
+     ],
+     "argv": {
+      "dry_run": [
+       "$PY",
+       "scripts/hermes_analyst_signal_discovery.py",
+       "--run",
+       "--json",
+       "--dry-run"
+      ],
+      "live": [
+       "$PY",
+       "scripts/hermes_analyst_signal_discovery.py",
+       "--run",
+       "--json"
+      ]
+     },
+     "auto": true,
+     "approval_reason": null,
+     "via": "coordination/run dry_run request; live request only after that run is RUN_DONE and only while the registry stage is cutover; executor runs the allowlist argv, stage-clamped",
+     "preconditions": [
+      "registry scheduler.stage == cutover and state ACTIVE (re-checked at request time)",
+      "dry_run phase RUN_DONE",
+      "no REQUESTED/RUNNING row for the lane",
+      "per-incident and per-lane-day caps not reached"
+     ],
+     "lock": "/tmp/hermes_analyst_signal.lock",
+     "timeout_s": 300,
+     "output_signal": "data/runtime/hermes-analyst-signal-discovery_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "rerun_live_once",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "live"
+     ],
+     "argv": {
+      "live": [
+       "$PY",
+       "scripts/hermes_analyst_signal_discovery.py",
+       "--run",
+       "--json"
+      ]
+     },
+     "auto": true,
+     "approval_reason": null,
+     "via": "coordination/run (host_run_request, mode=live) once; the executor's effect-claim gate refuses a duplicate effect; the stage clamp still applies",
+     "preconditions": [
+      "registry scheduler.stage canary or cutover and state ACTIVE (re-checked at request time)",
+      "effect owner n8n and a config/n8n_effect_keys.json entry (n8n_self_heal.live_heal_gate)",
+      "failure classified transient, not a code error",
+      "not a sender, P1 or broker/order/stop/options-execution lane",
+      "no REQUESTED/RUNNING row for the lane",
+      "at most 1 live heal per lane per day"
+     ],
+     "lock": "/tmp/hermes_analyst_signal.lock",
+     "timeout_s": 300,
+     "output_signal": "data/runtime/hermes-analyst-signal-discovery_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 1
     },
     {
      "action_id": "reap_orphan_run",
@@ -3575,6 +4365,115 @@
   },
   {
    "schema": "N8nLaneRemediation@v1",
+   "lane_id": "hermes-discovery-scorecard",
+   "severity": "Medium",
+   "severity_basis": "cron:L832: business_function=research",
+   "inv_ids": [
+    "cron:L832"
+   ],
+   "classification": [
+    "Requires Refactoring Before Migration"
+   ],
+   "migration_risk": [
+    "Low"
+   ],
+   "known_issues": [
+    {
+     "inv_id": "cron:L832",
+     "known_issues": "PEAK_SKIP 10-07/08/09 at 09:30Z; output last written 2026-10-04 — wrapper removed from the line on 10-09; no lock",
+     "custom_work_required": "Add flock; verify 10-10 05:30 output"
+    }
+   ],
+   "registry": {
+    "present": true,
+    "state": "ACTIVE",
+    "scheduler_kind": "cron",
+    "stage": "canary"
+   },
+   "allowlisted": true,
+   "allowlist_source": "config/n8n_run_allowlist.json",
+   "actions": [
+    {
+     "action_id": "rerun_dry_run",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "dry_run"
+     ],
+     "argv": {
+      "dry_run": [
+       "$PY",
+       "scripts/hermes_discovery_scorecard.py",
+       "--dry-run"
+      ]
+     },
+     "auto": true,
+     "approval_reason": null,
+     "via": "coordination/run (host_run_request, mode=dry_run) -> tradeai-n8n-run-executor runs the allowlist argv under the lane lock, stage-clamped",
+     "preconditions": [
+      "lane in config/n8n_run_allowlist.json with dry_run_arg",
+      "no REQUESTED/RUNNING row for the lane",
+      "per-incident and per-lane-day caps not reached"
+     ],
+     "lock": "/tmp/hermes_discovery_scorecard.lock",
+     "timeout_s": 600,
+     "output_signal": "data/runtime/hermes-discovery-scorecard_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "rerun_live_once",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "live"
+     ],
+     "argv": {
+      "live": [
+       "$PY",
+       "scripts/hermes_discovery_scorecard.py"
+      ]
+     },
+     "auto": true,
+     "approval_reason": null,
+     "via": "coordination/run (host_run_request, mode=live) once; the executor's effect-claim gate refuses a duplicate effect; the stage clamp still applies",
+     "preconditions": [
+      "registry scheduler.stage canary or cutover and state ACTIVE (re-checked at request time)",
+      "effect owner n8n and a config/n8n_effect_keys.json entry (n8n_self_heal.live_heal_gate)",
+      "failure classified transient, not a code error",
+      "not a sender, P1 or broker/order/stop/options-execution lane",
+      "no REQUESTED/RUNNING row for the lane",
+      "at most 1 live heal per lane per day"
+     ],
+     "lock": "/tmp/hermes_discovery_scorecard.lock",
+     "timeout_s": 600,
+     "output_signal": "data/runtime/hermes-discovery-scorecard_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 1
+    },
+    {
+     "action_id": "reap_orphan_run",
+     "handler": "ledger_reap_orphan",
+     "mode_sequence": [],
+     "argv": {},
+     "auto": true,
+     "approval_reason": null,
+     "via": "LedgerRunStore.finish(run_id, state=RUN_TIMEOUT, receipt.reason=executor_lost) — the executor v2 reaper's receipt",
+     "preconditions": [
+      "row RUNNING and started_at + 2 x timeout_s < now",
+      "heartbeat_at older than timeout_s (or absent)",
+      "row pid not alive on this host"
+     ],
+     "lock": "/tmp/hermes_discovery_scorecard.lock",
+     "timeout_s": 600,
+     "output_signal": "data/runtime/hermes-discovery-scorecard_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    }
+   ],
+   "default_action": "suggest_only",
+   "suggest_only_reason": null
+  },
+  {
+   "schema": "N8nLaneRemediation@v1",
    "lane_id": "hermes-entity-spike-discovery",
    "severity": "Medium",
    "severity_basis": "cron:L683: business_function=research",
@@ -3598,7 +4497,7 @@
     "present": true,
     "state": "ACTIVE",
     "scheduler_kind": "cron",
-    "stage": "shadow"
+    "stage": "canary"
    },
    "allowlisted": true,
    "allowlist_source": "config/n8n_run_allowlist.json",
@@ -3631,6 +4530,37 @@
      "output_signal": "data/runtime/hermes-entity-spike-discovery_last.json",
      "max_per_incident": 1,
      "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "rerun_live_once",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "live"
+     ],
+     "argv": {
+      "live": [
+       "$PY",
+       "scripts/hermes_entity_spike_discovery.py",
+       "--run",
+       "--json"
+      ]
+     },
+     "auto": true,
+     "approval_reason": null,
+     "via": "coordination/run (host_run_request, mode=live) once; the executor's effect-claim gate refuses a duplicate effect; the stage clamp still applies",
+     "preconditions": [
+      "registry scheduler.stage canary or cutover and state ACTIVE (re-checked at request time)",
+      "effect owner n8n and a config/n8n_effect_keys.json entry (n8n_self_heal.live_heal_gate)",
+      "failure classified transient, not a code error",
+      "not a sender, P1 or broker/order/stop/options-execution lane",
+      "no REQUESTED/RUNNING row for the lane",
+      "at most 1 live heal per lane per day"
+     ],
+     "lock": "/tmp/hermes_entity_spike.lock",
+     "timeout_s": 300,
+     "output_signal": "data/runtime/hermes-entity-spike-discovery_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 1
     },
     {
      "action_id": "reap_orphan_run",
@@ -3679,8 +4609,8 @@
    "registry": {
     "present": true,
     "state": "ACTIVE",
-    "scheduler_kind": "cron",
-    "stage": "shadow"
+    "scheduler_kind": "n8n",
+    "stage": "cutover"
    },
    "allowlisted": true,
    "allowlist_source": "config/n8n_run_allowlist.json",
@@ -3714,6 +4644,71 @@
      "max_per_lane_per_day": 3
     },
     {
+     "action_id": "rerun_dry_then_live",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "dry_run",
+      "live"
+     ],
+     "argv": {
+      "dry_run": [
+       "$PY",
+       "scripts/hermes_governance_api.py",
+       "--warm",
+       "--dry-run"
+      ],
+      "live": [
+       "$PY",
+       "scripts/hermes_governance_api.py",
+       "--warm"
+      ]
+     },
+     "auto": true,
+     "approval_reason": null,
+     "via": "coordination/run dry_run request; live request only after that run is RUN_DONE and only while the registry stage is cutover; executor runs the allowlist argv, stage-clamped",
+     "preconditions": [
+      "registry scheduler.stage == cutover and state ACTIVE (re-checked at request time)",
+      "dry_run phase RUN_DONE",
+      "no REQUESTED/RUNNING row for the lane",
+      "per-incident and per-lane-day caps not reached"
+     ],
+     "lock": "/tmp/tradeai_hermes_gov_warm.lock",
+     "timeout_s": 120,
+     "output_signal": "data/runtime/hermes_governance_cache.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "rerun_live_once",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "live"
+     ],
+     "argv": {
+      "live": [
+       "$PY",
+       "scripts/hermes_governance_api.py",
+       "--warm"
+      ]
+     },
+     "auto": true,
+     "approval_reason": null,
+     "via": "coordination/run (host_run_request, mode=live) once; the executor's effect-claim gate refuses a duplicate effect; the stage clamp still applies",
+     "preconditions": [
+      "registry scheduler.stage canary or cutover and state ACTIVE (re-checked at request time)",
+      "effect owner n8n and a config/n8n_effect_keys.json entry (n8n_self_heal.live_heal_gate)",
+      "failure classified transient, not a code error",
+      "not a sender, P1 or broker/order/stop/options-execution lane",
+      "no REQUESTED/RUNNING row for the lane",
+      "at most 1 live heal per lane per day"
+     ],
+     "lock": "/tmp/tradeai_hermes_gov_warm.lock",
+     "timeout_s": 120,
+     "output_signal": "data/runtime/hermes_governance_cache.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 1
+    },
+    {
      "action_id": "reap_orphan_run",
      "handler": "ledger_reap_orphan",
      "mode_sequence": [],
@@ -3735,6 +4730,439 @@
    ],
    "default_action": "suggest_only",
    "suggest_only_reason": null
+  },
+  {
+   "schema": "N8nLaneRemediation@v1",
+   "lane_id": "hermes-learning-autonomous-self-tune",
+   "severity": "Low",
+   "severity_basis": "default Low (no inventory row)",
+   "inv_ids": [],
+   "classification": [
+    "UNKNOWN"
+   ],
+   "migration_risk": [
+    "UNKNOWN"
+   ],
+   "known_issues": [],
+   "registry": {
+    "present": true,
+    "state": "NEVER_SCHEDULED",
+    "scheduler_kind": "n8n",
+    "stage": "shadow"
+   },
+   "allowlisted": true,
+   "allowlist_source": "config/n8n_run_allowlist.json",
+   "actions": [
+    {
+     "action_id": "rerun_dry_run",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "dry_run"
+     ],
+     "argv": {
+      "dry_run": [
+       "$PY",
+       "scripts/hermes_autonomous_self_tune.py",
+       "--learn",
+       "--dry-run"
+      ]
+     },
+     "auto": false,
+     "approval_reason": "timeout_s 1800 > 600: a rerun would hold the single executor worker; human approval",
+     "via": "coordination/run (host_run_request, mode=dry_run) -> tradeai-n8n-run-executor runs the allowlist argv under the lane lock, stage-clamped",
+     "preconditions": [
+      "lane in config/n8n_run_allowlist.json with dry_run_arg",
+      "no REQUESTED/RUNNING row for the lane",
+      "per-incident and per-lane-day caps not reached"
+     ],
+     "lock": "/tmp/hermes_self_tune.lock",
+     "timeout_s": 1800,
+     "output_signal": null,
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "reap_orphan_run",
+     "handler": "ledger_reap_orphan",
+     "mode_sequence": [],
+     "argv": {},
+     "auto": true,
+     "approval_reason": null,
+     "via": "LedgerRunStore.finish(run_id, state=RUN_TIMEOUT, receipt.reason=executor_lost) — the executor v2 reaper's receipt",
+     "preconditions": [
+      "row RUNNING and started_at + 2 x timeout_s < now",
+      "heartbeat_at older than timeout_s (or absent)",
+      "row pid not alive on this host"
+     ],
+     "lock": "/tmp/hermes_self_tune.lock",
+     "timeout_s": 1800,
+     "output_signal": null,
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    }
+   ],
+   "default_action": "suggest_only",
+   "suggest_only_reason": "timeout_s 1800 > 600: a rerun would hold the single executor worker; human approval"
+  },
+  {
+   "schema": "N8nLaneRemediation@v1",
+   "lane_id": "hermes-learning-config-governor",
+   "severity": "Low",
+   "severity_basis": "default Low (no inventory row)",
+   "inv_ids": [],
+   "classification": [
+    "UNKNOWN"
+   ],
+   "migration_risk": [
+    "UNKNOWN"
+   ],
+   "known_issues": [],
+   "registry": {
+    "present": true,
+    "state": "NEVER_SCHEDULED",
+    "scheduler_kind": "n8n",
+    "stage": "canary"
+   },
+   "allowlisted": true,
+   "allowlist_source": "config/n8n_run_allowlist.json",
+   "actions": [
+    {
+     "action_id": "rerun_dry_run",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "dry_run"
+     ],
+     "argv": {
+      "dry_run": [
+       "$PY",
+       "scripts/hermes_config_governor.py",
+       "--dry-run"
+      ]
+     },
+     "auto": true,
+     "approval_reason": null,
+     "via": "coordination/run (host_run_request, mode=dry_run) -> tradeai-n8n-run-executor runs the allowlist argv under the lane lock, stage-clamped",
+     "preconditions": [
+      "lane in config/n8n_run_allowlist.json with dry_run_arg",
+      "no REQUESTED/RUNNING row for the lane",
+      "per-incident and per-lane-day caps not reached"
+     ],
+     "lock": "/tmp/hermes_config_governor.lock",
+     "timeout_s": 600,
+     "output_signal": "data/runtime/hermes_config_governor_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "reap_orphan_run",
+     "handler": "ledger_reap_orphan",
+     "mode_sequence": [],
+     "argv": {},
+     "auto": true,
+     "approval_reason": null,
+     "via": "LedgerRunStore.finish(run_id, state=RUN_TIMEOUT, receipt.reason=executor_lost) — the executor v2 reaper's receipt",
+     "preconditions": [
+      "row RUNNING and started_at + 2 x timeout_s < now",
+      "heartbeat_at older than timeout_s (or absent)",
+      "row pid not alive on this host"
+     ],
+     "lock": "/tmp/hermes_config_governor.lock",
+     "timeout_s": 600,
+     "output_signal": "data/runtime/hermes_config_governor_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    }
+   ],
+   "default_action": "suggest_only",
+   "suggest_only_reason": null
+  },
+  {
+   "schema": "N8nLaneRemediation@v1",
+   "lane_id": "hermes-learning-outcome-feedback-agent",
+   "severity": "Low",
+   "severity_basis": "default Low (no inventory row)",
+   "inv_ids": [],
+   "classification": [
+    "UNKNOWN"
+   ],
+   "migration_risk": [
+    "UNKNOWN"
+   ],
+   "known_issues": [],
+   "registry": {
+    "present": true,
+    "state": "NEVER_SCHEDULED",
+    "scheduler_kind": "n8n",
+    "stage": "shadow"
+   },
+   "allowlisted": true,
+   "allowlist_source": "config/n8n_run_allowlist.json",
+   "actions": [
+    {
+     "action_id": "rerun_dry_run",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "dry_run"
+     ],
+     "argv": {
+      "dry_run": [
+       "$PY",
+       "scripts/hermes_outcome_feedback_agent.py",
+       "--dry-run"
+      ]
+     },
+     "auto": true,
+     "approval_reason": null,
+     "via": "coordination/run (host_run_request, mode=dry_run) -> tradeai-n8n-run-executor runs the allowlist argv under the lane lock, stage-clamped",
+     "preconditions": [
+      "lane in config/n8n_run_allowlist.json with dry_run_arg",
+      "no REQUESTED/RUNNING row for the lane",
+      "per-incident and per-lane-day caps not reached"
+     ],
+     "lock": "/tmp/hermes_outcome_feedback.lock",
+     "timeout_s": 300,
+     "output_signal": null,
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "reap_orphan_run",
+     "handler": "ledger_reap_orphan",
+     "mode_sequence": [],
+     "argv": {},
+     "auto": true,
+     "approval_reason": null,
+     "via": "LedgerRunStore.finish(run_id, state=RUN_TIMEOUT, receipt.reason=executor_lost) — the executor v2 reaper's receipt",
+     "preconditions": [
+      "row RUNNING and started_at + 2 x timeout_s < now",
+      "heartbeat_at older than timeout_s (or absent)",
+      "row pid not alive on this host"
+     ],
+     "lock": "/tmp/hermes_outcome_feedback.lock",
+     "timeout_s": 300,
+     "output_signal": null,
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    }
+   ],
+   "default_action": "suggest_only",
+   "suggest_only_reason": null
+  },
+  {
+   "schema": "N8nLaneRemediation@v1",
+   "lane_id": "hermes-learning-outcome-grader",
+   "severity": "Low",
+   "severity_basis": "default Low (no inventory row)",
+   "inv_ids": [],
+   "classification": [
+    "UNKNOWN"
+   ],
+   "migration_risk": [
+    "UNKNOWN"
+   ],
+   "known_issues": [],
+   "registry": {
+    "present": true,
+    "state": "NEVER_SCHEDULED",
+    "scheduler_kind": "n8n",
+    "stage": "canary"
+   },
+   "allowlisted": true,
+   "allowlist_source": "config/n8n_run_allowlist.json",
+   "actions": [
+    {
+     "action_id": "rerun_dry_run",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "dry_run"
+     ],
+     "argv": {
+      "dry_run": [
+       "$PY",
+       "scripts/hermes_outcome_grader.py",
+       "--max-rows",
+       "10000"
+      ]
+     },
+     "auto": true,
+     "approval_reason": null,
+     "via": "coordination/run (host_run_request, mode=dry_run) -> tradeai-n8n-run-executor runs the allowlist argv under the lane lock, stage-clamped",
+     "preconditions": [
+      "lane in config/n8n_run_allowlist.json with dry_run_arg",
+      "no REQUESTED/RUNNING row for the lane",
+      "per-incident and per-lane-day caps not reached"
+     ],
+     "lock": "/tmp/hermes_outcome_grader.lock",
+     "timeout_s": 300,
+     "output_signal": null,
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "reap_orphan_run",
+     "handler": "ledger_reap_orphan",
+     "mode_sequence": [],
+     "argv": {},
+     "auto": true,
+     "approval_reason": null,
+     "via": "LedgerRunStore.finish(run_id, state=RUN_TIMEOUT, receipt.reason=executor_lost) — the executor v2 reaper's receipt",
+     "preconditions": [
+      "row RUNNING and started_at + 2 x timeout_s < now",
+      "heartbeat_at older than timeout_s (or absent)",
+      "row pid not alive on this host"
+     ],
+     "lock": "/tmp/hermes_outcome_grader.lock",
+     "timeout_s": 300,
+     "output_signal": null,
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    }
+   ],
+   "default_action": "suggest_only",
+   "suggest_only_reason": null
+  },
+  {
+   "schema": "N8nLaneRemediation@v1",
+   "lane_id": "hermes-learning-outcome-learning",
+   "severity": "Low",
+   "severity_basis": "default Low (no inventory row)",
+   "inv_ids": [],
+   "classification": [
+    "UNKNOWN"
+   ],
+   "migration_risk": [
+    "UNKNOWN"
+   ],
+   "known_issues": [],
+   "registry": {
+    "present": true,
+    "state": "NEVER_SCHEDULED",
+    "scheduler_kind": "n8n",
+    "stage": "canary"
+   },
+   "allowlisted": true,
+   "allowlist_source": "config/n8n_run_allowlist.json",
+   "actions": [
+    {
+     "action_id": "rerun_dry_run",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "dry_run"
+     ],
+     "argv": {
+      "dry_run": [
+       "$PY",
+       "scripts/hermes_outcome_learning.py"
+      ]
+     },
+     "auto": true,
+     "approval_reason": null,
+     "via": "coordination/run (host_run_request, mode=dry_run) -> tradeai-n8n-run-executor runs the allowlist argv under the lane lock, stage-clamped",
+     "preconditions": [
+      "lane in config/n8n_run_allowlist.json with dry_run_arg",
+      "no REQUESTED/RUNNING row for the lane",
+      "per-incident and per-lane-day caps not reached"
+     ],
+     "lock": "/tmp/hermes_outcome_learning.lock",
+     "timeout_s": 300,
+     "output_signal": null,
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "reap_orphan_run",
+     "handler": "ledger_reap_orphan",
+     "mode_sequence": [],
+     "argv": {},
+     "auto": true,
+     "approval_reason": null,
+     "via": "LedgerRunStore.finish(run_id, state=RUN_TIMEOUT, receipt.reason=executor_lost) — the executor v2 reaper's receipt",
+     "preconditions": [
+      "row RUNNING and started_at + 2 x timeout_s < now",
+      "heartbeat_at older than timeout_s (or absent)",
+      "row pid not alive on this host"
+     ],
+     "lock": "/tmp/hermes_outcome_learning.lock",
+     "timeout_s": 300,
+     "output_signal": null,
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    }
+   ],
+   "default_action": "suggest_only",
+   "suggest_only_reason": null
+  },
+  {
+   "schema": "N8nLaneRemediation@v1",
+   "lane_id": "hermes-learning-tag-engine",
+   "severity": "Low",
+   "severity_basis": "default Low (no inventory row)",
+   "inv_ids": [],
+   "classification": [
+    "UNKNOWN"
+   ],
+   "migration_risk": [
+    "UNKNOWN"
+   ],
+   "known_issues": [],
+   "registry": {
+    "present": true,
+    "state": "NEVER_SCHEDULED",
+    "scheduler_kind": "n8n",
+    "stage": "canary"
+   },
+   "allowlisted": true,
+   "allowlist_source": "config/n8n_run_allowlist.json",
+   "actions": [
+    {
+     "action_id": "rerun_dry_run",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "dry_run"
+     ],
+     "argv": {
+      "dry_run": [
+       "$PY",
+       "scripts/hermes_tag_engine.py",
+       "--dry-run"
+      ]
+     },
+     "auto": false,
+     "approval_reason": "timeout_s 900 > 600: a rerun would hold the single executor worker; human approval",
+     "via": "coordination/run (host_run_request, mode=dry_run) -> tradeai-n8n-run-executor runs the allowlist argv under the lane lock, stage-clamped",
+     "preconditions": [
+      "lane in config/n8n_run_allowlist.json with dry_run_arg",
+      "no REQUESTED/RUNNING row for the lane",
+      "per-incident and per-lane-day caps not reached"
+     ],
+     "lock": "/tmp/hermes_tag_engine.lock",
+     "timeout_s": 900,
+     "output_signal": null,
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "reap_orphan_run",
+     "handler": "ledger_reap_orphan",
+     "mode_sequence": [],
+     "argv": {},
+     "auto": true,
+     "approval_reason": null,
+     "via": "LedgerRunStore.finish(run_id, state=RUN_TIMEOUT, receipt.reason=executor_lost) — the executor v2 reaper's receipt",
+     "preconditions": [
+      "row RUNNING and started_at + 2 x timeout_s < now",
+      "heartbeat_at older than timeout_s (or absent)",
+      "row pid not alive on this host"
+     ],
+     "lock": "/tmp/hermes_tag_engine.lock",
+     "timeout_s": 900,
+     "output_signal": null,
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    }
+   ],
+   "default_action": "suggest_only",
+   "suggest_only_reason": "timeout_s 900 > 600: a rerun would hold the single executor worker; human approval"
   },
   {
    "schema": "N8nLaneRemediation@v1",
@@ -3761,7 +5189,7 @@
     "present": true,
     "state": "ACTIVE",
     "scheduler_kind": "cron",
-    "stage": "shadow"
+    "stage": "canary"
    },
    "allowlisted": true,
    "allowlist_source": "config/n8n_run_allowlist.json",
@@ -3794,6 +5222,38 @@
      "output_signal": "data/runtime/hermes-momentum-catalyst-scalp_last.json",
      "max_per_incident": 1,
      "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "rerun_live_once",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "live"
+     ],
+     "argv": {
+      "live": [
+       "$PY",
+       "scripts/hermes_momentum_catalyst_researcher.py",
+       "--source",
+       "scalp",
+       "--apply"
+      ]
+     },
+     "auto": true,
+     "approval_reason": null,
+     "via": "coordination/run (host_run_request, mode=live) once; the executor's effect-claim gate refuses a duplicate effect; the stage clamp still applies",
+     "preconditions": [
+      "registry scheduler.stage canary or cutover and state ACTIVE (re-checked at request time)",
+      "effect owner n8n and a config/n8n_effect_keys.json entry (n8n_self_heal.live_heal_gate)",
+      "failure classified transient, not a code error",
+      "not a sender, P1 or broker/order/stop/options-execution lane",
+      "no REQUESTED/RUNNING row for the lane",
+      "at most 1 live heal per lane per day"
+     ],
+     "lock": "/tmp/hermes_scalp_catalyst.lock",
+     "timeout_s": 300,
+     "output_signal": "data/runtime/hermes-momentum-catalyst-scalp_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 1
     },
     {
      "action_id": "reap_orphan_run",
@@ -3843,7 +5303,7 @@
     "present": true,
     "state": "ACTIVE",
     "scheduler_kind": "cron",
-    "stage": "shadow"
+    "stage": "canary"
    },
    "allowlisted": true,
    "allowlist_source": "config/n8n_run_allowlist.json",
@@ -3874,6 +5334,35 @@
      "output_signal": "data/runtime/hermes_news_bridge_last.json",
      "max_per_incident": 1,
      "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "rerun_live_once",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "live"
+     ],
+     "argv": {
+      "live": [
+       "$PY",
+       "scripts/hermes_news_bridge.py"
+      ]
+     },
+     "auto": true,
+     "approval_reason": null,
+     "via": "coordination/run (host_run_request, mode=live) once; the executor's effect-claim gate refuses a duplicate effect; the stage clamp still applies",
+     "preconditions": [
+      "registry scheduler.stage canary or cutover and state ACTIVE (re-checked at request time)",
+      "effect owner n8n and a config/n8n_effect_keys.json entry (n8n_self_heal.live_heal_gate)",
+      "failure classified transient, not a code error",
+      "not a sender, P1 or broker/order/stop/options-execution lane",
+      "no REQUESTED/RUNNING row for the lane",
+      "at most 1 live heal per lane per day"
+     ],
+     "lock": "/tmp/hermes_news_bridge.lock",
+     "timeout_s": 300,
+     "output_signal": "data/runtime/hermes_news_bridge_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 1
     },
     {
      "action_id": "reap_orphan_run",
@@ -4281,7 +5770,7 @@
     "present": true,
     "state": "ACTIVE",
     "scheduler_kind": "cron",
-    "stage": "shadow"
+    "stage": "canary"
    },
    "allowlisted": true,
    "allowlist_source": "config/n8n_run_allowlist.json",
@@ -4312,6 +5801,36 @@
      "output_signal": "data/runtime/hermes-social-sentiment_last.json",
      "max_per_incident": 1,
      "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "rerun_live_once",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "live"
+     ],
+     "argv": {
+      "live": [
+       "$PY",
+       "scripts/hermes_social_sentiment.py",
+       "--apply"
+      ]
+     },
+     "auto": true,
+     "approval_reason": null,
+     "via": "coordination/run (host_run_request, mode=live) once; the executor's effect-claim gate refuses a duplicate effect; the stage clamp still applies",
+     "preconditions": [
+      "registry scheduler.stage canary or cutover and state ACTIVE (re-checked at request time)",
+      "effect owner n8n and a config/n8n_effect_keys.json entry (n8n_self_heal.live_heal_gate)",
+      "failure classified transient, not a code error",
+      "not a sender, P1 or broker/order/stop/options-execution lane",
+      "no REQUESTED/RUNNING row for the lane",
+      "at most 1 live heal per lane per day"
+     ],
+     "lock": "/tmp/hermes_social_sentiment.lock",
+     "timeout_s": 600,
+     "output_signal": "data/runtime/hermes-social-sentiment_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 1
     },
     {
      "action_id": "reap_orphan_run",
@@ -4442,8 +5961,8 @@
    "registry": {
     "present": true,
     "state": "ACTIVE",
-    "scheduler_kind": "cron",
-    "stage": "shadow"
+    "scheduler_kind": "n8n",
+    "stage": "cutover"
    },
    "allowlisted": true,
    "allowlist_source": "config/n8n_run_allowlist.json",
@@ -4477,6 +5996,73 @@
      "max_per_lane_per_day": 3
     },
     {
+     "action_id": "rerun_dry_then_live",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "dry_run",
+      "live"
+     ],
+     "argv": {
+      "dry_run": [
+       "$PY",
+       "scripts/backfill_subject_identity.py",
+       "--all",
+       "--dry-run"
+      ],
+      "live": [
+       "$PY",
+       "scripts/backfill_subject_identity.py",
+       "--all",
+       "--apply"
+      ]
+     },
+     "auto": true,
+     "approval_reason": null,
+     "via": "coordination/run dry_run request; live request only after that run is RUN_DONE and only while the registry stage is cutover; executor runs the allowlist argv, stage-clamped",
+     "preconditions": [
+      "registry scheduler.stage == cutover and state ACTIVE (re-checked at request time)",
+      "dry_run phase RUN_DONE",
+      "no REQUESTED/RUNNING row for the lane",
+      "per-incident and per-lane-day caps not reached"
+     ],
+     "lock": "/tmp/identity_sweep.lock",
+     "timeout_s": 300,
+     "output_signal": "data/runtime/identity-sweep-stage0_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "rerun_live_once",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "live"
+     ],
+     "argv": {
+      "live": [
+       "$PY",
+       "scripts/backfill_subject_identity.py",
+       "--all",
+       "--apply"
+      ]
+     },
+     "auto": true,
+     "approval_reason": null,
+     "via": "coordination/run (host_run_request, mode=live) once; the executor's effect-claim gate refuses a duplicate effect; the stage clamp still applies",
+     "preconditions": [
+      "registry scheduler.stage canary or cutover and state ACTIVE (re-checked at request time)",
+      "effect owner n8n and a config/n8n_effect_keys.json entry (n8n_self_heal.live_heal_gate)",
+      "failure classified transient, not a code error",
+      "not a sender, P1 or broker/order/stop/options-execution lane",
+      "no REQUESTED/RUNNING row for the lane",
+      "at most 1 live heal per lane per day"
+     ],
+     "lock": "/tmp/identity_sweep.lock",
+     "timeout_s": 300,
+     "output_signal": "data/runtime/identity-sweep-stage0_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 1
+    },
+    {
      "action_id": "reap_orphan_run",
      "handler": "ledger_reap_orphan",
      "mode_sequence": [],
@@ -4498,6 +6084,197 @@
    ],
    "default_action": "suggest_only",
    "suggest_only_reason": null
+  },
+  {
+   "schema": "N8nLaneRemediation@v1",
+   "lane_id": "incubator-rolloff-engine",
+   "severity": "Critical",
+   "severity_basis": "cron:L267: business_function=trading-adjacent",
+   "inv_ids": [
+    "cron:L267"
+   ],
+   "classification": [
+    "Requires Refactoring Before Migration"
+   ],
+   "migration_risk": [
+    "Medium"
+   ],
+   "known_issues": [
+    {
+     "inv_id": "cron:L267",
+     "known_issues": "docstring says 'Run daily on trading days (6 PM)' but cron is 10:00; 26 rolled off 10-09",
+     "custom_work_required": "flock; receipt; --dry-run exists"
+    }
+   ],
+   "registry": {
+    "present": true,
+    "state": "ACTIVE",
+    "scheduler_kind": "cron",
+    "stage": "canary"
+   },
+   "allowlisted": true,
+   "allowlist_source": "config/n8n_run_allowlist.json",
+   "actions": [
+    {
+     "action_id": "rerun_dry_run",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "dry_run"
+     ],
+     "argv": {
+      "dry_run": [
+       "$PY",
+       "scripts/incubator_rolloff_engine.py",
+       "--dry-run"
+      ]
+     },
+     "auto": false,
+     "approval_reason": "severity Critical: human approval (V9 §6.4)",
+     "via": "coordination/run (host_run_request, mode=dry_run) -> tradeai-n8n-run-executor runs the allowlist argv under the lane lock, stage-clamped",
+     "preconditions": [
+      "lane in config/n8n_run_allowlist.json with dry_run_arg",
+      "no REQUESTED/RUNNING row for the lane",
+      "per-incident and per-lane-day caps not reached"
+     ],
+     "lock": "/tmp/incubator_rolloff.lock",
+     "timeout_s": 600,
+     "output_signal": "data/runtime/incubator-rolloff-engine_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "rerun_live_once",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "live"
+     ],
+     "argv": {
+      "live": [
+       "$PY",
+       "scripts/incubator_rolloff_engine.py",
+       "--apply"
+      ]
+     },
+     "auto": false,
+     "approval_reason": "severity Critical: human approval (V9 §6.4)",
+     "via": "coordination/run (host_run_request, mode=live) once; the executor's effect-claim gate refuses a duplicate effect; the stage clamp still applies",
+     "preconditions": [
+      "registry scheduler.stage canary or cutover and state ACTIVE (re-checked at request time)",
+      "effect owner n8n and a config/n8n_effect_keys.json entry (n8n_self_heal.live_heal_gate)",
+      "failure classified transient, not a code error",
+      "not a sender, P1 or broker/order/stop/options-execution lane",
+      "no REQUESTED/RUNNING row for the lane",
+      "at most 1 live heal per lane per day"
+     ],
+     "lock": "/tmp/incubator_rolloff.lock",
+     "timeout_s": 600,
+     "output_signal": "data/runtime/incubator-rolloff-engine_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 1
+    },
+    {
+     "action_id": "reap_orphan_run",
+     "handler": "ledger_reap_orphan",
+     "mode_sequence": [],
+     "argv": {},
+     "auto": true,
+     "approval_reason": null,
+     "via": "LedgerRunStore.finish(run_id, state=RUN_TIMEOUT, receipt.reason=executor_lost) — the executor v2 reaper's receipt",
+     "preconditions": [
+      "row RUNNING and started_at + 2 x timeout_s < now",
+      "heartbeat_at older than timeout_s (or absent)",
+      "row pid not alive on this host"
+     ],
+     "lock": "/tmp/incubator_rolloff.lock",
+     "timeout_s": 600,
+     "output_signal": "data/runtime/incubator-rolloff-engine_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    }
+   ],
+   "default_action": "suggest_only",
+   "suggest_only_reason": "severity Critical: human approval (V9 §6.4)"
+  },
+  {
+   "schema": "N8nLaneRemediation@v1",
+   "lane_id": "indicator-engine",
+   "severity": "Low",
+   "severity_basis": "cron:L260: business_function=other",
+   "inv_ids": [
+    "cron:L260"
+   ],
+   "classification": [
+    "Candidate for Retirement"
+   ],
+   "migration_risk": [
+    "Low"
+   ],
+   "known_issues": [
+    {
+     "inv_id": "cron:L260",
+     "known_issues": "RETIREMENT ON HOLD: Output unused (CLI self-test on AMD, writes nothing) BUT pipeline_runs key 'indicator_engine' is in /api/v2/pipeline-health-master STAGE_REGISTRY (cadence 24h): >48h stale -> red/critical -> check_data_product_freshness pipeline_health FAIL and iris_taxonomy_agent ALERT; remove from STAGE_REGISTRY (and system_health_agent component) in same change | library self-test on a schedule: 10/10 retained runs 'Running scalp confluence analysis for AMD...'; writes nothing (grep INSERT/UPDATE/write in module = 0)",
+     "custom_work_required": "none"
+    }
+   ],
+   "registry": {
+    "present": true,
+    "state": "ACTIVE",
+    "scheduler_kind": "cron",
+    "stage": "shadow"
+   },
+   "allowlisted": true,
+   "allowlist_source": "config/n8n_run_allowlist.json",
+   "actions": [
+    {
+     "action_id": "rerun_dry_run",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "dry_run"
+     ],
+     "argv": {
+      "dry_run": [
+       "$PY",
+       "scripts/indicator_engine.py",
+       "--universe",
+       "--dry-run"
+      ]
+     },
+     "auto": false,
+     "approval_reason": "timeout_s 1800 > 600: a rerun would hold the single executor worker; human approval",
+     "via": "coordination/run (host_run_request, mode=dry_run) -> tradeai-n8n-run-executor runs the allowlist argv under the lane lock, stage-clamped",
+     "preconditions": [
+      "lane in config/n8n_run_allowlist.json with dry_run_arg",
+      "no REQUESTED/RUNNING row for the lane",
+      "per-incident and per-lane-day caps not reached"
+     ],
+     "lock": "/tmp/indicator_engine.lock",
+     "timeout_s": 1800,
+     "output_signal": "data/runtime/indicator-engine_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "reap_orphan_run",
+     "handler": "ledger_reap_orphan",
+     "mode_sequence": [],
+     "argv": {},
+     "auto": true,
+     "approval_reason": null,
+     "via": "LedgerRunStore.finish(run_id, state=RUN_TIMEOUT, receipt.reason=executor_lost) — the executor v2 reaper's receipt",
+     "preconditions": [
+      "row RUNNING and started_at + 2 x timeout_s < now",
+      "heartbeat_at older than timeout_s (or absent)",
+      "row pid not alive on this host"
+     ],
+     "lock": "/tmp/indicator_engine.lock",
+     "timeout_s": 1800,
+     "output_signal": "data/runtime/indicator-engine_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    }
+   ],
+   "default_action": "suggest_only",
+   "suggest_only_reason": "timeout_s 1800 > 600: a rerun would hold the single executor worker; human approval"
   },
   {
    "schema": "N8nLaneRemediation@v1",
@@ -4524,7 +6301,7 @@
     "present": true,
     "state": "ACTIVE",
     "scheduler_kind": "cron",
-    "stage": "shadow"
+    "stage": "canary"
    },
    "allowlisted": true,
    "allowlist_source": "config/n8n_run_allowlist.json",
@@ -4637,7 +6414,7 @@
     "present": true,
     "state": "ACTIVE",
     "scheduler_kind": "cron",
-    "stage": "shadow"
+    "stage": "canary"
    },
    "allowlisted": true,
    "allowlist_source": "config/n8n_run_allowlist.json",
@@ -4668,6 +6445,35 @@
      "output_signal": "data/runtime/job_coverage_monitor_last.json",
      "max_per_incident": 1,
      "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "rerun_live_once",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "live"
+     ],
+     "argv": {
+      "live": [
+       "$PY",
+       "scripts/job_coverage_monitor.py"
+      ]
+     },
+     "auto": true,
+     "approval_reason": null,
+     "via": "coordination/run (host_run_request, mode=live) once; the executor's effect-claim gate refuses a duplicate effect; the stage clamp still applies",
+     "preconditions": [
+      "registry scheduler.stage canary or cutover and state ACTIVE (re-checked at request time)",
+      "effect owner n8n and a config/n8n_effect_keys.json entry (n8n_self_heal.live_heal_gate)",
+      "failure classified transient, not a code error",
+      "not a sender, P1 or broker/order/stop/options-execution lane",
+      "no REQUESTED/RUNNING row for the lane",
+      "at most 1 live heal per lane per day"
+     ],
+     "lock": "/tmp/tradeai_job_coverage_monitor.lock",
+     "timeout_s": 180,
+     "output_signal": "data/runtime/job_coverage_monitor_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 1
     },
     {
      "action_id": "reap_orphan_run",
@@ -4717,7 +6523,7 @@
     "present": true,
     "state": "ACTIVE",
     "scheduler_kind": "cron",
-    "stage": "shadow"
+    "stage": "canary"
    },
    "allowlisted": true,
    "allowlist_source": "config/n8n_run_allowlist.json",
@@ -4748,6 +6554,35 @@
      "output_signal": "data/runtime/journal_tilt_morning_hook_last.json",
      "max_per_incident": 1,
      "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "rerun_live_once",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "live"
+     ],
+     "argv": {
+      "live": [
+       "$PY",
+       "scripts/journal_tilt_morning_hook.py"
+      ]
+     },
+     "auto": false,
+     "approval_reason": "severity Critical: human approval (V9 §6.4)",
+     "via": "coordination/run (host_run_request, mode=live) once; the executor's effect-claim gate refuses a duplicate effect; the stage clamp still applies",
+     "preconditions": [
+      "registry scheduler.stage canary or cutover and state ACTIVE (re-checked at request time)",
+      "effect owner n8n and a config/n8n_effect_keys.json entry (n8n_self_heal.live_heal_gate)",
+      "failure classified transient, not a code error",
+      "not a sender, P1 or broker/order/stop/options-execution lane",
+      "no REQUESTED/RUNNING row for the lane",
+      "at most 1 live heal per lane per day"
+     ],
+     "lock": "/tmp/journal_tilt_hook.lock",
+     "timeout_s": 120,
+     "output_signal": "data/runtime/journal_tilt_morning_hook_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 1
     },
     {
      "action_id": "reap_orphan_run",
@@ -5082,8 +6917,8 @@
    "registry": {
     "present": true,
     "state": "ACTIVE",
-    "scheduler_kind": "cron",
-    "stage": "shadow"
+    "scheduler_kind": "n8n",
+    "stage": "cutover"
    },
    "allowlisted": true,
    "allowlist_source": "config/n8n_run_allowlist.json",
@@ -5115,6 +6950,71 @@
      "output_signal": "data/runtime/material-change-detector-stage1_last.json",
      "max_per_incident": 1,
      "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "rerun_dry_then_live",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "dry_run",
+      "live"
+     ],
+     "argv": {
+      "dry_run": [
+       "$PY",
+       "scripts/material_change_detector.py",
+       "--apply",
+       "--dry-run"
+      ],
+      "live": [
+       "$PY",
+       "scripts/material_change_detector.py",
+       "--apply"
+      ]
+     },
+     "auto": true,
+     "approval_reason": null,
+     "via": "coordination/run dry_run request; live request only after that run is RUN_DONE and only while the registry stage is cutover; executor runs the allowlist argv, stage-clamped",
+     "preconditions": [
+      "registry scheduler.stage == cutover and state ACTIVE (re-checked at request time)",
+      "dry_run phase RUN_DONE",
+      "no REQUESTED/RUNNING row for the lane",
+      "per-incident and per-lane-day caps not reached"
+     ],
+     "lock": "/tmp/material_change_detect.lock",
+     "timeout_s": 300,
+     "output_signal": "data/runtime/material-change-detector-stage1_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "rerun_live_once",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "live"
+     ],
+     "argv": {
+      "live": [
+       "$PY",
+       "scripts/material_change_detector.py",
+       "--apply"
+      ]
+     },
+     "auto": true,
+     "approval_reason": null,
+     "via": "coordination/run (host_run_request, mode=live) once; the executor's effect-claim gate refuses a duplicate effect; the stage clamp still applies",
+     "preconditions": [
+      "registry scheduler.stage canary or cutover and state ACTIVE (re-checked at request time)",
+      "effect owner n8n and a config/n8n_effect_keys.json entry (n8n_self_heal.live_heal_gate)",
+      "failure classified transient, not a code error",
+      "not a sender, P1 or broker/order/stop/options-execution lane",
+      "no REQUESTED/RUNNING row for the lane",
+      "at most 1 live heal per lane per day"
+     ],
+     "lock": "/tmp/material_change_detect.lock",
+     "timeout_s": 300,
+     "output_signal": "data/runtime/material-change-detector-stage1_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 1
     },
     {
      "action_id": "reap_orphan_run",
@@ -5197,7 +7097,7 @@
     "present": true,
     "state": "ACTIVE",
     "scheduler_kind": "cron",
-    "stage": "shadow"
+    "stage": "canary"
    },
    "allowlisted": true,
    "allowlist_source": "config/n8n_run_allowlist.json",
@@ -5228,6 +7128,35 @@
      "output_signal": "data/runtime/materialize_watchlist_strategy_cards_last.json",
      "max_per_incident": 1,
      "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "rerun_live_once",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "live"
+     ],
+     "argv": {
+      "live": [
+       "$PY",
+       "scripts/materialize_watchlist_strategy_cards.py"
+      ]
+     },
+     "auto": true,
+     "approval_reason": null,
+     "via": "coordination/run (host_run_request, mode=live) once; the executor's effect-claim gate refuses a duplicate effect; the stage clamp still applies",
+     "preconditions": [
+      "registry scheduler.stage canary or cutover and state ACTIVE (re-checked at request time)",
+      "effect owner n8n and a config/n8n_effect_keys.json entry (n8n_self_heal.live_heal_gate)",
+      "failure classified transient, not a code error",
+      "not a sender, P1 or broker/order/stop/options-execution lane",
+      "no REQUESTED/RUNNING row for the lane",
+      "at most 1 live heal per lane per day"
+     ],
+     "lock": "/tmp/materialize_cards.lock",
+     "timeout_s": 600,
+     "output_signal": "data/runtime/materialize_watchlist_strategy_cards_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 1
     },
     {
      "action_id": "reap_orphan_run",
@@ -5526,6 +7455,78 @@
      "lock": "/tmp/tradeai_momentum_lifecycle.lock",
      "timeout_s": 60,
      "output_signal": "data/runtime/momentum_lifecycle_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    }
+   ],
+   "default_action": "suggest_only",
+   "suggest_only_reason": null
+  },
+  {
+   "schema": "N8nLaneRemediation@v1",
+   "lane_id": "n8n-comms-intent-consumer",
+   "severity": "Low",
+   "severity_basis": "default Low (no inventory row)",
+   "inv_ids": [],
+   "classification": [
+    "UNKNOWN"
+   ],
+   "migration_risk": [
+    "UNKNOWN"
+   ],
+   "known_issues": [],
+   "registry": {
+    "present": true,
+    "state": "NEVER_SCHEDULED",
+    "scheduler_kind": "none",
+    "stage": null
+   },
+   "allowlisted": true,
+   "allowlist_source": "config/n8n_run_allowlist.json",
+   "actions": [
+    {
+     "action_id": "rerun_dry_run",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "dry_run"
+     ],
+     "argv": {
+      "dry_run": [
+       "$PY",
+       "scripts/n8n_comms_intent_consumer.py",
+       "--dry-run"
+      ]
+     },
+     "auto": true,
+     "approval_reason": null,
+     "via": "coordination/run (host_run_request, mode=dry_run) -> tradeai-n8n-run-executor runs the allowlist argv under the lane lock, stage-clamped",
+     "preconditions": [
+      "lane in config/n8n_run_allowlist.json with dry_run_arg",
+      "no REQUESTED/RUNNING row for the lane",
+      "per-incident and per-lane-day caps not reached"
+     ],
+     "lock": "/tmp/tradeai_n8n_comms_intent_consumer.lock",
+     "timeout_s": 60,
+     "output_signal": "data/runtime/n8n-comms-intent-consumer_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "reap_orphan_run",
+     "handler": "ledger_reap_orphan",
+     "mode_sequence": [],
+     "argv": {},
+     "auto": true,
+     "approval_reason": null,
+     "via": "LedgerRunStore.finish(run_id, state=RUN_TIMEOUT, receipt.reason=executor_lost) — the executor v2 reaper's receipt",
+     "preconditions": [
+      "row RUNNING and started_at + 2 x timeout_s < now",
+      "heartbeat_at older than timeout_s (or absent)",
+      "row pid not alive on this host"
+     ],
+     "lock": "/tmp/tradeai_n8n_comms_intent_consumer.lock",
+     "timeout_s": 60,
+     "output_signal": "data/runtime/n8n-comms-intent-consumer_last.json",
      "max_per_incident": 1,
      "max_per_lane_per_day": 3
     }
@@ -6114,6 +8115,226 @@
   },
   {
    "schema": "N8nLaneRemediation@v1",
+   "lane_id": "opening-intelligence-render",
+   "severity": "Critical",
+   "severity_basis": "cron:L791: business_function=research; critical path CP2 -> Critical",
+   "inv_ids": [
+    "cron:L791"
+   ],
+   "classification": [
+    "Ready for Migration"
+   ],
+   "migration_risk": [
+    "Low"
+   ],
+   "known_issues": [
+    {
+     "inv_id": "cron:L791",
+     "known_issues": "Shares lock/log/signal with L789/L790; --render only prints (opening_intelligence.py:352-353), no send",
+     "custom_work_required": "Distinct receipt per slot"
+    }
+   ],
+   "registry": {
+    "present": true,
+    "state": "ACTIVE",
+    "scheduler_kind": "cron",
+    "stage": "canary"
+   },
+   "allowlisted": true,
+   "allowlist_source": "config/n8n_run_allowlist.json",
+   "actions": [
+    {
+     "action_id": "rerun_dry_run",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "dry_run"
+     ],
+     "argv": {
+      "dry_run": [
+       "$PY",
+       "scripts/opening_intelligence.py",
+       "--dry-run"
+      ]
+     },
+     "auto": false,
+     "approval_reason": "severity Critical: human approval (V9 §6.4)",
+     "via": "coordination/run (host_run_request, mode=dry_run) -> tradeai-n8n-run-executor runs the allowlist argv under the lane lock, stage-clamped",
+     "preconditions": [
+      "lane in config/n8n_run_allowlist.json with dry_run_arg",
+      "no REQUESTED/RUNNING row for the lane",
+      "per-incident and per-lane-day caps not reached"
+     ],
+     "lock": "/tmp/opening_intel.lock",
+     "timeout_s": 600,
+     "output_signal": "data/runtime/opening-intelligence-render_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "rerun_live_once",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "live"
+     ],
+     "argv": {
+      "live": [
+       "$PY",
+       "scripts/opening_intelligence.py",
+       "--persist",
+       "--render"
+      ]
+     },
+     "auto": false,
+     "approval_reason": "severity Critical: human approval (V9 §6.4)",
+     "via": "coordination/run (host_run_request, mode=live) once; the executor's effect-claim gate refuses a duplicate effect; the stage clamp still applies",
+     "preconditions": [
+      "registry scheduler.stage canary or cutover and state ACTIVE (re-checked at request time)",
+      "effect owner n8n and a config/n8n_effect_keys.json entry (n8n_self_heal.live_heal_gate)",
+      "failure classified transient, not a code error",
+      "not a sender, P1 or broker/order/stop/options-execution lane",
+      "no REQUESTED/RUNNING row for the lane",
+      "at most 1 live heal per lane per day"
+     ],
+     "lock": "/tmp/opening_intel.lock",
+     "timeout_s": 600,
+     "output_signal": "data/runtime/opening-intelligence-render_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 1
+    },
+    {
+     "action_id": "reap_orphan_run",
+     "handler": "ledger_reap_orphan",
+     "mode_sequence": [],
+     "argv": {},
+     "auto": true,
+     "approval_reason": null,
+     "via": "LedgerRunStore.finish(run_id, state=RUN_TIMEOUT, receipt.reason=executor_lost) — the executor v2 reaper's receipt",
+     "preconditions": [
+      "row RUNNING and started_at + 2 x timeout_s < now",
+      "heartbeat_at older than timeout_s (or absent)",
+      "row pid not alive on this host"
+     ],
+     "lock": "/tmp/opening_intel.lock",
+     "timeout_s": 600,
+     "output_signal": "data/runtime/opening-intelligence-render_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    }
+   ],
+   "default_action": "suggest_only",
+   "suggest_only_reason": "severity Critical: human approval (V9 §6.4)"
+  },
+  {
+   "schema": "N8nLaneRemediation@v1",
+   "lane_id": "pattern-extractor",
+   "severity": "Medium",
+   "severity_basis": "cron:L785: business_function=research",
+   "inv_ids": [
+    "cron:L785"
+   ],
+   "classification": [
+    "Retain as Existing Cron Job"
+   ],
+   "migration_risk": [
+    "Low"
+   ],
+   "known_issues": [
+    {
+     "inv_id": "cron:L785",
+     "known_issues": "None measured (2026-10-01: 12 upserted, 0 errors)",
+     "custom_work_required": "Explicit exit code on errors"
+    }
+   ],
+   "registry": {
+    "present": true,
+    "state": "ACTIVE",
+    "scheduler_kind": "cron",
+    "stage": "canary"
+   },
+   "allowlisted": true,
+   "allowlist_source": "config/n8n_run_allowlist.json",
+   "actions": [
+    {
+     "action_id": "rerun_dry_run",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "dry_run"
+     ],
+     "argv": {
+      "dry_run": [
+       "$PY",
+       "scripts/pattern_extractor.py",
+       "--dry-run"
+      ]
+     },
+     "auto": false,
+     "approval_reason": "timeout_s 1200 > 600: a rerun would hold the single executor worker; human approval",
+     "via": "coordination/run (host_run_request, mode=dry_run) -> tradeai-n8n-run-executor runs the allowlist argv under the lane lock, stage-clamped",
+     "preconditions": [
+      "lane in config/n8n_run_allowlist.json with dry_run_arg",
+      "no REQUESTED/RUNNING row for the lane",
+      "per-incident and per-lane-day caps not reached"
+     ],
+     "lock": "/tmp/pattern_extractor.lock",
+     "timeout_s": 1200,
+     "output_signal": "data/runtime/pattern-extractor_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "rerun_live_once",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "live"
+     ],
+     "argv": {
+      "live": [
+       "$PY",
+       "scripts/pattern_extractor.py"
+      ]
+     },
+     "auto": false,
+     "approval_reason": "timeout_s 1200 > 600: a rerun would hold the single executor worker; human approval",
+     "via": "coordination/run (host_run_request, mode=live) once; the executor's effect-claim gate refuses a duplicate effect; the stage clamp still applies",
+     "preconditions": [
+      "registry scheduler.stage canary or cutover and state ACTIVE (re-checked at request time)",
+      "effect owner n8n and a config/n8n_effect_keys.json entry (n8n_self_heal.live_heal_gate)",
+      "failure classified transient, not a code error",
+      "not a sender, P1 or broker/order/stop/options-execution lane",
+      "no REQUESTED/RUNNING row for the lane",
+      "at most 1 live heal per lane per day"
+     ],
+     "lock": "/tmp/pattern_extractor.lock",
+     "timeout_s": 1200,
+     "output_signal": "data/runtime/pattern-extractor_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 1
+    },
+    {
+     "action_id": "reap_orphan_run",
+     "handler": "ledger_reap_orphan",
+     "mode_sequence": [],
+     "argv": {},
+     "auto": true,
+     "approval_reason": null,
+     "via": "LedgerRunStore.finish(run_id, state=RUN_TIMEOUT, receipt.reason=executor_lost) — the executor v2 reaper's receipt",
+     "preconditions": [
+      "row RUNNING and started_at + 2 x timeout_s < now",
+      "heartbeat_at older than timeout_s (or absent)",
+      "row pid not alive on this host"
+     ],
+     "lock": "/tmp/pattern_extractor.lock",
+     "timeout_s": 1200,
+     "output_signal": "data/runtime/pattern-extractor_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    }
+   ],
+   "default_action": "suggest_only",
+   "suggest_only_reason": "timeout_s 1200 > 600: a rerun would hold the single executor worker; human approval"
+  },
+  {
+   "schema": "N8nLaneRemediation@v1",
    "lane_id": "proposal-backtest-engine",
    "severity": "High",
    "severity_basis": "cron:L606: business_function=portfolio data",
@@ -6137,7 +8358,7 @@
     "present": true,
     "state": "ACTIVE",
     "scheduler_kind": "cron",
-    "stage": "shadow"
+    "stage": "canary"
    },
    "allowlisted": true,
    "allowlist_source": "config/n8n_run_allowlist.json",
@@ -6170,6 +8391,37 @@
      "output_signal": "data/runtime/proposal-backtest-engine_last.json",
      "max_per_incident": 1,
      "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "rerun_live_once",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "live"
+     ],
+     "argv": {
+      "live": [
+       "$PY",
+       "scripts/proposal_backtest_engine.py",
+       "--all-pending",
+       "--apply"
+      ]
+     },
+     "auto": false,
+     "approval_reason": "severity High: human approval (V9 §6.4)",
+     "via": "coordination/run (host_run_request, mode=live) once; the executor's effect-claim gate refuses a duplicate effect; the stage clamp still applies",
+     "preconditions": [
+      "registry scheduler.stage canary or cutover and state ACTIVE (re-checked at request time)",
+      "effect owner n8n and a config/n8n_effect_keys.json entry (n8n_self_heal.live_heal_gate)",
+      "failure classified transient, not a code error",
+      "not a sender, P1 or broker/order/stop/options-execution lane",
+      "no REQUESTED/RUNNING row for the lane",
+      "at most 1 live heal per lane per day"
+     ],
+     "lock": "/tmp/proposal_backtest.lock",
+     "timeout_s": 600,
+     "output_signal": "data/runtime/proposal-backtest-engine_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 1
     },
     {
      "action_id": "reap_orphan_run",
@@ -6219,7 +8471,7 @@
     "present": true,
     "state": "ACTIVE",
     "scheduler_kind": "cron",
-    "stage": "shadow"
+    "stage": "canary"
    },
    "allowlisted": true,
    "allowlist_source": "config/n8n_run_allowlist.json",
@@ -6250,6 +8502,35 @@
      "output_signal": "data/runtime/record-decision-outcome_last.json",
      "max_per_incident": 1,
      "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "rerun_live_once",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "live"
+     ],
+     "argv": {
+      "live": [
+       "$PY",
+       "scripts/record_decision_outcome.py"
+      ]
+     },
+     "auto": true,
+     "approval_reason": null,
+     "via": "coordination/run (host_run_request, mode=live) once; the executor's effect-claim gate refuses a duplicate effect; the stage clamp still applies",
+     "preconditions": [
+      "registry scheduler.stage canary or cutover and state ACTIVE (re-checked at request time)",
+      "effect owner n8n and a config/n8n_effect_keys.json entry (n8n_self_heal.live_heal_gate)",
+      "failure classified transient, not a code error",
+      "not a sender, P1 or broker/order/stop/options-execution lane",
+      "no REQUESTED/RUNNING row for the lane",
+      "at most 1 live heal per lane per day"
+     ],
+     "lock": "/tmp/record_decision_outcome.lock",
+     "timeout_s": 300,
+     "output_signal": "data/runtime/record-decision-outcome_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 1
     },
     {
      "action_id": "reap_orphan_run",
@@ -6396,6 +8677,35 @@
      "output_signal": "data/runtime/research-insight-extractor_last.json",
      "max_per_incident": 1,
      "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "rerun_live_once",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "live"
+     ],
+     "argv": {
+      "live": [
+       "$PY",
+       "scripts/research_insight_extractor.py"
+      ]
+     },
+     "auto": true,
+     "approval_reason": null,
+     "via": "coordination/run (host_run_request, mode=live) once; the executor's effect-claim gate refuses a duplicate effect; the stage clamp still applies",
+     "preconditions": [
+      "registry scheduler.stage canary or cutover and state ACTIVE (re-checked at request time)",
+      "effect owner n8n and a config/n8n_effect_keys.json entry (n8n_self_heal.live_heal_gate)",
+      "failure classified transient, not a code error",
+      "not a sender, P1 or broker/order/stop/options-execution lane",
+      "no REQUESTED/RUNNING row for the lane",
+      "at most 1 live heal per lane per day"
+     ],
+     "lock": "/tmp/research_insight_extractor.lock",
+     "timeout_s": 300,
+     "output_signal": "data/runtime/research-insight-extractor_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 1
     },
     {
      "action_id": "reap_orphan_run",
@@ -6603,7 +8913,7 @@
     "present": true,
     "state": "ACTIVE",
     "scheduler_kind": "cron",
-    "stage": "shadow"
+    "stage": "canary"
    },
    "allowlisted": true,
    "allowlist_source": "config/n8n_run_allowlist.json",
@@ -6635,6 +8945,36 @@
      "output_signal": "data/runtime/sec-data-ingest_last.json",
      "max_per_incident": 1,
      "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "rerun_live_once",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "live"
+     ],
+     "argv": {
+      "live": [
+       "$PY",
+       "scripts/sec_data_ingest.py",
+       "--all"
+      ]
+     },
+     "auto": true,
+     "approval_reason": null,
+     "via": "coordination/run (host_run_request, mode=live) once; the executor's effect-claim gate refuses a duplicate effect; the stage clamp still applies",
+     "preconditions": [
+      "registry scheduler.stage canary or cutover and state ACTIVE (re-checked at request time)",
+      "effect owner n8n and a config/n8n_effect_keys.json entry (n8n_self_heal.live_heal_gate)",
+      "failure classified transient, not a code error",
+      "not a sender, P1 or broker/order/stop/options-execution lane",
+      "no REQUESTED/RUNNING row for the lane",
+      "at most 1 live heal per lane per day"
+     ],
+     "lock": "/tmp/sec_data_ingest.lock",
+     "timeout_s": 300,
+     "output_signal": "data/runtime/sec-data-ingest_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 1
     },
     {
      "action_id": "reap_orphan_run",
@@ -7079,7 +9419,7 @@
     "present": true,
     "state": "ACTIVE",
     "scheduler_kind": "cron",
-    "stage": "shadow"
+    "stage": "canary"
    },
    "allowlisted": true,
    "allowlist_source": "config/n8n_run_allowlist.json",
@@ -7112,6 +9452,35 @@
      "max_per_lane_per_day": 3
     },
     {
+     "action_id": "rerun_live_once",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "live"
+     ],
+     "argv": {
+      "live": [
+       "$PY",
+       "scripts/source_attribution_monitor.py"
+      ]
+     },
+     "auto": true,
+     "approval_reason": null,
+     "via": "coordination/run (host_run_request, mode=live) once; the executor's effect-claim gate refuses a duplicate effect; the stage clamp still applies",
+     "preconditions": [
+      "registry scheduler.stage canary or cutover and state ACTIVE (re-checked at request time)",
+      "effect owner n8n and a config/n8n_effect_keys.json entry (n8n_self_heal.live_heal_gate)",
+      "failure classified transient, not a code error",
+      "not a sender, P1 or broker/order/stop/options-execution lane",
+      "no REQUESTED/RUNNING row for the lane",
+      "at most 1 live heal per lane per day"
+     ],
+     "lock": "/tmp/source_attribution_monitor.lock",
+     "timeout_s": 180,
+     "output_signal": "data/runtime/source_attribution_history.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 1
+    },
+    {
      "action_id": "reap_orphan_run",
      "handler": "ledger_reap_orphan",
      "mode_sequence": [],
@@ -7133,6 +9502,86 @@
    ],
    "default_action": "suggest_only",
    "suggest_only_reason": null
+  },
+  {
+   "schema": "N8nLaneRemediation@v1",
+   "lane_id": "source-litmus-vs-yahoo",
+   "severity": "Low",
+   "severity_basis": "timer:tradeai-source-litmus.timer: business_function=monitoring",
+   "inv_ids": [
+    "timer:tradeai-source-litmus.timer"
+   ],
+   "classification": [
+    "Requires Refactoring Before Migration"
+   ],
+   "migration_risk": [
+    "Low"
+   ],
+   "known_issues": [
+    {
+     "inv_id": "timer:tradeai-source-litmus.timer",
+     "known_issues": "unit runs the DEV checkout (WorkingDirectory/ROOT=~/trade-ai-v12-rebuild/...), not the pinned release (AGENTS §9.3/§9.4 served-copy risk)",
+     "custom_work_required": "allowlist entry with a lock shared by the unit; run from pinned release; registry dispatcher row (§23.11)"
+    }
+   ],
+   "registry": {
+    "present": true,
+    "state": "ACTIVE",
+    "scheduler_kind": "systemd",
+    "stage": "shadow"
+   },
+   "allowlisted": true,
+   "allowlist_source": "config/n8n_run_allowlist.json",
+   "actions": [
+    {
+     "action_id": "rerun_dry_run",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "dry_run"
+     ],
+     "argv": {
+      "dry_run": [
+       "$PY",
+       "scripts/source_litmus_vs_yahoo.py",
+       "--dry-run"
+      ]
+     },
+     "auto": false,
+     "approval_reason": "timeout_s 900 > 600: a rerun would hold the single executor worker; human approval",
+     "via": "coordination/run (host_run_request, mode=dry_run) -> tradeai-n8n-run-executor runs the allowlist argv under the lane lock, stage-clamped",
+     "preconditions": [
+      "lane in config/n8n_run_allowlist.json with dry_run_arg",
+      "no REQUESTED/RUNNING row for the lane",
+      "per-incident and per-lane-day caps not reached"
+     ],
+     "lock": "/tmp/source_litmus.lock",
+     "timeout_s": 900,
+     "output_signal": "data/runtime/source-litmus-vs-yahoo_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "reap_orphan_run",
+     "handler": "ledger_reap_orphan",
+     "mode_sequence": [],
+     "argv": {},
+     "auto": true,
+     "approval_reason": null,
+     "via": "LedgerRunStore.finish(run_id, state=RUN_TIMEOUT, receipt.reason=executor_lost) — the executor v2 reaper's receipt",
+     "preconditions": [
+      "row RUNNING and started_at + 2 x timeout_s < now",
+      "heartbeat_at older than timeout_s (or absent)",
+      "row pid not alive on this host"
+     ],
+     "lock": "/tmp/source_litmus.lock",
+     "timeout_s": 900,
+     "output_signal": "data/runtime/source-litmus-vs-yahoo_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    }
+   ],
+   "default_action": "suggest_only",
+   "suggest_only_reason": "timeout_s 900 > 600: a rerun would hold the single executor worker; human approval"
   },
   {
    "schema": "N8nLaneRemediation@v1",
@@ -7264,7 +9713,7 @@
     "present": true,
     "state": "ACTIVE",
     "scheduler_kind": "cron",
-    "stage": "shadow"
+    "stage": "canary"
    },
    "allowlisted": true,
    "allowlist_source": "config/n8n_run_allowlist.json",
@@ -7295,6 +9744,36 @@
      "output_signal": "data/runtime/sync-social-to-intelligence_last.json",
      "max_per_incident": 1,
      "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "rerun_live_once",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "live"
+     ],
+     "argv": {
+      "live": [
+       "$PY",
+       "scripts/sync_social_to_intelligence.py",
+       "--apply"
+      ]
+     },
+     "auto": true,
+     "approval_reason": null,
+     "via": "coordination/run (host_run_request, mode=live) once; the executor's effect-claim gate refuses a duplicate effect; the stage clamp still applies",
+     "preconditions": [
+      "registry scheduler.stage canary or cutover and state ACTIVE (re-checked at request time)",
+      "effect owner n8n and a config/n8n_effect_keys.json entry (n8n_self_heal.live_heal_gate)",
+      "failure classified transient, not a code error",
+      "not a sender, P1 or broker/order/stop/options-execution lane",
+      "no REQUESTED/RUNNING row for the lane",
+      "at most 1 live heal per lane per day"
+     ],
+     "lock": "/tmp/sync_social_to_intelligence.lock",
+     "timeout_s": 300,
+     "output_signal": "data/runtime/sync-social-to-intelligence_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 1
     },
     {
      "action_id": "reap_orphan_run",
@@ -7613,7 +10092,7 @@
     "present": true,
     "state": "ACTIVE",
     "scheduler_kind": "cron",
-    "stage": "shadow"
+    "stage": "canary"
    },
    "allowlisted": true,
    "allowlist_source": "config/n8n_run_allowlist.json",
@@ -7644,6 +10123,35 @@
      "output_signal": "data/runtime/update_agent_performance_last.json",
      "max_per_incident": 1,
      "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "rerun_live_once",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "live"
+     ],
+     "argv": {
+      "live": [
+       "$PY",
+       "scripts/update_agent_performance.py"
+      ]
+     },
+     "auto": true,
+     "approval_reason": null,
+     "via": "coordination/run (host_run_request, mode=live) once; the executor's effect-claim gate refuses a duplicate effect; the stage clamp still applies",
+     "preconditions": [
+      "registry scheduler.stage canary or cutover and state ACTIVE (re-checked at request time)",
+      "effect owner n8n and a config/n8n_effect_keys.json entry (n8n_self_heal.live_heal_gate)",
+      "failure classified transient, not a code error",
+      "not a sender, P1 or broker/order/stop/options-execution lane",
+      "no REQUESTED/RUNNING row for the lane",
+      "at most 1 live heal per lane per day"
+     ],
+     "lock": "/tmp/update_agent_performance.lock",
+     "timeout_s": 300,
+     "output_signal": "data/runtime/update_agent_performance_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 1
     },
     {
      "action_id": "reap_orphan_run",
@@ -8007,7 +10515,7 @@
     "present": true,
     "state": "ACTIVE",
     "scheduler_kind": "cron",
-    "stage": "shadow"
+    "stage": "canary"
    },
    "allowlisted": true,
    "allowlist_source": "config/n8n_run_allowlist.json",
@@ -8041,6 +10549,36 @@
      "max_per_lane_per_day": 3
     },
     {
+     "action_id": "rerun_live_once",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "live"
+     ],
+     "argv": {
+      "live": [
+       "$PY",
+       "scripts/watchlist_enrichment_sweep.py",
+       "--once"
+      ]
+     },
+     "auto": false,
+     "approval_reason": "timeout_s 900 > 600: a rerun would hold the single executor worker; human approval",
+     "via": "coordination/run (host_run_request, mode=live) once; the executor's effect-claim gate refuses a duplicate effect; the stage clamp still applies",
+     "preconditions": [
+      "registry scheduler.stage canary or cutover and state ACTIVE (re-checked at request time)",
+      "effect owner n8n and a config/n8n_effect_keys.json entry (n8n_self_heal.live_heal_gate)",
+      "failure classified transient, not a code error",
+      "not a sender, P1 or broker/order/stop/options-execution lane",
+      "no REQUESTED/RUNNING row for the lane",
+      "at most 1 live heal per lane per day"
+     ],
+     "lock": "/tmp/watchlist_sweep.lock",
+     "timeout_s": 900,
+     "output_signal": "data/runtime/watchlist-enrichment-sweep_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 1
+    },
+    {
      "action_id": "reap_orphan_run",
      "handler": "ledger_reap_orphan",
      "mode_sequence": [],
@@ -8062,6 +10600,172 @@
    ],
    "default_action": "suggest_only",
    "suggest_only_reason": "timeout_s 900 > 600: a rerun would hold the single executor worker; human approval"
+  },
+  {
+   "schema": "N8nLaneRemediation@v1",
+   "lane_id": "watchlist-entry-planner-limit",
+   "severity": "High",
+   "severity_basis": "cron:L473: business_function=research; critical path CP3 -> High",
+   "inv_ids": [
+    "cron:L473"
+   ],
+   "classification": [
+    "Requires Refactoring Before Migration"
+   ],
+   "migration_risk": [
+    "Low"
+   ],
+   "known_issues": [
+    {
+     "inv_id": "cron:L473",
+     "known_issues": "Runs ~3 h (17:35 -> log 20:29); 360 planned / 78 failed ('unparseable'); shares log with L474",
+     "custom_work_required": "add --receipt (SCRIPT_RECEIPT under data/runtime) and a --dry-run path; return non-zero on step failure; registry dispatch block + config/n8n_run_allowlist.json entry whose lock = the cron line's lock; pass --no-alert"
+    }
+   ],
+   "registry": {
+    "present": true,
+    "state": "ACTIVE",
+    "scheduler_kind": "cron",
+    "stage": null
+   },
+   "allowlisted": true,
+   "allowlist_source": "config/n8n_run_allowlist.json",
+   "actions": [
+    {
+     "action_id": "rerun_dry_run",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "dry_run"
+     ],
+     "argv": {
+      "dry_run": [
+       "$PY",
+       "scripts/watchlist_entry_planner_lane.py",
+       "--limit",
+       "60",
+       "--buy-rated-cap",
+       "400",
+       "--dry-run"
+      ]
+     },
+     "auto": false,
+     "approval_reason": "severity High: human approval (V9 §6.4)",
+     "via": "coordination/run (host_run_request, mode=dry_run) -> tradeai-n8n-run-executor runs the allowlist argv under the lane lock, stage-clamped",
+     "preconditions": [
+      "lane in config/n8n_run_allowlist.json with dry_run_arg",
+      "no REQUESTED/RUNNING row for the lane",
+      "per-incident and per-lane-day caps not reached"
+     ],
+     "lock": "/tmp/entry_planner.lock",
+     "timeout_s": 5400,
+     "output_signal": "data/runtime/watchlist_entry_planner_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "reap_orphan_run",
+     "handler": "ledger_reap_orphan",
+     "mode_sequence": [],
+     "argv": {},
+     "auto": true,
+     "approval_reason": null,
+     "via": "LedgerRunStore.finish(run_id, state=RUN_TIMEOUT, receipt.reason=executor_lost) — the executor v2 reaper's receipt",
+     "preconditions": [
+      "row RUNNING and started_at + 2 x timeout_s < now",
+      "heartbeat_at older than timeout_s (or absent)",
+      "row pid not alive on this host"
+     ],
+     "lock": "/tmp/entry_planner.lock",
+     "timeout_s": 5400,
+     "output_signal": "data/runtime/watchlist_entry_planner_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    }
+   ],
+   "default_action": "suggest_only",
+   "suggest_only_reason": "severity High: human approval (V9 §6.4)"
+  },
+  {
+   "schema": "N8nLaneRemediation@v1",
+   "lane_id": "watchlist-entry-planner-scope",
+   "severity": "High",
+   "severity_basis": "cron:L474: business_function=research; critical path CP3 -> High",
+   "inv_ids": [
+    "cron:L474"
+   ],
+   "classification": [
+    "Requires Refactoring Before Migration"
+   ],
+   "migration_risk": [
+    "Low"
+   ],
+   "known_issues": [
+    {
+     "inv_id": "cron:L474",
+     "known_issues": "Starts while L473 is still running (different lock), so two grok-heavy runs overlap; shared log hides its own result",
+     "custom_work_required": "add --receipt (SCRIPT_RECEIPT under data/runtime) and a --dry-run path; return non-zero on step failure; registry dispatch block + config/n8n_run_allowlist.json entry whose lock = the cron line's lock; serialize with L473"
+    }
+   ],
+   "registry": {
+    "present": true,
+    "state": "ACTIVE",
+    "scheduler_kind": "cron",
+    "stage": null
+   },
+   "allowlisted": true,
+   "allowlist_source": "config/n8n_run_allowlist.json",
+   "actions": [
+    {
+     "action_id": "rerun_dry_run",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "dry_run"
+     ],
+     "argv": {
+      "dry_run": [
+       "$PY",
+       "scripts/watchlist_entry_planner_lane.py",
+       "--scope",
+       "proposals",
+       "--dry-run"
+      ]
+     },
+     "auto": false,
+     "approval_reason": "severity High: human approval (V9 §6.4)",
+     "via": "coordination/run (host_run_request, mode=dry_run) -> tradeai-n8n-run-executor runs the allowlist argv under the lane lock, stage-clamped",
+     "preconditions": [
+      "lane in config/n8n_run_allowlist.json with dry_run_arg",
+      "no REQUESTED/RUNNING row for the lane",
+      "per-incident and per-lane-day caps not reached"
+     ],
+     "lock": "/tmp/entry_planner_prop.lock",
+     "timeout_s": 5400,
+     "output_signal": "data/runtime/watchlist_entry_planner_proposals_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "reap_orphan_run",
+     "handler": "ledger_reap_orphan",
+     "mode_sequence": [],
+     "argv": {},
+     "auto": true,
+     "approval_reason": null,
+     "via": "LedgerRunStore.finish(run_id, state=RUN_TIMEOUT, receipt.reason=executor_lost) — the executor v2 reaper's receipt",
+     "preconditions": [
+      "row RUNNING and started_at + 2 x timeout_s < now",
+      "heartbeat_at older than timeout_s (or absent)",
+      "row pid not alive on this host"
+     ],
+     "lock": "/tmp/entry_planner_prop.lock",
+     "timeout_s": 5400,
+     "output_signal": "data/runtime/watchlist_entry_planner_proposals_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    }
+   ],
+   "default_action": "suggest_only",
+   "suggest_only_reason": "severity High: human approval (V9 §6.4)"
   },
   {
    "schema": "N8nLaneRemediation@v1",
@@ -8088,7 +10792,7 @@
     "present": true,
     "state": "ACTIVE",
     "scheduler_kind": "cron",
-    "stage": "shadow"
+    "stage": "canary"
    },
    "allowlisted": true,
    "allowlist_source": "config/n8n_run_allowlist.json",
@@ -8124,6 +10828,38 @@
      "max_per_lane_per_day": 3
     },
     {
+     "action_id": "rerun_live_once",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "live"
+     ],
+     "argv": {
+      "live": [
+       "$PY",
+       "scripts/weekly_incubator_builder.py",
+       "--run-label",
+       "1900",
+       "--apply"
+      ]
+     },
+     "auto": false,
+     "approval_reason": "severity Critical: human approval (V9 §6.4)",
+     "via": "coordination/run (host_run_request, mode=live) once; the executor's effect-claim gate refuses a duplicate effect; the stage clamp still applies",
+     "preconditions": [
+      "registry scheduler.stage canary or cutover and state ACTIVE (re-checked at request time)",
+      "effect owner n8n and a config/n8n_effect_keys.json entry (n8n_self_heal.live_heal_gate)",
+      "failure classified transient, not a code error",
+      "not a sender, P1 or broker/order/stop/options-execution lane",
+      "no REQUESTED/RUNNING row for the lane",
+      "at most 1 live heal per lane per day"
+     ],
+     "lock": "/tmp/weekly-incubator-builder.lock",
+     "timeout_s": 600,
+     "output_signal": "data/runtime/weekly-incubator-builder_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 1
+    },
+    {
      "action_id": "reap_orphan_run",
      "handler": "ledger_reap_orphan",
      "mode_sequence": [],
@@ -8145,6 +10881,39 @@
    ],
    "default_action": "suggest_only",
    "suggest_only_reason": "severity Critical: human approval (V9 §6.4)"
+  },
+  {
+   "schema": "N8nLaneRemediation@v1",
+   "lane_id": "wire-advisory-lessons",
+   "severity": "High",
+   "severity_basis": "cron:L604: business_function=portfolio data",
+   "inv_ids": [
+    "cron:L604"
+   ],
+   "classification": [
+    "Retain as Existing Cron Job"
+   ],
+   "migration_risk": [
+    "Medium"
+   ],
+   "known_issues": [
+    {
+     "inv_id": "cron:L604",
+     "known_issues": "Re-upserts the same 238 lessons every run ('wired 238 external lesson(s), 0 skipped' each tail line) — not incremental; 100 '[db_adapter] SQL error: value too long for type character varying(10)' lines swallowed while reporting 0 skipped",
+     "custom_work_required": "Fix varchar(10) overflow; incremental cursor; nonzero exit on SQL error; could chain after L603 rather than a separate line"
+    }
+   ],
+   "registry": {
+    "present": true,
+    "state": "ACTIVE",
+    "scheduler_kind": "cron",
+    "stage": "canary"
+   },
+   "allowlisted": true,
+   "allowlist_source": "config/n8n_run_allowlist.json",
+   "actions": [],
+   "default_action": "suggest_only",
+   "suggest_only_reason": "inventory must_remain_outside_n8n=yes"
   },
   {
    "schema": "N8nLaneRemediation@v1",

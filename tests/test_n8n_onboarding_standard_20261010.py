@@ -154,7 +154,9 @@ def test_diagnoser_caps_and_exclusion_quoted_equal_the_code():
     # #1719 momentum-cache-reconcile canary) -> 117 lanes, 54 auto-rerun.
     # Scalp/premarket onboarding (2026-10-14): + 2 scalp hot-tier shadow lanes (finviz-enrichment-scalp-hot,
     # scalp-hot-list) -> 119 lanes, 56 auto-rerun.
-    assert cat["summary"]["lanes"] == 119 and cat["summary"]["lanes_with_auto_rerun"] == 56
+    # Self-healing rebuild (2026-10-16): main's committed catalogue had drifted from the registry/allowlist since the
+    # 10-14 onboarding (--check was false on main 94ee3770a); the rebuild adds rerun_live_once -> 137 lanes, 63 auto.
+    assert cat["summary"]["lanes"] == 137 and cat["summary"]["lanes_with_auto_rerun"] == 63
 
 
 def test_class_caps_quoted_equal_the_retry_policies():

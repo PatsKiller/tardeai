@@ -95,6 +95,26 @@ def build(registry: dict) -> list[dict]:
     return [sla_row(l) for l in registry.get("lanes", []) if l.get("lane_id")]
 
 
+REGISTRY_FALLBACK = "config/lane_registry.json (registry fallback: lane newer than the seed file)"
+
+
+def merged_sla_rows(seed_rows: list[dict], registry_lanes: list[dict]) -> dict[str, dict]:
+    """lane_id -> SLA row: the seed file's rows, plus a registry-derived row (``sla_row``) for every registered lane
+    the seed does not carry.
+
+    2026-10-16: the seed (data/runtime/supervisor_sla_seed.json) was written once, on 2026-10-09, and never refreshed.
+    Every lane registered after that (heartbeat-watch, advisory-desk-run-now, analyst-prospectus-generate,
+    aegis-brief-regenerate) became UNGOVERNED "no SLA row" on every tick, which produced 218 diagnosis events on
+    2026-10-16 alone. The rows come from the same rule the seed uses, so the result is what a re-seed would write.
+    A seed row always wins (an owner override)."""
+    out = {r["lane_id"]: r for r in seed_rows if isinstance(r, dict) and r.get("lane_id")}
+    for lane in registry_lanes or []:
+        lid = lane.get("lane_id") if isinstance(lane, dict) else None
+        if lid and lid not in out:
+            out[lid] = {**sla_row(lane), "seeded_from": REGISTRY_FALLBACK}
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--registry", default=str(PROJ / "config" / "lane_registry.json"))

@@ -1002,6 +1002,15 @@ class EffectGate:
             slot = pk[2]
         else:
             parsed = parse_slot_key(run_key)
+            if parsed is None and row.get("parent_run_id"):
+                # 2026-10-16: a host retry (n8n_failure_diagnosis rerun_live_once) bound by the gateway to a FAILED
+                # d:/e: parent of the same lane (host_run_request check_retry_parent). The effect slot is the
+                # parent's, so this run claims the SAME key: re-claimed only when that claim is FAILED pre-effect.
+                pp = parse_slot_key(str(row.get("parent_run_id")))
+                if pp is None or pp[1] != lane_id or pp[2] != mode:
+                    reason = "effect_retry_parent_invalid"
+                    return {"key": None, "process": spec["process"], "claimed": False, "reason": reason}, f"effect:{reason}"
+                parsed = pp
             if parsed is None:
                 block = {"key": None, "process": spec["process"], "claimed": False, "reason": "effect_slot_unknown"}
                 return block, "effect:effect_slot_unknown"

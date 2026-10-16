@@ -1294,6 +1294,35 @@ GATES = [
             "tests/test_n8n_diagnosis_deepseek_route_20261015.py",
         ],
     ),
+    # 2026-10-16 (operator "yes make self healing now"): deterministic tier before the model (covered lock skip,
+    # later success, executor_lost reaper), per-signature dedupe + call cap, one gated live heal per lane per day
+    # (rerun_live_once: n8n owner, canary/cutover, transient, effect key), P1 once per signature, P2 digest-only.
+    (
+        "n8n_self_healing_20261016",
+        [
+            "tests/test_n8n_self_healing_20261016.py",
+            # #1819 follow-ups (operator-approved 2026-10-16): slot-bound live retry (gateway parent check, executor
+            # derives the effect slot from the FAILED parent; DONE refused), P2 digest wired into advice_digest,
+            # catalogue approval provenance, registry SLA fallback for lanes newer than the seed.
+            "tests/test_n8n_slot_bound_retry_20261016.py",
+            "tests/test_n8n_self_healing_followups_20261016.py",
+            # First assert_fence wave (operator OK 2026-10-16): aegis/hermes social sentiment, finviz screener runner
+            # (late_write_fenced) + finviz market movers (fence wired, no key): fence before the first write,
+            # pre-fence failure retryable, post-fence failure refused, no-op without the effect-claim env.
+            "tests/test_assert_fence_wave1_20261016.py",
+            # Self-heal tranche defect fixes (operator directive 2026-10-16): NO_OUTPUT closes only on contract-fresh
+            # output; lock-skip cover = verified same mode + slot; codes/classes kept in fingerprints; severity and
+            # episodes re-evaluated per occurrence; cache != closure; explicit heal states; live heal re-authorized,
+            # held on ambiguous/post-effect claims, coordinated with the retry owner; code defects -> fix path.
+            "tests/test_n8n_self_heal_tranche_defects_20261016.py",
+        ],
+    ),
+    # 2026-10-16: daily-incubator-refresh live 08:15 ET died on a closed connection and the except handler's rollback()
+    # masked the real error; guarded rollback/close, original exception logged, reconnect before the scan commit.
+    (
+        "daily_incubator_conn_closed_20261016",
+        ["tests/test_daily_incubator_refresh_conn_closed_20261016.py"],
+    ),
     # Paper/broker-adjacent child steps use the same resolver; telegram run_promoter no longer shadows os (F823).
     # Code-only, under execution-engineering grant dc66eb4b6db5107e (operator 2026-10-09).
     (

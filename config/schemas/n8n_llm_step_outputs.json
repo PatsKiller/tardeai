@@ -14,7 +14,7 @@
         "action_id": {
           "type": "string",
           "max_length": 64,
-          "enum": ["rerun_dry_run", "rerun_dry_then_live", "reap_orphan_run", "suggest_only"]
+          "enum": ["rerun_dry_run", "rerun_dry_then_live", "rerun_live_once", "reap_orphan_run", "suggest_only"]
         },
         "rationale": {"type": "string", "max_length": 600},
         "citations": {"type": "array", "max_items": 12, "items": {"type": "string", "max_length": 160}},

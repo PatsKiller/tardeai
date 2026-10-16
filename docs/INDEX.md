@@ -623,7 +623,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/n8n/ADR_COORDINATION_SECRETS.md` | ADR: coordination secrets for the n8n lab | review_required | OK | `bc91d85ff25f` |
 | `docs/architecture/n8n/AUDIT_20261015_FINDINGS.md` | Independent n8n architecture audit 2026-10-15 — findings tracker | review_required | OK | `e11277d4e2bc` |
 | `docs/architecture/n8n/ENV_ENFORCE_READINESS_20261015.md` | n8n executor env-allowlist enforce readiness (generated) | review_required | MISSING HEADER | `1b6ea3934bc0` |
-| `docs/architecture/n8n/N8N_CONTRACTS_DESIGN.md` | n8n contracts — design architecture | review_required | OK | `f76af64507f5` |
+| `docs/architecture/n8n/N8N_CONTRACTS_DESIGN.md` | n8n contracts — design architecture | review_required | OK | `01722ac34c38` |
 | `docs/architecture/n8n/N8N_DECISION_LEDGER.md` | n8n decision ledger — D1–D11 | review_required | OK | `12551696169c` |
 | `docs/architecture/n8n/N8N_HITL_CONTRACT_SPEC.md` | Approval / HITL authority contract — specification | review_required | OK | `e9c14b9f23c1` |
 | `docs/architecture/n8n/N8N_LLM_STEP_ROUTE_SPEC.md` | n8n → LLM step route — specification and proof list | review_required | OK | `6b7f8e1ee9e8` |
@@ -2022,6 +2022,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/live_proof_20260928/07-operator-summary.md` | 07 — Operator summary (redacted) | review_required | OK | `e4e6a058cde6` |
 | `docs/ops/measurements/n8n-cutover-20261016T172425Z/REPORT.md` | n8n cutover outcomes — 2026-10-16T17:24:25+00:00 | review_required | MISSING HEADER | `e02ee59902ba` |
 | `docs/ops/measurements/n8n-cutover-20261016T195110Z/REPORT.md` | n8n cutover outcomes — 2026-10-16T19:51:10+00:00 | review_required | OK | `04c9f08bfc36` |
+| `docs/ops/n8n_self_healing.md` | n8n self-healing: how a lane failure is handled, end to end (2026-10-16) | review_required | OK | `949fe1341b6a` |
 | `docs/ops/openclaw_stage2_soul_patch_20260923.md` | OpenClaw Maria SOUL / skill patch — Stage 2 (specialist honesty) | review_required | OK | `d0a83ec99d47` |
 | `docs/ops/packets/consolidation-health-audit-c3-20261015/README.md` | consolidation-health-audit-c3-20261015: CONSOLIDATE wave C3, operator packet | review_required | MISSING HEADER | `5ec104b01e81` |
 | `docs/ops/packets/cron-effect-claim-wrap-20261016/README.md` | Cron effect-claim wrap 2026-10-16: the cron copy refuses itself when n8n owns the lane | review_required | OK | `92fe7e6c08fc` |
