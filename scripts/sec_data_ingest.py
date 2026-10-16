@@ -331,7 +331,8 @@ def run_all() -> int:
         result = ingest_form4()
     except Exception as exc:
         lr.write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
-                              script="sec_data_ingest.py", error=f"{type(exc).__name__}: {exc}")
+                              script="sec_data_ingest.py", error=f"{type(exc).__name__}: {exc}",
+                              output={"produced_count": 0, "attempted_count": 0, "skipped_reasons": {"dependency_unavailable": 1}})
         raise
     print(json.dumps(result, indent=2))
     scanned = result["symbols_scanned"]
@@ -339,8 +340,21 @@ def run_all() -> int:
         result["insert_attempts"] > 0 and result["insert_errors"] >= result["insert_attempts"])
     rc = 1 if failed else 0
     lr.write_lane_receipt(LANE_ID, ok=not failed, exit_code=rc, started_at=started,
-                          script="sec_data_ingest.py", summary=result)
+                          script="sec_data_ingest.py", summary=result, output=lane_output(result))
     return rc
+
+
+def lane_output(result: dict) -> dict:
+    """LaneRunReceipt@v2 output fields (n8n expected_output, unit: new sec_form4 rows; a filing already stored for
+    (symbol, sec_url) is skipped). attempted = INSERT attempts; no tracked symbol is fatal
+    (``universe_empty_unexpected``); no new filing = ``no_new_input``."""
+    new, attempts, errors = (int(result.get(k) or 0) for k in ("new_filings", "insert_attempts", "insert_errors"))
+    skipped = {"already_present": max(attempts - new - errors, 0), "insert_error": errors,
+               "fetch_failed": int(result.get("fetch_failed") or 0)}
+    if not int(result.get("symbols_scanned") or 0):
+        skipped["universe_empty_unexpected"] = 1
+    return {"produced_count": new, "attempted_count": max(attempts, new), "skipped_reasons": skipped,
+            "empty_reason": "no_new_input" if new == 0 else None}
 
 
 def main(argv) -> int:

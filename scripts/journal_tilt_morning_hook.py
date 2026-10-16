@@ -16,6 +16,7 @@ except Exception:
 
 
 RECEIPT_NAME = "journal_tilt_morning_hook"
+LANE_ID = "journal-tilt-morning-hook"
 
 
 def decide(beh: dict) -> dict:
@@ -95,17 +96,33 @@ def main(argv=None) -> int:
     if args.dry_run:
         run(dry_run=True)
         return 0
-    from lib.lane_last_receipt import now_iso, write_receipt
+    from lib.lane_last_receipt import now_iso, receipt_path, write_lane_receipt
+
+    # The receipt keeps its established path (data/runtime/journal_tilt_morning_hook_last.json); its lane id is the
+    # n8n lane's, so the per-attempt copy lands where the executor reads it (lane_attempts/<LANE_ID>/<run_id>).
+    def write_receipt(_name, **kw):
+        return write_lane_receipt(LANE_ID, path=receipt_path(RECEIPT_NAME), script=RECEIPT_NAME, **kw)
 
     started = now_iso()
     try:
         res = run(dry_run=False)
     except Exception as exc:  # noqa: BLE001 -- recorded in the receipt, then a non-zero exit
-        write_receipt(RECEIPT_NAME, ok=False, error=f"{type(exc).__name__}: {exc}", started_at=started)
+        write_receipt(RECEIPT_NAME, ok=False, error=f"{type(exc).__name__}: {exc}", started_at=started,
+                      output={"produced_count": 0, "attempted_count": 0, "skipped_reasons": {"dependency_unavailable": 1}})
         print(f"journal tilt hook FAILED: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 1
-    write_receipt(RECEIPT_NAME, ok=True, summary=res, started_at=started)
+    write_receipt(RECEIPT_NAME, ok=True, summary=res, started_at=started, output=lane_output(res))
     return 0
+
+
+def lane_output(res: dict) -> dict:
+    """LaneRunReceipt@v2 output fields (n8n expected_output, unit: tilt review items inserted into
+    operator_review_queue). No review needed, or today's item already queued, = ``no_new_input``."""
+    outcome = res.get("outcome")
+    produced = 1 if outcome == "queued" else 0
+    return {"produced_count": produced, "attempted_count": 0 if outcome == "not_needed" else 1,
+            "skipped_reasons": {"already_queued": int(outcome == "already_queued")},
+            "empty_reason": None if produced else "no_new_input"}
 
 
 if __name__ == "__main__":
