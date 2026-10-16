@@ -73,6 +73,12 @@ APPROVED_TOOLING = {
     "scripts/audit_lane_transitive_capabilities.py",
     "tests/test_lane_transitive_capabilities_20261015.py",
     "tests/test_scalp_go_delivery_transports_20261015.py",
+    # 2026-10-16 (AGENTS 12.0.0 §23.25 gate alignment, PR #1814, operator approved "execute your recommendations"):
+    # lane_dispatch's cutover_direct_sender_errors REFUSES a lifted lane that sends directly (smtplib / twilio /
+    # Slack / Bot API); its docstring names smtplib and its test plants a direct-SMTP script in tmp to prove the
+    # refusal. Neither file sends. Named individually, like the detectors above.
+    "scripts/lib/lane_dispatch.py",
+    "tests/test_lane_cutover_policy_20261016.py",
 }
 
 CHANNEL_PATTERNS: dict[str, dict[str, re.Pattern[str]]] = {
