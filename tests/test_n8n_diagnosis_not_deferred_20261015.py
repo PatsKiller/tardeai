@@ -103,7 +103,8 @@ def test_apply_out_of_window_with_deferral_armed_calls_the_model(env, armed):
     assert res["deferral"]["defer"] is False and res["deferral"]["tier"] == "critical"
     assert res["outcome"] == "diagnosed" and res["verdict"]["cause"]
     assert rec["counts"]["deferred"] == 0 and rec["counts"]["model_called"] == 1
-    assert "conf=0.9" in rec["escalations"][0]["detail"]
+    # 2026-10-16: a P2 (suggest_only) goes to the receipt digest, never the fan-in/Telegram escalations
+    assert rec["escalations"] == [] and "conf=0.9" in rec["digest"][0]["detail"]
 
 
 def test_escalation_without_a_verdict_says_why_not_conf_none(env):
@@ -112,7 +113,7 @@ def test_escalation_without_a_verdict_says_why_not_conf_none(env):
     call = GovernedCall(_answer(), raise_on_call=True)
     assert _run(env, ["--apply"], db=FakeDB([_siem_row()]), call=call, store=FakeStore(), deferral=dec) == 0
     rec = _receipt(env)
-    detail = rec["escalations"][0]["detail"]
+    detail = rec["digest"][0]["detail"]          # P2 deferral -> digest (2026-10-16)
     assert "conf=None" not in detail and "cause=" not in detail
     assert "no diagnosis yet" in detail and "off-peak deferral" in detail and "retried next cycle" in detail
     assert rec["results"][0]["deferral"]["run_after"] == OUT_OF_WINDOW.isoformat()
@@ -138,5 +139,8 @@ def test_deferred_incident_is_rediagnosed_and_its_stale_escalation_cleared(env):
     assert _run(env, ["--apply"], db=db, call=call, store=store) == 0
     assert len(call.seen) == 1 and len(store.requests) == 1
     state = json.loads((env["state"] / cli.STATE_REL).read_text())
-    assert state["escalations"] == {}, "the deferred escalation must stop paging once the incident is handled"
+    # 2026-10-16 (defect fix 6): a REQUESTED rerun is recovery_requested, never healed: the P2 escalation stays
+    # (digest only, never paging) and says a recovery is in flight; it closes only when the output recovers.
+    (esc,) = state["escalations"].values()
+    assert esc["priority"] == "P2" and esc["heal_state"] == "recovery_requested" and esc["recovery_run_id"]
     assert _receipt(env)["escalations"] == []

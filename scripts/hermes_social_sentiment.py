@@ -241,7 +241,28 @@ def normalize(symbol: str, mentions: list[dict]) -> dict | None:
     }
 
 
+# ── late-write fence (first assert_fence wave, 2026-10-16) ──────────────────
+_FENCE_PASSED = False
+
+
+def _fence_before_first_write() -> None:
+    """Call immediately before the lane's FIRST target write. Without an effect-claim token (a plain cron or manual
+    run) this is a no-op; with one, ``assert_fence()`` either passes (recorded once) or raises EffectFenceError and
+    nothing is written. A failure before this point is proven pre-effect, so a slot-bound retry may re-claim it."""
+    global _FENCE_PASSED
+    if _FENCE_PASSED:
+        return
+    try:   # one import identity (scripts/lib/__init__.py DualImportIdentityError): scripts.lib first
+        from scripts.lib.effect_claim import fence_before_write
+    except ImportError:   # cron: only scripts/ on sys.path
+        from lib.effect_claim import fence_before_write
+
+    fence_before_write()
+    _FENCE_PASSED = True
+
+
 def persist(symbol: str, sentiment: dict) -> bool:
+    _fence_before_first_write()
     return _db_write(
         """INSERT INTO social_sentiment_history
            (run_id, symbol, source_family, source_name, mention_count,
