@@ -635,13 +635,14 @@
       "lane_id": "source-attribution-monitor",
       "owner": "platform",
       "scheduler": {
-        "kind": "cron",
-        "expression": "0 6 * * *",
+        "kind": "n8n",
+        "expression": "dispatcher",
         "match": "scripts/source_attribution_monitor.py",
-        "stage": "canary",
+        "cadence": "0 6 * * *",
+        "stage": "cutover",
         "wave": "D2",
-        "command_text": "cd $PROJ && flock -n /tmp/source_attribution_monitor.lock $PY scripts/source_attribution_monitor.py >> logs/source_attribution_monitor.log 2>&1",
-        "cutover_wave": "CW1"
+        "cutover_wave": "CW1",
+        "command_text": "cd $PROJ && flock -n /tmp/source_attribution_monitor.lock $PY scripts/source_attribution_monitor.py >> logs/source_attribution_monitor.log 2>&1"
       },
       "expected_cadence_hours": 24,
       "state": "ACTIVE",
@@ -673,6 +674,15 @@
         "class": "monitor",
         "priority": 4,
         "retry_policy": "transient-2"
+      },
+      "scheduler_before_cutover": {
+        "kind": "cron",
+        "expression": "0 6 * * *",
+        "match": "scripts/source_attribution_monitor.py",
+        "stage": "canary",
+        "wave": "D2",
+        "command_text": "cd $PROJ && flock -n /tmp/source_attribution_monitor.lock $PY scripts/source_attribution_monitor.py >> logs/source_attribution_monitor.log 2>&1",
+        "cutover_wave": "CW1"
       }
     },
     {
@@ -4175,13 +4185,14 @@
       "lane_id": "catalyst-symbol-impact",
       "owner": "watch",
       "scheduler": {
-        "kind": "cron",
-        "expression": "20 7,12,17 * * 1-5",
-        "command_text": "cd $PROJ && flock -n /tmp/catalyst_symbol_impact.lock $PY scripts/catalyst_symbol_impact_writer.py --apply >> logs/catalyst_symbol_impact.log 2>&1  # lane catalyst-symbol-impact",
+        "kind": "n8n",
+        "expression": "dispatcher",
         "match": "catalyst_symbol_impact_writer.py",
-        "stage": "canary",
+        "cadence": "20 7,12,17 * * 1-5",
+        "stage": "cutover",
         "wave": "D2",
-        "cutover_wave": "CW1"
+        "cutover_wave": "CW1",
+        "command_text": "cd $PROJ && flock -n /tmp/catalyst_symbol_impact.lock $PY scripts/catalyst_symbol_impact_writer.py --apply >> logs/catalyst_symbol_impact.log 2>&1  # lane catalyst-symbol-impact"
       },
       "expected_cadence_hours": 24.0,
       "state": "ACTIVE",
@@ -4214,6 +4225,15 @@
         "class": "pipeline",
         "priority": 5,
         "retry_policy": "transient-2"
+      },
+      "scheduler_before_cutover": {
+        "kind": "cron",
+        "expression": "20 7,12,17 * * 1-5",
+        "command_text": "cd $PROJ && flock -n /tmp/catalyst_symbol_impact.lock $PY scripts/catalyst_symbol_impact_writer.py --apply >> logs/catalyst_symbol_impact.log 2>&1  # lane catalyst-symbol-impact",
+        "match": "catalyst_symbol_impact_writer.py",
+        "stage": "canary",
+        "wave": "D2",
+        "cutover_wave": "CW1"
       }
     },
     {
@@ -4307,13 +4327,14 @@
       "lane_id": "catalyst-graph",
       "owner": "platform",
       "scheduler": {
-        "kind": "cron",
-        "expression": "10 6 * * 1-5",
-        "command_text": "cd $PROJ && flock -n /tmp/build_catalyst_graph.lock $PY scripts/build_catalyst_graph.py --apply >> logs/build_catalyst_graph.log 2>&1  # lane catalyst-graph",
+        "kind": "n8n",
+        "expression": "dispatcher",
         "match": "build_catalyst_graph.py --apply",
-        "stage": "canary",
+        "cadence": "10 6 * * 1-5",
+        "stage": "cutover",
         "wave": "D2",
-        "cutover_wave": "CW1"
+        "cutover_wave": "CW1",
+        "command_text": "cd $PROJ && flock -n /tmp/build_catalyst_graph.lock $PY scripts/build_catalyst_graph.py --apply >> logs/build_catalyst_graph.log 2>&1  # lane catalyst-graph"
       },
       "expected_cadence_hours": 24,
       "state": "ACTIVE",
@@ -4345,6 +4366,15 @@
         "class": "pipeline",
         "priority": 5,
         "retry_policy": "transient-2"
+      },
+      "scheduler_before_cutover": {
+        "kind": "cron",
+        "expression": "10 6 * * 1-5",
+        "command_text": "cd $PROJ && flock -n /tmp/build_catalyst_graph.lock $PY scripts/build_catalyst_graph.py --apply >> logs/build_catalyst_graph.log 2>&1  # lane catalyst-graph",
+        "match": "build_catalyst_graph.py --apply",
+        "stage": "canary",
+        "wave": "D2",
+        "cutover_wave": "CW1"
       }
     },
     {
@@ -10950,13 +10980,14 @@
       "lane_id": "hermes-news-bridge",
       "owner": "research",
       "scheduler": {
-        "kind": "cron",
-        "expression": "40 6,12,18 * * *",
+        "kind": "n8n",
+        "expression": "dispatcher",
         "match": "scripts/hermes_news_bridge.py",
-        "stage": "canary",
+        "cadence": "40 6,12,18 * * *",
+        "stage": "cutover",
         "wave": "D3",
-        "command_text": "cd $PROJ && flock -n /tmp/hermes_news_bridge.lock $PY scripts/hermes_news_bridge.py >> logs/hermes_news_bridge.log 2>&1",
-        "cutover_wave": "CW1"
+        "cutover_wave": "CW1",
+        "command_text": "cd $PROJ && flock -n /tmp/hermes_news_bridge.lock $PY scripts/hermes_news_bridge.py >> logs/hermes_news_bridge.log 2>&1"
       },
       "expected_cadence_hours": 12.0,
       "state": "ACTIVE",
@@ -11000,6 +11031,15 @@
         "evidence": "run ledger data/runtime/n8n_runs (read-only) 2026-10-14: 11 natural dispatcher dry_run fires RUN_DONE exit 0 (d:hermes-news-bridge:dry_run:20261010T1840 .. d:hermes-news-bridge:dry_run:20261014T0640), 0 RUN_SKIPPED_LOCK, 0 RUN_FAILED / RUN_TIMEOUT / RUN_REFUSED (d:, e:, f: dry_run receipts); output_signal unchanged on 9/11 RUN_DONE. Admitted under the operator ruling 2026-10-14 ~11:05 ET via Agent A (cut over when defects fixed + n8n dry run passes + lane regression tests pass + >=1 successful LIVE n8n run with cron present under the shared lock; multi-day soak and natural-slot waits removed; a forced live relay fire counts if the lane's own window gate lets it run).",
         "lock_proof": "scheduler.command_text == the live cron line L415 command (crontab -l 2026-10-14, read-only); its only flock lock /tmp/hermes_news_bridge.lock == allowlist lock (lock_kind flock): r1_canary_lock_matches",
         "rollback": "revert this registry/allowlist commit: stage shadow, dispatch.mode dry_run, allowlist live_arg null"
+      },
+      "scheduler_before_cutover": {
+        "kind": "cron",
+        "expression": "40 6,12,18 * * *",
+        "match": "scripts/hermes_news_bridge.py",
+        "stage": "canary",
+        "wave": "D3",
+        "command_text": "cd $PROJ && flock -n /tmp/hermes_news_bridge.lock $PY scripts/hermes_news_bridge.py >> logs/hermes_news_bridge.log 2>&1",
+        "cutover_wave": "CW1"
       }
     },
     {
@@ -12179,13 +12219,14 @@
       "lane_id": "record-decision-outcome",
       "owner": "learning",
       "scheduler": {
-        "kind": "cron",
-        "expression": "50 7 * * 1-5",
+        "kind": "n8n",
+        "expression": "dispatcher",
         "match": "scripts/record_decision_outcome.py",
-        "stage": "canary",
+        "cadence": "50 7 * * 1-5",
+        "stage": "cutover",
         "wave": "W4",
-        "command_text": "cd $PROJ && flock -n /tmp/record_decision_outcome.lock $PY scripts/record_decision_outcome.py >> logs/decision_outcomes.log 2>&1",
-        "cutover_wave": "CW2"
+        "cutover_wave": "CW2",
+        "command_text": "cd $PROJ && flock -n /tmp/record_decision_outcome.lock $PY scripts/record_decision_outcome.py >> logs/decision_outcomes.log 2>&1"
       },
       "expected_cadence_hours": 72.0,
       "state": "ACTIVE",
@@ -12222,6 +12263,15 @@
         "class": "learn",
         "priority": 5,
         "retry_policy": "none"
+      },
+      "scheduler_before_cutover": {
+        "kind": "cron",
+        "expression": "50 7 * * 1-5",
+        "match": "scripts/record_decision_outcome.py",
+        "stage": "canary",
+        "wave": "W4",
+        "command_text": "cd $PROJ && flock -n /tmp/record_decision_outcome.lock $PY scripts/record_decision_outcome.py >> logs/decision_outcomes.log 2>&1",
+        "cutover_wave": "CW2"
       }
     },
     {
@@ -16164,13 +16214,14 @@
       "lane_id": "wire-advisory-lessons",
       "owner": "learning",
       "scheduler": {
-        "kind": "cron",
-        "expression": "30 */6 * * *",
+        "kind": "n8n",
+        "expression": "dispatcher",
         "match": "scripts/wire_advisory_lessons.py",
-        "stage": "canary",
+        "cadence": "30 */6 * * *",
+        "stage": "cutover",
         "wave": "LD-W1",
-        "command_text": "30 */6 * * * cd $PROJ && flock -n /tmp/wire_lessons.lock $PY scripts/wire_advisory_lessons.py >> logs/wire_advisory_lessons.log 2>&1  # wire external advisory lessons → trade_lesson_memory → strategy_lesson_rollup (learning loop)",
-        "cutover_wave": "CW3"
+        "cutover_wave": "CW3",
+        "command_text": "30 */6 * * * cd $PROJ && flock -n /tmp/wire_lessons.lock $PY scripts/wire_advisory_lessons.py >> logs/wire_advisory_lessons.log 2>&1  # wire external advisory lessons → trade_lesson_memory → strategy_lesson_rollup (learning loop)"
       },
       "expected_cadence_hours": 6.0,
       "state": "ACTIVE",
@@ -16207,7 +16258,16 @@
       },
       "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-10-15",
-      "adopted_reason": "shadow wave LD-W1 (lane disposition 2026-10-15, M1): a row carrying a reviewed dispatch block is hand-maintained (AGENTS 23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop it. Cron line L606 (crontab -l 2026-10-15, sha256 6a5c6768) keeps doing the real work; the dispatcher fires the offline dry run only. output_signal moved from the cron log / file mtime to the LaneRunReceipt@v1 the script writes on a real run."
+      "adopted_reason": "shadow wave LD-W1 (lane disposition 2026-10-15, M1): a row carrying a reviewed dispatch block is hand-maintained (AGENTS 23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop it. Cron line L606 (crontab -l 2026-10-15, sha256 6a5c6768) keeps doing the real work; the dispatcher fires the offline dry run only. output_signal moved from the cron log / file mtime to the LaneRunReceipt@v1 the script writes on a real run.",
+      "scheduler_before_cutover": {
+        "kind": "cron",
+        "expression": "30 */6 * * *",
+        "match": "scripts/wire_advisory_lessons.py",
+        "stage": "canary",
+        "wave": "LD-W1",
+        "command_text": "30 */6 * * * cd $PROJ && flock -n /tmp/wire_lessons.lock $PY scripts/wire_advisory_lessons.py >> logs/wire_advisory_lessons.log 2>&1  # wire external advisory lessons → trade_lesson_memory → strategy_lesson_rollup (learning loop)",
+        "cutover_wave": "CW3"
+      }
     },
     {
       "lane_id": "pattern-extractor",

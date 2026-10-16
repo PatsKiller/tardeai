@@ -89,7 +89,9 @@ FLOCK_ADDED = {"agent-outcome-linker", "agent-calibration-engine", "update-agent
 CANARY: set[str] = {"hermes-news-bridge"}  # canary-wave-20261014 (news-to-catalyst held at shadow)
 #: 2026-10-15 cutover waves (scripts/n8n_cutover_wave.py; tests/support/n8n_cutover_waves.py): promoted to canary.
 CANARY |= set(WAVE3) & set(CW.PROMOTED)
-CUTOVER = frozenset({"research-insight-extractor"})
+#: 2026-10-16: hermes-news-bridge moved on to the dispatcher cutover row (cron line `# RETIRED 2026-10-16 n8n-cutover`;
+#: tests/support/n8n_cutover_waves.CUT_OVER), like every lane an n8n cutover wave cut over.
+CUTOVER = frozenset({"research-insight-extractor"}) | (set(WAVE3) & set(CW.CUT_OVER))
 #: The wave-3 rows still scheduled by cron (shadow or canary).
 WAVE3_ON_CRON = {k: v for k, v in WAVE3_LIVE.items() if k not in CUTOVER}
 #: lane -> the stage / dispatch.mode its row carries now.
@@ -260,8 +262,8 @@ def test_activated_registry_has_no_dispatch_issue_once_active(monkeypatch):
     # (train 2026-10-15 d deferred build-symbol-profiles-at-0-19 / indicator-engine, -2; restored 2026-10-15 by the
     # operator DD01 ruling "n8n ignor broker code it can't trade live ccontinue": transitive lazy broker reach accepted.)
     # - the R1 rows the n8n cutover waves moved to the dispatcher cutover row (no longer kind cron).
-    cut_r1 = [r for r in REGISTRY["lanes"] if r["lane_id"] in CW.CUT_OVER
-              and (r.get("dispatch") or {}).get("class") in LD.R1_ADMITTED_CLASSES]
+    cut_r1 = [r for r in REGISTRY["lanes"] if r["lane_id"] in CW.CUT_OVER and r["lane_id"] not in WAVE3
+              and (r.get("dispatch") or {}).get("class") in LD.R1_ADMITTED_CLASSES]  # wave-3 ones: WAVE3_ON_CRON
     assert len(r1_cron_shadow) == len(WAVE3_ON_CRON) + 3 + 15 + 10 + 11 - 1 + 2 + 4 + 2 - len(cut_r1)
     assert len(errs) == len(r1_cron_shadow) and all("shadow_on_cron_not_ratified" in x for x in errs), errs[:3]
     monkeypatch.setattr(LD, "R1_SHADOW_SHAPE_STATUS", "ACTIVE")
@@ -314,9 +316,10 @@ def test_cutover_row_is_the_dispatcher_row(lane):
     row, e = ROWS[lane], ALLOW[lane]
     s = row["scheduler"]
     assert s["kind"] == "n8n" and s["expression"] == "dispatcher" and s["stage"] == "cutover" and s["wave"] == "D3"
-    assert "command_text" not in s and row["dispatch"]["cron"] == [s["cadence"]]
+    # _cutover.py drops command_text; scripts/n8n_cutover_wave.py cutover keeps it (and scheduler_before_cutover)
+    assert ("command_text" not in s or lane in CW.CUT_OVER) and row["dispatch"]["cron"] == [s["cadence"]]
     assert row["state"] == "ACTIVE" and LD.dispatch_mode(row) == "live"
     assert LD.validate_dispatch_block(row) == []
     assert LD.r1_class_admission(row, e) == (True, f"r1_admitted:{WAVE3[lane][1]}")
     assert SC.clamp_mode(lane, "live", REGISTRY["lanes"])["reason"] == "stage_cutover"
-    assert e["lock_kind"] == "flock" and e["live_arg"] == []
+    assert e["lock_kind"] == "flock" and e["live_arg"] == CW.live_arg(lane, [])

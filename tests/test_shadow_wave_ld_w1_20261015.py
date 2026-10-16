@@ -127,10 +127,17 @@ def test_allowlist_entry_is_shadow_only(lane):
         assert "PROPOSED" in e["source"]
 
 
+#: 2026-10-16 (n8n_cutover_wave.py contract-canary): registry canary + dispatch live + a live n8n fire.
+CONTRACT_CANARY_20261016 = frozenset({"hermes-discovery-scorecard", "incubator-rolloff-engine", "opening-intelligence-render"})
+
+
 @pytest.mark.parametrize("lane", sorted(WAVE))
 def test_contract_is_reviewed_and_import_closure_has_no_send_or_broker(lane):
     c = CONTRACTS[lane]
-    assert c["status"] == "REVIEWED" and c["stage"] == "shadow" and "UNKNOWN" not in json.dumps(c)
+    # 2026-10-16: a lane at canary/cutover in the registry carries its agent-reviewed contract at stage canary
+    # (n8n_cutover_wave.py contract-canary); the rest stay at shadow.
+    want = "canary" if lane in CONTRACT_CANARY_20261016 else "shadow"
+    assert c["status"] == "REVIEWED" and c["stage"] == want and "UNKNOWN" not in json.dumps(c), lane
     rep = _scan(WAVE[lane][2])
     assert not rep.sends and not rep.direct_sends and rep.problems() == [], (lane, rep.problems(), rep.sends)
 

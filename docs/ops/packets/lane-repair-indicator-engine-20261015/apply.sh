@@ -8,13 +8,25 @@ set -f
 CODE="$HOME/trade-ai-releases/portfolio-server/CURRENT"
 PY="$HOME/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python"
 PK="$(cd "$(dirname "$0")" && pwd)"
+
+# Grant check (fixed 2026-10-16: the operator's --apply failed twice). `guard` is not on PATH, so use the repo's
+# bin/guard; and `guard show` exits 1 even when it prints the active grants, so under pipefail the old
+# `guard show | sed | grep` false-failed. Capture the output first, then grep the stripped text.
+REPO_ROOT="${REPO_ROOT:-$(git -C "$PK" rev-parse --show-toplevel 2>/dev/null || (cd "$PK/../../../.." && pwd))}"
+GUARD_BIN="${GUARD_BIN:-$REPO_ROOT/bin/guard}"
+cron_grant_active() {
+  local out
+  [ -x "$GUARD_BIN" ] || { echo "guard not found at $GUARD_BIN (set GUARD_BIN)" >&2; return 1; }
+  out="$("$GUARD_BIN" show 2>&1)" || true
+  printf '%s\n' "$out" | sed 's/\x1b\[[0-9;]*m//g' | grep -iE '^[[:space:]]*cron[[:space:]]'
+}
 W="$HOME/.local/state/lane-repair/indicator-engine-apply-$(date -u +%Y%m%dT%H%M%SZ)"
 mkdir -p "$W"
 
 # 0. Preconditions (each prints OK or stops)
 grep -q -- '"--universe" in _sys.argv' "$CODE/scripts/indicator_engine.py" && echo "P1 OK served" \
   || { echo "P1 FAIL: CURRENT has no --universe"; exit 3; }
-guard show | sed 's/\x1b\[[0-9;]*m//g' | grep -i cron || { echo "P2 FAIL: no active cron grant"; exit 3; }
+cron_grant_active || { echo "P2 FAIL: no active cron grant"; exit 3; }
 
 # 1. Candidate from the LIVE crontab (never a candidate generated earlier)
 crontab -l > "$W/crontab.live"

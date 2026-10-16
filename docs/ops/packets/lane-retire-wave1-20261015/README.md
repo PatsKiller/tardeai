@@ -39,7 +39,7 @@ re-run.
 
 ```bash
 cd ~/trade-ai-releases/portfolio-server/CURRENT/docs/ops/packets/lane-retire-wave1-20261015
-guard show | sed 's/\x1b\[[0-9;]*m//g' | grep -i cron        # an active cron grant (strip colour first)
+~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/bin/guard show 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -iE '^[[:space:]]*cron[[:space:]]'        # an active cron grant (strip colour first)
 bash install.sh                                               # DRY RUN: builds from the LIVE table, prints the 4-line diff
 CRON_GRANT_ID=<id> bash install.sh --apply                    # tier A: backup, crontab -, read back == candidate, VERIFY OK
 # tier B, only for the rows answered YES (works before or after tier A; lines already retired by tier A are skipped):

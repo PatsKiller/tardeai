@@ -11,7 +11,7 @@ mkdir -p "$W" && cd "$CODE"
 # 0. Preconditions. Each must print OK.
 test -x "$CODE/.venv/bin/python" && "$CODE/.venv/bin/python" -c "import psycopg2, pandas, requests" && echo "P1 OK"
 test -f "$CODE/scripts/run_from_release.py" && echo "P2 OK"
-guard show | sed 's/\x1b\[[0-9;]*m//g' | grep -i cron     # P3: an active cron grant (strip colour codes first)
+~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/bin/guard show 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -iE '^[[:space:]]*cron[[:space:]]'     # P3: an active cron grant (strip colour codes first)
 
 # 1. Regenerate from the LIVE crontab. Never install a candidate generated earlier.
 crontab -l > "$W/crontab.live"

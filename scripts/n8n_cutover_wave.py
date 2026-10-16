@@ -18,6 +18,9 @@ Subcommands (all offline unless named; none of them calls a broker, reads a secr
   cutover  --lanes a,b                 registry rows -> the §23.11 dispatcher row (kind n8n, expression dispatcher,
                                         stage cutover, match kept, cadence = dispatch.cron). For the PR after the
                                         wave's cron lines were commented (the host act below).
+  contract-canary --lanes a,b [--apply]  REVIEWED health contract stage shadow -> canary for lanes already at
+                                        canary (registry cron canary + dispatch live + a live n8n fire);
+                                        agent-reviewed contracts only, unless --operator-rereview "<words>".
   packet   --lanes a,b --wave N --out  the operator packet: README, live_lanes.txt, 01_relay_live_lanes.sh,
                                         02_effect_owners.sh, 04_comment_cron.sh, 09_rollback.sh.
   comment-cron --lanes a,b [--apply]   HOST act (cron grant): ONE crontab write commenting every live line of the
@@ -333,7 +336,7 @@ def agent_review(contract: Mapping[str, Any], entry: Mapping[str, Any], lock: Op
     return new, ""
 
 
-def canary_contract(contract: Mapping[str, Any], wave: str) -> dict[str, Any]:
+def canary_contract(contract: Mapping[str, Any], wave: str, date: str = "2026-10-15") -> dict[str, Any]:
     new = json.loads(json.dumps(contract))
     new["stage"] = "canary"
     healthy = [h for h in new.get("healthy") or [] if h.get("check") not in ("shadow_dry_run_done",)]
@@ -342,7 +345,7 @@ def canary_contract(contract: Mapping[str, Any], wave: str) -> dict[str, Any]:
                            "text": "every dispatcher fire of this lane ends RUN_DONE in mode live, or "
                                    "RUN_SKIPPED_LOCK while the cron twin holds the shared flock (coordination ledger)"})
     new["healthy"] = healthy
-    note = f"{wave} 2026-10-15: stage canary (n8n_cutover_wave.py); cron twin present until the wave's cron act."
+    note = f"{wave} {date}: stage canary (n8n_cutover_wave.py); cron twin present until the wave's cron act."
     new["state_note"] = (str(new.get("state_note") or "") + " | " + note).lstrip(" |")
     return new
 
@@ -567,6 +570,87 @@ def cutover_rows(code_root: Path, lanes: list[str], wave: str) -> list[str]:
         raise SystemExit(f"REFUSED: no registry row for {missing}")
     _dump_like(reg_p, reg)
     return done
+
+
+RUNS_DIR = Path.home() / "trade-ai-releases/persistent-state/data/runtime/n8n_runs"
+
+
+def live_fires(lane_id: str, runs_dir: Path = RUNS_DIR) -> list[str]:
+    """Run ids of the dispatcher's LIVE fires of `lane_id` (n8n_runs/d:<lane>:live:<slot>.json), oldest first."""
+    try:
+        return sorted(p.stem for p in Path(runs_dir).glob(f"d:{lane_id}:live:*.json"))
+    except OSError:
+        return []
+
+
+def contract_canary(code_root: Path, lanes: list[str], wave: str, *, date: str, apply: bool,
+                    runs_dir: Path = RUNS_DIR, operator_rereview: Optional[str] = None) -> dict[str, Any]:
+    """Health contract stage shadow -> canary for REVIEWED contracts whose lane is already at canary (2026-10-16).
+
+    The nightly cutover controller holds a lane whose registry row is cron canary (dispatch.mode live) while its
+    REVIEWED contract still records stage shadow. This is the one tool path that refreshes such a contract:
+    canary_contract() (what `apply` writes for a contract it agent-reviews), nothing hand-edited. A lane moves only when
+      * the registry row is kind cron, stage canary, dispatch.mode live;
+      * the contract is REVIEWED, at stage shadow, with no UNKNOWN field;
+      * the dispatcher has fired the lane LIVE at least once (an n8n_runs d:<lane>:live:* receipt);
+      * the review was an AGENT review. An operator-REVIEWED contract is kept byte for byte: its stage refresh is an
+        operator re-review (tests/test_canary_wave_20261014.py), so it is SKIP unless `operator_rereview` carries the
+        operator's own words, which are recorded verbatim in review.stage_rereview.
+    The review body is not re-reviewed here; only stage, the canary healthy check and state_note change."""
+    cpath = code_root / CONTRACTS
+    cdoc = json.loads(cpath.read_text(encoding="utf-8"))
+    reg_rows = {r["lane_id"]: r for r in _load(code_root, REGISTRY).get("lanes") or [] if isinstance(r, dict)}
+    by_id = {c.get("id"): i for i, c in enumerate(cdoc.get("contracts") or [])
+             if isinstance(c, dict) and c.get("kind") == "lane"}
+    out: list[dict[str, Any]] = []
+    for lane in lanes:
+        v: dict[str, Any] = {"lane_id": lane, "status": "SKIP", "reasons": []}
+        out.append(v)
+        row = reg_rows.get(lane) or {}
+        sched = row.get("scheduler") or {}
+        if sched.get("kind") != "cron" or sched.get("stage") != "canary":
+            v["reasons"].append(f"registry_not_cron_canary:{sched.get('kind')}/{sched.get('stage')}")
+        if (row.get("dispatch") or {}).get("mode") != "live":
+            v["reasons"].append(f"dispatch_mode_{(row.get('dispatch') or {}).get('mode')}")
+        idx = by_id.get(lane)
+        c = cdoc["contracts"][idx] if idx is not None else None
+        if c is None:
+            v["reasons"].append("no_health_contract")
+        else:
+            if c.get("status") != "REVIEWED":
+                v["reasons"].append(f"health_contract_status:{c.get('status')}")
+            if c.get("stage") != "shadow":
+                v["reasons"].append(f"health_contract_stage:{c.get('stage')} (only shadow -> canary)")
+            if "UNKNOWN" in json.dumps(c):
+                v["reasons"].append("health_contract_has_UNKNOWN_fields")
+            by = str((c.get("review") or {}).get("reviewed_by") or "")
+            v["reviewed_by"] = by
+            if not by.lower().startswith("agent") and not operator_rereview:
+                v["reasons"].append("operator_reviewed: the stage refresh is an operator re-review (pass the operator's "
+                                    "words with --operator-rereview); an agent never edits it")
+        fires = live_fires(lane, runs_dir)
+        v["live_fires"] = fires[-3:]
+        if not fires:
+            v["reasons"].append("no_live_fire: the dispatcher has not fired this lane live yet (n8n_runs has no "
+                                "d:<lane>:live:* receipt); wait for its next live slot")
+        if v["reasons"]:
+            continue
+        new = canary_contract(c, wave, date)
+        rev = dict(new.get("review") or {})
+        rr = {"on": date, "by": "n8n_cutover_wave.py contract-canary",
+              "evidence": f"registry cron canary, dispatch.mode live; live fire {fires[-1]}"}
+        if operator_rereview:
+            rr["operator_words"] = operator_rereview
+        rev["stage_rereview"] = rr
+        new["review"] = rev
+        cdoc["contracts"][idx] = new
+        v["status"] = "CANARY"
+    if apply and any(v["status"] == "CANARY" for v in out):
+        _dump_like(cpath, cdoc)
+    counts: dict[str, int] = {}
+    for v in out:
+        counts[v["status"]] = counts.get(v["status"], 0) + 1
+    return {"schema": "N8nContractCanary@v1", "wave": wave, "apply": apply, "counts": counts, "lanes": out}
 
 
 # ── host act: comment the wave's cron lines in one write ───────────────────────────────────────
@@ -952,6 +1036,15 @@ def main(argv: Optional[list[str]] = None) -> int:
     p.add_argument("--code-root", default=str(ROOT))
     p.add_argument("--lanes", required=True)
     p.add_argument("--wave", default="CW0")
+    p = sub.add_parser("contract-canary")
+    p.add_argument("--code-root", default=str(ROOT))
+    p.add_argument("--lanes", required=True)
+    p.add_argument("--wave", default="CH0")
+    p.add_argument("--date", default=datetime.now(timezone.utc).strftime("%Y-%m-%d"))
+    p.add_argument("--runs-dir", default=str(RUNS_DIR))
+    p.add_argument("--operator-rereview", default=None,
+                   help="the operator's own words authorising the stage refresh of operator-REVIEWED contracts")
+    p.add_argument("--apply", action="store_true")
     p = sub.add_parser("comment-cron")
     p.add_argument("--code-root", default=str(ROOT))
     p.add_argument("--lanes", required=True)
@@ -978,6 +1071,13 @@ def main(argv: Optional[list[str]] = None) -> int:
     if a.cmd == "cutover":
         done = cutover_rows(code_root, _lanes_arg(a.lanes) or [], a.wave)
         print(f"cutover rows written: {len(done)} {done}")
+        return 0
+    if a.cmd == "contract-canary":
+        rc = contract_canary(code_root, _lanes_arg(a.lanes) or [], a.wave, date=a.date, apply=a.apply,
+                             runs_dir=Path(a.runs_dir), operator_rereview=a.operator_rereview)
+        for v in rc["lanes"]:
+            print(f"{v['status']:<7} {v['lane_id']:<40} {'; '.join(v['reasons'])[:200] or (v.get('live_fires') or [''])[-1]}")
+        print(json.dumps(rc["counts"]))
         return 0
     if a.cmd == "add-flock":
         rc = add_flock(_lanes_arg(a.lanes) or [], code_root, apply=a.apply, backup_dir=Path(a.backup_dir),
