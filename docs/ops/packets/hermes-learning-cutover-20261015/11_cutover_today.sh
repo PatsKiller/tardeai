@@ -15,6 +15,8 @@
 #   bash 11_cutover_today.sh relay   [--apply]      live list += the four LIVE lanes; restart relay AND gateway
 #   bash 11_cutover_today.sh publish [--apply]      flow 03_publish_shadow.sh (arms 10:50 learn / 17:00 tune triggers)
 #   bash 11_cutover_today.sh c3      [--apply]      owners cron -> n8n for the four LIVE lanes only (quiet minute)
+#   bash 11_cutover_today.sh manual  [--apply]      FALLBACK ONLY (one-day manual-slots PR served): one manual LIVE run
+#                                                   when today's 10:50 effect never happened on either side (see below)
 #   bash 11_cutover_today.sh proof --date YYYYMMDD  read-only: n8n 10:50 live RUN_DONE + fx DONE scheduler n8n, and the
 #                                                   11:20 cron run skipped_effect for the four, ok for feedback + retention
 # Order for one morning: pre -> import -> c1 -> c2 -> relay -> publish -> c3, all done before 10:40 ET; the natural
@@ -155,6 +157,44 @@ EOF
       echo "  $lane -> $(owner_of "$lane")"
     done
     for lane in "${HELD[@]}"; do echo "  held $lane stays $(owner_of "$lane")"; done ;;
+  manual)
+    # Fallback when the morning missed 10:40 (e.g. c3 landed between 10:50 and 11:20: n8n's 10:50 fire was fenced and
+    # cron's 11:20 run skipped the four). A manual minute's effect key differs from the stage slot's, so it is allowed
+    # ONLY when today's fx:<lane>:<D>T1050:v1 is not DONE for any LIVE lane AND cron recorded no ok step for them today
+    # AND it is after 12:00 ET (no scheduled fire still to come) — otherwise it would double today's effect.
+    served_state || fail "serve PR-1 + PR-2 first"
+    need_grant
+    HM=$(TZ=America/New_York date +%H%M); (( 10#$HM > 1200 && 10#$HM < 2330 )) || fail "manual proof only 12:00-23:30 ET ($HM)"
+    SERVED="$SERVED" "$PY" - <<'EOF2' || fail "one-day manual-slots flag not served or expired"
+import json, os
+from datetime import datetime, timezone
+p = json.load(open(os.path.join(os.environ["SERVED"], "config/n8n_fabric_processes.json")))["processes"]
+p = p["hermes-learning"] if isinstance(p, dict) else next(x for x in p if x.get("id") == "hermes-learning")
+until = p.get("live_manual_slots_until")
+ok = p.get("live_manual_slots") is True and until and datetime.now(timezone.utc) < datetime.fromisoformat(until)
+print(f"  served live_manual_slots={p.get('live_manual_slots')} until={until}")
+raise SystemExit(0 if ok else 1)
+EOF2
+    for lane in "${LIVE[@]}"; do read -r cur _ <<<"$(owner_of "$lane")"; [[ "$cur" == n8n ]] || fail "$lane owner $cur: c3 first"; done
+    D=$(TZ=America/New_York date +%Y%m%d); DD=$(TZ=America/New_York date +%Y-%m-%d)
+    LEDGER=${LEDGER:-$HOME/trade-ai-releases/persistent-state/data/governance/n8n_coordination_ledger.sqlite}
+    "$PY" - "$LEDGER" "$D" "${LIVE[@]}" <<'EOF2' || fail "today's effect already happened for a LIVE lane: a manual run would double it"
+import sqlite3, sys
+ledger, d, lanes = sys.argv[1], sys.argv[2], sys.argv[3:]
+c = sqlite3.connect(f"file:{ledger}?mode=ro", uri=True)
+done = [l for l in lanes if c.execute("SELECT 1 FROM effect_claims WHERE process=? AND slot LIKE ? AND state='DONE'",
+                                      (l, f"{d}T%")).fetchone()]
+print(f"  effect DONE today: {done or 'none'}")
+raise SystemExit(1 if done else 0)
+EOF2
+    J="$SERVED/logs/pipelines/hermes_learning/learn_steps.jsonl"
+    if grep -h "\"ts\": \"$DD" "$J" 2>/dev/null | grep -E '"id": "(outcome_grader|tag_engine|outcome_learning|config_governor)"' \
+         | grep -q '"status": "ok"'; then fail "cron ran a LIVE step ok today: a manual run would double it"; fi
+    N8N=(docker exec -e N8N_RUNNERS_BROKER_PORT=5690 m8m-n8n n8n)
+    echo "  PLAN: ${N8N[*]} execute --id=tradeai-fabric-hermes-learning  (Manual run -> stage all, mode live, manual minute)"
+    [[ $APPLY == 1 ]] || { echo "  DRY RUN — nothing executed"; exit 0; }
+    "${N8N[@]}" execute --id=tradeai-fabric-hermes-learning 2>&1 | grep -v '^Postgres 16' | tail -20
+    echo "  then: bash $0 proof --date $D  (the n8n half reads the manual slot as well)" ;;
   proof)
     [[ -n "$DATE" ]] || fail "--date YYYYMMDD"
     LEDGER=${LEDGER:-$HOME/trade-ai-releases/persistent-state/data/governance/n8n_coordination_ledger.sqlite}
@@ -166,8 +206,8 @@ c = sqlite3.connect(f"file:{ledger}?mode=ro", uri=True)
 ok = True
 for lane in lanes:
     runs = c.execute("SELECT run_id, state FROM runs WHERE lane_id=? AND mode='live' AND run_id LIKE ?",
-                     (lane, f"%{d}T1050%")).fetchall()
-    fx = c.execute("SELECT state, scheduler FROM effect_claims WHERE effect_key=?", (f"fx:{lane}:{d}T1050:v1",)).fetchall()
+                     (lane, f"%:live:{d}T%")).fetchall()  # the 10:50 stage slot, or the one manual fallback minute
+    fx = c.execute("SELECT state, scheduler FROM effect_claims WHERE process=? AND slot LIKE ?", (lane, f"{d}T%")).fetchall()
     good = any(s == "RUN_DONE" for _, s in runs) and any(st == "DONE" and sch == "n8n" for st, sch in fx)
     ok &= good
     print(f"  {'PROOF' if good else 'MISSING'} {lane}: runs={runs} fx={fx}")
@@ -183,5 +223,5 @@ for l in sys.stdin:
     d=json.loads(l); print("    %s %-24s %s rc=%s dry_run=%s" % (d["ts"], d["id"], d["status"], d.get("rc"), d.get("dry_run")))' \
       || echo "    (no learn_steps.jsonl lines for that date yet)"
     exit $rc ;;
-  *) fail "usage: $0 pre|import|c1|c2|relay|publish|c3|proof [--apply] [--date YYYYMMDD]" ;;
+  *) fail "usage: $0 pre|import|c1|c2|relay|publish|c3|manual|proof [--apply] [--date YYYYMMDD]" ;;
 esac
