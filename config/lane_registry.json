@@ -2855,13 +2855,14 @@
       "lane_id": "identity-sweep-stage0",
       "owner": "platform",
       "scheduler": {
-        "kind": "cron",
-        "expression": "*/30 * * * *",
+        "kind": "n8n",
+        "expression": "dispatcher",
         "match": "scripts/backfill_subject_identity.py --all --apply",
-        "stage": "canary",
+        "cadence": "*/30 * * * *",
+        "stage": "cutover",
         "wave": "W4",
-        "command_text": "cd $PROJ && flock -n /tmp/identity_sweep.lock $PY scripts/backfill_subject_identity.py --all --apply >> logs/identity_sweep.log 2>&1",
-        "cutover_wave": "CW1"
+        "cutover_wave": "CW1",
+        "command_text": "cd $PROJ && flock -n /tmp/identity_sweep.lock $PY scripts/backfill_subject_identity.py --all --apply >> logs/identity_sweep.log 2>&1"
       },
       "expected_cadence_hours": 0.5,
       "state": "ACTIVE",
@@ -2894,19 +2895,29 @@
         "class": "ingest",
         "priority": 5,
         "retry_policy": "none"
+      },
+      "scheduler_before_cutover": {
+        "kind": "cron",
+        "expression": "*/30 * * * *",
+        "match": "scripts/backfill_subject_identity.py --all --apply",
+        "stage": "canary",
+        "wave": "W4",
+        "command_text": "cd $PROJ && flock -n /tmp/identity_sweep.lock $PY scripts/backfill_subject_identity.py --all --apply >> logs/identity_sweep.log 2>&1",
+        "cutover_wave": "CW1"
       }
     },
     {
       "lane_id": "material-change-detector-stage1",
       "owner": "cio",
       "scheduler": {
-        "kind": "cron",
-        "expression": "*/30 * * * *",
-        "command_text": "*/30 * * * * cd $PROJ && flock -n /tmp/material_change_detect.lock $PY scripts/material_change_detector.py --apply >> logs/material_change_detect.log 2>&1  # stage-1 detector",
+        "kind": "n8n",
+        "expression": "dispatcher",
         "match": "scripts/material_change_detector.py --apply",
-        "stage": "canary",
+        "cadence": "*/30 * * * *",
+        "stage": "cutover",
         "wave": "R2-05",
-        "cutover_wave": "CW1"
+        "cutover_wave": "CW1",
+        "command_text": "*/30 * * * * cd $PROJ && flock -n /tmp/material_change_detect.lock $PY scripts/material_change_detector.py --apply >> logs/material_change_detect.log 2>&1  # stage-1 detector"
       },
       "expected_cadence_hours": 0.5,
       "state": "ACTIVE",
@@ -2949,6 +2960,15 @@
         "evidence": "run ledger data/runtime/n8n_runs (read-only) 2026-10-14: 127 natural dispatcher dry_run fires RUN_DONE exit 0 (d:material-change-detector-stage1:dry_run:20261011T2000 .. d:material-change-detector-stage1:dry_run:20261014T1100), 0 RUN_SKIPPED_LOCK, 0 RUN_FAILED / RUN_TIMEOUT / RUN_REFUSED (d:, e:, f: dry_run receipts); output_signal unchanged on 123/127 RUN_DONE. Admitted under the operator ruling 2026-10-14 ~11:05 ET via Agent A (cut over when defects fixed + n8n dry run passes + lane regression tests pass + >=1 successful LIVE n8n run with cron present under the shared lock; multi-day soak and natural-slot waits removed; a forced live relay fire counts if the lane's own window gate lets it run).",
         "lock_proof": "scheduler.command_text == the live cron line L938 command (crontab -l 2026-10-14, read-only); its only flock lock /tmp/material_change_detect.lock == allowlist lock (lock_kind flock): r1_canary_lock_matches",
         "rollback": "revert this registry/allowlist commit: stage shadow, dispatch.mode dry_run, allowlist live_arg null"
+      },
+      "scheduler_before_cutover": {
+        "kind": "cron",
+        "expression": "*/30 * * * *",
+        "command_text": "*/30 * * * * cd $PROJ && flock -n /tmp/material_change_detect.lock $PY scripts/material_change_detector.py --apply >> logs/material_change_detect.log 2>&1  # stage-1 detector",
+        "match": "scripts/material_change_detector.py --apply",
+        "stage": "canary",
+        "wave": "R2-05",
+        "cutover_wave": "CW1"
       }
     },
     {
@@ -3103,13 +3123,14 @@
       "lane_id": "document-mentions-backfill",
       "owner": "platform",
       "scheduler": {
-        "kind": "cron",
-        "expression": "25 * * * *",
-        "command_text": "25 * * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/document_mentions_backfill.lock timeout 25m $PY scripts/backfill_document_mentions.py --all --limit 4000 --apply >> /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/logs/document_mentions.log 2>&1",
+        "kind": "n8n",
+        "expression": "dispatcher",
         "match": "scripts/backfill_document_mentions.py --all",
-        "stage": "canary",
+        "cadence": "25 * * * *",
+        "stage": "cutover",
         "wave": "R2-07",
-        "cutover_wave": "CW1"
+        "cutover_wave": "CW1",
+        "command_text": "25 * * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/document_mentions_backfill.lock timeout 25m $PY scripts/backfill_document_mentions.py --all --limit 4000 --apply >> /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/logs/document_mentions.log 2>&1"
       },
       "expected_cadence_hours": 1.0,
       "state": "ACTIVE",
@@ -3151,6 +3172,15 @@
         "evidence": "run ledger data/runtime/n8n_runs (read-only) 2026-10-14: 63 natural dispatcher dry_run fires RUN_DONE exit 0 (d:document-mentions-backfill:dry_run:20261011T2025 .. d:document-mentions-backfill:dry_run:20261014T1025), 0 RUN_SKIPPED_LOCK, 0 RUN_FAILED / RUN_TIMEOUT / RUN_REFUSED (d:, e:, f: dry_run receipts); output_signal unchanged on 63/63 RUN_DONE. Admitted under the operator ruling 2026-10-14 ~11:05 ET via Agent A (cut over when defects fixed + n8n dry run passes + lane regression tests pass + >=1 successful LIVE n8n run with cron present under the shared lock; multi-day soak and natural-slot waits removed; a forced live relay fire counts if the lane's own window gate lets it run).",
         "lock_proof": "scheduler.command_text == the live cron line L922 command (crontab -l 2026-10-14, read-only); its only flock lock /tmp/document_mentions_backfill.lock == allowlist lock (lock_kind flock): r1_canary_lock_matches",
         "rollback": "revert this registry/allowlist commit: stage shadow, dispatch.mode dry_run, allowlist live_arg null"
+      },
+      "scheduler_before_cutover": {
+        "kind": "cron",
+        "expression": "25 * * * *",
+        "command_text": "25 * * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/document_mentions_backfill.lock timeout 25m $PY scripts/backfill_document_mentions.py --all --limit 4000 --apply >> /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/logs/document_mentions.log 2>&1",
+        "match": "scripts/backfill_document_mentions.py --all",
+        "stage": "canary",
+        "wave": "R2-07",
+        "cutover_wave": "CW1"
       }
     },
     {
@@ -9951,13 +9981,14 @@
       "lane_id": "hermes-governance-api",
       "owner": "research",
       "scheduler": {
-        "kind": "cron",
-        "expression": "*/10 6-20 * * 1-5",
+        "kind": "n8n",
+        "expression": "dispatcher",
         "match": "scripts/hermes_governance_api.py",
-        "stage": "canary",
+        "cadence": "*/10 6-20 * * 1-5",
+        "stage": "cutover",
         "wave": "D1b",
-        "command_text": "cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/tradeai_hermes_gov_warm.lock $PY scripts/hermes_governance_api.py --warm >> logs/hermes_governance_warm.log 2>&1  # pre-warm Hermes governance panel cache",
-        "cutover_wave": "CW1"
+        "cutover_wave": "CW1",
+        "command_text": "cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/tradeai_hermes_gov_warm.lock $PY scripts/hermes_governance_api.py --warm >> logs/hermes_governance_warm.log 2>&1  # pre-warm Hermes governance panel cache"
       },
       "expected_cadence_hours": 57.17,
       "state": "ACTIVE",
@@ -9994,6 +10025,15 @@
         "class": "pipeline",
         "priority": 5,
         "retry_policy": "transient-2"
+      },
+      "scheduler_before_cutover": {
+        "kind": "cron",
+        "expression": "*/10 6-20 * * 1-5",
+        "match": "scripts/hermes_governance_api.py",
+        "stage": "canary",
+        "wave": "D1b",
+        "command_text": "cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/tradeai_hermes_gov_warm.lock $PY scripts/hermes_governance_api.py --warm >> logs/hermes_governance_warm.log 2>&1  # pre-warm Hermes governance panel cache",
+        "cutover_wave": "CW1"
       }
     },
     {
@@ -10332,13 +10372,14 @@
       "lane_id": "hermes-analyst-signal-discovery",
       "owner": "research",
       "scheduler": {
-        "kind": "cron",
-        "expression": "20 */3 * * *",
+        "kind": "n8n",
+        "expression": "dispatcher",
         "match": "scripts/hermes_analyst_signal_discovery.py",
-        "stage": "canary",
+        "cadence": "20 */3 * * *",
+        "stage": "cutover",
         "wave": "D2",
-        "command_text": "cd $PROJ && flock -n /tmp/hermes_analyst_signal.lock $PY scripts/hermes_analyst_signal_discovery.py --run --json >> logs/hermes_analyst_signal.log 2>&1  # analyst-signal discovery feeder — LIVE (analyst_signal_enabled=true since 2026-07-30)",
-        "cutover_wave": "CW1"
+        "cutover_wave": "CW1",
+        "command_text": "cd $PROJ && flock -n /tmp/hermes_analyst_signal.lock $PY scripts/hermes_analyst_signal_discovery.py --run --json >> logs/hermes_analyst_signal.log 2>&1  # analyst-signal discovery feeder — LIVE (analyst_signal_enabled=true since 2026-07-30)"
       },
       "expected_cadence_hours": 3.0,
       "state": "ACTIVE",
@@ -10382,6 +10423,15 @@
         "evidence": "run ledger data/runtime/n8n_runs (read-only) 2026-10-14: 27 natural dispatcher dry_run fires RUN_DONE exit 0 (d:hermes-analyst-signal-discovery:dry_run:20261010T1820 .. d:hermes-analyst-signal-discovery:dry_run:20261014T0920), 3 RUN_SKIPPED_LOCK, 0 RUN_FAILED / RUN_TIMEOUT / RUN_REFUSED (d:, e:, f: dry_run receipts); output_signal unchanged on 25/27 RUN_DONE. Admitted under the operator ruling 2026-10-14 ~11:05 ET via Agent A (cut over when defects fixed + n8n dry run passes + lane regression tests pass + >=1 successful LIVE n8n run with cron present under the shared lock; multi-day soak and natural-slot waits removed; a forced live relay fire counts if the lane's own window gate lets it run).",
         "lock_proof": "scheduler.command_text == the live cron line L690 command (crontab -l 2026-10-14, read-only); its only flock lock /tmp/hermes_analyst_signal.lock == allowlist lock (lock_kind flock): r1_canary_lock_matches",
         "rollback": "revert this registry/allowlist commit: stage shadow, dispatch.mode dry_run, allowlist live_arg null"
+      },
+      "scheduler_before_cutover": {
+        "kind": "cron",
+        "expression": "20 */3 * * *",
+        "match": "scripts/hermes_analyst_signal_discovery.py",
+        "stage": "canary",
+        "wave": "D2",
+        "command_text": "cd $PROJ && flock -n /tmp/hermes_analyst_signal.lock $PY scripts/hermes_analyst_signal_discovery.py --run --json >> logs/hermes_analyst_signal.log 2>&1  # analyst-signal discovery feeder — LIVE (analyst_signal_enabled=true since 2026-07-30)",
+        "cutover_wave": "CW1"
       }
     },
     {

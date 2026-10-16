@@ -34,3 +34,15 @@ def live_arg(lane: str, default=None):
     """The allowlist live_arg a wave wrote for `lane` (the cron line's argv), else `default`."""
     v = WAVES.get(lane)
     return v.get("live_arg") if v is not None else default
+
+
+def _cut_over() -> frozenset[str]:
+    reg = json.loads((ROOT / "config" / "lane_registry.json").read_text(encoding="utf-8"))
+    return frozenset(r["lane_id"] for r in reg.get("lanes") or [] if isinstance(r, dict)
+                     and (r.get("scheduler") or {}).get("kind") == "n8n"
+                     and (r.get("scheduler") or {}).get("stage") == "cutover"
+                     and (r.get("scheduler") or {}).get("cutover_wave"))
+
+
+#: Lanes a cutover wave moved on to the §23.11 dispatcher row (cron line commented `# RETIRED ... n8n-cutover`).
+CUT_OVER = _cut_over()

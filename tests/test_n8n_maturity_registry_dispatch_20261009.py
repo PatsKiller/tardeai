@@ -553,8 +553,10 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
         if lane in CANARY_WAVE_20261014:
             # canary-wave-20261014: cron rows at stage canary, mode live, live_arg = the cron argv suffix, allowlist
             # lock == the cron flock lock (tests/test_canary_wave_20261014.py pins every field).
-            assert mode == "live" and row["scheduler"].get("stage") == "canary", lane
-            assert row["scheduler"]["kind"] == "cron" and isinstance(allow[lane]["live_arg"], list), lane
+            # 2026-10-16: or the dispatcher cutover row an n8n cutover wave wrote (cron line `# RETIRED`).
+            assert mode == "live" and row["scheduler"].get("stage") == ("cutover" if lane in _CW.CUT_OVER else "canary"), lane
+            assert row["scheduler"]["kind"] == ("n8n" if lane in _CW.CUT_OVER else "cron"), lane
+            assert isinstance(allow[lane]["live_arg"], list), lane
             assert clamp_mode(lane, "live", rows)["effective_mode"] == "live", lane
             continue
         if lane in CW_NEW:
@@ -679,7 +681,9 @@ def test_wave_d2_dispatch_cron_equals_the_row_schedule_and_locks_match_cron():
     assert len(rows) == 9
     allow = {e["lane_id"]: e for e in json.loads((ROOT / "config" / "n8n_run_allowlist.json").read_text())["lanes"]}
     for r in rows:
-        assert r["dispatch"]["cron"] == [r["scheduler"]["expression"]], r["lane_id"]
+        # a cut-over row (n8n cutover waves) keeps its cron schedule as scheduler.cadence
+        sched_expr = r["scheduler"]["cadence"] if r["lane_id"] in _CW.CUT_OVER else r["scheduler"]["expression"]
+        assert r["dispatch"]["cron"] == [sched_expr], r["lane_id"]
         assert r["dispatch"]["class"] in ("monitor", "report", "pipeline", "hygiene"), r["lane_id"]
         assert LD.r1_class_admission(r)[1] == "pre_r1_class", r["lane_id"]
     locks = {
