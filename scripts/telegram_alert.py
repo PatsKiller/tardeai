@@ -72,8 +72,98 @@ def operator_wire_text(message: str) -> str:
     try:
         from notification_url_builder import linkify_navigation, publicize_message
 
-        return linkify_navigation(publicize_message(message))
+        message = linkify_navigation(publicize_message(message))
     except Exception:
+        pass
+    return with_provenance_footer(message)
+
+
+# ── provenance footer (operator 2026-10-16: "how do i know what n8n did") ─────────────────────────────
+#
+# One short line naming the scheduler and lane that produced the message:
+#   "· via n8n hermes-momentum-catalyst-scalp 10:25"   (lane run by the n8n run executor)
+#   "· via cron incident-notifier"                      (no executor attempt identity in the env)
+# The n8n run executor exports TRADEAI_RUN_ID="d:<lane>:<mode>:<slot>" to every lane child
+# (scripts/n8n_run_executor.py lane_env[RUN_ID_ENV]); the slot is the ET wall time the run was scheduled for.
+# Added inside operator_wire_text so the wire copy and the ledger row carry the same line, and after the
+# intent router (which dedupes on the exact composed body), so dedupe is unchanged. The comms editor's
+# fingerprint strips times, and the footer for a given lane/slot is constant within a process.
+PROVENANCE_PREFIX = "· via "
+#: Telegram's hard limit is 4,096 UTF-16 code units per message.
+TELEGRAM_UTF16_LIMIT = 4096
+_LANE_ENV_NAMES = ("TRADEAI_LANE", "TRADEAI_LANE_ID", "N8N_LANE_ID")
+
+
+def _utf16_len(text: str) -> int:
+    return len(text.encode("utf-16-le")) // 2
+
+
+def _clean_token(value: str, limit: int = 48) -> str:
+    import re as _re  # noqa: PLC0415
+
+    # Markdown/HTML safe: no "_", "*", "<", ">", "&", "[" in the footer.
+    return _re.sub(r"[^A-Za-z0-9.\-]+", "-", str(value or "").replace("_", "-")).strip("-")[:limit]
+
+
+def provenance_footer(env: Optional[Dict[str, str]] = None, argv0: Optional[str] = None) -> str:
+    """The footer line for this process, or "" when it cannot be named. Pure; never raises."""
+    try:
+        import sys as _sys  # noqa: PLC0415
+
+        env = os.environ if env is None else env
+        run_id = str(env.get("TRADEAI_RUN_ID") or "").strip()
+        if run_id:
+            parts = run_id.split(":")
+            if len(parts) >= 4 and parts[0] == "d":
+                lane, mode, slot = parts[1], parts[2], parts[-1]
+            else:
+                lane, mode, slot = (env.get("TRADEAI_LANE") or run_id), str(env.get("TRADEAI_RUN_MODE") or ""), ""
+            hhmm = ""
+            if "T" in slot and len(slot.split("T", 1)[1]) >= 4:
+                t = slot.split("T", 1)[1]
+                if t[:4].isdigit():
+                    hhmm = f"{t[:2]}:{t[2:4]}"
+            bits = ["n8n", _clean_token(lane)]
+            if mode and mode != "live":
+                bits.append(_clean_token(mode))
+            if hhmm:
+                bits.append(hhmm)
+            return PROVENANCE_PREFIX + " ".join(b for b in bits if b)
+        lane = next((str(env.get(k)).strip() for k in _LANE_ENV_NAMES if str(env.get(k) or "").strip()), "")
+        if not lane:
+            a0 = argv0 if argv0 is not None else (_sys.argv[0] if _sys.argv else "")
+            lane = os.path.splitext(os.path.basename(a0 or ""))[0]
+        lane = _clean_token(lane)
+        if not lane or lane in ("-c", "c", "main", "python", "python3", "pytest", "ipython"):
+            return ""
+        scheduler = "systemd" if env.get("INVOCATION_ID") else "cron"
+        return f"{PROVENANCE_PREFIX}{scheduler} {lane}"
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def with_provenance_footer(message: str, footer: Optional[str] = None) -> str:
+    """``message`` plus the provenance line, only when it can never cost a Telegram message.
+
+    Skipped when: disabled (TELEGRAM_PROVENANCE_FOOTER=0), no footer, a footer is already present, or adding
+    it would change the chunk count or push any chunk past 4,096 UTF-16 units. Fail-soft: original on error."""
+    try:
+        if not message or str(os.environ.get("TELEGRAM_PROVENANCE_FOOTER", "1")).strip().lower() in {
+            "0", "false", "no", "off"
+        }:
+            return message
+        if footer is None:
+            # Tests that pin exact wire text never see an ambient footer; they pass ``footer`` explicitly.
+            footer = "" if os.environ.get("PYTEST_CURRENT_TEST") else provenance_footer()
+        if not footer or any(PROVENANCE_PREFIX + s + " " in message for s in ("n8n", "cron", "systemd")):
+            return message
+        out = message.rstrip("\n") + "\n" + footer
+        before = smart_split(message, MAX_MSG_LEN)
+        after = smart_split(out, MAX_MSG_LEN)
+        if len(after) != len(before) or any(_utf16_len(c) > TELEGRAM_UTF16_LIMIT for c in after):
+            return message
+        return out
+    except Exception:  # noqa: BLE001
         return message
 
 

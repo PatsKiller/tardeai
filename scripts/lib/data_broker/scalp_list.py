@@ -329,6 +329,53 @@ def _research_records(day: str, root: Path | str | None = None) -> dict[str, dat
     return out
 
 
+CATALYST_RESEARCH_REL = Path("data") / "hermes" / "momentum_catalysts"
+NO_CLEAR_CATALYST = "no_clear_catalyst"
+
+
+def get_scalp_catalyst(symbol: str, day: str, root: Path | str | None = None) -> dict[str, Any]:
+    """Today's Hermes scalp-catalyst research record for one symbol (zero provider calls, never writes).
+
+    Reads the single writer's store ``data/hermes/momentum_catalysts/<day>_catalysts.jsonl``
+    (``hermes_momentum_catalyst_researcher.py --source scalp``; the same file :func:`freshness_report` reads).
+    status: FOUND (a catalyst), NONE_FOUND (researched, no clear catalyst), NOT_RESEARCHED (symbol absent
+    from today's research), STORE_MISSING (no research file today). Never raises."""
+    sym = str(symbol or "").strip().upper()
+    path = Path(root or PROJECT_ROOT) / CATALYST_RESEARCH_REL / f"{day}_catalysts.jsonl"
+    out: dict[str, Any] = {"symbol": sym, "day": day, "status": "STORE_MISSING", "provider_calls": 0,
+                           "store": str(CATALYST_RESEARCH_REL / f"{day}_catalysts.jsonl")}
+    try:
+        lines = path.read_text().splitlines()
+    except OSError:
+        return out
+    out["status"] = "NOT_RESEARCHED"
+    best: dict[str, Any] | None = None
+    best_ts: datetime | None = None
+    for line in lines:
+        try:
+            rec = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(rec, dict) or str(rec.get("symbol") or "").upper() != sym:
+            continue
+        ts = _parse(rec.get("research_timestamp"))
+        if best is None or (ts is not None and (best_ts is None or ts >= best_ts)):
+            best, best_ts = rec, ts
+    if best is None:
+        return out
+    ctype = str(best.get("catalyst_type") or "").strip() or NO_CLEAR_CATALYST
+    out.update({
+        "status": "NONE_FOUND" if ctype == NO_CLEAR_CATALYST else "FOUND",
+        "catalyst_type": ctype,
+        "summary": str(best.get("catalyst_summary") or "").strip() or None,
+        "confidence": best.get("confidence"),
+        "source_count": best.get("source_count"),
+        "researched_at": best.get("research_timestamp"),
+        "source": "hermes_momentum_catalyst_researcher",
+    })
+    return out
+
+
 def _receipt_ok_at(lane_id: str, state_root: Path | str | None) -> tuple[datetime | None, dict[str, Any] | None]:
     path = _root(state_root) / "data" / "runtime" / f"{lane_id}_last.json"
     try:
