@@ -47,6 +47,15 @@ RULE_2_EXCEPTION_5_0_0 = (
     "\n   broker-execution unit while markets are closed, and never touch its code, credentials, flags or"
     "\n   orders (AGENTS.md §24.10)."
 )
+# AGENTS.md 14.0.0 (ACTIVE 2026-10-16, ratified APPROVE_AGENTS_POLICY_14_0_0 1838 0d4940cda): §0 rule 2 gains this one
+# sentence after the 5.0.0 one, pointing to §24.11. Stripped before hashing like the 5.0.0 sentence; the sentence and
+# the full §0 digest are pinned by tests/test_agents_policy_14_0_0_broker_read.py.
+RULE_2_EXCEPTION_14_0_0 = (
+    "\n   One read-only exception, binding only once AGENTS.md 14.0.0 is ACTIVE: with an operator"
+    "\n   `broker-read` grant, an agent may run `scripts/ops/broker_read_sync.sh` and no other broker"
+    "\n   read; it never sees a credential value, re-authenticates, changes a flag or reaches an order"
+    "\n   route (AGENTS.md §24.11)."
+)
 SECTION_0_WITHOUT_SENTENCE_SHA256 = "61fe9dfbeaa3c61cf354e42ed1cdc6f7006a105b46d538cd79a74407f349af32"
 SECTION_0_WITH_SENTENCE_SHA256 = "d7ce297890a85a125b2b0d7dc8234a0e4e679ffd6bae6d7820b2076a0267ec29"
 SECTION_23_14_SHA256 = "bb8722f69b8e54a8582011bdbe266d55ea7c2c0c6b120d123a1d4e43394311e7"
@@ -133,6 +142,7 @@ def test_state_checker_passes_on_branch_and_on_main():
 
 def test_section_0_changes_by_exactly_one_sentence_inside_rule_2():
     sec0 = _section(AGENTS, "# 0 · If you read nothing else", "# 1 · Identity and responsibilities")
+    sec0 = sec0.replace(RULE_2_EXCEPTION_14_0_0, "")  # 14.0.0's sentence is pinned by its own test
     assert sec0.count(RULE_2_EXCEPTION_5_0_0) == 1
     rule2 = sec0[sec0.index("2. **Broker code is buildable") : sec0.index("3. **Never route")]
     assert RULE_2_EXCEPTION_5_0_0 in rule2

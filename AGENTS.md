@@ -1,15 +1,15 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      12.0.0
+Policy-Version:      14.0.0
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
 Status:              ACTIVE
-Effective-Date:      2026-10-15
-Last-Reviewed:       2026-10-15T17:12:48-04:00
+Effective-Date:      2026-10-16
+Last-Reviewed:       2026-10-16T18:44:55-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
-Supersedes:          11.0.0
+Supersedes:          12.0.0
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
 
@@ -111,27 +111,27 @@ asks the operator to decide needs `dedupe_minutes=0`; #1685 sets it only for `ap
 operator classifies it before #1685 merges. **Numbering:** follows 5.0.0 (ACTIVE, PR #1686, merged `0ec320486`);
 `Supersedes` is 5.0.0. Operator approval phrase (§20): `APPROVE_AGENTS_POLICY_5_1_0 <pr_number> <head_sha>`.
 
-**14.0.0 is PROPOSED (MAJOR) — agents may run the read-only broker sync, and only it, under a `broker-read`
-grant (§24.11; one sentence proposed for §0 rule 2).** Awaiting the operator's
-`APPROVE_AGENTS_POLICY_14_0_0 <pr_number> <head_sha>` (§20); until it is ratified and merged, nothing here binds and
-§0 rule 2 governs unchanged — no agent runs `scripts/ops/broker_read_sync.sh` against a broker; the operator may,
-and an agent may run its `--plan` (which contacts no broker). Operator request 2026-10-16, verbatim: "make that bash
-so agents can run, make amendment, not trading just reading, update agents.md". With an active operator `broker-read`
-grant, an agent may invoke `scripts/ops/broker_read_sync.sh` — the repo form of the operator-run
-`~/n8n-maturity-verification/sync_all_readonly.sh`, a closed eight-step allowlist of position and transaction reads
-from Schwab, Alpaca, moomoo and SnapTrade into our own stores — and nothing else that reads a broker. It holds only
-while the trading lock is LOCKED, the Schwab access mode is `read_only` for the run, no credential value enters the
-agent's context, no re-auth, 2FA, token refresh or flag change is reachable, and no order route is reachable; each
-condition is a refusal in code and the last is pinned by CI (`tests/test_broker_read_sync_20261016.py`). **Why
-MAJOR:** it narrows §0 rule 2's "No agent ever calls a live broker" for one read-only purpose, so the weakest
-guarantee after the change is weaker (version policy: authority rails and broker access are MAJOR; precedent 5.0.0).
-Everything else in §0, and §2, §2A, §7A, §17 and §22, is byte-identical; this branch does not edit §0 or the four
-adapters — the ratifying edit inserts the one sentence (§24.11, "Ratifying edit"). **Numbering:** 12.1.0 is claimed
-by the nightly cutover controller (`docs/ops/packets/nightly-cutover-controller-20261016/README.md`, PROPOSED MINOR)
-and 13.0.0 by the self-heal fixer (PR #1830, `docs/ops/self_heal_claude_fixer.md` §9, PROPOSED); this takes 14.0.0.
-If either is withdrawn the number is settled at ratification (§20) and every `14.0.0` / `14_0_0` token in this file,
-the script and its tests is renamed; nothing else changes. `Supersedes` will be the last ACTIVE version, 12.0.0.
-Operator approval phrase (§20): `APPROVE_AGENTS_POLICY_14_0_0 <pr_number> <head_sha>`.
+**14.0.0 is ACTIVE (MAJOR) — agents may run the read-only broker sync, and only it, under a `broker-read`
+grant (§24.11; one sentence added to §0 rule 2).** Ratified by the operator 2026-10-16
+(`APPROVE_AGENTS_POLICY_14_0_0 1838 0d4940cda`, §20; PR #1838 comment by PatsKiller 2026-10-16T22:44:55Z, verbatim:
+"APPROVE_AGENTS_POLICY_14_0_0 1838 0d4940cda"); merged #1838 as `0c5998042` while PROPOSED, ratified by this edit,
+which set the header block to 14.0.0 ACTIVE with `Supersedes` 12.0.0 and inserted the §0 rule 2 sentence in
+`AGENTS.md` and the four adapters. Approval phrase as proposed: `APPROVE_AGENTS_POLICY_14_0_0 <pr_number> <head_sha>`.
+Operator request 2026-10-16, verbatim: "make that bash so agents can run, make amendment, not trading just reading,
+update agents.md". With an active operator `broker-read` grant, an agent may invoke `scripts/ops/broker_read_sync.sh` —
+the repo form of the operator-run `~/n8n-maturity-verification/sync_all_readonly.sh`, a closed eight-step allowlist of
+position and transaction reads from Schwab, Alpaca, moomoo and SnapTrade into our own stores — and nothing else that
+reads a broker. It holds only while the trading lock is LOCKED, the Schwab access mode is `read_only` for the run, no
+credential value enters the agent's context, no re-auth, 2FA, token refresh or flag change is reachable, and no order
+route is reachable; each condition is a refusal in code and the last is pinned by CI
+(`tests/test_broker_read_sync_20261016.py`). **Why MAJOR:** it narrows §0 rule 2's "No agent ever calls a live broker"
+for one read-only purpose, so the weakest guarantee after the change is weaker (version policy: authority rails and
+broker access are MAJOR; precedent 5.0.0). §0 changes by exactly that one sentence; everything else in §0, and §2,
+§2A, §7A, §17 and §22, is byte-identical. **Numbering:** 12.1.0 is claimed by the nightly cutover controller
+(`docs/ops/packets/nightly-cutover-controller-20261016/README.md`, PROPOSED MINOR) and 13.0.0 by the self-heal fixer
+(PR #1830, `docs/ops/self_heal_claude_fixer.md` §9, PROPOSED); both stay PROPOSED with their own tokens, and ratifying
+14.0.0 ratifies neither. If either is ratified later it takes its own row; the header only moves forward. The scope is
+live once the release serving the guard carries `broker-read` (§24.11 "Open gaps").
 
 **12.0.0 is ACTIVE (MAJOR) — the n8n cutover directive: every lane family moves to n8n except F07 daemons and
 registry_systemd assets (§23.25).** Operator directive 2026-10-15 ("N8N Cutover Decision"), verbatim: "This is not a
@@ -476,6 +476,10 @@ agent that reads fifteen lines and stops must still know them.
    `execution-ops` grant naming the unit, an agent may inspect, re-point, reload and restart that
    broker-execution unit while markets are closed, and never touch its code, credentials, flags or
    orders (AGENTS.md §24.10).
+   One read-only exception, binding only once AGENTS.md 14.0.0 is ACTIVE: with an operator
+   `broker-read` grant, an agent may run `scripts/ops/broker_read_sync.sh` and no other broker
+   read; it never sees a credential value, re-authenticates, changes a flag or reaches an order
+   route (AGENTS.md §24.11).
 3. **Never route around a permission denial.** Stop and report. No alternate remote, no
    direct-to-main push, no API call substituting for a blocked CLI, no branch rename to reset a
    budget.
@@ -5630,11 +5634,12 @@ needs `execution-engineering` (§22), and A4/A5 stay the operator's and the dete
   remote grant works only once that release carries the scope. *Cause (§20): measured 2026-10-10 — a `service` grant
   matched `tradeai-active-trader-*` through `prod_unit_regex`, and no scope existed for this work.*
 
-## 24.11 Read-only broker sync — the `broker-read` grant (14.0.0, PROPOSED; extends §0 rule 2, §22, §24.7)
+## 24.11 Read-only broker sync — the `broker-read` grant (14.0.0, ACTIVE; extends §0 rule 2, §22, §24.7)
 
-**Status: PROPOSED (MAJOR).** Binds nothing until the operator posts `APPROVE_AGENTS_POLICY_14_0_0 <pr_number>
-<head_sha>` (§20) and the ratifying edit merges; until then §0 rule 2 is unchanged, only the operator runs the sync
-against a broker, and an agent may run `scripts/ops/broker_read_sync.sh --plan` only. It is not trading: it never
+**Status: ACTIVE (MAJOR), ratified `APPROVE_AGENTS_POLICY_14_0_0 1838 0d4940cda` (§20; PR #1838, merged
+`0c5998042`).** §0 rule 2 carries the one sentence quoted under "Ratifying edit". An agent may run
+`scripts/ops/broker_read_sync.sh` against a broker only under an active `broker-read` grant and every condition
+below; without the grant it may run `--plan` only. It is not trading: it never
 places, replaces or cancels an order, never writes a stop and never holds A4 or A5 (§22).
 
 - **Reach: one entrypoint with a closed step list.** An agent may invoke `scripts/ops/broker_read_sync.sh` (or its
@@ -5708,9 +5713,9 @@ places, replaces or cancels an order, never writes a stop and never holds A4 or 
   `bin/guard` and `.cursor/hooks/guard-lib.sh` (operator-only guard configuration, carried in this PR for review), and
   the Telegram `/approve` path works only once the release that runs the callback poller carries the tier. *Cause
   (§20): §22 "Guard is not a universal boundary"; §24.10's stated gaps.*
-- **Ratifying edit.** On the operator's token the ratifying edit: sets this status to ACTIVE and the header block to
-  14.0.0 ACTIVE with `Supersedes` 12.0.0; flips the version row; inserts, directly after rule 2's 5.0.0 sentence
-  ("…(AGENTS.md §24.10)."), exactly this sentence, and repeats it byte for byte in `CLAUDE.md`,
+- **Ratifying edit (done 2026-10-16, after `APPROVE_AGENTS_POLICY_14_0_0 1838 0d4940cda`).** The ratifying edit set this status to ACTIVE and the header block to
+  14.0.0 ACTIVE with `Supersedes` 12.0.0; flipped the version row; inserted, directly after rule 2's 5.0.0 sentence
+  ("…(AGENTS.md §24.10)."), exactly this sentence, and repeated it byte for byte in `CLAUDE.md`,
   `.cursor/rules/00-tradeai-work-policy.mdc`, `.github/copilot-instructions.md` and `.goosehints`
   (`tests/test_agents_section_zero_parity.py`; `CLAUDE.md` is the operator's file):
 
@@ -5721,7 +5726,7 @@ places, replaces or cancels an order, never writes a stop and never holds A4 or 
      route (AGENTS.md §24.11).
   ```
 
-  and makes the §0 pins strip it the way they strip the 5.0.0 sentence (`tests/test_agents_policy_4_1_0_amendment.py`,
+  and made the §0 pins strip it the way they strip the 5.0.0 sentence (`tests/test_agents_policy_4_1_0_amendment.py`,
   `4_3_0`, `4_4_0`, `4_6_0`, `5_0_0`; `5_1_0` and `5_2_0` take the new digest, which
   `tests/test_agents_policy_14_0_0_broker_read.py` computes). *Cause (§20): §20 — the operator approves any change to
   §0; until then §0 and its four copies stay byte-identical, so an agent reading only the adapters is never told a
@@ -5733,7 +5738,7 @@ places, replaces or cancels an order, never writes a stop and never holds A4 or 
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
-| 14.0.0 | 2026-10-16 | PROPOSED | MAJOR | §24.11 "Read-only broker sync — the `broker-read` grant" added, and one sentence proposed for §0 rule 2 (inserted by the ratifying edit; §0 and the four adapters are byte-identical on this branch). Operator request 2026-10-16: "make that bash so agents can run, make amendment, not trading just reading, update agents.md". With an active operator `broker-read` guard grant (≤ 4 h, one use per run, remotely grantable, revocable), an agent may invoke ONLY `scripts/ops/broker_read_sync.sh` — the repo form of the operator's `sync_all_readonly.sh`: a closed eight-step allowlist (`broker_read_sync_policy.STEPS`) of Schwab, Alpaca, moomoo and SnapTrade position and transaction reads into our own stores, dry run by default, `--apply` to write, `--plan` contacting no broker. It refuses unless the trading lock is LOCKED for every broker, the Schwab access mode resolves to `read_only` for the run, the static capability audit of every step's effective import closure is clean, and it runs from the served release. `.env` is sourced only inside each step's own shell and never printed; output is scrubbed. Re-auth, token refresh, 2FA and flags are unreachable (runtime stubs, broker-host non-GET refusal); no token → `needs_operator_reauth`, stop. Stop managers, stop sync, options lifecycle, defense execution, order pilots, approval/2FA, order transports, the API server and active trader are excluded and refused at import; CI pins it (`tests/test_broker_read_sync_20261016.py`). Receipt `BrokerReadSyncReceipt@v1`. Guard scope `broker-read` in `bin/guard` and `.cursor/hooks/guard-lib.sh` (operator-only guard configuration, carried in the PR for review). MAJOR: it narrows §0 rule 2 for one read-only purpose (version policy; precedent 5.0.0). Numbered 14.0.0 because 12.1.0 (nightly cutover controller) and 13.0.0 (PR #1830) are claimed. Tests: `tests/test_agents_policy_14_0_0_broker_read.py`. | PENDING — operator approval `APPROVE_AGENTS_POLICY_14_0_0 <pr_number> <head_sha>` (§20); per-PR word, because the ratifying edit changes `AGENTS.md` §0. |
+| 14.0.0 | 2026-10-16 | ACTIVE | MAJOR | §24.11 "Read-only broker sync — the `broker-read` grant" added, and one sentence added to §0 rule 2 (inserted by the ratifying edit in `AGENTS.md` and the four adapters; it was absent while PROPOSED). Operator request 2026-10-16: "make that bash so agents can run, make amendment, not trading just reading, update agents.md". With an active operator `broker-read` guard grant (≤ 4 h, one use per run, remotely grantable, revocable), an agent may invoke ONLY `scripts/ops/broker_read_sync.sh` — the repo form of the operator's `sync_all_readonly.sh`: a closed eight-step allowlist (`broker_read_sync_policy.STEPS`) of Schwab, Alpaca, moomoo and SnapTrade position and transaction reads into our own stores, dry run by default, `--apply` to write, `--plan` contacting no broker. It refuses unless the trading lock is LOCKED for every broker, the Schwab access mode resolves to `read_only` for the run, the static capability audit of every step's effective import closure is clean, and it runs from the served release. `.env` is sourced only inside each step's own shell and never printed; output is scrubbed. Re-auth, token refresh, 2FA and flags are unreachable (runtime stubs, broker-host non-GET refusal); no token → `needs_operator_reauth`, stop. Stop managers, stop sync, options lifecycle, defense execution, order pilots, approval/2FA, order transports, the API server and active trader are excluded and refused at import; CI pins it (`tests/test_broker_read_sync_20261016.py`). Receipt `BrokerReadSyncReceipt@v1`. Guard scope `broker-read` in `bin/guard` and `.cursor/hooks/guard-lib.sh` (operator-only guard configuration, carried in the PR for review). MAJOR: it narrows §0 rule 2 for one read-only purpose (version policy; precedent 5.0.0). Numbered 14.0.0 because 12.1.0 (nightly cutover controller) and 13.0.0 (PR #1830) are claimed. Tests: `tests/test_agents_policy_14_0_0_broker_read.py`. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_14_0_0 1838 0d4940cda` (operator, PR #1838 comment by PatsKiller 2026-10-16T22:44:55Z, verbatim: "APPROVE_AGENTS_POLICY_14_0_0 1838 0d4940cda"); merged #1838 as `0c5998042` (operator-merged 2026-10-16T22:44:57Z) while PROPOSED; ratifying edit inserts the §0 rule 2 sentence in `AGENTS.md`, `CLAUDE.md`, `.cursor/rules/00-tradeai-work-policy.mdc`, `.github/copilot-instructions.md` and `.goosehints`; per-PR word, because it changes `AGENTS.md` §0. Effective 2026-10-16. |
 | 12.0.0 | 2026-10-15 | ACTIVE | MAJOR | Operator directive 2026-10-15 "N8N Cutover Decision": every lane family cuts over to n8n except F07 (long-running daemons, @reboot) and registry_systemd assets (deferred this iteration). §23.25 added; for the approved families it supersedes the §23.14 scheduling restriction and the §24.1 P0/P1 placement by reference (§23.14 and §24.1 text unchanged); host-side placement rationales are not blockers; F07w and F10 keep independent backstops. Grants nothing beyond scheduling. §0, §2, §2A, §7A, §17 and §22 byte-identical. Tests: `tests/test_agents_policy_12_0_0_cutover_directive.py`. The ratifying edit set the header to 12.0.0 ACTIVE, `Supersedes` 11.0.0. | **RATIFIED 2026-10-15** (`APPROVE_AGENTS_POLICY_12_0_0 1779 4aeb8cf4e`, §20; PR #1779 comment by PatsKiller 2026-10-15T21:12:48Z); merged #1779 as `818d6d9c4`, ratified by this edit. |
 | 11.0.0 | 2026-10-14 | ACTIVE | MAJOR | Operator-directed 2026-10-14: n8n is the primary orchestration and automation layer, with "a mandatory standard framework for every n8n workflow, contract, integration and automation". §23.24 "Mandatory n8n workflow framework" added: every workflow in `m8m-n8n` declares a class (business-critical, resilience, AI/LLM, monitoring/compliance) and an owner, and meets six areas, each element with a check that exists (E) or is proposed (P): Monitoring (success joined by `run_id`, failure = error workflow, performance = timeout + p95 bound, capacity = class caps + start lag, dependency = `connects_to`); Alerting (failure, SLA breach watched outside n8n, performance degradation, integration failure routed by class with refusals as data, AI/LLM exception, `runbook_id` on every page; delivery stays with the host comms gateway, P0/P1 never via n8n); Logging (execution, error, audit with a non-superuser n8n DB role, security, change = generated from git + scheduled drift check paging P1); Recovery (one retry owner = Run Lane once built, half-open breakers, declared fallback, dead-letter, manual-recovery runbook, semantic effect key); Security (authN, authZ with one reconciled live authority, secrets, data protection, audit trail); AI/LLM governance (registered template, process id only, caps, closed schema, host re-check and grounding, output guardrails, HITL with host-record authority). Activation bar once ACTIVE: no activation or stage promotion without passing; active non-compliant workflows remediated or archived within 30 days; proposed check `scripts/check_n8n_workflow_framework.py`. Reference documents listed in §23.24 (informational). Measured 2026-10-14: 16 active workflows, none compliant in any area (39% of checks partly met); re-measured 2026-10-15: 18, none compliant (40%). Grants nothing. §0, §2, §2A, §7A, §17, §22, §23.14 and §23.23 byte-identical. Tests: `tests/test_agents_policy_11_0_0_workflow_framework.py`. Numbered 11.0.0 after 10.0.0 (#1736; ACTIVE by #1740); renumbers to 10.1.0 if ruled MINOR; the ratifying edit set the header to 11.0.0 ACTIVE, `Supersedes` 10.0.0. | **RATIFIED 2026-10-15** (`APPROVE_AGENTS_POLICY_11_0_0 1747 89fb642cd`, §20; PR #1747 comment by PatsKiller 2026-10-15T11:51:39Z); content merged via #1754 (`94601ff69`), ratified by this edit. |
 | 10.0.0 | 2026-10-14 | ACTIVE | MAJOR | Operator-directed 2026-10-14, verbatim: n8n is "a centralized, intelligent automation fabric that provides: Workflow orchestration, Dependency management, Observability, Alerting, Human approvals, Agent coordination, LLM integration, Event-driven automation, Operational visibility, Auditability, Governance, Centralized controls." and "Do not tell me whether cron is a better scheduler. Tell me whether we are building the right platform." §23.23 "n8n is the automation fabric" added. n8n owns FLOW: sequencing and dependencies, event triggers, retries/backoff/dead-letter decisions through a Run Lane sub-workflow, error workflows, approval timelines (Wait nodes), escalation timers, invoking LLM judgment steps. The host owns AUTHORITY, EXECUTION and EVIDENCE: allowlist, live/dry authority, idempotency keys, secrets, the ledger as audit of record, the comms chokepoint for every send (n8n requests sends through a host intent API and never holds bot tokens). Broker: n8n never holds broker credentials or calls broker/order routes; reads only through the broker gateway (§23.22); writes only through the execution service behind the trading lock plus a per-order operator hardware-key or TOTP assertion over the intent hash; an n8n approval is a request, authority is the host record. LLM steps: governed bridge only, closed schema, branch on enumerated fields only, host re-check, bounded (read-only by default) tools, prompt/response/decision in one audit row joined by run_id ↔ execution_id, never an unlisted action, ingested text is data. Agents are judgment functions invoked by workflows; no side-effect tool without an approval gate; long-running loops retired into event-triggered workflows. Workflow governance: generated from git, never edited in the UI, drift pages P1, successes saved with run_id, an error workflow on every workflow, refusals are data, community nodes off, n8n DB role not superuser. Node enablement: the NODES_EXCLUDE / N8N_DISABLED_MODULES relaxation only for Execute Workflow / sub-workflows, Wait, Form or webhook-resume, Switch/Merge/If, Error Trigger and the AI Agent node restricted to the bridge-backed credential, one reviewed PR each; messaging nodes with their own credentials stay excluded. P0/P1 dead-man and pages never depend on n8n. Migration: timer-only leaf-lane cutovers FROZEN until the Run Lane sub-workflow, the async run-outcome callback and this amendment ACTIVE; then progress = business processes owned and orchestration owners retired; consolidate before migrating (WS2 families); cutover keeps the §23.21 standard plus a fenced single-owner switch. Preconditions before any money-touching flow: CC auth, trading lock served, uid separation for execution, DB role split, signed grants and unlock. WS9 controls C1–C10 bind before each new power. Supersedes, with notes in place and no text deleted, the restrictive parts of §23.1 ("a scheduler and a requester"), §23.11 ("decide nothing", six-workflow ceiling) and §24.1 ("fires host lanes and decides nothing"); one route note added to §23.3 (send-intent, approval-request and run-outcome callback routes, each its own PR). §0, §2, §2A, §7A, §17, §22 and §23.14 byte-identical (§23.14's never-eligible list stands; invoking an agent is a workflow step, not a dispatcher lane). Tests: `tests/test_agents_policy_10_0_0_n8n_fabric.py`. Numbered 10.0.0 after PR #1697 (6.0.0), PR #1727 (8.0.0) and branch `n8nmat/schwab-read-lanes-20261014` (9.0.0), all PROPOSED; header stays 7.0.0 ACTIVE until ratification. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_10_0_0 1736 7f275d279` (operator, PR #1736 comment by PatsKiller 2026-10-14T23:25:56Z, verbatim: "APPROVE_AGENTS_POLICY_10_0_0 1736 7f275d279"); merged #1736 as `3e9dc5e14` while PROPOSED; per-PR word, excluded from the §23.13 standing merge approval because it changes `AGENTS.md`. |
