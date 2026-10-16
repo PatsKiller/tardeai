@@ -34,6 +34,7 @@ import CommunicationsHub from './pages/CommunicationsHub'
 import ConsumptionHub from './pages/ConsumptionHub'
 import CoordinationPage from './pages/CoordinationPage'
 import SchwabReauthHub from './pages/SchwabReauthHub'
+import BrokerAccessPage from './pages/BrokerAccessPage'
 import SchwabReauthBanner from './components/SchwabReauthBanner'
 import FinvizCookieBanner from './components/FinvizCookieBanner'
 import YoutubeCookieBanner from './components/YoutubeCookieBanner'
@@ -235,6 +236,7 @@ function Shell() {
           <Route path="coordination" element={<RouteErrorBoundary route="/v3/coordination"><CoordinationPage /></RouteErrorBoundary>} />
             <Route path="system" element={<RouteErrorBoundary route="/v3/system"><SystemHub onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="system/schwab-reauth" element={<RouteErrorBoundary route="/v3/system/schwab-reauth"><SchwabReauthHub /></RouteErrorBoundary>} />
+            <Route path="system/broker-access" element={<RouteErrorBoundary route="/v3/system/broker-access"><BrokerAccessPage /></RouteErrorBoundary>} />
             {/* Shadow control-plane namespace. Does not replace live routes. */}
             <Route path="control-plane" element={<RouteErrorBoundary route="/v3/control-plane"><><SurfaceModeBanner route="/v3/control-plane" /><ControlPlaneHub /></></RouteErrorBoundary>} />
             <Route path="control-plane/system" element={<RouteErrorBoundary route="/v3/control-plane/system"><><SurfaceModeBanner route="/v3/control-plane/system" /><ControlPlaneSystemPage /></></RouteErrorBoundary>} />
