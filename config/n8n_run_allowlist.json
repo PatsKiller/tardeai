@@ -3175,7 +3175,9 @@
         "10000"
       ],
       "dry_run_arg": [],
-      "live_arg": null,
+      "live_arg": [
+        "--apply"
+      ],
       "env_names": [
         "DB_CONN_TRACE",
         "DB_HOST",
@@ -3206,7 +3208,9 @@
         "scripts/hermes_outcome_learning.py"
       ],
       "dry_run_arg": [],
-      "live_arg": null,
+      "live_arg": [
+        "--apply"
+      ],
       "env_names": [
         "DB_CONN_TRACE",
         "DB_HOST",
@@ -3239,7 +3243,9 @@
       "dry_run_arg": [
         "--dry-run"
       ],
-      "live_arg": null,
+      "live_arg": [
+        "--apply"
+      ],
       "env_names": [
         "DB_CONN_TRACE",
         "DB_HOST",
@@ -3272,7 +3278,9 @@
       "dry_run_arg": [
         "--dry-run"
       ],
-      "live_arg": null,
+      "live_arg": [
+        "--apply"
+      ],
       "env_names": [
         "DB_CONN_TRACE",
         "DB_HOST",
@@ -3309,7 +3317,11 @@
       "dry_run_arg": [
         "--dry-run"
       ],
-      "live_arg": null,
+      "live_arg": [
+        "--apply",
+        "--notify",
+        "queue"
+      ],
       "env_names": [
         "DB_CONN_TRACE",
         "DB_HOST",

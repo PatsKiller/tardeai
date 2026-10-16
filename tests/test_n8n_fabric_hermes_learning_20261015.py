@@ -48,7 +48,7 @@ RUNNABLE = [sid for sid, s in SPEC["steps"].items() if not s["blocked"]]
 BLOCKED = [sid for sid, s in SPEC["steps"].items() if s["blocked"]]
 #: Graph hash of the generated process workflow (INDEX.json). A change here is a reviewed graph change: the imported
 #: copy stops verifying and the packet re-imports it.
-PROCESS_GRAPH_PIN = "44c35ad3374f"
+PROCESS_GRAPH_PIN = "f1d0984c64b0"  # cutover PR-2 (2026-10-15): MODE live (was 44c35ad3374f)
 #: The fabric policy hash Build 1 shipped (5aa61048d / 494adde71): adding a process workflow must not move it, or the
 #: four imported fabric workflows stop verifying.
 POLICY_PIN = "c6750b96ada49f816798bf3714ad390616b1b32769fdcbcc54e0635e32caf31f"
@@ -243,7 +243,7 @@ def test_learn_dag_is_the_reviewed_one():
         "config_governor": ["outcome_learning"],
         "autonomous_self_tune": [],
     }
-    assert SPEC["mode"] == "dry_run"  # shadow: the cutover PR flips it
+    assert SPEC["mode"] == "live"  # hermes-learning cutover PR-2 (2026-10-15); tune lane stays shadow (clamped)
 
 
 # ── host side: lanes, allowlist, registry, contracts, effect keys ───────────────────────────────────────────────
@@ -260,7 +260,10 @@ def test_runnable_step_is_a_shadow_lane_with_the_step_lock_and_timeout(sid):
     stage, st = STEPS[sid]
     lane = SPEC["steps"][sid]["lane_id"]
     e = ALLOW_LANES[lane]
-    assert e["live_arg"] is None and e["dry_run_arg"] is not None  # shadow: dry run only
+    # cutover PR-2 (2026-10-15): learn lanes carry cutover_live_arg at stage canary; the tune lane stays shadow
+    learn = stage == "learn"
+    assert e["live_arg"] == (SPEC["steps"][sid]["cutover_live_arg"] if learn else None)
+    assert e["dry_run_arg"] is not None
     assert e["command"][0] == "$PY" and e["market_gate"] is False
     locks = PM.lock_paths(st["command"])
     assert locks == [e["lock"]], (locks, e["lock"])
@@ -274,12 +277,13 @@ def test_runnable_step_is_a_shadow_lane_with_the_step_lock_and_timeout(sid):
     assert "--apply" not in e["command"] + e["dry_run_arg"]
     row = REG[lane]
     sched = row["scheduler"]
-    assert sched["kind"] == "n8n" and sched["expression"] == WID and sched["stage"] == "shadow"
+    assert sched["kind"] == "n8n" and sched["expression"] == WID
+    assert sched["stage"] == ("canary" if learn else "shadow")
     # match names the process step, never a crontab line: the script's retired cron row keeps its own line
     assert sched["process_step"] == sid and sched["match"] == f"{WID}:{sid}"
     assert "dispatch" not in row  # the generic dispatcher never emits a process step
     assert row["state"] == "NEVER_SCHEDULED" and row["state_reason"] and row["output_signal"]["kind"]
-    assert C.clamp_mode(lane, "live", list(REG.values()))["effective_mode"] == "dry_run"
+    assert C.clamp_mode(lane, "live", list(REG.values()))["effective_mode"] == ("live" if learn else "dry_run")
     c = CONTRACTS[lane]
     assert c["status"] == "REVIEWED" and c["stage"] == "shadow" and c["workflow_id"] == WID
     fx = EFFECTS["lanes"][lane]
@@ -469,8 +473,8 @@ def test_scheduled_learn_runs_the_runnable_steps_in_order_and_records_the_blocke
     assert called == [_lane(s) for s in ("outcome_grader", "tag_engine", "outcome_feedback_agent", "outcome_learning",
                                          "config_governor")]
     for c in r["calls"]:
-        assert c["mode"] == "dry_run" and c["process_id"] == PROCESS
-        assert c["idempotency_key"] == f"p:{c['lane_id']}:dry_run:20261015T1050"  # the stage slot, not the minute
+        assert c["mode"] == "live" and c["process_id"] == PROCESS  # cutover PR-2: spec mode live
+        assert c["idempotency_key"] == f"p:{c['lane_id']}:live:20261015T1050"  # the stage slot, not the minute
         assert c["max_attempts"] == SPEC["default_max_attempts"]
     res = r["out"][T.PN_ASSERT]
     assert res["schema"] == T.PROCESS_RESULT_SCHEMA and res["stage"] == "learn" and res["slot"] == "20261015T1050"
@@ -534,7 +538,7 @@ def test_manual_run_covers_both_stages_with_its_own_minute_slot():
     assert [s["step_id"] for s in res["steps"]] == [
         st["id"] for stage in MANIFEST["stages"].values() for st in stage["steps"]
     ]
-    assert all(c["idempotency_key"].endswith(":dry_run:20261015T0932") for c in r["calls"])
+    assert all(c["idempotency_key"].endswith(":live:20261015T0932") for c in r["calls"])
 
 
 @needs_node
@@ -543,7 +547,7 @@ def test_scheduled_tune_covers_only_tune():
     res = r["out"][T.PN_ASSERT]
     assert res["stage"] == "tune" and res["slot"] == "20261015T1700"
     assert [c["lane_id"] for c in r["calls"]] == [_lane("autonomous_self_tune")]
-    assert r["calls"][0]["idempotency_key"] == f"p:{_lane('autonomous_self_tune')}:dry_run:20261015T1700"
+    assert r["calls"][0]["idempotency_key"] == f"p:{_lane('autonomous_self_tune')}:live:20261015T1700"
     assert [s["step_id"] for s in res["steps"]] == ["autonomous_self_tune"]
     assert res["steps"][0]["status"] == "success" and res["overall"] == "ok"
 

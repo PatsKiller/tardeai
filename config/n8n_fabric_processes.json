@@ -12,7 +12,7 @@
         "learn": "hermes-learning-pipeline-learn",
         "tune": "hermes-learning-pipeline-tune"
       },
-      "mode": "dry_run",
+      "mode": "live",
       "live_manual_slots": false,
       "input_version": "v1",
       "default_max_attempts": 1,

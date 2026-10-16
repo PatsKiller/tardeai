@@ -116,9 +116,12 @@ def test_manual_dry_run_minute_is_accepted_and_the_tune_stage_slot_is_scheduled(
 
 
 def test_live_key_is_refused_while_the_spec_is_dry_run():
-    c = PK.check_process_key(_key(GRADER, "live", "20261015T1050"), GRADER, "live", sources=SOURCES, now=LEARN_NOW)
+    dry = copy.deepcopy(SOURCES)
+    dry["processes"][PROCESS].update({"mode": "dry_run", "live_manual_slots": False})
+    c = PK.check_process_key(_key(GRADER, "live", "20261015T1050"), GRADER, "live", sources=dry, now=LEARN_NOW)
     assert not c.ok and c.state == "MODE_NOT_LIVE"
-    assert SPEC["mode"] == "dry_run" and SPEC["live_manual_slots"] is False  # inert at merge
+    # hermes-learning cutover PR-2 (2026-10-15): the committed spec is live (learn stage at canary)
+    assert SPEC["mode"] == "live"
 
 
 def test_live_spec_accepts_the_scheduled_slot_and_refuses_a_manual_minute_unless_flagged():
@@ -240,7 +243,7 @@ def test_gateway_accepts_a_valid_p_key_and_stores_the_validated_marker(gw):
 @pytest.mark.parametrize(
     "key,mode,state",
     [
-        ("p:hermes-learning-outcome-grader:live:20261015T1050", "live", "MODE_NOT_LIVE"),
+        ("p:hermes-learning-outcome-grader:live:20261015T1055", "live", "MANUAL_LIVE_REFUSED"),
         ("p:hermes-learning-outcome-grader:dry_run:20261014T1050", "dry_run", "SLOT_EXPIRED"),
         ("p:hermes-learning-tag-engine:dry_run:20261015T1050", "dry_run", "KEY_MISMATCH"),
         ("P:hermes-learning-outcome-grader:dry_run:20261015T1050", "dry_run", "MALFORMED_KEY"),
@@ -432,7 +435,9 @@ def test_every_runnable_step_reproduces_its_cron_wrapper(sid):
         )
     else:
         assert "offpeak_exempt" not in entry
-    assert X.validate_entry(entry) is None and entry["live_arg"] is None  # still inert
+    # cutover PR-2 (2026-10-15): learn lanes carry the spec's cutover_live_arg; the tune lane stays inert (shadow)
+    want_live = None if sid == "autonomous_self_tune" else RUNNABLE[sid]["cutover_live_arg"]
+    assert X.validate_entry(entry) is None and entry["live_arg"] == want_live
 
 
 # ── G5a: tag engine through the governed bridge ───────────────────────────────────────────────────────────────────
@@ -450,7 +455,7 @@ def test_route_is_registered_on_both_sides_and_bounded():
 def test_allowlist_llm_route_binds_the_bridge_env_for_the_tag_engine_lane():
     entry = ALLOW["hermes-learning-tag-engine"]
     assert entry["llm_route"] == {"via": "cio-governed-bridge", "process_id": "hermes_tag_engine"}
-    assert X.validate_entry(entry) is None and entry["live_arg"] is None
+    assert X.validate_entry(entry) is None and entry["live_arg"] == ["--apply"]  # cutover PR-2
     env, block = X.build_child_env({"PATH": "/usr/bin"}, entry["lane_id"], entry)
     assert env[X.LLM_BRIDGE_ENV] == "1" and env[X.LLM_PROCESS_ENV] == "hermes_tag_engine"
 
@@ -638,12 +643,12 @@ def test_a_refused_queue_is_failed_and_leaves_the_cooldown(no_sender, monkeypatc
     assert [x["reason"] for x in r["results"]] == ["queue:ledger_absent"] * 2 and not AN.STATE_PATH.exists()
 
 
-def test_cutover_live_args_are_declared_and_still_inert():
+def test_cutover_live_args_are_declared_and_applied():
     want = {sid: ["--apply"] for sid in RUNNABLE}
     want["outcome_feedback_agent"] = ["--apply", "--notify", "queue"]
     assert {sid: s["cutover_live_arg"] for sid, s in RUNNABLE.items()} == want
-    for sid, s in RUNNABLE.items():
-        assert ALLOW[s["lane_id"]]["live_arg"] is None
+    for sid, s in RUNNABLE.items():  # cutover PR-2 (2026-10-15): the learn lanes carry the cutover argv; tune inert
+        assert ALLOW[s["lane_id"]]["live_arg"] == (None if sid == "autonomous_self_tune" else want[sid])
 
 
 def test_registered_in_the_cio_hardening_gates():
