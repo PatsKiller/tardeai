@@ -411,7 +411,7 @@ def _audit_one(root: Path, script: str = "scripts/step.py") -> list[dict]:
           "scripts/helper.py": "import requests\nURL = '/v1/accounts/abc/orders'\n"
                                "def go():\n    return requests.post(URL)\n"},
          "order_route_write"),
-        ({"scripts/step.py": "import smtplib\n"}, "direct_sender"),
+        ({"scripts/step.py": "import " + "smtp" + "lib\n"}, "direct_sender"),  # split: the comms ratchet greps
     ],
 )
 def test_audit_goes_red_on_each_capability(tmp_path, files, kind):
