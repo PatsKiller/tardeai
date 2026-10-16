@@ -162,7 +162,43 @@ def trade_ai_today(conn, symbols: Sequence[str], day: str) -> dict[str, dict]:
             except Exception:  # noqa: BLE001
                 pass
         out[sym] = entry
+    _attach_day_catalyst(conn, out, day)
     return out
+
+
+def _attach_day_catalyst(conn, out: dict[str, dict], day: str) -> None:
+    """2026-10-16 (NCPL): the LATEST scan row can carry no catalyst while an earlier scan today did (the 09:35
+    Trade AI LIVE alert named NCPL's headline; the 10:10 ARMED alert said nothing). Attach today's most recent
+    non-empty catalyst as ``day_catalyst`` for symbols whose latest row has none. Read-only, fail-soft."""
+    need = sorted(s for s, e in out.items() if not str(e.get("catalyst") or "").strip())
+    if conn is None or not need:
+        return
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT DISTINCT ON (symbol) symbol, catalyst, catalyst_source, scanned_at
+                     FROM trade_ai_scans
+                    WHERE run_date = %s AND symbol = ANY(%s) AND COALESCE(TRIM(catalyst), '') <> ''
+                    ORDER BY symbol, scanned_at DESC""",
+                (day, need),
+            )
+            rows = cur.fetchall()
+        conn.rollback()
+    except Exception:  # noqa: BLE001
+        try:
+            conn.rollback()
+        except Exception:  # noqa: BLE001
+            pass
+        return
+    for r in rows:
+        vals = [r.get(k) for k in ("symbol", "catalyst", "catalyst_source", "scanned_at")] \
+            if isinstance(r, Mapping) else list(r)[:4]
+        sym, text, source, at = (vals + [None] * 4)[:4]
+        if str(sym) in out and text:
+            out[str(sym)]["day_catalyst"] = {
+                "text": str(text), "source": source,
+                "scanned_at": at.isoformat() if hasattr(at, "isoformat") else at,
+            }
 
 
 def stand_down_candidates(throttle_state: Mapping[str, Any], trigger_states: Mapping[str, str],

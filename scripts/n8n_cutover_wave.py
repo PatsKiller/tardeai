@@ -47,7 +47,7 @@ import shlex
 import subprocess
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import date as dt_date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Optional
 
@@ -137,6 +137,18 @@ APPEND_OVERRIDE = {
     "journal-tilt-morning-hook": "CW: INSERT INTO operator_review_queue (scripts/journal_tilt_morning_hook.py:44)",
 }
 _SENDER = re.compile(r"(?<![a-z0-9])--(alert|send|telegram|notify|email)(?![a-z0-9])")
+#: The cron-side effect-claim wrapper (scripts/effect_claim_cron.sh, #1767 canary effect keys).
+EFFECT_CLAIM_WRAPPER = "effect_claim_cron.sh"
+
+
+def is_sender_lane(disp: Mapping[str, str], row: Mapping[str, Any], effect_keys: Mapping[str, Any],
+                   line_text: str) -> bool:
+    """A lane whose run can message the operator: a send family, a sender flag on the cron line, a `send` effect
+    key, or a lifted sender token (§23.25 send/telegram/sender). Pure."""
+    effects = set((effect_keys.get(row.get("lane_id")) or {}).get("effects") or [])
+    if (disp.get("family_id") or "") in SEND_FAMILIES or _SENDER.search(line_text or "") or "send" in effects:
+        return True
+    return bool({t for t, _ in LD.forbidden_hits(row)} & LD.CUTOVER_SENDER_TOKENS)
 
 
 # ── loading ────────────────────────────────────────────────────────────────────────────────────
@@ -454,7 +466,8 @@ def canary_contract(contract: Mapping[str, Any], wave: str) -> dict[str, Any]:
 def plan_lane(lane_id: str, disp: Mapping[str, str], *, reg_rows: Mapping[str, Any], entries: Mapping[str, Any],
               contracts: Mapping[str, Any], effect_keys: Mapping[str, Any], crontab: str, wave: str,
               max_tier: int = TIER_BROKER, process_ids: Optional[Iterable[str]] = None,
-              review_drafts: bool = False) -> dict[str, Any]:
+              review_drafts: bool = False, policy: Optional[Mapping[str, Any]] = None,
+              include_p1: bool = False) -> dict[str, Any]:
     v: dict[str, Any] = {"lane_id": lane_id, "row_id": disp.get("row_id"), "family_id": disp.get("family_id"),
                          "source": disp.get("source"), "disposition": disp.get("disposition"),
                          "status": "SKIP", "reasons": []}
@@ -491,6 +504,17 @@ def plan_lane(lane_id: str, disp: Mapping[str, str], *, reg_rows: Mapping[str, A
     v["tier"], v["tier_name"] = tier, TIER_NAMES[tier]
     if probs:
         return v
+    # 2026-10-16 (operator gate-alignment approval, AGENTS 12.0.0 §23.25): P1 lanes move last, and a sender's cron
+    # twin must refuse itself once n8n owns the effect (factory finding: owner=n8n alone does not stop the cron run).
+    pol = policy if policy is not None else LD.load_cutover_policy()
+    if lane_id in (pol.get("p1_last") or ()):
+        v["cutover_tier"] = "p1_last"
+        if not include_p1:
+            reasons.append("p1_last: moves after every non-P1 lane of the directive (operator 2026-10-16); "
+                           "plan it with --include-p1")
+    if is_sender_lane(disp, row, effect_keys, line_text) and EFFECT_CLAIM_WRAPPER not in line_text:
+        reasons.append(f"sender_cron_not_effect_claimed: wrap the cron line with {EFFECT_CLAIM_WRAPPER} "
+                       "(TRADEAI_EFFECT_CLAIM=<lane>) before canary so the cron twin refuses once n8n owns the effect")
     if entry is None:
         reasons.append("not_allowlisted (needs shadow onboarding first: allowlist entry with a proven write-free "
                        "--dry-run, receipt output_signal, REVIEWED contract; AGENTS onboarding steps 3-8)")
@@ -576,7 +600,7 @@ def plan_lane(lane_id: str, disp: Mapping[str, str], *, reg_rows: Mapping[str, A
 
 
 def build_plan(code_root: Path, crontab: str, lanes: Optional[list[str]], wave: str,
-               max_tier: int = TIER_BROKER, review_drafts: bool = False) -> dict[str, Any]:
+               max_tier: int = TIER_BROKER, review_drafts: bool = False, include_p1: bool = False) -> dict[str, Any]:
     disp_rows = scope_rows(load_disposition(code_root))
     by_lane = {r["lane_id"]: r for r in disp_rows}
     reg = _load(code_root, REGISTRY)
@@ -586,6 +610,7 @@ def build_plan(code_root: Path, crontab: str, lanes: Optional[list[str]], wave: 
                  if isinstance(c, dict) and c.get("kind") == "lane"}
     effect_keys = _load(code_root, EFFECT_KEYS).get("lanes") or {}
     process_ids = LD.load_llm_process_ids(code_root / "config" / "llm_process_registry.json")
+    policy = LD.load_cutover_policy(code_root / "config" / "lane_cutover_policy.json")
     targets = lanes if lanes else sorted(by_lane)
     out = []
     for lid in targets:
@@ -595,7 +620,8 @@ def build_plan(code_root: Path, crontab: str, lanes: Optional[list[str]], wave: 
             continue
         out.append(plan_lane(lid, disp, reg_rows=reg_rows, entries=entries, contracts=contracts,
                              effect_keys=effect_keys, crontab=crontab, wave=wave, max_tier=max_tier,
-                             process_ids=process_ids, review_drafts=review_drafts))
+                             process_ids=process_ids, review_drafts=review_drafts, policy=policy,
+                             include_p1=include_p1))
     counts: dict[str, int] = {}
     for v in out:
         counts[v["status"]] = counts.get(v["status"], 0) + 1
@@ -683,11 +709,50 @@ def comment_plan(crontab: str, reg_rows: Mapping[str, Any], lanes: list[str], da
     return edits, problems
 
 
+def trading_days_between(first: "datetime", today: "dt_date") -> int:
+    """US trading days after the day of `first` (America/New_York) up to and including `today`."""
+    from zoneinfo import ZoneInfo  # noqa: PLC0415
+    from scripts.lib.cio_market_calendar import is_us_trading_day  # noqa: PLC0415
+    d = first.astimezone(ZoneInfo("America/New_York")).date()
+    n = 0
+    while d < today:
+        d += timedelta(days=1)
+        n += is_us_trading_day(d)
+    return n
+
+
+def p1_overlap_problems(lanes: list[str], policy: Mapping[str, Any], *, ledger: Optional[Path] = None,
+                        today: Optional["dt_date"] = None) -> list[str]:
+    """A p1_last lane keeps its cron line for cron_overlap_trading_days full US trading days after its FIRST live n8n
+    RUN_DONE (operator 2026-10-16). One problem line per lane that is not yet due (or has no live RUN_DONE)."""
+    p1 = [lid for lid in lanes if lid in (policy.get("p1_last") or ())]
+    if not p1:
+        return []
+    from zoneinfo import ZoneInfo  # noqa: PLC0415
+    need = int(policy.get("cron_overlap_trading_days") or 1)
+    today = today or datetime.now(ZoneInfo("America/New_York")).date()
+    out = []
+    for ev in evidence(p1, "2026-01-01", ledger or LEDGER):
+        done = [r for r in ev["live_runs"] if r["state"] == "RUN_DONE"]
+        if not done:
+            out.append(f"{ev['lane_id']}: p1_last, no live n8n RUN_DONE yet")
+            continue
+        first = datetime.fromisoformat(done[0]["requested_at"])
+        got = trading_days_between(first, today)
+        if got < need:
+            out.append(f"{ev['lane_id']}: p1_last, cron stays {need} trading day(s) after the first live RUN_DONE "
+                       f"({done[0]['requested_at']}); {got} so far")
+    return out
+
+
 def comment_cron(lanes: list[str], code_root: Path, *, apply: bool, backup_dir: Path, date: str,
-                 crontab_path: Optional[str] = None) -> dict[str, Any]:
+                 crontab_path: Optional[str] = None, ledger: Optional[Path] = None,
+                 today: Optional["dt_date"] = None) -> dict[str, Any]:
     reg_rows = {r["lane_id"]: r for r in _load(code_root, REGISTRY).get("lanes") or [] if isinstance(r, dict)}
     text = read_crontab(crontab_path)
     edits, problems = comment_plan(text, reg_rows, lanes, date)
+    policy = LD.load_cutover_policy(code_root / "config" / "lane_cutover_policy.json")
+    problems.extend(p1_overlap_problems(lanes, policy, ledger=ledger, today=today))
     rc: dict[str, Any] = {"schema": "N8nWaveCronAct@v1", "at": _now(), "apply": apply, "lanes": lanes,
                           "edits": edits, "problems": problems, "backup": None, "read_back_ok": None}
     if problems or not apply:
@@ -985,6 +1050,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         p.add_argument("--wave", default="CW0")
         p.add_argument("--max-tier", type=int, default=TIER_BROKER)
         p.add_argument("--json", action="store_true")
+        p.add_argument("--include-p1", action="store_true",
+                       help="plan the p1_last lanes too (they move after every non-P1 lane; operator 2026-10-16)")
         p.add_argument("--review-drafts", action="store_true",
                        help="agent-review DRAFT contracts whose runner/lock/receipt edges machine-check (agent_review)")
         if name == "packet":
@@ -1039,7 +1106,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         print(json.dumps({k: rc[k] for k in ("apply", "backup", "read_back_ok")}))
         return 1 if rc["problems"] else 0
     plan = build_plan(code_root, read_crontab(a.crontab), _lanes_arg(a.lanes), a.wave, a.max_tier,
-                      review_drafts=a.review_drafts)
+                      review_drafts=a.review_drafts, include_p1=a.include_p1)
     if a.cmd == "plan":
         if a.json:
             print(json.dumps(plan, indent=2))

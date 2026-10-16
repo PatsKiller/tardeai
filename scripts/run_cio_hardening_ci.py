@@ -51,6 +51,11 @@ GATES = [
     # empty_output on a fatal skip. Hermetic: TRADEAI_STATE_ROOT = tmp.
     ("lane_produced_count_cw_5_20261015", ["tests/test_lane_produced_count_cw_5_20261015.py"]),
     ("refactor_shard_07_20261011", ["tests/test_refactor_shard_07_20261011.py"]),
+    # ANCHOR: LANE_CUTOVER_POLICY_20261016 — AGENTS 12.0.0 §23.25 gate alignment (operator approval 2026-10-16):
+    # config/lane_cutover_policy.json lifts stay_on_cron / KEEP_ON_CRON / soft wrapper+sender tokens for approved
+    # families only (exactly the reviewed 49 ACTIVE lanes); holds, hard tokens, F07 and systemd still refuse; direct
+    # senders are errors; p1_last lanes plan last and keep cron one trading day after proof. Hermetic: tmp ledgers.
+    ("lane_cutover_policy_20261016", ["tests/test_lane_cutover_policy_20261016.py"]),
     (
         "options_workflow",
         [
@@ -1101,6 +1106,13 @@ GATES = [
     (
         "hermes_at_research_n8n_today_20261016",
         ["tests/test_hermes_at_research_premarket_dedupe_20261016.py", "tests/test_n8n_today_page_20261016.py"],
+    ),
+    # Telegram provenance footer ("· via n8n <lane> <HH:MM>" / "· via cron <lane>") + an explicit catalyst line on
+    # every Active Trader alert via the data broker (operator 2026-10-16: "how do i know whats n8n did", "some
+    # scalp and active traders didn't have catalyst").
+    (
+        "telegram_provenance_at_catalyst_20261016",
+        ["tests/test_telegram_provenance_and_at_catalyst_20261016.py"],
     ),
     # Active Trader ARMED quality + stand-down + Trade-AI verdict + recorder reconnect (operator 2026-10-09:
     # 18 of 19 ARMED alerts never fired; ARMED printed last price as entry; dedupe keyed on price).

@@ -25,6 +25,7 @@ for _p in (str(ROOT), str(ROOT / "scripts")):
 from scripts import reconcile_lane_registry as R  # noqa: E402
 from scripts.lib import lane_registry as LR  # noqa: E402
 from scripts.lib import lane_state_drift as SD  # noqa: E402
+from scripts.lib import lane_dispatch as LD  # noqa: E402
 from scripts.lib.lane_dispatch import dispatch_eligible  # noqa: E402
 
 REG = json.loads((ROOT / "config" / "lane_registry.json").read_text(encoding="utf-8"))
@@ -95,7 +96,10 @@ def test_none_of_the_three_can_be_dispatched_or_allowlisted():
     for lid in LANES:
         row = ROWS[lid]
         assert row["recommendation"] == "KEEP_ON_CRON" and not row.get("dispatch")
-        assert dispatch_eligible(row) == (False, "keep_on_cron")
+        assert dispatch_eligible(row, cutover_policy=LD.EMPTY_CUTOVER_POLICY) == (False, "keep_on_cron")
+        # 2026-10-16 §23.25: KEEP_ON_CRON is lifted for an approved family; any hard token still refuses.
+        ok, why = dispatch_eligible(row)
+        assert ok is False or why.startswith("eligible:cutover_directive_23_25"), (lid, why)
 
 
 def test_each_installed_line_maps_to_exactly_one_row_and_nothing_is_undeclared():
@@ -159,6 +163,10 @@ def test_fanin_governance_liveness_stays_quiet_until_the_flip(tmp_path, monkeypa
 # ============================================================================ breach triage (same PR)
 SNAPSHOT = json.loads((R.DATA_DIR / "scheduler_snapshot_20261009.json").read_text(encoding="utf-8"))
 SNAP_LINES = [x["line"] for x in SNAPSHOT["cron_lines"]]
+# Rows whose crontab line was moved by a reviewed PR after the 2026-10-09 snapshot (the snapshot stays the historical
+# record). hermes-learning cutover decision D1 (2026-10-15): the learn stage line runs at 11:20 so the cron-only
+# retention step runs after n8n's outcome_grader; the effect slot stays the manifest minute (T1050).
+MOVED_SINCE_SNAPSHOT = {"hermes-learning-pipeline-learn": {"20 11 * * *"}}
 
 
 def _parts(expr):
@@ -187,6 +195,7 @@ def test_stripped_hand_rows_keep_their_live_schedules():
         if s.get("kind") != "cron" or r["state"] != "ACTIVE" or r.get("generated_by") or not r.get("scheduler_note"):
             continue
         live = {R.split_schedule(ln)[0] for ln in SNAP_LINES if s["match"] in ln}
+        live = MOVED_SINCE_SNAPSHOT.get(r["lane_id"], live)
         assert set(_parts(s["expression"])) == live, (r["lane_id"], s["expression"], live)
 
 
@@ -300,5 +309,7 @@ def test_timers_are_not_judged_before_their_first_fire():
 def test_stripping_the_expressions_changed_no_dispatch_eligibility():
     """The forbidden-token scan reads every scheduler string; --send etc. moved to scheduler.command_text."""
     for lid in ("screener-go-alerts", "llm-spend-report-daily", "llm-spend-report-weekly", "llm-spend-report-monthly"):
-        ok, why = dispatch_eligible(ROWS[lid])
+        ok, why = dispatch_eligible(ROWS[lid], cutover_policy=LD.EMPTY_CUTOVER_POLICY)
         assert ok is False and why == "forbidden_token:send@scheduler.command_text", (lid, why)
+        # 2026-10-16 §23.25: a chokepoint sender's `send` word no longer refuses (direct senders still do).
+        assert dispatch_eligible(ROWS[lid]) == (True, "eligible:cutover_directive_23_25:send"), lid

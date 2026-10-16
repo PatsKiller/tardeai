@@ -7024,7 +7024,7 @@
       "owner": "hermes",
       "scheduler": {
         "kind": "cron",
-        "expression": "50 10 * * *",
+        "expression": "20 11 * * *",
         "command_text": "run_hermes_pipeline.sh --stage learn --apply",
         "match": "run_hermes_pipeline.sh --stage learn"
       },
@@ -15441,7 +15441,7 @@
         "expression": "tradeai-fabric-hermes-learning",
         "match": "tradeai-fabric-hermes-learning:outcome_grader",
         "cadence": "50 10 * * *",
-        "stage": "shadow",
+        "stage": "canary",
         "process": "hermes-learning",
         "process_step": "outcome_grader"
       },
@@ -15467,7 +15467,7 @@
         "expression": "tradeai-fabric-hermes-learning",
         "match": "tradeai-fabric-hermes-learning:outcome_learning",
         "cadence": "50 10 * * *",
-        "stage": "shadow",
+        "stage": "canary",
         "process": "hermes-learning",
         "process_step": "outcome_learning"
       },
@@ -15493,7 +15493,7 @@
         "expression": "tradeai-fabric-hermes-learning",
         "match": "tradeai-fabric-hermes-learning:config_governor",
         "cadence": "50 10 * * *",
-        "stage": "shadow",
+        "stage": "canary",
         "process": "hermes-learning",
         "process_step": "config_governor"
       },
@@ -15519,7 +15519,7 @@
         "expression": "tradeai-fabric-hermes-learning",
         "match": "tradeai-fabric-hermes-learning:tag_engine",
         "cadence": "50 10 * * *",
-        "stage": "shadow",
+        "stage": "canary",
         "process": "hermes-learning",
         "process_step": "tag_engine"
       },
