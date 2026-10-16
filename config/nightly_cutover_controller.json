@@ -1,0 +1,21 @@
+{
+  "schema": "NightlyCutoverControllerConfig@v1",
+  "_why": "Operator approval in writing 2026-10-16: 'building, testing and operating a bounded nightly automatic cutover process for the already approved migration scope, including the necessary controlled crontab edits'. AGENTS.md 12.0.0 §23.25. Owner: Agent A (Chief Architect), operator-approved. Read by scripts/nightly_cutover_controller.py and scripts/lib/nightly_cutover.py.",
+  "max_lanes_per_night": 5,
+  "proof_max_age_hours": 72,
+  "p1_proof_max_age_days": 7,
+  "approved_workflows": ["tradeai-dispatcher"],
+  "grant_tier": "cron",
+  "grant_token": "nightly-cutover-controller",
+  "registry_root": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild",
+  "receipt_dir": "data/runtime/nightly_cutover",
+  "lock_path": "/tmp/n8n_cutover.lock",
+  "forced_canary": {
+    "enabled": true,
+    "max_per_night": 5,
+    "poll_seconds": 600,
+    "natural_only_families": ["F09"]
+  },
+  "downstream_evidence": {},
+  "summary": {"priority": "P3", "producer": "nightly-cutover-controller"}
+}
