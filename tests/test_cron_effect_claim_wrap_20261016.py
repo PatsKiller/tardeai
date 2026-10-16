@@ -460,23 +460,31 @@ def fake_host(tmp_path):
         f'if [ "$1" = "-" ]; then cat > "{store}"; echo install >> "{installs}"; exit 0; fi\n'
         "exit 9\n"
     )
-    (bin_ / "guard").write_text("#!/usr/bin/env bash\necho 'cron  grant cron-effect-claim-wrap-20261016'\n")
     for f in bin_.iterdir():
         f.chmod(0o755)
+    # The real bin/guard is NOT on PATH and `guard show` exits 1 even when it lists the grants (with colour codes);
+    # the fake does the same and lives outside PATH, reached only through GUARD_BIN (operator failure 2026-10-16).
+    gdir = tmp_path / "guardbin"
+    gdir.mkdir()
+    guard = gdir / "guard"
+    guard.write_text("#!/usr/bin/env bash\nprintf '\\033[1mActive grants\\033[0m\\n'\n"
+                     "printf '  \\033[33mcron          \\033[0m   50 uses  — cron-effect-claim-wrap-20261016\\n'\n"
+                     "exit 1\n")
+    guard.chmod(0o755)
     led = tmp_path / "ledger.sqlite"
     E.EffectClaimStore(CoordinationLedger(led)).set_owner(
         "finviz-screener-runner", "n8n", expect_epoch=None, by="t", now=1.0)
     env = {k: v for k, v in os.environ.items() if not k.startswith("TRADEAI_")}
     env.update({"HOME": str(home), "PATH": f"{bin_}:{os.environ['PATH']}", "PY3": sys.executable,
                 "TRADEAI_N8N_COORDINATION_LEDGER": str(led), "BACKUP_ROOT": str(tmp_path / "backups"),
-                "SERVED": str(ROOT)})
+                "SERVED": str(ROOT), "GUARD_BIN": str(guard)})
 
     def run(script, *args, **extra):
         e = dict(env)
         e.update(extra)
         return subprocess.run(["bash", str(PKT / script), *args], env=e, capture_output=True, text=True, timeout=120)
 
-    return {"run": run, "store": store, "installs": installs, "tmp": tmp_path}
+    return {"run": run, "store": store, "installs": installs, "tmp": tmp_path, "guard": guard}
 
 
 def test_apply_dry_run_by_default_backs_up_and_installs_nothing(fake_host):
@@ -526,3 +534,65 @@ def test_packet_scripts_parse_and_follow_the_house_pattern():
         assert "| cmp - " in text and ".local/state/tradeai/backups" in text
         assert 'MODE="${1:-dry-run}"' in text
     assert subprocess.run(["bash", "-n", str(WRAPPER)]).returncode == 0
+
+
+# ── 5. the grant check (operator --apply failed twice on 2026-10-16) ──────────────────────────────────────────────
+
+
+def test_apply_grant_check_passes_when_guard_show_exits_1(fake_host):
+    """`guard show` exits 1 with the grants printed; under pipefail the old `guard show | sed | grep` false-failed."""
+    r = fake_host["run"]("apply.sh", "--apply")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "P2 FAIL" not in r.stdout and "installed exactly" in r.stdout
+
+
+def test_apply_grant_check_refuses_without_an_active_cron_grant(fake_host):
+    fake_host["guard"].write_text("#!/usr/bin/env bash\nprintf '  llm   50 uses  - cron packets later\\n'\nexit 1\n")
+    r = fake_host["run"]("apply.sh", "--apply")
+    assert r.returncode == 3 and "P2 FAIL" in r.stdout, r.stdout + r.stderr
+    assert not fake_host["installs"].exists()
+
+
+def test_rollback_grant_check_passes_on_exit_1_and_refuses_without_a_grant(fake_host):
+    assert fake_host["run"]("apply.sh", "--apply").returncode == 0
+    wrapped = fake_host["store"].read_text()
+    good = fake_host["guard"].read_text()
+    fake_host["guard"].write_text("#!/usr/bin/env bash\nprintf '  llm   50 uses  - cron packets later\\n'\nexit 1\n")
+    rb = fake_host["run"]("rollback.sh", "--apply")
+    assert rb.returncode == 3 and "no active cron grant" in rb.stdout, rb.stdout + rb.stderr
+    assert fake_host["store"].read_text() == wrapped
+    fake_host["guard"].write_text(good)
+    rb = fake_host["run"]("rollback.sh", "--apply")
+    assert rb.returncode == 0 and "rolled back exactly (1 lines)" in rb.stdout, rb.stdout + rb.stderr
+
+
+def test_grant_check_refuses_when_guard_is_missing(fake_host):
+    r = fake_host["run"]("apply.sh", "--apply", GUARD_BIN=str(fake_host["tmp"] / "nope" / "guard"))
+    assert r.returncode == 3 and "guard not found" in r.stderr
+    assert not fake_host["installs"].exists()
+
+
+def test_packets_never_call_bare_guard_or_pipe_guard_show_under_pipefail():
+    """Every packet resolves the repo's bin/guard (bare `guard` is not on PATH) and no shell script pipes
+    `guard show` under pipefail (it exits 1 even on success)."""
+    import re
+
+    packets = ROOT / "docs" / "ops" / "packets"
+    bare = re.compile(r"(^|[;&|(]\s*)guard\s+show\b", re.M)
+    offenders = []
+    for f in sorted(packets.glob("*/*")):
+        if f.suffix not in (".sh", ".md"):
+            continue
+        text = f.read_text(encoding="utf-8", errors="replace")
+        for line in text.splitlines():
+            if line.lstrip().startswith("#"):
+                continue
+            if bare.search(line):
+                offenders.append(f"{f.relative_to(ROOT)}: bare guard: {line.strip()[:80]}")
+            if f.suffix == ".sh" and "pipefail" in text and re.search(r"guard\S*\s+show[^|]*\|", line):
+                offenders.append(f"{f.relative_to(ROOT)}: guard show piped under pipefail: {line.strip()[:80]}")
+    assert offenders == []
+    for f in ("apply.sh", "rollback.sh"):
+        text = (PKT / f).read_text()
+        assert '"$REPO_ROOT/bin/guard"' in text or "$REPO_ROOT/bin/guard" in text
+        assert 'out="$("$GUARD_BIN" show 2>&1)" || true' in text

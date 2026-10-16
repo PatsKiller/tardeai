@@ -40,7 +40,7 @@ cd ~/trade-ai-releases/portfolio-server/CURRENT          # a release that contai
 bash scripts/pipelines/run_health_audit_pipeline.sh --stage morning --dry-run
 #   expect 4 "[DRY_RUN] would run" lines on a weekday (0 on a weekend), nothing executed;
 #   summary data/runtime/pipeline_health_audit_morning_last.json  dry_run=true executed_any=false
-guard show | sed 's/\x1b\[[0-9;]*m//g' | grep -i cron          # an active cron grant
+~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/bin/guard show 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -iE '^[[:space:]]*cron[[:space:]]'          # an active cron grant
 ```
 
 ## Apply (operator; `cron` grant; weekday after 08:00 ET so today's four checks have already run)
