@@ -73,7 +73,10 @@ Event source (`_event_evals`). One lane, one item at most — every trigger coal
   * as_of      max over the lane's triggers of: `broker_as_of` — the Data Broker domain's as_of from files only
                (scripts/lib/data_broker/as_of_signal.py, via EventInputs.domain_as_of); `run_done` — the newest
                finished_at of the upstream lane's RUN_DONE rows in the ledger (a dry_run lane counts dry_run or live,
-               a live lane live only, as `after` does). Other sources -> errors[] trigger_source_unreadable.
+               a live lane live only, as `after` does). A run_done trigger with `require_verdict` (2026-10-16) counts
+               only RUN_DONE rows whose receipt output_verdict.verdict is listed (produced / empty_allowed): the
+               downstream fires on the upstream's VERIFIED result, not on exit 0 or a clock offset.
+               Other sources -> errors[] trigger_source_unreadable.
   * watermark  the consumer's last start that saw its input: the LaneRunReceipt started_at of its registry
                output_signal (status ok; the live cron line writes it) and the started_at of its own RUN_DONE rows.
                watermark >= as_of -> nothing (the consumer already ran on this input).
@@ -829,6 +832,16 @@ class _EventFire:
     slot_local: str
 
 
+def run_output_verdict(row: Mapping[str, Any]) -> Optional[str]:
+    """The executor's output_verdict.verdict on a ledger run row (``receipt`` parsed from receipt_json, or a flat
+    ``output_verdict``); None when absent. Pure."""
+    for src in (row.get("receipt"), row):
+        if isinstance(src, Mapping) and isinstance(src.get("output_verdict"), Mapping):
+            v = src["output_verdict"].get("verdict")
+            return str(v) if v is not None else None
+    return None
+
+
 def _event_as_of(lane: _Lane, now: datetime, led: _Ledger, inputs: Any) -> tuple[Optional[datetime], list[dict]]:
     lane_id = lane.row["lane_id"]
     modes = frozenset({"live"}) if lane.mode == "live" else frozenset({"live", "dry_run"})
@@ -843,7 +856,10 @@ def _event_as_of(lane: _Lane, now: datetime, led: _Ledger, inputs: Any) -> tuple
                 continue
             stamps.append(at)
         elif trig.source == "run_done":
-            done = [_parse_ts(r.get("finished_at")) for r in led.done(str(trig.lane_id), modes)]
+            rows = led.done(str(trig.lane_id), modes)
+            if trig.require_verdict:                     # verified result only (RUN_DONE + output verdict)
+                rows = [r for r in rows if run_output_verdict(r) in trig.require_verdict]
+            done = [_parse_ts(r.get("finished_at")) for r in rows]
             done = [t for t in done if t is not None and t <= now]
             if done:
                 stamps.append(max(done))

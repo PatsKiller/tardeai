@@ -48,9 +48,11 @@ W5_LANES = {
     "signal-fusion-active": [{"source": "broker_as_of", "domain": "scalp_list"}],
     "news-to-catalyst": [
         {"source": "broker_as_of", "domain": "catalyst_news"},
-        {"source": "run_done", "lane_id": "hermes-news-bridge"},
+        # require_verdict (2026-10-16, process consolidation cohort 1): fire on the upstream's VERIFIED result only.
+        {"source": "run_done", "lane_id": "hermes-news-bridge", "require_verdict": ["produced"]},
     ],
-    "research-insight-extractor": [{"source": "run_done", "lane_id": "news-to-catalyst"}],
+    "research-insight-extractor": [{"source": "run_done", "lane_id": "news-to-catalyst",
+                                    "require_verdict": ["produced"]}],
 }
 #: W5 trigger rows that canary wave 1 moved to canary (live cron slots; event fires inert while live).
 W5_CANARY_LANES = frozenset({"research-insight-extractor"})
