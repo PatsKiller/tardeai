@@ -33,11 +33,20 @@ def store_dir() -> Path:
     env = os.environ.get("ACTIVE_TRADER_ALERTS_DIR", "").strip()
     if env:
         return Path(env) / "micro"
+    # Same resolution as active_trader.momentum_alerts.journal_dir, inlined (2026-10-16): importing that module
+    # made every reader of this broker (e.g. the Hermes scalp researcher lane) statically reach its Telegram
+    # sender (AGENTS §23.3 dispatched-lane reach gate). Pinned equal by tests.
+    persistent = Path.home() / "trade-ai-releases" / "persistent-state"
+    if (persistent / "PERSISTENT_STATE_ROOT.json").is_file():
+        return persistent / "data" / "active_trader" / "micro"
     try:
-        from active_trader import momentum_alerts as ma  # pure module (no provider imports)
-    except ModuleNotFoundError:  # pragma: no cover
-        from scripts.active_trader import momentum_alerts as ma
-    return ma.journal_dir() / "micro"
+        from lib.canonical_store_registry import production_state_root
+    except Exception:  # noqa: BLE001
+        try:
+            from scripts.lib.canonical_store_registry import production_state_root  # type: ignore
+        except Exception:  # noqa: BLE001
+            return persistent / "data" / "active_trader" / "micro"
+    return Path(production_state_root()) / "data" / "active_trader" / "micro"
 
 
 def _status(as_of: Optional[float], now: float, max_age_s: float) -> dict:

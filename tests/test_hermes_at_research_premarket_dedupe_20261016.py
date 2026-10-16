@@ -149,3 +149,13 @@ def test_registry_row_records_n8n_only_cutover():
     assert row["scheduler_before_cutover"]["kind"] == "cron"
     assert "N8N-ONLY TEST 2026-10-16" in row["cutover_note"]
     assert row["dispatch"]["mode"] == "live"
+
+
+def test_broker_store_dir_matches_journal_dir_without_importing_the_sender(monkeypatch):
+    from active_trader import momentum_alerts as ma
+    from lib.data_broker import microstructure as micro
+    monkeypatch.delenv("ACTIVE_TRADER_ALERTS_DIR", raising=False)
+    assert micro.store_dir() == ma.journal_dir() / "micro"
+    src = (ROOT / "scripts" / "lib" / "data_broker" / "microstructure.py").read_text()
+    assert "momentum_alerts" not in src.split("def store_dir", 1)[1].split("def ", 1)[0].replace(
+        "active_trader.momentum_alerts.journal_dir", "")
