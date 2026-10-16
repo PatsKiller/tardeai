@@ -11952,7 +11952,7 @@
         "evidence": [
           {
             "kind": "receipt_field",
-            "ref": "data/runtime/record-decision-outcome_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/record-decision-outcome/<run_id>.json); today the v1 receipt reports this unit as summary.recorded"
+            "ref": "data/runtime/record-decision-outcome_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/record-decision-outcome/<run_id>.json); the lane writes it via write_lane_receipt(output=...) since 2026-10-15 (summary.recorded carries the same count)"
           },
           {
             "kind": "store_rows",
@@ -14170,7 +14170,7 @@
         "evidence": [
           {
             "kind": "receipt_field",
-            "ref": "data/runtime/sync-social-to-intelligence_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/sync-social-to-intelligence/<run_id>.json); today the v1 receipt reports this unit as summary.folded"
+            "ref": "data/runtime/sync-social-to-intelligence_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/sync-social-to-intelligence/<run_id>.json); the lane writes it via write_lane_receipt(output=...) since 2026-10-15 (summary.folded carries the same count)"
           },
           {
             "kind": "store_rows",
@@ -15679,7 +15679,7 @@
         "evidence": [
           {
             "kind": "receipt_field",
-            "ref": "data/runtime/weekly-incubator-builder_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/weekly-incubator-builder/<run_id>.json); today the v1 receipt reports this unit as summary.symbols"
+            "ref": "data/runtime/weekly-incubator-builder_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/weekly-incubator-builder/<run_id>.json); the lane writes it via write_lane_receipt(output=...) since 2026-10-15 (summary.symbols carries the same count)"
           },
           {
             "kind": "store_rows",
@@ -26643,7 +26643,7 @@
       "expected_output": {
         "schema": "N8nExpectedOutput@v1",
         "unit": "symbol_profiles rows upserted",
-        "rule": "min_produced",
+        "rule": "empty_allowed",
         "min_produced": 1,
         "window_h": null,
         "empty_allowed_reasons": [
@@ -26656,7 +26656,7 @@
         "evidence": [
           {
             "kind": "receipt_field",
-            "ref": "data/runtime/build-symbol-profiles-at-0-19_last.json summary.output.produced_count"
+            "ref": "data/runtime/build-symbol-profiles-at-0-19_last.json produced_count (LaneRunReceipt@v2 output fields since 2026-10-15, from the run's LaneOutput@v1 block, which stays at summary.output; no stale symbol = nothing_due; the executor reads the immutable attempt copy data/runtime/lane_attempts/build-symbol-profiles-at-0-19/<run_id>.json)"
           },
           {
             "kind": "store_rows",
@@ -28339,7 +28339,7 @@
       },
       "expected_output": {
         "schema": "N8nExpectedOutput@v1",
-        "unit": "rows inserted into trade_lesson_memory",
+        "unit": "rows upserted into trade_lesson_memory (one per post-mortem advisory x trade; ON CONFLICT DO UPDATE re-stamps an existing external lesson)",
         "rule": "per_window",
         "min_produced": 1,
         "window_h": 48,

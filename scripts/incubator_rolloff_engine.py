@@ -239,15 +239,23 @@ def _apply_with_receipt() -> int:
     except SystemExit as exc:
         rc = exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
         write_lane_receipt(LANE_ID, ok=rc == 0, exit_code=rc, started_at=started, script="incubator_rolloff_engine.py",
-                           summary={"completed": rc == 0})
+                           summary={"completed": rc == 0}, output={"produced_count": 0, "attempted_count": 0, "skipped_reasons": {"dependency_unavailable": 1}})
         raise
     except Exception as exc:
         write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started, script="incubator_rolloff_engine.py",
-                           error=type(exc).__name__)
+                           error=type(exc).__name__, output={"produced_count": 0, "attempted_count": 0, "skipped_reasons": {"dependency_unavailable": 1}})
         raise
     write_lane_receipt(LANE_ID, ok=True, exit_code=0, started_at=started, script="incubator_rolloff_engine.py",
-                       summary=summary or {})
+                       summary=summary or {}, output=lane_output(summary or {}))
     return 0
+
+
+def lane_output(summary: dict) -> dict:
+    """LaneRunReceipt@v2 output fields (n8n expected_output, unit: incubator roll-offs recorded = incubator_events
+    rows, one per rolled-off entry). attempted = active entries checked; nothing to roll off = ``no_new_input``."""
+    rolled, checked = int(summary.get("rolled_off") or 0), int(summary.get("checked") or 0)
+    return {"produced_count": rolled, "attempted_count": max(checked, rolled), "skipped_reasons": {},
+            "empty_reason": None if rolled else "no_new_input"}
 
 
 if __name__ == "__main__":

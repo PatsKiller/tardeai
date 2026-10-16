@@ -45,6 +45,11 @@ GATES = [
     ("refactor_shards_05_08_locks_20261011", ["tests/test_refactor_shards_05_08_locks_20261011.py"]),
     # ANCHOR: REFACTOR_SHARD_05_20261011 — offline previews and exact cron argv, fake-only work.
     ("refactor_shard_05_20261011", ["tests/test_refactor_shard_05_20261011.py"]),
+    # ANCHOR: LANE_PRODUCED_COUNT_CW_5_20261015 — cutover-wave lanes (batch 5: 3 CW2 + 6 CW3 lanes) write
+    # LaneRunReceipt@v2 produced_count and opt into the executor output verdict (allowlist output_receipt v2). Real
+    # entry point per lane in a fake n8n attempt, DB/provider/network stubbed: produced / empty_allowed / RUN_FAILED
+    # empty_output on a fatal skip. Hermetic: TRADEAI_STATE_ROOT = tmp.
+    ("lane_produced_count_cw_5_20261015", ["tests/test_lane_produced_count_cw_5_20261015.py"]),
     ("refactor_shard_07_20261011", ["tests/test_refactor_shard_07_20261011.py"]),
     (
         "options_workflow",
