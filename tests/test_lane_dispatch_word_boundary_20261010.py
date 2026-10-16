@@ -179,7 +179,10 @@ def test_every_legacy_blocked_lane_is_still_blocked_unless_reviewed(row):
         # Per token, not just per row: a legacy token may drop only for a reviewed incidental reason.
         assert dropped <= set(INCIDENTAL_TOKEN_DROPS), (row["lane_id"], sorted(dropped))
         if row["lane_id"] in {r["lane_id"] for r in REGISTRY}:
-            assert LD.dispatch_eligible(row, exceptions={})[0] is False, row["lane_id"]
+            # Matcher pin, judged under the pre-§23.25 policy (the 2026-10-16 directive lift is pinned in
+            # tests/test_lane_cutover_policy_20261016.py).
+            assert LD.dispatch_eligible(row, exceptions={}, cutover_policy=LD.EMPTY_CUTOVER_POLICY)[0] is False, \
+                row["lane_id"]
     else:
         allowed, _why = REVIEWED_NOW_ALLOWED[key]
         assert dropped, (row["lane_id"], legacy)            # the ruling is implemented, not just tolerated
