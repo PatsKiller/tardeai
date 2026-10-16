@@ -1,0 +1,50 @@
+{
+  "schema": "N8nShadowPolicy@v1",
+  "as_of": "2026-10-16",
+  "_why": "Operator 2026-10-16 (process consolidation): stop continuous shadow rehearsals for accepted production lanes; keep purposeful regression and canary dry runs after relevant changes. Read by scripts/lib/n8n_shadow_policy.py and scripts/report_n8n_shadow_policy.py (READ-ONLY planners). mode 'report' is the only mode: nothing here changes a dispatch row, a cron slot, the relay live-lanes list or the executor. Wiring a canary into the dispatcher, and every cadence change below, is a registry-row PR the operator rules on (AGENTS.md §17, §23.11).",
+  "mode": "report",
+  "accepted": {
+    "_why": "An accepted production lane: registry dispatch.mode live at scheduler.stage canary or cutover, with at least one live RUN_DONE. Measured 2026-10-09..16: such lanes already get NO continuous dry runs (n8n_due emits one mode per lane per slot; PR #1822 pins it); 0 dry runs after the first live RUN_DONE on any accepted lane.",
+    "stages": ["canary", "cutover"],
+    "dispatch_mode": "live"
+  },
+  "regression_canary": {
+    "_why": "A purposeful dry run of an accepted lane, due only when something that can change its behaviour changed since its last verified live run (receipt code_sha): its own config (registry row, allowlist entry, health contract) or its entry script. A new release SHA that touches neither does not make a canary due unless any_release is true.",
+    "triggers": ["lane_config_changed", "entry_script_changed"],
+    "any_release": false,
+    "max_per_window": 40
+  },
+  "shadow_cadence_proposals": {
+    "_why": "PROPOSAL ONLY (operator §17: promotion/retirement and cadence of these shadow lanes is the operator's call). Measured 2026-10-09T17:30Z..2026-10-16T17:30Z from data/runtime/n8n_runs; output_changes = consecutive dry runs whose normalized stdout tail differed (timestamps and floats stripped).",
+    "momentum-cache-reconcile": {
+      "current_cron": ["*/5 * * * *"],
+      "proposed_cron": ["*/15 6-16 * * 1-5"],
+      "measured": {"runs": 810, "worker_s": 517.2, "states": {"RUN_DONE": 810}, "output_changes": 451},
+      "rationale": "Projects momentum candidates that only move in market hours; overnight and weekend fires re-project an unchanged input. 288/day -> 44/weekday."
+    },
+    "momentum-lifecycle-monitor": {
+      "current_cron": ["*/5 * * * *"],
+      "proposed_cron": ["*/15 6-16 * * 1-5"],
+      "measured": {"runs": 1037, "worker_s": 833.8, "states": {"RUN_DONE": 1036, "RUN_TIMEOUT": 1}, "output_changes": 1036},
+      "rationale": "Every tail differs because the monitor stamps its own NOT_MEASURED/OVERSIZED status block, not because its inputs move; inputs are scalp-cycle artifacts written in market hours. 288/day -> 44/weekday."
+    },
+    "hermes-score-event-feeder": {
+      "current_cron": ["*/5 * * * *"],
+      "proposed_cron": ["7 * * * *"],
+      "measured": {"runs": 1357, "worker_s": 356.6, "states": {"RUN_DONE": 1357}, "output_changes": 0},
+      "rationale": "The dry run prints one constant line ('would collect research events, enqueue scoring work and write a run receipt'): 0 output changes in 1,357 runs. Each further run proves only that the process starts. Hourly keeps the liveness proof; a real promotion check needs a dry run that reports what it would enqueue (code PR), not more fires. 288/day -> 24/day."
+    },
+    "scalp-hot-list": {
+      "current_cron": ["*/2 6-9 * * 1-5"],
+      "proposed_cron": ["*/10 6-9 * * 1-5"],
+      "measured": {"runs": 240, "worker_s": 52.1, "states": {"RUN_DONE": 240}, "output_changes": 123},
+      "rationale": "Dry run reason dry_run_no_refresh: it lists the screeners it would run, which change only when the refresh receipt does. 120/weekday -> 24/weekday, same 06:00-09:59 window."
+    },
+    "finviz-enrichment-scalp-hot": {
+      "current_cron": ["*/5 6-15 * * 1-5"],
+      "proposed_cron": ["*/15 6-15 * * 1-5"],
+      "measured": {"runs": 208, "worker_s": 114.7, "states": {"RUN_DONE": 208}, "output_changes": 176},
+      "rationale": "The due list moves with the hot list, which refreshes on its own cadence; every third fire carries the same evidence. 120/weekday -> 40/weekday."
+    }
+  }
+}

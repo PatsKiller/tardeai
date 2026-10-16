@@ -60,6 +60,12 @@ GATES = [
     # lanes vs lines), one status per lane, PARALLEL needs a live n8n run, exit 0 without a verdict is not useful,
     # REQUESTED is not a heal, UNKNOWN provenance never guessed, unwrapped cron is not fenced. Fixtures only.
     ("report_n8n_cutover_outcomes_20261016", ["tests/test_report_n8n_cutover_outcomes_20261016.py"]),
+    # ANCHOR: N8N_CONSOLIDATION_COHORT1_20261016 — process consolidation cohort 1 (operator 2026-10-16): run_done
+    # triggers with require_verdict fire the downstream only on a VERIFIED upstream result (output verdict produced /
+    # empty_allowed), carried by the research news chain; report_n8n_capacity (dry/live queue wait, runtime,
+    # worker-seconds, executor concurrency); n8n_shadow_policy (no continuous dry run on accepted lanes, regression
+    # canary only on a config or entry-script change, shadow cadence proposals report-only). Hermetic: tmp ledger.
+    ("n8n_consolidation_cohort1_20261016", ["tests/test_n8n_consolidation_cohort1_20261016.py"]),
     (
         "options_workflow",
         [
@@ -5120,6 +5126,15 @@ GATES = [
         # wave rows stay admitted canaries.
         "n8n_cutover_wave_20261015",
         ["tests/test_n8n_cutover_wave_20261015.py"],
+    ),
+    (
+        # ANCHOR: RELEASE_WINDOWS_20261016 — operator decision 2026-10-16: daily release windows 12:00 and 17:30 ET.
+        # scripts/release_window.py selects the origin/main head only when exact-SHA push/main CI is green, prepares,
+        # promotes THAT artifact, verifies and rolls back; authorized only by a per-window release-write grant
+        # (RELEASE_WINDOW token, ReleaseGrantBinding campaign match). Replays the 2026-10-16 main-moved refusal.
+        # Hermetic: fake host, tmp_path state; no git/gh/systemctl/guard ledger.
+        "release_windows_20261016",
+        ["tests/test_release_window_20261016.py"],
     ),
 ]
 
