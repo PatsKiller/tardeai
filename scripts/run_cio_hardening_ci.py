@@ -50,6 +50,10 @@ GATES = [
     # entry point per lane in a fake n8n attempt, DB/provider/network stubbed: produced / empty_allowed / RUN_FAILED
     # empty_output on a fatal skip. Hermetic: TRADEAI_STATE_ROOT = tmp.
     ("lane_produced_count_cw_5_20261015", ["tests/test_lane_produced_count_cw_5_20261015.py"]),
+    # ANCHOR: LANE_USEFUL_OUTPUT_PROOF_20261016 — the 5 lanes #1831 dropped from "proven" (crontab snapshot, incident
+    # fan-in, pilot dispatch, research intake, insight extractor) write LaneRunReceipt@v2 produced_count and opt in;
+    # watchlist-enrichment-sweep starts no batch after its budget (deadline_deferred). Hermetic: state root = tmp.
+    ("lane_useful_output_proof_20261016", ["tests/test_lane_useful_output_proof_20261016.py"]),
     ("refactor_shard_07_20261011", ["tests/test_refactor_shard_07_20261011.py"]),
     # ANCHOR: LANE_CUTOVER_POLICY_20261016 — AGENTS 12.0.0 §23.25 gate alignment (operator approval 2026-10-16):
     # config/lane_cutover_policy.json lifts stay_on_cron / KEEP_ON_CRON / soft wrapper+sender tokens for approved
