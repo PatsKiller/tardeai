@@ -40,6 +40,22 @@ def _boom(*a, **k):
     raise RuntimeError("provider down")
 
 
+def _driver_stub(monkeypatch):
+    """CI has no psycopg2; the lane modules import it at module level. Stub it only when it is absent (no test here
+    opens a connection: every _db/_get_conn is replaced)."""
+    try:
+        import psycopg2  # noqa: F401
+        import psycopg2.extras  # noqa: F401
+    except ImportError:
+        fake = types.ModuleType("psycopg2")
+        extras = types.ModuleType("psycopg2.extras")
+        extras.RealDictCursor = object
+        fake.extras = extras
+        fake.connect = _boom
+        monkeypatch.setitem(sys.modules, "psycopg2", fake)
+        monkeypatch.setitem(sys.modules, "psycopg2.extras", extras)
+
+
 def _universe_module(monkeypatch, symbols):
     fake = types.ModuleType("aegis_nightly_ingestion")
     fake.resolve_universe = lambda: [{"symbol": s, "reasons": ["watchlist"]} for s in symbols]
@@ -158,6 +174,7 @@ class _PipelineRun:
 
 @pytest.mark.parametrize("saved,expect", [(4, "produced"), (0, "empty_allowed")])
 def test_agent_outcome_scorer(monkeypatch, tmp_path, saved, expect):
+    _driver_stub(monkeypatch)
     import agent_outcome_scorer as m
 
     run_id = H.attempt_env(monkeypatch, tmp_path, "agent-outcome-scorer")
@@ -169,6 +186,7 @@ def test_agent_outcome_scorer(monkeypatch, tmp_path, saved, expect):
 
 
 def test_agent_outcome_scorer_crash_is_a_fatal_skip(monkeypatch, tmp_path):
+    _driver_stub(monkeypatch)
     import agent_outcome_scorer as m
 
     run_id = H.attempt_env(monkeypatch, tmp_path, "agent-outcome-scorer")
