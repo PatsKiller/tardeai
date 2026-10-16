@@ -444,6 +444,16 @@ def collect(root: Path, now: datetime, prev: dict[str, Any] | None = None) -> li
     # relay log (scripts/lib/n8n_alert_path_watch.py). The notifier runs the same check from host cron, so the P1 does
     # not depend on this n8n-dispatched fan-in; here it feeds the SIEM row.
     out.extend(_alert_path_findings(root, now))
+    # 3n. cron copies that FAILED CLOSED because their ownership was unknown (2026-10-16, architect review;
+    # scripts/effect_claim_cron.sh skipped_ownership_unknown -> scripts/lib/effect_ownership_watch.py): P1 per lane.
+    # The notifier reads the same rows from host cron with the same keys, so this is the SIEM row, not a second page.
+    try:
+        from scripts.lib.effect_ownership_watch import findings as _ownership_findings
+
+        _own, NOTES["effect_ownership_source"] = _ownership_findings(root, now)
+        out.extend(_own)
+    except Exception as exc:  # noqa: BLE001 - a broken source is a note on the receipt, not a crash
+        NOTES["effect_ownership_source"] = f"unavailable:{type(exc).__name__}"
     doc = _load(root / "backups" / "n8n" / "n8n_lab_backup_last.json")
     if doc:
         try:

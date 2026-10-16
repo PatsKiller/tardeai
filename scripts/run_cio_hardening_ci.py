@@ -3925,6 +3925,19 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: CUTOVER_FAIL_CLOSED_TXN_20261016 — architect review before anything runs unattended: (D1) the cron
+        # wrapper FAILS CLOSED for a lane handed over to n8n when ownership cannot be established (ledger unreachable,
+        # handover manifest unreadable, manifest/ledger disagree): nothing runs, skipped_ownership_unknown, P1 through
+        # the incident notifier (host cron) and fan-in; never-handed-over lanes still fail open; the durable handover
+        # manifest written only by set-owner (atomic, safe write order), never auto-reconciled; (D2) durable per-ET-night
+        # quota across invocations; (D3) fresh grant/owner/version/in-flight checks before EACH lane inside the fenced
+        # handover; (D4) write-ahead transaction record + crash-injected, idempotent recovery. Hermetic.
+        "cutover_fail_closed_txn_20261016",
+        [
+            "tests/test_cutover_fail_closed_txn_20261016.py",
+        ],
+    ),
+    (
         # ANCHOR: LANE_REPAIR_RI_HERMES_LITMUS — 2026-10-15 lane repair of three lanes the lane-disposition audit found
         # broken: run-research-intelligence-overnight (ingest bounded by --budget-s / --max-items-per-topic, stored
         # results skip pre-model, SIGTERM still writes the receipt, batch lock; narrative + synthesizer registered and

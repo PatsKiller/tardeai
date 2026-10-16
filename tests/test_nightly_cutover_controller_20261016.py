@@ -225,6 +225,7 @@ def test_f09_requires_a_natural_slot_proof():
     w.runs["alpha-lane"] = [run("alpha-lane")]
     w.effect_lanes["alpha-lane"] = {"process": "alpha", "input_version": "v1", "n8n_claim": True, "cron_claim": False}
     w.owners["alpha"] = "n8n"
+    w.manifest_status, w.manifest_owners = "ok", {"alpha": "n8n"}
     assert verdict(w)["status"] == "ready"
 
 
@@ -234,6 +235,7 @@ def test_sender_lane_needs_downstream_evidence():
     w.disposition["alpha-lane"]["family_id"] = "F10"
     w.effect_lanes["alpha-lane"] = {"process": "alpha", "input_version": "v1", "n8n_claim": True, "cron_claim": False}
     w.owners["alpha"] = "n8n"
+    w.manifest_status, w.manifest_owners = "ok", {"alpha": "n8n"}
     assert held(w).startswith("downstream_evidence_unconfigured")
     w.config["downstream_evidence"] = {"alpha-lane": {"kind": "receipt_field", "path": "delivery.delivered"}}
     assert held(w).startswith("downstream_missing:receipt.delivery.delivered")
@@ -323,6 +325,9 @@ def _effect(w, owner="n8n", n8n_claim=True):
                                     "cron_claim": False}
     w.effect_raw["alpha-lane"] = {"process": "alpha", "input_version": "v1", "effects": ["append"]}
     w.owners["alpha"] = owner
+    # the production owner switch (effect_claim.py set-owner) writes the handover manifest too
+    w.manifest_status = "ok"
+    w.manifest_owners = {**w.manifest_owners, "alpha": owner}
 
 
 def test_append_lane_needs_armed_key_and_n8n_owner():
@@ -741,7 +746,9 @@ def test_current_changed_mid_run_stops(tmp_path, fake_crontab, monkeypatch):
     monkeypatch.setattr(CTL.NC, "resolve_current", lambda p: next(seq))
     code, rc = CTL.run(args(tmp_path, served, led, apply=True), workflow_reader=reader, now=NOW,
                        notifier=lambda *x: True)
-    assert code == 2 and rc["cohort_stop"].startswith("current_changed") and fake_crontab.read_text() == text
+    # the fresh per-lane re-check sees the release move before the edit: a shared change stops the cohort
+    assert code == 2 and rc["cohort_stop"].startswith(("current_changed", "shared_state_changed_mid_run:current_sha"))
+    assert fake_crontab.read_text() == text
 
 
 def test_apply_refuses_projection_flags():

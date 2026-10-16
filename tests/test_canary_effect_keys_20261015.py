@@ -387,10 +387,13 @@ def test_wrapper_armed_claims_once_per_slot(wrap, tmp_path):
 
 
 def test_wrapper_refuses_when_n8n_owns_the_process(wrap, tmp_path):
-    wrap.store().set_owner("x-lane", "n8n", expect_epoch=None, by="t", now=1.0)
+    # 2026-10-16 (architect review): the production owner switch (effect_claim.py set-owner) also writes the
+    # handover manifest; with both stores saying n8n the wrapper skips before it ever claims.
+    E.set_owner_with_manifest(wrap.store(), tmp_path / E.HANDOVER_NAME, "x-lane", "n8n", expect_epoch=None, by="t",
+                              now=1.0)
     r = wrap.run(on="x-lane", config=_armed(tmp_path))
     # 2026-10-16 (cron effect-claim wrap): owner n8n is a clean skip, exit 0 + skipped_effect (was 75).
-    assert r.returncode == 0 and wrap.runs() == 0 and "effect_fenced_owner" in r.stderr
+    assert r.returncode == 0 and wrap.runs() == 0 and "owned by n8n" in r.stderr
     assert wrap.events()[-1]["event"] == "skipped_effect"
 
 

@@ -19,7 +19,22 @@ ARMING: apply and rollback refuse unless an active guard grant of tier `cron` (r
 creates, extends or consumes a grant. Without one the controller is DISARMED: it evaluates and writes its receipt only.
 
 Shared control failure (ledger, CURRENT, crontab, lock, hash, registry, inventory) -> the whole cohort STOPS, exit 2.
-Exit 0 = the run completed (lanes may be held); 1 = refused (disarmed / usage); 2 = cohort stop.
+Exit 0 = the run completed (lanes may be held); 1 = refused (disarmed / usage / another invocation running);
+2 = cohort stop.
+
+2026-10-16 (architect review) transaction guarantees, all under ONE controller lock (<receipt_dir>/controller.lock,
+non-blocking: a concurrent invocation is refused `controller_busy` and changes nothing):
+
+* durable nightly quota: max_lanes_per_night is counted across every invocation of the ET night in
+  <receipt_dir>/quota/night-<date>.json (scripts/lib/nightly_cutover_txn.py); a lane is reserved before it is touched.
+* fresh checks at mutation time: immediately before EACH lane's edit, with the handover-manifest lock held (so no
+  `effect_claim.py set-owner` can land in between), the controller re-reads the grant (still active, not revoked),
+  re-gathers the world (ledger owner, in-flight runs, ambiguous claims, workflow graph hashes, CURRENT sha, allowlist
+  and contract versions, crontab hash) and re-evaluates the lane. A lane-level change holds that lane; a shared change
+  (grant revoked, release / allowlist / contracts / approved-workflow graph changed, crontab changed) stops the cohort.
+* write-ahead transaction: <receipt_dir>/txn/<txn_id>.json is written BEFORE the first mutation (crontab, registry,
+  health contract), each step is marked as it completes, and every armed start recovers any incomplete transaction
+  (complete when every mutation landed, else roll back) before any new work, then stops for the night.
 
 AUTHORITY: crontab comment-only edits of planned lines (via the edit capability), registry-root row writes, coordination
 ledger run REQUESTs for approved forced canaries (gateway host_run_request), one P3 summary through send_telegram.
@@ -43,7 +58,9 @@ for _p in (str(ROOT), str(ROOT / "scripts")):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
+from scripts.lib import effect_claim as EC  # noqa: E402
 from scripts.lib import nightly_cutover as NC  # noqa: E402
+from scripts.lib import nightly_cutover_txn as TX  # noqa: E402
 
 NO_CONSUMER_REASON = (
     "NightlyCutoverRun@v1 receipts are the controller's durable proof (operator, Agent A, the lane's output_signal); "
@@ -59,6 +76,7 @@ RELAY_LIVE = Path.home() / ".config/tradeai/n8n-live-lanes.env"
 GRANTS = Path(os.environ.get("TRADEAI_GUARD_GRANTS_PATH", str(Path.home() / ".cursor/approvals/grants.json")))
 EDIT_SCRIPT = ROOT / "scripts/nightly_cutover_cron_edit.py"
 REQUESTED_BY = "host:nightly-cutover-controller"
+TXN_STEP_POINTS = ("txn_written", "crontab_done", "registry_done", "contracts_done", "rollback_receipt_done")
 CALLER_ID = "nightly-cutover-controller"
 
 
@@ -117,8 +135,18 @@ def build_world(a: argparse.Namespace, config: Mapping[str, Any], *, now: Option
                             relay_live_path=Path(a.relay_live), config=config,
                             now=now or datetime.now(timezone.utc),
                             workflow_reader=workflow_reader or live_workflows, state_root=Path(a.state_root),
-                            policy_path=Path(a.cutover_policy) if a.cutover_policy else None)
+                            policy_path=Path(a.cutover_policy) if a.cutover_policy else None,
+                            manifest_path=manifest_path(a))
+    try:
+        world.quota_used = TX.quota_used(TX.quota_read(receipt_dir(a, config), TX.night_key(world.now)))
+    except ValueError as exc:
+        raise NC.CohortStop(str(exc)) from exc
     return world, reg_root
+
+
+def manifest_path(a: argparse.Namespace) -> Path:
+    return Path(a.handover_manifest) if getattr(a, "handover_manifest", None) else \
+        EC.handover_manifest_path(Path(a.ledger))
 
 
 # ── receipts ───────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -129,12 +157,14 @@ def receipt_dir(a: argparse.Namespace, config: Mapping[str, Any]) -> Path:
     return Path(a.state_root) / str(config.get("receipt_dir") or "data/runtime/nightly_cutover")
 
 
-def write_json_atomic(path: Path, doc: Any) -> None:
+def write_json_atomic(path: Path, doc: Any, *, sort_keys: bool = True) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=path.name + ".")
     with os.fdopen(fd, "w", encoding="utf-8") as fh:
-        json.dump(doc, fh, indent=2, sort_keys=True, default=str)
+        json.dump(doc, fh, indent=2, sort_keys=sort_keys, default=str)
         fh.write("\n")
+        fh.flush()
+        os.fsync(fh.fileno())
     os.replace(tmp, path)
 
 
@@ -231,54 +261,211 @@ def _ledger_wait(ledger: Path) -> Callable[[str, float], Optional[dict]]:
     return wait
 
 
+def _noop_checkpoint(point: str) -> None:
+    return None
+
+
+def read_cron_lines(edits: list[Mapping[str, Any]]) -> tuple[str, str]:
+    """(crontab text, state) where state is applied / not_applied / conflict for these planned edits."""
+    text = read_crontab_text(None)
+    lines = text.split("\n")
+    st = set()
+    for e in edits:
+        i = int(e["index"])
+        cur = lines[i] if 0 <= i < len(lines) else None
+        st.add("applied" if cur == e["after"] else "not_applied" if cur == e["before"] else "conflict")
+    return text, ("conflict" if "conflict" in st or len(st) != 1 else st.pop())
+
+
+def _backup_file(src: Path, dst: Path) -> str:
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    data = Path(src).read_bytes()
+    fd = os.open(dst, os.O_CREAT | os.O_WRONLY | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "wb") as fh:
+        fh.write(data)
+        fh.flush()
+        os.fsync(fh.fileno())
+    return str(dst)
+
+
 def apply_lane(v: dict[str, Any], world: NC.World, *, expect_sha: str, reg_root: Path, rdir: Path,
-               config: Mapping[str, Any], a: argparse.Namespace, edit=call_edit) -> tuple[str, dict[str, Any]]:
-    """Retire one lane. Returns (new crontab sha, step record). Raises CohortStop on any shared failure, after
-    rolling back what this lane changed."""
+               config: Mapping[str, Any], a: argparse.Namespace, edit=call_edit,
+               checkpoint=_noop_checkpoint) -> tuple[Optional[str], dict[str, Any]]:
+    """Retire one lane inside a write-ahead transaction. Returns (new crontab sha, step record); the sha is None when
+    the lane was held at reservation (nightly quota spent). Raises CohortStop on any shared failure, after rolling
+    back whatever this lane changed. The caller holds the controller lock and the handover lock."""
     lane = v["lane_id"]
     _, sha_now = NC.resolve_current(Path(a.current))
     if sha_now != world.current_sha:
         raise NC.CohortStop(f"current_changed:{world.current_sha[:9]}->{sha_now[:9]}")
-    req = {"op": "retire", "lane_id": lane, "date": world.now.strftime("%Y-%m-%d"), "expect_sha": expect_sha,
-           "edits": [{"index": e["index"], "before": e["before"], "after": e["after"]} for e in v["edits"]]}
-    lock, bdir = str(config.get("lock_path") or "/tmp/n8n_cutover.lock"), Path(a.backup_dir)
-    rc, out = edit(req, lock=lock, backup_dir=bdir)
-    step = {"lane_id": lane, "edit": out}
-    if rc != 0 or not out.get("applied") or not out.get("read_back_ok") or not out.get("ownership_ok") \
-            or not out.get("backup"):
-        if out.get("applied"):
-            _undo_cron(req, out, lock, bdir, edit)
-        raise NC.CohortStop(f"crontab_edit_failed:{lane}:{'; '.join(out.get('problems') or ['rc %d' % rc])[:160]}")
-    v["state"] = "applied"
+    night = TX.night_key(world.now)
+    stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+    txn_id = f"{night}-{lane}-{stamp}-{os.getpid()}"
     wave = f"nightly-{world.now.strftime('%Y%m%d')}"
+    js = NC.plan_reconcile(reg_root, lane, wave, world.registry[lane])
+    edits = [{"index": e["index"], "before": e["before"], "after": e["after"]} for e in v["edits"]]
+    lock, bdir = str(config.get("lock_path") or "/tmp/n8n_cutover.lock"), Path(a.backup_dir)
+    cap = int(config.get("max_lanes_per_night") or 0)
     try:
-        reg = NC.reconcile_registry(reg_root, lane, wave, world.registry[lane])
-    except NC.CohortStop:
-        _undo_cron(req, out, lock, bdir, edit)
-        raise
-    rb = {"schema": ROLLBACK_SCHEMA, "lane_id": lane, "at": out.get("at"), "current_sha": world.current_sha,
-          "crontab_backup": out.get("backup"), "crontab_sha_after": out.get("sha_after"),
-          "edits": [{"index": e["index"], "before": e["before"], "after": e["after"]} for e in v["edits"]],
-          "registry_root": str(reg_root), **reg,
-          "rollback_command": f"python3 scripts/nightly_cutover_controller.py rollback --receipt <this file>"}
+        ok, used = TX.quota_reserve(rdir, night, lane=lane, txn_id=txn_id, cap=cap, now=world.now)
+    except (ValueError, OSError) as exc:
+        raise NC.CohortStop(f"quota_ledger_failure:{exc}") from exc
+    if not ok:
+        NC._hold(v, f"nightly_cap_reached: max_lanes_per_night={cap}, already used tonight={used} (durable quota)")
+        return None, {"lane_id": lane, "held": v["held"]}
+    tdir = TX.txn_dir(rdir)
     try:
-        p = rdir / "rollback" / f"{lane}-{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}.json"
-        write_json_atomic(p, rb)
+        backups = {"crontab": None, "registry": _backup_file(Path(js["registry"]["path"]),
+                                                            tdir / f"{txn_id}.lane_registry.json.bak"),
+                   "contracts": None if js["contracts"] is None else
+                   _backup_file(Path(js["contracts"]["path"]), tdir / f"{txn_id}.n8n_health_contracts.json.bak")}
+        cb = tdir / f"{txn_id}.crontab.bak"
+        fd = os.open(cb, os.O_CREAT | os.O_WRONLY | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(world.crontab)
+            fh.flush()
+            os.fsync(fh.fileno())
+        backups["crontab"] = str(cb)
+        rec = TX.new_txn(txn_id=txn_id, lane=lane, night=night, now=world.now, current_sha=world.current_sha,
+                         wave=wave, crontab={"lock": lock, "backup_dir": str(bdir), "edits": edits,
+                                             "sha_before": expect_sha},
+                         json_steps=js, backups=backups, invocation=f"pid:{os.getpid()}")
+        TX.txn_write(rdir, rec)                                          # WRITE-AHEAD: before any mutation
     except OSError as exc:
-        NC.restore_registry(reg_root, lane, reg)
-        _undo_cron(req, out, lock, bdir, edit)
-        raise NC.CohortStop(f"rollback_receipt_write_failed:{lane}:{exc}") from exc
+        TX.quota_mark(rdir, night, txn_id, "released")
+        raise NC.CohortStop(f"txn_record_write_failed:{lane}:{exc}") from exc
+    checkpoint("txn_written")
+    step: dict[str, Any] = {"lane_id": lane, "txn_id": txn_id, "txn": str(TX.txn_path(rdir, txn_id))}
+    try:
+        # 1. crontab
+        TX.txn_mark(rdir, rec, "crontab", "intent")
+        req = {"op": "retire", "lane_id": lane, "date": world.now.strftime("%Y-%m-%d"), "expect_sha": expect_sha,
+               "edits": edits}
+        rc, out = edit(req, lock=lock, backup_dir=bdir)
+        step["edit"] = out
+        if rc != 0 or not out.get("applied") or not out.get("read_back_ok") or not out.get("ownership_ok") \
+                or not out.get("backup"):
+            raise NC.CohortStop(f"crontab_edit_failed:{lane}:"
+                                f"{'; '.join(out.get('problems') or ['rc %d' % rc])[:160]}")
+        TX.txn_mark(rdir, rec, "crontab", "done", crontab_sha_after=out.get("sha_after"),
+                    crontab_edit_backup=out.get("backup"))
+        v["state"] = "applied"
+        checkpoint("crontab_done")
+        # 2. registry row, 3. health contract
+        for name in ("registry", "contracts"):
+            if rec.get(name) is None:
+                TX.txn_mark(rdir, rec, name, "not_applicable")
+                continue
+            TX.txn_mark(rdir, rec, name, "intent")
+            NC.json_step(rec[name])
+            TX.txn_mark(rdir, rec, name, "done")
+            checkpoint(f"{name}_done")
+        # 4. rollback receipt
+        p = write_rollback_receipt(rdir, rec, out)
+        TX.txn_mark(rdir, rec, "rollback_receipt", "done", rollback_receipt_path=str(p))
+        checkpoint("rollback_receipt_done")
+    except NC.CohortStop as exc:
+        res = rollback_txn(rdir, rec, edit=edit)
+        step["rolled_back"] = res
+        raise NC.CohortStop(f"{exc.reason} (txn {txn_id} {res.get('outcome')})") from exc
+    except OSError as exc:
+        res = rollback_txn(rdir, rec, edit=edit)
+        raise NC.CohortStop(f"txn_step_failed:{lane}:{exc} (txn {txn_id} {res.get('outcome')})") from exc
+    TX.txn_mark(rdir, rec, status="committed", outcome="committed")
+    TX.quota_mark(rdir, night, txn_id, "applied")
     v["state"] = "reconciled"
     v["status"] = "reconciled"
-    step["rollback_receipt"] = str(p)
+    step["rollback_receipt"] = rec["rollback_receipt_path"]
     return str(out.get("sha_after")), step
 
 
-def _undo_cron(req: dict, out: dict, lock: str, bdir: Path, edit) -> None:
-    undo = {"op": "rollback", "lane_id": req["lane_id"], "expect_sha": out.get("sha_after"),
-            "edits": req["edits"]}
-    if out.get("sha_after"):
-        edit(undo, lock=lock, backup_dir=bdir)
+def write_rollback_receipt(rdir: Path, rec: Mapping[str, Any], out: Mapping[str, Any]) -> Path:
+    reg, con = rec["registry"], rec.get("contracts") or {}
+    rb = {"schema": ROLLBACK_SCHEMA, "lane_id": rec["lane_id"], "at": out.get("at"), "txn_id": rec["txn_id"],
+          "current_sha": rec["current_sha"], "crontab_backup": out.get("backup") or rec.get("crontab_edit_backup"),
+          "crontab_sha_after": out.get("sha_after") or rec.get("crontab_sha_after"),
+          "edits": rec["crontab"]["edits"], "registry_root": str(Path(reg["path"]).parents[1]),
+          "registry_path": reg["path"], "contracts_path": con.get("path"),
+          "row_before": reg["before"], "row_after": reg["after"],
+          "contract_before": con.get("before"), "contract_after": con.get("after"),
+          "registry_sha_before": reg.get("sha_before"), "contracts_sha_before": con.get("sha_before"),
+          "rollback_command": "python3 scripts/nightly_cutover_controller.py rollback --receipt <this file>"}
+    p = rdir / "rollback" / f"{rec['lane_id']}-{rec['txn_id']}.json"
+    # key order preserved: a restored before-image must serialise byte-identically to what was there
+    write_json_atomic(p, rb, sort_keys=False)
+    return p
+
+
+def inspect_txn(rec: Mapping[str, Any]) -> dict[str, str]:
+    """The ACTUAL state of each mutation target: applied / not_applied / conflict (n/a when there is none)."""
+    try:
+        _, cron = read_cron_lines(rec["crontab"]["edits"])
+    except (NC.CohortStop, OSError, subprocess.SubprocessError):
+        cron = "conflict"
+    out = {"crontab": cron}
+    for name in ("registry", "contracts"):
+        out[name] = "n/a" if rec.get(name) is None else NC.json_step_state(rec[name])
+    return out
+
+
+def rollback_txn(rdir: Path, rec: dict[str, Any], *, edit=call_edit) -> dict[str, Any]:
+    """Undo every applied mutation of the transaction in reverse order (contracts, registry, crontab). Inspection
+    based and idempotent. A conflicting target is never touched: the transaction is marked conflict, both values are
+    reported, and the caller stops the cohort."""
+    seen = inspect_txn(rec)
+    if "conflict" in seen.values():
+        TX.txn_mark(rdir, rec, status="conflict", outcome="conflict", conflict=seen)
+        return {"outcome": "conflict", "inspected": seen}
+    TX.txn_mark(rdir, rec, status="rolling_back", inspected=seen)
+    for name in ("contracts", "registry"):
+        if seen[name] == "applied":
+            NC.json_step(rec[name], undo=True)
+            TX.txn_mark(rdir, rec, name, "undone")
+    if seen["crontab"] == "applied":
+        text, _ = read_cron_lines(rec["crontab"]["edits"])
+        undo = {"op": "rollback", "lane_id": rec["lane_id"], "expect_sha": NC.sha256_text(text),
+                "edits": rec["crontab"]["edits"]}
+        code, out = edit(undo, lock=rec["crontab"]["lock"], backup_dir=Path(rec["crontab"]["backup_dir"]))
+        if code != 0:
+            TX.txn_mark(rdir, rec, status="conflict", outcome="crontab_undo_failed",
+                        conflict={"crontab_undo": out.get("problems")})
+            return {"outcome": "crontab_undo_failed", "problems": out.get("problems")}
+        TX.txn_mark(rdir, rec, "crontab", "undone")
+    TX.txn_mark(rdir, rec, status="rolled_back", outcome="rolled_back")
+    TX.quota_mark(rdir, rec["night"], rec["txn_id"], "released")
+    return {"outcome": "rolled_back", "inspected": seen}
+
+
+def recover(rdir: Path, *, edit=call_edit) -> list[dict[str, Any]]:
+    """Recover every incomplete transaction, deterministically: all mutations applied -> complete (rollback receipt,
+    commit); otherwise roll back. Also releases quota reservations whose record never got written. Idempotent."""
+    out = []
+    for night, e in list(TX.quota_orphans(rdir)):
+        TX.quota_mark(rdir, night, str(e.get("txn_id")), "released")
+        out.append({"txn_id": e.get("txn_id"), "lane_id": e.get("lane_id"), "outcome": "orphan_reservation_released"})
+    for rec in TX.open_txns(rdir):
+        seen = inspect_txn(rec)
+        applied = [k for k, st in seen.items() if st == "applied"]
+        needed = [k for k, st in seen.items() if st != "n/a"]
+        if "conflict" not in seen.values() and applied == needed:
+            TX.txn_mark(rdir, rec, status="completing", inspected=seen)
+            for name in MUTATION_ORDER:
+                if rec["steps"].get(name) not in ("done", "not_applicable"):
+                    TX.txn_mark(rdir, rec, name, "done" if seen[name] == "applied" else "not_applicable")
+            if not rec.get("rollback_receipt_path"):
+                p = write_rollback_receipt(rdir, rec, {})
+                TX.txn_mark(rdir, rec, "rollback_receipt", "done", rollback_receipt_path=str(p))
+            TX.txn_mark(rdir, rec, status="committed", outcome="committed_by_recovery")
+            TX.quota_mark(rdir, rec["night"], rec["txn_id"], "applied")
+            out.append({"txn_id": rec["txn_id"], "lane_id": rec["lane_id"], "outcome": "committed_by_recovery",
+                        "inspected": seen})
+        else:
+            res = rollback_txn(rdir, rec, edit=edit)
+            out.append({"txn_id": rec["txn_id"], "lane_id": rec["lane_id"], **res})
+    return out
+
+
+MUTATION_ORDER = TX.MUTATION_STEPS
 
 
 def summary_line(rc: Mapping[str, Any]) -> str:
@@ -302,11 +489,11 @@ def notify(line: str, config: Mapping[str, Any]) -> bool:
 # ── main ───────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 def run(a: argparse.Namespace, *, workflow_reader=None, edit=call_edit, request_run=None, wait_run=None,
-        notifier=None, now: Optional[datetime] = None) -> tuple[int, dict[str, Any]]:
+        notifier=None, now: Optional[datetime] = None, checkpoint=_noop_checkpoint) -> tuple[int, dict[str, Any]]:
     mode = "apply" if a.apply else ("rollback" if a.cmd == "rollback" else ("dry_run" if a.dry_run else "plan"))
     rc: dict[str, Any] = {"schema": RUN_SCHEMA, "mode": mode, "started_at": datetime.now(timezone.utc).isoformat(),
                           "lane_id": NC.LANE_ID, "armed": None, "cohort_stop": None, "applied": [],
-                          "forced_canaries": [], "plan": {}}
+                          "forced_canaries": [], "plan": {}, "recovered": [], "incomplete_txns": []}
     try:
         config = NC.load_config(Path(a.config))
     except NC.CohortStop as exc:
@@ -317,9 +504,48 @@ def run(a: argparse.Namespace, *, workflow_reader=None, edit=call_edit, request_
     if mode in ("apply", "rollback") and not ok:
         rc["refused"] = why
         return 1, rc
-    if mode == "rollback":
-        return do_rollback(a, config, rc, edit=edit)
+    rdir = receipt_dir(a, config)
+    if mode in ("apply", "rollback"):
+        try:
+            lock = TX.ControllerLock(rdir).__enter__()
+        except TX.ControllerBusy as exc:
+            rc["refused"] = f"controller_busy: another invocation holds {exc}"
+            return 1, rc
+        try:
+            if mode == "rollback":
+                return do_rollback(a, config, rc, edit=edit)
+            return _run_locked(a, config, rc, rdir, workflow_reader=workflow_reader, edit=edit,
+                               request_run=request_run, wait_run=wait_run, notifier=notifier, now=now,
+                               checkpoint=checkpoint)
+        finally:
+            lock.__exit__()
+    return _run_locked(a, config, rc, rdir, workflow_reader=workflow_reader, edit=edit, request_run=None,
+                       wait_run=None, notifier=notifier, now=now, checkpoint=checkpoint)
+
+
+def _run_locked(a, config, rc, rdir, *, workflow_reader, edit, request_run, wait_run, notifier, now,
+                checkpoint) -> tuple[int, dict[str, Any]]:
+    mode = rc["mode"]
     try:
+        # 0. incomplete transactions: recovered (armed apply) or reported (plan / dry-run) BEFORE any new work.
+        try:
+            pending = TX.open_txns(rdir)
+            orphans = list(TX.quota_orphans(rdir))
+        except ValueError as exc:
+            raise NC.CohortStop(str(exc)) from exc
+        rc["incomplete_txns"] = [{"txn_id": t["txn_id"], "lane_id": t["lane_id"], "status": t["status"]}
+                                 for t in pending]
+        if pending or orphans:
+            if mode == "apply":
+                rc["recovered"] = recover(rdir, edit=edit)
+                bad = [r for r in rc["recovered"] if r.get("outcome") not in
+                       ("rolled_back", "committed_by_recovery", "orphan_reservation_released")]
+                raise NC.CohortStop(("recovery_conflict:" if bad else "recovered_incomplete_txn:")
+                                    + ",".join(f"{r.get('txn_id')}={r.get('outcome')}" for r in rc["recovered"])
+                                    + " (no new work this invocation)")
+            if pending:
+                raise NC.CohortStop("incomplete_txn_pending_recovery:" + ",".join(t["txn_id"] for t in pending)
+                                    + " (the next armed apply recovers it first)")
         world, reg_root = build_world(a, config, now=now, workflow_reader=workflow_reader)
         plan = NC.evaluate(world)
         rc["date"] = plan["date"]
@@ -331,19 +557,14 @@ def run(a: argparse.Namespace, *, workflow_reader=None, edit=call_edit, request_
                 plan = NC.evaluate(world)
         rc["plan"] = plan
         if mode == "apply":
-            expect = world.crontab_sha
-            for v in plan["lanes"]:
-                if v.get("status") != "ready":
-                    continue
-                expect, step = apply_lane(v, world, expect_sha=expect, reg_root=reg_root,
-                                          rdir=receipt_dir(a, config), config=config, a=a, edit=edit)
-                rc["applied"].append(step)
+            apply_cohort(a, config, rc, world, plan, reg_root, rdir, workflow_reader=workflow_reader, edit=edit,
+                         now=now, checkpoint=checkpoint)
     except NC.CohortStop as exc:
         rc["cohort_stop"] = exc.reason
     rc["finished_at"] = datetime.now(timezone.utc).isoformat()
     if mode != "plan":
         try:
-            rc["receipt_path"] = str(write_run_receipt(receipt_dir(a, config), rc))
+            rc["receipt_path"] = str(write_run_receipt(rdir, rc))
         except OSError as exc:
             rc["receipt_error"] = str(exc)
         if mode == "apply" and not a.no_notify:
@@ -352,6 +573,56 @@ def run(a: argparse.Namespace, *, workflow_reader=None, edit=call_edit, request_
             except Exception as exc:  # noqa: BLE001 - a notification failure never undoes the run
                 rc["summary_error"] = f"{type(exc).__name__}: {exc}"
     return (2 if rc["cohort_stop"] else 0), rc
+
+
+def apply_cohort(a, config, rc, world: NC.World, plan: dict[str, Any], reg_root: Path, rdir: Path, *,
+                 workflow_reader, edit, now, checkpoint) -> None:
+    """Per ready lane: the FENCED HANDOVER (handover-manifest lock held, so no owner switch can land), fresh checks
+    at mutation time, then the write-ahead transaction. Raises CohortStop on a shared change."""
+    expect = world.crontab_sha
+    baseline = NC.shared_fingerprint(world)
+    mpath = manifest_path(a)
+    for v in plan["lanes"]:
+        if v.get("status") != "ready":
+            continue
+        lane = v["lane_id"]
+        try:
+            fence = EC.handover_lock(mpath).__enter__()
+        except EC.HandoverLockTimeout as exc:
+            raise NC.CohortStop(f"handover_lock_timeout:{exc}") from exc
+        try:
+            ok, why = armed(config, grants_path=Path(a.grants))
+            if not ok:
+                raise NC.CohortStop(f"authorization_revoked_mid_run: {why}")
+            fresh, reg_root = build_world(a, config, now=now, workflow_reader=workflow_reader)
+            fp = NC.shared_fingerprint(fresh)
+            if fp != baseline:
+                changed = sorted(k for k in fp if fp[k] != baseline[k])
+                raise NC.CohortStop(f"shared_state_changed_mid_run:{','.join(changed)}")
+            if fresh.crontab_sha != expect:
+                raise NC.CohortStop("crontab_changed_mid_run: the crontab differs from the one this run left")
+            fv = NC.evaluate_lane(fresh, lane, plan["date"])
+            if fv.get("status") != "ready":
+                NC._hold(v, f"changed_at_mutation:{fv.get('held')}")
+                continue
+            if fv.get("owner_at_eval") != v.get("owner_at_eval"):
+                NC._hold(v, f"owner_changed_mid_run: {v.get('owner_at_eval')} -> {fv.get('owner_at_eval')}")
+                continue
+            if fv.get("workflow_at_eval") != v.get("workflow_at_eval"):
+                NC._hold(v, "lane_workflow_graph_changed_mid_run")
+                continue
+            if fv["edits"] != v["edits"]:
+                NC._hold(v, "planned_edits_changed_mid_run")
+                continue
+            v["edits"] = fv["edits"]
+            new_sha, step = apply_lane(v, fresh, expect_sha=expect, reg_root=reg_root, rdir=rdir, config=config,
+                                       a=a, edit=edit, checkpoint=checkpoint)
+            if new_sha is None:
+                continue
+            expect = new_sha
+            rc["applied"].append(step)
+        finally:
+            fence.__exit__()
 
 
 def do_rollback(a: argparse.Namespace, config: Mapping[str, Any], rc: dict[str, Any], *, edit) -> tuple[int, dict]:
@@ -393,6 +664,7 @@ def parser() -> argparse.ArgumentParser:
     ap.add_argument("--backup-dir", default=str(Path.home() / ".local/state/tradeai/backups"))
     ap.add_argument("--no-notify", action="store_true")
     ap.add_argument("--no-forced-canary", action="store_true")
+    ap.add_argument("--handover-manifest", help="the durable handover manifest (default: beside the ledger)")
     return ap
 
 
