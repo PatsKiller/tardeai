@@ -181,6 +181,40 @@ def _ensure_conn(conn):
     return get_conn()
 
 
+def _conn_closed(conn) -> bool:
+    try:
+        return conn is None or bool(conn.closed)
+    except Exception:
+        return True
+
+
+def _ensure_conn_checked(conn):
+    """(connection, reopened): ``_ensure_conn`` plus whether it had to open a new one."""
+    if not _conn_closed(conn):
+        return conn, False
+    return _ensure_conn(conn), True
+
+
+def _safe_rollback(conn) -> None:
+    """rollback() only on an open connection; a failure here is logged, never raised over the original error."""
+    if _conn_closed(conn):
+        log.warning("rollback skipped: connection already closed")
+        return
+    try:
+        conn.rollback()
+    except Exception as exc:  # noqa: BLE001
+        log.warning("rollback failed after the error above: %s: %s", type(exc).__name__, exc)
+
+
+def _safe_close(conn) -> None:
+    if _conn_closed(conn):
+        return
+    try:
+        conn.close()
+    except Exception as exc:  # noqa: BLE001
+        log.warning("close failed: %s: %s", type(exc).__name__, exc)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Daily incubator refresh", allow_abbrev=False)
     parser.add_argument("--dry-run", action="store_true", help="Print actions without writing to DB")
@@ -239,6 +273,15 @@ def _run(args):
         # Commit the scan-refresh work BEFORE the slow catalyst HTTP loop, so the
         # transaction isn't held open (idle-in-transaction) across minutes of network
         # calls — that held-open transaction is what the server's idle guard killed.
+        # 2026-10-16: the scan-refresh loop itself can outlive the idle guard. Re-check the connection before this
+        # commit too; a closed one means the loop's uncommitted rows are gone, so say so instead of crashing on
+        # commit() (the 08:15 ET live run died here and the except handler's rollback() masked the real error).
+        conn, reopened = _ensure_conn_checked(conn)
+        if reopened:
+            counts["scan_refresh_lost"] = len(active)
+            log.error("connection closed before the scan-refresh commit: %d entries' uncommitted rows were lost; "
+                      "reconnected for the catalyst pass", len(active))
+        cur = conn.cursor()
         if args.apply:
             conn.commit()
             log.info("Committed scan-refresh changes")
@@ -320,11 +363,13 @@ def _run(args):
         return {**counts, "processed": len(active), "catalyst_refreshed": catalyst_refreshed}
 
     except Exception:
-        conn.rollback()
+        # Log the ORIGINAL exception first: a rollback() on a connection the server already closed raises
+        # psycopg2.InterfaceError and used to replace the real error in the log (2026-10-16 08:15 ET).
         log.exception("daily_incubator_refresh failed")
+        _safe_rollback(conn)
         sys.exit(1)
     finally:
-        conn.close()
+        _safe_close(conn)
 
 
 def cli(argv=None):
