@@ -12,6 +12,9 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT / "tests") not in sys.path:
+    sys.path.append(str(ROOT / "tests"))
+from support import n8n_cutover_waves as _CW  # noqa: E402
 SCRIPTS = ROOT / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
@@ -311,7 +314,8 @@ def test_prepared_allowlist_has_no_broker_names_or_live_authority():
         if lane not in entries or not _owned_here(rows.get(lane), "R2-01"):
             continue
         entry = entries[lane]
-        assert entry["live_arg"] is None and entry["dry_run_arg"] == ["--dry-run"]
+        # 2026-10-15: a lane a cutover wave promoted carries the cron argv as live_arg (tests/support/n8n_cutover_waves.py).
+        assert entry["live_arg"] == _CW.live_arg(lane) and entry["dry_run_arg"] == ["--dry-run"]
         assert entry["command"][2:] == argv
         assert not any(any(token in name.upper() for token in ("SCHWAB", "ALPACA", "SNAPTRADE", "MOOMOO", "IBKR"))
                        for name in entry["env_names"])

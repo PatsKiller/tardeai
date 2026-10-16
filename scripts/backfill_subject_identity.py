@@ -341,7 +341,8 @@ def main(argv: list[str] | None = None) -> int:
         if apply:
             _receipt_lib().write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
                                               script="backfill_subject_identity.py", summary=_totals(results),
-                                              error=f"{type(exc).__name__}: {exc}")
+                                              error=f"{type(exc).__name__}: {exc}",
+                                              output={"produced_count": 0, "attempted_count": 0, "skipped_reasons": {"dependency_unavailable": 1}})
             raise
         return 1
     import json
@@ -356,8 +357,21 @@ def main(argv: list[str] | None = None) -> int:
             " (full pass only)"])
         return 0
     _receipt_lib().write_lane_receipt(LANE_ID, ok=True, exit_code=0, started_at=started,
-                                      script="backfill_subject_identity.py", summary=totals)
+                                      script="backfill_subject_identity.py", summary=totals,
+                                      output=lane_output(totals))
     return 0
+
+
+def lane_output(totals: dict) -> dict:
+    """LaneRunReceipt@v2 output fields (n8n expected_output, unit: research-table rows stamped with a resolved
+    subject identity: symbol rows + topic rows). Rows marked UNRESOLVABLE on a full pass are reported as a skip, not
+    produced; the per-table UPDATEs do not count what they examined, so attempted is not reported. Nothing to stamp =
+    ``no_new_input``."""
+    produced = int(totals.get("rows_stamped") or 0) + int(totals.get("topic_rows") or 0)
+    skipped = {"unresolvable_rows": int(totals.get("unresolvable_rows") or 0),
+               "table_skipped": len(totals.get("tables_skipped") or [])}
+    return {"produced_count": produced, "skipped_reasons": skipped,
+            "empty_reason": "no_new_input" if produced == 0 else None}
 
 
 if __name__ == "__main__":

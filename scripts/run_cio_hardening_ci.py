@@ -35,11 +35,21 @@ GATES = [
     # ANCHOR: CC_TAILSCALE_IDENTITY_AUTH_20261014 — CC auth: tailnet identity on the serve socket,
     # service token on :7777, step-up refusal on order/stop/credential/risk routes. Hermetic.
     ("cc_tailscale_identity_auth_20261014", ["tests/test_cc_tailscale_identity_auth_20261014.py"]),
+    # ANCHOR: LANE_PRODUCED_COUNT_CW_4_20261015 — cutover-wave lanes (batch 4: watchlist sweep + 7 CW2 lanes) write
+    # LaneRunReceipt@v2 produced_count and opt into the executor output verdict (allowlist output_receipt v2). Real
+    # entry point per lane in a fake n8n attempt, DB/provider/network stubbed: produced / empty_allowed / RUN_FAILED
+    # empty_output on a fatal skip. Hermetic: TRADEAI_STATE_ROOT = tmp.
+    ("lane_produced_count_cw_4_20261015", ["tests/test_lane_produced_count_cw_4_20261015.py"]),
     ("refactor_shard_03_20261011", ["tests/test_refactor_shard_03_20261011.py"]),
     # ANCHOR: REFACTOR_SHARDS_05_08_LOCKS_20261011 — exact cron PID/OS lock identity, source only.
     ("refactor_shards_05_08_locks_20261011", ["tests/test_refactor_shards_05_08_locks_20261011.py"]),
     # ANCHOR: REFACTOR_SHARD_05_20261011 — offline previews and exact cron argv, fake-only work.
     ("refactor_shard_05_20261011", ["tests/test_refactor_shard_05_20261011.py"]),
+    # ANCHOR: LANE_PRODUCED_COUNT_CW_5_20261015 — cutover-wave lanes (batch 5: 3 CW2 + 6 CW3 lanes) write
+    # LaneRunReceipt@v2 produced_count and opt into the executor output verdict (allowlist output_receipt v2). Real
+    # entry point per lane in a fake n8n attempt, DB/provider/network stubbed: produced / empty_allowed / RUN_FAILED
+    # empty_output on a fatal skip. Hermetic: TRADEAI_STATE_ROOT = tmp.
+    ("lane_produced_count_cw_5_20261015", ["tests/test_lane_produced_count_cw_5_20261015.py"]),
     ("refactor_shard_07_20261011", ["tests/test_refactor_shard_07_20261011.py"]),
     (
         "options_workflow",
@@ -2228,6 +2238,9 @@ GATES = [
             # AGENTS.md 11.0.0 (PROPOSED 2026-10-14): §23.24 mandatory n8n workflow framework (six areas, each element
             # with an existing or proposed check); §0/§2/§2A/§7A/§17/§22/§23.14/§23.23 pinned.
             "tests/test_agents_policy_11_0_0_workflow_framework.py",
+            # AGENTS.md 12.0.0 (PROPOSED 2026-10-15): §23.25 n8n cutover directive (all families except F07 and
+            # registry_systemd); §0/§2/§2A/§7A/§17/§22 pinned.
+            "tests/test_agents_policy_12_0_0_cutover_directive.py",
             "tests/test_trading_session_grant_20260925.py",
             "tests/test_operator_approval_workflow_docs.py",
         ],
@@ -3803,6 +3816,17 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: LANE_PRODUCED_COUNT_CW_3_20261015 — cutover wave 1 lanes (batch 3: identity sweep, journal tilt,
+        # material change, strategy cards, proposal backtest, SEC Form 4, source attribution, agent performance) write
+        # LaneRunReceipt@v2 produced_count and opt into the executor output verdict (allowlist output_receipt v2). Real
+        # entry point per lane in a fake n8n attempt, DB/provider stubbed: produced / empty_allowed / RUN_FAILED
+        # empty_output on a fatal skip; established receipt paths pinned. Hermetic: TRADEAI_STATE_ROOT = tmp.
+        "lane_produced_count_cw_3_20261015",
+        [
+            "tests/test_lane_produced_count_cw_3_20261015.py",
+        ],
+    ),
+    (
         # ANCHOR: N8N_AUDIT_FINDINGS_20261015 — third-party n8n architecture audit (pinned e355be188), gap register
         # DD03-DD08 + DD14, each reproduced from the auditor's probes and fixed: request identity (a replayed key never
         # returns another lane/mode/workflow's row; live relay runs need a validated namespace; every executor path
@@ -3817,6 +3841,26 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: LANE_PRODUCED_COUNT_CW_1_20261015 — cutover wave 1 lanes (batch 1 of 6) write LaneRunReceipt@v2
+        # produced_count via write_lane_receipt(output=...) and opt into the executor output verdict (allowlist
+        # output_receipt v2). Each lane's real main() runs in a fake n8n attempt with its DB/provider work stubbed:
+        # produced / empty_allowed / RUN_FAILED empty_output on a fatal skip. Hermetic: TRADEAI_STATE_ROOT = tmp.
+        "lane_produced_count_cw_1_20261015",
+        [
+            "tests/test_lane_produced_count_cw_1_20261015.py",
+        ],
+    ),
+    (
+        # ANCHOR: LANE_PRODUCED_COUNT_CW_2_20261015 — cutover wave 1 lanes (batch 2: finviz x4, hermes x4) write
+        # LaneRunReceipt@v2 produced_count via write_lane_receipt(output=...) and opt into the executor output verdict
+        # (allowlist output_receipt v2). Real main() per lane in a fake n8n attempt, DB/provider/network stubbed:
+        # produced / empty_allowed / RUN_FAILED empty_output on a fatal skip. Hermetic: TRADEAI_STATE_ROOT = tmp.
+        "lane_produced_count_cw_2_20261015",
+        [
+            "tests/test_lane_produced_count_cw_2_20261015.py",
+        ],
+    ),
+    (
         # ANCHOR: CANARY_EFFECT_KEYS — 2026-10-15 canary double-effect audit (arch-review-20261014): every live, canary
         # or canary-wave lane that appends, sends or calls an LLM carries a STAGED effect key (cron_claim false,
         # n8n_claim false: neither side claims, executor view unchanged); the cron-side wrapper
@@ -3826,6 +3870,19 @@ GATES = [
         "canary_effect_keys_20261015",
         [
             "tests/test_canary_effect_keys_20261015.py",
+        ],
+    ),
+    (
+        # ANCHOR: LANE_REPAIR_RI_HERMES_LITMUS — 2026-10-15 lane repair of three lanes the lane-disposition audit found
+        # broken: run-research-intelligence-overnight (ingest bounded by --budget-s / --max-items-per-topic, stored
+        # results skip pre-model, SIGTERM still writes the receipt, batch lock; narrative + synthesizer registered and
+        # capped, no manual_trigger claim), hermes-coordinator (retention purge skips FK-referenced rows, bounded per
+        # pass) and source-litmus-vs-yahoo (a BLOCK finding is an ok receipt with a verdict; one tick / one noisy row
+        # does not BLOCK). n8n SHADOW wiring: litmus dry-run-only entry, RI staged r1_pending (bridge route missing),
+        # hermes-coordinator excluded (closure reaches broker modules + raw senders). Hermetic: stubs, tmp_path receipts.
+        "lane_repair_ri_hermes_litmus_20261015",
+        [
+            "tests/test_lane_repair_ri_hermes_litmus_20261015.py",
         ],
     ),
     (
@@ -3995,6 +4052,18 @@ GATES = [
             # excluded lanes pinned (premarket C1 steps, P0, llm in-process, shared receipt, non-R1 class); compute_due
             # week / half-hour / monthly sweeps. Hermetic: repo config read only.
             "tests/test_sw4_shadow_wave4_20261011.py",
+            # Lane repair 2026-10-15 (build-symbol-profiles OperationalError, entry planner InterfaceError,
+            # indicator-engine demo line): per-symbol transactions + reconnect/lock retry; comms settlement no longer
+            # closes the thread-local connection; plan-only n8n entry with no sender in reach; --universe gap-fill over
+            # the indicator_cache_refresh universe (idempotent, bounded); LaneOutput@v1 counts; shadow rows, staged
+            # planner rows, REVIEWED contracts with N8nExpectedOutput@v1; cron packet diff. Hermetic: fake DB modules,
+            # TRADEAI_STATE_ROOT = tmp, repo config read only.
+            "tests/test_lane_repair_20261015.py",
+            # Shadow wave LD-W1 (lane disposition 2026-10-15, M1): 8 leaf lanes (no send / LLM / broker reach in the
+            # import closure) at the cron-row shadow shape; offline --dry-run writes nothing; the REAL executor drains
+            # a live request per hermetic lane, the stage clamp runs it dry, RUN_DONE; receipts on the real path of
+            # the three scripts this wave changed. Hermetic: tmp_path ledger/state/locks, no DB variables.
+            "tests/test_shadow_wave_ld_w1_20261015.py",
             # SW4 env narrowing: nine lane scripts copy only named keys from <checkout>/.env (no broker credential
             # reaches os.environ); etf_performance_enrich strict argparse. Hermetic: scratch .env, monkeypatched env.
             "tests/test_sw4_env_narrowing_20261011.py",
@@ -4217,6 +4286,10 @@ GATES = [
         "cron_tranche_b_20261007",
         [
             "tests/test_pipeline_manifest_runner_20261007.py",
+            # Consolidation C3 (lane disposition 2026-10-15): F36 health/audit plane manifest (4 weekday-morning
+            # checks -> stage `morning`, 11 deferred, 7 excluded = the 22 live F36 lines), NEVER_SCHEDULED runner
+            # dry run, flip packet build/verify/rollback byte-exact + fake-crontab round trip. Hermetic.
+            "tests/test_consolidation_health_audit_c3_20261015.py",
         ],
     ),
     (
@@ -4601,12 +4674,31 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: ONBOARD_DRYRUN_B3_20261015 — n8n onboarding batch B3 (lane disposition 2026-10-15, MIGRATE_N8N, no
+        # allowlist entry, no --dry-run before): offline --dry-run that wins over live flags for news-ingestion
+        # (+tail), hermes-youtube-discovery, youtube-transcript-ingest (in-process record-and-raise proof) and three
+        # shell lanes: drive-syncs-hourly (precedence fix: --dry-run now wins over --apply), run-profit-capture-
+        # refresh, portfolio-server-watchdog (out-of-process proof: PATH holds only recording stubs, roots in
+        # tmp_path). Listing it schedules nothing.
+        "onboard_dryrun_b3_20261015",
+        ["tests/test_onboard_dryrun_b3_20261015.py"],
+    ),
+    (
         # ANCHOR: SCALP_PREMARKET_ONBOARD_20261014 — operator directive 2026-10-14: the two scalp hot-tier R1 ingest
         # lanes (finviz-enrichment-scalp-hot, scalp-hot-list) enter the dispatcher at shadow (cron-exact lock,
         # market_gate, receipt, no broker env), the market_day_gate.sh exception stays bounded to three lanes, the
         # hot-list line writes its LaneRunReceipt@v1 on a real run only, and the sender / paper scalp lanes stay off.
         "scalp_premarket_onboard_20261014",
         ["tests/test_scalp_premarket_onboard_20261014.py"],
+    ),
+    (
+        # ANCHOR: ONBOARD_DRYRUN_B1_20261015 — n8n onboarding batch B1 (lane disposition 2026-10-15, MIGRATE_N8N lanes
+        # with no allowlist entry and no --dry-run): an offline --dry-run that wins over --apply for 8 read-
+        # only/overwrite lanes (deploy-detect/recompute/monitor, three outcome reconcilers, trade-integrity-audit,
+        # tmp-scratch-cleanup). Hermetic in-process proof: every write/send/network/subprocess primitive recorded,
+        # zero calls, one LaneOutput@v1 line. Listing it schedules nothing.
+        "onboard_dryrun_b1_20261015",
+        ["tests/test_onboard_dryrun_b1_20261015.py"],
     ),
     (
         # ANCHOR: CONSOLIDATION_STEP1_FINVIZ_BROKER — 2026-10-10 provider consolidation step 1 (cron L442 watch
@@ -4618,6 +4710,16 @@ GATES = [
         [
             "tests/test_consolidation_step1_finviz_broker_20261010.py",
         ],
+    ),
+    (
+        # ANCHOR: ONBOARD_DRYRUN_B2_20261015 — n8n onboarding batch B2 (lane disposition 2026-10-15, MIGRATE_N8N, no
+        # allowlist entry, no --dry-run before): an offline --dry-run that wins over --apply for 7 appender/writer
+        # lanes (deepseek-balance-snapshot, plan-drift-revalidator, enrich-proposal-technicals, reclassify-momentum-
+        # proposals, active-trader-session-review, active-trader-signal-calibration, proposal-lifecycle). Hermetic in-
+        # process proof: write/send/network/subprocess primitives recorded, zero calls, one LaneOutput@v1 line.
+        # Listing it schedules nothing.
+        "onboard_dryrun_b2_20261015",
+        ["tests/test_onboard_dryrun_b2_20261015.py"],
     ),
     (
         # ANCHOR: BROKER_DOMAINS_Q1 — 2026-10-10 operator decisions CONSOLIDATION_PLAN §D (2)(3)(5)(6)(7)(13)(14):
@@ -4968,6 +5070,15 @@ GATES = [
             "tests/test_n8n_decision_ledger_20261015.py",
             "tests/test_n8n_env_enforce_readiness_20261015.py",
         ],
+    ),
+    (
+        # ANCHOR: N8N_CUTOVER_WAVE_FACTORY_20261015 — operator directive 2026-10-15 "N8N Cutover Decision": the cutover
+        # factory (scripts/n8n_cutover_wave.py) turns cron lanes into §23.12 canaries (live_arg = the cron argv, lock =
+        # the cron flock lock, effect key armed for appenders), comments a wave's cron lines in one crontab write, and
+        # writes the dispatcher cutover rows. Hermetic: scratch code root, fake crontab command; plus the committed
+        # wave rows stay admitted canaries.
+        "n8n_cutover_wave_20261015",
+        ["tests/test_n8n_cutover_wave_20261015.py"],
     ),
 ]
 

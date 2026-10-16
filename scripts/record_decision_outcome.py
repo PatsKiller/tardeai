@@ -210,12 +210,18 @@ def main(argv=None) -> int:
     except Exception as exc:
         lr.write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
                               script="record_decision_outcome.py", summary=summary,
-                              error=f"{type(exc).__name__}: {exc}")
+                              error=f"{type(exc).__name__}: {exc}",
+                              output={"produced_count": 0, "attempted_count": 0, "skipped_reasons": {"dependency_unavailable": 1}})
         raise
     if args.json:
         print(json.dumps({"recorded": summary["recorded"]}, indent=2))
+    recorded = int(summary.get("recorded") or 0)
+    # LaneRunReceipt@v2 output (n8n expected_output, unit: decision_outcomes rows inserted; every selected
+    # synthesis without an outcome row is inserted in one transaction, so attempted = produced). None = no_new_input.
     lr.write_lane_receipt(LANE_ID, ok=True, exit_code=0, started_at=started,
-                          script="record_decision_outcome.py", summary=summary)
+                          script="record_decision_outcome.py", summary=summary,
+                          output={"produced_count": recorded, "attempted_count": recorded, "skipped_reasons": {},
+                                  "empty_reason": None if recorded else "no_new_input"})
     return 0
 
 

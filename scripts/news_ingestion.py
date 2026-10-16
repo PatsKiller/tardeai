@@ -28,6 +28,29 @@ Usage:
 """
 from __future__ import annotations
 
+import sys as _dr_sys
+
+if __name__ == "__main__" and "--dry-run" in _dr_sys.argv[1:]:
+    # n8n onboarding (lane disposition 2026-10-15, MIGRATE_N8N): --dry-run is an OFFLINE plan and wins over every
+    # live flag (--priority / --tail-rotate / --full). It returns here, before the .env load, any DB/LLM/network/sender import and any file
+    # write; it prints the plan and one LaneOutput@v1 line on stderr (produced 0, empty_reason dry_run).
+    import os as _dr_os
+
+    _dr_sys.path.insert(0, _dr_os.path.join(_dr_os.path.dirname(_dr_os.path.abspath(__file__))))
+    from lib.lane_output import emit as _dr_emit, output_block as _dr_block
+
+    _dr_lane = "news-ingestion-tail" if "--tail-rotate" in _dr_sys.argv else "news-ingestion"
+    _dr_would = (
+        "fetch Yahoo + Benzinga RSS (Benzinga API when keyed) for the --priority universe (NEWS_INGEST_MAX) "
+        "or the next --tail-rotate batch (NEWS_TAIL_BATCH), score + tag via content_scoring, write "
+        "news_articles / catalyst_events / sentiment_observations through the one writer, advance the "
+        "rotation offset and print the heartbeat"
+    )
+    print(f"DRY-RUN {_dr_lane}: would {_dr_would}; argv={_dr_sys.argv[1:]!r}; dry-run wins over live flags; "
+          "nothing read from env/DB/network, no model call, no send, no file write")
+    _dr_emit(_dr_lane, "dry_run", _dr_block(produced=0, attempted=0, empty_reason="dry_run", unit="symbol"))
+    raise SystemExit(0)
+
 import json
 import os
 import sys

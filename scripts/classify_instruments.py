@@ -47,10 +47,23 @@ def main(argv=None):
     try:
         rc, summary = _run(argv, dry_run=False)
     except Exception as exc:  # failed real run: failed receipt (ok_at kept), then exit non-zero
-        _receipt(ok=False, started_at=started_at, error=f"{type(exc).__name__}: {exc}")
+        _receipt(ok=False, started_at=started_at, error=f"{type(exc).__name__}: {exc}",
+                 output={"produced_count": 0, "attempted_count": 0, "skipped_reasons": {"dependency_unavailable": 1}})
         raise
-    _receipt(ok=True, started_at=started_at, summary=summary)
+    _receipt(ok=True, started_at=started_at, summary=summary, output=lane_output(summary))
     return rc
+
+
+def lane_output(summary: dict) -> dict:
+    """LaneRunReceipt@v2 output fields (n8n expected_output, unit: symbol_profiles rows upserted). attempted = the
+    classified symbols offered to the writer; an empty classification is fatal (``universe_empty_unexpected``)."""
+    classified = int(summary.get("classified") or 0)
+    written = int(summary.get("profile_rows_updated") or 0)
+    skipped = {"writer_rejected": int(summary.get("profile_rows_rejected") or 0)}
+    if classified == 0:
+        skipped["universe_empty_unexpected"] = 1
+    return {"produced_count": written, "attempted_count": max(classified, written), "skipped_reasons": skipped,
+            "empty_reason": None}
 
 
 def _run(argv, dry_run):

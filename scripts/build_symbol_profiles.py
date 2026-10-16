@@ -195,10 +195,11 @@ def run(symbols=None, force=False, watchlist_top=0, dry_run=False):
             stale = [s for s in stale if s not in stubs] + retry
         uni = sorted(stale)
     if not uni:
-        out = {"status": "fresh", "updated": 0}
+        out = {"status": "fresh", "updated": 0, "checked": 0}
         if dry_run:
             out["mode"] = "dry_run"
-            conn.rollback()
+        conn.rollback()  # end the read transaction (nothing was written)
+        out["output"] = _output(produced=0, attempted=0, skipped={}, empty_reason="no_stale_symbols")
         print(json.dumps(out))
         return out
     if dry_run:
@@ -211,65 +212,143 @@ def run(symbols=None, force=False, watchlist_top=0, dry_run=False):
             "would_fetch": len(fetch),
             "sample": fetch[:25],
             "would_write": {"table": "symbol_profiles", "max_rows": len(uni)},
+            # A dry run produces nothing by definition; attempted_count is what a real run would try.
+            "output": _output(produced=0, attempted=len(uni), skipped={}, empty_reason="dry_run"),
         }
         conn.rollback()  # end the read transaction; nothing was written
         print(json.dumps(out))
         return out
+    # ── Real run: no transaction may stay open across a network call ─────────────────────────────────
+    # 2026-10-15 lane repair. Every failure in logs/symbol_profiles*.log since 09-20 is the first upsert after the
+    # Finviz batch: psycopg2.OperationalError "SSL connection has been closed unexpectedly", or LockNotAvailable.
+    # db_adapter sets idle_in_transaction_session_timeout = 120s (the role sets 2min); the SELECTs above opened a
+    # transaction that stayed open through _finviz_map (6 views x hundreds of tickers) and the per-symbol yfinance
+    # calls, so the server killed the session before the first write. The one long transaction also held every
+    # upserted row lock until the final commit, so a concurrent profile writer hit lock_timeout (3s).
+    # Now: the read transaction ends here, before any provider call; each symbol's upsert is its own short
+    # transaction; a dropped connection is rebuilt; a lock timeout is retried once, then skipped with a reason.
+    conn.rollback()
     import yfinance as yf
 
     fvz = _finviz_map(uni)  # batch Finviz once (sector/industry/company)
+    retry_sleep = float(lane.get("db_lock_retry_sleep_s") or _DB_LOCK_RETRY_SLEEP_S)
     updated = missed = fvz_used = rejected = 0
+    skipped: dict[str, int] = {}
     for sym in uni:
         if sym in HOLDING_PROXY_MAP and not re.fullmatch(r"[A-Z]{1,5}", sym):
             etf, label = HOLDING_PROXY_MAP[sym]
             # proxy_label owns description + sector only; an existing industry is left alone.
-            rcpt = upsert_profile(
-                cur,
-                sym,
-                {"description_1s": f"Retirement-plan fund — {label} (tracked via {etf} proxy).", "sector": label},
-                source="proxy_label",
+            fields = {"description_1s": f"Retirement-plan fund — {label} (tracked via {etf} proxy).", "sector": label}
+            source = "proxy_label"
+        else:
+            try:
+                info = yf.Ticker(sym).info or {}
+            except Exception:
+                info = {}
+            desc = _two_line_summary(info.get("longBusinessSummary"))
+            sector = info.get("sector") or _ETF_SECTOR.get(sym) or _FUND_SECTOR.get(sym) or None
+            industry = info.get("industry") or (
+                "Exchange Traded Fund" if sym in _ETF_SECTOR else "Mutual Fund" if sym in _FUND_SECTOR else None
             )
-            updated += rcpt.rows_written
-            rejected += rcpt.rows_rejected
+            source = "yfinance"
+            # ── Finviz fallback (yfinance rate-limited / empty): sector + industry + a synthesized one-liner ──
+            if not (desc or sector):
+                fd = fvz.get(sym) or {}
+                f_sector, f_industry, f_company = fd.get("sector"), fd.get("industry"), fd.get("company")
+                if f_sector or f_industry:
+                    sector = sector or f_sector
+                    industry = industry or f_industry
+                    if not desc:
+                        bits = [b for b in (f_company, f_industry) if b]
+                        desc = " — ".join(bits) + "." if bits else None
+                    source = "finviz"
+                    fvz_used += 1
+            if not (desc or sector):
+                missed += 1
+                skipped["provider_no_profile"] = skipped.get("provider_no_profile", 0) + 1
+                continue
+            fields = {"description_1s": desc, "sector": sector, "industry": industry}
+        rcpt, db_skip = _upsert_one(sym, fields, source, retry_sleep)
+        if db_skip:
+            skipped[db_skip] = skipped.get(db_skip, 0) + 1
             continue
-        try:
-            info = yf.Ticker(sym).info or {}
-        except Exception:
-            info = {}
-        desc = _two_line_summary(info.get("longBusinessSummary"))
-        sector = info.get("sector") or _ETF_SECTOR.get(sym) or _FUND_SECTOR.get(sym) or None
-        industry = info.get("industry") or (
-            "Exchange Traded Fund" if sym in _ETF_SECTOR else "Mutual Fund" if sym in _FUND_SECTOR else None
-        )
-        source = "yfinance"
-        # ── Finviz fallback (yfinance rate-limited / empty): sector + industry + a synthesized one-liner ──
-        if not (desc or sector):
-            fd = fvz.get(sym) or {}
-            f_sector, f_industry, f_company = fd.get("sector"), fd.get("industry"), fd.get("company")
-            if f_sector or f_industry:
-                sector = sector or f_sector
-                industry = industry or f_industry
-                if not desc:
-                    bits = [b for b in (f_company, f_industry) if b]
-                    desc = " — ".join(bits) + "." if bits else None
-                source = "finviz"
-                fvz_used += 1
-        if not (desc or sector):
-            missed += 1
-            continue
-        rcpt = upsert_profile(cur, sym, {"description_1s": desc, "sector": sector, "industry": industry}, source=source)
         updated += rcpt.rows_written
         rejected += rcpt.rows_rejected
-    conn.commit()
+        if rcpt.rows_rejected:
+            skipped["writer_rejected"] = skipped.get("writer_rejected", 0) + rcpt.rows_rejected
     out = {
         "checked": len(uni),
         "updated": updated,
         "finviz_fallback": fvz_used,
         "no_profile": missed,
         "rejected": rejected,
+        "db_skipped": sum(v for k, v in skipped.items() if k.startswith("db_")),
+        "output": _output(produced=updated, attempted=len(uni), skipped=skipped,
+                          empty_reason=None if updated else "all_skipped"),
     }
     print(json.dumps(out))
     return out
+
+
+_DB_LOCK_RETRY_SLEEP_S = 2.0
+
+
+def _db_errors() -> tuple:
+    """psycopg2's error classes, or () when psycopg2 is absent (then nothing is caught here)."""
+    try:
+        import psycopg2
+
+        return (psycopg2.OperationalError, psycopg2.InterfaceError), getattr(
+            getattr(psycopg2, "errors", None), "LockNotAvailable", None)
+    except Exception:  # noqa: BLE001
+        return (), None
+
+
+def _upsert_one(sym, fields, source, retry_sleep):
+    """One symbol = one short transaction on a live connection. Returns (receipt, None) or (None, skip_reason).
+
+    A lock timeout is retried once after ``retry_sleep`` seconds; a dropped connection (OperationalError /
+    InterfaceError) is rebuilt through db_adapter and retried once. A second failure skips the symbol with a typed
+    reason instead of killing the whole drain. Any other exception propagates (honest failure, failed receipt)."""
+    import time
+
+    from db_adapter import _get_conn
+
+    errors, lock_cls = _db_errors()
+    reason = None
+    for attempt in range(2):
+        conn = _get_conn()  # pings an idle connection and rebuilds a dead one (db_adapter)
+        if conn is None:
+            reason = "db_unavailable"
+            break
+        try:
+            rcpt = upsert_profile(conn.cursor(), sym, fields, source=source)
+            conn.commit()
+            return rcpt, None
+        except errors as exc:  # type: ignore[misc]
+            is_lock = lock_cls is not None and isinstance(exc, lock_cls)
+            reason = "db_lock_timeout" if is_lock else "db_connection_lost"
+            try:
+                conn.rollback()
+            except Exception:  # noqa: BLE001 -- a dead connection cannot roll back
+                pass
+            if not is_lock:
+                try:
+                    from db_adapter import close_thread_conn
+
+                    close_thread_conn()
+                except Exception:  # noqa: BLE001
+                    pass
+            if attempt == 0:
+                time.sleep(retry_sleep if is_lock else 0)
+    print(f"  {sym}: skipped ({reason})")
+    return None, reason
+
+
+def _output(**kw):
+    from lib.lane_output import output_block
+
+    return output_block(unit="symbol_profiles rows upserted", **kw)
 
 
 def receipt_name(symbols, watchlist_top) -> str | None:
@@ -297,6 +376,12 @@ def main(argv=None) -> int:
         print(f"DRY-RUN build-symbol-profiles-at-0-19: would refresh profiles for "
               f"{a.symbols or 'watch-grade universe'} (force={a.force}, watchlist_top={a.watchlist_top}) "
               "via yfinance/Finviz and symbol_profiles; inputs NOT_MEASURED")
+        # The offline preview (refactor shard 05: no env, no DB, no provider) cannot count the stale universe;
+        # the measured read-only preview is `--watchlist-top N --dry-run`.
+        from lib.lane_output import emit, output_block
+
+        emit(OWN_LANE, "dry_run", output_block(unit="symbol_profiles rows upserted", produced=0, attempted=0,
+                                               empty_reason="dry_run_offline"))
         return 0
     name = receipt_name(symbols, a.watchlist_top)
     started_at = _now_iso()
@@ -306,9 +391,43 @@ def main(argv=None) -> int:
         if name:
             _receipt(name, ok=False, started_at=started_at, error=f"{type(exc).__name__}: {exc}")
         raise
+    out = out or {}
     if name:
-        _receipt(name, ok=True, started_at=started_at, summary=out or {})
-    return 0
+        _receipt(name, ok=True, started_at=started_at, summary=out)
+        from lib.lane_output import emit
+
+        emit(OWN_LANE if name == "build_symbol_profiles" else name, "live", _output_of(out), started_at=started_at)
+    # Honest exit (refactor contract §2): 1 when nothing landed although there was work, or a write was lost.
+    return 0 if _work_landed(out) else 1
+
+
+OWN_LANE = "build-symbol-profiles-at-0-19"
+
+
+def _output_of(summary) -> dict:
+    """The LaneOutput@v1 block of a run summary (rebuilt from the legacy counts when a caller returned none)."""
+    block = (summary or {}).get("output")
+    if isinstance(block, dict) and "produced_count" in block:
+        return block
+    produced = int((summary or {}).get("updated") or 0)
+    attempted = int((summary or {}).get("checked") or 0)
+    skipped = {"provider_no_profile": int((summary or {}).get("no_profile") or 0),
+               "writer_rejected": int((summary or {}).get("rejected") or 0)}
+    return _output(produced=produced, attempted=attempted, skipped=skipped,
+                   empty_reason=None if produced else ("no_stale_symbols" if not attempted else "all_skipped"))
+
+
+def _work_landed(summary) -> bool:
+    """False when there was work but nothing was written, or a DB write was skipped / rejected.
+
+    A provider with no profile for a symbol (yfinance 404 for VIX, ABB, ... every week) is a typed skip, not a
+    failure: before 2026-10-15 it kept the weekly lane's ok_at from ever advancing (09-20: 17 of 28 had none)."""
+    block = _output_of(summary)
+    reasons = block.get("skipped_reasons") or {}
+    if block["attempted_count"] and not block["produced_count"]:
+        return False
+    return not any(reasons.get(k) for k in ("writer_rejected", "db_lock_timeout", "db_connection_lost",
+                                            "db_unavailable"))
 
 
 def _now_iso() -> str:
@@ -318,15 +437,28 @@ def _now_iso() -> str:
 
 
 def _receipt(name, **kw):
-    from lib.lane_last_receipt import write_receipt
+    from lib.lane_last_receipt import write_lane_receipt, write_receipt
 
     write_receipt(name, **kw)
     if name == "build_symbol_profiles":
         own = dict(kw)
-        counts = own.get("summary") or {}
-        # Partial provider/writer misses keep the legacy CLI's exit 0 but cannot advance success.
-        own["ok"] = own["ok"] and not (counts.get("no_profile") or counts.get("rejected"))
-        write_receipt("build-symbol-profiles-at-0-19", exit_code=0 if kw["ok"] else 1, **own)
+        # Partial provider misses are typed skips; a lost or rejected write, or nothing written although there was
+        # work, keeps the legacy CLI's receipt but cannot advance success.
+        own["ok"] = own["ok"] and _work_landed(own.get("summary") or {})
+        write_lane_receipt(OWN_LANE, exit_code=0 if own["ok"] else 1, output=_receipt_output(own), **own)
+
+
+def _receipt_output(own: dict) -> dict:
+    """LaneRunReceipt@v2 output fields for the n8n lane receipt (expected_output unit: symbol_profiles rows
+    upserted), from the run's LaneOutput@v1 block. Nothing stale (profiles are fresh for 30 days) is the closed-enum
+    ``nothing_due``; a crash is ``dependency_unavailable``."""
+    if "summary" not in own:
+        return {"produced_count": 0, "attempted_count": 0, "skipped_reasons": {"dependency_unavailable": 1}}
+    block = _output_of(own.get("summary") or {})
+    produced, attempted = block["produced_count"], block["attempted_count"]
+    return {"produced_count": produced, "attempted_count": max(attempted, produced),
+            "skipped_reasons": dict(block.get("skipped_reasons") or {}),
+            "empty_reason": "nothing_due" if not produced and not attempted else None}
 
 
 if __name__ == "__main__":

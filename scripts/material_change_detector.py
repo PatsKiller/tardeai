@@ -1039,12 +1039,26 @@ def main(argv=None) -> int:
         rc = _run(args)
     except Exception as exc:
         write_lane_receipt("material-change-detector-stage1", ok=False, exit_code=1, started_at=started,
-                           script="material_change_detector.py", error=type(exc).__name__)
+                           script="material_change_detector.py", error=type(exc).__name__,
+                           output={"produced_count": 0, "attempted_count": 0, "skipped_reasons": {"dependency_unavailable": 1}})
         raise
     ok = LAST_SUMMARY.get("disposition") != "WROTE_NOTHING_UNEXPLAINED"
     write_lane_receipt("material-change-detector-stage1", ok=ok, exit_code=rc, started_at=started,
-                       script="material_change_detector.py", summary=LAST_SUMMARY)
+                       script="material_change_detector.py", summary=LAST_SUMMARY, output=lane_output(LAST_SUMMARY))
     return rc
+
+
+def lane_output(summary: dict) -> dict:
+    """LaneRunReceipt@v2 output fields (n8n expected_output, unit: new material_changes rows; ON CONFLICT dedup
+    excluded). attempted = changes offered to persist(); nothing detected or all already present = ``no_new_input``;
+    an empty tracked universe is fatal (``universe_empty_unexpected``). WROTE_NOTHING_UNEXPLAINED is a failed
+    receipt (status failed) already."""
+    written, attempted = int(summary.get("written") or 0), int(summary.get("attempted") or 0)
+    skipped = {"already_present": int(summary.get("already_present") or 0)}
+    if not int(summary.get("universe") or 0):
+        skipped["universe_empty_unexpected"] = 1
+    return {"produced_count": written, "attempted_count": max(attempted, written), "skipped_reasons": skipped,
+            "empty_reason": "no_new_input" if written == 0 else None}
 
 
 if __name__ == "__main__":

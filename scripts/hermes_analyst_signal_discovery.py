@@ -85,6 +85,17 @@ def _print_human(report: dict) -> None:
               f"({c.get('direction')})")
 
 
+def lane_output(report: dict) -> dict:
+    """LaneRunReceipt@v2 output fields (n8n expected_output, unit: discovery candidates upserted into the inbox).
+    attempted = candidates built this pass; a pass forced dry by analyst_signal_enabled=false wrote nothing and is
+    ``disabled`` (fatal for this live lane); no candidate = ``no_new_input``."""
+    built = len(report.get("candidates") or [])
+    upserted = int(report.get("upserted") or 0)
+    skipped = {"disabled": 1} if report.get("effective_dry_run") else {"not_upserted": max(built - upserted, 0)}
+    return {"produced_count": upserted, "attempted_count": max(built, upserted), "skipped_reasons": skipped,
+            "empty_reason": "no_new_input" if upserted == 0 else None}
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -111,11 +122,13 @@ def main() -> int:
         except Exception as exc:
             _receipt_lib().write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
                                               script="hermes_analyst_signal_discovery.py",
-                                              error=f"{type(exc).__name__}: {exc}")
+                                              error=f"{type(exc).__name__}: {exc}",
+                                              output={"produced_count": 0, "attempted_count": 0, "skipped_reasons": {"dependency_unavailable": 1}})
             raise
         _receipt_lib().write_lane_receipt(
             LANE_ID, ok=True, exit_code=0, started_at=started, script="hermes_analyst_signal_discovery.py",
-            summary={k: report.get(k) for k in ('scanned_symbols', 'signals_detected', 'upserted', 'effective_dry_run', 'enabled_in_schedule')})
+            summary={k: report.get(k) for k in ('scanned_symbols', 'signals_detected', 'upserted', 'effective_dry_run', 'enabled_in_schedule')},
+            output=lane_output(report))
     if args.json:
         print(json.dumps(report, indent=2, default=str))
     else:

@@ -684,6 +684,8 @@ def enrich_tickers(
             view_results[v] = vr
             _RUN_STATS["views"][v] = len(vr)
             print(f"  [finviz-enrich] v={v}: {len(vr)} tickers")
+        # n8n expected_output: stale tickers with data from at least one view (the lane's produced unit)
+        _RUN_STATS["refreshed"] = sum(1 for s in stale if any(s in (view_results.get(v) or {}) for v in views))
 
         # Merge all views per ticker
         now_str = datetime.now().isoformat()
@@ -1077,7 +1079,8 @@ def main() -> int:
         print("No symbols to enrich (empty argv and empty default universe) — nothing to do.")
         failed = bool(_UNIVERSE_ERRORS)
         _receipt_lib().write_lane_receipt(LANE_ID, ok=not failed, exit_code=int(failed), script="finviz_enrichment.py",
-                                          summary={"symbols": 0, "universe_errors": list(_UNIVERSE_ERRORS)})
+                                          summary={"symbols": 0, "universe_errors": list(_UNIVERSE_ERRORS)},
+                                          output=lane_output(0, {}, universe_failed=failed))
         return 1 if failed else 0
     print(f"Running finviz_enrichment.py for {len(symbols)} symbol(s)"
           + (f": {symbols}" if len(symbols) <= 10 else f" (first 10: {symbols[:10]})"))
@@ -1106,7 +1109,8 @@ def main() -> int:
         except Exception:
             pass
         _receipt_lib().write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
-                                          script="finviz_enrichment.py", error=f"{type(_e).__name__}: {_e}")
+                                          script="finviz_enrichment.py", error=f"{type(_e).__name__}: {_e}",
+                                          output={"produced_count": 0, "attempted_count": 0, "skipped_reasons": {"dependency_unavailable": 1}})
         raise
     stale = int(_RUN_STATS.get("stale") or 0)
     view_counts = dict(_RUN_STATS.get("views") or {})
@@ -1118,8 +1122,25 @@ def main() -> int:
                                       summary={"symbols": len(symbols), "stale": stale,
                                                "views": {str(k): v for k, v in view_counts.items()},
                                                "nothing_fetched": nothing_fetched,
-                                               "universe_errors": list(_UNIVERSE_ERRORS)})
+                                               "universe_errors": list(_UNIVERSE_ERRORS)},
+                                      output=lane_output(len(symbols), dict(_RUN_STATS),
+                                                         universe_failed=bool(_UNIVERSE_ERRORS)))
     return rc
+
+
+def lane_output(symbols: int, stats: dict, *, universe_failed: bool = False) -> dict:
+    """LaneRunReceipt@v2 output fields (n8n expected_output, unit: stale tickers refreshed into the enrichment cache
+    with data from at least one Finviz view). attempted = the stale tickers; nothing stale = ``no_new_input``; an
+    empty default universe is fatal (``universe_empty_unexpected``), a universe read error ``dependency_unavailable``."""
+    stale = int(stats.get("stale") or 0)
+    refreshed = min(int(stats.get("refreshed") or 0), stale)
+    skipped = {"no_view_data": stale - refreshed, "rejected_non_ticker": int(stats.get("rejected_non_ticker") or 0)}
+    if universe_failed:
+        skipped["dependency_unavailable"] = 1
+    elif symbols == 0:
+        skipped["universe_empty_unexpected"] = 1
+    return {"produced_count": refreshed, "attempted_count": stale, "skipped_reasons": skipped,
+            "empty_reason": "no_new_input" if symbols and not stale else None}
 
 
 if __name__ == "__main__":

@@ -60,6 +60,19 @@ def _trade_source(r) -> str:
     return "watchlist" if "watch" in o else "automated"
 
 
+LAST_COUNTS: dict = {}
+
+
+def lane_output(counts: dict) -> dict:
+    """LaneRunReceipt@v2 output fields (n8n expected_output, unit: trade_lesson_memory rows upserted, one per
+    (post-mortem advisory, trade); ON CONFLICT DO UPDATE re-stamps an existing lesson). attempted = advisory rows
+    read; none = ``no_new_input``."""
+    wired, rows = int(counts.get("wired") or 0), int(counts.get("rows") or 0)
+    return {"produced_count": wired, "attempted_count": max(rows, wired),
+            "skipped_reasons": {"insert_failed": int(counts.get("skipped") or 0)},
+            "empty_reason": None if wired else "no_new_input"}
+
+
 def _execute():
     rows = _db(
         """SELECT h.id AS adv_id, h.lane, h.symbol, h.recommendation, h.trigger_reason,
@@ -108,6 +121,7 @@ def _execute():
             print(f"  skip trade {r['trade_id']} [{r['lane']}]: {str(e)[:100]}")
 
     print(f"[wire_advisory_lessons] wired {wired} external lesson(s), {skipped} skipped")
+    LAST_COUNTS.update(rows=len(rows), wired=wired, skipped=skipped)
 
     # Refresh the per-strategy rollup so the external lessons reach the learning digest/recommendations.
     rollup_exit = 0
@@ -137,6 +151,7 @@ def main(argv=None) -> int:
     except ImportError:
         from lib.lane_last_receipt import now_iso, write_lane_receipt
     started = now_iso()
+    LAST_COUNTS.clear()
     previous = sys.argv
     sys.argv = [previous[0], *argv]
     try:
@@ -147,11 +162,13 @@ def main(argv=None) -> int:
         write_lane_receipt(lane, ok=rc == 0, exit_code=rc, started_at=started, script="wire_advisory_lessons.py", summary={"completed": rc == 0})
         raise
     except Exception as exc:
-        write_lane_receipt(lane, ok=False, exit_code=1, started_at=started, script="wire_advisory_lessons.py", error=type(exc).__name__)
+        write_lane_receipt(lane, ok=False, exit_code=1, started_at=started, script="wire_advisory_lessons.py", error=type(exc).__name__,
+                           output={"produced_count": 0, "attempted_count": 0, "skipped_reasons": {"dependency_unavailable": 1}})
         raise
     finally:
         sys.argv = previous
-    write_lane_receipt(lane, ok=rc == 0, exit_code=rc, started_at=started, script="wire_advisory_lessons.py", summary={"completed": rc == 0})
+    write_lane_receipt(lane, ok=rc == 0, exit_code=rc, started_at=started, script="wire_advisory_lessons.py", summary={"completed": rc == 0},
+                       output=lane_output(LAST_COUNTS))
     return rc
 
 

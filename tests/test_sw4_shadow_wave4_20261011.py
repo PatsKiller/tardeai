@@ -12,7 +12,9 @@ Pinned so a later PR cannot slip them in unreviewed (one reason each):
   market-regime-collector;
 * agent-recommendation-normalizer: P0 duplicate rows (random recommendation_id per run);
 * rag-indexer, journal-review-builder: llm class with an in-process model call (not the governed bridge);
-* build-symbol-profiles-at-0-19: its receipt is build_symbol_profiles_last.json, shared with refresh_symbol_cards;
+* (released 2026-10-15) build-symbol-profiles-at-0-19: was held because its receipt was build_symbol_profiles_last.json,
+  shared with refresh_symbol_cards; it now writes its own build-symbol-profiles-at-0-19_last.json and the lane repair
+  of 2026-10-15 took its refactor shard 05 proposal into SHADOW (tests/test_lane_repair_20261015.py pins it);
 * social-ingest-stocktwits: consolidation merges it into the social owner (CONSOLIDATION_PLAN §B.2), and its match
   also hits L639;
 * cio-stance-classification-drain, siem-to-hermes-backlog, desk-suggestions-digest, build-hermes-canonical-status,
@@ -31,6 +33,9 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT / "tests") not in sys.path:
+    sys.path.append(str(ROOT / "tests"))
+from support import n8n_cutover_waves as CW  # noqa: E402
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
@@ -77,14 +82,20 @@ SW4 = {
 #: hermes_overnight registry edit (train 6, 2026-10-12) moved hermes-tag-lift-discovery into hermes-overnight-pipeline-night.
 SW4_ABSORBED = {"hermes-tag-lift-discovery": "hermes-overnight-pipeline-night"}
 SW4_LIVE = {k: v for k, v in SW4.items() if k not in SW4_ABSORBED}
+#: 2026-10-15: lanes a cutover wave promoted to canary leave the shadow pins below; tests/test_n8n_cutover_wave_20261015.py
+#: pins their canary shape (tests/support/n8n_cutover_waves.py).
+SW4_SHADOW = {k: v for k, v in SW4_LIVE.items() if k not in CW.PROMOTED}
 
 EXCLUDED = (
     "fred-data-ingest", "sync-dividend-data", "build-lesson-candidates", "candidate-discovery-orchestrator",
     "research-watchlist-discovery", "market-regime-collector", "agent-recommendation-normalizer", "rag-indexer",
-    "journal-review-builder", "build-symbol-profiles-at-0-19", "social-ingest-stocktwits",
+    "journal-review-builder", "social-ingest-stocktwits",
     "cio-stance-classification-drain", "siem-to-hermes-backlog", "desk-suggestions-digest",
-    "build-hermes-canonical-status", "hermes-discovery-scorecard", "drain-discovery-backlog",
+    "build-hermes-canonical-status", "drain-discovery-backlog",
 )
+#: Released from EXCLUDED by shadow wave LD-W1 (2026-10-15, tests/test_shadow_wave_ld_w1_20261015.py):
+#: hermes-discovery-scorecard (class report) was out of SW4 only because SW4 was an R1-class wave.
+RELEASED_LD_W1 = ("hermes-discovery-scorecard",)
 
 
 def test_counts():
@@ -93,7 +104,7 @@ def test_counts():
     assert sum(1 for v in SW4.values() if v[0] == "learn") == 5
 
 
-@pytest.mark.parametrize("lane", sorted(SW4_LIVE))
+@pytest.mark.parametrize("lane", sorted(SW4_SHADOW))
 def test_row_is_a_w4_shadow_cron_row_admitted_by_the_r1_gate(lane):
     klass, cron, _argv, receipt, _lock = SW4[lane]
     row = ROWS[lane]
@@ -110,7 +121,7 @@ def test_row_is_a_w4_shadow_cron_row_admitted_by_the_r1_gate(lane):
     assert not ok and why.startswith("shadow_on_cron_not_ratified"), why
 
 
-@pytest.mark.parametrize("lane", sorted(SW4_LIVE))
+@pytest.mark.parametrize("lane", sorted(SW4_SHADOW))
 def test_allowlist_entry_is_shadow_only_and_carries_no_broker_credential(lane):
     _klass, _cron, argv, receipt, cron_lock = SW4[lane]
     e = ALLOW[lane]
@@ -138,7 +149,7 @@ def test_flock_lanes_are_canary_lock_equivalent_and_the_rest_stay_blocked():
         canary["scheduler"]["stage"] = "canary"
         canary["dispatch"]["mode"] = "live"
         ok, why = LD.r1_canary_lock_matches(canary, dict(e, live_arg=[]))
-        if cron_lock and e["lock_kind"] == "flock":
+        if (cron_lock or lane in CW.PROMOTED) and e["lock_kind"] == "flock":  # CW: flock added by the cutover wave
             assert ok, (lane, why)
         else:
             assert not ok, (lane, why)
@@ -152,7 +163,7 @@ def test_the_script_writes_the_receipt_the_row_names():
         assert re.search(r"""['"]--dry-run['"]""", src), lane
 
 
-@pytest.mark.parametrize("lane", sorted(SW4_LIVE))
+@pytest.mark.parametrize("lane", sorted(SW4_SHADOW))
 def test_health_contract_is_reviewed_and_complete(lane):
     c = CONTRACTS[lane]
     assert c["status"] == "REVIEWED" and c["stage"] == "shadow" and c["kind"] == "lane"
@@ -201,18 +212,22 @@ def _sweep(rows, start, days, step_min):
 
 
 def test_compute_due_week_sweep_emits_dry_run_on_the_natural_slots_only():
-    slots, errors = _sweep([ROWS[x] for x in SW4_LIVE if x != "identity-sweep-stage0"], START, 7, 5)
+    slots, errors = _sweep([ROWS[x] for x in SW4_SHADOW if x != "identity-sweep-stage0"], START, 7, 5)
     assert errors == set(), sorted(errors)
     want = {"record-decision-outcome": 5, "update-lockup-earnings-dates": 7, "etf-analyst-enrich": 1,
             "agent-outcome-scorer": 1, "feedback-loop-processor": 5,
             "aegis-social-sentiment": 10, "aegis-transcript-discovery": 5, "aegis-nightly-ingestion": 7,
             "hermes-social-sentiment": 10, "sync-social-to-intelligence": 10, "trade-backtest-engine": 5,
             "etf-performance-enrich": 1}
+    want = {k: n for k, n in want.items() if k not in CW.PROMOTED}
     assert {k: len(v) for k, v in slots.items()} == want
-    assert {s[-4:] for s in slots["aegis-social-sentiment"]} == {"1100", "1500"}
-    assert {s[:8] for s in slots["agent-outcome-scorer"]} == {"20261018"}  # Sunday
+    if "aegis-social-sentiment" in slots:
+        assert {s[-4:] for s in slots["aegis-social-sentiment"]} == {"1100", "1500"}
+    if "agent-outcome-scorer" in slots:
+        assert {s[:8] for s in slots["agent-outcome-scorer"]} == {"20261018"}  # Sunday
 
 
+@pytest.mark.skipif("identity-sweep-stage0" in CW.PROMOTED, reason="promoted to canary by a 2026-10-15 cutover wave")
 def test_identity_sweep_fires_every_half_hour_dry_run_only():
     slots, errors = _sweep([ROWS["identity-sweep-stage0"]], START, 1, 30)
     assert errors == set() and len(slots["identity-sweep-stage0"]) == 48

@@ -145,8 +145,8 @@
       ],
       "idempotent_today": "guarded:change_guid/link_guid DO NOTHING",
       "wave": "tierA",
-      "cron_claim": false,
-      "n8n_claim": false
+      "cron_claim": true,
+      "n8n_claim": true
     },
     "document-mentions-backfill": {
       "process": "document-mentions-backfill",
@@ -159,8 +159,8 @@
       ],
       "idempotent_today": "guarded:document_mentions natural key DO NOTHING",
       "wave": "tierA",
-      "cron_claim": false,
-      "n8n_claim": false
+      "cron_claim": true,
+      "n8n_claim": true
     },
     "trade-ai-scalp-live": {
       "process": "trade-ai-scalp-live",
@@ -216,8 +216,8 @@
       ],
       "idempotent_today": "no:audit rows + seen_count bump",
       "wave": "tierA",
-      "cron_claim": false,
-      "n8n_claim": false
+      "cron_claim": true,
+      "n8n_claim": true
     },
     "hermes-news-bridge": {
       "process": "hermes-news-bridge",
@@ -230,8 +230,8 @@
       ],
       "idempotent_today": "guarded:NOT EXISTS hermes_research_id + is_duplicate",
       "wave": "tierA",
-      "cron_claim": false,
-      "n8n_claim": false
+      "cron_claim": true,
+      "n8n_claim": true
     },
     "finviz-proactive-research": {
       "process": "finviz-proactive-research",
@@ -244,8 +244,8 @@
       ],
       "idempotent_today": "guarded:is_duplicate SELECT (no unique index)",
       "wave": "tierA",
-      "cron_claim": false,
-      "n8n_claim": false
+      "cron_claim": true,
+      "n8n_claim": true
     },
     "proposal-backtest-engine": {
       "process": "proposal-backtest-engine",
@@ -258,8 +258,8 @@
       ],
       "idempotent_today": "no:strategy_backtest_results plain INSERT",
       "wave": "tierA",
-      "cron_claim": false,
-      "n8n_claim": false
+      "cron_claim": true,
+      "n8n_claim": true
     },
     "aegis-social-sentiment": {
       "process": "aegis-social-sentiment",
@@ -272,8 +272,8 @@
       ],
       "idempotent_today": "no:run_id is a timestamp",
       "wave": "tierA",
-      "cron_claim": false,
-      "n8n_claim": false
+      "cron_claim": true,
+      "n8n_claim": true
     },
     "hermes-pipeline-health": {
       "process": "hermes-pipeline-health",
@@ -416,8 +416,8 @@
       ],
       "idempotent_today": "no:run_id is a timestamp",
       "wave": "tierB",
-      "cron_claim": false,
-      "n8n_claim": false
+      "cron_claim": true,
+      "n8n_claim": true
     },
     "agent-calibration-engine": {
       "process": "agent-calibration-engine",
@@ -444,8 +444,8 @@
       ],
       "idempotent_today": "guarded:NOT EXISTS natural pair",
       "wave": "tierB",
-      "cron_claim": false,
-      "n8n_claim": false
+      "cron_claim": true,
+      "n8n_claim": true
     },
     "catalyst-symbol-impact": {
       "process": "catalyst-symbol-impact",
@@ -458,8 +458,8 @@
       ],
       "idempotent_today": "guarded:NOT EXISTS (catalyst_event_id, symbol)",
       "wave": "tierB",
-      "cron_claim": false,
-      "n8n_claim": false
+      "cron_claim": true,
+      "n8n_claim": true
     },
     "commitment-outcome-sweep": {
       "process": "commitment-outcome-sweep",
@@ -472,8 +472,8 @@
       ],
       "idempotent_today": "guarded:idempotency_key incl. observation",
       "wave": "tierB",
-      "cron_claim": false,
-      "n8n_claim": false
+      "cron_claim": true,
+      "n8n_claim": true
     },
     "daily-incubator-refresh": {
       "process": "daily-incubator-refresh",
@@ -486,8 +486,8 @@
       ],
       "idempotent_today": "no:incubator_events per ticker per run",
       "wave": "tierB",
-      "cron_claim": false,
-      "n8n_claim": false
+      "cron_claim": true,
+      "n8n_claim": true
     },
     "data-gap-resolver-pre": {
       "process": "data-gap-resolver-pre",
@@ -530,8 +530,8 @@
       ],
       "idempotent_today": "guarded:natural keys (one bare ON CONFLICT unverified)",
       "wave": "tierB",
-      "cron_claim": false,
-      "n8n_claim": false
+      "cron_claim": true,
+      "n8n_claim": true
     },
     "finviz-screener-runner": {
       "process": "finviz-screener-runner",
@@ -544,8 +544,8 @@
       ],
       "idempotent_today": "guarded:new tickers only",
       "wave": "tierB",
-      "cron_claim": false,
-      "n8n_claim": false
+      "cron_claim": true,
+      "n8n_claim": true
     },
     "hermes-research-agenda-at-45-7": {
       "process": "hermes-research-agenda-at-45-7",
@@ -572,8 +572,8 @@
       ],
       "idempotent_today": "no:run_id is a timestamp",
       "wave": "tierB",
-      "cron_claim": false,
-      "n8n_claim": false
+      "cron_claim": true,
+      "n8n_claim": true
     },
     "hermes-topic-monitor-bridge": {
       "process": "hermes-topic-monitor-bridge",
@@ -600,8 +600,8 @@
       ],
       "idempotent_today": "guarded:belief change only",
       "wave": "tierB",
-      "cron_claim": false,
-      "n8n_claim": false
+      "cron_claim": true,
+      "n8n_claim": true
     },
     "investment-costs": {
       "process": "investment-costs",
@@ -628,8 +628,8 @@
       ],
       "idempotent_today": "guarded:time-window NOT EXISTS (not a key)",
       "wave": "tierB",
-      "cron_claim": false,
-      "n8n_claim": false
+      "cron_claim": true,
+      "n8n_claim": true
     },
     "sec-data-ingest": {
       "process": "sec-data-ingest",
@@ -642,8 +642,8 @@
       ],
       "idempotent_today": "guarded:NOT EXISTS (symbol, sec_url)",
       "wave": "tierB",
-      "cron_claim": false,
-      "n8n_claim": false
+      "cron_claim": true,
+      "n8n_claim": true
     },
     "signal-fusion-full": {
       "process": "signal-fusion-full",
@@ -684,8 +684,8 @@
       ],
       "idempotent_today": "no:history snapshot per run",
       "wave": "tierB",
-      "cron_claim": false,
-      "n8n_claim": false
+      "cron_claim": true,
+      "n8n_claim": true
     },
     "trade-thesis-review-engine": {
       "process": "trade-thesis-review-engine",
@@ -712,8 +712,8 @@
       ],
       "idempotent_today": "no:agent_performance_history plain INSERT",
       "wave": "tierB",
-      "cron_claim": false,
-      "n8n_claim": false
+      "cron_claim": true,
+      "n8n_claim": true
     },
     "update-lockup-earnings-dates": {
       "process": "update-lockup-earnings-dates",
@@ -741,8 +741,8 @@
       ],
       "idempotent_today": "no:incubator_events per ticker per run",
       "wave": "tierB",
-      "cron_claim": false,
-      "n8n_claim": false
+      "cron_claim": true,
+      "n8n_claim": true
     },
     "write-state-freshness-history": {
       "process": "write-state-freshness-history",
@@ -757,6 +757,191 @@
       "wave": "tierB",
       "cron_claim": false,
       "n8n_claim": false
+    },
+    "watchlist-entry-planner-limit": {
+      "process": "watchlist-entry-planner-limit",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "35 17 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append",
+        "llm"
+      ],
+      "idempotent_today": "no: every live run INSERTs one watchlist_entry_plans row per planned candidate (append-only history; readers take the latest per symbol) after one governed LLM call each, so a second live run in the slot appends a second plan per symbol and spends the LLM calls twice",
+      "wave": "LR-W1 staged (r1_pending)",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
+    "watchlist-entry-planner-scope": {
+      "process": "watchlist-entry-planner-scope",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "45 17 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append",
+        "llm"
+      ],
+      "idempotent_today": "no: every live run INSERTs one watchlist_entry_plans row per planned candidate (append-only history; readers take the latest per symbol) after one governed LLM call each, so a second live run in the slot appends a second plan per symbol and spends the LLM calls twice",
+      "wave": "LR-W1 staged (r1_pending)",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
+    "run-research-intelligence-overnight": {
+      "process": "run-research-intelligence-overnight",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "30 20 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append",
+        "llm"
+      ],
+      "idempotent_today": "guarded:news_articles dedupe (symbol + source_url/title) is checked before the model call and again at the save, topic_ingestion takes a non-blocking batch lock, and narrative only selects rows without evidence_json.narrative; a second run in the slot re-rates nothing already stored, but topic_research_synthesizer may re-synthesize a topic (llm)",
+      "wave": "LR-20261015 shadow",
+      "cron_claim": false,
+      "n8n_claim": false
+    },
+    "incubator-rolloff-engine": {
+      "process": "incubator-rolloff-engine",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "0 10 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "guarded:a rolled-off row leaves the ACTIVE selection, so a second run in the slot appends no incubator_events row",
+      "wave": "LD-W1 shadow",
+      "cron_claim": true,
+      "n8n_claim": true
+    },
+    "etf-analyst-enrich": {
+      "process": "etf-analyst-enrich",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "0 7 * * 6",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key",
+      "wave": "CW1",
+      "n8n_claim": true,
+      "cron_claim": true
+    },
+    "etf-performance-enrich": {
+      "process": "etf-performance-enrich",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "15 7 * * 6",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key",
+      "wave": "CW1",
+      "n8n_claim": true,
+      "cron_claim": true
+    },
+    "hermes-momentum-catalyst-scalp": {
+      "process": "hermes-momentum-catalyst-scalp",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "25 6-15 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key",
+      "wave": "CW1",
+      "n8n_claim": true,
+      "cron_claim": true
+    },
+    "journal-tilt-morning-hook": {
+      "process": "journal-tilt-morning-hook",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "0 12 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key",
+      "wave": "CW1",
+      "n8n_claim": true,
+      "cron_claim": true
+    },
+    "watchlist-enrichment-sweep": {
+      "process": "watchlist-enrichment-sweep",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "*/30 9-16 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key",
+      "wave": "CW1",
+      "n8n_claim": true,
+      "cron_claim": true
+    },
+    "agent-outcome-scorer": {
+      "process": "agent-outcome-scorer",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "0 11 * * 0",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key",
+      "wave": "CW2",
+      "n8n_claim": true,
+      "cron_claim": true
+    },
+    "pattern-extractor": {
+      "process": "pattern-extractor",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "0 9 1 * *",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key",
+      "wave": "CW3",
+      "n8n_claim": true,
+      "cron_claim": true
+    },
+    "wire-advisory-lessons": {
+      "process": "wire-advisory-lessons",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "30 */6 * * *",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key",
+      "wave": "CW3",
+      "n8n_claim": true,
+      "cron_claim": true
+    },
+    "build-symbol-profiles-at-0-19": {
+      "process": "build-symbol-profiles-at-0-19",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "0 19 * * 0",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key",
+      "wave": "CW3",
+      "n8n_claim": true,
+      "cron_claim": true
     }
   },
   "_comment_process_steps": "2026-10-15 (n8n fabric process hermes-learning, packet docs/ops/packets/n8n-hermes-learning-flow-20261015/): one key per process STEP, process = the step lane id, slot = the stage's business slot <YYYYMMDD>T<HHMM of the stage cron minute> (America/New_York), the same string the cron stage runner computes (pipeline_manifest.py --effect-slot) and the process workflow sends. pipeline/stage/step_id map the key to the manifest step. cron_claim false = the cron stage runner does NOT claim yet (scripts/pipelines/_manifest_runner.sh); the cutover packet flips it to true only after effect_claim.py set-owner --owner cron has created the owner row, then moves the owner to n8n. Executor side: inert for dry_run; a LIVE run with a p: key is refused effect_slot_unknown until the gateway validates p: keys (cutover prerequisite).",

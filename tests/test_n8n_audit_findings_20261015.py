@@ -681,11 +681,12 @@ def _lane_writes(tmp_path, *, produced, skipped=None, run_id_override=None, v2=T
     return lane
 
 
-def _exec_live(gw, tmp_path, lane, rules):
+def _exec_live(gw, tmp_path, lane, rules, *, opt_in=True):
+    """``opt_in``: the allowlist entry declares ``output_receipt: v2`` (per-lane enforcement opt-in, 2026-10-15)."""
     row = _live_d_row(gw, "fixture-lane")
     return X.execute(
         row,
-        _entry(tmp_path),
+        _entry(tmp_path, **({"output_receipt": "v2"} if opt_in else {})),
         env={},
         state_root=tmp_path,
         code_root=tmp_path,
@@ -726,6 +727,55 @@ def test_dd07_stale_or_v1_or_missing_evidence_is_unverifiable(gw, tmp_path, lane
     receipt = _exec_live(gw, tmp_path, _lane_writes(tmp_path, **lane_kw), {"fixture-lane": RULE})
     assert receipt["state"] == "RUN_FAILED" and receipt["reason"] == "output_unverifiable"
     assert receipt["output_verdict"]["why"] == why
+
+
+def test_dd07_declared_rule_without_output_receipt_v2_is_recorded_not_enforced(gw, tmp_path):
+    """Per-lane opt-in: a lane that does not emit produced_count yet keeps its run state; the rule is recorded."""
+    receipt = _exec_live(gw, tmp_path, None, {"fixture-lane": RULE}, opt_in=False)
+    assert receipt["state"] == "RUN_DONE" and receipt.get("reason") != "output_unverifiable"
+    assert receipt["output_verdict"]["verdict"] == "declared_not_enforced"
+    assert receipt["output_verdict"]["rule"] == "min_produced"
+
+
+def test_dd07_output_receipt_v2_with_no_attempt_receipt_fails_unverifiable(gw, tmp_path):
+    receipt = _exec_live(gw, tmp_path, None, {"fixture-lane": RULE}, opt_in=True)
+    assert receipt["state"] == "RUN_FAILED" and receipt["reason"] == "output_unverifiable"
+    assert receipt["output_verdict"]["why"] == "attempt_receipt_missing"
+
+
+#: lanes already running LIVE through n8n on 2026-10-15 (coordinator list); none emits produced_count yet.
+LIVE_N8N_LANES = (
+    "n8n-incident-fanin",
+    "n8n-pilot-dispatch",
+    "n8n-research-intake-consumer",
+    "heartbeat-watch",
+    "research-insight-extractor",
+    "crontab-snapshot-for-health-agent",
+)
+
+
+@pytest.mark.parametrize("lane", LIVE_N8N_LANES)
+def test_dd07_replay_live_run_of_each_already_live_lane_does_not_fail(gw, tmp_path, lane):
+    """The committed contracts declare rules for these lanes; their committed allowlist entries do not opt in, so a
+    live exit-0 run (writing only its v1 receipt, as today) stays RUN_DONE."""
+    contracts = X.parse_expected_outputs((ROOT / "config" / "n8n_health_contracts.json").read_bytes())
+    assert lane in contracts  # the rule is declared ...
+    entry = copy.deepcopy(ALLOW[lane])
+    assert entry.get("output_receipt") != "v2"  # ... and not enforced until the lane emits produced_count
+    entry["lock"] = str(tmp_path / f"{lane}.lock")
+    gw.runs.request(
+        run_id=f"d:{lane}:live:20261015T1050",
+        lane_id=lane,
+        mode="live",
+        requested_by="x",
+        caller_id="x",
+        now=150,
+        slot_key=f"d:{lane}:live:20261015T1050",
+    )
+    row = gw.runs.claim_next(now=151)
+    receipt = X.execute(row, entry, env={}, state_root=tmp_path, code_root=tmp_path, runner=Runner(), outputs=contracts)
+    assert receipt["state"] == "RUN_DONE", receipt
+    assert receipt["output_verdict"]["verdict"] == "declared_not_enforced"
 
 
 def test_dd07_forged_attempt_receipt_for_another_lane_is_unverifiable():
@@ -1115,3 +1165,13 @@ def test_relay_minted_namespace_cannot_be_chosen_by_n8n(gw, tmp_path):
         requested_by="n8n:workflow:c0d4c7845e5c4fcc",
     )
     assert out["state"] == "REQUESTED"
+
+
+def test_dd07_output_receipt_v2_only_with_code_that_writes_produced_count():
+    """Factory rule (2026-10-15): a lane opts into enforcement only together with the code that emits produced_count."""
+    for lane, entry in ALLOW.items():
+        if entry.get("output_receipt") is None:
+            continue
+        assert entry["output_receipt"] == "v2", lane
+        scripts = [t for t in entry["command"] if t.endswith(".py")]
+        assert any("produced_count" in (ROOT / s).read_text() for s in scripts), lane

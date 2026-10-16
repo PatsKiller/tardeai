@@ -144,14 +144,28 @@ def main(argv=None):
         rc = run(max_n=args.max, lookback_hours=args.lookback_hours, dry_run=False, summary=summary)
     except Exception as exc:
         write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
-                           script="finviz_proactive_research.py", error=f"{type(exc).__name__}: {exc}")
+                           script="finviz_proactive_research.py", error=f"{type(exc).__name__}: {exc}",
+                           output={"produced_count": 0, "attempted_count": 0, "skipped_reasons": {"dependency_unavailable": 1}})
         raise
     # Keep the established soft-error exit behavior, but do not advance output proof after failed writes.
     failed = rc != 0 or bool(summary.get("failed_writes"))
     write_lane_receipt(LANE_ID, ok=not failed, exit_code=rc, started_at=started,
                        script="finviz_proactive_research.py", summary=summary,
-                       error="write_failed" if summary.get("failed_writes") else ("run_failed" if rc else None))
+                       error="write_failed" if summary.get("failed_writes") else ("run_failed" if rc else None),
+                       output=lane_output(summary, rc))
     return rc
+
+
+def lane_output(summary: dict, rc: int) -> dict:
+    """LaneRunReceipt@v2 output fields (n8n expected_output, unit: news_articles rows saved for universe tickers).
+    attempted = universe-ticker hits considered (saved + duplicate/policy skips + failed writes); no new headline =
+    ``no_new_input``; run() returning 1 (news/scoring modules unavailable) = ``dependency_unavailable``."""
+    saved, dup, failed = (int(summary.get(k) or 0) for k in ("saved", "skipped_dup", "failed_writes"))
+    skipped = {"duplicate_or_policy": dup, "write_failed": failed}
+    if rc:
+        skipped["dependency_unavailable"] = 1
+    return {"produced_count": saved, "attempted_count": saved + dup + failed, "skipped_reasons": skipped,
+            "empty_reason": "no_new_input" if saved == 0 and not rc else None}
 
 
 if __name__ == "__main__":

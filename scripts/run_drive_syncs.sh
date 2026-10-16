@@ -45,7 +45,7 @@ MODE=""
 for a in "$@"; do
   case "$a" in
     --dry-run) MODE="dry-run" ;;
-    --apply)   MODE="apply" ;;
+    --apply)   [ "$MODE" = "dry-run" ] || MODE="apply" ;;   # --dry-run wins over --apply (n8n onboarding 2026-10-15)
     -h|--help) sed -n '2,36p' "$0"; exit 0 ;;
     *) echo "run_drive_syncs: unknown arg: $a (use --dry-run or --apply)" >&2; exit 2 ;;
   esac
@@ -80,6 +80,9 @@ if [ "$MODE" = "dry-run" ]; then
     printf '>> %q 2>&1\n' "$log"
     i=$((i+1))
   done
+  echo "DRY-RUN drive-syncs-hourly: would run the two Drive sync steps above in order; nothing executed, no receipt written"
+  printf 'LANE_OUTPUT {"attempted_count": 0, "empty_reason": "dry_run", "lane_id": "%s", "mode": "dry_run", "pid": %d, "produced_count": 0, "schema": "LaneOutput@v1", "skipped_reasons": {}, "unit": "%s"}\n' \
+    "drive-syncs-hourly" "$$" "sync_step" >&2
   exit 0
 fi
 

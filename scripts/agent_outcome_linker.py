@@ -181,7 +181,8 @@ def main():
         if not dry_run:
             _receipt_lib().write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
                                               script="agent_outcome_linker.py", summary=out,
-                                              error=f"{type(exc).__name__}: {exc}")
+                                              error=f"{type(exc).__name__}: {exc}",
+                                              output={"produced_count": 0, "attempted_count": 0, "skipped_reasons": {"dependency_unavailable": 1}})
         raise
 
     if args.json:
@@ -194,8 +195,20 @@ def main():
             json_stdout=args.json)
     else:
         _receipt_lib().write_lane_receipt(LANE_ID, ok=True, exit_code=0, started_at=started,
-                                          script="agent_outcome_linker.py", summary=out)
+                                          script="agent_outcome_linker.py", summary=out, output=lane_output(out))
     return 0
+
+
+def lane_output(out: dict) -> dict:
+    """LaneRunReceipt@v2 output fields (n8n expected_output, unit: rows inserted into
+    agent_recommendation_outcome_links). attempted = links built this run; a link not inserted hit ON CONFLICT."""
+    inserted, built = int(out.get("inserted") or 0), int(out.get("total_links") or 0)
+    return {
+        "produced_count": inserted,
+        "attempted_count": max(built, inserted),
+        "skipped_reasons": {"already_linked": max(built - inserted, 0)},
+        "empty_reason": "no_new_input" if inserted == 0 else None,
+    }
 
 
 if __name__ == "__main__":

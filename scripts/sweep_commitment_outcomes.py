@@ -85,7 +85,8 @@ def _run(args) -> int:
         report["lessons_appended"] = append_jsonl(root / LESSON_LEDGER, res.lessons)
 
     global LAST_SUMMARY
-    LAST_SUMMARY = {"outcomes": len(res.outcomes), "lessons": len(res.lessons)}
+    LAST_SUMMARY = {"outcomes": len(res.outcomes), "lessons": len(res.lessons), "due": getattr(res, "due", None),
+                    "already_settled": getattr(res, "already_settled", None)}
     print(json.dumps(report, indent=2, default=str))
     return 0
 
@@ -112,12 +113,26 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as exc:
         if args.apply:
             write_lane_receipt("commitment-outcome-sweep", ok=False, exit_code=1, started_at=started,
-                               script="sweep_commitment_outcomes.py", error=type(exc).__name__)
+                               script="sweep_commitment_outcomes.py", error=type(exc).__name__,
+                               output={"produced_count": 0, "attempted_count": 0, "skipped_reasons": {"dependency_unavailable": 1}})
         raise
     if args.apply:
         write_lane_receipt("commitment-outcome-sweep", ok=rc == 0, exit_code=rc, started_at=started,
-                           script="sweep_commitment_outcomes.py", summary=LAST_SUMMARY)
+                           script="sweep_commitment_outcomes.py", summary=LAST_SUMMARY,
+                           output=lane_output(LAST_SUMMARY, rc))
     return rc
+
+
+def lane_output(summary: dict, rc: int) -> dict:
+    """LaneRunReceipt@v2 output fields (n8n expected_output, unit: evaluated outcomes appended to
+    commitment_outcomes.jsonl). attempted = commitments due; none due = ``nothing_due``; no commitment store at all
+    (exit 2) = ``no_input_unexpected``."""
+    outcomes, due = int(summary.get("outcomes") or 0), int(summary.get("due") or 0)
+    skipped = {"already_settled": int(summary.get("already_settled") or 0)}
+    if rc == 2:
+        skipped["no_input_unexpected"] = 1
+    return {"produced_count": outcomes, "attempted_count": max(due, outcomes), "skipped_reasons": skipped,
+            "empty_reason": "nothing_due" if outcomes == 0 and rc == 0 else None}
 
 
 if __name__ == "__main__":

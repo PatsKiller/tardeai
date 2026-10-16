@@ -1,0 +1,15 @@
+# Dry run of candidate.py against a COPY of the LIVE crontab, 2026-10-15 18:44Z, after the B-families (C1 consolidation)
+# install (crontab -l sha256 36f172d1be19d62a8d7bcc94355bc66e7e55d63f1e7c0b2517c2ffc845ffdba2). Nothing installed.
+# python3 candidate.py --crontab-file crontab.live --out W -> exit 0, changes=2 (C1+C2). Rollback: candidate.py --revert
+# on crontab.candidate -> crontab.rollback; cmp with crontab.live: byte-identical (ROLLBACK_BYTE_IDENTICAL).
+# C3/C4 dropped: the standalone topic-ingestion lines are retired (`# RETIRED 2026-10-15 b-family B2/topic-ingestion`)
+# into `scripts/run_family_slot.py --family topic-ingestion`; the bound is in family_slot_jobs B2 (TOPIC_INGEST_BOUND).
+# The earlier 4-change proof (sha256 6a5c6768...) predates that install; against today's crontab it REFUSED C3/C4 (found 0).
+--- crontab.live
++++ crontab.candidate
+@@ -735,2 +735,2 @@
+-15 2 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash "$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh" --official -- bash /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/non_trading_hours_gate.sh bash /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/run_research_intelligence_overnight.sh --phase full >> /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/logs/ri_overnight.log 2>&1
+-15 5 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash "$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh" --official -- bash /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/non_trading_hours_gate.sh bash /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/run_research_intelligence_overnight.sh --phase archive >> /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/logs/ri_overnight.log 2>&1
++15 0 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash "$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh" --official -- bash /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/non_trading_hours_gate.sh bash /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/run_research_intelligence_overnight.sh --phase full >> /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/logs/ri_overnight.log 2>&1
++15 5 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/non_trading_hours_gate.sh bash /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/run_research_intelligence_overnight.sh --phase archive >> /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/logs/ri_overnight.log 2>&1
+changes=2 lines_changed=2 wrote=W/crontab.candidate

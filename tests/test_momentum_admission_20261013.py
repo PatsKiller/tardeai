@@ -179,6 +179,10 @@ def test_named_scalp_exception_preserves_every_admitted_argument_and_gate():
 def test_other_business_and_credential_lanes_are_not_promoted():
     rows, allow, _ = source()
     for lane in ("finviz-market-movers", "finviz-screener-runner", "daily-incubator-refresh"):
+        if lane in _CW_PROMOTED:
+            # 2026-10-15 operator directive ("N8N Cutover Decision"): promoted to canary by an n8n cutover wave; its
+            # canary shape is pinned by tests/test_n8n_cutover_wave_20261015.py, not by this momentum review.
+            continue
         assert rows[lane]["dispatch"]["mode"] == "dry_run"
         assert allow[lane]["live_arg"] is None
         assert allow[lane]["env_allowlist_mode"] == "report"
@@ -227,3 +231,6 @@ def test_tomorrow_packet_preserves_lines_and_labels_unmeasured_receipts():
         "537142069dd5b352",
         "15b22c523f844467",
     ]
+
+
+from tests.support.n8n_cutover_waves import PROMOTED as _CW_PROMOTED  # noqa: E402  2026-10-15 cutover waves

@@ -114,6 +114,9 @@ def test_validator_refuses_unsafe_parallel_stages():
 
     base = lambda sid, g, cmd="true": {"id": sid, "cron_line": 1, "command": cmd, "timeout": "1m", "group": g}  # noqa: E731
     assert errs([base("a", "g1"), base("b", "g1")], {"max_concurrency": 2}) == []
+    # one step naming its own lock twice (outer flock around safe_flock.sh, as cron runs it) is not a shared lock
+    twice = "flock -n /tmp/l.lock bash scripts/safe_flock.sh /tmp/l.lock true"
+    assert errs([base("a", "g1", twice), base("b", "g1")], {"max_concurrency": 2}) == []
     assert any(
         "share lock" in e
         for e in errs(

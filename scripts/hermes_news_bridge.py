@@ -32,6 +32,7 @@ from lib.writers.news_articles_writer import write_news_articles  # noqa: E402  
 # topic-level (no symbol) and excluded; thesis_challenge/youtube can be added later.
 BRIDGE_TYPES = ("momentum_catalyst",)
 RECEIPT_NAME = "hermes_news_bridge"
+LANE_ID = "hermes-news-bridge"
 
 
 # Names this bridge reads. The env file also holds broker credentials; those are not copied.
@@ -192,21 +193,37 @@ def main(argv=None) -> int:
     if "--dry-run" in a:
         run(limit=limit, lookback_hours=lookback, as_json="--json" in a, dry_run=True)
         return 0
-    from lib.lane_last_receipt import now_iso, write_receipt
+    from lib.lane_last_receipt import now_iso, receipt_path, write_lane_receipt
+
+    # The receipt keeps its established path (data/runtime/hermes_news_bridge_last.json); its lane id is the n8n
+    # lane's, so the per-attempt copy lands where the executor reads it (lane_attempts/hermes-news-bridge/<run_id>).
+    def write_receipt(_name, **kw):
+        return write_lane_receipt(LANE_ID, path=receipt_path(RECEIPT_NAME), script=RECEIPT_NAME, **kw)
 
     started = now_iso()
     try:
         rep = run(limit=limit, lookback_hours=lookback, as_json="--json" in a)
     except Exception as exc:  # noqa: BLE001 -- recorded in the receipt, then a non-zero exit
-        write_receipt(RECEIPT_NAME, ok=False, error=f"{type(exc).__name__}: {exc}", started_at=started)
+        write_receipt(RECEIPT_NAME, ok=False, error=f"{type(exc).__name__}: {exc}", started_at=started,
+                      output={"produced_count": 0, "attempted_count": 0, "skipped_reasons": {"dependency_unavailable": 1}})
         print(f"[hermes-bridge] FAILED: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 1
     summary = {k: rep[k] for k in ("candidates", "bridged", "skipped_dup", "insert_errors")}
     # Every attempted insert errored (none bridged, none a clean dup-skip): the run did not work.
     failed = rep["insert_errors"] > 0 and rep["bridged"] == 0 and rep["skipped_dup"] == 0
     write_receipt(RECEIPT_NAME, ok=not failed, summary=summary, started_at=started,
-                  error="every news_articles insert errored" if failed else None)
+                  error="every news_articles insert errored" if failed else None, output=lane_output(summary))
     return 1 if failed else 0
+
+
+def lane_output(summary: dict) -> dict:
+    """LaneRunReceipt@v2 output fields (n8n expected_output, unit: news_articles rows inserted, source=hermes).
+    attempted = unbridged Hermes research rows read; no candidate or only duplicates = ``no_new_input``."""
+    bridged = int(summary.get("bridged") or 0)
+    return {"produced_count": bridged, "attempted_count": max(int(summary.get("candidates") or 0), bridged),
+            "skipped_reasons": {"duplicate": int(summary.get("skipped_dup") or 0),
+                                "insert_error": int(summary.get("insert_errors") or 0)},
+            "empty_reason": "no_new_input" if bridged == 0 else None}
 
 
 if __name__ == "__main__":

@@ -93,7 +93,10 @@ def test_superseded_by_names_live_rows():
     rows = _rows()
     for lane, r in rows.items():
         if r.get("retire_batch") == "retire-batch-1" and r.get("superseded_by"):
-            assert rows[r["superseded_by"]]["state"] == "ACTIVE", lane
+            sup = rows[r["superseded_by"]]
+            # backup-generated-docs (commit-hermes-daily's successor) was itself retired by lane retire wave 1
+            # on 2026-10-15 (cron push forbidden by AGENTS.md section 24.5); every other successor stays live.
+            assert sup["state"] == "ACTIVE" or sup.get("retire_batch") == "retire-ld-w1", lane
 
 
 def test_opening_intelligence_keeps_its_row_and_drops_only_the_0330_schedule():

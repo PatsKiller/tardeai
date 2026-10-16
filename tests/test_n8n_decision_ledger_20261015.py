@@ -45,8 +45,8 @@ def _table_rows(text: str, first_cell: str) -> dict[str, list[str]]:
 
 
 def test_architecture_still_lists_nine_decisions():
-    # 2026-10-15: D10 (operator OAuth-first routing decision, #1770) joined D1-D9.
-    assert _architecture_decisions() == [f"D{i}" for i in range(1, 11)]
+    # 2026-10-15: D10 (operator OAuth-first routing decision, #1770) joined D1-D9; D11 (operator n8n cutover directive).
+    assert _architecture_decisions() == [f"D{i}" for i in range(1, 12)]
 
 
 def test_every_architecture_decision_has_a_complete_ledger_row():

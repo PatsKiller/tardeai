@@ -34,6 +34,10 @@
    "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
    "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
   },
+  "build-symbol-profiles-at-0-19": {
+   "broker_module": "operator ruling 2026-10-15 (verbatim: \"n8n ignor broker code it can't trade live ccontinue\"): transitive lazy broker reach accepted; trading lock refuses every order; direct_sender remains forbidden",
+   "order_placement": "operator ruling 2026-10-15 (verbatim: \"n8n ignor broker code it can't trade live ccontinue\"): transitive lazy broker reach accepted; trading lock refuses every order; direct_sender remains forbidden"
+  },
   "catalyst-graph": {
    "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
    "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
@@ -129,6 +133,10 @@
    "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
    "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
   },
+  "hermes-discovery-scorecard": {
+   "broker_module": "operator ruling 2026-10-15 (verbatim: \"n8n ignor broker code it can't trade live ccontinue\"): transitive lazy broker reach accepted; trading lock refuses every order; direct_sender remains forbidden",
+   "order_placement": "operator ruling 2026-10-15 (verbatim: \"n8n ignor broker code it can't trade live ccontinue\"): transitive lazy broker reach accepted; trading lock refuses every order; direct_sender remains forbidden"
+  },
   "hermes-entity-spike-discovery": {
    "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
    "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
@@ -184,6 +192,10 @@
   "hermes-social-sentiment": {
    "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_position_sync.py (file name schwab_position_sync.py). Owner: platform; review under DD02 worker isolation.",
    "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/db_adapter.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "indicator-engine": {
+   "broker_module": "operator ruling 2026-10-15 (verbatim: \"n8n ignor broker code it can't trade live ccontinue\"): transitive lazy broker reach accepted; trading lock refuses every order; direct_sender remains forbidden",
+   "order_placement": "operator ruling 2026-10-15 (verbatim: \"n8n ignor broker code it can't trade live ccontinue\"): transitive lazy broker reach accepted; trading lock refuses every order; direct_sender remains forbidden"
   },
   "instrument-belief-writer": {
    "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/schwab_transport.py -> ... -> scripts/schwab_transport.py (file name schwab_transport.py). Owner: platform; review under DD02 worker isolation.",
@@ -272,6 +284,18 @@
   "watchlist-enrichment-sweep": {
    "broker_module": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/open_trades_intelligence.py -> ... -> scripts/alpaca_paper_reconciler.py (file name alpaca_paper_reconciler.py). Owner: platform; review under DD02 worker isolation.",
    "order_placement": "pre-existing 2026-10-15: function-level (lazy) import only, not loaded at import (at_import=false); reached via scripts/open_trades_intelligence.py -> ... -> scripts/schwab_transport.py (defines place_order() line 108). Owner: platform; review under DD02 worker isolation."
+  },
+  "watchlist-entry-planner-limit": {
+   "broker_module": "operator ruling 2026-10-15 (verbatim: \"n8n ignor broker code it can't trade live ccontinue\"): transitive lazy broker reach accepted; trading lock refuses every order; direct_sender remains forbidden",
+   "order_placement": "operator ruling 2026-10-15 (verbatim: \"n8n ignor broker code it can't trade live ccontinue\"): transitive lazy broker reach accepted; trading lock refuses every order; direct_sender remains forbidden"
+  },
+  "watchlist-entry-planner-scope": {
+   "broker_module": "operator ruling 2026-10-15 (verbatim: \"n8n ignor broker code it can't trade live ccontinue\"): transitive lazy broker reach accepted; trading lock refuses every order; direct_sender remains forbidden",
+   "order_placement": "operator ruling 2026-10-15 (verbatim: \"n8n ignor broker code it can't trade live ccontinue\"): transitive lazy broker reach accepted; trading lock refuses every order; direct_sender remains forbidden"
+  },
+  "wire-advisory-lessons": {
+   "broker_module": "operator ruling 2026-10-15 (verbatim: \"n8n ignor broker code it can't trade live ccontinue\"): transitive lazy broker reach accepted; trading lock refuses every order; direct_sender remains forbidden",
+   "order_placement": "operator ruling 2026-10-15 (verbatim: \"n8n ignor broker code it can't trade live ccontinue\"): transitive lazy broker reach accepted; trading lock refuses every order; direct_sender remains forbidden"
   }
  },
  "schema": "N8nLaneCapabilityBaseline@v1"

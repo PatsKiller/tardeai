@@ -28,6 +28,9 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT / "tests") not in sys.path:
+    sys.path.append(str(ROOT / "tests"))
+from support import n8n_cutover_waves as CW  # noqa: E402
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
@@ -74,7 +77,9 @@ def _cron_argv(command_text: str) -> list[str]:
     return toks[toks.index("$PY"):]
 
 
-@pytest.mark.parametrize("lane", LANES)
+#: 2026-10-15/16: a lane the n8n cutover waves moved on to the dispatcher cutover row leaves the cron-canary pin
+#: (tests/test_n8n_cutover_wave_20261015.py pins the cutover row).
+@pytest.mark.parametrize("lane", sorted(set(LANES) - set(CW.CUT_OVER)))
 def test_row_is_a_canary_cron_row(lane):
     row = ROWS[lane]
     s, d = row["scheduler"], row["dispatch"]
@@ -127,7 +132,9 @@ REVIEWED_BEFORE_WAVE = frozenset({
 })
 
 
-@pytest.mark.parametrize("lane", sorted(EXCLUDED))
+#: 2026-10-15: identity-sweep-stage0 was held only by its sw4 shadow pins; cutover wave CW1 promotes it (the sw4 pins
+#: now follow tests/support/n8n_cutover_waves.py). A promoted lane leaves this check.
+@pytest.mark.parametrize("lane", sorted(set(EXCLUDED) - set(CW.PROMOTED)))
 def test_excluded_lanes_stay_shadow(lane):
     row = ROWS[lane]
     assert row["scheduler"].get("stage") == "shadow" and row["dispatch"]["mode"] == "dry_run", lane

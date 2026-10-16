@@ -33,6 +33,9 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT / "tests") not in sys.path:
+    sys.path.append(str(ROOT / "tests"))
+from support import n8n_cutover_waves as CW  # noqa: E402
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
@@ -55,6 +58,9 @@ W4 = {
                           ["scripts/social_ingest.py", "--source", "all"]),
 }
 EXCLUDED = ("news-ingestion", "news-ingestion-tail", "sec-filings-feed")
+#: 2026-10-15: lanes a cutover wave promoted to canary leave the shadow pins below; tests/test_n8n_cutover_wave_20261015.py
+#: pins their canary shape (tests/support/n8n_cutover_waves.py).
+W4_SHADOW = {k: v for k, v in W4.items() if k not in CW.PROMOTED}
 
 #: The crontab lines (2026-10-11, crontab -l) that share a script with a W4 row; each W4 match must hit exactly one.
 SIBLING_LINES = [
@@ -67,7 +73,7 @@ SIBLING_LINES = [
 ]
 
 
-@pytest.mark.parametrize("lane", sorted(W4))
+@pytest.mark.parametrize("lane", sorted(W4_SHADOW))
 def test_row_is_a_w4_shadow_cron_row_admitted_by_the_r1_gate(lane):
     _line, cron, _script, _argv = W4[lane]
     row = ROWS[lane]
@@ -84,13 +90,13 @@ def test_row_is_a_w4_shadow_cron_row_admitted_by_the_r1_gate(lane):
     assert LD.r1_class_admission(row) == (True, "r1_admitted:ingest")
 
 
-@pytest.mark.parametrize("lane", sorted(W4))
+@pytest.mark.parametrize("lane", sorted(W4_SHADOW))
 def test_row_is_refused_while_4_4_0_is_proposed(lane):
     ok, why = LD.r1_class_admission(ROWS[lane], ALLOW[lane], shadow_shape_status="PROPOSED")
     assert not ok and why.startswith("shadow_on_cron_not_ratified"), why
 
 
-@pytest.mark.parametrize("lane", sorted(W4))
+@pytest.mark.parametrize("lane", sorted(W4_SHADOW))
 def test_allowlist_entry_is_shadow_only_and_carries_no_broker_credential(lane):
     _line, _cron, _script, argv = W4[lane]
     e = ALLOW[lane]
@@ -106,7 +112,7 @@ def test_allowlist_entry_is_shadow_only_and_carries_no_broker_credential(lane):
     assert e["timeout_s"] <= 900 and e["market_gate"] is False
 
 
-@pytest.mark.parametrize("lane", sorted(W4))
+@pytest.mark.parametrize("lane", sorted(W4_SHADOW))
 def test_cron_lock_is_installed_and_matches_but_the_row_stays_shadow(lane):
     """The w4-flock packet is installed (crontab -l 2026-10-11 ~10:10 ET: each line carries `flock -n <lock>`), and
     canary wave 1 synced scheduler.command_text to the flocked line: the canary lock gate now passes on a simulated
@@ -145,7 +151,7 @@ def test_the_script_writes_the_receipt_the_row_names():
         assert "write_lane_receipt" in src and "dry_run_report" in src and '"--dry-run"' in src
 
 
-@pytest.mark.parametrize("lane", sorted(W4))
+@pytest.mark.parametrize("lane", sorted(W4_SHADOW))
 def test_health_contract_is_reviewed_and_complete(lane):
     c = CONTRACTS[lane]
     assert c["status"] == "REVIEWED" and c["stage"] == "shadow"
@@ -174,14 +180,17 @@ def test_excluded_lanes_stay_off_the_dispatcher():
         assert (row.get("scheduler") or {}).get("stage") is None, lane
         assert lane not in ALLOW, lane
     src = (ROOT / "scripts" / "news_ingestion.py").read_text(encoding="utf-8")
-    assert "--dry-run" not in src and "write_lane_receipt" not in src  # refactor first, then a W4 row
+    # onboarding B3 (2026-10-15) added the offline --dry-run guard (tests/test_onboard_dryrun_b3_20261015.py); the lane
+    # still writes no LaneRunReceipt, so it stays off the dispatcher until its onboarding row adds one.
+    assert "write_lane_receipt" not in src  # refactor first, then a W4 row
+    assert '"--dry-run" in _dr_sys.argv[1:]' in src
 
 
 START = datetime(2026, 10, 12, 4, 0, tzinfo=timezone.utc)  # Monday 00:00 America/New_York
 
 
 def test_compute_due_week_sweep_emits_dry_run_on_the_weekday_slots_only():
-    rows = [ROWS[x] for x in W4]
+    rows = [ROWS[x] for x in W4_SHADOW]
     slots: dict[str, set] = {}
     errors = set()
     t = START
@@ -193,4 +202,5 @@ def test_compute_due_week_sweep_emits_dry_run_on_the_weekday_slots_only():
         errors |= {(e["lane_id"], e["code"]) for e in resp["errors"]}
         t += timedelta(minutes=30)
     assert errors == set(), sorted(errors)
-    assert slots == {"finviz-enrichment": {"1300"}, "sec-data-ingest": {"2000"}, "social-ingest-all": {"0600"}}
+    want = {"finviz-enrichment": {"1300"}, "sec-data-ingest": {"2000"}, "social-ingest-all": {"0600"}}
+    assert slots == {k: v for k, v in want.items() if k not in CW.PROMOTED}

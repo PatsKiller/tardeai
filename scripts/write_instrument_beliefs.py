@@ -85,12 +85,23 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as exc:
         if args.apply:
             write_lane_receipt("instrument-belief-writer", ok=False, exit_code=1, started_at=started,
-                               script="write_instrument_beliefs.py", error=type(exc).__name__)
+                               script="write_instrument_beliefs.py", error=type(exc).__name__,
+                               output={"produced_count": 0, "attempted_count": 0, "skipped_reasons": {"dependency_unavailable": 1}})
         raise
     if args.apply:
         write_lane_receipt("instrument-belief-writer", ok=rc == 0, exit_code=rc, started_at=started,
-                           script="write_instrument_beliefs.py", summary=_LAST_COUNTS)
+                           script="write_instrument_beliefs.py", summary=_LAST_COUNTS,
+                           output=lane_output(_LAST_COUNTS))
     return rc
+
+
+def lane_output(counts: dict) -> dict:
+    """LaneRunReceipt@v2 output fields (n8n expected_output, unit: InstrumentRecord beliefs written). attempted =
+    belief groups built from settled rows; a group that changes nothing is ``noop``; no settled row = ``no_new_input``."""
+    written, groups = int(counts.get("written_beliefs") or 0), int(counts.get("groups") or 0)
+    return {"produced_count": written, "attempted_count": max(groups, written),
+            "skipped_reasons": {"noop": int(counts.get("noop") or 0), "refused": int(counts.get("refused") or 0)},
+            "empty_reason": "no_new_input" if written == 0 else None}
 
 
 if __name__ == "__main__":

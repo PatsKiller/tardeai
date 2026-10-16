@@ -59,6 +59,10 @@ RETENTION_DIRECTIVE_DAYS = 60
 RETENTION_RESEARCH_DAYS = 45
 RETENTION_STAGING_DAYS = 14
 RETENTION_FINDING_DAYS = 30
+#: Rows one retention pass may archive+delete per table. The purge was blocked by a foreign-key error from
+#: 2026-10-05 to 2026-10-15, so ~19.6k archived research rows are due at once; the curator runs every 15 min,
+#: so a per-pass bound drains the backlog over a few ticks instead of one large transaction.
+RETENTION_MAX_ROWS_PER_PASS = 2000
 ARCHIVE_AGENT = "librarian_auto"
 
 
@@ -519,6 +523,26 @@ def auto_archive_stale(
     }
 
 
+#: Tables whose rows hold a NON-cascading foreign key to a purge target (pg_constraint, read 2026-10-15).
+#: A purge candidate still referenced by one of them is kept: deleting it raises ForeignKeyViolation, which
+#: aborted the whole hermes_research_curator run (exit 1) on every hermes-coordinator tick since 2026-10-05
+#: ("Key (id)=(239) is still referenced from table strategy_watchpool": 12 of 93 eligible archived
+#: directives are referenced by strategy_watchpool), so nothing after the purge ran and the coordinator's
+#: lane receipt read completed:false. watch_directive_hits is ON DELETE CASCADE and needs no guard.
+PURGE_FK_CHILDREN = {
+    "watch_directives": (("strategy_watchpool", "directive_id"), ("watchlist_items", "directive_id")),
+    "hermes_research_intelligence": (("hermes_alerts", "related_research_id"),
+                                     ("hermes_embedding_queue", "source_research_id"),
+                                     ("hermes_memory_events", "related_research_id")),
+}
+
+
+def _unreferenced(table: str) -> str:
+    """SQL fragment (alias ``t``) that keeps rows a non-cascading FK child still points at."""
+    return "".join(f" AND NOT EXISTS (SELECT 1 FROM {child} c WHERE c.{col} = t.id)"
+                   for child, col in PURGE_FK_CHILDREN.get(table, ()))
+
+
 def retention_purge(conn, *, apply: bool, archive: bool = True) -> dict:
     """Delete archived / drained rows past retention windows (curator-owned only).
 
@@ -537,16 +561,20 @@ def retention_purge(conn, *, apply: bool, archive: bool = True) -> dict:
     r = managed_purge(conn, table="watch_directives", label=f"curator_archived_{RETENTION_DIRECTIVE_DAYS}d",
                       where_sql="t.status='archived' AND t.created_by = ANY(%s) AND "
                                 "COALESCE((t.spec->>'archived_at')::timestamptz, t.updated_at) "
-                                "< NOW() - %s * INTERVAL '1 day'",
-                      params=(list(CURATOR_CREATORS), RETENTION_DIRECTIVE_DAYS), writer=w, apply=apply, archive=archive)
+                                "< NOW() - %s * INTERVAL '1 day'" + _unreferenced("watch_directives"),
+                      params=(list(CURATOR_CREATORS), RETENTION_DIRECTIVE_DAYS), writer=w, apply=apply, archive=archive,
+                      max_rows=RETENTION_MAX_ROWS_PER_PASS)
     purged["directives"] = r["deleted"] if apply else r["eligible"]
     r = managed_purge(conn, table="hermes_research_intelligence", label=f"archived_{RETENTION_RESEARCH_DAYS}d",
-                      where_sql="t.status='archived' AND t.updated_at < NOW() - %s * INTERVAL '1 day'",
-                      params=(RETENTION_RESEARCH_DAYS,), writer=w, apply=apply, archive=archive)
+                      where_sql="t.status='archived' AND t.updated_at < NOW() - %s * INTERVAL '1 day'"
+                                + _unreferenced("hermes_research_intelligence"),
+                      params=(RETENTION_RESEARCH_DAYS,), writer=w, apply=apply, archive=archive,
+                      max_rows=RETENTION_MAX_ROWS_PER_PASS)
     purged["research"] = r["deleted"] if apply else r["eligible"]
     r = managed_purge(conn, table="hermes_directive_hits_staging", label=f"drained_{RETENTION_STAGING_DAYS}d",
                       where_sql="t.drained = true AND t.drained_at < NOW() - %s * INTERVAL '1 day'",
-                      params=(RETENTION_STAGING_DAYS,), writer=w, apply=apply, archive=archive)
+                      params=(RETENTION_STAGING_DAYS,), writer=w, apply=apply, archive=archive,
+                      max_rows=RETENTION_MAX_ROWS_PER_PASS)
     purged["staging"] = r["deleted"] if apply else r["eligible"]
 
     cur.execute(
