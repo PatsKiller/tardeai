@@ -43862,7 +43862,7 @@ def _schwab_token_health(query=None):
     msg = (
         _access["schwab_paused_message"]
         if _access["schwab_paused"]
-        else "Schwab login expired/revoked — re-authenticate before placing live orders."
+        else "Schwab login must be renewed — expired, revoked or rejected; renew before placing live orders."
         if needs_reauth
         else (
             "Schwab login renewal window — renew via Command Center before true expiry."
@@ -43903,8 +43903,28 @@ def _schwab_token_health(query=None):
         "proactive_due_at": sched.get("proactive_due_at"),
         "days_to_true_expiry": sched.get("days_to_true_expiry"),
         "message": msg,
+        "reauth_banner": _schwab_reauth_banner(_access, needs_reauth=needs_reauth, proactive=proactive),
         **_access,
     }
+
+
+def _schwab_reauth_banner(access: dict, *, needs_reauth: bool, proactive: bool) -> dict:
+    """Banner state for the CC re-auth banner + Schwab Reauth page, from the ACTUAL access mode (2026-10-16):
+    forbidden keeps the pause warning; read_only/normal with a dead login says "must be renewed"."""
+    try:
+        import sys as _sys
+
+        _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from lib import schwab_access_mode as _sam
+
+        return _sam.reauth_banner(
+            access.get("schwab_access_mode"),
+            needs_reauth=needs_reauth,
+            proactive=proactive,
+            paused_message=access.get("schwab_paused_message"),
+        )
+    except Exception as exc:  # noqa: BLE001 — the UI falls back to its legacy fields
+        return {"state": "unknown", "error": f"{type(exc).__name__}"[:80]}
 
 
 def _finviz_credential_health(query=None):

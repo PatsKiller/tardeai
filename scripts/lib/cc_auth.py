@@ -12,8 +12,11 @@ Trust model (config/cc_auth.yaml has the full rationale):
 * ``service`` listener (127.0.0.1:7777) — loopback callers. A per-host service token (0600 file
   outside the repo) is required; ``Tailscale-User-*`` headers are ignored because any local process
   can forge them on a direct connection.
-* Step-up: dangerous route classes call :func:`require_step_up`, which currently always refuses
-  ("TOTP unlock not yet enabled").
+* Step-up: dangerous route classes call :func:`require_step_up`. With ``step_up.totp`` disabled (the
+  default) or no enrolled secret it always refuses ("TOTP unlock not yet enabled"). When enabled, a
+  verified authenticator code (POST :data:`STEP_UP_ENDPOINT`, scripts/lib/cc_totp.py) grants a short
+  unlock bound to the tailnet login AND the action class, on the serve_proxy listener only. The
+  service-token listener never satisfies step-up.
 
 Residual risk (documented, out of scope): a process running as the service user (or root) can read
 the token file and can connect to the serve_proxy socket and forge the identity header. With
@@ -34,6 +37,14 @@ from email.header import decode_header, make_header
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
+try:
+    from lib import cc_totp as _totp  # noqa: E402
+except ImportError:  # pragma: no cover — imported as scripts.lib.cc_auth, or run as a script (cc_curl.sh)
+    try:
+        from scripts.lib import cc_totp as _totp  # noqa: E402
+    except ImportError:
+        import cc_totp as _totp  # type: ignore[no-redef]  # noqa: E402  (sys.path[0] = scripts/lib)
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CONFIG_ENV = "TRADEAI_CC_AUTH_CONFIG"
 ENFORCE_ENV = "TRADEAI_CC_AUTH_ENFORCE"
@@ -45,6 +56,11 @@ LISTENER_SERVE_PROXY = "serve_proxy"
 LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost"})
 
 STEP_UP_MESSAGE = "step-up required — TOTP unlock not yet enabled"
+STEP_UP_CODE_MESSAGE = "step-up required — enter your authenticator code"
+STEP_UP_SERVICE_MESSAGE = "step-up required — the service-token listener never satisfies step-up"
+STEP_UP_NOT_UNLOCKABLE_MESSAGE = "step-up required — this action class is not unlockable by TOTP (config)"
+STEP_UP_ENDPOINT = "/api/v2/auth/step-up"
+STEP_UP_STATUS_ENDPOINT = "/api/v2/auth/step-up/status"
 STATE_CHANGING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 
 
@@ -95,6 +111,7 @@ class CCAuthConfig:
     csrf_stop_routes: tuple[StepUpRoute, ...] = ()
     csrf_form_routes: tuple[StepUpRoute, ...] = ()
     always_refuse_routes: tuple[StepUpRoute, ...] = ()
+    totp: _totp.TotpSettings = field(default_factory=_totp.TotpSettings)
     source: str = ""
     load_error: str = ""
 
@@ -179,6 +196,7 @@ def config_from_mapping(raw: Mapping[str, Any], *, source: str = "", load_error:
         csrf_stop_routes=_routes(csrf.get("stop_routes")),
         csrf_form_routes=_routes(csrf.get("form_routes")),
         always_refuse_routes=_routes(sec.get("always_refuse")),
+        totp=_totp.settings_from_mapping(su.get("totp")),
         source=source,
         load_error=load_error,
     )
@@ -391,13 +409,94 @@ def authenticated_principal(d: "Decision") -> str:
     return ""
 
 
-def require_step_up(request: Any, action: str) -> Decision:
-    """Step-up hook for dangerous routes. TOTP is not implemented yet, so this ALWAYS refuses.
+_MANAGERS: dict[tuple, "_totp.StepUpManager"] = {}
+_MANAGERS_LOCK = threading.Lock()
 
-    ``request`` is the handler (or any object); it is accepted now so the TOTP implementation can
-    read its unlock header/cookie without changing call sites.
-    """
+
+def step_up_manager(cfg: CCAuthConfig) -> "_totp.StepUpManager":
+    """One manager (and so one in-memory unlock table) per TOTP settings + decision log."""
+    key = (cfg.totp, str(cfg.decision_log or ""))
+    with _MANAGERS_LOCK:
+        mgr = _MANAGERS.get(key)
+        if mgr is None:
+            mgr = _totp.StepUpManager(cfg.totp, log=lambda row, _c=cfg: record_step_up_event(_c, row))
+            _MANAGERS[key] = mgr
+        return mgr
+
+
+def _step_up_refusal(action: str) -> Decision:
+    """The pre-TOTP refusal, unchanged: used whenever TOTP is disabled or not enrolled."""
     return Decision(allowed=False, status=403, reason=STEP_UP_MESSAGE, step_up_action=action, kind="step_up")
+
+
+def require_step_up(request: Any, action: str, *, cfg: CCAuthConfig | None = None, listener: str = "",
+                    principal: str = "") -> Decision:
+    """Step-up hook for dangerous routes.
+
+    Refuses exactly as before (STEP_UP_MESSAGE) unless ``cfg.totp`` is enabled AND an activated secret
+    file exists. When active: allowed only on the serve_proxy listener, for an authenticated
+    ``tailnet:`` principal holding an unexpired unlock for THIS action class.
+    """
+    if cfg is None:
+        return _step_up_refusal(action)
+    mgr = step_up_manager(cfg)
+    active, _why = mgr.status()
+    if not active:
+        return _step_up_refusal(action)
+    if listener != LISTENER_SERVE_PROXY:
+        return Decision(False, 403, STEP_UP_SERVICE_MESSAGE, step_up_action=action, kind="step_up",
+                        detail={"step_up_available": False})
+    if action not in cfg.totp.actions:
+        return Decision(False, 403, STEP_UP_NOT_UNLOCKABLE_MESSAGE, step_up_action=action, kind="step_up",
+                        detail={"step_up_available": False})
+    if principal.startswith("tailnet:") and mgr.is_unlocked(principal, action):
+        return Decision(True, 200, "step-up unlock", step_up_action=action, kind="step_up",
+                        detail={"step_up_used": action,
+                                "step_up_unlocked_until": mgr.unlocked_until(principal, action)})
+    return Decision(False, 403, STEP_UP_CODE_MESSAGE, step_up_action=action, kind="step_up",
+                    detail={"step_up_available": True, "step_up_endpoint": STEP_UP_ENDPOINT})
+
+
+def _step_up_caller_problem(cfg: CCAuthConfig, listener: str, principal: str) -> str:
+    if listener != LISTENER_SERVE_PROXY:
+        return STEP_UP_SERVICE_MESSAGE
+    if not principal.startswith("tailnet:") or principal[len("tailnet:"):] not in cfg.allowed_logins:
+        return "step-up needs an authenticated tailnet login (via tailscale serve)"
+    return ""
+
+
+def handle_step_up(cfg: CCAuthConfig, listener: str, principal: str, body: Any) -> tuple[int, dict]:
+    """POST /api/v2/auth/step-up {action, code}. ``principal`` must be authenticated_principal(decision)."""
+    b = body if isinstance(body, dict) else {}
+    action = str(b.get("action") or "").strip()
+    problem = _step_up_caller_problem(cfg, listener, principal)
+    if not problem and action not in {r.action for r in cfg.step_up_routes}:
+        problem = "unknown step-up action"
+    if not problem and action not in cfg.totp.actions:
+        problem = STEP_UP_NOT_UNLOCKABLE_MESSAGE
+    if problem:
+        record_step_up_event(cfg, {"outcome": "refused", "status": 403, "reason": problem, "listener": listener,
+                                   "principal": principal, "step_up_action": action or None})
+        return 403, {"ok": False, "action": action, "error": problem}
+    return step_up_manager(cfg).verify(principal=principal, action=action, code=b.get("code"))
+
+
+def step_up_status(cfg: CCAuthConfig, listener: str, principal: str, action: str) -> dict:
+    """GET /api/v2/auth/step-up/status?action= — says only enabled / unlockable / unlocked-until."""
+    mgr = step_up_manager(cfg)
+    active, why = mgr.status()
+    caller = _step_up_caller_problem(cfg, listener, principal)
+    until = mgr.unlocked_until(principal, action) if (active and not caller and action) else 0.0
+    return {
+        "ok": True,
+        "enabled": active,
+        "reason": "" if active else why.split(":", 1)[0],
+        "action": action,
+        "unlockable": bool(action) and action in cfg.totp.actions,
+        "available_here": active and not caller,
+        "unlocked_until": until or None,
+        "unlock_seconds": cfg.totp.unlock_seconds,
+    }
 
 
 def _token_presented(cfg: CCAuthConfig, headers: Any) -> str:
@@ -488,10 +587,13 @@ def evaluate_request(cfg: CCAuthConfig, listener: str, method: str, path: str, h
     if action and cfg.step_up_mode != "off":
         if cfg.step_up_service_token_bypass and auth.principal == "service-token" and not auth.would_deny:
             return auth
-        su = require_step_up(request, action)
+        su = require_step_up(request, action, cfg=cfg, listener=listener,
+                             principal="" if auth.would_deny else auth.principal)
         su.listener = listener
         su.principal = auth.principal
         if su.allowed:
+            auth.step_up_action = action
+            auth.detail.update(su.detail)
             return auth
         if cfg.step_up_mode == "report_only":
             su.allowed = True
@@ -507,12 +609,12 @@ _LOG_LOCK = threading.Lock()
 
 def record_decision(cfg: CCAuthConfig, d: Decision, method: str, path: str, client: str = "",
                     user_agent: str = "") -> None:
-    """Append non-plain-allow decisions as JSONL and to stdout. Never raises; never logs a token."""
-    if d.allowed and not d.would_deny:
+    """Append non-plain-allow decisions (and step-up unlock uses) as JSONL. Never raises; never logs a token."""
+    if d.allowed and not d.would_deny and not d.detail.get("step_up_used"):
         return
     row = {
         "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "outcome": "would_deny" if d.would_deny else "deny",
+        "outcome": "would_deny" if d.would_deny else ("allow_step_up" if d.allowed else "deny"),
         "kind": d.kind,
         "status": d.status,
         "listener": d.listener,
@@ -540,6 +642,26 @@ def record_decision(cfg: CCAuthConfig, d: Decision, method: str, path: str, clie
         pass
 
 
+def record_step_up_event(cfg: CCAuthConfig, row: Mapping[str, Any]) -> None:
+    """Step-up verification attempts (unlocked / fail / replay / lockout / refused). Never the code."""
+    full = {"ts": datetime.now(timezone.utc).isoformat(timespec="seconds"), "kind": "step_up_verify",
+            "method": "POST", "path": STEP_UP_ENDPOINT, **{k: v for k, v in row.items() if k != "code"}}
+    try:
+        print(f"  [cc-auth] step-up {full.get('outcome')} {full.get('step_up_action')} {full.get('principal')} "
+              f"— {full.get('reason')}", flush=True)
+    except Exception:
+        pass
+    if cfg.decision_log is None:
+        return
+    try:
+        with _LOG_LOCK:
+            cfg.decision_log.parent.mkdir(parents=True, exist_ok=True)
+            with open(cfg.decision_log, "a", encoding="utf-8") as fh:
+                fh.write(json.dumps(full, sort_keys=True, default=str) + "\n")
+    except Exception:
+        pass
+
+
 def denial_body(d: Decision, wants_html: bool) -> tuple[str, bytes]:
     if d.kind == "refused":
         title = "Refused"
@@ -549,6 +671,14 @@ def denial_body(d: Decision, wants_html: bool) -> tuple[str, bytes]:
         title = "Cross-site request refused"
         msg = ("State-changing requests must come from the Command Center page itself (same origin, "
                "JSON body). This one did not, so it was refused and nothing changed.")
+    elif d.kind == "step_up" and d.detail.get("step_up_available"):
+        title = "Step-up required"
+        msg = (f"This action ({d.step_up_action}) needs a second factor. Enter the 6-digit code from "
+               "your authenticator in the Command Center prompt, then retry. Nothing was sent anywhere.")
+    elif d.kind == "step_up" and d.reason != STEP_UP_MESSAGE:
+        title = "Step-up required"
+        msg = (f"This action ({d.step_up_action}) needs a second factor this caller cannot provide. "
+               "Nothing was sent anywhere.")
     elif d.kind == "step_up":
         title = "Step-up required"
         msg = (f"This action ({d.step_up_action}) needs a second factor. TOTP unlock is not enabled "
@@ -562,6 +692,9 @@ def denial_body(d: Decision, wants_html: bool) -> tuple[str, bytes]:
                "tailnet login on the allowlist. Tagged devices and Funnel traffic carry no identity.")
     if not wants_html:
         body = {"ok": False, "error": d.reason, "auth": d.kind, "step_up_action": d.step_up_action}
+        if d.kind == "step_up" and "step_up_available" in d.detail:  # TOTP active; absent when disabled
+            body["step_up"] = {"available": bool(d.detail["step_up_available"]),
+                               "endpoint": d.detail.get("step_up_endpoint")}
         return "application/json", json.dumps(body).encode()
     import html as _html
     page = (
@@ -622,6 +755,9 @@ def _main(argv: list[str]) -> int:
             "serve_proxy_bind_ok": serve_proxy_bind_ok(cfg),
             "token_file": str(cfg.token_file), "token_status": _token_status(cfg),
             "step_up_mode": cfg.step_up_mode,
+            "step_up_totp": {"enabled_in_config": cfg.totp.enabled,
+                             "status": step_up_manager(cfg).status(read_secret=False)[1] or "file present (stat only)",
+                             "actions": sorted(cfg.totp.actions), "unlock_seconds": cfg.totp.unlock_seconds},
             "step_up_routes": [list(r) for r in iter_step_up_routes(cfg)],
             "always_refuse": [[r.action, ",".join(sorted(r.methods)), r.pattern.pattern] for r in cfg.always_refuse_routes],
             "cors_allowed_origins": sorted(cfg.cors_allowed_origins),

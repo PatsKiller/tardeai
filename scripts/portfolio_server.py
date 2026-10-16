@@ -1550,7 +1550,9 @@ AUTH_EXEMPT_PREFIXES = ("/v2/", "/v3/", "/v3-next/", "/data/", "/archive/", "/re
 # which stays as-is). The listener a request arrived on decides what is trusted:
 #   serve_proxy (127.0.0.1:7779, tailscale serve's target) -> Tailscale-User-Login in allowlist
 #   service     (127.0.0.1:7777, loopback callers)          -> per-host service token
-# Dangerous route classes additionally hit require_step_up(), which refuses until TOTP exists.
+# Dangerous route classes additionally hit require_step_up(): refused unless TOTP step-up is enabled +
+# enrolled (cc_auth.step_up.totp) and this tailnet login holds an unlock for that action class
+# (POST /api/v2/auth/step-up, serve_proxy listener only).
 CC_AUTH_CONFIG = _cc_auth.load_config()
 
 
@@ -1690,6 +1692,7 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
             d = _cc_auth.Decision(False, 403, f"cc_auth error: {type(exc).__name__}", listener)
         # Handlers attribute actions (e.g. secret-write audit actor) to THIS, never to body fields.
         _cc_auth.set_request_principal(_cc_auth.authenticated_principal(d))
+        self._cc_decision = d
         try:
             _cc_auth.record_decision(CC_AUTH_CONFIG, d, self.command, self.path,
                                      client=str(self.client_address[0]) if self.client_address else "",
@@ -1709,6 +1712,36 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
         return False
+
+    def _cc_step_up_route(self, method: str, path: str, query: dict) -> bool:
+        """TOTP step-up endpoints (cc_auth). True = answered. Identity comes from this request's gate decision."""
+        p = path.rstrip("/")
+        if p not in (_cc_auth.STEP_UP_ENDPOINT, _cc_auth.STEP_UP_STATUS_ENDPOINT):
+            return False
+        listener = getattr(self.server, "cc_listener_role", _cc_auth.LISTENER_SERVICE)
+        d = getattr(self, "_cc_decision", None)
+        principal = _cc_auth.authenticated_principal(d) if d is not None else ""
+        if p == _cc_auth.STEP_UP_STATUS_ENDPOINT and method == "GET":
+            action = str((query.get("action") or [""])[0])[:64]
+            json_response(self, 200, _cc_auth.step_up_status(CC_AUTH_CONFIG, listener, principal, action))
+            return True
+        if p == _cc_auth.STEP_UP_ENDPOINT and method == "POST":
+            try:
+                ln = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                ln = -1
+            if ln < 0 or ln > 4096:
+                json_response(self, 413, {"ok": False, "error": "body too large"})
+                return True
+            try:
+                body = json.loads((self.rfile.read(ln) if ln else b"{}").decode() or "{}")
+            except Exception:
+                body = {}
+            status, out = _cc_auth.handle_step_up(CC_AUTH_CONFIG, listener, principal, body)
+            json_response(self, status, out)
+            return True
+        json_response(self, 405, {"ok": False, "error": "method not allowed"})
+        return True
 
     def _send_auth_error(self):
         """Send 401 Unauthorized response."""
@@ -1801,6 +1834,9 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
 
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
+
+        if self._cc_step_up_route("GET", path, parse_qs(parsed.query)):
+            return
 
         # Read-only agent-runtime Command Center surface (GET only).
         # DEFAULT DISABLED behind AGENT_RUNTIME_READ_API; returns the honest
@@ -2369,6 +2405,9 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
 
         parsed = urlparse(self.path)
         path = parsed.path
+
+        if self._cc_step_up_route("POST", path, parse_qs(parsed.query)):
+            return
 
         # CONTROL_PLANE_API_V1_BASELINE is GET-only. Intercept before v2 POST dispatch
         # so /api/v3/control-plane/* cannot mutate through the generic router.

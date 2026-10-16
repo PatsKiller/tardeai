@@ -35,6 +35,10 @@ GATES = [
     # ANCHOR: CC_TAILSCALE_IDENTITY_AUTH_20261014 — CC auth: tailnet identity on the serve socket,
     # service token on :7777, step-up refusal on order/stop/credential/risk routes. Hermetic.
     ("cc_tailscale_identity_auth_20261014", ["tests/test_cc_tailscale_identity_auth_20261014.py"]),
+    # ANCHOR: CC_TOTP_STEP_UP_20261016 — RFC 6238 step-up: RFC vectors, replay, rate limit + lockout, unlock bound
+    # to tailnet login + action class, service listener refused, disabled-by-default refusal unchanged,
+    # operator-only enrollment, re-auth banner follows the access mode. Hermetic (tmp secrets only).
+    ("cc_totp_step_up_20261016", ["tests/test_cc_totp_step_up_20261016.py"]),
     # ANCHOR: LANE_PRODUCED_COUNT_CW_4_20261015 — cutover-wave lanes (batch 4: watchlist sweep + 7 CW2 lanes) write
     # LaneRunReceipt@v2 produced_count and opt into the executor output verdict (allowlist output_receipt v2). Real
     # entry point per lane in a fake n8n attempt, DB/provider/network stubbed: produced / empty_allowed / RUN_FAILED

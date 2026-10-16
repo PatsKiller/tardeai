@@ -6,10 +6,17 @@
  *  2. Operator logs in on phone / browser (2FA on their device)
  *  3. Paste the dead 127.0.0.1?code=... redirect URL and submit
  *  4. Server exchanges code → seeds token; status refreshes
+ *
+ * Both server calls are cc_auth step-up routes (schwab_reauth). When TOTP step-up is active they answer
+ * 403 + a step-up challenge; the page then shows StepUpPrompt and retries the call once after a verified
+ * code (2026-10-16). With TOTP disabled the refusal text is shown as before.
  */
 import { useCallback, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
+import StepUpPrompt from '../components/StepUpPrompt'
+import { stepUpChallenge, type StepUpChallenge } from '../lib/stepUp'
+import { BB, TYPE } from '../lib/watchTokens'
 
 type TokenHealth = {
   ok?: boolean
@@ -30,6 +37,26 @@ type TokenHealth = {
   last_error?: string | null
   message?: string
   live_probe?: { live_ok?: boolean; needs_reauth?: boolean; error?: string | null } | null
+  schwab_access_mode?: string | null
+  schwab_paused?: boolean
+  schwab_paused_message?: string | null
+  // Server-decided banner from the ACTUAL access mode (scripts/lib/schwab_access_mode.reauth_banner).
+  reauth_banner?: { state?: 'paused' | 'renew' | 'window' | 'ok' | 'unknown'; headline?: string; message?: string; offer_reauth?: boolean } | null
+}
+
+/** forbidden => paused warning; read_only/normal with a dead login => "must be renewed" (never "do not re-auth"). */
+function modeBanner(h: TokenHealth | null): { tone: 'amber' | 'red'; headline: string; message: string } | null {
+  if (!h) return null
+  const b = h.reauth_banner
+  if (b && b.state && b.state !== 'unknown') {
+    if (b.state === 'paused') return { tone: 'amber', headline: b.headline || 'Schwab paused', message: b.message || '' }
+    if (b.state === 'renew') return { tone: 'red', headline: b.headline || 'Schwab login must be renewed', message: b.message || '' }
+    return null
+  }
+  if (h.schwab_paused || h.schwab_access_mode === 'forbidden') {
+    return { tone: 'amber', headline: 'Schwab paused', message: h.schwab_paused_message || '' }
+  }
+  return null
 }
 
 function fmtTs(v?: string | null): string {
@@ -78,6 +105,9 @@ export default function SchwabReauthHub() {
     message?: string
   } | null>(null)
 
+  // cc_auth TOTP step-up: which call was refused, so a verified code retries exactly that call once.
+  const [stepUp, setStepUp] = useState<{ challenge: StepUpChallenge; retry: 'url' | 'code' } | null>(null)
+
   const requestUrl = useCallback(async () => {
     setReqBusy(true)
     setReqErr(null)
@@ -86,6 +116,12 @@ export default function SchwabReauthHub() {
     try {
       const r = await fetch('/api/v2/brokers/schwab/reauth-url', { cache: 'no-store' })
       const j = await r.json()
+      const challenge = stepUpChallenge(r.status, j)
+      if (challenge) {
+        setStepUp({ challenge, retry: 'url' })
+        setAuthUrl(null)
+        return
+      }
       const d = j?.data ?? j
       if (!r.ok || d?.ok === false) {
         setReqErr(d?.error || d?.reason || `HTTP ${r.status}`)
@@ -130,6 +166,11 @@ export default function SchwabReauthHub() {
         body: JSON.stringify({ redirect_url: url, account_key: accountKey }),
       })
       const j = await r.json()
+      const challenge = stepUpChallenge(r.status, j)
+      if (challenge) {
+        setStepUp({ challenge, retry: 'code' })
+        return
+      }
       const d = j?.data && j.ok !== false && j.refresh_expires_at == null ? j.data : j
       if (!r.ok || d?.ok === false) {
         setSubmitErr(d?.error || d?.reason || `HTTP ${r.status}`)
@@ -151,6 +192,15 @@ export default function SchwabReauthHub() {
     }
   }, [redirectUrl, accountKey, refetch])
 
+  const onUnlocked = useCallback(() => {
+    const retry = stepUp?.retry
+    setStepUp(null)
+    if (retry === 'url') void requestUrl()
+    else if (retry === 'code') void submitCode()
+  }, [stepUp, requestUrl, submitCode])
+
+  const banner = modeBanner(h)
+
   return (
     <div style={{ maxWidth: 820 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, marginBottom: 14 }}>
@@ -162,6 +212,24 @@ export default function SchwabReauthHub() {
         </div>
         <Link to="/system" style={{ fontSize: 11, color: 'var(--text2)' }}>← System</Link>
       </div>
+
+      {banner && (
+        <div
+          role="alert"
+          style={{
+            padding: '10px 12px', borderRadius: 'var(--radius-md)', marginBottom: 14,
+            background: banner.tone === 'red' ? BB.redDim : BB.amberDim,
+            border: `1px solid ${banner.tone === 'red' ? BB.red : BB.amber}`,
+          }}
+        >
+          <div style={{ fontSize: TYPE.base, fontWeight: 800, color: banner.tone === 'red' ? BB.red : BB.amber }}>
+            {banner.headline}
+          </div>
+          {banner.message && (
+            <div style={{ fontSize: TYPE.sm, color: BB.text1, marginTop: 3, lineHeight: 1.45 }}>{banner.message}</div>
+          )}
+        </div>
+      )}
 
       <div style={{
         padding: 14, borderRadius: 10, marginBottom: 14,
@@ -244,6 +312,9 @@ export default function SchwabReauthHub() {
           {reqBusy ? 'Requesting…' : 'Request renewal URL'}
         </button>
         {reqErr && <div style={{ marginTop: 8, fontSize: 11, color: 'var(--red)' }}>{reqErr}</div>}
+        {stepUp?.retry === 'url' && (
+          <StepUpPrompt challenge={stepUp.challenge} onUnlocked={onUnlocked} onCancel={() => setStepUp(null)} />
+        )}
         {authUrl && (
           <div style={{ marginTop: 12 }}>
             <div style={{
@@ -336,6 +407,9 @@ export default function SchwabReauthHub() {
           </button>
           {submitErr && <span style={{ fontSize: 11, color: 'var(--red)' }}>{submitErr}</span>}
         </div>
+        {stepUp?.retry === 'code' && (
+          <StepUpPrompt challenge={stepUp.challenge} onUnlocked={onUnlocked} onCancel={() => setStepUp(null)} />
+        )}
       </section>
 
       <div style={{ fontSize: 10.5, color: 'var(--text3)', lineHeight: 1.45 }}>

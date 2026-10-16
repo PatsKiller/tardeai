@@ -19,6 +19,15 @@ type Health = {
   schwab_access_mode?: 'normal' | 'read_only' | 'forbidden'
   schwab_paused?: boolean
   schwab_paused_message?: string
+  // Server-decided from the ACTUAL access mode (2026-10-16): forbidden => 'paused'; read_only/normal with a dead
+  // login => 'renew' ("Schwab login must be renewed", never "do not re-auth").
+  reauth_banner?: { state?: 'paused' | 'renew' | 'window' | 'ok' | 'unknown'; headline?: string; message?: string } | null
+}
+
+function isPaused(h: Health): boolean {
+  const s = h.reauth_banner?.state
+  if (s && s !== 'unknown') return s === 'paused'
+  return !!(h.schwab_paused || h.schwab_access_mode === 'forbidden')  // older server: legacy fields
 }
 
 function shouldShow(h: Health | null): boolean {
@@ -54,7 +63,7 @@ export default function SchwabReauthBanner() {
   }, [])
 
   // Schwab paused by the operator: say so plainly and offer NO re-auth link (re-auth cannot succeed and is not wanted).
-  if (health && (health.schwab_paused || health.schwab_access_mode === 'forbidden')) {
+  if (health && isPaused(health)) {
     return (
       <div
         role="alert"
@@ -99,7 +108,7 @@ export default function SchwabReauthBanner() {
         🔐 Schwab login {urgent ? 'must be renewed' : 'renewal window'}
         {daysBit}
         {' — '}
-        {health.message || 'renew before stops/quotes/orders fail'}
+        {(urgent && health.reauth_banner?.state === 'renew' && health.reauth_banner.message) || health.message || 'renew before stops/quotes/orders fail'}
       </span>
       <Link
         to="/system/schwab-reauth"

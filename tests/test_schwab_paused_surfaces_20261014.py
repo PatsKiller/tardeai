@@ -101,7 +101,7 @@ def test_token_health_source_skips_the_live_probe_while_paused():
 
 def test_banner_renders_paused_without_a_reauth_link():
     tsx = (ROOT / "apps/command-center-v3/src/components/SchwabReauthBanner.tsx").read_text()
-    paused_block = tsx[tsx.index("health.schwab_paused ||"):tsx.index("const hard =")]
+    paused_block = tsx[tsx.index("if (health && isPaused(health))"):tsx.index("const hard =")]  # 2026-10-16 anchor
     assert "Schwab paused" in paused_block and "Renew now" not in paused_block and "/system/schwab-reauth" not in paused_block
 
 

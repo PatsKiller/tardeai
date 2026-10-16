@@ -106,6 +106,9 @@ cc_auth:
       - action: unlock
         methods: [POST, PUT, PATCH, DELETE]
         pattern: /api/v[23]/(.+/)?unlock(/.*)?
+      - action: step_up_verify          # TOTP code submission (2026-10-16)
+        methods: [POST, PUT, PATCH, DELETE]
+        pattern: /api/v2/auth/step-up
     # Signed CIO action links render a same-origin HTML <form method="post"> (urlencoded). Allowed
     # content types widen to application/x-www-form-urlencoded, but Origin or Sec-Fetch-Site must be
     # PRESENT and same-origin on every listener (a cross-site form post carries a foreign Origin).
@@ -128,6 +131,30 @@ cc_auth:
     # false: a valid service token does NOT bypass step-up (no local caller posts to these routes
     # on a schedule; see the operator packet for the one manual script affected).
     service_token_bypass: false
+    # TOTP step-up (RFC 6238), 2026-10-16 — scripts/lib/cc_totp.py, runbook docs/runbooks/CC_TOTP_STEP_UP.md.
+    # Active ONLY when enabled: true AND secret_file holds an ACTIVATED secret written by the operator-run
+    # enrollment CLI (scripts/cc_totp_enroll.py). Either missing => every step-up route refuses exactly as
+    # before ("TOTP unlock not yet enabled"). Enabling is an operator decision (config PR after enrollment).
+    # A verified code unlocks ONE action class for ONE tailnet login on the serve_proxy listener for
+    # unlock_seconds. The service-token listener never satisfies step-up.
+    totp:
+      enabled: false
+      secret_file: ~/.config/tradeai/cc_totp_secret.json        # 0600, outside the repo; agents never read it
+      state_file: ~/.local/state/tradeai/cc_totp_state.json     # replay counter + failures/lockout (0600)
+      issuer: TradeAI CC
+      digits: 6
+      period: 30
+      algorithm: SHA1          # what every authenticator app supports
+      window: 1                # ±1 time step (clamped to at most 1)
+      unlock_seconds: 600      # 10 minutes (clamped 60..1800)
+      max_failures: 5          # wrong/replayed codes inside failure_window_seconds => lockout
+      failure_window_seconds: 300
+      lockout_seconds: 900
+      # Action classes a TOTP unlock may open. Starts with Schwab re-auth only: the order/stop/risk
+      # classes stay refused until the operator widens this list (AGENTS §23.23 wants a per-order
+      # assertion over the intent hash for money-touching routes, not a 10-minute unlock).
+      actions:
+        - schwab_reauth
     # Route classes requiring step-up. Matched against the URL path (query string removed) with
     # re.fullmatch, for the listed methods only.
     routes:
