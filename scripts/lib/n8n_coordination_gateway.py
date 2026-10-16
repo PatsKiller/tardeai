@@ -216,6 +216,8 @@ REFUSAL_REASONS = frozenset(
         "process_not_registered",  # 2026-10-08 model_job: job.process_id outside n8n_model_job.PROCESS_TASK_TYPE
         # 2026-10-09 (B5.3): a d:/e:/g: key that compute_due does not currently hold DUE/RETRY_DUE in that mode.
         "run_slot_not_due",
+        # 2026-10-16: host_run_request parent_run_id is not a FAILED live d:/e: run of the same lane (slot-bound retry).
+        "run_retry_parent_invalid",
         # 2026-10-09 (B5.3) operation `due` (DueResponse@v1 `refused`).
         "due_clock_skew",
         "bad_source",
@@ -705,7 +707,8 @@ def _run_process_key(
 
 
 def _run(
-    request, claim, *, run_store, run_allowlist, now: float, peer, due_sources=None, process_sources: Any = None
+    request, claim, *, run_store, run_allowlist, now: float, peer, due_sources=None, process_sources: Any = None,
+    parent_run_id: str | None = None,
 ) -> dict[str, Any]:
     """Record a run REQUEST for an allowlisted lane. The gateway writes one ``runs`` row (state REQUESTED) and
     returns RunRequested@v1; scripts/n8n_run_executor.py claims it from the ledger. A repeated idempotency_key from the
@@ -819,9 +822,16 @@ def _run(
         return _replay_or_conflict(
             row, duplicate, run_store, lane_id=lane_id, mode=mode, requested_by=requested_by, peer=peer
         )
-    row, duplicate = run_store.request(
-        run_id=run_id, lane_id=lane_id, mode=mode, requested_by=requested_by, caller_id=claim["caller_id"], now=now
-    )
+    if parent_run_id is not None:
+        # 2026-10-16: a host retry bound to a failed slot (validated by host_run_request; never reachable from n8n).
+        row, duplicate = run_store.request(
+            run_id=run_id, lane_id=lane_id, mode=mode, requested_by=requested_by, caller_id=claim["caller_id"],
+            now=now, parent_run_id=parent_run_id,
+        )
+    else:
+        row, duplicate = run_store.request(
+            run_id=run_id, lane_id=lane_id, mode=mode, requested_by=requested_by, caller_id=claim["caller_id"], now=now
+        )
     return _replay_or_conflict(row, duplicate, run_store, lane_id=lane_id, mode=mode, requested_by=requested_by, peer=peer)
 
 
@@ -887,8 +897,35 @@ def _intent(request, claim, *, intent_store, now: float, peer) -> dict[str, Any]
     return receipt
 
 
+#: Parent states a slot-bound host retry may follow (2026-10-16). Only RUN_FAILED: its effect claim is FAILED, which
+#: the effect ledger re-claims (attempt + 1) only when proven pre-effect; any other state is refused here.
+RETRY_PARENT_STATES = frozenset({"RUN_FAILED"})
+
+
+def check_retry_parent(run_store, *, parent_run_id: str, lane_id: str, mode: str) -> str | None:
+    """None when ``parent_run_id`` may parent a slot-bound live retry of ``lane_id``; else the refusal reason."""
+    if mode != "live":
+        return "retry_parent_needs_live"
+    D = _due_mod()
+    parsed = D.parse_key(str(parent_run_id or ""))
+    if parsed is None or parsed[0] not in ("d", "e"):
+        return "retry_parent_not_slot_key"
+    getter = getattr(run_store, "get", None)
+    parent = getter(parent_run_id) if callable(getter) else None
+    if parent is None:
+        return "retry_parent_missing"
+    if parent.get("lane_id") != lane_id or parsed[1] != lane_id:
+        return "retry_parent_lane_mismatch"
+    if parent.get("mode") != "live" or parsed[2] != "live":
+        return "retry_parent_mode_mismatch"
+    if parent.get("state") not in RETRY_PARENT_STATES:
+        return "retry_parent_not_failed"
+    return None
+
+
 def host_run_request(
-    *, lane_id: str, mode: str, run_id: str, requested_by: str, caller_id: str, run_store, run_allowlist, now: float
+    *, lane_id: str, mode: str, run_id: str, requested_by: str, caller_id: str, run_store, run_allowlist, now: float,
+    parent_run_id: str | None = None,
 ) -> dict[str, Any]:
     """``coordination/run`` for a caller already on the host (no bearer to verify): the SAME ``_run`` validation
     (allowlist, mode, run-id shape, secret material) and the same single REQUESTED row the gateway writes for n8n.
@@ -902,8 +939,18 @@ def host_run_request(
         out = _refused(None, "run_process_key_invalid", peer_ignored=None)
         out["key_state"] = "HOST_CALLER_REFUSED"
         return out
+    if parent_run_id is not None:
+        # 2026-10-16 (n8n self-healing follow-up): a live retry bound to a FAILED d:/e: slot. The executor derives the
+        # effect slot from the parent, so the slot's one effect claim decides: FAILED pre-effect re-claims (attempt+1),
+        # DONE / CLAIMED / UNKNOWN / unproven FAILED refuse (effect_already_claimed). Validated here, before queueing.
+        why = check_retry_parent(run_store, parent_run_id=parent_run_id, lane_id=lane_id, mode=mode)
+        if why is not None:
+            out = _refused(None, "run_retry_parent_invalid", peer_ignored=None)
+            out["retry_parent_state"] = why
+            return out
     request = {"lane_id": lane_id, "mode": mode, "idempotency_key": run_id, "requested_by": requested_by}
-    return _run(request, {"caller_id": caller_id}, run_store=run_store, run_allowlist=run_allowlist, now=now, peer=None)
+    return _run(request, {"caller_id": caller_id}, run_store=run_store, run_allowlist=run_allowlist, now=now, peer=None,
+                parent_run_id=parent_run_id)
 
 
 #: Injected by tests; production uses n8n_model_job.bridge_governed_call (loopback HTTP to the governed bridge).

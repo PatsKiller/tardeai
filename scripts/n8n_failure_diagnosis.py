@@ -388,8 +388,13 @@ def diagnose(rows: list[dict], *, catalogue: dict, registry: dict, state: dict, 
                 effect_owner=effect_owner(str(spec.get("process"))) if spec else None,
                 failure_class=res["failure_class"], catalogue_entry=entry, cutover_policy=cutover_policy,
                 live_heals_today=int(live_heals.get(lane, 0)))
+            parent = H.slot_parent(lane, fields, runs) if ok else None
+            if ok and parent is None:
+                ok, why = False, "no_failed_live_slot_parent"
             res["live_heal_gate"] = why
             if ok and live_action.get("auto"):
+                res["_parent_run_id"] = parent
+                res["retry_parent_run_id"] = parent
                 live_heals[lane] = live_heals.get(lane, 0) + 1
                 res.update(outcome="deterministic", reason=f"transient failure: {H.LIVE_HEAL_ACTION}", _action=live_action,
                            decision={"kind": "execute", "priority": None, "reason": "deterministic:transient_live_heal",
@@ -469,8 +474,8 @@ def diagnose(rows: list[dict], *, catalogue: dict, registry: dict, state: dict, 
 
 
 def handle_request_run(store, *, lane: str, mode: str, run_id: str, allowlist: dict, now: float,
-                       registry_rows: Optional[list] = None, live_stages: frozenset = frozenset({"cutover"})
-                       ) -> dict[str, Any]:
+                       registry_rows: Optional[list] = None, live_stages: frozenset = frozenset({"cutover"}),
+                       parent_run_id: Optional[str] = None) -> dict[str, Any]:
     """One run request through the gateway's coordination/run path (``G.host_run_request``) — the same validation
     and REQUESTED row n8n gets; the executor runs the allowlist argv and clamps the mode to the lane's stage. A live
     request needs the lane at ``scheduler.stage == "cutover"`` (unknown registry = no live)."""
@@ -486,10 +491,12 @@ def handle_request_run(store, *, lane: str, mode: str, run_id: str, allowlist: d
     busy = [r for st in ("REQUESTED", "RUNNING") for r in store.list(state=st, lane_id=lane, limit=5)]
     if busy and not any(r.get("run_id") == run_id for r in busy):
         return {"ok": False, "outcome": f"precondition_unmet:lane_busy:{busy[0].get('run_id')}"}
+    kw = {"parent_run_id": parent_run_id} if parent_run_id else {}
     env = G.host_run_request(lane_id=lane, mode=mode, run_id=run_id, requested_by=REQUESTED_BY, caller_id=CALLER_ID,
-                             run_store=store, run_allowlist=frozenset(allowlist), now=now)
+                             run_store=store, run_allowlist=frozenset(allowlist), now=now, **kw)
     if env.get("state") == "REFUSED":
-        return {"ok": False, "outcome": f"refused:{env.get('reason')}"}
+        extra = env.get("retry_parent_state")
+        return {"ok": False, "outcome": f"refused:{env.get('reason')}" + (f":{extra}" if extra else "")}
     return {"ok": True, "outcome": f"requested:{mode}:{run_id}", "run_id": run_id,
             "duplicate": bool(env.get("duplicate")), "run_state": env.get("state")}
 
@@ -554,7 +561,8 @@ def execute_action(store, res: dict, *, allowlist: dict, now: float, registry_ro
     mode = phases[0]
     return handle_request_run(store, lane=res["lane"], mode=mode, run_id=D.remediation_run_id(res["incident_key"], mode),
                               allowlist=allowlist, now=now, registry_rows=registry_rows,
-                              live_stages=_live_stages(action))
+                              live_stages=_live_stages(action),
+                              parent_run_id=res.get("_parent_run_id") if mode == "live" else None)
 
 
 def advance_pending(state: dict, *, ledger: Path, store_factory, allowlist: dict, now: datetime,

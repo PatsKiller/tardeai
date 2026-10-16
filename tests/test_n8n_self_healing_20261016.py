@@ -252,16 +252,38 @@ def _live_heal_env(env, tmp_path, monkeypatch, stage="canary"):
     return {**env, "catalogue": cat, "registry": reg}
 
 
+PARENT = f"d:{LOW_LANE}:live:20261010T0155"
+
+
+class ParentStore(FakeStore):
+    """FakeStore that knows the failed live parent (host_run_request validates it before queueing)."""
+
+    def get(self, run_id):
+        if run_id == PARENT:
+            return {"run_id": PARENT, "lane_id": LOW_LANE, "mode": "live", "state": "RUN_FAILED"}
+        return None
+
+
+def test_no_failed_live_slot_parent_means_no_live_heal(env, tmp_path, monkeypatch):
+    e = _live_heal_env(env, tmp_path, monkeypatch)
+    call, store = GovernedCall(_answer(action="suggest_only", conf=0.9)), ParentStore()
+    assert _run(e, ["--apply"], db=FakeDB([_siem_row()]), call=call, store=store, deferral=_no_defer) == 0
+    res = _receipt(e)["results"][0]
+    assert res["live_heal_gate"] == "no_failed_live_slot_parent" and store.requests == [] and len(call.seen) == 1
+
+
 def test_transient_failure_of_an_n8n_canary_lane_is_live_healed_once(env, tmp_path, monkeypatch):
     e = _live_heal_env(env, tmp_path, monkeypatch)
-    call, store = GovernedCall(_answer(), raise_on_call=True), FakeStore()
+    _add_run(e["ledger"], PARENT, "RUN_FAILED", mode="live", stderr="connection reset by peer")
+    call, store = GovernedCall(_answer(), raise_on_call=True), ParentStore()
     assert _run(e, ["--apply"], db=FakeDB([_siem_row()]), call=call, store=store, deferral=_no_defer) == 0
     rec = _receipt(e)
     res = rec["results"][0]
     assert res["failure_class"] == H.TRANSIENT and res["live_heal_gate"] == "ok"
-    assert res["decision"]["action_id"] == "rerun_live_once"
+    assert res["decision"]["action_id"] == "rerun_live_once" and res["retry_parent_run_id"] == PARENT
     assert [(r["mode"], r["run_id"]) for r in store.requests] == [("live", f"rem-{res['incident_key']}-live")]
     assert store.requests[0]["requested_by"] == cli.REQUESTED_BY
+    assert store.requests[0]["parent_run_id"] == PARENT     # slot-bound: the executor claims the parent's slot
     state = json.loads((e["state"] / cli.STATE_REL).read_text())
     assert state["days"][NOW.date().isoformat()]["lane_live_heals"] == {LOW_LANE: 1}
     assert rec["escalations"] == []
