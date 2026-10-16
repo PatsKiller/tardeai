@@ -37,6 +37,7 @@ for _p in (str(ROOT), str(ROOT / "scripts"), str(ROOT / "scripts" / "lib")):
         sys.path.insert(0, _p)
 
 import check_notification_intents as CNI  # noqa: E402
+from tests.support import hermes_learning_cutover as HL  # noqa: E402
 import hermes_autonomous_self_tune as ST  # noqa: E402
 import hermes_tag_engine as TE  # noqa: E402
 from lib.hermes_outcome_bus import alert_notifications as AN  # noqa: E402
@@ -517,7 +518,9 @@ def test_unblocked_step_is_a_dry_run_shadow_lane(sid):
     s = SPEC["steps"][sid]
     assert s["blocked"] is None and s["dry_run"]
     e = ALLOW[s["lane_id"]]
-    assert e["live_arg"] is None and e["dry_run_arg"] == ["--dry-run"] and "--apply" not in e["command"]
+    # hermes-learning cutover PR-2 (tests/support/hermes_learning_cutover.py): tag_engine runs live at canary
+    want_live = s["cutover_live_arg"] if s["lane_id"] in HL.LIVE else None
+    assert e["live_arg"] == want_live and e["dry_run_arg"] == ["--dry-run"] and "--apply" not in e["command"]
     assert s["lane_id"] not in BLOCKED_REASONS
 
 

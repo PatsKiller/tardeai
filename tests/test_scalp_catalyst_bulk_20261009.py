@@ -47,21 +47,31 @@ def test_build_enrichment_is_the_per_ticker_shape(monkeypatch):
 
 
 def test_bulk_batches_maps_tickers_and_converts_exchange_time(monkeypatch):
+    # Relative timestamps (2026-10-16): the fixed 2026-10-09 09:05 ET row aged past the 168 h window a week
+    # later and the test went red on every branch. Same wall-clock shapes, always fresh.
+    from datetime import datetime, timedelta, timezone
+    from zoneinfo import ZoneInfo
+
+    et = ZoneInfo("America/New_York")
+    t_aaa = (datetime.now(timezone.utc) - timedelta(hours=2)).astimezone(et).replace(microsecond=0)
+    t_ccc = (datetime.now(timezone.utc) - timedelta(hours=8)).astimezone(et).replace(microsecond=0)
+    aaa_et, ccc_et = t_aaa.strftime("%Y-%m-%d %H:%M:%S"), t_ccc.strftime("%Y-%m-%d %H:%M:%S")
+    aaa_utc = t_aaa.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     monkeypatch.setenv("FINVIZ_API_TOKEN", "tok")
     urls = []
 
     def get(url, **k):
         urls.append(url)
         if "AAA,BBB" in url:
-            return Resp(200, csv_rows(("AAA and BBB sign merger agreement", "2026-10-09 15:21:00", "AAA,BBB")))
-        return Resp(200, csv_rows(("CCC prices $5M registered direct offering", "2026-10-09 09:05:00", "CCC")))
+            return Resp(200, csv_rows(("AAA and BBB sign merger agreement", aaa_et, "AAA,BBB")))
+        return Resp(200, csv_rows(("CCC prices $5M registered direct offering", ccc_et, "CCC")))
 
     out, st = b.enrich_bulk(["aaa", "BBB", "CCC", "DDD"], dict(CFG, source_order=["finviz_elite_news_bulk"]), http_get=get)
     assert st["finviz_calls"] == 2 and len(urls) == 2                      # 4 names, batch 2
     assert "v=3&t=AAA,BBB&auth=tok" in urls[0]
     assert set(out) == {"AAA", "BBB", "CCC"} and st["uncovered"] == ["DDD"]
     art = out["AAA"]["catalysts"][0]
-    assert art["published_at"] == "2026-10-09T19:21:00Z"                   # 15:21 ET = 19:21 UTC
+    assert art["published_at"] == aaa_utc                                  # ET exchange time -> UTC
     assert out["CCC"]["catalyst_count"] == 1 and out["CCC"]["top_catalyst"]["provider"] == "finviz_news"
 
 

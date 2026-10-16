@@ -348,7 +348,8 @@ GRAPH_PINS = {
     # 2026-10-15: the first process workflow (adding it moves none of the four pins above, nor the policy hash).
     # Re-pinned by the hermes-learning unblock (three steps runnable, default_max_attempts 1, tune wait 600 s);
     # never imported yet, so no imported copy stops verifying.
-    "tradeai-fabric-hermes-learning": "44c35ad3374fe14f295b59825d20632d9266f1ab42d9ca3d8278fda8c21056dd",
+    # hermes-learning cutover PR-2 (2026-10-15): spec MODE live; still never imported, so nothing stops verifying.
+    "tradeai-fabric-hermes-learning": "f1d0984c64b06191020008af6d09f8b26a9c5a0ba5789f8e97ddb0e45215ebe4",
 }
 
 
