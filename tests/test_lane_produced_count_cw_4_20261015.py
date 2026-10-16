@@ -68,7 +68,7 @@ def test_watchlist_enrichment_sweep(monkeypatch, tmp_path, total, enriched, expe
     import watchlist_enrichment_sweep as m
 
     run_id = H.attempt_env(monkeypatch, tmp_path, "watchlist-enrichment-sweep")
-    monkeypatch.setattr(m, "sweep", lambda limit=None, dry=False: {"total": total, "enriched": enriched})
+    monkeypatch.setattr(m, "sweep", lambda limit=None, dry=False, **_k: {"total": total, "enriched": enriched})
     assert m.main(["--once"]) == 0
     out = H.check(tmp_path, "watchlist-enrichment-sweep", run_id, produced=enriched, expect=expect)
     if not total:

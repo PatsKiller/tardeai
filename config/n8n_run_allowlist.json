@@ -206,7 +206,8 @@
         "--apply"
       ],
       "market_gate": false,
-      "output_signal": "data/runtime/n8n_pilot_dispatch_last.json"
+      "output_signal": "data/runtime/n8n_pilot_dispatch_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "n8n-incident-fanin",
@@ -248,7 +249,8 @@
         "--apply"
       ],
       "market_gate": false,
-      "output_signal": "data/runtime/n8n_incident_fanin_last.json"
+      "output_signal": "data/runtime/n8n_incident_fanin_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "n8n-research-intake-consumer",
@@ -284,34 +286,36 @@
         "--apply"
       ],
       "market_gate": false,
-      "output_signal": "data/runtime/n8n_research_intake_last.json"
+      "output_signal": "data/runtime/n8n_research_intake_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "crontab-snapshot-for-health-agent",
       "env_names": [
         "PROJECT_ROOT",
-        "SAFE_FLOCK_LOG_DIR"
+        "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_PERSISTENT_STATE_ROOT"
       ],
       "env_allowlist_mode": "enforce",
       "env_evidence": "Inline bash in this entry uses only positional $1 (resolved STATE_ROOT in argv), crontab -l and mv. safe_flock.sh reads PROJECT_ROOT/SAFE_FLOCK_LOG_DIR (both defaulted). No Python.",
-      "source": "crontab */20 * * * * crontab -l > <snapshot>.tmp && mv -f <snapshot>.tmp <snapshot>; the target path is the mode argument ($1), dry_run writes the shadow copy",
+      "source": "crontab */20 * * * * crontab -l > <snapshot>.tmp && mv -f <snapshot>.tmp <snapshot>; the target path is the mode argument ($1), dry_run writes the shadow copy | useful-output proof 2026-10-16: the n8n command is scripts/crontab_snapshot_lane.py (same tmp + rename of `crontab -l` into the mode argument; dry_run writes only the shadow copy and no receipt) so a live run writes LaneRunReceipt@v2 produced_count; the cron line stays the shell form.",
       "command": [
-        "bash",
-        "-c",
-        "crontab -l > \"${1}.tmp\" && mv -f \"${1}.tmp\" \"${1}\"",
-        "crontab_snapshot"
+        "$PY",
+        "scripts/crontab_snapshot_lane.py"
       ],
       "lock": "/tmp/tradeai_crontab_snapshot.lock",
       "lock_kind": "safe_flock",
       "timeout_s": 30,
       "dry_run_arg": [
+        "--dry-run",
         "$STATE_ROOT/data/runtime/n8n_runs/shadow/crontab_snapshot.txt"
       ],
       "live_arg": [
         "$STATE_ROOT/data/runtime/crontab_snapshot.txt"
       ],
       "market_gate": false,
-      "output_signal": "data/runtime/crontab_snapshot.txt"
+      "output_signal": "data/runtime/crontab_snapshot.txt",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "n8n-lab-watchdog",
@@ -1493,7 +1497,8 @@
       ],
       "live_arg": [],
       "market_gate": false,
-      "output_signal": "data/runtime/research-insight-extractor_last.json"
+      "output_signal": "data/runtime/research-insight-extractor_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "signal-fusion-full",
@@ -3892,7 +3897,8 @@
     "n8n-lab-restore-drill": "Registry is RETIRED: already absorbed into platform-maintenance-weekly; do not add a second schedule.",
     "hermes-learning-score-history-retention": "n8n fabric process hermes-learning (2026-10-15) step score_history_retention of config/pipelines/hermes_learning.json: EXCLUDED, no allowlist entry. EXCLUDED, OPERATOR DECISION (destructive retention, never-list): --apply runs DELETE FROM hermes_score_history (scripts/hermes_score_history_retention.py --days 21). It stays on cron as a retention concern and is excluded from the fabric process: not changed by the 2026-10-15 unblock; moving retention into n8n at all is an operator decision (AGENTS.md §17, §23.14). Ordered after outcome_grader because the grader freezes score components before retention can delete them. The process workflow tradeai-fabric-hermes-learning records this step as status 'blocked' and never calls Run Lane for it; the cron stage runner keeps running it.",
     "hermes-coordinator": "import closure reaches broker modules and raw senders: advisory_lane_guard.scan_entry(scripts/hermes_coordinator.py) -> trade_context api_v2.py place_order/cancel_order, schwab_transport.py place_order, account_policy get_account, and direct sends telegram_transport.py api.telegram.org; its children hermes_research_curator.py (broker_module schwab_transport, alpaca_paper_adapter; sends via proposal_paper_submitter send_telegram), hermes_autonomous_loop.py, hermes_discovery_autonomy.py and options_research_bridge.py reach the same. AGENTS 23.14 + DD audit 2026-10-15 (no hidden raw sender bypass). Stays on host cron until the closure is cut.",
-    "run-research-intelligence-overnight": "LLM lane, SHADOW staged (lane_registry r1_pending), not runnable yet: it calls three registered processes (topic_research_synthesizer, ri_narrative_enrich, topic_ingestion) and none has a cio-governed-bridge caller/task route (lib/governed_process_routes.route_for_process -> None), so an llm_route entry is refused by the executor (validate_entry: llm_process_route_not_registered); and the executor binds ONE TRADEAI_LLM_PROCESS_ID per run, so a compound of three processes cannot run on the bridge as one lane. Today the calls go through the in-process consumption gate (registered, capped, logged; 2026-10-15 lane repair). Activation = a bridge-route PR for these processes (map entry + resolve_model_policy + sync_cio_process_caps + bridge restart; or one lane per step), then this allowlist entry (command bash scripts/run_research_intelligence_overnight.sh --phase full, dry_run_arg --dry-run, live_arg null, lock /tmp/ri_overnight_full.lock, timeout_s 5400) and the r1_pending activation. Packet docs/ops/packets/lane-repair-run-research-intelligence-overnight-20261015/."
+    "run-research-intelligence-overnight": "LLM lane, SHADOW staged (lane_registry r1_pending), not runnable yet: it calls three registered processes (topic_research_synthesizer, ri_narrative_enrich, topic_ingestion) and none has a cio-governed-bridge caller/task route (lib/governed_process_routes.route_for_process -> None), so an llm_route entry is refused by the executor (validate_entry: llm_process_route_not_registered); and the executor binds ONE TRADEAI_LLM_PROCESS_ID per run, so a compound of three processes cannot run on the bridge as one lane. Today the calls go through the in-process consumption gate (registered, capped, logged; 2026-10-15 lane repair). Activation = a bridge-route PR for these processes (map entry + resolve_model_policy + sync_cio_process_caps + bridge restart; or one lane per step), then this allowlist entry (command bash scripts/run_research_intelligence_overnight.sh --phase full, dry_run_arg --dry-run, live_arg null, lock /tmp/ri_overnight_full.lock, timeout_s 5400) and the r1_pending activation. Packet docs/ops/packets/lane-repair-run-research-intelligence-overnight-20261015/.",
+    "self-heal-fixer": "AGENTS 12.0.0 §24.5: no push, PR or remote write from a scheduled job, and the lane runs a coding agent (headless Claude Code) that may push a fix branch once the §24.11 amendment is ACTIVE. The operator directive (2026-10-16) puts it on the host as a registered lane so model output never grants execution authority; it is never n8n-runnable. Registry row PAUSED (KEEP_ON_CRON)."
   },
   "proposed_external_contracts": {
     "dof-run-pipeline": {

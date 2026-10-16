@@ -32,11 +32,13 @@ _HORIZON_LONG = {"long-term", "retirement", "compound", "decade", "5-year", "10-
 def _get_conn(dry_run: bool = False):
     import psycopg2
     # Env first (the executor passes the allowlisted DB_PASSWORD), then the checkout .env line (cron sources none).
+    # No env and no .env (a fresh worktree) -> no password argument: libpq's own lookup (~/.pgpass) decides.
     pw = os.environ.get("DB_PASSWORD", "")
-    if not pw:
-        for line in (PROJECT_ROOT / ".env").read_text().splitlines():
+    env_file = PROJECT_ROOT / ".env"
+    if not pw and env_file.is_file():
+        for line in env_file.read_text().splitlines():
             if line.startswith("DB_PASSWORD="): pw = line.split("=", 1)[1].strip()
-    conn = psycopg2.connect(host="localhost", dbname="trade_ai", user="trade_ai", password=pw)
+    conn = psycopg2.connect(host="localhost", dbname="trade_ai", user="trade_ai", **({"password": pw} if pw else {}))
     if dry_run:
         sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
         from lib.lane_last_receipt import enforce_readonly
@@ -177,10 +179,11 @@ def extract_insight(text: str, symbol: str = None, source_type: str = "manual",
     return insight
 
 
-def extract_from_news(limit: int = 100, dry_run: bool = False, errors: list = None) -> list:
+def extract_from_news(limit: int = 100, dry_run: bool = False, errors: list = None, skips: dict = None) -> list:
     """Extract insights from recent news articles that don't have linked insights yet.
 
-    errors: when given, collects one string per failed extraction (was silently dropped)."""
+    errors: when given, collects one string per failed extraction (was silently dropped).
+    skips: when given, counts candidates skipped before extraction (``text_too_short``)."""
     import psycopg2.extras
     conn = _get_conn(dry_run)
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -199,6 +202,8 @@ def extract_from_news(limit: int = 100, dry_run: bool = False, errors: list = No
     for a in articles:
         text = f"{a.get('title', '')}. {a.get('summary', '')}"
         if len(text.strip()) < 20:
+            if skips is not None:
+                skips["text_too_short"] = skips.get("text_too_short", 0) + 1
             continue
         try:
             r = extract_insight(text, symbol=a.get("symbol"), source_type="news",
@@ -210,8 +215,8 @@ def extract_from_news(limit: int = 100, dry_run: bool = False, errors: list = No
     return results
 
 
-def extract_from_catalysts(limit: int = 100, dry_run: bool = False, errors: list = None) -> list:
-    """Extract insights from catalyst events."""
+def extract_from_catalysts(limit: int = 100, dry_run: bool = False, errors: list = None, skips: dict = None) -> list:
+    """Extract insights from catalyst events (``errors`` / ``skips`` as in extract_from_news)."""
     import psycopg2.extras
     conn = _get_conn(dry_run)
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -230,6 +235,8 @@ def extract_from_catalysts(limit: int = 100, dry_run: bool = False, errors: list
     for c in catalysts:
         text = f"{c.get('headline', '')}. {c.get('description', '')}"
         if len(text.strip()) < 20:
+            if skips is not None:
+                skips["text_too_short"] = skips.get("text_too_short", 0) + 1
             continue
         try:
             r = extract_insight(text, symbol=c.get("symbol"), source_type="catalyst",
@@ -246,12 +253,15 @@ def run_default(dry_run: bool = False, as_json: bool = False) -> int:
     failed (a run that wrote nothing it could have); per-item failures are counted, not hidden."""
     started_at = datetime.now(timezone.utc).isoformat()
     errors: list = []
+    skips: dict = {}
     try:
-        n = extract_from_news(dry_run=dry_run, errors=errors)
-        c = extract_from_catalysts(dry_run=dry_run, errors=errors)
+        n = extract_from_news(dry_run=dry_run, errors=errors, skips=skips)
+        c = extract_from_catalysts(dry_run=dry_run, errors=errors, skips=skips)
     except Exception as exc:
         if not dry_run:
-            _receipt(ok=False, started_at=started_at, error=f"{type(exc).__name__}: {exc}")
+            _receipt(ok=False, started_at=started_at, error=f"{type(exc).__name__}: {exc}",
+                     output={"produced_count": 0, "attempted_count": 0,
+                             "skipped_reasons": {"dependency_unavailable": 1}})
         raise
     verb = "Would extract" if dry_run else "Extracted"
     print(f"[research] {verb} {len(n)} from news, {len(c)} from catalysts ({len(n)+len(c)} total)"
@@ -262,11 +272,31 @@ def run_default(dry_run: bool = False, as_json: bool = False) -> int:
         print(json.dumps({"news": len(n), "catalysts": len(c), "failed": len(errors),
                           "dry_run": dry_run}, indent=2))
     ok = not (errors and not (n or c))
+    output = lane_output(n + c, failed=len(errors), skips=skips, dry_run=dry_run)
     if not dry_run:
         _receipt(ok=ok, started_at=started_at,
                  error=None if ok else f"all {len(errors)} extractions failed: {errors[0]}",
-                 summary={"news": len(n), "catalysts": len(c), "failed": len(errors)})
+                 summary={"news": len(n), "catalysts": len(c), "failed": len(errors)}, output=output)
+    else:  # dry run: no receipt (AGENTS.md §6); the fields a real run would record, on stderr
+        print("LANE_OUTPUT " + json.dumps(output, sort_keys=True), file=sys.stderr)
     return 0 if ok else 1
+
+
+def lane_output(results: list, *, failed: int, skips: dict, dry_run: bool) -> dict:
+    """LaneRunReceipt@v2 output fields (n8n expected_output, unit: rows inserted into research_insights).
+
+    produced = insights with a RETURNING id (a dry run inserts nothing: 0, the would-insert count is ``dry_run``);
+    attempted = candidates (news + catalysts with no linked insight yet) extracted or failed. Every candidate already
+    has an insight (NOT EXISTS on source_reference) = ``no_new_input``."""
+    inserted = sum(1 for r in results if r.get("id") is not None)
+    skipped = {k: int(v) for k, v in skips.items() if v}
+    if failed:
+        skipped["extract_failed"] = int(failed)
+    if dry_run and results:
+        skipped["dry_run"] = len(results)
+    attempted = len(results) + int(failed)
+    return {"produced_count": inserted, "attempted_count": max(attempted, inserted), "skipped_reasons": skipped,
+            "empty_reason": None if inserted else ("no_new_input" if not attempted else None)}
 
 
 def _receipt(**kw):
