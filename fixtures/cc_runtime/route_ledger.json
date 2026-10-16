@@ -213,6 +213,10 @@
     {
       "url": "/v3/coordination",
       "path": "coordination"
+    },
+    {
+      "url": "/v3/system/broker-access",
+      "path": "system/broker-access"
     }
   ],
   "spa_routes": [
@@ -366,6 +370,9 @@
     },
     {
       "route": "/v3/coordination"
+    },
+    {
+      "route": "/v3/system/broker-access"
     }
   ],
   "apis": [
