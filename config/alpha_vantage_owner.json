@@ -59,10 +59,10 @@
       "priority": 4,
       "domain": "fundamentals",
       "function": "OVERVIEW",
-      "daily_allotment": 2,
-      "class": "on_demand_reserve",
-      "caller": "scripts/scalp_float_lookup.py (Finviz first; AV only for floats Finviz lacks)",
-      "why": "Ran every 5 min 06:00-15:55 with up to 2 AV calls per run and no budget at all; now drawn from a 2/day reserve."
+      "daily_allotment": 0,
+      "class": "disabled",
+      "caller": "none since 2026-10-16 — scripts/scalp_float_lookup.py reads Finviz Shs Float through lib.data_broker.finviz_enrichment_snapshot and makes no Alpha Vantage call",
+      "why": "Operator 2026-10-16 option A: \"stop calling Alpha Vantage OVERVIEW for float; use the float data we already have from Finviz via the data broker\". 10 counted calls 2026-10-12..16, all 'This is a premium endpoint' (information_notice), 8 more refused by this allotment, 0 successes (receipts_202610.jsonl). Was a 2/day on-demand reserve."
     },
     "key_check": {
       "priority": 5,
@@ -83,7 +83,14 @@
       "why": "Verified on the documented demo URL 2026-10-10 (20 gainers/losers/most active, last_updated 2026-10-09 16:15:57 US/Eastern, end of day). Finviz already writes market_movers top_gainers 3,234 rows / top_losers 3,288 rows in 7 days. Low value; 0 allotment."
     }
   },
-  "_allotment_sum": "1 + 14 + 5 + 2 + 1 + 0 = 23 = hard_daily_cap (the loader enforces sum <= cap)",
+  "_allotment_sum": "1 + 14 + 5 + 0 + 1 + 0 = 21 <= hard_daily_cap 23 (the loader enforces sum <= cap). fundamentals_overview keeps its 5 on paper but OVERVIEW is in premium_functions, so the owner refuses it up front.",
+  "premium_functions": {
+    "OVERVIEW": {
+      "since": "2026-10-16",
+      "evidence": "10 of 10 counted OVERVIEW calls 2026-10-12..16 answered 'This is a premium endpoint' (persistent-state data/runtime/alpha_vantage/receipts_202610.jsonl); 0 successes",
+      "effect": "owner refuses OVERVIEW up front with outcome premium_endpoint_unavailable: no HTTP request, not counted, not reported to data_source_health as a failure"
+    }
+  },
   "key_check_fresh_hours": 36,
   "news_sentiment": {
     "index_window_hours": 72,
@@ -173,7 +180,7 @@
         {"check": "no_phantom", "text": "every counted call has a receipt with an HTTP status (refusals and dry runs count 0)"}
       ],
       "degraded": [
-        {"check": "reserve_spent", "text": "on-demand reserve (scalp_float 2, key_check 1) exhausted before 16:00 ET"}
+        {"check": "reserve_spent", "text": "on-demand reserve (key_check 1) exhausted before 16:00 ET"}
       ],
       "failed": [
         {"check": "over_cap", "text": "any day above 23 — a caller bypassed the owner (grep for alphavantage.co outside scripts/lib/alpha_vantage_owner.py)"}
