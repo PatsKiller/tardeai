@@ -1361,7 +1361,8 @@
       ],
       "live_arg": [],
       "market_gate": false,
-      "output_signal": "data/runtime/watchlist-enrichment-sweep_last.json"
+      "output_signal": "data/runtime/watchlist-enrichment-sweep_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "sector-rs-daily",
@@ -1981,7 +1982,8 @@
         "--apply"
       ],
       "market_gate": false,
-      "output_signal": "data/runtime/agent-outcome-scorer_last.json"
+      "output_signal": "data/runtime/agent-outcome-scorer_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "validate-expense-ratios",
@@ -2120,7 +2122,8 @@
       ],
       "live_arg": [],
       "market_gate": false,
-      "output_signal": "data/runtime/aegis-social-sentiment_last.json"
+      "output_signal": "data/runtime/aegis-social-sentiment_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "aegis-transcript-discovery",
@@ -2156,7 +2159,8 @@
       ],
       "live_arg": [],
       "market_gate": false,
-      "output_signal": "data/runtime/aegis-transcript-discovery_last.json"
+      "output_signal": "data/runtime/aegis-transcript-discovery_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "aegis-nightly-ingestion",
@@ -2223,7 +2227,8 @@
         "--apply"
       ],
       "market_gate": false,
-      "output_signal": "data/runtime/hermes-social-sentiment_last.json"
+      "output_signal": "data/runtime/hermes-social-sentiment_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "sync-social-to-intelligence",
@@ -2417,7 +2422,8 @@
       "timeout_s": 1800,
       "market_gate": false,
       "output_signal": "data/runtime/daily-incubator-refresh_last.json",
-      "source": "Exact native-approved crontab -l snapshot 2026-10-11T14:57:08.697196+00:00; cron remains unchanged. | CW2 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv [], lock = the cron flock lock /tmp/daily-incubator-refresh.lock (shared: the lock proves no double run)."
+      "source": "Exact native-approved crontab -l snapshot 2026-10-11T14:57:08.697196+00:00; cron remains unchanged. | CW2 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv [], lock = the cron flock lock /tmp/daily-incubator-refresh.lock (shared: the lock proves no double run).",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "resolve-due-checkpoints",
@@ -2771,7 +2777,8 @@
       "env_allowlist_mode": "report",
       "env_report_reason": "Real price-observation factory is shared and not narrowed by this shard. Preserve the observed explicit --state-root parameter. Tests fake all store/provider boundaries; no production store is opened.",
       "env_evidence": "Own source named dependencies; shared import-closure debt recorded in SHARED_CHANGES_NEEDED.md. Executor base names supply TRADEAI_STATE_ROOT, PATH, HOME and XDG_RUNTIME_DIR.",
-      "source": "Shard05 SOURCE_ONLY, approved exact selected cron snapshot 2026-10-11T17:05:28.513179+00:00. Original line: 20 18 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/sweep_commitment_outcomes.py --apply --state-root /home/johnclaw/trade-ai-state/persistent_wake/state >> logs/sweep_commitment_outcomes.log 2>&1. Original business argv preserved; shell prerequisites and source environment remain recorded in scheduler.command_text. Explicit dry-run returns before env, data and provider work. live_arg null; no scheduling or deployment. NO outer flock in observed cron: allowlist lock is PROPOSED ONLY; operator packet required before canary. | CW2 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv [], lock = the cron flock lock /tmp/commitment-outcome-sweep.lock (shared: the lock proves no double run)."
+      "source": "Shard05 SOURCE_ONLY, approved exact selected cron snapshot 2026-10-11T17:05:28.513179+00:00. Original line: 20 18 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/sweep_commitment_outcomes.py --apply --state-root /home/johnclaw/trade-ai-state/persistent_wake/state >> logs/sweep_commitment_outcomes.log 2>&1. Original business argv preserved; shell prerequisites and source environment remain recorded in scheduler.command_text. Explicit dry-run returns before env, data and provider work. live_arg null; no scheduling or deployment. NO outer flock in observed cron: allowlist lock is PROPOSED ONLY; operator packet required before canary. | CW2 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv [], lock = the cron flock lock /tmp/commitment-outcome-sweep.lock (shared: the lock proves no double run).",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "finviz-market-movers",
@@ -2875,7 +2882,8 @@
       "env_allowlist_mode": "report",
       "env_report_reason": "SOURCE_ONLY: lazy DB, provider, telemetry and cognition import closure not fully inventoried; shared loader/optional driver work belongs to the integrator. No canary until closure proof and bound enforcement.",
       "env_evidence": "Selected source names only; own CLI preview returns before DB, auth, provider, model or mutation",
-      "source": "SOURCE_ONLY exact approved cron 2026-10-11T17:05:28.513179+00:00: 50 18 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/write_instrument_beliefs.py --apply >> logs/write_instrument_beliefs.log 2>&1 | CW2 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv [], lock = the cron flock lock /tmp/instrument-belief-writer.lock (shared: the lock proves no double run)."
+      "source": "SOURCE_ONLY exact approved cron 2026-10-11T17:05:28.513179+00:00: 50 18 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/write_instrument_beliefs.py --apply >> logs/write_instrument_beliefs.log 2>&1 | CW2 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv [], lock = the cron flock lock /tmp/instrument-belief-writer.lock (shared: the lock proves no double run).",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "trade-thesis-review-engine",
