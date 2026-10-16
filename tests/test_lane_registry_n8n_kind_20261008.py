@@ -345,7 +345,7 @@ def test_native_monitor_rows_do_not_flip_a_host_scheduler():
         "crontab-snapshot-for-health-agent",
         # R1 cron canary climbed to cutover 2026-10-13 17:56 ET (_cutover.py --apply; cron line `# RETIRED`).
         "research-insight-extractor",
-    }
+    } | set(_CW_CUT_OVER)  # 2026-10-15 n8n cutover waves (scripts/n8n_cutover_wave.py cutover; cron lines `# RETIRED`)
     # 2026-10-11: heartbeat-watch is n8n-native (no host line ever existed): a dispatcher row (shadow then canary),
     # fired by tradeai-heartbeat-watcher and tradeai-dispatcher; it flips no host scheduler (match names its script only).
     # The operator's2026-10-12 admission adds two new native metadata lanes;
@@ -408,3 +408,6 @@ def test_every_n8n_row_cadence_is_one_valid_five_field_cron():
         if len(cad.split()) != 5 or gen.validate_cron(cad):
             bad[row["lane_id"]] = cad[:60]
     assert bad == {}, bad
+
+
+from tests.support.n8n_cutover_waves import CUT_OVER as _CW_CUT_OVER  # noqa: E402

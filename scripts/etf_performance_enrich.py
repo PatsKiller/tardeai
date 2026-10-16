@@ -189,13 +189,26 @@ def main(argv=None) -> int:
         res = enrich()
     except Exception as exc:
         lr.write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
-                              script="etf_performance_enrich.py", error=f"{type(exc).__name__}: {exc}")
+                              script="etf_performance_enrich.py", error=f"{type(exc).__name__}: {exc}",
+                              output={"produced_count": 0, "attempted_count": 0, "skipped_reasons": {"dependency_unavailable": 1}})
         raise
     failed = run_failed(res)
     rc = 1 if failed else 0
     lr.write_lane_receipt(LANE_ID, ok=not failed, exit_code=rc, started_at=started,
-                          script="etf_performance_enrich.py", summary=res)
+                          script="etf_performance_enrich.py", summary=res, output=lane_output(res))
     return rc
+
+
+def lane_output(res: dict) -> dict:
+    """LaneRunReceipt@v2 output fields (n8n expected_output, unit: symbol_profiles rows upserted with YTD/dividend
+    fields). No ETF/fund symbol in symbol_profiles is fatal (``universe_empty_unexpected``)."""
+    produced, attempted = int(res.get("updated") or 0), int(res.get("attempted") or 0)
+    skipped = {"writer_rejected": int(res.get("rejected") or 0), "fetch_error": int(res.get("errors") or 0),
+               "no_values": int(res.get("empty") or 0)}
+    if not int(res.get("symbols") or 0):
+        skipped["universe_empty_unexpected"] = 1
+    return {"produced_count": produced, "attempted_count": max(attempted, produced), "skipped_reasons": skipped,
+            "empty_reason": None}
 
 
 if __name__ == "__main__":

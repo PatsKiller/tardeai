@@ -187,7 +187,10 @@ with FW-M6). Since the 2026-10-15 expected_output PR, 122 of 126 contracts decla
 (`config/n8n_run_allowlist.json`) declares `"output_receipt": "v2"`; a declared rule without it is recorded as
 `output_verdict: declared_not_enforced` and the run state is unchanged. A lane gets `output_receipt: v2` only in the
 same change as the code that writes `LaneRunReceipt@v2 produced_count` (test
-`test_dd07_output_receipt_v2_only_with_code_that_writes_produced_count`); no committed entry opts in yet.
+`test_dd07_output_receipt_v2_only_with_code_that_writes_produced_count`). The cutover-wave CW1-CW3 lanes opt in
+batch by batch from 2026-10-15, each with its lane code (`write_lane_receipt(output=...)`) and a hermetic test of the
+real `main()` in a fake attempt (`tests/test_lane_produced_count_cw_<n>_20261015.py`); the allowlist is the list of
+opted-in lanes.
 Contracts without a block still report `output_verdict: no_rule` and are unchanged. Remaining (P): dry runs are exempt (they write no receipt; captured dry evidence is not built), the
 per-window rule is evaluated by monitors not per run, the verifier trusts the lane's own counts (an independent
 query of the declared durable output is not built), and a lane writes v2 only once it is changed to pass

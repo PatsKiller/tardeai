@@ -564,7 +564,8 @@ def main(argv=None) -> int:
             return 1
         _receipt_lib().write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
                                           script="feedback_loop_processor.py", summary=counts,
-                                          error=f"{type(exc).__name__}: {exc}")
+                                          error=f"{type(exc).__name__}: {exc}",
+                                          output={"produced_count": 0, "attempted_count": 0, "skipped_reasons": {"dependency_unavailable": 1}})
         raise
     finally:
         if conn is not None:
@@ -578,9 +579,18 @@ def main(argv=None) -> int:
         print(f"[feedback_loop] DRY-RUN complete — {datetime.now().isoformat()}")
         return 0
     _receipt_lib().write_lane_receipt(LANE_ID, ok=True, exit_code=0, started_at=started,
-                                      script="feedback_loop_processor.py", summary=counts)
+                                      script="feedback_loop_processor.py", summary=counts, output=lane_output(counts))
     print(f"[feedback_loop] Complete — {datetime.now().isoformat()}")
     return 0
+
+
+def lane_output(counts: dict) -> dict:
+    """LaneRunReceipt@v2 output fields (n8n expected_output, unit: rows written across the six STEPS tables).
+    Each step reports rows it wrote; the steps do not count what they considered, so attempted is not reported.
+    Nothing due in any step is ``no_new_input``."""
+    produced = sum(int(v) for v in counts.values() if isinstance(v, int) and not isinstance(v, bool))
+    return {"produced_count": produced, "skipped_reasons": {},
+            "empty_reason": "no_new_input" if produced == 0 else None}
 
 
 def cli(argv=None) -> int:

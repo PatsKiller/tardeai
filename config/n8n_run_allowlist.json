@@ -117,10 +117,11 @@
         "DB_NAME",
         "DB_PASSWORD",
         "DB_PORT",
-        "DB_USER"
+        "DB_USER",
+        "TRADEAI_PERSISTENT_STATE_ROOT"
       ],
       "env_allowlist_mode": "enforce",
-      "env_evidence": "source_attribution_monitor.py: single file, no local imports; _db reads exactly DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD (os.getenv literals). Its module-scope code-root .env loader copies only _ENV_KEYS (those five DB names; 2026-10-11 — before, its setdefault loop ADDED every .env name, broker credentials included, to the enforced child). flock wrapper.",
+      "env_evidence": "source_attribution_monitor.py: single file, no local imports; _db reads exactly DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD (os.getenv literals). Its module-scope code-root .env loader copies only _ENV_KEYS (those five DB names; 2026-10-11 — before, its setdefault loop ADDED every .env name, broker credentials included, to the enforced child). flock wrapper. | 2026-10-15 produced_count: + TRADEAI_PERSISTENT_STATE_ROOT (lib.lane_last_receipt -> persistent_state_root resolves the lane receipt dir; TRADEAI_STATE_ROOT is a child base name).",
       "source": "0 6 * * *; flock -n /tmp/source_attribution_monitor.lock $PY scripts/source_attribution_monitor.py | CW1 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv [], lock = the cron flock lock /tmp/source_attribution_monitor.lock (shared: the lock proves no double run).",
       "command": [
         "$PY",
@@ -134,7 +135,8 @@
       ],
       "live_arg": [],
       "market_gate": false,
-      "output_signal": "data/runtime/source_attribution_history.json"
+      "output_signal": "data/runtime/source_attribution_history.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "finviz-view-contracts",
@@ -730,7 +732,8 @@
       ],
       "live_arg": [],
       "market_gate": false,
-      "output_signal": "data/runtime/materialize_watchlist_strategy_cards_last.json"
+      "output_signal": "data/runtime/materialize_watchlist_strategy_cards_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "audit-enrichment-coverage",
@@ -860,7 +863,8 @@
       ],
       "live_arg": [],
       "market_gate": false,
-      "output_signal": "data/runtime/journal_tilt_morning_hook_last.json"
+      "output_signal": "data/runtime/journal_tilt_morning_hook_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "enterprise-backtester",
@@ -1059,7 +1063,8 @@
         "--apply"
       ],
       "market_gate": false,
-      "output_signal": "data/runtime/catalyst_symbol_impact_last_run.json"
+      "output_signal": "data/runtime/catalyst_symbol_impact_last_run.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "catalyst-graph",
@@ -1091,7 +1096,8 @@
         "--apply"
       ],
       "market_gate": false,
-      "output_signal": "data/cio/catalyst_graph_latest.json"
+      "output_signal": "data/cio/catalyst_graph_latest.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "data-gap-resolver-at-0-10-16",
@@ -1357,7 +1363,8 @@
       ],
       "live_arg": [],
       "market_gate": false,
-      "output_signal": "data/runtime/watchlist-enrichment-sweep_last.json"
+      "output_signal": "data/runtime/watchlist-enrichment-sweep_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "sector-rs-daily",
@@ -1454,7 +1461,8 @@
       ],
       "live_arg": [],
       "market_gate": false,
-      "output_signal": "data/runtime/classify-instruments_last.json"
+      "output_signal": "data/runtime/classify-instruments_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "research-insight-extractor",
@@ -1585,7 +1593,8 @@
         "--apply"
       ],
       "market_gate": false,
-      "output_signal": "data/runtime/agent-outcome-linker_last.json"
+      "output_signal": "data/runtime/agent-outcome-linker_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "agent-calibration-engine",
@@ -1649,7 +1658,8 @@
       ],
       "live_arg": [],
       "market_gate": false,
-      "output_signal": "data/runtime/update_agent_performance_last.json"
+      "output_signal": "data/runtime/update_agent_performance_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "finviz-enrichment",
@@ -1808,7 +1818,8 @@
       ],
       "live_arg": [],
       "market_gate": false,
-      "output_signal": "data/runtime/sec-data-ingest_last.json"
+      "output_signal": "data/runtime/sec-data-ingest_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "social-ingest-all",
@@ -1876,7 +1887,8 @@
       ],
       "live_arg": [],
       "market_gate": false,
-      "output_signal": "data/runtime/record-decision-outcome_last.json"
+      "output_signal": "data/runtime/record-decision-outcome_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "update-lockup-earnings-dates",
@@ -1940,7 +1952,8 @@
       ],
       "live_arg": [],
       "market_gate": false,
-      "output_signal": "data/runtime/etf-analyst-enrich_last.json"
+      "output_signal": "data/runtime/etf-analyst-enrich_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "agent-outcome-scorer",
@@ -1974,7 +1987,8 @@
         "--apply"
       ],
       "market_gate": false,
-      "output_signal": "data/runtime/agent-outcome-scorer_last.json"
+      "output_signal": "data/runtime/agent-outcome-scorer_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "validate-expense-ratios",
@@ -2043,7 +2057,8 @@
         "--apply"
       ],
       "market_gate": false,
-      "output_signal": "data/runtime/identity-sweep-stage0_last.json"
+      "output_signal": "data/runtime/identity-sweep-stage0_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "feedback-loop-processor",
@@ -2075,7 +2090,8 @@
       ],
       "live_arg": [],
       "market_gate": false,
-      "output_signal": "data/runtime/feedback-loop-processor_last.json"
+      "output_signal": "data/runtime/feedback-loop-processor_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "aegis-social-sentiment",
@@ -2111,7 +2127,8 @@
       ],
       "live_arg": [],
       "market_gate": false,
-      "output_signal": "data/runtime/aegis-social-sentiment_last.json"
+      "output_signal": "data/runtime/aegis-social-sentiment_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "aegis-transcript-discovery",
@@ -2147,7 +2164,8 @@
       ],
       "live_arg": [],
       "market_gate": false,
-      "output_signal": "data/runtime/aegis-transcript-discovery_last.json"
+      "output_signal": "data/runtime/aegis-transcript-discovery_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "aegis-nightly-ingestion",
@@ -2214,7 +2232,8 @@
         "--apply"
       ],
       "market_gate": false,
-      "output_signal": "data/runtime/hermes-social-sentiment_last.json"
+      "output_signal": "data/runtime/hermes-social-sentiment_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "sync-social-to-intelligence",
@@ -2249,7 +2268,8 @@
         "--apply"
       ],
       "market_gate": false,
-      "output_signal": "data/runtime/sync-social-to-intelligence_last.json"
+      "output_signal": "data/runtime/sync-social-to-intelligence_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "trade-backtest-engine",
@@ -2315,7 +2335,8 @@
       ],
       "live_arg": [],
       "market_gate": false,
-      "output_signal": "data/runtime/etf-performance-enrich_last.json"
+      "output_signal": "data/runtime/etf-performance-enrich_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "watch-goods-consistency",
@@ -2408,7 +2429,8 @@
       "timeout_s": 1800,
       "market_gate": false,
       "output_signal": "data/runtime/daily-incubator-refresh_last.json",
-      "source": "Exact native-approved crontab -l snapshot 2026-10-11T14:57:08.697196+00:00; cron remains unchanged. | CW2 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv [], lock = the cron flock lock /tmp/daily-incubator-refresh.lock (shared: the lock proves no double run)."
+      "source": "Exact native-approved crontab -l snapshot 2026-10-11T14:57:08.697196+00:00; cron remains unchanged. | CW2 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv [], lock = the cron flock lock /tmp/daily-incubator-refresh.lock (shared: the lock proves no double run).",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "resolve-due-checkpoints",
@@ -2471,7 +2493,8 @@
       ],
       "live_arg": [],
       "market_gate": false,
-      "output_signal": "data/runtime/weekly-incubator-builder_last.json"
+      "output_signal": "data/runtime/weekly-incubator-builder_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "investment-costs",
@@ -2694,7 +2717,8 @@
       "env_allowlist_mode": "report",
       "env_report_reason": "Own DB loader now selects DB names. Shared narrative/identity/oscillator helpers and legacy DB import closure are not admitted as an enforce-mode closure by this shard.",
       "env_evidence": "Own source named dependencies; shared import-closure debt recorded in SHARED_CHANGES_NEEDED.md. Executor base names supply TRADEAI_STATE_ROOT, PATH, HOME and XDG_RUNTIME_DIR.",
-      "source": "Shard05 SOURCE_ONLY, approved exact selected cron snapshot 2026-10-11T17:05:28.513179+00:00. Original line: */30 * * * * cd $PROJ && flock -n /tmp/material_change_detect.lock $PY scripts/material_change_detector.py --apply >> logs/material_change_detect.log 2>&1  # stage-1 detector. Original business argv preserved; shell prerequisites and source environment remain recorded in scheduler.command_text. Explicit dry-run returns before env, data and provider work. live_arg null; no scheduling or deployment. | CW1 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv [], lock = the cron flock lock /tmp/material_change_detect.lock (shared: the lock proves no double run)."
+      "source": "Shard05 SOURCE_ONLY, approved exact selected cron snapshot 2026-10-11T17:05:28.513179+00:00. Original line: */30 * * * * cd $PROJ && flock -n /tmp/material_change_detect.lock $PY scripts/material_change_detector.py --apply >> logs/material_change_detect.log 2>&1  # stage-1 detector. Original business argv preserved; shell prerequisites and source environment remain recorded in scheduler.command_text. Explicit dry-run returns before env, data and provider work. live_arg null; no scheduling or deployment. | CW1 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv [], lock = the cron flock lock /tmp/material_change_detect.lock (shared: the lock proves no double run).",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "finviz-sector-research",
@@ -2764,7 +2788,8 @@
       "env_allowlist_mode": "report",
       "env_report_reason": "Real price-observation factory is shared and not narrowed by this shard. Preserve the observed explicit --state-root parameter. Tests fake all store/provider boundaries; no production store is opened.",
       "env_evidence": "Own source named dependencies; shared import-closure debt recorded in SHARED_CHANGES_NEEDED.md. Executor base names supply TRADEAI_STATE_ROOT, PATH, HOME and XDG_RUNTIME_DIR.",
-      "source": "Shard05 SOURCE_ONLY, approved exact selected cron snapshot 2026-10-11T17:05:28.513179+00:00. Original line: 20 18 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/sweep_commitment_outcomes.py --apply --state-root /home/johnclaw/trade-ai-state/persistent_wake/state >> logs/sweep_commitment_outcomes.log 2>&1. Original business argv preserved; shell prerequisites and source environment remain recorded in scheduler.command_text. Explicit dry-run returns before env, data and provider work. live_arg null; no scheduling or deployment. NO outer flock in observed cron: allowlist lock is PROPOSED ONLY; operator packet required before canary. | CW2 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv [], lock = the cron flock lock /tmp/commitment-outcome-sweep.lock (shared: the lock proves no double run)."
+      "source": "Shard05 SOURCE_ONLY, approved exact selected cron snapshot 2026-10-11T17:05:28.513179+00:00. Original line: 20 18 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/sweep_commitment_outcomes.py --apply --state-root /home/johnclaw/trade-ai-state/persistent_wake/state >> logs/sweep_commitment_outcomes.log 2>&1. Original business argv preserved; shell prerequisites and source environment remain recorded in scheduler.command_text. Explicit dry-run returns before env, data and provider work. live_arg null; no scheduling or deployment. NO outer flock in observed cron: allowlist lock is PROPOSED ONLY; operator packet required before canary. | CW2 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv [], lock = the cron flock lock /tmp/commitment-outcome-sweep.lock (shared: the lock proves no double run).",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "finviz-market-movers",
@@ -2833,7 +2858,8 @@
       "env_allowlist_mode": "report",
       "env_report_reason": "SOURCE_ONLY: lazy DB, provider, telemetry and cognition import closure not fully inventoried; shared loader/optional driver work belongs to the integrator. No canary until closure proof and bound enforcement.",
       "env_evidence": "Selected source names only; own CLI preview returns before DB, auth, provider, model or mutation",
-      "source": "SOURCE_ONLY exact approved cron 2026-10-11T17:05:28.513179+00:00: 5 10-15/2 * * 1-5 cd $PROJ && flock -n /tmp/proposal_backtest.lock $PY scripts/proposal_backtest_engine.py --all-pending --apply >> logs/proposal_backtest_engine.log 2>&1  # backtest active proposals → proposal_backtest_snapshots (Backtest field on cards) | CW1 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv [], lock = the cron flock lock /tmp/proposal_backtest.lock (shared: the lock proves no double run)."
+      "source": "SOURCE_ONLY exact approved cron 2026-10-11T17:05:28.513179+00:00: 5 10-15/2 * * 1-5 cd $PROJ && flock -n /tmp/proposal_backtest.lock $PY scripts/proposal_backtest_engine.py --all-pending --apply >> logs/proposal_backtest_engine.log 2>&1  # backtest active proposals → proposal_backtest_snapshots (Backtest field on cards) | CW1 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv [], lock = the cron flock lock /tmp/proposal_backtest.lock (shared: the lock proves no double run).",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "instrument-belief-writer",
@@ -2867,7 +2893,8 @@
       "env_allowlist_mode": "report",
       "env_report_reason": "SOURCE_ONLY: lazy DB, provider, telemetry and cognition import closure not fully inventoried; shared loader/optional driver work belongs to the integrator. No canary until closure proof and bound enforcement.",
       "env_evidence": "Selected source names only; own CLI preview returns before DB, auth, provider, model or mutation",
-      "source": "SOURCE_ONLY exact approved cron 2026-10-11T17:05:28.513179+00:00: 50 18 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/write_instrument_beliefs.py --apply >> logs/write_instrument_beliefs.log 2>&1 | CW2 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv [], lock = the cron flock lock /tmp/instrument-belief-writer.lock (shared: the lock proves no double run)."
+      "source": "SOURCE_ONLY exact approved cron 2026-10-11T17:05:28.513179+00:00: 50 18 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/write_instrument_beliefs.py --apply >> logs/write_instrument_beliefs.log 2>&1 | CW2 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv [], lock = the cron flock lock /tmp/instrument-belief-writer.lock (shared: the lock proves no double run).",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "trade-thesis-review-engine",
@@ -2936,7 +2963,8 @@
       "env_allowlist_mode": "report",
       "env_report_reason": "Shared runtime DB/identity/store loaders have not been proven bounded for this whole import closure. Keep report mode until reviewed closure proof; no broker env name is admitted.",
       "env_evidence": "SOURCE_ONLY: source-local DB loaders use explicit names; full real-run import closure NOT_MEASURED.",
-      "source": "Shard07 source proposal; exact native-approved cron snapshot 2026-10-11T17:05:28.513179+00:00: 25 * * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/document_mentions_backfill.lock timeout 25m $PY scripts/backfill_document_mentions.py --all --limit 4000 --apply >> /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/logs/document_mentions.log 2>&1; no scheduler mutation. | CW1 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv [], lock = the cron flock lock /tmp/document_mentions_backfill.lock (shared: the lock proves no double run)."
+      "source": "Shard07 source proposal; exact native-approved cron snapshot 2026-10-11T17:05:28.513179+00:00: 25 * * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/document_mentions_backfill.lock timeout 25m $PY scripts/backfill_document_mentions.py --all --limit 4000 --apply >> /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/logs/document_mentions.log 2>&1; no scheduler mutation. | CW1 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv [], lock = the cron flock lock /tmp/document_mentions_backfill.lock (shared: the lock proves no double run).",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "aegis-evening-packet",
@@ -3454,7 +3482,8 @@
         "--render"
       ],
       "market_gate": false,
-      "output_signal": "data/runtime/opening-intelligence-render_last.json"
+      "output_signal": "data/runtime/opening-intelligence-render_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "hermes-discovery-scorecard",
@@ -3486,7 +3515,8 @@
       ],
       "live_arg": [],
       "market_gate": false,
-      "output_signal": "data/runtime/hermes-discovery-scorecard_last.json"
+      "output_signal": "data/runtime/hermes-discovery-scorecard_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "wire-advisory-lessons",
@@ -3518,7 +3548,8 @@
       ],
       "live_arg": [],
       "market_gate": false,
-      "output_signal": "data/runtime/wire-advisory-lessons_last.json"
+      "output_signal": "data/runtime/wire-advisory-lessons_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "incubator-rolloff-engine",
@@ -3552,7 +3583,8 @@
         "--apply"
       ],
       "market_gate": false,
-      "output_signal": "data/runtime/incubator-rolloff-engine_last.json"
+      "output_signal": "data/runtime/incubator-rolloff-engine_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "pattern-extractor",
@@ -3584,7 +3616,8 @@
       ],
       "live_arg": [],
       "market_gate": false,
-      "output_signal": "data/runtime/pattern-extractor_last.json"
+      "output_signal": "data/runtime/pattern-extractor_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "goal-gate-bridge",
@@ -3650,7 +3683,8 @@
       "env_allowlist_mode": "report",
       "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as the SW4 / LD-W1 rows). finviz_enrichment (the Finviz fallback) reads FINVIZ_API_TOKEN / FINVIZ_COOKIE; yfinance needs no credential.",
       "env_evidence": "build_symbol_profiles.py imports db_adapter (DB_* names), finviz_enrichment (FINVIZ_* names) and yfinance (no credential); lib/lane_last_receipt.py and lib/persistent_state_root.py read TRADEAI_STATE_ROOT / TRADEAI_PERSISTENT_STATE_ROOT. No broker credential name.",
-      "source": "lane repair 2026-10-15 (taking the refactor shard 05 proposal, wave R2-05), cron:L477 (crontab -l 2026-10-15, sha256 6a5c6768: `0 19 * * 0 cd $PROJ && flock -n /tmp/symbol_profiles.lock $PY scripts/build_symbol_profiles.py >> logs/symbol_profiles.log 2>&1  # weekly company-profile refresh (operator 2026-06-12)`). SHADOW ONLY: live_arg null, registry dispatch.mode dry_run, scheduler.stage shadow; the cron line keeps doing the real work. The live argument would be [] (the bare command); it is NOT in this entry. lock /tmp/symbol_profiles.lock (flock) is the live cron line's lock. Dry run: an explicit --dry-run prints an offline plan before env loading, DB connection, provider call or any write (refactor shard 05 contract) plus one LANE_OUTPUT stderr line; the measured READ ONLY preview is --watchlist-top N --dry-run. Proof in docs/ops/packets/lane-repair-indicator-engine-20261015/. | CW3 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv [], lock = the cron flock lock /tmp/symbol_profiles.lock (shared: the lock proves no double run)."
+      "source": "lane repair 2026-10-15 (taking the refactor shard 05 proposal, wave R2-05), cron:L477 (crontab -l 2026-10-15, sha256 6a5c6768: `0 19 * * 0 cd $PROJ && flock -n /tmp/symbol_profiles.lock $PY scripts/build_symbol_profiles.py >> logs/symbol_profiles.log 2>&1  # weekly company-profile refresh (operator 2026-06-12)`). SHADOW ONLY: live_arg null, registry dispatch.mode dry_run, scheduler.stage shadow; the cron line keeps doing the real work. The live argument would be [] (the bare command); it is NOT in this entry. lock /tmp/symbol_profiles.lock (flock) is the live cron line's lock. Dry run: an explicit --dry-run prints an offline plan before env loading, DB connection, provider call or any write (refactor shard 05 contract) plus one LANE_OUTPUT stderr line; the measured READ ONLY preview is --watchlist-top N --dry-run. Proof in docs/ops/packets/lane-repair-indicator-engine-20261015/. | CW3 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv [], lock = the cron flock lock /tmp/symbol_profiles.lock (shared: the lock proves no double run).",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "indicator-engine",

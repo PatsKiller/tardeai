@@ -77,7 +77,9 @@ def _cron_argv(command_text: str) -> list[str]:
     return toks[toks.index("$PY"):]
 
 
-@pytest.mark.parametrize("lane", LANES)
+#: 2026-10-15/16: a lane the n8n cutover waves moved on to the dispatcher cutover row leaves the cron-canary pin
+#: (tests/test_n8n_cutover_wave_20261015.py pins the cutover row).
+@pytest.mark.parametrize("lane", sorted(set(LANES) - set(CW.CUT_OVER)))
 def test_row_is_a_canary_cron_row(lane):
     row = ROWS[lane]
     s, d = row["scheduler"], row["dispatch"]

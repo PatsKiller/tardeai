@@ -35,11 +35,21 @@ GATES = [
     # ANCHOR: CC_TAILSCALE_IDENTITY_AUTH_20261014 — CC auth: tailnet identity on the serve socket,
     # service token on :7777, step-up refusal on order/stop/credential/risk routes. Hermetic.
     ("cc_tailscale_identity_auth_20261014", ["tests/test_cc_tailscale_identity_auth_20261014.py"]),
+    # ANCHOR: LANE_PRODUCED_COUNT_CW_4_20261015 — cutover-wave lanes (batch 4: watchlist sweep + 7 CW2 lanes) write
+    # LaneRunReceipt@v2 produced_count and opt into the executor output verdict (allowlist output_receipt v2). Real
+    # entry point per lane in a fake n8n attempt, DB/provider/network stubbed: produced / empty_allowed / RUN_FAILED
+    # empty_output on a fatal skip. Hermetic: TRADEAI_STATE_ROOT = tmp.
+    ("lane_produced_count_cw_4_20261015", ["tests/test_lane_produced_count_cw_4_20261015.py"]),
     ("refactor_shard_03_20261011", ["tests/test_refactor_shard_03_20261011.py"]),
     # ANCHOR: REFACTOR_SHARDS_05_08_LOCKS_20261011 — exact cron PID/OS lock identity, source only.
     ("refactor_shards_05_08_locks_20261011", ["tests/test_refactor_shards_05_08_locks_20261011.py"]),
     # ANCHOR: REFACTOR_SHARD_05_20261011 — offline previews and exact cron argv, fake-only work.
     ("refactor_shard_05_20261011", ["tests/test_refactor_shard_05_20261011.py"]),
+    # ANCHOR: LANE_PRODUCED_COUNT_CW_5_20261015 — cutover-wave lanes (batch 5: 3 CW2 + 6 CW3 lanes) write
+    # LaneRunReceipt@v2 produced_count and opt into the executor output verdict (allowlist output_receipt v2). Real
+    # entry point per lane in a fake n8n attempt, DB/provider/network stubbed: produced / empty_allowed / RUN_FAILED
+    # empty_output on a fatal skip. Hermetic: TRADEAI_STATE_ROOT = tmp.
+    ("lane_produced_count_cw_5_20261015", ["tests/test_lane_produced_count_cw_5_20261015.py"]),
     ("refactor_shard_07_20261011", ["tests/test_refactor_shard_07_20261011.py"]),
     (
         "options_workflow",
@@ -3806,6 +3816,17 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: LANE_PRODUCED_COUNT_CW_3_20261015 — cutover wave 1 lanes (batch 3: identity sweep, journal tilt,
+        # material change, strategy cards, proposal backtest, SEC Form 4, source attribution, agent performance) write
+        # LaneRunReceipt@v2 produced_count and opt into the executor output verdict (allowlist output_receipt v2). Real
+        # entry point per lane in a fake n8n attempt, DB/provider stubbed: produced / empty_allowed / RUN_FAILED
+        # empty_output on a fatal skip; established receipt paths pinned. Hermetic: TRADEAI_STATE_ROOT = tmp.
+        "lane_produced_count_cw_3_20261015",
+        [
+            "tests/test_lane_produced_count_cw_3_20261015.py",
+        ],
+    ),
+    (
         # ANCHOR: N8N_AUDIT_FINDINGS_20261015 — third-party n8n architecture audit (pinned e355be188), gap register
         # DD03-DD08 + DD14, each reproduced from the auditor's probes and fixed: request identity (a replayed key never
         # returns another lane/mode/workflow's row; live relay runs need a validated namespace; every executor path
@@ -3817,6 +3838,16 @@ GATES = [
         "n8n_audit_findings_20261015",
         [
             "tests/test_n8n_audit_findings_20261015.py",
+        ],
+    ),
+    (
+        # ANCHOR: LANE_PRODUCED_COUNT_CW_1_20261015 — cutover wave 1 lanes (batch 1 of 6) write LaneRunReceipt@v2
+        # produced_count via write_lane_receipt(output=...) and opt into the executor output verdict (allowlist
+        # output_receipt v2). Each lane's real main() runs in a fake n8n attempt with its DB/provider work stubbed:
+        # produced / empty_allowed / RUN_FAILED empty_output on a fatal skip. Hermetic: TRADEAI_STATE_ROOT = tmp.
+        "lane_produced_count_cw_1_20261015",
+        [
+            "tests/test_lane_produced_count_cw_1_20261015.py",
         ],
     ),
     (
@@ -4643,12 +4674,31 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: ONBOARD_DRYRUN_B3_20261015 — n8n onboarding batch B3 (lane disposition 2026-10-15, MIGRATE_N8N, no
+        # allowlist entry, no --dry-run before): offline --dry-run that wins over live flags for news-ingestion
+        # (+tail), hermes-youtube-discovery, youtube-transcript-ingest (in-process record-and-raise proof) and three
+        # shell lanes: drive-syncs-hourly (precedence fix: --dry-run now wins over --apply), run-profit-capture-
+        # refresh, portfolio-server-watchdog (out-of-process proof: PATH holds only recording stubs, roots in
+        # tmp_path). Listing it schedules nothing.
+        "onboard_dryrun_b3_20261015",
+        ["tests/test_onboard_dryrun_b3_20261015.py"],
+    ),
+    (
         # ANCHOR: SCALP_PREMARKET_ONBOARD_20261014 — operator directive 2026-10-14: the two scalp hot-tier R1 ingest
         # lanes (finviz-enrichment-scalp-hot, scalp-hot-list) enter the dispatcher at shadow (cron-exact lock,
         # market_gate, receipt, no broker env), the market_day_gate.sh exception stays bounded to three lanes, the
         # hot-list line writes its LaneRunReceipt@v1 on a real run only, and the sender / paper scalp lanes stay off.
         "scalp_premarket_onboard_20261014",
         ["tests/test_scalp_premarket_onboard_20261014.py"],
+    ),
+    (
+        # ANCHOR: ONBOARD_DRYRUN_B1_20261015 — n8n onboarding batch B1 (lane disposition 2026-10-15, MIGRATE_N8N lanes
+        # with no allowlist entry and no --dry-run): an offline --dry-run that wins over --apply for 8 read-
+        # only/overwrite lanes (deploy-detect/recompute/monitor, three outcome reconcilers, trade-integrity-audit,
+        # tmp-scratch-cleanup). Hermetic in-process proof: every write/send/network/subprocess primitive recorded,
+        # zero calls, one LaneOutput@v1 line. Listing it schedules nothing.
+        "onboard_dryrun_b1_20261015",
+        ["tests/test_onboard_dryrun_b1_20261015.py"],
     ),
     (
         # ANCHOR: CONSOLIDATION_STEP1_FINVIZ_BROKER — 2026-10-10 provider consolidation step 1 (cron L442 watch
@@ -4660,6 +4710,16 @@ GATES = [
         [
             "tests/test_consolidation_step1_finviz_broker_20261010.py",
         ],
+    ),
+    (
+        # ANCHOR: ONBOARD_DRYRUN_B2_20261015 — n8n onboarding batch B2 (lane disposition 2026-10-15, MIGRATE_N8N, no
+        # allowlist entry, no --dry-run before): an offline --dry-run that wins over --apply for 7 appender/writer
+        # lanes (deepseek-balance-snapshot, plan-drift-revalidator, enrich-proposal-technicals, reclassify-momentum-
+        # proposals, active-trader-session-review, active-trader-signal-calibration, proposal-lifecycle). Hermetic in-
+        # process proof: write/send/network/subprocess primitives recorded, zero calls, one LaneOutput@v1 line.
+        # Listing it schedules nothing.
+        "onboard_dryrun_b2_20261015",
+        ["tests/test_onboard_dryrun_b2_20261015.py"],
     ),
     (
         # ANCHOR: BROKER_DOMAINS_Q1 — 2026-10-10 operator decisions CONSOLIDATION_PLAN §D (2)(3)(5)(6)(7)(13)(14):

@@ -592,6 +592,7 @@ def main(dry_run: bool = False):
         "articles": len(article_records),
         "to_write": len(all_transcripts) + len(discovery),
         "db_ok": True,
+        "universe": len(symbols),
     }
     if result["to_write"] and t_written + d_written == 0:
         result["error"] = "all_writes_failed"
@@ -616,15 +617,31 @@ def cli(argv=None) -> int:
         result = main()
     except Exception as exc:
         write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
-                           script="aegis_transcript_discovery.py", error=f"{type(exc).__name__}: {exc}")
+                           script="aegis_transcript_discovery.py", error=f"{type(exc).__name__}: {exc}",
+                           output={"produced_count": 0, "attempted_count": 0, "skipped_reasons": {"dependency_unavailable": 1}})
         raise
     failed = bool(result.get("error"))
     write_lane_receipt(LANE_ID, ok=not failed, exit_code=1 if failed else 0, started_at=started,
                        script="aegis_transcript_discovery.py",
                        summary={k: result.get(k) for k in ("transcripts", "discovery", "youtube", "articles",
                                                            "to_write", "error")},
-                       error=result.get("error"))
+                       error=result.get("error"), output=lane_output(result))
     return 1 if failed else 0
+
+
+def lane_output(result: dict) -> dict:
+    """LaneRunReceipt@v2 output fields (n8n expected_output, unit: rows inserted into transcript_intel_history +
+    aegis_discovery_index). attempted = records offered to the two writers; Postgres down = ``dependency_unavailable``;
+    an empty universe is fatal (``universe_empty_unexpected``); nothing found = ``no_new_input``."""
+    produced = int(result.get("transcripts") or 0) + int(result.get("discovery") or 0)
+    to_write = int(result.get("to_write") or 0)
+    skipped = {"write_failed": max(to_write - produced, 0)}
+    if result.get("error") == "db_unavailable":
+        skipped["dependency_unavailable"] = 1
+    elif result.get("universe") == 0:
+        skipped["universe_empty_unexpected"] = 1
+    return {"produced_count": produced, "attempted_count": max(to_write, produced), "skipped_reasons": skipped,
+            "empty_reason": "no_new_input" if produced == 0 else None}
 
 
 if __name__ == "__main__":
