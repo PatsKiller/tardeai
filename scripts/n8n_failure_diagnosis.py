@@ -815,7 +815,8 @@ def advance_pending(state: dict, *, ledger: Path, store_factory, allowlist: dict
         age = now.timestamp() - float(p.get("requested_ts") or now.timestamp())
         ev: dict[str, Any] = {"incident_key": key, "lane": p["lane"], "run_id": p["run_id"], "run_state": st,
                               "signature": p.get("signature"), "episode": p.get("episode"),
-                              "event_type": p.get("event_type"), "action_id": p.get("action_id")}
+                              "event_type": p.get("event_type"), "action_id": p.get("action_id"),
+                              "severity": p.get("severity")}
         if st == "RUN_DONE":
             ev["heal_state"] = H.ATTEMPT_EXECUTED
             phases = list(p.get("phases") or [])
@@ -920,6 +921,10 @@ def _escalation(res_or_ev: dict, priority: str, reason: str, now: datetime) -> d
         body = f"{reason}; tried={tried}; conf={v.get('confidence')}; cause={(v.get('cause') or '')[:70]}"
     else:
         body = f"{_no_verdict_detail(res_or_ev, reason)}; tried={tried}"
+    if priority != "P1" and _p1_floor(res_or_ev.get("severity")):
+        # Review fix (#1828): a CRITICAL/URGENT occurrence never lands in the P2 digest, whatever the branch said.
+        priority, reason = "P1", f"p1_floor:{str(res_or_ev.get('severity')).upper()};{reason}"
+        body = f"{reason}; {body}"
     detail = f"{body}; siem={res_or_ev.get('siem_id')}"
     fix = res_or_ev.get("fix_path")
     route = "operator_once" if priority == "P1" else ("fix_pr_release" if fix else P2_ROUTE)
@@ -930,6 +935,46 @@ def _escalation(res_or_ev: dict, priority: str, reason: str, now: datetime) -> d
             "siem_ids": [res_or_ev.get("siem_id")], "attached": 0, "priority": priority, "reason": reason,
             "route": route, "fix_path": fix, "heal_state": res_or_ev.get("heal_state"), "tried": tried,
             "detail": detail[:150], "at": now.isoformat()}
+
+
+#: Review fix 2026-10-16 (#1828): severities that are ALWAYS at least P1, whatever the decision branch (model
+#: confidence, remediation budget, caps, deferral, dedupe). The SIEM bridge maps P0/P1 -> CRITICAL.
+P1_FLOOR_SEVERITIES = frozenset({"CRITICAL", "URGENT"})
+MONITORING_OUTAGE_REASON = "monitoring_source_unavailable"
+
+
+def _p1_floor(severity: Any) -> bool:
+    return str(severity or "").upper() in P1_FLOOR_SEVERITIES
+
+
+def _floor_existing(state: dict, res: dict) -> None:
+    """A CRITICAL/URGENT occurrence that rides an existing escalation (attached, carried) lifts it to P1."""
+    if not _p1_floor(res.get("severity")):
+        return
+    book = state.get("escalations") or {}
+    for k in (escalation_key(res), str(res.get("incident_key"))):
+        esc = book.get(k)
+        if esc is not None and esc.get("priority") != "P1":
+            esc.update(priority="P1", route="operator_once",
+                       reason=f"p1_floor:{str(res.get('severity')).upper()};{esc.get('reason')}")
+
+
+def _source_outage_escalations(notes: dict, *, catalogue_ok: bool, monitoring_ok: bool,
+                               now: datetime) -> list[dict[str, Any]]:
+    """A P1 for a source that could not be read this cycle. Not stored in state: it clears when the source reads."""
+    out = []
+    if not monitoring_ok:
+        out.append({"key": f"{D.LANE_ID}|{MONITORING_OUTAGE_REASON}", "lane": D.LANE_ID, "priority": "P1",
+                    "reason": MONITORING_OUTAGE_REASON, "route": "operator_once", "event_type": "SOURCE_UNAVAILABLE",
+                    "detail": f"{MONITORING_OUTAGE_REASON}: system_health_events unreadable "
+                              f"({str(notes.get('db') or 'unknown')[:90]}); incident state preserved, nothing pruned or "
+                              f"resolved"[:150], "at": now.isoformat()})
+    if not catalogue_ok:
+        out.append({"key": f"{D.LANE_ID}|catalogue_unavailable", "lane": D.LANE_ID, "priority": "P1",
+                    "reason": "catalogue_unavailable", "route": "operator_once", "event_type": "SOURCE_UNAVAILABLE",
+                    "detail": f"remediation catalogue unreadable ({str(notes.get('catalogue'))[:100]})"[:150],
+                    "at": now.isoformat()})
+    return out
 
 
 def _put_escalation(state: dict, esc: dict) -> None:
@@ -992,6 +1037,7 @@ def apply_results(diag: dict, pending_events: list[dict], state: dict, rows_by_i
             state.setdefault("episodes", {})[sig] = {**res["_episode"], "lead_siem_id": res.get("siem_id"),
                                                      "lane": res.get("lane")}
         if dec.get("kind") == "carry":
+            _floor_existing(state, res)   # a CRITICAL/URGENT occurrence still lifts its escalation to P1
             continue          # cached diagnosis: nothing new to write; its escalation and lifecycle are untouched
         if sig:
             book = today["signatures"].setdefault(sig, {"lead": None, "lane": res["lane"], "attached": 0,
@@ -1002,6 +1048,7 @@ def apply_results(diag: dict, pending_events: list[dict], state: dict, rows_by_i
                 if esc is not None:
                     esc["attached"] = int(esc.get("attached") or 0) + 1
                     esc["siem_ids"] = sorted({*(esc.get("siem_ids") or []), res.get("siem_id")} - {None})
+                _floor_existing(state, res)   # dedupe never hides a CRITICAL/URGENT occurrence below P1
             elif not book.get("lead"):
                 book["lead"] = res["incident_key"]
         if res.get("model_called"):
@@ -1040,6 +1087,7 @@ def apply_results(diag: dict, pending_events: list[dict], state: dict, rows_by_i
                     state.setdefault("pending", {})[res["incident_key"]] = {
                         "lane": res["lane"], "siem_id": res.get("siem_id"), "action_id": action.get("action_id"),
                         "signature": sig, "episode": res.get("episode"), "event_type": res.get("event_type"),
+                        "severity": res.get("severity"),
                         "failure_mode": fmode, "slot": list(slot) if slot else None, "parent_run_id": parent,
                         "phases": phases, "phase_idx": 0, "heal_state": H.RECOVERY_REQUESTED,
                         "run_id": D.remediation_run_id(res["incident_key"], phases[0]), "requested_ts": now.timestamp()}
@@ -1061,6 +1109,10 @@ def apply_results(diag: dict, pending_events: list[dict], state: dict, rows_by_i
         if dec.get("kind") == "escalate":
             esc = _escalation(res, dec["priority"], dec["reason"], now)
             _put_escalation(state, esc)
+            if esc["priority"] != dec["priority"]:      # the P1 floor applied: the decision record says so too
+                dec = {**dec, "priority": esc["priority"], "reason": esc["reason"]}
+                res["decision"] = {**(res.get("decision") or {}), "priority": esc["priority"],
+                                   "reason": esc["reason"]}
             res["escalation"] = f"{dec['priority']}:{dec['reason']}"
         elif dec.get("kind") == "auto_close":
             _close_incident(state, res, now, H.INCIDENT_RESOLVED)
@@ -1243,7 +1295,12 @@ def main(argv: Optional[list[str]] = None, *, conn_factory=None, governed_call=N
     state = _load_json(root / STATE_REL) or empty_state()
     for k, v in empty_state().items():
         state.setdefault(k, v)
-    prune_state(state, now, {int(r["id"]) for r in rows if r.get("id") is not None})
+    # Review fix 2026-10-16 (#1828): the open SIEM rows are the ONLY proof an incident closed. When they could not be
+    # read, an empty row list means "unknown", not "all closed": incident state is PRESERVED (no prune, no
+    # resolution, no pending advance) and the outage itself is a P1.
+    monitoring_ok = conn is not None
+    if monitoring_ok:
+        prune_state(state, now, {int(r["id"]) for r in rows if r.get("id") is not None})
     store_factory = store_factory or (lambda: _rw_store(ledger))
     sources_ok = bool(catalogue) and conn is not None
     if args.dry_run:
@@ -1267,7 +1324,7 @@ def main(argv: Optional[list[str]] = None, *, conn_factory=None, governed_call=N
         print(json.dumps(report, default=str))
         return 0 if sources_ok else 1
     # ---- apply: the only path that calls a model, executes an action or writes
-    if not catalogue:
+    if not catalogue or not monitoring_ok:
         diag = {"results": [], "skipped": [], "notes": {}}
     else:
         diag = diagnose(rows, catalogue=catalogue, registry=registry, state=state, now=now, ledger=ledger,
@@ -1276,7 +1333,7 @@ def main(argv: Optional[list[str]] = None, *, conn_factory=None, governed_call=N
                         deferral=deferral or _deferral_eval, effect_keys=effect_keys,
                         cutover_policy=cutover_policy)
     pending_events = advance_pending(state, ledger=ledger, store_factory=store_factory, allowlist=allowlist, now=now,
-                                     apply=True, registry_rows=registry_rows)
+                                     apply=True, registry_rows=registry_rows) if monitoring_ok else []
     rows_by_id = {r.get("id"): r for r in rows}
     def reauthorize(res: dict) -> tuple[bool, str]:
         return _reauthorize_live_heal(res, state=state, now=now, ledger=ledger,
@@ -1306,8 +1363,11 @@ def main(argv: Optional[list[str]] = None, *, conn_factory=None, governed_call=N
         "results": [_public(r) for r in diag["results"]], "pending": pending_events,
         "pending_open": len(state.get("pending") or {}),
         # 2026-10-16: only P1 rides the fan-in -> notifier -> Telegram path (once per signature); P2 is digest-only.
-        "escalations": sorted((e for e in (state.get("escalations") or {}).values() if e.get("priority") == "P1"),
+        "escalations": sorted([*(e for e in (state.get("escalations") or {}).values() if e.get("priority") == "P1"),
+                               *_source_outage_escalations(notes, catalogue_ok=bool(catalogue),
+                                                           monitoring_ok=monitoring_ok, now=now)],
                               key=lambda e: str(e["key"])),
+        "incident_state_preserved": not monitoring_ok,
         "digest": sorted((e for e in (state.get("escalations") or {}).values() if e.get("priority") != "P1"),
                          key=lambda e: (str(e.get("lane")), str(e["key"]))),
         "escalation_routes": {"P1": "fan-in -> incident notifier -> Telegram, once per signature",

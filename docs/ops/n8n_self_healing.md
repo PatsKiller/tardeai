@@ -83,6 +83,13 @@ Every row is read again from disk (and the ledger, and the environment) immediat
 - An auto-close (this incident's own recovery evidence) or `incident_resolved` removes **that incident's** SIEM id
   from the episode's escalation; the escalation closes only when no open incident is left on it. A request
   (`recovery_requested`) never clears it.
+- **P1 floor.** A CRITICAL or URGENT occurrence is never below P1, whatever the decision branch said: model
+  confidence, remediation budget, caps, deferral, a refused model call, or dedupe. An attached or carried CRITICAL
+  occurrence lifts the escalation it rides to P1.
+- **Monitoring outage.** When `system_health_events` cannot be read (the connection or the SELECT fails), the empty
+  row list means *unknown*, not *all closed*. Incident state is preserved: nothing is pruned or resolved, and pending
+  reruns are not advanced. The receipt carries a `monitoring_source_unavailable` P1 and
+  `incident_state_preserved: true`. A readable source with no open rows still closes old incidents.
 - A code defect routes `fix_pr_release` (P2 digest unless already P1) and carries `fix_path`. The diagnosis
   record's `code_defect` (schema `N8nCodeDefect@v1`) is the hook for the code-defect fixer (Claude Code iterative
   fixing, built separately; `consumer_status: pending_consumer`): a stable `defect_id`

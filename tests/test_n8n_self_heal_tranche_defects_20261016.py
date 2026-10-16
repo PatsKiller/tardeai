@@ -459,3 +459,122 @@ def test_model_output_never_grants_live_execution(env, tmp_path, monkeypatch):
     res = _receipt(e)["results"][0]
     assert res["live_heal_gate"] == "live_list_unavailable"
     assert res["decision"]["reason"] == "live_heal_not_model_selectable" and store.requests == []
+
+
+# ---------------------------------------------------------------- review fix A: a monitoring outage preserves state
+
+
+class BrokenDB(FakeDB):
+    """The SIEM read fails (a monitoring outage): the cursor raises on the SELECT."""
+
+    def cursor(self):
+        raise RuntimeError("system_health_events unreachable")
+
+
+def _down():
+    raise RuntimeError("db down")
+
+
+@pytest.mark.parametrize("outage", ["connect_fails", "read_fails"])
+def test_monitoring_outage_preserves_incident_state_and_raises_p1(env, outage):
+    call = GovernedCall(_answer(action="suggest_only", conf=0.9))
+    assert _run(env, ["--apply"], db=FakeDB([_siem_row(rid=7)]), call=call, store=FakeStore()) == 0
+    before = json.loads((env["state"] / cli.STATE_REL).read_text())
+    assert before["escalations"] and [e["status"] for e in before["episodes"].values()] == ["open"]
+    before["pending"] = {"k-pend": {"lane": LOW_LANE, "run_id": "rem-k-pend-abcdefgh-dry_run", "siem_id": 7,
+                                    "phases": ["dry_run"], "phase_idx": 0, "requested_ts": NOW.timestamp()}}
+    (env["state"] / cli.STATE_REL).write_text(json.dumps(before))
+    later = NOW + timedelta(minutes=5)
+    if outage == "connect_fails":
+        rc = cli.main(["--apply"], conn_factory=_down, governed_call=GovernedCall(_answer(), raise_on_call=True),
+                      now=later, catalogue_path=env["catalogue"], registry_path=env["registry"],
+                      allowlist_path=env["allowlist"], deferral=_no_defer, store_factory=FakeStore)
+    else:
+        rc = _run(env, ["--apply"], db=BrokenDB([]), call=GovernedCall(_answer(), raise_on_call=True),
+                  store=FakeStore(), now=later)
+    assert rc == 1
+    after = json.loads((env["state"] / cli.STATE_REL).read_text())
+    # nothing pruned, nothing resolved, nothing advanced: the empty row list meant UNKNOWN, not "all closed"
+    assert after["escalations"] == before["escalations"]
+    assert after["episodes"] == before["episodes"] and after["diagnosed"] == before["diagnosed"]
+    assert after["pending"] == before["pending"]
+    rec = _receipt(env)
+    assert rec["incident_state_preserved"] is True and rec["pending"] == []
+    outage_p1 = [e for e in rec["escalations"] if e["reason"] == cli.MONITORING_OUTAGE_REASON]
+    assert len(outage_p1) == 1 and outage_p1[0]["priority"] == "P1"
+    assert rec["digest"] == [e for e in before["escalations"].values() if e["priority"] != "P1"]
+
+
+def test_a_readable_empty_siem_still_prunes(env):
+    """The fix is narrow: a READABLE source with no open rows still closes the old incidents."""
+    assert _run(env, ["--apply"], db=FakeDB([_siem_row(rid=7)]),
+                call=GovernedCall(_answer(action="suggest_only", conf=0.9)), store=FakeStore()) == 0
+    assert _run(env, ["--apply"], db=FakeDB([]), call=GovernedCall(_answer(), raise_on_call=True),
+                store=FakeStore(), now=NOW + timedelta(minutes=5)) == 0
+    after = json.loads((env["state"] / cli.STATE_REL).read_text())
+    assert after["escalations"] == {} and [e["status"] for e in after["episodes"].values()] == ["resolved"]
+    assert not [e for e in _receipt(env)["escalations"] if e["reason"] == cli.MONITORING_OUTAGE_REASON]
+
+
+# ---------------------------------------------------------------- review fix B: P1 floor for CRITICAL / URGENT
+
+
+def _deferred(pid):
+    return type("Dec", (), {"defer": True, "reason": "OUTSIDE_OFFPEAK_WINDOW"})()
+
+
+@pytest.mark.parametrize("sev", ["CRITICAL", "URGENT"])
+@pytest.mark.parametrize("branch", ["suggest_only", "deferred", "signature_cap", "model_refused", "low_budget"])
+def test_a_first_critical_or_urgent_occurrence_is_never_p2(env, sev, branch):
+    call = GovernedCall(_answer(action="suggest_only", conf=0.95))
+    deferral = _no_defer
+    if branch == "deferred":
+        deferral = _deferred
+    if branch == "model_refused":
+        call = GovernedCall("not json at all")
+    if branch in ("signature_cap", "low_budget"):
+        sig = H.signature(LOW_LANE, "RUN_FAILED", "exit=1 tail=SELFTEST_INDUCED_FAILURE")
+        day = {"spend_usd": 0.0, "calls": 3, "lane_calls": {}, "lane_remediations": {}, "sig_calls": {sig: 3},
+               "signatures": {}, "lane_live_heals": {}}
+        if branch == "low_budget":
+            day.update(spend_usd=9.99, calls=999, sig_calls={})
+        p = env["state"] / cli.STATE_REL
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps({"days": {NOW.date().isoformat(): day}}))
+        call = GovernedCall(_answer(), raise_on_call=True)
+    assert _run(env, ["--apply"], db=FakeDB([_siem_row(rid=7, severity=sev)]), call=call, store=FakeStore(),
+                deferral=deferral) == 0
+    rec = _receipt(env)
+    res = rec["results"][0]
+    assert res["decision"]["priority"] == "P1" and f"p1_floor:{sev}" in res["decision"]["reason"]
+    assert rec["digest"] == [] and [e["priority"] for e in rec["escalations"]] == ["P1"]
+
+
+def test_warn_occurrence_keeps_its_p2(env):
+    assert _run(env, ["--apply"], db=FakeDB([_siem_row(rid=7, severity="WARN")]),
+                call=GovernedCall(_answer(action="suggest_only", conf=0.95)), store=FakeStore()) == 0
+    rec = _receipt(env)
+    assert rec["escalations"] == [] and rec["digest"][0]["priority"] == "P2"
+
+
+@pytest.mark.parametrize("kind", ["attach", "carry"])
+def test_dedupe_or_cache_never_holds_a_critical_occurrence_below_p1(kind, tmp_path):
+    """A P2 escalation that a CRITICAL occurrence rides (attached or carried) is lifted to P1."""
+    res = {"lane": "L", "signature": "sig-a", "episode": 1, "incident_key": "k8", "siem_id": 8,
+           "severity": "CRITICAL", "outcome": "attached" if kind == "attach" else "carried",
+           "decision": {"kind": kind, "priority": None, "reason": "x", "action_id": None}}
+    state = {"escalations": {"L|sig-a": {"key": "L|sig-a", "siem_ids": [7], "priority": "P2", "route": "digest",
+                                         "reason": "suggest_only"}}}
+    cli.apply_results({"results": [res]}, [], state, {}, now=NOW, store_factory=FakeStore, allowlist={},
+                      root=tmp_path)
+    esc = state["escalations"]["L|sig-a"]
+    assert esc["priority"] == "P1" and esc["route"] == "operator_once" and esc["reason"].startswith("p1_floor:CRITICAL")
+
+
+def test_pending_failure_of_a_critical_incident_escalates_p1(env):
+    _ledger_run(env["ledger"], RETRY_RUN, "RUN_DONE", parent=PARENT)          # ran, not verified
+    st = _pending(RETRY_RUN, slot=SLOT)
+    st["pending"]["k1"]["severity"] = "CRITICAL"
+    (ev,) = _advance(env, st)
+    assert ev["severity"] == "CRITICAL"
+    assert cli._escalation(ev, "P2", ev["outcome"], NOW)["priority"] == "P1"
