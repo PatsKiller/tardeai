@@ -229,7 +229,12 @@ _DISPATCH_KEYS = frozenset({"mode", "cron", "tz", "wave", "class", "priority", "
                             "min_interval_s", "after", "triggers", "sweep_cron", "digest_window", "digest_role"})
 _DISPATCH_REQUIRED = ("mode", "cron", "class", "priority", "retry_policy", "wave")
 _AFTER_KEYS = frozenset({"lane_id", "same_day", "deadline_min", "soft"})
-_TRIGGER_KEYS = frozenset({"source", "lane_id", "receipt_rel", "event_type", "domain"})
+_TRIGGER_KEYS = frozenset({"source", "lane_id", "receipt_rel", "event_type", "domain", "require_verdict"})
+#: run_done `require_verdict` (2026-10-16, process consolidation cohort 1): the upstream RUN_DONE counts as a trigger
+#: only when its receipt's output_verdict.verdict is one of these. Only VERIFIED verdicts may be named
+#: (scripts/lib/n8n_output_verdict.py): `produced` (new output proven on a receipt bound to that attempt) and
+#: `empty_allowed` (a typed, contract-listed empty). no_rule / declared_not_enforced / dry_run_exempt prove nothing.
+TRIGGER_VERIFIED_VERDICTS = ("produced", "empty_allowed")
 _DOMAIN_NAME = re.compile(r"^[a-z][a-z0-9_]{1,63}$")
 _WATCH_KEYS = frozenset({"factor", "severity", "max_run_s", "stay_behind", "restart_safe"})
 
@@ -286,6 +291,9 @@ class Trigger:
     #: source broker_as_of: the Data Broker domain whose as_of advance fires the lane (scripts/lib/data_broker/
     #: as_of_signal.py DOMAINS; W5, CONSOLIDATION_PLAN §E.4).
     domain: Optional[str] = None
+    #: source run_done only: the upstream RUN_DONE fires the lane only when its output_verdict is one of these
+    #: (TRIGGER_VERIFIED_VERDICTS). Empty = any RUN_DONE (the W5 behaviour, unchanged).
+    require_verdict: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -423,7 +431,16 @@ def _triggers(v: Any) -> tuple[Trigger, ...]:
         lane = _str_or_none(t, "lane_id", where)
         if t["source"] == "run_done" and lane is None:
             raise _bad(f"{where}: source run_done needs a lane_id")
-        out.append(Trigger(source=t["source"], lane_id=lane, receipt_rel=rel, event_type=ev, domain=dom))
+        rv = t.get("require_verdict")
+        if rv is not None:
+            if t["source"] != "run_done":
+                raise _bad(f"{where}.require_verdict is only for source run_done")
+            if (not isinstance(rv, list) or not rv or len(rv) != len(set(rv))
+                    or any(v not in TRIGGER_VERIFIED_VERDICTS for v in rv)):
+                raise _bad(f"{where}.require_verdict must be a non-empty list of distinct verified verdicts "
+                           f"{TRIGGER_VERIFIED_VERDICTS}, got {rv!r}")
+        out.append(Trigger(source=t["source"], lane_id=lane, receipt_rel=rel, event_type=ev, domain=dom,
+                           require_verdict=tuple(rv or ())))
     return tuple(out)
 
 

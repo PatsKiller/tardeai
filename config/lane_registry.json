@@ -10760,7 +10760,10 @@
           },
           {
             "source": "run_done",
-            "lane_id": "hermes-news-bridge"
+            "lane_id": "hermes-news-bridge",
+            "require_verdict": [
+              "produced"
+            ]
           }
         ]
       }
@@ -11038,7 +11041,10 @@
         "triggers": [
           {
             "source": "run_done",
-            "lane_id": "news-to-catalyst"
+            "lane_id": "news-to-catalyst",
+            "require_verdict": [
+              "produced"
+            ]
           }
         ]
       },
