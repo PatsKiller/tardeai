@@ -25,11 +25,13 @@ ET = ZoneInfo("America/New_York")
 
 # ── A: the switch ───────────────────────────────────────────────────────────
 
-def test_committed_switch_is_forbidden(monkeypatch):
+def test_committed_switch_is_read_only(monkeypatch):
+    # Operator 2026-10-16 "go read_only": app reactivated, token probe live_ok, full read-only sync verified.
     monkeypatch.delenv("TRADEAI_SCHWAB_ACCESS_MODE", raising=False)
+    monkeypatch.delenv("TRADEAI_SCHWAB_ACCESS_MODE_PATH", raising=False)
     st = sam.status()
-    assert st["mode"] == "forbidden" and st["paused"] and not st["reads_allowed"]
-    assert st["since"].startswith("2026-10-14")
+    assert st["mode"] == "read_only" and not st["paused"] and st["reads_allowed"]
+    assert st["since"].startswith("2026-10-16")
 
 
 def test_absent_file_defaults_to_normal(monkeypatch, tmp_path):
@@ -144,7 +146,10 @@ def test_days_before_the_pause_are_graded_normally(monkeypatch):
     monkeypatch.setenv("TRADEAI_SCHWAB_ACCESS_MODE", "forbidden")
     assert pd.schwab_paused_for(date(2026, 10, 14)) is not None   # since defaults to no date via env
     monkeypatch.delenv("TRADEAI_SCHWAB_ACCESS_MODE")
-    assert pd.schwab_paused_for(date(2026, 10, 13)) is None       # committed since 2026-10-14
+    # the 10-14 pause as it was committed (forbidden since 2026-10-14), pinned via a fixture file
+    pause = Path(__file__).parent / "fixtures" / "schwab_access_mode_forbidden_20261014.yaml"
+    monkeypatch.setenv("TRADEAI_SCHWAB_ACCESS_MODE_PATH", str(pause))
+    assert pd.schwab_paused_for(date(2026, 10, 13)) is None       # paused since 2026-10-14
     assert pd.schwab_paused_for(date(2026, 10, 14)) is not None
 
 
