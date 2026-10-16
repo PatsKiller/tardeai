@@ -17,6 +17,7 @@ from __future__ import annotations
 import importlib
 import json
 import sys
+import types
 from pathlib import Path
 
 import pytest
@@ -81,6 +82,22 @@ class _Conn:
 
 def _boom(*a, **k):
     raise RuntimeError("db down")
+
+
+def _driver_stub(monkeypatch):
+    """CI has no psycopg2; the lane modules import it at module level. Stub it only when it is absent (no test here
+    opens a connection: every _db/_get_conn is replaced)."""
+    try:
+        import psycopg2  # noqa: F401
+        import psycopg2.extras  # noqa: F401
+    except ImportError:
+        fake = types.ModuleType("psycopg2")
+        extras = types.ModuleType("psycopg2.extras")
+        extras.RealDictCursor = object
+        fake.extras = extras
+        fake.connect = _boom
+        monkeypatch.setitem(sys.modules, "psycopg2", fake)
+        monkeypatch.setitem(sys.modules, "psycopg2.extras", extras)
 
 
 def _last(tmp_path, name):
@@ -258,6 +275,7 @@ def test_sec_data_ingest_crash_is_a_fatal_skip(monkeypatch, tmp_path):
 @pytest.fixture
 def sam(monkeypatch, tmp_path):
     """The module reads <checkout>/.env at import; import it with that read stubbed (no credential file is read)."""
+    _driver_stub(monkeypatch)
     if "source_attribution_monitor" not in sys.modules:
         real = Path.read_text
 
