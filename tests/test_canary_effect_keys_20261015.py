@@ -389,7 +389,9 @@ def test_wrapper_armed_claims_once_per_slot(wrap, tmp_path):
 def test_wrapper_refuses_when_n8n_owns_the_process(wrap, tmp_path):
     wrap.store().set_owner("x-lane", "n8n", expect_epoch=None, by="t", now=1.0)
     r = wrap.run(on="x-lane", config=_armed(tmp_path))
-    assert r.returncode == E.REFUSED_EXIT and wrap.runs() == 0 and "effect_fenced_owner" in r.stderr
+    # 2026-10-16 (cron effect-claim wrap): owner n8n is a clean skip, exit 0 + skipped_effect (was 75).
+    assert r.returncode == 0 and wrap.runs() == 0 and "effect_fenced_owner" in r.stderr
+    assert wrap.events()[-1]["event"] == "skipped_effect"
 
 
 def test_wrapper_failed_run_may_be_retried_in_the_same_slot(wrap, tmp_path):

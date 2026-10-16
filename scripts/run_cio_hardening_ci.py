@@ -3871,12 +3871,24 @@ GATES = [
         # ANCHOR: CANARY_EFFECT_KEYS — 2026-10-15 canary double-effect audit (arch-review-20261014): every live, canary
         # or canary-wave lane that appends, sends or calls an LLM carries a STAGED effect key (cron_claim false,
         # n8n_claim false: neither side claims, executor view unchanged); the cron-side wrapper
-        # scripts/effect_claim_cron.sh (off unless TRADEAI_EFFECT_CLAIM=<lane>; refusals exit 75/65 and run nothing);
+        # scripts/effect_claim_cron.sh (off unless TRADEAI_EFFECT_CLAIM=<lane>; refusals exit 75/65 and run nothing; 10-16: owner n8n exits 0);
         # the maturity-remeasure live-list packet; the research_insights(source_reference) unique-index migration,
         # parsed and applied twice on a disposable PostgreSQL cluster. Hermetic: tmp_path ledgers and files.
         "canary_effect_keys_20261015",
         [
             "tests/test_canary_effect_keys_20261015.py",
+        ],
+    ),
+    (
+        # ANCHOR: CRON_EFFECT_CLAIM_WRAP — 2026-10-16 the cron copy of a lane respects effect ownership: the wrapper
+        # scripts/effect_claim_cron.sh exits 0 (event skipped_effect, no claim row) when n8n owns the process, runs the
+        # command when cron owns it, and FAILS OPEN when the ledger is unreachable (effect_claim.py owner, read-only;
+        # run --decision-out); the packet docs/ops/packets/cron-effect-claim-wrap-20261016/ plan (fixture crontab:
+        # every wrap and skip reason, byte preservation, unwrap = rollback, a wrapped line run end to end) and its
+        # apply/rollback against a fake crontab (dry run default, diff count = planned, cmp read-back). Hermetic.
+        "cron_effect_claim_wrap_20261016",
+        [
+            "tests/test_cron_effect_claim_wrap_20261016.py",
         ],
     ),
     (

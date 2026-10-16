@@ -591,13 +591,32 @@ def _open_store(ledger: str | None) -> EffectClaimStore:
         sys.path.insert(0, str(ROOT))
     from scripts.lib.n8n_coordination_ledger import CoordinationLedger
 
+    return EffectClaimStore(CoordinationLedger(_ledger_path(ledger)))
+
+
+def _ledger_path(ledger: str | None) -> Path:
     if ledger:
-        path = Path(ledger)
-    else:
-        explicit = os.environ.get("TRADEAI_N8N_COORDINATION_LEDGER")
-        root = os.environ.get("TRADEAI_STATE_ROOT") or str(Path.home() / "trade-ai-releases" / "persistent-state")
-        path = Path(explicit) if explicit else Path(root) / "data" / "governance" / "n8n_coordination_ledger.sqlite"
-    return EffectClaimStore(CoordinationLedger(path))
+        return Path(ledger)
+    explicit = os.environ.get("TRADEAI_N8N_COORDINATION_LEDGER")
+    root = os.environ.get("TRADEAI_STATE_ROOT") or str(Path.home() / "trade-ai-releases" / "persistent-state")
+    return Path(explicit) if explicit else Path(root) / "data" / "governance" / "n8n_coordination_ledger.sqlite"
+
+
+def owner_read_only(process: str, ledger: str | None = None) -> str:
+    """The process's owner ("cron", "n8n") or "none", from a mode=ro open that never creates or migrates the ledger.
+    Raises sqlite3.Error when the ledger is unreachable (missing file, locked past the busy timeout, corrupt)."""
+    path = _ledger_path(ledger)
+    if not path.exists():
+        raise sqlite3.OperationalError("ledger_missing")
+    conn = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True, timeout=5)
+    try:
+        has = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='effect_owners'").fetchone()
+        if has is None:
+            return "none"
+        row = conn.execute("SELECT owner FROM effect_owners WHERE process = ?", (process,)).fetchone()
+        return "none" if row is None else str(row[0])
+    finally:
+        conn.close()
 
 
 def _key_from_args(a: argparse.Namespace) -> str:
@@ -636,6 +655,13 @@ def main(argv: list[str] | None = None) -> int:
         help="the command calls assert_fence() before its target write: a non-zero exit before the fence passed is "
         "proven pre-effect (FAILED, reclaimable); without it every non-zero exit is held (DD05)",
     )
+    p_run.add_argument(
+        "--decision-out",
+        default=None,
+        help="write the claim decision JSON to this file BEFORE the command runs (2026-10-16, cron effect-claim "
+        "wrap): no file = the claim was never decided (ledger unreachable), so the caller knows the command did "
+        "not run; a refusal names its reason (effect_fenced_owner = another scheduler owns the process)",
+    )
     p_run.add_argument("command", nargs=argparse.REMAINDER)
     p_own = sub.add_parser("set-owner", help="move ownership (epoch + 1, compare-and-swap)")
     p_own.add_argument("--process", required=True)
@@ -650,6 +676,11 @@ def main(argv: list[str] | None = None) -> int:
     p_rel.add_argument("--key", required=True)
     p_rel.add_argument("--by", required=True)
     p_rel.add_argument("--note", required=True)
+    p_owner = sub.add_parser(
+        "owner",
+        help="print the process's owner (cron, n8n or none) from a READ-ONLY ledger open; exit 2 = ledger unreachable",
+    )
+    p_owner.add_argument("--process", required=True)
     p_spec = sub.add_parser(
         "lane-spec",
         help="print a keyed lane's process, input_version and cron_claim (tab-separated; exit 3 = lane not keyed)",
@@ -668,6 +699,9 @@ def main(argv: list[str] | None = None) -> int:
                 print(json.dumps({"error": "lane_not_keyed", "lane": a.lane}), file=sys.stderr)
                 return LANE_NOT_KEYED_EXIT
             print(f"{spec['process']}\t{spec['input_version']}\t{'1' if spec['cron_claim'] else '0'}")
+            return 0
+        if a.cmd == "owner":
+            print(owner_read_only(a.process, a.ledger))
             return 0
         store = _open_store(a.ledger)
         if a.cmd == "claim":
@@ -691,6 +725,15 @@ def main(argv: list[str] | None = None) -> int:
             run_id = f"cron:{key}:{os.getpid()}"
             res = store.claim(key, scheduler=a.scheduler, now=now, run_id=run_id, expect_epoch=a.expect_epoch)
             print(json.dumps(res.as_dict(), sort_keys=True), file=sys.stderr, flush=True)
+            if a.decision_out:
+                try:
+                    Path(a.decision_out).write_text(json.dumps(res.as_dict(), sort_keys=True) + "\n")
+                except OSError as exc:
+                    if res.ok:  # nothing spawned yet: proven no effect, so the key stays reclaimable
+                        store.finish(key, state=STATE_FAILED, now=datetime.now(timezone.utc).timestamp(),
+                                     run_id=run_id, detail=f"decision_out:{type(exc).__name__}", pre_effect=True)
+                    print(json.dumps({"error": f"decision_out:{type(exc).__name__}"}), file=sys.stderr)
+                    return 2
             if not res.ok:
                 return REFUSED_EXIT
             child_env = dict(os.environ)
