@@ -293,7 +293,8 @@
       "lane_id": "crontab-snapshot-for-health-agent",
       "env_names": [
         "PROJECT_ROOT",
-        "SAFE_FLOCK_LOG_DIR"
+        "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_PERSISTENT_STATE_ROOT"
       ],
       "env_allowlist_mode": "enforce",
       "env_evidence": "Inline bash in this entry uses only positional $1 (resolved STATE_ROOT in argv), crontab -l and mv. safe_flock.sh reads PROJECT_ROOT/SAFE_FLOCK_LOG_DIR (both defaulted). No Python.",
