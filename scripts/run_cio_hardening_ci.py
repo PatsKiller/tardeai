@@ -4267,6 +4267,12 @@ GATES = [
         ],
     ),
     (
+        # N8N_DRY_RUN_LIVE_INVARIANT — 2026-10-16: a listed live (canary/cutover) lane never also gets a dry_run slot
+        # over a whole day; read-only dry-run load report (scripts/report_n8n_dry_run_load.py). Hermetic.
+        "n8n_dry_run_live_invariant_20261016",
+        ["tests/test_n8n_dry_run_live_invariant_20261016.py"],
+    ),
+    (
         # PHONE_STATUS — 2026-10-09: read-only Tailscale-only phone status endpoint; hermetic tests only
         # (bind refusal, HMAC/envelope auth, window, replay, rate, <= 2 KB, no secrets in output).
         "PHONE_STATUS",
