@@ -269,6 +269,50 @@ def _db_query_factory():
     return q
 
 
+#: LaneRunReceipt@v2 lane id (the executor reads data/runtime/lane_attempts/<LANE_RECEIPT_ID>/<run_id>.json).
+LANE_RECEIPT_ID = "n8n-pilot-dispatch"
+#: Outcomes that put the event on the ledger in a settled state THIS run (walked to its artifact, acknowledged, or
+#: refused with the pilot contract's typed reason).
+_LANDED = frozenset({"ARTIFACT_WRITTEN", "CONSUMED", "CONSUMER_ACKED", "REFUSED_BY_CONTRACT"})
+_LOST = frozenset({"GATEWAY_UNREACHABLE", "UNKNOWN"})
+
+
+def lane_output(rows: list[dict[str, Any]], *, apply: bool, has_key: bool) -> dict[str, Any]:
+    """LaneRunReceipt@v2 output fields (n8n expected_output, unit: pilot events fired into the gateway ledger).
+
+    produced = NEW events this run put on the ledger (fired, not already held, settled in _LANDED); attempted = fired
+    rows. A fired event the ledger already held is ``duplicate_in_ledger`` (not new work); a pilot with nothing to fire
+    is ``no_fire``. No new event = ``no_new_input`` (allowed; the 72 h per_window rule catches a pilot that never
+    fires). A lost gateway is ``dependency_unavailable``; an apply run without the key is ``no_credentials`` (fatal)."""
+    fired = [r for r in rows if r.get("fired")]
+    dup = [r for r in fired if any(op.get("op") == "accept_event" and op.get("duplicate") for op in r.get("ops") or [])]
+    new = [r for r in fired if r not in dup and r.get("outcome") in _LANDED]
+    skipped: dict[str, int] = {}
+    for key, n in (("no_fire", len(rows) - len(fired)), ("duplicate_in_ledger", len(dup)),
+                   ("dependency_unavailable", sum(1 for r in fired if r.get("outcome") in _LOST)),
+                   ("gateway_refused", sum(1 for r in fired if r.get("outcome") == "GATEWAY_REFUSED"))):
+        if n:
+            skipped[key] = n
+    if apply and not has_key:
+        skipped["no_credentials"] = 1
+    if not apply:
+        skipped["dry_run"] = len(fired)
+    return {"produced_count": len(new), "attempted_count": len(fired), "skipped_reasons": skipped,
+            "empty_reason": None if new else "no_new_input"}
+
+
+def _write_lane_receipt(receipt: dict[str, Any], output: dict[str, Any], *, root: Path, started_at: datetime) -> None:
+    """The LaneRunReceipt (v1 + v2 output fields; immutable v2 attempt copy under n8n) next to the dispatcher's own
+    N8nPilotDispatchRun@v1 receipt. Never raises."""
+    from scripts.lib.lane_last_receipt import write_lane_receipt
+
+    write_lane_receipt(LANE_RECEIPT_ID, ok=bool(receipt.get("ok")), exit_code=0 if receipt.get("ok") else 1,
+                       started_at=started_at, script="n8n_pilot_dispatch.py",
+                       path=root / "data" / "runtime" / f"{LANE_RECEIPT_ID}_last.json",
+                       summary={"fired": receipt.get("fired"), "lanes": len(receipt.get("lanes") or [])},
+                       output=output)
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
     g = ap.add_mutually_exclusive_group(required=True)
@@ -300,12 +344,16 @@ def main(argv: list[str] | None = None) -> int:
                "approval_board": board_note,
                "ok": (not args.apply) or all(r.get("outcome") not in {"GATEWAY_UNREACHABLE", "GATEWAY_REFUSED", "UNKNOWN"} for r in rows)}
     out = Path(args.receipt) if args.receipt else (root / "data" / "runtime" / "n8n_pilot_dispatch_last.json")
+    output = lane_output(rows, apply=bool(args.apply), has_key=bool(gateway.get("has_key")))
     if args.apply:
         out.parent.mkdir(parents=True, exist_ok=True)
         tmp = out.with_suffix(".json.tmp")
         tmp.write_text(json.dumps(receipt, indent=1, default=str) + "\n", encoding="utf-8")
         os.replace(tmp, out)
         receipt["receipt_path"] = str(out)
+        _write_lane_receipt(receipt, output, root=root, started_at=now)
+    else:  # dry run: no receipt (AGENTS.md §6); the fields a real run would record, on stderr
+        print("LANE_OUTPUT " + json.dumps(output, sort_keys=True), file=sys.stderr)
     print(json.dumps({k: receipt[k] for k in ("mode", "served_sha", "fired", "ok")} | {"lanes": [(r["lane_id"], r.get("outcome"), r.get("why")) for r in rows]}, default=str))
     return 0 if (not args.apply or receipt["ok"]) else 1
 

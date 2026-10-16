@@ -206,7 +206,8 @@
         "--apply"
       ],
       "market_gate": false,
-      "output_signal": "data/runtime/n8n_pilot_dispatch_last.json"
+      "output_signal": "data/runtime/n8n_pilot_dispatch_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "n8n-incident-fanin",
@@ -248,7 +249,8 @@
         "--apply"
       ],
       "market_gate": false,
-      "output_signal": "data/runtime/n8n_incident_fanin_last.json"
+      "output_signal": "data/runtime/n8n_incident_fanin_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "n8n-research-intake-consumer",
@@ -284,34 +286,36 @@
         "--apply"
       ],
       "market_gate": false,
-      "output_signal": "data/runtime/n8n_research_intake_last.json"
+      "output_signal": "data/runtime/n8n_research_intake_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "crontab-snapshot-for-health-agent",
       "env_names": [
         "PROJECT_ROOT",
-        "SAFE_FLOCK_LOG_DIR"
+        "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_PERSISTENT_STATE_ROOT"
       ],
       "env_allowlist_mode": "enforce",
       "env_evidence": "Inline bash in this entry uses only positional $1 (resolved STATE_ROOT in argv), crontab -l and mv. safe_flock.sh reads PROJECT_ROOT/SAFE_FLOCK_LOG_DIR (both defaulted). No Python.",
-      "source": "crontab */20 * * * * crontab -l > <snapshot>.tmp && mv -f <snapshot>.tmp <snapshot>; the target path is the mode argument ($1), dry_run writes the shadow copy",
+      "source": "crontab */20 * * * * crontab -l > <snapshot>.tmp && mv -f <snapshot>.tmp <snapshot>; the target path is the mode argument ($1), dry_run writes the shadow copy | useful-output proof 2026-10-16: the n8n command is scripts/crontab_snapshot_lane.py (same tmp + rename of `crontab -l` into the mode argument; dry_run writes only the shadow copy and no receipt) so a live run writes LaneRunReceipt@v2 produced_count; the cron line stays the shell form.",
       "command": [
-        "bash",
-        "-c",
-        "crontab -l > \"${1}.tmp\" && mv -f \"${1}.tmp\" \"${1}\"",
-        "crontab_snapshot"
+        "$PY",
+        "scripts/crontab_snapshot_lane.py"
       ],
       "lock": "/tmp/tradeai_crontab_snapshot.lock",
       "lock_kind": "safe_flock",
       "timeout_s": 30,
       "dry_run_arg": [
+        "--dry-run",
         "$STATE_ROOT/data/runtime/n8n_runs/shadow/crontab_snapshot.txt"
       ],
       "live_arg": [
         "$STATE_ROOT/data/runtime/crontab_snapshot.txt"
       ],
       "market_gate": false,
-      "output_signal": "data/runtime/crontab_snapshot.txt"
+      "output_signal": "data/runtime/crontab_snapshot.txt",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "n8n-lab-watchdog",
@@ -1493,7 +1497,8 @@
       ],
       "live_arg": [],
       "market_gate": false,
-      "output_signal": "data/runtime/research-insight-extractor_last.json"
+      "output_signal": "data/runtime/research-insight-extractor_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "signal-fusion-full",
