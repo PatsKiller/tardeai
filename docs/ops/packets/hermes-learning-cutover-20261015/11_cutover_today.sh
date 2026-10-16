@@ -1,0 +1,187 @@
+#!/usr/bin/env bash
+# hermes-learning cutover — SAME-MORNING sequence (operator-approved 2026-10-16: "approved ... Hermes PR-2"; n8n cutover
+# standard 2026-10-14: fix + dry run + regression + >=1 live n8n run with cron present, no soak). Dry by default.
+#
+# Moves FOUR learn steps live on the fabric (tests/support/hermes_learning_cutover.py LIVE): outcome_grader, tag_engine,
+# outcome_learning, config_governor. HELD on cron: outcome_feedback_agent (its `--notify queue` argv trips the allowlist
+# sender token gate until gate alignment is served; owner row stays cron, so the stage runner keeps running it live),
+# score_history_retention (destructive retention, operator decision) and the tune stage (manifest split first).
+# The learn cron line is NEVER commented here: it keeps running feedback_agent and retention.
+#
+#   bash 11_cutover_today.sh pre                    read-only: served PR-1/PR-2 state, owners, crontab line, n8n row
+#   bash 11_cutover_today.sh import  [--apply]      flow 01_import_inactive.sh, then flow 02_verify.sh (CLI dry-run proof)
+#   bash 11_cutover_today.sh c1      [--apply]      owner rows = cron for all five learn lanes (02_live_run.sh --step c1)
+#   bash 11_cutover_today.sh c2      [--apply]      CRONTAB (cron grant): learn line -> 20 11, PIPELINE_EFFECT_CLAIM=1
+#   bash 11_cutover_today.sh relay   [--apply]      live list += the four LIVE lanes; restart relay AND gateway
+#   bash 11_cutover_today.sh publish [--apply]      flow 03_publish_shadow.sh (arms 10:50 learn / 17:00 tune triggers)
+#   bash 11_cutover_today.sh c3      [--apply]      owners cron -> n8n for the four LIVE lanes only (quiet minute)
+#   bash 11_cutover_today.sh proof --date YYYYMMDD  read-only: n8n 10:50 live RUN_DONE + fx DONE scheduler n8n, and the
+#                                                   11:20 cron run skipped_effect for the four, ok for feedback + retention
+# Order for one morning: pre -> import -> c1 -> c2 -> relay -> publish -> c3, all done before 10:40 ET; the natural
+# 10:50 ET fire is the live run (manual live runs are refused by design: MANUAL_LIVE_REFUSED); cron's 11:20 run is the
+# "cron present" half; then `proof`. --apply needs TRADEAI_FABRIC_GRANT (the cron/config-write grant id) for owner and
+# n8n acts; c2 and relay also need the cron / config-write + service grants. Never touches a broker, secret or order.
+set -euo pipefail
+set -f
+HERE=$(cd "$(dirname "$0")" && pwd)
+FLOW="$HERE/../n8n-hermes-learning-flow-20261015"
+REPO=${REPO:-$HOME/trade-ai-v12-rebuild/trade-ai-v12-rebuild}
+PY=${PY:-$REPO/.venv/bin/python}
+SERVED=${SERVED:-$(readlink -f "$HOME/trade-ai-releases/portfolio-server/CURRENT")}
+LIVE_LANES_ENV=${LIVE_LANES_ENV:-$HOME/.config/tradeai/n8n-live-lanes.env}
+BACKUPS=${BACKUPS:-$HOME/.local/state/tradeai/backups}
+LIVE=(hermes-learning-outcome-grader hermes-learning-tag-engine hermes-learning-outcome-learning
+      hermes-learning-config-governor)
+HELD=(hermes-learning-outcome-feedback-agent)
+OLD_LINE='50 10 * * * cd $PROJ && bash scripts/pipelines/run_hermes_pipeline.sh --stage learn --apply'
+NEW_LINE='20 11 * * * cd $PROJ && PIPELINE_EFFECT_CLAIM=1 bash scripts/pipelines/run_hermes_pipeline.sh --stage learn --apply'
+fail(){ echo "REFUSED: $*"; exit 1; }
+STEP=${1:-}; shift || true
+APPLY=0; DATE=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in --apply) APPLY=1; shift ;; --date) DATE=${2:-}; shift 2 ;; *) fail "unknown arg $1" ;; esac
+done
+AF=(); [[ $APPLY == 1 ]] && AF=(--apply)
+need_grant(){ [[ $APPLY == 0 || -n "${TRADEAI_FABRIC_GRANT:-}" ]] || fail "TRADEAI_FABRIC_GRANT not set"; }
+quiet_minute(){ local hm; hm=$(TZ=America/New_York date +%H%M)
+  case "$hm" in 104*|105*|11*|165*|170*|171*) fail "not inside a stage window (10:40-11:59 / 16:50-17:19 ET): $hm";; esac; }
+owner_of(){ "$PY" "$SERVED/scripts/lib/effect_claim.py" show --process "$1" \
+  | "$PY" -c 'import json,sys; o=json.load(sys.stdin)["owner"]; print("none none" if o is None else "%s %s" % (o["owner"], o["epoch"]))'; }
+
+served_state(){ # prints the served PR-1/PR-2 facts; exit 1 if PR-2 is not served
+  SERVED="$SERVED" "$PY" - "${LIVE[@]}" -- "${HELD[@]}" <<'EOF'
+import json, os, sys
+root = os.environ["SERVED"]
+args = sys.argv[1:]; i = args.index("--"); live, held = args[:i], args[i + 1:]
+j = lambda rel: json.load(open(os.path.join(root, rel)))
+proc = j("config/n8n_fabric_processes.json")["processes"]
+proc = proc["hermes-learning"] if isinstance(proc, dict) else next(p for p in proc if p.get("id") == "hermes-learning")
+allow = {e["lane_id"]: e for e in j("config/n8n_run_allowlist.json")["lanes"]}
+reg = {r["lane_id"]: r for r in j("config/lane_registry.json")["lanes"]}
+eff = j("config/n8n_effect_keys.json")["lanes"]
+steps = {s["lane_id"]: s for s in proc["steps"].values() if s.get("lane_id")}
+ok = proc.get("mode") == "live"
+print(f"  served {os.path.basename(root)}: spec mode={proc.get('mode')} live_manual_slots={proc.get('live_manual_slots')}")
+for lane in live + held:
+    st = (reg.get(lane) or {}).get("scheduler", {}).get("stage")
+    la = (allow.get(lane) or {}).get("live_arg")
+    cc = (eff.get(lane) or {}).get("cron_claim")
+    want_stage, want_la = ("canary", steps[lane].get("cutover_live_arg")) if lane in live else ("shadow", None)
+    good = st == want_stage and la == want_la and cc is True
+    ok &= good
+    print(f"  {'ok ' if good else 'BAD'} {lane}: stage={st} live_arg={la} cron_claim={cc}")
+print("  PR-1 + PR-2 SERVED" if ok else "  PR-1/PR-2 NOT served (merge, then release) — stop here")
+sys.exit(0 if ok else 1)
+EOF
+}
+
+case "$STEP" in
+  pre)
+    served_state || true
+    for lane in "${LIVE[@]}" "${HELD[@]}"; do echo "  owner $lane: $(owner_of "$lane")"; done
+    echo "  crontab learn line:"; crontab -l | grep -n 'run_hermes_pipeline.sh --stage learn' | sed 's/^/    /'
+    docker exec m8m-n8n-db psql -U n8n -d n8n -tA \
+      -c "SELECT id||' active='||active::text FROM workflow_entity WHERE id='tradeai-fabric-hermes-learning'" 2>/dev/null \
+      | sed 's/^/  n8n row: /' || true
+    grep -c . "$LIVE_LANES_ENV" >/dev/null 2>&1 && for l in "${LIVE[@]}"; do
+      grep -qw -- "$l" "$LIVE_LANES_ENV" && echo "  live list has $l" || echo "  live list lacks $l"; done
+    "$PY" "$HERE/00_gate_check.py" --phase builds || true ;;
+  import)
+    served_state || fail "serve PR-1 + PR-2 first"
+    need_grant
+    bash "$FLOW/01_import_inactive.sh" "${AF[@]}"
+    bash "$FLOW/02_verify.sh" "${AF[@]}" ;;
+  c1)
+    need_grant
+    bash "$HERE/02_live_run.sh" --step c1 "${AF[@]}" ;;
+  c2)
+    served_state || fail "serve PR-1 + PR-2 first (the registry expects the learn line at 20 11)"
+    mkdir -p "$BACKUPS"; W=$(mktemp -d)
+    crontab -l > "$W/live"
+    n_old=$(grep -cF -- "$OLD_LINE" "$W/live" || true); n_new=$(grep -cF -- "$NEW_LINE" "$W/live" || true)
+    [[ "$n_new" == 1 && "$n_old" == 0 ]] && { echo "  already applied: $(grep -nF -- "$NEW_LINE" "$W/live")"; exit 0; }
+    [[ "$n_old" == 1 ]] || fail "expected exactly one learn line starting '$OLD_LINE' (found $n_old)"
+    OLD_LINE="$OLD_LINE" NEW_LINE="$NEW_LINE" "$PY" - "$W/live" "$W/cand" <<'EOF'
+import os, sys
+old, new = os.environ["OLD_LINE"], os.environ["NEW_LINE"]
+src = open(sys.argv[1], newline="").read()
+lines = src.split("\n")
+hits = [i for i, l in enumerate(lines) if l.startswith(old)]
+assert len(hits) == 1, hits
+lines[hits[0]] = new + lines[hits[0]][len(old):]
+open(sys.argv[2], "w", newline="").write("\n".join(lines))
+EOF
+    diff "$W/live" "$W/cand" | sed 's/^/    /' || true
+    [[ "$(diff "$W/live" "$W/cand" | grep -c '^[<>]')" == 2 ]] || fail "diff is not exactly one line"
+    [[ $APPLY == 1 ]] || { echo "  DRY RUN — crontab unchanged"; exit 0; }
+    B="$BACKUPS/crontab-$(date -u +%Y%m%dT%H%M%SZ)-pre-hermes-learning-c2.txt"; cp -p "$W/live" "$B"
+    crontab - < "$W/cand"
+    crontab -l | cmp - "$W/cand" && echo "  installed byte-exact; backup $B" || fail "READ-BACK MISMATCH — restore: crontab $B" ;;
+  relay)
+    served_state || fail "serve PR-1 + PR-2 first"
+    CUR=$(sed -n 's/^TRADEAI_N8N_RELAY_LIVE_LANES=//p' "$LIVE_LANES_ENV")
+    NEW=$(printf '%s\n' $CUR "${LIVE[@]}" | awk 'NF && !seen[$0]++' | paste -sd' ')
+    echo "  adds: $(comm -13 <(printf '%s\n' $CUR | sort -u) <(printf '%s\n' $NEW | sort -u) | paste -sd' ')"
+    [[ $APPLY == 1 ]] || { echo "  DRY RUN — live list unchanged"; exit 0; }
+    cp -p "$LIVE_LANES_ENV" "$LIVE_LANES_ENV.bak-$(date -u +%Y%m%dT%H%M%SZ)-hermes-learning"
+    printf 'TRADEAI_N8N_RELAY_LIVE_LANES=%s\n' "$NEW" > "$LIVE_LANES_ENV.tmp" && chmod 600 "$LIVE_LANES_ENV.tmp" \
+      && mv "$LIVE_LANES_ENV.tmp" "$LIVE_LANES_ENV"
+    for l in "${LIVE[@]}"; do grep -qw -- "$l" "$LIVE_LANES_ENV" || fail "READ-BACK FAILED: $l"; done
+    # the gateway reads the same file (its due-computation demotes a live lane missing from its env): restart BOTH
+    for u in tradeai-n8n-run-relay tradeai-n8n-coordination-gateway; do
+      systemctl --user restart "$u.service"; sleep 2
+      pid=$(systemctl --user show -p MainPID --value "$u.service")
+      tr '\0' '\n' < "/proc/$pid/environ" | grep -q "hermes-learning-config-governor" \
+        && echo "  $u active, env carries the four lanes" || fail "$u env lacks the lanes after restart"
+    done ;;
+  publish)
+    served_state || fail "serve PR-1 + PR-2 first"
+    need_grant; quiet_minute
+    bash "$FLOW/03_publish_shadow.sh" "${AF[@]}"
+    echo "  NEXT (Agent A, same day): registry PR flipping the six step rows NEVER_SCHEDULED -> ACTIVE + the active"
+    echo "  workflow snapshot (check_lane_registry rule), as the flow packet's 03 header says." ;;
+  c3)
+    served_state || fail "serve PR-1 + PR-2 first"
+    need_grant; quiet_minute
+    crontab -l | grep -qF -- "$NEW_LINE" || fail "c2 not applied (learn line must claim effects before n8n owns them)"
+    for lane in "${LIVE[@]}"; do
+      read -r cur ep <<<"$(owner_of "$lane")"
+      [[ "$cur" == n8n ]] && { echo "  $lane already n8n (epoch $ep)"; continue; }
+      [[ "$cur" == cron ]] || fail "$lane owner is '$cur': run c1 first"
+      ARGS=(set-owner --process "$lane" --owner n8n --expect-epoch "$ep" --by "operator:${TRADEAI_FABRIC_GRANT:-dry}"
+            --note "hermes-learning cutover c3 (4 live lanes; feedback agent held)")
+      if [[ $APPLY == 0 ]]; then echo "  DRY RUN — would run: effect_claim.py ${ARGS[*]}"; continue; fi
+      "$PY" "$SERVED/scripts/lib/effect_claim.py" "${ARGS[@]}" >/dev/null
+      echo "  $lane -> $(owner_of "$lane")"
+    done
+    for lane in "${HELD[@]}"; do echo "  held $lane stays $(owner_of "$lane")"; done ;;
+  proof)
+    [[ -n "$DATE" ]] || fail "--date YYYYMMDD"
+    LEDGER=${LEDGER:-$HOME/trade-ai-releases/persistent-state/data/governance/n8n_coordination_ledger.sqlite}
+    set +e
+    "$PY" - "$LEDGER" "$DATE" "${LIVE[@]}" <<'EOF'
+import sqlite3, sys
+ledger, d, lanes = sys.argv[1], sys.argv[2], sys.argv[3:]
+c = sqlite3.connect(f"file:{ledger}?mode=ro", uri=True)
+ok = True
+for lane in lanes:
+    runs = c.execute("SELECT run_id, state FROM runs WHERE lane_id=? AND mode='live' AND run_id LIKE ?",
+                     (lane, f"%{d}T1050%")).fetchall()
+    fx = c.execute("SELECT state, scheduler FROM effect_claims WHERE effect_key=?", (f"fx:{lane}:{d}T1050:v1",)).fetchall()
+    good = any(s == "RUN_DONE" for _, s in runs) and any(st == "DONE" and sch == "n8n" for st, sch in fx)
+    ok &= good
+    print(f"  {'PROOF' if good else 'MISSING'} {lane}: runs={runs} fx={fx}")
+print("  n8n half:", "PASS" if ok else "FAIL")
+sys.exit(0 if ok else 1)
+EOF
+    rc=$?
+    echo "  cron half (11:20 run, same date): the four must be skipped_effect; feedback_agent + retention ok:"
+    # same file 03_parity.py reads; one JSON line per step (PipelineStepReceipt@v1)
+    grep -h "\"ts\": \"$(date -d "$DATE" +%Y-%m-%d)T1[45]:" "$SERVED/logs/pipelines/hermes_learning/learn_steps.jsonl" 2>/dev/null \
+      | "$PY" -c 'import json,sys
+for l in sys.stdin:
+    d=json.loads(l); print("    %s %-24s %s rc=%s dry_run=%s" % (d["ts"], d["id"], d["status"], d.get("rc"), d.get("dry_run")))' \
+      || echo "    (no learn_steps.jsonl lines for that date yet)"
+    exit $rc ;;
+  *) fail "usage: $0 pre|import|c1|c2|relay|publish|c3|proof [--apply] [--date YYYYMMDD]" ;;
+esac

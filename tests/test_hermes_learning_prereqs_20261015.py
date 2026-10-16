@@ -76,6 +76,12 @@ LEARN_NOW = datetime(2026, 10, 15, 10, 57, tzinfo=ET)
 POLICY_PIN = "c6750b96ada49f816798bf3714ad390616b1b32769fdcbcc54e0635e32caf31f"
 
 
+#: cutover PR-2 (2026-10-15): steps with no live argv. The tune lane waits for the manifest split; outcome_feedback_agent
+#: is HELD at shadow (owner stays cron, so cron keeps running it live) because its `--notify queue` argv trips the
+#: allowlist sender token gate; it moves in a follow-up once the operator-approved gate alignment is served.
+HELD_INERT = {"autonomous_self_tune", "outcome_feedback_agent"}
+
+
 def _live_sources(**proc_overrides) -> dict:
     src = copy.deepcopy(SOURCES)
     src["processes"][PROCESS].update({"mode": "live", **proc_overrides})
@@ -120,7 +126,7 @@ def test_live_key_is_refused_while_the_spec_is_dry_run():
     dry["processes"][PROCESS].update({"mode": "dry_run", "live_manual_slots": False})
     c = PK.check_process_key(_key(GRADER, "live", "20261015T1050"), GRADER, "live", sources=dry, now=LEARN_NOW)
     assert not c.ok and c.state == "MODE_NOT_LIVE"
-    # hermes-learning cutover PR-2 (2026-10-15): the committed spec is live (learn stage at canary)
+    # hermes-learning cutover PR-2 (2026-10-15): the committed spec is live (four learn lanes at canary)
     assert SPEC["mode"] == "live"
 
 
@@ -134,6 +140,29 @@ def test_live_spec_accepts_the_scheduled_slot_and_refuses_a_manual_minute_unless
     assert PK.check_process_key(
         _key(GRADER, "live", "20261015T1056"), GRADER, "live", sources=flagged, now=LEARN_NOW
     ).ok
+
+
+@pytest.mark.parametrize(
+    "until,ok,state",
+    [
+        (None, True, "OK"),  # no bound: the flag alone decides (unchanged behaviour)
+        ("2026-10-15T23:59:00-04:00", True, "OK"),  # one-day window still open
+        ("2026-10-15T10:55:00-04:00", False, "MANUAL_LIVE_EXPIRED"),  # bound passed (LEARN_NOW is after it)
+        ("2026-10-15T23:59:00", False, "MANUAL_LIVE_EXPIRED"),  # naive time: fail closed
+        ("tomorrow", False, "MANUAL_LIVE_EXPIRED"),  # unparseable: fail closed
+    ],
+)
+def test_live_manual_slots_until_bounds_the_flag_and_fails_closed(until, ok, state):
+    # 2026-10-16 one-day manual-slots PR: the flag cannot outlive its day, whatever the next PR does.
+    over = {"live_manual_slots": True} | ({} if until is None else {"live_manual_slots_until": until})
+    c = PK.check_process_key(_key(GRADER, "live", "20261015T1056"), GRADER, "live", sources=_live_sources(**over),
+                             now=LEARN_NOW)
+    assert c.ok is ok and c.state == state
+    # the bound never touches a scheduled slot or a dry run
+    sched = PK.check_process_key(_key(GRADER, "live", "20261015T1050"), GRADER, "live", sources=_live_sources(**over),
+                                 now=LEARN_NOW)
+    assert sched.ok and sched.slot_kind == "scheduled"
+    assert "MANUAL_LIVE_EXPIRED" in PK.STATES
 
 
 @pytest.mark.parametrize(
@@ -435,8 +464,9 @@ def test_every_runnable_step_reproduces_its_cron_wrapper(sid):
         )
     else:
         assert "offpeak_exempt" not in entry
-    # cutover PR-2 (2026-10-15): learn lanes carry the spec's cutover_live_arg; the tune lane stays inert (shadow)
-    want_live = None if sid == "autonomous_self_tune" else RUNNABLE[sid]["cutover_live_arg"]
+    # cutover PR-2 (2026-10-15): four learn lanes carry the spec's cutover_live_arg; the tune lane and the HELD
+    # outcome_feedback_agent (its `--notify` argv trips the sender token gate until gate alignment lands) stay inert
+    want_live = None if sid in HELD_INERT else RUNNABLE[sid]["cutover_live_arg"]
     assert X.validate_entry(entry) is None and entry["live_arg"] == want_live
 
 
@@ -647,8 +677,8 @@ def test_cutover_live_args_are_declared_and_applied():
     want = {sid: ["--apply"] for sid in RUNNABLE}
     want["outcome_feedback_agent"] = ["--apply", "--notify", "queue"]
     assert {sid: s["cutover_live_arg"] for sid, s in RUNNABLE.items()} == want
-    for sid, s in RUNNABLE.items():  # cutover PR-2 (2026-10-15): the learn lanes carry the cutover argv; tune inert
-        assert ALLOW[s["lane_id"]]["live_arg"] == (None if sid == "autonomous_self_tune" else want[sid])
+    for sid, s in RUNNABLE.items():  # cutover PR-2 (2026-10-15): four learn lanes carry the cutover argv; tune + held inert
+        assert ALLOW[s["lane_id"]]["live_arg"] == (None if sid in HELD_INERT else want[sid])
 
 
 def test_registered_in_the_cio_hardening_gates():

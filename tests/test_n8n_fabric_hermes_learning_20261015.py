@@ -263,8 +263,9 @@ def test_runnable_step_is_a_shadow_lane_with_the_step_lock_and_timeout(sid):
     stage, st = STEPS[sid]
     lane = SPEC["steps"][sid]["lane_id"]
     e = ALLOW_LANES[lane]
-    # cutover PR-2 (2026-10-15): learn lanes carry cutover_live_arg at stage canary; the tune lane stays shadow
-    learn = stage == "learn"
+    # cutover PR-2 (2026-10-15): four learn lanes carry cutover_live_arg at stage canary; the tune lane and the held
+    # outcome_feedback_agent (sender token gate; follow-up after gate alignment) stay shadow
+    learn = stage == "learn" and sid != "outcome_feedback_agent"
     assert e["live_arg"] == (SPEC["steps"][sid]["cutover_live_arg"] if learn else None)
     assert e["dry_run_arg"] is not None
     assert e["command"][0] == "$PY" and e["market_gate"] is False

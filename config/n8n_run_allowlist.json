@@ -3369,11 +3369,7 @@
       "dry_run_arg": [
         "--dry-run"
       ],
-      "live_arg": [
-        "--apply",
-        "--notify",
-        "queue"
-      ],
+      "live_arg": null,
       "env_names": [
         "DB_CONN_TRACE",
         "DB_HOST",

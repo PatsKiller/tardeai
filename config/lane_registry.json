@@ -15534,7 +15534,7 @@
         "expression": "tradeai-fabric-hermes-learning",
         "match": "tradeai-fabric-hermes-learning:outcome_feedback_agent",
         "cadence": "50 10 * * *",
-        "stage": "canary",
+        "stage": "shadow",
         "process": "hermes-learning",
         "process_step": "outcome_feedback_agent"
       },

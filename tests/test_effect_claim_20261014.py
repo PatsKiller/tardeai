@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT / "tests") not in sys.path:
     sys.path.append(str(ROOT / "tests"))
 from support import n8n_cutover_waves as CW  # noqa: E402
+from tests.support import hermes_learning_cutover as HL  # noqa: E402
 sys.path.insert(0, str(ROOT))
 
 from scripts import n8n_run_executor as X  # noqa: E402
@@ -375,6 +376,10 @@ def test_committed_effect_config_changes_no_live_run_at_merge():
         if lane in CW.ARMED:  # canary: live under the shared flock; owner row -> n8n in the wave packet (step 2)
             assert spec["process"] == lane and isinstance(allow[lane]["live_arg"], list)
             assert reg[lane]["scheduler"]["stage"] in ("canary", "cutover") and raw[lane]["cron_claim"] is True
+            continue
+        if lane in HL.LIVE:  # hermes-learning cutover PR-2: learn step at canary with its cutover argv
+            assert spec["process"] == lane and isinstance(allow[lane]["live_arg"], list)
+            assert reg[lane]["scheduler"]["stage"] == "canary" and raw[lane]["cron_claim"] is True
             continue
         assert spec["process"] == lane and allow[lane]["live_arg"] is None
         assert reg[lane]["scheduler"]["stage"] == "shadow"
