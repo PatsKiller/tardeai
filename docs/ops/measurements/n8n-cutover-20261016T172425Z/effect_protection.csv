@@ -1,0 +1,70 @@
+lane_id,process,owner,epoch,n8n_claim,cron_claim_config,active_cron_lines,active_cron_lines_wrapped,claims_done,claims_released,claims_failed,claims_ambiguous,late_write_fenced,protection
+advisory-desk-run-now,advisory-desk-run-now,,,False,False,0,0,0,0,0,0,False,STAGED (no owner row)
+aegis-nightly-ingestion,aegis-nightly-ingestion,,,False,False,1,0,0,0,0,0,False,STAGED (no owner row)
+aegis-social-sentiment,aegis-social-sentiment,n8n,1,True,True,1,0,0,1,0,0,False,N8N_SIDE_ONLY (active cron line not wrapped: cron copy can still run the effect)
+aegis-transcript-discovery,aegis-transcript-discovery,n8n,1,True,True,1,0,0,1,0,0,False,N8N_SIDE_ONLY (active cron line not wrapped: cron copy can still run the effect)
+agent-calibration-engine,agent-calibration-engine,,,False,False,1,0,0,0,0,0,False,STAGED (no owner row)
+agent-outcome-linker,agent-outcome-linker,n8n,1,True,True,1,0,0,1,0,0,False,N8N_SIDE_ONLY (active cron line not wrapped: cron copy can still run the effect)
+agent-outcome-scorer,agent-outcome-scorer,n8n,1,True,True,1,0,0,0,0,0,False,N8N_SIDE_ONLY (active cron line not wrapped: cron copy can still run the effect)
+analyst-prospectus-generate,analyst-prospectus-generate,,,False,False,0,0,0,0,0,0,False,STAGED (no owner row)
+build-symbol-profiles-at-0-19,build-symbol-profiles-at-0-19,n8n,1,True,True,1,0,0,0,0,0,False,N8N_SIDE_ONLY (active cron line not wrapped: cron copy can still run the effect)
+catalyst-symbol-impact,catalyst-symbol-impact,n8n,1,True,True,0,0,2,0,0,0,False,SINGLE_OWNER_CLAIMING
+commitment-outcome-sweep,commitment-outcome-sweep,n8n,1,True,True,1,0,0,0,0,0,False,N8N_SIDE_ONLY (active cron line not wrapped: cron copy can still run the effect)
+daily-incubator-refresh,daily-incubator-refresh,n8n,1,True,True,1,0,0,0,1,0,False,N8N_SIDE_ONLY (active cron line not wrapped: cron copy can still run the effect)
+data-gap-resolver-at-0-10-16,data-gap-resolver-at-0-10-16,,,False,False,1,0,0,0,0,0,False,STAGED (no owner row)
+data-gap-resolver-pre,data-gap-resolver-pre,,,False,False,1,0,0,0,0,0,False,STAGED (no owner row)
+data-gap-resolver-weekly,data-gap-resolver-weekly,,,False,False,1,0,0,0,0,0,False,STAGED (no owner row)
+document-mentions-backfill,document-mentions-backfill,n8n,1,True,True,0,0,16,0,0,0,False,SINGLE_OWNER_CLAIMING
+etf-analyst-enrich,etf-analyst-enrich,n8n,1,True,True,1,0,0,0,0,0,False,N8N_SIDE_ONLY (active cron line not wrapped: cron copy can still run the effect)
+etf-performance-enrich,etf-performance-enrich,n8n,1,True,True,1,0,0,0,0,0,False,N8N_SIDE_ONLY (active cron line not wrapped: cron copy can still run the effect)
+feedback-loop-processor,feedback-loop-processor,n8n,1,True,True,1,0,0,0,0,0,False,N8N_SIDE_ONLY (active cron line not wrapped: cron copy can still run the effect)
+finviz-proactive-research,finviz-proactive-research,n8n,1,True,True,1,0,1,1,0,0,False,N8N_SIDE_ONLY (active cron line not wrapped: cron copy can still run the effect)
+finviz-screener-runner,finviz-screener-runner,n8n,1,True,True,1,0,1,0,0,0,False,N8N_SIDE_ONLY (active cron line not wrapped: cron copy can still run the effect)
+heartbeat-watch,heartbeat-watch,,,False,False,0,0,0,0,0,0,False,STAGED (no owner row)
+hermes-analyst-signal-discovery,hermes-analyst-signal-discovery,n8n,1,True,True,0,0,6,0,0,0,False,SINGLE_OWNER_CLAIMING
+hermes-entity-spike-discovery,hermes-entity-spike-discovery,,,False,False,1,0,0,0,0,0,False,STAGED (no owner row)
+hermes-learning-autonomous-self-tune,hermes-learning-autonomous-self-tune,,,False,False,0,0,0,0,0,0,False,STAGED (no owner row)
+hermes-learning-config-governor,hermes-learning-config-governor,n8n,2,False,True,0,0,0,0,0,0,False,OWNER_ROW_ONLY
+hermes-learning-outcome-feedback-agent,hermes-learning-outcome-feedback-agent,cron,1,False,True,0,0,0,0,0,0,False,OWNER_ROW_ONLY
+hermes-learning-outcome-grader,hermes-learning-outcome-grader,n8n,2,False,True,0,0,0,0,0,0,False,OWNER_ROW_ONLY
+hermes-learning-outcome-learning,hermes-learning-outcome-learning,n8n,2,False,True,0,0,0,0,0,0,False,OWNER_ROW_ONLY
+hermes-learning-tag-engine,hermes-learning-tag-engine,n8n,2,False,True,0,0,0,0,0,0,False,OWNER_ROW_ONLY
+hermes-momentum-catalyst-scalp,hermes-momentum-catalyst-scalp,n8n,1,True,True,0,0,2,5,0,0,False,SINGLE_OWNER_CLAIMING
+hermes-news-bridge,hermes-news-bridge,n8n,1,True,True,0,0,2,0,0,0,False,SINGLE_OWNER_CLAIMING
+hermes-pipeline-health,hermes-pipeline-health,,,False,False,1,0,0,0,0,0,False,STAGED (no owner row)
+hermes-research-agenda-at-45-7,hermes-research-agenda-at-45-7,,,False,False,1,0,0,0,0,0,False,STAGED (no owner row)
+hermes-research-worker-pool,hermes-research-worker-pool,,,False,False,1,0,0,0,0,0,False,STAGED (no owner row)
+hermes-scope-governor,hermes-scope-governor,,,False,False,1,0,0,0,0,0,False,STAGED (no owner row)
+hermes-score-event-feeder,hermes-score-event-feeder,,,False,False,1,0,0,0,0,0,False,STAGED (no owner row)
+hermes-social-sentiment,hermes-social-sentiment,n8n,1,True,True,1,0,0,1,0,0,False,N8N_SIDE_ONLY (active cron line not wrapped: cron copy can still run the effect)
+hermes-topic-monitor-bridge,hermes-topic-monitor-bridge,,,False,False,1,0,0,0,0,0,False,STAGED (no owner row)
+incubator-rolloff-engine,incubator-rolloff-engine,n8n,1,True,True,1,0,1,0,0,0,False,N8N_SIDE_ONLY (active cron line not wrapped: cron copy can still run the effect)
+instrument-belief-writer,instrument-belief-writer,n8n,1,True,True,1,0,0,0,0,0,False,N8N_SIDE_ONLY (active cron line not wrapped: cron copy can still run the effect)
+investment-costs,investment-costs,,,False,False,1,0,0,0,0,0,False,STAGED (no owner row)
+journal-tilt-morning-hook,journal-tilt-morning-hook,n8n,1,True,True,1,0,1,0,0,0,False,N8N_SIDE_ONLY (active cron line not wrapped: cron copy can still run the effect)
+material-change-detector-stage1,material-change-detector-stage1,n8n,1,True,True,0,0,33,0,0,0,False,SINGLE_OWNER_CLAIMING
+maturity-remeasure,maturity-remeasure,,,False,False,1,0,0,0,0,0,False,STAGED (no owner row)
+n8n-incident-fanin,n8n-incident-fanin,,,False,False,0,0,0,0,0,0,False,STAGED (no owner row)
+n8n-pilot-dispatch,n8n-pilot-dispatch,,,False,False,0,0,0,0,0,0,False,STAGED (no owner row)
+n8n-research-intake-consumer,n8n-research-intake-consumer,,,False,False,0,0,0,0,0,0,False,STAGED (no owner row)
+news-to-catalyst,news-to-catalyst,,,False,False,1,0,0,0,0,0,False,STAGED (no owner row)
+pattern-extractor,pattern-extractor,n8n,1,True,True,1,0,0,0,0,0,False,N8N_SIDE_ONLY (active cron line not wrapped: cron copy can still run the effect)
+proposal-backtest-engine,proposal-backtest-engine,n8n,1,True,True,1,0,2,0,0,0,False,N8N_SIDE_ONLY (active cron line not wrapped: cron copy can still run the effect)
+record-decision-outcome,record-decision-outcome,n8n,1,True,True,0,0,1,0,0,0,False,SINGLE_OWNER_CLAIMING
+research-insight-extractor,research-insight-extractor,,,False,False,0,0,0,0,0,0,False,STAGED (no owner row)
+resolve-due-checkpoints,resolve-due-checkpoints,,,False,False,1,0,0,0,0,0,False,STAGED (no owner row)
+run-research-intelligence-overnight,run-research-intelligence-overnight,,,False,False,2,0,0,0,0,0,False,STAGED (no owner row)
+sec-data-ingest,sec-data-ingest,n8n,1,True,True,1,0,0,0,0,0,False,N8N_SIDE_ONLY (active cron line not wrapped: cron copy can still run the effect)
+signal-fusion-full,signal-fusion-full,,,False,False,1,0,0,0,0,0,False,STAGED (no owner row)
+social-ingest-all,social-ingest-all,,,False,False,1,0,0,0,0,0,False,STAGED (no owner row)
+source-attribution-monitor,source-attribution-monitor,n8n,1,True,True,0,0,1,0,0,0,False,SINGLE_OWNER_CLAIMING
+trade-ai-scalp-live,trade-ai-scalp-live,,,False,False,1,0,0,0,0,0,False,STAGED (no owner row)
+trade-thesis-review-engine,trade-thesis-review-engine,,,False,False,1,0,0,0,0,0,False,STAGED (no owner row)
+update-agent-performance,update-agent-performance,n8n,1,True,True,1,0,0,0,0,0,False,N8N_SIDE_ONLY (active cron line not wrapped: cron copy can still run the effect)
+update-lockup-earnings-dates,update-lockup-earnings-dates,,,False,False,1,0,0,0,0,0,False,STAGED (no owner row)
+watchlist-enrichment-sweep,watchlist-enrichment-sweep,n8n,1,True,True,1,0,0,9,0,0,False,N8N_SIDE_ONLY (active cron line not wrapped: cron copy can still run the effect)
+watchlist-entry-planner-limit,watchlist-entry-planner-limit,,,False,False,1,0,0,0,0,0,False,STAGED (no owner row)
+watchlist-entry-planner-scope,watchlist-entry-planner-scope,,,False,False,1,0,0,0,0,0,False,STAGED (no owner row)
+weekly-incubator-builder,weekly-incubator-builder,n8n,1,True,True,1,0,0,0,0,0,False,N8N_SIDE_ONLY (active cron line not wrapped: cron copy can still run the effect)
+wire-advisory-lessons,wire-advisory-lessons,n8n,1,True,True,0,0,3,0,0,0,False,SINGLE_OWNER_CLAIMING
+write-state-freshness-history,write-state-freshness-history,,,False,False,1,0,0,0,0,0,False,STAGED (no owner row)

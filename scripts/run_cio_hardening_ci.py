@@ -56,6 +56,10 @@ GATES = [
     # families only (exactly the reviewed 49 ACTIVE lanes); holds, hard tokens, F07 and systemd still refuse; direct
     # senders are errors; p1_last lanes plan last and keep cron one trading day after proof. Hermetic: tmp ledgers.
     ("lane_cutover_policy_20261016", ["tests/test_lane_cutover_policy_20261016.py"]),
+    # ANCHOR: REPORT_N8N_CUTOVER_OUTCOMES_20261016 — read-only cutover outcomes packet: counting definitions (rows vs
+    # lanes vs lines), one status per lane, PARALLEL needs a live n8n run, exit 0 without a verdict is not useful,
+    # REQUESTED is not a heal, UNKNOWN provenance never guessed, unwrapped cron is not fenced. Fixtures only.
+    ("report_n8n_cutover_outcomes_20261016", ["tests/test_report_n8n_cutover_outcomes_20261016.py"]),
     (
         "options_workflow",
         [

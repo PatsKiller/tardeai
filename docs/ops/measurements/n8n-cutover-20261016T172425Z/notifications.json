@@ -1,0 +1,161 @@
+{
+ "attribution": {
+  "attributed": 14,
+  "by_source": {
+   "UNKNOWN": 265,
+   "cron:cio-entry-state-runner": 1,
+   "cron:claude-escalation-handler": 2,
+   "cron:hermes-score-alerts": 2,
+   "cron:incident-notifier": 1,
+   "cron:inference-layer-engine": 1,
+   "cron:process-reaper": 1,
+   "cron:scalp-shadow-logger": 1,
+   "cron:stop-health-check": 1,
+   "systemd:autonomy-watchdog": 1,
+   "systemd:claude-escalation-handler": 2,
+   "systemd:system-health-agent": 1
+  },
+  "unknown": 265
+ },
+ "by_producer_class_delivery": {
+  "autonomy_watchdog.telegram_system|ops": {
+   "LEGACY_DELIVERED": 20,
+   "SUPPRESSED": 1
+  },
+  "telegram_alert.send_telegram|active_trader_scalp_alert": {
+   "SENT": 26
+  },
+  "telegram_alert.send_telegram|ops": {
+   "LEGACY_DELIVERED": 17,
+   "SENT": 41,
+   "SUPPRESSED": 171
+  },
+  "telegram_alert.send_telegram|report": {
+   "SENT": 3
+  }
+ },
+ "by_scheduler_and_delivery": {
+  "UNKNOWN|LEGACY_DELIVERED": 35,
+  "UNKNOWN|SENT": 68,
+  "UNKNOWN|SUPPRESSED": 162,
+  "cron|LEGACY_DELIVERED": 1,
+  "cron|SENT": 2,
+  "cron|SUPPRESSED": 7,
+  "systemd|LEGACY_DELIVERED": 1,
+  "systemd|SUPPRESSED": 3
+ },
+ "communication_events_outbound": 279,
+ "day_start_utc": "2026-10-16T04:00:00+00:00",
+ "join_note": "No shared key joins a router receipt to a communication_events row (router rows carry producer + decision, events carry one generic chokepoint producer name); the chain is reported as per-stage counts. Per-message intent->delivery linkage is UNKNOWN except where the provenance footer names the lane.",
+ "n8n_comms_intents_by_tier_state": {
+  "DIGEST|QUEUED": 1
+ },
+ "router_by_producer": {
+  "alert_dispatcher": {
+   "DELIVER": 3
+  },
+  "check_data_source_health": {
+   "DELIVER": 1,
+   "HELD_QUIET_HOURS": 2
+  },
+  "check_expected_services": {
+   "DELIVER": 1,
+   "HELD_QUIET_HOURS": 1
+  },
+  "claude_escalation_handler": {
+   "DIGEST": 29
+  },
+  "continuous_runner": {
+   "DELIVER": 7
+  },
+  "data_plausibility_monitor": {
+   "DELIVER": 1
+  },
+  "disk_pressure_guard": {
+   "DELIVER": 2
+  },
+  "finviz_ingestion": {
+   "DEDUPED": 2,
+   "DELIVER": 2
+  },
+  "health_agent": {
+   "DELIVER": 2,
+   "DIGEST": 1
+  },
+  "hermes_outcome_feedback_agent": {
+   "DELIVER": 1
+  },
+  "hermes_score_alerts": {
+   "DIGEST": 3
+  },
+  "llm_spend_report": {
+   "DELIVER": 1
+  },
+  "morning_digest": {
+   "HELD_QUIET_HOURS": 1
+  },
+  "pipeline_freshness_slo": {
+   "DELIVER": 2
+  },
+  "premarket_watcher": {
+   "DELIVER": 12
+  },
+  "pro_analyst_monitor": {
+   "HELD_QUIET_HOURS": 1
+  },
+  "process_reaper": {
+   "DIGEST": 10
+  },
+  "process_watchlist_agent_jobs": {
+   "DELIVER": 2
+  },
+  "pullback_macd_screener": {
+   "DELIVER": 1
+  },
+  "recovery_watch_daily": {
+   "DELIVER": 1
+  },
+  "research_lane_health": {
+   "DIGEST": 6
+  },
+  "rotation_autopilot": {
+   "DIGEST": 6
+  },
+  "run_proactive_quote_refresh": {
+   "DIGEST": 48
+  },
+  "send_advice_digest": {
+   "DELIVER": 3
+  },
+  "siem_critical_notify": {
+   "DELIVER": 2
+  },
+  "social_scalp_scanner": {
+   "DELIVER": 8,
+   "HELD_QUIET_HOURS": 3
+  },
+  "stop_health": {
+   "DELIVER": 7
+  },
+  "system_health_agent": {
+   "DELIVER": 1,
+   "DIGEST": 3
+  },
+  "telegram_smart_alerts": {
+   "DIGEST": 1,
+   "HELD_QUIET_HOURS": 1
+  },
+  "watch_directives_service": {
+   "DIGEST": 1
+  }
+ },
+ "router_decisions": {
+  "DEDUPED": 2,
+  "DELIVER": 60,
+  "DIGEST": 108,
+  "HELD_QUIET_HOURS": 9
+ },
+ "router_ledger": "data/runtime/notification_intent_receipts.jsonl (NotificationIntentRoute@v1)",
+ "telegram_daily_send_budget_today": "UNKNOWN",
+ "telegram_send_idempotency_today_by_prefix": {}
+}
