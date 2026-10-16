@@ -182,6 +182,26 @@ _FILE_EXTS = frozenset({"py", "sh"})
 KEEP_ON_CRON = "KEEP_ON_CRON"
 DEFAULT_RUN_ALLOWLIST = Path(__file__).resolve().parents[2] / "config" / "n8n_run_allowlist.json"
 DEFAULT_POLICY_EXCEPTIONS = Path(__file__).resolve().parents[2] / "config" / "lane_dispatch_policy_exceptions.json"
+# ── §23.25 cutover directive (AGENTS.md 12.0.0, ACTIVE; operator gate-alignment approval 2026-10-16) ───────────────
+#: "change the sender gate to direct-senders-only and lift KEEP_ON_CRON/stay_on_cron and wrapper-token refusals for
+#: §23.25-approved families; broker/order/secret/daemon/os markers, F07 and registry_systemd stay refused; hold
+#: defense-execution, options-lifecycle-run, coder-dispatch, n8n-workflow-drift-check" (operator, 2026-10-16).
+#: For a row whose family config/lane_cutover_policy.json lists (not F07, scheduler not systemd), dispatch_eligible
+#: lifts stay_on_cron, KEEP_ON_CRON (top-level and rationalization) and CUTOVER_SOFT_TOKENS only. A sender is refused
+#: only as a DIRECT sender (smtplib / twilio / slack / literal Bot API): the capability audit forbids direct_sender for
+#: every allowlisted lane and check_lane_registry scans each lifted sender (cutover_direct_sender_errors). Every other
+#: forbidden token still refuses. A lane the policy does not list keeps the old behaviour (fail closed).
+CUTOVER_DIRECTIVE_VERSION = "12.0.0"
+CUTOVER_DIRECTIVE_STATUS = "ACTIVE"  # ratified 2026-10-15: APPROVE_AGENTS_POLICY_12_0_0 1779 4aeb8cf4e (PR #1790)
+DEFAULT_CUTOVER_POLICY = Path(__file__).resolve().parents[2] / "config" / "lane_cutover_policy.json"
+CUTOVER_DEFERRED_FAMILIES = frozenset({"F07"})
+#: Wrapper and chokepoint-sender words the directive lifts: `guard` (llm_priority_guard.sh), the market-day gate,
+#: and the send/telegram/sender words of a chokepoint sender. Never widened by config.
+CUTOVER_SOFT_TOKENS = frozenset({"send", "telegram", "sender", "guard", "market_day_gate.sh"})
+CUTOVER_SENDER_TOKENS = frozenset({"send", "telegram", "sender"})
+#: The policy as it was before §23.25 (nothing lifted, nothing held): tests that pin the pre-directive rules
+#: (the word-boundary matcher, the 4.0.0 §23.3 exception mechanics) evaluate against it.
+EMPTY_CUTOVER_POLICY: dict = {"families": {}, "holds": {}, "p1_last": frozenset(), "cron_overlap_trading_days": 1}
 DEFAULT_LLM_PROCESS_REGISTRY = Path(__file__).resolve().parents[2] / "config" / "llm_process_registry.json"
 #: Safety ceiling on config/lane_dispatch_policy_exceptions.json: the only forbidden tokens a lane may ever be
 #: exempted from. market_day_gate.sh is a market-calendar gate, not a broker/order/stop/secret authority.
@@ -706,6 +726,56 @@ def load_policy_exceptions(path: Optional[Path] = None) -> dict[str, frozenset[s
     return out
 
 
+_CUTOVER_CACHE: dict[str, dict[str, Any]] = {}
+
+
+def load_cutover_policy(path: Optional[Path] = None) -> dict[str, Any]:
+    """config/lane_cutover_policy.json as {families: {lane: family}, holds: {lane: reason}, p1_last: frozenset,
+    cron_overlap_trading_days: int}. Fail closed: a missing/unreadable/malformed file (or section) is empty, so no
+    lane is lifted; a non-string family or hold entry is dropped."""
+    p = Path(path) if path is not None else DEFAULT_CUTOVER_POLICY
+    key = str(p)
+    if key in _CUTOVER_CACHE:
+        return _CUTOVER_CACHE[key]
+    try:
+        doc = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        doc = {}
+    doc = doc if isinstance(doc, dict) else {}
+    fams = doc.get("families") if isinstance(doc.get("families"), dict) else {}
+    holds = doc.get("holds") if isinstance(doc.get("holds"), dict) else {}
+    p1 = doc.get("p1_last") if isinstance(doc.get("p1_last"), list) else []
+    days = doc.get("cron_overlap_trading_days")
+    out = {"families": {k: v for k, v in fams.items() if isinstance(k, str) and isinstance(v, str) and v},
+           "holds": {k: v for k, v in holds.items() if isinstance(k, str) and isinstance(v, str) and v},
+           "p1_last": frozenset(x for x in p1 if isinstance(x, str)),
+           "cron_overlap_trading_days": days if isinstance(days, int) and days >= 1 else 1}
+    _CUTOVER_CACHE[key] = out
+    return out
+
+
+def operator_hold(row: Mapping[str, Any], policy: Optional[Mapping[str, Any]] = None) -> Optional[str]:
+    """The hold reason for this lane, or None. A hold refuses the lane whatever else it carries."""
+    pol = load_cutover_policy() if policy is None else policy
+    return (pol.get("holds") or {}).get(str(row.get("lane_id") or ""))
+
+
+def cutover_directive_lane(row: Mapping[str, Any], policy: Optional[Mapping[str, Any]] = None, *,
+                           status: Optional[str] = None) -> bool:
+    """True when §23.25 lifts this row's cron markers and soft tokens: 12.0.0 ACTIVE, the policy names its family,
+    the family is not F07, the scheduler is not systemd (registry_systemd stays on the host), and no hold."""
+    if (status or CUTOVER_DIRECTIVE_STATUS) != "ACTIVE":
+        return False
+    pol = load_cutover_policy() if policy is None else policy
+    lane = str(row.get("lane_id") or "")
+    fam = (pol.get("families") or {}).get(lane)
+    if not fam or fam in CUTOVER_DEFERRED_FAMILIES or lane in (pol.get("holds") or {}):
+        return False
+    sched = row.get("scheduler")
+    kind = sched.get("kind") if isinstance(sched, dict) else sched
+    return kind != "systemd" and not row.get("exec_start") and not row.get("service")
+
+
 def _exempt_tokens(row: Mapping[str, Any], exceptions: Optional[Mapping[str, frozenset[str]]]) -> frozenset[str]:
     lane = row.get("lane_id")
     table = load_policy_exceptions() if exceptions is None else exceptions
@@ -838,10 +908,14 @@ def advisory_md_static_errors(row: Mapping[str, Any], entry: Optional[Mapping[st
 
 
 def dispatch_eligible(row: Mapping[str, Any], *, allowlist_argv: Optional[Mapping[str, str]] = None,
-                      exceptions: Optional[Mapping[str, frozenset[str]]] = None) -> tuple[bool, str]:
-    """(eligible, reason). Never eligible: a stay_on_cron or KEEP_ON_CRON row (B1 reconcile markers), a
-    stay-behind row, or any forbidden token in the lane id, scheduler, exec_start/service, command/script or
-    the lane's run-allowlist argv.
+                      exceptions: Optional[Mapping[str, frozenset[str]]] = None,
+                      cutover_policy: Optional[Mapping[str, Any]] = None) -> tuple[bool, str]:
+    """(eligible, reason). Never eligible: an operator hold (config/lane_cutover_policy.json), a stay_on_cron or
+    KEEP_ON_CRON row (B1 reconcile markers), a stay-behind row, or any forbidden token in the lane id, scheduler,
+    exec_start/service, command/script or the lane's run-allowlist argv.
+
+    2026-10-16 (AGENTS 12.0.0 §23.25, operator gate-alignment approval): for a cutover_directive_lane row the
+    stay_on_cron / KEEP_ON_CRON markers and CUTOVER_SOFT_TOKENS do not refuse; every other forbidden token does.
 
     Independent of the dispatch block: a block saying `live` cannot make a forbidden lane eligible. Callers
     that RUN anything use dispatchable(row), which also requires mode != off.
@@ -849,12 +923,18 @@ def dispatch_eligible(row: Mapping[str, Any], *, allowlist_argv: Optional[Mappin
     `exceptions` (default: config/lane_dispatch_policy_exceptions.json) lifts ONLY the listed EXEMPTIBLE_TOKENS
     hits for a lane in EXEMPTIBLE_LANES, and the B1 gate-class stay_on_cron marker (with the top-level KEEP_ON_CRON
     it forces; never the rationalization block's) naming one of them. Any other hit or marker still blocks; the reason then names it."""
+    pol = load_cutover_policy() if cutover_policy is None else cutover_policy
+    hold = operator_hold(row, pol)
+    if hold:
+        return False, "operator_hold:" + hold.split(":", 1)[0]
+    directive = cutover_directive_lane(row, pol)
     exempt = _exempt_tokens(row, exceptions)
     gate_exempt = _gate_marker_exempt(row, exempt)
-    if row.get("stay_on_cron") not in (None, False, {}, "") and not gate_exempt:
-        return False, "stay_on_cron"
-    if _keep_on_cron(row, lift_top_level=gate_exempt):
-        return False, "keep_on_cron"
+    if not directive:
+        if row.get("stay_on_cron") not in (None, False, {}, "") and not gate_exempt:
+            return False, "stay_on_cron"
+        if _keep_on_cron(row, lift_top_level=gate_exempt):
+            return False, "keep_on_cron"
     try:
         watch = parse_watch_block(row)
     except DispatchBlockError as e:
@@ -862,14 +942,45 @@ def dispatch_eligible(row: Mapping[str, Any], *, allowlist_argv: Optional[Mappin
     if watch.stay_behind:
         return False, "stay_behind"
     all_hits = forbidden_hits(row, allowlist_argv=allowlist_argv)
-    hits = [h for h in all_hits if h[0] not in exempt]
+    lift = exempt | (CUTOVER_SOFT_TOKENS if directive else frozenset())
+    hits = [h for h in all_hits if h[0] not in lift]
     if hits:
         tok, field = hits[0]
         return False, f"forbidden_token:{tok}@{field}"
+    if directive:
+        # Name only what §23.25 lifted beyond the old rules (a policy-exception lift keeps its old reason).
+        lifted = ({h[0] for h in all_hits} - exempt) \
+            | ({"stay_on_cron"} if row.get("stay_on_cron") not in (None, False, {}, "") and not gate_exempt else set()) \
+            | ({"keep_on_cron"} if _keep_on_cron(row, lift_top_level=gate_exempt) else set())
+        if lifted:
+            return True, "eligible:cutover_directive_23_25:" + ",".join(sorted(lifted))
     used = sorted({h[0] for h in all_hits} | ({row["stay_on_cron"]["token"]} if gate_exempt else set()))
     if used:
         return True, "eligible:policy_exception:" + ",".join(used)
     return True, "eligible"
+
+
+def cutover_direct_sender_errors(row: Mapping[str, Any], entry: Optional[Mapping[str, Any]] = None,
+                                 *, allowlist_argv: Optional[Mapping[str, str]] = None) -> list[str]:
+    """The direct-sender half of the §23.25 sender gate (check_lane_registry / CI; not the hot path). For a
+    cutover_directive_lane row whose command trips a sender token, the lane's entry script is scanned
+    (advisory_lane_guard import graph): any send that bypasses the host chokepoint is an error. [] = clean, or not
+    applicable (no lifted sender token, no allowlist entry yet: the capability audit covers onboarding)."""
+    if not cutover_directive_lane(row):
+        return []
+    if not {h[0] for h in forbidden_hits(row, allowlist_argv=allowlist_argv)} & CUTOVER_SENDER_TOKENS:
+        return []
+    lane = str(row.get("lane_id") or "?")
+    if entry is None:
+        entry = load_run_allowlist_entries().get(lane)
+    if not isinstance(entry, Mapping):
+        return []
+    g = _guard()
+    script = g.entry_script(entry.get("command") or [])
+    if not script:
+        return [f"{lane}: §23.25 sender lane with no entry script in the allowlist command"]
+    return [f"{lane}: §23.25 direct sender (bypasses the host chokepoint): {site}"
+            for site in g.scan_entry(script).direct_sends]
 
 
 def dispatchable(row: Mapping[str, Any], *, allowlist_argv: Optional[Mapping[str, str]] = None,
@@ -1183,4 +1294,6 @@ def registry_dispatch_errors(reg: Mapping[str, Any], *,
             out.append(f"{issue.lane_id}: dispatch {issue.code}: {issue.detail}")
         if r.get("lane_id") in ADVISORY_MARKET_DATA_LANES and dispatch_mode(r) != "off":
             out.extend(advisory_md_static_errors(r))   # §23.20 (a)/(c): import-graph scan, off the hot path
+        if dispatch_mode(r) != "off":
+            out.extend(cutover_direct_sender_errors(r))  # §23.25 sender gate: direct senders only, off the hot path
     return out

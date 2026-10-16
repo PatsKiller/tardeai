@@ -423,6 +423,15 @@ NAMED_IN_REVIEW = [
 ]
 
 
+@pytest.fixture
+def pre_23_25(monkeypatch):
+    """Evaluate under the policy as it was before AGENTS 12.0.0 §23.25 (operator gate alignment 2026-10-16): these
+    tests pin the B1 markers and the 4.0.0 §23.3 exception mechanics, which still apply to every lane the cutover
+    policy does not list. The §23.25 lift itself is pinned in tests/test_lane_cutover_policy_20261016.py."""
+    monkeypatch.setattr(LD, "load_cutover_policy", lambda path=None: LD.EMPTY_CUTOVER_POLICY)
+
+
+@pytest.mark.usefixtures("pre_23_25")
 def test_1597_stay_on_cron_and_keep_on_cron_rows_never_eligible():
     rows = json.loads(FIXTURE_1597.read_text(encoding="utf-8"))["lanes"]
     by_id = {r["lane_id"]: r for r in rows}
@@ -707,6 +716,7 @@ def test_live_rows_naming_broker_order_secret_scripts_are_ineligible():
     assert named > 0
 
 
+@pytest.mark.usefixtures("pre_23_25")
 def test_scalp_lane_eligible_only_through_the_policy_exception():
     """AGENTS 4.0.0 §23.3 + operator 2026-10-09 ~18:05 ET: trade-ai-scalp-live wraps market_day_gate.sh (a
     pipeline_manifest excluded token). The config exception lifts exactly that token; without it the lane is
@@ -779,6 +789,7 @@ def test_policy_exception_config_lists_only_market_day_gate_for_the_bounded_lane
     assert "market_day_gate.sh" in FORBIDDEN_COMMAND_TOKENS
 
 
+@pytest.mark.usefixtures("pre_23_25")
 def test_scalp_live_eligible_with_exception_including_allowlist_argv():
     row = _scalp()
     assert LD.dispatch_eligible(row, allowlist_argv=SCALP_ARGV, exceptions=SCALP_EXC) == (
@@ -807,6 +818,7 @@ def test_unlisted_lane_with_market_day_gate_stays_ineligible():
     assert LD.dispatch_eligible(row) == (False, "forbidden_token:market_day_gate.sh@scheduler.expression")
 
 
+@pytest.mark.usefixtures("pre_23_25")
 @pytest.mark.parametrize(
     "extra",
     [
@@ -834,6 +846,7 @@ def test_scalp_live_command_field_broker_token_stays_ineligible():
     assert ok is False and why.startswith("forbidden_token:")
 
 
+@pytest.mark.usefixtures("pre_23_25")
 def test_exception_lifts_only_the_b1_gate_marker():
     row = _scalp(stay_on_cron=dict(GATE_MARK), recommendation="KEEP_ON_CRON")
     assert LD.dispatch_eligible(row, exceptions=SCALP_EXC) == (True, "eligible:policy_exception:market_day_gate.sh")
@@ -852,6 +865,7 @@ def test_exception_lifts_only_the_b1_gate_marker():
     assert LD.dispatch_eligible(other, exceptions=SCALP_EXC) == (False, "stay_on_cron")
 
 
+@pytest.mark.usefixtures("pre_23_25")
 def test_1597_scalp_row_eligible_only_through_the_exception():
     rows = {r["lane_id"]: r for r in json.loads(FIXTURE_1597.read_text(encoding="utf-8"))["lanes"]}
     row = rows["trade-ai-scalp-live"]
@@ -865,6 +879,7 @@ def test_stay_behind_still_blocks_excepted_lane():
     assert LD.dispatch_eligible(row, exceptions=SCALP_EXC) == (False, "stay_behind")
 
 
+@pytest.mark.usefixtures("pre_23_25")
 @pytest.mark.parametrize(
     "content",
     [
@@ -945,6 +960,7 @@ def test_exception_entry_for_other_lane_is_ignored(tmp_path):
     assert LD.dispatch_eligible(dict(row, stay_on_cron=dict(GATE_MARK)), exceptions=forced) == (False, "stay_on_cron")
 
 
+@pytest.mark.usefixtures("pre_23_25")
 def test_exception_lifts_only_top_level_keep_on_cron_not_rationalization():
     lifted = _scalp(
         stay_on_cron=dict(GATE_MARK), recommendation="KEEP_ON_CRON", rationalization={"recommendation": "PIPELINE:P02"}
