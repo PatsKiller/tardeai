@@ -169,6 +169,20 @@ def test_tokens_ok_and_needs_reauth(env):
     assert d["overall"] == "NEEDS_REAUTH"
 
 
+def test_one_login_covers_every_account(env):
+    """Live shape 2026-10-16: only schwab_taxable has a token row; the other accounts read through it."""
+    toks, logins = _healthy_tokens()
+    only = [{**toks[2], "degraded": True, "last_error": "Schwab rejected the login token (HTTP 401)"}]
+    d = _build(env, FakeDB(tokens=only, logins=[logins[2]]))
+    rows = {t["account_key"]: t for t in d["schwab_tokens"]["accounts"]}
+    assert set(rows) == set(ACCTS) and all(r["state"] == "NEEDS_REAUTH" for r in rows.values())
+    assert rows["schwab_roth_ira"]["token_source"] == "schwab_taxable"
+    assert "shares the schwab_taxable login" in rows["schwab_roth_ira"]["reason"]
+    assert rows["schwab_roth_ira"]["login_source"] == "audit:newest_any_account"
+    healthy = _build(env, FakeDB(tokens=[toks[2]], logins=[logins[2]]))
+    assert all(r["state"] == "OK" for r in healthy["schwab_tokens"]["accounts"])
+
+
 def test_paused_mode_wins_but_keeps_token_condition(env, monkeypatch):
     monkeypatch.setenv("TRADEAI_SCHWAB_ACCESS_MODE", "forbidden")
     toks, logins = _healthy_tokens()

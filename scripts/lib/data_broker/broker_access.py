@@ -297,15 +297,23 @@ def schwab_tokens(db_query: Optional[Callable], accounts: list[str], access: dic
     tok_by = {r.get("account_key"): r for r in (toks or [])}
     # one browser login covers every Schwab account; the newest one is the operator's real clock
     newest_login = max((_parse(v) for v in login_by.values() if _parse(v)), default=None)
+    # Schwab issues ONE token per login covering every account (the token manager's canonical_token_key): an
+    # account without its own row reads through the shared row — healthy one first, else the newest.
+    with_token = sorted((r for r in (toks or []) if r.get("has_token")),
+                        key=lambda r: (not r.get("degraded"), str(r.get("updated_at") or "")), reverse=True)
+    shared = with_token[0] if with_token else None
     rows = []
     for acct in sorted(set(accounts) | set(tok_by)):
         t = tok_by.get(acct)
+        token_source = acct if t else None
+        if t is None and shared is not None:
+            t, token_source = shared, shared.get("account_key")
         last_login = _parse(login_by.get(acct)) or newest_login
         true_exp = last_login + timedelta(days=TRUE_LOGIN_LIFETIME_DAYS) if last_login else None
         due_at = last_login + timedelta(days=float(consts["REAUTH_AT_DAYS"])) if last_login else None
         days_left = round((true_exp - now).total_seconds() / 86400, 2) if true_exp else None
         last_error = scrub((t or {}).get("last_error"))
-        audit_err = err_by.get(acct)
+        audit_err = err_by.get(acct) or err_by.get(token_source)
         if toks is None:
             cond, why = DEGRADED, "token store unreadable (no DB answer) — state unknown, not assumed healthy"
         elif t is None:
@@ -326,11 +334,14 @@ def schwab_tokens(db_query: Optional[Callable], accounts: list[str], access: dic
             cond, why = DEGRADED, "no successful reauth on record — the true 7-day clock is unknown"
         else:
             cond, why = OK, f"{days_left:.1f} days to true expiry"
+        if token_source and token_source != acct:
+            why = f"shares the {token_source} login — {why}"
         state, reason = cond, why
         if paused:
             state, reason = PAUSED, f"Schwab access paused ({access.get('mode')}); token: {why}"
         rows.append({
             "account_key": acct, "state": state, "reason": reason, "token_condition": cond,
+            "token_source": token_source,
             "has_token": bool(t and t.get("has_token")), "degraded": bool(t and t.get("degraded")),
             "last_login": _iso(last_login), "login_source": "audit:account" if login_by.get(acct) else
             ("audit:newest_any_account" if newest_login else None),
@@ -480,7 +491,8 @@ def schwab_positions_row(holdings: dict, accounts: list[str], access: dict, toke
                          db_query: Optional[Callable], log: dict) -> dict:
     states = [x for x in (_acct_state(holdings, a) for a in _holdings_aliases(holdings, accounts)) if x]
     hist = _q(db_query, "SELECT DISTINCT ON (account_key) account_key, status, reason, position_count, "
-                        "wrote_holdings, created_at FROM schwab_sync_history ORDER BY account_key, created_at DESC")
+                        "wrote_holdings, created_at FROM schwab_sync_history WHERE account_key LIKE 'schwab%%' "
+                        "ORDER BY account_key, created_at DESC")
     last_runs = [{"account_key": h.get("account_key"), "status": h.get("status"), "reason": scrub(h.get("reason")),
                   "positions": h.get("position_count"), "wrote": h.get("wrote_holdings"),
                   "at": _iso(h.get("created_at"))} for h in (hist or [])]
