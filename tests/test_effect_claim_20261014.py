@@ -377,7 +377,10 @@ def test_committed_effect_config_changes_no_live_run_at_merge():
             assert reg[lane]["scheduler"]["stage"] in ("canary", "cutover") and raw[lane]["cron_claim"] is True
             continue
         assert spec["process"] == lane and allow[lane]["live_arg"] is None
-        assert reg[lane]["scheduler"]["stage"] == "shadow" and raw[lane]["cron_claim"] is False
+        assert reg[lane]["scheduler"]["stage"] == "shadow"
+        # hermes-learning cutover PR-1 (2026-10-15): the five learn step lanes set cron_claim true (the runner claims
+        # only when its cron line also sets PIPELINE_EFFECT_CLAIM=1); the tune lane stays false
+        assert raw[lane]["cron_claim"] is (lane != "hermes-learning-autonomous-self-tune")
 
 
 def test_missing_effect_config_is_an_empty_map(tmp_path):

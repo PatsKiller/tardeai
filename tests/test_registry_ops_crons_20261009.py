@@ -159,6 +159,10 @@ def test_fanin_governance_liveness_stays_quiet_until_the_flip(tmp_path, monkeypa
 # ============================================================================ breach triage (same PR)
 SNAPSHOT = json.loads((R.DATA_DIR / "scheduler_snapshot_20261009.json").read_text(encoding="utf-8"))
 SNAP_LINES = [x["line"] for x in SNAPSHOT["cron_lines"]]
+# Rows whose crontab line was moved by a reviewed PR after the 2026-10-09 snapshot (the snapshot stays the historical
+# record). hermes-learning cutover decision D1 (2026-10-15): the learn stage line runs at 11:20 so the cron-only
+# retention step runs after n8n's outcome_grader; the effect slot stays the manifest minute (T1050).
+MOVED_SINCE_SNAPSHOT = {"hermes-learning-pipeline-learn": {"20 11 * * *"}}
 
 
 def _parts(expr):
@@ -187,6 +191,7 @@ def test_stripped_hand_rows_keep_their_live_schedules():
         if s.get("kind") != "cron" or r["state"] != "ACTIVE" or r.get("generated_by") or not r.get("scheduler_note"):
             continue
         live = {R.split_schedule(ln)[0] for ln in SNAP_LINES if s["match"] in ln}
+        live = MOVED_SINCE_SNAPSHOT.get(r["lane_id"], live)
         assert set(_parts(s["expression"])) == live, (r["lane_id"], s["expression"], live)
 
 

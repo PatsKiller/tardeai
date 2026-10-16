@@ -220,9 +220,9 @@ LANES: list[dict] = [
     {
         "lane_id": "hermes-learning-pipeline-learn",
         "tranche": "N2",
-        "cron": ["50 10 * * *"],
+        "cron": ["20 11 * * *"],
         "fidelity": "EXACT",
-        "source": "crontab: 50 10 * * * run_hermes_pipeline.sh --stage learn (registry kind cron)",
+        "source": "crontab: 20 11 * * * run_hermes_pipeline.sh --stage learn (registry kind cron; moved from 50 10 by cutover decision D1 2026-10-15)",
         "pipeline": "hermes_learning",
         "stage_order": 1,
     },
