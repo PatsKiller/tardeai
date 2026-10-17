@@ -85,6 +85,12 @@ GATES = [
     # producer's own code_defect_hook; independent evaluator (backend claims never read; PR-head CI); static selector,
     # repair memory + shadow router; a second backend kind through the same acceptance scenario. Never a real model.
     ("self_heal_claude_fixer_20261016", ["tests/test_self_heal_fixer_20261016.py"]),
+    # Architect review of #1830 (2026-10-16): acceptance bound to ONE immutable candidate commit (sha + tree; fresh
+    # read-only checkouts digested before/after each run; pre-push guard re-run; PR head == evaluated commit); the
+    # Claude process itself in an allowlist bwrap sandbox (rw only its worktree, one scoped auth bind, CONNECT-
+    # allowlist egress); durable flock + sqlite claims with the budget reserved before launch, heartbeat leases and
+    # restart reconciliation to fix_interrupted; output_recovered = the output contract on a live receipt. Stub CLIs.
+    ("self_heal_fixer_hardening_20261016", ["tests/test_self_heal_fixer_hardening_20261016.py"]),
     (
         "options_workflow",
         [

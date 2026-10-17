@@ -50,17 +50,21 @@ INCIDENT_RESOLVED = "incident_resolved"
 FIX_FAILED = "fix_failed"
 FIX_REFUSED = "fix_refused"
 FIX_CLOSED = "fix_closed"
+#: The attempt's owner died mid-attempt (its durable lease expired or its pid is gone). Reconciled on the next start
+#: with the recorded partial evidence; never restarted blindly (architect review 2026-10-16, finding 3).
+FIX_INTERRUPTED = "fix_interrupted"
 
 STATES = (FIX_REQUESTED, FIX_ATTEMPTING, FIX_READY_LOCAL, FIX_PR_OPENED, FIX_DEPLOYED, OUTPUT_RECOVERED,
-          INCIDENT_RESOLVED, FIX_FAILED, FIX_REFUSED, FIX_CLOSED)
-TERMINAL = frozenset({INCIDENT_RESOLVED, FIX_FAILED, FIX_REFUSED, FIX_CLOSED})
+          INCIDENT_RESOLVED, FIX_FAILED, FIX_REFUSED, FIX_CLOSED, FIX_INTERRUPTED)
+TERMINAL = frozenset({INCIDENT_RESOLVED, FIX_FAILED, FIX_REFUSED, FIX_CLOSED, FIX_INTERRUPTED})
 ACTIVE = frozenset(STATES) - TERMINAL
 #: Only these may be reported as healed: a merged PR, or even deployed code, is not a heal.
 HEALED = frozenset({OUTPUT_RECOVERED, INCIDENT_RESOLVED})
 
 TRANSITIONS: dict[str, frozenset[str]] = {
-    FIX_REQUESTED: frozenset({FIX_ATTEMPTING, FIX_REFUSED}),
-    FIX_ATTEMPTING: frozenset({FIX_ATTEMPTING, FIX_READY_LOCAL, FIX_PR_OPENED, FIX_FAILED, FIX_REFUSED}),
+    FIX_REQUESTED: frozenset({FIX_ATTEMPTING, FIX_REFUSED, FIX_INTERRUPTED}),
+    FIX_ATTEMPTING: frozenset({FIX_ATTEMPTING, FIX_READY_LOCAL, FIX_PR_OPENED, FIX_FAILED, FIX_REFUSED,
+                               FIX_INTERRUPTED}),
     FIX_READY_LOCAL: frozenset({FIX_PR_OPENED, FIX_CLOSED}),
     FIX_PR_OPENED: frozenset({FIX_DEPLOYED, FIX_CLOSED}),
     FIX_DEPLOYED: frozenset({OUTPUT_RECOVERED}),
@@ -215,7 +219,7 @@ def admit(state: dict, incident: Mapping[str, Any], *, now: datetime, cfg: Mappi
         return None, f"deduped:active:{act['job_id']}"
     last = last_job_for(state, dkey)
     cool = float(cfg.get("intake", {}).get("retry_cooldown_hours", 72))
-    if last and last.get("state") in (FIX_FAILED, FIX_REFUSED, FIX_CLOSED):
+    if last and last.get("state") in (FIX_FAILED, FIX_REFUSED, FIX_CLOSED, FIX_INTERRUPTED):
         at = _parse(last.get("updated_at") or last.get("created_at"))
         if at and now - at < timedelta(hours=cool):
             return None, f"cooldown:{last['job_id']}:{last['state']}"
@@ -355,7 +359,9 @@ def build_prompt(evidence: Mapping[str, Any], *, rails: str, cfg: Mapping[str, A
         "- Never delete, skip, xfail, deselect or weaken a test; never remove an assert. Tests must stay hermetic: "
         "TRADE_AI_CI=1 is set; fake connections, tmp_path state; no DB, network, broker, Telegram, n8n or .env.\n"
         "- Never run the lane, a live script, git commit/push, gh, crontab, systemctl, psql or curl. Allowed shell: "
-        f"`{py} ...` (pytest in a no-network sandbox) and read-only git (diff/status/log/show).\n"
+        f"`{py} ...` (pytest, inside your sandbox) and read-only git (diff/status/log/show).\n"
+        "- You run in a sandbox: only this worktree is writable and there is no network but the model API. Never "
+        "write a credential, token or key into any file: a credential-shaped literal in the diff refuses the job.\n"
         "- Preserve CRLF files byte-exactly (check `file <path>` before editing; edit with care).\n"
         f"- Keep the diff minimal: at most {cfg['diff_guard']['max_files_changed']} files and "
         f"{cfg['diff_guard']['max_lines_changed']} changed lines. Fix the root cause; do not mask it in an except.",
@@ -426,6 +432,191 @@ def child_env(environ: Mapping[str, str], cfg: Mapping[str, Any], *, scratch_sta
     env = {k: environ[k] for k in cfg["claude"]["env_names"] if k in environ}
     env.update(TRADE_AI_CI="1", TRADEAI_STATE_ROOT=scratch_state, PYTHONDONTWRITEBYTECODE="1")
     return env
+
+
+# ---------------------------------------------------------------- the agent's own boundary (review finding 2)
+#: Probe results for ``agent_sandbox_prefix``: "dir", "file", "link:<target>" or None (absent).
+Probe = Callable[[str], Optional[str]]
+
+
+def agent_auth_binds(cfg: Mapping[str, Any], *, home: str, agent_home: str,
+                     probe: Probe) -> tuple[list[tuple[str, str, bool]], str]:
+    """The ONLY credential the agent sandbox sees: ``claude.auth``. Mode ``credentials_file`` binds the one OAuth
+    credentials file of the Claude CLI (``{home}/.claude/.credentials.json``, never read by the harness) at
+    ``{agent_home}/.claude/.credentials.json``; ``CLAUDE_CONFIG_DIR`` points there, so the rest of ``~/.claude``
+    (history, transcripts, settings, other projects) is not visible. ``rw`` lets the CLI persist a token refresh in
+    place. Mode ``none`` binds nothing (stub CLIs). Returns (binds, why)."""
+    auth = (cfg.get("claude") or {}).get("auth") or {"mode": "none"}
+    mode = auth.get("mode", "none")
+    if mode == "none":
+        return [], "auth:none"
+    if mode != "credentials_file":
+        return [], f"auth_mode_unknown:{mode}"
+    src = str(auth.get("credentials_file") or "{home}/.claude/.credentials.json").replace("{home}", home)
+    if probe(src) != "file":
+        return [], "auth_credentials_file_missing"
+    return [(src, f"{agent_home}/.claude/.credentials.json", bool(auth.get("rw", True)))], "auth:credentials_file"
+
+
+def agent_env(environ: Mapping[str, str], cfg: Mapping[str, Any], *, scratch_state: str, agent_home: str,
+              proxy_port: Optional[int]) -> dict[str, str]:
+    """The agent's env INSIDE its sandbox (bwrap --clearenv, then exactly these). HOME is a throwaway dir; the CLI's
+    config dir is the scoped one; egress goes through the in-sandbox bridge to the host allowlist proxy."""
+    asb = cfg.get("agent_sandbox") or {}
+    env = child_env(environ, cfg, scratch_state=scratch_state)
+    env.update(HOME=agent_home, CLAUDE_CONFIG_DIR=f"{agent_home}/.claude", TMPDIR="/tmp",
+               PATH=str(asb.get("path") or "/usr/local/bin:/usr/bin:/bin"),
+               CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC="1", DISABLE_AUTOUPDATER="1", DISABLE_TELEMETRY="1",
+               DISABLE_ERROR_REPORTING="1")
+    for k in ("USER", "LOGNAME"):
+        env.pop(k, None)
+    if proxy_port:
+        url = f"http://127.0.0.1:{int(proxy_port)}"
+        env.update(HTTPS_PROXY=url, https_proxy=url, HTTP_PROXY=url, http_proxy=url, NO_PROXY="", no_proxy="")
+    return env
+
+
+DEFAULT_SYSTEM_RO = ("/usr", "/bin", "/sbin", "/lib", "/lib64", "/etc")
+
+
+def allowlist_prefix(sb: Mapping[str, Any], *, ro: Iterable[str], rw: Iterable[str], probe: Probe,
+                     binds: Iterable[tuple[str, str, bool]] = (), masks: Iterable[str] = (),
+                     env: Optional[Mapping[str, str]] = None, chdir: Optional[str] = None) -> list[str]:
+    """A bwrap argv prefix over an ALLOWLIST filesystem: an empty root, the system dirs and ``ro`` read-only, ``rw``
+    read-write, nothing else. $HOME is never bound, so ~/.env, ~/.ssh, ~/.config/gh, ~/.cursor, ~/.claude,
+    ~/trade-ai-releases, persistent state and the operator repo's untracked files (.env backups, data/, logs/) do not
+    exist inside. Own network namespace (localhost is the sandbox's own loopback), pid/ipc/uts namespaces, a new
+    session, and (when ``env`` is given) a cleared environment."""
+    argv = [str(sb.get("bwrap", "bwrap")), "--die-with-parent", "--new-session", "--unshare-net", "--unshare-ipc",
+            "--unshare-pid", "--unshare-uts"]
+    if env is not None:
+        argv.append("--clearenv")
+        for k in sorted(env):
+            argv += ["--setenv", k, str(env[k])]
+    argv += ["--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp", "--tmpfs", "/run"]
+    seen: set[str] = set()
+    for p in sb.get("system_ro") or DEFAULT_SYSTEM_RO:
+        kind = probe(str(p))
+        if kind and kind.startswith("link:"):
+            argv += ["--symlink", kind[5:], str(p)]
+        elif kind:
+            argv += ["--ro-bind", str(p), str(p)]
+        seen.add(str(p))
+    for p in ro:
+        p = str(p)
+        if p and p not in seen and probe(p):
+            argv += ["--ro-bind", p, p]
+            seen.add(p)
+    for p in masks:
+        kind = probe(str(p))
+        if kind == "dir":
+            argv += ["--tmpfs", str(p)]
+        elif kind:
+            argv += ["--ro-bind", "/dev/null", str(p)]
+    for p in rw:
+        argv += ["--bind", str(p), str(p)]
+    for src, dst, rw_ in binds:
+        argv += ["--bind" if rw_ else "--ro-bind", src, dst]
+    if chdir:
+        argv += ["--chdir", str(chdir)]
+    return argv
+
+
+def agent_sandbox_prefix(cfg: Mapping[str, Any], *, home: str, repo_root: str, python_root: str,
+                         extra_ro: Iterable[str], fix_wt: str, agent_home: str, scratch: str,
+                         auth_binds: Iterable[tuple[str, str, bool]], env: Mapping[str, str],
+                         probe: Probe) -> list[str]:
+    """bwrap argv prefix for the Claude Code process ITSELF (review finding 2), not only its tests. Read-only: the
+    system dirs, the repo's git database (``{repo_root}/.git``: history for git diff/log/show; the operator's working
+    tree is NOT bound), the python venv, the CLI binary and the harness bin dir. Read-write ONLY: the candidate
+    worktree, a throwaway HOME and the scratch state. The one credential is ``auth_binds``. The network is the egress
+    bridge only. [] when ``agent_sandbox.enabled`` is false."""
+    asb = cfg.get("agent_sandbox") or {}
+    if not asb.get("enabled"):
+        return []
+    sb = {**asb, "bwrap": asb.get("bwrap") or (cfg.get("sandbox") or {}).get("bwrap", "bwrap")}
+
+    def sub(raw: Any) -> str:
+        return str(raw).replace("{home}", home).replace("{repo_root}", repo_root)
+
+    return allowlist_prefix(sb, ro=[f"{repo_root}/.git", python_root, *[sub(x) for x in extra_ro]],
+                            rw=[fix_wt, agent_home, scratch], binds=auth_binds,
+                            masks=[sub(x) for x in asb.get("mask_paths") or []], env=env, probe=probe, chdir=fix_wt)
+
+
+def eval_sandbox_prefix(cfg: Mapping[str, Any], *, repo_root: str, python_root: str, checkout: str, scratch: str,
+                        env: Mapping[str, str], probe: Probe, extra_ro: Iterable[str] = ()) -> list[str]:
+    """bwrap argv prefix for every HARNESS test run (red-first, targeted, CI) of a candidate (review finding 1). The
+    checkout and its own .git are READ-ONLY (so are the shared objects it borrows); only the scratch state is
+    writable; no network. [] when ``sandbox.enabled`` is false (then the before/after digest still catches writes)."""
+    sb = cfg.get("sandbox") or {}
+    if not sb.get("enabled"):
+        return []
+    return allowlist_prefix(sb, ro=[f"{repo_root}/.git", python_root, *extra_ro, checkout], rw=[scratch], env=env,
+                            probe=probe, chdir=checkout)
+
+
+def model_pytest_wrapper(*, python: str, env: Mapping[str, str], sandbox: list[str]) -> str:
+    """The model's ONLY test command. Inside the agent sandbox (``sandbox`` empty) it runs pytest with a cleared env
+    (no proxy, no auth, no CLAUDE_CONFIG_DIR): test code inherits nothing of the agent's. Without the agent sandbox
+    (test configs only) it runs pytest under the host-view test sandbox ``sandbox``."""
+    import shlex
+
+    env_args = ["/usr/bin/env", "-i", *[f"{k}={v}" for k, v in sorted(env.items())]]
+    return "#!/bin/sh\nexec " + shlex.join([*env_args, *sandbox, python, "-m", "pytest", "-p", "no:cacheprovider"]) \
+        + ' "$@"\n'
+
+
+# ---------------------------------------------------------------- output contract (review finding 4)
+#: n8n_output_verdict verdicts that mean "the lane's declared output was produced" (same as lib/n8n_self_heal).
+OUTPUT_MET = frozenset({"produced", "empty_allowed"})
+
+
+def receipt_meets_output_contract(row: Mapping[str, Any], since: Optional[datetime]) -> Optional[str]:
+    """None when one ledger row (state, exit_code, finished_at, receipt) proves the lane's output contract after
+    ``since``, else why not. Conservative: a LIVE RUN_DONE, exit 0, whose EFFECTIVE mode is live (the stage clamp did
+    not downgrade it), finished after ``since``, with output_verdict produced / empty_allowed. A newer file mtime or
+    JSON timestamp alone never counts."""
+    rec = row.get("receipt") if isinstance(row.get("receipt"), Mapping) else {}
+    if since is None:
+        return "no_since"
+    fin = _parse(row.get("finished_at") or rec.get("finished_at"))
+    if not fin or fin <= since:
+        return "not_after_since"
+    if (row.get("state") or rec.get("state")) != "RUN_DONE":
+        return "not_run_done"
+    ec = row.get("exit_code") if row.get("exit_code") is not None else rec.get("exit_code")
+    if ec not in (0, "0"):
+        return "nonzero_or_unknown_exit"
+    clamp = rec.get("stage_clamp") if isinstance(rec.get("stage_clamp"), Mapping) else {}
+    if rec.get("mode") != "live" or (row.get("mode") not in (None, "live")) or \
+            (clamp and clamp.get("effective_mode") != "live"):
+        return "effective_mode_not_live"
+    ov = rec.get("output_verdict") if isinstance(rec.get("output_verdict"), Mapping) else {}
+    if str(ov.get("verdict") or "") not in OUTPUT_MET:
+        return f"output_verdict:{ov.get('verdict') or 'absent'}"
+    return None
+
+
+# ---------------------------------------------------------------- secrets in a diff (the repo is PUBLIC)
+_SECRET_LITERAL = re.compile(
+    r"(sk-ant-[A-Za-z0-9_-]{8,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|"
+    r"xox[abprs]-[A-Za-z0-9-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|\"(?:accessToken|refreshToken)\"\s*:)")
+_OPAQUE = re.compile(r"[A-Za-z0-9+/_-]{48,}={0,2}")
+
+
+def secret_like(line: str) -> Optional[str]:
+    """A credential-shaped literal in an added line, else None. The agent can see its own auth inside its sandbox,
+    so the diff (which goes to a PUBLIC repo) is scanned by code before anything is committed or pushed."""
+    m = _SECRET_LITERAL.search(line or "")
+    if m:
+        return m.group(1)[:12]
+    for tok in _OPAQUE.findall(line or ""):
+        if re.fullmatch(r"[0-9a-fA-F]+", tok) or "_" in tok.strip("_") and tok.lower() == tok:
+            continue
+        if re.search(r"[A-Z]", tok) and re.search(r"[a-z]", tok) and re.search(r"[0-9]", tok):
+            return tok[:8]
+    return None
 
 
 def parse_claude_result(stdout: str) -> dict:
@@ -617,6 +808,9 @@ def guard_diff(*, name_status: str, numstat: str, unified: str, base_ci_text: st
         if status == "D" and test_re.match(p):
             out.append({"hard": True, "code": "test_deleted", "path": p})
     for p, body in files.items():
+        leak = next((h for h in (secret_like(s) for s in body["added"]) if h), None)
+        if leak:
+            out.append({"hard": True, "code": "secret_in_diff", "path": p, "prefix": leak[:4] + "..."})
         if test_re.match(p):
             if any(weak_re.search(s) for s in body["added"]):
                 out.append({"hard": True, "code": "test_weakened:skip_or_xfail", "path": p})
@@ -741,8 +935,11 @@ def pr_body(job: Mapping[str, Any], evidence: Mapping[str, Any]) -> str:
         "### Iterations\n\n| k | diff | red on base | tests+CI | failing | cost | time |\n|---|---|---|---|---|---|---|\n"
         f"{rows}\n\n"
         "### Checks enforced by the harness (code, not the model)\n"
+        "- every check below judged ONE immutable commit (this PR head, sha + tree) in fresh read-only checkouts "
+        "whose files and .git were digested before and after each run; the PR head was verified to be that commit\n"
         "- regression test fails on the base commit and passes with the fix\n"
-        "- targeted tests + `run_cio_hardening_ci.py --profile pr` green in the worktree\n"
+        "- targeted tests + `run_cio_hardening_ci.py --profile pr` green on the candidate commit\n"
+        "- the agent ran in an allowlist bwrap sandbox (writes only to its worktree; egress only to the model API)\n"
         "- diff guard: no AGENTS/guard/CI-gate/allowlist/broker/credential/cron/systemd path; no test deleted, "
         "skipped or weakened; CI registration append-only\n\n"
         "Review, merge and release through the normal path. Never auto-merged.\n")
