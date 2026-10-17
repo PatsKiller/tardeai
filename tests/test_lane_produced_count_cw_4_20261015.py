@@ -320,6 +320,22 @@ def test_instrument_belief_writer(monkeypatch, tmp_path, written, expect):
     H.check(tmp_path, "instrument-belief-writer", run_id, produced=written, expect=expect)
 
 
+def test_instrument_belief_writer_real_groups_breakdown_dict(monkeypatch, tmp_path):
+    """The production updater reports groups as a breakdown dict, not an int (2026-10-16 18:50 ET live n8n run:
+    int(dict) raised in lane_output AFTER the writes landed). attempted = beliefs_computed."""
+    import write_instrument_beliefs as m
+
+    real = {"settled_rows": 228, "groups": {"group_unqualified": 9, "beliefs_computed": 17},
+            "written_beliefs": 11, "would_write_beliefs": 11, "noop": 15, "refused": 0, "subjects_written": 11,
+            "skipped": 0, "store": "x"}
+    run_id = H.attempt_env(monkeypatch, tmp_path, "instrument-belief-writer")
+    monkeypatch.setattr(m, "update_beliefs_from_settled", lambda root, wake_root, apply: real)
+    assert m.main(["--apply", "--root", str(tmp_path / "state"), "--wake-root", str(tmp_path / "wake")]) == 0
+    H.check(tmp_path, "instrument-belief-writer", run_id, produced=11, expect="produced")
+    out = m.lane_output(real)
+    assert out["attempted_count"] == 17 and out["produced_count"] == 11
+
+
 def test_instrument_belief_writer_crash_is_a_fatal_skip(monkeypatch, tmp_path):
     import write_instrument_beliefs as m
 

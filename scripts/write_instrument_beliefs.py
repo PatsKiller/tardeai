@@ -98,7 +98,11 @@ def main(argv: list[str] | None = None) -> int:
 def lane_output(counts: dict) -> dict:
     """LaneRunReceipt@v2 output fields (n8n expected_output, unit: InstrumentRecord beliefs written). attempted =
     belief groups built from settled rows; a group that changes nothing is ``noop``; no settled row = ``no_new_input``."""
-    written, groups = int(counts.get("written_beliefs") or 0), int(counts.get("groups") or 0)
+    written = int(counts.get("written_beliefs") or 0)
+    raw_groups = counts.get("groups") or 0
+    # _execute records groups as a breakdown dict ({"beliefs_computed": n, "group_unqualified": m}); the attempted unit
+    # is the belief groups actually computed (2026-10-16: int(dict) crashed the receipt after the writes landed).
+    groups = int(raw_groups.get("beliefs_computed") or 0) if isinstance(raw_groups, dict) else int(raw_groups)
     return {"produced_count": written, "attempted_count": max(groups, written),
             "skipped_reasons": {"noop": int(counts.get("noop") or 0), "refused": int(counts.get("refused") or 0)},
             "empty_reason": "no_new_input" if written == 0 else None}
