@@ -15671,6 +15671,55 @@
       "note": "Fired only by the process workflow tradeai-fabric-hermes-learning through Run Lane (process_step autonomous_self_tune); no dispatch block, so the generic dispatcher never emits it. Class learn (AGENTS.md §23.18). Its RETIRED cron-era row (superseded by hermes-learning-pipeline-tune) is unchanged. The LEARN half only (--learn: auto-graft; the purge helpers refuse in that mode). Output is event-driven: an audit row exists only when a graft clears its persistence and drift gates, so the RunReceipt is the per-run evidence. The purge half (--purge) stays on host cron as destructive retention."
     },
     {
+      "lane_id": "hermes-discovery-yield-on-learning",
+      "owner": "learning",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/hermes_discovery_yield_builder.py --learning-watermark event",
+        "cadence": "20 2 * * *",
+        "stage": "shadow",
+        "wave": "W5"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "state_since": "2026-10-16",
+      "state_reason": "n8n process consolidation cohort 2 (2026-10-16, operator approval of explicit n8n flows; packet docs/ops/packets/n8n-process-consolidation-cohort2-20261016/): the EVENT trigger of consumer hermes-discovery-yield-builder. It fires on the VERIFIED completion of Hermes outcome learning (registry run_done trigger on hermes-learning-outcome-learning with require_verdict produced/empty_allowed, cohort-1 path: event router -> gateway run -> executor) instead of the overnight clock, which read learning output ~15-17 h old. SHADOW: dispatch mode dry_run, allowlist live_arg null; an event fire runs the script's --dry-run with --learning-watermark event (reports the decision, records nothing). The real work stays the hermes_overnight night stage step discovery_yield_builder (02:20 ET), now the watermark-aware clock fallback (config/learning_watermark.json).",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "scripts/lib/learning_watermark.py (reader + decide + record); config/learning_watermark.json; scripts/hermes_discovery_yield_builder.py --learning-watermark; tests/test_n8n_consolidation_cohort2_20261016.py; scripts/report_learning_watermark.py (measured input age at consumption).",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/hermes-discovery-yield-builder_last.json",
+        "key": "ok_at"
+      },
+      "value_class": "Operationally Important",
+      "recommendation": "EVENT_DRIVEN",
+      "severity": "Medium",
+      "note": "Event-trigger row for hermes-discovery-yield-builder (RETIRED row, superseded by hermes-overnight-pipeline-night, unchanged). output_signal is the consumer's own LaneRunReceipt: coordination/due's event watermark (its started_at) is the consumer's last real run whichever trigger ran it, so the event cannot re-fire on learning the clock already consumed. Inert until hermes-learning-outcome-learning writes a verified RUN_DONE on the ledger (the tradeai-fabric-hermes-learning process running on n8n); until then the watermark-aware clock fallback consumes the cron-runner learning. Class learn (AGENTS §23.18).",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "20 2 * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W5",
+        "class": "learn",
+        "priority": 5,
+        "retry_policy": "none",
+        "min_interval_s": 3600,
+        "triggers": [
+          {
+            "source": "run_done",
+            "lane_id": "hermes-learning-outcome-learning",
+            "require_verdict": [
+              "produced",
+              "empty_allowed"
+            ]
+          }
+        ]
+      }
+    },
+    {
       "lane_id": "agent-intelligence-cron-deep",
       "owner": "agents",
       "scheduler": {

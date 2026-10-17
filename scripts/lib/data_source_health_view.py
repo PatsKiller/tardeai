@@ -78,6 +78,14 @@ DEFAULT_WINDOW_MINUTES = 24 * 60
 HEALTHY = "healthy"
 ERROR = "error"
 UNKNOWN = "unknown"
+#: 2026-10-16: no caller can reach the provider (every owner job disabled or premium-only). Listed
+#: with the reason; never alerted, never "failing".
+IDLE = "idle"
+#: The latest failure is the provider's "This is a premium endpoint" notice: the plan lacks the
+#: function. Listed with the reason; not a failure of a free function, so not alerted.
+PREMIUM_UNAVAILABLE = "premium_endpoint_unavailable"
+#: Effective states that are explained, not outages: excluded from the alert set.
+NOT_ALERTED = frozenset({IDLE, PREMIUM_UNAVAILABLE})
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 REGISTRY_PATH = PROJECT_ROOT / "config" / "data_source_authority.json"
@@ -102,9 +110,10 @@ SCHEDULED_CALLERS: dict[str, list[dict[str, str]]] = {
     "fred": [
         {"script": "scripts/fred_data_ingest.py --ingest", "cron": "15 6 * * *"},
     ],
-    "alpha_vantage": [
-        {"script": "scripts/external_market_data_ingest.py --fundamentals", "cron": "0 8 * * 1"},
-    ],
+    # alpha_vantage: no scheduled caller since 2026-10-16. The Monday --fundamentals lane reads stored
+    # Finviz now (operator "Switch to Finviz") and scalp_float reads Finviz float (option A). When an
+    # owner job is scheduled, list it here with "owner_job": "<job in config/alpha_vantage_owner.json>";
+    # a caller whose job the owner can never send (disabled, premium) is not active (active_caller_state).
     "brave_search": [
         {"script": "scripts/aegis_transcript_discovery.py", "cron": "0 9 * * 1-5"},
         {"script": "scripts/aegis_social_sentiment.py", "cron": "0 11,15 * * 1-5"},
@@ -144,6 +153,49 @@ SCHEDULED_CALLERS: dict[str, list[dict[str, str]]] = {
 
 def has_scheduled_caller(source_key: str) -> bool:
     return bool(SCHEDULED_CALLERS.get(str(source_key or "")))
+
+
+def _owner_job_callable(source_key: str) -> Optional[Any]:
+    """``job -> (callable, why)`` for a provider whose calls go through an owner with jobs; None
+    when the provider has no such owner (then every scheduled caller counts as active)."""
+    if provider_for(source_key) != "alpha_vantage":
+        return None
+    try:
+        from lib.alpha_vantage_owner import job_callable, load_config  # noqa: PLC0415
+        cfg = load_config()
+    except Exception:  # noqa: BLE001 — cannot tell: treat callers as active (the stricter reading)
+        return None
+    return lambda job: job_callable(cfg, job)
+
+
+def active_caller_state(source_key: str) -> dict[str, Any]:
+    """{"active": [script, ...], "inactive": {script: why}} over the scheduled callers.
+
+    2026-10-16: data_source_health showed "alpha_vantage failing: last success 164h ago" although
+    no caller could reach it — the Monday --fundamentals lane spends OVERVIEW (premium on this key)
+    and scalp_float was switched to Finviz. A caller whose owner job is disabled or premium-only is
+    not active; a source with scheduled callers but no active one is IDLE, not failing.
+    """
+    callers = SCHEDULED_CALLERS.get(str(source_key or "")) or []
+    check = _owner_job_callable(source_key)
+    active: list[str] = []
+    inactive: dict[str, str] = {}
+    for c in callers:
+        job = c.get("owner_job")
+        if check is None or not job:
+            active.append(c["script"])
+            continue
+        ok, why = check(job)
+        if ok:
+            active.append(c["script"])
+        else:
+            inactive[c["script"]] = why
+    return {"active": active, "inactive": inactive}
+
+
+def _is_premium_error(text: Any) -> bool:
+    low = str(text or "").lower()
+    return "premium endpoint" in low or PREMIUM_UNAVAILABLE in low
 
 
 def _cron_dow_is_weekdays_only(cron: str) -> bool:
@@ -342,6 +394,23 @@ def view_row(row: dict[str, Any], now: datetime, registry: Optional[dict[str, An
     eff = effective_status(row, now, win, weekday_only=wk)
     raw = str(row.get("status") or UNKNOWN)
     age = age_minutes(row, now)
+    scheduled = has_scheduled_caller(key)
+    idle_reason = None
+    # A real failure (any error that is not the premium-endpoint notice) always stays ERROR.
+    premium = eff == ERROR and _is_premium_error(row.get("last_error"))
+    if eff == UNKNOWN or premium:
+        callers = active_caller_state(key) if _owner_job_callable(key) is not None else None
+        if callers is not None and not callers["active"]:
+            # Nothing can call it: idle, not failing.
+            why = "; ".join(sorted(set(callers["inactive"].values()))) or "no scheduled caller"
+            idle_reason = f"no active callers ({why})"
+            if premium:
+                idle_reason += "; last failure was the provider's premium-endpoint notice"
+            eff, scheduled = IDLE, False
+        elif premium:
+            idle_reason = ("latest failure is the provider's premium-endpoint notice: the plan lacks "
+                           "that function; not a failure of a free function")
+            eff = PREMIUM_UNAVAILABLE
     out = dict(row)
     out.update(
         {
@@ -354,7 +423,8 @@ def view_row(row: dict[str, Any], now: datetime, registry: Optional[dict[str, An
             "window_minutes": win,
             "weekday_clock": wk,
             "market_closed": closed,
-            "scheduled_caller": has_scheduled_caller(key),
+            "scheduled_caller": scheduled,
+            "idle_reason": idle_reason,
         }
     )
     return out
@@ -367,4 +437,5 @@ def view_rows(rows: list[dict[str, Any]], now: datetime,
 
 def not_healthy_with_scheduled_caller(viewed: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """The alert set: sources something is supposed to feed, that are not healthy."""
-    return [r for r in viewed if r.get("status") != HEALTHY and r.get("scheduled_caller")]
+    return [r for r in viewed if r.get("status") != HEALTHY and r.get("status") not in NOT_ALERTED
+            and r.get("scheduled_caller")]

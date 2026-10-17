@@ -61,11 +61,24 @@ def _registry(tmp_path, supplies=("fundamentals",)):
     return p
 
 
+def _mechanics_cfg():
+    """The committed config with ``premium_functions`` emptied. Since 2026-10-16 the owner refuses
+    OVERVIEW up front (premium on this key); the budget/spacing/receipt mechanics below are still
+    exercised through the fundamentals_overview job as if OVERVIEW were a free function. The premium
+    refusal itself is tested in tests/test_scalp_float_finviz_broker_20261016.py."""
+    c = copy.deepcopy(CFG)
+    c["premium_functions"] = {}
+    # 2026-10-16: fundamentals_overview is disabled (0) in the committed config; the mechanics need a job
+    # with room, so this copy restores its former 5/day.
+    c["jobs"]["fundamentals_overview"].update(daily_allotment=5, **{"class": "scheduled_lane"})
+    return c
+
+
 def _owner(tmp_path, *, http=None, supplies=("fundamentals", "news_sentiment", "earnings_calendar"),
            clock=None, cfg=None, dry_run=False, key=KEY, sleeps=None, **kw):
     reports = kw.pop("reports", [])
     return avo.AlphaVantageOwner(
-        config=cfg or copy.deepcopy(CFG), state=tmp_path / "av", http=http or Http(),
+        config=cfg or _mechanics_cfg(), state=tmp_path / "av", http=http or Http(),
         key_loader=lambda: key, clock=clock or Clock(), sleeper=(sleeps.append if sleeps is not None else (lambda s: None)),
         registry_path=_registry(tmp_path, supplies), dry_run=dry_run,
         report=lambda *a, **k: reports.append((a, k)), **kw)
@@ -91,7 +104,7 @@ def test_committed_config_holds_every_budget_invariant():
 @pytest.mark.parametrize("mut", [
     lambda c: c["budget"].update(hard_daily_cap=24),
     lambda c: c["budget"].update(min_spacing_s=5),
-    lambda c: c["jobs"]["news_sentiment_window"].update(daily_allotment=20),
+    lambda c: c["jobs"]["news_sentiment_window"].update(daily_allotment=30),  # sum > 23 (16 committed since 2026-10-16)
     lambda c: c.update(schema="x"),
 ])
 def test_config_that_breaks_an_invariant_is_refused(mut):
@@ -116,7 +129,8 @@ def test_scope_not_granted_is_refused_up_front(tmp_path):
 
 def test_the_committed_registry_carries_the_operator_grant():
     # Operator 2026-10-10 ~18:40 ET, "Yes, from one to six": proposal rows A1-A3, B1, B2 applied; N1 not.
-    assert avo.granted_domains() == {"fundamentals", "earnings_calendar", "news_sentiment", "news_feed", "earnings"}
+    # Narrowed operator 2026-10-16 ("yes, narrow the AV row"): fundamentals (OVERVIEW, premium) removed.
+    assert avo.granted_domains() == {"earnings_calendar", "news_sentiment", "news_feed", "earnings"}
     assert json.loads((ROOT / "config" / "data_source_authority.json").read_text())["providers"]["alpha_vantage"]["health_window_hours"] == 192
     reg = json.loads((ROOT / "config" / "data_source_authority.json").read_text())
     av = reg["providers"]["alpha_vantage"]
@@ -193,7 +207,7 @@ def test_spacing_waits_for_the_slot_and_refuses_beyond_max_wait(tmp_path):
     clock.t += timedelta(seconds=2)
     assert o.request("fundamentals_overview", {"symbol": "B"}).ok
     assert sleeps and abs(sleeps[0] - 10.0) < 0.01
-    cfg = copy.deepcopy(CFG)
+    cfg = _mechanics_cfg()
     cfg["budget"]["max_wait_s"] = 5
     o2 = _owner(tmp_path, http=Http(), clock=Clock(clock.t + timedelta(seconds=1)), cfg=cfg)
     assert o2.request("fundamentals_overview", {"symbol": "C"}).outcome == "refused_spacing_wait_exceeded"
@@ -231,7 +245,8 @@ def test_network_error_is_counted_and_the_key_is_scrubbed(tmp_path):
     (200, json.dumps({"Information": "Please consider spreading out your free API requests (1 request per second)"}), "burst_notice"),
     (200, json.dumps({"Information": "The **demo** API key is for demo purposes only. Please claim your free API key"}), "key_rejected"),
     (200, json.dumps({"Error Message": "the parameter apikey is invalid or missing"}), "key_rejected"),
-    (200, json.dumps({"Information": "This is a premium endpoint."}), "information_notice"),
+    (200, json.dumps({"Information": "This is a premium endpoint."}), "premium_endpoint_unavailable"),
+    (200, json.dumps({"Information": "Some other informational notice."}), "information_notice"),
     (200, QUOTA[1], "quota_notice"),
     (200, "{}", "empty"),
     (503, "", "http_error"),
@@ -248,9 +263,12 @@ def test_dry_run_sends_nothing_and_creates_nothing(tmp_path):
         raise AssertionError("dry run sent a request")
     o = avo.AlphaVantageOwner(config=copy.deepcopy(CFG), state=tmp_path / "av", http=boom, key_loader=lambda: KEY,
                               clock=Clock(), dry_run=True, scope_override={"fundamentals", "news_sentiment", "earnings_calendar"})
-    for name in ("earnings_calendar", "news_sentiment_window", "fundamentals_overview"):
+    for name in ("earnings_calendar", "news_sentiment_window"):
         r = o.request(name, {})
         assert r.outcome == "dry_run_would_call" and not r.counted
+    # OVERVIEW is premium on this key (2026-10-16): refused before the dry-run decision.
+    r = o.request("fundamentals_overview", {})
+    assert r.outcome == "premium_endpoint_unavailable" and not r.counted
     assert o.requests_sent == 0 and not (tmp_path / "av").exists()
 
 
@@ -445,9 +463,10 @@ def test_overview_callers_go_through_the_owner(monkeypatch):
     monkeypatch.setattr(avo, "AlphaVantageOwner", FakeOwner)
     data = emdi._av_overview("AAA", "ignored")
     assert "Symbol" not in data and "refused_job_allotment_spent" in data["Information"]
+    # 2026-10-16 (operator option A): scalp_float_lookup no longer calls Alpha Vantage at all.
     import scalp_float_lookup as sfl
-    assert sfl.alpha_vantage_float("BBB") is None
-    assert seen == [("fundamentals_overview", {"symbol": "AAA"}), ("scalp_float", {"symbol": "BBB"})]
+    assert not hasattr(sfl, "alpha_vantage_float")
+    assert seen == [("fundamentals_overview", {"symbol": "AAA"})]
 
 
 def test_key_checks_use_the_owner_last_success_and_spend_nothing(monkeypatch, tmp_path):

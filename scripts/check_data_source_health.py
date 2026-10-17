@@ -58,6 +58,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 from lib.data_source_health_view import (  # noqa: E402
     HEALTHY,
+    NOT_ALERTED,
     SCHEDULED_CALLERS,
     load_registry,
     not_healthy_with_scheduled_caller,
@@ -142,6 +143,13 @@ def classify(rows: list[dict], now: datetime, registry: dict) -> tuple[list[dict
     return viewed, not_healthy_with_scheduled_caller(viewed)
 
 
+def idle_rows(viewed: list[dict]) -> list[dict]:
+    """Listed, not alerted: not healthy with no (active) scheduled caller, or an explained state
+    (idle / premium_endpoint_unavailable)."""
+    return [r for r in viewed if r.get("status") != HEALTHY
+            and (not r.get("scheduled_caller") or r.get("status") in NOT_ALERTED)]
+
+
 def _describe(r: dict) -> str:
     age = r.get("age_minutes")
     win_h = float(r.get("window_minutes") or 0) / 60.0
@@ -150,6 +158,9 @@ def _describe(r: dict) -> str:
     else:
         when = f"last success {age / 60.0:.1f}h ago (window {win_h:.0f}h)"
     bits = [when]
+    if r.get("status") in NOT_ALERTED and r.get("idle_reason"):
+        # 2026-10-16: idle / premium_endpoint_unavailable carry their reason first, never "failing".
+        bits.insert(0, f"{r['status']}: {r['idle_reason']}")
     if r.get("decayed"):
         bits.append("table still says healthy")
     if r.get("status") != HEALTHY and r.get("last_error"):
@@ -219,7 +230,7 @@ def main() -> int:
 
     now = datetime.now(timezone.utc)
     viewed, off = classify(rows, now, registry)
-    idle = [r for r in viewed if r.get("status") != HEALTHY and not r.get("scheduled_caller")]
+    idle = idle_rows(viewed)
 
     if args.json:
         print(json.dumps({"schema": SCHEMA, "as_of": now.isoformat(), "checked": len(viewed),
@@ -252,6 +263,8 @@ def main() -> int:
 
     _write_run_receipt(len(viewed), len(off), {
         "off_items": [f"{r['status']}:{r['source_key']}" for r in off],
+        "idle_items": [f"{r['status']}:{r['source_key']}" + (f" ({r['idle_reason']})" if r.get("idle_reason") else "")
+                       for r in idle if r.get("status") in NOT_ALERTED],
         "decayed": [r["source_key"] for r in viewed if r.get("decayed")],
     })
 

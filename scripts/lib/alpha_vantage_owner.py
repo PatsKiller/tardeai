@@ -14,6 +14,10 @@ This module is the only code that sends an HTTP request to Alpha Vantage. Every 
 *job* from ``config/alpha_vantage_owner.json``; the owner decides, in this order:
 
   1. the job exists and the function is the job's own;
+  1a. the function is not in ``premium_functions`` (2026-10-16: OVERVIEW answered "This is a
+     premium endpoint" on every one of 10 calls 10-12..10-16) — otherwise
+     ``premium_endpoint_unavailable``, up front, no request, not counted, not reported as a
+     provider failure;
   2. the job's registry domain is in ``providers.alpha_vantage.supplies`` of
      ``config/data_source_authority.json`` (the operator's grant; AGENTS.md §7A rule 7) —
      otherwise ``refused_scope_not_granted``, up front, no request;
@@ -61,6 +65,9 @@ CONFIG_SCHEMA = "AlphaVantageOwnerConfig@v1"
 MAX_HARD_CAP = 23
 #: 5 requests/minute.
 MIN_SPACING_S = 12.0
+#: Outcome for a function this key's plan does not include: refused up front (config
+#: ``premium_functions``) or classified from the provider's "This is a premium endpoint" notice.
+PREMIUM_UNAVAILABLE = "premium_endpoint_unavailable"
 #: Ledger day keys kept (older ones are dropped from the live ledger; receipts keep history).
 LEDGER_DAYS_KEPT = 7
 
@@ -104,6 +111,41 @@ def validate_config(cfg: dict[str, Any]) -> None:
         raise OwnerConfigError(f"allotments sum {total} > hard_daily_cap {cap}")
 
 
+def premium_functions(cfg: dict[str, Any]) -> dict[str, Any]:
+    """{FUNCTION: evidence} the key's plan does not include. Requests for these are refused up front."""
+    raw = cfg.get("premium_functions") or {}
+    if isinstance(raw, list):
+        return {str(f).upper(): {} for f in raw}
+    return {str(f).upper(): (v or {}) for f, v in raw.items() if not str(f).startswith("_")}
+
+
+def job_callable(cfg: dict[str, Any], job: str) -> tuple[bool, str]:
+    """(can this job reach the provider at all, why not). Pure: config only, no ledger, no key.
+
+    Used by the data-source health view to tell "nothing is calling Alpha Vantage" (idle) from
+    "a caller is failing". Not callable: unknown job, disabled class, zero allotment, or a
+    premium function.
+    """
+    spec = (cfg.get("jobs") or {}).get(job)
+    if spec is None:
+        return False, f"job {job} not in config/alpha_vantage_owner.json"
+    fn = str(spec.get("function") or "").upper()
+    if fn in premium_functions(cfg):
+        return False, f"{job}: {fn} is a premium endpoint ({PREMIUM_UNAVAILABLE})"
+    if spec.get("class") == "disabled" or int(spec.get("daily_allotment") or 0) <= 0:
+        return False, f"{job}: disabled (daily_allotment {int(spec.get('daily_allotment') or 0)})"
+    return True, ""
+
+
+def active_jobs(cfg: dict[str, Any]) -> list[str]:
+    return [j for j in (cfg.get("jobs") or {}) if job_callable(cfg, j)[0]]
+
+
+def is_premium_text(text: Any) -> bool:
+    low = str(text or "").lower()
+    return "premium endpoint" in low or PREMIUM_UNAVAILABLE in low
+
+
 # ── registry scope (the operator's grant) ────────────────────────────────────
 
 
@@ -141,8 +183,8 @@ def _iso(now: datetime) -> str:
 def classify(status_code: int, text: str) -> tuple[str, Any]:
     """(outcome, payload). Alpha Vantage answers limits and errors with HTTP 200.
 
-    outcome: ok | quota_notice | burst_notice | key_rejected | information_notice | error_message |
-             notice_in_csv | http_error | empty
+    outcome: ok | quota_notice | burst_notice | key_rejected | premium_endpoint_unavailable |
+             information_notice | error_message | notice_in_csv | http_error | empty
     """
     if status_code != 200:
         return "http_error", None
@@ -162,9 +204,14 @@ def classify(status_code: int, text: str) -> tuple[str, Any]:
                     return "burst_notice", data
                 if "api key" in low and ("invalid" in low or "claim your free" in low):
                     return "key_rejected", data
+                if is_premium_text(notice):
+                    # "Thank you for using Alpha Vantage! This is a premium endpoint. You may
+                    # subscribe to any of the premium plans ..." (10 of 10 OVERVIEW calls,
+                    # 2026-10-12..16): the plan lacks the function. Not the daily limit, not a key
+                    # problem, not a transient error — retrying can never succeed.
+                    return PREMIUM_UNAVAILABLE, data
                 if "per day" in low or "rate limit" in low or "requests per" in low:
                     return "quota_notice", data
-                # e.g. "This is a premium endpoint": a refusal, but not the daily limit.
                 return "information_notice", data
             if "Error Message" in data:
                 msg = str(data["Error Message"]).lower()
@@ -346,6 +393,14 @@ class AlphaVantageOwner:
             return res
         if fn != spec["function"]:
             res = OwnerResult(False, "refused_wrong_function", job, fn, detail=f"job {job} may call {spec['function']} only")
+            self._receipt(now, res)
+            return res
+        prem = premium_functions(self.cfg)
+        if fn.upper() in prem:
+            ev = prem[fn.upper()] or {}
+            res = OwnerResult(False, PREMIUM_UNAVAILABLE, job, fn,
+                              detail=(f"{fn} is a premium endpoint for this key (config premium_functions; "
+                                      f"{ev.get('evidence', 'no evidence recorded')})")[:300])
             self._receipt(now, res)
             return res
         if spec.get("class") == "disabled" or int(spec.get("daily_allotment") or 0) <= 0:

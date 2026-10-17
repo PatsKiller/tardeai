@@ -88,7 +88,8 @@ def test_config_carries_the_operator_rules():
     ms = CFG["min_stop"]
     assert ms["enabled"] and (ms["atr_mult"], ms["spread_mult"], ms["pct_of_price"]) == (1.0, 3.0, 0.01)
     fl = U["float_lookup"]
-    assert fl["enabled"] and fl["sources"][0] == "finviz" and fl["max_lookups_per_run"] > 0
+    # 2026-10-16 option A: Finviz float through the data broker only; no Alpha Vantage source left.
+    assert fl["enabled"] and fl["sources"] == ["finviz_broker"] and fl["finviz_max_age_hours"] > 0
 
 
 def test_unknown_float_fails_closed_and_each_exclusion_is_named():
@@ -136,35 +137,19 @@ def test_lookup_failure_leaves_symbols_excluded():
     assert kept == [] and excluded == {"ABCD": "float_unknown"}
 
 
-def test_float_lookup_is_bounded_cached_and_falls_back_to_alpha_vantage(tmp_path):
-    path = tmp_path / "cache.json"
-    calls = {"fv": [], "av": []}
+def test_float_lookup_reads_finviz_through_the_broker_and_never_alpha_vantage():
+    # Superseded 2026-10-16 (operator option A): no Finviz export, no AV fallback, no cache file.
+    seen = []
 
-    def fv(syms):
-        calls["fv"].append(list(syms))
-        return {"AAA": {"float_mm": 9.0, "price": 3.0}, "BBB": {"float_mm": None, "price": 4.0}}
-
-    def av(sym):
-        calls["av"].append(sym)
-        return 15.5 if sym == "BBB" else None
-    u = {**U, "float_lookup": {**U["float_lookup"], "max_lookups_per_run": 3, "av_max_lookups_per_run": 1}}
-    out = sfl.lookup_floats(["AAA", "BBB", "CCC", "DDD"], u, cache_path=path, finviz=fv, av=av, now=1000.0)
-    assert calls["fv"] == [["AAA", "BBB", "CCC"]]               # bounded to max_lookups_per_run
-    assert calls["av"] == ["BBB"]                               # AV budget 1
-    assert out == {"AAA": {"float_mm": 9.0, "price": 3.0, "source": "finviz"},
-                   "BBB": {"float_mm": 15.5, "price": 4.0, "source": "alpha_vantage"}}
-    cache = json.loads(path.read_text())
-    assert cache["CCC"]["float_mm"] is None                     # negative cached
-    # within TTL: nothing refetched for cached symbols; DDD (never looked up) is fetched now
-    calls["fv"].clear(); calls["av"].clear()
-    out2 = sfl.lookup_floats(["AAA", "BBB", "CCC", "DDD"], u, cache_path=path, finviz=lambda s: calls["fv"].append(list(s)) or {},
-                             av=lambda s: None, now=1000.0 + 3600)
-    assert calls["fv"] == [["DDD"]] and set(out2) == {"AAA", "BBB"}
-    # negative TTL expired → CCC retried; positive TTL still fresh
-    calls["fv"].clear()
-    sfl.lookup_floats(["AAA", "CCC"], u, cache_path=path, finviz=lambda s: calls["fv"].append(list(s)) or {},
-                      av=lambda s: None, now=1000.0 + (U["float_lookup"]["negative_ttl_hours"] + 1) * 3600)
-    assert calls["fv"] == [["CCC"]]
+    def broker(syms, *, max_age_hours, now):
+        seen.append((list(syms), max_age_hours))
+        return {"provider_calls": 0, "symbols": {
+            "AAA": {"record": {"float_m": 9.0}, "as_of": "2026-10-16T13:00:00+00:00", "age_hours": 1.0, "stale": False},
+            "BBB": {"record": {"float_m": 0.0}, "as_of": "2026-10-16T13:00:00+00:00", "age_hours": 1.0, "stale": False}}}
+    out = sfl.lookup_floats(["AAA", "BBB", "CCC"], U, broker=broker, now=1000.0)
+    assert seen == [(["AAA", "BBB", "CCC"], float(U["float_lookup"]["finviz_max_age_hours"]))]
+    assert set(out) == {"AAA"} and out["AAA"]["float_mm"] == 9.0 and out["AAA"]["source"] == "finviz"
+    assert not hasattr(sfl, "alpha_vantage_float") and not hasattr(sfl, "finviz_fetch")
 
 
 def test_zero_float_from_finviz_is_unknown():
