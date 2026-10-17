@@ -696,12 +696,13 @@ def test_registered_in_the_cio_hardening_gates():
 
 
 def test_committed_manual_slots_flag_is_the_one_day_bound():
-    # 2026-10-16 one-day manual-slots PR (operator-approved): on for 2026-10-16 ET only. The validator refuses a manual
-    # live minute at/after the bound even if no PR turns the flag off (MANUAL_LIVE_EXPIRED).
-    assert SPEC["live_manual_slots"] is True and SPEC["live_manual_slots_until"] == "2026-10-16T23:59:00-04:00"
-    day = datetime(2026, 10, 16, 12, 5, tzinfo=ET)
-    ok = PK.check_process_key(_key(GRADER, "live", "20261016T1201"), GRADER, "live", sources=SOURCES, now=day)
+    # 2026-10-17 one-day manual-slots PR (operator 2026-10-17 09:50 ET "execute now"): on until 16:30 ET 10-17, before
+    # the 17:00 tune fire. The validator refuses a manual live minute at/after the bound even if no PR turns the flag
+    # off (MANUAL_LIVE_EXPIRED).
+    assert SPEC["live_manual_slots"] is True and SPEC["live_manual_slots_until"] == "2026-10-17T16:30:00-04:00"
+    day = datetime(2026, 10, 17, 11, 30, tzinfo=ET)
+    ok = PK.check_process_key(_key(GRADER, "live", "20261017T1130"), GRADER, "live", sources=SOURCES, now=day)
     assert ok.ok and ok.slot_kind == "manual"
-    late = datetime(2026, 10, 16, 23, 59, 30, tzinfo=ET)
-    over = PK.check_process_key(_key(GRADER, "live", "20261016T2358"), GRADER, "live", sources=SOURCES, now=late)
+    late = datetime(2026, 10, 17, 16, 30, 30, tzinfo=ET)
+    over = PK.check_process_key(_key(GRADER, "live", "20261017T1629"), GRADER, "live", sources=SOURCES, now=late)
     assert not over.ok and over.state == "MANUAL_LIVE_EXPIRED"

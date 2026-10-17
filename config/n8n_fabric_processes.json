@@ -15,7 +15,7 @@
       },
       "mode": "live",
       "live_manual_slots": true,
-      "live_manual_slots_until": "2026-10-16T23:59:00-04:00",
+      "live_manual_slots_until": "2026-10-17T16:30:00-04:00",
       "input_version": "v1",
       "default_max_attempts": 1,
       "steps": {
