@@ -170,7 +170,7 @@ case "$STEP" in
     "$DOCKER_BIN" exec m8m-n8n-db psql -U n8n -d n8n -tA \
       -c "SELECT id||' active='||active::text||' updated='||\"updatedAt\"::text FROM workflow_entity WHERE id='$WID'" \
       2>/dev/null | sed 's/^/  n8n row: /' || true
-    ledger_report || true
+    ledger_report "$SINCE" || true
     echo "  served consumer --dry-run (mode=ro, writes nothing):"
     (cd "$SERVED" && TRADEAI_STATE_ROOT="$STATE" "$PY" scripts/n8n_comms_intent_consumer.py --dry-run --ledger "$LEDGER" \
       | "$PY" -c 'import json,sys
