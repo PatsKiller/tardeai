@@ -467,6 +467,12 @@ EXPECTED_INELIGIBLE: dict[str, str] = {
     "social-ingest-all": "sender or ingest writer _ingest",
     # SW4 (2026-10-11): same R1 rationale; pinned by tests/test_sw4_shadow_wave4_20261011.py.
     "aegis-nightly-ingestion": "sender or ingest writer _ingest",
+    # 2026-10-17 hermes feedback cutover: a fabric PROCESS step lane (no dispatch block; fired only by
+    # tradeai-fabric-hermes-learning through Run Lane). Its live_arg `--apply --notify queue` queues host comms intents
+    # and calls no sender (lane_dispatch.QUEUE_ONLY_NOTIFY_ARGV, admitted by the allowlist NEVER check only), but the
+    # generic dispatcher's model keeps refusing any notify argv: it is reported here, never relayed by the dispatcher,
+    # and the remediation catalogue (same sender list) keeps it suggest-only.
+    "hermes-learning-outcome-feedback-agent": "sender or ingest writer notify",
 }
 
 

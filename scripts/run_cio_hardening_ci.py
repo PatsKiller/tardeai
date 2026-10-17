@@ -64,6 +64,7 @@ GATES = [
     # expected_output, staged effect key); LaneRunReceipt@v2 produced / empty_allowed / fatal dependency_unavailable via
     # the real CLI; idempotent rerun; the operator packet against fake systemctl/docker/proc. Hermetic: tmp ledgers.
     ("comms_intent_consumer_live_20261017", ["tests/test_comms_intent_consumer_live_20261017.py"]),
+    ("hermes_feedback_cutover_20261017", ["tests/test_hermes_feedback_cutover_20261017.py"]),
     ("refactor_shard_07_20261011", ["tests/test_refactor_shard_07_20261011.py"]),
     # ANCHOR: LANE_CUTOVER_POLICY_20261016 — AGENTS 12.0.0 §23.25 gate alignment (operator approval 2026-10-16):
     # config/lane_cutover_policy.json lifts stay_on_cron / KEEP_ON_CRON / soft wrapper+sender tokens for approved
