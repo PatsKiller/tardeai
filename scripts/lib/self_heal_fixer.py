@@ -545,15 +545,15 @@ def agent_sandbox_prefix(cfg: Mapping[str, Any], *, home: str, repo_root: str, p
 
 
 def eval_sandbox_prefix(cfg: Mapping[str, Any], *, repo_root: str, python_root: str, checkout: str, scratch: str,
-                        env: Mapping[str, str], probe: Probe) -> list[str]:
+                        env: Mapping[str, str], probe: Probe, extra_ro: Iterable[str] = ()) -> list[str]:
     """bwrap argv prefix for every HARNESS test run (red-first, targeted, CI) of a candidate (review finding 1). The
     checkout and its own .git are READ-ONLY (so are the shared objects it borrows); only the scratch state is
     writable; no network. [] when ``sandbox.enabled`` is false (then the before/after digest still catches writes)."""
     sb = cfg.get("sandbox") or {}
     if not sb.get("enabled"):
         return []
-    return allowlist_prefix(sb, ro=[f"{repo_root}/.git", python_root, checkout], rw=[scratch], env=env, probe=probe,
-                            chdir=checkout)
+    return allowlist_prefix(sb, ro=[f"{repo_root}/.git", python_root, *extra_ro, checkout], rw=[scratch], env=env,
+                            probe=probe, chdir=checkout)
 
 
 def model_pytest_wrapper(*, python: str, env: Mapping[str, str], sandbox: list[str]) -> str:

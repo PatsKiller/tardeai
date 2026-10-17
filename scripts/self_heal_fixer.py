@@ -227,6 +227,11 @@ class Attempt:
         self.proxy_port: Optional[int] = None
         self.boundary: dict[str, Any] = {}
 
+    def python_install(self) -> list[str]:
+        """The interpreter's real install prefix (a venv's python is a symlink into it; on this host /usr, on a CI
+        runner e.g. /opt/hostedtoolcache/...), bound read-only so python starts inside an allowlist sandbox."""
+        return [str(Path(os.path.realpath(self.py)).parent.parent)]
+
     def _backend_bins(self) -> list[str]:
         b = (self.cfg.get("backends") or {}).get(self.backend) or {}
         if b.get("kind") == "cli_stdin":
@@ -262,7 +267,8 @@ class Attempt:
             bins = sorted({os.path.realpath(b) for b in self._backend_bins()})
             self.agent_prefix = F.agent_sandbox_prefix(
                 self.cfg, home=home, repo_root=str(self.repo), python_root=str(Path(self.py).parent.parent),
-                extra_ro=[*bins, str(self.bindir), str(self.egress_dir)], fix_wt=str(self.fix_wt),
+                extra_ro=[*self.python_install(), *bins, str(self.bindir), str(self.egress_dir)],
+                fix_wt=str(self.fix_wt),
                 agent_home=str(self.agent_home), scratch=str(self.scratch), auth_binds=binds, env=self.agent_env,
                 probe=_probe)
             wrapper_env = {k: v for k, v in self.env.items() if k not in ("HOME", "PATH", "TMPDIR")}
@@ -389,7 +395,8 @@ class Attempt:
         before = checkout_digest(co)
         eval_env = {**self.env, "HOME": str(self.scratch), "TMPDIR": "/tmp"}
         prefix = F.eval_sandbox_prefix(self.cfg, repo_root=str(self.repo), python_root=str(Path(self.py).parent.parent),
-                                       checkout=str(co), scratch=str(self.scratch), env=eval_env, probe=_probe)
+                                       checkout=str(co), scratch=str(self.scratch), env=eval_env, probe=_probe,
+                                       extra_ro=self.python_install())
         r = run([*prefix, *argv], cwd=co, env=eval_env if prefix else self.env, timeout=timeout)
         after = checkout_digest(co)
         head_after = git(co, "rev-parse", "HEAD")["out"].strip()
