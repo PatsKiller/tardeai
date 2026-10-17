@@ -217,9 +217,16 @@ def test_no_output_heal_needs_the_output_fresh_by_contract(env):
                 output_signal_mtime_after=2.0)
     stale = lambda *a: {"verdict": "LATE", "last_output_at": (NOW + timedelta(seconds=20)).isoformat()}  # noqa: E731
     (ev,) = _advance(env, _pending(RETRY_RUN, event_type="NO_OUTPUT", slot=SLOT), stale)
-    assert ev["heal_state"] == H.ATTEMPT_EXECUTED and "output_not_fresh_by_contract" in ev["outcome"]
+    assert ev["heal_state"] == H.ATTEMPT_EXECUTED and "output_not_produced_by_contract" in ev["outcome"]
     fresh = lambda *a: {"verdict": "FRESH", "last_output_at": (NOW + timedelta(seconds=20)).isoformat()}  # noqa: E731
+    # finding 1 (architect review 2026-10-16): a FRESH shared file alone no longer resolves an output breach
     (ev,) = _advance(env, _pending(RETRY_RUN, event_type="NO_OUTPUT", slot=SLOT), fresh)
+    assert ev["heal_state"] == H.ATTEMPT_EXECUTED and "output_not_produced_by_contract" in ev["outcome"]
+
+
+def test_no_output_heal_resolves_on_a_live_receipt_that_produced_its_contracted_output(env):
+    _ledger_run(env["ledger"], RETRY_RUN, "RUN_DONE", parent=PARENT, output_verdict={"verdict": "produced"})
+    (ev,) = _advance(env, _pending(RETRY_RUN, event_type="NO_OUTPUT", slot=SLOT))
     assert ev["heal_state"] == H.INCIDENT_RESOLVED and ev["resolve"] is True
 
 

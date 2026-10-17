@@ -4002,6 +4002,20 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: ARCH_REVIEW_RECOVERY_OWNERSHIP_20261016 — architect review of main 26fd0518: (F1) ONE recovery
+        # validator (scripts/lib/recovery_validator.py) for lock-skip cover, self/output recovery in the diagnoser and
+        # the fixer: EFFECTIVE mode from the receipt (a live request the stage clamp ran dry never covers/recovers
+        # live), live output recovery only on output_verdict produced/empty_allowed (never a shared file mtime);
+        # (F2) ledger unreachable + manifest missing/unlisted fails CLOSED for an armed key, never-armed keeps
+        # fail-open, missing manifest = P1, the handover lock covers admission (decision + claim + child start),
+        # set-owner and the controller's rollback paths; (F3) a CRITICAL/URGENT unresolved incident always has exactly
+        # one P1 record; (F4) the explicit nightly rollback verifies every target and exits non-zero with a report.
+        "arch_review_recovery_ownership_20261016",
+        [
+            "tests/test_architect_review_recovery_ownership_20261016.py",
+        ],
+    ),
+    (
         # ANCHOR: LANE_REPAIR_RI_HERMES_LITMUS — 2026-10-15 lane repair of three lanes the lane-disposition audit found
         # broken: run-research-intelligence-overnight (ingest bounded by --budget-s / --max-items-per-topic, stored
         # results skip pre-model, SIGTERM still writes the receipt, batch lock; narrative + synthesizer registered and

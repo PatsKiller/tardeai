@@ -78,8 +78,9 @@ def test_run_timeout_event_is_transient():
 
 
 def _r(run_id, state, mode="live", req="2026-10-16T12:15:00+00:00", fin="2026-10-16T12:16:00+00:00", **rec):
+    """A ledger row as the executor writes it: the receipt carries the EXECUTED mode (recovery_validator rule 1)."""
     return {"run_id": run_id, "state": state, "mode": mode, "requested_at": req, "finished_at": fin, "exit_code": 0
-            if state == "RUN_DONE" else 1, "receipt_json": json.dumps(rec) if rec else None}
+            if state == "RUN_DONE" else 1, "receipt_json": json.dumps({"mode": mode, **rec})}
 
 
 T = NOW.timestamp()
@@ -183,10 +184,11 @@ def test_no_output_is_not_closed_by_a_fresh_signal_that_predates_the_breach():
     assert H.deterministic_verdict(NO_OUT, fields={}, runs=[], now=T, output_state=old) is None
 
 
-def test_no_output_closes_when_the_output_is_fresh_by_contract():
-    v = H.deterministic_verdict(NO_OUT, fields={}, runs=[], now=T, output_state=FRESH)
-    assert v["outcome"] == "output_recovered" and v["basis"] == "output_contract_fresh"
-    assert v["heal_state"] == H.OUTPUT_RECOVERED
+def test_no_output_is_not_closed_by_a_fresh_shared_file_alone():
+    # Architect review 2026-10-16, finding 1 (supersedes the earlier "fresh by contract closes" rule): a fresh output
+    # signal is a shared file mtime / JSON timestamp - it proves something wrote the file, not that this lane's live
+    # run produced its contracted output. It stays evidence only (recovery_validator rule 4).
+    assert H.deterministic_verdict(NO_OUT, fields={}, runs=[], now=T, output_state=FRESH) is None
 
 
 def test_no_output_closes_when_a_later_live_run_produced_its_expected_output():

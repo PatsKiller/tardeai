@@ -191,7 +191,12 @@ same change as the code that writes `LaneRunReceipt@v2 produced_count` (test
 batch by batch from 2026-10-15, each with its lane code (`write_lane_receipt(output=...)`) and a hermetic test of the
 real `main()` in a fake attempt (`tests/test_lane_produced_count_cw_<n>_20261015.py`); the allowlist is the list of
 opted-in lanes.
-Contracts without a block still report `output_verdict: no_rule` and are unchanged. Remaining (P): dry runs are exempt (they write no receipt; captured dry evidence is not built), the
+Contracts without a block still report `output_verdict: no_rule` and are unchanged.
+**Recovery evidence (2026-10-16, architect review of 26fd0518, finding 1):** the self-healing tier and the fixer
+judge recovery by this same verdict, through ONE rule, `scripts/lib/recovery_validator.validate`: the run's
+EFFECTIVE mode (receipt `stage_clamp.effective_mode` / `mode`, never the requested ledger `mode`) must be the
+failed mode, and a live recovery needs `output_verdict` `produced` / `empty_allowed`; `declared_not_enforced`,
+`no_rule`, an output-signal mtime or a JSON timestamp are never recovery evidence. Remaining (P): dry runs are exempt (they write no receipt; captured dry evidence is not built), the
 per-window rule is evaluated by monitors not per run, the verifier trusts the lane's own counts (an independent
 query of the declared durable output is not built), and a lane writes v2 only once it is changed to pass
 `produced_count`.

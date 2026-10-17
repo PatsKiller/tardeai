@@ -794,12 +794,32 @@ def set_owner_with_manifest(
         return row
 
 
-def ownership_decision(process: str, *, ledger: str | None = None, manifest: Path | None = None) -> dict[str, Any]:
+def process_armed(process: str, config: Path | None = None) -> bool:
+    """True when ``process``'s effect key ARMS claims on either side (config/n8n_effect_keys.json: a lane of this
+    process with ``n8n_claim`` true — the default — or ``cron_claim`` true). An unreadable config is armed (fail
+    closed: either scheduler might own the effect). A process that is not keyed is not armed."""
+    try:
+        lanes = load_effect_lanes(config)
+    except EffectKeyError:
+        return True
+    return any(spec["process"] == process and (spec["n8n_claim"] or spec["cron_claim"]) for spec in lanes.values())
+
+
+def ownership_decision(process: str, *, ledger: str | None = None, manifest: Path | None = None,
+                       armed: bool | None = None, config: Path | None = None) -> dict[str, Any]:
     """Whether a cron copy of ``process`` may run, from the ledger (read-only) AND the handover manifest.
 
     decision ``run`` / ``skip_owner_n8n`` / ``skip_ownership_unknown``; ``p1`` True when the operator must be told
-    (ownership could not be established for a handed-over process, or the two stores disagree). Never writes."""
+    (ownership could not be established for a handed-over process, or the two stores disagree). Never writes.
+
+    2026-10-16 architect review of 26fd0518, finding 2: when the ledger is unreachable the manifest is the ONLY
+    admission evidence. A missing manifest file, or a manifest that does not list the process, used to fail OPEN for
+    every process, so losing or replacing the manifest reopened unclaimed execution. Now it fails CLOSED (P1) for a
+    process whose effect key is ARMED (``armed``; default ``process_armed(process, config)``); only a never-armed
+    process keeps the fail-open, and a missing manifest file is reported as a P1 even then."""
     mpath = manifest or handover_manifest_path(ledger)
+    if armed is None:
+        armed = process_armed(process, config)
     try:
         ledger_owner = owner_read_only(process, ledger)
     except (sqlite3.Error, OSError):
@@ -814,7 +834,7 @@ def ownership_decision(process: str, *, ledger: str | None = None, manifest: Pat
     except EffectKeyError:
         manifest_owner = "unreadable"
     out = {"process": process, "ledger_owner": ledger_owner, "manifest_owner": manifest_owner,
-           "manifest": str(mpath), "decision": DECIDE_RUN, "reason": "", "p1": False}
+           "manifest": str(mpath), "decision": DECIDE_RUN, "reason": "", "p1": False, "armed": bool(armed)}
 
     def skip_unknown(reason: str) -> dict[str, Any]:
         out.update(decision=DECIDE_SKIP_UNKNOWN, reason=reason, p1=True)
@@ -825,8 +845,14 @@ def ownership_decision(process: str, *, ledger: str | None = None, manifest: Pat
     if ledger_owner == "unreachable":
         if manifest_owner in ("n8n", "none"):
             return skip_unknown(f"ledger_unreachable_handed_over:manifest={manifest_owner}")
+        if manifest_owner in ("file_absent", "not_listed") and armed:
+            # finding 2: no ledger, and the manifest (the only other admission evidence) does not vouch for cron.
+            return skip_unknown(f"ledger_unreachable_armed_unlisted:manifest={manifest_owner}")
         out["reason"] = f"ledger_unreachable_never_handed_over:manifest={manifest_owner}"
-        return out                                                # fail OPEN: this process was never handed over
+        if manifest_owner == "file_absent":
+            out["p1"] = True                                      # a missing manifest is itself a P1
+            out["reason"] += ",handover_manifest_missing"
+        return out                                                # fail OPEN: never armed (or handed back to cron)
     if manifest_owner in ("n8n", "cron", "none") and manifest_owner != ledger_owner:
         return skip_unknown(f"manifest_ledger_disagree:manifest={manifest_owner},ledger={ledger_owner}")
     if ledger_owner == "n8n" and manifest_owner in ("file_absent", "not_listed"):
@@ -836,6 +862,94 @@ def ownership_decision(process: str, *, ledger: str | None = None, manifest: Pat
         return out
     out["reason"] = f"owner_{ledger_owner}"
     return out
+
+
+#: Seconds an admission waits for the handover lock (a set-owner or the nightly controller holds it briefly).
+ADMIT_LOCK_TIMEOUT_ENV = "TRADEAI_HANDOVER_ADMIT_TIMEOUT_S"
+ADMIT_LOCK_TIMEOUT_S = 120.0
+ADMIT_SCHEMA = "EffectAdmission@v1"
+
+
+def _write_decision(path: str | None, doc: Mapping[str, Any]) -> None:
+    if path:
+        Path(path).write_text(json.dumps(doc, sort_keys=True, default=str) + "\n")
+
+
+def gated_run(*, process: str, key: str, cmd: list[str], scheduler: str, claim: bool, fenced: bool,
+              ledger: str | None, manifest: Path, decision_out: str | None, expect_epoch: int | None = None,
+              armed: bool | None = None, config: Path | None = None,
+              lock_timeout: float | None = None, spawn=subprocess.Popen, clock=None) -> int:
+    """The cron ADMISSION under the shared fence (finding 2, architect review 2026-10-16): the handover-manifest lock
+    is held across the ownership decision, the effect claim (when ``claim``) AND the child's start, and released
+    only after the claim is recorded and the child exists. ``effect_claim.py set-owner`` and the nightly controller
+    take the same lock, so no ownership switch can land between "cron may run" and "the cron copy started".
+
+    Exit: the child's code; 0 = n8n owns (nothing run); 75 = refused / ownership unknown (nothing run); 2 = the lock
+    could not be taken or the decision file could not be written (nothing run). ``decision_out`` receives
+    {schema, ownership, claim, spawned} BEFORE the child starts; no file = nothing was decided or run."""
+    clock = clock or (lambda: datetime.now(timezone.utc).timestamp())
+    if lock_timeout is None:
+        try:
+            lock_timeout = float(os.environ.get(ADMIT_LOCK_TIMEOUT_ENV) or ADMIT_LOCK_TIMEOUT_S)
+        except ValueError:
+            lock_timeout = ADMIT_LOCK_TIMEOUT_S
+    store = None
+    res = None
+    run_id = f"{scheduler}:{key}:{os.getpid()}"
+    try:
+        with handover_lock(manifest, timeout=lock_timeout):
+            d = ownership_decision(process, ledger=ledger, manifest=manifest, armed=armed, config=config)
+            doc: dict[str, Any] = {"schema": ADMIT_SCHEMA, "ownership": d, "claim": None, "spawned": False,
+                                   "key": key if claim else None}
+            if d["decision"] != DECIDE_RUN:
+                _write_decision(decision_out, doc)
+                return 0 if d["decision"] == DECIDE_SKIP_N8N else REFUSED_EXIT
+            if claim:
+                try:
+                    store = _open_store(ledger)
+                    res = store.claim(key, scheduler=scheduler, now=clock(), run_id=run_id, expect_epoch=expect_epoch)
+                except sqlite3.Error as exc:
+                    # the ledger went away between the decision and the claim: nothing proves who owns the slot
+                    d = dict(d, decision=DECIDE_SKIP_UNKNOWN, p1=True,
+                             reason=f"ledger_unreachable_at_claim:{type(exc).__name__}")
+                    doc["ownership"] = d
+                    _write_decision(decision_out, doc)
+                    return REFUSED_EXIT
+                doc["claim"] = res.as_dict()
+                print(json.dumps(res.as_dict(), sort_keys=True), file=sys.stderr, flush=True)
+            doc["spawned"] = bool(res is None or res.ok)
+            try:
+                _write_decision(decision_out, doc)
+            except OSError as exc:
+                if res is not None and res.ok:      # nothing spawned yet: proven no effect, the key stays reclaimable
+                    store.finish(key, state=STATE_FAILED, now=clock(), run_id=run_id,
+                                 detail=f"decision_out:{type(exc).__name__}", pre_effect=True)
+                print(json.dumps({"error": f"decision_out:{type(exc).__name__}"}), file=sys.stderr)
+                return 2
+            if res is not None and not res.ok:
+                return REFUSED_EXIT
+            child_env = dict(os.environ)
+            if res is not None:
+                child_env[FENCE_ENV] = fence_token(key, int(res.epoch or 0), res.attempt)
+            try:
+                child = spawn(cmd, env=child_env)       # started INSIDE the fence; the lock fd is not inherited
+            except OSError as exc:
+                if res is not None:
+                    store.finish(key, state=STATE_FAILED, now=clock(), run_id=run_id,
+                                 detail=f"spawn:{type(exc).__name__}", pre_effect=True)
+                return 127
+    except HandoverLockTimeout as exc:
+        print(json.dumps({"error": f"handover_lock_timeout:{exc}"}), file=sys.stderr)
+        return 2
+    except OSError as exc:      # the lock file cannot be created: the fence cannot be held, so nothing is admitted
+        print(json.dumps({"error": f"handover_lock_unavailable:{type(exc).__name__}"}), file=sys.stderr)
+        return 2
+    rc = child.wait()
+    if res is not None:
+        state = STATE_DONE if rc == 0 else (STATE_UNKNOWN if rc < 0 else STATE_FAILED)
+        proven = state == STATE_FAILED and bool(fenced) and not store.fence_passed(key)
+        store.finish(key, state=state, now=clock(), run_id=run_id, detail=f"exit_{rc}", pre_effect=proven)
+    return rc if rc >= 0 else 128 - rc
 
 
 def handover_seed(ledger: str | None, manifest: Path, *, apply: bool, by: str, now: float) -> dict[str, Any]:
@@ -908,6 +1022,16 @@ def main(argv: list[str] | None = None) -> int:
         "wrap): no file = the claim was never decided (ledger unreachable), so the caller knows the command did "
         "not run; a refusal names its reason (effect_fenced_owner = another scheduler owns the process)",
     )
+    p_run.add_argument(
+        "--ownership-gate",
+        action="store_true",
+        help="finding 2 (architect review 2026-10-16): decide ownership (ledger + handover manifest) and claim UNDER "
+        "the handover lock, and start the command before the lock is released (scripts/effect_claim_cron.sh)",
+    )
+    p_run.add_argument("--no-claim", action="store_true",
+                       help="with --ownership-gate: the lane's cron side is not armed (cron_claim false): no claim row")
+    p_run.add_argument("--manifest", default=None, help="handover manifest (default: beside the ledger)")
+    p_run.add_argument("--effect-config", default=None, help="config/n8n_effect_keys.json (armed check)")
     p_run.add_argument("command", nargs=argparse.REMAINDER)
     p_own = sub.add_parser("set-owner", help="move ownership (epoch + 1, compare-and-swap)")
     p_own.add_argument("--process", required=True)
@@ -936,6 +1060,7 @@ def main(argv: list[str] | None = None) -> int:
     p_dec.add_argument("--process", required=True)
     p_dec.add_argument("--manifest", default=None)
     p_dec.add_argument("--json", action="store_true")
+    p_dec.add_argument("--effect-config", default=None, help="config/n8n_effect_keys.json (armed check)")
     p_seed = sub.add_parser("handover-seed", help="one-time: create the handover manifest from the ledger owner rows")
     p_seed.add_argument("--manifest", default=None)
     p_seed.add_argument("--by", required=True)
@@ -946,6 +1071,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_spec.add_argument("--lane", required=True)
     p_spec.add_argument("--config", default=None, help="config/n8n_effect_keys.json (default: this tree's)")
+    p_spec.add_argument("--with-n8n-claim", action="store_true",
+                        help="print a 4th column: n8n_claim (1/0), so a caller knows whether the key is armed")
     a = ap.parse_args(argv)
     now = datetime.now(timezone.utc).timestamp()
     try:
@@ -957,13 +1084,17 @@ def main(argv: list[str] | None = None) -> int:
             if spec is None:
                 print(json.dumps({"error": "lane_not_keyed", "lane": a.lane}), file=sys.stderr)
                 return LANE_NOT_KEYED_EXIT
-            print(f"{spec['process']}\t{spec['input_version']}\t{'1' if spec['cron_claim'] else '0'}")
+            cols = [spec["process"], spec["input_version"], "1" if spec["cron_claim"] else "0"]
+            if a.with_n8n_claim:
+                cols.append("1" if spec["n8n_claim"] else "0")
+            print("\t".join(cols))
             return 0
         if a.cmd == "owner":
             print(owner_read_only(a.process, a.ledger))
             return 0
         if a.cmd == "ownership":
-            d = ownership_decision(a.process, ledger=a.ledger, manifest=Path(a.manifest) if a.manifest else None)
+            d = ownership_decision(a.process, ledger=a.ledger, manifest=Path(a.manifest) if a.manifest else None,
+                                   config=Path(a.effect_config) if a.effect_config else None)
             if a.json:
                 print(json.dumps(d, sort_keys=True))
             else:
@@ -975,7 +1106,8 @@ def main(argv: list[str] | None = None) -> int:
             out = handover_seed(a.ledger, mpath, apply=a.apply, by=a.by, now=now)
             print(json.dumps(out, sort_keys=True))
             return 1 if out.get("refused") else 0
-        store = _open_store(a.ledger)
+        # the gated admission opens the ledger itself, inside the fence, after the ownership decision
+        store = None if getattr(a, "ownership_gate", False) else _open_store(a.ledger)
         if a.cmd == "claim":
             res = store.claim(
                 _key_from_args(a), scheduler=a.scheduler, now=now, run_id=a.run_id, expect_epoch=a.expect_epoch
@@ -994,6 +1126,12 @@ def main(argv: list[str] | None = None) -> int:
                 print(json.dumps({"error": "no command after --"}), file=sys.stderr)
                 return 2
             key = _key_from_args(a)
+            if a.ownership_gate:
+                return gated_run(process=a.process, key=key, cmd=cmd, scheduler=a.scheduler, claim=not a.no_claim,
+                                 fenced=bool(a.fenced), ledger=a.ledger,
+                                 manifest=Path(a.manifest) if a.manifest else handover_manifest_path(a.ledger),
+                                 decision_out=a.decision_out, expect_epoch=a.expect_epoch,
+                                 config=Path(a.effect_config) if a.effect_config else None)
             run_id = f"cron:{key}:{os.getpid()}"
             res = store.claim(key, scheduler=a.scheduler, now=now, run_id=run_id, expect_epoch=a.expect_epoch)
             print(json.dumps(res.as_dict(), sort_keys=True), file=sys.stderr, flush=True)
