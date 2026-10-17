@@ -166,7 +166,9 @@ SNAP_LINES = [x["line"] for x in SNAPSHOT["cron_lines"]]
 # Rows whose crontab line was moved by a reviewed PR after the 2026-10-09 snapshot (the snapshot stays the historical
 # record). hermes-learning cutover decision D1 (2026-10-15): the learn stage line runs at 11:20 so the cron-only
 # retention step runs after n8n's outcome_grader; the effect slot stays the manifest minute (T1050).
-MOVED_SINCE_SNAPSHOT = {"hermes-learning-pipeline-learn": {"20 11 * * *"}}
+# hermes tune cutover (2026-10-17, packet docs/ops/packets/hermes-tune-cutover-20261017/ step c2): the tune stage line
+# runs at 17:20 so n8n's 17:00 fire claims the effect first; the effect slot stays the manifest minute (T1700).
+MOVED_SINCE_SNAPSHOT = {"hermes-learning-pipeline-learn": {"20 11 * * *"}, "hermes-learning-pipeline-tune": {"20 17 * * *"}}
 
 
 def _parts(expr):

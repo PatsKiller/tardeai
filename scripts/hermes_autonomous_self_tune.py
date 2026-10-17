@@ -20,11 +20,14 @@ Modes (2026-10-15 split, n8n fabric process hermes-learning step autonomous_self
   --learn          auto-graft ONLY (non-destructive: SELECTs, the weights yaml + its archive, one audit INSERT).
                    self_purge is never called, and the purge helpers refuse to run while it is the mode
                    (LearnOnlyViolation): a learn run cannot DELETE, UPDATE a queue or archive-purge a table.
-                   This is the half the fabric lane runs.
-  --purge          self-purge ONLY (destructive retention: archived DELETEs + queue UPDATEs). Stays a host cron
-                   concern; never a fabric lane (allowlist never-list: destructive retention).
-  neither / both   both legs, auto-graft first — the historical behaviour, unchanged (the cron line runs
-                   ``--apply`` with neither flag).
+                   It was the half the fabric shadow lane ran until the 2026-10-17 tune cutover.
+  --purge          self-purge ONLY (destructive retention: archived DELETEs + queue UPDATEs).
+  neither / both   both legs, auto-graft first — the historical behaviour, unchanged (the cron step runs
+                   ``--apply`` with neither flag). Since the 2026-10-17 tune cutover (operator directive 2026-10-15,
+                   F41 retention approved for n8n) the fabric lane runs exactly this argv too: when n8n owns the
+                   effect key the cron step is skipped, so the lane must carry BOTH legs or the purge would stop.
+  A real ``--apply`` run writes LaneRunReceipt@v2 (``lane_output``: produced_count = grafts applied + retention
+  rows acted on; zero = ``nothing_due`` / ``no_new_input``) for the n8n output verdict. A dry run writes none.
   --apply          write; without it every leg previews (the purge leg counts what it would delete).
   --dry-run        preview that wins over --apply: read-only DB session, no CREATE TABLE, no file write.
 """
@@ -270,14 +273,75 @@ def self_purge(cur, apply: bool) -> dict:
             if cur.fetchone()[0] is None:
                 out.setdefault("dead_table_errors", []).append(f"{t}: absent")
                 continue
-            _archived_purge(cur, "dead_table", t, "TRUE", (), apply)
+            n = _archived_purge(cur, "dead_table", t, "TRUE", (), apply)
             out["dead_tables_truncated"].append(t)
+            # 2026-10-17 (tune cutover): the rows each dead-table purge removed (dry: would remove), so the lane
+            # receipt's produced_count counts real retention work, not the table names (always three).
+            out["dead_table_rows_purged"] = out.get("dead_table_rows_purged", 0) + max(int(n or 0), 0)
         except Exception as e:
             cur.connection.rollback()
             out.setdefault("dead_table_errors", []).append(f"{t}: {str(e)[:60]}")
     if apply:
         _audit(cur, "self_purge", out, sum(v for v in out.values() if isinstance(v, int)))
     return out
+
+
+# ───────────────────── lane receipt (n8n output verdict) ─────────────────────
+#: Lane id of this step on the n8n fabric (config/n8n_run_allowlist.json; health contract expected_output).
+LANE_ID = "hermes-learning-autonomous-self-tune"
+#: self_purge integer counters that are rows acted on (UPDATE / archived DELETE rowcounts; -1 = not previewed).
+PURGE_ROW_KEYS = ("advisory_pending_expired", "embeddings_requeued", "embeddings_dropped", "score_history_purged",
+                  "research_purged", "external_purged", "dead_table_rows_purged")
+#: auto_graft statuses that mean "nothing was due this run" (a gate held, or no weight moved): a verified empty.
+GRAFT_NOTHING_DUE = ("gated_persistence", "gated_weekly_drift_cap", "no_change")
+
+
+def lane_output(result: dict) -> dict:
+    """LaneRunReceipt@v2 output fields for one REAL --apply run (2026-10-17, tune cutover to n8n).
+
+    produced_count = factor-weight grafts applied (auto_graft status ``applied``: len(changes)) + retention rows the
+    purge acted on (the PURGE_ROW_KEYS rowcounts). Both legs audit into hermes_autotune_audit. Zero is a VERIFIED
+    empty, not a failure: the graft is outcome-gated and drift-capped by design and most days nothing is past
+    retention. empty_reason ``no_new_input`` when there were no outcome suggestions at all, else ``nothing_due`` (a
+    gate held or no weight moved, and no row was due). Gate outcomes and dead-table errors are recorded as non-fatal
+    skipped_reasons, so the receipt says WHY it was empty."""
+    graft = result.get("auto_graft") or {}
+    purge = result.get("self_purge") or {}
+    grafted = len(graft.get("changes") or []) if graft.get("status") == "applied" else 0
+    purged = sum(max(purge[k], 0) for k in PURGE_ROW_KEYS
+                 if isinstance(purge.get(k), int) and not isinstance(purge.get(k), bool))
+    produced = grafted + purged
+    skipped: dict[str, int] = {}
+    if graft.get("status") in GRAFT_NOTHING_DUE:
+        skipped[f"graft_{graft['status']}"] = 1
+    if purge.get("dead_table_errors"):
+        skipped["dead_table_error"] = len(purge["dead_table_errors"])
+    empty = None
+    if not produced:
+        empty = "no_new_input" if graft.get("status") == "no_outcome_suggestions" else "nothing_due"
+    return {"produced_count": produced, "attempted_count": produced, "skipped_reasons": skipped,
+            "empty_reason": empty,
+            "output_evidence": [{"kind": "store_rows", "ref": "hermes_autotune_audit",
+                                 "grafted": grafted, "purged_rows": purged}]}
+
+
+def _write_receipt(ok: bool, started: str, *, result: dict | None = None, error: str | None = None) -> None:
+    """Best-effort LaneRunReceipt@v2. Never raises; called for a real --apply run only, never a dry run (§6)."""
+    try:
+        try:
+            from lib.lane_last_receipt import write_lane_receipt
+        except ImportError:
+            from scripts.lib.lane_last_receipt import write_lane_receipt
+        res = result or {}
+        out = lane_output(res) if ok else {
+            "produced_count": 0, "attempted_count": 0, "skipped_reasons": {"dependency_unavailable": 1}}
+        write_lane_receipt(LANE_ID, ok=ok, exit_code=0 if ok else 1, started_at=started,
+                           script="hermes_autonomous_self_tune.py", error=error,
+                           summary={"auto_graft": (res.get("auto_graft") or {}).get("status"),
+                                    "self_purge_ran": "self_purge" in res},
+                           output=out)
+    except Exception as exc:  # noqa: BLE001 - the run's own result comes first
+        print(f"  WARN lane receipt not written: {type(exc).__name__}: {exc}", file=sys.stderr)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -293,7 +357,13 @@ def main(argv: list[str] | None = None) -> int:
     do_learn = a.learn or not a.purge
     do_purge = a.purge or not a.learn
     _LEARN_ONLY = do_learn and not do_purge
-    conn = _conn()
+    started = datetime.now(timezone.utc).isoformat()
+    try:
+        conn = _conn()
+    except Exception as exc:
+        if a.apply and not a.dry_run:
+            _write_receipt(False, started, error=type(exc).__name__)
+        raise
     if a.dry_run:
         from lib.lane_last_receipt import enforce_readonly
         enforce_readonly(conn)  # dry run: the server refuses any write (AGENTS.md §6)
@@ -307,16 +377,26 @@ def main(argv: list[str] | None = None) -> int:
         conn.close()
         print(json.dumps(result, indent=2, default=str))
         return 0
-    cur = conn.cursor()
-    _ensure_audit(cur)
-    result = {"apply": a.apply, "ts": datetime.now(timezone.utc).isoformat()}
-    if do_learn:
-        result["auto_graft"] = auto_graft_weights(cur, a.apply)
-    if do_purge:
-        result["self_purge"] = self_purge(cur, a.apply)
+    result = {"apply": a.apply, "ts": started}
+    try:
+        cur = conn.cursor()
+        _ensure_audit(cur)
+        if do_learn:
+            result["auto_graft"] = auto_graft_weights(cur, a.apply)
+        if do_purge:
+            result["self_purge"] = self_purge(cur, a.apply)
+        if a.apply:
+            conn.commit()
+    except Exception as exc:
+        # 2026-10-17 (tune cutover): a real run that raised leaves a failed v2 receipt (dependency_unavailable), so
+        # the n8n output verdict never reads a stale success; the exception still propagates (rc != 0).
+        if a.apply:
+            _write_receipt(False, started, error=type(exc).__name__)
+        raise
+    finally:
+        conn.close()
     if a.apply:
-        conn.commit()
-    conn.close()
+        _write_receipt(True, started, result=result)
     print(json.dumps(result, indent=2, default=str))
     return 0
 

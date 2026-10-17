@@ -524,10 +524,17 @@ def test_unblocked_step_is_a_dry_run_shadow_lane(sid):
     assert s["lane_id"] not in BLOCKED_REASONS
 
 
-def test_self_tune_lane_runs_only_the_learn_half():
+def test_self_tune_lane_runs_the_cron_step_argv_both_halves():
+    # tune cutover 2026-10-17 (was: learn half only). Once n8n owns the effect key the cron step is skipped whole, so
+    # the lane must run both legs (auto-graft + archive-first self-purge) or the purge would silently stop.
     e = ALLOW[SPEC["steps"]["autonomous_self_tune"]["lane_id"]]
-    assert e["command"][-1] == "--learn" and "--purge" not in e["command"] + e["dry_run_arg"]
-    assert SPEC["steps"]["autonomous_self_tune"]["lane_extra_args"] == ["--learn"]
+    assert e["command"] == ["$PY", "scripts/hermes_autonomous_self_tune.py"]
+    assert e["live_arg"] == ["--apply"] and e["dry_run_arg"] == ["--dry-run"]
+    assert "--learn" not in e["command"] + e["live_arg"] + e["dry_run_arg"]
+    assert "--purge" not in e["command"] + e["live_arg"] + e["dry_run_arg"]
+    assert SPEC["steps"]["autonomous_self_tune"]["lane_extra_args"] == []
+    step = next(s for s in MANIFEST["stages"]["tune"]["steps"] if s["id"] == "autonomous_self_tune")
+    assert step["command"].split("$PY ", 1)[1].split() == e["command"][1:] + e["live_arg"]
 
 
 def test_score_history_retention_stays_excluded_on_cron():

@@ -93,7 +93,7 @@
     "lane_id": "hermes-learning-pipeline-tune",
     "mode": "dry_run",
     "schedule_fidelity": "EXACT",
-    "schedule_source": "crontab: 0 17 * * * run_hermes_pipeline.sh --stage tune (registry kind cron)",
+    "schedule_source": "crontab: 20 17 * * * run_hermes_pipeline.sh --stage tune (registry kind cron; moved from 0 17 by the tune cutover 2026-10-17 so the n8n 17:00 fire claims first)",
     "tranche": "N2"
   },
   "name": "hermes-learning-pipeline-tune-shadow",
@@ -105,7 +105,7 @@
         "rule": {
           "interval": [
             {
-              "expression": "0 17 * * *",
+              "expression": "20 17 * * *",
               "field": "cronExpression"
             }
           ]

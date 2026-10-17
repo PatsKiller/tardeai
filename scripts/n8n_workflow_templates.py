@@ -229,9 +229,9 @@ LANES: list[dict] = [
     {
         "lane_id": "hermes-learning-pipeline-tune",
         "tranche": "N2",
-        "cron": ["0 17 * * *"],
+        "cron": ["20 17 * * *"],
         "fidelity": "EXACT",
-        "source": "crontab: 0 17 * * * run_hermes_pipeline.sh --stage tune (registry kind cron)",
+        "source": "crontab: 20 17 * * * run_hermes_pipeline.sh --stage tune (registry kind cron; moved from 0 17 by the tune cutover 2026-10-17 so the n8n 17:00 fire claims first)",
         "pipeline": "hermes_learning",
         "stage_order": 2,
         "after": "hermes-learning-pipeline-learn",

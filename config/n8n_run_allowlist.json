@@ -3402,13 +3402,14 @@
       "lane_id": "hermes-learning-autonomous-self-tune",
       "command": [
         "$PY",
-        "scripts/hermes_autonomous_self_tune.py",
-        "--learn"
+        "scripts/hermes_autonomous_self_tune.py"
       ],
       "dry_run_arg": [
         "--dry-run"
       ],
-      "live_arg": null,
+      "live_arg": [
+        "--apply"
+      ],
       "env_names": [
         "DB_CONN_TRACE",
         "DB_HOST",
@@ -3429,7 +3430,8 @@
       "timeout_s": 1800,
       "market_gate": false,
       "output_signal": null,
-      "source": "n8n fabric process hermes-learning (2026-10-15, AGENTS.md §23.23; packets docs/ops/packets/n8n-hermes-learning-flow-20261015/ and the unblock branch n8nfab/hermes-learning-unblock-20261015): the LEARN half of step autonomous_self_tune of config/pipelines/hermes_learning.json stage tune (crontab line 610 as absorbed by the C1 flip; runs today inside run_hermes_pipeline.sh --stage tune --apply, both halves). Called only by the process workflow tradeai-fabric-hermes-learning through Run Lane, never by the generic dispatcher (no dispatch block). SHADOW ONLY: live_arg null; registry scheduler.stage shadow clamps any live request to dry_run. lock and lock_kind are the step command's own lock (flock -n /tmp/hermes_self_tune.lock); the dry run takes <lock>.dryrun. timeout_s = the manifest step timeout (30m). --learn: auto-graft only; self_purge is never called and the purge helpers raise LearnOnlyViolation in learn-only mode, so this lane cannot DELETE. --dry-run wins over --apply: read-only DB session, no CREATE TABLE, no weights-file write (scripts/hermes_autonomous_self_tune.py main). The purge half (--purge: archived DELETEs, queue UPDATEs) is destructive retention (never-list) and stays on host cron. The live argument would be --apply (cron line `--apply` runs both halves today; at cutover it becomes --purge --apply); it is NOT in this entry.",
+      "output_receipt": "v2",
+      "source": "n8n fabric process hermes-learning (2026-10-15, AGENTS.md §23.23; packets docs/ops/packets/n8n-hermes-learning-flow-20261015/ and the unblock branch n8nfab/hermes-learning-unblock-20261015): the LEARN half of step autonomous_self_tune of config/pipelines/hermes_learning.json stage tune (crontab line 610 as absorbed by the C1 flip; runs today inside run_hermes_pipeline.sh --stage tune --apply, both halves). Called only by the process workflow tradeai-fabric-hermes-learning through Run Lane, never by the generic dispatcher (no dispatch block). SHADOW ONLY: live_arg null; registry scheduler.stage shadow clamps any live request to dry_run. lock and lock_kind are the step command's own lock (flock -n /tmp/hermes_self_tune.lock); the dry run takes <lock>.dryrun. timeout_s = the manifest step timeout (30m). --learn: auto-graft only; self_purge is never called and the purge helpers raise LearnOnlyViolation in learn-only mode, so this lane cannot DELETE. --dry-run wins over --apply: read-only DB session, no CREATE TABLE, no weights-file write (scripts/hermes_autonomous_self_tune.py main). The purge half (--purge: archived DELETEs, queue UPDATEs) is destructive retention (never-list) and stays on host cron. The live argument would be --apply (cron line `--apply` runs both halves today; at cutover it becomes --purge --apply); it is NOT in this entry. | 2026-10-17 TUNE CUTOVER (operator 2026-10-17 00:25 ET \"do a dry run now, it works no errors, make active now\"; n8n cutover directive 2026-10-15: all families to n8n, F41 retention approved for n8n; packet docs/ops/packets/hermes-tune-cutover-20261017/cutover.sh): the lane now runs the cron step's own argv, BOTH halves (auto-graft + self-purge): command drops --learn, live_arg [--apply] = the spec's cutover_live_arg, registry stage canary, effect key cron_claim true. Reason: once n8n owns the effect key the cron step is skipped whole, so a learn-only lane would silently stop the purge. The destructive purge is archive-first (lib.retention_archive.managed_purge: archive + manifest + tripwire before each DELETE). --dry-run wins over --apply (read-only session, purge legs only count). output_receipt v2: a real run writes LaneRunReceipt@v2 produced_count = grafts applied + retention rows acted on.",
       "offpeak_exempt": "The cron step has no run_with_deepseek_offpeak.sh wrapper (config/pipelines/hermes_learning.json step autonomous_self_tune: flock -n ... --apply) and makes no model call (auto-graft over DB rows), so the n8n path applies no off-peak gate either: parity with the registry, not an exemption invented here."
     },
     {

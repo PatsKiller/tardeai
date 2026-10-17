@@ -172,7 +172,8 @@ def test_triggers_are_the_stage_cron_slots_plus_one_manual_trigger():
         # after n8n's grader; the effect slot stays the manifest minute)
         assert expr == sdoc["proposed_schedule"]
         cron_expr = REG[runner_lane]["scheduler"]["expression"]
-        assert cron_expr == ("20 11 * * *" if stage == "learn" else sdoc["proposed_schedule"])
+        # ... and the tune line moved to 17:20 by the tune cutover (2026-10-17) so n8n's 17:00 fire claims first
+        assert cron_expr == {"learn": "20 11 * * *", "tune": "20 17 * * *"}.get(stage, sdoc["proposed_schedule"])
         assert f"--stage {stage}" in REG[runner_lane]["scheduler"]["command_text"]
     assert wf["settings"]["timezone"] == "America/New_York"
     manual = [n for n in wf["nodes"] if n["type"] == "n8n-nodes-base.manualTrigger"]
@@ -263,9 +264,9 @@ def test_runnable_step_is_a_shadow_lane_with_the_step_lock_and_timeout(sid):
     stage, st = STEPS[sid]
     lane = SPEC["steps"][sid]["lane_id"]
     e = ALLOW_LANES[lane]
-    # cutover PR-2 (2026-10-15): four learn lanes carry cutover_live_arg at stage canary; the tune lane and the held
-    # outcome_feedback_agent (sender token gate; follow-up after gate alignment) stay shadow
-    learn = stage == "learn" and sid != "outcome_feedback_agent"
+    # cutover PR-2 (2026-10-15): four learn lanes carry cutover_live_arg at stage canary; the held outcome_feedback_agent
+    # (sender token gate; follow-up after gate alignment) stays shadow. Tune cutover (2026-10-17): the tune lane too.
+    learn = sid != "outcome_feedback_agent"
     assert e["live_arg"] == (SPEC["steps"][sid]["cutover_live_arg"] if learn else None)
     assert e["dry_run_arg"] is not None
     assert e["command"][0] == "$PY" and e["market_gate"] is False
@@ -274,8 +275,8 @@ def test_runnable_step_is_a_shadow_lane_with_the_step_lock_and_timeout(sid):
     assert e["lock_kind"] == ("safe_flock" if "safe_flock.sh" in st["command"] else "flock")
     assert e["timeout_s"] == PM.timeout_seconds(st["timeout"])
     # the live argv later = the step's own argv: command + --apply (dry run = command + dry_run_arg, no --apply). A
-    # split step's lane adds its declared lane_extra_args (autonomous_self_tune: --learn, the non-destructive half;
-    # the cron step keeps its own argv and the purge half).
+    # split step's lane adds its declared lane_extra_args (none since the 2026-10-17 tune cutover: autonomous_self_tune
+    # runs the cron step's own argv, both halves, because the cron step is skipped whole once n8n owns the effect).
     extra = list(SPEC["steps"][sid].get("lane_extra_args") or [])
     assert sorted(e["command"][1:] + ["--apply"]) == sorted(_step_argv(st["command"]) + extra)
     assert "--apply" not in e["command"] + e["dry_run_arg"]
@@ -297,21 +298,23 @@ def test_runnable_step_is_a_shadow_lane_with_the_step_lock_and_timeout(sid):
         "pipeline": MANIFEST["pipeline"],
         "stage": stage,
         "step_id": sid,
-        # hermes-learning cutover PR-1 (2026-10-15): cron_claim true for the five LEARN step lanes; tune stays false
-        "cron_claim": stage == "learn",
+        # hermes-learning cutover PR-1 (2026-10-15): cron_claim true for the five LEARN step lanes; tune cutover
+        # (2026-10-17): the tune step too
+        "cron_claim": True,
     }
 
 
-def test_effect_config_loads_for_the_executor_and_the_runner_claims_only_the_learn_steps():
+def test_effect_config_loads_for_the_executor_and_the_runner_claims_the_learn_and_tune_steps():
     cfg = E.load_effect_config(ROOT / "config" / "n8n_effect_keys.json")
     # 2026-10-15 n8n cutover waves arm their own lanes (tests/support/n8n_cutover_waves.py); the hermes steps are these.
     assert set(cfg) - set(CW.ARMED) == {SPEC["steps"][s]["lane_id"] for s in RUNNABLE}
     # cutover PR-1 (2026-10-15): the learn stage claims its five runnable steps (only when the cron line also sets
-    # PIPELINE_EFFECT_CLAIM=1); tune claims nothing (autonomous_self_tune stays shadow until the manifest split)
+    # PIPELINE_EFFECT_CLAIM=1); tune cutover (2026-10-17): the tune stage claims its one step the same way
     learn = {SPEC["steps"][s]["lane_id"] for s in RUNNABLE if STEPS[s][0] == "learn"}
     assert len(learn) == 5
     assert len(PM.effect_spec(MANIFEST, "learn", EFFECTS)) == 5
-    assert PM.effect_spec(MANIFEST, "tune", EFFECTS) == []
+    assert PM.effect_spec(MANIFEST, "tune", EFFECTS) == [
+        ("autonomous_self_tune", "hermes-learning-autonomous-self-tune", SPEC["input_version"])]
 
 
 @pytest.mark.parametrize("sid", BLOCKED)
