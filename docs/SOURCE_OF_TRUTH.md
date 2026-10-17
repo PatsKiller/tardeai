@@ -69,7 +69,7 @@ Both the release (CURRENT) and the dev tree the 344 cron producers run from must
 | **private_company** | manual | `private_company_proxies` | operator (manual entry) | — | — | — | none | — | — | `refuse_up_front` | operator 2026-09-13 |
 | **dividends** | ingested | `ticker_dividend_data` | `scripts/sync_dividend_data.py` | 07:05 Mon-Fri | 168h | — | yfinance | — | fmp | `say_so` | operator 2026-09-13 |
 | **macro** | ingested | `fred_economic_series` | UNCONSOLIDATED → `scripts/external_market_data_ingest.py` (2 writers today; ceiling may only fall) | 06:15 daily (fred_data_ingest.py --ingest) | 48h | — | fred | — | — | `say_so` | operator 2026-09-13 |
-| **fundamentals** | ingested | `fundamental_data` | `scripts/external_market_data_ingest.py` | 08:00 Mon (--fundamentals) | 192h | — | alpha_vantage | yfinance | fmp | `say_so` | operator 2026-09-13 |
+| **fundamentals** | ingested | `fundamental_data` | `scripts/external_market_data_ingest.py` | 08:00 Mon (--fundamentals) | 192h | — | finviz | yfinance | fmp | `say_so` | operator 2026-09-13 |
 | **agent_opinion** | native | `watchlist_agent_results` | `scripts/process_watchlist_agent_jobs.py` | on watch events | 48h | `agent_opinion` | internal | — | — | `say_so` | operator 2026-09-13 |
 | **agent_debate** | dead_feed | `agent_debate_log` | **none — dead feed** | — | 168h | `agent_opinion` | internal | — | — | `declared_gap_no_producer` | operator 2026-09-13 |
 | **ai_reports** | dead_feed | `ai_reports` | **none — dead feed** | — | 168h | `desk_feeds` | internal | — | — | `declared_gap_no_producer` | operator 2026-09-13 |
@@ -132,7 +132,7 @@ module every other writer must call.
 | **finviz** | live_external | active | screeners, enrichment, industry_groups, sector_perf, news | `finviz.com`, `elite.finviz.com` | operator 2026-09-13 |
 | **sec_edgar** | live_external | active | form4, filings | `sec.gov`, `efts.sec.gov` | operator 2026-09-13 |
 | **fred** | live_external | active | macro | `api.stlouisfed.org`, `FRED_API` | operator 2026-09-13 |
-| **alpha_vantage** | live_external | active | fundamentals, earnings_calendar, news_sentiment, news_feed, earnings | `alphavantage.co`, `ALPHA_VANTAGE` | operator 2026-10-10 |
+| **alpha_vantage** | live_external | active | earnings_calendar, news_sentiment, news_feed, earnings | `alphavantage.co`, `ALPHA_VANTAGE` | operator 2026-10-10 |
 | **brave** | live_external | active_paid | web_search | `api.search.brave.com`, `brave_router`, `BRAVE_API` | operator 2026-09-13 |
 | **searxng** | self_hosted | active | web_search | `searxng`, `SEARXNG_URL` | operator 2026-09-13 |
 | **tavily** | live_external | configured_unused | web_search | `api.tavily.com`, `TAVILY_API` | operator 2026-09-13 |

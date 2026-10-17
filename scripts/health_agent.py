@@ -3296,7 +3296,7 @@ def collect_data_source_health() -> list[dict]:
     # so a source that was never wired is reported when something is scheduled
     # to feed it.
     from lib.data_source_health_view import (
-        HEALTHY, ERROR, load_registry, view_rows, has_scheduled_caller,
+        HEALTHY, ERROR, NOT_ALERTED, load_registry, view_rows, has_scheduled_caller,
     )
     registry = load_registry()
     now_utc = datetime.now(timezone.utc)
@@ -3314,6 +3314,14 @@ def collect_data_source_health() -> list[dict]:
         if eff == HEALTHY:
             continue
         src = r.get("source_key")
+        if eff in NOT_ALERTED:
+            # 2026-10-16: "alpha_vantage failing: last success 164h ago" while no caller could reach
+            # it (scalp_float moved to Finviz; OVERVIEW is premium on this key). Explained, not failing.
+            label = "idle" if eff == "idle" else "premium endpoint unavailable"
+            out.append(_f("data_quality", f"data_source_{eff}", "info",
+                          f"data source '{src}' {label}: {r.get('idle_reason') or 'no reason recorded'}",
+                          source=src, effective_status=eff))
+            continue
         if is_retired(src):
             raw = raw_by_src.get(src) or {}
             if called_since_retirement(src, raw.get("last_success_at"), raw.get("last_failure_at")):

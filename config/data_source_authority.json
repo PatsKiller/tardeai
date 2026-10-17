@@ -186,10 +186,9 @@
         "approved_by": "operator",
         "approved_on": "2026-10-10",
         "reference": "Operator 2026-10-10 ~18:40 ET, verbatim \"Yes, from one to six\" (item 4: apply registry proposal rows A1, A2, A3, B1, B2; not N1) — config/policy_proposals/data_source_authority_alpha_vantage_scope_20261010.json; branch n8nmat/av-newsapi (PR #1675); direction 2026-10-10: \"let's use Alpha Vantage for the gaps and prioritize which gaps that really make sense\"",
-        "scope": "may supply: fundamentals, earnings_calendar, news_sentiment; same-question backup for earnings_date and catalyst_news (supply tags earnings, news_feed). All calls through scripts/lib/alpha_vantage_owner.py; <= 23 requests/day"
+        "scope": "may supply: earnings_calendar, news_sentiment; same-question backup for earnings_date and catalyst_news (supply tags earnings, news_feed). All calls through scripts/lib/alpha_vantage_owner.py; <= 23 requests/day. Narrowed operator 2026-10-16: yes, narrow the AV row -- fundamentals (OVERVIEW) removed: premium endpoint on this key (10/10 calls 2026-10-12..16 refused); scalp_float and fundamentals_overview allotments 0"
       },
       "supplies": [
-        "fundamentals",
         "earnings_calendar",
         "news_sentiment",
         "news_feed",
@@ -208,8 +207,8 @@
         "allotments": {
           "earnings_calendar": 1,
           "news_sentiment_window": 14,
-          "fundamentals_overview": 5,
-          "scalp_float": 2,
+          "fundamentals_overview": 0,
+          "scalp_float": 0,
           "key_check": 1,
           "top_movers": 0
         },
@@ -217,6 +216,7 @@
         "receipts": "data/runtime/alpha_vantage/receipts_YYYYMM.jsonl",
         "config": "config/alpha_vantage_owner.json"
       },
+      "_narrowed_20261016": "operator 2026-10-16: yes, narrow the AV row. Removed fundamentals from supplies (OVERVIEW is a premium endpoint on this key: 10/10 counted calls 2026-10-12..16 answered This is a premium endpoint, 0 successes; the owner refuses OVERVIEW up front as premium_endpoint_unavailable). scalp_float 2 -> 0 (float now Finviz via the data broker, operator option A) and fundamentals_overview 5 -> 0 (the --fundamentals lane now reads stored Finviz, operator 2026-10-16 Switch to Finviz). Nothing widened. PR #1840.",
       "_supplies_note": "news_feed and earnings are the supply tags catalyst_news (answers news/news_feed/web_search) and earnings_date match a same-question backup against (AGENTS.md §7A rule 5) — B1/B2, operator 2026-10-10 \"Yes, from one to six\".",
       "health_window_hours": 192,
       "_health_window_note": "Provider liveness window for data_source_health. 192h = the weekly fundamentals lane (cron L162), the only scheduled AV caller until the owner's news/earnings jobs are scheduled; lower to 13 (the overnight gap between news pulls, 20:00->06:00 ET, with margin) when that cron/n8n grant lands. Domain freshness (news_sentiment 3h/13h, earnings_calendar 26h) is the read envelope's, not this row's."
@@ -1558,7 +1558,7 @@
         "approved_by": "operator",
         "approved_on": "2026-09-13",
         "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
-        "scope": "authoritative answer for fundamentals: store fundamental_data; primary provider alpha_vantage"
+        "scope": "authoritative answer for fundamentals: store fundamental_data; primary provider finviz (stored Finviz enrichment read through finviz_enrichment_snapshot; operator 2026-10-16 Switch to Finviz, was alpha_vantage OVERVIEW, premium on our key)"
       },
       "store": {
         "table": "fundamental_data"
@@ -1572,7 +1572,7 @@
         "metric_name",
         "metric_value"
       ],
-      "primary_provider": "alpha_vantage",
+      "primary_provider": "finviz",
       "backup": [
         "yfinance"
       ],

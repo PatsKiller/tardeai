@@ -39,7 +39,9 @@ TOKEN = "APPROVE_AGENTS_POLICY_5_1_0"
 INTENTS_TEST = ROOT / "tests" / "test_notification_intents_20261010.py"
 
 # Same digests as tests/test_agents_policy_5_0_0_execution_ops.py (measured at origin/main e24ccd6c5, 5.0.0 ACTIVE).
-SECTION_0_SHA256 = "d7ce297890a85a125b2b0d7dc8234a0e4e679ffd6bae6d7820b2076a0267ec29"
+# AGENTS.md 14.0.0 ratified 2026-10-16: §0 rule 2 gained one sentence (pinned in
+# tests/test_agents_policy_14_0_0_broker_read.py); before it, §0 hashed to d7ce297890a8….
+SECTION_0_SHA256 = "86ab4957123f59a846cdeab39dfda8b96f69950a9031ff870228aa9942de79f3"
 SECTION_23_14_SHA256 = "bb8722f69b8e54a8582011bdbe266d55ea7c2c0c6b120d123a1d4e43394311e7"
 PINNED_SECTIONS = {
     "§0": ("# 0 · If you read nothing else", "# 1 · Identity and responsibilities", SECTION_0_SHA256),

@@ -507,7 +507,10 @@ def test_registry_dispatch_errors_hook():
 #: n8n-native lanes (no host line): dispatcher shape without a cron twin.
 # momentum-cache-reconcile climbed to canary 2026-10-13; the operator returned it to shadow the same day
 # (relay refused live, failing every dispatcher run).
-N8N_NATIVE_SHADOW = frozenset({"momentum-lifecycle-monitor", "momentum-cache-reconcile"})
+#: 2026-10-16 process consolidation cohort 2: the Hermes discovery yield builder's event-trigger lane (no host line of
+#: its own; the night-stage step is the clock fallback). tests/test_n8n_consolidation_cohort2_20261016.py.
+N8N_NATIVE_SHADOW = frozenset({"momentum-lifecycle-monitor", "momentum-cache-reconcile",
+                               "hermes-discovery-yield-on-learning"})
 N8N_NATIVE_CANARY = frozenset({"heartbeat-watch"})
 #: lane repair 2026-10-15: a systemd-timer lane at shadow (its timer keeps the real work; dispatch.cron mirrors the
 #: timer's OnCalendar). tests/test_lane_repair_ri_hermes_litmus_20261015.py pins the row and its allowlist entry.

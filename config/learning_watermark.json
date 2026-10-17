@@ -1,0 +1,44 @@
+{
+  "schema": "LearningWatermarkConfig@v1",
+  "_comment": "n8n process consolidation cohort 2 (2026-10-16): the two Hermes learning consumers (discovery yield builder, tag-lift discovery) consume the VERIFIED completion of the learning stage, not a clock offset. Read by scripts/lib/learning_watermark.py (guard + reader) and scripts/report_learning_watermark.py (read-only report). The upstream watermark is the newest verified completion of step outcome_learning from either scheduler: (1) an n8n coordination-ledger RUN_DONE of upstream.lane_id whose receipt output_verdict is in upstream.require_verdict (the executor's verdict, the same rule as the registry run_done trigger), or (2) the cron runner's PipelineStepReceipt@v1 for the step (status ok, dry_run false) corroborated by the stage's durable file artifact (an outcome_bus history snapshot written inside the same stage run). Exit code alone never makes a watermark.",
+  "upstream": {
+    "lane_id": "hermes-learning-outcome-learning",
+    "require_verdict": ["produced", "empty_allowed"],
+    "ledger_modes": ["live"],
+    "pipeline_step": {
+      "pipeline": "hermes_learning",
+      "stage": "learn",
+      "step": "outcome_learning",
+      "steps_jsonl": "logs/pipelines/hermes_learning/learn_steps.jsonl"
+    },
+    "corroboration": {
+      "kind": "outcome_bus_snapshot",
+      "dir": "state/hermes/outcome_bus_history",
+      "glob": "outcome_bus_*_ofb_*.json",
+      "stamp_format": "%Y-%m-%dT%H%M",
+      "window_s": 3600,
+      "_why": "outcome_feedback_agent writes state/hermes/outcome_bus_history/outcome_bus_<UTC YYYY-MM-DDTHHMM>_ofb_<id>.json inside the learn stage, before outcome_learning; a snapshot stamped within window_s before the outcome_learning step receipt proves the stage did work that run (tag-lift reads exactly this bus)."
+    }
+  },
+  "consumers": {
+    "hermes-discovery-yield-builder": {
+      "script": "scripts/hermes_discovery_yield_builder.py",
+      "event_lane": "hermes-discovery-yield-on-learning",
+      "clock": "hermes_overnight night stage step discovery_yield_builder (02:20 ET)",
+      "clock_guard": "enforce"
+    },
+    "hermes-tag-lift-discovery": {
+      "script": "scripts/hermes_tag_lift_discovery.py",
+      "event_lane": null,
+      "event_lane_proposed": "hermes-tag-lift-on-learning",
+      "event_lane_blocked": "OPERATOR DECISION: an n8n lane running scripts/hermes_tag_lift_discovery.py reaches broker_module / order_placement transitively (db_adapter -> holdings_guard -> schwab_position_sync -> schwab_transport, lazy). config/n8n_lane_capability_baseline.json is shrink-only and pinned to the operator's DD01 ruling of 2026-10-15 (tests/test_lane_transitive_capabilities_20261015.py FROZEN_20261015), so admitting this lane needs the operator to extend that ruling. Until then tag-lift is consumed by the watermark-guarded clock only.",
+      "clock": "hermes_overnight night stage step tag_lift_discovery (02:20 ET, behind run_with_deepseek_offpeak.sh --official)",
+      "clock_guard": "enforce"
+    }
+  },
+  "clock_stale_ceiling_h": 36,
+  "decision_history": 30,
+  "state_dir": "learning_watermark",
+  "event_trigger_state": "shadow",
+  "_event_trigger_state": "shadow = the event lanes' dispatch mode is dry_run and their allowlist live_arg is null: an event fire runs --dry-run --learning-watermark event (reports the decision, writes nothing). Live is a separate operator-approved PR (live_arg + dispatch mode live + TRADEAI_N8N_RELAY_LIVE_LANES) after the shadow proof."
+}

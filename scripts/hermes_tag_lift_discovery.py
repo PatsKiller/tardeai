@@ -26,6 +26,14 @@ Exit codes: 0 = ran (zero tags / zero candidates is a finding); 1 = crash (faile
 item failed (weight_deltas_planned > 0, weight_deltas_applied == 0 and nothing upserted; one failed delta is a
 soft failure noted in the report); 2 = usage (no --run). A PEAK_SKIP by the wrapper never starts this script, so it
 leaves no receipt (the lane goes stale, not green).
+
+Cohort 2 (2026-10-16, n8n process consolidation): the lane consumes the VERIFIED Hermes learning completion once
+(scripts/lib/learning_watermark.py, config/learning_watermark.json). --learning-watermark event is for the PROPOSED
+n8n event lane hermes-tag-lift-on-learning (run_done on hermes-learning-outcome-learning, require_verdict
+produced/empty_allowed); it is not wired: an n8n lane running this script reaches broker code transitively via
+db_adapter, and admitting it needs an operator ruling on the frozen capability baseline (DD01). No flag = the overnight clock fallback, which no-ops (recorded reason, exit 0, no receipt)
+when that learning watermark was already consumed, so the weight deltas are never applied twice for one bus.
+A dry run reports the decision and records nothing.
 """
 from __future__ import annotations
 
@@ -104,11 +112,32 @@ def main() -> int:
                     help="override outcome_bus_history dir (prior window)")
     ap.add_argument("--feed-path", default=None,
                     help="override hermes_discovery_outcome_feed.json path")
+    ap.add_argument("--learning-watermark", choices=("event", "clock"), default=None,
+                    help="learning watermark guard (config/learning_watermark.json): event = fired by the verified "
+                         "learning completion; clock (the default when omitted) = the overnight fallback, a "
+                         "recorded no-op when this learning watermark was already consumed")
     args = ap.parse_args()
 
     if not args.run:
         ap.print_help()
         return 2
+
+    import lib  # noqa: F401  scripts/lib/__init__ puts the repo root on sys.path (a by-path cron run has only scripts/)
+    from scripts.lib import learning_watermark as lw
+    guard, problem = lw.guard_for(LANE_ID, args.learning_watermark)
+    if problem:
+        print(f"[learning-watermark] {LANE_ID}: {problem}", file=sys.stderr)
+        if args.learning_watermark == "event":
+            return 1                        # the event trigger never runs unguarded
+    if guard is not None:
+        guard.evaluate()
+        print(guard.line(dry_run=args.dry_run), file=sys.stderr)
+        if not args.dry_run and not guard.decision.run:
+            guard.record_skip()             # the no-op and its reason are recorded; no lane receipt (no output)
+            if args.json:
+                print(json.dumps({"status": "watermark_noop", "reason": guard.decision.reason,
+                                  "watermark": guard.decision.watermark}, indent=2, default=str))
+            return 0
 
     if args.dry_run:
         readonly = _readonly_db_session()
@@ -132,6 +161,8 @@ def main() -> int:
             LANE_ID, ok=not failed, exit_code=1 if failed else 0, started_at=started, script="hermes_tag_lift_discovery.py",
             summary={k: report.get(k) for k in ('tags_analyzed', 'weight_deltas_planned', 'weight_deltas_applied', 'candidates_planned', 'upserted')},
             error="all_weight_deltas_failed" if failed else None)
+        if guard is not None and not failed:
+            guard.record_consumed()
     if args.json:
         print(json.dumps(report, indent=2, default=str))
     else:

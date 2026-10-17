@@ -41,6 +41,15 @@ RULE_2_EXCEPTION_5_0_0 = (
     "\n   broker-execution unit while markets are closed, and never touch its code, credentials, flags or"
     "\n   orders (AGENTS.md §24.10)."
 )
+# AGENTS.md 14.0.0 (ACTIVE 2026-10-16, ratified APPROVE_AGENTS_POLICY_14_0_0 1838 0d4940cda): §0 rule 2 gains this one
+# sentence after the 5.0.0 one, pointing to §24.11. Stripped before hashing like the 5.0.0 sentence; the sentence and
+# the full §0 digest are pinned by tests/test_agents_policy_14_0_0_broker_read.py.
+RULE_2_EXCEPTION_14_0_0 = (
+    "\n   One read-only exception, binding only once AGENTS.md 14.0.0 is ACTIVE: with an operator"
+    "\n   `broker-read` grant, an agent may run `scripts/ops/broker_read_sync.sh` and no other broker"
+    "\n   read; it never sees a credential value, re-authenticates, changes a flag or reaches an order"
+    "\n   route (AGENTS.md §24.11)."
+)
 PINNED_SECTIONS = {
     "§0": (
         "# 0 · If you read nothing else",
@@ -79,6 +88,7 @@ def _section(text: str, start: str, end: str) -> str:
     assert e, end
     block = text[s.start() : s.start() + 1 + e.start()]
     block = block.replace(RULE_2_EXCEPTION_5_0_0, "")  # operator-requested amendment 5.0.0; see the constant
+    block = block.replace(RULE_2_EXCEPTION_14_0_0, "")  # operator-requested amendment 14.0.0; see the constant
     # §7A embeds a GENERATED table (render_source_of_truth.py); mask it so only rule text is pinned — same mask as
     # the 4.1.0/4.3.0/4.4.0 pins (operator 2026-10-10 'Yes, from one to six', item 5; PR #1678).
     return re.sub(
@@ -127,8 +137,8 @@ def test_banner_states_the_numbering_dependency_and_the_class_reasoning():
     assert "PR #1666" in f and "dd8f4cff1" in f and "settled at ratification" in f and "becomes 5.0.0" in f
     assert "316700266" in f
     # 4.6.0 supersedes 4.5.0; 5.0.0 (#1686) supersedes 4.6.0; 5.1.0 supersedes 5.0.0; 5.2.0 (PROPOSED) supersedes 5.1.0;
-    # 10.0.0 (ACTIVE, ratified on #1736) supersedes 7.0.0.
-    supersedes = {(4, 6, 0): "4.5.0", (5, 0, 0): "4.6.0", (5, 1, 0): "5.0.0", (5, 2, 0): "5.1.0", (10, 0, 0): "7.0.0", (11, 0, 0): "10.0.0", (12, 0, 0): "11.0.0"}
+    # 10.0.0 (ACTIVE, ratified on #1736) supersedes 7.0.0; 14.0.0 (ratified on #1838) supersedes 12.0.0.
+    supersedes = {(4, 6, 0): "4.5.0", (5, 0, 0): "4.6.0", (5, 1, 0): "5.0.0", (5, 2, 0): "5.1.0", (10, 0, 0): "7.0.0", (11, 0, 0): "10.0.0", (12, 0, 0): "11.0.0", (14, 0, 0): "12.0.0"}
     assert _control("Supersedes") == supersedes.get(_version(), "5.1.0")
     assert f"{TOKEN} <pr_number> <head_sha>" in f
 
@@ -158,7 +168,7 @@ def test_23_14_is_byte_identical():
 
 def test_claude_md_adapter_restates_no_new_rule():
     # The adapter repeats §0 verbatim, so once 5.0.0 is ratified it carries the rule 2 sentence; not a new rule.
-    text = (ROOT / "CLAUDE.md").read_text(encoding="utf-8").replace(RULE_2_EXCEPTION_5_0_0, "")
+    text = (ROOT / "CLAUDE.md").read_text(encoding="utf-8").replace(RULE_2_EXCEPTION_5_0_0, "").replace(RULE_2_EXCEPTION_14_0_0, "")
     assert "n8n" not in text.lower() and "§24" not in text
 
 

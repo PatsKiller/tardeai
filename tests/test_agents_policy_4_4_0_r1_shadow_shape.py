@@ -52,6 +52,15 @@ RULE_2_EXCEPTION_5_0_0 = (
     "\n   broker-execution unit while markets are closed, and never touch its code, credentials, flags or"
     "\n   orders (AGENTS.md §24.10)."
 )
+# AGENTS.md 14.0.0 (ACTIVE 2026-10-16, ratified APPROVE_AGENTS_POLICY_14_0_0 1838 0d4940cda): §0 rule 2 gains this one
+# sentence after the 5.0.0 one, pointing to §24.11. Stripped before hashing like the 5.0.0 sentence; the sentence and
+# the full §0 digest are pinned by tests/test_agents_policy_14_0_0_broker_read.py.
+RULE_2_EXCEPTION_14_0_0 = (
+    "\n   One read-only exception, binding only once AGENTS.md 14.0.0 is ACTIVE: with an operator"
+    "\n   `broker-read` grant, an agent may run `scripts/ops/broker_read_sync.sh` and no other broker"
+    "\n   read; it never sees a credential value, re-authenticates, changes a flag or reaches an order"
+    "\n   route (AGENTS.md §24.11)."
+)
 PINNED_SECTIONS = {
     "§0": (
         "# 0 · If you read nothing else",
@@ -91,6 +100,7 @@ def _section(text: str, start: str, end: str) -> str:
     assert e, end
     block = text[s.start() : s.start() + 1 + e.start()]
     block = block.replace(RULE_2_EXCEPTION_5_0_0, "")  # operator-requested amendment 5.0.0; see the constant
+    block = block.replace(RULE_2_EXCEPTION_14_0_0, "")  # operator-requested amendment 14.0.0; see the constant
     # §7A embeds a GENERATED table (render_source_of_truth.py); mask it so only rule text is pinned.
     # Operator 2026-10-10 ~18:40 ET ("Yes, from one to six", item 5); §20 PATCH.
     return re.sub(r"(<!-- SOURCE_OF_TRUTH_TABLE_START -->).*?(<!-- SOURCE_OF_TRUTH_TABLE_END -->)", r"\1\n<generated>\n\2", block, flags=re.S)

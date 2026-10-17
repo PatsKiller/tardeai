@@ -70,6 +70,12 @@ GATES = [
     # worker-seconds, executor concurrency); n8n_shadow_policy (no continuous dry run on accepted lanes, regression
     # canary only on a config or entry-script change, shadow cadence proposals report-only). Hermetic: tmp ledger.
     ("n8n_consolidation_cohort1_20261016", ["tests/test_n8n_consolidation_cohort1_20261016.py"]),
+    # ANCHOR: N8N_CONSOLIDATION_COHORT2_20261016 — process consolidation cohort 2 (operator 2026-10-16): the Hermes
+    # learning consumers (discovery yield builder, tag-lift discovery) fire on the VERIFIED completion of outcome
+    # learning (yield-builder event lane, run_done + require_verdict, shadow; tag-lift lane awaits DD01 ruling) and consume each learning watermark once
+    # (scripts/lib/learning_watermark.py): no fire on an unverified or missing upstream (with a reason), no double
+    # consumption across event plus clock, the clock fallback runs on a stale watermark. Hermetic: tmp ledger/state.
+    ("n8n_consolidation_cohort2_20261016", ["tests/test_n8n_consolidation_cohort2_20261016.py"]),
     # ANCHOR: SELF_HEAL_CLAUDE_FIXER_20261016 — operator 2026-10-16: self-heal CODE DEFECTS go to an iterative
     # headless Claude Code fixer (scripts/self_heal_fixer.py), not the governed LLM bridge. Lifecycle (a PR is not a
     # heal), intake dedupe/cooldown/refused lanes, diff guard (protected paths, test weakening, append-only CI
@@ -5075,6 +5081,15 @@ GATES = [
         # proposal passes the gate only once granted. Hermetic fakes.
         "alpha_vantage_owner_20261010",
         ["tests/test_alpha_vantage_owner_20261010.py"],
+    ),
+    (
+        # Scalp float via Finviz broker (operator 2026-10-16 option A): scalp_float_lookup reads Finviz Shs Float through
+        # lib.data_broker.finviz_enrichment_snapshot (no Finviz export, no Alpha Vantage); missing/stale/zero float ->
+        # explicit "float: unavailable (<reason>)"; the owner refuses OVERVIEW (premium on this key) with
+        # premium_endpoint_unavailable and no HTTP call; the premium notice is classified; data_source_health shows
+        # alpha_vantage idle (no active callers) / premium, not failing, while a real failure stays a failure. Hermetic.
+        "scalp_float_finviz_broker_20261016",
+        ["tests/test_scalp_float_finviz_broker_20261016.py"],
     ),
     (
         # Desk-loop cost-cap backoff (API overlap Q6, 2026-10-10): after COST_CAP_EXCEEDED inside try_fulfill_pending_replies

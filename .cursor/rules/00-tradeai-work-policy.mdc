@@ -34,6 +34,10 @@ agent that reads fifteen lines and stops must still know them.
    `execution-ops` grant naming the unit, an agent may inspect, re-point, reload and restart that
    broker-execution unit while markets are closed, and never touch its code, credentials, flags or
    orders (AGENTS.md §24.10).
+   One read-only exception, binding only once AGENTS.md 14.0.0 is ACTIVE: with an operator
+   `broker-read` grant, an agent may run `scripts/ops/broker_read_sync.sh` and no other broker
+   read; it never sees a credential value, re-authenticates, changes a flag or reaches an order
+   route (AGENTS.md §24.11).
 3. **Never route around a permission denial.** Stop and report. No alternate remote, no
    direct-to-main push, no API call substituting for a blocked CLI, no branch rename to reset a
    budget.

@@ -3,50 +3,35 @@
 
 Operator 2026-10-05: an unknown float must FAIL CLOSED, but look it up before excluding. Bare
 social rows (HPE, DELL, CHPT) carried no float in scalp_scan_results; a real small cap the scanner
-never enriched would be lost too. Order: cache → Finviz Elite export v=131 (header-keyed, via
-finviz_enrichment._fetch_view; one request per 20 tickers) → Alpha Vantage OVERVIEW SharesFloat
-(free tier 25/day, paced). Bounded per run by config `universe.float_lookup`. Results — found and
-not-found — are cached with TTLs so the 5-minute engine does not refetch.
+never enriched would be lost too.
 
-READ-ONLY toward every provider. No secret is printed or stored; the cache holds numbers only.
+Operator 2026-10-16 (option A): "stop calling Alpha Vantage OVERVIEW for float; use the float data
+we already have from Finviz via the data broker". Before, this module fetched Finviz Elite v=131
+itself (one export request per 20 tickers) and then called Alpha Vantage OVERVIEW through the
+owner's ``scalp_float`` job — 10 counted calls 2026-10-12..16, every one "This is a premium
+endpoint", 0 floats. Now the ONLY source is Finviz "Shs Float" (``float_m``, millions) as already
+stored in ``data/state/ticker_enrichment_cache.json`` by its single writer
+(``scripts/finviz_enrichment.py``), read through the data broker projection
+``lib.data_broker.finviz_enrichment_snapshot``. Zero provider calls (AGENTS.md: alerts and lanes get
+data only through the Command Center data broker).
+
+A symbol whose Finviz float is missing, zero (the writer's "absent"), or older than
+``float_lookup.finviz_max_age_hours`` is reported ``float: unavailable (<reason>)`` and left out of
+the result, so the universe fails it closed (``float_unknown``). Never a default number.
+
+READ-ONLY: no provider, no network, no file written.
 """
 from __future__ import annotations
 
-import json
-import os
 import time
 from datetime import datetime, timezone
-from pathlib import Path
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
-_REPO = Path(__file__).resolve().parent.parent
-
-
-def default_cache_path() -> Path:
-    try:
-        from active_trader.momentum_alerts import journal_dir
-        return journal_dir() / "scalp_float_cache.json"
-    except Exception:  # noqa: BLE001
-        return _REPO / "data" / "state" / "scalp_float_cache.json"
-
-
-def _load(path: Path) -> dict:
-    try:
-        return json.loads(path.read_text())
-    except Exception:  # noqa: BLE001
-        return {}
-
-
-def _save(path: Path, cache: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(cache, indent=1, sort_keys=True))
-    os.replace(tmp, path)
-
-
-def _fresh(rec: dict, now: float, fl: dict) -> bool:
-    ttl_h = fl["ttl_hours"] if rec.get("float_mm") is not None else fl["negative_ttl_hours"]
-    return (now - float(rec.get("fetched_ts") or 0)) < float(ttl_h) * 3600
+#: The projection every float now comes through (named in each result row).
+VIA = "data_broker.finviz_enrichment_snapshot"
+#: Default staleness window when config does not set one: Finviz float moves on offerings and
+#: splits, not intraday; 168 h keeps a weekly-refreshed record usable and refuses older ones.
+DEFAULT_MAX_AGE_HOURS = 168.0
 
 
 def _positive(v) -> Optional[float]:
@@ -57,76 +42,77 @@ def _positive(v) -> Optional[float]:
     return f if f > 0 else None   # finviz_enrichment stores an absent float as 0.0 — that is unknown
 
 
-def finviz_fetch(symbols: list[str]) -> dict:
-    """{SYM: {"float_mm", "price"}} from Finviz v=131 (Shares Float is in millions)."""
-    import finviz_enrichment as fe
-    out = {}
-    for sym, rec in (fe._fetch_view(symbols, 131, _REPO) or {}).items():
-        out[sym.upper()] = {"float_mm": _positive(rec.get("float_m")), "price": _positive(rec.get("price"))}
-    return out
+def broker_batch(symbols: list[str], *, max_age_hours: float, now: Optional[datetime] = None) -> dict:
+    """The broker read (``get_enrichment_batch``). Injectable in tests; reads one local file."""
+    from lib.data_broker.finviz_enrichment_snapshot import get_enrichment_batch
+    return get_enrichment_batch(symbols, max_age_hours=max_age_hours, now=now)
 
 
-def alpha_vantage_float(symbol: str) -> Optional[float]:
-    """SharesFloat from AV OVERVIEW, in millions. None on missing key, refusal, quota notice or error.
-
-    2026-10-10: through the Alpha Vantage owner's ``scalp_float`` job (2/day reserve, 12 s spacing,
-    receipts). This ran every 5 minutes 06:00-15:55 with up to 2 calls a run and no budget at all.
-    """
-    from external_market_data_ingest import _av_overview
-    data = _av_overview(symbol, job="scalp_float")
-    if "Information" in data or "Note" in data:
-        return None
-    sf = _positive(data.get("SharesFloat"))
-    return round(sf / 1e6, 4) if sf else None
-
-
-def lookup_floats(symbols: list[str], u: dict, *, cache_path: Optional[Path] = None,
-                  finviz: Callable[[list[str]], dict] = finviz_fetch,
-                  av: Callable[[str], Optional[float]] = alpha_vantage_float,
-                  now: Optional[float] = None) -> dict:
-    """{SYM: {"float_mm", "price", "source"}} for the symbols it could resolve (cache or provider).
-    Symbols still unknown are cached negative and left out of the result."""
+def lookup_floats_detail(symbols: list[str], u: dict, *,
+                         broker: Callable[..., dict] = broker_batch,
+                         now: Optional[float] = None) -> dict[str, Any]:
+    """{"found": {SYM: {"float_mm", "price", "source", "via", "as_of", "age_hours"}},
+        "unavailable": {SYM: reason}, "provider_calls": 0, "envelope": {...}}"""
     fl = u["float_lookup"]
-    if not fl.get("enabled") or not symbols:
-        return {}
-    now = time.time() if now is None else now
-    path = cache_path or default_cache_path()
-    cache = _load(path)
-    out, need = {}, []
-    for s in dict.fromkeys(x.upper() for x in symbols):
-        rec = cache.get(s)
-        if rec and _fresh(rec, now, fl):
-            if rec.get("float_mm") is not None:
-                out[s] = {k: rec.get(k) for k in ("float_mm", "price", "source")}
-        else:
-            need.append(s)
-    need = need[: int(fl["max_lookups_per_run"])]
-    stamp = datetime.fromtimestamp(now, timezone.utc).isoformat()
-    got = {}
-    if need and "finviz" in fl["sources"]:
-        try:
-            got = finviz(need) or {}
-        except Exception as e:  # noqa: BLE001
-            print(f"  [float-lookup] finviz failed: {type(e).__name__}")
-    av_left = int(fl["av_max_lookups_per_run"]) if "alpha_vantage" in fl["sources"] else 0
-    for s in need:
-        rec = got.get(s) or {}
-        flt, price, src = rec.get("float_mm"), rec.get("price"), "finviz"
-        if flt is None and av_left > 0:
-            av_left -= 1
-            try:
-                flt, src = av(s), "alpha_vantage"
-            except Exception as e:  # noqa: BLE001
-                print(f"  [float-lookup] alpha_vantage {s} failed: {type(e).__name__}")
-                flt = None
-        cache[s] = {"float_mm": flt, "price": price, "source": src if flt is not None else None,
-                    "fetched_ts": now, "fetched_at": stamp}
-        if flt is not None:
-            out[s] = {"float_mm": flt, "price": price, "source": src}
-    if need:
-        try:
-            _save(path, cache)
-        except Exception as e:  # noqa: BLE001
-            print(f"  [float-lookup] cache not saved: {type(e).__name__}")
-        print(f"  [float-lookup] looked up {len(need)}: found {sum(1 for s in need if s in out)}")
+    syms = list(dict.fromkeys(str(x).upper().strip() for x in (symbols or []) if str(x or "").strip()))
+    out: dict[str, Any] = {"found": {}, "unavailable": {}, "provider_calls": 0, "envelope": {}}
+    if not fl.get("enabled") or not syms:
+        return out
+    max_age = float(fl.get("finviz_max_age_hours") or DEFAULT_MAX_AGE_HOURS)
+    ref = datetime.fromtimestamp(time.time() if now is None else now, timezone.utc)
+    try:
+        batch = broker(syms, max_age_hours=max_age, now=ref) or {}
+    except Exception as e:  # noqa: BLE001 — an unreadable broker leaves every float unavailable
+        reason = f"finviz broker read failed: {type(e).__name__}"
+        out["unavailable"] = {s: reason for s in syms}
+        return out
+    out["provider_calls"] = int(batch.get("provider_calls") or 0)
+    out["envelope"] = {k: batch.get(k) for k in ("schema", "as_of", "age_hours", "stale", "source")
+                       if k in batch}
+    per = batch.get("symbols") or {}
+    for s in syms:
+        row = per.get(s) or {}
+        rec = row.get("record")
+        if not isinstance(rec, dict):
+            out["unavailable"][s] = "not in Finviz enrichment cache"
+            continue
+        if not row.get("as_of"):
+            out["unavailable"][s] = "Finviz record has no cached_at"
+            continue
+        if row.get("stale"):
+            out["unavailable"][s] = f"Finviz record {float(row.get('age_hours') or 0):.0f}h old > {max_age:.0f}h"
+            continue
+        flt = _positive(rec.get("float_m"))
+        if flt is None:
+            out["unavailable"][s] = "Finviz Shs Float absent"
+            continue
+        out["found"][s] = {"float_mm": flt, "price": _positive(rec.get("price")), "source": "finviz",
+                           "via": VIA, "as_of": row.get("as_of"), "age_hours": row.get("age_hours")}
     return out
+
+
+def lookup_floats(symbols: list[str], u: dict, **kw) -> dict:
+    """{SYM: {"float_mm", "price", "source", ...}} for symbols with a fresh Finviz float.
+
+    Same shape the universe consumer (``scalp_shadow_logger.resolve_universe_detail``) always read;
+    a symbol left out stays unknown and is excluded. Each unavailable symbol is printed with its
+    reason."""
+    d = lookup_floats_detail(symbols, u, **kw)
+    for s, why in sorted(d["unavailable"].items()):
+        print(f"  [float-lookup] {s} float: unavailable ({why})")
+    if d["found"] or d["unavailable"]:
+        print(f"  [float-lookup] finviz via broker: {len(d['found'])} found, "
+              f"{len(d['unavailable'])} unavailable, provider_calls={d['provider_calls']}")
+    return d["found"]
+
+
+if __name__ == "__main__":  # read-only dry run: python scripts/scalp_float_lookup.py SYM [SYM ...]
+    import json
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import yaml
+
+    cfg = yaml.safe_load((Path(__file__).resolve().parent.parent / "config" / "scalp_signal_engine.yaml").read_text())
+    print(json.dumps(lookup_floats_detail(sys.argv[1:], cfg["universe"]), indent=1, default=str))
