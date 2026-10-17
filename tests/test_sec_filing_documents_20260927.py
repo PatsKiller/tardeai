@@ -112,6 +112,11 @@ def test_fetch_exhibit_uses_index_json_then_the_index_htm_fallback():
     assert got["doc_url"] == DIR + "/a99one.htm"
 
 
+# The fixture filing is dated 2026-09-01; ingest's default 45-day window made this a time bomb from 2026-10-17.
+# Widen the window relative to today so the fixture stays in range.
+from datetime import date as _date
+_SINCE = (_date.today() - _date(2026, 9, 1)).days + 30
+
 FILINGS = [
     {"form": "8-K", "filing_date": "2026-09-01", "accession_number": ACC, "items": "2.02,9.01"},
     {"form": "8-K", "filing_date": "2026-09-15", "accession_number": "0001571996-26-000041", "items": "5.02"},
@@ -183,21 +188,21 @@ def test_ingest_hook_upserts_on_accession_exhibit_and_never_raises():
     import sec_fundamentals_ingest as ing
     cur = _Cur()
     conn = _Conn(cur)
-    out = ing.ingest_documents(conn, "DELL", CIK, FILINGS, fetch_json=lambda u: INDEX_JSON, fetch_text=lambda u: FIXTURE_HTML)
+    out = ing.ingest_documents(conn, "DELL", CIK, FILINGS, fetch_json=lambda u: INDEX_JSON, fetch_text=lambda u: FIXTURE_HTML, since_days=_SINCE)
     assert out["filing_documents_new"] == 1 and out["filing_facts_new"] >= 8 and conn.commits == 1
     ins = [c for c in cur.calls if c[0].lstrip().startswith("INSERT INTO sec_filing_documents")]
     assert len(ins) == 1 and "ON CONFLICT (accession, exhibit)" in ins[0][0]
     assert ins[0][1][2] == ACC and ins[0][1][5] == "EX-99.1" and json.loads(ins[0][1][9])[0]["category"]
     # second run: the row exists, nothing is fetched or inserted
     cur2 = _Cur(existing={(ACC, "EX-99.1")})
-    out2 = ing.ingest_documents(_Conn(cur2), "DELL", CIK, FILINGS, fetch_json=lambda u: 1 / 0, fetch_text=lambda u: 1 / 0)
+    out2 = ing.ingest_documents(_Conn(cur2), "DELL", CIK, FILINGS, fetch_json=lambda u: 1 / 0, fetch_text=lambda u: 1 / 0, since_days=_SINCE)
     assert out2 == {"filing_documents_new": 0, "filing_facts_new": 0}
     # table missing / db error: reported on the step, transaction rolled back, no raise
     class _Boom(_Cur):
         def execute(self, sql, params=None):
             raise RuntimeError('relation "sec_filing_documents" does not exist')
     conn3 = _Conn(_Boom())
-    out3 = ing.ingest_documents(conn3, "DELL", CIK, FILINGS, fetch_json=lambda u: INDEX_JSON, fetch_text=lambda u: FIXTURE_HTML)
+    out3 = ing.ingest_documents(conn3, "DELL", CIK, FILINGS, fetch_json=lambda u: INDEX_JSON, fetch_text=lambda u: FIXTURE_HTML, since_days=_SINCE)
     assert "does not exist" in out3["filing_documents_error"] and conn3.rollbacks == 1
 
 
