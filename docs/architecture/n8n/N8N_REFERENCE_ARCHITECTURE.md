@@ -415,7 +415,7 @@ Step-by-step, with the implementing file:
 | Policy refusal | `RUN_REFUSED`, already `RUNNING`, `relay_lane_not_allowlisted`, `relay_live_not_enabled` | gateway / relay | **data** (outcome `refused_policy`), not an n8n error | (E) in Run Lane; **legacy dispatcher still records them as errors** (599/day, WS1b-07) → (P) FW-A4 |
 | Lane failure | non-zero exit, timeout, executor lost | executor | outcome `failed`; DLQ + breaker on v2 | (E) |
 | Lock skip | another scheduler holds the lock | executor (exit 75) | outcome `skipped_lock` | (E) |
-| **Empty success** | exit 0, nothing produced (every item `skipped: no_runner`) | **nowhere today** — only `supervisor_breach_detector.py` `NO_OUTPUT` after 3× cadence on the output-signal mtime | must be outcome `failed` / `empty_output` with the contract's `expected_output` rule | **(P)** FW-M6; contracts design §5–§6 |
+| **Empty success** | exit 0, nothing produced (every item `skipped: no_runner`) | the executor, **per-lane opt-in** (reconciled 2026-10-16 with main 26fd0518; the 2026-10-15 text said "nowhere today"): `scripts/n8n_run_executor.py` `apply_output_verdict` evaluates an exit-0 LIVE run against the lane's `expected_output` rule (`config/n8n_health_contracts.json`, rule checker `scripts/lib/n8n_output_verdict.py`) and turns it into `RUN_FAILED` `empty_output` / `output_unverifiable` **only** when the lane's allowlist entry declares `"output_receipt": "v2"` (`OUTPUT_RECEIPT_ENFORCED`); every other lane with a rule is stamped `output_verdict: declared_not_enforced` and its state is unchanged, a lane without a rule `no_rule`, and dry runs are not evaluated. For the rest, `supervisor_breach_detector.py` `NO_OUTPUT` after 3× cadence on the output-signal mtime is still the only detector | outcome `failed` / `empty_output` with the contract's `expected_output` rule | **(E)** for the 46 of 115 allowlisted lanes with `output_receipt: "v2"` (count at 26fd0518); **(P)** for the other 69 (FW-M6; contracts design §5–§6). Recovery evidence follows the same contract: `scripts/lib/recovery_validator.py` accepts only a live receipt whose `output_verdict` is `produced` / `empty_allowed`, so an unenforced lane never auto-recovers live |
 | Lost outcome | no terminal outcome within the Run Lane budget | Run Lane | intent `run_lane_outcome_lost` (`runbook_id n8n-run-lost`) | (E) route; (P) RUN_LOST state in the receipt |
 | Effect conflict | second claim of a held `fx:` key | executor effect gate | `RUN_REFUSED effect:effect_already_claimed` | (E), opt-in and not general: the config has 56 rows (50 `n8n_claim=false`, six learning rows default true, all `cron_claim=false`) — membership is not arming (audit DD05) |
 | Workflow drift | live graph ≠ git | `scripts/check_n8n_workflow_drift.py` | P1 | (E) checker; (P) schedule + P1 (TRK-40) |
@@ -460,9 +460,24 @@ AGENTS.md §0 rule 8 says exit code 0 is not evidence of work. Measured case: `h
 hourly from July with exit 0 while every lane reported `skipped: no_runner`; only the breach detector's `NO_OUTPUT`
 noticed. The architecture therefore treats **"ran, exit 0, produced nothing the contract expects"** as a failure
 state, decided on the host from the lane's receipt against a declared `expected_output` rule in its health contract
-(the rule, receipt fields and outcome are specified in `N8N_CONTRACTS_DESIGN.md` §5–§6). Until that is built, the
-§23.24 checker scores the monitoring element FW-M6 **fail** for any workflow whose contract lacks an
-`expected_output` rule.
+(the rule, receipt fields and outcome are specified in `N8N_CONTRACTS_DESIGN.md` §5–§6).
+
+**What main actually does (reconciled 2026-10-16 against main 26fd0518; supersedes the 2026-10-15 "nowhere today"
+statement in §8.1).** The verdict is built and is enforced **per lane, opt-in**:
+
+* `scripts/n8n_run_executor.py` `apply_output_verdict` runs after every exit-0 attempt. With a declared rule AND the
+  allowlist entry `"output_receipt": "v2"` it reads the attempt's immutable `LaneRunReceipt@v2` and fails the run
+  (`RUN_FAILED` `empty_output` / `output_unverifiable`, `scripts/lib/n8n_output_verdict.py` `FAILING`). Without the
+  opt-in it records `output_verdict: declared_not_enforced` and leaves the state alone; without a rule, `no_rule`.
+* Measured in the tree at 26fd0518: 125 of 128 lane health contracts declare `expected_output`; 46 of 115 allowlist
+  entries declare `output_receipt: "v2"`. The other 69 allowlisted lanes still let an empty success stay green
+  until the breach detector's `NO_OUTPUT`.
+* Recovery uses the same contract (architect review of 26fd0518, finding 1): `scripts/lib/recovery_validator.py`
+  is the one rule for lock-skip cover, self-recovery and output recovery in the diagnoser and the fixer. It reads
+  the EFFECTIVE mode from the receipt and, for live, requires `output_verdict` `produced` / `empty_allowed`; a fresh
+  shared file mtime or JSON timestamp is never recovery evidence.
+
+The §23.24 checker still scores FW-M6 **fail** for any workflow whose contract lacks an `expected_output` rule.
 
 ## 9. Security model
 
@@ -528,7 +543,7 @@ enforced, 0 accepted at 2026-10-15; ~~8 partially realized~~ before D10/D11). Po
 | Q5 | Dead-man inside n8n | silent total failure | operator + agent | GAP §9 item 6 |
 | Q6 | Single host, no UPS, never cold-booted | total outage | operator | TRK-30 |
 | Q7 | `p:` keys: gateway validation (#1760) + executor marker check + retry admission (audit DD03/DD04) | closed in code; a live process step still needs spec mode live + owner rows | Agent A | TRK-21/33 |
-| Q8 | `expected_output` rule absent from all 126 contracts | empty successes stay green | contract owners | FW-M6 (this PR measures it) |
+| Q8 | ~~`expected_output` rule absent from all 126 contracts~~ — reconciled 2026-10-16 (main 26fd0518): 125 of 128 lane contracts declare one, but runtime enforcement is opt-in (`output_receipt: "v2"`, 46 of 115 allowlisted lanes; §8.1, §8.4) | empty successes stay green on the 69 lanes not opted in | contract owners | FW-M6 |
 | R1 | Legacy per-lane workflows lack errorWorkflow/timeout | failures unrouted | Agent A | scorecard remediation order |
 | R2 | ~~The relay serves `GET /momentum-lifecycle` outside its `ROUTES` table~~ — fixed 2026-10-15 (audit DD14: `ROUTES` = `ROUTE_HANDLERS`, the only dispatch path) | — | Agent A | done |
 

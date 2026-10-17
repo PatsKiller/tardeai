@@ -13,6 +13,8 @@ the per-lane states and checks are in scripts/lib/nightly_cutover.py (ONE evalua
                                                         edit (scripts/nightly_cutover_cron_edit.py), registry
                                                         reconciliation, rollback receipt; one summary line
     nightly_cutover_controller.py rollback --receipt F  ARMED ONLY: uncomment that lane's lines, restore its rows
+                                                        (inside the handover fence; every target re-read and
+                                                        verified; exit 2 + per-target report on any failure)
 
 ARMING: apply and rollback refuse unless an active guard grant of tier `cron` (read-only check of
 ~/.cursor/approvals/grants.json, the guard's own ledger) has a reason naming `nightly-cutover-controller`. Nothing here
@@ -265,16 +267,21 @@ def _noop_checkpoint(point: str) -> None:
     return None
 
 
-def read_cron_lines(edits: list[Mapping[str, Any]]) -> tuple[str, str]:
-    """(crontab text, state) where state is applied / not_applied / conflict for these planned edits."""
-    text = read_crontab_text(None)
+def cron_state(text: str, edits: list[Mapping[str, Any]]) -> str:
+    """applied / not_applied / conflict for these planned edits in this crontab text."""
     lines = text.split("\n")
     st = set()
     for e in edits:
         i = int(e["index"])
         cur = lines[i] if 0 <= i < len(lines) else None
         st.add("applied" if cur == e["after"] else "not_applied" if cur == e["before"] else "conflict")
-    return text, ("conflict" if "conflict" in st or len(st) != 1 else st.pop())
+    return "conflict" if "conflict" in st or len(st) != 1 else st.pop()
+
+
+def read_cron_lines(edits: list[Mapping[str, Any]]) -> tuple[str, str]:
+    """(crontab text, state) where state is applied / not_applied / conflict for these planned edits."""
+    text = read_crontab_text(None)
+    return text, cron_state(text, edits)
 
 
 def _backup_file(src: Path, dst: Path) -> str:
@@ -513,7 +520,7 @@ def run(a: argparse.Namespace, *, workflow_reader=None, edit=call_edit, request_
             return 1, rc
         try:
             if mode == "rollback":
-                return do_rollback(a, config, rc, edit=edit)
+                return do_rollback(a, config, rc, edit=edit, rdir=rdir)
             return _run_locked(a, config, rc, rdir, workflow_reader=workflow_reader, edit=edit,
                                request_run=request_run, wait_run=wait_run, notifier=notifier, now=now,
                                checkpoint=checkpoint)
@@ -537,7 +544,16 @@ def _run_locked(a, config, rc, rdir, *, workflow_reader, edit, request_run, wait
                                  for t in pending]
         if pending or orphans:
             if mode == "apply":
-                rc["recovered"] = recover(rdir, edit=edit)
+                # finding 2 (architect review of 26fd0518): a recovery ROLLBACK is an ownership-relevant mutation
+                # (it re-enables a cron line); it runs inside the same handover fence as admission and set-owner.
+                try:
+                    fence = EC.handover_lock(manifest_path(a)).__enter__()
+                except (EC.HandoverLockTimeout, OSError) as exc:
+                    raise NC.CohortStop(f"handover_lock_timeout:{exc}") from exc
+                try:
+                    rc["recovered"] = recover(rdir, edit=edit)
+                finally:
+                    fence.__exit__()
                 bad = [r for r in rc["recovered"] if r.get("outcome") not in
                        ("rolled_back", "committed_by_recovery", "orphan_reservation_released")]
                 raise NC.CohortStop(("recovery_conflict:" if bad else "recovered_incomplete_txn:")
@@ -625,19 +641,128 @@ def apply_cohort(a, config, rc, world: NC.World, plan: dict[str, Any], reg_root:
             fence.__exit__()
 
 
-def do_rollback(a: argparse.Namespace, config: Mapping[str, Any], rc: dict[str, Any], *, edit) -> tuple[int, dict]:
+def rollback_steps(rec: Mapping[str, Any]) -> dict[str, Optional[dict[str, Any]]]:
+    """The receipt's registry / contract targets as transaction steps (the json_step shape the write-ahead txn uses),
+    so the explicit rollback restores and verifies with the SAME primitives as rollback_txn / recover."""
+    lane = rec["lane_id"]
+    root = Path(str(rec.get("registry_root") or "."))
+    reg = {"path": str(rec.get("registry_path") or root / "config/lane_registry.json"), "coll": "lanes",
+           "key": "lane_id", "id": lane, "before": rec.get("row_before"), "after": rec.get("row_after")}
+    con = None
+    if rec.get("contract_before") is not None:
+        con = {"path": str(rec.get("contracts_path") or root / "config/n8n_health_contracts.json"),
+               "coll": "contracts", "key": "id", "id": lane, "before": rec.get("contract_before"),
+               "after": rec.get("contract_after")}
+    return {"registry": reg, "contracts": con}
+
+
+def do_rollback(a: argparse.Namespace, config: Mapping[str, Any], rc: dict[str, Any], *, edit,
+                rdir: Optional[Path] = None) -> tuple[int, dict]:
+    """The explicit ``rollback --receipt`` (architect review of 26fd0518, finding 4: it used to exit 0 even when the
+    registry restore failed). Now, inside the handover fence (finding 2) and with the transaction primitives:
+
+    1. inspect every target (crontab lines, registry row, health contract): applied / not_applied / conflict. A
+       conflict anywhere -> nothing is touched, exit 2 (never auto-reconciled, AGENTS.md §0 rule 5);
+    2. undo in rollback_txn's order (contracts, registry, crontab), each through NC.json_step(undo=True) / the edit
+       capability;
+    3. VERIFY each target by re-reading it: it must now equal its before-image (``not_applied``);
+    4. exit 0 only when every target verified; otherwise exit 2 with ``rollback.targets`` = the per-target report
+       {before, action, after, ok, problem}. The report is also written as a run receipt."""
     rec = json.loads(Path(a.receipt).read_text(encoding="utf-8"))
     if rec.get("schema") != ROLLBACK_SCHEMA:
         rc["refused"] = "not a NightlyCutoverRollback@v1 receipt"
         return 1, rc
-    text = read_crontab_text(a.crontab)
-    req = {"op": "rollback", "lane_id": rec["lane_id"], "expect_sha": NC.sha256_text(text), "edits": rec["edits"]}
-    code, out = edit(req, lock=str(config.get("lock_path") or "/tmp/n8n_cutover.lock"), backup_dir=Path(a.backup_dir))
-    rc["rollback"] = {"lane_id": rec["lane_id"], "edit": out}
-    if code != 0:
-        rc["cohort_stop"] = "rollback_edit_failed"
+    try:
+        fence = EC.handover_lock(manifest_path(a)).__enter__()
+    except (EC.HandoverLockTimeout, OSError) as exc:
+        rc["cohort_stop"] = f"handover_lock_timeout:{exc}"
         return 2, rc
-    rc["rollback"]["registry_problems"] = NC.restore_registry(Path(rec["registry_root"]), rec["lane_id"], rec)
+    try:
+        code, rc = _rollback_fenced(a, config, rc, rec, edit=edit)
+    finally:
+        fence.__exit__()
+    rc["finished_at"] = datetime.now(timezone.utc).isoformat()
+    if rdir is not None:
+        try:      # the run receipt only: nightly_cutover_last.json (the lane's freshness signal) is not touched
+            p = rdir / f"run-{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}-rollback.json"
+            write_json_atomic(p, rc)
+            rc["receipt_path"] = str(p)
+        except OSError as exc:
+            rc["receipt_error"] = str(exc)
+    return code, rc
+
+
+def _rollback_fenced(a: argparse.Namespace, config: Mapping[str, Any], rc: dict[str, Any], rec: Mapping[str, Any],
+                     *, edit) -> tuple[int, dict]:
+    steps = rollback_steps(rec)
+    edits = list(rec.get("edits") or [])
+    targets: dict[str, dict[str, Any]] = {}
+    rc["rollback"] = {"lane_id": rec["lane_id"], "targets": targets, "edit": None, "registry_problems": []}
+    try:
+        text = read_crontab_text(a.crontab)
+        cron_before = cron_state(text, edits) if edits else "n/a"
+    except (NC.CohortStop, OSError, subprocess.SubprocessError) as exc:
+        text, cron_before = None, "conflict"
+        targets["crontab"] = {"problem": f"crontab_unreadable:{exc}"[:200]}
+    targets.setdefault("crontab", {})["before"] = cron_before
+    for name in ("registry", "contracts"):
+        targets[name] = {"before": "n/a" if steps[name] is None else NC.json_step_state(steps[name])}
+    conflicts = [k for k, t in targets.items() if t["before"] == "conflict"]
+    if conflicts:
+        for t in targets.values():
+            t.update(action="untouched", after=t["before"], ok=t["before"] in ("not_applied", "n/a"))
+        rc["rollback"]["registry_problems"] = [f"{k}: conflict (neither the before nor the after image)"
+                                               for k in conflicts]
+        rc["cohort_stop"] = "rollback_conflict:" + ",".join(conflicts)
+        return 2, rc
+    # 2. undo, rollback_txn order: contracts, registry, crontab
+    for name in ("contracts", "registry"):
+        t, step = targets[name], steps[name]
+        if step is None:
+            t.update(action="not_applicable", after="n/a", ok=True)
+            continue
+        if t["before"] == "applied":
+            try:
+                t["action"] = NC.json_step(step, undo=True)
+            except NC.CohortStop as exc:
+                t["action"], t["problem"] = "failed", exc.reason
+        else:
+            t["action"] = "already_restored"
+        t["after"] = NC.json_step_state(step)          # 3. verify by re-reading the target
+        t["ok"] = t["after"] == "not_applied"
+        if not t["ok"]:
+            t.setdefault("problem", f"after_restore_state:{t['after']}")
+    t = targets["crontab"]
+    json_failed = [k for k in ("contracts", "registry") if not targets[k].get("ok")]
+    if json_failed and cron_before == "applied":
+        # The registry still routes the lane to n8n: re-enabling its cron line now would schedule it twice.
+        t.update(action="skipped_prior_failure", problem=f"not restored: {','.join(json_failed)} failed first")
+    elif cron_before == "applied":
+        req = {"op": "rollback", "lane_id": rec["lane_id"], "expect_sha": NC.sha256_text(text), "edits": edits}
+        code, out = edit(req, lock=str(config.get("lock_path") or "/tmp/n8n_cutover.lock"),
+                         backup_dir=Path(a.backup_dir))
+        rc["rollback"]["edit"] = out
+        t["action"] = "written" if code == 0 else f"failed:rc={code}"
+        if code != 0:
+            t["problem"] = "; ".join(out.get("problems") or [f"edit rc {code}"])[:200]
+    else:
+        t["action"] = "already_restored" if cron_before == "not_applied" else "not_applicable"
+    if edits:
+        try:
+            t["after"] = cron_state(read_crontab_text(a.crontab), edits)
+        except (NC.CohortStop, OSError, subprocess.SubprocessError) as exc:
+            t["after"], t["problem"] = "unreadable", f"crontab_unreadable:{exc}"[:200]
+    else:
+        t["after"] = "n/a"
+    t["ok"] = t["after"] in ("not_applied", "n/a")
+    if not t["ok"]:
+        t.setdefault("problem", f"after_restore_state:{t['after']}")
+    failed = [k for k, x in targets.items() if not x.get("ok")]
+    rc["rollback"]["registry_problems"] = [f"{k}: {targets[k].get('problem')}" for k in failed
+                                           if k in ("registry", "contracts")]
+    if failed:
+        rc["cohort_stop"] = "rollback_incomplete:" + ",".join(f"{k}={targets[k].get('after')}" for k in failed)
+        return 2, rc
     return 0, rc
 
 

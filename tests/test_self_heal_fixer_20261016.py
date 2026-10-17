@@ -321,10 +321,20 @@ def test_policy_gate_blocks_push_until_amendment_active():
 # ---------------------------------------------------------------- evaluator, selector, repair memory
 
 
+def bound_facts(commit="c" * 40, tree="d" * 40, base="b" * 40):
+    """The binding facts the harness records (architect review 2026-10-16): one candidate commit, the guard on its
+    tree, and every test run in a fresh, unmutated checkout of it."""
+    run = lambda kind, sha, **kw: {"run_id": f"{kind}-1", "kind": kind, "checkout_sha": sha, "head_after": sha,
+                                   "integrity_ok": True, **kw}
+    return {"candidate": {"commit_sha": commit, "tree_sha": tree, "base_sha": base},
+            "guard": {"tree_sha": tree, "refusals": []},
+            "test_runs": [run("red_first", base, overlay_from=commit), run("targeted", commit), run("ci", commit)]}
+
+
 def test_evaluator_ignores_backend_claims():
     claims_pass = {"backend_result": {"summary": {"root_cause": "fixed", "confidence": 1.0}, "ok": True},
                    "tests_run": ["tests/test_x.py"], "red_first": True, "targeted_rc": 1, "ci_rc": None,
-                   "refusals": []}
+                   "refusals": [], **bound_facts()}
     v = E.local_verdict(claims_pass)
     assert not v["accepted"] and v["failed"] == ["ci_pr_profile_green", "green_with_fix"]
     good = dict(claims_pass, targeted_rc=0, ci_rc=0, backend_result={"ok": False, "summary": None})
@@ -349,10 +359,13 @@ def test_pr_head_moved_is_not_acceptance():
     pr = {"headRefOid": "f" * 40, "statusCheckRollup": [{"name": "ci", "status": "COMPLETED", "conclusion": "SUCCESS"}]}
     v = E.pr_head_verdict(pr, expected_head="a" * 40)
     assert v["verdict"] == "head_moved"
-    assert not E.final_acceptance({"accepted": True}, v)["accepted"]
+    assert not E.final_acceptance({"accepted": True, "commit_sha": "a" * 40}, v)["accepted"]
     ok = E.pr_head_verdict(pr, expected_head="f" * 40)
-    assert E.final_acceptance({"accepted": True}, ok)["accepted"]
-    assert not E.final_acceptance({"accepted": False}, ok)["accepted"]
+    assert E.final_acceptance({"accepted": True, "commit_sha": "f" * 40}, ok)["accepted"]
+    assert not E.final_acceptance({"accepted": False, "commit_sha": "f" * 40}, ok)["accepted"]
+    # 2026-10-16 review: a prefix match is not the evaluated commit; green CI on another head is not acceptance
+    assert E.pr_head_verdict(pr, expected_head="f" * 12)["verdict"] == "head_moved"
+    assert not E.final_acceptance({"accepted": True, "commit_sha": "e" * 40}, ok)["accepted"]
 
 
 def test_selector_is_static_and_refuses_unqualified_backends():
@@ -423,7 +436,17 @@ else:
 '''
 
 FAKE_GH = r'''#!/bin/sh
-echo "$@" >> "$(dirname "$0")/gh_calls.txt"
+# Records every call. "pr create" remembers --head; "pr view" reports the head GitHub would: the pushed branch tip on
+# origin (or, when gh_head_override exists, a different head: the branch moved after the push).
+here="$(dirname "$0")"
+echo "$@" >> "$here/gh_calls.txt"
+if [ "$2" = "view" ]; then
+  if [ -f "$here/gh_head_override" ]; then sha="$(cat "$here/gh_head_override")";
+  else sha="$(git ls-remote origin "refs/heads/$(cat "$here/gh_head_branch")" | cut -f1)"; fi
+  printf '{"headRefOid": "%s"}\n' "$sha"
+  exit 0
+fi
+while [ $# -gt 0 ]; do [ "$1" = "--head" ] && echo "$2" > "$here/gh_head_branch"; shift; done
 echo "https://github.com/PatsKiller/tardeai/pull/4242"
 '''
 
@@ -464,8 +487,8 @@ def sandbox(tmp_path):
     _exe(bindir / "gh", FAKE_GH)
     state = tmp_path / "state"
     cfg = _cfg(repo={"repo_root": str(repo), "worktree_root": str(tmp_path / "wt"), "python": sys.executable},
-               claude={"bin": str(bindir / "claude"), "env_names": ["HOME", "PATH"]},
-               sandbox={"enabled": False},
+               claude={"bin": str(bindir / "claude"), "env_names": ["HOME", "PATH"], "auth": {"mode": "none"}},
+               sandbox={"enabled": False}, agent_sandbox={"enabled": False},
                iteration={"ci_argv": ["{python}", "scripts/run_cio_hardening_ci.py"], "test_timeout_s": 120,
                           "ci_timeout_s": 120},
                lifecycle={"release_current_sha_file": str(tmp_path / "GIT_SHA")})
@@ -622,6 +645,27 @@ def test_not_armed_runs_no_model(sandbox):
 # ---------------------------------------------------------------- 6. lifecycle advance
 
 
+def ledger_row(root, cfg, run_id, *, finished, lane="buggy-lane", state="RUN_DONE", mode="live", exit_code=0,
+               verdict="produced", clamp="live"):
+    """One coordination-ledger run row (the n8n_coordination_ledger runs schema) with its receipt."""
+    import sqlite3
+
+    path = root / cfg["intake"]["ledger_rel"]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    con = sqlite3.connect(str(path))
+    con.execute("CREATE TABLE IF NOT EXISTS runs (run_id TEXT PRIMARY KEY, lane_id TEXT NOT NULL, mode TEXT NOT NULL, "
+                "state TEXT NOT NULL, requested_at TEXT NOT NULL, finished_at TEXT, exit_code INTEGER, "
+                "receipt_json TEXT)")
+    rec = {"run_id": run_id, "lane_id": lane, "mode": mode, "state": state, "exit_code": exit_code,
+           "finished_at": finished.isoformat(), "output_verdict": {"verdict": verdict}}
+    if clamp:
+        rec["stage_clamp"] = {"requested_mode": "live", "effective_mode": clamp}
+    con.execute("INSERT INTO runs VALUES (?,?,?,?,?,?,?,?)", (run_id, lane, mode, state, finished.isoformat(),
+                                                              finished.isoformat(), exit_code, json.dumps(rec)))
+    con.commit()
+    con.close()
+
+
 def test_advance_merged_released_recovered_resolved(sandbox, monkeypatch):
     repo = sandbox["repo"]
     head = _sh("git", "-C", str(repo), "rev-parse", "HEAD").strip()
@@ -632,7 +676,7 @@ def test_advance_merged_released_recovered_resolved(sandbox, monkeypatch):
     job = {"job_id": "j", "lane": "buggy-lane", "state": F.FIX_PR_OPENED, "pr_number": 9, "escalation_key": "k",
            "history": []}
     job["head_sha"] = head
-    job["iterations"] = [{"passed": True, "acceptance": {"accepted": True}}]
+    job["iterations"] = [{"passed": True, "acceptance": {"accepted": True, "commit_sha": head}}]
     gh = lambda cmd: {"rc": 0, "out": json.dumps({"state": "MERGED", "mergeCommit": {"oid": head},
                                                   "mergedAt": "2026-10-16T17:00:00Z", "headRefOid": head,
                                                   "statusCheckRollup": [{"name": "cio-hardening", "status": "COMPLETED",
@@ -640,12 +684,18 @@ def test_advance_merged_released_recovered_resolved(sandbox, monkeypatch):
     root = sandbox["state"]
     assert S.advance(job, cfg=cfg, now=NOW, diag_state=None, root=root, gh=gh, repo=repo) == F.FIX_DEPLOYED
     assert job["acceptance"]["accepted"] and job["acceptance"]["pr_head_ci"] == "pass"  # independent evaluator
+    assert job["acceptance"]["pr_head_is_evaluated_commit"]
     assert S.advance(job, cfg=cfg, now=NOW, diag_state=None, root=root, gh=gh, repo=repo) is None  # no fresh output
+    # 2026-10-16 review (finding 4): a newer JSON timestamp / file mtime is NOT recovery any more
     out = root / "data/runtime/buggy-lane_last.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps({"ok_at": (NOW + timedelta(hours=1)).isoformat()}))
     later = NOW + timedelta(hours=2)
+    assert S.advance(job, cfg=cfg, now=later, diag_state=None, root=root, gh=gh, repo=repo) is None
+    # only a live receipt that meets the output contract recovers it
+    ledger_row(root, cfg, "r-good", finished=NOW + timedelta(hours=1))
     assert S.advance(job, cfg=cfg, now=later, diag_state=None, root=root, gh=gh, repo=repo) == F.OUTPUT_RECOVERED
+    assert job["output_run"] == "r-good" and job["recovery_basis"] == "live_receipt_output_verdict"
     diag_open = {"escalations": {"k": {"heal_state": "recovery_requested"}}}
     assert S.advance(job, cfg=cfg, now=later, diag_state=diag_open, root=root, gh=gh, repo=repo) is None
     assert S.advance(job, cfg=cfg, now=later, diag_state={"escalations": {}}, root=root, gh=gh,

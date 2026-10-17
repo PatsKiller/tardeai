@@ -83,6 +83,7 @@ from scripts.lib import n8n_model_job as M  # noqa: E402
 from scripts.lib import n8n_remediation_catalogue as C  # noqa: E402
 from scripts.lib import n8n_self_heal as H  # noqa: E402
 from scripts.lib import n8n_siem_bridge as B  # noqa: E402
+from scripts.lib import recovery_validator as RV  # noqa: E402
 
 SCHEMA = D.SCHEMA
 NO_CONSUMER_REASON = (
@@ -482,7 +483,7 @@ def diagnose(rows: list[dict], *, catalogue: dict, registry: dict, state: dict, 
             out["notes"]["ledger"] = f"unavailable:{type(exc).__name__}"
         res["failure_class"] = H.classify_failure(_failure_text(fields, row, runs), event_type=row.get("event_type"))
         failed_row = next((r for r in runs if fields.get("run") and r.get("run_id") == fields.get("run")), None)
-        res["_failed_mode"] = (failed_row or {}).get("mode") or H.failure_mode(fields, err)
+        res["_failed_mode"] = H.failed_effective_mode(failed_row, fields, err)
         # ---- 1. lifecycle: this occurrence's own closure evidence (no model call; never another incident's)
         out_state = observer(lane, registry.get(lane), now) if et in H.OUTPUT_KINDS else None
         if out_state is not None:
@@ -776,20 +777,30 @@ def execute_action(store, res: dict, *, allowlist: dict, now: float, registry_ro
 
 def verify_recovery(p: dict, run: dict, *, output_state: Optional[dict]) -> tuple[Optional[dict], str]:
     """(evidence, why_not) for a finished remediation run: did the BREACHED condition recover (defect fixes 1, 6)?
-    RUN_DONE is ``attempt_executed`` only. Recovery needs the failed mode (and, for a live heal, the parent's semantic
-    slot) verified, and for an output breach the output fresh by the lane's contract."""
+    RUN_DONE is ``attempt_executed`` only. The decision is scripts/lib/recovery_validator.validate (architect review
+    2026-10-16, finding 1), the rule every component shares: the run's EFFECTIVE mode (receipt ``stage_clamp`` /
+    ``mode``, never the requested row mode) must be the failed mode, the live heal must be in the parent's semantic
+    slot, and an output breach needs a live receipt whose output verdict says the contracted output was produced
+    (``output_state``, a fresh shared file, is recorded as evidence only)."""
     fmode = p.get("failure_mode")
     if fmode is None:
         return None, "failure_mode_unknown"
-    run_mode = (H._receipt(run).get("mode") or run.get("mode"))
-    if run_mode != fmode:
-        return None, f"mode_mismatch:{run_mode}_does_not_recover_{fmode}"
+    eff = RV.effective_mode(run)
+    if eff != fmode:
+        requested = run.get("mode")
+        if requested == fmode and eff is not None:
+            # the attempt WAS requested in the failed mode but did not execute in it (stage clamp): not a diagnostic
+            # dry phase, a recovery attempt that never ran as asked -> paged (P1), never digest.
+            return None, f"requested_{fmode}_executed_{eff}"
+        return None, f"mode_mismatch:{eff or 'unknown'}_does_not_recover_{fmode}"
     slot = tuple(p["slot"]) if p.get("slot") else None
     ev = H.output_recovered(p.get("event_type"), failure_mode_=fmode, since=float(p.get("requested_ts") or 0.0) - 1.0,
-                            runs=[{**run, "mode": run_mode}], output_state=output_state, slot=slot)
+                            runs=[run], output_state=output_state, slot=slot, lane=p.get("lane"))
     if ev is None:
-        return None, ("output_not_fresh_by_contract" if str(p.get("event_type") or "").upper() in H.OUTPUT_KINDS
-                      else "run_not_verified")
+        ok, why = RV.validate(run, mode=fmode if str(p.get("event_type") or "").upper() not in H.OUTPUT_KINDS
+                              else "live", lane=p.get("lane"), slot=slot)
+        return None, ("output_not_produced_by_contract" if str(p.get("event_type") or "").upper() in H.OUTPUT_KINDS
+                      else "run_not_verified") + f":{why}"
     return ev, "ok"
 
 
@@ -959,6 +970,34 @@ def _floor_existing(state: dict, res: dict) -> None:
                        reason=f"p1_floor:{str(res.get('severity')).upper()};{esc.get('reason')}")
 
 
+def _enroll_critical(state: dict, res: dict, now: datetime) -> None:
+    """Architect review of 26fd0518, finding 3: a CRITICAL/URGENT incident that is still unresolved always has
+    EXACTLY ONE P1 record (its episode's escalation key), which stays open until the incident is resolved
+    (``_close_incident``) or its SIEM row closes (``prune_state``).
+
+    Before, a first CRITICAL incident that went into successful recovery-request handling (a rerun requested, an
+    orphan reaped, a carried or attached occurrence whose lead never escalated) created pending work but no P1
+    record: invisible until the attempt failed. Idempotent: an existing record is floored to P1 in place and keeps
+    its ``at`` (no repeat page — the fan-in pages once per key); a missing one is created once."""
+    if not _p1_floor(res.get("severity")):
+        return
+    book = state.setdefault("escalations", {})
+    for k in (escalation_key(res), str(res.get("incident_key"))):
+        esc = book.get(k)
+        if esc is not None:
+            if esc.get("priority") != "P1":
+                esc.update(priority="P1", route="operator_once",
+                           reason=f"p1_floor:{str(res.get('severity')).upper()};{esc.get('reason')}")
+            sid = res.get("siem_id")
+            if sid is not None:
+                esc["siem_ids"] = sorted({*(esc.get("siem_ids") or [esc.get("siem_id")]), sid} - {None})
+            if res.get("heal_state"):
+                esc["heal_state"] = res.get("heal_state")
+            return
+    state_word = res.get("heal_state") or res.get("outcome") or "open"
+    _put_escalation(state, _escalation(res, "P1", f"critical_unresolved:{state_word}", now))
+
+
 def _source_outage_escalations(notes: dict, *, catalogue_ok: bool, monitoring_ok: bool,
                                now: datetime) -> list[dict[str, Any]]:
     """A P1 for a source that could not be read this cycle. Not stored in state: it clears when the source reads."""
@@ -1037,7 +1076,7 @@ def apply_results(diag: dict, pending_events: list[dict], state: dict, rows_by_i
             state.setdefault("episodes", {})[sig] = {**res["_episode"], "lead_siem_id": res.get("siem_id"),
                                                      "lane": res.get("lane")}
         if dec.get("kind") == "carry":
-            _floor_existing(state, res)   # a CRITICAL/URGENT occurrence still lifts its escalation to P1
+            _enroll_critical(state, res, now)   # a CRITICAL/URGENT occurrence keeps exactly one P1 record (finding 3)
             continue          # cached diagnosis: nothing new to write; its escalation and lifecycle are untouched
         if sig:
             book = today["signatures"].setdefault(sig, {"lead": None, "lane": res["lane"], "attached": 0,
@@ -1116,6 +1155,13 @@ def apply_results(diag: dict, pending_events: list[dict], state: dict, rows_by_i
             res["escalation"] = f"{dec['priority']}:{dec['reason']}"
         elif dec.get("kind") == "auto_close":
             _close_incident(state, res, now, H.INCIDENT_RESOLVED)
+        if dec.get("kind") != "auto_close":
+            # finding 3: an unresolved CRITICAL/URGENT incident (rerun requested, orphan reaped, attached, diagnosed
+            # without an escalation) is always visible as ONE open P1 record, never only as pending work.
+            _enroll_critical(state, res, now)
+            if _p1_floor(res.get("severity")) and not res.get("escalation"):
+                esc = (state.get("escalations") or {}).get(escalation_key(res)) or {}
+                res["escalation"] = f"P1:{esc.get('reason') or 'critical_unresolved'}"
         res["outcome"] = outcome
         retry = outcome == "no_diagnosis" and not str(res.get("reason")).startswith(D.FINAL_NO_DIAGNOSIS)
         if (res.get("model_called") or res.get("decision")) and not retry and dec.get("kind") != "auto_close":

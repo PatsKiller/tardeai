@@ -340,6 +340,7 @@ def test_wrapper_switch_is_per_line_not_global(wrap, tmp_path):
 
 
 def test_wrapper_on_but_cron_claim_false_runs_unclaimed(wrap, tmp_path):
+    wrap.store()  # a reachable ledger (no owner row); an unreachable one fails closed for an armed key (finding 2)
     r = wrap.run(on="x-lane", config=_armed(tmp_path, cron_claim=False), code=3)
     assert r.returncode == 3 and wrap.runs() == 1
     assert [e["event"] for e in wrap.events()] == ["run_unclaimed_cron_claim_false", "completed_unclaimed"]
@@ -367,6 +368,7 @@ def test_wrapper_on_refuses_an_unreadable_config(wrap, tmp_path):
 
 
 def test_wrapper_armed_without_owner_row_refuses(wrap, tmp_path):
+    wrap.store()  # reachable ledger, tables, no owner row
     r = wrap.run(on="x-lane", config=_armed(tmp_path))
     assert r.returncode == E.REFUSED_EXIT and wrap.runs() == 0
     assert "effect_no_owner" in r.stderr and wrap.events()[0]["event"] == "refused_claim"

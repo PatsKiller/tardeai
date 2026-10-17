@@ -2,11 +2,12 @@
   "schema": "SelfHealFixerConfig@v1",
   "_why": "Operator 2026-10-16: \"with the self-fixing in some of these procedures, I just don't want the regular LLM routing. I want it to connect into Claude Code to fix it in iterations.\" A self-heal diagnosis with failure_class code_error becomes ONE fix job per failure signature. scripts/self_heal_fixer.py runs headless Claude Code in an isolated worktree off origin/main, iterates (failing test first -> fix -> targeted tests + run_cio_hardening_ci.py --profile pr), and on success opens a PR labelled self-heal-fix. A fix PR is not a heal: the job closes only at incident_resolved (deployed code + recovered output). Design: docs/ops/self_heal_claude_fixer.md.",
   "arming": {
-    "_why": "DISARMED by default. --apply needs ALL of: an ACTIVE guard grant of grant_tier whose reason names grant_reason_token (peek only, never consumed: bin/guard grant git-push --for 8h --uses 4 --reason 'self-heal-fixer ...'), and fewer than daily_job_cap jobs started today (ET). The model's output never arms anything.",
+    "_why": "DISARMED by default. --apply needs ALL of: an ACTIVE guard grant of grant_tier whose reason names grant_reason_token (peek only, never consumed: bin/guard grant git-push --for 8h --uses 4 --reason 'self-heal-fixer ...'), and fewer than daily_job_cap jobs started today (ET). The model's output never arms anything. Budget (architect review 2026-10-16, finding 3): every attempt durably RESERVES its whole budget (iteration.max_iterations, max_cost_usd, max_minutes) in the claims db before the backend is launched; daily_job_cap and daily_cost_cap_usd are checked against reservations, so a crash can never let the day overspend and an interrupted attempt is counted exactly once.",
     "grant_tier": "git-push",
     "grant_reason_token": "self-heal-fixer",
     "daily_job_cap": 3,
-    "max_jobs_per_cycle": 1
+    "max_jobs_per_cycle": 1,
+    "daily_cost_cap_usd": 24.0
   },
   "selector": {
     "_why": "STATIC. The adaptive router (lib/self_heal_fixer.shadow_route over repair memory) runs in SHADOW only: its recommendation is recorded on each job and in repair memory, never used to choose.",
@@ -117,10 +118,16 @@
       "TMPDIR"
     ],
     "timeout_s": 1500,
-    "setting_sources": "project"
+    "setting_sources": "project",
+    "auth": {
+      "_why": "The ONLY credential inside the agent sandbox (finding 2). The Claude CLI on Linux keeps its OAuth login in ~/.claude/.credentials.json; that one file is bind-mounted at {agent_home}/.claude/.credentials.json and CLAUDE_CONFIG_DIR points there, so the rest of ~/.claude (history, transcripts, settings, other projects), ~/.claude.json and every other credential stay invisible. rw lets the CLI persist a token refresh in place (a read-only bind could strand a rotated refresh token). The harness never reads or copies this file. mode none = bind nothing (stub CLIs in tests).",
+      "mode": "credentials_file",
+      "credentials_file": "{home}/.claude/.credentials.json",
+      "rw": true
+    }
   },
   "sandbox": {
-    "_why": "pytest executes model-written code. Every test run (the model's, red-first, targeted, the PR-profile CI) runs under bwrap: own network namespace (no localhost Postgres, no n8n, no Telegram, no provider), /run and /tmp replaced, the filesystem read-only except the job's worktrees, the repo's git admin dir and its scratch state; release trees, persistent state, guard ledgers, Claude/gh/ssh credentials and .env files hidden. enabled=true with bwrap missing fails the job (sandbox_unavailable); it never runs unsandboxed.",
+    "_why": "Every HARNESS test run (red-first, targeted, the PR-profile CI) of a candidate runs under bwrap over an allowlist filesystem (lib/self_heal_fixer.eval_sandbox_prefix): a fresh shared clone of the candidate commit, read-only together with its own .git and the borrowed objects; only the scratch state writable; own network namespace; cleared env. A digest of the checkout and its .git is taken before and after every run, so a write is refused even where bwrap is off. enabled=true with bwrap missing fails the job (sandbox_unavailable); it never runs unsandboxed. hide_paths applies only to the legacy host-view sandbox_prefix.",
     "enabled": true,
     "bwrap": "/usr/bin/bwrap",
     "hide_paths": [
@@ -176,6 +183,9 @@
       "config/self_heal_fixer.json",
       "scripts/self_heal_fixer.py",
       "scripts/lib/self_heal_fixer.py",
+      "scripts/lib/self_heal_egress.py",
+      "scripts/lib/self_heal_fixer_claims.py",
+      "scripts/lib/self_heal_fix_evaluator.py",
       "tests/fixtures/self_heal_fixer/*",
       "tests/test_self_heal_fixer_*",
       "scripts/check_*.py",
@@ -257,9 +267,38 @@
     "receipt_rel": "data/runtime/self_heal_fixer_last.json",
     "evidence_rel": "data/runtime/self_heal_fixer",
     "escalations_rel": "data/runtime/self_heal_fixer_escalations.jsonl",
-    "repair_memory_rel": "data/runtime/self_heal_fixer/repair_memory.jsonl"
+    "repair_memory_rel": "data/runtime/self_heal_fixer/repair_memory.jsonl",
+    "claims_rel": "data/runtime/self_heal_fixer_claims.sqlite",
+    "lock_rel": "data/runtime/self_heal_fixer.lock"
   },
   "lifecycle": {
     "release_current_sha_file": "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/GIT_SHA"
+  },
+  "agent_sandbox": {
+    "_why": "Architect review 2026-10-16, finding 2: the Claude Code process ITSELF runs inside bwrap, not only its tests. Allowlist filesystem (lib/self_heal_fixer.agent_sandbox_prefix): an empty root; read-only system dirs, the repo's .git (history; the operator's working tree with its untracked .env backups is NOT bound), the venv, the CLI binary and the harness bin dir; read-write ONLY on the candidate worktree, a throwaway HOME and the scratch state. $HOME is never bound (.env, .ssh, .config/gh, .cursor, .claude, trade-ai-releases, persistent state invisible). Own network namespace: the only way out is the in-sandbox bridge to the host CONNECT proxy (lib/self_heal_egress.py) that allows egress_allow host:port pairs and nothing else, so the host's Postgres, n8n and command center are unreachable. The model's pytest runs inside this same boundary with a cleared env (nested bwrap is refused on this host by kernel.apparmor_restrict_unprivileged_userns). enabled=false is honoured only with TRADE_AI_CI=1 (hermetic tests); otherwise the job fails agent_sandbox_disabled. Residual risk: docs/ops/self_heal_claude_fixer.md section 6a.",
+    "enabled": true,
+    "bwrap": "/usr/bin/bwrap",
+    "system_ro": [
+      "/usr",
+      "/bin",
+      "/sbin",
+      "/lib",
+      "/lib64",
+      "/etc"
+    ],
+    "mask_paths": [],
+    "path": "/usr/local/bin:/usr/bin:/bin",
+    "proxy_port": 18977,
+    "egress_allow": [
+      "api.anthropic.com:443",
+      "console.anthropic.com:443",
+      "platform.claude.com:443",
+      "claude.ai:443"
+    ]
+  },
+  "lease": {
+    "_why": "Durable claim per defect signature (lib/self_heal_fixer_claims.py, finding 3). The owner renews its lease every heartbeat_s while the backend runs; on start, an active claim whose lease expired (or whose owner pid on this host is dead) becomes fix_interrupted with its recorded partial evidence and is never restarted blindly.",
+    "ttl_s": 300,
+    "heartbeat_s": 60
   }
 }

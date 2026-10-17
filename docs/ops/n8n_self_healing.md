@@ -21,10 +21,13 @@ SIEM row (n8n:<lane>, written by the SIEM bridge)
   -> diagnoser cycle (every 5 min), for EVERY open occurrence, every cycle
        1. signature    lane + event_type + failure class + normalized error tail (codes kept, volatile tokens not)
        2. closure      this occurrence's OWN evidence (no model call):
+            "VERIFIED" = scripts/lib/recovery_validator.validate (one rule, every component): the EFFECTIVE
+            mode from the receipt (stage clamp), RUN_DONE exit 0, not a skip, and for live an output verdict
+            produced / empty_allowed (architect review of 26fd0518, finding 1)
             lock skip + a VERIFIED run of the same mode AND semantic slot   -> auto-close "covered"
-            NO_OUTPUT / STALE_OUTPUT + output FRESH by the lane's contract
-              after the breach, or a later live run whose output verdict
-              is produced / empty_allowed                                   -> auto-close "output_recovered"
+            NO_OUTPUT / STALE_OUTPUT + a later run that EXECUTED live with
+              output verdict produced / empty_allowed (a fresh shared file
+              alone never counts)                                           -> auto-close "output_recovered"
             other failure + a later run VERIFIED in the failed mode         -> auto-close "self_recovered"
        3. carry        already diagnosed -> cached diagnosis reused; no call, no new action, escalation untouched
        4. episode      attach only to an OPEN episode at no lower severity; a severity upgrade leads (and pages P1
@@ -101,8 +104,8 @@ Every row is read again from disk (and the ledger, and the environment) immediat
 
 | # | Rule | Where | Tests |
 |---|---|---|---|
-| 1 | NO_OUTPUT / STALE_OUTPUT close only when the output is fresh by the lane's contract (heartbeat_watch.classify FRESH, newer than the breach) or a later live run produced its expected output; a live RUN_DONE alone or an advancing mtime alone never closes | `n8n_self_heal.output_recovered` | `test_no_output_*` |
-| 2 | A lock skip is covered only by a run that completed verified, in the same mode and semantic slot | `lock_skip_cover`, `verified_done` | `test_lock_skip_*` |
+| 1 | NO_OUTPUT / STALE_OUTPUT close only when a later run that EXECUTED live produced its expected output (`output_verdict` produced / empty_allowed); a live RUN_DONE alone, an advancing mtime alone, or (since the architect review of 26fd0518, finding 1) a FRESH shared output signal alone never closes | `n8n_self_heal.output_recovered` -> `recovery_validator` | `test_no_output_*` |
+| 2 | A lock skip is covered only by a run that completed verified, in the same mode and semantic slot; the mode is the EFFECTIVE one from the receipt, so a live request the stage clamp ran as dry_run never covers a live skip (finding 1) | `lock_skip_cover`, `verified_done` -> `recovery_validator.validate` | `test_lock_skip_*`, `test_architect_review_recovery_ownership_20261016.py` |
 | 3 | Fingerprints keep codes and failure classes; only volatile tokens normalize | `signature`, `failure_kind` | `test_meaningful_codes_*`, `test_failure_classes_*` |
 | 4 | Severity and lifecycle per occurrence; upgrades are not absorbed; a new episode after recovery is a new incident (`\|epN` key) | `attach_decision`, episodes in state | `test_a_p2_lead_*`, `test_a_recovered_lead_*` |
 | 5 | The model-result cache never closes, reopens or suppresses | `diagnosis_cache`, `carry` | `test_cache_reuse_*`, `test_one_incident_closing_*` |

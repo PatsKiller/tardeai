@@ -90,6 +90,12 @@ GATES = [
     # producer's own code_defect_hook; independent evaluator (backend claims never read; PR-head CI); static selector,
     # repair memory + shadow router; a second backend kind through the same acceptance scenario. Never a real model.
     ("self_heal_claude_fixer_20261016", ["tests/test_self_heal_fixer_20261016.py"]),
+    # Architect review of #1830 (2026-10-16): acceptance bound to ONE immutable candidate commit (sha + tree; fresh
+    # read-only checkouts digested before/after each run; pre-push guard re-run; PR head == evaluated commit); the
+    # Claude process itself in an allowlist bwrap sandbox (rw only its worktree, one scoped auth bind, CONNECT-
+    # allowlist egress); durable flock + sqlite claims with the budget reserved before launch, heartbeat leases and
+    # restart reconciliation to fix_interrupted; output_recovered = the output contract on a live receipt. Stub CLIs.
+    ("self_heal_fixer_hardening_20261016", ["tests/test_self_heal_fixer_hardening_20261016.py"]),
     (
         "options_workflow",
         [
@@ -4010,6 +4016,20 @@ GATES = [
         "cutover_fail_closed_txn_20261016",
         [
             "tests/test_cutover_fail_closed_txn_20261016.py",
+        ],
+    ),
+    (
+        # ANCHOR: ARCH_REVIEW_RECOVERY_OWNERSHIP_20261016 — architect review of main 26fd0518: (F1) ONE recovery
+        # validator (scripts/lib/recovery_validator.py) for lock-skip cover, self/output recovery in the diagnoser and
+        # the fixer: EFFECTIVE mode from the receipt (a live request the stage clamp ran dry never covers/recovers
+        # live), live output recovery only on output_verdict produced/empty_allowed (never a shared file mtime);
+        # (F2) ledger unreachable + manifest missing/unlisted fails CLOSED for an armed key, never-armed keeps
+        # fail-open, missing manifest = P1, the handover lock covers admission (decision + claim + child start),
+        # set-owner and the controller's rollback paths; (F3) a CRITICAL/URGENT unresolved incident always has exactly
+        # one P1 record; (F4) the explicit nightly rollback verifies every target and exits non-zero with a report.
+        "arch_review_recovery_ownership_20261016",
+        [
+            "tests/test_architect_review_recovery_ownership_20261016.py",
         ],
     ),
     (

@@ -29,10 +29,14 @@
 #     owner n8n, or manifest owner n8n/none) whose ownership cannot be established (ledger unreachable, manifest
 #     unreadable, or the two stores DISAGREE) runs NOTHING: exit 75, event skipped_ownership_unknown, and one
 #     EffectOwnershipIncident@v1 row in <state>/data/runtime/effect_ownership_incidents.jsonl, which
-#     scripts/incident_notifier.py (host cron, independent of the ledger and n8n) pages as a P1. A process that was
-#     NEVER handed over keeps the old fail-OPEN behaviour on an unreachable ledger (event
-#     run_unclaimed_ledger_unreachable). The two stores are never reconciled here (AGENTS.md §0 rule 5): both values
-#     are in the event detail and the incident row.
+#     scripts/incident_notifier.py (host cron, independent of the ledger and n8n) pages as a P1. The two stores are
+#     never reconciled here (AGENTS.md §0 rule 5): both values are in the event detail and the incident row.
+#   * 2026-10-16 (second architect review, of 26fd0518, finding 2): with the ledger unreachable the manifest is the
+#     ONLY admission evidence, so a manifest that is missing or does not list the process FAILS CLOSED (P1) for any
+#     process whose key is ARMED (n8n_claim true - the default - or cron_claim true). Only a never-armed process
+#     keeps the fail-OPEN (event run_unclaimed_ledger_unreachable / run_unclaimed_cron_claim_false), and a missing
+#     manifest file still raises a P1. The decision, the claim and the child's start happen under the handover-
+#     manifest lock (`effect_claim.py run --ownership-gate`), the fence `set-owner` and the controller also take.
 # --slot now is the America/New_York minute, the slot of the dispatcher's d: key for the same scheduled minute.
 # TRADEAI_EFFECT_SLOT overrides it (a manual re-fire of a named slot, and tests).
 #
@@ -78,7 +82,7 @@ print(json.dumps({"ts": datetime.datetime.now(datetime.timezone.utc).isoformat()
 }
 
 set +e
-SPEC="$("$PY3" "$EFFECT_PY" lane-spec --lane "$LANE" --config "$CONFIG")"
+SPEC="$("$PY3" "$EFFECT_PY" lane-spec --lane "$LANE" --config "$CONFIG" --with-n8n-claim)"
 spec_rc=$?
 if [ "$spec_rc" = 3 ]; then
   log_event refused_not_keyed 65 "lane not in $CONFIG"
@@ -90,15 +94,26 @@ if [ "$spec_rc" != 0 ]; then
   echo "effect_claim_cron: effect-key config unreadable (rc=$spec_rc); refusing (nothing run)" >&2
   exit 65
 fi
-IFS=$'\t' read -r PROCESS VERSION CRON_CLAIM <<<"$SPEC"
+IFS=$'\t' read -r PROCESS VERSION CRON_CLAIM N8N_CLAIM <<<"$SPEC"
 set +e
+# Armed = the key arms claims on either side (cron_claim true, or n8n_claim true/unknown). An armed process never
+# fails open (architect review of 26fd0518, finding 2).
+ARMED=0
+if [ "$CRON_CLAIM" = "1" ] || [ "${N8N_CLAIM:-1}" != "0" ]; then
+  ARMED=1
+fi
 
 # 2026-10-16 (cron effect-claim wrap, docs/ops/packets/cron-effect-claim-wrap-20261016/; architect review): the
-# owner decides, from the ledger AND the handover manifest (effect_claim.py ownership, read-only):
+# owner decides, from the ledger AND the handover manifest. Since the second architect review (finding 2) the
+# decision, the effect claim and the child's START all happen inside ONE `effect_claim.py run --ownership-gate`
+# call that holds the handover-manifest lock (the same lock `set-owner` and the nightly controller take), so no
+# ownership switch can land between "cron may run" and "the cron copy started":
 #   run                     -> the command runs (claimed when cron_claim is true, unclaimed otherwise);
 #   skip_owner_n8n          -> exit 0, event skipped_effect, nothing runs, no claim row;
-#   skip_ownership_unknown  -> exit 75, event skipped_ownership_unknown, nothing runs, P1 incident row;
-#   no decision at all (interpreter/import failure) -> fail closed if a handover manifest exists, else fail open.
+#   skip_ownership_unknown  -> exit 75, event skipped_ownership_unknown, nothing runs, P1 incident row
+#                              (now also: ledger unreachable AND the manifest missing / not listing an ARMED process);
+#   no decision at all (interpreter/import failure, lock timeout) -> nothing ran; fail closed if a handover manifest
+#                              exists or the process is armed, else fail open.
 STATE_ROOT_DIR="${TRADEAI_STATE_ROOT:-$HOME/trade-ai-releases/persistent-state}"
 INCIDENT_LOG="${EFFECT_OWNERSHIP_INCIDENT_LOG:-$STATE_ROOT_DIR/data/runtime/effect_ownership_incidents.jsonl}"
 if [ -n "${TRADEAI_N8N_HANDOVER_MANIFEST:-}" ]; then
@@ -128,17 +143,47 @@ skip_unknown() {
   exit 75
 }
 
-DECIDED_OWN="$("$PY3" "$EFFECT_PY" ownership --process "$PROCESS" 2>/dev/null)"
-own_rc=$?
-DECISION_KIND=""
-IFS=$'\t' read -r DECISION_KIND LEDGER_OWNER MANIFEST_OWNER OWN_P1 OWN_REASON <<<"$DECIDED_OWN"
-if [ "$own_rc" != 0 ] || [ -z "${DECISION_KIND:-}" ]; then
-  if [ -e "$MANIFEST" ]; then
-    skip_unknown "ownership_helper_failed:rc=$own_rc manifest_present"
+run_unclaimed_fail_open() {
+  # Only for a process that is NOT armed and has NO handover manifest: the pre-effect-key behaviour.
+  log_event run_unclaimed_ledger_unreachable 0 "process=$PROCESS ($1; fail open: never armed, no manifest)"
+  echo "effect_claim_cron: ownership helper produced no decision ($1); running $PROCESS unclaimed (fail open)" >&2
+  "${CMD[@]}"
+  rc=$?
+  log_event completed_unclaimed "$rc" "process=$PROCESS"
+  exit "$rc"
+}
+
+CMD=("$@")
+DECISION="$(mktemp "${TMPDIR:-/tmp}/effect_claim_decision.XXXXXX" 2>/dev/null)"
+if [ -z "$DECISION" ]; then
+  if [ -e "$MANIFEST" ] || [ "$ARMED" = 1 ]; then
+    skip_unknown "decision_tmpfile_failed armed=$ARMED"
   fi
-  DECISION_KIND="run"; LEDGER_OWNER="unreachable"; MANIFEST_OWNER="file_absent"; OWN_P1=0
-  OWN_REASON="ownership_helper_failed:rc=$own_rc never_handed_over"
+  run_unclaimed_fail_open "mktemp failed"
 fi
+: > "$DECISION"
+GATE_ARGS=(--ownership-gate --manifest "$MANIFEST" --effect-config "$CONFIG")
+if [ "$CRON_CLAIM" != "1" ]; then
+  GATE_ARGS+=(--no-claim)
+fi
+"$PY3" "$EFFECT_PY" run "${GATE_ARGS[@]}" --process "$PROCESS" --slot "$SLOT" --input-version "$VERSION" \
+  --scheduler cron --decision-out "$DECISION" -- "${CMD[@]}"
+rc=$?
+DECIDED="$(cat "$DECISION" 2>/dev/null)"
+rm -f "$DECISION"
+if [ -z "$DECIDED" ]; then
+  # No decision was written: the command did NOT run (interpreter/import failure, handover lock timeout).
+  if [ -e "$MANIFEST" ] || [ "$ARMED" = 1 ]; then
+    skip_unknown "ownership_helper_failed:rc=$rc armed=$ARMED manifest_present=$([ -e "$MANIFEST" ] && echo 1 || echo 0)"
+  fi
+  run_unclaimed_fail_open "rc=$rc"
+fi
+PARSED="$(printf '%s' "$DECIDED" | "$PY3" -c 'import json,sys
+d=json.load(sys.stdin); o=d.get("ownership") or {}; c=d.get("claim") or {}
+print("\t".join(str(x) for x in (o.get("decision") or "", o.get("ledger_owner") or "", o.get("manifest_owner") or "",
+      1 if o.get("p1") else 0, (o.get("reason") or "-").replace("\t", " "),
+      "ok" if c.get("ok") else ("%s %s" % (c.get("reason") or "", c.get("owner") or "")).strip() or "none")))' 2>/dev/null)"
+IFS=$'\t' read -r DECISION_KIND LEDGER_OWNER MANIFEST_OWNER OWN_P1 OWN_REASON CLAIM_REASON <<<"$PARSED"
 OWN_DETAIL="ledger=$LEDGER_OWNER manifest=$MANIFEST_OWNER reason=$OWN_REASON"
 case "$DECISION_KIND" in
   skip_ownership_unknown) skip_unknown "$OWN_DETAIL" ;;
@@ -149,8 +194,15 @@ case "$DECISION_KIND" in
     echo "effect_claim_cron: $PROCESS is owned by n8n; cron copy skipped (nothing run)" >&2
     exit 0 ;;
   run) ;;
-  *) skip_unknown "unknown_decision:$DECISION_KIND $OWN_DETAIL" ;;
+  *)
+    # The decision file exists but cannot be read back: the child MAY have run; never re-run it.
+    log_event refused_claim "$rc" "process=$PROCESS decision unparsed (rc=$rc)"
+    raise_p1 "decision_unparsed:rc=$rc"
+    exit "$rc" ;;
 esac
+if [ "$OWN_P1" = "1" ]; then
+  raise_p1 "$OWN_REASON"            # e.g. the handover manifest is missing (a never-armed process still ran)
+fi
 
 if [ "$CRON_CLAIM" != "1" ]; then
   OWNER="$LEDGER_OWNER"
@@ -158,44 +210,15 @@ if [ "$CRON_CLAIM" != "1" ]; then
     OWNER="ledger_unreachable"
   fi
   log_event run_unclaimed_cron_claim_false 0 "process=$PROCESS owner=${OWNER:-none} $OWN_DETAIL"
-  "$@"
-  rc=$?
   log_event completed_unclaimed "$rc" "process=$PROCESS"
   exit "$rc"
 fi
-
-DECISION="$(mktemp "${TMPDIR:-/tmp}/effect_claim_decision.XXXXXX" 2>/dev/null)"
-if [ -z "$DECISION" ]; then
-  log_event run_unclaimed_ledger_unreachable 0 "process=$PROCESS (mktemp failed; fail open)"
-  "$@"
-  rc=$?
-  log_event completed_unclaimed "$rc" "process=$PROCESS"
-  exit "$rc"
-fi
-: > "$DECISION"
-"$PY3" "$EFFECT_PY" run --process "$PROCESS" --slot "$SLOT" --input-version "$VERSION" --scheduler cron \
-  --decision-out "$DECISION" -- "$@"
-rc=$?
-DECIDED="$(cat "$DECISION" 2>/dev/null)"
-rm -f "$DECISION"
-if [ -z "$DECIDED" ]; then
-  # The claim was never decided (ledger unreachable, interpreter or import failure): the command did NOT run.
-  # Reached only for a process the ownership check just found NEVER handed over (or owned by cron): fail open.
-  log_event run_unclaimed_ledger_unreachable "$rc" "process=$PROCESS (effect_claim.py rc=$rc before any claim; fail open; $OWN_DETAIL)"
-  echo "effect_claim_cron: effect ledger unreachable (rc=$rc); running $PROCESS unclaimed (fail open)" >&2
-  "$@"
-  rc=$?
-  log_event completed_unclaimed "$rc" "process=$PROCESS"
-  exit "$rc"
-fi
-REASON="$(printf '%s' "$DECIDED" | "$PY3" -c 'import json,sys
-d=json.load(sys.stdin); print("ok" if d.get("ok") else "%s %s" % (d.get("reason") or "", d.get("owner") or ""))' 2>/dev/null)"
-case "$REASON" in
+case "$CLAIM_REASON" in
   ok) log_event completed_claimed "$rc" "process=$PROCESS" ;;
   "effect_fenced_owner n8n")
     log_event skipped_effect 0 "process=$PROCESS owner=n8n cron_claim=true"
     echo "effect_claim_cron: $PROCESS is owned by n8n; cron copy skipped (nothing run)" >&2
     exit 0 ;;
-  *) log_event refused_claim 75 "process=$PROCESS reason=${REASON:-unparsed} (claim JSON on stderr)" ;;
+  *) log_event refused_claim 75 "process=$PROCESS reason=${CLAIM_REASON:-unparsed} (claim JSON on stderr)" ;;
 esac
 exit "$rc"
