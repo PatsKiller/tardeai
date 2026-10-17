@@ -7087,7 +7087,7 @@
       "owner": "hermes",
       "scheduler": {
         "kind": "cron",
-        "expression": "0 17 * * *",
+        "expression": "20 17 * * *",
         "command_text": "run_hermes_pipeline.sh --stage tune --apply",
         "match": "run_hermes_pipeline.sh --stage tune"
       },
@@ -15652,7 +15652,7 @@
         "expression": "tradeai-fabric-hermes-learning",
         "match": "tradeai-fabric-hermes-learning:autonomous_self_tune",
         "cadence": "0 17 * * *",
-        "stage": "shadow",
+        "stage": "canary",
         "process": "hermes-learning",
         "process_step": "autonomous_self_tune"
       },
@@ -15668,7 +15668,7 @@
         "column": "run_at"
       },
       "severity": "Medium",
-      "note": "Fired only by the process workflow tradeai-fabric-hermes-learning through Run Lane (process_step autonomous_self_tune); no dispatch block, so the generic dispatcher never emits it. Class learn (AGENTS.md §23.18). Its RETIRED cron-era row (superseded by hermes-learning-pipeline-tune) is unchanged. The LEARN half only (--learn: auto-graft; the purge helpers refuse in that mode). Output is event-driven: an audit row exists only when a graft clears its persistence and drift gates, so the RunReceipt is the per-run evidence. The purge half (--purge) stays on host cron as destructive retention."
+      "note": "Fired only by the process workflow tradeai-fabric-hermes-learning through Run Lane (process_step autonomous_self_tune); no dispatch block, so the generic dispatcher never emits it. Class learn (AGENTS.md §23.18). Its RETIRED cron-era row (superseded by hermes-learning-pipeline-tune) is unchanged. The LEARN half only (--learn: auto-graft; the purge helpers refuse in that mode). Output is event-driven: an audit row exists only when a graft clears its persistence and drift gates, so the RunReceipt is the per-run evidence. The purge half (--purge) stays on host cron as destructive retention. | 2026-10-17 TUNE CUTOVER (operator 2026-10-17 00:25 ET \"do a dry run now, it works no errors, make active now\"; n8n cutover directive 2026-10-15: all families to n8n, F41 retention approved for n8n; packet docs/ops/packets/hermes-tune-cutover-20261017/cutover.sh): the lane now runs the cron step's own argv, BOTH halves (auto-graft + self-purge): command drops --learn, live_arg [--apply] = the spec's cutover_live_arg, registry stage canary, effect key cron_claim true. Reason: once n8n owns the effect key the cron step is skipped whole, so a learn-only lane would silently stop the purge. The destructive purge is archive-first (lib.retention_archive.managed_purge: archive + manifest + tripwire before each DELETE). --dry-run wins over --apply (read-only session, purge legs only count). output_receipt v2: a real run writes LaneRunReceipt@v2 produced_count = grafts applied + retention rows acted on."
     },
     {
       "lane_id": "hermes-discovery-yield-on-learning",

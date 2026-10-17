@@ -76,10 +76,11 @@ LEARN_NOW = datetime(2026, 10, 15, 10, 57, tzinfo=ET)
 POLICY_PIN = "c6750b96ada49f816798bf3714ad390616b1b32769fdcbcc54e0635e32caf31f"
 
 
-#: cutover PR-2 (2026-10-15): steps with no live argv. The tune lane waits for the manifest split; outcome_feedback_agent
-#: is HELD at shadow (owner stays cron, so cron keeps running it live) because its `--notify queue` argv trips the
-#: allowlist sender token gate; it moves in a follow-up once the operator-approved gate alignment is served.
-HELD_INERT = {"autonomous_self_tune", "outcome_feedback_agent"}
+#: cutover PR-2 (2026-10-15): steps with no live argv. outcome_feedback_agent is HELD at shadow (owner stays cron, so
+#: cron keeps running it live) because its `--notify queue` argv trips the allowlist sender token gate; it moves in a
+#: follow-up once the operator-approved gate alignment is served. The tune lane (autonomous_self_tune) carries its
+#: cutover argv since the 2026-10-17 tune cutover (tests/support/hermes_learning_cutover.py TUNE_LIVE).
+HELD_INERT = {"outcome_feedback_agent"}
 
 
 def _live_sources(**proc_overrides) -> dict:
@@ -472,7 +473,7 @@ def test_every_runnable_step_reproduces_its_cron_wrapper(sid):
         )
     else:
         assert "offpeak_exempt" not in entry
-    # cutover PR-2 (2026-10-15): four learn lanes carry the spec's cutover_live_arg; the tune lane and the HELD
+    # cutover PR-2 (2026-10-15) + tune cutover (2026-10-17): the learn lanes and the tune lane carry the cutover_live_arg; the HELD
     # outcome_feedback_agent (its `--notify` argv trips the sender token gate until gate alignment lands) stay inert
     want_live = None if sid in HELD_INERT else RUNNABLE[sid]["cutover_live_arg"]
     assert X.validate_entry(entry) is None and entry["live_arg"] == want_live
@@ -685,7 +686,7 @@ def test_cutover_live_args_are_declared_and_applied():
     want = {sid: ["--apply"] for sid in RUNNABLE}
     want["outcome_feedback_agent"] = ["--apply", "--notify", "queue"]
     assert {sid: s["cutover_live_arg"] for sid, s in RUNNABLE.items()} == want
-    for sid, s in RUNNABLE.items():  # cutover PR-2 (2026-10-15): four learn lanes carry the cutover argv; tune + held inert
+    for sid, s in RUNNABLE.items():  # cutover PR-2 + tune cutover 2026-10-17: all but the held lane carry the cutover argv
         assert ALLOW[s["lane_id"]]["live_arg"] == (None if sid in HELD_INERT else want[sid])
 
 

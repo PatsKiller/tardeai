@@ -48,7 +48,7 @@
       "pipeline": "hermes_learning",
       "stage": "tune",
       "step_id": "autonomous_self_tune",
-      "cron_claim": false
+      "cron_claim": true
     },
     "n8n-pilot-dispatch": {
       "process": "n8n-pilot-dispatch",

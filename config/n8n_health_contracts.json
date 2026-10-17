@@ -26282,10 +26282,10 @@
       "kind": "lane",
       "workflow_id": "tradeai-fabric-hermes-learning",
       "status": "REVIEWED",
-      "target_reason": "n8n fabric process hermes-learning step autonomous_self_tune (2026-10-15; unblocked 2026-10-15 (n8nfab/hermes-learning-unblock-20261015)); stage shadow",
+      "target_reason": "n8n fabric process hermes-learning step autonomous_self_tune (2026-10-15; unblocked 2026-10-15 (n8nfab/hermes-learning-unblock-20261015)); stage shadow; 2026-10-17 tune cutover: registry stage canary, both halves (graft + archive-first purge)",
       "stage": "shadow",
       "purpose": {
-        "text": "Hermes self-learning LEARN half: graft outcome-gated calibration suggestions (hermes_weight_calibration OUTCOME_LEDGER rows) into the live factor weights, clamped per step and capped by weekly drift, audited; the self-purge half is NOT this lane (host cron retention)",
+        "text": "Hermes self-learning + self-purge (the whole tune step, both legs, since the 2026-10-17 cutover): graft outcome-gated calibration suggestions (hermes_weight_calibration OUTCOME_LEDGER rows) into the live factor weights, clamped per step and capped by weekly drift, then prune stale pipeline state archive-first (stale advisory queue, failed embeddings, aged score/research rows, the three dead legacy tables); every leg audited",
         "business_function": "learning",
         "source": "scripts/hermes_autonomous_self_tune.py module docstring; config/pipelines/hermes_learning.json step autonomous_self_tune"
       },
@@ -26298,7 +26298,7 @@
           "source": "AGENTS.md \u00a723.23; docs/implementation/n8n-maturity/workflows/fabric/INDEX.json"
         },
         {
-          "name": "$PY scripts/hermes_autonomous_self_tune.py --learn --dry-run",
+          "name": "$PY scripts/hermes_autonomous_self_tune.py --apply (dry run: --dry-run)",
           "kind": "runner",
           "direction": "calls",
           "source": "config/n8n_run_allowlist.json command"
@@ -26316,7 +26316,7 @@
           "source": "scripts/hermes_autonomous_self_tune.py module docstring source reads (DRAFT: free text)"
         },
         {
-          "name": "config/hermes_score_weights.yaml (+ data/runtime/weight_grafts archive), one hermes_autotune_audit row per graft; never a DELETE (learn-only mode refuses every purge helper)",
+          "name": "config/hermes_score_weights.yaml (+ data/runtime/weight_grafts archive), hermes_autotune_audit rows; self-purge: UPDATE hermes_advisory_events / hermes_embedding_queue, archive-first DELETE (lib.retention_archive.managed_purge) on hermes_embedding_queue, hermes_score_history, hermes_research_intelligence, hermes_external_research, watchlist_research_results, watchlist_research_queue, proposal_research_packets; LaneRunReceipt@v2",
           "kind": "inventory_text",
           "direction": "write",
           "source": "scripts/hermes_autonomous_self_tune.py module docstring source writes (live only; the dry run writes nothing) (DRAFT: free text)"
@@ -26340,12 +26340,12 @@
           "text": "duration <= 1440.0 s (80% of timeout_s 1800)"
         },
         {
-          "check": "learn_only_no_purge",
-          "text": "the dry run's stdout has auto_graft and NO self_purge key; never a DELETE or archive purge (the purge helpers raise LearnOnlyViolation in --learn mode)"
+          "check": "purge_archive_first",
+          "text": "a live run's stdout has auto_graft AND self_purge; every purge DELETE went through lib.retention_archive.managed_purge (archive + manifest row writer hermes_autonomous_self_tune) and the dry run only counts (read-only session)"
         },
         {
           "check": "output_produced",
-          "text": "a live run reports produced_count (factor-weight grafts applied (changes) with hermes_autotune_audit row); zero is normal only with an allowed empty_reason ['nothing_due', 'no_new_input']"
+          "text": "a live run reports produced_count (grafts applied + retention rows acted on); zero is normal only with an allowed empty_reason ['nothing_due', 'no_new_input']"
         }
       ],
       "degraded": [
@@ -26380,8 +26380,8 @@
           "text": "over the 5-run shadow the dry run and the cron step disagree on outcome (one ok, the other failed) for the same slot"
         },
         {
-          "check": "learn_ran_purge",
-          "text": "a run of this lane reported self_purge, raised LearnOnlyViolation, or a retention-archive manifest row names writer hermes_autonomous_self_tune at its time"
+          "check": "purge_not_archived",
+          "text": "a purge DELETE without its retention-archive manifest row (writer hermes_autonomous_self_tune), or a dry run that changed a row"
         },
         {
           "check": "empty_output",
@@ -26407,7 +26407,7 @@
       },
       "alerting": {
         "lane_severity": "Medium",
-        "severity_basis": "learning writer, advisory only (scoring feeds watchlist ranking, not execution); no send, no broker, no delete in this lane",
+        "severity_basis": "learning writer + archive-first retention, advisory only (scoring feeds watchlist ranking, not execution); no send, no broker; purge DELETEs are archived first",
         "failed": {
           "siem_severity": "WARN",
           "notifier_priority": "P2"
@@ -26432,7 +26432,7 @@
           "python3 docs/ops/packets/n8n-hermes-learning-flow-20261015/04_evidence.py --date <YYYYMMDD> --stage tune"
         ],
         "never": "Do not infer host run or output success from an n8n execution status; the RunReceipt, the ledger row and the cron step receipt are the evidence.",
-        "expected_output_basis": "expected_output derived 2026-10-15 from scripts/hermes_autonomous_self_tune.py:180-209 returns status no_change when no eligible calibration suggestion moves a weight beyond 1e-4, otherwise rewrites the weights YAML (:201) and audits (:203-205); grafts are outcome-gated and drift-capped so empty is normal; no lane receipt (main :309-321 prints only); daily via tradeai-fabric-hermes-learning. produced_count emission: NOT YET - the lane writes LaneRunReceipt@v1 without produced_count; until it does, a live run is output_unverifiable"
+        "expected_output_basis": "expected_output re-derived 2026-10-17 (tune cutover): scripts/hermes_autonomous_self_tune.py lane_output -> produced_count = len(auto_graft.changes) when status applied + the self_purge rowcounts (PURGE_ROW_KEYS); zero = empty_reason no_new_input (no outcome suggestions) or nothing_due (gate held / no weight moved and no row due); main writes LaneRunReceipt@v2 on every real --apply run (failed receipt dependency_unavailable when it raises), never on --dry-run; allowlist output_receipt v2 enforces it."
       },
       "review_by": "2026-10-29",
       "evidence_class": "SOURCE_ONLY",
@@ -26445,7 +26445,7 @@
       },
       "expected_output": {
         "schema": "N8nExpectedOutput@v1",
-        "unit": "factor-weight grafts applied (changes) with hermes_autotune_audit row",
+        "unit": "factor-weight grafts applied + retention rows purged/requeued, audited in hermes_autotune_audit",
         "rule": "empty_allowed",
         "min_produced": null,
         "window_h": null,

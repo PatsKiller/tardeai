@@ -54,6 +54,11 @@ GATES = [
     # fan-in, pilot dispatch, research intake, insight extractor) write LaneRunReceipt@v2 produced_count and opt in;
     # watchlist-enrichment-sweep starts no batch after its budget (deadline_deferred). Hermetic: state root = tmp.
     ("lane_useful_output_proof_20261016", ["tests/test_lane_useful_output_proof_20261016.py"]),
+    # ANCHOR: HERMES_TUNE_CUTOVER_20261017 — hermes-learning tune step (autonomous_self_tune) at canary with the cron
+    # step's own argv (both halves), cron_claim true, output_receipt v2 (LaneRunReceipt@v2 produced_count = grafts +
+    # retention rows); the real tune stage under PIPELINE_EFFECT_CLAIM=1 (n8n owner -> skipped_effect); the operator
+    # packet (fake crontab, tmp ledger). Hermetic: DB faked, step command swapped for a marker, no service touched.
+    ("hermes_tune_cutover_20261017", ["tests/test_hermes_tune_cutover_20261017.py"]),
     ("refactor_shard_07_20261011", ["tests/test_refactor_shard_07_20261011.py"]),
     # ANCHOR: LANE_CUTOVER_POLICY_20261016 — AGENTS 12.0.0 §23.25 gate alignment (operator approval 2026-10-16):
     # config/lane_cutover_policy.json lifts stay_on_cron / KEEP_ON_CRON / soft wrapper+sender tokens for approved
