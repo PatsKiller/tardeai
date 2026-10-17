@@ -53,6 +53,10 @@ W5_LANES = {
     ],
     "research-insight-extractor": [{"source": "run_done", "lane_id": "news-to-catalyst",
                                     "require_verdict": ["produced"]}],
+    # process consolidation cohort 2 (2026-10-16): the discovery yield builder fires on VERIFIED outcome learning
+    # (tests/test_n8n_consolidation_cohort2_20261016.py pins the watermark guard).
+    "hermes-discovery-yield-on-learning": [{"source": "run_done", "lane_id": "hermes-learning-outcome-learning",
+                                            "require_verdict": ["produced", "empty_allowed"]}],
 }
 #: W5 trigger rows that canary wave 1 moved to canary (live cron slots; event fires inert while live).
 W5_CANARY_LANES = frozenset({"research-insight-extractor"})

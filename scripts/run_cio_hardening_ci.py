@@ -70,6 +70,12 @@ GATES = [
     # worker-seconds, executor concurrency); n8n_shadow_policy (no continuous dry run on accepted lanes, regression
     # canary only on a config or entry-script change, shadow cadence proposals report-only). Hermetic: tmp ledger.
     ("n8n_consolidation_cohort1_20261016", ["tests/test_n8n_consolidation_cohort1_20261016.py"]),
+    # ANCHOR: N8N_CONSOLIDATION_COHORT2_20261016 — process consolidation cohort 2 (operator 2026-10-16): the Hermes
+    # learning consumers (discovery yield builder, tag-lift discovery) fire on the VERIFIED completion of outcome
+    # learning (yield-builder event lane, run_done + require_verdict, shadow; tag-lift lane awaits DD01 ruling) and consume each learning watermark once
+    # (scripts/lib/learning_watermark.py): no fire on an unverified or missing upstream (with a reason), no double
+    # consumption across event plus clock, the clock fallback runs on a stale watermark. Hermetic: tmp ledger/state.
+    ("n8n_consolidation_cohort2_20261016", ["tests/test_n8n_consolidation_cohort2_20261016.py"]),
     # ANCHOR: SELF_HEAL_CLAUDE_FIXER_20261016 — operator 2026-10-16: self-heal CODE DEFECTS go to an iterative
     # headless Claude Code fixer (scripts/self_heal_fixer.py), not the governed LLM bridge. Lifecycle (a PR is not a
     # heal), intake dedupe/cooldown/refused lanes, diff guard (protected paths, test weakening, append-only CI
