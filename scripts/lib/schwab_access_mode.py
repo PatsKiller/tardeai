@@ -180,3 +180,33 @@ def is_auth_failure(err: Any) -> bool:
     if str(code) in ("401", "403"):
         return True
     return bool(_AUTH_FAILURE_RE.search(str(err)))
+
+
+RENEW_HEADLINE = "Schwab login must be renewed"
+
+
+def reauth_banner(mode_value: Any, *, needs_reauth: bool, proactive: bool = False,
+                  paused_message: Optional[str] = None) -> dict:
+    """What the re-auth banner and the Schwab Reauth page say, decided by the ACTUAL access mode (2026-10-16).
+
+    * forbidden (or an unknown/unreadable mode, treated as forbidden): the operator pause. Keep the
+      "do not re-auth" warning and offer no renewal link.
+    * read_only / normal with an expired, revoked or rejected login: "Schwab login must be renewed", with a
+      renewal link and never "do not re-auth".
+    * renewal window: soft prompt. Otherwise healthy, no banner.
+    """
+    m = str(mode_value or "").strip().lower()
+    if m not in MODES:
+        m = "forbidden"
+    if m == "forbidden":
+        return {"state": "paused", "mode": m, "headline": "Schwab paused", "offer_reauth": False,
+                "message": paused_message or f"Schwab access mode is forbidden — {PAUSED_REMEDIATION}"}
+    if needs_reauth:
+        return {"state": "renew", "mode": m, "headline": RENEW_HEADLINE, "offer_reauth": True,
+                "message": "The Schwab login expired or was rejected — renew it on the Schwab Reauth page "
+                           "before quotes, stops or orders depend on it."}
+    if proactive:
+        return {"state": "window", "mode": m, "headline": "Schwab login renewal window", "offer_reauth": True,
+                "message": "Renew via the Schwab Reauth page before the login's true expiry."}
+    return {"state": "ok", "mode": m, "headline": "Schwab login healthy", "offer_reauth": False,
+            "message": "Schwab token healthy."}
