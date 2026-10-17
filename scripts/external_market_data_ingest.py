@@ -3,18 +3,20 @@
 
 Sources:
   yfinance: real-time quotes, dividends, earnings dates (no API key)
-  Alpha Vantage: fundamentals, company overview (free key)
+  Finviz (stored): fundamentals for fundamental_data, read from the Finviz enrichment cache through
+    the data broker (operator 2026-10-16 "Switch to Finviz"; Alpha Vantage OVERVIEW is premium on our key)
   FRED: macro economic series (free key, optional)
 
 Usage:
     python3 scripts/external_market_data_ingest.py --test
     python3 scripts/external_market_data_ingest.py --quotes          # yfinance quotes for all symbols
-    python3 scripts/external_market_data_ingest.py --fundamentals    # Alpha Vantage fundamentals
+    python3 scripts/external_market_data_ingest.py --fundamentals    # Finviz fundamentals via the data broker
+    python3 scripts/external_market_data_ingest.py --fundamentals --dry-run --symbols V,CLF   # read-only preview
     python3 scripts/external_market_data_ingest.py --fred            # FRED macro snapshot
     python3 scripts/external_market_data_ingest.py --all             # Everything
 """
 import json, os, sys, time
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from pathlib import Path
 from finviz_http import finviz_get, finviz_probe  # global Finviz throttle (2026-07-20)
 try:  # GAP 14 (2026-10-10): the one shared ticker check before any Finviz request
@@ -328,7 +330,7 @@ def ingest_quotes(symbols: list = None) -> dict:
 
 # ── Alpha Vantage ────────────────────────────────────────────────────
 
-def _alpha_vantage_symbols(cur, limit: int) -> list:
+def _alpha_vantage_symbols(cur, limit: int, source: str = "alpha_vantage") -> list:
     """Held and directive-watch names first, least recently fetched first.
 
     ``_get_symbols()[:limit]`` took the first five rows of an unordered UNION --
@@ -357,7 +359,7 @@ def _alpha_vantage_symbols(cur, limit: int) -> list:
                 SELECT symbol, 3 FROM watchlist_items WHERE status = 'active' AND symbol IS NOT NULL
             ), best AS (SELECT upper(symbol) AS symbol, min(pri) AS pri FROM wanted GROUP BY 1),
             last AS (SELECT symbol, max(fetched_at) AS at FROM fundamental_data
-                     WHERE source = 'alpha_vantage' GROUP BY symbol)
+                     WHERE source = %s GROUP BY symbol)
             SELECT b.symbol FROM best b LEFT JOIN last l ON l.symbol = b.symbol
             WHERE b.symbol !~ '[^A-Z]' AND length(b.symbol) <= 5
               AND b.symbol !~ '^[A-Z]{4}X$'  -- mutual funds (AMANX): OVERVIEW has no coverage
@@ -369,7 +371,7 @@ def _alpha_vantage_symbols(cur, limit: int) -> list:
               AND (l.at IS NULL OR l.at < now() - interval '6 days')
             ORDER BY b.pri, l.at NULLS FIRST, b.symbol
             LIMIT %s
-        """, (held, int(limit)))
+        """, (held, source, int(limit)))
         rows = [r[0] for r in cur.fetchall()]
         if rows:
             return rows
@@ -487,6 +489,144 @@ def ingest_alpha_vantage(symbols: list = None, limit: int = 5) -> dict:
     # call (2026-10-10). This lane no longer reports for itself: an owner refusal (budget spent,
     # spacing) is not a provider failure and must not turn the provider row red.
     return {"source": "alpha_vantage", "fetched": fetched}
+
+
+# ── Fundamentals from stored Finviz (operator 2026-10-16: "Switch to Finviz") ──────────────────
+#
+# The Monday --fundamentals lane (cron "0 8 * * 1") spent Alpha Vantage OVERVIEW, which is a premium
+# endpoint on our key (10/10 calls 2026-10-12..16 refused). It now reads the Finviz values we already
+# store (the finviz_enrichment domain, single writer scripts/finviz_enrichment.py) through
+# lib.data_broker.finviz_enrichment_snapshot and writes them to fundamental_data with source='finviz'.
+# Zero provider calls. Same metric names and units as the AV rows, so consumers read them unchanged.
+# A metric Finviz does not carry, or carries empty, is reported unavailable with the reason — never
+# written, never defaulted.
+
+FINVIZ_FUNDAMENTALS_SOURCE = "finviz"
+#: One weekly lane, local reads only: no provider budget to ration (AV allowed 5 a week).
+FINVIZ_FUNDAMENTALS_LIMIT = 200
+#: A Finviz record older than this is not this week's fundamentals: every metric unavailable.
+FINVIZ_FUNDAMENTALS_MAX_AGE_HOURS = 168.0
+
+#: metric_name -> (Finviz cache key, scale). Scale 0.01 turns a Finviz percent into the fraction the
+#: Alpha Vantage rows carried (DividendYield 0.0067, ROE 0.6067), which consumers multiply by 100.
+FINVIZ_FUNDAMENTAL_MAP: dict = {
+    "MarketCap": ("market_cap_usd", 1.0),
+    "PE": ("pe", 1.0),
+    "ForwardPE": ("forward_pe", 1.0),
+    "PEG": ("peg", 1.0),
+    "DividendYield": ("div_yield_pct", 0.01),
+    "ProfitMargin": ("profit_margin_pct", 0.01),
+    "ROE": ("roe_pct", 0.01),
+    "DebtToEquity": ("total_debt_equity", 1.0),
+    "Beta": ("beta", 1.0),
+}
+#: AV metrics the Finviz cache does not carry as a value (52-week and MA fields are stored only as
+#: % distance from price; there is no price, EPS, revenue/share or analyst target in the cache).
+FINVIZ_FUNDAMENTAL_UNAVAILABLE: dict = {
+    "EPS": "not in Finviz enrichment cache",
+    "RevenuePerShare": "not in Finviz enrichment cache",
+    "52WeekHigh": "Finviz cache holds only % from the 52-week high, no price level",
+    "52WeekLow": "Finviz cache holds only % from the 52-week low, no price level",
+    "50DayMA": "Finviz cache holds only % from SMA50, no price level",
+    "200DayMA": "Finviz cache holds only % from SMA200, no price level",
+    "AnalystTargetPrice": "not in Finviz enrichment cache",
+}
+
+
+def finviz_fundamental_metrics(record) -> tuple:
+    """(metrics {name: float}, unavailable {name: reason}) from one Finviz enrichment record. Pure."""
+    metrics: dict = {}
+    unavailable: dict = dict(FINVIZ_FUNDAMENTAL_UNAVAILABLE)
+    for name, (key, scale) in FINVIZ_FUNDAMENTAL_MAP.items():
+        raw = (record or {}).get(key)
+        try:
+            val = float(raw)
+        except (TypeError, ValueError):
+            unavailable[name] = f"Finviz {key} empty"
+            continue
+        if val != val:  # NaN
+            unavailable[name] = f"Finviz {key} empty"
+            continue
+        metrics[name] = round(val * scale, 6)
+    return metrics, unavailable
+
+
+def _finviz_broker_batch(symbols, *, max_age_hours):
+    from lib.data_broker.finviz_enrichment_snapshot import get_enrichment_batch
+    return get_enrichment_batch(symbols, max_age_hours=max_age_hours)
+
+
+def ingest_finviz_fundamentals(symbols: list = None, limit: int = FINVIZ_FUNDAMENTALS_LIMIT, *,
+                               dry_run: bool = False, broker=_finviz_broker_batch, conn_factory=None) -> dict:
+    """fundamental_data from stored Finviz, through the data broker. Zero provider calls.
+
+    ``dry_run`` reads and reports and writes nothing (no rows, no receipt). With explicit ``symbols``
+    a dry run opens no database connection at all.
+    """
+    conn = None
+    if not symbols or not dry_run:
+        conn = (conn_factory or _get_conn)()
+    if not symbols:
+        symbols = _alpha_vantage_symbols(conn.cursor(), limit, source=FINVIZ_FUNDAMENTALS_SOURCE)
+    syms = list(dict.fromkeys(str(x).upper().strip() for x in symbols[:limit] if str(x or "").strip()))
+    batch = broker(syms, max_age_hours=FINVIZ_FUNDAMENTALS_MAX_AGE_HOURS) or {}
+    per = batch.get("symbols") or {}
+    out: dict = {"source": FINVIZ_FUNDAMENTALS_SOURCE, "via": "data_broker.finviz_enrichment_snapshot",
+                 "provider_calls": int(batch.get("provider_calls") or 0), "dry_run": bool(dry_run),
+                 "fetched": 0, "rows": 0, "symbols": {}}
+    cur = conn.cursor() if (conn is not None and not dry_run) else None
+    for sym in syms:
+        row = per.get(sym) or {}
+        rec = row.get("record")
+        if not isinstance(rec, dict):
+            reason = "not in Finviz enrichment cache"
+        elif not row.get("as_of"):
+            reason = "Finviz record has no cached_at"
+        elif row.get("stale"):
+            reason = f"Finviz record {float(row.get('age_hours') or 0):.0f}h old > {FINVIZ_FUNDAMENTALS_MAX_AGE_HOURS:.0f}h"
+        else:
+            reason = None
+        if reason:
+            metrics = {}
+            unavailable = {m: reason for m in list(FINVIZ_FUNDAMENTAL_MAP) + list(FINVIZ_FUNDAMENTAL_UNAVAILABLE)}
+        else:
+            metrics, unavailable = finviz_fundamental_metrics(rec)
+        out["symbols"][sym] = {"as_of": row.get("as_of"), "age_hours": row.get("age_hours"),
+                               "metrics": metrics, "unavailable": unavailable}
+        if cur is not None:
+            for metric, value in metrics.items():
+                cur.execute("""
+                    INSERT INTO fundamental_data (symbol, source, metric_name, metric_value, period)
+                    VALUES (%s, %s, %s, %s, 'latest')
+                    ON CONFLICT (symbol, source, metric_name, period) DO UPDATE SET metric_value=EXCLUDED.metric_value, fetched_at=NOW()
+                """, (sym, FINVIZ_FUNDAMENTALS_SOURCE, metric, value))
+        if metrics:
+            out["fetched"] += 1
+            out["rows"] += len(metrics)
+        shown = ", ".join(f"{k}: unavailable ({v})" for k, v in sorted(unavailable.items()))
+        print(f"  [fundamentals] {sym}: {len(metrics)} metrics from Finviz" + (f"; {shown}" if shown else ""))
+    if conn is not None:
+        if not dry_run:
+            conn.commit()
+        conn.close()
+    if not dry_run:
+        _write_fundamentals_receipt(out)
+    print(f"  [fundamentals] finviz via broker: {out['fetched']}/{len(syms)} symbols, {out['rows']} rows, "
+          f"provider_calls={out['provider_calls']}" + (" (dry run: nothing written)" if dry_run else ""))
+    return out
+
+
+def _write_fundamentals_receipt(out: dict) -> None:
+    """Durable proof of each live run, with every unavailable metric and its reason."""
+    path = PROJECT_ROOT / "data" / "runtime" / "fundamentals_finviz_last_run.json"
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps({"schema": "FundamentalsFinvizRun@v1", "ran_at": datetime.now(timezone.utc).isoformat(),
+                                   **out}, indent=1, default=str))
+        os.replace(tmp, path)
+    except OSError as exc:
+        print(f"  [fundamentals] receipt not written: {exc}")
 
 
 def ingest_av_news_sentiment(symbols: list = None, limit: int = 10) -> dict:
@@ -647,11 +787,11 @@ def get_yfinance_context(symbol: str) -> str:
     """, (symbol,))
     r = cur.fetchone()
 
-    # Also get Alpha Vantage fundamentals
+    # Fundamentals: newest value per metric, Finviz (2026-10-16) or the legacy Alpha Vantage rows
     cur.execute("""
-        SELECT metric_name, metric_value FROM fundamental_data
-        WHERE symbol=%s AND source='alpha_vantage'
-        ORDER BY fetched_at DESC LIMIT 10
+        SELECT DISTINCT ON (metric_name) metric_name, metric_value, source FROM fundamental_data
+        WHERE symbol=%s AND source IN ('finviz', 'alpha_vantage')
+        ORDER BY metric_name, fetched_at DESC
     """, (symbol,))
     avs = cur.fetchall()
     conn.close()
@@ -667,7 +807,8 @@ def get_yfinance_context(symbol: str) -> str:
 
     if avs:
         av_str = ", ".join(f"{a['metric_name']}={float(a['metric_value']):.2f}" for a in avs[:6])
-        parts.append(f"ALPHA VANTAGE ({symbol}): {av_str}")
+        srcs = "/".join(sorted({str(a.get("source") or "") for a in avs[:6]}))
+        parts.append(f"FUNDAMENTALS [{srcs}] ({symbol}): {av_str}")
 
     return "\n".join(parts)
 
@@ -682,9 +823,9 @@ def test():
     result = ingest_yfinance_quotes(["V", "SCHD", "LMT"])
     print(f"  Result: {result}")
 
-    # Alpha Vantage
-    print("\nAlpha Vantage (V):")
-    result = ingest_alpha_vantage(["V"], limit=1)
+    # Fundamentals (stored Finviz via the data broker; AV OVERVIEW is premium on our key)
+    print("\nFundamentals from Finviz (V), dry run:")
+    result = ingest_finviz_fundamentals(["V"], limit=1, dry_run=True)
     print(f"  Result: {result}")
 
     # FRED
@@ -717,14 +858,18 @@ if __name__ == "__main__":
     elif "--quotes-yf" in sys.argv:
         ingest_yfinance_quotes()  # legacy yfinance-only path (kept for comparison/debug)
     elif "--fundamentals" in sys.argv:
-        ingest_alpha_vantage()
+        # 2026-10-16: Finviz via the data broker (cron line unchanged). Alpha Vantage OVERVIEW is premium.
+        _syms = None
+        if "--symbols" in sys.argv:
+            _syms = [x for x in sys.argv[sys.argv.index("--symbols") + 1].split(",") if x]
+        ingest_finviz_fundamentals(_syms, dry_run="--dry-run" in sys.argv)
     elif "--news-sentiment" in sys.argv:
         ingest_av_news_sentiment()
     elif "--fred" in sys.argv:
         ingest_fred()
     elif "--all" in sys.argv:
         ingest_quotes()
-        ingest_alpha_vantage()
+        ingest_finviz_fundamentals()
         ingest_av_news_sentiment()
         ingest_fred()
     else:

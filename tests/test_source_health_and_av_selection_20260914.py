@@ -78,7 +78,7 @@ def test_alpha_vantage_asks_about_held_and_watched_names_oldest_first():
     # the real book (holdings.json) is tier 0; priority orders before fetch age
     assert "unnest(%s::text[])" in sql and "in_directive_watch" in sql
     assert "ORDER BY b.pri, l.at NULLS FIRST" in sql
-    assert isinstance(params[0], list) and params[1] == 5
+    assert isinstance(params[0], list) and params[-1] == 5 and params[1] == "alpha_vantage"  # source (2026-10-16)
 
 
 def test_selection_failure_falls_back_and_says_so(monkeypatch, capsys):

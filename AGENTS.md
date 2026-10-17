@@ -1865,7 +1865,7 @@ it with `UNAPPROVED_SOURCE`. That is the point.
 | **private_company** | manual | `private_company_proxies` | operator (manual entry) | — | — | — | none | — | — | `refuse_up_front` | operator 2026-09-13 |
 | **dividends** | ingested | `ticker_dividend_data` | `scripts/sync_dividend_data.py` | 07:05 Mon-Fri | 168h | — | yfinance | — | fmp | `say_so` | operator 2026-09-13 |
 | **macro** | ingested | `fred_economic_series` | UNCONSOLIDATED → `scripts/external_market_data_ingest.py` (2 writers today; ceiling may only fall) | 06:15 daily (fred_data_ingest.py --ingest) | 48h | — | fred | — | — | `say_so` | operator 2026-09-13 |
-| **fundamentals** | ingested | `fundamental_data` | `scripts/external_market_data_ingest.py` | 08:00 Mon (--fundamentals) | 192h | — | alpha_vantage | yfinance | fmp | `say_so` | operator 2026-09-13 |
+| **fundamentals** | ingested | `fundamental_data` | `scripts/external_market_data_ingest.py` | 08:00 Mon (--fundamentals) | 192h | — | finviz | yfinance | fmp | `say_so` | operator 2026-09-13 |
 | **agent_opinion** | native | `watchlist_agent_results` | `scripts/process_watchlist_agent_jobs.py` | on watch events | 48h | `agent_opinion` | internal | — | — | `say_so` | operator 2026-09-13 |
 | **agent_debate** | dead_feed | `agent_debate_log` | **none — dead feed** | — | 168h | `agent_opinion` | internal | — | — | `declared_gap_no_producer` | operator 2026-09-13 |
 | **ai_reports** | dead_feed | `ai_reports` | **none — dead feed** | — | 168h | `desk_feeds` | internal | — | — | `declared_gap_no_producer` | operator 2026-09-13 |

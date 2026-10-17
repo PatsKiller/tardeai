@@ -960,12 +960,17 @@ def _get_context(conn, symbol: str) -> dict:
     except Exception:
         pass
 
-    # AV fundamentals from fundamental_data
+    # Fundamentals from fundamental_data: newest per metric. Since 2026-10-16 the weekly lane writes
+    # source='finviz' (stored Finviz via the data broker); older alpha_vantage rows still count.
+    # Finviz carries no 52-week or analyst-target level, so those print only from legacy AV rows.
     try:
         cur3 = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur3.execute("""SELECT metric_name, metric_value FROM fundamental_data
-                        WHERE symbol=%s AND source='alpha_vantage'""", (symbol,))
-        av_fund = {r["metric_name"]: r["metric_value"] for r in cur3.fetchall()}
+        cur3.execute("""SELECT DISTINCT ON (metric_name) metric_name, metric_value, source FROM fundamental_data
+                        WHERE symbol=%s AND source IN ('finviz', 'alpha_vantage')
+                        ORDER BY metric_name, fetched_at DESC""", (symbol,))
+        _fund_rows = cur3.fetchall()
+        av_fund = {r["metric_name"]: r["metric_value"] for r in _fund_rows}
+        _fund_src = "/".join(sorted({str(r.get("source") or "") for r in _fund_rows})) or "fundamentals"
         cur3.close()
         if av_fund:
             parts = []
@@ -978,7 +983,7 @@ def _get_context(conn, symbol: str) -> dict:
             if av_fund.get("DividendYield"):
                 parts.append(f"Div yield: {float(av_fund['DividendYield'])*100:.2f}%")
             if parts:
-                ctx += f"Alpha Vantage: {', '.join(parts)}\n"
+                ctx += f"Fundamentals ({_fund_src}): {', '.join(parts)}\n"
     except Exception:
         pass
 
