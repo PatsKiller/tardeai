@@ -29,6 +29,11 @@ produced = intents this run moved to DONE + DONE intents whose incident it refre
 (dead-lettered by the fan-in as one P2) is ``nothing_due`` (nothing was due for an incident); an unreadable ledger or route table is the fatal
 skip ``dependency_unavailable``. See :func:`lane_output`.
 
+Deliver-before-close (2026-10-17): an incident past its window closes only on the incident notifier's own delivery
+evidence (<state root>/data/runtime/incident_notifier_state.json and its last live receipt's acked_keys, read-only);
+an undelivered one is held DEFERRED and keeps reaching the fan-in, so a capped or quiet-held P2 is sent in the next
+allowed batch instead of closing unsent. The receipt carries ``delivery_evidence`` and ``held_undelivered``.
+
 MBI_BEHAVIOR = 0. No send, no network, no subprocess, no Telegram import. Authority: READ_ONLY_ADVISORY.
 """
 
@@ -93,16 +98,23 @@ def run(
     except FabricStoreError as exc:
         summary["error"] = exc.reason
         return _finish(R, apply, receipt, ok=False, summary=summary, now=now)
+    # Deliver-before-close (2026-10-17): an expired incident closes only on the notifier's own delivery evidence.
+    evidence = C.load_delivery_evidence(state_root)
+    summary["delivery_evidence"] = {
+        "notifier_state": evidence["status"],
+        "notifier_receipt": evidence["receipt_status"],
+        "delivered_keys": len(evidence["notified"]),
+        "acked_keys": len(evidence["acked_keys"]),
+    }
     if not apply:
         conn = C.connect_ro(ledger)
         try:
-            summary.update(C.plan(conn, routes, now, max_intents))
+            summary.update(C.plan(conn, routes, now, max_intents, evidence))
         finally:
             if conn is not None:
                 conn.close()
-        would = (
-            [str(receipt)] if summary.get("would") or summary.get("would_close") or summary.get("would_refresh") else []
-        )
+        writes = ("would", "would_close", "would_refresh", "would_hold_undelivered")
+        would = [str(receipt)] if any(summary.get(k) for k in writes) else []
         return _finish(R, False, receipt, ok=True, summary=summary, now=now, would=would)
     token = f"{LANE_ID}:{now.strftime('%Y%m%dT%H%M%SZ')}:{uuid.uuid4().hex[:8]}"
     try:
@@ -111,7 +123,7 @@ def run(
         summary["error"] = f"{type(exc).__name__}: ledger"
         return _finish(R, True, receipt, ok=False, summary=summary, now=now)
     try:
-        res = C.apply(conn, routes, now, max_intents, token)
+        res = C.apply(conn, routes, now, max_intents, token, evidence)
     except Exception as exc:  # noqa: BLE001
         summary["error"] = f"{type(exc).__name__}: {str(exc)[:160]}"
         return _finish(R, True, receipt, ok=False, summary=summary, now=now)
@@ -128,6 +140,7 @@ def run(
         incidents_updated=sum(1 for r in results if r.get("incident") == "updated"),
         refreshed=len(res["refreshed"]),
         closed=len(res["closed"]),
+        held_undelivered=len(res["held_undelivered"]),
         deferred=res["deferred"],
         results=results,
         backlog=res["backlog"],
@@ -214,6 +227,7 @@ def _finish(
                         "incidents_updated",
                         "refreshed",
                         "closed",
+                        "held_undelivered",
                         "deferred",
                         "error",
                     )

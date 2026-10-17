@@ -64,6 +64,11 @@ GATES = [
     # expected_output, staged effect key); LaneRunReceipt@v2 produced / empty_allowed / fatal dependency_unavailable via
     # the real CLI; idempotent rerun; the operator packet against fake systemctl/docker/proc. Hermetic: tmp ledgers.
     ("comms_intent_consumer_live_20261017", ["tests/test_comms_intent_consumer_live_20261017.py"]),
+    # ANCHOR: COMMS_INTENT_DELIVER_BEFORE_CLOSE_20261017 — a comms-intent incident past its window closes only on the
+    # incident notifier's own delivery evidence; undelivered (CAPPED / quiet-held) it is DEFERRED, still presented by
+    # the fan-in, sent once in the next allowed batch (07:00 ET / cap reset), then closed. Hermetic: tmp ledgers, the
+    # real consumer CLI, fan-in reader and notifier run() with a capture sender.
+    ("comms_intent_deliver_before_close_20261017", ["tests/test_comms_intent_deliver_before_close_20261017.py"]),
     ("refactor_shard_07_20261011", ["tests/test_refactor_shard_07_20261011.py"]),
     # ANCHOR: LANE_CUTOVER_POLICY_20261016 — AGENTS 12.0.0 §23.25 gate alignment (operator approval 2026-10-16):
     # config/lane_cutover_policy.json lifts stay_on_cron / KEEP_ON_CRON / soft wrapper+sender tokens for approved
