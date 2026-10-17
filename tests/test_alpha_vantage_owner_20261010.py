@@ -68,6 +68,9 @@ def _mechanics_cfg():
     refusal itself is tested in tests/test_scalp_float_finviz_broker_20261016.py."""
     c = copy.deepcopy(CFG)
     c["premium_functions"] = {}
+    # 2026-10-16: fundamentals_overview is disabled (0) in the committed config; the mechanics need a job
+    # with room, so this copy restores its former 5/day.
+    c["jobs"]["fundamentals_overview"].update(daily_allotment=5, **{"class": "scheduled_lane"})
     return c
 
 
@@ -101,7 +104,7 @@ def test_committed_config_holds_every_budget_invariant():
 @pytest.mark.parametrize("mut", [
     lambda c: c["budget"].update(hard_daily_cap=24),
     lambda c: c["budget"].update(min_spacing_s=5),
-    lambda c: c["jobs"]["news_sentiment_window"].update(daily_allotment=20),
+    lambda c: c["jobs"]["news_sentiment_window"].update(daily_allotment=30),  # sum > 23 (16 committed since 2026-10-16)
     lambda c: c.update(schema="x"),
 ])
 def test_config_that_breaks_an_invariant_is_refused(mut):
@@ -126,7 +129,8 @@ def test_scope_not_granted_is_refused_up_front(tmp_path):
 
 def test_the_committed_registry_carries_the_operator_grant():
     # Operator 2026-10-10 ~18:40 ET, "Yes, from one to six": proposal rows A1-A3, B1, B2 applied; N1 not.
-    assert avo.granted_domains() == {"fundamentals", "earnings_calendar", "news_sentiment", "news_feed", "earnings"}
+    # Narrowed operator 2026-10-16 ("yes, narrow the AV row"): fundamentals (OVERVIEW, premium) removed.
+    assert avo.granted_domains() == {"earnings_calendar", "news_sentiment", "news_feed", "earnings"}
     assert json.loads((ROOT / "config" / "data_source_authority.json").read_text())["providers"]["alpha_vantage"]["health_window_hours"] == 192
     reg = json.loads((ROOT / "config" / "data_source_authority.json").read_text())
     av = reg["providers"]["alpha_vantage"]

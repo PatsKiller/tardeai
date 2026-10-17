@@ -110,13 +110,10 @@ SCHEDULED_CALLERS: dict[str, list[dict[str, str]]] = {
     "fred": [
         {"script": "scripts/fred_data_ingest.py --ingest", "cron": "15 6 * * *"},
     ],
-    "alpha_vantage": [
-        # owner_job: the Alpha Vantage owner job this caller spends (config/alpha_vantage_owner.json).
-        # A caller whose job the owner can never send (disabled, or a premium function) is not an
-        # active caller — see active_caller_state (2026-10-16).
-        {"script": "scripts/external_market_data_ingest.py --fundamentals", "cron": "0 8 * * 1",
-         "owner_job": "fundamentals_overview"},
-    ],
+    # alpha_vantage: no scheduled caller since 2026-10-16. The Monday --fundamentals lane reads stored
+    # Finviz now (operator "Switch to Finviz") and scalp_float reads Finviz float (option A). When an
+    # owner job is scheduled, list it here with "owner_job": "<job in config/alpha_vantage_owner.json>";
+    # a caller whose job the owner can never send (disabled, premium) is not active (active_caller_state).
     "brave_search": [
         {"script": "scripts/aegis_transcript_discovery.py", "cron": "0 9 * * 1-5"},
         {"script": "scripts/aegis_social_sentiment.py", "cron": "0 11,15 * * 1-5"},
