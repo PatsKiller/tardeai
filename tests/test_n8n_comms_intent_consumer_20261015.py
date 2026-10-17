@@ -555,11 +555,13 @@ def test_importing_and_running_the_consumer_loads_no_sender_module(tmp_path):
     assert "LOADED=\n" in proc.stdout or proc.stdout.rstrip().endswith("LOADED="), proc.stdout
 
 
-def test_the_lane_is_staged_and_not_active():
+def test_the_lane_is_dispatch_live_on_n8n():
+    # 2026-10-17 (operator decision D2 "Queue reader first"): staged at shadow 2026-10-15, now stage canary /
+    # dispatch live at */5 through tradeai-dispatcher; full pins in tests/test_comms_intent_consumer_live_20261017.py.
     reg = {r["lane_id"]: r for r in json.loads((ROOT / "config" / "lane_registry.json").read_text())["lanes"]}
     row = reg["n8n-comms-intent-consumer"]
-    assert row["state"] == "NEVER_SCHEDULED" and row["scheduler"] == {"kind": "none"}
-    assert "dispatch" not in row and "r1_pending" not in row
+    assert row["state"] == "ACTIVE" and row["scheduler"]["kind"] == "n8n" and row["scheduler"]["stage"] == "canary"
+    assert row["dispatch"]["mode"] == "live" and "r1_pending" not in row
     assert row["output_signal"] == {
         "kind": "json_key",
         "path": "data/runtime/n8n-comms-intent-consumer_last.json",
@@ -567,17 +569,19 @@ def test_the_lane_is_staged_and_not_active():
     }
     allow = {e["lane_id"]: e for e in json.loads((ROOT / "config" / "n8n_run_allowlist.json").read_text())["lanes"]}
     e = allow["n8n-comms-intent-consumer"]
-    assert e["live_arg"] is None and e["dry_run_arg"] == ["--dry-run"]  # shadow: only the dry run is runnable
+    assert e["live_arg"] == ["--apply"] and e["dry_run_arg"] == ["--dry-run"]  # canary: the live fire applies
     assert e["command"] == ["$PY", "scripts/n8n_comms_intent_consumer.py"]
     assert e["output_signal"] == row["output_signal"]["path"]
     assert not e["lock"].endswith(".dryrun")
 
 
-def test_the_health_contract_draft_is_valid_and_not_in_the_gate_file():
+def test_the_health_contract_draft_is_valid_and_the_gate_file_holds_the_reviewed_one():
     draft = json.loads((PACKET / "health_contract_draft.json").read_text())
     draft.pop("_note")
     assert H.validate_contract(draft) == []
     assert draft["status"] == "DRAFT" and draft["id"] == "n8n-comms-intent-consumer"
     assert draft["alerting"]["failed"]["notifier_priority"] == "P2"  # never PAGE from this lane
-    ids = {c["id"] for c in json.loads((ROOT / "config" / "n8n_health_contracts.json").read_text())["contracts"]}
-    assert "n8n-comms-intent-consumer" not in ids
+    # 2026-10-17: the owner-REVIEWED contract (stage canary, expected_output) is in the gate file; the draft is history
+    gate = {c["id"]: c for c in json.loads((ROOT / "config" / "n8n_health_contracts.json").read_text())["contracts"]}
+    assert gate["n8n-comms-intent-consumer"]["status"] == "REVIEWED"
+    assert gate["n8n-comms-intent-consumer"]["alerting"]["failed"]["notifier_priority"] == "P2"

@@ -7700,21 +7700,38 @@
       "lane_id": "n8n-comms-intent-consumer",
       "owner": "platform",
       "scheduler": {
-        "kind": "none"
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/n8n_comms_intent_consumer.py",
+        "cadence": "*/5 * * * *",
+        "stage": "canary",
+        "wave": "W1"
       },
       "expected_cadence_hours": 0.0833,
-      "state": "NEVER_SCHEDULED",
-      "state_since": "2026-10-15",
-      "state_reason": "PROPOSED n8n lane (operator 2026-10-15: comms intents go through the incident fan-in; branch n8nfab/comms-intent-consumer-20261015): scripts/n8n_comms_intent_consumer.py claims QUEUED comms/intent rows (QUEUED -> CLAIMED -> DONE/FAILED) and maps each, by config/n8n_comms_intent_routes.json, to an incident fan-in incident at the route's tier (DIGEST -> P2), folded into the OPEN incident for the same workflow and kind. Staged only: allowlist entry at shadow (live_arg null, dry_run_arg --dry-run); no cron line, no unit, no workflow, no dispatch block. Proposed cadence */5 through Run Lane. Shadow -> canary needs a REVIEWED health contract (draft in docs/ops/packets/n8n-comms-intent-consumer-20261015/health_contract_draft.json) and a registry PR; until then the operator runs --apply by hand (packet).",
+      "state": "ACTIVE",
+      "state_since": "2026-10-17",
+      "state_reason": "Operator decision D2 2026-10-17 'Queue reader first' (docs/ops/packets/hermes-learning-cutover-20261015/README.md): n8n-native host lane fired by tradeai-dispatcher every 5 min (precedent heartbeat-watch: stage canary = dispatch live, no cron line ever existed, scheduler.match names the script only for host-conflict detection). scripts/n8n_comms_intent_consumer.py --apply claims QUEUED comms_intents rows (n8n gateway comms/intent and host lanes via scripts/lib/host_comms_intents.py; QUEUED -> CLAIMED -> DONE/FAILED, compare-and-set) and maps each by config/n8n_comms_intent_routes.json + config/host_comms_intent_routes.json to an incident fan-in incident (DIGEST -> P2), which scripts/n8n_incident_fanin.py reads and scripts/incident_notifier.py (cron */5, the only sender) batches. Live only once the lane is in TRADEAI_N8N_RELAY_LIVE_LANES (packet docs/ops/packets/comms-intent-consumer-live-20261017/cutover.sh relay); until then the gateway demotes the fire to dry_run and the fan-in's queued_stale P2 keeps reporting the backlog.",
       "output_signal": {
         "kind": "json_key",
         "path": "data/runtime/n8n-comms-intent-consumer_last.json",
         "key": "ok_at"
       },
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "tests/test_n8n_comms_intent_consumer_20261015.py; --dry-run against the live ledger 2026-10-15: one QUEUED intent ci-2a845bc6aa846e66525eb957 would become incident wferr:tradeai-fabric-error-probe P2 (incident_key inc-7b246a5388b496801e92); packet docs/ops/packets/n8n-comms-intent-consumer-20261015/.",
-      "review_by": "2026-10-22",
-      "note": "Writes only comms_intents.state and two additive ledger tables (comms_intent_consumption, comms_intent_incidents). Sends nothing: the fan-in reads the open incidents and the incident notifier's P2 batch is the only sender (AGENTS.md §24.1). Dead letters (FAILED 3x or refused; QUEUED > 2 h) are one aggregated P2 fan-in finding each (source n8n_comms_intent_dlq). Exit 0 completed, 1 source/write failure or a transient intent failure; ok_at advances only on success."
+      "reason_evidence": "tests/test_comms_intent_consumer_live_20261017.py; tests/test_n8n_comms_intent_consumer_20261015.py; --dry-run against the live ledger 2026-10-17T17:05Z (mode=ro): 4 QUEUED fabric/workflow_error intents of tradeai-fabric-hermes-learning would fold into ONE P2 incident wferr:tradeai-fabric-hermes-learning (inc-f6a7fd5438b5afe0dd74), the expired 10-15 probe incident would close; downstream verified the same minute: n8n_incident_fanin_last.json as_of 17:05Z served 7b07774ad comms_intent_source 'dlq:ok:...queued_stale=3', incident_notifier_last.json 17:05Z mode live status OK.",
+      "review_by": "2026-10-24",
+      "note": "Writes only comms_intents.state and two additive ledger tables (comms_intent_consumption, comms_intent_incidents). Sends nothing: the fan-in reads the open incidents and the incident notifier's P2 batch is the only sender (AGENTS.md §24.1). Dead letters (FAILED 3x or refused; QUEUED > 2 h) are one aggregated P2 fan-in finding each (source n8n_comms_intent_dlq). Exit 0 completed, 1 source/write failure or a transient intent failure; ok_at advances only on success.",
+      "severity": "Medium",
+      "dispatch": {
+        "mode": "live",
+        "cron": [
+          "*/5 * * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W1",
+        "class": "monitor",
+        "priority": 1,
+        "retry_policy": "transient-2"
+      }
     },
     {
       "lane_id": "backup-verify",

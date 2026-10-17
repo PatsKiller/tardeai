@@ -21,6 +21,14 @@ else ~/trade-ai-releases/persistent-state. An apply run writes LaneRunReceipt@v1
 Exit: 0 = the run completed (a refused intent is a finding, not a failed run); 1 = the ledger or the route table could
 not be read, or a write failed, or an intent failed transiently; 2 = usage.
 
+Output verdict (2026-10-17, lane live on the n8n fabric at */5; config/n8n_health_contracts.json expected_output,
+allowlist ``output_receipt: v2``): every apply run's receipt carries the LaneRunReceipt@v2 output fields (``output=``
+spelling, so ``_last.json`` stays v1 for v1 readers and the executor gets the immutable per-attempt v2 copy).
+produced = intents this run moved to DONE + DONE intents whose incident it refreshed; attempted = produced + refused
++ claim-lost + transient. An empty queue is ``empty_reason: no_new_input``; a run whose only claims were refused
+(dead-lettered by the fan-in as one P2) is ``nothing_due`` (nothing was due for an incident); an unreadable ledger or route table is the fatal
+skip ``dependency_unavailable``. See :func:`lane_output`.
+
 MBI_BEHAVIOR = 0. No send, no network, no subprocess, no Telegram import. Authority: READ_ONLY_ADVISORY.
 """
 
@@ -125,7 +133,41 @@ def run(
         backlog=res["backlog"],
     )
     ok = summary["failed_transient"] == 0
-    return _finish(R, True, receipt, ok=ok, summary=summary, now=now)
+    return _finish(R, True, receipt, ok=ok, summary=summary, now=now, output=lane_output(summary))
+
+
+#: Empty reasons the health contract allows (config/n8n_health_contracts.json expected_output.empty_allowed_reasons).
+EMPTY_NO_INPUT = "no_new_input"
+EMPTY_ALL_REFUSED = "nothing_due"  # closed enum (check_n8n_workflow_framework EMPTY_ALLOWED_REASONS)
+#: The fatal skip: the ledger or the route table could not be read or written (expected_output.fatal_skip_reasons).
+SKIP_DEPENDENCY = "dependency_unavailable"
+
+
+def lane_output(summary: dict[str, Any]) -> dict[str, Any]:
+    """LaneRunReceipt@v2 output fields for one apply run (unit: comms intents consumed into incidents).
+
+    produced = intents moved to DONE (incident or log outcome) + DONE intents whose incident was refreshed with
+    repeats; attempted = produced + refused + claim-lost + transient. An error before any claim (no ledger, routes
+    unreadable, write failed) is the fatal skip ``dependency_unavailable``. Pure."""
+    if summary.get("error"):
+        return {"produced_count": 0, "attempted_count": 0, "skipped_reasons": {SKIP_DEPENDENCY: 1}, "empty_reason": None}
+    done, refreshed = int(summary.get("done") or 0), int(summary.get("refreshed") or 0)
+    refused, lost = int(summary.get("refused") or 0), int(summary.get("claim_lost") or 0)
+    transient = int(summary.get("failed_transient") or 0)
+    skipped = {
+        k: v
+        for k, v in (("intent_refused", refused), ("claim_lost", lost), ("intent_failed_transient", transient))
+        if v
+    }
+    produced = done + refreshed
+    attempted = produced + refused + lost + transient
+    empty = None
+    if produced == 0:
+        if attempted == 0:
+            empty = EMPTY_NO_INPUT
+        elif refused and not transient and not lost:
+            empty = EMPTY_ALL_REFUSED
+    return {"produced_count": produced, "attempted_count": attempted, "skipped_reasons": skipped, "empty_reason": empty}
 
 
 def _finish(
@@ -137,10 +179,12 @@ def _finish(
     summary: dict[str, Any],
     now: datetime,
     would: Optional[list[str]] = None,
+    output: Optional[dict[str, Any]] = None,
 ) -> int:
     if not apply:
         R.dry_run_report(LANE_ID, summary, would_write=would or [], receipt=receipt)
         return 0 if ok else 1
+    output = output if output is not None else lane_output(summary)
     written = R.write_lane_receipt(
         LANE_ID,
         ok=ok,
@@ -150,6 +194,7 @@ def _finish(
         summary=summary,
         error=summary.get("error"),
         path=receipt,
+        output=output,
     )
     print(
         json.dumps(
@@ -157,6 +202,8 @@ def _finish(
                 "mode": "apply",
                 "ok": ok,
                 "receipt": str(written) if written else None,
+                "produced_count": output["produced_count"],
+                "empty_reason": output["empty_reason"],
                 **{
                     k: summary.get(k)
                     for k in (
