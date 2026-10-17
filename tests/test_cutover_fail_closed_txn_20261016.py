@@ -56,20 +56,22 @@ def wrap(tmp_path):
     logs = tmp_path / "logs"
     incidents = tmp_path / "state" / OW.INCIDENTS_REL
 
-    def cfg(cron_claim: bool) -> Path:
-        p = tmp_path / f"keys_{int(cron_claim)}.json"
-        p.write_text(json.dumps({"schema": E.EFFECT_CONFIG_SCHEMA, "lanes": {
-            "x-lane": {"process": "x-lane", "input_version": "v1", "cron_claim": cron_claim}}}))
+    def cfg(cron_claim: bool, n8n_claim=None) -> Path:
+        p = tmp_path / f"keys_{int(cron_claim)}_{n8n_claim}.json"
+        spec = {"process": "x-lane", "input_version": "v1", "cron_claim": cron_claim}
+        if n8n_claim is not None:
+            spec["n8n_claim"] = n8n_claim
+        p.write_text(json.dumps({"schema": E.EFFECT_CONFIG_SCHEMA, "lanes": {"x-lane": spec}}))
         return p
 
-    def run(*, cron_claim=True, ledger_path=None, py=None):
+    def run(*, cron_claim=True, ledger_path=None, py=None, n8n_claim=None):
         env = {k: v for k, v in os.environ.items() if not k.startswith("TRADEAI_EFFECT") and k != E.HANDOVER_ENV}
         env.update({"EFFECT_CLAIM_PY": py or sys.executable,
                     "TRADEAI_N8N_COORDINATION_LEDGER": str(ledger_path or ledger),
                     "TRADEAI_N8N_HANDOVER_MANIFEST": str(manifest),
                     "TRADEAI_STATE_ROOT": str(tmp_path / "state"),
                     "EFFECT_CLAIM_LOG_DIR": str(logs), "TRADEAI_EFFECT_SLOT": SLOT,
-                    "TRADEAI_EFFECT_CLAIM": "x-lane", "TRADEAI_EFFECT_CLAIM_CONFIG": str(cfg(cron_claim))})
+                    "TRADEAI_EFFECT_CLAIM": "x-lane", "TRADEAI_EFFECT_CLAIM_CONFIG": str(cfg(cron_claim, n8n_claim))})
         cmd = ["bash", str(WRAPPER), "x-lane", "bash", "-c", f'echo run >> "{marker}"']
         return subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=60)
 
@@ -120,13 +122,23 @@ def test_D1_ledger_unreadable_handed_over_lane_runs_nothing_and_raises_p1(wrap, 
     assert list(opened.values())[0]["host_watch"] is True
 
 
-@pytest.mark.parametrize("cron_claim", [True, False])
-def test_D1_ledger_unreadable_never_handed_over_lane_runs(wrap, cron_claim):
-    _break_ledger(wrap)                                    # no manifest at all: nothing was ever handed over
-    r = wrap.run(cron_claim=cron_claim)
+def test_D1_ledger_unreadable_never_armed_lane_runs_but_the_missing_manifest_pages(wrap):
+    _break_ledger(wrap)                                    # no manifest at all, and the key arms neither side
+    r = wrap.run(cron_claim=False, n8n_claim=False)
     assert r.returncode == 0 and wrap.runs() == 1, r.stderr
-    assert wrap.p1() == []
     assert "skipped_ownership_unknown" not in [e["event"] for e in wrap.events()]
+    # finding 2 (architect review of 26fd0518): a missing manifest file is itself a P1
+    assert [p["reason"] for p in wrap.p1()] == ["ledger_unreachable_never_handed_over:manifest=file_absent,"
+                                                "handover_manifest_missing"]
+
+
+@pytest.mark.parametrize("cron_claim", [True, False])
+def test_D1_ledger_unreadable_armed_lane_without_manifest_fails_closed(wrap, cron_claim):
+    _break_ledger(wrap)                                    # manifest lost / never written; the key IS armed
+    r = wrap.run(cron_claim=cron_claim)
+    assert r.returncode == 75 and wrap.runs() == 0, r.stderr
+    assert [e["event"] for e in wrap.events()] == ["skipped_ownership_unknown"]
+    assert "ledger_unreachable_armed_unlisted:manifest=file_absent" in wrap.p1()[0]["reason"]
 
 
 def test_D1_ledger_unreadable_lane_handed_back_to_cron_runs(wrap):
@@ -164,11 +176,19 @@ def test_D1_unreadable_manifest_fails_closed(wrap):
     assert "handover_manifest_unreadable" in wrap.p1()[0]["reason"]
 
 
-def test_D1_broken_interpreter_fails_closed_only_when_a_manifest_exists(wrap, tmp_path):
+def test_D1_broken_interpreter_fails_closed_when_a_manifest_exists_or_the_key_is_armed(wrap, tmp_path):
+    armed = tmp_path / "badpy_armed"     # lane-spec works (4 columns: n8n_claim 1), everything else exits 9
+    armed.write_text("#!/usr/bin/env bash\n[ \"$2\" = lane-spec ] && { printf 'x-lane\\tv1\\t0\\t1\\n'; exit 0; }\n"
+                     "exit 9\n")
+    armed.chmod(armed.stat().st_mode | stat.S_IEXEC)
+    r = wrap.run(cron_claim=False, py=str(armed))         # no manifest, but armed: fail closed (finding 2)
+    assert r.returncode == 75 and wrap.runs() == 0
+    assert "ownership_helper_failed" in wrap.p1()[-1]["reason"]
     bad = tmp_path / "badpy"
-    bad.write_text("#!/usr/bin/env bash\n[ \"$2\" = lane-spec ] && { printf 'x-lane\\tv1\\t0\\n'; exit 0; }\nexit 9\n")
+    bad.write_text("#!/usr/bin/env bash\n[ \"$2\" = lane-spec ] && { printf 'x-lane\\tv1\\t0\\t0\\n'; exit 0; }\n"
+                   "exit 9\n")
     bad.chmod(bad.stat().st_mode | stat.S_IEXEC)
-    r = wrap.run(cron_claim=False, py=str(bad))           # no manifest: the old fail-open
+    r = wrap.run(cron_claim=False, py=str(bad))           # no manifest, never armed: the old fail-open
     assert r.returncode == 0 and wrap.runs() == 1
     wrap.manifest.write_text(json.dumps({"schema": E.HANDOVER_SCHEMA, "processes": {}}))
     r = wrap.run(cron_claim=False, py=str(bad))

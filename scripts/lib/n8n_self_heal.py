@@ -11,11 +11,13 @@ the CLI applies them before the model path. Tranche defect fixes (operator direc
    kept; only volatile tokens (timestamps, slots, uuids, hex, run ids, pids, paths, other numbers) collapse.
 2. ``deterministic_verdict`` — no model call; each occurrence on its OWN evidence:
    * a lock skip -> ``covered`` only by another run that completed VERIFIED in the same mode and the same semantic
-     slot (``lock_skip_cover``) [D2]; a nearby dry run never covers a live run;
+     slot (``lock_skip_cover``) [D2]; a nearby dry run never covers a live run. "Verified" is ONE shared rule,
+     scripts/lib/recovery_validator.validate (architect review 2026-10-16, finding 1): the EFFECTIVE mode from the
+     receipt (a live request the stage clamp ran as dry_run is a dry run), and for live the output contract met;
    * RUN_TIMEOUT executor_lost (or an overdue RUNNING orphan) -> the existing ``reap_orphan_run`` handler;
-   * NO_OUTPUT / STALE_OUTPUT -> ``output_recovered`` only when the output is fresh by the lane's contract after the
-     breach, or a later live run's output verdict says the expected output was produced [D1]; any other failure ->
-     ``self_recovered`` only on a later run verified in the failed mode.
+   * NO_OUTPUT / STALE_OUTPUT -> ``output_recovered`` only when a later run that EXECUTED live has an output verdict
+     saying the expected output was produced [D1] (a fresh shared file mtime / JSON timestamp alone never counts,
+     finding 1); any other failure -> ``self_recovered`` only on a later run verified in the failed mode.
 3. ``classify_failure`` — transient | code_error | auth | unknown (auth is never transient) [D3].
 4. ``attach_decision`` — an occurrence rides an episode only while the episode is open and it is no more severe; a
    severity upgrade or an occurrence after recovery is processed on its own (a new episode = a new incident) [D4].
@@ -32,10 +34,11 @@ AUTHORITY: READ_ONLY_ADVISORY. MBI_BEHAVIOR = 0: nothing here sizes, orders, sto
 from __future__ import annotations
 
 import hashlib
-import json
 import re
 from datetime import datetime, timezone
 from typing import Any, Iterable, Mapping, Optional
+
+from scripts.lib import recovery_validator as RV
 
 SCHEMA = "N8nSelfHeal@v1"
 LIVE_HEAL_ACTION = "rerun_live_once"
@@ -205,28 +208,21 @@ def _ts(value: Any) -> Optional[float]:
 
 
 def _receipt(run: Mapping[str, Any]) -> dict[str, Any]:
-    rec = run.get("receipt")
-    if isinstance(rec, dict):
-        return rec
-    try:
-        rec = json.loads(run.get("receipt_json") or "") or {}
-    except (TypeError, ValueError):
-        rec = {}
-    return rec if isinstance(rec, dict) else {}
+    return RV.receipt_of(run)
 
 
 _MODE_RE = re.compile(r"\bmode=(dry_run|live)\b")
 _KEY_MODE_RE = re.compile(r"^[deg]:[^:]+:(dry_run|live):")
 #: A semantic slot key: ``<ns>:<lane>:<mode>:<slot>[:aN]`` (d:/e:/g: dispatcher keys, p: process-step keys).
-_SEMANTIC_KEY_RE = re.compile(r"^([degp]):([a-z0-9][a-z0-9._-]{1,63}):(dry_run|live):([0-9]{8}T[0-9]{4})(?::a[0-9]+)?$")
+_SEMANTIC_KEY_RE = RV.SEMANTIC_KEY_RE
 #: Failure kinds whose breached condition is the lane's OUTPUT (defect fix 1): only fresh output closes them.
 OUTPUT_KINDS = frozenset({"NO_OUTPUT", "STALE_OUTPUT"})
 #: n8n_output_verdict verdicts that mean "the expected output was produced by the lane's contract".
-OUTPUT_MET = frozenset({"produced", "empty_allowed"})
-OUTPUT_FAILED = frozenset({"empty_violation", "unverifiable"})
+OUTPUT_MET = RV.OUTPUT_MET
+OUTPUT_FAILED = RV.OUTPUT_FAILED
 #: heartbeat_watch.classify verdict that means "fresh by the lane's contract" (cadence or cron, x2 factor).
 CONTRACT_FRESH = "FRESH"
-_SKIP_REASONS = ("offpeak_skip", "lock_skipped", "flock_held", "safe_flock: skipped")
+_SKIP_REASONS = RV.SKIP_REASONS
 
 # ---------------------------------------------------------------- explicit heal states (defect fix 6)
 #: A recovery was requested (a REQUESTED ledger row exists). NOT healed.
@@ -255,12 +251,9 @@ def failure_mode(fields: Mapping[str, Any], error_text: Any) -> Optional[str]:
 
 
 def semantic_slot(run: Mapping[str, Any]) -> Optional[tuple[str, str, str]]:
-    """(lane, mode, slot) of a run from its slot_key, run_id or (slot-bound retry) parent_run_id; None = unknown."""
-    for k in ("slot_key", "run_id", "parent_run_id"):
-        m = _SEMANTIC_KEY_RE.match(str(run.get(k) or ""))
-        if m:
-            return m.group(2), m.group(3), m.group(4)
-    return None
+    """(lane, mode, slot) of a run from its slot_key, run_id or (slot-bound retry) parent_run_id; None = unknown.
+    The mode element is the REQUESTED mode of the key; evidence checks use ``RV.effective_mode``."""
+    return RV.semantic_slot(run)
 
 
 def _ok_done(run: Mapping[str, Any]) -> bool:
@@ -272,40 +265,22 @@ def _ok_done(run: Mapping[str, Any]) -> bool:
     return ec in (None, 0, "0")
 
 
-def _signal_advanced(run: Mapping[str, Any]) -> bool:
-    rec = _receipt(run)
-    a, b = rec.get("output_signal_mtime_after"), rec.get("output_signal_mtime_before")
-    try:
-        return a is not None and (b is None or float(a) > float(b))
-    except (TypeError, ValueError):
-        return False
-
-
 def _output_verdict(run: Mapping[str, Any]) -> Optional[str]:
-    ov = _receipt(run).get("output_verdict")
-    return str(ov.get("verdict")) if isinstance(ov, Mapping) and ov.get("verdict") else None
+    return RV.output_verdict(run)
 
 
 def verified_done(run: Mapping[str, Any], mode: Optional[str]) -> bool:
-    """The run completed the REQUIRED work, verified, in ``mode`` (defect fix 2): RUN_DONE exit 0 in that exact mode,
-    not a lock/off-peak skip, no failing output verdict; a LIVE run must also prove output (output verdict produced /
-    empty_allowed, or its output signal advanced). ``mode`` None = unknown = never verified."""
-    if mode is None or run.get("mode") != mode or not _ok_done(run):
-        return False
-    rec = _receipt(run)
-    if rec.get("lock_skipped") or any(s in str(rec.get("reason") or "").lower() for s in _SKIP_REASONS):
-        return False
-    ov = _output_verdict(run)
-    if ov in OUTPUT_FAILED:
-        return False
-    if mode == "live":
-        return ov in OUTPUT_MET or _signal_advanced(run)
-    return True
+    """The run completed the REQUIRED work, verified, in ``mode`` — scripts/lib/recovery_validator.validate, the one
+    shared rule (architect review 2026-10-16, finding 1): the EFFECTIVE mode from the receipt (a live request
+    clamped to dry_run is not a live run), RUN_DONE exit 0, not a skip, and for a live run the lane's output
+    contract met (``output_verdict`` produced / empty_allowed; an advancing mtime is not evidence)."""
+    return RV.validate(run, mode=mode)[0]
 
 
 def output_contract_fresh(output_state: Optional[Mapping[str, Any]], since: Optional[float]) -> bool:
-    """The lane's output signal is FRESH by its contract (heartbeat_watch.classify over the registry row: cron or
-    cadence, readable signal) AND its last output is newer than ``since`` (the breach). Missing state = not fresh."""
+    """The lane's output signal is FRESH by heartbeat_watch.classify AND newer than ``since``. EVIDENCE ONLY since
+    the 2026-10-16 architect review (finding 1): a shared file mtime or JSON timestamp never closes an incident;
+    ``output_recovered`` no longer reads it. Kept for the evidence pack / receipts."""
     if not isinstance(output_state, Mapping) or output_state.get("verdict") != CONTRACT_FRESH:
         return False
     last = _ts(output_state.get("last_output_at"))
@@ -314,33 +289,38 @@ def output_contract_fresh(output_state: Optional[Mapping[str, Any]], since: Opti
 
 def output_recovered(event_type: Any, *, failure_mode_: Optional[str], since: Optional[float],
                      runs: Iterable[Mapping[str, Any]], output_state: Optional[Mapping[str, Any]] = None,
-                     exclude_run: Optional[str] = None, slot: Optional[tuple[str, str, str]] = None
-                     ) -> Optional[dict[str, Any]]:
-    """Evidence that the BREACHED condition recovered, or None (pure).
+                     exclude_run: Optional[str] = None, slot: Optional[tuple[str, str, str]] = None,
+                     lane: Optional[str] = None) -> Optional[dict[str, Any]]:
+    """Evidence that the BREACHED condition recovered, or None (pure). Both branches go through
+    scripts/lib/recovery_validator (finding 1, architect review 2026-10-16):
 
-    * NO_OUTPUT / STALE_OUTPUT: the output signal is fresh by the lane's contract after the breach, or a later LIVE
-      run's output verdict says the expected output was produced. A later live RUN_DONE alone, or an advancing mtime
-      alone, is not enough (defect fix 1).
-    * Any other failure: a later run verified in the failed mode (``verified_done``); when ``slot`` is given (a
-      slot-bound retry), that run must be in the same semantic slot."""
+    * NO_OUTPUT / STALE_OUTPUT: a later run that EXECUTED live (effective mode) with ``output_verdict`` produced /
+      empty_allowed (in ``slot`` when given). ``output_state`` (a fresh shared file) is never evidence.
+    * Any other failure: a later run verified in the failed mode (``RV.validate``); in ``slot`` when given."""
+    del output_state            # evidence only (the caller records it); never a recovery basis
     et = str(event_type or "").upper()
-    later = [r for r in runs if r.get("run_id") != exclude_run and (_ts(r.get("finished_at")) or 0) > (since or 0)]
     if et in OUTPUT_KINDS:
-        if output_contract_fresh(output_state, since):
-            return {"basis": "output_contract_fresh", "evidence": [f"output:{output_state.get('last_output_at')}"],
-                    "contract": output_state.get("basis")}
-        for r in later:
-            if r.get("mode") == "live" and _ok_done(r) and _output_verdict(r) in OUTPUT_MET:
-                return {"basis": "expected_output_produced", "evidence": [f"run:{r.get('run_id')}"],
-                        "output_verdict": _output_verdict(r)}
+        ev = RV.output_recovered(lane, since, {"mode": "live", "slot": slot}, runs=runs, exclude_run=exclude_run) \
+            if lane is not None else _first_valid(runs, mode="live", since=since, slot=slot, exclude_run=exclude_run)
+        if ev is None:
+            return None
+        return {"basis": "expected_output_produced", "evidence": ev["evidence"], "output_verdict": ev["output_verdict"],
+                "effective_mode": ev["effective_mode"]}
+    ev = _first_valid(runs, mode=failure_mode_, since=since, slot=slot, exclude_run=exclude_run, lane=lane)
+    if ev is None:
         return None
-    for r in later:
-        if not verified_done(r, failure_mode_):
-            continue
-        rs = semantic_slot(r)
-        if slot is not None and (rs is None or rs[0] != slot[0] or rs[2] != slot[2]):
-            continue
-        return {"basis": "verified_run_same_mode", "evidence": [f"run:{r.get('run_id')}"], "mode": failure_mode_}
+    return {"basis": "verified_run_same_mode", "evidence": ev["evidence"], "mode": failure_mode_,
+            "effective_mode": ev["effective_mode"]}
+
+
+def _first_valid(runs: Iterable[Mapping[str, Any]], *, mode: Optional[str], since: Optional[float],
+                 slot: Optional[tuple[str, str, str]], exclude_run: Optional[str],
+                 lane: Optional[str] = None) -> Optional[dict[str, Any]]:
+    for r in runs:
+        ok, _why = RV.validate(r, mode=mode, lane=lane, slot=slot, since=since, exclude_run=exclude_run)
+        if ok:
+            return {"evidence": [f"run:{r.get('run_id')}"], "effective_mode": RV.effective_mode(r),
+                    "output_verdict": RV.output_verdict(r)}
     return None
 
 
@@ -351,26 +331,31 @@ def _is_lock_skip(event_type: str, error_text: str, run_reason: Any) -> bool:
 
 def lock_skip_cover(failed: Optional[Mapping[str, Any]], fields: Mapping[str, Any], err: str,
                     runs: Iterable[Mapping[str, Any]]) -> tuple[Optional[Mapping[str, Any]], str]:
-    """(covering run, why). A lock skip is covered ONLY by another run that completed the required work, verified, in
-    the SAME mode and the SAME semantic slot (defect fix 2). A nearby run of another mode, slot or lane never covers."""
+    """(covering run, why). A lock skip is covered ONLY by another run of the SAME semantic slot that completed the
+    required work, verified by scripts/lib/recovery_validator.validate in the skip's mode — the EFFECTIVE mode from
+    the covering run's receipt (architect review 2026-10-16, finding 1: a live-requested run the stage clamp executed
+    as dry_run never covers a live skip). The skip's own mode is its effective mode when its receipt has one, else
+    its requested mode (the stricter reading)."""
     me = dict(failed or {})
     if not me.get("run_id") and fields.get("run"):
         me["run_id"] = fields.get("run")
     slot = semantic_slot(me)
-    mode = me.get("mode") or failure_mode(fields, err) or (slot[1] if slot else None)
+    mode = (RV.effective_mode(me) if _receipt(me) else None) or me.get("mode") or failure_mode(fields, err) \
+        or (slot[1] if slot else None)
     if slot is None:
         return None, "skip_slot_unknown"
     if mode is None:
         return None, "skip_mode_unknown"
+    why = "no_verified_run_in_slot_and_mode"
     for r in runs:
         if r.get("run_id") == me.get("run_id"):
             continue
-        rs = semantic_slot(r)
-        if rs is None or rs[0] != slot[0] or rs[2] != slot[2] or rs[1] != mode:
-            continue
-        if verified_done(r, mode):
+        ok, reason = RV.validate(r, mode=mode, slot=slot)
+        if ok:
             return r, "covered"
-    return None, "no_verified_run_in_slot_and_mode"
+        if reason not in ("other_slot", "slot_unknown"):
+            why = f"no_verified_run_in_slot_and_mode:{reason}"
+    return None, why
 
 
 def deterministic_verdict(row: Mapping[str, Any], *, fields: Mapping[str, Any], runs: Iterable[Mapping[str, Any]],
@@ -403,15 +388,22 @@ def deterministic_verdict(row: Mapping[str, Any], *, fields: Mapping[str, Any], 
                 "cause": "RUN_TIMEOUT executor_lost: the run lost its executor; reap the orphan row"}
     # 3. the breached condition recovered (output fresh by contract / a later verified run in the failed mode)
     if t_fail is not None:
-        mode = (failed or {}).get("mode") or failure_mode(fields, err)
+        mode = failed_effective_mode(failed, fields, err)
         ev = output_recovered(et, failure_mode_=mode, since=t_fail, runs=runs, output_state=output_state,
-                              exclude_run=failed_run_id)
+                              exclude_run=failed_run_id, lane=fields.get("lane") or (failed or {}).get("lane_id"))
         if ev is not None:
             outcome = "output_recovered" if et in OUTPUT_KINDS else "self_recovered"
             return {"kind": "auto_close", "outcome": outcome, "evidence": ev["evidence"], "basis": ev["basis"],
                     "heal_state": OUTPUT_RECOVERED,
                     "cause": f"breached condition recovered after the failure ({ev['basis']})"}
     return None
+
+
+def failed_effective_mode(failed: Optional[Mapping[str, Any]], fields: Mapping[str, Any], err: Any) -> Optional[str]:
+    """The mode the FAILED run executed in: its receipt's effective mode when it has a receipt, else the requested
+    mode (row / message / key). One rule for the diagnoser and the deterministic tier (finding 1)."""
+    f = failed or {}
+    return (RV.effective_mode(f) if _receipt(f) else None) or f.get("mode") or failure_mode(fields, err)
 
 
 def _orphan(run: Mapping[str, Any], now: float, timeout_s: float = 0.0) -> bool:

@@ -56,13 +56,15 @@ def wrap(tmp_path):
     marker = tmp_path / "ran.txt"
     logs = tmp_path / "logs"
 
-    def cfg(cron_claim: bool) -> Path:
-        p = tmp_path / f"keys_{int(cron_claim)}.json"
-        p.write_text(json.dumps({"schema": E.EFFECT_CONFIG_SCHEMA, "lanes": {
-            "x-lane": {"process": "x-lane", "input_version": "v1", "cron_claim": cron_claim}}}))
+    def cfg(cron_claim: bool, n8n_claim=None) -> Path:
+        p = tmp_path / f"keys_{int(cron_claim)}_{n8n_claim}.json"
+        spec = {"process": "x-lane", "input_version": "v1", "cron_claim": cron_claim}
+        if n8n_claim is not None:
+            spec["n8n_claim"] = n8n_claim
+        p.write_text(json.dumps({"schema": E.EFFECT_CONFIG_SCHEMA, "lanes": {"x-lane": spec}}))
         return p
 
-    def run(*, cron_claim=True, code=0, ledger_path=None):
+    def run(*, cron_claim=True, code=0, ledger_path=None, n8n_claim=None):
         env = {k: v for k, v in os.environ.items()
                if not k.startswith("TRADEAI_EFFECT") and k != E.HANDOVER_ENV}
         env.update({
@@ -73,7 +75,7 @@ def wrap(tmp_path):
             "EFFECT_CLAIM_LOG_DIR": str(logs),
             "TRADEAI_EFFECT_SLOT": SLOT,
             "TRADEAI_EFFECT_CLAIM": "x-lane",
-            "TRADEAI_EFFECT_CLAIM_CONFIG": str(cfg(cron_claim)),
+            "TRADEAI_EFFECT_CLAIM_CONFIG": str(cfg(cron_claim, n8n_claim)),
         })
         cmd = ["bash", str(WRAPPER), "x-lane", "bash", "-c", f'echo run >> "{marker}"; exit {code}']
         return subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=60)
@@ -122,26 +124,40 @@ def test_owner_n8n_exits_0_logs_skipped_effect_and_writes_nothing(wrap, cron_cla
     assert wrap.store().get(f"fx:x-lane:{SLOT}:v1") is None  # no claim row
 
 
-@pytest.mark.parametrize("cron_claim", [True, False])
-def test_unreachable_ledger_fails_open_and_logs_it(wrap, cron_claim):
+def test_unreachable_ledger_fails_open_only_for_a_never_armed_lane(wrap):
     blocker = wrap.tmp / "not-a-dir"
     blocker.write_text("x")  # the ledger's parent is a FILE: the ledger can be neither opened nor created
-    r = wrap.run(cron_claim=cron_claim, code=0, ledger_path=blocker / "ledger.sqlite")
+    r = wrap.run(cron_claim=False, n8n_claim=False, code=0, ledger_path=blocker / "ledger.sqlite")
     assert r.returncode == 0 and wrap.runs() == 1
-    ev = wrap.events()
-    if cron_claim:
-        assert ev == ["run_unclaimed_ledger_unreachable", "completed_unclaimed"]
-    else:
-        assert ev == ["run_unclaimed_cron_claim_false", "completed_unclaimed"]
-        log = (wrap.tmp / "logs" / "effect_claim_events.jsonl").read_text()
-        assert "owner=ledger_unreachable" in log
+    assert wrap.events() == ["run_unclaimed_ledger_unreachable", "completed_unclaimed"]
 
 
-def test_unreadable_sqlite_ledger_fails_open(wrap):
+@pytest.mark.parametrize("cron_claim, n8n_claim", [(True, None), (False, None), (False, True), (True, False)])
+def test_unreachable_ledger_fails_closed_for_an_armed_lane(wrap, cron_claim, n8n_claim):
+    # architect review of 26fd0518, finding 2: no ledger + no manifest entry = no admission evidence for an armed key
+    blocker = wrap.tmp / "not-a-dir"
+    blocker.write_text("x")
+    r = wrap.run(cron_claim=cron_claim, n8n_claim=n8n_claim, ledger_path=blocker / "ledger.sqlite")
+    assert r.returncode == E.REFUSED_EXIT and wrap.runs() == 0
+    assert wrap.events() == ["skipped_ownership_unknown"]
+
+
+def test_unreadable_sqlite_ledger_armed_lane_fails_closed(wrap):
     wrap.ledger.mkdir()  # a directory where the sqlite file should be: sqlite3 cannot open it
     r = wrap.run(cron_claim=True)
+    assert r.returncode == E.REFUSED_EXIT and wrap.runs() == 0
+    assert wrap.events() == ["skipped_ownership_unknown"]
+    rows = [json.loads(x) for x in (wrap.tmp / "incidents.jsonl").read_text().splitlines()]
+    assert len(rows) == 1 and "ledger_unreachable_armed_unlisted:manifest=file_absent" in rows[0]["reason"]
+
+
+def test_unreadable_sqlite_ledger_never_armed_lane_runs_and_pages_the_missing_manifest(wrap):
+    wrap.ledger.mkdir()
+    r = wrap.run(cron_claim=False, n8n_claim=False)
     assert r.returncode == 0 and wrap.runs() == 1
-    assert wrap.events()[0] == "run_unclaimed_ledger_unreachable"
+    assert wrap.events() == ["run_unclaimed_cron_claim_false", "completed_unclaimed"]
+    rows = [json.loads(x) for x in (wrap.tmp / "incidents.jsonl").read_text().splitlines()]
+    assert len(rows) == 1 and "handover_manifest_missing" in rows[0]["reason"]
 
 
 def test_child_exit_2_after_a_granted_claim_is_not_run_twice(wrap):
