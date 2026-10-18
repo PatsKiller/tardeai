@@ -491,15 +491,17 @@ def test_gate_counts_partial_on_critical_elements(real_ctx):
     assert any("FW-C3 partial" in b for b in g["blocking"])
 
 
-def test_gate_accepts_only_unexpired_operator_exceptions(real_ctx):
+def test_unverified_operator_exception_metadata_cannot_waive_controls(real_ctx):
     row = F.score_workflow(_ref(), real_ctx, file=REF_REL)
     row["elements"]["FW-C3"]["status"] = F.FAIL
     ok = {"workflow_id": REF.WID, "element": "FW-C3", "accepted_by": "operator", "pr": 1, "expires": "2099-01-01"}
     stale = dict(ok, expires="2000-01-01")
     agent = dict(ok, accepted_by="agent")
-    for exc, excused in ((ok, True), (stale, False), (agent, False)):
+    for exc in (ok, stale, agent):
         g = F.gate_workflow(row, platform=None, runtime_evidence={}, exceptions=[exc], today="2026-10-15")
-        assert (not any(b.startswith("FW-C3") for b in g["blocking"])) is excused, exc
+        assert any(b.startswith("FW-C3") for b in g["blocking"]), exc
+        assert any("exceptions UNVERIFIED" in b for b in g["blocking"]), exc
+        assert g["eligible"] is False
 
 
 # ── §23.24 crosswalk ────────────────────────────────────────────────────────────────────────────────────────────
@@ -538,12 +540,12 @@ def test_crosswalk_is_in_the_contracts_design():
         assert f"| {o['id']} |" in doc, o["id"]
 
 
-def test_import_guard_framework_gate_flag_is_opt_in_and_fail_closed(capsys):
-    """DD16: the pre-import guard can call the gate (--framework-gate activation); off by default."""
+def test_import_guard_framework_gate_is_mandatory_and_fail_closed(capsys):
+    """An import packet cannot silently omit the active §23.24 activation bar."""
     import check_n8n_import_ready as G
 
     args = [str(ROOT / REF_REL), "--relay-url", T.GENERIC_RELAY_URL, "--known-id", T.FABRIC_ERROR_ID, "--json"]
-    assert G.main(args) == 0
+    assert G.main(args) == 1
     capsys.readouterr()
     assert G.main(args + ["--framework-gate", "activation"]) == 1
     doc = json.loads(capsys.readouterr().out)

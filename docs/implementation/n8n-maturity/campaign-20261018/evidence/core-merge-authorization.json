@@ -1,0 +1,38 @@
+{
+  "schema": "N8nCampaignMergeAuthorization@v1",
+  "campaign_id": "n8n-maturity-20261018",
+  "recorded_at": "2026-10-18T21:02:37.027213+00:00",
+  "pr": 1854,
+  "exact_head": "2333c8e1b00f4be3b5fab653bf67d9a42fdcd399",
+  "authority": "current operator execution mandate 2026-10-18 sections1 and11; reviewed campaign PRs only, required exact-head CI; replaces need for expired historical standing merge approval; creates no runtime grant",
+  "independent_review": {
+    "reviewer": "independent_review",
+    "artifact_sha256": "047eaefa8f35f5f11025fcda0fd0b8ef5fef1012d85587aa40d0a99f490086ee",
+    "result": "APPROVED_FOR_SCOPED_SOURCE_INTEGRATION_AND_BOUND_PUSH_REQUEST",
+    "tests": "113 passed"
+  },
+  "required_checks": [
+    {
+      "name": "cio-hardening",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/PatsKiller/tardeai/actions/runs/39162670137/job/117779062452",
+      "completedAt": "2026-10-18T20:33:13Z"
+    },
+    {
+      "name": "agent-governance",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/PatsKiller/tardeai/actions/runs/39162670200/job/117779062606",
+      "completedAt": "2026-10-18T20:19:06Z"
+    },
+    {
+      "name": "release-readiness",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/PatsKiller/tardeai/actions/runs/39162670130/job/117779062157",
+      "completedAt": "2026-10-18T20:19:36Z"
+    }
+  ],
+  "no_production_mutation": true
+}
