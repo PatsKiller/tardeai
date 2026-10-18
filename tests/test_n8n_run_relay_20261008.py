@@ -229,7 +229,7 @@ def _run_row(run_id, lane, mode, state, finished):
         finished,
         0,
         1.0,
-        "{}",
+        json.dumps({"schema": "RunReceipt@v1", "run_id": run_id, "lane_id": lane, "mode": mode, "state": state}),
     )
 
 
@@ -316,7 +316,7 @@ def test_last_run_empty_ledger_is_null_and_body_stays_within_cap(tmp_path):
         status, body = _get(port, "/runs/premarket-data-pipeline/last", f"Bearer {BEARER}")
     assert status == 200 and len(body) <= R.MAX_BODY
     payload = json.loads(body)
-    assert payload["last"] is None and payload["status"] == "NO_LEDGER"
+    assert payload["last"] is None and payload["status"] == "UNAVAILABLE"
     huge = "r" * 1500
     _insert_runs(
         _ledger(tmp_path),
@@ -350,8 +350,9 @@ def test_previous_bearer_is_accepted_and_a_short_one_refuses_start(tmp_path):
 def test_present_empty_live_list_is_not_enabled_and_a_missing_list_still_forwards_dry_run(tmp_path):
     calls = []
     auth = f"Bearer {BEARER}"
-    empty = relay(tmp_path, transport=lambda *_: calls.append(1) or (200, {"state": "REQUESTED"}),
-                  TRADEAI_N8N_RELAY_LIVE_LANES="")
+    empty = relay(
+        tmp_path, transport=lambda *_: calls.append(1) or (200, {"state": "REQUESTED"}), TRADEAI_N8N_RELAY_LIVE_LANES=""
+    )
     live = json.dumps({"lane_id": LANE, "mode": "live", "idempotency_key": "run-20261008-0010"}).encode()
     assert empty.run(auth, live) == (403, {"state": "REFUSED", "reason": "relay_live_not_enabled"})
     assert empty.live_lanes_missing is False and empty.live_lanes == frozenset()

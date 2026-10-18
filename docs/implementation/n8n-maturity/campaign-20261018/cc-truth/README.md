@@ -21,3 +21,14 @@ The reviewer found an incorrect outbox baseline capture: both alleged red/green 
 explicitly superseded in the author packet. Corrected evidence verifies the imported source bytes and exact
 3af0a8b baseline: the identical three behavioral assertions fail, then pass on4aede. No collection error or
 arbitrary nonzero result is counted as red-first proof.
+
+Full native acceptance at61c41 failed six legacy fixture expectations across three existing suites. The
+follow-up supplies actual RunReceipt mode/identity metadata for intentionally completed-run fixtures, adds
+the real ledger store_key column to the notifier fixture, and changes three missing-source assertions to
+v2 UNAVAILABLE. It preserves bearer/path/body-cap checks, migration phases with actual executed modes,
+and operator-notification assertions. The separate unknown-effective-mode tests remain enforced; requested
+live alone is never promoted to executed live. No production source changed in this fixture follow-up.
+
+Ruff formatting of the four touched legacy test files is mechanical; their ASTs match before/after that
+formatting step. The semantic fixture changes above are separate.66 non-HTTP adjacent tests pass; full
+native acceptance will exercise the relay HTTP cases and the complete suite at the final head.

@@ -3,7 +3,7 @@
   "artifacts": [
     {
       "path": "README.md",
-      "sha256": "0327170079b3151d946242c40b022bf91b799f023db6d50238dd26e1430b8efc"
+      "sha256": "9dd8db747121ace1ec292c0cda2fa8313ab70f34c486535126cabdbb207b3e39"
     },
     {
       "path": "author-packet.json",
