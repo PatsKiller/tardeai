@@ -366,8 +366,26 @@ def test_the_plausibility_contract_for_the_retired_store_only_fails_on_new_empty
 # ── 3-5. stop floor, confidence clamps, NaN, sentinels ─────────────────────────────────────────────────────────────
 
 
+def _atr_stop_module():
+    """atr_stop_target is pure; indicator_engine imports numpy/pandas/yfinance at module level and CI installs
+    only pytest + pyyaml, so load just the function and its reason constant from the source."""
+    import ast
+    import math
+    import types
+
+    tree = ast.parse((ROOT / "scripts" / "indicator_engine.py").read_text(encoding="utf-8"))
+    keep = [n for n in tree.body if (isinstance(n, ast.FunctionDef) and n.name == "atr_stop_target")
+            or (isinstance(n, ast.Assign) and any(getattr(t, "id", "") == "STOP_REASON_ATR_EXCEEDS_PRICE"
+                                                  for t in n.targets))]
+    assert len(keep) == 2, "atr_stop_target and STOP_REASON_ATR_EXCEEDS_PRICE must stay top-level"
+    mod = types.ModuleType("indicator_engine_atr")
+    mod.math = math
+    exec(compile(ast.Module(body=keep, type_ignores=[]), "indicator_engine.py", "exec"), mod.__dict__)
+    return mod
+
+
 def test_atr_stop_is_never_at_or_below_zero():
-    import indicator_engine as ie
+    ie = _atr_stop_module()
 
     assert ie.atr_stop_target(1.0, 1.5, 1.0, 2.0) == (None, 4.0, ie.STOP_REASON_ATR_EXCEEDS_PRICE)
     assert ie.atr_stop_target(2.0, 1.0, 2.0, 2.0) == (None, 4.0, ie.STOP_REASON_ATR_EXCEEDS_PRICE)  # stop == 0
