@@ -64,6 +64,7 @@ GATES = [
     # expected_output, staged effect key); LaneRunReceipt@v2 produced / empty_allowed / fatal dependency_unavailable via
     # the real CLI; idempotent rerun; the operator packet against fake systemctl/docker/proc. Hermetic: tmp ledgers.
     ("comms_intent_consumer_live_20261017", ["tests/test_comms_intent_consumer_live_20261017.py"]),
+    ("fabric_grant_id_20261018", ["tests/test_fabric_grant_id_20261018.py"]),
     # ANCHOR: COMMS_INTENT_DELIVER_BEFORE_CLOSE_20261017 — a comms-intent incident past its window closes only on the
     # incident notifier's own delivery evidence; undelivered (CAPPED / quiet-held) it is DEFERRED, still presented by
     # the fan-in, sent once in the next allowed batch (07:00 ET / cap reset), then closed. Hermetic: tmp ledgers, the

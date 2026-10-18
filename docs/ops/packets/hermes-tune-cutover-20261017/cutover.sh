@@ -32,6 +32,7 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 REPO=${REPO:-$HOME/trade-ai-v12-rebuild/trade-ai-v12-rebuild}
 PY=${PY:-$REPO/.venv/bin/python}
 SERVED=${SERVED:-$(readlink -f "$HOME/trade-ai-releases/portfolio-server/CURRENT")}
+GRANT_PY=${GRANT_PY:-$(cd "$(dirname "$0")/../../../.." && pwd)/scripts/lib/fabric_grant.py}
 STATE=${STATE:-$HOME/trade-ai-releases/persistent-state}
 LEDGER=${LEDGER:-$STATE/data/governance/n8n_coordination_ledger.sqlite}
 LIVE_LANES_ENV=${LIVE_LANES_ENV:-$HOME/.config/tradeai/n8n-live-lanes.env}
@@ -48,7 +49,15 @@ APPLY=0; DATE=""
 while [[ $# -gt 0 ]]; do
   case "$1" in --apply) APPLY=1; shift ;; --date) DATE=${2:-}; shift 2 ;; *) fail "unknown arg $1" ;; esac
 done
-need_grant(){ [[ $APPLY == 0 || -n "${TRADEAI_FABRIC_GRANT:-}" ]] || fail "TRADEAI_FABRIC_GRANT not set"; }
+# The value must be the id of an ACTIVE config-write or cron guard grant (TRADEAI_FABRIC_GRANT=$(bin/guard id config-write));
+# a free-text label is refused. Read-only check of the guard ledger; it consumes no use.
+need_grant(){
+  [[ $APPLY == 0 ]] && return 0
+  [[ -n "${TRADEAI_FABRIC_GRANT:-}" ]] || fail "TRADEAI_FABRIC_GRANT not set"
+  local hit
+  hit=$("$PY" "$GRANT_PY" verify "$TRADEAI_FABRIC_GRANT" config-write,cron) || fail "TRADEAI_FABRIC_GRANT is not an active config-write/cron grant id (bin/guard id config-write)"
+  echo "  grant ok: $hit"
+}
 now_hm(){ echo "${NOW_HM:-$(TZ=America/New_York date +%H%M)}"; }
 quiet_minute(){ local hm; hm=$(now_hm)  # n8n fires 17:00, cron 17:20: no owner act from 16:50 to 17:29 ET
   case "$hm" in 165*|170*|171*|172*) fail "inside the tune window (16:50-17:29 ET): $hm";; esac; }

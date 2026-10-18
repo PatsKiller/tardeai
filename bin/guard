@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # guard — operator approval ledger for Cursor agent sessions.
 #
-#   guard show                          list active grants
+#   guard show                          list active grants (with grant id)
+#   guard id <tier>                     print the active grant's full id
 #   guard scopes                        list every scope and what it covers
 #   guard grant <tier> [opts]           approve a whole scope (displays it first)
 #   guard request <tier> [opts]         ask the operator by TELEGRAM (agent-callable;
@@ -77,8 +78,9 @@ cmd_show() {
     local e u r; e=$(grant_expires "$t"); u=$(grant_left "$t"); r=$(grant_reason "$t")
     if [[ "$e" -gt "$n" && ( "$u" -lt 0 || "$u" -gt 0 ) ]]; then
       any=1
-      printf '  %s%-14s%s %4s uses  %5dm left  — %s\n' "$YEL" "$t" "$OFF" \
-        "$([[ $u -lt 0 ]] && echo '∞' || echo "$u")" $(( (e - n) / 60 )) "$r"
+      local gid; gid=$(_ledger list 2>/dev/null | jq -r --arg t "$t" '.grants[$t].grant_id // "-"')
+      printf '  %s%-14s%s %4s uses  %5dm left  id=%s  — %s\n' "$YEL" "$t" "$OFF" \
+        "$([[ $u -lt 0 ]] && echo '∞' || echo "$u")" $(( (e - n) / 60 )) "${gid:0:8}" "$r"
     fi
   done
   [[ $any -eq 0 ]] && echo "  ${GRN}none — every consequential action will prompt${OFF}"
@@ -217,6 +219,8 @@ cmd_log() {
 
 case "${1:-show}" in
   show)   cmd_show ;;
+  # Full grant_id of an active grant, for TRADEAI_FABRIC_GRANT=$(bin/guard id config-write) in packets.
+  id)     shift; exec python3 "$ROOT/scripts/lib/fabric_grant.py" id "${1:?usage: guard id <tier>}" ;;
   scopes) cmd_scopes ;;
   grant)  shift; cmd_grant "$@" ;;
   # Ask the operator by Telegram instead of at this terminal. Mints a PENDING

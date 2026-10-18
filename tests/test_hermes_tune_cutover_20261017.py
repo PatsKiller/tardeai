@@ -25,6 +25,7 @@ Hermetic: tmp state roots and ledgers, no DB, no network, no broker, no secret.
 """
 from __future__ import annotations
 
+import time
 import copy
 import json
 import sqlite3
@@ -434,6 +435,9 @@ def _fake_crontab(tmp_path: Path, text: str) -> Path:
     return exe
 
 
+TEST_GRANT = "abcdef0123456789abcdef0123456789"  # fake active cron grant id in a tmp guard ledger
+
+
 def _packet(tmp_path: Path, *args: str, hm: str = "1200", grant: bool = True, **extra: str):
     env = {
         "PATH": "/usr/bin:/bin", "HOME": str(tmp_path), "LANG": "C.UTF-8",
@@ -444,7 +448,12 @@ def _packet(tmp_path: Path, *args: str, hm: str = "1200", grant: bool = True, **
         E.HANDOVER_ENV: str(tmp_path / "handover.json"), "PYTHONPATH": str(ROOT),
     }
     if grant:
-        env["TRADEAI_FABRIC_GRANT"] = "g-test"
+        approvals = tmp_path / "approvals"
+        approvals.mkdir(exist_ok=True)
+        (approvals / "grants.json").write_text(json.dumps({"grants": {"cron": {
+            "grant_id": TEST_GRANT, "expires": time.time() + 3600, "uses": 5}}}))
+        env["GUARD_APPROVALS_DIR"] = str(approvals)
+        env["TRADEAI_FABRIC_GRANT"] = TEST_GRANT
     env.update(extra)
     return subprocess.run(["bash", str(PACKET), *args], env=env, capture_output=True, text=True, timeout=120)
 

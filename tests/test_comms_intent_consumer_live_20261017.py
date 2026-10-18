@@ -20,6 +20,7 @@ import shutil
 import sqlite3
 import subprocess
 import sys
+import time
 import types
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -44,6 +45,7 @@ from scripts.lib import n8n_output_verdict as OV  # noqa: E402
 from scripts.lib import n8n_retry_policy as RP  # noqa: E402
 from scripts.lib.n8n_coordination_ledger import CoordinationLedger, LedgerRunStore  # noqa: E402
 
+GRANT = "0123456789abcdef0123456789abcdef"  # fake active config-write grant id in a tmp guard ledger
 LANE = "n8n-comms-intent-consumer"
 CONFIG = ROOT / "config"
 PACKET = ROOT / "docs" / "ops" / "packets" / "comms-intent-consumer-live-20261017"
@@ -347,7 +349,12 @@ def pk(tmp_path):
     notifier.write_text(json.dumps({"cap": {"day": "2026-10-17", "used": 3, "limit": 24}}))
     state = tmp_path / "state"
     (state / "data" / "governance").mkdir(parents=True)
+    approvals = tmp_path / "approvals"
+    approvals.mkdir()
+    (approvals / "grants.json").write_text(json.dumps({"grants": {"config-write": {
+        "grant_id": GRANT, "expires": time.time() + 3600, "uses": 5, "reason": "test"}}}))
     env = {
+        "GUARD_APPROVALS_DIR": str(approvals),
         "PATH": os.environ["PATH"],
         "HOME": str(tmp_path),
         "PY": sys.executable,
@@ -403,17 +410,17 @@ def test_relay_dry_run_changes_nothing(pk):
 def test_relay_apply_needs_a_grant_and_a_delivery_window(pk):
     p = pk.run("relay", "--apply")
     assert p.returncode == 1 and "TRADEAI_FABRIC_GRANT not set" in p.stdout
-    p = pk.run("relay", "--apply", TRADEAI_FABRIC_GRANT="g1", NOW_HM="2230")
+    p = pk.run("relay", "--apply", TRADEAI_FABRIC_GRANT=GRANT, NOW_HM="2230")
     assert p.returncode == 1 and "quiet_hours:2230" in p.stdout
     pk.notifier.write_text(json.dumps({"cap": {"day": "2026-10-17", "used": 24, "limit": 24}}))
-    p = pk.run("relay", "--apply", TRADEAI_FABRIC_GRANT="g1")
+    p = pk.run("relay", "--apply", TRADEAI_FABRIC_GRANT=GRANT)
     assert p.returncode == 1 and "cap:24/24" in p.stdout
     assert LANE not in pk.live.read_text() and not pk.calls.exists()
 
 
 def test_relay_apply_appends_backs_up_reads_back_and_restarts_both_units(pk):
     _env_proc(pk, carries=True)
-    p = pk.run("relay", "--apply", TRADEAI_FABRIC_GRANT="g1")
+    p = pk.run("relay", "--apply", TRADEAI_FABRIC_GRANT=GRANT)
     assert p.returncode == 0, p.stdout + p.stderr
     assert pk.live.read_text() == (
         f"# keep me\nTRADEAI_N8N_RELAY_LIVE_LANES=heartbeat-watch n8n-incident-fanin {LANE}\n"
@@ -423,13 +430,13 @@ def test_relay_apply_appends_backs_up_reads_back_and_restarts_both_units(pk):
     assert len(backups) == 1 and LANE not in backups[0].read_text()
     calls = pk.calls.read_text()
     assert "restart tradeai-n8n-run-relay.service" in calls and "restart tradeai-n8n-coordination-gateway.service" in calls
-    p = pk.run("relay", "--apply", TRADEAI_FABRIC_GRANT="g1")
+    p = pk.run("relay", "--apply", TRADEAI_FABRIC_GRANT=GRANT)
     assert p.returncode == 0 and "already has" in p.stdout  # idempotent
 
 
 def test_relay_apply_fails_when_a_unit_did_not_pick_up_the_lane(pk):
     _env_proc(pk, carries=False)
-    p = pk.run("relay", "--apply", TRADEAI_FABRIC_GRANT="g1")
+    p = pk.run("relay", "--apply", TRADEAI_FABRIC_GRANT=GRANT)
     assert p.returncode == 1 and "env lacks" in p.stdout
 
 
@@ -438,7 +445,7 @@ def test_rollback_removes_only_the_lane_and_restarts_both_units(pk):
     p = pk.run("rollback")
     assert p.returncode == 0 and "DRY RUN" in p.stdout and LANE in pk.live.read_text()
     _env_proc(pk, carries=False)
-    p = pk.run("rollback", "--apply", TRADEAI_FABRIC_GRANT="g1")
+    p = pk.run("rollback", "--apply", TRADEAI_FABRIC_GRANT=GRANT)
     assert p.returncode == 0, p.stdout + p.stderr
     assert pk.live.read_text() == "# keep me\nTRADEAI_N8N_RELAY_LIVE_LANES=heartbeat-watch n8n-incident-fanin\n"
     assert len(list(pk.tmp.glob("n8n-live-lanes.env.bak-*-comms-intent-consumer-rollback"))) == 1
@@ -489,3 +496,15 @@ def test_proof_is_pending_until_the_notifier_delivers(pk, monkeypatch):
     _proof_ledger(pk, monkeypatch, delivered=False)
     p = pk.run("proof", "--since", "2000-01-01T00:00:00")
     assert p.returncode == 1 and "NOT DELIVERED" in p.stdout and "operator delivery: PENDING/FAIL" in p.stdout
+
+
+def test_relay_apply_refuses_a_label_that_is_not_an_active_grant_id(pk):
+    """2026-10-18: a free-text label (config-write-20261018T103558) used to pass; only a real active grant id does."""
+    for bad in ("config-write-20261018T103558", "g1", GRANT[:6], "fedcba9876543210"):
+        p = pk.run("relay", "--apply", TRADEAI_FABRIC_GRANT=bad)
+        assert p.returncode == 1 and "not an active config-write/cron grant id" in p.stdout, bad
+    assert LANE not in pk.live.read_text() and not pk.calls.exists()
+    (pk.tmp / "approvals" / "grants.json").write_text(json.dumps({"grants": {"config-write": {
+        "grant_id": GRANT, "expires": time.time() - 1, "uses": 5}}}))
+    p = pk.run("relay", "--apply", TRADEAI_FABRIC_GRANT=GRANT)
+    assert p.returncode == 1 and "not an active" in p.stdout  # expired
