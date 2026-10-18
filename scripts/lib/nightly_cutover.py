@@ -8,9 +8,9 @@ This module is pure apart from ``gather_world`` (read-only I/O). ``evaluate(worl
 ``dry-run`` and ``apply`` (scripts/nightly_cutover_controller.py); apply calls ``gather_world`` + ``evaluate`` itself
 and never reads an earlier plan.
 
-``evaluate_retirement`` observes a reviewed CutoverReceipt@v1 freeze after cutover. It requires complete host
-interval evidence plus exact natural-run and consumption receipts. Its only result is a derived eligibility flag;
-the legacy scheduler bytes remain commented and deletion_execution_enabled always remains false.
+``evaluate_retirement`` is a CODE-ONLY projection over a CutoverReceipt@v1 freeze and fixture/host facts. It cannot
+authenticate observations. The public CLI always holds eligibility until a trusted host verifier and complete
+tested-rollback evidence exist. Legacy scheduler bytes remain commented; deletion_execution_enabled stays false.
 
 Per-lane state machine (each state needs every check of the states before it):
 
@@ -423,7 +423,7 @@ def retirement_freeze_digest(record: Mapping[str, Any]) -> str:
     """Bind coverage to the reviewed requirements/before-images as well as effective runtime identities."""
     state = record.get("retirement") or {}
     fields = {"lane_id", "campaign_id", "legacy_source", "legacy_before_image_ref", "legacy_before_image_sha256",
-              "rollback_ref", "commented_at", "minimum_continuous_hours", "minimum_natural_cycles", "schedule",
+              "rollback_ref", "rollback_sha256", "commented_at", "minimum_continuous_hours", "minimum_natural_cycles", "schedule",
               "stronger_policy_requirements"} | RETIREMENT_IDENTITIES
     freeze = {"schema": record.get("schema"), "action": record.get("action"), "applied": record.get("applied"),
               "lane_id": record.get("lane_id"), "lines": _retirement_lines(record),
@@ -459,7 +459,7 @@ def retirement_problems(record: Mapping[str, Any]) -> list[str]:
     fields = {"schema", "lane_id", "campaign_id", "state", "legacy_source", "legacy_before_image_ref",
               "legacy_before_image_sha256", "commented_at", "soak_started_at", "minimum_continuous_hours",
               "minimum_natural_cycles", "stronger_policy_requirements", "qualifying_evidence_refs", "blocking_reasons",
-              "rollback_ref", "schedule", "deletion_not_before", "deletion_eligible", "deletion_eligible_at",
+              "rollback_ref", "rollback_sha256", "schedule", "deletion_not_before", "deletion_eligible", "deletion_eligible_at",
               "deletion_execution_enabled", "last_observed_at", "identity_digest", "natural_cycles", "expected_slots",
               "next_evaluation_at", "reset_reasons", "coverage", "authority", "freeze_digest"} | RETIREMENT_IDENTITIES
     if set(state) - fields:
@@ -470,7 +470,7 @@ def retirement_problems(record: Mapping[str, Any]) -> list[str]:
                 "replacement_workflow_id"):
         if not isinstance(state.get(key), str) or not state[key].strip():
             problems.append(f"retirement_missing:{key}")
-    for key in ("legacy_before_image_sha256", "replacement_graph_digest", "config_contract_digest"):
+    for key in ("legacy_before_image_sha256", "rollback_sha256", "replacement_graph_digest", "config_contract_digest"):
         if not re.fullmatch(r"[0-9a-f]{64}", str(state.get(key) or "")):
             problems.append(f"retirement_invalid:{key}")
     if not re.fullmatch(r"[0-9a-f]{40}", str(state.get("served_sha") or "")):
@@ -508,11 +508,13 @@ def _retirement_lines(record: Mapping[str, Any]) -> list[tuple[str, str]]:
 def _retirement_slots(schedule: Mapping[str, Any], start: datetime, end: datetime) -> dict[str, datetime]:
     """Use the dispatcher's DST-safe slot rules and the existing NYSE calendar, including early-close days."""
     from scripts.lib.cron_schedule import fires_between
+    from scripts.market_session import is_trading_day
 
     slots = {}
     for expression in schedule["cron"]:
         for fire in fires_between(expression, start, end, tz=schedule["tz"]):
-            if schedule["calendar"] == "nyse" and _session_bounds(fire.at.astimezone(ET).date()) is None:
+            # This is the calendar actually called by the executor's market_day_gate.sh.
+            if schedule["calendar"] == "nyse" and not is_trading_day(fire.at):
                 continue
             slots[fire.slot_local] = fire.at.astimezone(timezone.utc)
     return slots
@@ -546,7 +548,7 @@ def _retirement_not_before(schedule: Mapping[str, Any], start: datetime, *, hour
 
 def evaluate_retirement(world: World, record: Mapping[str, Any], coverage: Mapping[str, Any], *,
                         previous: Optional[Mapping[str, Any]] = None) -> dict[str, Any]:
-    """Derive eligibility from a reviewed receipt, host interval evidence and immutable host run receipts.
+    """Project eligibility from supplied facts; this pure function does NOT attest operational eligibility.
 
     Caller authenticates the host coverage artifact/provenance before passing it here. A point snapshot cannot
     establish continuous coverage. All failures hold/reset the observation, and even eligibility enables no action.
@@ -560,7 +562,7 @@ def evaluate_retirement(world: World, record: Mapping[str, Any], coverage: Mappi
     lane = str(record.get("lane_id") or "")
     old = (previous or {}).get("retirement") or {}
     state.update({"deletion_execution_enabled": False, "deletion_eligible": False, "deletion_eligible_at": None,
-                  "authority": "READ_ONLY_DERIVED_EVIDENCE", "natural_cycles": 0, "expected_slots": 0,
+                  "authority": "CODE_ONLY_UNVERIFIED_PROJECTION", "natural_cycles": 0, "expected_slots": 0,
                   "qualifying_evidence_refs": [], "blocking_reasons": [], "reset_reasons": [],
                   "next_evaluation_at": (world.now + timedelta(minutes=15)).isoformat()})
 
@@ -627,6 +629,11 @@ def evaluate_retirement(world: World, record: Mapping[str, Any], coverage: Mappi
     dispatch = row.get("dispatch") or {}
     if schedule["cron"] != dispatch.get("cron") or schedule["tz"] != dispatch.get("tz"):
         problems.append("frozen_schedule_differs_from_dispatch")
+    market_gate = (world.allowlist.get(lane) or {}).get("market_gate", False)
+    if type(market_gate) is not bool:
+        problems.append("effective_market_calendar_unavailable")
+    elif schedule["calendar"] != ("nyse" if market_gate else "all"):
+        problems.append("frozen_calendar_differs_from_effective_market_gate")
     fields = {"schema", "lane_id", "campaign_id", "identity_digest", "freeze_digest", "issued_at", "from", "through", "complete", "continuous",
               "covered_natural_slots", "source_refs", "provenance", "findings", "requirements"}
     if set(coverage) != fields or coverage.get("schema") != RETIREMENT_COVERAGE_SCHEMA:

@@ -17,8 +17,9 @@ the per-lane states and checks are in scripts/lib/nightly_cutover.py (ONE evalua
                                                         verified; exit 2 + per-target report on any failure)
     nightly_cutover_controller.py retirement --receipt F --coverage C --coverage-sha256 H --evidence-root D
                                                         READ ONLY: derive a new observation report from the reviewed
-                                                        CutoverReceipt@v1 and authenticated host coverage. Optional
+                                                        CutoverReceipt@v1 and supplied interval coverage. Optional
                                                         --previous P / --out O; never deletes or edits a scheduler.
+                                                        Eligibility is HELD: trusted host attestation unavailable.
 
 ARMING: apply and rollback refuse unless an active guard grant of tier `cron` (read-only check of
 ~/.cursor/approvals/grants.json, the guard's own ledger) has a reason naming `nightly-cutover-controller`. Nothing here
@@ -51,6 +52,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -776,8 +778,8 @@ def _rollback_fenced(a: argparse.Namespace, config: Mapping[str, Any], rc: dict[
 def _retirement_json(path: Path, digest: Optional[str] = None) -> dict[str, Any]:
     """Closed input loading: duplicate JSON names are invalid, and the coverage digest binds exact bytes.
 
-    The caller must obtain that digest from the authenticated host evidence producer; a digest alone is integrity,
-    not authentication. No n8n/LLM-provided coverage is accepted as host provenance by this interface.
+    A digest provides integrity only. This CLI has no registered trusted host attestation verifier, so its reports
+    always hold operational eligibility. Caller strings, hashes or boolean assertions cannot supply authentication.
     """
     import hashlib
 
@@ -801,11 +803,39 @@ def _retirement_json(path: Path, digest: Optional[str] = None) -> dict[str, Any]
     return doc
 
 
+def retirement_rollback_problems(record: Mapping[str, Any], rollback: Mapping[str, Any], world: NC.World) -> list[str]:
+    """Verify what the existing rollback-run receipt proves; never upgrade configuration restore into full rollback.
+
+    NightlyCutoverRollback@v1 is a PLAN/before-image, not an executed test. NightlyCutoverRun@v1 in rollback mode
+    can prove target restoration, but its current producer does not attest exact workflow/config/controller identity,
+    admission/drain/effect reconciliation, fresh CAS epochs or consumed output after resumption. Those missing
+    guarantees keep every current legacy rollback receipt unproven. No new unsigned evidence flag enables them.
+    """
+    if rollback.get("schema") != RUN_SCHEMA or rollback.get("mode") != "rollback":
+        return ["rollback_not_a_supported_executed_run_receipt"]
+    if rollback.get("armed") is not True or rollback.get("cohort_stop") or rollback.get("refused"):
+        return ["rollback_run_not_completed_cleanly"]
+    observed = rollback.get("rollback")
+    if not isinstance(observed, Mapping) or observed.get("lane_id") != record.get("lane_id"):
+        return ["rollback_lane_identity_mismatch"]
+    started, finished = NC._aware_ts(rollback.get("started_at")), NC._aware_ts(rollback.get("finished_at"))
+    if started is None or finished is None or not started <= finished <= world.now:
+        return ["rollback_test_time_unavailable_or_invalid"]
+    targets = observed.get("targets")
+    if not isinstance(targets, Mapping) or set(targets) != {"crontab", "registry", "contracts"} or any(
+        not isinstance(t, Mapping) or t.get("ok") is not True or t.get("after") != "not_applied" or t.get("problem")
+        for t in targets.values()
+    ):
+        return ["rollback_target_readbacks_unproven"]
+    return ["rollback_control_identity_and_monotonic_epoch_attestation_unavailable"]
+
+
 def retirement_report(a: argparse.Namespace) -> tuple[int, dict[str, Any]]:
     """Read-only observation: no arming, forced run, scheduler edit, notification or rollback path is reachable.
 
     Reports are derived immutable copies of CutoverReceipt@v1. The original receipt/backup and all legacy entries
-    remain intact. This endpoint cannot execute deletion, including after eligibility.
+    remain intact. This endpoint cannot establish eligibility while trusted host attestation is unavailable, and
+    cannot execute deletion. The separate pure evaluator is code-only and supplies no production proof.
     """
     import hashlib
 
@@ -832,10 +862,24 @@ def retirement_report(a: argparse.Namespace) -> tuple[int, dict[str, Any]]:
         before_lines = before_bytes.decode("utf-8").splitlines()
         if any(before_lines.count(line) != 1 for line, _ in NC._retirement_lines(record)):
             raise ValueError("before_image_does_not_contain_exact_legacy_lines")
+        rollback_ref = str((record.get("retirement") or {}).get("rollback_ref") or "")
+        rollback_path = (root / rollback_ref).resolve()
+        if not rollback_ref or not rollback_path.is_relative_to(root) or rollback_path.suffix != ".json":
+            raise ValueError("rollback_proof_outside_evidence_root")
+        if not rollback_path.is_file():
+            raise ValueError("tested_rollback_receipt_unavailable")
+        rollback_digest = (record.get("retirement") or {}).get("rollback_sha256")
+        if not isinstance(rollback_digest, str) or not re.fullmatch(r"[0-9a-f]{64}", rollback_digest):
+            raise ValueError("tested_rollback_digest_unavailable")
+        try:
+            rollback = _retirement_json(rollback_path, rollback_digest)
+        except ValueError as exc:
+            raise ValueError("tested_rollback_receipt_invalid:" + str(exc)) from exc
         prior = _retirement_json(Path(a.previous)) if a.previous else None
         world, _ = build_world(a, config, observed_lanes=[str(record.get("lane_id") or "")],
                                observation_since=NC._aware_ts(coverage.get("from")))
         report = NC.evaluate_retirement(world, record, coverage, previous=prior)
+        report["retirement"]["blocking_reasons"].extend(retirement_rollback_problems(record, rollback, world))
     except (OSError, ValueError, TypeError, KeyError, NC.CohortStop) as exc:
         report = json.loads(json.dumps(record))
         if not isinstance(report.get("retirement"), dict):
@@ -846,6 +890,12 @@ def retirement_report(a: argparse.Namespace) -> tuple[int, dict[str, Any]]:
                                      authority="READ_ONLY_DERIVED_EVIDENCE",
                                      last_observed_at=datetime.now(timezone.utc).isoformat(),
                                      next_evaluation_at=None, deletion_not_before=None)
+    # There is deliberately no caller override or invented verifier flag. The existing host collector does not
+    # yet authenticate full interval/source semantics, and a producer label plus caller-computed hashes cannot.
+    state = report["retirement"]
+    state.update(state="held", deletion_eligible=False, deletion_eligible_at=None, deletion_execution_enabled=False,
+                 soak_started_at=None, deletion_not_before=None, authority="UNPROVEN_HOST_ATTESTATION")
+    state.setdefault("blocking_reasons", []).append("trusted_host_attestation_verifier_unavailable")
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
     target = Path(a.out) if a.out else rdir / "retirement" / f"observation-{stamp}.json"
     protected = {Path(p).resolve() for p in (a.receipt, a.coverage, a.previous) if p}
@@ -867,7 +917,7 @@ def parser() -> argparse.ArgumentParser:
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--receipt", help="rollback: NightlyCutoverRollback@v1; retirement: reviewed CutoverReceipt@v1 freeze")
     ap.add_argument("--coverage", help="retirement: complete host interval evidence (CutoverRetirementCoverage@v1)")
-    ap.add_argument("--coverage-sha256", help="retirement: exact artifact digest from the authenticated host producer")
+    ap.add_argument("--coverage-sha256", help="retirement: exact artifact digest (integrity only; attestation remains held)")
     ap.add_argument("--evidence-root", help="retirement: root containing the referenced host report and before-image")
     ap.add_argument("--previous", help="retirement: prior immutable observation report")
     ap.add_argument("--out", help="retirement: new derived report path (existing files are refused)")

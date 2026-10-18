@@ -69,6 +69,7 @@ def facts(*, now=NOW, start=START, cron="10 6 * * *", instants=None, calendar="a
                              "campaign_id": "n8n-maturity-20261018", "state": "soaking",
                              "legacy_source": "user-crontab:exact-alpha-line", "legacy_before_image_ref": "before.json",
                              "legacy_before_image_sha256": "2" * 64, "rollback_ref": "tested-rollback.json",
+                             "rollback_sha256": "4" * 64,
                              "commented_at": start.isoformat(), "soak_started_at": start.isoformat(),
                              "minimum_continuous_hours": 48, "minimum_natural_cycles": 2,
                              "stronger_policy_requirements": [], "deletion_execution_enabled": False,
@@ -295,8 +296,27 @@ def cli_inputs(tmp_path):
     return world, args
 
 
+def provide_legacy_restoration_receipt(tmp_path, args):
+    """A genuine existing-schema config-restoration fixture; this cannot prove a full rollback/host attestation."""
+    receipt = {"schema": CTL.RUN_SCHEMA, "mode": "rollback", "armed": True, "cohort_stop": None,
+               "started_at": START.isoformat(), "finished_at": (START + timedelta(seconds=30)).isoformat(),
+               "rollback": {"lane_id": LANE, "targets": {name: {"after": "not_applied", "ok": True}
+                                                        for name in ("crontab", "registry", "contracts")}}}
+    path = tmp_path / "tested-rollback.json"
+    path.write_text(json.dumps(receipt))
+    record = json.loads((tmp_path / "receipt.json").read_text())
+    record["retirement"]["rollback_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    (tmp_path / "receipt.json").write_text(json.dumps(record))
+    coverage = json.loads((tmp_path / "coverage.json").read_text())
+    coverage["freeze_digest"] = NC.retirement_freeze_digest(record)
+    (tmp_path / "coverage.json").write_text(json.dumps(coverage))
+    args.coverage_sha256 = hashlib.sha256((tmp_path / "coverage.json").read_bytes()).hexdigest()
+    return receipt
+
+
 def test_cli_uses_host_snapshot_writes_only_new_report_and_preserves_evidence(tmp_path, monkeypatch):
     world, args = cli_inputs(tmp_path)
+    provide_legacy_restoration_receipt(tmp_path, args)
     originals = {p: p.read_bytes() for p in tmp_path.glob("*.json")}
     calls = []
 
@@ -307,7 +327,11 @@ def test_cli_uses_host_snapshot_writes_only_new_report_and_preserves_evidence(tm
     monkeypatch.setattr(CTL, "build_world", build)
     monkeypatch.setattr(CTL, "run", lambda *a, **k: pytest.fail("retirement reached mutation controller"))
     code, report = CTL.retirement_report(args)
-    assert code == 0 and report["retirement"]["deletion_execution_enabled"] is False
+    assert code == 2 and report["retirement"]["deletion_execution_enabled"] is False
+    assert report["retirement"]["authority"] == "UNPROVEN_HOST_ATTESTATION"
+    assert "trusted_host_attestation_verifier_unavailable" in report["retirement"]["blocking_reasons"]
+    assert "rollback_control_identity_and_monotonic_epoch_attestation_unavailable" in report["retirement"]["blocking_reasons"]
+    assert report["retirement"]["deletion_eligible"] is False
     assert calls[0]["observed_lanes"] == [LANE] and calls[0]["observation_since"] == START
     assert all(p.read_bytes() == data for p, data in originals.items())
     assert json.loads((tmp_path / "output.json").read_text()) == report
@@ -420,13 +444,14 @@ def test_provenance_path_escape_and_source_failure_are_held(tmp_path, monkeypatc
 
 def test_unavailable_host_state_produces_an_auditable_hold(tmp_path, monkeypatch):
     world, args = cli_inputs(tmp_path)
+    provide_legacy_restoration_receipt(tmp_path, args)
 
     def unavailable(*a, **kw):
         raise NC.CohortStop("ledger_unreadable")
 
     monkeypatch.setattr(CTL, "build_world", unavailable)
     code, report = CTL.retirement_report(args)
-    assert code == 2 and report["retirement"]["blocking_reasons"] == ["observation_unavailable:ledger_unreadable"]
+    assert code == 2 and "observation_unavailable:ledger_unreadable" in report["retirement"]["blocking_reasons"]
     assert report["retirement"]["deletion_execution_enabled"] is False
 
 
@@ -491,3 +516,82 @@ def test_snapshot_reads_retired_lane_and_requested_full_history(tmp_path):
                                observation_since=NOW - timedelta(days=30))
     assert len(world.runs[LANE]) == 1 and world.owner_epochs[LANE] == 17
     assert ledger.read_bytes() == original
+
+
+def test_cli_missing_rollback_proof_is_held_for_the_specific_missing_artifact(tmp_path, monkeypatch):
+    world, args = cli_inputs(tmp_path)
+    assert not (tmp_path / "tested-rollback.json").exists()
+    monkeypatch.setattr(CTL, "build_world", lambda *a, **k: (world, tmp_path))
+    code, report = CTL.retirement_report(args)
+    assert code == 2 and report["retirement"]["deletion_eligible"] is False
+    assert "observation_unavailable:tested_rollback_receipt_unavailable" in report["retirement"]["blocking_reasons"]
+
+
+def test_caller_hashes_and_complete_booleans_never_authenticate_source_json(tmp_path, monkeypatch):
+    world, args = cli_inputs(tmp_path)
+    provide_legacy_restoration_receipt(tmp_path, args)
+    source = tmp_path / "source-report.json"
+    source.write_text("{}")
+    coverage = json.loads((tmp_path / "coverage.json").read_text())
+    coverage["provenance"]["artifact_sha256"] = hashlib.sha256(source.read_bytes()).hexdigest()
+    assert coverage["complete"] is True and coverage["continuous"] is True
+    (tmp_path / "coverage.json").write_text(json.dumps(coverage))
+    args.coverage_sha256 = hashlib.sha256((tmp_path / "coverage.json").read_bytes()).hexdigest()
+    record = json.loads((tmp_path / "receipt.json").read_text())
+    projection = NC.evaluate_retirement(world, record, coverage)["retirement"]
+    assert projection["deletion_eligible"] is True
+    assert projection["authority"] == "CODE_ONLY_UNVERIFIED_PROJECTION"
+    monkeypatch.setattr(CTL, "build_world", lambda *a, **k: (world, tmp_path))
+    code, report = CTL.retirement_report(args)
+    assert code == 2 and report["retirement"]["deletion_eligible"] is False
+    assert report["retirement"]["soak_started_at"] is None
+    assert "trusted_host_attestation_verifier_unavailable" in report["retirement"]["blocking_reasons"]
+
+
+def test_rollback_proof_is_digest_bound_and_cannot_be_replaced(tmp_path, monkeypatch):
+    world, args = cli_inputs(tmp_path)
+    provide_legacy_restoration_receipt(tmp_path, args)
+    (tmp_path / "tested-rollback.json").write_text("{}")
+    monkeypatch.setattr(CTL, "build_world", lambda *a, **k: pytest.fail("invalid rollback reached host projection"))
+    code, report = CTL.retirement_report(args)
+    assert code == 2 and report["retirement"]["deletion_eligible"] is False
+    assert any("tested_rollback_receipt_invalid" in reason for reason in report["retirement"]["blocking_reasons"])
+
+
+@pytest.mark.parametrize("mutate,reason", [
+    (lambda p: p.update(schema=CTL.ROLLBACK_SCHEMA), "rollback_not_a_supported_executed_run_receipt"),
+    (lambda p: p.update(armed=False), "rollback_run_not_completed_cleanly"),
+    (lambda p: p["rollback"].update(lane_id="other-lane"), "rollback_lane_identity_mismatch"),
+    (lambda p: p.update(finished_at="2099-01-01T00:00:00Z"), "rollback_test_time_unavailable_or_invalid"),
+    (lambda p: p["rollback"]["targets"]["registry"].update(ok=False), "rollback_target_readbacks_unproven"),
+])
+def test_rollback_plan_failed_restore_or_mismatched_identity_is_unproven(tmp_path, mutate, reason):
+    world, args = cli_inputs(tmp_path)
+    proof = provide_legacy_restoration_receipt(tmp_path, args)
+    mutate(proof)
+    record = json.loads((tmp_path / "receipt.json").read_text())
+    assert CTL.retirement_rollback_problems(record, proof, world) == [reason]
+
+
+def test_legacy_restoration_cannot_prove_fresh_monotonic_owner_epochs_or_resume_output(tmp_path):
+    world, args = cli_inputs(tmp_path)
+    proof = provide_legacy_restoration_receipt(tmp_path, args)
+    record = json.loads((tmp_path / "receipt.json").read_text())
+    # Arbitrary added fields and approval booleans are not a supported host fencing/attestation contract.
+    proof.update(attested=True, owner_epoch_before=5, owner_epoch_after=5, controller_verified=True)
+    assert CTL.retirement_rollback_problems(record, proof, world) == [
+        "rollback_control_identity_and_monotonic_epoch_attestation_unavailable"]
+
+
+def test_unbound_nyse_calendar_cannot_remove_weekend_natural_slots():
+    world, record, coverage = facts(start=datetime(2026, 10, 15, 23, tzinfo=timezone.utc),
+                                    now=datetime(2026, 10, 19, 23, 30, tzinfo=timezone.utc), calendar="nyse",
+                                    instants=[datetime(2026, 10, 16, 10, 10, tzinfo=timezone.utc),
+                                              datetime(2026, 10, 19, 10, 10, tzinfo=timezone.utc)])
+    result = observe(world, record, coverage)
+    assert result["state"] == "held" and result["deletion_eligible"] is False
+    assert "frozen_calendar_differs_from_effective_market_gate" in result["blocking_reasons"]
+    world.allowlist[LANE]["market_gate"] = True  # explicit fixture of the actual registered executor gate
+    refreeze(world, record, coverage)
+    result = observe(world, record, coverage)
+    assert result["deletion_eligible"] is True and result["authority"] == "CODE_ONLY_UNVERIFIED_PROJECTION"
