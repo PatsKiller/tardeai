@@ -5,7 +5,7 @@
   "artifacts": [
     {
       "path": "README.md",
-      "sha256": "6f3c15238a8a3f6c7c8070cd0d84e8aab6a06eb0694be2d6d99a20f6c2f25e20"
+      "sha256": "207bad6bf6e85fec5d674a267732109ecbdfb44881c1b38397a7fa6f8a4a9bbd"
     },
     {
       "path": "baseline/activation_paths.json",
