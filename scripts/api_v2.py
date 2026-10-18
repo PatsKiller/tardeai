@@ -46713,7 +46713,11 @@ def _rotation_summary(force=False):
             try:
                 if _endorsed_rows:
                     unique_rows(_endorsed_rows[:2], ("symbol",))
-                _selected_endorsed = unique_rows(_endorsed[:2], ("symbol",))
+                unique_rows(_endorsed[:2], ("symbol",))
+                # Preserve the original raw six-proposal selection limit too.
+                # Publication deduplicates afterwards, without surfacing a new
+                # fourth trim source formerly outside that bounded window.
+                _selected_endorsed = _endorsed[:2]
             except PublicationError as _pe:
                 _publication_errors.append(str(_pe))
                 _selected_endorsed = []
@@ -51010,6 +51014,10 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 import json as _j
 
                 summ = _rotation_summary()
+                from lib.rotation_publication import publication_refusal
+                refusal = publication_refusal(summ)
+                if refusal:
+                    return 503, refusal
                 ideas = summ.get("research_rotation_ideas", []) or []
                 cands = summ.get("research_candidates", []) or []
                 held = [h for h in (summ.get("top_candidates", []) or []) if (h.get("trim_score") or 0) >= 9]
@@ -51103,6 +51111,10 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 b = body or {}
                 lanes = b.get("lanes") or ["grok", "chatgpt"]
                 summ = _rotation_summary()
+                from lib.rotation_publication import publication_refusal
+                refusal = publication_refusal(summ)
+                if refusal:
+                    return 503, refusal
                 degraded = summ.get("degraded_holdings", []) or []
                 ideas = summ.get("research_rotation_ideas", []) or []
                 over = summ.get("sector_overweights", []) or []
@@ -51209,6 +51221,10 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 import json as _j
 
                 summ = _rotation_summary()
+                from lib.rotation_publication import publication_refusal
+                refusal = publication_refusal(summ)
+                if refusal:
+                    return 503, refusal
                 unders = summ.get("sector_underweights", []) or []
                 cands = summ.get("research_candidates", []) or []
                 from db_adapter import _get_conn
