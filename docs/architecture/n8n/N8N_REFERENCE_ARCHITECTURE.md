@@ -575,3 +575,18 @@ fan-in `scripts/n8n_incident_fanin.py`; consumer `scripts/n8n_comms_intent_consu
 workflows `docs/implementation/n8n-maturity/workflows/` (generic, `fabric/`) and
 `docs/implementation/n8n-parallel/workflows/generated/` (per-lane); reference mature workflow
 `docs/implementation/n8n-parallel/workflows/reference/`.
+
+## October 18 campaign implementation status
+
+The [current ledger](../../implementation/n8n-maturity/campaign-20261018/baseline/implementation-status.json)
+separates implemented, pushed, merged, deployed, enabled and operationally proven. The first reviewed source
+tranche is PR #1854 at `2333c8e1b00f4be3b5fab653bf67d9a42fdcd399`; it changes no scheduler, owner or live-mode
+configuration. The subsequent evidence/activation/eligibility tranche is local and held from activation. See
+[contracts §16](N8N_CONTRACTS_DESIGN.md#16-october-18-implementation-and-framework-evidence) for its §23.24
+mapping and limits. Successful n8n executions or a schema literal do not substitute for host-attested useful output.
+
+Current bridge configuration enables the Grok and ChatGPT OAuth transports, but the read-only health response
+is canary mode with caller authentication in report mode. Provider usability, auth/cost provenance and bounded
+live failover remain unproven. No LLM or approval relay route is opened by these changes. CC reachability was
+verified through the tailnet TLS hostname using the known tailnet address; it establishes reachability and served
+UI only. Real session/MFA and SPCX threat-model acceptance remain separate open requirements.

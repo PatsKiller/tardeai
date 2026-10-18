@@ -5,7 +5,7 @@
   "artifacts": [
     {
       "path": "README.md",
-      "sha256": "207bad6bf6e85fec5d674a267732109ecbdfb44881c1b38397a7fa6f8a4a9bbd"
+      "sha256": "b017c5935df3c027f0d107f6589249c797b7f8e5b928925fab4ca21ab3a0b661"
     },
     {
       "path": "baseline/activation_paths.json",
@@ -14,6 +14,18 @@
     {
       "path": "baseline/contract_matrix.json",
       "sha256": "7424b732661392e880c2e7105822d140c2460a2a86e831efbb4d60b851f49e1d"
+    },
+    {
+      "path": "baseline/core-existing-receipt-compatibility.json",
+      "sha256": "a8d7866c5cc2b5db457625b241e5bb905873ff2dbaca45de05fabccf7e0ec4bc"
+    },
+    {
+      "path": "baseline/core-push-grant-binding.json",
+      "sha256": "d772898b95f036f85bed316ec960763823b33fa6e94b10e0935990e8e384293a"
+    },
+    {
+      "path": "baseline/core-push-mutation-manifest.json",
+      "sha256": "0c7657f275380cbe7a1a4acc05a60328083e6a0c547b2d46cec37f8ad56b64ad"
     },
     {
       "path": "baseline/decision_reconciliation.json",
@@ -26,6 +38,10 @@
     {
       "path": "baseline/host-observations.json",
       "sha256": "a9a5bc190a416947eac14250bba540144830ad74ab19b6aebfb98e67bab299af"
+    },
+    {
+      "path": "baseline/implementation-status.json",
+      "sha256": "f3dc8acdeed7f4c143911bc116ba6fda330bcd47866eaacab90f76a8687137bf"
     },
     {
       "path": "baseline/module_consumer_inventory.json",
@@ -52,8 +68,20 @@
       "sha256": "f88063ceed7908b5191eee6a7b1acd45dd93ed6b8b4555f96ae16afee3e0518b"
     },
     {
+      "path": "contracts-enforcement/README.md",
+      "sha256": "f239f9b6cfa29afce56b97397216dce5b28d8e0089d4f8d45eb32b5cef48708a"
+    },
+    {
+      "path": "evidence/admission-bdde-final.xml",
+      "sha256": "23d3a28185310f8fec1a851a4d21fd5b127b0ad43bb94548a44f95d2fe5e90a7"
+    },
+    {
       "path": "evidence/importer-report.json",
       "sha256": "431b9cc4b55320259164c9f283c6dca0ecb0bd4bbd3ac4973ce46adf99e42e2b"
+    },
+    {
+      "path": "evidence/repair96-final-independent.xml",
+      "sha256": "3ead7a88f0d9b3a992e1a2613d620a46132dc64afc440610903b6af05a829b7a"
     },
     {
       "path": "evidence/report-derived-baseline-red.xml",
@@ -68,8 +96,24 @@
       "sha256": "82f9abcab0476a60168cc9358b8322e37ab3a5c57baeccdb7112a214eb99c804"
     },
     {
+      "path": "evidence/spawn67-final.xml",
+      "sha256": "51b0780455c222bb20f90978ccc131561042641156a446d3f1e76a4cae58fe81"
+    },
+    {
       "path": "evidence/supervisor-independent.txt",
       "sha256": "e1a7b9f259334d9a41251d6e44b415ba818b54b29ab45f6343ecfc62cfc4faab"
+    },
+    {
+      "path": "reviews/admission-final-bdde.json",
+      "sha256": "b59006a6f9e69b5b5d7b0e0acc7fc709f6d6fcec5df92880b6414e4f83a4dc6b"
+    },
+    {
+      "path": "reviews/attestation-final-review.json",
+      "sha256": "1b0e71711cc633b4eb5bb2ddbdbce5430ddcb00120d846f23d7dde3934059a68"
+    },
+    {
+      "path": "reviews/core-final233.json",
+      "sha256": "047eaefa8f35f5f11025fcda0fd0b8ef5fef1012d85587aa40d0a99f490086ee"
     },
     {
       "path": "reviews/grants-retirement-initial.json",
@@ -82,6 +126,14 @@
     {
       "path": "reviews/output.json",
       "sha256": "eb974e9e36cb0d9a37430a878187a639012424f6b7abca860c563fa67298d941"
+    },
+    {
+      "path": "reviews/repair-final96.json",
+      "sha256": "ba9a3ca028f3d179b470321b19f89048566a8284cd489b5064d827835cca359c"
+    },
+    {
+      "path": "reviews/spawn-final67.json",
+      "sha256": "a60da63ac9933de96f2c9b8b56d92bab54aaa29318d2ff8b7cac6d61ef503379"
     },
     {
       "path": "validation/gateway-inputs.json",

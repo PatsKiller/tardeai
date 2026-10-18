@@ -110,8 +110,8 @@ expected-output rule.
 
 - **Producer:** the generator (a spec in git; never hand-written). **Consumers:** `scripts/check_n8n_workflow_framework.py`
   (scores it), the import packet (records class/owner), the fan-in (P: attaches `runbook_id` to pages).
-- **Versioning:** additive optional keys keep `@v1`; a new required key, a renamed key or a changed enum is `@v2`
-  (§14).
+- **Versioning:** an optional key keeps `@v1` only after compatibility with every supported reader is proven;
+  a closed old reader can reject it. Changed meaning, required fields or enums require explicit version migration (§14).
 - **Validation point:** CI (`check_n8n_workflow_framework.py --strict` once §23.24 binds by code), generator
   self-check, trusted-deployer verify.
 - **Failure behaviour:** a workflow without the block scores FW-C1/C2 fail and cannot be activated or promoted a
@@ -676,7 +676,16 @@ on it exits 1 with 24 blocking reasons. It is a reference for a reviewer's diff,
 5. Dry run any runtime-affecting change and quote it (§0 rule 7); a live effect needs the grants §23.2 requires.
 6. For workflow changes: import packet, drift check OK, activation grant naming the workflow ids.
 
-## 15. Verification of schema ids (grep on 94601ff69)
+## 15. Historical schema-literal inventory (94601ff69)
+
+This inventory records source presence on October 15, not current enforcement. It is preserved for historical
+comparison. The current executable [contract matrix](../../implementation/n8n-maturity/campaign-20261018/baseline/contract_matrix.json)
+and [implementation ledger](../../implementation/n8n-maturity/campaign-20261018/baseline/implementation-status.json)
+identify current readers, effective configuration, deployment and remaining proof. In particular,
+`LaneRunReceipt@v2` and expected-output rules now exist; runtime enforcement remains opt-in for 48 lanes.
+The existing schema-literal test below validates its historical E list only; it cannot establish absence,
+enforcement, reader compatibility or operational health.
+
 
 Each id below appears as a literal in the named owner file: `N8nWorkflowSet@v1`, `N8nGenericWorkflowSet@v1`,
 `N8nFabricManifest@v1`, `RunLaneResult@v1`, `FabricStepResult@v1`, `FabricProcessResult@v1`,
@@ -699,3 +708,32 @@ Each id below appears as a literal in the named owner file: `N8nWorkflowSet@v1`,
 `N8nExpectedOutput@v1` (read by the checker; carried only by the reference contract draft), `LaneRunReceipt@v2`,
 `RunReceipt@v3`, `ApprovalRequest@v1`, `ApprovalDecision@v1`. The test
 `tests/test_check_n8n_workflow_framework.py` re-greps the E list so this section cannot drift silently.
+
+## 16. October 18 implementation and framework evidence
+
+The enforcement source candidate in [PR #1854](https://github.com/PatsKiller/tardeai/pull/1854), exact head
+`2333c8e1b00f4be3b5fab653bf67d9a42fdcd399`, closes the existing run envelope, rejects duplicate JSON members,
+nonfinite values and wrong field shapes, and binds opted-in output verdicts to the actual lane, run, attempt,
+effective mode, full code SHA and execution window. An absent opted-in rule fails closed. Fatal skips cannot
+satisfy useful output; explicitly contracted no-work remains valid. No lane opt-in or live list changes are included.
+The candidate passed full native local acceptance and independent 113-test review. It is not deployed evidence.
+
+The next source tranche adds `N8nHostEvidenceAttestation@v1`, `N8nEvidenceTrust@v1` and
+`N8nHostDriftSnapshot@v1` in `scripts/lib/n8n_evidence_attestation.py`. A fixed host read-only collector produces
+source observations; the shared verifier checks Ed25519 provenance, pinned served/workflow/config identities,
+scoped signer, audience, generation, observation window, artifact bytes and digest. A root-protected trust file
+and separately isolated signer must be provisioned through the existing operator mechanism. Evidence-supplied
+keys and same-user JSON cannot establish authority. No signer credential is created by this campaign.
+Absent trust or observations remain UNPROVEN and prohibit runtime framework PASS.
+
+For §23.24, this tranche can establish **L5b point graph parity** when authenticated evidence is available.
+It cannot establish continuous L5c/BAR2 host scheduling, M6b downstream business output, R3b transactional rollback,
+SEC1b real authentication or the general BAR merely from a static check. The shared verifier is consumed by the
+framework checker; the importer invokes the fail-closed activation gate for every admissible workflow, regardless
+of the legacy CLI switch. Raw admin/UI access remains an authority and network boundary to audit independently.
+
+`N8nCutoverOutcomes@v2` separates null/UNAVAILABLE source reads from legitimate zero counts, declares point
+observation coverage and prevents unavailable owner/config/cron inputs from producing derived healthy totals.
+Its old-v1 reader compatibility is explicit; new v2 writers do not silently assume old closed readers accept them.
+Retirement evaluation is an eligibility-only projection. Until trusted interval evidence and a rollback receipt
+prove the requirements, its CLI reports HELD. Deletion execution is always disabled.

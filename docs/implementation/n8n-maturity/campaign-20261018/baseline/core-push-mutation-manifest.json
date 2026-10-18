@@ -1,0 +1,107 @@
+{
+  "schema": "N8nCampaignMutationManifest@v1",
+  "campaign_id": "n8n-maturity-20261018",
+  "created_at": "2026-10-18T20:01:16.427849+00:00",
+  "base_sha": "3af0a8bdd659e02bf6f493c071800c6a227ae292",
+  "branch": "wt/n8n-contract-enforcement-20261018",
+  "tested_head": "2333c8e1b00f4be3b5fab653bf67d9a42fdcd399",
+  "worktree": "/home/johnclaw/tradeai-wt-n8n-contract-enforcement-20261018",
+  "actions": [
+    "push this exact branch head to same named origin branch without force",
+    "create campaign PR targeting main; independent reviewed head and required exact-head GitHub checks before merge"
+  ],
+  "runtime_actions": [],
+  "requested_scope": "git-push",
+  "requested_window_seconds": 1800,
+  "requested_uses": 3,
+  "use_calculation": "one exact-head ordinary branch push; two retries of the identical reviewed head if transport fails; no changed-head push without a fresh tested/reviewed manifest",
+  "independent_review": {
+    "ref": "/tmp/n8n-campaign-20261018/cross-review/core-final233.json",
+    "sha256": "047eaefa8f35f5f11025fcda0fd0b8ef5fef1012d85587aa40d0a99f490086ee",
+    "head": "2333c8e1b00f4be3b5fab653bf67d9a42fdcd399",
+    "disposition": "APPROVED_FOR_SCOPED_CODE_INTEGRATION_AND_BOUNDED_PUSH_REQUEST",
+    "independent_tests_passed": 113,
+    "fixture_review": "root independently reviewed the reviewer-authored fixture env additions; these only supply actual fake-run attempt/mode/full-SHA metadata and do not waive assertions"
+  },
+  "acceptance": {
+    "command": "PATH=<worktree>/.venv/bin:$PATH bash scripts/ai_local_acceptance.sh",
+    "exit_code": 0,
+    "log_ref": "/tmp/n8n-campaign-20261018/core-local-acceptance-host.log",
+    "log_sha256": "b15c7e9f3bbd4a3a85749f159c7801bcec6151ddaba0fa31e5ad3077fa078952",
+    "targeted_green": true,
+    "regression_green": true,
+    "release_equivalent_green": true,
+    "authority_green": true
+  },
+  "offline_existing_receipt_compatibility": {
+    "ref": "/tmp/n8n-campaign-20261018/core-existing-receipt-compatibility.json",
+    "sha256": "a8d7866c5cc2b5db457625b241e5bb905873ff2dbaca45de05fabccf7e0ec4bc",
+    "opted_in_lanes": 48,
+    "lanes_with_existing_live_done": 37,
+    "candidate_produced": 25,
+    "candidate_valid_empty": 12,
+    "without_existing_live_done": 11,
+    "live_reexecution": false,
+    "business_consumption_proven": false
+  },
+  "files": [
+    {
+      "path": "docs/INDEX.md",
+      "sha256": "98c91214334f89ff34763b820dfd34f102b23483a29ec9305aa065981cb65948"
+    },
+    {
+      "path": "docs/implementation/n8n-maturity/campaign-20261018/contracts-enforcement/README.md",
+      "sha256": "f239f9b6cfa29afce56b97397216dce5b28d8e0089d4f8d45eb32b5cef48708a"
+    },
+    {
+      "path": "scripts/lib/n8n_coordination_gateway.py",
+      "sha256": "e76d5ba9935b9c3bf03487add16767d8695a49d85840e32a23cbd178e0ca4f31"
+    },
+    {
+      "path": "scripts/lib/n8n_output_verdict.py",
+      "sha256": "1a5856d3825ed8e8dd939577589a295e80954b39d50803266ebe18a7db38b21f"
+    },
+    {
+      "path": "scripts/n8n_coordination_gateway.py",
+      "sha256": "2fd0886ee333693e7d2ac21c7a2ff62f7e301e4918170ce377688bf17ef1d82d"
+    },
+    {
+      "path": "scripts/n8n_run_executor.py",
+      "sha256": "e80e090f28153b2677c1666adee93eecb53a5054e5b07235cf57b83418ab3310"
+    },
+    {
+      "path": "scripts/run_cio_hardening_ci.py",
+      "sha256": "a60dad49911f83ea2a0844dc3789db7f46c87e87dd7c12bd74b3320b3eddb857"
+    },
+    {
+      "path": "tests/support/lane_produced_count.py",
+      "sha256": "33e14390c201f4e7253aebf4f47bff634b76064e55f00bf7955d3a867df2edfb"
+    },
+    {
+      "path": "tests/test_comms_intent_consumer_live_20261017.py",
+      "sha256": "53757a44e3564c6a89f929cfc7d1c4771e0ab65815964fd0bc51c7112203e8b8"
+    },
+    {
+      "path": "tests/test_n8n_audit_findings_20261015.py",
+      "sha256": "2db1efd87f14cdd5507186d2fe94b19263f2f33a2f56c38774f8e92a2b40459e"
+    },
+    {
+      "path": "tests/test_n8n_gateway_closed_inputs_20261018.py",
+      "sha256": "3c5e27f8eb8714df275ec6d9bea012a34deb0b3d5b8107f352eb21ad7be2a44e"
+    },
+    {
+      "path": "tests/test_n8n_output_contract_truth_20261018.py",
+      "sha256": "b372b7e7138c180263efb4575d52b657842262a079d61bd422466cd50a21761a"
+    },
+    {
+      "path": "tests/test_n8n_read_only_observers_20261013.py",
+      "sha256": "4ac45c637b9a37d86a46b4e7fd652fb4ad194edd452d92aee0cb02769f3ed2f3"
+    }
+  ],
+  "holds": [
+    "No workflow, owner, scheduler, live-lane, provider or fixer activation",
+    "No release grant requested before exact merged SHA/PR/rollback known",
+    "Existing Agent A git-push scope is active and does not match this branch/head; do not consume it or replace it without explicit operator consolidation decision"
+  ],
+  "finalized_at": "2026-10-18T20:12:18.696176+00:00"
+}
