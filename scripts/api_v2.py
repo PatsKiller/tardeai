@@ -46409,7 +46409,9 @@ def _rotation_summary(force=False):
             if _disk.exists():
                 _d = _j.loads(_disk.read_text())
                 _stamp = _d.get("_cached_ts")
-                _valid_stamp = isinstance(_stamp, (float, int)) and not isinstance(_stamp, bool) and _math.isfinite(_stamp)
+                _valid_stamp = (
+                    isinstance(_stamp, (float, int)) and not isinstance(_stamp, bool) and _math.isfinite(_stamp)
+                )
                 _age = _now - _stamp if _valid_stamp else 0
                 _d["cached_at"] = _d.get("_cached_at")
                 _d["cache_age_sec"] = round(_age) if _valid_stamp else None
@@ -46685,8 +46687,15 @@ def _rotation_summary(force=False):
                     _eu = (_es or "").upper()
                     if _eu in _held:
                         continue
-                    _endorsed_rows.append({"symbol": _es, "hermes_rank": _er, "sector": _esec,
-                                           "analyst_opinions": _enop, "cio_view": _ecio})
+                    _endorsed_rows.append(
+                        {
+                            "symbol": _es,
+                            "hermes_rank": _er,
+                            "sector": _esec,
+                            "analyst_opinions": _enop,
+                            "cio_view": _ecio,
+                        }
+                    )
                     _ecard = _cmap.get(_eu) or {}
                     _ean = _ecard.get("analyst") or {}
                     _ec = next((a for a in research_candidates if a.get("symbol") == _es), None) or {
@@ -47153,15 +47162,17 @@ def _rotation_summary(force=False):
             pass
         return out
     except Exception as e:
-        return _publish({
-            "ok": False,
-            "advisory_only": True,
-            "error": str(e)[:200],
-            "summary": {},
-            "data_quality": {},
-            "top_rotation_ideas": [],
-            "top_pairs": [],
-        })
+        return _publish(
+            {
+                "ok": False,
+                "advisory_only": True,
+                "error": str(e)[:200],
+                "summary": {},
+                "data_quality": {},
+                "top_rotation_ideas": [],
+                "top_pairs": [],
+            }
+        )
 
 
 def _small_cap_rotation_bridge_status():
@@ -51015,6 +51026,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
                 summ = _rotation_summary()
                 from lib.rotation_publication import publication_refusal
+
                 refusal = publication_refusal(summ)
                 if refusal:
                     return 503, refusal
@@ -51112,6 +51124,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 lanes = b.get("lanes") or ["grok", "chatgpt"]
                 summ = _rotation_summary()
                 from lib.rotation_publication import publication_refusal
+
                 refusal = publication_refusal(summ)
                 if refusal:
                     return 503, refusal
@@ -51222,6 +51235,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
                 summ = _rotation_summary()
                 from lib.rotation_publication import publication_refusal
+
                 refusal = publication_refusal(summ)
                 if refusal:
                     return 503, refusal
