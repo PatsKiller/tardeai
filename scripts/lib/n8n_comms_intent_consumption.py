@@ -19,8 +19,15 @@ the day the intent was consumed). ``consumed_count`` is the intent's dedupe coun
 a repeat that the gateway folds into an intent that is already DONE refreshes the incident instead of opening another.
 
 ``comms_intent_incidents``: one row per ``incident_key``. OPEN until ``open_until`` (the later of the intent's last_at
-and its consumption time, plus the route table's dedupe window), then CLOSED by the next apply run. A CLOSED row
-re-opens with ``generation`` + 1. A ``(fabric, workflow_error)`` intent uses the fan-in's own workflow-error identity
+and its consumption time, plus the route table's dedupe window). Deliver-before-close (2026-10-17): past
+``open_until`` a notifiable (P1/P2) row is CLOSED only when the incident notifier's own state proves it reached the
+operator (``delivery_verdict``: a delivery recorded at or after this generation's ``opened_at``, an open notice the
+notifier still holds for the key, or an operator ack on its last live receipt). Otherwise the row is DEFERRED, not
+closed: the fan-in keeps presenting it, so a P2 the notifier CAPPED (daily cap) or held (quiet hours, batch window,
+source budget) leaves in the next allowed batch (07:00 ET / the cap's day reset), once (the notifier's per-key dedupe),
+and the row closes on the first consumer run after that delivery. ``close_reason`` records why a row closed;
+``deferred_since`` when it was first held. A P3 (DASHBOARD) row never sends, so it closes at the window as before.
+A CLOSED row re-opens with ``generation`` + 1; a DEFERRED row that gets a new intent stays the same generation. A ``(fabric, workflow_error)`` intent uses the fan-in's own workflow-error identity
 (``n8n_workflow_error`` / ``wferr:<workflow_id>``), so it merges into the incident the relay's workflow-error events
 already open for that workflow (``scripts/n8n_incident_fanin.py`` ``_workflow_error_findings``).
 
@@ -79,6 +86,17 @@ DLQ_SOURCE = "n8n_comms_intent_dlq"
 LEDGER_REL = "data/governance/n8n_coordination_ledger.sqlite"
 
 STATE_QUEUED, STATE_CLAIMED, STATE_DONE, STATE_FAILED = "QUEUED", "CLAIMED", "DONE", "FAILED"
+#: comms_intent_incidents.state. DEFERRED = past its window but not yet delivered: still open to the fan-in, never
+#: terminal. Only CLOSED is terminal, and only after delivery evidence (``delivery_verdict``).
+INC_OPEN, INC_DEFERRED, INC_CLOSED = "OPEN", "DEFERRED", "CLOSED"
+LIVE_INCIDENT_STATES = (INC_OPEN, INC_DEFERRED)
+#: Severities scripts/incident_notifier.py sends (it pages a P0 as P1); anything else is never delivered by design.
+NOTIFIABLE_SEVERITIES = frozenset({"P0", "P1", "P2"})
+# The notifier's own files (scripts/incident_notifier.py STATE_REL / RECEIPT_REL / STATE_SCHEMA), literals so this
+# module never imports the sender; tests/test_comms_intent_deliver_before_close_20261017.py pins them equal.
+NOTIFIER_STATE_REL = "data/runtime/incident_notifier_state.json"
+NOTIFIER_RECEIPT_REL = "data/runtime/incident_notifier_last.json"
+NOTIFIER_STATE_SCHEMA = "IncidentNotifierState@v1"
 
 DDL = """
 CREATE TABLE IF NOT EXISTS comms_intent_consumption (
@@ -125,6 +143,8 @@ CREATE TABLE IF NOT EXISTS comms_intent_incidents (
 );
 CREATE INDEX IF NOT EXISTS comms_intent_incidents_open ON comms_intent_incidents (state, open_until);
 """
+#: Additive columns (2026-10-17 deliver-before-close), added to an existing ledger by ``connect_rw``.
+INCIDENT_COLUMNS_ADDED = (("close_reason", "TEXT"), ("deferred_since", "TEXT"))
 
 
 # ── identities ─────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -219,6 +239,10 @@ def connect_rw(path: Path) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout=5000")
     conn.executescript(DDL)
+    have = {r[1] for r in conn.execute("PRAGMA table_info(comms_intent_incidents)")}
+    for name, typ in INCIDENT_COLUMNS_ADDED:
+        if name not in have:
+            conn.execute(f"ALTER TABLE comms_intent_incidents ADD COLUMN {name} {typ}")
     return conn
 
 
@@ -358,9 +382,10 @@ def _upsert_incident(
         )
         return "created"
     ids = [i for i in json.loads(prev.get("intent_ids") or "[]") if i != intent["intent_id"]] + [intent["intent_id"]]
-    if prev["state"] == "OPEN":
+    if prev["state"] in LIVE_INCIDENT_STATES:  # a DEFERRED row is still undelivered: same generation, OPEN again
         conn.execute(
-            "UPDATE comms_intent_incidents SET last_at = MAX(last_at, ?), open_until = MAX(open_until, ?),"
+            "UPDATE comms_intent_incidents SET state = 'OPEN', last_at = MAX(last_at, ?),"
+            " open_until = MAX(open_until, ?),"
             " count = count + ?, intent_ids = ?, last_execution_id = ?, last_node = ?, last_summary = ?,"
             " severity = ?, tier = ?, updated_at = ? WHERE incident_key = ?",
             (
@@ -378,7 +403,8 @@ def _upsert_incident(
         return "updated"
     conn.execute(
         "UPDATE comms_intent_incidents SET state = 'OPEN', generation = generation + 1, opened_at = ?, last_at = ?,"
-        " open_until = ?, closed_at = NULL, count = ?, intent_ids = ?, last_execution_id = ?, last_node = ?,"
+        " open_until = ?, closed_at = NULL, close_reason = NULL, deferred_since = NULL, count = ?, intent_ids = ?,"
+        " last_execution_id = ?, last_node = ?,"
         " last_summary = ?, severity = ?, tier = ?, updated_at = ? WHERE incident_key = ?",
         (
             _iso(now),
@@ -519,23 +545,112 @@ def refresh(conn: sqlite3.Connection, intent: Mapping[str, Any], *, now: datetim
         raise
 
 
-def close_expired(conn: sqlite3.Connection, now: datetime) -> list[str]:
-    """OPEN incidents whose open_until passed become CLOSED; the fan-in then closes its incident (recovery)."""
+def load_delivery_evidence(state_root: Optional[Path]) -> dict[str, Any]:
+    """What scripts/incident_notifier.py recorded as delivered, read-only from its own files under ``state_root``.
+
+    {"status", "notified": {incident_key: record}, "acked_keys": set, "receipt_status"}. The notifier writes a record
+    only for a message that was actually delivered (SENT, or ALREADY_DELIVERED with the prior message_id): a CAPPED,
+    quiet-held, HELD, FAILED or DEDUPED_UNCONFIRMED message leaves no record (incident_notifier.apply_result). An
+    absent or unreadable state file is no evidence, so every notifiable row is held: never guessed delivered."""
+    out: dict[str, Any] = {"status": "absent", "notified": {}, "acked_keys": set(), "receipt_status": "absent"}
+    if state_root is None:
+        out["status"] = out["receipt_status"] = "no_state_root"
+        return out
+    root = Path(state_root)
+    try:
+        doc = json.loads((root / NOTIFIER_STATE_REL).read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        doc = None
+    except (OSError, ValueError):
+        doc, out["status"] = None, "unreadable"
+    if isinstance(doc, dict):
+        if doc.get("schema") == NOTIFIER_STATE_SCHEMA and isinstance(doc.get("notified"), dict):
+            out["status"] = "ok"
+            out["notified"] = {str(k): v for k, v in doc["notified"].items() if isinstance(v, dict)}
+        else:
+            out["status"] = "unrecognized"
+    try:
+        rec = json.loads((root / NOTIFIER_RECEIPT_REL).read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        rec = None
+    except (OSError, ValueError):
+        rec, out["receipt_status"] = None, "unreadable"
+    if isinstance(rec, dict):
+        if rec.get("mode") == "live":  # a dry run's acks are a preview, never a decision
+            out["receipt_status"] = "ok"
+            out["acked_keys"] = {str(k) for k in rec.get("acked_keys") or []}
+        else:
+            out["receipt_status"] = "not_live"
+    return out
+
+
+def delivery_verdict(row: Mapping[str, Any], evidence: Optional[Mapping[str, Any]]) -> tuple[bool, str]:
+    """(closable, reason) for one expired incident row. Pure.
+
+    closable reasons: ``not_notifiable`` (P3: the notifier never sends it), ``delivered`` (a delivery at or after this
+    generation's opened_at), ``covered_by_open_notice`` (the notifier holds an open, un-recovered notice for this key:
+    the operator's last word on it is "open", and the notifier's dedupe is its explicit decision not to repeat it),
+    ``operator_ack`` (acked on the notifier's last live receipt). Anything else is ``undelivered`` -> DEFERRED."""
+    if str(row.get("severity") or "") not in NOTIFIABLE_SEVERITIES:
+        return True, "not_notifiable"
+    ev = evidence or {}
+    key = str(row.get("incident_key") or "")
+    if key in (ev.get("acked_keys") or set()):
+        return True, "operator_ack"
+    rec = (ev.get("notified") or {}).get(key)
+    if not isinstance(rec, dict):
+        return False, "undelivered"
+    last = _parse(rec.get("last_notified_at"))
+    if last is None:
+        return False, "undelivered"
+    opened = _parse(row.get("opened_at"))
+    if opened is not None and last >= opened:
+        return True, "delivered"
+    recovered = _parse(rec.get("recovered_at"))
+    if rec.get("open", True) is True and (recovered is None or recovered < last):
+        return True, "covered_by_open_notice"
+    return False, "undelivered"
+
+
+def close_expired(
+    conn: sqlite3.Connection, now: datetime, evidence: Optional[Mapping[str, Any]] = None
+) -> dict[str, list[str]]:
+    """Expired OPEN/DEFERRED incidents: CLOSED when ``delivery_verdict`` proves the operator was told (the fan-in then
+    closes its incident: recovery), else DEFERRED (still presented; re-checked every run). {"closed", "deferred"}.
+
+    Deliver-before-close (2026-10-17): before this, every expired row closed here whether or not the notifier had
+    delivered it, so a P2 consumed during quiet hours or after the daily cap was spent closed unsent and vanished."""
     conn.execute("BEGIN IMMEDIATE")
     try:
-        keys = [
-            r[0]
+        rows = [
+            _row(r) or {}
             for r in conn.execute(
-                "SELECT incident_key FROM comms_intent_incidents WHERE state = 'OPEN' AND open_until < ?", (_iso(now),)
+                "SELECT incident_key, severity, opened_at, state FROM comms_intent_incidents"
+                " WHERE state IN (?, ?) AND open_until < ?",
+                (*LIVE_INCIDENT_STATES, _iso(now)),
             )
         ]
-        for k in keys:
-            conn.execute(
-                "UPDATE comms_intent_incidents SET state = 'CLOSED', closed_at = ?, updated_at = ? WHERE incident_key = ?",
-                (_iso(now), _iso(now), k),
-            )
+        closed: list[str] = []
+        deferred: list[str] = []
+        for r in rows:
+            ok, reason = delivery_verdict(r, evidence)
+            if ok:
+                conn.execute(
+                    "UPDATE comms_intent_incidents SET state = 'CLOSED', closed_at = ?, close_reason = ?,"
+                    " updated_at = ? WHERE incident_key = ?",
+                    (_iso(now), reason, _iso(now), r["incident_key"]),
+                )
+                closed.append(r["incident_key"])
+            else:
+                if r.get("state") != INC_DEFERRED:
+                    conn.execute(
+                        "UPDATE comms_intent_incidents SET state = 'DEFERRED',"
+                        " deferred_since = COALESCE(deferred_since, ?), updated_at = ? WHERE incident_key = ?",
+                        (_iso(now), _iso(now), r["incident_key"]),
+                    )
+                deferred.append(r["incident_key"])
         conn.execute("COMMIT")
-        return keys
+        return {"closed": closed, "deferred": deferred}
     except Exception:
         conn.execute("ROLLBACK")
         raise
@@ -559,11 +674,22 @@ def load_routes(path: Optional[Path] = None, host_path: Optional[Path] = None) -
 
 
 def plan(
-    conn: Optional[sqlite3.Connection], routes: Mapping[str, Any], now: datetime, max_intents: int
+    conn: Optional[sqlite3.Connection],
+    routes: Mapping[str, Any],
+    now: datetime,
+    max_intents: int,
+    evidence: Optional[Mapping[str, Any]] = None,
 ) -> dict[str, Any]:
     """What an apply run would do, from a read-only connection. Pure apart from SELECTs."""
     if conn is None:
-        return {"ledger": "absent", "would": [], "would_refresh": [], "would_close": [], "deferred": 0}
+        return {
+            "ledger": "absent",
+            "would": [],
+            "would_refresh": [],
+            "would_close": [],
+            "would_hold_undelivered": [],
+            "deferred": 0,
+        }
     picks = claimable(conn, now, CLAIMABLE_SCAN)
     deferred = max(0, len(picks) - max_intents)
     would = []
@@ -572,7 +698,7 @@ def plan(
         open_keys = {
             r[0]: r[1]
             for r in conn.execute(
-                "SELECT incident_key, state FROM comms_intent_incidents WHERE open_until >= ?", (_iso(now),)
+                "SELECT incident_key, state FROM comms_intent_incidents WHERE state IN (?, ?)", LIVE_INCIDENT_STATES
             )
         }
     for it in picks[:max_intents]:
@@ -588,18 +714,21 @@ def plan(
             **m,
         }
         if m["action"] == "incident":
-            row["incident"] = "update_open" if open_keys.get(m["incident_key"]) == "OPEN" else "create_or_reopen"
+            row["incident"] = (
+                "update_open" if open_keys.get(m["incident_key"]) in LIVE_INCIDENT_STATES else "create_or_reopen"
+            )
             row["fanin_event_key"] = fanin_event_key(m["fanin_source"], m["fanin_item"], now.strftime("%Y-%m-%d"))
             open_keys[m["incident_key"]] = "OPEN"
         would.append(row)
     would_close: list[str] = []
+    would_hold: list[str] = []
     if "comms_intent_incidents" in _tables(conn):
-        would_close = [
-            r[0]
-            for r in conn.execute(
-                "SELECT incident_key FROM comms_intent_incidents WHERE state = 'OPEN' AND open_until < ?", (_iso(now),)
-            )
-        ]
+        for r in conn.execute(
+            "SELECT incident_key, severity, opened_at, state FROM comms_intent_incidents"
+            " WHERE state IN (?, ?) AND open_until < ?",
+            (*LIVE_INCIDENT_STATES, _iso(now)),
+        ):
+            (would_close if delivery_verdict(_row(r) or {}, evidence)[0] else would_hold).append(r["incident_key"])
     return {
         "ledger": "present",
         "would": would,
@@ -607,17 +736,26 @@ def plan(
             {"intent_id": r["intent_id"], "add": int(r["count"]) - int(r["consumed_count"])} for r in refreshable(conn)
         ],
         "would_close": would_close,
+        "would_hold_undelivered": would_hold,
         "deferred": deferred,
         "backlog": backlog(conn, now),
     }
 
 
 def apply(
-    conn: sqlite3.Connection, routes: Mapping[str, Any], now: datetime, max_intents: int, token: str
+    conn: sqlite3.Connection,
+    routes: Mapping[str, Any],
+    now: datetime,
+    max_intents: int,
+    token: str,
+    evidence: Optional[Mapping[str, Any]] = None,
 ) -> dict[str, Any]:
-    """Close expired incidents, claim and complete up to ``max_intents`` intents, fold repeats. Idempotent."""
+    """Close delivered expired incidents (hold the undelivered ones DEFERRED), claim and complete up to
+    ``max_intents`` intents, fold repeats. Idempotent. ``evidence``: ``load_delivery_evidence``; None = no evidence,
+    so every notifiable expired row is held."""
     window_s = int(routes.get("dedupe_window_s") or 3600)
-    closed = close_expired(conn, now)
+    settled = close_expired(conn, now, evidence)
+    closed = settled["closed"]
     picks = claimable(conn, now, CLAIMABLE_SCAN)
     deferred = max(0, len(picks) - max_intents)
     results: list[dict[str, Any]] = []
@@ -635,6 +773,7 @@ def apply(
     refreshed = [refresh(conn, r, now=now, window_s=window_s) for r in refreshable(conn)]
     return {
         "closed": closed,
+        "held_undelivered": settled["deferred"],
         "results": results,
         "refreshed": [r for r in refreshed if r.get("refreshed")],
         "deferred": deferred,
@@ -646,16 +785,18 @@ def apply(
 
 
 def open_incident_findings(ledger: Path, now: datetime) -> tuple[list[dict[str, Any]], str]:
-    """Fan-in findings for OPEN, unexpired comms-intent incidents. (findings, note). Never writes."""
+    """Fan-in findings for every OPEN or DEFERRED (expired, undelivered) comms-intent incident. (findings, note).
+    Never writes."""
     conn = connect_ro(ledger)
     if conn is None:
         return [], "ledger:absent"
     try:
         if "comms_intent_incidents" not in _tables(conn):
             return [], "incidents_table:absent"
+        # Every row not CLOSED, past its window or not: closing is the consumer's decision, taken only after delivery
+        # (``close_expired``). The old ``open_until >= now`` filter hid an expired, undelivered row from the notifier.
         rows = conn.execute(
-            "SELECT * FROM comms_intent_incidents WHERE state = 'OPEN' AND open_until >= ? ORDER BY incident_key",
-            (_iso(now),),
+            "SELECT * FROM comms_intent_incidents WHERE state IN (?, ?) ORDER BY incident_key", LIVE_INCIDENT_STATES
         ).fetchall()
     finally:
         conn.close()
@@ -679,6 +820,7 @@ def open_incident_findings(ledger: Path, now: datetime) -> tuple[list[dict[str, 
                 "count": int(d["count"]),
                 "event_keys": json.loads(d.get("intent_ids") or "[]"),
                 "comms_intent_incident_key": d["incident_key"],
+                "comms_intent_incident_state": d["state"],
             }
         )
     return out, f"ok:open={len(out)}"
@@ -768,7 +910,10 @@ __all__ = [
     "MAX_ATTEMPTS",
     "QUEUED_STALE_S",
     "apply",
+    "close_expired",
     "dead_letter_findings",
+    "delivery_verdict",
+    "load_delivery_evidence",
     "map_intent",
     "open_incident_findings",
     "plan",

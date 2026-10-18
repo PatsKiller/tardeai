@@ -234,10 +234,23 @@ def test_a_repeat_folded_into_a_done_intent_refreshes_its_incident(env):
 def test_the_incident_closes_after_the_window_and_reopens_on_a_new_error(env):
     _accept(env, _body(ex="1"), NOW - timedelta(minutes=10))
     assert _cli(env, "--apply") == 0
+    # 2026-10-17 deliver-before-close: the window closes the incident only once the notifier recorded delivery
+    # (tests/test_comms_intent_deliver_before_close_20261017.py covers the undelivered -> DEFERRED path).
+    key = _q(env, "SELECT incident_key FROM comms_intent_incidents")[0]["incident_key"]
+    (env.state / "data" / "runtime").mkdir(parents=True, exist_ok=True)
+    (env.state / "data" / "runtime" / "incident_notifier_state.json").write_text(
+        json.dumps(
+            {
+                "schema": "IncidentNotifierState@v1",
+                "notified": {key: {"open": True, "last_notified_at": (NOW + timedelta(minutes=5)).isoformat()}},
+            }
+        )
+    )
     later = NOW + timedelta(hours=2)
     assert _cli(env, "--apply", now=later) == 0
     inc = _q(env, "SELECT * FROM comms_intent_incidents")[0]
     assert inc["state"] == "CLOSED" and _receipt(env)["summary"]["closed"] == 1
+    assert inc["close_reason"] == "delivered"
     assert C.open_incident_findings(env.ledger, later)[0] == []
     _accept(env, _body(ex="2", subject="probe failed again"), later)
     assert _cli(env, "--apply", now=later + timedelta(minutes=1)) == 0
