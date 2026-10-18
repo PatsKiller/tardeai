@@ -61,6 +61,24 @@
       "original_sha256": "fca95c28d4b2bb993ef0fa5156f9bb0560321adba24ed2316bcb7689de496eb2",
       "original_bytes": 2941,
       "encoding": "gzip"
+    },
+    "native-1a-failed.log.gz": {
+      "sha256": "38bf4ef7e878dd954f728d45893abb112639edb12b96378235d5671901b5ce3e",
+      "original_sha256": "98ac27d06d8bb95be9fb64dd7ad3ba932a70f3aa7878f60929a401937dd3d774",
+      "original_bytes": 52201,
+      "encoding": "gzip"
+    },
+    "requirement-migration-candidate.xml.gz": {
+      "sha256": "4a436490c5b9bebaa00b25dd0f0a67179770ab23c65b26ac3c182e5a714b9990",
+      "original_sha256": "3b2f3c01c02fd14e2483dafc2381b991853b44e3783b66114d5d70f51b4cb22b",
+      "original_bytes": 25310,
+      "encoding": "gzip"
+    },
+    "requirement-migration-format-proof.json": {
+      "sha256": "bf7e12e054ce2d4525bfa6d131963e45fba3cbe37b137ce342596f654a50f7c9",
+      "original_sha256": "bf7e12e054ce2d4525bfa6d131963e45fba3cbe37b137ce342596f654a50f7c9",
+      "original_bytes": 509,
+      "encoding": "identity"
     }
   }
 }

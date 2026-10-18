@@ -1,5 +1,9 @@
 # Preserve the held Hermes feedback stage
 
+Status: DRAFT
+as_of: 2026-10-18T23:22:39.172979+00:00
+Measured at: source 969e9820c3f85f61a63dc394c01f69492ff82f98; native integration 1a00cf2842ae02650fd8755ec0c48e385ca851ba failed; production a2aef7b4d2de17e737526337a2ffc37848deda4f
+
 The sixth Hermes learning stage has no qualifying live output or downstream
 consumption proof. This change restores its source configuration to shadow with
 `live_arg: null`, matching the active hold. The registered queue-only adapter
@@ -31,3 +35,12 @@ historical assertion failures, without adding trailing whitespace to Git. The
 manifest records compressed and original digests and original byte lengths.
 Native acceptance and exact-head hosted CI are separate requirements recorded
 in the PR; these documents do not claim deployment or business recovery.
+
+The complete native acceptance at 1a00 failed five existing inventory assertions
+that still classified feedback as enabled. The original full failed log is
+retained. The shared Hermes fixture now declares four live learn stages plus
+tune, with feedback held; four inventory assertions use that one fixture.
+The dispatcher expectation separately tests the held dry shape and preserves
+the retained future notify-argv refusal. No production source or policy was
+changed by this requirement migration. The focused requirement-migration run passes 168 tests. Candidate-focused and full native
+results remain separate; the failed run is never reported as green.
