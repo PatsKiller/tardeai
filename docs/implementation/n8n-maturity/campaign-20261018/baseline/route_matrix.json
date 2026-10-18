@@ -1,0 +1,278 @@
+{
+  "allow_is_not_new_authorization": true,
+  "deny_matrix": [
+    {
+      "category": "Unknown/forbidden relay paths",
+      "paths": [
+        "/approval/request",
+        "/llm_step",
+        "/v1/llm_step",
+        "/v1/chat/completions",
+        "/broker",
+        "/orders",
+        "/send",
+        "/sql",
+        "/grant",
+        "/promote",
+        "/rollback"
+      ],
+      "rule": "No matching ROUTES entry ->404; PUT/PATCH/DELETE ->405; forbidden gateway tokens and exact allowed route set add a second denial. No LLM or approval relay route exists."
+    },
+    {
+      "category": "Direct internal services",
+      "paths": [
+        "gateway :18091",
+        "governed bridge :8766",
+        "OAuth :8645/:8646",
+        "CC :7777",
+        "DOF :7776",
+        "production Postgres"
+      ],
+      "rule": "D2 one door and \u00a724.4 deny n8n direct access. Code binds services loopback in intended unit configurations; actual egress/firewall/mount isolation unproven in this audit. No network tests were run."
+    },
+    {
+      "category": "Redirect/SSRF",
+      "rule": "Workflow checker restricts HTTP URL origin; fixed relay methods expose no caller destination. Relay transport uses urllib default redirects and configurable gateway_url without validated origin; no runtime no-redirect guard. Gateway URL is host-controlled env, so arbitrary bearer-only caller cannot supply it."
+    },
+    {
+      "category": "Extra credentials",
+      "rule": "Relay run/event/intent closed body rejects credential fields. Gateway _reject_secret_material handles known names/patterns but _run otherwise open; gateway HTTP duplicates accepted. n8n generated credential should be relay Header Auth only."
+    }
+  ],
+  "direct_host_table": [
+    {
+      "action": "liveness + durable/run-scope configuration; no grant",
+      "auth": "none on loopback",
+      "handler": "dispatch_http",
+      "method": "GET",
+      "n8n_reachability": "deny direct network path; use relay only; actual firewall confinement requires host proof",
+      "path": "/healthz"
+    },
+    {
+      "action": "six logical routes below",
+      "auth": "HMAC claim with v,caller_id,project,iat,exp,nonce,scope; lifetime<=300s; future skew<=5s; nonce consumed atomically; HMAC signs claim only",
+      "handler": "dispatch_http -> handle_request",
+      "method": "POST",
+      "n8n_reachability": "relay only under intended network boundary; raw direct calls are not approved by handler existence",
+      "path": "/v1/coordination",
+      "residual": "json.loads last-key-wins; body/route/operation not signature-bound; default dispatch key resolves any unknown caller_id except n8n-relay; accepts both allowed projects with no per-caller project binding; NaN claim iat/exp pass lifetime comparisons, reproduced with valid fake HMAC; must reject nonfinite numbers in shared verifier."
+    },
+    {
+      "action": "run request mutates runs table",
+      "logical_route": "coordination/run",
+      "method": "POST",
+      "n8n_reachability": "Only fixed mappings in relay table are reachable through relay. Other listed host operations are not relay routes.",
+      "operations": [
+        "run"
+      ],
+      "path": "/v1/coordination",
+      "residual": null,
+      "scope": "coordination_run"
+    },
+    {
+      "action": "queue intent",
+      "logical_route": "comms/intent",
+      "method": "POST",
+      "n8n_reachability": "Only fixed mappings in relay table are reachable through relay. Other listed host operations are not relay routes.",
+      "operations": [
+        "intent"
+      ],
+      "path": "/v1/coordination",
+      "residual": null,
+      "scope": "comms_intent"
+    },
+    {
+      "action": "read due slots",
+      "logical_route": "coordination/due",
+      "method": "POST",
+      "n8n_reachability": "Only fixed mappings in relay table are reachable through relay. Other listed host operations are not relay routes.",
+      "operations": [
+        "due"
+      ],
+      "path": "/v1/coordination",
+      "residual": null,
+      "scope": "coordination_read"
+    },
+    {
+      "action": "read outcome",
+      "logical_route": "coordination/run_outcome",
+      "method": "POST",
+      "n8n_reachability": "Only fixed mappings in relay table are reachable through relay. Other listed host operations are not relay routes.",
+      "operations": [
+        "run_outcome"
+      ],
+      "path": "/v1/coordination",
+      "residual": null,
+      "scope": "coordination_read"
+    },
+    {
+      "action": "read fixed projection",
+      "logical_route": "coordination/status",
+      "method": "POST",
+      "n8n_reachability": "Only fixed mappings in relay table are reachable through relay. Other listed host operations are not relay routes.",
+      "operations": [
+        "momentum_lifecycle"
+      ],
+      "path": "/v1/coordination",
+      "residual": null,
+      "scope": "coordination_read"
+    },
+    {
+      "action": "event lifecycle writes, list/status reads; model_job bounded model call/artifact write through host bridge",
+      "logical_route": "coordination/event or coordination/status (not strictly operation-bound)",
+      "method": "POST",
+      "n8n_reachability": "Only fixed mappings in relay table are reachable through relay. Other listed host operations are not relay routes.",
+      "operations": [
+        "status",
+        "accept_event",
+        "claim",
+        "start",
+        "artifact",
+        "consumer_ack",
+        "refuse",
+        "cancel",
+        "list",
+        "model_job"
+      ],
+      "path": "/v1/coordination",
+      "residual": "General read-scope operation dispatch is not bound to coordination/event vs coordination/status, unlike run/intent/due/outcome.",
+      "scope": "coordination_read"
+    }
+  ],
+  "network_proof": "UNPROVEN by this read-only source audit; parent collects host context",
+  "relay_routes": [
+    {
+      "audit_event": "relay_log.jsonl + n8n_run_relay_last.json; gateway durable coordination ledger for accepted mutating requests; relay log write errors swallowed",
+      "authenticated_principal": "n8n bearer shared credential; gateway caller_id=n8n-relay authenticated with separate HMAC key; claim project=trade-ai from relay (no explicit audience field)",
+      "body_schema_version": "N8nRunRelayStatus@v1 response; query forbidden",
+      "destination": "relay 172.19.0.1:18092; gateway fixed unit configuration http://127.0.0.1:18091/v1/coordination",
+      "handler": "Relay.status",
+      "host_action_side_effects": "Read relay process counters, loaded allowlist and live set. ok=true proves relay code answered; does not prove gateway/executor/output health.",
+      "lane_process_scope": "shared bearer; status only",
+      "method": "GET",
+      "path": "/status",
+      "rate_body_deadline_limits": "Relay request body <=1024 B on POST; no application-wide request rate limit; gateway <=65536 B; outbound gateway timeout 5 s; inbound socket read deadline absent in Handler; intent adds 30 new/hour.",
+      "rejection_behavior": "Unknown method/path 404/405; wrong bearer 401; malformed/extra/duplicate fields 400 (relay); policy 403; unavailable configured dependency 502/503.",
+      "required_grant": "No per-call guard grant; previously reviewed activation/live-lane/config authority. Any import/activation/promotion is separately guarded, not a request field.",
+      "retry_behavior": "Caller repeats request only with stable semantic run/intent identity. Relay has no automatic retry loop; transport failures typed.",
+      "status": "implemented-and-enforced"
+    },
+    {
+      "audit_event": "relay_log.jsonl + n8n_run_relay_last.json; gateway durable coordination ledger for accepted mutating requests; relay log write errors swallowed",
+      "authenticated_principal": "n8n bearer shared credential; gateway caller_id=n8n-relay authenticated with separate HMAC key; claim project=trade-ai from relay (no explicit audience field)",
+      "body_schema_version": "query source\u2208schedule,event,digest; repeat lane; limit ASCII 1..100; DueResponse@v1",
+      "destination": "relay 172.19.0.1:18092; gateway fixed unit configuration http://127.0.0.1:18091/v1/coordination",
+      "handler": "Relay.due -> gateway coordination/due operation due",
+      "host_action_side_effects": "Read registry/allowlist/retry config, evaluate natural due/held/retry slots. No work admission.",
+      "lane_process_scope": "coordination_read; known registry lane filter <=8",
+      "method": "GET",
+      "path": "/due",
+      "rate_body_deadline_limits": "Relay request body <=1024 B on POST; no application-wide request rate limit; gateway <=65536 B; outbound gateway timeout 5 s; inbound socket read deadline absent in Handler; intent adds 30 new/hour.",
+      "rejection_behavior": "Unknown method/path 404/405; wrong bearer 401; malformed/extra/duplicate fields 400 (relay); policy 403; unavailable configured dependency 502/503.",
+      "required_grant": "No per-call guard grant; previously reviewed activation/live-lane/config authority. Any import/activation/promotion is separately guarded, not a request field.",
+      "retry_behavior": "d:/e:/g: namespaces use host retry policies from due; no automatic HTTP retry.",
+      "status": "implemented-and-enforced"
+    },
+    {
+      "audit_event": "relay_log.jsonl + n8n_run_relay_last.json; gateway durable coordination ledger for accepted mutating requests; relay log write errors swallowed",
+      "authenticated_principal": "n8n bearer shared credential; gateway caller_id=n8n-relay authenticated with separate HMAC key; claim project=trade-ai from relay (no explicit audience field)",
+      "body_schema_version": "N8nRunRelayLast@v1; query optional mode=dry_run|live",
+      "destination": "relay only -> host ledger read",
+      "handler": "Relay.last_run -> project_runs(ledger)",
+      "host_action_side_effects": "Read most recent one-row run projection. Does not invoke gateway or spawn. Missing/failed source preserved by projection.",
+      "lane_process_scope": "shared bearer; arbitrary syntactically valid lane_id; read projection not restricted to run allowlist",
+      "method": "GET",
+      "path": "/runs/<lane_id>/last",
+      "rate_body_deadline_limits": "response compacted <=1024 B; optional presentation keys dropped before refusal; no rate limit",
+      "rejection_behavior": "Unknown method/path 404/405; wrong bearer 401; malformed/extra/duplicate fields 400 (relay); policy 403; unavailable configured dependency 502/503.",
+      "required_grant": "No per-call guard grant; previously reviewed activation/live-lane/config authority. Any import/activation/promotion is separately guarded, not a request field.",
+      "retry_behavior": "Caller repeats request only with stable semantic run/intent identity. Relay has no automatic retry loop; transport failures typed.",
+      "status": "implemented-and-enforced"
+    },
+    {
+      "audit_event": "relay_log.jsonl + n8n_run_relay_last.json; gateway durable coordination ledger for accepted mutating requests; relay log write errors swallowed",
+      "authenticated_principal": "n8n bearer shared credential; gateway caller_id=n8n-relay authenticated with separate HMAC key; claim project=trade-ai from relay (no explicit audience field)",
+      "body_schema_version": "closed relay keys lane_id,mode,idempotency_key,workflow_id,execution_id,requested_by; RunRequested@v1; requested_by ignored/rederived",
+      "destination": "relay 172.19.0.1:18092; gateway fixed unit configuration http://127.0.0.1:18091/v1/coordination",
+      "handler": "Relay.run -> gateway coordination/run operation run -> LedgerRunStore.request -> executor",
+      "host_action_side_effects": "Admit one REQUESTED row. Executor chooses argv, clamps effective mode, validates lane again, claims lock/effect, spawns allowed host lane. No arbitrary argv accepted.",
+      "lane_process_scope": "coordination_run; lane in policy-reloaded allowlist; live additionally in startup live list; validated d/e/g/p or relay-minted n8n-wf key",
+      "method": "POST",
+      "path": "/run",
+      "rate_body_deadline_limits": "Relay request body <=1024 B on POST; no application-wide request rate limit; gateway <=65536 B; outbound gateway timeout 5 s; inbound socket read deadline absent in Handler; intent adds 30 new/hour.",
+      "rejection_behavior": "Unknown method/path 404/405; wrong bearer 401; malformed/extra/duplicate fields 400 (relay); policy 403; unavailable configured dependency 502/503.",
+      "required_grant": "No per-call guard grant; previously reviewed activation/live-lane/config authority. Any import/activation/promotion is separately guarded, not a request field.",
+      "residual": "Gateway _run lacks closed top-level allowlist, gateway parser accepts duplicate keys, relay-minted namespace trusts caller data workflow/execution, no per-workflow lane ACL beyond shared bearer/live set. Actual action authority remains host policy.",
+      "retry_behavior": "Caller repeats request only with stable semantic run/intent identity. Relay has no automatic retry loop; transport failures typed.",
+      "status": "partial"
+    },
+    {
+      "audit_event": "relay_log.jsonl + n8n_run_relay_last.json; gateway durable coordination ledger for accepted mutating requests; relay log write errors swallowed",
+      "authenticated_principal": "n8n bearer shared credential; gateway caller_id=n8n-relay authenticated with separate HMAC key; claim project=trade-ai from relay (no explicit audience field)",
+      "body_schema_version": "closed exact EVENT_BODY_KEYS; relay builds event-reference/v0 envelope using served origin SHA",
+      "destination": "relay 172.19.0.1:18092; gateway fixed unit configuration http://127.0.0.1:18091/v1/coordination",
+      "handler": "Relay.event -> coordination/event operation accept_event",
+      "host_action_side_effects": "Record workflow-error event in coordination ledger; fixed subject limits, payload-hash dedupe; fan-in later enrolls incident.",
+      "lane_process_scope": "coordination_read; n8n-workflow-error only",
+      "method": "POST",
+      "path": "/event",
+      "rate_body_deadline_limits": "body<=1024; message<=160; node<=64; event deadline +24h; in-memory 512 event replay cache",
+      "rejection_behavior": "Unknown method/path 404/405; wrong bearer 401; malformed/extra/duplicate fields 400 (relay); policy 403; unavailable configured dependency 502/503.",
+      "required_grant": "No per-call guard grant; previously reviewed activation/live-lane/config authority. Any import/activation/promotion is separately guarded, not a request field.",
+      "retry_behavior": "Caller repeats request only with stable semantic run/intent identity. Relay has no automatic retry loop; transport failures typed.",
+      "status": "implemented-and-enforced"
+    },
+    {
+      "audit_event": "relay_log.jsonl + n8n_run_relay_last.json; gateway durable coordination ledger for accepted mutating requests; relay log write errors swallowed",
+      "authenticated_principal": "n8n bearer shared credential; gateway caller_id=n8n-relay authenticated with separate HMAC key; claim project=trade-ai from relay (no explicit audience field)",
+      "body_schema_version": "query exactly one valid run_id; RunOutcome@v1",
+      "destination": "relay 172.19.0.1:18092; gateway fixed unit configuration http://127.0.0.1:18091/v1/coordination",
+      "handler": "Relay.run_outcome -> coordination/run_outcome operation run_outcome",
+      "host_action_side_effects": "Read run_outcomes/runs; pending and unknown are nonterminal; success/failed/refused_policy/skipped_lock terminal.",
+      "lane_process_scope": "coordination_read; arbitrary valid run_id, no per-workflow ownership ACL",
+      "method": "GET",
+      "path": "/run_outcome",
+      "rate_body_deadline_limits": "Relay request body <=1024 B on POST; no application-wide request rate limit; gateway <=65536 B; outbound gateway timeout 5 s; inbound socket read deadline absent in Handler; intent adds 30 new/hour.",
+      "rejection_behavior": "Unknown method/path 404/405; wrong bearer 401; malformed/extra/duplicate fields 400 (relay); policy 403; unavailable configured dependency 502/503.",
+      "required_grant": "No per-call guard grant; previously reviewed activation/live-lane/config authority. Any import/activation/promotion is separately guarded, not a request field.",
+      "residual": "Relay checks schema and state only; does not compare returned run_id/lane/mode to requested identity. Gateway local projection is trusted; body is not independently attested.",
+      "retry_behavior": "Caller repeats request only with stable semantic run/intent identity. Relay has no automatic retry loop; transport failures typed.",
+      "status": "implemented-and-enforced"
+    },
+    {
+      "audit_event": "relay_log.jsonl + n8n_run_relay_last.json; gateway durable coordination ledger for accepted mutating requests; relay log write errors swallowed",
+      "authenticated_principal": "n8n bearer shared credential; gateway caller_id=n8n-relay authenticated with separate HMAC key; claim project=trade-ai from relay (no explicit audience field)",
+      "body_schema_version": "closed exact seven INTENT_BODY_KEYS; CommsIntentReceipt@v1",
+      "destination": "relay 172.19.0.1:18092; gateway fixed unit configuration http://127.0.0.1:18091/v1/coordination",
+      "handler": "Relay.intent -> comms/intent operation intent -> CommsIntentStore.accept",
+      "host_action_side_effects": "Transactional dedupe/cap/queue only. Consumer -> incident fan-in -> host notifier -> provider. No direct send.",
+      "lane_process_scope": "comms_intent; only fabric/workflow_error,run_lane_dead_letter,run_lane_outcome_lost configured; DIGEST",
+      "method": "POST",
+      "path": "/intent",
+      "rate_body_deadline_limits": "body<=1024; subject<=120; summary<=300; node<=64; 3600s dedupe window; 30 new intents/rolling hour; no per-body TTL/generation",
+      "rejection_behavior": "Unknown method/path 404/405; wrong bearer 401; malformed/extra/duplicate fields 400 (relay); policy 403; unavailable configured dependency 502/503.",
+      "required_grant": "No per-call guard grant; previously reviewed activation/live-lane/config authority. Any import/activation/promotion is separately guarded, not a request field.",
+      "residual": "Intent key normalizes domain/kind/subject, not incident generation. Receipt accepted means queued. Consumer delivery_verdict accepts stale acked_keys without actor/time/generation.",
+      "retry_behavior": "Caller repeats request only with stable semantic run/intent identity. Relay has no automatic retry loop; transport failures typed.",
+      "status": "partial"
+    },
+    {
+      "audit_event": "relay_log.jsonl + n8n_run_relay_last.json; gateway durable coordination ledger for accepted mutating requests; relay log write errors swallowed",
+      "authenticated_principal": "n8n bearer shared credential; gateway caller_id=n8n-relay authenticated with separate HMAC key; claim project=trade-ai from relay (no explicit audience field)",
+      "body_schema_version": "query forbidden; N8nMomentumLifecycle@v1 response",
+      "destination": "relay 172.19.0.1:18092; gateway fixed unit configuration http://127.0.0.1:18091/v1/coordination",
+      "handler": "Relay.momentum_lifecycle -> coordination/status operation momentum_lifecycle",
+      "host_action_side_effects": "Read server-owned lifecycle report, no caller paths/actions/booleans.",
+      "lane_process_scope": "coordination_read; fixed registered projection",
+      "method": "GET",
+      "path": "/momentum-lifecycle",
+      "rate_body_deadline_limits": "Relay request body <=1024 B on POST; no application-wide request rate limit; gateway <=65536 B; outbound gateway timeout 5 s; inbound socket read deadline absent in Handler; intent adds 30 new/hour.",
+      "rejection_behavior": "Unknown method/path 404/405; wrong bearer 401; malformed/extra/duplicate fields 400 (relay); policy 403; unavailable configured dependency 502/503.",
+      "required_grant": "No per-call guard grant; previously reviewed activation/live-lane/config authority. Any import/activation/promotion is separately guarded, not a request field.",
+      "retry_behavior": "Caller repeats request only with stable semantic run/intent identity. Relay has no automatic retry loop; transport failures typed.",
+      "status": "implemented-and-enforced"
+    }
+  ],
+  "schema": "CampaignRouteAudit@v1",
+  "source_sha": "3af0a8bdd659e02bf6f493c071800c6a227ae292"
+}

@@ -3961,6 +3961,15 @@ GATES = [
         ],
     ),
     (
+        # Host signatures and exact semantic snapshots; eligibility observes real elapsed slots only.
+        # Ephemeral in-memory keys, fake host reads and temporary artifacts; no runtime grants or effects.
+        "n8n_evidence_gates_20261018",
+        [
+            "tests/test_n8n_evidence_attestation_20261018.py",
+            "tests/test_n8n_retirement_eligibility_20261018.py",
+        ],
+    ),
+    (
         # ANCHOR: LANE_PRODUCED_COUNT_CW_1_20261015 — cutover wave 1 lanes (batch 1 of 6) write LaneRunReceipt@v2
         # produced_count via write_lane_receipt(output=...) and opt into the executor output verdict (allowlist
         # output_receipt v2). Each lane's real main() runs in a fake n8n attempt with its DB/provider work stubbed:

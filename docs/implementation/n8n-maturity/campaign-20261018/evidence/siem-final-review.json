@@ -1,0 +1,65 @@
+{
+  "schema": "IndependentReview@v1",
+  "campaign_id": "n8n-maturity-20261018",
+  "reviewer": "contracts_routes",
+  "author": "other agent",
+  "worktree": "/home/johnclaw/tradeai-wt-n8n-siem-recovery-truth-20261018",
+  "baseline_sha": "3af0a8bdd659e02bf6f493c071800c6a227ae292",
+  "head_sha": "b0f8e62c1490324c94b607a8e3ab8dbd6ff688f2",
+  "verdict": "APPROVE_SCOPED_CODE_INTEGRATION",
+  "scope": [
+    "Shared RecoveryVerdict finite/aware finish clocks and current-clock upper bound",
+    "Contradictory outer-row/embedded-receipt lane/run/attempt/state/exit/time and output-contract rejection",
+    "SIEM ledger kinds including fan-in require shared effective-live useful-output verdict newer than each episode enrollment timestamp",
+    "Legacy good lane name sets cannot assert recovery"
+  ],
+  "blocking_findings": [],
+  "closed_findings": [
+    "SIEM-FANIN-01: fresh fan-in bool no longer resolves a ledger failure for its own lane",
+    "RECOVERY-IDENTITY-02: independently reproduced 4 conflicting inner identity/outcome cases now held",
+    "RECOVERY-TIME-03: NaN/Infinity/future finish clocks refused, both levels checked"
+  ],
+  "verification": {
+    "original_unchanged_independent": "9 passed (8 former expected-assertion failures and1 episode-time control)",
+    "new_independent": "68 passed; 50 ledger-kind/lane/case combinations plus18 clock/identity/source/empty controls",
+    "focused_regression": "186 passed,1 pre-existing skipped; no skipped test used as acceptance proof",
+    "diff_read": "entire production delta from3af; read CLI source/consumer forward path and shared self-heal/diagnoser/fixer call sites",
+    "source_clean_after_review": true
+  },
+  "compatibility": [
+    "validate gained optional now parameter; existing producers/readers retained. Missing/naive finish or missing exit now fail closed as intended. Existing legacy receipts without optional identity fields remain compatible when authoritative fields agree.",
+    "Internal ledger_findings good-lanes carrier changed set to actual candidate mapping; sole production CLI consumer forwards mapping unchanged. Legacy set input deliberately holds. Wire report schema remains unchanged; sorted(good) still emits lane-name reporting list."
+  ],
+  "operational_holds": [
+    "No deployment, activation, notification, broker action or live recovery drill performed. Exact-head nativeCI/release and authorized activation remain separate.",
+    "This review closes the three reproduced residuals only; durable receipt authenticity and exact config/input/artifact/downstream provenance need their respective shared contracts. A produced verdict is trusted from the host executor, not a cryptographic attestation in this module.",
+    "Episode lower bound is existing system_health_events.created_at; broader generation/CAS handling across in-place episode updates and plan/apply concurrency is unchanged and not proven by this candidate.",
+    "Non-ledger fan-in-derived findings still use existing fresh source/finding-cleared semantics; no claim those are business-output proof."
+  ],
+  "artifacts": [
+    {
+      "path": "/tmp/n8n-campaign-20261018/test_siem_independent.py",
+      "sha256": "981f158193337b0d771fd195dac12bd24cb1beedb6fcf2814af980536f4480dd"
+    },
+    {
+      "path": "/tmp/n8n-campaign-20261018/siem-final-original-adversarial.txt",
+      "sha256": "1af40c49f25815cc43199390723eca0ea305a38da96d85981d7ae68d66a97f6f"
+    },
+    {
+      "path": "/tmp/n8n-campaign-20261018/test_siem_final_adversarial.py",
+      "sha256": "23ac5d5b256409dfb4043cdaef8cdd67805bba922d1053ae9de6ce7c9bb9d850"
+    },
+    {
+      "path": "/tmp/n8n-campaign-20261018/siem-final-new-adversarial.txt",
+      "sha256": "e5b7adefc8e674d5b281ef3bc0e114f5b3ed953389645ee9902bc296839828f5"
+    },
+    {
+      "path": "/tmp/n8n-campaign-20261018/siem-final-focused-regression.txt",
+      "sha256": "f40965f4da53daf87b97c5f82b6b11c58b9b3c1eacec5fb5b79a8e3f8de8d1ee"
+    },
+    {
+      "path": "/tmp/n8n-campaign-20261018/siem-final-review-session.json",
+      "sha256": "db2f07ddb797d87b0f73761970d951016ef01077a07b1bd7f3c8bddf6b23be10"
+    }
+  ]
+}

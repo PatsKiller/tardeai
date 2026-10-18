@@ -1,0 +1,4389 @@
+{
+  "schema": "CampaignContractAudit@v1",
+  "baseline_sha": "3af0a8bdd659e02bf6f493c071800c6a227ae292",
+  "classification_basis": "Source executable edges and focused behavioral tests; no host runtime proof from this sub-agent. Implemented-and-enforced labels describe code path only, not production enabled/proven.",
+  "rows": [
+    {
+      "family": "Workflow graph and framework",
+      "schema_ids": [
+        "N8nWorkflowSet@v1",
+        "N8nGenericWorkflowSet@v1",
+        "N8nFabricManifest@v1",
+        "N8nWorkflowFrameworkMeta@v1"
+      ],
+      "owning_file": [
+        "scripts/n8n_workflow_templates.py",
+        "scripts/check_n8n_import_ready.py",
+        "scripts/check_n8n_workflow_framework.py"
+      ],
+      "producer": "Git generator -> workflow JSON/INDEX",
+      "consumers": [
+        "n8n CLI import",
+        "check_n8n_workflow_drift",
+        "check_n8n_relay_contract",
+        "check_lane_registry",
+        "check_n8n_workflow_framework",
+        "nightly_cutover graph_hash"
+      ],
+      "transport_storage": "Git JSON -> staged import -> n8n DB/export",
+      "shape_validator": "validate_fabric_workflow/check_doc/build-fabric --verify",
+      "semantic_validator": "graph+policy digest, node/connection/metadata/timeout/error-workflow checks",
+      "runtime_enforcement_point": "Basic pre-import gate called by tracked import packets; framework activation gate is optional (--framework-gate=None). Publish packets and stage mutation paths omit it.",
+      "effective_configuration": "167 tracked workflow JSONs,180 HTTP nodes (includes historical artifacts; not active census); metadata exists on reference carrier; live export digest not established here.",
+      "trust_boundary": "B0 trusted deployer -> n8n; B1 URL/credential exposure",
+      "failure_action": "Optional framework gate can be omitted; existing activation-attribution collector flags after activation",
+      "compatibility_migration": "Design blanket additive-optional compatibility is false for closed readers. Consumers require inventory/explicit supported versions before extension.",
+      "status": "partial",
+      "proof": "CODE + workflow_http_inventory.json; no refreshed host activation proof"
+    },
+    {
+      "family": "Framework evidence and exception carriers",
+      "schema_ids": [
+        "N8nWorkflowFrameworkReport@v2",
+        "N8nFrameworkRuntimeEvidence@v1",
+        "N8nFrameworkExceptions@v1"
+      ],
+      "owning_file": "scripts/check_n8n_workflow_framework.py",
+      "producer": "Static checker; operator-evidence JSON inputs",
+      "consumers": [
+        "CI test suites",
+        "check_n8n_import_ready.apply_framework_gate",
+        "scorecard generation"
+      ],
+      "transport_storage": "JSON report/input files",
+      "shape_validator": "schema name checks/load_optional",
+      "semantic_validator": "gate_workflow checks element status/platform; runtime evidence only truthy ref+observed_at; exceptions trust accepted_by=operator, integerPR,date",
+      "runtime_enforcement_point": "No attestation/digest/verdict verification inside gate_workflow; no grant-authority creation",
+      "effective_configuration": "Default historical platform-facts date20261015; no campaign-attested input supplied",
+      "trust_boundary": "Untrusted proof-shaped JSON -> trusted eligibility decision",
+      "failure_action": "Missing records blocks activation; fabricated/stale truthy strings can satisfy evidence slots if input writable",
+      "compatibility_migration": "Report v2 changed score meaning; no evidence timestamp/identity compatibility contract implemented",
+      "status": "partial",
+      "proof": "CODE lines2038-2082; wiring gate alone cannot prove attestation"
+    },
+    {
+      "family": "Authenticated run request",
+      "schema_ids": [
+        "RunRequested@v1"
+      ],
+      "owning_file": "scripts/lib/n8n_coordination_gateway.py",
+      "producer": "Relay HMAC request; host_run_request for registered host recovery",
+      "consumers": [
+        "LedgerRunStore.request",
+        "n8n_run_executor",
+        "n8n Run Lane result handling"
+      ],
+      "transport_storage": "HTTP relay/run -> gateway/v1/coordination -> SQLite runs",
+      "shape_validator": "Relay strict_json RUN_BODY_KEYS; gateway claim closed; gateway run body open",
+      "semantic_validator": "lane/mode/run-id/namespace/identity conflict; per-request allowlist reload; server slot/process validation",
+      "runtime_enforcement_point": "Relay.run; gateway._verify_claim/_run; executor entry reload/stage clamp before spawn",
+      "effective_configuration": "116 allowlisted lanes;73 live_arg nonnull; live list process-env requires host evidence; default dispatch key accepts unknown non-relay caller IDs",
+      "trust_boundary": "B1 bearer -> B2 HMAC -> B3 host admission",
+      "failure_action": "Typed refusal; no spawn at gateway. Extra run fields/duplicate gateway JSON accepted on baseline",
+      "compatibility_migration": "RunRequested literal v1; readers use named fields; no explicit dual-version negotiation",
+      "status": "partial",
+      "proof": "Focused baseline assertion failures unknown run body and duplicate JSON; existing DD03 tests cover conflicts/namespace",
+      "all_static_reference_files": [
+        {
+          "file": "AGENTS.md",
+          "lines": [
+            4937
+          ]
+        },
+        {
+          "file": "config/ci_shard_duration_hints.json",
+          "lines": [
+            523
+          ]
+        },
+        {
+          "file": "config/lane_registry.json",
+          "lines": [
+            22407,
+            23712
+          ]
+        },
+        {
+          "file": "config/lane_stay_on_cron_tokens.json",
+          "lines": [
+            5
+          ]
+        },
+        {
+          "file": "docs/architecture/n8n/N8N_CONTRACTS_DESIGN.md",
+          "lines": [
+            53,
+            118,
+            666
+          ]
+        },
+        {
+          "file": "docs/architecture/n8n/N8N_DECISION_LEDGER.json",
+          "lines": [
+            40,
+            58,
+            62
+          ]
+        },
+        {
+          "file": "docs/architecture/n8n/N8N_REFERENCE_ARCHITECTURE.md",
+          "lines": [
+            47,
+            163,
+            265,
+            381,
+            489,
+            555
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-maturity/01-registry-reconciliation.md",
+          "lines": [
+            265
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-maturity/02-six-workflow-architecture.md",
+          "lines": [
+            131
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-maturity/B_FAMILIES_TOP5.md",
+          "lines": [
+            77
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-maturity/LANE_TRANSITIVE_CAPABILITIES_20261015.json",
+          "lines": [
+            3619,
+            6391,
+            6511
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-maturity/MOMENTUM_LINEAGE_NEXT_ACTIONS_20261013.json",
+          "lines": [
+            270
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-maturity/N8N_CONFIGURATION.md",
+          "lines": [
+            180
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-maturity/cron-inventory/CRON_INVENTORY.md",
+          "lines": [
+            259
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-maturity/data/scheduler_snapshot_20261009.json",
+          "lines": [
+            3435
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-parallel/00-fact-reconciliation.md",
+          "lines": [
+            35,
+            36
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-parallel/03-durable-ledger.md",
+          "lines": [
+            13
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-parallel/06-findings-and-gateway.md",
+          "lines": [
+            42,
+            46
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-parallel/09-live-audit-20261007.md",
+          "lines": [
+            134
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-parallel/audits/guardrail-audit-a-config-20261009.md",
+          "lines": [
+            16,
+            36,
+            90,
+            129,
+            182,
+            283,
+            284,
+            285,
+            291,
+            347,
+            352
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-parallel/audits/guardrail-audit-b-code-20261009.md",
+          "lines": [
+            8,
+            9,
+            36,
+            42,
+            62,
+            71,
+            72,
+            89,
+            126,
+            127,
+            128,
+            129,
+            130,
+            131,
+            132,
+            170,
+            184,
+            201
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-parallel/audits/guardrail-audit-c-policy-n8n-20261009.md",
+          "lines": [
+            30
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-parallel/ledgers/event-reference.schema.json",
+          "lines": [
+            5
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-parallel/parity/momentum-lifecycle-candidate-20261012.md",
+          "lines": [
+            7
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-parallel/proposals/config-write-grant-n1-20261008.md",
+          "lines": [
+            46
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-parallel/proposals/key-rotation-schedule-20261008.md",
+          "lines": [
+            70
+          ]
+        },
+        {
+          "file": "docs/ops/packets/hermes-learning-cutover-20261015/00_gate_check.py",
+          "lines": [
+            76
+          ]
+        },
+        {
+          "file": "docs/ops/packets/hermes-learning-cutover-20261015/README.md",
+          "lines": [
+            21
+          ]
+        },
+        {
+          "file": "scripts/check_n8n_relay_contract.py",
+          "lines": [
+            30,
+            443,
+            483
+          ]
+        },
+        {
+          "file": "scripts/lib/bridge_agent_preconditions.py",
+          "lines": [
+            45,
+            49,
+            84
+          ]
+        },
+        {
+          "file": "scripts/lib/host_comms_intents.py",
+          "lines": [
+            58
+          ]
+        },
+        {
+          "file": "scripts/lib/lane_dispatch.py",
+          "lines": [
+            14,
+            56,
+            57,
+            61,
+            62
+          ]
+        },
+        {
+          "file": "scripts/lib/learning_watermark.py",
+          "lines": [
+            163
+          ]
+        },
+        {
+          "file": "scripts/lib/n8n_cc_wave_c.py",
+          "lines": [
+            165
+          ]
+        },
+        {
+          "file": "scripts/lib/n8n_coordination_ledger.py",
+          "lines": [
+            62,
+            134,
+            136
+          ]
+        },
+        {
+          "file": "scripts/lib/n8n_due.py",
+          "lines": [
+            126
+          ]
+        },
+        {
+          "file": "scripts/lib/n8n_gateway_client.py",
+          "lines": [
+            21
+          ]
+        },
+        {
+          "file": "scripts/lib/n8n_pilot_contracts.py",
+          "lines": [
+            13
+          ]
+        },
+        {
+          "file": "scripts/lib/n8n_remediation_catalogue.py",
+          "lines": [
+            12,
+            206
+          ]
+        },
+        {
+          "file": "scripts/n8n_coordination_gateway.py",
+          "lines": [
+            45
+          ]
+        },
+        {
+          "file": "scripts/n8n_coordination_gateway_run.sh",
+          "lines": [
+            12
+          ]
+        },
+        {
+          "file": "scripts/n8n_dlq.py",
+          "lines": [
+            52
+          ]
+        },
+        {
+          "file": "scripts/n8n_failure_diagnosis.py",
+          "lines": [
+            18,
+            80
+          ]
+        },
+        {
+          "file": "scripts/n8n_pilot_dispatch.py",
+          "lines": [
+            241
+          ]
+        },
+        {
+          "file": "scripts/n8n_run_executor.py",
+          "lines": [
+            161
+          ]
+        },
+        {
+          "file": "scripts/n8n_run_relay.py",
+          "lines": [
+            57,
+            72,
+            147
+          ]
+        },
+        {
+          "file": "scripts/nightly_cutover_controller.py",
+          "lines": [
+            238
+          ]
+        },
+        {
+          "file": "scripts/phone_status_endpoint.py",
+          "lines": [
+            47
+          ]
+        },
+        {
+          "file": "scripts/reconcile_lane_registry.py",
+          "lines": [
+            134,
+            147,
+            675,
+            678
+          ]
+        },
+        {
+          "file": "scripts/run_cio_hardening_ci.py",
+          "lines": [
+            3825
+          ]
+        },
+        {
+          "file": "tests/fixtures/lane_registry_1597_keep_on_cron_extract.json",
+          "lines": [
+            1265,
+            1283,
+            1616,
+            1679,
+            1982
+          ]
+        },
+        {
+          "file": "tests/relay_probe_fixtures.py",
+          "lines": [
+            323
+          ]
+        },
+        {
+          "file": "tests/test_agents_policy_4_1_0_amendment.py",
+          "lines": [
+            38
+          ]
+        },
+        {
+          "file": "tests/test_approval_board_20261008.py",
+          "lines": [
+            16,
+            19
+          ]
+        },
+        {
+          "file": "tests/test_check_n8n_workflow_framework.py",
+          "lines": [
+            368
+          ]
+        },
+        {
+          "file": "tests/test_gateway_due_latency_20261010.py",
+          "lines": [
+            38,
+            40
+          ]
+        },
+        {
+          "file": "tests/test_hermes_learning_prereqs_20261015.py",
+          "lines": [
+            50
+          ]
+        },
+        {
+          "file": "tests/test_hermes_tune_cutover_20261017.py",
+          "lines": [
+            147
+          ]
+        },
+        {
+          "file": "tests/test_lane_dispatch_word_boundary_20261010.py",
+          "lines": [
+            39
+          ]
+        },
+        {
+          "file": "tests/test_n8n_agent_identity_parity_20261009.py",
+          "lines": [
+            23
+          ]
+        },
+        {
+          "file": "tests/test_n8n_audit_findings_20261015.py",
+          "lines": [
+            33,
+            38
+          ]
+        },
+        {
+          "file": "tests/test_n8n_cc_wave_c_20261011.py",
+          "lines": [
+            29
+          ]
+        },
+        {
+          "file": "tests/test_n8n_consolidation_cohort2_20261016.py",
+          "lines": [
+            205
+          ]
+        },
+        {
+          "file": "tests/test_n8n_coordination_gateway_20261007.py",
+          "lines": [
+            10,
+            11
+          ]
+        },
+        {
+          "file": "tests/test_n8n_executor_env_allowlist_20261009.py",
+          "lines": [
+            52,
+            55,
+            65,
+            71
+          ]
+        },
+        {
+          "file": "tests/test_n8n_fabric_comms_intent_20261014.py",
+          "lines": [
+            25,
+            27
+          ]
+        },
+        {
+          "file": "tests/test_n8n_fabric_hermes_learning_20261015.py",
+          "lines": [
+            583
+          ]
+        },
+        {
+          "file": "tests/test_n8n_fabric_run_outcome_20261014.py",
+          "lines": [
+            25,
+            28
+          ]
+        },
+        {
+          "file": "tests/test_n8n_gateway_concurrency_20261008.py",
+          "lines": [
+            43,
+            45
+          ]
+        },
+        {
+          "file": "tests/test_n8n_gateway_durable_20261007.py",
+          "lines": [
+            22,
+            24,
+            151,
+            184
+          ]
+        },
+        {
+          "file": "tests/test_n8n_gateway_http_20261007.py",
+          "lines": [
+            6,
+            7
+          ]
+        },
+        {
+          "file": "tests/test_n8n_llm_remediation_20261010.py",
+          "lines": [
+            29
+          ]
+        },
+        {
+          "file": "tests/test_n8n_maturity_due_20261009.py",
+          "lines": [
+            631
+          ]
+        },
+        {
+          "file": "tests/test_n8n_maturity_gateway_due_20261009.py",
+          "lines": [
+            19,
+            21
+          ]
+        },
+        {
+          "file": "tests/test_n8n_maturity_registry_dispatch_20261009.py",
+          "lines": [
+            22,
+            23
+          ]
+        },
+        {
+          "file": "tests/test_n8n_maturity_registry_reconcile_20261009.py",
+          "lines": [
+            38
+          ]
+        },
+        {
+          "file": "tests/test_n8n_model_job_operation_20261007.py",
+          "lines": [
+            17
+          ]
+        },
+        {
+          "file": "tests/test_n8n_momentum_lifecycle_20261012.py",
+          "lines": [
+            1208,
+            1259,
+            1260,
+            1296,
+            1298
+          ]
+        },
+        {
+          "file": "tests/test_n8n_ops_lanes_20261009.py",
+          "lines": [
+            198
+          ]
+        },
+        {
+          "file": "tests/test_n8n_phase1_dispatch_20261007.py",
+          "lines": [
+            17,
+            19
+          ]
+        },
+        {
+          "file": "tests/test_n8n_pilot_contracts_20261007.py",
+          "lines": [
+            6
+          ]
+        },
+        {
+          "file": "tests/test_n8n_pilot_observations_20261007.py",
+          "lines": [
+            19
+          ]
+        },
+        {
+          "file": "tests/test_n8n_read_only_observers_20261013.py",
+          "lines": [
+            11
+          ]
+        },
+        {
+          "file": "tests/test_n8n_relay_concurrency_20261010.py",
+          "lines": [
+            228
+          ]
+        },
+        {
+          "file": "tests/test_n8n_research_intake_20261008.py",
+          "lines": [
+            14,
+            19
+          ]
+        },
+        {
+          "file": "tests/test_n8n_run_allowlist_20261008.py",
+          "lines": [
+            22
+          ]
+        },
+        {
+          "file": "tests/test_n8n_run_route_20261008.py",
+          "lines": [
+            19,
+            21,
+            217
+          ]
+        },
+        {
+          "file": "tests/test_n8n_slot_bound_retry_20261016.py",
+          "lines": [
+            22
+          ]
+        },
+        {
+          "file": "tests/test_n8n_w0_relay_fix_20261010.py",
+          "lines": [
+            24
+          ]
+        },
+        {
+          "file": "tests/test_n8n_w2_registry_20261008.py",
+          "lines": [
+            14,
+            18
+          ]
+        },
+        {
+          "file": "tests/test_telegram_ack_hook_20261007.py",
+          "lines": [
+            14,
+            16
+          ]
+        },
+        {
+          "file": "tests/test_w5_event_consumers_20261011.py",
+          "lines": [
+            36
+          ]
+        }
+      ]
+    },
+    {
+      "family": "Due and key contracts",
+      "schema_ids": [
+        "DueResponse@v1",
+        "N8nDueConfig@v1",
+        "N8nFabricProcesses@v1",
+        "d:/e:/g:",
+        "p:"
+      ],
+      "owning_file": "scripts/lib/n8n_due.py; scripts/lib/n8n_process_keys.py",
+      "producer": "Gateway computes slots; process workflow builds manifest-bound p:",
+      "consumers": [
+        "relay.due",
+        "gateway._run",
+        "LedgerRunStore",
+        "executor",
+        "workflow templates",
+        "nightly_cutover"
+      ],
+      "transport_storage": "HTTP due JSON; SQLite slot/run identity; Git process manifests",
+      "shape_validator": "KEY_RE/process KEY_RE; due response JSON schema",
+      "semantic_validator": "registered lane/mode, market/timezone slot, p:manifest/stage/window/attempt predecessor",
+      "runtime_enforcement_point": "gateway run-key check at admission; executor refuses unvalidated p: rows",
+      "effective_configuration": "America/New_York;default40/max100;lane_filter8;clockskew90s;process window3900s;1 process in config",
+      "trust_boundary": "Scheduler identity -> admission/effect identity",
+      "failure_action": "Invalid/unregistered/not-due/refused; p: host callers refused",
+      "compatibility_migration": "New key prefix closed set requires route/schema/version and consumer migration; no global arbitrary key support",
+      "status": "implemented-and-enforced",
+      "proof": "CODE + DD03/process-key tests; natural DST/market cycles not proved by source",
+      "all_static_reference_files": [
+        {
+          "file": "config/n8n_fabric_processes.json",
+          "lines": [
+            5
+          ]
+        },
+        {
+          "file": "docs/architecture/n8n/N8N_CONTRACTS_DESIGN.md",
+          "lines": [
+            148
+          ]
+        },
+        {
+          "file": "docs/architecture/n8n/N8N_REFERENCE_ARCHITECTURE.md",
+          "lines": [
+            368
+          ]
+        },
+        {
+          "file": "docs/ops/packets/hermes-learning-cutover-20261015/00_gate_check.py",
+          "lines": [
+            10,
+            80,
+            113
+          ]
+        },
+        {
+          "file": "docs/ops/packets/hermes-learning-cutover-20261015/README.md",
+          "lines": [
+            21
+          ]
+        },
+        {
+          "file": "scripts/lib/n8n_coordination_gateway.py",
+          "lines": [
+            30,
+            249,
+            382,
+            624,
+            651,
+            653
+          ]
+        },
+        {
+          "file": "scripts/n8n_run_executor.py",
+          "lines": [
+            159,
+            735,
+            991,
+            1141,
+            1143
+          ]
+        },
+        {
+          "file": "tests/test_hermes_learning_prereqs_20261015.py",
+          "lines": [
+            4,
+            52
+          ]
+        },
+        {
+          "file": "tests/test_n8n_audit_findings_20261015.py",
+          "lines": [
+            40
+          ]
+        },
+        {
+          "file": "tests/test_n8n_executor_env_allowlist_20261009.py",
+          "lines": [
+            64
+          ]
+        }
+      ]
+    },
+    {
+      "family": "Run outcome",
+      "schema_ids": [
+        "RunOutcome@v1",
+        "RunLaneResult@v1",
+        "FabricStepResult@v1",
+        "FabricProcessResult@v1"
+      ],
+      "owning_file": "scripts/lib/n8n_fabric_store.py; scripts/n8n_workflow_templates.py",
+      "producer": "Executor terminal receipt -> RunOutcomeStore.record",
+      "consumers": [
+        "gateway._run_outcome",
+        "Relay.run_outcome",
+        "Run Lane poll/decision JS",
+        "process join/status code"
+      ],
+      "transport_storage": "SQLite run_outcomes with runs fallback -> HTTP",
+      "shape_validator": "run_id shape; status_for_state enumerations",
+      "semantic_validator": "identity/retry attachment; unknown/pending nonterminal; run-state mapping",
+      "runtime_enforcement_point": "Host view produces response; relay checks schema+OK only; returned identity not compared",
+      "effective_configuration": "RUN_DONE maps success regardless whether useful-output enforcement was enabled; output verdict remains in underlying receipt",
+      "trust_boundary": "Host ledger -> n8n readiness",
+      "failure_action": "Unavailable store refused; unknown/pending remain data; no direct authority",
+      "compatibility_migration": "v1 gained identity/retry fields; old readers use get; current closed-reader inventory must govern future additions",
+      "status": "partial",
+      "proof": "CODE; source outcome ledger fallback; no all-consumer signed evidence verifier",
+      "all_static_reference_files": [
+        {
+          "file": "config/n8n_comms_intent_routes.json",
+          "lines": [
+            3
+          ]
+        },
+        {
+          "file": "config/n8n_run_allowlist.json",
+          "lines": [
+            477
+          ]
+        },
+        {
+          "file": "docs/architecture/n8n/N8N_CONTRACTS_DESIGN.md",
+          "lines": [
+            53,
+            58,
+            131,
+            668
+          ]
+        },
+        {
+          "file": "docs/architecture/n8n/N8N_DECISION_LEDGER.json",
+          "lines": [
+            76,
+            148
+          ]
+        },
+        {
+          "file": "docs/architecture/n8n/N8N_REFERENCE_ARCHITECTURE.md",
+          "lines": [
+            165,
+            268,
+            397,
+            556
+          ]
+        },
+        {
+          "file": "docs/ops/packets/hermes-learning-cutover-20261015/README.md",
+          "lines": [
+            24
+          ]
+        },
+        {
+          "file": "scripts/lib/host_comms_intents.py",
+          "lines": [
+            6,
+            30
+          ]
+        },
+        {
+          "file": "scripts/lib/n8n_comms_intent_consumption.py",
+          "lines": [
+            61
+          ]
+        },
+        {
+          "file": "scripts/lib/n8n_coordination_gateway.py",
+          "lines": [
+            44,
+            385,
+            879
+          ]
+        },
+        {
+          "file": "scripts/n8n_comms_intent_consumer.py",
+          "lines": [
+            56
+          ]
+        },
+        {
+          "file": "scripts/n8n_coordination_gateway.py",
+          "lines": [
+            54
+          ]
+        },
+        {
+          "file": "scripts/n8n_run_executor.py",
+          "lines": [
+            53,
+            160
+          ]
+        },
+        {
+          "file": "scripts/n8n_run_relay.py",
+          "lines": [
+            159
+          ]
+        },
+        {
+          "file": "tests/test_check_n8n_workflow_framework.py",
+          "lines": [
+            370
+          ]
+        },
+        {
+          "file": "tests/test_comms_intent_consumer_live_20261017.py",
+          "lines": [
+            41
+          ]
+        },
+        {
+          "file": "tests/test_effect_claim_20261014.py",
+          "lines": [
+            31
+          ]
+        },
+        {
+          "file": "tests/test_hermes_learning_prereqs_20261015.py",
+          "lines": [
+            51
+          ]
+        },
+        {
+          "file": "tests/test_n8n_comms_intent_consumer_20261015.py",
+          "lines": [
+            37
+          ]
+        },
+        {
+          "file": "tests/test_n8n_executor_env_allowlist_20261009.py",
+          "lines": [
+            57
+          ]
+        },
+        {
+          "file": "tests/test_n8n_fabric_comms_intent_20261014.py",
+          "lines": [
+            28
+          ]
+        },
+        {
+          "file": "tests/test_n8n_fabric_run_outcome_20261014.py",
+          "lines": [
+            35
+          ]
+        },
+        {
+          "file": "tests/test_n8n_fabric_workflows_20261014.py",
+          "lines": [
+            30
+          ]
+        }
+      ]
+    },
+    {
+      "family": "Run receipts and output verdict",
+      "schema_ids": [
+        "RunReceipt@v1",
+        "RunReceipt@v2",
+        "RunReceipt@v3",
+        "LaneRunReceipt@v1",
+        "LaneRunReceipt@v2",
+        "N8nExpectedOutput@v1"
+      ],
+      "owning_file": "scripts/n8n_run_executor.py; scripts/lib/lane_last_receipt.py; scripts/lib/n8n_output_verdict.py",
+      "producer": "Executor receipts and registered lane writer",
+      "consumers": [
+        "n8n_output_verdict.evaluate",
+        "RunOutcomeStore",
+        "recovery_validator",
+        "n8n_siem_bridge",
+        "n8n_failure_diagnosis",
+        "n8n_incident_fanin",
+        "nightly_cutover",
+        "lane health/freshness",
+        "CC API projections"
+      ],
+      "transport_storage": "Per-attempt O_EXCL JSON; mutable *_last.json; SQLite runs.receipt_json",
+      "shape_validator": "Expected-output closed semantic schema; count/schema/run/lane checks",
+      "semantic_validator": "Baseline lacks mode/attempt/time/artifact evidence check; declared evidence list only describes source, not artifact validation",
+      "runtime_enforcement_point": "Baseline opt-in allowlist output_receipt=v2 only (48/116). Baseline rules-unreadable retains RUN_DONE. Campaign candidate now closes missing-rule, mode/attempt/code, time window and fatal-skip defects.",
+      "effective_configuration": "140 health contracts,136 expected-output;48 output-receipt enabled lanes;68 not enabled",
+      "trust_boundary": "B3 executed lane -> host verifier; same-uid files remain forgeable",
+      "failure_action": "Enabled invalid/empty receipt -> RUN_FAILED; unenabled rule declared_not_enforced. Candidate fails enabled missing/unavailable policy.",
+      "compatibility_migration": "Mutable v1 keeps additive output_fields=v2 for existing exact-schema readers; per-attempt v2 emitted. No automatic old/new compatibility evidence outside tests.",
+      "status": "partial",
+      "proof": "Baseline30-case exact test:23 expected assertion failures/7 controls; candidate30/30; no runtime production claim",
+      "all_static_reference_files": [
+        {
+          "file": "docs/architecture/n8n/N8N_CONTRACTS_DESIGN.md",
+          "lines": [
+            183
+          ]
+        },
+        {
+          "file": "docs/architecture/n8n/N8N_REFERENCE_ARCHITECTURE.md",
+          "lines": [
+            395,
+            418,
+            470
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-maturity/schemas/registry-dispatch-block.schema.json",
+          "lines": [
+            56
+          ]
+        },
+        {
+          "file": "docs/ops/packets/n8n-process-consolidation-cohort1-20261016/README.md",
+          "lines": [
+            125
+          ]
+        },
+        {
+          "file": "scripts/check_n8n_workflow_framework.py",
+          "lines": [
+            1149,
+            1152,
+            1154
+          ]
+        },
+        {
+          "file": "scripts/lib/lane_dispatch.py",
+          "lines": [
+            258
+          ]
+        },
+        {
+          "file": "scripts/lib/lane_last_receipt.py",
+          "lines": [
+            297
+          ]
+        },
+        {
+          "file": "scripts/lib/n8n_self_heal.py",
+          "lines": [
+            220
+          ]
+        },
+        {
+          "file": "scripts/lib/recovery_validator.py",
+          "lines": [
+            27,
+            46
+          ]
+        },
+        {
+          "file": "scripts/lib/self_heal_fixer.py",
+          "lines": [
+            571
+          ]
+        },
+        {
+          "file": "scripts/n8n_cutover_wave.py",
+          "lines": [
+            37
+          ]
+        },
+        {
+          "file": "scripts/n8n_run_executor.py",
+          "lines": [
+            73,
+            135
+          ]
+        },
+        {
+          "file": "tests/test_comms_intent_consumer_live_20261017.py",
+          "lines": [
+            43
+          ]
+        },
+        {
+          "file": "tests/test_hermes_tune_cutover_20261017.py",
+          "lines": [
+            49
+          ]
+        },
+        {
+          "file": "tests/test_n8n_audit_findings_20261015.py",
+          "lines": [
+            39
+          ]
+        }
+      ]
+    },
+    {
+      "family": "Health and readiness",
+      "schema_ids": [
+        "N8nHealthContracts@v1",
+        "N8nHealthContract@v1"
+      ],
+      "owning_file": "scripts/lib/n8n_health_contracts.py",
+      "producer": "build_n8n_health_contracts; reviewed owner declarations",
+      "consumers": [
+        "check_n8n_health_contracts",
+        "framework checker",
+        "n8n_siem_bridge",
+        "n8n_incident_fanin",
+        "n8n_cutover_wave",
+        "nightly_cutover",
+        "supervisor/lane registry observers"
+      ],
+      "transport_storage": "Git config -> runtime reports",
+      "shape_validator": "validate_contract/check stage/status/criteria/baseline",
+      "semantic_validator": "REVIEWED/stage compatibility; healthy/degraded/failed criteria largely named checks, not executable expressions; expected_output has shared evaluator",
+      "runtime_enforcement_point": "Specific consumers enforce selected fields; no universal dependency/watermark readiness engine",
+      "effective_configuration": "89 REVIEWED/51 DRAFT at baseline;136 expected_output. Historical 46 missing signals not a current verified classification.",
+      "trust_boundary": "Owner declarations -> health decision",
+      "failure_action": "Unknown/DRAFT blocks canary in checks; output-window per_window explicitly says monitor implementation proposed",
+      "compatibility_migration": "Optional fields not automatically compatible; preserve explicit REVIEWED/DRAFT behavior on version changes",
+      "status": "partial",
+      "proof": "CODE; source counts; host natural schedules/allowed-empty reasons need per-lane proof",
+      "all_static_reference_files": [
+        {
+          "file": "AGENTS.md",
+          "lines": [
+            259,
+            260,
+            4327,
+            5064,
+            5065,
+            5258,
+            5750
+          ]
+        },
+        {
+          "file": "config/alpha_vantage_owner.json",
+          "lines": [
+            112
+          ]
+        },
+        {
+          "file": "config/lane_registry.json",
+          "lines": [
+            15459,
+            15508
+          ]
+        },
+        {
+          "file": "config/n8n_health_contracts.json",
+          "lines": [
+            4,
+            1364,
+            2008,
+            2441,
+            2872,
+            3701,
+            6543,
+            6768,
+            7020,
+            7652,
+            9806,
+            10060,
+            10284,
+            11721,
+            13977,
+            14614,
+            15474,
+            25047,
+            25269,
+            26678,
+            26886,
+            27102,
+            27318,
+            27507,
+            27724,
+            27929,
+            28138,
+            28348,
+            28557,
+            28764,
+            28977,
+            29184
+          ]
+        },
+        {
+          "file": "docs/architecture/n8n/N8N_CONTRACTS_DESIGN.md",
+          "lines": [
+            56,
+            93,
+            245,
+            246,
+            289,
+            671
+          ]
+        },
+        {
+          "file": "docs/architecture/n8n/N8N_DECISION_LEDGER.json",
+          "lines": [
+            184
+          ]
+        },
+        {
+          "file": "docs/architecture/n8n/N8N_REFERENCE_ARCHITECTURE.md",
+          "lines": [
+            170,
+            418,
+            430,
+            510,
+            559,
+            560
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-maturity/00-MASTER-PROGRAM.md",
+          "lines": [
+            51
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-maturity/MOMENTUM_LINEAGE_NEXT_ACTIONS_20261013.json",
+          "lines": [
+            278
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-maturity/N8N_CONFIGURATION.md",
+          "lines": [
+            36,
+            191,
+            421
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-maturity/N8N_GAP_ASSESSMENT_AND_MATURITY_REVIEW_20261014.md",
+          "lines": [
+            171
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-maturity/N8N_MONITORING_AND_REMEDIATION_STANDARD.md",
+          "lines": [
+            132,
+            142,
+            143,
+            144,
+            145,
+            173,
+            343,
+            461
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-maturity/N8N_ONBOARDING_STANDARD.md",
+          "lines": [
+            101,
+            456
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-maturity/SEARCH_SOURCE_ROUTING.md",
+          "lines": [
+            269
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-maturity/reconciliation-20261012/MOMENTUM_ACTIVATION_PACKET.json",
+          "lines": [
+            642
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-maturity/reconciliation-20261012/N8N_CONTRACT_BASELINE_CORRECTION_20261012.json",
+          "lines": [
+            3929
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-maturity/reconciliation-20261012/runtime-contracts/contract_reconciliation.json",
+          "lines": [
+            869,
+            1699,
+            1844
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-maturity/reconciliation-20261012/runtime-contracts/inventory_coverage_resolution.json",
+          "lines": [
+            3110,
+            3160,
+            3210,
+            3260,
+            3311,
+            3361
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-maturity/reconciliation-20261012/runtime-contracts/validation.json",
+          "lines": [
+            90,
+            95
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-parallel/workflows/reference/tradeai-reference-mature-workflow.health_contract.json",
+          "lines": [
+            2,
+            14,
+            71
+          ]
+        },
+        {
+          "file": "docs/ops/packets/comms-intent-consumer-live-20261017/cutover.sh",
+          "lines": [
+            60
+          ]
+        },
+        {
+          "file": "docs/ops/packets/lane-repair-indicator-engine-20261015/README.md",
+          "lines": [
+            107
+          ]
+        },
+        {
+          "file": "docs/ops/packets/n8n-comms-intent-consumer-20261015/README.md",
+          "lines": [
+            48
+          ]
+        },
+        {
+          "file": "docs/ops/packets/n8n-comms-intent-consumer-20261015/health_contract_draft.json",
+          "lines": [
+            2
+          ]
+        },
+        {
+          "file": "docs/ops/packets/n8n-process-consolidation-cohort2-20261016/README.md",
+          "lines": [
+            35
+          ]
+        },
+        {
+          "file": "scripts/audit_n8n_contract_baselines.py",
+          "lines": [
+            24,
+            261
+          ]
+        },
+        {
+          "file": "scripts/build_n8n_health_contracts.py",
+          "lines": [
+            2,
+            4,
+            7,
+            8,
+            25,
+            26,
+            51,
+            534,
+            930,
+            977
+          ]
+        },
+        {
+          "file": "scripts/check_n8n_health_contracts.py",
+          "lines": [
+            2,
+            4,
+            5,
+            16,
+            34,
+            49
+          ]
+        },
+        {
+          "file": "scripts/check_n8n_workflow_framework.py",
+          "lines": [
+            5,
+            120
+          ]
+        },
+        {
+          "file": "scripts/lib/cutover_lane_facts.py",
+          "lines": [
+            26
+          ]
+        },
+        {
+          "file": "scripts/lib/lane_registry.py",
+          "lines": [
+            672,
+            701
+          ]
+        },
+        {
+          "file": "scripts/lib/n8n_health_contracts.py",
+          "lines": [
+            7,
+            29,
+            46
+          ]
+        },
+        {
+          "file": "scripts/lib/n8n_momentum_lifecycle.py",
+          "lines": [
+            58,
+            71,
+            648
+          ]
+        },
+        {
+          "file": "scripts/lib/n8n_output_verdict.py",
+          "lines": [
+            3
+          ]
+        },
+        {
+          "file": "scripts/lib/nightly_cutover.py",
+          "lines": [
+            684,
+            821,
+            855,
+            923
+          ]
+        },
+        {
+          "file": "scripts/n8n_comms_intent_consumer.py",
+          "lines": [
+            24,
+            152
+          ]
+        },
+        {
+          "file": "scripts/n8n_cutover_checklist.py",
+          "lines": [
+            77
+          ]
+        },
+        {
+          "file": "scripts/n8n_cutover_wave.py",
+          "lines": [
+            297,
+            334
+          ]
+        },
+        {
+          "file": "scripts/n8n_incident_fanin.py",
+          "lines": [
+            1156,
+            1195
+          ]
+        },
+        {
+          "file": "scripts/n8n_run_executor.py",
+          "lines": [
+            63,
+            198
+          ]
+        },
+        {
+          "file": "scripts/nightly_cutover_controller.py",
+          "lines": [
+            328,
+            653
+          ]
+        },
+        {
+          "file": "scripts/reconcile_migration_inventory.py",
+          "lines": [
+            716
+          ]
+        },
+        {
+          "file": "scripts/report_n8n_shadow_policy.py",
+          "lines": [
+            31
+          ]
+        },
+        {
+          "file": "scripts/run_cio_hardening_ci.py",
+          "lines": [
+            4122,
+            4123,
+            4125,
+            4127
+          ]
+        },
+        {
+          "file": "tests/fixtures/refactor_shard_06/approved_cron_argv.json",
+          "lines": [
+            123
+          ]
+        },
+        {
+          "file": "tests/support/lane_produced_count.py",
+          "lines": [
+            24
+          ]
+        },
+        {
+          "file": "tests/test_agents_policy_11_0_0_workflow_framework.py",
+          "lines": [
+            151
+          ]
+        },
+        {
+          "file": "tests/test_canary_wave1_20261011.py",
+          "lines": [
+            3,
+            45
+          ]
+        },
+        {
+          "file": "tests/test_canary_wave_20261014.py",
+          "lines": [
+            3,
+            43
+          ]
+        },
+        {
+          "file": "tests/test_check_n8n_workflow_framework.py",
+          "lines": [
+            183,
+            374,
+            375
+          ]
+        },
+        {
+          "file": "tests/test_comms_intent_consumer_live_20261017.py",
+          "lines": [
+            11,
+            42,
+            68,
+            167
+          ]
+        },
+        {
+          "file": "tests/test_cutover_fail_closed_txn_20261016.py",
+          "lines": [
+            321,
+            507,
+            607,
+            620
+          ]
+        },
+        {
+          "file": "tests/test_draft_health_contracts_20261012.py",
+          "lines": [
+            5,
+            19,
+            32,
+            38
+          ]
+        },
+        {
+          "file": "tests/test_heartbeat_watcher_contract_20261011.py",
+          "lines": [
+            30,
+            31,
+            40
+          ]
+        },
+        {
+          "file": "tests/test_hermes_tune_cutover_20261017.py",
+          "lines": [
+            65
+          ]
+        },
+        {
+          "file": "tests/test_hermes_worker_pool_wire_20261015.py",
+          "lines": [
+            547
+          ]
+        },
+        {
+          "file": "tests/test_lane_registry.py",
+          "lines": [
+            537
+          ]
+        },
+        {
+          "file": "tests/test_lane_repair_20261015.py",
+          "lines": [
+            50
+          ]
+        },
+        {
+          "file": "tests/test_lane_repair_ri_hermes_litmus_20261015.py",
+          "lines": [
+            8,
+            68
+          ]
+        },
+        {
+          "file": "tests/test_lane_useful_output_proof_20261016.py",
+          "lines": [
+            47
+          ]
+        },
+        {
+          "file": "tests/test_momentum_admission_20261013.py",
+          "lines": [
+            12,
+            26,
+            137
+          ]
+        },
+        {
+          "file": "tests/test_momentum_cache_reconcile_20261012.py",
+          "lines": [
+            43,
+            158
+          ]
+        },
+        {
+          "file": "tests/test_n8n_audit_findings_20261015.py",
+          "lines": [
+            763
+          ]
+        },
+        {
+          "file": "tests/test_n8n_cc_wave_c_20261011.py",
+          "lines": [
+            125,
+            127
+          ]
+        },
+        {
+          "file": "tests/test_n8n_comms_intent_consumer_20261015.py",
+          "lines": [
+            38,
+            598
+          ]
+        },
+        {
+          "file": "tests/test_n8n_contract_baselines_20261012.py",
+          "lines": [
+            14,
+            24,
+            183
+          ]
+        },
+        {
+          "file": "tests/test_n8n_cutover_checklist_20261008.py",
+          "lines": [
+            145,
+            361,
+            432,
+            699
+          ]
+        },
+        {
+          "file": "tests/test_n8n_cutover_wave_20261015.py",
+          "lines": [
+            283,
+            298,
+            326,
+            329,
+            379
+          ]
+        },
+        {
+          "file": "tests/test_n8n_executor_env_allowlist_20261009.py",
+          "lines": [
+            58
+          ]
+        },
+        {
+          "file": "tests/test_n8n_fabric_hermes_learning_20261015.py",
+          "lines": [
+            48
+          ]
+        },
+        {
+          "file": "tests/test_n8n_health_contracts_20261010.py",
+          "lines": [
+            5,
+            28,
+            29,
+            30,
+            445
+          ]
+        },
+        {
+          "file": "tests/test_n8n_incident_fanin_workflow_error_20261010.py",
+          "lines": [
+            225
+          ]
+        },
+        {
+          "file": "tests/test_n8n_momentum_lifecycle_20261012.py",
+          "lines": [
+            70,
+            453,
+            1398,
+            1400,
+            1424
+          ]
+        },
+        {
+          "file": "tests/test_n8n_onboarding_standard_20261010.py",
+          "lines": [
+            51,
+            188,
+            189,
+            259,
+            313
+          ]
+        },
+        {
+          "file": "tests/test_n8n_read_only_observers_20261013.py",
+          "lines": [
+            28
+          ]
+        },
+        {
+          "file": "tests/test_n8n_scalp_early_lane_admission_20261013.py",
+          "lines": [
+            24,
+            28
+          ]
+        },
+        {
+          "file": "tests/test_nightly_cutover_controller_20261016.py",
+          "lines": [
+            551,
+            580,
+            695
+          ]
+        },
+        {
+          "file": "tests/test_refactor_shard_01_20261011.py",
+          "lines": [
+            311
+          ]
+        },
+        {
+          "file": "tests/test_refactor_shard_02_20261011.py",
+          "lines": [
+            227
+          ]
+        },
+        {
+          "file": "tests/test_refactor_shard_03_20261011.py",
+          "lines": [
+            220
+          ]
+        },
+        {
+          "file": "tests/test_refactor_shard_05_20261011.py",
+          "lines": [
+            281
+          ]
+        },
+        {
+          "file": "tests/test_refactor_shard_06_20261011.py",
+          "lines": [
+            50,
+            98,
+            112
+          ]
+        },
+        {
+          "file": "tests/test_refactor_shards_05_08_locks_20261011.py",
+          "lines": [
+            83
+          ]
+        },
+        {
+          "file": "tests/test_shadow_wave_ld_w1_20261015.py",
+          "lines": [
+            3,
+            46
+          ]
+        },
+        {
+          "file": "tests/test_sw4_shadow_wave4_20261011.py",
+          "lines": [
+            3,
+            44,
+            50,
+            182
+          ]
+        },
+        {
+          "file": "tests/test_w4_provider_owners_shadow_20261011.py",
+          "lines": [
+            3,
+            44,
+            50,
+            169
+          ]
+        }
+      ]
+    },
+    {
+      "family": "Effect and scheduler ownership",
+      "schema_ids": [
+        "EffectClaim@v1",
+        "N8nEffectKeys@v1",
+        "EffectAdmission@v1",
+        "N8nHandoverManifest@v1"
+      ],
+      "owning_file": "scripts/lib/effect_claim.py",
+      "producer": "Executor EffectGate + cron wrapper",
+      "consumers": [
+        "EffectClaimStore",
+        "gated_run",
+        "fence_before_write callers",
+        "nightly/manual owner switch tooling",
+        "recovery retry parent validation"
+      ],
+      "transport_storage": "SQLite effect_claims/effect_owners; atomic manifest+journal files",
+      "shape_validator": "effect key/process/slot/version regex; CAS epochs",
+      "semantic_validator": "semantic slot stable across scheduler; held/ambiguous claims block; proven pre-effect FAILED only reclaim",
+      "runtime_enforcement_point": "Admission/claim lock; assert_fence immediately before target write only where lane calls it",
+      "effective_configuration": "69 registered effect lanes;3 late_write_fenced;66 require drain-before-switch; n8n_claim/cron_claim individually enabled",
+      "trust_boundary": "Scheduler ownership -> host spawn/effect",
+      "failure_action": "UNKNOWN held, stale fence refused, late completion UNKNOWN; release still trusts operator note",
+      "compatibility_migration": "Stable key meaning; input_version change creates new key; no stale epoch restoration permitted",
+      "status": "partial",
+      "proof": "Existing DD05/DD06 race tests; source3/69 late-write fencing; no blanket live-safe declaration",
+      "all_static_reference_files": [
+        {
+          "file": "AGENTS.md",
+          "lines": [
+            5285
+          ]
+        },
+        {
+          "file": "config/n8n_effect_keys.json",
+          "lines": [
+            3,
+            950,
+            951
+          ]
+        },
+        {
+          "file": "config/n8n_run_allowlist.json",
+          "lines": [
+            3835
+          ]
+        },
+        {
+          "file": "docs/architecture/n8n/N8N_CONTRACTS_DESIGN.md",
+          "lines": [
+            57,
+            149,
+            297,
+            303,
+            313,
+            321,
+            670
+          ]
+        },
+        {
+          "file": "docs/architecture/n8n/N8N_DECISION_LEDGER.json",
+          "lines": [
+            112,
+            116
+          ]
+        },
+        {
+          "file": "docs/architecture/n8n/N8N_REFERENCE_ARCHITECTURE.md",
+          "lines": [
+            165,
+            167,
+            192,
+            389,
+            444,
+            557
+          ]
+        },
+        {
+          "file": "docs/architecture/n8n/N8N_THREAT_MODEL.md",
+          "lines": [
+            43
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-maturity/DD12_OUTSIDE_DEADMAN_AND_DR_PLAN_20261015.md",
+          "lines": [
+            110
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-maturity/N8N_CONFIGURATION.md",
+          "lines": [
+            120
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-maturity/N8N_FRAMEWORK_SCORECARD_20261015.md",
+          "lines": [
+            156
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-parallel/workflows/reference/RUNBOOK_tradeai-reference-mature-workflow.md",
+          "lines": [
+            29,
+            36
+          ]
+        },
+        {
+          "file": "docs/ops/measurements/n8n-cutover-20261016T172425Z/REPORT.md",
+          "lines": [
+            29,
+            283,
+            370
+          ]
+        },
+        {
+          "file": "docs/ops/measurements/n8n-cutover-20261016T172425Z/summary.json",
+          "lines": [
+            482,
+            1206,
+            1213
+          ]
+        },
+        {
+          "file": "docs/ops/measurements/n8n-cutover-20261016T195110Z/REPORT.md",
+          "lines": [
+            19,
+            35,
+            41,
+            49,
+            480
+          ]
+        },
+        {
+          "file": "docs/ops/measurements/n8n-cutover-20261016T195110Z/summary.json",
+          "lines": [
+            834,
+            836,
+            850,
+            959,
+            968,
+            1756,
+            1835
+          ]
+        },
+        {
+          "file": "docs/ops/packets/cron-effect-claim-wrap-20261016/README.md",
+          "lines": [
+            13,
+            14,
+            17,
+            22,
+            36,
+            62,
+            113,
+            129
+          ]
+        },
+        {
+          "file": "docs/ops/packets/cron-effect-claim-wrap-20261016/apply.sh",
+          "lines": [
+            2,
+            69,
+            70,
+            71,
+            80
+          ]
+        },
+        {
+          "file": "docs/ops/packets/cron-effect-claim-wrap-20261016/plan.py",
+          "lines": [
+            2,
+            4,
+            27,
+            54,
+            55
+          ]
+        },
+        {
+          "file": "docs/ops/packets/cron-effect-claim-wrap-20261016/rollback.sh",
+          "lines": [
+            3,
+            5
+          ]
+        },
+        {
+          "file": "docs/ops/packets/cutover-fail-closed-txn-20261016/README.md",
+          "lines": [
+            11,
+            26,
+            40,
+            96,
+            97,
+            100,
+            103
+          ]
+        },
+        {
+          "file": "docs/ops/packets/hermes-feedback-cutover-20261017/cutover.sh",
+          "lines": [
+            47,
+            118,
+            131,
+            159
+          ]
+        },
+        {
+          "file": "docs/ops/packets/hermes-learning-cutover-20261015/01_dry_run.sh",
+          "lines": [
+            19
+          ]
+        },
+        {
+          "file": "docs/ops/packets/hermes-learning-cutover-20261015/02_live_run.sh",
+          "lines": [
+            4,
+            10,
+            29,
+            40,
+            42,
+            59
+          ]
+        },
+        {
+          "file": "docs/ops/packets/hermes-learning-cutover-20261015/03_parity.py",
+          "lines": [
+            5,
+            18,
+            125,
+            135
+          ]
+        },
+        {
+          "file": "docs/ops/packets/hermes-learning-cutover-20261015/09_rollback.sh",
+          "lines": [
+            15,
+            25,
+            30,
+            32
+          ]
+        },
+        {
+          "file": "docs/ops/packets/hermes-learning-cutover-20261015/11_cutover_today.sh",
+          "lines": [
+            52,
+            157,
+            158,
+            187,
+            212
+          ]
+        },
+        {
+          "file": "docs/ops/packets/hermes-learning-cutover-20261015/README.md",
+          "lines": [
+            82,
+            112
+          ]
+        },
+        {
+          "file": "docs/ops/packets/hermes-tune-cutover-20261017/cutover.sh",
+          "lines": [
+            28,
+            55,
+            114,
+            189,
+            202,
+            247
+          ]
+        },
+        {
+          "file": "docs/ops/packets/n8n-cutover-wave-1-20261015/02_effect_owners.sh",
+          "lines": [
+            3,
+            10,
+            12,
+            17,
+            19
+          ]
+        },
+        {
+          "file": "docs/ops/packets/n8n-cutover-wave-1-20261015/09_rollback.sh",
+          "lines": [
+            5
+          ]
+        },
+        {
+          "file": "docs/ops/packets/n8n-cutover-wave-2-20261015/02_effect_owners.sh",
+          "lines": [
+            3,
+            10,
+            12,
+            17,
+            19
+          ]
+        },
+        {
+          "file": "docs/ops/packets/n8n-cutover-wave-2-20261015/09_rollback.sh",
+          "lines": [
+            5
+          ]
+        },
+        {
+          "file": "docs/ops/packets/n8n-cutover-wave-3-20261015/02_effect_owners.sh",
+          "lines": [
+            3,
+            10,
+            12,
+            17,
+            19
+          ]
+        },
+        {
+          "file": "docs/ops/packets/n8n-cutover-wave-3-20261015/09_rollback.sh",
+          "lines": [
+            5
+          ]
+        },
+        {
+          "file": "docs/ops/packets/n8n-fabric-phase1-20261014/09_rollback.sh",
+          "lines": [
+            8
+          ]
+        },
+        {
+          "file": "docs/ops/packets/n8n-hermes-learning-flow-20261015/05_cutover.sh",
+          "lines": [
+            6,
+            67,
+            73,
+            79,
+            81
+          ]
+        },
+        {
+          "file": "docs/ops/packets/n8n-hermes-learning-flow-20261015/09_rollback.sh",
+          "lines": [
+            9,
+            25,
+            37
+          ]
+        },
+        {
+          "file": "docs/ops/packets/nightly-cutover-controller-20261016/README.md",
+          "lines": [
+            30
+          ]
+        },
+        {
+          "file": "scripts/aegis_social_sentiment.py",
+          "lines": [
+            392,
+            394
+          ]
+        },
+        {
+          "file": "scripts/effect_claim_cron.sh",
+          "lines": [
+            2,
+            5,
+            10,
+            16,
+            22,
+            23,
+            27,
+            28,
+            39,
+            44,
+            47,
+            57,
+            68,
+            73,
+            89,
+            94,
+            108,
+            136,
+            142,
+            149,
+            157,
+            194,
+            220
+          ]
+        },
+        {
+          "file": "scripts/finviz_market_movers.py",
+          "lines": [
+            130,
+            132
+          ]
+        },
+        {
+          "file": "scripts/finviz_screener_runner.py",
+          "lines": [
+            270,
+            272
+          ]
+        },
+        {
+          "file": "scripts/hermes_social_sentiment.py",
+          "lines": [
+            256,
+            258
+          ]
+        },
+        {
+          "file": "scripts/incident_notifier.py",
+          "lines": [
+            790
+          ]
+        },
+        {
+          "file": "scripts/lib/cutover_lane_facts.py",
+          "lines": [
+            97,
+            98
+          ]
+        },
+        {
+          "file": "scripts/lib/effect_claim.py",
+          "lines": [
+            12,
+            40,
+            231,
+            264,
+            285,
+            300,
+            305,
+            308,
+            352,
+            392,
+            399,
+            437,
+            449,
+            478,
+            498,
+            520,
+            537,
+            640,
+            650,
+            884,
+            988,
+            1029
+          ]
+        },
+        {
+          "file": "scripts/lib/effect_ownership_watch.py",
+          "lines": [
+            3
+          ]
+        },
+        {
+          "file": "scripts/lib/nightly_cutover.py",
+          "lines": [
+            59,
+            185,
+            198,
+            262,
+            449,
+            454,
+            464,
+            657,
+            659,
+            676,
+            740
+          ]
+        },
+        {
+          "file": "scripts/n8n_cutover_wave.py",
+          "lines": [
+            31,
+            405,
+            894,
+            901,
+            903,
+            908,
+            910,
+            930,
+            1002
+          ]
+        },
+        {
+          "file": "scripts/n8n_failure_diagnosis.py",
+          "lines": [
+            78,
+            327,
+            328,
+            336,
+            444,
+            465,
+            554,
+            1250
+          ]
+        },
+        {
+          "file": "scripts/n8n_incident_fanin.py",
+          "lines": [
+            448
+          ]
+        },
+        {
+          "file": "scripts/n8n_run_executor.py",
+          "lines": [
+            56,
+            143,
+            923
+          ]
+        },
+        {
+          "file": "scripts/nightly_cutover_controller.py",
+          "lines": [
+            33,
+            63
+          ]
+        },
+        {
+          "file": "scripts/pipelines/_manifest_runner.sh",
+          "lines": [
+            235,
+            240
+          ]
+        },
+        {
+          "file": "scripts/pipelines/pipeline_manifest.py",
+          "lines": [
+            287
+          ]
+        },
+        {
+          "file": "scripts/report_n8n_cutover_outcomes.py",
+          "lines": [
+            97,
+            98,
+            127,
+            143,
+            277,
+            283,
+            385,
+            407,
+            921,
+            946,
+            981,
+            983,
+            1217,
+            1219,
+            1410,
+            1411,
+            1665,
+            1849,
+            1998
+          ]
+        },
+        {
+          "file": "scripts/run_cio_hardening_ci.py",
+          "lines": [
+            3871,
+            3976,
+            3986,
+            3987,
+            3991,
+            3993
+          ]
+        },
+        {
+          "file": "tests/test_architect_review_recovery_ownership_20261016.py",
+          "lines": [
+            7,
+            36,
+            306
+          ]
+        },
+        {
+          "file": "tests/test_assert_fence_wave1_20261016.py",
+          "lines": [
+            31,
+            64,
+            89,
+            91
+          ]
+        },
+        {
+          "file": "tests/test_canary_effect_keys_20261015.py",
+          "lines": [
+            7,
+            37,
+            41,
+            320,
+            396
+          ]
+        },
+        {
+          "file": "tests/test_check_n8n_workflow_framework.py",
+          "lines": [
+            373
+          ]
+        },
+        {
+          "file": "tests/test_comms_intent_consumer_live_20261017.py",
+          "lines": [
+            36
+          ]
+        },
+        {
+          "file": "tests/test_cron_effect_claim_wrap_20261016.py",
+          "lines": [
+            3,
+            9,
+            32,
+            35,
+            41,
+            87,
+            98,
+            184,
+            301,
+            327,
+            330,
+            333,
+            335,
+            429,
+            530,
+            531,
+            542
+          ]
+        },
+        {
+          "file": "tests/test_cutover_fail_closed_txn_20261016.py",
+          "lines": [
+            36,
+            44,
+            86,
+            87
+          ]
+        },
+        {
+          "file": "tests/test_effect_claim_20261014.py",
+          "lines": [
+            29,
+            304
+          ]
+        },
+        {
+          "file": "tests/test_hermes_learning_prereqs_20261015.py",
+          "lines": [
+            46
+          ]
+        },
+        {
+          "file": "tests/test_hermes_tune_cutover_20261017.py",
+          "lines": [
+            46,
+            147,
+            189,
+            495,
+            509,
+            538,
+            542
+          ]
+        },
+        {
+          "file": "tests/test_lane_cutover_policy_20261016.py",
+          "lines": [
+            272,
+            278,
+            279,
+            280
+          ]
+        },
+        {
+          "file": "tests/test_n8n_audit_findings_20261015.py",
+          "lines": [
+            36
+          ]
+        },
+        {
+          "file": "tests/test_n8n_cutover_wave_20261015.py",
+          "lines": [
+            163
+          ]
+        },
+        {
+          "file": "tests/test_n8n_fabric_hermes_learning_20261015.py",
+          "lines": [
+            34,
+            582,
+            583,
+            661,
+            759
+          ]
+        },
+        {
+          "file": "tests/test_n8n_self_heal_tranche_defects_20261016.py",
+          "lines": [
+            25,
+            288,
+            301,
+            316,
+            384,
+            387,
+            388
+          ]
+        },
+        {
+          "file": "tests/test_n8n_slot_bound_retry_20261016.py",
+          "lines": [
+            21
+          ]
+        },
+        {
+          "file": "tests/test_nightly_cutover_controller_20261016.py",
+          "lines": [
+            60,
+            328,
+            359,
+            366,
+            368,
+            370
+          ]
+        },
+        {
+          "file": "tests/test_report_n8n_cutover_outcomes_20261016.py",
+          "lines": [
+            128,
+            254,
+            304,
+            308,
+            407,
+            449
+          ]
+        }
+      ]
+    },
+    {
+      "family": "Error/incident/recovery",
+      "schema_ids": [
+        "event-reference/v0",
+        "N8nCoordinationReceipt@v1",
+        "N8nIncidentFanin@v1",
+        "RecoveryVerdict@v1",
+        "N8nSelfHeal@v1"
+      ],
+      "owning_file": "scripts/lib/n8n_coordination_gateway.py; scripts/n8n_incident_fanin.py; scripts/lib/recovery_validator.py",
+      "producer": "Error workflow/relay event and comms-intent consumer; host detectors",
+      "consumers": [
+        "coordination ledger",
+        "SIEM bridge",
+        "fan-in",
+        "n8n_failure_diagnosis",
+        "incident_notifier",
+        "self-heal fixer"
+      ],
+      "transport_storage": "SQLite + durable host JSON receipts/outbox",
+      "shape_validator": "event exact fields; state transitions; recovery shared verdict",
+      "semantic_validator": "effective mode/same business slot/fresh successful live output in recovery_validator; not all disappearance/expiry consumers prove business recovery",
+      "runtime_enforcement_point": "Recovery validator shared at selected consumers; blanket pipeline consistency still unproven",
+      "effective_configuration": "Diagnosis cadence documented as15min current registry; independent host watchdog retained",
+      "trust_boundary": "Symptoms -> incident episode -> bounded action -> business recovery",
+      "failure_action": "Policy refusals data; budget-independent enrollment and notification correctness need C2/C3 proof",
+      "compatibility_migration": "State enum changes require versioned consumers; old terminal-state fallbacks must be tested",
+      "status": "partial",
+      "proof": "CODE + existing recovery tests; no automatic trigger canary run by this agent",
+      "all_static_reference_files": [
+        {
+          "file": "docs/architecture/n8n/N8N_CONTRACTS_DESIGN.md",
+          "lines": [
+            196
+          ]
+        },
+        {
+          "file": "docs/architecture/n8n/N8N_REFERENCE_ARCHITECTURE.md",
+          "lines": [
+            418,
+            475
+          ]
+        },
+        {
+          "file": "docs/ops/n8n_self_healing.md",
+          "lines": [
+            24,
+            107,
+            108
+          ]
+        },
+        {
+          "file": "docs/ops/self_heal_claude_fixer.md",
+          "lines": [
+            222,
+            428
+          ]
+        },
+        {
+          "file": "scripts/lib/n8n_self_heal.py",
+          "lines": [
+            15,
+            41,
+            273,
+            295,
+            335
+          ]
+        },
+        {
+          "file": "scripts/lib/recovery_validator.py",
+          "lines": [
+            1
+          ]
+        },
+        {
+          "file": "scripts/n8n_failure_diagnosis.py",
+          "lines": [
+            86,
+            780
+          ]
+        },
+        {
+          "file": "scripts/run_cio_hardening_ci.py",
+          "lines": [
+            4034
+          ]
+        },
+        {
+          "file": "scripts/self_heal_fixer.py",
+          "lines": [
+            656
+          ]
+        },
+        {
+          "file": "tests/test_architect_review_recovery_ownership_20261016.py",
+          "lines": [
+            3,
+            39
+          ]
+        },
+        {
+          "file": "tests/test_n8n_self_healing_20261016.py",
+          "lines": [
+            81,
+            190
+          ]
+        }
+      ]
+    },
+    {
+      "family": "Notification/outbox/ack",
+      "schema_ids": [
+        "CommsIntentReceipt@v1",
+        "N8nCommsIntentRoutes@v1",
+        "HostCommsIntentRoutes@v1",
+        "N8nCommsIntentConsumption@v1"
+      ],
+      "owning_file": "scripts/lib/n8n_fabric_store.py; scripts/lib/n8n_comms_intent_consumption.py",
+      "producer": "Relay intent or registered host intent producer",
+      "consumers": [
+        "n8n_comms_intent_consumer",
+        "n8n_incident_fanin",
+        "incident_notifier",
+        "host communications gateway/provider recorder",
+        "CC Communications"
+      ],
+      "transport_storage": "coordination ledger comms_intents/consumption/incidents; host notifier state; communications record",
+      "shape_validator": "seven exact fields at relay/gateway; configured route enum; claim CAS/lease",
+      "semantic_validator": "Dedupe by normalized subject; delivery status distinct queue/closed; generation counter exists but acked_keys lacks actor/time/gen",
+      "runtime_enforcement_point": "accept transaction; consume CAS; delivery_verdict currently accepts old acked_keys/old open notice",
+      "effective_configuration": "n8n3 fabric DIGEST routes;dedupe3600s;max30/hour;consumer3 attempts;lease600s;stale2h",
+      "trust_boundary": "n8n intent -> trusted host sender -> external provider",
+      "failure_action": "Unrouted/rate-limited refused; transient retries; TTL close after delivery can remove failure symptom without business-output proof",
+      "compatibility_migration": "No explicit request generation/TTL field version; adding to closed route requires relay+gateway+consumer coordinated migration",
+      "status": "partial",
+      "proof": "Baseline stale-ack assertion fails; no provider sends performed",
+      "all_static_reference_files": [
+        {
+          "file": "config/n8n_health_contracts.json",
+          "lines": [
+            29227,
+            29271
+          ]
+        },
+        {
+          "file": "config/n8n_run_allowlist.json",
+          "lines": [
+            477
+          ]
+        },
+        {
+          "file": "docs/architecture/n8n/N8N_CONTRACTS_DESIGN.md",
+          "lines": [
+            58,
+            674
+          ]
+        },
+        {
+          "file": "docs/ops/packets/hermes-learning-cutover-20261015/00_gate_check.py",
+          "lines": [
+            107
+          ]
+        },
+        {
+          "file": "docs/ops/packets/hermes-learning-cutover-20261015/README.md",
+          "lines": [
+            24
+          ]
+        },
+        {
+          "file": "docs/ops/packets/n8n-comms-intent-consumer-20261015/README.md",
+          "lines": [
+            53
+          ]
+        },
+        {
+          "file": "docs/ops/packets/n8n-comms-intent-consumer-20261015/health_contract_draft.json",
+          "lines": [
+            13
+          ]
+        },
+        {
+          "file": "scripts/n8n_comms_intent_consumer.py",
+          "lines": [
+            10,
+            55
+          ]
+        },
+        {
+          "file": "scripts/n8n_incident_fanin.py",
+          "lines": [
+            1305,
+            1317
+          ]
+        },
+        {
+          "file": "tests/test_check_n8n_workflow_framework.py",
+          "lines": [
+            379
+          ]
+        },
+        {
+          "file": "tests/test_comms_intent_consumer_live_20261017.py",
+          "lines": [
+            39
+          ]
+        },
+        {
+          "file": "tests/test_comms_intent_deliver_before_close_20261017.py",
+          "lines": [
+            7,
+            17,
+            39,
+            366
+          ]
+        },
+        {
+          "file": "tests/test_hermes_learning_prereqs_20261015.py",
+          "lines": [
+            49
+          ]
+        },
+        {
+          "file": "tests/test_n8n_comms_intent_consumer_20261015.py",
+          "lines": [
+            12,
+            36,
+            547
+          ]
+        }
+      ]
+    },
+    {
+      "family": "LLM bounded step",
+      "schema_ids": [
+        "LlmStepResult@v1",
+        "LlmStepAudit@v1",
+        "N8nLlmStepOutputSchemas@v1",
+        "N8nPromptTemplateSet@v1",
+        "N8nPromptTemplate@v1"
+      ],
+      "owning_file": "scripts/lib/bridge_llm_step.py; scripts/lib/cio_governed_model_bridge.py",
+      "producer": "Registered host caller -> bridge/v1/llm_step",
+      "consumers": [
+        "closed decision consumers",
+        "host action recheck",
+        "bridge audit",
+        "framework checker"
+      ],
+      "transport_storage": "loopback HTTP; llm_step_audit JSONL; consumption/reservation ledger",
+      "shape_validator": "closed output schema and narrowed enum; budget unknown keys rejected; top-level LLM request not closed",
+      "semantic_validator": "process/caller/template/schema binding; provenance-wrapped facts; output enum/behavior field checks",
+      "runtime_enforcement_point": "Bridge authentication policy may report not enforce; actual enabled transports need current host probe; no relay llm_step route",
+      "effective_configuration": "D10 n8n profile grok_oauth FAST ->chatgpt_oauth FAST ->deepseek FAST; high/low confidence PRO_THINK path; opt-in transport env host truth unverified",
+      "trust_boundary": "LLM untrusted text -> host recommendation; model never grants actions",
+      "failure_action": "Typed refusal/outage/cap; host_recheck_required=true is a declaration until each consumer actually rechecks",
+      "compatibility_migration": "Output decisions/enums change semantics and need major schema/migration; request extra fields cannot remain silently ignored in future exposed path",
+      "status": "partial",
+      "proof": "CODE; LLM/approval routes remain closed via relay; no paid/provider live probe",
+      "all_static_reference_files": [
+        {
+          "file": "config/schemas/n8n_llm_step_outputs.json",
+          "lines": [
+            4
+          ]
+        },
+        {
+          "file": "docs/architecture/n8n/N8N_CONTRACTS_DESIGN.md",
+          "lines": [
+            60,
+            376,
+            673
+          ]
+        },
+        {
+          "file": "docs/architecture/n8n/N8N_DECISION_LEDGER.json",
+          "lines": [
+            166,
+            202
+          ]
+        },
+        {
+          "file": "docs/architecture/n8n/N8N_REFERENCE_ARCHITECTURE.md",
+          "lines": [
+            229,
+            488,
+            560
+          ]
+        },
+        {
+          "file": "docs/runbooks/BRIDGE_OAUTH_TRANSPORTS_ACTIVATION.md",
+          "lines": [
+            76,
+            108,
+            117,
+            126
+          ]
+        },
+        {
+          "file": "scripts/bridge_llm_step_probe.py",
+          "lines": [
+            7,
+            8
+          ]
+        },
+        {
+          "file": "scripts/lib/cio_governed_model_bridge.py",
+          "lines": [
+            3286,
+            3290
+          ]
+        },
+        {
+          "file": "tests/test_bridge_oauth_llm_step_20261014.py",
+          "lines": [
+            31,
+            679
+          ]
+        },
+        {
+          "file": "tests/test_check_n8n_workflow_framework.py",
+          "lines": [
+            377
+          ]
+        }
+      ]
+    },
+    {
+      "family": "Model job indirect host operation",
+      "schema_ids": [
+        "N8nModelJobReceipt@v1",
+        "N8nModelJobOutputSchemas@v1"
+      ],
+      "owning_file": "scripts/lib/n8n_model_job.py",
+      "producer": "Gateway model_job for STARTED event; registered host lane jobs",
+      "consumers": [
+        "gateway event transition",
+        "artifact receipt consumers",
+        "bridge caller=n8n_model_job"
+      ],
+      "transport_storage": "loopback governed bridge HTTP; bounded artifact reference; job receipt files",
+      "shape_validator": "closed MODEL_JOB_FIELDS+optional IDs; output schema validator",
+      "semantic_validator": "process task map, artifact resolution/hash/deadline; result must ARTIFACT_WRITTEN",
+      "runtime_enforcement_point": "gateway._model_job requires claimed project/event STARTED; not directly exposed by relay route",
+      "effective_configuration": "No general provider/model/key choice; routing policy ID server-resolved",
+      "trust_boundary": "event lifecycle -> bounded model call/artifact",
+      "failure_action": "Refusal data; receipt failure ->FAILED; no sender/spawn",
+      "compatibility_migration": "New optional job field needs old closed-reader compatibility testing",
+      "status": "unproven",
+      "proof": "CODE path exists; current behavioral suite for this specific model-job path was not executed by this sub-agent; no production enabled/proven claim.",
+      "all_static_reference_files": [
+        {
+          "file": "AGENTS.md",
+          "lines": [
+            4535,
+            4612,
+            5297
+          ]
+        },
+        {
+          "file": "config/ci_shard_duration_hints.json",
+          "lines": [
+            539,
+            540
+          ]
+        },
+        {
+          "file": "config/llm_process_registry.json",
+          "lines": [
+            1329,
+            1353,
+            1369,
+            1393,
+            1409
+          ]
+        },
+        {
+          "file": "config/n8n_health_contracts.json",
+          "lines": [
+            10532
+          ]
+        },
+        {
+          "file": "config/n8n_prompt_templates.json",
+          "lines": [
+            4
+          ]
+        },
+        {
+          "file": "config/n8n_run_allowlist.json",
+          "lines": [
+            192,
+            361
+          ]
+        },
+        {
+          "file": "config/schemas/n8n_llm_step_outputs.json",
+          "lines": [
+            4
+          ]
+        },
+        {
+          "file": "config/schemas/n8n_model_job_outputs.json",
+          "lines": [
+            4
+          ]
+        },
+        {
+          "file": "docs/architecture/GOVERNED_MODEL_BRIDGE.md",
+          "lines": [
+            34,
+            38
+          ]
+        },
+        {
+          "file": "docs/architecture/n8n/N8N_CONTRACTS_DESIGN.md",
+          "lines": [
+            375,
+            379,
+            674
+          ]
+        },
+        {
+          "file": "docs/architecture/n8n/N8N_DECISION_LEDGER.json",
+          "lines": [
+            202
+          ]
+        },
+        {
+          "file": "docs/architecture/n8n/N8N_THREAT_MODEL.md",
+          "lines": [
+            130
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-maturity/LANE_TRANSITIVE_CAPABILITIES_20261015.json",
+          "lines": [
+            3620,
+            3623,
+            6117,
+            6122,
+            6124,
+            6392,
+            6395,
+            6512,
+            6515
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-maturity/N8N_CONFIGURATION.md",
+          "lines": [
+            129
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-maturity/N8N_MONITORING_AND_REMEDIATION_STANDARD.md",
+          "lines": [
+            396
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-parallel/09-live-audit-20261007.md",
+          "lines": [
+            123,
+            134,
+            259
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-parallel/11-target-state-blueprint-20261007.md",
+          "lines": [
+            31,
+            153
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-parallel/14-execution-week-20261008.md",
+          "lines": [
+            63,
+            75
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-parallel/18-ai-routing-architecture-20261008.md",
+          "lines": [
+            53,
+            65
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-parallel/audits/guardrail-audit-a-config-20261009.md",
+          "lines": [
+            7,
+            16,
+            39,
+            40,
+            41,
+            44,
+            48,
+            49,
+            51,
+            128,
+            285,
+            286,
+            287,
+            345,
+            346,
+            356,
+            361,
+            379
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-parallel/audits/guardrail-audit-b-code-20261009.md",
+          "lines": [
+            9,
+            62,
+            70,
+            72,
+            73,
+            80,
+            171,
+            177,
+            197,
+            199
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-parallel/audits/guardrail-audit-c-policy-n8n-20261009.md",
+          "lines": [
+            90,
+            118
+          ]
+        },
+        {
+          "file": "scripts/bridge_llm_step_probe.py",
+          "lines": [
+            27
+          ]
+        },
+        {
+          "file": "scripts/build_n8n_health_contracts.py",
+          "lines": [
+            748
+          ]
+        },
+        {
+          "file": "scripts/lib/bridge_agent_preconditions.py",
+          "lines": [
+            15,
+            16,
+            41,
+            46,
+            50
+          ]
+        },
+        {
+          "file": "scripts/lib/bridge_llm_step.py",
+          "lines": [
+            216
+          ]
+        },
+        {
+          "file": "scripts/lib/cio_governed_model_bridge.py",
+          "lines": [
+            74,
+            81
+          ]
+        },
+        {
+          "file": "scripts/lib/governed_process_routes.py",
+          "lines": [
+            8,
+            10
+          ]
+        },
+        {
+          "file": "scripts/lib/llm_bridge_route.py",
+          "lines": [
+            26
+          ]
+        },
+        {
+          "file": "scripts/lib/n8n_coordination_gateway.py",
+          "lines": [
+            216,
+            956,
+            960,
+            995,
+            997,
+            1033
+          ]
+        },
+        {
+          "file": "scripts/lib/n8n_failure_diagnosis.py",
+          "lines": [
+            8
+          ]
+        },
+        {
+          "file": "scripts/lib/n8n_model_job.py",
+          "lines": [
+            28,
+            39,
+            402,
+            439,
+            441
+          ]
+        },
+        {
+          "file": "scripts/n8n_failure_diagnosis.py",
+          "lines": [
+            12,
+            82,
+            98
+          ]
+        },
+        {
+          "file": "scripts/report_lane_governance_packet.py",
+          "lines": [
+            44,
+            275
+          ]
+        },
+        {
+          "file": "scripts/run_cio_hardening_ci.py",
+          "lines": [
+            3793,
+            3794,
+            4579,
+            4580
+          ]
+        },
+        {
+          "file": "tests/test_agents_policy_11_0_0_workflow_framework.py",
+          "lines": [
+            156
+          ]
+        },
+        {
+          "file": "tests/test_bridge_executor_hardening_20261009.py",
+          "lines": [
+            262
+          ]
+        },
+        {
+          "file": "tests/test_bridge_oauth_llm_step_20261014.py",
+          "lines": [
+            506,
+            639,
+            668
+          ]
+        },
+        {
+          "file": "tests/test_check_n8n_workflow_framework.py",
+          "lines": [
+            378
+          ]
+        },
+        {
+          "file": "tests/test_completion_119_shared_20261011.py",
+          "lines": [
+            34,
+            36
+          ]
+        },
+        {
+          "file": "tests/test_lane_governance_packet_20261008.py",
+          "lines": [
+            306
+          ]
+        },
+        {
+          "file": "tests/test_llm_routing_policy_20261008.py",
+          "lines": [
+            155
+          ]
+        },
+        {
+          "file": "tests/test_n8n_diagnosis_deepseek_route_20261015.py",
+          "lines": [
+            10,
+            46
+          ]
+        },
+        {
+          "file": "tests/test_n8n_executor_env_allowlist_20261009.py",
+          "lines": [
+            59
+          ]
+        },
+        {
+          "file": "tests/test_n8n_llm_remediation_20261010.py",
+          "lines": [
+            26,
+            698
+          ]
+        },
+        {
+          "file": "tests/test_n8n_model_job_20261007.py",
+          "lines": [
+            15
+          ]
+        },
+        {
+          "file": "tests/test_n8n_model_job_operation_20261007.py",
+          "lines": [
+            18,
+            142,
+            183,
+            185,
+            188
+          ]
+        },
+        {
+          "file": "tests/test_n8n_oauth_first_routing_20261015.py",
+          "lines": [
+            49,
+            427,
+            448,
+            497
+          ]
+        },
+        {
+          "file": "tests/test_ops_summary_model_job_live_wiring_20261008.py",
+          "lines": [
+            5,
+            67,
+            68,
+            69,
+            70,
+            124,
+            143,
+            187,
+            228,
+            235,
+            259
+          ]
+        }
+      ]
+    },
+    {
+      "family": "HITL approvals",
+      "schema_ids": [
+        "ApprovalPackage@v1",
+        "ApprovalRequest@v1 (proposed)",
+        "ApprovalDecision@v1 (proposed)"
+      ],
+      "owning_file": "scripts/lib/approval_package.py; docs/architecture/n8n/N8N_HITL_CONTRACT_SPEC.md",
+      "producer": "Host approval packages exist; new fabric approval service not built",
+      "consumers": [
+        "operator host decision surface",
+        "existing guard request path; no n8n approval executor consumer"
+      ],
+      "transport_storage": "Host approval ledger; fabric target storage proposed",
+      "shape_validator": "Existing package builder; proposed closed request/decision schemas",
+      "semantic_validator": "Target actor/audience/intent_hash/expiry/nonce/revocation/atomic single-use absent for fabric",
+      "runtime_enforcement_point": "No /approval/request relay/gateway handler; fail closed by unreachable route",
+      "effective_configuration": "Routes absent; no approval token fabricated",
+      "trust_boundary": "Intent request -> real operator authority",
+      "failure_action": "Unknown approval route404; n8n approved branch grants nothing",
+      "compatibility_migration": "Reuse approval_package and existing host authority verifier, not new grant ledger; new major semantics explicit",
+      "status": "proposed",
+      "proof": "CODE absence + spec; no active approval-fabric path to test",
+      "all_static_reference_files": [
+        {
+          "file": "AGENTS.md",
+          "lines": [
+            109,
+            1879
+          ]
+        },
+        {
+          "file": "config/backup_coverage_baseline.json",
+          "lines": [
+            17,
+            50
+          ]
+        },
+        {
+          "file": "config/backup_coverage_manifest.json",
+          "lines": [
+            331
+          ]
+        },
+        {
+          "file": "config/ci_shard_duration_hints.json",
+          "lines": [
+            90,
+            91
+          ]
+        },
+        {
+          "file": "config/data_source_authority.json",
+          "lines": [
+            1993,
+            1999,
+            2002,
+            2003,
+            2005,
+            2032
+          ]
+        },
+        {
+          "file": "config/lane_registry.json",
+          "lines": [
+            5572,
+            5578,
+            5580
+          ]
+        },
+        {
+          "file": "config/n8n_run_allowlist.json",
+          "lines": [
+            192
+          ]
+        },
+        {
+          "file": "docs/SOURCE_OF_TRUTH.md",
+          "lines": [
+            83,
+            161
+          ]
+        },
+        {
+          "file": "docs/architecture/cognitive_transformation_20260927/00_EXECUTIVE_PACKAGE.md",
+          "lines": [
+            228
+          ]
+        },
+        {
+          "file": "docs/architecture/cognitive_transformation_20260927/11_APPROVAL_PACKAGE.md",
+          "lines": [
+            50
+          ]
+        },
+        {
+          "file": "docs/architecture/cognitive_transformation_20260927/13_TELEGRAM_APPROVAL_GATE.md",
+          "lines": [
+            36,
+            71,
+            72
+          ]
+        },
+        {
+          "file": "docs/architecture/n8n/N8N_CONTRACTS_DESIGN.md",
+          "lines": [
+            61,
+            425,
+            678
+          ]
+        },
+        {
+          "file": "docs/contracts/ApprovalPackage_v1.md",
+          "lines": [
+            11,
+            12
+          ]
+        },
+        {
+          "file": "docs/implementation/backup/restore-drill-proposal-20261009.md",
+          "lines": [
+            122
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-maturity/02-six-workflow-architecture.md",
+          "lines": [
+            613
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-maturity/data/F_rationalization.json",
+          "lines": [
+            5270
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-maturity/data/cron_rows.json",
+          "lines": [
+            5979,
+            5981
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-maturity/data/scheduler_snapshot_20261009.json",
+          "lines": [
+            1636
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-parallel/00-fact-reconciliation.md",
+          "lines": [
+            34
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-parallel/01-disposition-and-pilots.md",
+          "lines": [
+            87
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-parallel/02-approval-receipts.md",
+          "lines": [
+            15,
+            19
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-parallel/06-findings-and-gateway.md",
+          "lines": [
+            22,
+            26
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-parallel/09-live-audit-20261007.md",
+          "lines": [
+            130,
+            195
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-parallel/10-eligibility-and-secrets-20261007.md",
+          "lines": [
+            62,
+            86
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-parallel/11-target-state-blueprint-20261007.md",
+          "lines": [
+            58
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-parallel/14-execution-week-20261008.md",
+          "lines": [
+            26
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-parallel/ledgers/fire-ledger.json",
+          "lines": [
+            111,
+            126
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-parallel/ledgers/lane-ledger.json",
+          "lines": [
+            7592,
+            7594,
+            7607
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-parallel/ledgers/pilot-candidates.json",
+          "lines": [
+            235,
+            237,
+            250
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-parallel/ledgers/schedule-census.json",
+          "lines": [
+            158,
+            165,
+            8280
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-parallel/ledgers/window_runtimes_20261007.json",
+          "lines": [
+            2678,
+            2692
+          ]
+        },
+        {
+          "file": "docs/implementation/n8n-parallel/ledgers/window_runtimes_20261007.md",
+          "lines": [
+            128
+          ]
+        },
+        {
+          "file": "docs/ops/COGX_WAVE1_APPROVAL_PACKAGE_2026-09-27.md",
+          "lines": [
+            95
+          ]
+        },
+        {
+          "file": "docs/ops/COGX_WAVE1_OPERATOR_RUNBOOK_2026-09-27.md",
+          "lines": [
+            125
+          ]
+        },
+        {
+          "file": "docs/ops/COGX_WAVE1_STATUS_2026-09-27.md",
+          "lines": [
+            21,
+            45
+          ]
+        },
+        {
+          "file": "docs/ops/COGX_WAVE2_APPROVAL_PACKAGE_2026-09-28.md",
+          "lines": [
+            7,
+            12
+          ]
+        },
+        {
+          "file": "scripts/approval_package_cli.py",
+          "lines": [
+            2,
+            26
+          ]
+        },
+        {
+          "file": "scripts/approval_package_reminder.py",
+          "lines": [
+            2,
+            30,
+            32,
+            81,
+            238,
+            240,
+            299
+          ]
+        },
+        {
+          "file": "scripts/approval_reminder_reconcile.py",
+          "lines": [
+            105
+          ]
+        },
+        {
+          "file": "scripts/cogx_post_deploy_validation.py",
+          "lines": [
+            33,
+            45
+          ]
+        },
+        {
+          "file": "scripts/conformance_gate.py",
+          "lines": [
+            38
+          ]
+        },
+        {
+          "file": "scripts/lesson_promotion_cli.py",
+          "lines": [
+            74
+          ]
+        },
+        {
+          "file": "scripts/lib/approval_board_projection.py",
+          "lines": [
+            4,
+            5,
+            65,
+            67
+          ]
+        },
+        {
+          "file": "scripts/lib/approval_package.py",
+          "lines": [
+            1,
+            7,
+            80
+          ]
+        },
+        {
+          "file": "scripts/lib/n8n_pilot_contracts.py",
+          "lines": [
+            130
+          ]
+        },
+        {
+          "file": "scripts/lib/n8n_pilot_observations.py",
+          "lines": [
+            174
+          ]
+        },
+        {
+          "file": "scripts/n8n_pilot_dispatch.py",
+          "lines": [
+            82
+          ]
+        },
+        {
+          "file": "scripts/report_platform_conformance.py",
+          "lines": [
+            217
+          ]
+        },
+        {
+          "file": "scripts/run_cio_hardening_ci.py",
+          "lines": [
+            1614,
+            1616
+          ]
+        },
+        {
+          "file": "scripts/supervisor_breach_detector.py",
+          "lines": [
+            558
+          ]
+        },
+        {
+          "file": "scripts/telegram_callback_handler.py",
+          "lines": [
+            213,
+            215
+          ]
+        },
+        {
+          "file": "tests/test_agents_policy_5_1_0_notification_intents.py",
+          "lines": [
+            270
+          ]
+        },
+        {
+          "file": "tests/test_alarm_fires_reminder_and_supervisor_20260928.py",
+          "lines": [
+            3,
+            19,
+            20,
+            24
+          ]
+        },
+        {
+          "file": "tests/test_approval_board_20261008.py",
+          "lines": [
+            57
+          ]
+        },
+        {
+          "file": "tests/test_approval_package_ledger.py",
+          "lines": [
+            14,
+            93
+          ]
+        },
+        {
+          "file": "tests/test_approval_package_reminder.py",
+          "lines": [
+            12,
+            13
+          ]
+        },
+        {
+          "file": "tests/test_approval_reminder_receipt_20261007.py",
+          "lines": [
+            11,
+            26,
+            28,
+            56,
+            81
+          ]
+        },
+        {
+          "file": "tests/test_approval_reminder_reconcile_lane_20261007.py",
+          "lines": [
+            19,
+            27
+          ]
+        },
+        {
+          "file": "tests/test_check_n8n_workflow_framework.py",
+          "lines": [
+            386
+          ]
+        },
+        {
+          "file": "tests/test_n8n_coordination_gateway_20261007.py",
+          "lines": [
+            242
+          ]
+        },
+        {
+          "file": "tests/test_n8n_coordination_projection_20261007.py",
+          "lines": [
+            27
+          ]
+        },
+        {
+          "file": "tests/test_n8n_gateway_concurrency_20261008.py",
+          "lines": [
+            99
+          ]
+        },
+        {
+          "file": "tests/test_n8n_gateway_durable_20261007.py",
+          "lines": [
+            53,
+            102
+          ]
+        },
+        {
+          "file": "tests/test_n8n_phase1_dispatch_20261007.py",
+          "lines": [
+            57
+          ]
+        },
+        {
+          "file": "tests/test_n8n_pilot_contracts_20261007.py",
+          "lines": [
+            116,
+            123,
+            162
+          ]
+        },
+        {
+          "file": "tests/test_n8n_pilot_observations_20261007.py",
+          "lines": [
+            102
+          ]
+        },
+        {
+          "file": "tests/test_notification_intents_20261010.py",
+          "lines": [
+            201,
+            202,
+            203,
+            279
+          ]
+        },
+        {
+          "file": "tests/test_report_lane_fire_ledger_20261007.py",
+          "lines": [
+            17,
+            18,
+            20
+          ]
+        }
+      ]
+    },
+    {
+      "family": "Registry/allowlist/retry configuration",
+      "schema_ids": [
+        "LaneRegistry@v1",
+        "N8nRunAllowlist@v1",
+        "N8nRetryPolicies@v1",
+        "N8nExecutorConfig@v1",
+        "N8nFabricProcesses@v1"
+      ],
+      "owning_file": "config/lane_registry.json; config/n8n_run_allowlist.json; scripts/lib/n8n_policy_reload.py",
+      "producer": "Reviewed config PR -> canonical release",
+      "consumers": [
+        "relay",
+        "gateway",
+        "executor",
+        "due",
+        "process keys",
+        "framework checker",
+        "lane registry/route CI",
+        "cutover tools"
+      ],
+      "transport_storage": "Git config; stat-cache reload; process-env live set",
+      "shape_validator": "validate_entry/allowlist loader/lane_dispatch/JSON config loaders",
+      "semantic_validator": "stage clamp, never-list, llm route binding; one retry owner per namespace",
+      "runtime_enforcement_point": "Allowlist reloaded per request/claim; startup env live lists/bearers require restart; registry/health/effect owner agreement not one unified live attestation",
+      "effective_configuration": "645 registry lanes;116allowlist;104report-env/12enforce-env;maxworkers config8 (runtime opt-in unknown)",
+      "trust_boundary": "Code/config intent -> effective authority",
+      "failure_action": "Unreadable allowlist fail-empty; some executor config invalid keys default with warning; output config candidate fail closed for opted lanes",
+      "compatibility_migration": "Closed schemas and semantic versioned rollout required; old optional blanket compatibility statement must be removed",
+      "status": "partial",
+      "proof": "CODE + config counters; no credential/env reads",
+      "all_static_reference_files": [
+        {
+          "file": "docs/architecture/n8n/N8N_DECISION_LEDGER.json",
+          "lines": [
+            94
+          ]
+        },
+        {
+          "file": "scripts/check_lane_registry.py",
+          "lines": [
+            172
+          ]
+        },
+        {
+          "file": "scripts/lib/n8n_coordination_ledger.py",
+          "lines": [
+            33
+          ]
+        },
+        {
+          "file": "scripts/lib/n8n_dispatch_registry_checks.py",
+          "lines": [
+            7,
+            37,
+            40
+          ]
+        },
+        {
+          "file": "scripts/lib/n8n_due.py",
+          "lines": [
+            6,
+            33,
+            117,
+            122
+          ]
+        },
+        {
+          "file": "scripts/lib/n8n_momentum_lifecycle.py",
+          "lines": [
+            23
+          ]
+        },
+        {
+          "file": "scripts/n8n_coordination_gateway.py",
+          "lines": [
+            47
+          ]
+        },
+        {
+          "file": "scripts/n8n_run_executor.py",
+          "lines": [
+            37,
+            125,
+            1342
+          ]
+        },
+        {
+          "file": "tests/test_comms_intent_consumer_live_20261017.py",
+          "lines": [
+            44
+          ]
+        },
+        {
+          "file": "tests/test_dispatch_shadow_wave3_r1_20261010.py",
+          "lines": [
+            45
+          ]
+        },
+        {
+          "file": "tests/test_momentum_admission_20261013.py",
+          "lines": [
+            15
+          ]
+        },
+        {
+          "file": "tests/test_n8n_audit_findings_20261015.py",
+          "lines": [
+            48
+          ]
+        },
+        {
+          "file": "tests/test_n8n_consolidation_cohort1_20261016.py",
+          "lines": [
+            29
+          ]
+        },
+        {
+          "file": "tests/test_n8n_consolidation_cohort2_20261016.py",
+          "lines": [
+            38
+          ]
+        },
+        {
+          "file": "tests/test_n8n_dry_run_live_invariant_20261016.py",
+          "lines": [
+            19
+          ]
+        },
+        {
+          "file": "tests/test_n8n_executor_env_allowlist_20261009.py",
+          "lines": [
+            26,
+            69
+          ]
+        },
+        {
+          "file": "tests/test_n8n_fabric_run_outcome_20261014.py",
+          "lines": [
+            36
+          ]
+        },
+        {
+          "file": "tests/test_n8n_maturity_b5_followups_20261009.py",
+          "lines": [
+            39
+          ]
+        },
+        {
+          "file": "tests/test_n8n_maturity_due_20261009.py",
+          "lines": [
+            19
+          ]
+        },
+        {
+          "file": "tests/test_n8n_maturity_executor_v2_20261009.py",
+          "lines": [
+            29,
+            30
+          ]
+        },
+        {
+          "file": "tests/test_n8n_maturity_gateway_due_20261009.py",
+          "lines": [
+            23
+          ]
+        },
+        {
+          "file": "tests/test_n8n_maturity_registry_reconcile_20261009.py",
+          "lines": [
+            137
+          ]
+        },
+        {
+          "file": "tests/test_n8n_maturity_retry_dlq_20261009.py",
+          "lines": [
+            20
+          ]
+        },
+        {
+          "file": "tests/test_n8n_momentum_lifecycle_20261012.py",
+          "lines": [
+            1471
+          ]
+        },
+        {
+          "file": "tests/test_r1_shadow_shape_20261010.py",
+          "lines": [
+            48
+          ]
+        },
+        {
+          "file": "tests/test_sw4_shadow_wave4_20261011.py",
+          "lines": [
+            45
+          ]
+        },
+        {
+          "file": "tests/test_w4_provider_owners_shadow_20261011.py",
+          "lines": [
+            45
+          ]
+        },
+        {
+          "file": "tests/test_w5_event_consumers_20261011.py",
+          "lines": [
+            38
+          ]
+        }
+      ]
+    },
+    {
+      "family": "Cutover journal/rollback",
+      "schema_ids": [
+        "CutoverReceipt@v1",
+        "NightlyCutoverPlan@v1",
+        "NightlyCutoverTxn@v1",
+        "NightlyCutoverQuota@v1",
+        "NightlyCutoverRollback@v1",
+        "NightlyCutoverCronEdit@v1"
+      ],
+      "owning_file": "scripts/lib/nightly_cutover.py; scripts/lib/nightly_cutover_txn.py; scripts/nightly_cutover_controller.py",
+      "producer": "Shared cutover controller/manual scripts",
+      "consumers": [
+        "nightly_cutover_cron_edit",
+        "registry/health reconciliation",
+        "cutover checklist/outcome reports",
+        "quota recovery/replay",
+        "rollback tool"
+      ],
+      "transport_storage": "Exact scheduler before-images, journal intent/done, atomic JSON; owner/effect SQLite separate",
+      "shape_validator": "plan config schema; exact line edit CAS/journal states",
+      "semantic_validator": "existing qualifying useful runs/downstream/P1 sessions/holds/drain; controller lacks unified framework gate and campaign48h eligibility record",
+      "runtime_enforcement_point": "apply with guard and controller lock; crash reconcile exists; filesystem/DB agreement still needs full epoch fencing audit",
+      "effective_configuration": "Comment-only cron path exists; grants must name exact lanes/config; controller policy12.1 remains proposed unless current independent evidence ratifies",
+      "trust_boundary": "Scheduler+filesystem+owner change -> next admitted effect",
+      "failure_action": "Partial state held/reconciled/rollback; unknown claims not safe to expire; monotonic rollback epoch must be proved",
+      "compatibility_migration": "Extend existing CutoverReceipt/state; avoid independent verdict engine",
+      "status": "partial",
+      "proof": "CODE; no scheduler mutations made; C5 race/crash/rollback proof not established",
+      "all_static_reference_files": [
+        {
+          "file": "config/lane_registry.json",
+          "lines": [
+            16484,
+            16492,
+            16495,
+            16496
+          ]
+        },
+        {
+          "file": "config/n8n_run_allowlist.json",
+          "lines": [
+            3818,
+            3819,
+            3822,
+            3824,
+            3834
+          ]
+        },
+        {
+          "file": "config/nightly_cutover_controller.json",
+          "lines": [
+            3,
+            11
+          ]
+        },
+        {
+          "file": "docs/ops/packets/cutover-fail-closed-txn-20261016/README.md",
+          "lines": [
+            68
+          ]
+        },
+        {
+          "file": "docs/ops/packets/nightly-cutover-controller-20261016/README.md",
+          "lines": [
+            14,
+            16,
+            17,
+            20,
+            66,
+            67,
+            68,
+            75
+          ]
+        },
+        {
+          "file": "scripts/lib/cutover_lane_facts.py",
+          "lines": [
+            2,
+            21
+          ]
+        },
+        {
+          "file": "scripts/lib/effect_claim.py",
+          "lines": [
+            657
+          ]
+        },
+        {
+          "file": "scripts/lib/nightly_cutover.py",
+          "lines": [
+            1,
+            8,
+            48,
+            81,
+            202,
+            376
+          ]
+        },
+        {
+          "file": "scripts/lib/nightly_cutover_txn.py",
+          "lines": [
+            1,
+            16,
+            35
+          ]
+        },
+        {
+          "file": "scripts/n8n_cutover_wave.py",
+          "lines": [
+            685,
+            687,
+            702
+          ]
+        },
+        {
+          "file": "scripts/nightly_cutover_controller.py",
+          "lines": [
+            2,
+            7,
+            9,
+            10,
+            11,
+            13,
+            15,
+            31,
+            64,
+            65,
+            73,
+            79,
+            159,
+            176,
+            399,
+            686
+          ]
+        },
+        {
+          "file": "scripts/nightly_cutover_cron_edit.py",
+          "lines": [
+            2,
+            18
+          ]
+        },
+        {
+          "file": "scripts/run_cio_hardening_ci.py",
+          "lines": [
+            4010,
+            4014,
+            4016
+          ]
+        },
+        {
+          "file": "tests/test_architect_review_recovery_ownership_20261016.py",
+          "lines": [
+            12,
+            35,
+            38,
+            41,
+            42
+          ]
+        },
+        {
+          "file": "tests/test_cutover_fail_closed_txn_20261016.py",
+          "lines": [
+            38,
+            39,
+            41,
+            42,
+            290
+          ]
+        },
+        {
+          "file": "tests/test_nightly_cutover_controller_20261016.py",
+          "lines": [
+            27,
+            28,
+            29,
+            33,
+            406,
+            426,
+            601,
+            625,
+            789
+          ]
+        }
+      ]
+    },
+    {
+      "family": "Daily drift attestation/retirement eligibility",
+      "schema_ids": [
+        "N8nWorkflowDriftReceipt@v1",
+        "N8nFrameworkRuntimeEvidence@v1",
+        "Retirement eligibility record (required extension)"
+      ],
+      "owning_file": "scripts/check_n8n_workflow_drift.py; existing nightly_cutover receipt owner",
+      "producer": "Host drift checker; campaign evidence collector not implemented in baseline",
+      "consumers": [
+        "fan-in",
+        "framework reporting",
+        "operator",
+        "retirement report"
+      ],
+      "transport_storage": "Read-only live workflow export/host receipts; report artifacts",
+      "shape_validator": "Graph hash comparison; runtime evidence label shape",
+      "semantic_validator": "No complete baseline48h AND natural2cycles AND strongerpolicy continuous coverage/deletion_disabled collector found",
+      "runtime_enforcement_point": "Drift checker exists; scheduled independent host-attested comprehensive snapshot unproven; eligibility extension required",
+      "effective_configuration": "Legacy retention must remain comment-only; deletion_execution_enabled=false always",
+      "trust_boundary": "Host attestation -> orchestration health/retirement flag",
+      "failure_action": "Missing/contradictory snapshots must unavailable/hold; eligibility must never delete",
+      "compatibility_migration": "Extend CutoverReceipt and current diary; relevant code/config/owner/schedule change resets affected soak",
+      "status": "unproven",
+      "proof": "Source search baseline; actual elapsed observation0 qualifying hours established by this audit"
+    },
+    {
+      "family": "Repair job and acceptance",
+      "schema_ids": [
+        "SelfHealFixJob@v1",
+        "SelfHealFixEvidence@v1",
+        "SelfHealFixerState@v1",
+        "SelfHealLocalAcceptance@v1",
+        "SelfHealPrHeadAcceptance@v1",
+        "SelfHealAcceptance@v1",
+        "SelfHealShipCheck@v1",
+        "SelfHealRepairMemory@v1"
+      ],
+      "owning_file": "scripts/lib/self_heal_fixer.py; scripts/lib/self_heal_fix_evaluator.py",
+      "producer": "Host qualified Claude CLI sandbox worker; deterministic evaluator",
+      "consumers": [
+        "self_heal_fixer CLI",
+        "fixer claims/reservations",
+        "CI/PR/release handoff",
+        "recovery validator",
+        "shadow feedback router"
+      ],
+      "transport_storage": "Job state/artifacts; claims cost reservation ledger; Git worktree/PR identities",
+      "shape_validator": "job transitions, qualification config, diff/tool/sandbox admission; evaluator separate from model",
+      "semantic_validator": "Baseline required-CI list/candidate binding/cost/deadline gaps are independent-agent workstream; qualification remains runtime unproven",
+      "runtime_enforcement_point": "Arming requires authentic host grant+policy; unattended worker remains disarmed until current acceptance bar",
+      "effective_configuration": "Claude enabled/qualified declaration includes mocked suite only first live job pending; Codex alternative unqualified",
+      "trust_boundary": "Untrusted repair proposal -> trusted harness/CI/release -> business output",
+      "failure_action": "Rejected/unknown costs must stay visible; deployment cannot equal healed",
+      "compatibility_migration": "Exact-full-SHA mandatory named checks and immutable identical red/green pair must be versioned; no silent empty required-check acceptance",
+      "status": "partial",
+      "proof": "CODE; no autonomous repair live qualification by this audit",
+      "all_static_reference_files": [
+        {
+          "file": "config/lane_registry.json",
+          "lines": [
+            7803,
+            7804,
+            7812,
+            7815,
+            7816
+          ]
+        },
+        {
+          "file": "config/self_heal_fixer.json",
+          "lines": [
+            3,
+            13,
+            19,
+            58,
+            130,
+            183,
+            184,
+            185,
+            187,
+            189,
+            190,
+            266,
+            267,
+            268,
+            269,
+            270,
+            271,
+            272,
+            278,
+            300
+          ]
+        },
+        {
+          "file": "docs/ops/self_heal_claude_fixer.md",
+          "lines": [
+            25,
+            26,
+            28,
+            31,
+            32,
+            138,
+            150,
+            158,
+            186,
+            196,
+            201,
+            204,
+            221,
+            226,
+            251,
+            329,
+            337,
+            338,
+            362,
+            363,
+            424
+          ]
+        },
+        {
+          "file": "scripts/lib/recovery_validator.py",
+          "lines": [
+            14
+          ]
+        },
+        {
+          "file": "scripts/lib/self_heal_fixer.py",
+          "lines": [
+            7
+          ]
+        },
+        {
+          "file": "scripts/run_cio_hardening_ci.py",
+          "lines": [
+            96,
+            103,
+            109
+          ]
+        },
+        {
+          "file": "scripts/self_heal_fixer.py",
+          "lines": [
+            2,
+            6,
+            9,
+            10,
+            12,
+            13,
+            46,
+            47,
+            49,
+            662,
+            664,
+            827,
+            840
+          ]
+        },
+        {
+          "file": "tests/test_self_heal_fixer_20261016.py",
+          "lines": [
+            32,
+            33,
+            35,
+            36,
+            177,
+            757
+          ]
+        },
+        {
+          "file": "tests/test_self_heal_fixer_hardening_20261016.py",
+          "lines": [
+            35,
+            36,
+            37,
+            38,
+            647,
+            793,
+            821,
+            822
+          ]
+        }
+      ]
+    }
+  ]
+}
