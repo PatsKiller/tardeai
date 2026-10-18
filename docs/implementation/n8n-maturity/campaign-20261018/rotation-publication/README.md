@@ -1,8 +1,8 @@
 # Rotation digest root cause and publication contract
 
 Status: DRAFT
-as_of: 2026-10-18T23:08:01.939604+00:00
-Measured at: source 6d1e43043d1c23c48503fa11ccbda4669604b2e2; production a2aef7b4d2de17e737526337a2ffc37848deda4f
+as_of: 2026-10-18T23:46:54.455206+00:00
+Measured at: reviewed source 6d1e43043d1c23c48503fa11ccbda4669604b2e2; formatter d6a0cd19695ca87de17a015f1d07298484fe5ad2; merged main b52a1f2fa2f929e9b72d9133b98cf2610ffb9264; production last reported a2aef7b4d2de17e737526337a2ffc37848deda4f (no new runtime probe)
 
 The retained October 18 cache contains SCHG→DNP, PFLT→DNP and NOC→DNP twice each.
 The API expands repeated endorsed target rows into proposals; the digest then
@@ -52,3 +52,27 @@ acceptance. Underlying research/card/LLM provenance beyond these scoped clocks,
 actual Telegram delivery and restored useful business output remain unproven.
 No learning, digest, broker refresh, notification or research effect was rerun
 for proof. Production remains on a2aef7b4d after the rejected 7af release rollback.
+
+The canonical full native attempt at `ffedd42f89e02a1c2571288e61692584f284aee3`
+completed with exit 1. Its sole failing test was
+`test_api_v2_ruff_quality_corrections.py::test_ruff_format_check_clean_on_api_v2`;
+all other native gates passed. The complete failed log is retained byte for byte
+in `formatter-ffedd-native-failed.log.gz`, with its uncompressed digest and length
+in the artifact manifest. This failed attempt is not qualifying green evidence.
+
+The correction at `d6a0cd19695ca87de17a015f1d07298484fe5ad2` applies pinned
+Ruff 0.16.2 formatting to the API only. The complete module AST is identical
+before and after. Root independently approved that formatting delta. Its 70
+focused tests passed, followed by ten exact-head quality and unchanged external
+controls; the source and test bytes are bound in the retained author packet.
+
+The branch then merged refreshed main
+`b52a1f2fa2f929e9b72d9133b98cf2610ffb9264` through normal merge
+`aac81511523bde48e5f0a99e055748de829359d1`. Rotation producer, digest, shared
+validator and native test source remain byte-identical to the reviewed formatter
+head. Both the rotation and main evidence gate registrations remain present.
+The final frozen integration head requires its own canonical full native result;
+no result is inferred from the failed earlier attempt or the focused checks.
+Its exact commit and acceptance receipt are recorded in the integration review
+packet after execution. Hosted CI, release, paired-reader compatibility and
+business-output acceptance remain separate outstanding gates.
