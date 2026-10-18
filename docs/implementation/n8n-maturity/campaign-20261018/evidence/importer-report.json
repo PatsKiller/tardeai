@@ -1,0 +1,62 @@
+{
+  "schema": "CampaignIndependentReview@v1",
+  "campaign_id": "n8n-maturity-20261018",
+  "subject": "mandatory importer gate and unavailable-source report v2",
+  "head": "2ef33bc5e154b851e76eb67e1844ee0ed2085cc5",
+  "worktree": "/home/johnclaw/tradeai-wt-n8n-maturity-campaign-20261018",
+  "reviewer": "contracts_routes (other author)",
+  "mode": "READ_ONLY_REVIEW",
+  "verdict": "REQUEST_CHANGES_REPORT_FALSE_GREEN",
+  "production_activation_approved": false,
+  "favorable_scope": [
+    "Every statically eligible CLI import now executes shared framework activation gate without opt-in; legacy --framework-gate activation remains accepted and no disable flag added",
+    "Static refusals still fail and gate errors return cannot-run; original read-only static check_paths remains a documented helper, no other tracked production consumers found",
+    "v2 marks summary cron/live/communications counts unavailable with null, migration ownership lanes UNAVAILABLE, output snapshot explicitly continuous:false and authenticated:false",
+    "New report comparator supports oldv1 and newv2 and refuses unsupported major; report consumer census found comparator/render/write_packet only",
+    "Architecture docs clearly distinguish historical matrix from local fixes/deployed proof and record remaining activation/provenance holds"
+  ],
+  "blocking_findings": [
+    {
+      "id": "REPORT-FABRIC-01",
+      "severity": "P1",
+      "title": "Unavailable scheduler still certifies fully_n8n_owned process",
+      "file": "scripts/report_n8n_cutover_outcomes.py",
+      "function": "fabric_process_ownership / build",
+      "proof": "With unavailable crontab/live authority/coordination ledger plus fixture live receipts, process fully_n8n_owned true because empty cron_active_lanes is interpreted as no legacy runners; unavailable lane status is ignored",
+      "required_change": "Propagate source availability into process ownership; unknown source produces null/UNAVAILABLE plus reason, never ownership success"
+    },
+    {
+      "id": "REPORT-REMAINING-02",
+      "severity": "P2",
+      "title": "Unavailable ownership eliminates cohorts and displays zero remaining work",
+      "file": "scripts/report_n8n_cutover_outcomes.py",
+      "function": "burn_down / build / render",
+      "proof": "UNAVAILABLE lanes are excluded from all remaining cohorts, so remaining_lanes_excluding_holds=0 despite unavailable observation",
+      "required_change": "Set remaining total/cohorts unavailable or retain unknown inventory distinctly; render explicit UNAVAILABLE rather than zero"
+    }
+  ],
+  "minor_findings": [
+    "Importer module docstring still claims opt-in/off-by-default at lines22-26; update with mandatory CLI behavior"
+  ],
+  "tests": [
+    {
+      "result": "80 passed in 2.62s",
+      "evidence": "importer-report-focused.txt"
+    },
+    {
+      "result": "2 expected assertion failures and1 positive renderability/noncontinuous control pass in0.15s",
+      "evidence": "importer-report-independent.txt",
+      "test": "test_importer_report_independent.py"
+    }
+  ],
+  "scope_limits": [
+    "Shared framework v1 evidence/exceptions still self-described truthy references, no authenticated host attestation; actual activation/publish/raw admin boundaries remain held and are not certified by this importer wiring",
+    "No report output used as operational or retirement acceptance; no natural observation or workflow mutation"
+  ],
+  "evidence_digests": {
+    "importer-report-session.json": "42513db87287766e974892102b29bc48582ce5c629d58746ff9356be2d0974fa",
+    "importer-report-focused.txt": "c801746445fec61b42c21446f29a6fc4fa71b4f1aaaaedb09ed7834ce0c5fa3b",
+    "importer-report-independent.txt": "5d8803ec3a91996f7c7f95b97b5d0b0a67d13536c74e802d506e389945975168",
+    "test_importer_report_independent.py": "b03de6c1698039234714b8bc56d7f0013d67b333f54e2f19d617e78afbae5f75"
+  }
+}
