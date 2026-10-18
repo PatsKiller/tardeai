@@ -1,0 +1,33 @@
+# Preserve the held Hermes feedback stage
+
+The sixth Hermes learning stage has no qualifying live output or downstream
+consumption proof. This change restores its source configuration to shadow with
+`live_arg: null`, matching the active hold. The registered queue-only adapter
+remains available for a later reviewed cutover; its existence is not activation.
+All other lane rows and top-level configuration metadata remain unchanged.
+
+The original actual admission-to-executor test fails twice on 7af14c7782cf7ab0cba261cc25e6789fe810b092
+and passes unchanged on 969e9820c3f85f61a63dc394c01f69492ff82f98. The requested live run is
+clamped to dry mode, spawns only the dry command and creates no effect claim.
+Author validation passed 161 tests; independent validation passed 114 tests.
+Three older tests assumed every runnable stage was enabled. Their original
+failures are retained, followed by precise feedback-held assertions while all
+five other stages keep their enabled expectations. The new behavioral suite is
+registered in the canonical CIO CI runner.
+
+Production was restored to a2aef7b4d2de17e737526337a2ffc37848deda4f after PR #1854's release
+failed its config acceptance check. The upstream config delta came from PR
+#1849, not #1850. The prepared 7af artifact stays rejected and immutable; this
+source change requires reviewed CI, merge and a fresh canonical preparation.
+No workflow, scheduler, runtime live list or owner was changed here.
+
+The separate 7af claim-to-spawn fencing defect remains open; the retained failing
+reproduction is not closed by this config hold. The sixth stage remains held
+for output, input lineage, downstream consumption and transactional cutover
+proof. No live learning or notification was repeated for evidence.
+
+XML artifacts use deterministic gzip to preserve their original bytes, including
+historical assertion failures, without adding trailing whitespace to Git. The
+manifest records compressed and original digests and original byte lengths.
+Native acceptance and exact-head hosted CI are separate requirements recorded
+in the PR; these documents do not claim deployment or business recovery.

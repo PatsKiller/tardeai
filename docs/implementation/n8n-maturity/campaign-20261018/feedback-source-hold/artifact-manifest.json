@@ -1,0 +1,66 @@
+{
+  "schema": "CampaignArtifactManifest@v1",
+  "source_head": "969e9820c3f85f61a63dc394c01f69492ff82f98",
+  "files": {
+    "source-manifest.json": {
+      "sha256": "545b8c70f39adf6e028fb5e41424db8888a34208259da4bc6b0586f1d0d06af5",
+      "original_sha256": "545b8c70f39adf6e028fb5e41424db8888a34208259da4bc6b0586f1d0d06af5",
+      "original_bytes": 7648,
+      "encoding": "identity"
+    },
+    "independent-source-review.json": {
+      "sha256": "f4f47f74a81c83dd6823a493820c3c8646df1ea7bbdc6b4d413e1f055e4f667c",
+      "original_sha256": "f4f47f74a81c83dd6823a493820c3c8646df1ea7bbdc6b4d413e1f055e4f667c",
+      "original_bytes": 1946,
+      "encoding": "identity"
+    },
+    "scope-verification.json": {
+      "sha256": "753b5d962423ef04862dc838fea48b71440bd1e25a8381f015e550575aa97bc5",
+      "original_sha256": "753b5d962423ef04862dc838fea48b71440bd1e25a8381f015e550575aa97bc5",
+      "original_bytes": 35489,
+      "encoding": "identity"
+    },
+    "baseline-red.xml.gz": {
+      "sha256": "6a071fb26bca7a035524f7337a29a89fce887af23f30abfe196711d2f5d6c3fd",
+      "original_sha256": "97d9d7307e8e7760c8a6f051b70344c0e2e5309c782878953d025dbf350651d8",
+      "original_bytes": 5040,
+      "encoding": "gzip"
+    },
+    "candidate-green.xml.gz": {
+      "sha256": "7468e53b6d97622581ef366aadb1104a818b3c94e75a5e6bb31363db59bd0867",
+      "original_sha256": "babd1551818b23927d48a2c2f358c0f4e1d1857cc45b2e8e5838c717557ff59b",
+      "original_bytes": 572,
+      "encoding": "gzip"
+    },
+    "author-regressions.xml.gz": {
+      "sha256": "64043655d38e1178755d4ef634350c605e472f74a2feb36e6c48c55df6cfc6aa",
+      "original_sha256": "2f2028fac1bdafdb391197e6a4bbea1e8f8c85befbc587a8904db2cef482a752",
+      "original_bytes": 26123,
+      "encoding": "gzip"
+    },
+    "independent-regressions.xml.gz": {
+      "sha256": "b2cb6b73079627dae297db337fbf8061605e31086a85d1360e481ae8711fe6f2",
+      "original_sha256": "2b0754c982a04b05ca133b6f05c3344052d527e01f398aa44bc492cc4ac303cb",
+      "original_bytes": 18817,
+      "encoding": "gzip"
+    },
+    "superseded-test-assumption-failures.xml.gz": {
+      "sha256": "9adf321fd990e732058f8305533bdf54feecdfa885067238b55f56014cfc7f25",
+      "original_sha256": "36b8f8ccaedfd006434fcc62f3c75a3564175cc9c470fe52924040edf1f99900",
+      "original_bytes": 29426,
+      "encoding": "gzip"
+    },
+    "source-audit.json": {
+      "sha256": "c0c8294f18701f02d04f65b535e5882be8eab77edc5bd62457e0a71d4ff14323",
+      "original_sha256": "c0c8294f18701f02d04f65b535e5882be8eab77edc5bd62457e0a71d4ff14323",
+      "original_bytes": 8645,
+      "encoding": "identity"
+    },
+    "feedback-fence-reproduction.xml.gz": {
+      "sha256": "6ce3fe347a740352a61e0268b1209523864535ab51b36d49536833246c124f52",
+      "original_sha256": "fca95c28d4b2bb993ef0fa5156f9bb0560321adba24ed2316bcb7689de496eb2",
+      "original_bytes": 2941,
+      "encoding": "gzip"
+    }
+  }
+}
