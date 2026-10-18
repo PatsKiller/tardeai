@@ -696,7 +696,8 @@ def _exec_live(gw, tmp_path, lane, rules, *, opt_in=True):
 
 
 def test_dd07_no_rule_is_unchanged(gw, tmp_path):
-    receipt = _exec_live(gw, tmp_path, None, {})
+    # A lane not migrated to output receipts preserves the historical no-rule behavior.
+    receipt = _exec_live(gw, tmp_path, None, {}, opt_in=False)
     assert receipt["state"] == "RUN_DONE" and receipt["output_verdict"] == {"verdict": "no_rule"}
 
 
@@ -798,7 +799,10 @@ def test_dd07_legitimate_noop_is_distinct_from_no_runner():
         "schema": "LaneRunReceipt@v2",
         "run_id": "r",
         "lane_id": "l",
+        "mode": "live",
         "status": "ok",
+        "finished_at": "2026-10-15T12:00:00+00:00",
+        "ok_at": "2026-10-15T12:00:00+00:00",
         "produced_count": 0,
         "attempted_count": 0,
         "skipped_reasons": {},

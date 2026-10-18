@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import math
 import re
+from datetime import datetime
 from typing import Any, Mapping
 
 EXPECTED_OUTPUT_SCHEMA = "N8nExpectedOutput@v1"
@@ -48,6 +49,8 @@ VERDICTS = (
 FAILING = {"empty_violation": "empty_output", "unverifiable": "output_unverifiable"}
 _REASON_RE = re.compile(r"^[a-z][a-z0-9_]{1,47}$")
 _FIELD_RE = re.compile(r"^[a-z][a-z0-9_]{1,47}$")
+# These states prove no useful execution. A contract cannot redefine them as valid empty work.
+NO_WORK_FAILURES = frozenset({"no_runner", "skipped_lock", "lock_skipped"})
 
 
 def _int(v: Any) -> bool:
@@ -56,6 +59,17 @@ def _int(v: Any) -> bool:
 
 def _reasons(v: Any) -> bool:
     return isinstance(v, list) and all(isinstance(r, str) and _REASON_RE.fullmatch(r) for r in v)
+
+
+def _timestamp(value: Any) -> float | None:
+    """Evidence times must be explicit, timezone-aware instants, never local-time guesses."""
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return parsed.timestamp() if parsed.tzinfo is not None else None
+    except (ValueError, OverflowError, OSError):
+        return None
 
 
 def validate_expected_output(eo: Any) -> list[str]:
@@ -100,7 +114,7 @@ def validate_expected_output(eo: Any) -> list[str]:
     if rule in ("empty_allowed", "per_window") and not (_reasons(allowed_empty) and allowed_empty):
         out.append(f"{rule} needs a non-empty empty_allowed_reasons list")
     if _reasons(allowed_empty) and _reasons(eo.get("fatal_skip_reasons")):
-        both = set(allowed_empty) & set(eo["fatal_skip_reasons"])
+        both = set(allowed_empty) & (set(eo["fatal_skip_reasons"]) | NO_WORK_FAILURES)
         if both:
             out.append(f"reasons both fatal and allowed: {sorted(both)}")
     ev = eo.get("evidence")
@@ -128,8 +142,16 @@ def evaluate(
     run_id: str,
     lane_id: str,
     mode: str,
+    attempt: int | None = None,
+    started_at: str | None = None,
+    finished_at: str | None = None,
+    code_sha: str | None = None,
 ) -> dict[str, Any]:
-    """The ``output_verdict`` block for one finished attempt (see the module table)."""
+    """One output verdict, with optional trusted executor context for attempt/freshness binding.
+
+    The executor always supplies its attempt number and execution window. A file's own timestamps do
+    not establish freshness; they must fall inside that independently recorded window.
+    """
     if rule is None:
         return {"verdict": "no_rule"}
     base: dict[str, Any] = {"rule": rule.get("rule"), "contract_id": lane_id}
@@ -160,12 +182,35 @@ def evaluate(
     base.update({"produced_count": produced, "attempted_count": attempted, "skipped_reasons": dict(skipped)})
     if doc.get("status") != "ok":
         return {**base, "verdict": "empty_violation", "why": "receipt_status_failed"}
+    fatal = sorted(r for r, c in skipped.items() if c > 0 and r in (set(rule["fatal_skip_reasons"]) | NO_WORK_FAILURES))
+    if fatal:
+        return {**base, "verdict": "empty_violation", "why": "fatal_skip", "fatal": fatal}
+    if doc.get("mode") != mode or doc.get("run_mode", mode) != mode:
+        return unverifiable("receipt_mode_mismatch")
+    if attempt is not None:
+        if not _int(attempt) or attempt < 1:
+            return unverifiable("executor_attempt_invalid")
+        if not _int(doc.get("attempt")) or doc["attempt"] != attempt:
+            return unverifiable("receipt_attempt_mismatch")
+        if doc.get("run_mode") != mode:
+            return unverifiable("receipt_mode_mismatch")
+    if code_sha and doc.get("code_sha") != code_sha:
+        return unverifiable("receipt_code_mismatch")
+    end, ok = _timestamp(doc.get("finished_at")), _timestamp(doc.get("ok_at"))
+    if end is None or ok is None or ok != end:
+        return unverifiable("receipt_time_invalid")
+    start = _timestamp(doc.get("started_at")) if doc.get("started_at") is not None else None
+    if doc.get("started_at") is not None and (start is None or start > end):
+        return unverifiable("receipt_time_invalid")
+    if started_at is not None or finished_at is not None:
+        lower, upper = _timestamp(started_at), _timestamp(finished_at)
+        if lower is None or upper is None or lower > upper:
+            return unverifiable("executor_time_invalid")
+        if not lower <= end <= upper or (start is not None and start < lower):
+            return unverifiable("receipt_outside_attempt_window")
     minimum = int(rule.get("min_produced") or 1)
     if produced >= minimum:
         return {**base, "verdict": "produced"}
-    fatal = sorted(r for r, c in skipped.items() if c > 0 and r in set(rule["fatal_skip_reasons"]))
-    if fatal:
-        return {**base, "verdict": "empty_violation", "why": "fatal_skip", "fatal": fatal}
     if rule["rule"] == "min_produced":
         return {**base, "verdict": "empty_violation", "why": "below_min_produced"}
     reason = doc.get("empty_reason")

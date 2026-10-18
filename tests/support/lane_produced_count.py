@@ -14,6 +14,7 @@ Hermetic: tmp state root, no DB, no network, no broker, no secret.
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -24,12 +25,14 @@ ROOT = Path(__file__).resolve().parents[2]
 CONTRACTS = X.parse_expected_outputs((ROOT / "config" / "n8n_health_contracts.json").read_bytes())
 ALLOW = {e["lane_id"]: e for e in json.loads((ROOT / "config" / "n8n_run_allowlist.json").read_text())["lanes"]}
 _SEQ = [0]
+_STARTS: dict[str, str] = {}
 
 
 def attempt_env(monkeypatch, tmp_path: Path, lane: str) -> str:
     """Set the attempt identity the executor hands a LIVE lane; returns the run id."""
     _SEQ[0] += 1
     run_id = f"d:{lane}:live:20261015T1200-{_SEQ[0]:04d}"
+    _STARTS[run_id] = datetime.now(timezone.utc).isoformat()
     monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
     monkeypatch.setenv(LR.RUN_ID_ENV, run_id)
     monkeypatch.setenv(LR.RUN_ATTEMPT_ENV, "1")
@@ -48,7 +51,9 @@ def attempt_receipt(tmp_path: Path, lane: str, run_id: str) -> dict[str, Any]:
 
 def verdict(tmp_path: Path, lane: str, run_id: str) -> dict[str, Any]:
     """The executor's post-spawn receipt for an exit-0 LIVE attempt of ``lane`` (committed contract + entry)."""
-    receipt = {"run_id": run_id, "lane_id": lane, "mode": "live", "state": "RUN_DONE", "exit": 0}
+    receipt = {"run_id": run_id, "lane_id": lane, "mode": "live", "state": "RUN_DONE", "exit": 0,
+               "attempt": 1, "code_sha": "0" * 40, "started_at": _STARTS[run_id],
+               "finished_at": datetime.now(timezone.utc).isoformat()}
     return X.apply_output_verdict(receipt, CONTRACTS, lane_id=lane, mode="live", state_root=tmp_path,
                                   entry=ALLOW[lane])
 
