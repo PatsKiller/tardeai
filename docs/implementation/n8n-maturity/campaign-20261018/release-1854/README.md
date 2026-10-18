@@ -1,5 +1,9 @@
 # PR 1854 release acceptance and rollback
 
+**Status:** HISTORICAL
+**as_of:** 2026-10-18T22:05:57.562109+00:00
+**Measured at:** rejected target `7af14c7782cf7ab0cba261cc25e6789fe810b092` / observed rollback `a2aef7b4d2de17e737526337a2ffc37848deda4f`
+
 The exact merged release `7af14c7782cf7ab0cba261cc25e6789fe810b092` was promoted and
 **rejected at acceptance**, then rolled back to `a2aef7b4d2de17e737526337a2ffc37848deda4f`.
 PR 1854 remains merged. Its changes are not currently deployed.
