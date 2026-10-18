@@ -1,0 +1,24 @@
+{
+  "schema": "N8nCampaignArtifactManifest@v1",
+  "files": {
+    "README.md": "feae9ae6d18e0b9f36c4edb59663afef3e26a18beefd1b8eebac8552b0092404",
+    "acceptance.json": "f20aae006901bbbe9c3757e51f70cfab414846542a32648c1534659abeda394b",
+    "evidence/canonical-rollback-receipt.json": "81c9439f1b113416ad53ce9e3b9c3a09602f80ac05ae5256d56a6dc927fd2480",
+    "evidence/core-promotion-grant-binding.json": "05f34fbfc158ad45f963685360c502cdb0def6c4200c87ebc03de6c4179c74c9",
+    "evidence/core-release-canonical-prepare-receipt.json": "00f4ea1e60ab25bd61afc2b12b1fa27c13db380b1f430915ce9ad4ea3679df3e",
+    "evidence/core-release-grant-binding.json": "173d70b47db708056da3156637911601f3a0f72443435cbf726042f8929260af",
+    "evidence/core-release-independent-review.json": "77360c4bef8ba442733d4aa185d5d9eae943ea3aa82ccc36691b9e0b66aec9ff",
+    "evidence/core-release-main-ci-prepromote.json": "057110807ae6a5b252461dbc8ca47f2ee0dc40b54d75758174ca46b48c8a637c",
+    "evidence/core-release-mutation-manifest.json": "eeed7ab4b8377a73001b1529ca61ac72dba51b9d0e0aef995bf7b9f810058ab8",
+    "evidence/core-release-natural-output-during-rejected-promotion.json": "07077bd7d49ffc8ed255c107aebda10c2365bdb4c91927701070678d5e711a05",
+    "evidence/core-release-postpromote-snapshot.json": "2a48e11e4b28ae838f89bd340819ba426196d3d91612b052e633a5b3888e0e84",
+    "evidence/core-release-prepare.json": "d139f25da4067e3f9667d172c3f4de4e7c77085679e2f4e2258df212123cae13",
+    "evidence/core-release-prepromote-snapshot.json": "04027d759505f4b45bcf472e9c484ffc831b0d35d1c33498f1b87c51419dbcdc",
+    "evidence/core-release-promotion-independent-review.json": "2c73408ca9963b5eed2e677752c2c1458f7a48218403e2fad20c3138741bdc08",
+    "evidence/core-release-promotion-manifest.json": "4391b65fcb4cca36da1f5dce63c6277c0aedac0718e370fa5399cc1526ad7d5a",
+    "evidence/core-release-rollback-snapshot.json": "d290fc057bb019dbcfcb44e45c2932a78104a65e4802edf24b5231463a077007",
+    "evidence/core-rollback-natural-output.json": "49f3388fcb01b51f2b6632da22d6e70356d6d85006c7dd5329723c5df0128860",
+    "evidence/core-rollback-source-compensation.json": "0cb7342a0d2d99aa833ef9f89083a998de9b67b72a5151db88fb8b2c0dbe0fd1",
+    "evidence/deployed-to-target-config.diff": "608294cb57efbf74cda9ca1f24d54a5281cf43c82080bca04d4752e4afd1ea0c"
+  }
+}
