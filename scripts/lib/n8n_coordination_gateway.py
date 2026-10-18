@@ -732,7 +732,7 @@ def _run(
     if not isinstance(lane_id, str) or not lane_id or lane_id not in frozenset(run_allowlist or ()):
         return _refused(None, "run_lane_not_allowlisted", peer_ignored=peer)
     mode = request.get("mode")
-    if mode not in RUN_MODES:
+    if not isinstance(mode, str) or mode not in RUN_MODES:
         return _refused(None, "run_bad_mode", peer_ignored=peer)
     run_id = request.get("idempotency_key")
     if not isinstance(run_id, str) or not run_id:
@@ -1275,9 +1275,10 @@ def _verify_claim(
         raise GatewayError("missing_signature")
     if set(claim) != CLAIM_FIELDS:
         raise GatewayError("malformed_claim")
-    if type(claim.get("v")) is not int or claim["v"] != 1 or claim.get("scope") not in SCOPES:
+    if (type(claim.get("v")) is not int or claim["v"] != 1
+            or not isinstance(claim.get("scope"), str) or claim["scope"] not in SCOPES):
         raise GatewayError("bad_scope")
-    if claim.get("project") not in ALLOWED_PROJECTS:
+    if not isinstance(claim.get("project"), str) or claim["project"] not in ALLOWED_PROJECTS:
         raise GatewayError("unknown_project")
     if not isinstance(claim.get("caller_id"), str) or len(claim["caller_id"]) < 3:
         raise GatewayError("malformed_claim")

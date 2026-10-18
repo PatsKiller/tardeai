@@ -58,7 +58,7 @@ def test_source_declares_observer_without_host_run_or_generic_workflow(catalogue
     assert WID not in allow
     assert L.find_undeclared(registry, {"n8n": [{"expression": WID}]}, n8n_known_ids={WID}) == []
     response = G._run(
-        {"lane_id": WID, "mode": "live", "run_id": "fixture"},
+        {"lane_id": WID, "mode": "live", "idempotency_key": "observer-fixture-20261018"},
         {"caller_id": "fixture"},
         run_store=object(),
         run_allowlist=allow,

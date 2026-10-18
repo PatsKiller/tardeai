@@ -134,3 +134,19 @@ def test_host_catalogue_request_still_uses_the_same_closed_validator(stores):
                                 caller_id="fixture-host", run_store=stores["run_store"],
                                 run_allowlist=stores["run_allowlist"], now=NOW.timestamp())
     assert result["schema"] == "RunRequested@v1" and result["state"] == "REQUESTED"
+
+
+@pytest.mark.parametrize("field,value", [("mode", []), ("scope", []), ("project", {})])
+def test_wrong_authority_value_shapes_are_typed_refusals(field, value, stores):
+    req = request()
+    if field == "mode":
+        req[field] = value
+    else:
+        req["claim"][field] = value
+        req["signature"] = G.sign_claim(req["claim"], RELAY_KEY)
+    try:
+        status, result = call(req, stores)
+    except TypeError:
+        status, result = 500, {"state": "UNHANDLED_SHAPE"}
+    assert result["state"] == "REFUSED" and status in (400, 403)
+    assert stores["run_store"].get(RUN_ID) is None
