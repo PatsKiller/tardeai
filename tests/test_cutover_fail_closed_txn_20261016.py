@@ -288,6 +288,7 @@ exit 2
 
 def _cfg(tmp_path, **over):
     doc = json.loads((ROOT / "config/nightly_cutover_controller.json").read_text())
+    doc["lock_path"] = str(tmp_path / "n8n_cutover.lock")  # never the shared /tmp lock: CI runs groups in parallel
     doc.update(over)
     p = tmp_path / "controller.json"
     p.write_text(json.dumps(doc))

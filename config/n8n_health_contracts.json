@@ -29212,6 +29212,245 @@
           "notifier_priority": "P2"
         }
       }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "n8n-comms-intent-consumer",
+      "kind": "lane",
+      "workflow_id": "dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "stage:canary",
+      "stage": "canary",
+      "purpose": {
+        "text": "Every 5 minutes, turn QUEUED comms intents (n8n gateway comms/intent and host lanes via scripts/lib/host_comms_intents.py) into incident fan-in incidents at the route's tier (DIGEST -> P2), one OPEN incident per workflow and kind, so they reach the operator only through the incident notifier's P2 batch. Claims QUEUED -> CLAIMED -> DONE/FAILED by compare-and-set; sends nothing (AGENTS.md \u00a724.1).",
+        "business_function": "alerts-ops",
+        "source": "scripts/n8n_comms_intent_consumer.py; scripts/lib/n8n_comms_intent_consumption.py; operator 2026-10-15 (incident fan-in route) and decision D2 2026-10-17 ('Queue reader first')"
+      },
+      "owner": "platform",
+      "connects_to": [
+        {
+          "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md \u00a723.3"
+        },
+        {
+          "name": "$PY scripts/n8n_comms_intent_consumer.py",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/tradeai_n8n_comms_intent_consumer.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "config/n8n_run_allowlist.json lock (flock)"
+        },
+        {
+          "name": "data/runtime/n8n-comms-intent-consumer_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt / allowlist output_signal"
+        },
+        {
+          "name": "data/governance/n8n_coordination_ledger.sqlite comms_intents",
+          "kind": "store",
+          "direction": "read_write",
+          "source": "SELECT QUEUED / retryable FAILED / expired CLAIMED rows; UPDATE state only (BEGIN IMMEDIATE CAS)"
+        },
+        {
+          "name": "data/governance/n8n_coordination_ledger.sqlite comms_intent_consumption, comms_intent_incidents",
+          "kind": "store",
+          "direction": "read_write",
+          "source": "additive tables owned by this lane (CREATE TABLE IF NOT EXISTS on --apply only)"
+        },
+        {
+          "name": "config/n8n_comms_intent_routes.json + config/host_comms_intent_routes.json",
+          "kind": "config",
+          "direction": "read",
+          "source": "closed (domain, kind) -> tier tables, re-read every run (n8n_comms_intent_consumption.load_routes)"
+        },
+        {
+          "name": "scripts/n8n_incident_fanin.py -> scripts/incident_notifier.py",
+          "kind": "consumer",
+          "direction": "read",
+          "source": "_comms_intent_findings reads the open incidents and dead letters mode=ro; the notifier's P2 batch sends"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "last_live_run_done",
+          "text": "every dispatcher fire of this lane ends RUN_DONE in mode live (coordination ledger runs, run ids d:n8n-comms-intent-consumer:live:<slot>)"
+        },
+        {
+          "check": "output_advanced",
+          "text": "LaneRunReceipt data/runtime/n8n-comms-intent-consumer_last.json ok_at advances on each successful live run"
+        },
+        {
+          "check": "fresh",
+          "text": "receipt ok_at is within 0.167 h (2x of expected_cadence_hours 0.0833)"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 48.0 s (80% of timeout_s 60)"
+        },
+        {
+          "check": "dry_run_writes_nothing",
+          "text": "when dispatched dry_run (relay demotion, stage clamp, rollback), the ledger tables and the receipt are unchanged (sqlite mode=ro, print only)"
+        },
+        {
+          "check": "output_produced",
+          "text": "a live run reports produced_count (intents moved to DONE + incidents refreshed); zero is normal only with an allowed empty_reason ['no_new_input', 'nothing_due']"
+        },
+        {
+          "check": "drained",
+          "text": "no comms intent stays QUEUED longer than one cadence plus the 10 min claim lease (the fan-in's queued_stale finding stays absent)"
+        },
+        {
+          "check": "no_duplicate_incidents",
+          "text": "at most one OPEN comms_intent_incidents row per (workflow, kind); every DONE intent names its incident_key and fanin_event_key; a rerun changes nothing"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "output_signal older than 0.167 h but younger than 0.25 h (2x-3x cadence)"
+        },
+        {
+          "check": "slow",
+          "text": "duration above 48.0 s"
+        },
+        {
+          "check": "retried",
+          "text": "a run needed attempt > 1 (retry_policy transient-2) or ended RUN_SKIPPED_LOCK in two consecutive slots"
+        },
+        {
+          "check": "transient_failure",
+          "text": "an intent FAILED transiently (attempts < 3) and waits for the next run, or the run deferred intents beyond the per-run cap (summary.deferred > 0)"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "stale",
+          "text": "output_signal older than 0.25 h (3x cadence)"
+        },
+        {
+          "check": "breaker_or_dlq",
+          "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run produced nothing outside the expected_output rule (empty_allowed), or skipped for a fatal reason ['no_runner', 'dependency_unavailable'] -> RUN_FAILED empty_output"
+        },
+        {
+          "check": "output_unverifiable",
+          "text": "an exit-0 live run left no LaneRunReceipt@v2 attempt receipt bound to its run_id with an integer produced_count -> RUN_FAILED output_unverifiable"
+        },
+        {
+          "check": "dead_letter",
+          "text": "an intent FAILED 3 times or was refused (no route, PAGE tier): fan-in finding n8n_comms_intent_dlq/dead_letter (P2)"
+        },
+        {
+          "check": "backlog",
+          "text": "an intent QUEUED for more than 2 h: fan-in finding n8n_comms_intent_dlq/queued_stale (P2): the lane is not running live"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 0.167,
+        "freshness_failed_after_h": 0.25,
+        "freshness_rule": "degraded beyond 2x cadence (lane_registry.evaluate_lane SLOW), failed beyond 3x (incident fan-in stale threshold)",
+        "timeout_s": 60,
+        "class": "monitor",
+        "computed_on": "2026-10-17",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "fewer than 14 finished live runs in the coordination ledger (0); class defaults: duration degraded above 80% of timeout_s, freshness 2x/3x cadence, any RUN_FAILED/RUN_TIMEOUT/RUN_REFUSED failed",
+        "runs_considered": 0,
+        "duration_degraded_above_s": 48.0
+      },
+      "alerting": {
+        "lane_severity": "Medium",
+        "severity_basis": "lane_registry.json row severity (ALERT_TAXONOMY.md \u00a72: a stuck intent delays a DIGEST line; no money at risk in the next hour)",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends). Never PAGE: the P1 path does not depend on n8n (AGENTS.md \u00a724.1).",
+        "enforced": "partial source integration: scripts/n8n_incident_fanin.py _wferr_severity() consumes a workflow contract's failed.notifier_priority to raise the workflow-error priority floor. scripts/lib/n8n_siem_bridge.py severity_for() uses registry severity, else the fan-in priority. Full per-lane baseline, notification and diagnosis enforcement is not established by these declarations; runtime coverage remains NOT_MEASURED (N8N_MONITORING_AND_REMEDIATION_STANDARD.md \u00a77)."
+      },
+      "remediation": {
+        "catalogue_entry": true,
+        "diagnosis_excluded": false,
+        "actions": [
+          {
+            "action_id": "rerun_dry_run",
+            "auto": true
+          },
+          {
+            "action_id": "reap_orphan_run",
+            "auto": true
+          }
+        ],
+        "default_action": "suggest_only",
+        "suggest_only_reason": null
+      },
+      "evidence": {
+        "receipt": "data/runtime/n8n-comms-intent-consumer_last.json",
+        "monitor": "scripts/n8n_incident_fanin.py source_notes.comms_intent_source (incidents:ok:open=N ... dlq:ok:dead_letter=N:queued_stale=N)",
+        "verify": [
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='n8n-comms-intent-consumer' ORDER BY requested_at DESC LIMIT 10\"",
+          "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:n8n-comms-intent-consumer' ORDER BY created_at DESC LIMIT 10",
+          "stat / jq the receipt: data/runtime/n8n-comms-intent-consumer_last.json",
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, COUNT(*) FROM comms_intents GROUP BY state\"",
+          "bash docs/ops/packets/comms-intent-consumer-live-20261017/cutover.sh proof"
+        ],
+        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger",
+        "expected_output_basis": "expected_output derived 2026-10-17 from scripts/n8n_comms_intent_consumer.py lane_output(): produced = intents moved to DONE (incident or log outcome) + DONE intents whose incident was refreshed; an empty queue is no_new_input; a run whose only claims were refused (dead-lettered, one aggregated P2 via the fan-in) is nothing_due; an unreadable ledger/route table is dependency_unavailable (fatal). Written via write_lane_receipt(output=...) so the executor reads the immutable attempt copy."
+      },
+      "review_by": "2026-10-24",
+      "state_note": "Owner REVIEWED 2026-10-17 for canary (operator decision D2 'Queue reader first'; precedent heartbeat-watch). Supersedes the 2026-10-15 DRAFT in docs/ops/packets/n8n-comms-intent-consumer-20261015/health_contract_draft.json. Requires TRADEAI_N8N_RELAY_LIVE_LANES to include n8n-comms-intent-consumer after promote (docs/ops/packets/comms-intent-consumer-live-20261017/cutover.sh relay). Sends nothing (\u00a724.1).",
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "comms intents consumed into incident fan-in incidents (QUEUED -> DONE, or a DONE intent's incident refreshed)",
+        "rule": "empty_allowed",
+        "min_produced": null,
+        "window_h": null,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [
+          "no_new_input",
+          "nothing_due"
+        ],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/n8n-comms-intent-consumer_last.json produced_count (LaneRunReceipt@v2 output fields; the executor reads the immutable attempt copy data/runtime/lane_attempts/n8n-comms-intent-consumer/<run_id>.json)"
+          },
+          {
+            "kind": "ledger_row",
+            "ref": "data/governance/n8n_coordination_ledger.sqlite comms_intent_consumption (state DONE, done_at, incident_key per intent)"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      }
     }
   ]
 }

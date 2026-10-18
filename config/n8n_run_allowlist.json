@@ -475,7 +475,7 @@
       ],
       "env_allowlist_mode": "enforce",
       "env_evidence": "scripts/n8n_comms_intent_consumer.py reads TRADEAI_STATE_ROOT (executor base) and TRADEAI_N8N_COORDINATION_LEDGER; lib/persistent_state_root.py (via lane_last_receipt) reads TRADEAI_PERSISTENT_STATE_ROOT, a path; its closure (lib/n8n_comms_intent_consumption.py, lib/n8n_fabric_store.py, lib/lane_last_receipt.py) reads no credential. No DB, no network, no subprocess, no send.",
-      "source": "PROPOSED 2026-10-15 (operator: comms intents via the incident fan-in; packet docs/ops/packets/n8n-comms-intent-consumer-20261015): n8n-native host lane, no cron line, no unit; registry row NEVER_SCHEDULED. SHADOW: live_arg null, so only --dry-run (sqlite mode=ro, writes nothing) can run through Run Lane until a registry PR sets live_arg [\"--apply\"]. Own lock (no cron line to share).",
+      "source": "n8n-native host lane (operator decision D2 2026-10-17 'Queue reader first'; packet docs/ops/packets/comms-intent-consumer-live-20261017): fired by tradeai-dispatcher at */5; no cron line, no unit, so the lock is the lane's own. CANARY: live_arg [\"--apply\"] (claims, maps and records: comms_intents.state + comms_intent_consumption + comms_intent_incidents + LaneRunReceipt); dry_run_arg --dry-run (sqlite mode=ro, writes nothing) kept for clamp/rollback. Was staged at shadow 2026-10-15 (live_arg null). Sends nothing.",
       "command": [
         "$PY",
         "scripts/n8n_comms_intent_consumer.py"
@@ -486,9 +486,12 @@
       "dry_run_arg": [
         "--dry-run"
       ],
-      "live_arg": null,
+      "live_arg": [
+        "--apply"
+      ],
       "market_gate": false,
-      "output_signal": "data/runtime/n8n-comms-intent-consumer_last.json"
+      "output_signal": "data/runtime/n8n-comms-intent-consumer_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "backup-verify",

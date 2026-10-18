@@ -45,7 +45,8 @@ def test_all_operative_baselines_have_applicable_fields_and_order():
     # + 6 (2026-10-15 shadow wave LD-W1: tests/test_shadow_wave_ld_w1_20261015.py)
     # merged 2026-10-15 (DD01 ruling PR, #1761/#1763): 132 + 6 = 138.
     # + 1 (2026-10-16 process consolidation cohort 2: hermes-discovery-yield-on-learning) = 139.
-    assert len(catalogue["contracts"]) == 139
+    # + 1 (2026-10-17 comms-intent consumer live, D2: n8n-comms-intent-consumer REVIEWED at canary) = 140.
+    assert len(catalogue["contracts"]) == 140
     assert not {row["id"]: A.baseline_errors(row) for row in catalogue["contracts"] if A.baseline_errors(row)}
 
 
