@@ -26089,7 +26089,7 @@
       "kind": "lane",
       "workflow_id": "tradeai-fabric-hermes-learning",
       "status": "REVIEWED",
-      "target_reason": "n8n fabric process hermes-learning step outcome_feedback_agent (2026-10-15; unblocked 2026-10-15 (n8nfab/hermes-learning-unblock-20261015)); stage shadow; 2026-10-17 feedback cutover: registry stage canary, live argv --apply --notify queue (alerts queued as host comms intents, no sender)",
+      "target_reason": "n8n fabric process hermes-learning step outcome_feedback_agent; stage shadow and live_arg null. Sixth-stage activation remains HELD pending qualified output/input-consumer evidence and reviewed fenced cutover; registered queue-only capability is not live proof.",
       "stage": "shadow",
       "purpose": {
         "text": "Outcome & Feedback Agent: turn graded ledger outcomes into the versioned outcome_bus.json the Scope Governor and Research Agent consume (by symbol, by tag, stop quality, resource efficiency, discovery health, maturity), and raise closed-loop alerts as notification intents",
@@ -26123,7 +26123,7 @@
           "source": "scripts/hermes_outcome_feedback_agent.py module docstring source reads (DRAFT: free text)"
         },
         {
-          "name": "state/hermes/outcome_bus.json (+ history), maturity snapshot, data/runtime/hermes_outcome_feedback_heartbeat.json, alert notification state + audit; closed-loop alerts as host chokepoint intents (P2/P3, producer hermes_outcome_feedback_agent) on the cron path; on the fabric live path (--notify queue) one host comms intent per eligible alert (coordination ledger comms_intents, route research/hermes_closed_loop_alert), never a sender call",
+          "name": "state/hermes/outcome_bus.json (+ history), maturity snapshot, data/runtime/hermes_outcome_feedback_heartbeat.json, alert notification state + audit; closed-loop alerts as host chokepoint intents (P2/P3, producer hermes_outcome_feedback_agent)",
           "kind": "inventory_text",
           "direction": "write",
           "source": "scripts/hermes_outcome_feedback_agent.py module docstring source writes (live only; the dry run writes nothing) (DRAFT: free text)"
@@ -26214,7 +26214,7 @@
       },
       "alerting": {
         "lane_severity": "Medium",
-        "severity_basis": "learning writer, advisory only; its live alerts are declared chokepoint intents (cron) or queued host comms intents (fabric, --notify queue), never a direct provider call; no broker",
+        "severity_basis": "learning writer, advisory only; its live alerts are declared chokepoint intents, never a direct provider call; no broker",
         "failed": {
           "siem_severity": "WARN",
           "notifier_priority": "P2"
