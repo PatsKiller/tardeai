@@ -5,7 +5,7 @@
   "artifacts": [
     {
       "path": "README.md",
-      "sha256": "b017c5935df3c027f0d107f6589249c797b7f8e5b928925fab4ca21ab3a0b661"
+      "sha256": "e898bcf4d46ca3af5e0d0cfc362353c3ca5405a501157766853b6e9c558cec3d"
     },
     {
       "path": "baseline/activation_paths.json",
@@ -41,7 +41,7 @@
     },
     {
       "path": "baseline/implementation-status.json",
-      "sha256": "f3dc8acdeed7f4c143911bc116ba6fda330bcd47866eaacab90f76a8687137bf"
+      "sha256": "e57b3815dce258c5917d6bd6e806b4d75786cdb54d6a17f67302daea9398163d"
     },
     {
       "path": "baseline/module_consumer_inventory.json",
@@ -76,6 +76,14 @@
       "sha256": "23d3a28185310f8fec1a851a4d21fd5b127b0ad43bb94548a44f95d2fe5e90a7"
     },
     {
+      "path": "evidence/core-merge-authorization.json",
+      "sha256": "f40a5b32667219aefeab2d68d6b83ae6116b1ce1e15909adcf25fb824c613df9"
+    },
+    {
+      "path": "evidence/core-release-mutation-manifest.json",
+      "sha256": "eeed7ab4b8377a73001b1529ca61ac72dba51b9d0e0aef995bf7b9f810058ab8"
+    },
+    {
       "path": "evidence/importer-report.json",
       "sha256": "431b9cc4b55320259164c9f283c6dca0ecb0bd4bbd3ac4973ce46adf99e42e2b"
     },
@@ -96,6 +104,10 @@
       "sha256": "82f9abcab0476a60168cc9358b8322e37ab3a5c57baeccdb7112a214eb99c804"
     },
     {
+      "path": "evidence/siem-final-review.json",
+      "sha256": "49ed3a426cb7d1e9e7a8831a6e499e378d69d0c903c1e558214dbdf23530a899"
+    },
+    {
       "path": "evidence/spawn67-final.xml",
       "sha256": "51b0780455c222bb20f90978ccc131561042641156a446d3f1e76a4cae58fe81"
     },
@@ -114,6 +126,14 @@
     {
       "path": "reviews/core-final233.json",
       "sha256": "047eaefa8f35f5f11025fcda0fd0b8ef5fef1012d85587aa40d0a99f490086ee"
+    },
+    {
+      "path": "reviews/core-release-independent-review.json",
+      "sha256": "77360c4bef8ba442733d4aa185d5d9eae943ea3aa82ccc36691b9e0b66aec9ff"
+    },
+    {
+      "path": "reviews/evidence-final-c377.json",
+      "sha256": "5946ba8b7c65ebfd94f586e7fb1bae7cd472f0ba4c7c8281aa481ebae94e3fe1"
     },
     {
       "path": "reviews/grants-retirement-initial.json",

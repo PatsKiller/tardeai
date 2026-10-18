@@ -1,7 +1,7 @@
 {
   "schema": "N8nCampaignImplementationLedger@v1",
   "campaign_id": "n8n-maturity-20261018",
-  "as_of": "2026-10-18T20:29:20.727575+00:00",
+  "as_of": "2026-10-18T21:14:32.282146+00:00",
   "baseline_main": "3af0a8bdd659e02bf6f493c071800c6a227ae292",
   "served_sha_last_verified": "a2aef7b4d2de17e737526337a2ffc37848deda4f",
   "operational_maturity_provisional": 2.5,
@@ -14,12 +14,13 @@
       "pr": 1854,
       "implemented": true,
       "pushed": true,
-      "merged": false,
+      "merged": true,
       "deployed": false,
       "enabled_by_campaign": false,
       "operationally_proven": false,
-      "state": "open",
-      "evidence": "full local acceptance + independent113 pass; hosted exact-head CI running"
+      "state": "merged-main-ci-pending",
+      "evidence": "independent113 +fullnativeacceptance+allrequiredexactheadhostedCI passed beforemerge; exactmerged-SHA push/mainCIpending",
+      "merged_sha": "7af14c7782cf7ab0cba261cc25e6789fe810b092"
     },
     {
       "workstream": "host-attestation",
@@ -84,7 +85,7 @@
       "enabled_by_campaign": false,
       "operationally_proven": false,
       "state": "local",
-      "evidence": "ten initial expected failures and eight independent residuals closed;207 regressions pass; final review pending"
+      "evidence": "ten initial and eight independent residuals closed; final independent77checks +186regressionspass1existingSkip; scopedsourceapproved"
     },
     {
       "workstream": "comms-generations",

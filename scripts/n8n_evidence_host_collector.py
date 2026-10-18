@@ -23,6 +23,14 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+# This is an uninstalled, explicitly blocked host entrypoint; no scheduler or signer caller exists yet.
+# The declaration records lifecycle truth for the dark-contract gate. It does not certify provenance.
+NO_CONSUMER_REASON = (
+    "Not installed: CLI-only read-only host signing-request candidate; protected trust and an isolated "
+    "operator-provisioned signer remain unavailable. No scheduler/service consumes this entrypoint. "
+    "Unsigned CLI output is BLOCKED_SIGNER_UNAVAILABLE and cannot satisfy the runtime verifier."
+)
+
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0,str(ROOT))

@@ -1,6 +1,6 @@
 # n8n operational maturity campaign — 2026-10-18
 
-Status: IN PROGRESS; first reviewed PR open, production mutations held pending the recorded gates
+Status: IN PROGRESS; first reviewed PR merged, production mutations held pending the recorded gates
 Owner: Codex integrator; Agent A remains Chief Architect
 as_of: 2026-10-18T20:29:20.727575+00:00
 Measured at: source `3af0a8bdd659e02bf6f493c071800c6a227ae292`; initial served `a2aef7b4d2de17e737526337a2ffc37848deda4f`
@@ -25,8 +25,9 @@ retention, credentials or changes to the guard ledger.
 - #1853 refreshed head: `0baddc47481f3ec1673fabf23e37e7b044a54dca`.
 - The first campaign push created [PR #1854](https://github.com/PatsKiller/tardeai/pull/1854)
   at `2333c8e1b00f4be3b5fab653bf67d9a42fdcd399`. Its full local acceptance and
-  independent source review passed; the full sharded GitHub suite passed; required `cio-hardening` remains in progress.
-  No campaign merge, deployment, activation or scheduler change has occurred.
+  independent source review passed; all required exact-head checks and the full sharded suite passed. It merged as
+  `7af14c7782cf7ab0cba261cc25e6789fe810b092` at 21:02:58Z. Exact merged-SHA
+  push/main CI is pending; no campaign deployment, activation or scheduler change has occurred.
 
 Initial host observations: portfolio-server, coordination gateway, relay and run
 executor were active. Loopback `/api/health` returned 200. Loopback `/v3/` returned
@@ -90,7 +91,7 @@ disarmed; their current grants explicitly preserve that hold.
 | #1853 | Safe data-quality subset: 24 passed. Required contexts absent at initial review. Also changes ATR stop/target and execution readiness; packet uses a nonempty token and records ownership before scheduler mutation. | HOLD whole PR. Reuse only reviewed, separately scoped nonfinancial data-quality changes. |
 | #1852 | Proposed policy amendment for automated disk deletion. | OUT OF SCOPE; no ratification or deletion authorized here. |
 
-These source follow-up branches are **implemented locally**; the output/gateway changes are included in #1854. None is merged or deployed:
+These source follow-up branches are **implemented locally**; the output/gateway changes are included in #1854. Only the output/gateway tranche is merged; no campaign tranche is deployed:
 output truth `2475379fc0b2b7b4f68300cc1ffa42cddd19d612`, closed gateway input
 `3ef2fb5c07ac84c67be88035ebae0f56b0941c20`, authentic grant admission and held
 unsafe packet mutations `b14bfc542d481499d7bf1efcc4b8147de6332628`, eligibility
@@ -99,7 +100,8 @@ budget-independent critical enrollment `afab1a474dfa52509d57ebd9e9b7923ee2d14352
 The first combined enforcement branch is
 `wt/n8n-contract-enforcement-20261018` at
 `2333c8e1b00f4be3b5fab653bf67d9a42fdcd399`. Full local acceptance passed;
-the final nonauthor review independently passed 113 focused tests. Existing receipt
+the final nonauthor review independently passed 113 focused tests. Required hosted checks
+passed before the exact-head merge into `7af14c7782cf7ab0cba261cc25e6789fe810b092`. Existing receipt
 compatibility was evaluated without rerunning effects: 25 produced and 12 valid
 empty-work verdicts across 37 of 48 opted-in lanes; 11 had no existing live DONE
 receipt. This is historical compatibility, not fresh business-flow acceptance.
@@ -168,3 +170,9 @@ a zero or an implicit exemption. Provisional operational maturity remains 2.5/5.
 All retirement output is eligibility only. `deletion_execution_enabled` remains
 false and no legacy entries, scripts, workflow definitions or rollback records are
 deleted by this campaign.
+
+The evidence tranche's first full native acceptance at `c377bf5f19097c00259f942455974e75467af097`
+failed the existing dark-contract guard: the new host collector had no scheduler/caller and lacked its explicit
+lifecycle declaration. All other reported gates passed. The follow-up records that actual uninstalled status;
+it adds no fake consumer, signer, grant or runtime evidence. Full native acceptance will be repeated at the
+corrected exact head before a push request. The 208-test independent source review remains supporting evidence.

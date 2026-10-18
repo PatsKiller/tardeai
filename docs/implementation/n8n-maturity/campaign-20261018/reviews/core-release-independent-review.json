@@ -1,0 +1,82 @@
+{
+  "schema": "IndependentReleaseReview@v1",
+  "campaign_id": "n8n-maturity-20261018",
+  "manifest_path": "/tmp/n8n-campaign-20261018/core-release-mutation-manifest.json",
+  "reviewed_manifest_sha256": "eeed7ab4b8377a73001b1529ca61ac72dba51b9d0e0aef995bf7b9f810058ab8",
+  "reviewed_release_sha": "7af14c7782cf7ab0cba261cc25e6789fe810b092",
+  "pr": 1854,
+  "tested_pr_head": "2333c8e1b00f4be3b5fab653bf67d9a42fdcd399",
+  "rollback_sha": "a2aef7b4d2de17e737526337a2ffc37848deda4f",
+  "verdict": "APPROVE_BOUNDED_GRANT_REQUEST",
+  "source_review": {
+    "release_root": "/home/johnclaw/tradeai-wt-n8n-maturity-release-20261018",
+    "head": "7af14c7782cf7ab0cba261cc25e6789fe810b092",
+    "clean": true,
+    "rollback_is_ancestor": true,
+    "primary_head": "a2aef7b4d2de17e737526337a2ffc37848deda4f",
+    "primary_clean": true,
+    "current_release": "/home/johnclaw/trade-ai-releases/portfolio-server/a2aef7b4d-main-exact-phase2-20261018-103647",
+    "rollback_release_build_sha": "a2aef7b4d2de17e737526337a2ffc37848deda4f"
+  },
+  "canonical_tools": [
+    {
+      "path": "scripts/cio_phase2_exact_main_deploy.sh",
+      "sha256": "0121a2384a59b85e3b92fedd029e01e74f463dcbdb145a249d5e8a6108e310e0",
+      "manifest_match": true,
+      "same_as_known_rollback_code": true
+    },
+    {
+      "path": "scripts/release_grant_preflight.py",
+      "sha256": "07299cf6107ab8ec87faf0d8242ffb2bfe30ec8487ae30edb7cf66a7b7bad447",
+      "manifest_match": true,
+      "same_as_known_rollback_code": true
+    },
+    {
+      "path": "scripts/lib/release_grant_binding.py",
+      "sha256": "315064eb52ddd3335026f4efa4b068a4bd5f8792888cae0cb504d810ad568c6d",
+      "manifest_match": true,
+      "same_as_known_rollback_code": true
+    },
+    {
+      "path": "scripts/lib/ff_dev_tree.sh",
+      "sha256": "3b12280e99f2f2204566ffc870f3992f1549d953faf0146316e5223ef5d42a90",
+      "manifest_match": true,
+      "same_as_known_rollback_code": true
+    }
+  ],
+  "authority": [
+    "User campaign explicitly authorizes scoped tested merged release and rollback, not ledger grants. Active feature-to-live runbook requires canonical prepare/promote and exact postmerge CI; current mandate supplies scoped merge approval independently of expired/proposed standing approval.",
+    "No production/scheduler/workflow activation is authorized by this source review; request grants nothing. Real release-write grant must name1854/full7af and rollbacka2 plus actions; do not reuse AgentA unrelated scope or replace it.",
+    "Operator resolves same-tier coexistence and issues actual finite grant; reviewer performed no grant ledger mutation/access/consumption."
+  ],
+  "count": {
+    "prepare": 1,
+    "promote": 1,
+    "rollback_reserved": 1,
+    "ci_only": 0,
+    "verify": 0,
+    "total_needed": 3,
+    "caveat": "Refused promote consumes its one action before CI; avoid retrying without recalculating remaining rollback headroom. Canonicalrollback needs explicit matching preflight call because cmd_rollback has no internal grant check."
+  },
+  "snapshot_compatibility": [
+    "Core7af delta relativea2 modifies contracts/output/gateway guards plus inactive packet code, with no DB/table migration or new cutoverv2journal producer. Changes in later UI/attestation/saga branches are not in this release.",
+    "Rollback readers retain permissive receipt consumers; no newauthority semantics in persistent request shape from this core release. New strict output executor may hold unverifiable prior-attempt evidence, which is intended and must not be reinterpreted healthy.",
+    "Record pre/post graph/config/owner/incident/outbox snapshots without activating workflows or rewriting live configuration. Independent review does not prove current runtime snapshot identity; recheck immediately before mutation as packet requires."
+  ],
+  "remaining_gates": [
+    "Exact7af merged-SHA push/main CI must completeSUCCESS immediately beforepromote; no PRCI/oldreceipt substitution.",
+    "Matching real release-write grant ID/reason/action/expiry/uses and same-tier AgentA coordination.",
+    "Recheck physicalprimaryHEAD/cleanleases and CURRENT rollback identity beforeprepare/promote.",
+    "Accepted release requires actual servedSHA/servicecwd/authCC/graphconfigownercontinuity and fresh appropriate natural usefuloutput; health alone cannotaccept.",
+    "Canonical release outside executorcgroup and no skip/warn/bypass settings."
+  ],
+  "actions_performed": "Read-only source/identity/manifest review only; no prepare, promote, rollback, service, grant or network mutation.",
+  "closed_packet_corrections": [
+    {
+      "id": "RELEASE-SOURCE-ROLLBACK-IDEMPOTENCY",
+      "finding": "Canonical cmd_promote performs failed-health automatic artifact rollback before ff_dev_tree_after_promote. Primary can already equal known-good rollbacka2. Manifest only permits compensation if primaryHEAD==promoted7af then says precondition failure is partial, which misclassifies this real canonical failure branch.",
+      "required": "Allow verified clean primaryHEAD==rollbacka2 as idempotent no-op source compensation. Otherwise require exactclean7af before detachtoa2. AnythirdSHA/dirtytree/conflictinglease still held. No sourcecode change needed.",
+      "resolution": "Reviewed updated manifest accepts clean already-at-a2 as idempotentNOOP, exactclean7af permits detach, allthirdSHA/dirty/conflictingstate holds. No source changed."
+    }
+  ]
+}
