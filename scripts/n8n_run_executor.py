@@ -589,7 +589,7 @@ def _code_sha(code_root: Path) -> str | None:
         text = (code_root / "GIT_SHA").read_text(encoding="utf-8").strip()
     except OSError:
         return None
-    return text or None
+    return text if re.fullmatch(r"[0-9a-f]{40}", text) else None
 
 
 def _iso(ts: float) -> str:
@@ -702,6 +702,7 @@ def _execute_once(
         "run_id": run_id,
         "lane_id": lane_id,
         "mode": mode,
+        "attempt": int(row.get("attempt") or 1),
         "exit_code": None,
         "duration_s": None,
         "lock_skipped": False,
@@ -825,10 +826,19 @@ def apply_output_verdict(
         receipt["output_verdict"] = {"verdict": "not_evaluated", "why": receipt.get("reason") or receipt.get("state")}
         return receipt
     rules = _resolve(outputs) if outputs is not None else {}
+    enforced = mode == "live" and (entry or {}).get("output_receipt") == OUTPUT_RECEIPT_ENFORCED
     if rules is None:
-        receipt["output_verdict"] = {"verdict": "rules_unreadable"}
+        receipt["output_verdict"] = {
+            "verdict": "unverifiable" if enforced else "rules_unreadable", "why": "rules_unreadable"
+        }
+        if enforced:
+            receipt["state"], receipt["reason"] = "RUN_FAILED", "output_unverifiable"
         return receipt
     rule = rules.get(lane_id) if isinstance(rules, Mapping) else None
+    if rule is None and enforced:
+        receipt["output_verdict"] = {"verdict": "unverifiable", "why": "rule_missing", "contract_id": lane_id}
+        receipt["state"], receipt["reason"] = "RUN_FAILED", "output_unverifiable"
+        return receipt
     if rule is not None and (entry or {}).get("output_receipt") != OUTPUT_RECEIPT_ENFORCED:
         receipt["output_verdict"] = {
             "verdict": "declared_not_enforced",
@@ -838,7 +848,11 @@ def apply_output_verdict(
         }
         return receipt
     doc = read_attempt_receipt(state_root, lane_id, str(receipt["run_id"])) if rule is not None else None
-    verdict = evaluate_output(rule, doc, run_id=str(receipt["run_id"]), lane_id=lane_id, mode=mode)
+    verdict = evaluate_output(
+        rule, doc, run_id=str(receipt["run_id"]), lane_id=lane_id, mode=mode,
+        attempt=receipt.get("attempt") or 0, started_at=receipt.get("started_at") or "",
+        finished_at=receipt.get("finished_at") or "", code_sha=receipt.get("code_sha"),
+    )
     receipt["output_verdict"] = verdict
     failed_reason = OUTPUT_FAILING.get(verdict.get("verdict"))
     if failed_reason is not None:

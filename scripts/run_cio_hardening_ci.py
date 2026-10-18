@@ -3950,6 +3950,15 @@ GATES = [
         ],
     ),
     (
+        # 2026-10-18 campaign: strict authority-bearing JSON and immutable output truth.
+        # Hermetic ledgers, signed fixture claims and fake output effects only.
+        "n8n_contract_enforcement_20261018",
+        [
+            "tests/test_n8n_gateway_closed_inputs_20261018.py",
+            "tests/test_n8n_output_contract_truth_20261018.py",
+        ],
+    ),
+    (
         # ANCHOR: LANE_PRODUCED_COUNT_CW_1_20261015 — cutover wave 1 lanes (batch 1 of 6) write LaneRunReceipt@v2
         # produced_count via write_lane_receipt(output=...) and opt into the executor output verdict (allowlist
         # output_receipt v2). Each lane's real main() runs in a fake n8n attempt with its DB/provider work stubbed:

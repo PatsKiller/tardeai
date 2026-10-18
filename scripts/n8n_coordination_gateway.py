@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import sys
 from datetime import datetime, timezone
@@ -191,6 +192,24 @@ def canonical_path(target: str) -> str | None:
     return path
 
 
+def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """Authority-bearing requests have one value per member, including inside claims and nested objects."""
+    out = {}
+    for name, value in pairs:
+        if name in out:
+            raise ValueError("duplicate_json_member")
+        out[name] = value
+    return out
+
+
+def _finite_json_number(text: str) -> float:
+    """Refuse non-JSON constants and exponent overflow, rather than letting NaN bypass comparisons."""
+    value = float(text)
+    if not math.isfinite(value):
+        raise ValueError("nonfinite_json_number")
+    return value
+
+
 def dispatch_http(
     method: str,
     target: str,
@@ -237,8 +256,9 @@ def dispatch_http(
     if len(body) > max_body:
         return 413, {"state": "REFUSED", "reason": "body_too_large", "proxy_headers_used_as_auth": False}
     try:
-        parsed = json.loads(body.decode("utf-8"))
-    except (UnicodeError, json.JSONDecodeError):
+        parsed = json.loads(body.decode("utf-8"), object_pairs_hook=_unique_json_object,
+                            parse_constant=_finite_json_number, parse_float=_finite_json_number)
+    except (UnicodeError, ValueError, RecursionError):
         return 400, {"state": "REFUSED", "reason": "malformed_event", "proxy_headers_used_as_auth": False}
     if not isinstance(parsed, dict):
         return 400, {"state": "REFUSED", "reason": "malformed_event", "proxy_headers_used_as_auth": False}
