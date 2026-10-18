@@ -1,0 +1,34 @@
+FFF                                                                      [100%]
+=================================== FAILURES ===================================
+______________ test_full_outbox_total_is_not_limited_detail_count ______________
+
+    def test_full_outbox_total_is_not_limited_detail_count():
+        out=P.project_outbox(query,now=NOW)
+>       assert out['total']==601
+E       assert 500 == 601
+
+../test_outbox_truth_red_pair.py:15: AssertionError
+__________ test_hidden_older_send_prevents_false_silent_senders_alarm __________
+
+    def test_hidden_older_send_prevents_false_silent_senders_alarm():
+        out=P.project_outbox(query,now=NOW)
+>       assert 'silent_senders' not in [r['item'] for r in P.anomalies(out)]
+E       AssertionError: assert 'silent_senders' not in ['silent_senders']
+
+../test_outbox_truth_red_pair.py:22: AssertionError
+__________________ test_unavailable_outbox_has_unknown_totals __________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x729f9d0956e0>
+
+    def test_unavailable_outbox_has_unknown_totals(monkeypatch):
+        monkeypatch.delenv('DB_PASSWORD',raising=False)
+        out=P.load_outbox(now=NOW)
+>       assert out['count'] is None and out['total'] is None and out['counts'] is None
+E       assert (0 is None)
+
+../test_outbox_truth_red_pair.py:28: AssertionError
+=========================== short test summary info ============================
+FAILED ../test_outbox_truth_red_pair.py::test_full_outbox_total_is_not_limited_detail_count
+FAILED ../test_outbox_truth_red_pair.py::test_hidden_older_send_prevents_false_silent_senders_alarm
+FAILED ../test_outbox_truth_red_pair.py::test_unavailable_outbox_has_unknown_totals
+3 failed in 0.03s

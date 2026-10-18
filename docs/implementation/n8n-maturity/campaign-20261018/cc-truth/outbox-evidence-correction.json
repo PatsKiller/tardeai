@@ -1,0 +1,61 @@
+{
+  "schema": "RegressionEvidenceCorrection@v1",
+  "incorrect_artifacts": [
+    "cc-outbox-identical-baseline-red.txt",
+    "cc-outbox-identical-candidate-green.txt"
+  ],
+  "incorrect_reason": "Both old logs show3passed and identicaldigest. Old alleged baseline source context is invalid and superseded; it is not red-first evidence. Preserve files; use independently verified isolated source rerun below.",
+  "test_identity_unchanged": true,
+  "verified_pair": [
+    {
+      "name": "baseline",
+      "root": "/tmp/n8n-campaign-20261018/baseline-review-3af",
+      "sha": "3af0a8bdd659e02bf6f493c071800c6a227ae292",
+      "source_clean": true,
+      "test": "/tmp/n8n-campaign-20261018/test_outbox_truth_red_pair.py",
+      "test_sha256": "f633a2c23b423390115732d0c08e5a9e01851dd3a1b9740d4f0004f771157910",
+      "command": [
+        "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python",
+        "-m",
+        "pytest",
+        "--noconftest",
+        "-q",
+        "/tmp/n8n-campaign-20261018/test_outbox_truth_red_pair.py"
+      ],
+      "environment": {
+        "PYTHONPATH": "/tmp/n8n-campaign-20261018/baseline-review-3af:/tmp/n8n-campaign-20261018/baseline-review-3af/scripts",
+        "TRADE_AI_CI": "1"
+      },
+      "exit_code": 1,
+      "artifact": "/tmp/n8n-campaign-20261018/cc-outbox-corrected-baseline.txt",
+      "artifact_sha256": "ef89d98e07d97ca17123e8295c3192308ca11bb4c20385f1ab3845f7da48cb4b",
+      "module_path": "/tmp/n8n-campaign-20261018/baseline-review-3af/scripts/lib/notification_outbox_projection.py",
+      "module_sha256": "77e1c0ec9559eff2e97d02a496c8b2ebca2dcab13762b1995de264d42668e39d"
+    },
+    {
+      "name": "candidate",
+      "root": "/home/johnclaw/tradeai-wt-n8n-cc-truth-20261018",
+      "sha": "4aede76600da4621e758af4c0d9c3727de184664",
+      "source_clean": true,
+      "test": "/tmp/n8n-campaign-20261018/test_outbox_truth_red_pair.py",
+      "test_sha256": "f633a2c23b423390115732d0c08e5a9e01851dd3a1b9740d4f0004f771157910",
+      "command": [
+        "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python",
+        "-m",
+        "pytest",
+        "--noconftest",
+        "-q",
+        "/tmp/n8n-campaign-20261018/test_outbox_truth_red_pair.py"
+      ],
+      "environment": {
+        "PYTHONPATH": "/home/johnclaw/tradeai-wt-n8n-cc-truth-20261018:/home/johnclaw/tradeai-wt-n8n-cc-truth-20261018/scripts",
+        "TRADE_AI_CI": "1"
+      },
+      "exit_code": 0,
+      "artifact": "/tmp/n8n-campaign-20261018/cc-outbox-corrected-candidate.txt",
+      "artifact_sha256": "bf22e88f0e3a0e89eddb09d252b1661a48c9dfc4bd5aa177b5efca41f2700a18",
+      "module_path": "/home/johnclaw/tradeai-wt-n8n-cc-truth-20261018/scripts/lib/notification_outbox_projection.py",
+      "module_sha256": "ca77bd335dc17545e1218e5c8c591f48fb1be36a3dab74bba059e0b30716e3f6"
+    }
+  ]
+}
