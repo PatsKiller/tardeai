@@ -176,3 +176,10 @@ failed the existing dark-contract guard: the new host collector had no scheduler
 lifecycle declaration. All other reported gates passed. The follow-up records that actual uninstalled status;
 it adds no fake consumer, signer, grant or runtime evidence. Full native acceptance will be repeated at the
 corrected exact head before a push request. The 208-test independent source review remains supporting evidence.
+
+Full native acceptance passed at `1baea1c3060915a9646a1cf5c4ec7cf6e2bfd2e3`.
+The later evidence-only packaging change stores the worktree inventory and two
+original red-test XML records as deterministic gzip. Decompressed bytes and their
+SHA256 digests are unchanged; the artifact manifest records both compressed and
+original digests. This preserves the original evidence, including whitespace,
+while satisfying the complete PR diff check. Production source is unchanged.

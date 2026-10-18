@@ -5,7 +5,7 @@
   "artifacts": [
     {
       "path": "README.md",
-      "sha256": "e898bcf4d46ca3af5e0d0cfc362353c3ca5405a501157766853b6e9c558cec3d"
+      "sha256": "4bdd12e24da05dbed3fc058ef0b223042952b2239169b964c82a805802871137"
     },
     {
       "path": "baseline/activation_paths.json",
@@ -64,8 +64,11 @@
       "sha256": "2573ff1aa0c5287614cb93d32de25cb74b1650a05b547d554959da3acea4ca7a"
     },
     {
-      "path": "baseline/worktrees.txt",
-      "sha256": "f88063ceed7908b5191eee6a7b1acd45dd93ed6b8b4555f96ae16afee3e0518b"
+      "path": "baseline/worktrees.txt.gz",
+      "sha256": "f86d68946a7b5f3a7ca8eb6c0dcfe99f2bf576ab7771c4870747df1756783558",
+      "encoding": "gzip",
+      "uncompressed_sha256": "f88063ceed7908b5191eee6a7b1acd45dd93ed6b8b4555f96ae16afee3e0518b",
+      "uncompressed_bytes": 124221
     },
     {
       "path": "contracts-enforcement/README.md",
@@ -160,8 +163,11 @@
       "sha256": "7561f17a53b5fa1038757f5d02828ed67c55d8d4498991660844545e3fbd0970"
     },
     {
-      "path": "validation/importer-baseline-red.xml",
-      "sha256": "25e11e4930f8cd3ce273116f7aaf224c93ca5dc98880fdb4c90a5ad11c401f3f"
+      "path": "validation/importer-baseline-red.xml.gz",
+      "sha256": "62aaac7b902fda97b01cad23eb2a90813a2cf4eb26c12b11afcd8766e3cfa0d1",
+      "encoding": "gzip",
+      "uncompressed_sha256": "25e11e4930f8cd3ce273116f7aaf224c93ca5dc98880fdb4c90a5ad11c401f3f",
+      "uncompressed_bytes": 2038
     },
     {
       "path": "validation/importer-candidate-green.xml",
@@ -176,8 +182,11 @@
       "sha256": "d307b290ee7b7b7d3166852030e24621288a57e924a2d0191c274dec03207413"
     },
     {
-      "path": "validation/report-baseline-red.xml",
-      "sha256": "9864316953aacdaee67198526bc82877ace848c05f93fe272ef0166cd26af912"
+      "path": "validation/report-baseline-red.xml.gz",
+      "sha256": "e31b1a42c6a50737896a7fc445d4b7f3307aec11332a6b5c778b7b641670141d",
+      "encoding": "gzip",
+      "uncompressed_sha256": "9864316953aacdaee67198526bc82877ace848c05f93fe272ef0166cd26af912",
+      "uncompressed_bytes": 1625
     },
     {
       "path": "validation/report-candidate-green.xml",

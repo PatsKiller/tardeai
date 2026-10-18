@@ -1464,7 +1464,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-maturity/SEARCH_SOURCE_ROUTING.md` | Search source routing — which source answers what, and what it may spend | review_required | OK | `633c3aab392f` |
 | `docs/implementation/n8n-maturity/WAVE_B_CC_ORCHESTRATE_2026-10-11.md` | Wave B — CC orchestrate (research-intake + watch-refresh) | review_required | OK | `67cb1506248f` |
 | `docs/implementation/n8n-maturity/WAVE_C_HEAVY_JOBS_2026-10-11.md` | Wave C — heavy CC jobs (advisory / analyst / brief / legacy Run) | review_required | OK | `b487224d891b` |
-| `docs/implementation/n8n-maturity/campaign-20261018/README.md` | n8n operational maturity campaign — 2026-10-18 | review_required | OK | `e898bcf4d46c` |
+| `docs/implementation/n8n-maturity/campaign-20261018/README.md` | n8n operational maturity campaign — 2026-10-18 | review_required | OK | `4bdd12e24da0` |
 | `docs/implementation/n8n-maturity/campaign-20261018/contracts-enforcement/README.md` | Gateway admission and output evidence enforcement | review_required | OK | `f239f9b6cfa2` |
 | `docs/implementation/n8n-maturity/completion-119/BEFORE_AFTER_119.md` | 119-lane source completion: before and after | review_required | OK | `b9366b8315fa` |
 | `docs/implementation/n8n-maturity/completion-119/README.md` | Completion train for the 119 outstanding source/integration lanes | review_required | OK | `0471a212357c` |
