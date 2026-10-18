@@ -267,8 +267,9 @@ def ready(summary: dict) -> bool:
             and p.get("producer_ok") is True and p.get("reasons") == []
             and isinstance(p.get("accounts"), list) and bool(p["accounts"])
             and coverage.get("dated_accounts") == coverage.get("accounts") == len(p["accounts"])
-            and all(isinstance(a, dict) and isinstance(a.get("account_key"), str) and a["account_key"]
-                    and a.get("state") == "LIVE" and parse_time(a.get("source_as_of")) is not None for a in p["accounts"]))
+            and all(isinstance(a, dict) and isinstance(a.get("account_key"), str) and a["account_key"].strip()
+                    and a.get("state") == "LIVE" and _aware_time(a.get("source_as_of")) is not None
+                    and _aware_time(a["source_as_of"]) <= now for a in p["accounts"]))
 
 
 def publication_refusal(summary: dict) -> dict | None:

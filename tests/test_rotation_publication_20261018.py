@@ -416,3 +416,25 @@ def test_missing_required_position_clock_withholds_even_when_another_clock_is_kn
     result = run()
     assert result['publication']['status'] == 'UNAVAILABLE'
     assert result['publication']['coverage']['dated_positions'] == 1
+
+
+@pytest.mark.parametrize('route', ROUTES)
+def test_future_account_proof_is_refused_by_actual_consumer_before_effects(producer, monkeypatch, tmp_path, route):
+    from lib.rotation_publication import ready, publication_refusal
+    run, _ = producer
+    summary = run()
+    assert ready(summary) and publication_refusal(summary) is None
+    summary['publication']['accounts'][0]['source_as_of'] = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
+    assert not ready(summary) and publication_refusal(summary)['error'] == 'rotation_publication_unavailable'
+    (code, body), touched = consumer(route, summary, monkeypatch, tmp_path)
+    assert code == 503 and body['publication']['status'] == 'UNAVAILABLE'
+    assert not touched
+
+
+@pytest.mark.parametrize('clock', [None, 'invalid', '2026-10-18', '2026-10-18 22:00:00'])
+def test_account_proof_requires_producer_normalized_aware_clock(producer, clock):
+    from lib.rotation_publication import ready
+    run, _ = producer
+    summary = run()
+    summary['publication']['accounts'][0]['source_as_of'] = clock
+    assert not ready(summary)
