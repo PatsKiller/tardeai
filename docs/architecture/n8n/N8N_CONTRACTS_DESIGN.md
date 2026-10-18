@@ -27,6 +27,16 @@ Status markers: **(E)** exists on `origin/main`; **(P)** proposed, with its trac
 [gap assessment](../../implementation/n8n-maturity/N8N_GAP_ASSESSMENT_AND_MATURITY_REVIEW_20261014.md); `FW-x` =
 framework element, §12).
 
+**2026-10-18 executable audit.** The introductory E/P markers and §15 are the historical
+2026-10-15 inventory, not runtime certification. The current classification is the
+[campaign contract matrix](../../implementation/n8n-maturity/campaign-20261018/baseline/contract_matrix.json)
+(source `3af0a8bdd659e02bf6f493c071800c6a227ae292`, served `a2aef7b4d2de17e737526337a2ffc37848deda4f`):
+implemented-and-enforced, implemented-not-enabled, partial, proposed or unproven, with actual
+producers, consumers, configuration, boundary and proof. The
+[campaign record](../../implementation/n8n-maturity/campaign-20261018/README.md) distinguishes
+baseline findings from local candidate fixes, merge, deployment and operational evidence.
+Neither a schema literal nor a static framework PASS establishes runtime enforcement.
+
 ---
 
 ## 1. Executive summary
@@ -598,12 +608,18 @@ predicate. Two rows are labelled extras (not §23.24 lines): the deferral tier a
   {<obligation id>: {ref, observed_at}}}}`), each unless an unexpired exception accepted by the operator in a PR
   names it (`--exceptions`, `N8nFrameworkExceptions@v1`: `{exceptions: [{workflow_id | "*", element, accepted_by:
   "operator", pr, expires}]}`). Offline with no runtime evidence nothing is eligible — the honest answer today.
-- Callers: `scripts/check_n8n_import_ready.py --framework-gate activation` runs the gate before an import (opt-in
-  flag; off by default). Not yet wired (documented, not modified): `docs/ops/packets/n8n-fabric-phase1-20261014/`
-  `00_preflight.sh` and `01_import_inactive.sh` (call `check_n8n_import_ready.py` without the flag), and the
+- Callers: the 2026-10-18 candidate makes `scripts/check_n8n_import_ready.py` enforce the gate for every
+  statically admissible import, including callers that omit `--framework-gate activation`; that spelling remains
+  accepted for existing packets. Static refusals stay refused without being promoted to candidate imports.
+  Thus `docs/ops/packets/n8n-fabric-phase1-20261014/00_preflight.sh` and `01_import_inactive.sh` inherit the gate.
+  Remaining paths require explicit closure: the
   operator's activation step (`n8n update:workflow --active=true` / publish in a packet under a `cron` grant, §23.2),
   which has no script of its own; `scripts/n8n_cutover_checklist.py` (promotion evidence) does not consult it. Each
-  packet adopts the flag in its own reviewed PR; no exhaustive activation-path audit is claimed.
+  packet must adopt the gate at its actual mutation boundary. The
+  [activation-path inventory](../../implementation/n8n-maturity/campaign-20261018/baseline/activation_paths.json)
+  records those boundaries. Runtime evidence v1 only checks truthy references/times and exceptions only check
+  self-described operator metadata; those are unresolved provenance gaps. Activations depending on them remain
+  held. Wiring the CLI does not constrain raw n8n admin APIs/UI or prove host attestation.
 
 ## 13. The reference mature workflow
 
@@ -630,8 +646,10 @@ on it exits 1 with 24 blocking reasons. It is a reference for a reviewer's diff,
 
 **Compatibility rules.**
 
-1. **Additive optional field** → same version. Every consumer ignores unknown fields; producers never rely on a
-   consumer reading them.
+1. **Additive optional field** → same version only after checking the actual readers. A closed reader may reject
+   an unknown field. Inventory all readers and test old producer/new consumer and new producer/old consumer;
+   document the supported version pairs. Use a new major and staged dual-read/write when an existing reader
+   would reject the addition. Producers never infer authority from an ignored field.
 2. **New required field, removed field, renamed field, changed type or changed meaning** → new major `@vN+1`.
    The producer dual-writes (or the consumer dual-reads) for at least one release; the old version is retired by a
    later PR, never by the same one.

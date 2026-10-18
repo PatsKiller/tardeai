@@ -538,12 +538,12 @@ def test_crosswalk_is_in_the_contracts_design():
         assert f"| {o['id']} |" in doc, o["id"]
 
 
-def test_import_guard_framework_gate_flag_is_opt_in_and_fail_closed(capsys):
-    """DD16: the pre-import guard can call the gate (--framework-gate activation); off by default."""
+def test_import_guard_framework_gate_is_mandatory_and_fail_closed(capsys):
+    """An import packet cannot silently omit the active §23.24 activation bar."""
     import check_n8n_import_ready as G
 
     args = [str(ROOT / REF_REL), "--relay-url", T.GENERIC_RELAY_URL, "--known-id", T.FABRIC_ERROR_ID, "--json"]
-    assert G.main(args) == 0
+    assert G.main(args) == 1
     capsys.readouterr()
     assert G.main(args + ["--framework-gate", "activation"]) == 1
     doc = json.loads(capsys.readouterr().out)

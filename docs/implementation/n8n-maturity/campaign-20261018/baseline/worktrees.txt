@@ -1,0 +1,3171 @@
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+HEAD a2aef7b4d2de17e737526337a2ffc37848deda4f
+branch refs/heads/wt/momentum-reconcile-canary-20261013
+
+worktree /home/johnclaw/agents-7-0-0-wt
+HEAD ad7ed6d55684d3f1884480502adbe319507d8df1
+branch refs/heads/n8nmat/agents-7-0-0-same-day
+
+worktree /home/johnclaw/canonical-event-lineage
+HEAD 03a911ef51fa88dbd7f58bce82f69d99ad5db30d
+branch refs/heads/feat/canonical-event-lineage
+
+worktree /home/johnclaw/census-part1-backend
+HEAD ff06bc93ba9701906eed6afcf0fb9c8f06c377e7
+branch refs/heads/docs/census-part1-backend
+
+worktree /home/johnclaw/census-part2-cc
+HEAD 071ece11749862cb28df06222c22c8393c96d21b
+branch refs/heads/docs/census-part2-command-center
+
+worktree /home/johnclaw/deploy-615788
+HEAD 61578899d628a0d5f41753b243a3323772f848bb
+detached
+
+worktree /home/johnclaw/deploy-cb88
+HEAD cb88c015b4f674c559c62a31866f357e192dc56a
+detached
+
+worktree /home/johnclaw/final_exact_sha_qa
+HEAD 0e3f0b99d98bec2e70fd58ad61e8c32fb11f1db5
+detached
+
+worktree /home/johnclaw/final_rc_qa
+HEAD 532fa65914811b00e997896b594a425dd7eeaf2c
+detached
+
+worktree /home/johnclaw/main-deploy
+HEAD 0b7bc9eb7b19f16b51404bbf96d93e77b292c019
+detached
+
+worktree /home/johnclaw/post_main_delta_qa
+HEAD b47dc3247dcdb055df85e4e6b4e8bb0c1d6cf501
+detached
+
+worktree /home/johnclaw/qa-cc55cf64-isolated
+HEAD cc55cf64baa6eb7a616a458f0c840d6302382ede
+detached
+
+worktree /home/johnclaw/qa-data-plane-cc55
+HEAD cc55cf64baa6eb7a616a458f0c840d6302382ede
+detached
+
+worktree /home/johnclaw/qa-data-plane-v2-baseline
+HEAD cc55cf64baa6eb7a616a458f0c840d6302382ede
+detached
+
+worktree /home/johnclaw/qa-data-plane-v2-fd61
+HEAD fd61ac46530e93fde5740a98482e1ae3209adec5
+detached
+
+worktree /home/johnclaw/qa-fd61ac46-isolated
+HEAD fd61ac46530e93fde5740a98482e1ae3209adec5
+detached
+
+worktree /home/johnclaw/qa-notification-ecabe
+HEAD ecabe54c9cafba68370d84436633d5a166a885ef
+detached
+
+worktree /home/johnclaw/qa-v2-de310a
+HEAD de310a884d83d2d33742b8c166d47e9f8b47b4fc
+detached
+
+worktree /home/johnclaw/qa-v3
+HEAD 9d4ca812e8a33d3cc31b4e92714a22c5dc78b0fc
+detached
+
+worktree /home/johnclaw/r20-r24-exact-main-deploy
+HEAD fdb99d7a8f020bdb701a57199c802e6362dd045a
+detached
+
+worktree /home/johnclaw/r20-r24-integration
+HEAD cc55cf64baa6eb7a616a458f0c840d6302382ede
+branch refs/heads/fix/r20-r24-data-lineage
+
+worktree /home/johnclaw/r20r24-conflict-forensics
+HEAD 6088254efa4aedd6a023dcc193a78559996829db
+detached
+
+worktree /home/johnclaw/sw4-wt
+HEAD 03439d207377ad10abdad09c82a8918179bf6c61
+branch refs/heads/n8nmat/shadow-wave4
+
+worktree /home/johnclaw/tardeai-financial-senses-parallel-v1
+HEAD 59550481248ab157c214b81f31d89de8297220c6
+branch refs/heads/feature/financial-senses-parallel-v1
+
+worktree /home/johnclaw/tardeai-main-audit-20c910a0
+HEAD 20c910a0a8fa6b5a0400d42bc3ae7ec936dd591e
+detached
+
+worktree /home/johnclaw/ticker-guid-lineage
+HEAD 58fa344c9b5de76606b7a38a7f04c5b49da54c9f
+branch refs/heads/feat/ticker-guid-lineage
+
+worktree /home/johnclaw/trade-ai-deployments/active-trader/306f817993707a99129633a8555352277bc6d05f
+HEAD 306f817993707a99129633a8555352277bc6d05f
+detached
+
+worktree /home/johnclaw/trade-ai-releases/agent-jobs/3b9c853f-scheduled-canary-20260804-015908
+HEAD 3b9c853fc4dc0bc3ccc6995dfca9eac3ee207258
+detached
+
+worktree /home/johnclaw/trade-ai-releases/agent-jobs/6dab6c30-agent-flash-governance-20260804-003541
+HEAD 6dab6c3037cd80fa778fe83cc8b21fd704d2a56d
+detached
+
+worktree /home/johnclaw/trade-ai-releases/agent-jobs/b706fb7b-market-15m-v2-20260804-114814
+HEAD b706fb7bab96c7e19419979e0611930ecafad650
+detached
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/holding-llm-curation-wt
+HEAD eb3d1d14f6b47af75bb18fda4044220b9cb28923
+branch refs/heads/feat/holding-llm-curation-cio-flash
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-stop-integration
+HEAD b9cdcff43bae3fb5696500379886cf476c88bf28
+branch refs/heads/fix/stop-execution-journal-reentry-integration
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a00bc66397171fc5b
+HEAD 4d138e8c302db222c299072948efd7dfbc655b50
+branch refs/heads/fix/n8n-audit-five-findings
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a02429a0c0076e2a0
+HEAD c358b7b4c17d8d3803cb463643f2d6b946eab994
+branch refs/heads/comms/at-catalyst-research-n8n-page-20261016
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a0d685440e18dff6f
+HEAD 3af0a8bdd659e02bf6f493c071800c6a227ae292
+branch refs/heads/fix/registry-truth-evidence-20261018
+locked claude agent agent-a0d685440e18dff6f (pid 119571 start 273343408)
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a140d8cbfc431ea64
+HEAD e355be188735edf8524ee119e335523adde5ad23
+branch refs/heads/n8n/reference-arch-framework-checker
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a1a76cebd2fe4eb97
+HEAD c3727fa10b486812672daca3f7d7733c1c849bb9
+branch refs/heads/self-heal/claude-fixer-20261016
+locked claude agent agent-a1a76cebd2fe4eb97 (pid 119571 start 273343408)
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a1af03934381db247
+HEAD f7818105622e0ff1116b8f86ef71103c46a8d319
+branch refs/heads/feat/useful-output-proof-5-lanes
+locked claude agent agent-a1af03934381db247 (pid 119571 start 273343408)
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a1f339e2a79dceb80
+HEAD 8d1bddd22192d5dbd77cab37b0df5341164f6838
+branch refs/heads/n8nfab/comms-intent-consumer-20261015
+locked claude agent agent-a1f339e2a79dceb80 (pid 119571 start 273343408)
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a205097a7851bfa2b
+HEAD 52ad27103c828467445fb92b8abbe80b087352f6
+branch refs/heads/n8nmat/thin-lane-tests-20261014
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a22c5731c4a679b96
+HEAD 0baddc47481f3ec1673fabf23e37e7b044a54dca
+branch refs/heads/fix/data-integrity-20261018
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a2c343c62e558d0b1
+HEAD 5d147097e0460a70cde4568842eda177293e7eda
+branch refs/heads/n8nmat/sender-reach-unified-dispatcher-20261014
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a2f5137c3f4de85cb
+HEAD 858b2c0af8fd82f05d156396416dc38e78a4ed56
+branch refs/heads/n8nmat/canary-wave-2-20261014
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a323690f4fc4f4a59
+HEAD 364fac424e58db171b48709acd4e082abaaf07dd
+branch refs/heads/fix/architect-review-recovery-ownership
+locked claude agent agent-a323690f4fc4f4a59 (pid 119571 start 273343408)
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a333e11c3febef71c
+HEAD 7b78c25aed1da01784c14f2ceeef60b13d15416f
+branch refs/heads/n8nfab/hermes-learning-prereqs-20261015
+locked claude agent agent-a333e11c3febef71c (pid 119571 start 273343408)
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a339b4c48c0dc9d9f
+HEAD fc56728962fd51c94b3dc8cfd67e2df334eda88f
+branch refs/heads/governance/agents-15-0-0-disk-hygiene-20261018
+locked claude agent agent-a339b4c48c0dc9d9f (pid 119571 start 273343408)
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a34c65ee0bf820283
+HEAD 05b09b67ed9540da3884969d3e9da0cea5ebaf3f
+branch refs/heads/fix/scalp-chokepoint-only-20261015
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a351201b0a9bed892
+HEAD e7dee87003c1e9bb0640a1b75db7081d88cced84
+branch refs/heads/fix/canary-effect-keys-20261015
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a3775cbbccd0e6eba
+HEAD 9f6ed00d262ed58bfc0b606a06789bc58a664540
+branch refs/heads/ops/cron-effect-claim-wrap-20261016
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a3a60550dfc290bd9
+HEAD 6a593a19f40c64a60a56d618d611548ee325e4fb
+branch refs/heads/fix/proposal-sizing-no-account-read-20261014
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a41d10ce545be1622
+HEAD bb3842f76a64356e3ae5a103ff02f5abf999d101
+branch refs/heads/n8nmat/shadow-evidence-20261014
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a4370518580c36aa9
+HEAD d3c86d2a182ffa18e80227a791d86251d6d8ceb9
+branch refs/heads/n8nmat/dryrun-daterot-fixes-20261014
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a4b1d1050ec722490
+HEAD 4703839a7ae6a99dfe35a27ac9a67d1f72252f67
+branch refs/heads/n8nmat/shadow-wave-6-20261014
+locked claude agent agent-a4b1d1050ec722490 (pid 119571 start 273343408)
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a53235e88c885e874
+HEAD 47553688ee9c32b33841626d8770ebde216b75f1
+branch refs/heads/docs/n8n-audit-threat-model-ledger
+locked claude agent agent-a53235e88c885e874 (pid 119571 start 273343408)
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a5c7b3faa753be0cc
+HEAD b40dda1d8f77404f9aeb236f2942e65eb8a67db2
+branch refs/heads/urgent/stop-last-known-blind-20261015
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a624c45451f7d42b5
+HEAD 1c90c164f621914cc67de2c923e171fca4ad6c79
+branch refs/heads/feat/n8n-cohort2-learning-watermark
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a62d687afde72e7ec
+HEAD 9dcba7beb6167d74836209ec3c3b544d62a91a68
+branch refs/heads/worktree-agent-a62d687afde72e7ec
+locked claude agent agent-a62d687afde72e7ec (pid 43373 start 271727)
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a6c43f298c71ca339
+HEAD ae826d74caa50b72faa23c0c77d9f3432d358ded
+branch refs/heads/release/window-runner-20261016
+locked claude agent agent-a6c43f298c71ca339 (pid 119571 start 273343408)
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a74cbf7f4ddca5dd0
+HEAD 2d21eec6b32536436da0b9acd957d3b65b3c49a9
+branch refs/heads/feat/hermes-feedback-agent-n8n-20261017
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a788948c277eda834
+HEAD 3b58f014332571f9818e3b129a7b38982fc129b9
+branch refs/heads/ops/nightly-cutover-controller-20261016
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a7ecbb329298a3208
+HEAD 99c7c8b100288403d52bd3eb3b3c7bc41ff45233
+branch refs/heads/n8nmat/canary-wave-1b-20261014
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a802ee3b20c0d7eb6
+HEAD 4b150b446276a16f80f13f2ffd33bde01f674efd
+branch refs/heads/ops/cutover-fail-closed-txn-20261016
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a8b2204ec080f784f
+HEAD a3a15a3e725f89985e76078505bd5d1846c6d07b
+branch refs/heads/fix/comms-intent-deliver-before-close-20261017
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a98e86ab1c58e72e0
+HEAD 61366b1b51c5b467b26855c5ba9cb08d0300bf12
+branch refs/heads/n8n/lane-repair-ri-hermes-litmus-20261015
+locked claude agent agent-a98e86ab1c58e72e0 (pid 119571 start 273343408)
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a9f4e5554cb6a96b3
+HEAD ad643a4805214e71e20fb708e650e87fe6d2e7c0
+branch refs/heads/n8n/consolidation-cohort1-20261016
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a9fca7b37a6b352be
+HEAD 6c896e2c61d854c62f8ca2ce9a97392f60d419a4
+branch refs/heads/n8n/self-heal-tranche-20261016
+locked claude agent agent-a9fca7b37a6b352be (pid 119571 start 273343408)
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-aa41d07e30d2c01c9
+HEAD 2149452863151d524c1a798a5dfbec0358cb9f94
+branch refs/heads/feat/p6-tiered-validation-20260916
+locked claude agent agent-aa41d07e30d2c01c9 (pid 43373 start 271727)
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-aa95214ecc01a35d1
+HEAD 3af0a8bdd659e02bf6f493c071800c6a227ae292
+branch refs/heads/fix/false-green-closure-20261018
+locked claude agent agent-aa95214ecc01a35d1 (pid 119571 start 273343408)
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-aa97749c6867496f0
+HEAD 94ee3770a65f7e67e574bd61a04dc350f098e56f
+detached
+locked claude agent agent-aa97749c6867496f0 (pid 119571 start 273343408)
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-aaa34d3681f9b42ff
+HEAD 9f34002ce7af6dd4518e8fdd3141002fa09e4a70
+branch refs/heads/ops/cutover-holds-clear-20261016
+locked claude agent agent-aaa34d3681f9b42ff (pid 119571 start 273343408)
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-ab08f5413a35ec0e5
+HEAD 083f894ebe0b533e498a15b549dea71d42aae1ef
+branch refs/heads/feat/hermes-worker-pool-wire-20261015
+locked claude agent agent-ab08f5413a35ec0e5 (pid 119571 start 273343408)
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-ab108029f827e1ac0
+HEAD a756219399794c3f1f87f1396f53b857fbfdb521
+branch refs/heads/ops/agents-14-0-0-ratify-20261016
+locked claude agent agent-ab108029f827e1ac0 (pid 119571 start 273343408)
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-ab43c5807891204ea
+HEAD 00061cba93d88df384b2b24b8a20a88d86d6c671
+branch refs/heads/feat/n8n-oauth-first-routing
+locked claude agent agent-ab43c5807891204ea (pid 119571 start 273343408)
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-ab4f7027ff74b58df
+HEAD 3c926c806e7a062c9f6ef38c3cfeb0701ba31efb
+branch refs/heads/report/n8n-cutover-outcomes-20261016
+locked claude agent agent-ab4f7027ff74b58df (pid 119571 start 273343408)
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-aba0b0f25681af6b6
+HEAD 1f9fced70379284b1e359b79e8b8a10629887243
+branch refs/heads/worktree-agent-aba0b0f25681af6b6
+locked claude agent agent-aba0b0f25681af6b6 (pid 43373 start 271727)
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-ac3e46f619ddd2c4d
+HEAD 60ecb4adc8fd719249ffeb0f711f840a24bba4dc
+branch refs/heads/worktree-agent-ac3e46f619ddd2c4d
+locked claude agent agent-ac3e46f619ddd2c4d (pid 43373 start 271727)
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-acf9a8c585dd3329f
+HEAD 1c28a00c6b10c468ea67d854861ada316b574c60
+branch refs/heads/wt/api-venv-fix-20261009
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-ad57469494ef7da5c
+HEAD 00640cbdf5adf5d7fc7beb9ee45c772fa780dbdd
+branch refs/heads/agent/active-trader-live-motion-ui-v1
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-ad5c58e93bc3f7cdf
+HEAD 08b27a8bf57cfe3d30b7c69c7db0fea5d5c9c369
+branch refs/heads/docs/n8n-migration-state-20261014
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-ad81fd1b312ec78f4
+HEAD ab6f75b3119c87b7f49c1a5e45bb30289923ebb9
+branch refs/heads/fix/n8n-checker-adversarial-20261015
+locked claude agent agent-ad81fd1b312ec78f4 (pid 119571 start 273343408)
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-ada5e44a062631fed
+HEAD df428e9c2e8e15fc6101a1e9c27376283fe72262
+branch refs/heads/fix/self-heal-fixer-hardening-20261016
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-ada73d635a9e7c8d4
+HEAD 96bfdcce2dfa8f5403588c498deaf9a81257da72
+branch refs/heads/feat/comms-intent-consumer-live-20261017
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-ade6dd55aa70d3b77
+HEAD d88ad2e13db599a31f72e14443886c9d88a508ff
+branch refs/heads/fix/scalp-float-finviz-av-overview-20261016
+locked claude agent agent-ade6dd55aa70d3b77 (pid 119571 start 273343408)
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-adea0496a4f1e9d55
+HEAD c0754cb86bc7d8e4ff3182bc0136438fc4650e46
+branch refs/heads/security/cc-totp-step-up-20261016
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-adee07b9c7b597107
+HEAD 8c037b710114c18de59ba35e41e212e82c3f18d1
+branch refs/heads/lane-repair/three-lanes-20261015
+locked claude agent agent-adee07b9c7b597107 (pid 119571 start 273343408)
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-ae6a8cc8bd7711877
+HEAD ede135741b4b1d27aa23fff39a4148a6ad349998
+branch refs/heads/worktree-agent-ae6a8cc8bd7711877
+locked claude agent agent-ae6a8cc8bd7711877 (pid 43373 start 271727)
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-ae8209ed30883ce34
+HEAD c8cbf49673294ef780e300cb32b29dc2b695e439
+branch refs/heads/report/n8n-cutover-outcomes-v2-20261016
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-ae94880492626bd32
+HEAD 4703839a7ae6a99dfe35a27ac9a67d1f72252f67
+branch refs/heads/n8nmat/shadow-wave-7-20261014
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-aed46a73452520c87
+HEAD 077fda562b982a3b85d8b87849359a68f2b5688e
+branch refs/heads/feat/hermes-tune-cutover-20261017
+locked claude agent agent-aed46a73452520c87 (pid 119571 start 273343408)
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-af112aa79a144ed8c
+HEAD 2e6fb06aa2fa3344359ff9c18e3bb488ad69a9c7
+branch refs/heads/n8n-skip-dry-for-live-lanes
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-af1816452f2f8193a
+HEAD a3ad5193767a50ad462f499899e902227c7b12ff
+branch refs/heads/n8n/assert-fence-wave1-20261016
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-af2c231b9b3bd4406
+HEAD b73da8395388e3a65dd082a3810f8f200786f9ac
+branch refs/heads/wt/hermes-sentinel-ci-fix-20261009
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-af2cc32e83b425529
+HEAD ff812e9ea88c0f484f158b319d094c0d00e3e921
+branch refs/heads/n8nmat/cutover-safety-20261014
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-af2dd1a68d837002c
+HEAD 14cc22e226b10a7239fad9425413449fd4362e51
+branch refs/heads/n8nmat/schwab-read-lanes-20261014
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-af343156c64e3aa64
+HEAD a30daf18d0e6e317b2ba3cce95180a13acacc3c3
+branch refs/heads/n8n/failure-diagnosis-not-deferred
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-af3f03f73e5b6d871
+HEAD d1b488f11baaaf032a147875bf1cbbb1df3e06c6
+branch refs/heads/feat/cc-broker-access
+locked claude agent agent-af3f03f73e5b6d871 (pid 119571 start 273343408)
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-af671ca8171ebec02
+HEAD 4230fda02b9249ca1d57c63bc5a72f822fe7f253
+branch refs/heads/n8nmat/registry-truth-retire-20261014
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-afb379d5993bee102
+HEAD a2aef7b4d2de17e737526337a2ffc37848deda4f
+branch refs/heads/feat/disk-hygiene-n8n-20261018
+locked claude agent agent-afb379d5993bee102 (pid 119571 start 273343408)
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-afe33e9d42001a451
+HEAD 29dc75ddd46b8a8cb10ece3880aa2eabab329d2b
+branch refs/heads/worktree-agent-afe33e9d42001a451
+locked claude agent agent-afe33e9d42001a451 (pid 43373 start 271727)
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/guard-grant-id
+HEAD 865a9a0b127a37454438389abdaddd1962b079d1
+branch refs/heads/fix/guard-grant-id-20261018
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/mvl-phase1
+HEAD d32e00be2cb9535794cc54f6a5caf4ec3f38ca4c
+branch refs/heads/feat/mvl-phase1-trigger-intake-lease
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/wl-cards-catalysts
+HEAD 555bc2c75c77c8ab3e28bb4316341cfc3fa76008
+branch refs/heads/fix/watch-cards-catalysts-20260915
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/wl-lock-holders
+HEAD e270f1f8cddae254780e5a886643e49697168002
+branch refs/heads/fix/watch-lock-holders-20260915
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/tradeai-wt-b2-incident-20261009
+HEAD 3017dfec94caf4a79890982ad2d7c1407e1c6d4e
+branch refs/heads/n8nmat/b2-incident-notifier
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/tradeai-wt-b2-relayenv-20261009
+HEAD 57803b2ff0e3e9446a025fdc69860f02e840f466
+detached
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/worktrees/agent-maturity-observability-v1
+HEAD dc47a7edd24302254fec0e7a526487ab598bc70c
+branch refs/heads/codex/agent-maturity-observability-v1
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/worktrees/moomoo-l2-gateway-249
+HEAD bd9fb8fee4f7e36aed64518ad5dc490a5bb0fb69
+detached
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/worktrees/research-prompt-curation
+HEAD 7e2fcd487d6172140934bff6b1e929ab142cceca
+branch refs/heads/fix/research-prompt-curation
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/worktrees/schwab-live-stops-sync-fix
+HEAD 130d961be8f5029e155a9e50d04ea7a60f9f8d50
+branch refs/heads/fix/schwab-live-stops-sync
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/worktrees/schwab-reauth-anchor-gate
+HEAD 4dec62c8bc778aa7daaa6e4bdbc5e587a7aa71da
+branch refs/heads/fix/schwab-reauth-anchor-gate
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/worktrees/telegram-notification-normalization-v2
+HEAD a51ddd72f75b9fbe5dac749bc786396c9b558104
+branch refs/heads/feat/telegram-notification-normalization-v2
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/wt-agents-5-1-0
+HEAD b0f0c6eebf77044cbbc258fbca61031e4ae511f8
+branch refs/heads/n8nmat/agents-5-1-0-intents
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/wt-agents-5-2-0
+HEAD 2d1ef03cd71646daf5f784178892448c28ced3d1
+branch refs/heads/n8nmat/agents-5-2-0-validation
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/wt-av-newsapi
+HEAD 7b9a564bf3a04b919bb8ebb470b2bd6028848218
+branch refs/heads/n8nmat/av-newsapi
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/wt-c1-manifest-flips
+HEAD 2c93476cb88c6675ab3fb844581332ea453c49de
+branch refs/heads/n8nmat/c1-manifest-flips
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/wt-cio-cognition
+HEAD 069d11c48b8e29a5a72174c218bf932061e6c7d4
+branch refs/heads/feat/cio-persistent-cognition-consumption
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/wt-cutover-multiline
+HEAD 523ed7a9c3310451b73618e886c34333bd1fc282
+branch refs/heads/n8nmat/cutover-multiline
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/wt-finviz-cache-base
+HEAD 7901ad016327963e2559c1bdc73ac512d63df8d7
+detached
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/wt-finviz-cache-n8n
+HEAD 512f47a491e6caeea9a406d47207d8cf68841ccc
+branch refs/heads/n8nmat/finviz-cache-n8n
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/wt-news-ingest-w4
+HEAD c2df74e477d7aa3e2dead0cd97d787eef3b98963
+branch refs/heads/n8nmat/news-ingest-w4
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/wt-premarket-parallel
+HEAD 62d214306f8f525908da218e08770c660db10f90
+branch refs/heads/n8nmat/premarket-stage-parallel
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/wt-r10-10-shadow
+HEAD cc0dd4f14c6b3eef03a3ab095ee6ba1f59fc69ca
+branch refs/heads/feat/r10-m2-production-memory-shadow
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/wt-r10-7-docs
+HEAD a891b9f037a71974aa856e171b6d4e55ca0a1d86
+branch refs/heads/docs/r10-7-accelerated-closeout
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/wt-r10-8-cio-l5
+HEAD 7d0fc8a52b9f09dee7fa129398e0206e91349516
+branch refs/heads/fix/cio-natural-cognition-pack
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/wt-r10-8-deploy
+HEAD 1afb1479676aeb67b64791e58e946753a2854ddf
+detached
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/wt-r10-8-docs
+HEAD f967247d71d05ceb2467dde47cff3af5675db3b9
+branch refs/heads/docs/r10-8-l5-closeout
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/wt-r10-9-docs
+HEAD 4e4053697d6a1970c5493d8a7fd6fa91ce0bec89
+branch refs/heads/docs/r10-9-l5-acceptance
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/wt-r10-arch-corr
+HEAD 4d0d6baeba4df8620fb5fcb51de926c929105432
+branch refs/heads/feat/r10-memory-architecture-correction
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/wt-r10-exact-main
+HEAD 15ab2362361cbd8e0ded3d0c2ce2b83f7e8bacc7
+detached
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/wt-r10-m1
+HEAD a14bebade5d54f67077b1a77be598e8e9b8e9194
+branch refs/heads/feat/r10-m1-baseline-curation
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/wt-r10-m2
+HEAD 0cc3740a3f586759d4d2cfcee965fb5cba3712d0
+branch refs/heads/feat/r10-m2-memory-substrate-benchmark
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/wt-r10-m3
+HEAD beb83a53a97c938f0f3115a98ae7b3f07cf19c89
+branch refs/heads/feat/r10-m3-memory-consolidator
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/wt-r10-m4
+HEAD ef1ec95318168d6ed749ff033d02df33ed042374
+branch refs/heads/feat/r10-m4-context-envelope-v2
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/wt-r10-yedas
+HEAD 6f7b91eb0f42cc4102886b8087e1d7868d384a9c
+branch refs/heads/docs/r10-m1-natural-yedas
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/wt-r11-operator-value
+HEAD 77a06ee32bb75b3e3014466f0ae8fb654d7cbfbe
+branch refs/heads/docs/r14a-source-to-live
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/wt-r15-intelligence
+HEAD 43937412a382b0375ba637d5e195581cfe20703a
+branch refs/heads/docs/r15-2-live-convergence
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/wt-r16-learning
+HEAD 5e2792a26e3de4cc87c8104955704b6ca6a58027
+branch refs/heads/chore/transferson-canonical-universe
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/wt-r17-cash-hotfix
+HEAD 8d9cd2b5cc1530b0ba4e5cbe1be2e0fba63b003d
+branch refs/heads/fix/r17-cash-checkpoint-semantic-identity
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/wt-r17-feedback
+HEAD 740eb476f2143918976bcfa0345b574e98ed30f4
+branch refs/heads/feat/r17-natural-feedback-closure
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/wt-r18-forward
+HEAD 147e188f6982694d57916d0a5921d344739d5cea
+branch refs/heads/feat/r18-r23-institutional-intelligence-shadow
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/wt-r20-r24
+HEAD 0e3f0b99d98bec2e70fd58ad61e8c32fb11f1db5
+branch refs/heads/convergence/r20-r24
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/wt-r20-r24-main-convergence
+HEAD b47dc3247dcdb055df85e4e6b4e8bb0c1d6cf501
+branch refs/heads/release/r20-r24-main-convergence
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/wt-r20-r24-v4
+HEAD 0e3f0b99d98bec2e70fd58ad61e8c32fb11f1db5
+branch refs/heads/convergence/r20-r24-v4
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/wt-r93-exact-main
+HEAD 804d8281aff8cfaf13533896bebbc8c5ce8929b3
+branch refs/heads/docs/r93-post-merge-current-proof
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/wt-r93-free-first-sched
+HEAD 3dd6f8d5bc1d0403a55487cf51f5ec2a58b7853b
+detached
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/wt-r93-postc-docs
+HEAD e4559ce33f9ea0ebdd8a743b4b122581cb70208f
+branch refs/heads/docs/r93-postc-natural-proof
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/wt-r93-prc-curation
+HEAD bc6ff5c62ef1e1265195301a9659c26508ba26ed
+detached
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/wt-redeploy-p0
+HEAD 65f851af934be0ff1048cca32f40fbcd3d85afb9
+branch refs/heads/wt/redeploy-workstation-ui
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/wt-release-pin-daemons
+HEAD 7d93755cce540f215a5ce0c961c300b783a79131
+branch refs/heads/n8nmat/release-pin-daemons
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/wt-stage-runner-env
+HEAD 9f9c74f74729a34e814f577d965569123c79888d
+branch refs/heads/n8nmat/stage-runner-env
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/wt-stale-fix
+HEAD b3b19f8bdfe4bed4a74a68ad3611240eab4d2b80
+branch refs/heads/fix/stale-badge-journal-rebuild
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/wt-stop-cron-pushes
+HEAD 35c0792b71f383e8dc889b9441e6ef3c00f0ca89
+branch refs/heads/n8nmat/stop-cron-pushes
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/wt-w5-search-cost-proofs
+HEAD 337486d262af11e5b896ae336de0e4e48066d158
+branch refs/heads/docs/overnight-w5-search-cost-proofs
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/wt-watch-v5
+HEAD 177b7b3a006e60d0ba3cc45660d4895bc4691046
+branch refs/heads/wt/watch-v5-technicals
+
+worktree /home/johnclaw/trade-ai-worktrees/cc-header-deploy-20260903T185900Z
+HEAD abbe880e6817c963d8473767c1df674a13996527
+detached
+
+worktree /home/johnclaw/trade-ai-worktrees/cc-header-truth-v2-claude
+HEAD fcf790515e47f613390d800a05fecdef1a6e1601
+branch refs/heads/docs/comms-reconciliation
+
+worktree /home/johnclaw/trade-ai-worktrees/cc-header-truth-v2-final-validator-20260903T181116Z
+HEAD 84e9bc0e7f75637a13132b4d887adbabae6aab78
+detached
+
+worktree /home/johnclaw/trade-ai-worktrees/l3-judgment-20260911
+HEAD 26f343d26e7138220fda91c2b551204f3f0394ce
+branch refs/heads/feat/l3-judgment-20260911
+
+worktree /home/johnclaw/trade-ai-worktrees/m2-remediation-dry-20260908
+HEAD bc9312411405d2d75d0dcf11cfe0109b518fc3a8
+branch refs/heads/wt/cio-final-closeout-20260909
+
+worktree /home/johnclaw/trade-ai-worktrees/maturity-gap-closure-20260909
+HEAD 714c905b5b239120b6beda3e51016f10e7bc5986
+branch refs/heads/wt/maturity-gap-closure-20260909
+
+worktree /home/johnclaw/trade-ai-worktrees/research-truth-brave-claude-v1-20260903T215200Z
+HEAD 65566cd6d2b9ecd665f621dfee5e27ef0e3d395c
+branch refs/heads/fix/research-truth-brave-claude-v1-20260903T215200Z
+
+worktree /home/johnclaw/trade-ai-worktrees/wt-conftest-db-guard
+HEAD 8e39fe508d7aeb7d79a99c8e5c23fb414cc3f47c
+branch refs/heads/fix/conftest-production-db-guard
+
+worktree /home/johnclaw/tradeai-a1-preflight
+HEAD 4dd555e8fb9b32b1ac70b474fef1c9260ae63595
+detached
+
+worktree /home/johnclaw/tradeai-deploy-w2-f8749580b
+HEAD f8749580b6d4f3903af49b559ab328907b5c98c5
+detached
+
+worktree /home/johnclaw/tradeai-exact-main-20260827
+HEAD a2aef7b4d2de17e737526337a2ffc37848deda4f
+detached
+
+worktree /home/johnclaw/tradeai-main-deploy
+HEAD 34a80a2e8d2286b17dc851a8c3d26acaa122c930
+detached
+
+worktree /home/johnclaw/tradeai-wt-162-refresh-20260926
+HEAD 3d770193b1545e62e0b5dc1484032421fe2f6cd5
+branch refs/heads/ui/active-trader-next-iteration-2
+
+worktree /home/johnclaw/tradeai-wt-a4-unknown-retirements
+HEAD 3348ac8f526e7da01d17835de4829ef5a6eee7ec
+branch refs/heads/wt/a4-unknown-retirements
+
+worktree /home/johnclaw/tradeai-wt-act
+HEAD 4c58da2127531638c622aac941ac4615ddc3700a
+branch refs/heads/wt/opp-actions-20261009
+
+worktree /home/johnclaw/tradeai-wt-active-trader-stage0
+HEAD 1867abca27fbb5c61186d56e3590580fa8c0f4ef
+branch refs/heads/wt/active-trader-stage0
+
+worktree /home/johnclaw/tradeai-wt-advisory-20261007
+HEAD 117c7b1e8faa8981e6cea39ec12bcd23fbd1f47e
+branch refs/heads/wt/advisory-typed-refusal-20261007
+
+worktree /home/johnclaw/tradeai-wt-advisory-desk
+HEAD 08a884d03c8ecec270fd000af058981e570a0c0a
+branch refs/heads/feature/cio-advisory-living-status
+
+worktree /home/johnclaw/tradeai-wt-advisory-influence
+HEAD 89d11de8ebcb6e66af8e75720a7cb7cc16b99b4b
+branch refs/heads/fix/influence-resolve-root
+
+worktree /home/johnclaw/tradeai-wt-advisory-live-cio-truth
+HEAD 55b306b35569bb1f67b1d69e9e62e1044c034127
+branch refs/heads/feat/advisory-live-cio-truth
+
+worktree /home/johnclaw/tradeai-wt-advisory-live-observability
+HEAD 3574f3cdb423a61bb5f8784e43b67ba1d3ee5a2d
+branch refs/heads/feat/advisory-live-observability
+
+worktree /home/johnclaw/tradeai-wt-advisory-live-p0-gpu
+HEAD 6b504ce3307257128af4b8fe29715cccfd25c7bd
+branch refs/heads/feat/advisory-live-p0-gpu
+
+worktree /home/johnclaw/tradeai-wt-advisory-live-p1
+HEAD 2c1ed2c945ac7f915bbb65f3535d6b95925bce61
+branch refs/heads/feat/advisory-live-p1
+
+worktree /home/johnclaw/tradeai-wt-aec-rail-full-667c
+HEAD d33f28ee80fbe6e6e07862a2ca9c1f1403912783
+branch refs/heads/cursor/soft-share-report-exempt-667c
+
+worktree /home/johnclaw/tradeai-wt-agent-flash-governance
+HEAD 51be943a072e233f77f0e147881864bb8721cb2e
+branch refs/heads/fix/agent-flash-governance
+
+worktree /home/johnclaw/tradeai-wt-agent-flash-scheduled-canary
+HEAD 5ad3b517caa227a78871284985bd659742a67ddb
+branch refs/heads/fix/agent-flash-scheduled-canary
+
+worktree /home/johnclaw/tradeai-wt-agent-jobs-cron-env
+HEAD d407b13de7f448a5000ef86e78348ce570d362b9
+branch refs/heads/fix/watchlist-agent-jobs-cron-env
+
+worktree /home/johnclaw/tradeai-wt-agent-jobs-overnight-cap
+HEAD 37a79ef09872d3909bf3d4c0ad941825a48dc248
+branch refs/heads/fix/watchlist-agent-jobs-overnight-cap
+
+worktree /home/johnclaw/tradeai-wt-agent2-n8n-w1-20261008
+HEAD 3e3e67d87164d9e13e599fc982b0b9e4284d8af7
+branch refs/heads/wt/agent2-n8n-w1-20261008
+
+worktree /home/johnclaw/tradeai-wt-agent2-n8n-w2-20261008
+HEAD 0d29cfcf86b0b882ad097d57f143f959c21949e9
+branch refs/heads/wt/agent2-n8n-w2-20261008
+
+worktree /home/johnclaw/tradeai-wt-agentgate1-20261009
+HEAD 543bd27b72f0b77d55add8621ddfae936d223626
+branch refs/heads/feat/bridge-agent-preconditions
+
+worktree /home/johnclaw/tradeai-wt-agentgate3-20261009
+HEAD 208cd33b3280693d5eb2ddea2b31043a59a184c3
+branch refs/heads/feat/n8n-agent-governance-controls
+
+worktree /home/johnclaw/tradeai-wt-agents-4-4-0-ratify
+HEAD f415b1d21b92d44a3e39424f29b31f6b587e24ca
+branch refs/heads/n8nmat/agents-4-4-0-ratify
+
+worktree /home/johnclaw/tradeai-wt-agents-r1
+HEAD c3d5e895d4de5eb16f43f90ce8f43dc61a0cadfc
+branch refs/heads/n8nmat/agents-r1-classes
+
+worktree /home/johnclaw/tradeai-wt-agents-r1-ratify
+HEAD 062440827d4648c03dc20e9182b2a44c2592f184
+branch refs/heads/n8nmat/agents-4-3-0-ratify
+
+worktree /home/johnclaw/tradeai-wt-agents-r1-shadow-shape
+HEAD 463535dfee6f53c7481c2767d4bd229530165820
+branch refs/heads/n8nmat/agents-r1-shadow-shape
+
+worktree /home/johnclaw/tradeai-wt-agents300-20261009
+HEAD a0984546181d316f92931c7b87218b55b3b836d9
+branch refs/heads/docs/agents-3-0-0-policy
+
+worktree /home/johnclaw/tradeai-wt-agents310
+HEAD 2f824b4f789110d6ccc5f3c7d5783aa9e995a079
+branch refs/heads/docs/agents-4-1-0-n8n-dispatch
+
+worktree /home/johnclaw/tradeai-wt-agents420
+HEAD af764ebb55eff02e0fe6b71e2c0e35cf1e8029c6
+branch refs/heads/docs/agents-4-2-0-n8n-first
+
+worktree /home/johnclaw/tradeai-wt-aif-fs-integration
+HEAD cedf04101922d9e555c9b9e33f449ec403b6f59a
+branch refs/heads/feature/aif-financial-senses-integration-v1
+
+worktree /home/johnclaw/tradeai-wt-alert-chrome-tag-20260922
+HEAD 0486394fad0bf03c13347ee0d6eff311ed24eb28
+branch refs/heads/wt/alert-chrome-tag-20260922
+
+worktree /home/johnclaw/tradeai-wt-alpaca-dual-write
+HEAD 309961a4c113a699f695a5bee7cbf4d40bfe7818
+branch refs/heads/wt/alpaca-dual-write
+
+worktree /home/johnclaw/tradeai-wt-amend-20261009
+HEAD d42835c5377468556706221cb816f39fb494a15f
+branch refs/heads/docs/agents-3-0-0-governed-n8n-agents
+
+worktree /home/johnclaw/tradeai-wt-api-ruff-fixture-28049-20261012
+HEAD 2442d48b80c67b6115ec0dabc8134b6f766eb361
+branch refs/heads/n8nmat/api-ruff-fixture-28049
+
+worktree /home/johnclaw/tradeai-wt-apitimeouts-20261009
+HEAD 953903714062412f9325b82ce88a938c72b87edd
+branch refs/heads/n8nmat/api-request-timeouts
+
+worktree /home/johnclaw/tradeai-wt-arm-revoke-20260928
+HEAD 69c0d14468cbb23c1165503e6a8ac287a0c940d4
+branch refs/heads/docs/arm-revoke-backup-20260928
+
+worktree /home/johnclaw/tradeai-wt-at
+HEAD 90bfe2b2046799c522f30e2e1ff4dd043ff12bb4
+branch refs/heads/wt/at-armed-fix-20261009
+
+worktree /home/johnclaw/tradeai-wt-at-live
+HEAD 6f87baee3d0cc40515ef5769864117651e23623a
+branch refs/heads/wt/active-trader-live-alerts-ui-20261004
+
+worktree /home/johnclaw/tradeai-wt-audit-closeout-docs
+HEAD 16850ca22ad57b13872e45e8524cb584f679c92e
+branch refs/heads/wt/audit-closeout-docs
+
+worktree /home/johnclaw/tradeai-wt-audit-followup-20260928
+HEAD a9fc1d042b47edee211f70f8db7e1400486e143b
+branch refs/heads/docs/audit-followup-20260928
+
+worktree /home/johnclaw/tradeai-wt-authority-gate-opaque-id
+HEAD d5adeeed6bc567e6af6eb98abc84af2b469c4559
+branch refs/heads/wt/authority-gate-opaque-id
+
+worktree /home/johnclaw/tradeai-wt-autonomous-advisory-loop-closure
+HEAD c1b7931b4eebf7f9a18154a0bd667897028772d9
+branch refs/heads/feat/gpu-generative-retirement
+
+worktree /home/johnclaw/tradeai-wt-autonomous-live
+HEAD 16616604635e8177930fc5bfbc7793247dba923a
+branch refs/heads/feat/autonomous-advisory-live-integration
+
+worktree /home/johnclaw/tradeai-wt-autonomous-rebalance-planner-docs
+HEAD 4e640711188152f861873253c224f3eece304d5a
+branch refs/heads/wt/autonomous-rebalance-planner-docs
+
+worktree /home/johnclaw/tradeai-wt-autonomy-watchdog
+HEAD 14cd674dc987ddea2e021b21b3ef51a5ccb89d17
+branch refs/heads/feature/autonomy-watchdog-v1
+
+worktree /home/johnclaw/tradeai-wt-b-families-top5
+HEAD 51cdb90b82b344d457b861afcc6a6338abeff812
+branch refs/heads/n8nmat/b-families-top5
+
+worktree /home/johnclaw/tradeai-wt-b3-governance-20261009
+HEAD ac86adcf1c8d1c5e358ef8425e2b43fb5564f90b
+branch refs/heads/n8nmat/b3-governance-checks
+
+worktree /home/johnclaw/tradeai-wt-b3-health-tick-20261009
+HEAD 1fb4c647fa3029b750250bfefd2db1187ec6bfbd
+branch refs/heads/n8nmat/b3-health-tick
+
+worktree /home/johnclaw/tradeai-wt-backup-coverage-20261009
+HEAD 59b2d999cf9ac0cede037ade3289630bf85e05f4
+branch refs/heads/ci/backup-coverage-gate-20261009
+
+worktree /home/johnclaw/tradeai-wt-broker-claim-precision-fixes
+HEAD 1e36a5731f94ee6e8f92904479ce24400b6877b5
+branch refs/heads/wt/broker-claim-precision-fixes
+
+worktree /home/johnclaw/tradeai-wt-broker-domains-q1
+HEAD a4f75e2f38fb7819a2904f5e463a2be05b61f1c8
+branch refs/heads/n8nmat/broker-domains-q1
+
+worktree /home/johnclaw/tradeai-wt-c2docs-20261009
+HEAD c386d26fe06088732cf0ff508d4c544db86116f1
+branch refs/heads/n8nmat/c2-docs-drift
+
+worktree /home/johnclaw/tradeai-wt-c3-scrub
+HEAD 5a4983013f9b5ad1d5ff338bc652e8b6d552f7a5
+branch refs/heads/wt/c3-price-scrub
+
+worktree /home/johnclaw/tradeai-wt-cache
+HEAD e671f5b2864a37cc08c99f0ef255e9af1f7df631
+branch refs/heads/wt/fix-train-20261009
+
+worktree /home/johnclaw/tradeai-wt-cadfix-20261008
+HEAD 59f37588ce678d273812a3e21e9df39f8cdbc474
+branch refs/heads/fix/n1-cadence-glob
+
+worktree /home/johnclaw/tradeai-wt-cadi-archive-replay-20261009
+HEAD 0ebbd6dcbc37ba7c1d3f146551fa9030e5bbad8b
+branch refs/heads/wt/cadi-archive-replay-20261009
+
+worktree /home/johnclaw/tradeai-wt-call-accounting
+HEAD c9971a80c94e4cfac2279a50e12ebf6f997fb24c
+branch refs/heads/feat/advisory-call-accounting
+
+worktree /home/johnclaw/tradeai-wt-canary-wave1
+HEAD cdbb9115f15b2ebb1a47b8c8cc4b9a34901cd459
+branch refs/heads/n8nmat/canary-wave1
+
+worktree /home/johnclaw/tradeai-wt-canonical-quote-scope-clarify
+HEAD 1e3955c8179611cda3fd16b5409a5a8a949aad30
+branch refs/heads/wt/canonical-quote-scope-clarify
+
+worktree /home/johnclaw/tradeai-wt-capital-deployment
+HEAD 9dfe437f6e161cb2b6c9ed2c983e23b9fa9de1b7
+branch refs/heads/feat/cio-capital-deployment-plan
+
+worktree /home/johnclaw/tradeai-wt-carveout-20261008
+HEAD 20d8b5f0d88ac4943612b6703402f638ba3ed9af
+branch refs/heads/docs/agents-2.0.0-n8n-carveout
+
+worktree /home/johnclaw/tradeai-wt-catalyst-graph
+HEAD 2cf284f1efb5b04e6868b4481b37052ad45902c9
+branch refs/heads/wt/catalyst-entity-graph
+
+worktree /home/johnclaw/tradeai-wt-cc-header-final
+HEAD a7db0be8096c501139ccc87c2e7a2bdb5b39e642
+branch refs/heads/fix/research-context-decimal-serialization
+
+worktree /home/johnclaw/tradeai-wt-cc-lean-20260915
+HEAD 26bbbe557da5f9b4fd7b578054139fdfd123aab9
+branch refs/heads/cursor/options-credit-rr-floor-c6c2
+
+worktree /home/johnclaw/tradeai-wt-ccv3-pro-ui-rebuild
+HEAD cdab641c3f93dec685e84732684ecebc3c161581
+detached
+
+worktree /home/johnclaw/tradeai-wt-checklist-body-review-ee996-20261012
+HEAD 7fea1b100f70b120c13ae5a931d2e8a1ee1374d1
+branch refs/heads/wt/checklist-body-review-ee996-20261012
+
+worktree /home/johnclaw/tradeai-wt-ci-gate-main-20261009
+HEAD eebbf2c97a045a40c29d96eca69f278b93910d1f
+branch refs/heads/n8nmat/ci-gate-main
+
+worktree /home/johnclaw/tradeai-wt-ci-nightly-20261009
+HEAD b7dbe6e60235b49d9c3d666a52c8ffdf6da6c5da
+branch refs/heads/n8nmat/ci-nightly-green
+
+worktree /home/johnclaw/tradeai-wt-ciaudit-20261009
+HEAD 3b5c248569908adfad9a60ca895e0fa9b2aa2c49
+detached
+
+worktree /home/johnclaw/tradeai-wt-cidd-20261009
+HEAD 1e60708645bca4aaaa7d3349a24188e888f3f768
+branch refs/heads/docs/cio-hardening-due-diligence-20261009
+
+worktree /home/johnclaw/tradeai-wt-cio-activate
+HEAD 62b0ad90ec06d23a00d43d75f5997d13d9c781ad
+branch refs/heads/feature/cio-operator-activation
+
+worktree /home/johnclaw/tradeai-wt-cio-chair-docs-fix
+HEAD d43780b275fbec9eeb925b0ae54c119fab014ddc
+branch refs/heads/wt/cio-chair-docs-fix
+
+worktree /home/johnclaw/tradeai-wt-cio-closed-loop
+HEAD 3df7b4b691282bb9d8dd5f3680c987e00e0fc13f
+branch refs/heads/wt/cio-b1-b3-d1-loop
+
+worktree /home/johnclaw/tradeai-wt-cio-complete-20261001
+HEAD 9c8eba62966590bf41aeea907ca0b3e8566580ad
+branch refs/heads/codex/cio-complete-20261001
+
+worktree /home/johnclaw/tradeai-wt-cio-converse-fix
+HEAD f8501647acb1b66f6af836bce5b4ad61c246efb2
+branch refs/heads/fix/cio-converse-decision-thread
+
+worktree /home/johnclaw/tradeai-wt-cio-decision-truth
+HEAD b2d35c38537d78cb42ad6b1de069616891cd3a72
+detached
+
+worktree /home/johnclaw/tradeai-wt-cio-digest-fix
+HEAD 001f8999fdcf61d3056ed05de68725decae54385
+branch refs/heads/fix/cio-signed-digest-mismatch
+
+worktree /home/johnclaw/tradeai-wt-cio-diligence-p1-ws1
+HEAD 003806bce04c3a2b83748eda25ba5e19cd48d1ea
+branch refs/heads/feat/cio-diligence-p1-ws1-architecture
+
+worktree /home/johnclaw/tradeai-wt-cio-diligence-p1-ws2
+HEAD aa21559caac7eb6cd05bedce481113d655aca982
+branch refs/heads/feat/cio-diligence-p1-ws2-lifecycle
+
+worktree /home/johnclaw/tradeai-wt-cio-diligence-p1-ws3
+HEAD b30aef08d40dc5adcfcbd501cb00705beb91f0d8
+branch refs/heads/feat/cio-diligence-p1-ws3-operator-s0
+
+worktree /home/johnclaw/tradeai-wt-cio-diligence-p2-identity-position
+HEAD b9f602273c2dac41a7d2411bbbd9846b175c3385
+branch refs/heads/feat/cio-diligence-p2-identity-position
+
+worktree /home/johnclaw/tradeai-wt-cio-diligence-p3
+HEAD 55904e30f235061cbb73530b4ebfb11c73dbc0f0
+branch refs/heads/feat/cio-diligence-p3-instrument-record
+
+worktree /home/johnclaw/tradeai-wt-cio-diligence-p4-p5
+HEAD d959111c46f61fc745bdd2e8f08bba251c03ffce
+branch refs/heads/feat/cio-diligence-p4-p5-research-specialists
+
+worktree /home/johnclaw/tradeai-wt-cio-diligence-p9
+HEAD 714a665f96680d1793b0fdff9c1d38fc504b5d5d
+branch refs/heads/feat/cio-diligence-p9-registry-lifecycle
+
+worktree /home/johnclaw/tradeai-wt-cio-final-closure
+HEAD 66e4900f3b6f817a0cbda6d7074b7c0cb6e76971
+detached
+
+worktree /home/johnclaw/tradeai-wt-cio-final-truth
+HEAD 31d35dda15fbd7e64cae29db9ab564eeb18f8b2e
+branch refs/heads/fix/cio-g2-attestation-pin
+
+worktree /home/johnclaw/tradeai-wt-cio-gap-auth-avoid-drop
+HEAD e695db8e8d784d289e4f0ee4d9c3ed329cd577e0
+branch refs/heads/fix/cio-gap-auth-avoid-drop
+
+worktree /home/johnclaw/tradeai-wt-cio-gap-id-carriage
+HEAD 77b08557c137587a915457e06f47511e62f365c6
+branch refs/heads/fix/cio-gap-id-carriage
+
+worktree /home/johnclaw/tradeai-wt-cio-gap-ir-wake-load
+HEAD d3f021ada37804c10eb462139810669349505285
+branch refs/heads/fix/cio-gap-ir-wake-load
+
+worktree /home/johnclaw/tradeai-wt-cio-gap-loop-dlq
+HEAD 4cedf3f0c2594ef2a5b669737f37c164edc1996a
+branch refs/heads/fix/cio-gap-loop-dlq
+
+worktree /home/johnclaw/tradeai-wt-cio-held-thesis-coverage
+HEAD c8cb092b4e3c32e9bab49b2443654e676315173f
+branch refs/heads/wt/cio-held-thesis-coverage
+
+worktree /home/johnclaw/tradeai-wt-cio-iic
+HEAD 014e0601e4b3efe874390cd1fb6600cf6f94d75b
+branch refs/heads/wt/cio-investment-intelligence-card
+
+worktree /home/johnclaw/tradeai-wt-cio-iic-bc
+HEAD bfeb94c82022eac6517014d09f50d2ee44e5bcc7
+branch refs/heads/wt/cio-iic-feedback-cc
+
+worktree /home/johnclaw/tradeai-wt-cio-iic-d
+HEAD 47696b4338eff9635e0f8b0b160214a83ec1e5e6
+branch refs/heads/wt/cio-phase2-docs-live
+
+worktree /home/johnclaw/tradeai-wt-cio-mem
+HEAD 3be932c07b668ca4ad841feaf274d9792eceb29b
+branch refs/heads/wt/cio-overview-memory-20261002
+
+worktree /home/johnclaw/tradeai-wt-cio-operator
+HEAD 588742adcec8d9e14f23d59d0efaaa8bb807ea15
+branch refs/heads/feature/cio-operator-product
+
+worktree /home/johnclaw/tradeai-wt-cio-operator-desk-loop
+HEAD 431ce40e153d24ae750749f8b8ed3d9fd5b8fce9
+branch refs/heads/wt/cio-operator-desk-loop-p0
+
+worktree /home/johnclaw/tradeai-wt-cio-operator-freeform
+HEAD 3d3f4ac79eb16033a6f8793619e96d4c5dcadedd
+branch refs/heads/wt/cio-operator-freeform
+
+worktree /home/johnclaw/tradeai-wt-cio-p0-integrity
+HEAD 9146e43c240736090e051415db620304ef6f0803
+branch refs/heads/feature/cio-p0-semantics-learning
+
+worktree /home/johnclaw/tradeai-wt-cio-phase1-notify
+HEAD 9342bd790f99e2a48177dd4b045d5e47a147637a
+branch refs/heads/wt/cio-phase1-notify
+
+worktree /home/johnclaw/tradeai-wt-cio-plain-ids
+HEAD 4b7089798356a15b2e8ddde3a64e8322a1ec7723
+branch refs/heads/fix/cio-telegram-plain-ids
+
+worktree /home/johnclaw/tradeai-wt-cio-platform-audit-docs
+HEAD 30889a3b923b2fb4a9e7eca5f15a8f0b80eb89bf
+branch refs/heads/wt/cio-platform-audit-docs
+
+worktree /home/johnclaw/tradeai-wt-cio-product
+HEAD e4a164926a248c26a995cf67382aaec540a45f37
+branch refs/heads/feature/cio-investment-product-v1
+
+worktree /home/johnclaw/tradeai-wt-cio-rebalance-boundary-docs
+HEAD 1f99dcabab941c0e6d566022407e176fbbcd9e36
+branch refs/heads/wt/cio-rebalance-boundary-docs
+
+worktree /home/johnclaw/tradeai-wt-cio-reentry-s3-wire
+HEAD fcbc558ed94174fcb8102a742f7f89a83d7d192f
+branch refs/heads/wt/cio-reentry-s3-wire
+
+worktree /home/johnclaw/tradeai-wt-cio-research-wire
+HEAD 7ec7fac8202361947a0200c4237870aa2e821cc3
+branch refs/heads/feature/cio-research-live-wire
+
+worktree /home/johnclaw/tradeai-wt-cio-scorecard
+HEAD 33612cc8d8867bc2f982b1f2ab13c1265956b288
+branch refs/heads/wt/cio-desk-audit
+
+worktree /home/johnclaw/tradeai-wt-cio-snapshot-staleness-marker
+HEAD e0cc4e084d5b6d96e1339526bcc73759970f23e2
+branch refs/heads/wt/cio-snapshot-staleness-marker
+
+worktree /home/johnclaw/tradeai-wt-cio-system-state-docs
+HEAD dfe0ef00b6f0910b5fb8642796413fb1d553723b
+branch refs/heads/wt/cio-system-state-docs-20260820
+
+worktree /home/johnclaw/tradeai-wt-cio-truth-gate-test-fix
+HEAD 84d5dcfe769c9ec400a93a43509d9ffdfb4332e3
+branch refs/heads/wt/cio-truth-gate-test-fix
+
+worktree /home/johnclaw/tradeai-wt-cio-ui-honesty
+HEAD 67052266fe534563a6b04e9aa7a1c9cb812f9259
+branch refs/heads/fix/cio-ui-honesty-2026-08-22
+
+worktree /home/johnclaw/tradeai-wt-cio-watch-s7-wire
+HEAD e7a055b191ec5f42c9c0a848b207f23a77e8a31c
+branch refs/heads/wt/cio-watch-s7-wire
+
+worktree /home/johnclaw/tradeai-wt-ciqw-20261009
+HEAD ae65e234a201a1c392ceba592a982ddde1652d66
+branch refs/heads/ci/quick-wins-20261009
+
+worktree /home/johnclaw/tradeai-wt-cishard-20261009
+HEAD bce6398b469ca4df5b5fb9d2a4cddbb88e840583
+branch refs/heads/ci/shard-and-tree-attest-20261009
+
+worktree /home/johnclaw/tradeai-wt-close-loop
+HEAD e45c6a6b0998b483b9274ba41e74931b78be92f4
+branch refs/heads/wt/close-the-loop
+
+worktree /home/johnclaw/tradeai-wt-closed-loop-p0
+HEAD 6b77c95ed47948f78f2a7c3762c55cc293bb4ead
+branch refs/heads/docs/cio-advisory-living-status-r4
+
+worktree /home/johnclaw/tradeai-wt-codexReview-20261008
+HEAD 281f4d3a918bb57f8c76db060ebf936778448aba
+branch refs/heads/docs/codex-assessment-review-20261008
+
+worktree /home/johnclaw/tradeai-wt-cogx-w35close-20260928
+HEAD 883b2b0f4eeac56ff81255d8e5225851e12578ff
+branch refs/heads/wt/cogx-w35-closeout-20260928
+
+worktree /home/johnclaw/tradeai-wt-comms-gateway-phase0
+HEAD beb1be3531238c7b390fbd56c4ca9ad130d4e09d
+detached
+
+worktree /home/johnclaw/tradeai-wt-comms-hub
+HEAD 3be2a8de27df1dd2bfa9d88bcdf19e1bce177e0f
+branch refs/heads/wt/comms-hub-20261007
+
+worktree /home/johnclaw/tradeai-wt-consolidation-registry
+HEAD 0e49284715451be3ef9ec8167d1def1025168a51
+branch refs/heads/n8nmat/consolidation-registry
+
+worktree /home/johnclaw/tradeai-wt-consolidation-step1
+HEAD 217177202fcf78ce08d7bfba16de239d8ebdb303
+branch refs/heads/n8nmat/consolidation-step1
+
+worktree /home/johnclaw/tradeai-wt-contract-baselines-20261012
+HEAD 99e95e33ad6db09162a1634b8fa19fbbb360b0c5
+branch refs/heads/wt/n8n-contract-baselines-20261012
+
+worktree /home/johnclaw/tradeai-wt-contract-builder-baselines-20261012
+HEAD 946b5eef7aa6d051e6bcdc4d9b3d3a2862999733
+branch refs/heads/wt/n8n-contract-builder-baselines-20261012
+
+worktree /home/johnclaw/tradeai-wt-contract-fixture-completeness-925-20261012
+HEAD bf2d99fe84507a0d744d551b6c5869f0b0376b5d
+branch refs/heads/wt/contract-fixture-completeness-925-20261012
+
+worktree /home/johnclaw/tradeai-wt-conv
+HEAD 87b16efd1d065a33509da9b0c36070551bb57443
+branch refs/heads/wt/conviction-sort-20261008
+
+worktree /home/johnclaw/tradeai-wt-coverage-20260822
+HEAD 39085c832306761b3d16294ce7f62a88a69d0342
+branch refs/heads/wt/coverage-snapshot-20260822
+
+worktree /home/johnclaw/tradeai-wt-cron-lanes
+HEAD 535aa3fb339b23f368471e353ef05651bbe75d63
+branch refs/heads/wt/cron-lanes-20261003
+
+worktree /home/johnclaw/tradeai-wt-cursor-guardrails
+HEAD 0c6993750b779e201d687ab2722b5d5bef2dfbbd
+branch refs/heads/wt/cursor-guardrails
+
+worktree /home/johnclaw/tradeai-wt-cusip-capture
+HEAD cb8a9c1b49b6b9a4a931bc01b5d3f150d62e553c
+branch refs/heads/wt/broker-cusip-capture
+
+worktree /home/johnclaw/tradeai-wt-d1-d4
+HEAD 5e91225a1186659de3cfd65096e037e774506e7f
+detached
+
+worktree /home/johnclaw/tradeai-wt-dead-bak-cleanup
+HEAD 0fa7aa04cfa6c464551aaebc5b03a2205ea3ea72
+branch refs/heads/wt/dead-bak-cleanup
+
+worktree /home/johnclaw/tradeai-wt-deepseek-consumption-fix
+HEAD b86c4c43cda7cdcea0f078c982dcfe35cf203a59
+branch refs/heads/fix/deepseek-consumption-run-manual
+
+worktree /home/johnclaw/tradeai-wt-deepseek-prove
+HEAD d3b7a033269d7c0a740453dcbf4bfca45d019561
+branch refs/heads/wt/deepseek-prove
+
+worktree /home/johnclaw/tradeai-wt-deepseek-v4-merged
+HEAD 7b8aa7b4d7fc78468a1ad602df6bfb681832f522
+branch refs/heads/feat/health-agent-pipeline-containment
+
+worktree /home/johnclaw/tradeai-wt-deepseek-v4-routing
+HEAD ba05052fc331fd7b74a2fcc416d812a83a5cfd43
+branch refs/heads/fix/deepseek-v4-routing
+
+worktree /home/johnclaw/tradeai-wt-deflake-20261009
+HEAD bc174e146fb81b43fc7e85f2be283ef29afc1851
+branch refs/heads/test/deflake-gateway-concurrency-20261009
+
+worktree /home/johnclaw/tradeai-wt-deploy-siem-20261006
+HEAD 18a27ff288894c4e428151d5f385e68522ecd47b
+branch refs/heads/wt/deploy-siem-20261006
+
+worktree /home/johnclaw/tradeai-wt-diagnosis-exclude-scalp
+HEAD bdb5e6c3162ec5f8717df9bd31b10c91028a39a6
+branch refs/heads/n8nmat/diagnosis-exclude-scalp
+
+worktree /home/johnclaw/tradeai-wt-diagram-code-mapping-docs
+HEAD ac2b1a638d93f50db57472c6f78eadf70715fdbc
+branch refs/heads/wt/diagram-code-mapping-docs
+
+worktree /home/johnclaw/tradeai-wt-dig
+HEAD d5b3a78d408800a523e407fdc7f051e79d06f7bf
+branch refs/heads/wt/advice-digests-20261008
+
+worktree /home/johnclaw/tradeai-wt-dispatch-shadow-wave1
+HEAD ff33608eb67ccf5446a2ddea65ef8dc524e337f3
+branch refs/heads/n8nmat/dispatch-shadow-wave1
+
+worktree /home/johnclaw/tradeai-wt-dispatch-shadow-wave2
+HEAD 9fc178316f24523f11378870d2594a16da656f10
+branch refs/heads/n8nmat/dispatch-shadow-wave2
+
+worktree /home/johnclaw/tradeai-wt-dispatch-shadow-wave23
+HEAD 34240747fadbd8ea64bb6e0fefc5fc591e833642
+branch refs/heads/n8nmat/dispatch-shadow-wave23
+
+worktree /home/johnclaw/tradeai-wt-dispatch-wave3-activate
+HEAD 5d9bffd07705e95f4dbc0472e21c2f4edbf75a75
+branch refs/heads/n8nmat/dispatch-wave3-activate
+
+worktree /home/johnclaw/tradeai-wt-dividend-dual-write
+HEAD ff8539dca7b787fe3e594155cac5e293b47e04ea
+branch refs/heads/wt/dividend-dual-write
+
+worktree /home/johnclaw/tradeai-wt-dsr
+HEAD 799bb7bf7f893decbe4d9a2f58adfb27fefe0e90
+branch refs/heads/wt/decision-speed-redesign-20261008
+
+worktree /home/johnclaw/tradeai-wt-durable-memory
+HEAD 0cff1fd71494b2b140a13a9d54925bb5480ccbc9
+branch refs/heads/feature/durable-governed-agent-memory-v1
+
+worktree /home/johnclaw/tradeai-wt-entry-planner-fix
+HEAD 12875b94f10a9409b3ad9ebb0a8bf27e5beba23a
+branch refs/heads/wt/entry-planner-fix
+
+worktree /home/johnclaw/tradeai-wt-event-identity
+HEAD 222ec3e19905bf1e2950aecbb19643fb3770715a
+branch refs/heads/wt/canonical-event-identity
+
+worktree /home/johnclaw/tradeai-wt-evidence-domains
+HEAD c41115e8224f47a3b1ff0ce3f8306371200b6235
+branch refs/heads/wt/cio-evidence-domains
+
+worktree /home/johnclaw/tradeai-wt-evidence-layer2
+HEAD 881a7b1c1ef8e995d274f91516104a34e49ca667
+branch refs/heads/wt/evidence-second-layer
+
+worktree /home/johnclaw/tradeai-wt-exact-main-99027ac72
+HEAD 6c2984b01ce4922e0dbb5d076f6bfbe4deaff561
+detached
+
+worktree /home/johnclaw/tradeai-wt-ff-dev-tree-clone-fixture-a502-20261013
+HEAD 71b0cd17045c8f30bb06d8fab76224a21a0d1505
+branch refs/heads/wt/ff-dev-tree-clone-fixture-a502-20261013
+
+worktree /home/johnclaw/tradeai-wt-final-maturity-closure
+HEAD 167db759df3163765e84196627de4a39e1c245bc
+branch refs/heads/fix/final-observability-maturity-closure
+
+worktree /home/johnclaw/tradeai-wt-finviz-enrichment-cron-fix
+HEAD 4c4a0407220c76feae11e9dfb36436480a4797f4
+branch refs/heads/wt/finviz-enrichment-cron-fix
+
+worktree /home/johnclaw/tradeai-wt-finviz-timeout
+HEAD 9ae2d877ceb9c710ef5f3b01141890203bc80a1d
+branch refs/heads/n8nmat/finviz-view-contracts-timeout
+
+worktree /home/johnclaw/tradeai-wt-gate-d-bundle-1
+HEAD c6a5b842cd91010b839e6130a5631dec350b3672
+branch refs/heads/wt/gate-d-bundle-1
+
+worktree /home/johnclaw/tradeai-wt-governed-research-stable-dedupe-20261009
+HEAD 44d45d20fd5f5675355a2eb557d0194022471a25
+branch refs/heads/wt/governed-research-stable-dedupe-20261009
+
+worktree /home/johnclaw/tradeai-wt-grantbind-20261009
+HEAD 8e505c97292c50d7758f296ba1787bfe6950bee3
+branch refs/heads/n8nmat/release-grant-binding
+
+worktree /home/johnclaw/tradeai-wt-grok-state-seed-fixture-a502-20261013
+HEAD fa99271eab103bf68da5bd05402cc7d60df74fec
+branch refs/heads/wt/grok-state-seed-fixture-a502-20261013
+
+worktree /home/johnclaw/tradeai-wt-guard-ledger-pr
+HEAD 2644bd1d586a3e596cc94b422808b6149eeac083
+branch refs/heads/fix/guard-transactional-ledger
+
+worktree /home/johnclaw/tradeai-wt-guardA-20261009
+HEAD a9fa8b89b616f685145d27d6d2d62da3a1fab970
+detached
+
+worktree /home/johnclaw/tradeai-wt-guardB-20261009
+HEAD a9fa8b89b616f685145d27d6d2d62da3a1fab970
+detached
+
+worktree /home/johnclaw/tradeai-wt-guardbypass-20261009
+HEAD b7dbe6e60235b49d9c3d666a52c8ffdf6da6c5da
+branch refs/heads/n8nmat/guard-hook-bypasses
+
+worktree /home/johnclaw/tradeai-wt-guardhook-20261009
+HEAD e7800f2734354133ce678c82e9d4a1e569a444f5
+branch refs/heads/feat/agents-guard-hook-20261009
+
+worktree /home/johnclaw/tradeai-wt-gwlock-20261008
+HEAD bb00657d27ea3fe755e47c4f64a5636e6c46212b
+branch refs/heads/fix/gateway-ledger-concurrency
+
+worktree /home/johnclaw/tradeai-wt-harden-20261009
+HEAD 4e0febba2c5e573bf490e36ab3cfbf06bc8e5292
+branch refs/heads/fix/bridge-executor-hardening-20261009
+
+worktree /home/johnclaw/tradeai-wt-hbfix-20261008
+HEAD 7fa8a4275dd0d3d553bf78f4c08f07fd90ec0e81
+branch refs/heads/fix/executor-heartbeat-path
+
+worktree /home/johnclaw/tradeai-wt-hbreview-20261008
+HEAD 7fa8a4275dd0d3d553bf78f4c08f07fd90ec0e81
+detached
+
+worktree /home/johnclaw/tradeai-wt-health-agent-plan
+HEAD 28f4779044ed3ce9a4094d352b743e13a2d9b8de
+branch refs/heads/wt/health-agent-maturity-plan
+
+worktree /home/johnclaw/tradeai-wt-health-honesty
+HEAD fd05474f3290dcae923fddc38bb3219b5fdffa9e
+branch refs/heads/wt/health-agent-honesty
+
+worktree /home/johnclaw/tradeai-wt-heartbeat-1700-land
+HEAD 91921321d6ebf74579a44e4d25a7cce84eaa5a72
+branch refs/heads/wt/heartbeat-1700-land
+
+worktree /home/johnclaw/tradeai-wt-heartbeat-promote-1709
+HEAD c15b7b98caa3909665ac5abb878f02eb558d6ff6
+branch refs/heads/wt/heartbeat-promote-1710
+
+worktree /home/johnclaw/tradeai-wt-heartbeat-watch-canary
+HEAD 5cf0d15b6384fd13434cd726cf87730d4e708784
+branch refs/heads/n8nmat/heartbeat-watch-canary
+
+worktree /home/johnclaw/tradeai-wt-heartbeat-watcher-reviewed
+HEAD 65337da5366b469c8478b198187201bd37671bc2
+branch refs/heads/main
+
+worktree /home/johnclaw/tradeai-wt-holdings-lock
+HEAD 906686b5970c39d6a5c1ba0f225766a7faf08e26
+branch refs/heads/wt/holdings-lock
+
+worktree /home/johnclaw/tradeai-wt-holdings-pnl-field-docs
+HEAD ae962a30fb44399f8e5b26cf0f8d501d7fd6c37f
+branch refs/heads/wt/holdings-pnl-field-docs
+
+worktree /home/johnclaw/tradeai-wt-horizon-20261009
+HEAD 367eb1dd157efbf86a2fa2c9eece9153b996dedf
+branch refs/heads/n8nmat/commitment-horizon-due
+
+worktree /home/johnclaw/tradeai-wt-hybrid-evidence
+HEAD adec68b21113dcf103368b95a97f05709027e7f3
+branch refs/heads/feat/hybrid-evidence-freshness
+
+worktree /home/johnclaw/tradeai-wt-icc
+HEAD 8cf7bb731db3d6d3dce179f010797c4f30727996
+branch refs/heads/wt/investment-cc-a-20261008
+
+worktree /home/johnclaw/tradeai-wt-identifiers-persist
+HEAD 6d22241aaa6ba515c6744e0269b243ccd040ddf2
+branch refs/heads/wt/lineage-subject-guid
+
+worktree /home/johnclaw/tradeai-wt-identity-advice
+HEAD db4e3d0653e4159c8e9cc35fbedea10e0aa1312e
+branch refs/heads/wt/identity-memory-advisory
+
+worktree /home/johnclaw/tradeai-wt-import-guard
+HEAD 8d548a1e914a75620b637efe2173ba70c7bd179e
+branch refs/heads/n8nmat/import-guard
+
+worktree /home/johnclaw/tradeai-wt-inv-retire1
+HEAD a0e8cb8e0a3d349f18b8a2dcf7835be1f472b794
+branch refs/heads/n8nmat/cron-inventory-retire-batch1
+
+worktree /home/johnclaw/tradeai-wt-inventory-docs
+HEAD 24c7189da443508868372a1cf5446e9a1b2a3a66
+branch refs/heads/n8nmat/cron-inventory-docs
+
+worktree /home/johnclaw/tradeai-wt-iris-fixes
+HEAD 239afe6653cf4fa3af7f91254b809ce04bbe3559
+branch refs/heads/n8nmat/iris-fixes
+
+worktree /home/johnclaw/tradeai-wt-ladder-step1-20261013125631
+HEAD 5bfccec3a31bde75c68233ba9ce98022ae8adcd9
+detached
+
+worktree /home/johnclaw/tradeai-wt-lane-health-dedup
+HEAD 1601851a56842285798e35f6bb9850d2dac54acb
+detached
+
+worktree /home/johnclaw/tradeai-wt-lane-registry-format-fafa-20261012
+HEAD 1e945a63d894026f5f58be355c9a28a5f9417ecc
+branch refs/heads/wt/lane-registry-format-fafa-20261012
+
+worktree /home/johnclaw/tradeai-wt-lineage-completion
+HEAD 973f15dafb3a703dd6d40e7d080b3f479e3b7d9a
+branch refs/heads/wt/lineage-completion-detector
+
+worktree /home/johnclaw/tradeai-wt-liveproof-20260928
+HEAD dc19e04e1f5cd502712b7666358adfeb8a16e3d1
+branch refs/heads/wt/live-proof-20260928
+
+worktree /home/johnclaw/tradeai-wt-living-status-r2
+HEAD aa55a3141cc1f77c27acdd9f4880d1c70029e2e3
+branch refs/heads/docs/cio-advisory-living-status-r2
+
+worktree /home/johnclaw/tradeai-wt-llm-queue-fixes
+HEAD 8ce0e52a71b2dfa44cb0476e1c6f921bfaae05e8
+branch refs/heads/wt/llm-queue-fixes
+
+worktree /home/johnclaw/tradeai-wt-llm-remediation
+HEAD 470f866d8aaf495f5bcbf491e403188ccda5ef86
+branch refs/heads/n8nmat/llm-self-remediation
+
+worktree /home/johnclaw/tradeai-wt-llm-routing-doc
+HEAD 3d35a20c26c13106ea3426557d458ff526eb0ab3
+branch refs/heads/wt/llm-routing-doc
+
+worktree /home/johnclaw/tradeai-wt-local-model-closure
+HEAD 16616604635e8177930fc5bfbc7793247dba923a
+branch refs/heads/feat/advisory-local-model-source-closure
+
+worktree /home/johnclaw/tradeai-wt-loop-docs
+HEAD b0fb72fde32a5c5f4770bdcdcbbe9ca2d68fcba5
+branch refs/heads/wt/loop-closure-docs
+
+worktree /home/johnclaw/tradeai-wt-m5-lane-digest-active-20260924
+HEAD 5627f9ac73931009c3b8a5bdf91b2e2bf46b14ac
+branch refs/heads/wt/m5-lane-digest-active-20260924
+
+worktree /home/johnclaw/tradeai-wt-m8m-phase0-baseline-20261006
+HEAD d152b7a9bc5c0e91e78732a127589075361bbff6
+branch refs/heads/wt/m8m-phase0-baseline-20261006
+
+worktree /home/johnclaw/tradeai-wt-master-docs-refresh-aug20-22
+HEAD d63615db23faec133d7e908be3c8fd8599bbfe1e
+branch refs/heads/wt/master-docs-refresh-aug20-22
+
+worktree /home/johnclaw/tradeai-wt-matcher
+HEAD 36b7a55bd05f50cc7d8333dbed8c9f1a8d253357
+branch refs/heads/n8nmat/dispatch-matcher-word-boundary
+
+worktree /home/johnclaw/tradeai-wt-maturation-g1
+HEAD 64ecdf68d042fbb37a76e69b3471f0ddba224437
+branch refs/heads/wt/memory-adversarial-scan
+
+worktree /home/johnclaw/tradeai-wt-maturation-i0-a1-b1
+HEAD b13b514cd1b1ad154daf15cc433d2ab28fc4e995
+branch refs/heads/wt/research-lifecycle-standard
+
+worktree /home/johnclaw/tradeai-wt-maturity-control-plane
+HEAD a5d93ec0f1b755ae70a2169925a905c8b4828850
+branch refs/heads/feature/maturity-control-plane-v1
+
+worktree /home/johnclaw/tradeai-wt-maturity-v2
+HEAD 28a868f27d414f6400b8736e67828612e09f9340
+branch refs/heads/fix/r69-aegis-packet-import
+
+worktree /home/johnclaw/tradeai-wt-memory-audit-20260928
+HEAD ff911a4c350d2acd34ed3eebd38d786a0fe575f9
+branch refs/heads/docs/memory-system-audit-20260928
+
+worktree /home/johnclaw/tradeai-wt-memory-spine
+HEAD 04abf823171ee1c1ed397f59458229c749facadf
+branch refs/heads/wt/persistence-docs
+
+worktree /home/johnclaw/tradeai-wt-migration-reconcile-20261012
+HEAD 1d16717a6243a26c56dad2eecbfaba7ecf980287
+branch refs/heads/wt/migration-reconcile-20261012
+
+worktree /home/johnclaw/tradeai-wt-migtracker-20261009
+HEAD d2b7b993a77cd09a0b196d97e35921fb61ea0a0c
+branch refs/heads/n8nmat/migration-tracker
+
+worktree /home/johnclaw/tradeai-wt-modal
+HEAD 222b448868f5f9e2a5c6214d1b13b73059138921
+branch refs/heads/wt/nav-rail-click-20261008
+
+worktree /home/johnclaw/tradeai-wt-modeljob-20261008
+HEAD 3beed8d13aa67eada5f8f38436f2511b78c8447e
+branch refs/heads/fix/n8n-model-job-live-shape
+
+worktree /home/johnclaw/tradeai-wt-momentum-batch-release-proof-20261012
+HEAD 6d2597466f1c7daf6e6d4a318e7c1364d5ae89e9
+detached
+
+worktree /home/johnclaw/tradeai-wt-momentum-contract-release-proof-20261012
+HEAD 80f1f3193a968e172cc29d52661adcbb3f464011
+detached
+
+worktree /home/johnclaw/tradeai-wt-momentum-n8n-admission-20261013
+HEAD 96cd5dec7a49a970cb427175204d7d9ddcda1b51
+branch refs/heads/wt/momentum-n8n-admission-20261013
+
+worktree /home/johnclaw/tradeai-wt-momentum-phase11-ef81-20261012
+HEAD ef81fa370eab8e9c05492fcd9344eb14ec65ca3a
+branch refs/heads/n8nmat/momentum-phase11-ef81
+
+worktree /home/johnclaw/tradeai-wt-momentum-public-fixtures-6dd-20261012
+HEAD 44ad761412bf9a18678ffbbc12e0fec1814edc86
+branch refs/heads/wt/momentum-public-fixtures-6dd-20261012
+
+worktree /home/johnclaw/tradeai-wt-momentum-release-proof-ef81-20261012
+HEAD ef81fa370eab8e9c05492fcd9344eb14ec65ca3a
+detached
+
+worktree /home/johnclaw/tradeai-wt-momentum-replay-release-proof-6dd-20261012
+HEAD 6dd7106334eb85cdb42e5a30e5b009b452cbb750
+detached
+
+worktree /home/johnclaw/tradeai-wt-moomoo-stage0
+HEAD 9eb8c192932293555859a62b61b48be8fe98dc04
+branch refs/heads/wt/moomoo-stage0
+
+worktree /home/johnclaw/tradeai-wt-n1cut-20261008
+HEAD a9b8bb8546430d28bf412f111cf714c854d75903
+branch refs/heads/wt/n1-cutover-20261008
+
+worktree /home/johnclaw/tradeai-wt-n1packet-20261008
+HEAD 3326ad7349de0834a7c67bc8a8a3937374ed5ecf
+branch refs/heads/docs/n1-cutover-packet
+
+worktree /home/johnclaw/tradeai-wt-n3-brave-repoint
+HEAD d9c8fa13856f543d3eb64372983ae7fd66309055
+branch refs/heads/wt/n3-brave-legacy-repoint
+
+worktree /home/johnclaw/tradeai-wt-n3-d2-refuse-equal
+HEAD aa5d5457d64e1c6ebf46bb5884af692f73ed773b
+branch refs/heads/wt/n3-d2-refuse-equal
+
+worktree /home/johnclaw/tradeai-wt-n3-undeclared-apply
+HEAD 856ef0e445b4fa1b0304c1f7e2ff4480d5ac1afa
+branch refs/heads/wt/n3-undeclared-apply
+
+worktree /home/johnclaw/tradeai-wt-n3-w3c-provenance
+HEAD 6a7ac4d9ea13f6e29eef6b2679f10bcce5db6224
+branch refs/heads/wt/n3-w3c-provenance
+
+worktree /home/johnclaw/tradeai-wt-n6ret-20261009
+HEAD 670651f3b1892f6c2afe3d717ae88010ac877942
+branch refs/heads/lanes/n6-retained-20261009
+
+worktree /home/johnclaw/tradeai-wt-n8n-agent2-p7-env-20261009
+HEAD 25f6799f41af53638b307860e2552dcdd9802644
+branch refs/heads/wt/n8n-agent2-p7-env-20261009
+
+worktree /home/johnclaw/tradeai-wt-n8n-campaign-grant-admission-20261018
+HEAD b14bfc542d481499d7bf1efcc4b8147de6332628
+branch refs/heads/wt/n8n-campaign-grant-admission-20261018
+
+worktree /home/johnclaw/tradeai-wt-n8n-campaign-repair-acceptance-20261018
+HEAD 3af0a8bdd659e02bf6f493c071800c6a227ae292
+branch refs/heads/wt/n8n-campaign-repair-acceptance-20261018
+
+worktree /home/johnclaw/tradeai-wt-n8n-explainer-20261009
+HEAD 9fee94e6e0d6fa2562bd1c73ef4fae9a2d277678
+branch refs/heads/wt/n8n-agent-explainer-20261009
+
+worktree /home/johnclaw/tradeai-wt-n8n-gateway-contract-inputs-20261018
+HEAD 3ef2fb5c07ac84c67be88035ebae0f56b0941c20
+branch refs/heads/wt/n8n-gateway-contract-inputs-20261018
+
+worktree /home/johnclaw/tradeai-wt-n8n-main-governance-integration-20261009
+HEAD 8c72ea5e8cff77984670f18f373a5a9817519701
+branch refs/heads/wt/n8n-main-governance-integration-20261009
+
+worktree /home/johnclaw/tradeai-wt-n8n-maturity-campaign-20261018
+HEAD 3af0a8bdd659e02bf6f493c071800c6a227ae292
+branch refs/heads/wt/n8n-maturity-campaign-20261018
+
+worktree /home/johnclaw/tradeai-wt-n8n-maturity-output-contract-20261018
+HEAD 2475379fc0b2b7b4f68300cc1ffa42cddd19d612
+branch refs/heads/wt/n8n-maturity-output-contract-20261018
+
+worktree /home/johnclaw/tradeai-wt-n8n-n2-allowlist-20261009
+HEAD 4a582399259756fab015d7f84b0f46aa4af196e9
+branch refs/heads/wt/n8n-n2-allowlist-20261009
+
+worktree /home/johnclaw/tradeai-wt-n8n-parallel-20261007
+HEAD 4191f8c235c4d7a90d1d5cb7b4390e9567210138
+branch refs/heads/wt/n8n-parallel-20261007
+
+worktree /home/johnclaw/tradeai-wt-n8n-public-fixture-closure-6dd-20261013
+HEAD ebe943bd146f497663a05cdffd04d440f3c6d183
+branch refs/heads/wt/n8n-public-fixture-closure-6dd-20261013
+
+worktree /home/johnclaw/tradeai-wt-n8n-relay-20261008
+HEAD b0ea0a1f35ef5679b7975baf7ca999ef984ddaaa
+detached
+
+worktree /home/johnclaw/tradeai-wt-n8n-relay-fix-20261008
+HEAD 1bd55ad298bf9c178a2ce455b6aa9d9a7808da90
+detached
+
+worktree /home/johnclaw/tradeai-wt-n8n-retention-import-fixture-6d259-20261013
+HEAD 7fe924b8ee102c2d8f8b6edc32c151287a02f084
+branch refs/heads/wt/n8n-retention-import-fixture-6d259-20261013
+
+worktree /home/johnclaw/tradeai-wt-n8n-retirement-eligibility-20261018
+HEAD 93619f07f8479c612df654d63a00db751a774fa2
+branch refs/heads/wt/n8n-retirement-eligibility-20261018
+
+worktree /home/johnclaw/tradeai-wt-n8n-w3-20261008
+HEAD 4b1af1f64511829b9cf8c638fb842a6f68093bf5
+branch refs/heads/wt/n8n-w3-dag-gating-20261008
+
+worktree /home/johnclaw/tradeai-wt-n8n-w4-20261008
+HEAD e3e906974284517f92f25e2bbb2a35717ea21160
+branch refs/heads/wt/n8n-w4-bridge-routing-20261008
+
+worktree /home/johnclaw/tradeai-wt-n8n-w4-health-20261009
+HEAD b7c6d6cf4e2c053fece37ba81665a5b4a2859e8f
+branch refs/heads/wt/n8n-w4-health-unknown-routed-20261009
+
+worktree /home/johnclaw/tradeai-wt-n8nA-20261007
+HEAD 28616e63e0459ffaa757d609ffaaaa43c7989a35
+branch refs/heads/wt/n8n-packet-refresh-20261007
+
+worktree /home/johnclaw/tradeai-wt-n8nAudit-20261007
+HEAD efced47268a908c29a2a169ba5e2f59a03ee07d1
+branch refs/heads/wt/registry-research-intake-active-20261008
+
+worktree /home/johnclaw/tradeai-wt-n8nB-20261007
+HEAD 54a7237f7ff520d324cb9cffff1a5268da1b14f1
+branch refs/heads/wt/persistent-state-root-import-20261008
+
+worktree /home/johnclaw/tradeai-wt-n8nD-20261007
+HEAD f2f4facc71914eaff4e2ace9438b46d0d1878a84
+branch refs/heads/wt/n8n-model-job-20261007
+
+worktree /home/johnclaw/tradeai-wt-n8nD2-20261007
+HEAD fb9e8bc4d195f120f2ea0e7e341d310a567b65de
+branch refs/heads/wt/n8n-model-job-op-20261007
+
+worktree /home/johnclaw/tradeai-wt-n8nkind-20261008
+HEAD bb6f6ce991133fe1945966cfe8b7b64f35de149c
+branch refs/heads/feat/lane-registry-n8n-kind
+
+worktree /home/johnclaw/tradeai-wt-n8nmat-adesign
+HEAD 2afb551148ca5ee9c1570ad106b44d59d4fb347a
+branch refs/heads/n8nmat/a-six-workflow-design
+
+worktree /home/johnclaw/tradeai-wt-n8nmat-b1
+HEAD eea68f75fd480dacbb3d33a144b7a3f1245609c9
+branch refs/heads/n8nmat/b1-registry-reconcile
+
+worktree /home/johnclaw/tradeai-wt-n8nmat-b5-cron-tz
+HEAD 791febc8c18f200b1037da0956045b5cc26a4954
+branch refs/heads/n8nmat/b5-cron-tz
+
+worktree /home/johnclaw/tradeai-wt-n8nmat-b5-due
+HEAD b29c80ecec770a0e33ceca6af110d1700d26f28d
+branch refs/heads/n8nmat/b5-due
+
+worktree /home/johnclaw/tradeai-wt-n8nmat-b5-executor-v2
+HEAD 29912aaf73317c6a47b683c95e143ef7ae1c932f
+branch refs/heads/n8nmat/b5-executor-v2
+
+worktree /home/johnclaw/tradeai-wt-n8nmat-b5-registry-dispatch
+HEAD 1498c404dc77f7c1159771ec6bce5f76784af80b
+branch refs/heads/n8nmat/b5-registry-dispatch
+
+worktree /home/johnclaw/tradeai-wt-n8nmat-b5-retry-dlq
+HEAD 147ee4d8894dfa1a1aa30e739fc09985eed71232
+branch refs/heads/n8nmat/b5-retry-dlq
+
+worktree /home/johnclaw/tradeai-wt-n8nmat-b5-workflow-gen
+HEAD 4af043a8a088aeac8f66e4bf135e0fdddc8b99da
+branch refs/heads/n8nmat/b5-workflow-gen
+
+worktree /home/johnclaw/tradeai-wt-n8nmat-c1
+HEAD 87053467a4129f6a76331829f46b4ed449fac1a0
+branch refs/heads/n8nmat/c1-maturity-scorer
+
+worktree /home/johnclaw/tradeai-wt-news
+HEAD f51f6e1b9985d77af1638962362c95819e02f63d
+branch refs/heads/wt/opp-modal-news-20261008
+
+worktree /home/johnclaw/tradeai-wt-noc-golden-feedback
+HEAD 70415dbcca39e3e99d9084a9c455f6db25d72eb4
+branch refs/heads/feat/noc-golden-feedback-closure
+
+worktree /home/johnclaw/tradeai-wt-obsgaps-20261008
+HEAD d512a3fa3e9a37addcfed1d50a5539cac0d4aecb
+branch refs/heads/feat/n8n-observability-gaps
+
+worktree /home/johnclaw/tradeai-wt-obsreview-20261008
+HEAD 923c7c961176ff97e7022a35923a3a9b3650d7d2
+detached
+
+worktree /home/johnclaw/tradeai-wt-offpeak-armed-docs
+HEAD 4a583f33b712c3573ef4cf0e90bf83c2b2c0a42e
+branch refs/heads/wt/offpeak-armed-docs
+
+worktree /home/johnclaw/tradeai-wt-operator-replay-offline-80f-20261012
+HEAD af91b3e5f66d855ccf41ab58c000e1f228adef6d
+branch refs/heads/wt/operator-replay-offline-80f-20261012
+
+worktree /home/johnclaw/tradeai-wt-ops-learning-closure
+HEAD 1ef83bdfb48eb56539e205d78348988c77e77fad
+branch refs/heads/fix/operational-learning-maturity-closure
+
+worktree /home/johnclaw/tradeai-wt-opslanes-20261009
+HEAD aa3b08ebc5a268600536cbf9a94d5f861e4cc977
+branch refs/heads/feat/n8n-ops-lanes-20261009
+
+worktree /home/johnclaw/tradeai-wt-outcome-lessons
+HEAD 2a03fad1db3d348dd0b202b501ecb9dd86af5c66
+branch refs/heads/wt/outcome-to-lesson
+
+worktree /home/johnclaw/tradeai-wt-outcome-resolver
+HEAD 2a52691ff27ee96ed2c2f4139d6e79f7b6851edb
+branch refs/heads/wt/resolve-due-checkpoints
+
+worktree /home/johnclaw/tradeai-wt-oversight-auto
+HEAD cd9f682b769eceba52fe09c663d6e7d90f98acd4
+branch refs/heads/wt/oversight-auto-chatgpt
+
+worktree /home/johnclaw/tradeai-wt-p0
+HEAD e999a7429dd0c6e5d79883e1498fe3427ce89940
+branch refs/heads/wt/p0-lane-fix-alarm
+
+worktree /home/johnclaw/tradeai-wt-p0-p3-integrity
+HEAD aeafbadeb475498d5b5d9aaaeaf967c3ff6e9d6e
+branch refs/heads/wt/p0-p3-pin-archive-fix
+
+worktree /home/johnclaw/tradeai-wt-p2-alarms-20260926
+HEAD f8ca87345a96e67e791a44f018bed665b43c37ef
+branch refs/heads/wt/p2-alarms-truth-20260926
+
+worktree /home/johnclaw/tradeai-wt-p2c-20261008
+HEAD daaa901f6d611e48ca0fce07d3f8f8003d393dc5
+branch refs/heads/wt/p2c-approval-board-20261008
+
+worktree /home/johnclaw/tradeai-wt-p2e-20261008
+HEAD 9dc47543f42112aba7354a2128f4a8e6ef8b5b53
+branch refs/heads/wt/p2e-governance-packet-20261008
+
+worktree /home/johnclaw/tradeai-wt-packet-b-watch
+HEAD 412c05e368eeaedd709af84a130b694cc6d3e693
+branch refs/heads/wt/packet-b-watch
+
+worktree /home/johnclaw/tradeai-wt-packet-d-idempotent-kb
+HEAD de04068f6647745e0f556ffd579250fd2f1fecbb
+branch refs/heads/wt/packet-d-idempotent-kb
+
+worktree /home/johnclaw/tradeai-wt-packet-e-promotion-gate
+HEAD 18ddcfe8c853107598dbbe2395241fd1ff8a5197
+branch refs/heads/wt/packet-e-promotion-gate
+
+worktree /home/johnclaw/tradeai-wt-parity-stage2-20260923
+HEAD e5d2f1d74276e5e27b8423faf193e25f66e34e44
+branch refs/heads/cursor/parity-stage2-specialists-4709
+
+worktree /home/johnclaw/tradeai-wt-phase-a-identity
+HEAD 8b8e47af30ed349a86e72db3b375ca8df023dffe
+branch refs/heads/wt/phase-a-mint-identity
+
+worktree /home/johnclaw/tradeai-wt-phase-d
+HEAD e4c3e6dcc512586c4af1b4bd0c7455a6b49c11a7
+branch refs/heads/wt/phase-d-consolidation
+
+worktree /home/johnclaw/tradeai-wt-phase34
+HEAD 372ee30c3f14c3a41420f8989a29e83ef3a3f57b
+branch refs/heads/wt/phase3-4-wake-and-evidence
+
+worktree /home/johnclaw/tradeai-wt-phonestatus-20261009
+HEAD 18fad4f4d7cd98ef0945ce95e24a4bcd0ca12730
+branch refs/heads/feat/phone-status-20261009
+
+worktree /home/johnclaw/tradeai-wt-planner-broker
+HEAD 29eddbd4c54f6777bedf83fae38c0e744cbc6417
+branch refs/heads/n8nmat/entry-planner-data-broker
+
+worktree /home/johnclaw/tradeai-wt-portfolio-qa-alerts
+HEAD edc6be424bbaca9b66839433b04f9c5b9195f17b
+branch refs/heads/wt/portfolio-qa-alerts
+
+worktree /home/johnclaw/tradeai-wt-position-truth-gate-materializer
+HEAD 6bab910cb7629a74480ad6823ef30d0a458b349d
+branch refs/heads/wt/position-truth-gate-materializer
+
+worktree /home/johnclaw/tradeai-wt-positions-phase1
+HEAD 50bd51dc10698dcc590905670dcfa08e9fa87c9e
+branch refs/heads/wt/aec-brief-real-20261007
+
+worktree /home/johnclaw/tradeai-wt-pr295-df405d52-deploy
+HEAD df405d529a61885e6cc0c450b904edeca24df369
+detached
+
+worktree /home/johnclaw/tradeai-wt-price-outlier-guard
+HEAD a9ce4ec3c432c7140bfc1115908a30f2aa3af161
+branch refs/heads/wt/price-outlier-guard
+
+worktree /home/johnclaw/tradeai-wt-promote-1469
+HEAD c5de69ee94ea556fbec66acb8acf42ca2e573743
+detached
+
+worktree /home/johnclaw/tradeai-wt-promote-210875338
+HEAD 210875338e9b4650fc8ee4f4b455546c32bc8d17
+detached
+
+worktree /home/johnclaw/tradeai-wt-promote-main-6c2984
+HEAD 37752b193ad10d177358ff43f6e7526b61f7bb49
+branch refs/heads/wt/promote-main-wave-c
+
+worktree /home/johnclaw/tradeai-wt-proposal-monitor-next-tranche-f0ebb-20261013
+HEAD 724c6bdb391a9436c9d5b7e63169a3555b211e97
+branch refs/heads/wt/proposal-monitor-mode-guard-20261013
+
+worktree /home/johnclaw/tradeai-wt-provider-spend-v1
+HEAD c763347b0a2607745b868e8dc31bf07ea3d3ce94
+branch refs/heads/feature/provider-spend-attribution-v1
+
+worktree /home/johnclaw/tradeai-wt-quote-staleness-20260922
+HEAD 4c6c33008feaa83d05aa2fedbc0eda4b4548b728
+branch refs/heads/wt/quote-staleness-20260922
+
+worktree /home/johnclaw/tradeai-wt-quotes-downsample-20260921
+HEAD 3daab5b51a1622d7c9fd8872c34b0b98dbacd001
+branch refs/heads/wt/quotes-downsample-20260921
+
+worktree /home/johnclaw/tradeai-wt-r0-universe
+HEAD 735474c9eecae32972f65a8ec8d51b899716eb06
+branch refs/heads/wt/lane-bakeoff-report
+
+worktree /home/johnclaw/tradeai-wt-r1
+HEAD 8dfbcf6e7a2e9de1d0e459a3c6dd1811de993e14
+branch refs/heads/wt/r1-skip-gate
+
+worktree /home/johnclaw/tradeai-wt-r1-r5
+HEAD 9f2eb8b021ced9c4ec354a2a93442909166027d4
+branch refs/heads/wt/docs-closeout-20260821
+
+worktree /home/johnclaw/tradeai-wt-r1-shadow-shape
+HEAD abb73fd0b9be3908def33ced6db60d8ab7a936b4
+branch refs/heads/n8nmat/r1-shadow-shape
+
+worktree /home/johnclaw/tradeai-wt-r2
+HEAD 36770720864eb8b0334fefda6045a5d2247c7675
+branch refs/heads/wt/r2-decision-payload
+
+worktree /home/johnclaw/tradeai-wt-r3
+HEAD e9c30b9152f0f1d58dad5336040540646a70899b
+branch refs/heads/wt/r3-coverage-sla
+
+worktree /home/johnclaw/tradeai-wt-r4r5
+HEAD d5316910e024570e529f68886657e54ead98bbe1
+branch refs/heads/wt/r4r5-routing-scorecard
+
+worktree /home/johnclaw/tradeai-wt-r610-cio-truth
+HEAD 6c7bf7896dd27a2861d7c33cc4688edb61670928
+branch refs/heads/fix/r69-finviz-orch-reconnect
+
+worktree /home/johnclaw/tradeai-wt-r9-1-maturity-audit
+HEAD b6bb1a7678f3eed938eabd707c167c10eca1e4b7
+branch refs/heads/audit/r9-1-live-maturity-langgraph
+
+worktree /home/johnclaw/tradeai-wt-r9-2-brain
+HEAD 63727efa328d2dee92d4756beb9b6822349a80c5
+branch refs/heads/feat/r9-2-cio-brain
+
+worktree /home/johnclaw/tradeai-wt-r9-2-closeout
+HEAD 4e2625507392e1aa62190c30ce4e56f4a2258801
+branch refs/heads/docs/r9-2-live-closeout
+
+worktree /home/johnclaw/tradeai-wt-r9-2-deploy
+HEAD b935076fd400fb2041fd9a8927a69a987174e8c7
+detached
+
+worktree /home/johnclaw/tradeai-wt-r9-2-sync
+HEAD f981ae3ccff1e5c6ea8235f374d58263e1e9a516
+detached
+
+worktree /home/johnclaw/tradeai-wt-r9-live-deploy
+HEAD abc1bff34023cfd77a067016105b6edac0a5b56d
+branch refs/heads/docs/r9-live-deploy-closeout
+
+worktree /home/johnclaw/tradeai-wt-r93-hermes-intel
+HEAD 318240d61d94c08127d2b5a61e5a6f28ac090169
+branch refs/heads/feat/r93-hermes-persistent-intel
+
+worktree /home/johnclaw/tradeai-wt-ratify-20261008
+HEAD 82a9e3949993a8451f80d81e921f73098cf5bcc8
+branch refs/heads/docs/agents-2.0.0-ratify
+
+worktree /home/johnclaw/tradeai-wt-ratify300-20261009
+HEAD 27b1a3d846da4e0976d802b741719ec5cb0e7e41
+branch refs/heads/docs/agents-3-0-0-ratify
+
+worktree /home/johnclaw/tradeai-wt-rebalance-verify-before-notify
+HEAD 0e185af165849eac94d67eb615237d62bfe35817
+branch refs/heads/wt/rebalance-verify-before-notify
+
+worktree /home/johnclaw/tradeai-wt-reconcile-20261007
+HEAD 7ed519b422b0df0250fe01f142d5dd876bcb8bc9
+branch refs/heads/wt/approval-reconcile-lane-20261007
+
+worktree /home/johnclaw/tradeai-wt-reconcile-broker-guards-state-root-fixture-20261012
+HEAD 7429511abfe67807b4c7c83b95967e53edb7b1b5
+branch refs/heads/wt/reconcile-broker-guards-state-root-fixture-20261012
+
+worktree /home/johnclaw/tradeai-wt-reconcile-buy-ready-options-fixture-20261012
+HEAD cc7f5853cc33f261e3f721553cb7a7d53dac7b42
+branch refs/heads/wt/reconcile-buy-ready-options-fixture-20261012
+
+worktree /home/johnclaw/tradeai-wt-reconcile-cio-entry-state-fixture-20261012
+HEAD 6e6f9490f12f96169dc687d25ef996e9685ecacc
+branch refs/heads/wt/reconcile-cio-entry-state-fixture-20261012
+
+worktree /home/johnclaw/tradeai-wt-reconcile-cio-topology-fixture-20261012
+HEAD f13c91597a5b1d3d7cf2d546f7a52a2e22f69223
+branch refs/heads/wt/reconcile-cio-topology-fixture-20261012
+
+worktree /home/johnclaw/tradeai-wt-reconcile-cutover-fixtures-20261012
+HEAD b39ba5319367d8d1c76e1357966d51b53addcc99
+branch refs/heads/wt/reconcile-cutover-fixtures-20261012
+
+worktree /home/johnclaw/tradeai-wt-reconcile-fanin-relay-fixture-20261012
+HEAD f9005eca571692596f1a065e234d389ddf52c70b
+branch refs/heads/wt/reconcile-fanin-relay-fixture-20261012
+
+worktree /home/johnclaw/tradeai-wt-reconcile-generic-workflow-boundary-20261012
+HEAD 0d7bbc5e1e17f634f051364b84b74be7cd1a7a58
+branch refs/heads/wt/reconcile-generic-workflow-boundary-20261012
+
+worktree /home/johnclaw/tradeai-wt-reconcile-governance-packet-fixture-20261012
+HEAD 363646440a7f5f46b8e3ceb7994831e16e93a93a
+branch refs/heads/wt/reconcile-governance-packet-fixture-20261012
+
+worktree /home/johnclaw/tradeai-wt-reconcile-maturity-retry-fixtures-20261012
+HEAD 1d29a59c073a1d5c23945481ef722bbac2166a04
+branch refs/heads/wt/reconcile-maturity-retry-fixtures-20261012
+
+worktree /home/johnclaw/tradeai-wt-reconcile-model-transport-fixture-20261012
+HEAD 67d998e710e7ddf0012f86715c22ba0b3795a2ac
+branch refs/heads/wt/reconcile-model-transport-fixture-20261012
+
+worktree /home/johnclaw/tradeai-wt-reconcile-product-reassessment-fixture-20261012
+HEAD 56333bd023b0409cccda1c7dd030ed304e2d3322
+branch refs/heads/wt/reconcile-product-reassessment-fixture-20261012
+
+worktree /home/johnclaw/tradeai-wt-reconcile-proposal-monitor-mode-guard-20261012
+HEAD bbdcbe9d514910f15099b8b1c5ac1c770704a5e6
+branch refs/heads/wt/reconcile-proposal-monitor-mode-guard-20261012
+
+worktree /home/johnclaw/tradeai-wt-reconcile-quality-toolchain-fixture-20261012
+HEAD cc96ec7144606e91ac82d88fb0d5268bd6b48208
+branch refs/heads/wt/reconcile-quality-toolchain-fixture-20261012
+
+worktree /home/johnclaw/tradeai-wt-reconcile-reaper-probe-fixture-20261012
+HEAD 2c29ed56665d0e72ddf0939d47261d3f091b4c4b
+branch refs/heads/wt/reconcile-reaper-probe-fixture-20261012
+
+worktree /home/johnclaw/tradeai-wt-reconcile-relay-fixtures-20261012
+HEAD 65533836e16ec55ce2813c29a35f1ee064433951
+branch refs/heads/wt/reconcile-relay-fixtures-20261012
+
+worktree /home/johnclaw/tradeai-wt-reconcile-release-proof-c269-20261012
+HEAD 1d16717a6243a26c56dad2eecbfaba7ecf980287
+detached
+
+worktree /home/johnclaw/tradeai-wt-reconcile-runner-isolation-20261012
+HEAD 21da7d4c24bc7991f5d212f948106547c28dc26c
+branch refs/heads/wt/reconcile-runner-isolation-20261012
+
+worktree /home/johnclaw/tradeai-wt-reconcile-sched-child-env-fixture-20261012
+HEAD 2c38713babe1f3f029b52cffc8b31a9148f6484f
+branch refs/heads/wt/reconcile-sched-child-env-fixture-20261012
+
+worktree /home/johnclaw/tradeai-wt-reconcile-scheduler-truth-fixture-20261012
+HEAD a8f5e7858463183cce66fd2ce169662697a3c065
+branch refs/heads/wt/reconcile-scheduler-truth-fixture-20261012
+
+worktree /home/johnclaw/tradeai-wt-reconcile-system-health-freshness-20261012
+HEAD 2ca4ae47fadbb7e5a2636bb43ae9f4ef545b4942
+branch refs/heads/wt/reconcile-system-health-freshness-20261012
+
+worktree /home/johnclaw/tradeai-wt-reconcile-whole-site-fixture-20261012
+HEAD 467865cd0bda77b4d86fef1a9a2b2b794f8ed08d
+branch refs/heads/wt/reconcile-whole-site-fixture-20261012
+
+worktree /home/johnclaw/tradeai-wt-reentry-levels
+HEAD 54649849e263edd47791d3b8c58f6e0a7e5c6789
+branch refs/heads/wt/reentry-levels
+
+worktree /home/johnclaw/tradeai-wt-refactor-w1-1
+HEAD 58b68b96a586c55af5077153fa421641eeb436d8
+branch refs/heads/n8nmat/refactor-w1-1
+
+worktree /home/johnclaw/tradeai-wt-refactor-w1-2
+HEAD c3cd078f05abf5df4ad55561ef21542684cf31e0
+branch refs/heads/n8nmat/refactor-w1-2
+
+worktree /home/johnclaw/tradeai-wt-refactor-w1-3
+HEAD abe8c3241b8e851ee2cb8db30b1e645f9b646700
+branch refs/heads/n8nmat/refactor-w1-3
+
+worktree /home/johnclaw/tradeai-wt-refactor-w1-4
+HEAD 0cc4b326490219eacc9b6379ae7b75918b8d3af5
+branch refs/heads/n8nmat/refactor-w1-4
+
+worktree /home/johnclaw/tradeai-wt-refactor-w2-1
+HEAD 4dfd1c0d10ee05a3ddf9c193d3deebbbe00aea99
+branch refs/heads/n8nmat/refactor-w2-1
+
+worktree /home/johnclaw/tradeai-wt-refactor-w2-2
+HEAD ce8ef32b83a45af63b45435eceb06282d463ca28
+branch refs/heads/n8nmat/refactor-w2-2
+
+worktree /home/johnclaw/tradeai-wt-refactor-w2-3
+HEAD ccc0a740d08aac4df50450e145c6c9418108414f
+branch refs/heads/n8nmat/refactor-w2-3
+
+worktree /home/johnclaw/tradeai-wt-refactor-w2-4
+HEAD 17648d3d091d71301901b72d635ae4e190768103
+branch refs/heads/n8nmat/refactor-w2-4
+
+worktree /home/johnclaw/tradeai-wt-refactor-wave1
+HEAD 7cd73245470bdf7a7c02a4cd164312b6cde7783e
+branch refs/heads/n8nmat/refactor-wave1
+
+worktree /home/johnclaw/tradeai-wt-refactor-wave2
+HEAD fc14394b769a513c33e7cfac3fdac7fa9994049c
+branch refs/heads/n8nmat/refactor-wave2
+
+worktree /home/johnclaw/tradeai-wt-refactor-wave3
+HEAD be4f396d1063c57ebc3359c1698ce4135c4e2a04
+branch refs/heads/n8nmat/refactor-wave3
+
+worktree /home/johnclaw/tradeai-wt-registry-correctness-6dd-20261012
+HEAD 1b1aab2decdd70c5c59e7e3296e8e340ebe3378e
+branch refs/heads/wt/registry-correctness-6dd-20261012
+
+worktree /home/johnclaw/tradeai-wt-relayreview-20261008
+HEAD 87fe90e43803f2aa23f286dda94f14dffa1899af
+detached
+
+worktree /home/johnclaw/tradeai-wt-release-momentum-admission-20261013
+HEAD f0ebb82acd44fa0db790d29390d711daa0831a96
+detached
+
+worktree /home/johnclaw/tradeai-wt-release-pr1715-20261012
+HEAD 0d3d0d67f24f43e5bbbedbe4887e7d2d69d427bd
+detached
+
+worktree /home/johnclaw/tradeai-wt-repricer-persistent-root
+HEAD 5968bfdf8148243859abdbfe47e3179abdfa3572
+branch refs/heads/wt/repricer-persistent-root
+
+worktree /home/johnclaw/tradeai-wt-repricer-syspath
+HEAD d0331ed845b6b8277ab5915b1f59f13a928411d2
+branch refs/heads/wt/repricer-syspath
+
+worktree /home/johnclaw/tradeai-wt-research-data-hygiene
+HEAD 82735ed99c9b766fe6595acc6b311e73a664b4b0
+branch refs/heads/feat/advisory-research-data-hygiene
+
+worktree /home/johnclaw/tradeai-wt-research-gap-loop-20260922
+HEAD 7de87370fc782d601ab5d6ba87de163cebd49936
+branch refs/heads/wt/research-gap-loop-20260922
+
+worktree /home/johnclaw/tradeai-wt-research-governance
+HEAD dcf0bd18a23513984187c1feb57a7e10d300d520
+branch refs/heads/docs/r1-post-merge-program-state
+
+worktree /home/johnclaw/tradeai-wt-research-mechanics
+HEAD 2f2d5185bbd9db79e47af54622d75aad821450de
+branch refs/heads/feature/research-mechanics-r2
+
+worktree /home/johnclaw/tradeai-wt-research-r3r4
+HEAD 917e8b651dbfeb89bb3dcbebb4aff750d23f7c7b
+branch refs/heads/feature/research-r3-r4
+
+worktree /home/johnclaw/tradeai-wt-research-r5plus
+HEAD 127e4a2774bae0b32568368811be2fb8294c9789
+branch refs/heads/feature/research-r5-r8
+
+worktree /home/johnclaw/tradeai-wt-restoredrill-20261009
+HEAD 496d0e47f207ca1d51d8c6a3d0a1b273e63b2477
+branch refs/heads/n8nmat/restore-drill-guard
+
+worktree /home/johnclaw/tradeai-wt-retire-1
+HEAD 4c7a7fa9967d309ac1f1835d527ba14475f5d565
+branch refs/heads/n8nmat/retire-batch-1
+
+worktree /home/johnclaw/tradeai-wt-retire-command-center-v2
+HEAD 122f07613fe66ce43f7d50cc2ff355868e7bb7e8
+branch refs/heads/wt/retire-command-center-v2
+
+worktree /home/johnclaw/tradeai-wt-rockville-pr294-preview
+HEAD a756bdd96f109f686a760b9abb92036d92abccb7
+detached
+
+worktree /home/johnclaw/tradeai-wt-rollupfix-20261009
+HEAD 9954e348c3c9b28a96a7a56c7cdbeac9b6824ee6
+branch refs/heads/fix/rollup-and-embedding-text-20261009
+
+worktree /home/johnclaw/tradeai-wt-runroute-20261008
+HEAD 67cb3a439eb1d55d5c928814accee6ab119ca65a
+branch refs/heads/feat/n8n-run-route
+
+worktree /home/johnclaw/tradeai-wt-runsproj-20261008
+HEAD bfaba22679c581aa7791e3ac2be5e57e0aa2ca05
+branch refs/heads/feat/coordination-runs-projection
+
+worktree /home/johnclaw/tradeai-wt-runtime-n8n-convergence-20261008
+HEAD 5f4d610db6451f76bc1b39fe7ed3e8aa9d299779
+branch refs/heads/codex/runtime-n8n-convergence-20261008
+
+worktree /home/johnclaw/tradeai-wt-runtime-n8n-exact-deploy-20261008
+HEAD d8c527aea977fd0136cfc302001117a8c2919e6e
+detached
+
+worktree /home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008
+HEAD c492e6eba70dd513201212cca4ae698fb615589f
+branch refs/heads/codex/runtime-n8n-host-recovery-20261008
+
+worktree /home/johnclaw/tradeai-wt-runtime-preconditions-activation-20261009
+HEAD 4c93c5906a64d28d1b1c3abbbc9ecb52d4816368
+branch refs/heads/wt/runtime-preconditions-activation-20261009
+
+worktree /home/johnclaw/tradeai-wt-scalp-health-truth-20261009
+HEAD 64acef155a80ddecd1a2449db9f6e857244b4d77
+branch refs/heads/wt/scalp-health-truth-20261009
+
+worktree /home/johnclaw/tradeai-wt-scalp-health-truth-adopt-20261009
+HEAD 75278ea0f563e82ec1122410697d86e271cd0e42
+branch refs/heads/wt/scalp-health-truth-adopt-20261009
+
+worktree /home/johnclaw/tradeai-wt-scalp-hot-tier
+HEAD 7901ad016327963e2559c1bdc73ac512d63df8d7
+branch refs/heads/n8nmat/scalp-hot-tier
+
+worktree /home/johnclaw/tradeai-wt-scalp-n8n-20261013
+HEAD 18490ea4044c572829b95da603701aa49ef3a6e1
+branch refs/heads/wt/scalp-n8n-dispatch-20261013
+
+worktree /home/johnclaw/tradeai-wt-scalphermetic-20261009
+HEAD e18f7ca95850189614854f70a04edeb2374a293b
+branch refs/heads/test/scalp-universe-hermetic-20261009
+
+worktree /home/johnclaw/tradeai-wt-schwab-enc-key
+HEAD 35899476baa119d27d7184ad0a9e0ba9f931db83
+branch refs/heads/fix/schwab-enc-key-release-fallback
+
+worktree /home/johnclaw/tradeai-wt-scorer-selfheal-20261009
+HEAD e1554fbf9538cd2816fc245d2c44ece98e14e718
+branch refs/heads/n8nmat/scorer-selfheal-evidence
+
+worktree /home/johnclaw/tradeai-wt-search-routing
+HEAD 695268c655ffc9abaa43dd992ca596065b998311
+branch refs/heads/n8nmat/search-routing-engine
+
+worktree /home/johnclaw/tradeai-wt-sec-p7-20261009
+HEAD c22f00ddfdcc648355eb8c7e753e74a49f50f5bc
+branch refs/heads/n8nmat/p7-executor-env
+
+worktree /home/johnclaw/tradeai-wt-sec-relay-20261009
+HEAD 43422f605ac299dce94f518a71923b411f95588c
+branch refs/heads/n8nmat/b2-relay-env
+
+worktree /home/johnclaw/tradeai-wt-siem-active-flip
+HEAD 90f3cdeeb3fbbda69a7b8dad2ef842bd069c6642
+branch refs/heads/n8nmat/siem-active-flip
+
+worktree /home/johnclaw/tradeai-wt-siem-bridge
+HEAD 833b1ac9bb1285f052152099f3cf82d18720bbfc
+branch refs/heads/n8nmat/n8n-siem-bridge
+
+worktree /home/johnclaw/tradeai-wt-siem-diagnoser-schedule
+HEAD 74429061885e3934dcf769057a0fc57fe853bd19
+branch refs/heads/n8nmat/siem-diagnoser-schedule
+
+worktree /home/johnclaw/tradeai-wt-siem-health-repair-20261006
+HEAD e2f088ecd4810daf9c823675dd2b6b32f06af10e
+branch refs/heads/wt/siem-health-repair-20261006
+
+worktree /home/johnclaw/tradeai-wt-siem-registry-activate-20261011
+HEAD 4d996b2d62353902ee2a1495e05a63c85a16d808
+branch refs/heads/n8nmat/siem-registry-activate-20261011
+
+worktree /home/johnclaw/tradeai-wt-sop-evidence-fixture-ef81-20261012
+HEAD 26889bad7f5bafbe00b2ee8f30aca4d940692c78
+branch refs/heads/n8nmat/sop-evidence-fixture-ef81
+
+worktree /home/johnclaw/tradeai-wt-stop-truth-repair
+HEAD ca8491ce9f42010d01d7c520bd6859ec18773c02
+branch refs/heads/feat/trading-desk-maturity-t1-t2
+
+worktree /home/johnclaw/tradeai-wt-streamfix-20261009
+HEAD 854b9aead955fe1b93e53f8b54f862daa97c40aa
+branch refs/heads/n8nmat/schwab-stream-after-close
+
+worktree /home/johnclaw/tradeai-wt-swoff-20261009
+HEAD b07c8ca30e25601abe75ce68dcc6c8886745e683
+branch refs/heads/fix/retention-source-windows-off-20261009
+
+worktree /home/johnclaw/tradeai-wt-symbol-thesis-universe
+HEAD dd2f2b62a80b93dd03bdc170db68bd7ef26fc4fd
+branch refs/heads/wt/symbol-thesis-universe
+
+worktree /home/johnclaw/tradeai-wt-systg-20261009
+HEAD a82838ce818f2cff5eeb1835120d5c35dc4ec407
+branch refs/heads/fix/system-telegram-interdict-scope-20261009
+
+worktree /home/johnclaw/tradeai-wt-tai
+HEAD 2ed9e0d425cc5f5452d014ab0d2d0cff59f6c10f
+branch refs/heads/wt/tradeai-scalp-5min-20261009
+
+worktree /home/johnclaw/tradeai-wt-taxonomy-librarian-consolidation
+HEAD abff0ae3f83d9259b9cf6c64faca2a1eed2e49fe
+branch refs/heads/wt/taxonomy-librarian-consolidation
+
+worktree /home/johnclaw/tradeai-wt-telegram-correctness
+HEAD 2349a65b33a1eaed1c93dcf98a864a242ff31417
+branch refs/heads/feat/advisory-telegram-correctness
+
+worktree /home/johnclaw/tradeai-wt-temporal-dd
+HEAD 516f88ecb8d1c4a2d822ed3d36cc0465b5c2353a
+branch refs/heads/feat/temporal-due-diligence-poc
+
+worktree /home/johnclaw/tradeai-wt-thesis
+HEAD 6fed193fa6c3714d287e83f25f0f7f8b92fdbb70
+branch refs/heads/wt/thesis-job-fix-20261009
+
+worktree /home/johnclaw/tradeai-wt-tier-llm-cadence
+HEAD 2d4916b0bea4c2fa15aa2765060ebb500ad17c1e
+branch refs/heads/wt/lifecycle-as-of
+
+worktree /home/johnclaw/tradeai-wt-timerreview-20261008
+HEAD 9097138028136c226d34edffa2a67d033e7d0d4e
+detached
+
+worktree /home/johnclaw/tradeai-wt-timerunits-20261008
+HEAD 9097138028136c226d34edffa2a67d033e7d0d4e
+branch refs/heads/feat/cadence-timer-units-current
+
+worktree /home/johnclaw/tradeai-wt-trade-journal-api-source
+HEAD 2ccee09ac26ac49f233794087e7afd27706a3528
+branch refs/heads/wt/trade-journal-api-source
+
+worktree /home/johnclaw/tradeai-wt-train-20261008
+HEAD ecf106cd85e408dea93c849ceb716f3f7fe9bc62
+branch refs/heads/wt/n8n-day0-train-20261008
+
+worktree /home/johnclaw/tradeai-wt-train-20261009
+HEAD 00d8389fefd5fd5de8dc8ffa4ddc44f7ee7dc812
+branch refs/heads/train/agents-gate-ops-20261009
+
+worktree /home/johnclaw/tradeai-wt-train2-20261008
+HEAD 443774e2197feeff2d254d77f372304ba1035b7b
+detached
+
+worktree /home/johnclaw/tradeai-wt-w0-gate
+HEAD 0c41f23011376fdd277615a00da57c4c434c0b62
+branch refs/heads/n8nmat/w0-generic-gate
+
+worktree /home/johnclaw/tradeai-wt-w1review-20261008
+HEAD 931415f7f29dc3331e7d9e82ab8b9f7477ac47c6
+detached
+
+worktree /home/johnclaw/tradeai-wt-w4-flock-finviz-env
+HEAD fb44e5d6caf9575198aef086870be7a3ae501443
+branch refs/heads/n8nmat/w4-flock-finviz-env
+
+worktree /home/johnclaw/tradeai-wt-w4-provider-owners-shadow
+HEAD 849194e61db6bfed7db268a59ad35fb313499301
+branch refs/heads/n8nmat/w4-provider-owners-shadow
+
+worktree /home/johnclaw/tradeai-wt-w4review-20261008
+HEAD ea90bd8807f6e258a013e9f5fd7e6d989e090e89
+detached
+
+worktree /home/johnclaw/tradeai-wt-w5-event-consumers
+HEAD 35d9f8e3e031e329d72adb177faac4c51091ccef
+branch refs/heads/n8nmat/w5-event-consumers
+
+worktree /home/johnclaw/tradeai-wt-watch-audit-fixes
+HEAD 998997851b4d9b507612ba4693af321258d55c6b
+branch refs/heads/wt/watch-audit-fixes
+
+worktree /home/johnclaw/tradeai-wt-watch-review-automation
+HEAD cbabd9feba700edfbea02f0d0cef65936b73fd40
+branch refs/heads/feat/watch-review-automation
+
+worktree /home/johnclaw/tradeai-wt-watch-std
+HEAD fe373ce721678001455113a3181281b14bc6e5d7
+branch refs/heads/wt/watch-decision-standards-20261008
+
+worktree /home/johnclaw/tradeai-wt-watch-technicals-recovered
+HEAD cb49292bff17e0008776547a4029c0d7ba3a517b
+branch refs/heads/wt/watch-technicals-recovered
+
+worktree /home/johnclaw/tradeai-wt-watchlist-source-remediation-mainline
+HEAD 6e4296191653a2c7d660a2eb5e7cefc75a5c02bc
+branch refs/heads/fix/watchlist-source-remediation-mainline
+
+worktree /home/johnclaw/tradeai-wt-wave-c-20261011
+HEAD bdf9e995c32327ac41e5da55c87f372ac44194f6
+branch refs/heads/n8nmat/wave-c-heavy-jobs
+
+worktree /home/johnclaw/tradeai-wt-wfgen-20261008
+HEAD 000e6dbd50110def9bb37746fc064a938aa6d373
+branch refs/heads/feat/n8n-workflow-generator
+
+worktree /home/johnclaw/tradeai-wt-wfrunid-20261008
+HEAD c36055c13dce92096d0a75b5406604217cfb631e
+branch refs/heads/fix/n8n-workflow-run-id
+
+worktree /home/johnclaw/tradeai-wt-wt-closure-docs
+HEAD 9b100e2359ec1d270ec0e5bea0a3e0da61165689
+branch refs/heads/wt/wt-closure-docs
+
+worktree /home/johnclaw/tradeai-wt-wt-memory-loader-compat-repair
+HEAD 5ee3f0247892099b5b4f1407f8a3dcb39468c617
+branch refs/heads/wt/wt-memory-loader-compat-repair
+
+worktree /home/johnclaw/tradeai-wt-youtube-news-preview-20261013
+HEAD 1188bb19e9ac349b8883d3f215da6623c12f9e0c
+branch refs/heads/n8nmat/youtube-news-preview-20261013
+
+worktree /home/johnclaw/workflow-acceptance
+HEAD 07d21980b40d468fc7a8845b566dce48e397e177
+detached
+
+worktree /home/johnclaw/worktrees/active-trader-truth-label
+HEAD 600c4cf6b3d919511cb42aaf625fffbb7c7995c8
+branch refs/heads/n8nmat/active-trader-label-20261012
+
+worktree /home/johnclaw/worktrees/agents-4-5-0-ratify
+HEAD 316700266e004e1464d8adc6d9547ddf4a20f838
+branch refs/heads/n8nmat/agents-4-5-0-ratify
+
+worktree /home/johnclaw/worktrees/agents-4-6-0
+HEAD 9dd9e7d6bf8bdbc4fea8567c2005d8fe375eade8
+branch refs/heads/n8nmat/agents-4-6-0
+
+worktree /home/johnclaw/worktrees/agents-4-6-0-ratify
+HEAD 01736b9d7f3060aafe12910af227ad7c44299d8e
+branch refs/heads/n8nmat/agents-4-6-0-ratify
+
+worktree /home/johnclaw/worktrees/agents-5-1-0-ratify
+HEAD 3de8037e5c6b68829cae858a8cefe638ed527224
+branch refs/heads/n8nmat/agents-5-1-0-ratify
+
+worktree /home/johnclaw/worktrees/agents-p3-intents
+HEAD 3e37e46ed0f2719916ea252f3f35661ba1d97b77
+branch refs/heads/n8nmat/agents-p3-intents
+
+worktree /home/johnclaw/worktrees/bypass-base-464524b1b
+HEAD 464524b1b95d65fd8decb98fd990fb518b651943
+detached
+
+worktree /home/johnclaw/worktrees/bypass-senders-to-intents
+HEAD db69215167876c6b971e33cbc88a1599cf3edcfa
+branch refs/heads/n8nmat/bypass-senders-to-intents
+
+worktree /home/johnclaw/worktrees/cache-helper-first-canary
+HEAD f840febb6e6fb577d56ea3485fc172b6eca75a40
+branch refs/heads/n8nmat/cache-helper-first-canary-20261012
+
+worktree /home/johnclaw/worktrees/cash-freshness-one-derivation
+HEAD 395f40bba774d3d1053039fb7cf320d4f3b1df2f
+branch refs/heads/fix/cash-freshness-one-derivation
+
+worktree /home/johnclaw/worktrees/cio-diligence-restamp
+HEAD 79e92d641f014275ceb8c1e74f0bd52737fa195c
+branch refs/heads/feat/cio-diligence-restamp-all-done
+
+worktree /home/johnclaw/worktrees/cio-gap-earnings-b1
+HEAD 2c2b908ffd6d2687e03a967efe68ef12f4cb94c3
+branch refs/heads/fix/cio-gap-earnings-b1
+
+worktree /home/johnclaw/worktrees/cio-gap-price-quarantine
+HEAD 2a83e2b7fc69656d2166e944a9285ed807df4640
+branch refs/heads/fix/cio-gap-price-quarantine
+
+worktree /home/johnclaw/worktrees/cio-gap-register-closeout
+HEAD fb32c1b72c1201d88c14cddb27c8808d9e9c78c3
+branch refs/heads/fix/cio-gap-register-closeout
+
+worktree /home/johnclaw/worktrees/cio-gap-spec-workflow-bind
+HEAD c4b35714c330f57d3c49850c49b988317590c30f
+branch refs/heads/fix/cio-gap-spec-workflow-bind
+
+worktree /home/johnclaw/worktrees/completion-119-01-03
+HEAD 94d2acc5520f3487f55f71eecc533a27d17703d3
+branch refs/heads/n8nmat/completion-119-01-03-20261011
+
+worktree /home/johnclaw/worktrees/completion-119-04-06
+HEAD 32081155ccee59e541bdb88d752e3cc7fed5803a
+branch refs/heads/n8nmat/completion-119-04-06-20261011
+
+worktree /home/johnclaw/worktrees/completion-119-07-08
+HEAD 6a3247f400a60384191dde681931d85124ead41f
+branch refs/heads/n8nmat/completion-119-07-08-20261011
+
+worktree /home/johnclaw/worktrees/embeddings-archive-first
+HEAD eebb6ea6502fd120fc3b56c3add4ec5e0c1eef57
+branch refs/heads/n8nmat/embeddings-archive-first
+
+worktree /home/johnclaw/worktrees/g10-g12
+HEAD 9f602186a958df4c2d9f36f04a0ad1809bfce808
+branch refs/heads/n8nmat/g10-g12-canary-blockers
+
+worktree /home/johnclaw/worktrees/g11
+HEAD c456cfd0f4805cd9f7c0bdd4a9fcd6aea6241654
+branch refs/heads/n8nmat/g11-siem-single-route
+
+worktree /home/johnclaw/worktrees/grok-g1-g7-20261011
+HEAD ba371f978a1a36f6668b45da7c6eeca9b9156b3a
+branch refs/heads/n8nmat/grok-g1-g7-20261011
+
+worktree /home/johnclaw/worktrees/grok-g10-g12
+HEAD 09c55ac3daa6d17e02d86164e5fd27f38d130590
+branch refs/heads/n8nmat/grok-g10-g12-20261011
+
+worktree /home/johnclaw/worktrees/grok-g8-g13-20261011
+HEAD 1ac300547f71c104082b01730bd5aadbe9166ce5
+branch refs/heads/n8nmat/grok-g8-g13-20261011
+
+worktree /home/johnclaw/worktrees/grok-g8-g9
+HEAD 66ca87501161c67463292dd46ddf9cdd11317faa
+branch refs/heads/n8nmat/grok-g8-g9-env
+
+worktree /home/johnclaw/worktrees/grok-refactor-wave-20261012
+HEAD 8e1304447b1dd12abf4fd83cc4b2acc1d858e31c
+branch refs/heads/n8nmat/grok-refactor-wave-20261012
+
+worktree /home/johnclaw/worktrees/grok-review-due
+HEAD 62585f76c4d78d1e114e11c3ede1ed934097b743
+detached
+
+worktree /home/johnclaw/worktrees/grok-review-wave
+HEAD e2859ef6b7b1079baf93aea71c9276008d30927c
+detached
+
+worktree /home/johnclaw/worktrees/hermetic-tests
+HEAD 13c9919eb766273dc23658c9629e0708a302a6fb
+branch refs/heads/n8nmat/hermetic-test-bootstrap
+
+worktree /home/johnclaw/worktrees/main-check
+HEAD 5bfccec3a31bde75c68233ba9ce98022ae8adcd9
+detached
+
+worktree /home/johnclaw/worktrees/main-ro
+HEAD 09dc96fdee8d69a9d4178ee220d7606f049f4f58
+detached
+
+worktree /home/johnclaw/worktrees/momentum-input-adapter
+HEAD db5850dbb5e626ef0205eb92cca50b2ab6958c0b
+branch refs/heads/n8nmat/momentum-input-adapter-20261012
+
+worktree /home/johnclaw/worktrees/momentum-lifecycle-candidate
+HEAD e72f86b76c289303ac3179d6ac9c96f718d94e92
+branch refs/heads/n8nmat/momentum-lifecycle-candidate-20261012
+
+worktree /home/johnclaw/worktrees/native-fixture-audit-firsthalf
+HEAD 50b4e776606c3666d81587069df60924d297a908
+branch refs/heads/n8nmat/native-fixture-audit-firsthalf-20261012
+
+worktree /home/johnclaw/worktrees/native-gateway-enum-fixture
+HEAD 549598bdffbe0fcb7bb525bbee179777c7ac060d
+branch refs/heads/n8nmat/native-gateway-enum-fixture-20261012
+
+worktree /home/johnclaw/worktrees/overnight-b2-b3-failure-surfaces
+HEAD ff0af4b7667a702642decc3e9a232a470943f3ff
+branch refs/heads/fix/overnight-b2-b3-failure-surfaces
+
+worktree /home/johnclaw/worktrees/overnight-b4-b5-asof-provenance
+HEAD 9b2e3f7ec198bd766ecfaa0601e8585b62372cc3
+branch refs/heads/fix/overnight-b4-b5-asof-provenance
+
+worktree /home/johnclaw/worktrees/overnight-b6-reentry-scope-labels
+HEAD bcc302713c0bbdb065babf9eabcaa633443969f6
+branch refs/heads/fix/overnight-b6-reentry-scope-labels
+
+worktree /home/johnclaw/worktrees/overnight-b8-agent-brief-agents-md
+HEAD 80e2b303cafb6d52318cf875e4f4ece3e1e285e6
+branch refs/heads/fix/overnight-b8-agent-brief-agents-md
+
+worktree /home/johnclaw/worktrees/overnight-b9-goosehints-parity
+HEAD 7c39a75f12311993036c928cdac3b9f0ac34cc8b
+branch refs/heads/fix/overnight-b9-goosehints-parity
+
+worktree /home/johnclaw/worktrees/overnight-census-part5-level-set
+HEAD f8cf45c59b517bfe1bc2542c6b003169d38590e7
+branch refs/heads/docs/overnight-census-part5-level-set
+
+worktree /home/johnclaw/worktrees/overnight-d1-m5-cadence
+HEAD 5325a77a484851393be7ab0f60f56af4a47f65de
+branch refs/heads/overnight/d1-m5-cadence
+
+worktree /home/johnclaw/worktrees/overnight-d2-pending-data
+HEAD 082c7891ff2c19d41a1224a3136569e42480e09e
+branch refs/heads/fix/overnight-d2-pending-data
+
+worktree /home/johnclaw/worktrees/overnight-d3-lesson-provenance
+HEAD e705755e63ee642bfd5d990d8032bde1cda60f86
+branch refs/heads/fix/overnight-d3-lesson-provenance
+
+worktree /home/johnclaw/worktrees/overnight-f1-f2-search-bound
+HEAD d681317f11ffb4f729fc5dd7eb1aa7eef2d6eeb6
+branch refs/heads/fix/overnight-f1-f2-search-bound
+
+worktree /home/johnclaw/worktrees/overnight-f3-search-budget
+HEAD 14cdd6fe70a3f4a23f40b4550165fcbbdb363ff3
+branch refs/heads/fix/overnight-f3-search-budget
+
+worktree /home/johnclaw/worktrees/overnight-f4-search-health
+HEAD a2208021e70ab6ae80cf450ec4948c406d3fe40e
+branch refs/heads/fix/overnight-f4-search-health
+
+worktree /home/johnclaw/worktrees/overnight-f5-model-cost
+HEAD c92bd1fe6ae363daaa604e1fa401a5e6ecf57e7b
+branch refs/heads/fix/overnight-f5-model-cost
+
+worktree /home/johnclaw/worktrees/overnight-f6-utc-cron-proposals
+HEAD 5343e8dc9fe9eb84c2789fd737fc490c0324eae3
+branch refs/heads/docs/overnight-f6-utc-cron-proposals
+
+worktree /home/johnclaw/worktrees/overnight-g1-resolution-layer
+HEAD 9cc6466960156d713b07c27dc08030aff0760df1
+branch refs/heads/fix/overnight-g1-resolution-layer
+
+worktree /home/johnclaw/worktrees/overnight-g2-import-normalise
+HEAD 1f1276b68784b5e3fcb76ae81dd9931b2dde23ba
+branch refs/heads/fix/overnight-g2-import-normalise
+
+worktree /home/johnclaw/worktrees/overnight-g3-docs-index
+HEAD 50a71696a9c614141f4c6ae8ab721660093a8bb8
+branch refs/heads/fix/overnight-g3-docs-index
+
+worktree /home/johnclaw/worktrees/overnight-g4-archive-mechanism
+HEAD 7d09721ae9d5fc81f0dc1d5c211ac48f2d8ee61f
+branch refs/heads/fix/overnight-g4-archive-mechanism
+
+worktree /home/johnclaw/worktrees/overnight-g5-duplication-recommendations
+HEAD e9e6260cb63b9f6426889f1f443eb85a09399f58
+branch refs/heads/docs/overnight-g5-duplication-recommendations
+
+worktree /home/johnclaw/worktrees/overnight-g6-missing-stores
+HEAD 3ff88788aa972a3b3fa72f11ebc8fcbd05bda5e4
+branch refs/heads/fix/overnight-g6-missing-stores
+
+worktree /home/johnclaw/worktrees/overnight-w3-3a-population
+HEAD 50d485db48510230cab0b7c394d519d543c2f0ee
+branch refs/heads/fix/overnight-w3-3a-population
+
+worktree /home/johnclaw/worktrees/overnight-w3-3b-frozen-fields
+HEAD 8d4edca5c84c7e1e3def73ff042da6a7725100b1
+branch refs/heads/fix/overnight-w3-3b-frozen-fields
+
+worktree /home/johnclaw/worktrees/overnight-w6-structure-proofs
+HEAD 662fc79ad36a0c3de40d357a9c1909e8bab3ff3c
+branch refs/heads/docs/overnight-w6-structure-proofs
+
+worktree /home/johnclaw/worktrees/overnight-wave-e-catalyst-pipeline
+HEAD b39d5728396edea7f50b40406eb2a320f1c29aa2
+branch refs/heads/fix/overnight-wave-e-catalyst-pipeline
+
+worktree /home/johnclaw/worktrees/receipt-shape-contract-drift
+HEAD 16c13da7688d2dd52447ff1d9572a246e45b4752
+branch refs/heads/n8nmat/receipt-shape-contract-drift-20261012
+
+worktree /home/johnclaw/worktrees/reconciliation-api-serializer-fixture
+HEAD 8842e7e6b7e980176194d1ec5a07e51e8429a225
+branch refs/heads/n8nmat/reconciliation-api-serializer-fixture-20261012
+
+worktree /home/johnclaw/worktrees/reconciliation-cdq-topology-paths
+HEAD 732864e6c1d7c1f0396c3d1725ab23b7e074a197
+branch refs/heads/n8nmat/reconciliation-cdq-topology-paths-20261012
+
+worktree /home/johnclaw/worktrees/reconciliation-clone-fixture-control
+HEAD c2696423dcd42587a06b1fa1350e30f4f41d1d63
+branch refs/heads/n8nmat/reconciliation-clone-fixture-control-20261012
+
+worktree /home/johnclaw/worktrees/reconciliation-cutover-cookie
+HEAD d7436323e1e1693a4fa703a3fe15a49da5ec05ab
+branch refs/heads/n8nmat/reconciliation-cutover-cookie-20261012
+
+worktree /home/johnclaw/worktrees/reconciliation-health-test-isolation
+HEAD 34ada106b392ad6c61363df4b166a69c0cb381b9
+branch refs/heads/n8nmat/reconciliation-health-test-isolation-20261012
+
+worktree /home/johnclaw/worktrees/reconciliation-integrity-crlf
+HEAD 5c366d022c00e795b4618e0e92039d5fdd8779f6
+branch refs/heads/n8nmat/reconciliation-integrity-crlf-20261012
+
+worktree /home/johnclaw/worktrees/reconciliation-momentum-admission-20261013
+HEAD 8a47a9c0771aff48f90681d49b550761905c96ad
+branch refs/heads/n8nmat/momentum-admission-20261013
+
+worktree /home/johnclaw/worktrees/reconciliation-momentum-evidence
+HEAD 3e6ee21178b62b8e263ecadf378e19a8f613ab8f
+branch refs/heads/n8nmat/reconciliation-momentum-evidence-20261012
+
+worktree /home/johnclaw/worktrees/reconciliation-momentum-friendly-labels
+HEAD 37720056aad38e0fdae1dc4a3dc64ef9797e330d
+branch refs/heads/n8nmat/reconciliation-momentum-friendly-labels-20261012
+
+worktree /home/johnclaw/worktrees/reconciliation-momentum-refusal-enum
+HEAD 4168562ad48cfe71150235d59a58f899c5fe1bfe
+branch refs/heads/n8nmat/reconciliation-momentum-refusal-enum-20261012
+
+worktree /home/johnclaw/worktrees/reconciliation-momentum-scheduler-authority-20261013
+HEAD b986811319afe57ddff55aef984b9d66ead9ef05
+branch refs/heads/wt/momentum-scheduler-authority-20261013
+
+worktree /home/johnclaw/worktrees/reconciliation-notification-dto-fixture
+HEAD fe8a1132d7a3fc8434b132439e07d7cc6af15c3b
+branch refs/heads/n8nmat/reconciliation-notification-dto-fixture-20261012
+
+worktree /home/johnclaw/worktrees/reconciliation-ops-lanes-env-fixture
+HEAD 2b45f113ce1fd1d32449c3e12094ba6274779039
+branch refs/heads/n8nmat/reconciliation-ops-lanes-env-fixture-20261012
+
+worktree /home/johnclaw/worktrees/reconciliation-retention-hardening-fixture
+HEAD 5a32391132d82941bffd34a52c5579730f91fe25
+branch refs/heads/n8nmat/reconciliation-retention-hardening-fixture-20261012
+
+worktree /home/johnclaw/worktrees/reconciliation-retention-test-fixtures
+HEAD 934e32737965f7ea204fd85326adf5f89e7564c8
+branch refs/heads/n8nmat/reconciliation-retention-test-fixtures-20261012
+
+worktree /home/johnclaw/worktrees/reconciliation-runtime-contracts
+HEAD 9f62c6bac16d5d1fddb79bcb9304d86d23b28fb9
+branch refs/heads/n8nmat/reconciliation-runtime-contracts-20261012
+
+worktree /home/johnclaw/worktrees/reconciliation-scanner-session-evidence
+HEAD c5915088151a221752ed15252166749b50d69666
+branch refs/heads/n8nmat/reconciliation-scanner-session-evidence-20261012
+
+worktree /home/johnclaw/worktrees/reconciliation-session-owned-context
+HEAD a679f7c4017c443f6b50baf4ada7f32af91fa1dd
+branch refs/heads/n8nmat/reconciliation-session-owned-context-20261012
+
+worktree /home/johnclaw/worktrees/reconciliation-shared-candidates
+HEAD d2fba0806d632447294ed137ca6d4a0768d06bdf
+branch refs/heads/n8nmat/reconciliation-shared-candidates-20261012
+
+worktree /home/johnclaw/worktrees/reconciliation-social-symbol-binding
+HEAD 14bdfc1f62c5b6cd91ce60c77ca0965bd9f9eb22
+branch refs/heads/n8nmat/reconciliation-social-symbol-binding-20261012
+
+worktree /home/johnclaw/worktrees/reconciliation-watchdog-fixture
+HEAD 210977c2b3d827237aece934d23395fd627168f9
+branch refs/heads/n8nmat/reconciliation-watchdog-fixture-20261012
+
+worktree /home/johnclaw/worktrees/refactor-completion-119
+HEAD e3078ccfab51ed8118f6bdab36ce416fe5fd9cd5
+branch refs/heads/n8nmat/refactor-completion-119-20261011
+
+worktree /home/johnclaw/worktrees/refactor-reassess
+HEAD 74d117be6061830761c99ff69847ba30738efdc4
+branch refs/heads/n8nmat/refactor-reassess-20261011
+
+worktree /home/johnclaw/worktrees/refactor-shard-01
+HEAD 883d839ee6f8e9627c684a65fb2f5cf15efb4f2f
+branch refs/heads/n8nmat/refactor-shard-01
+
+worktree /home/johnclaw/worktrees/refactor-shard-02
+HEAD 3e99fa706ff6dd475503b9d35b4399e7e1e4a5b4
+branch refs/heads/n8nmat/refactor-shard-02
+
+worktree /home/johnclaw/worktrees/refactor-shard-03
+HEAD 7a13f386b33bfcceb6bf992eea3ebff67d8c32a9
+branch refs/heads/n8nmat/refactor-shard-03
+
+worktree /home/johnclaw/worktrees/refactor-shard-04
+HEAD 49990db083b19dd2ec20ed64d039bef257db15fa
+branch refs/heads/n8nmat/refactor-shard-04
+
+worktree /home/johnclaw/worktrees/refactor-shard-05
+HEAD 5b8a0aa25b61b859d43eb9490e595dcd64e49ca0
+branch refs/heads/n8nmat/refactor-shard-05
+
+worktree /home/johnclaw/worktrees/refactor-shard-06
+HEAD eeb3fea561aa545f2f0b9872b84d70867bd6a15d
+branch refs/heads/n8nmat/refactor-shard-06
+
+worktree /home/johnclaw/worktrees/refactor-shard-07
+HEAD ce2e3220ec5fa8e00e2303d1b99dbd51c65fefef
+branch refs/heads/n8nmat/refactor-shard-07
+
+worktree /home/johnclaw/worktrees/refactor-shard-08
+HEAD 7eaf2e91f7cf26d2ce539ae450dead9e48a1cc4b
+branch refs/heads/n8nmat/refactor-shard-08
+
+worktree /home/johnclaw/worktrees/relay-concurrency-and-fanin-error
+HEAD 673290250ffc22b731de212b3ecaf16f05ac0ba0
+branch refs/heads/n8nmat/relay-concurrency-and-fanin-error
+
+worktree /home/johnclaw/worktrees/retention-all-managed
+HEAD 9474882d374b4a58e3aaf2c051913d4a555c9b6f
+branch refs/heads/n8nmat/retention-all-managed
+
+worktree /home/johnclaw/worktrees/runner-receipt-accounting
+HEAD 1e819dcba1673958c06e8956b20b120f53756f2e
+branch refs/heads/n8nmat/runner-receipt-accounting-20261011
+
+worktree /home/johnclaw/worktrees/search-routing-isolation
+HEAD b82ddb8a4bba08c39edec7e1017426805c906c6f
+branch refs/heads/wt/search-routing-isolation-20261012
+
+worktree /home/johnclaw/worktrees/senders-wave3-20261011
+HEAD dc591ecba495ffeef855a174b28d32c3f747db40
+branch refs/heads/n8nmat/senders-wave3-20261011
+
+worktree /home/johnclaw/worktrees/train-3
+HEAD 66ac21845e600dac8a8af8bdb1655701cf8d5d4f
+branch refs/heads/n8nmat/refactor-train-20261011
+
+worktree /home/johnclaw/worktrees/train-4
+HEAD 821872b8b7ba1189ee46f38acfe349e5ece0b438
+branch refs/heads/n8nmat/train-4-20261011
+
+worktree /home/johnclaw/worktrees/train-5
+HEAD 23956398b9e67f08d5a752be7fb752afe66fb35e
+branch refs/heads/n8nmat/train-5-20261011
+
+worktree /home/johnclaw/worktrees/train-6
+HEAD 92d556cdd6b98cad1a96f86c680818b24f0aac3f
+branch refs/heads/n8nmat/train-6-20261012
+
+worktree /home/johnclaw/worktrees/train-7
+HEAD cb5e7bcfc27e688f0e0614699673bca4c2a36968
+branch refs/heads/n8nmat/train-7-20261013
+
+worktree /home/johnclaw/worktrees/train-migration
+HEAD a4c6d43bfb7150558ea39517981a89f8b4806fe4
+branch refs/heads/n8nmat/train-migration-20261011
+
+worktree /home/johnclaw/worktrees/train-migration-2
+HEAD 572f5e6db66ac59f56180042cdd3090cef12cb05
+branch refs/heads/n8nmat/train-migration-2-20261011
+
+worktree /home/johnclaw/worktrees/train-refactor-05-08
+HEAD 257596a90d1d739402a08583defb196a175645d3
+branch refs/heads/n8nmat/train-refactor-05-08-20261011
+
+worktree /home/johnclaw/worktrees/w0-siem-followups
+HEAD 987bf94da00150be9a44fd773f0e0f2825b132ca
+branch refs/heads/n8nmat/w0-siem-followups
+
+worktree /home/johnclaw/wt-agents-4-7-0
+HEAD 8cd8745afce568cb638a92200e7e2db21ebd5161
+branch refs/heads/n8nmat/agents-4-7-0
+
+worktree /home/johnclaw/wt-agents-6-0-0-step8
+HEAD ad7ed6d55684d3f1884480502adbe319507d8df1
+branch refs/heads/n8nmat/agents-6-0-0-step8
+
+worktree /home/johnclaw/wt-b4-scalp
+HEAD 4625927b9ac51453f275620b03310015f00015f2
+branch refs/heads/n8nmat/b4-scalp-cycle-receipt
+
+worktree /home/johnclaw/wt-broker-env-audit
+HEAD 7a0f3007101c136ddf5c2de5bba20348f2d9ff07
+branch refs/heads/n8nmat/broker-env-audit
+
+worktree /home/johnclaw/wt-catalogue-senders
+HEAD 15a563786ed145a6b81c36efdf652f631b9ca919
+branch refs/heads/n8nmat/catalogue-and-senders
+
+worktree /home/johnclaw/wt-cio-step1
+HEAD ff09c255619fdd64cf75b9f97a57b7a018004c98
+branch refs/heads/fix/cio-pipeline-step1-research-attach-honest-synth
+
+worktree /home/johnclaw/wt-cio-step2a
+HEAD 94cdd49480ada26c47de5a8252931f9ec6eaf01f
+branch refs/heads/feat/cio-pipeline-step2a-case-summary
+
+worktree /home/johnclaw/wt-cio-step2bc
+HEAD 3cc5275ec664a839096cb2b6d6918ed3814cbad1
+branch refs/heads/feat/cio-wave2-slice01-held-thesis-coverage
+
+worktree /home/johnclaw/wt-cio-wave2
+HEAD eba4699ad0fd8255127e57f24251e14c76b0742e
+branch refs/heads/feat/cio-diligence-p6-p7-p8-council-notify-mbi
+
+worktree /home/johnclaw/wt-desk-loop-drain
+HEAD 3ac9fb84f4dfa61899c16939da3c0396aa7e0ad2
+branch refs/heads/n8nmat/desk-loop-drain
+
+worktree /home/johnclaw/wt-dq-v1
+HEAD f8e2a9686267aba651f7c8538d2b32c3a9c2680b
+branch refs/heads/agent/defense-data-quality-v1
+
+worktree /home/johnclaw/wt-env-bootstrap-narrow
+HEAD 5d67d7a422b829ce530ff89213430b4fad619562
+branch refs/heads/n8nmat/env-bootstrap-narrow
+
+worktree /home/johnclaw/wt-executor-once-race
+HEAD 85d659e6e8abbc92876d703b4e8ace7741340367
+branch refs/heads/n8nmat/executor-once-race
+
+worktree /home/johnclaw/wt-flash-routing
+HEAD cb5a2ab55f2186a767ec8d19ab3bada5f386ad82
+branch refs/heads/fix/enrich-all-governed-env
+
+worktree /home/johnclaw/wt-gateway-due-latency
+HEAD ac8bf2c65590a355474495c39b1e1d88419c2729
+branch refs/heads/n8nmat/gateway-due-latency
+
+worktree /home/johnclaw/wt-gateway-lane
+HEAD 38071da329d33014c98479623e6fdda090d7869f
+branch refs/heads/n8nmat/gateway-workflow-error-lane
+
+worktree /home/johnclaw/wt-host-inventory
+HEAD 25f39ada941ccdc7048eabc980554adebc6f3d59
+branch refs/heads/agent/host-runtime-inventory-2026-07-24
+
+worktree /home/johnclaw/wt-litmus-lanes
+HEAD ac4b37cea86bb71e68c41db1e2cf85f1b0f19365
+branch refs/heads/docs/litmus-lanes
+
+worktree /home/johnclaw/wt-litmus-money
+HEAD ac4b37cea86bb71e68c41db1e2cf85f1b0f19365
+branch refs/heads/docs/litmus-money
+
+worktree /home/johnclaw/wt-llm-seed-sync
+HEAD 426ea230d0d47715f302cbe2d0df6a6f2b2bc0c3
+branch refs/heads/n8nmat/llm-process-seed-sync
+
+worktree /home/johnclaw/wt-manual-slots-20261017
+HEAD edd47a6fcfc32ca5c4215fc37d098ac9fdbcf4b1
+branch refs/heads/feat/hermes-manual-slots-20261017
+
+worktree /home/johnclaw/wt-monitor-coverage-gaps
+HEAD c7d7874061853d5eae5e226a95575be8a7e79a1d
+branch refs/heads/n8nmat/monitor-coverage-gaps
+
+worktree /home/johnclaw/wt-monitor-fold-rulings
+HEAD b5c2f62f93d886a6efc906d851b50aaad80c8f3d
+branch refs/heads/n8nmat/monitor-fold-rulings
+
+worktree /home/johnclaw/wt-n8n-error-framework
+HEAD b7dbe6e60235b49d9c3d666a52c8ffdf6da6c5da
+branch refs/heads/n8nmat/n8n-error-framework
+
+worktree /home/johnclaw/wt-notify-discovery
+HEAD 1d64cb59fd000f7802f5effa2ad1909d04df8d47
+branch refs/heads/discovery/notification-quality
+
+worktree /home/johnclaw/wt-notify-fix
+HEAD 76b435d16a4f1c12cad22b4856c817af2c979744
+branch refs/heads/docs/attempts-metric-trap
+
+worktree /home/johnclaw/wt-offpeak-receipt
+HEAD f4f1116c26bc8a9645697664d4469db6ba728d06
+branch refs/heads/n8nmat/offpeak-wrapper-receipt
+
+worktree /home/johnclaw/wt-persona-ruling
+HEAD fc5ec829beabb35508edd5828e08041fde43bfa1
+branch refs/heads/n8nmat/registry-persona-ruling-20261010
+
+worktree /home/johnclaw/wt-polish
+HEAD 73b6d9142b842b1bec70d8b6dc0e4f36938c87e3
+branch refs/heads/agent/defense-sectors-institutional-polish
+
+worktree /home/johnclaw/wt-quickwins-20261010
+HEAD 0bf9ee6f5595e206f0df237684ba6f14cbebc6f2
+branch refs/heads/n8nmat/quickwins-20261010
+
+worktree /home/johnclaw/wt-r20-r24-v2
+HEAD ecabe54c9cafba68370d84436633d5a166a885ef
+branch refs/heads/fix/r20-r24-data-lineage-v2
+
+worktree /home/johnclaw/wt-registry-drift-20261010
+HEAD de65c9dbc93cb49c2caf0ab222593a1e000db791
+branch refs/heads/n8nmat/registry-drift-20261010
+
+worktree /home/johnclaw/wt-registry-r0-wave1
+HEAD b7dbe6e60235b49d9c3d666a52c8ffdf6da6c5da
+branch refs/heads/n8nmat/registry-r0-wave1
+
+worktree /home/johnclaw/wt-retention-hardening
+HEAD ea2d0e04309bc531e820ab247e958fc55eb78d72
+branch refs/heads/n8nmat/retention-hardening
+
+worktree /home/johnclaw/wt-retire-wave1-config
+HEAD 9fb3102deb951dda8d338a01144d28427f4d2336
+branch refs/heads/n8nmat/retire-wave1-config
+
+worktree /home/johnclaw/wt-senders-wave2
+HEAD 8a36ba0550080dd1e1b13b99d804d149bd444880
+branch refs/heads/n8nmat/senders-wave2
+
+worktree /home/johnclaw/wt-shadow-lock-isolation
+HEAD fe9bfa43f2153279492678dfdaab07020f96d5e2
+branch refs/heads/n8nmat/shadow-lock-isolation
+
+worktree /home/johnclaw/wt-snd2-base
+HEAD 17c4617c8c5ee1d034000970b724bfc066eea0c5
+detached
+
+worktree /home/johnclaw/wt-stop-mgmt-naked
+HEAD 44e7c8ad0cf5edab1e7b9a366691319371442b20
+branch refs/heads/fix/stop-mgmt-policy-suggested-stop
+
+worktree /home/johnclaw/wt-stopnotify
+HEAD e877c99d03722970bfc226df3f517d3de2ff60c1
+branch refs/heads/fix/stop-path-notification
+
+worktree /home/johnclaw/wt-topic-reconnect
+HEAD f646dd7bb5d1071ce918ffef8ecfdb9c5ec31b27
+branch refs/heads/n8nmat/topic-ingestion-reconnect
+
+worktree /home/johnclaw/wt-w0-relay-fix
+HEAD a1bf90869cff8e11fb3cd2af734c3f4644a4f5db
+branch refs/heads/n8nmat/w0-relay-fix
+
+worktree /home/johnclaw/wt-watch-cards
+HEAD 7b2b025cf171d1628ab476924e80b0acec0157ef
+branch refs/heads/feat/watch-card-levels-tooltips
+
+worktree /home/johnclaw/wt-watch-valuation
+HEAD 50cd16eb25f8bef193ab5eacc1c6ef5deeb1c516
+branch refs/heads/fix/watch-valuation-passthrough
+
+worktree /home/johnclaw/wt/heartbeat-watcher-activation
+HEAD 91598891b865e2eea81b60adf7213b548793fd02
+branch refs/heads/n8nmat/heartbeat-watcher-activation
+
+worktree /tmp/claude-1000/-home-johnclaw-trade-ai-v12-rebuild-trade-ai-v12-rebuild/61cbddab-5ed5-4b34-88a0-2494bca7fd47/scratchpad/base-main
+HEAD 2e9758b27a248bd0b7f0860a1d2ba1d802c43c96
+detached
+
+worktree /tmp/claude-1000/-home-johnclaw-trade-ai-v12-rebuild-trade-ai-v12-rebuild/61cbddab-5ed5-4b34-88a0-2494bca7fd47/scratchpad/base-wt
+HEAD e8a4a6815524d7466fc43a894e06b347e1ebc2c5
+detached
+
+worktree /tmp/claude-1000/-home-johnclaw-trade-ai-v12-rebuild-trade-ai-v12-rebuild/61cbddab-5ed5-4b34-88a0-2494bca7fd47/scratchpad/base_av_20261010
+HEAD 0bf9ee6f5595e206f0df237684ba6f14cbebc6f2
+detached
+
+worktree /tmp/claude-1000/-home-johnclaw-trade-ai-v12-rebuild-trade-ai-v12-rebuild/61cbddab-5ed5-4b34-88a0-2494bca7fd47/scratchpad/wt-adapter-check
+HEAD 0a39e432c29e8351e548d452c2cba31d4679a8af
+detached
+
+worktree /tmp/claude-1000/-home-johnclaw-trade-ai-v12-rebuild-trade-ai-v12-rebuild/61cbddab-5ed5-4b34-88a0-2494bca7fd47/scratchpad/wt-broker-guards
+HEAD fc34c37e542f8e93635c0f4b01d941047cdd377b
+branch refs/heads/n8nmat/broker-guards
+
+worktree /tmp/claude-1000/-home-johnclaw-trade-ai-v12-rebuild-trade-ai-v12-rebuild/61cbddab-5ed5-4b34-88a0-2494bca7fd47/scratchpad/wt-installer-check
+HEAD a44e008328898245be1aa3d3baad2a86fd476312
+detached
+
+worktree /tmp/claude-1000/-home-johnclaw-trade-ai-v12-rebuild-trade-ai-v12-rebuild/61cbddab-5ed5-4b34-88a0-2494bca7fd47/scratchpad/wt-mergeprobe
+HEAD c85613fca3e0cbafdd26d45400343b277e7f5ffe
+detached
+
+worktree /tmp/claude-1000/-home-johnclaw-trade-ai-v12-rebuild-trade-ai-v12-rebuild/61cbddab-5ed5-4b34-88a0-2494bca7fd47/scratchpad/wt_base
+HEAD 17c4617c8c5ee1d034000970b724bfc066eea0c5
+detached
+
+worktree /tmp/claude-1000/-home-johnclaw/20037685-f0d9-451f-8b42-2a0f86d3b2e0/scratchpad/clean-82d6
+HEAD 82d6266d43144d740b0b9752149c8acc5c5c9eb3
+detached
+
+worktree /tmp/claude-1000/-home-johnclaw/20037685-f0d9-451f-8b42-2a0f86d3b2e0/scratchpad/mainwt
+HEAD 8faacf26e7e344acffbc477de6cf6868da20760d
+detached
+
+worktree /tmp/claude-1000/-home-johnclaw/20037685-f0d9-451f-8b42-2a0f86d3b2e0/scratchpad/wakeprof
+HEAD 33342ceaeda5b74b9e2d429dde236b3f79365c94
+detached
+
+worktree /tmp/claude-1000/-home-johnclaw/af450ed8-9996-468b-94b1-2265e5f9c3ff/scratchpad/wt-darkfix
+HEAD 3e8f12214ffd99a239dd07a9207dcb575b4e8563
+branch refs/heads/fix/dark-contracts-not-installed-20260918
+
+worktree /tmp/claude-1000/-home-johnclaw/af450ed8-9996-468b-94b1-2265e5f9c3ff/scratchpad/wt-goallaps
+HEAD 0bf2fadc7855e2ccb44292c6dee63686783f1c63
+branch refs/heads/fix/goal-lap-generation-20260917
+
+worktree /tmp/claude-1000/-home-johnclaw/af450ed8-9996-468b-94b1-2265e5f9c3ff/scratchpad/wt-jsonfix
+HEAD de3e86c6cc7a53306a5923dcb250a548a0e1deaa
+branch refs/heads/fix/baseline-json-purity-20260917
+
+worktree /tmp/claude-1000/-home-johnclaw/af450ed8-9996-468b-94b1-2265e5f9c3ff/scratchpad/wt-minters
+HEAD 93f61309a98878fb96496f2b506fe7eb43d5d2ec
+branch refs/heads/feat/goal-work-minter-ratchet-20260918
+
+worktree /tmp/claude-1000/-home-johnclaw/af450ed8-9996-468b-94b1-2265e5f9c3ff/scratchpad/wt-operable
+HEAD 94a35cc57b94b3b37bd7935e4854971c59fd7bed
+branch refs/heads/fix/goal-laps-skip-inoperable-owner-20260919
+
+worktree /tmp/claude-1000/-home-johnclaw/af450ed8-9996-468b-94b1-2265e5f9c3ff/scratchpad/wt-refund
+HEAD e6edee35e89188cf26f51fa9616b2034e0a1876a
+branch refs/heads/fix/goal-budget-refund-duplicate-20260918
+
+worktree /tmp/claude-1000/-home-johnclaw/af450ed8-9996-468b-94b1-2265e5f9c3ff/scratchpad/wt-resolve
+HEAD 5c100bcc0dc299ab8b1a6465437cde65b5026f4a
+branch refs/heads/fix/alert-incident-resolution-20260921
+
+worktree /tmp/claude-1000/-home-johnclaw/af450ed8-9996-468b-94b1-2265e5f9c3ff/scratchpad/wt-rewire
+HEAD 29b5074ab153bcb54a8a9e274e90e421fceaf2d2
+branch refs/heads/fix/retire-inprocess-goal-source-20260917
+
+worktree /tmp/claude-1000/-home-johnclaw/af450ed8-9996-468b-94b1-2265e5f9c3ff/scratchpad/wt-secrets
+HEAD 2f9ef1fcec7e58bff56be245ab48f1b5583098d9
+branch refs/heads/fix/test-chat-id-routing-fixture-20260920
+
+worktree /tmp/claude-1000/-home-johnclaw/af450ed8-9996-468b-94b1-2265e5f9c3ff/wt-alert-plane
+HEAD 202454be81427fa4d25c51badc7b2ecea5df4979
+branch refs/heads/feat/alert-plane-survives
+
+worktree /tmp/claude-1000/-home-johnclaw/af450ed8-9996-468b-94b1-2265e5f9c3ff/wt-arm-p0
+HEAD fd13f8e92fc8010ddc5397053c6f5645671d369f
+branch refs/heads/chore/arm-p0-monitor-20260916
+
+worktree /tmp/claude-1000/-home-johnclaw/af450ed8-9996-468b-94b1-2265e5f9c3ff/wt-conv-probe
+HEAD 940425b733617c883ae14dc9a0c8ac51d81bdd78
+detached
+
+worktree /tmp/claude-1000/-home-johnclaw/af450ed8-9996-468b-94b1-2265e5f9c3ff/wt-docs-0916
+HEAD a47bac740290decbabd1e18dd72336fce82d28d1
+branch refs/heads/docs/p1-docs-20260916
+
+worktree /tmp/claude-1000/-home-johnclaw/af450ed8-9996-468b-94b1-2265e5f9c3ff/wt-drivers
+HEAD f1ef3692efbad5de1087dbe011ba0f7597507641
+branch refs/heads/feat/goal-loop-drivers-20260917
+
+worktree /tmp/claude-1000/-home-johnclaw/af450ed8-9996-468b-94b1-2265e5f9c3ff/wt-integrate
+HEAD 7191b2e576fd11b4922aadc8da1bf5f92dfc2ad8
+branch refs/heads/integrate/goal-loop-20260916
+
+worktree /tmp/claude-1000/-home-johnclaw/af450ed8-9996-468b-94b1-2265e5f9c3ff/wt-integrate2
+HEAD bf8308f09907410bcfe721f8b4ce81025518fd01
+branch refs/heads/integrate/goal-loop-phase2-20260916
+
+worktree /tmp/claude-1000/-home-johnclaw/af450ed8-9996-468b-94b1-2265e5f9c3ff/wt-integrate3
+HEAD a7983cdda95d9aa3dacc34a3cf64561cf5716919
+branch refs/heads/integrate/goal-loop-all-20260916
+
+worktree /tmp/claude-1000/-home-johnclaw/af450ed8-9996-468b-94b1-2265e5f9c3ff/wt-nan-fix
+HEAD 0d0b46c860a655ce3515acbe4c7a7939bc340db0
+branch refs/heads/fix/nan-writer-and-crash-window
+
+worktree /tmp/claude-1000/-home-johnclaw/af450ed8-9996-468b-94b1-2265e5f9c3ff/wt-p0-baseline
+HEAD 8f2ac4ff000aa8d611cbd7b77f98ec53e2885949
+branch refs/heads/feat/goal-loop-p0-baseline
+
+worktree /tmp/claude-1000/-home-johnclaw/af450ed8-9996-468b-94b1-2265e5f9c3ff/wt-p1-identity
+HEAD 85e0758f6f7575e781218ebc92493291fc20c87f
+branch refs/heads/feat/goal-loop-p1-identity
+
+worktree /tmp/claude-1000/-home-johnclaw/af450ed8-9996-468b-94b1-2265e5f9c3ff/wt-p8-pilot
+HEAD b5a3dde87d68bf85680fcada26b806a1a02eb7d2
+branch refs/heads/feat/p8-pilot-20260916
+
+worktree /tmp/claude-1000/-home-johnclaw/af450ed8-9996-468b-94b1-2265e5f9c3ff/wt-probe69
+HEAD 2149452863151d524c1a798a5dfbec0358cb9f94
+detached
+
+worktree /tmp/claude-1000/-home-johnclaw/be076192-82c6-4adb-ac06-3b3dab1e3a57/scratchpad/basewt3
+HEAD 78563e09b9c283e79fb43bac2717c8f4ef92d66d
+detached
+
+worktree /tmp/claude-1000/-home-johnclaw/be076192-82c6-4adb-ac06-3b3dab1e3a57/scratchpad/cleanwt
+HEAD e671f5b2864a37cc08c99f0ef255e9af1f7df631
+detached
+
+worktree /tmp/claude-1000/-home-johnclaw/f49ed69f-8848-494d-8386-0e0c35d9dd59/scratchpad/amend-1725
+HEAD 1cdcdc7e3d61ee0adf9151efa084139c7b5b7aa2
+branch refs/heads/governance/agents-advisory-market-data-lanes-20261014
+
+worktree /tmp/claude-1000/-home-johnclaw/f49ed69f-8848-494d-8386-0e0c35d9dd59/scratchpad/amend-push
+HEAD 69c61d5b3021a6e875f0121416d595c7ac924390
+branch refs/heads/governance/agents-7-0-0-ratify-20261014
+
+worktree /tmp/claude-1000/-home-johnclaw/f49ed69f-8848-494d-8386-0e0c35d9dd59/scratchpad/base
+HEAD d69bcbc6e8f0455ccc9cf98456b5f887d58548a1
+detached
+
+worktree /tmp/claude-1000/-home-johnclaw/f49ed69f-8848-494d-8386-0e0c35d9dd59/scratchpad/chatgpt-fix
+HEAD 47d28ae019597296cf881ed55f641c3c304f1d6d
+branch refs/heads/fix/chatgpt-proxy-model-20261014
+
+worktree /tmp/claude-1000/-home-johnclaw/f49ed69f-8848-494d-8386-0e0c35d9dd59/scratchpad/stop-alert-fix
+HEAD 3f91991e53740fb3d46d3f073687f30dc80d39e5
+branch refs/heads/fix/stop-alert-never-digest-20261014
+
+worktree /tmp/claude-1000/-home-johnclaw/f49ed69f-8848-494d-8386-0e0c35d9dd59/scratchpad/wt/sec
+HEAD 01a03001dc58b10bd75b91611ecc1f7556fc1b0d
+branch refs/heads/fix/sec-test-date-bomb-20261017
+
+worktree /tmp/claude-1000/-home-johnclaw/f49ed69f-8848-494d-8386-0e0c35d9dd59/scratchpad/wt10
+HEAD c6a1ee37b581cc29b711d25b264cb45c4524cf40
+branch refs/heads/docs/agents-10-0-0-ratify-20261014
+
+worktree /tmp/tradeai-e7-intake-fix
+HEAD 7fe744556295dadf4c24fef70ad4f94a89039716
+branch refs/heads/fix/e7-intake-connection-factory
+
+worktree /tmp/tradeai-exec-explore
+HEAD fc554d44b1fa71c826346e13b08ff4cfb7eebefa
+detached
+
+worktree /tmp/tradeai-fix-expected-services
+HEAD 2b4893e48fb0306181d527d9cc2cede856e5beb3
+branch refs/heads/fix/retire-orphan-runtime-timers-from-expected
+
+worktree /tmp/tradeai-fix-expected-services-hermes
+HEAD 8efd058eb1a9a421a30a64c0c0427461daa0f347
+branch refs/heads/fix/hermes-path-retire-expected
+
+worktree /tmp/tradeai-full-package
+HEAD d67256090fa412814366a0e75523a8e500dbacf0
+branch refs/heads/exec/full-package-20260916
+
+worktree /tmp/tradeai-momentum-lineage-20261013
+HEAD 68ad9ebaa7b9abc44052485b826e38aacbd8b2b3
+branch refs/heads/wt/momentum-lineage-20261013
+

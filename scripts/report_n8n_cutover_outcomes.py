@@ -49,7 +49,8 @@ for _p in (str(ROOT), str(ROOT / "scripts")):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-SCHEMA = "N8nCutoverOutcomes@v1"
+SCHEMA = "N8nCutoverOutcomes@v2"
+LEGACY_SCHEMA = "N8nCutoverOutcomes@v1"
 AUTHORITY = "READ_ONLY_ADVISORY"
 NO_CONSUMER_REASON = (
     "Operator measurement packet generator (docs/ops/measurements/n8n-cutover-<ts>/); a human and Agent A read "
@@ -494,7 +495,7 @@ def cron_copy_standing_down(lines: Iterable[Mapping[str, Any]], events: Mapping[
 # ── migration state per lane ──────────────────────────────────────────────────────────────────────────────────────
 STATUSES = (
     "MIGRATED_PROVEN", "N8N_NATIVE", "N8N_PRIMARY_UNPROVEN", "PARALLEL", "LIVE_LISTED_IDLE", "CRON_PRIMARY",
-    "CONSOLIDATED", "RETIRED", "HELD", "RETAINED_F07", "RETAINED_SYSTEMD", "OTHER",
+    "CONSOLIDATED", "RETIRED", "HELD", "RETAINED_F07", "RETAINED_SYSTEMD", "OTHER", "UNAVAILABLE",
 )
 
 
@@ -1345,7 +1346,9 @@ def md_table(rows: list[Mapping[str, Any]], cols: list[str]) -> str:
         return "_none_\n"
     out = ["| " + " | ".join(cols) + " |", "|" + "---|" * len(cols)]
     for r in rows:
-        out.append("| " + " | ".join(str(r.get(c, "")).replace("|", "/").replace("\n", " ") for c in cols) + " |")
+        out.append("| " + " | ".join(
+            ("UNAVAILABLE" if r.get(c, "") is None else str(r.get(c, ""))).replace("|", "/").replace("\n", " ")
+            for c in cols) + " |")
     return "\n".join(out) + "\n"
 
 
@@ -1357,10 +1360,11 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
     unmeasured: list[str] = []
 
     rc, cron_text, err = _run(["crontab", "-l"], timeout=30)
-    if rc != 0:
-        unmeasured.append(f"crontab -l failed ({err.strip()[:80]}): cron state empty")
+    cron_available = rc == 0
+    if not cron_available:
+        unmeasured.append(f"crontab -l failed ({err.strip()[:80]}): scheduler state UNAVAILABLE")
         cron_text = ""
-    cron_sha = hashlib.sha256(cron_text.encode()).hexdigest()
+    cron_sha = hashlib.sha256(cron_text.encode()).hexdigest() if cron_available else None
     served = served_sha(Path(args.current))
     _rc, head, _ = _run(["git", "rev-parse", "HEAD"])
     checkout_sha = head.strip() or UNKNOWN
@@ -1392,11 +1396,13 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
             dispositions.setdefault(r["lane_id"], r.get("disposition") or "")
     disp_totals = disposition_totals(disp_rows)
 
+    live_available = True
     try:
         live_lanes = parse_live_lanes(Path(args.live_lanes_env).read_text())
     except Exception as e:  # noqa: BLE001
+        live_available = False
         live_lanes = []
-        unmeasured.append(f"relay live-lane list unreadable ({type(e).__name__}): relay_live=false for every lane")
+        unmeasured.append(f"relay live-lane list unreadable ({type(e).__name__}): live authority UNAVAILABLE")
 
     best = lane_matcher(registry)
     cron = parse_cron(cron_text, best)
@@ -1427,6 +1433,13 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
 
     lanes = lane_states(registry_rows=registry_rows, live_lanes=live_lanes, cron=cron, families=families,
                         dispositions=dispositions, holds=holds, outcomes=outcomes, effect_events=effect_events)
+    ownership_available = cron_available and live_available and bool(led.get("ok"))
+    if not ownership_available:
+        # An inaccessible old scheduler is not evidence that its competing trigger has been retired.
+        for row in lanes.values():
+            if row["status"] not in {"HELD", "RETIRED", "RETAINED_F07", "RETAINED_SYSTEMD"}:
+                row.update(status="UNAVAILABLE", sched_n8n=None, measure_combo="", sched_evidence="",
+                           unproven_reason="scheduler/live-authority/ledger source UNAVAILABLE")
     for lane, row in lanes.items():
         o = outcomes.get(lane) or {}
         for k in OUTCOME_KEYS:
@@ -1480,6 +1493,15 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
             1 for a in active_lines if a.get("wrapped_lane")
             and (effect_events.get(a["wrapped_lane"]) or {}).get("last_event") in SKIP_EVENTS),
     }
+    if not cron_available:
+        for key in ("active_cron_lines", "active_cron_lines_mapped_to_a_lane", "active_cron_lines_unmapped",
+                    "unique_lanes_with_active_cron", "commented_lines_by_kind", "wrapped_cron_lines",
+                    "wrapped_cron_lines_standing_down"):
+            migration[key] = None
+    if not live_available:
+        migration["relay_live_list_size"], migration["relay_live_lanes"] = None, None
+    if not ownership_available:
+        migration["measures"] = {key: None for key in migration["measures"]}
 
     # retained exceptions
     retained = []
@@ -1555,6 +1577,14 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
                     if (parse_ts(r.get("ts")) or since) >= day_start]
     intents_today = [i for i in (led.get("comms_intents") or []) if (parse_ts(i.get("last_at")) or since) >= day_start]
     notif = summarize_notifications(comm.get("rows") or [], router_today, intents_today)
+    notif["availability"] = {"communications": "AVAILABLE" if comm.get("ok") else "UNAVAILABLE",
+                              "coordination_ledger": "AVAILABLE" if led.get("ok") else "UNAVAILABLE"}
+    if not comm.get("ok"):
+        for key in ("communication_events_outbound", "by_scheduler_and_delivery", "by_producer_class_delivery"):
+            notif[key] = None
+        notif["attribution"] = {"attributed": None, "unknown": None, "by_source": None}
+    if not led.get("ok"):
+        notif["n8n_comms_intents_by_tier_state"] = None
     notif["day_start_utc"] = _iso(day_start)
     notif["router_ledger"] = "data/runtime/notification_intent_receipts.jsonl (NotificationIntentRoute@v1)"
     notif["join_note"] = (
@@ -1646,6 +1676,10 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
 
     bd = burn_down(lanes, migrations_by_date, today=now.date().isoformat(), allowlisted=allowlisted,
                    p1_last=p1_last, holds=holds)
+    if not ownership_available:
+        bd["projected_completion"] = None
+        bd["rate_lanes_per_trading_day"] = None
+        bd["observation_status"] = "UNAVAILABLE"
 
     totals = Counter()
     for lane, o in outcomes.items():
@@ -1677,6 +1711,19 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
         "capture": {"captured_at_utc": _iso(now), "captured_at_et": _et(now),
                     "context": list(getattr(args, "context", None) or [])},
         "prs": pr_rows, "burn_down": bd, "unmeasured": unmeasured,
+        "observation_coverage": {
+            "status": "UNAVAILABLE" if unmeasured else "SNAPSHOT_ONLY",
+            "continuous": False,
+            "window": {"since": _iso(since), "through": _iso(until)},
+            "source_availability": {"crontab": cron_available, "live_authority": live_available,
+                                    "coordination_ledger": bool(led.get("ok")),
+                                    "communications": bool(comm.get("ok")), "github": gh_ok},
+            "aggregation": "all readable receipt files and source rows in the stated window; no row sample limit",
+            "qualification": "Point capture only; does not attest continuous uptime, absent gaps, or natural-slot coverage",
+            "attestation": {"producer": "host:report_n8n_cutover_outcomes", "source_sha": checkout_sha,
+                            "served_sha": served["sha"], "authenticated": False,
+                            "limitation": "Same-uid source capture with integrity only; trusted attestation verifier unavailable"},
+        },
         "sources": {
             "registry": "config/lane_registry.json", "policy": "config/lane_cutover_policy.json" if policy else None,
             "disposition_csv": str(DISPOSITION_CSV.relative_to(ROOT)), "receipts": "<state>/data/runtime/n8n_runs/*.json",
@@ -1709,6 +1756,8 @@ def compare_packets(prev_dir: Path, cur: Mapping[str, Any]) -> dict[str, Any]:
     never read as a regression of the lane."""
     try:
         prev = json.loads((prev_dir / "summary.json").read_text())
+        if prev.get("schema") not in {SCHEMA, LEGACY_SCHEMA}:
+            raise ValueError("unsupported outcomes schema; supported: N8nCutoverOutcomes@v1 and @v2")
         prev_lanes = {r["lane_id"]: r for r in csv.DictReader((prev_dir / "lanes.csv").open())}
     except Exception as e:  # noqa: BLE001
         return {"prev_dir": str(prev_dir), "error": f"{type(e).__name__}: {str(e)[:120]}"}
@@ -1754,6 +1803,10 @@ def render(p: Mapping[str, Any]) -> str:
     L.append(f"**Status:** MEASUREMENT (read-only snapshot; a later packet supersedes it)  \n"
              f"**Date:** {p['generated_at']}  \n**Authority:** {p['authority']}\n")
     L.append(f"Schema `{p['schema']}` · authority `{p['authority']}` · generator `scripts/report_n8n_cutover_outcomes.py` (read-only).\n")
+    coverage = p.get("observation_coverage")
+    if coverage:
+        L.append(f"**Observation: {coverage['status']}**. Continuous coverage: false. "
+                 f"{coverage['qualification']}. Source availability: {coverage['source_availability']}.\n")
     L.append("## 1. Header\n")
     L.append(md_table([
         {"item": "served SHA", "value": f"`{p['served']['sha']}` ({os.path.basename(p['served']['release_dir'])})"},

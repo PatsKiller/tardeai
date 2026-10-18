@@ -1,0 +1,79 @@
+{
+  "campaign_id": "n8n-maturity-20261018",
+  "source_sha": "3af0a8bdd659e02bf6f493c071800c6a227ae292",
+  "integrity_only": true,
+  "artifacts": [
+    {
+      "path": "README.md",
+      "sha256": "03c74d3b0f2f6f47857763f8ed8aff8a8bd138e8dbbb04ba216b2eb093db30ac"
+    },
+    {
+      "path": "baseline/activation_paths.json",
+      "sha256": "4e892f90deb43f3555922caa06d1fbf44cd2241d0eb4edd2f780062fab6696a9"
+    },
+    {
+      "path": "baseline/contract_matrix.json",
+      "sha256": "7424b732661392e880c2e7105822d140c2460a2a86e831efbb4d60b851f49e1d"
+    },
+    {
+      "path": "baseline/decision_reconciliation.json",
+      "sha256": "35a169204374313971fd38b923d79024f59f5adb8d6468dc84d9b70648c705dd"
+    },
+    {
+      "path": "baseline/module_consumer_inventory.json",
+      "sha256": "8f966f61247f4bc1145545054e7e36e2af5a17c4d5e2609fd1bff728dc5f0120"
+    },
+    {
+      "path": "baseline/route_matrix.json",
+      "sha256": "d66d564589a9f6e2787bea3bb6be22683d4db2b107501d9567545aa268d207e5"
+    },
+    {
+      "path": "baseline/workflow_http_inventory.json",
+      "sha256": "2573ff1aa0c5287614cb93d32de25cb74b1650a05b547d554959da3acea4ca7a"
+    },
+    {
+      "path": "baseline/worktrees.txt",
+      "sha256": "f88063ceed7908b5191eee6a7b1acd45dd93ed6b8b4555f96ae16afee3e0518b"
+    },
+    {
+      "path": "reviews/grants-retirement-initial.json",
+      "sha256": "a3caf68ef1f1ba7cde9d9c537994671c4f73f4f380d05d5439fc810e08e4fdae"
+    },
+    {
+      "path": "reviews/initial-pr-review.json",
+      "sha256": "f441f5607ed5d906b9c3582f3ad4a28298da0e7b8bea9c076cde71c93f6c2561"
+    },
+    {
+      "path": "reviews/output.json",
+      "sha256": "eb974e9e36cb0d9a37430a878187a639012424f6b7abca860c563fa67298d941"
+    },
+    {
+      "path": "validation/gateway-inputs.json",
+      "sha256": "7561f17a53b5fa1038757f5d02828ed67c55d8d4498991660844545e3fbd0970"
+    },
+    {
+      "path": "validation/importer-baseline-red.xml",
+      "sha256": "25e11e4930f8cd3ce273116f7aaf224c93ca5dc98880fdb4c90a5ad11c401f3f"
+    },
+    {
+      "path": "validation/importer-candidate-green.xml",
+      "sha256": "178fd801bbeb431f2a2bcaeae1e09271eb34643efafd3b7d06a7bcb616184a7b"
+    },
+    {
+      "path": "validation/output-initial.json",
+      "sha256": "16ab42787d83d9ae3ce2ed69cc39cc8643ad8cf16c2aca1024ac4cbdd3d0dc25"
+    },
+    {
+      "path": "validation/output-sha-followup.json",
+      "sha256": "d307b290ee7b7b7d3166852030e24621288a57e924a2d0191c274dec03207413"
+    },
+    {
+      "path": "validation/report-baseline-red.xml",
+      "sha256": "9864316953aacdaee67198526bc82877ace848c05f93fe272ef0166cd26af912"
+    },
+    {
+      "path": "validation/report-candidate-green.xml",
+      "sha256": "77ecdd42c2c91a78fae379335d553ffb73ce30bc6a375ce8e2ba2e5c30540619"
+    }
+  ]
+}

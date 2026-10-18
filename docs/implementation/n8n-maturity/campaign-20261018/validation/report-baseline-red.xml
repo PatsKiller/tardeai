@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="0.370" timestamp="2026-10-18T14:18:18.970443-04:00" hostname="ms01-openclaw"><testcase classname="tests.test_report_n8n_cutover_outcomes_20261016" name="test_unavailable_scheduler_is_not_an_observed_empty_crontab" time="0.077"><failure message="assert 0 is None">tmp_path = PosixPath('/tmp/pytest-of-johnclaw/pytest-166460/test_unavailable_scheduler_is_0')
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x7b3d6eb71810&gt;
+
+    def test_unavailable_scheduler_is_not_an_observed_empty_crontab(tmp_path, monkeypatch):
+        """A failed host read cannot certify zero timers, migration ownership or delivery totals."""
+        def run(argv, *args, **kwargs):
+            if argv[:2] == ["crontab", "-l"]:
+                return 1, "", "permission denied"
+            if argv[0] == "gh":
+                return 0, '{"state":"OPEN","files":[]}', ""
+            return 0, "a" * 40, ""
+    
+        monkeypatch.setattr(R, "_run", run)
+        monkeypatch.setattr(R, "comms_rows", lambda *_: {"ok": False, "rows": [], "error": "unavailable"})
+        args = Namespace(since=SINCE.isoformat(), state_root=str(tmp_path), current=str(tmp_path / "current"),
+                         live_lanes_env=str(tmp_path / "missing"), compare="")
+        packet = R.build(args)
+&gt;       assert packet["migration"]["active_cron_lines"] is None
+E       assert 0 is None
+
+tests/test_report_n8n_cutover_outcomes_20261016.py:49: AssertionError</failure></testcase></testsuite></testsuites>

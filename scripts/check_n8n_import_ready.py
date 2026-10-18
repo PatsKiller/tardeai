@@ -178,8 +178,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     ap.add_argument(
         "--framework-gate",
         choices=("activation",),
-        default=None,
-        help="also refuse files the §23.24 activation gate does not pass (fail closed)",
+        default="activation",
+        help="§23.24 activation gate (mandatory; retained for existing packet compatibility)",
     )
     ap.add_argument("--runtime-evidence", default=None, help="N8nFrameworkRuntimeEvidence@v1 for the gate")
     ap.add_argument("--exceptions", default=None, help="N8nFrameworkExceptions@v1 for the gate")
@@ -191,8 +191,9 @@ def main(argv: Optional[list[str]] = None) -> int:
             allowlisted=load_allowlisted_lanes(Path(a.allowlist)),
             known_ids=set(a.known_id),
         )
-        if a.framework_gate:
-            apply_framework_gate(results, runtime_evidence=a.runtime_evidence, exceptions=a.exceptions)
+        candidates = [row for row in results if row["ok"]]
+        if candidates:
+            apply_framework_gate(candidates, runtime_evidence=a.runtime_evidence, exceptions=a.exceptions)
     except CannotRun as exc:
         print(f"n8n import guard CANNOT RUN: {exc}", file=sys.stderr)
         return 2

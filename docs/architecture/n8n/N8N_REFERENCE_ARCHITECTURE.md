@@ -31,6 +31,18 @@ assessment section; `WSn-mm` = an architecture-review finding id (`FINDINGS.csv`
 item; `FW-x` = a §23.24 framework element (the checker element id in
 [`N8N_CONTRACTS_DESIGN.md`](N8N_CONTRACTS_DESIGN.md) §12).
 
+**Current verification, 2026-10-18.** Source `3af0a8bdd659e02bf6f493c071800c6a227ae292`, initial served
+`a2aef7b4d2de17e737526337a2ffc37848deda4f`, active policy AGENTS.md 14.0.0. A host SELECT-only drift read at
+18:15:57Z found 19 active workflows and 19/19 matching Git. This is point parity, not continuous monitoring or
+§23.24 compliance. The independent drift lane is held. The refreshed scheduler inventory found 338 active
+cron lines, all mapped; communications database read was unavailable to this audit context. The tailnet hostname
+could not resolve here; that access limit does not establish a CC outage. Real session/MFA proof remains separate.
+The [campaign](../../implementation/n8n-maturity/campaign-20261018/README.md) and its executable
+contract/route/decision matrices supersede historical "today" counts below for current-state assessment. The
+2026-10-18 operator mandate narrows this campaign: no destructive retention, trading-policy change, protected
+control change, broker authority or disk-hygiene ratification; F07 and registry_systemd remain unchanged.
+Provisional operational maturity remains 2.5/5 pending the actual business-output and observation requirements.
+
 ---
 
 ## 1. Executive summary

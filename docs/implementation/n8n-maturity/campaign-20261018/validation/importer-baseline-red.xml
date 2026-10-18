@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="0.401" timestamp="2026-10-18T13:56:58.520823-04:00" hostname="ms01-openclaw"><testcase classname="tests.test_check_n8n_workflow_framework_adversarial" name="test_import_guard_framework_gate_is_mandatory_and_fail_closed" time="0.137"><failure message="AssertionError: assert 0 == 1&#10; +  where 0 = &lt;function main at 0x7c8999ed5d20&gt;(['/home/johnclaw/tradeai-wt-n8n-maturity-campaign-20261018/docs/implementation/n8n-parallel/workflows/reference/tradea...erence-mature-workflow.json', '--relay-url', 'http://172.19.0.1:18092', '--known-id', 'tradeai-fabric-error', '--json'])&#10; +    where &lt;function main at 0x7c8999ed5d20&gt; = &lt;module 'check_n8n_import_ready' from '/home/johnclaw/tradeai-wt-n8n-maturity-campaign-20261018/scripts/check_n8n_import_ready.py'&gt;.main">capsys = &lt;_pytest.capture.CaptureFixture object at 0x7c899a16e3c0&gt;
+
+    def test_import_guard_framework_gate_is_mandatory_and_fail_closed(capsys):
+        """An import packet cannot silently omit the active §23.24 activation bar."""
+        import check_n8n_import_ready as G
+    
+        args = [str(ROOT / REF_REL), "--relay-url", T.GENERIC_RELAY_URL, "--known-id", T.FABRIC_ERROR_ID, "--json"]
+&gt;       assert G.main(args) == 1
+E       AssertionError: assert 0 == 1
+E        +  where 0 = &lt;function main at 0x7c8999ed5d20&gt;(['/home/johnclaw/tradeai-wt-n8n-maturity-campaign-20261018/docs/implementation/n8n-parallel/workflows/reference/tradea...erence-mature-workflow.json', '--relay-url', 'http://172.19.0.1:18092', '--known-id', 'tradeai-fabric-error', '--json'])
+E        +    where &lt;function main at 0x7c8999ed5d20&gt; = &lt;module 'check_n8n_import_ready' from '/home/johnclaw/tradeai-wt-n8n-maturity-campaign-20261018/scripts/check_n8n_import_ready.py'&gt;.main
+
+tests/test_check_n8n_workflow_framework_adversarial.py:546: AssertionError</failure></testcase></testsuite></testsuites>
