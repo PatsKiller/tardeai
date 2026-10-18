@@ -3,10 +3,12 @@
 # standard 2026-10-14: fix + dry run + regression + >=1 live n8n run with cron present, no soak). Dry by default.
 #
 # Moves FOUR learn steps live on the fabric (tests/support/hermes_learning_cutover.py LIVE): outcome_grader, tag_engine,
-# outcome_learning, config_governor. HELD on cron: outcome_feedback_agent (its `--notify queue` argv trips the allowlist
-# sender token gate until gate alignment is served; owner row stays cron, so the stage runner keeps running it live),
-# score_history_retention (destructive retention, operator decision) and the tune stage (manifest split first).
-# The learn cron line is NEVER commented here: it keeps running feedback_agent and retention.
+# outcome_learning, config_governor. HELD on cron: score_history_retention (destructive retention, operator decision)
+# and the tune stage (manifest split first). outcome_feedback_agent was HELD here (its `--notify queue` argv tripped the
+# allowlist sender token gate) until the 2026-10-17 feedback cutover aligned that gate; it is in LIVE now and its own
+# same-day packet is docs/ops/packets/hermes-feedback-cutover-20261017/cutover.sh (relay / c3 here are idempotent with
+# it: the live list dedups and c3 skips a lane already owned by n8n). HELD is empty and kept for the pre/c3 reports.
+# The learn cron line is NEVER commented here: it keeps running retention.
 #
 #   bash 11_cutover_today.sh pre                    read-only: served PR-1/PR-2 state, owners, crontab line, n8n row
 #   bash 11_cutover_today.sh import  [--apply]      flow 01_import_inactive.sh, then flow 02_verify.sh (CLI dry-run proof)
@@ -18,7 +20,7 @@
 #   bash 11_cutover_today.sh manual  [--apply]      FALLBACK ONLY (one-day manual-slots PR served): one manual LIVE run
 #                                                   when today's 10:50 effect never happened on either side (see below)
 #   bash 11_cutover_today.sh proof --date YYYYMMDD  read-only: n8n 10:50 live RUN_DONE + fx DONE scheduler n8n, and the
-#                                                   11:20 cron run skipped_effect for the four, ok for feedback + retention
+#                                                   11:20 cron run skipped_effect for the LIVE lanes, ok for retention
 # Order for one morning: pre -> import -> c1 -> c2 -> relay -> publish -> c3, all done before 10:40 ET; the natural
 # 10:50 ET fire is the live run (manual live runs are refused by design: MANUAL_LIVE_REFUSED); cron's 11:20 run is the
 # "cron present" half; then `proof`. --apply needs TRADEAI_FABRIC_GRANT (the cron/config-write grant id) for owner and
@@ -33,8 +35,8 @@ SERVED=${SERVED:-$(readlink -f "$HOME/trade-ai-releases/portfolio-server/CURRENT
 LIVE_LANES_ENV=${LIVE_LANES_ENV:-$HOME/.config/tradeai/n8n-live-lanes.env}
 BACKUPS=${BACKUPS:-$HOME/.local/state/tradeai/backups}
 LIVE=(hermes-learning-outcome-grader hermes-learning-tag-engine hermes-learning-outcome-learning
-      hermes-learning-config-governor)
-HELD=(hermes-learning-outcome-feedback-agent)
+      hermes-learning-config-governor hermes-learning-outcome-feedback-agent)
+HELD=()  # empty since the 2026-10-17 feedback cutover (tests/support/hermes_learning_cutover.py HELD)
 OLD_LINE='50 10 * * * cd $PROJ && bash scripts/pipelines/run_hermes_pipeline.sh --stage learn --apply'
 NEW_LINE='20 11 * * * cd $PROJ && PIPELINE_EFFECT_CLAIM=1 bash scripts/pipelines/run_hermes_pipeline.sh --stage learn --apply'
 fail(){ echo "REFUSED: $*"; exit 1; }
@@ -151,7 +153,7 @@ EOF
       [[ "$cur" == n8n ]] && { echo "  $lane already n8n (epoch $ep)"; continue; }
       [[ "$cur" == cron ]] || fail "$lane owner is '$cur': run c1 first"
       ARGS=(set-owner --process "$lane" --owner n8n --expect-epoch "$ep" --by "operator:${TRADEAI_FABRIC_GRANT:-dry}"
-            --note "hermes-learning cutover c3 (4 live lanes; feedback agent held)")
+            --note "hermes-learning cutover c3 (LIVE learn lanes incl. feedback agent since 2026-10-17)")
       if [[ $APPLY == 0 ]]; then echo "  DRY RUN — would run: effect_claim.py ${ARGS[*]}"; continue; fi
       "$PY" "$SERVED/scripts/lib/effect_claim.py" "${ARGS[@]}" >/dev/null
       echo "  $lane -> $(owner_of "$lane")"
@@ -188,7 +190,7 @@ print(f"  effect DONE today: {done or 'none'}")
 raise SystemExit(1 if done else 0)
 EOF2
     J="$SERVED/logs/pipelines/hermes_learning/learn_steps.jsonl"
-    if grep -h "\"ts\": \"$DD" "$J" 2>/dev/null | grep -E '"id": "(outcome_grader|tag_engine|outcome_learning|config_governor)"' \
+    if grep -h "\"ts\": \"$DD" "$J" 2>/dev/null | grep -E '"id": "(outcome_grader|tag_engine|outcome_learning|config_governor|outcome_feedback_agent)"' \
          | grep -q '"status": "ok"'; then fail "cron ran a LIVE step ok today: a manual run would double it"; fi
     N8N=(docker exec -e N8N_RUNNERS_BROKER_PORT=5690 m8m-n8n n8n)
     echo "  PLAN: ${N8N[*]} execute --id=tradeai-fabric-hermes-learning  (Manual run -> stage all, mode live, manual minute)"
@@ -215,7 +217,7 @@ print("  n8n half:", "PASS" if ok else "FAIL")
 sys.exit(0 if ok else 1)
 EOF
     rc=$?
-    echo "  cron half (11:20 run, same date): the four must be skipped_effect; feedback_agent + retention ok:"
+    echo "  cron half (11:20 run, same date): the LIVE lanes must be skipped_effect; retention ok:"
     # same file 03_parity.py reads; one JSON line per step (PipelineStepReceipt@v1)
     grep -h "\"ts\": \"$(date -d "$DATE" +%Y-%m-%d)T1[45]:" "$SERVED/logs/pipelines/hermes_learning/learn_steps.jsonl" 2>/dev/null \
       | "$PY" -c 'import json,sys

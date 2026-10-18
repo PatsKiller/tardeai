@@ -48,7 +48,8 @@ import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Optional
+from types import MappingProxyType
+from typing import Any, Iterable, Mapping, Optional, Sequence
 
 try:
     from scripts.lib import cron_schedule as _cron
@@ -199,6 +200,28 @@ CUTOVER_DEFERRED_FAMILIES = frozenset({"F07"})
 #: and the send/telegram/sender words of a chokepoint sender. Never widened by config.
 CUTOVER_SOFT_TOKENS = frozenset({"send", "telegram", "sender", "guard", "market_day_gate.sh"})
 CUTOVER_SENDER_TOKENS = frozenset({"send", "telegram", "sender"})
+#: Queue-only notify argv (2026-10-17 hermes feedback cutover; operator 2026-10-17 "fix now move to n8n now"; G5b of
+#: docs/ops/packets/hermes-learning-cutover-20261015/README.md). lane_id -> the ONE allowlist live_arg whose
+#: `--notify queue` pair is not a sender: scripts/hermes_outcome_feedback_agent.py --notify queue QUEUES each alert as a
+#: host comms intent (scripts/lib/host_comms_intents.py, route research/hermes_closed_loop_alert, producer-bound) and
+#: calls no sender; the host comms-intent consumer and the incident notifier deliver it. The allowlist sender-token
+#: gates (the `notify` word) skip exactly that pair, for exactly that lane, only when the argv ENDS with exactly this
+#: live_arg. `--notify chokepoint` (send_telegram) and `--notify record`, any other notify value, position or lane
+#: still trip them. Widening this needs a code change + review, never a config edit.
+QUEUE_ONLY_NOTIFY_ARGV: Mapping[str, tuple[str, ...]] = MappingProxyType({
+    "hermes-learning-outcome-feedback-agent": ("--apply", "--notify", "queue"),
+})
+
+
+def strip_queue_only_notify(lane_id: Any, argv: Sequence[Any]) -> list[str]:
+    """`argv` (command + mode args, in that order) as the sender-token gates should read it: for a lane in
+    QUEUE_ONLY_NOTIFY_ARGV whose argv ends with exactly that lane's queue-only live_arg, the trailing `--notify queue`
+    pair is dropped (it queues an intent; it is not a sender). Every other argv is returned unchanged. Pure."""
+    toks = [str(t) for t in argv]
+    want = QUEUE_ONLY_NOTIFY_ARGV.get(str(lane_id or ""))
+    if want and len(toks) >= len(want) and tuple(toks[-len(want):]) == want:
+        return toks[:-2]  # the queue-only pair is always the last two tokens of `want`
+    return toks
 #: The policy as it was before §23.25 (nothing lifted, nothing held): tests that pin the pre-directive rules
 #: (the word-boundary matcher, the 4.0.0 §23.3 exception mechanics) evaluate against it.
 EMPTY_CUTOVER_POLICY: dict = {"families": {}, "holds": {}, "p1_last": frozenset(), "cron_overlap_trading_days": 1}
