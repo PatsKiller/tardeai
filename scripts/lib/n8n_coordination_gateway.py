@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import math
 import re
 import sqlite3
 import threading
@@ -24,6 +25,10 @@ RECEIPT_SCHEMA = "N8nCoordinationReceipt@v1"
 #: REQUEST in the ledger `runs` table and returns this envelope; a separate executor process claims
 #: the row. The gateway never spawns, and nothing here widens the forbidden-route list.
 RUN_REQUESTED_SCHEMA = "RunRequested@v1"
+#: The existing v1 run envelope is closed. Current relay/host producers use only these fields; adding a field
+#: requires an explicitly supported contract change, even if a producer calls the new field "optional".
+RUN_REQUEST_FIELDS = frozenset({"route", "operation", "claim", "signature", "peer", "lane_id", "mode",
+                                "idempotency_key", "requested_by"})
 RUN_MODES = frozenset({"dry_run", "live"})
 RUN_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{16,128}$")
 #: Run-key namespaces the host validates before queueing (d:/e:/g: by n8n_due.check_slot_key, p: by
@@ -721,6 +726,8 @@ def _run(
         _reject_secret_material({k: v for k, v in request.items() if k not in {"claim", "signature"}})
     except GatewayError as exc:
         return _refused(None, exc.reason, peer_ignored=peer)
+    if set(request) - RUN_REQUEST_FIELDS:
+        return _refused(None, "unexpected_field", peer_ignored=peer)
     lane_id = request.get("lane_id")
     if not isinstance(lane_id, str) or not lane_id or lane_id not in frozenset(run_allowlist or ()):
         return _refused(None, "run_lane_not_allowlisted", peer_ignored=peer)
@@ -1268,7 +1275,7 @@ def _verify_claim(
         raise GatewayError("missing_signature")
     if set(claim) != CLAIM_FIELDS:
         raise GatewayError("malformed_claim")
-    if claim.get("v") != 1 or claim.get("scope") not in SCOPES:
+    if type(claim.get("v")) is not int or claim["v"] != 1 or claim.get("scope") not in SCOPES:
         raise GatewayError("bad_scope")
     if claim.get("project") not in ALLOWED_PROJECTS:
         raise GatewayError("unknown_project")
@@ -1290,8 +1297,10 @@ def _verify_claim(
     try:
         iat = float(claim["iat"])
         exp = float(claim["exp"])
-    except (TypeError, ValueError) as exc:
+    except (TypeError, ValueError, OverflowError) as exc:
         raise GatewayError("malformed_claim") from exc
+    if not math.isfinite(iat) or not math.isfinite(exp):
+        raise GatewayError("malformed_claim")
     instant = _unix(now)
     if exp <= iat or (exp - iat) > MAX_CLAIM_LIFE_S:
         raise GatewayError("claim_lifetime")
