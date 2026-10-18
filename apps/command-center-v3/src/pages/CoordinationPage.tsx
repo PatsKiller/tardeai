@@ -53,16 +53,19 @@ function getter(row: CoordinationRow, key: string): unknown {
 
 export default function CoordinationPage() {
   const { data, loading, error, transport, stale } = useApi<CoordinationPayload>('/api/v2/coordination/events?limit=200', 30_000)
-  const runsApi = useApi<{ status?: string; as_of?: string; items?: Array<Record<string, unknown>>; note?: string }>(
+  const runsApi = useApi<{ schema?: string; status?: string; as_of?: string; items?: Array<Record<string, unknown>>; count?: number | null; total_count?: number | null; coverage?: { scope?: string; since?: string | null; through?: string | null; items_truncated?: boolean }; note?: string }>(
     '/api/v2/coordination/events?source=runs&limit=40',
     60_000,
   )
   const [laneFilter, setLaneFilter] = useState<string | null>(null)
   const model = useMemo(
-    () => projectCoordination(loading && !data ? null : data, { transport, stale, laneFilter }),
-    [data, loading, transport, stale, laneFilter],
+    () => projectCoordination(loading && !data ? null : data, { transport, stale, error: !!error, laneFilter }),
+    [data, loading, transport, stale, error, laneFilter],
   )
+  const runsV2 = runsApi.data?.schema === 'N8nCoordinationRunsProjection@v2'
+  const runsKnown = !runsApi.data?.schema || ['N8nCoordinationRunsProjection@v1', 'N8nCoordinationRunsProjection@v2'].includes(runsApi.data.schema)
   const runRows = useMemo(() => {
+    if (!runsKnown) return []
     const items = Array.isArray(runsApi.data?.items) ? runsApi.data!.items! : []
     const prefer = new Set(['n8n-research-intake-consumer', 'n8n-incident-fanin'])
     return [...items].sort((a, b) => {
@@ -70,14 +73,14 @@ export default function CoordinationPage() {
       const bp = prefer.has(String(b.lane_id || '')) ? 0 : 1
       return ap - bp
     })
-  }, [runsApi.data])
+  }, [runsApi.data, runsKnown])
   const { rows, sort, toggle } = useSort(model.rows, { key: 'recordedAt', dir: 'desc' }, getter)
   const waveBChips = useMemo(() => {
     const lanes = model.waveBLanes.length ? model.waveBLanes : ['research-intake', 'watch-refresh', 'incident-fanin']
-    return lanes.map(lane => ({ lane, n: model.laneCounts[lane] || 0 }))
-  }, [model.waveBLanes, model.laneCounts])
+    return lanes.map(lane => ({ lane, n: model.countsAvailable ? model.laneCounts[lane] || 0 : null }))
+  }, [model.waveBLanes, model.laneCounts, model.countsAvailable])
   const outboxApi = useApi<OutboxPayload>('/api/v2/coordination/outbox?hours=24', 60_000)
-  const outbox = useMemo(() => projectOutbox(outboxApi.loading && !outboxApi.data ? null : outboxApi.data), [outboxApi.data, outboxApi.loading])
+  const outbox = useMemo(() => projectOutbox(outboxApi.loading && !outboxApi.data ? null : outboxApi.data, { error: !!outboxApi.error, stale: outboxApi.stale }), [outboxApi.data, outboxApi.loading, outboxApi.error, outboxApi.stale])
   const approvalsApi = useApi<ApprovalBoardPayload>('/api/v2/coordination/approvals', 60_000)
   const approvals = useMemo(() => projectApprovalBoard(approvalsApi.loading && !approvalsApi.data ? null : approvalsApi.data), [approvalsApi.data, approvalsApi.loading])
   const [searchParams, setSearchParams] = useSearchParams()
@@ -169,8 +172,8 @@ export default function CoordinationPage() {
           <Chip tone={model.asOf ? 'neutral' : 'warning'} title="projection clock">{model.asOfLabel}</Chip>
           {model.transportLabel ? <Chip tone="warning" title="transport">{model.transportLabel}</Chip> : null}
           {PHASES.map(([phase, text]) => (
-            <Chip key={phase} tone={model.counts[phase] > 0 ? (phase === 'refused' || phase === 'failed' ? 'danger' : phase === 'consumed' ? 'success' : 'info') : 'neutral'} title={`${text} count`}>
-              {text} {model.counts[phase]}
+            <Chip key={phase} tone={(model.counts[phase] ?? 0) > 0 ? (phase === 'refused' || phase === 'failed' ? 'danger' : phase === 'consumed' ? 'success' : 'info') : 'neutral'} title={`${text} count`}>
+              {text} {model.counts[phase] ?? 'UNAVAILABLE'}
             </Chip>
           ))}
         </ChipRow>
@@ -183,12 +186,13 @@ export default function CoordinationPage() {
           {waveBChips.map(({ lane, n }) => (
             <Chip
               key={lane}
-              tone={laneFilter === lane ? 'info' : (n > 0 ? 'success' : 'neutral')}
-              title={`filter ${lane} (${n} in page)`}
+              tone={laneFilter === lane ? 'info' : ((n ?? 0) > 0 ? 'success' : 'neutral')}
+              title={`filter ${lane}; count follows the labelled aggregate or sample scope`}
               onClick={() => setLaneFilter(laneFilter === lane ? null : lane)}
-            >{lane} {n}</Chip>
+            >{lane} {n ?? 'UNAVAILABLE'}</Chip>
           ))}
         </ChipRow>
+        <div style={{ marginTop: 8, fontSize: TYPE.sm, color: TOKENS.text[2] }}>{model.coverageLabel} Last good observation age: {model.lastGoodAgeMinutes == null ? 'UNAVAILABLE' : `${model.lastGoodAgeMinutes} min`}.</div>
         {model.note ? <div style={{ marginTop: 8, fontSize: TYPE.sm, color: TOKENS.text[2] }}>{model.note}</div> : null}
         {error ? <div style={{ marginTop: 8, fontSize: TYPE.sm, color: TOKENS.text[2] }}>read failed: {String(error)}</div> : null}
       </div>
@@ -255,7 +259,7 @@ export default function CoordinationPage() {
             ))}
             {rows.length === 0 ? (
               <tr><td colSpan={9} style={{ ...cell, color: TOKENS.text[3] }}>
-                {model.status === 'NO_LEDGER' ? 'no ledger yet: the coordination gateway has not written anything here' : model.status === 'UNAVAILABLE' ? 'projection unavailable' : laneFilter ? `no ${laneFilter} events in the page` : 'nothing is waiting'}
+                {!model.countsAvailable || model.totalCount == null ? `${model.status}: coverage incomplete; no details returned` : laneFilter ? `No ${laneFilter} details in this page` : 'No rows in retained ledger coverage'}
               </td></tr>
             ) : null}
           </tbody>
@@ -267,12 +271,13 @@ export default function CoordinationPage() {
           <div style={label}>executor RunReceipt rows · research-intake-consumer · incident-fanin · prove from ledger not n8n status</div>
         </div>
         <ChipRow style={{ marginTop: 8 }}>
-          <Chip tone={runsApi.data?.status === 'OK' ? 'success' : runsApi.data?.status === 'NO_LEDGER' ? 'warning' : 'neutral'}>
-            {String(runsApi.data?.status || (runsApi.loading ? '…' : 'UNAVAILABLE'))}
+          <Chip tone={runsApi.error || runsApi.stale || !runsV2 ? 'warning' : runsApi.data?.status === 'OK' ? 'info' : runsApi.data?.status === 'NO_LEDGER' ? 'warning' : 'neutral'}>
+            {runsApi.error || !runsKnown ? 'UNAVAILABLE' : runsApi.stale ? 'STALE' : runsApi.data && !runsV2 ? 'LEGACY SAMPLE' : String(runsApi.data?.status || (runsApi.loading ? '…' : 'UNAVAILABLE'))}
           </Chip>
           <Chip tone="neutral">{runsApi.data?.as_of ? `projected ${runsApi.data.as_of}` : 'UNDATED'}</Chip>
-          <Chip tone="neutral">rows {runRows.length}</Chip>
+          <Chip tone="neutral">details shown {runsApi.error ? 'UNAVAILABLE' : runRows.length}; all retained rows {runsApi.error || runsApi.stale || !runsV2 ? 'UNAVAILABLE' : runsApi.data?.total_count ?? 'UNAVAILABLE'}</Chip>
         </ChipRow>
+        <p style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>All retained ledger rows; observed bounds {runsApi.data?.coverage?.since ?? 'UNAVAILABLE'} → {runsApi.data?.coverage?.through ?? 'UNAVAILABLE'}. Details limited to 40; no 24h filter. Execution success is separate from useful output.</p>
         <div style={{ overflowX: 'auto', marginTop: 8 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
@@ -287,16 +292,16 @@ export default function CoordinationPage() {
             <tbody>
               {runRows.slice(0, 40).map(r => (
                 <tr key={`run-${String(r.run_id)}`} style={{ borderTop: `1px solid ${TOKENS.borderSubtle}` }}>
-                  <td style={cell}><Chip tone={String(r.state).startsWith('RUN_DONE') ? 'success' : String(r.state).includes('FAIL') ? 'danger' : 'neutral'}>{String(r.state || '')}</Chip></td>
+                  <td style={cell}><Chip tone={String(r.state).includes('FAIL') ? 'danger' : 'neutral'}>{String(r.state || '')}</Chip></td>
                   <td style={cell}>{String(r.lane_id || '')}</td>
-                  <td style={mono}>{String(r.mode || '')}</td>
+                  <td style={mono}>{runsV2 ? `${String(r.mode ?? 'UNKNOWN')} / requested ${String(r.requested_mode ?? 'UNKNOWN')}` : `requested ${String(r.mode ?? 'UNKNOWN')}; effective UNKNOWN (legacy)`}</td>
                   <td style={mono}>{String(r.run_id || '')}</td>
                   <td style={mono}>{String(r.finished_at || r.started_at || r.requested_at || 'UNDATED')}</td>
                 </tr>
               ))}
               {runRows.length === 0 ? (
                 <tr><td colSpan={5} style={{ ...cell, color: TOKENS.text[3] }}>
-                  {runsApi.data?.status === 'NO_LEDGER' ? 'no runs ledger yet' : (runsApi.data?.note || 'no recent lane runs')}
+                  {runsApi.error || runsApi.stale || runsApi.data?.status !== 'OK' ? 'UNAVAILABLE: current run history unknown' : (runsApi.data?.note || 'No rows in retained ledger coverage')}
                 </td></tr>
               ) : null}
             </tbody>
@@ -311,6 +316,7 @@ export default function CoordinationPage() {
         <ChipRow style={{ marginTop: 8 }}>
           <Chip tone={outbox.statusTone} title="outbox projection status">{outbox.statusLabel}</Chip>
           <Chip tone="neutral" title="window">{outbox.windowLabel}</Chip>
+          <Chip tone="neutral">last good observation age {outbox.lastGoodAgeMinutes == null ? 'UNAVAILABLE' : `${outbox.lastGoodAgeMinutes} min`}</Chip>
           {outbox.counts.map(c => (
             <Chip key={`${c.outbox}:${c.state}`} tone={c.tone} title={`${c.outbox} ${c.state}`}>{c.outbox.replace('_outbox', '')} {c.state} {c.n}</Chip>
           ))}
@@ -343,7 +349,7 @@ export default function CoordinationPage() {
               ))}
               {outbox.rows.length === 0 ? (
                 <tr><td colSpan={7} style={{ ...cell, color: TOKENS.text[3] }}>
-                  {outbox.status === 'OK' ? 'nothing sent, suppressed or withdrawn in the window' : 'outbox projection unavailable'}
+                  {outbox.status === 'OK' ? 'No item details returned; see aggregate counts and coverage above' : `${outbox.status}: current outbox coverage unavailable`}
                 </td></tr>
               ) : null}
             </tbody>

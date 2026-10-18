@@ -17,7 +17,12 @@ NOW = datetime(2026, 10, 8, 1, 0, tzinfo=timezone.utc)
 
 def _rows(comm, tg):
     def q(sql, params):
-        assert "now() - make_interval" in sql and params[0] == 24
+        assert params[0] == NOW - timedelta(hours=24) and params[1] == NOW
+        if 'GROUP BY' in sql:
+            from collections import Counter
+            a=Counter(str(r[3] or 'unknown').lower() for r in comm)
+            b=Counter('sent' if r[5] is True else 'failed' if r[5] is False else 'unknown' for r in tg)
+            return [('communication_outbox',st,n) for st,n in a.items()]+[('telegram_outbox',st,n) for st,n in b.items()]
         return comm if sql.startswith("SELECT outbox_id") else tg
     return q
 
@@ -31,7 +36,7 @@ def test_projection_counts_per_outbox_and_state_and_filters_items_only():
     tg = [(7, NOW - timedelta(minutes=2), "morning_brief", "Brief", 1200, True, "operator"),
           (8, NOW - timedelta(minutes=3), "alert", "Alert", 5000, False, "operator")]
     m = P.project_outbox(_rows(comm, tg), hours=24, now=NOW)
-    assert m["schema"] == "NotificationOutboxProjection@v1" and m["status"] == "OK" and m["total"] == 5
+    assert m["schema"] == "NotificationOutboxProjection@v2" and m["status"] == "OK" and m["total"] == 5
     assert m["counts"] == {"communication_outbox": {"sent": 1, "suppressed": 1, "withdrawn": 1},
                            "telegram_outbox": {"sent": 1, "failed": 1}}
     assert m["items"][0]["id"] == "7" and m["items"][0]["age_min"] == 2.0
