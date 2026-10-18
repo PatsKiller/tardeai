@@ -33,6 +33,8 @@ REPO=${REPO:-$HOME/trade-ai-v12-rebuild/trade-ai-v12-rebuild}
 PY=${PY:-$REPO/.venv/bin/python}
 SERVED=${SERVED:-$(readlink -f "$HOME/trade-ai-releases/portfolio-server/CURRENT")}
 GRANT_PY=${GRANT_PY:-$(cd "$(dirname "$0")/../../../.." && pwd)/scripts/lib/fabric_grant.py}
+SYSTEMCTL_BIN=${SYSTEMCTL_BIN:-systemctl}
+PROC_ROOT=${PROC_ROOT:-/proc}
 STATE=${STATE:-$HOME/trade-ai-releases/persistent-state}
 LEDGER=${LEDGER:-$STATE/data/governance/n8n_coordination_ledger.sqlite}
 LIVE_LANES_ENV=${LIVE_LANES_ENV:-$HOME/.config/tradeai/n8n-live-lanes.env}
@@ -156,6 +158,7 @@ EOF
     echo "  adds: $(comm -13 <(printf '%s\n' $CUR | sort -u) <(printf '%s\n' $NEW | sort -u) | paste -sd' ')"
     echo "  keeps: $(printf '%s\n' $CUR | grep -c .) existing lanes"
     [[ $APPLY == 1 ]] || { echo "  DRY RUN — live list unchanged, nothing restarted"; exit 0; }
+    need_grant
     cp -p "$LIVE_LANES_ENV" "$LIVE_LANES_ENV.bak-$(date -u +%Y%m%dT%H%M%SZ)-hermes-tune"
     printf 'TRADEAI_N8N_RELAY_LIVE_LANES=%s\n' "$NEW" > "$LIVE_LANES_ENV.tmp" && chmod 600 "$LIVE_LANES_ENV.tmp" \
       && mv "$LIVE_LANES_ENV.tmp" "$LIVE_LANES_ENV"
@@ -163,9 +166,9 @@ EOF
     for l in $CUR; do grep -qw -- "$l" "$LIVE_LANES_ENV" || fail "READ-BACK FAILED: lost $l"; done
     # the gateway reads the same file (its due-computation demotes a live lane missing from its env): restart BOTH
     for u in tradeai-n8n-run-relay tradeai-n8n-coordination-gateway; do
-      systemctl --user restart "$u.service"; sleep 2
-      pid=$(systemctl --user show -p MainPID --value "$u.service")
-      tr '\0' '\n' < "/proc/$pid/environ" | grep -q -- "$LANE" \
+      "$SYSTEMCTL_BIN" --user restart "$u.service"; sleep "${RESTART_SETTLE_S:-2}"
+      pid=$("$SYSTEMCTL_BIN" --user show -p MainPID --value "$u.service")
+      tr '\0' '\n' < "$PROC_ROOT/$pid/environ" | grep -q -- "$LANE" \
         && echo "  $u active, env carries $LANE" || fail "$u env lacks $LANE after restart"
     done ;;
   publish)

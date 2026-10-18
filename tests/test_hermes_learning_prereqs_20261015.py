@@ -76,11 +76,12 @@ LEARN_NOW = datetime(2026, 10, 15, 10, 57, tzinfo=ET)
 POLICY_PIN = "c6750b96ada49f816798bf3714ad390616b1b32769fdcbcc54e0635e32caf31f"
 
 
-#: cutover PR-2 (2026-10-15): steps with no live argv. outcome_feedback_agent is HELD at shadow (owner stays cron, so
-#: cron keeps running it live) because its `--notify queue` argv trips the allowlist sender token gate; it moves in a
-#: follow-up once the operator-approved gate alignment is served. The tune lane (autonomous_self_tune) carries its
-#: cutover argv since the 2026-10-17 tune cutover (tests/support/hermes_learning_cutover.py TUNE_LIVE).
-HELD_INERT = {"outcome_feedback_agent"}
+#: cutover PR-2 (2026-10-15): steps with no live argv. outcome_feedback_agent was HELD at shadow until the 2026-10-17
+#: feedback cutover (its `--notify queue` argv tripped the allowlist sender token gate; the gates now admit exactly that
+#: argv for exactly that lane, lane_dispatch.QUEUE_ONLY_NOTIFY_ARGV). The tune lane (autonomous_self_tune) carries its
+#: cutover argv since the 2026-10-17 tune cutover (tests/support/hermes_learning_cutover.py TUNE_LIVE). Empty now: every
+#: runnable step carries its cutover_live_arg.
+HELD_INERT: set[str] = set()
 
 
 def _live_sources(**proc_overrides) -> dict:
@@ -473,8 +474,8 @@ def test_every_runnable_step_reproduces_its_cron_wrapper(sid):
         )
     else:
         assert "offpeak_exempt" not in entry
-    # cutover PR-2 (2026-10-15) + tune cutover (2026-10-17): the learn lanes and the tune lane carry the cutover_live_arg; the HELD
-    # outcome_feedback_agent (its `--notify` argv trips the sender token gate until gate alignment lands) stay inert
+    # cutover PR-2 (2026-10-15) + tune cutover (2026-10-17) + feedback cutover (2026-10-17): every runnable step
+    # carries its cutover_live_arg (outcome_feedback_agent: --apply --notify queue)
     want_live = None if sid in HELD_INERT else RUNNABLE[sid]["cutover_live_arg"]
     assert X.validate_entry(entry) is None and entry["live_arg"] == want_live
 
@@ -686,7 +687,8 @@ def test_cutover_live_args_are_declared_and_applied():
     want = {sid: ["--apply"] for sid in RUNNABLE}
     want["outcome_feedback_agent"] = ["--apply", "--notify", "queue"]
     assert {sid: s["cutover_live_arg"] for sid, s in RUNNABLE.items()} == want
-    for sid, s in RUNNABLE.items():  # cutover PR-2 + tune cutover 2026-10-17: all but the held lane carry the cutover argv
+    for sid, s in RUNNABLE.items():  # cutover PR-2 + tune + feedback cutovers 2026-10-17: all carry the cutover argv
+        assert sid not in HELD_INERT
         assert ALLOW[s["lane_id"]]["live_arg"] == (None if sid in HELD_INERT else want[sid])
 
 

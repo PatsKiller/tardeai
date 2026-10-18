@@ -264,10 +264,9 @@ def test_runnable_step_is_a_shadow_lane_with_the_step_lock_and_timeout(sid):
     stage, st = STEPS[sid]
     lane = SPEC["steps"][sid]["lane_id"]
     e = ALLOW_LANES[lane]
-    # cutover PR-2 (2026-10-15): four learn lanes carry cutover_live_arg at stage canary; the held outcome_feedback_agent
-    # (sender token gate; follow-up after gate alignment) stays shadow. Tune cutover (2026-10-17): the tune lane too.
-    learn = sid != "outcome_feedback_agent"
-    assert e["live_arg"] == (SPEC["steps"][sid]["cutover_live_arg"] if learn else None)
+    # cutover PR-2 (2026-10-15): four learn lanes carry cutover_live_arg at stage canary. Tune cutover (2026-10-17): the
+    # tune lane too. Feedback cutover (2026-10-17): outcome_feedback_agent too (--apply --notify queue), so every step.
+    assert e["live_arg"] == SPEC["steps"][sid]["cutover_live_arg"]
     assert e["dry_run_arg"] is not None
     assert e["command"][0] == "$PY" and e["market_gate"] is False
     locks = PM.lock_paths(st["command"])
@@ -283,12 +282,12 @@ def test_runnable_step_is_a_shadow_lane_with_the_step_lock_and_timeout(sid):
     row = REG[lane]
     sched = row["scheduler"]
     assert sched["kind"] == "n8n" and sched["expression"] == WID
-    assert sched["stage"] == ("canary" if learn else "shadow")
+    assert sched["stage"] == "canary"
     # match names the process step, never a crontab line: the script's retired cron row keeps its own line
     assert sched["process_step"] == sid and sched["match"] == f"{WID}:{sid}"
     assert "dispatch" not in row  # the generic dispatcher never emits a process step
     assert row["state"] == "NEVER_SCHEDULED" and row["state_reason"] and row["output_signal"]["kind"]
-    assert C.clamp_mode(lane, "live", list(REG.values()))["effective_mode"] == ("live" if learn else "dry_run")
+    assert C.clamp_mode(lane, "live", list(REG.values()))["effective_mode"] == "live"
     c = CONTRACTS[lane]
     assert c["status"] == "REVIEWED" and c["stage"] == "shadow" and c["workflow_id"] == WID
     fx = EFFECTS["lanes"][lane]

@@ -81,7 +81,8 @@ LEARN_LINE = (
 
 def test_tune_lane_is_in_the_shared_cutover_list():
     assert HL.TUNE_LIVE == (LANE,) and LANE in HL.LIVE and LANE not in HL.HELD
-    assert len(HL.LEARN_LIVE) == 4 and set(HL.LEARN_LIVE) <= set(HL.LIVE)
+    # + outcome_feedback_agent since the 2026-10-17 feedback cutover (tests/test_hermes_feedback_cutover_20261017.py)
+    assert len(HL.LEARN_LIVE) == 5 and set(HL.LEARN_LIVE) <= set(HL.LIVE)
 
 
 def test_lane_runs_the_cron_step_argv_both_halves_at_canary():
