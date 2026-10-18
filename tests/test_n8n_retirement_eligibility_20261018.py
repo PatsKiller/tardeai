@@ -399,6 +399,8 @@ def test_empty_work_reuses_the_real_versioned_output_validator(skipped, empty_re
     refreeze(world, record, coverage)
     for receipt in world.runs[LANE]:
         doc = {"schema": "LaneRunReceipt@v2", "run_id": receipt["run_id"], "lane_id": LANE, "status": "ok",
+               "mode": "live", "run_mode": "live", "finished_at": receipt["finished_at"],
+               "ok_at": receipt["finished_at"],
                "produced_count": 0, "empty_reason": empty_reason, "skipped_reasons": skipped}
         verdict = OV.evaluate(rule, doc, run_id=receipt["run_id"], lane_id=LANE, mode="live")
         receipt["receipt"]["output_verdict"] = verdict

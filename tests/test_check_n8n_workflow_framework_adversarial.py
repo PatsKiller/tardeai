@@ -491,15 +491,17 @@ def test_gate_counts_partial_on_critical_elements(real_ctx):
     assert any("FW-C3 partial" in b for b in g["blocking"])
 
 
-def test_gate_accepts_only_unexpired_operator_exceptions(real_ctx):
+def test_unverified_operator_exception_metadata_cannot_waive_controls(real_ctx):
     row = F.score_workflow(_ref(), real_ctx, file=REF_REL)
     row["elements"]["FW-C3"]["status"] = F.FAIL
     ok = {"workflow_id": REF.WID, "element": "FW-C3", "accepted_by": "operator", "pr": 1, "expires": "2099-01-01"}
     stale = dict(ok, expires="2000-01-01")
     agent = dict(ok, accepted_by="agent")
-    for exc, excused in ((ok, True), (stale, False), (agent, False)):
+    for exc in (ok, stale, agent):
         g = F.gate_workflow(row, platform=None, runtime_evidence={}, exceptions=[exc], today="2026-10-15")
-        assert (not any(b.startswith("FW-C3") for b in g["blocking"])) is excused, exc
+        assert any(b.startswith("FW-C3") for b in g["blocking"]), exc
+        assert any("exceptions UNVERIFIED" in b for b in g["blocking"]), exc
+        assert g["eligible"] is False
 
 
 # ── §23.24 crosswalk ────────────────────────────────────────────────────────────────────────────────────────────
