@@ -15,6 +15,10 @@ the per-lane states and checks are in scripts/lib/nightly_cutover.py (ONE evalua
     nightly_cutover_controller.py rollback --receipt F  ARMED ONLY: uncomment that lane's lines, restore its rows
                                                         (inside the handover fence; every target re-read and
                                                         verified; exit 2 + per-target report on any failure)
+    nightly_cutover_controller.py retirement --receipt F --coverage C --coverage-sha256 H --evidence-root D
+                                                        READ ONLY: derive a new observation report from the reviewed
+                                                        CutoverReceipt@v1 and authenticated host coverage. Optional
+                                                        --previous P / --out O; never deletes or edits a scheduler.
 
 ARMING: apply and rollback refuse unless an active guard grant of tier `cron` (read-only check of
 ~/.cursor/approvals/grants.json, the guard's own ledger) has a reason naming `nightly-cutover-controller`. Nothing here
@@ -129,7 +133,9 @@ def read_crontab_text(path: Optional[str]) -> str:
 
 
 def build_world(a: argparse.Namespace, config: Mapping[str, Any], *, now: Optional[datetime] = None,
-                workflow_reader: Optional[Callable[[], list[dict]]] = None) -> tuple[NC.World, Path]:
+                workflow_reader: Optional[Callable[[], list[dict]]] = None,
+                observed_lanes: Optional[list[str]] = None,
+                observation_since: Optional[datetime] = None) -> tuple[NC.World, Path]:
     served, sha = NC.resolve_current(Path(a.current))
     reg_root = Path(os.path.expanduser(a.registry_root or str(config.get("registry_root"))))
     world = NC.gather_world(served_root=Path(a.served_root) if a.served_root else served, current_sha=sha,
@@ -138,7 +144,8 @@ def build_world(a: argparse.Namespace, config: Mapping[str, Any], *, now: Option
                             now=now or datetime.now(timezone.utc),
                             workflow_reader=workflow_reader or live_workflows, state_root=Path(a.state_root),
                             policy_path=Path(a.cutover_policy) if a.cutover_policy else None,
-                            manifest_path=manifest_path(a))
+                            manifest_path=manifest_path(a), observed_lanes=observed_lanes,
+                            observation_since=observation_since)
     try:
         world.quota_used = TX.quota_used(TX.quota_read(receipt_dir(a, config), TX.night_key(world.now)))
     except ValueError as exc:
@@ -766,14 +773,104 @@ def _rollback_fenced(a: argparse.Namespace, config: Mapping[str, Any], rc: dict[
     return 0, rc
 
 
+def _retirement_json(path: Path, digest: Optional[str] = None) -> dict[str, Any]:
+    """Closed input loading: duplicate JSON names are invalid, and the coverage digest binds exact bytes.
+
+    The caller must obtain that digest from the authenticated host evidence producer; a digest alone is integrity,
+    not authentication. No n8n/LLM-provided coverage is accepted as host provenance by this interface.
+    """
+    import hashlib
+
+    if path.stat().st_size > 4 * 1024 * 1024:
+        raise ValueError("retirement_input_too_large")
+    raw = path.read_bytes()
+    if digest is not None and hashlib.sha256(raw).hexdigest() != digest:
+        raise ValueError("coverage_artifact_digest_mismatch")
+
+    def unique(pairs):
+        out = {}
+        for key, value in pairs:
+            if key in out:
+                raise ValueError("duplicate_json_field:" + key)
+            out[key] = value
+        return out
+
+    doc = json.loads(raw, object_pairs_hook=unique)
+    if not isinstance(doc, dict):
+        raise ValueError("retirement_input_not_object")
+    return doc
+
+
+def retirement_report(a: argparse.Namespace) -> tuple[int, dict[str, Any]]:
+    """Read-only observation: no arming, forced run, scheduler edit, notification or rollback path is reachable.
+
+    Reports are derived immutable copies of CutoverReceipt@v1. The original receipt/backup and all legacy entries
+    remain intact. This endpoint cannot execute deletion, including after eligibility.
+    """
+    import hashlib
+
+    record = _retirement_json(Path(a.receipt))
+    config = NC.load_config(Path(a.config))
+    rdir = receipt_dir(a, config)
+    try:
+        coverage = _retirement_json(Path(a.coverage), a.coverage_sha256)
+        # Provenance points to an independently collected host report, under an explicit evidence root. A symlink
+        # or ../ escape cannot turn collection into an arbitrary-file/credential reader.
+        provenance = coverage.get("provenance") or {}
+        root = Path(a.evidence_root).resolve(strict=True)
+        source = (root / str(provenance.get("artifact_ref") or "")).resolve(strict=True)
+        if not source.is_relative_to(root) or source.suffix != ".json":
+            raise ValueError("coverage_provenance_outside_evidence_root")
+        if hashlib.sha256(source.read_bytes()).hexdigest() != provenance.get("artifact_sha256"):
+            raise ValueError("coverage_provenance_digest_mismatch")
+        before = (root / str((record.get("retirement") or {}).get("legacy_before_image_ref") or "")).resolve(strict=True)
+        if not before.is_relative_to(root) or before.suffix not in {".json", ".txt", ".bak"}:
+            raise ValueError("before_image_outside_evidence_root")
+        before_bytes = before.read_bytes()
+        if hashlib.sha256(before_bytes).hexdigest() != record["retirement"].get("legacy_before_image_sha256"):
+            raise ValueError("before_image_digest_mismatch")
+        before_lines = before_bytes.decode("utf-8").splitlines()
+        if any(before_lines.count(line) != 1 for line, _ in NC._retirement_lines(record)):
+            raise ValueError("before_image_does_not_contain_exact_legacy_lines")
+        prior = _retirement_json(Path(a.previous)) if a.previous else None
+        world, _ = build_world(a, config, observed_lanes=[str(record.get("lane_id") or "")],
+                               observation_since=NC._aware_ts(coverage.get("from")))
+        report = NC.evaluate_retirement(world, record, coverage, previous=prior)
+    except (OSError, ValueError, TypeError, KeyError, NC.CohortStop) as exc:
+        report = json.loads(json.dumps(record))
+        if not isinstance(report.get("retirement"), dict):
+            report["retirement"] = {}
+        report["retirement"].update(state="held", deletion_eligible=False, deletion_eligible_at=None,
+                                     deletion_execution_enabled=False, soak_started_at=None,
+                                     blocking_reasons=[f"observation_unavailable:{exc}"],
+                                     authority="READ_ONLY_DERIVED_EVIDENCE",
+                                     last_observed_at=datetime.now(timezone.utc).isoformat(),
+                                     next_evaluation_at=None, deletion_not_before=None)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    target = Path(a.out) if a.out else rdir / "retirement" / f"observation-{stamp}.json"
+    protected = {Path(p).resolve() for p in (a.receipt, a.coverage, a.previous) if p}
+    if target.resolve() in protected:
+        raise ValueError("retirement_output_cannot_overwrite_evidence")
+    with TX.ControllerLock(rdir):
+        if target.exists():
+            raise ValueError("retirement_output_already_exists")
+        TX.write_json_durable(target, report)
+    return (2 if report["retirement"]["state"] == "held" else 0), report
+
+
 def parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
-    ap.add_argument("cmd", nargs="?", default="run", choices=("run", "plan", "rollback"))
+    ap.add_argument("cmd", nargs="?", default="run", choices=("run", "plan", "rollback", "retirement"))
     g = ap.add_mutually_exclusive_group()
     g.add_argument("--dry-run", action="store_true")
     g.add_argument("--apply", action="store_true")
     ap.add_argument("--json", action="store_true")
-    ap.add_argument("--receipt", help="rollback: the NightlyCutoverRollback@v1 file")
+    ap.add_argument("--receipt", help="rollback: NightlyCutoverRollback@v1; retirement: reviewed CutoverReceipt@v1 freeze")
+    ap.add_argument("--coverage", help="retirement: complete host interval evidence (CutoverRetirementCoverage@v1)")
+    ap.add_argument("--coverage-sha256", help="retirement: exact artifact digest from the authenticated host producer")
+    ap.add_argument("--evidence-root", help="retirement: root containing the referenced host report and before-image")
+    ap.add_argument("--previous", help="retirement: prior immutable observation report")
+    ap.add_argument("--out", help="retirement: new derived report path (existing files are refused)")
     ap.add_argument("--config", default=str(ROOT / CONFIG_REL))
     ap.add_argument("--current", default=str(CURRENT_LINK))
     ap.add_argument("--served-root", help="evaluate this tree's config instead of CURRENT's (tests)")
@@ -795,6 +892,20 @@ def parser() -> argparse.ArgumentParser:
 
 def main(argv: Optional[list[str]] = None) -> int:
     a = parser().parse_args(argv)
+    if a.cmd == "retirement":
+        if a.apply or a.served_root or a.cutover_policy or a.crontab:
+            print("REFUSED: retirement is observation of the actual host only (no apply or projection overrides)", file=sys.stderr)
+            return 1
+        if not all((a.receipt, a.coverage, a.coverage_sha256, a.evidence_root)):
+            print("REFUSED: retirement needs --receipt, --coverage, --coverage-sha256 and --evidence-root", file=sys.stderr)
+            return 1
+        try:
+            code, report = retirement_report(a)
+        except (OSError, ValueError, TX.ControllerBusy, NC.CohortStop) as exc:
+            print("REFUSED:", exc, file=sys.stderr)
+            return 2
+        print(json.dumps(report, indent=2, default=str))
+        return code
     if a.cmd == "plan":
         a.dry_run = False
     if a.apply and (a.cutover_policy or a.served_root):
