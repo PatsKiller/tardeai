@@ -1,8 +1,8 @@
 {
   "schema": "N8nCampaignArtifactManifest@v1",
   "files": {
-    "README.md": "feae9ae6d18e0b9f36c4edb59663afef3e26a18beefd1b8eebac8552b0092404",
-    "acceptance.json": "f20aae006901bbbe9c3757e51f70cfab414846542a32648c1534659abeda394b",
+    "README.md": "cc9702371c9230fc516576411db592e6a8a9f9cf0dcc4c7c28bf7d3d881a9393",
+    "acceptance.json": "89bff05a6112e2526182fa2900483b4554e3a431dc18cd7f733f1131d391e834",
     "evidence/canonical-rollback-receipt.json": "81c9439f1b113416ad53ce9e3b9c3a09602f80ac05ae5256d56a6dc927fd2480",
     "evidence/core-promotion-grant-binding.json": "05f34fbfc158ad45f963685360c502cdb0def6c4200c87ebc03de6c4179c74c9",
     "evidence/core-release-canonical-prepare-receipt.json": "00f4ea1e60ab25bd61afc2b12b1fa27c13db380b1f430915ce9ad4ea3679df3e",

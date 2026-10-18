@@ -23,6 +23,14 @@ no branch was rewound. Configuration digests, all 37 owner rows and the existing
 unknown effect claim match their before-images. The unknown claim was not expired
 or erased. Scheduler entries were not changed.
 
+The preserved canonical rollback receipt has a legacy identity contradiction:
+although its mode is `rollback` and result is `rollback_ok`, `rolled_back` is
+false, and its deployed SHA, release directory and venv path still name the
+prepared 7af artifact. The writer reads retained prepare-state variables rather
+than the rollback target. The raw receipt is preserved unchanged. CURRENT,
+service working directories, clean checkout and the natural a2 run establish
+the actual rollback identity; the contradictory header is not acceptance proof.
+
 A natural live fan-in run during the brief promotion produced 139 contracted
 items, and its exact run appeared in the authenticated CC readback. That proves
 one bounded output path, not release acceptance, incident recovery, sixth-stage

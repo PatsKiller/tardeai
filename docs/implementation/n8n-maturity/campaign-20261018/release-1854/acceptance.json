@@ -89,5 +89,21 @@
       "verdict": "produced"
     }
   },
-  "rollback_output_observation_proves_incident_recovery": false
+  "rollback_output_observation_proves_incident_recovery": false,
+  "canonical_rollback_receipt_identity_contradiction": {
+    "raw_receipt_preserved": true,
+    "mode": "rollback",
+    "extra": "rollback_ok",
+    "rolled_back": false,
+    "stale_deployed_sha": "7af14c7782cf7ab0cba261cc25e6789fe810b092",
+    "stale_release_dir_and_venv_path": true,
+    "source_cause": "write_deploy_receipt reads retained CONTENT_SHA/NEW_RELEASE/RELEASE_VENV metadata; cmd_rollback does not rebind target and passes false for rolled_back.",
+    "actual_identity_sources": [
+      "CURRENT+BUILD_SHA",
+      "eight service cwd readbacks",
+      "clean physical checkout HEAD",
+      "fresh natural fanin receipt at a2"
+    ],
+    "source_fix_and_regression_required": true
+  }
 }
