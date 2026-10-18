@@ -378,15 +378,49 @@ def _cache_path(root: Path) -> Path:
     return p
 
 
+def _recom_guard():
+    try:
+        from lib import analyst_recom_guard as g
+    except ImportError:  # imported as scripts.finviz_enrichment
+        from scripts.lib import analyst_recom_guard as g
+    return g
+
+
+def sanitize_cache_recoms(cache: Dict[str, Any]) -> Dict[str, int]:
+    """Refuse stale off-scale recom values in a loaded cache (2026-10-18).
+
+    Entries cached before the 2026-09-13 header-keyed parse still carry
+    "Performance (10 Years)" in ``recom`` (JNUG "-95.44%" -> "Strong Buy").
+    Symbols that left the refresh universe are never re-fetched, so the bad
+    value survived and was replayed daily. ``recom_score``/``analyst_rating``
+    are nulled in memory with ``recom_reject_reason``; the raw text is kept.
+    Returns {reason: count}.
+    """
+    guard = _recom_guard()
+    counts: Dict[str, int] = {}
+    for sym, rec in (cache or {}).items():
+        if str(sym).startswith("_") or not isinstance(rec, dict):
+            continue
+        reason = guard.sanitize_enrichment_record(rec)
+        if reason:
+            counts[reason] = counts.get(reason, 0) + 1
+    return counts
+
+
 def load_cache(root: Path = Path(".")) -> Dict[str, Any]:
-    """Load the enrichment cache from disk."""
+    """Load the enrichment cache from disk (off-scale recom values refused)."""
     path = _cache_path(root)
     if not path.exists():
         return {}
     try:
-        return json.loads(path.read_text())
+        cache = json.loads(path.read_text())
     except Exception:
         return {}
+    if isinstance(cache, dict):
+        refused = sanitize_cache_recoms(cache)
+        if refused:
+            print(f"  [finviz-enrich] stale recom refused on load: {refused}")
+    return cache
 
 
 def _cached_at_key(record: Any) -> str:

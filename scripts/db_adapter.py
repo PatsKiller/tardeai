@@ -1036,18 +1036,42 @@ def save_yahoo_analyst_targets_history(snapshot_date: str, targets_payload: list
             print(f"  [db_adapter] Yahoo analyst targets save failed: {e}")
 
 
-def save_analyst_consensus_history(snapshot_date: str, enrichment_cache: dict, quote_cache: dict = None) -> None:
-    """Save daily analyst-consensus data per ticker."""
-    if not USE_DB or not enrichment_cache:
-        return
+def _recom_guard():
+    try:
+        from lib import analyst_recom_guard as g
+    except ImportError:  # imported as scripts.db_adapter
+        from scripts.lib import analyst_recom_guard as g
+    return g
+
+
+def build_analyst_consensus_rows(snapshot_date: str, enrichment_cache: dict,
+                                 quote_cache: dict = None) -> tuple[list, dict]:
+    """Build analyst_consensus_history rows and a refusal receipt (no DB access).
+
+    A recom whose raw text carries "%" or whose value is outside 1..5 is NOT a
+    Finviz analyst recommendation (2026-10-18: stale pre-09-13 cache entries
+    replayed "-95.44%" as JNUG "Strong Buy" daily since 09-08). Such a record
+    keeps its target price row only if it has one; recom_raw/score/rating are
+    never written. Each refusal is counted by reason in the receipt.
+    """
+    guard = _recom_guard()
+    receipt = {"considered": 0, "written": 0, "recom_refused": 0,
+               "refused_by_reason": {}, "refused_symbols": []}
     rows = []
     _qc = quote_cache or {}
-    for sym, data in enrichment_cache.items():
+    for sym, data in (enrichment_cache or {}).items():
         if not isinstance(data, dict) or not sym or sym.startswith("_"):
             continue
+        receipt["considered"] += 1
         recom_raw = data.get("recom")
         recom_score = data.get("recom_score")
         analyst_rating = data.get("analyst_rating")
+        reason = guard.recom_reject_reason(recom_raw, recom_score)
+        if reason is not None:
+            receipt["recom_refused"] += 1
+            receipt["refused_by_reason"][reason] = receipt["refused_by_reason"].get(reason, 0) + 1
+            receipt["refused_symbols"].append(sym)
+            recom_raw = recom_score = analyst_rating = None
         # Target price from quote cache if available
         target_price = None
         if sym in _qc and isinstance(_qc[sym], dict):
@@ -1066,6 +1090,8 @@ def save_analyst_consensus_history(snapshot_date: str, enrichment_cache: dict, q
             "target_price": target_price,
             "cached_at": data.get("cached_at"),
         }
+        if reason is not None:
+            _analyst_data["recom_reject_reason"] = reason
         rows.append((
             snapshot_date, sym,
             str(recom_raw)[:50] if recom_raw else None,
@@ -1075,8 +1101,21 @@ def save_analyst_consensus_history(snapshot_date: str, enrichment_cache: dict, q
             "finviz",
             json.dumps(_analyst_data, default=str),
         ))
+    receipt["written"] = len(rows)
+    return rows, receipt
+
+
+def save_analyst_consensus_history(snapshot_date: str, enrichment_cache: dict, quote_cache: dict = None) -> dict | None:
+    """Save daily analyst-consensus data per ticker; returns the refusal receipt."""
+    if not USE_DB or not enrichment_cache:
+        return None
+    rows, receipt = build_analyst_consensus_rows(snapshot_date, enrichment_cache, quote_cache)
+    if receipt["recom_refused"]:
+        print(f"  [analyst-consensus] recom refused for {receipt['recom_refused']} ticker(s) "
+              f"{receipt['refused_by_reason']} (not a 1-5 rating; first: "
+              f"{', '.join(receipt['refused_symbols'][:8])})")
     if not rows:
-        return
+        return receipt
     conn = _get_conn()
     if conn:
         try:
@@ -1100,6 +1139,7 @@ def save_analyst_consensus_history(snapshot_date: str, enrichment_cache: dict, q
         except Exception as e:
             conn.rollback()
             print(f"  [db_adapter] Analyst consensus history save failed: {e}")
+    return receipt
 
 
 def _legacy_watchlist_writer_retired(op: str, symbol: str, source_type: str) -> None:

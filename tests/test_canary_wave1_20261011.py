@@ -33,6 +33,7 @@ if str(ROOT / "tests") not in sys.path:
 from support import n8n_cutover_waves as CW  # noqa: E402
 from tests.support import hermes_learning_cutover as HL  # noqa: E402
 from tests.support import comms_intent_consumer_live as CIL  # noqa: E402
+from tests.support import data_integrity_monitors_n8n as DIM  # noqa: E402
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
@@ -150,7 +151,7 @@ def test_no_other_shadow_row_gained_a_live_argv():
     # 2026-10-15 cutover waves (scripts/n8n_cutover_wave.py) add their promoted lanes (tests/support/n8n_cutover_waves.py).
     assert canary == sorted(({"heartbeat-watch", *CANARY_WAVE_20261014} | {
         lane for lane in CW.PROMOTED if (ROWS[lane].get("scheduler") or {}).get("stage") == "canary"}
-        | set(HL.LIVE) | set(CIL.LIVE)) - set(CW.CUT_OVER))  # + hermes-learning cutover PR-2 (tests/support/
+        | set(HL.LIVE) | set(CIL.LIVE) | set(DIM.LIVE)) - set(CW.CUT_OVER))  # + hermes-learning cutover PR-2 (tests/support/
     # hermes_learning_cutover.py) + comms-intent consumer live 2026-10-17 (tests/support/comms_intent_consumer_live.py)
     cut = sorted(r for r, row in ROWS.items() if (row.get("scheduler") or {}).get("stage") == "cutover")
     assert set(CUTOVER) <= set(cut), cut

@@ -64,6 +64,13 @@ GATES = [
     # expected_output, staged effect key); LaneRunReceipt@v2 produced / empty_allowed / fatal dependency_unavailable via
     # the real CLI; idempotent rerun; the operator packet against fake systemctl/docker/proc. Hermetic: tmp ledgers.
     ("comms_intent_consumer_live_20261017", ["tests/test_comms_intent_consumer_live_20261017.py"]),
+    # ANCHOR: DATA_INTEGRITY_FIXES_20261018 — operator-approved data-integrity fix PR: Finviz recom "%"/off-scale refused
+    # by writer, cache loader and consumers (JNUG "-95.44%" reproduction) + dry-run-default remediation (archive + NULL,
+    # never DELETE); no empty analyst_data_history payloads, readers say "unavailable"; ATR stop never <= 0; confidence
+    # clamps; NaN / int32 sentinels; plausibility band fingerprint + windows + retired_store; gap-resolution symbol
+    # touches, per-class fingerprints, digest routing; llm_curation deferred (no Ollama); both monitors as n8n canary
+    # lanes (dry live_arg first) with REVIEWED contracts, LaneRunReceipt@v2 and the operator packet. Hermetic.
+    ("data_integrity_fixes_20261018", ["tests/test_data_integrity_fixes_20261018.py"]),
     # ANCHOR: COMMS_INTENT_DELIVER_BEFORE_CLOSE_20261017 — a comms-intent incident past its window closes only on the
     # incident notifier's own delivery evidence; undelivered (CAPPED / quiet-held) it is DEFERRED, still presented by
     # the fan-in, sent once in the next allowed batch (07:00 ET / cap reset), then closed. Hermetic: tmp ledgers, the

@@ -7734,6 +7734,80 @@
       }
     },
     {
+      "lane_id": "n8n-data-plausibility-audit",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/n8n_data_plausibility_audit.py",
+        "cadence": "20 6 * * *",
+        "stage": "canary",
+        "wave": "W4"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "state_since": "2026-10-18",
+      "state_reason": "Operator 2026-10-18 (one data-integrity fix PR, 'within n8n with proper contracts'): n8n dispatcher row for scripts/data_plausibility_monitor.py at the systemd timer's own cadence (OnCalendar *-*-* 06:20:00 ET). tradeai-dispatcher fires it once the lane is in TRADEAI_N8N_RELAY_LIVE_LANES (packet docs/ops/packets/data-integrity-monitors-n8n-20261018/cutover.sh relay); until then the gateway demotes the fire to dry_run (--dry-run: read-only, writes nothing). CANARY with a DRY live_arg first: the live argv is [] (the entry script's lane_main measures, writes its LaneRunReceipt@v2 and notifies NOBODY), so the systemd timer tradeai-data-plausibility.timer (lane data-plausibility-audit) stays the alerting owner. The packet's c3 step is the owner switch: it refuses until the served allowlist live_arg is [\"--alert\"] (queue a host comms intent; a follow-up registry/allowlist PR) and a live n8n run is proven, then PRINTS the operator command that disables tradeai-data-plausibility.timer (agents never run systemctl here).",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/n8n-data-plausibility-audit_last.json",
+        "key": "ok_at"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_data_integrity_fixes_20261018.py (registry/allowlist/contract pins, LaneRunReceipt@v2 output via the real CLI, packet against fakes); systemd unit read 2026-10-18: tradeai-data-plausibility.timer -> OnCalendar *-*-* 06:20:00 ET.",
+      "review_by": "2026-10-25",
+      "note": "Entry scripts/n8n_data_plausibility_audit.py runs scripts/data_plausibility_monitor.py lane_main, which never references the chokepoint send (dispatcher sender gate). Read-only against the database (readonly session) and the ledgers; writes only its receipts and, with --alert, its alert state. Never calls a sender from n8n (lane_main has no chokepoint reference): with --alert it queues a host comms intent (config/host_comms_intent_routes.json domain data) that the comms-intent consumer turns into an incident and the incident notifier sends (AGENTS.md §24.1). Exit 0 when the run completed (findings are output); 1 only when its inputs could not be read (fatal dependency_unavailable).",
+      "severity": "Medium",
+      "dispatch": {
+        "mode": "live",
+        "cron": [
+          "20 6 * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "monitor",
+        "priority": 5,
+        "retry_policy": "none"
+      }
+    },
+    {
+      "lane_id": "n8n-gap-resolution-audit",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/n8n_gap_resolution_audit.py",
+        "cadence": "7,37 * * * *",
+        "stage": "canary",
+        "wave": "W4"
+      },
+      "expected_cadence_hours": 0.5,
+      "state": "ACTIVE",
+      "state_since": "2026-10-18",
+      "state_reason": "Operator 2026-10-18 (one data-integrity fix PR, 'within n8n with proper contracts'): n8n dispatcher row for scripts/check_gap_resolution.py at the systemd timer's own cadence (OnCalendar *-*-* *:07,37:00). tradeai-dispatcher fires it once the lane is in TRADEAI_N8N_RELAY_LIVE_LANES (packet docs/ops/packets/data-integrity-monitors-n8n-20261018/cutover.sh relay); until then the gateway demotes the fire to dry_run (--dry-run: read-only, writes nothing). CANARY with a DRY live_arg first: the live argv is [] (the entry script's lane_main measures, writes its LaneRunReceipt@v2 and notifies NOBODY), so the systemd timer tradeai-gap-resolution.timer (lane gap-resolution-audit) stays the alerting owner. The packet's c3 step is the owner switch: it refuses until the served allowlist live_arg is [\"--alert\"] (queue a host comms intent; a follow-up registry/allowlist PR) and a live n8n run is proven, then PRINTS the operator command that disables tradeai-gap-resolution.timer (agents never run systemctl here).",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/n8n-gap-resolution-audit_last.json",
+        "key": "ok_at"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_data_integrity_fixes_20261018.py (registry/allowlist/contract pins, LaneRunReceipt@v2 output via the real CLI, packet against fakes); systemd unit read 2026-10-18: tradeai-gap-resolution.timer -> OnCalendar *-*-* *:07,37:00.",
+      "review_by": "2026-10-25",
+      "note": "Entry scripts/n8n_gap_resolution_audit.py runs scripts/check_gap_resolution.py lane_main, which never references the chokepoint send (dispatcher sender gate). Read-only against the database (readonly session) and the ledgers; writes only its receipts and, with --alert, its alert state. Never calls a sender from n8n (lane_main has no chokepoint reference): with --alert it queues a host comms intent (config/host_comms_intent_routes.json domain data) that the comms-intent consumer turns into an incident and the incident notifier sends (AGENTS.md §24.1). Exit 0 when the run completed (findings are output); 1 only when its inputs could not be read (fatal dependency_unavailable).",
+      "severity": "Medium",
+      "dispatch": {
+        "mode": "live",
+        "cron": [
+          "7,37 * * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "monitor",
+        "priority": 5,
+        "retry_policy": "none"
+      }
+    },
+    {
       "lane_id": "backup-verify",
       "owner": "platform",
       "scheduler": {
