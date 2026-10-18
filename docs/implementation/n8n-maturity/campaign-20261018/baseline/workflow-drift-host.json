@@ -1,0 +1,190 @@
+{
+ "schema": "N8nWorkflowDriftReceipt@v1",
+ "as_of": "2026-10-18T18:34:26+00:00",
+ "source": "docker exec m8m-n8n-db psql (SELECT workflow_entity)",
+ "authority": "READ_ONLY_ADVISORY",
+ "evaluated_count": 19,
+ "active_count": 19,
+ "counts": {
+  "OK": 19,
+  "DRIFT": 0,
+  "MISSING_IN_GIT": 0
+ },
+ "placeholder_unsubstituted": [],
+ "verdict": "CLEAN",
+ "workflows": [
+  {
+   "id": "078e8fcbea0c5020",
+   "name": "n8n-pilot-dispatch",
+   "active": true,
+   "placeholder_unsubstituted": false,
+   "status": "OK",
+   "git_file": "docs/implementation/n8n-parallel/workflows/generated/n8n-pilot-dispatch.json",
+   "diffs": []
+  },
+  {
+   "id": "21fd15d5f8a4c4da",
+   "name": "n8n-research-intake-consumer",
+   "active": true,
+   "placeholder_unsubstituted": false,
+   "status": "OK",
+   "git_file": "docs/implementation/n8n-parallel/workflows/generated/n8n-research-intake-consumer.json",
+   "diffs": []
+  },
+  {
+   "id": "283ceeb030de5e66",
+   "name": "catalyst-calibration-monitor-shadow",
+   "active": true,
+   "placeholder_unsubstituted": false,
+   "status": "OK",
+   "git_file": "docs/implementation/n8n-parallel/workflows/generated/pending/catalyst-calibration-monitor-shadow.json",
+   "diffs": []
+  },
+  {
+   "id": "2c725c7dfd4ac62f",
+   "name": "finviz-view-contracts-shadow",
+   "active": true,
+   "placeholder_unsubstituted": false,
+   "status": "OK",
+   "git_file": "docs/implementation/n8n-parallel/workflows/generated/pending/finviz-view-contracts-shadow.json",
+   "diffs": []
+  },
+  {
+   "id": "498d749165a93ff9",
+   "name": "source-attribution-monitor-shadow",
+   "active": true,
+   "placeholder_unsubstituted": false,
+   "status": "OK",
+   "git_file": "docs/implementation/n8n-parallel/workflows/generated/pending/source-attribution-monitor-shadow.json",
+   "diffs": []
+  },
+  {
+   "id": "5966437c872aa18b",
+   "name": "watch-directives-monitor-shadow",
+   "active": true,
+   "placeholder_unsubstituted": false,
+   "status": "OK",
+   "git_file": "docs/implementation/n8n-parallel/workflows/generated/pending/watch-directives-monitor-shadow.json",
+   "diffs": []
+  },
+  {
+   "id": "722fac0e043ea5c4",
+   "name": "n8n-incident-fanin",
+   "active": true,
+   "placeholder_unsubstituted": false,
+   "status": "OK",
+   "git_file": "docs/implementation/n8n-parallel/workflows/generated/n8n-incident-fanin.json",
+   "diffs": []
+  },
+  {
+   "id": "c0d4c7845e5c4fcc",
+   "name": "crontab-snapshot-for-health-agent",
+   "active": true,
+   "placeholder_unsubstituted": false,
+   "status": "OK",
+   "git_file": "docs/implementation/n8n-parallel/workflows/generated/crontab-snapshot-for-health-agent.json",
+   "diffs": []
+  },
+  {
+   "id": "e6f62397d5ae2aa2",
+   "name": "lane-governance-packet-weekly-shadow",
+   "active": true,
+   "placeholder_unsubstituted": false,
+   "status": "OK",
+   "git_file": "docs/implementation/n8n-parallel/workflows/generated/lane-governance-packet-weekly-shadow.json",
+   "diffs": []
+  },
+  {
+   "id": "ffa6bbfa93ad4056",
+   "name": "generate-analyst-daily-digest-shadow",
+   "active": true,
+   "placeholder_unsubstituted": false,
+   "status": "OK",
+   "git_file": "docs/implementation/n8n-parallel/workflows/generated/pending/generate-analyst-daily-digest-shadow.json",
+   "diffs": []
+  },
+  {
+   "id": "tradeai-digest-scheduler",
+   "name": "tradeai-digest-scheduler",
+   "active": true,
+   "placeholder_unsubstituted": false,
+   "status": "OK",
+   "git_file": "docs/implementation/n8n-maturity/workflows/tradeai-digest-scheduler.json",
+   "diffs": []
+  },
+  {
+   "id": "tradeai-dispatcher",
+   "name": "tradeai-dispatcher",
+   "active": true,
+   "placeholder_unsubstituted": false,
+   "status": "OK",
+   "git_file": "docs/implementation/n8n-maturity/workflows/tradeai-dispatcher.json",
+   "diffs": []
+  },
+  {
+   "id": "tradeai-event-router",
+   "name": "tradeai-event-router",
+   "active": true,
+   "placeholder_unsubstituted": false,
+   "status": "OK",
+   "git_file": "docs/implementation/n8n-maturity/workflows/tradeai-event-router.json",
+   "diffs": []
+  },
+  {
+   "id": "tradeai-fabric-error",
+   "name": "tradeai-fabric-error",
+   "active": true,
+   "placeholder_unsubstituted": false,
+   "status": "OK",
+   "git_file": "docs/implementation/n8n-maturity/workflows/fabric/tradeai-fabric-error.json",
+   "diffs": []
+  },
+  {
+   "id": "tradeai-fabric-hermes-learning",
+   "name": "tradeai-fabric-hermes-learning",
+   "active": true,
+   "placeholder_unsubstituted": false,
+   "status": "OK",
+   "git_file": "docs/implementation/n8n-maturity/workflows/fabric/tradeai-fabric-hermes-learning.json",
+   "diffs": []
+  },
+  {
+   "id": "tradeai-fabric-run-lane",
+   "name": "tradeai-fabric-run-lane",
+   "active": true,
+   "placeholder_unsubstituted": false,
+   "status": "OK",
+   "git_file": "docs/implementation/n8n-maturity/workflows/fabric/tradeai-fabric-run-lane.json",
+   "diffs": []
+  },
+  {
+   "id": "tradeai-heartbeat-watcher",
+   "name": "tradeai-heartbeat-watcher",
+   "active": true,
+   "placeholder_unsubstituted": false,
+   "status": "OK",
+   "git_file": "docs/implementation/n8n-maturity/workflows/tradeai-heartbeat-watcher.json",
+   "diffs": []
+  },
+  {
+   "id": "tradeai-incident-router",
+   "name": "tradeai-incident-router",
+   "active": true,
+   "placeholder_unsubstituted": false,
+   "status": "OK",
+   "git_file": "docs/implementation/n8n-maturity/workflows/tradeai-incident-router.json",
+   "diffs": []
+  },
+  {
+   "id": "tradeai-momentum-lifecycle-candidate",
+   "name": "tradeai-momentum-lifecycle-candidate",
+   "active": true,
+   "placeholder_unsubstituted": false,
+   "status": "OK",
+   "git_file": "docs/implementation/n8n-maturity/workflows/tradeai-momentum-lifecycle-candidate.json",
+   "diffs": []
+  }
+ ],
+ "fanin_findings": [],
+ "fanin_wired": true
+}

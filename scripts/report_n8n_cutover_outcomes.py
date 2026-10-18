@@ -1529,6 +1529,11 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
     fam_rows = family_ownership(lanes)
     cron_active_lanes = {a["lane_id"] for a in mapped}
     fabric_rows = fabric_process_ownership(fabric, lanes, outcomes, cron_active_lanes)
+    if not ownership_available:
+        for row in fabric_rows:
+            row["fully_n8n_owned"] = None
+            row["ownership_status"] = "UNAVAILABLE"
+            row["ownership_reason"] = "scheduler/live-authority/ledger source UNAVAILABLE"
 
     # incidents
     breaches = load_jsonl(state_root / "data" / "runtime" / "supervisor_breaches.jsonl")
@@ -1679,6 +1684,7 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
     if not ownership_available:
         bd["projected_completion"] = None
         bd["rate_lanes_per_trading_day"] = None
+        bd["remaining_lanes_excluding_holds"] = None
         bd["observation_status"] = "UNAVAILABLE"
 
     totals = Counter()

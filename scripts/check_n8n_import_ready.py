@@ -19,11 +19,11 @@ Read-only. Takes files or directories; a directory is scanned the way `n8n impor
 
 and warned (not refused) for save_manual_executions_true (overrides EXECUTIONS_DATA_SAVE_MANUAL_EXECUTIONS=false).
 
-``--framework-gate activation`` (opt-in, 2026-10-15 audit DD16) also runs the fail-closed §23.24 promotion gate
-(``scripts/check_n8n_workflow_framework.py --gate activation``) on every file and refuses each one that is not
+The mandatory §23.24 promotion gate (2026-10-18 campaign, closing the opt-in gap from audit DD16)
+(``scripts/check_n8n_workflow_framework.py --gate activation``) runs on every statically admissible file and refuses each one that is not
 activation-eligible (``framework_gate``): any element FAIL, PARTIAL on a critical element, platform element not
 PASS, or a runtime obligation without evidence (``--runtime-evidence``), unless an operator exception names it
-(``--exceptions``). Off by default so existing packets keep their behaviour; a packet adopts it explicitly.
+(``--exceptions``). Existing ``--framework-gate activation`` callers remain compatible; omitting it never skips the gate.
 
     python3 scripts/check_n8n_import_ready.py "$STAGE" --relay-url http://172.19.0.1:18092
     python3 scripts/check_n8n_import_ready.py "$STAGE" --relay-url http://172.19.0.1:18092 --json

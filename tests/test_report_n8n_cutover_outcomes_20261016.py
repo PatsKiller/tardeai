@@ -45,6 +45,13 @@ def test_unavailable_scheduler_is_not_an_observed_empty_crontab(tmp_path, monkey
 
     monkeypatch.setattr(R, "_run", run)
     monkeypatch.setattr(R, "comms_rows", lambda *_: {"ok": False, "rows": [], "error": "unavailable"})
+    processes = json.loads((R.ROOT / "config/n8n_fabric_processes.json").read_text())["processes"]
+    historical = [
+        _r(step["lane_id"], verdict="produced", at="2026-10-16T14:00:00+00:00")
+        for process in processes.values() for step in process.get("steps", {}).values()
+        if step.get("lane_id") and not step.get("blocked")
+    ]
+    monkeypatch.setattr(R, "load_receipts", lambda *_: historical)
     args = Namespace(since=SINCE.isoformat(), state_root=str(tmp_path), current=str(tmp_path / "current"),
                      live_lanes_env=str(tmp_path / "missing"), compare="")
     packet = R.build(args)
@@ -54,6 +61,10 @@ def test_unavailable_scheduler_is_not_an_observed_empty_crontab(tmp_path, monkey
     assert packet["observation_coverage"]["status"] == "UNAVAILABLE"
     assert packet["observation_coverage"]["continuous"] is False
     assert packet["crontab_sha256"] is None
+    assert all(row["fully_n8n_owned"] is None for row in packet["fabric_processes"])
+    assert packet["burn_down"]["remaining_lanes_excluding_holds"] is None
+    R.write_packet(packet, tmp_path / "packet")
+    assert "UNAVAILABLE" in (tmp_path / "packet/REPORT.md").read_text()
 
 
 def _r(lane, mode="live", state="RUN_DONE", verdict=None, at="2026-10-16T14:00:00+00:00", dur=1.0, **kw):

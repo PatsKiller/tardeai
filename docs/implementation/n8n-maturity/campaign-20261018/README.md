@@ -2,7 +2,7 @@
 
 Status: IN PROGRESS; production mutations held pending the recorded gates  
 Owner: Codex integrator; Agent A remains Chief Architect  
-as_of: 2026-10-18T17:11:26Z  
+as_of: 2026-10-18T19:42:00Z  
 Measured at: source `3af0a8bdd659e02bf6f493c071800c6a227ae292`; initial served `a2aef7b4d2de17e737526337a2ffc37848deda4f`
 
 The operator's 2026-10-18 execution mandate authorizes scoped implementation,
@@ -32,16 +32,47 @@ executor were active. Loopback `/api/health` returned 200. Loopback `/v3/` retur
 Tailscale Serve maps the tailnet CC origin to the Unix auth proxy. The tailnet
 hostname failed DNS resolution from this execution context even outside the
 sandbox. This is an access limitation; it does not establish a CC outage.
+Resolving the same TLS hostname to the verified tailnet IP subsequently returned
+302 from `/` to `/v3/` and 200 from `/v3/`. That is reachable UI evidence, not a
+login redirect or proof of an authenticated session. The current CC configuration
+reports authentication rather than enforcing it globally; real MFA/session and
+SPCX threat-model acceptance remain open. No public exposure was added.
 Authenticated-session and real MFA acceptance remain UNPROVEN.
+
+The 19:41Z service refresh confirmed the same served SHA and all five queried
+application services active, with the independent n8n watchdog, breach detector
+and health-tick timers waiting. Exact unit names have the `tradeai-` prefix.
+Queries of similarly named unloaded units are not service-outage evidence.
+
+Two host read-only workflow snapshots found all 19 active graphs matching;
+[the latest snapshot](baseline/workflow-drift-host.json) is a point observation,
+not continuous coverage. The existing cutover report found 338 active cron lines
+and mapped all 338. Its historical `MIGRATED_PROVEN` category does not establish
+this campaign's stricter business-output or consumption acceptance. The direct
+Communications SQL read was unavailable; its counts remain unmeasured.
+
+[Hermes receipt reconciliation](baseline/hermes-receipts.json) finds existing live
+receipts for five of six stages: grader, tag engine, outcome learning, config
+governor and tune. Feedback has none. The first four still report
+`declared_not_enforced`. Tune's two October 17 receipts explicitly report valid
+`empty_allowed` work at 12:00/17:00 ET using source `7b07774ad8af3db523d7e297eae6192a8c25e024`.
+These receipts are preserved without rerunning learning. Exact consumed input
+versions and downstream consumption remain unproven.
+
+[All 46 active lanes without output signals](baseline/no-output-signals.json)
+are individually classified: 11 scheduled-output gaps, four reminder/event
+acknowledgement gaps and 31 retained systemd assets. None receives a blanket
+no-work exemption or an invented output count.
 
 ## Work ownership
 
 | Workstream | Owner | Write scope |
 |---|---|---|
 | Integration, generated files, documentation, CI registration | root Codex | this campaign directory; further files explicitly leased before editing |
-| Shared output verdict and executor enforcement | contracts_routes agent | isolated output worktree; shared output validator, executor and focused test |
-| Authentic grant and packet mutation admission | independent_review agent (now implementation author) | isolated follow-up to #1851; fabric grant and three existing packet scripts/tests |
-| Eligibility-only retirement collector | retirement_collector agent | existing nightly cutover owner/controller and focused test |
+| Shared output verdict, gateway inputs and CI integration | root integrator, reusing reviewed agent commits | isolated contracts-enforcement worktree |
+| Host evidence attestation and activation verification | contracts_routes agent | isolated attestation owner, framework validator and fixed read-only producer |
+| Repair acceptance, deadlines and cost truth | independent_review agent (implementation author) | isolated fixer/evaluator worktree; integration-owned versioned check policy |
+| Communications generations, delivery and recovery wording | retirement_collector agent | isolated consumer/fan-in/notifier/host-sender worktree |
 | Independent review of final candidates | a nonauthor agent, assigned after implementation | read-only candidate inspection and hermetic tests |
 
 Agent A's false-green, registry-truth, output-proof and fixer worktrees are retained.
@@ -56,6 +87,25 @@ disarmed; their current grants explicitly preserve that hold.
 | #1851 | Required exact-head CI green; independent 81-test subset green. Additional expected-assertion regressions show missing tune c2 admission and malformed/symlink grant-ledger acceptance. | HOLD; fix canonical validation and every mutation boundary before reliance. |
 | #1853 | Safe data-quality subset: 24 passed. Required contexts absent at initial review. Also changes ATR stop/target and execution readiness; packet uses a nonempty token and records ownership before scheduler mutation. | HOLD whole PR. Reuse only reviewed, separately scoped nonfinancial data-quality changes. |
 | #1852 | Proposed policy amendment for automated disk deletion. | OUT OF SCOPE; no ratification or deletion authorized here. |
+
+Locally committed follow-ups remain **implemented, not pushed/merged/deployed**:
+output truth `2475379fc0b2b7b4f68300cc1ffa42cddd19d612`, closed gateway input
+`3ef2fb5c07ac84c67be88035ebae0f56b0941c20`, authentic grant admission and held
+unsafe packet mutations `b14bfc542d481499d7bf1efcc4b8147de6332628`, eligibility
+collector `76d4ee0a65cfb6f84ff686abd3ca55338d0e6d09`, and atomic restart budgeting /
+budget-independent critical enrollment `afab1a474dfa52509d57ebd9e9b7923ee2d14352`.
+The first combined enforcement branch is
+`wt/n8n-contract-enforcement-20261018` at
+`2333c8e1b00f4be3b5fab653bf67d9a42fdcd399`. Required local checks and independent
+review are in progress. There is no matching new campaign branch/head push grant;
+the pre-existing Agent A grants are not consumed for these branches.
+
+Retirement remains held pending trusted host attestation and a fully proven
+transactional rollback. The collector's current CLI fails closed; its pure
+eligibility projection is code-only and cannot establish production eligibility.
+No new qualifying soak has started, so a next eligibility timestamp cannot yet
+be computed. Re-evaluate at collector installation/first qualifying natural slot;
+then use 48 actual continuous hours and the lane's required natural cycles.
 
 The independent review artifacts are initially under
 `/tmp/n8n-campaign-20261018/review/`; sanitized evidence is integrated with the

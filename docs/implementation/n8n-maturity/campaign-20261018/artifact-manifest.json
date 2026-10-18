@@ -5,7 +5,7 @@
   "artifacts": [
     {
       "path": "README.md",
-      "sha256": "03c74d3b0f2f6f47857763f8ed8aff8a8bd138e8dbbb04ba216b2eb093db30ac"
+      "sha256": "6f3c15238a8a3f6c7c8070cd0d84e8aab6a06eb0694be2d6d99a20f6c2f25e20"
     },
     {
       "path": "baseline/activation_paths.json",
@@ -20,12 +20,28 @@
       "sha256": "35a169204374313971fd38b923d79024f59f5adb8d6468dc84d9b70648c705dd"
     },
     {
+      "path": "baseline/hermes-receipts.json",
+      "sha256": "a5a264ef9c4b8d36a76c0686e2abb2fea5603144a743da4da70914b0dafb036f"
+    },
+    {
+      "path": "baseline/host-observations.json",
+      "sha256": "a9a5bc190a416947eac14250bba540144830ad74ab19b6aebfb98e67bab299af"
+    },
+    {
       "path": "baseline/module_consumer_inventory.json",
       "sha256": "8f966f61247f4bc1145545054e7e36e2af5a17c4d5e2609fd1bff728dc5f0120"
     },
     {
+      "path": "baseline/no-output-signals.json",
+      "sha256": "648f4aad72536fe05e667369da9c5c77a01c111e68f55d9f45764b4ae71bcf6f"
+    },
+    {
       "path": "baseline/route_matrix.json",
       "sha256": "d66d564589a9f6e2787bea3bb6be22683d4db2b107501d9567545aa268d207e5"
+    },
+    {
+      "path": "baseline/workflow-drift-host.json",
+      "sha256": "4f6b2ade2d937d447308997f87705324d6cd1a5e3539d6bc47438d04d819a8d5"
     },
     {
       "path": "baseline/workflow_http_inventory.json",
@@ -34,6 +50,26 @@
     {
       "path": "baseline/worktrees.txt",
       "sha256": "f88063ceed7908b5191eee6a7b1acd45dd93ed6b8b4555f96ae16afee3e0518b"
+    },
+    {
+      "path": "evidence/importer-report.json",
+      "sha256": "431b9cc4b55320259164c9f283c6dca0ecb0bd4bbd3ac4973ce46adf99e42e2b"
+    },
+    {
+      "path": "evidence/report-derived-baseline-red.xml",
+      "sha256": "76af6feb6cf52483398e0e819e70e216cac9c93129d5bb36cee2ad90098a35f6"
+    },
+    {
+      "path": "evidence/report-derived-candidate-green.xml",
+      "sha256": "5ecc99a01246903fc6fc7f322d0e266f72b493d30da5dae341fbfecc23b91218"
+    },
+    {
+      "path": "evidence/report-final-regression.xml",
+      "sha256": "82f9abcab0476a60168cc9358b8322e37ab3a5c57baeccdb7112a214eb99c804"
+    },
+    {
+      "path": "evidence/supervisor-independent.txt",
+      "sha256": "e1a7b9f259334d9a41251d6e44b415ba818b54b29ab45f6343ecfc62cfc4faab"
     },
     {
       "path": "reviews/grants-retirement-initial.json",
