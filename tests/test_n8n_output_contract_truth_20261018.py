@@ -69,6 +69,22 @@ def test_executor_unknown_attempt_context_cannot_establish_output(tmp_path, chan
     assert out["reason"] == "output_unverifiable", out
 
 
+@pytest.mark.parametrize("unknown", [None, "", "not-a-full-version", "A" * 40, "a" * 39, "g" * 40])
+def test_live_output_needs_full_lowercase_served_code_sha(tmp_path, unknown):
+    out = _apply(tmp_path, doc={**_receipt(), "code_sha": unknown}, executor_change={"code_sha": unknown})
+    assert out["state"] == "RUN_FAILED", out
+    assert out["reason"] == "output_unverifiable", out
+    assert out["output_verdict"]["why"] == "executor_code_sha_invalid", out
+
+
+def test_release_identity_loader_has_no_unknown_or_git_fallback(tmp_path):
+    assert X._code_sha(tmp_path) is None
+    (tmp_path / "GIT_SHA").write_text("not-a-served-release")
+    assert X._code_sha(tmp_path) is None
+    (tmp_path / "GIT_SHA").write_text(CODE + "\n")
+    assert X._code_sha(tmp_path) == CODE
+
+
 @pytest.mark.parametrize("change", [
     {"mode": "dry_run"}, {"run_mode": "dry_run"}, {"attempt": 1}, {"attempt": True},
     {"attempt": None}, {"lane_id": "another-lane"}, {"run_id": "another-run"}, {"code_sha": "b" * 40},

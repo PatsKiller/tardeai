@@ -683,6 +683,7 @@ def _lane_writes(tmp_path, *, produced, skipped=None, run_id_override=None, v2=T
 
 def _exec_live(gw, tmp_path, lane, rules, *, opt_in=True):
     """``opt_in``: the allowlist entry declares ``output_receipt: v2`` (per-lane enforcement opt-in, 2026-10-15)."""
+    (tmp_path / "GIT_SHA").write_text("a" * 40 + "\n")  # explicit fake served release, never a git fallback
     row = _live_d_row(gw, "fixture-lane")
     return X.execute(
         row,

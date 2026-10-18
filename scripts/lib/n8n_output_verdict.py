@@ -194,8 +194,16 @@ def evaluate(
             return unverifiable("receipt_attempt_mismatch")
         if doc.get("run_mode") != mode:
             return unverifiable("receipt_mode_mismatch")
-    if code_sha and doc.get("code_sha") != code_sha:
-        return unverifiable("receipt_code_mismatch")
+    if attempt is not None or code_sha is not None:
+        # Runtime callers supply an attempt. Unknown or malformed served identity is never proof,
+        # including when the lane repeats the same unknown value in its receipt.
+        if not isinstance(code_sha, str) or re.fullmatch(r"[0-9a-f]{40}", code_sha) is None:
+            return unverifiable("executor_code_sha_invalid")
+        recorded_sha = doc.get("code_sha")
+        if not isinstance(recorded_sha, str) or re.fullmatch(r"[0-9a-f]{40}", recorded_sha) is None:
+            return unverifiable("receipt_code_sha_invalid")
+        if recorded_sha != code_sha:
+            return unverifiable("receipt_code_mismatch")
     end, ok = _timestamp(doc.get("finished_at")), _timestamp(doc.get("ok_at"))
     if end is None or ok is None or ok != end:
         return unverifiable("receipt_time_invalid")

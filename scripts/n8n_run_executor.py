@@ -589,7 +589,7 @@ def _code_sha(code_root: Path) -> str | None:
         text = (code_root / "GIT_SHA").read_text(encoding="utf-8").strip()
     except OSError:
         return None
-    return text or None
+    return text if re.fullmatch(r"[0-9a-f]{40}", text) else None
 
 
 def _iso(ts: float) -> str:
