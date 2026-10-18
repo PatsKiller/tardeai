@@ -2349,6 +2349,9 @@ GATES = [
             # AGENTS.md 14.0.0 (PROPOSED 2026-10-16): §24.11 read-only broker sync under a broker-read grant; §0 and
             # the adapters byte-identical until ratified; the proposed §0 sentence and its digest pinned.
             "tests/test_agents_policy_14_0_0_broker_read.py",
+            # AGENTS.md 15.0.0 (PROPOSED 2026-10-18): §24.12 disk hygiene, the only automated deletion; §0 rule 6,
+            # §17 and the adapters byte-identical until ratified; the proposed §0 sentence, §17 entry and digests pinned.
+            "tests/test_agents_policy_15_0_0_disk_hygiene.py",
             "tests/test_trading_session_grant_20260925.py",
             "tests/test_operator_approval_workflow_docs.py",
         ],
