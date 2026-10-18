@@ -28,3 +28,10 @@ const future = projectN8nToday({ ...complete, schema: 'N8nToday@v99' }, { nowMs:
 assert.equal(future.status, 'UNAVAILABLE'); assert.equal(future.data, null)
 assert.equal(projectN8nToday({ ...complete, as_of: '2099-01-01T00:00:00Z' }, { nowMs: NOW }).counts.live, null)
 console.log('n8nTodayProjection: unavailable/stale/partial, exact source coverage, v1/v2 and unknown-version cases passed')
+
+// A capture timestamp cannot establish prior successful source observation.
+for (const status of ['UNAVAILABLE', 'STALE', 'OK']) {
+  const payload = { schema: 'N8nToday@v2', status, as_of: '2026-10-18T16:00:00Z', last_good_at: null }
+  assert.equal(projectN8nToday(payload, { nowMs: NOW }).lastGoodAgeSeconds, null, `${status} explicit null is never a last-good capture`)
+  assert.equal(projectN8nToday(payload, { nowMs: NOW, error: true }).lastGoodAgeSeconds, null, `${status} explicit null is never retained last-good on API error`)
+}

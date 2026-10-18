@@ -24,3 +24,10 @@ assert.equal(wrongVersion.status, 'UNAVAILABLE'); assert.equal(wrongVersion.coun
 const badTotal = projectCoordination({ schema: 'N8nCoordinationProjection@v2', status: 'OK', as_of: '2026-10-18T16:00:00Z', items: [], total_count: 600,
   summary: { by_state: { CONSUMED: 500 } }, coverage: { aggregation_complete: true } }, { nowMs: NOW })
 assert.equal(badTotal.status, 'PARTIAL'); assert.equal(badTotal.counts.consumed, null)
+
+// A capture timestamp cannot establish prior successful source observation.
+for (const status of ['UNAVAILABLE', 'STALE', 'OK']) {
+  const payload = { schema: 'N8nCoordinationProjection@v2', status, as_of: '2026-10-18T16:00:00Z', last_good_at: null }
+  assert.equal(projectCoordination(payload, { nowMs: NOW }).lastGoodAgeMinutes, null, `${status} explicit null is never a last-good capture`)
+  assert.equal(projectCoordination(payload, { nowMs: NOW, error: true }).lastGoodAgeMinutes, null, `${status} explicit null is never retained last-good on API error`)
+}

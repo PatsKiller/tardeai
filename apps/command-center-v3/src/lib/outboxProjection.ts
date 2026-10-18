@@ -83,7 +83,8 @@ export function projectOutbox(payload: OutboxPayload | null | undefined, opts: {
   const sum = validCounts ? groups.reduce((total, c) => total + Object.values(c).reduce((a, n) => a + n, 0), 0) : NaN
   if (!legacy && status === 'OK' && (payload.coverage?.aggregation_complete !== true || !validCounts || typeof payload.total !== 'number' || sum !== payload.total)) status = 'PARTIAL'
   const complete = status === 'OK' && payload.coverage?.aggregation_complete === true
-  const last = payload.last_good_at ?? payload.as_of
+  // Respect explicit null and never promote an unavailable capture to last-good.
+  const last = payload.last_good_at === undefined ? (known && payload.status === 'OK' ? payload.as_of : null) : payload.last_good_at
   const lastGoodAgeMinutes = last && Number.isFinite(Date.parse(last)) && Date.parse(last) <= (opts.nowMs ?? Date.now()) ? Math.round(((opts.nowMs ?? Date.now()) - Date.parse(last)) / 60_000) : null
   const counts: OutboxCount[] = []
   for (const [outbox, byState] of Object.entries(complete || (legacy && status === 'PARTIAL') ? payload.counts ?? {} : {})) {

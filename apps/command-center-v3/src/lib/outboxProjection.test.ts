@@ -34,3 +34,10 @@ check('full window count is independent of sampled details', full.status === 'OK
 check('retained error cannot expose current counts', projectOutbox({ schema: 'NotificationOutboxProjection@v2', status: 'OK', counts: { x: { sent: 5 } } }, { error: true }).counts.length === 0)
 check('unknown major is unavailable', projectOutbox({ schema: 'NotificationOutboxProjection@v99', status: 'OK' }).status === 'UNAVAILABLE')
 if (fail > 0) process.exit(1)
+
+for (const status of ['UNAVAILABLE', 'STALE', 'OK']) {
+  const payload = { schema: 'NotificationOutboxProjection@v2', status, as_of: '2026-10-18T16:00:00Z', last_good_at: null }
+  check(`${status} explicit null never treats capture as last-good`, projectOutbox(payload, { nowMs: Date.parse('2026-10-18T16:00:00Z') }).lastGoodAgeMinutes === null)
+  check(`${status} retained explicit null never invents last-good on API error`, projectOutbox(payload, { nowMs: Date.parse('2026-10-18T16:00:00Z'), error: true }).lastGoodAgeMinutes === null)
+}
+if (fail > 0) process.exit(1)

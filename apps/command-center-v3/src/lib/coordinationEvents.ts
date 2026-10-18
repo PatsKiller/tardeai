@@ -214,7 +214,8 @@ export function projectCoordination(
       status = 'PARTIAL'; coverageLabel = 'Aggregate coverage unavailable or inconsistent; totals unknown.'
     }
   }
-  const last = data?.last_good_at ?? asOf
+  // Retained successful snapshots may predate last_good_at; failed captures are never proof.
+  const last = data?.last_good_at === undefined ? (knownVersion && data?.status === 'OK' ? asOf : null) : data.last_good_at
   const lastGoodAgeMinutes = last && Number.isFinite(Date.parse(last)) && Date.parse(last) <= nowMs ? Math.round((nowMs - Date.parse(last)) / 60_000) : null
   const spotlights: CoordinationSpotlightRow[] = (Array.isArray(data?.spotlights) ? data.spotlights : []).map(s => ({
     lane: String(s.lane_id ?? ''), source: String(s.source ?? ''),

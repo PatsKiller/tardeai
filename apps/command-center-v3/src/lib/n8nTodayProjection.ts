@@ -24,7 +24,8 @@ export function projectN8nToday(data: N8nTodayPayload | null | undefined, opts: 
   const status = !known ? 'UNAVAILABLE' : stale || opts.error ? 'STALE' : !current ? 'PARTIAL' : data?.status ?? 'UNAVAILABLE'
   const available = (source: Source) => !unavailable && !stale && current && ['OK', 'PARTIAL'].includes(data?.status ?? '') && data?.coverage?.sources?.[source]?.complete === true
   const empty = (source: Source) => available(source) ? 'No matching records in observed coverage' : status === 'STALE' ? 'STALE · current records unavailable' : 'UNAVAILABLE · coverage incomplete'
-  const last = data?.last_good_at ?? asOf
+  // Capture time is last-good only for an actual successful snapshot without an explicit value.
+  const last = data?.last_good_at === undefined ? (known && data?.status === 'OK' ? asOf : null) : data.last_good_at
   const lastGoodAgeSeconds = last && Number.isFinite(Date.parse(last)) && Date.parse(last) <= now ? Math.round((now - Date.parse(last)) / 1000) : null
   return {
     data: known ? data : null, status, asOf, lastGoodAgeSeconds,
