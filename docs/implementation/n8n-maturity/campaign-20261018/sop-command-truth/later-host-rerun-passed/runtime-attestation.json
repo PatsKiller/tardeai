@@ -1,0 +1,93 @@
+{
+  "schema": "SopRuntimeAttestation@v1",
+  "schema_version": "1.0.0",
+  "issued_at_utc": "2026-10-18T23:15:50+00:00",
+  "head_sha": "23ab101a6b7a81d89742467329ed9ed13cbdce9e",
+  "base_sha": "7af14c7782cf7ab0cba261cc25e6789fe810b092",
+  "control_surface_digest": "4e9339891f6b02575fd64a6c5917b01813fe7d08b3211dec3fe28694205c4d30",
+  "policy_version": "14.0.0",
+  "policy_status": "ACTIVE",
+  "workflow_blob_sha256": "9eb8ee03cebf76d28fdd10e2b48017b55e5f9fedd7b3527ce3f94a0025847794",
+  "workflow_lines": 130,
+  "commands": [
+    {
+      "name": "pytest_core",
+      "cmd": [
+        "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python",
+        "-m",
+        "pytest",
+        "tests/test_agent_file_lease_canonical.py",
+        "tests/test_agent_session_and_lease.py",
+        "tests/test_agent_worktree_identity.py",
+        "tests/test_agent_changed_file_quality.py",
+        "tests/test_agent_clients_registry.py",
+        "tests/test_agents_drive_mirror_policy.py",
+        "tests/test_ai_work_policy_hooks.py",
+        "tests/test_agents_policy_v1.py",
+        "-q"
+      ],
+      "exit": 0,
+      "expected": 0
+    },
+    {
+      "name": "pytest_evidence_integrity",
+      "cmd": [
+        "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python",
+        "-m",
+        "pytest",
+        "tests/test_sop_evidence_integrity.py",
+        "-q"
+      ],
+      "exit": 0,
+      "expected": 0
+    },
+    {
+      "name": "evidence_integrity",
+      "cmd": [
+        "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python",
+        "scripts/validate_sop_evidence_integrity.py"
+      ],
+      "exit": 0,
+      "expected": 0
+    },
+    {
+      "name": "check_index",
+      "cmd": [
+        "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python",
+        "scripts/report_docs_inventory.py",
+        "--check-index"
+      ],
+      "exit": 0,
+      "expected": 0
+    },
+    {
+      "name": "shellcheck",
+      "cmd": [
+        "shellcheck",
+        "-x",
+        "scripts/new-worktree.sh"
+      ],
+      "exit": 0,
+      "expected": 0
+    }
+  ],
+  "test_counts": {
+    "core": 121
+  },
+  "docs_index_fingerprint": "f4cb66b0b6e4",
+  "tool_versions": {
+    "python": "3.14.4",
+    "pinned_ruff": "0.16.2",
+    "ruff": "0.16.2",
+    "ruff_raw": "ruff 0.16.2",
+    "ruff_bin": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/ruff",
+    "shellcheck": "0.11.0",
+    "shellcheck_raw": "version: 0.11.0",
+    "shellcheck_bin": "/usr/bin/shellcheck"
+  },
+  "clean_state": true,
+  "authority_non_regression": "PASS",
+  "in_repo_evidence_ok": true,
+  "in_repo_evidence_errors": [],
+  "note": "Exact-head proof is runtime-only; never embed head_sha into committed evidence."
+}

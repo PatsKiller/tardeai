@@ -1,0 +1,47 @@
+{
+  "schema": "N8nCampaignReleaseGrantBinding@v1",
+  "request_id": "4ec5831310c6af28",
+  "grant_id": "65da446137ba4c6ab58cc901dd75ee4a",
+  "scope": "release-write",
+  "expires_at": "2026-10-18T21:49:08+00:00",
+  "remaining_uses_before_prepare": 3,
+  "exact_sha": "7af14c7782cf7ab0cba261cc25e6789fe810b092",
+  "pr": 1854,
+  "manifest_sha256": "eeed7ab4b8377a73001b1529ca61ac72dba51b9d0e0aef995bf7b9f810058ab8",
+  "authentic_request_binding_verified": true,
+  "canonical_binding": {
+    "schema": "ReleaseGrantBinding@v1",
+    "allowed": true,
+    "reason": "grant names this release",
+    "grant_id": "65da446137ba4c6ab58cc901dd75ee4a",
+    "matched_by": [
+      "pr:#1854",
+      "sha:7af14c7782cf"
+    ],
+    "pending_request_ids": [],
+    "refused_grants": []
+  },
+  "production_lease": {
+    "lease_id": "4f767bff-2ff9-40b1-8698-38ad417888ab",
+    "session_id": "6beeea5b-7e49-4e84-90f1-dedd7e2cad0c",
+    "agent_id": "codex",
+    "paths": [],
+    "stores": [
+      "portfolio-server-canonical-release"
+    ],
+    "issued_at_utc": 1792358517.9383576,
+    "expires_at_utc": 1792362117.9383576,
+    "heartbeat_s": 60.0,
+    "boot_id": "6f2050e7-2540-4734-a5b9-0065ec568df3",
+    "schema_version": 2,
+    "deployment": true,
+    "production": true,
+    "issued_at_monotonic": 3111578.248373573,
+    "last_heartbeat_monotonic": 3111578.248373573,
+    "schema": "AgentFileLease@v2",
+    "issued_at": 1792358517.9383576,
+    "expires_at": 1792362117.9383576
+  },
+  "session_id": "6beeea5b-7e49-4e84-90f1-dedd7e2cad0c",
+  "checked_at": "2026-10-18T21:21:57.938865+00:00"
+}

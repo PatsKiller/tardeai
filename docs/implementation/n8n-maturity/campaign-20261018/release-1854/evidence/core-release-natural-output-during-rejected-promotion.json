@@ -1,0 +1,259 @@
+{
+  "schema": "N8nCampaignReleaseOutputObservation@v1",
+  "accepted_release": false,
+  "reason": "excluded upstream feedback live-config delta",
+  "rows": [
+    {
+      "schema": "RunReceipt@v3",
+      "run_id": "n8n-wf-c0d4c7845e5c4fcc-48260",
+      "lane_id": "crontab-snapshot-for-health-agent",
+      "attempt": 1,
+      "mode": "live",
+      "requested_mode": "live",
+      "state": "RUN_DONE",
+      "code_sha": "7af14c7782cf7ab0cba261cc25e6789fe810b092",
+      "started_at": "2026-10-18T22:00:02.732214+00:00",
+      "finished_at": "2026-10-18T22:00:03.177475+00:00",
+      "exit_code": 0,
+      "output_verdict": {
+        "attempted_count": 1,
+        "contract_id": "crontab-snapshot-for-health-agent",
+        "produced_count": 1,
+        "rule": "min_produced",
+        "skipped_reasons": {},
+        "verdict": "produced"
+      },
+      "output_signal": "data/runtime/crontab_snapshot.txt",
+      "output_signal_mtime_after": 1792360802.9395149,
+      "policy": {
+        "allowlist_error": null,
+        "allowlist_version": "0466f5fa3c619a4e",
+        "effect_config_error": null,
+        "expected_outputs_version": "0f1a1797df56a02d"
+      },
+      "reason": null
+    },
+    {
+      "schema": "RunReceipt@v3",
+      "run_id": "n8n-wf-722fac0e043ea5c4-48264",
+      "lane_id": "n8n-incident-fanin",
+      "attempt": 1,
+      "mode": "live",
+      "requested_mode": "live",
+      "state": "RUN_DONE",
+      "code_sha": "7af14c7782cf7ab0cba261cc25e6789fe810b092",
+      "started_at": "2026-10-18T22:00:03.119750+00:00",
+      "finished_at": "2026-10-18T22:00:13.700005+00:00",
+      "exit_code": 0,
+      "output_verdict": {
+        "attempted_count": 139,
+        "contract_id": "n8n-incident-fanin",
+        "produced_count": 139,
+        "rule": "empty_allowed",
+        "skipped_reasons": {},
+        "verdict": "produced"
+      },
+      "output_signal": "data/runtime/n8n_incident_fanin_last.json",
+      "output_signal_mtime_after": 1792360813.5930598,
+      "policy": {
+        "allowlist_error": null,
+        "allowlist_version": "0466f5fa3c619a4e",
+        "effect_config_error": null,
+        "expected_outputs_version": "0f1a1797df56a02d"
+      },
+      "reason": null
+    },
+    {
+      "schema": "RunReceipt@v3",
+      "run_id": "n8n-wf-21fd15d5f8a4c4da-48259",
+      "lane_id": "n8n-research-intake-consumer",
+      "attempt": 1,
+      "mode": "live",
+      "requested_mode": "live",
+      "state": "RUN_DONE",
+      "code_sha": "7af14c7782cf7ab0cba261cc25e6789fe810b092",
+      "started_at": "2026-10-18T22:00:03.215479+00:00",
+      "finished_at": "2026-10-18T22:00:03.589903+00:00",
+      "exit_code": 0,
+      "output_verdict": {
+        "attempted_count": 0,
+        "contract_id": "n8n-research-intake-consumer",
+        "empty_reason": "no_new_input",
+        "produced_count": 0,
+        "rule": "empty_allowed",
+        "skipped_reasons": {},
+        "verdict": "empty_allowed"
+      },
+      "output_signal": "data/runtime/n8n_research_intake_last.json",
+      "output_signal_mtime_after": 1792360803.4314456,
+      "policy": {
+        "allowlist_error": null,
+        "allowlist_version": "0466f5fa3c619a4e",
+        "effect_config_error": null,
+        "expected_outputs_version": "0f1a1797df56a02d"
+      },
+      "reason": null
+    },
+    {
+      "schema": "RunReceipt@v3",
+      "run_id": "n8n-wf-078e8fcbea0c5020-48262",
+      "lane_id": "n8n-pilot-dispatch",
+      "attempt": 1,
+      "mode": "live",
+      "requested_mode": "live",
+      "state": "RUN_DONE",
+      "code_sha": "7af14c7782cf7ab0cba261cc25e6789fe810b092",
+      "started_at": "2026-10-18T22:00:03.276415+00:00",
+      "finished_at": "2026-10-18T22:00:03.826772+00:00",
+      "exit_code": 0,
+      "output_verdict": {
+        "attempted_count": 2,
+        "contract_id": "n8n-pilot-dispatch",
+        "empty_reason": "no_new_input",
+        "produced_count": 0,
+        "rule": "per_window",
+        "skipped_reasons": {
+          "duplicate_in_ledger": 2,
+          "no_fire": 3
+        },
+        "verdict": "empty_allowed",
+        "window": "evaluated by the health monitors (P), not per run"
+      },
+      "output_signal": "data/runtime/n8n_pilot_dispatch_last.json",
+      "output_signal_mtime_after": 1792360803.661416,
+      "policy": {
+        "allowlist_error": null,
+        "allowlist_version": "0466f5fa3c619a4e",
+        "effect_config_error": null,
+        "expected_outputs_version": "0f1a1797df56a02d"
+      },
+      "reason": null
+    },
+    {
+      "schema": "RunReceipt@v2",
+      "run_id": "d:heartbeat-watch:live:20261018T1800",
+      "lane_id": "heartbeat-watch",
+      "attempt": 1,
+      "mode": "live",
+      "requested_mode": "live",
+      "state": "RUN_DONE",
+      "code_sha": "7af14c7782cf7ab0cba261cc25e6789fe810b092",
+      "started_at": "2026-10-18T22:00:02.141011+00:00",
+      "finished_at": "2026-10-18T22:00:02.556383+00:00",
+      "exit_code": 0,
+      "output_verdict": {
+        "contract_id": "heartbeat-watch",
+        "rule": "empty_allowed",
+        "verdict": "declared_not_enforced",
+        "why": "allowlist output_receipt != 'v2' (lane does not emit produced_count yet)"
+      },
+      "output_signal": "data/runtime/heartbeat-watch_last.json",
+      "output_signal_mtime_after": 1792360802.4208336,
+      "policy": {
+        "allowlist_error": null,
+        "allowlist_version": "0466f5fa3c619a4e",
+        "effect_config_error": null,
+        "expected_outputs_version": null
+      },
+      "reason": null
+    },
+    {
+      "schema": "RunReceipt@v3",
+      "run_id": "d:n8n-comms-intent-consumer:live:20261018T1800",
+      "lane_id": "n8n-comms-intent-consumer",
+      "attempt": 1,
+      "mode": "live",
+      "requested_mode": "live",
+      "state": "RUN_DONE",
+      "code_sha": "7af14c7782cf7ab0cba261cc25e6789fe810b092",
+      "started_at": "2026-10-18T22:00:02.174622+00:00",
+      "finished_at": "2026-10-18T22:00:02.696274+00:00",
+      "exit_code": 0,
+      "output_verdict": {
+        "attempted_count": 0,
+        "contract_id": "n8n-comms-intent-consumer",
+        "empty_reason": "no_new_input",
+        "produced_count": 0,
+        "rule": "empty_allowed",
+        "skipped_reasons": {},
+        "verdict": "empty_allowed"
+      },
+      "output_signal": "data/runtime/n8n-comms-intent-consumer_last.json",
+      "output_signal_mtime_after": 1792360802.557283,
+      "policy": {
+        "allowlist_error": null,
+        "allowlist_version": "0466f5fa3c619a4e",
+        "effect_config_error": null,
+        "expected_outputs_version": null
+      },
+      "reason": null
+    },
+    {
+      "schema": "RunReceipt@v3",
+      "run_id": "d:identity-sweep-stage0:live:20261018T1800",
+      "lane_id": "identity-sweep-stage0",
+      "attempt": 1,
+      "mode": "live",
+      "requested_mode": "live",
+      "state": "RUN_DONE",
+      "code_sha": "7af14c7782cf7ab0cba261cc25e6789fe810b092",
+      "started_at": "2026-10-18T22:00:03.846478+00:00",
+      "finished_at": "2026-10-18T22:00:05.077261+00:00",
+      "exit_code": 0,
+      "output_verdict": {
+        "attempted_count": null,
+        "contract_id": "identity-sweep-stage0",
+        "produced_count": 6,
+        "rule": "empty_allowed",
+        "skipped_reasons": {
+          "table_skipped": 0,
+          "unresolvable_rows": 0
+        },
+        "verdict": "produced"
+      },
+      "output_signal": "data/runtime/identity-sweep-stage0_last.json",
+      "output_signal_mtime_after": 1792360804.9201353,
+      "policy": {
+        "allowlist_error": null,
+        "allowlist_version": "0466f5fa3c619a4e",
+        "effect_config_error": null,
+        "expected_outputs_version": "0f1a1797df56a02d"
+      },
+      "reason": null
+    },
+    {
+      "schema": "RunReceipt@v3",
+      "run_id": "d:material-change-detector-stage1:live:20261018T1800",
+      "lane_id": "material-change-detector-stage1",
+      "attempt": 1,
+      "mode": "live",
+      "requested_mode": "live",
+      "state": "RUN_DONE",
+      "code_sha": "7af14c7782cf7ab0cba261cc25e6789fe810b092",
+      "started_at": "2026-10-18T22:00:05.095578+00:00",
+      "finished_at": "2026-10-18T22:00:05.605012+00:00",
+      "exit_code": 0,
+      "output_verdict": {
+        "attempted_count": 2,
+        "contract_id": "material-change-detector-stage1",
+        "empty_reason": "no_new_input",
+        "produced_count": 0,
+        "rule": "per_window",
+        "skipped_reasons": {
+          "already_present": 2
+        },
+        "verdict": "empty_allowed",
+        "window": "evaluated by the health monitors (P), not per run"
+      },
+      "output_signal": "data/runtime/material-change-detector-stage1_last.json",
+      "output_signal_mtime_after": 1792360805.5196385,
+      "policy": {
+        "allowlist_error": null,
+        "allowlist_version": "0466f5fa3c619a4e",
+        "effect_config_error": null,
+        "expected_outputs_version": "0f1a1797df56a02d"
+      },
+      "reason": null
+    }
+  ]
+}
