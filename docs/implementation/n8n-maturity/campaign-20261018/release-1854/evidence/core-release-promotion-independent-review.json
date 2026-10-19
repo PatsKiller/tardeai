@@ -1,0 +1,43 @@
+{
+  "schema": "IndependentPreparedPromotionReview@v1",
+  "reviewed_manifest_sha256": "4391b65fcb4cca36da1f5dce63c6277c0aedac0718e370fa5399cc1526ad7d5a",
+  "exact_sha": "7af14c7782cf7ab0cba261cc25e6789fe810b092",
+  "rollback_sha": "a2aef7b4d2de17e737526337a2ffc37848deda4f",
+  "verdict": "APPROVE_BOUNDED_FOLLOW_ON_GRANT_REQUEST",
+  "reviewed_at": "2026-10-18T21:49:47.087509+00:00",
+  "receipt_bindings": {
+    "original_reviewed_manifest_sha256": {
+      "path": "/tmp/n8n-campaign-20261018/core-release-mutation-manifest.json",
+      "sha256": "eeed7ab4b8377a73001b1529ca61ac72dba51b9d0e0aef995bf7b9f810058ab8",
+      "match": true
+    },
+    "prepare_receipt_sha256": {
+      "path": "/tmp/n8n-campaign-20261018/core-release-prepare.json",
+      "sha256": "d139f25da4067e3f9667d172c3f4de4e7c77085679e2f4e2258df212123cae13",
+      "match": true
+    },
+    "exact_main_ci_receipt_sha256": {
+      "path": "/tmp/n8n-campaign-20261018/core-release-main-ci-latest.json",
+      "sha256": "7ab0f1a0c5de1596833f092d12ab1a8120cbf08d9170a6537c5aa8c139873b51",
+      "match": true
+    }
+  },
+  "scope": "Same prepared7af artifact and prior reviewed release/source-compensation packet. No prepare, workflow/cron/liveconfig/provider/destructive authority added. Request itself grants nothing.",
+  "tool_consumption": {
+    "promote": 1,
+    "rollback_reserved": 1,
+    "prepare": 0,
+    "verify": 0
+  },
+  "runtime_conditions": [
+    "Actual operator-issued matching real release-write grant/reason/ID, expiry and two remaining uses; after prior matching grant expires or explicit same-campaign operator consolidation, no replacement of peer authority.",
+    "Recheck exact artifact pin/merged-SHA successfulCI before promote; no rebuild solely because main advanced.",
+    "At least900seconds remaining immediately before promote. After promote compute acceptanceDeadline=min(promotedAt+600, grantExpiry-300); rollback begins by that deadline on failed/missing required proof. Promotion time is not free observation time.",
+    "Use exact originalclean-source compensation rules: knowna2 cleanNOOP or exactclean7afdetachtoa2 only; thirdSHA/dirty/conflictinglease holds.",
+    "Source review does not mark releaseaccepted; actual servedSHA, continuity, authentication and fresh natural samebusinessoutput proof still required."
+  ],
+  "actions_performed": "Read-only packet/artifact/source hash review; no grant ledger access/issuance, prepare, promote, rollback, activation or liveeffects.",
+  "prepared_artifact_checked": true,
+  "current_release": "/home/johnclaw/trade-ai-releases/portfolio-server/a2aef7b4d-main-exact-phase2-20261018-103647",
+  "source_tool_hashes_unchanged": true
+}

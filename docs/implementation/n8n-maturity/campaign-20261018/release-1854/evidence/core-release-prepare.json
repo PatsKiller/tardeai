@@ -1,0 +1,26 @@
+{
+  "schema": "N8nCampaignPreparedRelease@v1",
+  "as_of": "2026-10-18T21:24:12.384218+00:00",
+  "prepared_release": "/home/johnclaw/trade-ai-releases/portfolio-server/7af14c778-main-exact-phase2-20261018-172203",
+  "exact_sha": "7af14c7782cf7ab0cba261cc25e6789fe810b092",
+  "pr": 1854,
+  "grant_id": "65da446137ba4c6ab58cc901dd75ee4a",
+  "grant_consumption_id": "137d5daab3314059b5c377ddf584a412",
+  "uses_left": 2,
+  "prepare_exit_code": 0,
+  "canonical_pin_integrity": {
+    "ok": true,
+    "diff_count": 0,
+    "extra_count": 0
+  },
+  "promoted": false,
+  "current_unchanged": true,
+  "transcript_complete": false,
+  "transcript_limit": "Tool truncated a verbose frontend test output chunk; canonical command status, exact identity and terminal prepare receipt are retained. No claim of a complete stdout transcript.",
+  "artifacts": {
+    "BUILD_SHA": "b69deb69f2e6385081c33aac3037f8b9c234d266168fe4b10129ffbabfbf92f0",
+    "GIT_SHA": "b69deb69f2e6385081c33aac3037f8b9c234d266168fe4b10129ffbabfbf92f0",
+    "SOURCE_COMMIT": "b69deb69f2e6385081c33aac3037f8b9c234d266168fe4b10129ffbabfbf92f0",
+    "BUILD_STAMP.json": "aa014624ee23b54107eec9ffff48d0ff1e2ea061d212f0eb3fa46069f75000d8"
+  }
+}
