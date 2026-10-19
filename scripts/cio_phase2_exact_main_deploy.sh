@@ -102,56 +102,19 @@ load_state() {
 }
 
 write_deploy_receipt() {
-  local ok_flag="${1:-false}"
-  local mode="${2:-unknown}"
-  local health="${3:-unknown}"
-  local rolled="${4:-false}"
-  local extra="${5:-}"
+  local ok_flag="${1:-false}" mode="${2:-unknown}" health="${3:-unknown}"
+  local rolled="${4:-false}" extra="${5:-}"
+  # State records the prepared intent. Only CURRENT readback describes deployment.
+  # Rollback supplies its own target; never inherit the last prepared artifact.
+  local attempted_dir="${6:-${NEW_RELEASE:-}}" attempted_sha="${7:-${CONTENT_SHA:-}}"
+  local rollback_target="${8:-}" rollback_sha="${9:-}" rolled_from="${10:-}"
   mkdir -p "$STATE_DIR"
-  local sha="${CONTENT_SHA:-}"
-  local dir="${NEW_RELEASE:-}"
-  local prev="${PREV_RELEASE:-}"
-  local pr="${CIO_SOURCE_PR:-}"
-  OK_FLAG="$ok_flag" MODE="$mode" HEALTH="$health" ROLLED="$rolled" EXTRA="$extra" \
-  SHA="$sha" DIR="$dir" PREV="$prev" PR="$pr" \
-  RV_ID="${RELEASE_VENV_ID:-}" RV_LOCK="${RELEASE_VENV_LOCK_SHA256:-}" RV_PYVER="${RELEASE_VENV_PY_VERSION:-}" \
-  RV_PY="${RELEASE_VENV_PYTHON:-}" RV_ACTION="${RELEASE_VENV_ACTION:-}" PIN_RECEIPT="${RELEASE_PIN_RECEIPT:-}" RECEIPT_FILE="$RECEIPT_FILE" CI_RECEIPT_FILE="$CI_RECEIPT_FILE" python3 - <<'PY'
-import json, os
-from datetime import datetime, timezone
-from pathlib import Path
-pr = os.environ.get("PR") or None
-rec = {
-    "ok": os.environ.get("OK_FLAG") == "true",
-    "mode": os.environ.get("MODE") or "unknown",
-    "health": os.environ.get("HEALTH") or "unknown",
-    "rolled_back": os.environ.get("ROLLED") == "true",
-    "content_sha": os.environ.get("SHA") or "",
-    "deployed_sha": os.environ.get("SHA") or "",
-    "source_pr": pr,
-    "release_dir": os.environ.get("DIR") or "",
-    "prev_release": os.environ.get("PREV") or "",
-    "extra": os.environ.get("EXTRA") or "",
-    "release_pin_receipt": os.environ.get("PIN_RECEIPT") or "",
-    "at": datetime.now(timezone.utc).isoformat(),
-    "authority": "READ_ONLY_ADVISORY",
-    "script": "cio_phase2_exact_main_deploy.sh",
-}
-if os.environ.get("RV_ID"):
-    rec["release_venv"] = {
-        "venv_id": os.environ["RV_ID"],
-        "lock_sha256": os.environ.get("RV_LOCK") or "",
-        "python_version": os.environ.get("RV_PYVER") or "",
-        "venv_python": os.environ.get("RV_PY") or "",
-        "action": os.environ.get("RV_ACTION") or "",
-    }
-ci_path = Path(os.environ["CI_RECEIPT_FILE"])
-if rec["mode"] == "promote" and ci_path.is_file():
-    ci = json.loads(ci_path.read_text())
-    if ci.get("candidate_sha") == rec["content_sha"]:
-        rec["post_merge_ci"] = ci
-Path(os.environ["RECEIPT_FILE"]).write_text(json.dumps(rec, indent=2) + "\n")
-print("wrote deploy receipt", os.environ["RECEIPT_FILE"])
-PY
+  python3 "${ROOT}/scripts/lib/exact_release_receipt.py" \
+    --releases-base "$RELEASES_BASE" --receipt-file "$RECEIPT_FILE" --ci-file "$CI_RECEIPT_FILE" \
+    --ok "$ok_flag" --mode "$mode" --health "$health" --rolled-back "$rolled" --extra "$extra" \
+    --attempted-dir "$attempted_dir" --attempted-sha "$attempted_sha" --source-pr "${CIO_SOURCE_PR:-}" \
+    --prev-release "${PREV_RELEASE:-}" --pin-receipt "${RELEASE_PIN_RECEIPT:-}" \
+    --rollback-target "$rollback_target" --rollback-sha "$rollback_sha" --rolled-from "$rolled_from"
 }
 
 run_integrity_hook() {
@@ -757,7 +720,7 @@ cmd_promote() {
       [[ -f "${PREV_RELEASE}/BUILD_SHA" ]] && rb_sha="$(tr -d '[:space:]' <"${PREV_RELEASE}/BUILD_SHA")"
       activate_release "$PREV_RELEASE" "$rb_sha"
       health_check "rollback-after-failed-promote" || log "rollback health also failed"
-      write_deploy_receipt false promote timeout true "rolled_back_to_prev"
+      write_deploy_receipt false promote timeout true "rolled_back_to_prev" "$dir" "$sha" "$PREV_RELEASE" "$rb_sha" "$dir"
     else
       write_deploy_receipt false promote timeout false "prev_missing"
     fi
@@ -889,7 +852,7 @@ cmd_rollback() {
   rolled_from="$(current_release)"
   activate_release "$target" "$sha"
   if ! health_check "rollback"; then
-    write_deploy_receipt false rollback fail false "rollback_health_failed"
+    write_deploy_receipt false rollback fail true "rollback_health_failed" "$target" "$sha" "$target" "$sha" "$rolled_from"
     die "rollback health failed"
   fi
   # CURRENT moved. Bound units keep the concrete directory they resolved at
@@ -899,7 +862,7 @@ cmd_rollback() {
   release_pin_step rollback "$target" "$rolled_from"
   restart_root_frozen_units "$target"
   write_expected_release_pin "$target"
-  write_deploy_receipt true rollback ok false "rollback_ok"
+  write_deploy_receipt true rollback ok true "rollback_ok" "$target" "$sha" "$target" "$sha" "$rolled_from"
   log "ROLLBACK OK → $target"
 }
 
