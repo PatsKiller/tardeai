@@ -23,9 +23,11 @@ Window: trading days (scripts/lib/cio_market_session.py, the repo's NYSE calenda
 close (13:00 on early-close days). Outside it the verdict is computed and reported but never alerts. A calendar error
 counts as inside the window (a watchdog fails towards telling the operator).
 
-Alerts go only through the host comms-intent path (scripts/lib/host_comms_intents.py, route
-host/active_trader_motion_watchdog in config/host_comms_intent_routes.json, DIGEST -> P2 via the comms-intent consumer
-and the incident notifier). Band-change dedupe: an alert band is queued once when it first differs from the last
+Alerts go only through the host comms-intent path (route host/active_trader_motion_watchdog in
+config/host_comms_intent_routes.json, DIGEST -> P2 via the comms-intent consumer and the incident notifier). The intent
+is queued through CommsIntentStore directly (:func:`queue_host_intent`, same rows/dedupe/cap as
+scripts/lib/host_comms_intents.py): that module's import closure reaches broker modules via the gateway, which an n8n
+lane must not (tests/test_lane_transitive_capabilities_20261015.py). Band-change dedupe: an alert band is queued once when it first differs from the last
 alerted band; HEALTHY after an alert band queues one recovery line; DISABLED never alerts and resets the band.
 
     python3 scripts/check_active_trader_motion_heartbeat.py            # --dry-run (default): prints, writes nothing
@@ -319,12 +321,90 @@ def write_state(path: Path, doc: Mapping[str, Any]) -> None:
     atomic_write_json(path, dict(doc), indent=1)
 
 
-def _queue(cfg: Mapping[str, Any], subject: str, summary: str, execution_id: str, ledger: Path, now: float) -> dict:
-    """scripts/lib/host_comms_intents.queue_intent (a seam the tests replace)."""
-    from scripts.lib.host_comms_intents import queue_intent
+class HostIntentError(ValueError):
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
 
+
+class _LedgerConn:
+    """The two attributes CommsIntentStore uses (``_conn``, ``lock``) on a plain sqlite connection to an EXISTING
+    ledger. Same rows, dedupe and cap as scripts/lib/host_comms_intents.queue_intent, whose import closure (via
+    scripts/n8n_coordination_gateway.py) reaches broker modules — an n8n-allowlisted lane must not
+    (tests/test_lane_transitive_capabilities_20261015.py), so this lane talks to the store directly. Mirrors
+    scripts/disk_usage_monitor.py and scripts/check_registry_runtime_truth.py."""
+
+    read_only = False
+
+    def __init__(self, path: Path) -> None:
+        import sqlite3
+        import threading
+
+        self.lock = threading.RLock()  # CommsIntentStore re-enters it (accept -> _receipt -> get)
+        self._conn = sqlite3.connect(str(path), timeout=10, isolation_level=None)
+        self._conn.row_factory = sqlite3.Row
+
+    def close(self) -> None:
+        self._conn.close()
+
+
+def queue_host_intent(
+    *, producer: str, domain: str, kind: str, subject: str, summary: str, execution_id: str, node: str,
+    ledger_path: Path, now: Optional[float] = None,
+) -> dict[str, Any]:
+    """Queue one host comms intent (never a send). Raises HostIntentError(<reason>) with host_comms_intents' reasons:
+    producer_refused, intent_unrouted, intent_rate_limited, intent_routes_unreadable, malformed_event, ledger_absent
+    (the consumer and gateway create the ledger; a lane never does), intent_store_unavailable."""
+    import sqlite3
+    import time
+
+    from scripts.lib.n8n_fabric_store import (
+        PRODUCER_RE, SUBJECT_MAX, SUMMARY_MAX, CommsIntentStore, FabricStoreError, load_host_intent_routes,
+        load_intent_routes, merged_intent_routes,
+    )
+
+    if not isinstance(producer, str) or not PRODUCER_RE.fullmatch(producer):
+        raise HostIntentError("producer_refused")
+    try:
+        hosts = load_host_intent_routes()
+        routes = merged_intent_routes(load_intent_routes(), hosts)
+    except FabricStoreError as exc:
+        raise HostIntentError(getattr(exc, "reason", "intent_routes_unreadable")) from exc
+    route = hosts["routes"].get((domain, kind))
+    if route is None:
+        raise HostIntentError("intent_unrouted")
+    if route.get("producer") != producer:
+        raise HostIntentError("producer_refused")
+    path = Path(ledger_path)
+    if not path.exists():
+        raise HostIntentError("ledger_absent")
+
+    def clean(text: Any, limit: int) -> str:
+        flat = " ".join("".join(" " if ord(ch) < 32 or ord(ch) == 127 else ch for ch in str(text or "")).split())
+        return flat if len(flat) <= limit else flat[: max(0, limit - 1)] + "…"
+
+    request = {"domain": domain, "kind": kind, "subject": clean(subject, SUBJECT_MAX),
+               "summary": clean(summary, SUMMARY_MAX), "workflow_id": f"host.{producer}",
+               "execution_id": str(execution_id)[:40], "node": clean(node, 64)}
+    try:
+        ledger = _LedgerConn(path)
+    except (sqlite3.Error, OSError) as exc:
+        raise HostIntentError("intent_store_unavailable") from exc
+    try:
+        store = CommsIntentStore(ledger, routes=routes)
+        return dict(store.accept(request, caller_id=f"host:{producer}", now=time.time() if now is None else now))
+    except FabricStoreError as exc:
+        raise HostIntentError(getattr(exc, "reason", "intent_store_unavailable")) from exc
+    except sqlite3.Error as exc:
+        raise HostIntentError("intent_store_unavailable") from exc
+    finally:
+        ledger.close()
+
+
+def _queue(cfg: Mapping[str, Any], subject: str, summary: str, execution_id: str, ledger: Path, now: float) -> dict:
+    """:func:`queue_host_intent` (a seam the tests replace)."""
     a = cfg["alert"]
-    return queue_intent(
+    return queue_host_intent(
         producer=a["producer"], domain=a["domain"], kind=a["kind"], subject=subject, summary=summary,
         execution_id=execution_id, node="check_active_trader_motion_heartbeat", ledger_path=ledger, now=now,
     )

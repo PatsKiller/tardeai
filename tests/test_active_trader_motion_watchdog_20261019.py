@@ -80,8 +80,7 @@ def host(tmp_path):
 
         def __call__(self, cfg, subject, summary, exec_id, ledger_path, now):
             if self.fail:
-                from scripts.lib.host_comms_intents import HostIntentError
-                raise HostIntentError(self.fail)
+                raise W.HostIntentError(self.fail)
             self.calls.append({"subject": subject, "summary": summary, "exec_id": exec_id})
             return {"intent_id": f"ci-{len(self.calls)}", "duplicate": False}
 
@@ -305,7 +304,8 @@ def test_an_unreadable_config_is_the_fatal_skip(host, tmp_path):
     assert rc == 1 and doc["skipped_reasons"] == {"dependency_unavailable": 1}
     contract = next(c for c in json.loads((ROOT / "config/n8n_health_contracts.json").read_text())["contracts"]
                     if c["id"] == LANE)
-    assert contract["expected_output"]["fatal_skip_reasons"] == ["dependency_unavailable"]
+    # no_runner is the executor's own fatal reason (FW-M6, operator rule 2026-10-15); the script emits only this one
+    assert contract["expected_output"]["fatal_skip_reasons"] == ["no_runner", "dependency_unavailable"]
 
 
 def test_the_dry_run_writes_nothing(host, capsys):
@@ -393,7 +393,7 @@ def test_registry_row_is_a_dispatch_live_n8n_lane_at_canary_like_the_comms_consu
     assert row["dispatch"]["mode"] == "live" and row["dispatch"]["cron"] == ["*/5 * * * *"]
     assert row["state"] == "ACTIVE" and row["output_signal"]["path"] == "data/runtime/active-trader-motion-watchdog_last.json"
     motion = rows["tradeai-active-trader-motion-service"]
-    assert motion["state"] == "ACTIVE" and "Supervised by n8n lane active-trader-motion-watchdog" in motion["note"]
+    assert motion["state"] == "ACTIVE" and "Supervised by n8n lane active-trader-motion-watchdog" in motion["evidence_note"]
 
 
 def test_allowlist_entry_runs_apply_under_its_own_flock_with_enforced_env():
@@ -410,7 +410,8 @@ def test_health_contract_is_reviewed_at_canary_with_the_codes_output_rule():
     eo = c["expected_output"]
     assert eo["rule"] == "empty_allowed" and eo["produced_field"] == "produced_count"
     assert set(eo["empty_allowed_reasons"]) == {W.EMPTY_MARKET_CLOSED, W.EMPTY_WINDOW_NOT_REACHED}
-    assert eo["fatal_skip_reasons"] == [W.SKIP_DEPENDENCY]
+    assert eo["fatal_skip_reasons"] == ["no_runner", W.SKIP_DEPENDENCY]  # no_runner: FW-M6, operator rule 2026-10-15
+    assert eo["empty_allowed_reasons"] is not None and {e["kind"] for e in eo["evidence"]} <= {"store_rows", "receipt_field", "ledger_row"}
     assert "PAGE" not in json.dumps(c["alerting"]["failed"])
 
 

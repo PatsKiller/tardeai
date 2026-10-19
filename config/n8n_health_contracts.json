@@ -29513,7 +29513,7 @@
           "name": "data/governance/n8n_coordination_ledger.sqlite comms_intents",
           "kind": "store",
           "direction": "write",
-          "source": "scripts/lib/host_comms_intents.queue_intent, route host/active_trader_motion_watchdog (DIGEST)"
+          "source": "check_active_trader_motion_heartbeat.queue_host_intent (CommsIntentStore directly, same rows/dedupe/cap as scripts/lib/host_comms_intents.queue_intent), route host/active_trader_motion_watchdog (DIGEST)"
         },
         {
           "name": "scripts/n8n_comms_intent_consumer.py -> scripts/n8n_incident_fanin.py -> scripts/incident_notifier.py",
@@ -29661,6 +29661,7 @@
         "window_h": null,
         "produced_field": "produced_count",
         "fatal_skip_reasons": [
+          "no_runner",
           "dependency_unavailable"
         ],
         "empty_allowed_reasons": [
@@ -29670,11 +29671,7 @@
         "evidence": [
           {
             "kind": "receipt_field",
-            "ref": "data/runtime/active-trader-motion-watchdog_last.json produced_count (LaneRunReceipt@v2 output fields; the executor reads the immutable attempt copy data/runtime/lane_attempts/active-trader-motion-watchdog/<run_id>.json)"
-          },
-          {
-            "kind": "file_artifact",
-            "ref": "data/runtime/active_trader_motion_watchdog_state.json last_observed_at / last_verdict"
+            "ref": "data/runtime/active-trader-motion-watchdog_last.json produced_count (LaneRunReceipt@v2 output fields; the executor reads the immutable attempt copy data/runtime/lane_attempts/active-trader-motion-watchdog/<run_id>.json; the run also writes the file data/runtime/active_trader_motion_watchdog_state.json last_observed_at / last_verdict)"
           }
         ],
         "on_violation": {

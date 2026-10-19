@@ -76,24 +76,27 @@ _REVIEWED_NEW_MODULES = {
     "momentum-cache-reconcile": _REVIEWED_NEW_COMMON_MODULES | {"scripts/momentum_cache_reconcile.py"},
     "momentum-lifecycle-monitor": _REVIEWED_NEW_COMMON_MODULES
     | {"scripts/market_session.py", "scripts/n8n_momentum_lifecycle.py"},
-    # 2026-10-19 (operator: n8n owns the motion runtime's supervision): the watchdog's closure is the gateway closure
-    # above (reached through n8n_coordination_ledger's lazy EDGES import via lib/host_comms_intents.py) plus six
-    # reviewed modules: stdlib-only calendar (cio_market_session), the host intent queue, the receipt writer and its
+    # 2026-10-19 (operator: n8n owns the motion runtime's supervision): the watchdog queues its host comms intent
+    # through CommsIntentStore directly (not lib/host_comms_intents.py, whose gateway closure reaches broker modules:
+    # tests/test_lane_transitive_capabilities_20261015.py), so its closure is NOT the gateway closure: six reviewed
+    # modules — stdlib-only calendar (cio_market_session), the fabric store (stdlib only), the receipt writer and its
     # two path helpers. Literal reads only; no credential, no network, no subprocess.
-    "active-trader-motion-watchdog": _REVIEWED_NEW_COMMON_MODULES
-    | {
-        "scripts/check_active_trader_motion_heartbeat.py",
-        "scripts/lib/atomic_json_store.py",
-        "scripts/lib/cio_market_session.py",
-        "scripts/lib/host_comms_intents.py",
-        "scripts/lib/lane_last_receipt.py",
-        "scripts/lib/persistent_state_root.py",
-    },
+    "active-trader-motion-watchdog": frozenset(
+        {
+            "scripts/check_active_trader_motion_heartbeat.py",
+            "scripts/lib/atomic_json_store.py",
+            "scripts/lib/cio_market_session.py",
+            "scripts/lib/lane_last_receipt.py",
+            "scripts/lib/n8n_fabric_store.py",
+            "scripts/lib/persistent_state_root.py",
+        }
+    ),
 }
 _REVIEWED_NEW_READS = frozenset({"TRADEAI_GOVERNED_BRIDGE_URL", "TRADEAI_STATE_ROOT"})
 #: Per-lane literal read inventories where a reviewed lane reads more than the shared set (2026-10-19).
 _REVIEWED_NEW_READS_BY_LANE = {
-    "active-trader-motion-watchdog": _REVIEWED_NEW_READS
+    # no TRADEAI_GOVERNED_BRIDGE_URL: the gateway is not in this closure
+    "active-trader-motion-watchdog": frozenset({"TRADEAI_STATE_ROOT"})
     | {
         "TRADEAI_N8N_COORDINATION_LEDGER",
         "TRADEAI_PERSISTENT_STATE_ROOT",
