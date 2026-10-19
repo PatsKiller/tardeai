@@ -92,6 +92,8 @@ and v2 paths unless stated:
 from __future__ import annotations
 
 import argparse
+from contextlib import nullcontext
+from contextvars import ContextVar
 import errno
 import json
 import os
@@ -154,6 +156,9 @@ from scripts.lib.effect_claim import (  # noqa: E402
     fence_token,
     load_effect_config,
     load_fenced_lanes,
+    handover_lock,
+    handover_manifest_path,
+    HandoverLockTimeout,
 )
 from scripts.lib.n8n_due import parse_key as parse_slot_key  # noqa: E402
 from scripts.lib.n8n_process_keys import is_process_key, parse_process_key  # noqa: E402
@@ -161,6 +166,15 @@ from scripts.lib.n8n_fabric_store import FabricStoreError, RunOutcomeStore  # no
 from scripts.n8n_coordination_gateway import default_ledger_path  # noqa: E402
 
 RECEIPT_SCHEMA = "RunReceipt@v1"
+_SPAWN_FENCE_RELEASE: ContextVar[Any] = ContextVar("n8n_spawn_fence_release", default=None)
+
+
+def _release_spawn_fence() -> None:
+    """Release the shared owner fence only after Popen returned a child; thread-local for v2 workers."""
+    release = _SPAWN_FENCE_RELEASE.get()
+    if release is not None:
+        release()
+        _SPAWN_FENCE_RELEASE.set(None)
 #: ``stage_rows`` default for library callers that do not apply the stage clamp (unit tests of other behaviour).
 #: ``main`` never uses it: it passes the loaded registry rows, or None (unreadable -> every live request runs dry).
 NO_STAGE_CLAMP = object()
@@ -782,20 +796,32 @@ def _execute_once(
             receipt["stdout_tail"] = f"{_iso(time.time())} PEAK_SKIP gate={offpeak['wrapper_flag']} (n8n executor)"
             return _finish(receipt, "RUN_DONE", reason="offpeak_skip", started=started)
     if effects is not None:
-        effect, refusal = effects.begin(row, lane_id, mode)
-        if effect is not None:
-            receipt["effect"] = effect
-        if refusal is not None:
-            return _finish(receipt, "RUN_REFUSED", reason=refusal, started=started)
-        if effect is not None and effect.get("claimed"):
-            # DD06: the fencing token the lane passes to assert_fence() right before its target write.
-            lane_env[EFFECT_FENCE_ENV] = fence_token(effect["key"], int(effect.get("epoch") or 0), effect["attempt"])
-            if effects.ledger_path is not None:
-                lane_env[EFFECT_FENCE_LEDGER_ENV] = str(effects.ledger_path)
-        out = _spawn(receipt, entry, argv, run, timeout_s, lane_env, code_root, signal_path, typed, started)
-        if effect is not None:
-            effects.end(effect, out)  # from the RAW spawn state, before the output verdict
-        return apply_output_verdict(out, outputs, lane_id=lane_id, mode=mode, state_root=state_root, entry=entry)
+        admission = effects.admission_lock(mode)
+        try:
+            fence = admission.__enter__()
+        except HandoverLockTimeout:
+            return _finish(receipt, "RUN_REFUSED", reason="effect:handover_lock_timeout", started=started)
+        except OSError:
+            return _finish(receipt, "RUN_REFUSED", reason="effect:handover_lock_unavailable", started=started)
+        token = _SPAWN_FENCE_RELEASE.set(None if fence is None else fence.__exit__)
+        try:
+            effect, refusal = effects.begin(row, lane_id, mode)
+            if effect is not None:
+                receipt["effect"] = effect
+            if refusal is not None:
+                return _finish(receipt, "RUN_REFUSED", reason=refusal, started=started)
+            if effect is not None and effect.get("claimed"):
+                # DD06: the lane checks this token at its target write, including an owner switch after spawn.
+                lane_env[EFFECT_FENCE_ENV] = fence_token(effect["key"], int(effect.get("epoch") or 0), effect["attempt"])
+                if effects.ledger_path is not None:
+                    lane_env[EFFECT_FENCE_LEDGER_ENV] = str(effects.ledger_path)
+            out = _spawn(receipt, entry, argv, run, timeout_s, lane_env, code_root, signal_path, typed, started)
+            if effect is not None:
+                effects.end(effect, out)  # from the RAW spawn state, before the output verdict
+            return apply_output_verdict(out, outputs, lane_id=lane_id, mode=mode, state_root=state_root, entry=entry)
+        finally:
+            _SPAWN_FENCE_RELEASE.reset(token)
+            admission.__exit__(None, None, None)
     out = _spawn(receipt, entry, argv, run, timeout_s, lane_env, code_root, signal_path, typed, started)
     return apply_output_verdict(out, outputs, lane_id=lane_id, mode=mode, state_root=state_root, entry=entry)
 
@@ -908,7 +934,19 @@ def _spawn(
 def _subprocess_runner(
     argv: list[str], *, timeout: float, env: dict[str, str], cwd: Path
 ) -> subprocess.CompletedProcess:
-    return subprocess.run(argv, capture_output=True, text=True, timeout=timeout, env=env, cwd=str(cwd), check=False)
+    proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env, cwd=str(cwd))
+    _release_spawn_fence()
+    try:
+        out, err = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.communicate()
+        raise
+    except BaseException:  # match subprocess.run cleanup if communication is interrupted after spawn
+        proc.kill()
+        proc.wait()
+        raise
+    return subprocess.CompletedProcess(argv, proc.returncode, out, err)
 
 
 def _finish(receipt: dict[str, Any], state: str, *, reason: str | None, started: float) -> dict[str, Any]:
@@ -988,6 +1026,15 @@ class EffectGate:
             self.config_error = None
         except EffectKeyError as exc:
             self.config, self.fenced, self.config_error = {}, frozenset(), str(exc)
+
+    def admission_lock(self, mode: str):
+        """The same manifest lock used by cron admission, ownership switches and controller recovery.
+
+        Production gates always have their ledger path. Pure library/test gates with no store stay inert and
+        retain begin()'s existing refusal. Both real runners release on actual Popen; fake runners hold until return.
+        """
+        path = self.ledger_path or getattr(getattr(self.store, "_l", None), "path", None)
+        return nullcontext() if mode != "live" or path is None else handover_lock(handover_manifest_path(path))
 
     def begin(self, row: Mapping[str, Any], lane_id: str, mode: str) -> tuple[dict[str, Any] | None, str | None]:
         """(effect block for the receipt or None, refusal reason or None)."""
@@ -1574,6 +1621,7 @@ def heartbeat_runner(on_spawn, on_beat, heartbeat_s: float = EXECUTOR_DEFAULTS["
 
     def run(argv: list[str], *, timeout: float, env: dict[str, str], cwd: Path):
         proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env, cwd=str(cwd))
+        _release_spawn_fence()
         on_spawn(proc.pid)
         deadline = time.monotonic() + timeout
         while True:
