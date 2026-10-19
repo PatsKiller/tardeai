@@ -23855,7 +23855,7 @@
         "key": "ok_at"
       },
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "tests/test_disk_hygiene_20261018.py; docs/ops/packets/disk-hygiene-n8n-20261018/01_dry_run_20261018.txt",
+      "reason_evidence": "tests/test_disk_hygiene_20261018.py; docs/ops/packets/disk-hygiene-n8n-20261018/01_dry_run_20261019.txt",
       "review_by": "2026-10-25",
       "note": "Writes only data/runtime/disk_usage_monitor_state.json, one comms_intents row per band change and its LaneRunReceipt. Sends nothing, deletes nothing (AGENTS.md §24.1, §23.14). The host P1 backstop stays the systemd disk_pressure_guard (proposed at 95%, packet backstop step) because n8n's own Postgres fails when the disk is full. Exit 0 measured + queued; 1 rules/mount/intent/write failure (band not recorded: retried).",
       "severity": "Medium",
@@ -23892,7 +23892,7 @@
         "key": "ok_at"
       },
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "tests/test_disk_hygiene_20261018.py; docs/ops/packets/disk-hygiene-n8n-20261018/01_dry_run_20261018.txt",
+      "reason_evidence": "tests/test_disk_hygiene_20261018.py; docs/ops/packets/disk-hygiene-n8n-20261018/01_dry_run_20261019.txt",
       "review_by": "2026-10-25",
       "note": "Writes only <state root>/data/runtime/disk_hygiene/disk_hygiene_manifest_<ts>.json + _latest.json and the LaneRunReceipt. Read-only git (GIT_OPTIONAL_LOCKS=0) and du over the configured roots. Sends nothing. The monitor quotes the latest manifest's reclaimable estimate. Exit 0 manifest written; 1 rules/home unreadable or write failure.",
       "severity": "Low",
