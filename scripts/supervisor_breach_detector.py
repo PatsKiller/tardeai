@@ -391,27 +391,89 @@ L1_WINDOW_S = 600
 L1_KINDS = ("SILENT", "NO_OUTPUT", "HUNG")
 
 
+def _recovery_budget(path: Path, now) -> dict[str, int]:
+    """Count durable reservations/legacy attempts once each. Missing, malformed or future history is UNKNOWN.
+
+    Caller holds the common journal lock. Existing Recovery@v1 readers continue to see executed=false on a
+    reservation, and one result row on completion; a reservation is not a completed action or business recovery.
+    """
+    if type(L1_MAX_PER_WINDOW) is not int or L1_MAX_PER_WINDOW < 0 \
+            or type(L1_WINDOW_S) is not int or L1_WINDOW_S <= 0 or now.tzinfo is None:
+        raise ValueError("invalid_budget_or_clock")
+    instant = now.astimezone(_dt.timezone.utc)
+    cutoff = instant - _dt.timedelta(seconds=L1_WINDOW_S)
+    attempts: set[tuple[str, str]] = set()
+    identities: dict[str, tuple] = {}
+    for index, line in enumerate(path.read_text(encoding="utf-8").splitlines()):
+        if not line.strip():
+            continue
+        row = json.loads(line)
+        if not isinstance(row, dict) or row.get("schema") != "Recovery@v1" or type(row.get("executed")) is not bool \
+                or not isinstance(row.get("lane_id"), str) or not row["lane_id"] \
+                or row.get("mode") not in ("live", "shadow"):
+            raise ValueError("malformed_budget_history")
+        if any(field in row and type(row[field]) is not bool for field in ("attempted", "attempt_reserved")):
+            raise ValueError("malformed_attempt_flags")
+        attempt = row.get("attempt_id")
+        if "attempt_id" in row:
+            if not isinstance(attempt, str) or not attempt or row.get("attempt_reserved") is not True:
+                raise ValueError("malformed_attempt_identity")
+            identity = (row["lane_id"], row.get("action"), row.get("level"), row.get("mode"), row.get("ts"))
+            if attempt in identities and identities[attempt] != identity:
+                raise ValueError("conflicting_attempt_identity")
+            identities[attempt] = identity
+        at = _dt.datetime.fromisoformat(str(row.get("ts") or "").replace("Z", "+00:00"))
+        if at.tzinfo is None or at > instant:
+            raise ValueError("invalid_budget_history_clock")
+        # Legacy timeouts/spawn errors were written executed=false even though an action was attempted.
+        attempted = row.get("attempt_reserved") is True or row.get("attempted") is True or row["executed"] \
+            or (row.get("mode") == "live" and bool(row.get("error")))
+        if attempted and at >= cutoff:
+            attempts.add((row["lane_id"], attempt if attempt else f"legacy-line-{index}"))
+    counts: dict[str, int] = {}
+    for lane, _ in attempts:
+        counts[lane] = counts.get(lane, 0) + 1
+    return counts
+
+
+def _recovery_row(path: Path, row: dict) -> None:
+    """Durable append under the journal lock, before any effect when this is a reservation."""
+    with path.open("a", encoding="utf-8") as stream:
+        stream.write(json.dumps(row, sort_keys=True, default=str) + "\n")
+        stream.flush()
+        os.fsync(stream.fileno())
+
+
+def _reserve_recovery(path: Path, row: dict, now, *, live: bool) -> tuple[bool, str]:
+    """Atomic shared L1/L2 admission, persisted before releasing the lock and invoking a bounded action."""
+    import fcntl
+    import uuid
+
+    with path.with_suffix(".lock").open("a", encoding="utf-8") as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        try:
+            recent = _recovery_budget(path, now)
+        except (OSError, ValueError, TypeError, OverflowError):
+            return False, "unavailable"  # never initialize a lost/unknown budget to zero
+        allowed = recent.get(row["lane_id"], 0) < L1_MAX_PER_WINDOW
+        row["would_execute"] = allowed
+        if live and allowed:
+            row["attempt_id"] = uuid.uuid4().hex
+            _recovery_row(path, {**row, "attempt_reserved": True, "attempted": False})
+        elif not live or not allowed:
+            _recovery_row(path, row)
+        return allowed, "known"
+
+
 def _self_heal_l1_l2(rows: list[dict], lanes: list[dict], sla_by_lane: dict, now, runtime_dir: Path, *, live: bool) -> dict:
     """L1: `systemctl --user restart <unit>` for a systemd-scheduled lane in breach (class A: its unit is the lane
     registry's own scheduler expression; system units and cron lanes are never touched — S-W4-1 sudoers is for
     those). L2: `systemctl --user start <alternate>` when the SLA row declares one. Every decision is a
     Recovery@v1 row (data/runtime/supervisor_recoveries.jsonl); shadow rows carry executed=false."""
+    import fcntl
     import subprocess
     by_id = {l.get("lane_id"): l for l in lanes}
     rec_p = runtime_dir / "supervisor_recoveries.jsonl"
-    recent: dict[str, int] = {}
-    try:
-        cutoff = (now - _dt.timedelta(seconds=L1_WINDOW_S)).isoformat()
-        with rec_p.open("r", encoding="utf-8") as fh:
-            for line in fh:
-                try:
-                    r = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if r.get("executed") and str(r.get("ts") or "") >= cutoff:
-                    recent[r.get("lane_id")] = recent.get(r.get("lane_id"), 0) + 1
-    except OSError:
-        pass
     out = {"l1_candidates": 0, "l1_executed": 0, "l2_candidates": 0, "l2_executed": 0, "mode": "live" if live else "shadow"}
     rec_p.parent.mkdir(parents=True, exist_ok=True)
     for r in rows:
@@ -422,32 +484,35 @@ def _self_heal_l1_l2(rows: list[dict], lanes: list[dict], sla_by_lane: dict, now
         if r.get("kind") not in L1_KINDS:
             continue
         row = {"schema": "Recovery@v1", "ts": now.isoformat(), "breach_id": r.get("breach_id"), "lane_id": r.get("lane_id"), "kind": r.get("kind"),
-               "mode": out["mode"], "executed": False}
+               "mode": out["mode"], "executed": False, "attempted": False, "business_recovered": False}
         if unit and unit.endswith((".timer", ".service")) and lane.get("state") == "ACTIVE":
             out["l1_candidates"] += 1
             svc = unit[:-len(".timer")] + ".service" if unit.endswith(".timer") else unit
-            row.update({"level": 1, "action": f"systemctl --user restart {svc}", "would_execute": recent.get(r.get("lane_id"), 0) < L1_MAX_PER_WINDOW})
-            if live and row["would_execute"]:
-                try:
-                    cp = subprocess.run(["systemctl", "--user", "restart", svc], capture_output=True, text=True, timeout=60)
-                    row.update({"executed": True, "rc": cp.returncode, "stderr": (cp.stderr or "")[:200]})
-                    out["l1_executed"] += 1
-                except Exception as exc:  # noqa: BLE001
-                    row.update({"executed": False, "error": f"{type(exc).__name__}:{str(exc)[:120]}"})
+            row.update({"level": 1, "action": f"systemctl --user restart {svc}"})
+            argv, counter = ["systemctl", "--user", "restart", svc], "l1_executed"
         elif alt:
             out["l2_candidates"] += 1
-            row.update({"level": 2, "action": f"systemctl --user start {alt}", "would_execute": True})
-            if live:
-                try:
-                    cp = subprocess.run(["systemctl", "--user", "start", str(alt)], capture_output=True, text=True, timeout=60)
-                    row.update({"executed": True, "rc": cp.returncode})
-                    out["l2_executed"] += 1
-                except Exception as exc:  # noqa: BLE001
-                    row.update({"executed": False, "error": f"{type(exc).__name__}:{str(exc)[:120]}"})
+            row.update({"level": 2, "action": f"systemctl --user start {alt}"})
+            argv, counter = ["systemctl", "--user", "start", str(alt)], "l2_executed"
         else:
             continue
-        with rec_p.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps(row, sort_keys=True, default=str) + "\n")
+        allowed, status = _reserve_recovery(rec_p, row, now, live=live)
+        if status != "known":
+            out["budget_status"] = "unavailable"
+            break
+        if not live or not allowed:
+            continue
+        row.update(attempted=True, attempt_reserved=True)
+        try:
+            cp = subprocess.run(argv, capture_output=True, text=True, timeout=60)
+            row.update(executed=True, rc=cp.returncode, action_succeeded=cp.returncode == 0,
+                       stderr=(cp.stderr or "")[:200])
+            out[counter] += 1
+        except Exception as exc:  # noqa: BLE001 - still an attempted, budgeted action; never recovery evidence
+            row.update(action_succeeded=False, error=f"{type(exc).__name__}:{str(exc)[:120]}")
+        with rec_p.with_suffix(".lock").open("a", encoding="utf-8") as lock:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+            _recovery_row(rec_p, row)
     return out
 
 
@@ -663,6 +728,8 @@ def main() -> int:
         try:
             heal = _self_heal_l1_l2(ladder_input, reg.get("lanes", []), sla_by_lane, now, runtime_dir, live=bool(getattr(a, "heal", False)))
             print(f"self-heal L1/L2: {heal}")
+            if heal.get("budget_status") == "unavailable":
+                steps_failed.append("self_heal:budget_unavailable")
         except Exception as exc:  # noqa: BLE001
             print(f"self-heal skipped: {type(exc).__name__}: {exc}", file=sys.stderr)
             steps_failed.append(f"self_heal:{type(exc).__name__}")

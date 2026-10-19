@@ -23,6 +23,8 @@ REPO = Path(__file__).resolve().parents[1]
 
 # Ordered, explicit suite list (Phase 10.2)
 GATES = [
+    # Atomic bounded recovery reservations; critical enrollment survives diagnosis budget exhaustion.
+    ("n8n_supervisor_budget_20261018", ["tests/test_n8n_supervisor_budget_20261018.py"]),
     # Staged reader preserves v2 evidence and refuses legacy worker effects on it.
     (
         "incident_notifier_state_compatibility_20261018",
