@@ -613,4 +613,7 @@ def test_lane_mode_counts_match_the_pr():
     # stays report (its env reads TRADEAI_N8N_COORDINATION_LEDGER / TRADEAI_PERSISTENT_STATE_ROOT are listed, not
     # yet enforced). 12 + 1 = 13.
     assert LANES["disk-hygiene"]["env_allowlist_mode"] == "enforce"
-    assert modes.count("enforce") == 13 and modes.count("report") == len(LANES) - 13
+    # 2026-10-19 (/tmp inode incident, operator): + tmp-hygiene, enforced from its first entry (same reads as
+    # disk-hygiene: TRADEAI_DISK_HYGIENE_GRANT on the refused-under-executor apply path, the state-root path). 13 + 1 = 14.
+    assert LANES["tmp-hygiene"]["env_allowlist_mode"] == "enforce"
+    assert modes.count("enforce") == 14 and modes.count("report") == len(LANES) - 14

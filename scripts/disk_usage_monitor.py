@@ -14,7 +14,14 @@ queued through CommsIntentStore directly (:func:`queue_host_intent`, same rows/d
 module's import closure reaches broker modules via the gateway, which an n8n lane must not
 (tests/test_lane_transitive_capabilities_20261015.py). Staying in a
 band sends nothing: dedupe is by band, never by the raw percent. The intent carries the top consumers by category
-and the reclaimable estimate from the latest disk_hygiene manifest. This lane never sends, never deletes, never
+and the reclaimable estimate from the latest disk_hygiene manifest.
+
+INODES (operator 2026-10-19, after /tmp, a tmpfs, reached 97% inodes with 20G of bytes free and tools failed with
+ENOSPC): every mount is also banded by inode use% (statvfs f_files / f_ffree; used = f_files - f_ffree) against
+``monitor.inodes`` warn/critical, kept apart from the byte bands. State and dedupe are per (mount, metric): an inode
+band change queues its own intent (subject "Disk <mount> INODES <BAND> ..."), which names the top dirs by file count
+(bounded scan: depth <= monitor.inodes.top_dirs.max_depth, a time and entry cap) and the latest tmp_hygiene
+manifest's reclaimable inodes. A filesystem reporting f_files = 0 has no inode limit and is not banded. This lane never sends, never deletes, never
 calls a sender (the n8n never-list); the host P1 backstop is the systemd disk_pressure_guard (proposed at
 monitor.host_backstop_pct, packet docs/ops/packets/disk-hygiene-n8n-20261018/), because n8n's own Postgres fails
 when the disk is full.
@@ -35,6 +42,7 @@ import json
 import os
 import re
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Optional
@@ -75,6 +83,79 @@ def measure(mount: str) -> Optional[dict[str, Any]]:
     }
 
 
+def measure_inodes(mount: str) -> Optional[dict[str, Any]]:
+    """Inode use of ``mount`` (statvfs f_files / f_ffree); None when statvfs fails or the filesystem reports no inode
+    limit (f_files == 0, e.g. btrfs)."""
+    try:
+        st = os.statvfs(mount)
+    except OSError:
+        return None
+    if not st.f_files:
+        return None
+    used = st.f_files - st.f_ffree
+    return {
+        "mount": mount,
+        "inodes_used_pct": round(used / st.f_files * 100.0, 2),
+        "inodes_used": used,
+        "inodes_total": st.f_files,
+        "inodes_free": st.f_ffree,
+        "avail_bytes": st.f_bavail * st.f_frsize,
+    }
+
+
+def top_file_dirs(mount: str, cfg: Mapping[str, Any]) -> dict[str, Any]:
+    """The directories under ``mount`` holding the most files: one bounded walk (lstat only, never follows a symlink,
+    never leaves the device; stops at cfg time_cap_s / max_entries) counts entries per path prefix up to max_depth;
+    from each of the largest top-level dirs it descends while one child holds >= dominant_share of its parent's count
+    (so /tmp/claude-1000/<project>/<session> is named when one session holds the files, and a dir whose files are
+    spread is named itself). Returns {dirs: [(path, count)], scanned, partial}."""
+    max_depth = max(1, min(3, int(cfg.get("max_depth") or 3)))
+    share = float(cfg.get("dominant_share") or 0.5)
+    deadline = time.monotonic() + float(cfg.get("time_cap_s") or 20)
+    max_entries = int(cfg.get("max_entries") or 3_000_000)
+    counts: dict[tuple, int] = {}
+    try:
+        dev = os.lstat(mount).st_dev
+    except OSError:
+        return {"dirs": [], "scanned": 0, "partial": True}
+    stack: list[tuple[str, tuple]] = [(mount, ())]
+    scanned, partial = 0, False
+    while stack:
+        if scanned >= max_entries or time.monotonic() > deadline:
+            partial = True
+            break
+        d, key = stack.pop()
+        try:
+            it = os.scandir(d)
+        except OSError:
+            continue
+        with it:
+            for e in it:
+                scanned += 1
+                k = key if len(key) >= max_depth else key + (e.name,)
+                for i in range(1, len(k) + 1):
+                    counts[k[:i]] = counts.get(k[:i], 0) + 1
+                try:
+                    if e.is_dir(follow_symlinks=False) and e.stat(follow_symlinks=False).st_dev == dev:
+                        stack.append((e.path, k))
+                except OSError:
+                    continue
+    kids: dict[tuple, list[tuple]] = {}
+    for k in counts:
+        if len(k) > 1:
+            kids.setdefault(k[:-1], []).append(k)
+    picked = []
+    for top in sorted((k for k in counts if len(k) == 1), key=lambda k: -counts[k])[: int(cfg.get("top_n") or 3)]:
+        cur = top
+        while len(cur) < max_depth and kids.get(cur):
+            best = max(kids[cur], key=lambda k: counts[k])
+            if counts[best] < share * counts[cur]:
+                break
+            cur = best
+        picked.append((os.path.join(mount, *cur), counts[cur]))
+    return {"dirs": sorted(picked, key=lambda kv: -kv[1]), "scanned": scanned, "partial": partial}
+
+
 def band_of(pct: float, mon: Mapping[str, Any]) -> str:
     if pct >= float(mon["critical_pct"]):
         return "critical"
@@ -104,6 +185,24 @@ def latest_manifest(rules: Mapping[str, Any], state_root: Optional[Path]) -> Opt
         "candidates": t.get("candidates"),
         "reclaimable_bytes": t.get("reclaimable_bytes"),
         "by_kind": t.get("by_kind"),
+    }
+
+
+def latest_tmp_manifest(rules: Mapping[str, Any], state_root: Optional[Path]) -> Optional[dict[str, Any]]:
+    """Totals of the latest tmp_hygiene manifest (DiskHygieneManifest@v1, scope tmp), or None."""
+    try:
+        p = DH.manifest_dir(rules, state_root) / rules["tmp"]["manifest_latest_name"]
+        m = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    if m.get("scope") != "tmp":
+        return None
+    t = m.get("totals") or {}
+    return {
+        "generated_at": m.get("generated_at"),
+        "candidates": t.get("candidates"),
+        "reclaimable_bytes": t.get("reclaimable_bytes"),
+        "reclaimable_files": t.get("reclaimable_files"),
     }
 
 
@@ -152,6 +251,52 @@ def intent_text(
     return subject, "; ".join(parts)
 
 
+def _kfiles(n: Optional[int]) -> str:
+    n = n or 0
+    return f"{n / 1e6:.2f}M" if n >= 1_000_000 else f"{n / 1000:.0f}k" if n >= 1000 else str(n)
+
+
+def _short(path: str, mount: str) -> str:
+    """``path`` relative to ``mount`` (the subject names the mount) with long components clipped, so three dirs fit
+    the 300-char summary."""
+    rel = os.path.relpath(path, mount)
+    parts = [p if len(p) <= 18 else p[:8] + "…" + p[-6:] for p in Path(rel).parts]
+    return os.path.join(*parts) if parts else "."
+
+
+def inode_intent_text(
+    m: Mapping[str, Any],
+    band: str,
+    ino: Mapping[str, Any],
+    top: Optional[Mapping[str, Any]],
+    tmp_manifest: Optional[Mapping[str, Any]],
+) -> tuple[str, str]:
+    """(subject, summary) for an inode band change. The subject is band-stable and names INODES, so the store's
+    (domain, kind, subject) dedupe never merges it with the byte alert of the same mount."""
+    mount = m["mount"]
+    if band == "ok":
+        subject = f"Disk {mount} INODES recovered: below {float(ino['warn_pct']):.0f}% inodes used"
+    else:
+        thr = float(ino["critical_pct"] if band == "critical" else ino["warn_pct"])
+        subject = f"Disk {mount} INODES {band.upper()}: at or above {thr:.0f}% inodes used"
+    parts = [
+        f"{m['inodes_used_pct']:.1f}% inodes used ({_kfiles(m['inodes_used'])} of {_kfiles(m['inodes_total'])}),"
+        f" {_gb(m.get('avail_bytes'))} bytes free"
+    ]
+    if top and top.get("dirs"):
+        parts.append(
+            "top files: "
+            + ", ".join(f"{_short(p, mount)} {_kfiles(n)}" for p, n in top["dirs"])
+            + (" (partial scan)" if top.get("partial") else "")
+        )
+    if tmp_manifest and tmp_manifest.get("reclaimable_files") is not None:
+        parts.append(
+            f"tmp plan {str(tmp_manifest.get('generated_at') or '')[:16]}: {tmp_manifest.get('candidates')} items,"
+            f" {_kfiles(tmp_manifest['reclaimable_files'])} files reclaimable (apply is operator-gated)"
+        )
+    return subject, "; ".join(parts)
+
+
 def _execution_id(now: datetime) -> str:
     rid = os.environ.get("TRADEAI_RUN_ID") or f"manual-{now.strftime('%Y%m%dT%H%M%S')}"
     return re.sub(r"[^A-Za-z0-9_-]", "-", rid)[-40:]
@@ -195,8 +340,16 @@ class _LedgerConn:
 
 
 def queue_host_intent(
-    *, producer: str, domain: str, kind: str, subject: str, summary: str, execution_id: str, node: str,
-    ledger_path: Optional[Path], now: Optional[float] = None,
+    *,
+    producer: str,
+    domain: str,
+    kind: str,
+    subject: str,
+    summary: str,
+    execution_id: str,
+    node: str,
+    ledger_path: Optional[Path],
+    now: Optional[float] = None,
 ) -> dict[str, Any]:
     """Queue one host comms intent (never a send). Raises HostIntentError(<reason>) with host_comms_intents' reasons:
     producer_refused, intent_unrouted, intent_rate_limited, intent_routes_unreadable, malformed_event, ledger_absent
@@ -205,8 +358,14 @@ def queue_host_intent(
     import time
 
     from scripts.lib.n8n_fabric_store import (
-        PRODUCER_RE, SUBJECT_MAX, SUMMARY_MAX, CommsIntentStore, FabricStoreError, load_host_intent_routes,
-        load_intent_routes, merged_intent_routes,
+        PRODUCER_RE,
+        SUBJECT_MAX,
+        SUMMARY_MAX,
+        CommsIntentStore,
+        FabricStoreError,
+        load_host_intent_routes,
+        load_intent_routes,
+        merged_intent_routes,
     )
 
     if not PRODUCER_RE.fullmatch(producer):
@@ -229,9 +388,15 @@ def queue_host_intent(
         flat = " ".join("".join(" " if ord(ch) < 32 or ord(ch) == 127 else ch for ch in str(text or "")).split())
         return flat if len(flat) <= limit else flat[: max(0, limit - 1)] + "…"
 
-    request = {"domain": domain, "kind": kind, "subject": clean(subject, SUBJECT_MAX),
-               "summary": clean(summary, SUMMARY_MAX), "workflow_id": f"host.{producer}",
-               "execution_id": str(execution_id)[:40], "node": clean(node, 64)}
+    request = {
+        "domain": domain,
+        "kind": kind,
+        "subject": clean(subject, SUBJECT_MAX),
+        "summary": clean(summary, SUMMARY_MAX),
+        "workflow_id": f"host.{producer}",
+        "execution_id": str(execution_id)[:40],
+        "node": clean(node, 64),
+    }
     try:
         ledger = _LedgerConn(path)
     except (sqlite3.Error, OSError) as exc:
@@ -248,7 +413,12 @@ def queue_host_intent(
 
 
 def run(
-    *, rules: Mapping[str, Any], state_root: Optional[Path], ledger: Optional[Path], apply: bool, now: datetime,
+    *,
+    rules: Mapping[str, Any],
+    state_root: Optional[Path],
+    ledger: Optional[Path],
+    apply: bool,
+    now: datetime,
     wall_start: Optional[datetime] = None,
 ) -> int:
     # the receipt's started_at is the real start (the executor binds it to the attempt window); `now` is the
@@ -263,9 +433,62 @@ def run(
     except (OSError, ValueError):
         state = {}
     mounts_state: dict[str, Any] = dict(state.get("mounts") or {})
+    inodes_state: dict[str, Any] = dict(state.get("inodes") or {})
+    ino = mon.get("inodes") or None
     manifest = latest_manifest(rules, state_root)
     results: list[dict[str, Any]] = []
     failures = 0
+
+    def queue(kind_band: str, subject: str, summary: str, node: str) -> dict[str, Any]:
+        return queue_host_intent(
+            producer=mon["producer"],
+            domain=mon["intent_domain"],
+            kind=mon["intent_kinds"][kind_band],
+            subject=subject,
+            summary=summary,
+            execution_id=_execution_id(now),
+            node=node,
+            ledger_path=ledger,
+            now=now.timestamp(),
+        )
+
+    inode_results: list[dict[str, Any]] = []
+    for mount in mon["mounts"] if ino else []:
+        m = measure_inodes(mount)
+        if m is None:
+            inode_results.append(
+                {"mount": mount, "metric": "inodes", "band": None, "note": "no_inode_limit_or_statvfs"}
+            )
+            continue
+        cur = band_of(m["inodes_used_pct"], ino)
+        prev = (inodes_state.get(mount) or {}).get("band")
+        alert = transition(prev, cur)
+        row: dict[str, Any] = {**m, "metric": "inodes", "band": cur, "previous_band": prev, "alert": alert}
+        if alert:
+            top_cfg = ino.get("top_dirs") or {}
+            top = top_file_dirs(mount, top_cfg) if mount in (top_cfg.get("mounts") or []) and cur != "ok" else None
+            subject, summary = inode_intent_text(m, cur, ino, top, latest_tmp_manifest(rules, state_root))
+            row.update(subject=subject, summary=summary, top_dirs=top)
+            if apply:
+                try:
+                    rec = queue(cur, subject, summary, "disk_usage_monitor.inodes")
+                    row["intent"] = {"intent_id": rec.get("intent_id"), "duplicate": rec.get("duplicate")}
+                except HostIntentError as exc:
+                    row["intent_error"] = exc.reason
+                    failures += 1
+                    inode_results.append(row)
+                    continue  # band NOT recorded: the next run retries the alert
+        if apply:
+            entry = dict(inodes_state.get(mount) or {})
+            if entry.get("band") != cur:
+                entry["since"] = now.isoformat()
+            entry.update(band=cur, last_pct=m["inodes_used_pct"], checked_at=now.isoformat())
+            if alert:
+                entry["alerted_at"] = now.isoformat()
+                entry["alerted_band"] = cur
+            inodes_state[mount] = entry
+        inode_results.append(row)
+
     for mount in mon["mounts"]:
         m = measure(mount)
         if m is None:
@@ -282,17 +505,7 @@ def run(
             row.update(subject=subject, summary=summary)
             if apply:
                 try:
-                    rec = queue_host_intent(
-                        producer=mon["producer"],
-                        domain=mon["intent_domain"],
-                        kind=mon["intent_kinds"][cur],
-                        subject=subject,
-                        summary=summary,
-                        execution_id=_execution_id(now),
-                        node="disk_usage_monitor",
-                        ledger_path=ledger,
-                        now=now.timestamp(),
-                    )
+                    rec = queue(cur, subject, summary, "disk_usage_monitor")
                     row["intent"] = {"intent_id": rec.get("intent_id"), "duplicate": rec.get("duplicate")}
                 except HostIntentError as exc:
                     row["intent_error"] = exc.reason
@@ -309,7 +522,7 @@ def run(
                 entry["alerted_band"] = cur
             mounts_state[mount] = entry
         results.append(row)
-    summary = {"mounts": results, "manifest": manifest, "failures": failures}
+    summary = {"mounts": results, "inodes": inode_results, "manifest": manifest, "failures": failures}
     if not apply:
         R.dry_run_report(LANE_ID, summary, would_write=[str(state_path)], receipt=R.receipt_path(LANE_ID, state_root))
         return 0 if not failures else 1
@@ -319,7 +532,9 @@ def run(
         from scripts.lib.atomic_json_store import atomic_write_json
 
         atomic_write_json(
-            state_path, {"schema": STATE_SCHEMA, "updated_at": now.isoformat(), "mounts": mounts_state}, indent=1
+            state_path,
+            {"schema": STATE_SCHEMA, "updated_at": now.isoformat(), "mounts": mounts_state, "inodes": inodes_state},
+            indent=1,
         )
     except OSError as exc:
         ok = False
@@ -350,6 +565,8 @@ def run(
                 "receipt": str(written) if written else None,
                 "bands": {r["mount"]: r.get("band") for r in results},
                 "alerts": {r["mount"]: r.get("alert") for r in results if r.get("alert")},
+                "inode_bands": {r["mount"]: r.get("band") for r in inode_results},
+                "inode_alerts": {r["mount"]: r.get("alert") for r in inode_results if r.get("alert")},
                 "failures": failures,
             }
         )
@@ -385,6 +602,13 @@ def main(argv: Optional[list[str]] = None) -> int:
                 raise DH.RulesError(f"rules_missing:monitor.{key}")
         if not float(mon["warn_pct"]) < float(mon["critical_pct"]):
             raise DH.RulesError("monitor_thresholds_out_of_order")
+        ino = mon.get("inodes")
+        if ino is not None:
+            for key in ("warn_pct", "critical_pct"):
+                if key not in ino:
+                    raise DH.RulesError(f"rules_missing:monitor.inodes.{key}")
+            if not float(ino["warn_pct"]) < float(ino["critical_pct"]):
+                raise DH.RulesError("monitor_inode_thresholds_out_of_order")
     except (DH.RulesError, KeyError, TypeError, ValueError) as exc:
         print(json.dumps({"ok": False, "error": str(exc)}))
         if a.apply:

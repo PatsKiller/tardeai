@@ -1,7 +1,7 @@
 {
   "schema": "DiskHygieneRules@v1",
   "as_of": "2026-10-18",
-  "authority": "operator 2026-10-18: 'a script with rules that's repeatable, n8n should run this weekly; and also monitor when a threshold is over 80%, fix and move to n8n where monitored.' Readers: scripts/disk_hygiene.py (rules A), scripts/disk_usage_monitor.py (monitor B). Packet docs/ops/packets/disk-hygiene-n8n-20261018/. Changed only by reviewed PR.",
+  "authority": "operator 2026-10-18: 'a script with rules that's repeatable, n8n should run this weekly; and also monitor when a threshold is over 80%, fix and move to n8n where monitored.' Readers: scripts/disk_hygiene.py (rules A), scripts/disk_usage_monitor.py (monitor B), scripts/tmp_hygiene.py (tmp, operator 2026-10-19 after the /tmp inode incident). Packet docs/ops/packets/disk-hygiene-n8n-20261018/. Changed only by reviewed PR.",
   "_paths": "'~' expands to the running user's home. Every threshold, path and keep-count lives here; the scripts hold no defaults of their own beyond refusing to run without this file.",
   "home": "~",
   "protected_paths": {
@@ -109,8 +109,21 @@
     "idle_days": 7,
     "git_timeout_s": 60,
     "ignored_listing_max_lines": 200000,
-    "ignored_scan_skip_dirs": ["node_modules", ".venv", "venv", "site-packages", "__pycache__", "pytest-of-*", ".pytest_cache", ".mypy_cache", ".ruff_cache"],
-    "ignored_scan_skip_suffixes": [".pyc", ".pyo"],
+    "ignored_scan_skip_dirs": [
+      "node_modules",
+      ".venv",
+      "venv",
+      "site-packages",
+      "__pycache__",
+      "pytest-of-*",
+      ".pytest_cache",
+      ".mypy_cache",
+      ".ruff_cache"
+    ],
+    "ignored_scan_skip_suffixes": [
+      ".pyc",
+      ".pyo"
+    ],
     "size_workers": 6,
     "size_timeout_s": 600
   },
@@ -192,10 +205,56 @@
       "cache_entry"
     ]
   },
+  "tmp": {
+    "_why": "Incident 2026-10-19 ~13:40 ET: /tmp (tmpfs, 1,048,576 inodes) hit 97% INODES with 20G bytes free; ended Claude sessions' scratch dirs and pytest temp held the files. scripts/tmp_hygiene.py, n8n lane tmp-hygiene (daily 05:00 ET, --plan: manifest only). Only claude_scratch and pytest entries are ever evaluated; every other /tmp entry is never a candidate and never scanned. Deletion is --apply with TRADEAI_DISK_HYGIENE_GRANT, never under the n8n executor, exactly like the home rules.",
+    "root": "/tmp",
+    "claude_scratch": {
+      "_why": "<root>/<dir_name>/<project>/<session uuid>/: candidate only if idle (newest mtime of the whole tree, bounded scan) > idle_days AND no /proc/*/cwd and no /proc/*/fd inside AND its transcript <transcripts_dir>/<project>/<uuid>.jsonl, when present, is older than transcript_idle_days AND every git tree inside is safe to drop (registered worktrees go through `git worktree remove`, never --force).",
+      "enabled": true,
+      "dir_name": "claude-{uid}",
+      "session_regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+      "idle_days": 2,
+      "transcripts_dir": "~/.claude/projects",
+      "transcript_idle_days": 2,
+      "worktree_search_depth": 3
+    },
+    "pytest": {
+      "_why": "<root>/<dir_name>/<entry_glob> (never the pytest-current symlink): candidate if the newest mtime of the tree is older than older_than_days and no cwd / open fd is inside.",
+      "enabled": true,
+      "dir_name": "pytest-of-{user}",
+      "entry_glob": "pytest-*",
+      "older_than_days": 1
+    },
+    "never_touch_globs": [
+      "n8n-campaign-*",
+      "tradeai-*",
+      "momentum-*",
+      "systemd-private-*",
+      ".X11-unix",
+      ".ICE-unix",
+      "tmux-*",
+      "ssh-*",
+      "snap-private-tmp"
+    ],
+    "scan": {
+      "_why": "per-tree bounded lstat walk; a tree the cap stops is never a candidate (idleness unproven)",
+      "time_cap_s": 120,
+      "max_entries": 3000000
+    },
+    "manifest_latest_name": "tmp_hygiene_manifest_latest.json",
+    "untouched_list_max": 200,
+    "apply": {
+      "manifest_max_age_hours": 24,
+      "max_items_per_run": 200,
+      "max_bytes_per_run": 21474836480,
+      "max_files_per_run": 2000000
+    }
+  },
   "monitor": {
-    "_why": "scripts/disk_usage_monitor.py, n8n lane disk-usage-monitor (*/15). Band = ok | warn | critical by df-style used% (used / (used + available)). One host comms intent per band CHANGE (dedupe by band, never by raw percent).",
+    "_why": "scripts/disk_usage_monitor.py, n8n lane disk-usage-monitor (*/15). Band = ok | warn | critical by df-style used% (used / (used + available)). One host comms intent per band CHANGE (dedupe by band, never by raw percent). Inodes (operator 2026-10-19, after /tmp hit 97% inodes with bytes free): every mount is also banded by inode use% (statvfs f_files / f_ffree) with its own thresholds; dedupe is per (mount, metric) band.",
     "mounts": [
-      "/"
+      "/",
+      "/tmp"
     ],
     "warn_pct": 80.0,
     "critical_pct": 90.0,
@@ -240,6 +299,21 @@
     ],
     "measure_consumers_on": "alert",
     "du_timeout_s": 90,
-    "top_consumers": 5
+    "top_consumers": 5,
+    "inodes": {
+      "_why": "inode bands, separate from the byte bands; a filesystem reporting f_files = 0 has no inode limit and is not banded. On an inode alert the summary names the top dirs by file count (bounded scan) for top_dirs.mounts, and the latest tmp_hygiene manifest's reclaimable inodes.",
+      "warn_pct": 80.0,
+      "critical_pct": 90.0,
+      "top_dirs": {
+        "mounts": [
+          "/tmp"
+        ],
+        "max_depth": 3,
+        "dominant_share": 0.5,
+        "time_cap_s": 20,
+        "max_entries": 3000000,
+        "top_n": 3
+      }
+    }
   }
 }

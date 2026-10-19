@@ -9,6 +9,7 @@ threshold is over 80%". Operator 2026-10-19: keep the weekly lane on `--plan` (m
 |---|---|---|---|---|
 | `disk-usage-monitor` | every 15 min | `disk_usage_monitor.py --apply` | band state file, receipt, one host comms intent per band change (warn 80%, critical 90%) | nothing |
 | `disk-hygiene` | Sun 04:00 ET | `disk_hygiene.py --plan` | `DiskHygieneManifest@v1` (path, kind, size, rule evidence) + `LaneRunReceipt@v2` | **nothing** |
+| `tmp-hygiene` | daily 05:00 ET | `tmp_hygiene.py --plan` | `DiskHygieneManifest@v1` with `scope: "tmp"` (path, kind, file_count, size, rule evidence) + `LaneRunReceipt@v2` | **nothing** |
 
 - `--plan` writes a manifest and a receipt only. It is not `--dry-run`, which writes nothing at all. The monitor's
   "reclaimable GB" estimate reads the latest manifest, and the first real cleanup needs a manifest to review.
@@ -17,6 +18,39 @@ threshold is over 80%". Operator 2026-10-19: keep the weekly lane on `--plan` (m
   manifest written within the configured hours, a per-item re-validation, and the byte/item caps from
   `config/disk_hygiene_rules.json`.
 - Automated deletion also needs AGENTS.md 15.0.0 (#1852), which is the operator's decision.
+
+## Incident 2026-10-19: /tmp ran out of inodes, not bytes
+
+At about 13:40 ET, /tmp (a tmpfs: 31G, 1,048,576 inodes) reached 97% of its inodes while 20G of bytes were free.
+Tools failed with ENOSPC. The files sat in three places:
+
+- ended Claude sessions' scratch dirs `/tmp/claude-<uid>/<project>/<uuid>/`. One held 207k files (git worktrees and
+  pytest temp).
+- `/tmp/pytest-of-johnclaw` (57k files).
+- long-running campaign dirs such as `/tmp/n8n-campaign-20261018` (243k files, still in use).
+
+Nothing caught it. The monitor checked bytes only, and the hygiene rules covered home-dir clones and releases only.
+The operator approved a one-off manual cleanup (back to 55%) and this follow-up (2026-10-19):
+
+- **Inode bands.** `disk_usage_monitor.py` now also bands inode use per mount (statvfs `f_files` / `f_ffree`), and
+  `/tmp` is a monitored mount. Inode thresholds are separate from byte thresholds (`monitor.inodes`, warn 80, critical
+  90). State and dedupe are per (mount, metric), so an inode alert never hides a byte alert or the reverse. The alert
+  names the top `/tmp` dirs by file count (bounded scan: depth 3 at most, a time cap and an entry cap) and the latest
+  `/tmp` plan's reclaimable inodes. It uses the same intent path as the byte alert (`CommsIntentStore`).
+- **`tmp-hygiene` lane** (`scripts/tmp_hygiene.py`, rules `config/disk_hygiene_rules.json` `tmp`). Only two patterns
+  are ever evaluated:
+  - a session scratch dir is a candidate only if all of these hold: its whole tree is idle for more than 2 days;
+    no process has its cwd inside; no process holds an open fd inside; its transcript
+    `~/.claude/projects/<project>/<uuid>.jsonl` (when present) is older than 2 days; and every git tree inside is
+    safe to drop. A registered worktree must be clean with no commit reachable only from its HEAD, and apply removes
+    it with `git worktree remove` (never `--force`).
+  - a `pytest-of-<user>/pytest-*` dir is a candidate when it is older than 1 day and nothing has a cwd or open fd
+    inside.
+
+  Every other /tmp entry (`n8n-campaign-*`, `tradeai-*`, `momentum-*` and so on) is never scanned and never a
+  candidate. The manifest records `file_count` per item and reports inodes reclaimable alongside bytes.
+- Deletion uses the same gate as the home rules: `cutover.sh tmp-apply --apply` with `TRADEAI_DISK_HYGIENE_GRANT`,
+  never under the n8n executor.
 
 ## Order
 
@@ -27,9 +61,16 @@ threshold is over 80%". Operator 2026-10-19: keep the weekly lane on `--plan` (m
 5. `bash cutover.sh publish`
 6. Wait one `*/15` slot, then `bash cutover.sh proof`.
 7. After the first Sunday manifest: review it, then (operator only) `bash cutover.sh hygiene-apply --apply`.
-8. Rollback: `bash cutover.sh rollback --apply`.
+8. `/tmp`: `bash cutover.sh tmp-dry` (read-only) at any time. After the first daily `tmp-hygiene` manifest, review it,
+   then (operator only) `bash cutover.sh tmp-apply --apply`.
+9. Rollback: `bash cutover.sh rollback --apply` (drops all three lanes from the live list).
 
 ## Evidence
 
 - `01_dry_run_20261019.txt`: the first read-only run against the real home dir. 113 candidates,
   18.58 GB reclaimable, nothing deleted.
+- `02_tmp_dry_run_20261019.txt`: the first read-only `/tmp` run, taken after the manual cleanup (/tmp at about 55%
+  inodes). 16 candidates (ended session scratch dirs), 8.9k inodes and 0.34 GB reclaimable, nothing deleted.
+  Excluded: 9 for recent activity (pytest dirs and live sessions, 55.2k inodes), 2 for an open fd, 1 for a live
+  transcript, and 1 for a dirty git worktree. 17,991 entries match no rule and were never scanned (505 on the
+  never-touch globs).

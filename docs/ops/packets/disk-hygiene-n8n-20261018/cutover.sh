@@ -6,23 +6,31 @@
 # Lanes (n8n-native, fired by the already-active tradeai-dispatcher; no cron line or unit ever existed):
 #   disk-usage-monitor  */15        scripts/disk_usage_monitor.py --apply  (bands; one host comms intent per band change)
 #   disk-hygiene        Sun 04:00   scripts/disk_hygiene.py --plan         (manifest only: DELETES NOTHING)
+#   tmp-hygiene         daily 05:00 scripts/tmp_hygiene.py --plan          (/tmp manifest with inodes: DELETES NOTHING)
+# 2026-10-19 (operator, after /tmp, a tmpfs, hit 97% INODES with 20G bytes free and tools failed with ENOSPC): the
+# monitor also bands inode use per mount (/ and /tmp), and tmp-hygiene plans the /tmp reclaim (ended Claude session
+# scratch dirs, old pytest temp; every other /tmp entry is never touched).
 # Until a lane is in TRADEAI_N8N_RELAY_LIVE_LANES the gateway demotes its fire to dry_run (prints only).
 #
 #   bash cutover.sh pre                     read-only: served PR state, live list, units, dispatcher row, served dry
 #                                           runs of both scripts (monitor bands; hygiene plan without sizes)
 #   bash cutover.sh dry-manifest [--apply]  hygiene plan WITH sizes + human summary. Dry: --dry-run (writes nothing).
 #                                           --apply: --plan, writes the manifest + receipt under $STATE (deletes nothing)
-#   bash cutover.sh relay    [--apply]      live list += both lanes; backup + read-back; restart relay AND gateway
+#   bash cutover.sh relay    [--apply]      live list += all three lanes; backup + read-back; restart relay AND gateway
 #                                           (config-write + service grant: TRADEAI_FABRIC_GRANT)
 #   bash cutover.sh publish                 read-only: NO import needed; served tradeai-dispatcher.json == INDEX, active
-#   bash cutover.sh proof [--since ISO]     read-only: live RUN_DONE runs with verdict produced for both lanes, the
+#   bash cutover.sh proof [--since ISO]     read-only: live RUN_DONE runs with verdict produced for every lane, the
 #                                           monitor state file, the latest manifest, and that its items still exist
 #   bash cutover.sh backstop                PRINT ONLY: the operator commands that move the systemd
 #                                           disk_pressure_guard to a 95% host backstop (never run by this script)
 #   bash cutover.sh hygiene-apply [--apply] OPERATOR ONLY, after reviewing the manifest: dry prints the latest
 #                                           manifest's counts; --apply needs TRADEAI_DISK_HYGIENE_GRANT and runs
 #                                           disk_hygiene.py --apply (re-validates every item, caps from config)
-#   bash cutover.sh rollback [--apply]      live list -= both lanes (backup + read-back); restart relay AND gateway.
+#   bash cutover.sh tmp-dry                 read-only: tmp_hygiene.py --dry-run --report against the real /tmp
+#                                           (writes nothing; prints candidates, inodes / bytes reclaimable, exclusions)
+#   bash cutover.sh tmp-apply [--apply]     OPERATOR ONLY, after reviewing the /tmp manifest: dry prints its counts;
+#                                           --apply needs TRADEAI_DISK_HYGIENE_GRANT and runs tmp_hygiene.py --apply
+#   bash cutover.sh rollback [--apply]      live list -= all three lanes (backup + read-back); restart relay AND gateway.
 #                                           NEVER deactivates tradeai-dispatcher (it fires every other live lane)
 #
 # Order: (merge + promote so CURRENT serves the PR) -> pre -> dry-manifest -> relay --apply -> publish -> wait one
@@ -42,7 +50,7 @@ SYSTEMCTL_BIN=${SYSTEMCTL_BIN:-systemctl}
 DOCKER_BIN=${DOCKER_BIN:-docker}
 PROC_ROOT=${PROC_ROOT:-/proc}
 HYGIENE_EXTRA=${HYGIENE_EXTRA:-}
-LANES=(disk-usage-monitor disk-hygiene)
+LANES=(disk-usage-monitor disk-hygiene tmp-hygiene)
 WID=tradeai-dispatcher
 UNITS=(tradeai-n8n-run-relay tradeai-n8n-coordination-gateway)
 GUARD_UNIT=tradeai-disk-pressure-guard
@@ -66,7 +74,8 @@ reg = {r["lane_id"]: r for r in j("config/lane_registry.json")["lanes"]}
 allow = {e["lane_id"]: e for e in j("config/n8n_run_allowlist.json")["lanes"]}
 hc = {c["id"]: c for c in j("config/n8n_health_contracts.json")["contracts"]}
 routes = {(r["domain"], r["kind"]) for r in j("config/host_comms_intent_routes.json")["routes"]}
-want = {"disk-usage-monitor": (["*/15 * * * *"], ["--apply"]), "disk-hygiene": (["0 4 * * 0"], ["--plan"])}
+want = {"disk-usage-monitor": (["*/15 * * * *"], ["--apply"]), "disk-hygiene": (["0 4 * * 0"], ["--plan"]),
+        "tmp-hygiene": (["0 5 * * *"], ["--plan"])}
 checks = {}
 for lane, (cron, live_arg) in want.items():
     r, a, c = reg.get(lane) or {}, allow.get(lane) or {}, hc.get(lane) or {}
@@ -79,8 +88,11 @@ for lane, (cron, live_arg) in want.items():
     checks[f"{lane}: health contract REVIEWED canary min_produced"] = (
         c.get("status") == "REVIEWED" and c.get("stage") == "canary"
         and (c.get("expected_output") or {}).get("rule") == "min_produced")
-hy = allow.get("disk-hygiene") or {}
-checks["disk-hygiene: --apply is never an allowlist argv"] = "--apply" not in json.dumps([hy.get(k) for k in ("command", "live_arg", "dry_run_arg")])
+for lane in ("disk-hygiene", "tmp-hygiene"):
+    hy = allow.get(lane) or {}
+    checks[f"{lane}: --apply is never an allowlist argv"] = "--apply" not in json.dumps([hy.get(k) for k in ("command", "live_arg", "dry_run_arg")])
+rules = j("config/disk_hygiene_rules.json")
+checks["config/disk_hygiene_rules.json monitor.inodes + tmp rules"] = bool(rules.get("tmp")) and bool(rules["monitor"].get("inodes"))
 checks["host routes host/disk_usage_{warn,critical,recovered}"] = {
     ("host", "disk_usage_warn"), ("host", "disk_usage_critical"), ("host", "disk_usage_recovered")} <= routes
 checks["config/disk_hygiene_rules.json present"] = os.path.isfile(os.path.join(root, "config/disk_hygiene_rules.json"))
@@ -273,8 +285,24 @@ EOF
     [[ -n "${TRADEAI_DISK_HYGIENE_GRANT:-}" ]] || fail "TRADEAI_DISK_HYGIENE_GRANT not set"
     [[ -z "${TRADEAI_RUN_ID:-}" ]] || fail "TRADEAI_RUN_ID is set: apply never runs under the n8n executor"
     (cd "$SERVED" && "$PY" scripts/disk_hygiene.py --apply --manifest "$MAN" --state-root "$STATE" "${EXTRA_A[@]}") ;;
+  tmp-dry)
+    echo "  DRY RUN — tmp_hygiene --dry-run --report (writes nothing, deletes nothing)"
+    (cd "$SERVED" && "$PY" scripts/tmp_hygiene.py --dry-run --report --state-root "$STATE" "${EXTRA_A[@]}") ;;
+  tmp-apply)
+    MAN="$STATE/data/runtime/disk_hygiene/tmp_hygiene_manifest_latest.json"
+    [[ -f "$MAN" ]] || fail "no /tmp manifest at $MAN (wait for the daily tmp-hygiene lane)"
+    "$PY" - "$MAN" <<'EOF'
+import json, sys
+m = json.load(open(sys.argv[1])); t = m["totals"]
+print(f"  /tmp manifest {m['generated_at']}: {t['candidates']} candidates, {t['reclaimable_files']} inodes, "
+      f"{t['reclaimable_gb']} GB; by kind " + ", ".join(f"{k} {v['count']}" for k, v in sorted(t["by_kind"].items())))
+EOF
+    if [[ $APPLY == 0 ]]; then echo "  DRY RUN — nothing removed. Review the manifest, then: TRADEAI_DISK_HYGIENE_GRANT=<id> $0 tmp-apply --apply"; exit 0; fi
+    [[ -n "${TRADEAI_DISK_HYGIENE_GRANT:-}" ]] || fail "TRADEAI_DISK_HYGIENE_GRANT not set"
+    [[ -z "${TRADEAI_RUN_ID:-}" ]] || fail "TRADEAI_RUN_ID is set: apply never runs under the n8n executor"
+    (cd "$SERVED" && "$PY" scripts/tmp_hygiene.py --apply --manifest "$MAN" --state-root "$STATE" "${EXTRA_A[@]}") ;;
   rollback)
-    # R1 (this step, config-write + service grant): both lanes leave the live list; the gateway then demotes every
+    # R1 (this step, config-write + service grant): all three lanes leave the live list; the gateway then demotes every
     # dispatcher fire to dry_run (prints only). R2 (config): a PR that sets dispatch.mode dry_run / stage shadow and
     # live_arg null -> serve. NEVER deactivate tradeai-dispatcher: it fires every other dispatch-live lane. Receipts,
     # the monitor state and the manifests stay (rail 6); a queued band intent still reaches the operator.
@@ -292,5 +320,5 @@ EOF
     for l in "${LANES[@]}"; do if in_live_list "$l"; then fail "READ-BACK FAILED: $l still in $LIVE_LANES_ENV"; fi; done
     for l in "${KEEP[@]}"; do live_lanes | tr ' ' '\n' | grep -qx -- "$l" || fail "READ-BACK FAILED: lost $l"; done
     restart_units absent ;;
-  *) fail "usage: $0 pre|dry-manifest|relay|publish|proof|backstop|hygiene-apply|rollback [--apply] [--since ISO]" ;;
+  *) fail "usage: $0 pre|dry-manifest|relay|publish|proof|backstop|hygiene-apply|tmp-dry|tmp-apply|rollback [--apply] [--since ISO]" ;;
 esac

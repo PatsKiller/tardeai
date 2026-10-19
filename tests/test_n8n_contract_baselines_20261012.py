@@ -48,7 +48,9 @@ def test_all_operative_baselines_have_applicable_fields_and_order():
     # + 1 (2026-10-17 comms-intent consumer live, D2: n8n-comms-intent-consumer REVIEWED at canary) = 140.
     # + 2 (2026-10-18 disk hygiene on n8n, operator 2026-10-18: disk-usage-monitor and disk-hygiene REVIEWED at
     # canary; tests/support/disk_hygiene_n8n.py, tests/test_disk_hygiene_20261018.py) = 142.
-    assert len(catalogue["contracts"]) == 142
+    # + 1 (2026-10-19 /tmp hygiene, operator after the /tmp inode incident: tmp-hygiene REVIEWED at canary;
+    # tests/test_tmp_hygiene_20261019.py) = 143.
+    assert len(catalogue["contracts"]) == 143
     assert not {row["id"]: A.baseline_errors(row) for row in catalogue["contracts"] if A.baseline_errors(row)}
 
 

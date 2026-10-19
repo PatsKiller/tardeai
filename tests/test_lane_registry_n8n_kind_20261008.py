@@ -359,7 +359,9 @@ def test_native_monitor_rows_do_not_flip_a_host_scheduler():
                         *CIL.LIVE,
                         # 2026-10-18 disk hygiene (weekly, dry-run) + disk-usage monitor (*/15): n8n-native rows;
                         # the systemd disk_pressure_guard stays as the host backstop and is not flipped.
-                        "disk-hygiene", "disk-usage-monitor"}
+                        "disk-hygiene", "disk-usage-monitor",
+                        # 2026-10-19 /tmp hygiene (daily, --plan; operator after the /tmp inode incident).
+                        "tmp-hygiene"}
     assert all(native[lane]["scheduler"]["expression"] == "dispatcher" for lane in n8n_native_lanes)
     # 2026-10-15: the step lanes of the n8n fabric process hermes-learning (AGENTS.md §23.23). Fired only by the
     # process workflow, NEVER_SCHEDULED until it is published for shadow; `match` names the process step, so no

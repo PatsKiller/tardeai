@@ -137,6 +137,7 @@ class World:
                              "proc_root": str(self.proc)}
         mon = doc["monitor"]
         mon["consumer_categories"] = [{"category": "models", "path": f"{h}/llama-cpp-vulkan"}]
+        doc["tmp"]["root"] = str(self.tmp / "tmproot")  # never the real /tmp (tests/test_tmp_hygiene_20261019.py)
         return doc
 
     def write_rules(self) -> None:
@@ -558,6 +559,10 @@ def test_apply_rechecks_the_never_touch_list_even_for_a_tampered_manifest(world)
 
 @pytest.fixture
 def mon(world, monkeypatch):
+    # byte bands on "/" only here; inode bands and /tmp are pinned in tests/test_tmp_hygiene_20261019.py
+    world.rules["monitor"]["mounts"] = ["/"]
+    world.write_rules()
+    monkeypatch.setattr(DM, "measure_inodes", lambda mount: None)
     ledger = world.state / "data" / "governance" / "n8n_coordination_ledger.sqlite"
     ledger.parent.mkdir(parents=True)
     CoordinationLedger(ledger).close()  # the gateway creates the ledger; a lane never does
@@ -738,7 +743,7 @@ def test_the_systemd_guard_is_unchanged_its_backstop_is_a_printed_proposal():
     assert "DEFAULT_USED_PCT = 85.0" in src  # the code default stays; the drop-in passes --used-pct
     from tests.support import disk_hygiene_n8n as S
 
-    assert S.LIVE == LANES
+    assert S.LIVE == (*LANES, "tmp-hygiene")  # + the /tmp plan lane 2026-10-19
 
 
 # ── 7. the operator packet against fakes ──────────────────────────────────────────────────────────────────────────
@@ -788,7 +793,8 @@ def pk(tmp_path):
 
 def _env_proc(pk, carries: bool) -> None:
     text = "PATH=/usr/bin\0TRADEAI_N8N_RELAY_LIVE_LANES=heartbeat-watch n8n-comms-intent-consumer"
-    (pk.proc / "4242" / "environ").write_text(text + (" disk-usage-monitor disk-hygiene\0" if carries else "\0"))
+    (pk.proc / "4242" / "environ").write_text(
+        text + (" disk-usage-monitor disk-hygiene tmp-hygiene\0" if carries else "\0"))
 
 
 def test_packet_is_dry_by_default_set_f_and_never_deletes_or_touches_cron_or_workflows():
@@ -811,7 +817,7 @@ def test_relay_dry_run_changes_nothing_and_apply_needs_a_grant(pk):
     before = pk.live.read_bytes()
     p = pk.run("relay")
     assert p.returncode == 0, p.stdout + p.stderr
-    assert "DRY RUN" in p.stdout and "adds: disk-usage-monitor disk-hygiene" in p.stdout
+    assert "DRY RUN" in p.stdout and "adds: disk-usage-monitor disk-hygiene tmp-hygiene" in p.stdout
     assert "DISK HYGIENE N8N PR SERVED" in p.stdout
     p = pk.run("relay", "--apply")
     assert p.returncode == 1 and "TRADEAI_FABRIC_GRANT not set" in p.stdout
@@ -823,7 +829,7 @@ def test_relay_apply_appends_both_backs_up_reads_back_and_restarts(pk):
     p = pk.run("relay", "--apply", TRADEAI_FABRIC_GRANT="g1")
     assert p.returncode == 0, p.stdout + p.stderr
     assert pk.live.read_text() == ("# keep me\nTRADEAI_N8N_RELAY_LIVE_LANES=heartbeat-watch n8n-comms-intent-consumer "
-                                   "disk-usage-monitor disk-hygiene\n")
+                                   "disk-usage-monitor disk-hygiene tmp-hygiene\n")
     assert oct(pk.live.stat().st_mode & 0o777) == "0o600"
     assert len(list(pk.tmp.glob("n8n-live-lanes.env.bak-*-disk-hygiene-n8n-live"))) == 1
     calls = pk.calls.read_text()
@@ -838,8 +844,8 @@ def test_relay_apply_fails_when_a_unit_did_not_pick_up_the_lanes(pk):
     assert p.returncode == 1 and "env lacks" in p.stdout
 
 
-def test_rollback_removes_only_the_two_lanes(pk):
-    pk.live.write_text("TRADEAI_N8N_RELAY_LIVE_LANES=heartbeat-watch disk-usage-monitor x disk-hygiene\n")
+def test_rollback_removes_only_the_packet_lanes(pk):
+    pk.live.write_text("TRADEAI_N8N_RELAY_LIVE_LANES=heartbeat-watch disk-usage-monitor x disk-hygiene tmp-hygiene\n")
     p = pk.run("rollback")
     assert p.returncode == 0 and "DRY RUN" in p.stdout and "disk-hygiene" in pk.live.read_text()
     _env_proc(pk, carries=False)

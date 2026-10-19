@@ -524,6 +524,8 @@ N8N_NATIVE_CANARY_LIVE_ARG = {
     "n8n-comms-intent-consumer": ["--apply"],
     "disk-usage-monitor": ["--apply"],
     "disk-hygiene": ["--plan"],
+    # 2026-10-19 operator (after /tmp hit 97% inodes): daily /tmp plan, a manifest, never a deletion.
+    "tmp-hygiene": ["--plan"],
 }
 #: lane repair 2026-10-15: a systemd-timer lane at shadow (its timer keeps the real work; dispatch.cron mirrors the
 #: timer's OnCalendar). tests/test_lane_repair_ri_hermes_litmus_20261015.py pins the row and its allowlist entry.

@@ -92,6 +92,10 @@ GATES = [
     # manifest, re-validates every item, grant + caps) and the band-deduped disk-usage monitor, both as n8n lanes;
     # never-touch list enforced in code. Hermetic: tmp git repos/worktrees, fake df/proc/crontab.
     ("disk_hygiene_n8n_20261018", ["tests/test_disk_hygiene_20261018.py"]),
+    # ANCHOR: TMP_HYGIENE_20261019 — /tmp inode incident 2026-10-19: inode bands per (mount, metric) in the disk-usage
+    # monitor (top dirs by file count, bounded scan) and the daily tmp-hygiene plan lane (ended Claude session scratch,
+    # old pytest temp, never-touch for everything else; operator-gated apply). Hermetic: fake /tmp, /proc, statvfs.
+    ("tmp_hygiene_20261019", ["tests/test_tmp_hygiene_20261019.py"]),
     ("fabric_grant_id_20261018", ["tests/test_fabric_grant_id_20261018.py"]),
     # Feedback's future queue-only capability does not enable its held sixth stage.
     # Exercise actual authenticated admission and executor stage clamping, with fake effects.

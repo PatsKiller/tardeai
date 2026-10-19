@@ -3917,6 +3917,32 @@
       "market_gate": false,
       "output_signal": "data/runtime/disk-hygiene_last.json",
       "output_receipt": "v2"
+    },
+    {
+      "lane_id": "tmp-hygiene",
+      "env_names": [
+        "TRADEAI_DISK_HYGIENE_GRANT",
+        "TRADEAI_PERSISTENT_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "enforce",
+      "env_evidence": "scripts/tmp_hygiene.py reads TRADEAI_RUN_ID (base) and TRADEAI_DISK_HYGIENE_GRANT, the latter ONLY on the --apply path, which refuses before reading it whenever TRADEAI_RUN_ID is set (every executor child): it is listed so the enforce inventory covers the literal read, not because n8n may apply (live_arg --plan; the executor's own env carries no such grant). Closure: scripts/disk_hygiene.py (same reads), lib/lane_last_receipt.py -> persistent_state_root (TRADEAI_PERSISTENT_STATE_ROOT, a path), atomic_json_store; no credential. Subprocesses: git (read-only, GIT_OPTIONAL_LOCKS=0) on git trees inside a scratch dir. Reads /proc/*/cwd and /proc/*/fd link targets (never file contents). No DB, no network, no send.",
+      "source": "n8n-native host lane (operator 2026-10-19 after the /tmp inode incident; packet docs/ops/packets/disk-hygiene-n8n-20261018): fired by tradeai-dispatcher at 0 5 * * *; no cron line, no unit, so the lock is the lane's own. CANARY: live_arg [\"--plan\"]; dry_run_arg --dry-run (prints only, writes nothing) kept for clamp/rollback. --apply (deletion) is never an argv here: AGENTS.md §23.14.",
+      "command": [
+        "$PY",
+        "scripts/tmp_hygiene.py"
+      ],
+      "lock": "/tmp/tradeai_tmp_hygiene.lock",
+      "lock_kind": "flock",
+      "timeout_s": 1800,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": [
+        "--plan"
+      ],
+      "market_gate": false,
+      "output_signal": "data/runtime/tmp-hygiene_last.json",
+      "output_receipt": "v2"
     }
   ],
   "blocked_reasons": {
