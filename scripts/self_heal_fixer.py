@@ -423,6 +423,12 @@ class Attempt:
                                # recorded for the operator, NEVER read by the evaluator (claims are not evidence)
                                "backend_result": {key: res.get(key) for key in ("ok", "cost_usd", "num_turns",
                                                                                 "subtype", "summary", "rc")}}
+        # External review 2026-10-18 (F4): missing / malformed usage is unknown cost, never zero. The iteration is
+        # then charged its whole reservation (the budget the backend was launched with), which is what the job's
+        # spend, its durable claim settlement and the cost stop all read (iteration_charge).
+        known = res.get("cost_known") is not False and res.get("cost_usd") is not None
+        rec["cost_unknown"] = not known
+        rec["charged_usd"] = round(float(res["cost_usd"]), 4) if known else round(budget, 4)
         cand = self.candidate()
         if cand.get("error"):
             rec.update(candidate=cand, refusals=[], failing=[f"candidate:{cand['error']}"], tests_run=[],
@@ -454,7 +460,10 @@ class Attempt:
             overlay = {t: self._blob(commit, t) or b"" for t in tests}
             red = self.eval_run("red_first", self.checkout(f"it{k}-base", self.base, overlay), self.base, pyt,
                                 t_test, overlay_from=commit)
-            reproduced = red["rc"] not in (0, 5, None)
+            # External review 2026-10-18 (F3): a valid run (exit 1, no ERROR entries) in which a changed test failed
+            # on an assertion — not "any non-zero exit" (collection error, timeout, usage error).
+            reproduced, red_why = F.red_first_verdict(red, tests)
+            rec["red_first_reason"] = red_why
             co = self.checkout(f"it{k}-cand", commit)
             green = self.eval_run("targeted", co, commit, pyt, t_test)
             runs = [red, green]
@@ -472,7 +481,7 @@ class Attempt:
                 rec["refusals"].append({"hard": True, "code": "integrity:candidate_tree_changed"})
             failing = F.failing_set(green["out"], ci["out"])
             if not reproduced:
-                failing.append("red_first:test_passes_on_base")
+                failing.append("red_first:test_passes_on_base" if red["rc"] in (0, 5) else f"red_first:{red_why}")
             if green["rc"] != 0 and not F.failing_set(green["out"]):
                 failing.append(f"targeted:exit_{green['rc']}")
             if ci["rc"] not in (0, None) and not F.failing_set(ci["out"]):
@@ -548,6 +557,19 @@ class Attempt:
         return out
 
 
+def iteration_charge(rec: dict) -> float:
+    """What one iteration costs the job (F4, 2026-10-18): the harness's ``charged_usd`` — the reported cost when the
+    CLI reported a usable one, else the iteration's whole reservation. A record without ``charged_usd`` (older
+    evidence) falls back to the reported cost; an absent / unparseable one there is still never read as zero by new
+    iterations, which always carry ``charged_usd``."""
+    if rec.get("charged_usd") is not None:
+        return float(rec["charged_usd"])
+    try:
+        return float((rec.get("backend_result") or {}).get("cost_usd") or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def attempt_job(job: dict, evidence: dict, *, cfg: dict, environ: dict, now: Callable[[], datetime],
                 evidence_dir: Path, may_push: bool, rails: str, backend: str,
                 remember: Callable[[dict], None] = lambda row: None,
@@ -584,7 +606,7 @@ def attempt_job(job: dict, evidence: dict, *, cfg: dict, environ: dict, now: Cal
         F.transition(job, F.FIX_ATTEMPTING, now(), iteration=k, updated_at=now().isoformat())
         persist(job)
         rec = a.iterate(k, prev, rails, float(job.get("cost_usd") or 0))
-        job["cost_usd"] = round(float(job.get("cost_usd") or 0) + float(rec["backend_result"].get("cost_usd") or 0), 4)
+        job["cost_usd"] = round(float(job.get("cost_usd") or 0) + iteration_charge(rec), 4)
         job["iterations"].append({k2: v for k2, v in rec.items() if k2 != "output_tail"})
         remember(F.memory_row(job, event="iteration", now=now(), backend=backend, iteration=rec))
         progress(job, rec)
@@ -714,7 +736,12 @@ def advance(job: dict, *, cfg: dict, now: datetime, diag_state: Optional[dict], 
         doc = json.loads(r["out"] or "{}") if r["rc"] == 0 else {}
         if doc:
             local = next((i.get("acceptance") for i in reversed(job.get("iterations") or []) if i.get("passed")), None)
-            prv = E.pr_head_verdict(doc, expected_head=str(job.get("head_sha") or ""))
+            try:
+                prof = E.required_checks(cfg)
+                prv = E.pr_head_verdict(doc, expected_head=str(job.get("head_sha") or ""), required=prof["names"],
+                                        profile_version=prof["version"])
+            except ValueError:    # no versioned profile: acceptance cannot be evaluated (fail closed)
+                prv = E.pr_head_verdict(doc, expected_head=str(job.get("head_sha") or ""))
             job["acceptance"] = E.final_acceptance(local, prv)
             job["acceptance"]["pr_head"] = prv
         if doc.get("state") == "CLOSED":
@@ -723,6 +750,20 @@ def advance(job: dict, *, cfg: dict, now: datetime, diag_state: Optional[dict], 
         merge = (doc.get("mergeCommit") or {}).get("oid")
         if doc.get("state") == "MERGED" and merge:
             job["merged_sha"], job["merged_at"] = merge, doc.get("mergedAt")
+            # External review 2026-10-18 (F2): a merge is attributed to this fix (fix_deployed -> output_recovered
+            # -> incident_resolved) ONLY with final acceptance accepted=true on the exact evaluated head SHA. Required
+            # checks still running: wait. Anything else (CI failed, head moved, required check skipped, no profile,
+            # local evidence not accepted): the job closes unattributed and the incident stays with the diagnoser.
+            acc = job.get("acceptance") or {}
+            if acc.get("accepted") is not True:
+                pv = (acc.get("pr_head") or {}).get("verdict")
+                if pv == "pending" and acc.get("local_accepted") and acc.get("pr_head_is_evaluated_commit"):
+                    return None
+                F.transition(job, F.FIX_CLOSED, now,
+                             reason=f"merged_without_acceptance:pr_head={pv}:local={acc.get('local_accepted')}:"
+                                    f"same_head={acc.get('pr_head_is_evaluated_commit')}",
+                             updated_at=now.isoformat())
+                return F.FIX_CLOSED
             cur = Path(cfg["lifecycle"]["release_current_sha_file"])
             try:
                 cur_sha = cur.read_text(encoding="utf-8").strip()

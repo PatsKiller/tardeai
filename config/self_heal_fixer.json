@@ -271,6 +271,13 @@
     "claims_rel": "data/runtime/self_heal_fixer_claims.sqlite",
     "lock_rel": "data/runtime/self_heal_fixer.lock"
   },
+  "acceptance": {
+    "_why": "External review 2026-10-18 (F1/F2): PR-head acceptance needs a versioned required-check profile. Every name below must be present on the exact evaluated head SHA and conclude SUCCESS (SKIPPED / NEUTRAL is not a pass); no profile = no acceptance. The names are the required contexts of AGENTS.md / AI_WORK_POLICY.md. advance() attributes a merge (fix_deployed) only with final acceptance accepted=true on that head; a merge with rejected acceptance closes the job as merged_without_acceptance. Changing this list is a config PR that bumps version.",
+    "required_checks": {
+      "version": "self-heal-required-checks@2026-10-18",
+      "names": ["agent-governance", "cio-hardening", "release-readiness"]
+    }
+  },
   "lifecycle": {
     "release_current_sha_file": "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/GIT_SHA"
   },

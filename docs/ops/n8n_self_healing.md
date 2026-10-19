@@ -18,7 +18,11 @@ remediation run, while 695 escalations were open. There were four causes:
 
 ```
 SIEM row (n8n:<lane>, written by the SIEM bridge)
-  -> diagnoser cycle (every 5 min), for EVERY open occurrence, every cycle
+  -> diagnoser cycle (every 15 min: cron `3-59/15`, lane_registry `n8n-failure-diagnosis`; at most 3 model-called
+     incidents per cycle, `--max-incidents 3`, inside the daily caps), for EVERY open occurrence, every cycle.
+     An occurrence past the per-cycle / daily cap is `not_this_cycle` (retried next cycle); a CRITICAL/URGENT one is
+     still enrolled as its one P1 record that same cycle (review 2026-10-18, M2). Worst case to a first diagnosis is
+     therefore one 15-minute cycle per 3 queued incidents, not 5 minutes.
        1. signature    lane + event_type + failure class + normalized error tail (codes kept, volatile tokens not)
        2. closure      this occurrence's OWN evidence (no model call):
             "VERIFIED" = scripts/lib/recovery_validator.validate (one rule, every component): the EFFECTIVE

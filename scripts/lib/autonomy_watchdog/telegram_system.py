@@ -175,16 +175,27 @@ def send_system(
     except Exception as e:
         rec["ok"] = False
         rec["reason"] = type(e).__name__
-    record_send(rec, root=root)
-    try:  # Communications hub (operator 2026-10-07): every operator-facing message is in the ledger.
+    # Communications hub (operator 2026-10-07): every operator-facing message is in the ledger. Review 2026-10-18
+    # (N2): the record carries THIS send's provider message id explicitly (never telegram_alert's ambient id store,
+    # which belongs to send_telegram), and a failed reconciliation is recorded on the send itself (comms_record).
+    try:
         try:
             from telegram_alert import record_operator_message
         except ImportError:
             from scripts.telegram_alert import record_operator_message  # type: ignore
-        record_operator_message(text, producer="autonomy_watchdog.telegram_system", message_class="ops",
-                                delivered=bool(rec.get("ok")) and not rec.get("suppressed"))
-    except Exception:  # noqa: BLE001 — recording never changes the watchdog's send
-        pass
+        delivered = bool(rec.get("ok")) and not rec.get("suppressed")
+        mid = rec.get("message_id") if delivered else None
+        got = record_operator_message(text, producer="autonomy_watchdog.telegram_system", message_class="ops",
+                                      delivered=delivered,
+                                      provider_message_id=None if mid is None else str(mid))
+        if isinstance(got, dict):
+            rec["comms_record"] = {"ok": bool(got.get("ok")), "errors": list(got.get("errors") or [])[:5],
+                                   "status": got.get("status"), "provider_message_id": got.get("provider_message_id")}
+        else:
+            rec["comms_record"] = {"ok": False, "errors": ["no_reconciliation_result"]}
+    except Exception as e:  # noqa: BLE001 — recording never changes the watchdog's send
+        rec["comms_record"] = {"ok": False, "errors": [f"record_failed:{type(e).__name__}"]}
+    record_send(rec, root=root)
     return rec
 
 

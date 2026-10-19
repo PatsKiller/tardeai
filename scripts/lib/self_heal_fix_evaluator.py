@@ -107,23 +107,61 @@ def _state(check: Mapping[str, Any]) -> str:
     return "pass" if c in _PASS else ("fail" if c in _FAIL else "pending")
 
 
+def required_checks(cfg: Mapping[str, Any]) -> dict[str, Any]:
+    """The versioned required-check profile (``acceptance.required_checks`` in config/self_heal_fixer.json).
+
+    External review 2026-10-18 (F1): ``required`` defaulted to empty, so a PR head whose only checks were SKIPPED or
+    NEUTRAL was "pass". A profile with a version and at least one check name is now mandatory; a missing or empty
+    one raises (fail closed: the caller cannot evaluate acceptance at all)."""
+    prof = ((cfg or {}).get("acceptance") or {}).get("required_checks") or {}
+    names = [str(n) for n in prof.get("names") or [] if str(n).strip()]
+    if not prof.get("version") or not names:
+        raise ValueError("self-heal acceptance: no versioned required-check profile (acceptance.required_checks)")
+    return {"version": str(prof["version"]), "names": names}
+
+
+#: A REQUIRED check passes only on SUCCESS; SKIPPED / NEUTRAL (the job did not run its gate) is not a pass.
+_REQUIRED_PASS = {"SUCCESS"}
+
+
+def _required_state(check: Mapping[str, Any]) -> str:
+    st = _state(check)
+    if st != "pass":
+        return st
+    if check.get("__typename") == "StatusContext" or ("state" in check and "conclusion" not in check):
+        return "pass"
+    return "pass" if str(check.get("conclusion") or "").upper() in _REQUIRED_PASS else "not_run"
+
+
 def pr_head_verdict(pr: Mapping[str, Any], *, expected_head: Optional[str] = None,
-                    required: Iterable[str] = ()) -> dict[str, Any]:
-    """CI on the PR head SHA (``gh pr view --json headRefOid,statusCheckRollup``). pass only when every reported check
-    passed, at least one check ran, the head is the SHA the harness pushed, and every ``required`` name is present."""
+                    required: Optional[Iterable[str]] = None,
+                    profile_version: Optional[str] = None) -> dict[str, Any]:
+    """CI on the PR head SHA (``gh pr view --json headRefOid,statusCheckRollup``). pass only when the head is the SHA
+    the harness pushed, no reported check failed, nothing is pending, and EVERY ``required`` check (the versioned
+    profile, ``required_checks``) is present and concluded SUCCESS. No required profile = never pass
+    (``no_required_profile``); a required check that was SKIPPED / NEUTRAL = ``required_not_run`` (review F1)."""
     head = str(pr.get("headRefOid") or "")
     rollup = [c for c in pr.get("statusCheckRollup") or [] if isinstance(c, dict)]
     states = {str(c.get("name") or c.get("context") or "?"): _state(c) for c in rollup}
-    missing = sorted(set(required) - set(states))
+    req = [str(r) for r in (required or [])]
+    req_states = {str(c.get("name") or c.get("context") or "?"): _required_state(c) for c in rollup
+                  if str(c.get("name") or c.get("context") or "?") in req}
+    missing = sorted(set(req) - set(states))
+    not_run = sorted(n for n, s in req_states.items() if s == "not_run")
     if expected_head is not None and head != expected_head:
         verdict = "head_moved"  # exact full-SHA equality: the PR head must BE the evaluated commit
     elif any(v == "fail" for v in states.values()):
         verdict = "fail"
+    elif not req:
+        verdict = "no_required_profile"
     elif not states or missing or any(v == "pending" for v in states.values()):
         verdict = "pending"
+    elif not_run:
+        verdict = "required_not_run"
     else:
         verdict = "pass"
-    return {"schema": PR_SCHEMA, "verdict": verdict, "head": head, "checks": states, "missing_required": missing}
+    return {"schema": PR_SCHEMA, "verdict": verdict, "head": head, "checks": states, "missing_required": missing,
+            "required": req, "required_not_run": not_run, "required_profile": profile_version}
 
 
 def final_acceptance(local: Optional[Mapping[str, Any]], pr: Optional[Mapping[str, Any]]) -> dict[str, Any]:
@@ -133,4 +171,5 @@ def final_acceptance(local: Optional[Mapping[str, Any]], pr: Optional[Mapping[st
     same = bool(local and pr and local.get("commit_sha") and (pr or {}).get("head") == local.get("commit_sha"))
     return {"schema": FINAL_SCHEMA, "accepted": lv and pv == "pass" and same, "local_accepted": lv, "pr_head_ci": pv,
             "pr_head_is_evaluated_commit": same, "evaluated_commit": (local or {}).get("commit_sha"),
+            "required_profile": (pr or {}).get("required_profile"),
             "basis": "harness-run tests + GitHub checks on the PR head SHA; backend claims are not read"}

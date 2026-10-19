@@ -395,10 +395,21 @@ def _self_heal_l1_l2(rows: list[dict], lanes: list[dict], sla_by_lane: dict, now
     """L1: `systemctl --user restart <unit>` for a systemd-scheduled lane in breach (class A: its unit is the lane
     registry's own scheduler expression; system units and cron lanes are never touched — S-W4-1 sudoers is for
     those). L2: `systemctl --user start <alternate>` when the SLA row declares one. Every decision is a
-    Recovery@v1 row (data/runtime/supervisor_recoveries.jsonl); shadow rows carry executed=false."""
+    Recovery@v1 row (data/runtime/supervisor_recoveries.jsonl); shadow rows carry executed=false.
+
+    External review 2026-10-18 (M3): the L1 cap (L1_MAX_PER_WINDOW per lane per L1_WINDOW_S) is RESERVED per action,
+    under an exclusive lock held for the whole pass — the window is counted from the file once under the lock, and
+    every restart this pass issues (or, in shadow, would issue) is added before the next candidate is judged, so two
+    breaches of one lane plus one prior attempt never issue two more. Each L1 row records three separate facts:
+    ``requested`` (the restart was issued), ``command_succeeded`` (systemctl exited 0) and ``output_recovered``
+    (always None here: the supervisor does not verify output; recovery is the shared recovery validator's call)."""
+    import fcntl
     import subprocess
     by_id = {l.get("lane_id"): l for l in lanes}
     rec_p = runtime_dir / "supervisor_recoveries.jsonl"
+    rec_p.parent.mkdir(parents=True, exist_ok=True)
+    lock_fh = (runtime_dir / "supervisor_recoveries.lock").open("a")
+    fcntl.flock(lock_fh, fcntl.LOCK_EX)   # released when lock_fh closes (function exit, including on error)
     recent: dict[str, int] = {}
     try:
         cutoff = (now - _dt.timedelta(seconds=L1_WINDOW_S)).isoformat()
@@ -408,12 +419,19 @@ def _self_heal_l1_l2(rows: list[dict], lanes: list[dict], sla_by_lane: dict, now
                     r = json.loads(line)
                 except json.JSONDecodeError:
                     continue
-                if r.get("executed") and str(r.get("ts") or "") >= cutoff:
+                if (r.get("executed") or r.get("requested")) and str(r.get("ts") or "") >= cutoff:
                     recent[r.get("lane_id")] = recent.get(r.get("lane_id"), 0) + 1
     except OSError:
         pass
+    try:
+        return _self_heal_l1_l2_locked(rows, by_id, sla_by_lane, now, rec_p, recent, live=live,
+                                       subprocess=subprocess)
+    finally:
+        lock_fh.close()
+
+
+def _self_heal_l1_l2_locked(rows, by_id, sla_by_lane, now, rec_p, recent, *, live, subprocess) -> dict:
     out = {"l1_candidates": 0, "l1_executed": 0, "l2_candidates": 0, "l2_executed": 0, "mode": "live" if live else "shadow"}
-    rec_p.parent.mkdir(parents=True, exist_ok=True)
     for r in rows:
         lane = by_id.get(r.get("lane_id")) or {}
         sched = lane.get("scheduler") or {}
@@ -426,14 +444,25 @@ def _self_heal_l1_l2(rows: list[dict], lanes: list[dict], sla_by_lane: dict, now
         if unit and unit.endswith((".timer", ".service")) and lane.get("state") == "ACTIVE":
             out["l1_candidates"] += 1
             svc = unit[:-len(".timer")] + ".service" if unit.endswith(".timer") else unit
-            row.update({"level": 1, "action": f"systemctl --user restart {svc}", "would_execute": recent.get(r.get("lane_id"), 0) < L1_MAX_PER_WINDOW})
+            used = recent.get(r.get("lane_id"), 0)
+            row.update({"level": 1, "action": f"systemctl --user restart {svc}", "would_execute": used < L1_MAX_PER_WINDOW,
+                        "requested": False, "command_succeeded": None, "output_recovered": None,
+                        "output_recovered_basis": "not_verified_by_supervisor",
+                        "window_used_before": used, "window_cap": L1_MAX_PER_WINDOW})
+            if not row["would_execute"]:
+                row["cap_reason"] = f"cap:{used}/{L1_MAX_PER_WINDOW}_per_{L1_WINDOW_S}s"
+            else:
+                recent[r.get("lane_id")] = used + 1          # reserve BEFORE acting (live and shadow alike)
             if live and row["would_execute"]:
+                row["requested"] = True                      # the reservation counts even if the command fails
                 try:
                     cp = subprocess.run(["systemctl", "--user", "restart", svc], capture_output=True, text=True, timeout=60)
-                    row.update({"executed": True, "rc": cp.returncode, "stderr": (cp.stderr or "")[:200]})
+                    row.update({"executed": True, "rc": cp.returncode, "stderr": (cp.stderr or "")[:200],
+                                "command_succeeded": cp.returncode == 0})
                     out["l1_executed"] += 1
                 except Exception as exc:  # noqa: BLE001
-                    row.update({"executed": False, "error": f"{type(exc).__name__}:{str(exc)[:120]}"})
+                    row.update({"executed": False, "command_succeeded": False,
+                                "error": f"{type(exc).__name__}:{str(exc)[:120]}"})
         elif alt:
             out["l2_candidates"] += 1
             row.update({"level": 2, "action": f"systemctl --user start {alt}", "would_execute": True})

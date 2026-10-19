@@ -351,20 +351,25 @@ def test_evaluator_ignores_backend_claims():
     ([], "pending"),
 ])
 def test_pr_head_ci_verdict(rollup, verdict):
+    # 2026-10-18 review (F1): verdicts are judged against a required-check profile; without one nothing passes
+    # (tests/test_false_green_closure_20261018.py).
     assert E.pr_head_verdict({"headRefOid": "abc123def4567", "statusCheckRollup": rollup},
-                             expected_head="abc123def4567")["verdict"] == verdict
+                             expected_head="abc123def4567", required=["ci"])["verdict"] == verdict
+    if verdict == "pass":
+        assert E.pr_head_verdict({"headRefOid": "abc123def4567", "statusCheckRollup": rollup},
+                                 expected_head="abc123def4567")["verdict"] == "no_required_profile"
 
 
 def test_pr_head_moved_is_not_acceptance():
     pr = {"headRefOid": "f" * 40, "statusCheckRollup": [{"name": "ci", "status": "COMPLETED", "conclusion": "SUCCESS"}]}
-    v = E.pr_head_verdict(pr, expected_head="a" * 40)
+    v = E.pr_head_verdict(pr, expected_head="a" * 40, required=["ci"])
     assert v["verdict"] == "head_moved"
     assert not E.final_acceptance({"accepted": True, "commit_sha": "a" * 40}, v)["accepted"]
-    ok = E.pr_head_verdict(pr, expected_head="f" * 40)
+    ok = E.pr_head_verdict(pr, expected_head="f" * 40, required=["ci"])
     assert E.final_acceptance({"accepted": True, "commit_sha": "f" * 40}, ok)["accepted"]
     assert not E.final_acceptance({"accepted": False, "commit_sha": "f" * 40}, ok)["accepted"]
     # 2026-10-16 review: a prefix match is not the evaluated commit; green CI on another head is not acceptance
-    assert E.pr_head_verdict(pr, expected_head="f" * 12)["verdict"] == "head_moved"
+    assert E.pr_head_verdict(pr, expected_head="f" * 12, required=["ci"])["verdict"] == "head_moved"
     assert not E.final_acceptance({"accepted": True, "commit_sha": "e" * 40}, ok)["accepted"]
 
 
@@ -679,8 +684,10 @@ def test_advance_merged_released_recovered_resolved(sandbox, monkeypatch):
     job["iterations"] = [{"passed": True, "acceptance": {"accepted": True, "commit_sha": head}}]
     gh = lambda cmd: {"rc": 0, "out": json.dumps({"state": "MERGED", "mergeCommit": {"oid": head},
                                                   "mergedAt": "2026-10-16T17:00:00Z", "headRefOid": head,
-                                                  "statusCheckRollup": [{"name": "cio-hardening", "status": "COMPLETED",
-                                                                         "conclusion": "SUCCESS"}]})}
+                                                  # 2026-10-18 (F1/F2): the config's required-check profile
+                                                  "statusCheckRollup": [{"name": n, "status": "COMPLETED",
+                                                                         "conclusion": "SUCCESS"}
+                                                                        for n in E.required_checks(cfg)["names"]]})}
     root = sandbox["state"]
     assert S.advance(job, cfg=cfg, now=NOW, diag_state=None, root=root, gh=gh, repo=repo) == F.FIX_DEPLOYED
     assert job["acceptance"]["accepted"] and job["acceptance"]["pr_head_ci"] == "pass"  # independent evaluator
@@ -705,8 +712,12 @@ def test_advance_merged_released_recovered_resolved(sandbox, monkeypatch):
 def test_advance_unreleased_merge_stays_pr_opened(sandbox):
     cfg = json.loads(sandbox["cfg"].read_text())
     (sandbox["tmp"] / "GIT_SHA").write_text("0" * 40)
-    job = {"job_id": "j", "lane": "l", "state": F.FIX_PR_OPENED, "pr_number": 9, "history": []}
-    gh = lambda cmd: {"rc": 0, "out": json.dumps({"state": "MERGED", "mergeCommit": {"oid": "f" * 40}})}
+    # 2026-10-18 (F2): only an ACCEPTED merge is a deployment candidate; this one is accepted but not released.
+    job = {"job_id": "j", "lane": "l", "state": F.FIX_PR_OPENED, "pr_number": 9, "history": [], "head_sha": "e" * 40,
+           "iterations": [{"passed": True, "acceptance": {"accepted": True, "commit_sha": "e" * 40}}]}
+    rollup = [{"name": n, "status": "COMPLETED", "conclusion": "SUCCESS"} for n in E.required_checks(cfg)["names"]]
+    gh = lambda cmd: {"rc": 0, "out": json.dumps({"state": "MERGED", "mergeCommit": {"oid": "f" * 40},
+                                                  "headRefOid": "e" * 40, "statusCheckRollup": rollup})}
     assert S.advance(job, cfg=cfg, now=NOW, diag_state=None, root=sandbox["state"], gh=gh,
                      repo=sandbox["repo"]) is None
     assert job["state"] == F.FIX_PR_OPENED and job["merged_sha"] == "f" * 40

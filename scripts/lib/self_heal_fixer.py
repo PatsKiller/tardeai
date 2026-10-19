@@ -634,7 +634,17 @@ def parse_claude_result(stdout: str) -> dict:
         except ValueError:
             doc = None
     if not isinstance(doc, dict):
-        return {"ok": False, "is_error": True, "cost_usd": 0.0, "result": (stdout or "")[-2000:], "parse": "no_json"}
+        # External review 2026-10-18 (F4): unknown usage is NOT zero cost. cost_usd None + cost_known False; the
+        # harness then charges the iteration's whole reservation (self_heal_fixer.Attempt.iterate / iteration_charge).
+        return {"ok": False, "is_error": True, "cost_usd": None, "cost_known": False,
+                "result": (stdout or "")[-2000:], "parse": "no_json"}
+    raw_cost = doc.get("total_cost_usd")
+    try:
+        cost = float(raw_cost) if raw_cost is not None and not isinstance(raw_cost, bool) else None
+    except (TypeError, ValueError):
+        cost = None
+    if cost is not None and (cost != cost or cost < 0):   # NaN / negative: malformed
+        cost = None
     result = str(doc.get("result") or "")
     summary = None
     for line in reversed(result.strip().splitlines()):
@@ -646,7 +656,7 @@ def parse_claude_result(stdout: str) -> dict:
             except ValueError:
                 continue
     return {"ok": not doc.get("is_error"), "is_error": bool(doc.get("is_error")),
-            "cost_usd": float(doc.get("total_cost_usd") or 0.0), "num_turns": doc.get("num_turns"),
+            "cost_usd": cost, "cost_known": cost is not None, "num_turns": doc.get("num_turns"),
             "duration_ms": doc.get("duration_ms"), "subtype": doc.get("subtype"), "result": result[-4000:],
             "summary": summary if isinstance(summary, dict) else None}
 
@@ -866,6 +876,75 @@ def failing_set(*outputs: str) -> list[str]:
         for kind, nid in _FAIL_LINE.findall(out or ""):
             ids.add(nid if kind == "FAILED" else f"ERROR {nid}")
     return sorted(ids)
+
+
+#: ``FAILED <nodeid> - <reason>`` (pytest -rfE short summary). The reason is what the test raised.
+_FAILED_WITH_REASON = re.compile(r"^FAILED\s+(\S+)(?:\s+-\s+(.*))?$", re.M)
+#: A failure that is the TEST's own verdict (an assertion, pytest.fail, pytest.raises' DID NOT RAISE).
+_ASSERTION_REASON = re.compile(r"^(assert\b|AssertionError\b|Failed:)")
+#: A failure of the test's SCAFFOLDING on the base commit, not of the defect: the test imports / names something only
+#: the fix adds, does not parse, or lacks a fixture. Never red-first evidence.
+_SCAFFOLDING_REASON = re.compile(r"^(ImportError|ModuleNotFoundError|NameError|SyntaxError|IndentationError|"
+                                 r"AttributeError: module\b|fixture\b|.*\bfixture '[^']+' not found)")
+_EXC_REASON = re.compile(r"^([A-Za-z_][\w.]*(?:Error|Exception|Exit|Interrupt))\b")
+#: The FAILURES section header pytest prints per failed test, and the section's final ``path:line: ExcType`` line.
+_SECTION_HEAD = re.compile(r"^_{3,} (.+?) _{3,}$", re.M)
+_SECTION_EXC = re.compile(r"^\S+?:\d+: ([A-Za-z_][\w.]*)$", re.M)
+_SCAFFOLDING_EXC = frozenset({"ImportError", "ModuleNotFoundError", "NameError", "SyntaxError", "IndentationError"})
+
+
+def _failure_reason(out: str, nid: str, summary_reason: str) -> str:
+    """The failure's own reason, from its FAILURES section when present (the short-summary reason is cut to the
+    terminal width, e.g. ``ZeroDivisionE...``): ``AssertionError`` / ``Failed:`` / ``<Exc>: <first E line>``."""
+    head = ".".join(nid.split("::")[1:])
+    for m in _SECTION_HEAD.finditer(out):
+        if m.group(1).strip() != head:
+            continue
+        nxt = _SECTION_HEAD.search(out, m.end())
+        body = out[m.end(): nxt.start() if nxt else len(out)].split("short test summary info", 1)[0]
+        excs = _SECTION_EXC.findall(body)
+        e_lines = [ln.strip()[1:].strip() for ln in body.splitlines() if ln.startswith("E   ")]
+        if "Failed:" in body and not excs:
+            return "Failed:"
+        if excs:
+            exc = excs[-1]
+            detail = next((ln for ln in e_lines if ln.startswith(exc.split(".")[-1])), "")
+            if exc.split(".")[-1] == "AssertionError":
+                return "AssertionError"
+            return detail or exc
+    return summary_reason
+
+
+def red_first_verdict(run: Mapping[str, Any], tests: Iterable[str]) -> tuple[bool, str]:
+    """Did the red-first run on the BASE commit reproduce the defect? (external review 2026-10-18, F3).
+
+    Before, any exit outside {0, 5, None} counted — a collection error (2), an internal / usage error (3, 4), a
+    timeout (124) or a missing interpreter (127) all "reproduced". Now: pytest exit 1 (tests failed — a valid run),
+    no ERROR entries (collection / fixture errors), and at least one FAILED node in one of the candidate's changed
+    test files that failed on the test's assertion (``assertion_failed``) or on the defect's own exception raised in
+    the code under test (``defect_exception``, e.g. the ZeroDivisionError a guard-fix removes). A failure of the
+    test's scaffolding (ImportError / NameError / SyntaxError / missing fixture / a module attribute only the fix
+    adds) is not reproduction. Returns (reproduced, reason)."""
+    rc = run.get("rc")
+    if rc != 1:
+        return False, f"invalid_run:exit_{rc}"
+    out = str(run.get("out") or "")
+    if any(k == "ERROR" for k, _ in _FAIL_LINE.findall(out)):
+        return False, "invalid_run:error_entries"
+    files = {str(t).split("::", 1)[0] for t in tests}
+    other = None
+    for nid, reason in _FAILED_WITH_REASON.findall(out):
+        if nid.split("::", 1)[0] not in files:
+            other = other or f"failed_outside_changed_tests:{nid}"
+            continue
+        why = _failure_reason(out, nid, (reason or "").strip())
+        if _ASSERTION_REASON.match(why):
+            return True, f"assertion_failed:{nid}"
+        exc = _EXC_REASON.match(why)
+        if exc and exc.group(1).split(".")[-1] not in _SCAFFOLDING_EXC and not _SCAFFOLDING_REASON.match(why):
+            return True, f"defect_exception:{exc.group(1)}:{nid}"
+        other = other or f"scaffolding_or_unknown_failure:{nid}"
+    return False, other or "no_failed_test_reported"
 
 
 def no_progress(history: list[Mapping[str, Any]], repeat: int) -> bool:

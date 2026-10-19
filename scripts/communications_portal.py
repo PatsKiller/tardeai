@@ -824,6 +824,56 @@ def list_deliveries(event_id: str | None = None, limit: int = 200) -> dict[str, 
     }
 
 
+#: ChannelDelivery statuses the Communications delivery-health strip counts (same sets the page used client-side).
+UNSETTLED_STATUSES = ("RESERVED", "SENDING")
+FAILED_STATUSES = ("FAILED", "BOUNCED", "EXPIRED")
+
+
+def delivery_summary() -> dict[str, Any]:
+    """Server-side delivery health over the WHOLE communication_deliveries table (external review 2026-10-18, N3).
+
+    The page used to count un-settled / failed rows in the latest 500 deliveries it fetched for the table, so an older
+    backlog was invisible and a missing payload or an error rendered as zero. This is one aggregate query (no LIMIT):
+    the un-settled and failed counts, the total, and the oldest un-settled row's age. When the database cannot be
+    read the answer is ``status: UNAVAILABLE`` with null counts — never zero; the in-process memory snapshot is a
+    subset and is not used for the count."""
+    out: dict[str, Any] = {"ok": False, "status": "UNAVAILABLE", "source": "db", "basis": "server_side_aggregate",
+                           "unsettled": None, "failed": None, "total": None, "oldest_unsettled_at": None,
+                           "oldest_unsettled_age_s": None, "as_of": None,
+                           "unsettled_statuses": list(UNSETTLED_STATUSES), "failed_statuses": list(FAILED_STATUSES)}
+    conn = _deliveries_db_conn()
+    if conn is None:
+        out["error"] = "communications DB unavailable"
+        return out
+    uns = ", ".join(f"'{s}'" for s in UNSETTLED_STATUSES)
+    fail = ", ".join(f"'{s}'" for s in FAILED_STATUSES)
+    sql = (f"SELECT COUNT(*) FILTER (WHERE status IN ({uns})) AS unsettled, "
+           f"COUNT(*) FILTER (WHERE status IN ({fail})) AS failed, COUNT(*) AS total, "
+           f"MIN(reserved_at) FILTER (WHERE status IN ({uns})) AS oldest_unsettled_at, now() AS as_of "
+           f"FROM communication_deliveries")
+    try:
+        with conn.cursor() as cur:
+            cur.execute(sql)
+            cols = [d[0] for d in cur.description]
+            row = cur.fetchone()
+        rec = dict(zip(cols, row)) if row is not None and not isinstance(row, dict) else dict(row or {})
+    except Exception as exc:  # noqa: BLE001 — an unreadable table is UNAVAILABLE, with the reason
+        out["error"] = f"{type(exc).__name__}: {str(exc)[:160]}"
+        try:
+            conn.rollback()   # same connection handling as _db_list_deliveries (not closed: it may be shared)
+        except Exception:  # noqa: BLE001
+            pass
+        return out
+    oldest, as_of = rec.get("oldest_unsettled_at"), rec.get("as_of")
+    age = None
+    if isinstance(oldest, datetime) and isinstance(as_of, datetime):
+        age = int(round((as_of - oldest).total_seconds()))
+    out.update(ok=True, status="OK", unsettled=int(rec.get("unsettled") or 0), failed=int(rec.get("failed") or 0),
+               total=int(rec.get("total") or 0), oldest_unsettled_at=_iso(oldest), oldest_unsettled_age_s=age,
+               as_of=_iso(as_of))
+    return out
+
+
 def list_subjects(limit: int = 50) -> dict[str, Any]:
     """List subject/thread projections."""
     lim = max(1, min(int(limit or 50), 200))

@@ -2181,6 +2181,17 @@ def _communications_deliveries(query=None):
     )
 
 
+def _communications_delivery_summary(query=None):
+    """GET /api/v2/communications/deliveries/summary — server-side un-settled / failed counts and the oldest
+    un-settled age over the whole deliveries table; UNAVAILABLE (null counts) when unreadable (review 2026-10-18 N3)."""
+    import sys as _s
+
+    _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    import communications_portal as _cp
+
+    return _cp.delivery_summary()
+
+
 def _communications_subjects(query=None):
     """GET /api/v2/communications/subjects?limit= — subject/thread projections."""
     import sys as _s
@@ -48375,6 +48386,7 @@ ROUTES = {
     "/api/v2/communications/events": _communications_events,
     "/api/v2/communications/board": _communications_board,
     "/api/v2/communications/deliveries": _communications_deliveries,
+    "/api/v2/communications/deliveries/summary": _communications_delivery_summary,
     "/api/v2/communications/subjects": _communications_subjects,
     "/api/v2/communications/agents": _communications_agents,
     "/api/v2/reports/catalog": _reports_catalog_route,

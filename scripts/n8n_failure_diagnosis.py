@@ -1069,6 +1069,13 @@ def apply_results(diag: dict, pending_events: list[dict], state: dict, rows_by_i
     records: list[dict[str, Any]] = []
     for res in diag["results"]:
         if res.get("outcome") == "not_this_cycle":
+            # External review 2026-10-18 (M2): the per-cycle / daily diagnosis cap is a MODEL budget, never a
+            # visibility budget. A capped CRITICAL/URGENT incident is still enrolled as exactly one P1 record before
+            # it is skipped (nothing else is written: it is retried next cycle and stays undiagnosed).
+            _enroll_critical(state, res, now)
+            if _p1_floor(res.get("severity")) and not res.get("escalation"):
+                esc = (state.get("escalations") or {}).get(escalation_key(res)) or {}
+                res["escalation"] = f"P1:{esc.get('reason') or 'critical_unresolved'}"
             continue
         dec = res.get("decision") or {}
         sig = res.get("signature")

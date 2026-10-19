@@ -3967,6 +3967,15 @@ GATES = [
         ],
     ),
     (
+        # External review 2026-10-18 false-green closure: SIEM resolution via the shared recovery validator,
+        # capped critical incidents still enrolled at P1, supervisor restart cap reserved per action, settlement is
+        # not recovery, explicit provider message id, server-side comms delivery health, fixer acceptance (required
+        # check profile, accepted-only attribution, red-first validity, unknown usage keeps the reservation).
+        # Hermetic: tmp ledgers / state roots, DB doubles, fake subprocess / transport.
+        "false_green_closure_20261018",
+        ["tests/test_false_green_closure_20261018.py"],
+    ),
+    (
         # Keep ownership admission fenced until actual child spawn; late effects remain epoch-fenced.
         # Hermetic threads, temporary ledgers and fake children; no production actions.
         "n8n_spawn_fence_20261018",

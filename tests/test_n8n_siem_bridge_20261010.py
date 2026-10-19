@@ -498,16 +498,20 @@ def test_good_latest_run_resolves_the_open_failure(env):
     db = FakeDB()
     env["run"](db, "--apply")
     assert db.rows[0]["lifecycle_state"] == "active"
+    good = run_row(2, "lane-b", "RUN_DONE", minutes_ago=1, wf="wfB")
+    # 2026-10-18 review (M1): resolution is the shared recovery validator — a later live run that met its output
+    # contract, not merely "the latest run is good" (tests/test_false_green_closure_20261018.py).
+    good["receipt"]["output_verdict"] = {"verdict": "produced"}
     env["setup"](
         [
             run_row(1, "lane-b", "RUN_FAILED", minutes_ago=10, wf="wfB"),
-            run_row(2, "lane-b", "RUN_DONE", minutes_ago=1, wf="wfB"),
+            good,
         ],
         fanin_doc([]),
     )
     assert env["run"](db, "--apply") == 0
     assert db.rows[0]["lifecycle_state"] == "resolved" and db.rows[0]["resolved_by"] == "n8n_siem_bridge"
-    assert "latest_run_good" in db.rows[0]["action_taken"]
+    assert "recovery_validator" in db.rows[0]["action_taken"]
 
 
 def test_lock_skip_after_failure_does_not_resolve(env):
