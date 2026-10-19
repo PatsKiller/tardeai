@@ -74,6 +74,9 @@ jobs:
           print("cio_hardening_ruff_ok", b, raw)
           PY
 
+      - name: Install registered frontend test dependencies
+        uses: ./.github/actions/setup-cio-frontend-tests
+
       - name: CIO hardening gates (unit + manifest)
         env:
           EVENT_NAME: ${{ github.event_name }}
@@ -255,6 +258,8 @@ jobs:
           pip install -c requirements.lock.txt cryptography
           pip install python-docx || true
           pip install "ruff==0.16.2"
+      - name: Install registered frontend test dependencies
+        uses: ./.github/actions/setup-cio-frontend-tests
       - name: CIO hardening gates (full, serial)
         run: python3 scripts/run_cio_hardening_ci.py --profile full
 
