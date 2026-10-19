@@ -1,0 +1,87 @@
+{
+  "schema": "CampaignEvidenceBundle@v1",
+  "source_candidate": "c8a97830a67e39e8cb77af87b3d5e6b8df096aaa",
+  "baseline": "baeda8d16b20d4e20c48dd5a0ee1e5d308e1e0f9",
+  "ci_registration": "existing comms editor gate gains exact new regression file; all prior gates retained",
+  "status": "source_reviewed_native_pending_not_deployed",
+  "artifacts": [
+    {
+      "source": "/tmp/n8n-campaign-20261018/notice-subject-words/implementation-evidence.json",
+      "archive": "00-implementation-evidence.json.gz",
+      "raw_sha256": "d6c99ff036b159c76f1ff701425d6e2b92d846d1fa518f6d51590a2be254f386",
+      "archive_sha256": "333376ac48d21e62a752d397eaf09708ed7452fea9a379fa3f70e877c6b520ba"
+    },
+    {
+      "source": "/tmp/n8n-campaign-20261018/notice-subject-words/red.xml",
+      "archive": "01-red.xml.gz",
+      "raw_sha256": "df17944173e087a5be35b72b40c649db0cb1d96a860b9cbf99e878ef51357021",
+      "archive_sha256": "a10d312c55c2ffe869eb448b13492e428d799e32e0db4812f4c2a66ff3ef429a"
+    },
+    {
+      "source": "/tmp/n8n-campaign-20261018/notice-subject-words/green.xml",
+      "archive": "02-green.xml.gz",
+      "raw_sha256": "4d7227de25a34908452bc1f798700a57faab9dcffed692cb348c69850be79acf",
+      "archive_sha256": "d08e1cf917801ddaa12486ea97f73c7785bc416b782d40d496c9c8aecf9391da"
+    },
+    {
+      "source": "/tmp/n8n-campaign-20261018/notice-subject-words/final.xml",
+      "archive": "03-final.xml.gz",
+      "raw_sha256": "fc5994856f1cc3942e02e3749ed15cd7bb7e86088e44941c3880c5d6a1afba11",
+      "archive_sha256": "6b6079ec1914cbd99a72a3c7339fbb31ebcc922b46c8c1af9b9d26b0224112a8"
+    },
+    {
+      "source": "/tmp/n8n-campaign-20261018/notice-subject-words/review-correction.json",
+      "archive": "04-review-correction.json.gz",
+      "raw_sha256": "c48c46ab96a2be45dd1c6e2a4ff6a8af2dbb9e58a9a350d35da1d413f9b2e14e",
+      "archive_sha256": "a6de86fb362a9f226bf1fd3c3e59ca396e5eb335d93071c75dc2171b7041a2a9"
+    },
+    {
+      "source": "/tmp/n8n-campaign-20261018/notice-subject-words/review-green.xml",
+      "archive": "05-review-green.xml.gz",
+      "raw_sha256": "c1773af17db0de82d12541bbbe1eea4c552592c8c22ed8c69fc294604b75c44e",
+      "archive_sha256": "6ba121c69700265bd2aa932418515d68a2aae7c7ad47e981f20102fb01eb273f"
+    },
+    {
+      "source": "/tmp/n8n-campaign-20261018/cross-review/notice-subject-words/review-1c2-request-changes.json",
+      "archive": "06-review-1c2-request-changes.json.gz",
+      "raw_sha256": "4dfbade89b50f0c696f04a58eb7b698caffdfb7518a5119cef726501c2189b9a",
+      "archive_sha256": "205362938235bc8985ef90615d21229d767f59f5e82f6dea5943566f66bfc5f3"
+    },
+    {
+      "source": "/tmp/n8n-campaign-20261018/cross-review/notice-subject-words/review-c8a-approve.json",
+      "archive": "07-review-c8a-approve.json.gz",
+      "raw_sha256": "8599d7b39b4420a5c8a77a5093825b5f96f0d70c6fc9d34d3af35f0fb6931669",
+      "archive_sha256": "963c59a502ea09b268691ccb59d7277807006131682b91f40793300e34975633"
+    },
+    {
+      "source": "/tmp/n8n-campaign-20261018/cross-review/notice-subject-words/test_notice_subject_independent.py",
+      "archive": "08-test_notice_subject_independent.py.gz",
+      "raw_sha256": "5cf1cc51f4faa09629189206dbcb02e7034e88743baf453f5e549a74fcfc67d3",
+      "archive_sha256": "201b0f7742e149961d148d53a7b7dd9272d2c2a30dba014f21f53a2d77044f6e"
+    },
+    {
+      "source": "/tmp/n8n-campaign-20261018/cross-review/notice-subject-words/baeda.xml",
+      "archive": "09-baeda.xml.gz",
+      "raw_sha256": "97f823c837b0b6b7c7d40029b81a1317b6b09e854ec521c2cc14a569d0c29b13",
+      "archive_sha256": "76b547b143655c44de1c865e7d6e922d1e53be4c47b6ac3e729d3c4f4c79c45e"
+    },
+    {
+      "source": "/tmp/n8n-campaign-20261018/cross-review/notice-subject-words/independent.xml",
+      "archive": "10-independent.xml.gz",
+      "raw_sha256": "d630e3bf8f555014f3567970af4b533cd938eab30b18fb7d7ece2019e26c5fec",
+      "archive_sha256": "056cf51f03754d5e403f7f815fc9034f287682978c5da61300035d8e404c1901"
+    },
+    {
+      "source": "/tmp/n8n-campaign-20261018/cross-review/notice-subject-words/c8a-independent.xml",
+      "archive": "11-c8a-independent.xml.gz",
+      "raw_sha256": "8a821a1aaba71fb4853eb0abcd5e6f64003499546b65536f90f18b2b082b96ac",
+      "archive_sha256": "0db2d630f73ed4bdfa66585e3d211a990c82a3c146f44eb0dc04c96c97983a9c"
+    },
+    {
+      "source": "/tmp/n8n-campaign-20261018/cross-review/notice-subject-words/c8a-extra-controls.json",
+      "archive": "12-c8a-extra-controls.json.gz",
+      "raw_sha256": "f7803feacc3292c31e5ef4687010f6537ead4562461b38b8a0567caf68a4651f",
+      "archive_sha256": "a270823c23ecac96fe09bd9691b956a04ddf9b10e4b7feaa560a8f41880cf723"
+    }
+  ]
+}
