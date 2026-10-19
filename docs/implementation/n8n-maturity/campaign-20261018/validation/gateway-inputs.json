@@ -1,0 +1,53 @@
+{
+  "campaign_id": "n8n-maturity-20261018",
+  "workstream": "gateway_closed_inputs",
+  "base_sha": "3af0a8bdd659e02bf6f493c071800c6a227ae292",
+  "candidate_sha": "3ef2fb5c07ac84c67be88035ebae0f56b0941c20",
+  "branch": "wt/n8n-gateway-contract-inputs-20261018",
+  "files": [
+    {
+      "path": "scripts/lib/n8n_coordination_gateway.py",
+      "sha256": "ebb37b0873826ff444ebf2a55aa2f03157ed973996c7e38a96eef23b4bdc5f23"
+    },
+    {
+      "path": "scripts/n8n_coordination_gateway.py",
+      "sha256": "2fd0886ee333693e7d2ac21c7a2ff62f7e301e4918170ce377688bf17ef1d82d"
+    },
+    {
+      "path": "tests/test_n8n_gateway_closed_inputs_20261018.py",
+      "sha256": "b85d2bb5babad4178681ea1ec7cb4e8a5e4dcdf1eefcd2b889ae77b2965e8b22"
+    }
+  ],
+  "baseline": {
+    "audit_tests": "/tmp/n8n-campaign-20261018/contracts-routes/test_contract_residuals.py -k gateway",
+    "result": "3 expected assertion failures: REQUESTED vs REFUSED",
+    "log": "/tmp/n8n-campaign-20261018/gateway-inputs/baseline-audit-red.txt",
+    "focused_result": "26 assertion failures,6 passed",
+    "focused_log": "/tmp/n8n-campaign-20261018/gateway-inputs/baseline-focused.txt"
+  },
+  "candidate": {
+    "audit_result": "same3 passed",
+    "focused_result": "32 passed",
+    "regression_result": "296 passed in11.83s",
+    "regression_log": "/tmp/n8n-campaign-20261018/gateway-inputs/candidate-regression-loopback.txt",
+    "sandbox_limit": "Initial 282 passed and14 loopback cases blocked by EPERM; identical selection passed with approved temporary-loopback escalation.",
+    "ruff": "PASS",
+    "diff_check": "PASS"
+  },
+  "compatibility": {
+    "old_producer_new_consumer": "Existing integer-v1 relay/host envelope unchanged, requested_by remains optional, normal claims and responses preserved.",
+    "new_producer_old_consumer": "New producer emits same existing v1 wire shape and RunRequested@v1 response; no persistence change or dual-write needed.",
+    "unsupported_inputs": "Additional authority fields are not compatible optional additions; they are unexpected_field. Integer2/string1/bool/float claim version values are refused; future supported versions require explicit contract handling.",
+    "scope": "No route, key, caller, mode, namespace, grant or authority expansion."
+  },
+  "status": {
+    "local_commit": true,
+    "independent_review": "pending_parent",
+    "remote_pushes": 0,
+    "github_ci_cycles": 0,
+    "runtime_effects": [],
+    "grants": [],
+    "release_equivalent": "Parent integrator runs shared final acceptance before push."
+  },
+  "integration_required": "Register tests/test_n8n_gateway_closed_inputs_20261018.py in parent-owned CI routing."
+}

@@ -1,0 +1,900 @@
+{
+  "campaign_id": "n8n-maturity-20261018",
+  "source_sha": "3af0a8bdd659e02bf6f493c071800c6a227ae292",
+  "served_sha": "a2aef7b4d2de17e737526337a2ffc37848deda4f",
+  "denominator": {
+    "active_registry_lanes": 464,
+    "active_kind_none": 46
+  },
+  "counts": {
+    "real_gap": 11,
+    "reminder_event_ack_contract_gap": 4,
+    "deferred_retained_systemd": 31
+  },
+  "note": "The reported46 are explicit output_signal.kind=none, not missing/null registry fields. No blanket exemption, obsolete classification or output count is invented. This is source disposition, not operational health.",
+  "sources": [
+    {
+      "path": "config/lane_registry.json",
+      "sha256": "72822f260ad7487b530cd58522a711d4b50f6ebe235695b6c14c87d5767aa54e"
+    },
+    {
+      "path": "config/n8n_health_contracts.json",
+      "sha256": "0f1a1797df56a02dbc9167d2601eb8cb3b8b95a772a382317b601876b1fb48ef"
+    },
+    {
+      "path": "config/n8n_run_allowlist.json",
+      "sha256": "0466f5fa3c619a4eaa0208dae07f91f95852356fbb83b5716efad91414af7688"
+    }
+  ],
+  "rows": [
+    {
+      "lane_id": "dof-run-pipeline",
+      "owner": "platform",
+      "scheduler_kind": "cron",
+      "state": "ACTIVE",
+      "declared_output_signal": {
+        "kind": "none"
+      },
+      "category": "real_gap",
+      "reason": "Active scheduled producer declares kind:none; a static declaration or exit0 does not establish useful-output freshness.",
+      "required_proof": "Owner-reviewed semantic output/valid-empty rule, attempt-bound receipt, SLA and downstream proof; do not substitute an invented output count.",
+      "health_contract_status": null,
+      "expected_output": null,
+      "executor_output_enforcement": null,
+      "observed_useful_output": "UNPROVEN in this disposition audit",
+      "runtime_action": "none"
+    },
+    {
+      "lane_id": "openclaw-reminder-claude-plan-1",
+      "owner": "platform",
+      "scheduler_kind": "event",
+      "state": "ACTIVE",
+      "declared_output_signal": {
+        "kind": "none"
+      },
+      "category": "reminder_event_ack_contract_gap",
+      "reason": "One-shot reminder/event declaration has no output signal; delivery/acknowledgement or reviewed expiry is unproven.",
+      "required_proof": "Authenticated occurrence, intent, provider delivery ID and generation-bound acknowledgement or a reviewed obsolete-entry decision.",
+      "health_contract_status": null,
+      "expected_output": null,
+      "executor_output_enforcement": null,
+      "observed_useful_output": "UNPROVEN in this disposition audit",
+      "runtime_action": "none"
+    },
+    {
+      "lane_id": "openclaw-reminder-claude-plan-2",
+      "owner": "platform",
+      "scheduler_kind": "event",
+      "state": "ACTIVE",
+      "declared_output_signal": {
+        "kind": "none"
+      },
+      "category": "reminder_event_ack_contract_gap",
+      "reason": "One-shot reminder/event declaration has no output signal; delivery/acknowledgement or reviewed expiry is unproven.",
+      "required_proof": "Authenticated occurrence, intent, provider delivery ID and generation-bound acknowledgement or a reviewed obsolete-entry decision.",
+      "health_contract_status": null,
+      "expected_output": null,
+      "executor_output_enforcement": null,
+      "observed_useful_output": "UNPROVEN in this disposition audit",
+      "runtime_action": "none"
+    },
+    {
+      "lane_id": "openclaw-reminder-supergrok-expiry",
+      "owner": "platform",
+      "scheduler_kind": "event",
+      "state": "ACTIVE",
+      "declared_output_signal": {
+        "kind": "none"
+      },
+      "category": "reminder_event_ack_contract_gap",
+      "reason": "One-shot reminder/event declaration has no output signal; delivery/acknowledgement or reviewed expiry is unproven.",
+      "required_proof": "Authenticated occurrence, intent, provider delivery ID and generation-bound acknowledgement or a reviewed obsolete-entry decision.",
+      "health_contract_status": null,
+      "expected_output": null,
+      "executor_output_enforcement": null,
+      "observed_useful_output": "UNPROVEN in this disposition audit",
+      "runtime_action": "none"
+    },
+    {
+      "lane_id": "openclaw-reminder-sentinelone-earnings",
+      "owner": "platform",
+      "scheduler_kind": "event",
+      "state": "ACTIVE",
+      "declared_output_signal": {
+        "kind": "none"
+      },
+      "category": "reminder_event_ack_contract_gap",
+      "reason": "One-shot reminder/event declaration has no output signal; delivery/acknowledgement or reviewed expiry is unproven.",
+      "required_proof": "Authenticated occurrence, intent, provider delivery ID and generation-bound acknowledgement or a reviewed obsolete-entry decision.",
+      "health_contract_status": null,
+      "expected_output": null,
+      "executor_output_enforcement": null,
+      "observed_useful_output": "UNPROVEN in this disposition audit",
+      "runtime_action": "none"
+    },
+    {
+      "lane_id": "ops-daily-digest",
+      "owner": "platform",
+      "scheduler_kind": "cron",
+      "state": "ACTIVE",
+      "declared_output_signal": {
+        "kind": "none"
+      },
+      "category": "real_gap",
+      "reason": "Active scheduled producer declares kind:none; a static declaration or exit0 does not establish useful-output freshness.",
+      "required_proof": "Owner-reviewed semantic output/valid-empty rule, attempt-bound receipt, SLA and downstream proof; do not substitute an invented output count.",
+      "health_contract_status": null,
+      "expected_output": null,
+      "executor_output_enforcement": null,
+      "observed_useful_output": "UNPROVEN in this disposition audit",
+      "runtime_action": "none"
+    },
+    {
+      "lane_id": "ops-weekly-learning-report",
+      "owner": "platform",
+      "scheduler_kind": "cron",
+      "state": "ACTIVE",
+      "declared_output_signal": {
+        "kind": "none"
+      },
+      "category": "real_gap",
+      "reason": "Active scheduled producer declares kind:none; a static declaration or exit0 does not establish useful-output freshness.",
+      "required_proof": "Owner-reviewed semantic output/valid-empty rule, attempt-bound receipt, SLA and downstream proof; do not substitute an invented output count.",
+      "health_contract_status": null,
+      "expected_output": null,
+      "executor_output_enforcement": null,
+      "observed_useful_output": "UNPROVEN in this disposition audit",
+      "runtime_action": "none"
+    },
+    {
+      "lane_id": "rotation-rebalance-digest",
+      "owner": "platform",
+      "scheduler_kind": "cron",
+      "state": "ACTIVE",
+      "declared_output_signal": {
+        "kind": "none"
+      },
+      "category": "real_gap",
+      "reason": "Active scheduled producer declares kind:none; a static declaration or exit0 does not establish useful-output freshness.",
+      "required_proof": "Owner-reviewed semantic output/valid-empty rule, attempt-bound receipt, SLA and downstream proof; do not substitute an invented output count.",
+      "health_contract_status": null,
+      "expected_output": null,
+      "executor_output_enforcement": null,
+      "observed_useful_output": "UNPROVEN in this disposition audit",
+      "runtime_action": "none"
+    },
+    {
+      "lane_id": "crawl-v3-dashboard",
+      "owner": "platform",
+      "scheduler_kind": "cron",
+      "state": "ACTIVE",
+      "declared_output_signal": {
+        "kind": "none"
+      },
+      "category": "real_gap",
+      "reason": "Active scheduled producer declares kind:none; a static declaration or exit0 does not establish useful-output freshness.",
+      "required_proof": "Owner-reviewed semantic output/valid-empty rule, attempt-bound receipt, SLA and downstream proof; do not substitute an invented output count.",
+      "health_contract_status": "DRAFT",
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "Telegram alerts sent for confirmed broken v3 routes",
+        "rule": "empty_allowed",
+        "min_produced": null,
+        "window_h": null,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [
+          "no_new_input"
+        ],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/crawl-v3-dashboard_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/crawl-v3-dashboard/<run_id>.json); today the v1 receipt reports this unit as summary.confirmed"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      },
+      "executor_output_enforcement": null,
+      "observed_useful_output": "UNPROVEN in this disposition audit",
+      "runtime_action": "none"
+    },
+    {
+      "lane_id": "alert-missing-conditions",
+      "owner": "platform",
+      "scheduler_kind": "cron",
+      "state": "ACTIVE",
+      "declared_output_signal": {
+        "kind": "none"
+      },
+      "category": "real_gap",
+      "reason": "Active scheduled producer declares kind:none; a static declaration or exit0 does not establish useful-output freshness.",
+      "required_proof": "Owner-reviewed semantic output/valid-empty rule, attempt-bound receipt, SLA and downstream proof; do not substitute an invented output count.",
+      "health_contract_status": null,
+      "expected_output": null,
+      "executor_output_enforcement": null,
+      "observed_useful_output": "UNPROVEN in this disposition audit",
+      "runtime_action": "none"
+    },
+    {
+      "lane_id": "sync-memory-to-drive",
+      "owner": "platform",
+      "scheduler_kind": "cron",
+      "state": "ACTIVE",
+      "declared_output_signal": {
+        "kind": "none"
+      },
+      "category": "real_gap",
+      "reason": "Active scheduled producer declares kind:none; a static declaration or exit0 does not establish useful-output freshness.",
+      "required_proof": "Owner-reviewed semantic output/valid-empty rule, attempt-bound receipt, SLA and downstream proof; do not substitute an invented output count.",
+      "health_contract_status": null,
+      "expected_output": null,
+      "executor_output_enforcement": null,
+      "observed_useful_output": "UNPROVEN in this disposition audit",
+      "runtime_action": "none"
+    },
+    {
+      "lane_id": "hermes-top20-external-intel",
+      "owner": "hermes",
+      "scheduler_kind": "cron",
+      "state": "ACTIVE",
+      "declared_output_signal": {
+        "kind": "none"
+      },
+      "category": "real_gap",
+      "reason": "Active scheduled producer declares kind:none; a static declaration or exit0 does not establish useful-output freshness.",
+      "required_proof": "Owner-reviewed semantic output/valid-empty rule, attempt-bound receipt, SLA and downstream proof; do not substitute an invented output count.",
+      "health_contract_status": null,
+      "expected_output": null,
+      "executor_output_enforcement": null,
+      "observed_useful_output": "UNPROVEN in this disposition audit",
+      "runtime_action": "none"
+    },
+    {
+      "lane_id": "hermes-usefulness-backfill",
+      "owner": "hermes",
+      "scheduler_kind": "cron",
+      "state": "ACTIVE",
+      "declared_output_signal": {
+        "kind": "none"
+      },
+      "category": "real_gap",
+      "reason": "Active scheduled producer declares kind:none; a static declaration or exit0 does not establish useful-output freshness.",
+      "required_proof": "Owner-reviewed semantic output/valid-empty rule, attempt-bound receipt, SLA and downstream proof; do not substitute an invented output count.",
+      "health_contract_status": null,
+      "expected_output": null,
+      "executor_output_enforcement": null,
+      "observed_useful_output": "UNPROVEN in this disposition audit",
+      "runtime_action": "none"
+    },
+    {
+      "lane_id": "hermes-librarian-retention",
+      "owner": "hermes",
+      "scheduler_kind": "systemd",
+      "state": "ACTIVE",
+      "declared_output_signal": {
+        "kind": "none"
+      },
+      "category": "deferred_retained_systemd",
+      "reason": "Existing registry_systemd/F07 infrastructure remains unchanged this iteration; no useful-output exemption is inferred.",
+      "required_proof": "Retain host unit and its independent health evidence; review a specific output/heartbeat contract separately.",
+      "health_contract_status": null,
+      "expected_output": null,
+      "executor_output_enforcement": null,
+      "observed_useful_output": "UNPROVEN in this disposition audit",
+      "runtime_action": "none"
+    },
+    {
+      "lane_id": "disk-hygiene-enforcer",
+      "owner": "platform",
+      "scheduler_kind": "systemd",
+      "state": "ACTIVE",
+      "declared_output_signal": {
+        "kind": "none"
+      },
+      "category": "deferred_retained_systemd",
+      "reason": "Existing registry_systemd/F07 infrastructure remains unchanged this iteration; no useful-output exemption is inferred.",
+      "required_proof": "Retain host unit and its independent health evidence; review a specific output/heartbeat contract separately.",
+      "health_contract_status": null,
+      "expected_output": null,
+      "executor_output_enforcement": null,
+      "observed_useful_output": "UNPROVEN in this disposition audit",
+      "runtime_action": "none"
+    },
+    {
+      "lane_id": "prewarm-finviz-strip-map",
+      "owner": "portfolio",
+      "scheduler_kind": "cron",
+      "state": "ACTIVE",
+      "declared_output_signal": {
+        "kind": "none",
+        "reason": "NO_DURABLE_OUTPUT",
+        "detail": "2026-10-09 registry-ops-crons (breach triage SIGNAL_WRONG): `curl -s -o /dev/null ... >> log` writes nothing, so the redirect log is 0 bytes (mtime 09-28) while the endpoint answers 200 in 0.14 s. No durable per-run artifact exists; declared NO_DURABLE_OUTPUT until the line gains a `-w` receipt or i"
+      },
+      "category": "real_gap",
+      "reason": "Active scheduled producer declares kind:none; a static declaration or exit0 does not establish useful-output freshness.",
+      "required_proof": "Owner-reviewed semantic output/valid-empty rule, attempt-bound receipt, SLA and downstream proof; do not substitute an invented output count.",
+      "health_contract_status": null,
+      "expected_output": null,
+      "executor_output_enforcement": null,
+      "observed_useful_output": "UNPROVEN in this disposition audit",
+      "runtime_action": "none"
+    },
+    {
+      "lane_id": "prewarm-trade-ai",
+      "owner": "portfolio",
+      "scheduler_kind": "cron",
+      "state": "ACTIVE",
+      "declared_output_signal": {
+        "kind": "none",
+        "reason": "NO_DURABLE_OUTPUT",
+        "detail": "2026-10-09 registry-ops-crons (breach triage SIGNAL_WRONG): same pattern as prewarm-finviz-strip-map: two `curl -o /dev/null`, redirect log 0 bytes (09-27); endpoint 200 in 0.006 s. Declared NO_DURABLE_OUTPUT."
+      },
+      "category": "real_gap",
+      "reason": "Active scheduled producer declares kind:none; a static declaration or exit0 does not establish useful-output freshness.",
+      "required_proof": "Owner-reviewed semantic output/valid-empty rule, attempt-bound receipt, SLA and downstream proof; do not substitute an invented output count.",
+      "health_contract_status": null,
+      "expected_output": null,
+      "executor_output_enforcement": null,
+      "observed_useful_output": "UNPROVEN in this disposition audit",
+      "runtime_action": "none"
+    },
+    {
+      "lane_id": "hermes-deep-research-local",
+      "owner": "portfolio",
+      "scheduler_kind": "systemd",
+      "state": "ACTIVE",
+      "declared_output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "no scheduler log redirect and no verified script receipt"
+      },
+      "category": "deferred_retained_systemd",
+      "reason": "Existing registry_systemd/F07 infrastructure remains unchanged this iteration; no useful-output exemption is inferred.",
+      "required_proof": "Retain host unit and its independent health evidence; review a specific output/heartbeat contract separately.",
+      "health_contract_status": null,
+      "expected_output": null,
+      "executor_output_enforcement": null,
+      "observed_useful_output": "UNPROVEN in this disposition audit",
+      "runtime_action": "none"
+    },
+    {
+      "lane_id": "launchpadlib-cache-clean",
+      "owner": "os",
+      "scheduler_kind": "systemd",
+      "state": "ACTIVE",
+      "declared_output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "no scheduler log redirect and no verified script receipt"
+      },
+      "category": "deferred_retained_systemd",
+      "reason": "Existing registry_systemd/F07 infrastructure remains unchanged this iteration; no useful-output exemption is inferred.",
+      "required_proof": "Retain host unit and its independent health evidence; review a specific output/heartbeat contract separately.",
+      "health_contract_status": null,
+      "expected_output": null,
+      "executor_output_enforcement": null,
+      "observed_useful_output": "UNPROVEN in this disposition audit",
+      "runtime_action": "none"
+    },
+    {
+      "lane_id": "mcporter-token-refresh",
+      "owner": "portfolio",
+      "scheduler_kind": "systemd",
+      "state": "ACTIVE",
+      "declared_output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "no scheduler log redirect and no verified script receipt"
+      },
+      "category": "deferred_retained_systemd",
+      "reason": "Existing registry_systemd/F07 infrastructure remains unchanged this iteration; no useful-output exemption is inferred.",
+      "required_proof": "Retain host unit and its independent health evidence; review a specific output/heartbeat contract separately.",
+      "health_contract_status": null,
+      "expected_output": null,
+      "executor_output_enforcement": null,
+      "observed_useful_output": "UNPROVEN in this disposition audit",
+      "runtime_action": "none"
+    },
+    {
+      "lane_id": "snap-firmware-updater-firmware-notifier",
+      "owner": "os",
+      "scheduler_kind": "systemd",
+      "state": "ACTIVE",
+      "declared_output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "no scheduler log redirect and no verified script receipt"
+      },
+      "category": "deferred_retained_systemd",
+      "reason": "Existing registry_systemd/F07 infrastructure remains unchanged this iteration; no useful-output exemption is inferred.",
+      "required_proof": "Retain host unit and its independent health evidence; review a specific output/heartbeat contract separately.",
+      "health_contract_status": null,
+      "expected_output": null,
+      "executor_output_enforcement": null,
+      "observed_useful_output": "UNPROVEN in this disposition audit",
+      "runtime_action": "none"
+    },
+    {
+      "lane_id": "systemd-tmpfiles-clean",
+      "owner": "os",
+      "scheduler_kind": "systemd",
+      "state": "ACTIVE",
+      "declared_output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "no scheduler log redirect and no verified script receipt"
+      },
+      "category": "deferred_retained_systemd",
+      "reason": "Existing registry_systemd/F07 infrastructure remains unchanged this iteration; no useful-output exemption is inferred.",
+      "required_proof": "Retain host unit and its independent health evidence; review a specific output/heartbeat contract separately.",
+      "health_contract_status": null,
+      "expected_output": null,
+      "executor_output_enforcement": null,
+      "observed_useful_output": "UNPROVEN in this disposition audit",
+      "runtime_action": "none"
+    },
+    {
+      "lane_id": "tradeai-agent-runtime-alex",
+      "owner": "agents",
+      "scheduler_kind": "systemd",
+      "state": "ACTIVE",
+      "declared_output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "no scheduler log redirect and no verified script receipt"
+      },
+      "category": "deferred_retained_systemd",
+      "reason": "Existing registry_systemd/F07 infrastructure remains unchanged this iteration; no useful-output exemption is inferred.",
+      "required_proof": "Retain host unit and its independent health evidence; review a specific output/heartbeat contract separately.",
+      "health_contract_status": null,
+      "expected_output": null,
+      "executor_output_enforcement": null,
+      "observed_useful_output": "UNPROVEN in this disposition audit",
+      "runtime_action": "none"
+    },
+    {
+      "lane_id": "tradeai-agent-runtime-atlas",
+      "owner": "platform",
+      "scheduler_kind": "systemd",
+      "state": "ACTIVE",
+      "declared_output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "no scheduler log redirect and no verified script receipt"
+      },
+      "category": "deferred_retained_systemd",
+      "reason": "Existing registry_systemd/F07 infrastructure remains unchanged this iteration; no useful-output exemption is inferred.",
+      "required_proof": "Retain host unit and its independent health evidence; review a specific output/heartbeat contract separately.",
+      "health_contract_status": null,
+      "expected_output": null,
+      "executor_output_enforcement": null,
+      "observed_useful_output": "UNPROVEN in this disposition audit",
+      "runtime_action": "none"
+    },
+    {
+      "lane_id": "tradeai-agent-runtime-concierge",
+      "owner": "platform",
+      "scheduler_kind": "systemd",
+      "state": "ACTIVE",
+      "declared_output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "no scheduler log redirect and no verified script receipt"
+      },
+      "category": "deferred_retained_systemd",
+      "reason": "Existing registry_systemd/F07 infrastructure remains unchanged this iteration; no useful-output exemption is inferred.",
+      "required_proof": "Retain host unit and its independent health evidence; review a specific output/heartbeat contract separately.",
+      "health_contract_status": null,
+      "expected_output": null,
+      "executor_output_enforcement": null,
+      "observed_useful_output": "UNPROVEN in this disposition audit",
+      "runtime_action": "none"
+    },
+    {
+      "lane_id": "tradeai-agent-runtime-hermes",
+      "owner": "platform",
+      "scheduler_kind": "systemd",
+      "state": "ACTIVE",
+      "declared_output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "no scheduler log redirect and no verified script receipt"
+      },
+      "category": "deferred_retained_systemd",
+      "reason": "Existing registry_systemd/F07 infrastructure remains unchanged this iteration; no useful-output exemption is inferred.",
+      "required_proof": "Retain host unit and its independent health evidence; review a specific output/heartbeat contract separately.",
+      "health_contract_status": null,
+      "expected_output": null,
+      "executor_output_enforcement": null,
+      "observed_useful_output": "UNPROVEN in this disposition audit",
+      "runtime_action": "none"
+    },
+    {
+      "lane_id": "tradeai-agent-runtime-morgan",
+      "owner": "agents",
+      "scheduler_kind": "systemd",
+      "state": "ACTIVE",
+      "declared_output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "no scheduler log redirect and no verified script receipt"
+      },
+      "category": "deferred_retained_systemd",
+      "reason": "Existing registry_systemd/F07 infrastructure remains unchanged this iteration; no useful-output exemption is inferred.",
+      "required_proof": "Retain host unit and its independent health evidence; review a specific output/heartbeat contract separately.",
+      "health_contract_status": null,
+      "expected_output": null,
+      "executor_output_enforcement": null,
+      "observed_useful_output": "UNPROVEN in this disposition audit",
+      "runtime_action": "none"
+    },
+    {
+      "lane_id": "tradeai-agent-runtime-pulse",
+      "owner": "platform",
+      "scheduler_kind": "systemd",
+      "state": "ACTIVE",
+      "declared_output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "no scheduler log redirect and no verified script receipt"
+      },
+      "category": "deferred_retained_systemd",
+      "reason": "Existing registry_systemd/F07 infrastructure remains unchanged this iteration; no useful-output exemption is inferred.",
+      "required_proof": "Retain host unit and its independent health evidence; review a specific output/heartbeat contract separately.",
+      "health_contract_status": null,
+      "expected_output": null,
+      "executor_output_enforcement": null,
+      "observed_useful_output": "UNPROVEN in this disposition audit",
+      "runtime_action": "none"
+    },
+    {
+      "lane_id": "tradeai-agent-runtime-steph",
+      "owner": "agents",
+      "scheduler_kind": "systemd",
+      "state": "ACTIVE",
+      "declared_output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "no scheduler log redirect and no verified script receipt"
+      },
+      "category": "deferred_retained_systemd",
+      "reason": "Existing registry_systemd/F07 infrastructure remains unchanged this iteration; no useful-output exemption is inferred.",
+      "required_proof": "Retain host unit and its independent health evidence; review a specific output/heartbeat contract separately.",
+      "health_contract_status": null,
+      "expected_output": null,
+      "executor_output_enforcement": null,
+      "observed_useful_output": "UNPROVEN in this disposition audit",
+      "runtime_action": "none"
+    },
+    {
+      "lane_id": "tradeai-maturity-feeds",
+      "owner": "platform",
+      "scheduler_kind": "systemd",
+      "state": "ACTIVE",
+      "declared_output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "no scheduler log redirect and no verified script receipt"
+      },
+      "category": "deferred_retained_systemd",
+      "reason": "Existing registry_systemd/F07 infrastructure remains unchanged this iteration; no useful-output exemption is inferred.",
+      "required_proof": "Retain host unit and its independent health evidence; review a specific output/heartbeat contract separately.",
+      "health_contract_status": null,
+      "expected_output": null,
+      "executor_output_enforcement": null,
+      "observed_useful_output": "UNPROVEN in this disposition audit",
+      "runtime_action": "none"
+    },
+    {
+      "lane_id": "tradeai-watch-decision-scheduler",
+      "owner": "portfolio",
+      "scheduler_kind": "systemd",
+      "state": "ACTIVE",
+      "declared_output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "no scheduler log redirect and no verified script receipt"
+      },
+      "category": "deferred_retained_systemd",
+      "reason": "Existing registry_systemd/F07 infrastructure remains unchanged this iteration; no useful-output exemption is inferred.",
+      "required_proof": "Retain host unit and its independent health evidence; review a specific output/heartbeat contract separately.",
+      "health_contract_status": null,
+      "expected_output": null,
+      "executor_output_enforcement": null,
+      "observed_useful_output": "UNPROVEN in this disposition audit",
+      "runtime_action": "none"
+    },
+    {
+      "lane_id": "ubuntu-insights-collect",
+      "owner": "os",
+      "scheduler_kind": "systemd",
+      "state": "ACTIVE",
+      "declared_output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "no scheduler log redirect and no verified script receipt"
+      },
+      "category": "deferred_retained_systemd",
+      "reason": "Existing registry_systemd/F07 infrastructure remains unchanged this iteration; no useful-output exemption is inferred.",
+      "required_proof": "Retain host unit and its independent health evidence; review a specific output/heartbeat contract separately.",
+      "health_contract_status": null,
+      "expected_output": null,
+      "executor_output_enforcement": null,
+      "observed_useful_output": "UNPROVEN in this disposition audit",
+      "runtime_action": "none"
+    },
+    {
+      "lane_id": "ubuntu-insights-upload",
+      "owner": "os",
+      "scheduler_kind": "systemd",
+      "state": "ACTIVE",
+      "declared_output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "no scheduler log redirect and no verified script receipt"
+      },
+      "category": "deferred_retained_systemd",
+      "reason": "Existing registry_systemd/F07 infrastructure remains unchanged this iteration; no useful-output exemption is inferred.",
+      "required_proof": "Retain host unit and its independent health evidence; review a specific output/heartbeat contract separately.",
+      "health_contract_status": null,
+      "expected_output": null,
+      "executor_output_enforcement": null,
+      "observed_useful_output": "UNPROVEN in this disposition audit",
+      "runtime_action": "none"
+    },
+    {
+      "lane_id": "chatgpt-oauth-proxy-service",
+      "owner": "platform",
+      "scheduler_kind": "systemd",
+      "state": "ACTIVE",
+      "declared_output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "no scheduler log redirect and no verified script receipt"
+      },
+      "category": "deferred_retained_systemd",
+      "reason": "Existing registry_systemd/F07 infrastructure remains unchanged this iteration; no useful-output exemption is inferred.",
+      "required_proof": "Retain host unit and its independent health evidence; review a specific output/heartbeat contract separately.",
+      "health_contract_status": null,
+      "expected_output": null,
+      "executor_output_enforcement": null,
+      "observed_useful_output": "UNPROVEN in this disposition audit",
+      "runtime_action": "none"
+    },
+    {
+      "lane_id": "dof-dashboard-service",
+      "owner": "platform",
+      "scheduler_kind": "systemd",
+      "state": "ACTIVE",
+      "declared_output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "no scheduler log redirect and no verified script receipt"
+      },
+      "category": "deferred_retained_systemd",
+      "reason": "Existing registry_systemd/F07 infrastructure remains unchanged this iteration; no useful-output exemption is inferred.",
+      "required_proof": "Retain host unit and its independent health evidence; review a specific output/heartbeat contract separately.",
+      "health_contract_status": null,
+      "expected_output": null,
+      "executor_output_enforcement": null,
+      "observed_useful_output": "UNPROVEN in this disposition audit",
+      "runtime_action": "none"
+    },
+    {
+      "lane_id": "grok-oauth-proxy-service",
+      "owner": "platform",
+      "scheduler_kind": "systemd",
+      "state": "ACTIVE",
+      "declared_output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "no scheduler log redirect and no verified script receipt"
+      },
+      "category": "deferred_retained_systemd",
+      "reason": "Existing registry_systemd/F07 infrastructure remains unchanged this iteration; no useful-output exemption is inferred.",
+      "required_proof": "Retain host unit and its independent health evidence; review a specific output/heartbeat contract separately.",
+      "health_contract_status": null,
+      "expected_output": null,
+      "executor_output_enforcement": null,
+      "observed_useful_output": "UNPROVEN in this disposition audit",
+      "runtime_action": "none"
+    },
+    {
+      "lane_id": "openclaw-gateway-service",
+      "owner": "platform",
+      "scheduler_kind": "systemd",
+      "state": "ACTIVE",
+      "declared_output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "no scheduler log redirect and no verified script receipt"
+      },
+      "category": "deferred_retained_systemd",
+      "reason": "Existing registry_systemd/F07 infrastructure remains unchanged this iteration; no useful-output exemption is inferred.",
+      "required_proof": "Retain host unit and its independent health evidence; review a specific output/heartbeat contract separately.",
+      "health_contract_status": null,
+      "expected_output": null,
+      "executor_output_enforcement": null,
+      "observed_useful_output": "UNPROVEN in this disposition audit",
+      "runtime_action": "none"
+    },
+    {
+      "lane_id": "power-watch-service",
+      "owner": "platform",
+      "scheduler_kind": "systemd",
+      "state": "ACTIVE",
+      "declared_output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "no scheduler log redirect and no verified script receipt"
+      },
+      "category": "deferred_retained_systemd",
+      "reason": "Existing registry_systemd/F07 infrastructure remains unchanged this iteration; no useful-output exemption is inferred.",
+      "required_proof": "Retain host unit and its independent health evidence; review a specific output/heartbeat contract separately.",
+      "health_contract_status": null,
+      "expected_output": null,
+      "executor_output_enforcement": null,
+      "observed_useful_output": "UNPROVEN in this disposition audit",
+      "runtime_action": "none"
+    },
+    {
+      "lane_id": "trade-ai-lab-moomoo-opend-service",
+      "owner": "platform",
+      "scheduler_kind": "systemd",
+      "state": "ACTIVE",
+      "declared_output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "no scheduler log redirect and no verified script receipt"
+      },
+      "category": "deferred_retained_systemd",
+      "reason": "Existing registry_systemd/F07 infrastructure remains unchanged this iteration; no useful-output exemption is inferred.",
+      "required_proof": "Retain host unit and its independent health evidence; review a specific output/heartbeat contract separately.",
+      "health_contract_status": null,
+      "expected_output": null,
+      "executor_output_enforcement": null,
+      "observed_useful_output": "UNPROVEN in this disposition audit",
+      "runtime_action": "none"
+    },
+    {
+      "lane_id": "tradeai-cio-telegram-service",
+      "owner": "platform",
+      "scheduler_kind": "systemd",
+      "state": "ACTIVE",
+      "declared_output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "no scheduler log redirect and no verified script receipt"
+      },
+      "category": "deferred_retained_systemd",
+      "reason": "Existing registry_systemd/F07 infrastructure remains unchanged this iteration; no useful-output exemption is inferred.",
+      "required_proof": "Retain host unit and its independent health evidence; review a specific output/heartbeat contract separately.",
+      "health_contract_status": null,
+      "expected_output": null,
+      "executor_output_enforcement": null,
+      "observed_useful_output": "UNPROVEN in this disposition audit",
+      "runtime_action": "none"
+    },
+    {
+      "lane_id": "tradeai-health-agent-service",
+      "owner": "platform",
+      "scheduler_kind": "systemd",
+      "state": "ACTIVE",
+      "declared_output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "no scheduler log redirect and no verified script receipt"
+      },
+      "category": "deferred_retained_systemd",
+      "reason": "Existing registry_systemd/F07 infrastructure remains unchanged this iteration; no useful-output exemption is inferred.",
+      "required_proof": "Retain host unit and its independent health evidence; review a specific output/heartbeat contract separately.",
+      "health_contract_status": null,
+      "expected_output": null,
+      "executor_output_enforcement": null,
+      "observed_useful_output": "UNPROVEN in this disposition audit",
+      "runtime_action": "none"
+    },
+    {
+      "lane_id": "tradeai-lab-postgres-service",
+      "owner": "platform",
+      "scheduler_kind": "systemd",
+      "state": "ACTIVE",
+      "declared_output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "no scheduler log redirect and no verified script receipt"
+      },
+      "category": "deferred_retained_systemd",
+      "reason": "Existing registry_systemd/F07 infrastructure remains unchanged this iteration; no useful-output exemption is inferred.",
+      "required_proof": "Retain host unit and its independent health evidence; review a specific output/heartbeat contract separately.",
+      "health_contract_status": null,
+      "expected_output": null,
+      "executor_output_enforcement": null,
+      "observed_useful_output": "UNPROVEN in this disposition audit",
+      "runtime_action": "none"
+    },
+    {
+      "lane_id": "tradeai-n8n-coordination-gateway-service",
+      "owner": "platform",
+      "scheduler_kind": "systemd",
+      "state": "ACTIVE",
+      "declared_output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "no scheduler log redirect and no verified script receipt"
+      },
+      "category": "deferred_retained_systemd",
+      "reason": "Existing registry_systemd/F07 infrastructure remains unchanged this iteration; no useful-output exemption is inferred.",
+      "required_proof": "Retain host unit and its independent health evidence; review a specific output/heartbeat contract separately.",
+      "health_contract_status": null,
+      "expected_output": null,
+      "executor_output_enforcement": null,
+      "observed_useful_output": "UNPROVEN in this disposition audit",
+      "runtime_action": "none"
+    },
+    {
+      "lane_id": "tradeai-n8n-run-executor-service",
+      "owner": "platform",
+      "scheduler_kind": "systemd",
+      "state": "ACTIVE",
+      "declared_output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "no scheduler log redirect and no verified script receipt"
+      },
+      "category": "deferred_retained_systemd",
+      "reason": "Existing registry_systemd/F07 infrastructure remains unchanged this iteration; no useful-output exemption is inferred.",
+      "required_proof": "Retain host unit and its independent health evidence; review a specific output/heartbeat contract separately.",
+      "health_contract_status": null,
+      "expected_output": null,
+      "executor_output_enforcement": null,
+      "observed_useful_output": "UNPROVEN in this disposition audit",
+      "runtime_action": "none"
+    },
+    {
+      "lane_id": "tradeai-n8n-run-relay-service",
+      "owner": "platform",
+      "scheduler_kind": "systemd",
+      "state": "ACTIVE",
+      "declared_output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "no scheduler log redirect and no verified script receipt"
+      },
+      "category": "deferred_retained_systemd",
+      "reason": "Existing registry_systemd/F07 infrastructure remains unchanged this iteration; no useful-output exemption is inferred.",
+      "required_proof": "Retain host unit and its independent health evidence; review a specific output/heartbeat contract separately.",
+      "health_contract_status": null,
+      "expected_output": null,
+      "executor_output_enforcement": null,
+      "observed_useful_output": "UNPROVEN in this disposition audit",
+      "runtime_action": "none"
+    },
+    {
+      "lane_id": "tradeai-ops-agent-service",
+      "owner": "platform",
+      "scheduler_kind": "systemd",
+      "state": "ACTIVE",
+      "declared_output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "no scheduler log redirect and no verified script receipt"
+      },
+      "category": "deferred_retained_systemd",
+      "reason": "Existing registry_systemd/F07 infrastructure remains unchanged this iteration; no useful-output exemption is inferred.",
+      "required_proof": "Retain host unit and its independent health evidence; review a specific output/heartbeat contract separately.",
+      "health_contract_status": null,
+      "expected_output": null,
+      "executor_output_enforcement": null,
+      "observed_useful_output": "UNPROVEN in this disposition audit",
+      "runtime_action": "none"
+    }
+  ]
+}
