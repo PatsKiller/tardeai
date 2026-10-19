@@ -2029,7 +2029,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/live_proof_20260928/07-operator-summary.md` | 07 — Operator summary (redacted) | review_required | OK | `e4e6a058cde6` |
 | `docs/ops/measurements/n8n-cutover-20261016T172425Z/REPORT.md` | n8n cutover outcomes — 2026-10-16T17:24:25+00:00 | review_required | MISSING HEADER | `e02ee59902ba` |
 | `docs/ops/measurements/n8n-cutover-20261016T195110Z/REPORT.md` | n8n cutover outcomes — 2026-10-16T19:51:10+00:00 | review_required | OK | `04c9f08bfc36` |
-| `docs/ops/n8n_self_healing.md` | n8n self-healing: how a lane failure is handled, end to end (2026-10-16) | review_required | OK | `22e73197f35b` |
+| `docs/ops/n8n_self_healing.md` | n8n self-healing: how a lane failure is handled, end to end (2026-10-16) | review_required | OK | `89182083aeba` |
 | `docs/ops/openclaw_stage2_soul_patch_20260923.md` | OpenClaw Maria SOUL / skill patch — Stage 2 (specialist honesty) | review_required | OK | `d0a83ec99d47` |
 | `docs/ops/packets/comms-intent-consumer-live-20261017/README.md` | comms-intent consumer LIVE on the n8n fabric (2026-10-17) | review_required | OK | `b0c1cc0322ae` |
 | `docs/ops/packets/consolidation-health-audit-c3-20261015/README.md` | consolidation-health-audit-c3-20261015: CONSOLIDATE wave C3, operator packet | review_required | MISSING HEADER | `5ec104b01e81` |
@@ -2060,7 +2060,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/packets/run-from-release-cohort1-20261015/04_rollback.md` | Roll back cohort 1 (operator) | review_required | MISSING HEADER | `f3d25844a007` |
 | `docs/ops/packets/run-from-release-cohort1-20261015/README.md` | Run from the release: cohort 1 operator packet (2026-10-15) | review_required | MISSING HEADER | `e65023d6a400` |
 | `docs/ops/provider-spend-attribution/README.md` | Provider spend attribution | review_required | OK | `df44cfc4ee62` |
-| `docs/ops/self_heal_claude_fixer.md` | Self-heal Claude Code fixer — code defects fixed in iterations, shipped as a tested PR | review_required | OK | `b90fcb9c0c1d` |
+| `docs/ops/self_heal_claude_fixer.md` | Self-heal Claude Code fixer — code defects fixed in iterations, shipped as a tested PR | review_required | OK | `2775d406c0e3` |
 | `docs/ops/telegram_channel_diligence_20260916/00_EXECUTIVE_SUMMARY.md` | Telegram Channel Diligence — Executive Summary | review_required | OK | `19050e08a848` |
 | `docs/ops/telegram_channel_diligence_20260916/01_CHANNEL_INVENTORY_SOURCE_MAP.md` | Phase 1 — Channel Inventory & Source Mapping | review_required | OK | `6be06281ea6d` |
 | `docs/ops/telegram_channel_diligence_20260916/02_ROUTING_GOVERNANCE_PROPOSAL.md` | Phase 2 — Message Routing & Governance Proposal | review_required | OK | `4bf845d22d7f` |
