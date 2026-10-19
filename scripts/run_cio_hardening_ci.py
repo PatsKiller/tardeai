@@ -3973,6 +3973,12 @@ GATES = [
         ["tests/test_n8n_cutover_transaction_20261018.py"],
     ),
     (
+        # Actual CURRENT identity, strict release receipt readers, and rollback/prepare truth.
+        # Temporary artifacts and fake shell actions only.
+        "cio_deploy_receipt_truth_20261018",
+        ["tests/test_cio_deploy_receipt_truth_20261018.py"],
+    ),
+    (
         # Host signatures and exact semantic snapshots; eligibility observes real elapsed slots only.
         # Ephemeral in-memory keys, fake host reads and temporary artifacts; no runtime grants or effects.
         "n8n_evidence_gates_20261018",
