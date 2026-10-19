@@ -35,7 +35,10 @@ from typing import Any, Mapping
 
 EXPECTED_OUTPUT_SCHEMA = "N8nExpectedOutput@v1"
 RULES = ("min_produced", "per_window", "empty_allowed")
-EVIDENCE_KINDS = ("store_rows", "file", "receipt_field", "ledger_row")
+# Same set as scripts/check_n8n_workflow_framework.py EVIDENCE_KINDS and N8N_CONTRACTS_DESIGN.md FW-M6. This list said
+# "file" while the checker said "file_artifact"; FW-M6 runs both, so no contract could cite a file (2026-10-19, PR
+# #1863). tests/test_n8n_evidence_kind_parity_20261019.py pins the two lists equal.
+EVIDENCE_KINDS = ("store_rows", "file_artifact", "receipt_field", "ledger_row")
 LANE_RECEIPT_V2 = "LaneRunReceipt@v2"
 VERDICTS = (
     "no_rule",
