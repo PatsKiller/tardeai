@@ -36,6 +36,7 @@ export interface CoordinationSpotlight {
   summary?: string
   age_s?: number | null
   path?: string
+  status?: string
   idempotency_key?: string
   event_id?: string
 }
@@ -45,7 +46,11 @@ export interface CoordinationPayload {
   as_of?: string | null
   ledger?: string | null
   items?: CoordinationReceipt[]
-  count?: number
+  count?: number | null
+  total_count?: number | null
+  summary?: { by_state?: Record<string, number>; by_lane?: Record<string, number> } | null
+  coverage?: { aggregation_complete?: boolean; items_truncated?: boolean; scope?: string; since?: string | null; through?: string | null }
+  last_good_at?: string | null
   status?: 'OK' | 'NO_LEDGER' | string
   note?: string
   wave_b_lanes?: string[]
@@ -82,14 +87,18 @@ export interface CoordinationSpotlightRow {
 }
 
 export interface CoordinationModel {
-  status: 'OK' | 'NO_LEDGER' | 'UNAVAILABLE'
+  status: 'OK' | 'NO_LEDGER' | 'UNAVAILABLE' | 'STALE' | 'PARTIAL'
   statusLabel: string
   statusTone: Tone
   asOf: string | null
   asOfLabel: string
   note: string
   rows: CoordinationRow[]
-  counts: Record<CoordinationRow['phase'], number>
+  counts: Record<CoordinationRow['phase'], number | null>
+  countsAvailable: boolean
+  coverageLabel: string
+  totalCount: number | null
+  lastGoodAgeMinutes: number | null
   transportLabel: string | null
   spotlights: CoordinationSpotlightRow[]
   waveBLanes: string[]
@@ -133,12 +142,12 @@ function artifactLabel(a: CoordinationReceipt['artifact_ref'] | CoordinationRece
   return store && ref ? `${store}:${ref}` : (ref || store)
 }
 
-export function toRow(r: CoordinationReceipt, nowMs: number): CoordinationRow {
+export function toRow(r: CoordinationReceipt, nowMs: number, index = 0): CoordinationRow {
   const state = String(r.state ?? 'UNKNOWN')
   const recordedAt = isoFromRecorded(r.recorded_at)
   const age = recordedAt ? Math.max(0, Math.round((nowMs - new Date(recordedAt).getTime()) / 60000)) : null
   return {
-    key: String(r.idempotency_key ?? r.event_id ?? Math.random()),
+    key: String(r.idempotency_key ?? r.event_id ?? `unidentified:${r.lane_id ?? ''}:${r.state ?? ''}:${r.recorded_at ?? ''}:${index}`),
     state,
     tone: toneForState(state),
     phase: phaseForState(state),
@@ -155,6 +164,8 @@ export function toRow(r: CoordinationReceipt, nowMs: number): CoordinationRow {
 }
 
 function spotlightTone(s: CoordinationSpotlight): Tone {
+  if (s.status === 'STALE') return 'warning'
+  if (s.status === 'UNAVAILABLE') return 'danger'
   const gs = String(s.gateway_state || '')
   if (s.ok === false || gs === 'REFUSED' || gs === 'FAILED') return 'danger'
   if (gs === 'ACCEPTED' || gs === 'CONSUMED' || s.ok === true) return 'success'
@@ -164,59 +175,60 @@ function spotlightTone(s: CoordinationSpotlight): Tone {
 
 export function projectCoordination(
   data: CoordinationPayload | null | undefined,
-  opts: { transport?: TransportState; stale?: boolean; nowMs?: number; laneFilter?: string | null } = {},
+  opts: { transport?: TransportState; stale?: boolean; error?: boolean; nowMs?: number; laneFilter?: string | null } = {},
 ): CoordinationModel {
   const nowMs = opts.nowMs ?? Date.now()
-  const counts: CoordinationModel['counts'] = { waiting: 0, 'in progress': 0, artifact: 0, consumed: 0, refused: 0, failed: 0, other: 0 }
-  const transportLabel = opts.transport === 'ERROR' ? 'ERROR'
-    : opts.transport === 'RETAINED' ? (opts.stale ? 'STALE · RETAINED' : 'RETAINED')
-    : opts.stale ? 'STALE' : null
-  const emptySpot: CoordinationSpotlightRow[] = []
-  const emptyLanes: Record<string, number> = {}
-  if (!data || typeof data !== 'object') {
-    return { status: 'UNAVAILABLE', statusLabel: 'UNAVAILABLE', statusTone: 'danger', asOf: null, asOfLabel: 'UNDATED',
-      note: 'the projection did not answer; nothing is known about waiting work', rows: [], counts, transportLabel,
-      spotlights: emptySpot, waveBLanes: [...WAVE_B_LANES], laneCounts: emptyLanes }
-  }
-  const allRows = (Array.isArray(data.items) ? data.items : []).map(r => toRow(r, nowMs))
+  const counts: CoordinationModel['counts'] = { waiting: null, 'in progress': null, artifact: null, consumed: null, refused: null, failed: null, other: null }
+  const knownVersion = !data?.schema || ['N8nCoordinationProjection@v1', 'N8nCoordinationProjection@v2'].includes(data.schema)
+  const allRows = knownVersion && Array.isArray(data?.items) ? data.items.map((r, i) => toRow(r, nowMs, i)) : []
+  const asOf = typeof data?.as_of === 'string' && Number.isFinite(Date.parse(data.as_of)) ? data.as_of : null
+  const age = asOf ? (nowMs - Date.parse(asOf)) / 60_000 : null
+  const failed = !!opts.error || opts.transport === 'ERROR'
+  const stale = !!opts.stale || (data?.schema === 'N8nCoordinationProjection@v2' && (age == null || age < 0 || age > 3))
+  let status: CoordinationModel['status'] = !data || !knownVersion ? 'UNAVAILABLE'
+    : failed || stale ? (data ? 'STALE' : 'UNAVAILABLE')
+    : data.status === 'OK' ? 'OK' : data.status === 'PARTIAL' ? 'PARTIAL' : data.status === 'NO_LEDGER' ? 'NO_LEDGER' : 'UNAVAILABLE'
+  const countsAvailable = !failed && !stale && (status === 'OK' || status === 'PARTIAL')
   const laneCounts: Record<string, number> = {}
-  for (const row of allRows) {
-    counts[row.phase] += 1
-    if (row.lane) laneCounts[row.lane] = (laneCounts[row.lane] || 0) + 1
-  }
-  const filter = opts.laneFilter ? String(opts.laneFilter) : null
-  const rows = filter ? allRows.filter(r => r.lane === filter) : allRows
-  const status: CoordinationModel['status'] = data.status === 'OK' ? 'OK' : data.status === 'NO_LEDGER' ? 'NO_LEDGER' : 'UNAVAILABLE'
-  const statusTone: Tone = status === 'OK' ? 'success' : status === 'NO_LEDGER' ? 'warning' : 'danger'
-  const asOf = typeof data.as_of === 'string' && data.as_of ? data.as_of : null
-  const waveBLanes = Array.isArray(data.wave_b_lanes) && data.wave_b_lanes.length
-    ? data.wave_b_lanes.map(String) : [...WAVE_B_LANES]
-  const spotlights: CoordinationSpotlightRow[] = (Array.isArray(data.spotlights) ? data.spotlights : []).map(s => {
-    const asOfS = typeof s.as_of === 'string' && s.as_of ? s.as_of : null
-    const age = asOfS && s.age_s != null && Number.isFinite(Number(s.age_s))
-      ? Math.max(0, Math.round(Number(s.age_s) / 60))
-      : (asOfS ? Math.max(0, Math.round((nowMs - new Date(asOfS).getTime()) / 60000)) : null)
-    return {
-      lane: String(s.lane_id ?? ''),
-      source: String(s.source ?? ''),
-      summary: String(s.summary ?? ''),
-      asOf: asOfS,
-      ageMinutes: age,
-      tone: spotlightTone(s),
+  let totalCount: number | null = null
+  let coverageLabel = 'Source unavailable; totals unknown'
+  if (countsAvailable) {
+    for (const phase of Object.keys(counts)) counts[phase as CoordinationRow['phase']] = 0
+    const summary = data?.summary
+    const full = data?.schema === 'N8nCoordinationProjection@v2' && data.coverage?.aggregation_complete === true
+      && typeof data.total_count === 'number' && Number.isSafeInteger(data.total_count) && data.total_count >= allRows.length
+      && summary?.by_state && Object.values(summary.by_state).every(n => Number.isSafeInteger(n) && n >= 0)
+      && Object.values(summary.by_state).reduce((a, b) => a + b, 0) === data.total_count
+    if (full) {
+      totalCount = data!.total_count!
+      for (const [state, n] of Object.entries(summary!.by_state!)) {
+        const phase = phaseForState(state); counts[phase] = (counts[phase] ?? 0) + n
+      }
+      Object.assign(laneCounts, summary?.by_lane ?? {})
+      coverageLabel = `All ${totalCount} retained ledger rows; ${allRows.length} details shown${data?.coverage?.items_truncated ? ' (limited)' : ''}. Observed bounds ${data?.coverage?.since ?? 'empty'} → ${data?.coverage?.through ?? 'empty'}; no 24h filter.`
+    } else if (data?.schema !== 'N8nCoordinationProjection@v2') {
+      for (const row of allRows) { counts[row.phase] = (counts[row.phase] ?? 0) + 1; if (row.lane) laneCounts[row.lane] = (laneCounts[row.lane] || 0) + 1 }
+      coverageLabel = `Legacy sample: ${allRows.length} returned rows only; full totals and aggregation window unavailable.`
+    } else {
+      for (const phase of Object.keys(counts)) counts[phase as CoordinationRow['phase']] = null
+      status = 'PARTIAL'; coverageLabel = 'Aggregate coverage unavailable or inconsistent; totals unknown.'
     }
-  })
-  return {
-    status,
-    statusLabel: status === 'NO_LEDGER' ? 'NO LEDGER' : status,
-    statusTone,
-    asOf,
-    asOfLabel: asOf ? `projected ${asOf}` : 'UNDATED',
-    note: data.note ? String(data.note) : '',
-    rows,
-    counts,
-    transportLabel,
-    spotlights,
-    waveBLanes,
-    laneCounts,
   }
+  // Retained successful snapshots may predate last_good_at; failed captures are never proof.
+  const last = data?.last_good_at === undefined ? (knownVersion && data?.status === 'OK' ? asOf : null) : data.last_good_at
+  const lastGoodAgeMinutes = last && Number.isFinite(Date.parse(last)) && Date.parse(last) <= nowMs ? Math.round((nowMs - Date.parse(last)) / 60_000) : null
+  const spotlights: CoordinationSpotlightRow[] = (Array.isArray(data?.spotlights) ? data.spotlights : []).map(s => ({
+    lane: String(s.lane_id ?? ''), source: String(s.source ?? ''),
+    summary: `${s.status === 'STALE' || s.status === 'UNAVAILABLE' ? s.status + ' · ' : ''}${s.summary ?? ''}`,
+    asOf: typeof s.as_of === 'string' ? s.as_of : null,
+    ageMinutes: typeof s.age_s === 'number' && Number.isFinite(s.age_s) && s.age_s >= 0 ? Math.round(s.age_s / 60) : null,
+    tone: spotlightTone(s),
+  }))
+  return { status, statusLabel: status === 'NO_LEDGER' ? 'NO LEDGER · UNAVAILABLE' : status,
+    statusTone: status === 'OK' ? 'success' : status === 'STALE' || status === 'PARTIAL' || status === 'NO_LEDGER' ? 'warning' : 'danger',
+    asOf, asOfLabel: asOf ? `projected ${asOf}` : 'UNDATED', note: data?.note ? String(data.note) : '',
+    rows: opts.laneFilter ? allRows.filter(r => r.lane === opts.laneFilter) : allRows,
+    counts, countsAvailable: Object.values(counts).every(n => n !== null), coverageLabel, totalCount, lastGoodAgeMinutes,
+    transportLabel: failed ? 'ERROR' : stale ? 'STALE · RETAINED' : opts.transport === 'RETAINED' ? 'RETAINED' : null,
+    spotlights, waveBLanes: data?.wave_b_lanes?.length ? data.wave_b_lanes.map(String) : [...WAVE_B_LANES], laneCounts }
 }

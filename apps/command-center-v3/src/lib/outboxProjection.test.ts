@@ -19,10 +19,25 @@ const ok = projectOutbox({
     { outbox: 'telegram_outbox', id: '8', state: 'failed', reason: 'ok=false char_len=5000', channel: 'operator', subject: 'alert', attempts: 1, created_at: '2026-10-08T00:57:00+00:00', age_min: 3 },
   ],
 })
-check('OK label carries the window total', ok.status === 'OK' && ok.statusLabel === 'OK · 3 in window' && ok.windowLabel === 'last 24 h')
+check('legacy response is labelled sample with unknown completeness', ok.status === 'PARTIAL' && ok.statusLabel.startsWith('LEGACY SAMPLE') && ok.windowLabel.includes('completeness unknown'))
 check('counts flatten per outbox and state, largest first', ok.counts.map(c => `${c.outbox}:${c.state}=${c.n}`).join(',') === 'communication_outbox:suppressed=2,communication_outbox:sent=1,telegram_outbox:failed=1')
 check('rows keep state, reason and age', ok.rows.length === 2 && ok.rows[1].tone === 'danger' && ok.rows[0].reason === 'dedupe' && ok.rows[0].ageMinutes === 10)
 check('tones: sent success, suppressed neutral, withdrawn danger, recorded warning', toneForOutboxState('sent') === 'success' && toneForOutboxState('suppressed') === 'neutral' && toneForOutboxState('withdrawn') === 'danger' && toneForOutboxState('recorded') === 'warning')
 
 console.log(`outboxProjection: ${pass} passed, ${fail} failed`)
+if (fail > 0) process.exit(1)
+
+const full = projectOutbox({ schema: 'NotificationOutboxProjection@v2', status: 'OK', as_of: '2026-10-18T16:00:00Z', total: 601,
+  counts: { communication_outbox: { suppressed: 600, sent: 1 } }, items: [],
+  coverage: { aggregation_complete: true, items_truncated: true, since: '2026-10-17T16:00:00Z', through: '2026-10-18T16:00:00Z' } }, { nowMs: Date.parse('2026-10-18T16:00:00Z') })
+check('full window count is independent of sampled details', full.status === 'OK' && full.statusLabel.includes('601 recorded') && full.counts.some(c => c.state === 'sent' && c.n === 1))
+check('retained error cannot expose current counts', projectOutbox({ schema: 'NotificationOutboxProjection@v2', status: 'OK', counts: { x: { sent: 5 } } }, { error: true }).counts.length === 0)
+check('unknown major is unavailable', projectOutbox({ schema: 'NotificationOutboxProjection@v99', status: 'OK' }).status === 'UNAVAILABLE')
+if (fail > 0) process.exit(1)
+
+for (const status of ['UNAVAILABLE', 'STALE', 'OK']) {
+  const payload = { schema: 'NotificationOutboxProjection@v2', status, as_of: '2026-10-18T16:00:00Z', last_good_at: null }
+  check(`${status} explicit null never treats capture as last-good`, projectOutbox(payload, { nowMs: Date.parse('2026-10-18T16:00:00Z') }).lastGoodAgeMinutes === null)
+  check(`${status} retained explicit null never invents last-good on API error`, projectOutbox(payload, { nowMs: Date.parse('2026-10-18T16:00:00Z'), error: true }).lastGoodAgeMinutes === null)
+}
 if (fail > 0) process.exit(1)

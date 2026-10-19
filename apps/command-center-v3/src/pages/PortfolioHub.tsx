@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
+import RotationPublicationNotice from '../components/RotationPublicationNotice'
+import { useRotationAvailability } from '../hooks/useRotationAvailability'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
 import { fmt$ } from '../lib/format'
 import { pricingStampLine } from '../lib/pricingStamp'
@@ -277,7 +279,8 @@ export default function PortfolioHub({ onDrill }: Props) {
   const { data: riskData } = useApi<any>('/api/v2/risk', 120_000, { enabled: needReturns })
   const { data: forecast, loading: forecastLoading, error: forecastError } = useApi<any>('/api/v2/forecast', 300_000, { enabled: needForecast })
   const { data: lookthrough, loading: lookthroughLoading } = useApi<any>('/api/v2/portfolio/lookthrough', 300_000, { enabled: needLookthrough })
-  const { data: rotation } = useApi<any>('/api/v2/rotation/summary', 300_000, { enabled: needHoldingsDesk })
+  const { data: rotation, error: rotationError } = useApi<any>('/api/v2/rotation/summary', 300_000, { enabled: needHoldingsDesk })
+  const rotationPublication = useRotationAvailability(rotation, rotationError)
   const reportMap = useAnalystReportMap()
 
   // Allocation follows the account filter: per-account look-through when an account is selected, else global.
@@ -535,6 +538,7 @@ export default function PortfolioHub({ onDrill }: Props) {
       )}
 
       {tab === 'Holdings' && (() => {
+        if (!rotationPublication.ready) return <RotationPublicationNotice summary={rotation} error={rotationError} />
         const rs = rotation?.summary ?? {}
         const noAction = (rs.rotation_ideas ?? 0) === 0 && (rs.trim_review ?? 0) === 0 && (rs.add_review ?? 0) === 0
         return (

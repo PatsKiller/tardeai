@@ -5338,6 +5338,13 @@ GATES = [
         "release_windows_20261016",
         ["tests/test_release_window_20261016.py"],
     ),
+    (
+        "n8n_cc_reader_first_20261018",
+        [
+            "tests/test_cc_reader_first_20261018.py",
+            "tests/test_ci_frontend_dependencies_20261018.py",
+        ],
+    ),
 ]
 
 

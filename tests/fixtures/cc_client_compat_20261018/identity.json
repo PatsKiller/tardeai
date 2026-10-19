@@ -1,0 +1,17 @@
+{
+  "schema": "CcCompatibilityFixture@v1",
+  "old_source_sha": "a2aef7b4d2de17e737526337a2ffc37848deda4f",
+  "v2_producer_sha": "592824ffc98f24cea17a154b690607a02d9b8e00",
+  "scope": "Actual Git reader blobs and actual producer outputs over scratch files/SQLite/fake outbox queries. Never live proof. Old readers intentionally remain unsafe; version isolation must prevent unsupported bodies.",
+  "files_sha256": {
+    "src/pages/N8nToday.tsx": "c9b4d403f63c10ca533ed639a6b0b9f1d5fc54aedb3a07bd642d82cac5ca7977",
+    "src/pages/CoordinationPage.tsx": "217e68a6bc2f6a7ffcbbe789f05079e35bf76a8e3dc2588830ca607c60210d9d",
+    "src/lib/coordinationEvents.ts": "37ede71f570edbab05e221cacc0ac901e6ed99a658f5c1556808ee4c3831f3b4",
+    "src/lib/outboxProjection.ts": "dea795f3d5a4114aace20825e65f921b9dfdbc0122e899ea2f75940d3c963601",
+    "src/lib/designTokens.ts": "3f18f482e0a832b39a52d3154363f3776b8dd396f494fed961ebcbcb986fe1a1",
+    "src/lib/approvalBoard.ts": "823c77c1a1a3fbf2667733136b7ec25d0d8e3f0316289cde3ff9290684eb6675",
+    "src/lib/migrationBoard.ts": "1537446f9eec1b69a92e59e852617ad8f9f5d819ee65c90e91748e2f25e68a50"
+  },
+  "observations_original_sha256": "98f977cc8c0c94d12b4fd2737d5b1680150d021b520439e8e9cc3a792ee47baa",
+  "observations_original_bytes": 677093
+}

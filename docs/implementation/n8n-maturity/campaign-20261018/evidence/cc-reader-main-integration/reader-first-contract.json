@@ -1,0 +1,95 @@
+{
+  "activation_holds": [
+    "No deployment, workflow activation, scheduler, owner, approval, broker, provider, outbox or policy mutation.",
+    "No actual authenticated refreshed browser or live useful-output proof.",
+    "Negotiated writer stage remains held until reader-first deployment/readback and rollback evidence.",
+    "New worktree full-native and strict actual-identity host build remain required; old1e31 receipts are historical only."
+  ],
+  "backend_v1_preservation": {
+    "scripts/api_v2.py": "e2a996abd42894a463517c10e8ebba41bbb413431024c8ec93cbf13d60fb2ba5",
+    "scripts/lib/data_broker/n8n_today.py": "18ef897415a96b5d70e3dc1b1bb52156f822b9adc1fc20ab726593f156c64809",
+    "scripts/lib/n8n_coordination_projection.py": "b5bdb801fce48d264bf952e0799683938161552d676354e99e1c58c5840428e5",
+    "scripts/lib/notification_outbox_projection.py": "77e1c0ec9559eff2e97d02a496c8b2ebca2dcab13762b1995de264d42668e39d"
+  },
+  "compiled_identity": {
+    "historical_static_artifact": {
+      "build_evidence_sha256": "34fec8729bc6cffa898db87b578b02f0fcdc2c09d22d09159990d3b38e085b90",
+      "head": "1e31f83fcfde3b8603a634129239bb52a32c27a2",
+      "known_identity": true,
+      "proof_limit": "Static emitted artifact identity only; not deployed/authenticated/refreshed browser or business-output proof."
+    },
+    "loaded_bundle": "Compile full source SHA and build stamp into the loaded bundle; keep served metadata distinct.",
+    "owner": "apps/command-center-v3/src/lib/buildIdentity.ts and vite.config.ts",
+    "poll": "Bounded 60-second/visibility metadata checks with five-second abort and cleanup; explicit user reload action.",
+    "this_new_head_compiled_identity_proven": false,
+    "unknown": "Missing Git identity or metadata remains UNAVAILABLE. A restart/poll never proves old tabs refreshed."
+  },
+  "documentation_limit": "Original README and all original artifacts are retained losslessly as gzip. Live architecture/README reconciliation is deferred because any Markdown body change requires a coordinated generated INDEX update.",
+  "fresh_main_base": "6f73d41442bab01c530022c61c9897da893a16de",
+  "historical_reader_integration": "1e31f83fcfde3b8603a634129239bb52a32c27a2",
+  "implementation_owner": "Existing TS projection readers and projectionReadProtocol; backend writer defaults are untouched.",
+  "kind": "Machine-readable campaign documentation; not a runtime authority or a second verdict engine.",
+  "reader_first_rollout": [
+    "Complete independent source integration review and exact-head native/frontend/hosted checks.",
+    "Release compatible readers while preserving all actual v1 backend producer defaults.",
+    "Verify the actual authenticated refreshed client loaded-bundle SHA/build identity and conservative v1 response readback.",
+    "Prove scoped rollback before separately enabling the explicitly negotiated writer candidate."
+  ],
+  "rollback": [
+    "Keep the writer at actual v1 defaults during the reader-only release.",
+    "Use the canonical known-good release artifact and verify actual reader/build state; deactivation or a server restart is insufficient.",
+    "If a later v2 writer is enabled, its rollback must retain compatible readers and restore supported versioned-route behavior.",
+    "Old cached clients remain a demonstrated limitation; no forced refresh, session invalidation or authentication/MFA claim."
+  ],
+  "routes": [
+    {
+      "consumer": "apps/command-center-v3/src/pages/N8nToday.tsx",
+      "legacy_behavior": "Legacy receipts are details only; counts and complete coverage remain unverified.",
+      "read": "today",
+      "schemas": [
+        "N8nToday@v1",
+        "N8nToday@v2"
+      ],
+      "url": "/api/v2/coordination/n8n-today?projection_version=2"
+    },
+    {
+      "consumer": "apps/command-center-v3/src/pages/CoordinationPage.tsx",
+      "legacy_behavior": "Label legacy returned rows as a sample. Full-window totals are unknown.",
+      "read": "events",
+      "schemas": [
+        "N8nCoordinationProjection@v1",
+        "N8nCoordinationProjection@v2"
+      ],
+      "url": "/api/v2/coordination/events?projection_version=2&limit=200"
+    },
+    {
+      "consumer": "apps/command-center-v3/src/pages/CoordinationPage.tsx",
+      "legacy_behavior": "Recognized legacy details are readable without claiming complete counts or coverage.",
+      "read": "runs",
+      "schemas": [
+        "N8nCoordinationRunsProjection@v1",
+        "N8nCoordinationRunsProjection@v2"
+      ],
+      "url": "/api/v2/coordination/events?projection_version=2&source=runs&limit=40"
+    },
+    {
+      "consumer": "apps/command-center-v3/src/pages/CoordinationPage.tsx",
+      "legacy_behavior": "Legacy outbox is PARTIAL; aggregate totals/window completeness remain unknown.",
+      "read": "outbox",
+      "schemas": [
+        "NotificationOutboxProjection@v1",
+        "NotificationOutboxProjection@v2"
+      ],
+      "url": "/api/v2/coordination/outbox?projection_version=2&hours=24"
+    }
+  ],
+  "schema": "CampaignCcReaderFirstDocumentation@v1",
+  "source_reference": "72ed52373a7b4ef4a3bedcd9ec3d3f3305177ed3",
+  "status": "SOURCE_INTEGRATED_LOCAL_ONLY_PENDING_INDEPENDENT_REVIEW_AND_EXACT_HEAD_ACCEPTANCE",
+  "truth_rules": [
+    "Backend errors, unknown source or stale retained evidence cannot establish healthy counts.",
+    "A limited detail sample cannot establish a full-window total; complete v2 aggregate coverage must be explicit.",
+    "Delivery and acknowledgement are distinct from useful business output and recovery. This UI integration supplies neither recovery authority nor runtime proof."
+  ],
+  "version_behavior": "Explicit projection_version=2 query separates the existing path-keyed useApi cache. Current v1 producers remain readable conservatively. Unknown majors/families are unavailable. Coordination/outbox absent schema remains an existing legacy compatibility path, not v2 proof."
+}

@@ -68,6 +68,7 @@ export default defineConfig({
   define: {
     __ANALYST_UI_VERSION__: JSON.stringify(FULL_UI_VERSION),
     __BUILD_DATE__: JSON.stringify(new Date().toISOString().slice(0, 10)),
+    __CC_BUNDLE_SOURCE_SHA__: JSON.stringify(GIT_IDENTITY?.sha ?? null),
   },
   base: '/v3/',
   build: {
