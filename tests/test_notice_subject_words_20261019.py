@@ -59,3 +59,19 @@ def test_explicit_producer_subject_scope_is_preserved(tmp_path, word):
     )
     assert [row["symbol"] for row in result.subjects] == [word]
     assert f"/intelligence/{word}" in result.text
+
+
+@pytest.mark.parametrize("word", ["LAST", "DOWN", "CC", "DATA"])
+def test_lowercase_explicit_cashtag_keeps_registry_identity(tmp_path, word):
+    row = {"symbol": word, "guid": "fixture-guid"}
+    result = ce.edit(
+        f"Research update for ${word.lower()}",
+        chat_id="fixture",
+        now=datetime(2026, 10, 19, 14, tzinfo=timezone.utc),
+        ledger=ce.DuplicateLedger(tmp_path / "ledger.json"),
+        resolve=lambda text: [row],
+        db_query=lambda *args, **kwargs: [],
+        editor_mode="live",
+    )
+    assert result.subjects == [row]
+    assert f"/intelligence/{word}" in result.text

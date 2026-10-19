@@ -510,7 +510,7 @@ def is_active_trader_scalp_alert(text: str) -> bool:
 def _marked_as_ticker(text: str, symbol: str, guid: str = "") -> bool:
     plain = re.sub(r"<[^>]+>", " ", text or "")
     sym = re.escape(symbol)
-    if re.search(rf"\${sym}(?![A-Za-z])", plain):
+    if re.search(rf"\${sym}(?![A-Za-z])", plain, re.I):
         return True
     if re.search(rf"\b(?:ticker|symbol)\s*:?\s*{sym}(?![A-Za-z])", plain, re.I):
         return True
