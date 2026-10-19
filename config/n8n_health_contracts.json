@@ -29655,15 +29655,11 @@
           "no_runner",
           "dependency_unavailable"
         ],
-        "empty_allowed_reasons": null,
+        "empty_allowed_reasons": [],
         "evidence": [
           {
             "kind": "receipt_field",
-            "ref": "data/runtime/disk-usage-monitor_last.json produced_count (LaneRunReceipt@v2 output fields; the executor reads the immutable attempt copy data/runtime/lane_attempts/disk-usage-monitor/<run_id>.json)"
-          },
-          {
-            "kind": "file",
-            "ref": "data/runtime/disk_usage_monitor_state.json"
+            "ref": "data/runtime/disk-usage-monitor_last.json produced_count (LaneRunReceipt@v2 output fields; the executor reads the immutable attempt copy data/runtime/lane_attempts/disk-usage-monitor/<run_id>.json; its output_evidence names the file data/runtime/disk_usage_monitor_state.json)"
           }
         ],
         "on_violation": {
@@ -29864,21 +29860,17 @@
           "no_runner",
           "dependency_unavailable"
         ],
-        "empty_allowed_reasons": null,
+        "empty_allowed_reasons": [],
         "evidence": [
           {
             "kind": "receipt_field",
-            "ref": "data/runtime/disk-hygiene_last.json produced_count (LaneRunReceipt@v2 output fields; the executor reads the immutable attempt copy data/runtime/lane_attempts/disk-hygiene/<run_id>.json)"
-          },
-          {
-            "kind": "file",
-            "ref": "data/runtime/disk_hygiene/disk_hygiene_manifest_latest.json"
+            "ref": "data/runtime/disk-hygiene_last.json produced_count (LaneRunReceipt@v2 output fields; the executor reads the immutable attempt copy data/runtime/lane_attempts/disk-hygiene/<run_id>.json; its output_evidence names the file data/runtime/disk_hygiene/disk_hygiene_manifest_latest.json)"
           }
         ],
         "on_violation": {
           "run_state": "RUN_FAILED",
           "reason": "empty_output",
-          "notifier_priority": "P3"
+          "notifier_priority": "P2"
         }
       }
     }

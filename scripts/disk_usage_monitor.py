@@ -8,8 +8,11 @@ Operator, 2026-10-18: "monitor when a threshold is over 80%, fix and move to n8n
 Each run, per mount: used% as df prints it (used / (used + available): the root reserve is not "free" to a normal
 writer; disk_pressure_guard.py learned this 2026-09-21), band = ok | warn (>= warn_pct) | critical (>= critical_pct).
 A band CHANGE (ok->warn, warn->critical, critical->warn, warn/critical->ok) queues ONE host comms intent
-(scripts/lib/host_comms_intents.py; routes config/host_comms_intent_routes.json host/disk_usage_*), which the comms
-intent consumer turns into an incident fan-in incident and the incident notifier sends (DIGEST -> P2). Staying in a
+(routes config/host_comms_intent_routes.json host/disk_usage_*), which the comms
+intent consumer turns into an incident fan-in incident and the incident notifier sends (DIGEST -> P2). The intent is
+queued through CommsIntentStore directly (:func:`queue_host_intent`, same rows/dedupe/cap as host_comms_intents): that
+module's import closure reaches broker modules via the gateway, which an n8n lane must not
+(tests/test_lane_transitive_capabilities_20261015.py). Staying in a
 band sends nothing: dedupe is by band, never by the raw percent. The intent carries the top consumers by category
 and the reclaimable estimate from the latest disk_hygiene manifest. This lane never sends, never deletes, never
 calls a sender (the n8n never-list); the host P1 backstop is the systemd disk_pressure_guard (proposed at
@@ -43,6 +46,10 @@ if str(ROOT) not in sys.path:
 from scripts import disk_hygiene as DH  # noqa: E402
 from scripts.lib import lane_last_receipt as R  # noqa: E402
 
+NO_CONSUMER_REASON = (
+    "self-contained monitor: DiskUsageMonitorState@v1 is read back only by this script (band dedupe); results reach "
+    "consumers via the LaneRunReceipt@v2 receipt and the host comms intent"
+)
 LANE_ID = "disk-usage-monitor"
 SCRIPT = "scripts/disk_usage_monitor.py"
 STATE_SCHEMA = "DiskUsageMonitorState@v1"
@@ -150,6 +157,96 @@ def _execution_id(now: datetime) -> str:
     return re.sub(r"[^A-Za-z0-9_-]", "-", rid)[-40:]
 
 
+class HostIntentError(ValueError):
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+def default_ledger_path(environ: Optional[Mapping[str, str]] = None) -> Path:
+    """Same resolution as scripts/n8n_coordination_gateway.default_ledger_path (not imported: see queue_host_intent)."""
+    source = environ if environ is not None else os.environ
+    explicit = source.get("TRADEAI_N8N_COORDINATION_LEDGER")
+    if explicit:
+        return Path(explicit)
+    root = source.get("TRADEAI_STATE_ROOT") or str(Path.home() / "trade-ai-releases" / "persistent-state")
+    return Path(root) / "data" / "governance" / "n8n_coordination_ledger.sqlite"
+
+
+class _LedgerConn:
+    """The two attributes CommsIntentStore uses (``_conn``, ``lock``) on a plain sqlite connection to an EXISTING
+    ledger. Same rows, dedupe and cap as scripts/lib/host_comms_intents.queue_intent, whose import closure (via
+    scripts/n8n_coordination_gateway.py) reaches broker modules — an n8n-allowlisted lane must not
+    (tests/test_lane_transitive_capabilities_20261015.py), so this lane talks to the store directly. Mirrors
+    scripts/check_registry_runtime_truth.py."""
+
+    read_only = False
+
+    def __init__(self, path: Path) -> None:
+        import sqlite3
+        import threading
+
+        self.lock = threading.RLock()  # CommsIntentStore re-enters it (accept -> _receipt -> get)
+        self._conn = sqlite3.connect(str(path), timeout=10, isolation_level=None)
+        self._conn.row_factory = sqlite3.Row
+
+    def close(self) -> None:
+        self._conn.close()
+
+
+def queue_host_intent(
+    *, producer: str, domain: str, kind: str, subject: str, summary: str, execution_id: str, node: str,
+    ledger_path: Optional[Path], now: Optional[float] = None,
+) -> dict[str, Any]:
+    """Queue one host comms intent (never a send). Raises HostIntentError(<reason>) with host_comms_intents' reasons:
+    producer_refused, intent_unrouted, intent_rate_limited, intent_routes_unreadable, malformed_event, ledger_absent
+    (the consumer and gateway create the ledger; a lane never does), intent_store_unavailable."""
+    import sqlite3
+    import time
+
+    from scripts.lib.n8n_fabric_store import (
+        PRODUCER_RE, SUBJECT_MAX, SUMMARY_MAX, CommsIntentStore, FabricStoreError, load_host_intent_routes,
+        load_intent_routes, merged_intent_routes,
+    )
+
+    if not PRODUCER_RE.fullmatch(producer):
+        raise HostIntentError("producer_refused")
+    try:
+        hosts = load_host_intent_routes()
+        routes = merged_intent_routes(load_intent_routes(), hosts)
+    except FabricStoreError as exc:
+        raise HostIntentError(getattr(exc, "reason", "intent_routes_unreadable")) from exc
+    route = hosts["routes"].get((domain, kind))
+    if route is None:
+        raise HostIntentError("intent_unrouted")
+    if route.get("producer") != producer:
+        raise HostIntentError("producer_refused")
+    path = Path(ledger_path) if ledger_path is not None else default_ledger_path()
+    if not path.exists():
+        raise HostIntentError("ledger_absent")
+
+    def clean(text: Any, limit: int) -> str:
+        flat = " ".join("".join(" " if ord(ch) < 32 or ord(ch) == 127 else ch for ch in str(text or "")).split())
+        return flat if len(flat) <= limit else flat[: max(0, limit - 1)] + "…"
+
+    request = {"domain": domain, "kind": kind, "subject": clean(subject, SUBJECT_MAX),
+               "summary": clean(summary, SUMMARY_MAX), "workflow_id": f"host.{producer}",
+               "execution_id": str(execution_id)[:40], "node": clean(node, 64)}
+    try:
+        ledger = _LedgerConn(path)
+    except (sqlite3.Error, OSError) as exc:
+        raise HostIntentError("intent_store_unavailable") from exc
+    try:
+        store = CommsIntentStore(ledger, routes=routes)
+        return dict(store.accept(request, caller_id=f"host:{producer}", now=time.time() if now is None else now))
+    except FabricStoreError as exc:
+        raise HostIntentError(getattr(exc, "reason", "intent_store_unavailable")) from exc
+    except sqlite3.Error as exc:
+        raise HostIntentError("intent_store_unavailable") from exc
+    finally:
+        ledger.close()
+
+
 def run(
     *, rules: Mapping[str, Any], state_root: Optional[Path], ledger: Optional[Path], apply: bool, now: datetime,
     wall_start: Optional[datetime] = None,
@@ -184,10 +281,8 @@ def run(
             subject, summary = intent_text(m, cur, mon, consumers, manifest)
             row.update(subject=subject, summary=summary)
             if apply:
-                from scripts.lib import host_comms_intents as HI
-
                 try:
-                    rec = HI.queue_intent(
+                    rec = queue_host_intent(
                         producer=mon["producer"],
                         domain=mon["intent_domain"],
                         kind=mon["intent_kinds"][cur],
@@ -199,7 +294,7 @@ def run(
                         now=now.timestamp(),
                     )
                     row["intent"] = {"intent_id": rec.get("intent_id"), "duplicate": rec.get("duplicate")}
-                except HI.HostIntentError as exc:
+                except HostIntentError as exc:
                     row["intent_error"] = exc.reason
                     failures += 1
                     results.append(row)
