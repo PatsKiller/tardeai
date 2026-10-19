@@ -20,6 +20,7 @@ import json
 import sys
 import urllib.request
 from pathlib import Path
+from lib.rotation_publication import ready
 
 BASE = "http://localhost:7777/api/v2/rotation"
 ROOT = Path(__file__).resolve().parent.parent
@@ -38,14 +39,34 @@ def _post(path: str, body: dict | None = None) -> dict:
 
 
 def main() -> int:
-    summ = (_get("/summary").get("data")) or {}
+    try:
+        summ = (_get("/summary").get("data")) or {}
+    except Exception:
+        summ = {}
+    if not isinstance(summ, dict):
+        summ = {}
+    available = ready(summ)
+    publication = summ.get("publication") or {}
+    if not isinstance(publication, dict):
+        publication = {}
+    status = publication.get("status") if publication.get("status") in {"READY", "STALE", "UNAVAILABLE"} else "UNAVAILABLE"
+    if not available and status == "READY":
+        status = "UNAVAILABLE"
+    if not available:
+        # Do not turn missing/held evidence into an empty successful digest or
+        # seed new research from advice that failed its publication contract.
+        summ = {"publication": publication}
     over = summ.get("sector_overweights", []) or []
     under = summ.get("sector_underweights", []) or []
     ideas = summ.get("research_rotation_ideas", []) or []
     degraded = summ.get("degraded_holdings", []) or []
-    seeded = _post("/research-gaps").get("created", []) if (over or under or ideas) else []
+    seeded = _post("/research-gaps").get("created", []) if available and (over or under or ideas) else []
 
     lines = ["📊 *Rotation Rebalance Digest* — advisory only, no broker action"]
+    if not available:
+        reasons = ", ".join(publication.get("reasons") or ["missing_publication_evidence"])
+        lines.append(f"\n{status}: advisory output withheld ({reasons}).")
+    lines.append(f"Source as of: {publication.get('source_as_of') or 'UNAVAILABLE'} · cache generated: {publication.get('cache_generated_at') or 'UNAVAILABLE'}")
     if degraded:
         # Lead with deteriorating holdings — the rotate-OUT signal driven by real deterioration.
         _hard = [d for d in degraded if d.get("deterministic")]
@@ -55,7 +76,7 @@ def main() -> int:
             _src = "stop math" if d.get("deterministic") else "LLM read"
             _why = d.get("escalation_reason") or d.get("what_changed") or ""
             _val = f" ${d.get('current_value'):,.0f}" if d.get("current_value") else ""
-            lines.append(f"  • {d.get('symbol')}: {d.get('thesis_status','').upper()} ({_src}){_val}"
+            lines.append(f"  • {d.get('symbol')} [{d.get('account_key') or 'account UNAVAILABLE'}]: {d.get('thesis_status','').upper()} ({_src}){_val}"
                          + (f" — {_why}" if _why else ""))
         lines.append(f"  ({len(_hard)} deterministic stop signals, {len(_soft)} LLM/soft)")
     if over:
@@ -71,8 +92,13 @@ def main() -> int:
         for i in ideas[:5]:
             rng = i.get("review_amount_range") or {}
             amt = f" (~${rng.get('low'):,}-${rng.get('high'):,})" if rng.get("low") else ""
-            lines.append(f"  • {i.get('from_symbol')} → {i.get('to_symbol')}{amt}")
-    lines.append(f"\nSeeded {len(seeded)} research directive(s) → TradeAI + Hermes will research the gaps + rotate-in names.")
+            tags = [f"CIO {i['to_cio_view']}"] if i.get("to_cio_view") else []
+            if i.get("to_thin_coverage") is True:
+                tags.append("thin analyst coverage")
+            tag = f" ({'; '.join(tags)})" if tags else ""
+            lines.append(f"  • {i.get('from_symbol')} [{i.get('from_account_key') or 'account UNAVAILABLE'}] → {i.get('to_symbol')}{amt}{tag}")
+    if available:
+        lines.append(f"\nSeeded {len(seeded)} research directive(s) → TradeAI + Hermes will research the gaps + rotate-in names.")
     lines.append("Review at /v3/rotation · advisory only · nothing placed.")
     msg = "\n".join(lines)
 
@@ -83,8 +109,8 @@ def main() -> int:
     except Exception:
         print(msg)
     print(json.dumps({"overweights": len(over), "underweights": len(under),
-                      "ideas": len(ideas), "directives_seeded": len(seeded)}))
-    return 0
+                      "ideas": len(ideas), "directives_seeded": len(seeded), "publication_status": status}))
+    return 0 if available else 1
 
 
 if __name__ == "__main__":

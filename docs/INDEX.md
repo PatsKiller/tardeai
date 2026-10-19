@@ -1469,6 +1469,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-maturity/campaign-20261018/contracts-enforcement/README.md` | Gateway admission and output evidence enforcement | review_required | OK | `f239f9b6cfa2` |
 | `docs/implementation/n8n-maturity/campaign-20261018/feedback-source-hold/README.md` | Preserve the held Hermes feedback stage | review_required | OK | `a6f09db62db3` |
 | `docs/implementation/n8n-maturity/campaign-20261018/release-1854/README.md` | PR 1854 release acceptance and rollback | review_required | OK | `2c377277770f` |
+| `docs/implementation/n8n-maturity/campaign-20261018/rotation-publication/README.md` | Rotation digest root cause and publication contract | review_required | OK | `5a627347e21d` |
 | `docs/implementation/n8n-maturity/campaign-20261018/sop-command-truth/README.md` | Require successful mandatory SOP commands and exact-head release checks | review_required | OK | `e7aeea7c14ba` |
 | `docs/implementation/n8n-maturity/completion-119/BEFORE_AFTER_119.md` | 119-lane source completion: before and after | review_required | OK | `b9366b8315fa` |
 | `docs/implementation/n8n-maturity/completion-119/README.md` | Completion train for the 119 outstanding source/integration lanes | review_required | OK | `0471a212357c` |
