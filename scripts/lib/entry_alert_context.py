@@ -10,7 +10,11 @@ and the transaction.
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
 from typing import Any, Iterable, Optional
+
+CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "swing_entry_alerts.yaml"
 
 PROFILE_SQL = """SELECT DISTINCT ON (upper(symbol)) upper(symbol), description_1s, sector, industry
                      FROM symbol_profiles WHERE upper(symbol) = ANY(%s)
@@ -99,5 +103,37 @@ def entry_alert_context(cur, symbol: str) -> dict:
     return out
 
 
-__all__ = ["PROFILE_SQL", "CARD_CATALYST_SQL", "CIO_SQL", "ENTRY_REVIEW_CLASS", "symbol_profiles",
+# ── one sender for swing entry alerts (operator 2026-10-19) ─────────────────────────────────
+# watchlist_entry_planner and cio_entry_state_runner both paged ENTRY APPROACHING / HIGH CONVICTION
+# ENTRY. With single_sender on, the planner persists its plans (flagged alert_eligible) and sends
+# nothing; cio_entry_state_runner adds those symbols to its universe and is the only sender.
+# Rollback: config/swing_entry_alerts.yaml `single_sender: false` (read per run, no deploy).
+
+PLANNER_PLAN_SQL = """SELECT DISTINCT upper(symbol) FROM watchlist_entry_plans
+                    WHERE created_at > now() - interval '7 days'
+                      AND plan->>'alert_eligible' = 'true'
+                      AND urgency IN ('near_entry', 'ready')"""
+
+
+def single_sender_enabled(path: Optional[Path] = None) -> bool:
+    """True unless the config says ``single_sender: false``. A missing or unreadable file keeps the
+    default (single sender): the failure mode is one sender, never two."""
+    p = Path(os.environ.get("SWING_ENTRY_ALERTS_CONFIG") or path or CONFIG_PATH)
+    try:
+        import yaml
+
+        raw = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+    except Exception:  # noqa: BLE001
+        return True
+    value = raw.get("single_sender", True) if isinstance(raw, dict) else True
+    return value is not False and str(value).strip().lower() not in ("false", "0", "off", "no")
+
+
+def planner_plan_symbols(cur) -> set[str]:
+    """Symbols with a recent alert-eligible near-entry/ready plan from watchlist_entry_planner."""
+    cur.execute(PLANNER_PLAN_SQL)
+    return {row[0] for row in cur.fetchall() if row and row[0]}
+
+
+__all__ = ["CONFIG_PATH", "PLANNER_PLAN_SQL", "single_sender_enabled", "planner_plan_symbols", "PROFILE_SQL", "CARD_CATALYST_SQL", "CIO_SQL", "ENTRY_REVIEW_CLASS", "symbol_profiles",
            "card_catalysts", "latest_cio_decisions", "cio_review_fields", "entry_alert_context"]

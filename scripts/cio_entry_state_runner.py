@@ -98,6 +98,11 @@ def gather(cur) -> dict[str, dict]:
     cur.execute("""SELECT upper(symbol) s FROM watchlist_items WHERE status='active'
                    UNION SELECT upper(symbol) FROM paper_trade_proposals WHERE status='PENDING'""")
     tracked = {row[0] for row in cur.fetchall()} | set(ev)
+    # Swing entry alerts have ONE sender (operator 2026-10-19): watchlist_entry_planner persists its
+    # alert-eligible near-entry/ready plans and this runner pages them (lib.entry_alert_context).
+    from lib.entry_alert_context import planner_plan_symbols, single_sender_enabled
+    if single_sender_enabled():
+        tracked |= planner_plan_symbols(cur)
     syms = sorted(tracked)
     cur.execute("""SELECT DISTINCT ON (upper(symbol)) upper(symbol), entry_zone_low, entry_zone_high, stop_price,
                           target_price, created_at

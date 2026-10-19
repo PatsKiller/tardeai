@@ -439,9 +439,21 @@ def preview(lane="grok", symbols=None, limit=25, alert=True, scope="watchlist", 
 
 
 def run(lane="grok", symbols=None, limit=25, alert=True, scope="watchlist", buy_rated_cap=20):
-    """The cron entrypoint: plan, then send the advisory entry alert through the host chokepoint."""
-    return plan_run(lane=lane, symbols=symbols, limit=limit, scope=scope, buy_rated_cap=buy_rated_cap,
-                    alerter=_alert if alert else None)
+    """The cron entrypoint: plan, then hand the advisory entry alert to its one sender.
+
+    Operator 2026-10-19 (single sender): this planner and cio_entry_state_runner both paged ENTRY
+    APPROACHING / HIGH CONVICTION ENTRY, the planner's copy without company, catalyst or CIO verdict.
+    With ``single_sender`` on (config/swing_entry_alerts.yaml, the default) the plan is persisted with
+    ``alert_eligible`` and cio_entry_state_runner pages it; this run sends nothing. Rollback: set
+    ``single_sender: false`` and this run pages through ``_alert`` again."""
+    from lib.entry_alert_context import single_sender_enabled
+
+    single = single_sender_enabled()
+    res = plan_run(lane=lane, symbols=symbols, limit=limit, scope=scope, buy_rated_cap=buy_rated_cap,
+                   alerter=_alert if (alert and not single) else None)
+    if alert and single:
+        res["alerts_handed_to"] = "cio_entry_state_runner"
+    return res
 
 
 def plan_run(lane="grok", symbols=None, limit=25, scope="watchlist", buy_rated_cap=20, alerter=None):
@@ -588,6 +600,9 @@ def plan_run(lane="grok", symbols=None, limit=25, scope="watchlist", buy_rated_c
             prop["tag_source"] = "demoted_urgency_or_confidence"
             p["proposal"] = prop
         p["scope"] = scope
+        # What this run would page for (pre-promotion buy-rated names never page). Persisted so
+        # cio_entry_state_runner — the one swing-entry sender (2026-10-19) — can pick the plan up.
+        p["alert_eligible"] = not c.get("_buy_rated")
         if c.get("proposal_id"):
             p["proposal_id"] = c["proposal_id"]
         # layered exit plan (operator 2026-06-12): deterministic ladder from the LLM's entry/stop/target
@@ -611,7 +626,7 @@ def plan_run(lane="grok", symbols=None, limit=25, scope="watchlist", buy_rated_c
         done += 1
         # pre-promotion buy-rated names are NOT active watches — plan them, but don't Telegram-alert
         # (operator no-noise rule); they alert once you promote them to an active watch/directive.
-        if urg in ("near_entry", "ready") and not c.get("_buy_rated"):
+        if urg in ("near_entry", "ready") and p["alert_eligible"]:
             cur.execute("""SELECT 1 FROM watchlist_entry_plans WHERE symbol=%s AND alerted_at > now()-interval '20 hours'""", (sym,))
             already = cur.fetchone()
             conn.commit()  # no transaction stays open across the send

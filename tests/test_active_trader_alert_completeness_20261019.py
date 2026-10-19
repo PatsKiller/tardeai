@@ -402,3 +402,147 @@ def test_fix4_other_kinds_keep_their_l2_line():
     c = ma.Candidate(symbol="NCPL", lane="A", ign=1.0, fsm_state="ARMED", last=2.1, session_date="2026-10-16")
     _, body = ma.build_message(c, ma.ARMED, {"source": "moomoo", "levels": 0}, {}, {})
     assert "L2 moomoo 0 lv" in body
+
+
+# ── FIX 6 — swing entry alerts have ONE sender (cio_entry_state_runner) ──────────────────
+
+LLM_PLAN = json.dumps({**{k: v for k, v in FOXA_PLAN.items() if k != "urgency"}, "urgency": "ready",
+                       "proposal": {"tag": "READY", "sizing_rationale": "half size"}})
+
+
+@pytest.fixture
+def flag(monkeypatch, tmp_path):
+    path = tmp_path / "swing_entry_alerts.yaml"
+
+    def set_(on):
+        path.write_text(f"single_sender: {'true' if on else 'false'}\n")
+        monkeypatch.setenv("SWING_ENTRY_ALERTS_CONFIG", str(path))
+    return set_
+
+
+def _planner_fakes(monkeypatch, wep, inserts):
+    llm = types.ModuleType("llm_lane")
+    llm.available = lambda name: True
+    llm.generate = lambda prompt, **kw: LLM_PLAN
+    monkeypatch.setitem(sys.modules, "llm_lane", llm)
+
+    def insert(params):
+        inserts.append(params)
+        return [(4242,)]
+
+    routes = [("INSERT INTO watchlist_entry_plans", insert), ("SELECT 1 FROM watchlist_entry_plans", []),
+              ("SELECT 1", [(1,)])]
+    conn = FakeConn(routes)
+    dba = types.ModuleType("db_adapter")
+    dba._get_conn = lambda: conn
+    dba.close_thread_conn = lambda: None
+    monkeypatch.setitem(sys.modules, "db_adapter", dba)
+    monkeypatch.setattr(wep, "_candidates", lambda *a, **k: [
+        {"symbol": "FOXA", "hermes_composite_score": 81, "hermes_rank": 12, "trend": "up"}])
+    monkeypatch.setattr(wep, "_bars", lambda sym: [{"c": 58.6}] * 60)
+    monkeypatch.setattr(wep, "_tech", lambda bars: {"price": 58.6, "rsi": 44.0, "atr": 1.2, "swing_high": 62.0,
+                                                    "swing_low": 56.0, "sma50": 57.5})
+    monkeypatch.setattr(wep, "_analyst", lambda cur, sym: {})
+    monkeypatch.setattr(wep, "PROMPT_V1", "plan {symbol}")
+    monkeypatch.setattr(wep, "_alert_context",
+                        lambda s: eac.entry_alert_context(FakeCur(_context_routes()), s), raising=False)
+
+
+def test_fix6a_planner_persists_plan_and_sends_nothing(planner, monkeypatch, flag):
+    flag(True)
+    sent = _capture_telegram(monkeypatch)
+    inserts = []
+    _planner_fakes(monkeypatch, planner, inserts)
+    res = planner.run(lane="grok")
+    assert res["planned"] == 1 and len(inserts) == 1
+    stored = json.loads(inserts[0][1])
+    assert stored["alert_eligible"] is True and inserts[0][9] == "ready"
+    assert sent == [] and res["alerts"] == 0
+    assert res.get("alerts_handed_to") == "cio_entry_state_runner"
+
+
+def test_fix6d_flag_off_restores_planner_sender(planner, monkeypatch, flag):
+    flag(False)
+    sent = _capture_telegram(monkeypatch)
+    _planner_fakes(monkeypatch, planner, [])
+    res = planner.run(lane="grok")
+    assert res["alerts"] == 1 and len(sent) == 1
+    assert "Fox Corporation" in _plain(sent[0]["text"])
+
+
+def _runner_routes(planner_symbols):
+    plan_row = ("FOXA", 58.1, 59.0, 56.4, 65.0, CREATED)
+    return [
+        ("FROM watchlist_items WHERE status='active'", [("AAPL",)]),
+        ("plan->>'alert_eligible'", [(s,) for s in planner_symbols]),
+        ("FROM watchlist_entry_plans", lambda p: [plan_row] if "FOXA" in p[0] else []),
+        ("ideal_entry, add_zone_low", lambda p: [("FOXA", None, None, None, None, None,
+                                                  "Fiscal Q1 earnings 2026-11-03; Tubi revenue growth +27% y/y", 5.0)]
+         if "FOXA" in p[0] else []),
+        *_context_routes()[:1],
+        *_context_routes()[1:],
+        ("decision_packets", []),
+    ]
+
+
+@pytest.fixture
+def runner(monkeypatch):
+    import cio_entry_state_runner as cesr
+    import lib.alert_quotes as aq
+
+    monkeypatch.setattr(cesr, "_load_json", lambda path, default: default)
+    monkeypatch.setattr(aq, "broker_quotes", lambda cur, syms: {
+        s: {"price": 58.55, "age_h": 0.05, "chg_pct": -0.6} for s in syms if s == "FOXA"})
+    return cesr
+
+
+def test_fix6b_runner_picks_up_planner_plan_and_sends_one_complete_message(runner, monkeypatch, flag):
+    flag(True)
+    ev = runner.gather(FakeCur(_runner_routes(["FOXA"])))
+    assert "FOXA" in ev
+    e = ev["FOXA"]
+    assert e["plan_source"] == "entry_plan"
+    assert e["company"].startswith("Fox Corporation") and e["sector"] == "Communication Services"
+    assert e["cio_action"] == "HOLD" and e["cio_decision_id"] == "cio-daily-foxa-20261015"
+    from lib import cio_entry_state as ces
+
+    result = ces.evaluate(e)
+    assert result["state"] == "BUY_READY", result["reasons"]
+    sends = []
+    monkeypatch.setattr(runner, "operator_send", lambda payload, primary_symbols=None: sends.append(payload)
+                        or {"operator": True})
+    digest = types.ModuleType("scripts.lib.advice_digest")
+    digest.hold = lambda key: True
+    monkeypatch.setitem(sys.modules, "scripts.lib.advice_digest", digest)
+    bus = types.ModuleType("scripts.lib.cio_event_bus")
+    bus.CIOEventBus = lambda: types.SimpleNamespace(emit=lambda *a, **k: None)
+    monkeypatch.setitem(sys.modules, "scripts.lib.cio_event_bus", bus)
+    monkeypatch.setattr(runner, "stamp_cio_stance", lambda text, syms, only_conflicts=False: text)
+    runner.send_alerts(result, e)
+    assert len(sends) == 1
+    text = _plain(sends[0]["text"])
+    assert "Fox Corporation" in text and "identity data unavailable" not in text
+    assert "Tubi revenue growth" in text
+    assert "cio-daily-foxa-20261015" in text and "CIO review: unreviewed" not in text
+
+
+def test_fix6c_no_duplicate_between_planner_and_runner(planner, runner, monkeypatch, flag):
+    flag(True)
+    sent = _capture_telegram(monkeypatch)
+    _planner_fakes(monkeypatch, planner, [])
+    planner.run(lane="grok")
+    assert sent == []                                   # the planner no longer pages
+    from lib import cio_entry_state as ces
+
+    e = runner.gather(FakeCur(_runner_routes(["FOXA"])))["FOXA"]
+    result = ces.evaluate(e)
+    first = runner.alert_worthy([result], {}, set(), set())
+    assert [r["symbol"] for r in first] == ["FOXA"]
+    again = runner.alert_worthy([result], {"FOXA": "BUY_READY"}, {ces.transition_key(result)}, set())
+    assert again == []                                  # the runner's existing per-symbol/state/day dedupe
+
+
+def test_fix6d_flag_off_runner_does_not_widen_its_universe(runner, flag):
+    flag(False)
+    ev = runner.gather(FakeCur(_runner_routes(["FOXA"])))
+    assert "FOXA" not in ev
