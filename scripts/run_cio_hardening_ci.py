@@ -23,6 +23,14 @@ REPO = Path(__file__).resolve().parents[1]
 
 # Ordered, explicit suite list (Phase 10.2)
 GATES = [
+    # All ledger recovery consumers require the shared live useful-output verdict.
+    (
+        "n8n_siem_recovery_truth_20261018",
+        [
+            "tests/test_n8n_recovery_consistency_20261018.py",
+            "tests/test_n8n_siem_recovery_truth_20261018.py",
+        ],
+    ),
     # Atomic bounded recovery reservations; critical enrollment survives diagnosis budget exhaustion.
     ("n8n_supervisor_budget_20261018", ["tests/test_n8n_supervisor_budget_20261018.py"]),
     # Staged reader preserves v2 evidence and refuses legacy worker effects on it.
