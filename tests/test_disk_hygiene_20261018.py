@@ -19,6 +19,7 @@ COVERS = ["scripts/disk_hygiene.py", "scripts/disk_usage_monitor.py", "config/di
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -26,6 +27,7 @@ import shutil
 import sqlite3
 import subprocess
 import sys
+import time
 import types
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -748,6 +750,20 @@ def test_the_systemd_guard_is_unchanged_its_backstop_is_a_printed_proposal():
 
 # ── 7. the operator packet against fakes ──────────────────────────────────────────────────────────────────────────
 
+GID = "c6c7c582214340fb9397fe821fdf224f"
+SERVICE_GID = "f" * 32
+PACKET_LANES = ("disk-usage-monitor", "disk-hygiene", "tmp-hygiene")
+RELAY_UNITS = ("tradeai-n8n-run-relay.service", "tradeai-n8n-coordination-gateway.service")
+
+
+def _bound_ledger(step: str, *, uses: int = 5, drop: str = "") -> dict:
+    """A tmp guard ledger (flat tier -> row, as main's fabric-grant tests write it) bound to disk-hygiene.<step>."""
+    digest = hashlib.sha256(SCRIPT.read_bytes()).hexdigest()
+    reason = f"disk-hygiene.{step} {' '.join(PACKET_LANES)} tradeai-dispatcher {digest} restart {' '.join(RELAY_UNITS)}"
+    reason = " ".join(w for w in reason.split() if w != drop)
+    row = lambda gid: {"grant_id": gid, "expires": time.time() + 3600, "uses": uses, "reason": reason}  # noqa: E731
+    return {"config-write": row(GID), "service": row(SERVICE_GID)}
+
 
 @pytest.fixture
 def pk(tmp_path):
@@ -769,6 +785,9 @@ def pk(tmp_path):
     live.chmod(0o600)
     state = tmp_path / "state"
     (state / "data" / "governance").mkdir(parents=True)
+    approvals = tmp_path / "approvals"
+    approvals.mkdir()
+    audit_log = tmp_path / "grant-audit.jsonl"
     env = {
         "PATH": os.environ["PATH"],
         "HOME": str(tmp_path),
@@ -782,13 +801,28 @@ def pk(tmp_path):
         "DOCKER_BIN": str(bin_dir / "docker"),
         "PROC_ROOT": str(proc),
         "RESTART_SETTLE_S": "0",
+        "GUARD_APPROVALS_DIR": str(approvals),
+        "GUARD_AUDIT_LOG": str(audit_log),
+        "TRADEAI_FABRIC_SERVICE_GRANT": SERVICE_GID,
     }
 
     def run(*args: str, **extra: str) -> subprocess.CompletedProcess:
         return subprocess.run(["bash", str(SCRIPT), *args], env={**env, **extra}, capture_output=True, text=True,
                               timeout=300, cwd=str(tmp_path))
 
-    return types.SimpleNamespace(run=run, live=live, proc=proc, calls=calls, state=state, tmp=tmp_path)
+    def grant(step: str, **kw) -> dict:
+        doc = _bound_ledger(step, **kw)
+        (approvals / "grants.json").write_text(json.dumps(doc))
+        return doc
+
+    def ledger() -> dict:
+        return json.loads((approvals / "grants.json").read_text())
+
+    def audit() -> list[dict]:
+        return [json.loads(line) for line in audit_log.read_text().splitlines()] if audit_log.exists() else []
+
+    return types.SimpleNamespace(run=run, live=live, proc=proc, calls=calls, state=state, tmp=tmp_path,
+                                 grant=grant, ledger=ledger, audit=audit)
 
 
 def _env_proc(pk, carries: bool) -> None:
@@ -820,13 +854,14 @@ def test_relay_dry_run_changes_nothing_and_apply_needs_a_grant(pk):
     assert "DRY RUN" in p.stdout and "adds: disk-usage-monitor disk-hygiene tmp-hygiene" in p.stdout
     assert "DISK HYGIENE N8N PR SERVED" in p.stdout
     p = pk.run("relay", "--apply")
-    assert p.returncode == 1 and "TRADEAI_FABRIC_GRANT not set" in p.stdout
+    assert p.returncode == 1 and "TRADEAI_FABRIC_GRANT not set" in p.stdout and not pk.audit()
     assert pk.live.read_bytes() == before and not pk.calls.exists()
 
 
 def test_relay_apply_appends_both_backs_up_reads_back_and_restarts(pk):
     _env_proc(pk, carries=True)
-    p = pk.run("relay", "--apply", TRADEAI_FABRIC_GRANT="g1")
+    pk.grant("relay")
+    p = pk.run("relay", "--apply", TRADEAI_FABRIC_GRANT=GID)
     assert p.returncode == 0, p.stdout + p.stderr
     assert pk.live.read_text() == ("# keep me\nTRADEAI_N8N_RELAY_LIVE_LANES=heartbeat-watch n8n-comms-intent-consumer "
                                    "disk-usage-monitor disk-hygiene tmp-hygiene\n")
@@ -834,14 +869,18 @@ def test_relay_apply_appends_both_backs_up_reads_back_and_restarts(pk):
     assert len(list(pk.tmp.glob("n8n-live-lanes.env.bak-*-disk-hygiene-n8n-live"))) == 1
     calls = pk.calls.read_text()
     assert "restart tradeai-n8n-run-relay.service" in calls and "restart tradeai-n8n-coordination-gateway.service" in calls
-    p = pk.run("relay", "--apply", TRADEAI_FABRIC_GRANT="g1")
+    p = pk.run("relay", "--apply", TRADEAI_FABRIC_GRANT=GID)
     assert p.returncode == 0 and "already has" in p.stdout
+    # one consumed use of each tier for the effect; the no-op re-run checks read-only and spends nothing
+    assert {t: r["uses"] for t, r in pk.ledger().items()} == {"config-write": 4, "service": 4}
 
 
 def test_relay_apply_fails_when_a_unit_did_not_pick_up_the_lanes(pk):
     _env_proc(pk, carries=False)
-    p = pk.run("relay", "--apply", TRADEAI_FABRIC_GRANT="g1")
+    pk.grant("relay")
+    p = pk.run("relay", "--apply", TRADEAI_FABRIC_GRANT=GID)
     assert p.returncode == 1 and "env lacks" in p.stdout
+    assert {t: r["uses"] for t, r in pk.ledger().items()} == {"config-write": 4, "service": 4}  # never refunded
 
 
 def test_rollback_removes_only_the_packet_lanes(pk):
@@ -849,9 +888,101 @@ def test_rollback_removes_only_the_packet_lanes(pk):
     p = pk.run("rollback")
     assert p.returncode == 0 and "DRY RUN" in p.stdout and "disk-hygiene" in pk.live.read_text()
     _env_proc(pk, carries=False)
-    p = pk.run("rollback", "--apply", TRADEAI_FABRIC_GRANT="g1")
+    pk.grant("rollback")
+    p = pk.run("rollback", "--apply", TRADEAI_FABRIC_GRANT=GID)
     assert p.returncode == 0, p.stdout + p.stderr
     assert pk.live.read_text() == "TRADEAI_N8N_RELAY_LIVE_LANES=heartbeat-watch x\n"
+    assert [e["action"] for e in pk.audit()] == ["disk-hygiene.rollback"]
+
+
+# ── 7b. main's bounded grant model (#1873): authorize disk-hygiene.<step> [--consume] ─────────────────────────────
+
+
+def test_relay_apply_consumes_exactly_one_use_with_the_packet_bindings(pk):
+    _env_proc(pk, carries=True)
+    pk.grant("relay")
+    p = pk.run("relay", "--apply", TRADEAI_FABRIC_GRANT=GID)
+    assert p.returncode == 0, p.stdout + p.stderr
+    assert "grant ok" in p.stdout
+    assert {t: r["uses"] for t, r in pk.ledger().items()} == {"config-write": 4, "service": 4}
+    (event,) = pk.audit()
+    assert event["event"] == "fabric-grant-consumed" and event["action"] == "disk-hygiene.relay"
+    assert event["packet"] == "docs/ops/packets/disk-hygiene-n8n-20261018/cutover.sh"
+    assert event["packet_sha256"] == hashlib.sha256(SCRIPT.read_bytes()).hexdigest()
+    assert tuple(event["lanes"]) == PACKET_LANES and event["workflow_id"] == "tradeai-dispatcher"
+    assert {g["tier"]: g["grant_id"] for g in event["grants"]} == {"config-write": GID, "service": SERVICE_GID}
+
+
+@pytest.mark.parametrize("ledger_step,drop,extra", [
+    (None, "", {}),                                                          # no grant in the ledger
+    ("rollback", "", {}),                                                    # bound to another action
+    ("relay", "tmp-hygiene", {}),                                            # reason misses a lane
+    ("relay", "tradeai-dispatcher", {}),                                     # reason misses the workflow
+    ("relay", "tradeai-n8n-coordination-gateway.service", {}),               # service reason misses a unit
+    ("relay", "restart", {}),                                                # service reason misses the verb
+    ("relay", "", {"TRADEAI_FABRIC_GRANT": "g1"}),                           # a label, not the full id
+    ("relay", "", {"TRADEAI_FABRIC_GRANT": GID[:16]}),                       # a prefix, not the full id
+    ("relay", "", {"TRADEAI_FABRIC_SERVICE_GRANT": GID}),                    # wrong service id
+])
+def test_relay_apply_refuses_unbound_grants_without_effect_or_consumption(pk, ledger_step, drop, extra):
+    _env_proc(pk, carries=True)
+    original = pk.grant(ledger_step, drop=drop) if ledger_step else None
+    before = pk.live.read_bytes()
+    p = pk.run("relay", "--apply", **{"TRADEAI_FABRIC_GRANT": GID, **extra})
+    assert p.returncode == 1 and "grant refused" in p.stdout, p.stdout
+    assert pk.live.read_bytes() == before and not pk.calls.exists() and not pk.audit()
+    assert not list(pk.tmp.glob("n8n-live-lanes.env.bak-*"))
+    if original is not None:
+        assert pk.ledger() == original
+
+
+def test_relay_apply_refuses_without_the_service_grant_or_with_exhausted_grants(pk):
+    _env_proc(pk, carries=True)
+    doc = pk.grant("relay")
+    before = pk.live.read_bytes()
+    p = pk.run("relay", "--apply", TRADEAI_FABRIC_GRANT=GID, TRADEAI_FABRIC_SERVICE_GRANT="")
+    assert p.returncode == 1 and "TRADEAI_FABRIC_SERVICE_GRANT" in p.stdout and pk.ledger() == doc
+    pk.grant("relay", uses=0)
+    p = pk.run("relay", "--apply", TRADEAI_FABRIC_GRANT=GID)
+    assert p.returncode == 1 and "grant refused" in p.stdout
+    assert pk.live.read_bytes() == before and not pk.calls.exists() and not pk.audit()
+
+
+def test_dry_runs_consume_nothing(pk):
+    for step in ("relay", "rollback"):
+        doc = pk.grant(step)
+        p = pk.run(step, TRADEAI_FABRIC_GRANT=GID)
+        assert p.returncode == 0 and "DRY RUN" in p.stdout, p.stdout
+        assert pk.ledger() == doc and not pk.audit() and not pk.calls.exists(), step
+        pk.live.write_text("TRADEAI_N8N_RELAY_LIVE_LANES=heartbeat-watch " + " ".join(PACKET_LANES) + "\n")
+
+
+def test_the_disk_actions_are_registered_as_config_write_plus_service():
+    from scripts.lib import fabric_grant as F
+
+    for step in ("relay", "rollback"):
+        spec = F.ACTIONS[f"disk-hygiene.{step}"]
+        assert spec == {"packet": "docs/ops/packets/disk-hygiene-n8n-20261018/cutover.sh", "lanes": PACKET_LANES,
+                        "workflow": "tradeai-dispatcher", "tiers": ("config-write", "service"), "units": F.UNITS}
+    assert not any(a.startswith("disk-hygiene.") and a.split(".", 1)[1] not in ("relay", "rollback") for a in F.ACTIONS)
+    assert "docs/ops/packets/disk-hygiene-n8n-20261018/cutover.sh" in F.NO_CONSUMER_REASON
+
+
+def test_the_packet_authorizes_its_registered_actions_instead_of_accepting_any_value():
+    """The same shape main's tests pin for the comms / hermes packets (tests/test_fabric_grant_id_20261018.py)."""
+    text = SCRIPT.read_text(encoding="utf-8")
+    assert '"$GRANT_PY" authorize "disk-hygiene.$STEP"' in text
+    assert '[[ $APPLY == 0 || -n "${TRADEAI_FABRIC_GRANT:-}" ]]' not in text
+    for step in ("relay", "rollback"):
+        body = text.split(f"\n  {step})", 1)[1].split(";;\n", 1)[0]
+        pre, post = body.split("DRY RUN", 1)
+        assert "need_grant\n" in pre, step                                   # read-only check before the dry run
+        assert post.index("need_grant --consume") < post.index("write_live_list"), step
+    # every executed systemctl goes through the hook; the backstop step only PRINTS operator commands (a heredoc)
+    head, rest = text.split("\n  backstop)", 1)
+    code = "\n".join(line for line in (head + rest.split("\n    ;;\n", 1)[1]).splitlines()
+                     if not line.lstrip().startswith("#"))
+    assert "systemctl --user" not in code.replace('"$SYSTEMCTL_BIN" --user', "")
 
 
 def test_backstop_prints_the_95_percent_drop_in_and_runs_nothing(pk):

@@ -17,7 +17,7 @@
 #   bash cutover.sh dry-manifest [--apply]  hygiene plan WITH sizes + human summary. Dry: --dry-run (writes nothing).
 #                                           --apply: --plan, writes the manifest + receipt under $STATE (deletes nothing)
 #   bash cutover.sh relay    [--apply]      live list += all three lanes; backup + read-back; restart relay AND gateway
-#                                           (config-write + service grant: TRADEAI_FABRIC_GRANT)
+#                                           (config-write + service grants, consumed: see "Grants" below)
 #   bash cutover.sh publish                 read-only: NO import needed; served tradeai-dispatcher.json == INDEX, active
 #   bash cutover.sh proof [--since ISO]     read-only: live RUN_DONE runs with verdict produced for every lane, the
 #                                           monitor state file, the latest manifest, and that its items still exist
@@ -37,11 +37,24 @@
 # */15 slot -> proof. The weekly hygiene lane first fires Sunday 04:00 ET; the operator reviews that manifest before
 # any hygiene-apply. This script never touches a broker, an order, a secret value, the crontab or an n8n workflow,
 # and never runs systemctl except the relay/gateway restarts of relay/rollback --apply.
-# Test hooks (hermetic tests only): SYSTEMCTL_BIN, DOCKER_BIN, PROC_ROOT, HYGIENE_EXTRA (extra disk_hygiene.py args).
+#
+# Grants (main's bounded model, PR #1873): relay/rollback --apply go through scripts/lib/fabric_grant.py authorize
+# disk-hygiene.<step>: a read-only check first, then `--consume` (recheck + consume one finite use of every required
+# grant, atomically, under the guard lock) immediately before the live-list write. Dry runs consume nothing; a
+# refused or failed step refunds nothing. IDs are full 32-hex ledger ids ($(bin/guard id <tier>)), never labels:
+#   TRADEAI_FABRIC_GRANT          config-write; reason names the action (disk-hygiene.relay|disk-hygiene.rollback),
+#                                 disk-usage-monitor, disk-hygiene, tmp-hygiene, tradeai-dispatcher, this packet's SHA256
+#   TRADEAI_FABRIC_SERVICE_GRANT  service; the same reason tokens plus tradeai-n8n-run-relay.service,
+#                                 tradeai-n8n-coordination-gateway.service and restart (both units are restarted)
+# hygiene-apply / tmp-apply still take TRADEAI_DISK_HYGIENE_GRANT (presence check only); that tier awaits AGENTS #1852.
+# Test hooks (hermetic tests only): SYSTEMCTL_BIN, DOCKER_BIN, PROC_ROOT, HYGIENE_EXTRA (extra disk_hygiene.py args),
+# RESTART_SETTLE_S, GUARD_APPROVALS_DIR and GUARD_AUDIT_LOG (read by fabric_grant.py).
 set -euo pipefail
 set -f
+CODE=$(cd "$(dirname "$0")/../../../.." && pwd)
 REPO=${REPO:-$HOME/trade-ai-v12-rebuild/trade-ai-v12-rebuild}
 PY=${PY:-$REPO/.venv/bin/python}
+GRANT_PY=${GRANT_PY:-$CODE/scripts/lib/fabric_grant.py}
 SERVED=${SERVED:-$(readlink -f "$HOME/trade-ai-releases/portfolio-server/CURRENT")}
 STATE=${STATE:-$HOME/trade-ai-releases/persistent-state}
 LEDGER=${LEDGER:-$STATE/data/governance/n8n_coordination_ledger.sqlite}
@@ -60,7 +73,16 @@ APPLY=0; SINCE=""
 while [[ $# -gt 0 ]]; do
   case "$1" in --apply) APPLY=1; shift ;; --since) SINCE=${2:-}; shift 2 ;; *) fail "unknown arg $1" ;; esac
 done
-need_grant(){ [[ $APPLY == 0 || -n "${TRADEAI_FABRIC_GRANT:-}" ]] || fail "TRADEAI_FABRIC_GRANT not set"; }
+# Full primary id in TRADEAI_FABRIC_GRANT plus TRADEAI_FABRIC_SERVICE_GRANT (see "Grants" in the header). Without
+# --consume the check is read-only; `need_grant --consume` rechecks and consumes immediately before the first write.
+need_grant(){
+  [[ $APPLY == 0 ]] && return 0
+  [[ -n "${TRADEAI_FABRIC_GRANT:-}" ]] || fail "TRADEAI_FABRIC_GRANT not set"
+  [[ -n "${TRADEAI_FABRIC_SERVICE_GRANT:-}" ]] || fail "TRADEAI_FABRIC_SERVICE_GRANT not set (relay and gateway restart)"
+  local hit
+  hit=$("$PY" "$GRANT_PY" authorize "disk-hygiene.$STEP" "$@") || fail "grant refused: $hit"
+  echo "  grant ok: $hit"
+}
 live_lanes(){ sed -n 's/^TRADEAI_N8N_RELAY_LIVE_LANES=//p' "$LIVE_LANES_ENV"; }
 in_live_list(){ [[ -f "$LIVE_LANES_ENV" ]] && live_lanes | tr ' ' '\n' | grep -qx -- "$1"; }
 read -r -a EXTRA_A <<<"$HYGIENE_EXTRA"
@@ -185,6 +207,7 @@ print("    candidates %s excluded %s by_kind %s" % (t["candidates"], t["excluded
     echo "  adds: ${ADD[*]}"
     echo "  keeps: ${#CUR_A[@]} existing lanes"
     [[ $APPLY == 1 ]] || { echo "  DRY RUN — live list unchanged, nothing restarted"; exit 0; }
+    need_grant --consume
     write_live_list "$CUR ${ADD[*]}" disk-hygiene-n8n-live
     for l in "${LANES[@]}"; do in_live_list "$l" || fail "READ-BACK FAILED: $l not in $LIVE_LANES_ENV"; done
     for l in "${CUR_A[@]}"; do live_lanes | tr ' ' '\n' | grep -qx -- "$l" || fail "READ-BACK FAILED: lost $l"; done
@@ -316,6 +339,7 @@ EOF
     if [[ ${#DROP[@]} == 0 ]]; then echo "  live list lacks ${LANES[*]}: nothing to roll back"; exit 0; fi
     echo "  removes: ${DROP[*]}; keeps ${#KEEP[@]} lanes"
     [[ $APPLY == 1 ]] || { echo "  DRY RUN — live list unchanged, nothing restarted"; exit 0; }
+    need_grant --consume
     write_live_list "${KEEP[*]}" disk-hygiene-n8n-rollback
     for l in "${LANES[@]}"; do if in_live_list "$l"; then fail "READ-BACK FAILED: $l still in $LIVE_LANES_ENV"; fi; done
     for l in "${KEEP[@]}"; do live_lanes | tr ' ' '\n' | grep -qx -- "$l" || fail "READ-BACK FAILED: lost $l"; done

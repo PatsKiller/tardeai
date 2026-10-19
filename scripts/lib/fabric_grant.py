@@ -27,8 +27,9 @@ from pathlib import Path
 NO_CONSUMER_REASON = (
     "Host CLI entrypoint: bin/guard id and the need_grant functions in "
     "docs/ops/packets/comms-intent-consumer-live-20261017/cutover.sh, "
-    "docs/ops/packets/hermes-feedback-cutover-20261017/cutover.sh and "
-    "docs/ops/packets/hermes-tune-cutover-20261017/cutover.sh invoke this file "
+    "docs/ops/packets/hermes-feedback-cutover-20261017/cutover.sh, "
+    "docs/ops/packets/hermes-tune-cutover-20261017/cutover.sh and "
+    "docs/ops/packets/disk-hygiene-n8n-20261018/cutover.sh invoke this file "
     "through host Python. check_dark_contracts indexes scripts/**/*.py callers; "
     "these shell CLI callers are outside that corpus, so no Python importer "
     "is expected."
@@ -57,6 +58,17 @@ for _name, _packet, _lane, _workflow, _steps in (
             "tiers": ("config-write", "service") if _restart else ("cron",),
             "units": UNITS if _restart else (),
         }
+# Disk hygiene + disk-usage monitor (2026-10-18/19). relay/rollback edit the live list for all three dispatcher lanes
+# and restart relay + gateway, exactly like comms: config-write + service. hygiene-apply/tmp-apply are not here
+# (TRADEAI_DISK_HYGIENE_GRANT; that tier awaits AGENTS #1852).
+for _step in ("relay", "rollback"):
+    ACTIONS[f"disk-hygiene.{_step}"] = {
+        "packet": "docs/ops/packets/disk-hygiene-n8n-20261018/cutover.sh",
+        "lanes": ("disk-usage-monitor", "disk-hygiene", "tmp-hygiene"),
+        "workflow": "tradeai-dispatcher",
+        "tiers": ("config-write", "service"),
+        "units": UNITS,
+    }
 
 
 def _guard_ledger():

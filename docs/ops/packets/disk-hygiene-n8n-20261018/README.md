@@ -57,13 +57,33 @@ The operator approved a one-off manual cleanup (back to 55%) and this follow-up 
 1. Merge and promote, so CURRENT serves the PR.
 2. `bash cutover.sh pre`
 3. `bash cutover.sh dry-manifest`
-4. `bash cutover.sh relay --apply` (`TRADEAI_FABRIC_GRANT`)
+4. `bash cutover.sh relay --apply` (`TRADEAI_FABRIC_GRANT` + `TRADEAI_FABRIC_SERVICE_GRANT`; see Grants)
 5. `bash cutover.sh publish`
 6. Wait one `*/15` slot, then `bash cutover.sh proof`.
 7. After the first Sunday manifest: review it, then (operator only) `bash cutover.sh hygiene-apply --apply`.
 8. `/tmp`: `bash cutover.sh tmp-dry` (read-only) at any time. After the first daily `tmp-hygiene` manifest, review it,
    then (operator only) `bash cutover.sh tmp-apply --apply`.
-9. Rollback: `bash cutover.sh rollback --apply` (drops all three lanes from the live list).
+9. Rollback: `bash cutover.sh rollback --apply` (drops all three lanes from the live list; same two grants).
+
+## Grants
+
+`relay --apply` and `rollback --apply` use main's bounded grant model (PR #1873, `scripts/lib/fabric_grant.py`).
+Each step runs `fabric_grant.py authorize disk-hygiene.<step>` as a read-only check first. It then runs
+`authorize disk-hygiene.<step> --consume` immediately before the live-list write. That call rechecks every required
+grant and consumes one finite use of each, atomically under the guard lock. Dry runs consume nothing. A refused or
+failed step refunds nothing. Each variable holds the full 32-hex ledger id (`bin/guard id <tier>`), never a label.
+
+| Variable | Tier | The grant reason must name |
+| --- | --- | --- |
+| `TRADEAI_FABRIC_GRANT` | `config-write` | the action (`disk-hygiene.relay` or `disk-hygiene.rollback`), `disk-usage-monitor`, `disk-hygiene`, `tmp-hygiene`, `tradeai-dispatcher`, and the SHA256 of this `cutover.sh` |
+| `TRADEAI_FABRIC_SERVICE_GRANT` | `service` | all of the above, plus `tradeai-n8n-run-relay.service`, `tradeai-n8n-coordination-gateway.service` and `restart` (both units are restarted) |
+
+Every token must appear as a whole word. The action names the step, so a relay grant cannot authorize a rollback.
+Any edit to `cutover.sh` changes its SHA256, so a grant must be issued against the packet bytes that will run.
+
+`hygiene-apply --apply` and `tmp-apply --apply` are unchanged. They still need `TRADEAI_DISK_HYGIENE_GRANT`, which is
+a presence check only and is never consumed. That tier is not in `fabric_grant.py` because it awaits AGENTS #1852.
+Until #1852 lands, those two steps remain operator-only.
 
 ## Evidence
 
