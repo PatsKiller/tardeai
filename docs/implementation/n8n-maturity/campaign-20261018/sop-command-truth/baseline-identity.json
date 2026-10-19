@@ -1,0 +1,9 @@
+{
+  "base_sha": "7af14c7782cf7ab0cba261cc25e6789fe810b092",
+  "test_sha256": "7fdc0119baa32cf04a4c5a38e631da92d2f71763f7bb48a2080bc35801c1a96c",
+  "result": "22 expected AssertionError failures,1 complete valid v1 control pass; all command effects faked",
+  "source_blobs": {
+    "scripts/emit_sop_runtime_attestation.py": "cf0ccb76d6f84bbe3f19d7e09c5e4b0667c214a2",
+    "scripts/lib/sop_evidence_integrity.py": "eba8778391c7912f9817fd5f4b78053d0de5f0e1"
+  }
+}

@@ -2316,6 +2316,8 @@ GATES = [
             "tests/test_sop_evidence_integrity.py",
             "tests/test_sop_toolchain.py",
             "tests/test_sop_attestation_base.py",
+            "tests/test_sop_runtime_command_truth_20261018.py",
+            "tests/test_release_readiness_head_identity_20261018.py",
             "tests/test_agents_drive_mirror_policy.py",
             # AGENTS.md 1.3.0 (ratified 2026-09-27): execution engineering needs a per-task grant, and
             # the broker-boundary verifier must refuse every out-of-envelope mutation.

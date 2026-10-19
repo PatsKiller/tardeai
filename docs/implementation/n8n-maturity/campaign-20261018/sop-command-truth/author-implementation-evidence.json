@@ -1,0 +1,293 @@
+{
+  "schema": "CampaignImplementationEvidence@v1",
+  "campaign_id": "n8n-maturity-20261018",
+  "workstream": "sop-runtime-command-qualification-truth",
+  "recorded_at": "2026-10-18T23:28:31.759097+00:00",
+  "worktree": "/home/johnclaw/tradeai-wt-n8n-sop-attestation-truth-20261018",
+  "branch": "wt/n8n-sop-attestation-truth-20261018",
+  "baseline_sha": "7af14c7782cf7ab0cba261cc25e6789fe810b092",
+  "candidate_sha": "226583b361e65a2aba86eba2f8783a882096dc1a",
+  "git_status_porcelain": "",
+  "source_files": {
+    "scripts/emit_sop_runtime_attestation.py": {
+      "base_blob": "cf0ccb76d6f84bbe3f19d7e09c5e4b0667c214a2",
+      "candidate_blob": "6277de5946b611631f86d415ca19761656000a61",
+      "sha256": "add19ad45c3b3e5267cefa9e3120f5e2080f6006aa925407c975c25604725db6"
+    },
+    "scripts/lib/sop_evidence_integrity.py": {
+      "base_blob": "eba8778391c7912f9817fd5f4b78053d0de5f0e1",
+      "candidate_blob": "e1c604532159b74123bcc0728123600c33817da1",
+      "sha256": "c1117d9cc3d3b6f478c493aa36eee21a89d09d4e55ba7657b65fc814e1513284"
+    },
+    "tests/test_sop_evidence_integrity.py": {
+      "base_blob": "36a3d59ed210b1b6b050223eb9fd0bd119fb0ba7",
+      "candidate_blob": "feaefca029ae8ad23e63a0d96528cdae1f0cd05f",
+      "sha256": "16512b30494ed58cb729e81f64329179f61e4b8fd9e839a90f48f3ec20f4505d"
+    },
+    "tests/test_sop_runtime_command_truth_20261018.py": {
+      "base_blob": null,
+      "candidate_blob": "7f7947cca3cc82657aad401caf9e5aac51d79d14",
+      "sha256": "10d7cdd9e3ce491b39185753d0338f76d498b6c0a7e7e55b65105a807dbd6b67"
+    },
+    "tests/test_sop_toolchain.py": {
+      "base_blob": "546615a66743b1c2157143ce1c7f3d1ef8445a98",
+      "candidate_blob": "d1d8e2ca8090a3e6413f65202bed353814717656",
+      "sha256": "f4cacfc690f4a672f9b9b6e4b35ecb61a78ac657952101f62c02320c8ce4f534"
+    }
+  },
+  "status": {
+    "implemented_local": true,
+    "independently_reviewed": false,
+    "merged": false,
+    "deployed": false,
+    "activated": false,
+    "operational_proof": false
+  },
+  "defect": {
+    "baseline_behavior": "Actual emitter main wrote a command exit=1/expected=0 then returned0 and printed ok:true because the existing shared runtime validator ignored command outcomes. Existing workflow set-e/upload behavior could therefore accept failed mandatory tests.",
+    "original_sandbox_failure": "Two socket PermissionErrors caused pytest_core exit1. The original failed record/log are preserved; a separate later host rerun is separately identified and is not used to overwrite the failure.",
+    "classification": "ok/exit0 is consumed as qualifying proof by actual agent-governance workflow; it was not merely completion status. Existing --skip-commands was documented schema-only, not authorized operational proof."
+  },
+  "implementation": {
+    "owner": "scripts/lib/sop_evidence_integrity.py::validate_runtime_attestation",
+    "mandatory_commands": [
+      "pytest_core",
+      "pytest_evidence_integrity",
+      "evidence_integrity",
+      "check_index",
+      "shellcheck"
+    ],
+    "rule": "Each mandatory command must occur exactly once, expected must be actual int0, exit must be actual int0, and skipped must be absent or exactly False. Missing, duplicate, bool/float/string/null exits, explicit skipped/unknown skip, invalid expectations, malformed container/record and nonzero results fail qualification.",
+    "producer": "Existing emitter main already writes diagnostic record and returns1/ok:false on shared validation errors. Its execution/build/main control flow is unchanged; docs/help clarify diagnostic behavior.",
+    "no_new_bypass_or_authority": true
+  },
+  "actual_consumers": [
+    {
+      "path": "scripts/emit_sop_runtime_attestation.py::main",
+      "consumes": "shared validate_runtime_attestation errors; writes diagnostics regardless; CLI exit0 iff noerrors and printed ok mirrors result"
+    },
+    {
+      "path": ".github/workflows/agent-governance.yml::Emit runtime exact-head attestation / Upload runtime attestation",
+      "consumes": "set-euo pipefail emitter command, then default success-only artifact upload",
+      "source_unchanged": true
+    },
+    {
+      "paths": [
+        "tests/test_sop_evidence_integrity.py",
+        "tests/test_sop_toolchain.py"
+      ],
+      "fixture_migration": "Complete valid mandatory command records replace partial fixtures; existing assertions AST unchanged."
+    }
+  ],
+  "compatibility": {
+    "wire_schema": "SopRuntimeAttestation@v1 unchanged",
+    "actual_old_producer_new_consumer": "Complete actual7af build_attestation record accepted by newvalidator",
+    "actual_new_producer_old_consumer": "Complete newrecord accepted by actual7af validator",
+    "historical_partial_v1": "JSON readable, but held under mandatory-success qualification; not silently accepted as proof",
+    "schema_only_diagnostic": "Still written for diagnosis; returnsnonzero/okfalse and cannot qualify",
+    "unsupported_claims": "This change does not add host cryptographic provenance, verify business output, or turn test fixtures into operational attestations."
+  },
+  "red_green": {
+    "frozen_test_file": "test_sop_runtime_command_truth_frozen.py",
+    "frozen_test_sha256": "7fdc0119baa32cf04a4c5a38e631da92d2f71763f7bb48a2080bc35801c1a96c",
+    "baseline": {
+      "tests": "23",
+      "failures": "22",
+      "errors": "0",
+      "skipped": "0",
+      "time": "3.338"
+    },
+    "baseline_failures": "22 expected behavioral AssertionErrors; no collectionerrors/timeouts/missingdependency/exit5;1completevalidv1controlpassed",
+    "candidate_same_frozen_file": {
+      "tests": "23",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "1.161"
+    },
+    "candidate_focused": {
+      "tests": "57",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "3.090"
+    },
+    "test_file_extension": "4 actual source-backed v1 compatibility/catalogue cases added after frozen23; finalnewfile27cases plus30existing57total"
+  },
+  "commands": {
+    "baseline": "TRADE_AI_CI=1 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=.:scripts /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m pytest -q -p no:cacheprovider tests/test_sop_runtime_command_truth_20261018.py --junitxml=/tmp/n8n-campaign-20261018/sop-attestation-truth/baseline-red.xml (ran at baseline7af before source edits)",
+    "candidate_frozen": "TRADE_AI_CI=1 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=.:scripts /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m pytest -q -p no:cacheprovider /tmp/n8n-campaign-20261018/sop-attestation-truth/test_sop_runtime_command_truth_frozen.py --junitxml=/tmp/n8n-campaign-20261018/sop-attestation-truth/exact-head-frozen.xml",
+    "candidate_focused": "PATH=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin:$PATH TRADE_AI_CI=1 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=.:scripts /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m pytest -q -p no:cacheprovider tests/test_sop_runtime_command_truth_20261018.py tests/test_sop_evidence_integrity.py tests/test_sop_toolchain.py tests/test_sop_attestation_base.py --junitxml=/tmp/n8n-campaign-20261018/sop-attestation-truth/exact-head-focused.xml",
+    "integrity": "PYTHONDONTWRITEBYTECODE=1 python3 scripts/validate_sop_evidence_integrity.py",
+    "quality": "pinnedRuff0.16.2 check + format --check all5ownedpaths; gitdiff --check HEAD^ HEAD"
+  },
+  "raw_observations": [
+    {
+      "artifact": "original-sandbox-failed/runtime-attestation.json",
+      "classification": "FAILED_MANDATORY_CORE_COMMAND_NOT_QUALIFYING",
+      "schema": "SopRuntimeAttestation@v1",
+      "head_sha": "23ab101a6b7a81d89742467329ed9ed13cbdce9e",
+      "commands": [
+        {
+          "name": "pytest_core",
+          "exit": 1,
+          "expected": 0
+        },
+        {
+          "name": "pytest_evidence_integrity",
+          "exit": 0,
+          "expected": 0
+        },
+        {
+          "name": "evidence_integrity",
+          "exit": 0,
+          "expected": 0
+        },
+        {
+          "name": "check_index",
+          "exit": 0,
+          "expected": 0
+        },
+        {
+          "name": "shellcheck",
+          "exit": 0,
+          "expected": 0
+        }
+      ]
+    },
+    {
+      "artifact": "later-host-rerun-passed/runtime-attestation.json",
+      "classification": "DISTINCT_LATER_HOST_RERUN",
+      "schema": "SopRuntimeAttestation@v1",
+      "head_sha": "23ab101a6b7a81d89742467329ed9ed13cbdce9e",
+      "commands": [
+        {
+          "name": "pytest_core",
+          "exit": 0,
+          "expected": 0
+        },
+        {
+          "name": "pytest_evidence_integrity",
+          "exit": 0,
+          "expected": 0
+        },
+        {
+          "name": "evidence_integrity",
+          "exit": 0,
+          "expected": 0
+        },
+        {
+          "name": "check_index",
+          "exit": 0,
+          "expected": 0
+        },
+        {
+          "name": "shellcheck",
+          "exit": 0,
+          "expected": 0
+        }
+      ]
+    }
+  ],
+  "artifacts": {
+    "baseline-identity.json": {
+      "sha256": "7ecd66015145291fd4aed185db6fc197a545548ef333f7bd1525ba7aeca90133",
+      "bytes": 461
+    },
+    "baseline-red.txt": {
+      "sha256": "089f4b068d0adc4c01c6c84a73c59e30cbbb1245b8ddf888cefd9f2eaa7cb05e",
+      "bytes": 67958
+    },
+    "baseline-red.xml": {
+      "sha256": "23ca2da7e262156f69592647c91d04f83057c6feda263898d196920ae17facf0",
+      "bytes": 79323
+    },
+    "candidate-green.txt": {
+      "sha256": "5ce7228559878ba093c790666899c0c131d7a4b1c35d4ff1c6dc47cd69631286",
+      "bytes": 99
+    },
+    "candidate-green.xml": {
+      "sha256": "2c1ea213e7e797cfcadf066d4795bde2e507434aaf6581a4e61e4278701b8b8d",
+      "bytes": 4189
+    },
+    "exact-head-focused.txt": {
+      "sha256": "24bc8b66354ca509e30f05040e6d72358930fcce67df5f0221ded02cad9314b7",
+      "bytes": 99
+    },
+    "exact-head-focused.xml": {
+      "sha256": "dd647f5019f1c3dab175460030744c1440db12f0b39b8e588a02d25a52edd1dc",
+      "bytes": 8307
+    },
+    "exact-head-frozen.txt": {
+      "sha256": "a2f288aa4d79e3f6005325238c4026d651a127162ad3968da36e03cf134caaa1",
+      "bytes": 99
+    },
+    "exact-head-frozen.xml": {
+      "sha256": "e863089616c0e773f273f55bf577e0ca28a72e253c7bd18d8f8b9ce9d85c8f6c",
+      "bytes": 4005
+    },
+    "exact-head-integrity.txt": {
+      "sha256": "2c492faf376fe460356b4f05c78d39d194cd523f4702520c7c7384b1689e1cd6",
+      "bytes": 176
+    },
+    "existing-regressions.txt": {
+      "sha256": "4f998bbc54e26008659cdfb66af91ce9850980f2bbb9db3d10e47d41484a33af",
+      "bytes": 99
+    },
+    "existing-regressions.xml": {
+      "sha256": "c32be6d296d9240e7efd23491c45175c590e29caf9df8c4ecac0054486adcdab",
+      "bytes": 3742
+    },
+    "focused-regressions.txt": {
+      "sha256": "015f8a14b6ad38f89700bc72c025accfb597b4b83f652cbdba6094b588df43ae",
+      "bytes": 99
+    },
+    "focused-regressions.xml": {
+      "sha256": "483acb0140fd4b8fd5befca21d3fb86a629bbf34a8ad2d5202d7e79c37f61434",
+      "bytes": 8307
+    },
+    "frozen-candidate-green.txt": {
+      "sha256": "c16c95b7de1beb34f66263c263fab0add8a7541a71cf910c40949f5e954bcc6a",
+      "bytes": 99
+    },
+    "frozen-candidate-green.xml": {
+      "sha256": "73018ffbe1e9a69ac7409ee0d5009c17c03f462dd41e846903a33f6f7ff7fc47",
+      "bytes": 4005
+    },
+    "later-host-rerun-passed/emitter.log": {
+      "sha256": "639d5f0fd595b80805d2a8ba0aec8dfb7efec6fb88f417ba4c62ccf72e5271a5",
+      "bytes": 1718
+    },
+    "later-host-rerun-passed/runtime-attestation.json": {
+      "sha256": "9a9f01f5ea66a6a147bb6a49f71ef6c2e59cb88da6b73bbf4a1e91b49f23b400",
+      "bytes": 2762
+    },
+    "original-sandbox-failed/emitter.log": {
+      "sha256": "dc5cacc3fb8dbe0e7fa768892a85fdef7b0d63f17f41c32e75d6aa8be40dc8ed",
+      "bytes": 10255
+    },
+    "original-sandbox-failed/runtime-attestation.json": {
+      "sha256": "0cfb14272c93c853a306b9ec6651eee08d1f85e7b455889573d96b2f9b2d3909",
+      "bytes": 2762
+    },
+    "session.json": {
+      "sha256": "cdd477ed0508b57384aee78754619dac2135d95808eb3d717376a5a7a2d311e3",
+      "bytes": 3657
+    },
+    "source-scope-proof.json": {
+      "sha256": "4920a7e731133935f20a33a8239566edf0dc787cfc09789d8ae68383e8c6916c",
+      "bytes": 576
+    },
+    "test_sop_runtime_command_truth_frozen.py": {
+      "sha256": "7fdc0119baa32cf04a4c5a38e631da92d2f71763f7bb48a2080bc35801c1a96c",
+      "bytes": 5897
+    }
+  },
+  "limits_and_next_action": [
+    "Independent root exact-head source review pending.",
+    "Root integrator must register tests/test_sop_runtime_command_truth_20261018.py in appropriate CI; this candidate does not edit shared CI.",
+    "Only hermetic fake command effects ran. No real core socket probes, sharedGitconfig fixtures, runtime effects, grant actions or remote writes ran.",
+    "No actual production/runtime attestation was generated by this workstream; every generated record in tests is explicitly NOT_OPERATIONAL_PROOF.",
+    "Existing declared test_counts/core metadata and authority_non_regression are outside this focused outcome-enforcement fix and are not newly established as measured proof."
+  ]
+}
