@@ -23,6 +23,11 @@ REPO = Path(__file__).resolve().parents[1]
 
 # Ordered, explicit suite list (Phase 10.2)
 GATES = [
+    # Preserve existing SEC event identities while suppressing within-batch repeats.
+    (
+        "premarket_dedupe_within_batch_20261018",
+        ["tests/test_premarket_dedupe_within_batch_20261018.py"],
+    ),
     # All ledger recovery consumers require the shared live useful-output verdict.
     (
         "n8n_siem_recovery_truth_20261018",
