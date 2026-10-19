@@ -23,6 +23,11 @@ REPO = Path(__file__).resolve().parents[1]
 
 # Ordered, explicit suite list (Phase 10.2)
 GATES = [
+    # Staged reader preserves v2 evidence and refuses legacy worker effects on it.
+    (
+        "incident_notifier_state_compatibility_20261018",
+        ["tests/test_incident_notifier_state_compatibility_20261018.py"],
+    ),
     # Rotation publication: account-bound identity, real source clocks and grounded
     # stop claims; actual API/cache/digest/POST boundaries with fake external effects.
     ("rotation_publication_20261018", ["tests/test_rotation_publication_20261018.py"]),
