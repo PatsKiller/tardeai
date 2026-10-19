@@ -1,0 +1,200 @@
+{
+  "schema": "CampaignMergeAuthorizationRecord@v1",
+  "campaign_id": "n8n-maturity-20261018",
+  "supersedes_for_mutation": "pr1855-premerge-hold-readiness-identity.json",
+  "authority": "Current operator campaign mandate §1 and §11; scoped reviewed PR merge. Existing git-push grant is not merge authority and is not consumed for this action.",
+  "pr": {
+    "base": "7af14c7782cf7ab0cba261cc25e6789fe810b092",
+    "head": "b5967a1d8c2c3249f8c93424e1b61fd27543197f",
+    "html_url": "https://github.com/PatsKiller/tardeai/pull/1855",
+    "mergeable": true,
+    "number": 1855,
+    "state": "open"
+  },
+  "reviewed_head": "b5967a1d8c2c3249f8c93424e1b61fd27543197f",
+  "required_checks": [
+    "cio-hardening",
+    "agent-governance",
+    "release-readiness",
+    "ci-gate"
+  ],
+  "checks": [
+    {
+      "conclusion": "success",
+      "head_sha": "b5967a1d8c2c3249f8c93424e1b61fd27543197f",
+      "html_url": "https://github.com/PatsKiller/tardeai/actions/runs/39177085235/job/117821864511",
+      "id": 117821864511,
+      "name": "release-readiness",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "head_sha": "b5967a1d8c2c3249f8c93424e1b61fd27543197f",
+      "html_url": "https://github.com/PatsKiller/tardeai/actions/runs/39176342186/job/117821061544",
+      "id": 117821061544,
+      "name": "ci-gate",
+      "status": "completed"
+    },
+    {
+      "conclusion": "skipped",
+      "head_sha": "b5967a1d8c2c3249f8c93424e1b61fd27543197f",
+      "html_url": "https://github.com/PatsKiller/tardeai/actions/runs/39176342204/job/117820851070",
+      "id": 117820851070,
+      "name": "main-red-alert",
+      "status": "completed"
+    },
+    {
+      "conclusion": "skipped",
+      "head_sha": "b5967a1d8c2c3249f8c93424e1b61fd27543197f",
+      "html_url": "https://github.com/PatsKiller/tardeai/actions/runs/39176342204/job/117819691835",
+      "id": 117819691835,
+      "name": "cio-hardening-full",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "head_sha": "b5967a1d8c2c3249f8c93424e1b61fd27543197f",
+      "html_url": "https://github.com/PatsKiller/tardeai/actions/runs/39176342186/job/117819691459",
+      "id": 117819691459,
+      "name": "shard 5",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "head_sha": "b5967a1d8c2c3249f8c93424e1b61fd27543197f",
+      "html_url": "https://github.com/PatsKiller/tardeai/actions/runs/39176342186/job/117819691391",
+      "id": 117819691391,
+      "name": "shard 4",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "head_sha": "b5967a1d8c2c3249f8c93424e1b61fd27543197f",
+      "html_url": "https://github.com/PatsKiller/tardeai/actions/runs/39176342186/job/117819691341",
+      "id": 117819691341,
+      "name": "shard 7",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "head_sha": "b5967a1d8c2c3249f8c93424e1b61fd27543197f",
+      "html_url": "https://github.com/PatsKiller/tardeai/actions/runs/39176342186/job/117819691309",
+      "id": 117819691309,
+      "name": "shard 3",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "head_sha": "b5967a1d8c2c3249f8c93424e1b61fd27543197f",
+      "html_url": "https://github.com/PatsKiller/tardeai/actions/runs/39176342186/job/117819691293",
+      "id": 117819691293,
+      "name": "shard 1",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "head_sha": "b5967a1d8c2c3249f8c93424e1b61fd27543197f",
+      "html_url": "https://github.com/PatsKiller/tardeai/actions/runs/39176342186/job/117819691283",
+      "id": 117819691283,
+      "name": "shard 2",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "head_sha": "b5967a1d8c2c3249f8c93424e1b61fd27543197f",
+      "html_url": "https://github.com/PatsKiller/tardeai/actions/runs/39176342186/job/117819691282",
+      "id": 117819691282,
+      "name": "integrity rails",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "head_sha": "b5967a1d8c2c3249f8c93424e1b61fd27543197f",
+      "html_url": "https://github.com/PatsKiller/tardeai/actions/runs/39176342317/job/117819691271",
+      "id": 117819691271,
+      "name": "agent-governance",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "head_sha": "b5967a1d8c2c3249f8c93424e1b61fd27543197f",
+      "html_url": "https://github.com/PatsKiller/tardeai/actions/runs/39176342186/job/117819691221",
+      "id": 117819691221,
+      "name": "shard 0",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "head_sha": "b5967a1d8c2c3249f8c93424e1b61fd27543197f",
+      "html_url": "https://github.com/PatsKiller/tardeai/actions/runs/39176342186/job/117819691154",
+      "id": 117819691154,
+      "name": "shard 6",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "head_sha": "b5967a1d8c2c3249f8c93424e1b61fd27543197f",
+      "html_url": "https://github.com/PatsKiller/tardeai/actions/runs/39176342186/job/117819691153",
+      "id": 117819691153,
+      "name": "shard pg",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "head_sha": "b5967a1d8c2c3249f8c93424e1b61fd27543197f",
+      "html_url": "https://github.com/PatsKiller/tardeai/actions/runs/39176342186/job/117819691103",
+      "id": 117819691103,
+      "name": "shard serial",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "head_sha": "b5967a1d8c2c3249f8c93424e1b61fd27543197f",
+      "html_url": "https://github.com/PatsKiller/tardeai/actions/runs/39176342204/job/117819690974",
+      "id": 117819690974,
+      "name": "cio-hardening",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "head_sha": "b5967a1d8c2c3249f8c93424e1b61fd27543197f",
+      "html_url": "https://github.com/PatsKiller/tardeai/actions/runs/39176342227/job/117819690878",
+      "id": 117819690878,
+      "name": "provider-cost",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "head_sha": "b5967a1d8c2c3249f8c93424e1b61fd27543197f",
+      "html_url": "https://github.com/PatsKiller/tardeai/actions/runs/39176342159/job/117819690826",
+      "id": 117819690826,
+      "name": "release-readiness",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "head_sha": "b5967a1d8c2c3249f8c93424e1b61fd27543197f",
+      "html_url": "https://github.com/PatsKiller/tardeai/actions/runs/39176342157/job/117819690726",
+      "id": 117819690726,
+      "name": "aif-financial-senses-integration",
+      "status": "completed"
+    }
+  ],
+  "independent_review": {
+    "source": "/tmp/n8n-campaign-20261018/cross-review/evidence-final1ba-review.json",
+    "lossless_docs": "/tmp/n8n-campaign-20261018/cross-review/evidence-c912-review.json",
+    "ci": "/tmp/n8n-campaign-20261018/hosted-ci-triage/pr1855-b596-root-review.json",
+    "ci_review_sha256": "1e3a61cbef861cf6bba8a00a0ac9b2758842fc1a2f5af9fdd742f473917ad475"
+  },
+  "release_readiness_exact_head": {
+    "run_id": 39177085235,
+    "job_id": 117821864511,
+    "event": "workflow_dispatch",
+    "head_sha": "b5967a1d8c2c3249f8c93424e1b61fd27543197f",
+    "conclusion": "success",
+    "url": "https://github.com/PatsKiller/tardeai/actions/runs/39177085235",
+    "actual_checkout_log": "97:release-readiness\tRun actions/checkout@v4\t2026-10-18T23:34:32.1693113Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +b5967a1d8c2c3249f8c93424e1b61fd27543197f:refs/remotes/origin/wt/n8n-evidence-gates-20261018\n99:release-readiness\tRun actions/checkout@v4\t2026-10-18T23:34:36.2587593Z  * [new ref]         b5967a1d8c2c3249f8c93424e1b61fd27543197f -> origin/wt/n8n-evidence-gates-20261018\n105:release-readiness\tRun actions/checkout@v4\t2026-10-18T23:34:36.2672008Z ##[group]Checking out the ref\n110:release-readiness\tRun actions/checkout@v4\t2026-10-18T23:34:37.0771041Z [command]/usr/bin/git log -1 --format=%H\n111:release-readiness\tRun actions/checkout@v4\t2026-10-18T23:34:37.0794773Z b5967a1d8c2c3249f8c93424e1b61fd27543197f\n"
+  },
+  "mutation": "Merge reviewed head using API sha comparison; retain branch",
+  "runtime_state": "Not deployed, enabled or operationally proven; collectors and controller remain held; zero qualifying campaign hours."
+}

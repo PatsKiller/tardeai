@@ -1,0 +1,35 @@
+{
+  "schema": "CampaignIndependentSourceReview@v1",
+  "reviewer": "root, not backend source author",
+  "head": "6d1e43043d1c23c48503fa11ccbda4669604b2e2",
+  "verdict": "APPROVED_SCOPED_SOURCE_INTEGRATION",
+  "files_sha256": {
+    "scripts/api_v2.py": "4f6e8f001794b860e9247e58324f1a36af1633d3af68595c69e22c1954759c23",
+    "scripts/lib/rotation_publication.py": "2336c3a691315cca22f1bfd34dbd883f61aaeb1f51a4e19d7f16b9149ef5df24",
+    "scripts/rotation_rebalance_digest.py": "4d06378f7de76df9ef5dcfe76e65c696a65b2de6d1425f8eb79cd90e9bc6cf93",
+    "tests/test_rotation_publication_20261018.py": "0aea1b35017268982395a156bab53f22c8312e13cd75fbc4cdfc20598e133f3a"
+  },
+  "independent_tests": {
+    "path": "/tmp/n8n-campaign-20261018/cross-review/rotation-6d1-root-independent.xml",
+    "sha256": "c8d433604c5f2247cc15e3860ccfd36f58f06711e644434014788036db518ba5",
+    "tests": 68,
+    "failures": 0,
+    "errors": 0
+  },
+  "findings_closed": [
+    "Four actual f315 parent findings: contradictory source states, stale individual position, unsupported structured stop reduction, stale engine hidden by fresh cache",
+    "Consumer future account clock was accepted: two expected assertions on f315 plus complete valid control; unchanged pair now passes",
+    "Raw target window and proposal cap preserved before dedup; no selection expansion"
+  ],
+  "scope": "Exact account identity and source clocks; truthful shared publication verdict; API cache, three POST consumers and host digest. API changes outside _rotation_summary limited to three early publication_refusal guards. Engine/scoring/financial formulas untouched.",
+  "holds": [
+    "Parent independent re-review/required CI/merge/release/productionproof remainpending; local source only.",
+    "No financial scorer/ranking/math/standaloneadvisor/broker/provider/config/authority change.",
+    "Freshness/provenance of underlying DB research/card/LLM signals beyond these scoped clocks remains unproven; READY is publication-contract acceptance, not reviewed financial decision or trade authority.",
+    "Rootcause retainedcachepoint evidence doesnot bind exactdeliveryattempt/providerID; no new live rerun.",
+    "Parentindependentreview/requiredCI/merge/release/activation/productionoutputpending.",
+    "Allfinancial/runtime/sourceavailability/deliveryproofholdsunchanged.",
+    "No grants,provider/broker calls,DBwrite orproduction regeneration."
+  ],
+  "runtime_effects_performed": false
+}

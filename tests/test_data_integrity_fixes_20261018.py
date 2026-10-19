@@ -528,6 +528,7 @@ def test_plausibility_lane_receipt_is_v2_and_produced(lane_env, monkeypatch):
 
     rid = f"d:{DPM_LANE}:live:20261018T0620"
     monkeypatch.setenv("TRADEAI_RUN_ID", rid)
+    monkeypatch.setenv("TRADEAI_RUN_MODE", "live")  # the n8n executor sets it; main's receipt binds run_mode
     assert dpm.lane_main([], connect=_PlausConn) == 0  # the n8n entry with the canary live_arg []
     doc = json.loads(R.attempt_receipt_path(DPM_LANE, rid, lane_env.state).read_text())
     n = len(_load("data_plausibility_contracts.json")["contracts"])
@@ -715,6 +716,7 @@ def test_plausibility_owner_switch_argv_queues_through_lane_main(lane_env, no_se
             return _ViolCursor()
 
     monkeypatch.setenv("TRADEAI_RUN_ID", f"d:{DPM_LANE}:live:20261018T0620")
+    monkeypatch.setenv("TRADEAI_RUN_MODE", "live")  # the n8n executor sets it; main's receipt binds run_mode
     assert dpm.lane_main(["--alert"], connect=_ViolConn) == 0
     assert _intents(ledger) == [("data", "data_plausibility_violation", "host.data_plausibility_monitor", "QUEUED")]
     assert no_send == []
@@ -738,6 +740,7 @@ def test_gap_lane_receipt_is_v2(lane_env, monkeypatch):
 
     rid = f"d:{GAP_LANE}:live:20261018T1007"
     monkeypatch.setenv("TRADEAI_RUN_ID", rid)
+    monkeypatch.setenv("TRADEAI_RUN_MODE", "live")  # the n8n executor sets it; main's receipt binds run_mode
     rep = _report(OPEN_NO_ATTEMPT=[{"gap_id": "g", "domain": "d", "subject": "S", "age_hours": 3, "origin": "x"}])
     rep.update({"receipts": 4, "queued_gaps": 1, "research_gaps": 0, "search_denials": 0})
     assert cgr.lane_main([], collect_fn=lambda: rep) == 0  # a finding is output, not a failure

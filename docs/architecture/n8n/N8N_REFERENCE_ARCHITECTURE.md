@@ -31,6 +31,18 @@ assessment section; `WSn-mm` = an architecture-review finding id (`FINDINGS.csv`
 item; `FW-x` = a §23.24 framework element (the checker element id in
 [`N8N_CONTRACTS_DESIGN.md`](N8N_CONTRACTS_DESIGN.md) §12).
 
+**Current verification, 2026-10-18.** Source `3af0a8bdd659e02bf6f493c071800c6a227ae292`, initial served
+`a2aef7b4d2de17e737526337a2ffc37848deda4f`, active policy AGENTS.md 14.0.0. A host SELECT-only drift read at
+18:15:57Z found 19 active workflows and 19/19 matching Git. This is point parity, not continuous monitoring or
+§23.24 compliance. The independent drift lane is held. The refreshed scheduler inventory found 338 active
+cron lines, all mapped; communications database read was unavailable to this audit context. The tailnet hostname
+could not resolve here; that access limit does not establish a CC outage. Real session/MFA proof remains separate.
+The [campaign](../../implementation/n8n-maturity/campaign-20261018/README.md) and its executable
+contract/route/decision matrices supersede historical "today" counts below for current-state assessment. The
+2026-10-18 operator mandate narrows this campaign: no destructive retention, trading-policy change, protected
+control change, broker authority or disk-hygiene ratification; F07 and registry_systemd remain unchanged.
+Provisional operational maturity remains 2.5/5 pending the actual business-output and observation requirements.
+
 ---
 
 ## 1. Executive summary
@@ -563,3 +575,18 @@ fan-in `scripts/n8n_incident_fanin.py`; consumer `scripts/n8n_comms_intent_consu
 workflows `docs/implementation/n8n-maturity/workflows/` (generic, `fabric/`) and
 `docs/implementation/n8n-parallel/workflows/generated/` (per-lane); reference mature workflow
 `docs/implementation/n8n-parallel/workflows/reference/`.
+
+## October 18 campaign implementation status
+
+The [current ledger](../../implementation/n8n-maturity/campaign-20261018/baseline/implementation-status.json)
+separates implemented, pushed, merged, deployed, enabled and operationally proven. The first reviewed source
+tranche is PR #1854 at `2333c8e1b00f4be3b5fab653bf67d9a42fdcd399`; it changes no scheduler, owner or live-mode
+configuration. The subsequent evidence/activation/eligibility tranche is local and held from activation. See
+[contracts §16](N8N_CONTRACTS_DESIGN.md#16-october-18-implementation-and-framework-evidence) for its §23.24
+mapping and limits. Successful n8n executions or a schema literal do not substitute for host-attested useful output.
+
+Current bridge configuration enables the Grok and ChatGPT OAuth transports, but the read-only health response
+is canary mode with caller authentication in report mode. Provider usability, auth/cost provenance and bounded
+live failover remain unproven. No LLM or approval relay route is opened by these changes. CC reachability was
+verified through the tailnet TLS hostname using the known tailnet address; it establishes reachability and served
+UI only. Real session/MFA and SPCX threat-model acceptance remain separate open requirements.

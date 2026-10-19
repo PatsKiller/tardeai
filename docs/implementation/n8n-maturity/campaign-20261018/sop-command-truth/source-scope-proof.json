@@ -1,0 +1,14 @@
+{
+  "tests/test_sop_evidence_integrity.py": {
+    "assertions_byte_semantics_unchanged": true,
+    "changes": "Mandatory-success command fixture plus import only"
+  },
+  "tests/test_sop_toolchain.py": {
+    "assertions_byte_semantics_unchanged": true,
+    "changes": "Mandatory-success command fixture plus import only"
+  },
+  "scripts/emit_sop_runtime_attestation.py": {
+    "producer_run_and_build_function_AST_unchanged": true,
+    "changes": "Module documentation and skip-commands diagnostic help only; actual qualification delegates to existing shared validator."
+  }
+}

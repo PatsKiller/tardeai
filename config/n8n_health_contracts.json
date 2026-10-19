@@ -26089,7 +26089,7 @@
       "kind": "lane",
       "workflow_id": "tradeai-fabric-hermes-learning",
       "status": "REVIEWED",
-      "target_reason": "n8n fabric process hermes-learning step outcome_feedback_agent (2026-10-15; unblocked 2026-10-15 (n8nfab/hermes-learning-unblock-20261015)); stage shadow",
+      "target_reason": "n8n fabric process hermes-learning step outcome_feedback_agent; stage shadow and live_arg null. Sixth-stage activation remains HELD pending qualified output/input-consumer evidence and reviewed fenced cutover; registered queue-only capability is not live proof.",
       "stage": "shadow",
       "purpose": {
         "text": "Outcome & Feedback Agent: turn graded ledger outcomes into the versioned outcome_bus.json the Scope Governor and Research Agent consume (by symbol, by tag, stop quality, resource efficiency, discovery health, maturity), and raise closed-loop alerts as notification intents",

@@ -1,0 +1,38 @@
+{
+  "schema": "N8nCampaignPreparedPromotionManifest@v1",
+  "campaign_id": "n8n-maturity-20261018",
+  "as_of": "2026-10-18T21:48:17.518455+00:00",
+  "pr": 1854,
+  "exact_sha": "7af14c7782cf7ab0cba261cc25e6789fe810b092",
+  "prepared_release": "/home/johnclaw/trade-ai-releases/portfolio-server/7af14c778-main-exact-phase2-20261018-172203",
+  "rollback_sha": "a2aef7b4d2de17e737526337a2ffc37848deda4f",
+  "rollback_release": "/home/johnclaw/trade-ai-releases/portfolio-server/a2aef7b4d-main-exact-phase2-20261018-103647",
+  "original_reviewed_manifest_sha256": "eeed7ab4b8377a73001b1529ca61ac72dba51b9d0e0aef995bf7b9f810058ab8",
+  "prepare_receipt_sha256": "d139f25da4067e3f9667d172c3f4de4e7c77085679e2f4e2258df212123cae13",
+  "exact_main_ci_receipt_sha256": "7ab0f1a0c5de1596833f092d12ab1a8120cbf08d9170a6537c5aa8c139873b51",
+  "source_and_acceptance_unchanged": true,
+  "allowed_actions": [
+    "promote exact prepared artifact",
+    "verify exact artifact/services/CC/workflow/config/owner/incident/outbox continuity and appropriate fresh natural useful output",
+    "rollback to recorded target with original exact clean-source compensation rules"
+  ],
+  "grant_request": {
+    "tier": "release-write",
+    "window_minutes": 45,
+    "uses": 2,
+    "consumption": {
+      "promote": 1,
+      "rollback_reserved": 1
+    },
+    "prepare_authorized": false,
+    "verify_consumes": 0,
+    "prior_grant": "65da446137ba4c6ab58cc901dd75ee4a",
+    "prior_expires_at": "2026-10-18T21:49:08Z",
+    "reason_for_new_window": "The managed host-read approval after prepare occupied about13 minutes. The old grant now lacks time to observe a fresh natural output and retain rollback headroom; no promotion was attempted.45 minutes allows bounded verification/one natural slot and scoped rollback despite observed approval latency.",
+    "issue_only": "after prior matching campaign grant expires, or explicit operator consolidation of this same campaign scope; request grants nothing"
+  },
+  "minimum_remaining_seconds_at_promote": 900,
+  "acceptance_deadline": "at most10minutes after promotion; on required acceptance failure or absence of useful-output proof execute scoped rollback while at least5minutes grant headroom remains",
+  "state": "prepared-not-promoted",
+  "no_workflow_scheduler_liveconfig_broker_credential_or_deletion_actions": true
+}

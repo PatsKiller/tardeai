@@ -1,0 +1,59 @@
+{
+  "blocking_findings": [],
+  "campaign_id": "n8n-maturity-20261018",
+  "clean_worktree_at_disposition": true,
+  "dependency_reviews_reused": [
+    {
+      "head": "2333c8e1b00f4be3b5fab653bf67d9a42fdcd399",
+      "scope": "approved core production gateway/output; no unchanged own fixture re-review"
+    },
+    {
+      "head": "dd396daab5f9cd321dfc6453dac4df50f76b5a85",
+      "scope": "root independent80 test approval; four source/test files byte-identical"
+    },
+    {
+      "head": "76d4ee0a65cfb6f84ff686abd3ca55338d0e6d09",
+      "scope": "root independent78 test approval; production lib/controller byte-identical"
+    }
+  ],
+  "disposition": "APPROVED_FOR_SCOPED_SOURCE_INTEGRATION_ONLY",
+  "excluded_own_work": "The four preexisting core Communications fixture env additions remain unchanged; this review makes no independent approval claim for those author-owned lines. No authored repair/grant/admission/ack implementation was reviewed here.",
+  "head": "c377bf5f19097c00259f942455974e75467af097",
+  "independent_validation": {
+    "command": "TRADE_AI_CI=1 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=/home/johnclaw/tradeai-wt-n8n-evidence-gates-20261018 <venv>/python -m pytest -q -p no:cacheprovider /tmp/n8n-campaign-20261018/cross-review/test_importer_report_independent.py tests/test_check_n8n_workflow_framework_adversarial.py tests/test_report_n8n_cutover_outcomes_20261016.py tests/test_n8n_evidence_attestation_20261018.py tests/test_n8n_retirement_eligibility_20261018.py",
+    "junit": "/tmp/n8n-campaign-20261018/cross-review/evidence-c377-final.xml",
+    "junit_sha256": "3a4a96e6d2f6d302e4deac3bed36d5434630073b6aa12f7094c091c8ce5a42e5",
+    "log": "/tmp/n8n-campaign-20261018/cross-review/evidence-c377-final.txt",
+    "log_sha256": "3181aa4f790943b30e79ff75d7e3bef9b81f7797bfe88d0d5ff30c9e9d7d4489",
+    "previous_two_report_residuals": "identical three-test independent file now green; actual expected assertion baseline preserved in committed report-derived-baseline-red.xml",
+    "result": "208 passed in5.26s"
+  },
+  "limits": [
+    "No workflow import/activation, release, scheduler mutation, key/trust provisioning or production effect was performed by reviewer",
+    "Raw n8n CLI/UI/admin mutation paths are outside this checker; concrete activation remains held until operational restriction/runtime enforcement is proven",
+    "Only L5b point graph/settings attestation adapter exists; no complete BAR/continuous/downstream/business recovery/rollback or interval attestation approval",
+    "Report is snapshot-only unauthenticated source capture; partial retained evidence counts do not certify complete natural-slot coverage",
+    "Retirement CLI unconditionally HELD/eligibilityfalse/deletion_execution_enabledfalse; pure evaluator cannot create operational proof",
+    "Full native exact-head acceptance is running separately under parent; this source review does not substitute for required checks or guard grants"
+  ],
+  "nonblocking_documentation_nits": [
+    "Importer --runtime-evidence help still names @v1 although enforcement supports v2 and reads v1 only as UNPROVEN; clarify in a follow-up",
+    "Contracts12 historical runtime-v1 truthy-reference description should explicitly label the historical behavior; final16 correctly explains v2 enforcement"
+  ],
+  "policy_files_unchanged_from_core": true,
+  "reviewed_at": "2026-10-18T21:04:20.480143+00:00",
+  "reviewer": "independent_review (nonauthor of reviewed production evidence/importer/report/eligibility source)",
+  "schema": "CampaignIndependentReview@v1",
+  "scope": [
+    "mandatory importer CLI framework gate with no disable path; static refusals remain refused",
+    "closed v2 runtime envelope and authenticated same-verifier proof; v1 remains readable UNPROVEN and unauthenticated exceptions cannot waive controls",
+    "reportv2 unavailable scheduler/live/ledger/communications readings propagate into ownership/delivery totals, fabric ownership and remaining forecast",
+    "new report reader explicitly supports priorv1 and currentv2, rejects unsupported major; human packet consumer census comparator/render/write only",
+    "L5b fixed collector and signed semantic verifier integration matches independently approved dd396 bytes",
+    "eligibility/controller source matches independently approved76d4 bytes; only two current fixture lines differ",
+    "CI includes new evidence/eligibility suites alongside existing framework/adversarial/report gates",
+    "architecture and campaign records distinguish baseline/local source/merge/deploy/enable/proof and retain0 qualifying hours/2.5 maturity",
+    "40 committed campaign artifacts match integrity-only manifest"
+  ],
+  "worktree": "/home/johnclaw/tradeai-wt-n8n-evidence-gates-20261018"
+}

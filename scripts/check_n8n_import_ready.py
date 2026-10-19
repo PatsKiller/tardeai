@@ -19,11 +19,11 @@ Read-only. Takes files or directories; a directory is scanned the way `n8n impor
 
 and warned (not refused) for save_manual_executions_true (overrides EXECUTIONS_DATA_SAVE_MANUAL_EXECUTIONS=false).
 
-``--framework-gate activation`` (opt-in, 2026-10-15 audit DD16) also runs the fail-closed §23.24 promotion gate
-(``scripts/check_n8n_workflow_framework.py --gate activation``) on every file and refuses each one that is not
+The mandatory §23.24 promotion gate (2026-10-18 campaign, closing the opt-in gap from audit DD16)
+(``scripts/check_n8n_workflow_framework.py --gate activation``) runs on every statically admissible file and refuses each one that is not
 activation-eligible (``framework_gate``): any element FAIL, PARTIAL on a critical element, platform element not
 PASS, or a runtime obligation without evidence (``--runtime-evidence``), unless an operator exception names it
-(``--exceptions``). Off by default so existing packets keep their behaviour; a packet adopts it explicitly.
+(``--exceptions``). Existing ``--framework-gate activation`` callers remain compatible; omitting it never skips the gate.
 
     python3 scripts/check_n8n_import_ready.py "$STAGE" --relay-url http://172.19.0.1:18092
     python3 scripts/check_n8n_import_ready.py "$STAGE" --relay-url http://172.19.0.1:18092 --json
@@ -178,8 +178,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     ap.add_argument(
         "--framework-gate",
         choices=("activation",),
-        default=None,
-        help="also refuse files the §23.24 activation gate does not pass (fail closed)",
+        default="activation",
+        help="§23.24 activation gate (mandatory; retained for existing packet compatibility)",
     )
     ap.add_argument("--runtime-evidence", default=None, help="N8nFrameworkRuntimeEvidence@v1 for the gate")
     ap.add_argument("--exceptions", default=None, help="N8nFrameworkExceptions@v1 for the gate")
@@ -191,8 +191,9 @@ def main(argv: Optional[list[str]] = None) -> int:
             allowlisted=load_allowlisted_lanes(Path(a.allowlist)),
             known_ids=set(a.known_id),
         )
-        if a.framework_gate:
-            apply_framework_gate(results, runtime_evidence=a.runtime_evidence, exceptions=a.exceptions)
+        candidates = [row for row in results if row["ok"]]
+        if candidates:
+            apply_framework_gate(candidates, runtime_evidence=a.runtime_evidence, exceptions=a.exceptions)
     except CannotRun as exc:
         print(f"n8n import guard CANNOT RUN: {exc}", file=sys.stderr)
         return 2

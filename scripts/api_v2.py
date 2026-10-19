@@ -46385,30 +46385,53 @@ def _rotation_summary(force=False):
     long enough for the health-probe watchdog to kill+restart-loop the server. Never calls a broker."""
     # Defense-in-depth vs the dispatcher/force collision (see /api/v2/trade-ai route comment).
     force = force is True
-    import time as _t, json as _j, subprocess as _sp, sys
+    import time as _t, json as _j, subprocess as _sp, sys, math as _math
     import datetime as _dt
+    from lib.rotation_publication import PublicationError, exact_position, input_digest, project_summary, unique_rows
+
+    _initial_inputs = None
+
+    def _publish(value, *, cached=False):
+        try:
+            holdings = _j.loads((PROJECT_ROOT / "data/portfolios/state/holdings.json").read_text())
+        except Exception:
+            holdings = {}
+        try:
+            if not cached and _initial_inputs is not None and input_digest(holdings) != _initial_inputs:
+                value.setdefault("_publication_errors", []).append("input_changed_during_production")
+        except (ValueError, TypeError):
+            value.setdefault("_publication_errors", []).append("malformed_input")
+        return project_summary(value, holdings, cached=cached)
 
     _disk = PROJECT_ROOT / "data" / "runtime" / "rotation_summary_cache.json"
     _now = _t.time()
     if not force:
         # 1) in-memory fresh
         if _ROTATION_SUMMARY_CACHE["data"] and (_now - _ROTATION_SUMMARY_CACHE["ts"] < 300):
-            return _ROTATION_SUMMARY_CACHE["data"]
+            return _publish(_ROTATION_SUMMARY_CACHE["data"], cached=True)
         # 2) disk cache — serve it (fresh OR stale) without a 52s recompute in the request path
         try:
             if _disk.exists():
                 _d = _j.loads(_disk.read_text())
-                _age = _now - (_d.get("_cached_ts") or 0)
+                _stamp = _d.get("_cached_ts")
+                _valid_stamp = (
+                    isinstance(_stamp, (float, int)) and not isinstance(_stamp, bool) and _math.isfinite(_stamp)
+                )
+                _age = _now - _stamp if _valid_stamp else 0
                 _d["cached_at"] = _d.get("_cached_at")
-                _d["cache_age_sec"] = round(_age)
+                _d["cache_age_sec"] = round(_age) if _valid_stamp else None
                 _d["stale"] = _age > 900
                 _ROTATION_SUMMARY_CACHE.update(ts=_now - min(_age, 299), data=_d)
-                return _d
+                return _publish(_d, cached=True)
         except Exception:
             pass
-        # 3) no disk cache at all (first ever run) — fall through and compute once to bootstrap
+        # A GET never bootstraps the producer (which also writes projections).
+        # Missing/malformed cache is unavailable; the existing warm owner repairs it.
+        return _publish({"ok": False, "_publication_errors": ["cache_unavailable"]})
     root = PROJECT_ROOT
+    _publication_errors = []
     try:
+        _initial_inputs = input_digest(_j.loads((root / "data/portfolios/state/holdings.json").read_text()))
         # Build the stop-risk map from the latest Aegis nightly thesis and hand it to the engine so
         # trim_score reflects deterministic stop deterioration (triggered/danger/warning), not just
         # concentration/valuation. Best-effort; engine ignores --stops if the file is absent/empty.
@@ -46652,6 +46675,7 @@ def _rotation_summary(force=False):
             # (not just the top-hermes_rank display window), preferring real analyst coverage. If none qualify,
             # we suggest NO rotate-in (honest) rather than an avoided/hype name.
             _endorsed = []
+            _endorsed_rows = []
             try:
                 _c3 = _gc2().cursor()
                 _c3.execute("""SELECT w.symbol, w.hermes_rank, p.sector, an.nop, fs.recommendation
@@ -46668,6 +46692,15 @@ def _rotation_summary(force=False):
                     _eu = (_es or "").upper()
                     if _eu in _held:
                         continue
+                    _endorsed_rows.append(
+                        {
+                            "symbol": _es,
+                            "hermes_rank": _er,
+                            "sector": _esec,
+                            "analyst_opinions": _enop,
+                            "cio_view": _ecio,
+                        }
+                    )
                     _ecard = _cmap.get(_eu) or {}
                     _ean = _ecard.get("analyst") or {}
                     _ec = next((a for a in research_candidates if a.get("symbol") == _es), None) or {
@@ -46689,8 +46722,21 @@ def _rotation_summary(force=False):
                     _endorsed.append(_ec)
             except Exception:
                 _endorsed = [a for a in research_candidates if a.get("cio_endorsed")]
+            # Deduplicate only the original selected window; do not widen the
+            # target pool or make a new financial selection to fill a gap.
+            try:
+                if _endorsed_rows:
+                    unique_rows(_endorsed_rows[:2], ("symbol",))
+                unique_rows(_endorsed[:2], ("symbol",))
+                # Preserve the original raw six-proposal selection limit too.
+                # Publication deduplicates afterwards, without surfacing a new
+                # fourth trim source formerly outside that bounded window.
+                _selected_endorsed = _endorsed[:2]
+            except PublicationError as _pe:
+                _publication_errors.append(str(_pe))
+                _selected_endorsed = []
             for _tt in _trims:
-                for _aa in _endorsed[:2]:
+                for _aa in _selected_endorsed:
                     _up = _aa.get("analyst_upside_pct")
                     _conc = (_tt.get("evidence") or {}).get("concentration_pct")
                     _dg = _tt.get("degradation") or {}
@@ -46707,11 +46753,13 @@ def _rotation_summary(force=False):
                             "from_symbol": _tt.get("symbol"),
                             "to_symbol": _aa.get("symbol"),
                             "from_account": _tt.get("account_type"),
+                            "from_account_key": _tt.get("account_key"),
                             "score": round(float(_tt.get("trim_score") or 0), 1),
                             "review_amount": None,
                             "from_degradation": _dg or None,
                             "to_cio_view": _aa.get("cio_view"),
                             "to_analyst_opinions": _aa.get("analyst_opinions"),
+                            "to_thin_coverage": _aa.get("thin_coverage"),
                             "rationale": (
                                 f"Advisory: review rotating from {_tt.get('symbol')} "
                                 f"({_tt.get('sector') or '?'}, {_why}) into research "
@@ -46766,9 +46814,12 @@ def _rotation_summary(force=False):
         # advisory trim RANGE per rebalance idea (5-15% of the trim position, operator-confirmed)
         _lo_f, _hi_f = float(_band.get("low_frac", 0.05)), float(_band.get("high_frac", 0.15))
         for _idea in research_ideas:
-            _fv = next(
-                (float(c.get("current_value") or 0) for c in cands if c.get("symbol") == _idea.get("from_symbol")), 0.0
-            )
+            try:
+                _source_position = exact_position(cands, _idea.get("from_symbol"), _idea.get("from_account_key"))
+                _fv = float(_source_position.get("current_value") or 0)
+            except PublicationError as _pe:
+                _publication_errors.append(str(_pe))
+                continue
             if _fv:
                 # Context-aware review size: a 5-15% trim only makes sense for a concentration/valuation
                 # flag. When the rotate-out reason is a BROKEN STOP, the action is reduce/exit, not a token
@@ -46801,7 +46852,7 @@ def _rotation_summary(force=False):
         # RANGES derived from the advisory $ range — operator confirms; nothing is sized or placed. ──
         import re as _re3
 
-        _price, _hmap = {}, {}
+        _price = {}
         try:
             _hold_rows = _j.loads((root / "data" / "portfolios" / "state" / "holdings.json").read_text()).get(
                 "holdings", []
@@ -46835,12 +46886,11 @@ def _rotation_summary(force=False):
             for _h in _hold_rows:
                 _hs = (_h.get("symbol") or "").upper()
                 if _hs and not _h.get("is_cash") and float(_h.get("price") or 0) > 0:
-                    _hmap.setdefault(_hs, _h)
                     _price.setdefault(
                         _hs, {"price": round(float(_h.get("price")), 2), "day_change_pct": _h.get("day_change_pct")}
                     )
         except Exception:
-            _price, _hmap = {}, {}
+            _price = {}
 
         def _shares_range(_al, _ah, _pp):
             if not _pp or _pp <= 0:
@@ -46869,9 +46919,11 @@ def _rotation_summary(force=False):
             _rng = _idea.get("review_amount_range") or {}
             if _fp:
                 _idea["from_price"] = _fp["price"]
-                _fh = _hmap.get((_idea.get("from_symbol") or "").upper())
-                if _fh:
+                try:
+                    _fh = exact_position(_hold_rows, _idea.get("from_symbol"), _idea.get("from_account_key"))
                     _idea["from_shares_held"] = _fh.get("shares")
+                except PublicationError as _pe:
+                    _publication_errors.append(str(_pe))
                 if _rng.get("low") is not None:
                     _idea["sell_shares_range"] = _shares_range(_rng["low"], _rng["high"], _fp["price"])
             if _tp:
@@ -46900,6 +46952,7 @@ def _rotation_summary(force=False):
                     "needs_review": _dg.get("needs_review"),
                     "sector": _c.get("sector"),
                     "account_type": _c.get("account_type") or _c.get("account_key"),
+                    "account_key": _c.get("account_key"),
                     "current_value": _c.get("current_value"),
                     "price": _c.get("price"),
                     "day_change_pct": _c.get("day_change_pct"),
@@ -47105,6 +47158,8 @@ def _rotation_summary(force=False):
         out["cached_at"] = out["_cached_at"]
         out["cache_age_sec"] = 0
         out["stale"] = False
+        out["_publication_errors"] = _publication_errors
+        out = _publish(out)
         _ROTATION_SUMMARY_CACHE.update(ts=_t.time(), data=out)
         try:
             _disk.write_text(_j.dumps(out, default=str))
@@ -47112,15 +47167,17 @@ def _rotation_summary(force=False):
             pass
         return out
     except Exception as e:
-        return {
-            "ok": False,
-            "advisory_only": True,
-            "error": str(e)[:200],
-            "summary": {},
-            "data_quality": {},
-            "top_rotation_ideas": [],
-            "top_pairs": [],
-        }
+        return _publish(
+            {
+                "ok": False,
+                "advisory_only": True,
+                "error": str(e)[:200],
+                "summary": {},
+                "data_quality": {},
+                "top_rotation_ideas": [],
+                "top_pairs": [],
+            }
+        )
 
 
 def _small_cap_rotation_bridge_status():
@@ -50973,6 +51030,11 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 import json as _j
 
                 summ = _rotation_summary()
+                from lib.rotation_publication import publication_refusal
+
+                refusal = publication_refusal(summ)
+                if refusal:
+                    return 503, refusal
                 ideas = summ.get("research_rotation_ideas", []) or []
                 cands = summ.get("research_candidates", []) or []
                 held = [h for h in (summ.get("top_candidates", []) or []) if (h.get("trim_score") or 0) >= 9]
@@ -51066,6 +51128,11 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 b = body or {}
                 lanes = b.get("lanes") or ["grok", "chatgpt"]
                 summ = _rotation_summary()
+                from lib.rotation_publication import publication_refusal
+
+                refusal = publication_refusal(summ)
+                if refusal:
+                    return 503, refusal
                 degraded = summ.get("degraded_holdings", []) or []
                 ideas = summ.get("research_rotation_ideas", []) or []
                 over = summ.get("sector_overweights", []) or []
@@ -51172,6 +51239,11 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 import json as _j
 
                 summ = _rotation_summary()
+                from lib.rotation_publication import publication_refusal
+
+                refusal = publication_refusal(summ)
+                if refusal:
+                    return 503, refusal
                 unders = summ.get("sector_underweights", []) or []
                 cands = summ.get("research_candidates", []) or []
                 from db_adapter import _get_conn

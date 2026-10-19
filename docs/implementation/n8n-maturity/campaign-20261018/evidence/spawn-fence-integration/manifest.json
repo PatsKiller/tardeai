@@ -1,0 +1,70 @@
+{
+  "schema": "N8nCampaignSourceIntegrationEvidence@v1",
+  "campaign_id": "n8n-maturity-20261018",
+  "base_sha": "de7564bb846bfd9988a2931eaa2324d6aec82d8e",
+  "reused_source_sha": "67e05d7870e4562f74f85d680ec55747e3db9538",
+  "status": "LOCAL_TESTED_NOT_DEPLOYED",
+  "baseline": {
+    "executor_git_blob": "1953b920921b952888bbe1f3408c34e882cf0f76",
+    "method": "Exact baseline executor imported in isolated pytest process; unchanged current dependency files; same frozen source test",
+    "result": "1 expected AssertionError, 3 deselected",
+    "assertion": "observed cron epoch2 instead of n8n epoch1 at child spawn"
+  },
+  "candidate": {
+    "same_test": "1 passed, 3 deselected",
+    "focused": "120 passed",
+    "source_sha": "See containing commit; source file digests below"
+  },
+  "gate_inventory": {
+    "before": 492,
+    "after": 493,
+    "existing_gates_unchanged": true
+  },
+  "sources": [
+    {
+      "path": "scripts/n8n_run_executor.py",
+      "sha256": "b68db7b22192d884001df7c8f4086b447b22be6ed5a335692875c8c75d7dfddb"
+    },
+    {
+      "path": "tests/test_n8n_cutover_transaction_20261018.py",
+      "sha256": "7ff7dbb9dfcb9731eef56c09db5d95c2641430221d335385d148015e5f483078"
+    },
+    {
+      "path": "scripts/run_cio_hardening_ci.py",
+      "sha256": "4d4171399b1a560c06970be808d2ff75864828227ee51783fa9bd6dccb61b0a2"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "baseline.xml.gz",
+      "sha256": "4662958d5052674ff13482e2cb0026d65abd0bc81c3c8f3f6de7fc44a79ca9e7",
+      "raw_sha256": "24deb66ff5a8ef51073a5321cbfd219677df95c8433c27730f9f1e3840a0a31b"
+    },
+    {
+      "path": "candidate.xml.gz",
+      "sha256": "10bfeafe860d6cca0e5091836e005013ae3dcea0d702ce1f2e360aa58ee70baf",
+      "raw_sha256": "0d5f0fafc72ae7bab6c3bc878fc5983b5f158e46f0466ae0ea043b04b2da8d53"
+    },
+    {
+      "path": "focused120.xml.gz",
+      "sha256": "3a845a5aedd7bf669b197257ceedd5b86c88fdddb166350ed175c2de47a3a16a",
+      "raw_sha256": "a6300f51862429d274274d4be565a9acac2f71c0506b1fcae2165f59d1db5651"
+    },
+    {
+      "path": "run_baseline.py.gz",
+      "sha256": "e2e5467c37531c02c40c39153a0df75b787242c0ee4322bd44246a1cf122dc85",
+      "raw_sha256": "5af08c9086e039034aece0cd08c088284d3585d8f97281a249a5412fd7b01d0a"
+    },
+    {
+      "path": "baseline-executor.py.gz",
+      "sha256": "e5f7874edaec464aad20aadcbba3e5fb0c03f4cd195f5485f23caed7215219a5",
+      "raw_sha256": "e80e090f28153b2677c1666adee93eecb53a5054e5b07235cf57b83418ab3310"
+    }
+  ],
+  "holds": [
+    "Full native acceptance and exact-head CI pending",
+    "No live ownership change, scheduler edit, child effect or recovery proof",
+    "Late effect safety still requires each lane to enforce its host fence",
+    "Transactional cutover and rollback saga remains separately held"
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "schema": "CampaignAuthorFollowupPacket@v1",
+  "head": "f31591b307335c1050a9d0a5d444f939e02a6db5",
+  "parent": "1d0f3be320ed83ee1807ba9e9fdb811db3dd6dd1",
+  "worktree": "/home/johnclaw/tradeai-wt-n8n-rotation-publication-20261018",
+  "files": {
+    "scripts/api_v2.py": "4f6e8f001794b860e9247e58324f1a36af1633d3af68595c69e22c1954759c23",
+    "scripts/lib/rotation_publication.py": "63dcfd7f445c9e7e319ec0366ab6e1bc853df68fc2fd2118b5e4d9e1089c8dc3",
+    "scripts/rotation_rebalance_digest.py": "4d06378f7de76df9ef5dcfe76e65c696a65b2de6d1425f8eb79cd90e9bc6cf93",
+    "tests/test_rotation_publication_20261018.py": "fab22fa95d004f9b0385cc20a1407ada86e291f3bb949a24be10251684afde6b"
+  },
+  "external": {
+    "path": "/tmp/n8n-campaign-20261018/cross-review/test_rotation1d_independent.py",
+    "sha256": "d2809cf525af11381562b98ed1c80b234ad9faaf1dbbf3136c645d348e576b77",
+    "baseline": "followup-baseline-red.xml:4expectedAssertionFailures+1READYcontrolPASS",
+    "candidate": "followup-broad.xml:same5unchangedcasesPASS"
+  },
+  "validation": "120PASS35.03s; original8boundaryregressions included; ruff(helper,digest,tests),diffcheck,API AST valid; all external providers/DB/sends faked",
+  "changes": [
+    "Reject contradictory account states and validate every required position timestamp independently of recent account sync; declared account SLA and canonical portfolio market calendar reused.",
+    "Validate engine generated_at independently against existing15minrotation cache/output SLA; a cache restamp cannot refresh old engine output.",
+    "Structured reduce_or_close requires deterministic stop_distance provenance and registered trigger/danger/warning state regardless of prose; unknown action/range shape failclosed; no replacementfinancialmath.",
+    "All3actualPOSTsummaryconsumers refuse via sharedpublication_refusal before provider/DBconnection/research; old/unsupportedversion hold503typedstatus.",
+    "Withheld research_candidates/sector_ladders/counters cannot feed downstream advice.",
+    "Preserve original selected2targetwindow AND raw6proposalcap; publicationdedup doesnot widen either source/destinationselection.",
+    "source_as_of derives oldest actual required position/account evidence, never now; explicitbasis+coverage expose fullydatedinputscope."
+  ],
+  "frontends_parent_owned": [
+    "apps/command-center-v3/src/pages/RotationIntelligence.tsx",
+    "apps/command-center-v3/src/pages/PortfolioHub.tsx",
+    "apps/command-center-v3/src/components/CentralIntelligencePages.tsx",
+    "apps/command-center-v3/src/components/intelligence/IntelligenceRotationTab.tsx"
+  ],
+  "holds": [
+    "Parent independent re-review/required CI/merge/release/productionproof remainpending; local source only.",
+    "No financial scorer/ranking/math/standaloneadvisor/broker/provider/config/authority change.",
+    "Freshness/provenance of underlying DB research/card/LLM signals beyond these scoped clocks remains unproven; READY is publication-contract acceptance, not reviewed financial decision or trade authority.",
+    "Rootcause retainedcachepoint evidence doesnot bind exactdeliveryattempt/providerID; no new live rerun."
+  ]
+}

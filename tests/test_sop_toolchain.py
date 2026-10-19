@@ -13,6 +13,7 @@ from scripts.lib import sop_toolchain as tc
 from scripts.lib.sop_evidence_integrity import (
     EXPECTED_CORE_TESTS,
     RUNTIME_ATTESTATION_SCHEMA,
+    REQUIRED_RUNTIME_COMMANDS,
     control_surface_digest,
     validate_runtime_attestation,
     workflow_facts,
@@ -92,7 +93,7 @@ def _base_att(*, ruff: str = "0.16.2") -> dict:
         "policy_version": "1.2.0",
         "policy_status": "PROPOSED",
         "workflow_blob_sha256": wf["blob_sha256"],
-        "commands": [{"name": "pytest_core", "exit": 0}],
+        "commands": [{"name": name, "exit": 0, "expected": 0} for name in REQUIRED_RUNTIME_COMMANDS],
         "test_counts": {"core": EXPECTED_CORE_TESTS},
         "docs_index_fingerprint": "deadbeef",
         "tool_versions": {

@@ -8,6 +8,10 @@ This module is pure apart from ``gather_world`` (read-only I/O). ``evaluate(worl
 ``dry-run`` and ``apply`` (scripts/nightly_cutover_controller.py); apply calls ``gather_world`` + ``evaluate`` itself
 and never reads an earlier plan.
 
+``evaluate_retirement`` is a CODE-ONLY projection over a CutoverReceipt@v1 freeze and fixture/host facts. It cannot
+authenticate observations. The public CLI always holds eligibility until a trusted host verifier and complete
+tested-rollback evidence exist. Legacy scheduler bytes remain commented; deletion_execution_enabled stays false.
+
 Per-lane state machine (each state needs every check of the states before it):
 
     candidate     the lane is in the approved cohort (§23.25 family, not F07 / registry_systemd / a hold / unknown),
@@ -38,7 +42,7 @@ import hashlib
 import json
 import re
 import sqlite3
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, time as dtime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Optional
@@ -201,6 +205,8 @@ class World:
     manifest_owners: Mapping[str, str] = field(default_factory=dict)
     #: lanes already reserved/applied tonight in the durable per-ET-night quota ledger (scripts/lib/nightly_cutover_txn)
     quota_used: int = 0
+    #: Read from the same host ledger; absent epochs never qualify retirement observation.
+    owner_epochs: Mapping[str, int] = field(default_factory=dict)
 
     @property
     def crontab_sha(self) -> str:
@@ -324,12 +330,18 @@ def retire_edits(world: World, lane: str, date_s: str) -> tuple[list[dict[str, A
 
 
 def _verdict(run: Mapping[str, Any]) -> str:
-    return str(((run.get("receipt") or {}).get("output_verdict") or {}).get("verdict") or "absent")
+    receipt = run.get("receipt")
+    verdict = receipt.get("output_verdict") if isinstance(receipt, Mapping) else None
+    return str(verdict.get("verdict") or "absent") if isinstance(verdict, Mapping) else "absent"
 
 
 def qualify_run(world: World, lane: str, run: Mapping[str, Any]) -> Optional[str]:
     """None when this live run is a qualifying proof on the CURRENT versions; otherwise why not."""
+    if run.get("lane_id") != lane:
+        return "proof_lane_mismatch"
     rc = run.get("receipt") or {}
+    if not isinstance(rc, Mapping):
+        return "proof_receipt_malformed"
     if run.get("mode") != "live" or run.get("state") != "RUN_DONE" or run.get("exit_code") != 0:
         return f"not_live_done:{run.get('state')}/exit {run.get('exit_code')}"
     if rc.get("lock_skipped"):
@@ -337,6 +349,8 @@ def qualify_run(world: World, lane: str, run: Mapping[str, Any]) -> Optional[str
     if rc.get("run_id") not in (None, run.get("run_id")):
         return "receipt_not_this_attempt"
     clamp = rc.get("stage_clamp") or {}
+    if not isinstance(clamp, Mapping):
+        return "proof_stage_clamp_malformed"
     if clamp and clamp.get("effective_mode") != "live":
         return f"stage_clamped:{clamp.get('effective_mode')}"
     v = _verdict(run)
@@ -345,6 +359,8 @@ def qualify_run(world: World, lane: str, run: Mapping[str, Any]) -> Optional[str
     if str(rc.get("code_sha") or "")[:40] != world.current_sha:
         return f"proof_release_mismatch:{str(rc.get('code_sha') or '?')[:9]}!=CURRENT {world.current_sha[:9]}"
     pol = rc.get("policy") or {}
+    if not isinstance(pol, Mapping):
+        return "proof_policy_malformed"
     if pol.get("allowlist_version") != world.allowlist_version:
         return f"allowlist_version_mismatch:{pol.get('allowlist_version')}!={world.allowlist_version}"
     if pol.get("expected_outputs_version") != world.contracts_version:
@@ -362,10 +378,432 @@ def qualify_run(world: World, lane: str, run: Mapping[str, Any]) -> Optional[str
         if world.workflow_live.get(wid) != world.workflow_git.get(wid):
             return f"workflow_graph_drift:{wid}"
     fin = _ts(run.get("finished_at"))
+    if fin is not None and fin > world.now:
+        return "proof_from_future"
     max_age = timedelta(hours=float(world.config.get("proof_max_age_hours") or 72))
     if fin is None or world.now - fin > max_age:
         return f"proof_too_old:{run.get('finished_at')}"
     return None
+
+
+# ── post-cutover observation (eligibility only; never a deletion capability) ────────────────────────────────────
+
+RETIREMENT_SCHEMA = "CutoverRetirementState@v1"
+RETIREMENT_COVERAGE_SCHEMA = "CutoverRetirementCoverage@v1"
+RETIREMENT_FINDINGS = frozenset({"unresolved_failures", "missed_slots", "duplicate_effects", "evidence_gaps",
+                                "ambiguous_effects", "paused_intervals"})
+RETIREMENT_IDENTITIES = frozenset({"replacement_workflow_id", "replacement_graph_digest", "config_contract_digest",
+                                  "served_sha", "owner_epoch"})
+
+
+def retirement_identity(world: World, lane: str, workflow: str) -> dict[str, Any]:
+    """The exact effective versions being observed. Release changes conservatively restart observation.
+
+    This is a projection of existing owners/configuration, never an owner update or a second run verdict.
+    """
+    process = (world.effect_lanes.get(lane) or {}).get("process", lane)
+    effective = {"registry": world.registry.get(lane), "allowlist": world.allowlist.get(lane),
+                 "contract": world.contracts.get(lane), "effect": world.effect_raw.get(lane),
+                 "effect_runtime": world.effect_lanes.get(lane), "relay_live": lane in world.relay_live,
+                 "downstream_evidence": (world.config.get("downstream_evidence") or {}).get(lane),
+                 "retirement_policy": {"family": (world.policy.get("families") or {}).get(lane),
+                                       "hold": (world.policy.get("holds") or {}).get(lane),
+                                       "p1": lane in set(world.policy.get("p1_last") or ()),
+                                       "overlap_sessions": world.policy.get("cron_overlap_trading_days")}}
+    return {"replacement_workflow_id": workflow, "replacement_graph_digest": world.workflow_git.get(workflow),
+            "config_contract_digest": sha256_text(json.dumps(effective, sort_keys=True, separators=(",", ":"))),
+            "served_sha": world.current_sha, "owner_epoch": world.owner_epochs.get(process)}
+
+
+def retirement_identity_digest(identity: Mapping[str, Any]) -> str:
+    return sha256_text(json.dumps(dict(identity), sort_keys=True, separators=(",", ":")))
+
+
+def retirement_freeze_digest(record: Mapping[str, Any]) -> str:
+    """Bind coverage to the reviewed requirements/before-images as well as effective runtime identities."""
+    state = record.get("retirement") or {}
+    fields = {"lane_id", "campaign_id", "legacy_source", "legacy_before_image_ref", "legacy_before_image_sha256",
+              "rollback_ref", "rollback_sha256", "commented_at", "minimum_continuous_hours", "minimum_natural_cycles", "schedule",
+              "stronger_policy_requirements"} | RETIREMENT_IDENTITIES
+    freeze = {"schema": record.get("schema"), "action": record.get("action"), "applied": record.get("applied"),
+              "lane_id": record.get("lane_id"), "lines": _retirement_lines(record),
+              "scheduler_before": record.get("scheduler_before"), "retirement": {k: state.get(k) for k in fields}}
+    return sha256_text(json.dumps(freeze, sort_keys=True, separators=(",", ":")))
+
+
+def _aware_ts(value: Any) -> Optional[datetime]:
+    """Observation timestamps must have an explicit zone; no silent UTC assumption here."""
+    if not isinstance(value, str):
+        return None
+    try:
+        t = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return t.astimezone(timezone.utc) if t.tzinfo is not None else None
+    except ValueError:
+        return None
+
+
+def retirement_problems(record: Mapping[str, Any]) -> list[str]:
+    """Validate the versioned observation extension of the existing CutoverReceipt@v1.
+
+    Old receipts remain readable by their existing named-field readers. They acquire no eligibility until an
+    explicitly reviewed freeze supplies this extension. Derived observations are separate copies of the receipt.
+    """
+    problems = []
+    if record.get("schema") != "CutoverReceipt@v1":
+        problems.append("unsupported_cutover_receipt_version")
+    if record.get("action") != "cutover" or record.get("applied") is not True or record.get("problems") != []:
+        problems.append("cutover_not_applied_cleanly")
+    state = record.get("retirement")
+    if not isinstance(state, Mapping) or state.get("schema") != RETIREMENT_SCHEMA:
+        return problems + ["retirement_freeze_missing_or_unsupported"]
+    fields = {"schema", "lane_id", "campaign_id", "state", "legacy_source", "legacy_before_image_ref",
+              "legacy_before_image_sha256", "commented_at", "soak_started_at", "minimum_continuous_hours",
+              "minimum_natural_cycles", "stronger_policy_requirements", "qualifying_evidence_refs", "blocking_reasons",
+              "rollback_ref", "rollback_sha256", "schedule", "deletion_not_before", "deletion_eligible", "deletion_eligible_at",
+              "deletion_execution_enabled", "last_observed_at", "identity_digest", "natural_cycles", "expected_slots",
+              "next_evaluation_at", "reset_reasons", "coverage", "authority", "freeze_digest"} | RETIREMENT_IDENTITIES
+    if set(state) - fields:
+        problems.append("unknown_retirement_fields")
+    if state.get("lane_id") != record.get("lane_id"):
+        problems.append("retirement_lane_mismatch")
+    for key in ("lane_id", "campaign_id", "legacy_source", "legacy_before_image_ref", "rollback_ref",
+                "replacement_workflow_id"):
+        if not isinstance(state.get(key), str) or not state[key].strip():
+            problems.append(f"retirement_missing:{key}")
+    for key in ("legacy_before_image_sha256", "rollback_sha256", "replacement_graph_digest", "config_contract_digest"):
+        if not re.fullmatch(r"[0-9a-f]{64}", str(state.get(key) or "")):
+            problems.append(f"retirement_invalid:{key}")
+    if not re.fullmatch(r"[0-9a-f]{40}", str(state.get("served_sha") or "")):
+        problems.append("retirement_invalid:served_sha")
+    for key, minimum in (("owner_epoch", 1), ("minimum_continuous_hours", 48), ("minimum_natural_cycles", 2)):
+        value = state.get(key)
+        if type(value) is not int or value < minimum:
+            problems.append(f"retirement_invalid:{key}")
+    for key in ("commented_at",):
+        if _aware_ts(state.get(key)) is None:
+            problems.append(f"retirement_invalid:{key}")
+    if state.get("deletion_execution_enabled") is not False:
+        problems.append("deletion_execution_must_remain_disabled")
+    if state.get("state") not in {"candidate", "fenced", "soaking", "held", "deletion_eligible"}:
+        problems.append("retirement_invalid:state")
+    requirements = state.get("stronger_policy_requirements")
+    if not isinstance(requirements, list) or any(not isinstance(x, str) or not x for x in requirements):
+        problems.append("retirement_invalid:stronger_policy_requirements")
+    schedule = state.get("schedule")
+    if not isinstance(schedule, Mapping) or set(schedule) != {"cron", "tz", "calendar"}:
+        problems.append("retirement_invalid:schedule")
+    elif schedule.get("calendar") not in {"all", "nyse"} or not isinstance(schedule.get("cron"), list) or not schedule["cron"]:
+        problems.append("retirement_invalid:schedule")
+    return problems
+
+
+def _retirement_lines(record: Mapping[str, Any]) -> list[tuple[str, str]]:
+    if record.get("lines"):
+        if not isinstance(record["lines"], list) or any(not isinstance(x, Mapping) for x in record["lines"]):
+            return []
+        return [(x.get("before"), x.get("after")) for x in record["lines"] if isinstance(x, Mapping)]
+    return [(record.get("line_before"), record.get("line_after"))]
+
+
+def _retirement_slots(schedule: Mapping[str, Any], start: datetime, end: datetime) -> dict[str, datetime]:
+    """Use the dispatcher's DST-safe slot rules and the existing NYSE calendar, including early-close days."""
+    from scripts.lib.cron_schedule import fires_between
+    from scripts.market_session import is_trading_day
+
+    slots = {}
+    for expression in schedule["cron"]:
+        for fire in fires_between(expression, start, end, tz=schedule["tz"]):
+            # This is the calendar actually called by the executor's market_day_gate.sh.
+            if schedule["calendar"] == "nyse" and not is_trading_day(fire.at):
+                continue
+            slots[fire.slot_local] = fire.at.astimezone(timezone.utc)
+    return slots
+
+
+def _retirement_not_before(schedule: Mapping[str, Any], start: datetime, *, hours: int, cycles: int,
+                           sessions: int, grace: int) -> Optional[datetime]:
+    """Earliest possible qualifying time; real receipts are still required. Sparse/unknown schedules stay unknown."""
+    floor = start + timedelta(hours=hours)
+    count, session_count, at = 0, 0, start
+    cycle_floor = session_floor = None
+    for _ in range(370):
+        end = at + timedelta(days=1)
+        fires = sorted(_retirement_slots(schedule, at, end).values())
+        if cycle_floor is None and count + len(fires) >= cycles:
+            cycle_floor = fires[cycles - count - 1] + timedelta(seconds=grace)
+        count += len(fires)
+        if sessions and session_floor is None:
+            # Count each calendar date once (a UTC day can straddle two NYSE dates).
+            day = at.astimezone(ET).date()
+            bounds = _session_bounds(day)
+            if bounds and bounds[0] >= start:
+                session_count += 1
+                if session_count >= sessions:
+                    session_floor = bounds[1]
+        if cycle_floor is not None and (not sessions or session_floor is not None):
+            return max(floor, cycle_floor, session_floor or floor)
+        at = end
+    return None
+
+
+def evaluate_retirement(world: World, record: Mapping[str, Any], coverage: Mapping[str, Any], *,
+                        previous: Optional[Mapping[str, Any]] = None) -> dict[str, Any]:
+    """Project eligibility from supplied facts; this pure function does NOT attest operational eligibility.
+
+    Caller authenticates the host coverage artifact/provenance before passing it here. A point snapshot cannot
+    establish continuous coverage. All failures hold/reset the observation, and even eligibility enables no action.
+    This reuses qualify_run/downstream_evidence and the scheduler's slot parser instead of inventing run success.
+    """
+    out = json.loads(json.dumps(dict(record)))
+    if not isinstance(out.get("retirement"), dict):
+        out["retirement"] = {}
+    state = out["retirement"]
+    problems = retirement_problems(record)
+    lane = str(record.get("lane_id") or "")
+    old = (previous or {}).get("retirement") or {}
+    state.update({"deletion_execution_enabled": False, "deletion_eligible": False, "deletion_eligible_at": None,
+                  "authority": "CODE_ONLY_UNVERIFIED_PROJECTION", "natural_cycles": 0, "expected_slots": 0,
+                  "qualifying_evidence_refs": [], "blocking_reasons": [], "reset_reasons": [],
+                  "next_evaluation_at": (world.now + timedelta(minutes=15)).isoformat()})
+
+    def held(reasons: list[str]) -> dict[str, Any]:
+        state.update(state="held", blocking_reasons=sorted(set(reasons)), soak_started_at=None,
+                     last_observed_at=world.now.isoformat(), deletion_not_before=None)
+        return out
+
+    if problems:
+        return held(problems)
+    identity = retirement_identity(world, lane, state["replacement_workflow_id"])
+    digest = retirement_identity_digest(identity)
+    state["identity_digest"] = digest
+    freeze_digest = retirement_freeze_digest(record)
+    state["freeze_digest"] = freeze_digest
+    if any(state.get(k) != v for k, v in identity.items()):
+        return held(["frozen_identity_changed:review_new_freeze_required"])
+    if old and (old.get("campaign_id"), old.get("lane_id")) != (state["campaign_id"], lane):
+        return held(["previous_observation_identity_mismatch"])
+    process = (world.effect_lanes.get(lane) or {}).get("process", lane)
+    family = (world.policy.get("families") or {}).get(lane)
+    if not family:
+        problems.append("unknown_family")
+    if family == "F07" or (world.disposition.get(lane) or {}).get("source") == "registry_systemd":
+        problems.append("deferred_infrastructure_asset")
+    if (world.policy.get("holds") or {}).get(lane):
+        problems.append("operator_hold:" + str(world.policy["holds"][lane]))
+    row = world.registry.get(lane) or {}
+    if row.get("state") != "ACTIVE" or _sched(row).get("kind") != "n8n" or _sched(row).get("stage") != "cutover":
+        problems.append("replacement_not_active_cutover")
+    if world.registry_root_rows.get(lane) != row:
+        problems.append("registry_root_differs_from_served")
+    contract = world.contracts.get(lane) or {}
+    if contract.get("status") != "REVIEWED" or contract.get("stage") != "cutover":
+        problems.append("health_contract_not_reviewed_cutover")
+    from scripts.lib.n8n_output_verdict import validate_expected_output
+
+    if (world.allowlist.get(lane) or {}).get("output_receipt") != "v2":
+        problems.append("runtime_output_enforcement_not_enabled")
+    if validate_expected_output(contract.get("expected_output")):
+        problems.append("useful_output_contract_missing_or_invalid")
+    if lane not in world.relay_live or (row.get("dispatch") or {}).get("mode") != "live":
+        problems.append("replacement_not_effectively_live")
+    if world.workflow_live.get(state["replacement_workflow_id"]) != state["replacement_graph_digest"]:
+        problems.append("replacement_inactive_or_drifted")
+    if world.owners.get(process) != "n8n" or type(world.owner_epochs.get(process)) is not int:
+        problems.append("owner_or_epoch_unavailable")
+    if world.in_flight.get(lane):
+        problems.append("in_flight_work")
+    if world.ambiguous_claims.get(process):
+        problems.append("ambiguous_effect_claims")
+    lines = _retirement_lines(record)
+    if not lines:
+        problems.append("legacy_before_images_missing")
+    for before, after in lines:
+        if not isinstance(before, str) or not isinstance(after, str) or not before or not after.startswith("# RETIRED ") \
+                or not after.endswith(" n8n-cutover " + lane + " " + before):
+            problems.append("invalid_comment_only_before_image")
+        elif world.crontab.splitlines().count(after) != 1 or before in world.crontab.splitlines():
+            problems.append("legacy_comment_missing_or_original_live")
+    if remaining_triggers(world.crontab, lane, entry_script(world.allowlist.get(lane)), []):
+        problems.append("legacy_trigger_still_live")
+    schedule = state["schedule"]
+    dispatch = row.get("dispatch") or {}
+    if schedule["cron"] != dispatch.get("cron") or schedule["tz"] != dispatch.get("tz"):
+        problems.append("frozen_schedule_differs_from_dispatch")
+    market_gate = (world.allowlist.get(lane) or {}).get("market_gate", False)
+    if type(market_gate) is not bool:
+        problems.append("effective_market_calendar_unavailable")
+    elif schedule["calendar"] != ("nyse" if market_gate else "all"):
+        problems.append("frozen_calendar_differs_from_effective_market_gate")
+    fields = {"schema", "lane_id", "campaign_id", "identity_digest", "freeze_digest", "issued_at", "from", "through", "complete", "continuous",
+              "covered_natural_slots", "source_refs", "provenance", "findings", "requirements"}
+    if set(coverage) != fields or coverage.get("schema") != RETIREMENT_COVERAGE_SCHEMA:
+        return held(problems + ["coverage_missing_or_unsupported"])
+    if (coverage.get("lane_id"), coverage.get("campaign_id"), coverage.get("identity_digest")) != \
+            (lane, state["campaign_id"], digest):
+        problems.append("coverage_identity_mismatch")
+    if coverage.get("freeze_digest") != freeze_digest:
+        problems.append("coverage_freeze_mismatch")
+    start, through = _aware_ts(coverage.get("from")), _aware_ts(coverage.get("through"))
+    issued = _aware_ts(coverage.get("issued_at"))
+    commented = _aware_ts(state["commented_at"])
+    if start is None or through is None or not commented <= start <= through <= world.now:
+        return held(problems + ["coverage_invalid_interval"])
+    if world.now - through > timedelta(minutes=15):
+        problems.append("coverage_stale")
+    if issued is None or not through <= issued <= world.now or world.now - issued > timedelta(minutes=15):
+        problems.append("coverage_issue_time_invalid_or_stale")
+    refs = coverage.get("source_refs")
+    if not isinstance(refs, list) or not refs or any(not isinstance(ref, str) or not ref for ref in refs):
+        problems.append("coverage_source_refs_missing")
+    if coverage.get("complete") is not True or coverage.get("continuous") is not True:
+        problems.append("coverage_incomplete")
+    provenance = coverage.get("provenance") or {}
+    if not isinstance(provenance, Mapping) or set(provenance) != {"producer", "artifact_ref", "artifact_sha256", "served_sha"} \
+            or provenance.get("producer") != "host:n8n-evidence-collector" or provenance.get("served_sha") != world.current_sha \
+            or not isinstance(provenance.get("artifact_ref"), str) or not provenance.get("artifact_ref") \
+            or not re.fullmatch(r"[0-9a-f]{64}", str(provenance.get("artifact_sha256") or "")):
+        problems.append("coverage_provenance_missing")
+    findings = coverage.get("findings")
+    if not isinstance(findings, Mapping) or set(findings) != RETIREMENT_FINDINGS:
+        problems.append("coverage_findings_unknown")
+    else:
+        for name, values in findings.items():
+            if not isinstance(values, list) or values:
+                problems.append("coverage_" + name)
+    requirements = coverage.get("requirements")
+    if not isinstance(requirements, Mapping):
+        return held(problems + ["stronger_policy_evidence_unavailable"])
+    for name in state["stronger_policy_requirements"]:
+        if name == "F09_natural_runs_only" or re.fullmatch(r"completed_nyse_sessions:\d+", name):
+            continue
+        proof = requirements.get(name) or {}
+        if not isinstance(proof, Mapping) or set(proof) != {"satisfied", "evidence_refs"} \
+                or proof.get("satisfied") is not True or not isinstance(proof.get("evidence_refs"), list) \
+                or not proof.get("evidence_refs") or any(not isinstance(x, str) or not x for x in proof["evidence_refs"]):
+            problems.append("stronger_policy_unproven:" + name)
+    if problems:
+        return held(problems)
+    if old:
+        last = _aware_ts(old.get("last_observed_at"))
+        if last is None or through < last:
+            return held(["previous_observation_invalid_or_new_coverage_older"])
+        if old.get("state") == "held" or old.get("identity_digest") != digest or old.get("freeze_digest") != freeze_digest:
+            start = max(start, last)
+            state["reset_reasons"] = ["previous_hold_or_identity_change"]
+        elif start > last:
+            state["reset_reasons"] = ["observation_gap"]
+        else:
+            prior_start = _aware_ts(old.get("soak_started_at"))
+            if prior_start is None or start > prior_start:
+                # Daily point reports cannot retroactively fill coverage. The collector must supply the whole
+                # qualifying interval (backed by the host ledger), not extrapolate from yesterday's verdict.
+                return held(["whole_qualifying_interval_not_covered"])
+            start = max(start, prior_start)
+    grace = (world.allowlist.get(lane) or {}).get("timeout_s")
+    if type(grace) is not int or grace <= 0:
+        return held(["completion_deadline_unknown"])
+    try:
+        slots = _retirement_slots(schedule, start, through)
+    except (TypeError, ValueError, KeyError):
+        return held(["schedule_unreadable"])
+    from scripts.lib.n8n_due import parse_key
+
+    qualifying: dict[str, Mapping[str, Any]] = {}
+    for r in world.runs.get(lane) or []:
+        finished = _aware_ts(r.get("finished_at"))
+        requested = _aware_ts(r.get("requested_at"))
+        if (finished is None or finished < start) and (requested is None or requested < start):
+            continue
+        if r.get("mode") != "live":
+            continue
+        if r.get("state") in FAILED_RUN_STATES or r.get("state") in {"RUN_REFUSED", "RUN_CANCELLED"}:
+            problems.append("unresolved_live_failure:" + str(r.get("run_id")))
+            continue
+        key = parse_key(str(r.get("run_id") or ""))
+        if not key or key[:3] != ("d", lane, "live") or key[3] not in slots:
+            continue                            # manual/event executions never inflate natural-cycle counts
+        if not isinstance(r.get("receipt"), Mapping) or r["receipt"].get("run_id") != r.get("run_id"):
+            problems.append("natural_receipt_identity_missing_or_mismatched")
+            continue
+        rc = r["receipt"]
+        if not isinstance(rc.get("stage_clamp"), Mapping) or rc["stage_clamp"].get("effective_mode") != "live":
+            problems.append("natural_effective_mode_unproven")
+            continue
+        output = rc.get("output_verdict")
+        if not isinstance(output, Mapping) or output.get("contract_id") != lane:
+            problems.append("natural_output_contract_identity_mismatch")
+            continue
+        if world.effect_lanes.get(lane):
+            effect = rc.get("effect") or {}
+            if not isinstance(effect, Mapping) or effect.get("epoch") != state["owner_epoch"] \
+                    or effect.get("owner") != "n8n" or effect.get("final_state") != "DONE" \
+                    or effect.get("fenced_late") or effect.get("held_for_reconciliation") or effect.get("finish_error"):
+                problems.append("natural_effect_commit_unproven")
+                continue
+        # Historical cycles are judged at the time they completed, on the same frozen versions. A weekly cycle
+        # need not remain "fresh now" for a later, fresh cycle to establish the required two natural cycles.
+        why = qualify_run(replace(world, now=finished) if finished is not None and finished <= through else world, lane, r)
+        if why is not None:
+            problems.append("natural_output_unqualified:" + str(r.get("run_id")) + ":" + why)
+            continue
+        if finished is None or finished > through or finished < slots[key[3]] or requested is None or requested < slots[key[3]]:
+            problems.append("natural_run_outside_slot:" + str(r.get("run_id")))
+            continue
+        if finished > slots[key[3]] + timedelta(seconds=grace):
+            problems.append("natural_run_past_deadline:" + str(r.get("run_id")))
+            continue
+        if ((world.config.get("downstream_evidence") or {}).get(lane) or {}).get("kind") != "receipt_field":
+            problems.append("downstream_consumption_not_attempt_bound")
+            continue
+        why = downstream_evidence(world, lane, r, True)  # retirement requires explicit consumption for every lane
+        if why:
+            problems.append(why)
+            continue
+        if key[3] in qualifying:
+            problems.append("duplicate_natural_effect:" + key[3])
+        qualifying[key[3]] = r
+    due = {s for s, at in slots.items() if at + timedelta(seconds=grace) <= through}
+    covered_slots = coverage.get("covered_natural_slots")
+    if not isinstance(covered_slots, list) or any(not isinstance(s, str) for s in covered_slots) \
+            or len(set(covered_slots)) != len(covered_slots) or set(covered_slots) != due:
+        problems.append("coverage_natural_slots_not_complete")
+    if due - set(qualifying):
+        problems.append(f"missed_or_unproven_natural_slots:{len(due - set(qualifying))}/{len(due)}")
+    state["natural_cycles"], state["expected_slots"] = len(qualifying), len(due)
+    if problems:
+        return held(problems)
+    sessions = completed_sessions_after(start, through)
+    session_need = max(1, int(world.policy.get("cron_overlap_trading_days") or 1)) \
+        if lane in set(world.policy.get("p1_last") or ()) else 0
+    if lane == "trade-ai-scalp-live":
+        session_need = max(session_need, 3)
+    for name in state["stronger_policy_requirements"]:
+        if re.fullmatch(r"completed_nyse_sessions:\d+", name):
+            session_need = max(session_need, int(name.split(":")[1]))
+    # Built-in requirements are computed above, not delegated to a caller-supplied success boolean.
+    try:
+        not_before = _retirement_not_before(schedule, start, hours=state["minimum_continuous_hours"],
+                                            cycles=state["minimum_natural_cycles"], sessions=session_need, grace=grace)
+    except (OverflowError, ValueError):
+        return held(["retirement_requirements_out_of_range"])
+    hours_floor = start + timedelta(hours=state["minimum_continuous_hours"])
+    eligible = through >= hours_floor and len(qualifying) >= state["minimum_natural_cycles"] and sessions >= session_need
+    state.update(state="deletion_eligible" if eligible else "soaking", soak_started_at=start.isoformat(),
+                 last_observed_at=through.isoformat(), deletion_not_before=not_before.isoformat() if not_before else None,
+                 deletion_eligible=eligible, deletion_eligible_at=through.isoformat() if eligible else None,
+                 coverage={"from": start.isoformat(), "through": through.isoformat(), "completed_nyse_sessions": sessions,
+                           "required_nyse_sessions": session_need, "natural_only_family": family == "F09"},
+                 qualifying_evidence_refs=[provenance["artifact_ref"]] +
+                 [str(r["run_id"]) for r in qualifying.values()])
+    if not eligible:
+        state["blocking_reasons"] = (["minimum_continuous_hours_pending"] if through < hours_floor else []) + \
+            (["minimum_natural_cycles_pending"] if len(qualifying) < state["minimum_natural_cycles"] else []) + \
+            (["stronger_nyse_session_requirement_pending"] if sessions < session_need else [])
+        if not_before is not None and not_before > world.now:
+            state["next_evaluation_at"] = min(world.now + timedelta(minutes=15), not_before).isoformat()
+    elif old.get("deletion_eligible") is True and old.get("identity_digest") == digest:
+        state["deletion_eligible_at"] = old.get("deletion_eligible_at") or through.isoformat()
+    return out
 
 
 def downstream_evidence(world: World, lane: str, run: Mapping[str, Any], sender: bool) -> Optional[str]:
@@ -666,10 +1104,23 @@ def read_ledger(ledger: Path, lanes: list[str], processes: list[str], since: dat
     return runs, fl, owners, amb
 
 
+def read_owner_epochs(ledger: Path) -> dict[str, int]:
+    """Read the existing fencing epochs without constructing a writer or migrating the ledger."""
+    try:
+        with sqlite3.connect(f"{Path(ledger).resolve().as_uri()}?mode=ro", uri=True, timeout=10) as conn:
+            conn.execute("PRAGMA query_only=ON")
+            if not conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='effect_owners'").fetchone():
+                return {}
+            return {str(p): e for p, e in conn.execute("SELECT process, epoch FROM effect_owners") if type(e) is int}
+    except sqlite3.Error as exc:
+        raise CohortStop(f"owner_epochs_unreadable:{exc}") from exc
+
+
 def gather_world(*, served_root: Path, current_sha: str, registry_root: Path, crontab: str, ledger: Path,
                  relay_live_path: Path, config: Mapping[str, Any], now: datetime,
                  workflow_reader: Callable[[], list[dict]], state_root: Optional[Path] = None,
-                 policy_path: Optional[Path] = None, manifest_path: Optional[Path] = None) -> World:
+                 policy_path: Optional[Path] = None, manifest_path: Optional[Path] = None,
+                 observed_lanes: Optional[list[str]] = None, observation_since: Optional[datetime] = None) -> World:
     """Read-only snapshot. Everything config-shaped comes from the SERVED release (what actually runs)."""
     from scripts.lib import cutover_lane_facts as W
     from scripts.lib import lane_dispatch as LD
@@ -700,10 +1151,13 @@ def gather_world(*, served_root: Path, current_sha: str, registry_root: Path, cr
     for row in W.load_disposition(served_root):        # keep registry_systemd/F07 rows visible to the cohort check
         disp.setdefault(row.get("lane_id") or "", row)
     p1 = set(policy.get("p1_last") or ())
-    lanes = [lid for lid, r in registry.items() if _sched(r).get("kind") == "cron" and _sched(r).get("stage") == "canary"]
+    lanes = list(observed_lanes) if observed_lanes is not None else [
+        lid for lid, r in registry.items() if _sched(r).get("kind") == "cron" and _sched(r).get("stage") == "canary"]
     procs = sorted({effect_lanes[lid]["process"] for lid in lanes if lid in effect_lanes})
     since = now - timedelta(days=max(float(config.get("p1_proof_max_age_days") or 7),
                                      float(config.get("proof_max_age_hours") or 72) / 24.0) + 1)
+    if observation_since is not None:
+        since = min(since, observation_since)
     runs, fl, owners, amb = read_ledger(ledger, lanes, procs, since)
     wrapper = served_root / WRAPPER_REL
     try:
@@ -753,7 +1207,7 @@ def gather_world(*, served_root: Path, current_sha: str, registry_root: Path, cr
                  crontab=crontab, runs=runs, in_flight=fl, owners=owners, ambiguous_claims=amb,
                  served_wrapper_ok=wok, served_wrapper_why=wwhy, workflow_live=live, workflow_git=git_h,
                  lane_workflows=lane_wf, downstream_mtimes=mtimes, manifest_status=m_status,
-                 manifest_owners=m_owners)
+                 manifest_owners=m_owners, owner_epochs=read_owner_epochs(ledger))
 
 
 # ── registry reconciliation (apply; writes only the registry root) ─────────────────────────────────────────────────

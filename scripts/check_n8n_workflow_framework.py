@@ -33,8 +33,8 @@ FW-L5 compares the file with a fresh render of its generator, not with the manif
 
 ``--strict`` is a CI lint (workflow FAIL only). ``--gate activation`` is the promotion gate: it exits 1 unless every
 workflow has no FAIL, no PARTIAL on a critical element, every platform element PASS, and evidence for every runtime
-obligation that applies — each unless an unexpired operator-accepted exception (``N8nFrameworkExceptions@v1``)
-names it. Offline, with no runtime evidence, nothing is eligible: that is the honest answer.
+obligation that applies. Runtime v2 requires authenticated host evidence; v1 references remain historical
+and unverified exceptions cannot waive a control. Offline, without trusted evidence, nothing is eligible.
 
 Exit: 0 report; 1 ``--strict`` and a workflow element failed, or ``--gate`` and a workflow is not eligible; 2 an
 input could not be read. AUTHORITY: READ_ONLY_ADVISORY. No n8n, no relay, no gateway, no DB, no send.
@@ -65,7 +65,8 @@ EXPECTED_OUTPUT_SCHEMA = "N8nExpectedOutput@v1"
 ACTIVE_SET_SCHEMA = "N8nActiveWorkflowSet@v1"
 PLATFORM_FACTS_SCHEMA = "N8nPlatformFacts@v1"
 EXCEPTIONS_SCHEMA = "N8nFrameworkExceptions@v1"
-RUNTIME_EVIDENCE_SCHEMA = "N8nFrameworkRuntimeEvidence@v1"
+RUNTIME_EVIDENCE_SCHEMA = "N8nFrameworkRuntimeEvidence@v2"
+LEGACY_RUNTIME_EVIDENCE_SCHEMA = "N8nFrameworkRuntimeEvidence@v1"
 MEASURE = "static_conformance"
 MEASURE_NOTE = (
     "static conformance: the share of offline predicates the committed artifact satisfies; not operational "
@@ -1863,6 +1864,8 @@ def score_workflow(wf: Mapping, ctx: Context, *, entry: Mapping | None = None, f
         # the five separate fields (audit §10): never folded into one number
         "integrity": integrity,
         "artifact_integrity": integrity,
+        "evidence_identity": {"workflow_id": str(wf.get("id")), "graph_sha256": T.graph_hash(wf),
+                              "policy_sha256": T.policy_hash()},
         "design_coverage": dict(score, note=MEASURE_NOTE),
         "deployed_parity": {
             "status": UNPROVEN,
@@ -2036,63 +2039,84 @@ def score_platform(facts: Mapping) -> dict:
 
 
 def _excused(exceptions: Iterable[Mapping], wid: str, item: str, today: str) -> bool:
-    for e in exceptions:
-        if (
-            e.get("workflow_id") in (wid, "*")
-            and e.get("element") == item
-            and e.get("accepted_by") == "operator"
-            and _is_int(e.get("pr"))
-            and str(e.get("expires") or "") >= today
-        ):
-            return True
+    # v1 accepted_by/pr/expiry metadata is not an authenticated host approval.
+    # A future host approval consumer must verify exact intent/actor/expiry and atomic use.
     return False
 
 
+def _verified_runtime(row: Mapping, runtime_evidence: Mapping, obligation: str, *, evidence_trust=None, now=None) -> dict:
+    from scripts.lib import n8n_evidence_attestation as A
+    if runtime_evidence.get("schema") != RUNTIME_EVIDENCE_SCHEMA:
+        return {"ok": False, "state": "UNPROVEN", "reason": "legacy or unavailable host attestation"}
+    try:
+        A._closed(dict(runtime_evidence), {"schema", "workflows"}, "runtime evidence")
+        workflows = runtime_evidence["workflows"]
+        if not isinstance(workflows, dict):
+            raise A.EvidenceError("runtime workflows must be an object")
+        trust = evidence_trust if evidence_trust is not None else A.load_trust_policy()
+        identity = dict(row.get("evidence_identity") or {})
+        if identity.get("workflow_id") != str(row["id"]):
+            raise A.EvidenceError("scored workflow identity unavailable")
+        identity.update(served_sha=trust.served_sha, evaluation_id=trust.evaluation_id,
+                        obligation_id=obligation, audience=A.AUDIENCE)
+        have = workflows.get(str(row["id"])) or {}
+        if not isinstance(have, dict):
+            raise A.EvidenceError("runtime obligations must be an object")
+        envelope = have.get(obligation)
+        if not isinstance(envelope, dict):
+            raise A.EvidenceError("signed host observation unavailable")
+        return A.verify_attestation(envelope, expected=identity, trust=trust, now=now)
+    except (A.EvidenceError, TypeError, ValueError, KeyError) as exc:
+        return {"ok": False, "state": "UNPROVEN", "reason": str(exc)}
+
+
 def gate_workflow(
-    row: Mapping,
-    *,
-    platform: Mapping | None,
-    runtime_evidence: Mapping,
-    exceptions: Iterable[Mapping],
-    today: str | None = None,
+    row: Mapping, *, platform: Mapping | None, runtime_evidence: Mapping,
+    exceptions: Iterable[Mapping], today: str | None = None, evidence_trust=None, now=None,
 ) -> dict:
-    """Activation eligibility for one scored workflow. Blocks on: any element FAIL; PARTIAL on a critical element;
-    any platform element not PASS (or no platform facts); any applicable runtime obligation without evidence —
-    each unless an unexpired operator exception names it."""
+    """Fail closed on static/platform gaps or unavailable authenticated runtime proof.
+
+    v1 references are historical only. Self-described exceptions cannot waive controls.
+    Observations never create deployment, scheduler, approval or other authority.
+    """
     today = today or _dt.date.today().isoformat()
     exceptions = list(exceptions)
     wid = str(row["id"])
     blocking: list[str] = []
     for k, v in row["elements"].items():
         if v["status"] == FAIL or (v["status"] == PARTIAL and k in CRITICAL_ELEMENTS):
-            if not _excused(exceptions, wid, k, today):
-                blocking.append(f"{k} {v['status']}: {v['reason']}")
+            blocking.append(f"{k} {v['status']}: {v['reason']}")
     if platform is None:
         blocking.append("platform facts missing (fail closed)")
     else:
         for k, v in platform.items():
-            if v["status"] != PASS and not _excused(exceptions, wid, k, today):
+            if v["status"] != PASS:
                 blocking.append(f"platform {k} {v['status']}: {v['title']}")
-    have = (runtime_evidence.get("workflows") or {}).get(wid) or {}
+    if exceptions:
+        blocking.append("exceptions UNVERIFIED: authenticated host approval consumer unavailable")
     for o in row.get("runtime") or []:
-        ev = have.get(o["id"])
-        if not (isinstance(ev, dict) and ev.get("ref") and ev.get("observed_at")):
-            if not _excused(exceptions, wid, o["id"], today):
-                blocking.append(f"runtime {o['id']} UNPROVEN: needs {o['evidence_required']}")
+        verification = _verified_runtime(row, runtime_evidence, o["id"], evidence_trust=evidence_trust, now=now)
+        if not verification["ok"]:
+            blocking.append(f"runtime {o['id']} UNPROVEN: {verification['reason']}; needs {o['evidence_required']}")
     return {"workflow_id": wid, "eligible": not blocking, "blocking": blocking}
 
 
-def apply_runtime_evidence(row: dict, runtime_evidence: Mapping) -> None:
-    have = (runtime_evidence.get("workflows") or {}).get(str(row["id"])) or {}
+def apply_runtime_evidence(row: dict, runtime_evidence: Mapping, *, evidence_trust=None, now=None) -> None:
+    workflows = runtime_evidence.get("workflows") or {}
+    have = workflows.get(str(row["id"])) or {} if isinstance(workflows, dict) else {}
     for o in row.get("runtime") or []:
-        ev = have.get(o["id"])
-        if isinstance(ev, dict) and ev.get("ref") and ev.get("observed_at"):
-            o["status"], o["evidence"] = EVIDENCED, ev
-    if all(o["status"] == EVIDENCED for o in row.get("runtime") or []) and row.get("runtime"):
-        row["runtime_outcome"]["status"] = EVIDENCED
-    ev = have.get("23.24-L5b")
-    if isinstance(ev, dict) and ev.get("ref") and ev.get("observed_at"):
-        row["deployed_parity"] = {"status": EVIDENCED, "evidence": ev}
+        # Clear previously applied proof before re-evaluation (revocation/expiry is effective).
+        o["status"] = UNPROVEN
+        o.pop("evidence", None)
+        verification = _verified_runtime(row, runtime_evidence, o["id"], evidence_trust=evidence_trust, now=now)
+        o["verification"] = verification
+        if verification["ok"]:
+            o["status"], o["evidence"] = EVIDENCED, verification
+        elif runtime_evidence.get("schema") == LEGACY_RUNTIME_EVIDENCE_SCHEMA and isinstance(have, dict) and o["id"] in have:
+            o["legacy_evidence"] = have[o["id"]]
+    row["runtime_outcome"]["status"] = EVIDENCED if row.get("runtime") and all(o["status"] == EVIDENCED for o in row["runtime"]) else UNPROVEN
+    verification = _verified_runtime(row, runtime_evidence, "23.24-L5b", evidence_trust=evidence_trust, now=now)
+    row["deployed_parity"] = {"status": EVIDENCED if verification["ok"] else UNPROVEN, "verification": verification}
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -2119,6 +2143,8 @@ def build_report(
     gate: str | None = None,
     runtime_evidence: Mapping | None = None,
     exceptions: Iterable[Mapping] = (),
+    evidence_trust=None,
+    now=None,
 ) -> dict:
     runtime_evidence = runtime_evidence or {}
     exceptions = list(exceptions)
@@ -2127,9 +2153,9 @@ def build_report(
     for path, entry in targets:
         wf = _load(path)
         row = score_workflow(wf, ctx, entry=entry, file=_rel(path, ctx.root))
-        apply_runtime_evidence(row, runtime_evidence)
+        apply_runtime_evidence(row, runtime_evidence, evidence_trust=evidence_trust, now=now)
         row["activation_eligibility"] = gate_workflow(
-            row, platform=plat, runtime_evidence=runtime_evidence, exceptions=exceptions
+            row, platform=plat, runtime_evidence=runtime_evidence, exceptions=exceptions, evidence_trust=evidence_trust, now=now
         )
         rows.append(row)
     pts = sum(r["score"]["points"] for r in rows)
@@ -2224,9 +2250,22 @@ def render_markdown(report: Mapping) -> str:
 def _load_optional(path: str | None, schema: str) -> dict:
     if not path:
         return {}
-    doc = _load(Path(path))
-    if doc.get("schema") != schema:
-        raise ValueError(f"{path}: not {schema}")
+    from scripts.lib import n8n_evidence_attestation as A
+    doc = A.strict_json(Path(path).read_bytes())
+    versions = {RUNTIME_EVIDENCE_SCHEMA, LEGACY_RUNTIME_EVIDENCE_SCHEMA} if schema == RUNTIME_EVIDENCE_SCHEMA else {schema}
+    if not isinstance(doc, dict) or doc.get("schema") not in versions:
+        raise ValueError(f"{path}: unsupported version; supported {sorted(versions)}")
+    if doc.get("schema") == RUNTIME_EVIDENCE_SCHEMA:
+        A._closed(doc, {"schema", "workflows"}, "runtime evidence")
+        if not isinstance(doc["workflows"], dict):
+            raise ValueError("runtime workflows must be an object")
+        for obligations in doc["workflows"].values():
+            if not isinstance(obligations, dict):
+                raise ValueError("runtime obligations must be an object")
+            for envelope in obligations.values():
+                A._closed(envelope, {"schema", "payload", "signature"}, "attestation")
+                A._closed(envelope["payload"], A.PAYLOAD_FIELDS, "payload")
+                A._closed(envelope["signature"], {"algorithm", "key_id", "value"}, "signature")
     return doc
 
 

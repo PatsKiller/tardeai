@@ -15733,7 +15733,7 @@
         "key": "ts"
       },
       "severity": "Medium",
-      "note": "Fired only by the process workflow tradeai-fabric-hermes-learning through Run Lane (process_step outcome_feedback_agent); no dispatch block, so the generic dispatcher never emits it. Class learn (AGENTS.md §23.18). Its RETIRED cron-era row (superseded by hermes-learning-pipeline-learn) is unchanged. Shadow runs --dry-run (never notifies). Live sends are declared chokepoint intents (P2/P3, producer hermes_outcome_feedback_agent); a live fabric run must use --notify record (no sender)."
+      "note": "Fired only by tradeai-fabric-hermes-learning through Run Lane (process_step outcome_feedback_agent), never the generic dispatcher. HELD at shadow with live_arg null: no sixth-stage production run or qualified output/cutover proof is established. The registered future --apply --notify queue adapter admits only producer-bound host comms intents, never a sender. Its existence and the live comms consumer do not enable this lane. Preserve the existing scheduler owner and live-list exclusion until a reviewed fenced cutover passes its specific proof and authority gates."
     },
     {
       "lane_id": "hermes-learning-autonomous-self-tune",

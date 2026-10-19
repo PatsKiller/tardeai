@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
+from scripts.lib import lane_dispatch as LD  # noqa: E402
 from scripts.lib import n8n_coordination_gateway as G  # noqa: E402
 from scripts import n8n_run_executor as X  # noqa: E402
 from scripts.pipelines import pipeline_manifest as PM  # noqa: E402
@@ -123,14 +124,23 @@ def test_the_seven_n1_lanes_are_seeded_with_their_registry_output_signals():
         assert sig.endswith(LANES[lane_id]["output_signal"]), (lane_id, sig)
 
 
+def _never_tokens(entry: dict) -> list[str]:
+    """_tokens as the NEVER (sender word) check reads them: the one queue-only `--notify queue` live_arg of
+    lane_dispatch.QUEUE_ONLY_NOTIFY_ARGV (queues a host comms intent, calls no sender) is not a sender. Every other
+    token, and every other notify argv or lane, is checked unchanged (2026-10-17 hermes feedback cutover)."""
+    argv = [*entry["command"], *(entry.get("dry_run_arg") or []), *(entry.get("live_arg") or [])]
+    return [*LD.strip_queue_only_notify(entry["lane_id"], argv), entry["lock"], entry.get("output_signal") or ""]
+
+
 def test_every_command_token_passes_both_forbidden_lists_and_names_no_authority_script():
     for lane_id, entry in LANES.items():
         for token in _tokens(entry):
-            low = token.lower()
             for forbidden in PM.FORBIDDEN_COMMAND_TOKENS:
                 assert forbidden not in token, (lane_id, token, forbidden)
             hit = _route_forbidden(token)
             assert hit is None, (lane_id, token, hit)
+        for token in _never_tokens(entry):
+            low = token.lower()
             for never in NEVER:
                 assert never not in low, (lane_id, token, never)
         assert "market_day_gate" not in json.dumps(entry["command"])  # the executor prepends the gate from the flag

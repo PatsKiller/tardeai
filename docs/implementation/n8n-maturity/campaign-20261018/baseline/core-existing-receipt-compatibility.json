@@ -1,0 +1,1025 @@
+{
+  "schema": "N8nOutputOfflineCompatibility@v1",
+  "candidate_sha": "2333c8e1b00f4be3b5fab653bf67d9a42fdcd399",
+  "captured_at": "2026-10-18T19:57:11.450308+00:00",
+  "live_reexecution": false,
+  "status": "historical immutable evidence evaluation only",
+  "lanes": [
+    {
+      "lane_id": "aegis-social-sentiment",
+      "status": "NO_EXISTING_LIVE_DONE_RECEIPT"
+    },
+    {
+      "lane_id": "aegis-transcript-discovery",
+      "status": "NO_EXISTING_LIVE_DONE_RECEIPT"
+    },
+    {
+      "lane_id": "agent-outcome-linker",
+      "status": "NO_EXISTING_LIVE_DONE_RECEIPT"
+    },
+    {
+      "lane_id": "agent-outcome-scorer",
+      "run_id": "d:agent-outcome-scorer:live:20261018T1100",
+      "code_sha": "a2aef7b4d2de17e737526337a2ffc37848deda4f",
+      "finished_at": "2026-10-18T15:00:03.703980+00:00",
+      "prior_verdict": {
+        "attempted_count": 720,
+        "contract_id": "agent-outcome-scorer",
+        "produced_count": 720,
+        "rule": "per_window",
+        "skipped_reasons": {
+          "save_failed": 0
+        },
+        "verdict": "produced"
+      },
+      "candidate_offline_verdict": {
+        "rule": "per_window",
+        "contract_id": "agent-outcome-scorer",
+        "produced_count": 720,
+        "attempted_count": 720,
+        "skipped_reasons": {
+          "save_failed": 0
+        },
+        "verdict": "produced"
+      }
+    },
+    {
+      "lane_id": "build-symbol-profiles-at-0-19",
+      "status": "NO_EXISTING_LIVE_DONE_RECEIPT"
+    },
+    {
+      "lane_id": "catalyst-graph",
+      "run_id": "d:catalyst-graph:live:20261016T0610",
+      "code_sha": "94ee3770a65f7e67e574bd61a04dc350f098e56f",
+      "finished_at": "2026-10-16T10:10:04.640780+00:00",
+      "prior_verdict": {
+        "attempted_count": 1,
+        "contract_id": "catalyst-graph",
+        "produced_count": 1,
+        "rule": "min_produced",
+        "skipped_reasons": {},
+        "verdict": "produced"
+      },
+      "candidate_offline_verdict": {
+        "rule": "min_produced",
+        "contract_id": "catalyst-graph",
+        "produced_count": 1,
+        "attempted_count": 1,
+        "skipped_reasons": {},
+        "verdict": "produced"
+      }
+    },
+    {
+      "lane_id": "catalyst-symbol-impact",
+      "run_id": "d:catalyst-symbol-impact:live:20261016T1720",
+      "code_sha": "22890d36df6b68399de66251efdf093c001c74fa",
+      "finished_at": "2026-10-16T21:20:02.883964+00:00",
+      "prior_verdict": {
+        "attempted_count": 160,
+        "contract_id": "catalyst-symbol-impact",
+        "produced_count": 160,
+        "rule": "per_window",
+        "skipped_reasons": {},
+        "verdict": "produced"
+      },
+      "candidate_offline_verdict": {
+        "rule": "per_window",
+        "contract_id": "catalyst-symbol-impact",
+        "produced_count": 160,
+        "attempted_count": 160,
+        "skipped_reasons": {},
+        "verdict": "produced"
+      }
+    },
+    {
+      "lane_id": "classify-instruments",
+      "run_id": "d:classify-instruments:live:20261017T0630",
+      "code_sha": "954fc25ab9c40b553c0b808b23e4d22bbc5b9aad",
+      "finished_at": "2026-10-17T10:34:11.999149+00:00",
+      "prior_verdict": {
+        "attempted_count": 3353,
+        "contract_id": "classify-instruments",
+        "produced_count": 3350,
+        "rule": "min_produced",
+        "skipped_reasons": {
+          "writer_rejected": 0
+        },
+        "verdict": "produced"
+      },
+      "candidate_offline_verdict": {
+        "rule": "min_produced",
+        "contract_id": "classify-instruments",
+        "produced_count": 3350,
+        "attempted_count": 3353,
+        "skipped_reasons": {
+          "writer_rejected": 0
+        },
+        "verdict": "produced"
+      }
+    },
+    {
+      "lane_id": "commitment-outcome-sweep",
+      "run_id": "d:commitment-outcome-sweep:live:20261017T1820",
+      "code_sha": "7b07774ad8af3db523d7e297eae6192a8c25e024",
+      "finished_at": "2026-10-17T22:20:02.281399+00:00",
+      "prior_verdict": {
+        "attempted_count": 884,
+        "contract_id": "commitment-outcome-sweep",
+        "empty_reason": "nothing_due",
+        "produced_count": 0,
+        "rule": "per_window",
+        "skipped_reasons": {
+          "already_settled": 1
+        },
+        "verdict": "empty_allowed",
+        "window": "evaluated by the health monitors (P), not per run"
+      },
+      "candidate_offline_verdict": {
+        "rule": "per_window",
+        "contract_id": "commitment-outcome-sweep",
+        "produced_count": 0,
+        "attempted_count": 884,
+        "skipped_reasons": {
+          "already_settled": 1
+        },
+        "verdict": "empty_allowed",
+        "empty_reason": "nothing_due",
+        "window": "evaluated by the health monitors (P), not per run"
+      }
+    },
+    {
+      "lane_id": "crontab-snapshot-for-health-agent",
+      "run_id": "n8n-wf-c0d4c7845e5c4fcc-47696",
+      "code_sha": "a2aef7b4d2de17e737526337a2ffc37848deda4f",
+      "finished_at": "2026-10-18T19:40:01.721097+00:00",
+      "prior_verdict": {
+        "attempted_count": 1,
+        "contract_id": "crontab-snapshot-for-health-agent",
+        "produced_count": 1,
+        "rule": "min_produced",
+        "skipped_reasons": {},
+        "verdict": "produced"
+      },
+      "candidate_offline_verdict": {
+        "rule": "min_produced",
+        "contract_id": "crontab-snapshot-for-health-agent",
+        "produced_count": 1,
+        "attempted_count": 1,
+        "skipped_reasons": {},
+        "verdict": "produced"
+      }
+    },
+    {
+      "lane_id": "daily-incubator-refresh",
+      "status": "NO_EXISTING_LIVE_DONE_RECEIPT"
+    },
+    {
+      "lane_id": "document-mentions-backfill",
+      "run_id": "d:document-mentions-backfill:live:20261018T1525",
+      "code_sha": "a2aef7b4d2de17e737526337a2ffc37848deda4f",
+      "finished_at": "2026-10-18T19:25:16.408184+00:00",
+      "prior_verdict": {
+        "attempted_count": 0,
+        "contract_id": "document-mentions-backfill",
+        "empty_reason": "no_new_input",
+        "produced_count": 0,
+        "rule": "per_window",
+        "skipped_reasons": {
+          "already_written": 0,
+          "no_mention_docs": 4,
+          "undecided_docs": 20
+        },
+        "verdict": "empty_allowed",
+        "window": "evaluated by the health monitors (P), not per run"
+      },
+      "candidate_offline_verdict": {
+        "rule": "per_window",
+        "contract_id": "document-mentions-backfill",
+        "produced_count": 0,
+        "attempted_count": 0,
+        "skipped_reasons": {
+          "already_written": 0,
+          "no_mention_docs": 4,
+          "undecided_docs": 20
+        },
+        "verdict": "empty_allowed",
+        "empty_reason": "no_new_input",
+        "window": "evaluated by the health monitors (P), not per run"
+      }
+    },
+    {
+      "lane_id": "etf-analyst-enrich",
+      "run_id": "d:etf-analyst-enrich:live:20261017T0700",
+      "code_sha": "954fc25ab9c40b553c0b808b23e4d22bbc5b9aad",
+      "finished_at": "2026-10-17T11:02:53.360657+00:00",
+      "prior_verdict": {
+        "attempted_count": 35,
+        "contract_id": "etf-analyst-enrich",
+        "produced_count": 22,
+        "rule": "min_produced",
+        "skipped_reasons": {
+          "no_analyst_view": 13
+        },
+        "verdict": "produced"
+      },
+      "candidate_offline_verdict": {
+        "rule": "min_produced",
+        "contract_id": "etf-analyst-enrich",
+        "produced_count": 22,
+        "attempted_count": 35,
+        "skipped_reasons": {
+          "no_analyst_view": 13
+        },
+        "verdict": "produced"
+      }
+    },
+    {
+      "lane_id": "etf-performance-enrich",
+      "run_id": "d:etf-performance-enrich:live:20261017T0715",
+      "code_sha": "954fc25ab9c40b553c0b808b23e4d22bbc5b9aad",
+      "finished_at": "2026-10-17T11:20:22.160082+00:00",
+      "prior_verdict": {
+        "attempted_count": 300,
+        "contract_id": "etf-performance-enrich",
+        "produced_count": 300,
+        "rule": "min_produced",
+        "skipped_reasons": {
+          "fetch_error": 0,
+          "no_values": 1,
+          "writer_rejected": 0
+        },
+        "verdict": "produced"
+      },
+      "candidate_offline_verdict": {
+        "rule": "min_produced",
+        "contract_id": "etf-performance-enrich",
+        "produced_count": 300,
+        "attempted_count": 300,
+        "skipped_reasons": {
+          "fetch_error": 0,
+          "no_values": 1,
+          "writer_rejected": 0
+        },
+        "verdict": "produced"
+      }
+    },
+    {
+      "lane_id": "feedback-loop-processor",
+      "run_id": "d:feedback-loop-processor:live:20261016T2030",
+      "code_sha": "766914db27ebf53b8e68659cf2220dda3f4fab9b",
+      "finished_at": "2026-10-17T00:30:02.435834+00:00",
+      "prior_verdict": {
+        "attempted_count": null,
+        "contract_id": "feedback-loop-processor",
+        "produced_count": 110,
+        "rule": "per_window",
+        "skipped_reasons": {},
+        "verdict": "produced"
+      },
+      "candidate_offline_verdict": {
+        "rule": "per_window",
+        "contract_id": "feedback-loop-processor",
+        "produced_count": 110,
+        "attempted_count": null,
+        "skipped_reasons": {},
+        "verdict": "produced"
+      }
+    },
+    {
+      "lane_id": "finviz-enrichment",
+      "status": "NO_EXISTING_LIVE_DONE_RECEIPT"
+    },
+    {
+      "lane_id": "finviz-proactive-research",
+      "run_id": "d:finviz-proactive-research:live:20261016T1530",
+      "code_sha": "290fce36f85e3421ca586b840b83ca7cc3aea9ac",
+      "finished_at": "2026-10-16T19:30:50.570084+00:00",
+      "prior_verdict": {
+        "attempted_count": 24,
+        "contract_id": "finviz-proactive-research",
+        "produced_count": 13,
+        "rule": "per_window",
+        "skipped_reasons": {
+          "duplicate_or_policy": 11,
+          "write_failed": 0
+        },
+        "verdict": "produced"
+      },
+      "candidate_offline_verdict": {
+        "rule": "per_window",
+        "contract_id": "finviz-proactive-research",
+        "produced_count": 13,
+        "attempted_count": 24,
+        "skipped_reasons": {
+          "duplicate_or_policy": 11,
+          "write_failed": 0
+        },
+        "verdict": "produced"
+      }
+    },
+    {
+      "lane_id": "finviz-screener-runner",
+      "run_id": "d:finviz-screener-runner:live:20261016T1000",
+      "code_sha": "94ee3770a65f7e67e574bd61a04dc350f098e56f",
+      "finished_at": "2026-10-16T14:18:22.368327+00:00",
+      "prior_verdict": {
+        "attempted_count": 45,
+        "contract_id": "finviz-screener-runner",
+        "produced_count": 42,
+        "rule": "min_produced",
+        "skipped_reasons": {
+          "db_write_failed": 0,
+          "membership_failed": 0,
+          "no_tickers": 3
+        },
+        "verdict": "produced"
+      },
+      "candidate_offline_verdict": {
+        "rule": "min_produced",
+        "contract_id": "finviz-screener-runner",
+        "produced_count": 42,
+        "attempted_count": 45,
+        "skipped_reasons": {
+          "db_write_failed": 0,
+          "membership_failed": 0,
+          "no_tickers": 3
+        },
+        "verdict": "produced"
+      }
+    },
+    {
+      "lane_id": "finviz-sector-research",
+      "status": "NO_EXISTING_LIVE_DONE_RECEIPT"
+    },
+    {
+      "lane_id": "hermes-analyst-signal-discovery",
+      "run_id": "d:hermes-analyst-signal-discovery:live:20261018T1520",
+      "code_sha": "a2aef7b4d2de17e737526337a2ffc37848deda4f",
+      "finished_at": "2026-10-18T19:20:04.102864+00:00",
+      "prior_verdict": {
+        "attempted_count": 31,
+        "contract_id": "hermes-analyst-signal-discovery",
+        "produced_count": 31,
+        "rule": "empty_allowed",
+        "skipped_reasons": {
+          "not_upserted": 0
+        },
+        "verdict": "produced"
+      },
+      "candidate_offline_verdict": {
+        "rule": "empty_allowed",
+        "contract_id": "hermes-analyst-signal-discovery",
+        "produced_count": 31,
+        "attempted_count": 31,
+        "skipped_reasons": {
+          "not_upserted": 0
+        },
+        "verdict": "produced"
+      }
+    },
+    {
+      "lane_id": "hermes-discovery-scorecard",
+      "run_id": "d:hermes-discovery-scorecard:live:20261018T0530",
+      "code_sha": "7b07774ad8af3db523d7e297eae6192a8c25e024",
+      "finished_at": "2026-10-18T09:30:01.867349+00:00",
+      "prior_verdict": {
+        "attempted_count": 2,
+        "contract_id": "hermes-discovery-scorecard",
+        "produced_count": 2,
+        "rule": "per_window",
+        "skipped_reasons": {},
+        "verdict": "produced"
+      },
+      "candidate_offline_verdict": {
+        "rule": "per_window",
+        "contract_id": "hermes-discovery-scorecard",
+        "produced_count": 2,
+        "attempted_count": 2,
+        "skipped_reasons": {},
+        "verdict": "produced"
+      }
+    },
+    {
+      "lane_id": "hermes-governance-api",
+      "run_id": "d:hermes-governance-api:live:20261016T2050",
+      "code_sha": "766914db27ebf53b8e68659cf2220dda3f4fab9b",
+      "finished_at": "2026-10-17T00:50:02.743148+00:00",
+      "prior_verdict": {
+        "attempted_count": 1,
+        "contract_id": "hermes-governance-api",
+        "produced_count": 1,
+        "rule": "min_produced",
+        "skipped_reasons": {},
+        "verdict": "produced"
+      },
+      "candidate_offline_verdict": {
+        "rule": "min_produced",
+        "contract_id": "hermes-governance-api",
+        "produced_count": 1,
+        "attempted_count": 1,
+        "skipped_reasons": {},
+        "verdict": "produced"
+      }
+    },
+    {
+      "lane_id": "hermes-learning-autonomous-self-tune",
+      "run_id": "p:hermes-learning-autonomous-self-tune:live:20261017T1700",
+      "code_sha": "7b07774ad8af3db523d7e297eae6192a8c25e024",
+      "finished_at": "2026-10-17T21:00:03.061875+00:00",
+      "prior_verdict": {
+        "attempted_count": 0,
+        "contract_id": "hermes-learning-autonomous-self-tune",
+        "empty_reason": "nothing_due",
+        "produced_count": 0,
+        "rule": "empty_allowed",
+        "skipped_reasons": {
+          "graft_gated_weekly_drift_cap": 1
+        },
+        "verdict": "empty_allowed"
+      },
+      "candidate_offline_verdict": {
+        "rule": "empty_allowed",
+        "contract_id": "hermes-learning-autonomous-self-tune",
+        "produced_count": 0,
+        "attempted_count": 0,
+        "skipped_reasons": {
+          "graft_gated_weekly_drift_cap": 1
+        },
+        "verdict": "empty_allowed",
+        "empty_reason": "nothing_due"
+      }
+    },
+    {
+      "lane_id": "hermes-momentum-catalyst-scalp",
+      "run_id": "d:hermes-momentum-catalyst-scalp:live:20261016T1525",
+      "code_sha": "290fce36f85e3421ca586b840b83ca7cc3aea9ac",
+      "finished_at": "2026-10-16T19:26:22.938729+00:00",
+      "prior_verdict": {
+        "attempted_count": 15,
+        "contract_id": "hermes-momentum-catalyst-scalp",
+        "produced_count": 15,
+        "rule": "per_window",
+        "skipped_reasons": {
+          "dependency_unavailable": 0,
+          "source_cap_reached": 0
+        },
+        "verdict": "produced"
+      },
+      "candidate_offline_verdict": {
+        "rule": "per_window",
+        "contract_id": "hermes-momentum-catalyst-scalp",
+        "produced_count": 15,
+        "attempted_count": 15,
+        "skipped_reasons": {
+          "dependency_unavailable": 0,
+          "source_cap_reached": 0
+        },
+        "verdict": "produced"
+      }
+    },
+    {
+      "lane_id": "hermes-news-bridge",
+      "run_id": "d:hermes-news-bridge:live:20261018T1240",
+      "code_sha": "a2aef7b4d2de17e737526337a2ffc37848deda4f",
+      "finished_at": "2026-10-18T16:40:02.103740+00:00",
+      "prior_verdict": {
+        "attempted_count": 0,
+        "contract_id": "hermes-news-bridge",
+        "empty_reason": "no_new_input",
+        "produced_count": 0,
+        "rule": "per_window",
+        "skipped_reasons": {
+          "duplicate": 0,
+          "insert_error": 0
+        },
+        "verdict": "empty_allowed",
+        "window": "evaluated by the health monitors (P), not per run"
+      },
+      "candidate_offline_verdict": {
+        "rule": "per_window",
+        "contract_id": "hermes-news-bridge",
+        "produced_count": 0,
+        "attempted_count": 0,
+        "skipped_reasons": {
+          "duplicate": 0,
+          "insert_error": 0
+        },
+        "verdict": "empty_allowed",
+        "empty_reason": "no_new_input",
+        "window": "evaluated by the health monitors (P), not per run"
+      }
+    },
+    {
+      "lane_id": "hermes-social-sentiment",
+      "status": "NO_EXISTING_LIVE_DONE_RECEIPT"
+    },
+    {
+      "lane_id": "identity-sweep-stage0",
+      "run_id": "d:identity-sweep-stage0:live:20261018T1530",
+      "code_sha": "a2aef7b4d2de17e737526337a2ffc37848deda4f",
+      "finished_at": "2026-10-18T19:30:02.676188+00:00",
+      "prior_verdict": {
+        "attempted_count": null,
+        "contract_id": "identity-sweep-stage0",
+        "produced_count": 6,
+        "rule": "empty_allowed",
+        "skipped_reasons": {
+          "table_skipped": 0,
+          "unresolvable_rows": 0
+        },
+        "verdict": "produced"
+      },
+      "candidate_offline_verdict": {
+        "rule": "empty_allowed",
+        "contract_id": "identity-sweep-stage0",
+        "produced_count": 6,
+        "attempted_count": null,
+        "skipped_reasons": {
+          "table_skipped": 0,
+          "unresolvable_rows": 0
+        },
+        "verdict": "produced"
+      }
+    },
+    {
+      "lane_id": "incubator-rolloff-engine",
+      "run_id": "d:incubator-rolloff-engine:live:20261016T1000",
+      "code_sha": "94ee3770a65f7e67e574bd61a04dc350f098e56f",
+      "finished_at": "2026-10-16T14:00:23.436373+00:00",
+      "prior_verdict": {
+        "attempted_count": 1608,
+        "contract_id": "incubator-rolloff-engine",
+        "empty_reason": "no_new_input",
+        "produced_count": 0,
+        "rule": "per_window",
+        "skipped_reasons": {},
+        "verdict": "empty_allowed",
+        "window": "evaluated by the health monitors (P), not per run"
+      },
+      "candidate_offline_verdict": {
+        "rule": "per_window",
+        "contract_id": "incubator-rolloff-engine",
+        "produced_count": 0,
+        "attempted_count": 1608,
+        "skipped_reasons": {},
+        "verdict": "empty_allowed",
+        "empty_reason": "no_new_input",
+        "window": "evaluated by the health monitors (P), not per run"
+      }
+    },
+    {
+      "lane_id": "instrument-belief-writer",
+      "run_id": "d:instrument-belief-writer:live:20261017T1850",
+      "code_sha": "7b07774ad8af3db523d7e297eae6192a8c25e024",
+      "finished_at": "2026-10-17T22:50:06.304124+00:00",
+      "prior_verdict": {
+        "attempted_count": 17,
+        "contract_id": "instrument-belief-writer",
+        "produced_count": 13,
+        "rule": "empty_allowed",
+        "skipped_reasons": {
+          "noop": 12,
+          "refused": 0
+        },
+        "verdict": "produced"
+      },
+      "candidate_offline_verdict": {
+        "rule": "empty_allowed",
+        "contract_id": "instrument-belief-writer",
+        "produced_count": 13,
+        "attempted_count": 17,
+        "skipped_reasons": {
+          "noop": 12,
+          "refused": 0
+        },
+        "verdict": "produced"
+      }
+    },
+    {
+      "lane_id": "journal-tilt-morning-hook",
+      "run_id": "d:journal-tilt-morning-hook:live:20261016T1200",
+      "code_sha": "94ee3770a65f7e67e574bd61a04dc350f098e56f",
+      "finished_at": "2026-10-16T16:00:15.171335+00:00",
+      "prior_verdict": {
+        "attempted_count": 1,
+        "contract_id": "journal-tilt-morning-hook",
+        "empty_reason": "no_new_input",
+        "produced_count": 0,
+        "rule": "empty_allowed",
+        "skipped_reasons": {
+          "already_queued": 1
+        },
+        "verdict": "empty_allowed"
+      },
+      "candidate_offline_verdict": {
+        "rule": "empty_allowed",
+        "contract_id": "journal-tilt-morning-hook",
+        "produced_count": 0,
+        "attempted_count": 1,
+        "skipped_reasons": {
+          "already_queued": 1
+        },
+        "verdict": "empty_allowed",
+        "empty_reason": "no_new_input"
+      }
+    },
+    {
+      "lane_id": "material-change-detector-stage1",
+      "run_id": "d:material-change-detector-stage1:live:20261018T1530",
+      "code_sha": "a2aef7b4d2de17e737526337a2ffc37848deda4f",
+      "finished_at": "2026-10-18T19:30:02.559624+00:00",
+      "prior_verdict": {
+        "attempted_count": 2,
+        "contract_id": "material-change-detector-stage1",
+        "empty_reason": "no_new_input",
+        "produced_count": 0,
+        "rule": "per_window",
+        "skipped_reasons": {
+          "already_present": 2
+        },
+        "verdict": "empty_allowed",
+        "window": "evaluated by the health monitors (P), not per run"
+      },
+      "candidate_offline_verdict": {
+        "rule": "per_window",
+        "contract_id": "material-change-detector-stage1",
+        "produced_count": 0,
+        "attempted_count": 2,
+        "skipped_reasons": {
+          "already_present": 2
+        },
+        "verdict": "empty_allowed",
+        "empty_reason": "no_new_input",
+        "window": "evaluated by the health monitors (P), not per run"
+      }
+    },
+    {
+      "lane_id": "materialize-watchlist-strategy-cards",
+      "run_id": "d:materialize-watchlist-strategy-cards:live:20261016T1530",
+      "code_sha": "290fce36f85e3421ca586b840b83ca7cc3aea9ac",
+      "finished_at": "2026-10-16T19:30:13.377000+00:00",
+      "prior_verdict": {
+        "attempted_count": 5611,
+        "contract_id": "materialize-watchlist-strategy-cards",
+        "produced_count": 5611,
+        "rule": "min_produced",
+        "skipped_reasons": {},
+        "verdict": "produced"
+      },
+      "candidate_offline_verdict": {
+        "rule": "min_produced",
+        "contract_id": "materialize-watchlist-strategy-cards",
+        "produced_count": 5611,
+        "attempted_count": 5611,
+        "skipped_reasons": {},
+        "verdict": "produced"
+      }
+    },
+    {
+      "lane_id": "n8n-comms-intent-consumer",
+      "run_id": "d:n8n-comms-intent-consumer:live:20261018T1555",
+      "code_sha": "a2aef7b4d2de17e737526337a2ffc37848deda4f",
+      "finished_at": "2026-10-18T19:55:02.144157+00:00",
+      "prior_verdict": {
+        "attempted_count": 0,
+        "contract_id": "n8n-comms-intent-consumer",
+        "empty_reason": "no_new_input",
+        "produced_count": 0,
+        "rule": "empty_allowed",
+        "skipped_reasons": {},
+        "verdict": "empty_allowed"
+      },
+      "candidate_offline_verdict": {
+        "rule": "empty_allowed",
+        "contract_id": "n8n-comms-intent-consumer",
+        "produced_count": 0,
+        "attempted_count": 0,
+        "skipped_reasons": {},
+        "verdict": "empty_allowed",
+        "empty_reason": "no_new_input"
+      }
+    },
+    {
+      "lane_id": "n8n-incident-fanin",
+      "run_id": "n8n-wf-722fac0e043ea5c4-47755",
+      "code_sha": "a2aef7b4d2de17e737526337a2ffc37848deda4f",
+      "finished_at": "2026-10-18T19:55:10.185680+00:00",
+      "prior_verdict": {
+        "attempted_count": 138,
+        "contract_id": "n8n-incident-fanin",
+        "produced_count": 138,
+        "rule": "empty_allowed",
+        "skipped_reasons": {},
+        "verdict": "produced"
+      },
+      "candidate_offline_verdict": {
+        "rule": "empty_allowed",
+        "contract_id": "n8n-incident-fanin",
+        "produced_count": 138,
+        "attempted_count": 138,
+        "skipped_reasons": {},
+        "verdict": "produced"
+      }
+    },
+    {
+      "lane_id": "n8n-pilot-dispatch",
+      "run_id": "n8n-wf-078e8fcbea0c5020-47716",
+      "code_sha": "a2aef7b4d2de17e737526337a2ffc37848deda4f",
+      "finished_at": "2026-10-18T19:45:02.746523+00:00",
+      "prior_verdict": {
+        "attempted_count": 2,
+        "contract_id": "n8n-pilot-dispatch",
+        "empty_reason": "no_new_input",
+        "produced_count": 0,
+        "rule": "per_window",
+        "skipped_reasons": {
+          "duplicate_in_ledger": 2,
+          "no_fire": 3
+        },
+        "verdict": "empty_allowed",
+        "window": "evaluated by the health monitors (P), not per run"
+      },
+      "candidate_offline_verdict": {
+        "rule": "per_window",
+        "contract_id": "n8n-pilot-dispatch",
+        "produced_count": 0,
+        "attempted_count": 2,
+        "skipped_reasons": {
+          "duplicate_in_ledger": 2,
+          "no_fire": 3
+        },
+        "verdict": "empty_allowed",
+        "empty_reason": "no_new_input",
+        "window": "evaluated by the health monitors (P), not per run"
+      }
+    },
+    {
+      "lane_id": "n8n-research-intake-consumer",
+      "run_id": "n8n-wf-21fd15d5f8a4c4da-47715",
+      "code_sha": "a2aef7b4d2de17e737526337a2ffc37848deda4f",
+      "finished_at": "2026-10-18T19:45:02.459736+00:00",
+      "prior_verdict": {
+        "attempted_count": 0,
+        "contract_id": "n8n-research-intake-consumer",
+        "empty_reason": "no_new_input",
+        "produced_count": 0,
+        "rule": "empty_allowed",
+        "skipped_reasons": {},
+        "verdict": "empty_allowed"
+      },
+      "candidate_offline_verdict": {
+        "rule": "empty_allowed",
+        "contract_id": "n8n-research-intake-consumer",
+        "produced_count": 0,
+        "attempted_count": 0,
+        "skipped_reasons": {},
+        "verdict": "empty_allowed",
+        "empty_reason": "no_new_input"
+      }
+    },
+    {
+      "lane_id": "opening-intelligence-render",
+      "status": "NO_EXISTING_LIVE_DONE_RECEIPT"
+    },
+    {
+      "lane_id": "pattern-extractor",
+      "status": "NO_EXISTING_LIVE_DONE_RECEIPT"
+    },
+    {
+      "lane_id": "proposal-backtest-engine",
+      "run_id": "d:proposal-backtest-engine:live:20261016T1205",
+      "code_sha": "94ee3770a65f7e67e574bd61a04dc350f098e56f",
+      "finished_at": "2026-10-16T16:05:03.343041+00:00",
+      "prior_verdict": {
+        "attempted_count": 33,
+        "contract_id": "proposal-backtest-engine",
+        "produced_count": 33,
+        "rule": "per_window",
+        "skipped_reasons": {
+          "load_error": 0,
+          "persist_failed": 0
+        },
+        "verdict": "produced"
+      },
+      "candidate_offline_verdict": {
+        "rule": "per_window",
+        "contract_id": "proposal-backtest-engine",
+        "produced_count": 33,
+        "attempted_count": 33,
+        "skipped_reasons": {
+          "load_error": 0,
+          "persist_failed": 0
+        },
+        "verdict": "produced"
+      }
+    },
+    {
+      "lane_id": "record-decision-outcome",
+      "run_id": "d:record-decision-outcome:live:20261016T0750",
+      "code_sha": "94ee3770a65f7e67e574bd61a04dc350f098e56f",
+      "finished_at": "2026-10-16T11:50:03.212848+00:00",
+      "prior_verdict": {
+        "attempted_count": 0,
+        "contract_id": "record-decision-outcome",
+        "empty_reason": "no_new_input",
+        "produced_count": 0,
+        "rule": "per_window",
+        "skipped_reasons": {},
+        "verdict": "empty_allowed",
+        "window": "evaluated by the health monitors (P), not per run"
+      },
+      "candidate_offline_verdict": {
+        "rule": "per_window",
+        "contract_id": "record-decision-outcome",
+        "produced_count": 0,
+        "attempted_count": 0,
+        "skipped_reasons": {},
+        "verdict": "empty_allowed",
+        "empty_reason": "no_new_input",
+        "window": "evaluated by the health monitors (P), not per run"
+      }
+    },
+    {
+      "lane_id": "research-insight-extractor",
+      "run_id": "d:research-insight-extractor:live:20261018T1250",
+      "code_sha": "a2aef7b4d2de17e737526337a2ffc37848deda4f",
+      "finished_at": "2026-10-18T16:50:07.370322+00:00",
+      "prior_verdict": {
+        "attempted_count": 200,
+        "contract_id": "research-insight-extractor",
+        "produced_count": 200,
+        "rule": "per_window",
+        "skipped_reasons": {},
+        "verdict": "produced"
+      },
+      "candidate_offline_verdict": {
+        "rule": "per_window",
+        "contract_id": "research-insight-extractor",
+        "produced_count": 200,
+        "attempted_count": 200,
+        "skipped_reasons": {},
+        "verdict": "produced"
+      }
+    },
+    {
+      "lane_id": "sec-data-ingest",
+      "run_id": "d:sec-data-ingest:live:20261016T2000",
+      "code_sha": "766914db27ebf53b8e68659cf2220dda3f4fab9b",
+      "finished_at": "2026-10-17T00:00:18.635943+00:00",
+      "prior_verdict": {
+        "attempted_count": 30,
+        "contract_id": "sec-data-ingest",
+        "empty_reason": "no_new_input",
+        "produced_count": 0,
+        "rule": "per_window",
+        "skipped_reasons": {
+          "already_present": 30,
+          "fetch_failed": 0,
+          "insert_error": 0
+        },
+        "verdict": "empty_allowed",
+        "window": "evaluated by the health monitors (P), not per run"
+      },
+      "candidate_offline_verdict": {
+        "rule": "per_window",
+        "contract_id": "sec-data-ingest",
+        "produced_count": 0,
+        "attempted_count": 30,
+        "skipped_reasons": {
+          "already_present": 30,
+          "fetch_failed": 0,
+          "insert_error": 0
+        },
+        "verdict": "empty_allowed",
+        "empty_reason": "no_new_input",
+        "window": "evaluated by the health monitors (P), not per run"
+      }
+    },
+    {
+      "lane_id": "source-attribution-monitor",
+      "run_id": "d:source-attribution-monitor:live:20261018T0600",
+      "code_sha": "7b07774ad8af3db523d7e297eae6192a8c25e024",
+      "finished_at": "2026-10-18T10:00:02.340555+00:00",
+      "prior_verdict": {
+        "attempted_count": 1,
+        "contract_id": "source-attribution-monitor",
+        "produced_count": 1,
+        "rule": "min_produced",
+        "skipped_reasons": {},
+        "verdict": "produced"
+      },
+      "candidate_offline_verdict": {
+        "rule": "min_produced",
+        "contract_id": "source-attribution-monitor",
+        "produced_count": 1,
+        "attempted_count": 1,
+        "skipped_reasons": {},
+        "verdict": "produced"
+      }
+    },
+    {
+      "lane_id": "sync-social-to-intelligence",
+      "run_id": "d:sync-social-to-intelligence:live:20261016T1530",
+      "code_sha": "290fce36f85e3421ca586b840b83ca7cc3aea9ac",
+      "finished_at": "2026-10-16T19:30:14.861211+00:00",
+      "prior_verdict": {
+        "attempted_count": 39,
+        "contract_id": "sync-social-to-intelligence",
+        "produced_count": 39,
+        "rule": "min_produced",
+        "skipped_reasons": {
+          "fold_failed": 0
+        },
+        "verdict": "produced"
+      },
+      "candidate_offline_verdict": {
+        "rule": "min_produced",
+        "contract_id": "sync-social-to-intelligence",
+        "produced_count": 39,
+        "attempted_count": 39,
+        "skipped_reasons": {
+          "fold_failed": 0
+        },
+        "verdict": "produced"
+      }
+    },
+    {
+      "lane_id": "update-agent-performance",
+      "run_id": "d:update-agent-performance:live:20261016T2000",
+      "code_sha": "766914db27ebf53b8e68659cf2220dda3f4fab9b",
+      "finished_at": "2026-10-17T00:00:07.599454+00:00",
+      "prior_verdict": {
+        "attempted_count": 6,
+        "contract_id": "update-agent-performance",
+        "produced_count": 6,
+        "rule": "per_window",
+        "skipped_reasons": {},
+        "verdict": "produced"
+      },
+      "candidate_offline_verdict": {
+        "rule": "per_window",
+        "contract_id": "update-agent-performance",
+        "produced_count": 6,
+        "attempted_count": 6,
+        "skipped_reasons": {},
+        "verdict": "produced"
+      }
+    },
+    {
+      "lane_id": "watchlist-enrichment-sweep",
+      "run_id": "d:watchlist-enrichment-sweep:live:20261016T1630",
+      "code_sha": "22890d36df6b68399de66251efdf093c001c74fa",
+      "finished_at": "2026-10-16T20:32:10.794264+00:00",
+      "prior_verdict": {
+        "attempted_count": 172,
+        "contract_id": "watchlist-enrichment-sweep",
+        "produced_count": 172,
+        "rule": "min_produced",
+        "skipped_reasons": {
+          "not_enriched": 0
+        },
+        "verdict": "produced"
+      },
+      "candidate_offline_verdict": {
+        "rule": "min_produced",
+        "contract_id": "watchlist-enrichment-sweep",
+        "produced_count": 172,
+        "attempted_count": 172,
+        "skipped_reasons": {
+          "not_enriched": 0
+        },
+        "verdict": "produced"
+      }
+    },
+    {
+      "lane_id": "weekly-incubator-builder",
+      "status": "NO_EXISTING_LIVE_DONE_RECEIPT"
+    },
+    {
+      "lane_id": "wire-advisory-lessons",
+      "run_id": "d:wire-advisory-lessons:live:20261018T1230",
+      "code_sha": "a2aef7b4d2de17e737526337a2ffc37848deda4f",
+      "finished_at": "2026-10-18T16:30:03.621857+00:00",
+      "prior_verdict": {
+        "attempted_count": 220,
+        "contract_id": "wire-advisory-lessons",
+        "produced_count": 218,
+        "rule": "per_window",
+        "skipped_reasons": {
+          "insert_failed": 0
+        },
+        "verdict": "produced"
+      },
+      "candidate_offline_verdict": {
+        "rule": "per_window",
+        "contract_id": "wire-advisory-lessons",
+        "produced_count": 218,
+        "attempted_count": 220,
+        "skipped_reasons": {
+          "insert_failed": 0
+        },
+        "verdict": "produced"
+      }
+    }
+  ]
+}
