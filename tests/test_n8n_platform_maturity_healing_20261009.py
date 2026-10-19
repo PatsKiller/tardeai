@@ -2,6 +2,7 @@
 
 Every test uses tmp_path for the state root, repo and home, a fake command runner and a fixed ``now``.
 """
+
 from __future__ import annotations
 
 import copy
@@ -21,9 +22,20 @@ from n8n_maturity import core  # noqa: E402
 from n8n_maturity import dims_healing as h  # noqa: E402
 
 NOW = dt.datetime(2026, 10, 9, 20, 0, tzinfo=dt.timezone.utc)
-REQUIRED_CATEGORIES = {"retry", "dead_letter", "watchdog", "health_agent", "health_tick_step", "escalation",
-                       "approval", "queue_recovery", "token_refresh", "incident_routing", "governance",
-                       "systemd_restart"}
+REQUIRED_CATEGORIES = {
+    "retry",
+    "dead_letter",
+    "watchdog",
+    "health_agent",
+    "health_tick_step",
+    "escalation",
+    "approval",
+    "queue_recovery",
+    "token_refresh",
+    "incident_routing",
+    "governance",
+    "systemd_restart",
+}
 
 
 def _iso(hours_ago: float) -> str:
@@ -59,9 +71,14 @@ def _probe(tmp_path, *, runner=None, config=None, env=None):
         (tmp_path / d).mkdir(parents=True, exist_ok=True)
     e = {"HOME": str(tmp_path / "home"), "TRADEAI_DEV_TREE": str(tmp_path / "dev")}
     e.update(env or {})
-    return core.Probe(root=tmp_path / "state", proj=tmp_path / "proj", now=NOW, env=e,
-                      config=config if config is not None else _config(),
-                      runner=runner or FakeRunner())
+    return core.Probe(
+        root=tmp_path / "state",
+        proj=tmp_path / "proj",
+        now=NOW,
+        env=e,
+        config=config if config is not None else _config(),
+        runner=runner or FakeRunner(),
+    )
 
 
 def _write(p: Path, text: str, *, mtime_hours_ago: float | None = None) -> Path:
@@ -74,8 +91,15 @@ def _write(p: Path, text: str, *, mtime_hours_ago: float | None = None) -> Path:
 
 
 def _mech(mid, ev, pred, category="watchdog", code="scripts/x.py"):
-    return {"id": mid, "name": mid, "category": category, "code": code, "evidence_source": ev,
-            "success_predicate": {"description": "test", **pred}, "expected": "test"}
+    return {
+        "id": mid,
+        "name": mid,
+        "category": category,
+        "code": code,
+        "evidence_source": ev,
+        "success_predicate": {"description": "test", **pred},
+        "expected": "test",
+    }
 
 
 def _inventory(probe, mechs):
@@ -92,9 +116,10 @@ def _eval(probe, mech, window=336.0, tail=0):
 
 # --------------------------------------------------------------------------- the real inventory
 
+
 def test_real_inventory_self_check():
     doc = json.loads((PROJ / h.INVENTORY_REL).read_text())
-    assert doc["schema"] == "SelfHealingMechanisms@v1"
+    assert doc["schema"] == "SelfHealingMechanisms@v2"
     mechs = doc["mechanisms"]
     assert len(mechs) >= 35
     ids = [m["id"] for m in mechs]
@@ -115,16 +140,26 @@ def test_real_inventory_self_check():
 def test_inventory_problems_flags_bad_rows(tmp_path):
     p = _probe(tmp_path)
     good = _mech("a", {"kind": "absent"}, {"field": "x", "equals": 1})
-    doc = {"schema": h.INVENTORY_SCHEMA, "mechanisms": [
-        good, dict(good),  # duplicate id
-        _mech("b", {"kind": "nope"}, {"field": "x", "equals": 1}),
-        _mech("c", {"kind": "jsonl", "path": "/abs/x.jsonl"}, {"field": "x", "equals": 1}),
-        _mech("d", {"kind": "journal"}, {"regex": "x"}),
-        _mech("e", {"kind": "absent"}, {}, code="scripts/missing.py"),
-    ]}
+    doc = {
+        "schema": h.INVENTORY_SCHEMA,
+        "mechanisms": [
+            good,
+            dict(good),  # duplicate id
+            _mech("b", {"kind": "nope"}, {"field": "x", "equals": 1}),
+            _mech("c", {"kind": "jsonl", "path": "/abs/x.jsonl"}, {"field": "x", "equals": 1}),
+            _mech("d", {"kind": "journal"}, {"regex": "x"}),
+            _mech("e", {"kind": "absent"}, {}, code="scripts/missing.py"),
+        ],
+    }
     probs = "\n".join(h.inventory_problems(doc, p.proj))
-    for frag in ("a: duplicate id", "unknown evidence kind", "must be relative", "needs unit",
-                 "no machine condition", "code path not in repo"):
+    for frag in (
+        "a: duplicate id",
+        "unknown evidence kind",
+        "must be relative",
+        "needs unit",
+        "no machine condition",
+        "code path not in repo",
+    ):
         assert frag in probs
 
 
@@ -138,6 +173,7 @@ def test_load_inventory_rejects_wrong_schema(tmp_path):
 
 # --------------------------------------------------------------------------- predicates
 
+
 def test_cond_match_operators():
     rec = {"a": {"b": 3}, "s": "OK", "flag": True, "one": 1, "l": [1], "e": []}
     assert h.cond_match(rec, {"field": "a.b", "gte": 3})
@@ -147,7 +183,9 @@ def test_cond_match_operators():
     assert h.cond_match(rec, {"field": "flag", "equals": True})
     assert not h.cond_match(rec, {"field": "one", "equals": True}), "True must not match 1"
     assert h.cond_match(rec, {"field": "one", "equals": 1})
-    assert h.cond_match(rec, {"field": "l", "nonempty": True}) and not h.cond_match(rec, {"field": "e", "nonempty": True})
+    assert h.cond_match(rec, {"field": "l", "nonempty": True}) and not h.cond_match(
+        rec, {"field": "e", "nonempty": True}
+    )
     assert h.cond_match(rec, {"field": "a", "regex": r'"b": 3'})
     assert h.cond_match(rec, {"all": [{"field": "s", "equals": "OK"}, {"field": "flag", "truthy": True}]})
     assert h.cond_match(rec, {"any": [{"field": "s", "equals": "X"}, {"field": "one", "equals": 1}]})
@@ -156,12 +194,15 @@ def test_cond_match_operators():
 
 # --------------------------------------------------------------------------- evaluators per kind
 
+
 def test_jsonl_states_and_window(tmp_path):
     p = _probe(tmp_path)
-    rows = [{"at": _iso(1), "type": "q", "outcome": "CLEARED"},
-            {"at": _iso(2), "type": "q", "outcome": "INEFFECTIVE"},
-            {"at": _iso(1000), "type": "s", "outcome": "CLEARED"},
-            {"at": _iso(3), "type": "s", "outcome": "INEFFECTIVE"}]
+    rows = [
+        {"at": _iso(1), "type": "q", "outcome": "CLEARED"},
+        {"at": _iso(2), "type": "q", "outcome": "INEFFECTIVE"},
+        {"at": _iso(1000), "type": "s", "outcome": "CLEARED"},
+        {"at": _iso(3), "type": "s", "outcome": "INEFFECTIVE"},
+    ]
     _write(p.root / "logs/rem.jsonl", "\n".join(json.dumps(r) for r in rows) + "\nnot json\n")
     ev = {"kind": "jsonl", "path": "logs/rem.jsonl", "ts_key": "at"}
     pred = {"field": "outcome", "equals": "CLEARED"}
@@ -189,7 +230,10 @@ def test_json_document(tmp_path):
 def test_jsonstream_dated_and_undated_tail(tmp_path):
     p = _probe(tmp_path)
     blocks = [{"checked_at": _iso(5), "restarted": None}, {"checked_at": _iso(4), "restarted": {"rc": 0}}]
-    _write(p.root / "logs/wd.log", "[telegram] noise\n" + "\n".join(json.dumps(b, indent=2) for b in blocks) + "\n{broken\n")
+    _write(
+        p.root / "logs/wd.log",
+        "[telegram] noise\n" + "\n".join(json.dumps(b, indent=2) for b in blocks) + "\n{broken\n",
+    )
     ev = {"kind": "jsonstream", "path": "logs/wd.log", "ts_key": "checked_at"}
     r = _eval(p, _mech("wd", ev, {"field": "restarted", "truthy": True}))
     assert r["state"] == h.PROVEN and r["records"] == 2 and not r["undated"]
@@ -209,13 +253,21 @@ def test_jsonstream_dated_and_undated_tail(tmp_path):
 def test_log_ts_regex_timezone_and_bases(tmp_path):
     p = _probe(tmp_path)
     # local ET timestamps: 2026-10-09 15:30 EDT = 19:30Z (inside a 1 h window); 09-01 is outside
-    text = ("2026-09-01 10:00:00,1 [x] verified clear (abc)\n"
-            "2026-10-09 15:30:00,5 [x] Tier 1\n"
-            "   verified clear (no_verify)\n"
-            "2026-10-09 15:31:00,5 [x] verified clear (jobs_0)\n")
+    text = (
+        "2026-09-01 10:00:00,1 [x] verified clear (abc)\n"
+        "2026-10-09 15:30:00,5 [x] Tier 1\n"
+        "   verified clear (no_verify)\n"
+        "2026-10-09 15:31:00,5 [x] verified clear (jobs_0)\n"
+    )
     _write(tmp_path / "dev/logs/esc.log", text)
-    ev = {"kind": "log", "base": "devtree", "path": "logs/esc.log", "ts_regex": r"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)",
-          "tz": "America/New_York", "line_regex": "verified clear"}
+    ev = {
+        "kind": "log",
+        "base": "devtree",
+        "path": "logs/esc.log",
+        "ts_regex": r"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)",
+        "tz": "America/New_York",
+        "line_regex": "verified clear",
+    }
     pred = {"regex": r"verified clear \((?!no_verify)", "window_hours": 1}
     r = _eval(p, _mech("esc", ev, pred))
     assert r["state"] == h.PROVEN and r["successes"] == 2 and r["successes_window"] == 1
@@ -223,13 +275,22 @@ def test_log_ts_regex_timezone_and_bases(tmp_path):
     assert r["records"] == 3, "the continuation line inherits the previous timestamp"
     # home base + UTC + undated tail
     _write(tmp_path / "home/logs/w.log", "[2026-10-09 19:00:00 UTC] UNRESPONSIVE after 3 probes — killing pid 1\n")
-    ev2 = {"kind": "log", "base": "home", "path": "logs/w.log", "ts_regex": r"^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d) UTC\]", "tz": "UTC"}
+    ev2 = {
+        "kind": "log",
+        "base": "home",
+        "path": "logs/w.log",
+        "ts_regex": r"^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d) UTC\]",
+        "tz": "UTC",
+    }
     assert _eval(p, _mech("w", ev2, {"regex": "killing pid"}))["state"] == h.PROVEN
     _write(p.root / "logs/reaper.log", "x · 1 proc(s) reaped\n" + "x · 0 proc(s) reaped\n" * 5, mtime_hours_ago=0.5)
     ev3 = {"kind": "log", "path": "logs/reaper.log", "undated_tail_lines": 3}
     r = _eval(p, _mech("r", ev3, {"regex": r"[1-9]\d* proc\(s\) reaped"}))
     assert r["state"] == h.RAN_NOT_HEALED and r["undated"]
-    assert _eval(p, _mech("r", dict(ev3, undated_tail_lines=6), {"regex": r"[1-9]\d* proc\(s\) reaped"}))["state"] == h.PROVEN
+    assert (
+        _eval(p, _mech("r", dict(ev3, undated_tail_lines=6), {"regex": r"[1-9]\d* proc\(s\) reaped"}))["state"]
+        == h.PROVEN
+    )
 
 
 def test_sqlite_read_only(tmp_path):
@@ -256,9 +317,11 @@ def test_sqlite_read_only(tmp_path):
 
 
 def test_journal_via_fake_runner(tmp_path):
-    out = ("2026-10-09T15:00:00-04:00 host systemd[1]: portfolio-server.service: Scheduled restart job, restart counter is at 1.\n"
-           "-- Boot abc --\n"
-           "2026-10-09T15:00:05-04:00 host systemd[1]: Started portfolio-server.service.\n")
+    out = (
+        "2026-10-09T15:00:00-04:00 host systemd[1]: portfolio-server.service: Scheduled restart job, restart counter is at 1.\n"
+        "-- Boot abc --\n"
+        "2026-10-09T15:00:05-04:00 host systemd[1]: Started portfolio-server.service.\n"
+    )
     runner = FakeRunner({"-u portfolio-server.service": (0, out, ""), "-u dead.service": (1, "", "boom")})
     p = _probe(tmp_path, runner=runner)
     ev = {"kind": "journal", "unit": "portfolio-server.service", "window_hours": 168}
@@ -274,9 +337,13 @@ def test_journal_via_fake_runner(tmp_path):
 
 
 def test_systemd_show(tmp_path):
-    runner = FakeRunner({"show a.service": (0, "NRestarts=1\nActiveState=active\nLoadState=loaded\nRestart=always\n", ""),
-                         "show b.service": (0, "NRestarts=0\nActiveState=active\nLoadState=loaded\n", ""),
-                         "show c.service": (0, "LoadState=not-found\n", "")})
+    runner = FakeRunner(
+        {
+            "show a.service": (0, "NRestarts=1\nActiveState=active\nLoadState=loaded\nRestart=always\n", ""),
+            "show b.service": (0, "NRestarts=0\nActiveState=active\nLoadState=loaded\n", ""),
+            "show c.service": (0, "LoadState=not-found\n", ""),
+        }
+    )
     p = _probe(tmp_path, runner=runner)
     pred = {"all": [{"field": "NRestarts", "gte": 1}, {"field": "ActiveState", "equals": "active"}]}
     assert _eval(p, _mech("a", {"kind": "systemd", "unit": "a.service"}, pred))["state"] == h.PROVEN
@@ -284,15 +351,26 @@ def test_systemd_show(tmp_path):
     assert _eval(p, _mech("c", {"kind": "systemd", "unit": "c.service"}, pred))["state"] == h.NO_EVIDENCE
 
 
-PSQL_EV = {"kind": "psql", "database": "trade_ai", "user": "trade_ai", "host": "localhost",
-           "table": "broker_oauth_token_audit", "ts_key": "created_at", "columns": ["event", "status", "created_at"]}
-PSQL_PRED = {"all": [{"field": "event", "equals": "refresh_rotation"}, {"field": "status", "equals": "ok"}],
-             "window_hours": 24}
+PSQL_EV = {
+    "kind": "psql",
+    "database": "trade_ai",
+    "user": "trade_ai",
+    "host": "localhost",
+    "table": "broker_oauth_token_audit",
+    "ts_key": "created_at",
+    "columns": ["event", "status", "created_at"],
+}
+PSQL_PRED = {
+    "all": [{"field": "event", "equals": "refresh_rotation"}, {"field": "status", "equals": "ok"}],
+    "window_hours": 24,
+}
 
 
 def test_psql_proven_via_fake_runner(tmp_path):
-    rows = [{"event": "refresh_rotation", "status": "ok", "created_at": _iso(2)},
-            {"event": "refresh_rotation", "status": "error", "created_at": _iso(3)}]
+    rows = [
+        {"event": "refresh_rotation", "status": "ok", "created_at": _iso(2)},
+        {"event": "refresh_rotation", "status": "error", "created_at": _iso(3)},
+    ]
     runner = FakeRunner({"broker_oauth_token_audit": (0, "\n".join(json.dumps(r) for r in rows) + "\n", "")})
     p = _probe(tmp_path, runner=runner)
     r = _eval(p, _mech("s", PSQL_EV, PSQL_PRED))
@@ -317,8 +395,10 @@ def test_psql_auth_failure_is_no_evidence(tmp_path):
     assert r["state"] == h.NO_EVIDENCE and r["note"] == "psql auth/connect failed rc=2"
 
 
-@pytest.mark.parametrize("bad", [{"columns": []}, {"columns": ["*"]}, {"table": "t; DROP"}, {"user": ""},
-                                 {"columns": ["event", "pg_sleep(1)"]}])
+@pytest.mark.parametrize(
+    "bad",
+    [{"columns": []}, {"columns": ["*"]}, {"table": "t; DROP"}, {"user": ""}, {"columns": ["event", "pg_sleep(1)"]}],
+)
 def test_psql_invalid_spec_never_runs(tmp_path, bad):
     runner = FakeRunner()
     p = _probe(tmp_path, runner=runner)
@@ -357,18 +437,29 @@ def test_every_real_inventory_command_is_read_only(tmp_path):
 
 # --------------------------------------------------------------------------- dimension 6
 
+
 def _tick(p, *, ok_runs: int, total: int, last_ok: bool = True, last_age_min: float = 3):
     rows = [{"as_of": _iso(i * 0.08), "mode": "apply", "ok": i >= total - ok_runs} for i in range(total)]
     _write(p.root / "data/runtime/health_tick_history.jsonl", "\n".join(json.dumps(r) for r in rows))
-    _write(p.root / "data/runtime/health_tick_last.json",
-           json.dumps({"as_of": _iso(last_age_min / 60), "ok": last_ok, "mode": "apply", "failed": [] if last_ok else ["x"]}))
+    _write(
+        p.root / "data/runtime/health_tick_last.json",
+        json.dumps(
+            {"as_of": _iso(last_age_min / 60), "ok": last_ok, "mode": "apply", "failed": [] if last_ok else ["x"]}
+        ),
+    )
 
 
 def _heal_inventory(p, proven: int, total: int):
     rows = [{"at": _iso(1), "id": i, "outcome": "CLEARED" if i < proven else "INEFFECTIVE"} for i in range(total)]
     _write(p.root / "logs/rem.jsonl", "\n".join(json.dumps(r) for r in rows))
-    mechs = [_mech(f"m{i}", {"kind": "jsonl", "path": "logs/rem.jsonl", "ts_key": "at", "filter": {"field": "id", "equals": i}},
-                   {"field": "outcome", "equals": "CLEARED"}) for i in range(total)]
+    mechs = [
+        _mech(
+            f"m{i}",
+            {"kind": "jsonl", "path": "logs/rem.jsonl", "ts_key": "at", "filter": {"field": "id", "equals": i}},
+            {"field": "outcome", "equals": "CLEARED"},
+        )
+        for i in range(total)
+    ]
     _inventory(p, mechs)
 
 
@@ -377,14 +468,17 @@ def test_self_healing_unverified_without_evidence(tmp_path):
     assert r["status"] == core.UNVERIFIED and r["score"] == 0.0 and not r["gate"]["pass"]
 
 
-@pytest.mark.parametrize("proven,ok_runs,last_ok,age,passes", [
-    (4, 99, True, 3, True),     # exactly 80% proven and 99% tick ok -> gate
-    (5, 100, True, 3, True),    # 100% / 100% -> 10
-    (3, 100, True, 3, False),   # 60% proven
-    (4, 98, True, 3, False),    # tick ok rate 98% < 99%
-    (4, 100, False, 3, False),  # latest tick exited 1
-    (4, 100, True, 60, False),  # latest tick receipt stale
-])
+@pytest.mark.parametrize(
+    "proven,ok_runs,last_ok,age,passes",
+    [
+        (4, 99, True, 3, True),  # exactly 80% proven and 99% tick ok -> gate
+        (5, 100, True, 3, True),  # 100% / 100% -> 10
+        (3, 100, True, 3, False),  # 60% proven
+        (4, 98, True, 3, False),  # tick ok rate 98% < 99%
+        (4, 100, False, 3, False),  # latest tick exited 1
+        (4, 100, True, 60, False),  # latest tick receipt stale
+    ],
+)
 def test_self_healing_gate_boundaries(tmp_path, proven, ok_runs, last_ok, age, passes):
     p = _probe(tmp_path)
     _heal_inventory(p, proven, 5)
@@ -450,7 +544,9 @@ def test_health_tick_single_stale_receipt_not_green(tmp_path):
     r = h.collect_self_healing(p)
     assert r["metrics"]["s_health_tick"] is None and not r["gate"]["pass"] and r["score"] <= 7.9
     # the same receipt, fresh and alone, is one sample (ok_rate 1/1) — below health_tick_min_samples (see r2 test)
-    _write(p.root / "data/runtime/health_tick_last.json", json.dumps({"as_of": _iso(0.05), "ok": True, "mode": "apply"}))
+    _write(
+        p.root / "data/runtime/health_tick_last.json", json.dumps({"as_of": _iso(0.05), "ok": True, "mode": "apply"})
+    )
     t = h.health_tick_status(p)
     assert t["ok_rate"] == 1.0 and t["runs"] == 1 and t["ok_rate_basis"] == "latest_receipt"
 
@@ -461,9 +557,17 @@ def test_history_rows_without_timestamp_do_not_count(tmp_path):
     assert h.health_tick_status(p)["runs"] == 0
 
 
-@pytest.mark.parametrize("dim,key", [("self_healing", "proven_ratio_gate"), ("self_healing", "undated_tail_lines"),
-                                     ("self_healing", "health_tick_window_hours"), ("self_healing", "proof_window_hours"),
-                                     ("recovery", "backup_ok_score"), ("recovery", "n8n_lab_restore_drill_credit")])
+@pytest.mark.parametrize(
+    "dim,key",
+    [
+        ("self_healing", "proven_ratio_gate"),
+        ("self_healing", "undated_tail_lines"),
+        ("self_healing", "health_tick_window_hours"),
+        ("self_healing", "proof_window_hours"),
+        ("recovery", "backup_ok_score"),
+        ("recovery", "n8n_lab_restore_drill_credit"),
+    ],
+)
 def test_missing_config_key_is_unverified(tmp_path, dim, key):
     cfg = _config()
     del cfg["dimensions"][dim][key]
@@ -509,12 +613,19 @@ def test_recovery_scores_from_config(tmp_path):
 
 # --------------------------------------------------------------------------- dimension 9
 
+
 def _bv(p, verdict="OK", age_h=2):
-    _write(p.root / "data/runtime/backup_verify_last.json", json.dumps({"schema": "BackupVerifyReceipt@v1", "as_of": _iso(age_h), "verdict": verdict}))
+    _write(
+        p.root / "data/runtime/backup_verify_last.json",
+        json.dumps({"schema": "BackupVerifyReceipt@v1", "as_of": _iso(age_h), "verdict": verdict}),
+    )
 
 
 def _rd(p, outcome="PASS", age_h=24):
-    _write(p.root / "data/runtime/trade_ai_restore_drill_last.json", json.dumps({"schema": "TradeAiRestoreDrill@v1", "as_of": _iso(age_h), "outcome": outcome}))
+    _write(
+        p.root / "data/runtime/trade_ai_restore_drill_last.json",
+        json.dumps({"schema": "TradeAiRestoreDrill@v1", "as_of": _iso(age_h), "outcome": outcome}),
+    )
 
 
 def _lab(p, ok=True, age_h=50):
@@ -534,12 +645,15 @@ def test_recovery_gate_pass(tmp_path):
     assert r["gate"]["pass"] and r["score"] == 10.0 and r["status"] == core.VERIFIED
 
 
-@pytest.mark.parametrize("bv,rd,expect_score", [
-    (("OK", 27), ("PASS", 24), 5.0),        # backup receipt 1 h past the 26 h freshness limit
-    (("WARN", 2), ("PASS", 24), 7.5),       # WARN = 5 -> mean 7.5, capped below the gate
-    (("OK", 2), ("FAIL", 24), 5.0),         # drill failed
-    (("OK", 2), ("PASS", 36 * 24), 5.0),    # drill older than 35 days
-])
+@pytest.mark.parametrize(
+    "bv,rd,expect_score",
+    [
+        (("OK", 27), ("PASS", 24), 5.0),  # backup receipt 1 h past the 26 h freshness limit
+        (("WARN", 2), ("PASS", 24), 7.5),  # WARN = 5 -> mean 7.5, capped below the gate
+        (("OK", 2), ("FAIL", 24), 5.0),  # drill failed
+        (("OK", 2), ("PASS", 36 * 24), 5.0),  # drill older than 35 days
+    ],
+)
 def test_recovery_gate_failures(tmp_path, bv, rd, expect_score):
     p = _probe(tmp_path)
     _bv(p, *bv)
@@ -564,10 +678,13 @@ def test_collectors_registered():
 
 # --------------------------------------------------------------------------- round 2 (#1593 review)
 
+
 def test_r2_single_fresh_receipt_below_min_samples_is_partial(tmp_path):
     p = _probe(tmp_path)
     _heal_inventory(p, 5, 5)
-    _write(p.root / "data/runtime/health_tick_last.json", json.dumps({"as_of": _iso(0.05), "ok": True, "mode": "apply"}))
+    _write(
+        p.root / "data/runtime/health_tick_last.json", json.dumps({"as_of": _iso(0.05), "ok": True, "mode": "apply"})
+    )
     r = h.collect_self_healing(p)
     assert r["metrics"]["health_tick_runs"] == 1 and r["metrics"]["s_health_tick"] is None
     assert r["status"] == core.PARTIAL and not r["gate"]["pass"] and r["score"] <= 7.9
@@ -577,7 +694,9 @@ def test_r2_single_fresh_receipt_below_min_samples_is_partial(tmp_path):
 def test_r2_min_samples_comes_from_config(tmp_path):
     p = _probe(tmp_path, config=_config(self_healing={"health_tick_min_samples": 1}))
     _heal_inventory(p, 5, 5)
-    _write(p.root / "data/runtime/health_tick_last.json", json.dumps({"as_of": _iso(0.05), "ok": True, "mode": "apply"}))
+    _write(
+        p.root / "data/runtime/health_tick_last.json", json.dumps({"as_of": _iso(0.05), "ok": True, "mode": "apply"})
+    )
     r = h.collect_self_healing(p)
     assert r["gate"]["pass"] and r["score"] == 10.0
     cfg = _config()
@@ -608,7 +727,7 @@ def test_r2_malformed_inventory_is_unverified_not_scored(tmp_path):
 def test_r2_self_healing_and_recovery_caps_are_config_driven(tmp_path):
     p = _probe(tmp_path, config=_config())
     p.config["gate_cap"] = 3.0
-    _heal_inventory(p, 4, 5)        # 80% proven
+    _heal_inventory(p, 4, 5)  # 80% proven
     _tick(p, ok_runs=95, total=100)  # 95% < 99% gate
     r = h.collect_self_healing(p)
     assert not r["gate"]["pass"] and r["score"] == 3.0

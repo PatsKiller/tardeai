@@ -1,0 +1,465 @@
+{
+  "schema": "MaturityTruthIntegrationEvidence@v1",
+  "campaign_id": "n8n-maturity-20261018",
+  "base_sha": "17bdbe53cca0786eacf5bfdfc7985584fa7f66d0",
+  "approved_source_sha": "6af4b17a4559ed892894437d5bd86a99043381d3",
+  "source_parity": [
+    {
+      "path": "config/self_healing_mechanisms.json",
+      "sha256": "9a06e511aed28cab5383a1cab1a714daa421218ba8b821768ee53c5cead45a2d",
+      "bytes": 31258
+    },
+    {
+      "path": "scripts/lib/n8n_maturity/dims_healing.py",
+      "sha256": "df14ae402a3ca0851bdd89dd9745877902874827696cfd47872603a277129c7f",
+      "bytes": 38634
+    },
+    {
+      "path": "tests/test_n8n_maturity_recovery_truth_20261019.py",
+      "sha256": "e9db80ef3ff71d84307e73ea53f31714fecbe15e66e0d3667d07ad6091b8e24b",
+      "bytes": 8159
+    },
+    {
+      "path": "tests/test_n8n_platform_maturity_healing_20261009.py",
+      "sha256": "60bccf9dc10eba2577a8f429fc5448e1e62dd9d965388b56754ac7478b5d0e59",
+      "bytes": 30699
+    }
+  ],
+  "source_comparison": "All4config/source/testblobs exact approved6af; no author changes to implementation or tests.",
+  "independent_source_review": "historical-independent/maturity6af-root-review.json.gz",
+  "CI": {
+    "base": "17bdbe53cca0786eacf5bfdfc7985584fa7f66d0",
+    "before": 501,
+    "after": 501,
+    "changed_existing_gate": "N8N_PLATFORM_MATURITY",
+    "new_test": "tests/test_n8n_maturity_recovery_truth_20261019.py",
+    "all_other_500_gate_values_order_unchanged": true,
+    "all_existing_test_members_order_unchanged": true,
+    "rest_runner_AST_equal": true,
+    "actual_PR_selector_includes_gate_and_new_test": true,
+    "selected": [
+      "hermes_tune_cutover_20261017",
+      "hermes_feedback_cutover_20261017",
+      "self_heal_claude_fixer_20261016",
+      "self_heal_fixer_hardening_20261016",
+      "learning_operational_remediation",
+      "campaign_m2_canary_lanes",
+      "alarm_fires",
+      "release_manifest",
+      "maturity_overnight_20260912",
+      "ci_self_guards",
+      "ci_outage_emergency_release_20261005",
+      "alert_single_source_20261005",
+      "scripts_lib_bootstrap",
+      "governance_section_zero_parity",
+      "dashboard_no_embedded_key",
+      "guard_push_auth",
+      "agents_type_vocabulary",
+      "overnight_g3_docs_index",
+      "import_shadowing",
+      "generated_file_merge",
+      "agent_governance_sop",
+      "canonical_observation_contract",
+      "deploy_ff_dev_tree",
+      "ci_fixture_immutability",
+      "overnight_g4_archive_mechanism",
+      "overnight_g6_missing_stores",
+      "gate_honesty_and_archive_or_wire",
+      "schd_decision_integrity_20260925",
+      "p2_hygiene_guard_lineage_20260926",
+      "test_host_paths_ratchet_20260925",
+      "scheduler_operations",
+      "n8n_parallel_20261007",
+      "n8n_fabric_hermes_learning_20261015",
+      "cio_deploy_receipt_truth_20261018",
+      "N8N_PLATFORM_MATURITY",
+      "release_venv_p0_20261015",
+      "notification_intents_20261010",
+      "release_windows_20261016"
+    ],
+    "profile": "fast",
+    "stdout": "[select] base=17bdbe53cca0786eacf5bfdfc7985584fa7f66d0 changed=1 tier=medium map=rebuilt impacted=34 selected_files=71 gates=38 estimate=121.0s (mandatory 43.0s, budget 540.0s) deferred=0 select_secs=20.2\n"
+  },
+  "artifacts": [
+    {
+      "path": "historical-author/maturity-recovery-baseline-dims_healing.py.gz",
+      "original": "/tmp/n8n-campaign-20261018/maturity-recovery-baseline-dims_healing.py",
+      "kind": "original_source_test_or_formatting_evidence",
+      "bytes": 10272,
+      "sha256": "a61208a3ba9eeac795616b6d861d524686dc9f0b99d40780e76b03cb67107958",
+      "decompressed_bytes": 35297,
+      "decompressed_sha256": "942588e089ce2457586806281a272bba86b8d24879058065f06d937935874c2b"
+    },
+    {
+      "path": "historical-author/maturity-recovery-baseline-evidence.json.gz",
+      "original": "/tmp/n8n-campaign-20261018/maturity-recovery-baseline-evidence.json",
+      "kind": "original_source_test_or_formatting_evidence",
+      "bytes": 933,
+      "sha256": "ab4b1104c36c8c8e527fd7158fe877c5e8418cf457e492bcdb2a1e4074861714",
+      "decompressed_bytes": 2149,
+      "decompressed_sha256": "cfa584c48e4e434edd8ee67efabcb827cee42aea957c105185bc349ed9000b7b"
+    },
+    {
+      "path": "historical-author/maturity-recovery-baseline-existing-test.py.gz",
+      "original": "/tmp/n8n-campaign-20261018/maturity-recovery-baseline-existing-test.py",
+      "kind": "original_source_test_or_formatting_evidence",
+      "bytes": 7824,
+      "sha256": "7bd74f88160ade3550f6bf342cfd6feacb92866c524c0965d26943f1818c9813",
+      "decompressed_bytes": 30144,
+      "decompressed_sha256": "3c2ea611bfd522d2e1e87a16c3f2168694583fabc0e94ebb06e657881e562bef"
+    },
+    {
+      "path": "historical-author/maturity-recovery-baseline-format.log.gz",
+      "original": "/tmp/n8n-campaign-20261018/maturity-recovery-baseline-format.log",
+      "kind": "original_source_test_or_formatting_evidence",
+      "bytes": 8353,
+      "sha256": "140ae54914c9b39d72218a48607ea4c601a0e3730be94c2651dfbd20524d206e",
+      "decompressed_bytes": 35805,
+      "decompressed_sha256": "a032f98146df42898580a1cf1ef089dc5f78efa8fc371c7879411a2960c5d4c9"
+    },
+    {
+      "path": "historical-author/maturity-recovery-baseline-self_healing_mechanisms.json.gz",
+      "original": "/tmp/n8n-campaign-20261018/maturity-recovery-baseline-self_healing_mechanisms.json",
+      "kind": "original_source_test_or_formatting_evidence",
+      "bytes": 6606,
+      "sha256": "c89bdca89a59d7c12dd9c21d938e3086c95ec14b44c41b3674c7bc816ba927ee",
+      "decompressed_bytes": 30663,
+      "decompressed_sha256": "d75c98edc4c491e1dab5aee3181ef157d80f4c2adf9ba2f9251ab2000ebf03e5"
+    },
+    {
+      "path": "historical-author/maturity-recovery-baseline.log.gz",
+      "original": "/tmp/n8n-campaign-20261018/maturity-recovery-baseline.log",
+      "kind": "original_source_test_or_formatting_evidence",
+      "bytes": 648,
+      "sha256": "b582195665bd582a4174de79558850a12240776836cb3331a7c49627a3658e86",
+      "decompressed_bytes": 2385,
+      "decompressed_sha256": "63c9ad51d22fadb664306f202ad252281409619a92301f1cf69cb3a9f35ac476"
+    },
+    {
+      "path": "historical-author/maturity-recovery-baseline.xml.gz",
+      "original": "/tmp/n8n-campaign-20261018/maturity-recovery-baseline.xml",
+      "kind": "original_source_test_or_formatting_evidence",
+      "bytes": 819,
+      "sha256": "8bba429a9454308e3de5364586bb1e5bcc1c3eedea92c8ec45c5f08c23e38c18",
+      "decompressed_bytes": 2969,
+      "decompressed_sha256": "2f71665457eb135ed561650c73b3af027727b87a37bc5109fa36df134f0cf1c2"
+    },
+    {
+      "path": "historical-author/maturity-recovery-candidate.log.gz",
+      "original": "/tmp/n8n-campaign-20261018/maturity-recovery-candidate.log",
+      "kind": "original_source_test_or_formatting_evidence",
+      "bytes": 52,
+      "sha256": "faa38b490dc1e469d988ccf0d5baf024b6541deda7eb1230dedc9db797cd3832",
+      "decompressed_bytes": 99,
+      "decompressed_sha256": "f4938cf813502ff05994bcccdd2c66e8097f4cb87b0cdb5b76a506c8fc716707"
+    },
+    {
+      "path": "historical-author/maturity-recovery-candidate.xml.gz",
+      "original": "/tmp/n8n-campaign-20261018/maturity-recovery-candidate.xml",
+      "kind": "original_source_test_or_formatting_evidence",
+      "bytes": 628,
+      "sha256": "c96302fff996802dfa809110bd4651e89dff600b9659f981c0f2c09c7536a774",
+      "decompressed_bytes": 3300,
+      "decompressed_sha256": "1c9894a6a7e7869159698d05def8374d42a7234e8cfc617a1690ff765a692656"
+    },
+    {
+      "path": "historical-author/maturity-recovery-exact-head.log.gz",
+      "original": "/tmp/n8n-campaign-20261018/maturity-recovery-exact-head.log",
+      "kind": "original_source_test_or_formatting_evidence",
+      "bytes": 73,
+      "sha256": "996e2aea2d089a4314fd8f6da41bd9a35a7e06dfb06bcb2abccd8e9c5e13d984",
+      "decompressed_bytes": 340,
+      "decompressed_sha256": "bb6bb71708575bd53f04764317c04213a6ea1374c3283038688d52556e60e566"
+    },
+    {
+      "path": "historical-author/maturity-recovery-exact-head.xml.gz",
+      "original": "/tmp/n8n-campaign-20261018/maturity-recovery-exact-head.xml",
+      "kind": "original_source_test_or_formatting_evidence",
+      "bytes": 3295,
+      "sha256": "bcfc8b32566600bdf5f1d1458f7e0823b9e511936f8897ba443ded8b08b65033",
+      "decompressed_bytes": 33848,
+      "decompressed_sha256": "9728eb3431721a8214e3dccf46d8a97691f853d39a4cc6daefbc4bd9126df516"
+    },
+    {
+      "path": "historical-author/maturity-recovery-fixture-lease.json.gz",
+      "original": "/tmp/n8n-campaign-20261018/maturity-recovery-fixture-lease.json",
+      "kind": "original_source_test_or_formatting_evidence",
+      "bytes": 364,
+      "sha256": "d64c920db71b4d5a6b5c7b4750498db80320615519ddaf4eb3bfd6eb0dfc3e97",
+      "decompressed_bytes": 648,
+      "decompressed_sha256": "c32e7ca505554a8382b91367690ad18748f4dc9de99e1e85ccb4a4373f3ecf54"
+    },
+    {
+      "path": "historical-author/maturity-recovery-focused.log.gz",
+      "original": "/tmp/n8n-campaign-20261018/maturity-recovery-focused.log",
+      "kind": "original_source_test_or_formatting_evidence",
+      "bytes": 73,
+      "sha256": "d9807fcdf1d013999d6c603fbb4c3b3dbdb799af763a1bb46e39c7c956e36073",
+      "decompressed_bytes": 340,
+      "decompressed_sha256": "1f2250e1c52370acbd5fd1bb2c26931fa0890c9a5ba700cf2fd743690e6721a5"
+    },
+    {
+      "path": "historical-author/maturity-recovery-focused.xml.gz",
+      "original": "/tmp/n8n-campaign-20261018/maturity-recovery-focused.xml",
+      "kind": "original_source_test_or_formatting_evidence",
+      "bytes": 3299,
+      "sha256": "a0f86e234da7f357b51107867fbefad3d8ba0e0cbebcc2e36389d9c97b2aa50a",
+      "decompressed_bytes": 33848,
+      "decompressed_sha256": "2e6a056cb91c7f1917c620769446155af9a5c294cd0945d78c453a64154b59f5"
+    },
+    {
+      "path": "historical-author/maturity-recovery-frozen-test.py.gz",
+      "original": "/tmp/n8n-campaign-20261018/maturity-recovery-frozen-test.py",
+      "kind": "original_source_test_or_formatting_evidence",
+      "bytes": 2908,
+      "sha256": "f0c0824b1e0ddcbf9d6c73ba036e2bbc734941b32ecd0653088cac4872e352a8",
+      "decompressed_bytes": 8159,
+      "decompressed_sha256": "e9db80ef3ff71d84307e73ea53f31714fecbe15e66e0d3667d07ad6091b8e24b"
+    },
+    {
+      "path": "historical-author/maturity-recovery-pair-green.log.gz",
+      "original": "/tmp/n8n-campaign-20261018/maturity-recovery-pair-green.log",
+      "kind": "original_source_test_or_formatting_evidence",
+      "bytes": 67,
+      "sha256": "3e101f08585cdd4897bffe0b914620843ced9637c0a2b59edf7f061cb478fee7",
+      "decompressed_bytes": 113,
+      "decompressed_sha256": "188c5d80eea3e88b92bf3a436bf0fa306e3e5b6c7ce1d8f5f422213214405f8f"
+    },
+    {
+      "path": "historical-author/maturity-recovery-pair-green.xml.gz",
+      "original": "/tmp/n8n-campaign-20261018/maturity-recovery-pair-green.xml",
+      "kind": "original_source_test_or_formatting_evidence",
+      "bytes": 344,
+      "sha256": "1becd4e6fcc4d219d0f1f74fd9cf21efb4cc0e08f9e7bf0f25ebed0777040466",
+      "decompressed_bytes": 843,
+      "decompressed_sha256": "7b5eb2237dea15ecbcf78c076ec0913cc23187a4becefd3808a68473555f532c"
+    },
+    {
+      "path": "historical-author/maturity-recovery-preformat-dims_healing.py.gz",
+      "original": "/tmp/n8n-campaign-20261018/maturity-recovery-preformat-dims_healing.py",
+      "kind": "original_source_test_or_formatting_evidence",
+      "bytes": 11201,
+      "sha256": "055fd44cdb8529bf6f0fd99ffa50e80fa10275021d8088ff31787e649995387b",
+      "decompressed_bytes": 37843,
+      "decompressed_sha256": "46af5545a5af821d15516df470944d63c8bfce84d1ff03f6375f77c1b088b71e"
+    },
+    {
+      "path": "historical-author/maturity-recovery-preformat-test_n8n_platform_maturity_healing_20261009.py.gz",
+      "original": "/tmp/n8n-campaign-20261018/maturity-recovery-preformat-test_n8n_platform_maturity_healing_20261009.py",
+      "kind": "original_source_test_or_formatting_evidence",
+      "bytes": 7827,
+      "sha256": "ace53fbc7a40f5ceb51060b1820aaed0099df352187406d89f089cbbcc979193",
+      "decompressed_bytes": 30144,
+      "decompressed_sha256": "f65ca0294d69a5fb7a943e4b335181b3127f9fbad3918e50fee3f5424779d069"
+    },
+    {
+      "path": "historical-author/maturity-recovery-release.json.gz",
+      "original": "/tmp/n8n-campaign-20261018/maturity-recovery-release.json",
+      "kind": "original_source_test_or_formatting_evidence",
+      "bytes": 209,
+      "sha256": "a5427b22053ed3331e1f567a31f2a3cea087dc03687c421b890322c3b4aa5b69",
+      "decompressed_bytes": 266,
+      "decompressed_sha256": "db08efcf4dbc82160b135d323a03852bdbfc566175e35a018526d2129d5810c3"
+    },
+    {
+      "path": "historical-author/maturity-recovery-ruff-check.log.gz",
+      "original": "/tmp/n8n-campaign-20261018/maturity-recovery-ruff-check.log",
+      "kind": "original_source_test_or_formatting_evidence",
+      "bytes": 39,
+      "sha256": "f3af4d142827f5aad2eb0c72d556d325488a57fb6219aac10afeb51085667d53",
+      "decompressed_bytes": 19,
+      "decompressed_sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+    },
+    {
+      "path": "historical-author/maturity-recovery-ruff-format.log.gz",
+      "original": "/tmp/n8n-campaign-20261018/maturity-recovery-ruff-format.log",
+      "kind": "original_source_test_or_formatting_evidence",
+      "bytes": 46,
+      "sha256": "f140afd39e06ad8a0462e6690dc99d04e26f90c8c3ded45d10199f0ca35805f6",
+      "decompressed_bytes": 26,
+      "decompressed_sha256": "eee76f865de5a9f2456950f710ae5d5f9b5bd0ea02aa54f614c5eed6642a0bfd"
+    },
+    {
+      "path": "historical-author/maturity-recovery-session.json.gz",
+      "original": "/tmp/n8n-campaign-20261018/maturity-recovery-session.json",
+      "kind": "original_source_test_or_formatting_evidence",
+      "bytes": 1167,
+      "sha256": "2265ff9485005d8baf41be3dc39be2288ba4445619e3504955d642c92851f64e",
+      "decompressed_bytes": 3541,
+      "decompressed_sha256": "50ea5920515e0135735d284aa08bb456ff96f46ee216b707df22b4aa59a93132"
+    },
+    {
+      "path": "historical-author/maturity-recovery-validation.json.gz",
+      "original": "/tmp/n8n-campaign-20261018/maturity-recovery-validation.json",
+      "kind": "original_source_test_or_formatting_evidence",
+      "bytes": 1121,
+      "sha256": "1755a60af39d61595313c934a79638fb6eefaa356eb9421c66b1440a3f25fd75",
+      "decompressed_bytes": 2526,
+      "decompressed_sha256": "1b6a47e03863dfadc56dbc1648349244a63183712dc3fd174fee002cfd7343f7"
+    },
+    {
+      "path": "historical-author/maturity-recovery-author-packet.json.gz",
+      "original": "/tmp/n8n-campaign-20261018/maturity-recovery-author-packet.json",
+      "kind": "original_source_author_packet",
+      "bytes": 3868,
+      "sha256": "5c91e27e9ac4251a52b6a1aa525fce9c37e7617620e2baa6485de494c63baacc",
+      "decompressed_bytes": 11802,
+      "decompressed_sha256": "fc5a4945f22504cecedc96e4ad1ddd9e687df10b69d4785f4d5c39d83bc96bea"
+    },
+    {
+      "path": "historical-independent/maturity6af-root-review.json.gz",
+      "original": "/tmp/n8n-campaign-20261018/cross-review/maturity6af-root-review.json",
+      "kind": "nonauthor_root_source_approval",
+      "bytes": 588,
+      "sha256": "4057365dd95687c357b1e741732b3a80c4f603175a54e5e684c70369b10ec787",
+      "decompressed_bytes": 899,
+      "decompressed_sha256": "74892783454e088091f758af3b408c002ce3d995393b08b20ba6892558fd23d7"
+    },
+    {
+      "path": "original-source/config/self_healing_mechanisms.json.gz",
+      "original": "6af4b17a4559ed892894437d5bd86a99043381d3:config/self_healing_mechanisms.json",
+      "kind": "exact_approved_git_blob",
+      "bytes": 6734,
+      "sha256": "83a8a1018a05ec10cb92e996127ac0b2865d68a46a9165e2e3bbbb22af4c78b4",
+      "decompressed_bytes": 31258,
+      "decompressed_sha256": "9a06e511aed28cab5383a1cab1a714daa421218ba8b821768ee53c5cead45a2d"
+    },
+    {
+      "path": "original-source/scripts/lib/n8n_maturity/dims_healing.py.gz",
+      "original": "6af4b17a4559ed892894437d5bd86a99043381d3:scripts/lib/n8n_maturity/dims_healing.py",
+      "kind": "exact_approved_git_blob",
+      "bytes": 11319,
+      "sha256": "cfec83ddc85f1f9533feda52f315d7892cc3145d18edcffa43c489c12c7d5471",
+      "decompressed_bytes": 38634,
+      "decompressed_sha256": "df14ae402a3ca0851bdd89dd9745877902874827696cfd47872603a277129c7f"
+    },
+    {
+      "path": "original-source/tests/test_n8n_maturity_recovery_truth_20261019.py.gz",
+      "original": "6af4b17a4559ed892894437d5bd86a99043381d3:tests/test_n8n_maturity_recovery_truth_20261019.py",
+      "kind": "exact_approved_git_blob",
+      "bytes": 2908,
+      "sha256": "f0c0824b1e0ddcbf9d6c73ba036e2bbc734941b32ecd0653088cac4872e352a8",
+      "decompressed_bytes": 8159,
+      "decompressed_sha256": "e9db80ef3ff71d84307e73ea53f31714fecbe15e66e0d3667d07ad6091b8e24b"
+    },
+    {
+      "path": "original-source/tests/test_n8n_platform_maturity_healing_20261009.py.gz",
+      "original": "6af4b17a4559ed892894437d5bd86a99043381d3:tests/test_n8n_platform_maturity_healing_20261009.py",
+      "kind": "exact_approved_git_blob",
+      "bytes": 7953,
+      "sha256": "272a9a09e6e79a909815c4b7d9f4ff11a33d53da9b5eedec92fd2f5a4b672282",
+      "decompressed_bytes": 30699,
+      "decompressed_sha256": "60bccf9dc10eba2577a8f429fc5448e1e62dd9d965388b56754ac7478b5d0e59"
+    },
+    {
+      "path": "integration/focused.txt.gz",
+      "original": "/tmp/n8n-campaign-20261018/maturity-truth-integration/focused.txt",
+      "kind": "integration_focused_or_readonly_validation",
+      "bytes": 83,
+      "sha256": "24e04db5b407f9701c7106b300f2fe386dd1a4230fbaa6d7e888d3b41fc47e0f",
+      "decompressed_bytes": 500,
+      "decompressed_sha256": "41f9ce3db083ca2115b8b094ef3cb760db2b8a032006030305609cd11959c0ea"
+    },
+    {
+      "path": "integration/focused.xml.gz",
+      "original": "/tmp/n8n-campaign-20261018/maturity-truth-integration/focused.xml",
+      "kind": "integration_focused_or_readonly_validation",
+      "bytes": 5603,
+      "sha256": "a0cba41fa8e2310bdc104bc822d2a42b31a9d75645694699f3a13e5510dd445d",
+      "decompressed_bytes": 57308,
+      "decompressed_sha256": "f02f2c9989f594c3318aaa992dc29674315cdc3d1ae01cabbb2aac2a31863ef8"
+    },
+    {
+      "path": "integration/source-parity.json.gz",
+      "original": "/tmp/n8n-campaign-20261018/maturity-truth-integration/source-parity.json",
+      "kind": "integration_focused_or_readonly_validation",
+      "bytes": 452,
+      "sha256": "eabbfeeee52807bf47c06615be1c0116d39b4dde71bb4ee7c3de757c35d303fe",
+      "decompressed_bytes": 856,
+      "decompressed_sha256": "6a75b82bf965cb887c04ea7fe70a790fb97f08d123e8baaec48640ae97196df3"
+    },
+    {
+      "path": "integration/gates-and-selector.json.gz",
+      "original": "/tmp/n8n-campaign-20261018/maturity-truth-integration/gates-and-selector.json",
+      "kind": "integration_focused_or_readonly_validation",
+      "bytes": 933,
+      "sha256": "07bf760719474c1b582d86e7a47570a559c1ab3b459d0bb7f7c557af5b6ce77b",
+      "decompressed_bytes": 1942,
+      "decompressed_sha256": "671c4f2a4f77afc9fb362884679c1754a1028776e596e1ae9a41bca8c5507195"
+    },
+    {
+      "path": "integration/quality-final.json.gz",
+      "original": "/tmp/n8n-campaign-20261018/maturity-truth-integration/quality-final.json",
+      "kind": "integration_focused_or_readonly_validation",
+      "bytes": 282,
+      "sha256": "dc3b579f3a3a7ec82ef1e333496f2d5cc348db2780029d4d0a783f26b260faaa",
+      "decompressed_bytes": 974,
+      "decompressed_sha256": "cd42ddb5a056c1d43db436f01abc9cc5a0a2452f48680c8bc3554528f056253d"
+    },
+    {
+      "path": "integration/ruff-check-final.txt.gz",
+      "original": "/tmp/n8n-campaign-20261018/maturity-truth-integration/ruff-check-final.txt",
+      "kind": "integration_focused_or_readonly_validation",
+      "bytes": 39,
+      "sha256": "f3af4d142827f5aad2eb0c72d556d325488a57fb6219aac10afeb51085667d53",
+      "decompressed_bytes": 19,
+      "decompressed_sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+    },
+    {
+      "path": "integration/ruff-format-final.txt.gz",
+      "original": "/tmp/n8n-campaign-20261018/maturity-truth-integration/ruff-format-final.txt",
+      "kind": "integration_focused_or_readonly_validation",
+      "bytes": 46,
+      "sha256": "ba6a52113bd42e9dcc835caee19b9c37a24f4dbc256f880d69ad837fd40e31d2",
+      "decompressed_bytes": 26,
+      "decompressed_sha256": "177f260a5645724013185e4b140c7045cc39e56c0c97b120f5cb23599f85f0de"
+    },
+    {
+      "path": "integration/diff-check-final.txt.gz",
+      "original": "/tmp/n8n-campaign-20261018/maturity-truth-integration/diff-check-final.txt",
+      "kind": "integration_focused_or_readonly_validation",
+      "bytes": 20,
+      "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+      "decompressed_bytes": 0,
+      "decompressed_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "integration/lease-attribution.json.gz",
+      "original": "/tmp/n8n-campaign-20261018/maturity-truth-integration/lease-attribution.json",
+      "kind": "integration_focused_or_readonly_validation",
+      "bytes": 712,
+      "sha256": "9631dcaf8948eb823a671f37bc777544f9794678c5ebebc6b09e98f1f399319f",
+      "decompressed_bytes": 1901,
+      "decompressed_sha256": "094226b40df28d15dad74a60b1d0e9977f4d070e68ea695b226324a62589d4a3"
+    },
+    {
+      "path": "integration/session-start.json.gz",
+      "original": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.git/tradeai-agent-coordination/receipts/67d334b1-9ec6-4bd7-a142-765ae736249a.json",
+      "kind": "canonical_session_start_receipt_not_runtime_grant",
+      "bytes": 1247,
+      "sha256": "991dfbe48689961e10bcb23d7396d497b3dcaabc50b872de9fbbe86617d641e3",
+      "decompressed_bytes": 3857,
+      "decompressed_sha256": "62294acf4b6b82153a92282d37066357eaa7f8845edc4b0777260d58d6ab89a7"
+    }
+  ],
+  "validation": {
+    "integration_focused": {
+      "tests": 379,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "meaning": "ExistingfiveN8N_PLATFORM_MATURITY suites plusnew19nativecases; no live inputs or nativecampaignrunner.",
+    "red_first_reused": "Originalsame4casepair2expectedassertions+2controls\u21924green preserved;19casefrozenfileunchanged; historicalsource221passreceiptretained as history only.",
+    "quality": "Ruffcheck/format anddiffcheck all0",
+    "native_full_remote_CI": "NOT_RUN; pending required independent integration review/exacthead acceptance"
+  },
+  "compatibility_and_holds": [
+    "SelfHealingMechanisms@v2 newreader explicitly supportsv1/v2; oldreaderrefusesv2. Two affected weakv1predicatesheld; unrelated44descriptors and all46IDs/order preserved.",
+    "Both affected producers still lack real trustedrun/attempt/incident linkage; no positive businessrecovery interface is implemented. Attempt/sourcecleared lists remain unproven.",
+    "Versioned inventory is localsource only; runtime reader/config rollout and rollback require reviewed artifact compatibility and exacthead CI. No runtimeconfig write or policychange occurred.",
+    "No production maturity reassessment, elapsedobservation, naturalcycles, businessrecovery or unattendedrepair proof.",
+    "No INDEX/newMarkdown/generated/native/build/remote/grant/provider/broker/database effects. Source reviewed independently byroot; integration authored here needs its own nonauthor review."
+  ],
+  "lease_attribution": "integration/lease-attribution.json.gz; peerCIrelease verified before own separate canonicalclaim; exactowned releases recorded in final external packet"
+}

@@ -1,5 +1,5 @@
 {
- "schema": "SelfHealingMechanisms@v1",
+ "schema": "SelfHealingMechanisms@v2",
  "authority": "docs/implementation/n8n-maturity (program 2026-10-09); source audit ~/n8n-maturity-program/data/B_self_healing.md",
  "note": "Inventory the n8n maturity scorer (dimension 6) evaluates. Each mechanism names the code that implements it, the evidence source a successful runtime action leaves (kind jsonl|json|jsonstream|sqlite|journal|systemd|log|psql|absent; path relative to its base), and the success predicate: an actual heal/remediation/retry success, not merely 'ran'. PROVEN = >= min_count successes within window_hours (default dimensions.self_healing.proof_window_hours, 336 h); RAN_NOT_HEALED = records exist but too few successes; NO_EVIDENCE = no source or no records. Logs without dates trust only their last undated_tail_lines lines/records (row value, else dimensions.self_healing.undated_tail_lines) and only when the file mtime is inside the window.",
  "bases": {
@@ -755,12 +755,12 @@
     "ts_key": "as_of"
    },
    "success_predicate": {
-    "description": "an incident observed recovering (recovered list non-empty) after routing",
-    "field": "recovered",
-    "nonempty": true,
+    "description": "Business recovery remains unproven: the current producer has no trusted lane/run/attempt/incident-since linkage. Attempts, delivery and source disappearance are distinct from recovered useful output.",
+    "kind": "business_recovery_unproven",
+    "blocked_reason": "source_clear_missing_linked_lane_run_attempt_incident_since",
     "min_count": 1
    },
-   "expected": "RAN_NOT_HEALED (116 open, 0 recovered; no human delivery)",
+   "expected": "RAN_NOT_HEALED when source records exist; business-output recovery linkage is not implemented, so no record currently qualifies as proof.",
    "audit_ref": "B-K"
   },
   {
@@ -793,12 +793,12 @@
     "ts_key": "ts"
    },
    "success_predicate": {
-    "description": "a recovery action actually executed (executed=true)",
-    "field": "executed",
-    "equals": true,
+    "description": "Business recovery remains unproven: the current producer has no trusted lane/run/attempt/incident-since linkage. Attempts, delivery and source disappearance are distinct from recovered useful output.",
+    "kind": "business_recovery_unproven",
+    "blocked_reason": "action_attempt_missing_linked_run_attempt_incident_since",
     "min_count": 1
    },
-   "expected": "RAN_NOT_HEALED (shadow; 1542 would_execute, 0 executed)",
+   "expected": "RAN_NOT_HEALED when source records exist; business-output recovery linkage is not implemented, so no record currently qualifies as proof.",
    "audit_ref": "B-K"
   },
   {
