@@ -16,7 +16,10 @@ MIGRATED_PROVEN.
 from __future__ import annotations
 
 import sys
+import json
+import pytest
 from collections import Counter
+from argparse import Namespace
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -29,6 +32,39 @@ from scripts import report_n8n_cutover_outcomes as R  # noqa: E402
 
 SINCE = datetime(2026, 10, 15, 4, 0, tzinfo=timezone.utc)
 UNTIL = datetime(2026, 10, 16, 20, 0, tzinfo=timezone.utc)
+
+
+def test_unavailable_scheduler_is_not_an_observed_empty_crontab(tmp_path, monkeypatch):
+    """A failed host read cannot certify zero timers, migration ownership or delivery totals."""
+    def run(argv, *args, **kwargs):
+        if argv[:2] == ["crontab", "-l"]:
+            return 1, "", "permission denied"
+        if argv[0] == "gh":
+            return 0, '{"state":"OPEN","files":[]}', ""
+        return 0, "a" * 40, ""
+
+    monkeypatch.setattr(R, "_run", run)
+    monkeypatch.setattr(R, "comms_rows", lambda *_: {"ok": False, "rows": [], "error": "unavailable"})
+    processes = json.loads((R.ROOT / "config/n8n_fabric_processes.json").read_text())["processes"]
+    historical = [
+        _r(step["lane_id"], verdict="produced", at="2026-10-16T14:00:00+00:00")
+        for process in processes.values() for step in process.get("steps", {}).values()
+        if step.get("lane_id") and not step.get("blocked")
+    ]
+    monkeypatch.setattr(R, "load_receipts", lambda *_: historical)
+    args = Namespace(since=SINCE.isoformat(), state_root=str(tmp_path), current=str(tmp_path / "current"),
+                     live_lanes_env=str(tmp_path / "missing"), compare="")
+    packet = R.build(args)
+    assert packet["migration"]["active_cron_lines"] is None
+    assert not packet["migration"]["migrated_proven"]
+    assert packet["notifications"]["communication_events_outbound"] is None
+    assert packet["observation_coverage"]["status"] == "UNAVAILABLE"
+    assert packet["observation_coverage"]["continuous"] is False
+    assert packet["crontab_sha256"] is None
+    assert all(row["fully_n8n_owned"] is None for row in packet["fabric_processes"])
+    assert packet["burn_down"]["remaining_lanes_excluding_holds"] is None
+    R.write_packet(packet, tmp_path / "packet")
+    assert "UNAVAILABLE" in (tmp_path / "packet/REPORT.md").read_text()
 
 
 def _r(lane, mode="live", state="RUN_DONE", verdict=None, at="2026-10-16T14:00:00+00:00", dur=1.0, **kw):
@@ -482,11 +518,12 @@ def test_event_chain_marks_live_inactive_and_clock_fallback():
     assert by[("off", "d")]["trigger_state"] == "INACTIVE"
 
 
-def test_compare_packets_lists_dropped_proven_with_current_reason(tmp_path):
+@pytest.mark.parametrize("schema", [R.LEGACY_SCHEMA, R.SCHEMA])
+def test_compare_packets_lists_dropped_proven_with_current_reason(tmp_path, schema):
     import json as _json
 
     (tmp_path / "summary.json").write_text(_json.dumps({
-        "generated_at": "2026-10-16T17:24:25+00:00", "served": {"short": "old"}, "crontab_sha256": "a",
+        "schema": schema, "generated_at": "2026-10-16T17:24:25+00:00", "served": {"short": "old"}, "crontab_sha256": "a",
         "migration": {"unique_lanes_by_status": {"MIGRATED_PROVEN": 2, "PARALLEL": 1}, "active_cron_lines": 5},
         "run_summary": {"live_runs": 3}}))
     (tmp_path / "lanes.csv").write_text("lane_id,status\nproven,MIGRATED_PROVEN\ntag-unverified,MIGRATED_PROVEN\n"
@@ -501,3 +538,8 @@ def test_compare_packets_lists_dropped_proven_with_current_reason(tmp_path):
     assert "no useful output verdict" in c["proven_dropped"][0]["why_now"]
     assert c["status"]["MIGRATED_PROVEN"] == {"prev": 2, "now": 2} and c["crontab_changed"] is True
     assert R.compare_packets(tmp_path / "missing", cur)["error"].startswith("FileNotFoundError")
+
+
+def test_outcomes_comparison_refuses_unsupported_major(tmp_path):
+    (tmp_path / "summary.json").write_text(json.dumps({"schema": "N8nCutoverOutcomes@v99"}))
+    assert "unsupported outcomes schema" in R.compare_packets(tmp_path, {})["error"]

@@ -1,0 +1,104 @@
+{
+  "schema": "N8nCampaignIndependentReview@v1",
+  "campaign_id": "n8n-maturity-20261018",
+  "reviewed_at_utc": "2026-10-18T17:17:00Z",
+  "scope": "Read-only code and exact-head GitHub review, hermetic tests; no live effects, repository edits, pushes, merges, grant issuance or policy changes",
+  "baseline_sha": "3af0a8bdd659e02bf6f493c071800c6a227ae292",
+  "required_contexts_current": ["cio-hardening", "agent-governance", "release-readiness"],
+  "pr_1851": {
+    "head": "865a9a0b127a37454438389abdaddd1962b079d1",
+    "state": "OPEN",
+    "github_reviews": [],
+    "exact_head_required_checks": "All three SUCCESS; exact-head check-runs independently fetched",
+    "targeted_suite": "81 passed in 6.70s: test_fabric_grant_id_20261018.py, test_comms_intent_consumer_live_20261017.py, test_hermes_feedback_cutover_20261017.py, test_hermes_tune_cutover_20261017.py; TRADE_AI_CI=1, PYTHONDONTWRITEBYTECODE=1, no cache provider, temporary basetemp",
+    "verdict": "CHANGES_REQUIRED before production grant verification or cutover reliance",
+    "findings": [
+      {
+        "priority": "P1",
+        "file": "scripts/lib/fabric_grant.py",
+        "lines": "27-43",
+        "finding": "New reader bypasses canonical .cursor/hooks/guard_ledger.py validation. It accepts uses=-2 as unlimited although canonical ledger classifies it MALFORMED, and reads a symlink ledger although canonical ledger classifies it UNREADABLE.",
+        "proof": "test_fabric_verifier_refuses_canonical_corrupt_ledger and test_fabric_verifier_refuses_symlink_ledger are expected-assertion failures on this exact PR head; candidate-residuals.xml",
+        "required_fix": "Reuse canonical ledger read/validation and typed fail-closed refusal; test malformed/symlink cases behaviorally. Never issue a grant in tests or production."
+      },
+      {
+        "priority": "P1",
+        "file": "docs/ops/packets/hermes-tune-cutover-20261017/cutover.sh",
+        "lines": "129-151",
+        "finding": "c2 --apply still installs a changed crontab with an empty TRADEAI_FABRIC_GRANT and no grant ledger; need_grant is never called on this branch. Existing baseline issue remains after the PR.",
+        "proof": "test_tune_c2_requires_grant_before_crontab_write fails by the expected assertion both on baseline and exact PR head; fake crontab changed, subprocess returned zero; baseline-residuals.xml and candidate-residuals.xml",
+        "required_fix": "Gate this mutation with a real cron grant through existing guard check/consume, preserve original bytes, and use the campaign transactional comment-only controller for new retirement work."
+      },
+      {
+        "priority": "P1",
+        "file": "scripts/lib/fabric_grant.py and all three packet need_grant functions",
+        "finding": "Identity verification is only tier/expiry/use availability. It ignores reason, lane, workflow and action bindings, accepts config-write OR cron for all packet operations, and explicitly consumes no uses. Service restarts are not independently checked. This cannot satisfy campaign section 11 by itself.",
+        "evidence_class": "CODE",
+        "required_fix": "Keep action scopes separate, require concrete manifest/lane/workflow/reason binding, use canonical atomic consumption at mutation boundaries, and account for restart authority. Full ID output remains a useful improvement."
+      }
+    ]
+  },
+  "pr_1853": {
+    "head": "0baddc47481f3ec1673fabf23e37e7b044a54dca",
+    "state": "OPEN",
+    "github_reviews": [],
+    "exact_head_required_checks": "NONE of the three required contexts reported; only aif-financial-senses-integration SUCCESS",
+    "safe_targeted_suite": "24 passed, 27 deselected in 0.49s under TRADE_AI_CI=1; pytest-1853-safe.xml. Selection was plausibility/gap/research-gap/vector/open-no-attempt/vote-distribution/JNUG/analyst-report-builder tests; no ATR, broker-proposal or proposal-execution tests were run.",
+    "verdict": "HOLD whole PR under this campaign; split or exclude unauthorized risk scope and repair activation contract",
+    "reusable_scope": [
+      "percent-recom refusal and unavailable analyst-vote representations",
+      "empty analyst payload suppression",
+      "read-only plausibility/gap monitoring with queue-only host notification intents",
+      "explicit monitor window reporting and output receipts, subject to independent runtime review"
+    ],
+    "outside_campaign_scope": [
+      "scripts/indicator_engine.py atr_stop_target and analyze_confluence stop/target behavior: trading stop/risk semantics need separate authority",
+      "scripts/proposal_execution_readiness.py quote handling changes execution readiness; do not reuse or test under this mandate without applicable scoped authority",
+      "scripts/remediate_analyst_consensus_20261018.py --apply issues CREATE/INSERT/UPDATE and mutates a cache; production execution is not authorized and its nonempty TRADEAI_REMEDIATION_GRANT check is not a real grant",
+      "No proposed disk-hygiene policy amendment is ratified by this campaign"
+    ],
+    "activation_findings": [
+      "Packet line 51 accepts any nonempty TRADEAI_FABRIC_GRANT, including a label; #1851 does not touch this new fourth packet.",
+      "Packet c3 records owner=n8n and retired_timers before printing timer-disable commands. It performs no ownership epoch CAS, admission fence, drain, durable cutover journal or observed state readback. The record cannot attest completed cutover.",
+      "Current data-plausibility-audit and gap-resolution-audit registry rows are systemd timers. Preserve the current registry_systemd assets and watchdog boundaries; do not execute the printed disable commands as campaign retirement."
+    ]
+  },
+  "baseline_false_green_proofs": [
+    {
+      "test": "test_repair_requires_nonempty_named_check_policy",
+      "observed": "Unrelated SUCCESS check with no required policy returns pass",
+      "result": "Expected assertion FAILED",
+      "artifact": "baseline-residuals.xml"
+    },
+    {
+      "test": "test_repair_mandatory_check_cannot_be_skipped_or_neutral",
+      "observed": "Mandatory SKIPPED returns pass; source also treats NEUTRAL as pass",
+      "result": "Expected assertion FAILED at SKIPPED",
+      "artifact": "baseline-residuals.xml"
+    },
+    {
+      "test": "test_unknown_repair_cost_is_not_zero",
+      "observed": "Malformed backend result becomes cost_usd=0.0",
+      "result": "Expected assertion FAILED",
+      "artifact": "baseline-extra.xml"
+    },
+    {
+      "test": "test_rejected_repair_cannot_advance_on_ancestor_release",
+      "observed": "acceptance.accepted=false with mandatory FAILURE still advances fix_pr_opened to fix_deployed when merge is ancestor of served release",
+      "result": "Expected assertion FAILED",
+      "artifact": "baseline-extra.xml"
+    }
+  ],
+  "agent_a_worktree_snapshot": [
+    {"branch": "fix/false-green-closure-20261018", "head": "3af0a8bdd659e02bf6f493c071800c6a227ae292", "status": "clean when inspected; no new commits or tracked edits observed"},
+    {"branch": "fix/registry-truth-evidence-20261018", "head": "3af0a8bdd659e02bf6f493c071800c6a227ae292", "status": "clean when inspected; no new commits or tracked edits observed"},
+    {"branch": "self-heal/claude-fixer-20261016", "head": "c3727fa10b486812672daca3f7d7733c1c849bb9", "status": "clean old worktree; this ancestor commit is not proof of a fresh campaign implementation"}
+  ],
+  "review_limits": [
+    "No host/deployment or provider probes were performed by this reviewer",
+    "No production incident, recovery, Telegram, broker or notification effect was retriggered",
+    "No green candidate exists for the reproduced residuals yet; these are red-first proofs and blockers, not fixes",
+    "No self-authored implementation was called independently reviewed",
+    "User campaign merge authorization is acknowledged; expired historical standing approvals are not being reused and no prompt text is an active guard grant"
+  ]
+}

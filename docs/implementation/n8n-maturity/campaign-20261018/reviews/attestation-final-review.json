@@ -1,0 +1,28 @@
+{
+  "schema": "CampaignIndependentReview@v1",
+  "head": "dd396daab5f9cd321dfc6453dac4df50f76b5a85",
+  "reviewer": "root (nonauthor of four attestation files)",
+  "disposition": "APPROVED_FOR_SCOPED_CODE_INTEGRATION_ONLY",
+  "reviewed": [
+    "closed signed payload and protected public trust loader",
+    "graph/policy/served SHA/evaluation/obligation/audience/time binding",
+    "artifact rehash plus actual semantic parity adapter",
+    "legacy v1 read as unproven and no self-described exception authority",
+    "fixed producer reuses SELECT-only existing inventory; no CLI key/private signer or arbitrary command selection"
+  ],
+  "independent_validation": {
+    "tests_passed": 80,
+    "includes": "61 author tests plus19 independent actual committed active graph round-trips with fake live inventory and in-memory ephemeral keys",
+    "junit_ref": "/tmp/n8n-campaign-20261018/cross-review/attestation-independent.xml",
+    "junit_sha256": "53bfddd2fd841e8b4728d0232190ada1ca9f1d4ce125fc7ec8878cf5427795d4"
+  },
+  "limits": [
+    "L5b point graph/settings parity only",
+    "No continuous coverage or business/recovery/retirement attestation adapter",
+    "Root-protected public trust and isolated host signer remain absent; this source approval authorizes no provisioning",
+    "Raw native n8n activation routes are not confined by this source checker",
+    "Parent must update one historical exception fixture and run integrated exact-head required checks",
+    "Existing runtime cryptography46.0.5 vs lock49.0.0 recorded; no dependency/credential mutation performed"
+  ],
+  "reviewed_at": "2026-10-18T20:07:30.739250+00:00"
+}
