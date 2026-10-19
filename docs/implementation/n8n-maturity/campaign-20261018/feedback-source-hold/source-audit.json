@@ -1,0 +1,171 @@
+{
+  "schema": "ReadOnlyReleaseConfigurationAudit@v1",
+  "campaign_id": "n8n-maturity-20261018",
+  "created_at": "2026-10-18T22:16:34.946306+00:00",
+  "deployed_sha": "a2aef7b4d2de17e737526337a2ffc37848deda4f",
+  "prepared_sha": "7af14c7782cf7ab0cba261cc25e6789fe810b092",
+  "audited_source_head": "71f4c7cea3af29d67591670a218a931253f8a627",
+  "decision": "HOLD7af_REPROMOTION; IMPLEMENT_REVIEWED_SOURCE_PRESERVATION_FIRST",
+  "factual_pr_correction": {
+    "feedback_config": {
+      "pr": 1849,
+      "head": "2d21eec6b32536436da0b9acd957d3b65b3c49a9",
+      "merge": "3af0a8bdd659e02bf6f493c071800c6a227ae292",
+      "settings_commit": "462c3910bd2ebc4ea29cfcbf67ac7330b4355b67"
+    },
+    "comms_delivery": {
+      "pr": 1850,
+      "head": "a3a15a3e725f89985e76078505bd5d1846c6d07b",
+      "merge": "d81a32ab0cba352939bc41cf4c53f72a6d31cce8",
+      "state": "already ancestor ofa2; not the a2\u21927af configdelta"
+    }
+  },
+  "live_reachability": "Current effective relay+gateway54live lists exclude feedback and current ownercron epoch1 independently refuses n8n effectclaim before spawn. Nevertheless7af authorizes a new executable live argv/stage capability; relaylist or owner changes would expose it. Existing external blockers do not satisfy authority or activation proof.",
+  "admission_truth": "Actual7af HMAC-valid p:feedback request is admitted asREQUESTED even ownercron. Owning scheduler is checked at effect claim, not admission; deployed does not include new common run_admission fence/atomic dependency gate.",
+  "claim_spawn_truth": "A correct actual prepared canary entry refuses ownercron with0fake spawns; deployedshadow+nullargs clamps to dry. Owner moved n8n\u2192none after successful claim still permits one fake spawn; later completion becomesUNKNOWN. Feedback has no target write fence, so activation/rollback cannot claim full fencing.",
+  "effective_workflow": {
+    "canonical_read_source": "docker exec m8m-n8n-db psql (SELECT workflow_entity)",
+    "observed_at": "2026-10-18T22:15:14+00:00",
+    "evaluated": 19,
+    "active": 19,
+    "counts": {
+      "OK": 19,
+      "DRIFT": 0,
+      "MISSING_IN_GIT": 0
+    },
+    "hermes": {
+      "id": "tradeai-fabric-hermes-learning",
+      "name": "tradeai-fabric-hermes-learning",
+      "active": true,
+      "placeholder_unsubstituted": false,
+      "status": "OK",
+      "git_file": "docs/implementation/n8n-maturity/workflows/fabric/tradeai-fabric-hermes-learning.json",
+      "diffs": []
+    },
+    "meaning": "Parity/active is configuration evidence only; installed v1 workflow gate uses upstreamstatus success, no bound dataset/consumer proof."
+  },
+  "six_stage_disposition": [
+    {
+      "lane_id": "hermes-learning-outcome-grader",
+      "owner": "n8n",
+      "epoch": 2,
+      "live_member": true,
+      "registry_stage": "canary",
+      "health_stage": "shadow",
+      "stored_live_done_count": 3,
+      "enforced_output_receipt": null,
+      "output_verdict_counts": {
+        "declared_not_enforced": 3
+      },
+      "produced_counts": [],
+      "proof_classification": "3completed effect claims; useful output declared_not_enforced, not current campaign business proof"
+    },
+    {
+      "lane_id": "hermes-learning-tag-engine",
+      "owner": "n8n",
+      "epoch": 2,
+      "live_member": true,
+      "registry_stage": "canary",
+      "health_stage": "shadow",
+      "stored_live_done_count": 3,
+      "enforced_output_receipt": null,
+      "output_verdict_counts": {
+        "declared_not_enforced": 3
+      },
+      "produced_counts": [],
+      "proof_classification": "3completed effect claims; useful output declared_not_enforced, not current campaign business proof"
+    },
+    {
+      "lane_id": "hermes-learning-outcome-feedback-agent",
+      "owner": "cron",
+      "epoch": 1,
+      "live_member": false,
+      "registry_stage": "shadow",
+      "health_stage": "shadow",
+      "stored_live_done_count": 0,
+      "enforced_output_receipt": null,
+      "output_verdict_counts": {},
+      "produced_counts": [],
+      "proof_classification": "No recorded run; sixth runnable stage HELD"
+    },
+    {
+      "lane_id": "hermes-learning-outcome-learning",
+      "owner": "n8n",
+      "epoch": 2,
+      "live_member": true,
+      "registry_stage": "canary",
+      "health_stage": "shadow",
+      "stored_live_done_count": 3,
+      "enforced_output_receipt": null,
+      "output_verdict_counts": {
+        "declared_not_enforced": 3
+      },
+      "produced_counts": [],
+      "proof_classification": "3completed effect claims; useful output declared_not_enforced, not current campaign business proof"
+    },
+    {
+      "lane_id": "hermes-learning-config-governor",
+      "owner": "n8n",
+      "epoch": 2,
+      "live_member": true,
+      "registry_stage": "canary",
+      "health_stage": "shadow",
+      "stored_live_done_count": 3,
+      "enforced_output_receipt": null,
+      "output_verdict_counts": {
+        "declared_not_enforced": 3
+      },
+      "produced_counts": [],
+      "proof_classification": "3completed effect claims; useful output declared_not_enforced, not current campaign business proof"
+    },
+    {
+      "lane_id": "hermes-learning-autonomous-self-tune",
+      "owner": "n8n",
+      "epoch": 2,
+      "live_member": true,
+      "registry_stage": "canary",
+      "health_stage": "shadow",
+      "stored_live_done_count": 3,
+      "enforced_output_receipt": "v2",
+      "output_verdict_counts": {
+        "empty_allowed": 2,
+        "produced": 1
+      },
+      "produced_counts": [
+        7
+      ],
+      "proof_classification": "Contracted output7 once plus2explicit no-work receipts; downstream lineage/meaning/authority not established by counts"
+    }
+  ],
+  "health_contradiction": "All5already-live registrycanary lanes still have healthstageshadow; prepared feedback adds sixth canary/shadow mismatch. Do not silently relabel tohealthy/live or infer exemption; reconcile specific proof/contracts in separate reviewed work.",
+  "validation": {
+    "existing_temp_only_controls": "93passed1concurrencydeselected",
+    "actual7af_fence_probe": "1expected assertion failure afterclaim owner race;2controls pass",
+    "failing_assertion": "runner.calls==[] after owner\u2192none before spawn",
+    "superseded_fixture": "superseded-invalid-stage-fixture.xml used a mapping instead of required registry rowlist; preserved but NOT red-first evidence"
+  },
+  "constraints": [
+    "No source edits, production writes, live learning, notification effects, grant issuance, owner/list/workflow/cron mutations performed.",
+    "No sixth-stage proof by association. Fouractivelearn lanes have12declared_not_enforced receipts; tune3contracted receipts are not whole business-flow lineage.",
+    "Static schema/mergedPR/activeworkflow/existinggrant do not establish operational proof or scopeauthority.",
+    "The new Hermes readyness source12e remains undeployed with its own producer/output/actualdataset/consumer holds."
+  ],
+  "next_action": "Root assigns exact3file source-preservation worktree and meaningful test updates; independently review/test candidate before branch-bound push request. Do not request current7af activation grants.",
+  "manifest": "/tmp/n8n-campaign-20261018/release-config-audit/configuration-mutation-manifest.json",
+  "artifacts_sha256": {
+    "six-stage-disposition.json": "49d90b8f487712e189ce22d9453cec9433f2494cdc6839237a1dedfc1b975cce",
+    "configuration-mutation-manifest.json": "67dbce36fecc9ed4664c5fcb244190346a720b455b14ae63eec89ad570bef660",
+    "proposed-preserve-feedback.patch": "a8c7866f81ee569a994e624b6dc9579d63fbe19615a842c745deee5ba24311a2",
+    "workflow-drift-host.json": "9767b8609d2091802708aba98b0779cce1603c193266451e115664249a7f9549",
+    "pr-1850-refreshed.json": "925d76339bacefacfc32b26c1cef0b957e95b56e7a57abc1d3ad08912b903c82",
+    "pr-1849-refreshed.json": "2c0ee3654e97864a73dcf20bcec7d44635223dda3986959cd4f1c9827463467e",
+    "existing-controls.xml": "94cd9ca15e67943c1993e208d3ddf73c4758e44e15e70edd0b7c63bbb482ac34",
+    "superseded-invalid-stage-fixture.xml": "af3c82d196f47e75d0b29fb2fef80c2e263b82777a93e212c272a1fb413f85a2",
+    "actual7af-fences.xml": "fca95c28d4b2bb993ef0fa5156f9bb0560321adba24ed2316bcb7689de496eb2",
+    "test_feedback_actual_fences.py": "b0f8f0a5b0b5d352cf622bcf31c5d76196b26053cdd6852d80c2964236351b84",
+    "active-runtime-host.json": "19d001c2cd5854317ce20f68160fade42177a73bd90eab3f9b74408d65114a38",
+    "runtime_readonly.py": "6824c3b58205f141242678dc369dbde3f01d1817604c017912c221d15a9af955",
+    "host-read-only-snapshot.json": "3db70b0f04144e5602c3f9f94223af56dbad97b7a54614b95973486d7d6e5c91"
+  },
+  "source_clean": true
+}

@@ -1467,6 +1467,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-maturity/campaign-20261018/README.md` | n8n operational maturity campaign — 2026-10-18 | review_required | OK | `4bdd12e24da0` |
 | `docs/implementation/n8n-maturity/campaign-20261018/checkpoint-20261018T2351Z.md` | Campaign checkpoint after release rejection and evidence merge | review_required | OK | `47c15565d38c` |
 | `docs/implementation/n8n-maturity/campaign-20261018/contracts-enforcement/README.md` | Gateway admission and output evidence enforcement | review_required | OK | `f239f9b6cfa2` |
+| `docs/implementation/n8n-maturity/campaign-20261018/feedback-source-hold/README.md` | Preserve the held Hermes feedback stage | review_required | OK | `a6f09db62db3` |
 | `docs/implementation/n8n-maturity/campaign-20261018/release-1854/README.md` | PR 1854 release acceptance and rollback | review_required | OK | `2c377277770f` |
 | `docs/implementation/n8n-maturity/campaign-20261018/sop-command-truth/README.md` | Require successful mandatory SOP commands and exact-head release checks | review_required | OK | `e7aeea7c14ba` |
 | `docs/implementation/n8n-maturity/completion-119/BEFORE_AFTER_119.md` | 119-lane source completion: before and after | review_required | OK | `b9366b8315fa` |

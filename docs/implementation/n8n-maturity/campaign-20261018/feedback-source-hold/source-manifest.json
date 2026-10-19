@@ -1,0 +1,111 @@
+{
+  "schema": "CampaignSourceHoldPreservationManifest@v1",
+  "campaign_id": "n8n-maturity-20261018",
+  "created_at": "2026-10-18T22:21:37.113272+00:00",
+  "status": "IMPLEMENTED_TESTED_LOCAL_AWAITING_INDEPENDENT_REVIEW",
+  "worktree": "/home/johnclaw/tradeai-wt-n8n-feedback-hold-preservation-20261018",
+  "branch": "wt/n8n-feedback-hold-preservation-20261018",
+  "base_sha": "7af14c7782cf7ab0cba261cc25e6789fe810b092",
+  "tested_sha": "969e9820c3f85f61a63dc394c01f69492ff82f98",
+  "lane_ids": [
+    "hermes-learning-outcome-feedback-agent"
+  ],
+  "workflow_ids": [
+    "tradeai-fabric-hermes-learning"
+  ],
+  "files_sha256": {
+    "config/lane_registry.json": "f6fad30b12f11b949962cba671a14f7e665e0de3a73131563c8d47818170d7c4",
+    "config/n8n_health_contracts.json": "2c50d2d06066a50eceeaa852e535ceb81c3b5619f4714fa7bb622fde92142cbb",
+    "config/n8n_run_allowlist.json": "2b5c615a02c92d615def20c6a483567bc47ada787778daf9f90eae5f6ee147e4",
+    "tests/test_hermes_feedback_cutover_20261017.py": "e357de7a4b07ea2f5113721934798d588b67d181063596fa241cc9ddec5517d9",
+    "tests/test_hermes_feedback_hold_20261018.py": "bc423e42a9e435c37a7f066df1d263e4a24090cfe220a01048d600800b44f6af",
+    "tests/test_hermes_learning_prereqs_20261015.py": "b7189fe04547c3f60cee6ae646aefd23bf15f5ce7c7c1fca518232fbc266b650",
+    "tests/test_n8n_fabric_hermes_learning_20261015.py": "6c7025709d0deb7d375e60569f9cda416df2c5cf546222697cabbbf4c8735f25"
+  },
+  "configuration_result": {
+    "live_arg": null,
+    "registry_stage": "shadow",
+    "health_stage": "shadow",
+    "feedback_descriptions": "Current hold stated explicitly; cron notification path retained; queue-only future capability distinguished from enablement."
+  },
+  "scope_verification": {
+    "artifact": "/tmp/n8n-campaign-20261018/feedback-hold/scope-verification.json",
+    "all_other_lane_rows_and_topmetadata_unchanged": true,
+    "test_function_AST_diff": {
+      "tests/test_hermes_feedback_cutover_20261017.py": [
+        "test_allowlist_live_arg_is_the_queue_argv_and_matches_the_process_spec",
+        "test_retained_queue_capability_matches_future_spec_while_default_live_arg_is_held"
+      ],
+      "tests/test_hermes_learning_prereqs_20261015.py": [
+        "test_cutover_live_args_are_declared_and_applied"
+      ],
+      "tests/test_n8n_fabric_hermes_learning_20261015.py": [
+        "test_runnable_step_is_a_shadow_lane_with_the_step_lock_and_timeout"
+      ]
+    },
+    "formatter_only_changes": "Other Python layout edits are Ruff0.16.2 formatting; no unrelated function AST changes."
+  },
+  "capability_preserved": [
+    "lane_dispatch.QUEUE_ONLY_NOTIFY_ARGV remains exactly one lane/one fixed --apply --notify queue tuple.",
+    "Process spec cutover_live_arg remains futurequeueargv; unchanged sender-token denial tests still reject alternate lane/notifyvalues/order/extra arguments.",
+    "AllfiveexistingHermeslanes retain their exact configuration; runtime owner/list/workflow/cron unchanged."
+  ],
+  "tests": {
+    "red_green": {
+      "test": "tests/test_hermes_feedback_hold_20261018.py",
+      "sha256": "bc423e42a9e435c37a7f066df1d263e4a24090cfe220a01048d600800b44f6af",
+      "identical_command": "TRADE_AI_CI=1 PYTHONDONTWRITEBYTECODE=1 /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m pytest -q -p no:cacheprovider tests/test_hermes_feedback_hold_20261018.py --junitxml=/tmp/n8n-campaign-20261018/feedback-hold/behavioral-pair.xml --basetemp=/tmp/n8n-campaign-20261018/feedback-hold/pair-tmp",
+      "baseline_sha": "7af14c7782cf7ab0cba261cc25e6789fe810b092",
+      "baseline_result": "2 expected AssertionError failures: live_arg must be null; actual authenticatedG\u2192X requested-live remains live on7af instead ofhelddry.",
+      "baseline_xml": "/tmp/n8n-campaign-20261018/feedback-hold/baseline-behavioral-pair.xml",
+      "candidate_sha": "969e9820c3f85f61a63dc394c01f69492ff82f98",
+      "candidate_result": "2passed",
+      "candidate_xml": "/tmp/n8n-campaign-20261018/feedback-hold/behavioral-pair.xml"
+    },
+    "regression": "161 passed on exact head; six suites covering hold/cutover/prereqs/fabric/tune/allowlist",
+    "regression_xml": "/tmp/n8n-campaign-20261018/feedback-hold/regressions-exact-head.xml",
+    "quality": "Changed Python Ruff check and format check pass; git diff check and precommitsecrets scan pass."
+  },
+  "requirement_migration": {
+    "prior_failure_evidence": "/tmp/n8n-campaign-20261018/feedback-hold/regressions-initial.xml",
+    "result": "3 obsolete all-runnable-enabled assumptions failed after sourcehold,156passed. Those assertions are replaced by exactlyfeedbackheld plus retainedfutureargv; otherfive/fullremainingassertions preserved, not removed.",
+    "same_file_merge_note": "Hermes12e also changes tests/test_hermes_learning_prereqs_20261015.py directSQLfixturehelper. Integrator must retain this holdconstant and exactassertions together with that helper."
+  },
+  "authority_and_runtime": {
+    "local_source_authorization": "User campaign and explicit root narrow assignment; no runtimeconfig-write grant needed for this local work.",
+    "remote_write_performed": false,
+    "runtime_mutation_performed": false,
+    "active_ledger_grant_issued_or_consumed": false,
+    "independent_review_required": true,
+    "push_request_ready": false,
+    "canonical_release_ready": false,
+    "release_reason": "Await independent review, requiredexactheadCI, reviewedPRmerge, finalmergedSHA and new immutable prepare; prepared7af remains rejected.",
+    "rollback_target": "a2aef7b4d2de17e737526337a2ffc37848deda4f",
+    "existing_release_grant404_remaining_uses": 0
+  },
+  "holds": [
+    "Sixthfeedbackstage remains unproven: zero stored live runs, no enforced outputreceipt, actualinput/downstreamlineage unbound.",
+    "Known target7af claim\u2192spawn race remains OPEN in separate frozenactual7affences.xml; preserving heldconfig does not repair or close it.",
+    "Otherfive completion receipts do not establish whole-flow business proof:12declared_not_enforced; tune3contractedreceipts alone do not grant destructive authority.",
+    "No owner change, live-list mutation, import/activation, crontab modification, broker, provider send, learning rerun or destructive operation authorized by this artifact.",
+    "No runtime grants requested here. Root must bind any eventual push/release to exact reviewed heads and active checks; no invented scope/token."
+  ],
+  "source_audit": {
+    "path": "/tmp/n8n-campaign-20261018/release-config-audit/audit.json",
+    "sha256": "c0c8294f18701f02d04f65b535e5882be8eab77edc5bd62457e0a71d4ff14323",
+    "refreshed1849": "/tmp/n8n-campaign-20261018/release-config-audit/pr-1849-refreshed.json",
+    "refreshed1850": "/tmp/n8n-campaign-20261018/release-config-audit/pr-1850-refreshed.json"
+  },
+  "artifacts_sha256": {
+    "regressions-exact-head.xml": "2f2028fac1bdafdb391197e6a4bbea1e8f8c85befbc587a8904db2cef482a752",
+    "scope-verification.json": "753b5d962423ef04862dc838fea48b71440bd1e25a8381f015e550575aa97bc5",
+    "regressions-candidate.xml": "627ba45827ada561c37acd5329bf93fe28eba8634b06a1d78d017102c1fe30de",
+    "fixture-lease.json": "c76df1e3dbf76460dd20bf33b80105d4c11ba7d5b67145d5be5d53279b7bc1f2",
+    "regressions-initial.xml": "36b8f8ccaedfd006434fcc62f3c75a3564175cc9c470fe52924040edf1f99900",
+    "baseline-behavioral-pair.xml": "97d9d7307e8e7760c8a6f051b70344c0e2e5309c782878953d025dbf350651d8",
+    "behavioral-pair.xml": "babd1551818b23927d48a2c2f358c0f4e1d1857cc45b2e8e5838c717557ff59b",
+    "lease.json": "448bfd432868974437b8217a42787b727de3dc8bb44e1b295d13e19d2f580a90"
+  },
+  "source_clean": true,
+  "leases_released": true
+}
