@@ -8,7 +8,8 @@
 #                                            heartbeat band/age (checker --dry-run), session state, live list
 #   bash cutover.sh marker                   read-only: prints the OPERATOR-ONLY sudo command; never runs it
 #   bash cutover.sh install  [--apply]       archive the installed unit (copy .archived-<UTC>), install the served
-#                                            fixed unit to ~/.config/systemd/user, read back, daemon-reload. No start
+#                          [--force-open-hours]  fixed unit to ~/.config/systemd/user, read back, daemon-reload. No start.
+#                                            Refused unless the market session is CLOSED (AGENTS.md §24.10)
 #   bash cutover.sh start    [--apply]       systemctl --user restart (starts the inactive unit). Refused unless the
 #                          [--force-open-hours]  marker exists, the fixed unit is installed and the market session is
 #                                            CLOSED (AGENTS.md §24.10: pre/post-market count as open; a calendar
@@ -22,14 +23,20 @@
 #
 # Order: merge + promote (CURRENT serves the PR) -> pre -> marker (operator, sudo) -> install --apply -> after the
 # session closes: start --apply -> proof -> relay --apply -> one */5 slot -> pre (band HEALTHY in the watchdog state).
-# TRADEAI_FABRIC_GRANT is required for every --apply and must be the id of an ACTIVE guard grant
-# (TRADEAI_FABRIC_GRANT=$(bin/guard id config-write)); a free-text label is refused (scripts/lib/fabric_grant.py,
-# read-only ledger check, consumes no use). install/start accept a config-write or execution-ops grant; relay/rollback a
-# config-write or cron grant.
+# Every --apply goes through scripts/lib/fabric_grant.py authorize active-trader-motion.<step>: a read-only check
+# first, then `--consume` (recheck + consume one finite use of every required grant, atomically, under the guard
+# lock) immediately before the first write or restart. Dry runs consume nothing; a refused or failed step refunds
+# nothing. TRADEAI_FABRIC_GRANT is the full id of the active grant ($(bin/guard id <tier>)), never a label:
+#   install, start    execution-ops (AGENTS.md §24.10, <= 6 h, per incident); its reason names the action
+#                     (active-trader-motion.install|start), active-trader-motion-watchdog, tradeai-dispatcher, this
+#                     packet's SHA256, tradeai-active-trader-motion.service and daemon-reload (install) | restart (start)
+#   relay, rollback   config-write (same action/lane/workflow/SHA256 binding) plus TRADEAI_FABRIC_SERVICE_GRANT, a
+#                     service grant whose reason also names tradeai-n8n-run-relay.service,
+#                     tradeai-n8n-coordination-gateway.service and restart (both units are restarted)
 # This script never touches a broker, an order, a credential, an EnvironmentFile, the crontab or an n8n workflow, and
 # never runs sudo, stop, kill, enable, disable or mask.
 # Test hooks (hermetic tests only): SYSTEMCTL_BIN, PROC_ROOT, UNIT_DIR, MARKER, HEARTBEAT, NOW_ISO, PROOF_GAP_S,
-# RESTART_SETTLE_S, GUARD_APPROVALS_DIR (read by fabric_grant.py).
+# RESTART_SETTLE_S, GUARD_APPROVALS_DIR and GUARD_AUDIT_LOG (read by fabric_grant.py).
 set -euo pipefail
 set -f
 CODE=$(cd "$(dirname "$0")/../../../.." && pwd)
@@ -43,6 +50,7 @@ UNIT_DIR=${UNIT_DIR:-$HOME/.config/systemd/user}
 MARKER=${MARKER:-/etc/tradeai/enable-active-trader-motion}
 HEARTBEAT=${HEARTBEAT:-$REPO/data/active_trader/motion_runtime_heartbeat.json}
 SYSTEMCTL_BIN=${SYSTEMCTL_BIN:-systemctl}
+OPCTL=systemctl   # printed operator commands only; every executed call goes through "$SYSTEMCTL_BIN"
 PROC_ROOT=${PROC_ROOT:-/proc}
 PROOF_GAP_S=${PROOF_GAP_S:-35}
 UNIT=tradeai-active-trader-motion.service
@@ -56,12 +64,14 @@ APPLY=0; FORCE_OPEN=0
 while [[ $# -gt 0 ]]; do
   case "$1" in --apply) APPLY=1; shift ;; --force-open-hours) FORCE_OPEN=1; shift ;; *) fail "unknown arg $1" ;; esac
 done
-# The value must be the id of an ACTIVE guard grant of one of $1's tiers; a free-text label is refused. Read-only.
+# Full primary ID in TRADEAI_FABRIC_GRANT; relay/rollback additionally need TRADEAI_FABRIC_SERVICE_GRANT.
+# Reasons name this action, the lane, workflow ID and this packet's SHA256 (see the header for the per-step tiers).
+# Checks are read-only; --consume rechecks/consumes all required finite grants atomically immediately before mutation.
 need_grant(){
   [[ $APPLY == 0 ]] && return 0
   [[ -n "${TRADEAI_FABRIC_GRANT:-}" ]] || fail "TRADEAI_FABRIC_GRANT not set"
   local hit
-  hit=$("$PY" "$GRANT_PY" verify "$TRADEAI_FABRIC_GRANT" "$1") || fail "TRADEAI_FABRIC_GRANT is not an active $1 grant id (bin/guard id ${1%%,*})"
+  hit=$("$PY" "$GRANT_PY" authorize "active-trader-motion.$STEP" "$@") || fail "grant refused: $hit"
   echo "  grant ok: $hit"
 }
 FRAG="$UNIT_DIR/$UNIT"
@@ -86,6 +96,16 @@ except Exception as exc:  # the caller fails closed
     print(f"calendar_error:{type(exc).__name__}")
     sys.exit(1)
 EOF
+}
+
+require_closed(){ # AGENTS.md §24.10: every motion-unit mutation only while the session is CLOSED; fails closed
+  local s
+  if ! s=$(session_state); then fail "market calendar error ($s): refusing (fails closed)"; fi
+  if [[ "${s%% *}" != CLOSED ]]; then
+    [[ $FORCE_OPEN == 1 ]] || fail "market session is ${s%% *} ($s): $STEP only while CLOSED (20:00-04:00 ET on trading days, weekends, holidays; AGENTS.md §24.10), or the operator passes --force-open-hours"
+    echo "  WARNING --force-open-hours: $STEP while the session is ${s%% *}. Operator override only; never under an agent's execution-ops grant"
+  fi
+  echo "  session $s"
 }
 
 watchdog_dry(){ # the checker's verdict against the real heartbeat, marker and /proc; writes nothing
@@ -190,12 +210,14 @@ case "$STEP" in
     echo "      sudo touch $MARKER"
     echo "" ;;
   install)
-    need_grant config-write,execution-ops
+    need_grant
     unit_fixed "$SRC" || fail "served unit $SRC does not carry $GATE_LINE: merge + promote the PR first"
     if unit_fixed "$FRAG" && cmp -s "$SRC" "$FRAG"; then echo "  installed unit already equals the served fixed unit: nothing to do"; exit 0; fi
+    require_closed
     echo "  replaces $FRAG with $SRC"
     if [[ -f "$FRAG" ]]; then diff -u "$FRAG" "$SRC" | sed 's/^/    /' || true; fi
     [[ $APPLY == 1 ]] || { echo "  DRY RUN — unit file unchanged, no daemon-reload"; exit 0; }
+    need_grant --consume
     if [[ -f "$FRAG" ]]; then
       b="$FRAG.archived-$(date -u +%Y%m%dT%H%M%SZ)"
       cp -p "$FRAG" "$b"; echo "  archived $b"
@@ -206,16 +228,12 @@ case "$STEP" in
     "$SYSTEMCTL_BIN" --user daemon-reload
     echo "  installed + daemon-reload; the unit is NOT started (start step, after the session closes)" ;;
   start)
-    need_grant config-write,execution-ops
+    need_grant
     [[ -e "$MARKER" ]] || fail "marker $MARKER absent: the operator creates it first (bash cutover.sh marker)"
     unit_fixed "$FRAG" || fail "installed unit is not the fixed one: bash cutover.sh install --apply first"
-    if ! s=$(session_state); then fail "market calendar error ($s): refusing (fails closed)"; fi
-    if [[ "${s%% *}" != CLOSED ]]; then
-      [[ $FORCE_OPEN == 1 ]] || fail "market session is ${s%% *} ($s): start only while CLOSED (20:00-04:00 ET on trading days, weekends, holidays; AGENTS.md §24.10), or the operator passes --force-open-hours"
-      echo "  WARNING --force-open-hours: starting while the session is ${s%% *}. Operator override only; never under an agent's execution-ops grant"
-    fi
-    echo "  session $s"
-    [[ $APPLY == 1 ]] || { echo "  DRY RUN — would run: systemctl --user restart $UNIT"; exit 0; }
+    require_closed
+    [[ $APPLY == 1 ]] || { echo "  DRY RUN — would run: $OPCTL --user restart $UNIT"; exit 0; }
+    need_grant --consume
     "$SYSTEMCTL_BIN" --user restart "$UNIT"; sleep "${RESTART_SETTLE_S:-3}"
     act=$("$SYSTEMCTL_BIN" --user is-active "$UNIT" 2>/dev/null || true)
     pid=$("$SYSTEMCTL_BIN" --user show -p MainPID --value "$UNIT")
@@ -269,7 +287,7 @@ sys.exit(0 if ok else 1)
 EOF
     exit $? ;;
   relay)
-    need_grant config-write,cron
+    need_grant
     served_lane || fail "serve the watchdog PR first"
     [[ -f "$LIVE_LANES_ENV" ]] || fail "$LIVE_LANES_ENV missing"
     CUR=$(live_lanes)
@@ -279,6 +297,7 @@ EOF
     echo "  adds: $LANE"
     echo "  keeps: ${#CUR_A[@]} existing lanes"
     [[ $APPLY == 1 ]] || { echo "  DRY RUN — live list unchanged, nothing restarted"; exit 0; }
+    need_grant --consume
     write_live_list "$CUR $LANE" motion-watchdog-live
     in_live_list || fail "READ-BACK FAILED: $LANE not in $LIVE_LANES_ENV"
     for l in "${CUR_A[@]}"; do live_lanes | tr ' ' '\n' | grep -qx -- "$l" || fail "READ-BACK FAILED: lost $l"; done
@@ -287,11 +306,11 @@ EOF
     # R1 (this step): the watchdog leaves the live list; the gateway then demotes every dispatcher fire to dry_run
     # (prints, writes nothing). The motion unit is NOT touched here: stopping it or archiving the /etc marker is the
     # operator's (AGENTS.md §24.10: stop and sudo are outside execution-ops). Commands are printed below.
-    need_grant config-write,cron
+    need_grant
     echo "  operator-only motion rollback (printed, never run):"
-    echo "      systemctl --user stop $UNIT"
+    echo "      $OPCTL --user stop $UNIT"
     echo "      sudo mv $MARKER $MARKER.archived-\$(date +%Y%m%d)"
-    echo "      # previous unit copy: $FRAG.archived-<UTC> (install step); restore with cp -p + systemctl --user daemon-reload"
+    echo "      # previous unit copy: $FRAG.archived-<UTC> (install step); restore with cp -p + $OPCTL --user daemon-reload"
     [[ -f "$LIVE_LANES_ENV" ]] || fail "$LIVE_LANES_ENV missing"
     in_live_list || { echo "  live list lacks $LANE: nothing to roll back"; exit 0; }
     CUR=$(live_lanes); read -r -a CUR_A <<<"$CUR"
@@ -299,6 +318,7 @@ EOF
     for l in "${CUR_A[@]}"; do [[ "$l" == "$LANE" ]] || KEEP+=("$l"); done
     echo "  removes: $LANE; keeps ${#KEEP[@]} lanes"
     [[ $APPLY == 1 ]] || { echo "  DRY RUN — live list unchanged, nothing restarted"; exit 0; }
+    need_grant --consume
     write_live_list "${KEEP[*]}" motion-watchdog-rollback
     if in_live_list; then fail "READ-BACK FAILED: $LANE still in $LIVE_LANES_ENV"; fi
     for l in "${KEEP[@]}"; do live_lanes | tr ' ' '\n' | grep -qx -- "$l" || fail "READ-BACK FAILED: lost $l"; done

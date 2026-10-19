@@ -8,7 +8,7 @@ Authority:   operator decision 2026-10-19 (keep the loop on systemd; n8n owns it
              §23.3, §23.23, §24.1, §24.10
 Targets:     ~/.config/systemd/user/tradeai-active-trader-motion.service (gate line fix), /etc/tradeai marker (operator),
              lane active-trader-motion-watchdog -> TRADEAI_N8N_RELAY_LIVE_LANES
-Live apply:  cutover.sh install|start|relay --apply under a verified guard grant id; rollback --apply reverses the relay
+Live apply:  cutover.sh install|start|relay --apply, each consuming one use of finite bound guard grants; rollback --apply reverses the relay
 ```
 
 ## Why the runtime is down
@@ -97,13 +97,14 @@ P=docs/ops/packets/active-trader-motion-n8n-20261019/cutover.sh   # run from the
 bash $P pre                                         # read-only
 bash $P marker                                      # prints the next line; never runs sudo
 sudo touch /etc/tradeai/enable-active-trader-motion # OPERATOR ONLY (root; AGENTS.md §24.10 item 4)
-export TRADEAI_FABRIC_GRANT=$(bin/guard id config-write)   # or an execution-ops grant id for install/start
-bash $P install            # dry: shows the diff
+export TRADEAI_FABRIC_GRANT=$(bin/guard id execution-ops)   # install/start: execution-ops (AGENTS.md §24.10)
+bash $P install            # dry: shows the diff; refuses unless the session is CLOSED
 bash $P install --apply    # archives the old unit copy, installs the fixed unit, daemon-reload (no start)
 bash $P start              # dry: refuses unless the session is CLOSED (20:00-04:00 ET trading days, weekends, holidays)
 bash $P start --apply      # systemctl --user restart; outside CLOSED only with --force-open-hours (operator only)
 bash $P proof              # heartbeat <= 60 s, cycle_count up, journal growing, pid alive, healthy, authority false
 export TRADEAI_FABRIC_GRANT=$(bin/guard id config-write)
+export TRADEAI_FABRIC_SERVICE_GRANT=$(bin/guard id service)   # relay/rollback restart relay + gateway
 bash $P relay              # dry
 bash $P relay --apply      # live list += active-trader-motion-watchdog; restart relay + gateway; read-back
 # wait one */5 slot, then:
@@ -116,10 +117,20 @@ pre-market and post-market count as open. The safer rule wins, so `start` refuse
 `--force-open-hours` is the operator's own override and is never used under an agent grant. *Example:* on a trading
 day such as Mon 2026-10-19, the earliest allowed start is 20:00 ET.
 
-**Grants.** Every `--apply` verifies `TRADEAI_FABRIC_GRANT` against the guard ledger with `scripts/lib/fabric_grant.py`.
-This is a byte-identical copy of the file in open PR #1851, which introduced the mechanism. Git merges an identical
-add cleanly. `install` and `start` accept a `config-write` or `execution-ops` grant, while `relay` and `rollback`
-accept `config-write` or `cron`. A free-text label is refused.
+**Grants.** The packet follows main's bounded model (#1873): every `--apply` runs
+`scripts/lib/fabric_grant.py authorize active-trader-motion.<step>` as a read-only check, then `--consume` immediately
+before the first write or restart. `--consume` rechecks and spends one use of every required grant atomically under the
+guard lock, and appends an audit receipt. Grants must be finite (`uses` > 0, never unlimited), unexpired, and given by
+full 32-hex id, never a label. Each reason must name the action, `active-trader-motion-watchdog`, `tradeai-dispatcher`
+and the packet's SHA256 as whole words. A dry run consumes nothing. A refused or failed step refunds nothing.
+
+| Step | Tiers | Extra words the reason must name |
+| --- | --- | --- |
+| `install` | `execution-ops` (`TRADEAI_FABRIC_GRANT`) | `tradeai-active-trader-motion.service`, `daemon-reload` |
+| `start` | `execution-ops` (`TRADEAI_FABRIC_GRANT`) | `tradeai-active-trader-motion.service`, `restart` |
+| `relay`, `rollback` | `config-write` (`TRADEAI_FABRIC_GRANT`) + `service` (`TRADEAI_FABRIC_SERVICE_GRANT`) | service: `tradeai-n8n-run-relay.service`, `tradeai-n8n-coordination-gateway.service`, `restart` |
+
+`install` and `start` both refuse unless the session is `CLOSED`, because §24.10 binds every mutation of the unit.
 
 ## Rollback
 
@@ -150,7 +161,7 @@ unit. The draft is `AGENTS_PATCH_DRAFT.md`.
 - `scripts/check_active_trader_motion_heartbeat.py` and `config/active_trader_motion_watchdog.json`.
 - Wiring: `config/host_comms_intent_routes.json`, `config/lane_registry.json` (new row and motion-row note),
   `config/n8n_run_allowlist.json` and `config/n8n_health_contracts.json`.
-- `scripts/lib/fabric_grant.py`: a copy of #1851.
+- `scripts/lib/fabric_grant.py` (main's #1873 model): the four `active-trader-motion.*` registered actions.
 - `tests/test_active_trader_motion_watchdog_20261019.py`, `tests/support/active_trader_motion_watchdog.py` and the
   inventory pins.
 - `docs/_findings/ACTIVE_TRADER_MOTION_RUNTIME_v1.md` and `scripts/check_unit_env_files.py`: corrections.

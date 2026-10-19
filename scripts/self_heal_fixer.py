@@ -19,21 +19,26 @@ merges, releases, edits crontab/systemd, touches broker code or credentials, or 
 edits files in a throwaway worktree only; the harness checks the diff, runs the tests, commits, and (only with the
 AGENTS.md 24.11 amendment ACTIVE and an operator grant) pushes one branch and opens one PR.
 """
+
 from __future__ import annotations
 
 import argparse
+import contextvars
+import functools
 import hashlib
 import json
 import os
+import re
 import shlex
 import shutil
+import signal
 import sqlite3
 import stat
 import subprocess
 import sys
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -49,6 +54,7 @@ from lib import self_heal_fixer_claims as C  # noqa: E402
 CONFIG = ROOT / "config" / "self_heal_fixer.json"
 REGISTRY = ROOT / "config" / "lane_registry.json"
 CUTOVER_POLICY = ROOT / "config" / "lane_cutover_policy.json"
+_DEADLINE = contextvars.ContextVar("self_heal_absolute_deadline", default=None)
 
 
 # ---------------------------------------------------------------- small I/O helpers
@@ -73,15 +79,42 @@ def state_root(environ) -> Path:
     return Path(environ.get("TRADEAI_STATE_ROOT") or (Path.home() / "trade-ai-releases" / "persistent-state"))
 
 
-def run(cmd: list[str], *, cwd: Optional[Path] = None, env: Optional[dict] = None, timeout: float = 600,
-        stdin: Optional[str] = None) -> dict:
+def run(
+    cmd: list[str],
+    *,
+    cwd: Optional[Path] = None,
+    env: Optional[dict] = None,
+    timeout: float = 600,
+    stdin: Optional[str] = None,
+    text: bool = True,
+) -> dict:
     t0 = time.monotonic()
+    deadline = _DEADLINE.get()
+    timeout = min(float(timeout), deadline - t0) if deadline is not None else float(timeout)
+    if timeout <= 0:
+        return {"rc": 124, "out": "" if text else b"", "err": "absolute job deadline exceeded", "seconds": 0}
     try:
-        p = subprocess.run(cmd, cwd=str(cwd) if cwd else None, env=env, input=stdin, capture_output=True,
-                           text=True, timeout=timeout)
-        rc, out, err = p.returncode, p.stdout, p.stderr
-    except subprocess.TimeoutExpired as exc:
-        rc, out, err = 124, str(exc.stdout or ""), f"timeout after {timeout}s"
+        p = subprocess.Popen(
+            cmd,
+            cwd=str(cwd) if cwd else None,
+            env=env,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=text,
+            start_new_session=True,
+        )
+        try:
+            out, err = p.communicate(input=stdin, timeout=timeout)
+            rc = p.returncode
+        except subprocess.TimeoutExpired:
+            # Kill descendants as well: a timed-out model/test may have spawned another process.
+            try:
+                os.killpg(p.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            out, _ = p.communicate()
+            rc, err = 124, f"timeout after {timeout}s (absolute job deadline respected)"
     except OSError as exc:
         rc, out, err = 127, "", f"{type(exc).__name__}: {exc}"
     return {"rc": rc, "out": out or "", "err": err or "", "seconds": round(time.monotonic() - t0, 1)}
@@ -89,6 +122,69 @@ def run(cmd: list[str], *, cwd: Optional[Path] = None, env: Optional[dict] = Non
 
 def git(repo: Path, *args: str, env: Optional[dict] = None, timeout: float = 300) -> dict:
     return run(["git", "-C", str(repo), *args], env=env, timeout=timeout)
+
+
+def _deadline_at(value: Any) -> Optional[datetime]:
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo is not None else None
+
+
+def _job_deadline(fn):
+    @functools.wraps(fn)
+    def bounded(job, evidence, **kwargs):
+        now = kwargs["now"]()
+        limit = float(kwargs["cfg"]["iteration"]["max_minutes"]) * 60
+        previous = _deadline_at(job.get("deadline_at"))
+        if "deadline_at" in job and previous is None:
+            job["deadline_hold"] = "absolute_job_deadline_invalid"
+            limit = 0
+        if previous is not None:
+            limit = min(limit, (previous - now).total_seconds())
+        if "deadline_at" not in job or (previous is not None and limit > 0):
+            job["deadline_at"] = (now + timedelta(seconds=max(0, limit))).isoformat()
+        token = _DEADLINE.set(time.monotonic() + max(0, limit))
+        try:
+            return fn(job, evidence, **kwargs)
+        finally:
+            _DEADLINE.reset(token)
+
+    return bounded
+
+
+def pytest_proof(report: Path) -> dict:
+    """Read only the harness-created pytest JUnit report; collection errors are never red-first proof."""
+    import xml.etree.ElementTree as ET
+
+    empty = {"assertion_failures": [], "passed": [], "errors": None, "report_sha256": None}
+    try:
+        raw = report.read_bytes()
+        doc = ET.fromstring(raw)
+    except (OSError, ET.ParseError):
+        return empty
+    failed, passed, errors = [], [], 0
+    for case in doc.iter("testcase"):
+        identity = case.get("classname", "") + "::" + case.get("name", "")
+        errors += len(case.findall("error"))
+        failures = case.findall("failure")
+        # Pytest's exception summary identifies the failure. A source line or another exception's
+        # arbitrary message mentioning "assert" is not evidence of an assertion failure.
+        if failures and all(
+            re.match(r"^(?:AssertionError\b|assert\s)", (f.get("message") or "").strip()) for f in failures
+        ):
+            failed.append(identity)
+        if not failures and not case.findall("error") and not case.findall("skipped"):
+            passed.append(identity)
+    return {
+        "assertion_failures": sorted(failed),
+        "passed": sorted(passed),
+        "errors": errors,
+        "report_sha256": hashlib.sha256(raw).hexdigest(),
+    }
 
 
 def _kind(path: str) -> Optional[str]:
@@ -107,12 +203,17 @@ def failed_receipt(ledger: Path, lane: str, run_id: Optional[str] = None) -> Opt
     try:
         con = sqlite3.connect(f"file:{ledger}?mode=ro", uri=True, timeout=5)
         try:
-            row = con.execute("SELECT receipt_json FROM runs WHERE run_id=? AND lane_id=?", (run_id, lane)).fetchone() \
-                if run_id and run_id != "n/a" else None
+            row = (
+                con.execute("SELECT receipt_json FROM runs WHERE run_id=? AND lane_id=?", (run_id, lane)).fetchone()
+                if run_id and run_id != "n/a"
+                else None
+            )
             if not row:
                 row = con.execute(
                     "SELECT receipt_json FROM runs WHERE lane_id=? AND state='RUN_FAILED' AND receipt_json IS NOT NULL "
-                    "ORDER BY finished_at DESC LIMIT 1", (lane,)).fetchone()
+                    "ORDER BY finished_at DESC LIMIT 1",
+                    (lane,),
+                ).fetchone()
         finally:
             con.close()
     except sqlite3.Error:
@@ -194,8 +295,18 @@ class Attempt:
     """One fix job: the sandboxed agent, immutable candidate commits, harness test runs bound to them, and the
     ship step (local branch, or push + PR when allowed) that proves it ships exactly the evaluated commit."""
 
-    def __init__(self, job: dict, evidence: dict, *, cfg: dict, environ: dict, now: Callable[[], datetime],
-                 evidence_dir: Path, may_push: bool, backend: str):
+    def __init__(
+        self,
+        job: dict,
+        evidence: dict,
+        *,
+        cfg: dict,
+        environ: dict,
+        now: Callable[[], datetime],
+        evidence_dir: Path,
+        may_push: bool,
+        backend: str,
+    ):
         self.job, self.ev, self.cfg, self.environ, self.now = job, evidence, cfg, environ, now
         self.backend = backend
         self.dir = evidence_dir
@@ -240,7 +351,14 @@ class Attempt:
 
     # -- worktrees + the agent's boundary
     def setup(self) -> Optional[str]:
-        for d in (self.wt_root, self.scratch, self.eval_root, self.bindir, self.egress_dir, self.agent_home / ".claude"):
+        for d in (
+            self.wt_root,
+            self.scratch,
+            self.eval_root,
+            self.bindir,
+            self.egress_dir,
+            self.agent_home / ".claude",
+        ):
             d.mkdir(parents=True, exist_ok=True)
         a = git(self.repo, "worktree", "add", "-b", self.branch, str(self.fix_wt), self.base)
         if a["rc"] != 0:
@@ -261,28 +379,47 @@ class Attempt:
                 Path(dst).touch(exist_ok=True)
             allow = list(self.asb.get("egress_allow") or [])
             self.proxy_port = int(self.asb.get("proxy_port", 18977)) if allow else None
-            self.agent_env = F.agent_env(self.environ, self.cfg, scratch_state=str(self.scratch),
-                                         agent_home=str(self.agent_home), proxy_port=self.proxy_port)
+            self.agent_env = F.agent_env(
+                self.environ,
+                self.cfg,
+                scratch_state=str(self.scratch),
+                agent_home=str(self.agent_home),
+                proxy_port=self.proxy_port,
+            )
             shutil.copyfile(Path(EG.__file__), self.bindir / "self_heal_egress.py")
             bins = sorted({os.path.realpath(b) for b in self._backend_bins()})
             self.agent_prefix = F.agent_sandbox_prefix(
-                self.cfg, home=home, repo_root=str(self.repo), python_root=str(Path(self.py).parent.parent),
+                self.cfg,
+                home=home,
+                repo_root=str(self.repo),
+                python_root=str(Path(self.py).parent.parent),
                 extra_ro=[*self.python_install(), *bins, str(self.bindir), str(self.egress_dir)],
                 fix_wt=str(self.fix_wt),
-                agent_home=str(self.agent_home), scratch=str(self.scratch), auth_binds=binds, env=self.agent_env,
-                probe=_probe)
+                agent_home=str(self.agent_home),
+                scratch=str(self.scratch),
+                auth_binds=binds,
+                env=self.agent_env,
+                probe=_probe,
+            )
             wrapper_env = {k: v for k, v in self.env.items() if k not in ("HOME", "PATH", "TMPDIR")}
             wrapper_env.update(HOME=str(self.scratch), PATH=self.agent_env["PATH"], TMPDIR="/tmp")
             wrapper = F.model_pytest_wrapper(python=self.py, env=wrapper_env, sandbox=[])
-            self.boundary = {"agent_sandbox": True, "auth": why, "egress_allow": allow,
-                             "writable": [str(self.fix_wt), str(self.agent_home), str(self.scratch)]}
+            self.boundary = {
+                "agent_sandbox": True,
+                "auth": why,
+                "egress_allow": allow,
+                "writable": [str(self.fix_wt), str(self.agent_home), str(self.scratch)],
+            }
         elif self.environ.get("TRADE_AI_CI") != "1":
             return "agent_sandbox_disabled"  # outside hermetic tests the agent NEVER runs unsandboxed
         else:
             wrapper = F.model_pytest_wrapper(
-                python=self.py, env=self.env,
-                sandbox=F.sandbox_prefix(self.cfg, home=home, repo_root=str(self.repo),
-                                         writable=[self.fix_wt, self.scratch], existing=_kind))
+                python=self.py,
+                env=self.env,
+                sandbox=F.sandbox_prefix(
+                    self.cfg, home=home, repo_root=str(self.repo), writable=[self.fix_wt, self.scratch], existing=_kind
+                ),
+            )
             self.boundary = {"agent_sandbox": False, "why": "TRADE_AI_CI=1 hermetic test config"}
         w = Path(self.pytest_cmd)
         w.write_text(wrapper, encoding="utf-8")
@@ -290,6 +427,14 @@ class Attempt:
         return None
 
     def teardown(self, *, keep_branch: bool) -> None:
+        if _DEADLINE.get() is not None and time.monotonic() >= _DEADLINE.get():
+            # No cleanup subprocess may start after the deadline. Preserve paths for an explicit later cleanup.
+            self.job["cleanup_deferred"] = {
+                "reason": "absolute_job_deadline",
+                "branch": self.branch,
+                "worktrees": [str(self.fix_wt), str(self.eval_root)],
+            }
+            return
         if self.fix_wt.exists():
             git(self.repo, "worktree", "remove", "--force", str(self.fix_wt))
         git(self.repo, "worktree", "prune")
@@ -304,8 +449,18 @@ class Attempt:
             return argv
         inner = [os.path.realpath(argv[0]), *argv[1:]]
         if self.proxy_port:
-            inner = [self.py, "-I", str(self.bindir / "self_heal_egress.py"), "bridge", "--unix",
-                     str(self.egress_dir / "s"), "--port", str(self.proxy_port), "--", *inner]
+            inner = [
+                self.py,
+                "-I",
+                str(self.bindir / "self_heal_egress.py"),
+                "bridge",
+                "--unix",
+                str(self.egress_dir / "s"),
+                "--port",
+                str(self.proxy_port),
+                "--",
+                *inner,
+            ]
         return [*self.agent_prefix, *inner]
 
     def run_agent(self, argv: list[str], prompt: str) -> tuple[dict, Optional[dict]]:
@@ -321,12 +476,15 @@ class Attempt:
     def _message(self) -> str:
         lane = self.job["lane"]
         exc = (self.ev.get("final_exception") or {}).get("type") or "code error"
-        return (f"fix({lane}): self-heal fix for {exc} (job {self.job['job_id']})\n\n"
-                f"Self-heal fixer job {self.job['job_id']}, signature {self.job['signature']}, incident "
-                f"{self.job.get('incident_key')}. This exact commit (sha + tree) was evaluated by the harness: the "
-                f"regression test fails on {self.base[:9]} and passes here, and run_cio_hardening_ci.py --profile pr "
-                "is green, in fresh read-only checkouts of this commit.\n\n"
-                + "\n".join(self.cfg["repo"]["commit_trailers"]) + "\n")
+        return (
+            f"fix({lane}): self-heal fix for {exc} (job {self.job['job_id']})\n\n"
+            f"Self-heal fixer job {self.job['job_id']}, signature {self.job['signature']}, incident "
+            f"{self.job.get('incident_key')}. This exact commit (sha + tree) was evaluated by the harness: the "
+            f"regression test fails on {self.base[:9]} and passes here, and run_cio_hardening_ci.py --profile pr "
+            "is green, in fresh read-only checkouts of this commit.\n\n"
+            + "\n".join(self.cfg["repo"]["commit_trailers"])
+            + "\n"
+        )
 
     def candidate(self) -> dict:
         """Stage the agent's worktree and write ONE commit object (parent = base) without moving any ref. Its sha
@@ -335,8 +493,11 @@ class Attempt:
         tree = git(self.fix_wt, "write-tree")
         if tree["rc"] != 0:
             return {"error": f"write_tree_failed:{tree['err'][-200:]}"}
-        c = run(["git", "-C", str(self.fix_wt), "commit-tree", tree["out"].strip(), "-p", self.base, "-F", "-"],
-                stdin=self._message(), timeout=60)
+        c = run(
+            ["git", "-C", str(self.fix_wt), "commit-tree", tree["out"].strip(), "-p", self.base, "-F", "-"],
+            stdin=self._message(),
+            timeout=60,
+        )
         if c["rc"] != 0:
             return {"error": f"commit_tree_failed:{c['err'][-200:]}"}
         sha = c["out"].strip()
@@ -355,17 +516,14 @@ class Attempt:
 
     def guard(self, d: dict) -> list[dict]:
         base_ci = git(self.repo, "show", f"{self.base}:scripts/run_cio_hardening_ci.py")["out"]
-        return F.guard_diff(name_status=d["name_status"], numstat=d["numstat"], unified=d["unified"],
-                            base_ci_text=base_ci, cfg=self.cfg)
+        return F.guard_diff(
+            name_status=d["name_status"], numstat=d["numstat"], unified=d["unified"], base_ci_text=base_ci, cfg=self.cfg
+        )
 
     # -- harness test runs, bound to the candidate
     def _blob(self, commit: str, path: str) -> Optional[bytes]:
-        try:
-            p = subprocess.run(["git", "-C", str(self.repo), "cat-file", "blob", f"{commit}:{path}"],
-                               capture_output=True, timeout=60)
-        except (OSError, subprocess.TimeoutExpired):
-            return None
-        return p.stdout if p.returncode == 0 else None
+        r = run(["git", "-C", str(self.repo), "cat-file", "blob", f"{commit}:{path}"], timeout=60, text=False)
+        return r["out"] if r["rc"] == 0 else None
 
     def checkout(self, name: str, sha: str, overlay: Optional[dict[str, bytes]] = None) -> Optional[Path]:
         """A FRESH shared clone at ``sha`` (its own .git; objects via alternates), optionally with files overlaid.
@@ -375,8 +533,9 @@ class Attempt:
         c = git(self.repo, "clone", "-q", "--shared", "--no-checkout", str(self.repo), str(d))
         if c["rc"] != 0:
             return None
-        co = git(d, "-c", "core.hooksPath=/dev/null", "-c", "advice.detachedHead=false", "checkout", "-q",
-                 "--detach", sha)
+        co = git(
+            d, "-c", "core.hooksPath=/dev/null", "-c", "advice.detachedHead=false", "checkout", "-q", "--detach", sha
+        )
         if co["rc"] != 0:
             return None
         for rel, data in (overlay or {}).items():
@@ -385,33 +544,74 @@ class Attempt:
             p.write_bytes(data)
         return d
 
-    def eval_run(self, kind: str, co: Optional[Path], expect: str, argv: list[str], timeout: float,
-                 overlay_from: Optional[str] = None) -> dict:
+    def eval_run(
+        self,
+        kind: str,
+        co: Optional[Path],
+        expect: str,
+        argv: list[str],
+        timeout: float,
+        overlay_from: Optional[str] = None,
+    ) -> dict:
         rid = f"{kind}-{uuid.uuid4().hex[:12]}"
         if co is None:
-            return {"run_id": rid, "kind": kind, "rc": None, "out": "", "err": "checkout_failed",
-                    "integrity_ok": False, "checkout_sha": None, "head_after": None, "overlay_from": overlay_from}
+            return {
+                "run_id": rid,
+                "kind": kind,
+                "rc": None,
+                "out": "",
+                "err": "checkout_failed",
+                "integrity_ok": False,
+                "checkout_sha": None,
+                "head_after": None,
+                "overlay_from": overlay_from,
+            }
         head_before = git(co, "rev-parse", "HEAD")["out"].strip()
         before = checkout_digest(co)
         eval_env = {**self.env, "HOME": str(self.scratch), "TMPDIR": "/tmp"}
-        prefix = F.eval_sandbox_prefix(self.cfg, repo_root=str(self.repo), python_root=str(Path(self.py).parent.parent),
-                                       checkout=str(co), scratch=str(self.scratch), env=eval_env, probe=_probe,
-                                       extra_ro=self.python_install())
-        r = run([*prefix, *argv], cwd=co, env=eval_env if prefix else self.env, timeout=timeout)
+        prefix = F.eval_sandbox_prefix(
+            self.cfg,
+            repo_root=str(self.repo),
+            python_root=str(Path(self.py).parent.parent),
+            checkout=str(co),
+            scratch=str(self.scratch),
+            env=eval_env,
+            probe=_probe,
+            extra_ro=self.python_install(),
+        )
+        report = self.scratch / f"{rid}.xml"
+        actual = [*argv, f"--junitxml={report}"] if kind in ("red_first", "targeted") else argv
+        r = run([*prefix, *actual], cwd=co, env=eval_env if prefix else self.env, timeout=timeout)
+        proof = pytest_proof(report) if kind in ("red_first", "targeted") else None
+        if report.is_file():
+            shutil.copyfile(report, self.dir / f"{rid}.xml")
         after = checkout_digest(co)
         head_after = git(co, "rev-parse", "HEAD")["out"].strip()
         ok = before == after and head_before == expect and head_after == expect
-        return {"run_id": rid, "kind": kind, "rc": r["rc"], "out": r["out"], "err": r["err"], "seconds": r["seconds"],
-                "checkout": str(co), "checkout_sha": head_before, "head_after": head_after,
-                "digest_before": before[:16], "digest_after": after[:16], "integrity_ok": ok,
-                "overlay_from": overlay_from}
+        return {
+            "run_id": rid,
+            "kind": kind,
+            "rc": r["rc"],
+            "out": r["out"],
+            "err": r["err"],
+            "seconds": r["seconds"],
+            "checkout": str(co),
+            "checkout_sha": head_before,
+            "head_after": head_after,
+            "digest_before": before[:16],
+            "digest_after": after[:16],
+            "integrity_ok": ok,
+            "overlay_from": overlay_from,
+            "test_command": argv,
+            "pytest_proof": proof,
+            "report_ref": str(self.dir / f"{rid}.xml") if proof else None,
+        }
 
     # -- one iteration
     def iterate(self, k: int, prev: Optional[dict], rails: str, spent: float) -> dict:
         it = self.cfg["iteration"]
         budget = min(float(it["per_iteration_budget_usd"]), max(0.0, float(it["max_cost_usd"]) - spent))
-        prompt = F.build_prompt(self.ev, rails=rails, cfg=self.cfg, iteration=k, prev=prev,
-                                pytest_cmd=self.pytest_cmd)
+        prompt = F.build_prompt(self.ev, rails=rails, cfg=self.cfg, iteration=k, prev=prev, pytest_cmd=self.pytest_cmd)
         (self.dir / f"prompt_iter{k}.md").write_text(prompt, encoding="utf-8")
         t0 = time.monotonic()
         argv = F.backend_argv(self.cfg, self.backend, budget_usd=budget, pytest_cmd=self.pytest_cmd)
@@ -419,14 +619,26 @@ class Attempt:
         res = F.parse_backend_result(self.cfg, self.backend, cr["out"])
         res.update(rc=cr["rc"], stderr_tail=cr["err"][-500:], egress=egress)
         (self.dir / f"backend_iter{k}.json").write_text(json.dumps(res, indent=1), encoding="utf-8")
-        rec: dict[str, Any] = {"iteration": k, "backend": self.backend, "boundary": self.boundary,
-                               # recorded for the operator, NEVER read by the evaluator (claims are not evidence)
-                               "backend_result": {key: res.get(key) for key in ("ok", "cost_usd", "num_turns",
-                                                                                "subtype", "summary", "rc")}}
+        rec: dict[str, Any] = {
+            "iteration": k,
+            "backend": self.backend,
+            "boundary": self.boundary,
+            # recorded for the operator, NEVER read by the evaluator (claims are not evidence)
+            "backend_result": {
+                key: res.get(key) for key in ("ok", "cost_usd", "num_turns", "subtype", "summary", "rc")
+            },
+        }
         cand = self.candidate()
         if cand.get("error"):
-            rec.update(candidate=cand, refusals=[], failing=[f"candidate:{cand['error']}"], tests_run=[],
-                       red_first=None, test_runs=[], diffstat=F.diffstat(""))
+            rec.update(
+                candidate=cand,
+                refusals=[],
+                failing=[f"candidate:{cand['error']}"],
+                tests_run=[],
+                red_first=None,
+                test_runs=[],
+                diffstat=F.diffstat(""),
+            )
             rec["seconds"], rec["output_tail"] = round(time.monotonic() - t0, 1), ""
             rec["acceptance"] = E.local_verdict(rec)
             rec["passed"] = rec["acceptance"]["accepted"]
@@ -436,9 +648,14 @@ class Attempt:
         patch = self.dir / f"diff_iter{k}.patch"
         patch.write_text(d["full"], encoding="utf-8")
         refusals = self.guard(d)
-        rec.update(candidate=cand, guard={"tree_sha": self.tree_of(commit), "refusals": refusals},
-                   diffstat=F.diffstat(d["numstat"]), diff_sha256=hashlib.sha256(d["full"].encode()).hexdigest()[:16],
-                   patch=str(patch), refusals=list(refusals))
+        rec.update(
+            candidate=cand,
+            guard={"tree_sha": self.tree_of(commit), "refusals": refusals},
+            diffstat=F.diffstat(d["numstat"]),
+            diff_sha256=hashlib.sha256(d["full"].encode()).hexdigest()[:16],
+            patch=str(patch),
+            refusals=list(refusals),
+        )
         tests = F.changed_tests(d["name_status"])
         rec["tests_run"] = tests
         rec["test_runs"] = []
@@ -452,9 +669,19 @@ class Attempt:
             pyt = [self.py, "-m", "pytest", "-q", "-rfE", "-p", "no:cacheprovider", *tests]
             t_test = float(it["test_timeout_s"])
             overlay = {t: self._blob(commit, t) or b"" for t in tests}
-            red = self.eval_run("red_first", self.checkout(f"it{k}-base", self.base, overlay), self.base, pyt,
-                                t_test, overlay_from=commit)
-            reproduced = red["rc"] not in (0, 5, None)
+            red = self.eval_run(
+                "red_first",
+                self.checkout(f"it{k}-base", self.base, overlay),
+                self.base,
+                pyt,
+                t_test,
+                overlay_from=commit,
+            )
+            reproduced = bool(
+                red["rc"] == 1
+                and (red.get("pytest_proof") or {}).get("assertion_failures")
+                and (red.get("pytest_proof") or {}).get("errors") == 0
+            )
             co = self.checkout(f"it{k}-cand", commit)
             green = self.eval_run("targeted", co, commit, pyt, t_test)
             runs = [red, green]
@@ -466,8 +693,14 @@ class Attempt:
                 ci = {"rc": None, "out": "", "err": "skipped"}
             for r in runs:
                 if not r["integrity_ok"]:
-                    rec["refusals"].append({"hard": True, "code": "integrity:checkout_or_git_mutated",
-                                            "run": r["kind"], "run_id": r["run_id"]})
+                    rec["refusals"].append(
+                        {
+                            "hard": True,
+                            "code": "integrity:checkout_or_git_mutated",
+                            "run": r["kind"],
+                            "run_id": r["run_id"],
+                        }
+                    )
             if self.tree_of(commit) != cand["tree_sha"]:
                 rec["refusals"].append({"hard": True, "code": "integrity:candidate_tree_changed"})
             failing = F.failing_set(green["out"], ci["out"])
@@ -478,18 +711,25 @@ class Attempt:
             if ci["rc"] not in (0, None) and not F.failing_set(ci["out"]):
                 failing.append(f"ci:exit_{ci['rc']}")
             failing += [f"guard:{r['code']}" for r in rec["refusals"]]
-            rec.update(red_first=reproduced, targeted_rc=green["rc"], ci_rc=ci["rc"], ci_argv=ci_argv,
-                       failing=sorted(set(failing)),
-                       test_runs=[{k2: v for k2, v in r.items() if k2 not in ("out", "err")} for r in runs])
-            out_tail = (f"--- red-first on base (rc {red['rc']}) ---\n{red['out'][-1500:]}\n"
-                        f"--- targeted (rc {green['rc']}) ---\n{green['out'][-2500:]}\n"
-                        f"--- ci pr profile (rc {ci['rc']}) ---\n{ci['out'][-3000:]}{ci['err'][-500:]}")
+            rec.update(
+                red_first=reproduced,
+                targeted_rc=green["rc"],
+                ci_rc=ci["rc"],
+                ci_argv=ci_argv,
+                failing=sorted(set(failing)),
+                test_runs=[{k2: v for k2, v in r.items() if k2 not in ("out", "err")} for r in runs],
+            )
+            out_tail = (
+                f"--- red-first on base (rc {red['rc']}) ---\n{red['out'][-1500:]}\n"
+                f"--- targeted (rc {green['rc']}) ---\n{green['out'][-2500:]}\n"
+                f"--- ci pr profile (rc {ci['rc']}) ---\n{ci['out'][-3000:]}{ci['err'][-500:]}"
+            )
             (self.dir / f"tests_iter{k}.log").write_text(out_tail, encoding="utf-8")
             shutil.rmtree(self.eval_root / f"it{k}-base", ignore_errors=True)
             shutil.rmtree(self.eval_root / f"it{k}-cand", ignore_errors=True)
         rec["seconds"] = round(time.monotonic() - t0, 1)
         rec["output_tail"] = out_tail
-        rec["acceptance"] = E.local_verdict(rec)          # independent of the backend's claims
+        rec["acceptance"] = E.local_verdict(rec)  # independent of the backend's claims
         rec["passed"] = rec["acceptance"]["accepted"]
         return rec
 
@@ -500,8 +740,9 @@ class Attempt:
         commit = str((rec.get("candidate") or {}).get("commit_sha") or "")
         tree_now = self.tree_of(commit) if commit else None
         refusals = self.guard(self.commit_diff(commit)) if commit else [{"code": "no_candidate"}]
-        return E.ship_verdict(rec.get("acceptance"), commit_sha=commit, tree_sha=tree_now or "",
-                              prepush_refusals=refusals)
+        return E.ship_verdict(
+            rec.get("acceptance"), commit_sha=commit, tree_sha=tree_now or "", prepush_refusals=refusals
+        )
 
     def land_local(self, commit: str) -> dict:
         """Point the job branch at the evaluated commit (compare-and-swap from base) and write fix.patch from it."""
@@ -515,15 +756,29 @@ class Attempt:
         env.pop("TRADEAI_REMOTE_PUSH_OVERRIDE", None)  # never an override: the budget binds
         env["TRADEAI_REMOTE_PUSH_AUTHORIZED"] = "1"
         # push the evaluated SHA itself, never "whatever the branch points at now"
-        p = run(["git", "-C", str(self.fix_wt), "push", self.cfg["repo"]["remote"], f"{commit}:refs/heads/{self.branch}"],
-                env=env, timeout=600)
+        p = run(
+            ["git", "-C", str(self.fix_wt), "push", self.cfg["repo"]["remote"], f"{commit}:refs/heads/{self.branch}"],
+            env=env,
+            timeout=600,
+        )
         if p["rc"] != 0:
             return {"ok": False, "why": f"push_failed:{(p['err'] or p['out'])[-300:]}"}
         body_path = self.dir / "pr_body.md"
         body_path.write_text(body, encoding="utf-8")
         title = f"fix({self.job['lane']}): self-heal fix ({self.job['job_id']})"
-        base_args = ["gh", "pr", "create", "--base", self.cfg["repo"]["base_branch"], "--head", self.branch,
-                     "--title", title, "--body-file", str(body_path)]
+        base_args = [
+            "gh",
+            "pr",
+            "create",
+            "--base",
+            self.cfg["repo"]["base_branch"],
+            "--head",
+            self.branch,
+            "--title",
+            title,
+            "--body-file",
+            str(body_path),
+        ]
         pr = run(base_args + ["--label", self.cfg["repo"]["pr_label"]], cwd=self.fix_wt, env=env, timeout=120)
         label = True
         if pr["rc"] != 0:
@@ -535,29 +790,46 @@ class Attempt:
         num = url.rstrip("/").rsplit("/", 1)[-1]
         out = {"ok": True, "pr_url": url, "pr_number": int(num) if num.isdigit() else None, "labelled": label}
         # the PR head MUST be the evaluated commit
-        view = run(["gh", "pr", "view", url or self.branch, "--json", "headRefOid"], cwd=self.fix_wt, env=env,
-                   timeout=60)
+        view = run(
+            ["gh", "pr", "view", url or self.branch, "--json", "headRefOid"], cwd=self.fix_wt, env=env, timeout=60
+        )
         try:
             head = str(json.loads(view["out"] or "{}").get("headRefOid") or "")
         except ValueError:
             head = ""
         out["pr_head"] = head
         if head != commit:
-            out.update(ok=False, why=f"pr_head_mismatch:{head[:12] or 'unreadable'}!={commit[:12]}", pushed=True,
-                       head_mismatch=True)
+            out.update(
+                ok=False,
+                why=f"pr_head_mismatch:{head[:12] or 'unreadable'}!={commit[:12]}",
+                pushed=True,
+                head_mismatch=True,
+            )
         return out
 
 
-def attempt_job(job: dict, evidence: dict, *, cfg: dict, environ: dict, now: Callable[[], datetime],
-                evidence_dir: Path, may_push: bool, rails: str, backend: str,
-                remember: Callable[[dict], None] = lambda row: None,
-                persist: Callable[[dict], None] = lambda job: None,
-                progress: Callable[[dict, dict], None] = lambda job, rec: None) -> dict:
+@_job_deadline
+def attempt_job(
+    job: dict,
+    evidence: dict,
+    *,
+    cfg: dict,
+    environ: dict,
+    now: Callable[[], datetime],
+    evidence_dir: Path,
+    may_push: bool,
+    rails: str,
+    backend: str,
+    remember: Callable[[dict], None] = lambda row: None,
+    persist: Callable[[dict], None] = lambda job: None,
+    progress: Callable[[dict, dict], None] = lambda job, rec: None,
+) -> dict:
     """Run the iteration loop for one job and move it to its next state. Returns the job. ``persist`` makes the job
     durable (called before the backend first runs and after every iteration); ``progress`` records partial evidence
     on the durable claim."""
-    a = Attempt(job, evidence, cfg=cfg, environ=environ, now=now, evidence_dir=evidence_dir, may_push=may_push,
-                backend=backend)
+    a = Attempt(
+        job, evidence, cfg=cfg, environ=environ, now=now, evidence_dir=evidence_dir, may_push=may_push, backend=backend
+    )
     job["backend"] = backend
     it = cfg["iteration"]
     start = time.monotonic()
@@ -583,13 +855,23 @@ def attempt_job(job: dict, evidence: dict, *, cfg: dict, environ: dict, now: Cal
             break
         F.transition(job, F.FIX_ATTEMPTING, now(), iteration=k, updated_at=now().isoformat())
         persist(job)
-        rec = a.iterate(k, prev, rails, float(job.get("cost_usd") or 0))
-        job["cost_usd"] = round(float(job.get("cost_usd") or 0) + float(rec["backend_result"].get("cost_usd") or 0), 4)
+        lower = F.reported_cost(job.get("cost_usd")) or 0
+        # Persist uncertain spend BEFORE starting the provider. A harness crash must retain the full reservation.
+        job.update(cost_usd=None, cost_status="unknown", known_cost_lower_bound_usd=lower)
+        persist(job)
+        rec = a.iterate(k, prev, rails, lower)
+        cost = F.reported_cost(rec["backend_result"].get("cost_usd"))
+        job["cost_usd"] = round(lower + cost, 4) if cost is not None else None
+        job["cost_status"] = "known" if cost is not None else "unknown"
+        job["known_cost_lower_bound_usd"] = round(lower + (cost or 0), 4)
         job["iterations"].append({k2: v for k2, v in rec.items() if k2 != "output_tail"})
         remember(F.memory_row(job, event="iteration", now=now(), backend=backend, iteration=rec))
         progress(job, rec)
         persist(job)
         last = rec
+        if cost is None:
+            stop = "cost_unknown"
+            break
         if any(r["hard"] for r in rec["refusals"]):
             stop = "guard_refused"
             break
@@ -604,31 +886,56 @@ def attempt_job(job: dict, evidence: dict, *, cfg: dict, environ: dict, now: Cal
         ship = a.prepush_check(last)
         job["ship_check"] = ship
         if not ship["accepted"]:
-            F.transition(job, F.FIX_REFUSED, now(), reason=f"ship_check_failed:{','.join(ship['failed'])}",
-                         updated_at=now().isoformat())
+            F.transition(
+                job,
+                F.FIX_REFUSED,
+                now(),
+                reason=f"ship_check_failed:{','.join(ship['failed'])}",
+                updated_at=now().isoformat(),
+            )
             a.teardown(keep_branch=False)
             return job
         commit = ship["commit_sha"]
         c = a.land_local(commit)
         if c["rc"] != 0:
-            F.transition(job, F.FIX_FAILED, now(), reason=f"branch_update_failed:{c['err']}",
-                         updated_at=now().isoformat())
+            F.transition(
+                job, F.FIX_FAILED, now(), reason=f"branch_update_failed:{c['err']}", updated_at=now().isoformat()
+            )
             a.teardown(keep_branch=False)
             return job
         job["head_sha"] = commit
-        job["evaluated"] = {"commit_sha": commit, "tree_sha": ship["tree_sha"],
-                            "test_run_ids": last["acceptance"].get("test_run_ids"),
-                            "guard_verdict": last["acceptance"].get("guard_verdict")}
+        job["evaluated"] = {
+            "commit_sha": commit,
+            "tree_sha": ship["tree_sha"],
+            "test_run_ids": last["acceptance"].get("test_run_ids"),
+            "guard_verdict": last["acceptance"].get("guard_verdict"),
+        }
         body = F.pr_body(job, evidence)
         (evidence_dir / "pr_body.md").write_text(body, encoding="utf-8")
         if may_push:
             pr = a.push_and_pr(body, commit)
             if pr.get("ok"):
-                F.transition(job, F.FIX_PR_OPENED, now(), pr_url=pr["pr_url"], pr_number=pr["pr_number"],
-                             labelled=pr["labelled"], pr_head=pr.get("pr_head"), updated_at=now().isoformat())
+                F.transition(
+                    job,
+                    F.FIX_PR_OPENED,
+                    now(),
+                    pr_url=pr["pr_url"],
+                    pr_number=pr["pr_number"],
+                    labelled=pr["labelled"],
+                    pr_head=pr.get("pr_head"),
+                    updated_at=now().isoformat(),
+                )
             elif pr.get("head_mismatch"):
-                F.transition(job, F.FIX_REFUSED, now(), reason=pr["why"], pr_url=pr.get("pr_url"),
-                             pr_number=pr.get("pr_number"), pr_head=pr.get("pr_head"), updated_at=now().isoformat())
+                F.transition(
+                    job,
+                    F.FIX_REFUSED,
+                    now(),
+                    reason=pr["why"],
+                    pr_url=pr.get("pr_url"),
+                    pr_number=pr.get("pr_number"),
+                    pr_head=pr.get("pr_head"),
+                    updated_at=now().isoformat(),
+                )
             else:
                 F.transition(job, F.FIX_READY_LOCAL, now(), reason=pr["why"], updated_at=now().isoformat())
         else:
@@ -646,8 +953,14 @@ def attempt_job(job: dict, evidence: dict, *, cfg: dict, environ: dict, now: Cal
 
 def recovery_contract(cfg: dict, root: Path) -> dict:
     """The output contract ``output_recovered`` applies (architect review 2026-10-16, finding 4)."""
-    return {"kind": "live_receipt_output_verdict@v1", "ledger": str(root / cfg["intake"]["ledger_rel"]),
-            "output_verdicts": sorted(F.OUTPUT_MET), "effective_mode": "live", "state": "RUN_DONE", "exit_code": 0}
+    return {
+        "kind": "live_receipt_output_verdict@v1",
+        "ledger": str(root / cfg["intake"]["ledger_rel"]),
+        "output_verdicts": sorted(F.OUTPUT_MET),
+        "effective_mode": "live",
+        "state": "RUN_DONE",
+        "exit_code": 0,
+    }
 
 
 def output_recovered(lane: str, since: Optional[datetime], contract: dict) -> dict:
@@ -661,8 +974,13 @@ def output_recovered(lane: str, since: Optional[datetime], contract: dict) -> di
     effective mode live (no stage-clamp downgrade), finished after ``since``, whose ``output_verdict`` is produced or
     empty_allowed (lib/self_heal_fixer.receipt_meets_output_contract). A newer file mtime or JSON timestamp never
     counts. A lane with no such receipt (for example one still run by host cron) stays ``fix_deployed``."""
-    base = {"validator": "self_heal_fixer.output_recovered@conservative-v1", "contract": contract.get("kind"),
-            "lane": lane, "since": since.isoformat() if since else None, "recovered": False}
+    base = {
+        "validator": "self_heal_fixer.output_recovered@conservative-v1",
+        "contract": contract.get("kind"),
+        "lane": lane,
+        "since": since.isoformat() if since else None,
+        "recovered": False,
+    }
     ledger = Path(str(contract.get("ledger") or ""))
     if since is None:
         return {**base, "why": "no_deployed_at"}
@@ -671,9 +989,11 @@ def output_recovered(lane: str, since: Optional[datetime], contract: dict) -> di
     try:
         con = sqlite3.connect(f"file:{ledger}?mode=ro", uri=True, timeout=5)
         try:
-            rows = con.execute("SELECT run_id, mode, state, exit_code, finished_at, receipt_json FROM runs "
-                               "WHERE lane_id=? AND finished_at IS NOT NULL ORDER BY finished_at DESC LIMIT 200",
-                               (lane,)).fetchall()
+            rows = con.execute(
+                "SELECT run_id, mode, state, exit_code, finished_at, receipt_json FROM runs "
+                "WHERE lane_id=? AND finished_at IS NOT NULL ORDER BY finished_at DESC LIMIT 200",
+                (lane,),
+            ).fetchall()
         finally:
             con.close()
     except sqlite3.Error as exc:
@@ -684,12 +1004,26 @@ def output_recovered(lane: str, since: Optional[datetime], contract: dict) -> di
             rec = json.loads(receipt_json) if receipt_json else {}
         except ValueError:
             rec = {}
-        why = F.receipt_meets_output_contract({"run_id": run_id, "mode": mode, "state": state, "exit_code": exit_code,
-                                               "finished_at": finished_at,
-                                               "receipt": rec if isinstance(rec, dict) else {}}, since)
+        why = F.receipt_meets_output_contract(
+            {
+                "run_id": run_id,
+                "mode": mode,
+                "state": state,
+                "exit_code": exit_code,
+                "finished_at": finished_at,
+                "receipt": rec if isinstance(rec, dict) else {},
+            },
+            since,
+        )
         if why is None:
-            return {**base, "recovered": True, "basis": "live_receipt_output_verdict", "run_id": run_id,
-                    "finished_at": finished_at, "output_verdict": (rec.get("output_verdict") or {}).get("verdict")}
+            return {
+                **base,
+                "recovered": True,
+                "basis": "live_receipt_output_verdict",
+                "run_id": run_id,
+                "finished_at": finished_at,
+                "output_verdict": (rec.get("output_verdict") or {}).get("verdict"),
+            }
         reasons[why] = reasons.get(why, 0) + 1
     return {**base, "why": "no_receipt_meets_contract", "checked": len(rows), "reasons": reasons}
 
@@ -697,24 +1031,94 @@ def output_recovered(lane: str, since: Optional[datetime], contract: dict) -> di
 # ---------------------------------------------------------------- lifecycle advance (read-only probes)
 
 
-def advance(job: dict, *, cfg: dict, now: datetime, diag_state: Optional[dict], root: Path,
-            gh: Callable[[list[str]], dict], repo: Path) -> Optional[str]:
+def _lifecycle_deadline(fn):
+    @functools.wraps(fn)
+    def bounded(job, **kwargs):
+        if job.get("state") not in (F.FIX_READY_LOCAL, F.FIX_PR_OPENED, F.FIX_DEPLOYED, F.OUTPUT_RECOVERED):
+            return None
+        deadline = _deadline_at(job.get("deadline_at"))
+        now = kwargs["now"]
+        if deadline is None or deadline.tzinfo is None or now.tzinfo is None:
+            job["deadline_hold"] = "absolute_job_deadline_unavailable"
+            return None
+        remaining = (deadline - now).total_seconds()
+        if remaining <= 0:
+            job["deadline_hold"] = "absolute_job_deadline_exceeded"
+            return None
+        absolute = time.monotonic() + remaining
+        existing = _DEADLINE.get()
+        if existing is not None:
+            absolute = min(absolute, existing)
+        token = _DEADLINE.set(absolute)
+        original_gh = kwargs["gh"]
+
+        def gh(argv):
+            if time.monotonic() >= absolute:
+                return {"rc": 124, "out": "", "err": "absolute job deadline exceeded"}
+            result = original_gh(argv)  # canonical transport calls run(), which uses this same deadline
+            return (
+                result
+                if time.monotonic() < absolute
+                else {"rc": 124, "out": "", "err": "absolute job deadline exceeded"}
+            )
+
+        kwargs["gh"] = gh
+        try:
+            return fn(job, **kwargs)
+        finally:
+            _DEADLINE.reset(token)
+
+    return bounded
+
+
+@_lifecycle_deadline
+def advance(
+    job: dict,
+    *,
+    cfg: dict,
+    now: datetime,
+    diag_state: Optional[dict],
+    root: Path,
+    gh: Callable[[list[str]], dict],
+    repo: Path,
+) -> Optional[str]:
     """Move a shipped job along fix_pr_opened -> fix_deployed -> output_recovered -> incident_resolved."""
     st = job.get("state")
     if st == F.FIX_READY_LOCAL and job.get("branch"):
         r = gh(["gh", "pr", "list", "--head", job["branch"], "--state", "all", "--json", "number,url"])
         rows = json.loads(r["out"] or "[]") if r["rc"] == 0 else []
         if rows:
-            F.transition(job, F.FIX_PR_OPENED, now, pr_number=rows[0].get("number"), pr_url=rows[0].get("url"),
-                         updated_at=now.isoformat(), opened_by="operator")
+            F.transition(
+                job,
+                F.FIX_PR_OPENED,
+                now,
+                pr_number=rows[0].get("number"),
+                pr_url=rows[0].get("url"),
+                updated_at=now.isoformat(),
+                opened_by="operator",
+            )
             return F.FIX_PR_OPENED
     if st == F.FIX_PR_OPENED and job.get("pr_number"):
-        r = gh(["gh", "pr", "view", str(job["pr_number"]), "--json",
-                "state,mergeCommit,mergedAt,headRefOid,statusCheckRollup"])
+        r = gh(
+            [
+                "gh",
+                "pr",
+                "view",
+                str(job["pr_number"]),
+                "--json",
+                "state,mergeCommit,mergedAt,headRefOid,statusCheckRollup",
+            ]
+        )
         doc = json.loads(r["out"] or "{}") if r["rc"] == 0 else {}
         if doc:
             local = next((i.get("acceptance") for i in reversed(job.get("iterations") or []) if i.get("passed")), None)
-            prv = E.pr_head_verdict(doc, expected_head=str(job.get("head_sha") or ""))
+            policy = E.ci_policy(cfg.get("acceptance"))
+            prv = E.pr_head_verdict(
+                doc,
+                expected_head=str(job.get("head_sha") or ""),
+                required=policy["required_checks"],
+                policy_version=policy["version"],
+            )
             job["acceptance"] = E.final_acceptance(local, prv)
             job["acceptance"]["pr_head"] = prv
         if doc.get("state") == "CLOSED":
@@ -723,22 +1127,43 @@ def advance(job: dict, *, cfg: dict, now: datetime, diag_state: Optional[dict], 
         merge = (doc.get("mergeCommit") or {}).get("oid")
         if doc.get("state") == "MERGED" and merge:
             job["merged_sha"], job["merged_at"] = merge, doc.get("mergedAt")
+            if not E.accepted_for_policy(job.get("acceptance"), cfg.get("acceptance"), job.get("head_sha")):
+                job["acceptance_hold"] = "required_exact_head_acceptance_unavailable_or_rejected"
+                return None
             cur = Path(cfg["lifecycle"]["release_current_sha_file"])
             try:
                 cur_sha = cur.read_text(encoding="utf-8").strip()
             except OSError:
                 cur_sha = ""
             if cur_sha and git(repo, "merge-base", "--is-ancestor", merge, cur_sha)["rc"] == 0:
-                F.transition(job, F.FIX_DEPLOYED, now, release_sha=cur_sha, deployed_at=now.isoformat(),
-                             updated_at=now.isoformat())
+                F.transition(
+                    job,
+                    F.FIX_DEPLOYED,
+                    now,
+                    release_sha=cur_sha,
+                    deployed_at=now.isoformat(),
+                    updated_at=now.isoformat(),
+                )
                 return F.FIX_DEPLOYED
+        return None
+    if st in (F.FIX_DEPLOYED, F.OUTPUT_RECOVERED) and not E.accepted_for_policy(
+        job.get("acceptance"), cfg.get("acceptance"), job.get("head_sha")
+    ):
+        job["acceptance_hold"] = "required_exact_head_acceptance_unavailable_or_rejected"
         return None
     if st == F.FIX_DEPLOYED:
         rv = output_recovered(job["lane"], F._parse(job.get("deployed_at")), recovery_contract(cfg, root))
         job["recovery_check"] = rv
         if rv.get("recovered"):
-            F.transition(job, F.OUTPUT_RECOVERED, now, output_at=rv.get("finished_at"), output_run=rv.get("run_id"),
-                         recovery_basis=rv.get("basis"), updated_at=now.isoformat())
+            F.transition(
+                job,
+                F.OUTPUT_RECOVERED,
+                now,
+                output_at=rv.get("finished_at"),
+                output_run=rv.get("run_id"),
+                recovery_basis=rv.get("basis"),
+                updated_at=now.isoformat(),
+            )
             return F.OUTPUT_RECOVERED
         return None
     if st == F.OUTPUT_RECOVERED:
@@ -753,15 +1178,30 @@ def advance(job: dict, *, cfg: dict, now: datetime, diag_state: Optional[dict], 
 
 
 def escalation_for(job: dict, now: datetime) -> dict:
-    tried = [{"k": r.get("iteration"), "failing": (r.get("failing") or [])[:6], "passed": r.get("passed"),
-              "refusals": [x.get("code") for x in r.get("refusals") or []]} for r in job.get("iterations") or []]
-    return {"schema": "SelfHealFixEscalation@v1", "priority": "P1", "route": "operator_once",
-            "job_id": job["job_id"], "lane": job["lane"], "signature": job["signature"],
-            "incident_key": job.get("incident_key"), "state": job["state"],
-            "reason": job.get("reason") or (job.get("refusal") or ["?"])[0],
-            "detail": f"self-heal fixer could not ship a fix for {job['lane']}: {job.get('reason')}; "
-                      f"iterations={len(tried)}; cost=${job.get('cost_usd', 0):.2f}",
-            "tried": tried, "at": now.isoformat()}
+    tried = [
+        {
+            "k": r.get("iteration"),
+            "failing": (r.get("failing") or [])[:6],
+            "passed": r.get("passed"),
+            "refusals": [x.get("code") for x in r.get("refusals") or []],
+        }
+        for r in job.get("iterations") or []
+    ]
+    return {
+        "schema": "SelfHealFixEscalation@v1",
+        "priority": "P1",
+        "route": "operator_once",
+        "job_id": job["job_id"],
+        "lane": job["lane"],
+        "signature": job["signature"],
+        "incident_key": job.get("incident_key"),
+        "state": job["state"],
+        "reason": job.get("reason") or (job.get("refusal") or ["?"])[0],
+        "detail": f"self-heal fixer could not ship a fix for {job['lane']}: {job.get('reason')}; "
+        f"iterations={len(tried)}; cost={F.cost_label(job.get('cost_usd'))}",
+        "tried": tried,
+        "at": now.isoformat(),
+    }
 
 
 # ---------------------------------------------------------------- incident intake
@@ -801,9 +1241,14 @@ def incidents_from(args, cfg: dict, root: Path) -> tuple[list[dict], Optional[di
     return F.code_defects(records, diag, cfg), diag
 
 
-def main(argv: Optional[list[str]] = None, *, now: Optional[Callable[[], datetime]] = None,
-         grant_reader: Callable[[str], Optional[dict]] = default_grant_reader,
-         environ: Optional[dict] = None, gh: Optional[Callable[[list[str]], dict]] = None) -> int:
+def main(
+    argv: Optional[list[str]] = None,
+    *,
+    now: Optional[Callable[[], datetime]] = None,
+    grant_reader: Callable[[str], Optional[dict]] = default_grant_reader,
+    environ: Optional[dict] = None,
+    gh: Optional[Callable[[list[str]], dict]] = None,
+) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     ap.add_argument("--cycle", action="store_true", help="intake -> attempt (max_jobs_per_cycle) -> advance")
     ap.add_argument("--status", action="store_true")
@@ -827,11 +1272,25 @@ def main(argv: Optional[list[str]] = None, *, now: Optional[Callable[[], datetim
     claims_db = root / s.get("claims_rel", "data/runtime/self_heal_fixer_claims.sqlite")
     if args.status:
         state = _load_json(state_path) or {"schema": F.STATE_SCHEMA, "jobs": {}}
-        rows = [{k: j.get(k) for k in ("job_id", "lane", "state", "pr_url", "cost_usd", "updated_at")}
-                for j in state.get("jobs", {}).values()]
-        print(json.dumps({"jobs": rows, "claims": [{k: c.get(k) for k in ("claim_id", "job_id", "state", "day",
-                                                                          "reserved_usd", "spent_usd", "outcome")}
-                                                   for c in C.rows(claims_db)]}, indent=1))
+        rows = [
+            {k: j.get(k) for k in ("job_id", "lane", "state", "pr_url", "cost_usd", "updated_at")}
+            for j in state.get("jobs", {}).values()
+        ]
+        print(
+            json.dumps(
+                {
+                    "jobs": rows,
+                    "claims": [
+                        {
+                            k: c.get(k)
+                            for k in ("claim_id", "job_id", "state", "day", "reserved_usd", "spent_usd", "outcome")
+                        }
+                        for c in C.rows(claims_db)
+                    ],
+                },
+                indent=1,
+            )
+        )
         return 0
     if not args.cycle:
         ap.print_help()
@@ -842,25 +1301,55 @@ def main(argv: Optional[list[str]] = None, *, now: Optional[Callable[[], datetim
         print(json.dumps({"mode": "apply", "busy": True, "why": "another self-heal-fixer cycle holds the lock"}))
         return 0
     try:
-        return _cycle(args, cfg=cfg, apply=apply, root=root, state_path=state_path, receipt_path=receipt_path,
-                      claims_db=claims_db, environ=environ, now=now, grant_reader=grant_reader, gh=gh)
+        return _cycle(
+            args,
+            cfg=cfg,
+            apply=apply,
+            root=root,
+            state_path=state_path,
+            receipt_path=receipt_path,
+            claims_db=claims_db,
+            environ=environ,
+            now=now,
+            grant_reader=grant_reader,
+            gh=gh,
+        )
     finally:
         if lock is not None:
             lock.release()
 
 
-def _cycle(args, *, cfg: dict, apply: bool, root: Path, state_path: Path, receipt_path: Path, claims_db: Path,
-           environ: dict, now: Callable[[], datetime], grant_reader: Callable[[str], Optional[dict]],
-           gh: Callable[[list[str]], dict]) -> int:
+def _cycle(
+    args,
+    *,
+    cfg: dict,
+    apply: bool,
+    root: Path,
+    state_path: Path,
+    receipt_path: Path,
+    claims_db: Path,
+    environ: dict,
+    now: Callable[[], datetime],
+    grant_reader: Callable[[str], Optional[dict]],
+    gh: Callable[[list[str]], dict],
+) -> int:
     s = cfg["state"]
     lease = cfg.get("lease") or {}
     lease_ttl, beat_every = float(lease.get("ttl_s", 300)), float(lease.get("heartbeat_s", 60))
     state = _load_json(state_path) or {"schema": F.STATE_SCHEMA, "jobs": {}}
     t = now()
     repo = Path(cfg["repo"]["repo_root"])
-    out: dict[str, Any] = {"schema": F.RECEIPT_SCHEMA, "mode": "apply" if apply else "dry_run",
-                           "started_at": t.isoformat(), "admitted": [], "skipped": [], "attempted": [],
-                           "advanced": [], "escalations": [], "reconciled": []}
+    out: dict[str, Any] = {
+        "schema": F.RECEIPT_SCHEMA,
+        "mode": "apply" if apply else "dry_run",
+        "started_at": t.isoformat(),
+        "admitted": [],
+        "skipped": [],
+        "attempted": [],
+        "advanced": [],
+        "escalations": [],
+        "reconciled": [],
+    }
     work = state if apply else json.loads(json.dumps(state))
 
     def save() -> None:
@@ -884,11 +1373,20 @@ def _cycle(args, *, cfg: dict, apply: bool, root: Path, state_path: Path, receip
             job = work.get("jobs", {}).get(c["job_id"])
             row = {"claim_id": c["claim_id"], "job_id": c["job_id"], "why": c["why"]}
             if job and job.get("state") in (F.FIX_ATTEMPTING, F.FIX_REQUESTED):
-                F.transition(job, F.FIX_INTERRUPTED, t, reason=f"interrupted:{c['why']}", interrupted=c,
-                             updated_at=t.isoformat())
-                remember(F.memory_row(job, event="attempt_interrupted", now=t, backend=job.get("backend"),
-                                      reason=c["why"], partial=c.get("partial"),
-                                      reserved_usd_counted=c.get("reserved_usd_counted")))
+                F.transition(
+                    job, F.FIX_INTERRUPTED, t, reason=f"interrupted:{c['why']}", interrupted=c, updated_at=t.isoformat()
+                )
+                remember(
+                    F.memory_row(
+                        job,
+                        event="attempt_interrupted",
+                        now=t,
+                        backend=job.get("backend"),
+                        reason=c["why"],
+                        partial=c.get("partial"),
+                        reserved_usd_counted=c.get("reserved_usd_counted"),
+                    )
+                )
                 out["escalations"].append(escalation_for(job, t))
                 job["escalated_at"] = t.isoformat()
                 row["job_state"] = job["state"]
@@ -904,14 +1402,23 @@ def _cycle(args, *, cfg: dict, apply: bool, root: Path, state_path: Path, receip
         row = inc.pop("_registry_row", None) or registry_row(lane)
         if rc and not inc.get("stderr_tail"):
             inc["stderr_tail"] = rc.get("stderr_tail")
-        inc.setdefault("script", F.script_from_argv((rc or {}).get("argv") or [])
-                       or ((row or {}).get("scheduler") or {}).get("match"))
+        inc.setdefault(
+            "script",
+            F.script_from_argv((rc or {}).get("argv") or []) or ((row or {}).get("scheduler") or {}).get("match"),
+        )
         job, why = F.admit(work, inc, now=t, cfg=cfg, held=held)
         if not job:
             out["skipped"].append({"lane": lane, "why": why})
             continue
-        out["admitted"].append({"job_id": job["job_id"], "lane": lane, "state": job["state"], "why": why,
-                                "defect_id": job.get("defect_id")})
+        out["admitted"].append(
+            {
+                "job_id": job["job_id"],
+                "lane": lane,
+                "state": job["state"],
+                "why": why,
+                "defect_id": job.get("defect_id"),
+            }
+        )
         remember(F.memory_row(job, event="consumed", now=t, backend=None, contract=job.get("contract")))
         ev_by_job[job["job_id"]] = {"incident": inc, "receipt": rc, "row": row}
         if job["state"] == F.FIX_REFUSED:
@@ -932,19 +1439,26 @@ def _cycle(args, *, cfg: dict, apply: bool, root: Path, state_path: Path, receip
     arming = F.arming_verdict(grant, cfg=cfg, jobs_today=jobs_today())
     policy = F.policy_verdict(agents, cfg)
     backend, backend_why = F.select_backend(cfg)
-    out.update(arming=arming, policy=policy, base_sha=base_sha, fetch_rc=fetch["rc"],
-               backend={"name": backend, "why": backend_why})
+    out.update(
+        arming=arming,
+        policy=policy,
+        base_sha=base_sha,
+        fetch_rc=fetch["rc"],
+        backend={"name": backend, "why": backend_why},
+    )
     names = [n for n in (cfg.get("backends") or {}) if not n.startswith("_")]
     queue = [j for j in work.get("jobs", {}).values() if j.get("state") == F.FIX_REQUESTED]
     queue.sort(key=lambda j: str(j.get("created_at")))
     it = cfg["iteration"]
     for job in queue[: int(cfg["arming"]["max_jobs_per_cycle"])]:
-        src = ev_by_job.get(job["job_id"]) or {"incident": {"lane": job["lane"], "key": job.get("escalation_key")},
-                                               "receipt": failed_receipt(ledger, job["lane"],
-                                                                         job.get("failed_run_id")),
-                                               "row": registry_row(job["lane"])}
-        evidence = F.build_evidence(job, incident=src["incident"], receipt=src["receipt"], registry_row=src["row"],
-                                    base_sha=base_sha, cfg=cfg)
+        src = ev_by_job.get(job["job_id"]) or {
+            "incident": {"lane": job["lane"], "key": job.get("escalation_key")},
+            "receipt": failed_receipt(ledger, job["lane"], job.get("failed_run_id")),
+            "row": registry_row(job["lane"]),
+        }
+        evidence = F.build_evidence(
+            job, incident=src["incident"], receipt=src["receipt"], registry_row=src["row"], base_sha=base_sha, cfg=cfg
+        )
         try:
             rails = F.extract_rails(agents)
         except ValueError as exc:
@@ -953,8 +1467,9 @@ def _cycle(args, *, cfg: dict, apply: bool, root: Path, state_path: Path, receip
         if not backend:
             out["attempted"].append({"job_id": job["job_id"], "outcome": f"no_backend:{backend_why}"})
             continue
-        job["shadow_route"] = F.shadow_route(memory_old + memory_new, failure_kind=job.get("failure_kind"),
-                                             backends=names, chosen=backend)
+        job["shadow_route"] = F.shadow_route(
+            memory_old + memory_new, failure_kind=job.get("failure_kind"), backends=names, chosen=backend
+        )
         if not apply:
             wt = Path(cfg["repo"]["worktree_root"])
             pytest_cmd = str(wt / f"{job['job_id']}-bin" / "pytest")
@@ -962,26 +1477,52 @@ def _cycle(args, *, cfg: dict, apply: bool, root: Path, state_path: Path, receip
             ah = str(wt / f"{job['job_id']}-home")
             asb = cfg.get("agent_sandbox") or {}
             binds, auth_why = F.agent_auth_binds(cfg, home=home, agent_home=ah, probe=_probe)
-            plan = {"job": job, "evidence": evidence, "backend": backend,
-                    "backend_argv": F.backend_argv(cfg, backend, budget_usd=float(
-                        cfg["iteration"]["per_iteration_budget_usd"]), pytest_cmd=pytest_cmd),
-                    "backend_call": "STUBBED (dry run: no model call)",
-                    "sandbox_prefix": F.eval_sandbox_prefix(
-                        cfg, repo_root=str(repo), python_root=str(Path(cfg["repo"]["python"]).parent.parent),
-                        checkout="<eval-checkout>", scratch="<scratch>", env={"<env>": "<child_env_names>"},
-                        probe=_probe),
-                    "agent_sandbox_prefix": F.agent_sandbox_prefix(
-                        cfg, home=home, repo_root=str(repo), python_root=str(Path(cfg["repo"]["python"]).parent.parent),
-                        extra_ro=["<claude-bin>", "<bindir>", "<egress-dir>"], fix_wt="<fix_wt>", agent_home=ah,
-                        scratch="<scratch>", auth_binds=binds, env={"<env>": "<agent_env_names>"}, probe=_probe),
-                    "agent_auth": auth_why,
-                    "agent_env_names": sorted(F.agent_env(environ, cfg, scratch_state="<scratch>", agent_home=ah,
-                                                          proxy_port=asb.get("proxy_port"))),
-                    "egress_allow": asb.get("egress_allow"),
-                    "budget_reservation": {"iterations": it["max_iterations"], "usd": it["max_cost_usd"],
-                                           "seconds": float(it["max_minutes"]) * 60},
-                    "branch": F.branch_name(job, cfg, t), "would_push": bool(arming["armed"] and policy["push_allowed"]),
-                    "env_names": sorted(F.child_env(environ, cfg, scratch_state="<scratch>"))}
+            plan = {
+                "job": job,
+                "evidence": evidence,
+                "backend": backend,
+                "backend_argv": F.backend_argv(
+                    cfg, backend, budget_usd=float(cfg["iteration"]["per_iteration_budget_usd"]), pytest_cmd=pytest_cmd
+                ),
+                "backend_call": "STUBBED (dry run: no model call)",
+                "sandbox_prefix": F.eval_sandbox_prefix(
+                    cfg,
+                    repo_root=str(repo),
+                    python_root=str(Path(cfg["repo"]["python"]).parent.parent),
+                    checkout="<eval-checkout>",
+                    scratch="<scratch>",
+                    env={"<env>": "<child_env_names>"},
+                    probe=_probe,
+                ),
+                "agent_sandbox_prefix": F.agent_sandbox_prefix(
+                    cfg,
+                    home=home,
+                    repo_root=str(repo),
+                    python_root=str(Path(cfg["repo"]["python"]).parent.parent),
+                    extra_ro=["<claude-bin>", "<bindir>", "<egress-dir>"],
+                    fix_wt="<fix_wt>",
+                    agent_home=ah,
+                    scratch="<scratch>",
+                    auth_binds=binds,
+                    env={"<env>": "<agent_env_names>"},
+                    probe=_probe,
+                ),
+                "agent_auth": auth_why,
+                "agent_env_names": sorted(
+                    F.agent_env(
+                        environ, cfg, scratch_state="<scratch>", agent_home=ah, proxy_port=asb.get("proxy_port")
+                    )
+                ),
+                "egress_allow": asb.get("egress_allow"),
+                "budget_reservation": {
+                    "iterations": it["max_iterations"],
+                    "usd": it["max_cost_usd"],
+                    "seconds": float(it["max_minutes"]) * 60,
+                },
+                "branch": F.branch_name(job, cfg, t),
+                "would_push": bool(arming["armed"] and policy["push_allowed"]),
+                "env_names": sorted(F.child_env(environ, cfg, scratch_state="<scratch>")),
+            }
             prompt = F.build_prompt(evidence, rails=rails, cfg=cfg, iteration=1, pytest_cmd=pytest_cmd)
             if args.out:
                 od = Path(args.out)
@@ -990,8 +1531,14 @@ def _cycle(args, *, cfg: dict, apply: bool, root: Path, state_path: Path, receip
                 (od / "evidence.json").write_text(json.dumps(evidence, indent=1) + "\n", encoding="utf-8")
                 (od / "prompt_iter1.md").write_text(prompt, encoding="utf-8")
                 (od / "plan.json").write_text(json.dumps(plan, indent=1, default=str) + "\n", encoding="utf-8")
-            out["attempted"].append({"job_id": job["job_id"], "outcome": "dry_run_planned",
-                                     "prompt_chars": len(prompt), "would_push": plan["would_push"]})
+            out["attempted"].append(
+                {
+                    "job_id": job["job_id"],
+                    "outcome": "dry_run_planned",
+                    "prompt_chars": len(prompt),
+                    "would_push": plan["would_push"],
+                }
+            )
             continue
         if not arming["armed"]:
             out["attempted"].append({"job_id": job["job_id"], "outcome": f"not_armed:{arming['why']}"})
@@ -1001,47 +1548,103 @@ def _cycle(args, *, cfg: dict, apply: bool, root: Path, state_path: Path, receip
         (ev_dir / "evidence.json").write_text(json.dumps(evidence, indent=1) + "\n", encoding="utf-8")
         # durable claim + the WHOLE budget reserved BEFORE the backend is launched (finding 3)
         claim_id, claim_why = C.claim(
-            claims_db, dedupe_key=job["dedupe_key"], job_id=job["job_id"], day=day,
-            reserve_iterations=int(it["max_iterations"]), reserve_usd=float(it["max_cost_usd"]),
-            reserve_seconds=float(it["max_minutes"]) * 60, lease_ttl_s=lease_ttl,
+            claims_db,
+            dedupe_key=job["dedupe_key"],
+            job_id=job["job_id"],
+            day=day,
+            reserve_iterations=int(it["max_iterations"]),
+            reserve_usd=float(it["max_cost_usd"]),
+            reserve_seconds=float(it["max_minutes"]) * 60,
+            lease_ttl_s=lease_ttl,
             daily_job_cap=int(cfg["arming"]["daily_job_cap"]),
             daily_usd_cap=float(cfg["arming"].get("daily_cost_cap_usd", it["max_cost_usd"])),
-            evidence_dir=str(ev_dir))
+            evidence_dir=str(ev_dir),
+        )
         if not claim_id:
             out["attempted"].append({"job_id": job["job_id"], "outcome": f"not_claimed:{claim_why}"})
             continue
         job["claim_id"] = claim_id
-        job["budget_reserved"] = {"iterations": int(it["max_iterations"]), "usd": float(it["max_cost_usd"]),
-                                  "seconds": float(it["max_minutes"]) * 60}
+        job["budget_reserved"] = {
+            "iterations": int(it["max_iterations"]),
+            "usd": float(it["max_cost_usd"]),
+            "seconds": float(it["max_minutes"]) * 60,
+        }
 
         def progress(j: dict, rec: dict, _cid: str = claim_id, _ev: Path = ev_dir) -> None:
-            C.record_progress(claims_db, _cid, iterations_done=len(j.get("iterations") or []),
-                              spent_usd=float(j.get("cost_usd") or 0),
-                              partial={"iteration": rec.get("iteration"), "failing": (rec.get("failing") or [])[:6],
-                                       "candidate": rec.get("candidate"), "patch": rec.get("patch"),
-                                       "evidence_dir": str(_ev), "branch": j.get("branch"),
-                                       "worktrees": j.get("worktrees")})
+            C.record_progress(
+                claims_db,
+                _cid,
+                iterations_done=len(j.get("iterations") or []),
+                spent_usd=j.get("cost_usd"),
+                partial={
+                    "iteration": rec.get("iteration"),
+                    "failing": (rec.get("failing") or [])[:6],
+                    "candidate": rec.get("candidate"),
+                    "patch": rec.get("patch"),
+                    "evidence_dir": str(_ev),
+                    "branch": j.get("branch"),
+                    "worktrees": j.get("worktrees"),
+                },
+            )
 
         try:
             with C.Heartbeat(claims_db, claim_id, lease_ttl_s=lease_ttl, every_s=beat_every):
-                attempt_job(job, evidence, cfg=cfg, environ=environ, now=now, evidence_dir=ev_dir,
-                            may_push=bool(policy["push_allowed"]), rails=rails, backend=backend, remember=remember,
-                            persist=lambda _j: save(), progress=progress)
+                attempt_job(
+                    job,
+                    evidence,
+                    cfg=cfg,
+                    environ=environ,
+                    now=now,
+                    evidence_dir=ev_dir,
+                    may_push=bool(policy["push_allowed"]),
+                    rails=rails,
+                    backend=backend,
+                    remember=remember,
+                    persist=lambda _j: save(),
+                    progress=progress,
+                )
         except Exception as exc:  # noqa: BLE001 — a harness bug ends the attempt, never leaves it "attempting"
             if job.get("state") in (F.FIX_REQUESTED, F.FIX_ATTEMPTING):
                 if job["state"] == F.FIX_REQUESTED:
                     F.transition(job, F.FIX_ATTEMPTING, now(), iteration=0)
-                F.transition(job, F.FIX_FAILED, now(), reason=f"harness_exception:{type(exc).__name__}:{exc}"[:300],
-                             updated_at=now().isoformat())
-        C.settle(claims_db, claim_id, outcome=str(job.get("state")), spent_usd=float(job.get("cost_usd") or 0),
-                 iterations_done=len(job.get("iterations") or []))
+                F.transition(
+                    job,
+                    F.FIX_FAILED,
+                    now(),
+                    reason=f"harness_exception:{type(exc).__name__}:{exc}"[:300],
+                    updated_at=now().isoformat(),
+                )
+        C.settle(
+            claims_db,
+            claim_id,
+            outcome=str(job.get("state")),
+            spent_usd=job.get("cost_usd"),
+            iterations_done=len(job.get("iterations") or []),
+        )
         save()
-        remember(F.memory_row(job, event="attempt_outcome", now=now(), backend=backend, reason=job.get("reason"),
-                              iterations=len(job.get("iterations") or []), cost_usd=job.get("cost_usd"),
-                              head_sha=job.get("head_sha"), pr_url=job.get("pr_url"),
-                              shadow_route=job.get("shadow_route")))
-        out["attempted"].append({"job_id": job["job_id"], "outcome": job["state"], "reason": job.get("reason"),
-                                 "iterations": len(job.get("iterations") or []), "cost_usd": job.get("cost_usd")})
+        remember(
+            F.memory_row(
+                job,
+                event="attempt_outcome",
+                now=now(),
+                backend=backend,
+                reason=job.get("reason"),
+                iterations=len(job.get("iterations") or []),
+                cost_usd=job.get("cost_usd"),
+                head_sha=job.get("head_sha"),
+                pr_url=job.get("pr_url"),
+                shadow_route=job.get("shadow_route"),
+            )
+        )
+        out["attempted"].append(
+            {
+                "job_id": job["job_id"],
+                "outcome": job["state"],
+                "reason": job.get("reason"),
+                "iterations": len(job.get("iterations") or []),
+                "cost_usd": job.get("cost_usd"),
+            }
+        )
         if job["state"] in (F.FIX_FAILED, F.FIX_REFUSED) and not job.get("escalated_at"):
             out["escalations"].append(escalation_for(job, now()))
             job["escalated_at"] = now().isoformat()
@@ -1052,9 +1655,17 @@ def _cycle(args, *, cfg: dict, apply: bool, root: Path, state_path: Path, receip
             if moved:
                 out["advanced"].append({"job_id": job["job_id"], "to": moved})
             if moved or job.get("acceptance"):
-                remember(F.memory_row(job, event=f"lifecycle:{moved or job['state']}", now=t,
-                                      backend=job.get("backend"), acceptance=job.get("acceptance"),
-                                      merged_sha=job.get("merged_sha"), release_sha=job.get("release_sha")))
+                remember(
+                    F.memory_row(
+                        job,
+                        event=f"lifecycle:{moved or job['state']}",
+                        now=t,
+                        backend=job.get("backend"),
+                        acceptance=job.get("acceptance"),
+                        merged_sha=job.get("merged_sha"),
+                        release_sha=job.get("release_sha"),
+                    )
+                )
     out["finished_at"] = now().isoformat()
     out["counts"] = {st: sum(1 for j in work.get("jobs", {}).values() if j.get("state") == st) for st in F.STATES}
     out["repair_memory_rows"] = len(memory_new)
@@ -1071,8 +1682,27 @@ def _cycle(args, *, cfg: dict, apply: bool, root: Path, state_path: Path, receip
         _atomic_write(receipt_path, out)
     elif args.out:
         _atomic_write(Path(args.out) / "receipt.json", out)
-    print(json.dumps({k: out.get(k) for k in ("mode", "admitted", "skipped", "attempted", "advanced", "reconciled",
-                                              "arming", "policy", "backend", "counts")}, indent=1, default=str))
+    print(
+        json.dumps(
+            {
+                k: out.get(k)
+                for k in (
+                    "mode",
+                    "admitted",
+                    "skipped",
+                    "attempted",
+                    "advanced",
+                    "reconciled",
+                    "arming",
+                    "policy",
+                    "backend",
+                    "counts",
+                )
+            },
+            indent=1,
+            default=str,
+        )
+    )
     return 0
 
 

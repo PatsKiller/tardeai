@@ -26,6 +26,8 @@ Hermetic: tmp state roots and ledgers, no DB, no network, no broker, no secret.
 
 from __future__ import annotations
 
+import time
+import hashlib
 import copy
 import json
 import sqlite3
@@ -466,6 +468,9 @@ def _fake_crontab(tmp_path: Path, text: str) -> Path:
     return exe
 
 
+TEST_GRANT = "abcdef0123456789abcdef0123456789"  # fixture-only full guard id
+
+
 def _packet(tmp_path: Path, *args: str, hm: str = "1200", grant: bool = True, **extra: str):
     env = {
         "PATH": "/usr/bin:/bin",
@@ -485,7 +490,20 @@ def _packet(tmp_path: Path, *args: str, hm: str = "1200", grant: bool = True, **
         "PYTHONPATH": str(ROOT),
     }
     if grant:
-        env["TRADEAI_FABRIC_GRANT"] = "g-test"
+        approvals = tmp_path / "approvals"
+        approvals.mkdir(exist_ok=True)
+        reason = (f"hermes-tune.c1 hermes-tune.c2 hermes-tune.c3 hermes-tune.relay hermes-tune.rollback "
+                  f"{LANE} hermes-learning-pipeline-tune {WID} "
+                  + hashlib.sha256(PACKET.read_bytes()).hexdigest()
+                  + " restart tradeai-n8n-run-relay.service tradeai-n8n-coordination-gateway.service")
+        tier = "config-write" if args[0] == "relay" else "cron"
+        (approvals / "grants.json").write_text(json.dumps({
+            tier: {"grant_id": TEST_GRANT, "expires": time.time() + 3600, "uses": 5, "reason": reason},
+            "service": {"grant_id": "f" * 32, "expires": time.time() + 3600, "uses": 5, "reason": reason}}))
+        env["GUARD_APPROVALS_DIR"] = str(approvals)
+        env["TRADEAI_FABRIC_GRANT"] = TEST_GRANT
+        env["TRADEAI_FABRIC_SERVICE_GRANT"] = "f" * 32
+        env["GUARD_AUDIT_LOG"] = str(tmp_path / "grant-audit.jsonl")
     env.update(extra)
     return subprocess.run(["bash", str(PACKET), *args], env=env, capture_output=True, text=True, timeout=120)
 
@@ -506,25 +524,33 @@ def test_packet_refuses_unknown_steps_and_args(tmp_path):
     assert "--date YYYYMMDD" in _packet(tmp_path, "proof").stdout
 
 
-def test_c2_dry_then_apply_rewrites_exactly_the_tune_line(tmp_path):
+def test_tune_c2_holds_before_grant_or_crontab_write(tmp_path):
+    _fake_crontab(tmp_path, f"# unrelated\n{OLD_LINE}\n")
+    before = (tmp_path / "crontab.txt").read_bytes()
+    result = _packet(tmp_path, "c2", "--apply", grant=False)
+    assert result.returncode == 1 and json.loads(result.stdout)["reason"] == "reviewed_common_controller_required"
+    assert (tmp_path / "crontab.txt").read_bytes() == before
+    assert not list((tmp_path / "backups").glob("*"))
+
+
+def test_c2_preserves_read_only_plan_but_apply_is_held(tmp_path):
     _fake_crontab(tmp_path, f"# head\n{LEARN_LINE}\n{OLD_LINE}\n# tail\n")
     before = (tmp_path / "crontab.txt").read_text()
     r = _packet(tmp_path, "c2")
     assert r.returncode == 0 and "DRY RUN — crontab unchanged" in r.stdout, r.stdout + r.stderr
     assert (tmp_path / "crontab.txt").read_text() == before
     r = _packet(tmp_path, "c2", "--apply")
-    assert r.returncode == 0 and "installed byte-exact" in r.stdout, r.stdout + r.stderr
-    assert (tmp_path / "crontab.txt").read_text() == before.replace(OLD_LINE, NEW_LINE)
-    (backup,) = (tmp_path / "backups").iterdir()
-    assert backup.read_text() == before
-    r = _packet(tmp_path, "c2", "--apply")
-    assert r.returncode == 0 and "already applied" in r.stdout
+    assert r.returncode == 1 and json.loads(r.stdout)["state"] == "held"
+    assert (tmp_path / "crontab.txt").read_text() == before
+    assert not list((tmp_path / "backups").iterdir())
+    assert not (tmp_path / "grant-audit.jsonl").exists()
+    assert all(row["uses"] == 5 for row in json.loads((tmp_path / "approvals/grants.json").read_text()).values())
 
 
 @pytest.mark.parametrize("tab", [f"{LEARN_LINE}\n", f"{OLD_LINE}\n{OLD_LINE}\n"])
 def test_c2_refuses_without_exactly_one_tune_line(tmp_path, tab):
     _fake_crontab(tmp_path, tab)
-    r = _packet(tmp_path, "c2", "--apply")
+    r = _packet(tmp_path, "c2")
     assert r.returncode == 1 and "REFUSED: expected exactly one tune line" in r.stdout
     assert (tmp_path / "crontab.txt").read_text() == tab
 
@@ -537,24 +563,41 @@ def test_c1_c3_rollback_owner_acts_with_refusals(tmp_path):
     r = _packet(tmp_path, "c1", "--apply")
     assert r.returncode == 0 and "-> cron 1" in r.stdout, r.stdout + r.stderr
     assert "already cron" in _packet(tmp_path, "c1", "--apply").stdout
-    # c3 order refusals: window, c2, relay
+    # c3 read-only plans retain their order checks; live ownership is held before every check/effect.
     for hm in ("1650", "1700", "1719", "1725"):
-        assert "inside the tune window" in _packet(tmp_path, "c3", "--apply", hm=hm).stdout, hm
-    assert "c2 not applied" in _packet(tmp_path, "c3", "--apply").stdout
-    _packet(tmp_path, "c2", "--apply")
+        assert "inside the tune window" in _packet(tmp_path, "c3", hm=hm).stdout, hm
+    assert "c2 not applied" in _packet(tmp_path, "c3").stdout
+    _fake_crontab(tmp_path, f"{NEW_LINE}\n")
     (tmp_path / "live.env").write_text("TRADEAI_N8N_RELAY_LIVE_LANES=hermes-learning-tag-engine\n")
-    assert "relay not applied" in _packet(tmp_path, "c3", "--apply").stdout
+    assert "relay not applied" in _packet(tmp_path, "c3").stdout
     (tmp_path / "live.env").write_text(f"TRADEAI_N8N_RELAY_LIVE_LANES=hermes-learning-tag-engine {LANE}\n")
     r = _packet(tmp_path, "c3")
     assert r.returncode == 0 and "DRY RUN — would run: effect_claim.py set-owner --process" in r.stdout
     assert "--owner n8n --expect-epoch 1" in r.stdout
     r = _packet(tmp_path, "c3", "--apply", hm="1640")
-    assert r.returncode == 0 and "-> n8n 2" in r.stdout, r.stdout + r.stderr
+    assert r.returncode == 1 and json.loads(r.stdout)["reason"] == "reviewed_common_controller_required"
     manifest = json.loads((tmp_path / "handover.json").read_text())
-    assert manifest["processes"][LANE]["owner"] == "n8n"  # set-owner wrote the fail-closed manifest
-    assert "already n8n" in _packet(tmp_path, "c3", "--apply").stdout
+    assert manifest["processes"][LANE]["owner"] == "cron"
+    _owner(tmp_path / "ledger.sqlite", "n8n", 1)  # Fixture of an existing owner for the rollback test.
+    plan = _packet(tmp_path, "rollback")
+    assert plan.returncode == 0 and "--owner cron --expect-epoch 2" in plan.stdout
+    before = (tmp_path / "ledger.sqlite").read_bytes()
     r = _packet(tmp_path, "rollback", "--apply")
-    assert r.returncode == 0 and "-> cron 3" in r.stdout, r.stdout + r.stderr
+    assert r.returncode == 1 and json.loads(r.stdout)["state"] == "held"
+    assert (tmp_path / "ledger.sqlite").read_bytes() == before
+
+
+@pytest.mark.parametrize("action", ["c2", "c3", "rollback"])
+def test_legacy_mutations_hold_before_unknown_effect_or_admission_state_is_touched(tmp_path, action):
+    unknown = tmp_path / "ledger.sqlite"
+    unknown.write_bytes(b"UNKNOWN claim and pending admission fixture; must not be opened")
+    before = unknown.read_bytes()
+    result = _packet(tmp_path, action, "--apply", grant=False)
+    doc = json.loads(result.stdout)
+    assert result.returncode == 1 and doc["state"] == "held"
+    assert doc["grant_consumed"] is False and doc["effect_performed"] is False
+    assert unknown.read_bytes() == before
+    assert not (tmp_path / "approvals").exists()
 
 
 def test_relay_dry_run_lists_the_addition_and_changes_nothing(tmp_path):
@@ -566,9 +609,9 @@ def test_relay_dry_run_lists_the_addition_and_changes_nothing(tmp_path):
     assert env_file.read_text() == "TRADEAI_N8N_RELAY_LIVE_LANES=a-lane hermes-learning-tag-engine\n"
 
 
-def test_publish_confirms_no_reimport_against_the_committed_tree(tmp_path):
+def test_publish_holds_without_export_and_runtime_evidence(tmp_path):
     r = _packet(tmp_path, "publish")
-    assert r.returncode == 0 and "NO RE-IMPORT NEEDED" in r.stdout, r.stdout + r.stderr
+    assert r.returncode == 1 and "framework evidence unavailable" in r.stdout
 
 
 def _proof_fixture(tmp_path: Path, *, verdict: str, cron_status: str | None) -> Path:

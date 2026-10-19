@@ -36,6 +36,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
+from scripts.lib import recovery_validator as RV
+
 SCHEMA = "N8nSiemBridge@v1"
 NO_CONSUMER_REASON = (
     "REMEDIATION_PLAN §5 L2 SIEM bridge; its consumer is the Command Center SIEM (system_health_events). "
@@ -49,7 +51,7 @@ RECEIPT_REL = "data/runtime/n8n_siem_bridge_last.json"
 FANIN_LANE = "n8n-incident-fanin"
 DIAGNOSES_REL = "data/runtime/n8n_diagnoses/diagnoses.jsonl"
 DIAGNOSIS_SCHEMA = "N8nLaneDiagnosis@v1"
-DIAGNOSES_TAIL_BYTES = 4 * 1024 * 1024   # the newest records only; one diagnosis per incident, a few per day
+DIAGNOSES_TAIL_BYTES = 4 * 1024 * 1024  # the newest records only; one diagnosis per incident, a few per day
 FANIN_MAX_AGE_H = 1.0  # fan-in runs */5; an hour without a receipt means the SIEM feed is blind
 
 SEVERITY_RANK = {"CRITICAL": 0, "URGENT": 1, "WARN": 2, "INFO": 3}
@@ -68,7 +70,7 @@ ISO_TS_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[+-]\d{
 
 DEFAULT_REMEDIATION = {
     "RUN_FAILED": "Read the RunReceipt stderr_tail for this run, fix the lane runner, then prove recovery with a "
-    "dry_run via coordination/run before the next live slot.",
+    "fresh effective-live contracted business output after the incident; dry-run validation alone cannot close it.",
     "RUN_TIMEOUT": "Lane exceeded its allowlist timeout_s: check for a hung dependency or lock, profile the runner, "
     "and raise timeout_s only with evidence.",
     "RUN_REFUSED": "Executor refused the run (allowlist/mode/env). Check config/n8n_run_allowlist.json for the lane "
@@ -267,13 +269,20 @@ def _finding(
     }
 
 
-def ledger_findings(latest: dict[str, dict[str, Any]], registry: dict[str, dict]) -> tuple[list[dict], set[str]]:
-    """(findings, good lanes) from the latest decisive run per lane."""
-    found, good = [], set()
+def ledger_findings(latest: dict[str, dict[str, Any]], registry: dict[str, dict]) -> tuple[list[dict], dict[str, dict]]:
+    """(findings, candidate recovery runs) from the latest decisive run per lane.
+
+    Internal interface v2 carries the actual run, never just a lane-name assertion. The only production
+    consumer, scripts/n8n_siem_bridge.py, forwards it to plan; historical lane sets cannot authorize closure.
+    Dry successful runs need not page, but cannot replace live business proof.
+    """
+    found, good = [], {}
     for lane, row in sorted(latest.items()):
         kind, excerpt = run_verdict(row)
         if kind is None:
-            good.add(lane)
+            proven, _ = RV.validate(row, mode="live", lane=lane)
+            if proven:
+                good[lane] = row
             continue
         wf, ex = parse_run_id(row.get("run_id"), row.get("requested_by"))
         found.append(
@@ -428,7 +437,7 @@ def read_diagnoses(path: Path, tail_bytes: int = DIAGNOSES_TAIL_BYTES) -> tuple[
         with p.open("rb") as fh:
             if size > tail_bytes:
                 fh.seek(size - tail_bytes)
-                fh.readline()                       # drop the partial first line
+                fh.readline()  # drop the partial first line
             raw = fh.read().decode("utf-8", errors="replace")
     except FileNotFoundError:
         return {}, "diagnoses:none"
@@ -449,7 +458,7 @@ def read_diagnoses(path: Path, tail_bytes: int = DIAGNOSES_TAIL_BYTES) -> tuple[
             continue
         slot = out.setdefault(str(rec["incident_key"]), {"diagnosis": None, "remediation": None})
         if rec.get("kind") == "diagnosis":
-            slot["diagnosis"], slot["remediation"] = rec, None      # a newer diagnosis restarts the story
+            slot["diagnosis"], slot["remediation"] = rec, None  # a newer diagnosis restarts the story
         elif rec.get("kind") == "remediation":
             slot["remediation"] = rec
         else:
@@ -468,10 +477,15 @@ def diagnosis_suffix(view: dict[str, Any]) -> str:
 
     cost = d.get("cost_usd")
     parts = [
-        f'cause="{q(d.get("cause"))}"', f"conf={d.get('confidence')}", f"action={d.get('action_id')}",
-        f"outcome={d.get('outcome')}", f"model={d.get('provider') or 'n/a'}/{d.get('model_id') or 'n/a'}",
-        f"cost_usd={'n/a' if cost is None else f'{float(cost):.4f}'}", f"latency_ms={d.get('latency_ms')}",
-        f"cites={','.join(str(c) for c in d.get('citations') or [])[:200]}", f"key={d.get('incident_key')}",
+        f'cause="{q(d.get("cause"))}"',
+        f"conf={d.get('confidence')}",
+        f"action={d.get('action_id')}",
+        f"outcome={d.get('outcome')}",
+        f"model={d.get('provider') or 'n/a'}/{d.get('model_id') or 'n/a'}",
+        f"cost_usd={'n/a' if cost is None else f'{float(cost):.4f}'}",
+        f"latency_ms={d.get('latency_ms')}",
+        f"cites={','.join(str(c) for c in d.get('citations') or [])[:200]}",
+        f"key={d.get('incident_key')}",
     ]
     if d.get("escalation"):
         parts.append(f"escalated={d['escalation']}")
@@ -493,7 +507,7 @@ def plan(
     open_rows: list[dict[str, Any]],
     *,
     env: str,
-    good_lanes: set[str],
+    good_lanes: dict[str, dict],
     ledger_ok: bool,
     fanin_ok: bool,
     diagnoses: Optional[dict[str, dict]] = None,
@@ -534,11 +548,16 @@ def plan(
         if diagnoses is None:
             old = str(ex.get("message") or "")
             if finding_text(old) == finding_text(msg):
-                desired = msg + old[len(strip_diagnosis(old)):]
+                desired = msg + old[len(strip_diagnosis(old)) :]
         elif ikey in diagnoses:
             desired, folded = msg + diagnosis_suffix(diagnoses[ikey]), ikey
-        row = {**row, "message": desired, "incident_key": ikey, "diagnosis_folded": folded,
-               "action_note": diagnosis_action(diagnoses[ikey]) if folded else None}
+        row = {
+            **row,
+            "message": desired,
+            "incident_key": ikey,
+            "diagnosis_folded": folded,
+            "action_note": diagnosis_action(diagnoses[ikey]) if folded else None,
+        }
         if ex.get("severity") == f["severity"] and stable_text(ex.get("message")) == stable_text(desired):
             out["skip"].append({**row, "id": ex.get("id")})
         else:
@@ -548,19 +567,35 @@ def plan(
             continue
         comp, kind = key
         lane = comp[len(COMPONENT_PREFIX) :]
-        if kind in LEDGER_KINDS and lane != FANIN_LANE:
-            ok, why = ledger_ok and lane in good_lanes, "latest_run_good"
-        elif kind in LEDGER_KINDS:  # the fan-in's own receipt: fresh again, or its lane's latest run is good
-            ok, why = fanin_ok or (ledger_ok and lane in good_lanes), "fanin_receipt_fresh"
+        if kind in LEDGER_KINDS:
+            ok, why = False, "live_output_recovery_unproven"
         else:
             ok, why = fanin_ok, "fanin_finding_cleared"
         for r in rows:
+            if kind in LEDGER_KINDS:
+                # The incident's host timestamp is the lower bound, not the latest run's own assertion.
+                # Missing/naive clocks hold. Each duplicate open episode is evaluated independently.
+                try:
+                    value = r.get("created_at")
+                    opened = (
+                        value
+                        if isinstance(value, datetime)
+                        else datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+                    )
+                except (TypeError, ValueError, OverflowError):
+                    opened = None
+                candidate = good_lanes.get(lane) if isinstance(good_lanes, dict) else None
+                if ledger_ok and opened is not None and opened.tzinfo is not None:
+                    ok, detail = RV.validate(candidate, mode="live", lane=lane, since=opened.timestamp())
+                    why = "latest_run_good:verified_business_output" if ok else detail
+                else:
+                    ok, why = False, "incident_time_or_recovery_source_unavailable"
             item = {
                 "id": r.get("id"),
                 "component": comp,
                 "event_type": kind,
                 "severity": r.get("severity"),
-                "reason": why if ok else "source_unhealthy_or_lane_not_good",
+                "reason": why if ok else "source_unhealthy_or_lane_not_good:" + why,
             }
             out["resolve" if ok else "hold"].append(item)
     return out

@@ -12,9 +12,13 @@ the live list or a unit, and nothing restarts anything.
   6. wiring: route, registry rows, allowlist, REVIEWED contract, unit file gate line (no misspelt dir)
   7. the operator packet: dry by default, shellcheck, refuses --apply without a real grant, refuses open-hours start,
      installs with archive + read-back, proof PASS/FAIL, relay/rollback of the live list
+  8. main's bounded grant model (#1873): authorize active-trader-motion.<step> --consume spends exactly one use of
+     each finite bound grant right before the first effect; wrong tier / unbound reason / missing service grant /
+     prefix id refuse with no effect and no consumption; dry runs consume nothing
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -41,6 +45,22 @@ PACKET = ROOT / "docs" / "ops" / "packets" / "active-trader-motion-n8n-20261019"
 SCRIPT = PACKET / "cutover.sh"
 UNIT = ROOT / "config" / "systemd" / "tradeai-active-trader-motion.service"
 GID = "c6c7c582214340fb9397fe821fdf224f"
+SERVICE_GID = "f" * 32
+MOTION_UNIT = "tradeai-active-trader-motion.service"
+RELAY_UNITS = ("tradeai-n8n-run-relay.service", "tradeai-n8n-coordination-gateway.service")
+
+
+def _bound_ledger(step: str, *, uses: int = 5, drop: str = "") -> dict:
+    """A guard ledger (flat tier -> row, as main's fabric-grant tests write it) bound to active-trader-motion.<step>."""
+    digest = hashlib.sha256(SCRIPT.read_bytes()).hexdigest()
+    base = f"active-trader-motion.{step} {LANE} tradeai-dispatcher {digest}"
+    row = lambda gid, reason: {"grant_id": gid, "expires": time.time() + 3600, "uses": uses,  # noqa: E731
+                               "reason": " ".join(w for w in reason.split() if w != drop)}
+    if step in ("install", "start"):
+        verb = "daemon-reload" if step == "install" else "restart"
+        return {"execution-ops": row(GID, f"{base} {MOTION_UNIT} {verb}")}
+    reason = f"{base} restart {' '.join(RELAY_UNITS)}"
+    return {"config-write": row(GID, reason), "service": row(SERVICE_GID, reason)}
 CFG = W.load_config()
 # Mon 2026-10-19 11:00 ET: a trading day, RTH, inside the window
 MON_1100 = datetime(2026, 10, 19, 11, 0, tzinfo=ET)
@@ -460,12 +480,21 @@ def pk(tmp_path):
         "STATE": str(tmp_path / "state"), "LIVE_LANES_ENV": str(live), "SYSTEMCTL_BIN": str(bin_dir / "systemctl"),
         "PROC_ROOT": str(proc), "UNIT_DIR": str(units), "MARKER": str(marker), "HEARTBEAT": str(hb),
         "RESTART_SETTLE_S": "0", "PROOF_GAP_S": "0", "GUARD_APPROVALS_DIR": str(approvals), "TRADE_AI_CI": "1",
-        "NOW_ISO": "2026-10-19T22:00:00-04:00",
+        "NOW_ISO": "2026-10-19T22:00:00-04:00", "GUARD_AUDIT_LOG": str(tmp_path / "grant-audit.jsonl"),
+        "TRADEAI_FABRIC_SERVICE_GRANT": SERVICE_GID,
     }
 
-    def grant(tier: str = "config-write") -> None:
-        (approvals / "grants.json").write_text(json.dumps(
-            {"grants": {tier: {"grant_id": GID, "expires": time.time() + 3600, "uses": 5, "reason": "test"}}}))
+    def grant(step: str, **kw) -> dict:
+        doc = _bound_ledger(step, **kw)
+        (approvals / "grants.json").write_text(json.dumps(doc))
+        return doc
+
+    def ledger() -> dict:
+        return json.loads((approvals / "grants.json").read_text())
+
+    def audit() -> list[dict]:
+        log = tmp_path / "grant-audit.jsonl"
+        return [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
 
     def beat(cycles: int, age: float = 1.0) -> None:
         hb.write_text(json.dumps({"contract": "active-trader-motion-runtime-heartbeat-v1", "updated_at": time.time() - age,
@@ -477,7 +506,7 @@ def pk(tmp_path):
                               timeout=120, cwd=str(tmp_path))
 
     import types
-    return types.SimpleNamespace(run=run, grant=grant, beat=beat, calls=calls, units=units, marker=marker, live=live,
+    return types.SimpleNamespace(run=run, grant=grant, ledger=ledger, audit=audit, beat=beat, calls=calls, units=units, marker=marker, live=live,
                                  proc=proc, journal=journal, hb=hb, env=env)
 
 
@@ -487,7 +516,7 @@ def test_packet_is_dry_by_default_set_f_and_never_deletes_or_runs_sudo_stop_or_c
     code = "\n".join(line for line in src.splitlines() if not line.lstrip().startswith("#"))
     for bad in ("rm ", "crontab", "import:workflow", "update:workflow", "DELETE ", "DROP ", "deactivate", "kill ",
                 "--user stop", "--user enable", "--user disable", "mask", "EnvironmentFile=-/"):
-        assert bad not in code.replace('echo "      systemctl --user stop', ""), bad
+        assert bad not in code.replace('echo "      $OPCTL --user stop', ""), bad
     # /proc/<pid>/environ is read only for the relay and gateway units (the comms-consumer packet's live-list
     # read-back), never for the motion unit, whose EnvironmentFile and environ stay unread (AGENTS.md §24.7)
     environ_lines = [line for line in code.splitlines() if "/environ" in line]
@@ -517,18 +546,24 @@ def test_every_apply_refuses_without_a_real_grant(pk, step):
     pk.marker.write_text("")
     p = pk.run(step, "--apply")
     assert p.returncode == 1 and "TRADEAI_FABRIC_GRANT not set" in p.stdout
-    p = pk.run(step, "--apply", TRADEAI_FABRIC_GRANT="config-write-20261019T2200")  # a label, not an id
-    assert p.returncode == 1 and "not an active" in p.stdout
-    assert not pk.calls.exists()
+    pk.grant(step)
+    for bad in ("config-write-20261019T2200", GID[:8], "0" * 32):  # a label, a prefix, an unknown id
+        p = pk.run(step, "--apply", TRADEAI_FABRIC_GRANT=bad)
+        assert p.returncode == 1 and "grant refused" in p.stdout, (bad, p.stdout)
+    assert not pk.calls.exists() and not pk.audit()
+    assert all(r["uses"] == 5 for r in pk.ledger().values())
 
 
 def test_install_dry_then_apply_archives_installs_reads_back_and_reloads(pk):
     before = (pk.units / UNIT.name).read_text()
     p = pk.run("install")
     assert p.returncode == 0 and "DRY RUN" in p.stdout and (pk.units / UNIT.name).read_text() == before
-    pk.grant("execution-ops")
-    p = pk.run("install", "--apply", TRADEAI_FABRIC_GRANT=GID[:8])
+    pk.grant("install")
+    p = pk.run("install", "--apply", TRADEAI_FABRIC_GRANT=GID)
     assert p.returncode == 0, p.stdout + p.stderr
+    assert pk.ledger()["execution-ops"]["uses"] == 4
+    [event] = pk.audit()
+    assert event["action"] == "active-trader-motion.install" and event["event"] == "fabric-grant-consumed"
     assert (pk.units / UNIT.name).read_text() == UNIT.read_text()
     archived = [f for f in pk.units.iterdir() if ".archived-" in f.name]
     assert len(archived) == 1 and archived[0].read_text() == before
@@ -536,7 +571,7 @@ def test_install_dry_then_apply_archives_installs_reads_back_and_reloads(pk):
 
 
 def test_start_refuses_without_the_marker_or_the_fixed_unit(pk):
-    pk.grant()
+    pk.grant("start")
     p = pk.run("start")
     assert p.returncode == 1 and "marker" in p.stdout
     pk.marker.write_text("")
@@ -552,10 +587,11 @@ def test_start_refuses_without_the_marker_or_the_fixed_unit(pk):
 def test_start_refuses_open_hours_unless_forced(pk, now, state):
     pk.marker.write_text("")
     (pk.units / UNIT.name).write_text(UNIT.read_text())
-    pk.grant()
+    pk.grant("start")
     p = pk.run("start", "--apply", NOW_ISO=now, TRADEAI_FABRIC_GRANT=GID)
     assert p.returncode == 1 and f"market session is {state}" in p.stdout
     assert "restart" not in (pk.calls.read_text() if pk.calls.exists() else "")
+    assert pk.ledger()["execution-ops"]["uses"] == 5 and not pk.audit()  # refused before --consume
     p = pk.run("start", "--force-open-hours", NOW_ISO=now)
     assert p.returncode == 0 and "WARNING --force-open-hours" in p.stdout and "DRY RUN" in p.stdout
 
@@ -565,9 +601,10 @@ def test_start_while_closed_restarts_the_unit_once(pk):
     (pk.units / UNIT.name).write_text(UNIT.read_text())
     p = pk.run("start")
     assert p.returncode == 0 and "session CLOSED" in p.stdout and "DRY RUN" in p.stdout and not pk.calls.exists()
-    pk.grant()
+    pk.grant("start")
     p = pk.run("start", "--apply", TRADEAI_FABRIC_GRANT=GID)
     assert p.returncode == 0, p.stdout
+    assert pk.ledger()["execution-ops"]["uses"] == 4 and len(pk.audit()) == 1
     assert "--user restart tradeai-active-trader-motion.service" in pk.calls.read_text().splitlines()
     for weekend in ("2026-10-17T11:00:00-04:00",):  # Saturday midday is CLOSED
         assert pk.run("start", NOW_ISO=weekend).returncode == 0
@@ -592,7 +629,7 @@ def test_proof_fails_when_nothing_moves_and_passes_when_the_runtime_cycles(pk):
 
 
 def test_relay_and_rollback_edit_only_the_lane_with_backup_and_read_back(pk):
-    pk.grant("cron")
+    pk.grant("relay")
     p = pk.run("relay")
     assert p.returncode == 0 and "DRY RUN" in p.stdout and LANE not in pk.live.read_text()
     (pk.proc / "4242" / "environ").write_text(f"TRADEAI_N8N_RELAY_LIVE_LANES=heartbeat-watch {LANE}\0")
@@ -600,6 +637,8 @@ def test_relay_and_rollback_edit_only_the_lane_with_backup_and_read_back(pk):
     assert p.returncode == 0, p.stdout + p.stderr
     assert "TRADEAI_N8N_RELAY_LIVE_LANES=heartbeat-watch n8n-comms-intent-consumer " + LANE in pk.live.read_text()
     assert pk.live.read_text().startswith("# keep me")
+    assert {t: r["uses"] for t, r in pk.ledger().items()} == {"config-write": 4, "service": 4}
+    pk.grant("rollback")
     (pk.proc / "4242" / "environ").write_text("TRADEAI_N8N_RELAY_LIVE_LANES=heartbeat-watch\0")
     p = pk.run("rollback", "--apply", TRADEAI_FABRIC_GRANT=GID)
     assert p.returncode == 0, p.stdout + p.stderr
@@ -607,6 +646,71 @@ def test_relay_and_rollback_edit_only_the_lane_with_backup_and_read_back(pk):
     assert "systemctl --user stop" in p.stdout  # printed for the operator, never run
     assert not any("stop" in c for c in pk.calls.read_text().splitlines())
     assert len(list(pk.live.parent.glob("n8n-live-lanes.env.bak-*"))) == 2
+    assert [e["action"] for e in pk.audit()] == ["active-trader-motion.relay", "active-trader-motion.rollback"]
+
+
+def test_install_refuses_open_hours_like_start(pk):
+    """AGENTS.md §24.10 binds every motion-unit mutation to CLOSED, not only the restart."""
+    pk.grant("install")
+    before = (pk.units / UNIT.name).read_text()
+    p = pk.run("install", "--apply", NOW_ISO="2026-10-19T11:00:00-04:00", TRADEAI_FABRIC_GRANT=GID)
+    assert p.returncode == 1 and "market session is RTH" in p.stdout
+    assert (pk.units / UNIT.name).read_text() == before and not pk.calls.exists() and not pk.audit()
+
+
+@pytest.mark.parametrize("step,ledger_step,drop", [
+    ("start", "relay", ""),          # a config-write + service grant is not execution-ops
+    ("install", "start", ""),        # bound to another action (and verb)
+    ("start", "start", MOTION_UNIT),  # reason does not name the unit
+    ("start", "start", "restart"),   # nor the verb
+    ("relay", "relay", "tradeai-n8n-coordination-gateway.service"),
+])
+def test_wrong_tier_or_unbound_reason_refuses_without_effect_or_consumption(pk, step, ledger_step, drop):
+    pk.marker.write_text("")
+    (pk.proc / "4242" / "environ").write_text(f"TRADEAI_N8N_RELAY_LIVE_LANES={LANE}\0")
+    if step == "start":
+        (pk.units / UNIT.name).write_text(UNIT.read_text())
+    original = pk.grant(ledger_step, drop=drop)
+    live_before, unit_before = pk.live.read_text(), (pk.units / UNIT.name).read_text()
+    p = pk.run(step, "--apply", TRADEAI_FABRIC_GRANT=GID)
+    assert p.returncode == 1 and "grant refused" in p.stdout, p.stdout
+    assert pk.ledger() == original and not pk.audit() and not pk.calls.exists()
+    assert pk.live.read_text() == live_before and (pk.units / UNIT.name).read_text() == unit_before
+
+
+def test_relay_without_the_service_grant_and_exhausted_grants_refuse(pk):
+    doc = pk.grant("relay")
+    p = pk.run("relay", "--apply", TRADEAI_FABRIC_GRANT=GID, TRADEAI_FABRIC_SERVICE_GRANT="")
+    assert p.returncode == 1 and "TRADEAI_FABRIC_SERVICE_GRANT" in p.stdout and pk.ledger() == doc
+    pk.grant("relay", uses=0)
+    p = pk.run("relay", "--apply", TRADEAI_FABRIC_GRANT=GID)
+    assert p.returncode == 1 and "grant refused" in p.stdout and LANE not in pk.live.read_text()
+    assert not pk.calls.exists() and not pk.audit()
+
+
+def test_dry_runs_consume_nothing(pk):
+    pk.marker.write_text("")
+    for step in ("install", "start", "relay", "rollback"):
+        doc = pk.grant(step)
+        assert pk.run(step).returncode in (0, 1)
+        assert pk.ledger() == doc and not pk.audit(), step
+
+
+def test_the_motion_actions_are_registered_with_their_section_24_10_tiers():
+    from scripts.lib import fabric_grant as F
+    rel = "docs/ops/packets/active-trader-motion-n8n-20261019/cutover.sh"
+    acts = {k: v for k, v in F.ACTIONS.items() if v["packet"] == rel}
+    assert set(acts) == {f"active-trader-motion.{s}" for s in ("install", "start", "relay", "rollback")}
+    for step in ("install", "start"):
+        a = acts[f"active-trader-motion.{step}"]
+        assert a["tiers"] == ("execution-ops",) and a["units"] == (MOTION_UNIT,)
+    for step in ("relay", "rollback"):
+        a = acts[f"active-trader-motion.{step}"]
+        assert a["tiers"] == ("config-write", "service") and a["units"] == RELAY_UNITS
+    assert all(a["lanes"] == (LANE,) and a["workflow"] == "tradeai-dispatcher" for a in acts.values())
+    assert rel in F.NO_CONSUMER_REASON
+    src = SCRIPT.read_text()
+    assert src.count("need_grant --consume") == 4 and " verify " not in src
 
 
 def test_first_run_record_is_committed_and_read_only():

@@ -23,6 +23,27 @@ REPO = Path(__file__).resolve().parents[1]
 
 # Ordered, explicit suite list (Phase 10.2)
 GATES = [
+    # Preserve existing SEC event identities while suppressing within-batch repeats.
+    (
+        "premarket_dedupe_within_batch_20261018",
+        ["tests/test_premarket_dedupe_within_batch_20261018.py"],
+    ),
+    # All ledger recovery consumers require the shared live useful-output verdict.
+    (
+        "n8n_siem_recovery_truth_20261018",
+        [
+            "tests/test_n8n_recovery_consistency_20261018.py",
+            "tests/test_n8n_siem_recovery_truth_20261018.py",
+        ],
+    ),
+    # Atomic bounded recovery reservations; critical enrollment survives diagnosis budget exhaustion.
+    ("n8n_supervisor_budget_20261018", ["tests/test_n8n_supervisor_budget_20261018.py"]),
+    ("self_heal_fix_acceptance_20261018", ["tests/test_self_heal_fix_acceptance_20261018.py"]),
+    # Staged reader preserves v2 evidence and refuses legacy worker effects on it.
+    (
+        "incident_notifier_state_compatibility_20261018",
+        ["tests/test_incident_notifier_state_compatibility_20261018.py"],
+    ),
     # Rotation publication: account-bound identity, real source clocks and grounded
     # stop claims; actual API/cache/digest/POST boundaries with fake external effects.
     ("rotation_publication_20261018", ["tests/test_rotation_publication_20261018.py"]),
@@ -74,6 +95,7 @@ GATES = [
     # window, band-change dedupe via the host comms-intent path, LaneRunReceipt@v2; the operator packet (grant id
     # verified, CLOSED-session start, archive-not-delete). Hermetic: tmp heartbeat, fake /proc, clock, marker, systemctl.
     ("active_trader_motion_watchdog_20261019", ["tests/test_active_trader_motion_watchdog_20261019.py"]),
+    ("fabric_grant_id_20261018", ["tests/test_fabric_grant_id_20261018.py"]),
     # Feedback's future queue-only capability does not enable its held sixth stage.
     # Exercise actual authenticated admission and executor stage clamping, with fake effects.
     ("hermes_feedback_hold_20261018", ["tests/test_hermes_feedback_hold_20261018.py"]),
