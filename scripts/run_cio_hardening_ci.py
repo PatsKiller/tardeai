@@ -729,6 +729,7 @@ GATES = [
             "tests/test_desk_spelled_ticker_levels_20260914.py",
             "tests/test_subject_dossier_pills_20260914.py",
             "tests/test_comms_editor_20260914.py",
+            "tests/test_notice_subject_words_20261019.py",
             "tests/test_comms_editor_transport_20260914.py",
             "tests/test_single_letter_tickers.py",
             "tests/test_tg_chat_routing_20260914.py",
