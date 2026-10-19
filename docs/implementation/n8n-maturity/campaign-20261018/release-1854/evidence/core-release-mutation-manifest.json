@@ -1,0 +1,92 @@
+{
+  "schema": "N8nCampaignReleaseMutationManifest@v1",
+  "campaign_id": "n8n-maturity-20261018",
+  "recorded_at": "2026-10-18T21:06:01.454224+00:00",
+  "pr": 1854,
+  "tested_pr_head": "2333c8e1b00f4be3b5fab653bf67d9a42fdcd399",
+  "merged_sha": "7af14c7782cf7ab0cba261cc25e6789fe810b092",
+  "rollback_sha": "a2aef7b4d2de17e737526337a2ffc37848deda4f",
+  "rollback_release": "/home/johnclaw/trade-ai-releases/portfolio-server/a2aef7b4d-main-exact-phase2-20261018-103647",
+  "release_checkout": "/home/johnclaw/tradeai-wt-n8n-maturity-release-20261018",
+  "physical_primary_checkout": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild",
+  "primary_before": {
+    "head": "a2aef7b4d2de17e737526337a2ffc37848deda4f",
+    "branch": "wt/momentum-reconcile-canary-20261013",
+    "clean": true
+  },
+  "authorization": "operator campaign mandate sections1,10,11; real exact release-write grant still required",
+  "gates": {
+    "exact_pr_head_required_checks": "SUCCESS; source review APPROVED113independent; local nativeacceptance passed",
+    "exact_merged_sha_push_main_ci": "PENDING; must be SUCCESS before promotion, no fallback flag",
+    "real_matching_grant": "MISSING; existing AgentA grant names unrelated PRs, do not consume",
+    "canonical_current_before_prepare": "a2aef7b4d2de17e737526337a2ffc37848deda4f",
+    "peer_changes_or_leases": "recheck beforeprepare/promote; no overwrite"
+  },
+  "actions": [
+    "canonical prepare at fresh origin/main; builds exact Git SHA and frontend",
+    "canonical promote exact prepared artifact after exact-SHA push/main CI and grant recheck",
+    "read-only verify CURRENT/BUILD_SHA/served source, bound service identities, authenticated host CC API and tailnet frontend, graph/config parity, owner/incident/outbox continuity and one appropriate natural useful output",
+    "canonical rollback to recorded a2 release if acceptance fails; explicitly bind/consume rollback grant before invoking the canonical rollback since legacy rollback has no internal preflight"
+  ],
+  "grant_budget": {
+    "tier": "release-write",
+    "for": "30m",
+    "uses": 3,
+    "consumption": {
+      "prepare": 1,
+      "promote": 1,
+      "rollback_reserved": 1
+    },
+    "verify": "read-only verify action consumes0",
+    "no_extra_service_scope": "canonical release includes its exact service restarts"
+  },
+  "canonical_tool_digests": {
+    "scripts/cio_phase2_exact_main_deploy.sh": "0121a2384a59b85e3b92fedd029e01e74f463dcbdb145a249d5e8a6108e310e0",
+    "scripts/release_grant_preflight.py": "07299cf6107ab8ec87faf0d8242ffb2bfe30ec8487ae30edb7cf66a7b7bad447",
+    "scripts/lib/release_grant_binding.py": "315064eb52ddd3335026f4efa4b068a4bd5f8792888cae0cb504d810ad568c6d",
+    "scripts/lib/ff_dev_tree.sh": "3b12280e99f2f2204566ffc870f3992f1549d953faf0146316e5223ef5d42a90"
+  },
+  "runtime_mutations_excluded": [
+    "workflow import/activation",
+    "live lane configuration",
+    "scheduler/owner changes",
+    "grant or policy changes",
+    "broker/trading effects",
+    "credentials",
+    "destructive retention/deletion"
+  ],
+  "acceptance": {
+    "health_alone_sufficient": false,
+    "operational_maturity_change": false,
+    "qualifying_soak_started": false,
+    "useful_output": "fresh same-lane/run/attempt effective-live receipt and declared valid useful output; existing canary/natural schedule only; no duplicate live learning or notifications"
+  },
+  "rollback_limit": "Legacy canonical rollback does not restore its mandatory primary fast-forward. The concrete guarded source compensation above is prepared under the operator rollback mandate; no rollback can be marked complete until both execution trees agree.",
+  "grant_coexistence": "Existing release-write is scope-keyed and belongs to AgentA. Request grants nothing; operator must explicitly consolidate/finish that scope before issuing this exact finite grant. Codex will not replace/revoke it.",
+  "rollback_source_compensation": {
+    "authorized_by": "operator campaign rollback authorization; no force reset or policy bypass",
+    "when": "only if required acceptance fails and canonical rollback has restored artifact/services; execute before declaring rollback complete",
+    "preconditions": [
+      "primary remains clean",
+      "primary HEAD equals promoted7af14c7782cf7ab0cba261cc25e6789fe810b092 for compensation, or equals exact rollbacka2 for verified idempotent NOOP",
+      "known rollbacka2 commit is present and ancestor of promotedhead",
+      "no peer production/deployment lease or new source edits"
+    ],
+    "command": [
+      "git",
+      "-C",
+      "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild",
+      "checkout",
+      "--detach",
+      "a2aef7b4d2de17e737526337a2ffc37848deda4f"
+    ],
+    "effect": "restore source bytes used by cron at known good SHA without rewinding or deleting any branch; original peer branch/ref retained at promotedhead",
+    "readback": [
+      "primary HEAD equals rollback fullSHA and tree clean",
+      "CURRENT and bound service code roots equal recorded rollback release",
+      "workflow/config/owner/incident/outbox continuity and useful-output acceptance re-evaluated"
+    ],
+    "on_precondition_failure": "For any third SHA or dirty/conflicting primary, hold compensation, preserve peer changes and report the exact partial rollback state; never force checkout/reset.",
+    "idempotence": "If primary is already clean at exact rollbacka2 SHA (including canonical automatic health-failure rollback before FF), verify it as NOOP success; do not mutate or call it partial."
+  }
+}

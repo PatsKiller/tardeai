@@ -1,0 +1,433 @@
+{
+  "schema": "N8nCampaignReleaseSnapshot@v1",
+  "phase": "rollback",
+  "observed_at": "2026-10-18T22:01:22.348125+00:00",
+  "current": "/home/johnclaw/trade-ai-releases/portfolio-server/a2aef7b4d-main-exact-phase2-20261018-103647",
+  "build_sha": "a2aef7b4d2de17e737526337a2ffc37848deda4f",
+  "primary_head": "a2aef7b4d2de17e737526337a2ffc37848deda4f",
+  "primary_branch": "",
+  "primary_dirty": [],
+  "cron_before_image_sha256": "94b5180c4dacabc0e297a76e6c07b06881856519e606e5d5aef698ca2ddb170a",
+  "config_files": {
+    "config/n8n_comms_intent_routes.json": "e233d5ffa7635c22f0e4608f938ad4df636e554215768bc7aa6a4793f1d94792",
+    "config/n8n_due.json": "0c02113cd403ca3903d0c7a04a54febbeb7e4d0a58da0a189080e19110bd769a",
+    "config/n8n_effect_keys.json": "bb6ef5c8402a9bab7137535fabea18bbb4b2556bd0f0f8992435d286bf014ae2",
+    "config/n8n_executor.json": "d5a3c2f5b45aae9400099e897a6cd0cf1e6368a47cd8efdcc9ddfe9e4e89cad4",
+    "config/n8n_fabric_processes.json": "d83f6acf10dae8b895601ad58a843ecd948184d893e4c007fbc6336e307a544f",
+    "config/n8n_health_contracts.json": "265d77c0c0b1d0e5aa90774eb4e36ed09f4f132d2eec508c4070a159900e4fab",
+    "config/n8n_lab_restore_drill.json": "4ecb558ad9d9a2d28cbd7d451dd60187c7912a7808ddd5d3429ccd28d55fcc0b",
+    "config/n8n_lane_capability_baseline.json": "36e714591355deb414eb109c2eaa43a1bc74e67bbf49699206e48bc5ecea142a",
+    "config/n8n_migration_tranches.json": "8688817190fc15acddcc584b80dfb0bbd218d52f17aa02590282184b5918c2c6",
+    "config/n8n_momentum_lifecycle_candidate.json": "168ff0079bc6e4736950f2bc53f433b9b499b5f91c457b163896e40ec6a3c32e",
+    "config/n8n_platform_maturity.json": "d2f89493d8483deb4cc7b6170a39717a02650d181df58337e8764c761febddd4",
+    "config/n8n_prompt_templates.json": "8b840cc076b56f5bf64f34ae55d281a1075c7737fd0727362d993aec2b53d436",
+    "config/n8n_remediation_catalogue.json": "f5b2a4327929caa8818547da2ba6c1b3cc7262730c60e4ce5a370a3faee077c0",
+    "config/n8n_retry_policies.json": "32cbdbefae90dffab8d3e6a65c4ae70e143bf5b5f4c02d0a814137812e5f5ab4",
+    "config/n8n_run_allowlist.json": "c59f609f62b49d7f8316d2dbe7f894142a74ad976b3860a90ea7bdda8e92fed5",
+    "config/n8n_shadow_policy.json": "4e83ac5c766ca17df23604698f8604546f112e8182a6f95d748956a8b35d3cbc",
+    "config/schemas/n8n_llm_step_outputs.json": "c76f6644ff576fa158a8f67f94260bd92000fe5c71dad81a489a88a7cfa4a4b2",
+    "config/schemas/n8n_model_job_outputs.json": "0344d7fa84d1147d6311689908bc9d5e6f4886799b335c5254f527759c242460",
+    "config/systemd/user/tradeai-n8n-coordination-gateway.service": "bc29b456b81193412f52db4cac1b06b616e12baf8845ca5f7b5401da67c5d12b",
+    "config/systemd/user/tradeai-n8n-lab-watchdog.service": "f2406afe23ac51e2f4b061d4b3c6a26e341ae9de468f8583e8764026c07325f8",
+    "config/systemd/user/tradeai-n8n-lab-watchdog.timer": "82d4a6c92aa22339a36be7a55e0fc2068c310192dd3a053f8a2c0bb03e788cbf",
+    "config/systemd/user/tradeai-n8n-run-executor.service": "f5b93014f031db140954af0129c3c41d8d1113a46ca606452d284060a9b6718f",
+    "config/systemd/user/tradeai-n8n-run-relay.service": "9feca8cc0a13466c6bdcba856b74b4bd2113f3eeca806a46069e1f7204d1414a"
+  },
+  "effect_owners": [
+    {
+      "process": "aegis-social-sentiment",
+      "owner": "n8n",
+      "epoch": 1,
+      "switched_at": "2026-10-16T01:06:58.509074+00:00",
+      "switched_by": "operator:1aa15633f09a4f4c9ee1af5b763ff858",
+      "note": "CW2 canary"
+    },
+    {
+      "process": "aegis-transcript-discovery",
+      "owner": "n8n",
+      "epoch": 1,
+      "switched_at": "2026-10-16T01:06:58.679297+00:00",
+      "switched_by": "operator:1aa15633f09a4f4c9ee1af5b763ff858",
+      "note": "CW2 canary"
+    },
+    {
+      "process": "agent-outcome-linker",
+      "owner": "n8n",
+      "epoch": 1,
+      "switched_at": "2026-10-16T01:06:55.422044+00:00",
+      "switched_by": "operator:1aa15633f09a4f4c9ee1af5b763ff858",
+      "note": "CW1 canary"
+    },
+    {
+      "process": "agent-outcome-scorer",
+      "owner": "n8n",
+      "epoch": 1,
+      "switched_at": "2026-10-16T01:06:58.854183+00:00",
+      "switched_by": "operator:1aa15633f09a4f4c9ee1af5b763ff858",
+      "note": "CW2 canary"
+    },
+    {
+      "process": "build-symbol-profiles-at-0-19",
+      "owner": "n8n",
+      "epoch": 1,
+      "switched_at": "2026-10-16T01:07:00.487311+00:00",
+      "switched_by": "operator:1aa15633f09a4f4c9ee1af5b763ff858",
+      "note": "CW3 canary"
+    },
+    {
+      "process": "catalyst-symbol-impact",
+      "owner": "n8n",
+      "epoch": 1,
+      "switched_at": "2026-10-16T01:06:55.588023+00:00",
+      "switched_by": "operator:1aa15633f09a4f4c9ee1af5b763ff858",
+      "note": "CW1 canary"
+    },
+    {
+      "process": "commitment-outcome-sweep",
+      "owner": "n8n",
+      "epoch": 1,
+      "switched_at": "2026-10-16T01:06:59.024634+00:00",
+      "switched_by": "operator:1aa15633f09a4f4c9ee1af5b763ff858",
+      "note": "CW2 canary"
+    },
+    {
+      "process": "daily-incubator-refresh",
+      "owner": "n8n",
+      "epoch": 1,
+      "switched_at": "2026-10-16T01:06:59.201142+00:00",
+      "switched_by": "operator:1aa15633f09a4f4c9ee1af5b763ff858",
+      "note": "CW2 canary"
+    },
+    {
+      "process": "document-mentions-backfill",
+      "owner": "n8n",
+      "epoch": 1,
+      "switched_at": "2026-10-16T01:06:55.760427+00:00",
+      "switched_by": "operator:1aa15633f09a4f4c9ee1af5b763ff858",
+      "note": "CW1 canary"
+    },
+    {
+      "process": "etf-analyst-enrich",
+      "owner": "n8n",
+      "epoch": 1,
+      "switched_at": "2026-10-16T01:06:55.933037+00:00",
+      "switched_by": "operator:1aa15633f09a4f4c9ee1af5b763ff858",
+      "note": "CW1 canary"
+    },
+    {
+      "process": "etf-performance-enrich",
+      "owner": "n8n",
+      "epoch": 1,
+      "switched_at": "2026-10-16T01:06:56.107088+00:00",
+      "switched_by": "operator:1aa15633f09a4f4c9ee1af5b763ff858",
+      "note": "CW1 canary"
+    },
+    {
+      "process": "feedback-loop-processor",
+      "owner": "n8n",
+      "epoch": 1,
+      "switched_at": "2026-10-16T01:06:56.279543+00:00",
+      "switched_by": "operator:1aa15633f09a4f4c9ee1af5b763ff858",
+      "note": "CW1 canary"
+    },
+    {
+      "process": "finviz-proactive-research",
+      "owner": "n8n",
+      "epoch": 1,
+      "switched_at": "2026-10-16T01:06:56.452569+00:00",
+      "switched_by": "operator:1aa15633f09a4f4c9ee1af5b763ff858",
+      "note": "CW1 canary"
+    },
+    {
+      "process": "finviz-screener-runner",
+      "owner": "n8n",
+      "epoch": 1,
+      "switched_at": "2026-10-16T01:06:56.641611+00:00",
+      "switched_by": "operator:1aa15633f09a4f4c9ee1af5b763ff858",
+      "note": "CW1 canary"
+    },
+    {
+      "process": "hermes-analyst-signal-discovery",
+      "owner": "n8n",
+      "epoch": 1,
+      "switched_at": "2026-10-16T01:06:56.824652+00:00",
+      "switched_by": "operator:1aa15633f09a4f4c9ee1af5b763ff858",
+      "note": "CW1 canary"
+    },
+    {
+      "process": "hermes-learning-autonomous-self-tune",
+      "owner": "n8n",
+      "epoch": 2,
+      "switched_at": "2026-10-17T05:58:26.915941+00:00",
+      "switched_by": "operator:e7753f89245a486ca0c52cc2cb7a4032",
+      "note": "hermes tune cutover c3 (autonomous_self_tune, both halves)"
+    },
+    {
+      "process": "hermes-learning-config-governor",
+      "owner": "n8n",
+      "epoch": 2,
+      "switched_at": "2026-10-16T17:20:08.945095+00:00",
+      "switched_by": "operator:cf74f754b63c4b088c1704708691f569",
+      "note": "hermes-learning cutover c3 (4 live lanes; feedback agent held)"
+    },
+    {
+      "process": "hermes-learning-outcome-feedback-agent",
+      "owner": "cron",
+      "epoch": 1,
+      "switched_at": "2026-10-16T17:19:32.684204+00:00",
+      "switched_by": "operator:cf74f754b63c4b088c1704708691f569",
+      "note": "hermes-learning cutover c1"
+    },
+    {
+      "process": "hermes-learning-outcome-grader",
+      "owner": "n8n",
+      "epoch": 2,
+      "switched_at": "2026-10-16T17:20:08.028326+00:00",
+      "switched_by": "operator:cf74f754b63c4b088c1704708691f569",
+      "note": "hermes-learning cutover c3 (4 live lanes; feedback agent held)"
+    },
+    {
+      "process": "hermes-learning-outcome-learning",
+      "owner": "n8n",
+      "epoch": 2,
+      "switched_at": "2026-10-16T17:20:08.622474+00:00",
+      "switched_by": "operator:cf74f754b63c4b088c1704708691f569",
+      "note": "hermes-learning cutover c3 (4 live lanes; feedback agent held)"
+    },
+    {
+      "process": "hermes-learning-tag-engine",
+      "owner": "n8n",
+      "epoch": 2,
+      "switched_at": "2026-10-16T17:20:08.297662+00:00",
+      "switched_by": "operator:cf74f754b63c4b088c1704708691f569",
+      "note": "hermes-learning cutover c3 (4 live lanes; feedback agent held)"
+    },
+    {
+      "process": "hermes-momentum-catalyst-scalp",
+      "owner": "n8n",
+      "epoch": 1,
+      "switched_at": "2026-10-16T01:06:56.985866+00:00",
+      "switched_by": "operator:1aa15633f09a4f4c9ee1af5b763ff858",
+      "note": "CW1 canary"
+    },
+    {
+      "process": "hermes-news-bridge",
+      "owner": "n8n",
+      "epoch": 1,
+      "switched_at": "2026-10-16T01:06:57.150195+00:00",
+      "switched_by": "operator:1aa15633f09a4f4c9ee1af5b763ff858",
+      "note": "CW1 canary"
+    },
+    {
+      "process": "hermes-social-sentiment",
+      "owner": "n8n",
+      "epoch": 1,
+      "switched_at": "2026-10-16T01:06:59.371434+00:00",
+      "switched_by": "operator:1aa15633f09a4f4c9ee1af5b763ff858",
+      "note": "CW2 canary"
+    },
+    {
+      "process": "incubator-rolloff-engine",
+      "owner": "n8n",
+      "epoch": 1,
+      "switched_at": "2026-10-16T01:07:00.675761+00:00",
+      "switched_by": "operator:1aa15633f09a4f4c9ee1af5b763ff858",
+      "note": "CW3 canary"
+    },
+    {
+      "process": "instrument-belief-writer",
+      "owner": "n8n",
+      "epoch": 1,
+      "switched_at": "2026-10-16T01:06:59.534374+00:00",
+      "switched_by": "operator:1aa15633f09a4f4c9ee1af5b763ff858",
+      "note": "CW2 canary"
+    },
+    {
+      "process": "journal-tilt-morning-hook",
+      "owner": "n8n",
+      "epoch": 1,
+      "switched_at": "2026-10-16T01:06:57.324949+00:00",
+      "switched_by": "operator:1aa15633f09a4f4c9ee1af5b763ff858",
+      "note": "CW1 canary"
+    },
+    {
+      "process": "material-change-detector-stage1",
+      "owner": "n8n",
+      "epoch": 1,
+      "switched_at": "2026-10-16T01:06:57.503009+00:00",
+      "switched_by": "operator:1aa15633f09a4f4c9ee1af5b763ff858",
+      "note": "CW1 canary"
+    },
+    {
+      "process": "pattern-extractor",
+      "owner": "n8n",
+      "epoch": 1,
+      "switched_at": "2026-10-16T01:07:00.054739+00:00",
+      "switched_by": "operator:1aa15633f09a4f4c9ee1af5b763ff858",
+      "note": "CW3 canary"
+    },
+    {
+      "process": "proposal-backtest-engine",
+      "owner": "n8n",
+      "epoch": 1,
+      "switched_at": "2026-10-16T01:06:57.673419+00:00",
+      "switched_by": "operator:1aa15633f09a4f4c9ee1af5b763ff858",
+      "note": "CW1 canary"
+    },
+    {
+      "process": "record-decision-outcome",
+      "owner": "n8n",
+      "epoch": 1,
+      "switched_at": "2026-10-16T01:06:59.701131+00:00",
+      "switched_by": "operator:1aa15633f09a4f4c9ee1af5b763ff858",
+      "note": "CW2 canary"
+    },
+    {
+      "process": "sec-data-ingest",
+      "owner": "n8n",
+      "epoch": 1,
+      "switched_at": "2026-10-16T01:06:57.832462+00:00",
+      "switched_by": "operator:1aa15633f09a4f4c9ee1af5b763ff858",
+      "note": "CW1 canary"
+    },
+    {
+      "process": "source-attribution-monitor",
+      "owner": "n8n",
+      "epoch": 1,
+      "switched_at": "2026-10-16T01:06:57.996791+00:00",
+      "switched_by": "operator:1aa15633f09a4f4c9ee1af5b763ff858",
+      "note": "CW1 canary"
+    },
+    {
+      "process": "update-agent-performance",
+      "owner": "n8n",
+      "epoch": 1,
+      "switched_at": "2026-10-16T01:06:58.164423+00:00",
+      "switched_by": "operator:1aa15633f09a4f4c9ee1af5b763ff858",
+      "note": "CW1 canary"
+    },
+    {
+      "process": "watchlist-enrichment-sweep",
+      "owner": "n8n",
+      "epoch": 1,
+      "switched_at": "2026-10-16T01:06:58.336357+00:00",
+      "switched_by": "operator:1aa15633f09a4f4c9ee1af5b763ff858",
+      "note": "CW1 canary"
+    },
+    {
+      "process": "weekly-incubator-builder",
+      "owner": "n8n",
+      "epoch": 1,
+      "switched_at": "2026-10-16T01:06:59.878752+00:00",
+      "switched_by": "operator:1aa15633f09a4f4c9ee1af5b763ff858",
+      "note": "CW2 canary"
+    },
+    {
+      "process": "wire-advisory-lessons",
+      "owner": "n8n",
+      "epoch": 1,
+      "switched_at": "2026-10-16T01:07:00.230471+00:00",
+      "switched_by": "operator:1aa15633f09a4f4c9ee1af5b763ff858",
+      "note": "CW3 canary"
+    }
+  ],
+  "nonterminal_effect_claims": [
+    {
+      "effect_key": "fx:watchlist-enrichment-sweep:20261016T1530:v1",
+      "process": "watchlist-enrichment-sweep",
+      "slot": "20261016T1530",
+      "input_version": "v1",
+      "state": "UNKNOWN",
+      "scheduler": "n8n",
+      "epoch": 1,
+      "run_id": "d:watchlist-enrichment-sweep:live:20261016T1530",
+      "attempt": 1,
+      "claimed_at": "2026-10-16T19:30:14.884063+00:00",
+      "finished_at": "2026-10-16T19:45:15.088699+00:00",
+      "fenced_late": 0,
+      "detail": "timeout_exit_124",
+      "pre_effect": 0,
+      "fence_passed_at": null
+    }
+  ],
+  "nonterminal_runs": [],
+  "ledger_counts": {
+    "accept_log": 0,
+    "artifact_refs": 7132,
+    "breakers": 6,
+    "comms_intent_consumption": 6,
+    "comms_intent_incidents": 2,
+    "comms_intents": 6,
+    "dead_letters": 52,
+    "effect_claims": 327,
+    "effect_owners": 37,
+    "effects": 0,
+    "event_cursors": 0,
+    "events": 0,
+    "nonces": 3959,
+    "receipts": 8522,
+    "reference_tokens": 0,
+    "run_outcomes": 9109,
+    "runs": 17072,
+    "sqlite_sequence": 0
+  },
+  "max_requested_at": "2026-10-18T22:00:02.620301+00:00",
+  "services": {
+    "portfolio-server.service": {
+      "ActiveState": "active",
+      "MainPID": "1085142",
+      "query_exit_code": 0,
+      "cwd": "/proc/1085142/cwd",
+      "resolved_cwd": "/home/johnclaw/trade-ai-releases/portfolio-server/a2aef7b4d-main-exact-phase2-20261018-103647"
+    },
+    "tradeai-n8n-coordination-gateway.service": {
+      "ActiveState": "active",
+      "MainPID": "1085880",
+      "query_exit_code": 0,
+      "cwd": "/proc/1085880/cwd",
+      "resolved_cwd": "/home/johnclaw/trade-ai-releases/portfolio-server/a2aef7b4d-main-exact-phase2-20261018-103647"
+    },
+    "tradeai-n8n-run-relay.service": {
+      "ActiveState": "active",
+      "MainPID": "1085943",
+      "query_exit_code": 0,
+      "cwd": "/proc/1085943/cwd",
+      "resolved_cwd": "/home/johnclaw/trade-ai-releases/portfolio-server/a2aef7b4d-main-exact-phase2-20261018-103647"
+    },
+    "tradeai-n8n-run-executor.service": {
+      "ActiveState": "active",
+      "MainPID": "1085987",
+      "query_exit_code": 0,
+      "cwd": "/proc/1085987/cwd",
+      "resolved_cwd": "/home/johnclaw/trade-ai-releases/portfolio-server/a2aef7b4d-main-exact-phase2-20261018-103647"
+    },
+    "cio-governed-bridge.service": {
+      "ActiveState": "active",
+      "MainPID": "1085436",
+      "query_exit_code": 0,
+      "cwd": "/proc/1085436/cwd",
+      "resolved_cwd": "/home/johnclaw/trade-ai-releases/portfolio-server/a2aef7b4d-main-exact-phase2-20261018-103647"
+    },
+    "tradeai-health-agent.service": {
+      "ActiveState": "active",
+      "MainPID": "1085213",
+      "query_exit_code": 0,
+      "cwd": "/proc/1085213/cwd",
+      "resolved_cwd": "/home/johnclaw/trade-ai-releases/portfolio-server/a2aef7b4d-main-exact-phase2-20261018-103647"
+    },
+    "tradeai-cio-telegram.service": {
+      "ActiveState": "active",
+      "MainPID": "1085671",
+      "query_exit_code": 0,
+      "cwd": "/proc/1085671/cwd",
+      "resolved_cwd": "/home/johnclaw/trade-ai-releases/portfolio-server/a2aef7b4d-main-exact-phase2-20261018-103647"
+    },
+    "tradeai-telegram-callback-poller.service": {
+      "ActiveState": "active",
+      "MainPID": "1085721",
+      "query_exit_code": 0,
+      "cwd": "/proc/1085721/cwd",
+      "resolved_cwd": "/home/johnclaw/trade-ai-releases/portfolio-server/a2aef7b4d-main-exact-phase2-20261018-103647"
+    }
+  }
+}
