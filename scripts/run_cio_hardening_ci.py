@@ -67,6 +67,9 @@ GATES = [
     # expected_output, staged effect key); LaneRunReceipt@v2 produced / empty_allowed / fatal dependency_unavailable via
     # the real CLI; idempotent rerun; the operator packet against fake systemctl/docker/proc. Hermetic: tmp ledgers.
     ("comms_intent_consumer_live_20261017", ["tests/test_comms_intent_consumer_live_20261017.py"]),
+    # Feedback's future queue-only capability does not enable its held sixth stage.
+    # Exercise actual authenticated admission and executor stage clamping, with fake effects.
+    ("hermes_feedback_hold_20261018", ["tests/test_hermes_feedback_hold_20261018.py"]),
     ("hermes_feedback_cutover_20261017", ["tests/test_hermes_feedback_cutover_20261017.py"]),
     # ANCHOR: COMMS_INTENT_DELIVER_BEFORE_CLOSE_20261017 — a comms-intent incident past its window closes only on the
     # incident notifier's own delivery evidence; undelivered (CAPPED / quiet-held) it is DEFERRED, still presented by
@@ -2319,6 +2322,8 @@ GATES = [
             "tests/test_sop_evidence_integrity.py",
             "tests/test_sop_toolchain.py",
             "tests/test_sop_attestation_base.py",
+            "tests/test_sop_runtime_command_truth_20261018.py",
+            "tests/test_release_readiness_head_identity_20261018.py",
             "tests/test_agents_drive_mirror_policy.py",
             # AGENTS.md 1.3.0 (ratified 2026-09-27): execution engineering needs a per-task grant, and
             # the broker-boundary verifier must refuse every out-of-envelope mutation.

@@ -1,0 +1,25 @@
+{
+  "observed_at": "2026-10-18T22:05:57.562109+00:00",
+  "rows": [
+    {
+      "schema": "RunReceipt@v3",
+      "run_id": "n8n-wf-722fac0e043ea5c4-48287",
+      "lane_id": "n8n-incident-fanin",
+      "attempt": 1,
+      "mode": "live",
+      "requested_mode": "live",
+      "state": "RUN_DONE",
+      "code_sha": "a2aef7b4d2de17e737526337a2ffc37848deda4f",
+      "started_at": "2026-10-18T22:05:02.120589+00:00",
+      "finished_at": "2026-10-18T22:05:15.189175+00:00",
+      "output_verdict": {
+        "attempted_count": 139,
+        "contract_id": "n8n-incident-fanin",
+        "produced_count": 139,
+        "rule": "empty_allowed",
+        "skipped_reasons": {},
+        "verdict": "produced"
+      }
+    }
+  ]
+}

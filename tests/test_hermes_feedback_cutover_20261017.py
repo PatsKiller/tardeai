@@ -1,6 +1,7 @@
 """Hermes outcome_feedback_agent cutover to n8n (operator 2026-10-17 "fix now move to n8n now"; decision D2: the
 comms-intent consumer goes live first). Pins the narrow queue-only notify gate and the packet's refusals. Hermetic:
 no live ledger, crontab, relay env or service is touched (every path is a tmp_path stub)."""
+
 from __future__ import annotations
 
 import json
@@ -30,22 +31,26 @@ def test_queue_argv_is_stripped_for_this_lane_only():
     assert LD.strip_queue_only_notify(other, argv) == argv
 
 
-@pytest.mark.parametrize("tail", [
-    ["--apply", "--notify", "chokepoint"],
-    ["--apply", "--notify", "record"],
-    ["--notify", "queue", "--apply"],
-    ["--apply", "--notify", "queue", "--send"],
-    ["--apply", "--notify", "QUEUE"],
-])
+@pytest.mark.parametrize(
+    "tail",
+    [
+        ["--apply", "--notify", "chokepoint"],
+        ["--apply", "--notify", "record"],
+        ["--notify", "queue", "--apply"],
+        ["--apply", "--notify", "queue", "--send"],
+        ["--apply", "--notify", "QUEUE"],
+    ],
+)
 def test_any_other_notify_shape_is_left_for_the_sender_gates(tail):
     argv = CMD + tail
     assert LD.strip_queue_only_notify(LANE, argv) == argv
 
 
-def test_allowlist_live_arg_is_the_queue_argv_and_matches_the_process_spec():
+def test_retained_queue_capability_matches_future_spec_while_default_live_arg_is_held():
     spec = json.loads((ROOT / "config" / "n8n_fabric_processes.json").read_text())
     step = spec["processes"]["hermes-learning"]["steps"]["outcome_feedback_agent"]
-    assert ALLOW[LANE]["live_arg"] == step["cutover_live_arg"] == ["--apply", "--notify", "queue"]
+    assert list(LD.QUEUE_ONLY_NOTIFY_ARGV[LANE]) == step["cutover_live_arg"] == ["--apply", "--notify", "queue"]
+    assert ALLOW[LANE]["live_arg"] is None  # Sixth-stage activation remains held independently of adapter capability.
     assert ALLOW[LANE]["command"] == CMD
 
 
@@ -67,13 +72,24 @@ def _run(tmp_path, *args, now="1400", live_lanes=""):
     env_file = tmp_path / "live.env"
     env_file.write_text(f"TRADEAI_N8N_RELAY_LIVE_LANES={live_lanes}\n")
     cron = tmp_path / "crontab"
-    cron.write_text("#!/bin/sh\necho '20 11 * * * cd $PROJ && PIPELINE_EFFECT_CLAIM=1 bash "
-                    "scripts/pipelines/run_hermes_pipeline.sh --stage learn --apply'\n")
+    cron.write_text(
+        "#!/bin/sh\necho '20 11 * * * cd $PROJ && PIPELINE_EFFECT_CLAIM=1 bash "
+        "scripts/pipelines/run_hermes_pipeline.sh --stage learn --apply'\n"
+    )
     cron.chmod(0o755)
-    env = dict(os.environ, SERVED=str(ROOT), LIVE_LANES_ENV=str(env_file), CRONTAB_BIN=str(cron), NOW_HM=now,
-               FX_LEDGER=str(tmp_path / "fx.sqlite"), LEDGER=str(tmp_path / "ledger.sqlite"),
-               TRADEAI_FABRIC_GRANT="test-grant", PY=os.environ.get("PYTHON", "python3"))
+    env = dict(
+        os.environ,
+        SERVED=str(ROOT),
+        LIVE_LANES_ENV=str(env_file),
+        CRONTAB_BIN=str(cron),
+        NOW_HM=now,
+        FX_LEDGER=str(tmp_path / "fx.sqlite"),
+        LEDGER=str(tmp_path / "ledger.sqlite"),
+        TRADEAI_FABRIC_GRANT="test-grant",
+        PY=os.environ.get("PYTHON", "python3"),
+    )
     import sys
+
     env["PY"] = sys.executable
     return subprocess.run(["bash", str(PACKET), *args], env=env, capture_output=True, text=True, timeout=60)
 

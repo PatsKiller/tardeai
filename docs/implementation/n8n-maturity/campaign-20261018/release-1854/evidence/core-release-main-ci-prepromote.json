@@ -1,0 +1,111 @@
+{
+  "ok": true,
+  "candidate_sha": "7af14c7782cf7ab0cba261cc25e6789fe810b092",
+  "checks": [
+    {
+      "id": 39166076368,
+      "workflow_id": 348659845,
+      "name": "agent-governance",
+      "head_sha": "7af14c7782cf7ab0cba261cc25e6789fe810b092",
+      "event": "push",
+      "head_branch": "main",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "html_url": "https://github.com/PatsKiller/tardeai/actions/runs/39166076368",
+      "updated_at": "2026-10-18T21:04:16Z",
+      "path": ".github/workflows/agent-governance.yml"
+    },
+    {
+      "id": 39166076750,
+      "workflow_id": 336505727,
+      "name": "aif-financial-senses-integration-ci",
+      "head_sha": "7af14c7782cf7ab0cba261cc25e6789fe810b092",
+      "event": "push",
+      "head_branch": "main",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "html_url": "https://github.com/PatsKiller/tardeai/actions/runs/39166076750",
+      "updated_at": "2026-10-18T21:05:12Z",
+      "path": ".github/workflows/aif-financial-senses-integration-ci.yml"
+    },
+    {
+      "id": 39166076586,
+      "workflow_id": 334294732,
+      "name": "cio-production-hardening-ci",
+      "head_sha": "7af14c7782cf7ab0cba261cc25e6789fe810b092",
+      "event": "push",
+      "head_branch": "main",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "html_url": "https://github.com/PatsKiller/tardeai/actions/runs/39166076586",
+      "updated_at": "2026-10-18T21:32:19Z",
+      "path": ".github/workflows/cio-production-hardening-ci.yml"
+    },
+    {
+      "id": 39166076433,
+      "workflow_id": 335905080,
+      "name": "financial-senses-ci",
+      "head_sha": "7af14c7782cf7ab0cba261cc25e6789fe810b092",
+      "event": "push",
+      "head_branch": "main",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "html_url": "https://github.com/PatsKiller/tardeai/actions/runs/39166076433",
+      "updated_at": "2026-10-18T21:03:22Z",
+      "path": ".github/workflows/financial-senses-ci.yml"
+    },
+    {
+      "id": 39166076479,
+      "workflow_id": 336532638,
+      "name": "provider-cost-ci",
+      "head_sha": "7af14c7782cf7ab0cba261cc25e6789fe810b092",
+      "event": "push",
+      "head_branch": "main",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "html_url": "https://github.com/PatsKiller/tardeai/actions/runs/39166076479",
+      "updated_at": "2026-10-18T21:03:52Z",
+      "path": ".github/workflows/provider-cost-ci.yml"
+    },
+    {
+      "id": 39166076581,
+      "workflow_id": 303394199,
+      "name": "release-readiness",
+      "head_sha": "7af14c7782cf7ab0cba261cc25e6789fe810b092",
+      "event": "push",
+      "head_branch": "main",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "html_url": "https://github.com/PatsKiller/tardeai/actions/runs/39166076581",
+      "updated_at": "2026-10-18T21:04:58Z",
+      "path": ".github/workflows/release-readiness.yml"
+    },
+    {
+      "id": 39166076483,
+      "workflow_id": 334616189,
+      "name": "research-governance",
+      "head_sha": "7af14c7782cf7ab0cba261cc25e6789fe810b092",
+      "event": "push",
+      "head_branch": "main",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "html_url": "https://github.com/PatsKiller/tardeai/actions/runs/39166076483",
+      "updated_at": "2026-10-18T21:03:53Z",
+      "path": ".github/workflows/research-governance-ci.yml"
+    }
+  ],
+  "errors": [],
+  "required_workflows": [
+    ".github/workflows/agent-governance.yml",
+    ".github/workflows/cio-production-hardening-ci.yml"
+  ],
+  "checked_at": "2026-10-18T21:55:35.954126Z",
+  "repository": "PatsKiller/tardeai"
+}
