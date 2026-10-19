@@ -64,6 +64,10 @@ GATES = [
     # expected_output, staged effect key); LaneRunReceipt@v2 produced / empty_allowed / fatal dependency_unavailable via
     # the real CLI; idempotent rerun; the operator packet against fake systemctl/docker/proc. Hermetic: tmp ledgers.
     ("comms_intent_consumer_live_20261017", ["tests/test_comms_intent_consumer_live_20261017.py"]),
+    # ANCHOR: DISK_HYGIENE_N8N_20261018 — rule-based disk hygiene (dry-run manifest by default; --apply needs a fresh
+    # manifest, re-validates every item, grant + caps) and the band-deduped disk-usage monitor, both as n8n lanes;
+    # never-touch list enforced in code. Hermetic: tmp git repos/worktrees, fake df/proc/crontab.
+    ("disk_hygiene_n8n_20261018", ["tests/test_disk_hygiene_20261018.py"]),
     # ANCHOR: COMMS_INTENT_DELIVER_BEFORE_CLOSE_20261017 — a comms-intent incident past its window closes only on the
     # incident notifier's own delivery evidence; undelivered (CAPPED / quiet-held) it is DEFERRED, still presented by
     # the fan-in, sent once in the next allowed batch (07:00 ET / cap reset), then closed. Hermetic: tmp ledgers, the
