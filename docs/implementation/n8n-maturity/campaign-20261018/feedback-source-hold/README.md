@@ -1,8 +1,8 @@
 # Preserve the held Hermes feedback stage
 
 Status: DRAFT
-as_of: 2026-10-18T23:22:39.172979+00:00
-Measured at: source 969e9820c3f85f61a63dc394c01f69492ff82f98; native integration 1a00cf2842ae02650fd8755ec0c48e385ca851ba failed; production a2aef7b4d2de17e737526337a2ffc37848deda4f
+as_of: 2026-10-19T00:00:36.644623+00:00
+Measured at: source 969e9820c3f85f61a63dc394c01f69492ff82f98; native 37ed9b107f41beb2dedada2c61acb309b1b58fcd passed; fresh-main integration 50f7f5a2887f24b51b0a3100914709344921dd9d pending native; production a2aef7b4d2de17e737526337a2ffc37848deda4f
 
 The sixth Hermes learning stage has no qualifying live output or downstream
 consumption proof. This change restores its source configuration to shadow with
@@ -44,3 +44,10 @@ The dispatcher expectation separately tests the held dry shape and preserves
 the retained future notify-argv refusal. No production source or policy was
 changed by this requirement migration. The focused requirement-migration run passes 168 tests. Candidate-focused and full native
 results remain separate; the failed run is never reported as green.
+
+The separate complete native run at 37ed9b107f41beb2dedada2c61acb309b1b58fcd
+passed all required local gates (session58555, exit0). Its raw log is retained
+losslessly alongside the failed 1a run. A normal merge now imports reviewed
+main b52a1f2fa2f929e9b72d9133b98cf2610ffb9264. Feedback configurations and tests
+remain byte-identical to the tested37 candidate; full native acceptance of this
+new dependency combination remains a separate pending requirement.

@@ -79,6 +79,24 @@
       "original_sha256": "bf7e12e054ce2d4525bfa6d131963e45fba3cbe37b137ce342596f654a50f7c9",
       "original_bytes": 509,
       "encoding": "identity"
+    },
+    "README.md": {
+      "sha256": "a6f09db62db35c0d8db1d354435f8c9e4ac4c81a6e19def081e88ad44a8c5723",
+      "original_sha256": "a6f09db62db35c0d8db1d354435f8c9e4ac4c81a6e19def081e88ad44a8c5723",
+      "original_bytes": 3567,
+      "encoding": "identity"
+    },
+    "native-37-passed.log.gz": {
+      "sha256": "6af7880ace825e3db7ff879f7438a77ebd832c103c3aad3ed9b2056ebd6eef49",
+      "original_sha256": "8d1b8efc7557642b4bd517c64183893c00ef5d9ecf32160eef8c6c69d6a0d68b",
+      "original_bytes": 46459,
+      "encoding": "gzip"
+    },
+    "native-37-and-main-integration.json": {
+      "sha256": "f10f4f3fb9833191804b60bceef59480b306c43fe00c1ecc12556e64e31a0146",
+      "original_sha256": "f10f4f3fb9833191804b60bceef59480b306c43fe00c1ecc12556e64e31a0146",
+      "original_bytes": 1602,
+      "encoding": "identity"
     }
   }
 }
