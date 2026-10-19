@@ -45,6 +45,7 @@ def test_attach_market_tags_low_conviction(monkeypatch):
     monkeypatch.setattr(cp, "conviction_floor", lambda: 55.0)
     import lib.data_broker.market_quote as mq
     monkeypatch.setattr(mq, "get_price_batch", lambda *a, **k: {})
+    monkeypatch.setattr(cp, "analyst_consensus", lambda syms: {})
     out = {e["symbols"][0]: e for e in cp.attach_market([ev("VCIG"), ev("QTEX"), ev("BARE")])}
     assert out["VCIG"]["levels"]["low_conviction"] is True and out["VCIG"]["levels"]["conviction_floor"] == 55.0
     assert "low_conviction" not in out["QTEX"]["levels"]
