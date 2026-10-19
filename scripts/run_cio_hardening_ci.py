@@ -3967,6 +3967,12 @@ GATES = [
         ],
     ),
     (
+        # Keep ownership admission fenced until actual child spawn; late effects remain epoch-fenced.
+        # Hermetic threads, temporary ledgers and fake children; no production actions.
+        "n8n_spawn_fence_20261018",
+        ["tests/test_n8n_cutover_transaction_20261018.py"],
+    ),
+    (
         # Host signatures and exact semantic snapshots; eligibility observes real elapsed slots only.
         # Ephemeral in-memory keys, fake host reads and temporary artifacts; no runtime grants or effects.
         "n8n_evidence_gates_20261018",
