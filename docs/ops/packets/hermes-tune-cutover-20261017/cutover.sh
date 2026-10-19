@@ -12,15 +12,17 @@
 #   bash cutover.sh pre                    read-only: served PR state, owner + handover manifest, crontab line,
 #                                          n8n row, live list, yesterday's 17:00 fire
 #   bash cutover.sh c1      [--apply]      owner row = cron for the lane if absent (operator did this 00:28 ET 10-17)
-#   bash cutover.sh c2      [--apply]      CRONTAB (cron grant): tune line -> 20 17 + PIPELINE_EFFECT_CLAIM=1
+#   bash cutover.sh c2                     read-only cron change plan; --apply HELD for the common controller
 #   bash cutover.sh relay   [--apply]      live list += the lane; restart relay AND gateway (service grant)
 #   bash cutover.sh publish                read-only: confirms NO re-import is needed (graph unchanged by the PR)
-#   bash cutover.sh c3      [--apply]      owner cron -> n8n (refused 16:50-17:29 ET and before c2 / relay)
+#   bash cutover.sh c3                     read-only owner change plan; --apply HELD for the common controller
 #   bash cutover.sh proof --date YYYYMMDD  read-only: n8n 17:00 live RUN_DONE + fx DONE scheduler n8n + output verdict
 #                                          produced|empty_allowed; cron 17:20 step skipped_effect
-#   bash cutover.sh rollback [--apply]     owner n8n -> cron (compare-and-swap); see the ROLLBACK note at the bottom
+#   bash cutover.sh rollback               read-only rollback plan; --apply HELD for the common controller
 #
-# Order for today, ALL before 16:50 ET: (merge + serve the PR) -> pre -> c1 (done) -> c2 -> relay -> publish -> c3.
+# Campaign 2026-10-18: c2/c3/rollback mutations are held before grant checks or effects, even with valid authority.
+# The reviewed common controller must supply pause/drain, UNKNOWN reconciliation and exact-entry journal/CAS.
+# These legacy plans are not an eligible campaign cutover or a demonstrated rollback.
 # The natural 17:00 ET fire is the live run. Manual live runs are refused by design (MANUAL_LIVE_REFUSED / EXPIRED).
 # Cron's 17:20 run is the cron-present half; then run `proof --date <today>` after 17:25 ET.
 # --apply needs TRADEAI_FABRIC_GRANT (the cron/config-write grant id) for the owner acts. c2 and relay also need the
@@ -32,6 +34,9 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 REPO=${REPO:-$HOME/trade-ai-v12-rebuild/trade-ai-v12-rebuild}
 PY=${PY:-$REPO/.venv/bin/python}
 SERVED=${SERVED:-$(readlink -f "$HOME/trade-ai-releases/portfolio-server/CURRENT")}
+GRANT_PY=${GRANT_PY:-$(cd "$(dirname "$0")/../../../.." && pwd)/scripts/lib/fabric_grant.py}
+SYSTEMCTL_BIN=${SYSTEMCTL_BIN:-systemctl}
+PROC_ROOT=${PROC_ROOT:-/proc}
 STATE=${STATE:-$HOME/trade-ai-releases/persistent-state}
 LEDGER=${LEDGER:-$STATE/data/governance/n8n_coordination_ledger.sqlite}
 LIVE_LANES_ENV=${LIVE_LANES_ENV:-$HOME/.config/tradeai/n8n-live-lanes.env}
@@ -43,13 +48,50 @@ OLD_LINE='0 17 * * * cd $PROJ && bash scripts/pipelines/run_hermes_pipeline.sh -
 NEW_LINE='20 17 * * * cd $PROJ && PIPELINE_EFFECT_CLAIM=1 bash scripts/pipelines/run_hermes_pipeline.sh --stage tune --apply'
 FXL=(); [[ -n "${FX_LEDGER:-}" ]] && FXL=(--ledger "$FX_LEDGER")
 fail(){ echo "REFUSED: $*"; exit 1; }
+# Legacy scheduler/owner mutation is held until the reviewed common controller supplies
+# pause/drain/UNKNOWN reconciliation, exact-entry journal/CAS and compensating rollback.
+# Read-only plans remain available; this hold cannot be overridden by a grant.
+controller_hold(){
+  [[ $APPLY == 0 ]] && return 0
+  echo "{\"schema\":\"LegacyCutoverHold@v1\",\"state\":\"held\",\"action\":\"hermes-tune.$STEP\",\"lane_id\":\"$LANE\",\"workflow_id\":\"$WID\",\"reason\":\"reviewed_common_controller_required\",\"grant_consumed\":false,\"effect_performed\":false}"
+  exit 1
+}
 STEP=${1:-}; shift || true
 APPLY=0; DATE=""
 while [[ $# -gt 0 ]]; do
   case "$1" in --apply) APPLY=1; shift ;; --date) DATE=${2:-}; shift 2 ;; *) fail "unknown arg $1" ;; esac
 done
-need_grant(){ [[ $APPLY == 0 || -n "${TRADEAI_FABRIC_GRANT:-}" ]] || fail "TRADEAI_FABRIC_GRANT not set"; }
+# Full primary ID in TRADEAI_FABRIC_GRANT; restarts additionally need TRADEAI_FABRIC_SERVICE_GRANT.
+# Reasons name this action, every lane, workflow ID and this packet's SHA256; service names both units + restart.
+# Checks are read-only; --consume rechecks/consumes all required finite grants atomically immediately before mutation.
+need_grant(){
+  [[ $APPLY == 0 ]] && return 0
+  [[ -n "${TRADEAI_FABRIC_GRANT:-}" ]] || fail "TRADEAI_FABRIC_GRANT not set"
+  local hit
+  hit=$("$PY" "$GRANT_PY" authorize "hermes-tune.$STEP" "$@") || fail "grant refused: $hit"
+  echo "  grant ok: $hit"
+}
 now_hm(){ echo "${NOW_HM:-$(TZ=America/New_York date +%H%M)}"; }
+# A live-list/owner change admits work even when no import is needed. Missing proof holds it.
+# Supply the immutable inactive import-form export and host framework evidence; a metadata ref is not proof.
+framework_ready(){
+  [[ -f "${N8N_WORKFLOW_EXPORT:-}" && -f "${N8N_FRAMEWORK_RUNTIME_EVIDENCE:-}" ]] \
+    || fail "framework evidence unavailable: N8N_WORKFLOW_EXPORT and N8N_FRAMEWORK_RUNTIME_EVIDENCE required"
+  "$PY" - "$SERVED" "$WID" "$N8N_WORKFLOW_EXPORT" <<'EOF' || fail "exported workflow graph differs from the served reviewed graph"
+import json, pathlib, sys
+root, wid, path = pathlib.Path(sys.argv[1]), sys.argv[2], sys.argv[3]
+sys.path.insert(0, str(root / "scripts"))
+import n8n_workflow_templates as T
+exported = json.load(open(path))
+expected = json.load(open(root / "docs/implementation/n8n-maturity/workflows/fabric/tradeai-fabric-hermes-learning.json"))
+assert exported["id"] == expected["id"] == wid
+assert T.graph_hash(exported) == T.graph_hash(expected)
+EOF
+  "$PY" "$SERVED/scripts/check_n8n_import_ready.py" "$N8N_WORKFLOW_EXPORT" \
+    --relay-url http://172.19.0.1:18092 --known-id tradeai-fabric-error \
+    --framework-gate activation --runtime-evidence "$N8N_FRAMEWORK_RUNTIME_EVIDENCE" \
+    || fail "framework activation gate refused the exported workflow"
+}
 quiet_minute(){ local hm; hm=$(now_hm)  # n8n fires 17:00, cron 17:20: no owner act from 16:50 to 17:29 ET
   case "$hm" in 165*|170*|171*|172*) fail "inside the tune window (16:50-17:29 ET): $hm";; esac; }
 fx(){ "$PY" "$SERVED/scripts/lib/effect_claim.py" "${FXL[@]}" "$@"; }
@@ -112,9 +154,12 @@ case "$STEP" in
     esac
     ARGS=(set-owner --process "$LANE" --owner cron --by "operator:${TRADEAI_FABRIC_GRANT:-dry}" --note "hermes tune cutover c1")
     [[ $APPLY == 1 ]] || { echo "  DRY RUN — would run: effect_claim.py ${ARGS[*]}"; exit 0; }
+    need_grant --consume
     fx "${ARGS[@]}" >/dev/null
     echo "  $LANE -> $(owner_of)" ;;
   c2)
+    controller_hold
+    need_grant
     served_state || fail "serve the tune cutover PR first (the registry expects the tune line at 20 17)"
     mkdir -p "$BACKUPS"; W=$(mktemp -d)
     "$CRONTAB_BIN" -l > "$W/live"
@@ -134,6 +179,7 @@ EOF
     diff "$W/live" "$W/cand" | sed 's/^/    /' || true
     [[ "$(diff "$W/live" "$W/cand" | grep -c '^[<>]')" == 2 ]] || fail "diff is not exactly one line"
     [[ $APPLY == 1 ]] || { echo "  DRY RUN — crontab unchanged"; exit 0; }
+    need_grant --consume
     B="$BACKUPS/crontab-$(date -u +%Y%m%dT%H%M%SZ)-pre-hermes-tune-c2.txt"; cp -p "$W/live" "$B"
     "$CRONTAB_BIN" - < "$W/cand"
     "$CRONTAB_BIN" -l | cmp - "$W/cand" && echo "  installed byte-exact; backup $B" \
@@ -147,6 +193,8 @@ EOF
     echo "  adds: $(comm -13 <(printf '%s\n' $CUR | sort -u) <(printf '%s\n' $NEW | sort -u) | paste -sd' ')"
     echo "  keeps: $(printf '%s\n' $CUR | grep -c .) existing lanes"
     [[ $APPLY == 1 ]] || { echo "  DRY RUN — live list unchanged, nothing restarted"; exit 0; }
+    framework_ready
+    need_grant --consume
     cp -p "$LIVE_LANES_ENV" "$LIVE_LANES_ENV.bak-$(date -u +%Y%m%dT%H%M%SZ)-hermes-tune"
     printf 'TRADEAI_N8N_RELAY_LIVE_LANES=%s\n' "$NEW" > "$LIVE_LANES_ENV.tmp" && chmod 600 "$LIVE_LANES_ENV.tmp" \
       && mv "$LIVE_LANES_ENV.tmp" "$LIVE_LANES_ENV"
@@ -154,13 +202,14 @@ EOF
     for l in $CUR; do grep -qw -- "$l" "$LIVE_LANES_ENV" || fail "READ-BACK FAILED: lost $l"; done
     # the gateway reads the same file (its due-computation demotes a live lane missing from its env): restart BOTH
     for u in tradeai-n8n-run-relay tradeai-n8n-coordination-gateway; do
-      systemctl --user restart "$u.service"; sleep 2
-      pid=$(systemctl --user show -p MainPID --value "$u.service")
-      tr '\0' '\n' < "/proc/$pid/environ" | grep -q -- "$LANE" \
+      "$SYSTEMCTL_BIN" --user restart "$u.service"; sleep "${RESTART_SETTLE_S:-2}"
+      pid=$("$SYSTEMCTL_BIN" --user show -p MainPID --value "$u.service")
+      tr '\0' '\n' < "$PROC_ROOT/$pid/environ" | grep -q -- "$LANE" \
         && echo "  $u active, env carries $LANE" || fail "$u env lacks $LANE after restart"
     done ;;
   publish)
     served_state || fail "serve the tune cutover PR first"
+    framework_ready
     SERVED="$SERVED" "$PY" - "$WID" <<'EOF' || fail "served fabric workflow differs from the published PR-2 graph: re-import with $HERE/../n8n-hermes-learning-flow-20261015/03_publish_shadow.sh"
 import hashlib, json, os, sys
 root, wid = os.environ["SERVED"], sys.argv[1]
@@ -177,6 +226,7 @@ EOF
     echo "  NO RE-IMPORT NEEDED: the tune step's schedule (17:00) and the process mode (live) are already published;"
     echo "  the step goes live through the registry stage (served), the live list (relay) and the owner row (c3)." ;;
   c3)
+    controller_hold
     served_state || fail "serve the tune cutover PR first"
     need_grant; quiet_minute
     "$CRONTAB_BIN" -l | grep -qF -- "$NEW_LINE" || fail "c2 not applied (the tune line must claim effects before n8n owns them)"
@@ -187,6 +237,8 @@ EOF
     ARGS=(set-owner --process "$LANE" --owner n8n --expect-epoch "$ep" --by "operator:${TRADEAI_FABRIC_GRANT:-dry}"
           --note "hermes tune cutover c3 (autonomous_self_tune, both halves)")
     [[ $APPLY == 1 ]] || { echo "  DRY RUN — would run: effect_claim.py ${ARGS[*]}"; exit 0; }
+    framework_ready
+    need_grant --consume
     fx "${ARGS[@]}" >/dev/null  # set-owner writes the handover manifest too (fail-closed ownership, PR #1845)
     echo "  $LANE -> $(owner_of)"
     fx ownership --process "$LANE" 2>/dev/null | sed 's/^/  ownership now: /' || true ;;
@@ -234,6 +286,7 @@ for l in sys.stdin:
     fi
     exit $rc ;;
   rollback)
+    controller_hold
     # R1 (this step): owner n8n -> cron. From the next slot the 17:20 cron run claims and runs the step again; an n8n
     # live request is refused effect_fenced_owner. R2 (relay env, config-write grant): remove the lane from the live
     # list, restart relay + gateway. R3 (config): revert the PR on a branch -> PR -> serve. R4 (cron grant): restore
@@ -245,6 +298,7 @@ for l in sys.stdin:
     ARGS=(set-owner --process "$LANE" --owner cron --expect-epoch "$ep" --by "operator:${TRADEAI_FABRIC_GRANT:-dry}"
           --note "hermes tune cutover rollback R1")
     [[ $APPLY == 1 ]] || { echo "  DRY RUN — would run: effect_claim.py ${ARGS[*]}"; exit 0; }
+    need_grant --consume
     fx "${ARGS[@]}" >/dev/null
     echo "  $LANE -> $(owner_of)" ;;
   *) fail "usage: $0 pre|c1|c2|relay|publish|c3|proof|rollback [--apply] [--date YYYYMMDD]" ;;

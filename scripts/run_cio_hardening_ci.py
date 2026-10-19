@@ -23,6 +23,11 @@ REPO = Path(__file__).resolve().parents[1]
 
 # Ordered, explicit suite list (Phase 10.2)
 GATES = [
+    # Staged reader preserves v2 evidence and refuses legacy worker effects on it.
+    (
+        "incident_notifier_state_compatibility_20261018",
+        ["tests/test_incident_notifier_state_compatibility_20261018.py"],
+    ),
     # Rotation publication: account-bound identity, real source clocks and grounded
     # stop claims; actual API/cache/digest/POST boundaries with fake external effects.
     ("rotation_publication_20261018", ["tests/test_rotation_publication_20261018.py"]),
@@ -67,6 +72,7 @@ GATES = [
     # expected_output, staged effect key); LaneRunReceipt@v2 produced / empty_allowed / fatal dependency_unavailable via
     # the real CLI; idempotent rerun; the operator packet against fake systemctl/docker/proc. Hermetic: tmp ledgers.
     ("comms_intent_consumer_live_20261017", ["tests/test_comms_intent_consumer_live_20261017.py"]),
+    ("fabric_grant_id_20261018", ["tests/test_fabric_grant_id_20261018.py"]),
     # Feedback's future queue-only capability does not enable its held sixth stage.
     # Exercise actual authenticated admission and executor stage clamping, with fake effects.
     ("hermes_feedback_hold_20261018", ["tests/test_hermes_feedback_hold_20261018.py"]),
