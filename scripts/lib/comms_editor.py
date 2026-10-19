@@ -432,8 +432,11 @@ _AMBIGUOUS_WORDS = frozenset(
         "BY",
         "CAN",
         "CASH",
+        "CC",
+        "DATA",
         "DAY",
         "DO",
+        "DOWN",
         "EVER",
         "FOR",
         "FUN",
@@ -445,6 +448,7 @@ _AMBIGUOUS_WORDS = frozenset(
         "HOPE",
         "IT",
         "KEY",
+        "LAST",
         "LIFE",
         "LOVE",
         "LOW",
@@ -506,7 +510,7 @@ def is_active_trader_scalp_alert(text: str) -> bool:
 def _marked_as_ticker(text: str, symbol: str, guid: str = "") -> bool:
     plain = re.sub(r"<[^>]+>", " ", text or "")
     sym = re.escape(symbol)
-    if re.search(rf"\${sym}(?![A-Za-z])", plain):
+    if re.search(rf"\${sym}(?![A-Za-z])", plain, re.I):
         return True
     if re.search(rf"\b(?:ticker|symbol)\s*:?\s*{sym}(?![A-Za-z])", plain, re.I):
         return True
@@ -864,11 +868,14 @@ def edit(
         if match:
             primary = [match.group(1)]
             changes.append("structured_header_subject_bound")
-    subs = unambiguous_subjects(body, subjects(body, resolve=resolve))
+    resolved_subs = subjects(body, resolve=resolve)
+    subs = unambiguous_subjects(body, resolved_subs)
     if primary is not None:
         allow = set(primary)
         # Keep GUID rows for primary only; never invent links for body bleed.
-        by_sym = {s["symbol"]: s for s in subs}
+        # Explicit producer scope disambiguates real securities without losing
+        # their registry identity when the same symbol is also an ordinary word.
+        by_sym = {s["symbol"]: s for s in resolved_subs}
         scoped: list[dict[str, str]] = []
         for sym in primary:
             if sym in by_sym:
