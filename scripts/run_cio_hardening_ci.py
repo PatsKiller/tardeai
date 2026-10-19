@@ -23,6 +23,9 @@ REPO = Path(__file__).resolve().parents[1]
 
 # Ordered, explicit suite list (Phase 10.2)
 GATES = [
+    # Rotation publication: account-bound identity, real source clocks and grounded
+    # stop claims; actual API/cache/digest/POST boundaries with fake external effects.
+    ("rotation_publication_20261018", ["tests/test_rotation_publication_20261018.py"]),
     # ANCHOR: TRADING_READ_ONLY_LOCK_20261014 — incident SPCX: every broker place/replace/cancel path is
     # dominated by assert_trading_unlocked (static scan + mutation proof) and refuses with stubbed clients.
     (
@@ -68,6 +71,10 @@ GATES = [
     # manifest, re-validates every item, grant + caps) and the band-deduped disk-usage monitor, both as n8n lanes;
     # never-touch list enforced in code. Hermetic: tmp git repos/worktrees, fake df/proc/crontab.
     ("disk_hygiene_n8n_20261018", ["tests/test_disk_hygiene_20261018.py"]),
+    # Feedback's future queue-only capability does not enable its held sixth stage.
+    # Exercise actual authenticated admission and executor stage clamping, with fake effects.
+    ("hermes_feedback_hold_20261018", ["tests/test_hermes_feedback_hold_20261018.py"]),
+    ("hermes_feedback_cutover_20261017", ["tests/test_hermes_feedback_cutover_20261017.py"]),
     # ANCHOR: COMMS_INTENT_DELIVER_BEFORE_CLOSE_20261017 — a comms-intent incident past its window closes only on the
     # incident notifier's own delivery evidence; undelivered (CAPPED / quiet-held) it is DEFERRED, still presented by
     # the fan-in, sent once in the next allowed batch (07:00 ET / cap reset), then closed. Hermetic: tmp ledgers, the
@@ -2319,6 +2326,8 @@ GATES = [
             "tests/test_sop_evidence_integrity.py",
             "tests/test_sop_toolchain.py",
             "tests/test_sop_attestation_base.py",
+            "tests/test_sop_runtime_command_truth_20261018.py",
+            "tests/test_release_readiness_head_identity_20261018.py",
             "tests/test_agents_drive_mirror_policy.py",
             # AGENTS.md 1.3.0 (ratified 2026-09-27): execution engineering needs a per-task grant, and
             # the broker-boundary verifier must refuse every out-of-envelope mutation.
@@ -3950,6 +3959,36 @@ GATES = [
         "n8n_audit_findings_20261015",
         [
             "tests/test_n8n_audit_findings_20261015.py",
+        ],
+    ),
+    (
+        # 2026-10-18 campaign: strict authority-bearing JSON and immutable output truth.
+        # Hermetic ledgers, signed fixture claims and fake output effects only.
+        "n8n_contract_enforcement_20261018",
+        [
+            "tests/test_n8n_gateway_closed_inputs_20261018.py",
+            "tests/test_n8n_output_contract_truth_20261018.py",
+        ],
+    ),
+    (
+        # Keep ownership admission fenced until actual child spawn; late effects remain epoch-fenced.
+        # Hermetic threads, temporary ledgers and fake children; no production actions.
+        "n8n_spawn_fence_20261018",
+        ["tests/test_n8n_cutover_transaction_20261018.py"],
+    ),
+    (
+        # Actual CURRENT identity, strict release receipt readers, and rollback/prepare truth.
+        # Temporary artifacts and fake shell actions only.
+        "cio_deploy_receipt_truth_20261018",
+        ["tests/test_cio_deploy_receipt_truth_20261018.py"],
+    ),
+    (
+        # Host signatures and exact semantic snapshots; eligibility observes real elapsed slots only.
+        # Ephemeral in-memory keys, fake host reads and temporary artifacts; no runtime grants or effects.
+        "n8n_evidence_gates_20261018",
+        [
+            "tests/test_n8n_evidence_attestation_20261018.py",
+            "tests/test_n8n_retirement_eligibility_20261018.py",
         ],
     ),
     (

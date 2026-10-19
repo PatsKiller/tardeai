@@ -27,6 +27,16 @@ Status markers: **(E)** exists on `origin/main`; **(P)** proposed, with its trac
 [gap assessment](../../implementation/n8n-maturity/N8N_GAP_ASSESSMENT_AND_MATURITY_REVIEW_20261014.md); `FW-x` =
 framework element, §12).
 
+**2026-10-18 executable audit.** The introductory E/P markers and §15 are the historical
+2026-10-15 inventory, not runtime certification. The current classification is the
+[campaign contract matrix](../../implementation/n8n-maturity/campaign-20261018/baseline/contract_matrix.json)
+(source `3af0a8bdd659e02bf6f493c071800c6a227ae292`, served `a2aef7b4d2de17e737526337a2ffc37848deda4f`):
+implemented-and-enforced, implemented-not-enabled, partial, proposed or unproven, with actual
+producers, consumers, configuration, boundary and proof. The
+[campaign record](../../implementation/n8n-maturity/campaign-20261018/README.md) distinguishes
+baseline findings from local candidate fixes, merge, deployment and operational evidence.
+Neither a schema literal nor a static framework PASS establishes runtime enforcement.
+
 ---
 
 ## 1. Executive summary
@@ -100,8 +110,8 @@ expected-output rule.
 
 - **Producer:** the generator (a spec in git; never hand-written). **Consumers:** `scripts/check_n8n_workflow_framework.py`
   (scores it), the import packet (records class/owner), the fan-in (P: attaches `runbook_id` to pages).
-- **Versioning:** additive optional keys keep `@v1`; a new required key, a renamed key or a changed enum is `@v2`
-  (§14).
+- **Versioning:** an optional key keeps `@v1` only after compatibility with every supported reader is proven;
+  a closed old reader can reject it. Changed meaning, required fields or enums require explicit version migration (§14).
 - **Validation point:** CI (`check_n8n_workflow_framework.py --strict` once §23.24 binds by code), generator
   self-check, trusted-deployer verify.
 - **Failure behaviour:** a workflow without the block scores FW-C1/C2 fail and cannot be activated or promoted a
@@ -598,12 +608,18 @@ predicate. Two rows are labelled extras (not §23.24 lines): the deferral tier a
   {<obligation id>: {ref, observed_at}}}}`), each unless an unexpired exception accepted by the operator in a PR
   names it (`--exceptions`, `N8nFrameworkExceptions@v1`: `{exceptions: [{workflow_id | "*", element, accepted_by:
   "operator", pr, expires}]}`). Offline with no runtime evidence nothing is eligible — the honest answer today.
-- Callers: `scripts/check_n8n_import_ready.py --framework-gate activation` runs the gate before an import (opt-in
-  flag; off by default). Not yet wired (documented, not modified): `docs/ops/packets/n8n-fabric-phase1-20261014/`
-  `00_preflight.sh` and `01_import_inactive.sh` (call `check_n8n_import_ready.py` without the flag), and the
+- Callers: the 2026-10-18 candidate makes `scripts/check_n8n_import_ready.py` enforce the gate for every
+  statically admissible import, including callers that omit `--framework-gate activation`; that spelling remains
+  accepted for existing packets. Static refusals stay refused without being promoted to candidate imports.
+  Thus `docs/ops/packets/n8n-fabric-phase1-20261014/00_preflight.sh` and `01_import_inactive.sh` inherit the gate.
+  Remaining paths require explicit closure: the
   operator's activation step (`n8n update:workflow --active=true` / publish in a packet under a `cron` grant, §23.2),
   which has no script of its own; `scripts/n8n_cutover_checklist.py` (promotion evidence) does not consult it. Each
-  packet adopts the flag in its own reviewed PR; no exhaustive activation-path audit is claimed.
+  packet must adopt the gate at its actual mutation boundary. The
+  [activation-path inventory](../../implementation/n8n-maturity/campaign-20261018/baseline/activation_paths.json)
+  records those boundaries. Runtime evidence v1 only checks truthy references/times and exceptions only check
+  self-described operator metadata; those are unresolved provenance gaps. Activations depending on them remain
+  held. Wiring the CLI does not constrain raw n8n admin APIs/UI or prove host attestation.
 
 ## 13. The reference mature workflow
 
@@ -630,8 +646,10 @@ on it exits 1 with 24 blocking reasons. It is a reference for a reviewer's diff,
 
 **Compatibility rules.**
 
-1. **Additive optional field** → same version. Every consumer ignores unknown fields; producers never rely on a
-   consumer reading them.
+1. **Additive optional field** → same version only after checking the actual readers. A closed reader may reject
+   an unknown field. Inventory all readers and test old producer/new consumer and new producer/old consumer;
+   document the supported version pairs. Use a new major and staged dual-read/write when an existing reader
+   would reject the addition. Producers never infer authority from an ignored field.
 2. **New required field, removed field, renamed field, changed type or changed meaning** → new major `@vN+1`.
    The producer dual-writes (or the consumer dual-reads) for at least one release; the old version is retired by a
    later PR, never by the same one.
@@ -658,7 +676,16 @@ on it exits 1 with 24 blocking reasons. It is a reference for a reviewer's diff,
 5. Dry run any runtime-affecting change and quote it (§0 rule 7); a live effect needs the grants §23.2 requires.
 6. For workflow changes: import packet, drift check OK, activation grant naming the workflow ids.
 
-## 15. Verification of schema ids (grep on 94601ff69)
+## 15. Historical schema-literal inventory (94601ff69)
+
+This inventory records source presence on October 15, not current enforcement. It is preserved for historical
+comparison. The current executable [contract matrix](../../implementation/n8n-maturity/campaign-20261018/baseline/contract_matrix.json)
+and [implementation ledger](../../implementation/n8n-maturity/campaign-20261018/baseline/implementation-status.json)
+identify current readers, effective configuration, deployment and remaining proof. In particular,
+`LaneRunReceipt@v2` and expected-output rules now exist; runtime enforcement remains opt-in for 48 lanes.
+The existing schema-literal test below validates its historical E list only; it cannot establish absence,
+enforcement, reader compatibility or operational health.
+
 
 Each id below appears as a literal in the named owner file: `N8nWorkflowSet@v1`, `N8nGenericWorkflowSet@v1`,
 `N8nFabricManifest@v1`, `RunLaneResult@v1`, `FabricStepResult@v1`, `FabricProcessResult@v1`,
@@ -681,3 +708,32 @@ Each id below appears as a literal in the named owner file: `N8nWorkflowSet@v1`,
 `N8nExpectedOutput@v1` (read by the checker; carried only by the reference contract draft), `LaneRunReceipt@v2`,
 `RunReceipt@v3`, `ApprovalRequest@v1`, `ApprovalDecision@v1`. The test
 `tests/test_check_n8n_workflow_framework.py` re-greps the E list so this section cannot drift silently.
+
+## 16. October 18 implementation and framework evidence
+
+The enforcement source candidate in [PR #1854](https://github.com/PatsKiller/tardeai/pull/1854), exact head
+`2333c8e1b00f4be3b5fab653bf67d9a42fdcd399`, closes the existing run envelope, rejects duplicate JSON members,
+nonfinite values and wrong field shapes, and binds opted-in output verdicts to the actual lane, run, attempt,
+effective mode, full code SHA and execution window. An absent opted-in rule fails closed. Fatal skips cannot
+satisfy useful output; explicitly contracted no-work remains valid. No lane opt-in or live list changes are included.
+The candidate passed full native local acceptance and independent 113-test review. It is not deployed evidence.
+
+The next source tranche adds `N8nHostEvidenceAttestation@v1`, `N8nEvidenceTrust@v1` and
+`N8nHostDriftSnapshot@v1` in `scripts/lib/n8n_evidence_attestation.py`. A fixed host read-only collector produces
+source observations; the shared verifier checks Ed25519 provenance, pinned served/workflow/config identities,
+scoped signer, audience, generation, observation window, artifact bytes and digest. A root-protected trust file
+and separately isolated signer must be provisioned through the existing operator mechanism. Evidence-supplied
+keys and same-user JSON cannot establish authority. No signer credential is created by this campaign.
+Absent trust or observations remain UNPROVEN and prohibit runtime framework PASS.
+
+For §23.24, this tranche can establish **L5b point graph parity** when authenticated evidence is available.
+It cannot establish continuous L5c/BAR2 host scheduling, M6b downstream business output, R3b transactional rollback,
+SEC1b real authentication or the general BAR merely from a static check. The shared verifier is consumed by the
+framework checker; the importer invokes the fail-closed activation gate for every admissible workflow, regardless
+of the legacy CLI switch. Raw admin/UI access remains an authority and network boundary to audit independently.
+
+`N8nCutoverOutcomes@v2` separates null/UNAVAILABLE source reads from legitimate zero counts, declares point
+observation coverage and prevents unavailable owner/config/cron inputs from producing derived healthy totals.
+Its old-v1 reader compatibility is explicit; new v2 writers do not silently assume old closed readers accept them.
+Retirement evaluation is an eligibility-only projection. Until trusted interval evidence and a rollback receipt
+prove the requirements, its CLI reports HELD. Deletion execution is always disabled.

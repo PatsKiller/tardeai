@@ -27,6 +27,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT / "tests") not in sys.path:
     sys.path.append(str(ROOT / "tests"))
 from support import n8n_cutover_waves as CW  # noqa: E402
+
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
@@ -264,10 +265,11 @@ def test_runnable_step_is_a_shadow_lane_with_the_step_lock_and_timeout(sid):
     stage, st = STEPS[sid]
     lane = SPEC["steps"][sid]["lane_id"]
     e = ALLOW_LANES[lane]
-    # cutover PR-2 (2026-10-15): four learn lanes carry cutover_live_arg at stage canary; the held outcome_feedback_agent
-    # (sender token gate; follow-up after gate alignment) stays shadow. Tune cutover (2026-10-17): the tune lane too.
-    learn = sid != "outcome_feedback_agent"
-    assert e["live_arg"] == (SPEC["steps"][sid]["cutover_live_arg"] if learn else None)
+    # Preserve the exact feedback hold while retaining its registered future queue capability.
+    held = sid == "outcome_feedback_agent"
+    if held:
+        assert SPEC["steps"][sid]["cutover_live_arg"] == ["--apply", "--notify", "queue"]
+    assert e["live_arg"] == (None if held else SPEC["steps"][sid]["cutover_live_arg"])
     assert e["dry_run_arg"] is not None
     assert e["command"][0] == "$PY" and e["market_gate"] is False
     locks = PM.lock_paths(st["command"])
@@ -283,12 +285,12 @@ def test_runnable_step_is_a_shadow_lane_with_the_step_lock_and_timeout(sid):
     row = REG[lane]
     sched = row["scheduler"]
     assert sched["kind"] == "n8n" and sched["expression"] == WID
-    assert sched["stage"] == ("canary" if learn else "shadow")
+    assert sched["stage"] == ("shadow" if held else "canary")
     # match names the process step, never a crontab line: the script's retired cron row keeps its own line
     assert sched["process_step"] == sid and sched["match"] == f"{WID}:{sid}"
     assert "dispatch" not in row  # the generic dispatcher never emits a process step
     assert row["state"] == "NEVER_SCHEDULED" and row["state_reason"] and row["output_signal"]["kind"]
-    assert C.clamp_mode(lane, "live", list(REG.values()))["effective_mode"] == ("live" if learn else "dry_run")
+    assert C.clamp_mode(lane, "live", list(REG.values()))["effective_mode"] == ("dry_run" if held else "live")
     c = CONTRACTS[lane]
     assert c["status"] == "REVIEWED" and c["stage"] == "shadow" and c["workflow_id"] == WID
     fx = EFFECTS["lanes"][lane]
@@ -314,7 +316,8 @@ def test_effect_config_loads_for_the_executor_and_the_runner_claims_the_learn_an
     assert len(learn) == 5
     assert len(PM.effect_spec(MANIFEST, "learn", EFFECTS)) == 5
     assert PM.effect_spec(MANIFEST, "tune", EFFECTS) == [
-        ("autonomous_self_tune", "hermes-learning-autonomous-self-tune", SPEC["input_version"])]
+        ("autonomous_self_tune", "hermes-learning-autonomous-self-tune", SPEC["input_version"])
+    ]
 
 
 @pytest.mark.parametrize("sid", BLOCKED)
@@ -334,7 +337,11 @@ def test_blocked_reasons_match_the_scripts():
     assert "OPERATOR DECISION" in SPEC["steps"]["score_history_retention"]["blocked"]
     assert set(BLOCKED) == {"score_history_retention"}
     assert set(RUNNABLE) == {
-        "outcome_grader", "tag_engine", "outcome_feedback_agent", "outcome_learning", "config_governor",
+        "outcome_grader",
+        "tag_engine",
+        "outcome_feedback_agent",
+        "outcome_learning",
+        "config_governor",
         "autonomous_self_tune",
     }
 
@@ -478,8 +485,10 @@ def test_scheduled_learn_runs_the_runnable_steps_in_order_and_records_the_blocke
     assert r["error"] is None, r["error"]
     called = [c["lane_id"] for c in r["calls"]]
     # manifest order (n8n v1 runs branches one after another; the stage runner's serial order stays valid)
-    assert called == [_lane(s) for s in ("outcome_grader", "tag_engine", "outcome_feedback_agent", "outcome_learning",
-                                         "config_governor")]
+    assert called == [
+        _lane(s)
+        for s in ("outcome_grader", "tag_engine", "outcome_feedback_agent", "outcome_learning", "config_governor")
+    ]
     for c in r["calls"]:
         assert c["mode"] == "live" and c["process_id"] == PROCESS  # cutover PR-2: spec mode live
         assert c["idempotency_key"] == f"p:{c['lane_id']}:live:20261015T1050"  # the stage slot, not the minute

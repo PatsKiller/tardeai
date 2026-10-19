@@ -1,0 +1,26 @@
+{
+  "schema": "N8nCampaignIndependentSourceReview@v1",
+  "campaign_id": "n8n-maturity-20261018",
+  "head": "96a2c119602cf694155366b148110bf5187cc642",
+  "reviewer": "root integrator; implementation authored by independent_review agent",
+  "disposition": "APPROVED_SCOPED_SOURCE_ONLY",
+  "validation": {
+    "command": "PYTHONPATH=. <canonical-venv>/python -m pytest -q /tmp/.../test_repair_optional_check_independent.py /tmp/.../test_repair_residual_independent.py tests/test_self_heal_fix_acceptance_20261018.py",
+    "result": "42 passed in2.08s",
+    "junit": "repair96-final-independent.xml"
+  },
+  "findings": [],
+  "reviewed": [
+    "versioned nonempty required CI at full candidate SHA; mandatory pending/skipped/neutral refuses; optional completed skipped check is not mandatory",
+    "red-first requires actual AssertionError and identical immutable JUnit test identity; collection/errors/timeouts refuse",
+    "unknown cost retains conservative reservation; invalid huge numeric refuses rather than overflowing",
+    "absolute job deadline applies before every subprocess, including lifecycle GitHub reads; no silent renewal",
+    "rejected acceptance blocks deployed/recovered transition even if candidate is an ancestor of main"
+  ],
+  "authorship_disclosure": "Root authored only required-check config in source771, inspected that config separately and excludes own config authorship from independent production-source opinion. All changed production repair code was authored by another agent.",
+  "remaining_holds": [
+    "No executor activation or unattended qualification implied",
+    "Fixer remains disarmed; actual repair PR/release/recovered-output chain unproven",
+    "Actual provider cost and authentication are not established by hermetic tests"
+  ]
+}

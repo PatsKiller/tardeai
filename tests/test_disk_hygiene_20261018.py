@@ -420,7 +420,7 @@ def test_dry_run_writes_nothing_and_plan_writes_manifest_and_v2_receipt(world, m
     contract = {c["id"]: c for c in _load("n8n_health_contracts.json")["contracts"]}["disk-hygiene"]
     v = OV.evaluate(contract["expected_output"], att, run_id="d:disk-hygiene:live:20261018T0400",
                     lane_id="disk-hygiene", mode="live")
-    assert v["verdict"] == "produced"
+    assert v["verdict"] == "produced", v.get("why")
     m = world.manifest()
     assert m["schema"] == DH.MANIFEST_SCHEMA and m["totals"]["candidates"] >= 1
     assert m["totals"]["reclaimable_bytes"] == sum(i["size_bytes"] for i in m["items"])

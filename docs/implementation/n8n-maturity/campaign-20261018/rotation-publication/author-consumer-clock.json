@@ -1,0 +1,19 @@
+{
+  "schema": "CampaignAuthorFollowupPacket@v1",
+  "head": "6d1e43043d1c23c48503fa11ccbda4669604b2e2",
+  "parent": "f31591b307335c1050a9d0a5d444f939e02a6db5",
+  "scope": "Only shared ready consumer account clock shape/future refusal and native regressions; no producer/financial/runtime changes",
+  "baseline": "consumer-clock-baseline-red.xml:2expectedAssertionErrors+validcontrolPASS atfullf315",
+  "candidate": "consumer-clock-final.xml:130PASS47.41s inclsameunchangedexternalpair/validcontrol+original4independentcases+native3actualPOSTboundaryfake-effecttests",
+  "external_sha256": "5f3b34e3e84fcc8d48b44273ef7e70308d4057e1fb04c208d543cc757c41924a",
+  "files_sha256": {
+    "scripts/lib/rotation_publication.py": "2336c3a691315cca22f1bfd34dbd883f61aaeb1f51a4e19d7f16b9149ef5df24",
+    "tests/test_rotation_publication_20261018.py": "0aea1b35017268982395a156bab53f22c8312e13cd75fbc4cdfc20598e133f3a"
+  },
+  "static": "ruff/helper+test,gitdiffcheckPASS",
+  "holds": [
+    "Parentindependentreview/requiredCI/merge/release/activation/productionoutputpending.",
+    "Allfinancial/runtime/sourceavailability/deliveryproofholdsunchanged.",
+    "No grants,provider/broker calls,DBwrite orproduction regeneration."
+  ]
+}

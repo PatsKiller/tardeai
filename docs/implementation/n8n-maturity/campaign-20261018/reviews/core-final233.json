@@ -1,0 +1,39 @@
+{
+  "schema": "N8nCampaignIndependentSourceReview@v1",
+  "campaign_id": "n8n-maturity-20261018",
+  "head": "2333c8e1b00f4be3b5fab653bf67d9a42fdcd399",
+  "base": "3af0a8bdd659e02bf6f493c071800c6a227ae292",
+  "disposition": "APPROVED_FOR_SCOPED_SOURCE_INTEGRATION_AND_BOUND_PUSH_REQUEST",
+  "reviewer": "independent_review",
+  "production_source_other_authors": true,
+  "findings": [],
+  "reviewed": [
+    "Closed existing v1 run envelope with explicit supported discriminator and typed wrong-shape refusals",
+    "Duplicate JSON members at every nesting level and nonfinite numeric input fail before authorization/admission",
+    "Existing HMAC claim verification, forbidden routes and network boundaries preserved; no route or scope introduced",
+    "Output v2 opted-in lanes fail on absent/unreadable rules, fatal skips, mismatched run/lane/attempt/mode/full SHA and stale/future evidence",
+    "Configured empty-work semantics retained; no new allowlist or live enablement",
+    "New regressions wired into existing CIO CI route",
+    "Independent previous output SHA residuals remain closed at final integrated head"
+  ],
+  "validation": {
+    "independent_exact_head_command": "REVIEW_ROOT=<core-worktree> TRADE_AI_CI=1 PYTHONDONTWRITEBYTECODE=1 <venv>/python -m pytest -q -p no:cacheprovider tests/test_n8n_gateway_closed_inputs_20261018.py tests/test_n8n_output_contract_truth_20261018.py tests/test_n8n_coordination_gateway_20261007.py tests/test_n8n_gateway_durable_20261007.py tests/test_n8n_gateway_concurrency_20261008.py /tmp/n8n-campaign-20261018/cross-review/test_output_independent.py",
+    "result": "113 passed in7.77s",
+    "xml": "core233-host.xml",
+    "log": "core233-host.txt",
+    "environment_attempt": "core233.txt: 103 pass; 2 failures and8 fixture errors exclusively socket PermissionError in default sandbox; not regression proof",
+    "full_native_acceptance": "/tmp/n8n-campaign-20261018/core-local-acceptance-host.log: exact233 exit0; targeted/regression/release_equivalent/authority alltrue; read as supporting integrator evidence, not authored by reviewer",
+    "worktree_clean": true
+  },
+  "authorship_disclosure": "Reviewer authored four test-fixture environment lines at two comms sites in upstream15771d61. Those own-authored fixture lines are excluded from the independent-source opinion; final tests cover them and parent integrator owns their review. All changed production code was authored by others.",
+  "remaining_holds": [
+    "Actual route/network egress and host deployment evidence are not established by this patch",
+    "Same-user O_EXCL receipt is not cryptographic host attestation",
+    "Artifact/config/input/downstream-consumer semantics remain unproven",
+    "Per-window monitoring and all-lane runtime opt-in coverage remain outside this tranche",
+    "Inline retry migration remains held before any currently opted-in lane adds inline retries",
+    "Required exact-head hosted CI, reviewed PR and matching real guard grant still required before their respective mutations",
+    "No deployment/activation/cutover/business-recovery authority or production proof implied"
+  ],
+  "production_mutations": false
+}

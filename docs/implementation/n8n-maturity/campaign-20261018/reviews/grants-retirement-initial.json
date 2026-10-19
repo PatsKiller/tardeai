@@ -1,0 +1,181 @@
+{
+  "schema": "CampaignIndependentReview@v1",
+  "campaign_id": "n8n-maturity-20261018",
+  "reviewer": "contracts_routes (author of output changes, not these candidates)",
+  "mode": "READ_ONLY_REVIEW",
+  "reviewed_subjects": [
+    {
+      "name": "grants",
+      "requested_head": "c7b7a9df3cde3345f04fa2a5ab6c686f299f7f48",
+      "observed_followup_head": "15771d61b3bf124268ae971449eac9b92984fe40",
+      "worktree": "/home/johnclaw/tradeai-wt-n8n-campaign-grant-admission-20261018",
+      "verdict": "REQUEST_CHANGES_FOR_CAMPAIGN_MUTATION_PATHS",
+      "scope_of_favorable_assessment": "Canonical full-ID lookup, finite active uses, exact action/lane/workflow/packet hash bindings, separate exact-unit service grants, atomic all-tier consumption and accounting-failure holds are well implemented and pass focused tests. No grant issuance/renewal/refund or destructive authority is added.",
+      "head_change_note": "While review ran, peer added4 direct comms fixture env lines. No engine/packet source changed between c7b7a9d and15771d61. Initial97-test run began atc7; mutation-race repro ran on identical packet bytes after advance. Follow-up exact157 focused result recorded separately. No merge approval is inferred for a newer head.",
+      "blocking_findings": [
+        "GRANT-RACE-01",
+        "GRANT-OWNER-02"
+      ],
+      "production_eligible": false
+    },
+    {
+      "name": "retirement",
+      "requested_head": "93619f07f8479c612df654d63a00db751a774fa2",
+      "observed_head": "93619f07f8479c612df654d63a00db751a774fa2",
+      "worktree": "/home/johnclaw/tradeai-wt-n8n-retirement-eligibility-20261018",
+      "verdict": "REQUEST_CHANGES",
+      "scope_of_favorable_assessment": "Eligibility is read-only and deletion_execution_enabled is forcedFalse on all paths. Exact before-image bytes/hashes, graph/config/release/owner identities,48h+2cycles, weekly timing, stronger session bars, holds, failed slots, useful-output and attempt-bound downstream fields, DST, and coverage-age checks are substantial improvements. Old receipt reader compatibility is exercised.",
+      "blocking_findings": [
+        "RETIREMENT-PROVENANCE-01",
+        "RETIREMENT-ROLLBACK-02",
+        "RETIREMENT-CALENDAR-03"
+      ],
+      "production_eligible": false
+    }
+  ],
+  "tests": [
+    {
+      "subject": "grants",
+      "head": "c7b7a9df3cde3345f04fa2a5ab6c686f299f7f48",
+      "command": "python3 -m pytest -q -p no:cacheprovider tests/test_fabric_grant_id_20261018.py tests/test_comms_intent_consumer_live_20261017.py tests/test_hermes_feedback_cutover_20261017.py tests/test_hermes_tune_cutover_20261017.py",
+      "result": "97 passed9.03s",
+      "evidence": "grants-focused-tests.txt"
+    },
+    {
+      "subject": "retirement",
+      "head": "93619f07f8479c612df654d63a00db751a774fa2",
+      "command": "python3 -m pytest -q -p no:cacheprovider tests/test_n8n_retirement_eligibility_20261018.py tests/test_nightly_cutover_controller_20261016.py",
+      "result": "140 passed1.53s",
+      "evidence": "retirement-focused-tests.txt",
+      "safety_note": "Hermetic guard refused2 live-DSN attempts before libpq; no production connection succeeded."
+    },
+    {
+      "subject": "retirement independent adversarial expectations",
+      "head": "93619f07f8479c612df654d63a00db751a774fa2",
+      "command": "PYTHONPATH=<exact-retirement-worktree> python3 -m pytest -q --noconftest -p no:cacheprovider /tmp/n8n-campaign-20261018/cross-review/test_retirement_independent.py",
+      "result": "3 expected business assertion failures0.05s; no harness/collection errors",
+      "evidence": "retirement-independent-tests.txt"
+    },
+    {
+      "subject": "grants independent concurrent scheduler expectation",
+      "head": "15771d61b3bf124268ae971449eac9b92984fe40 (packet and engine identical to requestedc7)",
+      "command": "PYTHONPATH=<exact-grant-worktree> python3 -m pytest -q --noconftest -p no:cacheprovider /tmp/n8n-campaign-20261018/cross-review/test_grant_packets_independent.py",
+      "result": "1 expected business assertion failure0.30s; no harness/collection errors",
+      "evidence": "grants-independent-tests.txt"
+    },
+    {
+      "subject": "grants follow-up exact-head focused suite",
+      "head": "15771d61b3bf124268ae971449eac9b92984fe40",
+      "command": "python3 -m pytest -q -p no:cacheprovider tests/test_fabric_grant_id_20261018.py tests/test_comms_intent_consumer_live_20261017.py tests/test_hermes_feedback_cutover_20261017.py tests/test_hermes_tune_cutover_20261017.py",
+      "result": "97 passed",
+      "evidence": "grants-updated-head-focused-tests.txt"
+    }
+  ],
+  "findings": [
+    {
+      "id": "GRANT-RACE-01",
+      "candidate": "grants",
+      "severity": "P1",
+      "blocking": true,
+      "file": "docs/ops/packets/hermes-tune-cutover-20261017/cutover.sh",
+      "line": 173,
+      "title": "c2 overwrites concurrent unrelated crontab changes and reports success",
+      "finding": "c2 reads the full crontab once, builds W/cand, performs other checks/consumption, then installs the entire stale candidate. It never compare-and-swaps the live scheduler before-image under a common writer transaction. Readback compares against its own stale candidate, so it certifies lost unrelated edits. This is an existing packet weakness, not introduced by finite-grant accounting, but the newly registered campaign action remains executable and cannot be approved for production under the campaign contract.",
+      "reproduction": "test_tune_c2_preserves_operator_edit_between_read_and_install: fake crontab appends an unrelated operator comment immediately before install; packet exits0 installed byte-exact and comment is lost.",
+      "required_change": "Route through the shared reconciliable exact-entry scheduler controller with durable before-image/CAS/journal/compensation and coordinated writer locking. Until that path is reviewed, fail closed before grant consumption/effect for this legacy c2 action. Do not restore a stale whole crontab.",
+      "evidence": [
+        "test_grant_packets_independent.py",
+        "grants-independent-tests.txt"
+      ],
+      "mandate": "\u00a75 scheduler handover; \u00a78 exact concurrent-edit preservation and one controller for manual/scheduled actions"
+    },
+    {
+      "id": "GRANT-OWNER-02",
+      "candidate": "grants",
+      "severity": "P1",
+      "blocking": true,
+      "file": "docs/ops/packets/hermes-tune-cutover-20261017/cutover.sh",
+      "line": 230,
+      "title": "Legacy owner changes/rollback bypass the required drain-and-reconcile transaction",
+      "finding": "Tune and feedback c3/rollback call effect_claim set-owner after a wall-clock quiet-window check, grant validation and framework check. Neither inspects REQUESTED/RUNNING work or held/UNKNOWN effects, pauses admission, waits for drain, nor journals workflow/live-list/owner agreement. set_owner_with_manifest serializes admission/claim/spawn ordering, but its handover lock is released while the spawned child runs; it does not drain and these Hermes lanes are not among the3 late-write-fenced lanes. A scoped grant cannot substitute for those required preconditions. Existing weakness remains; these legacy mutations must not be presented as eligible campaign cutover or rollback.",
+      "additional_locations": [
+        "docs/ops/packets/hermes-feedback-cutover-20261017/cutover.sh:154",
+        "docs/ops/packets/hermes-feedback-cutover-20261017/cutover.sh:200",
+        "docs/ops/packets/hermes-tune-cutover-20261017/cutover.sh:289",
+        "scripts/lib/effect_claim.py:878"
+      ],
+      "required_change": "Use the common transactional controller and exact reviewed runtime state; otherwise hard-hold these registered owner/rollback actions before consumption. Add admitted/claimed/spawned child, UNKNOWN effect and rollback race tests.",
+      "evidence": [
+        "Source inspection of complete grant candidate packet/EffectClaimStore/gated_run paths; no production owner switch attempted"
+      ],
+      "mandate": "\u00a78 steps2,3,6; no UNKNOWN expiry; epochs monotonic; activation grant does not widen action safety"
+    },
+    {
+      "id": "RETIREMENT-PROVENANCE-01",
+      "candidate": "retirement",
+      "severity": "P1",
+      "blocking": true,
+      "file": "scripts/nightly_cutover_controller.py",
+      "line": 824,
+      "title": "Caller-computed hashes and a producer label can authenticate arbitrary coverage",
+      "finding": "The CLI obtains --coverage-sha256 and --evidence-root from its caller, checks a referenced JSON hash supplied inside coverage, but never authenticates a host producer or validates the source report content against the lane/campaign/freeze/interval/coverage/findings. The source can be{}, while caller fields continuous=true,complete=true and empty finding lists establish eligibility. Pure evaluate_retirement may reasonably require authenticated input from a caller, but this public CLI is the stated trust boundary and does not supply that authentication. Current docstring saying no n8n/LLM-provided coverage is accepted is unsupported.",
+      "reproduction": "test_cli_unrelated_source_json_does_not_authenticate_interval_coverage: replace referenced host report with{}, recompute caller-controlled hashes, retain valid fake live host world; CLI returns deletion_eligible.",
+      "required_change": "Wire an existing trusted host collector/attestation verifier and pin its authenticated provenance/key or protected canonical receipt source, then validate exact source schema, lane/campaign/freeze/release, interval and source coverage/findings. Refuse unsupported/unavailable producer verification; a digest alone provides integrity, not producer identity or coverage semantics.",
+      "evidence": [
+        "test_retirement_independent.py",
+        "retirement-independent-tests.txt"
+      ],
+      "mandate": "\u00a74 evidence contracts attestation provenance; \u00a76 daily host attestations; \u00a78 continuous qualifying observation cannot be self-asserted"
+    },
+    {
+      "id": "RETIREMENT-ROLLBACK-02",
+      "candidate": "retirement",
+      "severity": "P1",
+      "blocking": true,
+      "file": "scripts/lib/nightly_cutover.py",
+      "line": 469,
+      "title": "A nonexistent rollback_ref satisfies eligibility",
+      "finding": "retirement_problems validates rollback_ref only as a nonempty string. retirement_report reads and binds the legacy before-image and source-report files but never reads/verifies rollback_ref. The supplied fixture has no tested-rollback.json at all, yet becomes deletion_eligible. Thus tested rollback is omitted from eligibility evidence.",
+      "reproduction": "test_cli_missing_tested_rollback_receipt_cannot_qualify confirms nonexistent rollback artifact, then CLI still returns deletion_eligible.",
+      "required_change": "Resolve and digest-bind a real supported rollback/canary receipt under the trusted evidence root; verify successful tested rollback, identities/config/workflow/controller version, fresh monotonic epoch semantics and required readbacks. Missing/unverifiable/mismatched rollback proof must hold.",
+      "evidence": [
+        "test_retirement_independent.py",
+        "retirement-independent-tests.txt"
+      ],
+      "mandate": "\u00a78 rollback_ref is a tested rollback receipt; retirement eligibility requires all active proof requirements"
+    },
+    {
+      "id": "RETIREMENT-CALENDAR-03",
+      "candidate": "retirement",
+      "severity": "P1",
+      "blocking": true,
+      "file": "scripts/lib/nightly_cutover.py",
+      "line": 628,
+      "title": "Unbound NYSE calendar removes missed daily weekend slots",
+      "finding": "The frozen schedule is checked only for cron and tz agreement. calendar can be nyse while the effective daily lane has market_gate=false. _retirement_slots then omits weekend fires and the evaluator qualifies two weekday receipts over a4-day interval despite two missed daily weekend runs. Freeze hashes bind the chosen label, but do not prove it agrees with active scheduling/health policy.",
+      "reproduction": "test_nyse_label_cannot_hide_missed_ungated_daily_weekend_slots: ungated10 6 * * * lane, Thu-to-Mon coverage, only Fri/Mon receipts, calendar=nyse => deletion_eligible.",
+      "required_change": "Derive and validate the effective lane calendar from registered schedule/market-gate/health contract and require exact freeze agreement; count all natural slots actually due. Preserve authorized per-lane calendar exemptions with explicit reviewed contract, not a free coverage field.",
+      "evidence": [
+        "test_retirement_independent.py",
+        "retirement-independent-tests.txt"
+      ],
+      "mandate": "\u00a74 health/readiness natural schedule; \u00a78 no missed slots, DST/market-calendar eligibility tests"
+    }
+  ],
+  "nonblocking_scope_limits": [
+    "Retirement natural cycle filter accepts d: only; p: dependency-process lanes such as Hermes cannot qualify with their actual process-step keys until a reviewed natural-trigger identity adapter exists. This is a conservative hold, not false health.",
+    "No reviewed collector installation or natural observation interval is proved by these unit suites. No production activation, rollback or sustained-maturity claim is approved.",
+    "Framework-ready calls still depend on the shared gate proof validation; integrating the parent's attestation-bound gate is required. File export/hash equivalence alone is not current installed-workflow evidence."
+  ],
+  "mutations_performed": "Only reviewer artifacts and hermetic tmp fixtures; no repository edits, real ledger writes, grants, scheduler/service changes, provider calls, pushes or merges.",
+  "leases": "Reviewer sessions have no leases. Prior own output/fixture leases were released before review.",
+  "evidence_digests": {
+    "grants-updated-head-focused-tests.txt": "c518cdfeab3d3fdb40974ba6725f4b55bdf75f991df05f9710c963827d959aeb",
+    "grants-independent-tests.txt": "992cffab230d8d79ca15bfc936fcec313333773bd57e8e9453208404574e1b20",
+    "test_grant_packets_independent.py": "a6011878226b14d4c3fb4215ba28e440956439307122f9402c5837b7482238fb",
+    "retirement-independent-tests.txt": "c4e199253f12e6e11c7563de12971bcc1ef071b156a7a7d67afd9ee4977fc564",
+    "test_retirement_independent.py": "75c64bf43db2866ff442e93d5cc89d1b509454fbe18922daa7ded77b9aa13cee",
+    "retirement-focused-tests.txt": "8f22717d73462cc22bbc31e1983b2e31f92f7545f40b03499f959298e9e6e3d9",
+    "grants-focused-tests.txt": "3b560f3fd3953759703a19c3405d659417103806c324f1c3c227efd3a96a0a51"
+  }
+}

@@ -76,11 +76,9 @@ LEARN_NOW = datetime(2026, 10, 15, 10, 57, tzinfo=ET)
 POLICY_PIN = "c6750b96ada49f816798bf3714ad390616b1b32769fdcbcc54e0635e32caf31f"
 
 
-#: cutover PR-2 (2026-10-15): steps with no live argv. outcome_feedback_agent is HELD at shadow (owner stays cron, so
-#: cron keeps running it live) because its `--notify queue` argv trips the allowlist sender token gate; it moves in a
-#: follow-up once the operator-approved gate alignment is served. The tune lane (autonomous_self_tune) carries its
-#: cutover argv since the 2026-10-17 tune cutover (tests/support/hermes_learning_cutover.py TUNE_LIVE).
-HELD_INERT = {"outcome_feedback_agent"}
+#: The feedback queue adapter exists, but its sixth-stage live output and transactional cutover remain unproven.
+#: Preserve its deployed shadow/null-argv hold; the other four learn lanes and tune keep their existing configuration.
+HELD_INERT: set[str] = {"outcome_feedback_agent"}
 
 
 def _live_sources(**proc_overrides) -> dict:
@@ -164,12 +162,14 @@ def test_live_spec_accepts_the_scheduled_slot_and_refuses_a_manual_minute_unless
 def test_live_manual_slots_until_bounds_the_flag_and_fails_closed(until, ok, state):
     # 2026-10-16 one-day manual-slots PR: the flag cannot outlive its day, whatever the next PR does.
     over = {"live_manual_slots": True} | ({} if until is None else {"live_manual_slots_until": until})
-    c = PK.check_process_key(_key(GRADER, "live", "20261015T1056"), GRADER, "live", sources=_live_sources(**over),
-                             now=LEARN_NOW)
+    c = PK.check_process_key(
+        _key(GRADER, "live", "20261015T1056"), GRADER, "live", sources=_live_sources(**over), now=LEARN_NOW
+    )
     assert c.ok is ok and c.state == state
     # the bound never touches a scheduled slot or a dry run
-    sched = PK.check_process_key(_key(GRADER, "live", "20261015T1050"), GRADER, "live", sources=_live_sources(**over),
-                                 now=LEARN_NOW)
+    sched = PK.check_process_key(
+        _key(GRADER, "live", "20261015T1050"), GRADER, "live", sources=_live_sources(**over), now=LEARN_NOW
+    )
     assert sched.ok and sched.slot_kind == "scheduled"
     assert "MANUAL_LIVE_EXPIRED" in PK.STATES
 
@@ -473,8 +473,7 @@ def test_every_runnable_step_reproduces_its_cron_wrapper(sid):
         )
     else:
         assert "offpeak_exempt" not in entry
-    # cutover PR-2 (2026-10-15) + tune cutover (2026-10-17): the learn lanes and the tune lane carry the cutover_live_arg; the HELD
-    # outcome_feedback_agent (its `--notify` argv trips the sender token gate until gate alignment lands) stay inert
+        # A declared future cutover argv does not enable the held feedback step.
     want_live = None if sid in HELD_INERT else RUNNABLE[sid]["cutover_live_arg"]
     assert X.validate_entry(entry) is None and entry["live_arg"] == want_live
 
@@ -686,7 +685,8 @@ def test_cutover_live_args_are_declared_and_applied():
     want = {sid: ["--apply"] for sid in RUNNABLE}
     want["outcome_feedback_agent"] = ["--apply", "--notify", "queue"]
     assert {sid: s["cutover_live_arg"] for sid, s in RUNNABLE.items()} == want
-    for sid, s in RUNNABLE.items():  # cutover PR-2 + tune cutover 2026-10-17: all but the held lane carry the cutover argv
+    assert HELD_INERT == {"outcome_feedback_agent"}
+    for sid, s in RUNNABLE.items():
         assert ALLOW[s["lane_id"]]["live_arg"] == (None if sid in HELD_INERT else want[sid])
 
 

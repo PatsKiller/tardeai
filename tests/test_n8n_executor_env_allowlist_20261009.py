@@ -609,4 +609,8 @@ def test_lane_mode_counts_match_the_pr():
     # 2026-10-15 (n8nfab/comms-intent-consumer-20261015): + n8n-comms-intent-consumer, enforced from its first entry
     # (shadow, live_arg null); its literal closure inventory is checked above. 11 + 1 = 12.
     assert LANES["n8n-comms-intent-consumer"]["env_allowlist_mode"] == "enforce"
-    assert modes.count("enforce") == 12 and modes.count("report") == len(LANES) - 12
+    # 2026-10-18 (feat/disk-hygiene-n8n-20261018): + disk-hygiene, enforced from its first entry; disk-usage-monitor
+    # stays report (its env reads TRADEAI_N8N_COORDINATION_LEDGER / TRADEAI_PERSISTENT_STATE_ROOT are listed, not
+    # yet enforced). 12 + 1 = 13.
+    assert LANES["disk-hygiene"]["env_allowlist_mode"] == "enforce"
+    assert modes.count("enforce") == 13 and modes.count("report") == len(LANES) - 13

@@ -5,6 +5,10 @@ Writes under ``artifacts/sop-attestations/`` (gitignored via ``artifacts/``).
 Never writes into tracked ``docs/``. Exact HEAD belongs here — not in committed
 evidence blobs.
 
+Written records retain failed outcomes for diagnosis. Exit zero and the printed
+``ok: true`` mean qualifying proof: every mandatory command passed validation.
+Schema-only diagnostics never qualify as operational proof.
+
 Base SHA resolution is explicit: prefer ``--base-sha`` /
 ``SOP_ATTESTATION_BASE_SHA``, else ``origin/main`` when present. Never use a
 raising ``git`` call as an existence predicate.
@@ -154,7 +158,9 @@ def build_attestation(
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--out-dir", default=str(DEFAULT_OUT_DIR))
-    ap.add_argument("--skip-commands", action="store_true", help="schema-only emit (tests)")
+    ap.add_argument(
+        "--skip-commands", action="store_true", help="write schema-only diagnostics; never qualifying proof"
+    )
     ap.add_argument("--validate-only", action="store_true")
     ap.add_argument(
         "--base-sha",

@@ -1,0 +1,17 @@
+{
+  "schema": "CampaignIndependentSourceReview@v1",
+  "head": "226583b361e65a2aba86eba2f8783a882096dc1a",
+  "reviewer": "root, not validator source author",
+  "verdict": "APPROVED_SCOPED_SOURCE_INTEGRATION",
+  "scope": "Existing shared runtime attestation qualifier requires exactly one successful result for each of its five mandatory command names. Missing/duplicate/noninteger/nonzero/skipped required outcomes cannot qualify. Actual emitter inherits failure and preserves diagnostics. Existing fixture migrations retain all their original assertions.",
+  "independent_tests": {
+    "tests": 74,
+    "failures": 0,
+    "errors": 0,
+    "path": "/tmp/n8n-campaign-20261018/cross-review/sop226-root-independent.xml"
+  },
+  "compatibility": "Actual complete old-v1 producer/new consumer and complete new-v1 producer/actual old consumer supported. Historical incomplete v1 records remain diagnostic, not qualifying proof. This corrects existing mandatory qualification rather than claiming wider authority.",
+  "initial_infra": "First root run lacked pinned Ruff on PATH:35passed16setup errors, preserved as sop226-root-PATH-infra-error.xml and not counted as red-first. Correct declared PATH yields74pass.",
+  "author_packet_sha256": "e369ab3ec17e4f3411de94583269953e52c065f277d2310df1ee928c723d95ac",
+  "limits": "New suite still needs canonical CI registration, exact-head CI and reviewed merge. No operational signing trust, activation, authority or recovery granted."
+}

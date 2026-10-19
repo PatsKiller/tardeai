@@ -1,0 +1,171 @@
+{
+  "schema": "RotationReadOnlyDiagnosis@v1",
+  "observed_at": "2026-10-18T22:04:46.175536+00:00",
+  "served_sha": "a2aef7b4d2de17e737526337a2ffc37848deda4f",
+  "local_source_sha": "7af14c7782cf7ab0cba261cc25e6789fe810b092",
+  "cache_sha256": "5e8b8febc05ee34b94bbb660f69eee345373ced00625e3bb99e7815d692bcc66",
+  "holdings_sha256": "1f0fd04337f675c5c6941c79597ebaed3c1bc52f97f33c951b26ba0fe6a2f984",
+  "cache_generated_at": "2026-10-18T22:00:02.259495+00:00",
+  "cache_cached_at": "2026-10-18T18:00:06",
+  "ideas": [
+    {
+      "from_symbol": "SCHG",
+      "to_symbol": "DNP",
+      "from_account": "rollover_ira",
+      "review_amount_range": {
+        "low": 35220,
+        "high": 70440,
+        "basis": "stop hit \u2014 review reducing or closing this position (not a 5-15% trim)",
+        "action": "reduce_or_close"
+      },
+      "from_shares_held": 0.2297,
+      "to_cio_view": "ADD_ON_PULLBACK",
+      "to_analyst_opinions": null,
+      "row_sha256": "c043e165644525d258134a5c4cb65eeae9e32a8e16d280b47febff99677bf3f6"
+    },
+    {
+      "from_symbol": "SCHG",
+      "to_symbol": "DNP",
+      "from_account": "rollover_ira",
+      "review_amount_range": {
+        "low": 35220,
+        "high": 70440,
+        "basis": "stop hit \u2014 review reducing or closing this position (not a 5-15% trim)",
+        "action": "reduce_or_close"
+      },
+      "from_shares_held": 0.2297,
+      "to_cio_view": "ADD_ON_PULLBACK",
+      "to_analyst_opinions": null,
+      "row_sha256": "c043e165644525d258134a5c4cb65eeae9e32a8e16d280b47febff99677bf3f6"
+    },
+    {
+      "from_symbol": "PFLT",
+      "to_symbol": "DNP",
+      "from_account": "taxable",
+      "review_amount_range": {
+        "low": 4,
+        "high": 7,
+        "basis": "stop hit \u2014 review reducing or closing this position (not a 5-15% trim)",
+        "action": "reduce_or_close"
+      },
+      "from_shares_held": 1.1461,
+      "to_cio_view": "ADD_ON_PULLBACK",
+      "to_analyst_opinions": null,
+      "row_sha256": "527eec86f20e9735d31006ea2a40a3a6501c2b5e625e43d3c4468d8d03daad55"
+    },
+    {
+      "from_symbol": "PFLT",
+      "to_symbol": "DNP",
+      "from_account": "taxable",
+      "review_amount_range": {
+        "low": 4,
+        "high": 7,
+        "basis": "stop hit \u2014 review reducing or closing this position (not a 5-15% trim)",
+        "action": "reduce_or_close"
+      },
+      "from_shares_held": 1.1461,
+      "to_cio_view": "ADD_ON_PULLBACK",
+      "to_analyst_opinions": null,
+      "row_sha256": "527eec86f20e9735d31006ea2a40a3a6501c2b5e625e43d3c4468d8d03daad55"
+    },
+    {
+      "from_symbol": "NOC",
+      "to_symbol": "DNP",
+      "from_account": "taxable",
+      "review_amount_range": {
+        "low": 60,
+        "high": 121,
+        "basis": "stop hit \u2014 review reducing or closing this position (not a 5-15% trim)",
+        "action": "reduce_or_close"
+      },
+      "from_shares_held": 0.2328,
+      "to_cio_view": "ADD_ON_PULLBACK",
+      "to_analyst_opinions": null,
+      "row_sha256": "bb209569b2a8287c1de012eb497b4a217bb22708541a93558d1044b2e1e25693"
+    },
+    {
+      "from_symbol": "NOC",
+      "to_symbol": "DNP",
+      "from_account": "taxable",
+      "review_amount_range": {
+        "low": 60,
+        "high": 121,
+        "basis": "stop hit \u2014 review reducing or closing this position (not a 5-15% trim)",
+        "action": "reduce_or_close"
+      },
+      "from_shares_held": 0.2328,
+      "to_cio_view": "ADD_ON_PULLBACK",
+      "to_analyst_opinions": null,
+      "row_sha256": "bb209569b2a8287c1de012eb497b4a217bb22708541a93558d1044b2e1e25693"
+    }
+  ],
+  "holdings": [
+    {
+      "symbol": "PFLT",
+      "account_sha256_prefix": "ce45b081805c",
+      "shares": 1.1461,
+      "market_value": 7.46,
+      "broker_position_as_of_at": "2026-10-16T22:02:42.633179+00:00"
+    },
+    {
+      "symbol": "SCHG",
+      "account_sha256_prefix": "ce45b081805c",
+      "shares": 0.2297,
+      "market_value": 8.09,
+      "broker_position_as_of_at": "2026-10-16T22:02:42.633179+00:00"
+    },
+    {
+      "symbol": "SCHG",
+      "account_sha256_prefix": "edc14ec39883",
+      "shares": 2000.0,
+      "market_value": 70440.0,
+      "broker_position_as_of_at": "2026-10-16T22:02:44.514059+00:00"
+    }
+  ],
+  "degradation": [
+    {
+      "symbol": "SCHG",
+      "thesis_status": "broken",
+      "deterministic": false,
+      "signal_source": "llm_gemma3",
+      "severity": 4
+    },
+    {
+      "symbol": "SCHG",
+      "thesis_status": "broken",
+      "deterministic": false,
+      "signal_source": "llm_gemma3",
+      "severity": 4
+    },
+    {
+      "symbol": "PFLT",
+      "thesis_status": "broken",
+      "deterministic": false,
+      "signal_source": "llm_gemma3",
+      "severity": 4
+    }
+  ],
+  "account_state": [
+    {
+      "account_sha256_prefix": "edc14ec39883",
+      "state": "STALE",
+      "classified_at": "2026-10-18T11:30:01.952374+00:00",
+      "last_sync_at": "2026-10-16T00:00:00+00:00",
+      "sync_window_hours": 24.0
+    },
+    {
+      "account_sha256_prefix": "ce45b081805c",
+      "state": "STALE",
+      "classified_at": "2026-10-18T11:30:01.952374+00:00",
+      "last_sync_at": "2026-10-16T00:00:00+00:00",
+      "sync_window_hours": 24.0
+    }
+  ],
+  "limits": [
+    "Read-only retained files; no digest regeneration, POST research, trade, provider or DBwrite.",
+    "No direct PostgreSQL queries or new broker refresh.",
+    "Digest log contains counts but no attempt-bound message ID or exact snapshot binding; latest cache matches user-described pairs but alone does not prove exact delivered message.",
+    "API watchlist/items GET not invoked: it calls ensure-table and can mutate source tables.",
+    "No market recommendation/financial math remediation authorized."
+  ]
+}

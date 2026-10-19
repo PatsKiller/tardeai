@@ -1,0 +1,55 @@
+{
+  "schema": "CampaignIntegrationEvidence@v1",
+  "campaign_id": "n8n-maturity-20261018",
+  "recorded_at": "2026-10-18T23:47:00.198771+00:00",
+  "source_candidate_sha": "226583b361e65a2aba86eba2f8783a882096dc1a",
+  "baseline_sha": "7af14c7782cf7ab0cba261cc25e6789fe810b092",
+  "independent_source_review": {
+    "result": "APPROVE",
+    "assertions_passed": 74,
+    "artifact": "sop226-root-review.json"
+  },
+  "release_head_selection": {
+    "baseline_sha": "226583b361e65a2aba86eba2f8783a882096dc1a",
+    "baseline": {
+      "tests": 4,
+      "failures": 1,
+      "errors": 0,
+      "controls_passed": 3
+    },
+    "candidate": {
+      "tests": 4,
+      "failures": 0,
+      "errors": 0
+    },
+    "test_sha256": "5b808a927f8816e8241fe167a2ac235e26ea617b4836d17f687ca58d64a2f274",
+    "change": "Explicit PR full head; preserve push/manual event SHA. All other YAML parsed meaning unchanged.",
+    "prior_mitigation": "PR1855 release-readiness workflow_dispatch run39177085235 executed and logged b5967a1d8c2c3249f8c93424e1b61fd27543197f before its exact-head merge."
+  },
+  "status": {
+    "implemented": true,
+    "merged": false,
+    "deployed": false,
+    "enabled": false,
+    "operational_proof": false
+  },
+  "limitations": [
+    "Does not establish host signing, actual business output, operational command provenance, or expand authority.",
+    "A PATH setup failure and historical sandbox failure are retained separately; neither is red-first proof.",
+    "Full native final-head acceptance and independent integration review pending."
+  ],
+  "integration_focused": {
+    "tests": 61,
+    "failures": 0,
+    "errors": 0,
+    "artifact": "root-integration-focused.xml.gz"
+  },
+  "canonical_gate_delta": {
+    "existing_gates_preserved": 489,
+    "only_changed_gate": "agent_governance_sop",
+    "new_required_files": [
+      "tests/test_sop_runtime_command_truth_20261018.py",
+      "tests/test_release_readiness_head_identity_20261018.py"
+    ]
+  }
+}

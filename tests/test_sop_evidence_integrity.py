@@ -10,6 +10,7 @@ import pytest
 from scripts.lib.sop_evidence_integrity import (
     EXPECTED_CORE_TESTS,
     RUNTIME_ATTESTATION_SCHEMA,
+    REQUIRED_RUNTIME_COMMANDS,
     control_surface_digest,
     load_manifest,
     validate_in_repo_evidence,
@@ -211,7 +212,7 @@ def test_runtime_attestation_schema_roundtrip(tmp_path: Path, monkeypatch: pytes
         "policy_version": "1.2.0",
         "policy_status": "PROPOSED",
         "workflow_blob_sha256": wf["blob_sha256"],
-        "commands": [],
+        "commands": [{"name": name, "exit": 0, "expected": 0} for name in REQUIRED_RUNTIME_COMMANDS],
         "test_counts": {"core": EXPECTED_CORE_TESTS},
         "docs_index_fingerprint": "deadbeef",
         "tool_versions": {

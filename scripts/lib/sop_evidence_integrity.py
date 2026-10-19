@@ -35,6 +35,13 @@ MANIFEST_REL = "config/sop_120_control_surface.manifest.json"
 EVIDENCE_DIR_REL = "docs/implementation/maturity-program/sop-1.2.0-20260902"
 RUNTIME_ATTESTATION_SCHEMA = "SopRuntimeAttestation@v1"
 EXPECTED_CORE_TESTS = 121
+REQUIRED_RUNTIME_COMMANDS = (
+    "pytest_core",
+    "pytest_evidence_integrity",
+    "evidence_integrity",
+    "check_index",
+    "shellcheck",
+)
 
 # Authoritative (current) evidence basenames — must be non-empty and coherent.
 CURRENT_EVIDENCE = frozenset(
@@ -349,7 +356,11 @@ def validate_runtime_attestation(
     require_ruff: bool = True,
     changed_python: bool = True,
 ) -> list[str]:
-    """Validate a runtime attestation.
+    """Validate qualifying runtime proof, including mandatory command outcomes.
+
+    Complete successful v1 producer records retain their wire format. Historical
+    incomplete records and schema-only diagnostics remain readable JSON, but do
+    not qualify as proof that the mandatory commands passed.
 
     When ``require_ruff`` / ``changed_python`` are true (default for SOP
     governance attestations), Ruff must be present, match the pinned version,
@@ -422,8 +433,37 @@ def validate_runtime_attestation(
             if recorded_ruff.upper() == "MISSING" and live_parsed:
                 errors.append("ATTESTATION_RUFF_FALSE_MISSING")
 
+    # Completion/metadata validity cannot substitute for successful execution.
+    # Ignore a serialized expected failure: every mandatory command requires a
+    # real integer zero. bool/float/string zero and skipped/unknown are unproven.
+    cmds = data.get("commands")
+    if not isinstance(cmds, list):
+        errors.append("ATTESTATION_COMMANDS_INVALID")
+        cmds = []
+    required: dict[str, list[dict]] = {name: [] for name in REQUIRED_RUNTIME_COMMANDS}
+    for command in cmds:
+        if not isinstance(command, dict) or not isinstance(command.get("name"), str):
+            errors.append("ATTESTATION_COMMAND_RECORD_INVALID")
+        elif command["name"] in required:
+            required[command["name"]].append(command)
+    for name, records in required.items():
+        if not records:
+            errors.append(f"ATTESTATION_COMMAND_MISSING:{name}")
+            continue
+        if len(records) != 1:
+            errors.append(f"ATTESTATION_COMMAND_DUPLICATE:{name}")
+            continue
+        command = records[0]
+        if command.get("skipped", False) is not False:
+            errors.append(f"ATTESTATION_COMMAND_SKIPPED_OR_UNKNOWN:{name}")
+        if type(command.get("expected")) is not int or command["expected"] != 0:
+            errors.append(f"ATTESTATION_COMMAND_EXPECTATION_INVALID:{name}")
+        if type(command.get("exit")) is not int:
+            errors.append(f"ATTESTATION_COMMAND_EXIT_INVALID:{name}")
+        elif command["exit"] != 0:
+            errors.append(f"ATTESTATION_COMMAND_FAILED:{name}")
+
     # Required command PASS cannot coexist with missing tool.
-    cmds = data.get("commands") or []
     ruff_related = {"ruff_check", "ruff_format", "quality", "pytest_core", "shellcheck"}
     for c in cmds:
         if not isinstance(c, dict):

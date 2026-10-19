@@ -1,0 +1,4010 @@
+{
+  "workflows": [
+    {
+      "file": "docs/implementation/n8n-maturity/workflows/fabric/tradeai-fabric-error-probe.json",
+      "workflow_id": "tradeai-fabric-error-probe",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": 60,
+      "error_workflow": "tradeai-fabric-error",
+      "save_success": "all",
+      "save_error": "all"
+    },
+    {
+      "file": "docs/implementation/n8n-maturity/workflows/fabric/tradeai-fabric-error.json",
+      "workflow_id": "tradeai-fabric-error",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": 60,
+      "error_workflow": "tradeai-fabric-error",
+      "save_success": "all",
+      "save_error": "all"
+    },
+    {
+      "file": "docs/implementation/n8n-maturity/workflows/fabric/tradeai-fabric-hermes-learning.json",
+      "workflow_id": "tradeai-fabric-hermes-learning",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": 3600,
+      "error_workflow": "tradeai-fabric-error",
+      "save_success": "all",
+      "save_error": "all"
+    },
+    {
+      "file": "docs/implementation/n8n-maturity/workflows/fabric/tradeai-fabric-run-lane-probe.json",
+      "workflow_id": "tradeai-fabric-run-lane-probe",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": 300,
+      "error_workflow": "tradeai-fabric-error",
+      "save_success": "all",
+      "save_error": "all"
+    },
+    {
+      "file": "docs/implementation/n8n-maturity/workflows/fabric/tradeai-fabric-run-lane.json",
+      "workflow_id": "tradeai-fabric-run-lane",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": 3600,
+      "error_workflow": "tradeai-fabric-error",
+      "save_success": "all",
+      "save_error": "all"
+    },
+    {
+      "file": "docs/implementation/n8n-maturity/workflows/tradeai-approval-router.json",
+      "workflow_id": "tradeai-approval-router",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": 50,
+      "error_workflow": "tradeai-incident-router",
+      "save_success": null,
+      "save_error": "all"
+    },
+    {
+      "file": "docs/implementation/n8n-maturity/workflows/tradeai-digest-scheduler.json",
+      "workflow_id": "tradeai-digest-scheduler",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": 50,
+      "error_workflow": "tradeai-incident-router",
+      "save_success": null,
+      "save_error": "all"
+    },
+    {
+      "file": "docs/implementation/n8n-maturity/workflows/tradeai-dispatcher.json",
+      "workflow_id": "tradeai-dispatcher",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": 50,
+      "error_workflow": "tradeai-incident-router",
+      "save_success": null,
+      "save_error": "all"
+    },
+    {
+      "file": "docs/implementation/n8n-maturity/workflows/tradeai-event-router.json",
+      "workflow_id": "tradeai-event-router",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": 50,
+      "error_workflow": "tradeai-incident-router",
+      "save_success": null,
+      "save_error": "all"
+    },
+    {
+      "file": "docs/implementation/n8n-maturity/workflows/tradeai-heartbeat-watcher.json",
+      "workflow_id": "tradeai-heartbeat-watcher",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": 150,
+      "error_workflow": "tradeai-incident-router",
+      "save_success": null,
+      "save_error": "all"
+    },
+    {
+      "file": "docs/implementation/n8n-maturity/workflows/tradeai-incident-router.json",
+      "workflow_id": "tradeai-incident-router",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": 50,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": "all"
+    },
+    {
+      "file": "docs/implementation/n8n-maturity/workflows/tradeai-momentum-lifecycle-candidate.json",
+      "workflow_id": "tradeai-momentum-lifecycle-candidate",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": 50,
+      "error_workflow": "tradeai-incident-router",
+      "save_success": "none",
+      "save_error": "all"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/backup-verify-shadow.json",
+      "workflow_id": "4b1cc91f7ee2e61d",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/backup-verify.json",
+      "workflow_id": "7b4fc953b442c708",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/crontab-snapshot-for-health-agent-shadow.json",
+      "workflow_id": "5439cd4d82e1f305",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/crontab-snapshot-for-health-agent.json",
+      "workflow_id": "c0d4c7845e5c4fcc",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/lane-governance-packet-weekly-shadow.json",
+      "workflow_id": "e6f62397d5ae2aa2",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/lane-governance-packet-weekly.json",
+      "workflow_id": "175e44ef2a1614a4",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/maturity-remeasure-shadow.json",
+      "workflow_id": "a26114588930ae9b",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/maturity-remeasure.json",
+      "workflow_id": "e18d7849b4142927",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/n8n-incident-fanin-shadow.json",
+      "workflow_id": "e511583d42831b8b",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/n8n-incident-fanin.json",
+      "workflow_id": "722fac0e043ea5c4",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/n8n-lab-watchdog-shadow.json",
+      "workflow_id": "9208ac827e514183",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/n8n-lab-watchdog.json",
+      "workflow_id": "54069d7c36598de8",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/n8n-monitor-dof-shadow.json",
+      "workflow_id": "7b7392a0cfa5cdde",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/n8n-monitor-dof.json",
+      "workflow_id": "e10087387b964e87",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/n8n-monitor-trade-ai-shadow.json",
+      "workflow_id": "4e8c571514edcfc2",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/n8n-monitor-trade-ai.json",
+      "workflow_id": "e10e7c19321c906a",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/n8n-pilot-dispatch-shadow.json",
+      "workflow_id": "baddad5487f9c288",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/n8n-pilot-dispatch.json",
+      "workflow_id": "078e8fcbea0c5020",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/n8n-research-intake-consumer-shadow.json",
+      "workflow_id": "577f9dfaede632f3",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/n8n-research-intake-consumer.json",
+      "workflow_id": "21fd15d5f8a4c4da",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/n8n-workflow-drift-check-shadow.json",
+      "workflow_id": "80c7607ea0c0cbbe",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/n8n-workflow-drift-check.json",
+      "workflow_id": "a7848533f43dd28f",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/after-close-pipeline-broker-truth-shadow.json",
+      "workflow_id": "0d48d2951cdc0cd0",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/after-close-pipeline-broker-truth.json",
+      "workflow_id": "77a473aea9df8833",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/after-close-pipeline-close-capture-shadow.json",
+      "workflow_id": "aac827ce00ff8ae4",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/after-close-pipeline-close-capture.json",
+      "workflow_id": "c3d4c049431eb43f",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/after-close-pipeline-planning-shadow.json",
+      "workflow_id": "19e0ed9711cfb320",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/after-close-pipeline-planning.json",
+      "workflow_id": "02709b160025d4ea",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/agent-runtime-health-shadow.json",
+      "workflow_id": "16a81cea927c4542",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/agent-runtime-health.json",
+      "workflow_id": "cc2e84da4a552b30",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/alert-daily-digest-shadow.json",
+      "workflow_id": "897071cf5b29bf98",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/alert-daily-digest.json",
+      "workflow_id": "33b2628fcf145af3",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/alert-missing-conditions-shadow.json",
+      "workflow_id": "224aef8b75a74b75",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/alert-missing-conditions.json",
+      "workflow_id": "797a14db922d4331",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/backup-generated-docs-shadow.json",
+      "workflow_id": "0fb93c6de23cf143",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/backup-generated-docs.json",
+      "workflow_id": "84f83ee264187d3b",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/catalyst-calibration-monitor-shadow.json",
+      "workflow_id": "283ceeb030de5e66",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/catalyst-calibration-monitor.json",
+      "workflow_id": "129228631abc05e4",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/commit-hermes-daily-shadow.json",
+      "workflow_id": "99544b56d7284e56",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/commit-hermes-daily.json",
+      "workflow_id": "56dfa81f0fd6a535",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/crawl-v3-dashboard-shadow.json",
+      "workflow_id": "458ef4449ccf6ba3",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/crawl-v3-dashboard.json",
+      "workflow_id": "c440cf81be20f0b9",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/data-plausibility-audit-shadow.json",
+      "workflow_id": "7220ff909acbb4ee",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/data-plausibility-audit.json",
+      "workflow_id": "27b92a800c33a42b",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/data-source-health-audit-shadow.json",
+      "workflow_id": "75d27efc89c0213d",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/data-source-health-audit.json",
+      "workflow_id": "ec5500a71f2937c9",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/desk-suggestions-digest-shadow.json",
+      "workflow_id": "350e0f34590f9348",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/desk-suggestions-digest.json",
+      "workflow_id": "8b2fb4cc33a1658f",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/dof-auction-pipeline-shadow.json",
+      "workflow_id": "6dc36b2906b65c38",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/dof-auction-pipeline.json",
+      "workflow_id": "2c85f62381e1a624",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/dof-rescan-tickets-shadow.json",
+      "workflow_id": "a2b3bc70258652b6",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/dof-rescan-tickets.json",
+      "workflow_id": "aba5e361399aa9ef",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/drive-syncs-hourly-shadow.json",
+      "workflow_id": "1c5b6ca1017714c9",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/drive-syncs-hourly.json",
+      "workflow_id": "ab9c502a54dfd342",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/expected-services-audit-shadow.json",
+      "workflow_id": "b511af35f153ea6d",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/expected-services-audit.json",
+      "workflow_id": "2b54d65972996e52",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/finviz-health-check-shadow.json",
+      "workflow_id": "b9f03303bbfcfae0",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/finviz-health-check.json",
+      "workflow_id": "99dd2453ba816211",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/finviz-view-contracts-shadow.json",
+      "workflow_id": "2c725c7dfd4ac62f",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/finviz-view-contracts.json",
+      "workflow_id": "f186f33818018b7e",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/gap-resolution-audit-shadow.json",
+      "workflow_id": "385db731cadc1e6d",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/gap-resolution-audit.json",
+      "workflow_id": "12123c6edca96c9b",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/generate-analyst-daily-digest-shadow.json",
+      "workflow_id": "ffa6bbfa93ad4056",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/generate-analyst-daily-digest.json",
+      "workflow_id": "dc86c60c3b2975dd",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/generate-weekly-docx-shadow.json",
+      "workflow_id": "593d4a2dc10b17a8",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/generate-weekly-docx.json",
+      "workflow_id": "840f097c0d873e0e",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/governance-pipeline-shadow.json",
+      "workflow_id": "bcbcc68b9c8c5e56",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/governance-pipeline.json",
+      "workflow_id": "7f93377a2eae573b",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/hermes-learning-pipeline-learn-shadow.json",
+      "workflow_id": "a33cd415e30d6f01",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/hermes-learning-pipeline-learn.json",
+      "workflow_id": "2706b09e7b38661a",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/hermes-learning-pipeline-tune-shadow.json",
+      "workflow_id": "c7dc5a8273bf6f44",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/hermes-learning-pipeline-tune.json",
+      "workflow_id": "9d53936aacec05f0",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/hermes-overnight-pipeline-close-shadow.json",
+      "workflow_id": "128dfb29e4faec7f",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/hermes-overnight-pipeline-close.json",
+      "workflow_id": "09356c50dc9d4e80",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/hermes-overnight-pipeline-night-shadow.json",
+      "workflow_id": "0a170db6744afd7f",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/hermes-overnight-pipeline-night.json",
+      "workflow_id": "4e66cb561681065f",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/hermes-pipeline-health-shadow.json",
+      "workflow_id": "71ee32b20891133f",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/hermes-pipeline-health.json",
+      "workflow_id": "8033f89338d8592e",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/job-coverage-monitor-shadow.json",
+      "workflow_id": "33fec656d1b3fcd0",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/job-coverage-monitor.json",
+      "workflow_id": "2bb7ea47111564d8",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/llm-retry-monitor-shadow.json",
+      "workflow_id": "02cb2d0ad1d49927",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/llm-retry-monitor.json",
+      "workflow_id": "8f2b7c0da60b14f1",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/llm-spend-report-daily-shadow.json",
+      "workflow_id": "9f4e2228176a3815",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/llm-spend-report-daily.json",
+      "workflow_id": "9cdaee27ad234a2e",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/llm-spend-report-monthly-shadow.json",
+      "workflow_id": "60bca82c261e910e",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/llm-spend-report-monthly.json",
+      "workflow_id": "6b364e9a05c1d78d",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/llm-spend-report-weekly-shadow.json",
+      "workflow_id": "c302cf1b2b3f1d6e",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/llm-spend-report-weekly.json",
+      "workflow_id": "1bc38431befd7e55",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/material-change-digest-shadow.json",
+      "workflow_id": "1c15e96a1db54742",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/material-change-digest.json",
+      "workflow_id": "9525e7df36b89271",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/n8n-lab-backup-shadow.json",
+      "workflow_id": "fe3d41f8e1de24f8",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/n8n-lab-backup.json",
+      "workflow_id": "c718d3c0931010b7",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/n8n-lab-restore-drill-shadow.json",
+      "workflow_id": "bb1c7c433c2d7c72",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/n8n-lab-restore-drill.json",
+      "workflow_id": "5d0853e8faad04f1",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/openclaw-claude-plan-reminder-last-day-shadow.json",
+      "workflow_id": "7c0804ac0d2c0bad",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/openclaw-claude-plan-reminder-last-day.json",
+      "workflow_id": "1675d3c97ed9a3d6",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/openclaw-claude-plan-reminder-week-before-shadow.json",
+      "workflow_id": "aefe7f7ff6be8033",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/openclaw-claude-plan-reminder-week-before.json",
+      "workflow_id": "a9b4aece7a8b7c95",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/openclaw-sentinelone-earnings-reminder-shadow.json",
+      "workflow_id": "940f8c1a4c49549f",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/openclaw-sentinelone-earnings-reminder.json",
+      "workflow_id": "d28ad5e4adcb021a",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/openclaw-supergrok-promo-expiry-shadow.json",
+      "workflow_id": "a4749a4c0af46afb",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/openclaw-supergrok-promo-expiry.json",
+      "workflow_id": "c08d72aee9fba3c1",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/operator-answer-quality-audit-shadow.json",
+      "workflow_id": "aff3c305e317d83f",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/operator-answer-quality-audit.json",
+      "workflow_id": "9cb97144baeddbcc",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/ops-daily-digest-shadow.json",
+      "workflow_id": "44dcc0e8f8aa77b1",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/ops-daily-digest.json",
+      "workflow_id": "0bac5a78dbe44dc3",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/ops-weekly-learning-report-shadow.json",
+      "workflow_id": "c76a827cd5d91624",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/ops-weekly-learning-report.json",
+      "workflow_id": "ccbb6e6df4b1dd95",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/platform-maintenance-monthly-shadow.json",
+      "workflow_id": "18b20ea58617ffc2",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/platform-maintenance-monthly.json",
+      "workflow_id": "8bbd5b4db9349bba",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/platform-maintenance-nightly-shadow.json",
+      "workflow_id": "8a9162783109e7bb",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/platform-maintenance-nightly.json",
+      "workflow_id": "16076223b5a85c1a",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/platform-maintenance-weekly-shadow.json",
+      "workflow_id": "4b11eabaa6735a90",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/platform-maintenance-weekly.json",
+      "workflow_id": "68c4230652661677",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/portfolio-backup-cadence-shadow.json",
+      "workflow_id": "d58dceed7dd37a06",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/portfolio-backup-cadence.json",
+      "workflow_id": "a47fd8befe0d4b59",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/portfolio-daily-cadence-shadow.json",
+      "workflow_id": "6c04dc250b7d6a04",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/portfolio-daily-cadence.json",
+      "workflow_id": "efe083774ee43184",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/portfolio-lookthrough-cadence-shadow.json",
+      "workflow_id": "4a447dec9837c273",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/portfolio-lookthrough-cadence.json",
+      "workflow_id": "e183713ef0992eab",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/portfolio-monthly-cadence-shadow.json",
+      "workflow_id": "a8b8cbf625caebb0",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/portfolio-monthly-cadence.json",
+      "workflow_id": "1f01214b9b6d40de",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/portfolio-weekly-cadence-shadow.json",
+      "workflow_id": "ae61fa66dba00c9f",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/portfolio-weekly-cadence.json",
+      "workflow_id": "4cf5edd66a7d29c7",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/premarket-data-pipeline-shadow.json",
+      "workflow_id": "f4553ff360e21a9f",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/premarket-data-pipeline.json",
+      "workflow_id": "4befcbb3f91d4143",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/research-lane-health-shadow.json",
+      "workflow_id": "f08dc0f945279776",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/research-lane-health.json",
+      "workflow_id": "d08d238a772e5dd8",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/rotation-rebalance-digest-shadow.json",
+      "workflow_id": "54468142f257bdc4",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/rotation-rebalance-digest.json",
+      "workflow_id": "d01ef7e5a2c3283f",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/served-copy-split-audit-shadow.json",
+      "workflow_id": "97b87e0d67d6d3c0",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/served-copy-split-audit.json",
+      "workflow_id": "a7cd9c1241611dd1",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/source-attribution-monitor-shadow.json",
+      "workflow_id": "498d749165a93ff9",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/source-attribution-monitor.json",
+      "workflow_id": "754fbf1133803631",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/source-litmus-vs-yahoo-shadow.json",
+      "workflow_id": "ea0d6699fbc5927a",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/source-litmus-vs-yahoo.json",
+      "workflow_id": "f497a8fd0a27457d",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/sync-memory-to-drive-shadow.json",
+      "workflow_id": "cc039d818479fe0a",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/sync-memory-to-drive.json",
+      "workflow_id": "a2293e487df03750",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/system-rollup-snapshot-shadow.json",
+      "workflow_id": "9c13c70626706c31",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/system-rollup-snapshot.json",
+      "workflow_id": "4aee8ff64e5b0f9d",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/watch-directives-monitor-shadow.json",
+      "workflow_id": "5966437c872aa18b",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/watch-directives-monitor.json",
+      "workflow_id": "9e9f8e0c19fbc7ce",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/youtube-cookie-health-check-shadow.json",
+      "workflow_id": "0980fe865273c8a3",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/youtube-cookie-health-check.json",
+      "workflow_id": "6b7c0fa22a70ee1a",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/storage-watch-shadow.json",
+      "workflow_id": "2c991aed41ac4eff",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/storage-watch.json",
+      "workflow_id": "58c8294eceac0b19",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/trade-ai-restore-drill-shadow.json",
+      "workflow_id": "a2ac4e8d13975597",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/trade-ai-restore-drill.json",
+      "workflow_id": "e0885d491236863c",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/trade-ai-scalp-live-shadow.json",
+      "workflow_id": "15b22c523f844467",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/trade-ai-scalp-live.json",
+      "workflow_id": "537142069dd5b352",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/n8n-bench-error.json",
+      "workflow_id": "Bi002YOPSpZOQpEo",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/n8n-bench-nodes.json",
+      "workflow_id": "2yPuOGW9yYtJsoYk",
+      "active_in_file": false,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": "Bi002YOPSpZOQpEo",
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/n8n-monitor-dof.json",
+      "workflow_id": "GXwhbRkwsGcYZxgn",
+      "active_in_file": true,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/n8n-monitor-trade-ai.json",
+      "workflow_id": "s57KBllvqf6Jb5xF",
+      "active_in_file": true,
+      "framework_schema": null,
+      "timeout": null,
+      "error_workflow": null,
+      "save_success": null,
+      "save_error": null
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/reference/tradeai-reference-mature-workflow.json",
+      "workflow_id": "tradeai-reference-mature-workflow",
+      "active_in_file": false,
+      "framework_schema": "N8nWorkflowFrameworkMeta@v1",
+      "timeout": 1590,
+      "error_workflow": "tradeai-fabric-error",
+      "save_success": "all",
+      "save_error": "all"
+    }
+  ],
+  "http_nodes": [
+    {
+      "file": "docs/implementation/n8n-maturity/workflows/fabric/tradeai-fabric-error.json",
+      "workflow_id": "tradeai-fabric-error",
+      "node_id": "31dceb76-e1f9-5759-9c35-bc5c0d2fc121",
+      "node_name": "POST relay /intent",
+      "method": "POST",
+      "url": "={{ $('Relay').first().json.TRADEAI_N8N_RUN_URL }}/intent",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-maturity/workflows/fabric/tradeai-fabric-run-lane.json",
+      "workflow_id": "tradeai-fabric-run-lane",
+      "node_id": "c8865561-6280-5018-9c04-ea1f019655cf",
+      "node_name": "GET relay /run_outcome",
+      "method": "GET",
+      "url": "={{ $('Relay').first().json.TRADEAI_N8N_RUN_URL }}/run_outcome?run_id={{ encodeURIComponent($json.run_id) }}",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-maturity/workflows/fabric/tradeai-fabric-run-lane.json",
+      "workflow_id": "tradeai-fabric-run-lane",
+      "node_id": "a007ee35-bc73-5782-a157-5bfa9a9ed987",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $('Relay').first().json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-maturity/workflows/tradeai-approval-router.json",
+      "workflow_id": "tradeai-approval-router",
+      "node_id": "65ade184-b4c5-5b1c-80b2-7b94eb9a4d2f",
+      "node_name": "GET relay /due",
+      "method": "GET",
+      "url": "={{ $('Relay').first().json.TRADEAI_N8N_RUN_URL }}/due?source=schedule&limit=40&lane=approval-escalate",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-maturity/workflows/tradeai-approval-router.json",
+      "workflow_id": "tradeai-approval-router",
+      "node_id": "e013d2ed-aac4-5607-9d3b-61cc9d13b848",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $('Relay').first().json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-maturity/workflows/tradeai-digest-scheduler.json",
+      "workflow_id": "tradeai-digest-scheduler",
+      "node_id": "76af014f-76d5-54c6-9b38-0986a1e2d002",
+      "node_name": "GET relay /due",
+      "method": "GET",
+      "url": "={{ $('Relay').first().json.TRADEAI_N8N_RUN_URL }}/due?source=digest&limit=40",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-maturity/workflows/tradeai-digest-scheduler.json",
+      "workflow_id": "tradeai-digest-scheduler",
+      "node_id": "4864c8b3-ad91-5e18-b94c-f2807a9ec67e",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $('Relay').first().json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-maturity/workflows/tradeai-dispatcher.json",
+      "workflow_id": "tradeai-dispatcher",
+      "node_id": "619703de-dbcd-52dd-a24c-18daaf81890f",
+      "node_name": "GET relay /due",
+      "method": "GET",
+      "url": "={{ $('Relay').first().json.TRADEAI_N8N_RUN_URL }}/due?source=schedule&limit=40",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-maturity/workflows/tradeai-dispatcher.json",
+      "workflow_id": "tradeai-dispatcher",
+      "node_id": "ca9aea1e-c372-5ebf-bf4f-0f29488a2320",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $('Relay').first().json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-maturity/workflows/tradeai-event-router.json",
+      "workflow_id": "tradeai-event-router",
+      "node_id": "6b524773-d239-5f95-ad7b-0734ec0fa0a2",
+      "node_name": "GET relay /due",
+      "method": "GET",
+      "url": "={{ $('Relay').first().json.TRADEAI_N8N_RUN_URL }}/due?source=event&limit=40",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-maturity/workflows/tradeai-event-router.json",
+      "workflow_id": "tradeai-event-router",
+      "node_id": "0cbbbd4c-a3d0-5b5b-915c-d0d78c0062d6",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $('Relay').first().json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-maturity/workflows/tradeai-heartbeat-watcher.json",
+      "workflow_id": "tradeai-heartbeat-watcher",
+      "node_id": "8d6cfdf3-658e-5afe-ab5a-e36db0b771bf",
+      "node_name": "GET heartbeat last",
+      "method": "GET",
+      "url": "={{ $('Relay').first().json.TRADEAI_N8N_RUN_URL }}/runs/heartbeat-watch/last?mode=live",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-maturity/workflows/tradeai-heartbeat-watcher.json",
+      "workflow_id": "tradeai-heartbeat-watcher",
+      "node_id": "3c74b3ef-568a-518e-919a-3f5ee9f3f1b9",
+      "node_name": "GET relay /due",
+      "method": "GET",
+      "url": "={{ $('Relay').first().json.TRADEAI_N8N_RUN_URL }}/due?source=schedule&limit=40&lane=heartbeat-watch",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-maturity/workflows/tradeai-heartbeat-watcher.json",
+      "workflow_id": "tradeai-heartbeat-watcher",
+      "node_id": "0b8f447d-525c-588f-b8c3-dca4393ce226",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $('Relay').first().json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-maturity/workflows/tradeai-incident-router.json",
+      "workflow_id": "tradeai-incident-router",
+      "node_id": "3b0b7f32-1970-5f82-8b44-2b343fc1a95f",
+      "node_name": "GET relay /due",
+      "method": "GET",
+      "url": "={{ $('Relay').first().json.TRADEAI_N8N_RUN_URL }}/due?source=schedule&limit=40&lane=n8n-incident-fanin,incident-notifier",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-maturity/workflows/tradeai-incident-router.json",
+      "workflow_id": "tradeai-incident-router",
+      "node_id": "41592e0f-8ca2-5192-9f0b-f659b5b9ce52",
+      "node_name": "POST relay /event",
+      "method": "POST",
+      "url": "={{ $('Relay').first().json.TRADEAI_N8N_RUN_URL }}/event",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-maturity/workflows/tradeai-incident-router.json",
+      "workflow_id": "tradeai-incident-router",
+      "node_id": "2328414f-1edd-593e-b384-3bdbcb209044",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $('Relay').first().json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-maturity/workflows/tradeai-momentum-lifecycle-candidate.json",
+      "workflow_id": "tradeai-momentum-lifecycle-candidate",
+      "node_id": "687a54c0-2be7-5853-b546-35560eb7093b",
+      "node_name": "GET lifecycle receipt",
+      "method": "GET",
+      "url": "={{ $('Relay').first().json.TRADEAI_N8N_RUN_URL }}/momentum-lifecycle",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-maturity/workflows/tradeai-momentum-lifecycle-candidate.json",
+      "workflow_id": "tradeai-momentum-lifecycle-candidate",
+      "node_id": "c90164ba-a011-58c7-b7d6-e5496869fbf0",
+      "node_name": "GET shadow last run",
+      "method": "GET",
+      "url": "={{ $('Relay').first().json.TRADEAI_N8N_RUN_URL }}/runs/momentum-lifecycle-monitor/last?mode=dry_run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/backup-verify-shadow.json",
+      "workflow_id": "4b1cc91f7ee2e61d",
+      "node_id": "bfc5629a-72ef-5cb5-9b92-6edcd9bfdbc8",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/backup-verify.json",
+      "workflow_id": "7b4fc953b442c708",
+      "node_id": "efb73247-d7b8-53dd-97a2-03c1c81d1017",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/crontab-snapshot-for-health-agent-shadow.json",
+      "workflow_id": "5439cd4d82e1f305",
+      "node_id": "b9f08dfe-745c-5448-9ca0-bf141651a67d",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/crontab-snapshot-for-health-agent.json",
+      "workflow_id": "c0d4c7845e5c4fcc",
+      "node_id": "f098fc08-c5a2-5889-be43-ea442bbbbeae",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/lane-governance-packet-weekly-shadow.json",
+      "workflow_id": "e6f62397d5ae2aa2",
+      "node_id": "64cbb730-0e6f-5ee4-a399-a72f2c5c6088",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/lane-governance-packet-weekly.json",
+      "workflow_id": "175e44ef2a1614a4",
+      "node_id": "56a6a6e9-c95d-5959-9328-feea4f27e8db",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/maturity-remeasure-shadow.json",
+      "workflow_id": "a26114588930ae9b",
+      "node_id": "c3c132b5-43c6-5d95-be3b-d367bf78e886",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/maturity-remeasure.json",
+      "workflow_id": "e18d7849b4142927",
+      "node_id": "9081ca57-d76b-5649-9e6b-5b2ce896ac40",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/n8n-incident-fanin-shadow.json",
+      "workflow_id": "e511583d42831b8b",
+      "node_id": "f4a3083f-041f-521f-b1cb-4dd873d5acaf",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/n8n-incident-fanin.json",
+      "workflow_id": "722fac0e043ea5c4",
+      "node_id": "8aed96f8-ea94-5e57-9b01-fa4102e83b1f",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/n8n-lab-watchdog-shadow.json",
+      "workflow_id": "9208ac827e514183",
+      "node_id": "36b1870f-68b9-570a-86bd-72dc05f052de",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/n8n-lab-watchdog.json",
+      "workflow_id": "54069d7c36598de8",
+      "node_id": "c9bb5ee3-43db-58cf-afbd-49276f28d1ae",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/n8n-monitor-dof-shadow.json",
+      "workflow_id": "7b7392a0cfa5cdde",
+      "node_id": "4178ec40-4b6d-5755-b31f-aecf0557a56b",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/n8n-monitor-dof.json",
+      "workflow_id": "e10087387b964e87",
+      "node_id": "893dcd7d-8793-5f98-94c5-48a939cd24eb",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/n8n-monitor-trade-ai-shadow.json",
+      "workflow_id": "4e8c571514edcfc2",
+      "node_id": "db3669b7-61f2-57d5-9ab6-0a6b5442b56e",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/n8n-monitor-trade-ai.json",
+      "workflow_id": "e10e7c19321c906a",
+      "node_id": "969e58e4-8982-5893-8480-24aaef53bad4",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/n8n-pilot-dispatch-shadow.json",
+      "workflow_id": "baddad5487f9c288",
+      "node_id": "edc8455b-d461-5437-864b-00cd9a933c1c",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/n8n-pilot-dispatch.json",
+      "workflow_id": "078e8fcbea0c5020",
+      "node_id": "163c2788-dd22-5b57-9a9f-461d98374c9c",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/n8n-research-intake-consumer-shadow.json",
+      "workflow_id": "577f9dfaede632f3",
+      "node_id": "06d113db-fb99-51ae-a6ae-2a3b1d3e190f",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/n8n-research-intake-consumer.json",
+      "workflow_id": "21fd15d5f8a4c4da",
+      "node_id": "963044b8-f300-5eb3-ae94-729a007caf66",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/n8n-workflow-drift-check-shadow.json",
+      "workflow_id": "80c7607ea0c0cbbe",
+      "node_id": "e83617a5-0df2-5932-8a6d-1fe81e2153b1",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/n8n-workflow-drift-check.json",
+      "workflow_id": "a7848533f43dd28f",
+      "node_id": "92bb6f95-b20f-50ca-9600-061317e838c6",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/after-close-pipeline-broker-truth-shadow.json",
+      "workflow_id": "0d48d2951cdc0cd0",
+      "node_id": "c018dcc3-453e-5a00-9662-13eaed019e2c",
+      "node_name": "GET predecessor last",
+      "method": "GET",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/runs/after-close-pipeline-close-capture/last",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/after-close-pipeline-broker-truth-shadow.json",
+      "workflow_id": "0d48d2951cdc0cd0",
+      "node_id": "db02ac07-2096-5c40-ba89-4b97b6d16214",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/after-close-pipeline-broker-truth.json",
+      "workflow_id": "77a473aea9df8833",
+      "node_id": "614e96cf-73b8-56e9-91eb-384112ad7499",
+      "node_name": "GET predecessor last",
+      "method": "GET",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/runs/after-close-pipeline-close-capture/last",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/after-close-pipeline-broker-truth.json",
+      "workflow_id": "77a473aea9df8833",
+      "node_id": "c3964f3c-c9cd-5788-bd90-5debca4f8565",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/after-close-pipeline-close-capture-shadow.json",
+      "workflow_id": "aac827ce00ff8ae4",
+      "node_id": "033d86bf-b585-5a09-8832-a47aa0419140",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/after-close-pipeline-close-capture.json",
+      "workflow_id": "c3d4c049431eb43f",
+      "node_id": "d46412bd-4fda-5078-bd90-06e472f51e0a",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/after-close-pipeline-planning-shadow.json",
+      "workflow_id": "19e0ed9711cfb320",
+      "node_id": "b053244c-8d41-5d59-a3ac-216fe08f04e5",
+      "node_name": "GET predecessor last",
+      "method": "GET",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/runs/after-close-pipeline-broker-truth/last",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/after-close-pipeline-planning-shadow.json",
+      "workflow_id": "19e0ed9711cfb320",
+      "node_id": "fd860794-2c12-5565-b8d2-fc0e33f02dd4",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/after-close-pipeline-planning.json",
+      "workflow_id": "02709b160025d4ea",
+      "node_id": "4320520f-30a8-572c-8edb-14cb10a76b85",
+      "node_name": "GET predecessor last",
+      "method": "GET",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/runs/after-close-pipeline-broker-truth/last",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/after-close-pipeline-planning.json",
+      "workflow_id": "02709b160025d4ea",
+      "node_id": "09d6bd2c-f29b-59b1-87ac-7393c67c329e",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/agent-runtime-health-shadow.json",
+      "workflow_id": "16a81cea927c4542",
+      "node_id": "3fc70285-54fa-5bd7-a5da-1927160be3f8",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/agent-runtime-health.json",
+      "workflow_id": "cc2e84da4a552b30",
+      "node_id": "346e6d26-5b8f-5a97-9bd9-788cf0da49b8",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/alert-daily-digest-shadow.json",
+      "workflow_id": "897071cf5b29bf98",
+      "node_id": "46020d04-1549-57c6-a5f6-a334574b686b",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/alert-daily-digest.json",
+      "workflow_id": "33b2628fcf145af3",
+      "node_id": "e8ce008e-8c58-5da7-9813-9eb65de629cc",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/alert-missing-conditions-shadow.json",
+      "workflow_id": "224aef8b75a74b75",
+      "node_id": "ef019e50-6957-577e-b376-ef4e049fbcf6",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/alert-missing-conditions.json",
+      "workflow_id": "797a14db922d4331",
+      "node_id": "cb2ab0f4-bf2a-5111-8f9d-2037a189edd9",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/backup-generated-docs-shadow.json",
+      "workflow_id": "0fb93c6de23cf143",
+      "node_id": "a9dad270-f432-5dab-a343-5fd3140e45bc",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/backup-generated-docs.json",
+      "workflow_id": "84f83ee264187d3b",
+      "node_id": "59a5484e-9a0f-50c8-9536-b052c3727c20",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/catalyst-calibration-monitor-shadow.json",
+      "workflow_id": "283ceeb030de5e66",
+      "node_id": "64cd34f8-fce1-5dfb-b68a-b142182b612b",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/catalyst-calibration-monitor.json",
+      "workflow_id": "129228631abc05e4",
+      "node_id": "0b32fb18-035d-5a21-b29a-90d5e32129be",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/commit-hermes-daily-shadow.json",
+      "workflow_id": "99544b56d7284e56",
+      "node_id": "f6158215-2561-5fbe-9924-1c7ec7998b22",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/commit-hermes-daily.json",
+      "workflow_id": "56dfa81f0fd6a535",
+      "node_id": "3b05ff0a-f351-5715-9154-947962d40c25",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/crawl-v3-dashboard-shadow.json",
+      "workflow_id": "458ef4449ccf6ba3",
+      "node_id": "0ebcc398-7b45-585c-853f-d3039d38a316",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/crawl-v3-dashboard.json",
+      "workflow_id": "c440cf81be20f0b9",
+      "node_id": "89d9e626-3816-50b5-8cce-30519a352728",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/data-plausibility-audit-shadow.json",
+      "workflow_id": "7220ff909acbb4ee",
+      "node_id": "b7a080b7-360e-557f-b91f-0f49da8af8d3",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/data-plausibility-audit.json",
+      "workflow_id": "27b92a800c33a42b",
+      "node_id": "04f62335-3eb0-5c2c-9f86-9bf30e189f6e",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/data-source-health-audit-shadow.json",
+      "workflow_id": "75d27efc89c0213d",
+      "node_id": "c3f705bb-62a8-54b3-a416-e2dd5fc4bb0e",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/data-source-health-audit.json",
+      "workflow_id": "ec5500a71f2937c9",
+      "node_id": "b9305c9a-f7e4-5507-9857-e5384ce8d34f",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/desk-suggestions-digest-shadow.json",
+      "workflow_id": "350e0f34590f9348",
+      "node_id": "84d3ac46-fbc8-560c-8887-18006dddcdb8",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/desk-suggestions-digest.json",
+      "workflow_id": "8b2fb4cc33a1658f",
+      "node_id": "17f05ace-ff2a-54c2-b748-2cd6f50dc2c1",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/dof-auction-pipeline-shadow.json",
+      "workflow_id": "6dc36b2906b65c38",
+      "node_id": "4c0d479a-32cd-5cd7-a18b-6f51f280c848",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/dof-auction-pipeline.json",
+      "workflow_id": "2c85f62381e1a624",
+      "node_id": "5a6df129-2580-5c38-9a2f-089f6581f7f7",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/dof-rescan-tickets-shadow.json",
+      "workflow_id": "a2b3bc70258652b6",
+      "node_id": "6b59eb7c-24bf-531f-b923-8163c707df64",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/dof-rescan-tickets.json",
+      "workflow_id": "aba5e361399aa9ef",
+      "node_id": "5b78301f-e6f8-57b1-8280-36c73fa04875",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/drive-syncs-hourly-shadow.json",
+      "workflow_id": "1c5b6ca1017714c9",
+      "node_id": "36597e46-7047-5d2b-a11a-4b91a17d3ab5",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/drive-syncs-hourly.json",
+      "workflow_id": "ab9c502a54dfd342",
+      "node_id": "9a4beae3-6d0d-5ddb-b78b-b0b2096e604a",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/expected-services-audit-shadow.json",
+      "workflow_id": "b511af35f153ea6d",
+      "node_id": "0435205b-b682-5c92-80ff-ac53f9386570",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/expected-services-audit.json",
+      "workflow_id": "2b54d65972996e52",
+      "node_id": "546383d8-3da3-5339-99cb-4466d46cf75a",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/finviz-health-check-shadow.json",
+      "workflow_id": "b9f03303bbfcfae0",
+      "node_id": "907d9363-60a0-5401-9a91-fec0b54ce4be",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/finviz-health-check.json",
+      "workflow_id": "99dd2453ba816211",
+      "node_id": "8645a938-0167-5dab-9087-08a2c548c42f",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/finviz-view-contracts-shadow.json",
+      "workflow_id": "2c725c7dfd4ac62f",
+      "node_id": "064e508d-b7bb-5166-b8e5-a3c5b5095618",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/finviz-view-contracts.json",
+      "workflow_id": "f186f33818018b7e",
+      "node_id": "3914eb0f-8fbf-5fd5-94ef-d0112f9d5a31",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/gap-resolution-audit-shadow.json",
+      "workflow_id": "385db731cadc1e6d",
+      "node_id": "2cc65a17-3a75-5397-9013-42b33be8ee9e",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/gap-resolution-audit.json",
+      "workflow_id": "12123c6edca96c9b",
+      "node_id": "64a1c7df-5fc3-5963-aba3-65d202781922",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/generate-analyst-daily-digest-shadow.json",
+      "workflow_id": "ffa6bbfa93ad4056",
+      "node_id": "ad9551d2-6080-5ab5-a79c-3b391aed0545",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/generate-analyst-daily-digest.json",
+      "workflow_id": "dc86c60c3b2975dd",
+      "node_id": "2efd0dab-1e6f-5db2-bc8d-d5d35a7978c2",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/generate-weekly-docx-shadow.json",
+      "workflow_id": "593d4a2dc10b17a8",
+      "node_id": "0e339e1e-6f2e-5602-ae5b-515b3bbe0a78",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/generate-weekly-docx.json",
+      "workflow_id": "840f097c0d873e0e",
+      "node_id": "ae9fc543-534d-5a89-8932-4bf326c3589d",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/governance-pipeline-shadow.json",
+      "workflow_id": "bcbcc68b9c8c5e56",
+      "node_id": "bfb2cb24-ed16-57a5-a681-073a6c67a4f8",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/governance-pipeline.json",
+      "workflow_id": "7f93377a2eae573b",
+      "node_id": "5376c6c4-032f-581a-b90c-e6036f25f936",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/hermes-learning-pipeline-learn-shadow.json",
+      "workflow_id": "a33cd415e30d6f01",
+      "node_id": "45c9e28c-25cd-5653-872a-6ef7608c03d7",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/hermes-learning-pipeline-learn.json",
+      "workflow_id": "2706b09e7b38661a",
+      "node_id": "cfe54973-0e64-56c6-b285-88fc0d1edf1e",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/hermes-learning-pipeline-tune-shadow.json",
+      "workflow_id": "c7dc5a8273bf6f44",
+      "node_id": "afde7668-3aff-5383-8000-130ccc146d8d",
+      "node_name": "GET predecessor last",
+      "method": "GET",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/runs/hermes-learning-pipeline-learn/last",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/hermes-learning-pipeline-tune-shadow.json",
+      "workflow_id": "c7dc5a8273bf6f44",
+      "node_id": "ec7fdedc-b0eb-5aee-81b0-be9ce4c29f68",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/hermes-learning-pipeline-tune.json",
+      "workflow_id": "9d53936aacec05f0",
+      "node_id": "8d6fbec3-35a0-57f4-ac9c-e00de6de66fa",
+      "node_name": "GET predecessor last",
+      "method": "GET",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/runs/hermes-learning-pipeline-learn/last",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/hermes-learning-pipeline-tune.json",
+      "workflow_id": "9d53936aacec05f0",
+      "node_id": "c5c16734-24f0-57db-8e57-5595d4f9cc0b",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/hermes-overnight-pipeline-close-shadow.json",
+      "workflow_id": "128dfb29e4faec7f",
+      "node_id": "b34703a6-26c4-54fb-9e5e-d7ec3be62001",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/hermes-overnight-pipeline-close.json",
+      "workflow_id": "09356c50dc9d4e80",
+      "node_id": "412cb939-4740-5941-bbac-2961c6e4df46",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/hermes-overnight-pipeline-night-shadow.json",
+      "workflow_id": "0a170db6744afd7f",
+      "node_id": "9801e194-811b-5df5-9634-6d0639988635",
+      "node_name": "GET predecessor last",
+      "method": "GET",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/runs/hermes-overnight-pipeline-close/last",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/hermes-overnight-pipeline-night-shadow.json",
+      "workflow_id": "0a170db6744afd7f",
+      "node_id": "84beece2-12e7-5f17-9cce-3af354839d55",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/hermes-overnight-pipeline-night.json",
+      "workflow_id": "4e66cb561681065f",
+      "node_id": "b119354d-7470-5650-83c6-2924cefe6d89",
+      "node_name": "GET predecessor last",
+      "method": "GET",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/runs/hermes-overnight-pipeline-close/last",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/hermes-overnight-pipeline-night.json",
+      "workflow_id": "4e66cb561681065f",
+      "node_id": "3ee84eb5-614b-52cb-aca3-6e81d3400384",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/hermes-pipeline-health-shadow.json",
+      "workflow_id": "71ee32b20891133f",
+      "node_id": "479005d1-34e3-566e-baf5-37b608dd3cdf",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/hermes-pipeline-health.json",
+      "workflow_id": "8033f89338d8592e",
+      "node_id": "17522fdf-86e8-575e-981a-83afae060c15",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/job-coverage-monitor-shadow.json",
+      "workflow_id": "33fec656d1b3fcd0",
+      "node_id": "d1e393e0-3f2c-52b1-aa03-f82e5fa16175",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/job-coverage-monitor.json",
+      "workflow_id": "2bb7ea47111564d8",
+      "node_id": "6ffd2dd2-982c-5ab4-9e33-f5fca6a22cad",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/llm-retry-monitor-shadow.json",
+      "workflow_id": "02cb2d0ad1d49927",
+      "node_id": "b5cc407e-dd67-5cc4-8ded-d736da1b9986",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/llm-retry-monitor.json",
+      "workflow_id": "8f2b7c0da60b14f1",
+      "node_id": "1da1098f-66ff-54b5-bdd7-a7e27ee0944b",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/llm-spend-report-daily-shadow.json",
+      "workflow_id": "9f4e2228176a3815",
+      "node_id": "b9c8ae84-d5b0-58f1-894a-4a76a1e4c82f",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/llm-spend-report-daily.json",
+      "workflow_id": "9cdaee27ad234a2e",
+      "node_id": "ae602d37-6691-5cd8-b5f1-efb2e907bea7",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/llm-spend-report-monthly-shadow.json",
+      "workflow_id": "60bca82c261e910e",
+      "node_id": "7ee25547-23ca-5c7b-bcc2-f902734791cf",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/llm-spend-report-monthly.json",
+      "workflow_id": "6b364e9a05c1d78d",
+      "node_id": "05ca2d69-d018-570f-ae58-a4f8bf2d3c98",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/llm-spend-report-weekly-shadow.json",
+      "workflow_id": "c302cf1b2b3f1d6e",
+      "node_id": "9ef0434d-e933-5dfe-9101-79df30cf5bc1",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/llm-spend-report-weekly.json",
+      "workflow_id": "1bc38431befd7e55",
+      "node_id": "00ccc411-6a4f-5026-9971-345bbf359ffa",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/material-change-digest-shadow.json",
+      "workflow_id": "1c15e96a1db54742",
+      "node_id": "c4eea1ed-086b-5c45-be9a-a31a423d3f22",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/material-change-digest.json",
+      "workflow_id": "9525e7df36b89271",
+      "node_id": "36e70ca2-a9f3-55a8-80ff-d8fbfc62cbbc",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/n8n-lab-backup-shadow.json",
+      "workflow_id": "fe3d41f8e1de24f8",
+      "node_id": "917d99d7-2b7c-5f27-af86-982cf89bba61",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/n8n-lab-backup.json",
+      "workflow_id": "c718d3c0931010b7",
+      "node_id": "5ea5cc44-9a11-581d-8817-4e487dacf353",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/n8n-lab-restore-drill-shadow.json",
+      "workflow_id": "bb1c7c433c2d7c72",
+      "node_id": "ba50f984-d04e-50cc-97cd-3bad4ca7a37e",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/n8n-lab-restore-drill.json",
+      "workflow_id": "5d0853e8faad04f1",
+      "node_id": "8ed68fc6-67b3-51ca-8b6b-099d3a0cfc0b",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/openclaw-claude-plan-reminder-last-day-shadow.json",
+      "workflow_id": "7c0804ac0d2c0bad",
+      "node_id": "3767b4e2-5aa8-53c3-ba56-0f48a8e2dc42",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/openclaw-claude-plan-reminder-last-day.json",
+      "workflow_id": "1675d3c97ed9a3d6",
+      "node_id": "a6a1a208-5145-56ce-b079-87556d6571c9",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/openclaw-claude-plan-reminder-week-before-shadow.json",
+      "workflow_id": "aefe7f7ff6be8033",
+      "node_id": "365113c7-853a-59ee-8e86-5d745097e96b",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/openclaw-claude-plan-reminder-week-before.json",
+      "workflow_id": "a9b4aece7a8b7c95",
+      "node_id": "199ed7cb-b283-5ace-90a1-ec0890946540",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/openclaw-sentinelone-earnings-reminder-shadow.json",
+      "workflow_id": "940f8c1a4c49549f",
+      "node_id": "356471ee-21d6-5f14-8c63-7f605a14bf10",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/openclaw-sentinelone-earnings-reminder.json",
+      "workflow_id": "d28ad5e4adcb021a",
+      "node_id": "259dd52b-8afa-58f6-9095-73550817b009",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/openclaw-supergrok-promo-expiry-shadow.json",
+      "workflow_id": "a4749a4c0af46afb",
+      "node_id": "e7d6a523-29fc-526d-ae84-9bd9129b2491",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/openclaw-supergrok-promo-expiry.json",
+      "workflow_id": "c08d72aee9fba3c1",
+      "node_id": "df66faa6-8e46-5140-b1f5-fa413dbe365d",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/operator-answer-quality-audit-shadow.json",
+      "workflow_id": "aff3c305e317d83f",
+      "node_id": "69810e2d-6b14-5d31-bf62-7ba0c78ef0f0",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/operator-answer-quality-audit.json",
+      "workflow_id": "9cb97144baeddbcc",
+      "node_id": "49c123ac-bae1-51f7-b0c1-c08937b13ce6",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/ops-daily-digest-shadow.json",
+      "workflow_id": "44dcc0e8f8aa77b1",
+      "node_id": "0e188235-4b11-58a4-b8d9-735581931a1c",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/ops-daily-digest.json",
+      "workflow_id": "0bac5a78dbe44dc3",
+      "node_id": "66c86c89-f1fb-5bf1-a0a6-a3a71c7e9f17",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/ops-weekly-learning-report-shadow.json",
+      "workflow_id": "c76a827cd5d91624",
+      "node_id": "3bd1df11-350f-5f6d-b423-8aa285f73622",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/ops-weekly-learning-report.json",
+      "workflow_id": "ccbb6e6df4b1dd95",
+      "node_id": "4a6e81b3-98b4-57d1-a111-33527513067f",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/platform-maintenance-monthly-shadow.json",
+      "workflow_id": "18b20ea58617ffc2",
+      "node_id": "82818bef-3ded-5a12-969a-c31eaf55e3ef",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/platform-maintenance-monthly.json",
+      "workflow_id": "8bbd5b4db9349bba",
+      "node_id": "b7aefe73-1b4a-5402-a539-2acc1918d4fc",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/platform-maintenance-nightly-shadow.json",
+      "workflow_id": "8a9162783109e7bb",
+      "node_id": "1e68ed7a-a817-5b04-bcde-67db5c634e12",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/platform-maintenance-nightly.json",
+      "workflow_id": "16076223b5a85c1a",
+      "node_id": "603bc834-d363-53a8-bb41-78f852ff4e67",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/platform-maintenance-weekly-shadow.json",
+      "workflow_id": "4b11eabaa6735a90",
+      "node_id": "a4f20b3f-1316-50ee-9d8b-02356581cf16",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/platform-maintenance-weekly.json",
+      "workflow_id": "68c4230652661677",
+      "node_id": "85420270-6261-5637-96d9-dbca1f5febb0",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/portfolio-backup-cadence-shadow.json",
+      "workflow_id": "d58dceed7dd37a06",
+      "node_id": "f20344de-fb3b-57ff-a520-8eeda6b83eee",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/portfolio-backup-cadence.json",
+      "workflow_id": "a47fd8befe0d4b59",
+      "node_id": "e9a3a2f0-d755-59db-9f39-16eab805f3b7",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/portfolio-daily-cadence-shadow.json",
+      "workflow_id": "6c04dc250b7d6a04",
+      "node_id": "1ade6c93-db8e-5476-892d-2a659d2007e3",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/portfolio-daily-cadence.json",
+      "workflow_id": "efe083774ee43184",
+      "node_id": "95a23a8d-33e9-5731-a183-9ba3b534d4ce",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/portfolio-lookthrough-cadence-shadow.json",
+      "workflow_id": "4a447dec9837c273",
+      "node_id": "ccb2e5ce-95f2-5a3a-aa62-07cc3b23d673",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/portfolio-lookthrough-cadence.json",
+      "workflow_id": "e183713ef0992eab",
+      "node_id": "f440977a-0663-5d00-97f3-95fe762f2445",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/portfolio-monthly-cadence-shadow.json",
+      "workflow_id": "a8b8cbf625caebb0",
+      "node_id": "f9e4ff68-ce5d-500a-bf43-ad051e85218e",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/portfolio-monthly-cadence.json",
+      "workflow_id": "1f01214b9b6d40de",
+      "node_id": "82af44bc-30e8-55d7-8013-4d01f5e36425",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/portfolio-weekly-cadence-shadow.json",
+      "workflow_id": "ae61fa66dba00c9f",
+      "node_id": "ba6a7f45-102c-508e-9072-a1d072e95e35",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/portfolio-weekly-cadence.json",
+      "workflow_id": "4cf5edd66a7d29c7",
+      "node_id": "d9d85595-7775-5500-93ec-e56632a5c59d",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/premarket-data-pipeline-shadow.json",
+      "workflow_id": "f4553ff360e21a9f",
+      "node_id": "d04029fa-66aa-5bf7-b75a-b88866f858a9",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/premarket-data-pipeline.json",
+      "workflow_id": "4befcbb3f91d4143",
+      "node_id": "36cedb9e-226c-5606-a159-98fd78bc793f",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/research-lane-health-shadow.json",
+      "workflow_id": "f08dc0f945279776",
+      "node_id": "5010e6eb-6514-5ade-95ee-7fc11fdd07a1",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/research-lane-health.json",
+      "workflow_id": "d08d238a772e5dd8",
+      "node_id": "2b13e856-45d2-52c2-aa0d-4e23156971bf",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/rotation-rebalance-digest-shadow.json",
+      "workflow_id": "54468142f257bdc4",
+      "node_id": "8284bdca-9d8c-5889-b9bf-7fd76b656880",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/rotation-rebalance-digest.json",
+      "workflow_id": "d01ef7e5a2c3283f",
+      "node_id": "9f920f2a-878c-502b-b481-f0d24b60d3d7",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/served-copy-split-audit-shadow.json",
+      "workflow_id": "97b87e0d67d6d3c0",
+      "node_id": "6b17e46f-8018-5799-a056-69a254b9f35d",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/served-copy-split-audit.json",
+      "workflow_id": "a7cd9c1241611dd1",
+      "node_id": "15d64f7c-7af6-5ca7-9cc6-f16eb4c5f870",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/source-attribution-monitor-shadow.json",
+      "workflow_id": "498d749165a93ff9",
+      "node_id": "d5ca092d-b272-522f-8fa0-e557d0ee4ccc",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/source-attribution-monitor.json",
+      "workflow_id": "754fbf1133803631",
+      "node_id": "66af4372-a40b-59d5-91ec-b9686e4eb689",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/source-litmus-vs-yahoo-shadow.json",
+      "workflow_id": "ea0d6699fbc5927a",
+      "node_id": "0547939d-d374-5e71-b307-645dfb0a7ecd",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/source-litmus-vs-yahoo.json",
+      "workflow_id": "f497a8fd0a27457d",
+      "node_id": "0e912d98-f013-567b-87a0-477bc19f276d",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/sync-memory-to-drive-shadow.json",
+      "workflow_id": "cc039d818479fe0a",
+      "node_id": "96d9684c-2485-5427-be00-7223aff36afe",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/sync-memory-to-drive.json",
+      "workflow_id": "a2293e487df03750",
+      "node_id": "f6cb2a57-f81c-5a25-badf-118f95647a2b",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/system-rollup-snapshot-shadow.json",
+      "workflow_id": "9c13c70626706c31",
+      "node_id": "966ef7ca-caac-5c95-99b0-da4c9cbcc839",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/system-rollup-snapshot.json",
+      "workflow_id": "4aee8ff64e5b0f9d",
+      "node_id": "34284c7e-1b8d-5c70-a8a1-17e5920d3061",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/watch-directives-monitor-shadow.json",
+      "workflow_id": "5966437c872aa18b",
+      "node_id": "49681d35-1c0e-5111-abab-a0f49ff0cfa4",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/watch-directives-monitor.json",
+      "workflow_id": "9e9f8e0c19fbc7ce",
+      "node_id": "736415a5-9fa7-5303-b9f1-b45d8d804280",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/youtube-cookie-health-check-shadow.json",
+      "workflow_id": "0980fe865273c8a3",
+      "node_id": "f0f869a2-71e5-5878-866c-fafb6b648f26",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/pending/youtube-cookie-health-check.json",
+      "workflow_id": "6b7c0fa22a70ee1a",
+      "node_id": "ab861d87-9902-56c2-8a93-f3d76688995d",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/storage-watch-shadow.json",
+      "workflow_id": "2c991aed41ac4eff",
+      "node_id": "190ed323-815c-5b41-828b-5b17a7b65499",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/storage-watch.json",
+      "workflow_id": "58c8294eceac0b19",
+      "node_id": "fe3f3476-b58e-5b55-9a3a-caad07c8ec58",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/trade-ai-restore-drill-shadow.json",
+      "workflow_id": "a2ac4e8d13975597",
+      "node_id": "e8054ca4-7487-5d92-b413-bcaa9c9601a9",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/trade-ai-restore-drill.json",
+      "workflow_id": "e0885d491236863c",
+      "node_id": "717f5a34-b6fb-548e-abc0-aa3df01b01d7",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/trade-ai-scalp-live-shadow.json",
+      "workflow_id": "15b22c523f844467",
+      "node_id": "8fb71578-8a86-53d5-b292-0c110c0326da",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/generated/trade-ai-scalp-live.json",
+      "workflow_id": "537142069dd5b352",
+      "node_id": "910eb983-28bc-59a1-b114-5b3415e423d0",
+      "node_name": "POST relay /run",
+      "method": "POST",
+      "url": "={{ $json.TRADEAI_N8N_RUN_URL }}/run",
+      "credential_types": [
+        "httpHeaderAuth"
+      ],
+      "timeout_ms": 10000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/n8n-bench-nodes.json",
+      "workflow_id": "2yPuOGW9yYtJsoYk",
+      "node_id": "bench-http",
+      "node_name": "GET build-meta",
+      "method": "GET",
+      "url": "http://172.19.0.1:7777/v3/build-meta.json",
+      "credential_types": [],
+      "timeout_ms": 8000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/n8n-monitor-dof.json",
+      "workflow_id": "GXwhbRkwsGcYZxgn",
+      "node_id": "http-m8m-monitor-dof",
+      "node_name": "GET run-scope",
+      "method": "GET",
+      "url": "http://172.19.0.1:7776/api/run-scope",
+      "credential_types": [],
+      "timeout_ms": 8000,
+      "follow_redirects": "unspecified"
+    },
+    {
+      "file": "docs/implementation/n8n-parallel/workflows/n8n-monitor-trade-ai.json",
+      "workflow_id": "s57KBllvqf6Jb5xF",
+      "node_id": "http-m8m-monitor-trade-ai",
+      "node_name": "GET build-meta",
+      "method": "GET",
+      "url": "http://172.19.0.1:7777/v3/build-meta.json",
+      "credential_types": [],
+      "timeout_ms": 8000,
+      "follow_redirects": "unspecified"
+    }
+  ]
+}

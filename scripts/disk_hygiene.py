@@ -1021,6 +1021,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         a = ap.parse_args(argv)
     except SystemExit as exc:
         return 2 if exc.code else 0
+    wall_start = datetime.now(timezone.utc)  # receipt started_at: the real start, not the injectable logical clock
     now = _parse_now(a.now)
     if now is None:
         print("--now must be an aware ISO 8601 timestamp", file=sys.stderr)
@@ -1035,7 +1036,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                 LANE_ID,
                 ok=False,
                 exit_code=1,
-                started_at=now,
+                started_at=wall_start,
                 script=SCRIPT,
                 summary={"error": str(exc)},
                 path=R.receipt_path(LANE_ID, state_root),
@@ -1055,7 +1056,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                 APPLY_LANE_ID,
                 ok=not rep.get("refused"),
                 exit_code=0 if not rep.get("refused") else 1,
-                started_at=now,
+                started_at=wall_start,
                 script=SCRIPT,
                 summary={
                     "refused": rep.get("refused"),
@@ -1112,7 +1113,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         LANE_ID,
         ok=ok,
         exit_code=0 if ok else 1,
-        started_at=now,
+        started_at=wall_start,
         script=SCRIPT,
         summary=summary,
         error=err,

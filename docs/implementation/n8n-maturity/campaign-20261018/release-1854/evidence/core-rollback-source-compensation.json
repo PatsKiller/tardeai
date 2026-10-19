@@ -1,0 +1,12 @@
+{
+  "schema": "N8nCampaignRollbackSourceCompensation@v1",
+  "at": "2026-10-18T22:01:22.063664+00:00",
+  "before_sha": "7af14c7782cf7ab0cba261cc25e6789fe810b092",
+  "before_branch": "wt/momentum-reconcile-canary-20261013",
+  "after_sha": "a2aef7b4d2de17e737526337a2ffc37848deda4f",
+  "after_branch": "",
+  "branch_rewound": false,
+  "original_branch_ref_preserved": true,
+  "clean": true,
+  "action": "detach_known_rollback"
+}

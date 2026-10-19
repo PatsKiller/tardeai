@@ -151,8 +151,12 @@ def _execution_id(now: datetime) -> str:
 
 
 def run(
-    *, rules: Mapping[str, Any], state_root: Optional[Path], ledger: Optional[Path], apply: bool, now: datetime
+    *, rules: Mapping[str, Any], state_root: Optional[Path], ledger: Optional[Path], apply: bool, now: datetime,
+    wall_start: Optional[datetime] = None,
 ) -> int:
+    # the receipt's started_at is the real start (the executor binds it to the attempt window); `now` is the
+    # logical clock for bands and idle math and may be injected
+    wall_start = wall_start or datetime.now(timezone.utc)
     mon = rules["monitor"]
     state_path = R.runtime_dir(state_root) / mon["state_name"]
     try:
@@ -236,7 +240,7 @@ def run(
         LANE_ID,
         ok=ok,
         exit_code=0 if ok else 1,
-        started_at=now,
+        started_at=wall_start,
         script=SCRIPT,
         summary=summary,
         error=summary.get("error"),
@@ -272,6 +276,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         a = ap.parse_args(argv)
     except SystemExit as exc:
         return 2 if exc.code else 0
+    wall_start = datetime.now(timezone.utc)
     now = DH._parse_now(a.now)
     if now is None:
         print("--now must be an aware ISO 8601 timestamp", file=sys.stderr)
@@ -292,7 +297,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                 LANE_ID,
                 ok=False,
                 exit_code=1,
-                started_at=now,
+                started_at=wall_start,
                 script=SCRIPT,
                 summary={"error": str(exc)},
                 path=R.receipt_path(LANE_ID, state_root),
@@ -307,7 +312,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     ledger = Path(a.ledger) if a.ledger else None
     if ledger is None and state_root is not None and not os.environ.get("TRADEAI_N8N_COORDINATION_LEDGER"):
         ledger = state_root / "data" / "governance" / "n8n_coordination_ledger.sqlite"
-    return run(rules=rules, state_root=state_root, ledger=ledger, apply=bool(a.apply), now=now)
+    return run(rules=rules, state_root=state_root, ledger=ledger, apply=bool(a.apply), now=now, wall_start=wall_start)
 
 
 if __name__ == "__main__":

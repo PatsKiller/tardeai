@@ -1,0 +1,22 @@
+{
+  "campaign": "n8n-maturity-20261018",
+  "branch": "wt/n8n-maturity-output-contract-20261018",
+  "worktree": "/home/johnclaw/tradeai-wt-n8n-maturity-output-contract-20261018",
+  "baseline_sha": "3af0a8bdd659e02bf6f493c071800c6a227ae292",
+  "candidate_sha": "3039c56a048fec1cf32087c3500a62c5450b8099",
+  "test_file": "tests/test_n8n_output_contract_truth_20261018.py",
+  "test_sha256": "b52848b66b0baaeca663f507a99beec01ef514513b44edcf3c8a8ad25c4ec758",
+  "baseline_command": "PYTHONPATH=/home/johnclaw/tradeai-wt-n8n-maturity-campaign-20261018 python3 -m pytest -q --noconftest -p no:cacheprovider /tmp/n8n-campaign-20261018/contracts-routes/test_n8n_output_contract_truth_20261018.py",
+  "baseline_result": "23 assertion failures,7 passing controls; no collection/setup errors",
+  "candidate_command": "PYTHONPATH=/home/johnclaw/tradeai-wt-n8n-maturity-output-contract-20261018 python3 -m pytest -q --noconftest -p no:cacheprovider /tmp/n8n-campaign-20261018/contracts-routes/test_n8n_output_contract_truth_20261018.py",
+  "candidate_result": "30 passed",
+  "regression_result": "691 passed17.67s",
+  "baseline_evidence": "output-baseline-red.txt",
+  "candidate_evidence": "output-candidate-green.txt",
+  "regression_evidence": "output-final-regression.txt",
+  "release_equivalent": "Integrator to run on combined candidate, after CI registration",
+  "git_diff_check": "pass",
+  "remote_pushes": 0,
+  "production_effects": 0,
+  "remaining": "Independent review; register test in CI; peer-owned comms proof fixture full attempt env updates. Artifact/digest/downstream consumption validation and sameuid attestation remain residual; inline-retry immutable receipt path needs separate migration."
+}

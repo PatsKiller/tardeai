@@ -1,0 +1,11 @@
+{
+  "action": "push exact reviewed branch/head",
+  "branch": "wt/n8n-contract-enforcement-20261018",
+  "head": "2333c8e1b00f4be3b5fab653bf67d9a42fdcd399",
+  "request_id": "b2a135ab306621ef",
+  "grant_id": "6adcbf0da05642d2aed9bc630ae293c0",
+  "expires_at": "2026-10-18T20:42:47+00:00",
+  "remaining_uses": 3,
+  "reason_matches_request_and_full_head": true,
+  "verified_at": "2026-10-18T20:16:41.508401+00:00"
+}

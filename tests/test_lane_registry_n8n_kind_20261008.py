@@ -356,7 +356,10 @@ def test_native_monitor_rows_do_not_flip_a_host_scheduler():
                         # 2026-10-16 cohort 2: event-trigger lane of the Hermes discovery yield builder (shadow).
                         "hermes-discovery-yield-on-learning",
                         # 2026-10-17 comms-intent consumer live (D2): n8n-native dispatcher row at canary.
-                        *CIL.LIVE}
+                        *CIL.LIVE,
+                        # 2026-10-18 disk hygiene (weekly, dry-run) + disk-usage monitor (*/15): n8n-native rows;
+                        # the systemd disk_pressure_guard stays as the host backstop and is not flipped.
+                        "disk-hygiene", "disk-usage-monitor"}
     assert all(native[lane]["scheduler"]["expression"] == "dispatcher" for lane in n8n_native_lanes)
     # 2026-10-15: the step lanes of the n8n fabric process hermes-learning (AGENTS.md §23.23). Fired only by the
     # process workflow, NEVER_SCHEDULED until it is published for shadow; `match` names the process step, so no

@@ -478,6 +478,21 @@ def test_every_allowlist_lane_is_eligible_or_explicitly_reported():
         assert frag in ineligible[lane], (lane, ineligible[lane])
 
 
+def test_held_feedback_dry_shape_does_not_admit_future_notify_argv():
+    lane = "hermes-learning-outcome-feedback-agent"
+    entry, row = ALLOW_LANES[lane], REGISTRY[lane]
+    # This predicate checks shape. No dispatch block exists to fire the held
+    # process step, and the executor still clamps its shadow stage to dry mode.
+    assert entry["live_arg"] is None and row["scheduler"]["stage"] == "shadow"
+    assert "dispatch" not in row
+    assert dispatcher_eligible(entry, row)[0]
+    # Preserve the generic dispatcher's separate notify refusal for the retained
+    # future process capability, even though that argv is not enabled in config.
+    future = {**entry, "live_arg": ["--apply", "--notify", "queue"]}
+    eligible, reason = dispatcher_eligible(future, row)
+    assert not eligible and "sender or ingest writer notify" in reason
+
+
 def _entry(lane_id: str, command: list[str], dry=("--dry-run",), live=(), **kw) -> dict:
     return {
         "lane_id": lane_id,
