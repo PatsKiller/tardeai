@@ -34,6 +34,7 @@ LANE = "finviz-screener-runner"
         "empty_allowed",
         "disarmed",
         "nonzero",
+        "uninitialized",
     ],
 )
 def test_retry_exit_zero_requires_shared_fresh_business_output(agent, monkeypatch, tmp_path, case):
@@ -72,6 +73,13 @@ def test_retry_exit_zero_requires_shared_fresh_business_output(agent, monkeypatc
     monkeypatch.setattr(agent, "datetime", Clock)
     monkeypatch.setattr(agent, "MONITORED_COMPONENTS", [comp])
     monkeypatch.setattr(agent, "_get_conn", lambda: Conn())
+    # Fake authoritative complete history qualifies admission mechanics only, never production readiness.
+    journal = tmp_path / "state/data/runtime/health_retry_attempts.jsonl"
+    journal.parent.mkdir(parents=True, exist_ok=True)
+    journal.write_text("")
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path / "state"))
+    if case != "uninitialized":
+        monkeypatch.setattr(agent, "_health_retry_history", lambda path, now: path.read_text())
     monkeypatch.setattr(agent, "_prev_scheduled_fire", lambda *_a: NOW)
     monkeypatch.setattr(
         agent, "_check_component_freshness", lambda *_a, **_k: {"status": "STALE", "reason": "fixture_stale"}
@@ -141,6 +149,11 @@ def test_retry_exit_zero_requires_shared_fresh_business_output(agent, monkeypatc
     assert (check["status"] == "RECOVERED") is recovered
     assert any(a[2] == "RECOVERED" for a, _ in events) is recovered
     assert bool(escalations) is not recovered
-    assert len(calls) == (0 if case == "disarmed" else 1)
+    assert len(calls) == (0 if case in ("disarmed", "uninitialized") else 1)
+    if case == "uninitialized":
+        assert report["summary"]["retried"] == 0 and report["summary"]["retry_held"] == 1
+        assert check["action_taken"] == "retry_held_escalated"
+        assert check["recovery_reason"] == "retry_budget_uninitialized"
+        assert journal.read_text() == ""
     if not recovered:
         assert check["recovery_reason"], "attempt completion must leave a useful refusal reason"
