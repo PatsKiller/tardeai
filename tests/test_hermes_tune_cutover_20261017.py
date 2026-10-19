@@ -23,6 +23,7 @@ families to n8n, with F41 retention approved for n8n. Packet: docs/ops/packets/h
 
 Hermetic: tmp state roots and ledgers, no DB, no network, no broker, no secret.
 """
+
 from __future__ import annotations
 
 import time
@@ -81,8 +82,9 @@ LEARN_LINE = (
 
 def test_tune_lane_is_in_the_shared_cutover_list():
     assert HL.TUNE_LIVE == (LANE,) and LANE in HL.LIVE and LANE not in HL.HELD
-    # + outcome_feedback_agent since the 2026-10-17 feedback cutover (tests/test_hermes_feedback_cutover_20261017.py)
-    assert len(HL.LEARN_LIVE) == 5 and set(HL.LEARN_LIVE) <= set(HL.LIVE)
+    assert len(HL.LEARN_LIVE) == 4 and set(HL.LEARN_LIVE) <= set(HL.LIVE)
+    assert len(HL.LIVE) == 5
+    assert HL.HELD == ("hermes-learning-outcome-feedback-agent",) and HL.FEEDBACK_LIVE == ()
 
 
 def test_lane_runs_the_cron_step_argv_both_halves_at_canary():
@@ -166,15 +168,26 @@ def _tune_manifest(tmp_path: Path, marker: Path) -> Path:
 
 def _run_stage(tmp_path: Path, marker: Path, ledger: Path, *, claim: bool, apply: bool = True):
     env = runner_env(tmp_path)
-    env.update({
-        "PIPELINE_EFFECT_CONFIG": str(ROOT / "config" / "n8n_effect_keys.json"),  # the COMMITTED keys
-        "PIPELINE_EFFECT_LEDGER": str(ledger),
-        "PIPELINE_EFFECT_DATE": "20261017",
-    })
+    env.update(
+        {
+            "PIPELINE_EFFECT_CONFIG": str(ROOT / "config" / "n8n_effect_keys.json"),  # the COMMITTED keys
+            "PIPELINE_EFFECT_LEDGER": str(ledger),
+            "PIPELINE_EFFECT_DATE": "20261017",
+        }
+    )
     if claim:
         env["PIPELINE_EFFECT_CLAIM"] = "1"
-    cmd = ["bash", str(_sandbox(tmp_path)), "--manifest", str(_tune_manifest(tmp_path, marker)),
-           "--project-root", str(tmp_path), "--stage", "tune", "--apply" if apply else "--dry-run"]
+    cmd = [
+        "bash",
+        str(_sandbox(tmp_path)),
+        "--manifest",
+        str(_tune_manifest(tmp_path, marker)),
+        "--project-root",
+        str(tmp_path),
+        "--stage",
+        "tune",
+        "--apply" if apply else "--dry-run",
+    ]
     return subprocess.run(cmd, cwd=str(tmp_path), env=env, capture_output=True, text=True, timeout=120)
 
 
@@ -318,6 +331,7 @@ def tune(monkeypatch, tmp_path):
             c = _Conn(answers, **kw)
             state.conns.append(c)
             return c
+
         monkeypatch.setattr(ST, "_conn", _conn)
 
     ra = types.ModuleType("lib.retention_archive")
@@ -350,10 +364,15 @@ def test_graft_gated_and_nothing_to_purge_is_a_verified_empty(tune, capsys):
     assert doc["empty_reason"] == "nothing_due" and doc["skipped_reasons"] == {"graft_gated_weekly_drift_cap": 1}
     out = LPC.check(tune.root, LANE, tune.run_id, produced=0, expect="empty_allowed")
     assert out["output_verdict"]["empty_reason"] == "nothing_due"
-    assert [t for t, _ in tune.purges] == ["hermes_embedding_queue", "hermes_score_history",
-                                           "hermes_research_intelligence", "hermes_external_research",
-                                           "watchlist_research_results", "watchlist_research_queue",
-                                           "proposal_research_packets"]  # both halves ran
+    assert [t for t, _ in tune.purges] == [
+        "hermes_embedding_queue",
+        "hermes_score_history",
+        "hermes_research_intelligence",
+        "hermes_external_research",
+        "watchlist_research_results",
+        "watchlist_research_queue",
+        "proposal_research_packets",
+    ]  # both halves ran
 
 
 def test_applied_grafts_are_produced(tune):
@@ -406,14 +425,24 @@ def test_cron_run_without_attempt_identity_writes_only_the_last_receipt(tune, mo
     assert not (LR.receipt_path(LANE, tune.root).parent / "lane_attempts" / LANE).exists()
 
 
-@pytest.mark.parametrize("result,want", [
-    ({"auto_graft": {"status": "applied", "changes": [1, 2, 3]}, "self_purge": {"dead_table_rows_purged": 4}},
-     (7, None)),
-    ({"auto_graft": {"status": "gated_persistence"}, "self_purge": {"embeddings_dropped": -1}}, (0, "nothing_due")),
-    ({"auto_graft": {"status": "dry", "changes": [1]}}, (0, "nothing_due")),
-    ({"auto_graft": {"status": "no_outcome_suggestions"},
-      "self_purge": {"dead_table_errors": ["x: absent"], "dead_tables_truncated": ["a", "b"]}}, (0, "no_new_input")),
-])
+@pytest.mark.parametrize(
+    "result,want",
+    [
+        (
+            {"auto_graft": {"status": "applied", "changes": [1, 2, 3]}, "self_purge": {"dead_table_rows_purged": 4}},
+            (7, None),
+        ),
+        ({"auto_graft": {"status": "gated_persistence"}, "self_purge": {"embeddings_dropped": -1}}, (0, "nothing_due")),
+        ({"auto_graft": {"status": "dry", "changes": [1]}}, (0, "nothing_due")),
+        (
+            {
+                "auto_graft": {"status": "no_outcome_suggestions"},
+                "self_purge": {"dead_table_errors": ["x: absent"], "dead_tables_truncated": ["a", "b"]},
+            },
+            (0, "no_new_input"),
+        ),
+    ],
+)
 def test_lane_output_counts(result, want):
     out = ST.lane_output(result)
     assert (out["produced_count"], out["empty_reason"]) == want
@@ -430,8 +459,10 @@ def _fake_crontab(tmp_path: Path, text: str) -> Path:
     tab.write_text(text, encoding="utf-8")
     exe = tmp_path / "bin" / "crontab"
     exe.parent.mkdir(exist_ok=True)
-    exe.write_text(f'#!/bin/bash\nif [ "$1" = "-l" ]; then cat {tab}; elif [ "$1" = "-" ]; then cat > {tab}; '
-                   f'else exit 9; fi\n', encoding="utf-8")
+    exe.write_text(
+        f'#!/bin/bash\nif [ "$1" = "-l" ]; then cat {tab}; elif [ "$1" = "-" ]; then cat > {tab}; else exit 9; fi\n',
+        encoding="utf-8",
+    )
     exe.chmod(0o755)
     return exe
 
@@ -441,12 +472,21 @@ TEST_GRANT = "abcdef0123456789abcdef0123456789"  # fake active cron grant id in 
 
 def _packet(tmp_path: Path, *args: str, hm: str = "1200", grant: bool = True, **extra: str):
     env = {
-        "PATH": "/usr/bin:/bin", "HOME": str(tmp_path), "LANG": "C.UTF-8",
-        "PY": sys.executable, "SERVED": str(extra.pop("served", ROOT)), "REPO": str(ROOT),
-        "CRONTAB_BIN": str(tmp_path / "bin" / "crontab"), "FX_LEDGER": str(tmp_path / "ledger.sqlite"),
-        "LEDGER": str(tmp_path / "ledger.sqlite"), "STATE": str(tmp_path / "state"),
-        "BACKUPS": str(tmp_path / "backups"), "LIVE_LANES_ENV": str(tmp_path / "live.env"), "NOW_HM": hm,
-        E.HANDOVER_ENV: str(tmp_path / "handover.json"), "PYTHONPATH": str(ROOT),
+        "PATH": "/usr/bin:/bin",
+        "HOME": str(tmp_path),
+        "LANG": "C.UTF-8",
+        "PY": sys.executable,
+        "SERVED": str(extra.pop("served", ROOT)),
+        "REPO": str(ROOT),
+        "CRONTAB_BIN": str(tmp_path / "bin" / "crontab"),
+        "FX_LEDGER": str(tmp_path / "ledger.sqlite"),
+        "LEDGER": str(tmp_path / "ledger.sqlite"),
+        "STATE": str(tmp_path / "state"),
+        "BACKUPS": str(tmp_path / "backups"),
+        "LIVE_LANES_ENV": str(tmp_path / "live.env"),
+        "NOW_HM": hm,
+        E.HANDOVER_ENV: str(tmp_path / "handover.json"),
+        "PYTHONPATH": str(ROOT),
     }
     if grant:
         approvals = tmp_path / "approvals"
@@ -556,8 +596,18 @@ def _proof_fixture(tmp_path: Path, *, verdict: str, cron_status: str | None) -> 
     j.parent.mkdir(parents=True)
     lines = [json.dumps({"ts": "2026-10-16T21:00:03Z", "id": SID, "status": "ok", "rc": 0, "dry_run": False})]
     if cron_status:
-        lines.append(json.dumps({"ts": "2026-10-17T21:20:02Z", "id": SID, "status": cron_status, "rc": 75,
-                                 "dry_run": False, "effect_key": KEY}))
+        lines.append(
+            json.dumps(
+                {
+                    "ts": "2026-10-17T21:20:02Z",
+                    "id": SID,
+                    "status": cron_status,
+                    "rc": 75,
+                    "dry_run": False,
+                    "effect_key": KEY,
+                }
+            )
+        )
     j.write_text("\n".join(lines) + "\n")
     return served
 
@@ -569,8 +619,9 @@ def test_proof_passes_on_n8n_done_with_a_useful_verdict_and_cron_skipped(tmp_pat
     assert "n8n half: PASS" in r.stdout and "cron half: PASS" in r.stdout
 
 
-@pytest.mark.parametrize("verdict,cron", [("unverifiable", "skipped_effect"), ("empty_allowed", "ok"),
-                                          ("empty_allowed", None)])
+@pytest.mark.parametrize(
+    "verdict,cron", [("unverifiable", "skipped_effect"), ("empty_allowed", "ok"), ("empty_allowed", None)]
+)
 def test_proof_fails_on_a_bad_verdict_or_a_cron_run(tmp_path, verdict, cron):
     served = _proof_fixture(tmp_path, verdict=verdict, cron_status=cron)
     r = _packet(tmp_path, "proof", "--date", "20261017", served=served)
@@ -580,4 +631,3 @@ def test_proof_fails_on_a_bad_verdict_or_a_cron_run(tmp_path, verdict, cron):
 def test_registered_in_the_cio_hardening_gates():
     text = (ROOT / "scripts" / "run_cio_hardening_ci.py").read_text(encoding="utf-8")
     assert "tests/test_hermes_tune_cutover_20261017.py" in text
-

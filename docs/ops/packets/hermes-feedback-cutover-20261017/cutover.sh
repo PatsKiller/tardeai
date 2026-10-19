@@ -95,6 +95,7 @@ case "$STEP" in
     listed "$CONSUMER" && echo "  live list has $CONSUMER" || echo "  live list LACKS $CONSUMER (consumer PR first)"
     listed "$LANE" && echo "  live list has $LANE" || echo "  live list lacks $LANE" ;;
   relay)
+    [[ $APPLY == 1 ]] && need_grant  # --apply: the grant gates every other check (10-18)
     served_state || fail "serve the feedback cutover PR (and the consumer PR) first"
     [[ -f "$LIVE_LANES_ENV" ]] || fail "$LIVE_LANES_ENV missing"
     CUR=$(sed -n 's/^TRADEAI_N8N_RELAY_LIVE_LANES=//p' "$LIVE_LANES_ENV")
@@ -103,7 +104,7 @@ case "$STEP" in
     echo "  adds: $(comm -13 <(printf '%s\n' $CUR | sort -u) <(printf '%s\n' $NEW | sort -u) | paste -sd' ')"
     echo "  keeps: $(printf '%s\n' $CUR | grep -c .) existing lanes"
     [[ $APPLY == 1 ]] || { echo "  DRY RUN — live list unchanged, nothing restarted"; exit 0; }
-    need_grant; quiet_minute
+    quiet_minute
     cp -p "$LIVE_LANES_ENV" "$LIVE_LANES_ENV.bak-$(date -u +%Y%m%dT%H%M%SZ)-hermes-feedback"
     printf 'TRADEAI_N8N_RELAY_LIVE_LANES=%s\n' "$NEW" > "$LIVE_LANES_ENV.tmp" && chmod 600 "$LIVE_LANES_ENV.tmp" \
       && mv "$LIVE_LANES_ENV.tmp" "$LIVE_LANES_ENV"

@@ -1,0 +1,387 @@
+{
+  "schema": "ReleaseReceiptIntegrationInventory@v1",
+  "campaign_id": "n8n-maturity-20261018",
+  "source_head": "b358999a33b8ad6b270a4f38ed09d5ed7e6fe0c3",
+  "worktree": "/home/johnclaw/tradeai-wt-n8n-release-receipt-truth-20261018",
+  "source_scope": "Approved source only; inventory is not a new source or runtime approval",
+  "actual_four_paths": [
+    {
+      "source_path": "/home/johnclaw/tradeai-wt-n8n-release-receipt-truth-20261018/scripts/cio_phase2_exact_main_deploy.sh",
+      "role": "reviewed source or native test; integrate exact blob",
+      "sha256": "b1299f7c337531899efe15c67185f511f05e57880fefa40615bb3e57efcdf11e",
+      "bytes": 41395,
+      "suggested_storage": "gzip losslessly; record stored and original digests/lengths"
+    },
+    {
+      "source_path": "/home/johnclaw/tradeai-wt-n8n-release-receipt-truth-20261018/scripts/lib/exact_release_receipt.py",
+      "role": "reviewed source or native test; integrate exact blob",
+      "sha256": "03d1548ad7b36d482513688e7c0786b959bb7bf37ebe68f8c7cf33c487aa0755",
+      "bytes": 10762,
+      "suggested_storage": "gzip losslessly; record stored and original digests/lengths"
+    },
+    {
+      "source_path": "/home/johnclaw/tradeai-wt-n8n-release-receipt-truth-20261018/scripts/report_lane_governance_packet.py",
+      "role": "reviewed source or native test; integrate exact blob",
+      "sha256": "60e344764d208fba89fc1748782cbcd2ccebc6636bae5d6d5ed2bbfea5e77461",
+      "bytes": 33445,
+      "suggested_storage": "gzip losslessly; record stored and original digests/lengths"
+    },
+    {
+      "source_path": "/home/johnclaw/tradeai-wt-n8n-release-receipt-truth-20261018/tests/test_cio_deploy_receipt_truth_20261018.py",
+      "role": "reviewed source or native test; integrate exact blob",
+      "sha256": "c23757ae2eca5ec69d03d1ea30ad03826481ce472edb2db5fdb70819da9aab10",
+      "bytes": 17940,
+      "suggested_storage": "gzip losslessly; record stored and original digests/lengths"
+    }
+  ],
+  "minimum_lossless_artifacts": [
+    {
+      "source_path": "/tmp/n8n-campaign-20261018/release-receipt-truth/implementation-evidence.json",
+      "role": "Historical993 source/contract/red-first attribution; status is historical",
+      "sha256": "8b4f2e35e065c733bbf2154e1b25a480069075723c92ce8a2c88dd4ab144b0a2",
+      "bytes": 10411,
+      "suggested_storage": "gzip losslessly; record stored and original digests/lengths"
+    },
+    {
+      "source_path": "/tmp/n8n-campaign-20261018/release-receipt-truth/consumer-followup-evidence.json",
+      "role": "Finalb358 follow-up contract, evidence attribution and limits",
+      "sha256": "82d4fd49b024b47f206e9e1ccc539d0f977bd3543c5969522cd4e43f9725e9f9",
+      "bytes": 6796,
+      "suggested_storage": "gzip losslessly; record stored and original digests/lengths"
+    },
+    {
+      "source_path": "/tmp/n8n-campaign-20261018/release-receipt-truth/baseline-identity.json",
+      "role": "Exact7af source identities and frozen14 test hash",
+      "sha256": "5aa92b46d14087e09b8f05adcd206a37b28d9de18c79db398851ae61bec7c29d",
+      "bytes": 604,
+      "suggested_storage": "gzip losslessly; record stored and original digests/lengths"
+    },
+    {
+      "source_path": "/tmp/n8n-campaign-20261018/release-receipt-truth/test_receipt_truth_frozen.py",
+      "role": "Frozen14 original assertion identity",
+      "sha256": "2c1c20c16995998f0a80ba538ea0a536e31a926d6e59ad369a3b5ecf91a10bb1",
+      "bytes": 8793,
+      "suggested_storage": "gzip losslessly; record stored and original digests/lengths"
+    },
+    {
+      "source_path": "/tmp/n8n-campaign-20261018/release-receipt-truth/baseline-final-red.xml",
+      "role": "Original14 baseline:12 expected assertion failures+2controls",
+      "sha256": "4edbe52225674e1462b80eb935636a999fc60f4f2b9f8a6ef24db583ce1b1250",
+      "bytes": 17907,
+      "suggested_storage": "gzip losslessly; record stored and original digests/lengths",
+      "recorded_result": {
+        "tests": 14,
+        "failures": 12,
+        "errors": 0,
+        "skipped": 0
+      }
+    },
+    {
+      "source_path": "/tmp/n8n-campaign-20261018/release-receipt-truth/baseline-final-red.txt",
+      "role": "Original14 baseline expected-assertion detail",
+      "sha256": "30f94d49b9002045cecbf38f0b77ae2203f66862dccafe6093b261fb475fc110",
+      "bytes": 15296,
+      "suggested_storage": "gzip losslessly; record stored and original digests/lengths"
+    },
+    {
+      "source_path": "/tmp/n8n-campaign-20261018/release-receipt-truth/consumer-followup-exact-original14.xml",
+      "role": "Same frozen14 green at exact finalb358",
+      "sha256": "90f2a19363c5cb10ed8328d7a2e734531961e82a56b5563894df60cd6ad11140",
+      "bytes": 2406,
+      "suggested_storage": "gzip losslessly; record stored and original digests/lengths",
+      "recorded_result": {
+        "tests": 14,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    },
+    {
+      "source_path": "/tmp/n8n-campaign-20261018/release-receipt-truth/consumer-followup-exact-original14.txt",
+      "role": "Frozen14 final candidate command/result",
+      "sha256": "872e609988cc5ff5d3b67b1327e461e38bab7fbf5f52e658cc508351187dd38d",
+      "bytes": 99,
+      "suggested_storage": "gzip losslessly; record stored and original digests/lengths"
+    },
+    {
+      "source_path": "/tmp/n8n-campaign-20261018/release-receipt-truth/consumer-inventory.json",
+      "role": "Existing actual canonical receipt consumer census",
+      "sha256": "92d528d63fbd2ce3aebb5204de33197292eaab9486348c38ab7af0218dd6a8a3",
+      "bytes": 1846,
+      "suggested_storage": "gzip losslessly; record stored and original digests/lengths"
+    },
+    {
+      "source_path": "/tmp/n8n-campaign-20261018/release-receipt-truth/canonical-scope-proof.json",
+      "role": "Unrelated canonical activation and functions unchanged at993",
+      "sha256": "c62e5310fcd1bad0c765cc47b126f31a7501ab957f8bf903fbbcc2c7b36ad673",
+      "bytes": 289,
+      "suggested_storage": "gzip losslessly; record stored and original digests/lengths"
+    },
+    {
+      "source_path": "/tmp/n8n-campaign-20261018/release-receipt-truth/formatter-proof.json",
+      "role": "Original read-model formatting AST parity",
+      "sha256": "17d10cb57dcb8b87c1e7a1926522323d42d07c977a5f30b8806de77ea37cb723",
+      "bytes": 792,
+      "suggested_storage": "gzip losslessly; record stored and original digests/lengths"
+    },
+    {
+      "source_path": "/tmp/n8n-campaign-20261018/release-receipt-truth/consumer-followup-scope-proof.json",
+      "role": "Final follow-up changes only releases_section semantics",
+      "sha256": "322ca8235fb21ec192270d78f19d22eb26a21424ff14296ad42969dae34683a9",
+      "bytes": 167,
+      "suggested_storage": "gzip losslessly; record stored and original digests/lengths"
+    },
+    {
+      "source_path": "/tmp/n8n-campaign-20261018/cross-review/receiptb358-review.json",
+      "role": "Independent exactb358 scoped source approval and limits",
+      "sha256": "a19a7f476dc6db6032aef23e9d39adb0c4329bf2398f38d7ff98f40caa2cb711",
+      "bytes": 4771,
+      "suggested_storage": "gzip losslessly; record stored and original digests/lengths"
+    },
+    {
+      "source_path": "/tmp/n8n-campaign-20261018/cross-review/test_receipt993_unavailable_independent.py",
+      "role": "Original frozen partial-positive harness preserved without rewriting",
+      "sha256": "a3b8e6a46c55361af07a108c1d36c980553fd1df29c354113816b7a741af2250",
+      "bytes": 1420,
+      "suggested_storage": "gzip losslessly; record stored and original digests/lengths"
+    },
+    {
+      "source_path": "/tmp/n8n-campaign-20261018/cross-review/receipt993-unavailable.xml",
+      "role": "Original2 real negative assertion failures plus incomplete positive",
+      "sha256": "6be6f560fd269e0a4d78b4b8f52e4dd029824d94c7b3836dce53682576018db8",
+      "bytes": 3279,
+      "suggested_storage": "gzip losslessly; record stored and original digests/lengths",
+      "recorded_result": {
+        "tests": 3,
+        "failures": 2,
+        "errors": 0,
+        "skipped": 0
+      }
+    },
+    {
+      "source_path": "/tmp/n8n-campaign-20261018/cross-review/receipt993-fixture-clarification.json",
+      "role": "Explicit supersession of incomplete positive; never counted green",
+      "sha256": "aad3f7801a6a6a488ab5f3645dacfa0358604e1b6bf08601a4a97c41c80121bb",
+      "bytes": 2843,
+      "suggested_storage": "gzip losslessly; record stored and original digests/lengths"
+    },
+    {
+      "source_path": "/tmp/n8n-campaign-20261018/cross-review/test_receipt_truth_complete_independent.py",
+      "role": "Frozen complete ACTUAL993 producer/current-reader primary pair",
+      "sha256": "2ac0587e6ee4c65dfe65c80e4921ddd620660ea90ec00a66bc4fabf02ce36835",
+      "bytes": 2237,
+      "suggested_storage": "gzip losslessly; record stored and original digests/lengths"
+    },
+    {
+      "source_path": "/tmp/n8n-campaign-20261018/cross-review/receipt993-source/identity.json",
+      "role": "Pinned source identities for complete producer pair",
+      "sha256": "6c5ee9a7bf9f715a5ca7a5287dc69adb786217214d97ce894f410f13f87abedc",
+      "bytes": 480,
+      "suggested_storage": "gzip losslessly; record stored and original digests/lengths"
+    },
+    {
+      "source_path": "/tmp/n8n-campaign-20261018/cross-review/receipt993-source/scripts/lib/exact_release_receipt.py",
+      "role": "Actual pinned993 producer imported by frozen pair",
+      "sha256": "03d1548ad7b36d482513688e7c0786b959bb7bf37ebe68f8c7cf33c487aa0755",
+      "bytes": 10762,
+      "suggested_storage": "gzip losslessly; record stored and original digests/lengths"
+    },
+    {
+      "source_path": "/tmp/n8n-campaign-20261018/cross-review/receipt993-source/scripts/report_lane_governance_packet.py",
+      "role": "Actual baseline993 reader for primary red pair",
+      "sha256": "6bdf241b25abeed869d0b82354dd7727d40bf4d770df5016226726099d1c7e2d",
+      "bytes": 30844,
+      "suggested_storage": "gzip losslessly; record stored and original digests/lengths"
+    },
+    {
+      "source_path": "/tmp/n8n-campaign-20261018/cross-review/receipt993-complete-baseline.xml",
+      "role": "Independent baseline complete pair:2 expected assertion errors+actual positive",
+      "sha256": "660472612e19020cf4f07cbd53bb98cf11868ac30e1a9b852be822f2bbe09c22",
+      "bytes": 2704,
+      "suggested_storage": "gzip losslessly; record stored and original digests/lengths",
+      "recorded_result": {
+        "tests": 3,
+        "failures": 2,
+        "errors": 0,
+        "skipped": 0
+      }
+    },
+    {
+      "source_path": "/tmp/n8n-campaign-20261018/release-receipt-truth/consumer-followup-complete-green.xml",
+      "role": "Same complete actual-producer pair final green3",
+      "sha256": "3885e487eaa39c261f887c0f2e2a115657200808921f503759f3fc191fa20f41",
+      "bytes": 697,
+      "suggested_storage": "gzip losslessly; record stored and original digests/lengths",
+      "recorded_result": {
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    },
+    {
+      "source_path": "/tmp/n8n-campaign-20261018/release-receipt-truth/consumer-followup-complete-green.txt",
+      "role": "Complete pair candidate command/result",
+      "sha256": "c2cba0e5b1275bde99432021fd22a26635493fa35d0886fcd5cd38708b0f7cca",
+      "bytes": 98,
+      "suggested_storage": "gzip losslessly; record stored and original digests/lengths"
+    },
+    {
+      "source_path": "/tmp/n8n-campaign-20261018/cross-review/test_receipt_truth_identity_edges_independent.py",
+      "role": "Actual failed-operation CURRENT and missingCURRENT prepare controls",
+      "sha256": "253bfa6e5e2d084f4ab78736b0958eb5ade8a4d099eadbbdb1700eef65c17517",
+      "bytes": 1641,
+      "suggested_storage": "gzip losslessly; record stored and original digests/lengths"
+    },
+    {
+      "source_path": "/tmp/n8n-campaign-20261018/cross-review/receiptb358-independent.xml",
+      "role": "Independent7pass; incomplete positive deliberately excluded, not green",
+      "sha256": "a0159768a02993d1e751d99e051c03d93f6475ad5116be131228adbba1f2a2af",
+      "bytes": 1305,
+      "suggested_storage": "gzip losslessly; record stored and original digests/lengths",
+      "recorded_result": {
+        "tests": 7,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    },
+    {
+      "source_path": "/tmp/n8n-campaign-20261018/cross-review/receiptb358-focused.xml",
+      "role": "Independent61 adjacent/frozen contract regressions",
+      "sha256": "9e4d1f3753c9e208d503c730b9fbea42b66f5521fbe7f7628433cbad383aa9cd",
+      "bytes": 10194,
+      "suggested_storage": "gzip losslessly; record stored and original digests/lengths",
+      "recorded_result": {
+        "tests": 61,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    },
+    {
+      "source_path": "/tmp/n8n-campaign-20261018/release-receipt-truth/consumer-followup-exact-focused.xml",
+      "role": "Author exactb358110 focused evidence",
+      "sha256": "0393255b736ec89156daa5b4f9dda369e2ea5622c94993fc4b7e941a795bd416",
+      "bytes": 16618,
+      "suggested_storage": "gzip losslessly; record stored and original digests/lengths",
+      "recorded_result": {
+        "tests": 110,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    },
+    {
+      "source_path": "/tmp/n8n-campaign-20261018/release-receipt-truth/consumer-followup-exact-focused.txt",
+      "role": "Author exactb358110 command/output",
+      "sha256": "cc5ccbc2ba883173355eb1ce8f037aaac0fce195305a01a868e3f2141c4c1416",
+      "bytes": 180,
+      "suggested_storage": "gzip losslessly; record stored and original digests/lengths"
+    },
+    {
+      "source_path": "/tmp/n8n-campaign-20261018/release-receipt-truth/consumer-malformed-baseline.xml",
+      "role": "Supplementary13 malformed complete-producer cases all expected baseline failures",
+      "sha256": "7445d3d29e74edcf3c7b27da0874b360b3201e587124f1aadf80a4f0a227e5e9",
+      "bytes": 26337,
+      "suggested_storage": "gzip losslessly; record stored and original digests/lengths",
+      "recorded_result": {
+        "tests": 13,
+        "failures": 13,
+        "errors": 0,
+        "skipped": 0
+      }
+    },
+    {
+      "source_path": "/tmp/n8n-campaign-20261018/release-receipt-truth/consumer-malformed-baseline.txt",
+      "role": "Supplementary13 expected assertion messages",
+      "sha256": "514686bf9a12edd94ca9cfe5168d395405b0a19cc2ceac9324f96b8c9bf6bcdd",
+      "bytes": 25451,
+      "suggested_storage": "gzip losslessly; record stored and original digests/lengths"
+    },
+    {
+      "source_path": "/tmp/n8n-campaign-20261018/release-receipt-truth/exact-head-focused.xml",
+      "role": "Historical99397 focused result referenced by original authorpacket",
+      "sha256": "3d795abeb4ac2c413682033d2261a915067c8bcfed3fd674e10bcd91d6e45534",
+      "bytes": 14135,
+      "suggested_storage": "gzip losslessly; record stored and original digests/lengths",
+      "recorded_result": {
+        "tests": 97,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    },
+    {
+      "source_path": "/tmp/n8n-campaign-20261018/release-receipt-truth/shellcheck-baseline-comparison.json",
+      "role": "Existing diagnostics distinguished from new regressions",
+      "sha256": "3cdc2add2f7d973351cdfd0c84fc3e26dc67b923f41f80cb91feaf36c8942de5",
+      "bytes": 3673,
+      "suggested_storage": "gzip losslessly; record stored and original digests/lengths"
+    }
+  ],
+  "minimum_artifact_count": 32,
+  "existing_committed_failed_receipt": {
+    "head": "f198e9f44d05f5d6b639fa8cecd24a4a477ef14f",
+    "path": "docs/implementation/n8n-maturity/campaign-20261018/release-1854/evidence/canonical-rollback-receipt.json",
+    "sha256": "81c9439f1b113416ad53ce9e3b9c3a09602f80ac05ae5256d56a6dc927fd2480",
+    "bytes": 1070,
+    "observed_defect": "Historical rollback receipt says ok=true/rolled_back=false and deployed/content7af despite separate independently observed CURRENT rollbacka2. Preserve bytes, never rewrite.",
+    "retention": "Already committed by PR1857; exact link/hash is sufficient, duplicate only if desired.",
+    "proof_limit": "Historicalreceipt alone cannot prove actualrollback; retain existingrelease1854 CURRENT/service/output readbacks."
+  },
+  "producer_consumer_contract": {
+    "id": "CioExactMainDeployReceipt@v2",
+    "producer": "scripts/cio_phase2_exact_main_deploy.sh::write_deploy_receipt -> fixed scripts/lib/exact_release_receipt.py",
+    "storage": "STATE_DIR/deploy_receipt.json; helper atomic tempfile/fsync/replace; canonicaldefault ~/.local/state/cio-phase2-exact-main",
+    "only_actual_runtime_decoder": "scripts/report_lane_governance_packet.py::releases_section",
+    "other_matching_receipt": "scripts/deploy_portfolio_server.sh writes different RELEASES_BASE/deploy_receipt.json; not canonical state receipt, unchanged",
+    "legacy": "None/v1 readable with legacy_unverified/UNPROVEN identity. CI only boolean outcome with exact full lower-case40 deployedSHA==candidateSHA.",
+    "v2": "Complete fixed producer topfield inventory is closed except optionalpost_merge_ci; AVAILABLE+consistent observedidentity required for deployed/dir/PR and CI. Incomplete/unavailable v2 projects null identity/UNAVAILABLE.",
+    "unsupported": "Unknown major receipt_supported=false and CI UNAVAILABLE; decoder retains raw non-v2 fields for diagnostics, no supported identity assurance.",
+    "failure_semantics": "Operationok=false does not erase valid observed CURRENT or its exactCI. Prepare withoutCURRENT keeps deployment null; attempted target never becomes deployment. Optionalunknown venv staysnull/UNAVAILABLE.",
+    "compatibility": "Native test pins actual7af reader AST and actualnewcanonicalproducer: null identity renders. Old reader cannot enforce new exact CI semantics, so new canonical writer and its sole consumer must ship together. Newreader reads legacy/currentmajor and refuses unknownmajor CI. Additive future fields need actual closed-reader compatibility/version review.",
+    "not_proven": "Declared artifact readback is not authenticated host signature, currentservice/business output, deployment acceptance or grant."
+  },
+  "ci_integration": {
+    "new_native_suite_currently_registered": false,
+    "required_minimal_gate": [
+      "cio_deploy_receipt_truth_20261018",
+      [
+        "tests/test_cio_deploy_receipt_truth_20261018.py"
+      ]
+    ],
+    "existing_adjacent_gates_preserve": {
+      "cogx_w1_foundations": [
+        "tests/test_lane_governance_packet_20261008.py"
+      ],
+      "release_pin_and_validator": [
+        "tests/test_release_pin_and_validator.py"
+      ],
+      "schd_decision_integrity_20260925": [
+        "tests/test_release_grant_binding_20260925.py"
+      ],
+      "release_venv_p0_20261015": [
+        "tests/test_release_venv_p0_20261015.py"
+      ],
+      "release_pin_daemons_20261010": [
+        "tests/test_release_pin_daemons_20261010.py"
+      ]
+    },
+    "dependencies": "Python/pytest/bash/git and pinned7af Gitobject; no Node/npm/provider/broker/DB/credential fixture needed. Native tests use temporary artifacts/CURRENT links and fake shell actions. Existing suite executing CI checkouts use full history; retain it for actual gitshow old-reader test.",
+    "required_after_integration": "Actual gate selector/shard metadata, exacthead focused pair/regressions, all required fullnative/hosted checks, independent CI/docs review. This inventory executes none."
+  },
+  "documentation_needed": [
+    "DRAFT/as_of/Measured-at sourceb358 and historicalproduction evidence separately",
+    "Root-cause oldreceipt vs observedCURRENT distinction and immutable oldreceipt link",
+    "Producer/soleconsumer/versioncompatibility matrix and closed additivefield limits",
+    "Both expected red-first pairs, original incompletepositive superseded/not green,13malformedcases supplementary",
+    "Separate implementation/review/CI/merge/deploy/enabled/operational status; preserve existing authority/cutover/sourcecompensation holds"
+  ],
+  "source_execution": false,
+  "suites_run": false,
+  "runtime_or_grant_actions": false,
+  "shared_files_edits": false,
+  "leases_acquired": false,
+  "tree_clean": true
+}

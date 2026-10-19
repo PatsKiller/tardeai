@@ -285,6 +285,8 @@ def test_a_run_whose_only_claims_were_refused_is_empty_allowed_not_a_p1(env, mon
     alt = tmp_path / "routes.json"
     alt.write_text(json.dumps(routes))
     monkeypatch.setenv("TRADEAI_RUN_ID", f"d:{LANE}:live:20261017T1000")
+    monkeypatch.setenv("TRADEAI_RUN_ATTEMPT", "1")
+    monkeypatch.setenv("TRADEAI_RUN_MODE", "live")
     rc = CLI.main(["--apply", "--ledger", str(env.ledger), "--state-root", str(env.state), "--now", NOW.isoformat(),
                    "--routes", str(alt)])
     doc = json.loads(R.attempt_receipt_path(LANE, f"d:{LANE}:live:20261017T1000", env.state).read_text())
@@ -471,6 +473,8 @@ def _proof_ledger(pk, monkeypatch, delivered: bool) -> None:
         led.close()
     run_id = f"d:{LANE}:live:20261017T1000"
     monkeypatch.setenv("TRADEAI_RUN_ID", run_id)
+    monkeypatch.setenv("TRADEAI_RUN_ATTEMPT", "1")
+    monkeypatch.setenv("TRADEAI_RUN_MODE", "live")
     assert CLI.main(["--apply", "--ledger", str(ledger), "--state-root", str(pk.state)]) == 0
     doc = json.loads(R.attempt_receipt_path(LANE, run_id, pk.state).read_text())
     receipt = {"run_id": run_id, "state": "RUN_DONE", "output_verdict": _verdict(doc, run_id)}

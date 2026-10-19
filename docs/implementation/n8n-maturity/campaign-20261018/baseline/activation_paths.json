@@ -1,0 +1,78 @@
+{
+  "baseline_sha": "3af0a8bdd659e02bf6f493c071800c6a227ae292",
+  "path_inventory_basis": "Tracked shell/Python executable occurrences of n8n import:workflow, publish:workflow, unpublish:workflow, workflow_entity mutations and registry/health stage writers. Runtime operator scripts outside Git not audited here.",
+  "paths": [
+    {
+      "path": "scripts/check_n8n_import_ready.py:169",
+      "kind": "shared import checker",
+      "effective_gate": "framework gate optional default None; basic importer validation mandatory only where caller invokes checker",
+      "gap": "Caller can omit --framework-gate activation; no mutation itself",
+      "minimal_fix": "Make existing framework evaluation mandatory by default; carry exact graph/config/release-bound host evidence/accepted exceptions; missing/unavailable evidence blocks."
+    },
+    {
+      "path": "docs/ops/packets/n8n-fabric-phase1-20261014/00_preflight.sh:34",
+      "kind": "fabric preflight",
+      "effective_gate": "basic import checker, generated graph verify, relay contract",
+      "gap": "omits framework flag; file whole SRC set; current static facts cannot substitute runtime acceptance",
+      "minimal_fix": "shared mandatory checker with exact reviewed file set and manifests"
+    },
+    {
+      "path": "docs/ops/packets/n8n-fabric-phase1-20261014/01_import_inactive.sh:51",
+      "kind": "inactive import/reimport",
+      "effective_gate": "basic checker then state/collision reread and import",
+      "gap": "framework optional omitted; CLI error swallowed by ||true with state readback; activation grant merely nonempty env in packet unless host mechanism validates externally",
+      "minimal_fix": "common admission wrapper validates authentic scoped grant, exact staged bytes and existing shared gate immediately before CLI import; preserve inactive/readback/rollback"
+    },
+    {
+      "path": "docs/ops/packets/n8n-hermes-learning-flow-20261015/01_import_inactive.sh:26",
+      "kind": "Hermes inactive import/reimport",
+      "effective_gate": "preflight basic checker; generated graph verify; inactive row reread",
+      "gap": "optional framework gate omitted; only nonempty TRADEAI_FABRIC_GRANT locally",
+      "minimal_fix": "same shared admission wrapper; exact IDs,digests,grant semantics"
+    },
+    {
+      "path": "docs/ops/packets/n8n-hermes-learning-flow-20261015/03_publish_shadow.sh:30",
+      "kind": "activation/publish",
+      "effective_gate": "preflight inactive row, nonempty grant env, time-window hold",
+      "gap": "no framework gate on exact exported current row immediately before publish; source files and installed row can diverge",
+      "minimal_fix": "export/read actual version -> verify exact reviewed graph/policy digest -> shared gate -> real grant checker -> publish -> export/readback receipt; avoid source-only preflight"
+    },
+    {
+      "path": "docs/ops/packets/n8n-fabric-phase1-20261014/02_proofs.sh:38",
+      "kind": "automatic error-trigger canary activation",
+      "effective_gate": "preflight and grant presence; publish probe",
+      "gap": "same framework/exact-version admission omission",
+      "minimal_fix": "same wrapper; canary requires narrowly reviewed runtime obligations or time-bounded explicit exceptions, actual automatic trigger and host delivery evidence"
+    },
+    {
+      "path": "scripts/n8n_cutover_wave.py:526,547,586",
+      "kind": "apply_plan/cutover_rows/contract_canary stage writers",
+      "effective_gate": "lane_dispatch gates, allowlist validation, reviewed health contract and specific hold checks",
+      "gap": "does not call workflow framework activation gate for affected workflow when stage promoted",
+      "minimal_fix": "reuse shared gate before first affected stage mutation, bind complete cohort/workflow/file before-image set, preserve active holds"
+    },
+    {
+      "path": "scripts/lib/nightly_cutover.py:816 and scripts/nightly_cutover_controller.py:301",
+      "kind": "nightly/manual transaction registry/health promotion",
+      "effective_gate": "qualifying evidence, downstream, drain, P1 sessions, before-images, journal and guard mechanism",
+      "gap": "no unified framework gate; comprehensive48h+natural-cycle+stronger-policy eligibility contract absent at baseline",
+      "minimal_fix": "shared gate in controller before journal mutation intent; same controller for manual and scheduled; expired grant=audited hold, no automatic policy rewriting"
+    },
+    {
+      "path": "scripts/check_n8n_activation_grants.py",
+      "kind": "post-activation attribution collector",
+      "effective_gate": "joins actual activation/import timestamps to grant-log windows and workflow IDs",
+      "gap": "Detects after mutation; cannot enforce admission. Cannot be called activation gate evidence by itself.",
+      "minimal_fix": "retain independent detection; feed immutable evidence after shared admission wrapper, never use attribution as preapproval"
+    },
+    {
+      "path": "n8n native CLI/UI/REST/API mutation paths",
+      "kind": "external runtime surface",
+      "effective_gate": "native n8n authenticated admin authorization plus intended network isolation; no repository runtime admission hook observed",
+      "gap": "Any raw publish or UI activation could bypass scripts; same-uid host compromise can bypass source wrappers",
+      "minimal_fix": "canonical mutation adapter only under scoped authentic grants plus operational restriction/removal of raw mutation authority or supported runtime admission extension. Do not claim source lint confines arbitrary native admin."
+    }
+  ],
+  "shared_gate_residual": "gate_workflow only requires truthy ref+observed_at, not attestation/verdict/expiry/digest binding; exceptions trust operator label and integer PR. Strengthen this existing owner instead of a second verdict engine.",
+  "canonical_authority": "AGENTS14.0 active; framework11.0 \u00a723.24 activation bar and cutover12.0 \u00a723.25 active. No n8n deployment/approval/grant authority created by this audit."
+}

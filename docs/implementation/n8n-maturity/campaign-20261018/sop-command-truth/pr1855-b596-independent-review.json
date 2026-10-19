@@ -1,0 +1,12 @@
+{
+  "schema": "CampaignIndependentSourceReview@v1",
+  "reviewer": "root, not CI follow-up author",
+  "head": "b5967a1d8c2c3249f8c93424e1b61fd27543197f",
+  "verdict": "APPROVED_SCOPED_CI_CORRECTION",
+  "production_source_parity": "All source/tests/apps/config artifacts identical c912; only two workflow files changed",
+  "review": "Three mandatory installs constrained by unchanged production lock and a regular PR checkout ref; all other parsed YAML equal, no removed jobs, check contexts or test commands. PR head, push and scheduled selectors covered. Historic synthetic merge checks are not claimed as exact-head proof.",
+  "tests": "136 registered evidence tests plus four event-selector cases pass in author evidence; all source/artifact digests verified independently",
+  "required_hosted_status": "PENDING_NEW_PUSH_AND_EXACT_HEAD_CHECKS",
+  "runtime_approval": false,
+  "author_packet_sha256": "b3b4647ef920d47d4c51f1390d6ebc874616e17e2a15a32775b7ff6c6c6e0ec5"
+}

@@ -1,0 +1,242 @@
+{
+  "schema": "N8nCampaignImplementationLedger@v1",
+  "campaign_id": "n8n-maturity-20261018",
+  "as_of": "2026-10-18T21:14:32.282146+00:00",
+  "baseline_main": "3af0a8bdd659e02bf6f493c071800c6a227ae292",
+  "served_sha_last_verified": "a2aef7b4d2de17e737526337a2ffc37848deda4f",
+  "operational_maturity_provisional": 2.5,
+  "campaign_qualifying_observation_hours": 0,
+  "next_observation_evaluation": "at reviewed collector installation and first qualifying natural slot; no timestamp inferred before that",
+  "candidates": [
+    {
+      "workstream": "contracts-enforcement",
+      "source_head": "2333c8e1b00f4be3b5fab653bf67d9a42fdcd399",
+      "pr": 1854,
+      "implemented": true,
+      "pushed": true,
+      "merged": true,
+      "deployed": false,
+      "enabled_by_campaign": false,
+      "operationally_proven": false,
+      "state": "merged-main-ci-pending",
+      "evidence": "independent113 +fullnativeacceptance+allrequiredexactheadhostedCI passed beforemerge; exactmerged-SHA push/mainCIpending",
+      "merged_sha": "7af14c7782cf7ab0cba261cc25e6789fe810b092"
+    },
+    {
+      "workstream": "host-attestation",
+      "source_head": "dd396daab5f9cd321dfc6453dac4df50f76b5a85",
+      "pr": null,
+      "implemented": true,
+      "pushed": false,
+      "merged": false,
+      "deployed": false,
+      "enabled_by_campaign": false,
+      "operationally_proven": false,
+      "state": "local",
+      "evidence": "independent80 pass; L5b point parity only; protected trust and isolated signer absent"
+    },
+    {
+      "workstream": "grant-admission",
+      "source_head": "b14bfc542d481499d7bf1efcc4b8147de6332628",
+      "pr": null,
+      "implemented": true,
+      "pushed": false,
+      "merged": false,
+      "deployed": false,
+      "enabled_by_campaign": false,
+      "operationally_proven": false,
+      "state": "local",
+      "evidence": "reviewed fixes to1851; unsafe old packet mutations held, no transactional cutover proof"
+    },
+    {
+      "workstream": "retirement-eligibility",
+      "source_head": "76d4ee0a65cfb6f84ff686abd3ca55338d0e6d09",
+      "pr": null,
+      "implemented": true,
+      "pushed": false,
+      "merged": false,
+      "deployed": false,
+      "enabled_by_campaign": false,
+      "operationally_proven": false,
+      "state": "local",
+      "evidence": "independent78 pass; CLI alwaysheld until authentic interval and tested rollback evidence"
+    },
+    {
+      "workstream": "supervisor-critical",
+      "source_head": "afab1a474dfa52509d57ebd9e9b7923ee2d14352",
+      "pr": null,
+      "implemented": true,
+      "pushed": false,
+      "merged": false,
+      "deployed": false,
+      "enabled_by_campaign": false,
+      "operationally_proven": false,
+      "state": "local",
+      "evidence": "independent33 pass; actual budget history read-only known at snapshot; no live restart"
+    },
+    {
+      "workstream": "siem-recovery",
+      "source_head": "b0f8e62c1490324c94b607a8e3ab8dbd6ff688f2",
+      "pr": null,
+      "implemented": true,
+      "pushed": false,
+      "merged": false,
+      "deployed": false,
+      "enabled_by_campaign": false,
+      "operationally_proven": false,
+      "state": "local",
+      "evidence": "ten initial and eight independent residuals closed; final independent77checks +186regressionspass1existingSkip; scopedsourceapproved"
+    },
+    {
+      "workstream": "comms-generations",
+      "source_head": "2b77fa138d703556f577b9e590a92054cbe727ad",
+      "pr": null,
+      "implemented": true,
+      "pushed": false,
+      "merged": false,
+      "deployed": false,
+      "enabled_by_campaign": false,
+      "operationally_proven": false,
+      "state": "local",
+      "evidence": "eight initial and two independent failures closed;51 independent pass; authenticated ack and send-journal ambiguity remainheld"
+    },
+    {
+      "workstream": "repair-acceptance",
+      "source_head": "96a2c119602cf694155366b148110bf5187cc642",
+      "pr": null,
+      "implemented": true,
+      "pushed": false,
+      "merged": false,
+      "deployed": false,
+      "enabled_by_campaign": false,
+      "operationally_proven": false,
+      "state": "local",
+      "evidence": "15 initial and four independent residuals closed; independent42 pass at exact96a2; legacy acceptance requalification and absolute deadlines required"
+    },
+    {
+      "workstream": "executor-spawn-fence",
+      "source_head": "67e05d7870e4562f74f85d680ec55747e3db9538",
+      "pr": null,
+      "implemented": true,
+      "pushed": false,
+      "merged": false,
+      "deployed": false,
+      "enabled_by_campaign": false,
+      "operationally_proven": false,
+      "state": "local",
+      "evidence": "claim/spawn owner race reproduced and fixed; independent27 pass with actual lock/store and fake child; no live owner switch"
+    },
+    {
+      "workstream": "admission-pause",
+      "source_head": "bddecd9754bb129a6064798e5e465edd5728488e",
+      "pr": null,
+      "implemented": true,
+      "pushed": false,
+      "merged": false,
+      "deployed": false,
+      "enabled_by_campaign": false,
+      "operationally_proven": false,
+      "state": "local",
+      "evidence": "atomic request transaction reads durable host fence; independent16 pass; no runtime fence installed"
+    },
+    {
+      "workstream": "cutover-drain",
+      "source_head": "81849757cea0e442107e8fc5b1fc2157b4dc2c13",
+      "pr": null,
+      "implemented": true,
+      "pushed": false,
+      "merged": false,
+      "deployed": false,
+      "enabled_by_campaign": false,
+      "operationally_proven": false,
+      "state": "local",
+      "evidence": "shared retry/drain ambiguity classifier; actual post-effect FAILED drain regression closed; independent review pending"
+    }
+  ],
+  "business_flows": [
+    {
+      "priority": 1,
+      "process": "evidence-and-drift",
+      "state": "partial-source-held-activation",
+      "existing_observation": "19/19 active graphs matched at18:34:26Z; independent host timers active",
+      "next_acceptance": "fixed signed source collector provisioned under reviewed trust; daily read-only report and independent outage detection; interval coverage remains absent"
+    },
+    {
+      "priority": 2,
+      "process": "hermes-learning-research",
+      "state": "existing-five-receipts-sixth-unproven",
+      "existing_observation": "grader/tag/learning/governor RUN_DONE receipts declared_not_enforced; tune explicit valid no-work; feedback none",
+      "next_acceptance": "enforced outputs for applicable stages, complete exact-version join and consumed research output; no rerun of learning to recreate valid receipts"
+    },
+    {
+      "priority": 3,
+      "process": "news-catalyst-watchlist",
+      "state": "held",
+      "existing_observation": "configured event paths audited; scoped live support and consumed event chain unproven",
+      "next_acceptance": "reviewed closed process contract, duplicate watermark/late/partial/crash tests and bounded canary via real admission; no global live flip"
+    },
+    {
+      "priority": 4,
+      "process": "queue-driven-agents",
+      "state": "held",
+      "existing_observation": "existing workers and owner assets inventoried; no consolidation proof claimed",
+      "next_acceptance": "ready-work lease/backpressure/fairness and queue-age contract with natural consumed output; demonstrate reduced empty polls"
+    },
+    {
+      "priority": 5,
+      "process": "communications",
+      "state": "partial-source-held-activation",
+      "existing_observation": "11ET Telegram58918 delivered, specific CC event lacks providerID; exact source8da/2b77 fixes targeted gap",
+      "next_acceptance": "merged/released generation and recording contracts; authenticated ack source; provider/send-journal ambiguity and concurrent admission resolved before duplicate-delivery acceptance"
+    },
+    {
+      "priority": 6,
+      "process": "data-quality",
+      "state": "reuse-packet-held",
+      "existing_observation": "PR1853 safe subset24 pass; entirePR mixes out-of-scope trading changes and isheld",
+      "next_acceptance": "extract separately reviewed nonfinancial plausibility/missing/stale contract changes; no ATR/stop/target/execution authority change"
+    },
+    {
+      "priority": 7,
+      "process": "maintenance",
+      "state": "planning-verification-only",
+      "existing_observation": "retained systemd assets; no deletion, destructive retention or disk policy ratification",
+      "next_acceptance": "reviewed read-only backup/archive/restore evidence and maintenance plans; destructive execution requires separate authority"
+    }
+  ],
+  "work_in_progress": [
+    "truthful backend/UI full-window coverage",
+    "authenticated host acknowledgement producer and consumers",
+    "transactional cutover saga and post-effect FAILED drain reconciliation"
+  ],
+  "checkpoint": {
+    "C0": "baseline captured; ongoing threat and scope-specific evidence reconciliation",
+    "C1": "partial; executable validation/source fixes, authentic interval/business attestations unavailable",
+    "C2": "core local exact-head acceptance and independent review pass; hostedCI pending",
+    "C3": "no production automatic-trigger recovery drill",
+    "C4": "fixer disarmed; no real qualified release-to-consumed-output proof",
+    "C5": "no campaign cutover; no legacy entry commented",
+    "C6": "not started; no compressed48h/week claim"
+  },
+  "legacy": {
+    "entries_deleted": 0,
+    "entries_commented_by_campaign": 0,
+    "deletion_execution_enabled": false
+  },
+  "authority": {
+    "operator_mandate": "2026-10-18 campaign\u00a71; scoped reviewed exact-head merges conditional on checks",
+    "used_grants": [
+      {
+        "tier": "git-push",
+        "grant_id": "6adcbf0da05642d2aed9bc630ae293c0",
+        "request_id": "b2a135ab306621ef",
+        "head": "2333c8e1b00f4be3b5fab653bf67d9a42fdcd399",
+        "uses_consumed": 1,
+        "expires_at": "2026-10-18T20:42:47Z"
+      }
+    ],
+    "release_grant_requested": false,
+    "activation_grant_requested": false,
+    "no_grant_issuance_by_agent": true
+  }
+}

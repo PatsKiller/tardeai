@@ -1,0 +1,13 @@
+{
+  "base_sha": "ffedd42f89e02a1c2571288e61692584f284aee3",
+  "log_sha256": "cd4829d3110ad9540755676518ecfcc4628512ea8d88e5899c5ece301108a02a",
+  "failed_gates": [
+    "[FAIL] cc_header_truth_v2 (7 files, 15.6s) 1 failed, 137 passed in 15.12s"
+  ],
+  "failed_tests": [
+    "tests/test_api_v2_ruff_quality_corrections.py::test_ruff_format_check_clean_on_api_v2"
+  ],
+  "all_other_gate_lines_pass": true,
+  "no_rerun_performed": true,
+  "original_log_retained": true
+}

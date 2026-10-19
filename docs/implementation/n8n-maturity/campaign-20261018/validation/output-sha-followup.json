@@ -1,0 +1,15 @@
+{
+  "followup_sha": "2475379fc0b2b7b4f68300cc1ffa42cddd19d612",
+  "parent_sha": "3039c56a048fec1cf32087c3500a62c5450b8099",
+  "source_worktree": "/home/johnclaw/tradeai-wt-n8n-maturity-output-contract-20261018",
+  "independent_test": "/tmp/n8n-campaign-20261018/cross-review/test_output_independent.py",
+  "independent_test_sha256": "3491d0eb4b15cab2175752afe974fac16ce7571a54759f45b891737d970a73a6",
+  "before": "output-sha-before.txt:3 expected assertion failures3controls",
+  "after": "output-sha-after.txt:6pass",
+  "regression": "output-sha-final-regression.txt:698pass16.65s",
+  "test_command": "python3 -m pytest -q --noconftest -p no:cacheprovider /tmp/n8n-campaign-20261018/cross-review/test_output_independent.py",
+  "change": "Full lowercase40hex expected and producer code identities required with runtime attempt context; malformed/missing GIT_SHA ->None and fails useful-output proof; no git fallback.",
+  "limitations": "No config/input/artifact/downstream provenance expansion; direct no-runtime-context API retains optional code identity; no production proof/push/merge/deploy.",
+  "git_diff_check": "pass",
+  "lease_released": true
+}

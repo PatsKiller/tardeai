@@ -1,0 +1,564 @@
+{
+  "schema": "N8nCampaignIndependentOutputReview@v1",
+  "candidate_sha": "2475379fc0b2b7b4f68300cc1ffa42cddd19d612",
+  "worktree": "/home/johnclaw/tradeai-wt-n8n-maturity-output-contract-20261018",
+  "verdict": "APPROVED_FOR_SCOPED_CODE_INTEGRATION_ONLY: independent code-version finding closed; operational and CI holds remain",
+  "independence": "Reviewer did not author or edit candidate implementation or candidate tests. Separate comms fixture integration is authored on the reviewer-owned grant branch after this review.",
+  "findings": [
+    {
+      "priority": "P1",
+      "file": "scripts/lib/n8n_output_verdict.py",
+      "line": 200,
+      "finding": "Missing/empty authoritative code_sha bypasses binding; malformed non-SHA values pass if both records match. An opted-in live run remains RUN_DONE/produced without a verifiable code version.",
+      "production_path": "scripts/n8n_run_executor.py _code_sha returns None on missing/unreadable GIT_SHA; apply_output_verdict passes this unknown value to evaluate.",
+      "proof": "test_unavailable_executor_code_version_cannot_look_healthy [None, empty string, not-a-full-version] each failed its expected RUN_FAILED assertion at this exact candidate SHA.",
+      "evidence": "/tmp/n8n-campaign-20261018/cross-review/output-independent.xml",
+      "required_change": "Fail closed for unknown/malformed authoritative code identity on applicable live executor output; retain non-applicable/direct-reader compatibility explicitly. Add regression and rerun same review tests.",
+      "status": "resolved",
+      "resolved_sha": "2475379fc0b2b7b4f68300cc1ffa42cddd19d612",
+      "closure": "Runtime attempt context now requires full lowercase 40-hex authoritative and producer code identities; GIT_SHA loader refuses malformed/missing identity without fallback. Same independent assertions all pass."
+    }
+  ],
+  "validation": [
+    {
+      "suite": "new output truth + n8n audit findings",
+      "result": "118 passed in 1.45s",
+      "artifact": "output-targeted.xml"
+    },
+    {
+      "suite": "CW1-CW5 production producer harnesses + useful-output proof + Hermes tune + comms",
+      "result": "269 passed, 3 expected comms fixture compatibility failures in 7.78s",
+      "artifact": "output-producers.xml",
+      "failure_explanation": "Two old comms fixture sites provide only RUN_ID; missing effective mode makes direct shared verdict unverifiable. One site affects two delivery-proof tests."
+    },
+    {
+      "suite": "independent paired stale/future windows and canonical writer immutability",
+      "result": "3 passed",
+      "artifact": "output-independent.xml"
+    },
+    {
+      "suite": "independent unavailable/malformed authoritative code version",
+      "result": "3 expected-assertion failures",
+      "artifact": "output-independent.xml"
+    },
+    {
+      "suite": "same independent code-version, paired-time and immutable-writer checks",
+      "head": "2475379fc0b2b7b4f68300cc1ffa42cddd19d612",
+      "result": "6 passed in 0.04s",
+      "artifact": "output-sha-followup.xml"
+    },
+    {
+      "suite": "new output truth plus n8n audit findings",
+      "head": "2475379fc0b2b7b4f68300cc1ffa42cddd19d612",
+      "result": "125 passed in 1.45s",
+      "artifact": "output-sha-focused.xml"
+    },
+    {
+      "suite": "comms fixture integration on reviewer-owned grant branch with actual candidate modules preloaded",
+      "head": "15771d61b3bf124268ae971449eac9b92984fe40",
+      "output_head": "3039c56a048fec1cf32087c3500a62c5450b8099",
+      "result": "26 passed in 2.78s",
+      "artifact": "comms-fixture-integration.xml"
+    }
+  ],
+  "positive_findings": [
+    "All 48 currently opted-in allowlist lanes have an expected_output rule; none declares inline retry.",
+    "Missing/unreadable rules fail applicable live lanes without changing non-applicable modes.",
+    "Receipt mode, exact lane/run/attempt, code equality when known, timezone-aware timestamps and executor windows are checked before positive counts count as success.",
+    "Fatal no_runner/lock skips win even with positive counts; explicit contracted empty work remains distinct from failure.",
+    "Actual canonical producer writer uses O_EXCL and preserves attempt bytes while mutable last receipt changes; independent behavioral test passed.",
+    "Existing consumers use persisted executor output_verdict through recovery_validator / n8n_self_heal / self_heal_fixer; no second runtime verdict engine was introduced."
+  ],
+  "producer_inventory": [
+    {
+      "lane_id": "source-attribution-monitor",
+      "producer_argv": [
+        "$PY",
+        "scripts/source_attribution_monitor.py"
+      ],
+      "expected_rule": "min_produced",
+      "inline_retry": null
+    },
+    {
+      "lane_id": "n8n-pilot-dispatch",
+      "producer_argv": [
+        "$PY",
+        "scripts/n8n_pilot_dispatch.py"
+      ],
+      "expected_rule": "per_window",
+      "inline_retry": null
+    },
+    {
+      "lane_id": "n8n-incident-fanin",
+      "producer_argv": [
+        "$PY",
+        "scripts/n8n_incident_fanin.py"
+      ],
+      "expected_rule": "empty_allowed",
+      "inline_retry": null
+    },
+    {
+      "lane_id": "n8n-research-intake-consumer",
+      "producer_argv": [
+        "$PY",
+        "scripts/n8n_research_intake_consumer.py"
+      ],
+      "expected_rule": "empty_allowed",
+      "inline_retry": null
+    },
+    {
+      "lane_id": "crontab-snapshot-for-health-agent",
+      "producer_argv": [
+        "$PY",
+        "scripts/crontab_snapshot_lane.py"
+      ],
+      "expected_rule": "min_produced",
+      "inline_retry": null
+    },
+    {
+      "lane_id": "n8n-comms-intent-consumer",
+      "producer_argv": [
+        "$PY",
+        "scripts/n8n_comms_intent_consumer.py"
+      ],
+      "expected_rule": "empty_allowed",
+      "inline_retry": null
+    },
+    {
+      "lane_id": "materialize-watchlist-strategy-cards",
+      "producer_argv": [
+        "$PY",
+        "scripts/materialize_watchlist_strategy_cards.py"
+      ],
+      "expected_rule": "min_produced",
+      "inline_retry": null
+    },
+    {
+      "lane_id": "hermes-governance-api",
+      "producer_argv": [
+        "$PY",
+        "scripts/hermes_governance_api.py",
+        "--warm"
+      ],
+      "expected_rule": "min_produced",
+      "inline_retry": null
+    },
+    {
+      "lane_id": "journal-tilt-morning-hook",
+      "producer_argv": [
+        "$PY",
+        "scripts/journal_tilt_morning_hook.py"
+      ],
+      "expected_rule": "empty_allowed",
+      "inline_retry": null
+    },
+    {
+      "lane_id": "catalyst-symbol-impact",
+      "producer_argv": [
+        "$PY",
+        "scripts/catalyst_symbol_impact_writer.py"
+      ],
+      "expected_rule": "per_window",
+      "inline_retry": null
+    },
+    {
+      "lane_id": "catalyst-graph",
+      "producer_argv": [
+        "$PY",
+        "scripts/build_catalyst_graph.py"
+      ],
+      "expected_rule": "min_produced",
+      "inline_retry": null
+    },
+    {
+      "lane_id": "hermes-analyst-signal-discovery",
+      "producer_argv": [
+        "$PY",
+        "scripts/hermes_analyst_signal_discovery.py",
+        "--run",
+        "--json"
+      ],
+      "expected_rule": "empty_allowed",
+      "inline_retry": null
+    },
+    {
+      "lane_id": "watchlist-enrichment-sweep",
+      "producer_argv": [
+        "$PY",
+        "scripts/watchlist_enrichment_sweep.py",
+        "--once"
+      ],
+      "expected_rule": "min_produced",
+      "inline_retry": null
+    },
+    {
+      "lane_id": "hermes-news-bridge",
+      "producer_argv": [
+        "$PY",
+        "scripts/hermes_news_bridge.py"
+      ],
+      "expected_rule": "per_window",
+      "inline_retry": null
+    },
+    {
+      "lane_id": "classify-instruments",
+      "producer_argv": [
+        "$PY",
+        "scripts/classify_instruments.py"
+      ],
+      "expected_rule": "min_produced",
+      "inline_retry": null
+    },
+    {
+      "lane_id": "research-insight-extractor",
+      "producer_argv": [
+        "$PY",
+        "scripts/research_insight_extractor.py"
+      ],
+      "expected_rule": "per_window",
+      "inline_retry": null
+    },
+    {
+      "lane_id": "agent-outcome-linker",
+      "producer_argv": [
+        "$PY",
+        "scripts/agent_outcome_linker.py"
+      ],
+      "expected_rule": "per_window",
+      "inline_retry": null
+    },
+    {
+      "lane_id": "update-agent-performance",
+      "producer_argv": [
+        "$PY",
+        "scripts/update_agent_performance.py"
+      ],
+      "expected_rule": "per_window",
+      "inline_retry": null
+    },
+    {
+      "lane_id": "finviz-enrichment",
+      "producer_argv": [
+        "$PY",
+        "scripts/finviz_enrichment.py"
+      ],
+      "expected_rule": "per_window",
+      "inline_retry": null
+    },
+    {
+      "lane_id": "sec-data-ingest",
+      "producer_argv": [
+        "$PY",
+        "scripts/sec_data_ingest.py",
+        "--all"
+      ],
+      "expected_rule": "per_window",
+      "inline_retry": null
+    },
+    {
+      "lane_id": "record-decision-outcome",
+      "producer_argv": [
+        "$PY",
+        "scripts/record_decision_outcome.py"
+      ],
+      "expected_rule": "per_window",
+      "inline_retry": null
+    },
+    {
+      "lane_id": "etf-analyst-enrich",
+      "producer_argv": [
+        "$PY",
+        "scripts/etf_analyst_enrich.py"
+      ],
+      "expected_rule": "min_produced",
+      "inline_retry": null
+    },
+    {
+      "lane_id": "agent-outcome-scorer",
+      "producer_argv": [
+        "$PY",
+        "scripts/agent_outcome_scorer.py"
+      ],
+      "expected_rule": "per_window",
+      "inline_retry": null
+    },
+    {
+      "lane_id": "identity-sweep-stage0",
+      "producer_argv": [
+        "$PY",
+        "scripts/backfill_subject_identity.py",
+        "--all"
+      ],
+      "expected_rule": "empty_allowed",
+      "inline_retry": null
+    },
+    {
+      "lane_id": "feedback-loop-processor",
+      "producer_argv": [
+        "$PY",
+        "scripts/feedback_loop_processor.py"
+      ],
+      "expected_rule": "per_window",
+      "inline_retry": null
+    },
+    {
+      "lane_id": "aegis-social-sentiment",
+      "producer_argv": [
+        "$PY",
+        "scripts/aegis_social_sentiment.py"
+      ],
+      "expected_rule": "per_window",
+      "inline_retry": null
+    },
+    {
+      "lane_id": "aegis-transcript-discovery",
+      "producer_argv": [
+        "$PY",
+        "scripts/aegis_transcript_discovery.py"
+      ],
+      "expected_rule": "per_window",
+      "inline_retry": null
+    },
+    {
+      "lane_id": "hermes-social-sentiment",
+      "producer_argv": [
+        "$PY",
+        "scripts/hermes_social_sentiment.py"
+      ],
+      "expected_rule": "per_window",
+      "inline_retry": null
+    },
+    {
+      "lane_id": "sync-social-to-intelligence",
+      "producer_argv": [
+        "$PY",
+        "scripts/sync_social_to_intelligence.py"
+      ],
+      "expected_rule": "min_produced",
+      "inline_retry": null
+    },
+    {
+      "lane_id": "etf-performance-enrich",
+      "producer_argv": [
+        "$PY",
+        "scripts/etf_performance_enrich.py"
+      ],
+      "expected_rule": "min_produced",
+      "inline_retry": null
+    },
+    {
+      "lane_id": "finviz-screener-runner",
+      "producer_argv": [
+        "$PY",
+        "scripts/finviz_screener_runner.py",
+        "--run"
+      ],
+      "expected_rule": "min_produced",
+      "inline_retry": null
+    },
+    {
+      "lane_id": "daily-incubator-refresh",
+      "producer_argv": [
+        "$PY",
+        "scripts/daily_incubator_refresh.py",
+        "--apply"
+      ],
+      "expected_rule": "per_window",
+      "inline_retry": null
+    },
+    {
+      "lane_id": "weekly-incubator-builder",
+      "producer_argv": [
+        "$PY",
+        "scripts/weekly_incubator_builder.py",
+        "--run-label",
+        "1900",
+        "--apply"
+      ],
+      "expected_rule": "min_produced",
+      "inline_retry": null
+    },
+    {
+      "lane_id": "hermes-momentum-catalyst-scalp",
+      "producer_argv": [
+        "$PY",
+        "scripts/hermes_momentum_catalyst_researcher.py",
+        "--source",
+        "scalp"
+      ],
+      "expected_rule": "per_window",
+      "inline_retry": null
+    },
+    {
+      "lane_id": "finviz-proactive-research",
+      "producer_argv": [
+        "$PY",
+        "scripts/finviz_proactive_research.py",
+        "--max",
+        "400",
+        "--lookback-hours",
+        "12"
+      ],
+      "expected_rule": "per_window",
+      "inline_retry": null
+    },
+    {
+      "lane_id": "material-change-detector-stage1",
+      "producer_argv": [
+        "$PY",
+        "scripts/material_change_detector.py",
+        "--apply"
+      ],
+      "expected_rule": "per_window",
+      "inline_retry": null
+    },
+    {
+      "lane_id": "finviz-sector-research",
+      "producer_argv": [
+        "$PY",
+        "scripts/finviz_sector_research.py"
+      ],
+      "expected_rule": "min_produced",
+      "inline_retry": null
+    },
+    {
+      "lane_id": "commitment-outcome-sweep",
+      "producer_argv": [
+        "$PY",
+        "scripts/sweep_commitment_outcomes.py",
+        "--apply",
+        "--state-root",
+        "/home/johnclaw/trade-ai-state/persistent_wake/state"
+      ],
+      "expected_rule": "per_window",
+      "inline_retry": null
+    },
+    {
+      "lane_id": "proposal-backtest-engine",
+      "producer_argv": [
+        "$PY",
+        "scripts/proposal_backtest_engine.py",
+        "--all-pending",
+        "--apply"
+      ],
+      "expected_rule": "per_window",
+      "inline_retry": null
+    },
+    {
+      "lane_id": "instrument-belief-writer",
+      "producer_argv": [
+        "$PY",
+        "scripts/write_instrument_beliefs.py",
+        "--apply"
+      ],
+      "expected_rule": "empty_allowed",
+      "inline_retry": null
+    },
+    {
+      "lane_id": "document-mentions-backfill",
+      "producer_argv": [
+        "$PY",
+        "scripts/backfill_document_mentions.py",
+        "--all",
+        "--limit",
+        "4000",
+        "--apply"
+      ],
+      "expected_rule": "per_window",
+      "inline_retry": null
+    },
+    {
+      "lane_id": "hermes-learning-autonomous-self-tune",
+      "producer_argv": [
+        "$PY",
+        "scripts/hermes_autonomous_self_tune.py"
+      ],
+      "expected_rule": "empty_allowed",
+      "inline_retry": null
+    },
+    {
+      "lane_id": "opening-intelligence-render",
+      "producer_argv": [
+        "$PY",
+        "scripts/opening_intelligence.py"
+      ],
+      "expected_rule": "per_window",
+      "inline_retry": null
+    },
+    {
+      "lane_id": "hermes-discovery-scorecard",
+      "producer_argv": [
+        "$PY",
+        "scripts/hermes_discovery_scorecard.py"
+      ],
+      "expected_rule": "per_window",
+      "inline_retry": null
+    },
+    {
+      "lane_id": "wire-advisory-lessons",
+      "producer_argv": [
+        "$PY",
+        "scripts/wire_advisory_lessons.py"
+      ],
+      "expected_rule": "per_window",
+      "inline_retry": null
+    },
+    {
+      "lane_id": "incubator-rolloff-engine",
+      "producer_argv": [
+        "$PY",
+        "scripts/incubator_rolloff_engine.py"
+      ],
+      "expected_rule": "per_window",
+      "inline_retry": null
+    },
+    {
+      "lane_id": "pattern-extractor",
+      "producer_argv": [
+        "$PY",
+        "scripts/pattern_extractor.py"
+      ],
+      "expected_rule": "per_window",
+      "inline_retry": null
+    },
+    {
+      "lane_id": "build-symbol-profiles-at-0-19",
+      "producer_argv": [
+        "$PY",
+        "scripts/build_symbol_profiles.py"
+      ],
+      "expected_rule": "empty_allowed",
+      "inline_retry": null
+    }
+  ],
+  "consumer_paths": [
+    "scripts/n8n_run_executor.py apply_output_verdict and upgrade_receipt",
+    "scripts/lib/n8n_fabric_store.py RunOutcomeStore persistence",
+    "scripts/lib/recovery_validator.py",
+    "scripts/lib/n8n_self_heal.py",
+    "scripts/lib/lane_dispatch.py",
+    "scripts/self_heal_fixer.py",
+    "scripts/lib/self_heal_fixer.py",
+    "scripts/check_n8n_workflow_framework.py validate_expected_output"
+  ],
+  "remaining_holds": [
+    "New test file must be registered through parent-owned shared CI GATES integration before merge.",
+    "Artifact existence/digest, config/input watermark and downstream consumption semantics are not implemented by this commit.",
+    "Same-UID O_EXCL receipt files are write-once convention, not cryptographic host attestation or protection against a compromised host process.",
+    "per_window minimum aggregation remains a health-monitor obligation, not implemented by this per-attempt validator.",
+    "Runtime enforcement remains per-lane opt-in outside these 48 entries; this review does not prove all migrated/active lanes are covered.",
+    "No production run, provider effect, notification, broker action, activation, deployment or runtime recovery proof was performed."
+  ],
+  "previous_candidate_sha": "3039c56a048fec1cf32087c3500a62c5450b8099",
+  "baseline_code_version_failure": {
+    "sha": "3af0a8bdd659e02bf6f493c071800c6a227ae292",
+    "artifact": "output-code-version-baseline.xml",
+    "result": "Same 3 expected assertions failed; confirms inherited residual rather than new regression"
+  },
+  "reviewed_followup_files": [
+    "scripts/lib/n8n_output_verdict.py",
+    "scripts/n8n_run_executor.py",
+    "tests/test_n8n_output_contract_truth_20261018.py",
+    "tests/test_n8n_audit_findings_20261015.py"
+  ]
+}

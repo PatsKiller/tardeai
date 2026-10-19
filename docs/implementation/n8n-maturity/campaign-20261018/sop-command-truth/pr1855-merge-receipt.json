@@ -1,0 +1,22 @@
+{
+  "schema": "CampaignMergeReceipt@v1",
+  "pr": {
+    "headRefOid": "b5967a1d8c2c3249f8c93424e1b61fd27543197f",
+    "mergeCommit": {
+      "oid": "b52a1f2fa2f929e9b72d9133b98cf2610ffb9264"
+    },
+    "mergedAt": "2026-10-18T23:37:20Z",
+    "number": 1855,
+    "state": "MERGED",
+    "url": "https://github.com/PatsKiller/tardeai/pull/1855"
+  },
+  "merge_api": {
+    "sha": "b52a1f2fa2f929e9b72d9133b98cf2610ffb9264",
+    "merged": true,
+    "message": "Pull Request successfully merged"
+  },
+  "pre_mutation_authorization": "/tmp/n8n-campaign-20261018/pr1855-final-premerge-authorization.json",
+  "authority": "Current operator campaign authorization; no historical standing approval or invented merge grant",
+  "release_status": "not deployed",
+  "enabled_status": "collectors/signing/activation held; no workflow/owner/cron/config mutation"
+}

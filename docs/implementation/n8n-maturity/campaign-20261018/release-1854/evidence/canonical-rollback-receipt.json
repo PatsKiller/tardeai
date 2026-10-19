@@ -1,0 +1,23 @@
+{
+  "ok": true,
+  "mode": "rollback",
+  "health": "ok",
+  "rolled_back": false,
+  "content_sha": "7af14c7782cf7ab0cba261cc25e6789fe810b092",
+  "deployed_sha": "7af14c7782cf7ab0cba261cc25e6789fe810b092",
+  "source_pr": null,
+  "release_dir": "/home/johnclaw/trade-ai-releases/portfolio-server/7af14c778-main-exact-phase2-20261018-172203",
+  "prev_release": "/home/johnclaw/trade-ai-releases/portfolio-server/a2aef7b4d-main-exact-phase2-20261018-103647",
+  "extra": "rollback_ok",
+  "release_pin_receipt": "/home/johnclaw/.local/state/cio-phase2-exact-main/release_pins/rollback-20261018T220050079324Z.json",
+  "at": "2026-10-18T22:01:12.126813+00:00",
+  "authority": "READ_ONLY_ADVISORY",
+  "script": "cio_phase2_exact_main_deploy.sh",
+  "release_venv": {
+    "venv_id": "py3.14.4-fb161412e10e",
+    "lock_sha256": "fb161412e10e22aa905bc5ca16b8a2b8f4bc92da6b8ed969d6395545dc6bd94f",
+    "python_version": "3.14.4",
+    "venv_python": "/home/johnclaw/trade-ai-releases/portfolio-server/7af14c778-main-exact-phase2-20261018-172203/.venv/bin/python",
+    "action": ""
+  }
+}

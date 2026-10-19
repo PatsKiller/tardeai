@@ -1,0 +1,44 @@
+{
+  "schema": "N8nCampaignReleaseGrantBinding@v1",
+  "request_id": "c7ad285893d82498",
+  "grant_id": "404e00e2acbe4323943835b5eaad498e",
+  "expires_at": "2026-10-18T22:35:23+00:00",
+  "remaining_uses_before_promote": 2,
+  "exact_sha": "7af14c7782cf7ab0cba261cc25e6789fe810b092",
+  "pr": 1854,
+  "manifest_sha256": "4391b65fcb4cca36da1f5dce63c6277c0aedac0718e370fa5399cc1526ad7d5a",
+  "canonical_binding": {
+    "schema": "ReleaseGrantBinding@v1",
+    "allowed": true,
+    "reason": "grant names this release",
+    "grant_id": "404e00e2acbe4323943835b5eaad498e",
+    "matched_by": [
+      "pr:#1854",
+      "sha:7af14c7782cf"
+    ],
+    "pending_request_ids": [],
+    "refused_grants": []
+  },
+  "production_lease": {
+    "lease_id": "4f767bff-2ff9-40b1-8698-38ad417888ab",
+    "session_id": "6beeea5b-7e49-4e84-90f1-dedd7e2cad0c",
+    "agent_id": "codex",
+    "paths": [],
+    "stores": [
+      "portfolio-server-canonical-release"
+    ],
+    "issued_at_utc": 1792358517.9383576,
+    "expires_at_utc": 1792364135.5318158,
+    "heartbeat_s": 60.0,
+    "boot_id": "6f2050e7-2540-4734-a5b9-0065ec568df3",
+    "schema_version": 2,
+    "deployment": true,
+    "production": true,
+    "issued_at_monotonic": 3111578.248373573,
+    "last_heartbeat_monotonic": 3113595.841835329,
+    "schema": "AgentFileLease@v2",
+    "issued_at": 1792358517.9383576,
+    "expires_at": 1792364135.5318158
+  },
+  "checked_at": "2026-10-18T21:55:35.532241+00:00"
+}

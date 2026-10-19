@@ -82,7 +82,8 @@ def test_every_live_packet_gates_relay_apply_and_restarts_only_via_the_hook():
                 "docs/ops/packets/hermes-feedback-cutover-20261017/cutover.sh"):
         text = (ROOT / rel).read_text(encoding="utf-8")
         relay = text.split("\n  relay)", 1)[1].split("\n  ;;", 1)[0].split(";;\n", 1)[0]
-        after_dry = relay.split("DRY RUN", 1)[1]
-        assert "need_grant" in after_dry.split("cp -p", 1)[0] or "need_grant" in relay.split("[[ $APPLY", 1)[0], rel
+        # the invariant: the grant is verified before the first write or restart in the relay step
+        writes = [relay.index(m) for m in ("cp -p", "mv ", "--user restart", "write_live_list", "restart_units") if m in relay]
+        assert writes and "need_grant" in relay and relay.index("need_grant") < min(writes), rel
         code = "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("#"))
         assert "systemctl --user" not in code.replace('"$SYSTEMCTL_BIN" --user', ""), rel
