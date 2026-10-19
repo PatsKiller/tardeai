@@ -24,6 +24,16 @@ import time
 import uuid
 from pathlib import Path
 
+NO_CONSUMER_REASON = (
+    "Host CLI entrypoint: bin/guard id and the need_grant functions in "
+    "docs/ops/packets/comms-intent-consumer-live-20261017/cutover.sh, "
+    "docs/ops/packets/hermes-feedback-cutover-20261017/cutover.sh and "
+    "docs/ops/packets/hermes-tune-cutover-20261017/cutover.sh invoke this file "
+    "through host Python. check_dark_contracts indexes scripts/**/*.py callers; "
+    "these shell CLI callers are outside that corpus, so no Python importer "
+    "is expected."
+)
+
 ROOT = Path(__file__).resolve().parents[2]
 ID_RE = re.compile(r"[0-9a-f]{32}")
 UNITS = ("tradeai-n8n-run-relay.service", "tradeai-n8n-coordination-gateway.service")
