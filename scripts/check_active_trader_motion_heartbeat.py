@@ -61,6 +61,13 @@ SCRIPT = "scripts/check_active_trader_motion_heartbeat.py"
 SCHEMA = "ActiveTraderMotionWatchdog@v1"
 STATE_SCHEMA = "ActiveTraderMotionWatchdogState@v1"
 VERDICT_SCHEMA = "ActiveTraderMotionVerdict@v1"
+# check_dark_contracts: these three schemas are self-contained. The state file is read back only by this checker
+# (band-change dedupe); the verdict leaves through the LaneRunReceipt@v2 receipt (n8n output verdict) and the host
+# comms intent, which consumers read by their own contracts, not by these names.
+NO_CONSUMER_REASON = (
+    "self-contained watchdog: state is read back only by this checker; results reach consumers via the "
+    "LaneRunReceipt@v2 receipt and the host comms intent"
+)
 CONFIG_REL = Path("config") / "active_trader_motion_watchdog.json"
 DEFAULT_STATE_ROOT = Path.home() / "trade-ai-releases" / "persistent-state"
 LEDGER_REL = "data/governance/n8n_coordination_ledger.sqlite"
