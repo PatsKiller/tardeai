@@ -80,7 +80,10 @@
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "Read-only observation 2026-10-08: OpenClaw jobs.json contains enabled legacy job 676c2212-f18a-4913-b96d-e7790b7b173c, but cron/runs has no matching receipt. Generated workflow INDEX.json maps the uninstalled n8n replacement alias to a9b4aece7a8b7c95. This state describes only the replacement, not the enabled legacy job.",
       "output_signal": {
-        "kind": "none"
+        "kind": "none",
+        "reason": "SIGNAL_FREE_EXEMPT",
+        "exempt_since": "2026-10-19",
+        "detail": "SIGNAL-FREE BY NATURE (docs/ops/OUTPUT_SIGNAL_COVERAGE_20261018.md): a calendar reminder fired by the OpenClaw scheduler (kind event); its only effect is the delivered reminder message, recorded by OpenClaw itself (jobs.json lastDeliveryStatus). No Trade AI artifact exists or is needed."
       },
       "note": "Read-only OpenClaw jobs.json/runs observation 2026-10-08: job 676c2212-f18a-4913-b96d-e7790b7b173c enabled. Generated INDEX.json alias openclaw-claude-plan-reminder-week-before, id a9b4aece7a8b7c95; canonical packet/tranche lane openclaw-reminder-claude-plan-1 differs from generated request lane and must be aligned before import. monthly on day 24; legacy state reports lastRunStatus=ok, lastDeliveryStatus=not-requested. Legacy job has not been disabled; registration is not a cutover or a delivery receipt. N6 retained on the OpenClaw scheduler by operator decision 2026-10-09 (AGENTS.md §23.3: n8n must not trigger a sender). Registry has no openclaw scheduler kind; kind event = no host cron/systemd entry to discover (the OpenClaw gateway's internal scheduler fires it), so the lane monitor cannot report it ORPHANED. The generated n8n workflow is never imported."
     },
@@ -101,7 +104,10 @@
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "Read-only observation 2026-10-08: OpenClaw jobs.json contains enabled legacy job 0775cd6b-2186-40fb-9b56-a3e36f6faf14, but cron/runs has no matching receipt. Generated workflow INDEX.json maps the uninstalled n8n replacement alias to 1675d3c97ed9a3d6; its day-28 schedule does not reproduce the legacy last-day schedule.",
       "output_signal": {
-        "kind": "none"
+        "kind": "none",
+        "reason": "SIGNAL_FREE_EXEMPT",
+        "exempt_since": "2026-10-19",
+        "detail": "SIGNAL-FREE BY NATURE (docs/ops/OUTPUT_SIGNAL_COVERAGE_20261018.md): a calendar reminder fired by the OpenClaw scheduler (kind event); its only effect is the delivered reminder message, recorded by OpenClaw itself (jobs.json lastDeliveryStatus). No Trade AI artifact exists or is needed."
       },
       "note": "Read-only OpenClaw jobs.json/runs observation 2026-10-08: job 0775cd6b-2186-40fb-9b56-a3e36f6faf14 enabled. Generated INDEX.json alias openclaw-claude-plan-reminder-last-day, id 1675d3c97ed9a3d6; canonical packet/tranche lane openclaw-reminder-claude-plan-2 differs from generated request lane and must be aligned before import. legacy cadence is 0 9 L * *; generated day 28 is APPROXIMATE, not equivalent; do not activate it as a last-day replacement. Legacy job has not been disabled; registration is not a cutover or a delivery receipt. N6 retained on the OpenClaw scheduler by operator decision 2026-10-09 (AGENTS.md §23.3: n8n must not trigger a sender). Registry has no openclaw scheduler kind; kind event = no host cron/systemd entry to discover (the OpenClaw gateway's internal scheduler fires it), so the lane monitor cannot report it ORPHANED. The generated n8n workflow is never imported."
     },
@@ -122,7 +128,10 @@
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "Read-only observation 2026-10-08: OpenClaw jobs.json contains enabled one-shot legacy job 9a26d34d-b940-4185-9fe1-32403c0b3bc1, but cron/runs has no matching receipt. Generated workflow INDEX.json maps the uninstalled n8n replacement alias to c08d72aee9fba3c1; its annual schedule is not a single-fire replacement.",
       "output_signal": {
-        "kind": "none"
+        "kind": "none",
+        "reason": "SIGNAL_FREE_EXEMPT",
+        "exempt_since": "2026-10-19",
+        "detail": "SIGNAL-FREE BY NATURE (docs/ops/OUTPUT_SIGNAL_COVERAGE_20261018.md): a calendar reminder fired by the OpenClaw scheduler (kind event); its only effect is the delivered reminder message, recorded by OpenClaw itself (jobs.json lastDeliveryStatus). No Trade AI artifact exists or is needed."
       },
       "note": "Read-only OpenClaw jobs.json/runs observation 2026-10-08: job 9a26d34d-b940-4185-9fe1-32403c0b3bc1 enabled. Generated INDEX.json alias openclaw-supergrok-promo-expiry, id c08d72aee9fba3c1; canonical packet/tranche lane openclaw-reminder-supergrok-expiry differs from generated request lane and must be aligned before import. legacy at 2026-10-20T14:00:00Z; generated annual cron needs an explicit one-shot/deactivation guard. Legacy job has not been disabled; registration is not a cutover or a delivery receipt. N6 retained on the OpenClaw scheduler by operator decision 2026-10-09 (AGENTS.md §23.3: n8n must not trigger a sender). Registry has no openclaw scheduler kind; kind event = no host cron/systemd entry to discover (the OpenClaw gateway's internal scheduler fires it), so the lane monitor cannot report it ORPHANED. The generated n8n workflow is never imported."
     },
@@ -143,7 +152,10 @@
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "Read-only observation 2026-10-08: OpenClaw jobs.json contains enabled one-shot legacy job a9c337e0-7a4d-4a83-8089-5aa3bf5f5059, but cron/runs has no matching receipt. Generated workflow INDEX.json maps the uninstalled n8n replacement alias to d28ad5e4adcb021a; its annual schedule is not a single-fire replacement.",
       "output_signal": {
-        "kind": "none"
+        "kind": "none",
+        "reason": "SIGNAL_FREE_EXEMPT",
+        "exempt_since": "2026-10-19",
+        "detail": "SIGNAL-FREE BY NATURE (docs/ops/OUTPUT_SIGNAL_COVERAGE_20261018.md): a calendar reminder fired by the OpenClaw scheduler (kind event); its only effect is the delivered reminder message, recorded by OpenClaw itself (jobs.json lastDeliveryStatus). No Trade AI artifact exists or is needed."
       },
       "note": "Read-only OpenClaw jobs.json/runs observation 2026-10-08: job a9c337e0-7a4d-4a83-8089-5aa3bf5f5059 enabled. Generated INDEX.json alias openclaw-sentinelone-earnings-reminder, id d28ad5e4adcb021a; canonical packet/tranche lane openclaw-reminder-sentinelone-earnings differs from generated request lane and must be aligned before import. legacy at 2026-12-07T13:00:00Z; generated annual cron needs an explicit one-shot/deactivation guard. Legacy job has not been disabled; registration is not a cutover or a delivery receipt. N6 retained on the OpenClaw scheduler by operator decision 2026-10-09 (AGENTS.md §23.3: n8n must not trigger a sender). Registry has no openclaw scheduler kind; kind event = no host cron/systemd entry to discover (the OpenClaw gateway's internal scheduler fires it), so the lane monitor cannot report it ORPHANED. The generated n8n workflow is never imported."
     },
@@ -7755,6 +7767,43 @@
         "class": "monitor",
         "priority": 1,
         "retry_policy": "transient-2"
+      }
+    },
+    {
+      "lane_id": "registry-runtime-truth",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/check_registry_runtime_truth.py",
+        "cadence": "20 7 * * *",
+        "stage": "canary",
+        "wave": "W1"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "state_since": "2026-10-19",
+      "state_reason": "n8n-native measure-only host lane (packet docs/ops/packets/registry-runtime-truth-20261018/; 2026-10-18 external review: five Hermes fabric steps were declared NEVER_SCHEDULED while n8n ran them live and every gate was green). Fired by tradeai-dispatcher daily 07:20 ET (precedent n8n-comms-intent-consumer / heartbeat-watch: stage canary = dispatch live, no cron line ever existed, scheduler.match names the script only for host-conflict detection). scripts/check_registry_runtime_truth.py --apply compares declared registry / contract / allowlist / fabric-process state with host evidence (coordination ledger runs + effect_owners mode=ro, relay live-lane names, crontab -l, n8n workflow_entity SELECT) and writes LaneRunReceipt@v2; when contradictions exist it queues ONE host comms intent (fabric/registry_runtime_contradiction, DIGEST -> P2 via the comms-intent consumer and the incident notifier). It edits nothing it measures. Live only once the operator adds the lane to TRADEAI_N8N_RELAY_LIVE_LANES; until then the relay demotes each fire to dry_run.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/registry-runtime-truth_last.json",
+        "key": "ok_at"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_registry_runtime_truth_20261018.py; first read-only run against the host 2026-10-19 (docs/ops/packets/registry-runtime-truth-20261018/01_first_run.txt); the same checker run against the pre-fix configs of baeda8d16 reports the five Hermes steps as DECLARED_OFF_BUT_RUNS_LIVE / EFFECT_OWNER_N8N_NOT_LIVE / LIVE_LIST_REGISTRY_NOT_LIVE / PROCESS_LIVE_STEP_NOT_ACTIVE (docs/ops/packets/registry-runtime-truth-20261018/02_pre_fix_replay.txt).",
+      "review_by": "2026-10-26",
+      "note": "Reads only. Writes: its receipt, and at most one comms_intents row per run through scripts/lib/host_comms_intents.py (producer registry_runtime_truth; the store's dedupe window and hourly cap apply). Never a sender, never the registry, never the crontab, never n8n (AGENTS.md §0 rule 5: report both sides). Exit 0 completed (contradictions are findings), 1 registry/ledger unreadable (fatal dependency_unavailable). An unreadable crontab / n8n DB / live-lane file is NOT_MEASURED in the receipt, never clean.",
+      "severity": "Low",
+      "dispatch": {
+        "mode": "live",
+        "cron": [
+          "20 7 * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W1",
+        "class": "monitor",
+        "priority": 5,
+        "retry_policy": "none"
       }
     },
     {
@@ -22398,8 +22447,9 @@
       "state": "ACTIVE",
       "output_signal": {
         "kind": "none",
-        "reason": "UNVERIFIED_OUTPUT",
-        "detail": "no scheduler log redirect and no verified script receipt"
+        "reason": "SIGNAL_FREE_EXEMPT",
+        "detail": "SIGNAL-FREE BY NATURE (docs/ops/OUTPUT_SIGNAL_COVERAGE_20261018.md): launchpadlib-cache-clean.timer is an operating-system vendor user unit (owner os, stay_on_cron class os), not a Trade AI producer; it does OS housekeeping and has no per-run artifact to measure. Its unit state is the operator's rul",
+        "exempt_since": "2026-10-19"
       },
       "value_class": "Operationally Important",
       "recommendation": "KEEP_ON_CRON",
@@ -22420,7 +22470,7 @@
       "cadence_basis": "unknown schedule: placeholder 168 h",
       "exec_start": "find ~/.launchpadlib/api.launchpad.net/cache -type f -mtime +30 -delete",
       "flags": [
-        "UNVERIFIED_OUTPUT"
+        "SIGNAL_FREE_EXEMPT"
       ]
     },
     {
@@ -22508,8 +22558,9 @@
       "state": "ACTIVE",
       "output_signal": {
         "kind": "none",
-        "reason": "UNVERIFIED_OUTPUT",
-        "detail": "no scheduler log redirect and no verified script receipt"
+        "reason": "SIGNAL_FREE_EXEMPT",
+        "detail": "SIGNAL-FREE BY NATURE (docs/ops/OUTPUT_SIGNAL_COVERAGE_20261018.md): snap.firmware-updater.firmware-notifier.timer is an operating-system vendor user unit (owner os, stay_on_cron class os), not a Trade AI producer; it does OS housekeeping and has no per-run artifact to measure. Its unit state is the",
+        "exempt_since": "2026-10-19"
       },
       "value_class": "Operationally Important",
       "recommendation": "KEEP_ON_CRON",
@@ -22530,7 +22581,7 @@
       "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
       "exec_start": "/usr/bin/snap run --timer=00:00-24:00/8 firmware-updater.firmware-notifier",
       "flags": [
-        "UNVERIFIED_OUTPUT"
+        "SIGNAL_FREE_EXEMPT"
       ]
     },
     {
@@ -22544,8 +22595,9 @@
       "state": "ACTIVE",
       "output_signal": {
         "kind": "none",
-        "reason": "UNVERIFIED_OUTPUT",
-        "detail": "no scheduler log redirect and no verified script receipt"
+        "reason": "SIGNAL_FREE_EXEMPT",
+        "detail": "SIGNAL-FREE BY NATURE (docs/ops/OUTPUT_SIGNAL_COVERAGE_20261018.md): systemd-tmpfiles-clean.timer is an operating-system vendor user unit (owner os, stay_on_cron class os), not a Trade AI producer; it does OS housekeeping and has no per-run artifact to measure. Its unit state is the operator's rulin",
+        "exempt_since": "2026-10-19"
       },
       "value_class": "OS",
       "recommendation": "KEEP_ON_CRON",
@@ -22579,7 +22631,7 @@
         "source": "operating-system unit"
       },
       "flags": [
-        "UNVERIFIED_OUTPUT"
+        "SIGNAL_FREE_EXEMPT"
       ]
     },
     {
@@ -23162,8 +23214,9 @@
       "state": "ACTIVE",
       "output_signal": {
         "kind": "none",
-        "reason": "UNVERIFIED_OUTPUT",
-        "detail": "no scheduler log redirect and no verified script receipt"
+        "reason": "SIGNAL_FREE_EXEMPT",
+        "detail": "SIGNAL-FREE BY NATURE (docs/ops/OUTPUT_SIGNAL_COVERAGE_20261018.md): ubuntu-insights-collect.timer is an operating-system vendor user unit (owner os, stay_on_cron class os), not a Trade AI producer; it does OS housekeeping and has no per-run artifact to measure. Its unit state is the operator's ruli",
+        "exempt_since": "2026-10-19"
       },
       "value_class": "Operationally Important",
       "recommendation": "KEEP_ON_CRON",
@@ -23184,7 +23237,7 @@
       "cadence_basis": "unknown schedule: placeholder 168 h",
       "exec_start": "/usr/bin/ubuntu-insights collect -p=2629743",
       "flags": [
-        "UNVERIFIED_OUTPUT"
+        "SIGNAL_FREE_EXEMPT"
       ]
     },
     {
@@ -23198,8 +23251,9 @@
       "state": "ACTIVE",
       "output_signal": {
         "kind": "none",
-        "reason": "UNVERIFIED_OUTPUT",
-        "detail": "no scheduler log redirect and no verified script receipt"
+        "reason": "SIGNAL_FREE_EXEMPT",
+        "detail": "SIGNAL-FREE BY NATURE (docs/ops/OUTPUT_SIGNAL_COVERAGE_20261018.md): ubuntu-insights-upload.timer is an operating-system vendor user unit (owner os, stay_on_cron class os), not a Trade AI producer; it does OS housekeeping and has no per-run artifact to measure. Its unit state is the operator's rulin",
+        "exempt_since": "2026-10-19"
       },
       "value_class": "Operationally Important",
       "recommendation": "KEEP_ON_CRON",
@@ -23220,7 +23274,7 @@
       "cadence_basis": "unknown schedule: placeholder 168 h",
       "exec_start": "/usr/bin/ubuntu-insights upload -r",
       "flags": [
-        "UNVERIFIED_OUTPUT"
+        "SIGNAL_FREE_EXEMPT"
       ]
     },
     {

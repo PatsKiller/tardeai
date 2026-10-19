@@ -150,6 +150,15 @@ def validate_row(row: dict[str, Any]) -> list[str]:
         )
     elif sig.get("kind") not in OUTPUT_SIGNAL_KINDS:
         errs.append(f"{lane_id}: output_signal.kind {sig.get('kind')!r} unknown")
+    elif sig.get("reason") == OUTPUT_SIGNAL_EXEMPT_REASON:
+        # 2026-10-19 (docs/ops/OUTPUT_SIGNAL_COVERAGE_20261018.md): an explicit, reviewed exemption — the lane has no
+        # per-run artifact BY NATURE (an OS vendor unit, a one-shot reminder). It must say why and since when, and
+        # only a kind-none signal can be exempt (an exemption never hides a declared artifact).
+        if sig.get("kind") != "none":
+            errs.append(f"{lane_id}: output_signal exempt reason {OUTPUT_SIGNAL_EXEMPT_REASON} needs kind none")
+        if len(str(sig.get("detail") or "").strip()) < 20 or not sig.get("exempt_since"):
+            errs.append(f"{lane_id}: output_signal exempt reason {OUTPUT_SIGNAL_EXEMPT_REASON} needs detail (why) "
+                        "and exempt_since")
 
     if state != STATE_ACTIVE:
         if not row.get("state_reason"):
@@ -238,6 +247,9 @@ SCHEDULER_KINDS = ("cron", "systemd", "event", "none", SCHEDULER_N8N)
 #: Same set as lane_stage_clamp.DISPATCHER_EXPRESSIONS.
 DISPATCHER_ROW_EXPRESSIONS = frozenset({"dispatcher", "tradeai-dispatcher"})
 OUTPUT_SIGNAL_KINDS = ("file_mtime", "json_key", "db_max", "systemd_result", "none")
+#: output_signal {kind: none, reason: SIGNAL_FREE_EXEMPT, detail, exempt_since}: a reviewed, legitimately signal-free
+#: lane (validate_row). Other kind-none reasons (UNVERIFIED_OUTPUT, NO_DURABLE_OUTPUT) are backlog, not exemptions.
+OUTPUT_SIGNAL_EXEMPT_REASON = "SIGNAL_FREE_EXEMPT"
 
 
 def validate_registry(reg: dict[str, Any]) -> list[str]:

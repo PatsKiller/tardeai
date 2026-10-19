@@ -1,0 +1,63 @@
+registry/runtime truth  2026-10-19T15:21:26+00:00  (window 7 d, READ_ONLY_ADVISORY)
+  source coordination_ledger  ok           50 lanes with live RUN_DONE, 37 owners
+  source relay_live_lanes     ok           TRADEAI_N8N_RELAY_LIVE_LANES names only
+  source crontab              ok           338 active lines (text never written to the report)
+  source n8n_workflows        ok           19 active workflows (read-only SELECT)
+  declared: registry_rows 645, lane_contracts 130, allowlist_entries 116, fabric_processes 1
+contradictions: 49  fingerprint 9ba4c999bfe6cccf
+  CONTRACT_STAGE_MISMATCH: 28
+  DECLARED_OFF_BUT_RUNS_LIVE: 5
+  EFFECT_OWNER_N8N_NOT_LIVE: 5
+  LIVE_LIST_REGISTRY_NOT_LIVE: 6
+  PROCESS_LIVE_STEP_NOT_ACTIVE: 5
+  x CONTRACT_STAGE_MISMATCH aegis-social-sentiment: registry stage canary but contract stage shadow
+  x CONTRACT_STAGE_MISMATCH aegis-transcript-discovery: registry stage canary but contract stage shadow
+  x CONTRACT_STAGE_MISMATCH agent-outcome-scorer: registry stage canary but contract stage shadow
+  x CONTRACT_STAGE_MISMATCH build-symbol-profiles-at-0-19: registry stage canary but contract stage shadow
+  x CONTRACT_STAGE_MISMATCH commitment-outcome-sweep: registry stage canary but contract stage shadow
+  x CONTRACT_STAGE_MISMATCH daily-incubator-refresh: registry stage canary but contract stage shadow
+  x CONTRACT_STAGE_MISMATCH document-mentions-backfill: registry stage cutover but contract stage shadow
+  x CONTRACT_STAGE_MISMATCH etf-analyst-enrich: registry stage canary but contract stage shadow
+  x CONTRACT_STAGE_MISMATCH etf-performance-enrich: registry stage canary but contract stage shadow
+  x CONTRACT_STAGE_MISMATCH feedback-loop-processor: registry stage canary but contract stage shadow
+  x CONTRACT_STAGE_MISMATCH finviz-enrichment: registry stage canary but contract stage shadow
+  x CONTRACT_STAGE_MISMATCH finviz-proactive-research: registry stage canary but contract stage shadow
+  x CONTRACT_STAGE_MISMATCH finviz-screener-runner: registry stage canary but contract stage shadow
+  x CONTRACT_STAGE_MISMATCH finviz-sector-research: registry stage canary but contract stage shadow
+  x CONTRACT_STAGE_MISMATCH hermes-momentum-catalyst-scalp: registry stage cutover but contract stage shadow
+  x CONTRACT_STAGE_MISMATCH hermes-social-sentiment: registry stage canary but contract stage shadow
+  x CONTRACT_STAGE_MISMATCH identity-sweep-stage0: registry stage cutover but contract stage shadow
+  x CONTRACT_STAGE_MISMATCH instrument-belief-writer: registry stage canary but contract stage shadow
+  x CONTRACT_STAGE_MISMATCH material-change-detector-stage1: registry stage cutover but contract stage shadow
+  x CONTRACT_STAGE_MISMATCH news-to-catalyst: registry stage shadow but contract stage canary
+  x CONTRACT_STAGE_MISMATCH pattern-extractor: registry stage canary but contract stage shadow
+  x CONTRACT_STAGE_MISMATCH proposal-backtest-engine: registry stage canary but contract stage shadow
+  x CONTRACT_STAGE_MISMATCH record-decision-outcome: registry stage cutover but contract stage shadow
+  x CONTRACT_STAGE_MISMATCH sec-data-ingest: registry stage canary but contract stage shadow
+  x CONTRACT_STAGE_MISMATCH sync-social-to-intelligence: registry stage canary but contract stage shadow
+  x CONTRACT_STAGE_MISMATCH trade-ai-scalp-live: registry stage canary but contract stage shadow
+  x CONTRACT_STAGE_MISMATCH weekly-incubator-builder: registry stage canary but contract stage shadow
+  x CONTRACT_STAGE_MISMATCH wire-advisory-lessons: registry stage cutover but contract stage shadow
+  x DECLARED_OFF_BUT_RUNS_LIVE hermes-learning-autonomous-self-tune: registry state NEVER_SCHEDULED but 3 live RUN_DONE run(s) in the window
+  x DECLARED_OFF_BUT_RUNS_LIVE hermes-learning-config-governor: registry state NEVER_SCHEDULED but 4 live RUN_DONE run(s) in the window
+  x DECLARED_OFF_BUT_RUNS_LIVE hermes-learning-outcome-grader: registry state NEVER_SCHEDULED but 4 live RUN_DONE run(s) in the window
+  x DECLARED_OFF_BUT_RUNS_LIVE hermes-learning-outcome-learning: registry state NEVER_SCHEDULED but 4 live RUN_DONE run(s) in the window
+  x DECLARED_OFF_BUT_RUNS_LIVE hermes-learning-tag-engine: registry state NEVER_SCHEDULED but 4 live RUN_DONE run(s) in the window
+  x EFFECT_OWNER_N8N_NOT_LIVE hermes-learning-autonomous-self-tune: effect owner n8n but registry state NEVER_SCHEDULED stage 'canary'
+  x EFFECT_OWNER_N8N_NOT_LIVE hermes-learning-config-governor: effect owner n8n but registry state NEVER_SCHEDULED stage 'canary'
+  x EFFECT_OWNER_N8N_NOT_LIVE hermes-learning-outcome-grader: effect owner n8n but registry state NEVER_SCHEDULED stage 'canary'
+  x EFFECT_OWNER_N8N_NOT_LIVE hermes-learning-outcome-learning: effect owner n8n but registry state NEVER_SCHEDULED stage 'canary'
+  x EFFECT_OWNER_N8N_NOT_LIVE hermes-learning-tag-engine: effect owner n8n but registry state NEVER_SCHEDULED stage 'canary'
+  x LIVE_LIST_REGISTRY_NOT_LIVE hermes-learning-autonomous-self-tune: on the relay live list but registry state NEVER_SCHEDULED stage 'canary'
+  x LIVE_LIST_REGISTRY_NOT_LIVE hermes-learning-config-governor: on the relay live list but registry state NEVER_SCHEDULED stage 'canary'
+  x LIVE_LIST_REGISTRY_NOT_LIVE hermes-learning-outcome-grader: on the relay live list but registry state NEVER_SCHEDULED stage 'canary'
+  x LIVE_LIST_REGISTRY_NOT_LIVE hermes-learning-outcome-learning: on the relay live list but registry state NEVER_SCHEDULED stage 'canary'
+  x LIVE_LIST_REGISTRY_NOT_LIVE hermes-learning-tag-engine: on the relay live list but registry state NEVER_SCHEDULED stage 'canary'
+  x LIVE_LIST_REGISTRY_NOT_LIVE maturity-remeasure: on the relay live list but registry state ACTIVE stage 'shadow'
+  x PROCESS_LIVE_STEP_NOT_ACTIVE hermes-learning-autonomous-self-tune: fabric process hermes-learning mode live, step autonomous_self_tune has live_arg, registry state NEVER_SCHEDULED
+  x PROCESS_LIVE_STEP_NOT_ACTIVE hermes-learning-config-governor: fabric process hermes-learning mode live, step config_governor has live_arg, registry state NEVER_SCHEDULED
+  x PROCESS_LIVE_STEP_NOT_ACTIVE hermes-learning-outcome-grader: fabric process hermes-learning mode live, step outcome_grader has live_arg, registry state NEVER_SCHEDULED
+  x PROCESS_LIVE_STEP_NOT_ACTIVE hermes-learning-outcome-learning: fabric process hermes-learning mode live, step outcome_learning has live_arg, registry state NEVER_SCHEDULED
+  x PROCESS_LIVE_STEP_NOT_ACTIVE hermes-learning-tag-engine: fabric process hermes-learning mode live, step tag_engine has live_arg, registry state NEVER_SCHEDULED
+accepted debt (not contradictions): LIVE_LIST_CONTRACT_GRANDFATHERED_DRAFT crontab-snapshot-for-health-agent, LIVE_LIST_CONTRACT_GRANDFATHERED_DRAFT maturity-remeasure, LIVE_LIST_CONTRACT_GRANDFATHERED_DRAFT n8n-incident-fanin, LIVE_LIST_CONTRACT_GRANDFATHERED_DRAFT n8n-pilot-dispatch, LIVE_LIST_CONTRACT_GRANDFATHERED_DRAFT n8n-research-intake-consumer
+DRY-RUN {"dry_run": true, "lane_id": "registry-runtime-truth", "summary": {"by_code": {"CONTRACT_STAGE_MISMATCH": 28, "DECLARED_OFF_BUT_RUNS_LIVE": 5, "EFFECT_OWNER_N8N_NOT_LIVE": 5, "LIVE_LIST_REGISTRY_NOT_LIVE": 6, "PROCESS_LIVE_STEP_NOT_ACTIVE": 5}, "contradiction_count": 49, "error": null, "fingerprint": "9ba4c999bfe6cccf", "not_measured": []}, "would_write": ["/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/registry-runtime-truth_last.json", "host comms intent fabric/registry_runtime_contradiction (DIGEST)"], "would_write_receipt": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/registry-runtime-truth_last.json"}

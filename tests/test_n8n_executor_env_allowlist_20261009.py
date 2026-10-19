@@ -609,4 +609,7 @@ def test_lane_mode_counts_match_the_pr():
     # 2026-10-15 (n8nfab/comms-intent-consumer-20261015): + n8n-comms-intent-consumer, enforced from its first entry
     # (shadow, live_arg null); its literal closure inventory is checked above. 11 + 1 = 12.
     assert LANES["n8n-comms-intent-consumer"]["env_allowlist_mode"] == "enforce"
-    assert modes.count("enforce") == 12 and modes.count("report") == len(LANES) - 12
+    # 2026-10-19 (registry-runtime-truth, tests/test_registry_runtime_truth_20261018.py): + registry-runtime-truth,
+    # enforced from its first entry; its literal closure inventory is checked above. 12 + 1 = 13.
+    assert LANES["registry-runtime-truth"]["env_allowlist_mode"] == "enforce"
+    assert modes.count("enforce") == 13 and modes.count("report") == len(LANES) - 13

@@ -67,6 +67,13 @@ GATES = [
     # expected_output, staged effect key); LaneRunReceipt@v2 produced / empty_allowed / fatal dependency_unavailable via
     # the real CLI; idempotent rerun; the operator packet against fake systemctl/docker/proc. Hermetic: tmp ledgers.
     ("comms_intent_consumer_live_20261017", ["tests/test_comms_intent_consumer_live_20261017.py"]),
+    # ANCHOR: REGISTRY_RUNTIME_TRUTH_20261018 — external review 2026-10-18: five Hermes fabric steps declared
+    # NEVER_SCHEDULED while n8n ran them live. Pins the reconciliation (ACTIVE at canary, contracts canary, feedback held,
+    # parent effect_ownership), the fabric INDEX known ids, scripts/check_registry_runtime_truth.py's contradiction rules
+    # (pre-fix shape caught, dual-state not flagged, unreadable source NOT_MEASURED), dry run writes nothing, apply
+    # writes LaneRunReceipt@v2 + one deduped DIGEST host intent, the registry-runtime-truth lane, and the
+    # SIGNAL_FREE_EXEMPT output-signal exemptions. Hermetic: tmp ledgers/state roots, fixture repo roots.
+    ("registry_runtime_truth_20261018", ["tests/test_registry_runtime_truth_20261018.py"]),
     # Feedback's future queue-only capability does not enable its held sixth stage.
     # Exercise actual authenticated admission and executor stage clamping, with fake effects.
     ("hermes_feedback_hold_20261018", ["tests/test_hermes_feedback_hold_20261018.py"]),

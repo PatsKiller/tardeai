@@ -1920,6 +1920,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/OPERATOR_CLOSE_BRIEF_AEC_MATURITY_2026-09-20.md` | Operator close brief — Trade AI AEC maturity goal | review_required | OK | `563472683d55` |
 | `docs/ops/OPERATOR_DEPLOYMENT_REQUIRED.md` | OPERATOR_DEPLOYMENT_REQUIRED | review_required | OK | `ad67ce75eb83` |
 | `docs/ops/OPTIONS_SCAN_CAPACITY_2026-10-05.md` | Options coverage and scan capacity — 2026-10-05 | review_required | OK | `caa0b49b7f1d` |
+| `docs/ops/OUTPUT_SIGNAL_COVERAGE_20261018.md` | Output-signal coverage — ACTIVE lanes with no output signal (2026-10-18 review, recounted 2026-10-19) | review_required | OK | `9beb66364332` |
 | `docs/ops/PHASE189D_HEALTH_AGENT_MISSING_STOP_FAILURE_ANALYSIS.md` | PHASE 189D — Health-Agent Missing-Stop Failure Analysis | review_required | OK | `57b472ac277f` |
 | `docs/ops/PHASE190D_HEALTH_AGENT_PROTECTION_ALERT_ROUTING_FIX.md` | PHASE 190D — Health-Agent Protection Alert Routing Fix | review_required | OK | `8f174ca4e015` |
 | `docs/ops/PHONE_OPS_20261009.md` | Phone operations for the operator on ms01-openclaw (2026-10-09) | review_required | OK | `d836347d0b19` |
@@ -2054,6 +2055,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/packets/n8n-process-consolidation-cohort2-20261016/README.md` | n8n process consolidation, cohort 2 (2026-10-16): Hermes learning consumers fire on verified learning | review_required | MISSING HEADER | `2596f2ae9efb` |
 | `docs/ops/packets/n8n-shadow-wave-ld-w1-20261015/README.md` | n8n shadow wave LD-W1 (2026-10-15): operator packet | review_required | MISSING HEADER | `1bb88e10b921` |
 | `docs/ops/packets/nightly-cutover-controller-20261016/README.md` | Nightly cutover controller 2026-10-16: an enforced state machine for the approved n8n cutover | review_required | OK | `f5b06ec19aa4` |
+| `docs/ops/packets/registry-runtime-truth-20261018/README.md` | Registry / runtime truth — packet (review 2026-10-18, built 2026-10-19) | review_required | OK | `9aaceb5508f9` |
 | `docs/ops/packets/release-windows-20261016/README.md` | Release windows, 12:00 and 17:30 America/New_York | review_required | OK | `3d2b28b4d9b6` |
 | `docs/ops/packets/research-insights-unique-index-20261015/README.md` | Packet: UNIQUE index on research_insights(source_reference) (DDL, NOT APPLIED) | review_required | MISSING HEADER | `f53f51854f25` |
 | `docs/ops/packets/run-from-release-cohort1-20261015/03_apply.md` | Apply cohort 1 (operator) | review_required | MISSING HEADER | `d4a73a6cda5c` |
