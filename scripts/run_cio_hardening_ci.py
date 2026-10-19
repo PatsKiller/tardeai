@@ -1754,6 +1754,8 @@ GATES = [
             "tests/test_finviz_cookie_classification.py",
         ],
     ),
+    # Reject contradictory/off-scale analyst recommendations at cache and DB admission.
+    ("analyst_recom_data_quality_20261018", ["tests/test_analyst_recom_data_quality_20261018.py"]),
     # A dead FINVIZ_COOKIE with a working FINVIZ_API_TOKEN is healthy (rotation note),
     # never "screener empty"; degraded only when both fail; no secret in any record.
     (
