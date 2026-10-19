@@ -1,0 +1,25 @@
+{
+  "status": "DRAFT_SOURCE_CORRECTION_NEW_HEAD_ACCEPTANCE_PENDING",
+  "as_of": "2026-10-19T14:26:44.345650+00:00",
+  "measured_at": {
+    "original_head": "9730c47b146e8350cc5f4ea37eb88b775749ac1e",
+    "reviewed_source_correction": "90c00968d566c497b10674738403e505b2a7e492"
+  },
+  "candidate": "health-budget",
+  "change": "Only the independently reviewed NO_CONSUMER_REASON constant identifying real host shell CLI callers beyond the Python inventory corpus",
+  "all_other_production_schema_CI_test_bytes_unchanged": true,
+  "all_other_module_AST_identical": true,
+  "evidence": {
+    "path": "upstream-90c-evidence.json.gz",
+    "encoding": "gzip+json+base64-member-bytes",
+    "sha256": "f7fa39a959a5d41942651b579bd77c0ac5a90db049ce7faa4cd1a125a6a07448",
+    "bytes": 19719,
+    "uncompressed_sha256": "5e84bb2f6e4de485016988a689eb8544a11a114dc4aaad132f0cf8f2456ad6ba",
+    "uncompressed_bytes": 84807
+  },
+  "historical_evidence_scope": "The archive measures90c source focused tests and its original ffead baseline only; it does not qualify this new head or establish production/runtime proof",
+  "new_head_focused_tests": "Pending at documentation capture; immutable final-head results will be published separately",
+  "new_head_native_acceptance": "NOT_RUN",
+  "authority_runtime_changes": false,
+  "existing_holds": "Preserved; no activation, grant, delivery, scheduler, effect, release or deletion action"
+}
