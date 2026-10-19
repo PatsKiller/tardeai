@@ -137,7 +137,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/_evidence/runtime-convergence/20261008T215341Z/21-validation.md` | Source validation — 2026-10-08 | review_required | MISSING HEADER | `746c0fb2e84e` |
 | `docs/_findings/ACTIVE_TRADER_LIVE_MOTION_UI_v1.md` | Active Trader Live Motion UI v1 — Findings | review_required | OK | `717dc60f22b3` |
 | `docs/_findings/ACTIVE_TRADER_MOTION_ENDPOINT_v1.md` | Active Trader Live Motion Endpoint — v1 | review_required | OK | `94039d627891` |
-| `docs/_findings/ACTIVE_TRADER_MOTION_RUNTIME_v1.md` | Active Trader Motion Runtime v1 | review_required | OK | `46e9810a264c` |
+| `docs/_findings/ACTIVE_TRADER_MOTION_RUNTIME_v1.md` | Active Trader Motion Runtime v1 | review_required | OK | `0a0c1764527f` |
 | `docs/_findings/ALEX_AUTONOMY_GROUND_TRUTH_2026-08-21.md` | Phase 0 Ground Truth — Alex Autonomy Maturation | review_required | OK | `e28efc326b18` |
 | `docs/_findings/BETA_WATCHLIST_TRUST_INCIDENT_2026-07-20.md` | BETA Watchlist Trust Incident — 2026-07-20 | review_required | OK | `e0ab2cb96346` |
 | `docs/_findings/CSCO_COVERED_CALL_INCIDENT_2026-07-20.md` | CSCO Covered-Call Incident — 2026-07-20 | review_required | OK | `e13df056b408` |
@@ -2031,6 +2031,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/measurements/n8n-cutover-20261016T195110Z/REPORT.md` | n8n cutover outcomes — 2026-10-16T19:51:10+00:00 | review_required | OK | `04c9f08bfc36` |
 | `docs/ops/n8n_self_healing.md` | n8n self-healing: how a lane failure is handled, end to end (2026-10-16) | review_required | OK | `22e73197f35b` |
 | `docs/ops/openclaw_stage2_soul_patch_20260923.md` | OpenClaw Maria SOUL / skill patch — Stage 2 (specialist honesty) | review_required | OK | `d0a83ec99d47` |
+| `docs/ops/packets/active-trader-motion-n8n-20261019/AGENTS_PATCH_DRAFT.md` | DRAFT: AGENTS.md PATCH for the motion marker path (not applied) | review_required | OK | `cc380c6d4001` |
+| `docs/ops/packets/active-trader-motion-n8n-20261019/README.md` | Active Trader motion runtime back up, supervised by n8n (2026-10-19) | review_required | OK | `7d46b38d6aab` |
 | `docs/ops/packets/comms-intent-consumer-live-20261017/README.md` | comms-intent consumer LIVE on the n8n fabric (2026-10-17) | review_required | OK | `b0c1cc0322ae` |
 | `docs/ops/packets/consolidation-health-audit-c3-20261015/README.md` | consolidation-health-audit-c3-20261015: CONSOLIDATE wave C3, operator packet | review_required | MISSING HEADER | `5ec104b01e81` |
 | `docs/ops/packets/cron-effect-claim-wrap-20261016/README.md` | Cron effect-claim wrap 2026-10-16: the cron copy refuses itself when n8n owns the lane | review_required | OK | `92fe7e6c08fc` |

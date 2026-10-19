@@ -76,8 +76,34 @@ _REVIEWED_NEW_MODULES = {
     "momentum-cache-reconcile": _REVIEWED_NEW_COMMON_MODULES | {"scripts/momentum_cache_reconcile.py"},
     "momentum-lifecycle-monitor": _REVIEWED_NEW_COMMON_MODULES
     | {"scripts/market_session.py", "scripts/n8n_momentum_lifecycle.py"},
+    # 2026-10-19 (operator: n8n owns the motion runtime's supervision): the watchdog's closure is the gateway closure
+    # above (reached through n8n_coordination_ledger's lazy EDGES import via lib/host_comms_intents.py) plus six
+    # reviewed modules: stdlib-only calendar (cio_market_session), the host intent queue, the receipt writer and its
+    # two path helpers. Literal reads only; no credential, no network, no subprocess.
+    "active-trader-motion-watchdog": _REVIEWED_NEW_COMMON_MODULES
+    | {
+        "scripts/check_active_trader_motion_heartbeat.py",
+        "scripts/lib/atomic_json_store.py",
+        "scripts/lib/cio_market_session.py",
+        "scripts/lib/host_comms_intents.py",
+        "scripts/lib/lane_last_receipt.py",
+        "scripts/lib/persistent_state_root.py",
+    },
 }
 _REVIEWED_NEW_READS = frozenset({"TRADEAI_GOVERNED_BRIDGE_URL", "TRADEAI_STATE_ROOT"})
+#: Per-lane literal read inventories where a reviewed lane reads more than the shared set (2026-10-19).
+_REVIEWED_NEW_READS_BY_LANE = {
+    "active-trader-motion-watchdog": _REVIEWED_NEW_READS
+    | {
+        "TRADEAI_N8N_COORDINATION_LEDGER",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        # set by the executor on every child (CHILD_ENV_BASE_NAMES), read by lib/lane_last_receipt.py
+        "TRADEAI_CODE_SHA",
+        "TRADEAI_RUN_ATTEMPT",
+        "TRADEAI_RUN_ID",
+        "TRADEAI_RUN_MODE",
+    },
+}
 
 
 def environment(mode: str | None = "enforce") -> dict[str, str]:
@@ -551,7 +577,7 @@ def _assert_reviewed_new_closure(lane_id: str, visited: set[Path], reads: set[st
     assert {p.relative_to(ROOT).as_posix() for p in visited} == _REVIEWED_NEW_MODULES[lane_id], (
         f"{lane_id}: recursive module inventory drift; re-inventory before enforcing"
     )
-    assert reads == _REVIEWED_NEW_READS, (
+    assert reads == _REVIEWED_NEW_READS_BY_LANE.get(lane_id, _REVIEWED_NEW_READS), (
         f"{lane_id}: literal environment inventory drift; re-inventory before enforcing"
     )
 
@@ -560,7 +586,7 @@ def _assert_reviewed_new_closure(lane_id: str, visited: set[Path], reads: set[st
 @pytest.mark.parametrize("extra", ["module", "env_read"])
 def test_reviewed_new_closures_refuse_unexpected_modules_or_environment_reads(lane_id, extra):
     visited = {ROOT / path for path in _REVIEWED_NEW_MODULES[lane_id]}
-    reads = set(_REVIEWED_NEW_READS)
+    reads = set(_REVIEWED_NEW_READS_BY_LANE.get(lane_id, _REVIEWED_NEW_READS))
     if extra == "module":
         visited.add(ROOT / "scripts/unreviewed_fixture_module.py")
     else:
@@ -609,4 +635,7 @@ def test_lane_mode_counts_match_the_pr():
     # 2026-10-15 (n8nfab/comms-intent-consumer-20261015): + n8n-comms-intent-consumer, enforced from its first entry
     # (shadow, live_arg null); its literal closure inventory is checked above. 11 + 1 = 12.
     assert LANES["n8n-comms-intent-consumer"]["env_allowlist_mode"] == "enforce"
-    assert modes.count("enforce") == 12 and modes.count("report") == len(LANES) - 12
+    # 2026-10-19: + active-trader-motion-watchdog, enforced from its first entry; its recursive closure and literal
+    # reads are pinned in _REVIEWED_NEW_MODULES / _REVIEWED_NEW_READS_BY_LANE. 12 + 1 = 13.
+    assert LANES["active-trader-motion-watchdog"]["env_allowlist_mode"] == "enforce"
+    assert modes.count("enforce") == 13 and modes.count("report") == len(LANES) - 13

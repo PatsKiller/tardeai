@@ -32,6 +32,7 @@ if str(ROOT / "tests") not in sys.path:
 from support import n8n_cutover_waves as CW  # noqa: E402
 from tests.support import hermes_learning_cutover as HL  # noqa: E402
 from tests.support import comms_intent_consumer_live as CIL  # noqa: E402
+from tests.support import active_trader_motion_watchdog as ATMW  # noqa: E402
 
 from scripts import n8n_run_executor as X  # noqa: E402
 from scripts.lib import effect_claim as E  # noqa: E402
@@ -125,6 +126,9 @@ def _scope() -> set[str]:
     # comms-intent consumer live 2026-10-17 (tests/support/comms_intent_consumer_live.py): n8n-native, no cron side,
     # idempotent per intent; reviewed by tests/test_comms_intent_consumer_live_20261017.py, not keyed.
     canary -= set(CIL.LIVE)
+    # 2026-10-19 active-trader-motion-watchdog (tests/support/active_trader_motion_watchdog.py): n8n-native, no cron
+    # side, one intent per band change; reviewed by tests/test_active_trader_motion_watchdog_20261019.py, not keyed.
+    canary -= set(ATMW.LIVE)
     return set(RELAY_LIVE) | set(TIER_A) | set(TIER_B) | canary
 
 

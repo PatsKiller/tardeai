@@ -494,6 +494,33 @@
       "output_receipt": "v2"
     },
     {
+      "lane_id": "active-trader-motion-watchdog",
+      "env_names": [
+        "TRADEAI_GOVERNED_BRIDGE_URL",
+        "TRADEAI_N8N_COORDINATION_LEDGER",
+        "TRADEAI_PERSISTENT_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "enforce",
+      "env_evidence": "scripts/check_active_trader_motion_heartbeat.py reads TRADEAI_STATE_ROOT (executor base) and TRADEAI_N8N_COORDINATION_LEDGER; lib/persistent_state_root.py (via lane_last_receipt) reads TRADEAI_PERSISTENT_STATE_ROOT, a path; lib/host_comms_intents.py -> lib/n8n_coordination_ledger.py lazily imports the gateway lib (EDGES), whose closure reads TRADEAI_GOVERNED_BRIDGE_URL, a loopback URL (the reviewed gateway closure of tests/test_n8n_executor_env_allowlist_20261009.py _REVIEWED_NEW_COMMON_MODULES). No credential is read. Reads the motion heartbeat file, /proc/<pid>/cmdline (never environ) and the existence of /etc/tradeai/enable-active-trader-motion. No DB, no network, no subprocess, no send, no systemctl.",
+      "source": "n8n-native host lane (operator decision 2026-10-19: n8n owns the supervision of the motion runtime; packet docs/ops/packets/active-trader-motion-n8n-20261019): fired by tradeai-dispatcher at */5; no cron line, no unit, so the lock is the lane's own. CANARY: live_arg [\"--apply\"] (state file + LaneRunReceipt + one comms_intents row per band change); dry_run_arg --dry-run (prints the verdict, writes nothing) kept for clamp/rollback. Sends nothing; restarts nothing.",
+      "command": [
+        "$PY",
+        "scripts/check_active_trader_motion_heartbeat.py"
+      ],
+      "lock": "/tmp/tradeai_active_trader_motion_watchdog.lock",
+      "lock_kind": "flock",
+      "timeout_s": 60,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": [
+        "--apply"
+      ],
+      "market_gate": false,
+      "output_signal": "data/runtime/active-trader-motion-watchdog_last.json",
+      "output_receipt": "v2"
+    },
+    {
       "lane_id": "backup-verify",
       "env_names": [
         "DB_HOST",
