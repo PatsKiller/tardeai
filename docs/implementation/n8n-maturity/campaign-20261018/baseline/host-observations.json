@@ -1,0 +1,76 @@
+{
+  "schema": "N8nCampaignHostObservation@v1",
+  "recorded_at": "2026-10-18T19:40:23.273369+00:00",
+  "provenance": "operator-host read-only tools; unsigned historical audit, not authority-bearing attestation",
+  "served_sha": "a2aef7b4d2de17e737526337a2ffc37848deda4f",
+  "served_artifact": "/home/johnclaw/trade-ai-releases/portfolio-server/a2aef7b4d-main-exact-phase2-20261018-103647",
+  "services": {
+    "portfolio-server.service": {
+      "LoadState": "loaded",
+      "ActiveState": "active",
+      "SubState": "running",
+      "MainPID": 3761110
+    },
+    "tradeai-n8n-coordination-gateway.service": {
+      "LoadState": "loaded",
+      "ActiveState": "active",
+      "SubState": "running",
+      "MainPID": 3764891
+    },
+    "tradeai-n8n-run-relay.service": {
+      "LoadState": "loaded",
+      "ActiveState": "active",
+      "SubState": "running",
+      "MainPID": 3764861
+    },
+    "tradeai-n8n-run-executor.service": {
+      "LoadState": "loaded",
+      "ActiveState": "active",
+      "SubState": "running",
+      "MainPID": 3761963
+    },
+    "cio-governed-bridge.service": {
+      "LoadState": "loaded",
+      "ActiveState": "active",
+      "SubState": "running",
+      "MainPID": 3761395
+    }
+  },
+  "independent_timers": {
+    "tradeai-n8n-lab-watchdog.timer": {
+      "ActiveState": "active",
+      "SubState": "waiting"
+    },
+    "tradeai-supervisor-breach-detector.timer": {
+      "ActiveState": "active",
+      "SubState": "waiting"
+    },
+    "tradeai-health-tick.timer": {
+      "ActiveState": "active",
+      "SubState": "waiting"
+    }
+  },
+  "cc": {
+    "tailnet_dns": "UNAVAILABLE",
+    "correct_tls_hostname_resolved_to_verified_tailnet_ip": {
+      "root_http_status": 302,
+      "location": "/v3/",
+      "v3_http_status": 200
+    },
+    "authenticated_session": "UNPROVEN",
+    "real_mfa_claims": "UNPROVEN",
+    "public_exposure_added": false
+  },
+  "coverage": {
+    "continuous": false,
+    "point_snapshot": true
+  },
+  "campaign_mutations": {
+    "push": false,
+    "merge": false,
+    "deploy": false,
+    "workflow_activation": false,
+    "cron_change": false,
+    "grants_used": []
+  }
+}

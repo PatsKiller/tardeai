@@ -1,0 +1,12 @@
+{
+  "tests/support/hermes_learning_cutover.py": {
+    "before_sha256": "d35f20105f57b3bdaebb8975c41afd757257b835c759b23f67711feb255774cf",
+    "after_sha256": "bc0a8a1504fb59ea2f49a3b6aff30e6aee7f53b2b6746d3910c65d30abce5c12",
+    "ast_equal": true
+  },
+  "tests/test_hermes_tune_cutover_20261017.py": {
+    "before_sha256": "f13ddf576eab96754d637ae8f7cf8fccfd1df8450d026d2999df5896dff782c7",
+    "after_sha256": "173f37fa8beb83eacd2f0507d158ab396d8cdc060cefe12845225ba9ac7cddaa",
+    "ast_equal": true
+  }
+}

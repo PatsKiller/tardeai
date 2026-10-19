@@ -1,0 +1,24 @@
+{
+  "schema": "N8nCampaignIndependentSourceReview@v1",
+  "campaign_id": "n8n-maturity-20261018",
+  "head": "67e05d7870e4562f74f85d680ec55747e3db9538",
+  "reviewer": "root integrator; implementation authored by retirement_collector agent",
+  "disposition": "APPROVED_SCOPED_SOURCE_ONLY",
+  "validation": {
+    "result": "27 passed in1.47s",
+    "junit": "spawn67-final.xml",
+    "command": "PYTHONPATH=. <canonical-venv>/python -m pytest -q tests/test_n8n_cutover_transaction_20261018.py tests/test_effect_claim_20261014.py"
+  },
+  "findings": [],
+  "reviewed": [
+    "existing shared handover flock spans admission/claim until actual Popen returns",
+    "both v1 subprocess and heartbeat paths release immediately after child exists; injected runner releases on return",
+    "owner change after spawn fences late child effects and preserves UNKNOWN reconciliation",
+    "unavailable handover lock refuses before claim or child; finally closes idempotently on every path"
+  ],
+  "remaining_holds": [
+    "Actual cron/n8n simultaneous production effect proof absent",
+    "Full journal/owner/admission rollback saga is a separate candidate",
+    "No live owner switch or mutation performed"
+  ]
+}

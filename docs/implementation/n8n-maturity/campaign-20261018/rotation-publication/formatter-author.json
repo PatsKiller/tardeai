@@ -1,0 +1,124 @@
+{
+  "schema": "FormatterCorrectionEvidence@v1",
+  "campaign_id": "n8n-maturity-20261018",
+  "recorded_at": "2026-10-18T23:32:41.278013+00:00",
+  "worktree": "/home/johnclaw/tradeai-wt-n8n-rotation-publication-20261018",
+  "branch": "wt/n8n-rotation-publication-20261018",
+  "baseline_sha": "ffedd42f89e02a1c2571288e61692584f284aee3",
+  "candidate_sha": "d6a0cd19695ca87de17a015f1d07298484fe5ad2",
+  "changed_files": [
+    "scripts/api_v2.py"
+  ],
+  "scope": "Pinned Ruff0.16.2 formatting only;26insertions/12deletions in6API hunks, whole-module AST equal. No tests/config/CI/docs/INDEX/policy/authority changes.",
+  "formatter_proof": {
+    "base_sha": "ffedd42f89e02a1c2571288e61692584f284aee3",
+    "formatter": "ruff0.16.2",
+    "path": "scripts/api_v2.py",
+    "whole_module_ast_equal": true,
+    "ast_normalization": "ast.dump(ast.parse(bytes),include_attributes=False)",
+    "ast_sha256": "388bdd3c212725c05143926c4f8061ad19e751eb06486a08e42d7a3b49ee5ae1",
+    "before_sha256": "4f6e8f001794b860e9247e58324f1a36af1633d3af68595c69e22c1954759c23",
+    "after_sha256": "e2a996abd42894a463517c10e8ebba41bbb413431024c8ec93cbf13d60fb2ba5",
+    "before_bytes": 3018529,
+    "after_bytes": 3018796,
+    "ast_node_count": 368679
+  },
+  "actual_prior_native_failure": {
+    "base_sha": "ffedd42f89e02a1c2571288e61692584f284aee3",
+    "log_sha256": "cd4829d3110ad9540755676518ecfcc4628512ea8d88e5899c5ece301108a02a",
+    "failed_gates": [
+      "[FAIL] cc_header_truth_v2 (7 files, 15.6s) 1 failed, 137 passed in 15.12s"
+    ],
+    "failed_tests": [
+      "tests/test_api_v2_ruff_quality_corrections.py::test_ruff_format_check_clean_on_api_v2"
+    ],
+    "all_other_gate_lines_pass": true,
+    "no_rerun_performed": true,
+    "original_log_retained": true
+  },
+  "validation": {
+    "source_candidate_precommit_focused": {
+      "tests": "70",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "104.004"
+    },
+    "precommit_to_committed_source_byte_parity": true,
+    "exact_head_quality_and_frozen_controls": {
+      "tests": "10",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "2.627"
+    },
+    "test_source_byte_parity": {
+      "tests/test_api_v2_ruff_quality_corrections.py": {
+        "base_blob": "42137b1e7f7237c0bfcb3e2eda7cc0416d1758b8",
+        "candidate_blob": "42137b1e7f7237c0bfcb3e2eda7cc0416d1758b8",
+        "sha256": "5291c547cae6a73752cd591ebaac71f99af54161da7dce084e0f8b158a642f80"
+      },
+      "tests/test_rotation_publication_20261018.py": {
+        "base_blob": "1ce51a383e65836991a78dc4187486d8479d201d",
+        "candidate_blob": "1ce51a383e65836991a78dc4187486d8479d201d",
+        "sha256": "0aea1b35017268982395a156bab53f22c8312e13cd75fbc4cdfc20598e133f3a"
+      }
+    },
+    "unchanged_frozen_external_test_sha256": {
+      "/tmp/n8n-campaign-20261018/cross-review/test_rotation1d_independent.py": "d2809cf525af11381562b98ed1c80b234ad9faaf1dbbf3136c645d348e576b77",
+      "/tmp/n8n-campaign-20261018/cross-review/test_rotation_f315_consumer_clock.py": "5f3b34e3e84fcc8d48b44273ef7e70308d4057e1fb04c208d543cc757c41924a"
+    },
+    "git_diff_check": "PASS",
+    "git_status_porcelain": ""
+  },
+  "command": "PATH=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin:$PATH TRADE_AI_CI=1 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=.:scripts ROTATION_REVIEW_ROOT=/home/johnclaw/tradeai-wt-n8n-rotation-publication-20261018 /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m pytest -q -p no:cacheprovider tests/test_api_v2_ruff_quality_corrections.py::test_ruff_check_clean_on_api_v2 tests/test_api_v2_ruff_quality_corrections.py::test_ruff_format_check_clean_on_api_v2 tests/test_rotation_publication_20261018.py /tmp/n8n-campaign-20261018/cross-review/test_rotation1d_independent.py /tmp/n8n-campaign-20261018/cross-review/test_rotation_f315_consumer_clock.py --junitxml=/tmp/n8n-campaign-20261018/rotation-api-format/focused-green.xml",
+  "exact_head_command_difference": "Same2actualqualitytests+unchanged8externalcontrols; native60tests not redundantly repeated because whole source/test byte parity holds.",
+  "limits": [
+    "Independent root formatter-only review pending.",
+    "Full native was not rerun by this author; original solefailure retained immutably.",
+    "No real provider/broker/DBwrite/send/financial effect, grant, remote push, CI rerun, release, activation or operational proof.",
+    "Underlying rotation publication source is authored by retirement agent; this formatting delta does not approve underlying financial semantics or alter its documented holds."
+  ],
+  "artifacts": {
+    "api_v2.before.py": {
+      "sha256": "4f6e8f001794b860e9247e58324f1a36af1633d3af68595c69e22c1954759c23",
+      "bytes": 3018529
+    },
+    "baseline-failure-identity.json": {
+      "sha256": "937c71f2ce95c137bcd5565937a8d3d5f184d1e5d93940b49ac47a0a696e1aa1",
+      "bytes": 467
+    },
+    "baseline-native-ffedd-failed.log": {
+      "sha256": "cd4829d3110ad9540755676518ecfcc4628512ea8d88e5899c5ece301108a02a",
+      "bytes": 50632
+    },
+    "before-source.json": {
+      "sha256": "8c8f5df296f47d8c78511390d81e44d94ab57b92f3093f0810d32ac237d7ea41",
+      "bytes": 226
+    },
+    "exact-head-quality-frozen.txt": {
+      "sha256": "658ac989eb9501788d497c60eb1b96e7da98f10e22f5132a8442035c303865db",
+      "bytes": 99
+    },
+    "exact-head-quality-frozen.xml": {
+      "sha256": "65571923fd4635d8f7f5b6a6a3ebe911f9c8a099e7c4667e7c443f8e1dfea1fd",
+      "bytes": 1280
+    },
+    "focused-green.txt": {
+      "sha256": "061924cbab8eeab1d772dcf5a2bdcc782dc158fb9fe17b89688460bbd4455405",
+      "bytes": 111
+    },
+    "focused-green.xml": {
+      "sha256": "e06ec33a54decaffe52595ca069321d0211f779c118af4ebe91c4275bcdf6ac4",
+      "bytes": 11086
+    },
+    "formatter-proof.json": {
+      "sha256": "279b12c98e759414e935c818a298c972705313a9293288277823a16aa2491b98",
+      "bytes": 571
+    },
+    "session.json": {
+      "sha256": "6083bbff5e8385b5afea1b94a47ca7391b300e7e2e7131e62f864456bf67da5c",
+      "bytes": 3200
+    }
+  }
+}

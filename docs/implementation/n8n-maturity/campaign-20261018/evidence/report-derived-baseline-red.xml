@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="2" skipped="0" tests="3" time="0.175" timestamp="2026-10-18T14:32:22.345085-04:00" hostname="ms01-openclaw"><testcase classname="test_importer_report_independent" name="test_missing_cron_cannot_establish_fabric_process_ownership" time="0.044"><failure message="assert not True&#10; +  where True = any(&lt;generator object test_missing_cron_cannot_establish_fabric_process_ownership.&lt;locals&gt;.&lt;genexpr&gt; at 0x73900f6db920&gt;)">packet = {'schema': 'N8nCutoverOutcomes@v2', 'authority': 'READ_ONLY_ADVISORY', 'generated_at': '2026-10-18T18:32:22+00:00', 'w...15T00:00:00+00:00', 'until': '2026-10-18T18:32:22+00:00', 'notifications_day_start': '2026-10-18T04:00:00+00:00'}, ...}
+
+    def test_missing_cron_cannot_establish_fabric_process_ownership(packet):
+        assert packet['observation_coverage']['status']=='UNAVAILABLE'
+&gt;       assert not any(row['fully_n8n_owned'] for row in packet['fabric_processes'])
+E       assert not True
+E        +  where True = any(&lt;generator object test_missing_cron_cannot_establish_fabric_process_ownership.&lt;locals&gt;.&lt;genexpr&gt; at 0x73900f6db920&gt;)
+
+/tmp/n8n-campaign-20261018/cross-review/test_importer_report_independent.py:28: AssertionError</failure></testcase><testcase classname="test_importer_report_independent" name="test_unavailable_summary_is_renderable_and_stays_noncontinuous" time="0.066" /><testcase classname="test_importer_report_independent" name="test_missing_scheduler_does_not_count_remaining_work_as_zero" time="0.027"><failure message="assert 0 is None">packet = {'schema': 'N8nCutoverOutcomes@v2', 'authority': 'READ_ONLY_ADVISORY', 'generated_at': '2026-10-18T18:32:22+00:00', 'w...15T00:00:00+00:00', 'until': '2026-10-18T18:32:22+00:00', 'notifications_day_start': '2026-10-18T04:00:00+00:00'}, ...}
+
+    def test_missing_scheduler_does_not_count_remaining_work_as_zero(packet):
+&gt;       assert packet['burn_down']['remaining_lanes_excluding_holds'] is None
+E       assert 0 is None
+
+/tmp/n8n-campaign-20261018/cross-review/test_importer_report_independent.py:40: AssertionError</failure></testcase></testsuite></testsuites>

@@ -1,0 +1,13 @@
+{
+  "base_sha": "ffedd42f89e02a1c2571288e61692584f284aee3",
+  "formatter": "ruff0.16.2",
+  "path": "scripts/api_v2.py",
+  "whole_module_ast_equal": true,
+  "ast_normalization": "ast.dump(ast.parse(bytes),include_attributes=False)",
+  "ast_sha256": "388bdd3c212725c05143926c4f8061ad19e751eb06486a08e42d7a3b49ee5ae1",
+  "before_sha256": "4f6e8f001794b860e9247e58324f1a36af1633d3af68595c69e22c1954759c23",
+  "after_sha256": "e2a996abd42894a463517c10e8ebba41bbb413431024c8ec93cbf13d60fb2ba5",
+  "before_bytes": 3018529,
+  "after_bytes": 3018796,
+  "ast_node_count": 368679
+}

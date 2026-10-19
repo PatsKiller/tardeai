@@ -1,0 +1,43 @@
+{
+  "schema": "CampaignAuthorReviewPacket@v1",
+  "head": "1d0f3be320ed83ee1807ba9e9fdb811db3dd6dd1",
+  "base": "7af14c7782cf7ab0cba261cc25e6789fe810b092",
+  "worktree": "/home/johnclaw/tradeai-wt-n8n-rotation-publication-20261018",
+  "scope": "Read-only advisory publication truth; financial scoring/ranking/formulas unchanged; no production effects or grants",
+  "files": {
+    "scripts/api_v2.py": "f110fda2dc07d968ddde935b1d09ecdd1f710b2e0ef53b9072bc7b53539ac94a",
+    "scripts/rotation_rebalance_digest.py": "4d06378f7de76df9ef5dcfe76e65c696a65b2de6d1425f8eb79cd90e9bc6cf93",
+    "scripts/lib/rotation_publication.py": "9d01d82043485c565709a1709edd83bdc5df9ce8fb471e0296d28d41bc863a70",
+    "tests/test_rotation_publication_20261018.py": "3e5510081efebea43f8578845691ee53f74947ecdf1fefc44ef522d688bf29d6"
+  },
+  "baseline": {
+    "sha": "7af14c7782cf7ab0cba261cc25e6789fe810b092",
+    "xml": "baseline-red.xml",
+    "result": "8 expected assertion failures, no setup/collection/timeouts",
+    "source_test_copy": "baseline-eight-tests.py.txt",
+    "source_test_sha256": "01cbda0edb06a222b0af8b65784e80f65f125913c7d49e78ae355a6baaa69b9d",
+    "identical_assertions_preserved": true
+  },
+  "validation": {
+    "xml": "candidate-final.xml",
+    "result": "92 passed in17.83s",
+    "command": "TRADE_AI_CI=1 /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m pytest -q tests/test_rotation_publication_20261018.py tests/test_account_state_classifier.py tests/test_account_state_read_path.py tests/test_freshness_weekend_gate.py tests/test_cron_venv_resolver_20261009.py",
+    "source_binding": "Final tests ran immediately before local commit; exact source digests match committed blobs. Parent independent exact-head review pending.",
+    "static": "ruff(new helper,digest,test), git diff --check, API AST parse passed"
+  },
+  "migration": [
+    "RotationPublication@v1 new reader explicitly refuses unsupported version/old producer before seeding or advice.",
+    "Old persisted cache without exact input digest/account identity is readable UNAVAILABLE and does not bootstrap producer from GET. Existing warm owner must produce fresh bound evidence.",
+    "Old summary readers retain existing keys with ok=false and advisory lists empty when held; no new recommendations selected.",
+    "Dedup only original selected two target rows; does not select later target to fill gap.",
+    "Conditional CIO view and existing thin-coverage flag retained as visible tags."
+  ],
+  "holds": [
+    "Independent review/CI/release/production verification pending; no activation or grant requests.",
+    "Held output withholds existing advice; requires source correction by owner, not a broker refresh by agent.",
+    "No financial math/ranking/stop-policy correction; LLM severity promoted to stop-hit remains underlying engine defect but publication refuses the unsupported ranges.",
+    "DNP actual duplicate watchlist source rows not directly queried; API source cardinality plus retained exact duplicate proposal rows proven.",
+    "Snapshot cache generated_at/holdings availability projection is not attested downstream delivery or useful-output proof.",
+    "External DB signal/card/LLM research freshness and broader financial decision validity remain outside this narrow publication fix."
+  ]
+}

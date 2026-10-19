@@ -1,0 +1,673 @@
+{
+  "schema": "N8nCampaignHermesReceiptAudit@v1",
+  "captured_at": "2026-10-18T19:39:21.094670+00:00",
+  "source_sha": "3af0a8bdd659e02bf6f493c071800c6a227ae292",
+  "inspection": "read-only existing immutable receipt bytes; artifact digests establish integrity only, not independent host attestation",
+  "window_since": "2026-10-15T00:00:00Z",
+  "lanes": [
+    {
+      "lane_id": "hermes-learning-outcome-grader",
+      "receipt_count_since_2026_10_15": 3,
+      "receipts": [
+        {
+          "ref": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/p:hermes-learning-outcome-grader:live:20261017T1050.json",
+          "sha256": "a257a272befb5bed6484507db82281727150af378d881df91170bae02786190b",
+          "schema": "RunReceipt@v2",
+          "lane_id": "hermes-learning-outcome-grader",
+          "run_id": "p:hermes-learning-outcome-grader:live:20261017T1050",
+          "code_sha": "954fc25ab9c40b553c0b808b23e4d22bbc5b9aad",
+          "mode": "live",
+          "requested_mode": "live",
+          "stage_clamp": {
+            "clamped": false,
+            "effective_mode": "live",
+            "reason": "stage_canary",
+            "requested_mode": "live",
+            "stage": "canary"
+          },
+          "state": "RUN_DONE",
+          "started_at": "2026-10-17T14:50:01.758288+00:00",
+          "finished_at": "2026-10-17T14:50:07.381169+00:00",
+          "attempt": 1,
+          "output_verdict": {
+            "contract_id": "hermes-learning-outcome-grader",
+            "rule": "min_produced",
+            "verdict": "declared_not_enforced",
+            "why": "allowlist output_receipt != 'v2' (lane does not emit produced_count yet)"
+          },
+          "effect": {
+            "attempt": 1,
+            "claimed": true,
+            "epoch": 2,
+            "fenced_late": false,
+            "final_state": "DONE",
+            "held_for_reconciliation": false,
+            "holder": null,
+            "input_version": "v1",
+            "key": "fx:hermes-learning-outcome-grader:20261017T1050:v1",
+            "owner": "n8n",
+            "process": "hermes-learning-outcome-grader",
+            "reason": null,
+            "scheduler": "n8n",
+            "slot": "20261017T1050"
+          }
+        },
+        {
+          "ref": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/p:hermes-learning-outcome-grader:live:20261017T1200.json",
+          "sha256": "409510cc14e35f76e98355a8bd7f918474001aaebe075f77e55494374e535c87",
+          "schema": "RunReceipt@v2",
+          "lane_id": "hermes-learning-outcome-grader",
+          "run_id": "p:hermes-learning-outcome-grader:live:20261017T1200",
+          "code_sha": "7b07774ad8af3db523d7e297eae6192a8c25e024",
+          "mode": "live",
+          "requested_mode": "live",
+          "stage_clamp": {
+            "clamped": false,
+            "effective_mode": "live",
+            "reason": "stage_canary",
+            "requested_mode": "live",
+            "stage": "canary"
+          },
+          "state": "RUN_DONE",
+          "started_at": "2026-10-17T16:00:20.364584+00:00",
+          "finished_at": "2026-10-17T16:00:25.283268+00:00",
+          "attempt": 1,
+          "output_verdict": {
+            "contract_id": "hermes-learning-outcome-grader",
+            "rule": "min_produced",
+            "verdict": "declared_not_enforced",
+            "why": "allowlist output_receipt != 'v2' (lane does not emit produced_count yet)"
+          },
+          "effect": {
+            "attempt": 1,
+            "claimed": true,
+            "epoch": 2,
+            "fenced_late": false,
+            "final_state": "DONE",
+            "held_for_reconciliation": false,
+            "holder": null,
+            "input_version": "v1",
+            "key": "fx:hermes-learning-outcome-grader:20261017T1200:v1",
+            "owner": "n8n",
+            "process": "hermes-learning-outcome-grader",
+            "reason": null,
+            "scheduler": "n8n",
+            "slot": "20261017T1200"
+          }
+        },
+        {
+          "ref": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/p:hermes-learning-outcome-grader:live:20261018T1050.json",
+          "sha256": "06984501d8273fefcd4e0f9ef68acbc8e4d4b3a1506f269e5032bfe3c266f82b",
+          "schema": "RunReceipt@v2",
+          "lane_id": "hermes-learning-outcome-grader",
+          "run_id": "p:hermes-learning-outcome-grader:live:20261018T1050",
+          "code_sha": "a2aef7b4d2de17e737526337a2ffc37848deda4f",
+          "mode": "live",
+          "requested_mode": "live",
+          "stage_clamp": {
+            "clamped": false,
+            "effective_mode": "live",
+            "reason": "stage_canary",
+            "requested_mode": "live",
+            "stage": "canary"
+          },
+          "state": "RUN_DONE",
+          "started_at": "2026-10-18T14:50:02.467984+00:00",
+          "finished_at": "2026-10-18T14:50:07.397480+00:00",
+          "attempt": 1,
+          "output_verdict": {
+            "contract_id": "hermes-learning-outcome-grader",
+            "rule": "min_produced",
+            "verdict": "declared_not_enforced",
+            "why": "allowlist output_receipt != 'v2' (lane does not emit produced_count yet)"
+          },
+          "effect": {
+            "attempt": 1,
+            "claimed": true,
+            "epoch": 2,
+            "fenced_late": false,
+            "final_state": "DONE",
+            "held_for_reconciliation": false,
+            "holder": null,
+            "input_version": "v1",
+            "key": "fx:hermes-learning-outcome-grader:20261018T1050:v1",
+            "owner": "n8n",
+            "process": "hermes-learning-outcome-grader",
+            "reason": null,
+            "scheduler": "n8n",
+            "slot": "20261018T1050"
+          }
+        }
+      ],
+      "downstream_consumption": "UNPROVEN",
+      "campaign_live_reexecution": false
+    },
+    {
+      "lane_id": "hermes-learning-tag-engine",
+      "receipt_count_since_2026_10_15": 3,
+      "receipts": [
+        {
+          "ref": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/p:hermes-learning-tag-engine:live:20261017T1050.json",
+          "sha256": "97a411388c42b05daf365d013ff087320717e7408d948bed5ffc57e60e1f5962",
+          "schema": "RunReceipt@v2",
+          "lane_id": "hermes-learning-tag-engine",
+          "run_id": "p:hermes-learning-tag-engine:live:20261017T1050",
+          "code_sha": "954fc25ab9c40b553c0b808b23e4d22bbc5b9aad",
+          "mode": "live",
+          "requested_mode": "live",
+          "stage_clamp": {
+            "clamped": false,
+            "effective_mode": "live",
+            "reason": "stage_canary",
+            "requested_mode": "live",
+            "stage": "canary"
+          },
+          "state": "RUN_DONE",
+          "started_at": "2026-10-17T14:50:17.673856+00:00",
+          "finished_at": "2026-10-17T14:50:19.206135+00:00",
+          "attempt": 1,
+          "output_verdict": {
+            "contract_id": "hermes-learning-tag-engine",
+            "rule": "min_produced",
+            "verdict": "declared_not_enforced",
+            "why": "allowlist output_receipt != 'v2' (lane does not emit produced_count yet)"
+          },
+          "effect": {
+            "attempt": 1,
+            "claimed": true,
+            "epoch": 2,
+            "fenced_late": false,
+            "final_state": "DONE",
+            "held_for_reconciliation": false,
+            "holder": null,
+            "input_version": "v1",
+            "key": "fx:hermes-learning-tag-engine:20261017T1050:v1",
+            "owner": "n8n",
+            "process": "hermes-learning-tag-engine",
+            "reason": null,
+            "scheduler": "n8n",
+            "slot": "20261017T1050"
+          }
+        },
+        {
+          "ref": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/p:hermes-learning-tag-engine:live:20261017T1200.json",
+          "sha256": "1f3b0a44f8de77261e0b29f488cc8ec854ff48aa5223a82869806a154a9b3097",
+          "schema": "RunReceipt@v2",
+          "lane_id": "hermes-learning-tag-engine",
+          "run_id": "p:hermes-learning-tag-engine:live:20261017T1200",
+          "code_sha": "7b07774ad8af3db523d7e297eae6192a8c25e024",
+          "mode": "live",
+          "requested_mode": "live",
+          "stage_clamp": {
+            "clamped": false,
+            "effective_mode": "live",
+            "reason": "stage_canary",
+            "requested_mode": "live",
+            "stage": "canary"
+          },
+          "state": "RUN_DONE",
+          "started_at": "2026-10-17T16:00:35.322434+00:00",
+          "finished_at": "2026-10-17T16:00:36.944689+00:00",
+          "attempt": 1,
+          "output_verdict": {
+            "contract_id": "hermes-learning-tag-engine",
+            "rule": "min_produced",
+            "verdict": "declared_not_enforced",
+            "why": "allowlist output_receipt != 'v2' (lane does not emit produced_count yet)"
+          },
+          "effect": {
+            "attempt": 1,
+            "claimed": true,
+            "epoch": 2,
+            "fenced_late": false,
+            "final_state": "DONE",
+            "held_for_reconciliation": false,
+            "holder": null,
+            "input_version": "v1",
+            "key": "fx:hermes-learning-tag-engine:20261017T1200:v1",
+            "owner": "n8n",
+            "process": "hermes-learning-tag-engine",
+            "reason": null,
+            "scheduler": "n8n",
+            "slot": "20261017T1200"
+          }
+        },
+        {
+          "ref": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/p:hermes-learning-tag-engine:live:20261018T1050.json",
+          "sha256": "bc2d908bb16d5aa43c1215d88867def1dd9b0c3ca493cafc2b496822da5f5953",
+          "schema": "RunReceipt@v2",
+          "lane_id": "hermes-learning-tag-engine",
+          "run_id": "p:hermes-learning-tag-engine:live:20261018T1050",
+          "code_sha": "a2aef7b4d2de17e737526337a2ffc37848deda4f",
+          "mode": "live",
+          "requested_mode": "live",
+          "stage_clamp": {
+            "clamped": false,
+            "effective_mode": "live",
+            "reason": "stage_canary",
+            "requested_mode": "live",
+            "stage": "canary"
+          },
+          "state": "RUN_DONE",
+          "started_at": "2026-10-18T14:50:17.184791+00:00",
+          "finished_at": "2026-10-18T14:50:19.103753+00:00",
+          "attempt": 1,
+          "output_verdict": {
+            "contract_id": "hermes-learning-tag-engine",
+            "rule": "min_produced",
+            "verdict": "declared_not_enforced",
+            "why": "allowlist output_receipt != 'v2' (lane does not emit produced_count yet)"
+          },
+          "effect": {
+            "attempt": 1,
+            "claimed": true,
+            "epoch": 2,
+            "fenced_late": false,
+            "final_state": "DONE",
+            "held_for_reconciliation": false,
+            "holder": null,
+            "input_version": "v1",
+            "key": "fx:hermes-learning-tag-engine:20261018T1050:v1",
+            "owner": "n8n",
+            "process": "hermes-learning-tag-engine",
+            "reason": null,
+            "scheduler": "n8n",
+            "slot": "20261018T1050"
+          }
+        }
+      ],
+      "downstream_consumption": "UNPROVEN",
+      "campaign_live_reexecution": false
+    },
+    {
+      "lane_id": "hermes-learning-outcome-feedback-agent",
+      "receipt_count_since_2026_10_15": 0,
+      "receipts": [],
+      "downstream_consumption": "UNPROVEN",
+      "campaign_live_reexecution": false
+    },
+    {
+      "lane_id": "hermes-learning-outcome-learning",
+      "receipt_count_since_2026_10_15": 3,
+      "receipts": [
+        {
+          "ref": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/p:hermes-learning-outcome-learning:live:20261017T1050.json",
+          "sha256": "c4949de85fd2eb435fa37fcf3b5bc99275eab9dc5c5726bc5c05187ea135fcd7",
+          "schema": "RunReceipt@v2",
+          "lane_id": "hermes-learning-outcome-learning",
+          "run_id": "p:hermes-learning-outcome-learning:live:20261017T1050",
+          "code_sha": "954fc25ab9c40b553c0b808b23e4d22bbc5b9aad",
+          "mode": "live",
+          "requested_mode": "live",
+          "stage_clamp": {
+            "clamped": false,
+            "effective_mode": "live",
+            "reason": "stage_canary",
+            "requested_mode": "live",
+            "stage": "canary"
+          },
+          "state": "RUN_DONE",
+          "started_at": "2026-10-17T14:50:21.234895+00:00",
+          "finished_at": "2026-10-17T14:50:22.340434+00:00",
+          "attempt": 1,
+          "output_verdict": {
+            "contract_id": "hermes-learning-outcome-learning",
+            "rule": "min_produced",
+            "verdict": "declared_not_enforced",
+            "why": "allowlist output_receipt != 'v2' (lane does not emit produced_count yet)"
+          },
+          "effect": {
+            "attempt": 1,
+            "claimed": true,
+            "epoch": 2,
+            "fenced_late": false,
+            "final_state": "DONE",
+            "held_for_reconciliation": false,
+            "holder": null,
+            "input_version": "v1",
+            "key": "fx:hermes-learning-outcome-learning:20261017T1050:v1",
+            "owner": "n8n",
+            "process": "hermes-learning-outcome-learning",
+            "reason": null,
+            "scheduler": "n8n",
+            "slot": "20261017T1050"
+          }
+        },
+        {
+          "ref": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/p:hermes-learning-outcome-learning:live:20261017T1200.json",
+          "sha256": "a773accb6a4dfec09d375c8837c79c7815adcc858e4bff79f00ca83d9c1e3cfd",
+          "schema": "RunReceipt@v2",
+          "lane_id": "hermes-learning-outcome-learning",
+          "run_id": "p:hermes-learning-outcome-learning:live:20261017T1200",
+          "code_sha": "7b07774ad8af3db523d7e297eae6192a8c25e024",
+          "mode": "live",
+          "requested_mode": "live",
+          "stage_clamp": {
+            "clamped": false,
+            "effective_mode": "live",
+            "reason": "stage_canary",
+            "requested_mode": "live",
+            "stage": "canary"
+          },
+          "state": "RUN_DONE",
+          "started_at": "2026-10-17T16:00:40.968304+00:00",
+          "finished_at": "2026-10-17T16:00:42.297889+00:00",
+          "attempt": 1,
+          "output_verdict": {
+            "contract_id": "hermes-learning-outcome-learning",
+            "rule": "min_produced",
+            "verdict": "declared_not_enforced",
+            "why": "allowlist output_receipt != 'v2' (lane does not emit produced_count yet)"
+          },
+          "effect": {
+            "attempt": 1,
+            "claimed": true,
+            "epoch": 2,
+            "fenced_late": false,
+            "final_state": "DONE",
+            "held_for_reconciliation": false,
+            "holder": null,
+            "input_version": "v1",
+            "key": "fx:hermes-learning-outcome-learning:20261017T1200:v1",
+            "owner": "n8n",
+            "process": "hermes-learning-outcome-learning",
+            "reason": null,
+            "scheduler": "n8n",
+            "slot": "20261017T1200"
+          }
+        },
+        {
+          "ref": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/p:hermes-learning-outcome-learning:live:20261018T1050.json",
+          "sha256": "64f77080a92f091203d8dde6c6cd243503a8b8e9c66d5bf3cf6a649d86a0b819",
+          "schema": "RunReceipt@v2",
+          "lane_id": "hermes-learning-outcome-learning",
+          "run_id": "p:hermes-learning-outcome-learning:live:20261018T1050",
+          "code_sha": "a2aef7b4d2de17e737526337a2ffc37848deda4f",
+          "mode": "live",
+          "requested_mode": "live",
+          "stage_clamp": {
+            "clamped": false,
+            "effective_mode": "live",
+            "reason": "stage_canary",
+            "requested_mode": "live",
+            "stage": "canary"
+          },
+          "state": "RUN_DONE",
+          "started_at": "2026-10-18T14:50:21.171647+00:00",
+          "finished_at": "2026-10-18T14:50:22.393661+00:00",
+          "attempt": 1,
+          "output_verdict": {
+            "contract_id": "hermes-learning-outcome-learning",
+            "rule": "min_produced",
+            "verdict": "declared_not_enforced",
+            "why": "allowlist output_receipt != 'v2' (lane does not emit produced_count yet)"
+          },
+          "effect": {
+            "attempt": 1,
+            "claimed": true,
+            "epoch": 2,
+            "fenced_late": false,
+            "final_state": "DONE",
+            "held_for_reconciliation": false,
+            "holder": null,
+            "input_version": "v1",
+            "key": "fx:hermes-learning-outcome-learning:20261018T1050:v1",
+            "owner": "n8n",
+            "process": "hermes-learning-outcome-learning",
+            "reason": null,
+            "scheduler": "n8n",
+            "slot": "20261018T1050"
+          }
+        }
+      ],
+      "downstream_consumption": "UNPROVEN",
+      "campaign_live_reexecution": false
+    },
+    {
+      "lane_id": "hermes-learning-config-governor",
+      "receipt_count_since_2026_10_15": 3,
+      "receipts": [
+        {
+          "ref": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/p:hermes-learning-config-governor:live:20261017T1050.json",
+          "sha256": "19e3657067845b1edf35eec72fb45c616740ea59db645f21576f5649b72342f8",
+          "schema": "RunReceipt@v2",
+          "lane_id": "hermes-learning-config-governor",
+          "run_id": "p:hermes-learning-config-governor:live:20261017T1050",
+          "code_sha": "954fc25ab9c40b553c0b808b23e4d22bbc5b9aad",
+          "mode": "live",
+          "requested_mode": "live",
+          "stage_clamp": {
+            "clamped": false,
+            "effective_mode": "live",
+            "reason": "stage_canary",
+            "requested_mode": "live",
+            "stage": "canary"
+          },
+          "state": "RUN_DONE",
+          "started_at": "2026-10-17T14:50:26.370062+00:00",
+          "finished_at": "2026-10-17T14:50:26.679497+00:00",
+          "attempt": 1,
+          "output_verdict": {
+            "contract_id": "hermes-learning-config-governor",
+            "rule": "empty_allowed",
+            "verdict": "declared_not_enforced",
+            "why": "allowlist output_receipt != 'v2' (lane does not emit produced_count yet)"
+          },
+          "effect": {
+            "attempt": 1,
+            "claimed": true,
+            "epoch": 2,
+            "fenced_late": false,
+            "final_state": "DONE",
+            "held_for_reconciliation": false,
+            "holder": null,
+            "input_version": "v1",
+            "key": "fx:hermes-learning-config-governor:20261017T1050:v1",
+            "owner": "n8n",
+            "process": "hermes-learning-config-governor",
+            "reason": null,
+            "scheduler": "n8n",
+            "slot": "20261017T1050"
+          }
+        },
+        {
+          "ref": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/p:hermes-learning-config-governor:live:20261017T1200.json",
+          "sha256": "b572486d39c6717c5e28c5d52559b74cec9ff2a65169624e1672d7597b301099",
+          "schema": "RunReceipt@v2",
+          "lane_id": "hermes-learning-config-governor",
+          "run_id": "p:hermes-learning-config-governor:live:20261017T1200",
+          "code_sha": "7b07774ad8af3db523d7e297eae6192a8c25e024",
+          "mode": "live",
+          "requested_mode": "live",
+          "stage_clamp": {
+            "clamped": false,
+            "effective_mode": "live",
+            "reason": "stage_canary",
+            "requested_mode": "live",
+            "stage": "canary"
+          },
+          "state": "RUN_DONE",
+          "started_at": "2026-10-17T16:00:46.321046+00:00",
+          "finished_at": "2026-10-17T16:00:46.629697+00:00",
+          "attempt": 1,
+          "output_verdict": {
+            "contract_id": "hermes-learning-config-governor",
+            "rule": "empty_allowed",
+            "verdict": "declared_not_enforced",
+            "why": "allowlist output_receipt != 'v2' (lane does not emit produced_count yet)"
+          },
+          "effect": {
+            "attempt": 1,
+            "claimed": true,
+            "epoch": 2,
+            "fenced_late": false,
+            "final_state": "DONE",
+            "held_for_reconciliation": false,
+            "holder": null,
+            "input_version": "v1",
+            "key": "fx:hermes-learning-config-governor:20261017T1200:v1",
+            "owner": "n8n",
+            "process": "hermes-learning-config-governor",
+            "reason": null,
+            "scheduler": "n8n",
+            "slot": "20261017T1200"
+          }
+        },
+        {
+          "ref": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/p:hermes-learning-config-governor:live:20261018T1050.json",
+          "sha256": "9a3c9f5f0d7d39babb06294a2ce3c8249110986b4cda0358fc7c5c48d30992fa",
+          "schema": "RunReceipt@v2",
+          "lane_id": "hermes-learning-config-governor",
+          "run_id": "p:hermes-learning-config-governor:live:20261018T1050",
+          "code_sha": "a2aef7b4d2de17e737526337a2ffc37848deda4f",
+          "mode": "live",
+          "requested_mode": "live",
+          "stage_clamp": {
+            "clamped": false,
+            "effective_mode": "live",
+            "reason": "stage_canary",
+            "requested_mode": "live",
+            "stage": "canary"
+          },
+          "state": "RUN_DONE",
+          "started_at": "2026-10-18T14:50:26.437744+00:00",
+          "finished_at": "2026-10-18T14:50:26.745504+00:00",
+          "attempt": 1,
+          "output_verdict": {
+            "contract_id": "hermes-learning-config-governor",
+            "rule": "empty_allowed",
+            "verdict": "declared_not_enforced",
+            "why": "allowlist output_receipt != 'v2' (lane does not emit produced_count yet)"
+          },
+          "effect": {
+            "attempt": 1,
+            "claimed": true,
+            "epoch": 2,
+            "fenced_late": false,
+            "final_state": "DONE",
+            "held_for_reconciliation": false,
+            "holder": null,
+            "input_version": "v1",
+            "key": "fx:hermes-learning-config-governor:20261018T1050:v1",
+            "owner": "n8n",
+            "process": "hermes-learning-config-governor",
+            "reason": null,
+            "scheduler": "n8n",
+            "slot": "20261018T1050"
+          }
+        }
+      ],
+      "downstream_consumption": "UNPROVEN",
+      "campaign_live_reexecution": false
+    },
+    {
+      "lane_id": "hermes-learning-autonomous-self-tune",
+      "receipt_count_since_2026_10_15": 2,
+      "receipts": [
+        {
+          "ref": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/p:hermes-learning-autonomous-self-tune:live:20261017T1200.json",
+          "sha256": "f52179080581d023f04f76beeeb4f15179c45be5b4e69389999819718f62e2f4",
+          "schema": "RunReceipt@v3",
+          "lane_id": "hermes-learning-autonomous-self-tune",
+          "run_id": "p:hermes-learning-autonomous-self-tune:live:20261017T1200",
+          "code_sha": "7b07774ad8af3db523d7e297eae6192a8c25e024",
+          "mode": "live",
+          "requested_mode": "live",
+          "stage_clamp": {
+            "clamped": false,
+            "effective_mode": "live",
+            "reason": "stage_canary",
+            "requested_mode": "live",
+            "stage": "canary"
+          },
+          "state": "RUN_DONE",
+          "started_at": "2026-10-17T16:00:50.655210+00:00",
+          "finished_at": "2026-10-17T16:00:50.863600+00:00",
+          "attempt": 1,
+          "output_verdict": {
+            "attempted_count": 0,
+            "contract_id": "hermes-learning-autonomous-self-tune",
+            "empty_reason": "nothing_due",
+            "produced_count": 0,
+            "rule": "empty_allowed",
+            "skipped_reasons": {
+              "graft_gated_weekly_drift_cap": 1
+            },
+            "verdict": "empty_allowed"
+          },
+          "effect": {
+            "attempt": 1,
+            "claimed": true,
+            "epoch": 2,
+            "fenced_late": false,
+            "final_state": "DONE",
+            "held_for_reconciliation": false,
+            "holder": null,
+            "input_version": "v1",
+            "key": "fx:hermes-learning-autonomous-self-tune:20261017T1200:v1",
+            "owner": "n8n",
+            "process": "hermes-learning-autonomous-self-tune",
+            "reason": null,
+            "scheduler": "n8n",
+            "slot": "20261017T1200"
+          }
+        },
+        {
+          "ref": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/p:hermes-learning-autonomous-self-tune:live:20261017T1700.json",
+          "sha256": "39abf1f0fe0764db59d9719b0c44e201bf5da740772f51c5e9cc86da2270894c",
+          "schema": "RunReceipt@v3",
+          "lane_id": "hermes-learning-autonomous-self-tune",
+          "run_id": "p:hermes-learning-autonomous-self-tune:live:20261017T1700",
+          "code_sha": "7b07774ad8af3db523d7e297eae6192a8c25e024",
+          "mode": "live",
+          "requested_mode": "live",
+          "stage_clamp": {
+            "clamped": false,
+            "effective_mode": "live",
+            "reason": "stage_canary",
+            "requested_mode": "live",
+            "stage": "canary"
+          },
+          "state": "RUN_DONE",
+          "started_at": "2026-10-17T21:00:02.846794+00:00",
+          "finished_at": "2026-10-17T21:00:03.061875+00:00",
+          "attempt": 1,
+          "output_verdict": {
+            "attempted_count": 0,
+            "contract_id": "hermes-learning-autonomous-self-tune",
+            "empty_reason": "nothing_due",
+            "produced_count": 0,
+            "rule": "empty_allowed",
+            "skipped_reasons": {
+              "graft_gated_weekly_drift_cap": 1
+            },
+            "verdict": "empty_allowed"
+          },
+          "effect": {
+            "attempt": 1,
+            "claimed": true,
+            "epoch": 2,
+            "fenced_late": false,
+            "final_state": "DONE",
+            "held_for_reconciliation": false,
+            "holder": null,
+            "input_version": "v1",
+            "key": "fx:hermes-learning-autonomous-self-tune:20261017T1700:v1",
+            "owner": "n8n",
+            "process": "hermes-learning-autonomous-self-tune",
+            "reason": null,
+            "scheduler": "n8n",
+            "slot": "20261017T1700"
+          }
+        }
+      ],
+      "downstream_consumption": "UNPROVEN",
+      "campaign_live_reexecution": false
+    }
+  ],
+  "limitations": [
+    "RUN_DONE is not enforced useful-output or consumed business proof",
+    "No mutation or learning rerun performed",
+    "Natural n8n execution correlation and exact input watermarks remain unproven"
+  ]
+}

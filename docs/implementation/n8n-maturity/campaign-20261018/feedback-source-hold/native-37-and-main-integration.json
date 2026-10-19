@@ -1,0 +1,38 @@
+{
+  "schema": "CampaignNativeAcceptanceEvidence@v1",
+  "recorded_at": "2026-10-19T00:00:36.644623+00:00",
+  "native_run": {
+    "head_sha": "37ed9b107f41beb2dedada2c61acb309b1b58fcd",
+    "session_id": 58555,
+    "exit_code": 0,
+    "command": "PATH=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin:$PATH bash scripts/ai_local_acceptance.sh",
+    "log": "native-37-passed.log.gz",
+    "raw_log_sha256": "8d1b8efc7557642b4bd517c64183893c00ef5d9ecf32160eef8c6c69d6a0d68b",
+    "observed_HEAD_after_run": "37ed9b107f41beb2dedada2c61acb309b1b58fcd",
+    "after_run_worktree_clean": true
+  },
+  "fresh_main_integration": {
+    "main_sha": "b52a1f2fa2f929e9b72d9133b98cf2610ffb9264",
+    "merge_sha": "50f7f5a2887f24b51b0a3100914709344921dd9d",
+    "all_feedback_configs_and_tests_byte_identical_to_37": [
+      "config/lane_registry.json",
+      "config/n8n_health_contracts.json",
+      "config/n8n_run_allowlist.json",
+      "tests/support/hermes_learning_cutover.py",
+      "tests/test_agents_policy_4_1_0_amendment.py",
+      "tests/test_hermes_feedback_cutover_20261017.py",
+      "tests/test_hermes_feedback_hold_20261018.py",
+      "tests/test_hermes_learning_prereqs_20261015.py",
+      "tests/test_hermes_tune_cutover_20261017.py",
+      "tests/test_n8n_fabric_hermes_learning_20261015.py"
+    ],
+    "final_head_native_acceptance": "PENDING_SEPARATE_HOST_RUN"
+  },
+  "historical_failed_native": "native-1a-failed.log.gz remains byte-identical; not reported as green",
+  "status": {
+    "local_only": true,
+    "merged": false,
+    "deployed": false,
+    "activated": false
+  }
+}
