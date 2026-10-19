@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { preview, confirm, getToken, setToken, type AdminPreview, type AdminResult } from '../lib/adminWrite'
+import { RADIUS } from '../lib/designTokens'
 
 export interface PendingAction { path: string; body: any; label: string; explain?: string }
 
@@ -57,12 +58,12 @@ export default function AdminConfirmModal({ action, onClose, onDone }: {
         )}
         {err && !denied && <div style={{ color: '#ef4444', fontSize: 11, marginTop: 10 }}>{err}</div>}
         {denied && (
-          <div style={{ marginTop: 10, padding: 10, border: '1px solid var(--warning-color)', borderRadius: 8, fontSize: 12, color: 'var(--text0)' }}>
+          <div style={{ marginTop: 10, padding: 10, border: '1px solid var(--warning-color)', borderRadius: RADIUS.md, fontSize: 12, color: 'var(--text0)' }}>
             <div style={{ marginBottom: 6 }}>{getToken() ? 'The saved operator token was rejected.' : 'This browser has no operator write token saved yet.'} Enter it once (it is kept in this browser only):</div>
             <div style={{ display: 'flex', gap: 6 }}>
               <input type="password" value={tok} onChange={(e) => setTok(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && tok.trim()) saveToken() }} placeholder="ADMIN_WRITE_TOKEN" autoFocus
-                style={{ flex: 1, fontSize: 12, padding: '5px 8px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text0)' }} />
-              <button type="button" disabled={!tok.trim()} onClick={saveToken} style={{ fontSize: 12, padding: '5px 12px', borderRadius: 6, border: 0, background: '#1d4ed8', color: '#fff', cursor: tok.trim() ? 'pointer' : 'default' }}>Save &amp; retry</button>
+                style={{ flex: 1, fontSize: 12, padding: '5px 8px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: RADIUS.sm, color: 'var(--text0)' }} />
+              <button type="button" disabled={!tok.trim()} onClick={saveToken} style={{ fontSize: 12, padding: '5px 12px', borderRadius: RADIUS.sm, border: 0, background: 'var(--info-color)', color: 'var(--text0)', cursor: tok.trim() ? 'pointer' : 'default' }}>Save &amp; retry</button>
             </div>
           </div>
         )}

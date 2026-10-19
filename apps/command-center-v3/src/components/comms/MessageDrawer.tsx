@@ -48,7 +48,7 @@ function renderNode(n: Node, key: string): ReactNode {
     return <blockquote key={key} style={{ margin: '6px 0', padding: '6px 10px', borderLeft: `3px solid ${BORDER}`, background: 'var(--bg2)', borderRadius: RADIUS.sm, color: TEXT2 }}>{kids}</blockquote>
   }
   if (tag === 'pre' || tag === 'code') {
-    return <code key={key} style={{ fontFamily: "'JetBrains Mono', ui-monospace, Consolas, monospace", fontSize: '0.92em', background: 'var(--bg2)', padding: '0 3px', borderRadius: 3 }}>{kids}</code>
+    return <code key={key} style={{ fontFamily: "'JetBrains Mono', ui-monospace, Consolas, monospace", fontSize: '0.92em', background: 'var(--bg2)', padding: '0 3px', borderRadius: RADIUS.sm }}>{kids}</code>
   }
   const Tag = tag as any
   return <Tag key={key}>{kids}</Tag>
@@ -74,9 +74,9 @@ export const MESSAGE_ACTIONS: { action: string; extra: Record<string, any>; labe
   { action: 'expire', extra: {}, label: 'Dismiss now', help: 'Removes it from the live feed now. Still visible under the Expired filter for 24h, then archived and cleaned up.' },
 ]
 
-function Fact({ label, value, sub, color }: { label: string; value: ReactNode; sub?: ReactNode; color?: string }) {
+function Fact({ label, value, sub, color, tip }: { label: string; value: ReactNode; sub?: ReactNode; color?: string; tip: string }) {
   return (
-    <div style={{ background: 'var(--bg2)', border: `1px solid ${BORDER}`, borderRadius: RADIUS.md, padding: '8px 10px', minWidth: 0 }}>
+    <div title={tip} style={{ background: 'var(--bg2)', border: `1px solid ${BORDER}`, borderRadius: RADIUS.md, padding: '8px 10px', minWidth: 0 }}>
       <div style={{ fontSize: 10, color: MUTED, textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 700 }}>{label}</div>
       <div style={{ ...numStyle, fontSize: 18, fontWeight: 800, color: color || TEXT, lineHeight: 1.25 }}>{value}</div>
       {sub && <div style={{ fontSize: 11, color: TEXT2, marginTop: 2 }}>{sub}</div>}
@@ -130,13 +130,13 @@ export function MessageDrawer({ e, id, onClose, onAction }: {
             <>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8, marginBottom: 12 }}>
                 {(l.entry_zone?.[0] != null || l.entry_ref != null) && (
-                  <Fact label="Entry" value={l.entry_zone?.[0] != null ? `${usd(l.entry_zone[0])}–${usd(l.entry_zone[1])}` : usd(l.entry_ref)} sub={px != null && l.entry_zone?.[0] != null ? (px >= l.entry_zone[0] && px <= l.entry_zone[1] ? 'price is inside the zone' : px > l.entry_zone[1] ? 'price is above the zone' : 'price is below the zone') : undefined} />
+                  <Fact label="Entry" tip="CIO entry zone for this setup; the line below compares it with the live quote" value={l.entry_zone?.[0] != null ? `${usd(l.entry_zone[0])}–${usd(l.entry_zone[1])}` : usd(l.entry_ref)} sub={px != null && l.entry_zone?.[0] != null ? (px >= l.entry_zone[0] && px <= l.entry_zone[1] ? 'price is inside the zone' : px > l.entry_zone[1] ? 'price is above the zone' : 'price is below the zone') : undefined} />
                 )}
-                {l.invalidation_level != null && <Fact label="Stop" value={usd(l.invalidation_level)} sub={pctFrom(l.invalidation_level)} color="var(--danger-color)" />}
-                {l.target != null && <Fact label="Target" value={usd(l.target)} sub={pctFrom(l.target)} color="var(--success-color)" />}
-                {l.rr != null && <Fact label="Reward : risk" value={`${Number(l.rr).toFixed(1)} : 1`} />}
-                <Fact label="CIO conviction" value={l.conviction != null ? `${Math.round(l.conviction)}/100` : '—'} sub={l.conviction == null ? 'not scored by the CIO' : l.low_conviction ? `below the floor ${l.conviction_floor}` : l.rank ? `rank #${l.rank}` : undefined} color={l.low_conviction ? 'var(--warning-color)' : undefined} />
-                <Fact label="Analysts" value={a ? (a.rating || 'No rating') : '—'}
+                {l.invalidation_level != null && <Fact label="Stop" tip="CIO invalidation level: a close below it kills the setup. % is the distance from the live quote" value={usd(l.invalidation_level)} sub={pctFrom(l.invalidation_level)} color="var(--danger-color)" />}
+                {l.target != null && <Fact label="Target" tip="CIO primary target. % is the distance from the live quote" value={usd(l.target)} sub={pctFrom(l.target)} color="var(--success-color)" />}
+                {l.rr != null && <Fact label="Reward : risk" tip="Reward to target divided by risk to stop, from the CIO plan" value={`${Number(l.rr).toFixed(1)} : 1`} />}
+                <Fact label="CIO conviction" tip="CIO conviction 0-100 for this ticker: the same number Home and the opportunity view show" value={l.conviction != null ? `${Math.round(l.conviction)}/100` : '—'} sub={l.conviction == null ? 'not scored by the CIO' : l.low_conviction ? `below the floor ${l.conviction_floor}` : l.rank ? `rank #${l.rank}` : undefined} color={l.low_conviction ? 'var(--warning-color)' : undefined} />
+                <Fact label="Analysts" tip="Street consensus from the Yahoo analyst targets store (rating, analyst count, mean and range of price targets); marked stale after 30 days" value={a ? (a.rating || 'No rating') : '—'}
                   color={a && /buy/i.test(a.rating || '') ? 'var(--success-color)' : a && /sell|underperform/i.test(a.rating || '') ? 'var(--danger-color)' : undefined}
                   sub={a ? <>
                     {a.analyst_count ? `${a.analyst_count} analysts · ` : ''}{a.target_mean != null ? `mean ${usd(a.target_mean)}${a.upside_pct != null ? ` (${a.upside_pct >= 0 ? '+' : ''}${a.upside_pct}%)` : ''}` : ''}
