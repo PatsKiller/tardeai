@@ -1,5 +1,7 @@
 import { useApi } from '../../hooks/useApi'
 import type { DrillContext } from '../DetailDrawer'
+import RotationPublicationNotice from '../RotationPublicationNotice'
+import { useRotationAvailability } from '../../hooks/useRotationAvailability'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 
@@ -17,13 +19,12 @@ function fmtMoney(v?: number | null) {
 
 export default function IntelligenceRotationTab({ onDrill }: Props) {
   const { data, loading, error } = useApi<any>('/api/v2/rotation/summary', 300_000)
+  const publication = useRotationAvailability(data, error)
 
   if (loading && !data) {
     return <div style={{ ...card, padding: 24, textAlign: 'center', color: 'var(--text3)', fontSize: 12 }}>Loading rotation intelligence…</div>
   }
-  if (error) {
-    return <div style={{ ...card, padding: 16, color: '#ef4444', fontSize: 12 }}>Failed to load rotation summary: {error}</div>
-  }
+  if (!publication.ready) return <RotationPublicationNotice summary={data} error={error} />
 
   const rs = data?.summary ?? {}
   const degraded = (data?.degraded_holdings ?? data?.top_candidates ?? []).filter((h: any) => h.degradation).slice(0, 8)
